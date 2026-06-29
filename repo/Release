@@ -1,0 +1,14 @@
+Origin: Max's Tweaks
+Label: Max's Tweaks
+Suite: stable
+Version: 1.0
+Codename: ios
+Architectures: iphoneos-arm64
+Components: main
+Description: Jailbreak tweaks by Max
+MD5Sum:
+ 4323c20ae4a21065ca78c86c6f6187e1 788 Packages
+ 524b78d80561c28384d56d79bc3b0e14 451 Packages.gz
+SHA256:
+ 07ae1f5a37649b443df07b1aa74573d3ac71c5ccc3ba6e23c1b4a43ffd99b5a7 788 Packages
+ b601cef605e0cc4be68da11826dd07cc29ab6aa0645e09e89c7a778e7a7e1541 451 Packages.gz

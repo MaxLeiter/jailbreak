@@ -1,0 +1,9 @@
+Package: com.max.autolockpicker
+Name: AutoLockPicker
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Replace the Auto-Lock preset list with a configurable time picker (Display & Brightness).
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate

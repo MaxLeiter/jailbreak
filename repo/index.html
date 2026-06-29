@@ -1,0 +1,55 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Max&#x27;s Tweaks</title><link rel="icon" href="favicon.ico"><style>
+  :root{color-scheme:dark} *{box-sizing:border-box}
+  body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+        background:#08080b;color:#e9e9ee;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:680px;margin:0 auto;padding:48px 20px 90px}
+  header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+  header img{width:64px;height:64px;border-radius:15px}
+  h1{font-size:26px;margin:0} .sub{color:#9a9aa6;margin:3px 0 0}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#8a8a96;margin:30px 0 12px}
+  .prose p{margin:.5em 0} .prose ul{margin:.4em 0;padding-left:1.2em} .prose li{margin:.2em 0}
+  .prose strong{color:#fff} a{color:#55aaff;text-decoration:none}
+  .url{display:flex;gap:8px;margin:26px 0}
+  .url input{flex:1;padding:12px 14px;border-radius:10px;border:1px solid #23232c;
+    background:#121218;color:#e9e9ee;font:14px ui-monospace,monospace}
+  .url button,.btns a{padding:12px 16px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer}
+  .url button{border:0;background:#55aaff;color:#04121f}
+  .btns{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:36px}
+  .btns a{background:#14141b;border:1px solid #23232c;color:#e9e9ee}
+  .btns a:hover{border-color:#55aaff}
+  .pkg{display:flex;gap:14px;align-items:center;padding:14px;border:1px solid #1d1d26;
+    border-radius:14px;background:#101017;margin-bottom:12px;text-decoration:none;color:inherit}
+  .pkg:hover{border-color:#55aaff}
+  .pkg img{width:54px;height:54px;border-radius:12px;flex:0 0 auto}
+  .pkg .n{font-weight:600;font-size:17px} .pkg .t{color:#9a9aa6;font-size:14px}
+  .pkg .v{margin-left:auto;color:#6a6a76;font:12px ui-monospace,monospace;align-self:flex-start}
+  table.info{width:100%;border-collapse:collapse;font-size:14px}
+  table.info td{padding:9px 0;border-bottom:1px solid #18181f}
+  table.info td:first-child{color:#8a8a96;width:40%}
+  footer{margin-top:40px;color:#6a6a76;font-size:13px}
+</style></head>
+<body><div class="wrap">
+  <header><img src="CydiaIcon.png" alt="">
+    <div><h1>Max&#x27;s Tweaks</h1><p class="sub">Jailbreak tweaks by Max</p></div></header>
+  <div class="url"><input id="repo" readonly value="">
+    <button onclick="navigator.clipboard.writeText(document.getElementById('repo').value)">Copy</button></div>
+  <div class="btns"><a id="sileo" href="#">Add to Sileo</a>
+    <a id="zebra" href="#">Add to Zebra</a><a id="cydia" href="#">Add to Cydia</a></div>
+  <h2>Packages</h2>
+    <a class="pkg" href="depictions/com.max.autolockpicker.html">
+      <img src="icons/com.max.autolockpicker.png" alt="">
+      <div><div class="n">AutoLockPicker</div>
+        <div class="t">Set any Auto-Lock time with a picker</div></div>
+      <div class="v">v0.1.0</div>
+    </a>
+  <footer>Add the URL above to your package manager to install.</footer>
+</div>
+<script>
+  var u=location.origin+location.pathname.replace(/index\.html$/,"");
+  document.getElementById("repo").value=u;
+  document.getElementById("sileo").href="sileo://source/"+u;
+  document.getElementById("zebra").href="zbra://sources/add/"+u;
+  document.getElementById("cydia").href="cydia://url/https://cydia.saurik.com/api/share#?source="+u;
+</script></body></html>

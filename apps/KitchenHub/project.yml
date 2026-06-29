@@ -1,0 +1,44 @@
+name: KitchenHub
+options:
+  bundleIdPrefix: com.max
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  defaultConfig: Release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"            # Swift 5 language mode (skip Swift 6 strict-concurrency churn for now)
+    TARGETED_DEVICE_FAMILY: "2"     # iPad only
+    PRODUCT_BUNDLE_IDENTIFIER: com.max.kitchenhub
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
+    # Unsigned build — the device runs it via AppSync Unified after an ldid pseudo-sign.
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_BITCODE: "NO"
+
+targets:
+  KitchenHub:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Resources/Info.generated.plist
+      properties:
+        CFBundleDisplayName: KitchenHub
+        CFBundleShortVersionString: "0.2.0"
+        NSLocationWhenInUseUsageDescription: "KitchenHub shows local weather on the dashboard."
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight

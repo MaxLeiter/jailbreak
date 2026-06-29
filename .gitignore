@@ -1,0 +1,14 @@
+# Theos build artifacts
+.theos/
+*/\.theos/
+**/.theos/
+
+# Built packages
+packages/
+*.deb
+
+# Editor / OS cruft
+.DS_Store
+*.swp
+device.env
+.repo-venv/

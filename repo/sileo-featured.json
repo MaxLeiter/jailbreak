@@ -1,0 +1,12 @@
+{
+  "class": "FeaturedBannersView",
+  "itemSize": "{263, 148}",
+  "itemCornerRadius": 8,
+  "banners": [
+    {
+      "title": "AutoLockPicker",
+      "package": "com.max.autolockpicker",
+      "url": "https://repo.maxleiter.com/banners/com.max.autolockpicker.png"
+    }
+  ]
+}

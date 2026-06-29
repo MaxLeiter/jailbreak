@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchDaemon: re-create simject's substrate symlinks in the iOS Simulator
+  runtimes after a reboot (they live on tmpfs, which is wiped on reboot).
+
+  Runs as root. ProgramArguments[0] is /bin/bash (root-owned) so launchd's
+  ownership check passes while the actual logic stays version-controlled in the repo.
+  RunAtLoad covers boot; StartOnMount re-fires when the iOS_* runtime volumes
+  mount (they can mount lazily when Simulator launches, not just at boot).
+
+  Install (one-time, needs sudo):
+    sudo cp ~/Documents/jailbreak/bin/launchd/com.max.simject-relink.plist /Library/LaunchDaemons/
+    sudo chown root:wheel /Library/LaunchDaemons/com.max.simject-relink.plist
+    sudo chmod 644       /Library/LaunchDaemons/com.max.simject-relink.plist
+    sudo launchctl bootstrap system /Library/LaunchDaemons/com.max.simject-relink.plist
+  Test now:
+    sudo launchctl kickstart -k system/com.max.simject-relink
+    cat ~/Library/Logs/simject-relink.log
+  Uninstall:
+    sudo launchctl bootout system /Library/LaunchDaemons/com.max.simject-relink.plist
+    sudo rm /Library/LaunchDaemons/com.max.simject-relink.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.max.simject-relink</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/max/Documents/jailbreak/bin/simject-relink.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StartOnMount</key>
+    <true/>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/max/Library/Logs/simject-relink.log</string>
+</dict>
+</plist>

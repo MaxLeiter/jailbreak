@@ -1,0 +1,9 @@
+Package: com.max.helloworld
+Name: HelloWorld
+Version: 0.0.1
+Architecture: iphoneos-arm64
+Description: My first iOS tweak — says hello from SpringBoard.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate

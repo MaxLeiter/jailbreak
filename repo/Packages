@@ -1,0 +1,19 @@
+Package: com.max.autolockpicker
+Name: AutoLockPicker
+Description: Replace the Auto-Lock preset list with a configurable time picker (Display & Brightness).
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate
+Architecture: iphoneos-arm64
+Version: 0.1.0
+Installed-Size: 172
+Filename: debs/com.max.autolockpicker_0.1.0_iphoneos-arm64.deb
+Size: 9906
+MD5sum: 8984aa26f1e83e3e0b2a95fc2b2e9bc9
+SHA1: be107f8d663f20267f1f787a1d3b920bfa5fc75f
+SHA256: 7423debbb1b7914b240368ecab9fc3bd92bf52a642f3efea9493358ac502fefd
+Icon: https://repo.maxleiter.com/icons/com.max.autolockpicker.png
+Depiction: https://repo.maxleiter.com/depictions/com.max.autolockpicker.html
+Native Depiction: https://repo.maxleiter.com/depictions/com.max.autolockpicker.json
+Homepage: https://repo.maxleiter.com
