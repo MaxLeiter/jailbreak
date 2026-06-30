@@ -1,0 +1,12 @@
+Package: libwnck-3-0
+Version: @DEB_LIBWNCK3_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libwnck
+Depends: libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libcairo2, libx11-6, libxres1, libstartup-notification0
+Description: Window Navigator Construction Kit (GTK3 library)
+ libwnck provides access to the client window list and window-manager hints
+ (EWMH) for pagers, task lists and window menus. Required by xfwm4 and used by
+ xfce4-panel, xfce4-session and xfdesktop.

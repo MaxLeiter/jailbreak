@@ -1,0 +1,12 @@
+Package: libtracker-sparql-3.0-0
+Version: @DEB_TRACKER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/tracker
+Depends: libglib2.0-0, libsqlite3-0, libjson-glib-1.0-0, dbus
+Description: Tracker SPARQL store library - runtime
+ libtracker-sparql is the client/store library for the Tracker RDF/SQLite
+ database, linked by nautilus for search. The indexer daemon (localsearch) is a
+ separate, optional package; without it, search returns no indexed results.

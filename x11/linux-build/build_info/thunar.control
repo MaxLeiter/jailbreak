@@ -1,0 +1,12 @@
+Package: thunar
+Version: @DEB_THUNAR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://docs.xfce.org/xfce/thunar/start
+Depends: libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, libxfce4ui-2-0, libexo-2-0
+Description: File manager for the Xfce desktop environment
+ Thunar is the fast, lightweight Xfce file manager. Ships the thunar binary and
+ the libthunarx-3 extension library. Built without gudev/libnotify (Linux-only),
+ so removable-media mounting is unavailable; local browsing works.

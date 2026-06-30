@@ -1,0 +1,14 @@
+Package: libgtk-4-1
+Version: @DEB_LIBGTK4_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libcairo2, libcairo-gobject2, libgraphene-1.0-0, libepoxy0, libfribidi0, libharfbuzz0b, libfontconfig1, libpng16-16, libjpeg62-turbo, libtiff5, libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libgtkintl
+Description: GTK graphical user interface library
+ GTK is a multi-platform toolkit for creating graphical user interfaces.
+ .
+ This package contains the GTK 4 shared library (with the GL and cairo
+ renderers; Vulkan is disabled on iOS) plus its loadable modules for the X11
+ backend.

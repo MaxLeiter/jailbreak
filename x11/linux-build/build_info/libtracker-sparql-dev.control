@@ -1,0 +1,11 @@
+Package: libtracker-sparql-dev
+Version: @DEB_TRACKER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/tracker
+Depends: libtracker-sparql-3.0-0 (= @DEB_TRACKER_V@), libglib2.0-dev
+Description: Development files for Tracker SPARQL
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against libtracker-sparql-3.0.

@@ -1,0 +1,12 @@
+Package: libepoll-shim-dev
+Version: @DEB_EPOLLSHIM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libepoll-shim0 (= @DEB_EPOLLSHIM_V@)
+Section: Development
+Priority: optional
+Homepage: https://github.com/jiixyj/epoll-shim
+Description: Development files for epoll-shim
+ A small implementation of Linux's epoll(7), timerfd, signalfd and eventfd
+ APIs on top of kqueue(2). This package contains the headers (under
+ include/libepoll-shim), the static library and the pkg-config file.

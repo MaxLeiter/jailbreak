@@ -1,0 +1,10 @@
+Package: iso-codes
+Version: @DEB_ISO-CODES_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://salsa.debian.org/iso-codes-team/iso-codes
+Description: ISO code lists and translation tables
+ Lists of country, language, currency and script names with translations,
+ plus the iso-codes.pc pkg-config file. Data only; required by gnome-desktop.

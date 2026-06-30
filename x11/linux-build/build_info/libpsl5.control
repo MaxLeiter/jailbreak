@@ -1,0 +1,10 @@
+Package: libpsl5
+Version: @DEB_LIBPSL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/rockdaboot/libpsl
+Description: Public Suffix List library - runtime
+ libpsl handles the Public Suffix List (cookie-domain checks). Built with the
+ builtin list and no IDNA runtime. Used by libsoup.

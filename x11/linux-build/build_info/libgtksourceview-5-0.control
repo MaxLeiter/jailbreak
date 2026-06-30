@@ -1,0 +1,12 @@
+Package: libgtksourceview-5-0
+Version: @DEB_GTKSOURCEVIEW5_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/GtkSourceView
+Depends: libglib2.0-0, libgtk-4-1, libpango-1.0-0, libxml2, libpcre2-8-0, libfribidi0
+Description: Source-code editing widget for GTK4 - runtime
+ GtkSourceView extends the GTK4 text widget with syntax highlighting and other
+ features for editing source code. This package contains the shared library and
+ the language-specification and style data.

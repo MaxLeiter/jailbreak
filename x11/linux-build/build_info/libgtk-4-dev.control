@@ -1,0 +1,13 @@
+Package: libgtk-4-dev
+Version: @DEB_LIBGTK4_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libgtk-4-1 (= @DEB_LIBGTK4_V@), gtk-4-bin (= @DEB_LIBGTK4_V@), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libcairo2-dev, libgraphene-1.0-dev, libepoxy-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev
+Description: Development files for the GTK library
+ GTK is a multi-platform toolkit for creating graphical user interfaces.
+ .
+ This package contains the development headers, symlinks and pkg-config files
+ needed to build software that uses GTK 4.

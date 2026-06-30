@@ -1,0 +1,13 @@
+Package: libgtop-2.0-11
+Version: @DEB_LIBGTOP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libgtop
+Depends: libiosexec1
+Description: libgtop-2.0 stub (system monitoring) for GNOME on iOS
+ Minimal libgtop-2.0 shim providing the process-enumeration entry points GNOME
+ Console links against. Process listing is a no-op under the iOS sandbox
+ (the real libgtop darwin backend uses restricted sysctl/libproc paths); the
+ terminal works normally, only its running-process styling is degraded.

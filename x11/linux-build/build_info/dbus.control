@@ -1,0 +1,13 @@
+Package: dbus
+Version: @DEB_DBUS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Software/dbus/
+Depends: libiosexec1
+Description: Simple interprocess messaging system (daemon, tools and library)
+ D-Bus is a message bus, used for sending messages between applications. This
+ package contains the libdbus-1 shared library, the dbus-daemon, and tools such
+ as dbus-launch and dbus-uuidgen. Provides the session bus needed by GNOME apps
+ (dconf/GLib) and by xfconf.

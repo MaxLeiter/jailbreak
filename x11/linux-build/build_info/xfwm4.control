@@ -1,0 +1,12 @@
+Package: xfwm4
+Version: @DEB_XFWM4_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://docs.xfce.org/xfce/xfwm4/start
+Depends: libglib2.0-0, libgtk-3-0, libxfce4util7, libxfce4ui-2-0, xfconf, libwnck-3-0, libstartup-notification0, libepoxy0
+Description: Window manager for the Xfce desktop environment
+ xfwm4 is the Xfce window manager. It handles window placement, decorations,
+ keyboard/mouse focus and workspaces. Built without the (optional) compositor
+ for first bring-up on the iOS X server.

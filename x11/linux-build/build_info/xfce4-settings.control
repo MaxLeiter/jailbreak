@@ -1,0 +1,11 @@
+Package: xfce4-settings
+Version: @DEB_XFCE4SETTINGS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://docs.xfce.org/xfce/xfce4-settings/start
+Depends: libglib2.0-0, libgtk-3-0, libxfce4util7, libxfce4ui-2-0, libexo-2-0, libgarcon-1-0, xfconf, libx11-6, libxi6, libxrandr2, libxcursor1
+Description: Settings manager for the Xfce desktop environment
+ The Xfce settings manager plus the xfsettingsd daemon, which apply theme, font,
+ DPI, display (xrandr), mouse and keyboard configuration stored in xfconf.

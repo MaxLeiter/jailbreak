@@ -1,0 +1,11 @@
+Package: libportal-gtk4-1
+Version: @DEB_LIBPORTAL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/flatpak/libportal
+Depends: libportal1 (= @DEB_LIBPORTAL_V@), libglib2.0-0, libgtk-4-1
+Description: Flatpak portal library - runtime (GTK4 backend)
+ The GTK4 backend of libportal, providing parent-window integration for portal
+ dialogs. Required by nautilus.

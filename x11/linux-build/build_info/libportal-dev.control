@@ -1,0 +1,11 @@
+Package: libportal-dev
+Version: @DEB_LIBPORTAL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/flatpak/libportal
+Depends: libportal1 (= @DEB_LIBPORTAL_V@), libportal-gtk4-1 (= @DEB_LIBPORTAL_V@), libglib2.0-dev, libgtk-4-dev
+Description: Development files for libportal
+ Development headers, unversioned symlinks, and pkg-config files for the core
+ libportal library and its GTK4 backend.

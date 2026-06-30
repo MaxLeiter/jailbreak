@@ -1,0 +1,11 @@
+Package: gnome-console
+Version: @DEB_GNOME-CONSOLE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Applications
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/console
+Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libvte-2.91-gtk4-0, libpcre2-8-0, libgtop-2.0-11, dbus
+Description: Simple user-friendly terminal emulator (GTK4)
+ GNOME Console (kgx) is the modern GTK4/libadwaita terminal for GNOME. Runs as a
+ plain X11 client under any window manager.

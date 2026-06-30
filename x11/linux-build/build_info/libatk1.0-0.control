@@ -1,0 +1,15 @@
+Package: libatk1.0-0
+Version: @DEB_LIBATK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/atk
+Depends: libglib2.0-0
+Description: ATK accessibility toolkit
+ ATK is a toolkit providing accessibility interfaces for applications or other
+ toolkits. By implementing these interfaces, those other toolkits or
+ applications can be used with tools such as screen readers, magnifiers, and
+ other alternative input devices.
+ .
+ This package contains the shared libraries.

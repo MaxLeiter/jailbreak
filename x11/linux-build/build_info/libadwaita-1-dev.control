@@ -1,0 +1,11 @@
+Package: libadwaita-1-dev
+Version: @DEB_LIBADWAITA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gnome.pages.gitlab.gnome.org/libadwaita/
+Depends: libadwaita-1-0 (= @DEB_LIBADWAITA_V@), libgtk-4-dev, libappstream-dev
+Description: Development files for libadwaita
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against libadwaita.

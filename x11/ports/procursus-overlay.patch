@@ -1,0 +1,69 @@
+diff --git a/Makefile b/Makefile
+index 9b3e96f..02d2d77 100644
+--- a/Makefile
++++ b/Makefile
+@@ -536,7 +536,13 @@ OPTIMIZATION_FLAGS := -Os
+ endif
+ ifneq ($(DEBUG),1)
+ ifeq ($(UNAME),Darwin)
++# LTO disabled on macOS host: cctools-1010 nm prints "----------------" for an
++# LTO-bitcode symbol's address, which breaks libtool's global-symbol detection
++# (it leaves global_symbol_pipe empty -> "nm | | sed" syntax error). Opt back in
++# with MEMO_FORCE_LTO=1 once the toolchain handles it.
++ifeq ($(MEMO_FORCE_LTO),1)
+ OPTIMIZATION_FLAGS += -flto=thin
++endif
+ else ifeq ($(MEMO_FORCE_LTO),1)
+ OPTIMIZATION_FLAGS += -flto=thin
+ # This flag will prevent ld64 from deleting the object file needed for dsymutil to work.
+@@ -551,6 +557,10 @@ OPTIMIZATION_FLAGS += -lto_library $(MEMO_ALT_LTO_LIB)
+ endif
+ 
+ CFLAGS              := $(OPTIMIZATION_FLAGS) -arch $(MEMO_ARCH) -isysroot $(TARGET_SYSROOT) $(PLATFORM_VERSION_MIN) -isystem$(TARGET_SYSROOT)/usr/include/c++/v1 -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/c++/v1 -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)$(MEMO_ALT_PREFIX)/include/c++/v1 -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)$(MEMO_ALT_PREFIX)/include -F$(BUILD_BASE)$(MEMO_PREFIX)/System/Library/Frameworks -F$(BUILD_BASE)$(MEMO_PREFIX)/Library/Frameworks
++# macOS 26 / Xcode 26 clang promotes these previously-warning diagnostics to hard
++# errors by default; downgrade to warnings so 2021-era C sources (pixman, mesa,
++# xorg-server, etc.) cross-compile as they did on older toolchains.
++CFLAGS              += -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -Wno-error=int-conversion -Wno-error=incompatible-pointer-types -Wno-error=implicit-int
+ CXXFLAGS            := $(CFLAGS)
+ ASFLAGS             := $(CFLAGS)
+ CPPFLAGS            := -arch $(MEMO_ARCH) $(PLATFORM_VERSION_MIN) -isysroot $(TARGET_SYSROOT) -isystem$(TARGET_SYSROOT)/usr/include/c++/v1 -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/c++/v1 -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)$(MEMO_ALT_PREFIX)/include/c++/v1 -isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)$(MEMO_ALT_PREFIX)/include
+diff --git a/build_info/tigervnc-standalone-server.control b/build_info/tigervnc-standalone-server.control
+index 85aa854..5b57850 100644
+--- a/build_info/tigervnc-standalone-server.control
++++ b/build_info/tigervnc-standalone-server.control
+@@ -2,7 +2,7 @@ Package: tigervnc-standalone-server
+ Version: @DEB_TIGERVNC_V@
+ Architecture: @DEB_ARCH@
+ Maintainer: @DEB_MAINTAINER@
+-Depends: xauth, libgl1, libgeneral0, libmd0, libgnutls30, libjpeg62-turbo, libpam2, libpixman-1-0, libx11-6, libxau6, libxdmcp6, libxdamage1, libxfont2, xkbcomp, xkeyboard-config, tigervnc-common, tigervnc-xorg-extension
++Depends: xauth, libgl1, libgeneral0, libmd0, libgnutls30, libjpeg62-turbo, libpam2, libpixman-1-0, libx11-6, libxau6, libxdmcp6, libxdamage1, libxfont2, xkbcomp, xkeyboard-config, tigervnc-common
+ Section: X11
+ Provides: vnc-server, xserver
+ Description: Standalone virtual network computing server
+diff --git a/makefiles/libpng16.mk b/makefiles/libpng16.mk
+index 665ce04..14508f6 100644
+--- a/makefiles/libpng16.mk
++++ b/makefiles/libpng16.mk
+@@ -11,7 +11,9 @@ libpng16-setup: setup
+ 	$(call EXTRACT_TAR,libpng-$(LIBPNG16_VERSION).tar.xz,libpng-$(LIBPNG16_VERSION),libpng16)
+ 	# Fix the .pc file to use Apple's zlib
+ 	#sed -i 's/Requires: zlib/Requires: /;s/\(Libs:.*\)/\1 -lz/' $(BUILD_WORK)/libpng16/libpng.pc.in
+-	$(call DO_PATCH,libpng16,libpng16,-p1)
++	# apng.patch (animated-PNG add-on) no longer applies to this libpng's meson.build
++	# and APNG isn't needed for the X stack; skip it.
++	# $(call DO_PATCH,libpng16,libpng16,-p1)
+ 
+ ifneq ($(wildcard $(BUILD_WORK)/libpng16/.build_complete),)
+ libpng16:
+diff --git a/makefiles/tigervnc.mk b/makefiles/tigervnc.mk
+index 9cfc5bd..905d03f 100644
+--- a/makefiles/tigervnc.mk
++++ b/makefiles/tigervnc.mk
+@@ -41,6 +41,7 @@ endif
+ 	cp -R $(BUILD_WORK)/xorg-server-vnc/. $(BUILD_WORK)/tigervnc/unix/xserver
+ 	sed -i 's/__APPLE__/__PEAR__/' $(BUILD_WORK)/tigervnc/unix/xserver/miext/rootless/rootlessWindow.c
+ 	cd $(BUILD_WORK)/tigervnc/unix/xserver && patch -p1 < $(BUILD_WORK)/tigervnc/unix/xserver$(XORG_VERSION).patch && \
++	{ [ "$(MEMO_PREFIX)" != "/var/jb" ] || patch -p1 < /Users/max/Documents/jailbreak/x11/ports/tigervnc/patches/0001-xserver-popen-shell-rootless.patch; } && \
+ 	export ACLOCAL='aclocal -I $(BUILD_BASE)/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/aclocal' && \
+ 	export gcc=cc && autoreconf -fiv && ./configure -C \
+ 		$(DEFAULT_CONFIGURE_FLAGS) \

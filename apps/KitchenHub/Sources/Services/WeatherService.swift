@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 struct CurrentWeather {
     let temp: Double
@@ -6,6 +6,7 @@ struct CurrentWeather {
     let code: Int
     let hi: Double
     let lo: Double
+    let isDay: Bool
 }
 
 /// Fetches current conditions from Open-Meteo (no API key required).
@@ -15,7 +16,7 @@ enum WeatherService {
         comps.queryItems = [
             URLQueryItem(name: "latitude", value: String(lat)),
             URLQueryItem(name: "longitude", value: String(lon)),
-            URLQueryItem(name: "current", value: "temperature_2m,apparent_temperature,weather_code"),
+            URLQueryItem(name: "current", value: "temperature_2m,apparent_temperature,weather_code,is_day"),
             URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min"),
             URLQueryItem(name: "temperature_unit", value: "fahrenheit"),
             URLQueryItem(name: "timezone", value: "auto"),
@@ -28,7 +29,8 @@ enum WeatherService {
             apparent: r.current.apparent_temperature,
             code: r.current.weather_code,
             hi: r.daily.temperature_2m_max.first ?? r.current.temperature_2m,
-            lo: r.daily.temperature_2m_min.first ?? r.current.temperature_2m
+            lo: r.daily.temperature_2m_min.first ?? r.current.temperature_2m,
+            isDay: r.current.is_day != 0
         )
     }
 
@@ -37,6 +39,7 @@ enum WeatherService {
             let temperature_2m: Double
             let apparent_temperature: Double
             let weather_code: Int
+            let is_day: Int
         }
         struct Daily: Decodable {
             let temperature_2m_max: [Double]
@@ -80,5 +83,36 @@ enum WMO {
         case 95...99:      return "Thunderstorm"
         default:           return "—"
         }
+    }
+}
+
+/// Sky-coloured gradient for the weather card, by condition + day/night.
+enum Sky {
+    static func gradient(code: Int, isDay: Bool) -> LinearGradient {
+        let colors: [Color]
+        if !isDay {
+            switch code {
+            case 0, 1:        colors = [hex(0x0B1437), hex(0x1C2B57)]   // clear night
+            case 95...99:     colors = [hex(0x141225), hex(0x2A2740)]   // storm night
+            default:          colors = [hex(0x141A2E), hex(0x2B3450)]   // cloudy night
+            }
+        } else {
+            switch code {
+            case 0, 1:        colors = [hex(0x2E72C9), hex(0x6FB4F2)]   // clear day
+            case 2:           colors = [hex(0x3D6FA8), hex(0x7FA8D4)]   // partly
+            case 3, 45, 48:   colors = [hex(0x4A5564), hex(0x77828F)]   // overcast/fog
+            case 51...67, 80...82: colors = [hex(0x35506B), hex(0x5C7C88)]  // rain
+            case 71...86:     colors = [hex(0x556074), hex(0x8C99AC)]   // snow
+            case 95...99:     colors = [hex(0x2B3140), hex(0x4A5266)]   // storm day
+            default:          colors = [hex(0x3D6FA8), hex(0x7FA8D4)]
+            }
+        }
+        return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+    }
+
+    private static func hex(_ v: Int) -> Color {
+        Color(red: Double((v >> 16) & 0xFF) / 255,
+              green: Double((v >> 8) & 0xFF) / 255,
+              blue: Double(v & 0xFF) / 255)
     }
 }

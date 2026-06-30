@@ -1,0 +1,11 @@
+Package: libgnome-autoar-dev
+Version: @DEB_GNOME-AUTOAR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-autoar
+Depends: libgnome-autoar-0-0 (= @DEB_GNOME-AUTOAR_V@), libglib2.0-dev, libgtk-4-dev
+Description: Development files for gnome-autoar
+ Development headers, unversioned symlinks, and pkg-config files needed to build
+ software against gnome-autoar.

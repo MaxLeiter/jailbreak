@@ -1,0 +1,75 @@
+--- a/src/wayland-os.c
++++ b/src/wayland-os.c
+@@ -42,6 +42,11 @@
+ 
+ #include "wayland-os.h"
+ 
++#ifndef SOCK_CLOEXEC
++/* Darwin/iOS has no SOCK_CLOEXEC; fall through to set_cloexec_or_close(). */
++#define SOCK_CLOEXEC 0
++#endif
++
+ /* used by tests */
+ int (*wl_fcntl)(int fildes, int cmd, ...) = fcntl;
+ int (*wl_socket)(int domain, int type, int protocol) = socket;
+@@ -75,7 +80,7 @@
+ {
+ 	int fd;
+ 
+-	fd = wl_socket(domain, type | SOCK_CLOEXEC, protocol);
++	fd = set_cloexec_or_close(wl_socket(domain, type | SOCK_CLOEXEC, protocol));
+ 	if (fd >= 0)
+ 		return fd;
+ 	if (errno != EINVAL)
+@@ -125,6 +130,25 @@
+ 	*pid = ucred.pid;
+ 	return 0;
+ }
++#elif defined(__APPLE__)
++int
++wl_os_socket_peercred(int sockfd, uid_t *uid, gid_t *gid, pid_t *pid)
++{
++	struct xucred ucred;
++	socklen_t len = sizeof(ucred);
++	if (getsockopt(sockfd, SOL_LOCAL, LOCAL_PEERCRED, &ucred, &len) < 0 ||
++	    ucred.cr_version != XUCRED_VERSION)
++		return -1;
++	*uid = ucred.cr_uid;
++	*gid = ucred.cr_groups[0];
++	pid_t epid = 0;
++	socklen_t elen = sizeof(epid);
++	if (getsockopt(sockfd, SOL_LOCAL, LOCAL_PEERPID, &epid, &elen) == 0)
++		*pid = epid;
++	else
++		*pid = 0;
++	return 0;
++}
+ #else
+ #error "Don't know how to read ucred on this platform"
+ #endif
+@@ -178,7 +202,7 @@
+ ssize_t
+ wl_os_recvmsg_cloexec(int sockfd, struct msghdr *msg, int flags)
+ {
+-#if HAVE_BROKEN_MSG_CMSG_CLOEXEC
++#if HAVE_BROKEN_MSG_CMSG_CLOEXEC || !defined(MSG_CMSG_CLOEXEC)
+ 	/*
+ 	 * FreeBSD had a broken implementation of MSG_CMSG_CLOEXEC between 2015
+ 	 * and 2021, so we have to use the non-MSG_CMSG_CLOEXEC fallback
+--- a/src/event-loop.c
++++ b/src/event-loop.c
+@@ -38,6 +38,14 @@
+ #include <sys/epoll.h>
+ #include <sys/signalfd.h>
+ #include <sys/timerfd.h>
++#ifdef __APPLE__
++/* iOS <time.h> lacks struct itimerspec (no POSIX timers); epoll-shim only
++ * forward-declares it. Provide the definition for timerfd_settime/gettime. */
++struct itimerspec {
++	struct timespec it_interval;
++	struct timespec it_value;
++};
++#endif
+ #include <unistd.h>
+ #include "wayland-util.h"
+ #include "wayland-private.h"

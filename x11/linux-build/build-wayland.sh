@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Build the Wayland W0 stack for rootless iOS via the Procursus/Docker pipeline:
+#   epoll-shim, wayland (libwayland-client/server/cursor/egl), wayland-protocols, libxkbcommon.
+# None of these exist in Procursus, so we drop ours (recipes/*.mk + recipes/build_info/*.control)
+# into the clone (the main Makefile globs makefiles/*.mk) and build them. Deps that DO exist in
+# Procursus (libffi, expat, xkeyboard-config, ...) cascade.
+#
+# Runs INSIDE the container, mirroring build-gtk.sh. Fire it host-side on its OWN volume
+# (procursus-vol-wayland — clear of the DDX's procursus-vol and GTK's procursus-vol-gtk):
+#
+#   docker run --rm --platform linux/arm64 \
+#     -v procursus-vol-wayland:/work/Procursus \
+#     -v "$PWD/build-wayland.sh:/work/build-wayland.sh:ro" \
+#     -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/out:/out" \
+#     procursus-xbuild:bookworm-arm64 /work/build-wayland.sh
+#
+# Select targets via TARGETS env (default = the four W0 packages, epoll-shim first).
+#
+# PREP ONLY — nothing builds until this is invoked. On a *fresh* procursus-vol-wayland the
+# first run also does Procursus `setup` (bootstrap + macOS-SDK header harvest) and builds the
+# small cascade deps (libffi/expat) — one-time and unavoidable on a clean volume; seeding the
+# volume from the DDX clone snapshot would skip it. The W0 packages themselves are tiny.
+set -euo pipefail
+umask 022
+cd /work
+
+echo "==> [1/5] ensure Procursus clone (fresh volume => clone)"
+if [ ! -d Procursus/.git ]; then
+  git clone --depth 1 https://github.com/ProcursusTeam/Procursus.git
+fi
+cd Procursus
+
+# Host build tools the image may lack. bison/flex/cmake/ninja/meson/pkg-config/libxml2-dev are
+# already in the Dockerfile; the native wayland-scanner pass (wayland.mk) additionally needs host
+# expat headers. Install defensively (guarded) so this works before the image is rebuilt.
+echo "==> [2/5] host build tools (libexpat1-dev for the native wayland-scanner)"
+if ! dpkg -s libexpat1-dev >/dev/null 2>&1; then
+  apt-get update >/dev/null 2>&1 || true
+  apt-get install -y --no-install-recommends libexpat1-dev >/dev/null 2>&1 \
+    || { echo "ERROR: could not install libexpat1-dev (needed by wayland.mk pass 1)"; exit 1; }
+fi
+
+echo "==> [3/5] apply toolchain fixes (idempotent; needed on a fresh volume)"
+# (a) cc/cxx wrappers: neutralise meson's compile-only -Werror=unused-command-line-argument
+#     probes (the Procursus clang wrapper injects -Wl,-adhoc_codesign, which those probes reject).
+#     Same wrapper gtk-builder uses; harmless for the autotools/cmake deps.
+cat > build_tools/cc-nounused <<'EOF'
+#!/usr/bin/env bash
+exec aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
+EOF
+cat > build_tools/cxx-nounused <<'EOF'
+#!/usr/bin/env bash
+exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
+EOF
+chmod +x build_tools/cc-nounused build_tools/cxx-nounused
+
+# (b) Makefile-global toolchain fixes — the subset of build.sh that is toolchain-level (not
+#     tigervnc/mesa-specific), applied idempotently so a fresh volume's `setup` + C/C++ deps build.
+python3 - <<'PY'
+import re, pathlib
+def edit(path, fn):
+    p = pathlib.Path(path); s = p.read_text(); n = fn(s)
+    if n != s: p.write_text(n); print(f"   patched {path}")
+    else: print(f"   (already patched) {path}")
+
+# setup harvests macOS-SDK framework headers; keep the copy non-fatal as a safety net.
+edit("Makefile", lambda s: re.sub(r'(\n\t)@(cp -af\s+\$\(MACOSX_SYSROOT\))', r'\1-@\2', s))
+
+# cctools-port clang++ defaults to GNU libstdc++ (absent); force Apple libc++.
+def cxxflags(s):
+    if "-stdlib=libc++" in s: return s
+    s = s.replace("CXXFLAGS            := $(CFLAGS)",
+                  "CXXFLAGS            := $(CFLAGS) -stdlib=libc++", 1)
+    s = s.replace("-Wl,-not_for_dyld_shared_cache",
+                  "-Wl,-not_for_dyld_shared_cache -stdlib=libc++", 1)
+    return s
+edit("Makefile", cxxflags)
+
+# Expose dlfcn/Darwin POSIX symbols via _DARWIN_C_SOURCE (NOT a global -include dlfcn.h — that
+# regresses C deps like libffi/ncurses).
+def darwinsrc(s):
+    s = s.replace("-D_DARWIN_C_SOURCE -include dlfcn.h", "-D_DARWIN_C_SOURCE")
+    if "-D_DARWIN_C_SOURCE" in s: return s
+    return s.replace("CXXFLAGS            := $(CFLAGS) -stdlib=libc++",
+                     "CFLAGS              += -D_DARWIN_C_SOURCE\n"
+                     "CXXFLAGS            := $(CFLAGS) -stdlib=libc++", 1)
+edit("Makefile", darwinsrc)
+
+# Xcode-26 macOS headers #include <_bounds.h>; copy it too so setup's harvested headers resolve.
+edit("Makefile", lambda s: s.replace(
+    "/usr/include/{arpa,bsm,hfs,net,xpc,protocols,netinet,netinet6,servers,timeconv.h,launch.h}",
+    "/usr/include/{_bounds.h,arpa,bsm,hfs,net,xpc,protocols,netinet,netinet6,servers,timeconv.h,launch.h}"))
+PY
+
+echo "==> [4/5] install our recipes + control templates into the clone"
+cp -v /work/recipes/*.mk makefiles/
+# Our control templates live in recipes/build_info/ (the top-level linux-build/build_info/ is the
+# GTK track's and is not mounted here). Copy into the *clone's* build_info/.
+cp -v /work/recipes/build_info/*.control build_info/
+# Source patches (e.g. wayland-darwin.patch) are applied from $(BUILD_INFO) by the recipes.
+cp -v /work/recipes/build_info/*.patch build_info/ 2>/dev/null || true
+
+echo "==> [5/5] build the W0 stack (epoll-shim first; wayland depends on it)"
+COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+  CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
+TARGETS="${TARGETS:-epoll-shim-package wayland-package wayland-protocols-package libxkbcommon-package}"
+for t in $TARGETS; do
+  echo "==> make $t"
+  make $t $COMMON -j"$(nproc)"
+done
+
+echo "==> collect debs -> /out"
+mkdir -p /out
+found=0
+for pat in libepoll-shim libwayland wayland-protocols libxkbcommon; do
+  for d in $(find . -name "${pat}*_*_iphoneos-arm64.deb" 2>/dev/null); do
+    cp -v "$d" /out/; found=1
+  done
+done
+[ "$found" = 1 ] || { echo "!! no wayland-stack debs produced"; exit 1; }
+echo "==> done. W0 debs in /out:"
+ls -1 /out/*.deb 2>/dev/null || true

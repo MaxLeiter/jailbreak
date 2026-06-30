@@ -1,0 +1,13 @@
+#!/bin/sh
+# GTK ships GSettings schemas (org.gtk.Settings.*) that must be compiled into
+# gschemas.compiled or GtkSettings aborts at startup. Compile them on the device.
+set -e
+
+SCHEMADIR="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/share/glib-2.0/schemas"
+GLIB_COMPILE_SCHEMAS="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/bin/glib-compile-schemas"
+
+if [ -d "$SCHEMADIR" ] && [ -x "$GLIB_COMPILE_SCHEMAS" ]; then
+    "$GLIB_COMPILE_SCHEMAS" "$SCHEMADIR" || true
+fi
+
+exit 0

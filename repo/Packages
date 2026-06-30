@@ -131,6 +131,25 @@ Depiction: https://repo.maxleiter.com/depictions/gir1.2-glib-2.0.html
 Native Depiction: https://repo.maxleiter.com/depictions/gir1.2-glib-2.0.json
 Homepage: https://repo.maxleiter.com
 
+Package: gjs
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libgjs0 (= 1.78.0), gir1.2-glib-2.0, gir1.2-freedesktop
+Section: Interpreters
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gjs
+Description: JavaScript interpreter for GNOME
+Filename: debs/gjs_1.78.0_iphoneos-arm64.deb
+Size: 17116
+MD5sum: 8c19694f02235b025ea70086dada86ae
+SHA1: d406ee8c845465de5e0004f58ae008bcde0b6b6a
+SHA256: 947d6041e35f8148af948186fe55a5230fe8d60bf6da54686ec55bb676f0266a
+Icon: https://repo.maxleiter.com/icons/gjs.png
+Depiction: https://repo.maxleiter.com/depictions/gjs.html
+Native Depiction: https://repo.maxleiter.com/depictions/gjs.json
+Homepage: https://repo.maxleiter.com
+
 Package: gnome-console
 Version: 46.0
 Architecture: iphoneos-arm64
@@ -677,6 +696,44 @@ Depiction: https://repo.maxleiter.com/depictions/libgirepository-1.0-dev.html
 Native Depiction: https://repo.maxleiter.com/depictions/libgirepository-1.0-dev.json
 Homepage: https://repo.maxleiter.com
 
+Package: libgjs-dev
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libgjs0 (= 1.78.0), libgirepository-1.0-dev, libmozjs-115-dev, libglib2.0-dev, libcairo2-dev
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gjs
+Description: JavaScript bindings for GNOME (development files)
+Filename: debs/libgjs-dev_1.78.0_iphoneos-arm64.deb
+Size: 3884
+MD5sum: 7498670ec27b9f79ce9764ed37b7845c
+SHA1: bfedfcd999300b0259a749e7849ae6e094be8321
+SHA256: 9626f4e4a1bb7e4e70fbfe76f4d35c47ea50712bf2d300e2b551307ddd2db795
+Icon: https://repo.maxleiter.com/icons/libgjs-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgjs-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgjs-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgjs0
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libgtkintl, libglib2.0-0, libgirepository-1.0-1, libmozjs-115-0, libcairo2, libffi8
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gjs
+Description: JavaScript bindings for GNOME (runtime library)
+Filename: debs/libgjs0_1.78.0_iphoneos-arm64.deb
+Size: 587672
+MD5sum: c631abcfaa9549c0092ee7a65e65aa64
+SHA1: c013db5d2c11573cd56965e9ccf313f9cc63b851
+SHA256: 9c03303f2ced2856355095f80b1d6d4d7e7e3de01aa74cc414b7d3f835253d1a
+Icon: https://repo.maxleiter.com/icons/libgjs0.png
+Depiction: https://repo.maxleiter.com/depictions/libgjs0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgjs0.json
+Homepage: https://repo.maxleiter.com
+
 Package: libgl1-mesa-glx
 Version: 21.0.2
 Architecture: iphoneos-arm64
@@ -1147,7 +1204,7 @@ Package: libmozjs-115-0
 Version: 115.12.0
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends:
+Depends: 
 Section: Libraries
 Homepage: https://spidermonkey.dev/
 Description: JavaScript engine library (SpiderMonkey 115)

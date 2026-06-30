@@ -1,0 +1,9 @@
+Package: com.max.injtest
+Name: injtest
+Version: 0.0.1
+Architecture: iphoneos-arm64
+Description: injection test
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate

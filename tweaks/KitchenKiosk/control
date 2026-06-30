@@ -1,0 +1,9 @@
+Package: com.max.kitchenkiosk
+Name: KitchenKiosk
+Version: 0.2.0
+Architecture: iphoneos-arm64
+Description: Kiosk mode for KitchenHub — (opt-in) auto-launch + lock to the KitchenHub dashboard. Lets the device sleep/auto-lock normally.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate

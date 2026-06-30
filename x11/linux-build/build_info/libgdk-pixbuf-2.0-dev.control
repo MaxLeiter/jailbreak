@@ -1,0 +1,14 @@
+Package: libgdk-pixbuf-2.0-dev
+Version: @DEB_LIBGDKPIXBUF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gdk-pixbuf
+Depends: libgdk-pixbuf-2.0-0 (= @DEB_LIBGDKPIXBUF_V@), libglib2.0-dev, libpng16-dev, libjpeg62-turbo-dev, libtiff-dev
+Description: Development files for the GDK Pixbuf library
+ The GDK Pixbuf library provides image loading, scaling and rendering
+ facilities used by GTK and other GNOME applications.
+ .
+ This package contains the development headers, symlinks, pkg-config files and
+ tools needed to build software that uses GDK Pixbuf.

@@ -1,0 +1,11 @@
+Package: libjson-glib-dev
+Version: @DEB_JSON-GLIB_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/JsonGlib
+Depends: libjson-glib-1.0-0 (= @DEB_JSON-GLIB_V@), libglib2.0-dev
+Description: Development files for JSON-GLib
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against JSON-GLib.

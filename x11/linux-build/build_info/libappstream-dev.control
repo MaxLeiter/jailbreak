@@ -1,0 +1,11 @@
+Package: libappstream-dev
+Version: @DEB_APPSTREAM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Distributions/AppStream/
+Depends: libappstream5 (= @DEB_APPSTREAM_V@), libglib2.0-dev, libxml2-dev
+Description: Development files for AppStream
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against libappstream.

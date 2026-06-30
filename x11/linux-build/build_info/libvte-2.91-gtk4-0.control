@@ -1,0 +1,11 @@
+Package: libvte-2.91-gtk4-0
+Version: @DEB_VTE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Apps/Terminal/VTE
+Depends: libglib2.0-0, libgtk-4-1, libpango-1.0-0, libpcre2-8-0, libfribidi0, libxml2
+Description: Terminal emulator widget for GTK4 - runtime
+ VTE provides a virtual terminal widget for GTK applications. This package
+ contains the GTK4 (libvte-2.91-gtk4) shared library, used by gnome-console.

@@ -1,0 +1,40 @@
+Subject: [PATCH] old-configure: treat aarch64-apple-ios like darwin
+
+js/src/old-configure.in's `case "$target"` Darwin branches only match
+*-darwin*, so our aarch64-apple-ios target falls through to the generic
+ELF defaults. Most visibly, MOZ_FIX_LINK_PATHS keeps its default GNU
+"-Wl,-rpath-link,..." form, which cctools ld64 rejects ("ld: unknown option:
+-rpath-link"); the Darwin branch would empty it (and set -dead_strip /
+DSO_LDOPTS / libSystem handling). Extend the three darwin case patterns to
+also match *-ios*. (moz.configure's linker logic already keys on
+kernel==Darwin, which iOS is, so only the autoconf layer needs this.)
+
+--- a/js/src/old-configure.in
++++ b/js/src/old-configure.in
+@@ -287,7 +287,7 @@
+     esac
+     ;;
+
+-*-darwin*)
++*-darwin*|*-ios*)
+     HOST_CFLAGS="$HOST_CFLAGS -DXP_UNIX -DXP_MACOSX"
+     HOST_OPTIMIZE_FLAGS="${HOST_OPTIMIZE_FLAGS=-O3}"
+     ;;
+@@ -308,7 +308,7 @@
+ dnl ========================================================
+
+ case "$target" in
+-*-darwin*)
++*-darwin*|*-ios*)
+     MOZ_OPTIMIZE_FLAGS="-O3"
+     DSO_LDOPTS=''
+
+@@ -563,7 +563,7 @@
+ dnl they both are just symlinks to libSystem and explicitly linking
+ dnl against libSystem causes issues when debugging (see bug 299601).
+ case $target in
+-*-darwin*)
++*-darwin*|*-ios*)
+     ;;
+ *)
+     AC_SEARCH_LIBS(dlopen, dl,

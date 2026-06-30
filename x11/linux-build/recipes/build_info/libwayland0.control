@@ -1,0 +1,13 @@
+Package: libwayland0
+Version: @DEB_WAYLAND_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libffi8, libepoll-shim0
+Section: Libraries
+Priority: optional
+Homepage: https://wayland.freedesktop.org
+Description: Wayland client, server, cursor and EGL libraries
+ Wayland is a protocol for a compositor to talk to its clients. This package
+ contains the runtime libraries (libwayland-client, libwayland-server,
+ libwayland-cursor and libwayland-egl), built for Darwin/iOS using epoll-shim
+ for the event loop.

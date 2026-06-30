@@ -1,0 +1,12 @@
+Package: libappstream5
+Version: @DEB_APPSTREAM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Distributions/AppStream/
+Depends: libglib2.0-0, libxml2, libyaml-0-2, libxmlb2
+Description: Software component metadata library
+ AppStream provides a standard for system-wide software component metadata. This
+ package contains the libappstream shared library and the appstreamcli tool.
+ Pulled in as a mandatory dependency of libadwaita.

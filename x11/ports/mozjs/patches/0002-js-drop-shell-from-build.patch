@@ -1,0 +1,21 @@
+Subject: [PATCH] js: drop the JS shell from the build (iOS)
+
+The standalone JS shell (js/src/shell) uses system() and fork(), which iOS
+marks __API_UNAVAILABLE — hard compile errors. The shell is a dev/test tool;
+embedders (gjs) only need libmozjs / libjs_static. Drop "shell" from DIRS.
+
+Note "shell" is grouped with "rust" under the same `if not JS_DISABLE_SHELL`;
+"rust" (jsrust/mozglue) IS needed by the library, so keep it — remove only the
+"shell" entry rather than the whole conditional (which would also orphan the
+nested FUZZING_INTERFACES block).
+
+--- a/js/src/moz.build
++++ b/js/src/moz.build
+@@ -50,7 +50,6 @@
+ if not CONFIG["JS_DISABLE_SHELL"]:
+     DIRS += [
+         "rust",
+-        "shell",
+     ]
+
+     TEST_DIRS += [

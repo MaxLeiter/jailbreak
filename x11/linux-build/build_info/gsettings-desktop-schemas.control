@@ -1,0 +1,12 @@
+Package: gsettings-desktop-schemas
+Version: @DEB_GSDS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://download.gnome.org/sources/gsettings-desktop-schemas/
+Depends: libglib2.0-0, libglib2.0-bin
+Description: GSettings desktop-wide schemas
+ Shared GSettings schemas for the GNOME desktop stack (org.gnome.desktop.*,
+ org.gnome.system.*). Data only; read by GLib/GIO at runtime. glib-compile-schemas
+ must be run on the schema directory after install.

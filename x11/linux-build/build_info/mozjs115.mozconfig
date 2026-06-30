@@ -1,0 +1,63 @@
+# mozjs115.mozconfig — JIT-less SpiderMonkey (ESR 115), Linux→iOS arm64 Mach-O cross.
+# Consumed by recipes/mozjs.mk. See docs/gjs-plan.md (Blocker #1) for the full de-risk.
+#
+# mozjs115 pairs with gjs 1.78 / glib 2.78 (our generation). JIT is impossible on iOS
+# (no RWX / dynamic-codesign for fakesigned apps), so the portable C++ interpreter is
+# mandatory and correct — only slower. The hard part is the cross, not the JIT-less part.
+#
+# Placeholders the recipe substitutes: @TARGET_SYSROOT@, @CROSS_PREFIX@ (=aarch64-apple-darwin),
+# @CCTOOLS_BIN@ (dir holding the cctools ld, with an `ld` -> `<prefix>-ld` symlink).
+#
+# CONFIGURE IS CLEAN with this config (de-risk 2026-06-30, procursus-vol-gjs): the
+# moz.configure iOS patch (ports/mozjs/patches/0001-*) makes --target=aarch64-apple-ios valid
+# (no macOS-SDK demand, no -mmacosx-version-min conflict), and the ld64 wiring below is detected
+# as "ld64". Build env prerequisites the recipe/build-gjs.sh set up:
+#   * replace mozjs's 5 stale config.sub copies with the host's (they don't know 'ios')
+#   * symlink @CCTOOLS_BIN@/ld -> @CROSS_PREFIX@-ld   (moz's ld64 probe hardcodes -fuse-ld=ld)
+#   * host rustup + `rustup target add aarch64-apple-ios` + cbindgen + nasm
+
+ac_add_options --enable-project=js
+ac_add_options --target=aarch64-apple-ios           # valid via the moz.configure iOS patch
+ac_add_options --host=aarch64-unknown-linux-gnu     # the arm64 Debian build container
+ac_add_options --enable-linker=ld64                 # cctools ld64 (probe needs the `ld` symlink + -B below)
+
+# --- interpreter-only: no JIT, no Wasm baseline/ion ---
+ac_add_options --disable-jit
+ac_add_options --disable-jemalloc                   # system allocator; jemalloc fights iOS
+
+# --- embedding shape gjs wants ---
+ac_add_options --enable-optimize
+ac_add_options --enable-release
+ac_add_options --disable-debug
+ac_add_options --disable-tests
+ac_add_options --with-system-zlib
+ac_add_options --enable-readline
+# ICU: bundled in-tree ICU (no --with-system-icu / icu4c staging needed). gjs needs Intl, and the
+# shipped libmozjs-115 debs are built this way (verified running JS on-device). The first
+# de-risk pass used --without-intl-api to isolate iOS C-portability from ICU; the shipping build
+# enables it.
+ac_add_options --enable-intl-api
+# gjs links the shared lib; keep the JS API exported.
+ac_add_options --enable-shared-js
+
+# --- the cross toolchain (same cctools-port aarch64-apple-darwin we use everywhere) ---
+# -B@CCTOOLS_BIN@ makes clang find the cctools `ld` (for moz's hardcoded -fuse-ld=ld).
+CC="@CROSS_PREFIX@-clang -target arm64-apple-ios14.0 -isysroot @TARGET_SYSROOT@ -B@CCTOOLS_BIN@"
+CXX="@CROSS_PREFIX@-clang++ -target arm64-apple-ios14.0 -isysroot @TARGET_SYSROOT@ -stdlib=libc++ -B@CCTOOLS_BIN@"
+AR="@CROSS_PREFIX@-ar"
+RANLIB="@CROSS_PREFIX@-ranlib"
+STRIP="@CROSS_PREFIX@-strip"
+
+# Host codegen tools (build-time only) target the Linux container, NOT iOS:
+export HOST_CC=clang
+export HOST_CXX=clang++
+
+# Rust: a host rustup toolchain (current stable) cross-compiling to iOS.
+#   rustup target add aarch64-apple-ios   (build-host tool, NOT a Procursus recipe;
+#   Procursus rust.mk is WIP and pins 1.56, too old for mozjs115).
+export RUSTFLAGS="-Clink-args=-isysroot @TARGET_SYSROOT@"
+# CARGO_TARGET_AARCH64_APPLE_IOS_LINKER is set by the recipe to the cross clang.
+
+# Mach-O / iOS portability knobs:
+export IPHONEOS_DEPLOYMENT_TARGET=14.0
+mk_add_options MOZ_OBJDIR=@MOZ_OBJDIR@

@@ -1,0 +1,166 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#000000">
+<title>libgjs0 · Max&#x27;s Tweaks</title><link rel="icon" href="../favicon.ico"><link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#000; --surface:#0a0a0a; --surface-2:#141414;
+    --border:#232323; --border-hi:#3a3a3a;
+    --fg:#ededed; --fg-dim:#a1a1a1; --fg-mute:#8f8f8f;
+    --accent:#55aaff; --accent-ink:#001321; --glow:.10;
+    --radius:12px; --maxw:720px;
+  }
+  :root[data-theme="light"]{
+    color-scheme:light;
+    --bg:#fff; --surface:#fafafa; --surface-2:#f3f3f3;
+    --border:#eaeaea; --border-hi:#cfcfcf;
+    --fg:#171717; --fg-dim:#555; --fg-mute:#767676;
+    --accent:#0a6fce; --accent-ink:#fff; --glow:.06;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;font-family:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:16px;line-height:1.6;background:var(--bg);color:var(--fg);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    background-image:radial-gradient(62% 46% at 50% -8%, rgba(85,170,255,var(--glow)), transparent 70%);
+    background-repeat:no-repeat;background-attachment:fixed}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:64px 24px 96px}
+  a{color:var(--accent);text-decoration:none}
+  .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+  .masthead{display:flex;align-items:center;gap:18px;margin-bottom:6px}
+  .masthead img{width:60px;height:60px;border-radius:14px;border:1px solid var(--border)}
+  .masthead h1{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:0}
+  .masthead .sub{color:var(--fg-dim);margin:5px 0 0;font-size:15px}
+  .theme-toggle{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;
+    justify-content:center;width:38px;height:38px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--border);background:var(--surface);color:var(--fg-dim);
+    transition:color .15s,border-color .15s,background .15s}
+  .theme-toggle:hover{color:var(--fg);border-color:var(--border-hi)}
+  .theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .theme-toggle svg{width:18px;height:18px;display:block}
+  .i-moon{display:none}
+  :root[data-theme="light"] .i-sun{display:none}
+  :root[data-theme="light"] .i-moon{display:block}
+
+  .install{margin:30px 0 4px}
+  .field{display:flex;gap:8px}
+  .field input{flex:1;min-width:0;padding:11px 14px;border-radius:10px;
+    border:1px solid var(--border);background:var(--surface);color:var(--fg);
+    font-family:"Geist Mono",ui-monospace,monospace;font-size:13.5px}
+  .field input:focus-visible{outline:none;border-color:var(--accent)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:11px 16px;border-radius:10px;font-weight:500;font-size:14px;cursor:pointer;
+    white-space:nowrap;border:1px solid var(--border);background:var(--surface);color:var(--fg);
+    transition:border-color .15s,background .15s,color .15s}
+  .btn:hover{border-color:var(--border-hi)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn.copy{border:0;background:var(--fg);color:var(--bg);font-weight:600;min-width:88px}
+  .btn.copy:hover{opacity:.88}
+  .btn.copy.ok{background:var(--accent);color:var(--accent-ink)}
+  .managers{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .btn.primary:hover{filter:brightness(1.08);border-color:var(--accent)}
+
+  .cat{margin-top:34px}
+  summary.cat-head{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;
+    padding-bottom:11px;border-bottom:1px solid var(--border);
+    -webkit-tap-highlight-color:transparent}
+  summary.cat-head::-webkit-details-marker{display:none}
+  summary.cat-head:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+  .cat-name{font-size:12px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--fg-dim);font-weight:600}
+  summary.cat-head:hover .cat-name{color:var(--fg)}
+  .cat-head .count{font-family:"Geist Mono",monospace;font-size:12px;color:var(--fg-mute)}
+  .chev{width:16px;height:16px;margin-left:auto;color:var(--fg-mute);transition:transform .2s ease}
+  details.cat[open] .chev{transform:rotate(90deg)}
+  details.cat[open] .grid{margin-top:14px}
+
+  .grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+  .pkg{display:flex;gap:14px;align-items:center;padding:13px 14px;min-width:0;
+    border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);
+    text-decoration:none;color:inherit;transition:border-color .15s,background .15s}
+  .pkg:hover{border-color:var(--border-hi);background:var(--surface-2)}
+  .pkg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .pkg img{width:48px;height:48px;border-radius:11px;flex:0 0 auto;border:1px solid var(--border)}
+  .pkg .meta{min-width:0;flex:1}
+  .pkg .n{font-weight:600;font-size:16px;letter-spacing:-.01em}
+  .pkg .t{color:var(--fg-dim);font-size:14px;margin-top:1px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pkg .v{margin-left:auto;align-self:center;color:var(--fg-mute);
+    font-family:"Geist Mono",monospace;font-size:12px;
+    border:1px solid var(--border);border-radius:999px;padding:3px 9px;white-space:nowrap}
+
+  .back{display:inline-flex;align-items:center;gap:7px;color:var(--fg-dim);
+    font-size:14px;margin-bottom:26px;transition:color .15s}
+  .back:hover{color:var(--fg)}
+  .back svg{width:15px;height:15px;display:block}
+  .prose p{margin:.6em 0;color:var(--fg-dim)}
+  .prose strong{color:var(--fg);font-weight:600} .prose em{color:var(--fg)}
+  .prose ul{margin:.5em 0;padding-left:1.15em} .prose li{margin:.25em 0;color:var(--fg-dim)}
+  h2.section{font-size:12px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--fg-dim);font-weight:600;margin:34px 0 4px}
+  table.info{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+  table.info td{padding:11px 2px;border-bottom:1px solid var(--border)}
+  table.info tr:last-child td{border-bottom:0}
+  table.info td:first-child{color:var(--fg-mute);width:38%}
+  table.info td:last-child{font-family:"Geist Mono",monospace;font-size:13px;word-break:break-word}
+
+  footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--border);
+    color:var(--fg-mute);font-size:13px}
+  footer a{color:var(--fg-dim)} footer a:hover{color:var(--fg)}
+
+  @media (max-width:560px){
+    .wrap{padding:40px 18px 72px}
+    .masthead h1{font-size:23px}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .reveal{opacity:0;transform:translateY(9px);
+      animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards;
+      animation-delay:calc(var(--i,0)*38ms)}
+    @keyframes rise{to{opacity:1;transform:none}}
+  }
+</style>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (t !== "light" && t !== "dark")
+        t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body><div class="wrap">
+  <a class="back" href="../index.html"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Max&#x27;s Tweaks</span></a>
+  <header class="masthead"><img src="../icons/libgjs0.png" alt="">
+    <div><h1>libgjs0</h1><p class="sub">JavaScript bindings for GNOME (runtime library)</p></div><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" aria-pressed="false"><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></header>
+  <div class="prose"><p>JavaScript bindings for GNOME (runtime library)</p></div>
+  <h2 class="section">Information</h2><table class="info"><tr><td>Version</td><td>1.78.0</td></tr><tr><td>Size</td><td>573.9 KiB</td></tr><tr><td>Developer</td><td></td></tr><tr><td>Section</td><td>Libraries</td></tr><tr><td>Identifier</td><td>libgjs0</td></tr></table>
+  <footer><a href="../index.html">&larr; All packages</a></footer>
+</div>
+<script>
+  (function () {
+    var btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    var root = document.documentElement;
+    function sync() {
+      var light = root.getAttribute("data-theme") === "light";
+      btn.setAttribute("aria-pressed", String(light));
+      btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
+    }
+    sync();
+    btn.addEventListener("click", function () {
+      var next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("theme", next); } catch (e) {}
+      sync();
+    });
+  })();
+</script>
+</body></html>

@@ -1,0 +1,11 @@
+Package: dconf-dev
+Version: @DEB_DCONF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/dconf
+Depends: dconf (= @DEB_DCONF_V@), libglib2.0-dev
+Description: Development files for dconf
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against libdconf.

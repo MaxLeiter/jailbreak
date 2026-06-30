@@ -1,0 +1,11 @@
+Package: libgee-0.8-2
+Version: @DEB_LIBGEE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/Libgee
+Depends: libglib2.0-0
+Description: GObject collection library - runtime
+ libgee is a collection library (lists, sets, maps) providing GObject-based
+ interfaces and classes. Written in Vala. Used by gnome-calculator.

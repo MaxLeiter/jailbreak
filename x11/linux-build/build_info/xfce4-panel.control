@@ -1,0 +1,12 @@
+Package: xfce4-panel
+Version: @DEB_XFCE4PANEL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://docs.xfce.org/xfce/xfce4-panel/start
+Depends: libglib2.0-0, libgtk-3-0, libxfce4util7, libxfce4ui-2-0, libexo-2-0, libgarcon-1-0, xfconf, libwnck-3-0
+Description: Panel for the Xfce desktop environment
+ The Xfce panel hosts launchers, a clock, the applications menu, a window
+ buttons/tasklist, a pager and a system tray. Ships the panel binary and the
+ libxfce4panel-2.0 plugin library plus the bundled plugins.

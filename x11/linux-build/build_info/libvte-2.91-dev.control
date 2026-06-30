@@ -1,0 +1,12 @@
+Package: libvte-2.91-dev
+Version: @DEB_VTE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Apps/Terminal/VTE
+Depends: libvte-2.91-gtk4-0 (= @DEB_VTE_V@), libgtk-4-dev, libglib2.0-dev
+Description: Development files for the VTE terminal widget (GTK4)
+ Development headers, the unversioned symlink, and the pkg-config file for the
+ GTK4 (vte-2.91-gtk4) flavour of the VTE widget. (The GTK3 flavour is built only
+ when vte is configured with -Dgtk3=true.)

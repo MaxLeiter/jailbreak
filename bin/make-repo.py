@@ -106,6 +106,73 @@ def clock_icon(px=256):
     d.ellipse([c - hub, c - hub, c + hub, c + hub], fill=ACCENT + (255,))
     return img.resize((px, px), Image.LANCZOS)
 
+# ── per-category glyph icons ──────────────────────────────────────────────────
+# A cohesive set of line/solid glyphs on the same dark rounded tile, one per
+# repo Section, so every package no longer shares a single clock icon.
+def _icon_base(px):
+    s = 4; S = px * s
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.22), fill=ICON_BG + (255,))
+    return img, d, S
+
+def _glyph_sliders(d, S):          # Tweaks — three setting sliders
+    A = ACCENT + (255,)
+    w = max(2, int(S * 0.045)); r = int(S * 0.072)
+    x0, x1 = S * 0.24, S * 0.76
+    for y, kx in ((S * 0.34, S * 0.60), (S * 0.50, S * 0.40), (S * 0.66, S * 0.62)):
+        d.line([x0, y, x1, y], fill=A, width=w)
+        d.ellipse([kx - r, y - r, kx + r, y + r], fill=ICON_BG + (255,), outline=A, width=w)
+
+def _glyph_gear(d, S):             # Utilities — cog
+    A = ACCENT + (255,); c = S / 2
+    R_disc, R_teeth, tr, hole = S * 0.205, S * 0.275, S * 0.066, S * 0.090
+    for k in range(8):
+        a = math.pi * 2 * k / 8
+        tx, ty = c + R_teeth * math.cos(a), c + R_teeth * math.sin(a)
+        d.ellipse([tx - tr, ty - tr, tx + tr, ty + tr], fill=A)
+    d.ellipse([c - R_disc, c - R_disc, c + R_disc, c + R_disc], fill=A)
+    d.ellipse([c - hole, c - hole, c + hole, c + hole], fill=ICON_BG + (255,))
+
+def _glyph_window(d, S):           # X11 — titled window
+    A = ACCENT + (255,); w = max(2, int(S * 0.05))
+    d.rounded_rectangle([S * 0.21, S * 0.25, S * 0.79, S * 0.71],
+                        radius=int(S * 0.05), outline=A, width=w)
+    d.line([S * 0.21, S * 0.37, S * 0.79, S * 0.37], fill=A, width=w)
+
+def _glyph_books(d, S):            # Libraries — books on a shelf
+    A = ACCENT + (255,); rad = int(S * 0.028); base = S * 0.70
+    for x0, x1, top in ((0.30, 0.40, 0.36), (0.42, 0.52, 0.30), (0.54, 0.64, 0.44)):
+        d.rounded_rectangle([S * x0, S * top, S * x1, base], radius=rad, fill=A)
+    d.line([S * 0.26, base + S * 0.02, S * 0.70, base + S * 0.02],
+           fill=A, width=max(2, int(S * 0.035)))
+
+def _glyph_code(d, S):             # Development — </> brackets
+    A = ACCENT + (255,); w = max(2, int(S * 0.052))
+    d.line([S * 0.40, S * 0.33, S * 0.27, S * 0.50, S * 0.40, S * 0.67], fill=A, width=w, joint="curve")
+    d.line([S * 0.60, S * 0.33, S * 0.73, S * 0.50, S * 0.60, S * 0.67], fill=A, width=w, joint="curve")
+    d.line([S * 0.55, S * 0.30, S * 0.45, S * 0.70], fill=A, width=w)
+
+def _glyph_box(d, S):              # default / unknown section — package box
+    A = ACCENT + (255,); w = max(2, int(S * 0.05))
+    d.rounded_rectangle([S * 0.24, S * 0.28, S * 0.76, S * 0.72],
+                        radius=int(S * 0.05), outline=A, width=w)
+    d.line([S * 0.24, S * 0.44, S * 0.76, S * 0.44], fill=A, width=w)
+    d.line([S * 0.50, S * 0.44, S * 0.50, S * 0.72], fill=A, width=w)
+
+CATEGORY_GLYPH = {
+    "Tweaks": _glyph_sliders,
+    "Utilities": _glyph_gear,
+    "X11": _glyph_window,
+    "Development": _glyph_code,
+    "Libraries": _glyph_books,
+}
+
+def category_icon(section, px=256):
+    img, d, S = _icon_base(px)
+    CATEGORY_GLYPH.get(section, _glyph_box)(d, S)
+    return img.resize((px, px), Image.LANCZOS)
+
 def make_banner(path, title, tagline, icon_img):
     W, H = 789, 444
     img = Image.new("RGB", (W, H), (9, 9, 12))
@@ -166,81 +233,295 @@ def html_depiction(ctrl, meta, size):
             ("Developer", meta.get("developer", ctrl.get("Author", ""))),
             ("Section", ctrl.get("Section", "Tweaks")), ("Identifier", pid)])
     body = md_to_html(meta.get("description", ctrl.get("Description", "")))
+    name = html.escape(ctrl.get("Name", pid))
+    tagline = html.escape(meta.get("tagline", ctrl.get("Description", "")))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(ctrl.get('Name', pid))}</title>{PAGE_CSS}</head>
+<meta name="theme-color" content="#000000">
+<title>{name} · {html.escape(ORIGIN)}</title><link rel="icon" href="../favicon.ico">{PAGE_CSS}{HEAD_JS}</head>
 <body><div class="wrap">
-  <header><img src="{BASE_URL}/icons/{pid}.png" alt="">
-    <div><h1>{html.escape(ctrl.get('Name', pid))}</h1>
-    <p class="sub">{html.escape(meta.get('tagline', ctrl.get('Description','')))}</p></div></header>
+  <a class="back" href="../index.html">{BACK_SVG}<span>{html.escape(ORIGIN)}</span></a>
+  <header class="masthead"><img src="../icons/{pid}.png" alt="">
+    <div><h1>{name}</h1><p class="sub">{tagline}</p></div>{THEME_BTN}</header>
   <div class="prose">{body}</div>
-  <h2>Information</h2><table class="info">{rows}</table>
-</div></body></html>"""
+  <h2 class="section">Information</h2><table class="info">{rows}</table>
+  <footer><a href="../index.html">&larr; All packages</a></footer>
+</div>{THEME_JS}</body></html>"""
 
 # ── shared CSS ───────────────────────────────────────────────────────────────
-PAGE_CSS = f"""<style>
-  :root{{color-scheme:dark}} *{{box-sizing:border-box}}
-  body{{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-        background:#08080b;color:#e9e9ee;-webkit-font-smoothing:antialiased}}
-  .wrap{{max-width:680px;margin:0 auto;padding:48px 20px 90px}}
-  header{{display:flex;align-items:center;gap:16px;margin-bottom:18px}}
-  header img{{width:64px;height:64px;border-radius:15px}}
-  h1{{font-size:26px;margin:0}} .sub{{color:#9a9aa6;margin:3px 0 0}}
-  h2{{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#8a8a96;margin:30px 0 12px}}
-  .prose p{{margin:.5em 0}} .prose ul{{margin:.4em 0;padding-left:1.2em}} .prose li{{margin:.2em 0}}
-  .prose strong{{color:#fff}} a{{color:{ACCENT_HEX};text-decoration:none}}
-  .url{{display:flex;gap:8px;margin:26px 0}}
-  .url input{{flex:1;padding:12px 14px;border-radius:10px;border:1px solid #23232c;
-    background:#121218;color:#e9e9ee;font:14px ui-monospace,monospace}}
-  .url button,.btns a{{padding:12px 16px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer}}
-  .url button{{border:0;background:{ACCENT_HEX};color:#04121f}}
-  .btns{{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:36px}}
-  .btns a{{background:#14141b;border:1px solid #23232c;color:#e9e9ee}}
-  .btns a:hover{{border-color:{ACCENT_HEX}}}
-  .pkg{{display:flex;gap:14px;align-items:center;padding:14px;border:1px solid #1d1d26;
-    border-radius:14px;background:#101017;margin-bottom:12px;text-decoration:none;color:inherit}}
-  .pkg:hover{{border-color:{ACCENT_HEX}}}
-  .pkg img{{width:54px;height:54px;border-radius:12px;flex:0 0 auto}}
-  .pkg .n{{font-weight:600;font-size:17px}} .pkg .t{{color:#9a9aa6;font-size:14px}}
-  .pkg .v{{margin-left:auto;color:#6a6a76;font:12px ui-monospace,monospace;align-self:flex-start}}
-  table.info{{width:100%;border-collapse:collapse;font-size:14px}}
-  table.info td{{padding:9px 0;border-bottom:1px solid #18181f}}
-  table.info td:first-child{{color:#8a8a96;width:40%}}
-  footer{{margin-top:40px;color:#6a6a76;font-size:13px}}
+PAGE_CSS = f"""<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">
+<style>
+  :root{{
+    color-scheme:dark;
+    --bg:#000; --surface:#0a0a0a; --surface-2:#141414;
+    --border:#232323; --border-hi:#3a3a3a;
+    --fg:#ededed; --fg-dim:#a1a1a1; --fg-mute:#8f8f8f;
+    --accent:{ACCENT_HEX}; --accent-ink:#001321; --glow:.10;
+    --radius:12px; --maxw:720px;
+  }}
+  :root[data-theme="light"]{{
+    color-scheme:light;
+    --bg:#fff; --surface:#fafafa; --surface-2:#f3f3f3;
+    --border:#eaeaea; --border-hi:#cfcfcf;
+    --fg:#171717; --fg-dim:#555; --fg-mute:#767676;
+    --accent:#0a6fce; --accent-ink:#fff; --glow:.06;
+  }}
+  *{{box-sizing:border-box}}
+  html{{-webkit-text-size-adjust:100%}}
+  body{{margin:0;font-family:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:16px;line-height:1.6;background:var(--bg);color:var(--fg);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    background-image:radial-gradient(62% 46% at 50% -8%, rgba({ACCENT[0]},{ACCENT[1]},{ACCENT[2]},var(--glow)), transparent 70%);
+    background-repeat:no-repeat;background-attachment:fixed}}
+  .wrap{{max-width:var(--maxw);margin:0 auto;padding:64px 24px 96px}}
+  a{{color:var(--accent);text-decoration:none}}
+  .vh{{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0,0,0,0);white-space:nowrap;border:0}}
+
+  .masthead{{display:flex;align-items:center;gap:18px;margin-bottom:6px}}
+  .masthead img{{width:60px;height:60px;border-radius:14px;border:1px solid var(--border)}}
+  .masthead h1{{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:0}}
+  .masthead .sub{{color:var(--fg-dim);margin:5px 0 0;font-size:15px}}
+  .theme-toggle{{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;
+    justify-content:center;width:38px;height:38px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--border);background:var(--surface);color:var(--fg-dim);
+    transition:color .15s,border-color .15s,background .15s}}
+  .theme-toggle:hover{{color:var(--fg);border-color:var(--border-hi)}}
+  .theme-toggle:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
+  .theme-toggle svg{{width:18px;height:18px;display:block}}
+  .i-moon{{display:none}}
+  :root[data-theme="light"] .i-sun{{display:none}}
+  :root[data-theme="light"] .i-moon{{display:block}}
+
+  .install{{margin:30px 0 4px}}
+  .field{{display:flex;gap:8px}}
+  .field input{{flex:1;min-width:0;padding:11px 14px;border-radius:10px;
+    border:1px solid var(--border);background:var(--surface);color:var(--fg);
+    font-family:"Geist Mono",ui-monospace,monospace;font-size:13.5px}}
+  .field input:focus-visible{{outline:none;border-color:var(--accent)}}
+  .btn{{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:11px 16px;border-radius:10px;font-weight:500;font-size:14px;cursor:pointer;
+    white-space:nowrap;border:1px solid var(--border);background:var(--surface);color:var(--fg);
+    transition:border-color .15s,background .15s,color .15s}}
+  .btn:hover{{border-color:var(--border-hi)}}
+  .btn:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
+  .btn.copy{{border:0;background:var(--fg);color:var(--bg);font-weight:600;min-width:88px}}
+  .btn.copy:hover{{opacity:.88}}
+  .btn.copy.ok{{background:var(--accent);color:var(--accent-ink)}}
+  .managers{{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}}
+  .btn.primary{{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}}
+  .btn.primary:hover{{filter:brightness(1.08);border-color:var(--accent)}}
+
+  .cat{{margin-top:34px}}
+  summary.cat-head{{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;
+    padding-bottom:11px;border-bottom:1px solid var(--border);
+    -webkit-tap-highlight-color:transparent}}
+  summary.cat-head::-webkit-details-marker{{display:none}}
+  summary.cat-head:focus-visible{{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}}
+  .cat-name{{font-size:12px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--fg-dim);font-weight:600}}
+  summary.cat-head:hover .cat-name{{color:var(--fg)}}
+  .cat-head .count{{font-family:"Geist Mono",monospace;font-size:12px;color:var(--fg-mute)}}
+  .chev{{width:16px;height:16px;margin-left:auto;color:var(--fg-mute);transition:transform .2s ease}}
+  details.cat[open] .chev{{transform:rotate(90deg)}}
+  details.cat[open] .grid{{margin-top:14px}}
+
+  .grid{{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}}
+  .pkg{{display:flex;gap:14px;align-items:center;padding:13px 14px;min-width:0;
+    border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);
+    text-decoration:none;color:inherit;transition:border-color .15s,background .15s}}
+  .pkg:hover{{border-color:var(--border-hi);background:var(--surface-2)}}
+  .pkg:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
+  .pkg img{{width:48px;height:48px;border-radius:11px;flex:0 0 auto;border:1px solid var(--border)}}
+  .pkg .meta{{min-width:0;flex:1}}
+  .pkg .n{{font-weight:600;font-size:16px;letter-spacing:-.01em}}
+  .pkg .t{{color:var(--fg-dim);font-size:14px;margin-top:1px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+  .pkg .v{{margin-left:auto;align-self:center;color:var(--fg-mute);
+    font-family:"Geist Mono",monospace;font-size:12px;
+    border:1px solid var(--border);border-radius:999px;padding:3px 9px;white-space:nowrap}}
+
+  .back{{display:inline-flex;align-items:center;gap:7px;color:var(--fg-dim);
+    font-size:14px;margin-bottom:26px;transition:color .15s}}
+  .back:hover{{color:var(--fg)}}
+  .back svg{{width:15px;height:15px;display:block}}
+  .prose p{{margin:.6em 0;color:var(--fg-dim)}}
+  .prose strong{{color:var(--fg);font-weight:600}} .prose em{{color:var(--fg)}}
+  .prose ul{{margin:.5em 0;padding-left:1.15em}} .prose li{{margin:.25em 0;color:var(--fg-dim)}}
+  h2.section{{font-size:12px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--fg-dim);font-weight:600;margin:34px 0 4px}}
+  table.info{{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}}
+  table.info td{{padding:11px 2px;border-bottom:1px solid var(--border)}}
+  table.info tr:last-child td{{border-bottom:0}}
+  table.info td:first-child{{color:var(--fg-mute);width:38%}}
+  table.info td:last-child{{font-family:"Geist Mono",monospace;font-size:13px;word-break:break-word}}
+
+  footer{{margin-top:48px;padding-top:20px;border-top:1px solid var(--border);
+    color:var(--fg-mute);font-size:13px}}
+  footer a{{color:var(--fg-dim)}} footer a:hover{{color:var(--fg)}}
+
+  @media (max-width:560px){{
+    .wrap{{padding:40px 18px 72px}}
+    .masthead h1{{font-size:23px}}
+  }}
+  @media (prefers-reduced-motion:no-preference){{
+    .reveal{{opacity:0;transform:translateY(9px);
+      animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards;
+      animation-delay:calc(var(--i,0)*38ms)}}
+    @keyframes rise{{to{{opacity:1;transform:none}}}}
+  }}
 </style>"""
+
+# left-chevron used by the depiction "back" link
+BACK_SVG = ('<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+            '<path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.6" '
+            'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+# right-chevron used by the collapsible category headers (rotates when open)
+CHEV_SVG = ('<svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+            '<path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" '
+            'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+# index page behaviour (kept out of the f-string to avoid brace escaping)
+INDEX_JS = """
+<script>
+  var u = location.origin + location.pathname.replace(/index\\.html$/, "");
+  document.getElementById("repo").value = u;
+  document.getElementById("sileo").href = "sileo://source/" + u;
+  document.getElementById("zebra").href = "zbra://sources/add/" + u;
+  document.getElementById("cydia").href = "cydia://url/https://cydia.saurik.com/api/share#?source=" + u;
+  var b = document.getElementById("copyBtn");
+  b.addEventListener("click", function () {
+    navigator.clipboard.writeText(u).then(function () {
+      var prev = b.textContent;
+      b.textContent = "Copied";
+      b.classList.add("ok");
+      setTimeout(function () { b.textContent = prev; b.classList.remove("ok"); }, 1400);
+    });
+  });
+</script>
+"""
+
+# category display order on the landing page (unknown sections fall after these)
+SECTION_ORDER = ["Tweaks", "Utilities", "X11", "Development", "Libraries"]
+# categories expanded by default; large dependency buckets start collapsed
+OPEN_SECTIONS = {"Tweaks", "Utilities", "X11"}
+
+# theme toggle (sun shown in dark mode, moon in light mode)
+THEME_BTN = (
+    '<button class="theme-toggle" id="theme-toggle" type="button" '
+    'aria-label="Toggle theme" aria-pressed="false">'
+    '<svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4'
+    'M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>'
+    '<svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>'
+)
+
+# applies the saved/preferred theme before paint to avoid a flash of the wrong theme
+HEAD_JS = """
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (t !== "light" && t !== "dark")
+        t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+"""
+
+# wires up the toggle button (runs after the DOM is in place)
+THEME_JS = """
+<script>
+  (function () {
+    var btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    var root = document.documentElement;
+    function sync() {
+      var light = root.getAttribute("data-theme") === "light";
+      btn.setAttribute("aria-pressed", String(light));
+      btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
+    }
+    sync();
+    btn.addEventListener("click", function () {
+      var next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("theme", next); } catch (e) {}
+      sync();
+    });
+  })();
+</script>
+"""
 
 # ── index / landing page ─────────────────────────────────────────────────────
 def write_index(pkgs):
-    cards = ""
+    # group packages by their Section (category) and order the groups sensibly
+    groups = {}
     for p in pkgs:
-        pid = p["ctrl"]["Package"]
-        cards += f"""
-    <a class="pkg" href="depictions/{pid}.html">
-      <img src="icons/{pid}.png" alt="">
-      <div><div class="n">{html.escape(p['ctrl'].get('Name', pid))}</div>
-        <div class="t">{html.escape(p['meta'].get('tagline', p['ctrl'].get('Description','')))}</div></div>
-      <div class="v">v{html.escape(p['ctrl'].get('Version',''))}</div>
-    </a>"""
+        sec = (p["ctrl"].get("Section") or "Tweaks").strip()
+        groups.setdefault(sec, []).append(p)
+    order = [s for s in SECTION_ORDER if s in groups] + \
+            sorted(s for s in groups if s not in SECTION_ORDER)
+
+    # staggered reveal counter (0 = masthead, 1 = install block); cap so the
+    # tail of a long list doesn't wait too long to appear
+    step = [2]
+    def nxt():
+        v = min(step[0], 16); step[0] += 1; return v
+
+    sections_html = ""
+    for sec in order:
+        items = sorted(groups[sec],
+                       key=lambda p: p["ctrl"].get("Name", p["ctrl"]["Package"]).lower())
+        cards = ""
+        for p in items:
+            pid = p["ctrl"]["Package"]
+            # one-line tagline for the list: first line, first sentence
+            tag = (p["meta"].get("tagline") or p["ctrl"].get("Description", "")).split("\n")[0].strip()
+            tag = tag.split(". ")[0].strip()
+            cards += f"""
+        <a class="pkg reveal" style="--i:{nxt()}" href="depictions/{pid}.html">
+          <img src="icons/{pid}.png" alt="" loading="lazy">
+          <div class="meta"><div class="n">{html.escape(p['ctrl'].get('Name', pid))}</div>
+            <div class="t">{html.escape(tag)}</div></div>
+          <span class="v">v{html.escape(p['ctrl'].get('Version',''))}</span>
+        </a>"""
+        is_open = " open" if sec in OPEN_SECTIONS else ""
+        sections_html += f"""
+      <details class="cat"{is_open}>
+        <summary class="cat-head"><span class="cat-name">{html.escape(sec)}</span><span class="count">{len(items)}</span>{CHEV_SVG}</summary>
+        <div class="grid">{cards}</div>
+      </details>"""
+
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(ORIGIN)}</title><link rel="icon" href="favicon.ico">{PAGE_CSS}</head>
+<meta name="theme-color" content="#000000">
+<title>{html.escape(ORIGIN)}</title><link rel="icon" href="favicon.ico">{PAGE_CSS}{HEAD_JS}</head>
 <body><div class="wrap">
-  <header><img src="CydiaIcon.png" alt="">
-    <div><h1>{html.escape(ORIGIN)}</h1><p class="sub">{html.escape(DESCRIPTION)}</p></div></header>
-  <div class="url"><input id="repo" readonly value="">
-    <button onclick="navigator.clipboard.writeText(document.getElementById('repo').value)">Copy</button></div>
-  <div class="btns"><a id="sileo" href="#">Add to Sileo</a>
-    <a id="zebra" href="#">Add to Zebra</a><a id="cydia" href="#">Add to Cydia</a></div>
-  <h2>Packages</h2>{cards}
-  <footer>Add the URL above to your package manager to install.</footer>
-</div>
-<script>
-  var u=location.origin+location.pathname.replace(/index\\.html$/,"");
-  document.getElementById("repo").value=u;
-  document.getElementById("sileo").href="sileo://source/"+u;
-  document.getElementById("zebra").href="zbra://sources/add/"+u;
-  document.getElementById("cydia").href="cydia://url/https://cydia.saurik.com/api/share#?source="+u;
-</script></body></html>"""
+  <header class="masthead reveal" style="--i:0"><img src="CydiaIcon.png" alt="">
+    <div><h1>{html.escape(ORIGIN)}</h1>
+      <p class="sub">{html.escape(DESCRIPTION)} · {len(pkgs)} packages</p></div>{THEME_BTN}</header>
+  <div class="install reveal" style="--i:1">
+    <label class="vh" for="repo">Repository URL</label>
+    <div class="field">
+      <input id="repo" readonly value="" aria-label="Repository URL">
+      <button class="btn copy" id="copyBtn" type="button">Copy</button>
+    </div>
+    <div class="managers">
+      <a class="btn primary" id="sileo" href="#">Add to Sileo</a>
+      <a class="btn" id="zebra" href="#">Add to Zebra</a>
+      <a class="btn" id="cydia" href="#">Add to Cydia</a>
+    </div>
+  </div>
+  {sections_html}
+  <footer>Add the URL above to your package manager to install. &middot; <a href="https://maxleiter.com">maxleiter.com</a></footer>
+</div>{INDEX_JS}{THEME_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -267,7 +548,7 @@ def main():
 
         # assets
         if HAVE_PIL:
-            icon = clock_icon(256)
+            icon = category_icon(ctrl.get("Section", "Tweaks"), 256)
             icon.save(os.path.join(REPO, "icons", f"{pid}.png"))
             make_banner(os.path.join(REPO, "banners", f"{pid}.png"),
                         ctrl.get("Name", pid),

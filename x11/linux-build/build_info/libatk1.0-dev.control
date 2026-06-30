@@ -1,0 +1,14 @@
+Package: libatk1.0-dev
+Version: @DEB_LIBATK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/atk
+Depends: libatk1.0-0 (= @DEB_LIBATK_V@), libglib2.0-dev
+Description: Development files for the ATK accessibility toolkit
+ ATK is a toolkit providing accessibility interfaces for applications or other
+ toolkits.
+ .
+ This package contains the development headers, static libraries and
+ pkg-config files needed to build software that uses ATK.

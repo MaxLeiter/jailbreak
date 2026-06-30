@@ -1,0 +1,11 @@
+Package: libgnome-desktop-4-2
+Version: @DEB_GNOME-DESKTOP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-desktop
+Depends: libglib2.0-0, libgtk-4-1, gsettings-desktop-schemas, iso-codes, libxkbcommon0
+Description: Shared GNOME desktop utility library (GTK4) - runtime
+ libgnome-desktop-4 provides shared utilities (thumbnails, backgrounds, XKB and
+ language info) used by GNOME applications such as nautilus.

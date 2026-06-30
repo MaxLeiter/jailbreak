@@ -13,8 +13,10 @@ set -u
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export HOME=/var/root
 [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
+[ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
 command -v xios_apply_display_profile >/dev/null 2>&1 && xios_apply_display_profile
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
+command -v xios_audio_start >/dev/null 2>&1 && xios_audio_start
 
 DISP="${DISP:-:3}"
 # iPad 7 native: 2160x1620 (4:3, same aspect as the screen) -> app displays 1:1, crisp.

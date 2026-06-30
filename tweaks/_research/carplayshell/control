@@ -1,0 +1,9 @@
+Package: com.max.carplayshell
+Name: CarPlay Shell
+Version: 0.0.1
+Architecture: iphoneos-arm64
+Description: Genuine CarPlay launcher shell (research)
+Maintainer: Max
+Author: Max
+Section: Utilities
+Depends: firmware (>= 14.0)

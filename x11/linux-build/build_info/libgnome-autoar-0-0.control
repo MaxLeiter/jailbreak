@@ -1,0 +1,11 @@
+Package: libgnome-autoar-0-0
+Version: @DEB_GNOME-AUTOAR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-autoar
+Depends: libglib2.0-0, libarchive13, libgtk-4-1
+Description: Automatic archive extraction/compression library - runtime
+ gnome-autoar wraps libarchive with a GLib/GObject API for (de)compressing
+ archives. Used by nautilus. This package contains the shared library.

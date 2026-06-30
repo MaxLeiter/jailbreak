@@ -1,0 +1,11 @@
+Package: libepoll-shim0
+Version: @DEB_EPOLLSHIM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/jiixyj/epoll-shim
+Description: epoll/timerfd/signalfd/eventfd on top of kqueue
+ A small implementation of Linux's epoll(7), timerfd, signalfd and eventfd
+ APIs on top of kqueue(2), used to build Linux-oriented software (such as
+ Wayland) on Darwin/BSD. This package contains the shared library.

@@ -1,0 +1,11 @@
+Package: libadwaita-1-0
+Version: @DEB_LIBADWAITA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gnome.pages.gitlab.gnome.org/libadwaita/
+Depends: libglib2.0-0, libgtk-4-1, libappstream5, libfribidi0
+Description: GNOME building blocks for modern GTK4 applications
+ libadwaita provides the Adwaita widgets and styling used by modern GNOME
+ applications. This package contains the shared library.

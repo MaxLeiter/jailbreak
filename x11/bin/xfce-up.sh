@@ -16,6 +16,7 @@ set -u
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export HOME=/var/root
 [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
+[ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
 
 DISP="${DISP:-:3}"
 DNUM="${DISP#:}"
@@ -44,6 +45,7 @@ mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" /var/jb/var/lib
 chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
 command -v xios_load_xresources >/dev/null 2>&1 && xios_load_xresources
+command -v xios_audio_start >/dev/null 2>&1 && xios_audio_start
 
 # --- kill the previous XFCE session WE started (scoped to this display) -------
 # Kill by recorded PID only — never a global pkill (would nuke another session).

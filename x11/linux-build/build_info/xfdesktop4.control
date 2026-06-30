@@ -1,0 +1,11 @@
+Package: xfdesktop4
+Version: @DEB_XFDESKTOP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://docs.xfce.org/xfce/xfdesktop/start
+Depends: libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, libxfce4ui-2-0, libexo-2-0, libgarcon-1-0, xfconf, libwnck-3-0
+Description: Desktop manager for the Xfce desktop environment
+ xfdesktop sets the desktop background, draws desktop icons and provides the
+ right-click applications/window menu on the root window.

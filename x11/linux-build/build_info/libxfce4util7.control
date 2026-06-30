@@ -1,0 +1,12 @@
+Package: libxfce4util7
+Version: @DEB_LIBXFCE4UTIL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://docs.xfce.org/xfce/libxfce4util/start
+Depends: libglib2.0-0
+Description: Utility library for the Xfce desktop environment
+ libxfce4util is the basic utility (non-GTK) library shared across the Xfce
+ desktop. It provides string helpers, kiosk-mode helpers and miscellaneous
+ routines used by the rest of Xfce.

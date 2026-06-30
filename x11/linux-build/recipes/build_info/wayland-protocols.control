@@ -1,0 +1,12 @@
+Package: wayland-protocols
+Version: @DEB_WAYLANDPROTOCOLS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wayland.freedesktop.org
+Description: Wayland protocol extension definitions
+ A collection of additional Wayland protocols (xdg-shell, linux-dmabuf,
+ viewporter, presentation-time and more) as XML, plus the wayland-protocols
+ pkg-config file. Architecture-independent data consumed by clients and
+ compositors at their build time.

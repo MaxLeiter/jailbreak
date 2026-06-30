@@ -1,0 +1,14 @@
+Package: libpango1.0-dev
+Version: @DEB_LIBPANGO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.pango.org/
+Depends: libpango-1.0-0 (= @DEB_LIBPANGO_V@), libglib2.0-dev, libcairo2-dev, libharfbuzz-dev, libfribidi-dev, libfontconfig-dev, libfreetype-dev
+Description: Development files for the Pango text layout library
+ Pango is a library for laying out and rendering of text, with an emphasis on
+ internationalization.
+ .
+ This package contains the development headers, static libraries and
+ pkg-config files needed to build software that uses Pango.

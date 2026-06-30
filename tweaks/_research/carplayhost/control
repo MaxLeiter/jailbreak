@@ -1,0 +1,9 @@
+Package: com.max.carplayhost
+Name: Mosaic
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: macOS-style window manager for iPad — open apps as floating, resizable, snappable windows.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate

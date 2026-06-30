@@ -11,13 +11,14 @@ settings:
     SWIFT_VERSION: "5.0"            # Swift 5 language mode (skip Swift 6 strict-concurrency churn for now)
     TARGETED_DEVICE_FAMILY: "2"     # iPad only
     PRODUCT_BUNDLE_IDENTIFIER: com.max.kitchenhub
-    MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "3"
     # Unsigned build — the device runs it via AppSync Unified after an ldid pseudo-sign.
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
     CODE_SIGN_IDENTITY: ""
     ENABLE_BITCODE: "NO"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
 targets:
   KitchenHub:
@@ -25,20 +26,35 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      - path: Resources/Assets.xcassets
     info:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: KitchenHub
-        CFBundleShortVersionString: "0.2.0"
+        CFBundleShortVersionString: "0.3.0"
         NSLocationWhenInUseUsageDescription: "KitchenHub shows local weather on the dashboard."
+        NSLocalNetworkUsageDescription: "KitchenHub finds and controls Sonos speakers and your Apple TV on your network."
+        NSBonjourServices:
+          - _companion-link._tcp
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        # Keep the app alive in the background (silent audio) while a timer is
+        # running, so countdowns finish and the alarm rings even if the iPad's
+        # screen has auto-locked. Released when no timer is running.
+        UIBackgroundModes:
+          - audio
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: false
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight

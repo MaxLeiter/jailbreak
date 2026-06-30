@@ -1,0 +1,11 @@
+Package: libgee-0.8-dev
+Version: @DEB_LIBGEE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/Libgee
+Depends: libgee-0.8-2 (= @DEB_LIBGEE_V@), libglib2.0-dev
+Description: Development files for libgee
+ Development headers, the unversioned shared-library symlink, the pkg-config
+ file, and the gee-0.8.vapi Vala binding needed to build software against libgee.

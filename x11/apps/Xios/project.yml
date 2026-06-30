@@ -1,0 +1,62 @@
+name: Xios
+options:
+  bundleIdPrefix: com.max
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  defaultConfig: Release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "2"          # iPad
+    PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    # Single source of truth for the app's entitlements. Codesigning is off (the
+    # device install pseudo-signs with `ldid -S entitlements.plist`), but wiring
+    # this in keeps the project self-consistent and lets a signed build embed them.
+    CODE_SIGN_ENTITLEMENTS: entitlements.plist
+    ENABLE_BITCODE: "NO"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    # Link Xlib + XTEST (for input injection). Headers/dylibs staged under xlib/
+    # (extracted from the Procursus build; regenerable). Dylibs resolve at runtime
+    # from /var/jb/usr/lib on the device (their install_name), not embedded.
+    SWIFT_OBJC_BRIDGING_HEADER: Sources/Xios-Bridging-Header.h
+    HEADER_SEARCH_PATHS: $(SRCROOT)/xlib/include
+    LIBRARY_SEARCH_PATHS: $(SRCROOT)/xlib/lib
+    # Procursus dylibs use @rpath install names; add /var/jb/usr/lib so dyld finds them
+    # at runtime (where libX11/libXtst are installed). IOSurface backs the zero-copy
+    # framebuffer (XSurface.c does the mach-port hand-off + IOSurfaceLookupFromMachPort).
+    OTHER_LDFLAGS: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -framework IOSurface
+
+targets:
+  Xios:
+    type: application
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "2"          # iPad
+    sources:
+      - path: Sources
+      - path: Resources/Assets.xcassets
+    info:
+      path: Resources/Info.generated.plist
+      properties:
+        CFBundleDisplayName: X11
+        CFBundleShortVersionString: "0.1.0"
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        UIApplicationSupportsIndirectInputEvents: true
+        # Landscape-only: the X desktop is a fixed-aspect landscape surface
+        # (2160x1620 on iPad 7, matching the screen 1:1). Allowing portrait made a
+        # landscape 4:3 image letterbox hard on a 3:4 screen — so lock to landscape,
+        # where it fills edge to edge.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight

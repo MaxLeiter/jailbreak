@@ -1,0 +1,11 @@
+Package: libpsl-dev
+Version: @DEB_LIBPSL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/rockdaboot/libpsl
+Depends: libpsl5 (= @DEB_LIBPSL_V@)
+Description: Development files for libpsl
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against libpsl.

@@ -1,0 +1,11 @@
+Package: gnome-font-viewer
+Version: @DEB_GNOME-FONT-VIEWER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Applications
+Priority: optional
+Homepage: https://apps.gnome.org/Fonts/
+Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libgnome-desktop-4-2, libharfbuzz0b, libfontconfig1, libfreetype6, libfribidi0
+Description: GNOME Fonts, a GTK4 font browser/previewer
+ GNOME Font Viewer (Fonts) is a small pure-C GTK4/libadwaita app to browse and
+ preview installed fonts. Runs as a plain X11 client under any window manager.

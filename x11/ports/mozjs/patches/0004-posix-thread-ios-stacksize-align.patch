@@ -1,0 +1,58 @@
+Subject: [PATCH] threading/posix: page-align thread stack size on Darwin/iOS
+
+js::Thread::create() passes options_.stackSize() straight to
+pthread_attr_setstacksize() and asserts the result is 0. On Darwin that
+call returns EINVAL unless the size is a multiple of the system page size
+and >= PTHREAD_STACK_MIN. SpiderMonkey's helper-thread pool requests
+HELPER_STACK_SIZE = kDefaultHelperStackSize = 2*1024*1024 - 2*4096 =
+2088960 bytes (InternalThreadPool.cpp), which is 4 KiB-aligned but NOT
+16 KiB-aligned. On arm64 iOS the page size is 16 KiB (vm_page_size 16384,
+PTHREAD_STACK_MIN 16384), so 2088960 % 16384 == 8192 -> EINVAL.
+
+The failed MOZ_RELEASE_ASSERT then runs MOZ_CRASH, whose release-build body
+is "*((volatile int*)NULL) = __LINE__; abort();" -- i.e. a deliberate write
+to address 0. That surfaces as a SIGSEGV null deref inside js::Thread::create
+during the helper-pool spin-up that JS_NewContext() triggers, so the context
+never gets created on-device.
+
+Fix: on Darwin, round the requested stack size up to the system page size
+(sysconf(_SC_PAGESIZE)) and clamp to PTHREAD_STACK_MIN before the
+setstacksize() call. Rounding up (rather than down) preserves the intended
+>=2 MiB helper stack. Verified on iPad7,12 (A10, iPadOS 17.6.1): with this
+patch JS_NewContext() returns a valid context and a trivial JS eval runs.
+
+--- a/js/src/threading/posix/PosixThread.cpp
++++ b/js/src/threading/posix/PosixThread.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include <chrono>
+ #include <thread>
++#include <unistd.h>
+ 
+ #include "js/Utility.h"
+ #include "threading/posix/ThreadPlatformData.h"
+@@ -50,7 +51,23 @@
+   int r = pthread_attr_init(&attrs);
+   MOZ_RELEASE_ASSERT(!r);
+   if (options_.stackSize()) {
+-    r = pthread_attr_setstacksize(&attrs, options_.stackSize());
++    size_t stackSize = options_.stackSize();
++#ifdef XP_DARWIN
++    // Darwin's pthread_attr_setstacksize() fails with EINVAL unless the stack
++    // size is a multiple of the system page size and at least PTHREAD_STACK_MIN.
++    // On arm64 iOS the page size is 16 KiB, but SpiderMonkey's helper-thread
++    // stack size (2 MiB - 8 KiB) is only 4 KiB-aligned, so round it up. Without
++    // this the failed assertion null-derefs (MOZ_CRASH) during JS_NewContext.
++    long pageSize = sysconf(_SC_PAGESIZE);
++    if (pageSize > 0) {
++      size_t mask = size_t(pageSize) - 1;
++      stackSize = (stackSize + mask) & ~mask;
++    }
++    if (stackSize < size_t(PTHREAD_STACK_MIN)) {
++      stackSize = size_t(PTHREAD_STACK_MIN);
++    }
++#endif
++    r = pthread_attr_setstacksize(&attrs, stackSize);
+     MOZ_RELEASE_ASSERT(!r);
+   }
+ 

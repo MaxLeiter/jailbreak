@@ -1,0 +1,11 @@
+Package: gnome-terminal
+Version: @DEB_GNOME-TERMINAL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Applications
+Priority: optional
+Homepage: https://wiki.gnome.org/Apps/Terminal
+Depends: libglib2.0-0, libgtk-3-0, libvte-2.91-0, libpcre2-8-0, gsettings-desktop-schemas, dconf, dbus
+Description: GNOME terminal emulator (GTK3)
+ GNOME Terminal is the GTK3 terminal for GNOME. The earliest-reachable GNOME app
+ on this stack (GTK3 + VTE only). Runs as a plain X11 client under any WM.

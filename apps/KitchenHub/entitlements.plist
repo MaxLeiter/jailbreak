@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Ties the app's sandbox to its data container so it can write Documents
+	     (layout persistence). Without it, an ad-hoc-signed app gets a container
+	     but the sandbox denies its own writes. -->
+	<key>application-identifier</key>
+	<string>com.max.kitchenhub</string>
+	<!-- Documented rootless fix: let the app write its HOME without the sandbox
+	     container restriction denying it. -->
+	<key>com.apple.private.security.container-required</key>
+	<false/>
+
+	<!-- Network: SSDP multicast discovery + HTTP control of Sonos on the LAN -->
+	<key>com.apple.developer.networking.multicast</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+
+	<!-- Lets the app hold RunningBoard assertions on WKWebView's helper
+	     processes so WebContent isn't killed (EXC_GUARD/LIBXPC) -> blank page.
+	     NOTE: do NOT add com.apple.developer.web-browser-engine.* — those are the
+	     EU alternative-browser-engine entitlements and are region-locked, which
+	     makes iOS report "app not available in your region". -->
+	<key>com.apple.runningboard.assertions.webkit</key>
+	<true/>
+</dict>
+</plist>

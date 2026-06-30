@@ -1,0 +1,41 @@
+Subject: [PATCH] moz.configure: recognize aarch64-apple-ios as a target
+
+mozjs 115's build system has no iOS target: split_triplet only maps
+`darwin`->(kernel=Darwin, os=OSX), and the OS EnumString has no `iOS`
+member, so `--target=aarch64-apple-ios` dies with "Unknown OS: ios" /
+"'iOS' is not a valid value for EnumStringSubclass".
+
+Add an `ios` OS branch (kernel Darwin, os iOS) and the `iOS` enum member.
+Because os == "iOS" (not "OSX"), the macOS-SDK requirement and the
+`-mmacosx-version-min` injection (both gated on os==OSX in
+toolchain.configure) are naturally skipped, so the cross C/C++ compiler's
+`-target arm64-apple-ios` drives the platform with the iPhoneOS SDK.
+
+Linker note (NOT part of this patch — handled in the build env): moz's ld64
+probe hardcodes `-fuse-ld=ld`, so point clang at the cctools ld64
+(`ln -s aarch64-apple-darwin-ld .../bin/ld` + `-B<cctools bin>`) and pass
+`--enable-linker=ld64`. cctools ld64 emits the "Logging ld64 options"
+signature moz identifies it by.
+
+--- a/build/moz.configure/init.configure
++++ b/build/moz.configure/init.configure
+@@ -522,6 +522,9 @@
+             # in the first place, even when we didn't.
+             sub_configure_alias = sub_configure_alias[: -len(os)] + "mingw32"
+             raw_os = "mingw32"
++    elif os.startswith("ios"):
++        canonical_kernel = "Darwin"
++        canonical_os = "iOS"
+     elif os.startswith("darwin"):
+         canonical_kernel = "Darwin"
+         canonical_os = "OSX"
+--- a/python/mozbuild/mozbuild/configure/constants.py
++++ b/python/mozbuild/mozbuild/configure/constants.py
+@@ -21,6 +21,7 @@
+     "NetBSD",
+     "OpenBSD",
+     "OSX",
++    "iOS",
+     "SunOS",
+     "WINNT",
+     "WASI",

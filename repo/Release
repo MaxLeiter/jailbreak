@@ -7,8 +7,8 @@ Architectures: iphoneos-arm64
 Components: main
 Description: Jailbreak tweaks by Max
 MD5Sum:
- dceec2d143ee51dc004cbc75c5d58025 79439 Packages
- 60a7e270c37ef805ce344844bebedbfd 17477 Packages.gz
+ 55f99e10bda1130bbb3a01cb7ebf9f14 81780 Packages
+ 9a1e61f8c1bc5d657eec8fb22f12179d 17933 Packages.gz
 SHA256:
- d9564c75d73676f2ac09d23a5e620aa3c2cc8374ad1d0b976d6bafaaad1c98a5 79439 Packages
- 9228dae61f3665549936b65184c868bed63758411bdef3eeb8bf393b3e9ec078 17477 Packages.gz
+ af8197434d8223dbea7baf64e92d7f36d4d6bd4b900c71ee98eaecf7205b96fc 81780 Packages
+ 8a7ee2798f3fec5bf649f01130db96426e350eae5b1687e0cd504199bfb27be4 17933 Packages.gz

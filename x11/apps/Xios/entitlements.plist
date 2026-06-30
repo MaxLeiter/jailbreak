@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Fakesigned apps here don't get the default GPU sandbox access, so grant the
+         GPU/IOSurface IOKit user clients explicitly (needed for MTLCreateSystemDefaultDevice
+         + IOSurface). FS access to /var/jb/tmp (framebuffer) and /tmp (X socket) via a
+         path exception. can-allow-non-platform loads the fakesigned libX11/libXtst. -->
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+    <!-- Let the Xios X server task_for_pid() us so it can hand over the IOSurface's
+         mach port (zero-copy framebuffer rendezvous; see XSurface.c). -->
+    <key>get-task-allow</key>
+    <true/>
+    <key>com.apple.security.iokit-user-client-class</key>
+    <array>
+        <string>AGXDeviceUserClient</string>
+        <string>IOGPUDeviceUserClient</string>
+        <string>IOSurfaceRootUserClient</string>
+        <string>IOSurfaceSendRight</string>
+        <string>IOSurfaceAcceleratorClient</string>
+    </array>
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/tmp/</string>
+        <string>/tmp/</string>
+        <string>/private/var/jb/tmp/</string>
+        <string>/private/tmp/</string>
+    </array>
+</dict>
+</plist>

@@ -1,0 +1,12 @@
+Package: libenchant-2-2
+Version: @DEB_ENCHANT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://abiword.github.io/enchant/
+Depends: libglib2.0-0
+Description: Generic spell-checking library - runtime
+ Enchant provides a uniform interface to spell-checking backends. This package
+ contains the shared library and the enchant-2 tool. No dictionary backend is
+ bundled, so spell-checking is inert until a provider (hunspell/aspell) is added.

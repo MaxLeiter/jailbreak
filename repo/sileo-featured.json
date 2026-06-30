@@ -39,6 +39,11 @@
       "url": "https://repo.maxleiter.com/banners/gir1.2-glib-2.0.png"
     },
     {
+      "title": "gjs",
+      "package": "gjs",
+      "url": "https://repo.maxleiter.com/banners/gjs.png"
+    },
+    {
       "title": "gnome-console",
       "package": "gnome-console",
       "url": "https://repo.maxleiter.com/banners/gnome-console.png"
@@ -177,6 +182,16 @@
       "title": "libgirepository-1.0-dev",
       "package": "libgirepository-1.0-dev",
       "url": "https://repo.maxleiter.com/banners/libgirepository-1.0-dev.png"
+    },
+    {
+      "title": "libgjs-dev",
+      "package": "libgjs-dev",
+      "url": "https://repo.maxleiter.com/banners/libgjs-dev.png"
+    },
+    {
+      "title": "libgjs0",
+      "package": "libgjs0",
+      "url": "https://repo.maxleiter.com/banners/libgjs0.png"
     },
     {
       "title": "libgl1-mesa-glx",

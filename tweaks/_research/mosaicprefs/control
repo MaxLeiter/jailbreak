@@ -1,0 +1,9 @@
+Package: com.max.mosaicprefs
+Name: Mosaic (Settings)
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Settings toggle for Mosaic window manager.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: com.max.carplayhost, preferenceloader

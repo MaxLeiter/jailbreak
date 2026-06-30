@@ -1,0 +1,13 @@
+Package: libgraphene-1.0-dev
+Version: @DEB_LIBGRAPHENE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://ebassi.github.io/graphene/
+Depends: libgraphene-1.0-0 (= @DEB_LIBGRAPHENE_V@), libglib2.0-dev
+Description: Development files for the graphene library
+ Graphene provides a small set of mathematical types needed to implement drawing
+ and animations.
+ .
+ This package contains the development headers, symlinks and pkg-config files.

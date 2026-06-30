@@ -1,0 +1,13 @@
+Package: libgraphene-1.0-0
+Version: @DEB_LIBGRAPHENE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://ebassi.github.io/graphene/
+Depends: libglib2.0-0
+Description: thin layer of graphic data types
+ Graphene provides a small set of mathematical types needed to implement drawing
+ and animations, with optimized fast paths (SIMD/NEON) for common operations.
+ .
+ This package contains the shared library.

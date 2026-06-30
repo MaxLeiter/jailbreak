@@ -1,0 +1,11 @@
+Package: libgtksourceview-5-dev
+Version: @DEB_GTKSOURCEVIEW5_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/GtkSourceView
+Depends: libgtksourceview-5-0 (= @DEB_GTKSOURCEVIEW5_V@), libgtk-4-dev, libglib2.0-dev
+Description: Development files for GtkSourceView 5
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against GtkSourceView 5.

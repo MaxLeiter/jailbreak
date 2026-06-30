@@ -1,0 +1,12 @@
+Package: nautilus
+Version: @DEB_NAUTILUS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Applications
+Priority: optional
+Homepage: https://apps.gnome.org/Nautilus/
+Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libgnome-desktop-4-2, libgnome-autoar-0-0, libportal1, libportal-gtk4-1, libtracker-sparql-3.0-0, gsettings-desktop-schemas, dbus
+Description: GNOME Files, the GTK4 file manager
+ Nautilus (GNOME Files) is the GTK4/libadwaita file manager. Built without the
+ stock extensions (gexiv2/gstreamer), cloudproviders, and PackageKit to keep the
+ dependency tree minimal. Runs as a plain X11 client under any window manager.

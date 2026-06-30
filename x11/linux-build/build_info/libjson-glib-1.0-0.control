@@ -1,0 +1,11 @@
+Package: libjson-glib-1.0-0
+Version: @DEB_JSON-GLIB_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/JsonGlib
+Depends: libglib2.0-0
+Description: GLib JSON manipulation library - runtime
+ JSON-GLib implements a full JSON parser and generator using GLib and GObject
+ data types. This package contains the shared library.

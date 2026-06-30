@@ -1,0 +1,13 @@
+Package: dconf
+Version: @DEB_DCONF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/dconf
+Depends: libglib2.0-0, dbus
+Description: Low-level GSettings configuration backend
+ dconf is the default GSettings backend. This package provides libdconf, the
+ GIO settings backend module (libdconfsettings.so) that makes desktop settings
+ persist, the dconf-service D-Bus service, and the dconf command-line tool.
+ Requires a D-Bus session bus at runtime (the dbus package).

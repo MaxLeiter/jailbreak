@@ -1,0 +1,11 @@
+Package: libenchant-2-dev
+Version: @DEB_ENCHANT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://abiword.github.io/enchant/
+Depends: libenchant-2-2 (= @DEB_ENCHANT_V@), libglib2.0-dev
+Description: Development files for Enchant
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against Enchant 2.

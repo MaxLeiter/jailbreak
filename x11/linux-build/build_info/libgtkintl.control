@@ -1,0 +1,14 @@
+Package: libgtkintl
+Version: @DEB_LIBGTKINTL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libintl8
+Description: proxy-libintl symbol shim for GTK on iOS
+ Maps GTK's bundled proxy-libintl symbol names (g_libintl_*) onto the system
+ GNU gettext libintl.8. GTK's dylibs and command-line tools are relinked against
+ this shim in place of their unshippable bundled libintl.dylib. The shim reexports
+ libintl.8 so real libintl_* symbols still resolve, and provides the full
+ proxy-libintl wrapper surface (gettext/dgettext/ngettext/textdomain/...).

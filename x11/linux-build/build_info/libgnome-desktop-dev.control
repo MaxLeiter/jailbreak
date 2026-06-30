@@ -1,0 +1,11 @@
+Package: libgnome-desktop-dev
+Version: @DEB_GNOME-DESKTOP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-desktop
+Depends: libgnome-desktop-4-2 (= @DEB_GNOME-DESKTOP_V@), libgtk-4-dev, libglib2.0-dev
+Description: Development files for libgnome-desktop-4
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against libgnome-desktop-4.

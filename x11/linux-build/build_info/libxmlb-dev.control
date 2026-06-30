@@ -1,0 +1,11 @@
+Package: libxmlb-dev
+Version: @DEB_LIBXMLB_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/hughsie/libxmlb
+Depends: libxmlb2 (= @DEB_LIBXMLB_V@), libglib2.0-dev
+Description: Development files for libxmlb
+ Development headers, the unversioned shared-library symlink, and the pkg-config
+ file needed to build software against libxmlb.

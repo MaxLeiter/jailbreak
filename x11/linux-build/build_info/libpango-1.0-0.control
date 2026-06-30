@@ -1,0 +1,15 @@
+Package: libpango-1.0-0
+Version: @DEB_LIBPANGO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.pango.org/
+Depends: libglib2.0-0, libcairo2, libharfbuzz0b, libfribidi0, libfontconfig1, libfreetype6
+Description: Layout and rendering of internationalized text
+ Pango is a library for laying out and rendering of text, with an emphasis on
+ internationalization. It can be used anywhere that text layout is needed,
+ though most of the work on Pango so far has been done in the context of the
+ GTK widget toolkit.
+ .
+ This package contains the shared libraries.
