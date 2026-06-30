@@ -84,8 +84,10 @@ wayland-scanner private-code  "$XDG_OUTPUT_XML" "$GEN/xdg-output-unstable-v1-pro
 wayland-scanner server-header "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-server-protocol.h"
 wayland-scanner private-code  "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-protocol.c"
 wayland-scanner server-header "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-server-protocol.h"
+wayland-scanner client-header "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-client-protocol.h"
 wayland-scanner private-code  "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-protocol.c"
 wayland-scanner server-header "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-server-protocol.h"
+wayland-scanner client-header "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-client-protocol.h"
 wayland-scanner private-code  "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
@@ -138,6 +140,17 @@ $CC $CFLAGS \
     "$X11/wayland/iosc-input-test.c" \
     $RPATH -o /out/iosc-input-test
 echo "   built /out/iosc-input-test"
+
+# External-compositor input bridge: listens for the same Xios input socket as
+# iosc, then forwards text/keys through input-method-v2 + virtual-keyboard-v1.
+$CC $CFLAGS $INCS \
+    "$X11/wayland/ios-inputd.c" \
+    "$X11/wayland/iosc_input.c" \
+    "$GEN/input-method-unstable-v2-protocol.c" \
+    "$GEN/virtual-keyboard-unstable-v1-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client -lxkbcommon \
+    $RPATH -o /out/ios-inputd
+echo "   built /out/ios-inputd"
 
 # wl_shm test client (pure software; no Apple frameworks).
 $CC $CFLAGS $INCS \
