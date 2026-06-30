@@ -43,6 +43,8 @@ FRACTIONAL_XML="$PREFIX/share/wayland-protocols/staging/fractional-scale/fractio
 PRESENTATION_XML="$PREFIX/share/wayland-protocols/stable/presentation-time/presentation-time.xml"
 XDG_OUTPUT_XML="$PREFIX/share/wayland-protocols/unstable/xdg-output/xdg-output-unstable-v1.xml"
 TEXT_INPUT_XML="$PREFIX/share/wayland-protocols/unstable/text-input/text-input-unstable-v3.xml"
+INPUT_METHOD_XML="$X11/wayland/protocols/input-method-unstable-v2.xml"
+VIRTUAL_KEYBOARD_XML="$X11/wayland/protocols/virtual-keyboard-unstable-v1.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
 [ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
 [ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
@@ -51,6 +53,8 @@ TEXT_INPUT_XML="$PREFIX/share/wayland-protocols/unstable/text-input/text-input-u
 [ -f "$PRESENTATION_XML" ] || { echo "!! presentation-time.xml not found at $PRESENTATION_XML"; exit 1; }
 [ -f "$XDG_OUTPUT_XML" ] || { echo "!! xdg-output-unstable-v1.xml not found at $XDG_OUTPUT_XML"; exit 1; }
 [ -f "$TEXT_INPUT_XML" ] || { echo "!! text-input-unstable-v3.xml not found at $TEXT_INPUT_XML"; exit 1; }
+[ -f "$INPUT_METHOD_XML" ] || { echo "!! input-method-unstable-v2.xml not found at $INPUT_METHOD_XML"; exit 1; }
+[ -f "$VIRTUAL_KEYBOARD_XML" ] || { echo "!! virtual-keyboard-unstable-v1.xml not found at $VIRTUAL_KEYBOARD_XML"; exit 1; }
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
@@ -79,6 +83,10 @@ wayland-scanner server-header "$XDG_OUTPUT_XML" "$GEN/xdg-output-unstable-v1-ser
 wayland-scanner private-code  "$XDG_OUTPUT_XML" "$GEN/xdg-output-unstable-v1-protocol.c"
 wayland-scanner server-header "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-server-protocol.h"
 wayland-scanner private-code  "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-protocol.c"
+wayland-scanner server-header "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-server-protocol.h"
+wayland-scanner private-code  "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-protocol.c"
+wayland-scanner server-header "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-server-protocol.h"
+wayland-scanner private-code  "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
 wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
@@ -114,6 +122,8 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/presentation-time-protocol.c" \
     "$GEN/xdg-output-unstable-v1-protocol.c" \
     "$GEN/text-input-unstable-v3-protocol.c" \
+    "$GEN/input-method-unstable-v2-protocol.c" \
+    "$GEN/virtual-keyboard-unstable-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
