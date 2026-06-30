@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-compile the iosc Wayland compositor + its test client for rootless iOS.
+# Cross-compile the iosc Wayland compositor + its test clients for rootless iOS.
 # Runs INSIDE the Procursus cross-build image (it has the cctools aarch64 toolchain
 # + iPhoneOS SDK frameworks, exactly as the Xios DDX build uses). Fire host-side:
 #
@@ -7,13 +7,13 @@
 #     -v "$PWD/..:/work/x11:ro" \
 #     -v "$PWD/../linux-build/out:/work/debs:ro" \
 #     -v "$PWD/out:/out" \
-#     procursus-xbuild:bookworm-arm64 -c /work/x11/wayland/build-iosc.sh
+#     procursus-xbuild:bookworm-arm64 -c "bash /work/x11/wayland/build-iosc.sh"
 #
 # Inputs it consumes from the repo (read-only):
-#   x11/wayland/iosc.c, iosc-client.c
+#   x11/wayland/iosc.c, iosc-client.c, iosc-gpu-client.c, iosc-iosurface.xml
 #   x11/linux-build/patches/xios/xios_surface.{c,h}   (reused output path)
-#   x11/linux-build/out/{libwayland,libepoll-shim,wayland-protocols}*.deb  (W0)
-# Outputs: /out/iosc, /out/iosc-client  (unsigned Mach-O arm64; sign on device).
+#   x11/linux-build/out/{libwayland,libepoll-shim,wayland-protocols,angle}*.deb
+# Outputs: /out/{iosc, iosc-client, iosc-gpu-client}  (unsigned Mach-O arm64; sign on device).
 set -euo pipefail
 umask 022
 
@@ -24,16 +24,30 @@ SYS="$WORK/sysroot"
 GEN="$WORK/gen"
 rm -rf "$WORK"; mkdir -p "$SYS" "$GEN" /out
 
-echo "==> [1/5] extract W0 dev debs into a sysroot"
-for pat in libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols; do
+echo "==> [1/5] extract W0 dev debs (+ angle for the GPU client) into a sysroot"
+for pat in libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
+           libxkbcommon-dev libxkbcommon0; do
   f=$(ls "$DEBS/${pat}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)
-  [ -n "$f" ] || { echo "!! missing W0 deb: $pat"; exit 1; }
+  [ -n "$f" ] || { echo "!! missing deb: $pat"; exit 1; }
   dpkg-deb -x "$f" "$SYS"
   echo "   + $(basename "$f")"
 done
-PREFIX="$SYS/var/jb/usr"
+PREFIX="$SYS/var/jb/usr"       # wayland headers/libs
+ANGLE_INC="$SYS/var/jb/include" # angle EGL/GLES headers
+ANGLE_LIB="$SYS/var/jb/lib/angle"
 XDG_XML="$PREFIX/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml"
+DECORATION_XML="$PREFIX/share/wayland-protocols/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml"
+ACTIVATION_XML="$PREFIX/share/wayland-protocols/staging/xdg-activation/xdg-activation-v1.xml"
+VIEWPORTER_XML="$PREFIX/share/wayland-protocols/stable/viewporter/viewporter.xml"
+FRACTIONAL_XML="$PREFIX/share/wayland-protocols/staging/fractional-scale/fractional-scale-v1.xml"
+PRESENTATION_XML="$PREFIX/share/wayland-protocols/stable/presentation-time/presentation-time.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
+[ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
+[ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
+[ -f "$VIEWPORTER_XML" ] || { echo "!! viewporter.xml not found at $VIEWPORTER_XML"; exit 1; }
+[ -f "$FRACTIONAL_XML" ] || { echo "!! fractional-scale-v1.xml not found at $FRACTIONAL_XML"; exit 1; }
+[ -f "$PRESENTATION_XML" ] || { echo "!! presentation-time.xml not found at $PRESENTATION_XML"; exit 1; }
+[ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
 if ! command -v wayland-scanner >/dev/null 2>&1; then
@@ -43,10 +57,24 @@ if ! command -v wayland-scanner >/dev/null 2>&1; then
 fi
 wayland-scanner --version 2>&1 | head -1 | sed 's/^/   scanner: /' || true
 
-echo "==> [3/5] generate xdg-shell glue"
+echo "==> [3/5] generate protocol glue (xdg-shell + our iosc_iosurface)"
 wayland-scanner server-header "$XDG_XML" "$GEN/xdg-shell-server-protocol.h"
 wayland-scanner client-header "$XDG_XML" "$GEN/xdg-shell-client-protocol.h"
 wayland-scanner private-code  "$XDG_XML" "$GEN/xdg-shell-protocol.c"
+wayland-scanner server-header "$DECORATION_XML" "$GEN/xdg-decoration-unstable-v1-server-protocol.h"
+wayland-scanner private-code  "$DECORATION_XML" "$GEN/xdg-decoration-unstable-v1-protocol.c"
+wayland-scanner server-header "$ACTIVATION_XML" "$GEN/xdg-activation-v1-server-protocol.h"
+wayland-scanner private-code  "$ACTIVATION_XML" "$GEN/xdg-activation-v1-protocol.c"
+wayland-scanner server-header "$VIEWPORTER_XML" "$GEN/viewporter-server-protocol.h"
+wayland-scanner private-code  "$VIEWPORTER_XML" "$GEN/viewporter-protocol.c"
+wayland-scanner server-header "$FRACTIONAL_XML" "$GEN/fractional-scale-v1-server-protocol.h"
+wayland-scanner private-code  "$FRACTIONAL_XML" "$GEN/fractional-scale-v1-protocol.c"
+wayland-scanner server-header "$PRESENTATION_XML" "$GEN/presentation-time-server-protocol.h"
+wayland-scanner private-code  "$PRESENTATION_XML" "$GEN/presentation-time-protocol.c"
+ISO_XML="$X11/wayland/iosc-iosurface.xml"
+wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
+wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
+wayland-scanner private-code  "$ISO_XML" "$GEN/iosc-iosurface-protocol.c"
 ls -1 "$GEN" | sed 's/^/   /'
 
 echo "==> [4/5] locate the cctools cross clang"
@@ -63,17 +91,35 @@ INCS="-I$PREFIX/include -I$GEN -I$X11/linux-build/patches/xios"
 RPATH="-Wl,-rpath,/var/jb/usr/lib"
 
 echo "==> [5/5] cross-compile"
-# Compositor: links libwayland-server + the Xios IOSurface output path + Apple frameworks.
-$CC $CFLAGS $INCS \
+# Compositor: libwayland-server + xdg-shell + our iosc_iosurface + the Xios IOSurface
+# output path (which now also does the client->server IOSurface import) + the ANGLE GPU
+# compositor (iosc_gl.c: GLES->Metal composite onto the output IOSurface) + frameworks.
+$CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
+    "$X11/wayland/iosc_gl.c" \
+    "$X11/wayland/iosc_input.c" \
     "$GEN/xdg-shell-protocol.c" \
+    "$GEN/xdg-decoration-unstable-v1-protocol.c" \
+    "$GEN/xdg-activation-v1-protocol.c" \
+    "$GEN/viewporter-protocol.c" \
+    "$GEN/fractional-scale-v1-protocol.c" \
+    "$GEN/presentation-time-protocol.c" \
+    "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
-    -L"$PREFIX/lib" -lwayland-server \
+    -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
+    -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation \
-    $RPATH -o /out/iosc
+    $RPATH -Wl,-rpath,/var/jb/lib/angle -o /out/iosc
 echo "   built /out/iosc"
 
-# Test client: links libwayland-client only (pure wl_shm, no Apple frameworks).
+# Input injector: a tiny client that writes the iosc input-socket protocol (no
+# Wayland) so keyboard/pointer dispatch can be tested without the Xios app.
+$CC $CFLAGS \
+    "$X11/wayland/iosc-input-test.c" \
+    $RPATH -o /out/iosc-input-test
+echo "   built /out/iosc-input-test"
+
+# wl_shm test client (pure software; no Apple frameworks).
 $CC $CFLAGS $INCS \
     "$X11/wayland/iosc-client.c" \
     "$GEN/xdg-shell-protocol.c" \
@@ -81,7 +127,44 @@ $CC $CFLAGS $INCS \
     $RPATH -o /out/iosc-client
 echo "   built /out/iosc-client"
 
+# GPU test client: renders GLES->IOSurface via ANGLE, hands it over iosc_iosurface.
+$CC $CFLAGS $INCS -I"$ANGLE_INC" \
+    "$X11/wayland/iosc-gpu-client.c" \
+    "$GEN/xdg-shell-protocol.c" \
+    "$GEN/iosc-iosurface-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    -L"$ANGLE_LIB" -lEGL -lGLESv2 \
+    -framework IOSurface -framework CoreFoundation \
+    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/iosc-gpu-client
+echo "   built /out/iosc-gpu-client"
+
+# wayland-egl↔ANGLE shim (libiosc_egl.dylib): a libEGL that forwards to ANGLE and
+# routes window surfaces through IOSurface + iosc_iosurface. dlopens ANGLE libEGL
+# at runtime (not linked); links libwayland-client + GLESv2 (glFinish) + frameworks.
+$CC $CFLAGS $INCS -I"$ANGLE_INC" \
+    -dynamiclib -install_name /var/jb/usr/local/lib/libiosc_egl.dylib \
+    "$X11/wayland/iosc_egl_shim.c" \
+    "$GEN/iosc-iosurface-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    -L"$ANGLE_LIB" -lGLESv2 \
+    -framework IOSurface -framework CoreFoundation \
+    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/libiosc_egl.dylib
+echo "   built /out/libiosc_egl.dylib"
+
+# EGL test client: standard wl_egl_window + EGL window-surface API against the shim
+# (NO direct ANGLE EGL link — EGL symbols resolve to the shim). Validates the shim.
+$CC $CFLAGS $INCS -I"$ANGLE_INC" \
+    "$X11/wayland/iosc-egl-client.c" \
+    "$GEN/xdg-shell-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client -lwayland-egl \
+    -L/out -liosc_egl \
+    -L"$ANGLE_LIB" -lGLESv2 \
+    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -Wl,-rpath,/var/jb/usr/local/lib \
+    -o /out/iosc-egl-client
+echo "   built /out/iosc-egl-client"
+
 echo "==> done:"
-file /out/iosc /out/iosc-client 2>/dev/null || ls -l /out/iosc /out/iosc-client
-echo "==> sanity: IOSurface + wayland symbols referenced by iosc"
-( command -v aarch64-apple-darwin-otool >/dev/null 2>&1 && aarch64-apple-darwin-otool -L /out/iosc ) || true
+file /out/iosc /out/iosc-client /out/iosc-gpu-client 2>/dev/null \
+  || ls -l /out/iosc /out/iosc-client /out/iosc-gpu-client
+echo "==> sanity: libs referenced by iosc-gpu-client"
+( command -v aarch64-apple-darwin-otool >/dev/null 2>&1 && aarch64-apple-darwin-otool -L /out/iosc-gpu-client ) || true
