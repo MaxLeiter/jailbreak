@@ -202,6 +202,8 @@ static int g_nmapped = 0;
 /* Input focus (set by the seat code below; (un)map adjusts it). */
 static struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
 static struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
+static struct iosc_surface *g_cursor_surface;
+static int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
 static uint64_t g_presentation_seq;
 static void keyboard_set_focus(struct iosc_surface *s);
 static void surface_raise(struct iosc_surface *s);
@@ -348,8 +350,8 @@ static void iosurface_buffer_resource_destroy(struct wl_resource *r)
 
 /* ---- surface buffer retention + z-order management (M2) ------------------- */
 
-/* Draw one surface's current buffer as a GPU quad at its placement. */
-static void composite_one(struct iosc_surface *s)
+/* Draw one surface's current buffer as a GPU quad at a logical output position. */
+static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
 {
     struct wl_resource *buf = s->current_buffer;
     if (!buf) return;
@@ -359,7 +361,7 @@ static void composite_one(struct iosc_surface *s)
     surface_source_rect(s, &sx, &sy, &src_w, &src_h);
     if (dw <= 0 || dh <= 0 || src_w <= 0 || src_h <= 0) return;
     int os = output_scale();
-    int dxp = s->dx * os, dyp = s->dy * os, dwp = dw * os, dhp = dh * os;
+    int dxp = lx * os, dyp = ly * os, dwp = dw * os, dhp = dh * os;
     struct wl_shm_buffer *shm = wl_shm_buffer_get(buf);
     if (shm) {
         wl_shm_buffer_begin_access(shm);
@@ -374,6 +376,19 @@ static void composite_one(struct iosc_surface *s)
             iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
                                    dxp, dyp, dwp, dhp);
     }
+}
+
+static void composite_one(struct iosc_surface *s)
+{
+    composite_surface_at(s, s->dx, s->dy);
+}
+
+static void composite_cursor(void)
+{
+    if (!g_cursor_visible || !g_cursor_surface || !g_cursor_surface->current_buffer) return;
+    composite_surface_at(g_cursor_surface,
+                         g_cursor_x - g_cursor_hot_x,
+                         g_cursor_y - g_cursor_hot_y);
 }
 
 /* IOSC_PROBE classifier: map a BGRA output pixel to a legend char for the app-space
@@ -399,6 +414,7 @@ static void recomposite_all(void)
         iosc_gl_begin();   /* clears the output to black (desktop background) */
         for (int i = 0; i < g_nmapped; i++)
             composite_one(g_mapped[i]);
+        composite_cursor();
         uint32_t center = iosc_gl_end();
         xios_notify_dirty();
         /* Validation: read each window's EXPOSED top-left corner (a lower window's
@@ -707,6 +723,10 @@ static void surface_resource_destroy(struct wl_resource *r)
         s->subsurface = NULL;
     }
     if (s->xdg_popup) wl_resource_set_user_data(s->xdg_popup, NULL);
+    if (g_cursor_surface == s) {
+        g_cursor_surface = NULL;
+        g_cursor_visible = 0;
+    }
     s->current_buffer = NULL;
     presentation_discard_surface(s);
     struct iosc_frame *f, *tmp;
@@ -1627,6 +1647,9 @@ static void pointer_frame_client(struct wl_client *cl)
 
 static void handle_motion(int x, int y)
 {
+    int moved = (x != g_cursor_x || y != g_cursor_y);
+    g_cursor_x = x;
+    g_cursor_y = y;
     struct iosc_surface *hit = surface_at(x, y);
     uint32_t t = now_ms();
     if (hit != g_ptr_focus) {
@@ -1657,6 +1680,7 @@ static void handle_motion(int x, int y)
                 wl_pointer_send_motion(g_ptr[i], t, sx, sy);
         pointer_frame_client(fc);
     }
+    if (g_cursor_visible && moved) recomposite_all();
 }
 
 /* Raise a surface to the top of the z-order (clicked window comes forward). */
@@ -1694,7 +1718,15 @@ static void handle_button(int btn, int down)
 
 static void pointer_set_cursor(struct wl_client *c, struct wl_resource *r, uint32_t serial,
                                struct wl_resource *surf, int32_t hx, int32_t hy)
-{ (void)c;(void)r;(void)serial;(void)surf;(void)hx;(void)hy; }
+{ (void)r; (void)serial;
+    if (g_ptr_focus && wl_resource_get_client(g_ptr_focus->resource) != c)
+        return;
+    g_cursor_surface = surf ? wl_resource_get_user_data(surf) : NULL;
+    g_cursor_hot_x = hx;
+    g_cursor_hot_y = hy;
+    g_cursor_visible = g_cursor_surface != NULL;
+    recomposite_all();
+}
 static const struct wl_pointer_interface pointer_impl = { .set_cursor = pointer_set_cursor, .release = input_release };
 static const struct wl_keyboard_interface keyboard_impl = { .release = input_release };
 static const struct wl_touch_interface touch_impl = { .release = input_release };
