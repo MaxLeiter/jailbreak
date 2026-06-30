@@ -59,11 +59,17 @@ final class XScreenView: UIView {
     @objc var autocorrectionType: UITextAutocorrectionType = .no
     @objc var autocapitalizationType: UITextAutocapitalizationType = .none
     @objc var spellCheckingType: UITextSpellCheckingType = .no
+    @objc var keyboardType: UIKeyboardType = .default
+    @objc var returnKeyType: UIReturnKeyType = .default
+    @objc var isSecureTextEntry: Bool = false
 
     // Modifier row (docked above the keyboard). Ctrl/Alt/Shift are sticky one-shots:
     // armed by a tap, applied to the next key, then auto-cleared.
     private var modRow: UIView?
     private var modCtrl = false, modAlt = false, modShift = false
+    private var lastIoscTraitHint: UInt32 = 0
+    private var lastIoscTraitPurpose: UInt32 = 0
+    private var lastIoscTraitEnabled: UInt32 = 0
     private weak var ctrlBtn: UIButton?
     private weak var altBtn: UIButton?
     private weak var shiftBtn: UIButton?
@@ -405,6 +411,7 @@ final class XScreenView: UIView {
     @objc private func tick() {
         tickCount += 1
         serviceIoscClipboard()
+        serviceIoscInputTraits()
         if inputConnected && !(usingIosc ? iosc_input_is_open() : xinput_is_open()) {
             inputConnected = false
             writeStatus()
@@ -624,6 +631,90 @@ final class XScreenView: UIView {
         // wrote (it locks the display with xauth instead of -ac). Harmless if absent.
         if let a = xAuthPath { setenv("XAUTHORITY", a, 1) }
         inputConnected = xinput_open(xDisplay)
+    }
+
+    private func serviceIoscInputTraits() {
+        guard usingIosc, inputConnected, iosc_input_is_open() else {
+            applyIoscInputTraits(hint: 0, purpose: 0, enabled: 0)
+            return
+        }
+        var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
+        let r = iosc_input_poll_traits(&hint, &purpose, &enabled)
+        if r < 0 {
+            inputConnected = false
+            writeStatus()
+        } else if r > 0 {
+            applyIoscInputTraits(hint: hint, purpose: purpose, enabled: enabled)
+        }
+    }
+
+    private func applyIoscInputTraits(hint: UInt32, purpose: UInt32, enabled: UInt32) {
+        guard hint != lastIoscTraitHint || purpose != lastIoscTraitPurpose ||
+              enabled != lastIoscTraitEnabled else { return }
+        lastIoscTraitHint = hint
+        lastIoscTraitPurpose = purpose
+        lastIoscTraitEnabled = enabled
+
+        if enabled == 0 {
+            isSecureTextEntry = false
+            keyboardType = .default
+            returnKeyType = .default
+            autocorrectionType = .no
+            spellCheckingType = .no
+            autocapitalizationType = .none
+            if isFirstResponder { reloadInputViews() }
+            return
+        }
+
+        let completion = (hint & 0x1) != 0
+        let spellcheck = (hint & 0x2) != 0
+        let autoCaps = (hint & 0x4) != 0
+        let uppercase = (hint & 0x10) != 0
+        let titlecase = (hint & 0x20) != 0
+        let hidden = (hint & 0x40) != 0
+        let sensitive = (hint & 0x80) != 0
+        let multiline = (hint & 0x200) != 0
+        let secure = enabled != 0 && (hidden || sensitive || purpose == 8 || purpose == 9)
+
+        isSecureTextEntry = secure
+        keyboardType = .default
+        returnKeyType = multiline ? .default : .done
+        autocorrectionType = (!secure && completion) ? .yes : .no
+        spellCheckingType = (!secure && spellcheck) ? .yes : .no
+        autocapitalizationType = .none
+
+        switch purpose {
+        case 2, 9:
+            keyboardType = .numberPad
+        case 3:
+            keyboardType = .numbersAndPunctuation
+        case 4:
+            keyboardType = .phonePad
+        case 5:
+            keyboardType = .URL
+            returnKeyType = .go
+        case 6:
+            keyboardType = .emailAddress
+        case 8:
+            keyboardType = .asciiCapable
+        case 13:
+            keyboardType = .asciiCapable
+            returnKeyType = .default
+            autocorrectionType = .no
+            spellCheckingType = .no
+        default:
+            break
+        }
+
+        if uppercase {
+            autocapitalizationType = .allCharacters
+        } else if titlecase {
+            autocapitalizationType = .words
+        } else if autoCaps {
+            autocapitalizationType = .sentences
+        }
+
+        if isFirstResponder { reloadInputViews() }
     }
 
     private func serviceIoscClipboard() {

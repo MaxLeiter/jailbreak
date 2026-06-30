@@ -222,6 +222,7 @@ static void keyboard_send_mods(uint32_t mask);
 static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state);
 static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surface *next);
 static void input_method_update_active(void);
+static void input_clients_send_traits(void);
 static void surface_raise(struct iosc_surface *s);
 
 static int clampi(int v, int lo, int hi)
@@ -1786,6 +1787,7 @@ static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surfa
         }
     }
     input_method_update_active();
+    input_clients_send_traits();
 }
 
 static struct iosc_text_input *text_input_for_focus(void)
@@ -2171,6 +2173,7 @@ static void text_input_commit(struct wl_client *c, struct wl_resource *r)
     ti->enabled = ti->pending_enabled;
     zwp_text_input_v3_send_done(r, ++ti->serial);
     input_method_update_active();
+    input_clients_send_traits();
 }
 
 static const struct zwp_text_input_v3_interface text_input_impl = {
@@ -2195,6 +2198,8 @@ static void text_input_resource_destroy(struct wl_resource *r)
         }
     free(ti->surrounding);
     free(ti);
+    input_method_update_active();
+    input_clients_send_traits();
 }
 
 static void text_input_manager_destroy(struct wl_client *c, struct wl_resource *r)
@@ -3131,10 +3136,12 @@ static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
  * driven by input runs on the compositor's own thread (no locking needed). */
 
 #define IOSC_IN_TEXT_MAX 4096u
+#define IOSC_MAX_INPUT_CLIENTS 4
 #define IOSC_IN_MOTION 1
 #define IOSC_IN_BUTTON 2
 #define IOSC_IN_KEY    3
 #define IOSC_IN_TEXT   4
+#define IOSC_IN_TRAITS 5
 struct iosc_in_msg {            /* native-endian; app + iosc are both arm64 */
     uint32_t type;
     int32_t  x, y;             /* output px (motion / button) */
@@ -3150,6 +3157,40 @@ struct iosc_in_client {
     char *payload;
     uint32_t payload_have;
 };
+static struct iosc_in_client *g_in_clients[IOSC_MAX_INPUT_CLIENTS];
+
+static void in_client_drop(struct iosc_in_client *c)
+{
+    if (!c) return;
+    for (int i = 0; i < IOSC_MAX_INPUT_CLIENTS; i++)
+        if (g_in_clients[i] == c) g_in_clients[i] = NULL;
+    if (c->src) wl_event_source_remove(c->src);
+    if (c->fd >= 0) close(c->fd);
+    free(c->payload);
+    free(c);
+    fprintf(stderr, "iosc: input client disconnected\n");
+}
+
+static int in_client_send_msg(struct iosc_in_client *c, const struct iosc_in_msg *m)
+{
+    return c && c->fd >= 0 ? write_all_fd(c->fd, m, sizeof(*m)) : -1;
+}
+
+static void input_clients_send_traits(void)
+{
+    struct iosc_text_input *ti = text_input_for_focus();
+    struct iosc_in_msg msg = {
+        .type = IOSC_IN_TRAITS,
+        .code = ti ? ti->content_hint : 0,
+        .state = ti ? ti->content_purpose : 0,
+        .mods = ti ? (uint32_t)ti->enabled : 0,
+    };
+    for (int i = 0; i < IOSC_MAX_INPUT_CLIENTS; i++) {
+        struct iosc_in_client *c = g_in_clients[i];
+        if (c && in_client_send_msg(c, &msg) != 0)
+            in_client_drop(c);
+    }
+}
 
 static void in_dispatch(const struct iosc_in_msg *m)
 {
@@ -3231,11 +3272,7 @@ static int in_client_readable(int fd, uint32_t mask, void *data)
     }
     return 0;
 drop:
-    wl_event_source_remove(c->src);
-    close(c->fd);
-    free(c->payload);
-    free(c);
-    fprintf(stderr, "iosc: input client disconnected\n");
+    in_client_drop(c);
     return 0;
 }
 
@@ -3248,8 +3285,13 @@ static int in_listen_readable(int fd, uint32_t mask, void *data)
     fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
     struct iosc_in_client *c = calloc(1, sizeof(*c));
     if (!c) { close(cfd); return 0; }
+    int slot = -1;
+    for (int i = 0; i < IOSC_MAX_INPUT_CLIENTS; i++) if (!g_in_clients[i]) { slot = i; break; }
+    if (slot < 0) { close(cfd); free(c); return 0; }
     c->fd = cfd;
     c->src = wl_event_loop_add_fd(loop, cfd, WL_EVENT_READABLE, in_client_readable, c);
+    g_in_clients[slot] = c;
+    input_clients_send_traits();
     fprintf(stderr, "iosc: input client connected (fd=%d)\n", cfd);
     return 0;
 }

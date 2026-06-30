@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -15,6 +16,7 @@ static int s_fd = -1;
 #define IOSC_IN_BUTTON 2
 #define IOSC_IN_KEY    3
 #define IOSC_IN_TEXT   4
+#define IOSC_IN_TRAITS 5
 
 struct iosc_in_msg {
     uint32_t type;
@@ -23,6 +25,8 @@ struct iosc_in_msg {
     uint32_t state;    // button 1=down 0=up
     uint32_t mods;     // bit0 shift, bit1 ctrl, bit2 alt
 };
+static uint8_t s_rx[sizeof(struct iosc_in_msg)];
+static int s_rx_have = 0;
 
 bool iosc_input_open(const char *sock_path) {
     if (s_fd >= 0) return true;
@@ -37,12 +41,14 @@ bool iosc_input_open(const char *sock_path) {
     a.sun_family = AF_UNIX;
     strncpy(a.sun_path, sock_path, sizeof(a.sun_path) - 1);
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(fd); return false; }
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     s_fd = fd;
     return true;
 }
 
 void iosc_input_close(void) {
     if (s_fd >= 0) { close(s_fd); s_fd = -1; }
+    s_rx_have = 0;
 }
 
 bool iosc_input_is_open(void) { return s_fd >= 0; }
@@ -89,4 +95,32 @@ void iosc_input_text(const char *utf8) {
     struct iosc_in_msg m = { .type = IOSC_IN_TEXT, .code = (uint32_t)len };
     send_msg(&m);
     send_bytes(utf8, len);
+}
+
+int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled) {
+    if (s_fd < 0) return -1;
+    int got = 0;
+    for (;;) {
+        ssize_t r = read(s_fd, s_rx + s_rx_have, sizeof(s_rx) - (size_t)s_rx_have);
+        if (r > 0) {
+            s_rx_have += (int)r;
+            if (s_rx_have == (int)sizeof(s_rx)) {
+                struct iosc_in_msg m;
+                memcpy(&m, s_rx, sizeof(m));
+                s_rx_have = 0;
+                if (m.type == IOSC_IN_TRAITS) {
+                    if (hint) *hint = m.code;
+                    if (purpose) *purpose = m.state;
+                    if (enabled) *enabled = m.mods;
+                    got = 1;
+                }
+            }
+            continue;
+        }
+        if (r == 0) { iosc_input_close(); return -1; }
+        if (errno == EINTR) continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) return got;
+        iosc_input_close();
+        return -1;
+    }
 }
