@@ -60,6 +60,7 @@ static int               g_stride;    /* real bytes-per-row (IOSurface-padded) *
 
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
+static void clipboard_selection_send_to_client(struct wl_client *client);
 
 static uint32_t now_ms(void)
 {
@@ -1354,6 +1355,7 @@ static void keyboard_set_focus(struct iosc_surface *s)
         for (int i = 0; i < g_nkbd; i++) if (wl_resource_get_client(g_kbd[i]) == nc) nk++;
         fprintf(stderr, "iosc: keyboard focus -> surface %p (%d kbd resource(s))\n",
                 (void *)s, nk);
+        clipboard_selection_send_to_client(nc);
         if (g_refocus_timer) wl_event_source_timer_update(g_refocus_timer, 600);
     }
 }
@@ -1615,35 +1617,433 @@ static void subcompositor_bind(struct wl_client *client, void *data, uint32_t ve
   if (!r) { wl_client_post_no_memory(client); return; }
   wl_resource_set_implementation(r, &subcompositor_impl, NULL, NULL); }
 
-/* wl_data_device_manager — minimal binds so GDK's clipboard setup succeeds. */
-static void data_source_offer(struct wl_client *c, struct wl_resource *r, const char *m){ (void)c;(void)r;(void)m; }
-static void data_source_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
-static void data_source_set_actions(struct wl_client *c, struct wl_resource *r, uint32_t a){ (void)c;(void)r;(void)a; }
+/* ---- clipboard / wl_data_device ------------------------------------------ */
+
+#define IOSC_CLIP_SET 1u
+#define IOSC_CLIP_MAX (1024u * 1024u)
+#define IOSC_MAX_DATA_DEVICES 32
+#define IOSC_MAX_CLIP_CLIENTS 4
+
+struct iosc_clip_msg {
+    uint32_t type;
+    uint32_t len;
+};
+
+struct iosc_clip_client {
+    int fd;
+    struct wl_event_source *src;
+    uint8_t hdr[sizeof(struct iosc_clip_msg)];
+    int hdr_have;
+    struct iosc_clip_msg msg;
+    char *payload;
+    uint32_t payload_have;
+};
+
+struct iosc_data_source {
+    struct wl_resource *resource;
+    char *text_mime;
+};
+
+struct iosc_data_device {
+    struct wl_resource *resource;
+    struct wl_client *client;
+};
+
+struct iosc_data_offer {
+    char *text;
+    size_t len;
+};
+
+struct iosc_source_read {
+    int fd;
+    struct wl_event_source *src;
+    char *buf;
+    size_t len;
+    size_t cap;
+};
+
+static struct iosc_clip_client *g_clip_clients[IOSC_MAX_CLIP_CLIENTS];
+static struct iosc_data_device *g_data_devices[IOSC_MAX_DATA_DEVICES];
+static int g_ndata_devices;
+static char *g_clip_text;
+static size_t g_clip_len;
+static const struct wl_data_offer_interface data_offer_impl;
+static void data_offer_resource_destroy(struct wl_resource *r);
+
+static int is_text_mime(const char *mime)
+{
+    return mime && (!strcmp(mime, "text/plain") ||
+                    !strcmp(mime, "text/plain;charset=utf-8") ||
+                    !strcmp(mime, "UTF8_STRING") ||
+                    !strncmp(mime, "text/plain;", 11));
+}
+
+static int write_all_fd(int fd, const void *buf, size_t len)
+{
+    const char *p = buf;
+    size_t put = 0;
+    while (put < len) {
+        ssize_t w = write(fd, p + put, len - put);
+        if (w > 0) { put += (size_t)w; continue; }
+        if (w < 0 && errno == EINTR) continue;
+        return -1;
+    }
+    return 0;
+}
+
+static void clip_client_drop(struct iosc_clip_client *c)
+{
+    if (!c) return;
+    for (int i = 0; i < IOSC_MAX_CLIP_CLIENTS; i++)
+        if (g_clip_clients[i] == c) g_clip_clients[i] = NULL;
+    if (c->src) wl_event_source_remove(c->src);
+    if (c->fd >= 0) close(c->fd);
+    free(c->payload);
+    free(c);
+    fprintf(stderr, "iosc: clipboard client disconnected\n");
+}
+
+static int clip_send_set_to_client(struct iosc_clip_client *c, const char *text, size_t len)
+{
+    if (!c || c->fd < 0 || len > IOSC_CLIP_MAX) return -1;
+    struct iosc_clip_msg h = { .type = IOSC_CLIP_SET, .len = (uint32_t)len };
+    if (write_all_fd(c->fd, &h, sizeof(h)) != 0) return -1;
+    if (len && write_all_fd(c->fd, text, len) != 0) return -1;
+    return 0;
+}
+
+static void clip_send_set_to_app(const char *text, size_t len)
+{
+    for (int i = 0; i < IOSC_MAX_CLIP_CLIENTS; i++) {
+        struct iosc_clip_client *c = g_clip_clients[i];
+        if (c && clip_send_set_to_client(c, text, len) != 0) clip_client_drop(c);
+    }
+}
+
+static void clipboard_selection_send_to_device(struct iosc_data_device *d)
+{
+    if (!d || !d->resource) return;
+    if (!g_clip_text) {
+        wl_data_device_send_selection(d->resource, NULL);
+        return;
+    }
+    struct wl_resource *offer = wl_resource_create(d->client, &wl_data_offer_interface,
+                                                   wl_resource_get_version(d->resource), 0);
+    struct iosc_data_offer *o = calloc(1, sizeof(*o));
+    if (!offer || !o) {
+        if (offer) wl_resource_destroy(offer);
+        free(o);
+        wl_client_post_no_memory(d->client);
+        return;
+    }
+    o->text = malloc(g_clip_len + 1);
+    if (!o->text) {
+        wl_resource_destroy(offer);
+        free(o);
+        wl_client_post_no_memory(d->client);
+        return;
+    }
+    memcpy(o->text, g_clip_text, g_clip_len);
+    o->text[g_clip_len] = 0;
+    o->len = g_clip_len;
+    wl_resource_set_implementation(offer, &data_offer_impl, o, data_offer_resource_destroy);
+    wl_data_device_send_data_offer(d->resource, offer);
+    wl_data_offer_send_offer(offer, "text/plain;charset=utf-8");
+    wl_data_offer_send_offer(offer, "text/plain");
+    wl_data_device_send_selection(d->resource, offer);
+}
+
+static void clipboard_selection_send_to_client(struct wl_client *client)
+{
+    if (!client) return;
+    for (int i = 0; i < g_ndata_devices; i++)
+        if (g_data_devices[i] && g_data_devices[i]->client == client)
+            clipboard_selection_send_to_device(g_data_devices[i]);
+}
+
+static void clipboard_selection_broadcast(void)
+{
+    if (!g_kbd_focus) return;
+    clipboard_selection_send_to_client(wl_resource_get_client(g_kbd_focus->resource));
+}
+
+static void clip_set_text(const char *text, size_t len, int send_to_app)
+{
+    if (len > IOSC_CLIP_MAX) len = IOSC_CLIP_MAX;
+    free(g_clip_text);
+    g_clip_text = NULL;
+    g_clip_len = len;
+    if (len) {
+        g_clip_text = malloc(len + 1);
+        if (!g_clip_text) { g_clip_len = 0; return; }
+        memcpy(g_clip_text, text, len);
+        g_clip_text[len] = 0;
+    }
+    if (send_to_app) clip_send_set_to_app(g_clip_text ? g_clip_text : "", g_clip_len);
+    clipboard_selection_broadcast();
+}
+
+static void data_offer_accept(struct wl_client *c, struct wl_resource *r,
+                              uint32_t serial, const char *mime_type)
+{ (void)c; (void)r; (void)serial; (void)mime_type; }
+
+static void data_offer_receive(struct wl_client *c, struct wl_resource *r,
+                               const char *mime_type, int fd)
+{ (void)c;
+    struct iosc_data_offer *o = wl_resource_get_user_data(r);
+    if (o && o->text && is_text_mime(mime_type)) write_all_fd(fd, o->text, o->len);
+    close(fd);
+}
+
+static void data_offer_destroy_req(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static void data_offer_finish(struct wl_client *c, struct wl_resource *r)
+{ (void)c; (void)r; }
+static void data_offer_set_actions(struct wl_client *c, struct wl_resource *r, uint32_t dnd, uint32_t pref)
+{ (void)c; (void)r; (void)dnd; (void)pref; }
+
+static const struct wl_data_offer_interface data_offer_impl = {
+    .accept = data_offer_accept,
+    .receive = data_offer_receive,
+    .destroy = data_offer_destroy_req,
+    .finish = data_offer_finish,
+    .set_actions = data_offer_set_actions,
+};
+
+static void data_offer_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_data_offer *o = wl_resource_get_user_data(r);
+    if (!o) return;
+    free(o->text);
+    free(o);
+}
+
+static void data_source_offer(struct wl_client *c, struct wl_resource *r, const char *m)
+{ (void)c;
+    struct iosc_data_source *s = wl_resource_get_user_data(r);
+    if (s && is_text_mime(m) && !s->text_mime) s->text_mime = strdup(m);
+}
+
+static void data_source_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static void data_source_set_actions(struct wl_client *c, struct wl_resource *r, uint32_t a)
+{ (void)c; (void)r; (void)a; }
+
 static const struct wl_data_source_interface data_source_impl = {
-    .offer = data_source_offer, .destroy = data_source_destroy, .set_actions = data_source_set_actions };
+    .offer = data_source_offer,
+    .destroy = data_source_destroy,
+    .set_actions = data_source_set_actions,
+};
+
+static void data_source_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_data_source *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    free(s->text_mime);
+    free(s);
+}
+
+static void source_read_done(struct iosc_source_read *rd, int publish)
+{
+    if (publish) clip_set_text(rd->buf ? rd->buf : "", rd->len, 1);
+    if (rd->src) wl_event_source_remove(rd->src);
+    if (rd->fd >= 0) close(rd->fd);
+    free(rd->buf);
+    free(rd);
+}
+
+static int source_readable(int fd, uint32_t mask, void *data)
+{
+    struct iosc_source_read *rd = data;
+    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) { source_read_done(rd, rd->len > 0); return 0; }
+    for (;;) {
+        char tmp[4096];
+        ssize_t r = read(fd, tmp, sizeof(tmp));
+        if (r > 0) {
+            if (rd->len + (size_t)r > IOSC_CLIP_MAX) { source_read_done(rd, 0); return 0; }
+            if (rd->len + (size_t)r + 1 > rd->cap) {
+                size_t ncap = rd->cap ? rd->cap * 2 : 4096;
+                while (ncap < rd->len + (size_t)r + 1) ncap *= 2;
+                char *nb = realloc(rd->buf, ncap);
+                if (!nb) { source_read_done(rd, 0); return 0; }
+                rd->buf = nb;
+                rd->cap = ncap;
+            }
+            memcpy(rd->buf + rd->len, tmp, (size_t)r);
+            rd->len += (size_t)r;
+            rd->buf[rd->len] = 0;
+            continue;
+        }
+        if (r == 0) { source_read_done(rd, 1); return 0; }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        if (errno == EINTR) continue;
+        source_read_done(rd, 0);
+        return 0;
+    }
+    return 0;
+}
+
 static void data_device_start_drag(struct wl_client *c, struct wl_resource *r, struct wl_resource *src,
                                    struct wl_resource *org, struct wl_resource *icon, uint32_t serial)
-{ (void)c;(void)r;(void)src;(void)org;(void)icon;(void)serial; }
-static void data_device_set_selection(struct wl_client *c, struct wl_resource *r, struct wl_resource *src, uint32_t serial)
-{ (void)c;(void)r;(void)src;(void)serial; }
-static void data_device_release(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+{ (void)c; (void)r; (void)src; (void)org; (void)icon; (void)serial; }
+
+static void data_device_set_selection(struct wl_client *c, struct wl_resource *r,
+                                      struct wl_resource *src, uint32_t serial)
+{ (void)c; (void)r; (void)serial;
+    if (!src) { clip_set_text("", 0, 1); return; }
+    struct iosc_data_source *s = wl_resource_get_user_data(src);
+    if (!s || !s->text_mime) return;
+    int fds[2];
+    if (pipe(fds) != 0) return;
+    fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL, 0) | O_NONBLOCK);
+    struct iosc_source_read *rd = calloc(1, sizeof(*rd));
+    if (!rd) { close(fds[0]); close(fds[1]); return; }
+    rd->fd = fds[0];
+    rd->src = wl_event_loop_add_fd(wl_display_get_event_loop(g_display), fds[0],
+                                   WL_EVENT_READABLE, source_readable, rd);
+    wl_data_source_send_send(src, s->text_mime, fds[1]);
+    close(fds[1]);
+}
+
+static void data_device_release(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
 static const struct wl_data_device_interface data_device_impl = {
-    .start_drag = data_device_start_drag, .set_selection = data_device_set_selection,
-    .release = data_device_release };
+    .start_drag = data_device_start_drag,
+    .set_selection = data_device_set_selection,
+    .release = data_device_release,
+};
+
+static void data_device_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_data_device *d = wl_resource_get_user_data(r);
+    if (!d) return;
+    for (int i = 0; i < g_ndata_devices; i++) {
+        if (g_data_devices[i] == d) {
+            g_data_devices[i] = g_data_devices[--g_ndata_devices];
+            break;
+        }
+    }
+    free(d);
+}
+
 static void ddm_create_data_source(struct wl_client *c, struct wl_resource *r, uint32_t id)
-{ struct wl_resource *s = wl_resource_create(c, &wl_data_source_interface, wl_resource_get_version(r), id);
-  if (s) wl_resource_set_implementation(s, &data_source_impl, NULL, NULL); }
+{
+    struct iosc_data_source *s = calloc(1, sizeof(*s));
+    if (!s) { wl_client_post_no_memory(c); return; }
+    s->resource = wl_resource_create(c, &wl_data_source_interface, wl_resource_get_version(r), id);
+    if (!s->resource) { free(s); wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(s->resource, &data_source_impl, s, data_source_resource_destroy);
+}
+
 static void ddm_get_data_device(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *seat)
 { (void)seat;
-  struct wl_resource *d = wl_resource_create(c, &wl_data_device_interface, wl_resource_get_version(r), id);
-  if (d) wl_resource_set_implementation(d, &data_device_impl, NULL, NULL); }
+    if (g_ndata_devices >= IOSC_MAX_DATA_DEVICES) { wl_client_post_no_memory(c); return; }
+    struct iosc_data_device *d = calloc(1, sizeof(*d));
+    if (!d) { wl_client_post_no_memory(c); return; }
+    d->client = c;
+    d->resource = wl_resource_create(c, &wl_data_device_interface, wl_resource_get_version(r), id);
+    if (!d->resource) { free(d); wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(d->resource, &data_device_impl, d, data_device_resource_destroy);
+    g_data_devices[g_ndata_devices++] = d;
+    if (g_kbd_focus && wl_resource_get_client(g_kbd_focus->resource) == c)
+        clipboard_selection_send_to_device(d);
+}
+
 static const struct wl_data_device_manager_interface ddm_impl = {
-    .create_data_source = ddm_create_data_source, .get_data_device = ddm_get_data_device };
+    .create_data_source = ddm_create_data_source,
+    .get_data_device = ddm_get_data_device,
+};
+
 static void ddm_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 { (void)data;
   struct wl_resource *r = wl_resource_create(client, &wl_data_device_manager_interface, version, id);
   if (!r) { wl_client_post_no_memory(client); return; }
   wl_resource_set_implementation(r, &ddm_impl, NULL, NULL); }
+
+static void clip_rx_reset(struct iosc_clip_client *c)
+{
+    free(c->payload);
+    c->payload = NULL;
+    c->payload_have = 0;
+    c->hdr_have = 0;
+    memset(&c->msg, 0, sizeof(c->msg));
+}
+
+static int clip_client_readable(int fd, uint32_t mask, void *data)
+{
+    struct iosc_clip_client *c = data;
+    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) goto drop;
+    for (;;) {
+        if (c->hdr_have < (int)sizeof(c->hdr)) {
+            ssize_t r = read(fd, c->hdr + c->hdr_have, sizeof(c->hdr) - (size_t)c->hdr_have);
+            if (r > 0) {
+                c->hdr_have += (int)r;
+                if (c->hdr_have < (int)sizeof(c->hdr)) continue;
+                memcpy(&c->msg, c->hdr, sizeof(c->msg));
+                if (c->msg.len > IOSC_CLIP_MAX) goto drop;
+                c->payload = c->msg.len ? calloc(1, c->msg.len + 1u) : NULL;
+                if (c->msg.len && !c->payload) goto drop;
+            } else {
+                if (r == 0) goto drop;
+                if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+                if (errno == EINTR) continue;
+                goto drop;
+            }
+        }
+        while (c->payload_have < c->msg.len) {
+            ssize_t r = read(fd, c->payload + c->payload_have, c->msg.len - c->payload_have);
+            if (r > 0) { c->payload_have += (uint32_t)r; continue; }
+            if (r == 0) goto drop;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+            if (errno == EINTR) continue;
+            goto drop;
+        }
+        if (c->msg.type == IOSC_CLIP_SET)
+            clip_set_text(c->payload ? c->payload : "", c->msg.len, 0);
+        clip_rx_reset(c);
+    }
+    return 0;
+drop:
+    clip_client_drop(c);
+    return 0;
+}
+
+static int clip_listen_readable(int fd, uint32_t mask, void *data)
+{
+    (void)mask;
+    struct wl_event_loop *loop = data;
+    int cfd = accept(fd, NULL, NULL);
+    if (cfd < 0) return 0;
+    fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
+    struct iosc_clip_client *c = calloc(1, sizeof(*c));
+    if (!c) { close(cfd); return 0; }
+    c->fd = cfd;
+    c->src = wl_event_loop_add_fd(loop, cfd, WL_EVENT_READABLE, clip_client_readable, c);
+    int slot = -1;
+    for (int i = 0; i < IOSC_MAX_CLIP_CLIENTS; i++) if (!g_clip_clients[i]) { slot = i; break; }
+    if (slot < 0) { clip_client_drop(c); return 0; }
+    g_clip_clients[slot] = c;
+    if (g_clip_text) clip_send_set_to_client(c, g_clip_text, g_clip_len);
+    fprintf(stderr, "iosc: clipboard client connected (fd=%d)\n", cfd);
+    return 0;
+}
+
+static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
+{
+    unlink(path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    struct sockaddr_un addr; memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); return -1; }
+    if (listen(fd, 4) < 0) { close(fd); return -1; }
+    chmod(path, 0777);
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, clip_listen_readable, loop);
+    return 0;
+}
 
 /* ---- input transport: a tiny AF_UNIX socket the Xios app writes events to ---
  * The app forwards UIKit touch + the iOS keyboard as fixed 24-byte messages. The
@@ -1831,6 +2231,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: input socket failed -> no app input\n");
     else
         fprintf(stderr, "iosc: input socket up at /var/jb/tmp/iosc-input.sock\n");
+    if (clipboard_socket_start(wl_display_get_event_loop(g_display),
+                               "/var/jb/tmp/iosc-clipboard.sock") != 0)
+        fprintf(stderr, "iosc: clipboard socket failed -> no UIPasteboard bridge\n");
+    else
+        fprintf(stderr, "iosc: clipboard socket up at /var/jb/tmp/iosc-clipboard.sock\n");
 
     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
             sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");
