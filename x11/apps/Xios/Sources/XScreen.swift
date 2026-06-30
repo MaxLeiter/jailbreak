@@ -46,8 +46,13 @@ final class XScreenView: UIView {
     private var loadGeneration = 0
     private var userPinned = false              // user picked a display → stop auto-reloading xios.json
     private var displayChip: UIButton?
+    private var zoomButton: UIButton?
     private weak var keyboardButton: UIButton?
+    private weak var toolsButton: UIButton?
     private weak var pickerOverlay: UIView?
+    private let requestPath = "/var/jb/tmp/xios-request.json"
+    private let debugPath = "/var/jb/tmp/xios-debug.txt"
+    private var lastToolMessage = "No profile request sent"
     // UITextInputTraits — keep the keyboard literal so one tap is one char (no
     // autocorrect/autocapitalize substitutions to replay). Settable + @objc so they
     // satisfy the optional UIKeyInput requirements UIKit actually reads.
@@ -63,6 +68,18 @@ final class XScreenView: UIView {
     private weak var altBtn: UIButton?
     private weak var shiftBtn: UIButton?
     private var activeDisplayNumber: Int? { Int(xDisplay.dropFirst()) }
+
+    // View transform. The framebuffer is rendered aspect-fit at zoom=1, then scaled
+    // and panned in view coordinates. Pointer mapping uses the same rect.
+    private let minZoomScale: CGFloat = 1
+    private let maxZoomScale: CGFloat = 6
+    private var zoomScale: CGFloat = 1
+    private var panOffset = CGPoint.zero
+    private var pinchStartZoom: CGFloat = 1
+    private var pinchAnchorFramebuffer: CGPoint?
+    private var panStartOffset = CGPoint.zero
+    private var panLastTranslation = CGPoint.zero
+    private var scrollRemainder = CGPoint.zero
 
     // IOSurface (zero-copy) path
     private var ddxIsIOSurface = false
@@ -80,6 +97,27 @@ final class XScreenView: UIView {
     private var usingTestPattern = false
     private var inputConnected = false
     private var tickCount = 0
+
+    // iosc (Wayland compositor) input path. When the app displays iosc's output rather
+    // than an X server, single-finger touch + the keyboard are forwarded over this Unix
+    // socket as Wayland pointer/keyboard events (see IoscInput.h) instead of via XTEST.
+    // nil = not iosc mode (use the XTEST path). Resolved in loadConfig() from xios.json.
+    private var ioscInputSock: String?
+    private var ioscClipboardSock: String?
+    private var pasteboardChangeCount = UIPasteboard.general.changeCount
+    private var lastSentPasteboard: String?
+    private var usingIosc: Bool { ioscInputSock != nil }
+    // Last single-finger point in output px, so a touch-up (whose UIKit location we may
+    // not be able to map) can send the iosc button-release at the right spot.
+    private var lastTouchPt: (Int32, Int32)?
+
+    private struct DisplayProfile {
+        let name: String
+        let width: Int
+        let height: Int
+        let dpi: Int
+        let detail: String
+    }
 
     // Metal
     private var device: MTLDevice!
@@ -244,7 +282,9 @@ final class XScreenView: UIView {
         super.layoutSubviews()
         let s = metalLayer.contentsScale
         metalLayer.drawableSize = CGSize(width: bounds.width * s, height: bounds.height * s)
+        panOffset = clampedPanOffset(panOffset, zoom: zoomScale)
         needsPresent = true
+        updateZoomButton()
         dumpGeom()
     }
 
@@ -278,6 +318,8 @@ final class XScreenView: UIView {
         let oldAuth = xAuthPath
         let oldIsIOSurface = ddxIsIOSurface
         let oldSocket = ddxSockPath
+        let oldIoscSock = ioscInputSock
+        let oldIoscClipSock = ioscClipboardSock
 
         resetConfigDefaults(resetDisplay: true)
         if let w = obj["width"] as? Int, w > 0 { fbWidth = w }
@@ -291,17 +333,35 @@ final class XScreenView: UIView {
         if let d = obj["display"] as? String, !d.isEmpty { xDisplay = d }
         // Cookie file locking the display (server uses xauth instead of -ac).
         if let a = obj["xauth"] as? String, !a.isEmpty { xAuthPath = a }
+        // iosc advertises a Wayland input socket; route touch+keyboard there instead of
+        // XTEST. Prefer an explicit "input_socket" field; otherwise infer it from an
+        // iosc ddx socket (the compositor's rendezvous is /var/jb/tmp/iosc-ddx.sock).
+        if ddxIsIOSurface {
+            if let s = obj["input_socket"] as? String, !s.isEmpty {
+                ioscInputSock = s
+            } else if ddxSockPath.contains("iosc") {
+                ioscInputSock = "/var/jb/tmp/iosc-input.sock"
+            }
+            if let s = obj["clipboard_socket"] as? String, !s.isEmpty {
+                ioscClipboardSock = s
+            } else if ddxSockPath.contains("iosc") {
+                ioscClipboardSock = "/var/jb/tmp/iosc-clipboard.sock"
+            }
+        }
 
         let renderStateChanged = oldWidth != fbWidth || oldHeight != fbHeight ||
             oldOffset != fbHeaderOffset || oldIsIOSurface != ddxIsIOSurface ||
             oldSocket != ddxSockPath
-        let inputStateChanged = oldDisplay != xDisplay || oldAuth != xAuthPath
+        let inputStateChanged = oldDisplay != xDisplay || oldAuth != xAuthPath ||
+            oldIoscSock != ioscInputSock || oldIoscClipSock != ioscClipboardSock
         if renderStateChanged || inputStateChanged {
             loadGeneration += 1
             iosConnectStarted = false
         }
         if inputStateChanged {
             xinput_close()
+            iosc_input_close()
+            iosc_clipboard_close()
             inputConnected = false
         }
         return true
@@ -344,7 +404,8 @@ final class XScreenView: UIView {
 
     @objc private func tick() {
         tickCount += 1
-        if inputConnected && !xinput_is_open() {
+        serviceIoscClipboard()
+        if inputConnected && !(usingIosc ? iosc_input_is_open() : xinput_is_open()) {
             inputConnected = false
             writeStatus()
         }
@@ -394,22 +455,25 @@ final class XScreenView: UIView {
         _ = render(texture)
     }
 
-    /// Draw the texture aspect-fit into the drawable.
+    /// Draw the texture using the current fit/zoom/pan transform.
     @discardableResult
     private func render(_ tex: MTLTexture) -> Bool {
         guard let drawable = metalLayer.nextDrawable(),
               let cmd = queue.makeCommandBuffer() else { return false }
         let dw = Float(metalLayer.drawableSize.width), dh = Float(metalLayer.drawableSize.height)
         guard dw > 0, dh > 0 else { return false }
-        let scale = min(dw / Float(fbWidth), dh / Float(fbHeight))
-        let sx = Float(fbWidth) * scale / dw      // half-extent in NDC
+        let s = Float(metalLayer.contentsScale)
+        let scale = min(dw / Float(fbWidth), dh / Float(fbHeight)) * Float(zoomScale)
+        let sx = Float(fbWidth) * scale / dw
         let sy = Float(fbHeight) * scale / dh
+        let cx = 2 * Float(panOffset.x) * s / dw
+        let cy = -2 * Float(panOffset.y) * s / dh
         // triangle strip: TL, BL, TR, BR  (pos.xy, uv.xy); uv origin top-left
         var verts: [Float] = [
-            -sx,  sy, 0, 0,
-            -sx, -sy, 0, 1,
-             sx,  sy, 1, 0,
-             sx, -sy, 1, 1,
+            cx - sx, cy + sy, 0, 0,
+            cx - sx, cy - sy, 0, 1,
+            cx + sx, cy + sy, 1, 0,
+            cx + sx, cy - sy, 1, 1,
         ]
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = drawable.texture
@@ -436,14 +500,124 @@ final class XScreenView: UIView {
         } else {
             fb = "test-pattern (no framebuffer at \(fbPath)) [metal]"
         }
-        let inp = inputConnected ? "input-connected \(xDisplay)" : "input-not-connected"
+        let inp = !inputConnected ? "input-not-connected"
+            : (usingIosc ? "input-connected iosc(wayland)" : "input-connected \(xDisplay)")
         try? "\(fb)\n\(inp)\n".write(toFile: "/var/jb/tmp/xios-status.txt", atomically: true, encoding: .utf8)
         updateChip()
+    }
+
+    private var displayProfiles: [DisplayProfile] {
+        let nb = UIScreen.main.nativeBounds
+        let nativeW = max(Int(nb.width), Int(nb.height))
+        let nativeH = min(Int(nb.width), Int(nb.height))
+        return [
+            DisplayProfile(name: "Performance", width: 1024, height: 768, dpi: 96,
+                           detail: "1024x768 @ 96 DPI"),
+            DisplayProfile(name: "Balanced", width: 1366, height: 1024, dpi: 132,
+                           detail: "1366x1024 @ 132 DPI"),
+            DisplayProfile(name: "Native", width: nativeW, height: nativeH, dpi: 264,
+                           detail: "\(nativeW)x\(nativeH) @ 264 DPI"),
+            DisplayProfile(name: "Retina Text", width: nativeW, height: nativeH, dpi: 220,
+                           detail: "\(nativeW)x\(nativeH) @ 220 DPI"),
+            DisplayProfile(name: "Current", width: fbWidth, height: fbHeight, dpi: 0,
+                           detail: "\(fbWidth)x\(fbHeight), keep DPI"),
+        ]
+    }
+
+    private func writeDisplayRequest(_ profile: DisplayProfile) {
+        var obj: [String: Any] = [
+            "action": "display-profile",
+            "profile": profile.name,
+            "width": profile.width,
+            "height": profile.height,
+            "display": xDisplay,
+            "backend": ddxIsIOSurface ? "iosurface" : "xvfb",
+            "created_by": "Xios.app",
+            "created_at": ISO8601DateFormatter().string(from: Date()),
+        ]
+        if profile.dpi > 0 { obj["dpi"] = profile.dpi }
+        do {
+            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
+            lastToolMessage = "Wrote \(profile.detail)"
+        } catch {
+            lastToolMessage = "Request failed: \(error.localizedDescription)"
+        }
+        writeDebugSnapshot()
+    }
+
+    private func reloadRuntimeConfig() {
+        _ = loadConfig()
+        if ddxIsIOSurface, !usingIOSurface { startIOSurfaceConnect() }
+        if !ddxIsIOSurface, mapped == nil, mapFramebuffer() {
+            usingTestPattern = false
+            makeTexture()
+        }
+        connectInput()
+        needsPresent = true
+        writeStatus()
+    }
+
+    private func reconnectInput() {
+        xinput_close()
+        iosc_input_close()
+        iosc_clipboard_close()
+        inputConnected = false
+        connectInput()
+        writeStatus()
+    }
+
+    private func inputBackendName() -> String {
+        usingIosc ? "iosc" : "XTEST"
+    }
+
+    private func debugSnapshot() -> String {
+        let ds = metalLayer.drawableSize
+        let nb = UIScreen.main.nativeBounds
+        let cfg = (try? String(contentsOfFile: configPath, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "(missing)"
+        let req = (try? String(contentsOfFile: requestPath, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "(missing)"
+        return [
+            "Xios Debug",
+            "display=\(xDisplay)",
+            "backend=\(usingIOSurface ? "iosurface" : (mapped != nil ? "xvfb-file" : "test-pattern"))",
+            "ddx_iosurface=\(ddxIsIOSurface)",
+            "fb=\(fbWidth)x\(fbHeight) offset=\(fbHeaderOffset)",
+            "view=\(Int(bounds.width))x\(Int(bounds.height)) drawable=\(Int(ds.width))x\(Int(ds.height)) scale=\(metalLayer.contentsScale)",
+            "native=\(Int(nb.width))x\(Int(nb.height)) zoom=\(Int((zoomScale * 100).rounded())) pan=\(Int(panOffset.x)),\(Int(panOffset.y))",
+            "input=\(inputConnected ? "connected" : "not-connected") backend=\(inputBackendName())",
+            "xauth=\(xAuthPath ?? "(none)")",
+            "ddx_socket=\(ddxSockPath)",
+            "iosc_input=\(ioscInputSock ?? "(none)")",
+            "iosc_clipboard=\(ioscClipboardSock ?? "(none)")",
+            "mapped_len=\(mappedLen) test_pattern=\(usingTestPattern)",
+            "last_message=\(lastToolMessage)",
+            "xios_json=\(cfg)",
+            "xios_request=\(req)",
+        ].joined(separator: "\n") + "\n"
+    }
+
+    private func writeDebugSnapshot() {
+        try? debugSnapshot().write(toFile: debugPath, atomically: true, encoding: .utf8)
+    }
+
+    private func copyDebugSnapshot() {
+        let text = debugSnapshot()
+        UIPasteboard.general.string = text
+        try? text.write(toFile: debugPath, atomically: true, encoding: .utf8)
+        lastToolMessage = "Copied debug"
     }
 
     // MARK: input (XTEST)
 
     private func connectInput() {
+        if let sock = ioscInputSock {
+            // Wayland (iosc): one persistent Unix socket, no display/auth handshake.
+            if inputConnected && iosc_input_is_open() { return }
+            inputConnected = iosc_input_open(sock)
+            return
+        }
         if inputConnected && xinput_is_open() { return }
         if inputConnected { inputConnected = false }
         // Authenticate the XTEST connection with the per-display cookie the server
@@ -452,34 +626,280 @@ final class XScreenView: UIView {
         inputConnected = xinput_open(xDisplay)
     }
 
-    private func framebufferPoint(from p: CGPoint) -> (Int32, Int32)? {
+    private func serviceIoscClipboard() {
+        guard usingIosc, let sock = ioscClipboardSock else {
+            if iosc_clipboard_is_open() { iosc_clipboard_close() }
+            return
+        }
+        if !iosc_clipboard_is_open() {
+            guard iosc_clipboard_open(sock) else { return }
+            pasteboardChangeCount = UIPasteboard.general.changeCount
+            let text = UIPasteboard.general.string ?? ""
+            lastSentPasteboard = text
+            _ = text.withCString { iosc_clipboard_set_text($0) }
+        }
+
+        var buf = [CChar](repeating: 0, count: 1024 * 1024 + 1)
+        var n: Int32 = 0
+        while buf.withUnsafeMutableBufferPointer({ p in
+            iosc_clipboard_poll(p.baseAddress, Int32(p.count), &n)
+        }) {
+            let text = String(cString: buf)
+            UIPasteboard.general.string = text.isEmpty ? nil : text
+            pasteboardChangeCount = UIPasteboard.general.changeCount
+            lastSentPasteboard = text
+        }
+
+        let pb = UIPasteboard.general
+        guard pb.changeCount != pasteboardChangeCount else { return }
+        pasteboardChangeCount = pb.changeCount
+        let text = pb.string ?? ""
+        if text == lastSentPasteboard { return }
+        lastSentPasteboard = text
+        _ = text.withCString { iosc_clipboard_set_text($0) }
+    }
+
+    // Route one pointer/key event to the active backend: iosc (Wayland) or XTEST.
+    private func sendMotion(_ x: Int32, _ y: Int32) {
+        if usingIosc { iosc_input_motion(x, y) } else { xinput_motion(x, y) }
+    }
+    private func sendButton(_ button: Int32, _ down: Bool, at p: (Int32, Int32)?) {
+        if usingIosc {
+            let q = p ?? lastTouchPt ?? (Int32(0), Int32(0))
+            iosc_input_button(button, down, q.0, q.1)
+        } else {
+            xinput_button(button, down)
+        }
+    }
+    private func sendKeysym(_ ks: UInt, ctrl: Bool, alt: Bool, shift: Bool) {
+        if usingIosc {
+            var mods: UInt32 = 0
+            if shift { mods |= 1 }; if ctrl { mods |= 2 }; if alt { mods |= 4 }
+            iosc_input_key(UInt32(ks), mods)   // iosc resolves the keysym + auto-Shift
+        } else {
+            _ = xinput_type_keysym_mods(ks, ctrl, alt, shift, false)
+        }
+    }
+
+    private func sendText(_ text: String) {
+        guard inputConnected else { return }
+        for ch in text {
+            if let ks = keysym(for: ch) {
+                sendKeysym(ks, ctrl: false, alt: false, shift: false)
+            }
+        }
+    }
+
+    private func sendClick(_ button: Int32) {
+        guard inputConnected else { return }
+        let p = lastTouchPt ?? (Int32(fbWidth / 2), Int32(fbHeight / 2))
+        sendMotion(p.0, p.1)
+        sendButton(button, true, at: p)
+        sendButton(button, false, at: p)
+    }
+
+    private func sendWheel(_ button: Int32) {
+        guard inputConnected, !usingIosc else { return }
+        xinput_button(button, true)
+        xinput_button(button, false)
+    }
+
+    private func fittedScale(in size: CGSize) -> CGFloat {
+        guard fbWidth > 0, fbHeight > 0, size.width > 0, size.height > 0 else { return 1 }
+        return min(size.width / CGFloat(fbWidth), size.height / CGFloat(fbHeight))
+    }
+
+    private func contentRect(zoom: CGFloat? = nil, pan: CGPoint? = nil) -> CGRect {
+        let z = zoom ?? zoomScale
+        let p = pan ?? panOffset
+        let scale = fittedScale(in: bounds.size) * z
+        let size = CGSize(width: CGFloat(fbWidth) * scale, height: CGFloat(fbHeight) * scale)
+        let origin = CGPoint(
+            x: bounds.midX - size.width / 2 + p.x,
+            y: bounds.midY - size.height / 2 + p.y)
+        return CGRect(origin: origin, size: size)
+    }
+
+    private func clampedPanOffset(_ p: CGPoint, zoom: CGFloat) -> CGPoint {
+        guard bounds.width > 0, bounds.height > 0 else { return .zero }
+        let rect = contentRect(zoom: zoom, pan: .zero)
+        let maxX = max(0, (rect.width - bounds.width) / 2)
+        let maxY = max(0, (rect.height - bounds.height) / 2)
+        return CGPoint(
+            x: min(max(p.x, -maxX), maxX),
+            y: min(max(p.y, -maxY), maxY))
+    }
+
+    private func framebufferFloatPoint(from p: CGPoint) -> CGPoint? {
         guard fbWidth > 0, fbHeight > 0, bounds.width > 0, bounds.height > 0 else { return nil }
-        let scale = min(bounds.width / CGFloat(fbWidth), bounds.height / CGFloat(fbHeight))
-        let dispW = CGFloat(fbWidth) * scale, dispH = CGFloat(fbHeight) * scale
-        let ox = (bounds.width - dispW) / 2, oy = (bounds.height - dispH) / 2
-        guard p.x >= ox, p.x <= ox + dispW, p.y >= oy, p.y <= oy + dispH else { return nil }
-        let fx = (p.x - ox) / scale, fy = (p.y - oy) / scale
-        return (Int32(max(0, min(CGFloat(fbWidth - 1), fx))),
-                Int32(max(0, min(CGFloat(fbHeight - 1), fy))))
+        let rect = contentRect()
+        guard rect.contains(p) else { return nil }
+        let fx = (p.x - rect.minX) / rect.width * CGFloat(fbWidth)
+        let fy = (p.y - rect.minY) / rect.height * CGFloat(fbHeight)
+        return CGPoint(
+            x: max(0, min(CGFloat(fbWidth - 1), fx)),
+            y: max(0, min(CGFloat(fbHeight - 1), fy)))
+    }
+
+    private func framebufferPoint(from p: CGPoint) -> (Int32, Int32)? {
+        guard let fp = framebufferFloatPoint(from: p) else { return nil }
+        return (Int32(fp.x), Int32(fp.y))
+    }
+
+    private func setZoom(_ z: CGFloat, around screenPoint: CGPoint? = nil) {
+        let oldRect = contentRect()
+        let anchor = screenPoint ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        let ux = oldRect.width > 0 ? (anchor.x - oldRect.minX) / oldRect.width : 0.5
+        let uy = oldRect.height > 0 ? (anchor.y - oldRect.minY) / oldRect.height : 0.5
+        let nextZoom = min(max(z, minZoomScale), maxZoomScale)
+        let baseScale = fittedScale(in: bounds.size) * nextZoom
+        let nextSize = CGSize(width: CGFloat(fbWidth) * baseScale, height: CGFloat(fbHeight) * baseScale)
+        let nextPan = CGPoint(
+            x: anchor.x - bounds.midX + nextSize.width * (0.5 - ux),
+            y: anchor.y - bounds.midY + nextSize.height * (0.5 - uy))
+        zoomScale = nextZoom
+        panOffset = clampedPanOffset(nextPan, zoom: nextZoom)
+        needsPresent = true
+        updateZoomButton()
+    }
+
+    private func resetZoom() {
+        zoomScale = minZoomScale
+        panOffset = .zero
+        scrollRemainder = .zero
+        needsPresent = true
+        updateZoomButton()
+    }
+
+    private func pixelPerfectZoom() -> CGFloat {
+        let fit = fittedScale(in: bounds.size)
+        guard fit > 0, metalLayer.contentsScale > 0 else { return 1 }
+        return min(max(1 / (fit * metalLayer.contentsScale), minZoomScale), maxZoomScale)
+    }
+
+    private func sendScroll(dx: CGFloat, dy: CGFloat) {
+        guard inputConnected else { return }
+        if usingIosc { return }   // iosc input protocol currently has pointer/key only.
+        scrollRemainder.x -= dx
+        scrollRemainder.y -= dy
+        let step: CGFloat = 36
+        while scrollRemainder.y <= -step {
+            xinput_button(4, true); xinput_button(4, false)
+            scrollRemainder.y += step
+        }
+        while scrollRemainder.y >= step {
+            xinput_button(5, true); xinput_button(5, false)
+            scrollRemainder.y -= step
+        }
+        while scrollRemainder.x <= -step {
+            xinput_button(6, true); xinput_button(6, false)
+            scrollRemainder.x += step
+        }
+        while scrollRemainder.x >= step {
+            xinput_button(7, true); xinput_button(7, false)
+            scrollRemainder.x -= step
+        }
+    }
+
+    @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
+        switch g.state {
+        case .began:
+            pinchStartZoom = zoomScale
+            pinchAnchorFramebuffer = framebufferFloatPoint(from: g.location(in: self))
+        case .changed:
+            let location = g.location(in: self)
+            setZoom(pinchStartZoom * g.scale, around: location)
+            if let fp = pinchAnchorFramebuffer {
+                let rect = contentRect()
+                panOffset.x = location.x - bounds.midX + rect.width * (0.5 - fp.x / CGFloat(fbWidth))
+                panOffset.y = location.y - bounds.midY + rect.height * (0.5 - fp.y / CGFloat(fbHeight))
+                panOffset = clampedPanOffset(panOffset, zoom: zoomScale)
+                needsPresent = true
+            }
+        case .ended, .cancelled, .failed:
+            pinchAnchorFramebuffer = nil
+        default:
+            break
+        }
+    }
+
+    @objc private func handleTwoFingerPan(_ g: UIPanGestureRecognizer) {
+        switch g.state {
+        case .began:
+            panStartOffset = panOffset
+            panLastTranslation = .zero
+            scrollRemainder = .zero
+        case .changed:
+            let t = g.translation(in: self)
+            if zoomScale > 1.01 {
+                panOffset = clampedPanOffset(
+                    CGPoint(x: panStartOffset.x + t.x, y: panStartOffset.y + t.y),
+                    zoom: zoomScale)
+                needsPresent = true
+            } else {
+                sendScroll(dx: t.x - panLastTranslation.x, dy: t.y - panLastTranslation.y)
+            }
+            panLastTranslation = t
+        default:
+            panLastTranslation = .zero
+            scrollRemainder = .zero
+        }
+    }
+
+    @objc private func handleTwoFingerTap(_ g: UITapGestureRecognizer) {
+        guard inputConnected, let (x, y) = framebufferPoint(from: g.location(in: self)) else { return }
+        lastTouchPt = (x, y)
+        sendMotion(x, y)
+        sendButton(3, true, at: (x, y))
+        sendButton(3, false, at: (x, y))
+    }
+
+    @objc private func handleTwoFingerDoubleTap(_ g: UITapGestureRecognizer) {
+        if zoomScale > 1.01 { resetZoom() }
+        else { setZoom(pixelPerfectZoom(), around: g.location(in: self)) }
+    }
+
+    @objc private func zoomOut() {
+        if zoomScale <= 1.01 { resetZoom() }
+        else { setZoom(zoomScale / 1.25) }
+    }
+
+    @objc private func zoomIn() {
+        setZoom(zoomScale * 1.25)
+    }
+
+    @objc private func cycleZoom() {
+        if zoomScale <= 1.01 {
+            let z = pixelPerfectZoom()
+            setZoom(z > 1.01 ? z : 2)
+        } else {
+            resetZoom()
+        }
+    }
+
+    private func updateZoomButton() {
+        zoomButton?.setTitle("\(Int((zoomScale * 100).rounded()))%", for: .normal)
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
-        xinput_motion(x, y); xinput_button(1, true)
+        lastTouchPt = (x, y)
+        sendMotion(x, y); sendButton(1, true, at: (x, y))
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
-        xinput_motion(x, y)
+        lastTouchPt = (x, y)
+        sendMotion(x, y)
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if inputConnected { xinput_button(1, false) }
+        if inputConnected { sendButton(1, false, at: lastTouchPt) }
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if inputConnected { xinput_button(1, false) }
+        if inputConnected { sendButton(1, false, at: lastTouchPt) }
     }
 
     // MARK: display discovery + picker
@@ -525,17 +945,20 @@ final class XScreenView: UIView {
         ddxIsIOSurface = false
         ddxSockPath = "/var/jb/tmp/xios-ddx.sock"
         xAuthPath = nil
+        ioscInputSock = nil
+        ioscClipboardSock = nil
         if resetDisplay { xDisplay = ":3" }
     }
 
     /// Drop every connection tied to the current display so we can load another.
     private func teardownConnections() {
-        xinput_close(); inputConnected = false
+        xinput_close(); iosc_input_close(); iosc_clipboard_close(); inputConnected = false
         if let c = xconn { xsurface_close(c); xconn = nil }
         iosTexture = nil; usingIOSurface = false; iosConnectStarted = false; needsPresent = false
         if let m = mapped { munmap(m, mappedLen); mapped = nil; mappedLen = 0 }
         testBuf?.deallocate(); testBuf = nil
         usingTestPattern = false
+        resetZoom()
     }
 
     /// Switch to a display the user picked: tear down the old one, apply the new
@@ -579,7 +1002,19 @@ final class XScreenView: UIView {
         kb.addAction(UIAction { [weak self] _ in self?.toggleKeyboard() }, for: .touchUpInside)
         keyboardButton = kb
 
-        let bar = UIStackView(arrangedSubviews: [chip, kb])
+        let tools = chromeButton("⚙")
+        tools.addAction(UIAction { [weak self] _ in self?.openTools() }, for: .touchUpInside)
+        toolsButton = tools
+
+        let zoomOut = chromeButton("−")
+        zoomOut.addAction(UIAction { [weak self] _ in self?.zoomOut() }, for: .touchUpInside)
+        let zoom = chromeButton("100%")
+        zoom.addAction(UIAction { [weak self] _ in self?.cycleZoom() }, for: .touchUpInside)
+        zoomButton = zoom
+        let zoomIn = chromeButton("+")
+        zoomIn.addAction(UIAction { [weak self] _ in self?.zoomIn() }, for: .touchUpInside)
+
+        let bar = UIStackView(arrangedSubviews: [chip, zoomOut, zoom, zoomIn, kb, tools])
         bar.axis = .horizontal
         bar.spacing = 8
         bar.translatesAutoresizingMaskIntoConstraints = false
@@ -595,6 +1030,26 @@ final class XScreenView: UIView {
         let g = UITapGestureRecognizer(target: self, action: #selector(openPicker))
         g.numberOfTouchesRequired = 3
         addGestureRecognizer(g)
+
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinch.delegate = self
+        addGestureRecognizer(pinch)
+
+        let twoFingerPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        twoFingerPan.minimumNumberOfTouches = 2
+        twoFingerPan.maximumNumberOfTouches = 2
+        twoFingerPan.delegate = self
+        addGestureRecognizer(twoFingerPan)
+
+        let twoFingerDoubleTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerDoubleTap(_:)))
+        twoFingerDoubleTap.numberOfTouchesRequired = 2
+        twoFingerDoubleTap.numberOfTapsRequired = 2
+        addGestureRecognizer(twoFingerDoubleTap)
+
+        let twoFingerTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerTap(_:)))
+        twoFingerTap.numberOfTouchesRequired = 2
+        twoFingerTap.require(toFail: twoFingerDoubleTap)
+        addGestureRecognizer(twoFingerTap)
     }
 
     private func chromeButton(_ title: String) -> UIButton {
@@ -731,6 +1186,241 @@ final class XScreenView: UIView {
         pickerOverlay = nil
     }
 
+    @objc private func openTools() {
+        presentTools()
+    }
+
+    private func presentTools() {
+        dismissPicker()
+
+        let overlay = UIView(frame: bounds)
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(overlay)
+        pickerOverlay = overlay
+
+        let backdrop = UIButton(type: .custom)
+        backdrop.frame = overlay.bounds
+        backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        backdrop.addAction(UIAction { [weak self] _ in self?.dismissPicker() }, for: .touchUpInside)
+        overlay.addSubview(backdrop)
+
+        let card = UIView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.backgroundColor = UIColor(white: 0.12, alpha: 1)
+        card.layer.cornerRadius = 16
+        overlay.addSubview(card)
+
+        let scroll = UIScrollView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(scroll)
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(stack)
+
+        let title = panelLabel("Tools", size: 18, weight: .bold)
+        stack.addArrangedSubview(title)
+
+        let message = panelLabel(lastToolMessage, size: 12, color: UIColor(white: 0.72, alpha: 1))
+        stack.addArrangedSubview(message)
+
+        addSection("Display Profiles", to: stack)
+        for profile in displayProfiles {
+            stack.addArrangedSubview(panelButton("\(profile.name)  \(profile.detail)") { [weak self, weak message] in
+                self?.writeDisplayRequest(profile)
+                message?.text = self?.lastToolMessage
+            })
+        }
+
+        addSection("Debug", to: stack)
+        let debugView = UITextView()
+        debugView.translatesAutoresizingMaskIntoConstraints = false
+        debugView.isEditable = false
+        debugView.isScrollEnabled = true
+        debugView.backgroundColor = UIColor(white: 0.08, alpha: 1)
+        debugView.textColor = UIColor(white: 0.86, alpha: 1)
+        debugView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        debugView.layer.cornerRadius = 8
+        debugView.text = debugSnapshot()
+        stack.addArrangedSubview(debugView)
+        debugView.heightAnchor.constraint(equalToConstant: 180).isActive = true
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Copy Debug") { [weak self, weak debugView, weak message] in
+                self?.copyDebugSnapshot()
+                debugView?.text = self?.debugSnapshot()
+                message?.text = self?.lastToolMessage
+            },
+            panelButton("Write Debug") { [weak self, weak debugView, weak message] in
+                self?.writeDebugSnapshot()
+                self?.lastToolMessage = "Wrote xios-debug.txt"
+                debugView?.text = self?.debugSnapshot()
+                message?.text = self?.lastToolMessage
+            },
+        ]))
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Reload Config") { [weak self, weak debugView] in
+                self?.reloadRuntimeConfig()
+                debugView?.text = self?.debugSnapshot()
+            },
+            panelButton("Reconnect Input") { [weak self, weak debugView] in
+                self?.reconnectInput()
+                debugView?.text = self?.debugSnapshot()
+            },
+        ]))
+
+        addSection("Custom Input", to: stack)
+        let textField = panelTextField("Text")
+        stack.addArrangedSubview(textField)
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Send Text") { [weak self, weak textField] in
+                self?.sendText(textField?.text ?? "")
+                textField?.text = ""
+            },
+            panelButton("Paste") { [weak self] in
+                self?.sendText(UIPasteboard.general.string ?? "")
+            },
+        ]))
+
+        var customCtrl = false
+        var customAlt = false
+        var customShift = false
+        var ctrlButton: UIButton!
+        var altButton: UIButton!
+        var shiftButton: UIButton!
+        ctrlButton = panelButton("Ctrl") { [weak self] in
+            customCtrl.toggle()
+            self?.stylePanelToggle(ctrlButton, on: customCtrl)
+        }
+        altButton = panelButton("Alt") { [weak self] in
+            customAlt.toggle()
+            self?.stylePanelToggle(altButton, on: customAlt)
+        }
+        shiftButton = panelButton("Shift") { [weak self] in
+            customShift.toggle()
+            self?.stylePanelToggle(shiftButton, on: customShift)
+        }
+        stack.addArrangedSubview(buttonRow([ctrlButton, altButton, shiftButton]))
+
+        let keysymField = panelTextField("Keysym hex, e.g. ff1b")
+        stack.addArrangedSubview(keysymField)
+        stack.addArrangedSubview(panelButton("Send KeySym") { [weak self, weak keysymField] in
+            let raw = (keysymField?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = raw.lowercased().hasPrefix("0x") ? String(raw.dropFirst(2)) : raw
+            if let value = UInt(cleaned, radix: 16) {
+                self?.sendKeysym(value, ctrl: customCtrl, alt: customAlt, shift: customShift)
+            }
+        })
+
+        stack.addArrangedSubview(buttonRow([
+            keyButton("Esc", 0xff1b, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("Tab", 0xff09, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("Enter", 0xff0d, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("Back", 0xff08, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+        ]))
+        stack.addArrangedSubview(buttonRow([
+            keyButton("Left", 0xff51, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("Up", 0xff52, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("Down", 0xff54, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("Right", 0xff53, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+        ]))
+        stack.addArrangedSubview(buttonRow([
+            keyButton("Home", 0xff50, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("End", 0xff57, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("PgUp", 0xff55, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+            keyButton("PgDn", 0xff56, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
+        ]))
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Left Click") { [weak self] in self?.sendClick(1) },
+            panelButton("Middle") { [weak self] in self?.sendClick(2) },
+            panelButton("Right") { [weak self] in self?.sendClick(3) },
+        ]))
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Wheel Up") { [weak self] in self?.sendWheel(4) },
+            panelButton("Wheel Down") { [weak self] in self?.sendWheel(5) },
+            panelButton("Wheel Left") { [weak self] in self?.sendWheel(6) },
+            panelButton("Wheel Right") { [weak self] in self?.sendWheel(7) },
+        ]))
+
+        stack.addArrangedSubview(panelButton("Close") { [weak self] in self?.dismissPicker() })
+
+        NSLayoutConstraint.activate([
+            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
+            card.widthAnchor.constraint(greaterThanOrEqualToConstant: 420),
+            card.widthAnchor.constraint(lessThanOrEqualToConstant: 560),
+            card.heightAnchor.constraint(lessThanOrEqualTo: overlay.safeAreaLayoutGuide.heightAnchor, constant: -32),
+            scroll.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
+            scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            scroll.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            scroll.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+        ])
+    }
+
+    private func addSection(_ title: String, to stack: UIStackView) {
+        let label = panelLabel(title, size: 14, weight: .semibold, color: UIColor(white: 0.9, alpha: 1))
+        label.setContentHuggingPriority(.required, for: .vertical)
+        stack.addArrangedSubview(label)
+    }
+
+    private func panelLabel(_ text: String, size: CGFloat, weight: UIFont.Weight = .regular,
+                            color: UIColor = .white) -> UILabel {
+        let label = UILabel()
+        label.text = text
+        label.textColor = color
+        label.font = .systemFont(ofSize: size, weight: weight)
+        label.numberOfLines = 0
+        return label
+    }
+
+    private func panelTextField(_ placeholder: String) -> UITextField {
+        let f = UITextField()
+        f.borderStyle = .roundedRect
+        f.placeholder = placeholder
+        f.autocorrectionType = .no
+        f.autocapitalizationType = .none
+        f.spellCheckingType = .no
+        f.clearButtonMode = .whileEditing
+        f.font = .systemFont(ofSize: 15)
+        return f
+    }
+
+    private func panelButton(_ title: String, _ action: @escaping () -> Void) -> UIButton {
+        let b = pillButton(title, action)
+        b.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        return b
+    }
+
+    private func buttonRow(_ buttons: [UIButton]) -> UIStackView {
+        let row = UIStackView(arrangedSubviews: buttons)
+        row.axis = .horizontal
+        row.spacing = 8
+        row.distribution = .fillEqually
+        return row
+    }
+
+    private func stylePanelToggle(_ b: UIButton?, on: Bool) {
+        b?.backgroundColor = on ? UIColor.systemBlue.withAlphaComponent(0.85) : UIColor(white: 0.25, alpha: 1)
+    }
+
+    private func keyButton(_ title: String, _ keysym: UInt,
+                           ctrl: @escaping () -> Bool,
+                           alt: @escaping () -> Bool,
+                           shift: @escaping () -> Bool) -> UIButton {
+        panelButton(title) { [weak self] in
+            self?.sendKeysym(keysym, ctrl: ctrl(), alt: alt(), shift: shift())
+        }
+    }
+
     // MARK: keyboard (iOS keyboard -> XTEST)
 
     override var canBecomeFirstResponder: Bool { true }
@@ -765,7 +1455,7 @@ final class XScreenView: UIView {
     /// Send a non-text key (Esc/Tab/arrows) with the armed sticky modifiers, then clear them.
     private func sendSpecial(_ ks: UInt) {
         guard inputConnected else { return }
-        _ = xinput_type_keysym_mods(ks, modCtrl, modAlt, modShift, false)
+        sendKeysym(ks, ctrl: modCtrl, alt: modAlt, shift: modShift)
         clearStickyMods()
     }
 
@@ -873,7 +1563,7 @@ extension XScreenView: UIKeyInput {
                 let useCtrl = modCtrl
                 let useAlt = modAlt
                 let useShift = modShift
-                _ = xinput_type_keysym_mods(ks, useCtrl, useAlt, useShift, false)
+                sendKeysym(ks, ctrl: useCtrl, alt: useAlt, shift: useShift)
                 if useCtrl || useAlt || useShift { clearStickyMods() }
             }
         }
@@ -882,7 +1572,14 @@ extension XScreenView: UIKeyInput {
 
     func deleteBackward() {
         guard inputConnected else { return }
-        _ = xinput_type_keysym_mods(0xff08, modCtrl, modAlt, modShift, false)   // XK_BackSpace
+        sendKeysym(0xff08, ctrl: modCtrl, alt: modAlt, shift: modShift)   // XK_BackSpace
         clearStickyMods()
+    }
+}
+
+extension XScreenView: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        gestureRecognizer is UIPinchGestureRecognizer || otherGestureRecognizer is UIPinchGestureRecognizer
     }
 }
