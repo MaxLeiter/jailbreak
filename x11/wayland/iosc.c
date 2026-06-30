@@ -57,6 +57,7 @@ static uint8_t          *g_fb;        /* IOSurface base address (BGRA8) */
 static int               g_width  = 2160;  /* iPad 7 native; app aspect-fits anyway */
 static int               g_height = 1620;
 static int               g_stride;    /* real bytes-per-row (IOSurface-padded) */
+static int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
 
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
@@ -67,6 +68,12 @@ static uint32_t now_ms(void)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
+
+static int output_px_to_mm(int px)
+{
+    int dpi = g_output_dpi > 0 ? g_output_dpi : 96;
+    return (px * 254 + dpi * 5) / (dpi * 10);
 }
 
 /* ---- per-surface state --------------------------------------------------- */
@@ -1261,7 +1268,8 @@ static void output_bind(struct wl_client *client, void *data, uint32_t version, 
     if (!r) { wl_client_post_no_memory(client); return; }
     /* No requests in v1/v2 (release is v3); NULL impl is fine. */
     wl_resource_set_implementation(r, NULL, NULL, NULL);
-    wl_output_send_geometry(r, 0, 0, 207, 156, WL_OUTPUT_SUBPIXEL_UNKNOWN,
+    wl_output_send_geometry(r, 0, 0, output_px_to_mm(g_width), output_px_to_mm(g_height),
+                            WL_OUTPUT_SUBPIXEL_UNKNOWN,
                             "iosc", "iosc-output", WL_OUTPUT_TRANSFORM_NORMAL);
     wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED,
                         g_width, g_height, 60000);
@@ -2161,6 +2169,9 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-g") && i + 1 < argc) {
             sscanf(argv[++i], "%dx%d", &g_width, &g_height);
+        } else if (!strcmp(argv[i], "-dpi") && i + 1 < argc) {
+            int dpi = atoi(argv[++i]);
+            if (dpi > 0) g_output_dpi = dpi;
         } else if (!strcmp(argv[i], "-s") && i + 1 < argc) {
             sock_name = argv[++i];
         }
@@ -2178,8 +2189,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;
     }
-    fprintf(stderr, "iosc: output IOSurface %dx%d stride=%d; app socket=%s\n",
-            g_width, g_height, g_stride, ddx_sock);
+    fprintf(stderr, "iosc: output IOSurface %dx%d stride=%d dpi=%d; app socket=%s\n",
+            g_width, g_height, g_stride, g_output_dpi, ddx_sock);
 
     /* 1b) GPU compositor: an ANGLE context whose render target is the output
      *     IOSurface, so commits are composited on the GPU (client IOSurfaces

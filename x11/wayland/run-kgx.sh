@@ -11,6 +11,7 @@ set -u
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export XDG_RUNTIME_DIR=/var/jb/tmp
 TMP=/var/jb/tmp
+[ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 BIN=/var/jb/usr/local/bin
 SHELL_BIN=/var/jb/usr/bin/bash
