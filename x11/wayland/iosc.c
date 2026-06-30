@@ -58,6 +58,7 @@ static int               g_width  = 2160;  /* iPad 7 native; app aspect-fits any
 static int               g_height = 1620;
 static int               g_stride;    /* real bytes-per-row (IOSurface-padded) */
 static int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
+static int               g_output_scale = 2; /* logical -> physical output pixels */
 
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
@@ -74,6 +75,34 @@ static int output_px_to_mm(int px)
 {
     int dpi = g_output_dpi > 0 ? g_output_dpi : 96;
     return (px * 254 + dpi * 5) / (dpi * 10);
+}
+
+static int output_scale(void)
+{
+    return g_output_scale > 0 ? g_output_scale : 1;
+}
+
+static int output_logical_width(void)
+{
+    int s = output_scale();
+    return (g_width + s - 1) / s;
+}
+
+static int output_logical_height(void)
+{
+    int s = output_scale();
+    return (g_height + s - 1) / s;
+}
+
+static int buffer_to_logical(int px, int scale)
+{
+    int s = scale > 0 ? scale : 1;
+    return (px + s - 1) / s;
+}
+
+static int physical_to_logical(int px)
+{
+    return px / output_scale();
 }
 
 /* ---- per-surface state --------------------------------------------------- */
@@ -123,6 +152,9 @@ struct iosc_surface {
     int                 buffer_listener_active;
     int                 sw, sh;          /* current buffer source dimensions */
     int                 dx, dy;          /* placement (top-left) on the output */
+    int                 pending_buffer_scale;
+    int                 current_buffer_scale;
+    int                 pending_scale_dirty;
     int                 mapped;          /* present in the z-order list */
     enum iosc_role      role;
     struct iosc_surface *parent;
@@ -144,10 +176,19 @@ struct iosc_frame {
     struct wl_list      link;
 };
 
-/* The per-toplevel window size we configure clients to (so windows are smaller
- * than the screen and visibly stack); M2 cascades them. */
-#define IOSC_WIN_W 1500
-#define IOSC_WIN_H 1000
+/* The per-toplevel window size is logical, so high-DPI clients lay out like a
+ * normal desktop while the compositor still presents into a native IOSurface. */
+static int default_window_w(void)
+{
+    int w = output_logical_width() - 80;
+    return w > 1 ? w : output_logical_width();
+}
+
+static int default_window_h(void)
+{
+    int h = output_logical_height() - 80;
+    return h > 1 ? h : output_logical_height();
+}
 
 /* Mapped surfaces in z-order: [0] = bottom, [g_nmapped-1] = top. The compositor
  * recomposites this whole list (back to front) on every commit. */
@@ -171,15 +212,16 @@ static int clampi(int v, int lo, int hi)
 
 static void surface_display_size(struct iosc_surface *s, int *w, int *h)
 {
+    int scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
     if (s->viewport && s->viewport->has_dst) {
         *w = s->viewport->dst_w;
         *h = s->viewport->dst_h;
     } else if (s->viewport && s->viewport->has_src) {
-        *w = s->viewport->src_w;
-        *h = s->viewport->src_h;
+        *w = buffer_to_logical(s->viewport->src_w, scale);
+        *h = buffer_to_logical(s->viewport->src_h, scale);
     } else {
-        *w = s->sw;
-        *h = s->sh;
+        *w = buffer_to_logical(s->sw, scale);
+        *h = buffer_to_logical(s->sh, scale);
     }
 }
 
@@ -245,19 +287,33 @@ static void presentation_discard_surface(struct iosc_surface *s)
     }
 }
 
-/* CPU-fallback blit of a wl_shm buffer to the output top-left (only used when the
- * GPU compositor is unavailable; the GPU path in recomposite_all() is the norm). */
-static void cpu_blit_shm(struct wl_resource *buffer)
+/* CPU-fallback blit of the top wl_shm surface. Kept simple; the ANGLE/GPU path is
+ * the native path and handles IOSurface clients. */
+static void cpu_blit_shm(struct iosc_surface *s)
 {
+    struct wl_resource *buffer = s->current_buffer;
     struct wl_shm_buffer *shm = wl_shm_buffer_get(buffer);
     if (!shm) return;
+    int dw = 0, dh = 0, sx = 0, sy = 0, src_w = 0, src_h = 0;
+    surface_display_size(s, &dw, &dh);
+    surface_source_rect(s, &sx, &sy, &src_w, &src_h);
+    int os = output_scale();
+    int dxp = s->dx * os, dyp = s->dy * os, dwp = dw * os, dhp = dh * os;
+    if (dwp <= 0 || dhp <= 0 || src_w <= 0 || src_h <= 0) return;
     wl_shm_buffer_begin_access(shm);
     const uint8_t *src = wl_shm_buffer_get_data(shm);
     int src_stride = wl_shm_buffer_get_stride(shm);
-    int rows = wl_shm_buffer_get_height(shm); if (rows > g_height) rows = g_height;
-    int cols = wl_shm_buffer_get_width(shm);  if (cols > g_width)  cols = g_width;
-    for (int y = 0; y < rows; y++)
-        memcpy(g_fb + (size_t)y * g_stride, src + (size_t)y * src_stride, (size_t)cols * 4);
+    int max_y = dyp + dhp; if (max_y > g_height) max_y = g_height;
+    int max_x = dxp + dwp; if (max_x > g_width) max_x = g_width;
+    for (int y = dyp; y < max_y; y++) {
+        int src_y = sy + (int)((long long)(y - dyp) * src_h / dhp);
+        uint32_t *dst = (uint32_t *)(g_fb + (size_t)y * g_stride);
+        const uint32_t *row = (const uint32_t *)(src + (size_t)src_y * src_stride);
+        for (int x = dxp; x < max_x; x++) {
+            int src_x = sx + (int)((long long)(x - dxp) * src_w / dwp);
+            dst[x] = row[src_x];
+        }
+    }
     wl_shm_buffer_end_access(shm);
 }
 
@@ -299,19 +355,21 @@ static void composite_one(struct iosc_surface *s)
     surface_display_size(s, &dw, &dh);
     surface_source_rect(s, &sx, &sy, &src_w, &src_h);
     if (dw <= 0 || dh <= 0 || src_w <= 0 || src_h <= 0) return;
+    int os = output_scale();
+    int dxp = s->dx * os, dyp = s->dy * os, dwp = dw * os, dhp = dh * os;
     struct wl_shm_buffer *shm = wl_shm_buffer_get(buf);
     if (shm) {
         wl_shm_buffer_begin_access(shm);
         iosc_gl_draw_shm(wl_shm_buffer_get_data(shm),
                          wl_shm_buffer_get_width(shm), wl_shm_buffer_get_height(shm),
                          wl_shm_buffer_get_stride(shm), sx, sy, src_w, src_h,
-                         s->dx, s->dy, dw, dh);
+                         dxp, dyp, dwp, dhp);
         wl_shm_buffer_end_access(shm);
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &iosurface_buffer_impl)) {
         struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(buf);
         if (ib && ib->surface)
             iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
-                                   s->dx, s->dy, dw, dh);
+                                   dxp, dyp, dwp, dhp);
     }
 }
 
@@ -346,7 +404,8 @@ static void recomposite_all(void)
         fprintf(stderr, "iosc: recomposited %d surface(s) on GPU:", g_nmapped);
         for (int i = 0; i < g_nmapped; i++) {
             struct iosc_surface *s = g_mapped[i];
-            uint32_t px = iosc_gl_read_at(s->dx + 30, s->dy + 30);
+            int os = output_scale();
+            uint32_t px = iosc_gl_read_at((s->dx + 30) * os, (s->dy + 30) * os);
             fprintf(stderr, " [w%d @%d,%d corner=0x%08x]", i, s->dx, s->dy, px);
         }
         fprintf(stderr, " overlap-center=0x%08x\n", center);
@@ -376,8 +435,9 @@ static void recomposite_all(void)
     if (g_nmapped == 0) return;
     struct iosc_surface *s = g_mapped[g_nmapped - 1];
     if (!s->current_buffer) return;
-    if (wl_shm_buffer_get(s->current_buffer)) cpu_blit_shm(s->current_buffer);
-    else if (wl_resource_instance_of(s->current_buffer, &wl_buffer_interface, &iosurface_buffer_impl)) {
+    if (wl_shm_buffer_get(s->current_buffer)) cpu_blit_shm(s);
+    else if (output_scale() == 1 &&
+             wl_resource_instance_of(s->current_buffer, &wl_buffer_interface, &iosurface_buffer_impl)) {
         struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(s->current_buffer);
         if (ib && ib->surface) xios_blit_client_iosurface(ib->surface);
     }
@@ -534,6 +594,14 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
 {
     (void)c;
     struct iosc_surface *s = wl_resource_get_user_data(r);
+    int need_recomposite = 0;
+    int send_presented = 0;
+
+    if (s->pending_scale_dirty) {
+        s->current_buffer_scale = s->pending_buffer_scale > 0 ? s->pending_buffer_scale : 1;
+        s->pending_scale_dirty = 0;
+        need_recomposite = s->mapped;
+    }
 
     if (s->buffer_attached) {
         struct wl_resource *buf = s->pending_buffer;
@@ -560,9 +628,12 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
             surface_set_buffer(s, NULL, 0, 0, 1);
             surface_unmap(s);
         }
-        recomposite_all();
-        presentation_present_surface(s);
+        need_recomposite = 1;
+        send_presented = 1;
     }
+
+    if (need_recomposite) recomposite_all();
+    if (send_presented) presentation_present_surface(s);
 
     /* Fire (and retire) frame callbacks: tells the client it may draw the next
      * frame. Without this, throttled clients (simple-shm, GTK) stall after one. */
@@ -580,7 +651,16 @@ static void surface_set_buffer_transform(struct wl_client *c, struct wl_resource
 { (void)c; (void)r; (void)transform; }
 static void surface_set_buffer_scale(struct wl_client *c, struct wl_resource *r,
                                      int32_t scale)
-{ (void)c; (void)r; (void)scale; }
+{ (void)c;
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (scale < 1) {
+        wl_resource_post_error(r, WL_SURFACE_ERROR_INVALID_SCALE,
+                               "invalid buffer scale %d", scale);
+        return;
+    }
+    s->pending_buffer_scale = scale;
+    s->pending_scale_dirty = 1;
+}
 static void surface_damage_buffer(struct wl_client *c, struct wl_resource *r,
                                   int32_t x, int32_t y, int32_t w, int32_t h)
 { (void)c; (void)r; (void)x; (void)y; (void)w; (void)h; }
@@ -659,6 +739,8 @@ static void compositor_create_surface(struct wl_client *client,
     if (!s) { wl_client_post_no_memory(client); return; }
     wl_list_init(&s->frame_callbacks);
     wl_list_init(&s->presentation_feedbacks);
+    s->pending_buffer_scale = 1;
+    s->current_buffer_scale = 1;
     s->resource = wl_resource_create(client, &wl_surface_interface,
                                      wl_resource_get_version(resource), id);
     if (!s->resource) { free(s); wl_client_post_no_memory(client); return; }
@@ -788,7 +870,7 @@ static void fractional_manager_get(struct wl_client *c, struct wl_resource *r,
                                                 wl_resource_get_version(r), id);
     if (!sr) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(sr, &fractional_scale_impl, NULL, NULL);
-    wp_fractional_scale_v1_send_preferred_scale(sr, 120);
+    wp_fractional_scale_v1_send_preferred_scale(sr, (uint32_t)(output_scale() * 120));
 }
 static const struct wp_fractional_scale_manager_v1_interface fractional_manager_impl = {
     .destroy = fractional_manager_destroy,
@@ -1046,8 +1128,12 @@ static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
     if (is_top(p->gravity)) y -= p->size_h;
     else if (!is_bottom(p->gravity) && !has_y(p->gravity)) y -= p->size_h / 2;
 
-    int abs_x = clampi(s->parent->dx + x, 0, g_width - p->size_w);
-    int abs_y = clampi(s->parent->dy + y, 0, g_height - p->size_h);
+    int max_x = output_logical_width() - p->size_w;
+    int max_y = output_logical_height() - p->size_h;
+    if (max_x < 0) max_x = 0;
+    if (max_y < 0) max_y = 0;
+    int abs_x = clampi(s->parent->dx + x, 0, max_x);
+    int abs_y = clampi(s->parent->dy + y, 0, max_y);
     s->rel_x = abs_x - s->parent->dx;
     s->rel_y = abs_y - s->parent->dy;
     surface_place_child(s);
@@ -1137,7 +1223,7 @@ static void send_initial_configure(struct iosc_surface *s)
     uint32_t *st = wl_array_add(&states, sizeof(uint32_t));
     if (st) *st = XDG_TOPLEVEL_STATE_ACTIVATED;
     /* Windowed size (not fullscreen) so multiple toplevels visibly stack. */
-    xdg_toplevel_send_configure(s->xdg_toplevel, IOSC_WIN_W, IOSC_WIN_H, &states);
+    xdg_toplevel_send_configure(s->xdg_toplevel, default_window_w(), default_window_h(), &states);
     wl_array_release(&states);
 
     uint32_t serial = wl_display_next_serial(g_display);
@@ -1181,7 +1267,7 @@ static void xs_get_toplevel(struct wl_client *c, struct wl_resource *r, uint32_t
     s->role = IOSC_ROLE_TOPLEVEL;
     s->xdg_toplevel = tl;
     fprintf(stderr, "iosc: xdg_toplevel created -> sending initial configure %dx%d\n",
-            IOSC_WIN_W, IOSC_WIN_H);
+            default_window_w(), default_window_h());
     send_initial_configure(s);
 }
 static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id,
@@ -1274,7 +1360,7 @@ static void output_bind(struct wl_client *client, void *data, uint32_t version, 
     wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED,
                         g_width, g_height, 60000);
     if (version >= 2) {
-        wl_output_send_scale(r, 1);
+        wl_output_send_scale(r, output_scale());
         wl_output_send_done(r);
     }
 }
@@ -2075,9 +2161,11 @@ struct iosc_in_client {
 
 static void in_dispatch(const struct iosc_in_msg *m)
 {
+    int x = physical_to_logical(m->x);
+    int y = physical_to_logical(m->y);
     switch (m->type) {
-        case IOSC_IN_MOTION: handle_motion(m->x, m->y); break;
-        case IOSC_IN_BUTTON: handle_motion(m->x, m->y);
+        case IOSC_IN_MOTION: handle_motion(x, y); break;
+        case IOSC_IN_BUTTON: handle_motion(x, y);
                              handle_button((int)m->code, (int)m->state); break;
         case IOSC_IN_KEY:    handle_key(m->code, m->mods); break;
     }
@@ -2172,6 +2260,9 @@ int main(int argc, char **argv)
         } else if (!strcmp(argv[i], "-dpi") && i + 1 < argc) {
             int dpi = atoi(argv[++i]);
             if (dpi > 0) g_output_dpi = dpi;
+        } else if (!strcmp(argv[i], "-scale") && i + 1 < argc) {
+            int scale = atoi(argv[++i]);
+            if (scale > 0) g_output_scale = scale;
         } else if (!strcmp(argv[i], "-s") && i + 1 < argc) {
             sock_name = argv[++i];
         }
@@ -2189,8 +2280,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;
     }
-    fprintf(stderr, "iosc: output IOSurface %dx%d stride=%d dpi=%d; app socket=%s\n",
-            g_width, g_height, g_stride, g_output_dpi, ddx_sock);
+    fprintf(stderr, "iosc: output IOSurface %dx%d stride=%d; logical=%dx%d scale=%d dpi=%d; app socket=%s\n",
+            g_width, g_height, g_stride,
+            output_logical_width(), output_logical_height(), output_scale(), g_output_dpi,
+            ddx_sock);
 
     /* 1b) GPU compositor: an ANGLE context whose render target is the output
      *     IOSurface, so commits are composited on the GPU (client IOSurfaces
