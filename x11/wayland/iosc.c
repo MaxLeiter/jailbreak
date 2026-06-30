@@ -1757,6 +1757,32 @@ static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surfa
     }
 }
 
+static struct iosc_text_input *text_input_for_focus(void)
+{
+    if (!g_kbd_focus) return NULL;
+    struct wl_client *client = wl_resource_get_client(g_kbd_focus->resource);
+    for (int i = 0; i < g_ntext_inputs; i++) {
+        struct iosc_text_input *ti = g_text_inputs[i];
+        if (ti && ti->client == client && ti->focus_surface == g_kbd_focus && ti->enabled)
+            return ti;
+    }
+    return NULL;
+}
+
+static int text_input_commit_text(const char *text, size_t len)
+{
+    struct iosc_text_input *ti = text_input_for_focus();
+    if (!ti || !text || len == 0) return 0;
+    char *copy = malloc(len + 1);
+    if (!copy) return -1;
+    memcpy(copy, text, len);
+    copy[len] = 0;
+    zwp_text_input_v3_send_commit_string(ti->resource, copy);
+    zwp_text_input_v3_send_done(ti->resource, ti->serial);
+    free(copy);
+    return 1;
+}
+
 static void text_input_destroy(struct wl_client *c, struct wl_resource *r)
 { (void)c; wl_resource_destroy(r); }
 
@@ -2744,19 +2770,25 @@ static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
  * listen + client fds live on the wl_display event loop, so every wl_* dispatch
  * driven by input runs on the compositor's own thread (no locking needed). */
 
+#define IOSC_IN_TEXT_MAX 4096u
 #define IOSC_IN_MOTION 1
 #define IOSC_IN_BUTTON 2
 #define IOSC_IN_KEY    3
+#define IOSC_IN_TEXT   4
 struct iosc_in_msg {            /* native-endian; app + iosc are both arm64 */
     uint32_t type;
     int32_t  x, y;             /* output px (motion / button) */
-    uint32_t code;             /* button: 1/2/3 ; key: X keysym */
+    uint32_t code;             /* button: 1/2/3 ; key: X keysym ; text: byte len */
     uint32_t state;            /* button: 1=down 0=up */
     uint32_t mods;             /* key: bit0 shift, bit1 ctrl, bit2 alt */
 };
 struct iosc_in_client {
     int fd; struct wl_event_source *src;
-    uint8_t buf[sizeof(struct iosc_in_msg)]; int have;
+    uint8_t hdr[sizeof(struct iosc_in_msg)];
+    int hdr_have;
+    struct iosc_in_msg msg;
+    char *payload;
+    uint32_t payload_have;
 };
 
 static void in_dispatch(const struct iosc_in_msg *m)
@@ -2772,29 +2804,76 @@ static void in_dispatch(const struct iosc_in_msg *m)
     wl_display_flush_clients(g_display);   /* push the events out immediately */
 }
 
+static void in_dispatch_text(const char *text, size_t len)
+{
+    int r = text_input_commit_text(text, len);
+    if (r == 0) {
+        for (size_t i = 0; i < len; i++) {
+            unsigned char c = (unsigned char)text[i];
+            if (c < 0x80)
+                handle_key(c == '\n' ? 0xff0d : (uint32_t)c, 0);
+        }
+    }
+    wl_display_flush_clients(g_display);
+}
+
+static void in_client_reset(struct iosc_in_client *c)
+{
+    free(c->payload);
+    c->payload = NULL;
+    c->payload_have = 0;
+    c->hdr_have = 0;
+    memset(&c->msg, 0, sizeof(c->msg));
+}
+
 static int in_client_readable(int fd, uint32_t mask, void *data)
 {
     struct iosc_in_client *c = data;
     if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) goto drop;
     for (;;) {
-        ssize_t r = read(fd, c->buf + c->have, sizeof(c->buf) - (size_t)c->have);
-        if (r > 0) {
-            c->have += (int)r;
-            if (c->have == (int)sizeof(c->buf)) {
-                struct iosc_in_msg m; memcpy(&m, c->buf, sizeof(m)); c->have = 0;
-                in_dispatch(&m);
+        if (c->hdr_have < (int)sizeof(c->hdr)) {
+            ssize_t r = read(fd, c->hdr + c->hdr_have, sizeof(c->hdr) - (size_t)c->hdr_have);
+            if (r > 0) {
+                c->hdr_have += (int)r;
+                if (c->hdr_have < (int)sizeof(c->hdr)) continue;
+                memcpy(&c->msg, c->hdr, sizeof(c->msg));
+                if (c->msg.type == IOSC_IN_TEXT) {
+                    if (c->msg.code == 0 || c->msg.code > IOSC_IN_TEXT_MAX) goto drop;
+                    c->payload = calloc(1, c->msg.code + 1u);
+                    if (!c->payload) goto drop;
+                } else {
+                    in_dispatch(&c->msg);
+                    in_client_reset(c);
+                }
+                continue;
             }
+            if (r == 0) goto drop;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            if (errno == EINTR) continue;
+            goto drop;
+        }
+        while (c->msg.type == IOSC_IN_TEXT && c->payload_have < c->msg.code) {
+            ssize_t r = read(fd, c->payload + c->payload_have, c->msg.code - c->payload_have);
+            if (r > 0) {
+                c->payload_have += (uint32_t)r;
+                continue;
+            }
+            if (r == 0) goto drop;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+            if (errno == EINTR) continue;
+            goto drop;
+        }
+        if (c->msg.type == IOSC_IN_TEXT) {
+            in_dispatch_text(c->payload, c->msg.code);
+            in_client_reset(c);
             continue;
         }
-        if (r == 0) goto drop;                            /* peer closed */
-        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-        if (errno == EINTR) continue;
-        goto drop;
     }
     return 0;
 drop:
     wl_event_source_remove(c->src);
     close(c->fd);
+    free(c->payload);
     free(c);
     fprintf(stderr, "iosc: input client disconnected\n");
     return 0;

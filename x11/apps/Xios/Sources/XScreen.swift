@@ -683,6 +683,10 @@ final class XScreenView: UIView {
 
     private func sendText(_ text: String) {
         guard inputConnected else { return }
+        if usingIosc {
+            _ = text.withCString { iosc_input_text($0) }
+            return
+        }
         for ch in text {
             if let ks = keysym(for: ch) {
                 sendKeysym(ks, ctrl: false, alt: false, shift: false)
@@ -1353,6 +1357,7 @@ final class XScreenView: UIView {
             card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
             card.widthAnchor.constraint(greaterThanOrEqualToConstant: 420),
             card.widthAnchor.constraint(lessThanOrEqualToConstant: 560),
+            card.heightAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.heightAnchor, multiplier: 0.86),
             card.heightAnchor.constraint(lessThanOrEqualTo: overlay.safeAreaLayoutGuide.heightAnchor, constant: -32),
             scroll.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
             scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
@@ -1558,6 +1563,10 @@ extension XScreenView: UIKeyInput {
 
     func insertText(_ text: String) {
         guard inputConnected else { return }
+        if usingIosc && !modCtrl && !modAlt && !modShift {
+            sendText(text)
+            return
+        }
         for ch in text {
             if let ks = keysym(for: ch) {
                 let useCtrl = modCtrl

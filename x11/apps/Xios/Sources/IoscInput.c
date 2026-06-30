@@ -14,6 +14,7 @@ static int s_fd = -1;
 #define IOSC_IN_MOTION 1
 #define IOSC_IN_BUTTON 2
 #define IOSC_IN_KEY    3
+#define IOSC_IN_TEXT   4
 
 struct iosc_in_msg {
     uint32_t type;
@@ -46,10 +47,10 @@ void iosc_input_close(void) {
 
 bool iosc_input_is_open(void) { return s_fd >= 0; }
 
-static void send_msg(const struct iosc_in_msg *m) {
+static void send_bytes(const void *buf, size_t n) {
     if (s_fd < 0) return;
-    const char *p = (const char *)m;
-    size_t n = sizeof(*m), put = 0;
+    const char *p = (const char *)buf;
+    size_t put = 0;
     while (put < n) {
         ssize_t w = write(s_fd, p + put, n - put);
         if (w > 0) { put += (size_t)w; continue; }
@@ -58,6 +59,10 @@ static void send_msg(const struct iosc_in_msg *m) {
         iosc_input_close();
         return;
     }
+}
+
+static void send_msg(const struct iosc_in_msg *m) {
+    send_bytes(m, sizeof(*m));
 }
 
 void iosc_input_motion(int x, int y) {
@@ -74,4 +79,14 @@ void iosc_input_button(int button, bool down, int x, int y) {
 void iosc_input_key(unsigned keysym, unsigned mods) {
     struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = keysym, .state = 1, .mods = mods };
     send_msg(&m);
+}
+
+void iosc_input_text(const char *utf8) {
+    if (!utf8) return;
+    size_t len = strlen(utf8);
+    if (len == 0) return;
+    if (len > 4096) len = 4096;
+    struct iosc_in_msg m = { .type = IOSC_IN_TEXT, .code = (uint32_t)len };
+    send_msg(&m);
+    send_bytes(utf8, len);
 }
