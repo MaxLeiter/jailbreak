@@ -119,6 +119,7 @@ struct iosc_positioner {
     int size_w, size_h;
     int anchor_x, anchor_y, anchor_w, anchor_h;
     uint32_t anchor, gravity;
+    uint32_t constraint;
     int off_x, off_y;
 };
 
@@ -166,6 +167,7 @@ struct iosc_surface {
     struct wl_resource *xdg_popup;       /* xdg_popup role, or NULL */
     int                 toplevel_maximized;
     int                 toplevel_fullscreen;
+    int                 toplevel_resizing;
     struct iosc_subsurface *subsurface;
     struct iosc_viewport *viewport;
     int                 configured;      /* sent the initial xdg configure */
@@ -204,6 +206,13 @@ static struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
 static struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
 static struct iosc_surface *g_cursor_surface;
 static int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
+enum iosc_interactive_op { IOSC_INTERACTIVE_NONE, IOSC_INTERACTIVE_MOVE, IOSC_INTERACTIVE_RESIZE };
+static enum iosc_interactive_op g_interactive_op;
+static struct iosc_surface *g_interactive_surface;
+static int g_interactive_px, g_interactive_py;
+static int g_interactive_dx, g_interactive_dy;
+static int g_interactive_w, g_interactive_h;
+static uint32_t g_interactive_edges;
 static uint64_t g_presentation_seq;
 static void keyboard_set_focus(struct iosc_surface *s);
 static void surface_raise(struct iosc_surface *s);
@@ -1138,25 +1147,92 @@ static int is_bottom(uint32_t edge)
            edge == XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT;
 }
 
-static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
+static uint32_t flip_x_edges(uint32_t edges, uint32_t left, uint32_t right)
 {
-    int ax = p->anchor_x + (is_right(p->anchor) ? p->anchor_w :
-                            is_left(p->anchor) ? 0 : p->anchor_w / 2);
-    int ay = p->anchor_y + (is_bottom(p->anchor) ? p->anchor_h :
-                            is_top(p->anchor) ? 0 : p->anchor_h / 2);
+    uint32_t out = edges & ~(left | right);
+    if (edges & left) out |= right;
+    if (edges & right) out |= left;
+    return out;
+}
+
+static uint32_t flip_y_edges(uint32_t edges, uint32_t top, uint32_t bottom)
+{
+    uint32_t out = edges & ~(top | bottom);
+    if (edges & top) out |= bottom;
+    if (edges & bottom) out |= top;
+    return out;
+}
+
+static void popup_calc_position(const struct iosc_positioner *p,
+                                uint32_t anchor, uint32_t gravity,
+                                int *out_x, int *out_y)
+{
+    int ax = p->anchor_x + (is_right(anchor) ? p->anchor_w :
+                            is_left(anchor) ? 0 : p->anchor_w / 2);
+    int ay = p->anchor_y + (is_bottom(anchor) ? p->anchor_h :
+                            is_top(anchor) ? 0 : p->anchor_h / 2);
     int x = ax + p->off_x;
     int y = ay + p->off_y;
-    if (is_left(p->gravity)) x -= p->size_w;
-    else if (!is_right(p->gravity) && !has_x(p->gravity)) x -= p->size_w / 2;
-    if (is_top(p->gravity)) y -= p->size_h;
-    else if (!is_bottom(p->gravity) && !has_y(p->gravity)) y -= p->size_h / 2;
+    if (is_left(gravity)) x -= p->size_w;
+    else if (!is_right(gravity) && !has_x(gravity)) x -= p->size_w / 2;
+    if (is_top(gravity)) y -= p->size_h;
+    else if (!is_bottom(gravity) && !has_y(gravity)) y -= p->size_h / 2;
+    *out_x = x;
+    *out_y = y;
+}
+
+static int popup_fits(int x, int y, int w, int h)
+{
+    return x >= 0 && y >= 0 &&
+           x + w <= output_logical_width() &&
+           y + h <= output_logical_height();
+}
+
+static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
+{
+    int x = 0, y = 0;
+    popup_calc_position(p, p->anchor, p->gravity, &x, &y);
+    int abs_x = s->parent->dx + x;
+    int abs_y = s->parent->dy + y;
+    if (!popup_fits(abs_x, abs_y, p->size_w, p->size_h) &&
+        (p->constraint & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X)) {
+        uint32_t anchor = flip_x_edges(p->anchor, XDG_POSITIONER_ANCHOR_LEFT,
+                                       XDG_POSITIONER_ANCHOR_RIGHT);
+        uint32_t gravity = flip_x_edges(p->gravity, XDG_POSITIONER_GRAVITY_LEFT,
+                                        XDG_POSITIONER_GRAVITY_RIGHT);
+        int fx = 0, fy = 0;
+        popup_calc_position(p, anchor, gravity, &fx, &fy);
+        if (popup_fits(s->parent->dx + fx, s->parent->dy + fy, p->size_w, p->size_h)) {
+            x = fx;
+            y = fy;
+            abs_x = s->parent->dx + x;
+            abs_y = s->parent->dy + y;
+        }
+    }
+    if (!popup_fits(abs_x, abs_y, p->size_w, p->size_h) &&
+        (p->constraint & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y)) {
+        uint32_t anchor = flip_y_edges(p->anchor, XDG_POSITIONER_ANCHOR_TOP,
+                                       XDG_POSITIONER_ANCHOR_BOTTOM);
+        uint32_t gravity = flip_y_edges(p->gravity, XDG_POSITIONER_GRAVITY_TOP,
+                                        XDG_POSITIONER_GRAVITY_BOTTOM);
+        int fx = 0, fy = 0;
+        popup_calc_position(p, anchor, gravity, &fx, &fy);
+        if (popup_fits(s->parent->dx + fx, s->parent->dy + fy, p->size_w, p->size_h)) {
+            x = fx;
+            y = fy;
+            abs_x = s->parent->dx + x;
+            abs_y = s->parent->dy + y;
+        }
+    }
 
     int max_x = output_logical_width() - p->size_w;
     int max_y = output_logical_height() - p->size_h;
     if (max_x < 0) max_x = 0;
     if (max_y < 0) max_y = 0;
-    int abs_x = clampi(s->parent->dx + x, 0, max_x);
-    int abs_y = clampi(s->parent->dy + y, 0, max_y);
+    if (p->constraint & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X)
+        abs_x = clampi(abs_x, 0, max_x);
+    if (p->constraint & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y)
+        abs_y = clampi(abs_y, 0, max_y);
     s->rel_x = abs_x - s->parent->dx;
     s->rel_y = abs_y - s->parent->dy;
     surface_place_child(s);
@@ -1191,7 +1267,7 @@ static void xp_set_anchor(struct wl_client *c, struct wl_resource *r, uint32_t a
 static void xp_set_gravity(struct wl_client *c, struct wl_resource *r, uint32_t gravity)
 { (void)c; struct iosc_positioner *p = wl_resource_get_user_data(r); p->gravity = gravity; }
 static void xp_set_constraint_adjustment(struct wl_client *c, struct wl_resource *r, uint32_t a)
-{ (void)c; (void)r; (void)a; }
+{ (void)c; struct iosc_positioner *p = wl_resource_get_user_data(r); p->constraint = a; }
 static void xp_set_offset(struct wl_client *c, struct wl_resource *r, int32_t x, int32_t y)
 { (void)c; struct iosc_positioner *p = wl_resource_get_user_data(r); p->off_x = x; p->off_y = y; }
 static void xp_set_reactive(struct wl_client *c, struct wl_resource *r)
@@ -1252,6 +1328,10 @@ static void toplevel_send_configure(struct iosc_surface *s, int w, int h)
         st = wl_array_add(&states, sizeof(uint32_t));
         if (st) *st = XDG_TOPLEVEL_STATE_FULLSCREEN;
     }
+    if (s->toplevel_resizing) {
+        st = wl_array_add(&states, sizeof(uint32_t));
+        if (st) *st = XDG_TOPLEVEL_STATE_RESIZING;
+    }
     if (wl_resource_get_version(s->xdg_toplevel) >= XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION)
         xdg_toplevel_send_configure_bounds(s->xdg_toplevel,
                                            output_logical_width(), output_logical_height());
@@ -1282,14 +1362,112 @@ static void toplevel_reconfigure_state(struct iosc_surface *s)
     if (s->mapped) recomposite_all();
 }
 
+static int resize_has_left(uint32_t edges)
+{
+    return edges == XDG_TOPLEVEL_RESIZE_EDGE_LEFT ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT;
+}
+
+static int resize_has_right(uint32_t edges)
+{
+    return edges == XDG_TOPLEVEL_RESIZE_EDGE_RIGHT ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT;
+}
+
+static int resize_has_top(uint32_t edges)
+{
+    return edges == XDG_TOPLEVEL_RESIZE_EDGE_TOP ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT;
+}
+
+static int resize_has_bottom(uint32_t edges)
+{
+    return edges == XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT ||
+           edges == XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT;
+}
+
+static void interactive_begin(struct iosc_surface *s, enum iosc_interactive_op op, uint32_t edges)
+{
+    if (!s || !s->xdg_toplevel) return;
+    int w = 0, h = 0;
+    surface_display_size(s, &w, &h);
+    g_interactive_op = op;
+    g_interactive_surface = s;
+    g_interactive_edges = edges;
+    g_interactive_px = g_cursor_x;
+    g_interactive_py = g_cursor_y;
+    g_interactive_dx = s->dx;
+    g_interactive_dy = s->dy;
+    g_interactive_w = w;
+    g_interactive_h = h;
+    if (op == IOSC_INTERACTIVE_RESIZE) {
+        s->toplevel_resizing = 1;
+        toplevel_send_configure(s, w > 1 ? w : 1, h > 1 ? h : 1);
+    }
+}
+
+static void interactive_update(int x, int y)
+{
+    struct iosc_surface *s = g_interactive_surface;
+    if (!s || g_interactive_op == IOSC_INTERACTIVE_NONE) return;
+    int dx = x - g_interactive_px;
+    int dy = y - g_interactive_py;
+    if (g_interactive_op == IOSC_INTERACTIVE_MOVE) {
+        int w = 0, h = 0;
+        surface_display_size(s, &w, &h);
+        int max_x = output_logical_width() - (w > 0 ? w : 1);
+        int max_y = output_logical_height() - (h > 0 ? h : 1);
+        if (max_x < 0) max_x = 0;
+        if (max_y < 0) max_y = 0;
+        s->dx = clampi(g_interactive_dx + dx, 0, max_x);
+        s->dy = clampi(g_interactive_dy + dy, 0, max_y);
+        recomposite_all();
+        return;
+    }
+    int nx = g_interactive_dx, ny = g_interactive_dy;
+    int nw = g_interactive_w, nh = g_interactive_h;
+    if (resize_has_left(g_interactive_edges)) { nx = g_interactive_dx + dx; nw = g_interactive_w - dx; }
+    if (resize_has_right(g_interactive_edges)) nw = g_interactive_w + dx;
+    if (resize_has_top(g_interactive_edges)) { ny = g_interactive_dy + dy; nh = g_interactive_h - dy; }
+    if (resize_has_bottom(g_interactive_edges)) nh = g_interactive_h + dy;
+    nw = clampi(nw, 80, output_logical_width());
+    nh = clampi(nh, 60, output_logical_height());
+    nx = clampi(nx, 0, output_logical_width() - nw);
+    ny = clampi(ny, 0, output_logical_height() - nh);
+    s->dx = nx;
+    s->dy = ny;
+    toplevel_send_configure(s, nw, nh);
+    recomposite_all();
+}
+
+static void interactive_end(void)
+{
+    if (g_interactive_surface && g_interactive_op == IOSC_INTERACTIVE_RESIZE) {
+        struct iosc_surface *s = g_interactive_surface;
+        int w = 0, h = 0;
+        surface_display_size(s, &w, &h);
+        s->toplevel_resizing = 0;
+        toplevel_send_configure(s, w > 1 ? w : 1, h > 1 ? h : 1);
+    }
+    g_interactive_surface = NULL;
+    g_interactive_op = IOSC_INTERACTIVE_NONE;
+    g_interactive_edges = 0;
+}
+
 /* xdg_toplevel */
 static void xt_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p){ (void)c;(void)r;(void)p; }
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t){ (void)c;(void)r; fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
 static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a){ (void)c;(void)r; fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
 static void xt_show_window_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y){ (void)c;(void)r;(void)seat;(void)serial;(void)x;(void)y; }
-static void xt_move(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial){ (void)c;(void)r;(void)seat;(void)serial; }
-static void xt_resize(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, uint32_t edges){ (void)c;(void)r;(void)seat;(void)serial;(void)edges; }
+static void xt_move(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial)
+{ (void)c; (void)seat; (void)serial; interactive_begin(wl_resource_get_user_data(r), IOSC_INTERACTIVE_MOVE, 0); }
+static void xt_resize(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, uint32_t edges)
+{ (void)c; (void)seat; (void)serial; interactive_begin(wl_resource_get_user_data(r), IOSC_INTERACTIVE_RESIZE, edges); }
 static void xt_set_max_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h){ (void)c;(void)r;(void)w;(void)h; }
 static void xt_set_min_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h){ (void)c;(void)r;(void)w;(void)h; }
 static void xt_set_maximized(struct wl_client *c, struct wl_resource *r)
@@ -1650,6 +1828,10 @@ static void handle_motion(int x, int y)
     int moved = (x != g_cursor_x || y != g_cursor_y);
     g_cursor_x = x;
     g_cursor_y = y;
+    if (g_interactive_op != IOSC_INTERACTIVE_NONE) {
+        interactive_update(x, y);
+        return;
+    }
     struct iosc_surface *hit = surface_at(x, y);
     uint32_t t = now_ms();
     if (hit != g_ptr_focus) {
@@ -1696,6 +1878,10 @@ static void surface_raise(struct iosc_surface *s)
 static void handle_button(int btn, int down)
 {
     (void)btn;
+    if (!down && g_interactive_op != IOSC_INTERACTIVE_NONE) {
+        interactive_end();
+        return;
+    }
     if (down && g_ptr_focus) {
         int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == g_ptr_focus);
         surface_raise(g_ptr_focus);
