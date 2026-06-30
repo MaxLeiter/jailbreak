@@ -27,6 +27,7 @@
 #include "viewporter-server-protocol.h"
 #include "fractional-scale-v1-server-protocol.h"
 #include "presentation-time-server-protocol.h"
+#include "xdg-output-unstable-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -1346,23 +1347,86 @@ static void xdg_wm_base_bind(struct wl_client *client, void *data,
  * ---- wl_data_device_manager. GDK-wayland wants these before it will behave  *
  * like a normal desktop client.                                              */
 
-/* wl_output (v2): send the single fullscreen mode on bind. */
+/* wl_output + xdg-output: one native IOSurface output, exposed as a scaled
+ * logical desktop region to Wayland clients. */
+static void output_release(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct wl_output_interface output_impl = {
+    .release = output_release,
+};
+
+static void output_send_done(struct wl_resource *r)
+{
+    if (wl_resource_get_version(r) >= WL_OUTPUT_DONE_SINCE_VERSION)
+        wl_output_send_done(r);
+}
+
+static void output_send_state(struct wl_resource *r)
+{
+    uint32_t version = wl_resource_get_version(r);
+    wl_output_send_geometry(r, 0, 0, output_px_to_mm(g_width), output_px_to_mm(g_height),
+                            WL_OUTPUT_SUBPIXEL_UNKNOWN,
+                            "iosc", "IOSurface", WL_OUTPUT_TRANSFORM_NORMAL);
+    wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED,
+                        g_width, g_height, 60000);
+    if (version >= WL_OUTPUT_SCALE_SINCE_VERSION)
+        wl_output_send_scale(r, output_scale());
+    if (version >= WL_OUTPUT_NAME_SINCE_VERSION)
+        wl_output_send_name(r, "IOSC-1");
+    if (version >= WL_OUTPUT_DESCRIPTION_SINCE_VERSION)
+        wl_output_send_description(r, "iosc native IOSurface output");
+    output_send_done(r);
+}
+
 static void output_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
     (void)data;
     struct wl_resource *r = wl_resource_create(client, &wl_output_interface, version, id);
     if (!r) { wl_client_post_no_memory(client); return; }
-    /* No requests in v1/v2 (release is v3); NULL impl is fine. */
-    wl_resource_set_implementation(r, NULL, NULL, NULL);
-    wl_output_send_geometry(r, 0, 0, output_px_to_mm(g_width), output_px_to_mm(g_height),
-                            WL_OUTPUT_SUBPIXEL_UNKNOWN,
-                            "iosc", "iosc-output", WL_OUTPUT_TRANSFORM_NORMAL);
-    wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED,
-                        g_width, g_height, 60000);
-    if (version >= 2) {
-        wl_output_send_scale(r, output_scale());
-        wl_output_send_done(r);
-    }
+    wl_resource_set_implementation(r, &output_impl, NULL, NULL);
+    output_send_state(r);
+}
+
+static void xdg_output_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct zxdg_output_v1_interface xdg_output_impl = {
+    .destroy = xdg_output_destroy,
+};
+
+static void xdg_output_manager_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void xdg_output_manager_get(struct wl_client *c, struct wl_resource *r,
+                                   uint32_t id, struct wl_resource *output)
+{
+    struct wl_resource *xo = wl_resource_create(c, &zxdg_output_v1_interface,
+                                                wl_resource_get_version(r), id);
+    if (!xo) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(xo, &xdg_output_impl, NULL, NULL);
+    zxdg_output_v1_send_logical_position(xo, 0, 0);
+    zxdg_output_v1_send_logical_size(xo, output_logical_width(), output_logical_height());
+    if (wl_resource_get_version(xo) >= ZXDG_OUTPUT_V1_NAME_SINCE_VERSION)
+        zxdg_output_v1_send_name(xo, "IOSC-1");
+    if (wl_resource_get_version(xo) >= ZXDG_OUTPUT_V1_DESCRIPTION_SINCE_VERSION)
+        zxdg_output_v1_send_description(xo, "iosc native IOSurface output");
+    if (wl_resource_get_version(xo) < 3)
+        zxdg_output_v1_send_done(xo);
+    output_send_done(output);
+}
+
+static const struct zxdg_output_manager_v1_interface xdg_output_manager_impl = {
+    .destroy = xdg_output_manager_destroy,
+    .get_xdg_output = xdg_output_manager_get,
+};
+
+static void xdg_output_manager_bind(struct wl_client *client, void *data,
+                                    uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *r = wl_resource_create(client, &zxdg_output_manager_v1_interface,
+                                               version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &xdg_output_manager_impl, NULL, NULL);
 }
 
 /* ---- seat input: pointer + keyboard (real) -------------------------------- *
@@ -2308,7 +2372,9 @@ int main(int argc, char **argv)
     wl_global_create(g_display, &xdg_wm_base_interface, 1, NULL, xdg_wm_base_bind);
     wl_global_create(g_display, &iosc_iosurface_interface, 1, NULL, iosc_iosurface_bind);
     /* GTK4 (GDK-wayland) enablement globals. */
-    wl_global_create(g_display, &wl_output_interface, 2, NULL, output_bind);
+    wl_global_create(g_display, &wl_output_interface, 4, NULL, output_bind);
+    wl_global_create(g_display, &zxdg_output_manager_v1_interface, 3, NULL,
+                     xdg_output_manager_bind);
     wl_global_create(g_display, &wl_seat_interface, 5, NULL, seat_bind);
     wl_global_create(g_display, &wl_subcompositor_interface, 1, NULL, subcompositor_bind);
     wl_global_create(g_display, &wl_data_device_manager_interface, 3, NULL, ddm_bind);
@@ -2344,7 +2410,8 @@ int main(int argc, char **argv)
     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
             sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");
     fprintf(stderr, "iosc: globals: wl_compositor v4, wl_shm, xdg_wm_base v1, "
-                    "iosc_iosurface v1, wl_output v2, wl_seat v5, wl_subcompositor v1, "
+                    "iosc_iosurface v1, wl_output v4, zxdg_output_manager_v1 v3, "
+                    "wl_seat v5, wl_subcompositor v1, "
                     "wl_data_device_manager v3, wp_viewporter v1, "
                     "wp_fractional_scale_manager_v1 v1, wp_presentation v1, "
                     "zxdg_decoration_manager_v1 v1, xdg_activation_v1 v1\n");
