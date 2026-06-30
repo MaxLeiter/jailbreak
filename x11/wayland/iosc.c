@@ -164,6 +164,8 @@ struct iosc_surface {
     struct wl_resource *xdg_toplevel;    /* xdg_toplevel role, or NULL */
     struct wl_resource *xdg_decoration;  /* zxdg_toplevel_decoration_v1, or NULL */
     struct wl_resource *xdg_popup;       /* xdg_popup role, or NULL */
+    int                 toplevel_maximized;
+    int                 toplevel_fullscreen;
     struct iosc_subsurface *subsurface;
     struct iosc_viewport *viewport;
     int                 configured;      /* sent the initial xdg configure */
@@ -1215,16 +1217,25 @@ static const struct xdg_popup_interface popup_impl = {
     .destroy = popup_destroy, .grab = popup_grab, .reposition = popup_reposition,
 };
 
-/* Send the initial configure that lets a client map: tell the toplevel the
- * output size (fullscreen), then the xdg_surface serial it must ack. */
-static void send_initial_configure(struct iosc_surface *s)
+static void toplevel_send_configure(struct iosc_surface *s, int w, int h)
 {
+    if (!s || !s->xdg_toplevel || !s->xdg_surface) return;
     struct wl_array states;
     wl_array_init(&states);
     uint32_t *st = wl_array_add(&states, sizeof(uint32_t));
     if (st) *st = XDG_TOPLEVEL_STATE_ACTIVATED;
-    /* Windowed size (not fullscreen) so multiple toplevels visibly stack. */
-    xdg_toplevel_send_configure(s->xdg_toplevel, default_window_w(), default_window_h(), &states);
+    if (s->toplevel_maximized) {
+        st = wl_array_add(&states, sizeof(uint32_t));
+        if (st) *st = XDG_TOPLEVEL_STATE_MAXIMIZED;
+    }
+    if (s->toplevel_fullscreen) {
+        st = wl_array_add(&states, sizeof(uint32_t));
+        if (st) *st = XDG_TOPLEVEL_STATE_FULLSCREEN;
+    }
+    if (wl_resource_get_version(s->xdg_toplevel) >= XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION)
+        xdg_toplevel_send_configure_bounds(s->xdg_toplevel,
+                                           output_logical_width(), output_logical_height());
+    xdg_toplevel_send_configure(s->xdg_toplevel, w, h, &states);
     wl_array_release(&states);
 
     uint32_t serial = wl_display_next_serial(g_display);
@@ -1232,7 +1243,26 @@ static void send_initial_configure(struct iosc_surface *s)
     s->configured = 1;
 }
 
-/* xdg_toplevel: almost everything is a no-op for a single fullscreen window. */
+/* Send the initial configure that lets a client map. */
+static void send_initial_configure(struct iosc_surface *s)
+{
+    toplevel_send_configure(s, default_window_w(), default_window_h());
+}
+
+static void toplevel_reconfigure_state(struct iosc_surface *s)
+{
+    int fill = s->toplevel_maximized || s->toplevel_fullscreen;
+    if (fill) {
+        s->dx = 0;
+        s->dy = 0;
+        toplevel_send_configure(s, output_logical_width(), output_logical_height());
+    } else {
+        toplevel_send_configure(s, default_window_w(), default_window_h());
+    }
+    if (s->mapped) recomposite_all();
+}
+
+/* xdg_toplevel */
 static void xt_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p){ (void)c;(void)r;(void)p; }
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t){ (void)c;(void)r; fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
@@ -1242,10 +1272,18 @@ static void xt_move(struct wl_client *c, struct wl_resource *r, struct wl_resour
 static void xt_resize(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, uint32_t edges){ (void)c;(void)r;(void)seat;(void)serial;(void)edges; }
 static void xt_set_max_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h){ (void)c;(void)r;(void)w;(void)h; }
 static void xt_set_min_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h){ (void)c;(void)r;(void)w;(void)h; }
-static void xt_set_maximized(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
-static void xt_unset_maximized(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
-static void xt_set_fullscreen(struct wl_client *c, struct wl_resource *r, struct wl_resource *out){ (void)c;(void)r;(void)out; }
-static void xt_unset_fullscreen(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
+static void xt_set_maximized(struct wl_client *c, struct wl_resource *r)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) { s->toplevel_maximized = 1; toplevel_reconfigure_state(s); } }
+static void xt_unset_maximized(struct wl_client *c, struct wl_resource *r)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) { s->toplevel_maximized = 0; toplevel_reconfigure_state(s); } }
+static void xt_set_fullscreen(struct wl_client *c, struct wl_resource *r, struct wl_resource *out)
+{ (void)c; (void)out; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) { s->toplevel_fullscreen = 1; toplevel_reconfigure_state(s); } }
+static void xt_unset_fullscreen(struct wl_client *c, struct wl_resource *r)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) { s->toplevel_fullscreen = 0; toplevel_reconfigure_state(s); } }
 static void xt_set_minimized(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
 static const struct xdg_toplevel_interface xdg_toplevel_impl = {
     .destroy = xt_destroy, .set_parent = xt_set_parent, .set_title = xt_set_title,
@@ -2369,7 +2407,7 @@ int main(int argc, char **argv)
         return 1;
     }
     wl_global_create(g_display, &wl_compositor_interface, 4, NULL, compositor_bind);
-    wl_global_create(g_display, &xdg_wm_base_interface, 1, NULL, xdg_wm_base_bind);
+    wl_global_create(g_display, &xdg_wm_base_interface, 4, NULL, xdg_wm_base_bind);
     wl_global_create(g_display, &iosc_iosurface_interface, 1, NULL, iosc_iosurface_bind);
     /* GTK4 (GDK-wayland) enablement globals. */
     wl_global_create(g_display, &wl_output_interface, 4, NULL, output_bind);
@@ -2409,7 +2447,7 @@ int main(int argc, char **argv)
 
     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
             sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");
-    fprintf(stderr, "iosc: globals: wl_compositor v4, wl_shm, xdg_wm_base v1, "
+    fprintf(stderr, "iosc: globals: wl_compositor v4, wl_shm, xdg_wm_base v4, "
                     "iosc_iosurface v1, wl_output v4, zxdg_output_manager_v1 v3, "
                     "wl_seat v5, wl_subcompositor v1, "
                     "wl_data_device_manager v3, wp_viewporter v1, "
