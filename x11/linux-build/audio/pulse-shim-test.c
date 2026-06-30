@@ -1,8 +1,8 @@
 /*
  * ABI smoke test for the libpulse-simple shim: a client that knows ONLY the
- * public pulse/* headers and links -lpulse-simple, exactly as a real desktop
- * app would. Plays a short sine via pa_simple_write() to prove the shim's
- * symbols resolve and route into xios-audiod. Not shipped; built ad hoc.
+ * public pulse headers and links -lpulse-simple, exactly as a real desktop app
+ * would. Plays a short sine via pa_simple_write() to prove the shim's symbols
+ * resolve and route into xios-audiod. Not shipped; built ad hoc.
  */
 #include <math.h>
 #include <stdint.h>
@@ -34,7 +34,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "pa_simple_new failed: %s\n", pa_strerror(err));
         return 1;
     }
-    fprintf(stderr, "pa lib version: %s\n", pa_get_library_version());
 
     const int rate = 48000, chunk = 512;
     int total = (int)(seconds * rate);

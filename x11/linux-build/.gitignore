@@ -3,3 +3,5 @@ out/
 Procursus/
 procursus-work/
 *.log
+.DS_Store
+__pycache__/

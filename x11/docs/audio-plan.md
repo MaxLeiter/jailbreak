@@ -33,14 +33,18 @@ A1 is live and confirmed on the iPad (iPad7,12, iPadOS 17.6.1, palera1n rootless
 - The render callback is confirmed to be serviced by the HAL: `SIGUSR1` dumps render stats
   (`render_calls` / `render_frames`) which climb at ~48 kHz whether or not a client is
   connected.
-- `xios-audio-play` (the smoke-test sine client) and the `libpulse-simple` shim both route
-  PCM into the daemon over `/var/jb/tmp/xios-audio.sock`.
+- `xios-audio-play` (the native smoke-test sine client) routes PCM into the daemon over
+  `/var/jb/tmp/xios-audio.sock`.
+- The `libpulse-simple` shim is verified on device too: a client compiled against only the
+  public `pulse/*` headers and dynamically linked to the shipped
+  `/var/jb/usr/lib/libpulse-simple.0.dylib` plays through `pa_simple_write()` into the daemon
+  (see `build-shim-test.sh` / `pulse-shim-test.c`).
 - Lifecycle: `SIGTERM`/`SIGINT` shut the daemon down cleanly and unlink the socket
   (handlers installed via `sigaction` without `SA_RESTART`; lifecycle signals blocked in
   client threads so the main accept loop receives them).
 
-Still untested on device: the `libpulse-simple` shim against a real Pulse client, and any
-real GTK/XFCE app. Next real-world step is wiring a GTK app's sound through the shim.
+Still untested on device: a real GTK/XFCE app. Next real-world step is wiring an actual
+app's sound through the shim (or via SDL2/PortAudio CoreAudio output).
 
 ## What already exists
 
