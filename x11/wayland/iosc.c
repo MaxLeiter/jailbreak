@@ -2037,6 +2037,7 @@ static void subcompositor_bind(struct wl_client *client, void *data, uint32_t ve
 #define IOSC_CLIP_MAX (1024u * 1024u)
 #define IOSC_MAX_DATA_DEVICES 32
 #define IOSC_MAX_CLIP_CLIENTS 4
+#define IOSC_MAX_CLIP_MIMES 8
 
 struct iosc_clip_msg {
     uint32_t type;
@@ -2055,7 +2056,8 @@ struct iosc_clip_client {
 
 struct iosc_data_source {
     struct wl_resource *resource;
-    char *text_mime;
+    char *mimes[IOSC_MAX_CLIP_MIMES];
+    int nmimes;
 };
 
 struct iosc_data_device {
@@ -2063,9 +2065,15 @@ struct iosc_data_device {
     struct wl_client *client;
 };
 
-struct iosc_data_offer {
-    char *text;
+struct iosc_mime_data {
+    char *mime;
+    char *data;
     size_t len;
+};
+
+struct iosc_data_offer {
+    struct iosc_mime_data items[IOSC_MAX_CLIP_MIMES];
+    int nitems;
 };
 
 struct iosc_source_read {
@@ -2074,13 +2082,14 @@ struct iosc_source_read {
     char *buf;
     size_t len;
     size_t cap;
+    char *mime;
 };
 
 static struct iosc_clip_client *g_clip_clients[IOSC_MAX_CLIP_CLIENTS];
 static struct iosc_data_device *g_data_devices[IOSC_MAX_DATA_DEVICES];
 static int g_ndata_devices;
-static char *g_clip_text;
-static size_t g_clip_len;
+static struct iosc_mime_data g_clip_items[IOSC_MAX_CLIP_MIMES];
+static int g_nclip_items;
 static const struct wl_data_offer_interface data_offer_impl;
 static void data_offer_resource_destroy(struct wl_resource *r);
 
@@ -2090,6 +2099,77 @@ static int is_text_mime(const char *mime)
                     !strcmp(mime, "text/plain;charset=utf-8") ||
                     !strcmp(mime, "UTF8_STRING") ||
                     !strncmp(mime, "text/plain;", 11));
+}
+
+static int is_clip_mime(const char *mime)
+{
+    return is_text_mime(mime) ||
+           (mime && (!strcmp(mime, "text/uri-list") ||
+                     !strcmp(mime, "text/html")));
+}
+
+static void mime_data_clear(struct iosc_mime_data *m)
+{
+    free(m->mime);
+    free(m->data);
+    memset(m, 0, sizeof(*m));
+}
+
+static void clip_clear_items(void)
+{
+    for (int i = 0; i < g_nclip_items; i++)
+        mime_data_clear(&g_clip_items[i]);
+    g_nclip_items = 0;
+}
+
+static struct iosc_mime_data *clip_find_exact_item(const char *mime)
+{
+    for (int i = 0; i < g_nclip_items; i++)
+        if (g_clip_items[i].mime && mime && !strcmp(g_clip_items[i].mime, mime))
+            return &g_clip_items[i];
+    return NULL;
+}
+
+static struct iosc_mime_data *clip_find_item(const char *mime)
+{
+    struct iosc_mime_data *m = clip_find_exact_item(mime);
+    if (m) return m;
+    if (mime && is_text_mime(mime))
+        for (int i = 0; i < g_nclip_items; i++)
+            if (is_text_mime(g_clip_items[i].mime))
+                return &g_clip_items[i];
+    return NULL;
+}
+
+static int clip_item_set(const char *mime, const char *data, size_t len)
+{
+    if (!is_clip_mime(mime)) return -1;
+    if (len > IOSC_CLIP_MAX) len = IOSC_CLIP_MAX;
+    struct iosc_mime_data *m = clip_find_exact_item(mime);
+    int added = 0;
+    if (!m) {
+        if (g_nclip_items >= IOSC_MAX_CLIP_MIMES) return -1;
+        m = &g_clip_items[g_nclip_items++];
+        added = 1;
+        m->mime = strdup(mime);
+        if (!m->mime) { g_nclip_items--; return -1; }
+    } else {
+        free(m->data);
+        m->data = NULL;
+        m->len = 0;
+    }
+    m->data = malloc(len + 1);
+    if (!m->data) {
+        if (added) {
+            mime_data_clear(m);
+            g_nclip_items--;
+        }
+        return -1;
+    }
+    if (len) memcpy(m->data, data, len);
+    m->data[len] = 0;
+    m->len = len;
+    return 0;
 }
 
 static int write_all_fd(int fd, const void *buf, size_t len)
@@ -2137,7 +2217,7 @@ static void clip_send_set_to_app(const char *text, size_t len)
 static void clipboard_selection_send_to_device(struct iosc_data_device *d)
 {
     if (!d || !d->resource) return;
-    if (!g_clip_text) {
+    if (g_nclip_items == 0) {
         wl_data_device_send_selection(d->resource, NULL);
         return;
     }
@@ -2150,20 +2230,27 @@ static void clipboard_selection_send_to_device(struct iosc_data_device *d)
         wl_client_post_no_memory(d->client);
         return;
     }
-    o->text = malloc(g_clip_len + 1);
-    if (!o->text) {
-        wl_resource_destroy(offer);
-        free(o);
-        wl_client_post_no_memory(d->client);
-        return;
-    }
-    memcpy(o->text, g_clip_text, g_clip_len);
-    o->text[g_clip_len] = 0;
-    o->len = g_clip_len;
     wl_resource_set_implementation(offer, &data_offer_impl, o, data_offer_resource_destroy);
+    for (int i = 0; i < g_nclip_items; i++) {
+        struct iosc_mime_data *src = &g_clip_items[i];
+        struct iosc_mime_data *dst = &o->items[o->nitems];
+        dst->mime = strdup(src->mime);
+        dst->data = malloc(src->len + 1);
+        if (!dst->mime || !dst->data) {
+            wl_resource_destroy(offer);
+            wl_client_post_no_memory(d->client);
+            return;
+        }
+        memcpy(dst->data, src->data, src->len);
+        dst->data[src->len] = 0;
+        dst->len = src->len;
+        o->nitems++;
+    }
     wl_data_device_send_data_offer(d->resource, offer);
-    wl_data_offer_send_offer(offer, "text/plain;charset=utf-8");
-    wl_data_offer_send_offer(offer, "text/plain");
+    for (int i = 0; i < o->nitems; i++)
+        wl_data_offer_send_offer(offer, o->items[i].mime);
+    if (clip_find_exact_item("text/plain;charset=utf-8") && !clip_find_exact_item("text/plain"))
+        wl_data_offer_send_offer(offer, "text/plain");
     wl_data_device_send_selection(d->resource, offer);
 }
 
@@ -2184,16 +2271,9 @@ static void clipboard_selection_broadcast(void)
 static void clip_set_text(const char *text, size_t len, int send_to_app)
 {
     if (len > IOSC_CLIP_MAX) len = IOSC_CLIP_MAX;
-    free(g_clip_text);
-    g_clip_text = NULL;
-    g_clip_len = len;
-    if (len) {
-        g_clip_text = malloc(len + 1);
-        if (!g_clip_text) { g_clip_len = 0; return; }
-        memcpy(g_clip_text, text, len);
-        g_clip_text[len] = 0;
-    }
-    if (send_to_app) clip_send_set_to_app(g_clip_text ? g_clip_text : "", g_clip_len);
+    clip_clear_items();
+    if (clip_item_set("text/plain;charset=utf-8", text ? text : "", len) != 0) return;
+    if (send_to_app) clip_send_set_to_app(text ? text : "", len);
     clipboard_selection_broadcast();
 }
 
@@ -2205,7 +2285,18 @@ static void data_offer_receive(struct wl_client *c, struct wl_resource *r,
                                const char *mime_type, int fd)
 { (void)c;
     struct iosc_data_offer *o = wl_resource_get_user_data(r);
-    if (o && o->text && is_text_mime(mime_type)) write_all_fd(fd, o->text, o->len);
+    if (o) {
+        struct iosc_mime_data *m = NULL;
+        for (int i = 0; i < o->nitems; i++)
+            if (o->items[i].mime && mime_type && !strcmp(o->items[i].mime, mime_type)) {
+                m = &o->items[i];
+                break;
+            }
+        if (!m && is_text_mime(mime_type))
+            for (int i = 0; i < o->nitems; i++)
+                if (is_text_mime(o->items[i].mime)) { m = &o->items[i]; break; }
+        if (m && m->data) write_all_fd(fd, m->data, m->len);
+    }
     close(fd);
 }
 
@@ -2228,14 +2319,20 @@ static void data_offer_resource_destroy(struct wl_resource *r)
 {
     struct iosc_data_offer *o = wl_resource_get_user_data(r);
     if (!o) return;
-    free(o->text);
+    for (int i = 0; i < o->nitems; i++)
+        mime_data_clear(&o->items[i]);
     free(o);
 }
 
 static void data_source_offer(struct wl_client *c, struct wl_resource *r, const char *m)
 { (void)c;
     struct iosc_data_source *s = wl_resource_get_user_data(r);
-    if (s && is_text_mime(m) && !s->text_mime) s->text_mime = strdup(m);
+    if (!s || !is_clip_mime(m) || s->nmimes >= IOSC_MAX_CLIP_MIMES) return;
+    for (int i = 0; i < s->nmimes; i++)
+        if (!strcmp(s->mimes[i], m)) return;
+    char *copy = strdup(m);
+    if (!copy) { wl_client_post_no_memory(c); return; }
+    s->mimes[s->nmimes++] = copy;
 }
 
 static void data_source_destroy(struct wl_client *c, struct wl_resource *r)
@@ -2253,15 +2350,21 @@ static void data_source_resource_destroy(struct wl_resource *r)
 {
     struct iosc_data_source *s = wl_resource_get_user_data(r);
     if (!s) return;
-    free(s->text_mime);
+    for (int i = 0; i < s->nmimes; i++)
+        free(s->mimes[i]);
     free(s);
 }
 
 static void source_read_done(struct iosc_source_read *rd, int publish)
 {
-    if (publish) clip_set_text(rd->buf ? rd->buf : "", rd->len, 1);
+    if (publish && rd->mime && clip_item_set(rd->mime, rd->buf ? rd->buf : "", rd->len) == 0) {
+        if (is_text_mime(rd->mime))
+            clip_send_set_to_app(rd->buf ? rd->buf : "", rd->len);
+        clipboard_selection_broadcast();
+    }
     if (rd->src) wl_event_source_remove(rd->src);
     if (rd->fd >= 0) close(rd->fd);
+    free(rd->mime);
     free(rd->buf);
     free(rd);
 }
@@ -2306,17 +2409,22 @@ static void data_device_set_selection(struct wl_client *c, struct wl_resource *r
 { (void)c; (void)r; (void)serial;
     if (!src) { clip_set_text("", 0, 1); return; }
     struct iosc_data_source *s = wl_resource_get_user_data(src);
-    if (!s || !s->text_mime) return;
-    int fds[2];
-    if (pipe(fds) != 0) return;
-    fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL, 0) | O_NONBLOCK);
-    struct iosc_source_read *rd = calloc(1, sizeof(*rd));
-    if (!rd) { close(fds[0]); close(fds[1]); return; }
-    rd->fd = fds[0];
-    rd->src = wl_event_loop_add_fd(wl_display_get_event_loop(g_display), fds[0],
-                                   WL_EVENT_READABLE, source_readable, rd);
-    wl_data_source_send_send(src, s->text_mime, fds[1]);
-    close(fds[1]);
+    if (!s || s->nmimes == 0) return;
+    clip_clear_items();
+    for (int i = 0; i < s->nmimes; i++) {
+        int fds[2];
+        if (pipe(fds) != 0) continue;
+        fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL, 0) | O_NONBLOCK);
+        struct iosc_source_read *rd = calloc(1, sizeof(*rd));
+        if (!rd) { close(fds[0]); close(fds[1]); continue; }
+        rd->fd = fds[0];
+        rd->mime = strdup(s->mimes[i]);
+        if (!rd->mime) { close(fds[0]); close(fds[1]); free(rd); continue; }
+        rd->src = wl_event_loop_add_fd(wl_display_get_event_loop(g_display), fds[0],
+                                       WL_EVENT_READABLE, source_readable, rd);
+        wl_data_source_send_send(src, s->mimes[i], fds[1]);
+        close(fds[1]);
+    }
 }
 
 static void data_device_release(struct wl_client *c, struct wl_resource *r)
@@ -2438,7 +2546,8 @@ static int clip_listen_readable(int fd, uint32_t mask, void *data)
     for (int i = 0; i < IOSC_MAX_CLIP_CLIENTS; i++) if (!g_clip_clients[i]) { slot = i; break; }
     if (slot < 0) { clip_client_drop(c); return 0; }
     g_clip_clients[slot] = c;
-    if (g_clip_text) clip_send_set_to_client(c, g_clip_text, g_clip_len);
+    struct iosc_mime_data *text = clip_find_item("text/plain;charset=utf-8");
+    if (text) clip_send_set_to_client(c, text->data ? text->data : "", text->len);
     fprintf(stderr, "iosc: clipboard client connected (fd=%d)\n", cfd);
     return 0;
 }
