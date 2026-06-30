@@ -1,0 +1,49 @@
+#!/bin/sh
+# Create the standard Xios runtime dirs and refresh desktop caches if their
+# packages are installed. Every command is idempotent so upgrades are cheap.
+set -e
+case "$1" in
+  configure|install|"")
+    PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+    export PATH
+
+    mkdir -p \
+      /var/jb/etc/X11/Xresources \
+      /var/jb/etc/xdg/gtk-3.0 \
+      /var/jb/etc/xdg/gtk-4.0 \
+      /var/jb/var/lib/dbus \
+      /var/jb/var/lib/xkb \
+      /var/jb/var/run/user \
+      /var/jb/tmp/.X11-unix \
+      /var/jb/var/tmp
+    chmod 1777 /var/jb/tmp /var/jb/tmp/.X11-unix /var/jb/var/tmp 2>/dev/null || true
+
+    if command -v dbus-uuidgen >/dev/null 2>&1; then
+      dbus-uuidgen --ensure=/var/jb/var/lib/dbus/machine-id >/dev/null 2>&1 || true
+    fi
+    if command -v fc-cache >/dev/null 2>&1; then
+      fc-cache -f >/dev/null 2>&1 || true
+    fi
+    if command -v glib-compile-schemas >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/glib-2.0/schemas ]; then
+      glib-compile-schemas /var/jb/usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/icons/hicolor ]; then
+      gtk-update-icon-cache -q -f /var/jb/usr/share/icons/hicolor >/dev/null 2>&1 || true
+    fi
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/icons/hicolor ]; then
+      gtk4-update-icon-cache -q -f /var/jb/usr/share/icons/hicolor >/dev/null 2>&1 || true
+    fi
+    if command -v update-mime-database >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/mime ]; then
+      update-mime-database /var/jb/usr/share/mime >/dev/null 2>&1 || true
+    fi
+    if command -v update-desktop-database >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/applications ]; then
+      update-desktop-database -q /var/jb/usr/share/applications >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+exit 0

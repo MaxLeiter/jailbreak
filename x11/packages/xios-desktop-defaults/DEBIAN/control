@@ -1,0 +1,16 @@
+Package: xios-desktop-defaults
+Name: Xios desktop defaults
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: x11-fonts-sf, fontconfig, dbus, libglib2.0-bin
+Section: X11
+Priority: optional
+Description: Retina, XDG, GTK and session defaults for Xios
+ Installs the ambient distro defaults that make X11/GTK/Xfce/GNOME apps feel
+ at home on rootless iOS: rootless PATH and XDG directories, UTF-8 locale,
+ native iPad retina display profile, Xft antialiasing/DPI resources, GTK3/GTK4
+ defaults, a minimal hicolor icon-theme index, touch-friendly cursor sizing,
+ and cache/schema/database setup hooks. No binaries are shipped; launchers
+ source the profile when present.

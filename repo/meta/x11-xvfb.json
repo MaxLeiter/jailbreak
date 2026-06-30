@@ -1,0 +1,10 @@
+{
+  "tagline": "Headless X11 server (Xvfb) for rootless jailbreaks",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "rectangle.on.rectangle",
+  "description": "**Xvfb**, the X virtual framebuffer server, rebuilt from source for **rootless** jailbreaks. It runs a full X11 server with no real display hardware, drawing everything into an off-screen image in memory.\n\nIt's the engine behind the native **Xios** iOS app: Xvfb draws into a shared image that the app puts on screen, and touch and keyboard input are passed back into X11.\n\nStock X servers crash on launch under rootless because they expect a system shell at `/bin/sh`, which isn't present (it lives at `/var/jb/bin/sh`). This build uses the right path, so the keyboard sets up correctly.\n\n- The same Xvfb from xorg-server 1.20.11, built from source\n- Installs cleanly and registers `/var/jb/usr/bin/Xvfb`\n- Pair with a window manager (`fluxbox`), `xterm`, and the `x11-fonts-sf` package\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`).",
+  "changelog": [
+    { "version": "1.20.11+rootless1", "date": "2026-06-29", "notes": "- Rebuilt Xvfb from the same patched xorg-server 1.20.11 source as the X11-on-iOS stack\n- Fix: XKB init spawns its xkbcomp helper via /var/jb/bin/sh (was /bin/sh), so keyboard init no longer crashes on rootless\n- postinst creates the writable /var/jb/var/lib/xkb compiled-keymap dir\n- Ad-hoc signed; installs cleanly with dpkg/apt" }
+  ]
+}

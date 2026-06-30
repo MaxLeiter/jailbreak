@@ -1,0 +1,10 @@
+{
+  "tagline": "Preview and inspect fonts",
+  "developer": "The GNOME Project",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "character",
+  "description": "**GNOME Fonts** (font-viewer) running natively on your jailbroken device through the X11-on-iOS stack. Browse the fonts available to X11 apps and preview each face at any size.\n\nA clean pure-C GTK4 app. Pairs naturally with the `x11-fonts-sf` package, which exposes the iOS system fonts (San Francisco, SF Mono, emoji, CJK) to X11.\n\n- Preview any installed face at custom sizes\n- Inspect family, style, and metadata\n- GTK4 + libadwaita\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`).",
+  "changelog": [
+    { "version": "46.0", "date": "2026-06-30", "notes": "- First release: GNOME Fonts 46 cross-compiled for rootless iOS\n- Pure-C GTK4; pairs with x11-fonts-sf" }
+  ]
+}

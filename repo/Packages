@@ -1,3 +1,23 @@
+Package: angle
+Name: ANGLE (GLES via Metal)
+Version: 2.1.0+git20260630.a32d31d
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Installed-Size: 13416
+Depends: firmware (>= 15.0)
+Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/AGX).
+Filename: debs/angle_2.1.0+git20260630.a32d31d_iphoneos-arm64.deb
+Size: 3902880
+MD5sum: 93f873fc29e676dc5f8fb6adc3723ce7
+SHA1: 9deb1713cad934400b16fbc6108e82243f820493
+SHA256: ee451301ae1eae6aac85f9745f96e630761fa98df892004d0659edd190843421
+Icon: https://repo.maxleiter.com/icons/angle.png
+Depiction: https://repo.maxleiter.com/depictions/angle.html
+Native Depiction: https://repo.maxleiter.com/depictions/angle.json
+Homepage: https://repo.maxleiter.com
+
 Package: com.max.autolockpicker
 Name: AutoLockPicker
 Description: Replace the Auto-Lock preset list with a configurable time picker (Display & Brightness).
@@ -16,4 +36,1880 @@ SHA256: 7423debbb1b7914b240368ecab9fc3bd92bf52a642f3efea9493358ac502fefd
 Icon: https://repo.maxleiter.com/icons/com.max.autolockpicker.png
 Depiction: https://repo.maxleiter.com/depictions/com.max.autolockpicker.html
 Native Depiction: https://repo.maxleiter.com/depictions/com.max.autolockpicker.json
+Homepage: https://repo.maxleiter.com
+
+Package: dbus
+Version: 1.14.10
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Software/dbus/
+Depends: libiosexec1 (>= 1.3.1), libiosexec1
+Description: Simple interprocess messaging system (daemon, tools and library)
+Installed-Size: 1480
+Filename: debs/dbus_1.14.10_iphoneos-arm64.deb
+Size: 312304
+MD5sum: 3469dcf74727bc935e12469dff85b612
+SHA1: 313d4660054c200a1623927b57249744ba3d8f71
+SHA256: 2ceabacb6406bc46cf2d0512d8696361c59a46a9459197d970e35cc09ef600e9
+Icon: https://repo.maxleiter.com/icons/dbus.png
+Depiction: https://repo.maxleiter.com/depictions/dbus.html
+Native Depiction: https://repo.maxleiter.com/depictions/dbus.json
+Homepage: https://repo.maxleiter.com
+
+Package: fontconfig-config
+Version: 2.14.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Utilities
+Priority: standard
+Description: generic font configuration library - configuration
+Installed-Size: 316
+Filename: debs/fontconfig-config_2.14.0_iphoneos-arm64.deb
+Size: 71868
+MD5sum: e8b184c91b24e9e783314092987d9bfc
+SHA1: 2746e5e541ba44321e49782810168325d639c3b6
+SHA256: 0cfb936e7135344271cfbe410018873f0864237f86770604dedb652de235705e
+Icon: https://repo.maxleiter.com/icons/fontconfig-config.png
+Depiction: https://repo.maxleiter.com/depictions/fontconfig-config.html
+Native Depiction: https://repo.maxleiter.com/depictions/fontconfig-config.json
+Homepage: https://repo.maxleiter.com
+
+Package: fontconfig
+Version: 2.14.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libuuid16, libfontconfig1, libintl8, libfreetype6, firmware (>= 14.0) | libexpat1, fontconfig-config
+Section: Utilities
+Priority: standard
+Description: generic font configuration library - support binaries
+Installed-Size: 564
+Filename: debs/fontconfig_2.14.0_iphoneos-arm64.deb
+Size: 77830
+MD5sum: 9629199adc3aa02917301c2592850449
+SHA1: 17509593309f3294f81b09bb365ebc76e2d04b0e
+SHA256: ceb4f8513a22510e37a44cbf56b2bb223791bc6a255d1dc9dba8cdd1182522b0
+Icon: https://repo.maxleiter.com/icons/fontconfig.png
+Depiction: https://repo.maxleiter.com/depictions/fontconfig.html
+Native Depiction: https://repo.maxleiter.com/depictions/fontconfig.json
+Homepage: https://repo.maxleiter.com
+
+Package: gir1.2-freedesktop
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libglib2.0-0, libgirepository-1.0-1 (= 1.78.0)
+Section: Introspection
+Homepage: https://gitlab.gnome.org/GNOME/gobject-introspection
+Description: Introspection data for some FreeDesktop components
+Filename: debs/gir1.2-freedesktop_1.78.0_iphoneos-arm64.deb
+Size: 16532
+MD5sum: 7b1dafa3a80debb559a60c427c8d5bbb
+SHA1: df0f958527fefa560998b3266b2144e2fe598f19
+SHA256: fec251d651a2c672d965f3ba9dabff84e3b2a5d3ab19879fa34e491e1d1c01f2
+Icon: https://repo.maxleiter.com/icons/gir1.2-freedesktop.png
+Depiction: https://repo.maxleiter.com/depictions/gir1.2-freedesktop.html
+Native Depiction: https://repo.maxleiter.com/depictions/gir1.2-freedesktop.json
+Homepage: https://repo.maxleiter.com
+
+Package: gir1.2-glib-2.0
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libglib2.0-0, libgirepository-1.0-1 (= 1.78.0)
+Section: Introspection
+Homepage: https://gitlab.gnome.org/GNOME/gobject-introspection
+Description: Introspection data for GLib, GObject, Gio and GModule
+Filename: debs/gir1.2-glib-2.0_1.78.0_iphoneos-arm64.deb
+Size: 140000
+MD5sum: 4de2a0c630c588522e8073db01feb2a3
+SHA1: 17aba863c655665bf60142e9b40989d11873318d
+SHA256: f2677d5a8cafc83ccb269229b11c78d3a83e32d1462a03eca242de8a4c4e635d
+Icon: https://repo.maxleiter.com/icons/gir1.2-glib-2.0.png
+Depiction: https://repo.maxleiter.com/depictions/gir1.2-glib-2.0.html
+Native Depiction: https://repo.maxleiter.com/depictions/gir1.2-glib-2.0.json
+Homepage: https://repo.maxleiter.com
+
+Package: gnome-console
+Version: 46.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Applications
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/console
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libadwaita-1-0, libvte-2.91-gtk4-0, libpcre2-8-0, libgtop-2.0-11, dbus
+Description: Simple user-friendly terminal emulator (GTK4)
+Installed-Size: 1300
+Filename: debs/gnome-console_46.0_iphoneos-arm64.deb
+Size: 187882
+MD5sum: f034492e4c5eb8708f1747fb47ba5971
+SHA1: b49a081ac0a2fa1d2a5d23494463c42db749e8ce
+SHA256: 4cd7cf8c2655894285ed6a14eb8304d18aad4b9e0f440a60b9f51aaf82d32637
+Icon: https://repo.maxleiter.com/icons/gnome-console.png
+Depiction: https://repo.maxleiter.com/depictions/gnome-console.html
+Native Depiction: https://repo.maxleiter.com/depictions/gnome-console.json
+Homepage: https://repo.maxleiter.com
+
+Package: gobject-introspection
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: python3, libgirepository-1.0-1 (= 1.78.0), libglib2.0-dev, clang, pkg-config
+Section: Utilities
+Homepage: https://gitlab.gnome.org/GNOME/gobject-introspection
+Description: Generate interface introspection data for GObject libraries
+Filename: debs/gobject-introspection_1.78.0_iphoneos-arm64.deb
+Size: 257164
+MD5sum: 502e8c51d5111403e7001d0449455d52
+SHA1: 637810b220d446910c69c7df9502ed5f6caf79df
+SHA256: 37f8ddf92a6925bed22bbecb203b79c05e1a11d77cfa07e80fce511768d2f7f7
+Icon: https://repo.maxleiter.com/icons/gobject-introspection.png
+Depiction: https://repo.maxleiter.com/depictions/gobject-introspection.html
+Native Depiction: https://repo.maxleiter.com/depictions/gobject-introspection.json
+Homepage: https://repo.maxleiter.com
+
+Package: gsettings-desktop-schemas
+Version: 46.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://download.gnome.org/sources/gsettings-desktop-schemas/
+Depends: libglib2.0-0, libglib2.0-bin
+Description: GSettings desktop-wide schemas
+Installed-Size: 6016
+Filename: debs/gsettings-desktop-schemas_46.1_iphoneos-arm64.deb
+Size: 959150
+MD5sum: 1c94babdf7abd7e04a77fbb180cda098
+SHA1: cf214d120848d1c0077cab51eb08485641a1d303
+SHA256: 8dbe8cf6184fb709af5abf3bb6310b99e7fc86498c40f333025670db63e21d5e
+Icon: https://repo.maxleiter.com/icons/gsettings-desktop-schemas.png
+Depiction: https://repo.maxleiter.com/depictions/gsettings-desktop-schemas.html
+Native Depiction: https://repo.maxleiter.com/depictions/gsettings-desktop-schemas.json
+Homepage: https://repo.maxleiter.com
+
+Package: gtk-3-bin
+Version: 3.24.38
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Utilities
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libiosexec1 (>= 1.3.1), libgtk-3-0 (= 3.24.38), libglib2.0-bin, libgtkintl
+Description: Programs for the GTK graphical user interface library
+Installed-Size: 820
+Filename: debs/gtk-3-bin_3.24.38_iphoneos-arm64.deb
+Size: 223482
+MD5sum: 17007681ec35e560f20f3d9e601703d9
+SHA1: 00b2424ddc41c1772d74740a30f6f5879ee51673
+SHA256: bf3451458b91d5da1324b7ae5308d73c4ea9fcff5602419fbd48741c0b6448e7
+Icon: https://repo.maxleiter.com/icons/gtk-3-bin.png
+Depiction: https://repo.maxleiter.com/depictions/gtk-3-bin.html
+Native Depiction: https://repo.maxleiter.com/depictions/gtk-3-bin.json
+Homepage: https://repo.maxleiter.com
+
+Package: gtk-4-bin
+Version: 4.14.5
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Utilities
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libiosexec1 (>= 1.3.1), libgtk-4-1 (= 4.14.5), libglib2.0-bin, libgtkintl
+Description: Programs for the GTK 4 graphical user interface library
+Installed-Size: 9084
+Filename: debs/gtk-4-bin_4.14.5_iphoneos-arm64.deb
+Size: 2344318
+MD5sum: 0d852a4fb7c7f6c2b551f90f0264fd93
+SHA1: 6575a66e99a6649edcb52d055b5db609e6c1a2e8
+SHA256: ae989b27506f522226d37e9458dce3537ec57a9a898af4df0a1fca89b891a9a0
+Icon: https://repo.maxleiter.com/icons/gtk-4-bin.png
+Depiction: https://repo.maxleiter.com/depictions/gtk-4-bin.html
+Native Depiction: https://repo.maxleiter.com/depictions/gtk-4-bin.json
+Homepage: https://repo.maxleiter.com
+
+Package: libadwaita-1-0
+Version: 1.5.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://gnome.pages.gitlab.gnome.org/libadwaita/
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libappstream5, libfribidi0
+Description: GNOME building blocks for modern GTK4 applications
+Installed-Size: 1880
+Filename: debs/libadwaita-1-0_1.5.0_iphoneos-arm64.deb
+Size: 404246
+MD5sum: 21f38619193c7b66df2d5da8690ab48a
+SHA1: 2fa8049488629b4ba5dd1d9868814bf71bcf3720
+SHA256: 9c50f4d929e8551774b00eb06014b7a94bf9c3d6117f4396ab5bfb0d963427df
+Icon: https://repo.maxleiter.com/icons/libadwaita-1-0.png
+Depiction: https://repo.maxleiter.com/depictions/libadwaita-1-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libadwaita-1-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libappstream5
+Version: 1.0.3
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Distributions/AppStream/
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libyaml-0-2, libxmlb2
+Description: Software component metadata library
+Installed-Size: 4072
+Filename: debs/libappstream5_1.0.3_iphoneos-arm64.deb
+Size: 895090
+MD5sum: fac695294bac930941e9cfc962ef4dde
+SHA1: 557258c8a39b5383e59d0f137f678616a6941f75
+SHA256: a9f1eb17b1bdfc7bd439b69051a84e64b98aac27fd4fba162801f622c6063705
+Icon: https://repo.maxleiter.com/icons/libappstream5.png
+Depiction: https://repo.maxleiter.com/depictions/libappstream5.html
+Native Depiction: https://repo.maxleiter.com/depictions/libappstream5.json
+Homepage: https://repo.maxleiter.com
+
+Package: libatk1.0-0
+Version: 2.38.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/atk
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0
+Description: ATK accessibility toolkit
+Installed-Size: 280
+Filename: debs/libatk1.0-0_2.38.0_iphoneos-arm64.deb
+Size: 73744
+MD5sum: c5a514b021481415c193a8055fb81af0
+SHA1: 0d40b629cc4f6f90e5bd308eda2274a25bc50de7
+SHA256: 06223d47760363105299bca56aae97f12ce136f5e2c70c8a646c4908905e7db5
+Icon: https://repo.maxleiter.com/icons/libatk1.0-0.png
+Depiction: https://repo.maxleiter.com/depictions/libatk1.0-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libatk1.0-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libatk1.0-dev
+Version: 2.38.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/atk
+Depends: libatk1.0-0 (= 2.38.0), libglib2.0-dev
+Description: Development files for the ATK accessibility toolkit
+Installed-Size: 2376
+Filename: debs/libatk1.0-dev_2.38.0_iphoneos-arm64.deb
+Size: 276214
+MD5sum: 70b82119d23d9a39b4cd5a9c713dea45
+SHA1: 076a421590efaa98b5356b7d37f2a0ec15013d4a
+SHA256: 9d4f5e51bbdc8590c14332043ad7962dfd26a09d8d4031c41c216a3795431a9c
+Icon: https://repo.maxleiter.com/icons/libatk1.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libatk1.0-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libatk1.0-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libcairo-gobject2
+Version: 1.16.0-3
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libcairo2 (= 1.16.0-3), libfontconfig1, libfreetype6, libpng16-16, libpixman-1-0, libglib2.0-0, libx11-6, libxext6, libxcb-shm0, libxcb1, libxcb-render0, libxrender1
+Section: Libraries
+Priority: optional
+Description: Cairo 2D vector graphics library (GObject library)
+Installed-Size: 192
+Filename: debs/libcairo-gobject2_1.16.0-3_iphoneos-arm64.deb
+Size: 105008
+MD5sum: 28532a287b20405ac7f30ff3ca119c0d
+SHA1: 5d321cbd506cb427639f79d449c76ae87972606b
+SHA256: c0979d9694e54683495f4d30b4480fda0eb6a43ed712a6187a695d5c0a7ab52d
+Icon: https://repo.maxleiter.com/icons/libcairo-gobject2.png
+Depiction: https://repo.maxleiter.com/depictions/libcairo-gobject2.html
+Native Depiction: https://repo.maxleiter.com/depictions/libcairo-gobject2.json
+Homepage: https://repo.maxleiter.com
+
+Package: libcairo-script-interpreter2
+Version: 1.16.0-3
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libcairo2 (= 1.16.0-3), libfontconfig1, libfreetype6, libpng16-16, libpixman-1-0, liblzo2-2, libx11-6, libxext6, libxcb-shm0, libxcb1, libxcb-render0, libxrender1
+Section: Libraries
+Priority: optional
+Description: Cairo 2D vector graphics library (script interpreter)
+Installed-Size: 288
+Filename: debs/libcairo-script-interpreter2_1.16.0-3_iphoneos-arm64.deb
+Size: 140534
+MD5sum: 4ade77e4900fd53ec42cee39048c7889
+SHA1: 46ff42f755eb010de8760d7811bc89df6a0c2592
+SHA256: ed9605a9a5d99f1a8807cf087236cc78ab3bf3470211d35f9bf32912bf9e9aa5
+Icon: https://repo.maxleiter.com/icons/libcairo-script-interpreter2.png
+Depiction: https://repo.maxleiter.com/depictions/libcairo-script-interpreter2.html
+Native Depiction: https://repo.maxleiter.com/depictions/libcairo-script-interpreter2.json
+Homepage: https://repo.maxleiter.com
+
+Package: libcairo2-dev
+Version: 1.16.0-3
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libcairo2 (>= 1.16.0-3), libcairo-gobject2 (>= 1.16.0-3), libcairo-script-interpreter2 (>= 1.16.0-3), libfontconfig-dev, libfreetype-dev, libpng16-dev, libpixman-1-dev, libglib2.0-dev, liblzo2-dev, libx11-dev, libxext-dev, libxcb1-dev, libxrender-dev
+Section: Development
+Priority: optional
+Description: Development files for the Cairo 2D graphics library
+Installed-Size: 2164
+Filename: debs/libcairo2-dev_1.16.0-3_iphoneos-arm64.deb
+Size: 799874
+MD5sum: 0206d7628fd9933a3a955016fb95b926
+SHA1: a92c310fde3456137032108705fa6295527ae7cf
+SHA256: fa0cb47239ded5025e79da913650b5b8f235835440a88202d6c8f6743ea2e2f2
+Icon: https://repo.maxleiter.com/icons/libcairo2-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libcairo2-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libcairo2-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libcairo2
+Version: 1.16.0-3
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libfontconfig1, libfreetype6, libpng16-16, libpixman-1-0, libx11-6, libxext6, libxcb-shm0, libxcb1, libxcb-render0, libxrender1
+Section: Libraries
+Priority: optional
+Description: Cairo 2D vector graphics library
+Installed-Size: 980
+Filename: debs/libcairo2_1.16.0-3_iphoneos-arm64.deb
+Size: 522090
+MD5sum: 29528a03c5defc4aa6395014780a2e0a
+SHA1: 36c063172e865fee8488161e371b5e539e7fa84b
+SHA256: fbb3cd2684ec61b823a065b4aa41bfbdc36c668fbcc6fda96e5c49db5ce300fd
+Icon: https://repo.maxleiter.com/icons/libcairo2.png
+Depiction: https://repo.maxleiter.com/depictions/libcairo2.html
+Native Depiction: https://repo.maxleiter.com/depictions/libcairo2.json
+Homepage: https://repo.maxleiter.com
+
+Package: libepoll-shim-dev
+Version: 0.0.20240608
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libepoll-shim0 (= 0.0.20240608)
+Section: Development
+Priority: optional
+Homepage: https://github.com/jiixyj/epoll-shim
+Description: Development files for epoll-shim
+Installed-Size: 192
+Filename: debs/libepoll-shim-dev_0.0.20240608_iphoneos-arm64.deb
+Size: 7350
+MD5sum: 2c9f8a2db43947d9e81ee3bcbb77c020
+SHA1: c63cbd134589f6252c891b5cb1b1e9c4b869c4c8
+SHA256: e0f427ea22a0a216470f96da05d40d02b9a29500eb809a3f79e6eda44d5d11d5
+Icon: https://repo.maxleiter.com/icons/libepoll-shim-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libepoll-shim-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libepoll-shim-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libepoll-shim0
+Version: 0.0.20240608
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/jiixyj/epoll-shim
+Description: epoll/timerfd/signalfd/eventfd on top of kqueue
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 124
+Filename: debs/libepoll-shim0_0.0.20240608_iphoneos-arm64.deb
+Size: 20722
+MD5sum: 63b4c94e9eb67ecfd424161b7163be11
+SHA1: 7089354cbc374d2394d00f8d7f26c5d599ffc328
+SHA256: 87fd924d0b257bee94ed9efffce3a44f5e72eb979ffa0fdc1df190ee53750b5a
+Icon: https://repo.maxleiter.com/icons/libepoll-shim0.png
+Depiction: https://repo.maxleiter.com/depictions/libepoll-shim0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libepoll-shim0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libepoxy-dev
+Version: 1.5.7+angle1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libepoxy0
+Section: Development
+Priority: optional
+Description: OpenGL function pointer management library- development
+Installed-Size: 1692
+Filename: debs/libepoxy-dev_1.5.7+angle1_iphoneos-arm64.deb
+Size: 176454
+MD5sum: 10a31dfd53169ef32908a49a3a652682
+SHA1: 53bc7ed1b95932b3d51e0a62fbff604b11731640
+SHA256: 0ae89ca18a073694bba7d806b2d2f82092081a471bfa7601bcabf05aeac623f0
+Icon: https://repo.maxleiter.com/icons/libepoxy-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libepoxy-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libepoxy-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libepoxy0
+Version: 1.5.7+angle1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Description: OpenGL function pointer management library
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 860
+Filename: debs/libepoxy0_1.5.7+angle1_iphoneos-arm64.deb
+Size: 192494
+MD5sum: ac8a3bc4b1723349aa8f747cc58bd376
+SHA1: 3c216fb21505d60558d5d4253eefbb3ec281c1db
+SHA256: 8f76f78f2c8a9012c9282236e67c23c92b64fecca62509371f1f1b92982cb176
+Icon: https://repo.maxleiter.com/icons/libepoxy0.png
+Depiction: https://repo.maxleiter.com/depictions/libepoxy0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libepoxy0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libfontconfig-dev
+Version: 2.14.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libuuid-dev, libfreetype-dev, firmware (>= 14.0) | libexpat1-dev, libfontconfig1 (= 2.14.0)
+Section: Development
+Priority: standard
+Description: generic font configuration library - development
+Installed-Size: 148
+Filename: debs/libfontconfig-dev_2.14.0_iphoneos-arm64.deb
+Size: 48584
+MD5sum: 7b42383e2ac5ef75684899e592828603
+SHA1: 3d7a7dc44da5fa89c2f8975c00c300826b8ca783
+SHA256: 7298244d4effd4a25b15507335f15eb873f34156c5538721dc19285821228f67
+Icon: https://repo.maxleiter.com/icons/libfontconfig-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libfontconfig-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libfontconfig-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libfontconfig1
+Version: 2.14.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libuuid16, libintl8, libfreetype6, firmware (>= 14.0) | libexpat1, fontconfig-config
+Section: Libraries
+Priority: standard
+Description: generic font configuration library - runtime
+Installed-Size: 380
+Filename: debs/libfontconfig1_2.14.0_iphoneos-arm64.deb
+Size: 158668
+MD5sum: 2d4eb50b7e4b1d5f20df60637ba9facb
+SHA1: 16a5b35923527a52aa569607a3637a85c54e2ef2
+SHA256: 94ee96b783e2bca2ad539955ebac29408b0eb7e95208a2da1b976073b6e8881b
+Icon: https://repo.maxleiter.com/icons/libfontconfig1.png
+Depiction: https://repo.maxleiter.com/depictions/libfontconfig1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libfontconfig1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libfontenc1
+Version: 1.1.4
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Description: X11 font encoding library
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 72
+Filename: debs/libfontenc1_1.1.4_iphoneos-arm64.deb
+Size: 11140
+MD5sum: 06a537b3a6825b5a899f5194873ddee5
+SHA1: b80cb52822409f690211d46b16381e7057fb82db
+SHA256: f4abcaf79756404dc7960928df3ad1bc3cf138e384d5e9b0e6fc9df78eda8d45
+Icon: https://repo.maxleiter.com/icons/libfontenc1.png
+Depiction: https://repo.maxleiter.com/depictions/libfontenc1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libfontenc1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libfreetype6
+Version: 2.12.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libbrotli1, libpng16-16
+Section: Libraries
+Priority: standard
+Description: FreeType 2 font engine, shared library files
+Installed-Size: 588
+Filename: debs/libfreetype6_2.12.1_iphoneos-arm64.deb
+Size: 317422
+MD5sum: 12d0476c9fbef4961587538eeeae67cb
+SHA1: 9987d62664e1e24a19af7e900955ed5e0c962652
+SHA256: 99e68a4dde937c21a40c2e599aba4c9f2f220fbdc76c38de70d5543e7284888f
+Icon: https://repo.maxleiter.com/icons/libfreetype6.png
+Depiction: https://repo.maxleiter.com/depictions/libfreetype6.html
+Native Depiction: https://repo.maxleiter.com/depictions/libfreetype6.json
+Homepage: https://repo.maxleiter.com
+
+Package: libfribidi-dev
+Version: 1.0.13
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libfribidi0 (= 1.0.13)
+Section: Development
+Priority: optional
+Homepage: https://github.com/fribidi/fribidi/
+Description: Development files for FreeBidi library
+Installed-Size: 216
+Filename: debs/libfribidi-dev_1.0.13_iphoneos-arm64.deb
+Size: 33226
+MD5sum: c13053cc4b68e6c35977fdf1b94e034e
+SHA1: 038d1ed27f9b4c4dad227be05dd2b7924e83ce75
+SHA256: 49ab58916300aaf46467b012b6e0c3290932afb05d881d1de03c32630e65bf8a
+Icon: https://repo.maxleiter.com/icons/libfribidi-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libfribidi-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libfribidi-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libfribidi0
+Version: 1.0.13
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/fribidi/fribidi/
+Description: Free Implementation of the Unicode BiDi algorithm
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 248
+Filename: debs/libfribidi0_1.0.13_iphoneos-arm64.deb
+Size: 41610
+MD5sum: aea30076613a6f804419a81f65edafe2
+SHA1: 917477bab5926a51e7381c98473648086026c450
+SHA256: 1042e14aff0c9fd7a088a52d1b3de6915aa4b80d83df78d743d0ecc5ffb317c7
+Icon: https://repo.maxleiter.com/icons/libfribidi0.png
+Depiction: https://repo.maxleiter.com/depictions/libfribidi0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libfribidi0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgdk-pixbuf-2.0-0
+Version: 2.42.12
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gdk-pixbuf
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libpng16-16, libjpeg62-turbo, libtiff5
+Description: GDK Pixbuf library
+Installed-Size: 312
+Filename: debs/libgdk-pixbuf-2.0-0_2.42.12_iphoneos-arm64.deb
+Size: 94606
+MD5sum: 7fd74f5f0266970dd5a65d07018e45e0
+SHA1: 628de0e8918755a85b30052ef889d6250025b236
+SHA256: 48e943054963004d37cc261b4a4cc11c50b1b4fe5676331773f04146a5ec17b2
+Icon: https://repo.maxleiter.com/icons/libgdk-pixbuf-2.0-0.png
+Depiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgdk-pixbuf-2.0-dev
+Version: 2.42.12
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gdk-pixbuf
+Depends: libiosexec1 (>= 1.3.1), libgdk-pixbuf-2.0-0 (= 2.42.12), libglib2.0-dev, libpng16-dev, libjpeg62-turbo-dev, libtiff-dev
+Description: Development files for the GDK Pixbuf library
+Installed-Size: 488
+Filename: debs/libgdk-pixbuf-2.0-dev_2.42.12_iphoneos-arm64.deb
+Size: 48922
+MD5sum: a9bee2c499f08b142dfbc5639a91df7d
+SHA1: fac924ba077092c0df877e6173885320775a6033
+SHA256: d5f939d21c806897668c08a6d31ba2fb1ea7ac4dc982d05c593406c9606757fc
+Icon: https://repo.maxleiter.com/icons/libgdk-pixbuf-2.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgeneral0
+Version: 56-1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Conflicts: libgeneral (<< 1:0)
+Replaces: libgeneral (<< 1:0)
+Provides: libgeneral (= 56-1)
+Section: Libraries
+Priority: optional
+Description: Common library for tihmstar tools
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 84
+Filename: debs/libgeneral0_56-1_iphoneos-arm64.deb
+Size: 17168
+MD5sum: e9d5078ba82cd96145fc8d6d8faa6157
+SHA1: b87a5913248a9338bebbaf4c5e60a522bb516e7a
+SHA256: 709f07fc8fdbae7cdf8e76fa648db6d462a95462555554dda63e502aba6440d7
+Icon: https://repo.maxleiter.com/icons/libgeneral0.png
+Depiction: https://repo.maxleiter.com/depictions/libgeneral0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgeneral0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgirepository-1.0-1
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libglib2.0-0, libffi8
+Section: Libraries
+Homepage: https://gitlab.gnome.org/GNOME/gobject-introspection
+Description: Library for handling GObject introspection data (runtime library)
+Filename: debs/libgirepository-1.0-1_1.78.0_iphoneos-arm64.deb
+Size: 70616
+MD5sum: d7f14cdc9b554546e8b2b93246b2d799
+SHA1: bbaa8f153914117ec527bbf582d9366366797394
+SHA256: 745746899e51de3c1b6cc02ab3701c236050a531cacfd5709e0ec3af606a1262
+Icon: https://repo.maxleiter.com/icons/libgirepository-1.0-1.png
+Depiction: https://repo.maxleiter.com/depictions/libgirepository-1.0-1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgirepository-1.0-1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgirepository-1.0-dev
+Version: 1.78.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libgirepository-1.0-1 (= 1.78.0), gir1.2-glib-2.0 (= 1.78.0), gobject-introspection (= 1.78.0), libffi-dev, libglib2.0-dev
+Section: Development
+Homepage: https://gitlab.gnome.org/GNOME/gobject-introspection
+Description: Library for handling GObject introspection data (development files)
+Filename: debs/libgirepository-1.0-dev_1.78.0_iphoneos-arm64.deb
+Size: 887376
+MD5sum: 4054043fdf36cb59c2de6ebf144e83c2
+SHA1: b86c86b9d1a6b17ab5864bf4a481ab31e672df97
+SHA256: 3e953cdfe88a870197fe19ce857775730d244865c8fe8b97d0b6a7ab07118d4a
+Icon: https://repo.maxleiter.com/icons/libgirepository-1.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgirepository-1.0-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgirepository-1.0-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgl1-mesa-glx
+Version: 21.0.2
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Conflicts: libgl1
+Replaces: libgl1
+Provides: libgl1
+Depends: libiosexec1 (>= 1.2.2), libglapi-mesa (= 21.0.2), libx11-6, libxext6, libzstd1
+Priority: optional
+Homepage: https://mesa3d.org/
+Description: free implementation of the OpenGL API -- GLX runtime
+Installed-Size: 7140
+Filename: debs/libgl1-mesa-glx_21.0.2_iphoneos-arm64.deb
+Size: 2391696
+MD5sum: f2bbffdc4a56bf771af0e96e5374efc7
+SHA1: 406778d0d2212f9b510bf0509855f05ed9dcb3dc
+SHA256: bc20d59f1d810a26f97b1665521f72d298a5db76e38702a7675e4d0ccb1b61e2
+Icon: https://repo.maxleiter.com/icons/libgl1-mesa-glx.png
+Depiction: https://repo.maxleiter.com/depictions/libgl1-mesa-glx.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgl1-mesa-glx.json
+Homepage: https://repo.maxleiter.com
+
+Package: libglapi-mesa
+Version: 21.0.2
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://mesa3d.org/
+Description: free implementation of the GL API -- shared library
+Installed-Size: 248
+Filename: debs/libglapi-mesa_21.0.2_iphoneos-arm64.deb
+Size: 35554
+MD5sum: af8c5da45f6d4f7634e66f0399ca1876
+SHA1: 1d67a27d6da9483d45b3c568fef2b564bba6328b
+SHA256: 4cdaa6de87f7f03747b152b859020e04cd2e9c6e5ca05c7b29076e232e965d72
+Icon: https://repo.maxleiter.com/icons/libglapi-mesa.png
+Depiction: https://repo.maxleiter.com/depictions/libglapi-mesa.html
+Native Depiction: https://repo.maxleiter.com/depictions/libglapi-mesa.json
+Homepage: https://repo.maxleiter.com
+
+Package: libglib2.0-0
+Version: 2.78.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Replaces: glib (<< 1:0)
+Conflicts: glib (<< 1:0)
+Provides: glib (= 1:0)
+Depends: libiosexec1 (>= 1.3.1), libffi8, libintl8, libpcre2-8-0
+Section: Libraries
+Priority: important
+Multi-Arch: foreign
+Homepage: http://www.gtk.org/
+Description: GLib library of C routines
+Installed-Size: 13616
+Filename: debs/libglib2.0-0_2.78.0_iphoneos-arm64.deb
+Size: 3276894
+MD5sum: 7f18769cf5c8986b29c131d98554ffc1
+SHA1: 0327b8a1c073bec677c20c873a88da0b10cb9324
+SHA256: 981e2fc84897335e2e3775f8dada72029e92126b48838dcde58b96ffbe273387
+Icon: https://repo.maxleiter.com/icons/libglib2.0-0.png
+Depiction: https://repo.maxleiter.com/depictions/libglib2.0-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libglib2.0-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libglib2.0-bin
+Version: 2.78.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Replaces: glib (<< 1:0)
+Conflicts: glib (<< 1:0)
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0 (= 2.78.0)
+Section: Utilities
+Priority: important
+Multi-Arch: foreign
+Homepage: http://www.gtk.org/
+Description: Programs for the GLib library
+Installed-Size: 832
+Filename: debs/libglib2.0-bin_2.78.0_iphoneos-arm64.deb
+Size: 279282
+MD5sum: 60a9d06c1a80d965b22fad4438d85069
+SHA1: 4239444345977350247ea95d25161d7a55d96792
+SHA256: bf5bcf98c3e92e16ffaad10faa3783338d74ee42db272d6df0f20ab6144e03a7
+Icon: https://repo.maxleiter.com/icons/libglib2.0-bin.png
+Depiction: https://repo.maxleiter.com/depictions/libglib2.0-bin.html
+Native Depiction: https://repo.maxleiter.com/depictions/libglib2.0-bin.json
+Homepage: https://repo.maxleiter.com
+
+Package: libglib2.0-dev-bin
+Version: 2.78.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Replaces: glib (<< 1:0)
+Conflicts: glib (<< 1:0)
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0 (= 2.78.0)
+Section: Utilities
+Priority: important
+Multi-Arch: foreign
+Homepage: http://www.gtk.org/
+Description: Development utilities for the GLib library
+Installed-Size: 1040
+Filename: debs/libglib2.0-dev-bin_2.78.0_iphoneos-arm64.deb
+Size: 317796
+MD5sum: b87c27d5d8c4980ae1f805ec07be9de8
+SHA1: d3ab97ec8161bf9d661df06c91fdd721759c3ede
+SHA256: d4883fd54d936b132d379427bc51f8627d45b2dad9782008df4c5b7be685b047
+Icon: https://repo.maxleiter.com/icons/libglib2.0-dev-bin.png
+Depiction: https://repo.maxleiter.com/depictions/libglib2.0-dev-bin.html
+Native Depiction: https://repo.maxleiter.com/depictions/libglib2.0-dev-bin.json
+Homepage: https://repo.maxleiter.com
+
+Package: libglib2.0-dev
+Version: 2.78.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Replaces: glib (<< 1:0)
+Conflicts: glib (<< 1:0)
+Depends: libglib2.0-0 (= 2.78.0), libglib2.0-dev-bin (= 2.78.0), libffi-dev, libpcre2-dev, libintl-dev
+Section: Development
+Priority: important
+Multi-Arch: foreign
+Homepage: http://www.gtk.org/
+Description: Development files for the GLib library
+Installed-Size: 3424
+Filename: debs/libglib2.0-dev_2.78.0_iphoneos-arm64.deb
+Size: 582020
+MD5sum: 690021dd5473f0240e4cedf7d2037802
+SHA1: d008618b7769b9a06c102e158370107fcd63a829
+SHA256: fcb7e7a687009c4be5cfff0d7623fe7c9a03f83a969724e9eb244bc81feb2f4e
+Icon: https://repo.maxleiter.com/icons/libglib2.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libglib2.0-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libglib2.0-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgraphene-1.0-0
+Version: 1.10.8
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://ebassi.github.io/graphene/
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0
+Description: thin layer of graphic data types
+Installed-Size: 148
+Filename: debs/libgraphene-1.0-0_1.10.8_iphoneos-arm64.deb
+Size: 33984
+MD5sum: 53589daa18033b02142f62c791719237
+SHA1: 6dc88dff488c50ad1a8a7bf7400d1cfe8d5d4389
+SHA256: 6c416ce726ed92f7ef3a059996171f9ac3774a83cc167234ef2d205c684e84f9
+Icon: https://repo.maxleiter.com/icons/libgraphene-1.0-0.png
+Depiction: https://repo.maxleiter.com/depictions/libgraphene-1.0-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgraphene-1.0-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgraphene-1.0-dev
+Version: 1.10.8
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Development
+Priority: optional
+Homepage: https://ebassi.github.io/graphene/
+Depends: libgraphene-1.0-0 (= 1.10.8), libglib2.0-dev
+Description: Development files for the graphene library
+Installed-Size: 368
+Filename: debs/libgraphene-1.0-dev_1.10.8_iphoneos-arm64.deb
+Size: 32738
+MD5sum: bc9f7ec46f2646751808a4021f017fc2
+SHA1: 2517cc5631ce731330eff4138a03aca4d59e1b24
+SHA256: 39cdfbba4e1e9d0d72fca045da41777115e175400d453d152ccca8fb7d9ec6d2
+Icon: https://repo.maxleiter.com/icons/libgraphene-1.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgraphene-1.0-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgraphene-1.0-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgraphite2-3
+Version: 1.3.14
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Description: Font rendering engine for Complex Scripts -- library
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 200
+Filename: debs/libgraphite2-3_1.3.14_iphoneos-arm64.deb
+Size: 71612
+MD5sum: 3195008e5a8549a2fbe6c117c45bcbd5
+SHA1: ed9174f07c12b4a9160f130bb3cf36ae767fd7b0
+SHA256: 5ede5c4138fa7d0e24e69c27e7b37431773ae0bdb48ac9b09de8d84590fe925f
+Icon: https://repo.maxleiter.com/icons/libgraphite2-3.png
+Depiction: https://repo.maxleiter.com/depictions/libgraphite2-3.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgraphite2-3.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgraphite2-dev
+Version: 1.3.14
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libgraphite2-3 (>= 1.3.14)
+Section: Development
+Description: Development files for libgraphite2
+Installed-Size: 140
+Filename: debs/libgraphite2-dev_1.3.14_iphoneos-arm64.deb
+Size: 24376
+MD5sum: 5f0e7ddde357d9c2aabab434fb7c478d
+SHA1: cf2b842269bbdf9aac5921069f06adfc285c42e2
+SHA256: 17a034413cf84c79145b4254de1b397cc376e8a489bf9d2c4642bda28554d094
+Icon: https://repo.maxleiter.com/icons/libgraphite2-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgraphite2-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgraphite2-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgraphite2-utils
+Version: 1.3.14
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libgraphite2-3 (>= 1.3.14)
+Section: Utilities
+Description: Font rendering engine for Complex Scripts -- utilities
+Installed-Size: 152
+Filename: debs/libgraphite2-utils_1.3.14_iphoneos-arm64.deb
+Size: 23196
+MD5sum: 72773d2a0cae08ca8297dff811f49346
+SHA1: 009026f0ccd721873b6b39c2f299e930a298bc47
+SHA256: f49003c0f0c19121dbc512eb87b897c6a629e8113df0782dcf7dcd97bffbd64f
+Icon: https://repo.maxleiter.com/icons/libgraphite2-utils.png
+Depiction: https://repo.maxleiter.com/depictions/libgraphite2-utils.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgraphite2-utils.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgtk-3-0
+Version: 3.24.38
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libatk1.0-0, libcairo2, libcairo-gobject2, libepoxy0, libfribidi0, libfontconfig1, libharfbuzz0b, libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libgtkintl
+Description: GTK graphical user interface library
+Installed-Size: 36228
+Filename: debs/libgtk-3-0_3.24.38_iphoneos-arm64.deb
+Size: 6357380
+MD5sum: a4832b5c9629413b892eac5778b649b2
+SHA1: 07311ea7c4f7c05c003f6dfd9bdc6f80261129f2
+SHA256: 3e9cca93ad0b7230654bb8ce37313e004d0f0f0dc141d6c735b43f227c655a7a
+Icon: https://repo.maxleiter.com/icons/libgtk-3-0.png
+Depiction: https://repo.maxleiter.com/depictions/libgtk-3-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgtk-3-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgtk-3-dev
+Version: 3.24.38
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Development
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libgtk-3-0 (= 3.24.38), gtk-3-bin (= 3.24.38), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libatk1.0-dev, libcairo2-dev, libepoxy-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev
+Description: Development files for the GTK library
+Installed-Size: 3336
+Filename: debs/libgtk-3-dev_3.24.38_iphoneos-arm64.deb
+Size: 542170
+MD5sum: 5a4af0217add8612efd318064f18c5cf
+SHA1: dc71ee58f9093144ea4cc735ec0966aa6c283f9b
+SHA256: ce806d3f5cf2abff240d0cce6b3d05ee7983829e1d9a1df8c85b9f7a3cc573a3
+Icon: https://repo.maxleiter.com/icons/libgtk-3-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgtk-3-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgtk-3-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgtk-4-1
+Version: 4.14.5
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libcairo2, libcairo-gobject2, libgraphene-1.0-0, libepoxy0, libfribidi0, libharfbuzz0b, libfontconfig1, libpng16-16, libjpeg62-turbo, libtiff5, libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libgtkintl
+Description: GTK graphical user interface library
+Installed-Size: 23676
+Filename: debs/libgtk-4-1_4.14.5_iphoneos-arm64.deb
+Size: 4965588
+MD5sum: 0cbe7c1f58135ae2e1c549f926b747a6
+SHA1: 37460ac5d0b8bc13f2a218f8031cb06b12f13df9
+SHA256: 4889c75329ca559c14574ae9cae0286d3871cc4da954298bab92c3f60794bbc2
+Icon: https://repo.maxleiter.com/icons/libgtk-4-1.png
+Depiction: https://repo.maxleiter.com/depictions/libgtk-4-1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgtk-4-1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgtk-4-dev
+Version: 4.14.5
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Development
+Priority: optional
+Homepage: https://www.gtk.org/
+Depends: libgtk-4-1 (= 4.14.5), gtk-4-bin (= 4.14.5), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libcairo2-dev, libgraphene-1.0-dev, libepoxy-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev
+Description: Development files for the GTK library
+Installed-Size: 2784
+Filename: debs/libgtk-4-dev_4.14.5_iphoneos-arm64.deb
+Size: 297988
+MD5sum: 32b3c29d44d3c6f2d0704d9d5acefccb
+SHA1: b8817df1c3f483710807d53965485b63f9e55c9f
+SHA256: 5067a91a937991abf24a21d7a1459160c00737efddc340ab15d8817180b61841
+Icon: https://repo.maxleiter.com/icons/libgtk-4-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgtk-4-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgtk-4-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgtkintl
+Version: 1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Depends: libintl8
+Description: proxy-libintl symbol shim for GTK on iOS
+Installed-Size: 51
+Filename: debs/libgtkintl_1.0_iphoneos-arm64.deb
+Size: 2332
+MD5sum: d5e1fb9856ee946ef45e261538f0c2b1
+SHA1: fe448302bc1ab9134d8f0de10b2ee7a40d109425
+SHA256: 20d90609fcb419772b50610b59e7c4780ed24d0c0dfcbfe840bf654ea3a2b59c
+Icon: https://repo.maxleiter.com/icons/libgtkintl.png
+Depiction: https://repo.maxleiter.com/depictions/libgtkintl.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgtkintl.json
+Homepage: https://repo.maxleiter.com
+
+Package: libgtop-2.0-11
+Version: 2.41.3
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libgtop
+Depends: libiosexec1 (>= 1.3.1), libiosexec1
+Description: libgtop-2.0 stub (system monitoring) for GNOME on iOS
+Installed-Size: 72
+Filename: debs/libgtop-2.0-11_2.41.3_iphoneos-arm64.deb
+Size: 2136
+MD5sum: 0c4879240c8e33ca5348a206e2355190
+SHA1: d64120295ff5d66ec192d47ed482bd266d515ce1
+SHA256: 11526701a5dac8b6fb1c7bbd18d69d6ab0e592b38283be0704830ef3a1a1408c
+Icon: https://repo.maxleiter.com/icons/libgtop-2.0-11.png
+Depiction: https://repo.maxleiter.com/depictions/libgtop-2.0-11.html
+Native Depiction: https://repo.maxleiter.com/depictions/libgtop-2.0-11.json
+Homepage: https://repo.maxleiter.com
+
+Package: libharfbuzz-bin
+Version: 2.8.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b, libgraphite2-3, libintl8, libfreetype6, libcairo2, libharfbuzz-subset0
+Section: Utilities
+Priority: standard
+Multi-Arch: foreign
+Description: OpenType text shaping engine (utility)
+Installed-Size: 532
+Filename: debs/libharfbuzz-bin_2.8.1_iphoneos-arm64.deb
+Size: 70272
+MD5sum: 06b1219ed23f2ff42f66319db7a286a8
+SHA1: c89b481488e767757ae789a28909cffca153b7fb
+SHA256: 8f6d6af23c546699ae1b4d3f9219aae0a2dfa6a4267284c0dccd9a79feed1490
+Icon: https://repo.maxleiter.com/icons/libharfbuzz-bin.png
+Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.html
+Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.json
+Homepage: https://repo.maxleiter.com
+
+Package: libharfbuzz-dev
+Version: 2.8.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libharfbuzz0b (= 2.8.1), libharfbuzz-icu0 (= 2.8.1), libharfbuzz-gobject0 (= 2.8.1), libgraphite2-dev, libicu-dev, libfreetype-dev, libglib2.0-dev
+Section: Development
+Priority: standard
+Multi-Arch: foreign
+Description: Development files for OpenType text shaping engine
+Installed-Size: 3372
+Filename: debs/libharfbuzz-dev_2.8.1_iphoneos-arm64.deb
+Size: 765042
+MD5sum: 6fcc7b8dddb5506b7b12ed03bb10e5eb
+SHA1: 7997f2227233f95529c2fff4ca7a1135f1c21bcc
+SHA256: 8c6a50b121c49377fa87df94b01609dd80231b80617cf9e2a01d918bb0665aba
+Icon: https://repo.maxleiter.com/icons/libharfbuzz-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libharfbuzz-gobject0
+Version: 2.8.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b, libgraphite2-3, libintl8, libfreetype6, libglib2.0-0
+Section: Libraries
+Priority: standard
+Multi-Arch: foreign
+Description: OpenType text shaping engine ICU backend (GObject library)
+Installed-Size: 180
+Filename: debs/libharfbuzz-gobject0_2.8.1_iphoneos-arm64.deb
+Size: 45418
+MD5sum: 5db84411a6cd860c9b4faa82dd48e1ba
+SHA1: 0737de09a14307e743e1b25f7574f672f8de06d2
+SHA256: 2559d59c4c060d631ecd08c2f1c8f1042ccb10161076e90b8a3f7713eb301777
+Icon: https://repo.maxleiter.com/icons/libharfbuzz-gobject0.png
+Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libharfbuzz-subset0
+Version: 2.8.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b, libgraphite2-3, libintl8, libfreetype6, libglib2.0-0
+Section: Libraries
+Priority: standard
+Multi-Arch: foreign
+Description: OpenType text shaping engine (subset backend)
+Installed-Size: 588
+Filename: debs/libharfbuzz-subset0_2.8.1_iphoneos-arm64.deb
+Size: 199416
+MD5sum: 622e8b48a28c88bc197f293cc8979233
+SHA1: fc2b712b11ca46720992d15c911a2635234df2ad
+SHA256: ccb97027a7b31494dcd6119750a246c4a9d1c18c01505113688e6418a00a5624
+Icon: https://repo.maxleiter.com/icons/libharfbuzz-subset0.png
+Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libharfbuzz0b
+Version: 2.8.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libgraphite2-3, libintl8, libfreetype6, libglib2.0-0
+Section: Libraries
+Priority: standard
+Multi-Arch: foreign
+Description: OpenType text shaping engine (shared library)
+Installed-Size: 796
+Filename: debs/libharfbuzz0b_2.8.1_iphoneos-arm64.deb
+Size: 302918
+MD5sum: 345cb9514bf635bdf058a3b40e759c72
+SHA1: 582caf8e222b22f6192453e4e3cc6448c44a8b18
+SHA256: f9a80c3f62aafd7a373e115fed24a83f4f54ab8531f21995f256b80231ae64c7
+Icon: https://repo.maxleiter.com/icons/libharfbuzz0b.png
+Depiction: https://repo.maxleiter.com/depictions/libharfbuzz0b.html
+Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz0b.json
+Homepage: https://repo.maxleiter.com
+
+Package: libjpeg62-turbo
+Version: 2.0.6
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Description: libjpeg-turbo JPEG runtime library
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 352
+Filename: debs/libjpeg62-turbo_2.0.6_iphoneos-arm64.deb
+Size: 126952
+MD5sum: d430a288681cc8824e3215f5bc1bd3f9
+SHA1: 3536dac4b49d16895c3a5583752be76fb7af3a2d
+SHA256: 2d3ee7124308c5f287239df806bd9040fc11c304b6b1e69caf22e937eaacf3e7
+Icon: https://repo.maxleiter.com/icons/libjpeg62-turbo.png
+Depiction: https://repo.maxleiter.com/depictions/libjpeg62-turbo.html
+Native Depiction: https://repo.maxleiter.com/depictions/libjpeg62-turbo.json
+Homepage: https://repo.maxleiter.com
+
+Package: libmozjs-115-0
+Version: 115.12.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends:
+Section: Libraries
+Homepage: https://spidermonkey.dev/
+Description: JavaScript engine library (SpiderMonkey 115)
+Filename: debs/libmozjs-115-0_115.12.0_iphoneos-arm64.deb
+Size: 6941844
+MD5sum: 73c76c0d4de83ddc1d101b282cec82a7
+SHA1: b6e6ba29144aaf42efb457cd26139c1d9e6456e2
+SHA256: 3b3846b8cb469b8682cb9bb68a99507d95b3031cb9db0afcfc27f8144fe6eeb6
+Icon: https://repo.maxleiter.com/icons/libmozjs-115-0.png
+Depiction: https://repo.maxleiter.com/depictions/libmozjs-115-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libmozjs-115-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libmozjs-115-dev
+Version: 115.12.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libmozjs-115-0 (= 115.12.0)
+Section: Development
+Homepage: https://spidermonkey.dev/
+Description: JavaScript engine (SpiderMonkey 115) — development files
+Filename: debs/libmozjs-115-dev_115.12.0_iphoneos-arm64.deb
+Size: 92513400
+MD5sum: 0372c42c43bae7aeb742a1f44decc3df
+SHA1: 93a6899ffe4e35945e0bc4bc1f2cc5c6e36ab226
+SHA256: 6838792b5760a42040e266208501d99010eb498e190cf9d66fc658a6ff88d0f5
+Icon: https://repo.maxleiter.com/icons/libmozjs-115-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libmozjs-115-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libmozjs-115-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libpango-1.0-0
+Version: 1.50.14
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://www.pango.org/
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libcairo2, libharfbuzz0b, libfribidi0, libfontconfig1, libfreetype6
+Description: Layout and rendering of internationalized text
+Installed-Size: 756
+Filename: debs/libpango-1.0-0_1.50.14_iphoneos-arm64.deb
+Size: 249902
+MD5sum: 80f6775fd46ec5b02575cfb00eef9c65
+SHA1: 6b765524f7a381fc9c92d691f5578dc7e65f9a21
+SHA256: 98f0d15e1a730617e0ce2db3bd2d4de74417097aa44e6adbd5a4c82928dc9823
+Icon: https://repo.maxleiter.com/icons/libpango-1.0-0.png
+Depiction: https://repo.maxleiter.com/depictions/libpango-1.0-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libpango-1.0-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libpango1.0-dev
+Version: 1.50.14
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Development
+Priority: optional
+Homepage: https://www.pango.org/
+Depends: libiosexec1 (>= 1.3.1), libpango-1.0-0 (= 1.50.14), libglib2.0-dev, libcairo2-dev, libharfbuzz-dev, libfribidi-dev, libfontconfig-dev, libfreetype-dev
+Description: Development files for the Pango text layout library
+Installed-Size: 808
+Filename: debs/libpango1.0-dev_1.50.14_iphoneos-arm64.deb
+Size: 132410
+MD5sum: c93272b9486da5e73a26babbdf738758
+SHA1: e8809c1b8a2faf59859540166cc7b3f4568e6523
+SHA256: 8432e8cf829dd31b6f2ba43f0efc64ab70213d0a3bcb1077335841212dbd0258
+Icon: https://repo.maxleiter.com/icons/libpango1.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libpango1.0-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libpango1.0-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libpixman-1-0
+Version: 0.40.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Description: The pixel-manipulation library for X and cairo
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 348
+Filename: debs/libpixman-1-0_0.40.0_iphoneos-arm64.deb
+Size: 131810
+MD5sum: 1787c5c223ff541c4846b3abeab72caf
+SHA1: 8d8db93cc154fd157079c5dbbf42febb3d80995b
+SHA256: 28a7f439a139c5dd6d2e84edaa020b98b8ebf06482503f2e35f039949428886a
+Icon: https://repo.maxleiter.com/icons/libpixman-1-0.png
+Depiction: https://repo.maxleiter.com/depictions/libpixman-1-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libpixman-1-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libpng16-16
+Version: 1.6.37-2
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Multi-Arch: foreign
+Description: PNG library - runtime (version 1.6)
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 232
+Filename: debs/libpng16-16_1.6.37-2_iphoneos-arm64.deb
+Size: 100928
+MD5sum: 389919046e31e231d858cbd0a60a3f67
+SHA1: c92b6f1fd6b5d179b22b665fd1947c0f6ef4cc91
+SHA256: 6af962273ed13fff953ad30e8d06039130889dd7925aeeb43747a936a9622547
+Icon: https://repo.maxleiter.com/icons/libpng16-16.png
+Depiction: https://repo.maxleiter.com/depictions/libpng16-16.html
+Native Depiction: https://repo.maxleiter.com/depictions/libpng16-16.json
+Homepage: https://repo.maxleiter.com
+
+Package: libuuid16
+Maintainer: Procursus Team <support@procurs.us>
+Architecture: iphoneos-arm64
+Version: 1.6.2-3
+Replaces: uuid (<< 1.6.2-3)
+Conflicts: uuid (<< 1.6.2-3)
+Section: Libraries
+Priority: important
+Description: Universally Unique ID library
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 108
+Filename: debs/libuuid16_1.6.2-3_iphoneos-arm64.deb
+Size: 23200
+MD5sum: 8c329e9c90ab86f65db1eadd26050088
+SHA1: f40922557f119ce57dbe5a02fc276f7ef4f71d81
+SHA256: d8731ba038a9465e4d77fdc6998d1dd39977a7fb6e262bbd98b09d30c5229656
+Icon: https://repo.maxleiter.com/icons/libuuid16.png
+Depiction: https://repo.maxleiter.com/depictions/libuuid16.html
+Native Depiction: https://repo.maxleiter.com/depictions/libuuid16.json
+Homepage: https://repo.maxleiter.com
+
+Package: libvte-2.91-gtk4-0
+Version: 0.76.6
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Apps/Terminal/VTE
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libpango-1.0-0, libpcre2-8-0, libfribidi0, libxml2
+Description: Terminal emulator widget for GTK4 - runtime
+Installed-Size: 620
+Filename: debs/libvte-2.91-gtk4-0_0.76.6_iphoneos-arm64.deb
+Size: 191592
+MD5sum: 9bbdfc6f15359dc47f317e13e067f072
+SHA1: 78aeba9909c6ba5a2edd1f89697b7ce7d60d1417
+SHA256: af914dcb50d4bc90c4baa0f49bda8583353da7cf93fd7b74474cadd81375b03f
+Icon: https://repo.maxleiter.com/icons/libvte-2.91-gtk4-0.png
+Depiction: https://repo.maxleiter.com/depictions/libvte-2.91-gtk4-0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libvte-2.91-gtk4-0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libwayland-dev
+Version: 1.23.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libwayland0 (= 1.23.1), libffi-dev, libexpat1-dev
+Section: Development
+Priority: optional
+Homepage: https://wayland.freedesktop.org
+Description: Development files for the Wayland libraries
+Installed-Size: 808
+Filename: debs/libwayland-dev_1.23.1_iphoneos-arm64.deb
+Size: 119996
+MD5sum: 0cdd0f73f175ffe6e4b2aec6c6fa278b
+SHA1: 9db537ee0c4eff5de3fb9172f0657d4400620fd8
+SHA256: 0a6c43ef855d317b9cfc874393b629dd37fcf019908239c122077c22f9b16e13
+Icon: https://repo.maxleiter.com/icons/libwayland-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libwayland-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libwayland-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libwayland0
+Version: 1.23.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libffi8, libepoll-shim0
+Section: Libraries
+Priority: optional
+Homepage: https://wayland.freedesktop.org
+Description: Wayland client, server, cursor and EGL libraries
+Installed-Size: 392
+Filename: debs/libwayland0_1.23.1_iphoneos-arm64.deb
+Size: 47850
+MD5sum: 27b980a13004c9990f37d090f5268e16
+SHA1: 91f08c848ae08f0144474b67a1dfcaa7585e5377
+SHA256: 175748df846c673d6d69a0bac62b642cd6bf37539a14d1390064e77d939cfc96
+Icon: https://repo.maxleiter.com/icons/libwayland0.png
+Depiction: https://repo.maxleiter.com/depictions/libwayland0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libwayland0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libx11-6
+Maintainer: Procursus Team <support@procurs.us>
+Architecture: iphoneos-arm64
+Version: 1.7.3.1
+Depends: libiosexec1 (>= 1.2.2), libx11-data (= 1.7.3.1), libxcb1
+Section: Libraries
+Priority: optional
+Multi-Arch: foreign
+Description: X11 client-side library
+Installed-Size: 1152
+Filename: debs/libx11-6_1.7.3.1_iphoneos-arm64.deb
+Size: 692396
+MD5sum: d19341dc9b91db4a692874b525c027c8
+SHA1: e106c03d9f06c29690ea8c3d87368a3feecbaaf9
+SHA256: e3136df4673ca6cbf971269b20c5eaade10e1e06c66586439e1a8938f0fee846
+Icon: https://repo.maxleiter.com/icons/libx11-6.png
+Depiction: https://repo.maxleiter.com/depictions/libx11-6.html
+Native Depiction: https://repo.maxleiter.com/depictions/libx11-6.json
+Homepage: https://repo.maxleiter.com
+
+Package: libx11-data
+Maintainer: Procursus Team <support@procurs.us>
+Architecture: all
+Version: 1.7.3.1
+Section: X11
+Priority: optional
+Description: X11 client-side library
+Installed-Size: 1852
+Filename: debs/libx11-data_1.7.3.1_all.deb
+Size: 170552
+MD5sum: 52b985183aa5cd3f2c551624e403a599
+SHA1: e3eb0ce97f70a2ccbb7f0904a52acbfaf1d98ebe
+SHA256: 705afb2085f01233592549483913ecfe83e947f22b85b1de1bd326f7571f4fd6
+Icon: https://repo.maxleiter.com/icons/libx11-data.png
+Depiction: https://repo.maxleiter.com/depictions/libx11-data.html
+Native Depiction: https://repo.maxleiter.com/depictions/libx11-data.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxau6
+Version: 1.0.9-1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Description: X11 authorisation library
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 64
+Filename: debs/libxau6_1.0.9-1_iphoneos-arm64.deb
+Size: 9416
+MD5sum: 53408c7aee2a7a2dd3769bd387e001f1
+SHA1: 97b67384eff1e4094f02eafdfcd33c95c234d445
+SHA256: e8a99728bf9251f7b09bcea28f0752b622c563a6964f78871c2f426aae7bd0b6
+Icon: https://repo.maxleiter.com/icons/libxau6.png
+Depiction: https://repo.maxleiter.com/depictions/libxau6.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxau6.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxcb1
+Version: 1.14
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libxau6, libxdmcp6
+Section: Libraries
+Priority: optional
+Description: X C Binding
+Installed-Size: 192
+Filename: debs/libxcb1_1.14_iphoneos-arm64.deb
+Size: 53074
+MD5sum: 0b25eb149dce991da57aec2691562f97
+SHA1: 7c945f371002fffc3e77b8a6b9055481c9d475ae
+SHA256: caeb40b6776e129f9aa7a716fc64701af0142e0cd0ad794251a3e3f69e5b5424
+Icon: https://repo.maxleiter.com/icons/libxcb1.png
+Depiction: https://repo.maxleiter.com/depictions/libxcb1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxcb1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxcursor-dev
+Version: 1.2.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libxcursor1 (= 1.2.0), libx11-dev, libxfixes-dev, libxrender-dev, x11proto-dev
+Section: Libraries
+Priority: optional
+Description: X cursor management library
+Installed-Size: 260
+Filename: debs/libxcursor-dev_1.2.0_iphoneos-arm64.deb
+Size: 29718
+MD5sum: a666e7efd42af2bf92c4e2200838846c
+SHA1: a56e63843dd70692e9d3e703b1c1685949eac9e7
+SHA256: 94f5e4988e35494c5bead23ea0a7e2593f05dd1ceccc46c9bff2686d86c5ae5c
+Icon: https://repo.maxleiter.com/icons/libxcursor-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libxcursor-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxcursor-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxcursor1
+Version: 1.2.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libx11-6, libxfixes3, libxrender1
+Section: Libraries
+Priority: optional
+Description: X cursor management library
+Installed-Size: 112
+Filename: debs/libxcursor1_1.2.0_iphoneos-arm64.deb
+Size: 17616
+MD5sum: a6b3a0afecd3fba5387dddd43b5281e3
+SHA1: 365105a451cc81af418918eab78565fd1fcdd618
+SHA256: 11317a2bd4350b0266a6a9be21cc9e03898fcd0a845d55317d6713c62276588d
+Icon: https://repo.maxleiter.com/icons/libxcursor1.png
+Depiction: https://repo.maxleiter.com/depictions/libxcursor1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxcursor1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxdamage1
+Version: 1.1.5
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libxfixes3, libx11-6
+Section: Libraries
+Priority: optional
+Description: X11 damaged region extension library
+Installed-Size: 64
+Filename: debs/libxdamage1_1.1.5_iphoneos-arm64.deb
+Size: 5000
+MD5sum: 4931510e6a96caf3532f64d5714cfca0
+SHA1: 75e6f0831d1c0ec68124e6e8b85bec737138117f
+SHA256: 8bc3eba92ddaa34525db8702281505ce78ac06faf216425f3a6a2115719c0978
+Icon: https://repo.maxleiter.com/icons/libxdamage1.png
+Depiction: https://repo.maxleiter.com/depictions/libxdamage1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxdamage1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxdmcp6
+Maintainer: Procursus Team <support@procurs.us>
+Architecture: iphoneos-arm64
+Version: 1.1.3
+Section: Libraries
+Description: X11 Display Manager Control Protocol library
+Depends: libiosexec1 (>= 1.2.2)
+Installed-Size: 60
+Filename: debs/libxdmcp6_1.1.3_iphoneos-arm64.deb
+Size: 9556
+MD5sum: 991bdee5e1b42beeaefadd1864c0c37c
+SHA1: 310ca29e50a795c0a03d7cec4f7e39206a5cd257
+SHA256: 51a97caf852a38c298e9d03673cd501dd9d75e88ebe975407895ad6d7bd79694
+Icon: https://repo.maxleiter.com/icons/libxdmcp6.png
+Depiction: https://repo.maxleiter.com/depictions/libxdmcp6.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxdmcp6.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxext6
+Version: 1.3.4-1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libx11-6
+Section: Libraries
+Priority: optional
+Description: X11 miscellaneous extension library
+Installed-Size: 128
+Filename: debs/libxext6_1.3.4-1_iphoneos-arm64.deb
+Size: 25614
+MD5sum: e52094f59dea66f6c591e6fbfff105f8
+SHA1: 9cacce7108f4de475b7425694c9a23a6e760eb55
+SHA256: 76af06854f2ceee6c9445cb9081644eda6f0bb37bfc8bb406c23519a14a1c27e
+Icon: https://repo.maxleiter.com/icons/libxext6.png
+Depiction: https://repo.maxleiter.com/depictions/libxext6.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxext6.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxfixes3
+Version: 5.0.3
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libx11-6
+Section: Libraries
+Priority: optional
+Description: X11 miscellaneous 'fixes' extension library
+Installed-Size: 84
+Filename: debs/libxfixes3_5.0.3_iphoneos-arm64.deb
+Size: 9000
+MD5sum: 2ad8fd7424a538644020f1a6156fddc3
+SHA1: 4faf1b96ac55837680714300f16ea8c00df4f09e
+SHA256: 5378631972734f8a9f04c6e80f1d69446d653887cc044f67d55fe1611f63aaa1
+Icon: https://repo.maxleiter.com/icons/libxfixes3.png
+Depiction: https://repo.maxleiter.com/depictions/libxfixes3.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxfixes3.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxfont2
+Version: 2.0.4
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libfreetype6, libfontenc1
+Section: Libraries
+Priority: optional
+Description: X11 font rasterisation library
+Installed-Size: 224
+Filename: debs/libxfont2_2.0.4_iphoneos-arm64.deb
+Size: 98024
+MD5sum: 1ca15a7dfb3b442fcd18ef8d0f5ea4ff
+SHA1: 9746136e2d2eff08f328f71720dfb6b38cb674e9
+SHA256: 17ab527342d75a3b67d8de141d4ce3a260f4e2ce3c60d915653460e3105dcdca
+Icon: https://repo.maxleiter.com/icons/libxfont2.png
+Depiction: https://repo.maxleiter.com/depictions/libxfont2.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxfont2.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxinerama-dev
+Version: 1.1.4
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libxinerama1 (= 1.1.4), libx11-dev, libxext-dev, x11proto-dev
+Section: Development
+Priority: optional
+Description: X11 Xinerama extension library (development headers)
+Installed-Size: 104
+Filename: debs/libxinerama-dev_1.1.4_iphoneos-arm64.deb
+Size: 8598
+MD5sum: e17672bede1b3169073cc5528391e740
+SHA1: 7db9002911054d4767ce60603867855f4a74db30
+SHA256: 922c8ec1489255f1dbb509c94693d4b8800d2a36f9601880a9d9e3b34888ef7a
+Icon: https://repo.maxleiter.com/icons/libxinerama-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libxinerama-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxinerama-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxinerama1
+Version: 1.1.4
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), libx11-6, libxext6
+Section: Libraries
+Priority: optional
+Description: X11 Xinerama extension library
+Installed-Size: 108
+Filename: debs/libxinerama1_1.1.4_iphoneos-arm64.deb
+Size: 5390
+MD5sum: e3c961511453681f14f5182814622aeb
+SHA1: a6197a71b46da20ae3b755bfa3ceb5992fa2b8dd
+SHA256: 08ec90e9c79ae20697f19d66ded6fcfb231238eaa665008a3f475cce7943a836
+Icon: https://repo.maxleiter.com/icons/libxinerama1.png
+Depiction: https://repo.maxleiter.com/depictions/libxinerama1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxinerama1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxkbcommon-dev
+Version: 1.7.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libxkbcommon0 (= 1.7.0)
+Section: Development
+Priority: optional
+Homepage: https://xkbcommon.org
+Description: Development files for libxkbcommon
+Installed-Size: 432
+Filename: debs/libxkbcommon-dev_1.7.0_iphoneos-arm64.deb
+Size: 73684
+MD5sum: aead857dd1679fe2323d96b66bf5555c
+SHA1: 03aca687254c03e2bf1181a7851941bc1ffbc273
+SHA256: 45d74236a121eae784d452337973fef631595ee3083e382f364d1fc8a7afb783
+Icon: https://repo.maxleiter.com/icons/libxkbcommon-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libxkbcommon-dev.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxkbcommon-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxkbcommon0
+Version: 1.7.0
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), xkeyboard-config, libxml2
+Section: Libraries
+Priority: optional
+Homepage: https://xkbcommon.org
+Description: Library to handle keyboard descriptions (XKB)
+Installed-Size: 368
+Filename: debs/libxkbcommon0_1.7.0_iphoneos-arm64.deb
+Size: 129392
+MD5sum: 990ab41c514bffab4a9a0a5767227bf8
+SHA1: 4fcc6fbd5953182e46e4477e8c853b757124e06d
+SHA256: 7a330fe12d3e4cfd10408d31ca04c4ebcb28d77e293536de348375f93db1b590
+Icon: https://repo.maxleiter.com/icons/libxkbcommon0.png
+Depiction: https://repo.maxleiter.com/depictions/libxkbcommon0.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxkbcommon0.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxkbfile1
+Maintainer: Procursus Team <support@procurs.us>
+Architecture: iphoneos-arm64
+Version: 1.1.0
+Depends: libiosexec1 (>= 1.2.2), libx11-6
+Section: Libraries
+Description: X11 keyboard file manipulation library
+Installed-Size: 176
+Filename: debs/libxkbfile1_1.1.0_iphoneos-arm64.deb
+Size: 58268
+MD5sum: a3ccc39388468e79c4663da38e1a6e3c
+SHA1: 7defe4b26876553c1dd2869e64e6ca3ca1018d66
+SHA256: b2851513548a05d9ecfb4c653276eba4953528c1187c494a591ede5e2d5fe5b0
+Icon: https://repo.maxleiter.com/icons/libxkbfile1.png
+Depiction: https://repo.maxleiter.com/depictions/libxkbfile1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxkbfile1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxml2
+Version: 2.9.12
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), liblzma5
+Section: Libraries
+Priority: optional
+Description: GNOME XML library
+Installed-Size: 1260
+Filename: debs/libxml2_2.9.12_iphoneos-arm64.deb
+Size: 572162
+MD5sum: b86fe5bfe32baf5f524c38b25a4bea0a
+SHA1: 2a8034a44e0808260d257f3fd91d2ac4235e2cd9
+SHA256: 48e64b182e74408a7e3e47dc60045ef24b6a86092cef363ea65c682ee5fc2830
+Icon: https://repo.maxleiter.com/icons/libxml2.png
+Depiction: https://repo.maxleiter.com/depictions/libxml2.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxml2.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxmlb2
+Version: 0.3.14
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/hughsie/libxmlb
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, liblzma5
+Description: Library to help create and query binary XML blobs
+Installed-Size: 256
+Filename: debs/libxmlb2_0.3.14_iphoneos-arm64.deb
+Size: 74864
+MD5sum: 348d4bd2410ce163d1ad674d1a4f70df
+SHA1: 7f0c2e350aae42b7cad6e254b97344a28e48b661
+SHA256: 0023bb318d857ea4b2d41ac46bb4634128a7a0cb1040009d4018414de90cab60
+Icon: https://repo.maxleiter.com/icons/libxmlb2.png
+Depiction: https://repo.maxleiter.com/depictions/libxmlb2.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxmlb2.json
+Homepage: https://repo.maxleiter.com
+
+Package: libxmuu1
+Maintainer: Procursus Team <support@procurs.us>
+Architecture: iphoneos-arm64
+Version: 1.1.3-1
+Depends: libiosexec1 (>= 1.2.2), libx11-6
+Section: Libraries
+Priority: optional
+Multi-Arch: foreign
+Description: X11 miscellaneous micro-utility library
+Installed-Size: 56
+Filename: debs/libxmuu1_1.1.3-1_iphoneos-arm64.deb
+Size: 7082
+MD5sum: 77d1dd4b53a73bee98a2155a2018a4a4
+SHA1: f0d040a4b85f12dd056a248f26137c00950c2dd2
+SHA256: a1286c8a0b9f1ce9d9943bb819c1ed74cfab6a54fff7f404f6e8d6f70763b552
+Icon: https://repo.maxleiter.com/icons/libxmuu1.png
+Depiction: https://repo.maxleiter.com/depictions/libxmuu1.html
+Native Depiction: https://repo.maxleiter.com/depictions/libxmuu1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libyaml-0-2
+Version: 0.2.5
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Libraries
+Priority: optional
+Description: Fast YAML 1.1 parser and emitter library
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 156
+Filename: debs/libyaml-0-2_0.2.5_iphoneos-arm64.deb
+Size: 44354
+MD5sum: 8e9a9637f0ad29688773472451537218
+SHA1: a35a097448782c69b0ff05460aadec06fc2a6f9f
+SHA256: db0c160fe0dce52a8b9f4cad755d4755911a5bd4c1e49eba07c9c909a451c62e
+Icon: https://repo.maxleiter.com/icons/libyaml-0-2.png
+Depiction: https://repo.maxleiter.com/depictions/libyaml-0-2.html
+Native Depiction: https://repo.maxleiter.com/depictions/libyaml-0-2.json
+Homepage: https://repo.maxleiter.com
+
+Package: tigervnc-common
+Version: 1.11.0+rootless1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: X11
+Description: Virtual network computing; Common software needed by servers
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 380
+Filename: debs/tigervnc-common_1.11.0+rootless1_iphoneos-arm64.deb
+Size: 62600
+MD5sum: 8a9bbff8bcb8ce3a11040f0af963a261
+SHA1: c9196f9209920274469bc2034cb6a83d18405ec8
+SHA256: 871a102b273de6d229d92dbae24958e8999178c166b2778b8b69535f0e168396
+Icon: https://repo.maxleiter.com/icons/tigervnc-common.png
+Depiction: https://repo.maxleiter.com/depictions/tigervnc-common.html
+Native Depiction: https://repo.maxleiter.com/depictions/tigervnc-common.json
+Homepage: https://repo.maxleiter.com
+
+Package: tigervnc-standalone-server
+Version: 1.11.0+rootless1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.3.1), xauth, libgl1, libgeneral0, libmd0, libgnutls30, libjpeg62-turbo, libpam2, libpixman-1-0, libx11-6, libxau6, libxdmcp6, libxdamage1, libxfont2, xkbcomp, xkeyboard-config, tigervnc-common
+Section: X11
+Provides: vnc-server, xserver
+Description: Standalone virtual network computing server
+Installed-Size: 1736
+Filename: debs/tigervnc-standalone-server_1.11.0+rootless1_iphoneos-arm64.deb
+Size: 813112
+MD5sum: e728def609b156aed868272058d30a8d
+SHA1: a083136831ecab54dcf4eb28bd96bdd7a78d29fd
+SHA256: 35353416671249410583615f61e7102c379fe0804db918d450f3b5bf131a3ae8
+Icon: https://repo.maxleiter.com/icons/tigervnc-standalone-server.png
+Depiction: https://repo.maxleiter.com/depictions/tigervnc-standalone-server.html
+Native Depiction: https://repo.maxleiter.com/depictions/tigervnc-standalone-server.json
+Homepage: https://repo.maxleiter.com
+
+Package: wayland-protocols
+Version: 1.38
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Section: Development
+Priority: optional
+Homepage: https://wayland.freedesktop.org
+Description: Wayland protocol extension definitions
+Installed-Size: 1024
+Filename: debs/wayland-protocols_1.38_iphoneos-arm64.deb
+Size: 117306
+MD5sum: c71536401886ac1de8296e6d0a9fd998
+SHA1: 88d6451df05d4729bf3b2ff987c5062f11ec9952
+SHA256: a3fe6dda38a1f17f795b675e00d508d5b35c471f1934986ae777148e5f523281
+Icon: https://repo.maxleiter.com/icons/wayland-protocols.png
+Depiction: https://repo.maxleiter.com/depictions/wayland-protocols.html
+Native Depiction: https://repo.maxleiter.com/depictions/wayland-protocols.json
+Homepage: https://repo.maxleiter.com
+
+Package: x11-fonts-sf
+Name: San Francisco fonts for X11
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: fontconfig
+Section: X11
+Priority: optional
+Description: San Francisco as the default X11 font
+Filename: debs/x11-fonts-sf_1.0.0_iphoneos-arm64.deb
+Size: 1764
+MD5sum: 6aa39fcd9770fe70d56dab895f7f1568
+SHA1: 71392f2848bdd7d0670cf6bfd59711bb883c244d
+SHA256: 95efe773999e4f7aed9a8d3e5debea23034243c38ab2f3b30fb3d04836992c03
+Icon: https://repo.maxleiter.com/icons/x11-fonts-sf.png
+Depiction: https://repo.maxleiter.com/depictions/x11-fonts-sf.html
+Native Depiction: https://repo.maxleiter.com/depictions/x11-fonts-sf.json
+Homepage: https://repo.maxleiter.com
+
+Package: x11-xvfb
+Name: Xvfb (virtual framebuffer X server)
+Version: 1.20.11+rootless1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libxfont2, libpixman-1-0, libxau6, libxdmcp6, libiosexec1 (>= 1.3.1), libmd0, xkbcomp, xkeyboard-config, xauth
+Provides: xvfb
+Conflicts: xvfb
+Replaces: xvfb
+Section: X11
+Priority: optional
+Description: Virtual framebuffer X server for rootless jailbreaks
+Filename: debs/x11-xvfb_1.20.11+rootless1_iphoneos-arm64.deb
+Size: 626814
+MD5sum: 15a4050528bcd7f6f05170e178760f36
+SHA1: 8416e233281fcf33b458a3a6bd5623cbdfc93234
+SHA256: 29ffa31692c29febeddb1efd1a6559e4ef19bdf66cff82f989ae3d5c31464895
+Icon: https://repo.maxleiter.com/icons/x11-xvfb.png
+Depiction: https://repo.maxleiter.com/depictions/x11-xvfb.html
+Native Depiction: https://repo.maxleiter.com/depictions/x11-xvfb.json
+Homepage: https://repo.maxleiter.com
+
+Package: xauth
+Version: 1.1
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libxau6, libxmuu1, libxext6, libx11-6
+Section: X11
+Description: X authentication utility
+Installed-Size: 100
+Filename: debs/xauth_1.1_iphoneos-arm64.deb
+Size: 22790
+MD5sum: bbe54d84ef590062d2559fdb60d407c1
+SHA1: aad9aa2ee4a549fc7fdd5b35a716ab329565601f
+SHA256: f922fd43ab941957c1117e152c54c6310e8b246ea1f4c3743f3f995b21c33bc9
+Icon: https://repo.maxleiter.com/icons/xauth.png
+Depiction: https://repo.maxleiter.com/depictions/xauth.html
+Native Depiction: https://repo.maxleiter.com/depictions/xauth.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-desktop-defaults
+Name: Xios desktop defaults
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: x11-fonts-sf, fontconfig, dbus, libglib2.0-bin
+Section: X11
+Priority: optional
+Description: Retina, XDG, GTK and session defaults for Xios
+Filename: debs/xios-desktop-defaults_1.0.0_iphoneos-arm64.deb
+Size: 3426
+MD5sum: 1098b00798c2f523a567ad04d79796d3
+SHA1: 23ca4d4a2edf2e717d871d37197d2bc395209f27
+SHA256: 05c365fade64a14d7e23e7720c69b0e00083ed39cec65e3d0712412ceb8c3cb4
+Icon: https://repo.maxleiter.com/icons/xios-desktop-defaults.png
+Depiction: https://repo.maxleiter.com/depictions/xios-desktop-defaults.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-desktop-defaults.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-server
+Name: Xios (IOSurface X server)
+Version: 1.20.11+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libxfont2, libpixman-1-0, libxau6, libxdmcp6, libiosexec1 (>= 1.3.1), libmd0, xkbcomp, xkeyboard-config, xauth
+Recommends: xios-desktop-defaults
+Section: X11
+Priority: optional
+Description: Native IOSurface X server for the Xios iOS app
+Filename: debs/xios-server_1.20.11+ios2_iphoneos-arm64.deb
+Size: 630914
+MD5sum: 184936ae33038888b7ba9bc043357339
+SHA1: edcd4938b3f2df74d1f297957be95427490c390b
+SHA256: 9c5064c60aac98982638b607e82a17b28b31cc15f95a7be2e7b4c8ca59a0367f
+Icon: https://repo.maxleiter.com/icons/xios-server.png
+Depiction: https://repo.maxleiter.com/depictions/xios-server.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-server.json
+Homepage: https://repo.maxleiter.com
+
+Package: xkbcomp
+Version: 1.4.5
+Architecture: iphoneos-arm64
+Maintainer: Procursus Team <support@procurs.us>
+Depends: libiosexec1 (>= 1.2.2), libxkbfile1, libx11-6
+Section: X11
+Description: The xkbcomp keymap compiler converts a description of an XKB keymap into one of several output formats. The most common use for xkbcomp is to create a compiled keymap file (.xkm extension) which can be read directly by XKB-capable X servers or utilities. The keymap compiler can also produce C header files or XKB source files. The C header files produced by xkbcomp can be included by X servers or utilities that need a built-in default keymap. The XKB source files produced by xkbcomp are fully resolved and can be used to verify that the files which typically make up an XKB keymap are merged correctly or to create a single file which contains a complete description of the keymap.
+Installed-Size: 232
+Filename: debs/xkbcomp_1.4.5_iphoneos-arm64.deb
+Size: 85084
+MD5sum: 61cb4da79215a32f3afcc7693d458861
+SHA1: 49051b0b84445e13823d1fccf92525f921daf086
+SHA256: 662d300d482240c4d6622f7a43ee0b47a53dca9870d99be8e1442243ddd3037c
+Icon: https://repo.maxleiter.com/icons/xkbcomp.png
+Depiction: https://repo.maxleiter.com/depictions/xkbcomp.html
+Native Depiction: https://repo.maxleiter.com/depictions/xkbcomp.json
+Homepage: https://repo.maxleiter.com
+
+Package: xkeyboard-config
+Version: 2.32
+Architecture: all
+Maintainer: Procursus Team <support@procurs.us>
+Section: X11
+Description: The non-arch keyboard configuration database for X Window
+Installed-Size: 3920
+Filename: debs/xkeyboard-config_2.32_all.deb
+Size: 555022
+MD5sum: 96e70af41dbdccbb8fcb71f3b494ac39
+SHA1: 91ae11e91feb5a1ed8f7e13ccaf322346dbab598
+SHA256: 614c1d0b7261d64fb458aa56d23eeef26e2b0894a3f55eb70d4f916fe830179f
+Icon: https://repo.maxleiter.com/icons/xkeyboard-config.png
+Depiction: https://repo.maxleiter.com/depictions/xkeyboard-config.html
+Native Depiction: https://repo.maxleiter.com/depictions/xkeyboard-config.json
 Homepage: https://repo.maxleiter.com

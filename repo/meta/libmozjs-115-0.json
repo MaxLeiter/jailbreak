@@ -1,0 +1,10 @@
+{
+  "tagline": "SpiderMonkey JavaScript engine (mozjs 115)",
+  "developer": "Mozilla",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "curlybraces",
+  "description": "**SpiderMonkey** (mozjs 115 ESR), Mozilla's JavaScript engine, cross-compiled for jailbroken iOS. This is the JS runtime that **gjs** and GNOME Shell build on, so it is the foundation for running GNOME's JavaScript applications natively.\n\nBuilt JIT-less (interpreter only), since iOS does not permit runtime-writable executable memory. The engine is a native arm64 Mach-O with full Intl/ICU support.\n\n- `libmozjs-115-0`: the runtime engine\n- `libmozjs-115-dev`: headers + static library, for building gjs and other embedders\n\nA build and runtime dependency for the GNOME JavaScript stack. Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`).",
+  "changelog": [
+    { "version": "115.12.0", "date": "2026-06-30", "notes": "- First release: JIT-less SpiderMonkey 115 ESR cross-compiled Linux to iOS\n- Native arm64, Intl/ICU enabled\n- The hardest cross-compile in the X11-on-iOS tree, now reproducible" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "tagline": "Run an X11 desktop over VNC on rootless jailbreaks",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "display",
+  "description": "A from-source rebuild of TigerVNC's **Xvnc**, a virtual X11 display server with built-in VNC, patched to run on **rootless** jailbreaks.\n\nStock builds crash on launch because they expect a system shell at `/bin/sh`, which isn't present on rootless (it lives at `/var/jb/bin/sh`). This build uses the right path, so it starts cleanly.\n\n- Built from source and signed to install on rootless\n- Installs without errors; the unavailable `tigervnc-xorg-extension` dependency is dropped\n- Gives you an X11 desktop you can reach from any VNC client at `127.0.0.1`\n\nPair it with a window manager (`fluxbox`), `xterm`, and fonts. Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`).",
+  "changelog": [
+    { "version": "1.11.0+rootless1", "date": "2026-06-29", "notes": "- Rebuilt from source for rootless /var/jb\n- Fix: X server spawns its xkbcomp helper via /var/jb/bin/sh (was /bin/sh), so keyboard init no longer crashes\n- Drop the unsatisfiable tigervnc-xorg-extension dependency so it installs with dpkg/apt" }
+  ]
+}

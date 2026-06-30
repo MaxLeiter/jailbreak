@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/angle.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**ANGLE** (Almost Native Graphics Layer Engine) built for jailbroken iOS, translating OpenGL ES to Metal so X11 and GTK apps can use the GPU.\n\nProvides `libEGL` and `libGLESv2` under a private prefix (`/var/jb/lib/angle`) so they sit alongside the Mesa software renderer with no conflict. Verified on-device on the A10 GPU, including `EGL_ANGLE_iosurface_client_buffer` for zero-copy rendering into shared IOSurfaces.\n\n- Real GPU acceleration (Metal backend) for GLES2 and GLES3\n- EGL 1.5 with IOSurface client buffers\n- Coexists with the software GL stack\n\nGPU-using apps must be signed with the appropriate GPU entitlements. Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "2.1.0+git20260630.a32d31d"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "3811.4 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "The ANGLE Project"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Development"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "angle"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 2.1.0+git20260630  \u00b7  2026-06-30\n- First release: upstream ANGLE, Metal backend, arm64\n- libEGL + libGLESv2 under /var/jb/lib/angle\n- EGL_ANGLE_iosurface_client_buffer validated on the A10 GPU"
+        }
+      ]
+    }
+  ]
+}

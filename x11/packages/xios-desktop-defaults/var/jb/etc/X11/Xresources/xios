@@ -1,0 +1,20 @@
+! Xios retina/Xft defaults. Loaded by xios-server.sh, x11-server.sh,
+! x11-up.sh and xfce-up.sh when xios-desktop-defaults is installed.
+Xft.dpi: 264
+Xft.antialias: true
+Xft.hinting: true
+Xft.hintstyle: hintslight
+Xft.rgba: rgb
+Xft.lcdfilter: lcddefault
+Xcursor.size: 48
+
+! Make legacy X clients usable on a retina framebuffer.
+XTerm*faceName: monospace
+XTerm*faceSize: 20
+XTerm*utf8: 1
+XTerm*locale: true
+XTerm*metaSendsEscape: true
+XTerm*saveLines: 10000
+XTerm*background: #1d1f21
+XTerm*foreground: #c5c8c6
+XTerm*cursorColor: #ffffff

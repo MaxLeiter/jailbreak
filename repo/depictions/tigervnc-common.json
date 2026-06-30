@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/tigervnc-common.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "Common files (`vncconfig`, `vncpasswd`, config) shared by the TigerVNC server packages. Installed automatically as a dependency of **tigervnc-standalone-server**.\n\nRebuilt from source for rootless `/var/jb`."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "1.11.0+rootless1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "61.1 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "tigervnc-common"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 1.11.0+rootless1  \u00b7  2026-06-29\n- Rebuilt from source for rootless /var/jb"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "tagline": "Retina and desktop defaults for Xios",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "display",
+  "description": "Installs the ambient desktop defaults that make the Xios X11 environment feel more like a small iOS Linux distro than a bag of packages.\n\nIt sets up rootless-friendly shell and XDG environment defaults, native iPad retina display profiles, Xft antialiasing and DPI resources, GTK3/GTK4 settings, UTF-8 locale defaults, touch-friendly cursor sizing, and runtime directories used by X11/GTK/Xfce/GNOME apps.\n\n- Native profile: 2160x1620 at 264 DPI\n- Comfy profile: 1440x1080 at 176 DPI\n- Debug/VNC profile: 1024x768 at 96 DPI\n- Ships a minimal real hicolor icon-theme index, so the GTK icon theme setting points at something installed\n- Refreshes fontconfig, GSettings schemas, icon, MIME, and desktop databases when the relevant tools are present\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`).",
+  "changelog": [
+    { "version": "1.0.0", "date": "2026-06-30", "notes": "- First release: rootless XDG/session environment, retina display profiles, Xft resources, GTK defaults, minimal hicolor index, and idempotent postinst cache setup" }
+  ]
+}

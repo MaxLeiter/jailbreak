@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/x11-fonts-sf.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "Makes **San Francisco**, Apple's system typeface, the default font for X11 apps on your jailbroken device, and makes the rest of the built-in iOS fonts (emoji, CJK, and so on) available too.\n\nNo font files are copied. It points the font system at iOS's own `/System/Library/Fonts`, so it always matches the OS and there's nothing to license or update.\n\n- Default sans-serif, serif, and UI font: **San Francisco**\n- Default monospace font: **SF Mono**\n- Refreshes the font cache on install\n\nUseful for anything that draws text in X11 apps (terminals, GTK/Qt apps, window managers). Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "1.0.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "1.7 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "x11-fonts-sf"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 1.0.0  \u00b7  2026-06-30\n- Point fontconfig at /System/Library/Fonts (no fonts copied)\n- San Francisco as default sans/serif/system-ui; SF Mono as default monospace\n- fc-cache rebuilt on install"
+        }
+      ]
+    }
+  ]
+}

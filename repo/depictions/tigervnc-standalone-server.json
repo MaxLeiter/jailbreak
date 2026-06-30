@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/tigervnc-standalone-server.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "A from-source rebuild of TigerVNC's **Xvnc**, a virtual X11 display server with built-in VNC, patched to run on **rootless** jailbreaks.\n\nStock builds crash on launch because they expect a system shell at `/bin/sh`, which isn't present on rootless (it lives at `/var/jb/bin/sh`). This build uses the right path, so it starts cleanly.\n\n- Built from source and signed to install on rootless\n- Installs without errors; the unavailable `tigervnc-xorg-extension` dependency is dropped\n- Gives you an X11 desktop you can reach from any VNC client at `127.0.0.1`\n\nPair it with a window manager (`fluxbox`), `xterm`, and fonts. Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "1.11.0+rootless1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "794.1 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "tigervnc-standalone-server"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 1.11.0+rootless1  \u00b7  2026-06-29\n- Rebuilt from source for rootless /var/jb\n- Fix: X server spawns its xkbcomp helper via /var/jb/bin/sh (was /bin/sh), so keyboard init no longer crashes\n- Drop the unsatisfiable tigervnc-xorg-extension dependency so it installs with dpkg/apt"
+        }
+      ]
+    }
+  ]
+}
