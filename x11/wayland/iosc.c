@@ -28,6 +28,7 @@
 #include "fractional-scale-v1-server-protocol.h"
 #include "presentation-time-server-protocol.h"
 #include "xdg-output-unstable-v1-server-protocol.h"
+#include "text-input-unstable-v3-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -215,6 +216,7 @@ static int g_interactive_w, g_interactive_h;
 static uint32_t g_interactive_edges;
 static uint64_t g_presentation_seq;
 static void keyboard_set_focus(struct iosc_surface *s);
+static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surface *next);
 static void surface_raise(struct iosc_surface *s);
 
 static int clampi(int v, int lo, int hi)
@@ -529,10 +531,8 @@ static void surface_unmap(struct iosc_surface *s)
     s->mapped = 0;
     /* Drop focus that pointed at us; hand it to the new top window (if any). */
     if (g_ptr_focus == s) g_ptr_focus = NULL;
-    if (g_kbd_focus == s) {
-        g_kbd_focus = NULL;            /* leave already implied by destroy */
+    if (g_kbd_focus == s)
         keyboard_set_focus(g_nmapped > 0 ? g_mapped[g_nmapped - 1] : NULL);
-    }
 }
 
 static void iosurface_factory_create_buffer(struct wl_client *client,
@@ -1702,6 +1702,175 @@ static struct iosc_surface *surface_at(int x, int y)
     return NULL;
 }
 
+/* ---- text input ----------------------------------------------------------- */
+
+#define IOSC_MAX_TEXT_INPUTS 64
+
+struct iosc_text_input {
+    struct wl_resource *resource;
+    struct wl_client *client;
+    struct iosc_surface *focus_surface;
+    int pending_enabled;
+    int enabled;
+    char *surrounding;
+    int32_t cursor, anchor;
+    uint32_t change_cause;
+    uint32_t content_hint, content_purpose;
+    int32_t rect_x, rect_y, rect_w, rect_h;
+    uint32_t serial;
+};
+
+static struct iosc_text_input *g_text_inputs[IOSC_MAX_TEXT_INPUTS];
+static int g_ntext_inputs;
+
+static void text_input_reset_state(struct iosc_text_input *ti)
+{
+    if (!ti) return;
+    ti->pending_enabled = 0;
+    ti->enabled = 0;
+    free(ti->surrounding);
+    ti->surrounding = NULL;
+    ti->cursor = 0;
+    ti->anchor = 0;
+    ti->change_cause = ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_INPUT_METHOD;
+    ti->content_hint = ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE;
+    ti->content_purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
+    ti->rect_x = ti->rect_y = ti->rect_w = ti->rect_h = 0;
+}
+
+static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surface *next)
+{
+    struct wl_client *old_client = old ? wl_resource_get_client(old->resource) : NULL;
+    struct wl_client *next_client = next ? wl_resource_get_client(next->resource) : NULL;
+    for (int i = 0; i < g_ntext_inputs; i++) {
+        struct iosc_text_input *ti = g_text_inputs[i];
+        if (!ti || !ti->resource) continue;
+        if (old && ti->focus_surface == old && ti->client == old_client) {
+            zwp_text_input_v3_send_leave(ti->resource, old->resource);
+            ti->focus_surface = NULL;
+            text_input_reset_state(ti);
+        }
+        if (next && ti->client == next_client) {
+            ti->focus_surface = next;
+            zwp_text_input_v3_send_enter(ti->resource, next->resource);
+        }
+    }
+}
+
+static void text_input_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void text_input_enable(struct wl_client *c, struct wl_resource *r)
+{ (void)c; struct iosc_text_input *ti = wl_resource_get_user_data(r); if (ti) ti->pending_enabled = 1; }
+
+static void text_input_disable(struct wl_client *c, struct wl_resource *r)
+{ (void)c; struct iosc_text_input *ti = wl_resource_get_user_data(r); if (ti) ti->pending_enabled = 0; }
+
+static void text_input_set_surrounding_text(struct wl_client *c, struct wl_resource *r,
+                                            const char *text, int32_t cursor, int32_t anchor)
+{ (void)c;
+    struct iosc_text_input *ti = wl_resource_get_user_data(r);
+    if (!ti) return;
+    char *copy = strdup(text ? text : "");
+    if (!copy) { wl_client_post_no_memory(c); return; }
+    free(ti->surrounding);
+    ti->surrounding = copy;
+    ti->cursor = cursor;
+    ti->anchor = anchor;
+}
+
+static void text_input_set_text_change_cause(struct wl_client *c, struct wl_resource *r, uint32_t cause)
+{ (void)c; struct iosc_text_input *ti = wl_resource_get_user_data(r); if (ti) ti->change_cause = cause; }
+
+static void text_input_set_content_type(struct wl_client *c, struct wl_resource *r,
+                                        uint32_t hint, uint32_t purpose)
+{ (void)c;
+    struct iosc_text_input *ti = wl_resource_get_user_data(r);
+    if (!ti) return;
+    ti->content_hint = hint;
+    ti->content_purpose = purpose;
+}
+
+static void text_input_set_cursor_rectangle(struct wl_client *c, struct wl_resource *r,
+                                            int32_t x, int32_t y, int32_t w, int32_t h)
+{ (void)c;
+    struct iosc_text_input *ti = wl_resource_get_user_data(r);
+    if (!ti) return;
+    ti->rect_x = x;
+    ti->rect_y = y;
+    ti->rect_w = w;
+    ti->rect_h = h;
+}
+
+static void text_input_commit(struct wl_client *c, struct wl_resource *r)
+{ (void)c;
+    struct iosc_text_input *ti = wl_resource_get_user_data(r);
+    if (!ti) return;
+    ti->enabled = ti->pending_enabled;
+    zwp_text_input_v3_send_done(r, ++ti->serial);
+}
+
+static const struct zwp_text_input_v3_interface text_input_impl = {
+    .destroy = text_input_destroy,
+    .enable = text_input_enable,
+    .disable = text_input_disable,
+    .set_surrounding_text = text_input_set_surrounding_text,
+    .set_text_change_cause = text_input_set_text_change_cause,
+    .set_content_type = text_input_set_content_type,
+    .set_cursor_rectangle = text_input_set_cursor_rectangle,
+    .commit = text_input_commit,
+};
+
+static void text_input_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_text_input *ti = wl_resource_get_user_data(r);
+    if (!ti) return;
+    for (int i = 0; i < g_ntext_inputs; i++)
+        if (g_text_inputs[i] == ti) {
+            g_text_inputs[i] = g_text_inputs[--g_ntext_inputs];
+            break;
+        }
+    free(ti->surrounding);
+    free(ti);
+}
+
+static void text_input_manager_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void text_input_manager_get_text_input(struct wl_client *c, struct wl_resource *r,
+                                              uint32_t id, struct wl_resource *seat)
+{ (void)seat;
+    if (g_ntext_inputs >= IOSC_MAX_TEXT_INPUTS) { wl_client_post_no_memory(c); return; }
+    struct iosc_text_input *ti = calloc(1, sizeof(*ti));
+    if (!ti) { wl_client_post_no_memory(c); return; }
+    ti->client = c;
+    ti->change_cause = ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_INPUT_METHOD;
+    ti->content_purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
+    ti->resource = wl_resource_create(c, &zwp_text_input_v3_interface,
+                                      wl_resource_get_version(r), id);
+    if (!ti->resource) { free(ti); wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(ti->resource, &text_input_impl, ti,
+                                   text_input_resource_destroy);
+    g_text_inputs[g_ntext_inputs++] = ti;
+    if (g_kbd_focus && wl_resource_get_client(g_kbd_focus->resource) == c) {
+        ti->focus_surface = g_kbd_focus;
+        zwp_text_input_v3_send_enter(ti->resource, g_kbd_focus->resource);
+    }
+}
+
+static const struct zwp_text_input_manager_v3_interface text_input_manager_impl = {
+    .destroy = text_input_manager_destroy,
+    .get_text_input = text_input_manager_get_text_input,
+};
+
+static void text_input_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(client, &zwp_text_input_manager_v3_interface,
+                                               version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &text_input_manager_impl, NULL, NULL);
+}
+
 /* ---- keyboard ------------------------------------------------------------- */
 
 static void input_release(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
@@ -1739,7 +1908,9 @@ static void kbd_send_enter(struct iosc_surface *s)
 static void keyboard_set_focus(struct iosc_surface *s)
 {
     if (g_kbd_focus == s) return;
-    kbd_send_leave(g_kbd_focus);
+    struct iosc_surface *old = g_kbd_focus;
+    kbd_send_leave(old);
+    text_input_focus_surface(old, s);
     g_kbd_focus = s;
     g_kbd_mods = 0;
     if (s) {
@@ -2750,6 +2921,8 @@ int main(int argc, char **argv)
     wl_global_create(g_display, &zxdg_decoration_manager_v1_interface, 1, NULL,
                      decoration_manager_bind);
     wl_global_create(g_display, &xdg_activation_v1_interface, 1, NULL, activation_bind);
+    wl_global_create(g_display, &zwp_text_input_manager_v3_interface, 1, NULL,
+                     text_input_manager_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
@@ -2779,7 +2952,8 @@ int main(int argc, char **argv)
                     "wl_seat v5, wl_subcompositor v1, "
                     "wl_data_device_manager v3, wp_viewporter v1, "
                     "wp_fractional_scale_manager_v1 v1, wp_presentation v1, "
-                    "zxdg_decoration_manager_v1 v1, xdg_activation_v1 v1\n");
+                    "zxdg_decoration_manager_v1 v1, xdg_activation_v1 v1, "
+                    "zwp_text_input_manager_v3 v1\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);

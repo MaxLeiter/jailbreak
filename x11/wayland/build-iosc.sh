@@ -42,6 +42,7 @@ VIEWPORTER_XML="$PREFIX/share/wayland-protocols/stable/viewporter/viewporter.xml
 FRACTIONAL_XML="$PREFIX/share/wayland-protocols/staging/fractional-scale/fractional-scale-v1.xml"
 PRESENTATION_XML="$PREFIX/share/wayland-protocols/stable/presentation-time/presentation-time.xml"
 XDG_OUTPUT_XML="$PREFIX/share/wayland-protocols/unstable/xdg-output/xdg-output-unstable-v1.xml"
+TEXT_INPUT_XML="$PREFIX/share/wayland-protocols/unstable/text-input/text-input-unstable-v3.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
 [ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
 [ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
@@ -49,6 +50,7 @@ XDG_OUTPUT_XML="$PREFIX/share/wayland-protocols/unstable/xdg-output/xdg-output-u
 [ -f "$FRACTIONAL_XML" ] || { echo "!! fractional-scale-v1.xml not found at $FRACTIONAL_XML"; exit 1; }
 [ -f "$PRESENTATION_XML" ] || { echo "!! presentation-time.xml not found at $PRESENTATION_XML"; exit 1; }
 [ -f "$XDG_OUTPUT_XML" ] || { echo "!! xdg-output-unstable-v1.xml not found at $XDG_OUTPUT_XML"; exit 1; }
+[ -f "$TEXT_INPUT_XML" ] || { echo "!! text-input-unstable-v3.xml not found at $TEXT_INPUT_XML"; exit 1; }
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
@@ -75,6 +77,8 @@ wayland-scanner server-header "$PRESENTATION_XML" "$GEN/presentation-time-server
 wayland-scanner private-code  "$PRESENTATION_XML" "$GEN/presentation-time-protocol.c"
 wayland-scanner server-header "$XDG_OUTPUT_XML" "$GEN/xdg-output-unstable-v1-server-protocol.h"
 wayland-scanner private-code  "$XDG_OUTPUT_XML" "$GEN/xdg-output-unstable-v1-protocol.c"
+wayland-scanner server-header "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-server-protocol.h"
+wayland-scanner private-code  "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
 wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
@@ -109,6 +113,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/fractional-scale-v1-protocol.c" \
     "$GEN/presentation-time-protocol.c" \
     "$GEN/xdg-output-unstable-v1-protocol.c" \
+    "$GEN/text-input-unstable-v3-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
