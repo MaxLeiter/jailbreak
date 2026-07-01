@@ -47,6 +47,23 @@
                              * gesture, deltas 0 — lets clients fling kinetically);
                              * mods = modifier mask (1 shift, 2 ctrl, 4 alt) held
                              * for the frame — pinch-zoom sends ctrl+scroll        */
+/* Native-feel system integration (rotation / volume / appearance / haptics).
+ * OUTPUT + HAPTIC ride the compositor input socket; VOLUME + APPEARANCE go to
+ * the separate xios-sysintd session daemon (same 24-byte framing, its own
+ * socket /var/jb/tmp/xios-sysint.sock) so the compositor stays out of audio
+ * and theme policy. One shared type registry so the families never collide. */
+#define XIOS_IN_OUTPUT 10u  /* app->server: reconfigure the output for a device
+                             * rotation. code = wl_output transform (0 normal,
+                             * 1 = 90, 2 = 180, 3 = 270); x,y = requested LOGICAL
+                             * WxH (0,0 = derive: quarter-turns swap the launch
+                             * logical size); state/mods reserved (0)           */
+#define XIOS_IN_HAPTIC 11u  /* server->CLIENT broadcast: fire a haptic. code =
+                             * style (0 light, 1 medium, 2 heavy, 3 selection);
+                             * sent e.g. when a press lands on shell chrome     */
+#define XIOS_IN_VOLUME 12u  /* app->sysintd: absolute output volume,
+                             * code = 0..65535 (maps to sink 0..100%)           */
+#define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style,
+                             * code = 1 dark, 0 light                           */
 #endif
 
 /* Fixed 24-byte record header. Layout matches iosc.c/ios-inputd.c iosc_in_msg. */
