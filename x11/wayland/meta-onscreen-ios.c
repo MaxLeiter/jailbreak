@@ -18,7 +18,9 @@
 
 #include "backends/ios/xios-glue-stub.h"
 #include "cogl/cogl.h"
-#include "cogl/cogl-framebuffer-private.h"
+/* CoglFramebufferDriverConfig + COGL_FRAMEBUFFER_DRIVER_TYPE_BACK come in via cogl/cogl.h's
+ * cogl-mutter.h chain, exactly as in meta-onscreen-native.c (which constructs the same
+ * driver_config without an explicit private include). */
 
 struct _MetaOnscreenIOS
 {

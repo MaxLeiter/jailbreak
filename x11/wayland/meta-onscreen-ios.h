@@ -16,7 +16,10 @@
  */
 #pragma once
 
-#include "cogl/winsys/cogl-onscreen-egl.h"
+/* cogl/cogl.h (the mutter fork) includes cogl-mutter.h, which exposes CoglOnscreenEgl +
+ * CoglOnscreenEglClass — same as meta-onscreen-native.h. Do NOT include the winsys header
+ * directly (it trips cogl's "Only <cogl/cogl.h> can be included directly" guard). */
+#include "cogl/cogl.h"
 
 #define META_TYPE_ONSCREEN_IOS (meta_onscreen_ios_get_type ())
 G_DECLARE_FINAL_TYPE (MetaOnscreenIOS, meta_onscreen_ios,
