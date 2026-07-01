@@ -36,15 +36,36 @@ All cross-built for `iphoneos-arm64` (rootless) on `procursus-vol-shell`. Recipe
 | `libnotify4` / `libnotify-dev` | 0.8.3 | desktop notification client (used by gsd housekeeping and by apps) |
 | `gnome-settings-daemon` | 46.0 | minimal gsd (a11y-settings, housekeeping, keyboard, screensaver-proxy) |
 | `libaccountsservice0` / `-dev` | 23.13.9 | **BOOT-CRITICAL** client lib — gnome-shell imports gi://AccountsService at boot |
+| `libgdm1` / `libgdm-dev` | 46.0 | **BOOT-CRITICAL** client lib — gnome-shell imports gi://Gdm at boot (5 files) |
 
 Three D-Bus stub daemons stand in for the freedesktop services that have no daemon on iOS
-(pure GLib/GIO, built by `x11/wayland/build-session-stubs.sh`):
+(pure GLib/GIO, built by `x11/wayland/build-session-stubs.sh`, packaged as `xios-session-stubs`
+to `/var/jb/usr/libexec` alongside `launch-gnome-session.sh` in `/var/jb/usr/bin`):
 
 | Stub | Provides | Why |
 |---|---|---|
-| `xios-login1-stub` | `org.freedesktop.login1` | session/seat/inhibitors for gnome-session/gsd/Mutter |
+| `xios-login1-stub` | `org.freedesktop.login1` | session/seat/user/inhibitors for gnome-session/gsd/Mutter; reports the real user |
 | `xios-polkit-stub` | `org.freedesktop.PolicyKit1` | auto-allow (single-user root); shell polkit agent registers, no auth hang |
 | `xios-accounts-stub` | `org.freedesktop.Accounts` | one user, so the shell shows a real name (else it degrades to blank) |
+
+The login1 and accounts stubs share `xios-session-identity.c`, which resolves the logged-in
+user once (uid/username from passwd, display name from the MobileGestalt device name, home,
+`~/.face` avatar, locale) so the shell shows a real identity across the login1 `User` object
+and the Accounts `RealName`/`IconFile`/`Language`.
+
+### libgdm: the fifth boot-blocker
+
+gnome-shell statically `import Gdm from 'gi://Gdm'` in five boot-path files (`js/misc/
+dependencies.js`, `js/misc/systemActions.js`, `js/ui/unlockDialog.js`, `js/gdm/loginDialog.js`,
+`js/gdm/util.js`), so the Gdm-1.0 typelib must exist or the shell throws at module load. We
+build ONLY gdm's client library, `libgdm` (clean client/daemon split): the top-level
+`meson.build` is replaced with a client-only one (the daemon hard-probes udev/pam/gtk3/xcb/
+logind), and the sd-login C API the client uses (`libgdm/gdm-sessions.c`, `common/gdm-common.c`)
+is satisfied by a single-session shim compiled into `libgdmcommon` — the same pattern as
+libaccountsservice. Built with no version-script (Apple ld) and no cross gir; the **Gdm-1.0
+typelib is generated ON-DEVICE**. At runtime there is no display-manager daemon, so `Gdm.Client`
+simply fails to connect and the shell's greeter/lock paths degrade, which is correct for a
+jailbreak session. Recipe: `recipes/libgdm.mk` + `recipes/libgdm-ios-fixes.sh`.
 
 ### libaccountsservice: the hidden boot-blocker
 
