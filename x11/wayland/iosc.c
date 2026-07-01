@@ -39,6 +39,7 @@
 #include "idle-inhibit-unstable-v1-server-protocol.h"
 #include "ext-idle-notify-v1-server-protocol.h"
 #include "single-pixel-buffer-v1-server-protocol.h"
+#include "cursor-shape-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -75,6 +76,7 @@ static int               g_output_scale = 2; /* logical -> physical output pixel
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
 static void clipboard_selection_send_to_client(struct wl_client *client);
+static void recomposite_all(void);
 
 static uint32_t now_ms(void)
 {
@@ -624,8 +626,228 @@ static void composite_one(struct iosc_surface *s)
     composite_surface_at(s, s->dx, s->dy);
 }
 
+/* ---- cursor-shape-v1: compositor-drawn named cursors --------------------- *
+ * iosc loads no XCursor theme; clients that use cursor-shape-v1 (GTK4/Adwaita
+ * PREFER it and then never upload a wl_pointer cursor surface) would otherwise
+ * get no cursor. We rasterize a small built-in set of premultiplied-BGRA bitmaps
+ * procedurally and draw the chosen shape in composite_cursor(), so the pointer
+ * never vanishes and the common shapes read correctly. A set_shape and a client
+ * wl_pointer.set_cursor supersede each other (last request wins). */
+
+#define IOSC_CUR_DIM 24                 /* max logical bitmap size (px) */
+static uint32_t g_named_cursor;         /* wp_cursor_shape enum; 0 = use client surface */
+static uint8_t  g_cur_bmp[IOSC_CUR_DIM * IOSC_CUR_DIM * 4];   /* premultiplied BGRA */
+static int      g_cur_w, g_cur_h, g_cur_hotx, g_cur_hoty;
+
+static void cur_px(int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+{
+    if (x < 0 || y < 0 || x >= g_cur_w || y >= g_cur_h) return;
+    uint8_t *p = &g_cur_bmp[(y * g_cur_w + x) * 4];
+    p[0] = (uint8_t)((unsigned)b * a / 255);
+    p[1] = (uint8_t)((unsigned)g * a / 255);
+    p[2] = (uint8_t)((unsigned)r * a / 255);
+    p[3] = a;
+}
+static void cur_fill(int x, int y) { cur_px(x, y, 0, 0, 0, 255); }         /* black */
+static void cur_hline(int x0, int x1, int y) { for (int x = x0; x <= x1; x++) cur_fill(x, y); }
+static void cur_vline(int x, int y0, int y1) { for (int y = y0; y <= y1; y++) cur_fill(x, y); }
+
+/* Give every black glyph a 1px white halo so it reads on any background. */
+static void cur_outline(void)
+{
+    static const int dx[8] = { -1, 1, 0, 0, -1, -1, 1, 1 };
+    static const int dy[8] = { 0, 0, -1, 1, -1, 1, -1, 1 };
+    uint8_t snap[IOSC_CUR_DIM * IOSC_CUR_DIM];
+    for (int i = 0; i < g_cur_w * g_cur_h; i++) snap[i] = g_cur_bmp[i * 4 + 3];
+    for (int y = 0; y < g_cur_h; y++)
+        for (int x = 0; x < g_cur_w; x++) {
+            if (snap[y * g_cur_w + x]) continue;
+            for (int k = 0; k < 8; k++) {
+                int nx = x + dx[k], ny = y + dy[k];
+                if (nx >= 0 && ny >= 0 && nx < g_cur_w && ny < g_cur_h &&
+                    snap[ny * g_cur_w + nx]) { cur_px(x, y, 255, 255, 255, 255); break; }
+            }
+        }
+}
+
+/* Classic left_ptr arrow, hotspot at the tip (0,0). Authored 12x19 mask. */
+static void cur_build_arrow(void)
+{
+    static const char *art[19] = {
+        "X           ", "XX          ", "XXX         ", "XXXX        ",
+        "XXXXX       ", "XXXXXX      ", "XXXXXXX     ", "XXXXXXXX    ",
+        "XXXXXXXXX   ", "XXXXXXXXXX  ", "XXXXXXXXXXX ", "XXXXXXXXXXXX",
+        "XXXXXXX     ", "XXXXXXX     ", "XXXX XXX    ", "XXX  XXX    ",
+        "XX    XXX   ", "       XXX  ", "       XXX  ",
+    };
+    for (int y = 0; y < 19; y++)
+        for (int x = 0; art[y][x]; x++)
+            if (art[y][x] == 'X') cur_fill(x, y);
+    cur_outline();
+    g_cur_hotx = 0; g_cur_hoty = 0;
+}
+
+static void cur_build_ibeam(void)
+{
+    int cx = 5, top = 2, bot = 18;
+    cur_vline(cx, top, bot);
+    cur_hline(cx - 2, cx + 2, top);     cur_hline(cx - 2, cx + 2, bot);
+    cur_hline(cx - 1, cx + 1, top + 1); cur_hline(cx - 1, cx + 1, bot - 1);
+    cur_outline();
+    g_cur_hotx = cx; g_cur_hoty = (top + bot) / 2;
+}
+
+static void cur_build_cross(void)
+{
+    int c = 10;
+    cur_hline(1, 19, c); cur_vline(c, 1, 19);
+    cur_outline();
+    g_cur_hotx = c; g_cur_hoty = c;
+}
+
+/* dir: 0=ns 1=ew 2=nesw 3=nwse. Hotspot centre. */
+static void cur_build_resize(int dir)
+{
+    int c = 10;
+    if (dir == 0) {
+        cur_vline(c, 2, 18);
+        for (int i = 0; i <= 4; i++) { cur_hline(c - i, c + i, 2 + i); cur_hline(c - i, c + i, 18 - i); }
+    } else if (dir == 1) {
+        cur_hline(2, 18, c);
+        for (int i = 0; i <= 4; i++) { cur_vline(2 + i, c - i, c + i); cur_vline(18 - i, c - i, c + i); }
+    } else {
+        for (int t = 3; t <= 17; t++) { int u = (dir == 3) ? t : (20 - t); cur_fill(t, u); cur_fill(t, u + 1); }
+    }
+    cur_outline();
+    g_cur_hotx = c; g_cur_hoty = c;
+}
+
+static void cur_build_move(void)
+{
+    int c = 10;
+    cur_hline(3, 17, c); cur_vline(c, 3, 17);
+    for (int i = 0; i <= 4; i++) {
+        cur_hline(c - i, c + i, 3 + i); cur_hline(c - i, c + i, 17 - i);
+        cur_vline(3 + i, c - i, c + i); cur_vline(17 - i, c - i, c + i);
+    }
+    cur_outline();
+    g_cur_hotx = c; g_cur_hoty = c;
+}
+
+/* not_allowed / no_drop: circle + slash (trig-free distance test). */
+static void cur_build_noentry(void)
+{
+    int c = 10, rad = 8;
+    for (int y = 0; y < g_cur_h; y++)
+        for (int x = 0; x < g_cur_w; x++) {
+            int d2 = (x - c) * (x - c) + (y - c) * (y - c);
+            if (d2 <= rad * rad && d2 >= (rad - 2) * (rad - 2)) cur_fill(x, y);
+        }
+    for (int t = -(rad - 1); t <= (rad - 1); t++) { cur_fill(c + t, c + t); cur_fill(c + t + 1, c + t); }
+    cur_outline();
+    g_cur_hotx = c; g_cur_hoty = c;
+}
+
+static void cursor_build_shape(uint32_t shape)
+{
+    g_cur_w = IOSC_CUR_DIM; g_cur_h = IOSC_CUR_DIM;
+    memset(g_cur_bmp, 0, sizeof(g_cur_bmp));
+    g_cur_hotx = 0; g_cur_hoty = 0;
+    switch (shape) {
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_VERTICAL_TEXT: cur_build_ibeam(); break;
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CELL:          cur_build_cross(); break;
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ROW_RESIZE:    cur_build_resize(0); break;
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_COL_RESIZE:    cur_build_resize(1); break;
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NESW_RESIZE:   cur_build_resize(2); break;
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NWSE_RESIZE:   cur_build_resize(3); break;
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL:    cur_build_move(); break;
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NOT_ALLOWED:
+        case WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NO_DROP:       cur_build_noentry(); break;
+        default:                                            cur_build_arrow(); break;
+    }
+}
+
+static void composite_named_cursor(void)
+{
+    if (!g_cur_w || !g_cur_h) return;
+    int os = output_scale();
+    int lx = g_cursor_x - g_cur_hotx, ly = g_cursor_y - g_cur_hoty;
+    iosc_gl_begin_cursor();
+    iosc_gl_draw_shm(g_cur_bmp, g_cur_w, g_cur_h, g_cur_w * 4,
+                     0, 0, g_cur_w, g_cur_h,
+                     lx * os, ly * os, g_cur_w * os, g_cur_h * os);
+    iosc_gl_end_cursor();
+}
+
+static void cshape_dev_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void cshape_dev_set_shape(struct wl_client *c, struct wl_resource *r,
+                                 uint32_t serial, uint32_t shape)
+{ (void)c; (void)serial;
+    if (shape < 1 || shape > WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ZOOM_OUT) {
+        wl_resource_post_error(r, WP_CURSOR_SHAPE_DEVICE_V1_ERROR_INVALID_SHAPE,
+                               "invalid cursor shape %u", shape);
+        return;
+    }
+    g_named_cursor = shape;         /* named shape supersedes any client surface cursor */
+    g_cursor_surface = NULL;
+    cursor_build_shape(shape);
+    g_cursor_visible = 1;
+    recomposite_all();
+}
+
+static const struct wp_cursor_shape_device_v1_interface cshape_dev_impl = {
+    .destroy = cshape_dev_destroy,
+    .set_shape = cshape_dev_set_shape,
+};
+
+static void cshape_mgr_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void cshape_make_device(struct wl_client *c, struct wl_resource *r, uint32_t id)
+{
+    struct wl_resource *dev = wl_resource_create(c, &wp_cursor_shape_device_v1_interface,
+                                                 wl_resource_get_version(r), id);
+    if (!dev) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(dev, &cshape_dev_impl, NULL, NULL);
+}
+static void cshape_mgr_get_pointer(struct wl_client *c, struct wl_resource *r,
+                                   uint32_t id, struct wl_resource *pointer)
+{ (void)pointer; cshape_make_device(c, r, id); }
+static void cshape_mgr_get_tablet_tool_v2(struct wl_client *c, struct wl_resource *r,
+                                          uint32_t id, struct wl_resource *tool)
+{ (void)tool; cshape_make_device(c, r, id); }
+
+static const struct wp_cursor_shape_manager_v1_interface cshape_mgr_impl = {
+    .destroy = cshape_mgr_destroy,
+    .get_pointer = cshape_mgr_get_pointer,
+    .get_tablet_tool_v2 = cshape_mgr_get_tablet_tool_v2,
+};
+
+static void cshape_mgr_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(client, &wp_cursor_shape_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &cshape_mgr_impl, NULL, NULL);
+}
+
 static void composite_cursor(void)
 {
+    if (g_named_cursor) { if (g_cursor_visible) composite_named_cursor(); return; }
     if (!g_cursor_visible || !g_cursor_surface || !g_cursor_surface->current_buffer) return;
     /* The cursor is a premultiplied ARGB8888 wl_shm surface: blend it so its alpha is
      * honored, otherwise the transparent pixels around the arrow draw as a black box. */
@@ -2814,6 +3036,7 @@ static void pointer_set_cursor(struct wl_client *c, struct wl_resource *r, uint3
 { (void)r; (void)serial;
     if (g_ptr_focus && wl_resource_get_client(g_ptr_focus->resource) != c)
         return;
+    g_named_cursor = 0;   /* a client cursor surface supersedes any cursor-shape */
     g_cursor_surface = surf ? wl_resource_get_user_data(surf) : NULL;
     g_cursor_hot_x = hx;
     g_cursor_hot_y = hy;
@@ -4622,6 +4845,8 @@ int main(int argc, char **argv)
     wl_global_create(g_display, &zwp_idle_inhibit_manager_v1_interface, 1, NULL, idle_inhibit_mgr_bind);
     /* 1x1 solid-colour buffers (CSD shadows, solid backdrops), scaled via viewporter. */
     wl_global_create(g_display, &wp_single_pixel_buffer_manager_v1_interface, 1, NULL, spb_mgr_bind);
+    /* Named cursor shapes (GTK4/Adwaita prefer this over uploading a cursor surface). */
+    wl_global_create(g_display, &wp_cursor_shape_manager_v1_interface, 1, NULL, cshape_mgr_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
@@ -4663,7 +4888,7 @@ int main(int argc, char **argv)
                     "zwp_pointer_constraints_v1 v1, zwp_relative_pointer_manager_v1 v1, "
                     "zwp_primary_selection_device_manager_v1 v1, "
                     "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1, "
-                    "wp_single_pixel_buffer_manager_v1 v1\n");
+                    "wp_single_pixel_buffer_manager_v1 v1, wp_cursor_shape_manager_v1 v1\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);

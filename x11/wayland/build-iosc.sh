@@ -53,6 +53,8 @@ PRIMARY_SELECTION_XML="$PREFIX/share/wayland-protocols/unstable/primary-selectio
 IDLE_INHIBIT_XML="$PREFIX/share/wayland-protocols/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml"
 IDLE_NOTIFY_XML="$PREFIX/share/wayland-protocols/staging/ext-idle-notify/ext-idle-notify-v1.xml"
 SINGLE_PIXEL_XML="$PREFIX/share/wayland-protocols/staging/single-pixel-buffer/single-pixel-buffer-v1.xml"
+CURSOR_SHAPE_XML="$PREFIX/share/wayland-protocols/staging/cursor-shape/cursor-shape-v1.xml"
+TABLET_XML="$PREFIX/share/wayland-protocols/stable/tablet/tablet-v2.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
 [ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
 [ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
@@ -71,6 +73,8 @@ SINGLE_PIXEL_XML="$PREFIX/share/wayland-protocols/staging/single-pixel-buffer/si
 [ -f "$IDLE_INHIBIT_XML" ] || { echo "!! idle-inhibit-unstable-v1.xml not found at $IDLE_INHIBIT_XML"; exit 1; }
 [ -f "$IDLE_NOTIFY_XML" ] || { echo "!! ext-idle-notify-v1.xml not found at $IDLE_NOTIFY_XML"; exit 1; }
 [ -f "$SINGLE_PIXEL_XML" ] || { echo "!! single-pixel-buffer-v1.xml not found at $SINGLE_PIXEL_XML"; exit 1; }
+[ -f "$CURSOR_SHAPE_XML" ] || { echo "!! cursor-shape-v1.xml not found at $CURSOR_SHAPE_XML"; exit 1; }
+[ -f "$TABLET_XML" ] || { echo "!! tablet-v2.xml not found at $TABLET_XML"; exit 1; }
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
@@ -125,6 +129,13 @@ wayland-scanner private-code  "$IDLE_NOTIFY_XML" "$GEN/ext-idle-notify-v1-protoc
 wayland-scanner server-header "$SINGLE_PIXEL_XML" "$GEN/single-pixel-buffer-v1-server-protocol.h"
 wayland-scanner client-header "$SINGLE_PIXEL_XML" "$GEN/single-pixel-buffer-v1-client-protocol.h"
 wayland-scanner private-code  "$SINGLE_PIXEL_XML" "$GEN/single-pixel-buffer-v1-protocol.c"
+# tablet-v2 first: cursor-shape's get_tablet_tool_v2 references zwp_tablet_tool_v2_interface.
+wayland-scanner server-header "$TABLET_XML" "$GEN/tablet-v2-server-protocol.h"
+wayland-scanner client-header "$TABLET_XML" "$GEN/tablet-v2-client-protocol.h"
+wayland-scanner private-code  "$TABLET_XML" "$GEN/tablet-v2-protocol.c"
+wayland-scanner server-header "$CURSOR_SHAPE_XML" "$GEN/cursor-shape-v1-server-protocol.h"
+wayland-scanner client-header "$CURSOR_SHAPE_XML" "$GEN/cursor-shape-v1-client-protocol.h"
+wayland-scanner private-code  "$CURSOR_SHAPE_XML" "$GEN/cursor-shape-v1-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
 wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
@@ -171,6 +182,8 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/idle-inhibit-unstable-v1-protocol.c" \
     "$GEN/ext-idle-notify-v1-protocol.c" \
     "$GEN/single-pixel-buffer-v1-protocol.c" \
+    "$GEN/tablet-v2-protocol.c" \
+    "$GEN/cursor-shape-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
