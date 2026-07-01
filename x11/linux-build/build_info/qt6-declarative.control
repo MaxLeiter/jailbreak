@@ -1,0 +1,16 @@
+Package: qt6-declarative
+Version: @DEB_QTDECLARATIVE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base
+Description: Qt 6 QML and QtQuick for the Xios desktop
+ The QML engine and the QtQuick scene graph, plus the standard QML modules
+ (QtQuick, QtQuick.Controls, QtQuick.Layouts and friends). QML runs on the
+ QV4 bytecode interpreter in this build; there is no JIT, which suits the
+ fakesigned jailbreak environment.
+ .
+ The heart of the KDE Plasma Mobile flavor of the Xios desktop: the Plasma
+ shell and most KDE frameworks are written in QML.

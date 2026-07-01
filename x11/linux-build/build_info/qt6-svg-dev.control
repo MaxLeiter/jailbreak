@@ -1,0 +1,11 @@
+Package: qt6-svg-dev
+Version: @DEB_QTSVG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-svg (= @DEB_QTSVG_V@), qt6-base-dev
+Description: Development files for the Qt 6 SVG libraries
+ Headers and CMake package files for QtSvg and QtSvgWidgets. Needed to
+ cross-build KDE Frameworks components such as KSvg and Kirigami.

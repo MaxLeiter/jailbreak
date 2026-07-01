@@ -1,0 +1,14 @@
+Package: qt6-svg
+Version: @DEB_QTSVG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base
+Description: Qt 6 SVG libraries for the Xios desktop
+ QtSvg and QtSvgWidgets plus the SVG image format plugin and icon engine.
+ KDE theming leans on SVG throughout (Breeze icons, Plasma themes), so most
+ Qt desktop software wants this installed.
+ .
+ Part of the Qt 6 stack for the KDE Plasma Mobile flavor of the Xios desktop.

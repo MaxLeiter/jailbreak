@@ -1,0 +1,16 @@
+Package: qt6-wayland
+Version: @DEB_QTWAYLAND_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base, libwayland0
+Description: Qt 6 Wayland client platform plugin for the Xios desktop
+ The wayland QPA platform plugin plus shell integrations. Qt applications
+ started with -platform wayland connect to the iosc compositor and render
+ through shared memory buffers in this build; GPU buffer sharing over ANGLE
+ arrives with a later qtbase round.
+ .
+ This is the windowing path for the KDE Plasma Mobile flavor of the Xios
+ desktop.

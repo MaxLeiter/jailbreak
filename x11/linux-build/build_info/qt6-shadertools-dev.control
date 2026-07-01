@@ -1,0 +1,11 @@
+Package: qt6-shadertools-dev
+Version: @DEB_QTSHADERTOOLS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-shadertools (= @DEB_QTSHADERTOOLS_V@), qt6-base-dev
+Description: Development files for Qt 6 shader tools
+ Headers, CMake package files and build glue for Qt6ShaderTools. Needed when
+ cross-building Qt modules and KDE components that process QtQuick shaders.

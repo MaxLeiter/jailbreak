@@ -1,0 +1,14 @@
+Package: qt6-image-formats
+Version: @DEB_QTIMAGEFORMATS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base
+Description: Qt 6 extra image format plugins for the Xios desktop
+ QImage plugins for TIFF, WebP, TGA, ICNS and WBMP. TIFF and WebP use the
+ library copies bundled with Qt, so the package has no image library
+ dependencies of its own.
+ .
+ Part of the Qt 6 stack for the KDE Plasma Mobile flavor of the Xios desktop.

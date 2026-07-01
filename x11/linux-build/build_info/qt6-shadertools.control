@@ -1,0 +1,14 @@
+Package: qt6-shadertools
+Version: @DEB_QTSHADERTOOLS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base
+Description: Qt 6 shader tools library for the Xios desktop
+ Runtime library behind Qt's shader pipeline. QtQuick materials and effects
+ are baked from GLSL into the formats each graphics backend needs, and this
+ library carries that machinery for the target device.
+ .
+ Part of the Qt 6 stack for the KDE Plasma Mobile flavor of the Xios desktop.

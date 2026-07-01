@@ -1,0 +1,12 @@
+Package: qt6-declarative-dev
+Version: @DEB_QTDECLARATIVE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-declarative (= @DEB_QTDECLARATIVE_V@), qt6-base-dev, qt6-shadertools-dev
+Description: Development files for Qt 6 QML and QtQuick
+ Headers, CMake package files, metatypes and tools for building software
+ against QtQml and QtQuick, including the qml runtime launcher used for
+ on-device smoke tests. Needed to cross-build KDE Frameworks and Plasma.

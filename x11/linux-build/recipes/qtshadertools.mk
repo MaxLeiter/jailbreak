@@ -1,0 +1,63 @@
+ifneq ($(PROCURSUS),1)
+$(error Use the main Makefile)
+endif
+
+# qtshadertools.mk — Qt Shader Baker (qsb) + libQt6ShaderTools, cross-built for rootless
+# iOS. First rung of the Qt module ladder (docs/kde-plasma-plan.md): qtdeclarative's
+# QtQuick needs the HOST qsb at build time (resolved via QT_HOST_PATH; built by
+# build-qt-modules.sh stage 1) and the TARGET Qt6ShaderTools cmake package at configure
+# time — this recipe provides the target half. glslang + SPIRV-Cross are BUNDLED by Qt,
+# so no new external deps. Shared Apple/Darwin flags + the MACOS-condition fix live in
+# qt6-common.mk (full rationale in qtbase.mk).
+
+SUBPROJECTS           += qtshadertools
+QTSHADERTOOLS_VERSION := 6.6.3
+DEB_QTSHADERTOOLS_V   ?= $(QTSHADERTOOLS_VERSION)
+
+qtshadertools-setup: setup
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtshadertools))
+	$(call EXTRACT_TAR,qtshadertools-everywhere-src-$(QTSHADERTOOLS_VERSION).tar.xz,qtshadertools-everywhere-src-$(QTSHADERTOOLS_VERSION),qtshadertools)
+	$(call QT6_DISABLE_MACOS_CONDITIONS,qtshadertools)
+
+ifneq ($(wildcard $(BUILD_WORK)/qtshadertools/.build_complete),)
+qtshadertools:
+	@echo "Using previously built qtshadertools."
+else
+# NOT a prereq on qtbase: the cross qtbase is already staged in build_base by qtbase.mk's
+# AFTER_BUILD copy — listing it would re-trigger that build (mutter.mk precedent).
+# No `rm -rf build`: incremental cmake/ninja reruns are the iteration model (qtbase.mk).
+qtshadertools: qtshadertools-setup
+	mkdir -p $(BUILD_WORK)/qtshadertools/build
+	cd $(BUILD_WORK)/qtshadertools/build && cmake .. \
+		-G Ninja \
+		$(QT6_MODULE_CMAKE_FLAGS)
+	+ninja -C $(BUILD_WORK)/qtshadertools/build
+	+DESTDIR="$(BUILD_STAGE)/qtshadertools" ninja -C $(BUILD_WORK)/qtshadertools/build install
+	$(call AFTER_BUILD,copy)
+endif
+
+qtshadertools-package: qtshadertools-stage
+	rm -rf $(BUILD_DIST)/qt6-shadertools $(BUILD_DIST)/qt6-shadertools-dev
+	mkdir -p $(BUILD_DIST)/qt6-shadertools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/qt6-shadertools-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
+
+	# runtime: the ShaderTools dylibs
+	cp -a $(BUILD_STAGE)/qtshadertools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libQt6*.dylib \
+		$(BUILD_DIST)/qt6-shadertools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib 2>/dev/null || true
+
+	# dev: headers + cmake packages + .pc + metatypes + module .pri glue + any target tools
+	# (bin/qsb, if the cross build produced one — harmless either way, guarded copies)
+	for d in include lib/cmake lib/pkgconfig lib/metatypes lib/qt6/mkspecs lib/qt6/modules bin lib/qt6/libexec; do \
+		if [ -e "$(BUILD_STAGE)/qtshadertools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d" ]; then \
+			mkdir -p $(BUILD_DIST)/qt6-shadertools-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$(dirname $$d); \
+			cp -a $(BUILD_STAGE)/qtshadertools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d \
+				$(BUILD_DIST)/qt6-shadertools-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d; fi; \
+	done
+
+	$(call SIGN,qt6-shadertools,general.xml)
+	$(call SIGN,qt6-shadertools-dev,general.xml)
+	$(call PACK,qt6-shadertools,DEB_QTSHADERTOOLS_V)
+	$(call PACK,qt6-shadertools-dev,DEB_QTSHADERTOOLS_V)
+	rm -rf $(BUILD_DIST)/qt6-shadertools $(BUILD_DIST)/qt6-shadertools-dev
+
+.PHONY: qtshadertools qtshadertools-package
