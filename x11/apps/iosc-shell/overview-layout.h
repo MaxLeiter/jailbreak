@@ -85,7 +85,9 @@ static int ov_content_height(const struct ov_model *m, int W)
     if (cols < 1) cols = 1;
     int h = 0;
     if (m->nwins > 0 && !m->searching) {
-        int ccols = (W - 2 * OV_MARGIN + OV_GAP) / (OV_CHIP_W + OV_GAP);
+        int grid_w0 = cols * OV_CELL_W + (cols - 1) * OV_GAP;
+        int x0 = (W - grid_w0) / 2;
+        int ccols = (W - 2 * x0 + OV_GAP) / (OV_CHIP_W + OV_GAP);
         if (ccols < 1) ccols = 1;
         int crows = (m->nwins + ccols - 1) / ccols;
         h += 24 + crows * (OV_CHIP_H + OV_GAP) + OV_SECT_GAP;
@@ -224,14 +226,13 @@ static void ov_draw(cairo_t *cr, pr_text_ctx *t, int W, int H,
     cairo_clip(cr);
 
     if (m->nwins > 0 && !m->searching) {
-        int ccols = (W - 2 * OV_MARGIN + OV_GAP) / (OV_CHIP_W + OV_GAP);
+        /* both section headers + rows share the grid's left edge (x0) */
+        int ccols = (W - 2 * x0 + OV_GAP) / (OV_CHIP_W + OV_GAP);
         if (ccols < 1) ccols = 1;
-        int chips_w = (m->nwins < ccols ? m->nwins : ccols) * (OV_CHIP_W + OV_GAP) - OV_GAP;
-        int cx0 = (W - chips_w) / 2;
-        pr_text(cr, t, TH_FONT_SECTION, "Open Windows", cx0, y + 8, TH_FG_FAINT, 0);
+        pr_text(cr, t, TH_FONT_SECTION, "Open Windows", x0, y + 8, TH_FG_FAINT, 0);
         y += 24;
         for (int i = 0; i < m->nwins; i++) {
-            int cx = cx0 + (i % ccols) * (OV_CHIP_W + OV_GAP);
+            int cx = x0 + (i % ccols) * (OV_CHIP_W + OV_GAP);
             int cyy = y + (i / ccols) * (OV_CHIP_H + OV_GAP);
             ov__chip(cr, t, m, hits, &m->wins[i], cx, cyy, i);
         }

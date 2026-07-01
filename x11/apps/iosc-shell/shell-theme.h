@@ -34,7 +34,7 @@
 #define TH_PRESS       0x33FFFFFFu      /* pressed backplate         (~20%)  */
 #define TH_TILE        0x24FFFFFFu      /* monogram backplate        (~14%)  */
 #define TH_GREEN       0xFF30D158u      /* charging / positive               */
-#define TH_SCRIM       0x8C000000u      /* overview dim over the blur (~55%) */
+#define TH_SCRIM       0xB3000000u      /* overview dim over the blur (~70%) */
 
 /* Wallpaper fallback gradient (also the preview backdrop). */
 #define TH_WALL_TOP    0xFF141824u

@@ -308,7 +308,7 @@ static void qs__button(cairo_t *cr, pr_text_ctx *t, const struct qs_model *m,
 /* The card's total logical height for a given model (charging adds a line). */
 static int panel_qs_height(const struct qs_model *m)
 {
-    return 172 + (m->batt_charging ? 16 : 0);
+    return 186 + (m->batt_charging ? 16 : 0);
 }
 
 /* Draw the quick-settings card filling the whole (W,H) surface. */
@@ -338,6 +338,8 @@ static void panel_draw_qs(cairo_t *cr, pr_text_ctx *t, int W, int H,
     y += 24;
     pr_text(cr, t, TH_FONT_LABEL, m->date_long, x, y + 8, TH_FG_DIM, (int)cw);
     y += 26;
+    pr_fill_rect(cr, x, y, cw, 1, TH_SEP);
+    y += 14;
 
     /* battery block: label row + gauge track */
     if (m->batt_pct >= 0) {

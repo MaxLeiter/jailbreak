@@ -540,7 +540,7 @@ int main(void)
         cairo_surface_t *cap = sc_capture(O.dpy, O.shm, O.scm, O.scm_version, O.output,
                                           0, 0, 0, 0);
         if (cap) {
-            O.backdrop = sb_backdrop_build(cap, 8, 8);
+            O.backdrop = sb_backdrop_build(cap, 8, 12);
             cairo_surface_destroy(cap);
         }
     }

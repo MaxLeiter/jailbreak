@@ -196,7 +196,7 @@ int main(int argc, char **argv)
     /* ---- 3: the overview over the frosted desktop --------------------- */
     {
         struct ov_model om; memset(&om, 0, sizeof om);
-        om.backdrop = sb_backdrop_build(desk, 8, 8);   /* the client's exact path */
+        om.backdrop = sb_backdrop_build(desk, 8, 12);  /* the client's exact path */
         om.have_ptr = 1; om.px = LW / 2 - 160; om.py = 560; /* hover an app tile */
         om.anim_t = 1.0;
         om.nwins = 2;
