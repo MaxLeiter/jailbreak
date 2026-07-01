@@ -9,11 +9,17 @@
 # on-device): EDS stays patched out, and the gir blocks are gated on
 # `not meson.is_cross_build()` — a native build takes the gir path automatically.
 #
-# BOOT SIBLING: gnome-shell's panel boot ALSO statically imports gi://AccountsService, which
-# is a standalone lib OUTSIDE this tree — its typelib is NOT produced here. Run
-# gir-build-accountsservice-ondevice.sh as well (same on-device pattern) or the shell crashes
-# building the top panel even with St/Shell present. (Watch for other runtime-only gi://
-# imports in the session layer; each standalone lib needs its own on-device scan.)
+# BOOT SIBLINGS: gnome-shell's boot statically imports (via js/misc/dependencies.js, loaded at
+# boot from environment.js, plus panel/status modules) several typelibs from standalone libs
+# OUTSIDE this tree — NOT produced here. Each needs its own on-device scan or the shell crashes
+# at load even with St/Shell present. The full standalone boot-typelib set gnome-session builds:
+#     AccountsService-1.0  -> gir-build-accountsservice-ondevice.sh (wired)
+#     UPowerGlib-1.0       -> pending gnome-session lib+headers handoff (mirror AccountsService)
+#     GWeather-4.0         -> pending gnome-session lib+headers handoff
+#     Geoclue-2.0          -> pending gnome-session lib+headers handoff
+# (Gdm and Rsvg are NOT built — Rsvg is patched out of the shell source, see
+# gnome-shell-ios-fixes.sh Rsvg-ectomy; Gdm decision pending.) dependencies.js is the
+# authoritative boot-typelib list: every gi://X?version pin there must resolve on-device.
 #
 # PREREQUISITES on the device (install via main's device window first):
 #   1. The gnome-shell chain runtime+dev debs: libmutter-14-0/-dev, gjs/libgjs0/-dev,

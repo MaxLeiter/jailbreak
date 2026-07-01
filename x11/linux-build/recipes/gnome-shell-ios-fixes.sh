@@ -94,6 +94,18 @@ if ! grep -q "xlocale.h" "$SRC/src/shell-util.c"; then
     "$SRC/src/shell-util.c"
 fi
 
+# --- (6) Rsvg-ectomy: gi://Rsvg is reached ONLY via the wacom pad-OSD (show-pad-osd signal
+# -> PadOsd -> PadDiagram, padOsd.js), which never fires on iOS; librsvg is a Rust cross-build
+# we skip entirely. Two static boot-path sites load the Rsvg typelib: js/misc/dependencies.js
+# version-pins it (runs at boot via environment.js), and js/ui/padOsd.js top-level imports it
+# (padOsd.js is pulled in by main.js AND windowManager.js). Drop the version-pin, and swap
+# padOsd.js's import for a throwing stub const so the module still loads everywhere — the two
+# Rsvg.Handle.* uses live in PadDiagram methods that never run without a drawing tablet.
+sed -i "/^import 'gi:\/\/Rsvg?version=2.0';$/d" "$SRC/js/misc/dependencies.js"
+if grep -q "^import Rsvg from 'gi://Rsvg';" "$SRC/js/ui/padOsd.js"; then
+  perl -0pi -e "s{^import Rsvg from 'gi://Rsvg';\$}{// iOS: librsvg (Rust cross-build) is not shipped; the pad OSD (wacom-tablet only) is the\n// sole gi://Rsvg user and never runs on iOS. Stub the namespace so the module loads.\nconst Rsvg = {Handle: {new_from_file() {throw new Error('padOsd unsupported on iOS (no librsvg)');},\n                       new_from_stream_sync() {throw new Error('padOsd unsupported on iOS (no librsvg)');}}};}m" "$SRC/js/ui/padOsd.js"
+fi
+
 # --- verification --------------------------------------------------------------
 fail=0
 check() { grep -q "$2" "$SRC/$1" || { echo "!! VERIFY FAILED: $1: missing $2"; fail=1; }; }
@@ -113,6 +125,9 @@ if ! (grep -A1 '#include <dlfcn.h>' "$SRC/src/main.c" | grep -q '#include <link.
   echo "!! VERIFY FAILED: src/main.c: <link.h> not moved inside HAVE_EXE_INTROSPECTION"; fail=1
 fi
 check src/shell-util.c "xlocale.h"
+absent js/misc/dependencies.js "gi://Rsvg"
+absent js/ui/padOsd.js "from 'gi://Rsvg'"
+check js/ui/padOsd.js "padOsd unsupported on iOS"
 for f in meson.build src/meson.build src/st/meson.build subprojects/shew/src/meson.build; do
   check "$f" "if not meson.is_cross_build()"
 done
