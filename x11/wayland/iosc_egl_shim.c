@@ -358,29 +358,62 @@ EGLint     eglGetError(void){ return REAL(eglGetError)(); }
 const char*eglQueryString(EGLDisplay d, EGLint n){ return REAL(eglQueryString)(d,n); }
 EGLBoolean eglGetConfigs(EGLDisplay d, EGLConfig *c, EGLint n, EGLint *m){ return REAL(eglGetConfigs)(d,c,n,m); }
 
-/* ANGLE-Metal's configs are all window+pbuffer+bind-to-texture+RGBA8 — but their
- * EGL_RENDERABLE_TYPE advertises only ES1|ES2, NOT the ES3 bit (0x40), even though
- * the implementation supports ES3. So GDK's ES3 config search finds nothing ("No
- * EGL configuration available"). Bridge it: when a client asks for ES3 configs,
- * drop the ES3 bit so ANGLE's (ES2-advertised, ES3-capable) configs match; and
- * report the ES3 bit back so GDK/GSK believe ES3 is available. */
+/* GDK's GskNglRenderer selects an EGL config for an on-screen window, so it filters
+ * for EGL_WINDOW_BIT + (usually) the ES3 renderable bit. On our HEADLESS ANGLE-Metal
+ * display neither is offered on the matching configs: there is no native window, so
+ * configs carry EGL_PBUFFER_BIT (not EGL_WINDOW_BIT), and EGL_RENDERABLE_TYPE
+ * advertises only ES1|ES2 even though ES3 works. So GDK's eglChooseConfig (or its
+ * eglGetConfigs+eglGetConfigAttrib manual filter) matches nothing -> "No EGL
+ * configuration available". The shim backs every "window" with an IOSurface pbuffer,
+ * so we bridge BOTH mismatches symmetrically: on the way IN (eglChooseConfig) rewrite
+ * the request so ANGLE's real pbuffer/ES2 configs match; on the way OUT
+ * (eglGetConfigAttrib) report WINDOW_BIT + ES3 so GDK believes the config is a
+ * window-capable ES3 config. Set IOSC_EGL_DEBUG=1 to log what GDK asks for and how
+ * many configs match (the diagnostic for the on-device config-search loop). */
 #define EGL_ES3_BIT 0x0040  /* EGL_OPENGL_ES3_BIT_KHR */
+
+static int egl_debug(void)
+{
+    static int v = -1;
+    if (v < 0) v = getenv("IOSC_EGL_DEBUG") ? 1 : 0;
+    return v;
+}
+
 EGLBoolean eglChooseConfig(EGLDisplay d, const EGLint *a, EGLConfig *c, EGLint n, EGLint *m)
 {
     EGLint p[64]; int k = 0;
+    EGLint want_surf = -1, want_rend = -1;
     if (a) for (int i = 0; a[i] != EGL_NONE && k < 60; i += 2) {
         EGLint key = a[i], val = a[i + 1];
-        if (key == EGL_RENDERABLE_TYPE && (val & EGL_ES3_BIT))
-            val = (val & ~EGL_ES3_BIT) | EGL_OPENGL_ES2_BIT;
+        if (key == EGL_RENDERABLE_TYPE) {
+            want_rend = val;
+            if (val & EGL_ES3_BIT)                 /* ES3 -> ES2 (ANGLE mislabels) */
+                val = (val & ~EGL_ES3_BIT) | EGL_OPENGL_ES2_BIT;
+        }
+        if (key == EGL_SURFACE_TYPE) {
+            want_surf = val;
+            if (val & EGL_WINDOW_BIT)              /* WINDOW -> PBUFFER (headless: no window configs) */
+                val = (val & ~EGL_WINDOW_BIT) | EGL_PBUFFER_BIT;
+        }
         p[k++] = key; p[k++] = val;
     }
     p[k] = EGL_NONE;
-    return REAL(eglChooseConfig)(d, p, c, n, m);
+    EGLBoolean r = REAL(eglChooseConfig)(d, p, c, n, m);
+    if (egl_debug()) {
+        fprintf(stderr, "iosc_egl: eglChooseConfig surface_type=0x%x renderable=0x%x "
+                        "-> ok=%d matched=%d; full request:",
+                want_surf, want_rend, (int)r, (r && m) ? *m : -1);
+        if (a) for (int i = 0; a[i] != EGL_NONE; i += 2)
+            fprintf(stderr, " 0x%x=0x%x", a[i], a[i + 1]);
+        fprintf(stderr, "\n");
+    }
+    return r;
 }
 EGLBoolean eglGetConfigAttrib(EGLDisplay d, EGLConfig c, EGLint a, EGLint *v)
 {
     EGLBoolean r = REAL(eglGetConfigAttrib)(d, c, a, v);
-    if (r && a == EGL_RENDERABLE_TYPE) *v |= EGL_ES3_BIT;   /* ANGLE supports ES3 here */
+    if (r && a == EGL_RENDERABLE_TYPE) *v |= EGL_ES3_BIT;    /* ANGLE supports ES3 here     */
+    if (r && a == EGL_SURFACE_TYPE)    *v |= EGL_WINDOW_BIT; /* shim backs windows w/ pbuffer */
     return r;
 }
 EGLBoolean eglDestroyContext(EGLDisplay d, EGLContext c){ return REAL(eglDestroyContext)(d,c); }
