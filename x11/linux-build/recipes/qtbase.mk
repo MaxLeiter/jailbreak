@@ -28,6 +28,12 @@ QT_MINOR       := 6.6
 # Darwin target resolves libdbus-1.dylib/libdbus-1.3.dylib (both shipped) — deterministic on iOS,
 # so the finicky WrapDBus1/DBus1Config linked path isn't needed. xkbcommon needs an X11-off
 # un-gate (setup patch 7).
+# printsupport is ON but its DIALOGS are OFF: the printer/QPrinter/PDF backend builds, but
+# QPrintDialog/QPageSetupDialog have NO iOS impl — qprintdialog_unix.cpp hard-needs CUPS
+# (QCUPSSupport, cups=OFF) and qprintdialog_mac.mm needs AppKit. The feature turns ON (all the
+# widget deps are present) but links dead (vtable, no impl), so force printdialog +
+# printpreviewdialog OFF. kxmlgui wants the module for QPrinter, not the picker UI; nobody prints
+# from the iPad desktop. If a KF6 unit references QPrintDialog, patch it out KF6-side (plan Q3).
 DEB_QTBASE_V   ?= $(QTBASE_VERSION)-2
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
@@ -215,6 +221,8 @@ qtbase: qtbase-setup
 		-DFEATURE_testlib=OFF \
 		-DFEATURE_printsupport=ON \
 		-DFEATURE_cups=OFF \
+		-DFEATURE_printdialog=OFF \
+		-DFEATURE_printpreviewdialog=OFF \
 		-DFEATURE_opengl=OFF \
 		-DINPUT_opengl=no \
 		-DFEATURE_egl=OFF \
