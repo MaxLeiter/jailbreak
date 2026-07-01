@@ -79,7 +79,11 @@ host_module() { # <module> <marker-relative-to-HOSTQT> [extra cmake flags...]
     -DCMAKE_PREFIX_PATH="${HOSTQT}" \
     -DQT_BUILD_EXAMPLES=OFF -DQT_BUILD_TESTS=OFF -DQT_BUILD_BENCHMARKS=OFF \
     "$@"
-  ninja -C "${builddir}"
+  # Full-speed first, then -j2 retry: the Docker VM is 16 CPUs but ~7.7GiB RAM, and
+  # ninja's default (nproc+2) OOM-kills gcc on qtdeclarative's 2-3GiB qmldom TUs
+  # ("c++: fatal error: Killed signal terminated program cc1plus"). Survivor objects
+  # are kept, so the retry only rebuilds the heavy stragglers.
+  ninja -C "${builddir}" || ninja -C "${builddir}" -j2
   ninja -C "${builddir}" install
   rm -rf "/work/host-${mod}-src" "${builddir}"
   echo "==> host ${mod} done"

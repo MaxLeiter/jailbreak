@@ -44,7 +44,9 @@ qtdeclarative: qtdeclarative-setup
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \
 		-DFEATURE_qml_jit=OFF
-	+ninja -C $(BUILD_WORK)/qtdeclarative/build
+# OOM guard (7.7GiB Docker VM, 16-way default ninja): qmldom TUs are the memory
+# hogs; full-speed pass keeps its survivors, -j2 retry finishes the stragglers.
+	+ninja -C $(BUILD_WORK)/qtdeclarative/build || ninja -C $(BUILD_WORK)/qtdeclarative/build -j2
 	+DESTDIR="$(BUILD_STAGE)/qtdeclarative" ninja -C $(BUILD_WORK)/qtdeclarative/build install
 	$(call AFTER_BUILD,copy)
 endif
