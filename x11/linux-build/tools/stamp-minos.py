@@ -35,6 +35,38 @@ PROVIDES_FIX = {
     "libwayland0": "libwayland-client0, libwayland-cursor0, libwayland-egl1, libwayland-server0",
 }
 
+# Depends the recipes missed but the binaries strongly link (dyld-landmine audit
+# 2026-07: a fresh install dyld-fails without these; the dev device only worked
+# because the libs happened to be present). Control-only, appended at stamp time
+# and merged into the effective-floor graph below. The recipe .control sources
+# should grow the same lines whenever their package next rebuilds.
+DEPENDS_ADD = {
+    "libgtk-4-1":               ["libxkbcommon0", "libwayland0", "libcairo-script-interpreter2"],
+    "gtk-4-bin":                ["libxkbcommon0", "libwayland0", "libcairo-script-interpreter2"],
+    "libgjs0":                  ["libcairo-gobject2"],
+    "libgnome-autoar-0-0":      ["libgtk-3-0"],
+    "libtracker-sparql-3.0-0":  ["libsoup-3.0-0"],   # dlopen'd libtracker-http-soup3.so
+    "xwayland":                 ["libxau6"],
+    "libxkbcommon-dev":         ["libxcb1"],          # libxkbcommon-x11
+    "libmutter-14-0":           ["angle", "libei1", "libatk1.0-0"],
+    "libstartup-notification0": ["libxcb-util1", "libx11-xcb1"],          # procursus
+    "libxcb-render0":           ["libxau6", "libxdmcp6"],                 # procursus
+    "tigervnc-common":          ["libsm6", "libice6", "libx11-6", "libxext6",
+                                 "libjpeg62-turbo", "libpixman-1-0", "libgnutls30"],
+    "tigervnc-scraping-server": ["libxtst6", "libxfixes3", "libxrandr2",
+                                 "libsm6", "libice6", "libxext6"],
+    # These link @rpath/libintl.dylib (unversioned). Procursus libintl-dev owns
+    # the /var/jb/usr/lib/libintl.dylib -> libintl.8.dylib symlink that resolves
+    # it, so depend on it as a bridge until each recipe relinks to libintl.8
+    # (do NOT ship our own copy of that symlink: dpkg file conflict).
+    "ibus":                     ["libintl-dev"],
+    "libenchant-2-2":           ["libintl-dev"],
+    "libgee-0.8-2":             ["libintl-dev"],
+    "libgeocode-glib0":         ["libintl-dev"],
+    "libgweather-4-0":          ["libintl-dev"],
+    "libibus-1.0-5":            ["libintl-dev"],
+}
+
 # ── Mach-O minos (LC_BUILD_VERSION / LC_VERSION_MIN_IPHONEOS), fat-aware ──────
 FAT=(0xcafebabe,0xcafebabf); MH64=0xfeedfacf; MH64R=0xcffaedfe
 LC_VMIN_IOS=0x25; LC_BUILD=0x32
@@ -117,18 +149,29 @@ def deps_of(text):
                     if n: d.setdefault(n,None)
     return list(d)
 
+def _merge_depends(line,adds):
+    existing={re.sub(r"\(.*","",alt.strip()).strip().split()[0]
+              for part in line.split(":",1)[1].split(",")
+              for alt in part.split("|") if alt.strip()}
+    missing=[a for a in adds if a not in existing]
+    return line.rstrip()+(", "+", ".join(missing) if missing else "")
+
 def edit_control(text,pkg,minos):
     lines=[l for l in text.split("\n")]
     while lines and lines[-1]=="": lines.pop()
-    out=[]; arch=None
+    out=[]; arch=None; had_dep=False
     for ln in lines:
         key=ln.split(":",1)[0] if (":" in ln and not ln.startswith(" ")) else ""
         if key=="MinimumOSVersion": continue
         if key=="Provides" and pkg in PROVIDES_FIX: continue
+        if key=="Depends" and pkg in DEPENDS_ADD:
+            ln=_merge_depends(ln,DEPENDS_ADD[pkg]); had_dep=True
         out.append(ln)
         if key=="Architecture": arch=len(out)-1
     ins=([f"MinimumOSVersion: {minos}"] if minos else []) + \
-        ([f"Provides: {PROVIDES_FIX[pkg]}"] if pkg in PROVIDES_FIX else [])
+        ([f"Provides: {PROVIDES_FIX[pkg]}"] if pkg in PROVIDES_FIX else []) + \
+        ([f"Depends: {', '.join(DEPENDS_ADD[pkg])}"]
+         if (pkg in DEPENDS_ADD and not had_dep) else [])
     if ins:
         at=(arch+1) if arch is not None else len(out)
         out[at:at]=ins
@@ -167,6 +210,8 @@ def main():
         text,floor=read_control_and_minos(open(os.path.join(OUT,fn),"rb").read())
         pkg=next((l.split(":",1)[1].strip() for l in text.splitlines() if l.startswith("Package:")),fn)
         own[pkg]=max(own.get(pkg,0),floor); deps[pkg]=deps_of(text); pkgfile.setdefault(pkg,fn)
+    for p,adds in DEPENDS_ADD.items():
+        if p in deps: deps[p]=list(dict.fromkeys(deps[p]+adds))
     floor=dict(own)
     for _ in range(40):
         ch=False

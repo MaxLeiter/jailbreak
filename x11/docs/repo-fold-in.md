@@ -79,10 +79,56 @@ currently in out/:
 | Package | Publish | Drop |
 |---|---|---|
 | pulseaudio, libpulse0 (+client libs) | **17.0-1** (rpath fix) | 17.0 (dead rpath in client libs) |
-| angle | +es3 | plain |
+| angle | **+es3-1** (compat symlinks) | +es3, plain |
 | libepoxy0 / libepoxy-dev | +angle1 | plain |
 | libgtk-4-1 / libgtk-4-dev / gtk-4-bin | +wl1 | plain |
 | tigervnc-* | +rootless1 | plain |
+
+## Fresh-install fixes (dyld-landmine audit, folded in 2026-07-01)
+
+The dev iPad masks missing pieces because hand-installed files and libs are
+already present; a stock device has none of them. Three classes of fix ride
+this fold-in:
+
+1. **ANGLE compat symlinks.** The angle deb shipped only libEGL.dylib and
+   libGLESv2.dylib; the six names consumers actually resolve (libEGL.2.dylib,
+   libEGL.so, libEGL.so.1, libGLESv2.2.dylib, libGLESv2.so, libGLESv2.so.2)
+   were hand-made on-device and dpkg-unowned, so fresh installs cannot load
+   libmutter or satisfy cogl's dlopen. Fixed at the source:
+   `x11/ports/angle/package-angle-es3.sh` now ships the symlinks and builds
+   `angle_...+es3-1`. That deb supersedes +es3 in the variant table above.
+2. **Depends gaps** (binaries strongly link a lib their package never
+   declared). Encoded as the `DEPENDS_ADD` table in
+   `linux-build/tools/stamp-minos.py`, applied control-only during the same
+   stamping pass and merged into the effective-floor graph: libgtk-4-1 and
+   gtk-4-bin gain libxkbcommon0 + libwayland0 + libcairo-script-interpreter2;
+   libgjs0 gains libcairo-gobject2; libgnome-autoar-0-0 gains libgtk-3-0;
+   libtracker-sparql-3.0-0 gains libsoup-3.0-0; xwayland gains libxau6;
+   libxkbcommon-dev gains libxcb1; libmutter-14-0 gains angle + libei1 +
+   libatk1.0-0; libstartup-notification0 gains libxcb-util1 + libx11-xcb1;
+   libxcb-render0 gains libxau6 + libxdmcp6; the tigervnc pair gains its
+   X11/jpeg/gnutls closure. The Procursus-owned names (libxcb-util1,
+   libx11-xcb1, libxau6, libxdmcp6, libsndfile1 - already a libpulse0 dep)
+   resolve from apt.procurs.us, so no "install X first by hand" pre-steps
+   remain in the flavor docs. Recipe owners should mirror these lines into
+   their .control sources at next rebuild; the stamp keeps them correct in
+   the meantime. Floor effect: libmutter-14-0's effective floor rises to
+   16.5 via libei1 (another SDK-drift pin-and-rebuild candidate alongside
+   gjs); no flavor floor changes, xios-gnome was 16.5 already.
+3. **Unversioned libintl links, bridged via libintl-dev.** Six debs contain
+   binaries linking `@rpath/libintl.dylib` instead of `libintl.8.dylib`:
+   ibus (ibus-daemon, ibus-portal), libibus-1.0-5, libgee-0.8-2,
+   libenchant-2-2, libgeocode-glib0, libgweather-4-0. (libpulse0's 17.0-1
+   rebuild fixed its two; the audit list predated it.) On the dev device the
+   name resolves only because Procursus **libintl-dev** ships the
+   `/var/jb/usr/lib/libintl.dylib -> libintl.8.dylib` symlink. We must NOT
+   ship that symlink ourselves (dpkg file conflict with libintl-dev), so the
+   `DEPENDS_ADD` table adds `libintl-dev` to those six packages as a bridge.
+   The real fix stays with recipe owners: relink against the versioned
+   libintl.8 at next rebuild, then drop the bridge dep. The loose
+   xios-accounts/login1/polkit stubs have the same link and need
+   `Depends: libintl-dev` (or a retarget) when they land in the
+   xios-session-stubs deb.
 
 ## The fold-in procedure
 
