@@ -55,9 +55,15 @@ else
 # No `rm -rf build` (incremental iteration, qtbase.mk).
 qtwayland: qtwayland-setup
 	mkdir -p $(BUILD_WORK)/qtwayland/build
+# WaylandScanner_EXECUTABLE pinned to the HOST binary: the W0 wayland deb stages an
+# arm64-iOS wayland-scanner into build_base/usr/bin, and the cross find-root searches
+# the sysroot first -> "Exec format error" at codegen. The ECM find module
+# (find_program(WaylandScanner_EXECUTABLE ...)) honors a -D pre-set. /usr/bin copy
+# exists because the driver apt-installs libwayland-bin every run.
 	cd $(BUILD_WORK)/qtwayland/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \
+		-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
 		-DFEATURE_wayland_client=ON \
 		-DFEATURE_wayland_server=OFF
 	+ninja -C $(BUILD_WORK)/qtwayland/build
