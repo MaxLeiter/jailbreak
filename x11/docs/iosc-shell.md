@@ -403,6 +403,43 @@ shell is already a wl client, so a protocol is in-band, typed, and lifecycle-tie
 Keep it out of scope until §5.1/§5.2 are landed and the decoupled panel/overview
 are real.
 
+### 5.5 Server-side decorations: the tablet touch chrome (APPROVED, post-refactor)
+
+**Status (2026-07-01):** approved as direction by the lead per Max's tablet-DE
+guidance; **held until after the iosc.c refactor** (docs/refactor-plan.md) and
+then lands as a fresh `iosc_decoration.c` module. This section is the build-to
+spec so implementation needs no guessing. The rendered reference is
+`mock_window()` in `apps/iosc-shell/preview-host.c` and
+`design/preview-desktop.png`.
+
+**Why SSD:** the title bar + traffic-light dots Max sees today are GTK's
+client-side decorations — iosc replies `MODE_CLIENT_SIDE` to every
+xdg-decoration request and draws no chrome. The touch chrome requires iosc to
+reply `MODE_SERVER_SIDE` (GTK then drops its CSD), render the bar into the
+composite, and hit-test it (close, drag-to-move).
+
+All values in **logical px** on the 1440x1080 desktop (scale-2 buffers).
+Conversion: 1 logical px = 0.75 iOS pt at the net-1.5 output, so the 44 iOS pt
+touch minimum = 59 logical px (`TH_TOUCH` 60 in shell-theme.h).
+
+| Element | Spec |
+|---|---|
+| Title bar | 56 tall; shares the body's 18 corner radius (square bottom edge); fill `0xFF2E2E32` (one dark chrome variant for all windows) |
+| Grab handle | 48 x 5 pill, radius 2.5, horizontally centered, 9 from the bar's top edge; `0x40FFFFFF` |
+| Title | Sans Medium 17 (SF on device), horizontally centered, vertical center at `bar_h - 21` (lower half, below the handle); `0xA6EBEBF5` |
+| Close (visual) | 36-diameter circle centered at `(w - 32, bar_h/2)` — 14 inset from the right edge to the circle's edge; fill `0x2EFFFFFF`; centered "x" in Sans 17, `0xA6EBEBF5` |
+| Close (hit) | the rightmost **60 x 56** of the bar (>= TH_TOUCH), NOT just the circle |
+| Drag-to-move | every bar pixel outside the close hit zone |
+| Unfocused state | same bar fill; dim the content: title + close glyph `0x59EBEBF5`, handle `0x26FFFFFF`, close circle fill `0x1FFFFFFFu` |
+| Pressed close | circle fill brightens to `0x47FFFFFFu` (press feedback before destroy) |
+| Shadow (mock) | rrect at +3/+7, radius 20, `0x59000000` — match iosc's existing shadow if one exists; non-critical |
+
+**Split snap (self-contained; can land independently of SSD):** during an
+interactive move, 32-px edge bands map to placement on release — left band →
+tile to the left half of `work_area()`, right band → right half, top band →
+maximize. Escape (or moving out of the band) cancels. Builds directly on the
+existing interactive move + clamp + maximize + work-area machinery.
+
 ---
 
 ## 6. Mapping the carplayhost WM patterns onto iosc
