@@ -74,14 +74,14 @@ static const Workload WORKLOADS[] = {
     {"arith-loop",
      "var r=0;"
      "function f(n){var s=0;for(var i=0;i<n;i++){s=(s+i*3+7)|0;s=(s^(i<<1))|0;s=(s+(i*i))|0;}return s|0;}"
-     "for(var k=0;k<3000;k++){r=(r+f(3000))|0;}"
+     "for(var k=0;k<1500;k++){r=(r+f(2000))|0;}"
      "r|0;"},
     {"fib-recursive",
      "function fib(n){return n<2?n:fib(n-1)+fib(n-2);}"
-     "var r=0;for(var k=0;k<60;k++){r+=fib(30);}r;"},
+     "var r=0;for(var k=0;k<25;k++){r+=fib(28);}r;"},
     {"obj-prop-string",
      "function g(n){var t=0;for(var i=0;i<n;i++){var o={a:i,b:i+1,c:i*2};var s=''+o.a+'-'+o.c;t+=o.a+o.b+o.c+s.length;}return t;}"
-     "var r=0;for(var k=0;k<1500;k++){r+=g(2000);}r;"},
+     "var r=0;for(var k=0;k<800;k++){r+=g(2000);}r;"},
 };
 
 static double bench_min_ms(JSContext* cx, const char* code, int reps, double* checksum) {
@@ -99,6 +99,7 @@ static double bench_min_ms(JSContext* cx, const char* code, int reps, double* ch
 }
 
 int main(int argc, char** argv) {
+  setvbuf(stdout, nullptr, _IONBF, 0);  // unbuffered: results visible as they land
   if (!JS_Init()) { fprintf(stderr, "JS_Init failed\n"); return 1; }
   JSContext* cx = JS_NewContext(256L * 1024 * 1024);
   if (!cx) { fprintf(stderr, "JS_NewContext failed\n"); return 1; }
@@ -110,7 +111,7 @@ int main(int argc, char** argv) {
   if (!global) { fprintf(stderr, "JS_NewGlobalObject failed\n"); return 1; }
   JSAutoRealm ar(cx, global);
 
-  const int REPS = 8;
+  const int REPS = 5;
   printf("%-18s %12s %12s %9s  %s\n", "workload", "interp(ms)", "jit(ms)", "speedup", "checksum-match");
   printf("%-18s %12s %12s %9s  %s\n", "--------", "----------", "-------", "-------", "--------------");
 

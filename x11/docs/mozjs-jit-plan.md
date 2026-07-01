@@ -74,6 +74,29 @@ Baseline/Ion JIT does not use these handlers, so JS JIT is unaffected, and gjs i
 **wasm is off, JS JIT is on.** (Making wasm work on iOS would mean routing to the POSIX `sigaction`
 path instead of Mach ports — future work, not needed for gjs.)
 
+## Benchmark — interpreter vs JIT on the A10 (DONE 2026-07-01)
+
+`ports/mozjs/tools/jitbench.cpp` links the JIT dylib and runs each workload with the JIT fully OFF
+(pure C++ interpreter) then fully ON (Baseline interp + Baseline JIT + Ion), toggled at runtime via
+`JS_SetGlobalJitCompilerOption` — so the delta is purely the JIT. On the A10 (iPad7,12, iOS 17.6.1),
+best-of-5, signed with `dynamic-codesigning`:
+
+| workload | interpreter | JIT | speedup |
+|---|---|---|---|
+| arith-loop (tight integer) | 458.3 ms | 13.9 ms | **32.9×** |
+| fib-recursive (calls) | 5133.4 ms | 159.5 ms | **32.2×** |
+| obj-prop-string (gjs-like: alloc + property + string) | 994.4 ms | 102.4 ms | **9.7×** |
+
+Checksums match between modes (correctness), and the engine confirms `ion=1 baseline=1
+baseline-interp=1`. Honest read: the mprotect W^X flip (~1.1 µs/pair) does **not** eat the gains —
+JIT is 10–33× faster. Pure compute hits ~32×; the object/string workload (closest to gjs UI glue,
+with GC pressure) is ~10×, the realistic number to expect for GNOME Shell JS. The mprotect path is
+fully adequate on the A10; no APRR/fast-WX needed.
+
+Deploy: `libmozjs-115-jit-0` + `-dev` debs in `out/`. Installing `-jit-0` replaces `libmozjs-115-0`
+(it `Provides`/`Conflicts`/`Replaces` it, so gjs's dependency stays satisfied) — a transparent
+drop-in that makes gjs/GNOME-Shell JS JIT-accelerated. Consumers (Xios) carry `dynamic-codesigning`.
+
 ## Build (task #6, #8)
 
 Separate variant so the JIT-less debs are never overwritten:
