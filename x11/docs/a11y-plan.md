@@ -326,16 +326,67 @@ New files, roughly 600-900 lines of Swift total:
 6. Synthetic tap service: `tap {x, y}` from the helper feeds the existing
    touch-to-pointer injection at desktop-px coordinates.
 
-Protocol v1 (NDJSON over a unix socket in the ioscd runtime dir, mode 0600):
+### Protocol v1.1 (authoritative wire schema)
 
-- helper -> app: `hello{ver,gen}`, `window{id,appid,title,frame,focused}`,
-  `upsert{id,win,parent,idx,role,label,value,hint,traits[],actions[],frame}`,
-  `remove{id}`, `focus{id}`, `announce{text}`, `tap{x,y}`, `reset{gen}`
-- app -> helper: `enable{bool}`, `activate{id}`, `action{id,idx}`, `adjust{id,dir}`,
-  `escape{id}`, `scroll{id,dir}`, `vo-focus{id}`
+Transport: NDJSON over the unix socket `/var/jb/tmp/xios-a11y.sock`, mode 0600.
+Fixed path on purpose, same convention as `ioscd.sock`/`iosc-wm.sock`; do NOT
+derive it from `$XDG_RUNTIME_DIR`, which ioscd points at per-app private bus dirs
+(`ioscd.c:255`). ONE listener serves every client: the Xios desktop app and N
+native per-app hosts concurrently. Each connection carries its own bind filter,
+enable state, and generation counter. v1.1 folds in the native-flavor additions
+from `native-ipados-a11y.md`; nothing changed shape for the desktop client —
+every addition is a new message or an optional field.
 
-NDJSON is deliberate for v1: trees are small after filtering and it is debuggable
-with `nc`. Revisit binary framing only if profiling says so.
+Encoding: one JSON object per line, discriminator `t`. `id`/`win` are
+helper-assigned uint32, unique within a generation. `frame` is `[x,y,w,h]` ints —
+desktop-px on unbound (desktop) connections, window-relative px on bound ones.
+`traits` draws from the fixed vocabulary `button link header static-text image
+adjustable selected not-enabled updates-frequently tab-bar search-field
+keyboard-key`. `actions` is an array of localized action-name strings whose index
+is the AT-SPI action index.
+
+helper -> app:
+
+- `{"t":"hello","v":1,"gen":G}`
+- `{"t":"window","id":W,"appid":S,"title":S,"frame":F,"focused":B}`
+- `{"t":"upsert","id":N,"win":W,"parent":P,"idx":I,"role":S,"label":S,"value":S,"hint":S,"traits":[...],"actions":[...],"frame":F}` (`parent:0` = window root)
+- `{"t":"remove","id":N}` (removes the subtree; children go with it)
+- `{"t":"focus","id":N}`
+- `{"t":"announce","text":S}`
+- `{"t":"tap","x":X,"y":Y}` (bound connections add `"win":W` and the coordinates
+  are window-relative; the host injects locally through its own IoscInput
+  connection, no compositor round trip)
+- `{"t":"reset","gen":G}` (drop the store; helper restarted, window switched, or
+  bound app relaunched)
+
+app -> helper:
+
+- `{"t":"bind","appid":S}` — first message after connect; scopes the connection
+  to one AT-SPI application. Unbound connection = desktop semantics, unchanged.
+- `{"t":"enable","on":B}`
+- `{"t":"activate","id":N}`, `{"t":"action","id":N,"idx":I}`
+- `{"t":"adjust","id":N,"dir":D}` with D = 1 or -1
+- `{"t":"escape","id":N}`, `{"t":"scroll","id":N,"dir":"up|down|left|right"}`
+- `{"t":"attach","win":W}` / `{"t":"detach","win":W}` — advisory scene
+  visibility from native hosts; in the schema from day one so hosts can send
+  them unconditionally, but the helper may ignore them until it implements
+  traffic muting (P4)
+- `{"t":"vo-focus","id":N}` (logging/metrics only in v1)
+
+Bound-connection semantics: `bind` is a persistent filter. If the AT-SPI app has
+not registered yet (cold launch), the helper holds the filter and starts
+publishing when the app's `Socket.Embed` arrives; on app exit it sends `reset`
+and re-publishes on relaunch. Bound connections receive ALL mapped toplevels of
+the app, not focused-only (iPadOS can Split View two scenes of one app); the
+per-window caps, filters, and debounce above apply unchanged per window.
+App-to-appid correlation is deterministic: ioscd streams
+`spawn{appid,pid}`/`exit{appid,pid}` records to the helper (ioscd starts the
+helper, so a pipe or the runtime-dir socket both work), joined against
+`org.freedesktop.DBus.GetConnectionUnixProcessID` on the a11y bus. Name-matching
+survives only as the helper-restart race fallback.
+
+NDJSON is deliberate: trees are small after filtering and it is debuggable with
+`nc`. Revisit binary framing only if profiling says so.
 
 ## Per-flavor notes
 
@@ -350,7 +401,10 @@ with `nc`. Revisit binary framing only if profiling says so.
   so elements live in the app's own accessibility context: window origin is (0,0)
   (no correlation heuristics), VoiceOver's app switcher separates Linux apps
   natively, and per-app element counts are small. The same helper serves each host
-  filtered by app. Recommend making this flavor the a11y showcase.
+  filtered by app. Recommend making this flavor the a11y showcase. Spec'd in
+  detail in `native-ipados-a11y.md` (host-side prototype exists in
+  `apps/iosc-host/Sources/HostA11y.swift`); its protocol additions are folded
+  into v1.1 above.
 - iosc-shell: our panel/launcher are bare cairo, invisible to AT-SPI. Two options:
   (a) implement a minimal AT-SPI server in the panel (Socket.Embed + Accessible +
   Component + Action over raw libdbus; the panel has a dozen static elements, this
@@ -417,7 +471,11 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 - P1 read-only browse: xios-a11yd mirror + protocol + Xios elements for the focused
   window (labels, roles, frames). Accept: VoiceOver swipes through gnome-console and
   gtk4-demo controls with correct speech and touch exploration lands on the right
-  frames.
+  frames. The native host (`native-ipados-a11y.md`) is the endorsed FIRST
+  publisher here: it needs only bind + multi-connection, no geometry feed and no
+  correlation heuristics, so it validates the helper and wire protocol end-to-end
+  before the Xios desktop client lands. It supplements, not replaces, the desktop
+  acceptance above.
 - P2 interaction: activate, custom actions, adjustable, focus sync, screenChanged.
   Accept: VoiceOver double-tap toggles a gtk4-demo checkbox, adjusts a slider,
   activates panel buttons; Tab in a docked keyboard moves the VoiceOver cursor.
