@@ -204,10 +204,16 @@ QCoro, KF6Screen, NetworkManagerQt, ModemManagerQt, LibKWorkspace — **deferred
    **kxmlgui needs QtPrintSupport** — qtbase round 1 built both OFF. So Q3's flag flip is
    `dbus + xkbcommon + printsupport` (cups stays OFF). `build-kf6.sh` refuses to start if
    the staged qtbase lacks `Qt6DBusConfig.cmake` / `Qt6PrintSupportConfig.cmake`.
-2. **Qt module gaps for KDE** (report to qt-modules): **qt5compat** (Qt6Core5Compat, hard
-   KIO dep) is not in the current module ladder — it needs adding. kwin itself also wants
-   Concurrent/Core5Compat/UiTools/Sensors from qtbase and a couple of QML modules; those
-   are qtbase-config / qtdeclarative-module questions for the W layer, flagged early here.
+2. **Qt module gaps for KDE** — the KIO one is CLOSED: qt-modules added `qt5compat.mk`
+   (qt6-5compat, provides Qt6Core5Compat). It sits AFTER qtdeclarative in the ladder, not
+   qtbase-only: the same deb ships the Qt5Compat.GraphicalEffects QML module (used across
+   Plasma/Kirigami themes), which wants Qt6Qml/Quick + host qmlcachegen. So
+   `qt6-5compat Depends: qt6-declarative`; net effect for KIO identical.
+   kwin's other Qt wants, corrected for the W layer (qt-modules audit): Concurrent IS a
+   qtbase component (round 1 covers it); **UiTools and Sensors are NOT — they are the
+   separate qttools and qtsensors modules**, new recipes when we reach KWin (not KF6
+   deps, nothing here gates on them); the QtQuick.Controls/Layouts/Window QML modules
+   kwin probes via ecm_find_qmlmodule all come from qtdeclarative, already in the ladder.
 
 ### Recipe mechanics (uniform)
 
