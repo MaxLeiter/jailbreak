@@ -11,7 +11,9 @@
  *   brightness a synthetic $XIOS_SYS/class/backlight/xios_backlight/ tree. Anything may
  *              write `brightness` (0..1000); we watch the directory and apply the value
  *              through BackBoardServices. A timer syncs `actual_brightness` (and the
- *              slider) when Control Center changes it behind our back.
+ *              slider) when Control Center changes it behind our back. We also serve
+ *              org.gnome.SettingsDaemon.Power.Screen (percent) on the session bus so the
+ *              gnome-shell quick-settings slider works without a ported gsd-power.
  *
  * IOKit and BackBoardServices are resolved with dlopen/dlsym so the cross build needs no
  * private tbds or headers. Like the session stubs (wayland/xios-login1-stub.c) we own the
@@ -36,8 +38,15 @@
 #define AC_DEV_PATH       UPOWER_PATH "/devices/line_power_AC0"
 #define DEVICE_IFACE      "org.freedesktop.UPower.Device"
 
+/* The gsd-power front-end (gnome-shell's quick-settings slider talks to this; served here
+ * because gsd's power plugin is not ported — its non-Linux path needs gnome-rr, which our
+ * GTK4 gnome-desktop drops). Interface copied verbatim from gsd 46 gsd-power-manager.c. */
+#define GSD_POWER_NAME    "org.gnome.SettingsDaemon.Power"
+#define GSD_POWER_PATH    "/org/gnome/SettingsDaemon/Power"
+
 #define DEFAULT_SYS_ROOT  "/var/jb/sys"
 #define MAX_BRIGHTNESS    1000
+#define PERCENT_STEP      5
 
 /* UpDeviceState */
 #define STATE_UNKNOWN         0
@@ -131,7 +140,8 @@ typedef struct
 
 static BatteryState bat;   /* current, served over D-Bus + mirrored to sysfs */
 
-static GDBusConnection *bus_conn;   /* set once the name is acquired */
+static GDBusConnection *bus_conn;   /* UPower connection, set once the name is acquired */
+static GDBusConnection *gsd_conn;   /* session-bus connection for the gsd-power front-end */
 
 static char *sys_root;              /* $XIOS_SYS or /var/jb/sys */
 static char *backlight_dir;         /* <sys>/class/backlight/xios_backlight */
@@ -334,6 +344,8 @@ seed_sysfs_skeleton (void)
 
 /* ---- brightness ------------------------------------------------------------------------ */
 
+static void emit_screen_brightness_changed (void);
+
 static void
 apply_brightness (int value)
 {
@@ -352,6 +364,7 @@ apply_brightness (int value)
   char buf[32];
   g_snprintf (buf, sizeof buf, "%d", value);
   write_sys_file (backlight_dir, "actual_brightness", buf);
+  emit_screen_brightness_changed ();
 }
 
 static void
@@ -396,9 +409,147 @@ brightness_sync_tick (gpointer user_data)
       g_snprintf (buf, sizeof buf, "%d", hw);
       write_sys_file (backlight_dir, "brightness", buf);
       write_sys_file (backlight_dir, "actual_brightness", buf);
+      emit_screen_brightness_changed ();
     }
   return G_SOURCE_CONTINUE;
 }
+
+/* ---- org.gnome.SettingsDaemon.Power (Screen) -------------------------------------------
+ *
+ * gnome-shell's quick-settings brightness slider is a proxy on this interface; it shows
+ * whenever Brightness >= 0. Serving it here (percent -> raw -> BackBoardServices) makes the
+ * slider work without a ported gsd-power. XIOS_HWBRIDGE_NO_GSD_SHIM=1 disables the claim if
+ * a real gsd-power ever lands. */
+
+static const char power_screen_xml[] =
+  "<node>"
+  "  <interface name='org.gnome.SettingsDaemon.Power.Screen'>"
+  "    <property name='Brightness' type='i' access='readwrite'/>"
+  "    <method name='StepUp'>"
+  "      <arg type='i' name='new_percentage' direction='out'/>"
+  "      <arg type='s' name='connector' direction='out'/>"
+  "    </method>"
+  "    <method name='StepDown'>"
+  "      <arg type='i' name='new_percentage' direction='out'/>"
+  "      <arg type='s' name='connector' direction='out'/>"
+  "    </method>"
+  "    <method name='Cycle'>"
+  "      <arg type='i' name='new_percentage' direction='out'/>"
+  "      <arg type='i' name='output_id' direction='out'/>"
+  "    </method>"
+  "  </interface>"
+  "</node>";
+
+static int
+brightness_percent (void)
+{
+  if (last_applied_brightness < 0)
+    return -1;
+  return (last_applied_brightness * 100 + MAX_BRIGHTNESS / 2) / MAX_BRIGHTNESS;
+}
+
+/* Set from the D-Bus side: apply to hardware and keep the sysfs node truthful. The node
+ * write retriggers the file monitor, but apply_brightness() no-ops on an unchanged value. */
+static void
+set_brightness_percent (int percent)
+{
+  int raw;
+
+  percent = CLAMP (percent, 0, 100);
+  raw = percent * MAX_BRIGHTNESS / 100;
+  apply_brightness (raw);
+
+  char buf[32];
+  g_snprintf (buf, sizeof buf, "%d", raw);
+  write_sys_file (backlight_dir, "brightness", buf);
+}
+
+static void
+emit_screen_brightness_changed (void)
+{
+  GVariantBuilder changed;
+
+  if (!gsd_conn)
+    return;
+
+  g_variant_builder_init (&changed, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&changed, "{sv}", "Brightness",
+                         g_variant_new_int32 (brightness_percent ()));
+  g_dbus_connection_emit_signal (gsd_conn, NULL, GSD_POWER_PATH,
+                                 "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                                 g_variant_new ("(sa{sv}as)",
+                                                "org.gnome.SettingsDaemon.Power.Screen",
+                                                &changed, NULL),
+                                 NULL);
+}
+
+static void
+screen_method_call (GDBusConnection *connection, const char *sender, const char *object_path,
+                    const char *interface_name, const char *method_name, GVariant *parameters,
+                    GDBusMethodInvocation *invocation, gpointer user_data)
+{
+  (void) connection; (void) sender; (void) object_path; (void) interface_name;
+  (void) parameters; (void) user_data;
+  int cur = brightness_percent ();
+
+  if (g_str_equal (method_name, "StepUp"))
+    {
+      set_brightness_percent (MIN (cur + PERCENT_STEP, 100));
+      g_dbus_method_invocation_return_value (invocation,
+          g_variant_new ("(is)", brightness_percent (), "xios"));
+    }
+  else if (g_str_equal (method_name, "StepDown"))
+    {
+      set_brightness_percent (MAX (cur - PERCENT_STEP, 0));
+      g_dbus_method_invocation_return_value (invocation,
+          g_variant_new ("(is)", brightness_percent (), "xios"));
+    }
+  else if (g_str_equal (method_name, "Cycle"))
+    {
+      set_brightness_percent (cur >= 100 ? 0 : MIN (cur + PERCENT_STEP, 100));
+      g_dbus_method_invocation_return_value (invocation,
+          g_variant_new ("(ii)", brightness_percent (), 0));
+    }
+  else
+    g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                           G_DBUS_ERROR_UNKNOWN_METHOD,
+                                           "no %s", method_name);
+}
+
+static GVariant *
+screen_get_property (GDBusConnection *connection, const char *sender, const char *object_path,
+                     const char *interface_name, const char *property_name, GError **error,
+                     gpointer user_data)
+{
+  (void) connection; (void) sender; (void) object_path; (void) interface_name;
+  (void) error; (void) user_data;
+
+  if (g_str_equal (property_name, "Brightness"))
+    return g_variant_new_int32 (brightness_percent ());
+  return NULL;
+}
+
+static gboolean
+screen_set_property (GDBusConnection *connection, const char *sender, const char *object_path,
+                     const char *interface_name, const char *property_name, GVariant *value,
+                     GError **error, gpointer user_data)
+{
+  (void) connection; (void) sender; (void) object_path; (void) interface_name;
+  (void) error; (void) user_data;
+
+  if (g_str_equal (property_name, "Brightness"))
+    {
+      set_brightness_percent (g_variant_get_int32 (value));
+      return TRUE;
+    }
+  return FALSE;
+}
+
+static const GDBusInterfaceVTable screen_vtable = {
+  .method_call = screen_method_call,
+  .get_property = screen_get_property,
+  .set_property = screen_set_property,
+};
 
 /* ---- org.freedesktop.UPower ------------------------------------------------------------ */
 
@@ -732,6 +883,30 @@ on_name_lost (GDBusConnection *connection, const char *name, gpointer user_data)
   g_main_loop_quit ((GMainLoop *) user_data);
 }
 
+static void
+on_gsd_bus_acquired (GDBusConnection *connection, const char *name, gpointer user_data)
+{
+  (void) name; (void) user_data;
+  gsd_conn = connection;
+  register_object (connection, GSD_POWER_PATH, power_screen_xml, &screen_vtable, NULL);
+}
+
+static void
+on_gsd_name_acquired (GDBusConnection *connection, const char *name, gpointer user_data)
+{
+  (void) connection; (void) user_data;
+  g_message ("hwbridge: owning %s (brightness slider front-end)", name);
+}
+
+/* Unlike UPower, losing this name is not fatal: a real ported gsd-power owning it instead
+ * is the intended hand-off. */
+static void
+on_gsd_name_lost (GDBusConnection *connection, const char *name, gpointer user_data)
+{
+  (void) connection; (void) user_data;
+  g_message ("hwbridge: not owning %s (real gsd-power present?)", name);
+}
+
 static gboolean
 on_sigterm (gpointer user_data)
 {
@@ -783,9 +958,18 @@ main (int argc, char **argv)
     }
 
   GFileMonitor *monitor = NULL;
+  guint gsd_owner_id = 0;
   if (have_backlight)
     {
       brightness_sync_tick (NULL);  /* seed brightness files from current hardware level */
+
+      /* gsd-power front-end for the shell slider (session bus proper — gsd names never
+       * lived on the system bus). */
+      if (!g_getenv ("XIOS_HWBRIDGE_NO_GSD_SHIM"))
+        gsd_owner_id = g_bus_own_name (G_BUS_TYPE_SESSION, GSD_POWER_NAME,
+                                       G_BUS_NAME_OWNER_FLAGS_NONE,
+                                       on_gsd_bus_acquired, on_gsd_name_acquired,
+                                       on_gsd_name_lost, NULL, NULL);
 
       g_autoptr (GFile) dir = g_file_new_for_path (backlight_dir);
       g_autoptr (GError) error = NULL;
@@ -806,6 +990,8 @@ main (int argc, char **argv)
 
   if (owner_id)
     g_bus_unown_name (owner_id);
+  if (gsd_owner_id)
+    g_bus_unown_name (gsd_owner_id);
   g_clear_object (&monitor);
   g_main_loop_unref (loop);
   return 0;

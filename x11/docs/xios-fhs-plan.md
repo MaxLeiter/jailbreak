@@ -148,7 +148,19 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
   `BKSDisplayBrightnessGetCurrent()` and refreshes `actual_brightness` (+ `brightness`, so
   the gsd slider tracks Control Center changes). Re-applying a value the daemon itself wrote
   is idempotent, so no loop-breaking state is needed.
-- **gsd side (patch delivered):** the `power` plugin un-drop is in
+- **Shell slider WITHOUT gsd-power:** the daemon also claims
+  `org.gnome.SettingsDaemon.Power` on the session bus and serves the `...Power.Screen`
+  interface (readwrite `Brightness` percent, `StepUp`/`StepDown`/`Cycle`, XML copied
+  verbatim from gsd 46) mapped onto the same BKS path. gnome-shell's quick-settings slider
+  shows whenever `Brightness >= 0`, so brightness UX does not depend on porting gsd-power
+  at all. Context: the gsd-power port stalled on a real wall — its non-Linux backlight path
+  IS gnome-rr, which our GTK4 gnome-desktop drops, plus a GTK-skeleton include — so the
+  port is a multi-file job pending a lead priority call. If it ever lands, set
+  `XIOS_HWBRIDGE_NO_GSD_SHIM=1` (the daemon treats not getting the name as a normal
+  hand-off, not an error) and its GsdBacklight reads the file node via the 0001 patch. What
+  the shim does NOT cover (gsd-power's remaining value): idle-dim, auto-suspend policy,
+  low-battery notification actions.
+- **gsd side (patch delivered, port ON HOLD):** the `power` plugin un-drop is in
   `gnome-settings-daemon-ios-fixes.sh` (gnome-session owner: canberra no-op'd, raw-X11
   screensaver/DPMS gated `!__APPLE__`, canberra/x11/xext meson deps dropped). The Darwin
   backend is
@@ -200,7 +212,10 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
 - [x] Package skeleton: control/postinst, daemon source, build script
 - [ ] Build daemon in Procursus image, pack deb
 - [ ] Device validation: BKS brightness write, IOPS values, shell indicator + slider
-- [x] Darwin gsd-backlight backend patch (patches/gnome-settings-daemon/0001-...) — wire-in
-      + gsd rebuild with power plugin owned by gnome-session
+- [x] Darwin gsd-backlight backend patch (patches/gnome-settings-daemon/0001-...) — DORMANT:
+      the gsd-power port is on hold (gnome-rr + GTK-skeleton walls); patch plugs into step 3
+      of that port unchanged if the lead green-lights it
+- [x] Shell brightness slider via the daemon's org.gnome.SettingsDaemon.Power.Screen shim
+      (no gsd-power needed)
 - [x] xios.session: xios-hwbridged added to the session launch (gnome-session, task #14)
 - [ ] Flavor-K follow-up: powerdevil backlight patch against the same tree
