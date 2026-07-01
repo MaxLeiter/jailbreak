@@ -103,17 +103,34 @@ GIR_DEV_DEBS="\
   p11-kit-1-dev_*_iphoneos-arm64.deb \
 "
 
-# libxcb-util1 is a standard Procursus lib that libstartup-notification0 Depends but that we do
-# not build; fetch it from the device's configured apt sources if it is not already in this dir.
-if ! ls libxcb-util1_*_iphoneos-arm64.deb >/dev/null 2>&1; then
-  echo "==> fetching libxcb-util1 from Procursus apt (not in the built set)"
-  apt-get download libxcb-util1 || { echo "!! could not download libxcb-util1 — install it manually (apt-get install libxcb-util1) then re-run"; exit 1; }
-fi
-# p11-kit-1-dev is needed ONLY for the Phase-2 gir scan (gck-2.pc/gcr-4.pc Require p11-kit-1 for
-# cflags). Not a boot dep; fetch it now while we have the network so it is ready for the -dev pass.
-if ! ls p11-kit-1-dev_*_iphoneos-arm64.deb >/dev/null 2>&1; then
-  echo "==> fetching p11-kit-1-dev for the Phase-2 gir scan (best-effort)"
-  apt-get download p11-kit-1-dev 2>/dev/null || echo "   (p11-kit-1-dev not fetched — grab it before the gir batch, or gtk4-gpu meson-routes gck/gcr)"
+# ---- fetch the ENTIRE external dependency closure from Procursus in ONE pass ----------------
+# Our set Depends a frontier of standard Procursus libs we do not build. Some (libsndfile1) pull
+# their own codec subtree (libFLAC/vorbis/ogg/opus...). Rather than discover them one re-run at a
+# time, ask apt to resolve the RECURSIVE closure of the whole frontier, then download only what is
+# (a) not already installed and (b) not in our local set. apt has the Procursus metadata; we just
+# harvest the names. dpkg -i later configures everything in topological order regardless of order.
+echo "==> resolving + fetching the external dependency closure from Procursus (one pass)"
+apt-get update >/dev/null 2>&1 || true
+# The direct external frontier of the boot set (from the deb-metadata closure). The p11-kit-1-dev
+# gir-scan dep rides along. Base libs already on device drop out of the download below.
+EXT_FRONTIER="libsndfile1 libxcb-util1 libxcb-util0 libFLAC12 libFLAC8 libvorbis0a libvorbisenc2 \
+  libogg0 libopus0 libmpg123-0 libmp3lame0 libgcrypt20 libgpg-error0 libp11-kit0 p11-kit-1-dev \
+  libfreetype6 fontconfig-config libjpeg62-turbo libtiff5 libpng16-16 libgcc-s1 libstdc++6 \
+  liblzma5 liblzo2-2 libnghttp2-14 libpcre2-8-0 libsqlite3-1 libuuid16 libintl8"
+# Expand each frontier package to its recursive dependency names, uniq, then download the missing.
+CLOSURE=$(for p in $EXT_FRONTIER; do
+            apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts \
+              --no-breaks --no-replaces --no-enhances "$p" 2>/dev/null | awk '/^\w/{print $1}'
+          done | sort -u)
+for p in $EXT_FRONTIER $CLOSURE; do
+  case "$p" in ""|"<"*) continue;; esac
+  dpkg -s "$p" >/dev/null 2>&1 && continue           # already installed on device
+  ls "${p}_"*_iphoneos-arm64.deb >/dev/null 2>&1 && continue   # already in our local set / fetched
+  apt-get download "$p" 2>/dev/null && echo "   + fetched $p" || true
+done
+# Hard gate: libsndfile1 (libpulse0's new blocker) MUST be present now.
+if ! ls libsndfile1_*_iphoneos-arm64.deb >/dev/null 2>&1 && ! dpkg -s libsndfile1 >/dev/null 2>&1; then
+  echo "!! libsndfile1 still missing after the closure fetch — 'apt-get download libsndfile1' by hand, then re-run"; exit 1
 fi
 
 # CONFLICT 1 (PulseAudio): the device may carry audio-desktop's libpulse-simple-xios0 (the
@@ -132,9 +149,18 @@ fi
 # (not by owning index.theme), so --force-overwrite is safe here. FOLLOW-UP: xios-desktop-defaults
 # should Replaces: hicolor-icon-theme, adwaita-icon-theme (or stop shipping those files) to make
 # this clean without the flag; tracked separately.
-echo "==> installing the boot debs in dependency order (--force-overwrite for the icon-theme file"
+# Collect the external closure debs we just fetched (frontier + recursive names present in this
+# dir), to install ALONGSIDE our set. dpkg -i given everything at once configures in topological
+# order regardless of argument order, so we do not need to interleave them by hand. The GIR_DEV
+# debs are deliberately NOT included here — they are the Phase-2 pass.
+EXT_DEBS=""
+for p in $EXT_FRONTIER $CLOSURE; do
+  for f in ${p}_*_iphoneos-arm64.deb; do [ -f "$f" ] && EXT_DEBS="$EXT_DEBS $f"; done
+done
+
+echo "==> installing the boot set + fetched external closure (--force-overwrite for the icon-theme"
 echo "    conflict with xios-desktop-defaults; dpkg -i is idempotent — safe to re-run)"
-dpkg -i --force-overwrite $DEBS
+dpkg -i --force-overwrite $EXT_DEBS $DEBS
 echo "==> boot set installed."
 echo "==> Phase 2 (gir scan prereq): dpkg -i \$GIR_DEV_DEBS  — the 14 -dev debs + p11-kit-1-dev;"
 echo "    then gtk4-gpu runs the closure scan (GDesktopEnums-3.0 is meson-routed, not a deb)."
