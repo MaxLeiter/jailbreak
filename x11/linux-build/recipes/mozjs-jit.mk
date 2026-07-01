@@ -45,7 +45,10 @@ ifneq ($(wildcard $(MOZJSJIT_WORK)/.build_complete),)
 mozjs-jit:
 	@echo "Using previously built mozjs-jit."
 else
-mozjs-jit: mozjs-jit-setup readline zlib
+mozjs-jit: mozjs-jit-setup
+	# NB: no readline/zlib prereqs — zlib is the SDK's system libz (--with-system-zlib) and
+	# readline is only for the interactive js shell, which patch 0002 removes. (Those recipe
+	# targets aren't even loaded in the gjs build container's makefiles set.)
 	# Same host toolchain as the JIT-less build (rustup + aarch64-apple-ios target + cbindgen +
 	# nasm, set up by build-gjs.sh). fake `xcrun` so the Rust cc-crate finds the iOS SDK on Linux;
 	# CRATE_CC_NO_DEFAULTS=1 stops cc auto-adding -fembed-bitcode (conflicts with -ffunction-sections).
@@ -57,6 +60,7 @@ mozjs-jit: mozjs-jit-setup readline zlib
 		export CRATE_CC_NO_DEFAULTS=1; \
 		export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER=$(GNU_HOST_TRIPLE)-clang; \
 		export PKG_CONFIG_PATH=$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig; \
+		unset CC CXX CPP OBJC OBJCXX LD MAKEFLAGS MFLAGS MAKELEVEL; \
 		python3 ./mach configure && \
 		python3 ./mach build
 	# Stage obj/dist/{bin,include} (mach install isn't a thing for --enable-project=js).

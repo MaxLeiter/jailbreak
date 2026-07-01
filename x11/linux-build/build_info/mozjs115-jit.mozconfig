@@ -29,8 +29,8 @@ ac_add_options --enable-optimize
 ac_add_options --enable-release
 ac_add_options --disable-debug
 ac_add_options --disable-tests
-ac_add_options --with-system-zlib
-ac_add_options --enable-readline
+ac_add_options --with-system-zlib                    # SDK libz
+# (no --enable-readline: it only affects the interactive js shell, which patch 0002 drops)
 ac_add_options --enable-intl-api                     # gjs needs Intl (bundled in-tree ICU)
 ac_add_options --enable-shared-js
 
@@ -44,6 +44,9 @@ STRIP="@CROSS_PREFIX@-strip"
 export HOST_CC=clang
 export HOST_CXX=clang++
 
-export RUSTFLAGS="-Clink-args=-isysroot @TARGET_SYSROOT@"
+# NB: two separate -Clink-arg= tokens, NOT "-Clink-args=-isysroot <path>". Cargo splits
+# RUSTFLAGS on whitespace, so the single-string form makes rustc treat the sysroot path as an
+# input filename ("multiple input filenames provided"). Two -Clink-arg keeps -isysroot + path paired.
+export RUSTFLAGS="-Clink-arg=-isysroot -Clink-arg=@TARGET_SYSROOT@"
 export IPHONEOS_DEPLOYMENT_TARGET=14.0
 mk_add_options MOZ_OBJDIR=@MOZ_OBJDIR@
