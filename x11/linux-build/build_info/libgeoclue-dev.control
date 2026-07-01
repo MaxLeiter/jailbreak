@@ -1,0 +1,10 @@
+Package: libgeoclue-dev
+Version: @DEB_GEOCLUE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/geoclue/geoclue
+Depends: libgeoclue-2-0 (= @DEB_GEOCLUE_V@), libglib2.0-dev
+Description: Geoinformation client library (development files)
+ Headers, pkg-config and the unversioned dylib symlink for libgeoclue-2-0.

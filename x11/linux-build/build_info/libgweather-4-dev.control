@@ -1,0 +1,11 @@
+Package: libgweather-4-dev
+Version: @DEB_GWEATHER4_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libgweather
+Depends: libgweather-4-0 (= @DEB_GWEATHER4_V@), libglib2.0-dev
+Description: GNOME weather/location library (development files)
+ Headers, pkg-config and the unversioned dylib symlink; needed on-device to
+ generate the GWeather-4.0 typelib gnome-shell imports.

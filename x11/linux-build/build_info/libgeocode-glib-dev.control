@@ -1,0 +1,10 @@
+Package: libgeocode-glib-dev
+Version: @DEB_GEOCODE-GLIB_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/geocode-glib
+Depends: libgeocode-glib0 (= @DEB_GEOCODE-GLIB_V@), libglib2.0-dev
+Description: Geocoding convenience library (development files)
+ Headers, pkg-config and the unversioned dylib symlink for libgeocode-glib0.

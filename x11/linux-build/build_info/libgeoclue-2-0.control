@@ -1,0 +1,13 @@
+Package: libgeoclue-2-0
+Version: @DEB_GEOCLUE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/geoclue/geoclue
+Depends: libglib2.0-0, libjson-glib-1.0-0
+Description: Geoinformation client library (libgeoclue)
+ The libgeoclue client library for rootless iOS. gnome-shell imports gi://Geoclue
+ (2.0) via misc/weather.js at boot, so this library and its on-device Geoclue-2.0
+ typelib are required for the shell to start. The geoclue daemon is not built, so
+ location is inert, but the typelib must exist for the static import.

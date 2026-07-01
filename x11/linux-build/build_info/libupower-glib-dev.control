@@ -1,0 +1,11 @@
+Package: libupower-glib-dev
+Version: @DEB_UPOWER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://upower.freedesktop.org/
+Depends: libupower-glib3 (= @DEB_UPOWER_V@), libglib2.0-dev
+Description: UPower client library (development files)
+ Headers, pkg-config and the unversioned dylib symlink; needed on-device to
+ generate the UPowerGlib-1.0 typelib gnome-shell imports.

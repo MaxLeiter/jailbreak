@@ -1,0 +1,11 @@
+Package: libgeocode-glib0
+Version: @DEB_GEOCODE-GLIB_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/geocode-glib
+Depends: libglib2.0-0, libjson-glib-1.0-0, libsoup-3.0-0
+Description: Geocoding convenience library (build dep of libgweather-4)
+ geocode-glib for rootless iOS. Client library for forward/reverse geocoding via
+ the Nominatim service. A build dependency of libgweather-4.

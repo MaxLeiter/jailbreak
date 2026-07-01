@@ -40,7 +40,7 @@ else
 upower: upower-setup glib2.0
 	cd $(BUILD_WORK)/upower/build && meson \
 		--cross-file cross.txt \
-		-Dintrospection=false \
+		-Dintrospection=disabled \
 		-Dos_backend=dummy \
 		-Didevice=disabled \
 		-Dman=false \

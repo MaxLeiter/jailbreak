@@ -50,18 +50,12 @@ geocode-glib-package: geocode-glib-stage
 	rm -rf $(BUILD_DIST)/libgeocode-glib0 $(BUILD_DIST)/libgeocode-glib-dev
 	mkdir -p $(BUILD_DIST)/libgeocode-glib0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libgeocode-glib-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgeocode-glib.*.dylib \
-		$(BUILD_DIST)/libgeocode-glib0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/ 2>/dev/null || \
-	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgeocode-glib.dylib \
+	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgeocode-glib*.dylib \
 		$(BUILD_DIST)/libgeocode-glib0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
 	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libgeocode-glib-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/ 2>/dev/null || true
 	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \
 		$(BUILD_DIST)/libgeocode-glib-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/ 2>/dev/null || true
-	if [ -e "$(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgeocode-glib.dylib" ]; then \
-		cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgeocode-glib.dylib \
-			$(BUILD_DIST)/libgeocode-glib-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/ 2>/dev/null || true; \
-	fi
 	$(call SIGN,libgeocode-glib0,general.xml)
 	$(call PACK,libgeocode-glib0,DEB_GEOCODE-GLIB_V)
 	$(call PACK,libgeocode-glib-dev,DEB_GEOCODE-GLIB_V)

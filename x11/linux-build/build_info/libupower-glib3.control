@@ -1,0 +1,14 @@
+Package: libupower-glib3
+Version: @DEB_UPOWER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://upower.freedesktop.org/
+Depends: libglib2.0-0
+Description: UPower client library (libupower-glib)
+ The libupower-glib client library for rootless iOS. gnome-shell imports
+ gi://UPowerGlib in status/system.js at boot, so this library (and its on-device
+ UPowerGlib-1.0 typelib) is required for the shell to start. The upower daemon is
+ not built; battery data would come from an org.freedesktop.UPower daemon we do
+ not ship, so the power indicator degrades to "no device".
