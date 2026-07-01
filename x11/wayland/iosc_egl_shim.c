@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #ifndef EGL_PLATFORM_ANGLE_ANGLE
 #define EGL_PLATFORM_ANGLE_ANGLE 0x3202
@@ -83,6 +84,22 @@ static void *sym(const char *n)
     return dlsym(s_angle, n);
 }
 #define REAL(name) ((typeof(&name)) sym(#name))
+
+/* IOSC_EGL_DEBUG=1 traces the shim's EGL interception (display/config/window path)
+ * so the GSK-ngl-on-ANGLE bring-up is diagnosable on-device. */
+static int egl_debug(void)
+{
+    static int v = -1;
+    if (v < 0) v = getenv("IOSC_EGL_DEBUG") ? 1 : 0;
+    return v;
+}
+
+/* Confirm the shim is actually loaded into the client (kgx/GTK), not just iosc. */
+__attribute__((constructor)) static void iosc_egl_ctor(void)
+{
+    if (egl_debug())
+        fprintf(stderr, "iosc_egl: shim loaded (pid=%d)\n", (int)getpid());
+}
 
 /* ---- wayland iosc_iosurface binding (private queue) ----------------------- */
 
@@ -174,8 +191,11 @@ EGLDisplay eglGetPlatformDisplay(EGLenum platform, void *native_display, const E
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
         g_wl = (struct wl_display *)native_display;   /* remember the client's wl_display */
         const EGLAttrib a[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
-        fprintf(stderr, "iosc_egl: GetPlatformDisplay(WAYLAND) -> ANGLE Metal\n");
-        return REAL(eglGetPlatformDisplay)(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
+        EGLDisplay dpy = REAL(eglGetPlatformDisplay)(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
+        if (egl_debug())
+            fprintf(stderr, "iosc_egl: GetPlatformDisplay(WAYLAND) -> ANGLE Metal = %p (err 0x%x)\n",
+                    dpy, REAL(eglGetError)());
+        return dpy;
     }
     return REAL(eglGetPlatformDisplay)(platform, native_display, attrs);
 }
@@ -347,15 +367,50 @@ __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *name)
     if (!strcmp(name, "eglQuerySurface"))                  return (void *)eglQuerySurface;
     if (!strcmp(name, "eglDestroySurface"))                return (void *)eglDestroySurface;
     if (!strcmp(name, "eglSwapInterval"))                  return (void *)eglSwapInterval;
+    /* config + client-extension intercepts too, in case epoxy resolves these core
+     * calls via eglGetProcAddress rather than direct dlsym (the P0.1 fix depends on
+     * both being reached). */
+    if (!strcmp(name, "eglQueryString"))                   return (void *)eglQueryString;
+    if (!strcmp(name, "eglChooseConfig"))                  return (void *)eglChooseConfig;
+    if (!strcmp(name, "eglGetConfigAttrib"))               return (void *)eglGetConfigAttrib;
+    if (!strcmp(name, "eglInitialize"))                    return (void *)eglInitialize;
     return REAL(eglGetProcAddress)(name);
 }
 
 /* ---- pure forwarders (everything else GDK/epoxy resolves) ----------------- */
 
-EGLBoolean eglInitialize(EGLDisplay d, EGLint *a, EGLint *b){ return REAL(eglInitialize)(d,a,b); }
+EGLBoolean eglInitialize(EGLDisplay d, EGLint *a, EGLint *b)
+{
+    EGLBoolean r = REAL(eglInitialize)(d, a, b);
+    if (egl_debug())
+        fprintf(stderr, "iosc_egl: eglInitialize(%p) -> ok=%d ver=%d.%d err=0x%x\n",
+                d, (int)r, a ? *a : -1, b ? *b : -1, REAL(eglGetError)());
+    return r;
+}
 EGLBoolean eglTerminate(EGLDisplay d){ return REAL(eglTerminate)(d); }
 EGLint     eglGetError(void){ return REAL(eglGetError)(); }
-const char*eglQueryString(EGLDisplay d, EGLint n){ return REAL(eglQueryString)(d,n); }
+
+/* GDK-wayland decides whether it may use eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND)
+ * by first checking the EGL CLIENT extension string (eglQueryString(EGL_NO_DISPLAY,
+ * EGL_EXTENSIONS)) for EGL_KHR/EXT_platform_wayland. ANGLE has no Wayland platform so
+ * it never advertises those — GDK bails with "Failed to create EGL display" BEFORE it
+ * ever reaches our eglGetPlatformDisplay remap (which is why no shim display log
+ * appears). Inject the platform-wayland client extensions so GDK proceeds to
+ * eglGetPlatformDisplay(WAYLAND), which the shim then remaps to ANGLE Metal. */
+const char *eglQueryString(EGLDisplay d, EGLint n)
+{
+    const char *real = REAL(eglQueryString)(d, n);
+    if (d == EGL_NO_DISPLAY && n == EGL_EXTENSIONS) {
+        static char buf[1024];
+        const char *inject = "EGL_EXT_platform_base EGL_EXT_platform_wayland "
+                             "EGL_KHR_platform_wayland ";
+        snprintf(buf, sizeof(buf), "%s%s", inject, real ? real : "");
+        if (egl_debug())
+            fprintf(stderr, "iosc_egl: client EGL_EXTENSIONS (+platform_wayland): %s\n", buf);
+        return buf;
+    }
+    return real;
+}
 EGLBoolean eglGetConfigs(EGLDisplay d, EGLConfig *c, EGLint n, EGLint *m){ return REAL(eglGetConfigs)(d,c,n,m); }
 
 /* GDK's GskNglRenderer selects an EGL config for an on-screen window, so it filters
@@ -371,13 +426,6 @@ EGLBoolean eglGetConfigs(EGLDisplay d, EGLConfig *c, EGLint n, EGLint *m){ retur
  * window-capable ES3 config. Set IOSC_EGL_DEBUG=1 to log what GDK asks for and how
  * many configs match (the diagnostic for the on-device config-search loop). */
 #define EGL_ES3_BIT 0x0040  /* EGL_OPENGL_ES3_BIT_KHR */
-
-static int egl_debug(void)
-{
-    static int v = -1;
-    if (v < 0) v = getenv("IOSC_EGL_DEBUG") ? 1 : 0;
-    return v;
-}
 
 EGLBoolean eglChooseConfig(EGLDisplay d, const EGLint *a, EGLConfig *c, EGLint n, EGLint *m)
 {
