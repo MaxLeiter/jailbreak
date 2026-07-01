@@ -1,0 +1,13 @@
+Package: kf6-crash
+Version: @DEB_KCRASH_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-coreaddons
+Description: KCrash for the Xios desktop
+ Crash interception and backtrace generation.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

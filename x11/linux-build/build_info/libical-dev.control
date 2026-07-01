@@ -1,0 +1,11 @@
+Package: libical-dev
+Version: @DEB_LIBICAL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://libical.github.io/libical/
+Depends: libical3 (= @DEB_LIBICAL_V@)
+Description: iCalendar parser library - development files
+ Headers, pkg-config metadata and CMake configs for building against libical
+ and libical-glib (including on-device introspection/typelib generation).

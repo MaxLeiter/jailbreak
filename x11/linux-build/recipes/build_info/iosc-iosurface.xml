@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="iosc_iosurface">
+  <copyright>
+    Copyright (c) 2026 Max Leiter. MIT.
+  </copyright>
+
+  <description summary="zero-copy IOSurface buffers for the iosc compositor">
+    iOS has no DRM/dma-buf, and a mach send right cannot traverse the Wayland
+    socket's SCM_RIGHTS fd-passing. So instead of zwp_linux_dmabuf_v1, a client
+    that renders on the GPU (via ANGLE's EGL_ANGLE_iosurface_client_buffer) shares
+    its rendered IOSurface with the compositor out-of-band: it calls
+    IOSurfaceCreateMachPort() to get a port name in its own task, then names that
+    port (plus geometry) in create_buffer. The compositor reaches into the client's
+    task (task_for_pid + mach_port_extract_right, keyed by the Wayland socket's peer
+    pid) and IOSurfaceLookupFromMachPort()s the surface — the same rendezvous the
+    Xios DDX uses for the app hand-off, run in reverse. This is the Owl
+    zowl_iosurface_v1 shape, adapted to our existing IOSurface plumbing.
+  </description>
+
+  <interface name="iosc_iosurface" version="1">
+    <description summary="factory for IOSurface-backed wl_buffers"/>
+
+    <enum name="error">
+      <entry name="import_failed" value="0"
+             summary="the named mach port could not be imported as an IOSurface"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the factory"/>
+    </request>
+
+    <request name="create_buffer">
+      <description summary="wrap a client IOSurface as a wl_buffer">
+        Create a wl_buffer from an IOSurface the client has rendered into. The
+        compositor imports the surface named by mach_port_name (an
+        IOSurfaceCreateMachPort() name in THIS client's IPC space) by reaching into
+        the client's task. width/height/format are advisory; the compositor trusts
+        the imported surface's own geometry. format is a 32-bit fourcc (0 = BGRA8,
+        the only format supported in M1). If the import fails the buffer is created
+        but immediately posts iosc_iosurface.error.import_failed.
+      </description>
+      <arg name="id" type="new_id" interface="wl_buffer"/>
+      <arg name="mach_port_name" type="uint"
+           summary="IOSurfaceCreateMachPort() name in the client's task"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="format" type="uint" summary="fourcc; 0 = BGRA8"/>
+    </request>
+  </interface>
+</protocol>

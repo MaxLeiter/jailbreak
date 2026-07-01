@@ -4,9 +4,9 @@
  * meta-clutter-backend-ios.c — the ClutterBackend for MetaBackendIOS.
  *
  * A near-copy of meta-clutter-backend-native.c: get_renderer from MetaRendererIOS,
- * get_default_seat from the MetaBackend (MetaSeatIOS), and create_stage from the generic
- * MetaStageImpl (no native/KMS stage needed — the renderer already targets the output
- * IOSurface). is_display_server is TRUE (we are a Wayland compositor). GPL-2.0+.
+ * get_default_seat from the MetaBackend (MetaSeatIOS), and create_stage returns MetaStageIOS
+ * (the ClutterStageWindow bridged to MetaRendererIOS — the base MetaStageImpl is abstract in
+ * practice, leaving get_geometry/get_views NULL). is_display_server is TRUE (Wayland). GPL-2.0+.
  */
 
 #include "config.h"
@@ -15,6 +15,7 @@
 
 #include <glib-object.h>
 
+#include "backends/ios/meta-stage-ios.h"
 #include "backends/meta-backend-private.h"
 #include "backends/meta-renderer.h"
 #include "backends/meta-stage-impl-private.h"
@@ -48,7 +49,10 @@ meta_clutter_backend_ios_create_stage (ClutterBackend  *clutter_backend,
 {
   MetaClutterBackendIOS *self = META_CLUTTER_BACKEND_IOS (clutter_backend);
 
-  return g_object_new (META_TYPE_STAGE_IMPL,
+  /* MetaStageIOS, not the base MetaStageImpl: the base leaves get_geometry/get_views/
+   * prepare_frame/finish_frame NULL (every real backend subclasses it), which crashed at
+   * stage realize. MetaStageIOS supplies them, bridged to MetaRendererIOS. */
+  return g_object_new (META_TYPE_STAGE_IOS,
                        "backend", self->backend,
                        "wrapper", wrapper,
                        NULL);

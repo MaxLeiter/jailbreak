@@ -41,6 +41,46 @@ int xios_server_start(const char *sock_path, const char *json_path,
  * client never stalls the X server. */
 void xios_notify_dirty(void);
 
+/* ---- typed app-socket framing (present / cursor / native envelope) ---------
+ * The classic ddx protocol (xios_hello -> xios_reply -> a stream of bare
+ * XIOS_DIRTY bytes) stays BYTE-IDENTICAL for existing clients. A client that
+ * sets XIOS_HELLO_TYPED in xios_hello.reserved instead gets a stream of typed
+ * 32-byte records after the same xios_reply handshake, so the compositor can
+ * multiplex DIRTY + CURSOR (and later an in-band HELLO + the native per-window
+ * lifecycle) over one connection. This is the shared envelope the cursor-overlay,
+ * the xios.json->in-band-hello refactor, and the native-iPadOS flavor all use. */
+#define XIOS_HELLO_TYPED 0x54595031u   /* 'TYP1' in xios_hello.reserved => typed stream */
+#define XIOS_MSG_MAGIC   0x584D5331u   /* 'XMS1' per-record frame sync */
+enum {
+    XIOS_MSG_HELLO  = 0x01,  /* compositor->app: a=w b=h c=stride d=format; payload=compositor-id */
+    XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b,c,d = damage x,y,w,h (all 0 = whole); window_id */
+    XIOS_MSG_CURSOR = 0x03,  /* compositor->app: a=x b=y c=shape_id d=flags(bit0 visible) */
+    /* 0x04-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
+};
+typedef struct {
+    uint32_t magic;      /* XIOS_MSG_MAGIC */
+    uint32_t type;       /* XIOS_MSG_* */
+    uint32_t window_id;  /* per-window (native); 0 = the single/default surface */
+    uint32_t length;     /* payload bytes after the header (0 if none) */
+    int32_t  a, b, c, d;
+} xios_msg;              /* 32 bytes, little-endian; optional length-byte payload follows */
+
+/* Optional CURSOR payload (when the compositor wants a SPECIFIC bitmap drawn, e.g.
+ * a client-supplied cursor surface): this header then w*h*4 premultiplied BGRA.
+ * When the CURSOR record has length==0 the app draws from shape_id instead. */
+typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
+
+/* Send a CURSOR record (pointer position + wp_cursor_shape id, shape_id 0 = hidden)
+ * to every TYPED client. No-op for classic clients / when none are attached. Lets
+ * a present-side cursor overlay in the app move the pointer with ZERO compositor
+ * recomposite. Non-blocking, same never-stall posture as xios_notify_dirty. */
+void xios_notify_cursor(int x, int y, int visible, int shape_id);
+
+/* True if at least one connected client negotiated the typed stream (so the
+ * compositor knows the app will draw its own cursor overlay and can stop
+ * compositing the cursor into the output). */
+int xios_have_typed_client(void);
+
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);
 

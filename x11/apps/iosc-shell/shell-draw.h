@@ -25,6 +25,28 @@
 #include <dirent.h>
 #include <sys/mman.h>
 
+/* An anonymous, unlinked, sized fd for a wl_shm pool (shared by the bitmap
+ * canvas below AND ioscpanel's cairo-backed buffer). Kept outside SD_NO_DRAW so
+ * the cairo panel can reuse it without pulling in the bitmap renderer. */
+static int sd_create_anon_fd(size_t size)
+{
+    static const char *dirs[] = { "/var/jb/tmp", "/tmp" };
+    for (size_t i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
+        char tmpl[64];
+        snprintf(tmpl, sizeof tmpl, "%s/ioscshell-XXXXXX", dirs[i]);
+        int fd = mkstemp(tmpl);
+        if (fd < 0) continue;
+        unlink(tmpl);
+        if (ftruncate(fd, (off_t)size) < 0) { close(fd); continue; }
+        return fd;
+    }
+    return -1;
+}
+
+/* Everything from here to the matching #endif is the legacy 5x7-bitmap software
+ * renderer, still used by ioscoverview. ioscpanel now draws with cairo/pango
+ * (panel-render.h) and defines SD_NO_DRAW to skip this block. */
+#ifndef SD_NO_DRAW
 /* ------------------------------------------------------------- 5x7 font ---
  * Column-major, 5 columns/glyph, LSB = top row. Digits, ':', space, A-Z, and a
  * few punctuation; lowercase folds to uppercase at draw time. */
@@ -69,21 +91,6 @@ struct shell_canvas {
     int bw, bh;          /* physical buffer dims (logical * scale) */
     int scale;           /* logical -> physical */
 };
-
-static int sd_create_anon_fd(size_t size)
-{
-    static const char *dirs[] = { "/var/jb/tmp", "/tmp" };
-    for (size_t i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
-        char tmpl[64];
-        snprintf(tmpl, sizeof tmpl, "%s/ioscshell-XXXXXX", dirs[i]);
-        int fd = mkstemp(tmpl);
-        if (fd < 0) continue;
-        unlink(tmpl);
-        if (ftruncate(fd, (off_t)size) < 0) { close(fd); continue; }
-        return fd;
-    }
-    return -1;
-}
 
 /* Allocate a fresh wl_shm buffer sized logical_w*logical_h*scale; fills *cv with
  * the mmap'd pixels. Returns the wl_buffer (attach it, destroy on release). */
@@ -169,11 +176,13 @@ static void sd_draw_text_centered(struct shell_canvas *cv, const char *s,
     sd_draw_text(cv, s, x, y, c);
 }
 
+#endif /* SD_NO_DRAW — end of the legacy bitmap renderer */
+
 /* ------------------------------------------------------- .desktop scan ---- */
 
 #define SD_APPS_DIR "/var/jb/usr/share/applications"
 
-struct sd_app { char name[64]; char exec[256]; };
+struct sd_app { char name[64]; char exec[256]; char icon[128]; };
 
 static void sd_strip_field_codes(char *exec)
 {
@@ -198,13 +207,14 @@ static int sd_scan_apps(struct sd_app *apps, int max)
         if (len < 9 || strcmp(e->d_name + len - 8, ".desktop")) continue;
         char path[512]; snprintf(path, sizeof path, "%s/%s", SD_APPS_DIR, e->d_name);
         FILE *f = fopen(path, "r"); if (!f) continue;
-        char line[512], name[64] = {0}, exec[256] = {0};
+        char line[512], name[64] = {0}, exec[256] = {0}, icon[128] = {0};
         int nodisplay = 0, in_entry = 0;
         while (fgets(line, sizeof line, f)) {
             if (line[0] == '[') { in_entry = !strncmp(line, "[Desktop Entry]", 15); continue; }
             if (!in_entry) continue;
             if (!strncmp(line, "Name=", 5) && !name[0]) sscanf(line + 5, "%63[^\n]", name);
             else if (!strncmp(line, "Exec=", 5) && !exec[0]) sscanf(line + 5, "%255[^\n]", exec);
+            else if (!strncmp(line, "Icon=", 5) && !icon[0]) sscanf(line + 5, "%127[^\n]", icon);
             else if (!strncmp(line, "NoDisplay=true", 14)) nodisplay = 1;
         }
         fclose(f);
@@ -213,6 +223,7 @@ static int sd_scan_apps(struct sd_app *apps, int max)
         if (!name[0]) snprintf(name, sizeof name, "%.*s", (int)(len-8), e->d_name);
         snprintf(apps[n].name, 64, "%s", name);
         snprintf(apps[n].exec, 256, "%s", exec);
+        snprintf(apps[n].icon, 128, "%s", icon);
         n++;
     }
     closedir(d);

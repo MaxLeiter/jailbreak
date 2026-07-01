@@ -1,0 +1,11 @@
+Package: kf6-completion-dev
+Version: @DEB_KCOMPLETION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-completion (= @DEB_KCOMPLETION_V@), extra-cmake-modules, qt6-base-dev, kf6-codecs-dev, kf6-config-dev, kf6-widgetsaddons-dev
+Description: Development files for KCompletion
+ Headers and CMake package files for KCompletion. Needed to cross-build the
+ KDE components that depend on it.

@@ -1,0 +1,11 @@
+Package: kf6-textwidgets-dev
+Version: @DEB_KTEXTWIDGETS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-textwidgets (= @DEB_KTEXTWIDGETS_V@), extra-cmake-modules, qt6-base-dev, kf6-completion-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-i18n-dev, kf6-sonnet-dev, kf6-widgetsaddons-dev
+Description: Development files for KTextWidgets
+ Headers and CMake package files for KTextWidgets. Needed to cross-build the
+ KDE components that depend on it.

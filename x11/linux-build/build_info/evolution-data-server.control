@@ -1,0 +1,15 @@
+Package: evolution-data-server
+Version: @DEB_EDS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/evolution-data-server
+Depends: libglib2.0-0, libical3, libsoup-3.0-0, libsecret-1-0, libjson-glib-1.0-0, libsqlite3-1, libxml2, libicu74, libiconv, dbus
+Description: evolution database backend server
+ Calendar, task and addressbook backend for GNOME: the client libraries
+ (libedataserver, libecal, libebook) plus the D-Bus source registry and
+ calendar/addressbook factories. Built for the Xios desktop so gnome-shell's
+ calendar works; SMIME, Kerberos, LDAP, weather calendars, online accounts
+ and the GTK prompt UIs are disabled in this build. Run glib-compile-schemas
+ once after install (standard Xios desktop step).

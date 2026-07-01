@@ -1,0 +1,13 @@
+Package: libical3
+Version: @DEB_LIBICAL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://libical.github.io/libical/
+Depends: libglib2.0-0, libxml2, libicu74
+Description: iCalendar parser library - runtime
+ libical parses, generates and operates on the iCalendar formats (RFC 5545
+ and friends). This package bundles the libical, libicalss, libicalvcal and
+ libical-glib shared libraries; evolution-data-server is the main consumer.
+ Timezone rules come from the system zoneinfo database.

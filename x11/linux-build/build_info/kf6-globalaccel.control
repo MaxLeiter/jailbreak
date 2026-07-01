@@ -1,0 +1,13 @@
+Package: kf6-globalaccel
+Version: @DEB_KGLOBALACCEL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base
+Description: KGlobalAccel for the Xios desktop
+ Global keyboard shortcut client library.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

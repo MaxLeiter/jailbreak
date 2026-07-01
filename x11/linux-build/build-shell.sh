@@ -82,6 +82,26 @@ fi
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
+# WITH_EDS=1 — the STAGED calendar re-enable (lead-sequenced: run only after the EDS-out
+# shell has booted on device). Prereq: build-eds.sh has run on this volume, so the
+# evolution-data-server .build_complete exists. This path (a) wipes the gnome-shell build
+# tree — the EDS-ectomy sed-DELETED lines from the extracted source and EXTRACT_TAR no-ops,
+# so pristine source must re-extract; (b) adds the EDS Depends + fixes the deb description;
+# (c) passes GNOME_SHELL_WITH_EDS=1 through to gnome-shell.mk (which skips the ectomy in
+# gnome-shell-ios-fixes.sh, adds the make prereq, and bumps the deb to 46.0-2).
+WITH_EDS="${WITH_EDS:-0}"
+if [ "$WITH_EDS" = 1 ]; then
+  BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
+  BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
+  echo "==> WITH_EDS=1: wiping gnome-shell build tree for a pristine re-extract"
+  rm -rf "$BW/gnome-shell" "$BS/gnome-shell"
+  grep -q 'evolution-data-server' build_info/gnome-shell.control || \
+    sed -i 's/^Depends: gjs, /Depends: gjs, evolution-data-server, /' build_info/gnome-shell.control
+  sed -i 's/(evolution-data-server) is disabled in this build/(evolution-data-server) is enabled in this build/' \
+    build_info/gnome-shell.control
+  COMMON="$COMMON GNOME_SHELL_WITH_EDS=1"
+fi
+
 # Dependency order per docs: the shell's C-link closure first, gnome-shell last.
 TARGETS="${TARGETS:-\
   startup-notification-package \

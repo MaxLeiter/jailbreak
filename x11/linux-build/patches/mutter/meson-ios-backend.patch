@@ -1,0 +1,126 @@
+# meson-ios-backend.patch — src/meson.build additions to build MetaBackendIOS + the
+# IOSurface wl_buffer type into libmutter (mutter 46, wayland=true / native_backend=false).
+#
+# Adds, in the UNCONDITIONAL (always-compiled) source list unless noted:
+#   1. the 8 backends/ios/*.c backend units (MetaBackendIOS + clutter-backend, monitor
+#      manager, renderer, seat, keymap, virtual-input-device, input) — base mutter_sources
+#      list (NOT under `if have_native_backend`, which is off here).
+#   2. backends/ios/meta-wayland-iosurface.c — the IOSurface wl_buffer type — added inside
+#      the existing `if have_wayland` mutter_sources block (it needs wl_resource + the
+#      generated iosc_iosurface protocol; wayland IS on in this build).
+#   3. the iosc_iosurface protocol server-header + private-code codegen, modelled on the
+#      tree's existing PRIVATE protocols (gtk-shell / mutter-x11-interop): one line added to
+#      the `wayland_protocols` list. wayland-scanner emits <base>-server-protocol.h and
+#      <base>-protocol.c into <builddir>/src/; the .c is compiled into libmutter via the
+#      existing wayland_protocol_sources -> mutter_built_sources plumbing.
+#   4. libxios_glue.a link + its include dir, wrapped in a declare_dependency appended to
+#      mutter_lib_deps (which flows through mutter_deps into libmutter's dependencies).
+#
+# ---------------------------------------------------------------------------------------
+# RECIPE-LEVEL PREREQUISITES (mutter.mk must stage these BEFORE `meson setup`; the patch
+# only references them):
+#   * mkdir  $M/src/backends/ios/
+#   * copy the 8 host meta-*-ios.{c,h} (meta-backend-ios, meta-clutter-backend-ios,
+#     meta-monitor-manager-ios, meta-renderer-ios, meta-seat-ios, meta-keymap-ios,
+#     meta-virtual-input-device-ios, meta-input-ios) into $M/src/backends/ios/
+#   * copy meta-wayland-iosurface.{c,h} into $M/src/backends/ios/   <-- NOTE: backends/ios,
+#     NOT src/wayland/. The provided .c does `#include "backends/ios/meta-wayland-iosurface.h"`
+#     and `#include "backends/ios/xios-glue-stub.h"`, so both live under backends/ios/.
+#   * copy xios-glue-stub.h into $M/src/backends/ios/  (the ios .c files include ONLY this
+#     stub header for the glue API; the real glue headers are not #included by the mutter side)
+#   * copy iosc-iosurface.xml -> $M/src/wayland/protocol/iosc-iosurface.xml  (the tree's
+#     PRIVATE-protocol convention: input path is 'wayland/protocol/<name>.xml')
+#   * stage libxios_glue.a  -> $M/src/backends/ios/libxios_glue.a
+#   * stage xios-glue-include/ (xios_egl.h, xios_input_socket.h, xios_surface.h)
+#             -> $M/src/backends/ios/xios-glue-include/
+#
+# ONE REQUIRED SOURCE FIX (not a meson change — flag for the .c owner):
+#   meta-wayland-iosurface.c currently does
+#       #include "backends/ios/iosc-iosurface-server-protocol.h"
+#   but wayland-scanner (like EVERY other mutter wayland file — see meta-wayland-gtk-shell.c
+#   `#include "gtk-shell-server-protocol.h"`) emits the header BARE into <builddir>/src/.
+#   Change that line to:
+#       #include "iosc-iosurface-server-protocol.h"
+#   (Alternative, if you refuse to touch the .c: pre-run wayland-scanner server-header at
+#   stage time into $M/src/backends/ios/iosc-iosurface-server-protocol.h so the prefixed
+#   include resolves against the source tree; you would then also drop item 3 from the list
+#   and instead add a standalone custom_target for just the private-code .c.)
+# ---------------------------------------------------------------------------------------
+
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -12,6 +12,25 @@ mutter_lib_deps = [
+   m_dep,
+ ]
+ 
++# --- Xios/iOS glue (libxios_glue) --------------------------------------------------------
++# The shared iOS/GPU glue that MetaBackendIOS + the IOSurface wl_buffer type link against.
++# The ios backend .c files declare the API via backends/ios/xios-glue-stub.h and resolve the
++# xios_* symbols out of this static archive at link time. Staged by mutter.mk into
++# src/backends/ios/ (libxios_glue.a + xios-glue-include/).
++xios_glue_dep = declare_dependency(
++  dependencies: cc.find_library('xios_glue',
++    dirs: [meson.current_source_dir() / 'backends' / 'ios'],
++    static: true,
++    required: true,
++  ),
++  include_directories: include_directories('backends/ios/xios-glue-include'),
++  # libxios_glue.a (static) references the IOSurface + CoreFoundation frameworks (xios_surface.c:
++  # IOSurfaceCreate/LookupFromMachPort, kIOSurface*, kCFTypeDictionary*). They resolve at THIS
++  # final libmutter link (matching iosc's own -framework CoreFoundation -framework IOSurface).
++  link_args: ['-framework', 'CoreFoundation', '-framework', 'IOSurface'],
++)
++mutter_lib_deps += [ xios_glue_dep ]
++
+ mutter_pkg_deps = [
+   cairo_dep,
+   gio_unix_dep,
+@@ -190,6 +205,27 @@ mutter_sources = [
+   'backends/edid.h',
+   'backends/edid-parse.c',
+   'backends/gsm-inhibitor-flag.h',
++  # --- MetaBackendIOS: the wayland-only, non-native iOS backend (single IOSurface output
++  #     + ANGLE EGL renderer + AF_UNIX input pump). Compiled UNCONDITIONALLY because
++  #     native_backend is off in this build; none of these units need the native stack. ---
++  'backends/ios/meta-backend-ios.c',
++  'backends/ios/meta-backend-ios.h',
++  'backends/ios/meta-clutter-backend-ios.c',
++  'backends/ios/meta-clutter-backend-ios.h',
++  'backends/ios/meta-stage-ios.c',
++  'backends/ios/meta-stage-ios.h',
++  'backends/ios/meta-monitor-manager-ios.c',
++  'backends/ios/meta-monitor-manager-ios.h',
++  'backends/ios/meta-renderer-ios.c',
++  'backends/ios/meta-renderer-ios.h',
++  'backends/ios/meta-seat-ios.c',
++  'backends/ios/meta-seat-ios.h',
++  'backends/ios/meta-keymap-ios.c',
++  'backends/ios/meta-keymap-ios.h',
++  'backends/ios/meta-virtual-input-device-ios.c',
++  'backends/ios/meta-virtual-input-device-ios.h',
++  'backends/ios/meta-input-ios.c',
++  'backends/ios/meta-input-ios.h',
+   'backends/meta-backend.c',
+   'backends/meta-backend-private.h',
+   'backends/meta-barrier.c',
+@@ -610,6 +644,11 @@ if have_wayland
+     'wayland/meta-wayland-data-source-primary.h',
+     'wayland/meta-wayland-dma-buf.c',
+     'wayland/meta-wayland-dma-buf.h',
++    # IOSurface wl_buffer type (zero-copy client buffer -> IOSurface -> MetaMultiTexture).
++    # Lives under backends/ios/ (see its #includes) but is wayland-only, so it goes in the
++    # have_wayland source block, next to the dma-buf buffer type it mirrors.
++    'backends/ios/meta-wayland-iosurface.c',
++    'backends/ios/meta-wayland-iosurface.h',
+     'wayland/meta-wayland-dnd-surface.c',
+     'wayland/meta-wayland-dnd-surface.h',
+     'wayland/meta-wayland-filter-manager.c',
+@@ -1059,6 +1098,7 @@ if have_wayland
+   wayland_protocols = [
+     ['fractional-scale', 'staging', 'v1', ],
+     ['gtk-shell', 'private', ],
++    ['iosc-iosurface', 'private', ],
+     ['idle-inhibit', 'unstable', 'v1', ],
+     ['keyboard-shortcuts-inhibit', 'unstable', 'v1', ],
+     ['linux-dmabuf', 'stable', 'v1', ],

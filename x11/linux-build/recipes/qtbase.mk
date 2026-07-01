@@ -1,0 +1,187 @@
+ifneq ($(PROCURSUS),1)
+$(error Use the main Makefile)
+endif
+
+# qtbase.mk — cross-build Qt 6 qtbase for rootless iOS, OFF-DEVICE (the KDE Plasma Mobile track's
+# foundation; parallels build-mutter.sh for GNOME). This is deliberately Qt's DARWIN (macOS-style)
+# platform, NOT the iOS/UIKit platform:
+#   - Qt's official iOS port is STATIC + UIKit (QIOSIntegration). We want DYLIBS + a headless/Wayland
+#     QPA so Plasma clients render through iosc/KWin, so we build the macx-clang platform (shared libs
+#     OK, no forced UIKit) against the iPhoneOS SDK via the Procursus cctools toolchain — exactly the
+#     Procursus premise (build "macOS-ish" software for the iOS ABI).
+#   - FEATURE_framework=OFF: Qt on Apple defaults to .framework bundles; we need plain .dylib in
+#     /var/jb/usr/lib (same reason ANGLE ships dylibs not frameworks). MUST be off.
+#   - The cocoa platform plugin needs AppKit (absent on iOS) -> not built; default QPA = offscreen.
+#   - GL/ICU/OpenSSL OFF for the first build (offscreen needs none; GL comes later via ANGLE, the
+#     GTK4/Cogl path). Enable incrementally.
+# HOST tools: cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the IDENTICAL version
+# via QT_HOST_PATH. Target is 6.6.3 (Plasma 6.0/6.1 era), which no Debian release ships, so
+# build-qt.sh bootstraps a native host qtbase 6.6.3 from the same tarball into build_tools/ (one-time,
+# persisted in the volume).
+
+SUBPROJECTS    += qtbase
+QTBASE_VERSION := 6.6.3
+QT_MINOR       := 6.6
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)
+
+# Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
+QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
+QT_HOST_CMAKE_DIR := $(QT_HOST_PATH)/lib/cmake
+
+qtbase-setup: setup
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.qt.io/archive/qt/$(QT_MINOR)/$(QTBASE_VERSION)/submodules/qtbase-everywhere-src-$(QTBASE_VERSION).tar.xz)
+	$(call EXTRACT_TAR,qtbase-everywhere-src-$(QTBASE_VERSION).tar.xz,qtbase-everywhere-src-$(QTBASE_VERSION),qtbase)
+	# --- iOS/Darwin portability patches (accreting; the "why" documented above) ---
+	# 1) Don't add the cocoa platform plugin (needs AppKit, absent on iOS). Guard the add_subdirectory.
+	if grep -q "add_subdirectory(cocoa)" $(BUILD_WORK)/qtbase/src/plugins/platforms/CMakeLists.txt; then \
+		sed -i 's/add_subdirectory(cocoa)/# add_subdirectory(cocoa)  # iOS: no AppKit/' \
+			$(BUILD_WORK)/qtbase/src/plugins/platforms/CMakeLists.txt ; \
+	fi
+	# 2) THE core Darwin-vs-iOS fix. CMAKE_SYSTEM_NAME=Darwin makes Qt's cmake set MACOS=1 (see
+	#    cmake/QtPlatformSupport.cmake: MACOS = APPLE AND NOT UIKIT; UIKIT needs CMAKE_SYSTEM_NAME
+	#    =="iOS", which Procursus can't use — its toolchain is osxcross-style Darwin). So Qt tries to
+	#    LINK the macOS-only frameworks (AppKit/Carbon/DiskArbitration/ApplicationServices) + compile
+	#    macOS-desktop-only sources (qcocoanativeinterface, qmacgesturerecognizer). But the COMPILER
+	#    already defines TARGET_OS_IPHONE (iPhoneOS sysroot + -miphoneos-version-min) so every .cpp/.mm
+	#    compiles its Q_OS_IOS path. The mismatch is ONLY in the `CONDITION MACOS` cmake blocks. Disable
+	#    them across ALL of src/ (their CONDITION APPLE siblings — CoreFoundation/CoreGraphics/CoreText/
+	#    Foundation, all on iOS — stay, which is exactly the iOS framework set). `MACOS([^X])` keeps
+	#    `CONDITION NOT MACOS`/`CONDITION APPLE`/`CONDITION UIKIT` untouched. Left-to-right cmake
+	#    condition evaluation makes `MACOS AND FALSE OR X` == X, so mixed conditions stay correct.
+	find $(BUILD_WORK)/qtbase/src -name CMakeLists.txt -exec \
+		sed -i -E 's/CONDITION MACOS([^X])/CONDITION MACOS AND FALSE\1/g; s/CONDITION MACOS$$/CONDITION MACOS AND FALSE/' {} +
+	# 3) libiosexec macro vs C++ members. build_base's staged stdlib.h/unistd.h force-include
+	#    libiosexec.h, whose `#define system ie_system` mangles C++ members named system()
+	#    (QRandomGenerator64::system, QLocale::system, ...). Force-include this fixup in every
+	#    C++/ObjC++ TU (see the extra CMAKE_(OBJ)CXX_FLAGS below): C TUs keep the full interposition
+	#    (exec*/posix_spawn/system -> ie_*, -liosexec still links); C++ TUs keep the exec* reroute
+	#    (QProcess wants it) but drop the `system` macro. A C++ call to ::system() would then hit the
+	#    __IOS_PROHIBITED libc declaration and fail loudly at compile time — none in these modules.
+	printf '%s\n' \
+		'#include <stdlib.h>' \
+		'#include <unistd.h>' \
+		'#ifdef __cplusplus' \
+		'#undef system' \
+		'#endif' > $(BUILD_WORK)/qtbase/qt-ios-iosexec-fixup.h
+	# 4) drop the SDK-shadowing Apple system headers. Procursus `setup` (our prerequisite) RE-STAGES
+	#    private copies into build_base on every run; the -isystem build_base include path puts them
+	#    BEFORE the 16.4 SDK's:
+	#      - xpc/: iOS-17-era (xpc_session API) — any Foundation.h include (-> NSXPCConnection.h ->
+	#        <xpc/xpc.h>) dies on OS_OBJECT_DECL_SENDABLE_CLASS.
+	#      - os/log.h: a trimmed private copy with NO os_log_type_enabled — qcore_mac.mm dies.
+	#    Must happen HERE (after `setup`), not in build-qt.sh — a driver-level parking gets undone by
+	#    the next make. Nothing in the Qt stack needs the staged copies.
+	rm -rf $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/xpc
+	rm -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/os/log.h
+
+ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
+qtbase:
+	@echo "Using previously built qtbase."
+else
+# NOTE: base libs (zlib/libpng/freetype/fontconfig/harfbuzz/pcre2) are already staged in build_base
+# (warm volume) — do NOT list them as prereqs (would trigger unpatched rebuilds, per mutter.mk).
+# cmake finds them via CMAKE_FIND_ROOT_PATH=build_base. double-conversion/md4c/b2 are bundled by Qt.
+# INSTALL_* dirs follow Debian's layout (plugins/qml/mkspecs under lib/qt6, data under share/qt6) so
+# packaging and later Qt/KF6 modules have one canonical archdatadir.
+# CMAKE_OSX_DEPLOYMENT_TARGET is defined-but-EMPTY on purpose: Qt would otherwise default it to its
+# macOS minimum and cmake would emit -mmacosx-version-min, which clang rejects next to the
+# -miphoneos-version-min already in $(CFLAGS). Defined-empty skips both.
+# QT_NO_APPLE_SDK_AND_XCODE_CHECK + the two QT_INTERNAL_*_VERSION cache seeds keep Qt's Apple SDK
+# probing from exec'ing the hardcoded /usr/bin/xcrun (absent on the Linux host; the sysroot is
+# iPhoneOS 16.4, so seed that).
+# CMAKE_OBJC(XX)_FLAGS: qtbase enables the OBJC/OBJCXX languages on Apple and DEFAULT_CMAKE_FLAGS
+# only covers C/CXX — without these the .mm/PCH compiles miss the libc++ -isystem paths and
+# -stdlib=libc++ ('type_traits' not found).
+# No `rm -rf build`: iterating on this recipe relies on incremental cmake/ninja reruns. Wipe the
+# build dir manually when the toolchain or cache-poisoning flags change.
+qtbase: qtbase-setup
+	mkdir -p $(BUILD_WORK)/qtbase/build
+	cd $(BUILD_WORK)/qtbase/build && cmake .. \
+		-G Ninja \
+		$(DEFAULT_CMAKE_FLAGS) \
+		-DCMAKE_OSX_DEPLOYMENT_TARGET= \
+		-DQT_NO_APPLE_SDK_AND_XCODE_CHECK=ON \
+		-DQT_INTERNAL_APPLE_SDK_VERSION=16.4 \
+		-DQT_INTERNAL_XCODE_VERSION=15.0 \
+		-DCMAKE_OBJC_FLAGS="$(CFLAGS)" \
+		-DCMAKE_CXX_FLAGS="$(CXXFLAGS) -include $(BUILD_WORK)/qtbase/qt-ios-iosexec-fixup.h" \
+		-DCMAKE_OBJCXX_FLAGS="$(CXXFLAGS) -include $(BUILD_WORK)/qtbase/qt-ios-iosexec-fixup.h" \
+		-DQT_HOST_PATH=$(QT_HOST_PATH) \
+		-DQT_HOST_PATH_CMAKE_DIR=$(QT_HOST_CMAKE_DIR) \
+		-DBUILD_SHARED_LIBS=ON \
+		-DFEATURE_framework=OFF \
+		-DFEATURE_shared=ON \
+		-DFEATURE_static=OFF \
+		-DFEATURE_rpath=OFF \
+		-DQT_BUILD_EXAMPLES=OFF \
+		-DQT_BUILD_TESTS=OFF \
+		-DQT_BUILD_BENCHMARKS=OFF \
+		-DFEATURE_gui=ON \
+		-DFEATURE_widgets=ON \
+		-DFEATURE_style_mac=OFF \
+		-DFEATURE_network=ON \
+		-DFEATURE_sql=OFF \
+		-DFEATURE_testlib=OFF \
+		-DFEATURE_printsupport=OFF \
+		-DFEATURE_opengl=OFF \
+		-DINPUT_opengl=no \
+		-DFEATURE_egl=OFF \
+		-DFEATURE_vulkan=OFF \
+		-DFEATURE_icu=OFF \
+		-DFEATURE_openssl=OFF \
+		-DINPUT_openssl=no \
+		-DFEATURE_dbus=OFF \
+		-DFEATURE_glib=OFF \
+		-DFEATURE_zstd=OFF \
+		-DFEATURE_brotli=OFF \
+		-DFEATURE_system_zlib=ON \
+		-DFEATURE_system_libpng=ON \
+		-DFEATURE_system_png=ON \
+		-DFEATURE_system_jpeg=ON \
+		-DFEATURE_system_freetype=ON \
+		-DFEATURE_fontconfig=ON \
+		-DFEATURE_system_harfbuzz=ON \
+		-DFEATURE_system_pcre2=ON \
+		-DFEATURE_system_doubleconversion=OFF \
+		-DINSTALL_ARCHDATADIR=lib/qt6 \
+		-DINSTALL_DATADIR=share/qt6 \
+		-DINSTALL_DOCDIR=share/qt6/doc \
+		-DINSTALL_MKSPECSDIR=lib/qt6/mkspecs \
+		-DINSTALL_PLUGINSDIR=lib/qt6/plugins \
+		-DINSTALL_QMLDIR=lib/qt6/qml \
+		-DINSTALL_LIBEXECDIR=lib/qt6/libexec \
+		-DQT_QPA_DEFAULT_PLATFORM=offscreen
+	+ninja -C $(BUILD_WORK)/qtbase/build
+	+DESTDIR="$(BUILD_STAGE)/qtbase" ninja -C $(BUILD_WORK)/qtbase/build install
+	$(call AFTER_BUILD,copy)
+endif
+
+qtbase-package: qtbase-stage
+	rm -rf $(BUILD_DIST)/qt6-base $(BUILD_DIST)/qt6-base-dev
+	mkdir -p $(BUILD_DIST)/qt6-base/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/qt6-base-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
+
+	# runtime: the Qt6 dylibs + the plugin dir + target libexec (if any)
+	cp -a $(BUILD_STAGE)/qtbase/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libQt6*.dylib \
+		$(BUILD_DIST)/qt6-base/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib 2>/dev/null || true
+	for d in lib/qt6/plugins lib/qt6/libexec; do \
+		if [ -d "$(BUILD_STAGE)/qtbase/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d" ]; then \
+			mkdir -p $(BUILD_DIST)/qt6-base/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$(dirname $$d); \
+			cp -a $(BUILD_STAGE)/qtbase/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d \
+				$(BUILD_DIST)/qt6-base/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d; fi; \
+	done
+
+	# dev: headers + cmake package files + .pc + mkspecs (needed to cross-build the rest of Qt/KF6)
+	for d in include lib/cmake lib/pkgconfig lib/metatypes lib/qt6/mkspecs lib/qt6/modules bin; do \
+		if [ -e "$(BUILD_STAGE)/qtbase/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d" ]; then \
+			mkdir -p $(BUILD_DIST)/qt6-base-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$(dirname $$d); \
+			cp -a $(BUILD_STAGE)/qtbase/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d \
+				$(BUILD_DIST)/qt6-base-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/$$d; fi; \
+	done
+
+	$(call SIGN,qt6-base,general.xml)
+	$(call PACK,qt6-base,DEB_QTBASE_V)
+	$(call PACK,qt6-base-dev,DEB_QTBASE_V)
+	rm -rf $(BUILD_DIST)/qt6-base $(BUILD_DIST)/qt6-base-dev
+
+.PHONY: qtbase qtbase-package

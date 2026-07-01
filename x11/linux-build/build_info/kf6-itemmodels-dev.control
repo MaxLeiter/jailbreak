@@ -1,0 +1,11 @@
+Package: kf6-itemmodels-dev
+Version: @DEB_KITEMMODELS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-itemmodels (= @DEB_KITEMMODELS_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for KItemModels
+ Headers and CMake package files for KItemModels. Needed to cross-build the
+ KDE components that depend on it.

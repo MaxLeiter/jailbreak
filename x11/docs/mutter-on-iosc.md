@@ -526,6 +526,92 @@ glue must produce an EGLImage from an IOSurface on ANGLE-Metal, which has no dir
 a wrapping `MTLTexture` + `EGL_ANGLE_metal_texture_client_buffer` (verify our ANGLE build exposes it;
 else the pbuffer+bind fallback stays entirely inside `libxios_glue`, mutter-side code unchanged).
 
+## build5: X11/xcb weak-link — the device-load fix (2026-06-30)
+
+The on-device backend smoke died at **dyld load**, before MetaBackendIOS ran: `libmutter-14.0.dylib`
+links the whole X11/xcb closure (`@rpath/libxcb-randr.0.dylib`, `libxcb-res.0.dylib`, `libX11-xcb.1`,
+`libX11.6`, …), and those libs do not exist on the iPad (Wayland-only, no XWayland).
+
+**Root cause (not the xkbcommon-x11 patch):** mutter 46 hardcodes `have_x11 = true` in `meson.build`
+("For now always require X11 support"). There is **no `x11` meson option** — only `xwayland` — so
+`-Dxwayland=false` does *not* turn off `have_x11`, and `have_x11` alone pulls the X11/xcb dep block
+into `libmutter`, `libmutter-cogl-14`, and `libmutter-mtk-14` (`src/meson.build` `if have_x11`, plus
+`mtk`/`cogl` linking `x11_dep`).
+
+**Fully dropping X11 is NOT a build-flag flip on mutter 46.** `core/frame.c` and `core/keybindings.c`
+are in the **always-compiled** base `mutter_sources` list and use X11 **unconditionally**
+(`#include <X11/Xatom.h>`, call `meta_x11_display_register_x_window` / `meta_x11_display_grab_keys`
+with no `HAVE_X11` guard; those symbols live only in `have_x11_client`-gated files). Building X11-off =
+backporting GNOME 47/48's "x11-optional" work across ~18 files — out of scope, and runtime-risky. That
+is exactly why upstream hardcodes it.
+
+**Fix: weak-link the dead X11/xcb load commands** (`tools/macho-weaken.py`, wired into
+`mutter.mk:mutter-package` before SIGN). It flips `LC_LOAD_DYLIB` → `LC_LOAD_WEAK_DYLIB` for the whole
+X/xcb set so dyld tolerates those libs being **absent** and binds their (never-called) symbols to 0;
+the X11 code is dead on iOS (Wayland + MetaBackendIOS, never MetaBackendX11). `libxkbcommon.0` stays
+**strong** (the Wayland keymap uses it for real). Byte-length-preserving; SIGN re-covers the edit
+(Procursus ldid → `flags=0x2(adhoc)`). We ship **zero** dead X11 debs and `libmutter-14-0`'s `Depends`
+gains no X11 entry. `MinimumOSVersion` (LC_BUILD_VERSION minos 16.0) is untouched.
+
+**Verification** (replaces the unreachable "`otool -L | grep xcb` is empty" — the compiled-in X11 code
+means the load commands must remain, just weak):
+`otool -l out/…/libmutter-14.0.dylib` shows all 16 X/xcb entries as `LC_LOAD_WEAK_DYLIB` and
+`libxkbcommon.0` as `LC_LOAD_DYLIB` (strong). Staged in `out/`: the weakened+resigned
+`libmutter-14-0_46.0` deb (16 weak in libmutter, 5 in cogl, 1 in mtk) + `out/mutter` resigned with
+`iosc-gl-ent.xml`. Reproducible: `build-mutter.sh` now mounts `tools/` and the recipe hard-errors if
+`macho-weaken.py` is absent.
+
+**The weaken must cover the whole RUNTIME CLOSURE, not just libmutter (2026-06-30).** On device,
+libmutter loaded, but dyld then failed one level deeper: `libxkbcommon-x11.0.dylib` (shipped in
+`libxkbcommon-dev`, present on device via the `enable-x11=true` build patch) STRONG-links
+`@rpath/libxcb-xkb.1.dylib`, which is **absent**. Weak-linking libmutter's *reference* to
+`libxkbcommon-x11` did nothing because that lib is **present** — dyld loads a present lib regardless of
+a weak reference, then processes *its* load commands. Key distinction: **weak-linking only helps when
+the target is absent.** A closure survey (`otool -L` every dylib in the `out/` mutter-track debs) showed
+the base X libs (`libX11.6`, `libxcb.1`, `libxcb-render.0`, `libXrender.1`, …) are **present** (cairo +
+gtk4 load fine on device and strong-link them); the only **absent** extension sublibs are
+`libxcb-randr.0` / `libxcb-res.0` (weakened inside libmutter) and `libxcb-xkb.1` (the sole remaining
+strong ref, inside `libxkbcommon-x11.0.dylib`). Fix: weaken `libxcb-xkb.1` **inside**
+`libxkbcommon-x11.0.dylib` and repack `libxkbcommon-dev` (kept `libxcb.1` + `libxkbcommon.0` strong —
+both present). Chosen over "don't ship libxkbcommon-x11" because the on-device typelib build needs it to
+link. Host tool for repacking any closure deb: `tools/weaken-deb.sh <deb> <absent-lib> …` (extract →
+macho-weaken → `codesign -f -s -` → regenerate md5sums/Installed-Size → repack root:root; idempotent).
+Final closure check: no dylib in `out/` STRONG-links any of `libxcb-randr|res|xkb`, `libxcb-shape`,
+`libX11-xcb`. NOTE: `libxkbcommon-dev` is built by the Wayland-track recipe (not `mutter.mk`), so its
+weaken is NOT yet auto-wired — re-run `weaken-deb.sh out/libxkbcommon-dev_*.deb libxcb-xkb.1.dylib`
+after any libxkbcommon rebuild.
+
+**Weak-linking a lib is a TWO-STAGE edit on chained-fixups binaries — the load command alone is not
+enough (2026-06-30).** After the load-command weaken, the device got *past* the missing-library wall but
+died at the next dyld stage: `Symbol not found: _xcb_res_client_id_value_next` (from the absent
+`libxcb-res`). Root cause: `LC_LOAD_DYLIB`→`LC_LOAD_WEAK_DYLIB` makes the *library* optional, but the
+per-symbol IMPORTS from it are still regular (non-weak), and these dylibs use `LC_DYLD_CHAINED_FIXUPS`
+(verify: `otool -l | grep CHAINED`) — so dyld binds through the chained-fixups **imports table**, where
+each import has its own `weak_import` bit. dyld reaches the symbol-bind stage, the lib is gone, and a
+strong import has nowhere to resolve. `tools/macho-weaken.py` now does BOTH stages: after flipping the
+load command it sets `weak_import` on every chained-fixups import bound to a now-weak library (the bit
+dyld actually uses) AND `N_WEAK_REF` (n_desc 0x0040) on the matching `LC_SYMTAB` undefined symbols (so
+`nm -m` shows "weak external"). It weakens imports from ALL weak-linked libs, not just the absent ones —
+harmless for the present ones (a weak import from a present lib still binds normally), and it keeps the
+weak-lib invariant. Counts: libmutter 250 imports, cogl 34, mtk 5, libxkbcommon-x11 69; `libxkbcommon.0`
+imports (the live keymap path) stay STRONG because that lib's load command is strong. Verify:
+`python3 tools/… inspect` or `nm -m …dylib | grep -c 'weak external'`, and no undefined symbol from an
+absent lib should be plain "external". The two `out/` debs were re-staged with imports weakened (sigs
+`codesign --verify` OK, minos 16.0, md5sums regenerated).
+
+**PAST DYLD — next wall was a PACKAGING gap: mutter's GSettings schemas were dropped from the deb
+(2026-06-30).** With both weak stages done, `mutter --wayland` reached `main()` ("Running Mutter (using
+mutter 46.0) as a Wayland display server") then aborted: `GLib-GIO-ERROR: Settings schema
+'org.gnome.mutter' is not installed`. Cause: `mutter.mk:mutter-package` only copied `lib/` + dev headers
+and dropped mutter's whole `share/` tree — 104 files: the 2 schemas (`org.gnome.mutter{,.wayland}
+.gschema.xml`), the GConf convert file, 4 gnome-control-center keybinding lists, ~97 locale `.mo`. Fix:
+`mutter-package` now copies `share/{glib-2.0,GConf,gnome-control-center,locale}` (skips `man/` — the
+minos stamper double-zsts it into `mutter.1.zst.zst.zst`) and `build_info/libmutter-14-0.postinst` runs
+`glib-compile-schemas` on install (same as the libgtk-4-1 deb). The `out/libmutter-14-0` deb was host-
+repacked to include the tree + postinst (112 md5sums, weak-link work intact — verified). Loose schemas
+also staged at `out/mutter-schemas/` for a manual drop-in. Schemas are the first of several session
+data layers (expect `gsettings-desktop-schemas` next).
+
 ## Consolidated mutter-on-A10 device window (what to run, in order)
 
 One focused window covers both the typelib milestone and the Cogl de-risk:

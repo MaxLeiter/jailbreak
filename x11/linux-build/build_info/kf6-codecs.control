@@ -1,0 +1,13 @@
+Package: kf6-codecs
+Version: @DEB_KCODECS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base
+Description: KCodecs for the Xios desktop
+ Text encoding detection and translation collection.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

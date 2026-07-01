@@ -1,0 +1,13 @@
+Package: kf6-textwidgets
+Version: @DEB_KTEXTWIDGETS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-completion, kf6-config, kf6-configwidgets, kf6-i18n, kf6-sonnet, kf6-widgetsaddons
+Description: KTextWidgets for the Xios desktop
+ Text editing widgets.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

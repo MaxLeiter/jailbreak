@@ -20,10 +20,21 @@ GNOME-SHELL_MAJOR_V  := 46
 GNOME-SHELL_VERSION  := $(GNOME-SHELL_MAJOR_V).0
 DEB_GNOME-SHELL_V    ?= $(GNOME-SHELL_VERSION)
 
+# GNOME_SHELL_WITH_EDS=1 flips reality #1 below: keep EDS + calendar-server (ICU and
+# evolution-data-server are built now — recipes/evolution-data-server.mk). STAGED but not
+# the default: the EDS-out shell is mid-bring-up on device, so the lead sequences the flip.
+# Use via build-shell.sh WITH_EDS=1 — a rebuild MUST re-extract pristine source (the ectomy
+# deletes lines in-place and EXTRACT_TAR no-ops), which that driver path handles.
+GNOME_SHELL_WITH_EDS ?= 0
+ifeq ($(GNOME_SHELL_WITH_EDS),1)
+DEB_GNOME-SHELL_V    := $(GNOME-SHELL_VERSION)-2
+endif
+
 gnome-shell-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-shell/$(GNOME-SHELL_MAJOR_V)/gnome-shell-$(GNOME-SHELL_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-shell-$(GNOME-SHELL_VERSION).tar.xz,gnome-shell-$(GNOME-SHELL_VERSION),gnome-shell)
-	bash /work/recipes/gnome-shell-ios-fixes.sh $(BUILD_WORK)/gnome-shell \
+	WITH_EDS=$(GNOME_SHELL_WITH_EDS) bash /work/recipes/gnome-shell-ios-fixes.sh \
+		$(BUILD_WORK)/gnome-shell \
 		$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/gjs
 	rm -rf $(BUILD_WORK)/gnome-shell/build && mkdir -p $(BUILD_WORK)/gnome-shell/build
 	echo -e "[host_machine]\n \
@@ -48,7 +59,8 @@ gnome-shell:
 else
 gnome-shell: gnome-shell-setup mutter gtk4 gtk+3.0 gdk-pixbuf gnome-desktop \
 		gsettings-desktop-schemas startup-notification at-spi2-core gcr polkit ibus \
-		pulseaudio libxml2
+		pulseaudio libxml2 \
+		$(if $(filter 1,$(GNOME_SHELL_WITH_EDS)),evolution-data-server)
 	cd $(BUILD_WORK)/gnome-shell/build && meson \
 		--cross-file cross.txt \
 		-Dnetworkmanager=false \

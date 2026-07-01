@@ -1,0 +1,57 @@
+# Create MetaBackendIOS for META_COMPOSITOR_TYPE_WAYLAND in meta-context-main.c.
+# The recipe builds native_backend=false, so the Wayland compositor-type branch had no
+# backend; mutter.mk's perl -0pi patch of this file inserted g_assert_not_reached() there
+# just to make the dangling else compile. This SUPERSEDES that perl patch: REMOVE the
+# perl -0pi that inserts the g_assert_not_reached()/return NULL from mutter.mk in favour of
+# this .patch. (The separate perl -0pi that HAVE_LIBSYSTEMD-guards sd_pid_get_user_unit in
+# meta_context_main_get_x11_display_policy() is a different concern and STAYS.)
+#
+# It adds a static create_ios_backend() -> meta_backend_ios_new(), placed in the #else of
+# the HAVE_NATIVE_BACKEND guard so it exists exactly when HAVE_WAYLAND is set but
+# HAVE_NATIVE_BACKEND is not (our config); includes backends/ios/meta-backend-ios.h; and
+# routes the non-nested/non-headless Wayland path to it. Native/headless behaviour is
+# untouched when HAVE_NATIVE_BACKEND is on, so no config gains an unused static function.
+#
+# Verified compile-clean against mutter 46.0: harvested the real ninja compile command for
+# core_meta-context-main.c.o (HAVE_WAYLAND+HAVE_X11 on, HAVE_NATIVE_BACKEND+HAVE_LIBSYSTEMD
+# off), applied this patch to a copy, staged backends/ios/*.h, and rebuilt the object with
+# zero diagnostics originating in meta-context-main.c or the ios headers (identical 212
+# system-header warnings to the unmodified baseline). Same method as build-backend-check.sh.
+# GPL-2.0+.
+#
+--- a/src/core/meta-context-main.c
++++ b/src/core/meta-context-main.c
+@@ -41,6 +41,10 @@
+ 
+ #ifdef HAVE_NATIVE_BACKEND
+ #include "backends/native/meta-backend-native.h"
++#endif
++
++#ifdef HAVE_WAYLAND
++#include "backends/ios/meta-backend-ios.h"
+ #endif
+ 
+ #if defined (HAVE_X11) && defined (HAVE_WAYLAND)
+@@ -484,6 +488,13 @@
+                          "context", context,
+                          NULL);
+ }
++#else /* HAVE_NATIVE_BACKEND */
++static MetaBackend *
++create_ios_backend (MetaContext  *context,
++                    GError      **error)
++{
++  return meta_backend_ios_new (context, error);
++}
+ #endif /* HAVE_NATIVE_BACKEND */
+ #endif /* HAVE_WAYLAND */
+ 
+@@ -515,6 +526,8 @@
+         return create_headless_backend (context, error);
+       else
+         return create_native_backend (context, error);
++#else /* HAVE_NATIVE_BACKEND */
++        return create_ios_backend (context, error);
+ #endif /* HAVE_NATIVE_BACKEND */
+ #else /* HAVE_WAYLAND */
+       g_assert_not_reached ();

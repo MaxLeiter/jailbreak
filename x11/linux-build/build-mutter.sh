@@ -8,9 +8,12 @@
 #   docker run --rm --platform linux/arm64 --cpus=3 \
 #     -v procursus-vol-gtk:/work/Procursus \
 #     -v "$PWD/build-mutter.sh:/work/build-mutter.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
-#     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
+#     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/tools:/work/tools:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="lcms2 libxcomposite libxkbcommon colord" \
 #     procursus-xbuild:bookworm-arm64 /work/build-mutter.sh
+#
+# The tools/ mount is REQUIRED for the mutter-package X11/xcb weaken step (macho-weaken.py); the
+# mutter recipe hard-errors if the tool is not staged into build_tools/.
 set -euo pipefail
 cd /work/Procursus
 
@@ -47,6 +50,14 @@ for r in libxcomposite.mk gusb.mk colord.mk libpixman.mk libxfixes.mk libdrm.mk 
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 [ -d /work/build_info ] && cp -v /work/build_info/* build_info/ 2>/dev/null || true
+
+# --- stage the Mach-O weaken tool (mutter-package weak-links the dead X11/xcb closure with it) ---
+if [ -d /work/tools ]; then
+  cp -v /work/tools/macho-weaken.py build_tools/ 2>/dev/null || true
+  chmod +x build_tools/macho-weaken.py 2>/dev/null || true
+else
+  echo "WARN: /work/tools not mounted — mutter-package will fail at the X11/xcb weaken step"
+fi
 
 # --- build-local libxkbcommon x11 enable (mutter needs xkbcommon-x11; leave repo recipe clean) ---
 # Additive: adds the x11 sub-library + xkbcommon-x11.pc into build_base; wayland stays as-is.

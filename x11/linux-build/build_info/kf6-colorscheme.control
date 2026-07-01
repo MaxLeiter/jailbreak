@@ -1,0 +1,13 @@
+Package: kf6-colorscheme
+Version: @DEB_KCOLORSCHEME_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-config, kf6-guiaddons, kf6-i18n
+Description: KColorScheme for the Xios desktop
+ Color scheme access classes (split out of KConfigWidgets in KF6).
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

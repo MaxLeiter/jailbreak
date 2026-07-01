@@ -1,0 +1,13 @@
+Package: kf6-solid
+Version: @DEB_SOLID_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base
+Description: Solid for the Xios desktop
+ Hardware discovery and power management abstraction.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

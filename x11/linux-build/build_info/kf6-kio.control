@@ -1,0 +1,13 @@
+Package: kf6-kio
+Version: @DEB_KIO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-5compat, kf6-archive, kf6-auth, kf6-bookmarks, kf6-colorscheme, kf6-completion, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-itemviews, kf6-jobwidgets, kf6-service, kf6-solid, kf6-widgetsaddons, kf6-windowsystem
+Description: KIO for the Xios desktop
+ Network-transparent file and data access framework.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

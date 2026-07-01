@@ -1,0 +1,11 @@
+Package: kdecoration-dev
+Version: @DEB_KDECORATION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kdecoration (= @DEB_KDECORATION_V@), extra-cmake-modules, qt6-base-dev, kf6-i18n-dev
+Description: Development files for KDecoration2
+ Headers and CMake package files for KDecoration2. Needed to cross-build the
+ KDE components that depend on it.

@@ -1,0 +1,13 @@
+Package: layer-shell-qt
+Version: @DEB_LAYERSHELLQT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, qt6-wayland
+Description: LayerShellQt for the Xios desktop
+ Qt integration for the wlr-layer-shell protocol.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

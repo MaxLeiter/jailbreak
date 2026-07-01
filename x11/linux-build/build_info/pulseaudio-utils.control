@@ -1,0 +1,13 @@
+Package: pulseaudio-utils
+Version: @DEB_PULSEAUDIO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Software/PulseAudio/
+Depends: libpulse0 (>= 17.0), libsndfile1
+Description: PulseAudio command line tools
+ pactl, pacat, paplay, parec and friends. The fastest way to prove the Xios
+ audio path end to end: pactl info shows the server, pactl list sinks shows
+ the xios sink, paplay sends a file through the whole chain out the iPad
+ speakers.

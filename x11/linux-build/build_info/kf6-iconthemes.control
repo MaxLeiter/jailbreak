@@ -1,0 +1,13 @@
+Package: kf6-iconthemes
+Version: @DEB_KICONTHEMES_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-svg, qt6-declarative, kf6-archive, kf6-breeze-icons, kf6-colorscheme, kf6-configwidgets, kf6-i18n, kf6-widgetsaddons
+Description: KIconThemes for the Xios desktop
+ Icon theme handling per the freedesktop spec.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

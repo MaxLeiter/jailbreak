@@ -17,7 +17,9 @@ endif
 SUBPROJECTS      += tracker
 TRACKER_MAJOR_V  := 3.7
 TRACKER_VERSION  := $(TRACKER_MAJOR_V).3
-DEB_TRACKER_V    ?= $(TRACKER_VERSION)
+# -2: rebuilt with -Dunicode_support=icu (was unistring) once icu4c.mk landed — real
+# ICU collation/tokenization for FTS. Same upstream version, so bump the deb revision.
+DEB_TRACKER_V    ?= $(TRACKER_VERSION)-2
 
 tracker-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/tracker/$(TRACKER_MAJOR_V)/tracker-$(TRACKER_VERSION).tar.xz)
@@ -49,13 +51,11 @@ ifneq ($(wildcard $(BUILD_WORK)/tracker/.build_complete),)
 tracker:
 	@echo "Using previously built tracker."
 else
-tracker: tracker-setup glib2.0 sqlite3 json-glib libunistring
-	# unicode_support: force `unistring` (libunistring is already in the base, one small
-	# dylib) instead of `icu`. ICU can't cross-build under this pipeline — build-gnome.sh
-	# forces CXX=<darwin cross clang++> globally, but ICU's build first compiles NATIVE
-	# host data-gen tools, which then fail ('memory' file not found — the cross clang++
-	# has no Linux libc++). unistring gives tracker-fts its unicode tokenizer/collation
-	# without that host-tool stage; the only cost is no ICU-quality locale collation.
+tracker: tracker-setup glib2.0 sqlite3 json-glib icu4c
+	# unicode_support: `icu`. The first build forced unistring because ICU "couldn't cross-
+	# build here" — that wall was a MAKEFLAGS CC/CXX leak into ICU's native host tools, fixed
+	# in recipes/icu4c.mk (native-then-cross). With libicu74 in BUILD_BASE, tracker-fts gets
+	# real ICU locale collation + tokenization (the one cost the unistring build accepted).
 	cd $(BUILD_WORK)/tracker/build && meson \
 		--cross-file cross.txt \
 		-Ddocs=false \
@@ -63,7 +63,7 @@ tracker: tracker-setup glib2.0 sqlite3 json-glib libunistring
 		-Dvapi=disabled \
 		-Dman=false \
 		-Dstemmer=disabled \
-		-Dunicode_support=unistring \
+		-Dunicode_support=icu \
 		-Dsystemd_user_services=false \
 		-Dtests=false \
 		-Dtest_utils=false \

@@ -1,0 +1,13 @@
+Package: kf6-archive
+Version: @DEB_KARCHIVE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base
+Description: KArchive for the Xios desktop
+ Reading, creating and manipulating archive formats (zip, tar, 7z).
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

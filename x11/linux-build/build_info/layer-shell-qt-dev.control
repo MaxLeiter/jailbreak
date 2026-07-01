@@ -1,0 +1,11 @@
+Package: layer-shell-qt-dev
+Version: @DEB_LAYERSHELLQT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: layer-shell-qt (= @DEB_LAYERSHELLQT_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for LayerShellQt
+ Headers and CMake package files for LayerShellQt. Needed to cross-build the
+ KDE components that depend on it.

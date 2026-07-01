@@ -1,0 +1,13 @@
+Package: kf6-windowsystem
+Version: @DEB_KWINDOWSYSTEM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, qt6-wayland
+Description: KWindowSystem for the Xios desktop
+ Access to window manager properties and protocols.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

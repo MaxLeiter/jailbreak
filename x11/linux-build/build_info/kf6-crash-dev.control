@@ -1,0 +1,11 @@
+Package: kf6-crash-dev
+Version: @DEB_KCRASH_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-crash (= @DEB_KCRASH_V@), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev
+Description: Development files for KCrash
+ Headers and CMake package files for KCrash. Needed to cross-build the
+ KDE components that depend on it.

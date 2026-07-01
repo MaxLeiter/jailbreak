@@ -1,0 +1,11 @@
+Package: kf6-jobwidgets-dev
+Version: @DEB_KJOBWIDGETS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-jobwidgets (= @DEB_KJOBWIDGETS_V@), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev, kf6-notifications-dev, kf6-widgetsaddons-dev
+Description: Development files for KJobWidgets
+ Headers and CMake package files for KJobWidgets. Needed to cross-build the
+ KDE components that depend on it.

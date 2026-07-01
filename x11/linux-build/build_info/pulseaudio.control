@@ -1,0 +1,18 @@
+Package: pulseaudio
+Version: @DEB_PULSEAUDIO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Software/PulseAudio/
+Depends: libpulse0 (>= 17.0), libltdl7, libsndfile1, libglib2.0-0, xios-audio-server
+Description: PulseAudio sound server for the Xios desktop
+ The real PulseAudio daemon, built for rootless iOS. Hardware output goes
+ through module-xios-sink, which forwards the mixed stream to xios-audiod
+ (the CoreAudio RemoteIO daemon); PulseAudio itself never opens the device.
+ Clients connect over the native protocol at /var/jb/tmp/pulse/native, which
+ GNOME Shell's volume control (gvc) and ordinary libpulse apps speak.
+ .
+ Ships Xios-tuned daemon.conf, default.pa and client.conf plus the
+ /var/jb/etc/profile.d/xios-pulse.sh session snippet (PULSE_SERVER export and
+ xios_pulse_start).

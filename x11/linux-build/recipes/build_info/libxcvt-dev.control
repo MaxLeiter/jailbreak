@@ -1,0 +1,10 @@
+Package: libxcvt-dev
+Version: @DEB_LIBXCVT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libxcvt0 (= @DEB_LIBXCVT_V@)
+Section: Development
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/xorg/lib/libxcvt
+Description: VESA CVT standard timing modelines generator (development files)
+ Headers, pkg-config data, and the unversioned .dylib symlink for libxcvt.

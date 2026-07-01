@@ -1,0 +1,11 @@
+Package: kf6-kirigami-dev
+Version: @DEB_KIRIGAMI_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-kirigami (= @DEB_KIRIGAMI_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for Kirigami
+ Headers and CMake package files for Kirigami. Needed to cross-build the
+ KDE components that depend on it.

@@ -1,0 +1,15 @@
+Package: xwayland
+Version: @DEB_XWAYLAND_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libwayland0, libxcvt0, libxshmfence1, libdrm2, libpixman-1-0, libxkbcommon0, libxfont2, libfontenc1
+Section: X11
+Priority: optional
+Homepage: https://wayland.freedesktop.org/xserver.html
+Description: X server for running X11 apps as Wayland clients (iOS/ANGLE)
+ Xwayland 23.2 built for rootless iOS. Runs X11-only applications as clients of
+ a Wayland compositor (iosc, and later Mutter/KWin) so they work inside every
+ Wayland desktop flavor. glamor is GPU-accelerated on ANGLE-Metal: window
+ pixmaps are IOSurfaces exported to the compositor over the iosc_iosurface
+ protocol (no DRM/gbm/dma-buf on iOS). GLX/desktop-GL apps fall back to
+ software (llvmpipe over shared memory); the 2D X render path is accelerated.

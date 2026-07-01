@@ -1,0 +1,12 @@
+Package: evolution-data-server-dev
+Version: @DEB_EDS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/evolution-data-server
+Depends: evolution-data-server (= @DEB_EDS_V@), libical-dev
+Description: evolution database backend server - development files
+ Headers and pkg-config metadata for libedataserver, libecal, libebook and
+ friends — needed to (re)build gnome-shell's calendar-server against EDS and
+ for the on-device introspection/typelib pass.

@@ -1,0 +1,13 @@
+Package: kglobalacceld
+Version: @DEB_KGLOBALACCELD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-jobwidgets, kf6-kio, kf6-service, kf6-windowsystem
+Description: kglobalacceld for the Xios desktop
+ Global shortcut daemon for KDE Plasma.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

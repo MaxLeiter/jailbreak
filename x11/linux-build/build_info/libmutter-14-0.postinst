@@ -1,0 +1,14 @@
+#!/bin/sh
+# Mutter ships GSettings schemas (org.gnome.mutter, org.gnome.mutter.wayland) that must be
+# compiled into gschemas.compiled or mutter aborts at startup with
+# "Settings schema 'org.gnome.mutter' is not installed".
+set -e
+
+SCHEMADIR="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/share/glib-2.0/schemas"
+GLIB_COMPILE_SCHEMAS="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/bin/glib-compile-schemas"
+
+if [ -d "$SCHEMADIR" ] && [ -x "$GLIB_COMPILE_SCHEMAS" ]; then
+    "$GLIB_COMPILE_SCHEMAS" "$SCHEMADIR" || true
+fi
+
+exit 0

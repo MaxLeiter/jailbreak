@@ -1,0 +1,10 @@
+Package: libxcvt0
+Version: @DEB_LIBXCVT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/xorg/lib/libxcvt
+Description: VESA CVT standard timing modelines generator
+ libxcvt implements the VESA Coordinated Video Timings (CVT) formula. It is a
+ dependency of Xwayland (>= 21.1), which no longer bundles its own copy.

@@ -1,0 +1,13 @@
+Package: kwayland
+Version: @DEB_KWAYLAND_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-wayland, angle
+Description: KWayland for the Xios desktop
+ Qt-style client library for Plasma's Wayland protocols.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

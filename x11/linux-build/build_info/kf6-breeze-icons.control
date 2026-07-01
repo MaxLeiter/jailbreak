@@ -1,0 +1,12 @@
+Package: kf6-breeze-icons
+Version: @DEB_BREEZEICONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Themes
+Priority: optional
+Homepage: https://kde.org/
+Description: Breeze icon theme for the Xios desktop
+ Default KDE icon theme (Breeze).
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

@@ -1,0 +1,13 @@
+Package: kf6-guiaddons
+Version: @DEB_KGUIADDONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-wayland
+Description: KGuiAddons for the Xios desktop
+ Utilities for graphical user interfaces (color, font, keys, cursors).
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

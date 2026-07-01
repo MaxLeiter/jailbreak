@@ -768,8 +768,9 @@ vfbWriteXWDFileHeader(ScreenPtr pScreen)
         hostname[0] = 0;
     else
         hostname[XWD_WINDOW_NAME_LEN - 1] = 0;
-    sprintf((char *) (pXWDHeader + 1), "Xvfb %s:%s.%d", hostname, display,
-            pScreen->myNum);
+    snprintf((char *) (pXWDHeader + 1), XWD_WINDOW_NAME_LEN,
+             "Xvfb %s:%s.%d", hostname, display ? display : "0",
+             pScreen->myNum);
 
     /* write colormap pixel slot values */
 
@@ -910,7 +911,7 @@ vfbRandRInit(ScreenPtr pScreen)
                          1, 1,
                          pScreen->width, pScreen->height);
 
-    sprintf (name, "%dx%d", pScreen->width, pScreen->height);
+    snprintf(name, sizeof(name), "%dx%d", pScreen->width, pScreen->height);
     memset (&modeInfo, '\0', sizeof (modeInfo));
     modeInfo.width = pScreen->width;
     modeInfo.height = pScreen->height;

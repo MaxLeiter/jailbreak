@@ -1,0 +1,13 @@
+Package: kf6-kirigami
+Version: @DEB_KIRIGAMI_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-declarative, qt6-svg
+Description: Kirigami for the Xios desktop
+ QtQuick based components set for mobile and convergent UIs.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

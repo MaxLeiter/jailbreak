@@ -1,0 +1,11 @@
+Package: libxshmfence1
+Version: @DEB_LIBXSHMFENCE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/xorg/lib/libxshmfence
+Description: X shared-memory fences library
+ libxshmfence exposes a small API for shared-memory fences used by the X SYNC
+ extension. Built for iOS with the portable pthread backend and mkstemp-based
+ shared memory (no futex / memfd on Darwin). A link dependency of Xwayland.

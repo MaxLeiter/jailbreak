@@ -1,0 +1,13 @@
+Package: kdecoration
+Version: @DEB_KDECORATION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-i18n
+Description: KDecoration2 for the Xios desktop
+ Plugin-based window decoration API for KWin (KDecoration2).
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

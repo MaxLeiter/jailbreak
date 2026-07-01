@@ -30,7 +30,9 @@ DRM_SYMS := drmFreeVersion drmGetCap drmGetRenderDeviceNameFromFd drmGetVersion 
   drmModePageFlip drmModeRmFB drmModeSetCrtc drmModeSetCursor drmModeSetCursor2 drmPrimeHandleToFD \
   drmSetClientCap drmSyncobjCreate drmSyncobjDestroy drmSyncobjExportSyncFile drmWaitVBlank \
   drmGetDevices2 drmFreeDevices drmGetMagic drmModeGetFB2 drmModeFreeFB2 drmModeRevokeLease \
-  drmModeCreateLease drmModeListLessees drmModeGetLease drmIsMaster
+  drmModeCreateLease drmModeListLessees drmModeGetLease drmIsMaster \
+  drmFreeDevice drmModeGetConnectorCurrent drmGetDeviceFromDevId drmDevicesEqual \
+  drmGetNodeTypeFromFd drmGetDevice2 drmFreeDevice2
 
 libdrm-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://dri.freedesktop.org/libdrm/libdrm-$(LIBDRM_VERSION).tar.xz)
@@ -61,4 +63,27 @@ libdrm: libdrm-setup
 	$(call AFTER_BUILD,copy)
 endif
 
-.PHONY: libdrm
+libdrm-package: libdrm-stage
+	# libdrm.mk Package Structure — ship the links-only shim so consumers that link
+	# @rpath/libdrm.dylib (Xwayland, mutter) resolve it on-device. Runtime deb
+	# (libdrm2) + a -dev deb (header shims + libdrm.pc). Still INERT (dmabuf path
+	# replaced by IOSurface); this only satisfies the dyld/link reference.
+	rm -rf $(BUILD_DIST)/libdrm{2,-dev}
+	mkdir -p $(BUILD_DIST)/libdrm2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/libdrm-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+
+	cp -a $(BUILD_STAGE)/libdrm/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libdrm.dylib \
+		$(BUILD_DIST)/libdrm2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/libdrm/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \
+		$(BUILD_DIST)/libdrm-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	if [ -d "$(BUILD_STAGE)/libdrm/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include" ]; then \
+		cp -a $(BUILD_STAGE)/libdrm/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
+			$(BUILD_DIST)/libdrm-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
+	fi
+
+	$(call SIGN,libdrm2,general.xml)
+	$(call PACK,libdrm2,DEB_LIBDRM_V)
+	$(call PACK,libdrm-dev,DEB_LIBDRM_V)
+	rm -rf $(BUILD_DIST)/libdrm{2,-dev}
+
+.PHONY: libdrm libdrm-package

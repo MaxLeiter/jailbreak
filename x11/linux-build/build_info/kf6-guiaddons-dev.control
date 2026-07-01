@@ -1,0 +1,11 @@
+Package: kf6-guiaddons-dev
+Version: @DEB_KGUIADDONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-guiaddons (= @DEB_KGUIADDONS_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for KGuiAddons
+ Headers and CMake package files for KGuiAddons. Needed to cross-build the
+ KDE components that depend on it.

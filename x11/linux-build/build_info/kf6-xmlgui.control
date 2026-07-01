@@ -1,0 +1,13 @@
+Package: kf6-xmlgui
+Version: @DEB_KXMLGUI_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-itemviews, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem
+Description: KXmlGui for the Xios desktop
+ XML-described action and menu framework.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

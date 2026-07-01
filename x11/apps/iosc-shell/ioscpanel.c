@@ -1,26 +1,32 @@
 /*
- * ioscpanel — a minimal desktop panel for the iosc Wayland compositor.
+ * ioscpanel — the desktop panel for the iosc Wayland compositor.
  *
- * A self-contained zwlr_layer_shell_v1 client. It anchors a bar to the top edge
- * of the iosc output, reserves an exclusive zone (so maximized toplevels don't
- * draw under it), and renders three regions with the shared wl_shm software
- * renderer (shell-draw.h) — no cairo/pango/GTK dependency:
+ * A self-contained zwlr_layer_shell_v1 client anchored to the top edge of the
+ * iosc output. It reserves an exclusive zone (maximized toplevels don't draw
+ * under it) and renders three regions:
  *
- *   [ launcher apps ............ | taskbar (open windows) ........ | HH:MM ]
+ *   [ launcher icons ......... | taskbar pills (open windows) ....... | clock ]
  *
- * - launcher: up to LAUNCH_MAX quick-launch buttons scanned from
- *   /var/jb/usr/share/applications (the .desktop set); a tap fork+execs the app.
- * - taskbar: one button per open toplevel, driven by
- *   zwlr_foreign_toplevel_management_v1. A tap on the label activates (raises)
- *   that window; a tap on the right-edge [x] closes it. Empty until iosc
- *   advertises the foreign-toplevel global (degrades cleanly).
- * - clock: HH:MM, repainted each minute off a poll() timeout in the wl loop.
+ * Rendering is real vector drawing via cairo + pangocairo (panel-render.h /
+ * panel-layout.h): San Francisco text, rounded translucent surfaces, and PNG
+ * app icons resolved from each .desktop's Icon= (panel-icons.h). The wl_shm
+ * buffer we hand iosc is wrapped as a cairo ARGB32 surface, so the panel draws
+ * on the CPU and iosc composites it (no GPU/IOSurface entitlements needed).
  *
- * Build: build-panel.sh (Docker cross-compile). Needs iosc to implement
- * zwlr_layer_shell_v1 before it can map (see x11/docs/iosc-shell.md §5.1).
+ * - launcher: quick-launch buttons scanned from /var/jb/usr/share/applications;
+ *   a tap fork+execs the app (sd_launch).
+ * - taskbar: one pill per open toplevel (zwlr_foreign_toplevel_management_v1),
+ *   with the app's real icon + title; tap activates, tap the × closes.
+ * - clock: HH:MM, repainted each minute off the poll() timeout.
+ *
+ * Build: build-panel.sh. Needs iosc's zwlr_layer_shell_v1.
  */
 #define _GNU_SOURCE
+#define SD_NO_DRAW                 /* pull only the .desktop scan + launch + shm helpers */
 #include "shell-draw.h"
+#include "panel-render.h"
+#include "panel-layout.h"
+#include "panel-icons.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 
@@ -30,25 +36,18 @@
 #include <signal.h>
 
 /* ------------------------------------------------------------------ config */
-#define PANEL_H        44
-#define PANEL_BG       0xff1c1c1eu
-#define PANEL_FG       0xffe6e6e6u
-#define PANEL_ACCENT   0xffe3853fu
-#define BTN_HOVER      0xff2e2e30u
-#define BTN_ACTIVE     0xff3a3a3cu
-#define LAUNCH_MAX     8
-#define TASK_MAX       16
-#define BTN_W          120
-#define LAUNCH_W       40
-#define PAD            8
-#define CLOSE_W        16     /* the [x] close zone on the right of a task button */
+#define PANEL_H     44
+#define LAUNCH_MAX  PL_MAX_LAUNCH
+#define TASK_MAX    PL_MAX_TASK
 
 struct task_item {
     struct zwlr_foreign_toplevel_handle_v1 *handle;
-    char  title[64];
+    char  title[96];
+    char  app_id[96];
+    cairo_surface_t *icon;
+    int   icon_tried;
     int   activated;
 };
-struct hitrect { int x, w; int kind; int idx; };  /* kind: 1=launch 2=activate 3=close */
 
 static struct {
     struct wl_display    *dpy;
@@ -63,20 +62,29 @@ static struct {
 
     int   width, height, scale, configured, running;
     int   px, py, have_ptr;
+    double bg_alpha;
 
     struct sd_app    launch[LAUNCH_MAX];
+    cairo_surface_t *launch_icon[LAUNCH_MAX];
     int   nlaunch;
     struct task_item tasks[TASK_MAX];
     int   ntasks;
 
-    struct hitrect hits[LAUNCH_MAX + TASK_MAX * 2];   /* each task: activate + close */
-    int   nhits;
+    struct panel_hits hits;
 } P;
 
 static void clock_string(char *out, size_t n)
 {
     time_t t = time(NULL); struct tm tm; localtime_r(&t, &tm);
-    snprintf(out, n, "%02d:%02d", tm.tm_hour, tm.tm_min);
+    snprintf(out, n, "%d:%02d", tm.tm_hour, tm.tm_min);
+}
+
+/* Resolve + load an icon for `name` at the current scale, or NULL. */
+static cairo_surface_t *load_icon(const char *name)
+{
+    char path[512];
+    if (!pi_resolve(name, P.scale, path, sizeof path)) return NULL;
+    return pr_icon_load(path);
 }
 
 /* ------------------------------------------------------------- rendering -- */
@@ -84,73 +92,82 @@ static void clock_string(char *out, size_t n)
 static void buf_release(void *d, struct wl_buffer *b){ (void)d; wl_buffer_destroy(b); }
 static const struct wl_buffer_listener buf_listener = { .release = buf_release };
 
+/* Allocate a wl_shm buffer and wrap its mmap as a cairo ARGB32 surface (scaled
+ * logical->physical). Returns the wl_buffer; out_cr/out_surf receive the cairo
+ * objects (already scaled so drawing is in logical px). Caller destroys cr+surf
+ * after commit; the wl_buffer is destroyed on release. */
+static struct wl_buffer *alloc_cairo_buffer(int lw, int lh, int scale,
+                                            cairo_t **out_cr, cairo_surface_t **out_surf,
+                                            void **out_map, size_t *out_size)
+{
+    int s = scale > 0 ? scale : 1;
+    int bw = lw * s, bh = lh * s;
+    int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, bw);
+    size_t size = (size_t)stride * bh;
+    int fd = sd_create_anon_fd(size);
+    if (fd < 0) return NULL;
+    void *map = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED) { close(fd); return NULL; }
+    struct wl_shm_pool *pool = wl_shm_create_pool(P.shm, fd, (int32_t)size);
+    struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, bw, bh, stride,
+                                                      WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+
+    cairo_surface_t *surf = cairo_image_surface_create_for_data(
+        (unsigned char *)map, CAIRO_FORMAT_ARGB32, bw, bh, stride);
+    cairo_t *cr = cairo_create(surf);
+    cairo_scale(cr, s, s);
+    *out_cr = cr; *out_surf = surf; *out_map = map; *out_size = size;
+    return buf;
+}
+
+static void build_model(struct panel_model *m)
+{
+    memset(m, 0, sizeof *m);
+    m->bg_alpha = P.bg_alpha;
+    m->have_ptr = P.have_ptr; m->px = P.px; m->py = P.py;
+    clock_string(m->clock, sizeof m->clock);
+
+    m->nlaunch = P.nlaunch;
+    for (int i = 0; i < P.nlaunch; i++) {
+        snprintf(m->launch[i].label, sizeof m->launch[i].label, "%s", P.launch[i].name);
+        snprintf(m->launch[i].key,   sizeof m->launch[i].key,   "%s", P.launch[i].name);
+        m->launch[i].icon = P.launch_icon[i];
+    }
+    m->ntasks = P.ntasks;
+    for (int i = 0; i < P.ntasks; i++) {
+        snprintf(m->tasks[i].label, sizeof m->tasks[i].label, "%s",
+                 P.tasks[i].title[0] ? P.tasks[i].title : "Window");
+        snprintf(m->tasks[i].key, sizeof m->tasks[i].key, "%s",
+                 P.tasks[i].title[0] ? P.tasks[i].title : P.tasks[i].app_id);
+        m->tasks[i].icon = P.tasks[i].icon;
+        m->tasks[i].active = P.tasks[i].activated;
+    }
+}
+
 static void render(void)
 {
     if (!P.configured) return;
-    struct shell_canvas cv;
-    struct wl_buffer *buf = sd_canvas_alloc(P.shm, P.width, P.height, P.scale, &cv);
-    if (!buf) { fprintf(stderr, "ioscpanel: canvas alloc failed\n"); return; }
-    P.nhits = 0;
+    cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
+    struct wl_buffer *buf = alloc_cairo_buffer(P.width, P.height, P.scale,
+                                               &cr, &surf, &map, &size);
+    if (!buf) { fprintf(stderr, "ioscpanel: cairo buffer alloc failed\n"); return; }
 
-    sd_fill_rect(&cv, 0, 0, P.width, P.height, PANEL_BG);
-    sd_fill_rect(&cv, 0, P.height - 1, P.width, 1, PANEL_ACCENT);   /* hairline */
-    int ty = (P.height - 7) / 2;
+    pr_text_ctx t = pr_text_ctx_new(cr);
+    struct panel_model m;
+    build_model(&m);
+    panel_draw_topbar(cr, &t, P.width, P.height, &m, &P.hits);
+    pr_text_ctx_free(&t);
 
-    /* --- launcher strip (left) --------------------------------------- */
-    int x = PAD;
-    for (int i = 0; i < P.nlaunch; i++) {
-        int bx = x, bw = LAUNCH_W;
-        if (P.have_ptr && P.px >= bx && P.px < bx+bw)
-            sd_fill_rect(&cv, bx, 3, bw, P.height-6, BTN_HOVER);
-        int side = P.height - 16;
-        sd_fill_rect(&cv, bx+8, 8, side, side, PANEL_ACCENT);
-        char init[2] = { P.launch[i].name[0], 0 };
-        sd_draw_text_centered(&cv, init, bx+8, side, ty, PANEL_BG);
-        P.hits[P.nhits++] = (struct hitrect){ bx, bw, 1, i };
-        x += bw;
-    }
-    x += PAD;
-    sd_fill_rect(&cv, x, 6, 1, P.height-12, BTN_HOVER);   /* separator */
-    x += PAD;
-
-    /* --- clock (right) ----------------------------------------------- */
-    char clk[8]; clock_string(clk, sizeof clk);
-    int clk_x = P.width - PAD - sd_text_w(clk);
-    sd_draw_text(&cv, clk, clk_x, ty, PANEL_FG);
-
-    /* --- taskbar (center) -------------------------------------------- */
-    int task_left = x, task_right = clk_x - PAD * 2;
-    int avail = task_right - task_left;
-    int bw = BTN_W;
-    if (P.ntasks > 0 && avail / P.ntasks < bw) bw = avail / P.ntasks;
-    if (bw < 24) bw = 24;
-    for (int i = 0; i < P.ntasks; i++) {
-        int bx = task_left + i * (bw + 4);
-        if (bx + bw > task_right) break;
-        /* Wide-enough buttons carve an [x] close zone off the right edge; the rest
-         * of the button is the activate zone. Narrow buttons are activate-only. */
-        int show_close = bw >= 60;
-        int aw = show_close ? bw - CLOSE_W : bw;        /* activate-zone width */
-        int hover = (P.have_ptr && P.px >= bx && P.px < bx+aw);
-        uint32_t bg = P.tasks[i].activated ? BTN_ACTIVE : (hover ? BTN_HOVER : PANEL_BG);
-        sd_fill_rect(&cv, bx, 4, bw, P.height-8, bg);
-        if (P.tasks[i].activated) sd_fill_rect(&cv, bx, P.height-3, aw, 2, PANEL_ACCENT);
-        char lbl[40];
-        sd_fit_label(lbl, sizeof lbl, P.tasks[i].title[0] ? P.tasks[i].title : "WINDOW", (aw-12)/6);
-        sd_draw_text(&cv, lbl, bx + 6, ty, PANEL_FG);
-        P.hits[P.nhits++] = (struct hitrect){ bx, aw, 2, i };
-        if (show_close) {
-            int cx = bx + bw - CLOSE_W;
-            int chover = (P.have_ptr && P.px >= cx && P.px < cx+CLOSE_W);
-            if (chover) sd_fill_rect(&cv, cx, 4, CLOSE_W, P.height-8, PANEL_ACCENT);
-            sd_draw_text(&cv, "x", cx + (CLOSE_W-6)/2, ty, chover ? PANEL_BG : PANEL_FG);
-            P.hits[P.nhits++] = (struct hitrect){ cx, CLOSE_W, 3, i };
-        }
-    }
+    cairo_surface_flush(surf);
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+    munmap(map, size);   /* iosc copies the shm data during commit access */
 
     wl_buffer_add_listener(buf, &buf_listener, NULL);
     wl_surface_attach(P.surf, buf, 0, 0);
-    wl_surface_damage_buffer(P.surf, 0, 0, cv.bw, cv.bh);
+    wl_surface_damage_buffer(P.surf, 0, 0, P.width * P.scale, P.height * P.scale);
     wl_surface_commit(P.surf);
 }
 
@@ -163,7 +180,12 @@ static struct task_item *task_for(struct zwlr_foreign_toplevel_handle_v1 *h)
 }
 static void ft_title(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, const char *t)
 { (void)d; struct task_item *ti = task_for(h); if (ti) snprintf(ti->title, sizeof ti->title, "%s", t?t:""); }
-static void ft_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, const char *a){ (void)d;(void)h;(void)a; }
+static void ft_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, const char *a)
+{
+    (void)d; struct task_item *ti = task_for(h); if (!ti || !a) return;
+    snprintf(ti->app_id, sizeof ti->app_id, "%s", a);
+    if (!ti->icon_tried) { ti->icon_tried = 1; ti->icon = load_icon(a); }
+}
 static void ft_out_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, struct wl_output *o){ (void)d;(void)h;(void)o; }
 static void ft_out_leave(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, struct wl_output *o){ (void)d;(void)h;(void)o; }
 static void ft_state(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, struct wl_array *st)
@@ -177,6 +199,7 @@ static void ft_closed(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
 {
     (void)d;
     for (int i = 0; i < P.ntasks; i++) if (P.tasks[i].handle == h) {
+        if (P.tasks[i].icon) cairo_surface_destroy(P.tasks[i].icon);
         zwlr_foreign_toplevel_handle_v1_destroy(h);
         for (int j = i; j < P.ntasks-1; j++) P.tasks[j] = P.tasks[j+1];
         P.ntasks--; break;
@@ -216,13 +239,13 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t
 {
     (void)d;(void)p;(void)serial;(void)t;
     if (state != WL_POINTER_BUTTON_STATE_PRESSED || button != 0x110 /*BTN_LEFT*/) return;
-    for (int i = 0; i < P.nhits; i++) {
-        struct hitrect *r = &P.hits[i];
+    for (int i = 0; i < P.hits.n; i++) {
+        struct panel_hit *r = &P.hits.v[i];
         if (P.px < r->x || P.px >= r->x + r->w) continue;
-        if (r->kind == 1 && r->idx < P.nlaunch) sd_launch(P.launch[r->idx].exec);
-        else if (r->kind == 2 && r->idx < P.ntasks && P.tasks[r->idx].handle)
+        if (r->kind == PL_HIT_LAUNCH && r->idx < P.nlaunch) sd_launch(P.launch[r->idx].exec);
+        else if (r->kind == PL_HIT_ACTIVATE && r->idx < P.ntasks && P.tasks[r->idx].handle)
             zwlr_foreign_toplevel_handle_v1_activate(P.tasks[r->idx].handle, P.seat);
-        else if (r->kind == 3 && r->idx < P.ntasks && P.tasks[r->idx].handle)
+        else if (r->kind == PL_HIT_CLOSE && r->idx < P.ntasks && P.tasks[r->idx].handle)
             zwlr_foreign_toplevel_handle_v1_close(P.tasks[r->idx].handle);
         return;
     }
@@ -305,8 +328,12 @@ int main(void)
     signal(SIGCHLD, SIG_IGN);
     memset(&P, 0, sizeof P);
     P.width = 1080; P.height = PANEL_H; P.scale = 2; P.running = 1;
+    P.bg_alpha = 1.0;   /* opaque today; iosc composites layers opaque. Set <1 to
+                         * enable translucency once iosc blends layer surfaces. */
     const char *es = getenv("IOSC_PANEL_SCALE");
     if (es && atoi(es) > 0) P.scale = atoi(es);
+    const char *op = getenv("IOSC_PANEL_OPACITY");   /* 0..100 */
+    if (op && atoi(op) > 0) P.bg_alpha = atoi(op) / 100.0;
 
     P.dpy = wl_display_connect(NULL);
     if (!P.dpy) { fprintf(stderr, "ioscpanel: cannot connect to WAYLAND_DISPLAY\n"); return 1; }
@@ -323,6 +350,8 @@ int main(void)
     }
 
     P.nlaunch = sd_scan_apps(P.launch, LAUNCH_MAX);
+    for (int i = 0; i < P.nlaunch; i++)
+        P.launch_icon[i] = load_icon(P.launch[i].icon[0] ? P.launch[i].icon : P.launch[i].name);
     fprintf(stderr, "ioscpanel: %d launcher(s), foreign-toplevel=%s\n",
             P.nlaunch, P.ftm ? "yes" : "no (taskbar disabled)");
 

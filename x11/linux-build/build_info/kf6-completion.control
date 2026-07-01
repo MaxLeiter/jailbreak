@@ -1,0 +1,13 @@
+Package: kf6-completion
+Version: @DEB_KCOMPLETION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-codecs, kf6-config, kf6-widgetsaddons
+Description: KCompletion for the Xios desktop
+ String completion framework and widgets.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

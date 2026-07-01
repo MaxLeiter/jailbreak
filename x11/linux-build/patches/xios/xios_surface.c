@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
@@ -68,6 +69,7 @@ static int s_listen_fd = -1;
 static pthread_t s_thread;
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static int s_clients[XIOS_MAX_CLIENTS];
+static int s_client_typed[XIOS_MAX_CLIENTS];   /* parallel: client speaks the typed stream */
 static int s_nclients = 0;
 
 /* ---- helpers -------------------------------------------------------------- */
@@ -110,11 +112,14 @@ static int write_full(int fd, const void *buf, size_t n)
     return 0;
 }
 
-static void setnum(CFMutableDictionaryRef d, CFStringRef k, int32_t v)
+static int setnum(CFMutableDictionaryRef d, CFStringRef k, int32_t v)
 {
     CFNumberRef n = CFNumberCreate(NULL, kCFNumberSInt32Type, &v);
+    if (!n)
+        return -1;
     CFDictionarySetValue(d, k, n);
     CFRelease(n);
+    return 0;
 }
 
 /* ---- IOSurface ------------------------------------------------------------ */
@@ -122,18 +127,32 @@ static void setnum(CFMutableDictionaryRef d, CFStringRef k, int32_t v)
 void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
 {
     const int bpe = 4;   /* BGRA8 */
-    size_t bpr = IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, (size_t) (width * bpe));
+    if (width <= 0 || height <= 0 || width > INT_MAX / bpe) {
+        fprintf(stderr, "xios: invalid IOSurface geometry %dx%d\n", width, height);
+        return NULL;
+    }
+
+    size_t bpr = IOSurfaceAlignProperty(kIOSurfaceBytesPerRow,
+                                        (size_t) width * (size_t) bpe);
     size_t alloc = IOSurfaceAlignProperty(kIOSurfaceAllocSize, bpr * (size_t) height);
+    if (bpr > INT32_MAX || alloc > INT32_MAX) {
+        fprintf(stderr, "xios: IOSurface geometry too large %dx%d stride=%zu alloc=%zu\n",
+                width, height, bpr, alloc);
+        return NULL;
+    }
 
     CFMutableDictionaryRef d = CFDictionaryCreateMutable(
         NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     if (!d) return NULL;
-    setnum(d, kIOSurfaceWidth, width);
-    setnum(d, kIOSurfaceHeight, height);
-    setnum(d, kIOSurfaceBytesPerElement, bpe);
-    setnum(d, kIOSurfaceBytesPerRow, (int32_t) bpr);
-    setnum(d, kIOSurfaceAllocSize, (int32_t) alloc);
-    setnum(d, kIOSurfacePixelFormat, (int32_t) XIOS_FMT_BGRA);
+    if (setnum(d, kIOSurfaceWidth, width) != 0 ||
+        setnum(d, kIOSurfaceHeight, height) != 0 ||
+        setnum(d, kIOSurfaceBytesPerElement, bpe) != 0 ||
+        setnum(d, kIOSurfaceBytesPerRow, (int32_t) bpr) != 0 ||
+        setnum(d, kIOSurfaceAllocSize, (int32_t) alloc) != 0 ||
+        setnum(d, kIOSurfacePixelFormat, (int32_t) XIOS_FMT_BGRA) != 0) {
+        CFRelease(d);
+        return NULL;
+    }
 
     IOSurfaceRef s = IOSurfaceCreate(d);
     CFRelease(d);
@@ -150,8 +169,20 @@ void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
     int alloc_sz = (int) IOSurfaceGetAllocSize(s);
 
     /* Zero the buffer so the first frame isn't garbage. */
+    if (IOSurfaceLock(s, 0, NULL) != KERN_SUCCESS) {
+        fprintf(stderr, "xios: IOSurfaceLock failed during init\n");
+        CFRelease(s);
+        s_surface = NULL;
+        return NULL;
+    }
     void *base = IOSurfaceGetBaseAddress(s);
-    IOSurfaceLock(s, 0, NULL);
+    if (!base) {
+        fprintf(stderr, "xios: IOSurfaceGetBaseAddress returned NULL\n");
+        IOSurfaceUnlock(s, 0, NULL);
+        CFRelease(s);
+        s_surface = NULL;
+        return NULL;
+    }
     memset(base, 0, (size_t) alloc_sz);
     IOSurfaceUnlock(s, 0, NULL);
 
@@ -226,12 +257,14 @@ static int deliver_surface_port(int pid, unsigned portname)
     return 0;
 }
 
-static void add_client(int fd)
+static void add_client(int fd, int typed)
 {
     pthread_mutex_lock(&s_lock);
     if (s_nclients < XIOS_MAX_CLIENTS) {
+        s_client_typed[s_nclients] = typed;
         s_clients[s_nclients++] = fd;
-        fprintf(stderr, "xios: client attached (fd=%d, total=%d)\n", fd, s_nclients);
+        fprintf(stderr, "xios: client attached (fd=%d, typed=%d, total=%d)\n",
+                fd, typed, s_nclients);
     } else {
         close(fd);
         fprintf(stderr, "xios: too many clients, rejecting fd=%d\n", fd);
@@ -285,7 +318,7 @@ static void handle_client(int fd)
     /* Damage notifications are non-blocking: a suspended/backed-up app must never
      * stall the X server's block handler. */
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    add_client(fd);
+    add_client(fd, hello.reserved == XIOS_HELLO_TYPED);
 }
 
 static void *accept_loop(void *arg)
@@ -327,6 +360,11 @@ int xios_server_start(const char *sock_path, const char *json_path,
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { perror("xios: socket"); return -1; }
     set_cloexec(fd);
+    if (strlen(sock_path) >= sizeof(((struct sockaddr_un *) 0)->sun_path)) {
+        fprintf(stderr, "xios: socket path too long: %s\n", sock_path);
+        close(fd);
+        return -1;
+    }
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
@@ -380,25 +418,74 @@ int xios_server_start(const char *sock_path, const char *json_path,
     return 0;
 }
 
+/* Swap-remove client index i (caller holds s_lock). */
+static void drop_client_locked(int i)
+{
+    fprintf(stderr, "xios: client fd=%d dropped\n", s_clients[i]);
+    close(s_clients[i]);
+    s_clients[i] = s_clients[s_nclients - 1];
+    s_client_typed[i] = s_client_typed[s_nclients - 1];
+    s_nclients--;
+}
+
+/* Non-blocking send of a whole fixed record (typed clients). Returns 1 = sent,
+ * 0 = would-block (skip; DIRTY/CURSOR coalesce so a stale record is fine to
+ * drop), -1 = error or PARTIAL write (a partial write desyncs a typed stream, so
+ * the caller drops the client — matches the never-stall/drop-on-error posture). */
+static int send_record(int fd, const void *buf, size_t len)
+{
+    ssize_t r = write(fd, buf, len);
+    if (r == (ssize_t)len) return 1;
+    if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
+    if (r < 0 && errno == EINTR) return send_record(fd, buf, len);
+    return -1;   /* error or partial (desync) */
+}
+
 void xios_notify_dirty(void)
 {
     const unsigned char b = XIOS_DIRTY;
+    xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY, 0, 0, 0, 0, 0, 0 };  /* whole-surface */
 
     pthread_mutex_lock(&s_lock);
     int i = 0;
     while (i < s_nclients) {
-        ssize_t r = write(s_clients[i], &b, 1);
-        if (r == 1 || (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))) {
-            /* delivered, or the client is behind (it coalesces — a redraw is
-             * pending in its socket buffer already), either way keep it. */
-            i++;
-            continue;
+        int ok;
+        if (s_client_typed[i]) {
+            ok = send_record(s_clients[i], &rec, sizeof(rec));
+        } else {
+            ssize_t r = write(s_clients[i], &b, 1);
+            /* classic 1-byte DIRTY: delivered, or behind (coalesces) => keep */
+            ok = (r == 1) ? 1 : (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) ? 0
+               : (r < 0 && errno == EINTR) ? 0 : -1;
         }
-        fprintf(stderr, "xios: client fd=%d dropped\n", s_clients[i]);
-        close(s_clients[i]);
-        s_clients[i] = s_clients[--s_nclients];   /* swap-remove */
+        if (ok >= 0) { i++; continue; }
+        drop_client_locked(i);
     }
     pthread_mutex_unlock(&s_lock);
+}
+
+void xios_notify_cursor(int x, int y, int visible, int shape_id)
+{
+    xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_CURSOR, 0, 0,
+                     x, y, shape_id, visible ? 1 : 0 };
+    pthread_mutex_lock(&s_lock);
+    int i = 0;
+    while (i < s_nclients) {
+        if (!s_client_typed[i]) { i++; continue; }   /* classic clients can't parse it */
+        if (send_record(s_clients[i], &rec, sizeof(rec)) >= 0) { i++; continue; }
+        drop_client_locked(i);
+    }
+    pthread_mutex_unlock(&s_lock);
+}
+
+int xios_have_typed_client(void)
+{
+    int any = 0;
+    pthread_mutex_lock(&s_lock);
+    for (int i = 0; i < s_nclients; i++)
+        if (s_client_typed[i]) { any = 1; break; }
+    pthread_mutex_unlock(&s_lock);
+    return any;
 }
 
 /* ---- client→server IOSurface import (Wayland zero-copy GPU buffers) -------- */
@@ -455,13 +542,22 @@ void xios_blit_client_iosurface(void *client_surface)
 
     /* Lock the source read-only so the GPU's writes are made coherent to the CPU
      * (the client glFinish()es before signalling, so the frame is complete). */
-    IOSurfaceLock(src, XIOS_LOCK_READONLY, NULL);
+    if (IOSurfaceLock(src, XIOS_LOCK_READONLY, NULL) != KERN_SUCCESS)
+        return;
     const uint8_t *sbase = (const uint8_t *) IOSurfaceGetBaseAddress(src);
+    if (!sbase) {
+        IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
+        return;
+    }
     size_t sstride = IOSurfaceGetBytesPerRow(src);
     int sw = (int) IOSurfaceGetWidth(src);
     int sh = (int) IOSurfaceGetHeight(src);
 
     uint8_t *dbase = (uint8_t *) IOSurfaceGetBaseAddress(s_surface);
+    if (!dbase) {
+        IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
+        return;
+    }
     int rows = sh < s_height ? sh : s_height;
     int cols = sw < s_width  ? sw : s_width;
     size_t row_bytes = (size_t) cols * 4;   /* BGRA8 both sides */
@@ -487,8 +583,13 @@ uint32_t xios_read_output_pixel(int x, int y)
     if (!s_surface || x < 0 || y < 0 || x >= s_width || y >= s_height) return 0;
     /* Read-only lock so a GPU compositor's writes into the output are flushed to the
      * CPU mapping before we sample it (same coherency reason as the source blit). */
-    IOSurfaceLock(s_surface, XIOS_LOCK_READONLY, NULL);
+    if (IOSurfaceLock(s_surface, XIOS_LOCK_READONLY, NULL) != KERN_SUCCESS)
+        return 0;
     const uint8_t *base = (const uint8_t *) IOSurfaceGetBaseAddress(s_surface);
+    if (!base) {
+        IOSurfaceUnlock(s_surface, XIOS_LOCK_READONLY, NULL);
+        return 0;
+    }
     uint32_t px = *(const uint32_t *) (base + (size_t) y * s_stride + (size_t) x * 4);
     IOSurfaceUnlock(s_surface, XIOS_LOCK_READONLY, NULL);
     return px;
@@ -501,9 +602,15 @@ int xios_read_output_region(int x, int y, int w, int h, void *dst, int dst_strid
     if (x + cw > s_width)  cw = s_width  - x;
     if (y + ch > s_height) ch = s_height - y;
     if (cw <= 0 || ch <= 0) return -1;
+    if (dst_stride < cw * 4) return -1;
     /* One read-only lock for the whole region (coherency: same as the pixel read). */
-    IOSurfaceLock(s_surface, XIOS_LOCK_READONLY, NULL);
+    if (IOSurfaceLock(s_surface, XIOS_LOCK_READONLY, NULL) != KERN_SUCCESS)
+        return -1;
     const uint8_t *base = (const uint8_t *) IOSurfaceGetBaseAddress(s_surface);
+    if (!base) {
+        IOSurfaceUnlock(s_surface, XIOS_LOCK_READONLY, NULL);
+        return -1;
+    }
     for (int row = 0; row < ch; row++) {
         const uint8_t *src = base + (size_t) (y + row) * s_stride + (size_t) x * 4;
         uint8_t *d = (uint8_t *) dst + (size_t) row * dst_stride;

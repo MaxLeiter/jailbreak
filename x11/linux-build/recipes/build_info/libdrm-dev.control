@@ -1,0 +1,10 @@
+Package: libdrm-dev
+Version: @DEB_LIBDRM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libdrm2 (= @DEB_LIBDRM_V@)
+Section: Development
+Priority: optional
+Homepage: https://dri.freedesktop.org/
+Description: Direct Rendering Manager library (iOS shim, development files)
+ Portable libdrm public headers + libdrm.pc for the iOS links-only shim.

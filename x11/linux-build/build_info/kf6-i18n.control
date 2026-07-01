@@ -1,0 +1,13 @@
+Package: kf6-i18n
+Version: @DEB_KI18N_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, libgtkintl, iso-codes
+Description: KI18n for the Xios desktop
+ Advanced internationalization framework on top of gettext.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

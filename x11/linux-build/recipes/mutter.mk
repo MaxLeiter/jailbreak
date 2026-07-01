@@ -20,6 +20,14 @@ MUTTER_API_V   := 14
 MUTTER_VERSION := $(MUTTER_MAJOR_V).0
 DEB_MUTTER_V   ?= $(MUTTER_VERSION)
 
+# The dead X11/xcb closure to weak-link in mutter-package (see the mutter-package weaken step).
+# EVERYTHING X11/xcb that libmutter/cogl/mtk pull in — EXCEPT libxkbcommon.0, which the Wayland
+# keymap path uses for real and must stay a strong (present-on-device) dependency.
+MUTTER_X11_WEAK := libX11.6.dylib libX11-xcb.1.dylib libXext.6.dylib libXfixes.3.dylib \
+	libXdamage.1.dylib libXcomposite.1.dylib libXrandr.2.dylib libXtst.6.dylib libXi.6.dylib \
+	libXinerama.1.dylib libXcursor.1.dylib libxkbfile.1.dylib libxkbcommon-x11.0.dylib \
+	libxcb.1.dylib libxcb-randr.0.dylib libxcb-res.0.dylib
+
 mutter-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/mutter/$(MUTTER_MAJOR_V)/mutter-$(MUTTER_VERSION).tar.xz)
 	$(call EXTRACT_TAR,mutter-$(MUTTER_VERSION).tar.xz,mutter-$(MUTTER_VERSION),mutter)
@@ -122,9 +130,38 @@ mutter-package: mutter-stage
 		cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/mutter-$(MUTTER_API_V) $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
 	fi
 
+	# runtime DATA: mutter installs share/ (the org.gnome.mutter{,.wayland} GSettings schemas —
+	# WITHOUT which mutter aborts "Settings schema 'org.gnome.mutter' is not installed" — plus the
+	# GConf convert file, gnome-control-center keybinding lists, and translations). The earlier
+	# packaging dropped this whole tree. Ship it (skip man/ — the minos stamper double-zsts it).
+	# build_info/libmutter-14-0.postinst runs glib-compile-schemas on-device (like the gtk4 deb).
+	mkdir -p $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share
+	for d in glib-2.0 GConf gnome-control-center locale; do \
+		if [ -d "$(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/$$d" ]; then \
+			cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/$$d $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/; \
+		fi; \
+	done
+
 	# dev: headers + .pc (needed for the on-device introspection scan)
 	cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libmutter-14-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) 2>/dev/null || true
 	cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig $(BUILD_DIST)/libmutter-14-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib 2>/dev/null || true
+
+	# --- weak-link the DEAD X11/xcb closure so libmutter loads on an X11-free iPad -------------
+	# mutter 46 cannot be built without X11 ("For now always require X11 support" — meson.build
+	# hardcodes have_x11=true; there is no x11 meson option, only xwayland). core/frame.c and
+	# core/keybindings.c are in the ALWAYS-compiled source list and use X11 unconditionally, so
+	# libmutter/cogl/mtk link the whole X11/xcb closure even though it is dead on iOS (we run
+	# Wayland + MetaBackendIOS, never MetaBackendX11). Those libs (libxcb-randr.0, libxcb-res.0,
+	# libX11-xcb.1, libX11.6, ...) do not exist on the device, so dyld hard-fails at load before
+	# the backend runs. Flip their LC_LOAD_DYLIB -> LC_LOAD_WEAK_DYLIB: dyld then tolerates the
+	# libs being absent and binds their (never-called) symbols to 0. libxkbcommon.0 stays STRONG
+	# (Wayland keymap — live code). Byte-length-preserving; SIGN below re-covers the edit. Fully
+	# dropping X11 = backporting GNOME 47/48's x11-optional work (out of scope). See build5 +
+	# tools/macho-weaken.py.
+	@test -f $(BUILD_TOOLS)/macho-weaken.py || { echo "ERROR: $(BUILD_TOOLS)/macho-weaken.py missing — mount tools/ into the build (see build-mutter.sh header) so the X11/xcb weaken can run"; exit 1; }
+	for f in $$(find $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -type f -name '*.dylib'); do \
+		python3 $(BUILD_TOOLS)/macho-weaken.py $$f $(MUTTER_X11_WEAK); \
+	done
 
 	$(call SIGN,libmutter-14-0,general.xml)
 	$(call PACK,libmutter-14-0,DEB_MUTTER_V)

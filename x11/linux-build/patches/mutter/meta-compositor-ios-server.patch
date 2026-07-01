@@ -1,0 +1,34 @@
+# Route MetaBackendIOS to the Wayland "server" compositor in core/display.c:create_compositor.
+#
+# create_compositor() dispatches by BACKEND TYPE: MetaBackendNative -> MetaCompositorNative,
+# MetaBackendX11Nested -> MetaCompositorServer, else (HAVE_X11) -> MetaCompositorX11. Our
+# MetaBackendIOS matches neither of the first two, so it fell through to MetaCompositorX11 ->
+# meta_compositor_x11_manage -> meta_x11_display_get_xdisplay (NULL on our Wayland-only,
+# xwayland=false build) -> SIGSEGV. MetaBackendIOS is a Wayland compositor with no X11 display,
+# so it must use MetaCompositorServer (same as the nested backend). meta-compositor-server.c is
+# built under `if have_wayland` (not have_xwayland), and display.c already includes its header,
+# so this needs no new build inputs. Generated from a real diff (validated apply). GPL-2.0+.
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -96,6 +96,10 @@
+ #include "backends/native/meta-backend-native.h"
+ #endif
+ 
++#ifdef HAVE_WAYLAND
++#include "backends/ios/meta-backend-ios.h"
++#endif
++
+ /*
+  * Sometimes we want to see whether a window is responding,
+  * so we send it a "ping" message and see whether it sends us back a "pong"
+@@ -656,6 +660,10 @@
+   if (META_IS_BACKEND_NATIVE (backend))
+     return META_COMPOSITOR (meta_compositor_native_new (display, backend));
+ #endif
++  /* MetaBackendIOS = Wayland compositor, no X11 display -> MetaCompositorServer, not the
++   * MetaCompositorX11 fallback (which derefs a NULL xdisplay). */
++  if (META_IS_BACKEND_IOS (backend))
++    return META_COMPOSITOR (meta_compositor_server_new (display, backend));
+ #ifdef HAVE_XWAYLAND
+   if (META_IS_BACKEND_X11_NESTED (backend))
+     return META_COMPOSITOR (meta_compositor_server_new (display, backend));

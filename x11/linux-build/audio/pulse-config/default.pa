@@ -1,0 +1,30 @@
+#!/var/jb/usr/bin/pulseaudio -nF
+#
+# Xios default.pa: one hardware path (module-xios-sink -> xios-audiod ->
+# CoreAudio RemoteIO), one client transport (native protocol on a fixed
+# Unix socket under /var/jb/tmp, anonymous auth so every session user and
+# helper process can connect without cookie plumbing).
+
+# Client transport. Fixed path: PULSE_SERVER is exported by
+# /var/jb/etc/profile.d/xios-pulse.sh and must match.
+load-module module-native-protocol-unix auth-anonymous=1 socket=/var/jb/tmp/pulse/native
+
+.nofail
+
+# The iPad output. xios-audiod may come up later or restart; the sink stays
+# loaded and reconnects on its own, so load order is not critical.
+load-module module-xios-sink sink_name=xios
+set-default-sink xios
+
+# If module-xios-sink ever fails to load, keep a null sink so clients and the
+# gvc volume UI still have something to talk to instead of erroring out.
+load-module module-always-sink
+
+# Restore per-stream/per-device volumes across restarts.
+load-module module-stream-restore
+load-module module-device-restore
+load-module module-default-device-restore
+
+# Suspend the sink when idle: stops the 48 kHz render clock and the socket
+# writes, which matters on battery. Resume resets the sink's timer cleanly.
+load-module module-suspend-on-idle

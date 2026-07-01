@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # gnome-shell 46 iOS source-port fixes (idempotent). Mirrors recipes/nautilus-ios-fixes.sh.
 #
-# (1) EDS-ectomy: the calendar-server needs evolution-data-server (libecal/libedataserver),
-#     which needs ICU — ICU is being built separately (native-then-cross); until it lands,
-#     EDS is patched OUT per the distribution-chooser decision. Drop the two unconditional
+# (1) EDS-ectomy (SKIPPED when WITH_EDS=1): the calendar-server needs evolution-data-server
+#     (libecal/libedataserver), which needs ICU. Historically ICU couldn't cross-build here,
+#     so EDS was patched OUT per the distribution-chooser decision. Drop the two unconditional
 #     EDS dependency() lines and the src/calendar-server subdir (which also drops the
 #     org.gnome.Shell.CalendarServer D-Bus .service install). The JS side needs NO patch:
 #     js/ui/calendar.js DBusEventSource wraps init_async in try/catch and just waits for a
 #     NameOwnerChanged that never comes — empty calendar, no crash.
+#     ICU + EDS are NOW BUILT (recipes/icu4c.mk, recipes/evolution-data-server.mk), so the
+#     ectomy is reversible: WITH_EDS=1 keeps the stock meson EDS deps + calendar-server and
+#     flips the verification below. NOTE the flip needs a PRISTINE source tree — the ectomy
+#     sed-DELETES lines from the extracted source and EXTRACT_TAR no-ops on an existing tree,
+#     so build-shell.sh's WITH_EDS=1 path wipes build_work/gnome-shell first.
 # (2) GIR cross-gating: gnome-shell has no introspection option — the St/Shell/Shew/Gvc
 #     girs are generated unconditionally, but cross can't exec the gir dumper (gnome-plan
 #     Blocker #2; same reason mutter builds with -Dintrospection=false). Wrap every
@@ -18,15 +23,18 @@
 #     TARGET package here, and gjs.full_path() is baked into the dbusServices' D-Bus
 #     Exec= lines. Make the probe non-required and bake the device path instead.
 #
-# Usage: gnome-shell-ios-fixes.sh <gnome-shell-source-dir> [<device-gjs-path>]
+# Usage: [WITH_EDS=1] gnome-shell-ios-fixes.sh <gnome-shell-source-dir> [<device-gjs-path>]
 set -euo pipefail
 SRC="${1:?usage: $0 <gnome-shell-src-dir> [device-gjs-path]}"
 GJS="${2:-/var/jb/usr/bin/gjs}"
+WITH_EDS="${WITH_EDS:-0}"
 
-# --- (1) EDS-ectomy -----------------------------------------------------------
-sed -i "/^ecal_dep = dependency('libecal-2.0', version: ecal_req)$/d" "$SRC/meson.build"
-sed -i "/^eds_dep = dependency('libedataserver-1.2', version: eds_req)$/d" "$SRC/meson.build"
-sed -i "/^subdir('calendar-server')$/d" "$SRC/src/meson.build"
+# --- (1) EDS-ectomy (skipped when WITH_EDS=1) -----------------------------------
+if [ "$WITH_EDS" != 1 ]; then
+  sed -i "/^ecal_dep = dependency('libecal-2.0', version: ecal_req)$/d" "$SRC/meson.build"
+  sed -i "/^eds_dep = dependency('libedataserver-1.2', version: eds_req)$/d" "$SRC/meson.build"
+  sed -i "/^subdir('calendar-server')$/d" "$SRC/src/meson.build"
+fi
 
 # --- (2) GIR cross-gating -----------------------------------------------------
 # gvc subproject: don't force introspection on for the cross build.
@@ -110,9 +118,15 @@ fi
 fail=0
 check() { grep -q "$2" "$SRC/$1" || { echo "!! VERIFY FAILED: $1: missing $2"; fail=1; }; }
 absent() { grep -q "$2" "$SRC/$1" && { echo "!! VERIFY FAILED: $1: still has $2"; fail=1; } || true; }
-absent meson.build "libecal-2.0"
-absent meson.build "libedataserver-1.2"
-absent src/meson.build "subdir('calendar-server')"
+if [ "$WITH_EDS" = 1 ]; then
+  check meson.build "libecal-2.0"
+  check meson.build "libedataserver-1.2"
+  check src/meson.build "subdir('calendar-server')"
+else
+  absent meson.build "libecal-2.0"
+  absent meson.build "libedataserver-1.2"
+  absent src/meson.build "subdir('calendar-server')"
+fi
 check meson.build "introspection=' + (meson.is_cross_build()"
 check meson.build "find_program('gjs', required: false)"
 check js/dbusServices/meson.build "serviceconf.set('gjs', '$GJS')"

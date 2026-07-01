@@ -1,0 +1,13 @@
+Package: kf6-auth
+Version: @DEB_KAUTH_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-coreaddons
+Description: KAuth for the Xios desktop
+ Execute actions as privileged user.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

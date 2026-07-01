@@ -1,0 +1,13 @@
+Package: kf6-configwidgets
+Version: @DEB_KCONFIGWIDGETS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-codecs, kf6-colorscheme, kf6-config, kf6-coreaddons, kf6-guiaddons, kf6-i18n, kf6-widgetsaddons
+Description: KConfigWidgets for the Xios desktop
+ Widgets for configuration dialogs.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

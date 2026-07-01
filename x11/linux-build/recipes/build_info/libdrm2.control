@@ -1,0 +1,11 @@
+Package: libdrm2
+Version: @DEB_LIBDRM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://dri.freedesktop.org/
+Description: Direct Rendering Manager library (iOS links-only shim)
+ iOS has no DRM/KMS. This is a links-only stub of libdrm so consumers that
+ reference @rpath/libdrm.dylib (Xwayland, mutter) resolve it at load time. The
+ DRM/dma-buf code path is inert; GPU buffers go through IOSurface instead.

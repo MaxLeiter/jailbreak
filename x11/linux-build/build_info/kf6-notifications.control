@@ -1,0 +1,13 @@
+Package: kf6-notifications
+Version: @DEB_KNOTIFICATIONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, kf6-config
+Description: KNotifications for the Xios desktop
+ Desktop notifications over the freedesktop DBus interface.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

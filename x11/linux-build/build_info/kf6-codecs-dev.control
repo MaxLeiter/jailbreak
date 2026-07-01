@@ -1,0 +1,11 @@
+Package: kf6-codecs-dev
+Version: @DEB_KCODECS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-codecs (= @DEB_KCODECS_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for KCodecs
+ Headers and CMake package files for KCodecs. Needed to cross-build the
+ KDE components that depend on it.

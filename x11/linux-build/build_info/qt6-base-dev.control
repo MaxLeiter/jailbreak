@@ -1,0 +1,13 @@
+Package: qt6-base-dev
+Version: @DEB_QTBASE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base (= @DEB_QTBASE_V@)
+Description: Development files for Qt 6 base
+ Headers, CMake package files, pkg-config files and mkspecs needed to build
+ software against the Qt 6 base libraries on the Xios desktop. Cross-building
+ additional Qt modules also requires a matching host Qt for the native tools
+ (moc, rcc, uic); see the qtbase recipe in the build tree.

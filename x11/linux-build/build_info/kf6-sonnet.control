@@ -1,0 +1,13 @@
+Package: kf6-sonnet
+Version: @DEB_SONNET_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative
+Description: Sonnet for the Xios desktop
+ Spell checking framework.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

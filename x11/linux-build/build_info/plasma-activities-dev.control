@@ -1,0 +1,11 @@
+Package: plasma-activities-dev
+Version: @DEB_PLASMAACTIVITIES_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: plasma-activities (= @DEB_PLASMAACTIVITIES_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for PlasmaActivities
+ Headers and CMake package files for PlasmaActivities. Needed to cross-build the
+ KDE components that depend on it.

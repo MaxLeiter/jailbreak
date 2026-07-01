@@ -67,10 +67,23 @@ static int write_full(int fd, const void *buf, size_t n)
     return 0;
 }
 
+static void destroy_reply_port(mach_port_t task, mach_port_t port)
+{
+    if (port == MACH_PORT_NULL)
+        return;
+    mach_port_mod_refs(task, port, MACH_PORT_RIGHT_SEND, -1);
+    mach_port_mod_refs(task, port, MACH_PORT_RIGHT_RECEIVE, -1);
+}
+
 XSurfaceConn *xsurface_connect(const char *sock_path)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { xlog("socket() failed errno=%d", errno); return NULL; }
+    if (strlen(sock_path) >= sizeof(((struct sockaddr_un *) 0)->sun_path)) {
+        xlog("socket path too long: %s", sock_path);
+        close(fd);
+        return NULL;
+    }
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
@@ -92,7 +105,7 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
         close(fd); return NULL;
     }
     if (mach_port_insert_right(self, r, r, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS) {
-        mach_port_deallocate(self, r); close(fd); return NULL;
+        destroy_reply_port(self, r); close(fd); return NULL;
     }
 
     xios_hello hello;
@@ -101,7 +114,7 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
     hello.portname = (uint32_t) r;
     hello.reserved = 0;
     if (write_full(fd, &hello, sizeof(hello)) != 0) {
-        mach_port_deallocate(self, r); close(fd); return NULL;
+        destroy_reply_port(self, r); close(fd); return NULL;
     }
 
     /* Receive the IOSurface mach port the server delivers. */
@@ -111,15 +124,20 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
      * this blocks forever (a server that never delivers would hang this thread). */
     kern_return_t kr = mach_msg(&msg.header, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0,
                                 sizeof(msg), r, 5000 /*ms*/, MACH_PORT_NULL);
-    if (kr != KERN_SUCCESS || !(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX)) {
-        xlog("mach_msg recv failed kr=0x%x complex=%d", kr,
-             (int) !!(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX));
-        mach_port_deallocate(self, r); close(fd); return NULL;
+    if (kr != KERN_SUCCESS ||
+        !(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX) ||
+        msg.body.msgh_descriptor_count != 1 ||
+        msg.port.type != MACH_MSG_PORT_DESCRIPTOR ||
+        msg.port.name == MACH_PORT_NULL) {
+        xlog("mach_msg recv failed kr=0x%x complex=%d descriptors=%u type=%u port=%u",
+             kr, (int) !!(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX),
+             msg.body.msgh_descriptor_count, msg.port.type, msg.port.name);
+        destroy_reply_port(self, r); close(fd); return NULL;
     }
     IOSurfaceRef surface = IOSurfaceLookupFromMachPort(msg.port.name);
     /* The receive port has done its job; drop it. */
     mach_port_deallocate(self, msg.port.name);
-    mach_port_mod_refs(self, r, MACH_PORT_RIGHT_RECEIVE, -1);
+    destroy_reply_port(self, r);
     if (!surface) {
         xlog("IOSurfaceLookupFromMachPort returned NULL");
         close(fd); return NULL;
@@ -127,8 +145,9 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
 
     /* Drain the geometry reply so the socket stream is aligned for damage msgs. */
     xios_reply reply;
-    if (read_full(fd, &reply, sizeof(reply)) != 0 || reply.magic != XIOS_MAGIC) {
-        xlog("reply read failed (magic mismatch?)");
+    if (read_full(fd, &reply, sizeof(reply)) != 0 || reply.magic != XIOS_MAGIC ||
+        reply.status != 0) {
+        xlog("reply read failed magic=0x%x status=%u", reply.magic, reply.status);
         CFRelease(surface); close(fd); return NULL;
     }
 

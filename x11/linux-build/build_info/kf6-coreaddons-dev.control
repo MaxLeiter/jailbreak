@@ -1,0 +1,11 @@
+Package: kf6-coreaddons-dev
+Version: @DEB_KCOREADDONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-coreaddons (= @DEB_KCOREADDONS_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for KCoreAddons
+ Headers and CMake package files for KCoreAddons. Needed to cross-build the
+ KDE components that depend on it.

@@ -1,0 +1,11 @@
+Package: kf6-globalaccel-dev
+Version: @DEB_KGLOBALACCEL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-globalaccel (= @DEB_KGLOBALACCEL_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for KGlobalAccel
+ Headers and CMake package files for KGlobalAccel. Needed to cross-build the
+ KDE components that depend on it.

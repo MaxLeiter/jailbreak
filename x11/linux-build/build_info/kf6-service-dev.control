@@ -1,0 +1,11 @@
+Package: kf6-service-dev
+Version: @DEB_KSERVICE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-service (= @DEB_KSERVICE_V@), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-i18n-dev
+Description: Development files for KService
+ Headers and CMake package files for KService. Needed to cross-build the
+ KDE components that depend on it.

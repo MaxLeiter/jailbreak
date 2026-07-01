@@ -1,0 +1,13 @@
+Package: kf6-kcmutils
+Version: @DEB_KCMUTILS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, kf6-configwidgets, kf6-coreaddons, kf6-guiaddons, kf6-i18n, kf6-kio, kf6-itemviews, kf6-xmlgui
+Description: KCMUtils for the Xios desktop
+ Utilities for KDE System Settings modules (KCMs).
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

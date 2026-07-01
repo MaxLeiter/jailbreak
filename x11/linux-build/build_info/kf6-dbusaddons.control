@@ -1,0 +1,13 @@
+Package: kf6-dbusaddons
+Version: @DEB_KDBUSADDONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base
+Description: KDBusAddons for the Xios desktop
+ Convenience classes on top of QtDBus.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

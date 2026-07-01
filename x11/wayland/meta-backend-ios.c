@@ -10,9 +10,9 @@
  *   create_default_seat    -> MetaSeatIOS
  *   get_cursor_renderer    -> a software MetaCursorRenderer (no hardware cursor plane on iOS)
  * post_init starts the Xios input pump (meta-input-ios.c), which drives a
- * MetaVirtualInputDeviceIOS on the seat. The keymap/layout/stage/pointer-constraint vfuncs are
- * minimal (fixed "us" layout, single monitor, no constraints) — enough to bring the stage up;
- * the ones marked TODO are device-iteration fills. GPL-2.0+.
+ * MetaVirtualInputDeviceIOS on the seat. get_keymap returns a real compiled "us" xkb_keymap
+ * (same idiom as the native backend); layout is single-group, single monitor, no pointer
+ * constraints. The stage-update vfunc is still a TODO device-iteration fill. GPL-2.0+.
  */
 
 #include "config.h"
@@ -26,12 +26,16 @@
 #include "backends/ios/meta-monitor-manager-ios.h"
 #include "backends/ios/meta-renderer-ios.h"
 #include "backends/ios/meta-seat-ios.h"
+#include "backends/ios/xios-glue-stub.h"
 #include "backends/meta-backend-private.h"
 #include "backends/meta-color-manager.h"
 #include "backends/meta-cursor-renderer.h"
 #include "backends/meta-gpu.h"
+#include "backends/meta-keymap-utils.h"
 #include "backends/meta-logical-monitor.h"
+#include "backends/meta-renderer.h"
 #include "clutter/clutter.h"
+#include "clutter/clutter-mutter.h"
 
 /* Where the Xios app streams its input protocol (overridable for testing). */
 #define XIOS_INPUT_SOCKET_DEFAULT "/var/jb/tmp/xios-input.sock"
@@ -42,6 +46,9 @@ struct _MetaBackendIOS
 
   MetaInputIOS       *input;
   MetaCursorRenderer *cursor_renderer;
+
+  struct xkb_keymap  *xkb_keymap;      /* the compiled keyboard map get_keymap returns */
+  xkb_layout_index_t  layout_index;    /* locked layout group (0 for the single "us" layout) */
 };
 
 G_DEFINE_TYPE (MetaBackendIOS, meta_backend_ios, META_TYPE_BACKEND)
@@ -69,9 +76,13 @@ static MetaMonitorManager *
 meta_backend_ios_create_monitor_manager (MetaBackend  *backend,
                                          GError      **error)
 {
-  return g_initable_new (META_TYPE_MONITOR_MANAGER_IOS, NULL, error,
-                         "backend", backend,
-                         NULL);
+  /* MetaMonitorManager (and our subclass) is NOT a GInitable — g_initable_new() would assert
+   * G_TYPE_IS_INITABLE, return NULL, and the caller would crash. Plain g_object_new, exactly
+   * like MetaBackendX11Nested's dummy monitor manager; setup runs later via
+   * meta_monitor_manager_setup() and the MetaGpuIOS read_current. */
+  return g_object_new (META_TYPE_MONITOR_MANAGER_IOS,
+                       "backend", backend,
+                       NULL);
 }
 
 static MetaColorManager *
@@ -127,6 +138,29 @@ meta_backend_ios_get_current_logical_monitor (MetaBackend *backend)
   return logical_monitors ? logical_monitors->data : NULL;
 }
 
+static struct xkb_keymap *
+ios_compile_keymap (const char *layouts,
+                    const char *variants,
+                    const char *options,
+                    const char *model)
+{
+  struct xkb_rule_names names;
+  struct xkb_context *context;
+  struct xkb_keymap *keymap;
+
+  names.rules = DEFAULT_XKB_RULES_FILE;
+  names.model = model;
+  names.layout = layouts;
+  names.variant = variants;
+  names.options = options;
+
+  context = meta_create_xkb_context ();
+  keymap = xkb_keymap_new_from_names (context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+  xkb_context_unref (context);
+
+  return keymap;
+}
+
 static void
 meta_backend_ios_set_keymap (MetaBackend *backend,
                              const char  *layouts,
@@ -134,34 +168,80 @@ meta_backend_ios_set_keymap (MetaBackend *backend,
                              const char  *options,
                              const char  *model)
 {
-  /* Fixed "us" layout (iosc_input owns the xkb keymap); layout switching is a no-op. */
+  MetaBackendIOS *self = META_BACKEND_IOS (backend);
+  struct xkb_keymap *keymap;
+
+  /* The synthetic key path carries keysyms directly (notify_keyval), so no xkb_state is
+   * driven from this map — but gnome-shell/Clutter still query it (keybinding labels, IM,
+   * layout group). Recompile + publish it, same as the native backend. */
+  keymap = ios_compile_keymap (layouts, variants, options, model);
+  if (!keymap)
+    {
+      g_warning ("MetaBackendIOS: could not compile keymap "
+                 "(rules=%s model=%s layout=%s variant=%s options=%s) — is xkeyboard-config "
+                 "installed?", DEFAULT_XKB_RULES_FILE, model, layouts, variants, options);
+      return;
+    }
+
+  g_clear_pointer (&self->xkb_keymap, xkb_keymap_unref);
+  self->xkb_keymap = keymap;
+  self->layout_index = 0;
+
+  meta_backend_notify_keymap_changed (backend);
 }
 
 static struct xkb_keymap *
 meta_backend_ios_get_keymap (MetaBackend *backend)
 {
-  /* TODO: expose iosc_input's compiled "us" xkb_keymap through libxios_glue. NULL until
-   * then (the synthetic key path carries keysyms directly via notify_keyval). */
-  return NULL;
+  MetaBackendIOS *self = META_BACKEND_IOS (backend);
+
+  /* Compiled in constructed; recompile the default "us" map lazily if that failed (e.g.
+   * xkeyboard-config data landed after startup). NULL only if the data is truly absent. */
+  if (!self->xkb_keymap)
+    self->xkb_keymap = ios_compile_keymap ("us", "", "", DEFAULT_XKB_MODEL);
+
+  return self->xkb_keymap;
 }
 
 static xkb_layout_index_t
 meta_backend_ios_get_keymap_layout_group (MetaBackend *backend)
 {
-  return 0;
+  return META_BACKEND_IOS (backend)->layout_index;
 }
 
 static void
 meta_backend_ios_lock_layout_group (MetaBackend *backend,
                                     guint        idx)
 {
+  MetaBackendIOS *self = META_BACKEND_IOS (backend);
+
+  if (self->layout_index == idx)
+    return;
+
+  self->layout_index = idx;
+  meta_backend_notify_keymap_layout_group_changed (backend, idx);
 }
 
 static void
 meta_backend_ios_update_stage (MetaBackend *backend)
 {
-  /* TODO: schedule a stage update/present. The renderer presents via
-   * meta_renderer_ios_present() (xios_notify_dirty) after paint. */
+  ClutterActor *stage = meta_backend_get_stage (backend);
+  MetaRenderer *renderer = meta_backend_get_renderer (backend);
+  MetaMonitorManager *monitor_manager =
+    meta_backend_get_monitor_manager (backend);
+  int width, height;
+
+  /* Build the per-monitor MetaRendererView — THIS is what invokes MetaRendererIOS::create_view
+   * (which imports the output IOSurface as the render target). Native does the same via
+   * meta_stage_native_rebuild_views in its update_stage; without it no view exists and nothing
+   * paints. update_stage runs in post_init AFTER meta_monitor_manager_setup, so the monitor +
+   * the output IOSurface (created in constructed) both exist by now. */
+  meta_renderer_rebuild_views (renderer);
+  clutter_stage_clear_stage_views (CLUTTER_STAGE (stage));
+
+  /* Size the stage actor to the (single, fixed) screen — without this the stage stays 0x0. */
+  meta_monitor_manager_get_screen_size (monitor_manager, &width, &height);
+  clutter_actor_set_size (stage, width, height);
 }
 
 static void
@@ -203,11 +283,34 @@ meta_backend_ios_constructed (GObject *object)
 
   G_OBJECT_CLASS (meta_backend_ios_parent_class)->constructed (object);
 
+  /* Create the output IOSurface + start the Xios-app rendezvous BEFORE the renderer imports it
+   * (create_view) or the monitor manager reads its geometry. xios_server_start writes
+   * /var/jb/tmp/xios.json so the Xios app finds + displays the surface — exactly iosc.c main()'s
+   * bring-up. Geometry is the iPad's native 2160x1620 (xios_output_geometry only returns it AFTER
+   * creation, so it can't be queried here — MetaMonitorManagerIOS reads it back post-creation). */
+  {
+    int width = 2160, height = 1620, stride = 0, alloc = 0;
+
+    if (!xios_surface_create (width, height, &stride, &alloc))
+      g_warning ("MetaBackendIOS: xios_surface_create failed (IOSurface entitlement?) — "
+                 "nothing will be displayable");
+    else if (xios_server_start ("/var/jb/tmp/mutter-ddx.sock", "/var/jb/tmp/xios.json",
+                                width, height, stride) != 0)
+      g_warning ("MetaBackendIOS: xios_server_start failed — the Xios app can't find the output");
+  }
+
   /* One synthetic GPU so MetaMonitorManagerIOS has something to read_current from. */
   gpu = g_object_new (META_TYPE_GPU_IOS,
                       "backend", backend,
                       NULL);
   meta_backend_add_gpu (backend, gpu);
+
+  /* Compile the default "us" keyboard map up front (get_keymap has a lazy fallback). */
+  META_BACKEND_IOS (object)->xkb_keymap =
+    ios_compile_keymap ("us", "", "", DEFAULT_XKB_MODEL);
+  if (!META_BACKEND_IOS (object)->xkb_keymap)
+    g_warning ("MetaBackendIOS: initial 'us' keymap failed to compile "
+               "(xkeyboard-config data missing?)");
 }
 
 static void
@@ -217,6 +320,8 @@ meta_backend_ios_finalize (GObject *object)
 
   g_clear_pointer (&self->input, meta_input_ios_free);
   g_clear_object (&self->cursor_renderer);
+  g_clear_pointer (&self->xkb_keymap, xkb_keymap_unref);
+  xios_server_stop ();
 
   G_OBJECT_CLASS (meta_backend_ios_parent_class)->finalize (object);
 }

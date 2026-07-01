@@ -1,0 +1,11 @@
+Package: kf6-xmlgui-dev
+Version: @DEB_KXMLGUI_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-xmlgui (= @DEB_KXMLGUI_V@), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-coreaddons-dev, kf6-globalaccel-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-iconthemes-dev, kf6-itemviews-dev, kf6-textwidgets-dev, kf6-widgetsaddons-dev, kf6-windowsystem-dev
+Description: Development files for KXmlGui
+ Headers and CMake package files for KXmlGui. Needed to cross-build the
+ KDE components that depend on it.

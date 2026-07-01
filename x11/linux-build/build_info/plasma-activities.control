@@ -1,0 +1,13 @@
+Package: plasma-activities
+Version: @DEB_PLASMAACTIVITIES_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base
+Description: PlasmaActivities for the Xios desktop
+ Activities client library (libPlasmaActivities).
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

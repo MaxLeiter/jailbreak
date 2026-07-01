@@ -1,0 +1,11 @@
+Package: kf6-config-dev
+Version: @DEB_KCONFIG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-config (= @DEB_KCONFIG_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for KConfig
+ Headers and CMake package files for KConfig. Needed to cross-build the
+ KDE components that depend on it.

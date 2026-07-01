@@ -1,0 +1,11 @@
+Package: libxshmfence-dev
+Version: @DEB_LIBXSHMFENCE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libxshmfence1 (= @DEB_LIBXSHMFENCE_V@)
+Section: Development
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/xorg/lib/libxshmfence
+Description: X shared-memory fences library (development files)
+ Headers, pkg-config data, static library, and the unversioned .dylib symlink
+ for libxshmfence.

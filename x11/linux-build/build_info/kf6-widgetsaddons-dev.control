@@ -1,0 +1,11 @@
+Package: kf6-widgetsaddons-dev
+Version: @DEB_KWIDGETSADDONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-widgetsaddons (= @DEB_KWIDGETSADDONS_V@), extra-cmake-modules, qt6-base-dev
+Description: Development files for KWidgetsAddons
+ Headers and CMake package files for KWidgetsAddons. Needed to cross-build the
+ KDE components that depend on it.

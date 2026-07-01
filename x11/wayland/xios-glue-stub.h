@@ -118,4 +118,14 @@ EGLDisplay xios_egl_display (void);          /* lazy getter; matches libxios_glu
 void      *xios_get_output_iosurface (void);
 void       xios_notify_dirty (void);
 
+/* ---- output-surface + Xios-app rendezvous creation (MetaBackendIOS::constructed) ---
+ * The mutter backend must CREATE the output IOSurface and start the Xios-app rendezvous
+ * (which writes xios.json so the app finds + displays the surface) before the renderer
+ * imports it in create_view — exactly what iosc.c main() does. Real impl in xios_surface.c;
+ * signatures match linux-build/patches/xios/xios_surface.h. */
+void *xios_surface_create (int width, int height, int *stride, int *alloc_size);
+int   xios_server_start (const char *sock_path, const char *json_path,
+                         int width, int height, int stride);
+void  xios_server_stop (void);
+
 #endif /* XIOS_GLUE_STUB_H */
