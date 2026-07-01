@@ -76,9 +76,9 @@ On-device validation for Q2, in order:
    (proves the QPA end to end: buffers, frame callbacks, input).
 3. A QtWidgets app on wayland (proves raster path + cursor/decoration plugins).
 
-### Q3. qtbase round 2: +dbus, +xkbcommon, +printsupport
+### Q3. qtbase round 2: +dbus, +xkbcommon, +printsupport, +atspi bridge
 
-Three features flip ON before any KF6 work:
+Four features flip ON before any KF6 work:
 - dbus: KF6 hard-requires QtDBus (KDBusAddons, KGlobalAccel, KNotifications, KWin's own
   interfaces). The dbus daemon/libdbus debs exist (GNOME track); prefer
   `FEATURE_dbus_linked=ON` against the staged libdbus over the dlopen-at-runtime mode.
@@ -91,10 +91,17 @@ Three features flip ON before any KF6 work:
   print engine (fine: kxmlgui needs link + headers, nobody prints on the iPad desktop).
   If the module still trips TARGET_OS_IPHONE guards, the fallback moves to the KF6 side:
   patch kxmlgui's print actions out instead.
+- accessibility_atspi_bridge: the AT-SPI-to-VoiceOver track (docs/a11y-plan.md) needs Qt
+  apps to publish onto the a11y bus, and Qt's AT-SPI bridge requires QtDBus + libatspi.
+  Since dbus flips ON here anyway, the only extra cost is at-spi2-core headers/libs staged
+  in the sysroot (already built for the GNOME track — stage, don't rebuild). Upstream
+  gates the bridge behind Linux-ish conditions; expect a CONDITION un-gate in the same
+  spirit as the fontconfig patch 6.
 
 Round-2 procedure (recipe is already written for this, no structural change):
 1. In `qtbase.mk`, flip `FEATURE_dbus=OFF` to ON (+ add `FEATURE_dbus_linked=ON`),
-   `FEATURE_printsupport=OFF` to ON, and add `-DFEATURE_xkbcommon=ON`.
+   `FEATURE_printsupport=OFF` to ON, and add `-DFEATURE_xkbcommon=ON`
+   `-DFEATURE_accessibility_atspi_bridge=ON` (cups stays OFF).
 2. `rm build_work/qtbase/.build_complete`; the build dir is kept, so cmake reconfigures
    incrementally and ninja rebuilds only what the feature flip touches.
 3. Rebuild + re-stage qtbase, bump `DEB_QTBASE_V` revision (6.6.3-2).
