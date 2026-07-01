@@ -46,6 +46,19 @@ echo "==> build xios-hwbridged"
 # shellcheck disable=SC2086
 $CC $CFLAGS "$s" $DEPFLAGS -o "$o"
 
+# install_name_tool: the linker resolves glib's dependency to @rpath/libintl.dylib, an
+# unversioned dev-only symlink not shipped at runtime; rewrite it to the versioned
+# libintl.8.dylib the device actually has. Must run BEFORE ldid (it invalidates the
+# signature). Same fixup the session stubs do.
+INT=""
+for cand in install_name_tool aarch64-apple-darwin-install_name_tool arm64-apple-darwin-install_name_tool; do
+  command -v "$cand" >/dev/null 2>&1 && { INT="$cand"; break; }
+done
+if [ -n "$INT" ] && otool -L "$o" 2>/dev/null | grep -q '@rpath/libintl.dylib'; then
+  "$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib "$o"
+  echo "   libintl: @rpath/libintl.dylib -> @rpath/libintl.8.dylib"
+fi
+
 if [ -n "$LDID" ]; then
   if [ -f "$SRC/entitlements.plist" ]; then
     "$LDID" -S"$SRC/entitlements.plist" "$o"
