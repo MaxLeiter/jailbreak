@@ -41,6 +41,7 @@
 #include "single-pixel-buffer-v1-server-protocol.h"
 #include "cursor-shape-v1-server-protocol.h"
 #include "wlr-screencopy-unstable-v1-server-protocol.h"
+#include "ext-session-lock-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -128,6 +129,7 @@ enum iosc_role {
     IOSC_ROLE_POPUP,
     IOSC_ROLE_SUBSURFACE,
     IOSC_ROLE_LAYER,
+    IOSC_ROLE_LOCK,      /* ext-session-lock-v1 lock surface (never in g_mapped) */
 };
 
 struct iosc_positioner {
@@ -256,6 +258,20 @@ static void dnd_end(void);
 /* start_drag is only honored against the serial of a still-held button press. */
 static uint32_t g_button_serial;
 static int g_button_down;
+
+/* ext-session-lock-v1. While locked, the output shows ONLY the lock surface
+ * (blank black until it maps) and all input is confined to it: surface_at()
+ * resolves to it exclusively and keyboard_set_focus() redirects to it, so
+ * normal windows can neither show nor steal focus. If the locker dies without
+ * unlocking, the session STAYS locked (spec security requirement); a fresh
+ * lock request may then take over and unlock. */
+struct iosc_session_lock {
+    struct wl_resource  *lock;         /* ext_session_lock_v1; NULL if none/abandoned */
+    int                  locked;
+    struct iosc_surface *surface;      /* the lock surface (single output) */
+    struct wl_resource  *lock_surface; /* its ext_session_lock_surface_v1 */
+};
+static struct iosc_session_lock g_slock;
 enum iosc_interactive_op { IOSC_INTERACTIVE_NONE, IOSC_INTERACTIVE_MOVE, IOSC_INTERACTIVE_RESIZE };
 static enum iosc_interactive_op g_interactive_op;
 static struct iosc_surface *g_interactive_surface;
@@ -907,6 +923,18 @@ static void recomposite_all(void)
 {
     if (iosc_gl_ok()) {
         iosc_gl_begin();   /* clears the output to black (desktop background) */
+        if (g_slock.locked) {
+            /* Session locked: ONLY the lock surface may show (blank until it
+             * maps); windows, layer shells and the drag icon must not leak. */
+            if (g_slock.surface && g_slock.surface->current_buffer)
+                composite_one(g_slock.surface);
+            composite_cursor();
+            iosc_gl_end();
+            xios_notify_dirty();
+            fprintf(stderr, "iosc: recomposited (session locked; lock surface %s)\n",
+                    g_slock.surface && g_slock.surface->current_buffer ? "shown" : "pending");
+            return;
+        }
         for (int i = 0; i < g_nmapped; i++)
             composite_one(g_mapped[i]);
         /* Drag icon rides above the windows, just under the cursor (blended). */
@@ -1192,6 +1220,15 @@ static void surface_unmap(struct iosc_surface *s)
             if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
             dnd_end();
         }
+    }
+    /* The lock surface going away mid-lock: back to a blank locked screen (the
+     * session itself stays locked). Also before the mapped gate: never mapped. */
+    if (g_slock.surface == s) {
+        if (g_slock.lock_surface) wl_resource_set_user_data(g_slock.lock_surface, NULL);
+        g_slock.lock_surface = NULL;
+        g_slock.surface = NULL;
+        if (g_kbd_focus == s) keyboard_set_focus(NULL);
+        recomposite_all();
     }
     if (!s->mapped) return;
     if (s->role == IOSC_ROLE_TOPLEVEL)
@@ -2421,6 +2458,9 @@ static void reslist_remove(struct wl_resource **arr, int *n, struct wl_resource 
 /* Surface-local pointer coords helper + top-most surface under an output point. */
 static struct iosc_surface *surface_at(int x, int y)
 {
+    /* Session locked: input may reach only the (fullscreen, at 0,0) lock surface. */
+    if (g_slock.locked)
+        return (g_slock.surface && g_slock.surface->current_buffer) ? g_slock.surface : NULL;
     for (int i = g_nmapped - 1; i >= 0; i--) {
         struct iosc_surface *s = g_mapped[i];
         int w = 0, h = 0;
@@ -2998,6 +3038,10 @@ static void kbd_send_enter(struct iosc_surface *s)
  * focus their content correctly, but re-asserting is harmless.) */
 static void keyboard_set_focus(struct iosc_surface *s)
 {
+    /* Session locked: all keyboard focus belongs to the lock surface (or nothing
+     * until it maps); windows mapping/unmapping underneath can't steal it. */
+    if (g_slock.locked && s != g_slock.surface)
+        s = g_slock.surface;
     if (g_kbd_focus == s) return;
     struct iosc_surface *old = g_kbd_focus;
     kbd_send_leave(old);
@@ -5236,6 +5280,155 @@ static void idle_inhibit_mgr_bind(struct wl_client *c, void *data, uint32_t vers
     wl_resource_set_implementation(r, &idle_inhibit_mgr_impl, NULL, NULL);
 }
 
+/* ===========================================================================
+ * ext-session-lock-v1 (screen locking)
+ *
+ * State + the render/input/focus confinement hooks live at the top of the file
+ * (g_slock; recomposite_all, surface_at, keyboard_set_focus, surface_unmap).
+ * This section is just the protocol plumbing: grant/deny the lock, hand out
+ * the (single-output) lock surface with an output-sized configure, and unlock.
+ * =========================================================================== */
+
+static void slock_surface_destroy_req(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static void slock_surface_ack_configure(struct wl_client *c, struct wl_resource *r, uint32_t serial)
+{ (void)c; (void)r; (void)serial; }   /* single fixed-size configure; nothing to track */
+static const struct ext_session_lock_surface_v1_interface slock_surface_impl = {
+    .destroy = slock_surface_destroy_req,
+    .ack_configure = slock_surface_ack_configure,
+};
+
+static void slock_surface_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s) return;                     /* disarmed by surface_unmap */
+    s->role = IOSC_ROLE_NONE;           /* the wl_surface may be reused */
+    if (g_slock.surface == s) {
+        g_slock.surface = NULL;
+        g_slock.lock_surface = NULL;
+        if (g_kbd_focus == s) keyboard_set_focus(NULL);
+        recomposite_all();              /* blank again while still locked */
+    }
+}
+
+static void slock_get_lock_surface(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                                   struct wl_resource *surf, struct wl_resource *output)
+{ (void)output;   /* single output */
+    struct iosc_surface *s = surf ? wl_resource_get_user_data(surf) : NULL;
+    if (!s) return;
+    if (g_slock.lock != r || !g_slock.locked) return;   /* denied lock: inert */
+    if (s->role != IOSC_ROLE_NONE) {
+        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_ROLE,
+                               "surface already has a role");
+        return;
+    }
+    if (g_slock.surface) {
+        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_DUPLICATE_OUTPUT,
+                               "output already has a lock surface");
+        return;
+    }
+    struct wl_resource *ls = wl_resource_create(c, &ext_session_lock_surface_v1_interface,
+                                                wl_resource_get_version(r), id);
+    if (!ls) { wl_client_post_no_memory(c); return; }
+    s->role = IOSC_ROLE_LOCK;
+    s->dx = 0;
+    s->dy = 0;
+    g_slock.surface = s;
+    g_slock.lock_surface = ls;
+    wl_resource_set_implementation(ls, &slock_surface_impl, s, slock_surface_resource_destroy);
+    ext_session_lock_surface_v1_send_configure(ls, wl_display_next_serial(g_display),
+                                               (uint32_t)output_logical_width(),
+                                               (uint32_t)output_logical_height());
+    keyboard_set_focus(s);
+    fprintf(stderr, "iosc: session-lock surface created (%dx%d configure)\n",
+            output_logical_width(), output_logical_height());
+}
+
+static void slock_destroy_req(struct wl_client *c, struct wl_resource *r)
+{ (void)c;
+    /* Plain destroy is only legal while NOT locked through this object (i.e.
+     * after a finished event); a locked client must use unlock_and_destroy. */
+    if (g_slock.lock == r && g_slock.locked) {
+        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_INVALID_DESTROY,
+                               "destroy while locked (use unlock_and_destroy)");
+        return;
+    }
+    wl_resource_destroy(r);
+}
+
+static void slock_unlock_and_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c;
+    if (g_slock.lock != r || !g_slock.locked) {
+        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_INVALID_UNLOCK,
+                               "unlock on a lock that was never granted");
+        return;
+    }
+    g_slock.locked = 0;
+    g_slock.lock = NULL;
+    fprintf(stderr, "iosc: session UNLOCKED\n");
+    keyboard_set_focus(topmost_focusable());
+    g_ptr_focus = NULL;                /* next motion re-enters normally */
+    recomposite_all();                 /* windows come back */
+    wl_resource_destroy(r);
+}
+
+static const struct ext_session_lock_v1_interface slock_impl = {
+    .destroy = slock_destroy_req,
+    .get_lock_surface = slock_get_lock_surface,
+    .unlock_and_destroy = slock_unlock_and_destroy,
+};
+
+static void slock_resource_destroy(struct wl_resource *r)
+{
+    /* Reached with the session still locked only when the locker died or its
+     * client misbehaved: keep the session locked (spec: never unlock on crash);
+     * a new ext_session_lock_manager_v1.lock may take over and unlock. */
+    if (g_slock.lock == r) {
+        g_slock.lock = NULL;
+        if (g_slock.locked)
+            fprintf(stderr, "iosc: session lock ABANDONED; staying locked "
+                            "(run a locker again to take over)\n");
+    }
+}
+
+static void slock_mgr_lock(struct wl_client *c, struct wl_resource *r, uint32_t id)
+{
+    struct wl_resource *lk = wl_resource_create(c, &ext_session_lock_v1_interface,
+                                                wl_resource_get_version(r), id);
+    if (!lk) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(lk, &slock_impl, NULL, slock_resource_destroy);
+    if (g_slock.lock) {
+        /* Another locker is active: deny (client should destroy the object). */
+        ext_session_lock_v1_send_finished(lk);
+        fprintf(stderr, "iosc: session-lock denied (already locked)\n");
+        return;
+    }
+    g_slock.lock = lk;
+    g_slock.locked = 1;                /* also adopts an abandoned locked session */
+    ext_session_lock_v1_send_locked(lk);
+    fprintf(stderr, "iosc: session LOCKED\n");
+    keyboard_set_focus(NULL);          /* redirected to the lock surface once it exists */
+    g_ptr_focus = NULL;
+    if (g_dnd.active) {                /* a drag can't survive the screen locking */
+        if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
+        dnd_end();
+    }
+    recomposite_all();                 /* blank the output right away */
+}
+
+static void slock_mgr_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct ext_session_lock_manager_v1_interface slock_mgr_impl = {
+    .destroy = slock_mgr_destroy,
+    .lock = slock_mgr_lock,
+};
+static void slock_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &ext_session_lock_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &slock_mgr_impl, NULL, NULL);
+}
+
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv)
@@ -5337,6 +5530,8 @@ int main(int argc, char **argv)
     wl_global_create(g_display, &wp_cursor_shape_manager_v1_interface, 1, NULL, cshape_mgr_bind);
     /* Screenshots: software readback of the output IOSurface (grim, portals, spectacle). */
     wl_global_create(g_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, screencopy_mgr_bind);
+
+    wl_global_create(g_display, &ext_session_lock_manager_v1_interface, 1, NULL, slock_mgr_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
