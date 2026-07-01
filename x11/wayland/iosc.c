@@ -31,6 +31,7 @@
 #include "text-input-unstable-v3-server-protocol.h"
 #include "input-method-unstable-v2-server-protocol.h"
 #include "virtual-keyboard-unstable-v1-server-protocol.h"
+#include "wlr-layer-shell-unstable-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -116,6 +117,7 @@ enum iosc_role {
     IOSC_ROLE_TOPLEVEL,
     IOSC_ROLE_POPUP,
     IOSC_ROLE_SUBSURFACE,
+    IOSC_ROLE_LAYER,
 };
 
 struct iosc_positioner {
@@ -148,6 +150,8 @@ struct iosc_presentation_feedback {
     struct wl_list link;
 };
 
+struct iosc_layer_state;
+
 struct iosc_surface {
     struct wl_resource *resource;        /* wl_surface */
     struct wl_resource *pending_buffer;  /* last wl_surface.attach (may be NULL) */
@@ -173,6 +177,9 @@ struct iosc_surface {
     int                 toplevel_resizing;
     struct iosc_subsurface *subsurface;
     struct iosc_viewport *viewport;
+    struct iosc_layer_state *layer;      /* allocated when role == LAYER */
+    char                title[256];      /* xdg_toplevel.set_title (foreign-toplevel) */
+    char                app_id[256];     /* xdg_toplevel.set_app_id (foreign-toplevel) */
     int                 configured;      /* sent the initial xdg configure */
     struct wl_list      frame_callbacks; /* pending wl_callback resources */
     struct wl_list      presentation_feedbacks;
@@ -230,6 +237,140 @@ static int clampi(int v, int lo, int hi)
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
+}
+
+/* ---- layer-shell state (zwlr_layer_shell_v1) ----------------------------- */
+
+/* Per-surface state for a wlr layer-shell surface (role == IOSC_ROLE_LAYER).
+ * Double-buffered state is simplified: requests store straight into this struct
+ * and take effect at the commit-driven configure/placement (a panel sets its
+ * anchor/size once before the initial commit, so atomicity is a non-issue). */
+struct iosc_layer_state {
+    struct wl_resource *resource;   /* zwlr_layer_surface_v1 */
+    uint32_t layer;                 /* 0 background,1 bottom,2 top,3 overlay */
+    uint32_t anchor;                /* ZWLR_LAYER_SURFACE_V1_ANCHOR_* bitfield */
+    int32_t  excl_zone;             /* set_exclusive_zone */
+    int32_t  margin_t, margin_r, margin_b, margin_l;
+    uint32_t kbd_interactivity;     /* none/exclusive/on_demand */
+    int32_t  req_w, req_h;          /* set_size (0 = compositor decides) */
+    int      cfg_w, cfg_h;          /* size last sent in a configure */
+    int      acked;                 /* client acked a configure */
+    int      configured;            /* we sent the initial configure */
+    char     namespace[64];
+};
+
+/* Accumulated exclusive zones per output edge (the work area = output minus
+ * these). Recomputed whenever a layer surface maps/unmaps or changes zone. */
+static int g_excl_top, g_excl_bottom, g_excl_left, g_excl_right;
+
+/* Z-band key: 0 background < 1 bottom < 2 normal toplevels < 3 top < 4 overlay.
+ * g_mapped[] is kept sorted by (band, insertion order) so layers stack right. */
+static int surface_band(struct iosc_surface *s)
+{
+    if (s->role == IOSC_ROLE_LAYER && s->layer) {
+        switch (s->layer->layer) {
+        case 0: return 0;   /* background */
+        case 1: return 1;   /* bottom */
+        case 2: return 3;   /* top */
+        case 3: return 4;   /* overlay */
+        default: return 2;
+        }
+    }
+    return 2;               /* toplevels / popups / subsurfaces */
+}
+
+/* Recompute the per-edge exclusive-zone accumulators from mapped layer
+ * surfaces. A positive zone reserves the edge the surface is anchored to
+ * (single edge, or an edge plus the two perpendicular edges). */
+static void work_area_recompute(void)
+{
+    g_excl_top = g_excl_bottom = g_excl_left = g_excl_right = 0;
+    for (int i = 0; i < g_nmapped; i++) {
+        struct iosc_surface *s = g_mapped[i];
+        if (s->role != IOSC_ROLE_LAYER || !s->layer) continue;
+        struct iosc_layer_state *L = s->layer;
+        if (L->excl_zone <= 0) continue;
+        int a = L->anchor;
+        int aT = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+        int aB = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+        int aL = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+        int aR = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+        if (aT && !aB)      g_excl_top    += L->excl_zone;
+        else if (aB && !aT) g_excl_bottom += L->excl_zone;
+        else if (aL && !aR) g_excl_left   += L->excl_zone;
+        else if (aR && !aL) g_excl_right  += L->excl_zone;
+    }
+}
+
+/* The usable desktop rectangle = output minus reserved (panel) edges. */
+static void work_area(int *x, int *y, int *w, int *h)
+{
+    int ow = output_logical_width(), oh = output_logical_height();
+    *x = g_excl_left;
+    *y = g_excl_top;
+    *w = ow - g_excl_left - g_excl_right;
+    *h = oh - g_excl_top - g_excl_bottom;
+    if (*w < 1) { *x = 0; *w = ow; }
+    if (*h < 1) { *y = 0; *h = oh; }
+}
+
+/* Anchored placement + served size for a layer surface. */
+static void layer_compute(struct iosc_surface *s, int *cw, int *ch, int *cx, int *cy)
+{
+    struct iosc_layer_state *L = s->layer;
+    int ow = output_logical_width(), oh = output_logical_height();
+    int a = L->anchor;
+    int aT = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+    int aB = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+    int aL = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+    int aR = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+
+    int w = L->req_w > 0 ? L->req_w
+          : (aL && aR) ? ow - L->margin_l - L->margin_r : ow;
+    int h = L->req_h > 0 ? L->req_h
+          : (aT && aB) ? oh - L->margin_t - L->margin_b : oh;
+    if (w < 1) w = ow;
+    if (h < 1) h = oh;
+
+    int x;
+    if (aL && !aR)      x = L->margin_l;
+    else if (aR && !aL) x = ow - w - L->margin_r;
+    else                x = (ow - w) / 2;
+    int y;
+    if (aT && !aB)      y = L->margin_t;
+    else if (aB && !aT) y = oh - h - L->margin_b;
+    else                y = (oh - h) / 2;
+
+    *cw = w; *ch = h; *cx = x; *cy = y;
+}
+
+/* The top-most surface that may hold keyboard focus (topmost toplevel, or a
+ * layer surface that requested keyboard interactivity). */
+static struct iosc_surface *topmost_focusable(void)
+{
+    for (int i = g_nmapped - 1; i >= 0; i--) {
+        struct iosc_surface *s = g_mapped[i];
+        if (s->role == IOSC_ROLE_TOPLEVEL) return s;
+        if (s->role == IOSC_ROLE_LAYER && s->layer &&
+            s->layer->kbd_interactivity != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+            return s;
+    }
+    return NULL;
+}
+
+/* Compute the anchored size and send a layer_surface.configure the client acks. */
+static void layer_send_configure(struct iosc_surface *s)
+{
+    struct iosc_layer_state *L = s->layer;
+    if (!L || !L->resource) return;
+    int cw, ch, cx, cy;
+    layer_compute(s, &cw, &ch, &cx, &cy);
+    L->cfg_w = cw;
+    L->cfg_h = ch;
+    L->configured = 1;
+    uint32_t serial = wl_display_next_serial(g_display);
+    zwlr_layer_surface_v1_send_configure(L->resource, serial,
+                                         (uint32_t)cw, (uint32_t)ch);
 }
 
 static void surface_display_size(struct iosc_surface *s, int *w, int *h)
@@ -508,22 +649,45 @@ static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
     }
 }
 
-/* Add/remove a surface from the z-order list (cascade placement on map). */
+/* Add/remove a surface from the z-order list. Placement: layer surfaces are
+ * anchored, children track their parent, toplevels cascade inside the work area.
+ * The list stays sorted by z-band so panels/overlays stack above toplevels. */
 static void surface_map(struct iosc_surface *s)
 {
     if (s->mapped || g_nmapped >= IOSC_MAX_SURFACES) return;
-    if (s->parent) {
+    if (s->role == IOSC_ROLE_LAYER && s->layer) {
+        int cw, ch, cx, cy;
+        layer_compute(s, &cw, &ch, &cx, &cy);
+        s->dx = cx;
+        s->dy = cy;
+    } else if (s->parent) {
         surface_place_child(s);
     } else {
-        s->dx = 40 + g_nmapped * 70;   /* cascade so windows visibly overlap */
-        s->dy = 40 + g_nmapped * 70;
+        int wx, wy, ww, wh;
+        work_area(&wx, &wy, &ww, &wh);
+        int n = 0;                     /* cascade by toplevel count, not band */
+        for (int i = 0; i < g_nmapped; i++)
+            if (g_mapped[i]->role == IOSC_ROLE_TOPLEVEL) n++;
+        s->dx = wx + 40 + n * 70;      /* cascade so windows visibly overlap */
+        s->dy = wy + 40 + n * 70;
     }
-    g_mapped[g_nmapped++] = s;
+    /* Insert at the end of this surface's z-band (first index with a higher band). */
+    int band = surface_band(s);
+    int idx = g_nmapped;
+    for (int i = 0; i < g_nmapped; i++)
+        if (surface_band(g_mapped[i]) > band) { idx = i; break; }
+    for (int j = g_nmapped; j > idx; j--) g_mapped[j] = g_mapped[j - 1];
+    g_mapped[idx] = s;
+    g_nmapped++;
     s->mapped = 1;
-    fprintf(stderr, "iosc: surface mapped role=%d at (%d,%d); %d window(s)\n",
-            s->role, s->dx, s->dy, g_nmapped);
+    if (s->role == IOSC_ROLE_LAYER) work_area_recompute();
+    fprintf(stderr, "iosc: surface mapped role=%d band=%d at (%d,%d); %d window(s)\n",
+            s->role, band, s->dx, s->dy, g_nmapped);
     if (s->role == IOSC_ROLE_TOPLEVEL || s->role == IOSC_ROLE_POPUP)
         keyboard_set_focus(s);         /* newest shell surface takes keyboard focus */
+    else if (s->role == IOSC_ROLE_LAYER && s->layer &&
+             s->layer->kbd_interactivity != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+        keyboard_set_focus(s);         /* on_demand/exclusive layer takes focus */
 }
 static void surface_unmap(struct iosc_surface *s)
 {
@@ -535,10 +699,17 @@ static void surface_unmap(struct iosc_surface *s)
             break;
         }
     s->mapped = 0;
-    /* Drop focus that pointed at us; hand it to the new top window (if any). */
+    if (s->role == IOSC_ROLE_LAYER && s->layer) {
+        /* Per protocol an unmapped layer surface returns to its post-get_layer_
+         * surface state; a re-map redoes the no-buffer-commit -> configure dance. */
+        s->layer->configured = 0;
+        s->layer->acked = 0;
+        work_area_recompute();
+    }
+    /* Drop focus that pointed at us; hand it to the top focusable window. */
     if (g_ptr_focus == s) g_ptr_focus = NULL;
     if (g_kbd_focus == s)
-        keyboard_set_focus(g_nmapped > 0 ? g_mapped[g_nmapped - 1] : NULL);
+        keyboard_set_focus(topmost_focusable());
 }
 
 static void iosurface_factory_create_buffer(struct wl_client *client,
@@ -637,6 +808,25 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
         need_recomposite = s->mapped;
     }
 
+    /* Layer-shell handshake: the client's first commit carries no buffer; reply
+     * with a configure it acks before attaching a buffer to map. Once mapped, a
+     * geometry change (anchor/size/zone) re-places it and re-serves only if the
+     * anchored size actually changed (so this doesn't ping-pong on every frame). */
+    if (s->role == IOSC_ROLE_LAYER && s->layer) {
+        struct iosc_layer_state *L = s->layer;
+        if (!L->configured && !s->buffer_attached) {
+            layer_send_configure(s);
+        } else if (L->configured && s->mapped) {
+            int cw, ch, cx, cy;
+            layer_compute(s, &cw, &ch, &cx, &cy);
+            s->dx = cx;
+            s->dy = cy;
+            if (cw != L->cfg_w || ch != L->cfg_h) layer_send_configure(s);
+            work_area_recompute();
+            need_recomposite = 1;
+        }
+    }
+
     if (s->buffer_attached) {
         struct wl_resource *buf = s->pending_buffer;
         s->pending_buffer  = NULL;
@@ -655,7 +845,8 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
             if (!s->mapped &&
                 (s->role == IOSC_ROLE_TOPLEVEL ||
                  s->role == IOSC_ROLE_POPUP ||
-                 s->role == IOSC_ROLE_SUBSURFACE))
+                 s->role == IOSC_ROLE_SUBSURFACE ||
+                 (s->role == IOSC_ROLE_LAYER && s->layer && s->layer->configured)))
                 surface_map(s);
         } else {
             /* NULL buffer attach + commit = unmap the surface */
@@ -736,6 +927,15 @@ static void surface_resource_destroy(struct wl_resource *r)
     if (s->subsurface) {
         s->subsurface->surface = NULL;
         s->subsurface = NULL;
+    }
+    if (s->layer) {
+        /* wl_surface is going away first; disarm the layer_surface resource so
+         * its destructor doesn't touch freed memory, then free the layer state. */
+        if (s->layer->resource)
+            wl_resource_set_user_data(s->layer->resource, NULL);
+        free(s->layer);
+        s->layer = NULL;
+        work_area_recompute();
     }
     if (s->xdg_popup) wl_resource_set_user_data(s->xdg_popup, NULL);
     if (g_cursor_surface == s) {
@@ -1357,11 +1557,18 @@ static void send_initial_configure(struct iosc_surface *s)
 
 static void toplevel_reconfigure_state(struct iosc_surface *s)
 {
-    int fill = s->toplevel_maximized || s->toplevel_fullscreen;
-    if (fill) {
+    if (s->toplevel_fullscreen) {
+        /* Fullscreen covers the whole output, ignoring reserved panel edges. */
         s->dx = 0;
         s->dy = 0;
         toplevel_send_configure(s, output_logical_width(), output_logical_height());
+    } else if (s->toplevel_maximized) {
+        /* Maximize fills the work area so it doesn't draw under the panel. */
+        int wx, wy, ww, wh;
+        work_area(&wx, &wy, &ww, &wh);
+        s->dx = wx;
+        s->dy = wy;
+        toplevel_send_configure(s, ww, wh);
     } else {
         toplevel_send_configure(s, default_window_w(), default_window_h());
     }
@@ -1422,15 +1629,17 @@ static void interactive_update(int x, int y)
     if (!s || g_interactive_op == IOSC_INTERACTIVE_NONE) return;
     int dx = x - g_interactive_px;
     int dy = y - g_interactive_py;
+    int wx, wy, ww, wh;
+    work_area(&wx, &wy, &ww, &wh);   /* keep windows out from under the panel */
     if (g_interactive_op == IOSC_INTERACTIVE_MOVE) {
         int w = 0, h = 0;
         surface_display_size(s, &w, &h);
-        int max_x = output_logical_width() - (w > 0 ? w : 1);
-        int max_y = output_logical_height() - (h > 0 ? h : 1);
-        if (max_x < 0) max_x = 0;
-        if (max_y < 0) max_y = 0;
-        s->dx = clampi(g_interactive_dx + dx, 0, max_x);
-        s->dy = clampi(g_interactive_dy + dy, 0, max_y);
+        int max_x = wx + ww - (w > 0 ? w : 1);
+        int max_y = wy + wh - (h > 0 ? h : 1);
+        if (max_x < wx) max_x = wx;
+        if (max_y < wy) max_y = wy;
+        s->dx = clampi(g_interactive_dx + dx, wx, max_x);
+        s->dy = clampi(g_interactive_dy + dy, wy, max_y);
         recomposite_all();
         return;
     }
@@ -1440,10 +1649,10 @@ static void interactive_update(int x, int y)
     if (resize_has_right(g_interactive_edges)) nw = g_interactive_w + dx;
     if (resize_has_top(g_interactive_edges)) { ny = g_interactive_dy + dy; nh = g_interactive_h - dy; }
     if (resize_has_bottom(g_interactive_edges)) nh = g_interactive_h + dy;
-    nw = clampi(nw, 80, output_logical_width());
-    nh = clampi(nh, 60, output_logical_height());
-    nx = clampi(nx, 0, output_logical_width() - nw);
-    ny = clampi(ny, 0, output_logical_height() - nh);
+    nw = clampi(nw, 80, ww);
+    nh = clampi(nh, 60, wh);
+    nx = clampi(nx, wx, wx + ww - nw);
+    ny = clampi(ny, wy, wy + wh - nh);
     s->dx = nx;
     s->dy = ny;
     toplevel_send_configure(s, nw, nh);
@@ -1467,8 +1676,14 @@ static void interactive_end(void)
 /* xdg_toplevel */
 static void xt_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p){ (void)c;(void)r;(void)p; }
-static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t){ (void)c;(void)r; fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
-static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a){ (void)c;(void)r; fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
+static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) snprintf(s->title, sizeof(s->title), "%s", t ? t : "");
+  fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
+static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : "");
+  fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
 static void xt_show_window_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y){ (void)c;(void)r;(void)seat;(void)serial;(void)x;(void)y; }
 static void xt_move(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial)
 { (void)c; (void)seat; (void)serial; interactive_begin(wl_resource_get_user_data(r), IOSC_INTERACTIVE_MOVE, 0); }
@@ -2427,14 +2642,22 @@ static void handle_motion(int x, int y)
     if (g_cursor_visible && moved) recomposite_all();
 }
 
-/* Raise a surface to the top of the z-order (clicked window comes forward). */
+/* Raise a surface to the top of ITS z-band (clicked window comes forward, but a
+ * toplevel never jumps above the panel/overlay band). */
 static void surface_raise(struct iosc_surface *s)
 {
     int idx = -1;
     for (int i = 0; i < g_nmapped; i++) if (g_mapped[i] == s) { idx = i; break; }
-    if (idx < 0 || idx == g_nmapped - 1) return;
-    for (int i = idx; i < g_nmapped - 1; i++) g_mapped[i] = g_mapped[i + 1];
-    g_mapped[g_nmapped - 1] = s;
+    if (idx < 0) return;
+    int band = surface_band(s);
+    int top = idx;                         /* highest index still in this band */
+    for (int i = idx + 1; i < g_nmapped; i++) {
+        if (surface_band(g_mapped[i]) > band) break;
+        top = i;
+    }
+    if (top == idx) return;
+    for (int i = idx; i < top; i++) g_mapped[i] = g_mapped[i + 1];
+    g_mapped[top] = s;
 }
 
 static void handle_button(int btn, int down)
@@ -2445,10 +2668,17 @@ static void handle_button(int btn, int down)
         return;
     }
     if (down && g_ptr_focus) {
-        int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == g_ptr_focus);
-        surface_raise(g_ptr_focus);
-        keyboard_set_focus(g_ptr_focus);
-        if (!was_top) recomposite_all();   /* show the raised window on top */
+        struct iosc_surface *pf = g_ptr_focus;
+        /* A panel (layer surface with keyboard_interactivity=none) must never
+         * steal focus or reorder; it still gets its pointer events below. */
+        int take_focus = !(pf->role == IOSC_ROLE_LAYER && pf->layer &&
+            pf->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+        if (take_focus) {
+            int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == pf);
+            surface_raise(pf);
+            keyboard_set_focus(pf);
+            if (!was_top) recomposite_all();   /* show the raised window on top */
+        }
     }
     if (!g_ptr_focus) return;
     struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
@@ -3328,6 +3558,140 @@ static int make_keymap_fd(void)
     return fd;
 }
 
+/* ---- zwlr_layer_shell_v1 / zwlr_layer_surface_v1 ------------------------- */
+/* Desktop-shell surfaces: anchored, z-banded panels/overviews. State is stored
+ * on struct iosc_layer_state and applied via the commit-driven placement above
+ * (surface_map / surface_commit / work_area_*). This block is only the protocol
+ * plumbing; the stacking/placement/input logic lives with the core WM code. */
+
+static void layer_surface_set_size(struct wl_client *c, struct wl_resource *r,
+                                   uint32_t w, uint32_t h)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s && s->layer) { s->layer->req_w = (int)w; s->layer->req_h = (int)h; } }
+
+static void layer_surface_set_anchor(struct wl_client *c, struct wl_resource *r, uint32_t anchor)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s && s->layer) s->layer->anchor = anchor; }
+
+static void layer_surface_set_exclusive_zone(struct wl_client *c, struct wl_resource *r, int32_t zone)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s && s->layer) { s->layer->excl_zone = zone; if (s->mapped) work_area_recompute(); } }
+
+static void layer_surface_set_margin(struct wl_client *c, struct wl_resource *r,
+                                     int32_t t, int32_t rr, int32_t b, int32_t l)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s && s->layer) { s->layer->margin_t = t; s->layer->margin_r = rr;
+                       s->layer->margin_b = b; s->layer->margin_l = l; } }
+
+static void layer_surface_set_kbd(struct wl_client *c, struct wl_resource *r, uint32_t ki)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s && s->layer) s->layer->kbd_interactivity = ki; }
+
+static void layer_surface_get_popup(struct wl_client *c, struct wl_resource *r,
+                                    struct wl_resource *popup)
+{ (void)c; (void)r; (void)popup; /* xdg_popup already maps standalone; no link needed for the panel */ }
+
+static void layer_surface_ack_configure(struct wl_client *c, struct wl_resource *r, uint32_t serial)
+{ (void)c; (void)serial; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s && s->layer) s->layer->acked = 1; }
+
+static void layer_surface_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void layer_surface_set_layer(struct wl_client *c, struct wl_resource *r, uint32_t layer)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s && s->layer) s->layer->layer = layer; }
+
+static void layer_surface_set_exclusive_edge(struct wl_client *c, struct wl_resource *r, uint32_t edge)
+{ (void)c; (void)r; (void)edge; /* v5 request; we advertise v4 so it is never dispatched */ }
+
+static const struct zwlr_layer_surface_v1_interface layer_surface_impl = {
+    .set_size                   = layer_surface_set_size,
+    .set_anchor                 = layer_surface_set_anchor,
+    .set_exclusive_zone         = layer_surface_set_exclusive_zone,
+    .set_margin                 = layer_surface_set_margin,
+    .set_keyboard_interactivity = layer_surface_set_kbd,
+    .get_popup                  = layer_surface_get_popup,
+    .ack_configure              = layer_surface_ack_configure,
+    .destroy                    = layer_surface_destroy,
+    .set_layer                  = layer_surface_set_layer,
+    .set_exclusive_edge         = layer_surface_set_exclusive_edge,
+};
+
+/* zwlr_layer_surface_v1 resource gone (client destroyed it or disconnected):
+ * detach the role. (If the wl_surface went first, its destructor already nulled
+ * our user_data and freed the layer state, so this no-ops.) */
+static void layer_surface_res_destroy(struct wl_resource *r)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s || !s->layer) return;
+    int was_mapped = s->mapped;
+    surface_unmap(s);
+    free(s->layer);
+    s->layer = NULL;
+    s->role = IOSC_ROLE_NONE;
+    work_area_recompute();
+    if (was_mapped) recomposite_all();
+}
+
+static void layer_shell_get_layer_surface(struct wl_client *c, struct wl_resource *r,
+        uint32_t id, struct wl_resource *surface, struct wl_resource *output,
+        uint32_t layer, const char *namespace)
+{
+    (void)output;   /* single output; the compositor always picks it */
+    struct iosc_surface *s = wl_resource_get_user_data(surface);
+    if (!s) { wl_client_post_no_memory(c); return; }
+    if (s->role != IOSC_ROLE_NONE) {
+        wl_resource_post_error(r, ZWLR_LAYER_SHELL_V1_ERROR_ROLE,
+                               "wl_surface already has a role");
+        return;
+    }
+    if (s->current_buffer || s->pending_buffer) {
+        wl_resource_post_error(r, ZWLR_LAYER_SHELL_V1_ERROR_ALREADY_CONSTRUCTED,
+                               "wl_surface already has a buffer attached");
+        return;
+    }
+    if (layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+        wl_resource_post_error(r, ZWLR_LAYER_SHELL_V1_ERROR_INVALID_LAYER,
+                               "invalid layer %u", layer);
+        return;
+    }
+    struct iosc_layer_state *L = calloc(1, sizeof(*L));
+    if (!L) { wl_client_post_no_memory(c); return; }
+    L->layer = layer;
+    L->kbd_interactivity = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
+    if (namespace)
+        snprintf(L->namespace, sizeof(L->namespace), "%s", namespace);
+
+    struct wl_resource *ls = wl_resource_create(c, &zwlr_layer_surface_v1_interface,
+                                                wl_resource_get_version(r), id);
+    if (!ls) { free(L); wl_client_post_no_memory(c); return; }
+    L->resource = ls;
+    s->role  = IOSC_ROLE_LAYER;
+    s->layer = L;
+    wl_resource_set_implementation(ls, &layer_surface_impl, s, layer_surface_res_destroy);
+    fprintf(stderr, "iosc: layer_surface created ns=\"%s\" layer=%u\n", L->namespace, layer);
+}
+
+static void layer_shell_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static const struct zwlr_layer_shell_v1_interface layer_shell_impl = {
+    .get_layer_surface = layer_shell_get_layer_surface,
+    .destroy           = layer_shell_destroy,
+};
+
+static void layer_shell_bind(struct wl_client *client, void *data,
+                             uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *r = wl_resource_create(client, &zwlr_layer_shell_v1_interface,
+                                               version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &layer_shell_impl, NULL, NULL);
+    fprintf(stderr, "iosc: client bound zwlr_layer_shell_v1 v%u\n", version);
+}
+
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv)
@@ -3408,6 +3772,9 @@ int main(int argc, char **argv)
                      input_method_manager_bind);
     wl_global_create(g_display, &zwp_virtual_keyboard_manager_v1_interface, 1, NULL,
                      virtual_keyboard_manager_bind);
+    /* Desktop-shell chrome: panel/overview/gtk4-layer-shell clients. v4 = the
+     * on_demand keyboard interactivity the overview needs. */
+    wl_global_create(g_display, &zwlr_layer_shell_v1_interface, 4, NULL, layer_shell_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
@@ -3439,7 +3806,7 @@ int main(int argc, char **argv)
                     "wp_fractional_scale_manager_v1 v1, wp_presentation v1, "
                     "zxdg_decoration_manager_v1 v1, xdg_activation_v1 v1, "
                     "zwp_text_input_manager_v3 v1, zwp_input_method_manager_v2 v1, "
-                    "zwp_virtual_keyboard_manager_v1 v1\n");
+                    "zwp_virtual_keyboard_manager_v1 v1, zwlr_layer_shell_v1 v4\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);
