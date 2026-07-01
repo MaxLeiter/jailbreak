@@ -52,6 +52,7 @@ RELATIVE_POINTER_XML="$PREFIX/share/wayland-protocols/unstable/relative-pointer/
 PRIMARY_SELECTION_XML="$PREFIX/share/wayland-protocols/unstable/primary-selection/primary-selection-unstable-v1.xml"
 IDLE_INHIBIT_XML="$PREFIX/share/wayland-protocols/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml"
 IDLE_NOTIFY_XML="$PREFIX/share/wayland-protocols/staging/ext-idle-notify/ext-idle-notify-v1.xml"
+SINGLE_PIXEL_XML="$PREFIX/share/wayland-protocols/staging/single-pixel-buffer/single-pixel-buffer-v1.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
 [ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
 [ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
@@ -69,6 +70,7 @@ IDLE_NOTIFY_XML="$PREFIX/share/wayland-protocols/staging/ext-idle-notify/ext-idl
 [ -f "$PRIMARY_SELECTION_XML" ] || { echo "!! primary-selection-unstable-v1.xml not found at $PRIMARY_SELECTION_XML"; exit 1; }
 [ -f "$IDLE_INHIBIT_XML" ] || { echo "!! idle-inhibit-unstable-v1.xml not found at $IDLE_INHIBIT_XML"; exit 1; }
 [ -f "$IDLE_NOTIFY_XML" ] || { echo "!! ext-idle-notify-v1.xml not found at $IDLE_NOTIFY_XML"; exit 1; }
+[ -f "$SINGLE_PIXEL_XML" ] || { echo "!! single-pixel-buffer-v1.xml not found at $SINGLE_PIXEL_XML"; exit 1; }
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
@@ -88,6 +90,7 @@ wayland-scanner private-code  "$DECORATION_XML" "$GEN/xdg-decoration-unstable-v1
 wayland-scanner server-header "$ACTIVATION_XML" "$GEN/xdg-activation-v1-server-protocol.h"
 wayland-scanner private-code  "$ACTIVATION_XML" "$GEN/xdg-activation-v1-protocol.c"
 wayland-scanner server-header "$VIEWPORTER_XML" "$GEN/viewporter-server-protocol.h"
+wayland-scanner client-header "$VIEWPORTER_XML" "$GEN/viewporter-client-protocol.h"
 wayland-scanner private-code  "$VIEWPORTER_XML" "$GEN/viewporter-protocol.c"
 wayland-scanner server-header "$FRACTIONAL_XML" "$GEN/fractional-scale-v1-server-protocol.h"
 wayland-scanner private-code  "$FRACTIONAL_XML" "$GEN/fractional-scale-v1-protocol.c"
@@ -119,6 +122,9 @@ wayland-scanner server-header "$IDLE_INHIBIT_XML" "$GEN/idle-inhibit-unstable-v1
 wayland-scanner private-code  "$IDLE_INHIBIT_XML" "$GEN/idle-inhibit-unstable-v1-protocol.c"
 wayland-scanner server-header "$IDLE_NOTIFY_XML" "$GEN/ext-idle-notify-v1-server-protocol.h"
 wayland-scanner private-code  "$IDLE_NOTIFY_XML" "$GEN/ext-idle-notify-v1-protocol.c"
+wayland-scanner server-header "$SINGLE_PIXEL_XML" "$GEN/single-pixel-buffer-v1-server-protocol.h"
+wayland-scanner client-header "$SINGLE_PIXEL_XML" "$GEN/single-pixel-buffer-v1-client-protocol.h"
+wayland-scanner private-code  "$SINGLE_PIXEL_XML" "$GEN/single-pixel-buffer-v1-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
 wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
@@ -164,6 +170,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/primary-selection-unstable-v1-protocol.c" \
     "$GEN/idle-inhibit-unstable-v1-protocol.c" \
     "$GEN/ext-idle-notify-v1-protocol.c" \
+    "$GEN/single-pixel-buffer-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
@@ -216,6 +223,16 @@ $CC $CFLAGS $INCS \
     -L"$PREFIX/lib" -lwayland-client \
     $RPATH -o /out/iosc-ftl-test
 echo "   built /out/iosc-ftl-test"
+
+# single-pixel-buffer test client: 1x1 solid colour scaled via viewporter (no wl_shm).
+$CC $CFLAGS $INCS \
+    "$X11/wayland/iosc-spb-test.c" \
+    "$GEN/single-pixel-buffer-v1-protocol.c" \
+    "$GEN/viewporter-protocol.c" \
+    "$GEN/xdg-shell-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    $RPATH -o /out/iosc-spb-test
+echo "   built /out/iosc-spb-test"
 
 # GPU test client: renders GLES->IOSurface via ANGLE, hands it over iosc_iosurface.
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \

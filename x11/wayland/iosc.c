@@ -38,6 +38,7 @@
 #include "primary-selection-unstable-v1-server-protocol.h"
 #include "idle-inhibit-unstable-v1-server-protocol.h"
 #include "ext-idle-notify-v1-server-protocol.h"
+#include "single-pixel-buffer-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -531,6 +532,59 @@ static void iosurface_buffer_resource_destroy(struct wl_resource *r)
     free(ib);
 }
 
+/* ---- single-pixel-buffer-v1: 1x1 solid-colour wl_buffer ------------------- */
+
+/* A wp_single_pixel_buffer is a 1x1 wl_buffer holding a premultiplied RGBA colour
+ * (each channel a value/0xFFFFFFFF fraction). Clients (GTK, CSD shadows, solid
+ * backdrops) attach it and scale it up with wp_viewporter. We store the colour as
+ * BGRA8 so the composite path can feed it straight to iosc_gl_draw_shm as a 1x1
+ * texture; GL sampling of the single texel fills the whole destination rect. */
+struct iosc_single_pixel_buffer {
+    uint8_t bgra[4];   /* BGRA8, premultiplied (matches the wl_shm output format) */
+};
+
+static void spb_buffer_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct wl_buffer_interface spb_buffer_impl = {
+    .destroy = spb_buffer_destroy,
+};
+static void spb_buffer_resource_destroy(struct wl_resource *r)
+{
+    free(wl_resource_get_user_data(r));
+}
+
+static void spb_mgr_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void spb_mgr_create_u32_rgba(struct wl_client *c, struct wl_resource *r,
+                                    uint32_t id, uint32_t rr, uint32_t gg,
+                                    uint32_t bb, uint32_t aa)
+{ (void)r;
+    struct iosc_single_pixel_buffer *spb = calloc(1, sizeof(*spb));
+    if (!spb) { wl_client_post_no_memory(c); return; }
+    /* uint32 fraction (value/0xFFFFFFFF) -> 8-bit; +0x800000 rounds to nearest. */
+    spb->bgra[0] = (uint8_t)((bb + 0x800000u) >> 24);
+    spb->bgra[1] = (uint8_t)((gg + 0x800000u) >> 24);
+    spb->bgra[2] = (uint8_t)((rr + 0x800000u) >> 24);
+    spb->bgra[3] = (uint8_t)((aa + 0x800000u) >> 24);
+    struct wl_resource *buf = wl_resource_create(c, &wl_buffer_interface, 1, id);
+    if (!buf) { free(spb); wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(buf, &spb_buffer_impl, spb, spb_buffer_resource_destroy);
+}
+
+static const struct wp_single_pixel_buffer_manager_v1_interface spb_mgr_impl = {
+    .destroy = spb_mgr_destroy,
+    .create_u32_rgba_buffer = spb_mgr_create_u32_rgba,
+};
+
+static void spb_mgr_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(client,
+        &wp_single_pixel_buffer_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &spb_mgr_impl, NULL, NULL);
+}
+
 /* ---- surface buffer retention + z-order management (M2) ------------------- */
 
 /* Draw one surface's current buffer as a GPU quad at a logical output position. */
@@ -558,6 +612,10 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
         if (ib && ib->surface)
             iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
                                    dxp, dyp, dwp, dhp);
+    } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &spb_buffer_impl)) {
+        struct iosc_single_pixel_buffer *spb = wl_resource_get_user_data(buf);
+        if (spb)   /* 1x1 texel, sampled across the whole destination rect */
+            iosc_gl_draw_shm(spb->bgra, 1, 1, 4, 0, 0, 1, 1, dxp, dyp, dwp, dhp);
     }
 }
 
@@ -874,6 +932,9 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
             else if (wl_resource_instance_of(buf, &wl_buffer_interface, &iosurface_buffer_impl)) {
                 struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(buf);
                 if (ib) { sw = ib->w; sh = ib->h; }
+            }
+            else if (wl_resource_instance_of(buf, &wl_buffer_interface, &spb_buffer_impl)) {
+                sw = 1; sh = 1;   /* single-pixel buffer; scaled up via viewporter */
             }
             surface_set_buffer(s, buf, sw, sh, 1);
             if (!s->mapped &&
@@ -4559,6 +4620,8 @@ int main(int argc, char **argv)
     /* Idle detection + inhibition (screensavers/power; video players stay awake). */
     wl_global_create(g_display, &ext_idle_notifier_v1_interface, 1, NULL, idle_notifier_bind);
     wl_global_create(g_display, &zwp_idle_inhibit_manager_v1_interface, 1, NULL, idle_inhibit_mgr_bind);
+    /* 1x1 solid-colour buffers (CSD shadows, solid backdrops), scaled via viewporter. */
+    wl_global_create(g_display, &wp_single_pixel_buffer_manager_v1_interface, 1, NULL, spb_mgr_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
@@ -4599,7 +4662,8 @@ int main(int argc, char **argv)
                     "zwlr_foreign_toplevel_manager_v1 v3, "
                     "zwp_pointer_constraints_v1 v1, zwp_relative_pointer_manager_v1 v1, "
                     "zwp_primary_selection_device_manager_v1 v1, "
-                    "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1\n");
+                    "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1, "
+                    "wp_single_pixel_buffer_manager_v1 v1\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);
