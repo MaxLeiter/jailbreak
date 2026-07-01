@@ -401,6 +401,99 @@ void xios_notify_dirty(void)
     pthread_mutex_unlock(&s_lock);
 }
 
+/* ---- client→server IOSurface import (Wayland zero-copy GPU buffers) -------- */
+
+/* The output IOSurface (the one the Xios app displays), as an opaque handle so a
+ * GPU compositor can bind it as an ANGLE render target without this file pulling
+ * in EGL. NULL until xios_surface_create(). */
+void *xios_get_output_iosurface(void) { return (void *) s_surface; }
+
+/* kIOSurfaceLockReadOnly without pulling the full IOSurface enum header. */
+#define XIOS_LOCK_READONLY 0x00000001u
+
+void *xios_import_client_iosurface(int pid, unsigned port_name, int *w, int *h)
+{
+    task_t task = MACH_PORT_NULL;
+    kern_return_t kr = task_for_pid(mach_task_self(), pid, &task);
+    if (kr) {
+        fprintf(stderr, "xios: import task_for_pid(%d) failed: 0x%x (%s) — needs "
+                        "task_for_pid-allow on iosc + get-task-allow on the client\n",
+                pid, kr, mach_error_string(kr));
+        return NULL;
+    }
+
+    /* Copy a send right to the client's IOSurface mach port out of its task. */
+    mach_port_t sp = MACH_PORT_NULL;
+    mach_msg_type_name_t acq;
+    kr = mach_port_extract_right(task, (mach_port_name_t) port_name,
+                                 MACH_MSG_TYPE_COPY_SEND, &sp, &acq);
+    mach_port_deallocate(mach_task_self(), task);
+    if (kr) {
+        fprintf(stderr, "xios: import mach_port_extract_right failed: 0x%x (%s)\n",
+                kr, mach_error_string(kr));
+        return NULL;
+    }
+
+    IOSurfaceRef s = IOSurfaceLookupFromMachPort(sp);
+    mach_port_deallocate(mach_task_self(), sp);   /* lookup retained the surface */
+    if (!s) {
+        fprintf(stderr, "xios: import IOSurfaceLookupFromMachPort returned NULL\n");
+        return NULL;
+    }
+    if (w) *w = (int) IOSurfaceGetWidth(s);
+    if (h) *h = (int) IOSurfaceGetHeight(s);
+    fprintf(stderr, "xios: imported client IOSurface id=%u %zux%zu stride=%zu\n",
+            (unsigned) IOSurfaceGetID(s), IOSurfaceGetWidth(s), IOSurfaceGetHeight(s),
+            IOSurfaceGetBytesPerRow(s));
+    return (void *) s;
+}
+
+void xios_blit_client_iosurface(void *client_surface)
+{
+    IOSurfaceRef src = (IOSurfaceRef) client_surface;
+    if (!src || !s_surface) return;
+
+    /* Lock the source read-only so the GPU's writes are made coherent to the CPU
+     * (the client glFinish()es before signalling, so the frame is complete). */
+    IOSurfaceLock(src, XIOS_LOCK_READONLY, NULL);
+    const uint8_t *sbase = (const uint8_t *) IOSurfaceGetBaseAddress(src);
+    size_t sstride = IOSurfaceGetBytesPerRow(src);
+    int sw = (int) IOSurfaceGetWidth(src);
+    int sh = (int) IOSurfaceGetHeight(src);
+
+    uint8_t *dbase = (uint8_t *) IOSurfaceGetBaseAddress(s_surface);
+    int rows = sh < s_height ? sh : s_height;
+    int cols = sw < s_width  ? sw : s_width;
+    size_t row_bytes = (size_t) cols * 4;   /* BGRA8 both sides */
+    for (int y = 0; y < rows; y++)
+        memcpy(dbase + (size_t) y * s_stride, sbase + (size_t) y * sstride, row_bytes);
+
+    IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
+}
+
+void xios_release_client_iosurface(void *client_surface)
+{
+    if (client_surface) CFRelease((IOSurfaceRef) client_surface);
+}
+
+void xios_surface_geometry(int *width, int *height)
+{
+    if (width)  *width  = s_width;
+    if (height) *height = s_height;
+}
+
+uint32_t xios_read_output_pixel(int x, int y)
+{
+    if (!s_surface || x < 0 || y < 0 || x >= s_width || y >= s_height) return 0;
+    /* Read-only lock so a GPU compositor's writes into the output are flushed to the
+     * CPU mapping before we sample it (same coherency reason as the source blit). */
+    IOSurfaceLock(s_surface, XIOS_LOCK_READONLY, NULL);
+    const uint8_t *base = (const uint8_t *) IOSurfaceGetBaseAddress(s_surface);
+    uint32_t px = *(const uint32_t *) (base + (size_t) y * s_stride + (size_t) x * 4);
+    IOSurfaceUnlock(s_surface, XIOS_LOCK_READONLY, NULL);
+    return px;
+}
+
 void xios_server_stop(void)
 {
     pthread_mutex_lock(&s_lock);

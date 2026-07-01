@@ -44,4 +44,45 @@ void xios_notify_dirty(void);
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);
 
+/* ---- client→server IOSurface import (Wayland zero-copy GPU buffers) --------
+ *
+ * The reverse of the app hand-off above: a Wayland client (e.g. an ANGLE-Metal
+ * GLES client) renders into its OWN IOSurface, calls IOSurfaceCreateMachPort()
+ * to get a port name in its task, and passes that name + its pid to the
+ * compositor over the Wayland protocol. These helpers let the compositor import
+ * that surface using the SAME task_for_pid + mach_port_extract_right primitives
+ * as deliver_surface_port(), then composite it into the output surface. All the
+ * Apple-framework code stays in this file (callers see only opaque void*). */
+
+/* Import a client's IOSurface by reaching into its task. `pid` is the client's
+ * pid (from the Wayland socket peer credentials); `port_name` is the
+ * IOSurfaceCreateMachPort() name in the client's IPC space. Returns an opaque
+ * IOSurfaceRef (retained; release with xios_release_client_iosurface), or NULL.
+ * On success the w and h out-params receive the surface dimensions. */
+void *xios_import_client_iosurface(int pid, unsigned port_name, int *w, int *h);
+
+/* Copy a client IOSurface's pixels into the output IOSurface (the one the Xios
+ * app displays). First-light compositing: a CPU blit, top-left aligned, clamped
+ * to the output. Locks the source read-only so GPU writes are coherent. The
+ * caller still calls xios_notify_dirty() to trigger re-present. */
+void xios_blit_client_iosurface(void *client_surface);
+
+/* Release a surface returned by xios_import_client_iosurface(). */
+void xios_release_client_iosurface(void *client_surface);
+
+/* The output IOSurface (opaque IOSurfaceRef) the Xios app displays — so a GPU
+ * compositor can bind it as an ANGLE render target. NULL before xios_surface_create(). */
+void *xios_get_output_iosurface(void);
+
+/* The created output surface's pixel dimensions (0x0 before xios_surface_create()).
+ * Backs xios_output_geometry() in the shared glue (MetaMonitorManagerIOS). */
+void xios_surface_geometry(int *width, int *height);
+
+/* Read one pixel of the output IOSurface in APP/display space (top-left origin) as
+ * a 32-bit little-endian BGRA value — i.e. exactly what the Xios app shows at (x,y).
+ * Locks read-only so GPU (Metal/ANGLE) writes are made coherent to the CPU first.
+ * Validation/diagnostics only (orientation + placement ground truth, off the hot
+ * path). Returns 0 if there is no surface or (x,y) is out of range. */
+uint32_t xios_read_output_pixel(int x, int y);
+
 #endif /* XIOS_SURFACE_H */
