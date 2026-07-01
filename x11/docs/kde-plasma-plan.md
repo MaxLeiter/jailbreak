@@ -224,8 +224,12 @@ QCoro, KF6Screen, NetworkManagerQt, ModemManagerQt, LibKWorkspace — **deferred
   (kguiaddons AppKit color-scheme watcher; kidletime Carbon probe + osx poller plugin).
   All sed targets uniqueness-checked and dry-run against the pinned tarball sources.
   Note: kguiaddons/kidletime wayland protocol codegen runs the HOST qtwaylandscanner via
-  QT_HOST_PATH (host Qt must include qtwayland); wayland.xml + ext-idle-notify ship in
-  libwayland-dev / wayland-protocols (verified in out/).
+  QT_HOST_PATH — covered by build-qt-modules.sh stage 1, and build-kf6.sh hard-gates on
+  the `${HOSTQT}/libexec/qtwaylandscanner` marker so a pre-modules volume clone fails
+  fast (re-running that stage 1 on a clone is a marker-gated no-op). The host-side
+  wayland-scanner apt trio (libwayland-dev/libwayland-bin/wayland-protocols) was already
+  in build-kf6.sh's prep; wayland.xml + ext-idle-notify ship in libwayland-dev /
+  wayland-protocols (verified in out/).
 - **solid**: backend list pre-patched down to fakehw-only (two `-setup` seds empty the
   `elseif(APPLE)` IOKit branch — macOS IOKit+DiskArbitration, not on the iPhoneOS SDK).
   managerbase.cpp verified to gate on `BUILD_DEVICE_BACKEND_*` defines, not Q_OS ifdefs:

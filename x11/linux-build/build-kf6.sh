@@ -39,6 +39,11 @@ cd /work/Procursus
 # qtbase must be the ROUND 2 build (plan Q3): KF6 hard-requires QtDBus, and kxmlgui
 # (wave 4) additionally requires QtPrintSupport. Round 1 debs fail here on purpose.
 [ -x "${HOSTQT}/libexec/moc" ] || { echo "ERROR: host Qt missing (${HOSTQT}); run build-qt.sh first." >&2; exit 1; }
+# Volume-lineage gate: kguiaddons/kidletime/kwayland protocol codegen resolves the HOST
+# qtwaylandscanner through QT_HOST_PATH (build-qt-modules.sh stage 1's marker). A volume
+# cloned before the module layer has a bare-qtbase host Qt and would fail mid-wave-0;
+# re-running build-qt-modules.sh stage 1 on such a clone is safe (marker-gated no-op).
+[ -x "${HOSTQT}/libexec/qtwaylandscanner" ] || { echo "ERROR: host Qt lacks qtwayland (${HOSTQT}/libexec/qtwaylandscanner) — clone from the post-modules volume or re-run build-qt-modules.sh stage 1." >&2; exit 1; }
 [ -f "${BB}/usr/lib/cmake/Qt6/Qt6Config.cmake" ] || { echo "ERROR: cross qtbase not staged in build_base." >&2; exit 1; }
 [ -f "${BB}/usr/lib/cmake/Qt6DBus/Qt6DBusConfig.cmake" ] || { echo "ERROR: staged qtbase has no QtDBus — need the round-2 qtbase (plan Q3: dbus+xkbcommon+printsupport)." >&2; exit 1; }
 [ -f "${BB}/usr/lib/cmake/Qt6Qml/Qt6QmlConfig.cmake" ] || { echo "ERROR: qtdeclarative not staged (build-qt-modules.sh first)." >&2; exit 1; }
