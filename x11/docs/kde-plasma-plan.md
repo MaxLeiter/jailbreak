@@ -209,18 +209,28 @@ QCoro, KF6Screen, NetworkManagerQt, ModemManagerQt, LibKWorkspace — **deferred
   the extra backends would add blind Depends (the libsqlite3-1 naming lesson).
 - **kauth**: FAKE backend — the real one needs polkit-qt6-1 (unbuilt) and the jailbreak
   has no privilege boundary to broker.
-- **knotifications**: two `-setup` seds — Canberra demoted from REQUIRED (no
-  libcanberra chain; code already guards on the target), and the freedesktop/DBus branch
-  forced over the `if(APPLE)` NSUserNotification backend (absent on iPhoneOS).
+- **knotifications**: four `-setup` seds — Canberra demoted from REQUIRED (no
+  libcanberra chain; code already guards on the target), the freedesktop/DBus branch
+  forced over the `if(APPLE)` NSUserNotification backend (absent on iPhoneOS), and the
+  two matching src-level blocks (notifybymacosnotificationcenter.mm + the AppKit link)
+  dropped.
 - **ktextwidgets**: `WITH_TEXT_TO_SPEECH=OFF` — ON would pull the whole qtspeech module.
 - **kio**: ACL + KF6DocTools disabled; Darwin spares us LibMount (Linux-guarded) and X11
   (APPLE-guarded). **Requires Qt6Core5Compat** (QTextCodec) → a qt6-5compat module gap.
-- **kwindowsystem / kguiaddons / kidletime**: X11 forced off, Wayland forced on. The
-  `if(APPLE)` idle/keys/window backends target macOS AppKit/ApplicationServices, absent on
-  iPhoneOS — expect phase-2 src/CMakeLists patches to force the wayland backends (same
-  class as the knotifications fix).
-- **solid**: on APPLE the backend is IOKit (macOS framework); if it won't compile on the
-  iPhoneOS SDK, patch the backend list down to fake/empty (KIO only needs the lib to link).
+- **kwindowsystem / kguiaddons / kidletime**: X11 forced off, Wayland forced on — and the
+  `if(APPLE)` whack-a-mole is now PRE-STAGED, not phase-2: the v6.3.0 trees were audited
+  and each unit carries `-setup` seds (in the generator TABLE) that keep the wayland
+  option alive through the platform force-off guards and delete the macOS backends
+  (kguiaddons AppKit color-scheme watcher; kidletime Carbon probe + osx poller plugin).
+  All sed targets uniqueness-checked and dry-run against the pinned tarball sources.
+  Note: kguiaddons/kidletime wayland protocol codegen runs the HOST qtwaylandscanner via
+  QT_HOST_PATH (host Qt must include qtwayland); wayland.xml + ext-idle-notify ship in
+  libwayland-dev / wayland-protocols (verified in out/).
+- **solid**: backend list pre-patched down to fakehw-only (two `-setup` seds empty the
+  `elseif(APPLE)` IOKit branch — macOS IOKit+DiskArbitration, not on the iPhoneOS SDK).
+  managerbase.cpp verified to gate on `BUILD_DEVICE_BACKEND_*` defines, not Q_OS ifdefs:
+  fake-only compiles clean and yields an empty device list (KIO only needs the lib to
+  link).
 - **breeze-icons**: `BINARY_ICONS_RESOURCE=OFF` (plain files, friendlier to the icon
   repack pipeline); it's in wave 0 because KIconThemes REQUIREs it at build.
 
