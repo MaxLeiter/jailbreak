@@ -81,6 +81,13 @@ void xios_notify_cursor(int x, int y, int visible, int shape_id);
  * compositing the cursor into the output). */
 int xios_have_typed_client(void);
 
+/* Identify which compositor is driving (e.g. "iosc", "mutter-ios"). Sent to
+ * typed clients in the in-band XIOS_MSG_HELLO on connect, so the app learns the
+ * flavor + geometry from the socket itself instead of reading the xios.json
+ * side-file. Call before/after xios_server_start; default is empty (unknown).
+ * The xios.json write stays as a transitional discovery fallback for now. */
+void xios_set_compositor_id(const char *id);
+
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);
 

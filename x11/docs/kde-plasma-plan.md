@@ -76,14 +76,33 @@ On-device validation for Q2, in order:
    (proves the QPA end to end: buffers, frame callbacks, input).
 3. A QtWidgets app on wayland (proves raster path + cursor/decoration plugins).
 
-### Q3. qtbase round 2: +dbus, +xkbcommon
+### Q3. qtbase round 2: +dbus, +xkbcommon, +printsupport
 
-KF6 hard-requires QtDBus (KDBusAddons, KGlobalAccel, KNotifications, KWin's own
-interfaces), and qtwayland keyboard handling follows QtGui's xkbcommon feature, so both
-go ON before any KF6 work. The dbus daemon and libxkbcommon0 debs already exist (GNOME
-and W0 tracks). Qt's private ABI means the Q2 modules get rebuilt afterwards; same
-recipes, bump the deb revision. ICU stays off for now (Qt falls back to its own tables;
-revisit if text segmentation bugs show up in Plasma).
+Three features flip ON before any KF6 work:
+- dbus: KF6 hard-requires QtDBus (KDBusAddons, KGlobalAccel, KNotifications, KWin's own
+  interfaces). The dbus daemon/libdbus debs exist (GNOME track); prefer
+  `FEATURE_dbus_linked=ON` against the staged libdbus over the dlopen-at-runtime mode.
+  Host Qt already ships Qt6DBusTools/qdbusxml2cpp (built dbus-ON), so no host rebuild.
+- xkbcommon: qtwayland keyboard handling follows QtGui's xkbcommon feature; libxkbcommon
+  is already staged in build_base (W0).
+- printsupport: kxmlgui (KF6) links Qt6PrintSupport (K0 audit gate). Risk note: Qt does
+  not officially support printsupport on iOS, and the macOS print engine lives behind
+  the `CONDITION MACOS` blocks our sed disables, so expect a library with no platform
+  print engine (fine: kxmlgui needs link + headers, nobody prints on the iPad desktop).
+  If the module still trips TARGET_OS_IPHONE guards, the fallback moves to the KF6 side:
+  patch kxmlgui's print actions out instead.
+
+Round-2 procedure (recipe is already written for this, no structural change):
+1. In `qtbase.mk`, flip `FEATURE_dbus=OFF` to ON (+ add `FEATURE_dbus_linked=ON`),
+   `FEATURE_printsupport=OFF` to ON, and add `-DFEATURE_xkbcommon=ON`.
+2. `rm build_work/qtbase/.build_complete`; the build dir is kept, so cmake reconfigures
+   incrementally and ninja rebuilds only what the feature flip touches.
+3. Rebuild + re-stage qtbase, bump `DEB_QTBASE_V` revision (6.6.3-2).
+4. Rebuild the Q2 modules against it (private ABI): `rm build_work/<mod>/.build_complete`
+   for each, re-run `build-qt-modules.sh`, bump their deb revisions.
+
+ICU stays off for now (Qt falls back to its own tables; revisit if text segmentation
+bugs show up in Plasma - the ICU debs exist since the GNOME track built them).
 
 ### Q4. GL on ANGLE: the wall, and the plan
 

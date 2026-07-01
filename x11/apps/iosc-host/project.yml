@@ -1,0 +1,65 @@
+name: IOSCHost
+options:
+  bundleIdPrefix: com.max
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  defaultConfig: Release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "2"          # iPad
+    PRODUCT_BUNDLE_IDENTIFIER: com.max.iosc.host
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGN_ENTITLEMENTS: entitlements.plist
+    ENABLE_BITCODE: "NO"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    SWIFT_OBJC_BRIDGING_HEADER: Sources/Host-Bridging-Header.h
+    # Presentation is GPU IOSurface -> Metal (like Xios); no X11 link.
+    OTHER_LDFLAGS: -framework IOSurface
+
+targets:
+  IOSCHost:
+    type: application
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "2"
+    sources:
+      - path: Sources
+      - path: Resources/Assets.xcassets
+    info:
+      path: Resources/Info.generated.plist
+      properties:
+        # These three are the launch target. The plain build carries empty values;
+        # gen-launchers.sh --native overwrites them per app (IOSCAppID/Exec/Name),
+        # exactly like the IOSCLaunch bundles.
+        IOSCAppID: ""
+        IOSCExec: ""
+        IOSCName: ""
+        CFBundleDisplayName: iosc Host
+        CFBundleShortVersionString: "0.1.0"
+        UILaunchScreen: {}
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        UIApplicationSupportsIndirectInputEvents: true
+        # Each Linux window is its own scene; multi-scene is what makes a dialog (or
+        # a second window of the same app) a separate iPad window.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).HostSceneDelegate
+        # Follow the device: a native window rotates with the iPad (unlike the
+        # landscape-locked Xios desktop).
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight

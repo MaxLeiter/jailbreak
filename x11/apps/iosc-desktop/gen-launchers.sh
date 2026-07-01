@@ -31,7 +31,9 @@ OUT="$HERE/out/bundles"
 ICONS_ROOT=""
 APPS_ROOT=""
 DEPLOY=0
+NATIVE=0
 DESKTOPS=()
+HOST_DIR="$REPO_ROOT/x11/apps/iosc-host"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -39,6 +41,7 @@ while [ $# -gt 0 ]; do
     --apps-root)  APPS_ROOT="$2";  shift 2 ;;
     --out)        OUT="$2";        shift 2 ;;
     --deploy)     DEPLOY=1;        shift ;;
+    --native)     NATIVE=1;        shift ;;   # per-app windows (iosc-host), not one Xios window
     -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
     *)            DESKTOPS+=("$1"); shift ;;
   esac
@@ -48,8 +51,16 @@ PY="$REPO_ROOT/.repo-venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"
 PB=/usr/libexec/PlistBuddy
 
-# Build the shared stub binaries if they aren't here yet.
-if [ ! -x "$HERE/out/IOSCLaunch" ]; then
+# Build the shared prebuilt binaries if they aren't here yet.
+if [ "$NATIVE" = "1" ]; then
+  # Native flavor: each bundle IS the per-app host (Metal-presents the app's own
+  # windows in its own UIWindowScene). The shared payload is the host binary + its
+  # compiled shader (see x11/apps/iosc-host/build-host.sh).
+  if [ ! -x "$HOST_DIR/out/IOSCHost" ] || [ ! -f "$HOST_DIR/out/default.metallib" ]; then
+    echo "==> iosc-host prebuilt missing; building it first"
+    bash "$HOST_DIR/build-host.sh"
+  fi
+elif [ ! -x "$HERE/out/IOSCLaunch" ]; then
   echo "==> IOSCLaunch missing; building stubs first"
   bash "$HERE/build-stub.sh"
 fi
@@ -102,12 +113,78 @@ for DESKTOP in "${DESKTOPS[@]}"; do
 
   echo "==> $NAME  (app_id=$APPID  exec=$EXEC)"
   rm -rf "$BDIR"; mkdir -p "$BDIR"
-  cp "$HERE/out/IOSCLaunch" "$BDIR/IOSCLaunch"
-  chmod 0755 "$BDIR/IOSCLaunch"
+
+  if [ "$NATIVE" = "1" ]; then
+    # Native: the bundle binary IS the per-app host + its compiled shader.
+    EXE=IOSCHost
+    cp "$HOST_DIR/out/IOSCHost"        "$BDIR/IOSCHost"
+    cp "$HOST_DIR/out/default.metallib" "$BDIR/default.metallib"
+    chmod 0755 "$BDIR/IOSCHost"
+  else
+    EXE=IOSCLaunch
+    cp "$HERE/out/IOSCLaunch" "$BDIR/IOSCLaunch"
+    chmod 0755 "$BDIR/IOSCLaunch"
+  fi
 
   # Static Info.plist (dynamic string values get set via PlistBuddy below so any
-  # &, quotes, etc. in Name/Exec are escaped correctly).
-  cat > "$BDIR/Info.plist" <<'PLIST'
+  # &, quotes, etc. in Name/Exec are escaped correctly). The classic bundle runs
+  # ONE fullscreen landscape Xios window; the native bundle is a multi-scene host
+  # that follows device rotation.
+  if [ "$NATIVE" = "1" ]; then
+    cat > "$BDIR/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>IOSCHost</string>
+  <key>CFBundleIdentifier</key><string>PLACEHOLDER_ID</string>
+  <key>CFBundleName</key><string>PLACEHOLDER_NAME</string>
+  <key>CFBundleDisplayName</key><string>PLACEHOLDER_NAME</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>LSRequiresIPhoneOS</key><true/>
+  <key>MinimumOSVersion</key><string>16.0</string>
+  <key>UIDeviceFamily</key><array><integer>2</integer></array>
+  <key>UILaunchScreen</key><dict/>
+  <key>UIStatusBarHidden</key><true/>
+  <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key><true/>
+    <key>UISceneConfigurations</key>
+    <dict>
+      <key>UIWindowSceneSessionRoleApplication</key>
+      <array>
+        <dict>
+          <key>UISceneConfigurationName</key><string>Default</string>
+          <key>UISceneDelegateClassName</key><string>IOSCHost.HostSceneDelegate</string>
+        </dict>
+      </array>
+    </dict>
+  </dict>
+  <key>UISupportedInterfaceOrientations~ipad</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
+  <key>IOSCExec</key><string></string>
+  <key>IOSCAppID</key><string></string>
+  <key>IOSCName</key><string></string>
+  <key>CFBundleIcons</key>
+  <dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key>
+    <array><string>AppIcon60x60</string><string>AppIcon76x76</string></array></dict></dict>
+  <key>CFBundleIcons~ipad</key>
+  <dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key>
+    <array><string>AppIcon60x60</string><string>AppIcon76x76</string><string>AppIcon83.5x83.5</string></array></dict></dict>
+</dict>
+</plist>
+PLIST
+  else
+    cat > "$BDIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -143,6 +220,7 @@ for DESKTOP in "${DESKTOPS[@]}"; do
 </dict>
 </plist>
 PLIST
+  fi
 
   "$PB" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BDIR/Info.plist"
   "$PB" -c "Set :CFBundleName $NAME"            "$BDIR/Info.plist"
@@ -155,8 +233,14 @@ PLIST
   "$PY" "$HERE/gen-icons.py" --icon "$ICON" --name "$NAME" \
         --icons-root "$ICONS_ROOT" --out "$BDIR"
 
-  # Pseudo-sign the bundle's copy of the binary with the launcher entitlements.
-  ldid -S"$HERE/launcher-ent.xml" "$BDIR/IOSCLaunch"
+  # Pseudo-sign the bundle's copy of the binary. Native hosts need the GPU/IOSurface
+  # entitlements (Metal present + task_for_pid canvas rendezvous); the classic stub
+  # needs only the minimal launcher set.
+  if [ "$NATIVE" = "1" ]; then
+    ldid -S"$HOST_DIR/entitlements.plist" "$BDIR/IOSCHost"
+  else
+    ldid -S"$HERE/launcher-ent.xml" "$BDIR/IOSCLaunch"
+  fi
 
   BUILT+=("$BDIR")
 done

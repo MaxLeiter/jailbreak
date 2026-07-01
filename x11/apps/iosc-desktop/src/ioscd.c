@@ -67,6 +67,25 @@ static volatile sig_atomic_t g_sigchld = 0;
 static int g_chld_pipe[2] = { -1, -1 };
 static pid_t g_iosc_pid = 0;
 
+/* Native iPadOS flavor: each app is presented by its OWN per-app host app in its
+ * own UIWindowScene (iosc-host), NOT inside the single fullscreen Xios window. In
+ * native mode ioscd (a) starts iosc with IOSC_NATIVE=1 so the compositor exports a
+ * per-window canvas over iosc-native.sock, and (b) skips `uiopen com.max.xios` —
+ * the tapped host IS the foreground display, so foregrounding Xios would steal it.
+ * Enabled by env IOSC_NATIVE (from the LaunchDaemon plist the native flavor
+ * installs) or, for test toggling without reinstalling the daemon, the presence of
+ * /var/jb/tmp/iosc.native. Classic (single-Xios-window) behavior is unchanged when
+ * off. */
+#define NATIVE_FLAG    TMP "/iosc.native"
+static int g_native = 0;
+
+static int detect_native(void)
+{
+    const char *e = getenv("IOSC_NATIVE");
+    if (e && (*e == '1' || *e == 't' || *e == 'T' || *e == 'y' || *e == 'Y')) return 1;
+    struct stat st; return stat(NATIVE_FLAG, &st) == 0;
+}
+
 static void on_sigchld(int sig)
 {
     (void)sig;
@@ -159,6 +178,7 @@ static int ensure_iosc(void)
         if (devnull >= 0) { dup2(devnull, 0); if (devnull > 2) close(devnull); }
         setenv("XDG_RUNTIME_DIR", TMP, 1);
         setenv("PATH", "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin", 1);
+        if (g_native) setenv("IOSC_NATIVE", "1", 1);   /* per-window canvas export */
         execl(IOSC_BIN, "iosc", (char *)NULL);
         _exit(127);
     }
@@ -306,7 +326,10 @@ static void handle_conn(int fd)
         reply(fd, "ERR iosc start failed\n");
         return;
     }
-    foreground_xios();
+    /* Classic: pull the shared Xios display forward. Native: the tapped per-app
+     * host is already foreground and presents this app's own windows, so don't
+     * steal focus with uiopen. */
+    if (!g_native) foreground_xios();
 
     struct app_entry *e = find_app(app_id);
     if (e && e->pid > 0 && kill(e->pid, 0) == 0) {
@@ -345,6 +368,9 @@ int main(void)
 {
     /* keep TMP present (it normally is; harmless if it exists) */
     mkdir(TMP, 01777);
+
+    g_native = detect_native();
+    fprintf(stderr, "ioscd: mode=%s\n", g_native ? "native (per-app scenes)" : "classic (single Xios window)");
 
     signal(SIGPIPE, SIG_IGN);
     if (pipe(g_chld_pipe) == 0) {

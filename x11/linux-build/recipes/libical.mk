@@ -36,8 +36,14 @@ libical: libical-setup glib2.0 libxml2 icu4c
 	# Native half: only exists to produce ical-glib-src-generator + its CMake export file
 	# (installed to native-prefix/lib/cmake/LibIcal/IcalGlibSrcGenerator.cmake). Compilers
 	# pinned to the real host toolchain; host pkg-config resolves host glib/libxml2.
+	# env -u: cmake initializes CMAKE_C_FLAGS / linker flags from the ENVIRONMENT, and the
+	# parent Makefile exports the darwin CFLAGS/LDFLAGS (-arch arm64 -isysroot iPhoneOS.sdk
+	# -miphoneos-version-min...) — host gcc chokes ("unrecognized command-line option
+	# '-arch'"). Same leak class as icu4c.mk's MAKEFLAGS note, flags edition: scrub the
+	# cross env for the native configure; pinning the compilers alone is NOT enough.
 	rm -rf $(BUILD_WORK)/libical/native $(BUILD_WORK)/libical/native-prefix
-	cd $(BUILD_WORK)/libical && cmake -B native \
+	cd $(BUILD_WORK)/libical && env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+		-u CC -u CXX -u AR -u RANLIB cmake -B native \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_COMPILER=/usr/bin/cc \
 		-DCMAKE_CXX_COMPILER=/usr/bin/c++ \

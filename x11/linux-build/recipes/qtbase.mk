@@ -80,19 +80,23 @@ qtbase-setup: setup
 	rm -rf $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/xpc
 	rm -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/os/log.h
 	# 5) re-add the Darwin-GENERIC pieces the MACOS-block disable (patch 2) also dropped:
-	#    qcollator_macx.cpp (upstream CONDITION "MACOS AND NOT QT_FEATURE_icu" — but it is pure
-	#    CoreFoundation, fine on iOS, and with ICU off Core would otherwise have NO collator impl)
-	#    and the kqueue filesystem watcher (qfilesystemwatcher.cpp's Darwin engine chooser calls
-	#    it; the fsevents alternative is genuinely macOS-only). The frameworks the dropped MACOS
-	#    LIBRARIES block carried (CoreServices for UTType*, Security) plus UIKit (qcore_mac.mm's
-	#    Q_OS_IOS path references UIApplication) are injected globally via *_LINKER_FLAGS below.
+	#    a QCollator backend — NOT qcollator_macx.cpp (Carbon UCCollate, truly macOS-only; learned
+	#    in attempt 7) but qcollator_posix.cpp (strcoll; upstream gates it "UNIX AND NOT MACOS AND
+	#    NOT ICU", false here because MACOS=1) — and the kqueue filesystem watcher
+	#    (qfilesystemwatcher.cpp's Darwin engine chooser calls it; the fsevents alternative is
+	#    genuinely macOS-only). The frameworks the dropped MACOS LIBRARIES block carried
+	#    (CoreServices for UTType*, Security) plus UIKit (qcore_mac.mm's Q_OS_IOS path references
+	#    UIApplication) are injected globally via *_LINKER_FLAGS below. The trailing sed corrects
+	#    a tree that already carries the earlier macx-flavored append (idempotent otherwise).
 	if ! grep -q "xios iOS re-adds" $(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt; then \
 		printf '%s\n' \
 			'# xios iOS re-adds (see qtbase.mk patch 5)' \
 			'qt_internal_extend_target(Core' \
-			'    SOURCES text/qcollator_macx.cpp io/qfilesystemwatcher_kqueue.cpp io/qfilesystemwatcher_kqueue_p.h' \
+			'    SOURCES text/qcollator_posix.cpp io/qfilesystemwatcher_kqueue.cpp io/qfilesystemwatcher_kqueue_p.h' \
 			')' >> $(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt ; \
 	fi
+	sed -i 's|SOURCES text/qcollator_macx.cpp io/qfilesystemwatcher_kqueue|SOURCES text/qcollator_posix.cpp io/qfilesystemwatcher_kqueue|' \
+		$(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt
 
 ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:

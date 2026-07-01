@@ -2,17 +2,19 @@
 #
 # build-panel.sh — cross-compile the iosc shell clients for rootless iOS arm64.
 #
-#   ioscpanel     — the desktop panel. Draws with cairo + pangocairo (real SF
-#                   text, rounded surfaces, PNG app icons), so it links the staged
-#                   GTK stack (procursus-vol-gtk) via cross-pkg-config.
-#   ioscoverview  — the app overview. Still the wl_shm bitmap renderer, so it
-#                   links only libwayland-client.
+#   ioscpanel     — the panel + quick settings. cairo + pangocairo (SF text,
+#                   rounded surfaces, PNG icons) + screencopy for the frosted
+#                   QS backdrop and the Screenshot action.
+#   ioscoverview  — the launcher/window switcher. Same cairo stack + screencopy
+#                   (frosted desktop backdrop).
+#   ioscbg        — the wallpaper. Pure wl_shm + CoreGraphics/ImageIO decode
+#                   (no cairo, no new deps).
 #
-# Both are pure libwayland-CLIENT programs (own poll() loop). The GTK-stack
+# All are pure libwayland-CLIENT programs (own poll() loop). The GTK-stack
 # dylibs (cairo/pango/glib/…) resolve on device from /var/jb/usr/lib via @rpath.
 #
 # Usage: ./build-panel.sh
-# Output: out/ioscpanel, out/ioscoverview (ldid-signed with panel-ent.xml).
+# Output: out/ioscpanel, out/ioscoverview, out/ioscbg (ldid-signed, panel-ent.xml).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -46,7 +48,8 @@ docker run --rm --entrypoint /bin/bash \
     fi
 
     mkdir -p gen
-    for p in wlr-layer-shell-unstable-v1 wlr-foreign-toplevel-management-unstable-v1 xdg-shell; do
+    for p in wlr-layer-shell-unstable-v1 wlr-foreign-toplevel-management-unstable-v1 \
+             wlr-screencopy-unstable-v1 xdg-shell; do
       wayland-scanner client-header protocols/$p.xml gen/$p-client-protocol.h
       wayland-scanner private-code  protocols/$p.xml gen/$p-protocol.c
     done
@@ -54,7 +57,7 @@ docker run --rm --entrypoint /bin/bash \
     BASE="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -Igen -I/work \
           -isystem $BUILD_BASE/var/jb/usr/include -Wall -Wextra -O2 -std=gnu11"
     # The staged iOS SDK headers macro-rename exec*()->ie_exec*() (the Procursus
-    # iosexec posix_spawn shim); sd_launch() uses execl, so both clients link it.
+    # iosexec posix_spawn shim); sd_launch() uses execl, so all clients link it.
     RPATH="-Wl,-rpath,/var/jb/usr/lib -framework CoreFoundation -liosexec"
 
     WL_CFLAGS=$("$PKGC" --cflags wayland-client)
@@ -62,38 +65,47 @@ docker run --rm --entrypoint /bin/bash \
     UI_CFLAGS=$("$PKGC" --cflags wayland-client cairo pangocairo)
     UI_LIBS=$("$PKGC" --libs wayland-client cairo pangocairo)
 
-    # protocol marshalling objects (shared by both clients)
+    # protocol marshalling objects (shared)
     $CC $BASE $WL_CFLAGS -c gen/wlr-layer-shell-unstable-v1-protocol.c -o gen/layer.o
     $CC $BASE $WL_CFLAGS -c gen/wlr-foreign-toplevel-management-unstable-v1-protocol.c -o gen/ftm.o
+    $CC $BASE $WL_CFLAGS -c gen/wlr-screencopy-unstable-v1-protocol.c -o gen/scopy.o
     $CC $BASE $WL_CFLAGS -c gen/xdg-shell-protocol.c -o gen/xdg.o
-    PROTO="gen/layer.o gen/ftm.o gen/xdg.o"
+    PROTO="gen/layer.o gen/ftm.o gen/scopy.o gen/xdg.o"
 
-    echo "== linking ioscpanel (cairo/pangocairo) =="
+    echo "== linking ioscpanel (cairo/pangocairo + screencopy) =="
     $CC $BASE $UI_CFLAGS -c ioscpanel.c -o gen/ioscpanel.o
     $CC gen/ioscpanel.o $PROTO $UI_LIBS $RPATH -o out/ioscpanel
 
-    echo "== linking ioscoverview (wl_shm bitmap) =="
-    $CC $BASE $WL_CFLAGS -c ioscoverview.c -o gen/ioscoverview.o
-    $CC gen/ioscoverview.o $PROTO $WL_LIBS $RPATH -o out/ioscoverview
+    echo "== linking ioscoverview (cairo/pangocairo + screencopy) =="
+    $CC $BASE $UI_CFLAGS -c ioscoverview.c -o gen/ioscoverview.o
+    $CC gen/ioscoverview.o $PROTO $UI_LIBS $RPATH -o out/ioscoverview
+
+    echo "== linking ioscbg (wl_shm + CoreGraphics/ImageIO) =="
+    $CC $BASE $WL_CFLAGS -c ioscbg.c -o gen/ioscbg.o
+    $CC gen/ioscbg.o gen/layer.o gen/xdg.o $WL_LIBS $RPATH \
+        -framework CoreGraphics -framework ImageIO -o out/ioscbg
 
     # Match the shipped gettext: device has libintl.8.dylib, not libintl.dylib
     # (same fixup as build-hello-gtk.sh).
-    "$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib out/ioscpanel 2>/dev/null || true
+    for b in out/ioscpanel out/ioscoverview; do
+      "$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib "$b" 2>/dev/null || true
+    done
 
     echo "== ioscpanel linked dylibs =="
     "$OTOOL" -L out/ioscpanel | grep -iE "cairo|pango|glib|gobject|wayland|intl|harfbuzz|fontconfig" | head -20
+    echo "== ioscbg linked frameworks =="
+    "$OTOOL" -L out/ioscbg | grep -iE "wayland|CoreGraphics|ImageIO|CoreFoundation" | head -10
   '
 
 # --- ad-hoc sign with the client entitlements ------------------------------
 if command -v ldid >/dev/null; then
-  for b in ioscpanel ioscoverview; do
+  for b in ioscpanel ioscoverview ioscbg; do
     ldid -S"$HERE/panel-ent.xml" "$OUT/$b" && echo "signed: $OUT/$b"
   done
 else
-  echo "NOTE: ldid not on host PATH; sign on-device: ldid -Spanel-ent.xml ioscpanel ioscoverview" >&2
+  echo "NOTE: ldid not on host PATH; sign on-device: ldid -Spanel-ent.xml iosc{panel,overview,bg}" >&2
 fi
 
-echo "DONE -> $OUT/ioscpanel  $OUT/ioscoverview"
-echo "Deploy: scp out/iosc{panel,overview} root@ipad:/var/jb/usr/local/bin/"
-echo "Run (needs iosc with zwlr_layer_shell_v1):"
-echo "  WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/var/jb/tmp ioscpanel"
+echo "DONE -> $OUT/ioscpanel  $OUT/ioscoverview  $OUT/ioscbg"
+echo "Deploy: scp out/iosc{panel,overview,bg} root@ipad:/var/jb/usr/local/bin/"
+echo "Run (needs iosc with zwlr_layer_shell_v1): see run-shell.sh"

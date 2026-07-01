@@ -1,6 +1,6 @@
 /*
  * iosc_native_proto.h — wire contract for the NATIVE iPadOS flavor's per-window
- * rendezvous (iosc-native.sock v2). Shared by BOTH ends:
+ * rendezvous (iosc-native.sock). Shared by BOTH ends:
  *   - the per-app host app's client (apps/iosc-host/Sources/NativeClient.c), and
  *   - iosc's server half (to be implemented in wayland/iosc.c per x11/docs/
  *     native-ipados-protocol.md — NOT built yet).
@@ -10,74 +10,88 @@
  * one shared output surface (the GNOME/KDE/X11 flavors). This socket is how the
  * host learns which canvas belongs to which window and follows its lifecycle.
  *
- * PROVISIONAL FRAMING — reconcile with iosc-protocols' typed app-socket header
- * (HELLO/DIRTY/CURSOR). The lead asked native to REUSE that header rather than
- * fork a parallel one; a request is out to iosc-protocols for its exact struct +
- * type-code enum. Until it lands, this defines a self-consistent 32-byte fixed
- * header with a reserved native type range (0x40-0x5f) that slots into their enum
- * without collision. Only the header struct + magic move if we adopt theirs; the
- * message set and semantics below stay.
- *
- * Both ends are arm64 little-endian, so the structs go on the wire verbatim.
+ * FRAMING: the shared typed app-socket record designed by the iosc maintainer for
+ * the cursor-overlay work (agreed 2026-07-01). ONE 32-byte header both directions;
+ * core type codes 0x01-0x0f are flavor-agnostic and owned by iosc (HELLO/DIRTY/
+ * CURSOR); the native lifecycle codes live in 0x40-0x5f, the range reserved for
+ * this flavor. Native REUSES core DIRTY and CURSOR (window_id-targeted) rather
+ * than redefining per-window variants. Both ends are arm64 little-endian; structs
+ * go on the wire verbatim.
  */
 #ifndef IOSC_NATIVE_PROTO_H
 #define IOSC_NATIVE_PROTO_H
 
 #include <stdint.h>
 
-#define IOSC_NATIVE_SOCK   "/var/jb/tmp/iosc-native.sock"
-#define IOSC_NATIVE_MAGIC  0x584E4931u   /* 'XNI1' */
+#define IOSC_NATIVE_SOCK "/var/jb/tmp/iosc-native.sock"
 
-/* Fixed record header. `payload_len` bytes of UTF-8 follow the header (TITLE).
- * The four params carry per-message integers (geometry, flags, port names). */
-struct iosc_native_hdr {
-    uint32_t magic;        /* IOSC_NATIVE_MAGIC (sanity/resync) */
-    uint32_t type;         /* one of IOSC_N_* below              */
-    uint32_t window;       /* per-toplevel id (host<->iosc key)  */
-    uint32_t payload_len;  /* trailing UTF-8 bytes (0 if none)   */
-    uint32_t a, b, c, d;   /* per-message params (see each type) */
-};
+/* ---- shared typed record (authoritative shape: the iosc maintainer) ------- */
 
-/* ---- host -> iosc -------------------------------------------------------- */
-/* BIND: "I present windows for this app_id." payload = app_id (UTF-8).
- *   a = scene width px, b = scene height px, c = scale (1/2), d = mach
- *   receive-port name in the host's IPC space (iosc task_for_pid's the host and
- *   mach_msg's each canvas IOSurface send-right to this port, exactly like the
- *   single-surface ddx in xios_surface.c). window is 0 (connection-scoped). */
-#define IOSC_N_BIND        0x40u
+#define XIOS_MSG_MAGIC 0x584D5331u   /* 'XMS1' — frame sync/sanity */
+
+typedef struct {
+    uint32_t magic;      /* XIOS_MSG_MAGIC                                   */
+    uint32_t type;       /* XIOS_MSG_* below                                 */
+    uint32_t window_id;  /* per-window; 0 = the single/default surface       */
+    uint32_t length;     /* payload bytes after the header (0 if none)       */
+    int32_t  a, b, c, d; /* type-specific scalar args                        */
+} xios_msg;              /* 32 bytes; optional `length`-byte payload follows */
+
+/* ---- core codes 0x01-0x0f (iosc-owned, flavor-agnostic) ------------------- */
+/* HELLO   compositor->app: a=width b=height c=stride d=format; payload =
+ *         compositor id UTF-8 ("iosc"). Informational on the native socket
+ *         (per-window geometry rides on WINDOW_NEW); hosts may ignore it. */
+#define XIOS_MSG_HELLO   0x01u
+/* DIRTY   compositor->app: a,b,c,d = damage x,y,w,h (all 0 = whole surface);
+ *         window_id = which canvas changed. Native hosts re-present that scene. */
+#define XIOS_MSG_DIRTY   0x02u
+/* CURSOR  compositor->app: a=x b=y (pointer pos, px) c=shape_id (cursor-shape-v1
+ *         enum; 0=none/hidden) d=flags (bit0=visible). length>0 carries an
+ *         xios_cursor_bitmap payload (client-supplied cursor image); a host that
+ *         only maps shape_id -> UIPointerStyle just drains the payload. */
+#define XIOS_MSG_CURSOR  0x03u
+
+/* CURSOR bitmap payload (when length > 0): header then w*h*4 premultiplied BGRA. */
+typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
+
+/* ---- native lifecycle codes 0x40-0x5f (this flavor's reserved range) ------ */
+
+/* host -> compositor. window_id is COMPOSITOR-assigned; the host echoes it back
+ * on RESIZE/ACTIVATE/CLOSED. */
+/* BIND: "I present windows for this app_id." payload = app_id UTF-8.
+ *   a = scene width px, b = scene height px, c = backing scale (1/2),
+ *   d = mach receive-port name in the host's IPC space (iosc task_for_pid's the
+ *   host and mach_msg's each canvas IOSurface send-right to this port, exactly
+ *   like the single-surface ddx in xios_surface.c). window_id = 0.
+ *   If toplevels matching app_id are already live (host relaunch after a jetsam
+ *   kill), the compositor immediately replays WINDOW_NEW + canvas for each. */
+#define XIOS_MSG_BIND         0x40u
 /* RESIZE: the scene's pixel size changed (Split View drag, rotation). a=w, b=h.
- * iosc reconfigures the toplevel; the client acks+commits; a WINDOW_GEOM with a
- * fresh canvas follows. */
-#define IOSC_N_RESIZE      0x41u
-/* ACTIVATE: this scene became key (a=1) or resigned key (a=0). Drives which
- * window holds wl_keyboard focus. */
-#define IOSC_N_ACTIVATE    0x42u
-/* CLOSED: the user dismissed this scene (swiped it away). iosc sends
- * xdg_toplevel.close to the client. */
-#define IOSC_N_CLOSED      0x43u
+ * Compositor reconfigures the toplevel; client acks + commits; a WINDOW_GEOM
+ * with a fresh canvas follows. */
+#define XIOS_MSG_RESIZE       0x41u
+/* ACTIVATE: this scene became key (a=1) or resigned (a=0). Drives wl_keyboard
+ * focus. */
+#define XIOS_MSG_ACTIVATE     0x42u
+/* CLOSED: the user dismissed the scene (swiped it away in the app switcher).
+ * Compositor sends xdg_toplevel.close. */
+#define XIOS_MSG_CLOSED       0x43u
 
-/* ---- iosc -> host -------------------------------------------------------- */
-/* WINDOW_NEW: a toplevel matching this host's app_id mapped. a=w, b=h, c=stride,
- * d=flags (bit0 maximized). payload = title. A mach_msg carrying the canvas
- * IOSurface send-right follows immediately on the BIND receive port. */
-#define IOSC_N_WINDOW_NEW  0x50u
-/* WINDOW_GEOM: the canvas was reallocated after a resize. a=w, b=h, c=stride. A
- * fresh canvas mach_msg follows (the old surface may be released after the swap). */
-#define IOSC_N_WINDOW_GEOM 0x51u
-/* DIRTY: the canvas changed; re-present. (Mirrors the single-surface DIRTY byte,
- * now per-window.) */
-#define IOSC_N_DIRTY       0x52u
-/* TITLE: the toplevel title changed. payload = UTF-8. */
-#define IOSC_N_TITLE       0x53u
-/* WINDOW_GONE: the toplevel unmapped / the client exited. Tear the scene down. */
-#define IOSC_N_WINDOW_GONE 0x54u
-/* CURSOR: the pointer over this window should show cursor-shape-v1 named cursor
- * `a` (see iosc's cursor-shape table). Lets the host set a per-scene
- * UIPointerStyle instead of iosc drawing the cursor into the canvas. Later. */
-#define IOSC_N_CURSOR      0x55u
+/* compositor -> host */
+/* WINDOW_NEW: a toplevel matching the bind mapped. a=w, b=h, c=stride, d=flags
+ * (XIOS_NWIN_*). payload = title UTF-8. A mach_msg carrying the canvas IOSurface
+ * send-right follows immediately on the BIND receive port. */
+#define XIOS_MSG_WINDOW_NEW   0x50u
+/* WINDOW_GEOM: canvas reallocated after a RESIZE. a=w, b=h, c=stride. A fresh
+ * canvas mach_msg follows (release the old surface after the swap). */
+#define XIOS_MSG_WINDOW_GEOM  0x51u
+/* WINDOW_TITLE: the toplevel title changed. payload = UTF-8. */
+#define XIOS_MSG_WINDOW_TITLE 0x52u
+/* WINDOW_GONE: toplevel unmapped / client exited. Tear the scene down. */
+#define XIOS_MSG_WINDOW_GONE  0x53u
 
-/* WINDOW_NEW/GEOM flag bits (hdr.d). */
-#define IOSC_NWIN_MAXIMIZED  0x1u
-#define IOSC_NWIN_FULLSCREEN 0x2u
+/* WINDOW_NEW/GEOM flag bits (msg.d). */
+#define XIOS_NWIN_MAXIMIZED  0x1
+#define XIOS_NWIN_FULLSCREEN 0x2
 
 #endif /* IOSC_NATIVE_PROTO_H */

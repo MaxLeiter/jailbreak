@@ -5822,6 +5822,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: xios_surface_create failed (IOSurface entitlement?)\n");
         return 1;
     }
+    xios_set_compositor_id("iosc");   /* typed clients learn the flavor via the in-band HELLO */
     if (xios_server_start(ddx_sock, json_path, g_width, g_height, g_stride) != 0) {
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;

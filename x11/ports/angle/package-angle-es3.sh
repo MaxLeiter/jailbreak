@@ -1,6 +1,10 @@
 #!/bin/bash
 # Package the ES3-patched ANGLE (DisplayMtl getMaxSupportedESVersion -> Apple3 gets ES3)
 # as an upgraded `angle` deb. Identical pipeline to package-angle.sh, new version suffix.
+# -1 revision: ships the six compat symlinks (libEGL.2.dylib/.so/.so.1, libGLESv2.2.dylib/
+# .so/.so.2) that were hand-made and dpkg-unowned on the dev device; without them a fresh
+# install can't load libmutter (links libGLESv2.2.dylib) or satisfy cogl's dlopen of the
+# .so sonames.
 set -euo pipefail
 
 BUILD=/private/tmp/angle-ios-build/angle/out/ios-arm64
@@ -8,7 +12,7 @@ INC=/private/tmp/angle-ios-build/angle/include
 OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
-VER="2.1.0+git20260630.a32d31d+es3"
+VER="2.1.0+git20260630.a32d31d+es3-1"
 DEB="angle_${VER}_iphoneos-arm64.deb"
 
 rm -rf "$STAGEROOT"
@@ -26,6 +30,14 @@ install_name_tool -id /var/jb/lib/angle/libGLESv2.dylib  "$STAGE/var/jb/lib/angl
 # 3. ad-hoc sign
 ldid -S "$STAGE/var/jb/lib/angle/libEGL.dylib"
 ldid -S "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+
+# 3b. compat symlinks (Debian soname + .so aliases consumers link/dlopen)
+ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.2.dylib"
+ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.so"
+ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.so.1"
+ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.2.dylib"
+ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.so"
+ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.so.2"
 
 # 4. headers
 cp -R "$INC/EGL" "$INC/GLES" "$INC/GLES2" "$INC/GLES3" "$INC/KHR" "$INC/platform" "$STAGE/var/jb/include/"
@@ -51,6 +63,9 @@ Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/
  EGL_ANGLE_iosurface_client_buffer for zero-copy GLES-into-IOSurface rendering.
  This build admits Apple GPU Family 3 (A10) to the ES3 tier so EGL configs advertise
  EGL_OPENGL_ES3_BIT and ES3 contexts validate (needed for GTK4/GSK GL renderer).
+ Ships the Debian soname and .so alias symlinks (libEGL.2.dylib, libEGL.so, libEGL.so.1,
+ libGLESv2.2.dylib, libGLESv2.so, libGLESv2.so.2) so linked and dlopened consumers
+ resolve on a fresh install.
  The GPU-using *process* must be ldid-signed with the AGX/IOSurface IOKit entitlements.
 EOF
 
@@ -59,7 +74,9 @@ find "$STAGE/var/jb" -maxdepth 3 -type f | sed "s#$STAGE##" | sort | head -40
 echo "installed=${INSTKB}KB"
 
 # 6. build the deb via the container's dpkg-deb
-docker run --rm -v "$STAGEROOT":/stage procursus-xbuild:bookworm-arm64 \
+# (debian:bookworm-slim; the procursus-xbuild image's bash stopped exec'ing on this
+# host — plain dpkg-deb + chown is all this step needs)
+docker run --rm -v "$STAGEROOT":/stage debian:bookworm-slim \
   bash -c "chown -R 0:0 /stage/angle && dpkg-deb -Zzstd --build /stage/angle /stage/${DEB}"
 
 cp "$STAGEROOT/${DEB}" "$OUTDIR/${DEB}"

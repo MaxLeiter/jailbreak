@@ -1,0 +1,141 @@
+# Repo fold-in: flavor meta-packages and the staged publish
+
+2026-07-01. How the built debs in `x11/linux-build/out/` become an installable
+product on repo.maxleiter.com, with Sileo/Cydia as the flavor chooser. No
+custom chooser or greeter ships: a user installs one `xios-<flavor>` package
+and the package manager resolves the whole desktop, and hides or blocks
+flavors the device cannot run.
+
+Prod publish (`bin/publish-repo.sh`, which ends in `vercel deploy --prod`) is
+gated on Max. Everything below it on the checklist is prep and can run now.
+
+## The five meta-packages
+
+Controls live in `x11/packages/meta/<pkg>/DEBIAN/control`; `build-meta.sh`
+next to them builds all five control-only debs and copies them into
+`linux-build/out/` so the stamping pass treats them like any other deb.
+Sileo copy comes from `repo/meta/xios-*.json` (already written).
+
+| Package | Pulls in (Depends) | Floor today | Publishable? |
+|---|---|---|---|
+| `xios-core` | iosc, angle, dbus, xios-desktop-defaults, xios-audio-server | **16.0.0** | yes |
+| `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-typelibs, xios-desktop-theme | **16.5.0** | blocked: `xios-session-stubs`, `xios-typelibs` |
+| `xios-kde` | xios-core + kwin, plasma-mobile, plasma-nano, qt6-wayland, kf6-breeze-icons | 16.0.0 (provisional) | blocked: whole Qt6/KF6/Plasma stack |
+| `xios-native` | xios-core + ioscd, xios-native-host | 16.0.0 (provisional) | blocked: ioscd + host exist as binaries, not debs |
+| `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | yes (Xwayland device validation still open) |
+
+Redundant deps are trimmed: gnome-shell already pulls dconf, gjs, libmutter,
+gsettings-desktop-schemas and the GTK stacks; xios-server already pulls
+xkbcomp and xkeyboard-config; xios-desktop-defaults pulls x11-fonts-sf and
+fontconfig. The meta lists only top-level components.
+
+Recommends (not auto-installed by Sileo, shown as suggestions): xios-core
+recommends pulseaudio and xios-desktop-theme; xios-gnome recommends
+gnome-console, nautilus, gnome-text-editor, gnome-calculator; xios-x11
+recommends x11-xvfb and tigervnc-standalone-server. If the PA daemon turns
+out to be required for gnome-shell boot (gvc), promote pulseaudio into
+xios-gnome Depends before publishing that flavor.
+
+Names still pending owners' confirmation: `xios-session-stubs` (task #35,
+the login1/polkit/accounts stub daemons), `xios-typelibs` (the aggregated
+on-device-scanned typelibs gnome-shell imports at boot), `ioscd` and
+`xios-native-host` (native flavor, tasks #36/37 built the binaries). If a
+different package name ships, update the meta control and rebuild; it is a
+one-line change plus `build-meta.sh`.
+
+## How the store does the gating
+
+Three layers, no custom logic:
+
+1. **MinimumOSVersion** in each control. Sileo and Zebra hide or block the
+   package on older iOS. The value is recomputed at publish time by
+   `tools/stamp-minos.py --apply` as the effective dependency-closure floor,
+   so a meta's stamp IS its flavor floor. Verified today (dry run):
+   core 16.0.0, gnome 16.5.0, kde 16.0.0, native 16.0.0, x11 16.5.0,
+   matching an independent closure computation over out/ + repo/debs.
+2. **`Depends: firmware (>= X)`** on each meta (the standard Procursus
+   idiom). This makes apt/dpkg themselves refuse on older iOS, covering
+   managers that ignore MinimumOSVersion. The firmware floor is written by
+   hand in the control; publish checklist step 6 compares it against the
+   fresh stamp and bumps it if the closure drifted.
+3. **Rootless by construction**: every binary bakes /var/jb, so rooted
+   jailbreaks cannot install a working set no matter what the metadata says.
+   RootHide resolves its /var/jb symlink and works as-is.
+
+Floor notes:
+- gnome is dragged to 16.5 by gjs/libgjs0 (own minos 16.5, SDK-default
+  drift, not real 16.5 API use). A rebuild with pinned `-mios-version-min`
+  would drop the flavor to 16.2 (bounded by libgtkintl + g-i).
+- x11 is dragged to 16.5 by libdrm2 and xwayland (same drift). A pinned
+  rebuild would drop it to 16.0. Optional polish, not blocking.
+
+## Version variants: exactly one per package in repo/debs
+
+`make-repo.py` indexes every .deb in `repo/debs/`; two versions of one
+package produce duplicate stanzas and duplicate landing-page rows. When
+staging, replace, do not accumulate. The correct variant of each duplicate
+currently in out/:
+
+| Package | Publish | Drop |
+|---|---|---|
+| pulseaudio, libpulse0 (+client libs) | **17.0-1** (rpath fix) | 17.0 (dead rpath in client libs) |
+| angle | +es3 | plain |
+| libepoxy0 / libepoxy-dev | +angle1 | plain |
+| libgtk-4-1 / libgtk-4-dev / gtk-4-bin | +wl1 | plain |
+| tigervnc-* | +rootless1 | plain |
+
+## The fold-in procedure
+
+Steps 1 through 8 are prep. Step 9 is the Max gate.
+
+1. **Freeze the builds.** out/ is churned by concurrent flavor builds; a
+   rebuild after stamping silently loses the stamp (it happened to
+   libgtk-3-0 and libgtk-4-1 once already). Confirm with the lead that the
+   debs being staged are final for this publish wave.
+2. **Back up out/.** `out/*.deb` are gitignored, so stamping is not
+   reversible via git: `tar cf /tmp/out-backup.tar -C x11/linux-build out`.
+3. **Build the metas** (idempotent): `x11/packages/meta/build-meta.sh`.
+4. **One-time legacy pass**: copy the repo-only debs (packages in repo/debs
+   with no out/ counterpart: xios-server, x11-xvfb, xauth, libx11-6, the
+   legacy X11 libs, x11-fonts-sf, xios-desktop-defaults, the two tweaks)
+   into out/ so they get stamped too. Only packages with NO out/
+   counterpart; never overwrite a newer out/ build with a repo copy.
+5. **Stamp LAST**: `python3 tools/stamp-minos.py --apply` (needs Python
+   3.14). Then `--json tools/pkg-minos.json` to refresh the floor map.
+   This is the final mutation of out/.
+6. **Verify floors**: each meta's stamped MinimumOSVersion vs the
+   `firmware (>= X)` floor in its control; bump the control and rebuild the
+   meta if the closure drifted upward.
+7. **Stage per flavor** into repo/debs, replacing superseded versions per
+   the variant table above. Publish waves: wave 1 = xios-core + xios-x11 +
+   the current catalog refresh (everything in out/ that updates a published
+   package, including pulseaudio 17.0-1); wave 2 = xios-gnome once
+   xios-session-stubs and xios-typelibs are debs; wave 3 = xios-native;
+   wave 4 = xios-kde. A meta never ships before its closure: apt on device
+   would fail the install, and Sileo shows a broken package.
+8. **Regenerate and check locally**: run `bin/make-repo.py` via the
+   .repo-venv, then sanity-check: every Depends of every staged deb
+   resolves inside repo/debs + the live Procursus index (the externals we
+   lean on today: libiosexec1, libpcre2-8-0, libmd0, libice6, libsm6,
+   libffi8, libintl8, liblzma5, libbrotli1, libtiff5, libsndfile1,
+   libxi6/libxrandr2/libxrender1/libxcb-shm0, libgcrypt20, libgpg-error0,
+   libp11-kit0); no duplicate Package stanzas in Packages; the five
+   xios-* depictions render; "Minimum iOS" shows on the depictions.
+   `repo/vercel.json` must keep the `/./` rewrite (flat-repo fix).
+9. **Publish (MAX-GATED)**: `bin/publish-repo.sh` regenerates, GPG-signs
+   InRelease/Release.gpg with repo@maxleiter.com, and deploys to Vercel.
+   Do not run without Max.
+10. **Post-publish verification**: `curl --path-as-is
+    https://repo.maxleiter.com/./InRelease` returns 200 (plain curl hides
+    the /./ bug); on device, a clean `apt-get update` against only this
+    repo, then `apt-get install -s xios-core` and `-s xios-x11` resolve;
+    Sileo shows the Desktop section and hides xios-x11 on a sub-16.5
+    device if one is available.
+
+## Landing page
+
+`make-repo.py` grew a "Desktop" section (first in SECTION_ORDER, open by
+default, its own tile glyph). The five metas carry `Section: Desktop`, so
+the flavors form the top block of repo.maxleiter.com with the big library
+buckets collapsed below. The featured carousel includes every package
+automatically; the metas will appear there once staged.

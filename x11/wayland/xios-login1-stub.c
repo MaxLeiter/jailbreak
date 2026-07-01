@@ -19,10 +19,13 @@
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
+#include <glib-unix.h>
 
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "xios-session-identity.h"
 
 #define LOGIN1_NAME        "org.freedesktop.login1"
 #define MANAGER_PATH       "/org/freedesktop/login1"

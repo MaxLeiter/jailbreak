@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Same set as the Xios app: fakesigned apps don't get GPU sandbox access by
+         default, so grant the GPU/IOSurface IOKit user clients (MTLCreateSystem
+         DefaultDevice + IOSurface texturing). get-task-allow lets iosc task_for_pid
+         this host to mach_msg each window's canvas IOSurface (native rendezvous).
+         can-allow-non-platform loads fakesigned dylibs; path exception covers the
+         /var/jb/tmp sockets (iosc-native.sock / iosc-input.sock / ioscd.sock). -->
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+    <key>get-task-allow</key>
+    <true/>
+    <key>com.apple.security.iokit-user-client-class</key>
+    <array>
+        <string>AGXDeviceUserClient</string>
+        <string>IOGPUDeviceUserClient</string>
+        <string>IOSurfaceRootUserClient</string>
+        <string>IOSurfaceSendRight</string>
+        <string>IOSurfaceAcceleratorClient</string>
+    </array>
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/tmp/</string>
+        <string>/tmp/</string>
+        <string>/private/var/jb/tmp/</string>
+        <string>/private/tmp/</string>
+    </array>
+</dict>
+</plist>

@@ -58,14 +58,14 @@ static int write_full(int fd, const void *buf, size_t n)
 
 /* Send a header-only record (BIND payload handled separately). */
 static int send_hdr(int fd, uint32_t type, uint32_t window,
-                    uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                    int32_t a, int32_t b, int32_t c, int32_t d,
                     uint32_t payload_len)
 {
-    struct iosc_native_hdr h;
+    xios_msg h;
     memset(&h, 0, sizeof(h));
-    h.magic = IOSC_NATIVE_MAGIC;
-    h.type = type; h.window = window;
-    h.payload_len = payload_len;
+    h.magic = XIOS_MSG_MAGIC;
+    h.type = type; h.window_id = window;
+    h.length = payload_len;
     h.a = a; h.b = b; h.c = c; h.d = d;
     return write_full(fd, &h, sizeof(h));
 }
@@ -127,9 +127,9 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
      * app_id is the UTF-8 payload. */
     size_t idlen = app_id ? strlen(app_id) : 0;
     if (idlen > 200) idlen = 200;
-    if (send_hdr(fd, IOSC_N_BIND, 0,
-                 (uint32_t)scene_w, (uint32_t)scene_h, (uint32_t)scale,
-                 (uint32_t)rx, (uint32_t)idlen) != 0 ||
+    if (send_hdr(fd, XIOS_MSG_BIND, 0,
+                 (int32_t)scene_w, (int32_t)scene_h, (int32_t)scale,
+                 (int32_t)rx, (uint32_t)idlen) != 0 ||
         (idlen && write_full(fd, app_id, idlen) != 0)) {
         mach_port_mod_refs(self, rx, MACH_PORT_RIGHT_RECEIVE, -1);
         close(fd); return NULL;
@@ -156,18 +156,19 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
     if (pr == 0) { ev->type = IOSC_NEV_NONE; return 0; }
     if (pr < 0) { if (errno == EINTR) { ev->type = IOSC_NEV_NONE; return 0; } goto dead; }
 
-    struct iosc_native_hdr h;
+    xios_msg h;
     /* One full record (blocking read is fine: poll said data is ready and iosc
      * writes whole records; short reads loop in read_full). */
-    if (read_full(c->fd, &h, sizeof(h)) != 0 || h.magic != IOSC_NATIVE_MAGIC) goto dead;
+    if (read_full(c->fd, &h, sizeof(h)) != 0 || h.magic != XIOS_MSG_MAGIC) goto dead;
 
-    /* Read the trailing payload (TITLE / WINDOW_NEW title) if any. */
+    /* Read the trailing payload if any. Titles fit in 255 bytes; anything larger
+     * (e.g. a CURSOR bitmap we don't render) is drained past the buffer. */
     char payload[256];
-    uint32_t plen = h.payload_len;
+    uint32_t plen = h.length;
     if (plen > sizeof(payload) - 1) plen = sizeof(payload) - 1;
-    if (h.payload_len) {
+    if (h.length) {
         char scratch[512];
-        uint32_t left = h.payload_len;
+        uint32_t left = h.length;
         uint32_t keep = plen;
         if (read_full(c->fd, payload, keep) != 0) goto dead;
         payload[keep] = 0;
@@ -181,18 +182,18 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
         payload[0] = 0;
     }
 
-    ev->window = h.window;
+    ev->window = h.window_id;
     ev->width  = (int)h.a;
     ev->height = (int)h.b;
-    ev->flags  = h.d;
+    ev->flags  = (uint32_t)h.d;
 
     switch (h.type) {
-    case IOSC_N_WINDOW_NEW:
-    case IOSC_N_WINDOW_GEOM: {
+    case XIOS_MSG_WINDOW_NEW:
+    case XIOS_MSG_WINDOW_GEOM: {
         IOSurfaceRef s = recv_canvas(c->rx);
         if (!s) goto dead;
         ev->surface = s;
-        if (h.type == IOSC_N_WINDOW_NEW) {
+        if (h.type == XIOS_MSG_WINDOW_NEW) {
             ev->type = IOSC_NEV_WINDOW_NEW;
             memcpy(ev->title, payload, plen + 1);
         } else {
@@ -200,16 +201,22 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
         }
         return 1;
     }
-    case IOSC_N_DIRTY:       ev->type = IOSC_NEV_DIRTY;       return 1;
-    case IOSC_N_WINDOW_GONE: ev->type = IOSC_NEV_WINDOW_GONE; return 1;
-    case IOSC_N_TITLE:
+    case XIOS_MSG_DIRTY:       ev->type = IOSC_NEV_DIRTY;       return 1;
+    case XIOS_MSG_WINDOW_GONE: ev->type = IOSC_NEV_WINDOW_GONE; return 1;
+    case XIOS_MSG_WINDOW_TITLE:
         ev->type = IOSC_NEV_TITLE;
         memcpy(ev->title, payload, plen + 1);
         return 1;
-    case IOSC_N_CURSOR:
+    case XIOS_MSG_CURSOR:
+        /* Shape rides in c (cursor-shape-v1 id); a,b = pointer pos; bitmap
+         * payload (if any) was drained above — we map shape ids only. */
         ev->type = IOSC_NEV_CURSOR;
-        ev->cursor_id = h.a;
+        ev->cursor_id = (uint32_t)h.c;
         return 1;
+    case XIOS_MSG_HELLO:
+        /* Informational on the native socket; geometry rides on WINDOW_NEW. */
+        ev->type = IOSC_NEV_NONE;
+        return 0;
     default:
         /* Unknown type: ignore the record, report as a benign timeout so the
          * caller loops. Forward-compat with new iosc->host messages. */
@@ -224,17 +231,17 @@ dead:
 
 void iosc_native_resize(iosc_native_client *c, uint32_t window, int w, int h)
 {
-    if (c && c->fd >= 0) send_hdr(c->fd, IOSC_N_RESIZE, window, (uint32_t)w, (uint32_t)h, 0, 0, 0);
+    if (c && c->fd >= 0) send_hdr(c->fd, XIOS_MSG_RESIZE, window, w, h, 0, 0, 0);
 }
 
 void iosc_native_activate(iosc_native_client *c, uint32_t window, int active)
 {
-    if (c && c->fd >= 0) send_hdr(c->fd, IOSC_N_ACTIVATE, window, active ? 1u : 0u, 0, 0, 0, 0);
+    if (c && c->fd >= 0) send_hdr(c->fd, XIOS_MSG_ACTIVATE, window, active ? 1 : 0, 0, 0, 0, 0);
 }
 
 void iosc_native_closed(iosc_native_client *c, uint32_t window)
 {
-    if (c && c->fd >= 0) send_hdr(c->fd, IOSC_N_CLOSED, window, 0, 0, 0, 0, 0);
+    if (c && c->fd >= 0) send_hdr(c->fd, XIOS_MSG_CLOSED, window, 0, 0, 0, 0, 0);
 }
 
 void iosc_native_close(iosc_native_client *c)

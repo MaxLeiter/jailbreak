@@ -38,6 +38,25 @@ DEB_EDS_V     ?= $(EDS_VERSION)
 evolution-data-server-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/evolution-data-server/$(EDS_MAJOR_V)/evolution-data-server-$(EDS_VERSION).tar.xz)
 	$(call EXTRACT_TAR,evolution-data-server-$(EDS_VERSION).tar.xz,evolution-data-server-$(EDS_VERSION),evolution-data-server)
+	# UPSTREAM BUG (3.52.4): FindSMIME.cmake's header says the nss/nspr search is skipped
+	# "unless -DENABLE_SMIME=OFF is used", but the module never consults the option — its
+	# only return() is the pkg-config-success path, so on a sysroot without nss/nspr the
+	# manual search FATAL_ERRORs ("NSPR headers not found") even with SMIME off. Insert the
+	# missing early return right after the output vars get their documented empty defaults.
+	if ! grep -q 'if(NOT ENABLE_SMIME)' $(BUILD_WORK)/evolution-data-server/cmake/modules/FindSMIME.cmake; then \
+		perl -0pi -e 's{set\(MOZILLA_NSS_LIB_DIR ""\)\n}{set(MOZILLA_NSS_LIB_DIR "")\n\nif(NOT ENABLE_SMIME)\n\treturn()\nendif(NOT ENABLE_SMIME)\n}' \
+			$(BUILD_WORK)/evolution-data-server/cmake/modules/FindSMIME.cmake; \
+	fi
+	grep -q 'if(NOT ENABLE_SMIME)' $(BUILD_WORK)/evolution-data-server/cmake/modules/FindSMIME.cmake
+	# SetupBuildFlags.cmake prepends the GNU-ld-only `-Wl,--no-undefined` to ALL linker flags
+	# for any Clang/GNU compiler not on *BSD — Darwin falls in, but ld64 spells it
+	# `-undefined error` and errors out on the GNU form ("ld: unknown option: --no-undefined"),
+	# which torpedoes EVERY configure probe link (sys/wait.h/zlib/fsync all "not found").
+	# Strip it: ld64's default for dylibs/two-level namespace is -undefined error anyway, so
+	# the NOUNDEFS discipline is preserved.
+	sed -i 's/-Wl,--no-undefined //g' \
+		$(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
+	! grep -q -- '--no-undefined' $(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
 
 ifneq ($(wildcard $(BUILD_WORK)/evolution-data-server/.build_complete),)
 evolution-data-server:
@@ -52,8 +71,8 @@ evolution-data-server: evolution-data-server-setup glib2.0 sqlite3 libxml2 json-
 	cd $(BUILD_WORK)/evolution-data-server && cmake -B build \
 		$(DEFAULT_CMAKE_FLAGS) \
 		-DPKG_CONFIG_EXECUTABLE=$(BUILD_TOOLS)/cross-pkg-config \
-		-D_correct_iconv_EXITCODE=0 \
-		-DHAVE_LKSTRFTIME_EXITCODE=0 \
+		-D_correct_iconv=1 \
+		-DHAVE_LKSTRFTIME=1 \
 		-DENABLE_GTK=OFF \
 		-DENABLE_GTK4=OFF \
 		-DENABLE_OAUTH2_WEBKITGTK=OFF \

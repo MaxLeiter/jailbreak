@@ -71,6 +71,12 @@ static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static int s_clients[XIOS_MAX_CLIENTS];
 static int s_client_typed[XIOS_MAX_CLIENTS];   /* parallel: client speaks the typed stream */
 static int s_nclients = 0;
+static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
+
+void xios_set_compositor_id(const char *id)
+{
+    snprintf(s_compositor_id, sizeof(s_compositor_id), "%s", id ? id : "");
+}
 
 /* ---- helpers -------------------------------------------------------------- */
 
@@ -315,10 +321,25 @@ static void handle_client(int fd)
         close(fd);
         return;
     }
+    /* Typed clients also get an in-band HELLO (geometry + which compositor is
+     * driving) right after the classic reply — the socket-native replacement for
+     * the app reading xios.json. Sent while still blocking (pre-O_NONBLOCK) so the
+     * app reliably has it before the DIRTY/CURSOR stream begins. */
+    int typed = (hello.reserved == XIOS_HELLO_TYPED);
+    if (typed) {
+        uint32_t idlen = (uint32_t) strlen(s_compositor_id);
+        xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO, 0, idlen,
+                       s_width, s_height, s_stride, (int32_t) XIOS_FMT_BGRA };
+        if (write_full(fd, &h, sizeof(h)) != 0 ||
+            (idlen && write_full(fd, s_compositor_id, idlen) != 0)) {
+            close(fd);
+            return;
+        }
+    }
     /* Damage notifications are non-blocking: a suspended/backed-up app must never
      * stall the X server's block handler. */
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    add_client(fd, hello.reserved == XIOS_HELLO_TYPED);
+    add_client(fd, typed);
 }
 
 static void *accept_loop(void *arg)

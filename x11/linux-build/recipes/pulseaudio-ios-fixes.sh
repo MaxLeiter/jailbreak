@@ -35,6 +35,11 @@ CORE_MESON="$TREE/src/pulsecore/meson.build"
 
 [ -f "$MESON" ] || { echo "pulseaudio-ios-fixes: $MESON not found"; exit 1; }
 
+if grep -q "if cc.has_header('linux/input.h')" "$MESON"; then
+  echo "==> pulseaudio-ios-fixes: disabling the linux/input.h (evdev) module gate"
+  sed -i "s|if cc.has_header('linux/input.h')|if false # iOS: sysroot has only a stub linux/input.h (mutter shim), no evdev|" "$MESON"
+fi
+
 if grep -q "mix_neon.c" "$CORE_MESON"; then
   echo "==> pulseaudio-ios-fixes: dropping armv7-only NEON simd variant"
   sed -i "/{ 'neon' : \['remap_neon.c', 'sconv_neon.c', 'mix_neon.c'\] },/d" "$CORE_MESON"

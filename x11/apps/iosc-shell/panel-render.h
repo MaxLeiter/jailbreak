@@ -41,6 +41,13 @@ static inline void pr_set(cairo_t *cr, uint32_t c)
     double r,g,b,a; pr_rgba(c,&r,&g,&b,&a); cairo_set_source_rgba(cr,r,g,b,a);
 }
 
+/* Give an RGB base (no alpha byte) a runtime opacity. */
+static inline uint32_t pr_with_alpha(uint32_t rgb, double a)
+{
+    uint32_t A = (uint32_t)(a * 255.0 + 0.5); if (A > 255) A = 255;
+    return (A << 24) | (rgb & 0x00FFFFFFu);
+}
+
 /* ---------------------------------------------------------------- paths --- */
 
 /* Append a rounded-rectangle subpath (radius clamped to half the short side). */

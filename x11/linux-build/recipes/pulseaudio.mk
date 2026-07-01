@@ -166,6 +166,19 @@ pulseaudio-package: pulseaudio-stage
 			cp -a $$f $(BUILD_DIST)/pulseaudio-utils/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin;; esac; \
 	done
 
+	# The private libs (libpulsecommon, libpulsecore) live in lib/pulseaudio/,
+	# which is on NOBODY's run path: meson emits only build-tree-relative
+	# @loader_path entries plus /var/jb/usr/lib. Without this, the daemon dies
+	# on @rpath/libpulsecore and EVERY libpulse client dies on
+	# @rpath/libpulsecommon (dyld consults the loading dylib's own LC_RPATHs,
+	# so fixing libpulse.0 here fixes all of its consumers transitively).
+	for f in $(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse.0.dylib \
+			$(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse-simple.0.dylib \
+			$(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse-mainloop-glib.0.dylib \
+			$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/pulseaudio; do \
+		[ -f $$f ] && $(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f; \
+	done
+
 	$(call SIGN,libpulse0,general.xml)
 	$(call SIGN,pulseaudio,general.xml)
 	$(call SIGN,pulseaudio-utils,general.xml)

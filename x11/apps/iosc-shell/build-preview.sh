@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 #
-# build-preview.sh — render the REAL panel draw code to a PNG, off-device.
+# build-preview.sh — render the REAL shell draw code to PNGs, off-device.
 #
 # This is the fast visual-iteration loop for the shell-polish work: it compiles
-# preview-host.c (which calls the same panel-layout.h / panel-render.h code that
-# ioscpanel uses on device) natively in the Procursus xbuild container, which has
-# cairo + pangocairo. For font fidelity it drops in the host's San Francisco
-# (SFNS.ttf) and aliases generic "Sans" -> SF, mirroring the on-device
-# x11-fonts-sf fontconfig rule — so the preview's typography matches the iPad.
+# preview-host.c (which calls the same panel-layout.h / overview-layout.h /
+# shell-blur.h code the device clients use) natively in the Procursus xbuild
+# container, which has cairo + pangocairo. For font fidelity it drops in the
+# host's San Francisco (SFNS.ttf) and aliases generic "Sans" -> SF, mirroring
+# the on-device x11-fonts-sf fontconfig rule — so the preview's typography
+# matches the iPad.
 #
-# Output: design/panel-preview-real.png
+# Output: design/preview-desktop.png, design/preview-quicksettings.png,
+#         design/preview-overview.png
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 IMAGE=procursus-xbuild:bookworm-arm64
-OUT_NAME="${1:-panel-preview-real.png}"       # basename, written under design/
 
 # Stage SF under the (already-mounted) work dir so Docker can see it without a
 # separate system-path mount. Gitignored; preview-only, never shipped.
@@ -40,14 +41,12 @@ docker run --rm --entrypoint /bin/bash \
 <fontconfig>
   <match target="pattern"><test name="family"><string>sans-serif</string></test>
     <edit name="family" mode="prepend" binding="strong"><string>SF Pro</string></edit></match>
-  <match target="pattern"><test name="family"><string>monospace</string></test>
-    <edit name="family" mode="prepend" binding="strong"><string>SF Pro</string></edit></match>
 </fontconfig>
 EOF
       fc-cache -f >/dev/null 2>&1 || true
     fi
     cd /work
     cc preview-host.c $(pkg-config --cflags --libs cairo pangocairo) -lm -o /tmp/preview-host
-    IOSC_SHELL_ICONS=/work/design/preview-icons /tmp/preview-host "/work/design/'"$OUT_NAME"'"
+    IOSC_SHELL_ICONS=/work/design/preview-icons /tmp/preview-host /work/design
   '
-echo "wrote $HERE/design/$OUT_NAME"
+echo "wrote $HERE/design/preview-{desktop,quicksettings,overview}.png"

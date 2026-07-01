@@ -328,7 +328,7 @@ final class HostScreenView: UIView {
 
     fileprivate func sendText(_ text: String) {
         guard let h = input else { return }
-        _ = text.withCString { iosc_input_text(h, $0) }
+        text.withCString { iosc_input_text(h, $0) }
     }
 
     fileprivate func clearStickyMods() { modCtrl = false; modAlt = false; modShift = false }

@@ -123,8 +123,37 @@ when nothing plays, `module-always-sink` as a null fallback so gvc never
 faces an empty sink list.
 
 Driver: `linux-build/build-audio-server.sh` on procursus-vol-shell (wipes the
-client-only pulseaudio build tree first; the recipe's `.build_complete` guard
-would otherwise skip the daemon reconfigure).
+client-only pulseaudio build tree when present; the recipe's `.build_complete`
+guard would otherwise skip the daemon reconfigure). It also runs
+`libtool-package`: libltdl7 must ship as a deb, not just get staged.
+
+### Cross-build gotchas (why the recipe/fixes script look the way they do)
+
+- **meson hard-errors a daemon build with zero echo cancellers.** speex and
+  webrtc are disabled, so `-Dadrian-aec=true` (bundled, dependency-free C).
+- **PA's NEON simd files are armv7-only inline asm** (q0/d4 register names).
+  Upstream aarch64 escapes them because gcc/clang reject `-mfpu=neon` and the
+  meson simd check fails; Apple clang plus our
+  `-Wno-unused-command-line-argument` wrapper accept it silently, so
+  `mix_neon.c` explodes with "unknown register name 'q0'". The fixes script
+  drops the neon simd variant.
+- **The shared sysroot has a stub `linux/input.h`** (staged by the mutter
+  track's inert libei/dma-buf shim), so `cc.has_header('linux/input.h')`
+  wrongly enables module-mmkbd-evdev, which then fails on the missing struct
+  definitions. The fixes script kills that gate.
+- **`lib/pulseaudio/` is on nobody's run path.** meson emits only
+  build-tree-relative `@loader_path` rpaths plus `/var/jb/usr/lib`, so the
+  daemon dies on `@rpath/libpulsecore` and every libpulse client dies on
+  `@rpath/libpulsecommon` (this was a LATENT bug in the client-only libpulse0
+  17.0 deb; the static closure check matched dylibs by name, not by rpath
+  walk). Fix: `install_name_tool -add_rpath /var/jb/usr/lib/pulseaudio` on
+  libpulse.0/-simple.0/-mainloop-glib.0 and the daemon binary at package
+  time. dyld consults the loading dylib's own LC_RPATHs, so fixing libpulse.0
+  fixes all of its consumers transitively. 17.0-1 supersedes the 17.0 debs
+  (dpkg orders 17.0-1 above 17.0).
+- meson names PA modules `module-*.dylib` here and upstream sets
+  `PA_SOEXT ".dylib"` on darwin, so the loader and the files agree; no rename
+  needed.
 
 ## Session integration (gnome-session / launcher owner)
 
