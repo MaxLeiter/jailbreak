@@ -2654,7 +2654,9 @@ static void xdg_output_manager_bind(struct wl_client *client, void *data,
  * wl_pointer / wl_keyboard events for the focused surface. Per-client input
  * resources are tracked so we can address the focused surface's own client. */
 
-#define BTN_LEFT 0x110   /* linux/input-event-codes.h */
+#define BTN_LEFT   0x110   /* linux/input-event-codes.h */
+#define BTN_RIGHT  0x111
+#define BTN_MIDDLE 0x112
 
 /* tracked input resources (across all clients) */
 #define IOSC_MAX_SEATRES 32
@@ -3487,7 +3489,14 @@ static void surface_raise(struct iosc_surface *s)
 
 static void handle_button(int btn, int down)
 {
-    (void)btn;
+    /* Wire buttons are X-style (1 left, 2 middle, 3 right; raw evdev codes
+     * >= BTN_LEFT pass through). Previously this hardcoded BTN_LEFT, so the
+     * app's two-finger-tap right-click and long-press right-click all arrived
+     * as LEFT. Everything below the send is button-agnostic: focus/raise on any
+     * press, and the single-pointer app never chords. */
+    uint32_t code = btn == 2 ? BTN_MIDDLE
+                  : btn == 3 ? BTN_RIGHT
+                  : btn >= BTN_LEFT ? (uint32_t)btn : BTN_LEFT;
     idle_note_activity();
     g_button_down = down;
     /* During a drag the button is owned by the grab: releasing it performs the
@@ -3520,10 +3529,53 @@ static void handle_button(int btn, int down)
     if (down) g_button_serial = serial;
     for (int i = 0; i < g_nptr; i++)
         if (wl_resource_get_client(g_ptr[i]) == fc)
-            wl_pointer_send_button(g_ptr[i], serial, t, BTN_LEFT,
+            wl_pointer_send_button(g_ptr[i], serial, t, code,
                                    down ? WL_POINTER_BUTTON_STATE_PRESSED
                                         : WL_POINTER_BUTTON_STATE_RELEASED);
     pointer_frame_client(fc);
+}
+
+/* ---- scroll (wl_pointer.axis; fed by XIOS_IN_AXIS) ------------------------- *
+ * Deltas arrive as 1/256 output-pixel fixed point, which is wl_fixed_t's own
+ * unit: dividing by output_scale() yields the logical-px wl_fixed directly.
+ * A stop record (state bit0) ends the gesture so clients run their kinetic
+ * fling (GTK/Qt only fling on source=finger + axis_stop). appmods latches a
+ * modifier mask around the frame (pinch-zoom = ctrl+scroll app zoom); it
+ * reaches clients via wl_keyboard.modifiers, so it lands when keyboard and
+ * pointer focus agree — the normal case. */
+static void handle_axis(int32_t dx256, int32_t dy256, uint32_t source,
+                        int stop, uint32_t appmods)
+{
+    idle_note_activity();
+    if (!g_ptr_focus) return;
+    wl_fixed_t dx = (wl_fixed_t)(dx256 / output_scale());
+    wl_fixed_t dy = (wl_fixed_t)(dy256 / output_scale());
+    if (!stop && dx == 0 && dy == 0) return;
+    uint32_t mask = ((appmods & 1) ? iosc_input_mod_shift() : 0)
+                  | ((appmods & 2) ? iosc_input_mod_ctrl()  : 0)
+                  | ((appmods & 4) ? iosc_input_mod_alt()   : 0);
+    if (mask) keyboard_send_mods(mask);
+    struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
+    uint32_t t = now_ms();
+    uint32_t wsrc = source == 1 ? WL_POINTER_AXIS_SOURCE_WHEEL
+                                : WL_POINTER_AXIS_SOURCE_FINGER;
+    for (int i = 0; i < g_nptr; i++) {
+        struct wl_resource *p = g_ptr[i];
+        if (wl_resource_get_client(p) != fc) continue;
+        int v5 = wl_resource_get_version(p) >= WL_POINTER_AXIS_SOURCE_SINCE_VERSION;
+        if (v5) wl_pointer_send_axis_source(p, wsrc);
+        if (stop) {
+            if (v5) {
+                wl_pointer_send_axis_stop(p, t, WL_POINTER_AXIS_VERTICAL_SCROLL);
+                wl_pointer_send_axis_stop(p, t, WL_POINTER_AXIS_HORIZONTAL_SCROLL);
+            }
+        } else {
+            if (dy) wl_pointer_send_axis(p, t, WL_POINTER_AXIS_VERTICAL_SCROLL, dy);
+            if (dx) wl_pointer_send_axis(p, t, WL_POINTER_AXIS_HORIZONTAL_SCROLL, dx);
+        }
+    }
+    pointer_frame_client(fc);
+    if (mask) keyboard_send_mods(0);
 }
 
 /* ---- touch (wl_touch; fed by IOSC_IN_TOUCH from the app or the injector) --- *
@@ -4878,6 +4930,11 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
         case XIOS_IN_TABLET: handle_pencil((int)m->state, x, y, m->code,
                                            (int)(m->mods & 0xffu) - 90,
                                            (int)((m->mods >> 8) & 0xffu) - 90); break;
+        /* AXIS x,y are fixed-point scroll DELTAS, not positions — pass raw
+         * (handle_axis does its own /output_scale), NOT the physical_to_logical'd
+         * locals. */
+        case XIOS_IN_AXIS:   handle_axis(m->x, m->y, m->code,
+                                         (int)(m->state & 1u), m->mods); break;
     }
     wl_display_flush_clients(g_display);   /* push the events out immediately */
 }

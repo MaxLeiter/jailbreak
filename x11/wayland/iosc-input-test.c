@@ -26,6 +26,7 @@
 #define IOSC_IN_KEY    3
 #define IOSC_IN_TOUCH  6   /* code = touch id; state: 0 up, 1 down, 2 motion, 3 cancel */
 #define IOSC_IN_TABLET 7   /* code = pressure 0..65535; state as touch; mods = tilt+90 packed */
+#define IOSC_IN_AXIS   9   /* x,y = dx,dy 1/256 px; code = source; state bit0 = stop */
 
 struct iosc_in_msg {
     uint32_t type;
@@ -136,6 +137,25 @@ int main(int argc, char **argv)
                                   .code = 0, .state = 0, .mods = tilt };
         send_msg(fd, &up);
         fprintf(stderr, "pencil stroke %d,%d -> %d,%d\n", x0, y0, x1, y1);
+        usleep(100000); close(fd); return 0;
+    }
+
+    /* -s x y dx dy: smooth scroll — park the pointer at x,y then emit 24 AXIS
+     * deltas totalling dx,dy output px (1/256 fixed point) at ~120Hz, ending
+     * with an axis_stop so kinetic clients fling. */
+    if (argc >= 6 && !strcmp(argv[1], "-s")) {
+        int x = atoi(argv[2]), y = atoi(argv[3]);
+        int dx = atoi(argv[4]), dy = atoi(argv[5]);
+        struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x, .y = y };
+        send_msg(fd, &mv); usleep(50000);
+        for (int i = 0; i < 24; i++) {
+            struct iosc_in_msg ax = { .type = IOSC_IN_AXIS,
+                .x = dx * 256 / 24, .y = dy * 256 / 24 };
+            send_msg(fd, &ax); usleep(8000);
+        }
+        struct iosc_in_msg stop = { .type = IOSC_IN_AXIS, .state = 1 };
+        send_msg(fd, &stop);
+        fprintf(stderr, "scrolled (%d,%d) at %d,%d\n", dx, dy, x, y);
         usleep(100000); close(fd); return 0;
     }
 
