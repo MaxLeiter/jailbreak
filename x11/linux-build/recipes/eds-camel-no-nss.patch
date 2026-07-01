@@ -1,0 +1,310 @@
+diff -ru a/src/camel/camel-msgport.c b/src/camel/camel-msgport.c
+--- a/src/camel/camel-msgport.c	2026-07-01 10:54:59
++++ b/src/camel/camel-msgport.c	2026-07-01 10:54:59
+@@ -21,7 +21,8 @@
+ #include <errno.h>
+ #include <unistd.h>
+ 
+-#include <nspr.h>
++/* iOS cross build: no NSPR; PRFileDesc stays an opaque, never-created type. */
++typedef struct PRFileDesc PRFileDesc;
+ 
+ #ifdef G_OS_WIN32
+ #define WIN32_LEAN_AND_MEAN
+@@ -187,14 +188,7 @@
+ static gint
+ msgport_prpipe (PRFileDesc **fds)
+ {
+-#ifdef G_OS_WIN32
+-	if (PR_NewTCPSocketPair (fds) != PR_FAILURE)
+-		return 0;
+-#else
+-	if (PR_CreatePipe (&fds[0], &fds[1]) != PR_FAILURE)
+-		return 0;
+-#endif
+-
++	/* No NSPR in this build. */
+ 	fds[0] = NULL;
+ 	fds[1] = NULL;
+ 
+@@ -221,20 +215,8 @@
+ static void
+ msgport_sync_with_prpipe (PRFileDesc *prfd)
+ {
+-	gchar buffer[1];
+-
+-	while (prfd != NULL) {
+-		if (PR_Read (prfd, buffer, 1) > 0)
+-			break;
+-		else if (PR_GetError () != PR_PENDING_INTERRUPT_ERROR) {
+-			gchar *text = g_alloca (PR_GetErrorTextLength ());
+-			PR_GetErrorText (text);
+-			g_warning (
+-				"%s: Failed to read from NSPR pipe: %s",
+-				G_STRFUNC, text);
+-			break;
+-		}
+-	}
++	/* No NSPR in this build; PR pipes are never created. */
++	(void) prfd;
+ }
+ 
+ /**
+@@ -274,11 +256,6 @@
+ 		MP_CLOSE (msgport->pipe[0]);
+ 		MP_CLOSE (msgport->pipe[1]);
+ 	}
+-	if (msgport->prpipe[0] != NULL) {
+-		PR_Close (msgport->prpipe[0]);
+-		PR_Close (msgport->prpipe[1]);
+-	}
+-
+ 	g_async_queue_unref (msgport->queue);
+ 	g_slice_free (CamelMsgPort, msgport);
+ }
+@@ -364,19 +341,7 @@
+ 	}
+ 
+ 	prfd = msgport->prpipe[1];
+-	while (prfd != NULL) {
+-		if (PR_Write (prfd, "E", 1) > 0) {
+-			msg->flags |= MSG_FLAG_SYNC_WITH_PR_PIPE;
+-			break;
+-		} else if (PR_GetError () != PR_PENDING_INTERRUPT_ERROR) {
+-			gchar *text = g_alloca (PR_GetErrorTextLength ());
+-			PR_GetErrorText (text);
+-			g_warning (
+-				"%s: Failed to write to NSPR pipe: %s",
+-				G_STRFUNC, text);
+-			break;
+-		}
+-	}
++	(void) prfd;	/* No NSPR in this build; never non-NULL. */
+ 
+ 	g_async_queue_push_unlocked (msgport->queue, msg);
+ 	g_async_queue_unlock (msgport->queue);
+diff -ru a/src/camel/camel-operation.c b/src/camel/camel-operation.c
+--- a/src/camel/camel-operation.c	2026-07-01 10:54:59
++++ b/src/camel/camel-operation.c	2026-07-01 10:54:59
+@@ -21,7 +21,6 @@
+ #include <unistd.h>
+ #include <sys/time.h>
+ 
+-#include <nspr.h>
+ 
+ #include "camel-msgport.h"
+ #include "camel-operation.h"
+diff -ru a/src/camel/camel.c b/src/camel/camel.c
+--- a/src/camel/camel.c	2026-07-01 10:54:59
++++ b/src/camel/camel.c	2026-07-01 10:54:59
+@@ -22,11 +22,6 @@
+ 
+ #include <signal.h>
+ 
+-#include <nspr.h>
+-#include <prthread.h>
+-#include "nss.h"      /* Don't use <> here or it will include the system nss.h instead */
+-#include <ssl.h>
+-#include <sslproto.h>
+ #include <errno.h>
+ 
+ #include <glib/gi18n-lib.h>
+@@ -41,44 +36,14 @@
+ void _camel_utils_initialize (void);
+ void _camel_utils_shutdown (void);
+ 
+-/* To protect NSS initialization and shutdown. This prevents
+- * concurrent calls to shutdown () and init () by different threads */
+-PRLock *nss_initlock = NULL;
++/* iOS cross build: camel is built without NSS/NSPR (no iOS port exists).
++ * Mail-provider TLS is unavailable; the calendar/addressbook stack this
++ * build ships never touches it. See recipes/evolution-data-server.mk. */
+ 
+-/* Whether or not Camel has initialized the NSS library. We cannot
+- * unconditionally call NSS_Shutdown () if NSS was initialized by other
+- * library before. This boolean ensures that we only perform a cleanup
+- * if and only if Camel is the one that previously initialized NSS */
+-volatile gboolean nss_initialized = FALSE;
+-
+ static gint initialised = FALSE;
+ 
+ gint camel_application_is_exiting = FALSE;
+ 
+-#define NSS_SYSTEM_DB "/etc/pki/nssdb"
+-
+-static gint
+-nss_has_system_db (void)
+-{
+-	gint found = FALSE;
+-#ifndef G_OS_WIN32
+-	FILE *f;
+-	gchar buf[80];
+-
+-	f = fopen (NSS_SYSTEM_DB "/pkcs11.txt", "r");
+-	if (!f)
+-		return FALSE;
+-
+-	/* Check whether the system NSS db is actually enabled */
+-	while (fgets (buf, 80, f) && !found) {
+-		if (!strcmp (buf, "library=libnsssysinit.so\n"))
+-			found = TRUE;
+-	}
+-	fclose (f);
+-#endif
+-	return found;
+-}
+-
+ gint
+ camel_init (const gchar *configdir,
+             gboolean nss_init)
+@@ -94,135 +59,8 @@
+ 
+ 	camel_debug_init ();
+ 
+-	if (nss_init) {
+-		static gchar v2_enabled = -1, weak_ciphers = -1;
+-		gchar *nss_configdir = NULL;
+-		gchar *nss_sql_configdir = NULL;
+-		SECStatus status = SECFailure;
++	(void) nss_init;
+ 
+-#if NSS_VMAJOR < 3 || (NSS_VMAJOR == 3 && NSS_VMINOR < 14)
+-		/* NSS pre-3.14 has most of the ciphers disabled, thus enable
+-		 * weak ciphers, if it's compiled against such */
+-		weak_ciphers = 1;
+-#endif
+-
+-		/* check camel-tcp-stream-ssl.c for the same "CAMEL_SSL_V2_ENABLE" */
+-		if (v2_enabled == -1)
+-			v2_enabled = g_strcmp0 (g_getenv ("CAMEL_SSL_V2_ENABLE"), "1") == 0 ? 1 : 0;
+-		if (weak_ciphers == -1)
+-			weak_ciphers = g_strcmp0 (g_getenv ("CAMEL_SSL_WEAK_CIPHERS"), "1") == 0 ? 1 : 0;
+-
+-		if (nss_initlock == NULL) {
+-			PR_Init (PR_SYSTEM_THREAD, PR_PRIORITY_NORMAL, 10);
+-			nss_initlock = PR_NewLock ();
+-		}
+-		PR_Lock (nss_initlock);
+-
+-		if (NSS_IsInitialized ())
+-			goto skip_nss_init;
+-
+-#ifndef G_OS_WIN32
+-		nss_configdir = g_strdup (configdir);
+-#else
+-		nss_configdir = g_win32_locale_filename_from_utf8 (configdir);
+-#endif
+-
+-		if (nss_has_system_db ()) {
+-			nss_sql_configdir = g_strdup ("sql:" NSS_SYSTEM_DB );
+-		} else {
+-			/* On Windows, we use the Evolution configdir. On other
+-			 * operating systems we use ~/.pki/nssdb/, which is where
+-			 * the user-specific part of the "shared system db" is
+-			 * stored and is what Chrome uses too.
+-			 *
+-			 * We have to create the configdir if it does not exist,
+-			 * to prevent camel from bailing out on first run. */
+-#ifdef G_OS_WIN32
+-			g_mkdir_with_parents (configdir, 0700);
+-			nss_sql_configdir = g_strconcat (
+-				"sql:", nss_configdir, NULL);
+-#else
+-			gchar *user_nss_dir;
+-
+-			/* Flatpak should allow access to the host machine's ~/.pki */
+-			user_nss_dir = g_build_filename (g_get_home_dir (), ".pki", "nssdb", NULL);
+-
+-			if (g_mkdir_with_parents (user_nss_dir, 0700))
+-				g_warning (
+-					"Failed to create SQL "
+-					"database directory %s: %s\n",
+-					user_nss_dir, strerror (errno));
+-
+-			nss_sql_configdir = g_strconcat (
+-				"sql:", user_nss_dir, NULL);
+-			g_free (user_nss_dir);
+-#endif
+-		}
+-
+-#if NSS_VMAJOR > 3 || (NSS_VMAJOR == 3 && NSS_VMINOR >= 12)
+-		/* See: https://wiki.mozilla.org/NSS_Shared_DB,
+-		 * particularly "Mode 3A".  Note that the target
+-		 * directory MUST EXIST. */
+-		status = NSS_InitWithMerge (
+-			nss_sql_configdir,	/* dest dir */
+-			"", "",			/* new DB name prefixes */
+-			SECMOD_DB,		/* secmod name */
+-			nss_configdir,		/* old DB dir */
+-			"", "",			/* old DB name prefixes */
+-			nss_configdir,		/* unique ID for old DB */
+-			"Evolution S/MIME",	/* UI name for old DB */
+-			0);			/* flags */
+-
+-		if (status == SECFailure) {
+-			g_warning (
+-				"Failed to initialize NSS SQL database in %s: NSS error %d",
+-				nss_sql_configdir, PORT_GetError ());
+-			/* Fall back to opening the old DBM database */
+-		}
+-#endif
+-		/* Support old versions of libnss, pre-sqlite support. */
+-		if (status == SECFailure)
+-			status = NSS_InitReadWrite (nss_configdir);
+-		if (status == SECFailure) {
+-			/* Fall back to using volatile dbs? */
+-			status = NSS_NoDB_Init (nss_configdir);
+-			if (status == SECFailure) {
+-				g_free (nss_configdir);
+-				g_free (nss_sql_configdir);
+-				g_warning ("Failed to initialize NSS");
+-				PR_Unlock (nss_initlock);
+-				return -1;
+-			}
+-		}
+-
+-		nss_initialized = TRUE;
+-skip_nss_init:
+-
+-		NSS_SetDomesticPolicy ();
+-
+-		if (weak_ciphers) {
+-			PRUint16 indx;
+-
+-			/* enable SSL3/TLS cipher-suites */
+-			for (indx = 0; indx < SSL_NumImplementedCiphers; indx++) {
+-				if (!SSL_IS_SSL2_CIPHER (SSL_ImplementedCiphers[indx]) &&
+-				    SSL_ImplementedCiphers[indx] != SSL_RSA_WITH_NULL_SHA &&
+-				    SSL_ImplementedCiphers[indx] != SSL_RSA_WITH_NULL_MD5)
+-					SSL_CipherPrefSetDefault (SSL_ImplementedCiphers[indx], PR_TRUE);
+-			}
+-		}
+-
+-		SSL_OptionSetDefault (SSL_ENABLE_SSL2, v2_enabled ? PR_TRUE : PR_FALSE);
+-		SSL_OptionSetDefault (SSL_V2_COMPATIBLE_HELLO, PR_FALSE);
+-		SSL_OptionSetDefault (SSL_ENABLE_SSL3, PR_TRUE);
+-		SSL_OptionSetDefault (SSL_ENABLE_TLS, PR_TRUE);
+-
+-		PR_Unlock (nss_initlock);
+-
+-		g_free (nss_configdir);
+-		g_free (nss_sql_configdir);
+-	}
+-
+ 	path = g_strdup_printf ("%s/camel-cert.db", configdir);
+ 	certdb = camel_certdb_new ();
+ 	camel_certdb_set_filename (certdb, path);
+@@ -263,13 +101,6 @@
+ 	}
+ 
+ 	/* These next calls must come last. */
+-
+-	if (nss_initlock != NULL) {
+-		PR_Lock (nss_initlock);
+-		if (nss_initialized)
+-			NSS_Shutdown ();
+-		PR_Unlock (nss_initlock);
+-	}
+ 
+ 	_camel_utils_shutdown ();
+ 

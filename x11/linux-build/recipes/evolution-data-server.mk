@@ -33,6 +33,8 @@ endif
 #    (126) at build time, so those five get their cache vars pinned to the host copies
 #    (glib-compile-schemas/-resources from libglib2.0-{bin,dev-bin}, xgettext/msgfmt/
 #    msgmerge from gettext — all installed by build-eds.sh). gperf resolves host already.
+#  - camel hard-requires NSS/NSPR regardless of ENABLE_SMIME; no iOS port exists, so the
+#    setup rule applies an NSS-ectomy patch (see the patch note below at the setup rule).
 #  - Two in-tree code generators (camel-gen-tables, gen-western-table) are add_executable'd
 #    for the TARGET and then EXECUTED by custom commands — impossible cross (Linux can't
 #    run Mach-O). -setup points the custom commands at *-host copies, which get compiled
@@ -71,6 +73,18 @@ evolution-data-server-setup: setup
 	sed -i 's/-Wl,--no-undefined //g' \
 		$(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
 	! grep -q -- '--no-undefined' $(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
+	# camel hard-uses NSS/NSPR with no compile guards (unconditional #includes; SMIME-off
+	# only skips the nss/nspr SEARCH — still true through gnome-48, verified). No NSS port
+	# exists for iOS, so strip the usage outright (recipes/eds-camel-no-nss.patch): NSS
+	# init/shutdown in camel.c, the NSPR msgport pipe path (stubs keep the ABI —
+	# camel_msgport_prfd stays exported, returns NULL), and one dead include. Cost:
+	# mail-provider TLS; the calendar/addressbook stack this build ships never touches it.
+	if grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel.c; then \
+		patch -p1 -d $(BUILD_WORK)/evolution-data-server < /work/recipes/eds-camel-no-nss.patch; \
+	fi
+	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel.c
+	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-msgport.c
+	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-operation.c
 	# Point the two run-my-own-binary generators at host-built copies (compiled below,
 	# after configure); the iOS generator targets still build+link, they just never run.
 	sed -i 's|COMMAND $${CMAKE_CURRENT_BINARY_DIR}/camel-gen-tables |COMMAND $${CMAKE_BINARY_DIR}/camel-gen-tables-host |' \
