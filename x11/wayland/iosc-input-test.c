@@ -8,6 +8,7 @@
  *   iosc-input-test -c 680 400           # left click at output pixel 680,400
  *   iosc-input-test -D 300 300 900 500   # slow press-drag-release (DnD test)
  *   iosc-input-test -t 500 400           # two-finger touch gesture (wl_touch)
+ *   iosc-input-test -p 300 300 900 500   # pencil stroke w/ pressure ramp (tablet-v2)
  *
  * Coordinates are physical output pixels (iosc converts to logical itself).
  * MIT.
@@ -24,6 +25,7 @@
 #define IOSC_IN_BUTTON 2
 #define IOSC_IN_KEY    3
 #define IOSC_IN_TOUCH  6   /* code = touch id; state: 0 up, 1 down, 2 motion, 3 cancel */
+#define IOSC_IN_PENCIL 7   /* code = pressure 0..65535; state as touch; mods = tilt+90 packed */
 
 struct iosc_in_msg {
     uint32_t type;
@@ -111,6 +113,29 @@ int main(int argc, char **argv)
         struct iosc_in_msg u1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y + 80, .code = 1, .state = 0 };
         send_msg(fd, &u0); send_msg(fd, &u1);
         fprintf(stderr, "two-finger gesture at %d,%d\n", x, y);
+        usleep(100000); close(fd); return 0;
+    }
+
+    /* -p x0 y0 x1 y1: a pencil stroke — down at x0,y0, 12 motion steps to x1,y1
+     * with pressure ramping 20%..100% and a fixed 30/-15 degree tilt, then up. */
+    if (argc >= 6 && !strcmp(argv[1], "-p")) {
+        int x0 = atoi(argv[2]), y0 = atoi(argv[3]);
+        int x1 = atoi(argv[4]), y1 = atoi(argv[5]);
+        uint32_t tilt = (uint32_t)(30 + 90) | ((uint32_t)(-15 + 90) << 8);
+        struct iosc_in_msg dn = { .type = IOSC_IN_PENCIL, .x = x0, .y = y0,
+                                  .code = 65535 / 5, .state = 1, .mods = tilt };
+        send_msg(fd, &dn); usleep(50000);
+        for (int i = 1; i <= 12; i++) {
+            struct iosc_in_msg mv2 = { .type = IOSC_IN_PENCIL,
+                .x = x0 + (x1 - x0) * i / 12, .y = y0 + (y1 - y0) * i / 12,
+                .code = (uint32_t)(65535 * (20 + 80 * i / 12) / 100),
+                .state = 2, .mods = tilt };
+            send_msg(fd, &mv2); usleep(30000);
+        }
+        struct iosc_in_msg up = { .type = IOSC_IN_PENCIL, .x = x1, .y = y1,
+                                  .code = 0, .state = 0, .mods = tilt };
+        send_msg(fd, &up);
+        fprintf(stderr, "pencil stroke %d,%d -> %d,%d\n", x0, y0, x1, y1);
         usleep(100000); close(fd); return 0;
     }
 

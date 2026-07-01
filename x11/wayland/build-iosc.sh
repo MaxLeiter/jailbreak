@@ -276,6 +276,16 @@ $CC $CFLAGS $INCS \
     $RPATH -o /out/iosc-touch-test
 echo "   built /out/iosc-touch-test"
 
+# tablet test client: prints zwp_tablet_tool_v2 pen strokes with pressure/tilt;
+# drive with iosc-input-test -p.
+$CC $CFLAGS $INCS \
+    "$X11/wayland/iosc-tablet-test.c" \
+    "$GEN/tablet-v2-protocol.c" \
+    "$GEN/xdg-shell-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    $RPATH -o /out/iosc-tablet-test
+echo "   built /out/iosc-tablet-test"
+
 # session-lock test client: locks, shows a red lock screen for 10s, unlocks.
 $CC $CFLAGS $INCS \
     "$X11/wayland/iosc-lock-test.c" \
