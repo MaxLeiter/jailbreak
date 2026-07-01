@@ -2,9 +2,13 @@
 
 Copy in a Linux app, paste in an iOS app; copy in iOS, paste in Linux. Text,
 images (PNG), URLs. Status 2026-07-01: wire protocol + both bridge halves
-written and syntax-checked; the two integration patches (iosc.c hooks,
-XScreen.swift pasteboard logic) are specified below and land with their file
-owners (iosc-protocols, xios-app).
+written and syntax-checked; XIOS_MSG_CLIPBOARD = 0x04 RATIFIED by the
+record-space owner (iosc-protocols). The two integration patches below land
+with their file owners: the iosc.c hooks are queued behind the monolith->
+modules refactor freeze (iosc-protocols applies them; sequencing is the
+lead's call — the ~150-line delete-and-extract here is itself refactor-
+shaped, so landing with/just-after the split may be cleanest), and the
+XScreen.swift pasteboard patch is with xios-app.
 
 ## What already existed
 
