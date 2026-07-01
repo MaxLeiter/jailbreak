@@ -13,6 +13,7 @@ LIB=$BUILD_BASE/var/jb/usr/lib
 
 aarch64-apple-darwin-clang++ /work/test/qt-smoke.cpp -o /out/qt-smoke \
     -std=c++17 -Os -arch arm64 -isysroot "$SYSROOT" -miphoneos-version-min=16.0 \
+    -stdlib=libc++ -isystem "$SYSROOT/usr/include/c++/v1" \
     -isystem "$INC" -isystem "$INC/QtCore" -isystem "$INC/QtGui" \
     -L"$LIB" -lQt6Core -lQt6Gui \
     -Wl,-rpath,/var/jb/usr/lib
