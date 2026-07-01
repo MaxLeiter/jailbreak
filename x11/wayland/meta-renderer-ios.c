@@ -48,9 +48,6 @@
 #ifndef EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE
 #define EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE 0x3489
 #endif
-#ifndef EGL_BIND_TO_TEXTURE_RGBA
-#define EGL_BIND_TO_TEXTURE_RGBA            0x3039
-#endif
 
 struct _MetaRendererIOS
 {
@@ -68,20 +65,15 @@ ios_add_config_attributes (CoglDisplay                 *display,
 {
   int i = 0;
 
-  /* Mirror xios_egl's own pbuffer config exactly (SURFACE_TYPE=PBUFFER, RGBA8,
-   * BIND_TO_TEXTURE_RGBA, RENDERABLE ES2) so the config cogl would pick matches the pbuffer's.
-   * ios_choose_config below actually forces xios_egl_config(), but keep these consistent in
-   * case anything reads the CoglFramebufferConfig-derived attributes. */
+  /* Only set EGL_SURFACE_TYPE here — exactly what the stock platform vtables do. The base
+   * cogl_display_egl_determine_attributes appends RGB/ALPHA/DEPTH/BUFFER/RENDERABLE (+ optional
+   * STENCIL/SAMPLES) after this into a fixed MAX_EGL_CONFIG_ATTRIBS(=30) array and asserts no
+   * overflow, so this MUST stay small: an earlier version added RGBA + RENDERABLE_TYPE +
+   * BIND_TO_TEXTURE_RGBA here (14 entries) which overflowed the array once the stage requested a
+   * stencil buffer. Those attribs are pointless anyway — ios_choose_config forces
+   * xios_egl_config() and IGNORES this array, so config identity does not depend on it. */
   attributes[i++] = EGL_SURFACE_TYPE;
   attributes[i++] = EGL_PBUFFER_BIT;
-  attributes[i++] = EGL_RENDERABLE_TYPE;
-  attributes[i++] = EGL_OPENGL_ES2_BIT;
-  attributes[i++] = EGL_RED_SIZE;   attributes[i++] = 8;
-  attributes[i++] = EGL_GREEN_SIZE; attributes[i++] = 8;
-  attributes[i++] = EGL_BLUE_SIZE;  attributes[i++] = 8;
-  attributes[i++] = EGL_ALPHA_SIZE; attributes[i++] = 8;
-  attributes[i++] = EGL_BIND_TO_TEXTURE_RGBA;
-  attributes[i++] = EGL_TRUE;
   return i;
 }
 
