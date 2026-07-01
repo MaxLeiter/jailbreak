@@ -10,8 +10,14 @@
 # escaped by running g-ir-scanner natively on the iPad, proven working). This script only
 # builds the engine + bindings.
 #
-# Run in the container with procursus-vol mounted at /work/Procursus, recipes at /work/recipes.
-#   docker run -e TARGETS="mozjs-package" ... /work/build-gjs.sh
+# Run in the container with procursus-vol mounted at /work/Procursus, recipes at /work/recipes,
+# and the ports tree (for the mozjs patch series) at /work/ports:
+#   docker run --rm --platform linux/arm64 \
+#     -v procursus-vol-gtk:/work/Procursus \
+#     -v "$PWD/build-gjs.sh:/work/build-gjs.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/../ports:/work/ports:ro" \
+#     -v "$PWD/out:/out" -e TARGETS="mozjs-package" procursus-xbuild:bookworm-arm64 /work/build-gjs.sh
+# For the JIT variant: -e TARGETS="mozjs-jit-package".
 set -euo pipefail
 cd /work/Procursus
 
@@ -32,8 +38,26 @@ command -v yasm >/dev/null 2>&1 || apt-get update >/dev/null 2>&1 && apt-get ins
 
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/mozjs.mk /work/recipes/gjs.mk makefiles/
+# JIT variant recipe (optional; present only when building the JIT flavor).
+[ -f /work/recipes/mozjs-jit.mk ] && cp -v /work/recipes/mozjs-jit.mk makefiles/ || true
+
+# --- stage the mozjs iOS patch series into build_patch/mozjs (repro-audit B5) ---
+# DO_PATCH globs EVERY file in build_patch/<pkg> and applies it, so copy ONLY the
+# numbered *.patch files — never the `series` index (patch would choke on it). The
+# JIT recipe reuses the same dir, so 0005 lands here too once it exists.
+if [ -d /work/ports/mozjs/patches ]; then
+  echo "==> staging mozjs patches -> build_patch/mozjs"
+  mkdir -p build_patch/mozjs
+  for p in /work/ports/mozjs/patches/*.patch; do
+    [ -e "$p" ] && cp -v "$p" build_patch/mozjs/
+  done
+else
+  echo "WARNING: /work/ports/mozjs/patches not mounted — mozjs will build UNPATCHED (add -v \$PWD/../ports:/work/ports:ro)" >&2
+fi
+
 echo "==> installing our mozconfig + control templates"
 [ -d /work/build_info ] && cp -v /work/build_info/mozjs115.mozconfig build_info/ 2>/dev/null || true
+[ -d /work/build_info ] && cp -v /work/build_info/mozjs115-jit.mozconfig build_info/ 2>/dev/null || true
 [ -d /work/build_info ] && compgen -G "/work/build_info/libmozjs*" >/dev/null && cp -v /work/build_info/libmozjs* build_info/ || true
 [ -d /work/build_info ] && compgen -G "/work/build_info/*gjs*" >/dev/null && cp -v /work/build_info/*gjs* build_info/ || true
 
