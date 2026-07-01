@@ -55,6 +55,25 @@ but 115 has no fast-WX path at all, so A11+ also uses mprotect here — correct,
 Backporting the fast-WX path from newer SpiderMonkey would be a perf-only change gated on a future
 A11+ target; it is not needed for correctness and not needed for our A10.
 
+## The real patch 0005 — wasm Mach exception ports (EXC_GUARD), NOT W^X
+
+The first JIT dylib built and installed fine, but the benchmark harness was **SIGKILL**ed at engine
+startup. The crash report showed `EXC_GUARD` / `SET_EXCEPTION_BEHAVIOR` in
+`js::wasm::EnsureFullSignalHandlers` → `thread_set_exception_ports`. This is unrelated to W^X/codegen:
+
+- On Darwin, SpiderMonkey's wasm trap handling is entirely **Mach-exception-port** based. At startup
+  `wasm::HasPlatformSupport()` calls `EnsureFullSignalHandlers`, which calls
+  `thread_set_exception_ports(EXC_MASK_BAD_ACCESS|BAD_INSTRUCTION, ...)`.
+- **iOS 14+ guards `thread_set_exception_ports`** (a process can't redirect its own Mach exceptions)
+  and kills with `EXC_GUARD`. There is no entitlement that ungates it for third-party binaries.
+
+Fix — `patches/0005-wasm-signal-handlers-ios-no-mach-exc-ports.patch`: on iOS
+(`XP_DARWIN && TARGET_OS_IPHONE`), make `EnsureFullSignalHandlers` return false **before** the Mach
+call. `HasPlatformSupport()` then returns false (WebAssembly reports unsupported) — pure-JS
+Baseline/Ion JIT does not use these handlers, so JS JIT is unaffected, and gjs is pure JS. So on iOS:
+**wasm is off, JS JIT is on.** (Making wasm work on iOS would mean routing to the POSIX `sigaction`
+path instead of Mach ports — future work, not needed for gjs.)
+
 ## Build (task #6, #8)
 
 Separate variant so the JIT-less debs are never overwritten:

@@ -2,3 +2,4 @@
 0002-js-drop-shell-from-build.patch
 0003-old-configure-ios-darwin-cases.patch
 0004-posix-thread-ios-stacksize-align.patch
+0005-wasm-signal-handlers-ios-no-mach-exc-ports.patch

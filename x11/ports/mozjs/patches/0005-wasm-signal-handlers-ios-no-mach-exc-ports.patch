@@ -1,0 +1,28 @@
+--- a/js/src/wasm/WasmSignalHandlers.cpp
++++ b/js/src/wasm/WasmSignalHandlers.cpp
+@@ -34,6 +34,9 @@
+ #elif defined(XP_DARWIN)
+ #  include <mach/exc.h>
+ #  include <mach/mach.h>
++#  if defined(__has_include) && __has_include(<TargetConditionals.h>)
++#    include <TargetConditionals.h>  // TARGET_OS_IPHONE
++#  endif
+ #else
+ #  include <signal.h>
+ #endif
+@@ -945,6 +948,15 @@
+ #ifdef JS_CODEGEN_NONE
+   return false;
+ #else
++#  if defined(XP_DARWIN) && defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
++  // iOS guards thread_set_exception_ports() with EXC_GUARD (SET_EXCEPTION_BEHAVIOR)
++  // and kills the process. SpiderMonkey's Darwin wasm-trap handling is entirely
++  // Mach-exception-port based, so it cannot run on iOS. Report "no signal handlers"
++  // -> wasm::HasPlatformSupport() returns false (wasm unavailable). Pure-JS Baseline/
++  // Ion JIT does NOT use these handlers, so JS JIT is unaffected (gjs is pure JS).
++  (void)cx;
++  return false;
++#  endif
+   if (cx->wasm().triedToInstallSignalHandlers) {
+     return cx->wasm().haveSignalHandlers;
+   }
