@@ -108,6 +108,12 @@ on_input_msg (const struct xios_in_msg *m,
         x = (out_w > 0 && screen_w > 0) ? (double) m->x * screen_w / out_w : (double) m->x;
         y = (out_h > 0 && screen_h > 0) ? (double) m->y * screen_h / out_h : (double) m->y;
 
+        /* Diagnostic: the exact coords handed to Clutter + the mapping inputs, so an inject test
+         * confirms the pointer lands where expected (in-bounds of screen_w x screen_h). */
+        if (input->msg_log_budget > 0)
+          g_message ("MetaInputIOS: motion out(%d,%d)/%dx%d -> stage(%.1f,%.1f) in %dx%d",
+                     m->x, m->y, out_w, out_h, x, y, screen_w, screen_h);
+
         clutter_virtual_input_device_notify_absolute_motion (input->pointer,
                                                              CLUTTER_CURRENT_TIME, x, y);
         break;

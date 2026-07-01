@@ -27,6 +27,13 @@
 struct _MetaVirtualInputDeviceIOS
 {
   ClutterVirtualInputDevice parent;
+
+  /* The last commanded absolute pointer position. Events are pushed onto Clutter's queue and
+   * processed LATER, so clutter_seat_query_state() still returns the PRE-motion position when the
+   * pump synchronously sends motion-then-button in one drain — a button would then land at the
+   * stale spot (where the pointer was on the previous tap). Track the position we ourselves
+   * commanded and place buttons/scroll there, matching the app's synchronous send model. */
+  graphene_point_t last_coords;
 };
 
 G_DEFINE_TYPE (MetaVirtualInputDeviceIOS, meta_virtual_input_device_ios,
@@ -46,6 +53,7 @@ meta_virtual_input_device_ios_notify_absolute_motion (ClutterVirtualInputDevice 
                                                       double                     x,
                                                       double                     y)
 {
+  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
   ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
   graphene_point_t coords = GRAPHENE_POINT_INIT ((float) x, (float) y);
@@ -54,6 +62,7 @@ meta_virtual_input_device_ios_notify_absolute_motion (ClutterVirtualInputDevice 
   ClutterEvent *event;
 
   clutter_seat_query_state (seat, pointer, NULL, NULL, &modifiers);
+  self->last_coords = coords;
 
   event = clutter_event_motion_new (CLUTTER_EVENT_NONE, resolve_time (time_us),
                                     pointer, NULL, modifiers, coords,
@@ -67,16 +76,18 @@ meta_virtual_input_device_ios_notify_relative_motion (ClutterVirtualInputDevice 
                                                       double                     dx,
                                                       double                     dy)
 {
+  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
   ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
-  graphene_point_t coords = GRAPHENE_POINT_INIT (0.f, 0.f);
+  graphene_point_t coords = self->last_coords;
   graphene_point_t delta = GRAPHENE_POINT_INIT ((float) dx, (float) dy);
   ClutterModifierType modifiers = 0;
   ClutterEvent *event;
 
-  clutter_seat_query_state (seat, pointer, NULL, &coords, &modifiers);
+  clutter_seat_query_state (seat, pointer, NULL, NULL, &modifiers);
   coords.x += (float) dx;
   coords.y += (float) dy;
+  self->last_coords = coords;
 
   event = clutter_event_motion_new (CLUTTER_EVENT_NONE, resolve_time (time_us),
                                     pointer, NULL, modifiers, coords,
@@ -90,15 +101,16 @@ meta_virtual_input_device_ios_notify_button (ClutterVirtualInputDevice *virtual_
                                              uint32_t                   button,
                                              ClutterButtonState         button_state)
 {
+  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
   ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
-  graphene_point_t coords = GRAPHENE_POINT_INIT (0.f, 0.f);
+  graphene_point_t coords = self->last_coords;   /* where our last motion put the pointer */
   ClutterModifierType modifiers = 0;
   ClutterEventType type;
   uint32_t clutter_button;
   ClutterEvent *event;
 
-  clutter_seat_query_state (seat, pointer, NULL, &coords, &modifiers);
+  clutter_seat_query_state (seat, pointer, NULL, NULL, &modifiers);
 
   switch (button)
     {
@@ -175,14 +187,15 @@ meta_virtual_input_device_ios_notify_scroll_continuous (ClutterVirtualInputDevic
                                                         ClutterScrollSource        scroll_source,
                                                         ClutterScrollFinishFlags   finish_flags)
 {
+  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
   ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
-  graphene_point_t coords = GRAPHENE_POINT_INIT (0.f, 0.f);
+  graphene_point_t coords = self->last_coords;   /* scroll at the pointer's last position */
   graphene_point_t delta = GRAPHENE_POINT_INIT ((float) dx, (float) dy);
   ClutterModifierType modifiers = 0;
   ClutterEvent *event;
 
-  clutter_seat_query_state (seat, pointer, NULL, &coords, &modifiers);
+  clutter_seat_query_state (seat, pointer, NULL, NULL, &modifiers);
 
   event = clutter_event_scroll_smooth_new (CLUTTER_EVENT_NONE, resolve_time (time_us),
                                            pointer, NULL, modifiers, coords,
