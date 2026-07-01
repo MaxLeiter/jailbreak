@@ -23,8 +23,9 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `libatspi` (the AT client library Orca uses), and `libatk-bridge` (GTK3/ATK adaptor).
 - GTK4 has a native AT-SPI backend (no ATK). Qt 6 has its own AT-SPI bridge in QtGui.
   GNOME Shell exposes its whole St/Clutter chrome over AT-SPI (Cally).
-- ioscd exports `GTK_A11Y=none`, which hard-disables the GTK4 backend. This was a
-  startup-cost optimization; it must become conditional (P0 below).
+- ioscd exports `GTK_A11Y=none` (`apps/iosc-desktop/src/ioscd.c:274`), which
+  hard-disables the GTK4 backend. This was a startup-cost optimization; it must
+  become conditional (P0 below).
 - The Xios app already has the screen-point to output-px mapping (`framebufferPoint`
   and inverse, used by the cursor overlay). Element frames reuse it.
 - Xios already synthesizes Wayland pointer input from touches (tap+type path). The
@@ -122,12 +123,22 @@ bus as a normal AT, exactly like Orca would.
    D-Bus property write, not a gsettings write: with the memory gsettings backend the
    launcher's own view of `toolkit-accessibility` resets every session, and the
    property write also fires the launcher's listeners.
-4. GTK3 apps: confirm our GTK3 build still initializes atk-bridge (the cross-build
-   carried an atk-bridge patch; if it was compiled out, GTK3 apps stay dark and need a
-   rebuild against the libatk-bridge we now ship).
-5. Qt/KDE: qtbase must be configured with the AT-SPI bridge feature
-   (`-feature-accessibility-atspi-bridge`, pulls libatspi headers at build time).
-   Add to the qtbase recipe now (task #4 is in flight) so it is not a rebuild later.
+4. GTK3 apps: CONFIRMED compiled out. The gtk3 recipe stubs the bridge entirely
+   (`linux-build/recipes/gtk+3.0.mk:20`: atk-bridge dep made optional, the
+   `atk_bridge_adaptor_init` call in gtkaccessibility.c commented away) because
+   at-spi2-core did not exist yet when GTK3 was built. GTK3 apps stay dark until a
+   gtk3 rebuild against the libatk-bridge we now ship. Not a P0 blocker (GTK4/Qt
+   are the priority targets) but queue the rebuild before P4 breadth.
+5. Qt/KDE: qtbase must be configured with the AT-SPI bridge feature, and the
+   current recipe cannot enable it with one flag: the bridge's cmake condition is
+   accessibility + QtDBus + libatspi found via pkg-config, and today's recipe sets
+   `-DFEATURE_dbus=OFF` (`linux-build/recipes/qtbase.mk:160`). Needed: flip
+   `-DFEATURE_dbus=ON` (links the libdbus we already ship; KF6/Plasma needs QtDBus
+   anyway, so this belongs in the same round-2 reconfigure as printsupport), put
+   at-spi2-core dev headers in the qtbase sysroot, and add
+   `-DFEATURE_accessibility_atspi_bridge=ON` so configure errors out instead of
+   silently dropping the bridge. Do this in the round-2 rebuild at the latest;
+   every Qt/KDE app built against a bridgeless qtbase is invisible to any AT.
 6. Smoke test without any Apple-side work: a 50-line `atspi-dump` CLI (libatspi) that
    prints the tree of every registered app. If `atspi-dump` sees gnome-console's
    widgets, the Linux half works.
@@ -388,7 +399,9 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 | item | status | cost |
 |---|---|---|
 | at-spi2-core (launcher, registryd, libatspi, atk-bridge) | built | 0 |
-| GTK4/GTK3/Qt/Shell AT-SPI backends | in toolkits | config only (GTK_A11Y, qtbase feature, GTK3 verify) |
+| GTK4/Shell AT-SPI backends | in toolkits | config only (drop the GTK_A11Y=none gate) |
+| Qt AT-SPI bridge | in qtbase, disabled | qtbase round-2 reconfigure: FEATURE_dbus=ON + atspi headers in sysroot + bridge feature (P0 item 5) |
+| GTK3 atk-bridge | compiled out (`gtk+3.0.mk:20`) | gtk3 rebuild against the shipped libatk-bridge, before P4 |
 | atspi-dump CLI | new | trivial |
 | xios-a11yd | new | ~1.5-2k lines C, links libatspi+glib (both shipped) |
 | iosc geometry feed | new | small compositor + shell-channel addition |
@@ -399,8 +412,8 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 ## Phases
 
 - P0 plumbing: launcher in session, GTK_A11Y gate removed, IsEnabled property write,
-  qtbase feature flag, atspi-dump. Accept: atspi-dump prints gnome-console's full
-  widget tree on device.
+  qtbase round-2 flags queued (item 5 above), atspi-dump. Accept: atspi-dump prints
+  gnome-console's full widget tree on device.
 - P1 read-only browse: xios-a11yd mirror + protocol + Xios elements for the focused
   window (labels, roles, frames). Accept: VoiceOver swipes through gnome-console and
   gtk4-demo controls with correct speech and touch exploration lands on the right
