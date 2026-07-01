@@ -165,6 +165,49 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
 
 int iosc_gl_ok(void) { return s_ok; }
 
+int iosc_gl_resize(void *output_iosurface, int w, int h)
+{
+    if (!s_ok) return -1;
+    EGLContext ctx = xios_egl_context(2);
+
+    /* Bring up the NEW target first so a failure leaves the old one intact. */
+    EGLSurface new_pb = xios_egl_create_iosurface_pbuffer(output_iosurface, w, h);
+    if (new_pb == EGL_NO_SURFACE) {
+        fprintf(stderr, "iosc_gl: resize pbuffer failed -> CPU fallback\n");
+        s_ok = 0;
+        return -1;
+    }
+    if (!eglMakeCurrent(s_dpy, new_pb, new_pb, ctx)) {
+        fprintf(stderr, "iosc_gl: resize eglMakeCurrent failed 0x%x\n", eglGetError());
+        xios_egl_destroy_pbuffer(new_pb);
+        s_ok = 0;
+        return -1;
+    }
+    GLuint new_tex = xios_egl_bind_pbuffer_texture(new_pb);
+
+    /* Old target: GL objects belong to the (shared, still-current) context, so
+     * they can be deleted with the new surface current. */
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (s_fbo) { glDeleteFramebuffers(1, &s_fbo); s_fbo = 0; }
+    if (s_out_tex) { glDeleteTextures(1, &s_out_tex); s_out_tex = 0; }
+    if (s_out_pb != EGL_NO_SURFACE) xios_egl_destroy_pbuffer(s_out_pb);
+
+    s_out_pb = new_pb;
+    s_out_tex = new_tex;
+    glGenFramebuffers(1, &s_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_out_tex, 0);
+    GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "iosc_gl: resize FBO incomplete 0x%x -> CPU fallback\n", fb_status);
+        s_ok = 0;
+        return -1;
+    }
+    s_ow = w; s_oh = h;
+    fprintf(stderr, "iosc_gl: output rebound (%dx%d)\n", w, h);
+    return 0;
+}
+
 void iosc_gl_begin(void)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);

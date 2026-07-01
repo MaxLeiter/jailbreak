@@ -22,6 +22,13 @@ int  iosc_gl_init(void *output_iosurface, int w, int h);
 /* True once iosc_gl_init() has succeeded. */
 int  iosc_gl_ok(void);
 
+/* Rebind the render target to a NEW output IOSurface at w x h (device rotation:
+ * iosc reallocated the output via xios_surface_resize). The EGL display/context,
+ * shader program, and the client-surface texture cache all survive; only the
+ * output pbuffer/texture/FBO are torn down and rebuilt. 0 on success; on failure
+ * the GPU path is marked unavailable (iosc_gl_ok() false => CPU fallback). */
+int  iosc_gl_resize(void *output_iosurface, int w, int h);
+
 /* Begin a frame: bind the output FBO and clear to black. */
 void iosc_gl_begin(void);
 
