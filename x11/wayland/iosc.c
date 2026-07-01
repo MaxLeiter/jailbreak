@@ -190,8 +190,13 @@ struct iosc_surface {
     int                 pending_scale_dirty;
     int                 mapped;          /* present in the z-order list */
     enum iosc_role      role;
-    struct iosc_surface *parent;
+    struct iosc_surface *parent;         /* subsurface/popup parent, OR xdg_toplevel.set_parent (transient/modal) */
     int                 rel_x, rel_y;
+    /* wl_surface.set_opaque_region bbox (surface-local logical px). The window
+     * composite path uses it to keep fully-opaque windows on the fast opaque path
+     * and alpha-blend the rest (CSD shadow margins). opaque_set=0 => none declared. */
+    int                 opaque_set;
+    int                 opaque_x0, opaque_y0, opaque_x1, opaque_y1;
     struct wl_resource *xdg_surface;     /* xdg_surface role, or NULL */
     struct wl_resource *xdg_toplevel;    /* xdg_toplevel role, or NULL */
     struct wl_resource *xdg_decoration;  /* zxdg_toplevel_decoration_v1, or NULL */
@@ -217,6 +222,10 @@ struct iosc_frame {
     struct wl_resource *resource;
     struct wl_list      link;
 };
+
+/* wl_region: union bbox of add()s; subtract() sets `complex` (a bbox can't hold a
+ * hole). Used by wl_surface.set_opaque_region to gate the window opaque fast-path. */
+struct iosc_region { int has, complex, x0, y0, x1, y1; };
 
 /* The per-toplevel window size is logical, so high-DPI clients lay out like a
  * normal desktop while the compositor still presents into a native IOSurface. */
@@ -684,17 +693,38 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
     }
 }
 
-/* Layer-shell surfaces are the shell's chrome (panel/overview/wallpaper): they
- * commit premultiplied ARGB8888 and rely on real translucency over what's beneath
- * them, so honor their alpha. Everything else keeps the opaque window path
- * (XRGB8888 alpha is undefined). IOSurface and single-pixel buffers always carry
- * a real alpha channel. */
+/* Does the client's opaque_region cover the WHOLE surface? Then it's guaranteed
+ * opaque and we can keep it on the fast path even with an alpha channel. */
+static int surface_opaque_full(struct iosc_surface *s)
+{
+    if (!s->opaque_set) return 0;
+    int w = 0, h = 0;
+    surface_display_size(s, &w, &h);
+    return s->opaque_x0 <= 0 && s->opaque_y0 <= 0 &&
+           s->opaque_x1 >= w && s->opaque_y1 >= h;
+}
+
+/* Whether a surface must be alpha-blended (premultiplied source-over) rather than
+ * drawn on the fast opaque path. Two cases:
+ *   - Layer-shell chrome (panel/overview/wallpaper): premultiplied ARGB8888 that
+ *     relies on real translucency over what's beneath it.
+ *   - Windows (xdg_toplevel/popup) with a transparent margin: GTK4 client-side
+ *     decorations carry a drop-shadow + rounded corners in an ARGB buffer whose
+ *     outer pixels are transparent. Composited opaque, that margin draws as an
+ *     opaque BLACK box around the window. We honor the buffer's alpha, gated on
+ *     the client's opaque_region: a window that declares itself fully opaque (or
+ *     an XRGB buffer, alpha undefined) stays on the fast opaque path; anything
+ *     with a partial/absent opaque region and a real alpha channel blends.
+ * IOSurface and single-pixel buffers always carry a real alpha channel. */
 static int surface_blends(struct iosc_surface *s)
 {
-    if (s->role != IOSC_ROLE_LAYER || !s->current_buffer) return 0;
+    if (!s->current_buffer) return 0;
     struct wl_shm_buffer *shm = wl_shm_buffer_get(s->current_buffer);
-    if (shm) return wl_shm_buffer_get_format(shm) == WL_SHM_FORMAT_ARGB8888;
-    return 1;
+    int argb = shm ? (wl_shm_buffer_get_format(shm) == WL_SHM_FORMAT_ARGB8888) : 1;
+    if (s->role == IOSC_ROLE_LAYER) return argb;
+    if (s->role == IOSC_ROLE_TOPLEVEL || s->role == IOSC_ROLE_POPUP)
+        return argb && !surface_opaque_full(s);
+    return 0;
 }
 
 static void composite_one(struct iosc_surface *s)
@@ -1287,6 +1317,23 @@ static void surface_map(struct iosc_surface *s)
         layer_compute(s, &cw, &ch, &cx, &cy);
         s->dx = cx;
         s->dy = cy;
+    } else if (s->role == IOSC_ROLE_TOPLEVEL && s->parent && s->parent->mapped) {
+        /* Transient/modal dialog: center over its parent (clamped to the work
+         * area). It's inserted at the top of its band below, so it maps ABOVE the
+         * parent, not cascaded off to the side or behind it. */
+        int pw = 0, ph = 0, sw = 0, sh = 0;
+        surface_display_size(s->parent, &pw, &ph);
+        surface_display_size(s, &sw, &sh);
+        int wx, wy, ww, wh;
+        work_area(&wx, &wy, &ww, &wh);
+        int dx = s->parent->dx + (pw - sw) / 2;
+        int dy = s->parent->dy + (ph - sh) / 2;
+        if (dx < wx) dx = wx;
+        if (dy < wy) dy = wy;
+        if (sw < ww && dx + sw > wx + ww) dx = wx + ww - sw;
+        if (sh < wh && dy + sh > wy + wh) dy = wy + wh - sh;
+        s->dx = dx;
+        s->dy = dy;
     } else if (s->parent) {
         surface_place_child(s);
     } else {
@@ -1308,8 +1355,10 @@ static void surface_map(struct iosc_surface *s)
     g_nmapped++;
     s->mapped = 1;
     if (s->role == IOSC_ROLE_LAYER) work_area_recompute();
-    fprintf(stderr, "iosc: surface mapped role=%d band=%d at (%d,%d); %d window(s)\n",
-            s->role, band, s->dx, s->dy, g_nmapped);
+    fprintf(stderr, "iosc: surface mapped role=%d band=%d at (%d,%d)%s; %d window(s)\n",
+            s->role, band, s->dx, s->dy,
+            (s->role == IOSC_ROLE_TOPLEVEL && s->parent) ? " transient(above parent)" : "",
+            g_nmapped);
     if (s->role == IOSC_ROLE_TOPLEVEL)
         ftl_toplevel_mapped(s);        /* announce to taskbar/foreign-toplevel clients */
     if (s->role == IOSC_ROLE_TOPLEVEL || s->role == IOSC_ROLE_POPUP)
@@ -1446,7 +1495,21 @@ static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t c
 }
 static void surface_set_opaque_region(struct wl_client *c, struct wl_resource *r,
                                       struct wl_resource *region)
-{ (void)c; (void)r; (void)region; }
+{ (void)c;
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    /* NULL region, or a region with holes, means we can't claim a solid opaque
+     * rect => treat as "none" so the window blends (correct for CSD margins).
+     * Applied immediately rather than latched to commit — harmless for rendering. */
+    struct iosc_region *reg = region ? wl_resource_get_user_data(region) : NULL;
+    if (reg && reg->has && !reg->complex) {
+        s->opaque_set = 1;
+        s->opaque_x0 = reg->x0; s->opaque_y0 = reg->y0;
+        s->opaque_x1 = reg->x1; s->opaque_y1 = reg->y1;
+    } else {
+        s->opaque_set = 0;
+    }
+}
 static void surface_set_input_region(struct wl_client *c, struct wl_resource *r,
                                      struct wl_resource *region)
 { (void)c; (void)r; (void)region; }
@@ -1604,6 +1667,10 @@ static void surface_resource_destroy(struct wl_resource *r)
         g_cursor_surface = NULL;
         g_cursor_visible = 0;
     }
+    /* A transient/modal child may hold s as its parent (xdg_toplevel.set_parent);
+     * clear those links so a later map/raise/place doesn't deref freed memory. */
+    for (int i = 0; i < g_nmapped; i++)
+        if (g_mapped[i]->parent == s) g_mapped[i]->parent = NULL;
     s->current_buffer = NULL;
     presentation_discard_surface(s);
     struct iosc_frame *f, *tmp;
@@ -1616,16 +1683,37 @@ static void surface_resource_destroy(struct wl_resource *r)
     if (was_mapped) recomposite_all();   /* repaint without the closed window */
 }
 
-/* ---- wl_region (minimal; geometry is ignored in M1) ---------------------- */
+/* ---- wl_region ----------------------------------------------------------- *
+ * We track the union bounding box of add()s so wl_surface.set_opaque_region can
+ * gate the window compositing fast-path. subtract() sets `complex` (a bbox can't
+ * represent a hole) so a region with holes is treated as not-fully-opaque = blend
+ * (the safe direction: we never draw a transparent pixel as opaque). GTK's opaque
+ * regions are a single rect, so the bbox is exact for the common case.
+ * (struct iosc_region is defined up by struct iosc_frame.) */
 
 static void region_destroy(struct wl_client *c, struct wl_resource *r)
 { (void)c; wl_resource_destroy(r); }
 static void region_add(struct wl_client *c, struct wl_resource *r,
                        int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c; (void)r; (void)x; (void)y; (void)w; (void)h; }
+{ (void)c;
+    struct iosc_region *reg = wl_resource_get_user_data(r);
+    if (!reg || w <= 0 || h <= 0) return;
+    if (!reg->has) { reg->x0 = x; reg->y0 = y; reg->x1 = x + w; reg->y1 = y + h; reg->has = 1; }
+    else {
+        if (x < reg->x0) reg->x0 = x;
+        if (y < reg->y0) reg->y0 = y;
+        if (x + w > reg->x1) reg->x1 = x + w;
+        if (y + h > reg->y1) reg->y1 = y + h;
+    }
+}
 static void region_subtract(struct wl_client *c, struct wl_resource *r,
                             int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c; (void)r; (void)x; (void)y; (void)w; (void)h; }
+{ (void)c; (void)x; (void)y; (void)w; (void)h;
+    struct iosc_region *reg = wl_resource_get_user_data(r);
+    if (reg) reg->complex = 1;   /* has a hole: can't be summarised by a bbox */
+}
+static void region_resource_destroy(struct wl_resource *r)
+{ free(wl_resource_get_user_data(r)); }
 static const struct wl_region_interface region_impl = {
     .destroy = region_destroy, .add = region_add, .subtract = region_subtract,
 };
@@ -1654,7 +1742,8 @@ static void compositor_create_region(struct wl_client *client,
     struct wl_resource *res = wl_resource_create(client, &wl_region_interface,
                                                  wl_resource_get_version(resource), id);
     if (!res) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(res, &region_impl, NULL, NULL);
+    struct iosc_region *reg = calloc(1, sizeof(*reg));
+    wl_resource_set_implementation(res, &region_impl, reg, region_resource_destroy);
 }
 static const struct wl_compositor_interface compositor_impl = {
     .create_surface = compositor_create_surface,
@@ -2337,7 +2426,18 @@ static void interactive_end(void)
 
 /* xdg_toplevel */
 static void xt_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
-static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p){ (void)c;(void)r;(void)p; }
+static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p)
+{ (void)c;
+    /* Record the transient/modal relationship (a "quit? save?" dialog sets its
+     * editor window as parent). surface_map centers the child over the parent and
+     * surface_raise keeps it stacked above — without this the dialog cascades like
+     * a normal window and can end up BEHIND its parent. p's user_data is the parent
+     * xdg_toplevel's iosc_surface; NULL clears the relationship. */
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    struct iosc_surface *parent = p ? wl_resource_get_user_data(p) : NULL;
+    s->parent = (parent && parent != s) ? parent : NULL;
+}
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) { snprintf(s->title, sizeof(s->title), "%s", t ? t : ""); ftl_broadcast_title(s); }
@@ -3345,7 +3445,7 @@ static void handle_motion(int x, int y)
 
 /* Raise a surface to the top of ITS z-band (clicked window comes forward, but a
  * toplevel never jumps above the panel/overlay band). */
-static void surface_raise(struct iosc_surface *s)
+static void surface_raise_one(struct iosc_surface *s)
 {
     int idx = -1;
     for (int i = 0; i < g_nmapped; i++) if (g_mapped[i] == s) { idx = i; break; }
@@ -3359,6 +3459,30 @@ static void surface_raise(struct iosc_surface *s)
     if (top == idx) return;
     for (int i = idx; i < top; i++) g_mapped[i] = g_mapped[i + 1];
     g_mapped[top] = s;
+}
+
+/* Raise a surface, then pull its transient/modal toplevel children above it —
+ * parent first so children end up on top. Without this, clicking or activating a
+ * parent would raise it over its own open dialog, leaving the modal behind. The
+ * child set is re-scanned each level (surface_raise_one reorders g_mapped[]); the
+ * depth cap bounds recursion even if a client forms a parent cycle. */
+static void surface_raise_children(struct iosc_surface *s, int depth)
+{
+    surface_raise_one(s);
+    if (depth <= 0) return;
+    struct iosc_surface *kids[IOSC_MAX_SURFACES];
+    int nk = 0;
+    for (int i = 0; i < g_nmapped && nk < IOSC_MAX_SURFACES; i++) {
+        struct iosc_surface *c = g_mapped[i];
+        if (c != s && c->role == IOSC_ROLE_TOPLEVEL && c->parent == s)
+            kids[nk++] = c;
+    }
+    for (int i = 0; i < nk; i++) surface_raise_children(kids[i], depth - 1);
+}
+
+static void surface_raise(struct iosc_surface *s)
+{
+    surface_raise_children(s, IOSC_MAX_SURFACES);
 }
 
 static void handle_button(int btn, int down)
