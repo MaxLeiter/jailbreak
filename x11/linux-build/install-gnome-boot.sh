@@ -78,8 +78,13 @@ DEBS="\
   xios-session-stubs_0.1.2_iphoneos-arm64.deb \
 "
 
-# The -dev debs below are needed ONLY for gtk4-gpu's on-device gir/typelib scan
-# (headers + pkg-config), not for boot. Install them before running the gir batch.
+# The -dev debs below are needed ONLY for gtk4-gpu's on-device gir/typelib scan (headers +
+# pkg-config), not for boot. Install them before running the gir batch. The second group covers
+# the shell's remaining boot-import closure (gtk4-gpu's 2026-07-01 audit): Atk-1.0, Atspi-2.0,
+# Gcr-4 + Gck-2 (one deb), Polkit-1.0 + PolkitAgent-1.0 (one deb), IBus-1.0, GnomeDesktop-4.0 +
+# GnomeBG-4.0 (one deb). NOT here: GDesktopEnums-3.0 (gsettings-desktop-schemas ships no header/
+# gir → gtk4-gpu meson-routes it) and p11-kit-1-dev (gck-2.pc/gcr-4.pc Require it for cflags →
+# apt-get download'd below, like libxcb-util1).
 GIR_DEV_DEBS="\
   libmutter-14-dev_46.0_iphoneos-arm64.deb \
   libgjs-dev_1.78.0_iphoneos-arm64.deb \
@@ -89,6 +94,13 @@ GIR_DEV_DEBS="\
   libgeocode-glib-2-dev_3.26.4_iphoneos-arm64.deb \
   libgweather-4-dev_4.4.2_iphoneos-arm64.deb \
   libgeoclue-dev_2.7.1_iphoneos-arm64.deb \
+  libatk1.0-dev_2.38.0_iphoneos-arm64.deb \
+  at-spi2-core-dev_2.52.0_iphoneos-arm64.deb \
+  gcr4-dev_4.2.1_iphoneos-arm64.deb \
+  polkit-dev_124_iphoneos-arm64.deb \
+  libibus-dev_1.5.29_iphoneos-arm64.deb \
+  libgnome-desktop-dev_44.1_iphoneos-arm64.deb \
+  p11-kit-1-dev_*_iphoneos-arm64.deb \
 "
 
 # libxcb-util1 is a standard Procursus lib that libstartup-notification0 Depends but that we do
@@ -97,8 +109,16 @@ if ! ls libxcb-util1_*_iphoneos-arm64.deb >/dev/null 2>&1; then
   echo "==> fetching libxcb-util1 from Procursus apt (not in the built set)"
   apt-get download libxcb-util1 || { echo "!! could not download libxcb-util1 — install it manually (apt-get install libxcb-util1) then re-run"; exit 1; }
 fi
+# p11-kit-1-dev is needed ONLY for the Phase-2 gir scan (gck-2.pc/gcr-4.pc Require p11-kit-1 for
+# cflags). Not a boot dep; fetch it now while we have the network so it is ready for the -dev pass.
+if ! ls p11-kit-1-dev_*_iphoneos-arm64.deb >/dev/null 2>&1; then
+  echo "==> fetching p11-kit-1-dev for the Phase-2 gir scan (best-effort)"
+  apt-get download p11-kit-1-dev 2>/dev/null || echo "   (p11-kit-1-dev not fetched — grab it before the gir batch, or gtk4-gpu meson-routes gck/gcr)"
+fi
 
 echo "==> installing the boot debs in dependency order (dpkg -i is idempotent — safe to re-run)"
 dpkg -i $DEBS
-echo "==> boot set installed. For the on-device gir scan, also: dpkg -i $GIR_DEV_DEBS"
-echo "==> then: apt-get check   (must be clean; do NOT run apt --fix-broken on this device)"
+echo "==> boot set installed."
+echo "==> Phase 2 (gir scan prereq): dpkg -i \$GIR_DEV_DEBS  — the 14 -dev debs + p11-kit-1-dev;"
+echo "    then gtk4-gpu runs the closure scan (GDesktopEnums-3.0 is meson-routed, not a deb)."
+echo "==> verify: apt-get check   (must be clean; do NOT run apt --fix-broken on this device)"
