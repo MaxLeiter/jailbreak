@@ -70,6 +70,11 @@ final class XScreenView: UIView {
     private var lastIoscTraitHint: UInt32 = 0
     private var lastIoscTraitPurpose: UInt32 = 0
     private var lastIoscTraitEnabled: UInt32 = 0
+    // Auto on-screen-keyboard responder policy (design: x11/docs/osk-plan.md).
+    private var oskAutoShown = false          // the auto path raised the keyboard
+    private var oskUserDismissed = false      // user hid it while the field was still enabled
+    private var oskProgrammaticResign = false // our resign vs the user's
+    private var oskHideTimer: Timer?
     private weak var ctrlBtn: UIButton?
     private weak var altBtn: UIButton?
     private weak var shiftBtn: UIButton?
@@ -759,17 +764,47 @@ final class XScreenView: UIView {
             applyIoscInputTraits(hint: 0, purpose: 0, enabled: 0)
             return
         }
-        var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
-        let r = iosc_input_poll_traits(&hint, &purpose, &enabled)
-        if r < 0 {
-            inputConnected = false
-            writeStatus()
-        } else if r > 0 {
+        // poll_traits now returns one record per call; drain them all so every
+        // enable/disable transition reaches the responder policy.
+        while true {
+            var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
+            let r = iosc_input_poll_traits(&hint, &purpose, &enabled)
+            if r < 0 { inputConnected = false; writeStatus(); return }
+            if r == 0 { return }
             applyIoscInputTraits(hint: hint, purpose: purpose, enabled: enabled)
         }
     }
 
+    /// The responder half of the auto keyboard (design: x11/docs/osk-plan.md).
+    /// TRAITS enable raises the keyboard, disable lowers it — but a keyboard the
+    /// user opened/dismissed stays user-owned, and a focus hop (disable+enable
+    /// back to back) is debounced so the keyboard doesn't bounce.
+    private func updateAutoKeyboard(enabled: Bool) {
+        if enabled {
+            oskHideTimer?.invalidate()
+            oskHideTimer = nil
+            if !isFirstResponder && !oskUserDismissed {
+                if becomeFirstResponder() { oskAutoShown = true }
+            }
+        } else {
+            oskUserDismissed = false   // focus left the field; the next enable may raise again
+            guard oskAutoShown, oskHideTimer == nil else { return }
+            // Debounce: a focus hop between two fields is disable then enable
+            // back to back; don't slide the keyboard down for the gap.
+            oskHideTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.oskHideTimer = nil
+                guard self.oskAutoShown else { return }
+                self.oskProgrammaticResign = true
+                _ = self.resignFirstResponder()
+                self.oskProgrammaticResign = false
+                self.oskAutoShown = false
+            }
+        }
+    }
+
     private func applyIoscInputTraits(hint: UInt32, purpose: UInt32, enabled: UInt32) {
+        updateAutoKeyboard(enabled: enabled != 0)   // before the guard: see osk-plan.md
         guard hint != lastIoscTraitHint || purpose != lastIoscTraitPurpose ||
               enabled != lastIoscTraitEnabled else { return }
         lastIoscTraitHint = hint
@@ -1711,12 +1746,23 @@ final class XScreenView: UIView {
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
-        if ok { keyboardButton?.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.7) }
+        if ok {
+            keyboardButton?.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.7)
+            oskUserDismissed = false
+        }
         return ok
     }
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
-        if ok { keyboardButton?.backgroundColor = UIColor.black.withAlphaComponent(0.55) }
+        if ok {
+            keyboardButton?.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+            if !oskProgrammaticResign {
+                // The user hid the keyboard (toggle or dismiss key) while the field
+                // may still be focused: don't fight them on the next broadcast.
+                if lastIoscTraitEnabled != 0 { oskUserDismissed = true }
+                oskAutoShown = false
+            }
+        }
         return ok
     }
 
