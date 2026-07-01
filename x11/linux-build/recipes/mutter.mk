@@ -159,7 +159,7 @@ mutter-package: mutter-stage
 	# every mutter dylib. BEFORE the weaken (macho-weaken is byte-preserving and transparent to an
 	# extra LC_RPATH) and BEFORE SIGN (install_name_tool invalidates the signature; SIGN re-covers).
 	for f in $$(find $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -type f -name '*.dylib'); do \
-		install_name_tool -add_rpath /var/jb/lib/angle $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath /var/jb/lib/angle $$f 2>/dev/null || true; \
 	done
 
 	# --- weak-link the DEAD X11/xcb closure so libmutter loads on an X11-free iPad -------------
