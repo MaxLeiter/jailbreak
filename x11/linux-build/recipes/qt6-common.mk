@@ -78,6 +78,16 @@ QT6_MODULE_CMAKE_FLAGS = \
 	-DQT_BUILD_TESTS=OFF \
 	-DQT_BUILD_BENCHMARKS=OFF
 
+# Staged libxpc/os_log headers shadow the 16.4 SDK (qtbase.mk step 4: xpc/ is the
+# iOS-17-era xpc_session API that dies on OS_OBJECT_DECL_SENDABLE_CLASS from any
+# Foundation.h include; os/log.h is a trimmed private copy). Procursus `setup`
+# RE-STAGES both on EVERY make, so a driver-level parking is undone by the next
+# module's make (qtdeclarative's qsgrhisupport_mac.mm proved it) — every module
+# -setup must call this. Idempotent. Usage: $(call QT6_RM_SHADOW_HEADERS)
+QT6_RM_SHADOW_HEADERS = \
+	rm -rf $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/xpc; \
+	rm -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/os/log.h
+
 # THE core Darwin-vs-iOS fix from qtbase.mk, as a callable for module source trees:
 # CMAKE_SYSTEM_NAME=Darwin makes Qt's cmake set MACOS=1, so `CONDITION MACOS` blocks would
 # link macOS-only frameworks (AppKit et al) / compile macOS-desktop-only sources, while the

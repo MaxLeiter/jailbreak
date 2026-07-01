@@ -17,6 +17,7 @@ qtsvg-setup: setup
 	$(call EXTRACT_TAR,qtsvg-everywhere-src-$(QTSVG_VERSION).tar.xz,qtsvg-everywhere-src-$(QTSVG_VERSION),qtsvg)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtsvg)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/qtsvg/.build_complete),)
 qtsvg:

@@ -45,6 +45,7 @@ qtwayland-setup: setup
 	$(call EXTRACT_TAR,qtwayland-everywhere-src-$(QTWAYLAND_VERSION).tar.xz,qtwayland-everywhere-src-$(QTWAYLAND_VERSION),qtwayland)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtwayland)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/qtwayland/.build_complete),)
 qtwayland:

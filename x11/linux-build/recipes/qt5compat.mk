@@ -25,6 +25,7 @@ qt5compat-setup: setup
 	$(call EXTRACT_TAR,qt5compat-everywhere-src-$(QT5COMPAT_VERSION).tar.xz,qt5compat-everywhere-src-$(QT5COMPAT_VERSION),qt5compat)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qt5compat)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/qt5compat/.build_complete),)
 qt5compat:

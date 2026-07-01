@@ -19,6 +19,7 @@ qtimageformats-setup: setup
 	$(call EXTRACT_TAR,qtimageformats-everywhere-src-$(QTIMAGEFORMATS_VERSION).tar.xz,qtimageformats-everywhere-src-$(QTIMAGEFORMATS_VERSION),qtimageformats)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtimageformats)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/qtimageformats/.build_complete),)
 qtimageformats:
