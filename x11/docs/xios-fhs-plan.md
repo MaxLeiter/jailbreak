@@ -148,15 +148,19 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
   `BKSDisplayBrightnessGetCurrent()` and refreshes `actual_brightness` (+ `brightness`, so
   the gsd slider tracks Control Center changes). Re-applying a value the daemon itself wrote
   is idempotent, so no loop-breaking state is needed.
-- **gsd side (follow-up, in `gnome-settings-daemon-ios-fixes.sh`):** un-drop the `power`
-  plugin (its deps upower-glib/gnome-desktop/libnotify are all built now) and patch
-  `gsd-backlight.c` with a Darwin backend: discovery = scan
-  `$XIOS_SYS/class/backlight/*/` (default `/var/jb/sys`), read `brightness`/`max_brightness`
-  with `g_file_get_contents`, write with `g_file_set_contents`. No logind, no pkexec, no
-  udev — the files are user-writable. Compile risk: gsd-power.c on Darwin is unproven
-  (mostly portable glib; the sysfs/udev bits shown above are already ifdef'd out). This is a
-  gsd rebuild in Docker and belongs to the gnome-session/gsd owner; the interface contract is
-  just "the four files above".
+- **gsd side (patch delivered):** the `power` plugin un-drop is in
+  `gnome-settings-daemon-ios-fixes.sh` (gnome-session owner: canberra no-op'd, raw-X11
+  screensaver/DPMS gated `!__APPLE__`, canberra/x11/xext meson deps dropped). The Darwin
+  backend is
+  `linux-build/patches/gnome-settings-daemon/0001-gsd-backlight-darwin-xios-node.patch`
+  (applies `-p1`, verified against pristine 46.0; glib API usage syntax-checked via an
+  extracted harness): probes `$XIOS_SYS/class/backlight/xios_backlight/` in
+  `gsd_backlight_initable_init` (min=0, max/val raw from the files, ahead of the RR
+  fallback), writes `brightness` in `gsd_backlight_set_brightness_val_async` with
+  `g_file_set_contents`, reports connector "xios", frees the path in finalize. No logind,
+  no pkexec, no udev. NOTE `g_file_set_contents` writes temp+rename, so the node
+  DIRECTORIES must be writable by the session uid — the xios-fhs postinst chowns the tree
+  to 501 and marks the leaf dirs 0775 for exactly this.
 
 ### Risks / open validation
 
@@ -196,6 +200,7 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
 - [x] Package skeleton: control/postinst, daemon source, build script
 - [ ] Build daemon in Procursus image, pack deb
 - [ ] Device validation: BKS brightness write, IOPS values, shell indicator + slider
-- [ ] gsd rebuild with power plugin + Darwin gsd-backlight backend (coordinate w/ gsd owner)
-- [ ] xios.session: add xios-hwbridged to the stub launch list (gnome-session owner)
+- [x] Darwin gsd-backlight backend patch (patches/gnome-settings-daemon/0001-...) — wire-in
+      + gsd rebuild with power plugin owned by gnome-session
+- [x] xios.session: xios-hwbridged added to the session launch (gnome-session, task #14)
 - [ ] Flavor-K follow-up: powerdevil backlight patch against the same tree

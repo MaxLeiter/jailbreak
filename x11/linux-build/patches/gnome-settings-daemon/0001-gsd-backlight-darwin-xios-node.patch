@@ -1,0 +1,133 @@
+gsd-backlight: Darwin backend for the Xios synthetic backlight node
+
+On Darwin all of gsd-backlight's udev/sysfs/logind code is compiled out
+(#ifdef __linux__) and only the GNOME-RR/X11 path remains, so GsdBacklight
+init fails and the shell hides the brightness slider. Add a third backend:
+probe $XIOS_SYS/class/backlight/xios_backlight/ (default /var/jb/sys, node
+maintained by xios-hwbridged from the xios-fhs package) and read/write the
+plain brightness/max_brightness files. Values are raw absolute units
+(0..max_brightness, currently 1000); writes are picked up by the daemon via
+a directory watch and applied through BackBoardServices. Connector is
+reported as "xios" so the shell treats the panel as controllable.
+
+Apply -p1 in the gnome-settings-daemon-46.0 source tree
+(gnome-settings-daemon-ios-fixes.sh). Design: x11/docs/xios-fhs-plan.md.
+
+--- a/plugins/power/gsd-backlight.c
++++ b/plugins/power/gsd-backlight.c
+@@ -50,6 +50,13 @@
+ 
+         gint idle_update;
+ #endif /* __linux__ */
++
++#ifdef __APPLE__
++        /* Xios: directory of the synthetic backlight node maintained by
++         * xios-hwbridged (see docs/xios-fhs-plan.md). Non-NULL means the
++         * Darwin file backend is active. */
++        char *xios_path;
++#endif /* __APPLE__ */
+ 
+         GnomeRRScreen *rr_screen;
+         gboolean builtin_display_disabled;
+@@ -506,7 +513,33 @@
+                 return;
+         }
+ #endif /* __linux__ */
++
++#ifdef __APPLE__
++        /* Xios: write the synthetic backlight node; xios-hwbridged watches it
++         * and applies the value through BackBoardServices. The node is plain
++         * user-writable files, so no logind/helper indirection is needed. */
++        if (backlight->xios_path != NULL) {
++                g_autofree char *path = NULL;
++                g_autofree char *str = NULL;
++
++                path = g_build_filename (backlight->xios_path, "brightness", NULL);
++                str = g_strdup_printf ("%d\n", backlight->brightness_target);
++
++                if (!g_file_set_contents (path, str, -1, &error)) {
++                        g_task_return_error (task, error);
++                        g_object_unref (task);
++                        return;
++                }
+ 
++                backlight->brightness_val = backlight->brightness_target;
++                g_object_notify_by_pspec (G_OBJECT (backlight), props[PROP_BRIGHTNESS]);
++                g_task_return_int (task, gsd_backlight_get_brightness (backlight, NULL));
++                g_object_unref (task);
++
++                return;
++        }
++#endif /* __APPLE__ */
++
+         /* Fallback to setting via GNOME RR/X11 */
+         output = gsd_backlight_rr_find_output (backlight, TRUE);
+         if (output) {
+@@ -733,6 +766,13 @@
+ gsd_backlight_get_connector (GsdBacklight *backlight)
+ {
+         GnomeRROutput *output;
++
++#ifdef __APPLE__
++        /* Xios: one built-in panel; report a stable name so the shell treats
++         * the backlight as controllable. */
++        if (backlight->xios_path != NULL)
++                return "xios";
++#endif /* __APPLE__ */
+ 
+         output = gsd_backlight_rr_find_output (backlight, FALSE);
+         if (output == NULL)
+@@ -871,6 +911,42 @@
+                 goto found;
+ #endif /* __linux__ */
+ 
++#ifdef __APPLE__
++        /* Xios: probe the synthetic backlight node maintained by
++         * xios-hwbridged. brightness/max_brightness are raw absolute values
++         * (0..max, currently max = 1000). */
++        {
++                const char *sys_root = g_getenv ("XIOS_SYS");
++                g_autofree char *dir = NULL;
++                g_autofree char *max_path = NULL;
++                g_autofree char *val_path = NULL;
++                g_autofree char *max_str = NULL;
++                g_autofree char *val_str = NULL;
++
++                dir = g_build_filename (sys_root ? sys_root : "/var/jb/sys",
++                                        "class", "backlight", "xios_backlight", NULL);
++                max_path = g_build_filename (dir, "max_brightness", NULL);
++                val_path = g_build_filename (dir, "brightness", NULL);
++
++                if (g_file_get_contents (max_path, &max_str, NULL, NULL) &&
++                    g_file_get_contents (val_path, &val_str, NULL, NULL)) {
++                        gint64 max = g_ascii_strtoll (max_str, NULL, 10);
++                        gint64 val = g_ascii_strtoll (val_str, NULL, 10);
++
++                        if (max > 0 && val >= 0) {
++                                backlight->brightness_min = 0;
++                                backlight->brightness_max = (gint) max;
++                                backlight->brightness_val = (gint) MIN (val, max);
++                                backlight->brightness_step = 1;
++                                backlight->xios_path = g_steal_pointer (&dir);
++
++                                g_debug ("Using Xios backlight node %s.", backlight->xios_path);
++                                goto found;
++                        }
++                }
++        }
++#endif /* __APPLE__ */
++
+         /* Try GNOME RR as a fallback. */
+         output = gsd_backlight_rr_find_output (backlight, TRUE);
+         if (output) {
+@@ -916,6 +992,10 @@
+         }
+ #endif /* __linux__ */
+ 
++#ifdef __APPLE__
++        g_clear_pointer (&backlight->xios_path, g_free);
++#endif /* __APPLE__ */
++
+         g_clear_object (&backlight->rr_screen);
+ }
+ 

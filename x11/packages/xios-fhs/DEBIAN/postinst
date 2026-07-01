@@ -13,6 +13,13 @@ case "$1" in
 
     mkdir -p "$BL" "$BAT" "$AC"
 
+    # The session (gsd-power, xios-hwbridged) writes these nodes with
+    # g_file_set_contents, which creates a temp file and renames — that needs write
+    # permission on the DIRECTORIES, not just the files. Own the tree as mobile (501)
+    # and keep the leaf dirs group/other-writable so both root and mobile sessions work.
+    chown -R 501:501 "$SYS" 2>/dev/null || true
+    chmod 0775 "$BL" "$BAT" "$AC" 2>/dev/null || true
+
     # Backlight node (Linux `backlight` class shape). brightness is world-writable so the
     # unprivileged gsd-power backend and the shell slider can set it.
     [ -e "$BL/max_brightness" ] || printf '1000\n' > "$BL/max_brightness"
