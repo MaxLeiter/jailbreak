@@ -32,6 +32,7 @@
 #include "input-method-unstable-v2-server-protocol.h"
 #include "virtual-keyboard-unstable-v1-server-protocol.h"
 #include "wlr-layer-shell-unstable-v1-server-protocol.h"
+#include "wlr-foreign-toplevel-management-unstable-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -174,7 +175,10 @@ struct iosc_surface {
     struct wl_resource *xdg_popup;       /* xdg_popup role, or NULL */
     int                 toplevel_maximized;
     int                 toplevel_fullscreen;
+    int                 toplevel_minimized;
     int                 toplevel_resizing;
+    struct wl_resource *ftl_handles[8];  /* zwlr_foreign_toplevel_handle_v1 per manager */
+    int                 ftl_nhandles;
     struct iosc_subsurface *subsurface;
     struct iosc_viewport *viewport;
     struct iosc_layer_state *layer;      /* allocated when role == LAYER */
@@ -231,6 +235,12 @@ static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surfa
 static void input_method_update_active(void);
 static void input_clients_send_traits(void);
 static void surface_raise(struct iosc_surface *s);
+/* foreign-toplevel (zwlr_foreign_toplevel_management_v1) — taskbar/window list */
+static void ftl_toplevel_mapped(struct iosc_surface *s);
+static void ftl_toplevel_closed(struct iosc_surface *s);
+static void ftl_broadcast_state(struct iosc_surface *s);
+static void ftl_broadcast_title(struct iosc_surface *s);
+static void ftl_broadcast_app_id(struct iosc_surface *s);
 
 static int clampi(int v, int lo, int hi)
 {
@@ -683,6 +693,8 @@ static void surface_map(struct iosc_surface *s)
     if (s->role == IOSC_ROLE_LAYER) work_area_recompute();
     fprintf(stderr, "iosc: surface mapped role=%d band=%d at (%d,%d); %d window(s)\n",
             s->role, band, s->dx, s->dy, g_nmapped);
+    if (s->role == IOSC_ROLE_TOPLEVEL)
+        ftl_toplevel_mapped(s);        /* announce to taskbar/foreign-toplevel clients */
     if (s->role == IOSC_ROLE_TOPLEVEL || s->role == IOSC_ROLE_POPUP)
         keyboard_set_focus(s);         /* newest shell surface takes keyboard focus */
     else if (s->role == IOSC_ROLE_LAYER && s->layer &&
@@ -692,6 +704,8 @@ static void surface_map(struct iosc_surface *s)
 static void surface_unmap(struct iosc_surface *s)
 {
     if (!s->mapped) return;
+    if (s->role == IOSC_ROLE_TOPLEVEL)
+        ftl_toplevel_closed(s);        /* remove from taskbar/foreign-toplevel clients */
     for (int i = 0; i < g_nmapped; i++)
         if (g_mapped[i] == s) {
             for (int j = i; j < g_nmapped - 1; j++) g_mapped[j] = g_mapped[j + 1];
@@ -1678,11 +1692,11 @@ static void xt_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_
 static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p){ (void)c;(void)r;(void)p; }
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) snprintf(s->title, sizeof(s->title), "%s", t ? t : "");
+  if (s) { snprintf(s->title, sizeof(s->title), "%s", t ? t : ""); ftl_broadcast_title(s); }
   fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
 static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : "");
+  if (s) { snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : ""); ftl_broadcast_app_id(s); }
   fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
 static void xt_show_window_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y){ (void)c;(void)r;(void)seat;(void)serial;(void)x;(void)y; }
 static void xt_move(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial)
@@ -1693,16 +1707,16 @@ static void xt_set_max_size(struct wl_client *c, struct wl_resource *r, int32_t 
 static void xt_set_min_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h){ (void)c;(void)r;(void)w;(void)h; }
 static void xt_set_maximized(struct wl_client *c, struct wl_resource *r)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) { s->toplevel_maximized = 1; toplevel_reconfigure_state(s); } }
+  if (s) { s->toplevel_maximized = 1; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
 static void xt_unset_maximized(struct wl_client *c, struct wl_resource *r)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) { s->toplevel_maximized = 0; toplevel_reconfigure_state(s); } }
+  if (s) { s->toplevel_maximized = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
 static void xt_set_fullscreen(struct wl_client *c, struct wl_resource *r, struct wl_resource *out)
 { (void)c; (void)out; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) { s->toplevel_fullscreen = 1; toplevel_reconfigure_state(s); } }
+  if (s) { s->toplevel_fullscreen = 1; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
 static void xt_unset_fullscreen(struct wl_client *c, struct wl_resource *r)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) { s->toplevel_fullscreen = 0; toplevel_reconfigure_state(s); } }
+  if (s) { s->toplevel_fullscreen = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
 static void xt_set_minimized(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
 static const struct xdg_toplevel_interface xdg_toplevel_impl = {
     .destroy = xt_destroy, .set_parent = xt_set_parent, .set_title = xt_set_title,
@@ -2496,6 +2510,8 @@ static void keyboard_set_focus(struct iosc_surface *s)
     text_input_focus_surface(old, s);
     g_kbd_focus = s;
     g_kbd_mods = 0;
+    ftl_broadcast_state(old);          /* focus moved: update ACTIVATED on the taskbar */
+    ftl_broadcast_state(s);
     if (s) {
         kbd_send_enter(s);
         int nk = 0;
@@ -3558,6 +3574,194 @@ static int make_keymap_fd(void)
     return fd;
 }
 
+/* ---- zwlr_foreign_toplevel_management_v1 --------------------------------- */
+/* The window list as a protocol: a taskbar/overview binds the manager, receives
+ * one handle per open toplevel (title/app_id/state), and can activate or close
+ * them. State broadcasts hook the existing map/focus/maximize paths above. */
+
+#define IOSC_MAX_FTL_MANAGERS 8
+static struct wl_resource *g_ftl_managers[IOSC_MAX_FTL_MANAGERS];
+static int g_nftl_managers;
+static void ftl_handle_res_destroy(struct wl_resource *r);
+
+/* Build the wl_array of zwlr_foreign_toplevel_handle_v1 state enums. */
+static void ftl_state_array(struct iosc_surface *s, struct wl_array *a)
+{
+    wl_array_init(a);
+    uint32_t *e;
+    if (s->toplevel_maximized) {
+        e = wl_array_add(a, sizeof(uint32_t));
+        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
+    }
+    if (s->toplevel_minimized) {
+        e = wl_array_add(a, sizeof(uint32_t));
+        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
+    }
+    if (s == g_kbd_focus) {
+        e = wl_array_add(a, sizeof(uint32_t));
+        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
+    }
+    if (s->toplevel_fullscreen) {
+        e = wl_array_add(a, sizeof(uint32_t));
+        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
+    }
+}
+
+static void ftl_handle_send_state(struct wl_resource *h, struct iosc_surface *s)
+{
+    struct wl_array a;
+    ftl_state_array(s, &a);
+    zwlr_foreign_toplevel_handle_v1_send_state(h, &a);
+    wl_array_release(&a);
+}
+
+/* Initial dump for a freshly created handle: title, app_id, state, done. */
+static void ftl_handle_send_initial(struct wl_resource *h, struct iosc_surface *s)
+{
+    zwlr_foreign_toplevel_handle_v1_send_title(h, s->title[0] ? s->title : "");
+    zwlr_foreign_toplevel_handle_v1_send_app_id(h, s->app_id[0] ? s->app_id : "");
+    ftl_handle_send_state(h, s);
+    zwlr_foreign_toplevel_handle_v1_send_done(h);
+}
+
+static const struct zwlr_foreign_toplevel_handle_v1_interface ftl_handle_impl;
+
+/* Create a handle for surface `s` on manager `m`, register it, dump initial state. */
+static struct wl_resource *ftl_new_handle(struct wl_resource *m, struct iosc_surface *s)
+{
+    if (s->ftl_nhandles >= (int)(sizeof(s->ftl_handles) / sizeof(s->ftl_handles[0])))
+        return NULL;
+    struct wl_client *c = wl_resource_get_client(m);
+    struct wl_resource *h = wl_resource_create(
+        c, &zwlr_foreign_toplevel_handle_v1_interface, wl_resource_get_version(m), 0);
+    if (!h) return NULL;
+    wl_resource_set_implementation(h, &ftl_handle_impl, s, ftl_handle_res_destroy);
+    s->ftl_handles[s->ftl_nhandles++] = h;
+    zwlr_foreign_toplevel_manager_v1_send_toplevel(m, h);
+    ftl_handle_send_initial(h, s);
+    return h;
+}
+
+static void ftl_toplevel_mapped(struct iosc_surface *s)
+{
+    if (s->role != IOSC_ROLE_TOPLEVEL) return;
+    for (int i = 0; i < g_nftl_managers; i++)
+        ftl_new_handle(g_ftl_managers[i], s);
+}
+
+static void ftl_toplevel_closed(struct iosc_surface *s)
+{
+    for (int i = 0; i < s->ftl_nhandles; i++) {
+        zwlr_foreign_toplevel_handle_v1_send_closed(s->ftl_handles[i]);
+        wl_resource_set_user_data(s->ftl_handles[i], NULL);   /* handle goes inert */
+    }
+    s->ftl_nhandles = 0;
+}
+
+static void ftl_broadcast_state(struct iosc_surface *s)
+{
+    if (!s) return;
+    for (int i = 0; i < s->ftl_nhandles; i++) {
+        ftl_handle_send_state(s->ftl_handles[i], s);
+        zwlr_foreign_toplevel_handle_v1_send_done(s->ftl_handles[i]);
+    }
+}
+
+static void ftl_broadcast_title(struct iosc_surface *s)
+{
+    if (!s) return;
+    for (int i = 0; i < s->ftl_nhandles; i++) {
+        zwlr_foreign_toplevel_handle_v1_send_title(s->ftl_handles[i], s->title);
+        zwlr_foreign_toplevel_handle_v1_send_done(s->ftl_handles[i]);
+    }
+}
+
+static void ftl_broadcast_app_id(struct iosc_surface *s)
+{
+    if (!s) return;
+    for (int i = 0; i < s->ftl_nhandles; i++) {
+        zwlr_foreign_toplevel_handle_v1_send_app_id(s->ftl_handles[i], s->app_id);
+        zwlr_foreign_toplevel_handle_v1_send_done(s->ftl_handles[i]);
+    }
+}
+
+/* Handle requests. After `closed`, user_data is NULL and requests are ignored. */
+static void ftl_handle_res_destroy(struct wl_resource *r)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (s) reslist_remove(s->ftl_handles, &s->ftl_nhandles, r);
+}
+
+static void ftlh_set_maximized(struct wl_client *c, struct wl_resource *h)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s) { s->toplevel_maximized = 1; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
+static void ftlh_unset_maximized(struct wl_client *c, struct wl_resource *h)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s) { s->toplevel_maximized = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
+static void ftlh_set_minimized(struct wl_client *c, struct wl_resource *h)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s) { s->toplevel_minimized = 1; ftl_broadcast_state(s); } }   /* flag only; no hide yet */
+static void ftlh_unset_minimized(struct wl_client *c, struct wl_resource *h)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s) { s->toplevel_minimized = 0; ftl_broadcast_state(s); } }
+static void ftlh_activate(struct wl_client *c, struct wl_resource *h, struct wl_resource *seat)
+{ (void)c; (void)seat; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s) { surface_raise(s); keyboard_set_focus(s); recomposite_all(); } }
+static void ftlh_close(struct wl_client *c, struct wl_resource *h)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s && s->xdg_toplevel) xdg_toplevel_send_close(s->xdg_toplevel); }
+static void ftlh_set_rectangle(struct wl_client *c, struct wl_resource *h, struct wl_resource *surf,
+                               int32_t x, int32_t y, int32_t w, int32_t ht)
+{ (void)c; (void)h; (void)surf; (void)x; (void)y; (void)w; (void)ht; /* minimize hint; unused */ }
+static void ftlh_destroy(struct wl_client *c, struct wl_resource *h)
+{ (void)c; wl_resource_destroy(h); }
+static void ftlh_set_fullscreen(struct wl_client *c, struct wl_resource *h, struct wl_resource *out)
+{ (void)c; (void)out; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s) { s->toplevel_fullscreen = 1; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
+static void ftlh_unset_fullscreen(struct wl_client *c, struct wl_resource *h)
+{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
+  if (s) { s->toplevel_fullscreen = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
+
+static const struct zwlr_foreign_toplevel_handle_v1_interface ftl_handle_impl = {
+    .set_maximized   = ftlh_set_maximized,
+    .unset_maximized = ftlh_unset_maximized,
+    .set_minimized   = ftlh_set_minimized,
+    .unset_minimized = ftlh_unset_minimized,
+    .activate        = ftlh_activate,
+    .close           = ftlh_close,
+    .set_rectangle   = ftlh_set_rectangle,
+    .destroy         = ftlh_destroy,
+    .set_fullscreen  = ftlh_set_fullscreen,
+    .unset_fullscreen = ftlh_unset_fullscreen,
+};
+
+static void ftl_manager_stop(struct wl_client *c, struct wl_resource *m)
+{ (void)c; zwlr_foreign_toplevel_manager_v1_send_finished(m); wl_resource_destroy(m); }
+
+static const struct zwlr_foreign_toplevel_manager_v1_interface ftl_manager_impl = {
+    .stop = ftl_manager_stop,
+};
+
+static void ftl_manager_res_destroy(struct wl_resource *m)
+{ reslist_remove(g_ftl_managers, &g_nftl_managers, m); }
+
+static void ftl_manager_bind(struct wl_client *client, void *data,
+                             uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *m = wl_resource_create(
+        client, &zwlr_foreign_toplevel_manager_v1_interface, version, id);
+    if (!m) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(m, &ftl_manager_impl, NULL, ftl_manager_res_destroy);
+    if (g_nftl_managers < IOSC_MAX_FTL_MANAGERS)
+        g_ftl_managers[g_nftl_managers++] = m;
+    int n = 0;
+    for (int i = 0; i < g_nmapped; i++)      /* replay current window list */
+        if (g_mapped[i]->role == IOSC_ROLE_TOPLEVEL) { ftl_new_handle(m, g_mapped[i]); n++; }
+    fprintf(stderr, "iosc: client bound zwlr_foreign_toplevel_manager_v1 v%u (%d open toplevel(s))\n",
+            version, n);
+}
+
 /* ---- zwlr_layer_shell_v1 / zwlr_layer_surface_v1 ------------------------- */
 /* Desktop-shell surfaces: anchored, z-banded panels/overviews. State is stored
  * on struct iosc_layer_state and applied via the commit-driven placement above
@@ -3775,6 +3979,9 @@ int main(int argc, char **argv)
     /* Desktop-shell chrome: panel/overview/gtk4-layer-shell clients. v4 = the
      * on_demand keyboard interactivity the overview needs. */
     wl_global_create(g_display, &zwlr_layer_shell_v1_interface, 4, NULL, layer_shell_bind);
+    /* Window list as a protocol: the taskbar/overview enumerates + drives toplevels. */
+    wl_global_create(g_display, &zwlr_foreign_toplevel_manager_v1_interface, 3, NULL,
+                     ftl_manager_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
@@ -3806,7 +4013,8 @@ int main(int argc, char **argv)
                     "wp_fractional_scale_manager_v1 v1, wp_presentation v1, "
                     "zxdg_decoration_manager_v1 v1, xdg_activation_v1 v1, "
                     "zwp_text_input_manager_v3 v1, zwp_input_method_manager_v2 v1, "
-                    "zwp_virtual_keyboard_manager_v1 v1, zwlr_layer_shell_v1 v4\n");
+                    "zwp_virtual_keyboard_manager_v1 v1, zwlr_layer_shell_v1 v4, "
+                    "zwlr_foreign_toplevel_manager_v1 v3\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);
