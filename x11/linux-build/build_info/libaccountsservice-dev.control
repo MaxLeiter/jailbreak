@@ -1,0 +1,12 @@
+Package: libaccountsservice-dev
+Version: @DEB_ACCOUNTSSERVICE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Software/AccountsService/
+Depends: libaccountsservice0 (= @DEB_ACCOUNTSSERVICE_V@), libglib2.0-dev
+Description: Query and manipulate user account information (development files)
+ Headers, pkg-config file and the unversioned dylib symlink for libaccountsservice0.
+ Required on-device to generate the AccountsService-1.0 gir/typelib that gnome-shell
+ imports.

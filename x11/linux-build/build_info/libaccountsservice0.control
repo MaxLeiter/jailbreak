@@ -1,0 +1,15 @@
+Package: libaccountsservice0
+Version: @DEB_ACCOUNTSSERVICE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.freedesktop.org/wiki/Software/AccountsService/
+Depends: libglib2.0-0, libpolkit-gobject-1-0
+Description: Query and manipulate user account information (client library)
+ The libaccountsservice client library for rootless iOS. gnome-shell imports
+ gi://AccountsService in its panel boot path, so this library (and its on-device
+ generated AccountsService-1.0 typelib) is required for the shell to start. The
+ Linux accounts-daemon is not built; session enumeration uses a single-session
+ sd-login shim. The org.freedesktop.Accounts data comes from a stub daemon or the
+ shell degrades to an empty user name.

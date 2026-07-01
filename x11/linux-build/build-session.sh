@@ -55,12 +55,14 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 # dconf (settings persistence; glib-only), the session manager, libnotify (gsd's one extra
-# dep), then the minimal gnome-settings-daemon.
+# dep), the minimal gnome-settings-daemon, and libaccountsservice (client lib; gnome-shell
+# imports gi://AccountsService at boot, so this is boot-critical).
 TARGETS="${TARGETS:-\
   dconf-package \
   gnome-session-package \
   libnotify-package \
-  gnome-settings-daemon-package}"
+  gnome-settings-daemon-package \
+  accountsservice-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"
@@ -69,7 +71,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in dconf gnome-session libnotify gnome-settings-daemon; do
+for pat in dconf gnome-session libnotify gnome-settings-daemon libaccountsservice; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
