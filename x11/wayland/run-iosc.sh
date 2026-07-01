@@ -19,8 +19,11 @@ sleep 1
 rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/xios.json" \
       "$TMP/iosc.log" "$TMP/iosc-client.log" "$TMP/iosc-shm-"* 2>/dev/null
 
-echo "==> start iosc (compositor) -> $TMP/iosc.log"
-nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" >"$TMP/iosc.log" 2>&1 &
+# Logical desktop; iosc renders a 2x-oversized IOSurface the app supersamples down
+# to the panel for the ~1.5 effective scale (Max-approved). Override via IOSC_LOGICAL.
+IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
+echo "==> start iosc (compositor, logical $IOSC_LOGICAL) -> $TMP/iosc.log"
+nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
 ICPID=$!
 # wait for the wayland socket + the app handshake json
 for _ in $(seq 1 30); do [ -S "$WSOCK" ] && [ -f "$TMP/xios.json" ] && break; sleep 0.2; done

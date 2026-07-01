@@ -25,6 +25,10 @@ BIN=$JB/usr/local/bin
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$JB/tmp}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
+# Logical desktop the shell designs its elements for. iosc renders a 2x-oversized
+# output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
+# the 2160x1620 panel = ~1.5 effective scale (Max-approved). Override to retune.
+export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
 
 SOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 log() { echo "run-shell: $*" >&2; }
@@ -32,8 +36,8 @@ log() { echo "run-shell: $*" >&2; }
 # -- 1. compositor -----------------------------------------------------------
 if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
     if [ -x "$BIN/iosc" ]; then
-        log "starting iosc..."
-        "$BIN/iosc" >"$JB/tmp/iosc.log" 2>&1 &
+        log "starting iosc (logical $IOSC_LOGICAL)..."
+        "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$JB/tmp/iosc.log" 2>&1 &
     else
         log "ERROR: no wayland socket at $SOCK and $BIN/iosc not found"
         log "start the compositor first (wayland/run-iosc.sh)"; exit 1

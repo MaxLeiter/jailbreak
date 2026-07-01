@@ -179,7 +179,12 @@ static int ensure_iosc(void)
         setenv("XDG_RUNTIME_DIR", TMP, 1);
         setenv("PATH", "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin", 1);
         if (g_native) setenv("IOSC_NATIVE", "1", 1);   /* per-window canvas export */
-        execl(IOSC_BIN, "iosc", (char *)NULL);
+        /* Logical desktop; iosc renders a 2x-oversized IOSurface the Xios app
+         * supersamples down to the panel for the ~1.5 effective scale (Max-approved).
+         * Env override lets the launcher retune without a rebuild. */
+        const char *logical = getenv("IOSC_LOGICAL");
+        if (!logical || !*logical) logical = "1440x1080";
+        execl(IOSC_BIN, "iosc", "-logical", logical, (char *)NULL);
         _exit(127);
     }
     g_iosc_pid = pid;

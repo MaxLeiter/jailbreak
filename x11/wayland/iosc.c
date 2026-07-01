@@ -71,8 +71,14 @@ char *display = "9";
 
 static struct wl_display *g_display;
 static uint8_t          *g_fb;        /* IOSurface base address (BGRA8) */
-static int               g_width  = 2160;  /* iPad 7 native; app aspect-fits anyway */
-static int               g_height = 1620;
+/* Default is the supersampled ~1.5 effective-scale desktop (Max-approved on the
+ * iPad 7's 2160x1620 panel): the output IOSurface is 2880x2160 at scale 2, so the
+ * logical desktop is 1440x1080 and HiDPI apps render crisply at 2x (2880x2160
+ * buffers). The Xios app aspect-fits that oversized surface down onto the 2160x1620
+ * panel (a 0.75 downscale = supersampling), giving net logical->physical = 1.5
+ * (2160/1440). Override with -logical WxH (preferred) or -g WxH + -scale N. */
+static int               g_width  = 2880;  /* output IOSurface = logical * scale */
+static int               g_height = 2160;
 static int               g_stride;    /* real bytes-per-row (IOSurface-padded) */
 static int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
 static int               g_output_scale = 2; /* logical -> physical output pixels */
@@ -5819,9 +5825,16 @@ int main(int argc, char **argv)
     const char *sock_name = "wayland-0";
     const char *ddx_sock  = "/var/jb/tmp/iosc-ddx.sock";
     const char *json_path = "/var/jb/tmp/xios.json";   /* the Xios app reads this */
+    int logical_w = 0, logical_h = 0;   /* -logical WxH: target logical desktop */
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-g") && i + 1 < argc) {
             sscanf(argv[++i], "%dx%d", &g_width, &g_height);
+        } else if (!strcmp(argv[i], "-logical") && i + 1 < argc) {
+            /* Express the desktop by its LOGICAL size; the output IOSurface is
+             * derived as logical * scale (resolved after the loop so -scale can
+             * appear in any order). This is the preferred knob — the shell sizes
+             * its elements for the logical desktop, not the oversized buffer. */
+            sscanf(argv[++i], "%dx%d", &logical_w, &logical_h);
         } else if (!strcmp(argv[i], "-dpi") && i + 1 < argc) {
             int dpi = atoi(argv[++i]);
             if (dpi > 0) g_output_dpi = dpi;
@@ -5831,6 +5844,12 @@ int main(int argc, char **argv)
         } else if (!strcmp(argv[i], "-s") && i + 1 < argc) {
             sock_name = argv[++i];
         }
+    }
+    /* -logical wins over -g: derive the oversized output IOSurface from the target
+     * logical desktop and the (final) scale. */
+    if (logical_w > 0 && logical_h > 0) {
+        g_width  = logical_w * output_scale();
+        g_height = logical_h * output_scale();
     }
 
     /* 1) Output: one fullscreen BGRA IOSurface + the rendezvous the Xios app
