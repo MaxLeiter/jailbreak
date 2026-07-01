@@ -37,10 +37,11 @@ static struct {
     struct wl_display    *dpy;
     struct wl_compositor *comp;
     struct wl_shm        *shm;
+    struct wl_output     *output;
     struct zwlr_layer_shell_v1 *layer_shell;
     struct wl_surface    *surf;
     struct zwlr_layer_surface_v1 *layer;
-    int   width, height, scale, configured, running;
+    int   width, height, scale, scale_env, configured, running;
     int   drawn_w, drawn_h;           /* last rendered size (skip redundant redraws) */
 #ifdef __APPLE__
     CGImageRef image;
@@ -157,6 +158,28 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
 
 /* --------------------------------------------------------------- registry */
 
+/* Follow the compositor's output scale so the wallpaper is decoded/covered at
+ * the real physical resolution on any DPI; IOSC_PANEL_SCALE overrides. */
+static void out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
+                         int32_t pw, int32_t ph, int32_t sp,
+                         const char *mk, const char *md, int32_t tr)
+{ (void)d;(void)o;(void)x;(void)y;(void)pw;(void)ph;(void)sp;(void)mk;(void)md;(void)tr; }
+static void out_mode(void *d, struct wl_output *o, uint32_t f, int32_t w, int32_t h, int32_t r)
+{ (void)d;(void)o;(void)f;(void)w;(void)h;(void)r; }
+static void out_done(void *d, struct wl_output *o){ (void)d;(void)o; }
+static void out_scale(void *d, struct wl_output *o, int32_t f)
+{
+    (void)d;(void)o;
+    if (B.scale_env || f <= 0 || f == B.scale) return;
+    B.scale = (int)f;
+    B.drawn_w = B.drawn_h = -1;   /* invalidate the size cache: same logical,
+                                   * new physical -> must repaint */
+    render();
+}
+static const struct wl_output_listener output_listener = {
+    .geometry = out_geometry, .mode = out_mode, .done = out_done, .scale = out_scale,
+};
+
 static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t ver)
 {
     (void)d;
@@ -164,7 +187,10 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
         B.comp = wl_registry_bind(r, name, &wl_compositor_interface, ver < 4 ? ver : 4);
     else if (!strcmp(iface, wl_shm_interface.name))
         B.shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
-    else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
+    else if (!strcmp(iface, wl_output_interface.name) && !B.output) {
+        B.output = wl_registry_bind(r, name, &wl_output_interface, ver < 2 ? ver : 2);
+        if (ver >= 2) wl_output_add_listener(B.output, &output_listener, NULL);
+    } else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
         B.layer_shell = wl_registry_bind(r, name, &zwlr_layer_shell_v1_interface, ver < 4 ? ver : 4);
 }
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name){ (void)d;(void)r;(void)name; }
@@ -176,10 +202,10 @@ int main(void)
 {
     signal(SIGCHLD, SIG_IGN);
     memset(&B, 0, sizeof B);
-    B.width = 1080; B.height = 810; B.scale = 2; B.running = 1;
+    B.width = 1440; B.height = 1080; B.scale = 2; B.running = 1;
     B.drawn_w = B.drawn_h = -1;
     const char *es = getenv("IOSC_PANEL_SCALE");
-    if (es && atoi(es) > 0) B.scale = atoi(es);
+    if (es && atoi(es) > 0) { B.scale = atoi(es); B.scale_env = 1; }
 
     const char *wp = getenv("IOSC_WALLPAPER");
     if (!wp || !*wp) wp = WALLPAPER_DEFAULT;

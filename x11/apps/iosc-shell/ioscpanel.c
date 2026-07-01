@@ -49,7 +49,7 @@
 #include <sys/stat.h>
 
 /* ------------------------------------------------------------------ config */
-#define PANEL_H     44
+#define PANEL_H     64     /* logical; >= TH_TOUCH (44+ iOS pt at the 1.5 default) */
 #define LAUNCH_MAX  PL_MAX_LAUNCH
 #define TASK_MAX    PL_MAX_TASK
 
@@ -78,7 +78,7 @@ static struct {
     /* panel surface */
     struct wl_surface    *surf;
     struct zwlr_layer_surface_v1 *layer;
-    int   width, height, scale, configured, running;
+    int   width, height, scale, scale_env, configured, running;
 
     /* quick-settings surface (created on open, destroyed on close) */
     struct wl_surface    *qs_surf;
@@ -281,15 +281,16 @@ static void qs_open(void)
     st_device_name(P.qs.device, sizeof P.qs.device, "iPad");
     st_date_long(P.qs.date_long, sizeof P.qs.date_long);
     P.qs.batt_pct = P.batt_pct; P.qs.batt_charging = P.batt_charging;
-    P.qs_w = QS_W; P.qs_h = panel_qs_height(&P.qs);
+    P.qs_w = panel_qs_width(P.width);   /* responsive: caps wide, fits narrow */
+    P.qs_h = panel_qs_height(&P.qs);
 
     /* frosted backdrop: capture the region the card will cover (physical px).
      * The card sits just below the panel at the right edge. */
     if (P.scm) {
-        int lx = P.width - QS_MARGIN - QS_W, ly = PANEL_H + QS_MARGIN;
+        int lx = P.width - QS_MARGIN - P.qs_w, ly = PANEL_H + QS_MARGIN;
         cairo_surface_t *cap = sc_capture(P.dpy, P.shm, P.scm, P.scm_version, P.output,
                                           lx * P.scale, ly * P.scale,
-                                          QS_W * P.scale, P.qs_h * P.scale);
+                                          P.qs_w * P.scale, P.qs_h * P.scale);
         if (cap) {
             P.qs_backdrop = sb_backdrop_build(cap, 4, 6);
             cairo_surface_destroy(cap);
@@ -531,6 +532,31 @@ static void seat_caps(void *d, struct wl_seat *s, uint32_t caps)
 static void seat_name(void *d, struct wl_seat *s, const char *n){ (void)d;(void)s;(void)n; }
 static const struct wl_seat_listener seat_listener = { .capabilities = seat_caps, .name = seat_name };
 
+/* ------------------------------------------------------------- output ---- */
+/* Follow the compositor's output scale so the panel renders crisp at ANY DPI
+ * (iosc's supersampled desktop is scale 2 over a 1440x1080 logical output;
+ * a different device/output just sends a different factor). IOSC_PANEL_SCALE
+ * stays as an explicit override. Logical SIZE already tracks the output via
+ * the layer-surface configure. */
+static void out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
+                         int32_t pw, int32_t ph, int32_t sp,
+                         const char *mk, const char *md, int32_t tr)
+{ (void)d;(void)o;(void)x;(void)y;(void)pw;(void)ph;(void)sp;(void)mk;(void)md;(void)tr; }
+static void out_mode(void *d, struct wl_output *o, uint32_t f, int32_t w, int32_t h, int32_t r)
+{ (void)d;(void)o;(void)f;(void)w;(void)h;(void)r; }
+static void out_done(void *d, struct wl_output *o){ (void)d;(void)o; }
+static void out_scale(void *d, struct wl_output *o, int32_t f)
+{
+    (void)d;(void)o;
+    if (P.scale_env || f <= 0 || f == P.scale) return;
+    P.scale = (int)f;
+    render();
+    render_qs();
+}
+static const struct wl_output_listener output_listener = {
+    .geometry = out_geometry, .mode = out_mode, .done = out_done, .scale = out_scale,
+};
+
 /* ------------------------------------------------------- layer surface --- */
 
 static void layer_configure(void *d, struct zwlr_layer_surface_v1 *ls, uint32_t serial, uint32_t w, uint32_t h)
@@ -556,9 +582,10 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
         P.comp = wl_registry_bind(r, name, &wl_compositor_interface, ver < 4 ? ver : 4);
     else if (!strcmp(iface, wl_shm_interface.name))
         P.shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
-    else if (!strcmp(iface, wl_output_interface.name) && !P.output)
+    else if (!strcmp(iface, wl_output_interface.name) && !P.output) {
         P.output = wl_registry_bind(r, name, &wl_output_interface, ver < 2 ? ver : 2);
-    else if (!strcmp(iface, wl_seat_interface.name)) {
+        if (ver >= 2) wl_output_add_listener(P.output, &output_listener, NULL);
+    } else if (!strcmp(iface, wl_seat_interface.name)) {
         P.seat = wl_registry_bind(r, name, &wl_seat_interface, ver < 5 ? ver : 5);
         wl_seat_add_listener(P.seat, &seat_listener, NULL);
     } else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
@@ -587,12 +614,12 @@ int main(int argc, char **argv)
 {
     signal(SIGCHLD, SIG_IGN);
     memset(&P, 0, sizeof P);
-    P.width = 1080; P.height = PANEL_H; P.scale = 2; P.running = 1;
+    P.width = 1440; P.height = PANEL_H; P.scale = 2; P.running = 1;
     P.batt_pct = -1;
     P.bg_alpha = 1.0;   /* opaque today; iosc composites layers opaque. Set <1 to
                          * enable translucency once iosc blends layer surfaces. */
     const char *es = getenv("IOSC_PANEL_SCALE");
-    if (es && atoi(es) > 0) P.scale = atoi(es);
+    if (es && atoi(es) > 0) { P.scale = atoi(es); P.scale_env = 1; }
     const char *op = getenv("IOSC_PANEL_OPACITY");   /* 0..100 */
     if (op && atoi(op) > 0) P.bg_alpha = atoi(op) / 100.0;
 

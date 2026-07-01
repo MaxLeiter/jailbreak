@@ -64,7 +64,7 @@ static struct {
     struct wl_surface    *surf;
     struct zwlr_layer_surface_v1 *layer;
 
-    int   width, height, scale, configured, running;
+    int   width, height, scale, scale_env, configured, running;
     int   px, py, have_ptr;
     int   press_kind, press_idx;
     int   touch_active, touch_id, touch_drag;
@@ -477,6 +477,26 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
 
 /* --------------------------------------------------------------- registry */
 
+/* Follow the compositor's output scale (crisp at any DPI); IOSC_PANEL_SCALE
+ * overrides. Logical size tracks the fullscreen layer-surface configure. */
+static void out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
+                         int32_t pw, int32_t ph, int32_t sp,
+                         const char *mk, const char *md, int32_t tr)
+{ (void)d;(void)o;(void)x;(void)y;(void)pw;(void)ph;(void)sp;(void)mk;(void)md;(void)tr; }
+static void out_mode(void *d, struct wl_output *o, uint32_t f, int32_t w, int32_t h, int32_t r)
+{ (void)d;(void)o;(void)f;(void)w;(void)h;(void)r; }
+static void out_done(void *d, struct wl_output *o){ (void)d;(void)o; }
+static void out_scale(void *d, struct wl_output *o, int32_t f)
+{
+    (void)d;(void)o;
+    if (O.scale_env || f <= 0 || f == O.scale) return;
+    O.scale = (int)f;
+    render();
+}
+static const struct wl_output_listener output_listener = {
+    .geometry = out_geometry, .mode = out_mode, .done = out_done, .scale = out_scale,
+};
+
 static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t ver)
 {
     (void)d;
@@ -484,9 +504,10 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
         O.comp = wl_registry_bind(r, name, &wl_compositor_interface, ver < 4 ? ver : 4);
     else if (!strcmp(iface, wl_shm_interface.name))
         O.shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
-    else if (!strcmp(iface, wl_output_interface.name) && !O.output)
+    else if (!strcmp(iface, wl_output_interface.name) && !O.output) {
         O.output = wl_registry_bind(r, name, &wl_output_interface, ver < 2 ? ver : 2);
-    else if (!strcmp(iface, wl_seat_interface.name)) {
+        if (ver >= 2) wl_output_add_listener(O.output, &output_listener, NULL);
+    } else if (!strcmp(iface, wl_seat_interface.name)) {
         O.seat = wl_registry_bind(r, name, &wl_seat_interface, ver < 5 ? ver : 5);
         wl_seat_add_listener(O.seat, &seat_listener, NULL);
     } else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
@@ -508,9 +529,9 @@ int main(void)
 {
     signal(SIGCHLD, SIG_IGN);
     memset(&O, 0, sizeof O);
-    O.width = 1080; O.height = 810; O.scale = 2; O.running = 1;
+    O.width = 1440; O.height = 1080; O.scale = 2; O.running = 1;
     const char *es = getenv("IOSC_PANEL_SCALE");
-    if (es && atoi(es) > 0) O.scale = atoi(es);
+    if (es && atoi(es) > 0) { O.scale = atoi(es); O.scale_env = 1; }
     int animate = 1;
     const char *ea = getenv("IOSC_SHELL_ANIM");
     if (ea && !strcmp(ea, "0")) animate = 0;
