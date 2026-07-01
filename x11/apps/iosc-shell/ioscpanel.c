@@ -616,8 +616,8 @@ int main(int argc, char **argv)
     memset(&P, 0, sizeof P);
     P.width = 1440; P.height = PANEL_H; P.scale = 2; P.running = 1;
     P.batt_pct = -1;
-    P.bg_alpha = 1.0;   /* opaque today; iosc composites layers opaque. Set <1 to
-                         * enable translucency once iosc blends layer surfaces. */
+    P.bg_alpha = 0.85;  /* translucent over the wallpaper (iosc blends layer
+                         * surfaces since e11aa52); IOSC_PANEL_OPACITY overrides */
     const char *es = getenv("IOSC_PANEL_SCALE");
     if (es && atoi(es) > 0) { P.scale = atoi(es); P.scale_env = 1; }
     const char *op = getenv("IOSC_PANEL_OPACITY");   /* 0..100 */

@@ -160,7 +160,7 @@ int main(int argc, char **argv)
 
     /* ---- shared panel model ------------------------------------------- */
     struct panel_model pm; memset(&pm, 0, sizeof pm);
-    pm.bg_alpha = 1.0;
+    pm.bg_alpha = 0.85;   /* iosc blends layers since e11aa52 */
     pm.have_ptr = 1; pm.px = 700; pm.py = PANEL_H / 2;   /* hover a pill */
     snprintf(pm.clock, sizeof pm.clock, "9:41");
     snprintf(pm.date, sizeof pm.date, "Tue Jul 1");
