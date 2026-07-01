@@ -20,7 +20,10 @@
 #include <EGL/eglext.h>
 
 #include "backends/ios/xios-glue-stub.h"
-#include "backends/ios/iosc-iosurface-server-protocol.h"
+/* wayland-scanner emits the protocol header BARE into <builddir>/src/ (reached via -Isrc),
+ * like every other mutter wayland file (e.g. meta-wayland-gtk-shell.c includes
+ * "gtk-shell-server-protocol.h"). Do NOT prefix it with backends/ios/. */
+#include "iosc-iosurface-server-protocol.h"
 #include "backends/meta-backend-private.h"
 #include "clutter/clutter.h"
 #include "cogl/cogl-egl.h"
