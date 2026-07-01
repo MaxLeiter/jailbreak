@@ -1,0 +1,79 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index c831acc0c0..6710feb58a 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -1619,7 +1619,9 @@ template("libEGL_shared_template") {
+ }
+ 
+ libEGL_shared_template("libEGL") {
+-  defines = [ "ANGLE_DISPATCH_LIBRARY=\"${_angle_glesv2_library_name}\"" ]
++  # X11-on-iOS: dispatch to the plain dylib (resolved under /var/jb/lib/angle by the
++  # patched OpenSystemLibrary path logic) rather than an iOS .framework bundle.
++  defines = [ "ANGLE_DISPATCH_LIBRARY=\"${_angle_glesv2_library_name}.dylib\"" ]
+   output_name = "libEGL"
+   gles_library = "libGLESv2"
+   sources = []
+diff --git a/src/common/system_utils.cpp b/src/common/system_utils.cpp
+index 740384eaf0..06d822dac7 100644
+--- a/src/common/system_utils.cpp
++++ b/src/common/system_utils.cpp
+@@ -219,19 +219,25 @@ void *OpenSystemLibraryAndGetError(const char *libraryName,
+                                    std::string *errorOut)
+ {
+     std::string libraryWithExtension = std::string(libraryName);
+-    std::string dotExtension         = std::string(".") + GetSharedLibraryExtension();
+-    // Only append the extension if it's not already present. This enables building libEGL.so.1
+-    // and libGLESv2.so.2 by setting these as ANGLE_EGL_LIBRARY_NAME and ANGLE_GLESV2_LIBRARY_NAME.
+-    if (libraryWithExtension.find(dotExtension) == std::string::npos)
++    // Procursus/jailbreak (X11-on-iOS): a concrete ".dylib" dispatch name is used verbatim,
++    // skipping the iOS .framework-bundle path mangling, so ANGLE can ship as plain dylibs
++    // (libEGL.dylib / libGLESv2.dylib) like the rest of the Mesa/Linux GL ecosystem.
++    if (libraryWithExtension.find(".dylib") == std::string::npos)
+     {
+-        libraryWithExtension += dotExtension;
+-    }
++        std::string dotExtension = std::string(".") + GetSharedLibraryExtension();
++        // Only append the extension if it's not already present. This enables building libEGL.so.1
++        // and libGLESv2.so.2 by setting ANGLE_EGL_LIBRARY_NAME and ANGLE_GLESV2_LIBRARY_NAME.
++        if (libraryWithExtension.find(dotExtension) == std::string::npos)
++        {
++            libraryWithExtension += dotExtension;
++        }
+ #if ANGLE_PLATFORM_IOS_FAMILY
+-    // On iOS, libraryWithExtension is a directory in which the library resides.
+-    // The actual library name doesn't have an extension at all.
+-    // E.g. "libEGL.framework/libEGL"
+-    libraryWithExtension = libraryWithExtension + "/" + libraryName;
++        // On iOS, libraryWithExtension is a directory in which the library resides.
++        // The actual library name doesn't have an extension at all.
++        // E.g. "libEGL.framework/libEGL"
++        libraryWithExtension = libraryWithExtension + "/" + libraryName;
+ #endif
++    }
+     return OpenSystemLibraryWithExtensionAndGetError(libraryWithExtension.c_str(), searchType,
+                                                      errorOut);
+ }
+diff --git a/src/common/system_utils_posix.cpp b/src/common/system_utils_posix.cpp
+index 1caeb18a09..3a58f4ef1e 100644
+--- a/src/common/system_utils_posix.cpp
++++ b/src/common/system_utils_posix.cpp
+@@ -202,8 +202,17 @@ void *OpenSystemLibraryWithExtensionAndGetError(const char *libraryName,
+     if (searchType == SearchType::ModuleDir)
+     {
+ #if ANGLE_PLATFORM_IOS_FAMILY
+-        // On iOS, shared libraries must be loaded from within the app bundle.
+-        directory = GetExecutableDirectory() + "/Frameworks/";
++        // X11-on-iOS (Procursus/jailbreak): consumers are CLI/daemon processes, not app
++        // bundles, so resolve the dispatch library from a fixed system prefix instead of
++        // <exe>/Frameworks. Overridable via ANGLE_FRAMEWORK_PATH (e.g. an embedding app bundle).
++        if (const char *angleLibDir = getenv("ANGLE_FRAMEWORK_PATH"))
++        {
++            directory = std::string(angleLibDir) + "/";
++        }
++        else
++        {
++            directory = "/var/jb/lib/angle/";
++        }
+ #elif ANGLE_PLATFORM_FUCHSIA
+         // On Fuchsia the dynamic loader always looks up libraries in /pkg/lib
+         // and disallows loading of libraries via absolute paths.
