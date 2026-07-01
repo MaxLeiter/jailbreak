@@ -57,9 +57,16 @@ KF6_HOST_TOOLING = $(BUILD_TOOLS)/kf6-host/lib/cmake
 #     harmless for units that never look the scanner up. The /usr/bin copy exists
 #     because build-kf6.sh apt-installs libwayland-bin every run. (The HOST
 #     qtwaylandscanner is the separate QT_HOST_PATH mechanism, already gated.)
+#   - KF_IGNORE_PLATFORM_CHECK: ECM's KDEMetaInfoPlatformCheck (pulled in by
+#     KDEFrameworkCompilerSettings, which the DBus/X11-touching frameworks from
+#     kglobalaccel onward include) hard-FATALs on any platform outside Linux;FreeBSD —
+#     Darwin is rejected. The error message names this exact escape hatch. Harmless for
+#     the tier-1 units that don't run the check. (Host builds run natively on Linux, so
+#     they pass without it.)
 KF6_CMAKE_FLAGS = \
 	$(QT6_MODULE_CMAKE_FLAGS) \
 	-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
+	-DKF_IGNORE_PLATFORM_CHECK=TRUE \
 	-DKF6_HOST_TOOLING=$(KF6_HOST_TOOLING) \
 	-DBUILD_TESTING=OFF \
 	-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE \
