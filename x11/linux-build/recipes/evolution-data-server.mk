@@ -85,6 +85,15 @@ evolution-data-server-setup: setup
 	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel.c
 	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-msgport.c
 	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-operation.c
+	# UPSTREAM BUG (3.52.4): camel-smime-context.c's tail function (util_nss_error_to_string,
+	# new in 3.52) sits AFTER the #endif /* ENABLE_SMIME */, but every include except the
+	# config header sits inside the guard — with SMIME off, gchar/gint/NULL are undefined.
+	# Nobody builds SMIME-off upstream, so this path never compiled. Give the tail glib.
+	if ! grep -q 'include <glib.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-smime-context.c; then \
+		sed -i 's|^#ifdef ENABLE_SMIME$$|#include <glib.h>\n\n#ifdef ENABLE_SMIME|' \
+			$(BUILD_WORK)/evolution-data-server/src/camel/camel-smime-context.c; \
+	fi
+	grep -q 'include <glib.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-smime-context.c
 	# Point the two run-my-own-binary generators at host-built copies (compiled below,
 	# after configure); the iOS generator targets still build+link, they just never run.
 	sed -i 's|COMMAND $${CMAKE_CURRENT_BINARY_DIR}/camel-gen-tables |COMMAND $${CMAKE_BINARY_DIR}/camel-gen-tables-host |' \
