@@ -35,6 +35,8 @@ struct _MetaInputIOS
   ClutterVirtualInputDevice *pointer;
   ClutterVirtualInputDevice *keyboard;
   guint                      source_id;
+  int                        last_client_count;  /* log connect/disconnect edges */
+  int                        msg_log_budget;     /* log the first few decoded records */
 };
 
 static uint32_t
@@ -68,6 +70,16 @@ on_input_msg (const struct xios_in_msg *m,
               void                     *user)
 {
   MetaInputIOS *input = user;
+
+  /* Diagnostic: log the first handful of decoded records so a device-side inject test can
+   * confirm bytes arrive + decode with the right 24-byte layout (type/x/y). Bounded so it
+   * never floods. Remove or lower once the input path is validated. */
+  if (input->msg_log_budget > 0)
+    {
+      g_message ("MetaInputIOS: recv type=%u x=%d y=%d code=%u state=%u mods=%u",
+                 m->type, m->x, m->y, m->code, m->state, m->mods);
+      input->msg_log_budget--;
+    }
 
   switch (m->type)
     {
@@ -159,20 +171,30 @@ on_input_msg (const struct xios_in_msg *m,
     }
 }
 
+/* Poll the input socket on a timer instead of watching its fd. xios_input_socket_fd() returns
+ * a KQUEUE descriptor, and adding a kqueue fd to GLib's main loop (g_unix_fd_add -> g_poll) did
+ * NOT wake on iOS — so the earlier fd-watch never fired and no input was ever drained.
+ * xios_input_socket_dispatch is a non-blocking kevent(timeout=0) drain (accept + read + decode),
+ * so calling it every ~8ms reliably pumps connections + records regardless of kqueue pollability.
+ * ~120Hz is imperceptible latency; making this event-driven again needs the glue to expose a
+ * pollable listen fd or a GSource (future optimization, not correctness). */
 static gboolean
-on_socket_ready (gint         fd,
-                 GIOCondition condition,
-                 gpointer     user_data)
+on_poll_tick (gpointer user_data)
 {
   MetaInputIOS *input = user_data;
+  int clients, n;
 
-  if (condition & (G_IO_ERR | G_IO_HUP))
+  clients = xios_input_socket_client_count (input->socket);
+  if (clients != input->last_client_count)
     {
-      input->source_id = 0;
-      return G_SOURCE_REMOVE;
+      g_message ("MetaInputIOS: input client count %d -> %d (app %s)",
+                 input->last_client_count, clients,
+                 clients > input->last_client_count ? "connected" : "disconnected");
+      input->last_client_count = clients;
     }
 
-  if (xios_input_socket_dispatch (input->socket, on_input_msg, input) < 0)
+  n = xios_input_socket_dispatch (input->socket, on_input_msg, input);
+  if (n < 0)
     {
       input->source_id = 0;
       return G_SOURCE_REMOVE;
@@ -188,7 +210,6 @@ meta_input_ios_new (MetaBackend *backend,
   MetaInputIOS *input;
   ClutterSeat *seat;
   xios_input_socket *socket;
-  int fd;
 
   socket = xios_input_socket_new (socket_path);
   if (!socket)
@@ -200,10 +221,12 @@ meta_input_ios_new (MetaBackend *backend,
   input->socket = socket;
   input->pointer = clutter_seat_create_virtual_device (seat, CLUTTER_POINTER_DEVICE);
   input->keyboard = clutter_seat_create_virtual_device (seat, CLUTTER_KEYBOARD_DEVICE);
+  input->last_client_count = 0;
+  input->msg_log_budget = 20;   /* log the first ~20 records for the inject/touch bring-up test */
 
-  fd = xios_input_socket_fd (socket);
-  input->source_id = g_unix_fd_add (fd, G_IO_IN | G_IO_ERR | G_IO_HUP,
-                                    on_socket_ready, input);
+  /* ~8ms poll of the (kqueue-backed) input socket; see on_poll_tick for why not fd-watched. */
+  input->source_id = g_timeout_add (8, on_poll_tick, input);
+  g_message ("MetaInputIOS: input pump polling %s (8ms)", socket_path);
 
   return input;
 }
