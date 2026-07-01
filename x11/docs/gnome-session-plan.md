@@ -35,9 +35,32 @@ All cross-built for `iphoneos-arm64` (rootless) on `procursus-vol-shell`. Recipe
 | `dconf` / `dconf-dev` | 0.40.0 | GSettings dconf backend + `dconf-service` (settings persistence) |
 | `libnotify4` / `libnotify-dev` | 0.8.3 | desktop notification client (used by gsd housekeeping and by apps) |
 | `gnome-settings-daemon` | 46.0 | minimal gsd (a11y-settings, housekeeping, keyboard, screensaver-proxy) |
+| `libaccountsservice0` / `-dev` | 23.13.9 | **BOOT-CRITICAL** client lib — gnome-shell imports gi://AccountsService at boot |
 
-The `org.freedesktop.login1` provider is the existing `xios-login1-stub`
-(`x11/wayland/xios-login1-stub.c`, already built and device-ready). Do not rebuild it.
+Three D-Bus stub daemons stand in for the freedesktop services that have no daemon on iOS
+(pure GLib/GIO, built by `x11/wayland/build-session-stubs.sh`):
+
+| Stub | Provides | Why |
+|---|---|---|
+| `xios-login1-stub` | `org.freedesktop.login1` | session/seat/inhibitors for gnome-session/gsd/Mutter |
+| `xios-polkit-stub` | `org.freedesktop.PolicyKit1` | auto-allow (single-user root); shell polkit agent registers, no auth hang |
+| `xios-accounts-stub` | `org.freedesktop.Accounts` | one user, so the shell shows a real name (else it degrades to blank) |
+
+### libaccountsservice: the hidden boot-blocker
+
+gnome-shell's `js/ui/panel.js` -> `status/system.js` -> `js/misc/systemActions.js` has a static
+top-level `import AccountsService from 'gi://AccountsService'`. panel.js loads at boot, so in
+gjs the missing typelib throws at module load and the shell crashes building the top panel.
+accountsservice is NOT a gnome-shell build dependency (it is a runtime gi:// import only), so
+the gnome-shell build never pulled it and the sysroot had no libaccountsservice at all.
+
+We build the client library only. The accounts-daemon is Linux-only (utmp/crypt/shadow) and
+is dropped; the library's systemd sd-login use (seat/session enumeration, no #ifdef) is
+satisfied by a single-session shim compiled straight in (session id "1", seat "seat0", uid
+getuid(), class "user", state "active"), so it links with no libsystemd. Built
+`-Dintrospection=false`; **the AccountsService-1.0 typelib is generated ON-DEVICE** (the
+St/Shell/Mutter pattern), so the on-device gir pipeline must scan AccountsService-1.0 from the
+shipped lib + headers. Without that typelib on-device the shell still will not boot.
 
 ### gnome-session: the non-systemd build
 
@@ -145,13 +168,14 @@ list.
 | `org.freedesktop.Notifications` | apps | gnome-shell itself | provided |
 | `org.gnome.Mutter.*` (DisplayConfig, IdleMonitor) | shell, gsd | Mutter (in gnome-shell) | provided |
 | `org.gnome.ScreenSaver` | apps | gnome-shell / gsd screensaver-proxy | provided |
-| `org.freedesktop.PolicyKit1` | shell polkit agent | polkitd daemon | ABSENT (libs only) |
-| `org.freedesktop.Accounts` | shell user widget | accountsservice | ABSENT |
+| `org.freedesktop.PolicyKit1` | shell polkit agent | `xios-polkit-stub` (auto-allow) | built |
+| `org.freedesktop.Accounts` | shell user widget + libaccountsservice | `xios-accounts-stub` | built |
 
-The MUST-HAVES for a first boot are all covered. polkitd and accountsservice are absent; the
-shell logs a warning and continues (no privilege-escalation dialogs, no user avatar on the
-lock screen). Both can be added later as real daemons or small D-Bus stubs; neither blocks
-bring-up.
+The MUST-HAVES for a first boot are all covered. The polkit + accounts stubs are optional for
+a bare boot (the shell degrades: no auth dialogs, blank user name) but are cheap and remove
+the warnings / possible auth hangs, so the launch script starts them. Note the libaccountsservice
+CLIENT LIBRARY (above) is NOT optional: the shell imports its typelib at boot regardless of
+whether the accounts daemon is running.
 
 ## Environment
 
@@ -239,25 +263,34 @@ RequiredComponents=org.gnome.Shell;
 EOF
 export XDG_CONFIG_DIRS=$CFG:/var/jb/etc/xdg
 
-# 3+4. ONE session bus for everything. The login1 stub must claim org.freedesktop.login1
-#      on the SAME bus gnome-session/gnome-shell use, so both run inside a single
-#      dbus-run-session. gnome-session (classic path) then starts gnome-shell, which
-#      brings up Mutter/MetaBackendIOS + the Xios rendezvous server.
+# 3+4. ONE bus for everything. login1/PolicyKit1/Accounts are normally SYSTEM-bus services,
+#      but under dbus-run-session there is only a session bus. Point DBUS_SYSTEM_BUS_ADDRESS
+#      at it so clients asking for G_BUS_TYPE_SYSTEM (Mutter's login1, libpolkit,
+#      libaccountsservice) meet the stubs, then run the stubs + gnome-session inside the one
+#      dbus-run-session. gnome-session (classic path) starts gnome-shell, which brings up
+#      Mutter/MetaBackendIOS + the Xios rendezvous server.
 exec dbus-run-session -- sh -c '
-  XIOS_LOGIN1_BUS=session /var/jb/usr/libexec/xios-login1-stub &
-  sleep 1   # let the stub claim the name before the shell queries it
+  export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+  /var/jb/usr/libexec/xios-login1-stub &
+  /var/jb/usr/libexec/xios-polkit-stub &
+  /var/jb/usr/libexec/xios-accounts-stub &
+  sleep 1   # let the stubs claim their names before the shell queries them
   exec gnome-session --builtin --session=xios
 '
 ```
 
 Notes:
-- The stub and gnome-session share one bus because both live inside the single
-  `dbus-run-session` invocation. A stub started before `dbus-run-session` lands on a
-  different (or no) bus and gnome-shell's login1 queries fail — this is the one ordering
-  trap in the whole launch. `XIOS_LOGIN1_BUS=session` makes the stub claim
-  `org.freedesktop.login1` on the session bus (no system bus needed). If the bus should
-  outlive one gnome-session run, switch to the manual `dbus-daemon --session
-  --print-address` form and start both against the exported `DBUS_SESSION_BUS_ADDRESS`.
+- The stubs and gnome-session share one bus because they all live inside the single
+  `dbus-run-session`. login1/polkit/accounts are system-bus services; setting
+  `DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS` makes both the stubs (which default to
+  `G_BUS_TYPE_SYSTEM`) and their clients resolve the system bus to this session bus, so no
+  real system bus is needed. This is the one ordering trap in the whole launch: a stub started
+  before `dbus-run-session` lands on a different (or no) bus. (Each stub also accepts
+  `XIOS_<NAME>_BUS=session` to force the session bus directly.) If the bus should outlive one
+  gnome-session run, use `dbus-daemon --session --print-address` and start everything against
+  the exported address.
+- Deploy the three stub binaries to `/var/jb/usr/libexec/` (built to `out/` as
+  `xios-{login1,polkit,accounts}-stub`).
 - `gnome-session --builtin` forces the classic non-systemd manager even though the build
   already defaults to it (belt and suspenders).
 - The Xios app must be launched (it reads `/var/jb/tmp/xios.json` and displays the IOSurface).
@@ -278,8 +311,12 @@ Notes:
   geocode-glib and gweather4 are glib+libsoup; two need Darwin client-lib patches: upower and
   geoclue daemons are Linux-only but their client libs are D-Bus proxies), then re-enable the
   plugins in `gnome-settings-daemon-ios-fixes.sh`.
-- polkitd and accountsservice daemons. Absent; the shell degrades gracefully. Add later as
-  real daemons or small D-Bus stubs (the login1-stub is the model).
+- polkitd and accountsservice daemons. The real daemons are Linux-only; we ship auto-allow /
+  single-user D-Bus stubs (`xios-polkit-stub`, `xios-accounts-stub`) instead, which is enough
+  for the shell. Swap in real daemons only if per-action policy or multi-user is ever wanted.
+- The AccountsService-1.0 typelib must be generated ON-DEVICE (the gnome-shell gir pipeline
+  must scan it from libaccountsservice-dev, alongside St/Shell/Shew/Gvc). The library ships;
+  the typelib does not (cross-build cannot run g-ir-scanner on a Mach-O target).
 - Calendar (evolution-data-server) stays patched out of gnome-shell until ICU lands, per the
   distribution-chooser decision.
 
