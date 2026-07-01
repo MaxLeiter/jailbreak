@@ -146,11 +146,14 @@ OSK appears, flick-scroll kgx output.
 
 Core hybrid-desktop UX; currently dead on this path.
 
-1. **Wire**: add `XIOS_IN_AXIS 8` to xios_input_socket.h and its
+1. **Wire**: add `XIOS_IN_AXIS 9` to xios_input_socket.h and its
    keep-identical twin xios-glue-stub.h (additive; the shared reader passes
-   unknown fixed records through, same pattern as types 6/7). Suggested
-   encoding: x,y = dx,dy in 1/256 px fixed-point, state bit0 = fingers-off
-   (axis_stop), code = source (0 finger/wheel).
+   unknown fixed records through, same pattern as types 6/7). 9, not 8: the
+   native-ipadOS host already had `XIOS_IN_BIND 8` on-wire
+   (apps/iosc-host/Sources/IoscInput.c) before this landed. Encoding: x,y =
+   dx,dy in 1/256 px fixed-point, state bit0 = fingers-off (axis_stop),
+   code = source (0 finger/1 wheel), mods = modifier mask to latch during
+   delivery (pinch-zoom sends ctrl). DONE in the header twins.
 2. **App**: XScreen.swift `sendScroll` drops the `usingIosc` early-return and
    emits AXIS records (it already accumulates deltas for the XTEST path).
 3. **Mutter backend**: meta-virtual-input-device-ios implements

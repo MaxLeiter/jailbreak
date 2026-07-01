@@ -36,6 +36,17 @@
                              * mods = (tilt_x_deg+90) | (tilt_y_deg+90)<<8     */
 #define XIOS_IN_TRAITS 5u   /* server->CLIENT: on-screen-keyboard traits (code=hint,
                              * state=purpose, mods=enabled); sent via _broadcast   */
+#define XIOS_IN_BIND   8u   /* scope this connection's input to one window
+                             * (code = window id); sent once after connect by
+                             * native-ipadOS per-window hosts (IoscInput.c had 8
+                             * on-wire before this header did — 8 is BIND forever) */
+#define XIOS_IN_AXIS   9u   /* two-finger / wheel scroll: x,y = dx,dy in 1/256
+                             * output-pixel fixed point, wl_pointer sign (positive
+                             * = content scrolls down/right); code = source
+                             * (0 finger, 1 wheel); state bit0 = axis_stop (end of
+                             * gesture, deltas 0 — lets clients fling kinetically);
+                             * mods = modifier mask (1 shift, 2 ctrl, 4 alt) held
+                             * for the frame — pinch-zoom sends ctrl+scroll        */
 #endif
 
 /* Fixed 24-byte record header. Layout matches iosc.c/ios-inputd.c iosc_in_msg. */
