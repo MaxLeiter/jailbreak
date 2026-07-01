@@ -10,16 +10,19 @@ endif
 # shared-memory buffers; QtQuick pairs with QT_QUICK_BACKEND=software. That is deliberate
 # de-risking: it exercises the whole QPA (xdg-shell, seats, clipboard, DnD) with zero GL.
 #
-# THE ONE REAL WALL (round 2, docs/kde-plasma-plan.md phase Q4): QtQuick-on-GL needs
-# wayland-EGL on ANGLE-Metal. ANGLE's EGL_EXT_platform_wayland window surfaces expect a
-# real wl_egl_window/CAMetalLayer path that doesn't exist on iOS — the SAME wall the GTK4
-# gdk-wayland-on-ANGLE shim is working through right now (hardware-gles-angle-metal-cli:
-# ANGLE window surfaces are Metal/IOSurface-backed). Qt's escape hatch is cleaner than
-# GTK's: qtwayland's client hardware integration is a PLUGIN interface
-# (wayland-graphics-integration-client/), so we write an `iosurface` client-buffer
-# integration that renders GLES into IOSurface-backed pbuffers (EGL_ANGLE_iosurface_
-# client_buffer, validated on-device) and hands them to iosc over its zero-copy protocol.
-# No qtwayland flag here changes for that; it lands as a new plugin + qtbase round 2.
+# THE ONE REAL WALL (round 2.5, docs/kde-plasma-plan.md phase Q4 has the full recipe):
+# QtQuick-on-GL needs GLES-on-ANGLE-Metal, but ANGLE has NO wayland platform at all. The
+# escape hatch is a PLUGIN: qtwayland's client hardware integration
+# (wayland-graphics-integration-client/) lets us write an `iosurface` integration that
+# creates the ANGLE *Metal* display itself and renders GLES into IOSurface-backed pbuffers
+# (EGL_ANGLE_iosurface_client_buffer, validated on-device), handing them to iosc zero-copy.
+# On-device P0.1 (GTK4 path) pinned the exact EGL bring-up to reuse: display via
+# eglGetPlatformDisplayEXT (the CORE eglGetPlatformDisplay is a silent no-op on this ANGLE)
+# with an EGLint attrib list {EGL_PLATFORM_ANGLE_TYPE_ANGLE, ..._TYPE_METAL_ANGLE,
+# EGL_NONE} and native_display=EGL_DEFAULT_DISPLAY (NOT the wl_display); swap barrier via
+# EGL_KHR_fence_sync; and the process MUST carry the GPU IOKit entitlements or Metal-device
+# creation returns nil. No qtwayland flag here changes for that; it lands as a new plugin +
+# qtbase round 2.5. See x11/wayland/xios_egl.c for the byte-exact call.
 #
 # Build deps:
 #   - TARGET: wayland-client (W0 debs, staged in build_base — the driver verifies

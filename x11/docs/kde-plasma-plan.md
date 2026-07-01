@@ -74,25 +74,40 @@ revisit if text segmentation bugs show up in Plasma).
 
 ### Q4. GL on ANGLE: the wall, and the plan
 
-Naive qtwayland-EGL cannot work here: ANGLE's Metal backend has no real wayland-egl,
-and its window surfaces want a CAMetalLayer (see `hardware-gles-angle-metal-cli`; GDK
-hit the identical config wall on X11, and the gdk-wayland-on-ANGLE shim that
-iosc-protocols is debugging now is the same problem one stack over).
+Naive qtwayland-EGL cannot work here: ANGLE's Metal backend has no wayland platform at
+all, and its window surfaces want a CAMetalLayer (see `hardware-gles-angle-metal-cli`;
+GDK hit the identical config wall on X11). This is the ONE real depth risk in the track.
 
 Qt's escape hatch is cleaner than GTK's: the client buffer path in qtwayland is a
-designed plugin interface (`wayland-graphics-integration-client`). Plan:
+designed plugin interface (`wayland-graphics-integration-client`), so the QPA creates the
+ANGLE Metal display itself and never asks ANGLE for a wayland platform.
 
-- qtbase round 2.5: `FEATURE_egl` + `FEATURE_opengles2` ON, pointed at
-  `/var/jb/lib/angle/{libEGL,libGLESv2}.dylib`. Qt links EGL directly (it does not use
-  epoxy), so this is cmake-level lib/include hints, not a loader shim.
-- Write an `iosurface` client-buffer-integration plugin: QtQuick's RHI renders GLES
-  through ANGLE into `EGL_ANGLE_iosurface_client_buffer` pbuffers (one-call API,
-  validated on the A10), and the plugin hands the IOSurface to iosc over the existing
-  zero-copy protocol instead of wl_egl_window.
-- Coordinate with the gdk shim work in both directions; the EGL display bring-up
-  (`EGL_PLATFORM_WAYLAND` vs `EGL_PLATFORM_ANGLE` on Metal) and the
-  buffer-commit/fence details should end up shared knowledge, possibly shared code in
-  the iosc glue.
+The concrete EGL bring-up below is transferred VERBATIM from team-lead's on-device P0.1
+validation of the GTK4/gdk-wayland-on-ANGLE path (2026-07-01); it is `xios_egl.c`'s exact
+sequence and must be matched byte-for-byte in the qtwayland integration plugin:
+
+1. Display bring-up (the big one): the CORE `eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE)`
+   returns `EGL_NO_DISPLAY` with `err=SUCCESS` on this ANGLE build — a silent no-op. ONLY
+   the EXT entrypoint works: resolve `eglGetPlatformDisplayEXT` via `eglGetProcAddress`,
+   call it with an `EGLint` attrib list (NOT `EGLAttrib`) =
+   `{EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE}` and
+   `native_display = EGL_DEFAULT_DISPLAY`. Do NOT pass the `wl_display` as the native
+   display — ANGLE cannot make a Metal display from it (also `NO_DISPLAY`). Entrypoint and
+   attrib width are both load-bearing; they are not spec-interchangeable here.
+2. There is NO `EGL_PLATFORM_WAYLAND` use anywhere. Surfaces come from `wl_egl_window` +
+   `EGL_ANGLE_iosurface_client_buffer` (the one-call pbuffer API, validated on the A10);
+   the plugin hands the resulting IOSurface to iosc over the existing zero-copy protocol.
+3. Swap barrier: `EGL_KHR_fence_sync` works on the A10 (validated) — use it, not
+   `glFinish`.
+4. Packaging is not optional (this cost team-lead hours): the process needs GPU IOKit
+   entitlements — `AGXDeviceUserClient` + `IOGPUDeviceUserClient` — or
+   `MTLCreateSystemDefaultDevice` returns nil and the ANGLE Metal display creation fails
+   with `NO_DISPLAY`, silently. See the packaging note below; this is baked into the KDE
+   flavor from the start, not bolted on at Q4.
+
+Build side, qtbase round 2.5: `FEATURE_egl` + `FEATURE_opengles2` ON, pointed at
+`/var/jb/lib/angle/{libEGL,libGLESv2}.dylib`. Qt links EGL directly (it does not use
+epoxy), so this is cmake-level lib/include hints, not a loader shim.
 
 This phase is not a gate for K/W1/P below; the software path carries them.
 
@@ -158,6 +173,22 @@ module recipes with ECM added; the cost is count (~20 repos), not novelty.
 dbus deb (built), fontconfig + fonts (xios-desktop-defaults), icon theme repack
 pipeline, XDG_RUNTIME_DIR conventions from iosc, login1 stub, and the chooser gate
 itself (`stamp-minos.py --json` closure floors).
+
+### GPU entitlements on every GL-touching binary (mandatory, from P0.1)
+
+Any process that creates the ANGLE Metal display must be signed with the GPU IOKit
+entitlements (`AGXDeviceUserClient` + `IOGPUDeviceUserClient`; the full client set is
+`x11/wayland/iosc-gpu-client-ent.xml`) and must NOT carry
+`com.apple.private.security.no-container`, or `MTLCreateSystemDefaultDevice` returns nil
+and display creation fails silently. This lands on the KDE flavor's EXECUTABLES, not its
+libraries: entitlements are a property of the Mach-O the kernel exec's, and the Procursus
+`SIGN` macro already signs dylibs/bundles with a bare `ldid -S` (no entitlements) while
+signing plain executables with `entitlements/$(2)`. So the Qt/KF6 module recipes need no
+change — but `kwin_wayland`, `plasmashell`, and the `qml` test launcher (any binary that
+touches GL) must pass the GPU entitlement as the `SIGN` entitlement argument. Practical
+steps for the W/P recipes: copy `iosc-gpu-client-ent.xml` into
+`build_misc/entitlements/` and call `$(call SIGN,<pkg>,iosc-gpu-client-ent.xml)`. Bake
+this in from the first KWin recipe; do not defer it to Q4.
 
 ## Risks, ranked
 
