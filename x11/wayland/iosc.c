@@ -977,13 +977,16 @@ static int iosc_app_cursor(void)
 /* Signal the current pointer position + shape to the app's cursor overlay. The
  * shape is the wp_cursor_shape id for a named cursor; a client-supplied cursor
  * surface maps to the default arrow for now (bitmap streaming is a v2 — see the
- * XIOS_MSG_CURSOR payload). shape 0 = hidden. */
+ * XIOS_MSG_CURSOR payload). shape 0 = hidden. Coordinates are sent in PHYSICAL
+ * output pixels (g_cursor_x/y are logical): the app's overlay maps against the
+ * IOSurface, which is the physical framebuffer, so it needs no scale knowledge. */
 static void app_cursor_notify(void)
 {
     int shape = !g_cursor_visible ? 0
               : g_named_cursor ? (int)g_named_cursor
               : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;   /* client surface -> default */
-    xios_notify_cursor(g_cursor_x, g_cursor_y, g_cursor_visible, shape);
+    int os = output_scale();
+    xios_notify_cursor(g_cursor_x * os, g_cursor_y * os, g_cursor_visible, shape);
 }
 
 /* Recomposite ALL mapped surfaces back-to-front onto the output, on the GPU.
