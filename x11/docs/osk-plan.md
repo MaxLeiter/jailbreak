@@ -213,6 +213,10 @@ cover the focused field itself. The pieces already exist:
   hide. Needs iosc to broadcast the caret rect: one new record
   `XIOS_IN_CARET { x, y, code=w, state=h }` in output pixels, sent on the
   same commits as TRAITS. Additive, old apps ignore unknown types.
+  Numbering note: this is the INPUT socket's XIOS_IN_* space (24-byte
+  records; next free type is 8), NOT the typed app-socket xios_msg core
+  range (32-byte records, where CLIPBOARD took 0x04 and 0x05-0x0f remain;
+  see clipboard-plan.md). iosc-protocols owns allocations in both spaces.
 - v2 (compositor-assisted): report the keyboard's occluded height to iosc
   (new app->server record) and let iosc scroll/resize the focused toplevel
   like a layer-shell exclusive zone. Better for the shell flavor; do it
