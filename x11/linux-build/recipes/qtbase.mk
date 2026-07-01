@@ -97,6 +97,17 @@ qtbase-setup: setup
 	fi
 	sed -i 's|SOURCES text/qcollator_macx.cpp io/qfilesystemwatcher_kqueue|SOURCES text/qcollator_posix.cpp io/qfilesystemwatcher_kqueue|' \
 		$(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt
+	# 6) fontconfig implementation on Darwin. FEATURE_fontconfig=ON resolves (sysroot ships
+	#    fontconfig, and the KDE flavor wants it: desktop fonts live in fontconfig paths, and
+	#    qtwayland's QGenericUnixFontDatabase = QFontconfigDatabase when the feature is on). But
+	#    src/gui gates the implementation — qfontconfigdatabase.cpp + the qgenericunixfontdatabase_p.h
+	#    header sync — behind UNIX AND NOT APPLE, so the feature is advertised with nothing behind it
+	#    and the minimal QPA plugin dies including the unsynced header (attempt 8). Un-gate both
+	#    blocks; they are the only two extend_target uses of the condition in gui, and the freetype
+	#    engine they need already builds (QT_FEATURE_freetype=1).
+	sed -i -e 's/CONDITION UNIX AND NOT APPLE$$/CONDITION UNIX/' \
+		-e 's/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX AND NOT APPLE$$/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX/' \
+		$(BUILD_WORK)/qtbase/src/gui/CMakeLists.txt
 
 ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:
