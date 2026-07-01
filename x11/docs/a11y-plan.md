@@ -230,8 +230,9 @@ compositor's popup geometry (iosc knows every popup's placement too).
   element of the new window.
 - `object:announcement` -> `.announcement` notification (GTK 4.14+
   `gtk_accessible_announce`, libadwaita toasts land here).
-- Modal dialogs: MODAL state -> container element with `accessibilityViewIsModal`,
-  so VoiceOver stays inside the dialog.
+- Modal dialogs: MODAL state -> `modal` in the container element's `traits` on
+  the wire -> `accessibilityViewIsModal` on the published container, so VoiceOver
+  stays inside the dialog.
 
 ## Role and state mapping
 
@@ -276,7 +277,7 @@ States:
 | EXPANDED / EXPANDABLE | custom actions Expand/Collapse, value "expanded"/"collapsed" |
 | SHOWING + VISIBLE | publication gate |
 | FOCUSED | focus sync only, no trait |
-| MODAL | accessibilityViewIsModal |
+| MODAL | `modal` trait string on the dialog's container element -> accessibilityViewIsModal |
 | BUSY | `.updatesFrequently` |
 | EDITABLE | text-field hint |
 
@@ -342,8 +343,12 @@ helper-assigned uint32, unique within a generation. `frame` is `[x,y,w,h]` ints 
 desktop-px on unbound (desktop) connections, window-relative px on bound ones.
 `traits` draws from the fixed vocabulary `button link header static-text image
 adjustable selected not-enabled updates-frequently tab-bar search-field
-keyboard-key`. `actions` is an array of localized action-name strings whose index
-is the AT-SPI action index.
+keyboard-key modal` — thirteen strings. The vocabulary is ours, not literally
+UIAccessibilityTraits: `modal` maps to the `accessibilityViewIsModal` property
+on the dialog's container element (the grouping element published for the
+dialog), not to a trait bit; it is how AT-SPI's MODAL state rides the wire.
+`actions` is an array of localized action-name strings whose index is the
+AT-SPI action index.
 
 helper -> app:
 
