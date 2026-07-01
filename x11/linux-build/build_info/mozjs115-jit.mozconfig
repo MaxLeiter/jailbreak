@@ -3,13 +3,13 @@
 # build); the ONLY functional difference is JIT is left enabled (Baseline + Ion) instead of
 # --disable-jit. See docs/mozjs-jit-plan.md (#46).
 #
-# WHY THIS CAN WORK ON iOS (the old mozconfig said JIT was impossible): on a jailbroken A10
-# the W^X-compliant mprotect flip (mmap RW -> write -> mprotect RX -> execute) is permitted
+# WHY THIS WORKS ON iOS (the old mozconfig said JIT was impossible): on a jailbroken A10 the
+# W^X-compliant mprotect flip (mmap RW -> write -> mprotect RX -> execute) is permitted
 # (de-risked on-device 2026-07-01, ports/mozjs/tools/wxprobe.c). What is NOT permitted on the
 # A10: persistent RWX pages (SIGBUS), MAP_JIT (EINVAL), and pthread_jit_write_protect_np is
-# absent (no APRR). SpiderMonkey 115 hardcodes that Apple fast-WX path on Darwin/arm64, so it
-# is routed to the generic mprotect reprotect path by patches/0005 (runtime-adaptive: fast path
-# on A11+, mprotect on A10).
+# absent (no APRR). SpiderMonkey 115's POSIX/Darwin executable-memory path is ALREADY pure
+# mprotect (no MAP_JIT / Apple fast-WX; that machinery post-dates 115), so it maps straight onto
+# what the A10 allows -- NO W^X source patch is required. See docs/mozjs-jit-plan.md.
 #
 # Placeholders substituted by the recipe: @TARGET_SYSROOT@, @CROSS_PREFIX@, @CCTOOLS_BIN@,
 # @MOZ_OBJDIR@ (pointed at the JIT variant's own objdir so it never touches the JIT-less build).

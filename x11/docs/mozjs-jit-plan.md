@@ -32,22 +32,28 @@ flips once per patched code region (not per instruction), so for gjs UI glue (co
 patch-occasionally) this is negligible; even 10k flips/sec ≈ 1% overhead. The pathological case is
 IC-thrash code; the benchmark will bound it.
 
-## Consequence for the patch (patch 0005 — runtime-adaptive W^X)
+## W^X source patch (planned as 0005) — NOT NEEDED for SpiderMonkey 115
 
-SpiderMonkey 115 hardcodes the **Apple fast-WX** path on Darwin/arm64
-(`JS_USE_APPLE_FAST_WX`): it allocates the executable pool with `MAP_JIT` and toggles
-writability with `pthread_jit_write_protect_np`. On the A10 that path is **doubly broken** —
-`MAP_JIT` EINVALs at allocation and `pthread_jit_write_protect_np` is absent (writes to RX pages
-would SIGBUS). So the patch must route Darwin/arm64 to the **generic `mprotect` reprotect path**:
+The task assumed 115 hardcodes the Apple fast-WX path on Darwin/arm64 (`MAP_JIT` +
+`pthread_jit_write_protect_np`) and would need a runtime-adaptive patch to fall back to mprotect
+on the A10. **That is false for 115.** Grepping the extracted 115.12.0 tree
+(`js/`, `mozglue/`, `memory/`) for `JS_USE_APPLE_FAST_WX`, `pthread_jit_write_protect_np`,
+`MAP_JIT`, and `AutoMarkJitCodeWritableForThread` returns **zero hits** — the Apple fast-WX
+machinery was added to SpiderMonkey *after* 115 (it lands around 128). In 115 the POSIX/Darwin
+executable-memory path in `js/src/jit/ProcessExecutableMemory.cpp` is **already pure mprotect**:
 
-- allocate the executable pool **without** `MAP_JIT` (plain `mmap`, pages default RX, reserve
-  `PROT_NONE`), and
-- use `ReprotectRegion` (mprotect RW to patch, RX to run) instead of the pthread toggle.
+- `ReserveProcessExecutableMemory`: `mmap(PROT_NONE, MAP_PRIVATE|MAP_ANON|MAP_NORESERVE)`
+- `CommitPages(Executable)`: `mmap(PROT_READ|PROT_EXEC, MAP_FIXED|MAP_PRIVATE|MAP_ANON)`
+- `ReprotectRegion(Writable/Executable)`: `mprotect(RW)` / `mprotect(RX)` + `FlushICache`
 
-Runtime-adaptive (so a future A11+ device gets the fast path): at JIT init, feature-detect
-`pthread_jit_write_protect_np` via `dlsym` **and** probe `MAP_JIT` (a one-page `mmap` test). Use
-the fast path only if both succeed; otherwise the mprotect path. On A10 this always selects
-mprotect.
+That is exactly the sequence the on-device probe validates (strategy `smpattern` PASSes: reserve
+PROT_NONE → commit R+X via MAP_FIXED anon → mprotect RW → write → mprotect RX → execute). So
+**the stock 115 JIT build needs no W^X source patch** on this device. Patch 0005 is dropped.
+
+Future optimization (not built): on A11+ the mprotect flip is slower than an APRR toggle would be,
+but 115 has no fast-WX path at all, so A11+ also uses mprotect here — correct, just not maximal.
+Backporting the fast-WX path from newer SpiderMonkey would be a perf-only change gated on a future
+A11+ target; it is not needed for correctness and not needed for our A10.
 
 ## Build (task #6, #8)
 

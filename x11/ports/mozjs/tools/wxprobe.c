@@ -18,6 +18,9 @@
 #ifndef MAP_JIT
 #define MAP_JIT 0x0800
 #endif
+#ifndef MAP_NORESERVE
+#define MAP_NORESERVE 0
+#endif
 
 typedef int (*fn_t)(void);
 typedef void (*jit_wp_fn)(int);
@@ -127,6 +130,30 @@ static int child_bench(void) {
     return OK42;
 }
 
+// ---- strategy 6: SpiderMonkey 115's EXACT executable-memory pattern -------
+// Mirrors ProcessExecutableMemory.cpp on POSIX/Darwin (no MAP_JIT in 115):
+//   1. reserve a region PROT_NONE (ReserveProcessExecutableMemory)
+//   2. commit a page as R+X via MAP_FIXED anon mmap (CommitPages, Executable)
+//   3. flip to RW to write code (ReprotectRegion Writable = mprotect)
+//   4. flip back to R+X + flush icache (ReprotectRegion Executable)
+// If this PASSes, stock mozjs 115 JIT needs NO W^X source patch on this device.
+static int child_smpattern(void) {
+    size_t pg = (size_t)sysconf(_SC_PAGESIZE);
+    void *base = mmap(NULL, pg * 4, PROT_NONE,
+                      MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+    if (base == MAP_FAILED) { fprintf(stderr, "reserve PROT_NONE errno=%d\n", errno); return E_MMAP; }
+    void *p = mmap(base, pg, PROT_READ | PROT_EXEC,
+                   MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (p == MAP_FAILED) { fprintf(stderr, "commit R+X (MAP_FIXED anon) errno=%d (%s)\n", errno, strerror(errno)); return 110; }
+    if (p != base)       { fprintf(stderr, "commit moved the mapping\n"); return 111; }
+    if (mprotect(p, pg, PROT_READ | PROT_WRITE) != 0) { fprintf(stderr, "reprotect->RW errno=%d\n", errno); return 112; }
+    ((uint32_t *)p)[0] = 0x52800540u; // movz w0, #42
+    ((uint32_t *)p)[1] = 0xd65f03c0u; // ret
+    if (mprotect(p, pg, PROT_READ | PROT_EXEC) != 0) { fprintf(stderr, "reprotect->RX errno=%d\n", errno); return 113; }
+    sys_icache_invalidate(p, 8);
+    return ((fn_t)p)();
+}
+
 static void run(const char *name, int (*fn)(void)) {
     fflush(NULL);
     pid_t pid = fork();
@@ -153,6 +180,7 @@ int main(void) {
     run("rwx",      child_rwx);
     run("mapjit",   child_mapjit);
     run("fliploop", child_flip_loop);
+    run("smpattern",child_smpattern);
     run("bench",    child_bench);
     return 0;
 }

@@ -7,9 +7,11 @@ endif
 # (build_work/mozjs-jit) and objdir and packages as libmozjs-115-jit-0, so it never touches
 # the JIT-less mozjs recipe, its .build_complete marker, or the libmozjs-115-0 debs.
 #
-# Shares the SAME patch series as mozjs (build_patch/mozjs, staged by build-gjs.sh) — the JIT
-# variant additionally needs patch 0005 (runtime-adaptive W^X: mprotect path on no-APRR A10,
-# pthread_jit fast path on A11+). See docs/mozjs-jit-plan.md. Heavy build; coordinator-gated.
+# Shares the SAME patch series as mozjs (build_patch/mozjs, staged by build-gjs.sh). NB: no extra
+# W^X patch is needed — SpiderMonkey 115's POSIX/Darwin executable-memory path is already pure
+# mprotect (no MAP_JIT / pthread_jit fast-WX; that machinery post-dates 115), and the mprotect
+# flip is validated on the A10 (ports/mozjs/tools/wxprobe.c). See docs/mozjs-jit-plan.md.
+# Heavy build; coordinator-gated.
 
 SUBPROJECTS   += mozjs-jit
 MOZJSJIT_VERSION := 115.12.0
@@ -18,7 +20,11 @@ MOZJSJIT_WORK  := $(BUILD_WORK)/mozjs-jit
 
 mozjs-jit-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.mozilla.org/pub/firefox/releases/$(MOZJSJIT_VERSION)esr/source/firefox-$(MOZJSJIT_VERSION)esr.source.tar.xz)
-	$(call EXTRACT_TAR,firefox-$(MOZJSJIT_VERSION)esr.source.tar.xz,firefox-$(MOZJSJIT_VERSION)esr,mozjs-jit)
+	# NB: the ESR source tarball unpacks to firefox-<ver>/ (NO 'esr' suffix), so that is
+	# EXTRACT_TAR's 2nd arg (the dir it copies into mozjs-jit). Getting this wrong leaves an
+	# empty tree (EXTRACT_TAR's leading '-' swallows the failed copy). mozjs.mk has the same
+	# latent typo but was only ever run by hand (its header says "draft, NOT to run").
+	$(call EXTRACT_TAR,firefox-$(MOZJSJIT_VERSION)esr.source.tar.xz,firefox-$(MOZJSJIT_VERSION),mozjs-jit)
 	# config.sub copies in the tree don't know 'ios' — replace with the host's modern one.
 	find $(MOZJSJIT_WORK) -name config.sub  -exec cp -f /usr/share/misc/config.sub  {} \; || true
 	find $(MOZJSJIT_WORK) -name config.guess -exec cp -f /usr/share/misc/config.guess {} \; || true
