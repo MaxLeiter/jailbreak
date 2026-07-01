@@ -57,6 +57,8 @@ final class NativeManager: NSObject {
             _ = exec.withCString { e in appID.withCString { a in ioscd_send_launch(a, e) } }
         }
         startReader()
+        // VoiceOver bridge (inert until xios-a11yd ships; gated on VoiceOver).
+        HostA11yClient.shared.startup(appID: appID)
     }
 
     /// Connect (retrying) and pump events on a background thread.
@@ -226,5 +228,12 @@ final class NativeManager: NSObject {
     func sceneResized(_ id: UInt32, w: Int, h: Int) {
         guard let c = client else { return }
         iosc_native_resize(c, id, Int32(w), Int32(h))
+    }
+
+    /// Bound views for the a11y client's window matching, creation order
+    /// (iosc window ids are monotonic). See docs/native-ipados-a11y.md.
+    func a11yCandidates() -> [(id: UInt32, view: HostScreenView, title: String)] {
+        views.sorted { $0.key < $1.key }
+             .map { (id: $0.key, view: $0.value, title: scenes[$0.key]?.title ?? "") }
     }
 }

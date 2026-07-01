@@ -235,6 +235,32 @@ final class HostScreenView: UIView {
                 Int32(max(0, min(CGFloat(canvasH - 1), fy))))
     }
 
+    // MARK: accessibility (HostA11y.swift publishes onto this view)
+
+    var canvasSize: CGSize { CGSize(width: canvasW, height: canvasH) }
+
+    /// Inverse of canvasPoint's aspect-fit mapping: canvas-px rect -> view
+    /// points (identity at steady state; letterboxed only mid-resize).
+    func viewRect(fromCanvas r: CGRect) -> CGRect {
+        guard canvasW > 0, canvasH > 0, bounds.width > 0, bounds.height > 0 else { return .zero }
+        let scale = min(bounds.width / CGFloat(canvasW), bounds.height / CGFloat(canvasH))
+        let ox = bounds.midX - CGFloat(canvasW) * scale / 2
+        let oy = bounds.midY - CGFloat(canvasH) * scale / 2
+        return CGRect(x: ox + r.minX * scale, y: oy + r.minY * scale,
+                      width: r.width * scale, height: r.height * scale)
+    }
+
+    /// VoiceOver escape gesture: Esc down this window's own input connection.
+    func a11yEscape() { sendKeysym(0xff1b, ctrl: false, alt: false, shift: false) }
+
+    /// Helper-requested fallback tap at canvas px (element had no AT-SPI Action).
+    func a11ySynthTap(x: Int32, y: Int32) {
+        guard let h = input, iosc_input_is_open(h) else { return }
+        iosc_input_motion(h, x, y)
+        iosc_input_button(h, 1, true, x, y)
+        iosc_input_button(h, 1, false, x, y)
+    }
+
     private func slot(for t: UITouch) -> Int32 {
         if let s = touchSlots[t] { return s }
         var s: Int32 = 0
@@ -372,6 +398,7 @@ final class HostScreenView: UIView {
         displayLink?.invalidate(); displayLink = nil
         if input != nil { iosc_input_close(input); input = nil }
         canvasTexture = nil
+        accessibilityElements = nil
     }
 }
 
