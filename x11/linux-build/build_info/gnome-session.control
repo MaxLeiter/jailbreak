@@ -1,0 +1,15 @@
+Package: gnome-session
+Version: @DEB_GNOME-SESSION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-session
+Depends: libglib2.0-0, libglib2.0-bin, libgtk-3-0, libgnome-desktop-4-2, libjson-glib-1.0-0, gsettings-desktop-schemas, dbus, libgtkintl, libx11-6, libice6, libsm6
+Description: GNOME session manager for the Xios desktop
+ GNOME Session 46 built for rootless iOS. Owns org.gnome.SessionManager on the
+ session bus and starts gnome-shell (and any other RequiredComponents from the
+ chosen .session file) as child processes. Built without systemd: main() uses the
+ classic gsm_manager_start path rather than the systemd user units, so no
+ systemd/logind is required. The org.freedesktop.login1 side is answered by the
+ standalone xios-login1-stub. See docs/gnome-session-plan.md.
