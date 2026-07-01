@@ -1317,17 +1317,9 @@ final class XScreenView: UIView {
     // MARK: picker chrome
 
     private func installChrome() {
-        let chip = chromeButton("⊞ \(xDisplay)")
-        chip.addAction(UIAction { [weak self] _ in self?.openPicker() }, for: .touchUpInside)
-        displayChip = chip
-
         let kb = chromeButton("⌨")   // pops up the iOS keyboard, typed into X via XTEST
         kb.addAction(UIAction { [weak self] _ in self?.toggleKeyboard() }, for: .touchUpInside)
         keyboardButton = kb
-
-        let tools = chromeButton("⚙")
-        tools.addAction(UIAction { [weak self] _ in self?.openTools() }, for: .touchUpInside)
-        toolsButton = tools
 
         let zoomOut = chromeButton("−")
         zoomOut.addAction(UIAction { [weak self] _ in self?.zoomOut() }, for: .touchUpInside)
@@ -1337,7 +1329,11 @@ final class XScreenView: UIView {
         let zoomIn = chromeButton("+")
         zoomIn.addAction(UIAction { [weak self] _ in self?.zoomIn() }, for: .touchUpInside)
 
-        let bar = UIStackView(arrangedSubviews: [chip, zoomOut, zoom, zoomIn, kb, tools])
+        // Minimal chrome: zoom + the manual keyboard toggle only. The display picker
+        // (⊞ chip) and the dev Tools panel (⚙) are intentionally NOT surfaced as
+        // buttons — they read as debug/dev affordances. The picker stays reachable via
+        // the 3-finger tap below for power users; Tools is dev-only (no UI entry point).
+        let bar = UIStackView(arrangedSubviews: [zoomOut, zoom, zoomIn, kb])
         bar.axis = .horizontal
         bar.spacing = 8
         bar.translatesAutoresizingMaskIntoConstraints = false
@@ -1346,7 +1342,6 @@ final class XScreenView: UIView {
             bar.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 12),
             bar.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 10),
         ])
-        updateChip()
 
         // Only single-finger touches are forwarded to X, so a 3-finger tap is a free
         // gesture for opening the picker anywhere on screen.
