@@ -21,6 +21,7 @@
 #include "backends/ios/xios-glue-stub.h"
 #include "backends/meta-backend-private.h"
 #include "clutter/clutter.h"
+#include "meta/meta-monitor-manager.h"
 
 /* evdev button codes; defined locally to avoid a linux/input-event-codes.h dependency
  * on the iOS cross toolchain. clutter_virtual_input_device_notify_button() takes the
@@ -31,6 +32,7 @@
 
 struct _MetaInputIOS
 {
+  MetaBackend               *backend;            /* for the monitor manager (input coord space) */
   xios_input_socket         *socket;
   ClutterVirtualInputDevice *pointer;
   ClutterVirtualInputDevice *keyboard;
@@ -85,16 +87,29 @@ on_input_msg (const struct xios_in_msg *m,
     {
     case XIOS_IN_MOTION:
       {
-        /* Socket carries output (physical) pixels; the Clutter stage is in logical
-         * coordinates, so divide by the output scale. */
-        double scale = xios_output_scale ();
+        /* Socket carries ABSOLUTE output-pixel position (0..2160 x 0..1620). Map it into the
+         * stage's coordinate space, which is meta_monitor_manager_get_screen_size() — the SAME
+         * value meta-stage-ios uses for its geometry. In the DEFAULT PHYSICAL layout mode the
+         * screen is the full 2160x1620, so this is identity; only with the experimental
+         * scale-monitor-framebuffer feature (LOGICAL mode) is it the /scale'd size. Dividing by a
+         * fixed xios_output_scale()=2 was WRONG in PHYSICAL mode: it parked the pointer in the
+         * top-left quadrant, so clicks landed on the wrong widget (or nothing) and buttons never
+         * activated. Ratio-mapping to the live screen size is correct in either mode + survives
+         * rotation. */
+        MetaMonitorManager *monitor_manager =
+          meta_backend_get_monitor_manager (input->backend);
+        int out_w = 0, out_h = 0, screen_w = 0, screen_h = 0;
+        double x, y;
 
-        if (scale <= 0.0)
-          scale = 1.0;
+        xios_output_geometry (&out_w, &out_h);
+        if (monitor_manager)
+          meta_monitor_manager_get_screen_size (monitor_manager, &screen_w, &screen_h);
+
+        x = (out_w > 0 && screen_w > 0) ? (double) m->x * screen_w / out_w : (double) m->x;
+        y = (out_h > 0 && screen_h > 0) ? (double) m->y * screen_h / out_h : (double) m->y;
+
         clutter_virtual_input_device_notify_absolute_motion (input->pointer,
-                                                             CLUTTER_CURRENT_TIME,
-                                                             m->x / scale,
-                                                             m->y / scale);
+                                                             CLUTTER_CURRENT_TIME, x, y);
         break;
       }
 
@@ -218,6 +233,7 @@ meta_input_ios_new (MetaBackend *backend,
   seat = meta_backend_get_default_seat (backend);
 
   input = g_new0 (MetaInputIOS, 1);
+  input->backend = backend;
   input->socket = socket;
   input->pointer = clutter_seat_create_virtual_device (seat, CLUTTER_POINTER_DEVICE);
   input->keyboard = clutter_seat_create_virtual_device (seat, CLUTTER_KEYBOARD_DEVICE);
