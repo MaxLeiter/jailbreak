@@ -29,6 +29,20 @@ struct _MetaOnscreenIOS
 
 G_DEFINE_TYPE (MetaOnscreenIOS, meta_onscreen_ios, COGL_TYPE_ONSCREEN_EGL)
 
+static gboolean
+meta_onscreen_ios_is_y_flipped (CoglFramebuffer *framebuffer)
+{
+  /* This "onscreen" is an IOSurface pbuffer the Xios app samples TOP-LEFT (like a texture /
+   * offscreen), NOT presented by a window-system eglSwapBuffers — and that swap is exactly what
+   * makes a normal onscreen's GL bottom-left origin come out upright on screen. Without it, the
+   * GL driver's onscreen Y-flip (cogl-framebuffer-gl.c: the !is_y_flipped branch) writes the
+   * stage bottom-up into the IOSurface, so the app's top-left sampling shows the whole desktop
+   * upside down. Report the OFFSCREEN convention (TRUE): the driver then renders top-left-correct
+   * into the surface, exactly like render-to-texture, matching the app + iosc's own dest-Y flip
+   * (iosc_gl.c). Y-only; no horizontal mirror. */
+  return TRUE;
+}
+
 static void
 meta_onscreen_ios_swap_buffers_with_damage (CoglOnscreen  *onscreen,
                                             const int     *rectangles,
@@ -72,7 +86,11 @@ meta_onscreen_ios_init (MetaOnscreenIOS *onscreen_ios)
 static void
 meta_onscreen_ios_class_init (MetaOnscreenIOSClass *klass)
 {
+  CoglFramebufferClass *framebuffer_class = COGL_FRAMEBUFFER_CLASS (klass);
   CoglOnscreenClass *onscreen_class = COGL_ONSCREEN_CLASS (klass);
+
+  /* Render top-left (offscreen convention) since the app samples the IOSurface top-left. */
+  framebuffer_class->is_y_flipped = meta_onscreen_ios_is_y_flipped;
 
   onscreen_class->swap_buffers_with_damage =
     meta_onscreen_ios_swap_buffers_with_damage;
