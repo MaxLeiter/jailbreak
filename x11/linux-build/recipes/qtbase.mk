@@ -24,6 +24,10 @@ QTBASE_VERSION := 6.6.3
 QT_MINOR       := 6.6
 # Round 2 (-2): dbus + printsupport + xkbcommon + atspi bridge flipped ON (KF6/a11y need
 # them). See the FEATURE_* block below and docs/kde-plasma-plan.md Q3. Round 1 was 6.6.3.
+# dbus is RUNTIME (dlopen) not linked: Qt's QtDBus loader uses QLibrary("dbus-1",3) which on a
+# Darwin target resolves libdbus-1.dylib/libdbus-1.3.dylib (both shipped) — deterministic on iOS,
+# so the finicky WrapDBus1/DBus1Config linked path isn't needed. xkbcommon needs an X11-off
+# un-gate (setup patch 7).
 DEB_QTBASE_V   ?= $(QTBASE_VERSION)-2
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
@@ -110,6 +114,14 @@ qtbase-setup: setup
 	sed -i -e 's/CONDITION UNIX AND NOT APPLE$$/CONDITION UNIX/' \
 		-e 's/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX AND NOT APPLE$$/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX/' \
 		$(BUILD_WORK)/qtbase/src/gui/CMakeLists.txt
+	# 7) xkbcommon on a headless (X11-off) build. Qt gates qt_find_package(XKB) behind
+	#    `if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)` — X11_SUPPORTED is false here (no xcb),
+	#    so XKB is never searched, XKB_FOUND stays false, and FEATURE_xkbcommon can't turn ON (qtwayland
+	#    keyboard needs it). Un-gate ONLY the plain-xkbcommon find (XKB::XKB) to run unconditionally;
+	#    leave the xcb/xkbcommon-x11 blocks gated (we don't want X11). The -DXKB_* cache seeds above
+	#    make FindXKB's find_library/find_path succeed deterministically under the cross find-root.
+	perl -0pi -e 's{if\(\(X11_SUPPORTED\) OR QT_FIND_ALL_PACKAGES_ALWAYS\)\n(\s*qt_find_package\(XKB 0\.5\.0 PROVIDED_TARGETS XKB::XKB[^\n]*\n)\s*endif\(\)}{if(TRUE)  # xios: xkbcommon without X11\n$1endif()}g' \
+		$(BUILD_WORK)/qtbase/src/gui/configure.cmake
 
 ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:
@@ -179,9 +191,9 @@ qtbase: qtbase-setup
 		-DFEATURE_openssl=OFF \
 		-DINPUT_openssl=no \
 		-DFEATURE_dbus=ON \
-		-DFEATURE_dbus_linked=ON \
-		-DINPUT_dbus=linked \
 		-DFEATURE_xkbcommon=ON \
+		-DXKB_INCLUDE_DIR=$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
+		-DXKB_LIBRARY=$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libxkbcommon.dylib \
 		-DFEATURE_accessibility=ON \
 		-DFEATURE_accessibility_atspi_bridge=ON \
 		-DFEATURE_glib=OFF \
