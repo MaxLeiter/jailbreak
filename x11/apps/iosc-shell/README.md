@@ -1,8 +1,10 @@
 # iosc-shell — our own desktop shell for the iosc compositor
 
-The panel / launcher / overview that makes `iosc` feel like a desktop, built as
-**layer-shell clients** of the compositor (not chrome baked into `iosc.c`). Design
-and the iosc-side protocol hand-off: **`../../docs/iosc-shell.md`**.
+The panel / quick settings / launcher / overview / wallpaper that make `iosc`
+feel like a desktop, built as **layer-shell clients** of the compositor (not
+chrome baked into `iosc.c`). Design and the iosc-side protocol hand-off:
+**`../../docs/iosc-shell.md`**. Ships as the **`iosc-shell`** deb; this is the
+lightweight 5th flavor of the distribution chooser.
 
 This complements `../iosc-desktop/` (which turns Linux apps into iOS Home Screen
 icons); this is the chrome *inside* the Xios display.
@@ -11,48 +13,49 @@ icons); this is the chrome *inside* the Xios display.
 
 | File | Role |
 |---|---|
-| `shell-draw.h` | shared wl_shm software renderer (5x7 bitmap font, `shell_canvas`, draw primitives, `.desktop` scan, launch). Header-only, `static`; both clients compile their own copy (separate executables → no link conflict). One renderer, no divergent copies. |
-| `ioscpanel.c` | the panel: a `zwlr_layer_shell_v1` client anchored top — launcher tiles + taskbar + clock. |
-| `ioscoverview.c` | the app overview: a full-screen `OVERLAY` layer surface — grid of installed apps + open windows; tap to launch/raise, Escape or background tap to dismiss. |
-| `protocols/` | vendored protocol XML: `wlr-layer-shell`, `wlr-foreign-toplevel-management`, `xdg-shell` (authoritative copies from wlr-protocols / wayland-protocols). |
-| `build-panel.sh` | cross-compile + link + sign **both** clients for rootless iOS arm64 (Docker, mirrors `wayland/build-iosc.sh`). |
-| `compile-check.sh` | source/codegen validation only (compiles both clients to objects against the iOS SDK; no link). Run in `procursus-xbuild`. |
-| `panel-ent.xml` | ad-hoc entitlements (a wl_shm client: no GPU/IOSurface entitlements needed). |
+| `ioscpanel.c` | the panel: `zwlr_layer_shell_v1` client anchored top — app-grid button, launcher tiles, window taskbar (foreign-toplevel: activate/close), battery + date + clock cluster, and the quick-settings card (frosted screencopy backdrop, battery bar, Overview/Screenshot actions). |
+| `ioscoverview.c` | full-screen OVERLAY layer surface — search field, open-window chips, app grid over the blurred + scrimmed desktop (one-shot screencopy). Tap to launch/raise, Escape/background tap dismisses. |
+| `ioscbg.c` | wallpaper on the background layer: wl_shm + CoreGraphics/ImageIO decode of `$IOSC_WALLPAPER` (default: the xios-desktop-theme JPEG), gradient fallback. |
+| `shell-theme.h` | the design tokens: palette, radii, spacing, type scale. Edit here first. |
+| `panel-render.h` | cairo/pango draw primitives on the tokens (text, pills, cards, icons). |
+| `panel-layout.h` / `overview-layout.h` | wayland-free scene layout + hit-testing, shared verbatim by the device clients and the preview harness. |
+| `shell-blur.h` | the frosted "material": box-blur passes + tint over a screencopy capture. |
+| `shell-screencopy.h` | one-shot synchronous zwlr-screencopy capture into a cairo surface. |
+| `shell-status.h` | battery/charging + date/time readers (IOKit-free: sysfs-style /var/jb paths + libproc fallbacks). |
+| `shell-draw.h` | `.desktop` scan + app launch + anon-fd/shm helpers (SD_NO_DRAW mode); legacy 5x7 software renderer for the v1 clients. |
+| `panel-icons.h` | Icon= name -> shipped PNG resolution (no SVG loader on device; see `gen-shell-icons.sh`). |
+| `preview-host.c` | off-device preview harness: renders the real layout code to `design/preview-{desktop,quicksettings,overview}.png` with SF type. The design iteration loop. |
+| `protocols/` | vendored protocol XML: wlr-layer-shell, wlr-foreign-toplevel-management, wlr-screencopy, xdg-shell. |
+| `build-panel.sh` | cross-compile + link + sign all three clients for rootless iOS arm64 (Docker; cairo/pango stack from procursus-vol-gtk). |
+| `build-preview.sh` | compile + run `preview-host.c` natively in the container (fast visual iteration; no device). |
+| `run-shell.sh` | on-device bring-up: iosc (if needed) -> ioscbg -> ioscpanel. |
+| `package-shell.sh` | assemble the `iosc-shell` deb (binaries + run script + icon set). |
+| `panel-ent.xml` | client entitlements (wl_shm clients: sockets + .desktop scan + launch; no GPU IOKit classes). |
 
-## Build
+## Build and package
 
 ```sh
-# full build of both clients (needs the W0 wayland sysroot; auto-located from the
-# repo's libwayland-dev_*.deb, or pass SYSROOT=/path/to/extracted):
-./build-panel.sh                 # -> out/ioscpanel, out/ioscoverview (ldid-signed)
-
-# source/codegen check only (no W0 sysroot needed):
-docker run --rm --entrypoint /bin/bash -v "$PWD":/work \
-    procursus-xbuild:bookworm-arm64 /work/compile-check.sh
+./build-panel.sh        # -> out/ioscpanel, out/ioscoverview, out/ioscbg (signed)
+./build-preview.sh      # -> design/preview-*.png (the design loop; SF type)
+./package-shell.sh      # -> iosc-shell_<ver>_iphoneos-arm64.deb (out/ + repo/debs)
 ```
 
-**Validated:** both clients + the generated protocol code cross-compile clean to
-iOS arm64 via the cctools `aarch64-apple-darwin-clang` + iPhoneOS SDK in
-`procursus-xbuild:bookworm-arm64`. The link resolves `wl_*`/`zwlr_*` against the
-W0 `libwayland-client.dylib` (`wayland-w0-ios-build`).
+Gotcha: the *link* lines need `-miphoneos-version-min` too, or ld64 stamps the
+SDK version (16.5) as the dyld floor and the deb's stamped minos overshoots.
 
 ## Run (on-device)
 
 ```sh
-scp out/iosc{panel,overview} root@ipad:/var/jb/usr/local/bin/
-# start iosc + show Xios first (see wayland/run-iosc.sh), then:
-WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/var/jb/tmp ioscpanel     # the top bar
-WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/var/jb/tmp ioscoverview  # the app grid
+apt install iosc iosc-shell        # iosc >= 0.9.0 (layer-shell + screencopy)
+run-shell.sh                       # then open the Xios app
 ```
 
-## Blocking dependency
+The panel's grid button / QS "Overview" spawns `ioscoverview` on demand.
+Env knobs: `IOSC_PANEL_SCALE`, `IOSC_WALLPAPER`, `IOSC_SHELL_ICONS`.
 
-Both clients **build today** but **cannot map until iosc implements
-`zwlr_layer_shell_v1`** (and the taskbar / open-windows row stay empty until
-`zwlr_foreign_toplevel_management_v1`). Both are specified, struct-level, in
-`../../docs/iosc-shell.md` §5 — additive, isolated changes to `iosc.c`. Each client
-exits with `compositor lacks zwlr_layer_shell_v1` on a compositor without it.
+## Compositor requirements (met since iosc 0.9.0)
 
-The richer GTK4 path for the overview (gtk4-layer-shell) is also built —
-`../../linux-build/out/gtk4-layer-shell_1.3.0_iphoneos-arm64.deb` — and becomes
-usable once iosc has layer-shell; see `../../docs/iosc-shell.md` §4.
+zwlr-layer-shell v4, zwlr-foreign-toplevel-management v3, zwlr-screencopy v1
+(software). On an older iosc each client exits with a clear message. Pending
+polish: `IOSC_ROLE_LAYER` alpha blending in iosc for true panel translucency
+(the QS card fakes it today with a screencopy backdrop).
