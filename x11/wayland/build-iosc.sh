@@ -47,6 +47,7 @@ INPUT_METHOD_XML="$X11/wayland/protocols/input-method-unstable-v2.xml"
 VIRTUAL_KEYBOARD_XML="$X11/wayland/protocols/virtual-keyboard-unstable-v1.xml"
 LAYER_SHELL_XML="$X11/apps/iosc-shell/protocols/wlr-layer-shell-unstable-v1.xml"
 FOREIGN_TOPLEVEL_XML="$X11/apps/iosc-shell/protocols/wlr-foreign-toplevel-management-unstable-v1.xml"
+SCREENCOPY_XML="$X11/apps/iosc-shell/protocols/wlr-screencopy-unstable-v1.xml"
 POINTER_CONSTRAINTS_XML="$PREFIX/share/wayland-protocols/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml"
 RELATIVE_POINTER_XML="$PREFIX/share/wayland-protocols/unstable/relative-pointer/relative-pointer-unstable-v1.xml"
 PRIMARY_SELECTION_XML="$PREFIX/share/wayland-protocols/unstable/primary-selection/primary-selection-unstable-v1.xml"
@@ -67,6 +68,7 @@ TABLET_XML="$PREFIX/share/wayland-protocols/stable/tablet/tablet-v2.xml"
 [ -f "$VIRTUAL_KEYBOARD_XML" ] || { echo "!! virtual-keyboard-unstable-v1.xml not found at $VIRTUAL_KEYBOARD_XML"; exit 1; }
 [ -f "$LAYER_SHELL_XML" ] || { echo "!! wlr-layer-shell-unstable-v1.xml not found at $LAYER_SHELL_XML"; exit 1; }
 [ -f "$FOREIGN_TOPLEVEL_XML" ] || { echo "!! wlr-foreign-toplevel-management-unstable-v1.xml not found at $FOREIGN_TOPLEVEL_XML"; exit 1; }
+[ -f "$SCREENCOPY_XML" ] || { echo "!! wlr-screencopy-unstable-v1.xml not found at $SCREENCOPY_XML"; exit 1; }
 [ -f "$POINTER_CONSTRAINTS_XML" ] || { echo "!! pointer-constraints-unstable-v1.xml not found at $POINTER_CONSTRAINTS_XML"; exit 1; }
 [ -f "$RELATIVE_POINTER_XML" ] || { echo "!! relative-pointer-unstable-v1.xml not found at $RELATIVE_POINTER_XML"; exit 1; }
 [ -f "$PRIMARY_SELECTION_XML" ] || { echo "!! primary-selection-unstable-v1.xml not found at $PRIMARY_SELECTION_XML"; exit 1; }
@@ -116,6 +118,9 @@ wayland-scanner private-code  "$LAYER_SHELL_XML" "$GEN/wlr-layer-shell-unstable-
 wayland-scanner server-header "$FOREIGN_TOPLEVEL_XML" "$GEN/wlr-foreign-toplevel-management-unstable-v1-server-protocol.h"
 wayland-scanner client-header "$FOREIGN_TOPLEVEL_XML" "$GEN/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 wayland-scanner private-code  "$FOREIGN_TOPLEVEL_XML" "$GEN/wlr-foreign-toplevel-management-unstable-v1-protocol.c"
+wayland-scanner server-header "$SCREENCOPY_XML" "$GEN/wlr-screencopy-unstable-v1-server-protocol.h"
+wayland-scanner client-header "$SCREENCOPY_XML" "$GEN/wlr-screencopy-unstable-v1-client-protocol.h"
+wayland-scanner private-code  "$SCREENCOPY_XML" "$GEN/wlr-screencopy-unstable-v1-protocol.c"
 wayland-scanner server-header "$POINTER_CONSTRAINTS_XML" "$GEN/pointer-constraints-unstable-v1-server-protocol.h"
 wayland-scanner private-code  "$POINTER_CONSTRAINTS_XML" "$GEN/pointer-constraints-unstable-v1-protocol.c"
 wayland-scanner server-header "$RELATIVE_POINTER_XML" "$GEN/relative-pointer-unstable-v1-server-protocol.h"
@@ -184,6 +189,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/single-pixel-buffer-v1-protocol.c" \
     "$GEN/tablet-v2-protocol.c" \
     "$GEN/cursor-shape-v1-protocol.c" \
+    "$GEN/wlr-screencopy-unstable-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
@@ -246,6 +252,14 @@ $CC $CFLAGS $INCS \
     -L"$PREFIX/lib" -lwayland-client \
     $RPATH -o /out/iosc-spb-test
 echo "   built /out/iosc-spb-test"
+
+# screencopy test client: captures the whole output into wl_shm + prints a probe.
+$CC $CFLAGS $INCS \
+    "$X11/wayland/iosc-screenshot-test.c" \
+    "$GEN/wlr-screencopy-unstable-v1-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    $RPATH -o /out/iosc-screenshot-test
+echo "   built /out/iosc-screenshot-test"
 
 # GPU test client: renders GLES->IOSurface via ANGLE, hands it over iosc_iosurface.
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \

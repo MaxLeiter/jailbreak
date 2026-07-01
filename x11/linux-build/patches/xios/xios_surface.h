@@ -85,4 +85,15 @@ void xios_surface_geometry(int *width, int *height);
  * path). Returns 0 if there is no surface or (x,y) is out of range. */
 uint32_t xios_read_output_pixel(int x, int y);
 
+/* Bulk read-back of a w x h region of the output IOSurface at (x,y) in APP/display
+ * space (top-left origin) into `dst` (BGRA8, `dst_stride` bytes per row). Locks the
+ * surface read-only ONCE so GPU (Metal/ANGLE) writes are made coherent, then copies
+ * row by row; the rect is clamped to the surface (out-of-range columns/rows in dst
+ * are left untouched). Returns 0 on success, -1 if there is no surface / bad args.
+ *
+ * This is the SOFTWARE screencopy seam (zwlr_screencopy_v1): a later GPU-blit path
+ * (blit the output IOSurface straight into the client's IOSurface-backed buffer, no
+ * CPU round-trip) can replace this body without touching the protocol callers. */
+int xios_read_output_region(int x, int y, int w, int h, void *dst, int dst_stride);
+
 #endif /* XIOS_SURFACE_H */

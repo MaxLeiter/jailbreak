@@ -494,6 +494,25 @@ uint32_t xios_read_output_pixel(int x, int y)
     return px;
 }
 
+int xios_read_output_region(int x, int y, int w, int h, void *dst, int dst_stride)
+{
+    if (!s_surface || !dst || w <= 0 || h <= 0 || x < 0 || y < 0) return -1;
+    int cw = w, ch = h;                       /* clamp the rect to the surface */
+    if (x + cw > s_width)  cw = s_width  - x;
+    if (y + ch > s_height) ch = s_height - y;
+    if (cw <= 0 || ch <= 0) return -1;
+    /* One read-only lock for the whole region (coherency: same as the pixel read). */
+    IOSurfaceLock(s_surface, XIOS_LOCK_READONLY, NULL);
+    const uint8_t *base = (const uint8_t *) IOSurfaceGetBaseAddress(s_surface);
+    for (int row = 0; row < ch; row++) {
+        const uint8_t *src = base + (size_t) (y + row) * s_stride + (size_t) x * 4;
+        uint8_t *d = (uint8_t *) dst + (size_t) row * dst_stride;
+        memcpy(d, src, (size_t) cw * 4);
+    }
+    IOSurfaceUnlock(s_surface, XIOS_LOCK_READONLY, NULL);
+    return 0;
+}
+
 void xios_server_stop(void)
 {
     pthread_mutex_lock(&s_lock);

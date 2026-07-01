@@ -40,6 +40,7 @@
 #include "ext-idle-notify-v1-server-protocol.h"
 #include "single-pixel-buffer-v1-server-protocol.h"
 #include "cursor-shape-v1-server-protocol.h"
+#include "wlr-screencopy-unstable-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -928,6 +929,152 @@ static void recomposite_all(void)
         if (ib && ib->surface) xios_blit_client_iosurface(ib->surface);
     }
     xios_notify_dirty();
+}
+
+/* ---- wlr-screencopy-v1: screenshots (SOFTWARE readback; GPU-blit later) --- *
+ * A client (grim, xdg-desktop-portal, spectacle) binds the manager, asks to
+ * capture the output (or a sub-region), receives a `buffer` event advertising the
+ * format/size/stride to allocate, allocates a wl_shm buffer, and calls copy().
+ * We read the composited output IOSurface back into that buffer via
+ * xios_read_output_region() -- the SOFTWARE path. The clean seam for a future GPU
+ * blit (output IOSurface -> the client's IOSurface-backed buffer, no CPU
+ * round-trip) is xios_read_output_region()'s body plus a fast-path here; the
+ * protocol code below stays unchanged. */
+
+struct iosc_screencopy_frame {
+    struct wl_resource *resource;
+    int      x, y, w, h;       /* capture rect in output (physical) px */
+    int      stride;           /* advertised buffer stride (w*4) */
+    uint32_t format;           /* advertised wl_shm format */
+    int      with_cursor;      /* overlay_cursor: include the pointer in the shot */
+    int      used;             /* copy() may be called at most once */
+};
+
+static void screencopy_frame_res_destroy(struct wl_resource *r)
+{ free(wl_resource_get_user_data(r)); }
+
+static void screencopy_frame_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+/* Read the composited output into the client's wl_shm buffer, honouring
+ * overlay_cursor by recompositing without the pointer when it isn't wanted. */
+static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resource *buffer)
+{
+    struct wl_shm_buffer *shm = wl_shm_buffer_get(buffer);
+    if (!shm ||
+        wl_shm_buffer_get_format(shm) != f->format ||
+        wl_shm_buffer_get_width(shm)  != f->w ||
+        wl_shm_buffer_get_height(shm) != f->h ||
+        wl_shm_buffer_get_stride(shm) != f->stride) {
+        zwlr_screencopy_frame_v1_send_failed(f->resource);
+        return;
+    }
+
+    int restore_cursor = 0;
+    if (!f->with_cursor && g_cursor_visible) { g_cursor_visible = 0; restore_cursor = 1; }
+    recomposite_all();          /* ensure the output holds the latest frame */
+
+    wl_shm_buffer_begin_access(shm);
+    int rc = xios_read_output_region(f->x, f->y, f->w, f->h,
+                                     wl_shm_buffer_get_data(shm), f->stride);
+    wl_shm_buffer_end_access(shm);
+
+    if (restore_cursor) { g_cursor_visible = 1; recomposite_all(); }
+
+    if (rc != 0) { zwlr_screencopy_frame_v1_send_failed(f->resource); return; }
+
+    /* Top-left origin, no transform: no y-invert. Then report ready. */
+    zwlr_screencopy_frame_v1_send_flags(f->resource, 0);
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t sec = (uint64_t)ts.tv_sec;
+    zwlr_screencopy_frame_v1_send_ready(f->resource,
+        (uint32_t)(sec >> 32), (uint32_t)sec, (uint32_t)ts.tv_nsec);
+}
+
+static void screencopy_frame_copy(struct wl_client *c, struct wl_resource *r,
+                                  struct wl_resource *buffer)
+{ (void)c;
+    struct iosc_screencopy_frame *f = wl_resource_get_user_data(r);
+    if (!f) return;
+    if (f->used) {
+        wl_resource_post_error(r, ZWLR_SCREENCOPY_FRAME_V1_ERROR_ALREADY_USED,
+                               "screencopy frame already used");
+        return;
+    }
+    f->used = 1;
+    screencopy_do_copy(f, buffer);
+}
+
+static void screencopy_frame_copy_with_damage(struct wl_client *c, struct wl_resource *r,
+                                              struct wl_resource *buffer)
+{
+    /* We don't track per-frame damage; a full copy is correct (just not optimal).
+     * The damage event is optional, so we simply don't send one. */
+    screencopy_frame_copy(c, r, buffer);
+}
+
+static const struct zwlr_screencopy_frame_v1_interface screencopy_frame_impl = {
+    .copy = screencopy_frame_copy,
+    .destroy = screencopy_frame_destroy,
+    .copy_with_damage = screencopy_frame_copy_with_damage,
+};
+
+/* Create + advertise a frame for the given capture rect (already clamped). */
+static void screencopy_new_frame(struct wl_client *c, struct wl_resource *mgr,
+                                 uint32_t id, int overlay_cursor,
+                                 int x, int y, int w, int h)
+{
+    struct iosc_screencopy_frame *f = calloc(1, sizeof(*f));
+    if (!f) { wl_client_post_no_memory(c); return; }
+    f->x = x; f->y = y; f->w = w; f->h = h;
+    f->stride = w * 4;
+    f->format = WL_SHM_FORMAT_XRGB8888;    /* opaque BGRA8 in memory == our output */
+    f->with_cursor = overlay_cursor;
+    f->resource = wl_resource_create(c, &zwlr_screencopy_frame_v1_interface,
+                                     wl_resource_get_version(mgr), id);
+    if (!f->resource) { free(f); wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(f->resource, &screencopy_frame_impl, f,
+                                   screencopy_frame_res_destroy);
+    zwlr_screencopy_frame_v1_send_buffer(f->resource, f->format,
+                                         (uint32_t)w, (uint32_t)h, (uint32_t)f->stride);
+    if (wl_resource_get_version(f->resource) >= ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE_SINCE_VERSION)
+        zwlr_screencopy_frame_v1_send_buffer_done(f->resource);
+}
+
+static void screencopy_capture_output(struct wl_client *c, struct wl_resource *mgr,
+                                      uint32_t id, int32_t overlay_cursor,
+                                      struct wl_resource *output)
+{ (void)output;
+    screencopy_new_frame(c, mgr, id, overlay_cursor, 0, 0, g_width, g_height);
+}
+
+static void screencopy_capture_output_region(struct wl_client *c, struct wl_resource *mgr,
+                                             uint32_t id, int32_t overlay_cursor,
+                                             struct wl_resource *output,
+                                             int32_t x, int32_t y, int32_t w, int32_t h)
+{ (void)output;
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > g_width)  w = g_width  - x;
+    if (y + h > g_height) h = g_height - y;
+    if (w <= 0 || h <= 0) { x = 0; y = 0; w = 1; h = 1; }   /* degenerate -> 1px */
+    screencopy_new_frame(c, mgr, id, overlay_cursor, x, y, w, h);
+}
+
+static void screencopy_mgr_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static const struct zwlr_screencopy_manager_v1_interface screencopy_mgr_impl = {
+    .capture_output = screencopy_capture_output,
+    .capture_output_region = screencopy_capture_output_region,
+    .destroy = screencopy_mgr_destroy,
+};
+
+static void screencopy_mgr_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(client, &zwlr_screencopy_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &screencopy_mgr_impl, NULL, NULL);
 }
 
 static void on_buffer_destroyed(struct wl_listener *l, void *data)
@@ -4847,6 +4994,8 @@ int main(int argc, char **argv)
     wl_global_create(g_display, &wp_single_pixel_buffer_manager_v1_interface, 1, NULL, spb_mgr_bind);
     /* Named cursor shapes (GTK4/Adwaita prefer this over uploading a cursor surface). */
     wl_global_create(g_display, &wp_cursor_shape_manager_v1_interface, 1, NULL, cshape_mgr_bind);
+    /* Screenshots: software readback of the output IOSurface (grim, portals, spectacle). */
+    wl_global_create(g_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, screencopy_mgr_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
@@ -4888,7 +5037,8 @@ int main(int argc, char **argv)
                     "zwp_pointer_constraints_v1 v1, zwp_relative_pointer_manager_v1 v1, "
                     "zwp_primary_selection_device_manager_v1 v1, "
                     "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1, "
-                    "wp_single_pixel_buffer_manager_v1 v1, wp_cursor_shape_manager_v1 v1\n");
+                    "wp_single_pixel_buffer_manager_v1 v1, wp_cursor_shape_manager_v1 v1, "
+                    "zwlr_screencopy_manager_v1 v3\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);
