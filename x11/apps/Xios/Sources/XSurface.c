@@ -22,11 +22,23 @@ static void xlog(const char *fmt, ...)
 }
 
 /* wire protocol — must match the server (linux-build/patches/xios/xios_surface.c).
- * Damage is a stream of single "dirty" bytes (xsurface_drain just counts them). */
+ * Classic clients (hello.reserved == 0) get a stream of single "dirty" bytes.
+ * We negotiate the TYPED stream (reserved == XIOS_HELLO_TYPED): after the same
+ * handshake the server sends 32-byte records (an in-band HELLO on connect, then
+ * DIRTY + CURSOR interleaved), so the cursor overlay and the geometry come over
+ * the socket itself. See xios_surface.h for the shared definitions. */
 #define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
 
 typedef struct { uint32_t magic, pid, portname, reserved; } xios_hello;
 typedef struct { uint32_t magic, width, height, stride, format, status; } xios_reply;
+
+#define XIOS_HELLO_TYPED 0x54595031u  /* 'TYP1' in hello.reserved => typed stream */
+#define XIOS_MSG_MAGIC   0x584D5331u  /* 'XMS1' per-record frame sync */
+enum { XIOS_MSG_HELLO = 0x01, XIOS_MSG_DIRTY = 0x02, XIOS_MSG_CURSOR = 0x03 };
+typedef struct {
+    uint32_t magic, type, window_id, length;
+    int32_t  a, b, c, d;
+} xios_msg;                            /* 32 bytes, LE; optional length-byte payload */
 
 typedef struct {
     mach_msg_header_t header;
@@ -39,6 +51,15 @@ struct XSurfaceConn {
     int fd;
     IOSurfaceRef surface;
     int width, height, stride;
+    int typed;                 /* negotiated the typed record stream */
+    char comp_id[32];          /* compositor id from the in-band HELLO ("iosc"/...) */
+    /* typed-stream parser state (records span multiple non-blocking reads) */
+    unsigned char rxbuf[sizeof(xios_msg)];
+    int rxlen;                 /* header bytes buffered so far */
+    int skip;                  /* payload bytes still to discard after a header */
+    /* latest cursor state (from CURSOR records) */
+    int cur_x, cur_y, cur_vis, cur_shape;
+    uint32_t cur_seq;          /* bumped per CURSOR record; 0 = none seen */
 };
 
 static int read_full(int fd, void *buf, size_t n)
@@ -112,7 +133,7 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
     hello.magic = XIOS_MAGIC;
     hello.pid = (uint32_t) getpid();
     hello.portname = (uint32_t) r;
-    hello.reserved = 0;
+    hello.reserved = XIOS_HELLO_TYPED;   /* opt into the typed stream (cursor + in-band hello) */
     if (write_full(fd, &hello, sizeof(hello)) != 0) {
         destroy_reply_port(self, r); close(fd); return NULL;
     }
@@ -160,6 +181,28 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
     c->height = (int) IOSurfaceGetHeight(surface);
     c->stride = (int) IOSurfaceGetBytesPerRow(surface);
 
+    /* We negotiated the typed stream: a typed-capable server sends an in-band
+     * HELLO record (magic XMS1, type HELLO) as the first bytes after the reply,
+     * still blocking here (the server sends it before flipping the socket to
+     * non-blocking). Read it to learn the compositor id. If it doesn't arrive or
+     * doesn't parse (an older server that ignored hello.reserved and just streams
+     * bare DIRTY bytes), fall back to the classic path — the surface is already
+     * adopted, so nothing is lost but the overlay. */
+    xios_msg h;
+    if (read_full(fd, &h, sizeof(h)) == 0 && h.magic == XIOS_MSG_MAGIC &&
+        h.type == XIOS_MSG_HELLO) {
+        c->typed = 1;
+        uint32_t idlen = h.length;
+        if (idlen > sizeof(c->comp_id) - 1) idlen = sizeof(c->comp_id) - 1;
+        if (idlen && read_full(fd, c->comp_id, idlen) != 0) {
+            CFRelease(surface); free(c); close(fd); return NULL;
+        }
+        c->comp_id[idlen] = '\0';
+        xlog("typed stream negotiated (compositor=%s)", c->comp_id);
+    } else {
+        xlog("classic stream (no in-band HELLO); cursor overlay disabled");
+    }
+
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     return c;
 }
@@ -170,15 +213,14 @@ int xsurface_height(XSurfaceConn *c) { return c ? c->height : 0; }
 int xsurface_stride(XSurfaceConn *c) { return c ? c->stride : 0; }
 int xsurface_fd(XSurfaceConn *c)     { return c ? c->fd : -1; }
 
-int xsurface_drain(XSurfaceConn *c)
+/* Classic stream: any bytes = the surface changed (bare DIRTY signals). */
+static int drain_classic(XSurfaceConn *c)
 {
-    if (!c) return -1;
     unsigned char tmp[64];
     int dirty = 0;
-
     for (;;) {
         ssize_t r = recv(c->fd, tmp, sizeof(tmp), MSG_DONTWAIT);
-        if (r > 0) { dirty = 1; continue; }    /* any bytes => surface changed */
+        if (r > 0) { dirty = 1; continue; }
         if (r == 0) return -1;                 /* server closed */
         if (errno == EAGAIN || errno == EWOULDBLOCK) break;
         if (errno == EINTR) continue;
@@ -186,6 +228,79 @@ int xsurface_drain(XSurfaceConn *c)
     }
     return dirty;
 }
+
+/* Typed stream: parse 32-byte records (DIRTY + CURSOR, plus any HELLO/native
+ * records whose payload we skip). Records span multiple non-blocking reads, so the
+ * partial-header + payload-skip state lives in the conn. A magic mismatch means the
+ * stream desynced — return -1 so the caller reconnects. */
+static int drain_typed(XSurfaceConn *c)
+{
+    int dirty = 0;
+    for (;;) {
+        if (c->skip > 0) {                     /* discard a record's payload */
+            unsigned char scratch[64];
+            int want = c->skip < (int) sizeof scratch ? c->skip : (int) sizeof scratch;
+            ssize_t r = recv(c->fd, scratch, want, MSG_DONTWAIT);
+            if (r > 0) { c->skip -= (int) r; continue; }
+            if (r == 0) return -1;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        ssize_t r = recv(c->fd, c->rxbuf + c->rxlen,
+                         (int) sizeof(xios_msg) - c->rxlen, MSG_DONTWAIT);
+        if (r > 0) {
+            c->rxlen += (int) r;
+            if (c->rxlen < (int) sizeof(xios_msg)) continue;   /* partial header */
+            xios_msg m;
+            memcpy(&m, c->rxbuf, sizeof m);
+            c->rxlen = 0;
+            if (m.magic != XIOS_MSG_MAGIC) { xlog("typed desync magic=0x%x", m.magic); return -1; }
+            switch (m.type) {
+            case XIOS_MSG_DIRTY:
+                dirty = 1;
+                break;
+            case XIOS_MSG_CURSOR:
+                c->cur_x = m.a; c->cur_y = m.b;
+                c->cur_shape = m.c; c->cur_vis = (m.d & 1);
+                c->cur_seq++;
+                break;
+            case XIOS_MSG_HELLO:               /* rare post-connect geometry refresh */
+                if (m.a > 0) c->width = m.a;
+                if (m.b > 0) c->height = m.b;
+                if (m.c > 0) c->stride = m.c;
+                break;
+            default:                           /* unknown core/native type: ignore */
+                break;
+            }
+            if (m.length > 0) c->skip = (int) m.length;
+            continue;
+        }
+        if (r == 0) return -1;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        if (errno == EINTR) continue;
+        return -1;
+    }
+    return dirty;
+}
+
+int xsurface_drain(XSurfaceConn *c)
+{
+    if (!c) return -1;
+    return c->typed ? drain_typed(c) : drain_classic(c);
+}
+
+uint32_t xsurface_cursor(XSurfaceConn *c, int *x, int *y, int *visible, int *shape_id)
+{
+    if (!c) return 0;
+    if (x) *x = c->cur_x;
+    if (y) *y = c->cur_y;
+    if (visible) *visible = c->cur_vis;
+    if (shape_id) *shape_id = c->cur_shape;
+    return c->cur_seq;
+}
+
+const char *xsurface_compositor_id(XSurfaceConn *c) { return c ? c->comp_id : ""; }
 
 void xsurface_close(XSurfaceConn *c)
 {

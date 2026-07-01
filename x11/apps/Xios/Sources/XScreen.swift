@@ -96,6 +96,15 @@ final class XScreenView: UIView {
     private var iosConnectStarted = false
     private var needsPresent = false
 
+    // Present-side cursor overlay. When iosc runs with IOSC_APP_CURSOR it stops
+    // compositing the pointer and streams position+shape over the typed socket
+    // (see XSurface.c); we draw it as a CALayer above the Metal content so a pointer
+    // move is a Core Animation reposition with no Metal re-present. Stays nil (and
+    // the compositor keeps drawing its own cursor) until the first CURSOR record.
+    private var cursorLayer: CALayer?
+    private var lastCursorSeq: UInt32 = 0
+    private var cursorIsText = false
+
     private var displayLink: CADisplayLink?
     private var mapped: UnsafeMutableRawPointer?
     private var mappedLen = 0
@@ -251,6 +260,97 @@ final class XScreenView: UIView {
         writeStatus()
     }
 
+    // MARK: present-side cursor overlay
+
+    /// Pull the latest CURSOR state and move/hide the overlay layer. Cheap: reads
+    /// the last-parsed state (no I/O — xsurface_drain already parsed it) and only
+    /// touches Core Animation when the sequence changed.
+    private func updateCursorOverlay(_ conn: OpaquePointer) {
+        var x: Int32 = 0, y: Int32 = 0, vis: Int32 = 0, shape: Int32 = 0
+        let seq = xsurface_cursor(conn, &x, &y, &vis, &shape)
+        guard seq != 0 else { return }        // overlay off server-side → compositor draws it
+        if seq == lastCursorSeq { return }    // no new pointer state this tick
+        lastCursorSeq = seq
+
+        if cursorLayer == nil { makeCursorLayer(shape: shape) }
+        guard let layer = cursorLayer else { return }
+        if vis == 0 { layer.isHidden = true; return }
+        layer.isHidden = false
+        applyCursorShape(shape)               // swap arrow/I-beam if the category changed
+
+        // Cursor coords arrive in framebuffer (physical) px; map through the same
+        // fit/zoom/pan rect the framebuffer uses so the pointer tracks the content.
+        let rect = contentRect()
+        let vx = rect.minX + CGFloat(x) / CGFloat(max(fbWidth, 1)) * rect.width
+        let vy = rect.minY + CGFloat(y) / CGFloat(max(fbHeight, 1)) * rect.height
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)  // track instantly, no implicit move animation
+        layer.position = CGPoint(x: vx, y: vy)
+        CATransaction.commit()
+    }
+
+    private func makeCursorLayer(shape: Int32) {
+        let layer = CALayer()
+        layer.contentsScale = metalLayer.contentsScale
+        layer.isHidden = true
+        metalLayer.addSublayer(layer)          // above the Metal drawable, below the chrome UIViews
+        cursorLayer = layer
+        applyCursorShape(shape)
+    }
+
+    /// Rebuild the overlay bitmap only when the shape category flips (text vs arrow).
+    private func applyCursorShape(_ shape: Int32) {
+        let isText = (shape == 9 || shape == 10)   // wp_cursor_shape: 9=text, 10=vertical-text
+        guard let layer = cursorLayer, layer.contents == nil || isText != cursorIsText else { return }
+        cursorIsText = isText
+        let (image, hotspot) = cursorImage(isText: isText)
+        layer.contents = image.cgImage
+        layer.bounds = CGRect(origin: .zero, size: image.size)
+        layer.anchorPoint = hotspot            // hotspot sits at layer.position
+    }
+
+    /// A small pointer bitmap + its hotspot (as a unit anchorPoint). Black fill with a
+    /// white outline so it reads on any background. Shape fidelity beyond arrow/I-beam
+    /// is a follow-up; the value here is the zero-recomposite pointer move.
+    private func cursorImage(isText: Bool) -> (UIImage, CGPoint) {
+        if isText {
+            let size = CGSize(width: 9, height: 22)
+            let img = UIGraphicsImageRenderer(size: size).image { ctx in
+                let c = ctx.cgContext
+                let beam = { (c: CGContext) in
+                    c.move(to: CGPoint(x: 4.5, y: 2));  c.addLine(to: CGPoint(x: 4.5, y: 20))
+                    c.move(to: CGPoint(x: 2, y: 2));    c.addLine(to: CGPoint(x: 7, y: 2))
+                    c.move(to: CGPoint(x: 2, y: 20));   c.addLine(to: CGPoint(x: 7, y: 20))
+                }
+                c.setLineCap(.round)
+                c.setStrokeColor(UIColor.white.cgColor); c.setLineWidth(3); beam(c); c.strokePath()
+                c.setStrokeColor(UIColor.black.cgColor); c.setLineWidth(1); beam(c); c.strokePath()
+            }
+            return (img, CGPoint(x: 0.5, y: 0.5))   // hotspot: centre
+        }
+        let size = CGSize(width: 16, height: 24)
+        let img = UIGraphicsImageRenderer(size: size).image { ctx in
+            let c = ctx.cgContext
+            let p = CGMutablePath()
+            p.addLines(between: [
+                CGPoint(x: 1, y: 1),   CGPoint(x: 1, y: 19),  CGPoint(x: 5.5, y: 14.5),
+                CGPoint(x: 8.5, y: 21), CGPoint(x: 11, y: 20), CGPoint(x: 8, y: 13.5),
+                CGPoint(x: 14, y: 13.5),
+            ])
+            p.closeSubpath()
+            c.addPath(p); c.setStrokeColor(UIColor.white.cgColor)
+            c.setLineWidth(2); c.setLineJoin(.round); c.strokePath()
+            c.addPath(p); c.setFillColor(UIColor.black.cgColor); c.fillPath()
+        }
+        return (img, CGPoint(x: 1.0 / 16.0, y: 1.0 / 24.0))   // hotspot: arrow tip
+    }
+
+    private func removeCursorOverlay() {
+        cursorLayer?.removeFromSuperlayer()
+        cursorLayer = nil
+        lastCursorSeq = 0
+    }
+
     // MARK: Metal setup
 
     private func dbg(_ s: String) {
@@ -292,6 +392,8 @@ final class XScreenView: UIView {
         needsPresent = true
         updateZoomButton()
         dumpGeom()
+        // contentRect() moved (rotation/resize/zoom); re-place an idle cursor overlay.
+        if let conn = xconn, cursorLayer != nil { lastCursorSeq = 0; updateCursorOverlay(conn) }
     }
 
     /// One-line geometry snapshot for diagnosing display sizing (letterboxing).
@@ -391,6 +493,7 @@ final class XScreenView: UIView {
         if let c = xconn { xsurface_close(c); xconn = nil }
         iosTexture = nil
         usingIOSurface = false
+        removeCursorOverlay()
         if !userPinned { _ = loadConfig() }
         writeStatus()
         iosConnectStarted = false
@@ -425,6 +528,9 @@ final class XScreenView: UIView {
             let r = xsurface_drain(conn)
             if r < 0 { teardownIOSurface(); return }
             if r > 0 { needsPresent = true }
+            // Reposition the cursor overlay independently of surface damage: a pure
+            // pointer move updates the CALayer without re-presenting the framebuffer.
+            updateCursorOverlay(conn)
             if needsPresent, render(tex) { needsPresent = false }
             return
         }
@@ -1122,6 +1228,7 @@ final class XScreenView: UIView {
     private func teardownConnections() {
         closeInput()
         if let c = xconn { xsurface_close(c); xconn = nil }
+        removeCursorOverlay()
         iosTexture = nil; usingIOSurface = false; iosConnectStarted = false; needsPresent = false
         if let m = mapped { munmap(m, mappedLen); mapped = nil; mappedLen = 0 }
         testBuf?.deallocate(); testBuf = nil
