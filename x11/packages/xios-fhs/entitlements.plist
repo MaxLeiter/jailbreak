@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- xios-hwbridged: reads IOKit power sources and drives display brightness through
+         BackBoardServices. -->
+
+    <!-- Load our fakesigned dylib graph (libglib etc). -->
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+
+    <!-- Talk to backboardd's brightness client (BKSDisplayBrightnessSet /
+         BKSDisplayBrightnessTransactionCreate). This is the entitlement the
+         Activator/flipswitch-style brightness setters carry. -->
+    <key>com.apple.backboard.client</key>
+    <true/>
+
+    <!-- IOPSCopyPowerSourcesInfo talks to the power-source IOKit user clients. -->
+    <key>com.apple.security.iokit-user-client-class</key>
+    <array>
+        <string>AppleSmartBatteryUserClient</string>
+    </array>
+
+    <!-- The synthetic sysfs tree lives here; the daemon writes it every tick. -->
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/sys/</string>
+        <string>/private/var/jb/sys/</string>
+        <string>/var/jb/tmp/</string>
+    </array>
+</dict>
+</plist>
