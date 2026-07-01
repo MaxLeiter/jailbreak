@@ -29,6 +29,7 @@ echo "==> stage src/backends/ios/ (the MetaBackendIOS sources)"
 mkdir -p "$MUTTER_ROOT/src/backends/ios"
 cp "$WL"/meta-monitor-manager-ios.[ch] \
    "$WL"/meta-renderer-ios.[ch] \
+   "$WL"/meta-onscreen-ios.[ch] \
    "$WL"/meta-clutter-backend-ios.[ch] \
    "$WL"/meta-stage-ios.[ch] \
    "$WL"/meta-seat-ios.[ch] \

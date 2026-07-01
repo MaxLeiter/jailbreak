@@ -76,7 +76,7 @@ diff --git a/src/meson.build b/src/meson.build
  mutter_pkg_deps = [
    cairo_dep,
    gio_unix_dep,
-@@ -190,6 +205,27 @@ mutter_sources = [
+@@ -190,6 +205,29 @@ mutter_sources = [
    'backends/edid.h',
    'backends/edid-parse.c',
    'backends/gsm-inhibitor-flag.h',
@@ -93,6 +93,8 @@ diff --git a/src/meson.build b/src/meson.build
 +  'backends/ios/meta-monitor-manager-ios.h',
 +  'backends/ios/meta-renderer-ios.c',
 +  'backends/ios/meta-renderer-ios.h',
++  'backends/ios/meta-onscreen-ios.c',
++  'backends/ios/meta-onscreen-ios.h',
 +  'backends/ios/meta-seat-ios.c',
 +  'backends/ios/meta-seat-ios.h',
 +  'backends/ios/meta-keymap-ios.c',
@@ -104,7 +106,7 @@ diff --git a/src/meson.build b/src/meson.build
    'backends/meta-backend.c',
    'backends/meta-backend-private.h',
    'backends/meta-barrier.c',
-@@ -610,6 +644,11 @@ if have_wayland
+@@ -610,6 +646,11 @@ if have_wayland
      'wayland/meta-wayland-data-source-primary.h',
      'wayland/meta-wayland-dma-buf.c',
      'wayland/meta-wayland-dma-buf.h',
@@ -116,7 +118,7 @@ diff --git a/src/meson.build b/src/meson.build
      'wayland/meta-wayland-dnd-surface.c',
      'wayland/meta-wayland-dnd-surface.h',
      'wayland/meta-wayland-filter-manager.c',
-@@ -1059,6 +1098,7 @@ if have_wayland
+@@ -1059,6 +1100,7 @@ if have_wayland
    wayland_protocols = [
      ['fractional-scale', 'staging', 'v1', ],
      ['gtk-shell', 'private', ],

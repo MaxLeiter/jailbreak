@@ -36,11 +36,18 @@ mutter-setup: setup
 	# HAVE_REMOTE_DESKTOP (off here) — make them non-required so configure proceeds without them.
 	sed -i "s/dependency('libeis-1.0', version: libei_req)/dependency('libeis-1.0', version: libei_req, required: false)/" $(BUILD_WORK)/mutter/meson.build
 	sed -i "s/dependency('libei-1.0', version: libei_req)/dependency('libei-1.0', version: libei_req, required: false)/" $(BUILD_WORK)/mutter/meson.build
-	# meta-context-main.c: for the wayland + x11 + NO-native-backend combo (untested upstream), the
-	# X11-nested branch's `else` is left bodiless because the native-backend block is #ifdef'd out
-	# ("else }" -> expected statement). Give it a body. (The real wayland-without-native path is
-	# nested or MetaBackendIOS; we only need this to compile for the typelibs.)
-	perl -0pi -e 's{return create_native_backend \(context, error\);\n#endif /\* HAVE_NATIVE_BACKEND \*/}{return create_native_backend (context, error);\n#else\n      g_assert_not_reached ();\n      return NULL;\n#endif /* HAVE_NATIVE_BACKEND */}' $(BUILD_WORK)/mutter/src/core/meta-context-main.c
+	# MetaBackendIOS integration: if the x11 repo is mounted at /work/x11 (build-mutter.sh
+	# -v x11:/work/x11), stage the whole iOS/IOSurface backend + apply the 5 integration patches
+	# (incl. meta-context-main-ios-backend.patch, which gives the wayland+no-native branch a REAL
+	# MetaBackendIOS instead of a stub). Else fall back to the typelib-only build: give the
+	# dangling `else` a body so `make mutter` still configures without the backend.
+	@if [ -d /work/x11/wayland ] && [ -f /work/x11/wayland/out/libxios_glue.a ]; then \
+		echo "==> integrating MetaBackendIOS (real backend from /work/x11)"; \
+		bash /work/x11/linux-build/integrate-ios-backend.sh $(BUILD_WORK)/mutter /work/x11; \
+	else \
+		echo "==> WARN: /work/x11 not mounted — STOCK typelib-only mutter (NO iOS backend)"; \
+		perl -0pi -e 's{return create_native_backend \(context, error\);\n#endif /\* HAVE_NATIVE_BACKEND \*/}{return create_native_backend (context, error);\n#else\n      g_assert_not_reached ();\n      return NULL;\n#endif /* HAVE_NATIVE_BACKEND */}' $(BUILD_WORK)/mutter/src/core/meta-context-main.c; \
+	fi
 	# meta-context-main.c uses sd_pid_get_user_unit (systemd) guarded only by HAVE_WAYLAND, not
 	# HAVE_LIBSYSTEMD — undefined symbol when systemd is off. Guard it; fall back to MANDATORY X11
 	# policy when systemd is absent (the correct no-logind behaviour on iOS).
@@ -145,6 +152,15 @@ mutter-package: mutter-stage
 	# dev: headers + .pc (needed for the on-device introspection scan)
 	cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libmutter-14-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) 2>/dev/null || true
 	cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig $(BUILD_DIST)/libmutter-14-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib 2>/dev/null || true
+
+	# --- ANGLE rpath (dyld-landmine #1): the mutter dylibs load @rpath/libGLESv2 + libEGL (Cogl
+	# links ANGLE GLES/EGL), but gnome-shell — the process that dlopens libmutter — has no
+	# /var/jb/lib/angle rpath, so @rpath only resolves through libmutter's OWN LC_RPATH. Add it to
+	# every mutter dylib. BEFORE the weaken (macho-weaken is byte-preserving and transparent to an
+	# extra LC_RPATH) and BEFORE SIGN (install_name_tool invalidates the signature; SIGN re-covers).
+	for f in $$(find $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -type f -name '*.dylib'); do \
+		install_name_tool -add_rpath /var/jb/lib/angle $$f 2>/dev/null || true; \
+	done
 
 	# --- weak-link the DEAD X11/xcb closure so libmutter loads on an X11-free iPad -------------
 	# mutter 46 cannot be built without X11 ("For now always require X11 support" — meson.build

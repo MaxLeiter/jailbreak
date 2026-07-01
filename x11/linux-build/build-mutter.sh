@@ -9,11 +9,17 @@
 #     -v procursus-vol-gtk:/work/Procursus \
 #     -v "$PWD/build-mutter.sh:/work/build-mutter.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/tools:/work/tools:ro" -v "$PWD/out:/out" \
-#     -e TARGETS="lcms2 libxcomposite libxkbcommon colord" \
+#     -v "$PWD/..:/work/x11:ro" \
+#     -e TARGETS="mutter mutter-package" -e MUTTER_CLEAN=1 \
 #     procursus-xbuild:bookworm-arm64 /work/build-mutter.sh
 #
 # The tools/ mount is REQUIRED for the mutter-package X11/xcb weaken step (macho-weaken.py); the
 # mutter recipe hard-errors if the tool is not staged into build_tools/.
+# The x11 mount (/work/x11) is REQUIRED to build the REAL MetaBackendIOS: mutter-setup runs
+# /work/x11/linux-build/integrate-ios-backend.sh (stages src/backends/ios/* + the 5 integration
+# patches). Without it the recipe builds a STOCK typelib-only mutter (no iOS backend).
+# MUTTER_CLEAN=1 wipes the mutter work tree first so the integrate runs from a pristine extract
+# (an incremental relink drops the meson-staged ios objects and regresses the stage/present path).
 set -euo pipefail
 cd /work/Procursus
 
@@ -50,6 +56,16 @@ for r in libxcomposite.mk gusb.mk colord.mk libpixman.mk libxfixes.mk libdrm.mk 
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 [ -d /work/build_info ] && cp -v /work/build_info/* build_info/ 2>/dev/null || true
+
+# --- MUTTER_CLEAN: wipe the mutter work tree for a from-pristine integrate + full build ---
+# Route A needs the real MetaBackendIOS staged into a PRISTINE mutter tree (integrate applies
+# patches that expect unmodified sources) and a full ninja build (an incremental relink drops
+# the meson-staged ios objects — meta-stage-ios/meta-onscreen-ios — and regresses). Wiping the
+# work dir forces mutter-setup to re-extract + re-run integrate-ios-backend.sh.
+if [ "${MUTTER_CLEAN:-0}" = "1" ]; then
+  echo "==> MUTTER_CLEAN=1: wiping mutter work tree (from-scratch integrate + build)"
+  rm -rf build_work/*/*/mutter 2>/dev/null || true
+fi
 
 # --- stage the Mach-O weaken tool (mutter-package weak-links the dead X11/xcb closure with it) ---
 if [ -d /work/tools ]; then
