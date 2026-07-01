@@ -46,6 +46,20 @@ xios-session-stubs
 Recommends `pulseaudio-utils` (sysintd shells out to `pactl`). The authoritative, versioned
 list is in `linux-build/install-gnome-boot.sh` (`$DEBS`).
 
+## Phase-1 install gaps found on-device (2026-07-01), fixed in the script
+
+- **libpulse0**: out/ has two builds — `17.0` and `17.0-1`. The `17.0` archive errors on
+  `dpkg -i` ("error processing archive"); `17.0-1` is the fixed rebuild (lib/pulseaudio rpath).
+  The script now pins `17.0-1`. gnome-shell + gnome-settings-daemon both hard-Depend libpulse0,
+  so the bad `17.0` cascaded them (and the rest of the batch) to unconfigured. Delete the stale
+  `libpulse0_17.0_*.deb` from the boot dir to avoid ambiguity.
+- **libxcb-util1**: `libstartup-notification0` Depends it (gnome-shell Depends that), but we do
+  not build it and it was absent on-device. The script now `apt-get download`s it from the
+  device's Procursus sources if absent, and installs it before libstartup-notification0.
+- **hicolor / adwaita-icon-theme**: adwaita Depends hicolor; both were left unconfigured only as
+  a cascade of the big `dpkg -i` aborting on the bad libpulse0 archive (hicolor's own archive +
+  postinst are clean). A corrected re-run (`dpkg -i` is idempotent) configures them in order.
+
 ## The libwayland-server0 landmine (defused by ordering)
 
 `libmutter-14-0` declares `Depends: libwayland-server0`. We ship no package by that name —

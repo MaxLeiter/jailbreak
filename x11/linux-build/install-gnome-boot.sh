@@ -53,7 +53,7 @@ DEBS="\
   gnome-session_46.0_iphoneos-arm64.deb \
   libnotify4_0.8.3_iphoneos-arm64.deb \
   libpolkit-gobject-1-0_124_iphoneos-arm64.deb \
-  libpulse0_17.0_iphoneos-arm64.deb \
+  libpulse0_17.0-1_iphoneos-arm64.deb \
   gnome-settings-daemon_46.0_iphoneos-arm64.deb \
   liblcms2-2_2.12_iphoneos-arm64.deb \
   libcolord2_1.4.7_iphoneos-arm64.deb \
@@ -64,6 +64,7 @@ DEBS="\
   libgcr-4-4_4.2.1_iphoneos-arm64.deb \
   libpolkit-agent-1-0_124_iphoneos-arm64.deb \
   libibus-1.0-5_1.5.29_iphoneos-arm64.deb \
+  libxcb-util1_*_iphoneos-arm64.deb \
   libstartup-notification0_0.12_iphoneos-arm64.deb \
   gnome-shell_46.0_iphoneos-arm64.deb \
   libaccountsservice0_23.13.9_iphoneos-arm64.deb \
@@ -90,7 +91,14 @@ GIR_DEV_DEBS="\
   libgeoclue-dev_2.7.1_iphoneos-arm64.deb \
 "
 
-echo "==> installing 66 boot debs in dependency order"
+# libxcb-util1 is a standard Procursus lib that libstartup-notification0 Depends but that we do
+# not build; fetch it from the device's configured apt sources if it is not already in this dir.
+if ! ls libxcb-util1_*_iphoneos-arm64.deb >/dev/null 2>&1; then
+  echo "==> fetching libxcb-util1 from Procursus apt (not in the built set)"
+  apt-get download libxcb-util1 || { echo "!! could not download libxcb-util1 — install it manually (apt-get install libxcb-util1) then re-run"; exit 1; }
+fi
+
+echo "==> installing the boot debs in dependency order (dpkg -i is idempotent — safe to re-run)"
 dpkg -i $DEBS
 echo "==> boot set installed. For the on-device gir scan, also: dpkg -i $GIR_DEV_DEBS"
 echo "==> then: apt-get check   (must be clean; do NOT run apt --fix-broken on this device)"
