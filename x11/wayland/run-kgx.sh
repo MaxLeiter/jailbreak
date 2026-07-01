@@ -43,8 +43,18 @@ echo "   wayland socket: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
 echo "   xios.json: $(cat "$TMP/xios.json" 2>/dev/null)"
 
 echo "==> relaunch the Xios app (adopts iosc's IOSurface)"
-uiopen com.max.xios 2>/dev/null || uiopen -b com.max.xios 2>/dev/null
-sleep 3
+# Use `uiopen -b <bundleid>` (open as if tapped, foreground), NOT the bare
+# `uiopen <bundleid>` form: the latter returns 0 but FrontBoard suspends/kills the
+# background-launched Metal app before it connects, so the app never adopts the
+# IOSurface (status stays test-pattern, no ddx client in iosc.log). Then poll
+# xios-status until the app reports it adopted the surface rather than a fixed sleep.
+uiopen -b com.max.xios 2>/dev/null
+for _ in $(seq 1 20); do
+    grep -q "iosurface-zerocopy" "$TMP/xios-status.txt" 2>/dev/null && break
+    sleep 0.5
+done
+echo "   app adopted IOSurface: $(grep -q "iosurface-zerocopy" "$TMP/xios-status.txt" 2>/dev/null && echo yes || echo NO)"
+echo "   ddx client: $(grep 'client attached' "$TMP/iosc.log" 2>/dev/null | tail -1)"
 
 echo "==> assert wayland socket is present before launching the client"
 ls -l "$WSOCK" 2>&1 | sed 's/^/   /'
