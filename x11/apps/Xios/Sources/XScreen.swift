@@ -110,6 +110,11 @@ final class XScreenView: UIView {
     private var mappedLen = 0
     private var testBuf: UnsafeMutablePointer<UInt8>?
     private var usingTestPattern = false
+    // The animated test card is a LAST-RESORT no-signal diagnostic only. During
+    // normal startup the IOSurface connects in ~1s, so we show clean black and never
+    // the card; it appears only after this many test-pattern ticks with no framebuffer.
+    private var testPatternStartTick = 0
+    private static let testPatternGraceTicks = 150   // ~7.5s at 20fps
     private var inputConnected = false
     private var tickCount = 0
 
@@ -196,11 +201,15 @@ final class XScreenView: UIView {
         start()                    // setupMetal() should now succeed in the foreground
     }
 
-    /// Show the animated test pattern until a real framebuffer is available.
+    /// Show a clean black screen until a real framebuffer is available; only after a
+    /// grace period without one does the animated test card appear (last-resort
+    /// no-signal diagnostic, never during normal startup).
     private func startTestPattern() {
         usingTestPattern = true
         testBuf?.deallocate()       // safe to call when switching displays
         testBuf = .allocate(capacity: fbWidth * fbHeight * 4)
+        testBuf?.initialize(repeating: 0, count: fbWidth * fbHeight * 4)   // clean black
+        testPatternStartTick = tickCount
         makeTexture()
         displayLink?.preferredFramesPerSecond = 20
     }
@@ -556,7 +565,11 @@ final class XScreenView: UIView {
         if let m = mapped {
             base = UnsafeRawPointer(m).advanced(by: fbHeaderOffset)
         } else if let b = testBuf {
-            renderTestPattern(into: b)
+            // Clean black by default (the buffer stays zeroed); the animated card is a
+            // last-resort no-signal diagnostic shown only after the grace period.
+            if tickCount - testPatternStartTick >= Self.testPatternGraceTicks {
+                renderTestPattern(into: b)
+            }
             base = UnsafeRawPointer(b)
         } else { return }
 
