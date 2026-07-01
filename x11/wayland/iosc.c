@@ -82,6 +82,8 @@ struct iosc_surface;
 static void clipboard_selection_send_to_client(struct wl_client *client);
 static void recomposite_all(void);   /* coalesced: schedules one repaint per loop iteration */
 static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
+static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
+static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 
 static uint32_t now_ms(void)
 {
@@ -862,7 +864,8 @@ static void cshape_dev_set_shape(struct wl_client *c, struct wl_resource *r,
     g_cursor_surface = NULL;
     cursor_build_shape(shape);
     g_cursor_visible = 1;
-    recomposite_all();
+    if (iosc_app_cursor()) app_cursor_notify();   /* overlay: push the new shape, no repaint */
+    else recomposite_all();
 }
 
 static const struct wp_cursor_shape_device_v1_interface cshape_dev_impl = {
@@ -902,6 +905,7 @@ static void cshape_mgr_bind(struct wl_client *client, void *data, uint32_t versi
 
 static void composite_cursor(void)
 {
+    if (iosc_app_cursor()) return;   /* the app draws the pointer as a present-side overlay */
     if (g_named_cursor) { if (g_cursor_visible) composite_named_cursor(); return; }
     if (!g_cursor_visible || !g_cursor_surface || !g_cursor_surface->current_buffer) return;
     /* The cursor is a premultiplied ARGB8888 wl_shm surface: blend it so its alpha is
@@ -938,6 +942,32 @@ static int iosc_debug(void)
     static int v = -1;
     if (v < 0) v = getenv("IOSC_DEBUG") ? 1 : 0;
     return v;
+}
+
+/* IOSC_APP_CURSOR=1: hand the pointer to a present-side overlay in the Xios app.
+ * iosc stops compositing the cursor into the output IOSurface and instead signals
+ * position + shape over the app socket (xios_notify_cursor), so a plain cursor
+ * MOVE costs one 32-byte socket write and ZERO recomposite (the P0.2/P0.4 capstone)
+ * instead of a full-screen GPU repaint. Off by default = classic composited cursor
+ * (no regression); the lead flips it on in the batched Xios rebuild that adds the
+ * overlay + typed-socket support. */
+static int iosc_app_cursor(void)
+{
+    static int v = -1;
+    if (v < 0) v = getenv("IOSC_APP_CURSOR") ? 1 : 0;
+    return v;
+}
+
+/* Signal the current pointer position + shape to the app's cursor overlay. The
+ * shape is the wp_cursor_shape id for a named cursor; a client-supplied cursor
+ * surface maps to the default arrow for now (bitmap streaming is a v2 — see the
+ * XIOS_MSG_CURSOR payload). shape 0 = hidden. */
+static void app_cursor_notify(void)
+{
+    int shape = !g_cursor_visible ? 0
+              : g_named_cursor ? (int)g_named_cursor
+              : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;   /* client surface -> default */
+    xios_notify_cursor(g_cursor_x, g_cursor_y, g_cursor_visible, shape);
 }
 
 /* Recomposite ALL mapped surfaces back-to-front onto the output, on the GPU.
@@ -3280,7 +3310,12 @@ static void handle_motion(int x, int y)
                 wl_pointer_send_motion(g_ptr[i], t, sx, sy);
         pointer_frame_client(fc);
     }
-    if (g_cursor_visible && moved) recomposite_all();
+    if (moved) {
+        if (iosc_app_cursor())
+            app_cursor_notify();          /* overlay: one socket write, no recomposite */
+        else if (g_cursor_visible)
+            recomposite_all();            /* classic: repaint to move the composited cursor */
+    }
 }
 
 /* Raise a surface to the top of ITS z-band (clicked window comes forward, but a
@@ -3690,7 +3725,8 @@ static void pointer_set_cursor(struct wl_client *c, struct wl_resource *r, uint3
     g_cursor_hot_x = hx;
     g_cursor_hot_y = hy;
     g_cursor_visible = g_cursor_surface != NULL;
-    recomposite_all();
+    if (iosc_app_cursor()) app_cursor_notify();   /* overlay: push shape/visibility, no repaint */
+    else recomposite_all();
 }
 static const struct wl_pointer_interface pointer_impl = { .set_cursor = pointer_set_cursor, .release = input_release };
 static const struct wl_keyboard_interface keyboard_impl = { .release = input_release };
