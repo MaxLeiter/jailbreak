@@ -470,6 +470,10 @@ must not become right-click for a pen (drawing) or a physical button.
         guard let p = pendingPress, inputConnected else { cancelPendingPress(); return }
         cancelPendingPress()
         longPressFired = true
+        // Physical confirmation the hold promoted (no-op without a Taptic
+        // Engine, e.g. iPad 7). Needs native-bundle's committed
+        // Sources/SystemIntegration.swift in the target; drop if you don't.
+        SystemIntegration.shared.rightClickHaptic()
         // Touch-and-hold = secondary click; GNOME/GTK open their context menus.
         sendMotion(p.x, p.y)
         sendButton(3, true, at: (p.x, p.y))
