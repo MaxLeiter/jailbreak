@@ -229,7 +229,16 @@ QCoro, KF6Screen, NetworkManagerQt, ModemManagerQt, LibKWorkspace — **deferred
   fast (re-running that stage 1 on a clone is a marker-gated no-op). The host-side
   wayland-scanner apt trio (libwayland-dev/libwayland-bin/wayland-protocols) was already
   in build-kf6.sh's prep; wayland.xml + ext-idle-notify ship in libwayland-dev /
-  wayland-protocols (verified in out/).
+  wayland-protocols (verified in out/). The PLAIN wayland-scanner is a separate trap the
+  Qt ladder proved: the W0 deb stages an arm64-iOS wayland-scanner into build_base and
+  the cross find-root prefers it over /usr/bin ("Exec format error") — KF6_CMAKE_FLAGS
+  pins `-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner` for all units.
+  Wall ledger inherited from the Qt module ladder, for units that rhyme: xpc/os_log
+  shadow headers (in-recipe rm, adopted); ObjC++ frameworks in links (inherited via
+  QT6_MODULE_CMAKE_FLAGS linker vars — and post-sed no KF6 unit compiles .mm anyway);
+  qtbase private headers gated `UNIX AND NOT MACOS` (e.g. qgenericunixthemes) are NOT
+  staged — a KF6 unit including one needs a source patch in its TABLE seds, not a
+  qtbase round.
 - **solid**: backend list pre-patched down to fakehw-only (two `-setup` seds empty the
   `elseif(APPLE)` IOKit branch — macOS IOKit+DiskArbitration, not on the iPhoneOS SDK).
   managerbase.cpp verified to gate on `BUILD_DEVICE_BACKEND_*` defines, not Q_OS ifdefs:

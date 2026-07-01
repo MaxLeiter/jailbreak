@@ -48,8 +48,18 @@ KF6_HOST_TOOLING = $(BUILD_TOOLS)/kf6-host/lib/cmake
 #   - KDE_INSTALL_USE_QT_SYS_PATHS=OFF: same leak, other switch.
 #   - BUILD_TESTING=OFF: ECM's option; also stops find_package(Qt6Test) escalation.
 #   - CMAKE_DISABLE_FIND_PACKAGE_KF6DocTools: no docbook toolchain, no doc debs.
+#   - WaylandScanner_EXECUTABLE pinned to the HOST binary (qtwayland.mk precedent,
+#     f5cf809): the W0 wayland deb stages an arm64-iOS wayland-scanner into
+#     build_base/usr/bin, and the cross find-root searches the sysroot first ->
+#     "Exec format error" at codegen. ECM's FindWaylandScanner is a plain
+#     find_program(WaylandScanner_EXECUTABLE ...), so the -D pre-set wins. Affects
+#     every protocol-codegen unit (kguiaddons/kidletime/kwayland/layer-shell-qt);
+#     harmless for units that never look the scanner up. The /usr/bin copy exists
+#     because build-kf6.sh apt-installs libwayland-bin every run. (The HOST
+#     qtwaylandscanner is the separate QT_HOST_PATH mechanism, already gated.)
 KF6_CMAKE_FLAGS = \
 	$(QT6_MODULE_CMAKE_FLAGS) \
+	-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
 	-DKF6_HOST_TOOLING=$(KF6_HOST_TOOLING) \
 	-DBUILD_TESTING=OFF \
 	-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE \
