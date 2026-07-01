@@ -1,0 +1,64 @@
+# Wire the IOSurface MetaWaylandBuffer type into meta-wayland-buffer.{c,h}.
+# The substantive code (import via ANGLE EGLImage -> Cogl texture, and the
+# iosc_iosurface protocol global) lives in src/wayland/meta-wayland-iosurface.{c,h};
+# these are just the enum value + realize-detect + attach/damage/scanout switch cases.
+# Verified compile-clean against mutter 46.0 (build-backend-check.sh). GPL-2.0+.
+#
+--- a/src/wayland/meta-wayland-buffer.h	2026-07-01 01:29:18.351008003 +0000
++++ b/src/wayland/meta-wayland-buffer.h	2026-07-01 01:29:18.370008003 +0000
+@@ -30,6 +30,7 @@
+ #include "wayland/meta-wayland-egl-stream.h"
+ #include "wayland/meta-wayland-dma-buf.h"
+ #include "wayland/meta-wayland-single-pixel-buffer.h"
++#include "backends/ios/meta-wayland-iosurface.h"
+ 
+ typedef enum _MetaWaylandBufferType
+ {
+@@ -41,6 +42,7 @@
+ #endif
+   META_WAYLAND_BUFFER_TYPE_DMA_BUF,
+   META_WAYLAND_BUFFER_TYPE_SINGLE_PIXEL,
++  META_WAYLAND_BUFFER_TYPE_IOSURFACE,
+ } MetaWaylandBufferType;
+ 
+ struct _MetaWaylandBuffer
+--- a/src/wayland/meta-wayland-buffer.c	2026-07-01 01:29:18.351008003 +0000
++++ b/src/wayland/meta-wayland-buffer.c	2026-07-01 01:29:18.371008003 +0000
+@@ -201,6 +201,12 @@
+       return TRUE;
+     }
+ 
++  if (meta_wayland_iosurface_buffer_from_buffer (buffer))
++    {
++      buffer->type = META_WAYLAND_BUFFER_TYPE_IOSURFACE;
++      return TRUE;
++    }
++
+   single_pixel_buffer = meta_wayland_single_pixel_buffer_from_buffer (buffer);
+   if (single_pixel_buffer)
+     {
+@@ -669,6 +675,8 @@
+       return meta_wayland_single_pixel_buffer_attach (buffer,
+                                                       texture,
+                                                       error);
++    case META_WAYLAND_BUFFER_TYPE_IOSURFACE:
++      return meta_wayland_iosurface_buffer_attach (buffer, texture, error);
+     case META_WAYLAND_BUFFER_TYPE_UNKNOWN:
+       g_assert_not_reached ();
+       return FALSE;
+@@ -830,6 +838,7 @@
+ #endif
+     case META_WAYLAND_BUFFER_TYPE_DMA_BUF:
+     case META_WAYLAND_BUFFER_TYPE_SINGLE_PIXEL:
++    case META_WAYLAND_BUFFER_TYPE_IOSURFACE:
+       res = TRUE;
+       break;
+     case META_WAYLAND_BUFFER_TYPE_UNKNOWN:
+@@ -930,6 +939,7 @@
+     {
+     case META_WAYLAND_BUFFER_TYPE_SHM:
+     case META_WAYLAND_BUFFER_TYPE_SINGLE_PIXEL:
++    case META_WAYLAND_BUFFER_TYPE_IOSURFACE:
+ #ifdef HAVE_WAYLAND_EGLSTREAM
+     case META_WAYLAND_BUFFER_TYPE_EGL_STREAM:
+ #endif

@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/gnome-font-viewer.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**GNOME Fonts** (font-viewer) running natively on your jailbroken device through the X11-on-iOS stack. Browse the fonts available to X11 apps and preview each face at any size.\n\nA clean pure-C GTK4 app. Pairs naturally with the `x11-fonts-sf` package, which exposes the iOS system fonts (San Francisco, SF Mono, emoji, CJK) to X11.\n\n- Preview any installed face at custom sizes\n- Inspect family, style, and metadata\n- GTK4 + libadwaita\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "46.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "234.6 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "The GNOME Project"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Applications"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "gnome-font-viewer"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 46.0  \u00b7  2026-06-30\n- First release: GNOME Fonts 46 cross-compiled for rootless iOS\n- Pure-C GTK4; pairs with x11-fonts-sf"
+        }
+      ]
+    }
+  ]
+}

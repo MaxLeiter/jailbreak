@@ -57,6 +57,11 @@ struct app_state {
     uint32_t payload_have;
 };
 
+static void set_nonblock(int fd)
+{
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+}
+
 static uint32_t now_ms(void)
 {
     struct timespec ts;
@@ -208,7 +213,7 @@ static int start_socket(const char *path)
     if (bind(fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(fd); return -1; }
     if (listen(fd, 4) < 0) { close(fd); return -1; }
     chmod(path, 0777);
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    set_nonblock(fd);
     return fd;
 }
 
@@ -216,7 +221,7 @@ static void accept_app_client(struct app_state *s)
 {
     int fd = accept(s->listen_fd, NULL, NULL);
     if (fd < 0) return;
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    set_nonblock(fd);
     if (s->client_fd >= 0) app_client_drop(s);
     s->client_fd = fd;
     fprintf(stderr, "ios-inputd: app input client connected\n");

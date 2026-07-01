@@ -81,6 +81,26 @@ if [ -f "$BBINC/EGL/eglplatform.h" ] && ! grep -q 'X11-on-iOS USE_X11' "$BBINC/E
   sed -i '1i #define USE_X11 1 /* X11-on-iOS USE_X11 */' "$BBINC/EGL/eglplatform.h"
 fi
 
+# GTK4's Wayland backend (gdk/wayland) needs three things absent on the Darwin host:
+#   - a host wayland-scanner (protocol codegen) -> libwayland-bin
+#   - the Linux input button codes (BTN_LEFT/RIGHT/STYLUS...) gdk references; the real
+#     linux/input.h drags in the linux/types.h UAPI chain, but gdk only needs the BTN_*
+#     #defines, so ship the lightweight input-event-codes.h + a 1-line input.h shim
+#   - <sys/sysmacros.h> (Linux major()/minor()); Darwin has them in <sys/types.h>
+# Plus the W0 Wayland libs (built by build-wayland.sh, shipped as debs) staged from /out
+# so wayland-client/egl + wayland-protocols + xkbcommon resolve at configure time.
+# (gtk4.mk separately seds out GTK4 meson's `if os_darwin: wayland_enabled=false` gate.)
+echo "==> staging Wayland backend prerequisites for GTK4"
+apt-get install -y --no-install-recommends libwayland-bin linux-libc-dev >/dev/null 2>&1 || true
+for d in libwayland0 libwayland-dev wayland-protocols libxkbcommon0 libxkbcommon-dev libepoll-shim0 libepoll-shim-dev; do
+  f=$(ls /out/${d}_*.deb 2>/dev/null | head -1)
+  [ -n "$f" ] && dpkg-deb -x "$f" /work/Procursus/build_base/iphoneos-arm64-rootless/1900 2>/dev/null || true
+done
+mkdir -p "$BBINC/linux" "$BBINC/sys"
+cp /usr/include/linux/input-event-codes.h "$BBINC/linux/" 2>/dev/null || true
+echo '#include <linux/input-event-codes.h>' > "$BBINC/linux/input.h"
+echo '#include <sys/types.h>' > "$BBINC/sys/sysmacros.h"
+
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 TARGETS="${TARGETS:-fribidi-package pango-package gdk-pixbuf-package atk-package gtk+3.0-package}"

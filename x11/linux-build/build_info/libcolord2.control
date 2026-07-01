@@ -1,0 +1,14 @@
+Package: libcolord2
+Version: @DEB_COLORD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: liblcms2-2, libglib2.0-0
+Section: Libraries
+Priority: optional
+Description: system service to manage device colour profiles -- runtime
+ colord is a system service that makes it easy to manage, install and generate
+ colour profiles to accurately colour-manage input and output devices.
+ .
+ This package contains the libcolord client shared library. On iOS it is built
+ client-only (no colord daemon, no udev) for the colour-profile lookups Mutter
+ and gnome-settings-daemon make.

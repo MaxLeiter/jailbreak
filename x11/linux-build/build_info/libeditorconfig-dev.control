@@ -1,0 +1,11 @@
+Package: libeditorconfig-dev
+Version: @DEB_EDITORCONFIG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://editorconfig.org/
+Depends: libeditorconfig0 (= @DEB_EDITORCONFIG_V@), libpcre2-dev
+Description: Development files for EditorConfig core
+ Headers, the unversioned shared-library symlink, the static library, and the
+ pkg-config file needed to build software against libeditorconfig.

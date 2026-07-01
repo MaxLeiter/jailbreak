@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Applications
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/gnome-text-editor
-Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0, libenchant-2-2
+Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0, libeditorconfig0
 Description: Simple GTK4 text editor for GNOME
  GNOME Text Editor is the default GTK4/libadwaita editor that replaced gedit.
  Runs as a plain X11 client under any window manager.

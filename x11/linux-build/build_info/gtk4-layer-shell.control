@@ -1,0 +1,13 @@
+Package: gtk4-layer-shell
+Version: @DEB_GTK4-LAYER-SHELL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/wmww/gtk4-layer-shell
+Depends: libgtk-4-1, libwayland0, libglib2.0-0
+Description: Layer Shell Wayland protocol for GTK4
+ gtk4-layer-shell lets GTK4 windows use the zwlr_layer_surface_v1 protocol to
+ become anchored desktop components (panels, launchers, overviews, backgrounds,
+ lock surfaces). Used by the iosc desktop shell for its toolkit-based chrome.
+ This package contains the shared library, headers, and pkg-config file.

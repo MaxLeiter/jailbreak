@@ -592,9 +592,11 @@ def main():
         b = open(os.path.join(REPO, name), "rb").read()
         return name, len(b), hashlib.md5(b).hexdigest(), hashlib.sha256(b).hexdigest()
     idx = [h("Packages"), h("Packages.gz")]
+    import email.utils
     rel = [f"Origin: {ORIGIN}", f"Label: {ORIGIN}", "Suite: stable", "Version: 1.0",
            "Codename: ios", f"Architectures: {ARCH}", "Components: main",
-           f"Description: {DESCRIPTION}", "MD5Sum:"]
+           f"Description: {DESCRIPTION}",
+           f"Date: {email.utils.formatdate(usegmt=True)}", "MD5Sum:"]
     rel += [f" {m} {s} {n}" for n, s, m, _ in idx]
     rel.append("SHA256:")
     rel += [f" {sh} {s} {n}" for n, s, _, sh in idx]

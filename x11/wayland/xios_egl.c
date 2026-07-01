@@ -15,8 +15,6 @@
 #include <GLES2/gl2ext.h>
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #ifndef EGL_PLATFORM_ANGLE_ANGLE
 #define EGL_PLATFORM_ANGLE_ANGLE            0x3202

@@ -11,10 +11,23 @@ export HOME=/var/root
 command -v xios_apply_display_profile >/dev/null 2>&1 && xios_apply_display_profile
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
 
+FBDIR=/var/jb/tmp
 DISP="${DISP:-:3}"
 # iPad 7 native: 2160x1620 (4:3, same aspect as the screen) -> app displays 1:1, crisp.
 W="${W:-2160}"; H="${H:-1620}"; DPI="${DPI:-264}"
-FBDIR=/var/jb/tmp
+apply_app_display_request() {
+  REQ="$FBDIR/xios-request.json"
+  [ -r "$REQ" ] || return 0
+  json_get() {
+    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p; s/.*\"$1\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$REQ" | head -n 1
+  }
+  rw="$(json_get width)"; rh="$(json_get height)"; rdpi="$(json_get dpi)"; rdisp="$(json_get display)"
+  case "$rw" in ''|*[!0-9]*) ;; *) W="$rw";; esac
+  case "$rh" in ''|*[!0-9]*) ;; *) H="$rh";; esac
+  case "$rdpi" in ''|*[!0-9]*) ;; *) DPI="$rdpi";; esac
+  case "$rdisp" in :*) DISP="$rdisp";; esac
+}
+apply_app_display_request
 alive(){ ps ax 2>/dev/null | grep -v grep | grep -q "$1"; }
 
 echo "==> starting Xvfb $DISP (${W}x${H}x24) -> $FBDIR/Xvfb_screen0"

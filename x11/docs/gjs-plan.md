@@ -18,6 +18,8 @@ and all gjs-based apps):
 |---|---|---|
 | Runtime **typelibs** (gi) | 🔴 "qemu can't run Mach-O dumpers" | ✅ **Done.** Built gobject-introspection 1.78 *natively on the iPad* and generated + runtime-loaded GLib/GObject/Gio typelibs. |
 | **mozjs115** (gjs JS engine) | 🔴 hard cross-compile | ✅ **Built + runs on-device.** JIT-less mozjs115 cross-compiled Linux→iOS; `JS_Init`/`JS_NewContext`/eval all green on the A10 (last blocker — the helper-thread stack-size EINVAL — fixed, patch 0004). |
+| **gjs 1.78** | ⏳ pending after mozjs + GI | ✅ **Built, packaged, installed, and smoke-tested on-device.** `gjs --version`, plain JS, and `imports.gi.GLib`/`GObject`/`Gio` all run on the iPad. `GjsPrivate-1.0.typelib` is generated on-device and shipped inside the `gjs` deb. |
+| **GTK4 stack typelibs + a gjs GTK4 app** | ⏳ "scan once gtk4 installed" | ✅ **Done.** Graphene/HarfBuzz/GdkPixbuf/Pango/Gdk-4.0/Gsk-4.0/Gtk-4.0 scanned natively on-device (`gir-build-ondevice.sh`); a gjs GTK4 app builds a window and renders it (`imports.gi.Gtk == 4.14.5`). See "GTK4 stack typelibs" below. |
 
 The decisive reframe: **the device is a full arm64 Darwin machine.** Procursus `apt` ships a
 native toolchain — `clang-16`, `odcctools`+`ld64`, `pkg-config`, `python3.9`, `meson`, `ninja`,
@@ -25,8 +27,10 @@ native toolchain — `clang-16`, `odcctools`+`ld64`, `pkg-config`, `python3.9`, 
 runs is native arm64 Mach-O. qemu was never the right tool — we don't emulate, we run on the
 real thing. This collapses the harder of the two gjs gates.
 
-Net effect: the gjs/GNOME-Shell critical path is now **mozjs115 only** (plus Mutter-on-GL and
-the logind stub, which are Shell-specific and tracked in gnome-plan #3/#4).
+Net effect: the gjs/GNOME-Shell language/runtime base is now green, and the **GTK4 app stack on
+top of it is proven** (typelibs scanned on-device, a gjs GTK4 window renders). The remaining
+Shell-specific work is the Soup + Mutter (Meta/Clutter/Cogl/St) typelibs, Mutter-on-GL, and the
+logind stub, tracked in gnome-plan #3/#4.
 
 ---
 
@@ -129,13 +133,58 @@ time); defer until the on-device pass proves annoying to reproduce.
 > exec) to produce an exact in-tree `.vapi`. Not needed now (vendoring works), but the GIRs are
 > available if they want to switch off the vendored shortcut.
 
+### GTK4 stack typelibs — SCANNED ON-DEVICE (2026-06-30)
+
+The Gtk/Gdk/Pango typelibs are **done**. Generated natively on the iPad and all load in gjs:
+
+```
+Graphene-1.0, HarfBuzz-0.0, GdkPixbuf-2.0 (+GdkPixdata),
+Pango-1.0/PangoCairo-1.0/PangoFc-1.0/PangoFT2-1.0/PangoOT-1.0,
+Gdk-4.0, GdkX11-4.0, Gsk-4.0, Gtk-4.0   →  imports.gi.Gtk == 4.14.5 in gjs
+```
+
+**Method (the most-native path; reinforces the "native + fast" north star).** Rather than
+hand-write g-ir-scanner's enormous per-namespace invocations, each library's *own meson build*
+drives g-ir-scanner — but run **natively on the device** (`-Dintrospection=enabled`). The dumper
+meson compiles is native arm64 Mach-O and runs natively against the real installed ABI: no cross,
+no qemu, no ssh dumper-shuttle. Captured executably in **`linux-build/gir-build-ondevice.sh`**
+(`<source.tar> [meson -D opts...]`, optional `GIR_PREBUILD=` source patch). It builds only the
+`.typelib` ninja targets (skips tests/tools/demos and unrelated libs e.g. hb-subset), installs
+the `.gir`/`.typelib` into the device search dirs, and the chain validates in gjs.
+
+*Device prep beyond the GI bootstrap (one-time, all reproducible):*
+- Install the GTK-stack `-dev` debs + `apt-get install -f` (pulls freetype/png/pixman/x11/uuid/…).
+- **Merge the full target pkg-config set** onto the device (`cp -n` from the Docker build sysroot
+  `build_base/iphoneos-arm64-rootless/.../usr/{lib,share}/pkgconfig`, 87→197 .pc). The per-deb
+  headers don't carry every transitive `.pc`; cairo/gtk4 have long `Requires.private` chains.
+- `zlib.pc` shim (iOS ships libz in the dyld cache but no `.pc`; freetype2.pc Requires it) — the
+  script writes this idempotently.
+- Copy `EGL/ KHR/ GL/` headers + `X11/Xlib-xcb.h`, `X11/extensions/{composite,Xcomposite}.h` from
+  the sysroot (libepoxy-dev/gdk-x11 need them; the device debs omitted them).
+- pango patched (`GIR_PREBUILD`) to make `appleframeworks` non-required so CoreText stays off and
+  it falls back to fontconfig/freetype — **matching how the shipped libpango deb was built** (a
+  typelib must describe the installed lib; CoreText is only worth enabling under a future native
+  Quartz/Metal GTK backend, not the X11+cairo path).
+
+**Proof — a real gjs GTK4 app on the iPad.** `imports.gi.Gtk`, builds an `ApplicationWindow` →
+`Box` → labels + button, `present()`s it on an X display, runs the main loop, `app.run() == 0`.
+Rendered window captured from the framebuffer (`scratchpad/gtk4-shot.png`: "Hello from gjs on
+iOS / GTK 4.14, typelibs scanned on-device", Adwaita dark, cairo renderer). Note: the running
+**Xios.app is iOS-sandboxed** (its `/tmp/.X11-unix` socket is in its app container, unreachable
+from an SSH/root context — the global `/tmp/.X11-unix/X5` is a stale leftover), so the proof ran
+against a root-reachable **Xvfb :8**. Wiring gjs/GTK clients to the live Xios surface is a
+separate display-plumbing item (same as XFCE-on-Xios via `bin/xfce-up.sh`).
+
 ### What still needs doing for the Shell's typelibs
 
-gnome-shell consumes typelibs for **Gtk-4.0, Gdk-4.0, Gsk-4.0, Pango, Soup, and Mutter's own
-Meta/Clutter/Cogl/Cally/St**. The Mutter ones can only be scanned **after** mutter builds
-(Shell-only, gated on Blocker #1+#3). The Gtk/Gdk/Pango ones can be scanned as soon as those
-libs are installed on the device — a good incremental task that also benefits any future
-gjs-based *app* (not just the Shell).
+gnome-shell additionally needs **Soup** and **Mutter's own Meta/Clutter/Cogl/Cally/St**. The
+Mutter ones can only be scanned **after** mutter builds (Shell-only, gated on Blocker #1+#3).
+**Adw-1** (libadwaita 1.5.0) is **DONE** — scanned on-device via `gir-build-ondevice.sh` (3 darwin
+patches from libadwaita.mk passed as `GIR_PREBUILD`: neutralise the macOS settings backend in
+`src/meson.build` + the `__APPLE__` gates in `adw-settings*`; needed `libappstream-dev` configured
+first). A gjs **AdwApplicationWindow + AdwHeaderBar + AdwStatusPage** renders on-device
+(`scratchpad/adw-shot.png`). The modern GNOME app surface is now reachable in gjs. Remaining for the
+Shell: **Soup** + **Mutter** (Meta/Clutter/Cogl/St, gated on the mutter build).
 
 ---
 
@@ -293,26 +342,81 @@ target (no compile), which surfaces 90% of the host/target tool problems cheaply
 
 **G0 — introspection bootstrap + packaged debs (DONE).**
 Built g-i on-device and packaged 5 installable debs (`gi-package.sh`, in `linux-build/out/`),
-dpkg-installed + re-validated from the installed prefix (see "Packaged debs" below). Remaining:
-a `scan` pass for Gtk-4.0/Gdk-4.0/Pango once gtk4 is installed on-device (gated on gtk-builder's
-gtk4-on-device green) — useful to *any* future gjs app, independent of the Shell.
+dpkg-installed + re-validated from the installed prefix (see "Packaged debs" below). The
+**GTK4-stack scan is now also DONE** (Graphene/HarfBuzz/GdkPixbuf/Pango/Gdk-4.0/Gsk-4.0/Gtk-4.0,
+via `gir-build-ondevice.sh`) — see "GTK4 stack typelibs" above.
 
 **G1 — mozjs115 (gated).** De-risk `mach configure` for the cross target, then the full JIT-less
 build → `libmozjs-115` debs. Longest pole.
 
-**G2 — gjs 1.78.** Needs mozjs115 + glib + the typelibs from G0 + `cairo`. meson cross-build
-(`-Dprofiler=false`, JIT-less mozjs). Deliverable: run a hello-world gjs script that does
-`imports.gi.GLib`/`imports.gi.Gio` against the G0 typelibs **on-device**. This is the moment the
-whole gjs path is proven end-to-end.
+**G2 — gjs 1.78 (DONE).** Built via `linux-build/build-gjs-manual.sh` against the staged
+mozjs115/GI artifacts, packaged as `libgjs0`, `gjs`, and `libgjs-dev`, and installed on-device.
+The `libgjs0` package is relinked to the `libgtkintl` shim for the `g_libintl_*` imports.
+`GjsPrivate-1.0.typelib` is generated on-device and packed under
+`/var/jb/usr/lib/gjs/girepository-1.0`. Runtime smoke:
+`gjs --version`, `print(42)`, and `imports.gi.GLib`/`GObject`/`Gio` all pass on the iPad.
 
-**G3 — gnome-shell (Shell milestone, after gjs + mutter).** Build **mutter** (`-Dx11=true`,
-GNOME ≤48) on the software/ANGLE GL path (gnome-plan #3), scan its Meta/Clutter/Cogl/St typelibs
-on-device (G0 mechanism), stub `org.freedesktop.login1` (gnome-plan #4, coordinate with
-gnome-track's dconf), then `gnome-shell --x11`. High risk; explicitly a research milestone.
+**G3 — gnome-shell (Shell milestone, after gjs + mutter).** Scan Mutter's
+Meta/Clutter/Cogl/St typelibs (G0 mechanism), stub `org.freedesktop.login1` (gnome-plan #4),
+then `gnome-shell`. High risk; explicitly a research milestone. **Soup-3.0 DONE** (gjs `Session`
++ `Message` validated). Scoping (2026-06-30): mutter-46.0 source fetched; deps mostly present
+(`wayland-server` 1.23, `wayland-protocols` 1.38, `xkbcommon` 1.7, `gsettings-desktop-schemas`
+46.1, `gl`/`glesv2` 21.0.2); missing `egl.pc` + `json-glib.pc` (+ the large X dep set if x11).
+
+> **Hardware/GPU reality for the Shell (decisive).** A *hardware* gnome-shell cannot run on
+> Mutter-as-X11-WM. Mutter-on-X11 GPU-composites by binding redirected client **X11 pixmaps**
+> as GL textures (`texture-from-pixmap`), which needs **hardware DRI inside the X server** —
+> `Xios` is a userspace **software** X server on iOS, so it has none, and even mesa can only do
+> *software* GLX against it. **ANGLE can't substitute**: ANGLE-iOS is Metal-only with no X11
+> platform (can't import X11 pixmaps) and its output is a `CAMetalLayer`/IOSurface, not an X11
+> drawable. So on this stack **GPU compositing is only reachable via Wayland** (clients hand the
+> compositor IOSurface/dmabuf buffers; compositor renders to the display IOSurface via ANGLE/
+> Metal) — i.e. the **iosc** architecture. A *hardware* gnome-shell therefore = **Mutter running
+> as a Wayland compositor with an iOS/IOSurface backend** (a new `MetaBackend` over iosc's
+> ANGLE→Metal→IOSurface output + buffer-import), NOT Mutter-X11 (software-only, llvmpipe).
+> The `Meta/Clutter/Cogl/St` **typelibs are backend-agnostic**, so they can be generated (Mutter
+> linked against ANGLE `libEGL`/`libGLESv2` for symbols) to unblock gjs shell code-loading
+> *independent* of which display backend wins — coordinate the backend with the iosc track.
+
+### Mutter 46 CROSS-BUILT for iOS (2026-06-30) — `libmutter`/Cogl/Clutter/Mtk all link
+
+**Mutter 46 — a Linux compositor — cross-compiles + links to iOS arm64 Mach-O**, fully off-device
+in Docker (`build-mutter.sh` + `recipes/mutter.mk`). Produced `libmutter-14`, `libmutter-cogl-14`,
+`libmutter-cogl-pango-14`, `libmutter-clutter-14`, `libmutter-mtk-14`. Built as a **Wayland**
+compositor (`-Dwayland=true`, native/KMS backend OFF, `-Dintrospection=false` — the typelibs are
+scanned ON-DEVICE next, Design A). All deps real and reproducible:
+
+- **Built/bumped 7 real deps:** lcms2, libxcomposite, xkbcommon-x11, json-glib, **real libcolord**
+  (client-only: `-Dpnp_ids` non-udev path + guarded include + dropped colorhug/data — NOT a stub),
+  **pixman 0.42.2** (meson; SIMD asm disabled for clang), **libXfixes 6.0.1** (mutter needs ≥6).
+- **Three links-only shims** for Linux-kernel subsystems with no iOS path (clearly marked, dmabuf/
+  input/session inert → IOSurface/logind-stub later): **libdrm** (real headers + stubbed `drm*`),
+  **libei/libeis** (real headers + stubbed `eis_*`), and stub `<linux/dma-buf.h>` + `<systemd/
+  sd-login.h>` headers. EGL/GLES staged from ANGLE; `eglmesaext.h` from mesa src.
+- **Source/config patches** for the untested **wayland + x11 + no-native** combo: `meta-context-
+  main.c` bodiless-else fix + `sd_pid_get_user_unit` guarded to `HAVE_LIBSYSTEMD` (falls back to
+  MANDATORY X11 policy), `libei/libeis`/`libdrm`/`colord` daemon deps made non-required,
+  `-DSOCK_CLOEXEC=0` for Darwin sockets.
+- **Cross-build viability proven:** mutter has **zero compile-and-run meson checks** and all codegen
+  uses host tools (glib-mkenums/gdbus-codegen/wayland-scanner), so the off-device cross-build needs
+  no target-binary execution (`exe_wrapper='/bin/true'` only satisfies the meson sanity check).
+
+**Next (on-device, coordinated with iosc):** install the mutter debs + `g-ir-scanner` →
+`Meta-14`/`Clutter-14`/`Cogl-14`/`Mtk-14` typelibs → `imports.gi.Meta` in gjs. The dmabuf→IOSurface
+buffer path (the inert shimmed bits) is the **MetaBackendIOS** running-compositor effort.
 
 **Off-critical-path win unlocked now:** with typelibs working, **gjs-based *apps*** (not just the
 Shell) become reachable once gjs (G2) lands — e.g. simple GJS GTK4 programs — without ever
-touching mutter/logind. Good intermediate proof that the runtime is real.
+touching mutter/logind. Good intermediate proof that the runtime is real. **DONE** (GTK4 stack
+typelibs + a rendered gjs GTK4 window, 2026-06-30).
+
+**Display direction — converge on `iosc` (Wayland), not X11.** Per the native+fast north star,
+gjs/GTK apps should ultimately display through the **`iosc`** Wayland compositor (zero-copy
+IOSurface; see `x11/wayland`, the wayland-m1-compositor track) rather than the software X11/Xvfb
+path used for today's proof. The typelib work is backend-agnostic (Gtk-4.0.gir is identical), so
+keep generating typelibs now (Adw-1 next); the display convergence is a separate step — build/enable
+GTK4's **Wayland backend** and point `GDK_BACKEND=wayland` at iosc — coordinated with the Wayland
+track (complementary, not overlapping: gjs = scriptable GNOME/apps, Wayland = the GPU display).
 
 ---
 

@@ -365,10 +365,7 @@ final class XScreenView: UIView {
             iosConnectStarted = false
         }
         if inputStateChanged {
-            xinput_close()
-            iosc_input_close()
-            iosc_clipboard_close()
-            inputConnected = false
+            closeInput()
         }
         return true
     }
@@ -565,11 +562,16 @@ final class XScreenView: UIView {
         writeStatus()
     }
 
-    private func reconnectInput() {
+    /// Tear down whichever input backend is connected (XTEST or iosc).
+    private func closeInput() {
         xinput_close()
         iosc_input_close()
         iosc_clipboard_close()
         inputConnected = false
+    }
+
+    private func reconnectInput() {
+        closeInput()
         connectInput()
         writeStatus()
     }
@@ -1047,7 +1049,7 @@ final class XScreenView: UIView {
 
     /// Drop every connection tied to the current display so we can load another.
     private func teardownConnections() {
-        xinput_close(); iosc_input_close(); iosc_clipboard_close(); inputConnected = false
+        closeInput()
         if let c = xconn { xsurface_close(c); xconn = nil }
         iosTexture = nil; usingIOSurface = false; iosConnectStarted = false; needsPresent = false
         if let m = mapped { munmap(m, mappedLen); mapped = nil; mappedLen = 0 }
@@ -1167,7 +1169,10 @@ final class XScreenView: UIView {
 
     @objc private func openPicker() { presentPicker(discoverDisplays()) }
 
-    private func presentPicker(_ displays: [XDisplayInfo]) {
+    /// Build the dimmed full-screen overlay with a tap-to-dismiss backdrop and an
+    /// empty centered card. Shared by the display picker and tools sheets; sets
+    /// `pickerOverlay` and returns both views to lay out.
+    private func presentModalCard() -> (overlay: UIView, card: UIView) {
         dismissPicker()
         let overlay = UIView(frame: bounds)
         overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -1188,6 +1193,11 @@ final class XScreenView: UIView {
         card.backgroundColor = UIColor(white: 0.12, alpha: 1)
         card.layer.cornerRadius = 16
         overlay.addSubview(card)
+        return (overlay, card)
+    }
+
+    private func presentPicker(_ displays: [XDisplayInfo]) {
+        let (overlay, card) = presentModalCard()
 
         let stack = UIStackView()
         stack.axis = .vertical
@@ -1286,25 +1296,7 @@ final class XScreenView: UIView {
     }
 
     private func presentTools() {
-        dismissPicker()
-
-        let overlay = UIView(frame: bounds)
-        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        addSubview(overlay)
-        pickerOverlay = overlay
-
-        let backdrop = UIButton(type: .custom)
-        backdrop.frame = overlay.bounds
-        backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.6)
-        backdrop.addAction(UIAction { [weak self] _ in self?.dismissPicker() }, for: .touchUpInside)
-        overlay.addSubview(backdrop)
-
-        let card = UIView()
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.backgroundColor = UIColor(white: 0.12, alpha: 1)
-        card.layer.cornerRadius = 16
-        overlay.addSubview(card)
+        let (overlay, card) = presentModalCard()
 
         let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -1660,11 +1652,10 @@ extension XScreenView: UIKeyInput {
         }
         for ch in text {
             if let ks = keysym(for: ch) {
-                let useCtrl = modCtrl
-                let useAlt = modAlt
-                let useShift = modShift
-                sendKeysym(ks, ctrl: useCtrl, alt: useAlt, shift: useShift)
-                if useCtrl || useAlt || useShift { clearStickyMods() }
+                // Sticky mods apply to the first typed key, then auto-clear
+                // (clearStickyMods() is a no-op once none are armed).
+                sendKeysym(ks, ctrl: modCtrl, alt: modAlt, shift: modShift)
+                clearStickyMods()
             }
         }
         clearStickyMods()

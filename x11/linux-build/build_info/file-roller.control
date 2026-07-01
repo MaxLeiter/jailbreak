@@ -1,0 +1,13 @@
+Package: file-roller
+Version: @DEB_FILE-ROLLER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Applications
+Priority: optional
+Homepage: https://apps.gnome.org/FileRoller/
+Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libarchive13, libjson-glib-1.0-0
+Recommends: tar, gzip, xz, bzip2, unzip, zip
+Description: File Roller (GNOME archive manager, GTK4)
+ File Roller creates and extracts archives such as tar, gzip, xz, zip, 7z and
+ more. The archive engine is libarchive; for formats libarchive does not cover
+ it shells out to the matching command-line tools. GTK4/libadwaita, pure C.

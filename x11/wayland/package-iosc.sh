@@ -1,0 +1,103 @@
+#!/bin/bash
+# Package the iosc Wayland compositor as an installable rootless-iOS deb, so the
+# GPU Wayland desktop ships like the rest of the stack. Host-side: stage the tree
+# and ldid-sign the binaries on macOS, then assemble the .deb with the container's
+# dpkg-deb (chowned root:root). Same pipeline as ports/angle/package-angle-es3.sh.
+#
+#   bash x11/wayland/package-iosc.sh
+#
+# Inputs (built by build-iosc.sh; sign happens here, not in build-iosc.sh):
+#   x11/wayland/out/iosc          the compositor (signed with the GPU set below)
+#   x11/wayland/out/iosc-client   wl_shm self-test client (ad-hoc signed)
+#   x11/wayland/{run-iosc.sh,run-kgx.sh,iosc-gl-ent.xml}
+# Output: iosc_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
+set -euo pipefail
+
+WAYLAND=/Users/max/Documents/jailbreak/x11/wayland
+OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
+REPODEBS=/Users/max/Documents/jailbreak/repo/debs
+STAGEROOT=/private/tmp/iosc-deb
+STAGE="$STAGEROOT/iosc"
+VER="0.8.0"
+ARCH="iphoneos-arm64"
+DEB="iosc_${VER}_${ARCH}.deb"
+IMG="procursus-xbuild:bookworm-arm64"
+
+BIN="$STAGE/var/jb/usr/local/bin"
+SHARE="$STAGE/var/jb/usr/local/share/iosc"
+
+rm -rf "$STAGEROOT"
+mkdir -p "$BIN" "$SHARE" "$STAGE/DEBIAN"
+
+# 1. compositor binary -> /var/jb/usr/local/bin, signed with the GPU entitlement
+#    set (AGX/IOGPU/IOSurface IOKit + task_for_pid, NO no-container). Without these
+#    iosc cannot reach the GPU and falls back to the CPU compositor; see iosc-gl-ent.xml.
+cp "$WAYLAND/out/iosc" "$BIN/iosc"
+chmod 0755 "$BIN/iosc"
+ldid -S"$WAYLAND/iosc-gl-ent.xml" "$BIN/iosc"
+
+# 2. wl_shm self-test client (pure software; ad-hoc sign, no entitlements needed).
+#    Lets run-iosc.sh paint a test window with no GNOME app installed.
+cp "$WAYLAND/out/iosc-client" "$BIN/iosc-client"
+chmod 0755 "$BIN/iosc-client"
+ldid -S "$BIN/iosc-client"
+
+# 3. orchestration scripts (run on-device as root; reference $BIN/iosc by abs path)
+cp "$WAYLAND/run-iosc.sh" "$BIN/run-iosc.sh"
+cp "$WAYLAND/run-kgx.sh"  "$BIN/run-kgx.sh"
+chmod 0755 "$BIN/run-iosc.sh" "$BIN/run-kgx.sh"
+
+# 4. the GPU entitlement set, for reference / re-signing the binary if ever needed
+cp "$WAYLAND/iosc-gl-ent.xml" "$SHARE/iosc-gl-ent.xml"
+chmod 0644 "$SHARE/iosc-gl-ent.xml"
+
+INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
+
+# 5. control
+cat > "$STAGE/DEBIAN/control" <<EOF
+Package: iosc
+Name: iosc (Wayland compositor)
+Version: ${VER}
+Architecture: ${ARCH}
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: angle, libwayland0, libxkbcommon0
+Recommends: gnome-console
+Section: X11
+Priority: optional
+Installed-Size: ${INSTKB}
+Description: GPU-accelerated Wayland compositor for the Xios desktop
+ iosc is a small clean-room Wayland compositor (libwayland-server) for the Xios
+ desktop on rootless iOS. It composites Wayland clients on the Apple GPU through
+ ANGLE and Metal and hands the finished frame to the Xios app to display, with no
+ per-frame copying. It is the GPU counterpart to the Xios X11 server: where Xios
+ draws X clients in software, iosc runs Wayland clients such as GTK4 and GNOME apps
+ on the A10 GPU.
+ .
+ It advertises the protocols modern toolkits expect (xdg-shell windows and popups,
+ subsurfaces, viewporter, fractional-scale, and clipboard via wl_data_device),
+ stacks multiple windows with focus-on-tap, and routes touch and keyboard from the
+ Xios app into the focused window so you can tap and type into a live terminal.
+ .
+ Needs the Xios app installed (the on-screen display front end) and at least one
+ Wayland client to be useful. Install the gnome-console package and run run-kgx.sh
+ for a GNOME terminal, or run run-iosc.sh for a dependency-free paint self-test.
+ The compositor is signed with the GPU entitlement set (a copy is kept under
+ /var/jb/usr/local/share/iosc). Built for iPadOS/iOS rootless (palera1n/Dopamine).
+EOF
+
+echo "=== staged tree ==="
+find "$STAGE" -type f | sed "s#$STAGE##" | sort
+echo "installed=${INSTKB}KB"
+echo "=== iosc entitlements (should be the GPU set) ==="
+ldid -e "$BIN/iosc" | grep -E "iokit-user-client-class|AGXDevice|IOGPU|no-container|task_for_pid" | sed 's/^/   /' || true
+
+# 6. assemble the deb via the container's dpkg-deb (root-owned, zstd like the rest).
+#    The image's ENTRYPOINT is /bin/bash, so pass the script with -c directly.
+docker run --rm --platform linux/arm64 -v "$STAGEROOT":/stage "$IMG" \
+  -c "chown -R 0:0 /stage/iosc && dpkg-deb -Zzstd --build /stage/iosc /stage/${DEB}"
+
+cp "$STAGEROOT/${DEB}" "$OUTDIR/${DEB}"
+cp "$STAGEROOT/${DEB}" "$REPODEBS/${DEB}"
+echo "=== DEB BUILT ==="
+ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"

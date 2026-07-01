@@ -1,0 +1,17 @@
+Package: libmutter-14-0
+Version: @DEB_MUTTER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libglib2.0-0, libgtk-4-1, libgraphene-1.0-0, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0, libjson-glib-1.0-0, liblcms2-2, libcolord2, libxkbcommon0, libpixman-1-0, libwayland-server0
+Section: Libraries
+Priority: optional
+Description: window manager library from the Mutter window manager
+ Mutter is a window and compositing manager based on Clutter and bundling its
+ own copies of Cogl (a GL/GLES abstraction) and Clutter (a scene graph). It is
+ the GNOME Shell compositor.
+ .
+ This package contains the shared libraries libmutter-14, libmutter-clutter-14,
+ libmutter-cogl-14, libmutter-cogl-pango-14 and libmutter-mtk-14, plus Mutter's
+ plugin and typelib data directory. This build targets iOS as a Wayland
+ compositor over ANGLE/EGL (no native KMS/DRM/logind backend); the IOSurface
+ display backend is provided separately.

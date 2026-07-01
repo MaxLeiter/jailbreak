@@ -1,0 +1,13 @@
+Package: libcolord-dev
+Version: @DEB_COLORD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libcolord2 (= @DEB_COLORD_V@), liblcms2-dev, libglib2.0-dev
+Section: Development
+Priority: optional
+Description: system service to manage device colour profiles -- development files
+ colord is a system service that makes it easy to manage, install and generate
+ colour profiles to accurately colour-manage input and output devices.
+ .
+ This package contains the development headers and pkg-config file for the
+ libcolord client library found in libcolord2.

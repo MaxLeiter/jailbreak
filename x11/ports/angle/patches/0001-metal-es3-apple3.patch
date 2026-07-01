@@ -1,0 +1,21 @@
+diff --git a/src/libANGLE/renderer/metal/DisplayMtl.mm b/src/libANGLE/renderer/metal/DisplayMtl.mm
+index ac0d8a3425..29d4bf3b9f 100644
+--- a/src/libANGLE/renderer/metal/DisplayMtl.mm
++++ b/src/libANGLE/renderer/metal/DisplayMtl.mm
+@@ -435,7 +435,15 @@ gl::Version DisplayMtl::getMaxSupportedESVersion() const
+     // FIXME: None of the feature conditions are checked for simulator support.
+     return gl::Version(3, 0);
+ #else
+-    if (supportsEitherGPUFamily(4, 1))
++    // X11-on-iOS / GTK4-on-GPU patch: upstream gates ES3 on Apple GPU Family 4
++    // (A11+). The A10 (iPad7,x) is Apple Family 3, so stock ANGLE caps it at ES2,
++    // which (a) makes generateConfigs() omit EGL_OPENGL_ES3_BIT from
++    // renderableType and (b) makes ValidateCreateContext reject ES3 contexts.
++    // GDK 4.14's GL renderer needs an ES3-capable config + ES3 context, so it
++    // falls back to cairo. The Metal ES3 path works on Apple Family 3 for the
++    // feature subset GSK uses (UBOs, #version 300 es, instancing), so admit
++    // Apple Family 3 to the ES3 tier. (kMaxSupportedGLVersion is 3.0.)
++    if (supportsEitherGPUFamily(3, 1))
+     {
+         return mtl::kMaxSupportedGLVersion;
+     }

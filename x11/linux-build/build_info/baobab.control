@@ -1,0 +1,12 @@
+Package: baobab
+Version: @DEB_BAOBAB_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Applications
+Priority: optional
+Homepage: https://apps.gnome.org/DiskUsageAnalyzer/
+Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0
+Description: GNOME Disk Usage Analyzer (Baobab, GTK4)
+ Baobab scans folders and whole filesystems and shows where space goes as a
+ ring chart and treemap, so large directories are easy to find. GTK4/libadwaita,
+ written in Vala. Runs as a plain X11 client under any window manager.

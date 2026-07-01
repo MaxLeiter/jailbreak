@@ -42,7 +42,6 @@ static int      opt_kbd    = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
 static uint32_t opt_color  = 0x00008080;   /* teal */
 
 static int cur_w = 0, cur_h = 0;      /* size from the configure event */
-static int painted = 0;
 
 static int create_shm_file(size_t size)
 {
@@ -103,7 +102,6 @@ static void paint(void)
     wl_surface_attach(surface, buf, 0, 0);
     wl_surface_damage(surface, 0, 0, w, h);
     wl_surface_commit(surface);
-    painted = 1;
     fprintf(stderr, "client: painted layer buffer %dx%d color=0x%06x\n", w, h, opt_color);
 }
 
@@ -163,7 +161,6 @@ int main(int argc, char **argv)
                     "entering dispatch\n", opt_layer, opt_anchor, opt_h, opt_excl, opt_kbd);
     while (wl_display_dispatch(dpy) != -1)
         ;
-    (void)painted;
     wl_display_disconnect(dpy);
     return 0;
 }

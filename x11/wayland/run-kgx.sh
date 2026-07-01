@@ -65,10 +65,10 @@ nohup bash -c "
 KGXPID=$!
 sleep 9
 
-echo "==> kgx exit code (EMPTY = still running = good):"; cat "$TMP/kgx.exit" 2>/dev/null | sed 's/^/   /'
+echo "==> kgx exit code (EMPTY = still running = good):"; sed 's/^/   /' "$TMP/kgx.exit" 2>/dev/null
 echo "==> iosc: kgx toplevel mapped?"; grep -E "toplevel title|toplevel app_id|surface mapped" "$TMP/iosc.log" | tail -4 | sed 's/^/   /'
 echo "==> iosc: window painting (latest recomposite):"; grep "recomposited 1" "$TMP/iosc.log" | tail -1 | sed 's/^/   /'
-echo "==> Xios app present:"; cat "$TMP/xios-status.txt" 2>/dev/null | sed 's/^/   /'
+echo "==> Xios app present:"; sed 's/^/   /' "$TMP/xios-status.txt" 2>/dev/null
 echo "==> process tree (dbus -> kgx -> shell child):"
 ps -ax -o pid,ppid,command | grep -v grep | grep -E "dbus-daemon|/usr/bin/kgx|/usr/bin/bash" | sed 's/^/   /'
 echo "==> iosc running: $(kill -0 "$ICPID" 2>/dev/null && echo yes || echo NO)"

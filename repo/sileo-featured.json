@@ -9,14 +9,29 @@
       "url": "https://repo.maxleiter.com/banners/angle.png"
     },
     {
+      "title": "baobab",
+      "package": "baobab",
+      "url": "https://repo.maxleiter.com/banners/baobab.png"
+    },
+    {
       "title": "AutoLockPicker",
       "package": "com.max.autolockpicker",
       "url": "https://repo.maxleiter.com/banners/com.max.autolockpicker.png"
     },
     {
+      "title": "d-spy",
+      "package": "d-spy",
+      "url": "https://repo.maxleiter.com/banners/d-spy.png"
+    },
+    {
       "title": "dbus",
       "package": "dbus",
       "url": "https://repo.maxleiter.com/banners/dbus.png"
+    },
+    {
+      "title": "file-roller",
+      "package": "file-roller",
+      "url": "https://repo.maxleiter.com/banners/file-roller.png"
     },
     {
       "title": "fontconfig-config",
@@ -44,9 +59,24 @@
       "url": "https://repo.maxleiter.com/banners/gjs.png"
     },
     {
+      "title": "gnome-calculator",
+      "package": "gnome-calculator",
+      "url": "https://repo.maxleiter.com/banners/gnome-calculator.png"
+    },
+    {
       "title": "gnome-console",
       "package": "gnome-console",
       "url": "https://repo.maxleiter.com/banners/gnome-console.png"
+    },
+    {
+      "title": "gnome-font-viewer",
+      "package": "gnome-font-viewer",
+      "url": "https://repo.maxleiter.com/banners/gnome-font-viewer.png"
+    },
+    {
+      "title": "gnome-text-editor",
+      "package": "gnome-text-editor",
+      "url": "https://repo.maxleiter.com/banners/gnome-text-editor.png"
     },
     {
       "title": "gobject-introspection",
@@ -69,6 +99,26 @@
       "url": "https://repo.maxleiter.com/banners/gtk-4-bin.png"
     },
     {
+      "title": "gtk4-layer-shell",
+      "package": "gtk4-layer-shell",
+      "url": "https://repo.maxleiter.com/banners/gtk4-layer-shell.png"
+    },
+    {
+      "title": "hitori",
+      "package": "hitori",
+      "url": "https://repo.maxleiter.com/banners/hitori.png"
+    },
+    {
+      "title": "iosc (Wayland compositor)",
+      "package": "iosc",
+      "url": "https://repo.maxleiter.com/banners/iosc.png"
+    },
+    {
+      "title": "iso-codes",
+      "package": "iso-codes",
+      "url": "https://repo.maxleiter.com/banners/iso-codes.png"
+    },
+    {
       "title": "libadwaita-1-0",
       "package": "libadwaita-1-0",
       "url": "https://repo.maxleiter.com/banners/libadwaita-1-0.png"
@@ -77,6 +127,11 @@
       "title": "libappstream5",
       "package": "libappstream5",
       "url": "https://repo.maxleiter.com/banners/libappstream5.png"
+    },
+    {
+      "title": "libarchive13",
+      "package": "libarchive13",
+      "url": "https://repo.maxleiter.com/banners/libarchive13.png"
     },
     {
       "title": "libatk1.0-0",
@@ -107,6 +162,16 @@
       "title": "libcairo2",
       "package": "libcairo2",
       "url": "https://repo.maxleiter.com/banners/libcairo2.png"
+    },
+    {
+      "title": "libeditorconfig-dev",
+      "package": "libeditorconfig-dev",
+      "url": "https://repo.maxleiter.com/banners/libeditorconfig-dev.png"
+    },
+    {
+      "title": "libeditorconfig0",
+      "package": "libeditorconfig0",
+      "url": "https://repo.maxleiter.com/banners/libeditorconfig0.png"
     },
     {
       "title": "libepoll-shim-dev",
@@ -169,6 +234,16 @@
       "url": "https://repo.maxleiter.com/banners/libgdk-pixbuf-2.0-dev.png"
     },
     {
+      "title": "libgee-0.8-2",
+      "package": "libgee-0.8-2",
+      "url": "https://repo.maxleiter.com/banners/libgee-0.8-2.png"
+    },
+    {
+      "title": "libgee-0.8-dev",
+      "package": "libgee-0.8-dev",
+      "url": "https://repo.maxleiter.com/banners/libgee-0.8-dev.png"
+    },
+    {
       "title": "libgeneral0",
       "package": "libgeneral0",
       "url": "https://repo.maxleiter.com/banners/libgeneral0.png"
@@ -222,6 +297,16 @@
       "title": "libglib2.0-dev",
       "package": "libglib2.0-dev",
       "url": "https://repo.maxleiter.com/banners/libglib2.0-dev.png"
+    },
+    {
+      "title": "libgnome-desktop-4-2",
+      "package": "libgnome-desktop-4-2",
+      "url": "https://repo.maxleiter.com/banners/libgnome-desktop-4-2.png"
+    },
+    {
+      "title": "libgnome-desktop-dev",
+      "package": "libgnome-desktop-dev",
+      "url": "https://repo.maxleiter.com/banners/libgnome-desktop-dev.png"
     },
     {
       "title": "libgraphene-1.0-0",
@@ -337,6 +422,26 @@
       "title": "libpng16-16",
       "package": "libpng16-16",
       "url": "https://repo.maxleiter.com/banners/libpng16-16.png"
+    },
+    {
+      "title": "libpsl-dev",
+      "package": "libpsl-dev",
+      "url": "https://repo.maxleiter.com/banners/libpsl-dev.png"
+    },
+    {
+      "title": "libpsl5",
+      "package": "libpsl5",
+      "url": "https://repo.maxleiter.com/banners/libpsl5.png"
+    },
+    {
+      "title": "libsoup-3.0-0",
+      "package": "libsoup-3.0-0",
+      "url": "https://repo.maxleiter.com/banners/libsoup-3.0-0.png"
+    },
+    {
+      "title": "libsoup-3.0-dev",
+      "package": "libsoup-3.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libsoup-3.0-dev.png"
     },
     {
       "title": "libuuid16",
@@ -492,6 +597,11 @@
       "title": "Xios desktop defaults",
       "package": "xios-desktop-defaults",
       "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
+    },
+    {
+      "title": "Xios desktop theme",
+      "package": "xios-desktop-theme",
+      "url": "https://repo.maxleiter.com/banners/xios-desktop-theme.png"
     },
     {
       "title": "Xios (IOSurface X server)",

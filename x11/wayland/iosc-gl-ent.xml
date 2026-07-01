@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Entitlements for iosc WHEN it runs its own ANGLE/Metal GPU compositor
+     (iosc_gl.c). This replaces iosc-ent.xml's server set: a process that drives the
+     GPU needs the AGX/IOGPU IOKit user clients and must NOT use
+     com.apple.private.security.no-container (it sandboxes the process away from the
+     GPU -> MTLCreateSystemDefaultDevice/ANGLE Metal init fails). We still need
+     task_for_pid-allow to import client IOSurfaces (the iosc_iosurface protocol).
+     Mirror of the Xios *app* GPU set + task_for_pid; see fakesigned-metal memory. -->
+<plist version="1.0">
+<dict>
+    <key>platform-application</key>
+    <true/>
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+    <key>com.apple.private.skip-library-validation</key>
+    <true/>
+    <key>task_for_pid-allow</key>
+    <true/>
+    <key>com.apple.system-task-ports</key>
+    <true/>
+    <key>com.apple.security.iokit-user-client-class</key>
+    <array>
+        <string>AGXDeviceUserClient</string>
+        <string>IOGPUDeviceUserClient</string>
+        <string>IOSurfaceRootUserClient</string>
+        <string>IOSurfaceSendRight</string>
+        <string>IOSurfaceAcceleratorClient</string>
+    </array>
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/</string>
+        <string>/tmp/</string>
+        <string>/var/</string>
+        <string>/private/var/</string>
+    </array>
+</dict>
+</plist>

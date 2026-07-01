@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/tracker
-Depends: libglib2.0-0, libsqlite3-0, libjson-glib-1.0-0, dbus
+Depends: libglib2.0-0, libsqlite3-1, libjson-glib-1.0-0, libunistring5, dbus
 Description: Tracker SPARQL store library - runtime
  libtracker-sparql is the client/store library for the Tracker RDF/SQLite
  database, linked by nautilus for search. The indexer daemon (localsearch) is a

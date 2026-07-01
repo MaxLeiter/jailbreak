@@ -55,7 +55,6 @@ if [ -f "$PIDFILE" ]; then
   rm -f "$PIDFILE"
 fi
 : > "$PIDFILE"
-log(){ echo "$1"; }
 spawn(){ # spawn <name> <cmd...> : launch, record PID, report
   local name="$1"; shift
   nohup "$@" >"$TMP/xfce-${name}.log" 2>&1 & echo $! >> "$PIDFILE"

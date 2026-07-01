@@ -22,16 +22,17 @@ settings:
     CODE_SIGN_ENTITLEMENTS: entitlements.plist
     ENABLE_BITCODE: "NO"
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-    # Link Xlib + XTEST (for input injection). Headers/dylibs staged under xlib/
-    # (extracted from the Procursus build; regenerable). Dylibs resolve at runtime
-    # from /var/jb/usr/lib on the device (their install_name), not embedded.
+    # Link Xlib + XTEST only for device builds (for input injection). Headers/dylibs
+    # are staged under xlib/ (extracted from the Procursus build; regenerable).
+    # The simulator uses no-op XTEST stubs so it can still exercise UI/rendering.
     SWIFT_OBJC_BRIDGING_HEADER: Sources/Xios-Bridging-Header.h
     HEADER_SEARCH_PATHS: $(SRCROOT)/xlib/include
     LIBRARY_SEARCH_PATHS: $(SRCROOT)/xlib/lib
     # Procursus dylibs use @rpath install names; add /var/jb/usr/lib so dyld finds them
     # at runtime (where libX11/libXtst are installed). IOSurface backs the zero-copy
     # framebuffer (XSurface.c does the mach-port hand-off + IOSurfaceLookupFromMachPort).
-    OTHER_LDFLAGS: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -framework IOSurface
+    OTHER_LDFLAGS: -framework IOSurface
+    OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -framework IOSurface
 
 targets:
   Xios:

@@ -2595,14 +2595,8 @@ static void handle_key(uint32_t keysym, uint32_t appmods)
         input_method_forward_grab_key(t, evdev, WL_KEYBOARD_KEY_STATE_RELEASED, 0))
         return;
     keyboard_send_mods(mask);
-    uint32_t s1 = wl_display_next_serial(g_display);
-    for (int i = 0; i < g_nkbd; i++)
-        if (wl_resource_get_client(g_kbd[i]) == fc)
-            wl_keyboard_send_key(g_kbd[i], s1, t, evdev, WL_KEYBOARD_KEY_STATE_PRESSED);
-    uint32_t s2 = wl_display_next_serial(g_display);
-    for (int i = 0; i < g_nkbd; i++)
-        if (wl_resource_get_client(g_kbd[i]) == fc)
-            wl_keyboard_send_key(g_kbd[i], s2, t, evdev, WL_KEYBOARD_KEY_STATE_RELEASED);
+    keyboard_send_raw_key(t, evdev, WL_KEYBOARD_KEY_STATE_PRESSED);
+    keyboard_send_raw_key(t, evdev, WL_KEYBOARD_KEY_STATE_RELEASED);
     keyboard_send_mods(0);
 }
 
@@ -3360,7 +3354,11 @@ static int clip_listen_readable(int fd, uint32_t mask, void *data)
     return 0;
 }
 
-static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
+/* Create a listening AF_UNIX stream socket at `path` and register its accept
+ * handler on the event loop. Shared by the clipboard + input bridges; the Xios
+ * app runs as mobile and must connect, so the socket is world-accessible. */
+static int unix_listen_start(struct wl_event_loop *loop, const char *path,
+                             int (*on_accept)(int, uint32_t, void *))
 {
     unlink(path);
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -3372,8 +3370,13 @@ static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
     if (listen(fd, 4) < 0) { close(fd); return -1; }
     chmod(path, 0777);
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, clip_listen_readable, loop);
+    wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, on_accept, loop);
     return 0;
+}
+
+static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
+{
+    return unix_listen_start(loop, path, clip_listen_readable);
 }
 
 /* ---- input transport: a tiny AF_UNIX socket the Xios app writes events to ---
@@ -3544,18 +3547,7 @@ static int in_listen_readable(int fd, uint32_t mask, void *data)
 
 static int input_socket_start(struct wl_event_loop *loop, const char *path)
 {
-    unlink(path);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return -1;
-    struct sockaddr_un addr; memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); return -1; }
-    if (listen(fd, 4) < 0) { close(fd); return -1; }
-    chmod(path, 0777);   /* the Xios app runs as mobile and must connect */
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, in_listen_readable, loop);
-    return 0;
+    return unix_listen_start(loop, path, in_listen_readable);
 }
 
 /* Write the xkb keymap to an fd the wl_keyboard clients mmap (no memfd on iOS;

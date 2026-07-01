@@ -1,0 +1,12 @@
+Package: libeditorconfig0
+Version: @DEB_EDITORCONFIG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://editorconfig.org/
+Depends: libpcre2-8-0
+Description: EditorConfig file parser library - runtime
+ libeditorconfig locates and parses .editorconfig files, giving editors a uniform
+ way to apply per-project coding-style settings. This package contains the shared
+ library. Built from editorconfig-core-c.

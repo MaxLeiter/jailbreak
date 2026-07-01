@@ -107,8 +107,9 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
     glGenFramebuffers(1, &s_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_out_tex, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        fprintf(stderr, "iosc_gl: output FBO incomplete 0x%x\n", glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "iosc_gl: output FBO incomplete 0x%x\n", fb_status);
         return -1;
     }
 
@@ -230,8 +231,7 @@ void iosc_gl_draw_shm(const void *data, int sw, int sh, int stride,
 
 uint32_t iosc_gl_end(void)
 {
-    glFlush();
-    glFinish();
+    glFinish();   /* subsumes glFlush: blocks until the GPU has composited the output */
     uint32_t px = 0;
     /* glReadPixels reads the FBO (the output) — proof the GPU composited. BGRA. */
     glReadPixels(s_ow / 2, s_oh / 2, 1, 1, GL_BGRA_EXT, GL_UNSIGNED_BYTE, &px);

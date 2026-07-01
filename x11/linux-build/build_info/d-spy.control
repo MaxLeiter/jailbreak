@@ -1,0 +1,12 @@
+Package: d-spy
+Version: @DEB_D-SPY_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://apps.gnome.org/Dspy/
+Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, dbus
+Description: D-Spy (GTK4 D-Bus explorer)
+ D-Spy lets you inspect D-Bus: browse the names on the session and system bus,
+ walk their objects, interfaces, methods, signals and properties, and call
+ methods interactively. GTK4/libadwaita, pure C. Needs a running D-Bus session.

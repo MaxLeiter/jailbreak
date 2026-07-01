@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/gnome-text-editor.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**GNOME Text Editor** running natively on your jailbroken device through the X11-on-iOS stack. The default GNOME editor: clean and fast, built on GTK4 and libadwaita, with syntax highlighting from GtkSourceView.\n\nRuns as a real native arm64 binary. Renders into the Xios display server and uses San Francisco by default when the `x11-fonts-sf` package is installed.\n\n- Syntax highlighting for common languages (GtkSourceView 5)\n- Session restore, split view, and dark mode\n- libadwaita styling\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "46.3"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "555.9 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "The GNOME Project"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Applications"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "gnome-text-editor"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 46.3  \u00b7  2026-06-30\n- First release: GNOME Text Editor 46 cross-compiled for rootless iOS\n- GTK4 + libadwaita + GtkSourceView 5.12"
+        }
+      ]
+    }
+  ]
+}

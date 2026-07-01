@@ -1,6 +1,9 @@
 {
   "cleanUrls": false,
   "trailingSlash": false,
+  "rewrites": [
+    { "source": "/./:path*", "destination": "/:path*" }
+  ],
   "headers": [
     {
       "source": "/(Packages|Packages.gz|Release)",

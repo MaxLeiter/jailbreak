@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchDaemon for ioscd, the iosc desktop launch daemon. Runs on the DEVICE as
+  root, started by launchd. Keeps the control socket /var/jb/tmp/ioscd.sock up so
+  home-screen launcher icons can request app launches into the iosc desktop.
+
+  Install (run on-device, see install-ioscd.sh):
+    cp com.max.ioscd.plist /var/jb/Library/LaunchDaemons/
+    launchctl bootstrap system /var/jb/Library/LaunchDaemons/com.max.ioscd.plist
+  KeepAlive restarts it if it ever exits; RunAtLoad starts it at boot.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.max.ioscd</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/var/jb/usr/local/bin/ioscd</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/var/jb/tmp/ioscd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/jb/tmp/ioscd.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

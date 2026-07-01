@@ -1,0 +1,16 @@
+Package: libmutter-14-dev
+Version: @DEB_MUTTER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libmutter-14-0 (= @DEB_MUTTER_V@), libgtk-4-dev, libglib2.0-dev, libgraphene-1.0-dev, libjson-glib-dev, liblcms2-dev, libcolord-dev, libxcomposite-dev, libxfixes-dev, libpixman-1-dev, libxkbcommon-dev
+Section: Development
+Priority: optional
+Description: window manager library from the Mutter window manager (development files)
+ Mutter is a window and compositing manager based on Clutter and bundling its
+ own copies of Cogl and Clutter. It is the GNOME Shell compositor.
+ .
+ This package contains the headers and pkg-config files (libmutter-14,
+ mutter-clutter-14, mutter-cogl-14, mutter-cogl-pango-14, mutter-mtk-14) needed
+ to build against Mutter and, on iOS, to run g-ir-scanner natively to generate
+ the Meta / Clutter / Cogl / CoglPango / Mtk introspection typelibs. The
+ dependency list mirrors the namespaces those scans --include.

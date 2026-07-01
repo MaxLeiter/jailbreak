@@ -8,7 +8,7 @@ endif
 # is runtime-OPTIONAL — without it, nautilus runs but full-text search returns nothing. So we
 # build tracker(-sparql) and skip the miners for first-light.
 #
-# DEPENDS (target): glib + sqlite3 (prebuilt) + json-glib + icu4c (+ dbus at runtime).
+# DEPENDS (target): glib + sqlite3 (prebuilt) + json-glib + libunistring (+ dbus at runtime).
 # VERIFY before build: soname (libtracker-sparql-3.0.0.dylib) and that cross meson doesn't try
 # to run target tooling for the ontology resources.
 #
@@ -22,6 +22,12 @@ DEB_TRACKER_V    ?= $(TRACKER_VERSION)
 tracker-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/tracker/$(TRACKER_MAJOR_V)/tracker-$(TRACKER_VERSION).tar.xz)
 	$(call EXTRACT_TAR,tracker-$(TRACKER_VERSION).tar.xz,tracker-$(TRACKER_VERSION),tracker)
+	# meson.build probes the libc strftime 4-digit-year modifier with cc.run() and has NO
+	# cross fallback (unlike the sqlite fts5 probe, which reads a cross property) -> it hard
+	# aborts with "Can not run test applications in this cross environment." Replace the whole
+	# cc.run block with the correct Darwin answer: '%Y' formats every modern (>=1000) date
+	# correctly; only pre-1000 years (irrelevant to a file manager) would differ.
+	perl -0777 -i -pe "s/result = cc\.run\('''.*?year_modifier = result\.stdout\(\)\s*\n\s*endif/year_modifier = '%Y'/s" $(BUILD_WORK)/tracker/meson.build
 	mkdir -p $(BUILD_WORK)/tracker/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
@@ -31,6 +37,7 @@ tracker-setup: setup
 	[properties]\n \
 	root = '$(BUILD_BASE)'\n \
 	needs_exe_wrapper = true\n \
+	sqlite3_has_fts5 = 'true'\n \
 	[built-in options]\n \
 	prefix ='$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)'\n \
 	[binaries]\n \
@@ -42,16 +49,24 @@ ifneq ($(wildcard $(BUILD_WORK)/tracker/.build_complete),)
 tracker:
 	@echo "Using previously built tracker."
 else
-tracker: tracker-setup glib2.0 sqlite3 json-glib icu4c
+tracker: tracker-setup glib2.0 sqlite3 json-glib libunistring
+	# unicode_support: force `unistring` (libunistring is already in the base, one small
+	# dylib) instead of `icu`. ICU can't cross-build under this pipeline — build-gnome.sh
+	# forces CXX=<darwin cross clang++> globally, but ICU's build first compiles NATIVE
+	# host data-gen tools, which then fail ('memory' file not found — the cross clang++
+	# has no Linux libc++). unistring gives tracker-fts its unicode tokenizer/collation
+	# without that host-tool stage; the only cost is no ICU-quality locale collation.
 	cd $(BUILD_WORK)/tracker/build && meson \
 		--cross-file cross.txt \
 		-Ddocs=false \
 		-Dintrospection=disabled \
-		-Dvapi=false \
+		-Dvapi=disabled \
 		-Dman=false \
 		-Dstemmer=disabled \
+		-Dunicode_support=unistring \
 		-Dsystemd_user_services=false \
 		-Dtests=false \
+		-Dtest_utils=false \
 		-Dbash_completion=false \
 		..
 	+ninja -C $(BUILD_WORK)/tracker/build

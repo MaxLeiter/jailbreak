@@ -42,6 +42,6 @@ sleep 2
 
 echo "==> iosc log:";        sed 's/^/   /' "$TMP/iosc.log"
 echo "==> client log:";      sed 's/^/   /' "$TMP/iosc-client.log"
-echo "==> app status:";      cat "$TMP/xios-status.txt" 2>/dev/null | sed 's/^/   /'
-echo "==> app geom:";        cat "$TMP/xios-geom.txt" 2>/dev/null | sed 's/^/   /'
+echo "==> app status:";      sed 's/^/   /' "$TMP/xios-status.txt" 2>/dev/null
+echo "==> app geom:";        sed 's/^/   /' "$TMP/xios-geom.txt" 2>/dev/null
 echo "==> iosc still running: $(kill -0 "$ICPID" 2>/dev/null && echo yes || echo NO)"

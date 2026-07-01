@@ -1,4 +1,29 @@
 #include "XInput.h"
+#include <TargetConditionals.h>
+
+#if TARGET_OS_SIMULATOR
+
+bool xinput_open(const char *display) {
+    (void)display;
+    return false;
+}
+
+void xinput_close(void) {}
+bool xinput_is_open(void) { return false; }
+void xinput_motion(int x, int y) { (void)x; (void)y; }
+void xinput_button(int button, bool down) { (void)button; (void)down; }
+void xinput_key(int keycode, bool down) { (void)keycode; (void)down; }
+int xinput_keycode_for_keysym(unsigned long keysym) { (void)keysym; return 0; }
+bool xinput_type_keysym_mods(unsigned long keysym, bool ctrl, bool alt,
+                             bool shift, bool super) {
+    (void)keysym; (void)ctrl; (void)alt; (void)shift; (void)super;
+    return false;
+}
+bool xinput_type_keysym(unsigned long keysym) { (void)keysym; return false; }
+void xinput_flush(void) {}
+
+#else
+
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
 #include <X11/keysym.h>
@@ -127,3 +152,5 @@ void xinput_flush(void) {
     XFlush(dpy);
     s_guarded = 0;
 }
+
+#endif

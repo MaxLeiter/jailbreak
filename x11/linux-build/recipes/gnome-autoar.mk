@@ -18,6 +18,16 @@ DEB_GNOME-AUTOAR_V    ?= $(GNOME-AUTOAR_VERSION)
 gnome-autoar-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-autoar/$(GNOME-AUTOAR_MAJOR_V)/gnome-autoar-$(GNOME-AUTOAR_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-autoar-$(GNOME-AUTOAR_VERSION).tar.xz,gnome-autoar-$(GNOME-AUTOAR_VERSION),gnome-autoar)
+	# Procursus' libarchive.pc carries `Requires.private: iconv`, but on iOS libiconv lives in
+	# libSystem so no iconv.pc is staged. Without it, pkg-config can't generate cargs for
+	# libarchive -> gnome-autoar's meson reports libarchive "not found (tried framework)" and
+	# the build fails. file-roller.mk stages the same stub, but the nautilus chain must be
+	# self-sufficient (gnome-autoar is its first libarchive consumer, built with or without
+	# file-roller). Stage a minimal iconv.pc (idempotent); the SDK's libiconv satisfies -liconv.
+	mkdir -p $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
+	if [ ! -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/iconv.pc ]; then \
+		printf 'prefix=%s\nexec_prefix=$${prefix}\nlibdir=$${exec_prefix}/lib\nincludedir=$${prefix}/include\n\nName: iconv\nDescription: iOS SDK libiconv (pc stub for Requires.private resolution)\nVersion: 1.17\nLibs: -liconv\nCflags:\n' '$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)' > $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/iconv.pc; \
+	fi
 	mkdir -p $(BUILD_WORK)/gnome-autoar/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
