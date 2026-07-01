@@ -19,7 +19,6 @@ G_DECLARE_FINAL_TYPE (MetaRendererIOS, meta_renderer_ios,
 
 MetaRenderer *meta_renderer_ios_new (MetaBackend *backend);
 
-/* Flush the stage's view framebuffer and nudge the Xios app to re-present the output
- * IOSurface. Called by the backend after a stage paint (the IOSurface single-surface
- * present, in place of a CoglOnscreen swap). */
-void meta_renderer_ios_present (MetaRendererIOS *renderer_ios);
+/* Present is the output onscreen's swap (route A): MetaOnscreenIOS::swap_buffers_with_damage
+ * does cogl_framebuffer_finish + xios_notify_dirty, driven by the normal stage redraw path.
+ * There is no separate present entry point on the renderer. */

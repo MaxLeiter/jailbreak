@@ -118,6 +118,17 @@ EGLDisplay xios_egl_display (void);          /* lazy getter; matches libxios_glu
 void      *xios_get_output_iosurface (void);
 void       xios_notify_dirty (void);
 
+/* The pbuffer + RGBA8 + BIND_TO_TEXTURE_RGBA EGLConfig xios_egl chose the IOSurface pbuffers
+ * against (matches libxios_glue xios_egl.h). MetaRendererIOS points its Cogl winsys config at
+ * this so the Cogl display/context and the pbuffer share ONE EGLConfig — otherwise
+ * eglMakeCurrent(pbuffer) throws EGL_BAD_MATCH. */
+EGLConfig xios_egl_config (void);
+
+/* Wrap the output IOSurface as an ANGLE pbuffer (EGL_ANGLE_iosurface_client_buffer). Used as
+ * the CoglOnscreenEgl's EGLSurface so Cogl renders to FBO 0 == the IOSurface (route A: the
+ * IOSurface->EGLImage render-target path fails on ANGLE-Metal). EGL_NO_SURFACE on failure. */
+EGLSurface xios_egl_create_iosurface_pbuffer (void *iosurface, int w, int h);
+
 /* ---- output-surface + Xios-app rendezvous creation (MetaBackendIOS::constructed) ---
  * The mutter backend must CREATE the output IOSurface and start the Xios-app rendezvous
  * (which writes xios.json so the app finds + displays the surface) before the renderer

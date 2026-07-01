@@ -4,18 +4,19 @@
  * meta-stage-ios.c — the MetaBackendIOS ClutterStageWindow (see the header).
  *
  * Supplies the ClutterStageWindow vfuncs the base MetaStageImpl leaves NULL, bridged to
- * MetaRendererIOS: get_geometry from the (single fixed) monitor, get_views from the renderer,
- * and finish_frame presents the output IOSurface (meta_renderer_ios_present = flush +
- * xios_notify_dirty, the single-surface equivalent of a CoglOnscreen swap). realize / resize /
- * show / hide / redraw_view / get_frame_counter are inherited from MetaStageImpl. Modeled on
- * meta-stage-native.c minus the KMS/atomic per-frame prep. GPL-2.0+.
+ * MetaRendererIOS: get_geometry from the (single fixed) monitor and get_views from the
+ * renderer. redraw_view is inherited from MetaStageImpl, whose swap path calls
+ * cogl_onscreen_swap_buffers_with_damage on our view framebuffer — which IS a CoglOnscreen
+ * (MetaOnscreenIOS), so the present (finish + xios_notify_dirty) happens there, NOT here.
+ * finish_frame therefore only settles the frame result. realize / resize / show / hide /
+ * get_frame_counter are inherited from MetaStageImpl. Modeled on meta-stage-native.c minus
+ * the KMS/atomic per-frame prep. GPL-2.0+.
  */
 
 #include "config.h"
 
 #include "backends/ios/meta-stage-ios.h"
 
-#include "backends/ios/meta-renderer-ios.h"
 #include "backends/meta-backend-private.h"
 #include "backends/meta-renderer.h"
 #include "meta/meta-backend.h"
@@ -90,14 +91,13 @@ meta_stage_ios_finish_frame (ClutterStageWindow *stage_window,
                              ClutterStageView   *stage_view,
                              ClutterFrame       *frame)
 {
-  MetaStageImpl *stage_impl = META_STAGE_IMPL (stage_window);
-  MetaBackend *backend = meta_stage_impl_get_backend (stage_impl);
-  MetaRenderer *renderer = meta_backend_get_renderer (backend);
-
-  /* Single-surface present: flush the view's framebuffer into the output IOSurface and tell
-   * the Xios app to re-present it (in place of a CoglOnscreen swap). */
-  meta_renderer_ios_present (META_RENDERER_IOS (renderer));
-
+  /* The present already happened in the redraw path's onscreen swap (MetaOnscreenIOS::
+   * swap_buffers_with_damage = finish + xios_notify_dirty). We do NOT re-present here (that
+   * would double-notify). Since the onscreen has no SYNC_AND_COMPLETE_EVENT winsys feature,
+   * the swap synchronously queues SYNC + COMPLETE frame events (dispatched to the stage view's
+   * frame callback -> notify_presented), so the frame is effectively done: settle it IDLE and
+   * let the frame clock reschedule on the next damage. Mirrors meta_stage_native_finish_frame's
+   * fallback. */
   if (!clutter_frame_has_result (frame))
     clutter_frame_set_result (frame, CLUTTER_FRAME_RESULT_IDLE);
 }

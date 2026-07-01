@@ -11,10 +11,15 @@
  * private winsys types come via cogl/cogl-mutter.h, same as the native renderer — no
  * COGL_COMPILATION needed).
  *
- * create_view renders the stage into the Xios app's output IOSurface, imported zero-copy as
- * a Cogl framebuffer (the same IOSurface->EGLImage->Cogl bridge the IOSurface wl_buffer type
- * uses). present() flushes and nudges the Xios app to re-present — the single-surface
- * equivalent of a CoglOnscreen swap. GPL-2.0+, modeled on meta-renderer-native.c.
+ * create_view renders the stage into the Xios app's output IOSurface. The IOSurface is bound
+ * as the DEFAULT framebuffer (FBO 0) of a CoglOnscreen (MetaOnscreenIOS) whose EGLSurface is
+ * the ANGLE iosurface pbuffer — route A: ANGLE-Metal has no working IOSurface->EGLImage render
+ * target (eglCreateImageKHR(GL_TEXTURE_2D) fails 0x3000) and the cogl fork dropped the
+ * foreign-GL-texture wrap, so we render straight into the pbuffer as FBO 0 (proven path)
+ * instead of an offscreen. Present is the onscreen's swap (finish + xios_notify_dirty; see
+ * meta-onscreen-ios.c). The Cogl winsys config is xios_egl_config() so the display, context,
+ * and pbuffer share ONE EGLConfig (else eglMakeCurrent(pbuffer) => EGL_BAD_MATCH). GPL-2.0+,
+ * modeled on meta-renderer-native.c.
  */
 
 #include "config.h"
@@ -24,6 +29,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+#include "backends/ios/meta-onscreen-ios.h"
 #include "backends/ios/xios-glue-stub.h"
 #include "backends/meta-backend-private.h"
 #include "backends/meta-crtc.h"
@@ -42,6 +48,9 @@
 #ifndef EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE
 #define EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE 0x3489
 #endif
+#ifndef EGL_BIND_TO_TEXTURE_RGBA
+#define EGL_BIND_TO_TEXTURE_RGBA            0x3039
+#endif
 
 struct _MetaRendererIOS
 {
@@ -59,12 +68,20 @@ ios_add_config_attributes (CoglDisplay                 *display,
 {
   int i = 0;
 
+  /* Mirror xios_egl's own pbuffer config exactly (SURFACE_TYPE=PBUFFER, RGBA8,
+   * BIND_TO_TEXTURE_RGBA, RENDERABLE ES2) so the config cogl would pick matches the pbuffer's.
+   * ios_choose_config below actually forces xios_egl_config(), but keep these consistent in
+   * case anything reads the CoglFramebufferConfig-derived attributes. */
   attributes[i++] = EGL_SURFACE_TYPE;
   attributes[i++] = EGL_PBUFFER_BIT;
+  attributes[i++] = EGL_RENDERABLE_TYPE;
+  attributes[i++] = EGL_OPENGL_ES2_BIT;
   attributes[i++] = EGL_RED_SIZE;   attributes[i++] = 8;
   attributes[i++] = EGL_GREEN_SIZE; attributes[i++] = 8;
   attributes[i++] = EGL_BLUE_SIZE;  attributes[i++] = 8;
   attributes[i++] = EGL_ALPHA_SIZE; attributes[i++] = 8;
+  attributes[i++] = EGL_BIND_TO_TEXTURE_RGBA;
+  attributes[i++] = EGL_TRUE;
   return i;
 }
 
@@ -74,16 +91,21 @@ ios_choose_config (CoglDisplay *display,
                    EGLConfig   *out_config,
                    GError     **error)
 {
-  CoglRenderer *renderer = display->renderer;
-  CoglRendererEGL *egl_renderer = renderer->winsys;
-  EGLint n = 0;
+  /* The linchpin of route A: return the SAME EGLConfig xios_egl created its IOSurface
+   * pbuffers against. The Cogl display's context is built against this config, and the
+   * output onscreen's pbuffer (xios_egl_create_iosurface_pbuffer) uses it too, so
+   * eglMakeCurrent(pbuffer, pbuffer, ctx) never hits EGL_BAD_MATCH. We deliberately ignore
+   * the attributes cogl derived — config identity beats config search. */
+  EGLConfig config = xios_egl_config ();
 
-  if (!eglChooseConfig (egl_renderer->edpy, attributes, out_config, 1, &n) || n == 0)
+  if (config == NULL)
     {
       g_set_error (error, COGL_WINSYS_ERROR, COGL_WINSYS_ERROR_CREATE_CONTEXT,
-                   "MetaRendererIOS: no compatible EGL config (0x%x)", eglGetError ());
+                   "MetaRendererIOS: xios_egl_config() returned no config (0x%x)",
+                   eglGetError ());
       return FALSE;
     }
+  *out_config = config;
   return TRUE;
 }
 
@@ -194,19 +216,20 @@ meta_renderer_ios_create_cogl_renderer (MetaRenderer *renderer)
   return cogl_renderer;
 }
 
-/* Bind the Xios output IOSurface as a renderable Cogl framebuffer (zero-copy): reuse the
- * IOSurface->EGLImage->Cogl bridge the IOSurface wl_buffer type uses, then wrap the texture
- * in a CoglOffscreen the stage renders into. */
-static CoglOffscreen *
-create_output_offscreen (CoglContext  *cogl_context,
-                         int           width,
-                         int           height,
-                         GError      **error)
+/* Bind the Xios output IOSurface as FBO 0 of a CoglOnscreen (route A): wrap it as an ANGLE
+ * pbuffer (xios_egl_create_iosurface_pbuffer), set that as the onscreen's EGLSurface, and
+ * allocate. Binding the onscreen (eglMakeCurrent(pbuffer, pbuffer, ctx)) then makes the stage
+ * render straight into the IOSurface — no EGLImage, no copy. The onscreen's swap presents it
+ * (meta-onscreen-ios.c). */
+static MetaOnscreenIOS *
+create_output_onscreen (CoglContext  *cogl_context,
+                        int           width,
+                        int           height,
+                        GError      **error)
 {
   void *iosurface = xios_get_output_iosurface ();
-  EGLImageKHR egl_image;
-  g_autoptr (CoglTexture) texture = NULL;
-  CoglOffscreen *offscreen;
+  EGLSurface pbuffer;
+  MetaOnscreenIOS *onscreen;
 
   if (!iosurface)
     {
@@ -215,29 +238,26 @@ create_output_offscreen (CoglContext  *cogl_context,
       return NULL;
     }
 
-  egl_image = xios_egl_image_from_iosurface (iosurface, width, height);
-  if (egl_image == EGL_NO_IMAGE_KHR)
+  pbuffer = xios_egl_create_iosurface_pbuffer (iosurface, width, height);
+  if (pbuffer == EGL_NO_SURFACE)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "failed to bridge the output IOSurface to an ANGLE EGLImage");
+                   "failed to wrap the output IOSurface as an ANGLE pbuffer (0x%x)",
+                   eglGetError ());
       return NULL;
     }
 
-  texture = cogl_egl_texture_2d_new_from_image (cogl_context, width, height,
-                                                COGL_PIXEL_FORMAT_BGRA_8888_PRE,
-                                                egl_image, COGL_EGL_IMAGE_FLAG_NONE,
-                                                error);
-  xios_egl_destroy_image (egl_image);
-  if (!texture)
-    return NULL;
+  onscreen = meta_onscreen_ios_new (cogl_context, width, height);
+  /* Inject the pbuffer as the onscreen's EGLSurface BEFORE allocate/bind — the base
+   * CoglOnscreenEgl::bind makes it current; there is no window/pbuffer for it to create. */
+  cogl_onscreen_egl_set_egl_surface (COGL_ONSCREEN_EGL (onscreen), pbuffer);
 
-  offscreen = cogl_offscreen_new_with_texture (texture);
-  if (!cogl_framebuffer_allocate (COGL_FRAMEBUFFER (offscreen), error))
+  if (!cogl_framebuffer_allocate (COGL_FRAMEBUFFER (onscreen), error))
     {
-      g_object_unref (offscreen);
+      g_object_unref (onscreen);
       return NULL;
     }
-  return offscreen;
+  return onscreen;
 }
 
 static MetaRendererView *
@@ -253,12 +273,12 @@ meta_renderer_ios_create_view (MetaRenderer       *renderer,
   const MetaCrtcModeInfo *mode_info = meta_crtc_mode_get_info (crtc_config->mode);
   int width = mode_info->width;
   int height = mode_info->height;
-  g_autoptr (CoglOffscreen) framebuffer = NULL;
+  g_autoptr (MetaOnscreenIOS) framebuffer = NULL;
   MtkRectangle view_layout;
   float scale;
   GError *error = NULL;
 
-  framebuffer = create_output_offscreen (cogl_context, width, height, &error);
+  framebuffer = create_output_onscreen (cogl_context, width, height, &error);
   if (!framebuffer)
     g_error ("MetaRendererIOS: failed to make the output IOSurface renderable: %s",
              error->message);
@@ -282,26 +302,6 @@ meta_renderer_ios_create_view (MetaRenderer       *renderer,
                        "transform", META_MONITOR_TRANSFORM_NORMAL,
                        "refresh-rate", mode_info->refresh_rate,
                        NULL);
-}
-
-void
-meta_renderer_ios_present (MetaRendererIOS *renderer_ios)
-{
-  GList *l;
-
-  for (l = meta_renderer_get_views (META_RENDERER (renderer_ios)); l; l = l->next)
-    {
-      ClutterStageView *stage_view = l->data;
-      CoglFramebuffer *framebuffer =
-        clutter_stage_view_get_framebuffer (stage_view);
-
-      if (framebuffer)
-        cogl_framebuffer_finish (framebuffer);
-    }
-
-  /* Single-surface present: no CoglOnscreen swap — just tell the Xios app the output
-   * IOSurface changed so it re-presents it via Metal. */
-  xios_notify_dirty ();
 }
 
 MetaRenderer *
