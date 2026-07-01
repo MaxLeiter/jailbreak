@@ -16,19 +16,33 @@
 # The accountsservice.mk cross build was -Dintrospection=false for exactly this reason; the
 # runtime dylib + headers ship in the libaccountsservice0 / -dev debs.
 #
-# PREREQUISITES on the device (install via main's device window first):
-#   1. libaccountsservice0 + libaccountsservice-dev installed (dylib + headers + accountsservice.pc).
+# PREREQUISITES on the device (install via main's device window first). The libaccountsservice0
+# + libaccountsservice-dev debs (gnome-session) lay down exactly:
+#     /var/jb/usr/include/accountsservice-1.0/act/{act,act-user,act-user-manager,act-user-enum-types}.h
+#     /var/jb/usr/lib/pkgconfig/accountsservice.pc
+#     /var/jb/usr/lib/libaccountsservice.0.dylib
+#   1. libaccountsservice0 + libaccountsservice-dev installed (the three paths above).
 #   2. The on-device GI toolchain bootstrapped (gir-ondevice.sh bootstrap): g-ir-scanner,
 #      sljit_shim.dylib, clang-ios, ninja2 — per memory x11-gtk4-typelibs-ondevice.
 #   3. Dependency girs installed in /var/jb/usr/share/gir-1.0: GObject-2.0 + Gio-2.0
-#      (gir1.2-glib-2.0) — the AccountsService scan --include's exactly these two.
+#      (gir1.2-glib-2.0) — the AccountsService scan --include's exactly these two, and NONE of
+#      our on-device-only girs (unlike Shell-14, which pulls Gcr-4/PolkitAgent). Clean scan.
 #   4. Native build tools: meson, ninja, clang, glib-mkenums, gdbus-codegen, pkg-config, perl.
 #   5. polkit-dev on device (accountsservice's meson dependency()s polkit-gobject-1 for the
 #      library even with the daemon dropped).
 #
 # The source-port fixes are gnome-session's (recipes/accountsservice-ios-fixes.sh +
 # accountsservice-sd-login.h + accountsservice-sd-login-shim.c); this script scp's all three
-# and applies them exactly like the cross build, then flips introspection ON.
+# and applies them exactly like the cross build, then flips introspection ON. This "build the
+# lib's own meson" path is preferred because it scans the real act-user.c/act-user-manager.c
+# sources the way upstream generate_gir() does, so the typelib matches upstream exactly.
+#
+# FALLBACK — if you can't put the source tree on-device, a standalone g-ir-scanner call against
+# the installed -dev deb works too (params straight from accountsservice's generate_gir(), via
+# gnome-session): --namespace=AccountsService --nsversion=1.0 --identifier-prefix=Act
+#   --symbol-prefix=act --include=GObject-2.0 --include=Gio-2.0 --library=accountsservice
+#   --pkg=gio-2.0 --pkg=gobject-2.0  header act/act.h  (scan the 4 act headers; add the two .c
+#   if available). Output -> /var/jb/usr/lib/girepository-1.0/AccountsService-1.0.typelib.
 #
 # Usage (from the Mac build host):
 #   DEVICE=root@MaxsiPad.local ./gir-build-accountsservice-ondevice.sh /path/to/accountsservice-23.13.9.tar
