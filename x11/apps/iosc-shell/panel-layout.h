@@ -286,17 +286,22 @@ static void panel_draw_topbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
                               prs ? TH_PRESS : TH_HOVER);
             }
 
-            int ix = bx + 12;
+            /* below ~2 chars of label a truncated title is noise: center the
+             * icon alone (the active underline still marks focus) */
+            int icon_only = aw < 96;
+            int ix = icon_only ? bx + (aw - LO_PILL_ICON) / 2 : bx + 12;
             if (it->icon)
                 pr_draw_icon(cr, it->icon, ix, py + (LO_PILL_H - LO_PILL_ICON) / 2, LO_PILL_ICON, 0);
             else
                 pr_draw_monogram(cr, t, it->key, ix, py + (LO_PILL_H - LO_PILL_ICON) / 2,
                                  LO_PILL_ICON, TH_R_MONO - 2, TH_TILE, TH_FG, TH_FONT_LABEL);
 
-            int tx = ix + LO_PILL_ICON + 10;
-            int tw = aw - (tx - bx) - 8;
-            pr_text(cr, t, TH_FONT_LABEL, it->label[0] ? it->label : "Window",
-                    tx, cy, it->active ? TH_FG : TH_FG_DIM, tw > 8 ? tw : 8);
+            if (!icon_only) {
+                int tx = ix + LO_PILL_ICON + 10;
+                int tw = aw - (tx - bx) - 8;
+                pr_text(cr, t, TH_FONT_LABEL, it->label[0] ? it->label : "Window",
+                        tx, cy, it->active ? TH_FG : TH_FG_DIM, tw > 8 ? tw : 8);
+            }
             hits->v[hits->n++] = (struct panel_hit){ bx, 0, aw, H, PL_HIT_ACTIVATE, i };
 
             if (show_close) {
