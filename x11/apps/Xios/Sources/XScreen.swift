@@ -286,8 +286,15 @@ final class XScreenView: UIView {
         // C owns the IOSurface ref (released in xsurface_close); borrow it here.
         let surface = xsurface_get(conn).takeUnretainedValue()
         xconn = conn
+        let oldW = fbWidth, oldH = fbHeight
         fbWidth = Int(xsurface_width(conn))
         fbHeight = Int(xsurface_height(conn))
+        // Re-fit on a resized output. render() aspect-fits fbWidth/fbHeight into the
+        // drawable every frame, but multiplies by zoomScale — and a zoom calibrated
+        // for the OLD size overflows the drawable and clips the desktop when the
+        // compositor's -logical size changes (the app re-adopts a bigger surface).
+        // Snap back to fit (zoom 1, pan 0) so ANY output size fills the screen crop-free.
+        if fbWidth != oldW || fbHeight != oldH { resetZoom() }
 
         let td = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: fbWidth, height: fbHeight, mipmapped: false)
