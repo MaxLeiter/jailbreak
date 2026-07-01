@@ -191,6 +191,14 @@ list.
 | `org.gnome.ScreenSaver` | apps | gnome-shell / gsd screensaver-proxy | provided |
 | `org.freedesktop.PolicyKit1` | shell polkit agent | `xios-polkit-stub` (auto-allow) | built |
 | `org.freedesktop.Accounts` | shell user widget + libaccountsservice | `xios-accounts-stub` | built |
+| `org.freedesktop.UPower` | shell battery indicator, gsd-power | `xios-hwbridged` (IOKit-backed, from xios-fhs) | optional |
+
+`org.freedesktop.UPower` is optional for a bare boot (the shell just hides the battery
+indicator without it) but cheap: `xios-hwbridged` from the xios-fhs hardware-bridge package
+claims UPower itself with a GDBus shim backed by IOKit `IOPSCopyPowerSourcesInfo`, exposing the
+`DisplayDevice` + `battery_BAT0` + `line_power_AC0` objects with the full `UpDevice` property
+set the shell's `UpClient` and gsd-power read (no upower daemon; the `UPowerGlib` client lib is
+unchanged). The launch script starts it if installed.
 
 The MUST-HAVES for a first boot are all covered. The polkit + accounts stubs are optional for
 a bare boot (the shell degrades: no auth dialogs, blank user name) but are cheap and remove
@@ -295,6 +303,7 @@ exec dbus-run-session -- sh -c '
   /var/jb/usr/libexec/xios-login1-stub &
   /var/jb/usr/libexec/xios-polkit-stub &
   /var/jb/usr/libexec/xios-accounts-stub &
+  [ -x /var/jb/usr/libexec/xios-hwbridged ] && /var/jb/usr/libexec/xios-hwbridged &  # UPower (xios-fhs)
   sleep 1   # let the stubs claim their names before the shell queries them
   exec gnome-session --builtin --session=xios
 '

@@ -30,15 +30,19 @@ RequiredComponents=org.gnome.Shell;
 EOF
 export XDG_CONFIG_DIRS=$CFG:/var/jb/etc/xdg
 
-# 3+4. ONE bus for everything. login1/PolicyKit1/Accounts are normally SYSTEM-bus services,
-#      but under dbus-run-session there is only a session bus. Point DBUS_SYSTEM_BUS_ADDRESS
-#      at it so clients asking for G_BUS_TYPE_SYSTEM meet the stubs, then run the stubs +
-#      gnome-session inside the one dbus-run-session.
+# 3+4. ONE bus for everything. login1/PolicyKit1/Accounts/UPower are normally SYSTEM-bus
+#      services, but under dbus-run-session there is only a session bus. Point
+#      DBUS_SYSTEM_BUS_ADDRESS at it so clients asking for G_BUS_TYPE_SYSTEM meet the stubs,
+#      then run the stubs + gnome-session inside the one dbus-run-session.
+#      xios-hwbridged (from the xios-fhs hardware bridge, if installed) claims
+#      org.freedesktop.UPower there too — battery/AC backed by IOKit — so the shell's
+#      battery indicator and gsd-power light up.
 exec dbus-run-session -- sh -c '
   export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
   '"$LIBEXEC"'/xios-login1-stub &
   '"$LIBEXEC"'/xios-polkit-stub &
   '"$LIBEXEC"'/xios-accounts-stub &
+  [ -x '"$LIBEXEC"'/xios-hwbridged ] && '"$LIBEXEC"'/xios-hwbridged &
   sleep 1   # let the stubs claim their names before the shell queries them
   exec gnome-session --builtin --session=xios
 '
