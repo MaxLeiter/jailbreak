@@ -95,12 +95,22 @@ host_kf() { # <name> <marker-relative-to-KF6HOST>
   # units without the call.
   sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' \
     "/work/host-${name}-src/CMakeLists.txt"
+  # Host builds provide code-gen TOOLS only (desktoptojson / kconfig_compiler_kf6 /
+  # kpackagetool6); the QML plugins are dead weight here and drag in Qt bits the host
+  # doesn't need (host kcoreaddons' kuserproxy QML plugin includes QHostInfo -> Qt6
+  # Network, which the host build's QML target doesn't link -> "QHostInfo: No such
+  # file"). Turn QML off for all three host units that default it ON; the flags are
+  # harmless (ignored) for the units that don't define them. The CROSS builds keep QML
+  # ON (device wants the plugins; cross qtbase has Network).
   cmake -S "/work/host-${name}-src" -B "${builddir}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${KF6HOST}" \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DCMAKE_PREFIX_PATH="${HOSTQT};${KF6HOST}" \
     -DBUILD_TESTING=OFF \
+    -DKCOREADDONS_USE_QML=OFF \
+    -DKCONFIG_USE_QML=OFF \
+    -DBUILD_WITH_QML=OFF \
     -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE
   ninja -C "${builddir}"
   ninja -C "${builddir}" install
