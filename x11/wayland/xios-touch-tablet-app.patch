@@ -1,0 +1,154 @@
+diff --git a/x11/apps/Xios/Sources/IoscInput.h b/x11/apps/Xios/Sources/IoscInput.h
+index 768ed5c..1538cee 100644
+--- a/x11/apps/Xios/Sources/IoscInput.h
++++ b/x11/apps/Xios/Sources/IoscInput.h
+@@ -21,6 +21,11 @@ void iosc_input_motion(int x, int y);                       // absolute, output
+ void iosc_input_button(int button, bool down, int x, int y);// 1=left 2=mid 3=right
+ void iosc_input_key(unsigned keysym, unsigned mods);        // X keysym + mod bitmask
+ void iosc_input_text(const char *utf8);                     // committed UTF-8 text
++// Real multitouch + Apple Pencil (wire spec: x11/wayland/xios_input_socket.h).
++// phase: 0 up, 1 down, 2 motion, 3 cancel. slot = stable per-touch id 0..9.
++void iosc_input_touch(int slot, int phase, int x, int y);
++void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
++                       int tilt_x_deg, int tilt_y_deg);     // pressure 0..65535
+ int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled);
+ 
+ #endif
+diff --git a/x11/apps/Xios/Sources/IoscInput.c b/x11/apps/Xios/Sources/IoscInput.c
+index 508358f..ce39add 100644
+--- a/x11/apps/Xios/Sources/IoscInput.c
++++ b/x11/apps/Xios/Sources/IoscInput.c
+@@ -17,6 +17,8 @@ static int s_fd = -1;
+ #define IOSC_IN_KEY    3
+ #define IOSC_IN_TEXT   4
+ #define IOSC_IN_TRAITS 5
++#define IOSC_IN_TOUCH  6   // code = touch id (slot 0..9), state = phase 0 up/1 down/2 motion/3 cancel
++#define IOSC_IN_TABLET 7   // code = pressure 0..65535, state = phase, mods = tilt+90 packed
+ 
+ struct iosc_in_msg {
+     uint32_t type;
+@@ -97,6 +99,24 @@ void iosc_input_text(const char *utf8) {
+     send_bytes(utf8, len);
+ }
+ 
++void iosc_input_touch(int slot, int phase, int x, int y) {
++    struct iosc_in_msg m = { .type = IOSC_IN_TOUCH, .x = x, .y = y,
++                             .code = (uint32_t)slot, .state = (uint32_t)phase };
++    send_msg(&m);
++}
++
++void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
++                       int tilt_x_deg, int tilt_y_deg) {
++    if (tilt_x_deg < -90) tilt_x_deg = -90; if (tilt_x_deg > 90) tilt_x_deg = 90;
++    if (tilt_y_deg < -90) tilt_y_deg = -90; if (tilt_y_deg > 90) tilt_y_deg = 90;
++    struct iosc_in_msg m = { .type = IOSC_IN_TABLET, .x = x, .y = y,
++                             .code = pressure16 > 65535u ? 65535u : pressure16,
++                             .state = (uint32_t)phase,
++                             .mods = (uint32_t)(tilt_x_deg + 90) |
++                                     ((uint32_t)(tilt_y_deg + 90) << 8) };
++    send_msg(&m);
++}
++
+ int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled) {
+     if (s_fd < 0) return -1;
+     int got = 0;
+diff --git a/x11/apps/Xios/Sources/XScreen.swift b/x11/apps/Xios/Sources/XScreen.swift
+index 2282186..0259c4d 100644
+--- a/x11/apps/Xios/Sources/XScreen.swift
++++ b/x11/apps/Xios/Sources/XScreen.swift
+@@ -978,7 +978,75 @@ final class XScreenView: UIView {
+         zoomButton?.setTitle("\(Int((zoomScale * 100).rounded()))%", for: .normal)
+     }
+ 
++    // MARK: iosc real multitouch + Apple Pencil (wire types XIOS_IN_TOUCH/XIOS_IN_TABLET)
++
++    /// Fingers go the wl_touch path on iosc when true; set false to keep the
++    /// legacy single-finger pointer emulation for fingers (Pencil is always
++    /// forwarded as a tablet tool on iosc regardless).
++    private static let sendRealTouch = true
++    /// Stable per-touch slot ids (0..9), assigned on began, freed on ended/cancelled.
++    private var touchSlots: [UITouch: Int32] = [:]
++
++    private func touchSlot(for t: UITouch) -> Int32 {
++        if let s = touchSlots[t] { return s }
++        var s: Int32 = 0
++        while touchSlots.values.contains(s) { s += 1 }
++        touchSlots[t] = s
++        return s
++    }
++
++    private func ioscPoint(_ t: UITouch) -> (Int32, Int32)? {
++        framebufferPoint(from: t.location(in: self)) ?? lastTouchPt
++    }
++
++    /// Forward one UITouch to iosc as touch (finger) or tablet (Pencil) events.
++    /// Returns false when the legacy pointer path should handle it instead.
++    /// phase: 0 up, 1 down, 2 motion, 3 cancel (the wire's phase encoding).
++    private func forwardIosc(_ t: UITouch, phase: Int32, event: UIEvent?) -> Bool {
++        guard usingIosc, inputConnected else { return false }
++        if t.type == .pencil {
++            if phase == 0 || phase == 3 {          // iosc ignores coords on up/cancel
++                let p = ioscPoint(t) ?? (0, 0)
++                iosc_input_tablet(phase, p.0, p.1, 0, 0, 0)
++                return true
++            }
++            // Coalesced touches carry the full 240Hz Pencil sample train.
++            let samples = (phase == 2 ? event?.coalescedTouches(for: t) : nil) ?? [t]
++            for s in samples {
++                guard let (x, y) = ioscPoint(s) else { continue }
++                lastTouchPt = (x, y)
++                let force = s.maximumPossibleForce > 0
++                    ? Double(s.force / s.maximumPossibleForce) : 1.0
++                let mag = 90.0 - Double(s.altitudeAngle) * 180.0 / .pi  // 0 = pen vertical
++                let az = Double(s.azimuthAngle(in: self))
++                iosc_input_tablet(phase, x, y,
++                                  UInt32((force * 65535.0).rounded()),
++                                  Int32((mag * cos(az)).rounded()),
++                                  Int32((mag * sin(az)).rounded()))
++            }
++            return true
++        }
++        guard Self.sendRealTouch else { return false }
++        let slot = touchSlot(for: t)
++        if phase == 0 || phase == 3 { touchSlots[t] = nil }
++        guard let (x, y) = ioscPoint(t) else {
++            // Outside the framebuffer: still deliver up/cancel so iosc frees the id.
++            if phase == 0 || phase == 3 { iosc_input_touch(slot, phase, 0, 0) }
++            return true
++        }
++        lastTouchPt = (x, y)
++        iosc_input_touch(slot, phase, x, y)
++        return true
++    }
++
++    private func forwardIoscAll(_ touches: Set<UITouch>, phase: Int32, event: UIEvent?) -> Bool {
++        var handled = false
++        for t in touches where forwardIosc(t, phase: phase, event: event) { handled = true }
++        return handled
++    }
++
+     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
++        if forwardIoscAll(touches, phase: 1, event: event) { return }
+         guard (event?.allTouches?.count ?? touches.count) == 1,
+               inputConnected, let t = touches.first,
+               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
+@@ -986,6 +1054,7 @@ final class XScreenView: UIView {
+         sendMotion(x, y); sendButton(1, true, at: (x, y))
+     }
+     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
++        if forwardIoscAll(touches, phase: 2, event: event) { return }
+         guard (event?.allTouches?.count ?? touches.count) == 1,
+               inputConnected, let t = touches.first,
+               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
+@@ -993,9 +1062,11 @@ final class XScreenView: UIView {
+         sendMotion(x, y)
+     }
+     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
++        if forwardIoscAll(touches, phase: 0, event: event) { return }
+         if inputConnected { sendButton(1, false, at: lastTouchPt) }
+     }
+     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
++        if forwardIoscAll(touches, phase: 3, event: event) { return }
+         if inputConnected { sendButton(1, false, at: lastTouchPt) }
+     }
+ 

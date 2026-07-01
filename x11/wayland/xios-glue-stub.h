@@ -36,6 +36,12 @@ float xios_output_scale (void);
 #define XIOS_IN_BUTTON 2u   /* code = evdev button (or 0/1/2 -> L/R/M), state */
 #define XIOS_IN_KEY    3u   /* code = X keysym, state = pressed/released, mods */
 #define XIOS_IN_TEXT   4u   /* code = payload byte length; text follows        */
+/* Additive fixed 24-byte records (no payload); readers that predate them pass
+ * unknown types through untouched. Phases for both: state = 0 up, 1 down,
+ * 2 motion, 3 cancel. */
+#define XIOS_IN_TOUCH  6u   /* real multitouch: code = touch id (slot 0..9)    */
+#define XIOS_IN_TABLET 7u   /* pen/stylus: code = pressure 0..65535,
+                             * mods = (tilt_x_deg+90) | (tilt_y_deg+90)<<8     */
 
 /* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */
 struct xios_in_msg

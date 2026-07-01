@@ -3420,7 +3420,7 @@ static void handle_touch(int id, int phase, int x, int y)
     }
 }
 
-/* ---- tablet-v2 (Apple Pencil; fed by IOSC_IN_PENCIL) ----------------------- *
+/* ---- tablet-v2 (Apple Pencil; fed by IOSC_IN_TABLET) ----------------------- *
  * One virtual tablet ("Apple Pencil") with one PEN tool advertising PRESSURE +
  * TILT, announced to every zwp_tablet_seat_v2 as it is created. The iPad 7 has
  * no hover, so each stroke is bracketed proximity_in .. down .. motion ..
@@ -4602,8 +4602,9 @@ static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
 #define IOSC_IN_TEXT   4
 #define IOSC_IN_TRAITS 5
 #define IOSC_IN_TOUCH  6   /* code = touch id, state = IOSC_TOUCH_* phase */
-#define IOSC_IN_PENCIL 7   /* code = pressure 0..65535, state = IOSC_PEN_* phase,
-                            * mods = (tiltx+90) | (tilty+90)<<8 (degrees) */
+#define IOSC_IN_TABLET 7   /* code = pressure 0..65535, state = IOSC_PEN_* phase,
+                            * mods = (tiltx+90) | (tilty+90)<<8 (degrees).
+                            * Authoritative wire spec (XIOS_IN_*): xios_input_socket.h */
 struct iosc_in_msg {            /* native-endian; app + iosc are both arm64 */
     uint32_t type;
     int32_t  x, y;             /* output px (motion / button) */
@@ -4664,7 +4665,7 @@ static void in_dispatch(const struct iosc_in_msg *m)
                              handle_button((int)m->code, (int)m->state); break;
         case IOSC_IN_KEY:    handle_key(m->code, m->mods); break;
         case IOSC_IN_TOUCH:  handle_touch((int)m->code, (int)m->state, x, y); break;
-        case IOSC_IN_PENCIL: handle_pencil((int)m->state, x, y, m->code,
+        case IOSC_IN_TABLET: handle_pencil((int)m->state, x, y, m->code,
                                            (int)(m->mods & 0xffu) - 90,
                                            (int)((m->mods >> 8) & 0xffu) - 90); break;
     }
