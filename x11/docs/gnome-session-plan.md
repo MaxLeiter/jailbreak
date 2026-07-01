@@ -239,22 +239,25 @@ RequiredComponents=org.gnome.Shell;
 EOF
 export XDG_CONFIG_DIRS=$CFG:/var/jb/etc/xdg
 
-# 3. login1 stub on the SESSION bus (owns org.freedesktop.login1 there)
-( XIOS_LOGIN1_BUS=session /var/jb/usr/libexec/xios-login1-stub & )
-
-# 4. the session bus + gnome-session (classic path), which starts gnome-shell,
-#    which starts Mutter/MetaBackendIOS + the Xios rendezvous server.
-exec dbus-run-session -- gnome-session --builtin --session=xios
+# 3+4. ONE session bus for everything. The login1 stub must claim org.freedesktop.login1
+#      on the SAME bus gnome-session/gnome-shell use, so both run inside a single
+#      dbus-run-session. gnome-session (classic path) then starts gnome-shell, which
+#      brings up Mutter/MetaBackendIOS + the Xios rendezvous server.
+exec dbus-run-session -- sh -c '
+  XIOS_LOGIN1_BUS=session /var/jb/usr/libexec/xios-login1-stub &
+  sleep 1   # let the stub claim the name before the shell queries it
+  exec gnome-session --builtin --session=xios
+'
 ```
 
 Notes:
-- `xios-login1-stub` is started with `XIOS_LOGIN1_BUS=session` so it claims
-  `org.freedesktop.login1` on the same session bus (no system bus needed). If it is started
-  before `dbus-run-session`, it will not share that bus. Either start it from inside the
-  dbus-run-session command, or run a persistent bus (option 2 above) and start the stub and
-  gnome-session against the same `DBUS_SESSION_BUS_ADDRESS`. The script above is the
-  persistent-bus variant's simpler cousin: for the shared-bus guarantee, fold steps 3 and 4
-  into one `dbus-run-session -- sh -c '... stub & ; exec gnome-session ...'`.
+- The stub and gnome-session share one bus because both live inside the single
+  `dbus-run-session` invocation. A stub started before `dbus-run-session` lands on a
+  different (or no) bus and gnome-shell's login1 queries fail — this is the one ordering
+  trap in the whole launch. `XIOS_LOGIN1_BUS=session` makes the stub claim
+  `org.freedesktop.login1` on the session bus (no system bus needed). If the bus should
+  outlive one gnome-session run, switch to the manual `dbus-daemon --session
+  --print-address` form and start both against the exported `DBUS_SESSION_BUS_ADDRESS`.
 - `gnome-session --builtin` forces the classic non-systemd manager even though the build
   already defaults to it (belt and suspenders).
 - The Xios app must be launched (it reads `/var/jb/tmp/xios.json` and displays the IOSurface).
