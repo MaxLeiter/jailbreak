@@ -678,9 +678,25 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
     }
 }
 
+/* Layer-shell surfaces are the shell's chrome (panel/overview/wallpaper): they
+ * commit premultiplied ARGB8888 and rely on real translucency over what's beneath
+ * them, so honor their alpha. Everything else keeps the opaque window path
+ * (XRGB8888 alpha is undefined). IOSurface and single-pixel buffers always carry
+ * a real alpha channel. */
+static int surface_blends(struct iosc_surface *s)
+{
+    if (s->role != IOSC_ROLE_LAYER || !s->current_buffer) return 0;
+    struct wl_shm_buffer *shm = wl_shm_buffer_get(s->current_buffer);
+    if (shm) return wl_shm_buffer_get_format(shm) == WL_SHM_FORMAT_ARGB8888;
+    return 1;
+}
+
 static void composite_one(struct iosc_surface *s)
 {
+    int blend = surface_blends(s);
+    if (blend) iosc_gl_begin_blend();
     composite_surface_at(s, s->dx, s->dy);
+    if (blend) iosc_gl_end_blend();
 }
 
 /* ---- cursor-shape-v1: compositor-drawn named cursors --------------------- *
@@ -842,11 +858,11 @@ static void composite_named_cursor(void)
     if (!g_cur_w || !g_cur_h) return;
     int os = output_scale();
     int lx = g_cursor_x - g_cur_hotx, ly = g_cursor_y - g_cur_hoty;
-    iosc_gl_begin_cursor();
+    iosc_gl_begin_blend();
     iosc_gl_draw_shm(NULL, 1, g_cur_bmp, g_cur_w, g_cur_h, g_cur_w * 4,
                      0, 0, g_cur_w, g_cur_h,
                      lx * os, ly * os, g_cur_w * os, g_cur_h * os);
-    iosc_gl_end_cursor();
+    iosc_gl_end_blend();
 }
 
 static void cshape_dev_destroy(struct wl_client *c, struct wl_resource *r)
@@ -910,11 +926,11 @@ static void composite_cursor(void)
     if (!g_cursor_visible || !g_cursor_surface || !g_cursor_surface->current_buffer) return;
     /* The cursor is a premultiplied ARGB8888 wl_shm surface: blend it so its alpha is
      * honored, otherwise the transparent pixels around the arrow draw as a black box. */
-    iosc_gl_begin_cursor();
+    iosc_gl_begin_blend();
     composite_surface_at(g_cursor_surface,
                          g_cursor_x - g_cursor_hot_x,
                          g_cursor_y - g_cursor_hot_y);
-    iosc_gl_end_cursor();
+    iosc_gl_end_blend();
 }
 
 /* IOSC_PROBE classifier: map a BGRA output pixel to a legend char for the app-space
@@ -995,9 +1011,9 @@ static void recomposite_now(void)
             composite_one(g_mapped[i]);
         /* Drag icon rides above the windows, just under the cursor (blended). */
         if (g_dnd.active && g_dnd.icon && g_dnd.icon->current_buffer) {
-            iosc_gl_begin_cursor();
+            iosc_gl_begin_blend();
             composite_surface_at(g_dnd.icon, g_cursor_x, g_cursor_y);
-            iosc_gl_end_cursor();
+            iosc_gl_end_blend();
         }
         composite_cursor();
         iosc_gl_end();

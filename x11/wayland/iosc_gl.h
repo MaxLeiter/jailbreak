@@ -56,12 +56,13 @@ uint32_t iosc_gl_read_at(int x, int y);
 /* Read the composited output center pixel (BGRA) — validation only (IOSC_DEBUG). */
 uint32_t iosc_gl_read_center(void);
 
-/* Wrap the cursor surface's composite in premultiplied-alpha blending so its ARGB8888
- * alpha is honored (transparent around the arrow) instead of drawing an opaque black
- * box. Call begin before the cursor draw and end after; windows draw between frames
- * with blending off and alpha forced opaque (unchanged). */
-void iosc_gl_begin_cursor(void);
-void iosc_gl_end_cursor(void);
+/* Wrap a composite in premultiplied-alpha blending so the buffer's real alpha is
+ * honored (source-over) instead of drawing opaque. Used for the cursor and DnD
+ * icon (transparent around the artwork) and for layer-shell surfaces (the shell's
+ * translucent panel/overview chrome). Call begin before the draw and end after;
+ * windows draw between frames with blending off and alpha forced opaque. */
+void iosc_gl_begin_blend(void);
+void iosc_gl_end_blend(void);
 
 /* Drop the cached pbuffer/texture for a client IOSurface that is going away. */
 void iosc_gl_forget_iosurface(void *client_iosurface);

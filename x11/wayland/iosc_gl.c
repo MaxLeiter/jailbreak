@@ -365,20 +365,21 @@ uint32_t iosc_gl_read_at(int x, int y)
     return px;
 }
 
-/* Cursor draw wraps its composite in premultiplied alpha blending. The cursor is
- * an ARGB8888 wl_shm surface whose alpha channel is real (transparent around the
- * arrow); without this it would draw opaque (a black box). Wayland SHM buffers are
- * PREMULTIPLIED, so the blend is (GL_ONE, GL_ONE_MINUS_SRC_ALPHA) and the shader
- * emits the sampled color unmodified (opaque=0 keeps c.a). Windows keep opaque=1
- * and blend disabled, so their path is byte-identical to before. */
-void iosc_gl_begin_cursor(void)
+/* Blended composites (cursor, DnD icon, layer-shell chrome) wrap their draw in
+ * premultiplied alpha blending: these are ARGB8888 buffers whose alpha channel is
+ * real (transparent around the arrow, translucent panel); without this they would
+ * draw opaque. Wayland SHM buffers are PREMULTIPLIED, so the blend is
+ * (GL_ONE, GL_ONE_MINUS_SRC_ALPHA) and the shader emits the sampled color
+ * unmodified (opaque=0 keeps c.a). Windows keep opaque=1 and blend disabled, so
+ * their path is byte-identical to before. */
+void iosc_gl_begin_blend(void)
 {
     s_opaque = 0.f;
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);   /* premultiplied-alpha over */
 }
 
-void iosc_gl_end_cursor(void)
+void iosc_gl_end_blend(void)
 {
     glDisable(GL_BLEND);
     s_opaque = 1.f;
