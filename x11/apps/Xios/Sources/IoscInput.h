@@ -29,6 +29,11 @@ void iosc_input_text(const char *utf8);                     // committed UTF-8 t
 void iosc_input_touch(int slot, int phase, int x, int y);
 void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
                        int tilt_x_deg, int tilt_y_deg);     // pressure 0..65535
+// Two-finger / wheel scroll. dx256/dy256 = deltas in 1/256 framebuffer-pixel fixed
+// point, wl_pointer sign (positive = content scrolls down/right). source: 0 finger,
+// 1 wheel. mods: 1 shift, 2 ctrl, 4 alt latched for the frame (pinch-zoom sends ctrl).
+// stop ends the gesture (clients then fling).
+void iosc_input_axis(int dx256, int dy256, unsigned source, unsigned mods, bool stop);
 // Drain the server->app stream. Returns 1 with ONE TRAITS record's fields filled
 // (call again for more; every enable/disable transition is delivered, nothing
 // coalesces), 0 when no complete record is pending, -1 on disconnect.

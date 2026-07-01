@@ -19,6 +19,7 @@ static int s_fd = -1;
 #define IOSC_IN_TRAITS 5
 #define IOSC_IN_TOUCH  6   // code = touch id (slot 0..9), state = phase 0 up/1 down/2 motion/3 cancel
 #define IOSC_IN_TABLET 7   // code = pressure 0..65535, state = phase, mods = tilt+90 packed
+#define IOSC_IN_AXIS   9   // x,y = dx,dy 1/256 px; code = source; state bit0 = stop; mods latched
 
 struct iosc_in_msg {
     uint32_t type;
@@ -114,6 +115,12 @@ void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
                              .state = (uint32_t)phase,
                              .mods = (uint32_t)(tilt_x_deg + 90) |
                                      ((uint32_t)(tilt_y_deg + 90) << 8) };
+    send_msg(&m);
+}
+
+void iosc_input_axis(int dx256, int dy256, unsigned source, unsigned mods, bool stop) {
+    struct iosc_in_msg m = { .type = IOSC_IN_AXIS, .x = dx256, .y = dy256,
+                             .code = source, .state = stop ? 1u : 0u, .mods = mods };
     send_msg(&m);
 }
 

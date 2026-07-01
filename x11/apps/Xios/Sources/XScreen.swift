@@ -92,6 +92,31 @@ final class XScreenView: UIView {
     private var panLastTranslation = CGPoint.zero
     private var scrollRemainder = CGPoint.zero
 
+    // MARK: scroll + long-press gesture state
+    /// Sub-1/256-px scroll remainder for the iosc AXIS path (wl_fixed units).
+    private var axisRemainder = CGPoint.zero
+    /// True once this two-finger pan has emitted AXIS records (needs a stop).
+    private var axisActive = false
+    /// Two-finger arbitration: the first gesture to cross its threshold claims
+    /// the finger pair (scroll vs pinch app-zoom) for the rest of the session.
+    private enum TwoFingerMode { case undecided, scroll, zoom }
+    private var twoFingerMode = TwoFingerMode.undecided
+    private var twoFingerActive = 0     // live pan/pinch recognizers (0..2)
+    private var pinchLastScale: CGFloat = 1
+    /// ~3 wheel notches of ctrl+scroll per pinch doubling (45 logical px at
+    /// output scale 2, in 1/256 fixed point). Tune on device.
+    private static let pinchZoomGain: CGFloat = 23040
+    /// Deferred left press: a stationary single finger only commits to a left
+    /// press when it moves (drag) or lifts (tap); held past the threshold it
+    /// becomes a right click instead (touch-and-hold = context menu).
+    private var pendingPress: (x: Int32, y: Int32)?
+    private var pendingPressTimer: Timer?
+    private var pendingPressViewPoint = CGPoint.zero
+    private var leftPressSent = false
+    private var longPressFired = false
+    private static let longPressSeconds: TimeInterval = 0.55
+    private static let longPressSlopPt: CGFloat = 12
+
     // IOSurface (zero-copy) path
     private var ddxIsIOSurface = false
     private var ddxSockPath = "/var/jb/tmp/xios-ddx.sock"
@@ -130,7 +155,13 @@ final class XScreenView: UIView {
     private var ioscInputSock: String?
     private var ioscClipboardSock: String?
     private var pasteboardChangeCount = UIPasteboard.general.changeCount
-    private var lastSentPasteboard: String?
+    private let kClipText: UInt32 = 1, kClipURI: UInt32 = 2,
+                kClipPNG: UInt32 = 3, kClipHTML: UInt32 = 4
+    private var clipRxGen: UInt32 = 0
+    private var clipRxItems: [UInt32: Data] = [:]
+    private var clipDeferredPushTicks = 0   // connect grace: desktop wins if it speaks
+    private var clipSuppressText: String?   // echo guards: what we last wrote/read
+    private var clipSuppressPNG: Data?
     private var usingIosc: Bool { ioscInputSock != nil }
     // Last single-finger point in output px, so a touch-up (whose UIKit location we may
     // not be able to map) can send the iosc button-release at the right spot.
@@ -879,31 +910,106 @@ final class XScreenView: UIView {
             return
         }
         if !iosc_clipboard_is_open() {
-            guard iosc_clipboard_open(sock) else { return }
+            guard tickCount % 30 == 0, iosc_clipboard_open(sock) else { return }
             pasteboardChangeCount = UIPasteboard.general.changeCount
-            let text = UIPasteboard.general.string ?? ""
-            lastSentPasteboard = text
-            _ = text.withCString { iosc_clipboard_set_text($0) }
+            // On (re)connect the compositor replays the session clipboard if it
+            // has one. Push ours only if it stays silent for ~0.5 s — so a fresh
+            // desktop inherits the iOS pasteboard, but an app relaunch mid-session
+            // doesn't clobber the desktop clipboard with a stale one.
+            clipDeferredPushTicks = 30
         }
-
-        var buf = [CChar](repeating: 0, count: 1024 * 1024 + 1)
-        var n: Int32 = 0
-        while buf.withUnsafeMutableBufferPointer({ p in
-            iosc_clipboard_poll(p.baseAddress, Int32(p.count), &n)
-        }) {
-            let text = String(cString: buf)
-            UIPasteboard.general.string = text.isEmpty ? nil : text
-            pasteboardChangeCount = UIPasteboard.general.changeCount
-            lastSentPasteboard = text
+        var gotAny = false
+        while true {
+            var kind: UInt32 = 0, gen: UInt32 = 0, len: UInt32 = 0
+            var buf: UnsafeMutablePointer<UInt8>? = nil
+            let r = iosc_clipboard_poll_item(&kind, &gen, &buf, &len)
+            if r < 0 { clipDeferredPushTicks = 0; return }
+            if r == 0 { break }
+            clipDeferredPushTicks = 0
+            if gen != clipRxGen { clipRxGen = gen; clipRxItems.removeAll() }
+            if kind == 0 { free(buf); clipRxItems.removeAll() }
+            else if let b = buf {
+                clipRxItems[kind] = Data(bytesNoCopy: b, count: Int(len),
+                                         deallocator: .free)
+            }
+            gotAny = true
         }
+        if gotAny { commitReceivedClipboard() }
+        if clipDeferredPushTicks > 0 {
+            clipDeferredPushTicks -= 1
+            if clipDeferredPushTicks == 0 { pushPasteboard(onConnect: true) }
+        }
+        if UIPasteboard.general.changeCount != pasteboardChangeCount {
+            pushPasteboard(onConnect: false)
+        }
+    }
 
+    private func commitReceivedClipboard() {
         let pb = UIPasteboard.general
-        guard pb.changeCount != pasteboardChangeCount else { return }
+        var item: [String: Any] = [:]
+        if let t = clipRxItems[kClipText], let s = String(data: t, encoding: .utf8) {
+            item["public.utf8-plain-text"] = s
+            clipSuppressText = s
+        } else { clipSuppressText = nil }
+        if let png = clipRxItems[kClipPNG] {
+            item["public.png"] = png
+            clipSuppressPNG = png
+        } else { clipSuppressPNG = nil }
+        if let u = clipRxItems[kClipURI], let s = String(data: u, encoding: .utf8) {
+            let uris = s.split(whereSeparator: { $0 == "\r" || $0 == "\n" })
+                        .filter { !$0.hasPrefix("#") }
+            // A copied web link should paste as a link; file:// paths from Linux
+            // mean nothing to iOS apps, so those only ride along as text.
+            if uris.count == 1, let url = URL(string: String(uris[0])),
+               url.scheme == "http" || url.scheme == "https" {
+                item["public.url"] = url.absoluteString
+            }
+            if item["public.utf8-plain-text"] == nil {
+                item["public.utf8-plain-text"] = s
+            }
+        }
+        if let h = clipRxItems[kClipHTML], let s = String(data: h, encoding: .utf8) {
+            item["public.html"] = s
+        }
+        pb.items = item.isEmpty ? [] : [item]
+        pasteboardChangeCount = pb.changeCount   // our own write, not an iOS copy
+    }
+
+    private func pushPasteboard(onConnect: Bool) {
+        let pb = UIPasteboard.general
         pasteboardChangeCount = pb.changeCount
-        let text = pb.string ?? ""
-        if text == lastSentPasteboard { return }
-        lastSentPasteboard = text
-        _ = text.withCString { iosc_clipboard_set_text($0) }
+        let text = pb.hasStrings ? pb.string : nil
+        let png: Data? = pb.hasImages
+            ? (pb.data(forPasteboardType: "public.png") ?? pb.image?.pngData())
+            : nil
+        let urls = pb.hasURLs ? (pb.urls ?? []) : []
+        if text == nil && png == nil && urls.isEmpty {
+            // Empty pasteboard: on connect that's "nothing to contribute", not
+            // "clear the desktop clipboard".
+            if !onConnect { _ = iosc_clipboard_send_clear() }
+            clipSuppressText = nil; clipSuppressPNG = nil
+            return
+        }
+        if !onConnect && text == clipSuppressText && png == clipSuppressPNG {
+            return   // echo of our own commitReceivedClipboard write
+        }
+        iosc_clipboard_send_begin()
+        if let t = text {
+            _ = t.withCString { iosc_clipboard_send_item(kClipText, $0, strlen($0)) }
+        }
+        if let p = png {
+            _ = p.withUnsafeBytes {
+                iosc_clipboard_send_item(kClipPNG, $0.baseAddress, p.count)
+            }
+        }
+        if !urls.isEmpty {
+            let list = urls.map(\.absoluteString).joined(separator: "\r\n") + "\r\n"
+            _ = list.withCString { iosc_clipboard_send_item(kClipURI, $0, strlen($0)) }
+            if text == nil {
+                _ = list.withCString { iosc_clipboard_send_item(kClipText, $0, strlen($0)) }
+            }
+        }
+        clipSuppressText = text; clipSuppressPNG = png
     }
 
     // Route one pointer/key event to the active backend: iosc (Wayland) or XTEST.
@@ -1028,9 +1134,26 @@ final class XScreenView: UIView {
         return min(max(1 / (fit * metalLayer.contentsScale), minZoomScale), maxZoomScale)
     }
 
+    /// dx/dy are view-point finger deltas. iosc gets AXIS records in 1/256
+    /// framebuffer-pixel fixed point with wl_pointer's sign (natural scroll:
+    /// fingers up = content scrolls down the page = positive); XTEST keeps
+    /// the legacy wheel-click emulation.
     private func sendScroll(dx: CGFloat, dy: CGFloat) {
         guard inputConnected else { return }
-        if usingIosc { return }   // iosc input protocol currently has pointer/key only.
+        if usingIosc {
+            let ptToFb = 256 / (fittedScale(in: bounds.size) * zoomScale)
+            axisRemainder.x -= dx * ptToFb
+            axisRemainder.y -= dy * ptToFb
+            let sx = axisRemainder.x.rounded(.towardZero)
+            let sy = axisRemainder.y.rounded(.towardZero)
+            if sx != 0 || sy != 0 {
+                axisRemainder.x -= sx
+                axisRemainder.y -= sy
+                iosc_input_axis(Int32(sx), Int32(sy), 0, 0, false)
+                axisActive = true
+            }
+            return
+        }
         scrollRemainder.x -= dx
         scrollRemainder.y -= dy
         let step: CGFloat = 36
@@ -1052,12 +1175,38 @@ final class XScreenView: UIView {
         }
     }
 
+    /// Fingers left the glass: end the axis gesture so clients kinetic-fling.
+    private func sendScrollStop() {
+        axisRemainder = .zero
+        guard axisActive else { return }
+        axisActive = false
+        if inputConnected && usingIosc { iosc_input_axis(0, 0, 0, 0, true) }
+    }
+
     @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
         switch g.state {
         case .began:
+            twoFingerBegan()
+            pinchLastScale = g.scale
             pinchStartZoom = zoomScale
             pinchAnchorFramebuffer = framebufferFloatPoint(from: g.location(in: self))
         case .changed:
+            if usingIosc && zoomScale <= 1.01 {
+                if twoFingerMode == .undecided && abs(g.scale - 1) > 0.08 {
+                    twoFingerMode = .zoom
+                    if let (x, y) = framebufferPoint(from: g.location(in: self)) {
+                        lastTouchPt = (x, y)
+                        sendMotion(x, y)   // zoom the window under the fingers
+                    }
+                }
+                guard twoFingerMode == .zoom, inputConnected else { return }
+                let ratio = g.scale / max(pinchLastScale, 0.01)
+                pinchLastScale = g.scale
+                // ctrl+scroll-up zooms in, so pinch-out = negative axis
+                let dy256 = -log2(ratio) * Self.pinchZoomGain
+                iosc_input_axis(0, Int32(dy256.rounded()), 0, 2, false)
+                return
+            }
             let location = g.location(in: self)
             setZoom(pinchStartZoom * g.scale, around: location)
             if let fp = pinchAnchorFramebuffer {
@@ -1068,18 +1217,25 @@ final class XScreenView: UIView {
                 needsPresent = true
             }
         case .ended, .cancelled, .failed:
+            if twoFingerMode == .zoom && usingIosc && inputConnected {
+                iosc_input_axis(0, 0, 0, 2, true)
+            }
             pinchAnchorFramebuffer = nil
+            twoFingerEnded()
         default:
             break
         }
     }
 
     @objc private func handleTwoFingerPan(_ g: UIPanGestureRecognizer) {
+        let isWheel = g.numberOfTouches == 0   // trackpad/wheel scroll events
         switch g.state {
         case .began:
+            twoFingerBegan()
             panStartOffset = panOffset
             panLastTranslation = .zero
             scrollRemainder = .zero
+            axisRemainder = .zero
         case .changed:
             let t = g.translation(in: self)
             if zoomScale > 1.01 {
@@ -1088,13 +1244,36 @@ final class XScreenView: UIView {
                     zoom: zoomScale)
                 needsPresent = true
             } else {
-                sendScroll(dx: t.x - panLastTranslation.x, dy: t.y - panLastTranslation.y)
+                if twoFingerMode == .undecided, isWheel || abs(t.x) + abs(t.y) > 12 {
+                    twoFingerMode = .scroll
+                    if let (x, y) = framebufferPoint(from: g.location(in: self)) {
+                        lastTouchPt = (x, y)
+                        sendMotion(x, y)   // focus the surface under the fingers
+                    }
+                }
+                if twoFingerMode == .scroll {
+                    sendScroll(dx: t.x - panLastTranslation.x,
+                               dy: t.y - panLastTranslation.y)
+                }
             }
             panLastTranslation = t
         default:
+            sendScrollStop()
             panLastTranslation = .zero
             scrollRemainder = .zero
+            twoFingerEnded()
         }
+    }
+
+    private func twoFingerBegan() {
+        twoFingerActive += 1
+        if twoFingerActive == 1 { twoFingerMode = .undecided }
+        cancelPendingPress()   // two fingers on glass: never a click or hold
+    }
+
+    private func twoFingerEnded() {
+        twoFingerActive = max(0, twoFingerActive - 1)
+        if twoFingerActive == 0 { twoFingerMode = .undecided }
     }
 
     @objc private func handleTwoFingerTap(_ g: UITapGestureRecognizer) {
@@ -1201,27 +1380,92 @@ final class XScreenView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         if forwardIoscAll(touches, phase: 1, event: event) && Self.ioscTouchReplacesPointer { return }
-        guard (event?.allTouches?.count ?? touches.count) == 1,
-              inputConnected, let t = touches.first,
+        guard (event?.allTouches?.count ?? touches.count) == 1 else {
+            cancelPendingPress()   // a second finger means gesture, not click
+            return
+        }
+        guard inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
         lastTouchPt = (x, y)
-        sendMotion(x, y); sendButton(1, true, at: (x, y))
+        longPressFired = false
+        if t.type == .direct {
+            // Finger: defer the press so a still hold can become a right click.
+            pendingPress = (x, y)
+            pendingPressViewPoint = t.location(in: self)
+            pendingPressTimer?.invalidate()
+            pendingPressTimer = Timer.scheduledTimer(withTimeInterval: Self.longPressSeconds,
+                                                     repeats: false) { [weak self] _ in
+                self?.fireLongPress()
+            }
+        } else {
+            // Pencil / trackpad: press immediately, no long-press synthesis.
+            sendMotion(x, y); sendButton(1, true, at: (x, y))
+            leftPressSent = true
+        }
     }
+
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         if forwardIoscAll(touches, phase: 2, event: event) && Self.ioscTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
+        if longPressFired { return }          // the hold became a right click
+        if pendingPress != nil {
+            let l = t.location(in: self)
+            if hypot(l.x - pendingPressViewPoint.x,
+                     l.y - pendingPressViewPoint.y) < Self.longPressSlopPt { return }
+            flushPendingPress()               // it moved: press at the origin
+        }
         lastTouchPt = (x, y)
         sendMotion(x, y)
     }
+
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if forwardIoscAll(touches, phase: 0, event: event) && Self.ioscTouchReplacesPointer { return }
-        if inputConnected { sendButton(1, false, at: lastTouchPt) }
+        guard inputConnected else { cancelPendingPress(); longPressFired = false; return }
+        if longPressFired { longPressFired = false; return }
+        if pendingPress != nil { flushPendingPress() }   // stationary tap = click
+        if leftPressSent {
+            sendButton(1, false, at: lastTouchPt)
+            leftPressSent = false
+        }
     }
+
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         if forwardIoscAll(touches, phase: 3, event: event) && Self.ioscTouchReplacesPointer { return }
-        if inputConnected { sendButton(1, false, at: lastTouchPt) }
+        cancelPendingPress()
+        longPressFired = false
+        if inputConnected && leftPressSent {
+            sendButton(1, false, at: lastTouchPt)
+            leftPressSent = false
+        }
+    }
+
+    // MARK: deferred press helpers
+
+    private func cancelPendingPress() {
+        pendingPressTimer?.invalidate()
+        pendingPressTimer = nil
+        pendingPress = nil
+    }
+
+    /// Commit the deferred left press at its original point (drag start / tap).
+    private func flushPendingPress() {
+        guard let p = pendingPress else { return }
+        cancelPendingPress()
+        sendMotion(p.x, p.y)
+        sendButton(1, true, at: (p.x, p.y))
+        leftPressSent = true
+    }
+
+    private func fireLongPress() {
+        guard let p = pendingPress, inputConnected else { cancelPendingPress(); return }
+        cancelPendingPress()
+        longPressFired = true
+        // Touch-and-hold = secondary click; GNOME/GTK open their context menus.
+        sendMotion(p.x, p.y)
+        sendButton(3, true, at: (p.x, p.y))
+        sendButton(3, false, at: (p.x, p.y))
     }
 
     // MARK: display discovery + picker
@@ -1358,6 +1602,15 @@ final class XScreenView: UIView {
         twoFingerPan.maximumNumberOfTouches = 2
         twoFingerPan.delegate = self
         addGestureRecognizer(twoFingerPan)
+
+        // Trackpad / Magic-Keyboard two-finger scrolling arrives as scroll events
+        // (no touches), which the two-touch pan above never sees; a dedicated
+        // recognizer feeds the same handler.
+        let wheelPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        wheelPan.allowedScrollTypesMask = .continuous
+        wheelPan.allowedTouchTypes = []
+        wheelPan.maximumNumberOfTouches = 0
+        addGestureRecognizer(wheelPan)
 
         let twoFingerDoubleTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerDoubleTap(_:)))
         twoFingerDoubleTap.numberOfTouchesRequired = 2
