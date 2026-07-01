@@ -203,8 +203,16 @@ EGLDisplay eglGetPlatformDisplayEXT(EGLenum platform, void *native_display, cons
 {
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
         g_wl = (struct wl_display *)native_display;
-        const EGLint a[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
-        return REAL(eglGetPlatformDisplayEXT)(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
+        /* Route through the CORE eglGetPlatformDisplay (EGLAttrib), the path iosc
+         * proved works for ANGLE Metal — NOT REAL(eglGetPlatformDisplayEXT), which
+         * ANGLE may not export for dlsym / may not handle the ANGLE+Metal combo,
+         * silently returning NO_DISPLAY (GDK -> "Failed to create EGL display"). */
+        const EGLAttrib a[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
+        EGLDisplay dpy = REAL(eglGetPlatformDisplay)(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
+        if (egl_debug())
+            fprintf(stderr, "iosc_egl: GetPlatformDisplayEXT(WAYLAND) -> ANGLE Metal = %p (err 0x%x)\n",
+                    dpy, REAL(eglGetError)());
+        return dpy;
     }
     return REAL(eglGetPlatformDisplayEXT)(platform, native_display, attrs);
 }
@@ -402,8 +410,10 @@ const char *eglQueryString(EGLDisplay d, EGLint n)
     const char *real = REAL(eglQueryString)(d, n);
     if (d == EGL_NO_DISPLAY && n == EGL_EXTENSIONS) {
         static char buf[1024];
-        const char *inject = "EGL_EXT_platform_base EGL_EXT_platform_wayland "
-                             "EGL_KHR_platform_wayland ";
+        /* KHR_platform_base first so GDK prefers the CORE eglGetPlatformDisplay
+         * (the proven+instrumented path) over the EXT entrypoint. */
+        const char *inject = "EGL_KHR_platform_base EGL_EXT_platform_base "
+                             "EGL_KHR_platform_wayland EGL_EXT_platform_wayland ";
         snprintf(buf, sizeof(buf), "%s%s", inject, real ? real : "");
         if (egl_debug())
             fprintf(stderr, "iosc_egl: client EGL_EXTENSIONS (+platform_wayland): %s\n", buf);
