@@ -225,34 +225,106 @@ void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
               1);   /* ANGLE-rendered client IOSurface: flip V */
 }
 
-void iosc_gl_draw_shm(const void *data, int sw, int sh, int stride,
-                      int sx, int sy, int src_w, int src_h,
-                      int dx, int dy, int dw, int dh)
+/* Per-key (per-surface) wl_shm texture cache. Without it, recomposite_all
+ * re-uploads every window's whole buffer (e.g. 2160x1620x4 = 14MB) on EVERY
+ * frame — including cursor-move repaints that changed no window content. With
+ * it, a surface is uploaded only when it committed new content (its `dirty`
+ * flag); an idle window under a moving cursor uploads nothing. */
+#define MAXSHM 24
+static struct { void *key; GLuint tex; int w, h; } s_shm_cache[MAXSHM];
+
+/* Bind the texture for `key` (allocating one on first use), reporting whether
+ * its storage must be (re)allocated at sw x sh. Returns 0 if the cache is full. */
+static GLuint shm_cache_bind(void *key, int sw, int sh, int *need_alloc)
 {
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, s_shm_tex);
+    int free_slot = -1;
+    for (int i = 0; i < MAXSHM; i++) {
+        if (s_shm_cache[i].key == key) {
+            *need_alloc = (s_shm_cache[i].w != sw || s_shm_cache[i].h != sh);
+            s_shm_cache[i].w = sw; s_shm_cache[i].h = sh;
+            glBindTexture(GL_TEXTURE_2D, s_shm_cache[i].tex);
+            return s_shm_cache[i].tex;
+        }
+        if (free_slot < 0 && s_shm_cache[i].key == NULL) free_slot = i;
+    }
+    if (free_slot < 0) return 0;   /* cache full: caller falls back to s_shm_tex */
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    s_shm_cache[free_slot].key = key;
+    s_shm_cache[free_slot].tex = tex;
+    s_shm_cache[free_slot].w = sw;
+    s_shm_cache[free_slot].h = sh;
+    *need_alloc = 1;
+    return tex;
+}
+
+/* Upload `data` into the currently-bound texture: (re)allocate at sw x sh when
+ * need_alloc, otherwise update in place. GLES2 has no UNPACK_ROW_LENGTH, so a
+ * padded stride goes row by row (most wl_shm buffers are tight). */
+static void shm_upload(const void *data, int sw, int sh, int stride, int need_alloc)
+{
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    /* BGRA upload; stride in pixels via UNPACK_ROW_LENGTH (GLES3) isn't in GLES2 —
-     * if the row is padded, upload row by row. Most wl_shm buffers are tight. */
-    if (stride == sw * 4) {
+    int tight = (stride == sw * 4);
+    if (need_alloc) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, sw, sh, 0, GL_BGRA_EXT,
-                     GL_UNSIGNED_BYTE, data);
-    } else {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, sw, sh, 0, GL_BGRA_EXT,
-                     GL_UNSIGNED_BYTE, NULL);
-        const unsigned char *p = data;
-        for (int y = 0; y < sh; y++)
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, sw, 1, GL_BGRA_EXT,
-                            GL_UNSIGNED_BYTE, p + (size_t)y * stride);
+                     GL_UNSIGNED_BYTE, tight ? data : NULL);
+        if (tight) return;
+    } else if (tight) {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_BGRA_EXT,
+                        GL_UNSIGNED_BYTE, data);
+        return;
+    }
+    const unsigned char *p = data;
+    for (int y = 0; y < sh; y++)
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, sw, 1, GL_BGRA_EXT,
+                        GL_UNSIGNED_BYTE, p + (size_t)y * stride);
+}
+
+void iosc_gl_draw_shm(void *key, int dirty, const void *data, int sw, int sh, int stride,
+                      int sx, int sy, int src_w, int src_h,
+                      int dx, int dy, int dw, int dh)
+{
+    glActiveTexture(GL_TEXTURE0);
+    int need_alloc = 1;
+    if (key) {
+        GLuint tex = shm_cache_bind(key, sw, sh, &need_alloc);
+        if (tex) {
+            if (dirty || need_alloc) shm_upload(data, sw, sh, stride, need_alloc);
+        } else {
+            key = NULL;   /* cache full: fall through to the shared upload texture */
+        }
+    }
+    if (!key) {
+        /* Uncached path (spb, named cursor, cache-full fallback): the shared
+         * texture is reused across sizes/sources, so always (re)allocate + upload. */
+        glBindTexture(GL_TEXTURE_2D, s_shm_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        shm_upload(data, sw, sh, stride, 1);
     }
     draw_quad(dx, dy, dw, dh,
               (float)sx / sw, (float)sy / sh,
               (float)(sx + src_w) / sw, (float)(sy + src_h) / sh,
               0);   /* wl_shm is top-left (v=0 = top): no V flip */
+}
+
+void iosc_gl_forget_shm(void *key)
+{
+    for (int i = 0; i < MAXSHM; i++) {
+        if (s_shm_cache[i].key == key) {
+            if (s_shm_cache[i].tex) glDeleteTextures(1, &s_shm_cache[i].tex);
+            s_shm_cache[i].key = NULL; s_shm_cache[i].tex = 0;
+            s_shm_cache[i].w = s_shm_cache[i].h = 0;
+            return;
+        }
+    }
 }
 
 void iosc_gl_end(void)

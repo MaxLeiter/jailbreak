@@ -32,10 +32,18 @@ void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
                             int sx, int sy, int src_w, int src_h,
                             int dx, int dy, int dw, int dh);
 
-/* Draw a wl_shm BGRA buffer (one CPU->GPU upload) as a quad at the dest rect. */
-void iosc_gl_draw_shm(const void *data, int sw, int sh, int stride,
+/* Draw a wl_shm BGRA buffer as a quad at the dest rect. `key` (a stable
+ * per-surface pointer) caches one GL texture per surface: the buffer is uploaded
+ * only when `dirty` (or the size changed), so an unchanged surface re-drawn on a
+ * cursor-move repaint costs no upload. Pass key=NULL for transient/uncached
+ * buffers (single-pixel, the procedural cursor); those always upload. */
+void iosc_gl_draw_shm(void *key, int dirty, const void *data, int sw, int sh, int stride,
                       int sx, int sy, int src_w, int src_h,
                       int dx, int dy, int dw, int dh);
+
+/* Drop the cached texture for a surface `key` that is going away (its address may
+ * be reused by a later surface). Safe to call for keys that were never cached. */
+void iosc_gl_forget_shm(void *key);
 
 /* End the frame: kick the GPU and block on a per-frame fence (glFinish fallback)
  * so the output IOSurface is fully composited before the Xios app presents it. */

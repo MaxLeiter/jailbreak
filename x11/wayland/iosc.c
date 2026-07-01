@@ -173,6 +173,7 @@ struct iosc_surface {
     struct wl_listener  buffer_destroy;  /* fires if the client destroys current_buffer */
     int                 buffer_listener_active;
     int                 sw, sh;          /* current buffer source dimensions */
+    int                 gl_dirty;        /* wl_shm content changed since last GPU upload */
     int                 dx, dy;          /* placement (top-left) on the output */
     int                 pending_buffer_scale;
     int                 current_buffer_scale;
@@ -651,12 +652,16 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
     int dxp = lx * os, dyp = ly * os, dwp = dw * os, dhp = dh * os;
     struct wl_shm_buffer *shm = wl_shm_buffer_get(buf);
     if (shm) {
+        /* Cache one GL texture per surface (keyed by `s`), re-uploaded only when
+         * the surface committed new content (gl_dirty). A recomposite driven by a
+         * cursor move re-draws every window but uploads none of them. */
         wl_shm_buffer_begin_access(shm);
-        iosc_gl_draw_shm(wl_shm_buffer_get_data(shm),
+        iosc_gl_draw_shm(s, s->gl_dirty, wl_shm_buffer_get_data(shm),
                          wl_shm_buffer_get_width(shm), wl_shm_buffer_get_height(shm),
                          wl_shm_buffer_get_stride(shm), sx, sy, src_w, src_h,
                          dxp, dyp, dwp, dhp);
         wl_shm_buffer_end_access(shm);
+        s->gl_dirty = 0;
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &iosurface_buffer_impl)) {
         struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(buf);
         if (ib && ib->surface)
@@ -664,8 +669,8 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
                                    dxp, dyp, dwp, dhp);
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &spb_buffer_impl)) {
         struct iosc_single_pixel_buffer *spb = wl_resource_get_user_data(buf);
-        if (spb)   /* 1x1 texel, sampled across the whole destination rect */
-            iosc_gl_draw_shm(spb->bgra, 1, 1, 4, 0, 0, 1, 1, dxp, dyp, dwp, dhp);
+        if (spb)   /* 1x1 texel, sampled across the whole destination rect (uncached) */
+            iosc_gl_draw_shm(NULL, 1, spb->bgra, 1, 1, 4, 0, 0, 1, 1, dxp, dyp, dwp, dhp);
     }
 }
 
@@ -834,7 +839,7 @@ static void composite_named_cursor(void)
     int os = output_scale();
     int lx = g_cursor_x - g_cur_hotx, ly = g_cursor_y - g_cur_hoty;
     iosc_gl_begin_cursor();
-    iosc_gl_draw_shm(g_cur_bmp, g_cur_w, g_cur_h, g_cur_w * 4,
+    iosc_gl_draw_shm(NULL, 1, g_cur_bmp, g_cur_w, g_cur_h, g_cur_w * 4,
                      0, 0, g_cur_w, g_cur_h,
                      lx * os, ly * os, g_cur_w * os, g_cur_h * os);
     iosc_gl_end_cursor();
@@ -1178,6 +1183,7 @@ static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
     }
     s->current_buffer = buf;
     s->sw = sw; s->sh = sh;
+    s->gl_dirty = 1;   /* new committed content: the cached shm texture is stale */
     if (buf && !s->buffer_listener_active) {
         s->buffer_destroy.notify = on_buffer_destroyed;
         wl_resource_add_destroy_listener(buf, &s->buffer_destroy);
@@ -1339,7 +1345,9 @@ static void surface_attach(struct wl_client *c, struct wl_resource *r,
 }
 static void surface_damage(struct wl_client *c, struct wl_resource *r,
                            int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c; (void)r; (void)x; (void)y; (void)w; (void)h; }
+{ (void)c; (void)x; (void)y; (void)w; (void)h;
+  struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) s->gl_dirty = 1;   /* in-place redraw (no re-attach): re-upload on next composite */ }
 
 static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t cb)
 {
@@ -1454,7 +1462,9 @@ static void surface_set_buffer_scale(struct wl_client *c, struct wl_resource *r,
 }
 static void surface_damage_buffer(struct wl_client *c, struct wl_resource *r,
                                   int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c; (void)r; (void)x; (void)y; (void)w; (void)h; }
+{ (void)c; (void)x; (void)y; (void)w; (void)h;
+  struct iosc_surface *s = wl_resource_get_user_data(r);
+  if (s) s->gl_dirty = 1; }
 
 static const struct wl_surface_interface surface_impl = {
     .destroy              = surface_handle_destroy,
@@ -1476,6 +1486,7 @@ static void surface_resource_destroy(struct wl_resource *r)
     if (!s) return;
     int was_mapped = s->mapped;
     surface_unmap(s);
+    iosc_gl_forget_shm(s);   /* evict the per-surface shm texture (address may be reused) */
     /* Drop the retained buffer's destroy listener (client is going away; no
      * release needed). */
     if (s->buffer_listener_active) {
