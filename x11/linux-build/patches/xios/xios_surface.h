@@ -55,7 +55,8 @@ enum {
     XIOS_MSG_HELLO  = 0x01,  /* compositor->app: a=w b=h c=stride d=format; payload=compositor-id */
     XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b,c,d = damage x,y,w,h (all 0 = whole); window_id */
     XIOS_MSG_CURSOR = 0x03,  /* compositor->app: a=x b=y c=shape_id d=flags(bit0 visible) */
-    /* 0x04-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
+    XIOS_MSG_CLIPBOARD = 0x04,  /* BOTH directions, on the CLIPBOARD socket only (see below) */
+    /* 0x05-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
 };
 typedef struct {
     uint32_t magic;      /* XIOS_MSG_MAGIC */
@@ -69,6 +70,37 @@ typedef struct {
  * a client-supplied cursor surface): this header then w*h*4 premultiplied BGRA.
  * When the CURSOR record has length==0 the app draws from shape_id instead. */
 typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
+
+/* ---- XIOS_MSG_CLIPBOARD (0x04): clipboard sync record ----------------------
+ * Rides the DEDICATED clipboard socket (iosc-clipboard.sock), NOT the app/ddx
+ * socket above — the present stream's never-stall/drop-on-backpressure posture
+ * is wrong for bulk clipboard payloads that must arrive whole. Same 32-byte
+ * xios_msg envelope though, so there is ONE record grammar across every
+ * iosc<->host channel (same decision osk-plan.md made for TRAITS).
+ *
+ * Fields:  window_id = 0
+ *          length    = item data bytes (payload follows the header)
+ *          a         = XIOS_CLIP_KIND_* (which representation this is)
+ *          b         = generation: the sender's copy-event counter. Records
+ *                      sharing a generation are representations of ONE logical
+ *                      clipboard (e.g. text + html of the same copy). A record
+ *                      whose generation differs from the receiver's last-seen
+ *                      REPLACES the clipboard; an equal one MERGES into it.
+ *                      Compare with !=, not < (counters start at 1 and wrap).
+ *          c, d      = 0 (reserved; c is earmarked for chunked transfers)
+ *
+ * Both directions are symmetric (compositor->app on Linux-side copy, app->
+ * compositor on UIPasteboard change). KIND_NONE with length 0 clears. On
+ * connect the compositor replays its current set if non-empty. Items above
+ * XIOS_CLIP_ITEM_MAX are a protocol violation: receiver drops the connection. */
+enum {
+    XIOS_CLIP_KIND_NONE = 0,   /* selection cleared (length must be 0) */
+    XIOS_CLIP_KIND_TEXT = 1,   /* text/plain;charset=utf-8 (no NUL, no BOM) */
+    XIOS_CLIP_KIND_URI  = 2,   /* text/uri-list (CRLF-separated, RFC 2483) */
+    XIOS_CLIP_KIND_PNG  = 3,   /* image/png */
+    XIOS_CLIP_KIND_HTML = 4,   /* text/html (UTF-8) */
+};
+#define XIOS_CLIP_ITEM_MAX (16u * 1024u * 1024u)   /* per-item payload cap */
 
 /* Send a CURSOR record (pointer position + wp_cursor_shape id, shape_id 0 = hidden)
  * to every TYPED client. No-op for classic clients / when none are attached. Lets

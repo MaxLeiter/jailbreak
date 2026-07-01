@@ -50,6 +50,11 @@ typedef struct {
  *         xios_cursor_bitmap payload (client-supplied cursor image); a host that
  *         only maps shape_id -> UIPointerStyle just drains the payload. */
 #define XIOS_MSG_CURSOR  0x03u
+/* CLIPBOARD both directions, on the DEDICATED clipboard socket only (never this
+ *           one): a=XIOS_CLIP_KIND_* b=generation, payload = item data. Full
+ *           contract in linux-build/patches/xios/xios_surface.h. Listed here so
+ *           nobody re-allocates 0x04. */
+#define XIOS_MSG_CLIPBOARD 0x04u
 
 /* CURSOR bitmap payload (when length > 0): header then w*h*4 premultiplied BGRA. */
 typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
