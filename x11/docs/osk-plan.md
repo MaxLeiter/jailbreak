@@ -174,9 +174,14 @@ override func resignFirstResponder() -> Bool {
 }
 ```
 
-HostScreenView.swift gets the same policy against its `applyTraits` (no
-manual toggle button there, so the user-dismiss latch keys only off the
-dismiss key). Follow-up, lands with the next iosc-host build.
+HostScreenView.swift carries the same policy against its `applyTraits`
+(landed, built clean via build-host.sh), with two host-specific twists: the
+user-dismiss latch keys off toggleKeyboard/dismiss-key resigns (no chrome
+button), and because TRAITS are not window-scoped yet (XIOS_IN_BIND still
+proposed), every scene hears every broadcast, so the auto-pop is gated on
+`window?.isKeyWindow` and only the scene the user is in raises the
+keyboard. When BIND lands in iosc's reader, drop the gate in favor of
+per-window routing.
 
 ## Server-side contract (for the iosc maintainer)
 
@@ -236,7 +241,8 @@ Do not build either until first-pixels UX shows which one the desktop needs.
 | text-input-v3 + TRAITS broadcast        | wayland/iosc.c                            | landed (b818503); no v1 changes needed |
 | traits -> UITextInputTraits mapping     | apps/Xios/Sources/XScreen.swift, apps/iosc-host/Sources/HostScreenView.swift | landed |
 | typing return path (UIKeyInput -> TEXT) | apps/Xios/Sources/XScreen.swift           | landed |
-| per-record TRAITS poll                  | apps/Xios/Sources/IoscInput.c, apps/iosc-host/Sources/IoscInput.c | this commit |
-| responder policy (auto pop/hide)        | apps/Xios/Sources/XScreen.swift           | handed to xios-app (code above) |
-| responder policy, native host           | apps/iosc-host/Sources/HostScreenView.swift | follow-up after xios-app lands |
+| per-record TRAITS poll                  | apps/Xios/Sources/IoscInput.c, apps/iosc-host/Sources/IoscInput.c | landed (b80cd60) |
+| responder policy (auto pop/hide)        | apps/Xios/Sources/XScreen.swift           | landed (6f51c1e, xios-app); staged, awaiting batched redeploy |
+| responder policy, native host           | apps/iosc-host/Sources/HostScreenView.swift | landed (key-window gated); builds clean |
+| server contract pinned in code          | wayland/iosc.c input_clients_send_traits  | landed (23d70ef, comment-only) |
 | caret rect / occlusion                  | iosc.c + app                              | deferred (v2) |

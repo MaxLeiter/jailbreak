@@ -48,6 +48,15 @@ final class HostScreenView: UIView {
     // Sticky one-shot modifiers (from the accessory row).
     private var modCtrl = false, modAlt = false, modShift = false
 
+    // Auto keyboard (x11/docs/osk-plan.md): TRAITS enable raises the iOS keyboard,
+    // disable lowers it. TRAITS are not window-scoped yet (XIOS_IN_BIND pending),
+    // so every scene hears every broadcast; only the key window's view pops.
+    private var lastTraitEnabled: UInt32 = 0
+    private var oskAutoShown = false          // the auto path raised the keyboard
+    private var oskUserDismissed = false      // user hid it while the field was still enabled
+    private var oskProgrammaticResign = false // our resign vs the user's
+    private var oskHideTimer: Timer?
+
     init(window_id: UInt32, manager: NativeManager) {
         self.window_id = window_id
         self.manager = manager
@@ -190,14 +199,25 @@ final class HostScreenView: UIView {
     }
 
     private func serviceTraits() {
-        guard let h = input, iosc_input_is_open(h) else { openInput(); return }
-        var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
-        let r = iosc_input_poll_traits(h, &hint, &purpose, &enabled)
-        if r < 0 { iosc_input_close(input); input = nil }
-        else if r > 0 { applyTraits(hint: hint, purpose: purpose, enabled: enabled) }
+        guard let h = input, iosc_input_is_open(h) else {
+            updateAutoKeyboard(enabled: false)   // compositor gone: let the keyboard drop
+            openInput()
+            return
+        }
+        // poll_traits returns one record per call; drain them all so every
+        // enable/disable transition reaches the responder policy.
+        while true {
+            var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
+            let r = iosc_input_poll_traits(h, &hint, &purpose, &enabled)
+            if r < 0 { iosc_input_close(input); input = nil; return }
+            if r == 0 { return }
+            applyTraits(hint: hint, purpose: purpose, enabled: enabled)
+        }
     }
 
     private func applyTraits(hint: UInt32, purpose: UInt32, enabled: UInt32) {
+        updateAutoKeyboard(enabled: enabled != 0)
+        lastTraitEnabled = enabled
         if enabled == 0 {
             isSecureTextEntry = false; keyboardType = .default; returnKeyType = .default
             autocorrectionType = .no; spellCheckingType = .no; autocapitalizationType = .none
@@ -336,6 +356,50 @@ final class HostScreenView: UIView {
         if isFirstResponder { _ = resignFirstResponder() } else { _ = becomeFirstResponder() }
     }
 
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { oskUserDismissed = false }
+        return ok
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let ok = super.resignFirstResponder()
+        if ok && !oskProgrammaticResign {
+            // The user hid the keyboard (toggle or dismiss key) while the field
+            // may still be focused: don't fight them on the next broadcast.
+            if lastTraitEnabled != 0 { oskUserDismissed = true }
+            oskAutoShown = false
+        }
+        return ok
+    }
+
+    // The responder half of the auto keyboard; runs on every TRAITS record,
+    // before applyTraits' field mapping (design: x11/docs/osk-plan.md).
+    private func updateAutoKeyboard(enabled: Bool) {
+        if enabled {
+            oskHideTimer?.invalidate()
+            oskHideTimer = nil
+            // The broadcast is desktop-wide for now, so gate on being the key scene.
+            if !isFirstResponder && !oskUserDismissed && window?.isKeyWindow == true {
+                if becomeFirstResponder() { oskAutoShown = true }
+            }
+        } else {
+            oskUserDismissed = false   // focus left the field; the next enable may raise again
+            guard oskAutoShown, oskHideTimer == nil else { return }
+            // Debounce: a focus hop between two fields is disable then enable
+            // back to back; don't slide the keyboard down for the gap.
+            oskHideTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.oskHideTimer = nil
+                guard self.oskAutoShown else { return }
+                self.oskProgrammaticResign = true
+                _ = self.resignFirstResponder()
+                self.oskProgrammaticResign = false
+                self.oskAutoShown = false
+            }
+        }
+    }
+
     fileprivate func keysym(for ch: Character) -> UInt? {
         if ch == "\n" || ch == "\r" { return 0xff0d }
         if ch == "\t" { return 0xff09 }
@@ -396,6 +460,7 @@ final class HostScreenView: UIView {
 
     func teardown() {
         displayLink?.invalidate(); displayLink = nil
+        oskHideTimer?.invalidate(); oskHideTimer = nil
         if input != nil { iosc_input_close(input); input = nil }
         canvasTexture = nil
         accessibilityElements = nil
