@@ -42,6 +42,8 @@ float xios_output_scale (void);
 #define XIOS_IN_TOUCH  6u   /* real multitouch: code = touch id (slot 0..9)    */
 #define XIOS_IN_TABLET 7u   /* pen/stylus: code = pressure 0..65535,
                              * mods = (tilt_x_deg+90) | (tilt_y_deg+90)<<8     */
+#define XIOS_IN_TRAITS 5u   /* server->CLIENT: on-screen-keyboard traits (code=hint,
+                             * state=purpose, mods=enabled); sent via _broadcast   */
 
 /* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */
 struct xios_in_msg
@@ -71,6 +73,13 @@ int xios_input_socket_fd (xios_input_socket *s);
 /* Drain every currently-complete record, invoking `cb` for each. Returns the count
  * dispatched (>=0), or <0 on a fatal socket error (caller should tear down). */
 int xios_input_socket_dispatch (xios_input_socket *s, xios_input_cb cb, void *user);
+
+/* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
+ * client; a client whose write fails is dropped. Returns the number written to. */
+int xios_input_socket_broadcast (xios_input_socket *s, const void *buf, size_t len);
+
+/* Number of currently-connected clients (detect a new connection across dispatch). */
+int xios_input_socket_client_count (xios_input_socket *s);
 
 void xios_input_socket_free (xios_input_socket *s);
 

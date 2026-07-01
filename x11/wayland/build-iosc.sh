@@ -174,6 +174,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc_gl.c" \
     "$X11/wayland/xios_egl.c" \
     "$X11/wayland/iosc_input.c" \
+    "$X11/wayland/xios_input_socket.c" \
     "$GEN/xdg-shell-protocol.c" \
     "$GEN/xdg-decoration-unstable-v1-protocol.c" \
     "$GEN/xdg-activation-v1-protocol.c" \

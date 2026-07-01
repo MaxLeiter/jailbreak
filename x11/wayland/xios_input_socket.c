@@ -199,6 +199,41 @@ int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *use
     return dispatched;
 }
 
+static int write_all(int fd, const void *buf, size_t len)
+{
+    const char *p = buf;
+    size_t put = 0;
+    while (put < len) {
+        ssize_t w = write(fd, p + put, len - put);
+        if (w > 0) { put += (size_t)w; continue; }
+        if (w < 0 && errno == EINTR) continue;
+        return -1;
+    }
+    return 0;
+}
+
+int xios_input_socket_broadcast(xios_input_socket *s, const void *buf, size_t len)
+{
+    if (!s || !buf || len == 0) return -1;
+    int sent = 0;
+    for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++) {
+        struct xios_in_client *c = s->clients[i];
+        if (!c || c->fd < 0) continue;
+        if (write_all(c->fd, buf, len) == 0) sent++;
+        else client_drop(s, c);   /* dead peer: drop it (matches read-path behavior) */
+    }
+    return sent;
+}
+
+int xios_input_socket_client_count(xios_input_socket *s)
+{
+    if (!s) return 0;
+    int n = 0;
+    for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++)
+        if (s->clients[i]) n++;
+    return n;
+}
+
 void xios_input_socket_free(xios_input_socket *s)
 {
     if (!s) return;

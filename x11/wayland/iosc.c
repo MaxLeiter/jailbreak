@@ -48,6 +48,7 @@
 #include "xios_surface.h"
 #include "iosc_gl.h"
 #include "iosc_input.h"
+#include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -4649,84 +4650,17 @@ static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
  * listen + client fds live on the wl_display event loop, so every wl_* dispatch
  * driven by input runs on the compositor's own thread (no locking needed). */
 
-#define IOSC_IN_TEXT_MAX 4096u
-#define IOSC_MAX_INPUT_CLIENTS 4
-#define IOSC_IN_MOTION 1
-#define IOSC_IN_BUTTON 2
-#define IOSC_IN_KEY    3
-#define IOSC_IN_TEXT   4
-#define IOSC_IN_TRAITS 5
-#define IOSC_IN_TOUCH  6   /* code = touch id, state = IOSC_TOUCH_* phase */
-#define IOSC_IN_TABLET 7   /* code = pressure 0..65535, state = IOSC_PEN_* phase,
-                            * mods = (tiltx+90) | (tilty+90)<<8 (degrees).
-                            * Authoritative wire spec (XIOS_IN_*): xios_input_socket.h */
-struct iosc_in_msg {            /* native-endian; app + iosc are both arm64 */
-    uint32_t type;
-    int32_t  x, y;             /* output px (motion / button) */
-    uint32_t code;             /* button: 1/2/3 ; key: X keysym ; text: byte len */
-    uint32_t state;            /* button: 1=down 0=up */
-    uint32_t mods;             /* key: bit0 shift, bit1 ctrl, bit2 alt */
-};
-struct iosc_in_client {
-    int fd; struct wl_event_source *src;
-    uint8_t hdr[sizeof(struct iosc_in_msg)];
-    int hdr_have;
-    struct iosc_in_msg msg;
-    char *payload;
-    uint32_t payload_have;
-};
-static struct iosc_in_client *g_in_clients[IOSC_MAX_INPUT_CLIENTS];
+/* iosc consumes the SHARED reader (xios_input_socket.c, also linked by
+ * MetaBackendIOS) so there is ONE framing state machine, not two that can drift.
+ * The shared reader multiplexes the listen + client sockets onto a single kqueue
+ * fd; iosc registers that fd on the wl_display event loop and drains complete
+ * records through a callback into the same handle_* paths as before. The wire
+ * types (XIOS_IN_*) + struct xios_in_msg live in xios_input_socket.h. */
+static xios_input_socket *g_input_sock;
+static struct wl_event_source *g_input_src;
 
-static void in_client_drop(struct iosc_in_client *c)
-{
-    if (!c) return;
-    for (int i = 0; i < IOSC_MAX_INPUT_CLIENTS; i++)
-        if (g_in_clients[i] == c) g_in_clients[i] = NULL;
-    if (c->src) wl_event_source_remove(c->src);
-    if (c->fd >= 0) close(c->fd);
-    free(c->payload);
-    free(c);
-    fprintf(stderr, "iosc: input client disconnected\n");
-}
-
-static int in_client_send_msg(struct iosc_in_client *c, const struct iosc_in_msg *m)
-{
-    return c && c->fd >= 0 ? write_all_fd(c->fd, m, sizeof(*m)) : -1;
-}
-
-static void input_clients_send_traits(void)
-{
-    struct iosc_text_input *ti = text_input_for_focus();
-    struct iosc_in_msg msg = {
-        .type = IOSC_IN_TRAITS,
-        .code = ti ? ti->content_hint : 0,
-        .state = ti ? ti->content_purpose : 0,
-        .mods = ti ? (uint32_t)ti->enabled : 0,
-    };
-    for (int i = 0; i < IOSC_MAX_INPUT_CLIENTS; i++) {
-        struct iosc_in_client *c = g_in_clients[i];
-        if (c && in_client_send_msg(c, &msg) != 0)
-            in_client_drop(c);
-    }
-}
-
-static void in_dispatch(const struct iosc_in_msg *m)
-{
-    int x = physical_to_logical(m->x);
-    int y = physical_to_logical(m->y);
-    switch (m->type) {
-        case IOSC_IN_MOTION: handle_motion(x, y); break;
-        case IOSC_IN_BUTTON: handle_motion(x, y);
-                             handle_button((int)m->code, (int)m->state); break;
-        case IOSC_IN_KEY:    handle_key(m->code, m->mods); break;
-        case IOSC_IN_TOUCH:  handle_touch((int)m->code, (int)m->state, x, y); break;
-        case IOSC_IN_TABLET: handle_pencil((int)m->state, x, y, m->code,
-                                           (int)(m->mods & 0xffu) - 90,
-                                           (int)((m->mods >> 8) & 0xffu) - 90); break;
-    }
-    wl_display_flush_clients(g_display);   /* push the events out immediately */
-}
-
+/* Commit a UTF-8 TEXT record: prefer the focused text-input; else synthesize
+ * ASCII keystrokes so a plain terminal still receives typed text. */
 static void in_dispatch_text(const char *text, size_t len)
 {
     int r = text_input_commit_text(text, len);
@@ -4740,87 +4674,66 @@ static void in_dispatch_text(const char *text, size_t len)
     wl_display_flush_clients(g_display);
 }
 
-static void in_client_reset(struct iosc_in_client *c)
+/* One complete input record from the shared reader -> the compositor's handlers.
+ * Runs on the compositor thread (the reader's kqueue fd is on the wl event loop),
+ * so no locking. Same routing the inline reader did; unknown types are ignored. */
+static void iosc_input_record(const struct xios_in_msg *m, const char *text,
+                              size_t text_len, void *user)
 {
-    free(c->payload);
-    c->payload = NULL;
-    c->payload_have = 0;
-    c->hdr_have = 0;
-    memset(&c->msg, 0, sizeof(c->msg));
-}
-
-static int in_client_readable(int fd, uint32_t mask, void *data)
-{
-    struct iosc_in_client *c = data;
-    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) goto drop;
-    for (;;) {
-        if (c->hdr_have < (int)sizeof(c->hdr)) {
-            ssize_t r = read(fd, c->hdr + c->hdr_have, sizeof(c->hdr) - (size_t)c->hdr_have);
-            if (r > 0) {
-                c->hdr_have += (int)r;
-                if (c->hdr_have < (int)sizeof(c->hdr)) continue;
-                memcpy(&c->msg, c->hdr, sizeof(c->msg));
-                if (c->msg.type == IOSC_IN_TEXT) {
-                    if (c->msg.code == 0 || c->msg.code > IOSC_IN_TEXT_MAX) goto drop;
-                    c->payload = calloc(1, c->msg.code + 1u);
-                    if (!c->payload) goto drop;
-                } else {
-                    in_dispatch(&c->msg);
-                    in_client_reset(c);
-                }
-                continue;
-            }
-            if (r == 0) goto drop;
-            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-            if (errno == EINTR) continue;
-            goto drop;
-        }
-        while (c->msg.type == IOSC_IN_TEXT && c->payload_have < c->msg.code) {
-            ssize_t r = read(fd, c->payload + c->payload_have, c->msg.code - c->payload_have);
-            if (r > 0) {
-                c->payload_have += (uint32_t)r;
-                continue;
-            }
-            if (r == 0) goto drop;
-            if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
-            if (errno == EINTR) continue;
-            goto drop;
-        }
-        if (c->msg.type == IOSC_IN_TEXT) {
-            in_dispatch_text(c->payload, c->msg.code);
-            in_client_reset(c);
-            continue;
-        }
+    (void)user;
+    if (m->type == XIOS_IN_TEXT) { in_dispatch_text(text, text_len); return; }
+    int x = physical_to_logical(m->x);
+    int y = physical_to_logical(m->y);
+    switch (m->type) {
+        case XIOS_IN_MOTION: handle_motion(x, y); break;
+        case XIOS_IN_BUTTON: handle_motion(x, y);
+                             handle_button((int)m->code, (int)m->state); break;
+        case XIOS_IN_KEY:    handle_key(m->code, m->mods); break;
+        case XIOS_IN_TOUCH:  handle_touch((int)m->code, (int)m->state, x, y); break;
+        case XIOS_IN_TABLET: handle_pencil((int)m->state, x, y, m->code,
+                                           (int)(m->mods & 0xffu) - 90,
+                                           (int)((m->mods >> 8) & 0xffu) - 90); break;
     }
-    return 0;
-drop:
-    in_client_drop(c);
-    return 0;
+    wl_display_flush_clients(g_display);   /* push the events out immediately */
 }
 
-static int in_listen_readable(int fd, uint32_t mask, void *data)
+/* Push the current on-screen-keyboard traits to every connected app client. The
+ * shared reader owns the client fds, so this goes through its broadcast path. */
+static void input_clients_send_traits(void)
 {
-    (void)mask;
-    struct wl_event_loop *loop = data;
-    int cfd = accept(fd, NULL, NULL);
-    if (cfd < 0) return 0;
-    fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
-    struct iosc_in_client *c = calloc(1, sizeof(*c));
-    if (!c) { close(cfd); return 0; }
-    int slot = -1;
-    for (int i = 0; i < IOSC_MAX_INPUT_CLIENTS; i++) if (!g_in_clients[i]) { slot = i; break; }
-    if (slot < 0) { close(cfd); free(c); return 0; }
-    c->fd = cfd;
-    c->src = wl_event_loop_add_fd(loop, cfd, WL_EVENT_READABLE, in_client_readable, c);
-    g_in_clients[slot] = c;
-    input_clients_send_traits();
-    fprintf(stderr, "iosc: input client connected (fd=%d)\n", cfd);
+    struct iosc_text_input *ti = text_input_for_focus();
+    struct xios_in_msg msg = {
+        .type = XIOS_IN_TRAITS,
+        .code = ti ? ti->content_hint : 0,
+        .state = ti ? ti->content_purpose : 0,
+        .mods = ti ? (uint32_t)ti->enabled : 0,
+    };
+    xios_input_socket_broadcast(g_input_sock, &msg, sizeof(msg));
+}
+
+/* The shared reader's kqueue fd became readable (a new connection or client
+ * data): drain every complete record. The reader accepts internally, so we can't
+ * hook accept directly; instead re-send the initial traits whenever the connected
+ * count grows (a new client), matching the inline reader's send-on-connect. */
+static int g_input_nclients;
+static int input_sock_readable(int fd, uint32_t mask, void *data)
+{
+    (void)fd; (void)mask; (void)data;
+    xios_input_socket_dispatch(g_input_sock, iosc_input_record, NULL);
+    int now = xios_input_socket_client_count(g_input_sock);
+    if (now > g_input_nclients) input_clients_send_traits();
+    g_input_nclients = now;
     return 0;
 }
 
 static int input_socket_start(struct wl_event_loop *loop, const char *path)
 {
-    return unix_listen_start(loop, path, in_listen_readable);
+    g_input_sock = xios_input_socket_new(path);
+    if (!g_input_sock) return -1;
+    g_input_src = wl_event_loop_add_fd(loop, xios_input_socket_fd(g_input_sock),
+                                       WL_EVENT_READABLE, input_sock_readable, NULL);
+    if (!g_input_src) { xios_input_socket_free(g_input_sock); g_input_sock = NULL; return -1; }
+    return 0;
 }
 
 /* Write the xkb keymap to an fd the wl_keyboard clients mmap (no memfd on iOS;
