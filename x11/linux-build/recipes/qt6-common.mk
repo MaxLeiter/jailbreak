@@ -62,8 +62,19 @@ QT6_WRITE_IOSEXEC_FIXUP = \
 #   - CMAKE_CXX/OBJCXX re-passed WITH the iosexec fixup -include: the later -D wins over the
 #     plain one inside DEFAULT_CMAKE_FLAGS (same trick qtbase.mk uses).
 #   - QT_HOST_PATH(+_CMAKE_DIR): where find_package(Qt6 ... ) resolves host *Tools packages.
+#   - *_LINKER_FLAGS re-passed WITH the iOS stand-in frameworks (qtbase.mk's
+#     QTBASE_IOS_FRAMEWORKS premise): ObjC++ sources compile fine but their UIKit/objc
+#     link deps hide behind `CONDITION IOS` blocks that are false under the Darwin
+#     masquerade — qtdeclarative's QtQuick Controls iOS style (qquickiostheme.mm) died on
+#     _OBJC_CLASS_$$_UIColor + _objc_msgSend. -lobjc is extra vs qtbase's list (naked
+#     objc_msgSend needs the runtime; nothing else links it). All dyld-shared-cache
+#     residents: linking where unused costs nothing.
+QT6_IOS_FRAMEWORKS = -framework UIKit -framework CoreServices -framework MobileCoreServices -framework Security -lobjc
 QT6_MODULE_CMAKE_FLAGS = \
 	$(DEFAULT_CMAKE_FLAGS) \
+	-DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS)" \
+	-DCMAKE_MODULE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS)" \
+	-DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS)" \
 	-DCMAKE_OSX_DEPLOYMENT_TARGET= \
 	-DQT_NO_APPLE_SDK_AND_XCODE_CHECK=ON \
 	-DQT_INTERNAL_APPLE_SDK_VERSION=16.4 \
