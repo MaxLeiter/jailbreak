@@ -20,20 +20,23 @@
 #include "shell-blur.h"
 
 /* -------------------------------------------------------------- metrics --- */
-#define OV_MARGIN       64      /* scene side margin */
-#define OV_TOP          56      /* search pill top */
-#define OV_SEARCH_H     44
-#define OV_SEARCH_MAXW  520
-#define OV_SECT_TOP     140     /* first section top */
-#define OV_SECT_GAP     30      /* between sections */
-#define OV_CHIP_W       260     /* open-window chip */
-#define OV_CHIP_H       56
-#define OV_CHIP_ICON    28
-#define OV_CHIP_CLOSE   40      /* close zone width at chip right */
-#define OV_CELL_W       112     /* app tile cell */
-#define OV_CELL_H       118
-#define OV_TILE_ICON    64
-#define OV_GAP          14
+/* Touch-first (>= TH_TOUCH tap zones) and responsive: columns derive from the
+ * configured W, chips clamp to the available row, the search pill flexes. */
+#define OV_MARGIN       80      /* scene side margin (grid recenters anyway) */
+#define OV_TOP          64      /* search pill top */
+#define OV_SEARCH_H     64
+#define OV_SEARCH_MAXW  680
+#define OV_SECT_TOP     176     /* first section top */
+#define OV_SECT_GAP     40      /* between sections */
+#define OV_SECT_HDR     34      /* section header advance */
+#define OV_CHIP_W       340     /* open-window chip (clamped to the row) */
+#define OV_CHIP_H       76
+#define OV_CHIP_ICON    40
+#define OV_CHIP_CLOSE   64      /* close zone width at chip right */
+#define OV_CELL_W       148     /* app tile cell */
+#define OV_CELL_H       160
+#define OV_TILE_ICON    88
+#define OV_GAP          20
 
 #define OV_MAX_APPS     128
 #define OV_MAX_WINS     32
@@ -87,13 +90,15 @@ static int ov_content_height(const struct ov_model *m, int W)
     if (m->nwins > 0 && !m->searching) {
         int grid_w0 = cols * OV_CELL_W + (cols - 1) * OV_GAP;
         int x0 = (W - grid_w0) / 2;
-        int ccols = (W - 2 * x0 + OV_GAP) / (OV_CHIP_W + OV_GAP);
+        int chw = OV_CHIP_W;                 /* clamp chips to the row */
+        if (chw > W - 2 * x0) chw = W - 2 * x0;
+        int ccols = (W - 2 * x0 + OV_GAP) / (chw + OV_GAP);
         if (ccols < 1) ccols = 1;
         int crows = (m->nwins + ccols - 1) / ccols;
-        h += 24 + crows * (OV_CHIP_H + OV_GAP) + OV_SECT_GAP;
+        h += OV_SECT_HDR + crows * (OV_CHIP_H + OV_GAP) + OV_SECT_GAP;
     }
     int arows = (m->napps + cols - 1) / cols;
-    h += 24 + arows * (OV_CELL_H + OV_GAP);
+    h += OV_SECT_HDR + arows * (OV_CELL_H + OV_GAP);
     return h;
 }
 
@@ -108,61 +113,62 @@ static void ov__search_pill(cairo_t *cr, pr_text_ctx *t, const struct ov_model *
     pr_stroke_rrect(cr, x, y, w, h, h / 2, TH_BORDER, 1.0);
 
     /* magnifier: circle + handle */
-    double mx = x + 22, myy = cy - 2;
+    double mx = x + 30, myy = cy - 3;
     cairo_save(cr);
     pr_set(cr, TH_FG_DIM);
-    cairo_set_line_width(cr, 1.8);
+    cairo_set_line_width(cr, 2.4);
     cairo_new_sub_path(cr);
-    cairo_arc(cr, mx, myy, 6.5, 0, 2 * M_PI);
+    cairo_arc(cr, mx, myy, 9, 0, 2 * M_PI);
     cairo_stroke(cr);
-    cairo_move_to(cr, mx + 4.8, myy + 4.8);
-    cairo_line_to(cr, mx + 9.5, myy + 9.5);
+    cairo_move_to(cr, mx + 6.6, myy + 6.6);
+    cairo_line_to(cr, mx + 13, myy + 13);
     cairo_stroke(cr);
     cairo_restore(cr);
 
-    double tx = x + 40;
+    double tx = x + 56;
     if (m->query[0]) {
-        int qw = pr_text(cr, t, TH_FONT_SEARCH, m->query, tx, cy, TH_FG, w - 56);
-        pr_fill_rect(cr, tx + qw + 3, cy - 9, 1.5, 18, TH_ACCENT);   /* caret */
+        int qw = pr_text(cr, t, TH_FONT_SEARCH, m->query, tx, cy, TH_FG, w - 76);
+        pr_fill_rect(cr, tx + qw + 3, cy - 12, 2, 24, TH_ACCENT);   /* caret */
     } else {
-        pr_text(cr, t, TH_FONT_SEARCH, "Search", tx, cy, TH_FG_FAINT, w - 56);
-        pr_fill_rect(cr, tx - 2, cy - 9, 1.5, 18, TH_ACCENT);
+        pr_text(cr, t, TH_FONT_SEARCH, "Search", tx, cy, TH_FG_FAINT, w - 76);
+        pr_fill_rect(cr, tx - 2, cy - 12, 2, 24, TH_ACCENT);
     }
 }
 
 static void ov__chip(cairo_t *cr, pr_text_ctx *t, const struct ov_model *m,
                      struct ov_hits *hits, const struct ov_item *it,
-                     int x, int y, int idx)
+                     int x, int y, int w, int idx)
 {
-    int aw = OV_CHIP_W - OV_CHIP_CLOSE;
+    int aw = w - OV_CHIP_CLOSE;
     int hov = ov__hover(m, x, y, aw, OV_CHIP_H);
     int prs = (m->press_kind == OV_HIT_WIN && m->press_idx == idx);
 
-    pr_fill_rrect(cr, x, y, OV_CHIP_W, OV_CHIP_H, 14,
+    pr_fill_rrect(cr, x, y, w, OV_CHIP_H, 18,
                   it->active ? TH_ACCENT_BG : (prs ? TH_PRESS : (hov ? 0x33FFFFFFu : 0x26FFFFFFu)));
     if (it->active)
-        pr_stroke_rrect(cr, x, y, OV_CHIP_W, OV_CHIP_H, 14, 0x800A84FFu, 1.5);
+        pr_stroke_rrect(cr, x, y, w, OV_CHIP_H, 18, 0x800A84FFu, 1.5);
     else
-        pr_stroke_rrect(cr, x, y, OV_CHIP_W, OV_CHIP_H, 14, TH_BORDER, 1.0);
+        pr_stroke_rrect(cr, x, y, w, OV_CHIP_H, 18, TH_BORDER, 1.0);
 
     double iy = y + (OV_CHIP_H - OV_CHIP_ICON) / 2.0;
     if (it->icon)
-        pr_draw_icon(cr, it->icon, x + 14, iy, OV_CHIP_ICON, 0);
+        pr_draw_icon(cr, it->icon, x + 16, iy, OV_CHIP_ICON, 0);
     else
-        pr_draw_monogram(cr, t, it->key, x + 14, iy, OV_CHIP_ICON,
+        pr_draw_monogram(cr, t, it->key, x + 16, iy, OV_CHIP_ICON,
                          TH_R_MONO, TH_TILE, TH_FG, TH_FONT_LABEL);
 
     pr_text(cr, t, TH_FONT_LABEL_MED, it->label[0] ? it->label : "Window",
-            x + 14 + OV_CHIP_ICON + 10, y + OV_CHIP_H / 2.0,
-            it->active ? TH_FG : TH_FG_DIM, aw - (14 + OV_CHIP_ICON + 10) - 4);
+            x + 16 + OV_CHIP_ICON + 12, y + OV_CHIP_H / 2.0,
+            it->active ? TH_FG : TH_FG_DIM, aw - (16 + OV_CHIP_ICON + 12) - 4);
     hits->v[hits->n++] = (struct ov_hit){ x, y, aw, OV_CHIP_H, OV_HIT_WIN, idx };
 
-    /* close × in its own zone */
-    int cx = x + OV_CHIP_W - OV_CHIP_CLOSE;
+    /* close × in its own full-height zone */
+    int cx = x + w - OV_CHIP_CLOSE;
     int chov = ov__hover(m, cx, y, OV_CHIP_CLOSE, OV_CHIP_H);
     if (chov)
-        pr_fill_rrect(cr, cx + 6, y + (OV_CHIP_H - 26) / 2.0, 26, 26, 13, TH_HOVER);
-    pr_text_centered(cr, t, TH_FONT_LABEL, "×", cx + 6, 26, y + OV_CHIP_H / 2.0,
+        pr_fill_rrect(cr, cx + (OV_CHIP_CLOSE - 40) / 2.0,
+                      y + (OV_CHIP_H - 40) / 2.0, 40, 40, 20, TH_HOVER);
+    pr_text_centered(cr, t, TH_FONT_LABEL, "×", cx, OV_CHIP_CLOSE, y + OV_CHIP_H / 2.0,
                      chov ? TH_FG : TH_FG_FAINT);
     hits->v[hits->n++] = (struct ov_hit){ cx, y, OV_CHIP_CLOSE, OV_CHIP_H, OV_HIT_WINCLOSE, idx };
 }
@@ -177,7 +183,7 @@ static void ov__tile(cairo_t *cr, pr_text_ctx *t, const struct ov_model *m,
         pr_fill_rrect(cr, x, y, OV_CELL_W, OV_CELL_H, TH_R_TILE,
                       prs ? TH_PRESS : TH_HOVER);
 
-    double ix = x + (OV_CELL_W - OV_TILE_ICON) / 2.0, iy = y + 10;
+    double ix = x + (OV_CELL_W - OV_TILE_ICON) / 2.0, iy = y + 12;
     if (it->icon)
         pr_draw_icon(cr, it->icon, ix, iy, OV_TILE_ICON, 0);
     else
@@ -185,7 +191,7 @@ static void ov__tile(cairo_t *cr, pr_text_ctx *t, const struct ov_model *m,
                          TH_R_TILE - 4, TH_TILE, TH_FG, TH_FONT_TITLE);
 
     pr_text_centered(cr, t, TH_FONT_TILE, it->label, x + 4, OV_CELL_W - 8,
-                     y + OV_CELL_H - 20, TH_FG_DIM);
+                     y + OV_CELL_H - 26, TH_FG_DIM);
     hits->v[hits->n++] = (struct ov_hit){ x, y, OV_CELL_W, OV_CELL_H, OV_HIT_APP, idx };
 }
 
@@ -210,7 +216,7 @@ static void ov_draw(cairo_t *cr, pr_text_ctx *t, int W, int H,
     cairo_save(cr);
     if (at < 1.0) {
         cairo_push_group(cr);
-        cairo_translate(cr, 0, (1.0 - at) * 10.0);
+        cairo_translate(cr, 0, (1.0 - at) * 14.0);
     }
 
     ov__search_pill(cr, t, m, W);
@@ -222,34 +228,37 @@ static void ov_draw(cairo_t *cr, pr_text_ctx *t, int W, int H,
     int y = OV_SECT_TOP - m->scroll_y;
 
     /* clip the scrollable sections under the search area */
-    cairo_rectangle(cr, 0, OV_SECT_TOP - 26, W, H - (OV_SECT_TOP - 26));
+    cairo_rectangle(cr, 0, OV_SECT_TOP - 32, W, H - (OV_SECT_TOP - 32));
     cairo_clip(cr);
 
     if (m->nwins > 0 && !m->searching) {
-        /* both section headers + rows share the grid's left edge (x0) */
-        int ccols = (W - 2 * x0 + OV_GAP) / (OV_CHIP_W + OV_GAP);
+        /* both section headers + rows share the grid's left edge (x0);
+         * chips clamp to the row so narrow outputs still fit one per row */
+        int chw = OV_CHIP_W;
+        if (chw > W - 2 * x0) chw = W - 2 * x0;
+        int ccols = (W - 2 * x0 + OV_GAP) / (chw + OV_GAP);
         if (ccols < 1) ccols = 1;
-        pr_text(cr, t, TH_FONT_SECTION, "Open Windows", x0, y + 8, TH_FG_FAINT, 0);
-        y += 24;
+        pr_text(cr, t, TH_FONT_SECTION, "Open Windows", x0, y + 10, TH_FG_FAINT, 0);
+        y += OV_SECT_HDR;
         for (int i = 0; i < m->nwins; i++) {
-            int cx = x0 + (i % ccols) * (OV_CHIP_W + OV_GAP);
+            int cx = x0 + (i % ccols) * (chw + OV_GAP);
             int cyy = y + (i / ccols) * (OV_CHIP_H + OV_GAP);
-            ov__chip(cr, t, m, hits, &m->wins[i], cx, cyy, i);
+            ov__chip(cr, t, m, hits, &m->wins[i], cx, cyy, chw, i);
         }
         y += ((m->nwins + ccols - 1) / ccols) * (OV_CHIP_H + OV_GAP) + OV_SECT_GAP;
     }
 
     pr_text(cr, t, TH_FONT_SECTION,
-            m->searching ? "Results" : "Applications", x0, y + 8, TH_FG_FAINT, 0);
-    y += 24;
+            m->searching ? "Results" : "Applications", x0, y + 10, TH_FG_FAINT, 0);
+    y += OV_SECT_HDR;
     if (m->napps == 0 && m->searching) {
-        pr_text_centered(cr, t, TH_FONT_LABEL, "No results", 0, W, y + 30, TH_FG_FAINT);
+        pr_text_centered(cr, t, TH_FONT_LABEL, "No results", 0, W, y + 36, TH_FG_FAINT);
     }
     for (int i = 0; i < m->napps; i++) {
         int tx = x0 + (i % cols) * (OV_CELL_W + OV_GAP);
         int ty = y + (i / cols) * (OV_CELL_H + OV_GAP);
         if (ty > H) break;                          /* below the fold */
-        if (ty + OV_CELL_H < OV_SECT_TOP - 26) continue;   /* above it  */
+        if (ty + OV_CELL_H < OV_SECT_TOP - 32) continue;   /* above it  */
         ov__tile(cr, t, m, hits, &m->apps[i], tx, ty, i);
     }
 

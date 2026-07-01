@@ -22,19 +22,32 @@
 #include "shell-blur.h"
 
 /* -------------------------------------------------------------- metrics --- */
+/* Touch-first: every hit zone spans the panel's full height (>= TH_TOUCH), and
+ * in-row zones (close ×, grid button) are >= TH_TOUCH wide too. Visible pills
+ * are drawn smaller than their hit zones for breathing room. */
 #define LO_PAD          TH_PAD
-#define LO_ICON         26     /* launcher icon box */
-#define LO_ICON_PADX    7      /* half the hover cell padding around an icon */
-#define LO_PILL_H       28
-#define LO_PILL_MAXW    180
-#define LO_PILL_MINW    46
+#define LO_ICON         36     /* launcher icon box */
+#define LO_ICON_PADX    12     /* half the hit cell padding around an icon */
+#define LO_PILL_H       48
+#define LO_PILL_MAXW    248
+#define LO_PILL_MINW    64
 #define LO_PILL_GAP     TH_GAP
-#define LO_PILL_ICON    18
-#define LO_CLOSE_W      22     /* the close-× hit zone at a pill's right edge */
-#define LO_GRID_BTN     36     /* app-grid button cell */
+#define LO_PILL_ICON    26
+#define LO_CLOSE_W      60     /* the close-× hit zone at a pill's right edge */
+#define LO_GRID_BTN     52     /* app-grid button cell (hit = full height)    */
 
-#define QS_W            320    /* quick-settings card, logical */
-#define QS_MARGIN       6      /* gap between panel edge and the card */
+/* Responsive breakpoints (logical output width). */
+#define LO_BP_DATE      900    /* below this the panel drops the date  */
+#define LO_BP_PCT       680    /* below this it drops the battery %    */
+
+#define QS_MAXW         380    /* quick-settings card width cap */
+#define QS_MARGIN       10     /* gap between panel/screen edge and the card */
+/* The card fills the output minus margins on narrow screens, capped wide. */
+static inline int panel_qs_width(int outw)
+{
+    int w = outw - 2 * QS_MARGIN;
+    return w < QS_MAXW ? w : QS_MAXW;
+}
 
 /* -------------------------------------------------------------- model ----- */
 #define PL_MAX_LAUNCH   12
@@ -98,33 +111,34 @@ static inline int pl__pressed(int pk, int pi, int kind, int idx)
 }
 
 /* ------------------------------------------------------ battery glyph ----- */
-/* A crisp vector battery at (x, cy): 24x12 body + cap, level fill, bolt while
+/* A crisp vector battery at (x, cy): 32x16 body + cap, level fill, bolt while
  * charging. Colors: green charging, red <= 20%, primary otherwise. */
+#define PL_BATT_W  32          /* body width (glyph total adds the cap) */
 static void pl_draw_battery(cairo_t *cr, double x, double cy, int pct, int charging)
 {
-    double w = 24, h = 12, r = 3.5, y = cy - h / 2;
+    double w = PL_BATT_W, h = 16, r = 4.5, y = cy - h / 2;
     uint32_t fill = charging ? TH_GREEN : (pct <= 20 ? 0xFFFF453Au : TH_FG);
 
-    pr_stroke_rrect(cr, x, y, w, h, r, TH_FG_DIM, 1.2);
+    pr_stroke_rrect(cr, x, y, w, h, r, TH_FG_DIM, 1.5);
     /* cap */
-    pr_fill_rrect(cr, x + w + 1.5, cy - 2.5, 2.2, 5, 1.1, TH_FG_DIM);
+    pr_fill_rrect(cr, x + w + 2, cy - 3.5, 3, 7, 1.5, TH_FG_DIM);
     /* level */
-    double inset = 2.2, lw = (w - 2 * inset) * (pct < 0 ? 0 : pct) / 100.0;
+    double inset = 3, lw = (w - 2 * inset) * (pct < 0 ? 0 : pct) / 100.0;
     if (lw > 0.5)
-        pr_fill_rrect(cr, x + inset, y + inset, lw, h - 2 * inset, 1.6, fill);
+        pr_fill_rrect(cr, x + inset, y + inset, lw, h - 2 * inset, 2.2, fill);
     if (charging) {
         /* bolt, centered on the body */
         double cx = x + w / 2;
         cairo_save(cr);
-        cairo_move_to(cr, cx + 1.5, y - 1.5);
-        cairo_line_to(cr, cx - 2.5, y + h / 2 + 1);
-        cairo_line_to(cr, cx - 0.5, y + h / 2 + 1);
-        cairo_line_to(cr, cx - 1.5, y + h + 1.5);
-        cairo_line_to(cr, cx + 2.5, y + h / 2 - 1);
-        cairo_line_to(cr, cx + 0.5, y + h / 2 - 1);
+        cairo_move_to(cr, cx + 2.0, y - 2.0);
+        cairo_line_to(cr, cx - 3.3, y + h / 2 + 1.3);
+        cairo_line_to(cr, cx - 0.7, y + h / 2 + 1.3);
+        cairo_line_to(cr, cx - 2.0, y + h + 2.0);
+        cairo_line_to(cr, cx + 3.3, y + h / 2 - 1.3);
+        cairo_line_to(cr, cx + 0.7, y + h / 2 - 1.3);
         cairo_close_path(cr);
         pr_set(cr, TH_FG);
-        cairo_set_line_width(cr, 1.4);
+        cairo_set_line_width(cr, 1.8);
         cairo_stroke_preserve(cr);
         pr_set(cr, TH_GREEN);
         cairo_fill(cr);
@@ -136,7 +150,7 @@ static void pl_draw_battery(cairo_t *cr, double x, double cy, int pct, int charg
 /* 3x3 rounded dots — the "all apps" affordance. */
 static void pl_draw_appgrid_glyph(cairo_t *cr, double cx, double cy, uint32_t color)
 {
-    double step = 6.5, r = 2.1;
+    double step = 8.5, r = 2.8;
     for (int gy = -1; gy <= 1; gy++)
         for (int gx = -1; gx <= 1; gx++) {
             cairo_new_sub_path(cr);
@@ -176,7 +190,7 @@ static void panel_draw_topbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
         hits->v[hits->n++] = (struct panel_hit){ x, 0, LO_GRID_BTN, H, PL_HIT_APPGRID, 0 };
         x += LO_GRID_BTN + LO_PAD - 2;
     }
-    pr_fill_rect(cr, x, 8, 1, H - 16, TH_SEP);
+    pr_fill_rect(cr, x, 10, 1, H - 20, TH_SEP);
     x += LO_PAD;
 
     /* -- launcher strip: real icons, subtle hover backplate -- */
@@ -186,7 +200,7 @@ static void panel_draw_topbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
         int hov = pl__hover(m, x, 0, cell, H);
         int prs = pl__pressed(pk, pi, PL_HIT_LAUNCH, i);
         if (hov || prs)
-            pr_fill_rrect(cr, x, (H - (LO_ICON + 8)) / 2, cell, LO_ICON + 8,
+            pr_fill_rrect(cr, x, (H - (LO_ICON + 12)) / 2, cell, LO_ICON + 12,
                           TH_R_HOVER, prs ? TH_PRESS : TH_HOVER);
         if (m->launch[i].icon)
             pr_draw_icon(cr, m->launch[i].icon, x + LO_ICON_PADX, iy, LO_ICON, 0);
@@ -198,39 +212,49 @@ static void panel_draw_topbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
     }
     if (m->nlaunch) {
         x += LO_PAD - LO_ICON_PADX;
-        pr_fill_rect(cr, x, 8, 1, H - 16, TH_SEP);
+        pr_fill_rect(cr, x, 10, 1, H - 20, TH_SEP);
         x += LO_PAD;
     }
 
     /* -- status cluster (right): battery · date · time; one QS hit -- */
+    /* Responsive: the date drops below LO_BP_DATE, the battery % below
+     * LO_BP_PCT, so the cluster stays compact on narrow outputs. */
     int right = W - LO_PAD;
+    int show_date = m->date[0] && W >= LO_BP_DATE;
+    int show_pct  = m->batt_pct >= 0 && W >= LO_BP_PCT;
     int clkw, clkh, datew = 0, dh, pctw = 0, ph2;
     pr_text_measure(t, TH_FONT_CLOCK, m->clock[0] ? m->clock : "00:00", &clkw, &clkh);
-    if (m->date[0]) pr_text_measure(t, TH_FONT_LABEL, m->date, &datew, &dh);
+    if (show_date) pr_text_measure(t, TH_FONT_LABEL, m->date, &datew, &dh);
     char pct[8] = "";
-    if (m->batt_pct >= 0) {
+    if (show_pct) {
         snprintf(pct, sizeof pct, "%d%%", m->batt_pct);
         pr_text_measure(t, TH_FONT_LABEL, pct, &pctw, &ph2);
     }
-    int batt_w = m->batt_pct >= 0 ? (24 + 4 + 6 + pctw) : 0;   /* glyph+cap+gap+% */
-    int cluster_w = batt_w + (datew ? datew + 12 : 0) + clkw + 2 * 8;
+    int batt_w = m->batt_pct >= 0
+                 ? (PL_BATT_W + 5 + (show_pct ? 8 + pctw : 0)) : 0;
+    int cluster_w = batt_w + (datew ? datew + 16 : (batt_w ? 16 : 0))
+                    + clkw + 2 * 12;
     int cx0 = right - cluster_w;
     {
         int hov = pl__hover(m, cx0, 0, cluster_w, H);
         int prs = pl__pressed(pk, pi, PL_HIT_STATUS, 0);
         if (m->qs_open || hov || prs)
-            pr_fill_rrect(cr, cx0, (H - 32) / 2, cluster_w, 32, TH_R_HOVER,
+            pr_fill_rrect(cr, cx0, (H - 44) / 2, cluster_w, 44, TH_R_HOVER,
                           (prs || m->qs_open) ? TH_PRESS : TH_HOVER);
-        int tx = cx0 + 8;
+        int tx = cx0 + 12;
         if (m->batt_pct >= 0) {
             pl_draw_battery(cr, tx, cy, m->batt_pct, m->batt_charging);
-            tx += 24 + 4 + 6;
-            pr_text(cr, t, TH_FONT_LABEL, pct, tx, cy, TH_FG_DIM, 0);
-            tx += pctw + 12;
+            tx += PL_BATT_W + 5;
+            if (show_pct) {
+                tx += 8;
+                pr_text(cr, t, TH_FONT_LABEL, pct, tx, cy, TH_FG_DIM, 0);
+                tx += pctw;
+            }
+            tx += 16;
         }
-        if (m->date[0]) {
+        if (datew) {
             pr_text(cr, t, TH_FONT_LABEL, m->date, tx, cy, TH_FG_DIM, 0);
-            tx += datew + 12;
+            tx += datew + 16;
         }
         pr_text(cr, t, TH_FONT_CLOCK, m->clock, tx, cy, TH_FG, 0);
         hits->v[hits->n++] = (struct panel_hit){ cx0, 0, cluster_w, H, PL_HIT_STATUS, 0 };
@@ -249,28 +273,28 @@ static void panel_draw_topbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
             int bx = task_left + i * (pw + LO_PILL_GAP);
             if (bx + pw > task_right + 2) break;
             const struct panel_item *it = &m->tasks[i];
-            int show_close = pw >= 96;
+            int show_close = pw >= 132;   /* close zone only when it stays >= TH_TOUCH */
             int aw = show_close ? pw - LO_CLOSE_W : pw;   /* activate-zone width */
             int hov = pl__hover(m, bx, 0, aw, H);
             int prs = pl__pressed(pk, pi, PL_HIT_ACTIVATE, i);
 
             if (it->active) {
                 pr_fill_rrect(cr, bx, py, pw, LO_PILL_H, TH_R_PILL, TH_ACCENT_BG);
-                pr_fill_rrect(cr, bx + 4, py + LO_PILL_H - 2, pw - 8, 2, 1, TH_ACCENT);
+                pr_fill_rrect(cr, bx + 6, py + LO_PILL_H - 3, pw - 12, 3, 1.5, TH_ACCENT);
             } else if (hov || prs) {
                 pr_fill_rrect(cr, bx, py, pw, LO_PILL_H, TH_R_PILL,
                               prs ? TH_PRESS : TH_HOVER);
             }
 
-            int ix = bx + 9;
+            int ix = bx + 12;
             if (it->icon)
                 pr_draw_icon(cr, it->icon, ix, py + (LO_PILL_H - LO_PILL_ICON) / 2, LO_PILL_ICON, 0);
             else
                 pr_draw_monogram(cr, t, it->key, ix, py + (LO_PILL_H - LO_PILL_ICON) / 2,
                                  LO_PILL_ICON, TH_R_MONO - 2, TH_TILE, TH_FG, TH_FONT_LABEL);
 
-            int tx = ix + LO_PILL_ICON + 8;
-            int tw = aw - (tx - bx) - 6;
+            int tx = ix + LO_PILL_ICON + 10;
+            int tw = aw - (tx - bx) - 8;
             pr_text(cr, t, TH_FONT_LABEL, it->label[0] ? it->label : "Window",
                     tx, cy, it->active ? TH_FG : TH_FG_DIM, tw > 8 ? tw : 8);
             hits->v[hits->n++] = (struct panel_hit){ bx, 0, aw, H, PL_HIT_ACTIVATE, i };
@@ -279,8 +303,8 @@ static void panel_draw_topbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
                 int cxx = bx + pw - LO_CLOSE_W;
                 int chov = pl__hover(m, cxx, 0, LO_CLOSE_W, H);
                 if (chov)
-                    pr_fill_rrect(cr, cxx + 2, py + 4, LO_CLOSE_W - 4, LO_PILL_H - 8,
-                                  (LO_PILL_H - 8) / 2, TH_HOVER);
+                    pr_fill_rrect(cr, cxx + (LO_CLOSE_W - 36) / 2,
+                                  py + (LO_PILL_H - 36) / 2, 36, 36, 18, TH_HOVER);
                 pr_text_centered(cr, t, TH_FONT_LABEL, "×", cxx, LO_CLOSE_W, cy,
                                  chov ? TH_FG : TH_FG_DIM);
                 hits->v[hits->n++] = (struct panel_hit){ cxx, 0, LO_CLOSE_W, H, PL_HIT_CLOSE, i };
@@ -305,10 +329,11 @@ static void qs__button(cairo_t *cr, pr_text_ctx *t, const struct qs_model *m,
     hits->v[hits->n++] = (struct panel_hit){ (int)x, (int)y, (int)w, (int)h, kind, 0 };
 }
 
-/* The card's total logical height for a given model (charging adds a line). */
+/* The card's total logical height for a given model (charging adds a line).
+ * Must mirror the y-advances in panel_draw_qs below. */
 static int panel_qs_height(const struct qs_model *m)
 {
-    return 186 + (m->batt_charging ? 16 : 0);
+    return 250 + (m->batt_charging ? 20 : 0);
 }
 
 /* Draw the quick-settings card filling the whole (W,H) surface. */
@@ -334,39 +359,39 @@ static void panel_draw_qs(cairo_t *cr, pr_text_ctx *t, int W, int H,
     double cw = W - 2 * TH_CARD_PAD;
 
     /* device name + long date */
-    pr_text(cr, t, TH_FONT_TITLE, m->device[0] ? m->device : "iPad", x, y + 10, TH_FG, (int)cw);
-    y += 24;
-    pr_text(cr, t, TH_FONT_LABEL, m->date_long, x, y + 8, TH_FG_DIM, (int)cw);
-    y += 26;
+    pr_text(cr, t, TH_FONT_TITLE, m->device[0] ? m->device : "iPad", x, y + 13, TH_FG, (int)cw);
+    y += 32;
+    pr_text(cr, t, TH_FONT_LABEL, m->date_long, x, y + 11, TH_FG_DIM, (int)cw);
+    y += 34;
     pr_fill_rect(cr, x, y, cw, 1, TH_SEP);
-    y += 14;
+    y += 20;
 
     /* battery block: label row + gauge track */
     if (m->batt_pct >= 0) {
         char pct[8]; snprintf(pct, sizeof pct, "%d%%", m->batt_pct);
         int pw, ph;
         pr_text_measure(t, TH_FONT_LABEL_MED, pct, &pw, &ph);
-        pr_text(cr, t, TH_FONT_LABEL, "Battery", x, y + 8, TH_FG_DIM, 0);
-        pr_text(cr, t, TH_FONT_LABEL_MED, pct, x + cw - pw, y + 8, TH_FG, 0);
-        y += 22;
-        pr_fill_rrect(cr, x, y, cw, 6, 3, pl_with_alpha(TH_CARD_INNER, 1.0));
+        pr_text(cr, t, TH_FONT_LABEL, "Battery", x, y + 11, TH_FG_DIM, 0);
+        pr_text(cr, t, TH_FONT_LABEL_MED, pct, x + cw - pw, y + 11, TH_FG, 0);
+        y += 30;
+        pr_fill_rrect(cr, x, y, cw, 8, 4, pl_with_alpha(TH_CARD_INNER, 1.0));
         double lw = cw * m->batt_pct / 100.0;
         if (lw > 2)
-            pr_fill_rrect(cr, x, y, lw, 6, 3,
+            pr_fill_rrect(cr, x, y, lw, 8, 4,
                           m->batt_charging ? TH_GREEN
                           : (m->batt_pct <= 20 ? 0xFFFF453Au : TH_ACCENT));
-        y += 12;
+        y += 20;
         if (m->batt_charging) {
-            pr_text(cr, t, TH_FONT_SMALL, "Charging", x, y + 6, TH_GREEN, 0);
-            y += 16;
+            pr_text(cr, t, TH_FONT_SMALL, "Charging", x, y + 8, TH_GREEN, 0);
+            y += 20;
         }
-        y += 8;
+        y += 10;
     } else {
-        y += 42;   /* keep the card balanced without a battery source */
+        y += 60;   /* keep the card balanced without a battery source */
     }
 
-    /* actions */
-    double bw = (cw - TH_GAP) / 2, bh = 40;
+    /* actions: full touch-height buttons */
+    double bw = (cw - TH_GAP) / 2, bh = TH_TOUCH;
     qs__button(cr, t, m, hits, x, y, bw, bh, "Overview",
                TH_ACCENT_DIM, TH_ACCENT, QS_HIT_OVERVIEW);
     qs__button(cr, t, m, hits, x + bw + TH_GAP, y, bw, bh, "Screenshot",

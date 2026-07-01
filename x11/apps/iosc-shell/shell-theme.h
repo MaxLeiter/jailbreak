@@ -40,30 +40,40 @@
 #define TH_WALL_TOP    0xFF141824u
 #define TH_WALL_BOT    0xFF241832u
 
+/* --------------------------------------------------------- logical units --- */
+/* All shell dimensions are LOGICAL px. The default effective scale on device
+ * is 1.5 (iPad 7: 2160x1620 physical = 1440x1080 logical), so 1 logical px =
+ * 0.75 iOS pt. Apple's 44pt minimum touch target is therefore 59 logical px —
+ * TH_TOUCH is the floor every tappable region must meet. NOTHING here assumes
+ * a specific output: layouts take W/H from the compositor's configure and the
+ * scale may be any DPI factor (fractional included). */
+#define TH_TOUCH       60       /* min touch target (44+ iOS pt at 1.5x) */
+
 /* ---------------------------------------------------------------- radii --- */
-#define TH_R_CARD      18       /* quick settings / popovers   */
-#define TH_R_TILE      16       /* overview app-tile backplate */
-#define TH_R_BUTTON    12       /* card buttons                */
-#define TH_R_PILL      9        /* taskbar pills               */
-#define TH_R_HOVER     8        /* panel hover backplates      */
-#define TH_R_MONO      7        /* monogram tiles              */
+#define TH_R_CARD      24       /* quick settings / popovers   */
+#define TH_R_TILE      20       /* overview app-tile backplate */
+#define TH_R_BUTTON    16       /* card buttons                */
+#define TH_R_PILL      14       /* taskbar pills               */
+#define TH_R_HOVER     12       /* panel hover backplates      */
+#define TH_R_MONO      9        /* monogram tiles              */
 
 /* -------------------------------------------------------------- spacing --- */
-#define TH_PAD         10       /* panel edge padding             */
-#define TH_GAP         8        /* sibling gap                    */
-#define TH_CARD_PAD    16       /* card interior padding          */
+#define TH_PAD         14       /* panel edge padding             */
+#define TH_GAP         12       /* sibling gap                    */
+#define TH_CARD_PAD    22       /* card interior padding          */
 
 /* ----------------------------------------------------------- type scale --- */
 /* Pango descriptions; generic "Sans" resolves to Apple SF via the on-device
- * x11-fonts-sf fontconfig rule (and the preview container mirrors it). */
-#define TH_FONT_LABEL       "Sans 13"
-#define TH_FONT_LABEL_MED   "Sans Medium 13"
-#define TH_FONT_CLOCK       "Sans Medium 14"
-#define TH_FONT_MONO        "Sans 15"
-#define TH_FONT_TITLE       "Sans Semi-Bold 15"
-#define TH_FONT_SECTION     "Sans Semi-Bold 13"
-#define TH_FONT_SMALL       "Sans 11"
-#define TH_FONT_SEARCH      "Sans 15"
-#define TH_FONT_TILE        "Sans 12"
+ * x11-fonts-sf fontconfig rule (and the preview container mirrors it).
+ * Sizes are tuned for 1 logical px = 0.75 iOS pt (17 here reads as iOS body). */
+#define TH_FONT_LABEL       "Sans 17"
+#define TH_FONT_LABEL_MED   "Sans Medium 17"
+#define TH_FONT_CLOCK       "Sans Medium 19"
+#define TH_FONT_MONO        "Sans 20"
+#define TH_FONT_TITLE       "Sans Semi-Bold 20"
+#define TH_FONT_SECTION     "Sans Semi-Bold 17"
+#define TH_FONT_SMALL       "Sans 15"
+#define TH_FONT_SEARCH      "Sans 20"
+#define TH_FONT_TILE        "Sans 15"
 
 #endif /* SHELL_THEME_H */

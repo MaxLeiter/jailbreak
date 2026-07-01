@@ -6,10 +6,17 @@
  * (panel-layout.h, overview-layout.h, shell-blur.h) — same cairo/pango
  * primitives, same layout, same blur — over a mock wallpaper + windows.
  *
+ * Scenes target Max's iPad 7 at the 1.5 default effective scale
+ * (1440x1080 logical = 2160x1620 physical), plus a compact 720-wide scene
+ * that proves the responsive behavior (panel sheds the date, QS card and
+ * overview reflow) for Xios-in-Split-View style outputs. Nothing in the
+ * layout code knows these numbers — W/H flow in like a compositor configure.
+ *
  * Outputs (basenames under the out dir given as argv[1], default "design"):
- *   preview-desktop.png        wallpaper + windows + the panel (hover on a pill)
+ *   preview-desktop.png        wallpaper + split-view windows + the panel
  *   preview-quicksettings.png  ... + the QS card over a frosted crop (real blur)
  *   preview-overview.png       the overview over the frosted desktop (real blur)
+ *   preview-compact.png        720x1080 half-screen output: responsive proof
  *
  * Build (Linux container with cairo + pangocairo + SF, see build-preview.sh):
  *   cc preview-host.c $(pkg-config --cflags --libs cairo pangocairo) -lm -o preview-host
@@ -24,9 +31,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* iPad-shaped logical canvas (2732x2048 physical at SCALE 2). */
-static const int LW = 1366, LH = 1024, SCALE = 2;
-static const int PANEL_H = 44;
+/* iPad 7 logical canvas at the 1.5 default effective scale. */
+static const int    LW = 1440, LH = 1080;
+static const double SCALE = 1.5;
+static const int    PANEL_H = 64;          /* >= TH_TOUCH, matches ioscpanel */
+
+/* compact scene: half-screen (Split View-ish) output */
+static const int CW = 720, CH = 1080;
 
 static cairo_surface_t *load(const char *dir, const char *name)
 {
@@ -48,55 +59,79 @@ static void set_ov(struct ov_item *it, const char *label, cairo_surface_t *icon,
     it->icon = icon; it->active = active;
 }
 
-/* A plausible app window: shadow, rounded body, header bar with traffic dots. */
+/*
+ * A tablet-native app window: rounded body with a touch title bar — a centered
+ * grab-handle pill (drag affordance) over the title, and ONE big close target
+ * (36px circle in a 44px zone) at the right. No mouse-sized traffic lights.
+ * This is the window chrome model we're speccing for iosc's server-side
+ * decorations; the preview mocks it so the whole desktop reads tablet-first.
+ */
+#define WIN_BAR 56
 static void mock_window(cairo_t *cr, pr_text_ctx *t, double x, double y, double w, double h,
                         int dark, const char *title)
 {
-    pr_fill_rrect(cr, x + 3, y + 6, w, h, 14, 0x59000000u);           /* soft shadow */
-    pr_fill_rrect(cr, x, y, w, h, 12, dark ? 0xFF232326u : 0xFFEFEFF1u);
-    pr_fill_rrect(cr, x, y, w, 38, 12, dark ? 0xFF2E2E32u : 0xFFE2E2E6u);
-    pr_fill_rect(cr, x, y + 26, w, 12, dark ? 0xFF2E2E32u : 0xFFE2E2E6u);
-    static const uint32_t dots[] = { 0xFFFF5F57u, 0xFFFEBC2Eu, 0xFF28C840u };
-    for (int i = 0; i < 3; i++) {
-        cairo_new_sub_path(cr);
-        cairo_arc(cr, x + 20 + i * 20, y + 19, 6, 0, 2 * M_PI);
-        pr_set(cr, dots[i]);
-        cairo_fill(cr);
-    }
-    pr_text_centered(cr, t, TH_FONT_LABEL_MED, title, x, w, y + 19,
+    pr_fill_rrect(cr, x + 3, y + 7, w, h, 20, 0x59000000u);           /* soft shadow */
+    pr_fill_rrect(cr, x, y, w, h, 18, dark ? 0xFF232326u : 0xFFEFEFF1u);
+    pr_fill_rrect(cr, x, y, w, WIN_BAR, 18, dark ? 0xFF2E2E32u : 0xFFE2E2E6u);
+    pr_fill_rect(cr, x, y + WIN_BAR - 18, w, 18, dark ? 0xFF2E2E32u : 0xFFE2E2E6u);
+
+    /* grab handle: the drag affordance, centered near the top edge */
+    pr_fill_rrect(cr, x + w / 2 - 24, y + 9, 48, 5, 2.5,
+                  dark ? 0x40FFFFFFu : 0x33000000u);
+    /* title, centered in the bar's lower half */
+    pr_text_centered(cr, t, TH_FONT_LABEL_MED, title, x, w, y + WIN_BAR - 21,
                      dark ? TH_FG_DIM : 0xB3333336u);
+    /* close: one large touch circle at the bar's right */
+    {
+        double cxx = x + w - 32, cyy = y + WIN_BAR / 2.0;
+        cairo_new_sub_path(cr);
+        cairo_arc(cr, cxx, cyy, 18, 0, 2 * M_PI);
+        pr_set(cr, dark ? 0x2EFFFFFFu : 0x1F000000u);
+        cairo_fill(cr);
+        pr_text_centered(cr, t, TH_FONT_LABEL, "×", cxx - 18, 36, cyy,
+                         dark ? TH_FG_DIM : 0x8C333336u);
+    }
+
     if (dark) {
-        pr_text(cr, t, "Monospace 12", "max@ipad ~ % iosc --status",
-                x + 18, y + 60, 0xFF8CE99Au, (int)w - 36);
-        pr_text(cr, t, "Monospace 12", "compositor: running   clients: 3",
-                x + 18, y + 82, TH_FG_DIM, (int)w - 36);
+        pr_text(cr, t, "Monospace 15", "max@ipad ~ % iosc --status",
+                x + 22, y + WIN_BAR + 26, 0xFF8CE99Au, (int)w - 44);
+        pr_text(cr, t, "Monospace 15", "compositor: running   clients: 3",
+                x + 22, y + WIN_BAR + 54, TH_FG_DIM, (int)w - 44);
     } else {
-        for (int i = 0; i < 5; i++)
-            pr_fill_rrect(cr, x + 18, y + 58 + i * 24, (w - 60) * (i == 4 ? 0.4 : 0.86),
-                          10, 5, 0x1A000000u);
+        for (int i = 0; i < 6; i++)
+            pr_fill_rrect(cr, x + 22, y + WIN_BAR + 18 + i * 30,
+                          (w - 70) * (i == 5 ? 0.4 : 0.86), 12, 6, 0x1A000000u);
     }
 }
 
-/* The desktop base: wallpaper gradient + two windows (panel drawn separately). */
-static void draw_desktop_base(cairo_t *cr, pr_text_ctx *t)
+/* Wallpaper + windows for a W x H output. Tablet model: windows fill the work
+ * area as a split view (nwin==2) or fullscreen (nwin==1) — not a pile of
+ * little floating rectangles. */
+static void draw_desktop_base(cairo_t *cr, pr_text_ctx *t, int W, int H, int nwin)
 {
-    pr_fill_vgrad(cr, 0, 0, LW, LH, TH_WALL_TOP, TH_WALL_BOT);
-    /* a soft glow up top so the "wallpaper" isn't flat */
-    cairo_pattern_t *g = cairo_pattern_create_radial(LW * 0.3, 120, 40, LW * 0.3, 120, 700);
+    pr_fill_vgrad(cr, 0, 0, W, H, TH_WALL_TOP, TH_WALL_BOT);
+    cairo_pattern_t *g = cairo_pattern_create_radial(W * 0.3, 120, 40, W * 0.3, 120, 700);
     cairo_pattern_add_color_stop_rgba(g, 0, 0.35, 0.30, 0.55, 0.35);
     cairo_pattern_add_color_stop_rgba(g, 1, 0, 0, 0, 0);
     cairo_set_source(cr, g);
     cairo_paint(cr);
     cairo_pattern_destroy(g);
 
-    mock_window(cr, t, 90,  120, 640, 500, 0, "Text Editor");
-    mock_window(cr, t, 780, 170, 500, 420, 1, "Console");
+    int gap = 12, top = PANEL_H + gap, bot = H - gap;
+    if (nwin >= 2) {
+        int split = (int)(W * 0.56);
+        mock_window(cr, t, gap, top, split - gap - gap / 2, bot - top, 0, "Text Editor");
+        mock_window(cr, t, split + gap / 2, top, W - split - gap - gap / 2, bot - top,
+                    1, "Console");
+    } else {
+        mock_window(cr, t, gap, top, W - 2 * gap, bot - top, 1, "Console");
+    }
 }
 
-static cairo_surface_t *new_canvas(cairo_t **out_cr)
+static cairo_surface_t *new_canvas(cairo_t **out_cr, int lw, int lh)
 {
     cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-                                                    LW * SCALE, LH * SCALE);
+                                                    (int)(lw * SCALE), (int)(lh * SCALE));
     cairo_t *cr = cairo_create(s);
     cairo_scale(cr, SCALE, SCALE);
     *out_cr = cr;
@@ -126,7 +161,7 @@ int main(int argc, char **argv)
     /* ---- shared panel model ------------------------------------------- */
     struct panel_model pm; memset(&pm, 0, sizeof pm);
     pm.bg_alpha = 1.0;
-    pm.have_ptr = 1; pm.px = 700; pm.py = PANEL_H / 2;   /* hover the 2nd pill */
+    pm.have_ptr = 1; pm.px = 700; pm.py = PANEL_H / 2;   /* hover a pill */
     snprintf(pm.clock, sizeof pm.clock, "9:41");
     snprintf(pm.date, sizeof pm.date, "Tue Jul 1");
     pm.batt_pct = 82; pm.batt_charging = 0;
@@ -135,18 +170,17 @@ int main(int argc, char **argv)
     set_item(&pm.launch[1], "Text Editor", "T", i_text,  0);
     set_item(&pm.launch[2], "Console",     "C", i_term,  0);
     set_item(&pm.launch[3], "Calculator",  "C", i_calc,  0);
-    pm.ntasks = 3;
+    pm.ntasks = 2;
     set_item(&pm.tasks[0], "Text Editor", "T", i_text,  1);
-    set_item(&pm.tasks[1], "Files",       "F", i_files, 0);
-    set_item(&pm.tasks[2], "Console",     "C", i_term,  0);
+    set_item(&pm.tasks[1], "Console",     "C", i_term,  0);
 
     struct panel_hits hits;
     int ok = 1;
 
-    /* ---- 1: desktop --------------------------------------------------- */
-    cairo_t *cr; cairo_surface_t *desk = new_canvas(&cr);
+    /* ---- 1: desktop (split view + panel) ------------------------------ */
+    cairo_t *cr; cairo_surface_t *desk = new_canvas(&cr, LW, LH);
     pr_text_ctx t = pr_text_ctx_new(cr);
-    draw_desktop_base(cr, &t);
+    draw_desktop_base(cr, &t, LW, LH, 2);
     panel_draw_topbar(cr, &t, LW, PANEL_H, &pm, &hits);
     pr_text_ctx_free(&t);
     cairo_destroy(cr);
@@ -158,14 +192,15 @@ int main(int argc, char **argv)
         snprintf(qm.device, sizeof qm.device, "Max's iPad");
         snprintf(qm.date_long, sizeof qm.date_long, "Tuesday, July 1");
         qm.batt_pct = 82; qm.batt_charging = 1;
-        qm.have_ptr = 1; qm.px = 80; qm.py = 150;        /* hover "Overview" */
+        int qw = panel_qs_width(LW);
         int qh = panel_qs_height(&qm);
-        int qx = LW - QS_MARGIN - QS_W, qy = PANEL_H + QS_MARGIN;
+        qm.have_ptr = 1; qm.px = 90; qm.py = qh - TH_CARD_PAD - 30; /* hover "Overview" */
+        int qx = LW - QS_MARGIN - qw, qy = PANEL_H + QS_MARGIN;
 
         /* crop the card region from the desktop (physical px) and frost it —
          * the exact path ioscpanel runs via screencopy */
         cairo_surface_t *crop = cairo_image_surface_create(CAIRO_FORMAT_RGB24,
-                                    QS_W * SCALE, qh * SCALE);
+                                    (int)(qw * SCALE), (int)(qh * SCALE));
         cairo_t *cc = cairo_create(crop);
         cairo_set_source_surface(cc, desk, -qx * SCALE, -qy * SCALE);
         cairo_paint(cc);
@@ -173,7 +208,7 @@ int main(int argc, char **argv)
         qm.backdrop = sb_backdrop_build(crop, 4, 6);
         cairo_surface_destroy(crop);
 
-        cairo_t *c2; cairo_surface_t *qs = new_canvas(&c2);
+        cairo_t *c2; cairo_surface_t *qs = new_canvas(&c2, LW, LH);
         cairo_save(c2);
         cairo_identity_matrix(c2);
         cairo_set_source_surface(c2, desk, 0, 0);
@@ -184,7 +219,7 @@ int main(int argc, char **argv)
         cairo_save(c2);
         cairo_translate(c2, qx, qy);
         struct panel_hits qhits;
-        panel_draw_qs(c2, &t2, QS_W, qh, &qm, &qhits);
+        panel_draw_qs(c2, &t2, qw, qh, &qm, &qhits);
         cairo_restore(c2);
         pr_text_ctx_free(&t2);
         cairo_destroy(c2);
@@ -197,7 +232,7 @@ int main(int argc, char **argv)
     {
         struct ov_model om; memset(&om, 0, sizeof om);
         om.backdrop = sb_backdrop_build(desk, 8, 12);  /* the client's exact path */
-        om.have_ptr = 1; om.px = LW / 2 - 160; om.py = 560; /* hover an app tile */
+        om.have_ptr = 1; om.px = 700; om.py = 460;     /* hover an app tile */
         om.anim_t = 1.0;
         om.nwins = 2;
         set_ov(&om.wins[0], "Text Editor", i_text, 1);
@@ -212,7 +247,7 @@ int main(int argc, char **argv)
         set_ov(&om.apps[6], "Web",          NULL,    0);
         set_ov(&om.apps[7], "Settings",     NULL,    0);
 
-        cairo_t *c3; cairo_surface_t *ov = new_canvas(&c3);
+        cairo_t *c3; cairo_surface_t *ov = new_canvas(&c3, LW, LH);
         pr_text_ctx t3 = pr_text_ctx_new(c3);
         struct ov_hits ohits;
         ov_draw(c3, &t3, LW, LH, &om, &ohits);
@@ -221,6 +256,22 @@ int main(int argc, char **argv)
         ok &= save(ov, outdir, "preview-overview.png");
         cairo_surface_destroy(ov);
         cairo_surface_destroy(om.backdrop);
+    }
+
+    /* ---- 4: compact half-screen output — the responsive proof --------- */
+    {
+        cairo_t *c4; cairo_surface_t *cmp = new_canvas(&c4, CW, CH);
+        pr_text_ctx t4 = pr_text_ctx_new(c4);
+        draw_desktop_base(c4, &t4, CW, CH, 1);
+        struct panel_model cpm = pm;
+        cpm.have_ptr = 0;
+        cpm.nlaunch = 3;                     /* tighter strip on narrow outputs */
+        struct panel_hits chits;
+        panel_draw_topbar(c4, &t4, CW, PANEL_H, &cpm, &chits);
+        pr_text_ctx_free(&t4);
+        cairo_destroy(c4);
+        ok &= save(cmp, outdir, "preview-compact.png");
+        cairo_surface_destroy(cmp);
     }
 
     cairo_surface_destroy(desk);
