@@ -27,8 +27,18 @@ endif
 #    target actually links, which is case-insensitive), and an EMPTY oauth2-google-client-id
 #    (empty scheme -> the x-scheme-handler registration self-skips; there is no xdg URI
 #    dispatch on iOS to register with anyway).
-#  - All glib codegen (mkenums/genmarshal/gdbus-codegen/compile-resources) is find_program ->
-#    host tools; gperf is a host tool (build-eds.sh installs it).
+#  - find_program resolves into the iOS sysroot (build_base/.../var/jb/usr/bin) ahead of the
+#    host. The python/perl codegen scripts found there (gdbus-codegen/mkenums/genmarshal)
+#    run fine on the Linux host, but the NATIVE tools are Mach-O -> "Exec format error"
+#    (126) at build time, so those five get their cache vars pinned to the host copies
+#    (glib-compile-schemas/-resources from libglib2.0-{bin,dev-bin}, xgettext/msgfmt/
+#    msgmerge from gettext — all installed by build-eds.sh). gperf resolves host already.
+#  - Two in-tree code generators (camel-gen-tables, gen-western-table) are add_executable'd
+#    for the TARGET and then EXECUTED by custom commands — impossible cross (Linux can't
+#    run Mach-O). -setup points the custom commands at *-host copies, which get compiled
+#    with host gcc + host glib right after configure (they need the cmake-generated
+#    evolution-data-server-config.h). Their output (ASCII/mime + western-name tables) is
+#    platform-independent, which is why upstream can generate it at build time at all.
 #  - ENABLE_SCHEMAS_COMPILE=OFF: the install hook would compile schemas into the BUILDER's
 #    /var/jb; the desktop's model is one on-device glib-compile-schemas pass post-install.
 #  - malloc_trim/_NL_ADDRESS_COUNTRY_AB2/elf-backtrace probes all fail cleanly on Darwin
@@ -61,6 +71,14 @@ evolution-data-server-setup: setup
 	sed -i 's/-Wl,--no-undefined //g' \
 		$(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
 	! grep -q -- '--no-undefined' $(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
+	# Point the two run-my-own-binary generators at host-built copies (compiled below,
+	# after configure); the iOS generator targets still build+link, they just never run.
+	sed -i 's|COMMAND $${CMAKE_CURRENT_BINARY_DIR}/camel-gen-tables |COMMAND $${CMAKE_BINARY_DIR}/camel-gen-tables-host |' \
+		$(BUILD_WORK)/evolution-data-server/src/camel/CMakeLists.txt
+	sed -i 's|COMMAND $${CMAKE_CURRENT_BINARY_DIR}/gen-western-table |COMMAND $${CMAKE_BINARY_DIR}/gen-western-table-host |' \
+		$(BUILD_WORK)/evolution-data-server/src/addressbook/libebook-contacts/CMakeLists.txt
+	grep -q 'camel-gen-tables-host' $(BUILD_WORK)/evolution-data-server/src/camel/CMakeLists.txt
+	grep -q 'gen-western-table-host' $(BUILD_WORK)/evolution-data-server/src/addressbook/libebook-contacts/CMakeLists.txt
 
 ifneq ($(wildcard $(BUILD_WORK)/evolution-data-server/.build_complete),)
 evolution-data-server:
@@ -79,6 +97,11 @@ evolution-data-server: evolution-data-server-setup glib2.0 sqlite3 libxml2 json-
 		-D_correct_iconv=1 \
 		-DHAVE_LKSTRFTIME=1 \
 		-D_decoded=1 \
+		-DGLIB_COMPILE_SCHEMAS=/usr/bin/glib-compile-schemas \
+		-DGLIB_COMPILE_RESOURCES=/usr/bin/glib-compile-resources \
+		-DGETTEXT_XGETTEXT_EXECUTABLE=/usr/bin/xgettext \
+		-DGETTEXT_MSGFMT_EXECUTABLE=/usr/bin/msgfmt \
+		-DGETTEXT_MSGMERGE_EXECUTABLE=/usr/bin/msgmerge \
 		-DENABLE_GTK=OFF \
 		-DENABLE_GTK4=OFF \
 		-DENABLE_OAUTH2_WEBKITGTK=OFF \
@@ -98,6 +121,19 @@ evolution-data-server: evolution-data-server-setup glib2.0 sqlite3 libxml2 json-
 		-DENABLE_DOT_LOCKING=OFF \
 		-DENABLE_SCHEMAS_COMPILE=OFF \
 		-DWITH_SYSTEMDUSERUNITDIR=no
+	# Host copies of the two in-tree generators (see CROSS NOTES). After configure (they
+	# include the generated config header), before make (custom commands invoke them).
+	# env -u: Procursus exports the darwin flags; host gcc/pkg-config must not see them.
+	cd $(BUILD_WORK)/evolution-data-server && \
+		env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+			-u PKG_CONFIG_PATH -u PKG_CONFIG_LIBDIR -u PKG_CONFIG_SYSROOT_DIR \
+		sh -c 'gcc -O2 -Ibuild $$(/usr/bin/pkg-config --cflags glib-2.0) \
+				src/camel/camel-gen-tables.c \
+				-o build/camel-gen-tables-host $$(/usr/bin/pkg-config --libs glib-2.0) && \
+			gcc -O2 -Ibuild $$(/usr/bin/pkg-config --cflags glib-2.0) \
+				src/addressbook/libebook-contacts/gen-western-table.c \
+				-o build/gen-western-table-host $$(/usr/bin/pkg-config --libs glib-2.0)'
+	$(BUILD_WORK)/evolution-data-server/build/camel-gen-tables-host >/dev/null
 	+$(MAKE) -C $(BUILD_WORK)/evolution-data-server/build
 	+$(MAKE) -C $(BUILD_WORK)/evolution-data-server/build install \
 		DESTDIR="$(BUILD_STAGE)/evolution-data-server"
