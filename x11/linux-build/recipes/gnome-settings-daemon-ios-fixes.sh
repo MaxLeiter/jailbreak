@@ -17,12 +17,15 @@
 # 3.0 -> 4 (we ship only the GTK4/base library; libcommon + the kept plugins use only
 # GTK-independent gnome-desktop API).
 #
-# POWER PLUGIN (section 5): un-dropped for battery handling + the brightness slider. upower-glib
-# is now provided at runtime by xios-hwbridged (org.freedesktop.UPower, IOKit-backed), and the
-# heavy libcanberra-gtk3 + X11/xext deps are excised: canberra event sounds resolve to a no-op
-# stub header, and the one raw-X11 site (gpm-common.c's Xorg-DPMS defeat) is neutralized. The
-# Darwin backlight backend in gsd-backlight.c (reads/writes the xios_backlight node) is added
-# separately.
+# POWER PLUGIN (section 5): groundwork toward battery handling + the brightness slider. It
+# excises the plugin's libcanberra-gtk3 dep (event sounds -> no-op stub) and gates the raw-X11
+# screensaver/DPMS machinery in gpm-common.c behind !__APPLE__. BUT gsd-power ALSO hard-includes
+# libgnome-desktop/gnome-rr.h (RandR, GONE from our GTK4 gnome-desktop-4) and gtk/gtk.h (its GTK
+# daemon skeleton), so it does NOT yet compile on this stack — power therefore stays in
+# disabled_plugins (section 3). Finishing it means gating ALL gnome-rr out of gsd-backlight.{c,h}
+# + gpm-common.c + gsd-power-manager.c (the Darwin backlight backend replacing the RR fallback)
+# and resolving the GTK skeleton. upower-glib is already provided at runtime by xios-hwbridged
+# (org.freedesktop.UPower, IOKit). Section 5's patches are applied but inert while power is off.
 #
 # Usage: gnome-settings-daemon-ios-fixes.sh <gsd-source-dir> [<recipes-dir>]
 set -euo pipefail
@@ -43,13 +46,14 @@ sed -i "s/^upower_glib_dep = dependency('upower-glib', version: '>= 0.99.12')\$/
 sed -i "s/^gnome_desktop_dep = dependency('gnome-desktop-3.0', version: '>= 3.37.1')\$/gnome_desktop_dep = dependency('gnome-desktop-4', version: '>= 40')/" "$M"
 
 # --- (3) disable the heavy plugins ---------------------------------------------
-# Append to disabled_plugins right after it is initialised (idempotent by marker). POWER is
-# KEPT (section 5 makes it iOS-buildable); the rest need absent hardware/services or X11.
+# Append to disabled_plugins right after it is initialised (idempotent by marker). POWER stays
+# DROPPED: section 5 removes its libcanberra + raw-X11 deps, but gsd-power ALSO hard-requires
+# libgnome-desktop/gnome-rr.h (RandR — removed from our GTK4 gnome-desktop-4) and gtk/gtk.h (the
+# GTK daemon skeleton), which are a separate multi-file port. Section 5 is dormant groundwork
+# for that port; until it lands, power must stay disabled or the gsd build fails.
 if ! grep -q "# iOS: minimal plugin set" "$P"; then
-  perl -0pi -e "s/^disabled_plugins = \[\]\n/disabled_plugins = []\n# iOS: minimal plugin set — drop everything that needs absent hardware\/services or X11.\ndisabled_plugins += ['color', 'datetime', 'media-keys', 'sound', 'xsettings', 'sharing']\n/m" "$P"
+  perl -0pi -e "s/^disabled_plugins = \[\]\n/disabled_plugins = []\n# iOS: minimal plugin set — drop everything that needs absent hardware\/services or X11.\ndisabled_plugins += ['power', 'color', 'datetime', 'media-keys', 'sound', 'xsettings', 'sharing']\n/m" "$P"
 fi
-# If a prior run of this script disabled 'power', re-enable it (idempotent un-drop).
-sed -i "s/disabled_plugins += \['power', /disabled_plugins += ['/" "$P"
 
 # --- (4) neutralize gsd's broken macOS bundle_loader hack ----------------------
 # plugins/common/meson.build has an `if host_is_darwin` block that appends a malformed
@@ -143,8 +147,7 @@ check  "$M" "upower-glib', version: '>= 0.99.12', required: false"
 check  "$M" "gnome-desktop-4"
 absent "$M" "gnome-desktop-3.0"
 absent "$M" "geocode-glib-1.0"
-check  "$P" "disabled_plugins += \['color', 'datetime'"
-absent "$P" "'power', 'color'"
+check  "$P" "disabled_plugins += \['power', 'color', 'datetime'"
 absent "$CM" "join_paths()"
 # section 5: power plugin iOS-buildable
 check  "$SRC/plugins/power/ios-stubs/canberra-gtk.h" "ca_context_play"
