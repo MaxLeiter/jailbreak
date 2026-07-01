@@ -235,7 +235,21 @@ static pid_t launch_client(const char *app_id, const char *exec)
         setenv("XDG_RUNTIME_DIR", busdir, 1);          /* private, dbus-friendly */
         setenv("WAYLAND_DISPLAY", WAYLAND_SOCK, 1);    /* absolute path */
         setenv("GDK_BACKEND", "wayland", 1);
-        setenv("GSK_RENDERER", "cairo", 1);            /* CPU client; iosc GPU-composites */
+        /* Client-side rendering path. DEFAULT cairo: GTK CPU-paints into wl_shm and
+         * iosc GPU-composites. Opt in to the GPU client path by launching ioscd with
+         * IOSC_GSK_RENDERER=ngl (or gl) — GTK's GL renderer then goes through the
+         * wl_egl_window shim (ANGLE Metal -> IOSurface, no CPU cairo paint). That
+         * REQUIRES the on-device libEGL shim swap + the GSK-ngl-on-ANGLE validation
+         * still owned by the device side; cairo stays the safe fallback. */
+        const char *gsk = getenv("IOSC_GSK_RENDERER");
+        if (!gsk || !*gsk) gsk = "cairo";
+        setenv("GSK_RENDERER", gsk, 1);
+        if (strcmp(gsk, "cairo") != 0) {
+            /* Tell the swapped-in shim where the real ANGLE libEGL lives. */
+            const char *real = getenv("ANGLE_REAL_LIBEGL");
+            setenv("ANGLE_REAL_LIBEGL",
+                   real && *real ? real : "/var/jb/lib/angle/libEGL.angle.dylib", 1);
+        }
         setenv("GSETTINGS_BACKEND", "memory", 1);
         setenv("GTK_A11Y", "none", 1);
         setenv("HOME", "/var/jb/var/root", 1);

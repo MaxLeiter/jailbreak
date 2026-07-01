@@ -55,9 +55,16 @@ echo "==> run kgx under a session bus (GDK wayland, cairo, a11y off) -> $TMP/kgx
 # xdg_toplevel through iosc, and receives keystrokes via iosc's wl_keyboard → PTY.
 rm -f "$TMP/kgx.exit"
 mkdir -p "$BUS_DIR"; chmod 700 "$BUS_DIR"
+# Client render path. DEFAULT cairo (GTK CPU-paints into wl_shm; iosc GPU-composites).
+# Set IOSC_GSK_RENDERER=ngl to route GTK's GL renderer through the wl_egl_window shim
+# (ANGLE Metal -> IOSurface). That needs the on-device libEGL shim swap + is gated on
+# the GSK-ngl-on-ANGLE validation; cairo stays the safe fallback.
+GSK_SEL="${IOSC_GSK_RENDERER:-cairo}"
+SHIM_ENV=""
+[ "$GSK_SEL" = "cairo" ] || SHIM_ENV="ANGLE_REAL_LIBEGL=${ANGLE_REAL_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"
 nohup bash -c "
   env XDG_RUNTIME_DIR=$BUS_DIR WAYLAND_DISPLAY=$WSOCK \
-    GDK_BACKEND=wayland GSK_RENDERER=cairo GSETTINGS_BACKEND=memory \
+    GDK_BACKEND=wayland GSK_RENDERER=$GSK_SEL $SHIM_ENV GSETTINGS_BACKEND=memory \
     GTK_A11Y=none HOME=/var/jb/var/root \
     dbus-run-session -- /var/jb/usr/bin/kgx -T iosc-kgx -- $SHELL_BIN -i
   echo \$? >$TMP/kgx.exit
