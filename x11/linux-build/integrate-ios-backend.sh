@@ -39,8 +39,11 @@ cp "$WL"/meta-monitor-manager-ios.[ch] \
    "$WL"/meta-backend-ios.[ch] \
    "$WL"/meta-wayland-iosurface.[ch] \
    "$MUTTER_ROOT/src/backends/ios/"
-# (xios-glue-stub.h is NOT copied — the backend .c use the 3 canonical headers from
-#  xios-glue-include/, staged below; the stub is only the off-device compile-check shim.)
+# The backend .c files #include "backends/ios/xios-glue-stub.h" (the self-contained glue API
+# contract) — stage it alongside them. Its extern declarations resolve at link time against
+# libxios_glue.a. (xios-glue-include/ is ALSO staged below and put on the -I path, but nothing
+# #includes those canonical headers directly; the stub is the single header the .c use.)
+cp "$WL"/xios-glue-stub.h "$MUTTER_ROOT/src/backends/ios/"
 
 echo "==> stage the iosc_iosurface protocol"
 mkdir -p "$MUTTER_ROOT/src/wayland/protocol"
