@@ -197,7 +197,11 @@ When the keyboard is up it covers the bottom half of the output and can
 cover the focused field itself. The pieces already exist:
 
 - Clients send `set_cursor_rectangle`; iosc stores it (`ti->rect_*`) and
-  today forwards it only to input-method popups.
+  today forwards it only to input-method popups. Broadcast note: those
+  rects are surface-local LOGICAL coords; iosc converts to physical output
+  px (x output_scale, + surface dx/dy, same as the cursor-overlay coords)
+  before sending. The iosc maintainer offered to wire that half when v2
+  starts (confirmed 2026-07-01; server contract pinned in 23d70ef).
 - v1.5 (app-only, no protocol change): the Xios app already has pan/zoom
   machinery (`panOffset`/`zoomScale`). On keyboardWillShow, if the last
   known caret rect is under the keyboard frame, pan the view up; restore on
