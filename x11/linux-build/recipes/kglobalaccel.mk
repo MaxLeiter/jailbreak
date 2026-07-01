@@ -16,6 +16,7 @@ DEB_KGLOBALACCEL_V ?= $(KGLOBALACCEL_VERSION)
 kglobalaccel-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kglobalaccel))
 	$(call EXTRACT_TAR,kglobalaccel-$(KF6_VERSION).tar.xz,kglobalaccel-$(KF6_VERSION),kglobalaccel)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kglobalaccel/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

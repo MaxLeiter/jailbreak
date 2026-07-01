@@ -15,6 +15,7 @@ DEB_KSERVICE_V ?= $(KSERVICE_VERSION)
 kservice-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kservice))
 	$(call EXTRACT_TAR,kservice-$(KF6_VERSION).tar.xz,kservice-$(KF6_VERSION),kservice)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kservice/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

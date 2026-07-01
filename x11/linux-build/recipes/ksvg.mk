@@ -15,6 +15,7 @@ DEB_KSVG_V ?= $(KSVG_VERSION)
 ksvg-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,ksvg))
 	$(call EXTRACT_TAR,ksvg-$(KF6_VERSION).tar.xz,ksvg-$(KF6_VERSION),ksvg)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/ksvg/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

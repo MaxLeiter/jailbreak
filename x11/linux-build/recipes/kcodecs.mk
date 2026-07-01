@@ -14,6 +14,7 @@ DEB_KCODECS_V ?= $(KCODECS_VERSION)
 kcodecs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcodecs))
 	$(call EXTRACT_TAR,kcodecs-$(KF6_VERSION).tar.xz,kcodecs-$(KF6_VERSION),kcodecs)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kcodecs/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

@@ -15,6 +15,7 @@ DEB_KJOBWIDGETS_V ?= $(KJOBWIDGETS_VERSION)
 kjobwidgets-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kjobwidgets))
 	$(call EXTRACT_TAR,kjobwidgets-$(KF6_VERSION).tar.xz,kjobwidgets-$(KF6_VERSION),kjobwidgets)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kjobwidgets/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

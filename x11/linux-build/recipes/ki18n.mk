@@ -17,6 +17,7 @@ DEB_KI18N_V ?= $(KI18N_VERSION)
 ki18n-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,ki18n))
 	$(call EXTRACT_TAR,ki18n-$(KF6_VERSION).tar.xz,ki18n-$(KF6_VERSION),ki18n)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/ki18n/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

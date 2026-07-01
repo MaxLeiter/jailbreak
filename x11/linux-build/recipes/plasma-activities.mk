@@ -16,6 +16,7 @@ DEB_PLASMAACTIVITIES_V ?= $(PLASMAACTIVITIES_VERSION)
 plasma-activities-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-activities))
 	$(call EXTRACT_TAR,plasma-activities-$(PLASMA_VERSION).tar.xz,plasma-activities-$(PLASMA_VERSION),plasma-activities)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/plasma-activities/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

@@ -24,6 +24,7 @@ kidletime-setup: setup
 	sed -i '/set(WITH_WAYLAND OFF)/d' $(BUILD_WORK)/kidletime/CMakeLists.txt
 	sed -i '/cmake_find_frameworks(CoreFoundation Carbon)/d' $(BUILD_WORK)/kidletime/CMakeLists.txt
 	sed -i '/add_subdirectory(osx)/d' $(BUILD_WORK)/kidletime/src/plugins/CMakeLists.txt
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kidletime/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

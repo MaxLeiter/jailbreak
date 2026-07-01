@@ -17,6 +17,7 @@ DEB_BREEZEICONS_V ?= $(BREEZEICONS_VERSION)
 breeze-icons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,breeze-icons))
 	$(call EXTRACT_TAR,breeze-icons-$(KF6_VERSION).tar.xz,breeze-icons-$(KF6_VERSION),breeze-icons)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/breeze-icons/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

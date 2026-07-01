@@ -89,6 +89,12 @@ host_kf() { # <name> <marker-relative-to-KF6HOST>
   rm -rf "/work/host-${name}-src"
   mkdir -p "/work/host-${name}-src" "${builddir}"
   tar xf "build_source/${tarball}" -C "/work/host-${name}-src" --strip-components=1
+  # Same cut as the cross recipes (gen-kf6-recipes.py): drop ecm_install_po_files_as_qm,
+  # which needs host Qt6LinguistTools (lrelease) the host Qt doesn't ship. The gettext
+  # path ki18n_install(po) stays — msgfmt is apt-installed below. Idempotent no-op for
+  # units without the call.
+  sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' \
+    "/work/host-${name}-src/CMakeLists.txt"
   cmake -S "/work/host-${name}-src" -B "${builddir}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${KF6HOST}" \

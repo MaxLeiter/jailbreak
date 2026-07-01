@@ -16,6 +16,7 @@ DEB_KDECORATION_V ?= $(KDECORATION_VERSION)
 kdecoration-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kdecoration))
 	$(call EXTRACT_TAR,kdecoration-$(PLASMA_VERSION).tar.xz,kdecoration-$(PLASMA_VERSION),kdecoration)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kdecoration/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

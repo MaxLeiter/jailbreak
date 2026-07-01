@@ -416,6 +416,17 @@ def emit_recipe(e):
              "\t$(call EXTRACT_TAR,%s,%s,%s)" % (tar, xdir, t)]
     for s in e.get("seds", []):
         setup.append("\t%s" % s)
+    # Comment out ecm_install_po_files_as_qm(): it runs find_package(Qt6LinguistTools
+    # REQUIRED) → host lrelease to compile .po into Qt .qm, but qt-modules' host Qt has
+    # no LinguistTools (qttools isn't in the ladder) so configure dies (proved on host
+    # kcoreaddons). Translations are a non-essential bring-up cut; the SEPARATE gettext
+    # path ki18n_install(po) uses msgfmt (host-apt'd) and is left working. Unconditional
+    # + idempotent: no-op for units without the call. Top-level CMakeLists only — that's
+    # where the project-level install macro always lives. build-kf6.sh's host_kf applies
+    # the same sed for the stage-1 host builds. Re-enable by dropping this if host
+    # LinguistTools ever lands.
+    if e["kind"] not in ("ecm", "pwp"):
+        setup.append("\tsed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/%s/CMakeLists.txt" % t)
     if e["kind"] not in ("ecm", "pwp"):
         setup.append("\t$(call QT6_WRITE_IOSEXEC_FIXUP)")
     # Staged xpc/ + os/log.h headers shadow the 16.4 SDK (xpc_session API newer than

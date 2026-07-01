@@ -16,6 +16,7 @@ DEB_LAYERSHELLQT_V ?= $(LAYERSHELLQT_VERSION)
 layer-shell-qt-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,layer-shell-qt))
 	$(call EXTRACT_TAR,layer-shell-qt-$(PLASMA_VERSION).tar.xz,layer-shell-qt-$(PLASMA_VERSION),layer-shell-qt)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/layer-shell-qt/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

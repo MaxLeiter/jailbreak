@@ -26,6 +26,7 @@ knotifications-setup: setup
 	sed -i 's/if (NOT APPLE AND NOT ANDROID AND NOT WIN32 OR (WIN32 AND NOT WITH_SNORETOAST))/if (TRUE)/' $(BUILD_WORK)/knotifications/CMakeLists.txt
 	sed -i '/notifybymacosnotificationcenter.mm/d' $(BUILD_WORK)/knotifications/src/CMakeLists.txt
 	sed -i '/-framework AppKit/d' $(BUILD_WORK)/knotifications/src/CMakeLists.txt
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/knotifications/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

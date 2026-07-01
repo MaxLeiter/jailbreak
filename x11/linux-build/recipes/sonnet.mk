@@ -16,6 +16,7 @@ DEB_SONNET_V ?= $(SONNET_VERSION)
 sonnet-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,sonnet))
 	$(call EXTRACT_TAR,sonnet-$(KF6_VERSION).tar.xz,sonnet-$(KF6_VERSION),sonnet)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/sonnet/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

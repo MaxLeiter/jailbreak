@@ -16,6 +16,7 @@ DEB_KCMUTILS_V ?= $(KCMUTILS_VERSION)
 kcmutils-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcmutils))
 	$(call EXTRACT_TAR,kcmutils-$(KF6_VERSION).tar.xz,kcmutils-$(KF6_VERSION),kcmutils)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kcmutils/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

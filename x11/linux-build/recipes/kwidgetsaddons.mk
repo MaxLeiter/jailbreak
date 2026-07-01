@@ -13,6 +13,7 @@ DEB_KWIDGETSADDONS_V ?= $(KWIDGETSADDONS_VERSION)
 kwidgetsaddons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kwidgetsaddons))
 	$(call EXTRACT_TAR,kwidgetsaddons-$(KF6_VERSION).tar.xz,kwidgetsaddons-$(KF6_VERSION),kwidgetsaddons)
+	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kwidgetsaddons/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 
