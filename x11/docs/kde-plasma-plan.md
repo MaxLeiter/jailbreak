@@ -113,26 +113,100 @@ This phase is not a gate for K/W1/P below; the software path carries them.
 
 ## Layer K: KDE Frameworks 6 (subset)
 
-K0 first: pull the kwin, plasma-workspace and plasma-mobile 6.1 tarballs and audit the
-actual `find_package` graphs before building anything. The lists below are the expected
-shape, not gospel.
+K0 audit is DONE (2026-07-01). The `find_package` graphs of kwin 6.1.5,
+plasma-nano/plasma-mobile 6.1.5, libplasma 6.1.5 and every KF 6.3.0 framework in their
+closure were pulled from invent.kde.org and reduced to the minimal subset below. The
+result is **40 build units** (33 KF6 frameworks + ECM + 5 Plasma-released libraries +
+plasma-wayland-protocols). Pins: KF 6.3.0, Plasma libs 6.1.5, plasma-wayland-protocols
+1.13.0. Everything is code-generated: `tools/gen-kf6-recipes.py` holds the canonical
+audit TABLE (per-unit deps, feature cuts, patches, packaging) and emits
+`recipes/<unit>.mk` + `build_info/<deb>.control`; `recipes/kf6-common.mk` holds the
+shared flags/macros; `build-kf6.sh` is the driver. Regenerate, don't hand-edit the .mk
+files.
 
-- extra-cmake-modules (ECM): first, trivial (cmake-only).
-- Tier 1 (Qt-only deps): KConfig, KCoreAddons, KWidgetsAddons, KWindowSystem (wayland
-  half), KIdleTime, KDBusAddons, KCrash, KGuiAddons, KItemViews, KCodecs, KArchive,
-  KI18n (gettext via the proxy-libintl/libgtkintl precedent).
-- Tier 2/3 for KWin + shell: KAuth (polkit deb already built), KService, KPackage,
-  KSvg, KColorScheme, KConfigWidgets, KIconThemes, KNotifications, KCMUtils,
-  KDeclarative, Kirigami, KGlobalAccel bits (kglobalacceld moved into the Plasma
-  release set in 6; audit), Solid (expect heavy stubbing, it probes hardware),
-  KScreenLocker (stub first; iosc already implements session-lock for later).
-- Plasma-side libs released with Plasma, built in this layer: KDecoration3,
-  KWayland, plasma-wayland-protocols, layer-shell-qt (iosc already speaks
-  zwlr_layer_shell_v1 v4).
+### The audited subset (build DAG = wave order)
 
-Recipe mechanics are uniform: cmake + ECM, `QT6_MODULE_CMAKE_FLAGS`-style Apple seeds,
-host tools from `QT_HOST_PATH`. Expect the KF6 recipes to be near-clones of the Qt
-module recipes with ECM added; the cost is count (~20 repos), not novelty.
+`build-kf6.sh` runs these in wave order (each wave's deps are all in earlier waves). The
+generator prints the canonical `TARGETS` string; keep the two in sync.
+
+- **wave 0 — no KF6 deps** (Qt-only, or self-contained): extra-cmake-modules,
+  plasma-wayland-protocols, kcoreaddons, karchive, kcodecs, kconfig, kwidgetsaddons,
+  kitemviews, kitemmodels, kdbusaddons, kglobalaccel, kguiaddons, kwindowsystem,
+  kidletime, ki18n, solid, sonnet, kirigami, breeze-icons, **kwayland**,
+  **plasma-activities**, **layer-shell-qt**.
+- **wave 1**: kauth, kcrash, kcolorscheme, kservice, kpackage, knotifications,
+  kcompletion, **kdecoration**.
+- **wave 2**: kconfigwidgets, kjobwidgets, ksvg.
+- **wave 3**: kiconthemes, kbookmarks, ktextwidgets.
+- **wave 4**: kxmlgui, kio.
+- **wave 5**: kcmutils, kglobalacceld.
+
+(Bold = Plasma-released, not a `frameworks/` repo.) What each direct consumer forces:
+plasma-nano pulls kwindowsystem/ki18n/kservice/kitemmodels + libplasma + kwayland;
+libplasma pulls the archive/config/globalaccel/guiaddons/i18n/iconthemes/kio/
+windowsystem/notifications/package/kirigami(Platform)/kcmutils/svg set + plasma-activities
++ plasma-wayland-protocols; kwin pulls auth/colorscheme/config/configwidgets/coreaddons/
+crash/dbusaddons/globalaccel/guiaddons/i18n/idletime/package/service/svg/widgetsaddons/
+windowsystem + kwayland + kdecoration + kglobalacceld (+ notifications, screenlocker
+stubbed). **The widget/KIO chain, not kwin, is what drags the widest frameworks in**:
+kcmutils→kxmlgui+kio→(bookmarks, textwidgets→sonnet, completion, iconthemes, jobwidgets→
+notifications, service, solid, auth). plasma-mobile additionally wants KIO, KirigamiAddons,
+QCoro, KF6Screen, NetworkManagerQt, ModemManagerQt, LibKWorkspace — **deferred to layer P**
+(shell layer), not part of this KWin-enabling KF6 tier.
+
+### Deliberate exclusions (audited, not oversights)
+
+- **KDeclarative**: kwin references it only under `KWIN_BUILD_KCMS`; we build KCMs off for
+  bring-up, so it drops out of the KWin-enabling set (re-add with the KCM subset in P).
+- **NewStuff, XmlGui-for-KCMs, KScreenLocker**: KCM/store/lock features, off for W1.
+- **KWallet, KDED, KDocTools, kirigami-addons**: not in the KWin closure; KDocTools is
+  hard-disabled everywhere (`CMAKE_DISABLE_FIND_PACKAGE_KF6DocTools`).
+- **PlasmaActivities daemon / KActivities-stats, kglobalaccel daemon extras**: the client
+  libs are in; the daemons wait for layer P.
+
+### Feature cuts and patches the audit found (baked into the generator TABLE)
+
+- **karchive**: bzip2/xz backends OFF — zip+gzip is all KPackage/KIconThemes need, and
+  the extra backends would add blind Depends (the libsqlite3-1 naming lesson).
+- **kauth**: FAKE backend — the real one needs polkit-qt6-1 (unbuilt) and the jailbreak
+  has no privilege boundary to broker.
+- **knotifications**: two `-setup` seds — Canberra demoted from REQUIRED (no
+  libcanberra chain; code already guards on the target), and the freedesktop/DBus branch
+  forced over the `if(APPLE)` NSUserNotification backend (absent on iPhoneOS).
+- **ktextwidgets**: `WITH_TEXT_TO_SPEECH=OFF` — ON would pull the whole qtspeech module.
+- **kio**: ACL + KF6DocTools disabled; Darwin spares us LibMount (Linux-guarded) and X11
+  (APPLE-guarded). **Requires Qt6Core5Compat** (QTextCodec) → a qt6-5compat module gap.
+- **kwindowsystem / kguiaddons / kidletime**: X11 forced off, Wayland forced on. The
+  `if(APPLE)` idle/keys/window backends target macOS AppKit/ApplicationServices, absent on
+  iPhoneOS — expect phase-2 src/CMakeLists patches to force the wayland backends (same
+  class as the knotifications fix).
+- **solid**: on APPLE the backend is IOKit (macOS framework); if it won't compile on the
+  iPhoneOS SDK, patch the backend list down to fake/empty (KIO only needs the lib to link).
+- **breeze-icons**: `BINARY_ICONS_RESOURCE=OFF` (plain files, friendlier to the icon
+  repack pipeline); it's in wave 0 because KIconThemes REQUIREs it at build.
+
+### Two gates this layer opens against lower layers
+
+1. **qtbase round 2 is a hard prerequisite** (plan Q3): KF6 needs QtDBus throughout, and
+   **kxmlgui needs QtPrintSupport** — qtbase round 1 built both OFF. So Q3's flag flip is
+   `dbus + xkbcommon + printsupport` (cups stays OFF). `build-kf6.sh` refuses to start if
+   the staged qtbase lacks `Qt6DBusConfig.cmake` / `Qt6PrintSupportConfig.cmake`.
+2. **Qt module gaps for KDE** (report to qt-modules): **qt5compat** (Qt6Core5Compat, hard
+   KIO dep) is not in the current module ladder — it needs adding. kwin itself also wants
+   Concurrent/Core5Compat/UiTools/Sensors from qtbase and a couple of QML modules; those
+   are qtbase-config / qtdeclarative-module questions for the W layer, flagged early here.
+
+### Recipe mechanics (uniform)
+
+cmake + ECM, `KF6_CMAKE_FLAGS` (= `QT6_MODULE_CMAKE_FLAGS` + KDE install-dir pins +
+`KF6_HOST_TOOLING`). The one novelty over the Qt module recipes is KDE's **host tooling
+cross mechanism**: kconfig/kcoreaddons/kpackage ship build-time tools
+(kconfig_compiler_kf6, desktoptojson, kpackagetool6) that every downstream cmake runs, so
+`build-kf6.sh` stage 1 builds ECM + those (+ their deps karchive/ki18n) NATIVELY into
+`build_tools/kf6-host` and the cross builds resolve them through `-DKF6_HOST_TOOLING`
+(the same Config.cmake branch Android KDE builds take). Qt host codegen keeps flowing
+through `QT_HOST_PATH`. There is still **no introspection/on-device-scan wall** anywhere
+in the KDE track.
 
 ## Layer W: KWin
 
