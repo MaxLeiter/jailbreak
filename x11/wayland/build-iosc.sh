@@ -268,6 +268,14 @@ $CC $CFLAGS $INCS \
     $RPATH -o /out/iosc-dnd-test
 echo "   built /out/iosc-dnd-test"
 
+# touch test client: prints wl_touch events; drive with iosc-input-test -t.
+$CC $CFLAGS $INCS \
+    "$X11/wayland/iosc-touch-test.c" \
+    "$GEN/xdg-shell-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    $RPATH -o /out/iosc-touch-test
+echo "   built /out/iosc-touch-test"
+
 # session-lock test client: locks, shows a red lock screen for 10s, unlocks.
 $CC $CFLAGS $INCS \
     "$X11/wayland/iosc-lock-test.c" \

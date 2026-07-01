@@ -6,7 +6,10 @@
  *
  *   iosc-input-test "ls -la" "echo hi"   # type each arg as a line (auto <Enter>)
  *   iosc-input-test -c 680 400           # left click at output pixel 680,400
+ *   iosc-input-test -D 300 300 900 500   # slow press-drag-release (DnD test)
+ *   iosc-input-test -t 500 400           # two-finger touch gesture (wl_touch)
  *
+ * Coordinates are physical output pixels (iosc converts to logical itself).
  * MIT.
  */
 #include <stdio.h>
@@ -20,6 +23,7 @@
 #define IOSC_IN_MOTION 1
 #define IOSC_IN_BUTTON 2
 #define IOSC_IN_KEY    3
+#define IOSC_IN_TOUCH  6   /* code = touch id; state: 0 up, 1 down, 2 motion, 3 cancel */
 
 struct iosc_in_msg {
     uint32_t type;
@@ -68,6 +72,46 @@ int main(int argc, char **argv)
         send_msg(fd, &m);
         fprintf(stderr, "sent key 0x%x mods %u\n", ks, mods);
         usleep(150000); close(fd); return 0;
+    }
+
+    /* -D x0 y0 x1 y1: press at x0,y0, drag in steps to x1,y1, release. Slow
+     * enough that a client can react mid-drag (start_drag / accept an offer). */
+    if (argc >= 6 && !strcmp(argv[1], "-D")) {
+        int x0 = atoi(argv[2]), y0 = atoi(argv[3]);
+        int x1 = atoi(argv[4]), y1 = atoi(argv[5]);
+        struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x0, .y = y0 };
+        send_msg(fd, &mv); usleep(50000);
+        struct iosc_in_msg bd = { .type = IOSC_IN_BUTTON, .x = x0, .y = y0, .code = 1, .state = 1 };
+        send_msg(fd, &bd); usleep(200000);
+        for (int i = 1; i <= 10; i++) {
+            struct iosc_in_msg st = { .type = IOSC_IN_MOTION,
+                .x = x0 + (x1 - x0) * i / 10, .y = y0 + (y1 - y0) * i / 10 };
+            send_msg(fd, &st); usleep(40000);
+        }
+        usleep(200000);
+        struct iosc_in_msg bu = { .type = IOSC_IN_BUTTON, .x = x1, .y = y1, .code = 1, .state = 0 };
+        send_msg(fd, &bu);
+        fprintf(stderr, "dragged %d,%d -> %d,%d\n", x0, y0, x1, y1);
+        usleep(100000); close(fd); return 0;
+    }
+
+    /* -t x y: two-finger multitouch — ids 0 and 1 (120px apart) go down, slide
+     * 80px downward together, then lift. Exercises independent wl_touch ids. */
+    if (argc >= 4 && !strcmp(argv[1], "-t")) {
+        int x = atoi(argv[2]), y = atoi(argv[3]);
+        struct iosc_in_msg d0 = { .type = IOSC_IN_TOUCH, .x = x,       .y = y, .code = 0, .state = 1 };
+        struct iosc_in_msg d1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y, .code = 1, .state = 1 };
+        send_msg(fd, &d0); send_msg(fd, &d1); usleep(80000);
+        for (int i = 1; i <= 8; i++) {
+            struct iosc_in_msg m0 = { .type = IOSC_IN_TOUCH, .x = x,       .y = y + i * 10, .code = 0, .state = 2 };
+            struct iosc_in_msg m1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y + i * 10, .code = 1, .state = 2 };
+            send_msg(fd, &m0); send_msg(fd, &m1); usleep(30000);
+        }
+        struct iosc_in_msg u0 = { .type = IOSC_IN_TOUCH, .x = x,       .y = y + 80, .code = 0, .state = 0 };
+        struct iosc_in_msg u1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y + 80, .code = 1, .state = 0 };
+        send_msg(fd, &u0); send_msg(fd, &u1);
+        fprintf(stderr, "two-finger gesture at %d,%d\n", x, y);
+        usleep(100000); close(fd); return 0;
     }
 
     if (argc >= 4 && !strcmp(argv[1], "-c")) {

@@ -258,6 +258,8 @@ static void dnd_end(void);
 /* start_drag is only honored against the serial of a still-held button press. */
 static uint32_t g_button_serial;
 static int g_button_down;
+static void touch_surface_gone(struct iosc_surface *s);   /* drop touch grabs on unmap */
+static void touch_cancel_all(void);
 
 /* ext-session-lock-v1. While locked, the output shows ONLY the lock surface
  * (blank black until it maps) and all input is confined to it: surface_at()
@@ -1250,6 +1252,7 @@ static void surface_unmap(struct iosc_surface *s)
     /* Drop focus that pointed at us; hand it to the top focusable window. */
     if (g_ptr_focus == s) g_ptr_focus = NULL;
     constraints_surface_gone(s);       /* release any pointer lock/confine on us */
+    touch_surface_gone(s);             /* cancel touch sequences grabbed to us */
     if (g_kbd_focus == s)
         keyboard_set_focus(topmost_focusable());
 }
@@ -2443,6 +2446,7 @@ static void xdg_output_manager_bind(struct wl_client *client, void *data,
 #define IOSC_MAX_SEATRES 32
 static struct wl_resource *g_kbd[IOSC_MAX_SEATRES]; static int g_nkbd;
 static struct wl_resource *g_ptr[IOSC_MAX_SEATRES]; static int g_nptr;
+static struct wl_resource *g_tch[IOSC_MAX_SEATRES]; static int g_ntch;
 
 static int g_keymap_fd = -1;               /* xkb keymap, sent to each wl_keyboard */
 static int g_have_keyboard = 0;            /* keymap loaded => advertise KEYBOARD cap */
@@ -3279,6 +3283,140 @@ static void handle_button(int btn, int down)
     pointer_frame_client(fc);
 }
 
+/* ---- touch (wl_touch; fed by IOSC_IN_TOUCH from the app or the injector) --- *
+ * Wayland touch semantics: the surface that receives `down` for a touch id owns
+ * that id's whole sequence (motion/up follow it even if the finger wanders off
+ * the window); each id is independent, so this is real multitouch. Events go to
+ * the owning surface's client only, batched per-event with a frame. */
+
+#define IOSC_TOUCH_UP     0     /* wire phases in iosc_in_msg.state */
+#define IOSC_TOUCH_DOWN   1
+#define IOSC_TOUCH_MOTION 2
+#define IOSC_TOUCH_CANCEL 3
+
+#define IOSC_MAX_TOUCH_POINTS 10
+struct iosc_touch_point {
+    int active;
+    int id;                        /* touch id from the app (UITouch slot) */
+    struct iosc_surface *surface;  /* implicit grab: the surface that got down */
+};
+static struct iosc_touch_point g_touch_points[IOSC_MAX_TOUCH_POINTS];
+
+static void touch_frame_client(struct wl_client *cl)
+{
+    for (int i = 0; i < g_ntch; i++)
+        if (wl_resource_get_client(g_tch[i]) == cl)
+            wl_touch_send_frame(g_tch[i]);
+}
+
+static void touch_cancel_client(struct wl_client *cl)
+{
+    for (int i = 0; i < g_ntch; i++)
+        if (wl_resource_get_client(g_tch[i]) == cl)
+            wl_touch_send_cancel(g_tch[i]);
+}
+
+/* One wl_touch.cancel wipes every in-flight point of that client, so cancel each
+ * involved client once and deactivate all its points together. */
+static void touch_cancel_all(void)
+{
+    for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++) {
+        struct iosc_touch_point *p = &g_touch_points[i];
+        if (!p->active) continue;
+        p->active = 0;
+        if (!p->surface) continue;
+        struct wl_client *cl = wl_resource_get_client(p->surface->resource);
+        touch_cancel_client(cl);
+        for (int j = i + 1; j < IOSC_MAX_TOUCH_POINTS; j++)
+            if (g_touch_points[j].active && g_touch_points[j].surface &&
+                wl_resource_get_client(g_touch_points[j].surface->resource) == cl)
+                g_touch_points[j].active = 0;
+    }
+}
+
+static void touch_surface_gone(struct iosc_surface *s)
+{
+    int cancelled = 0;
+    for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++) {
+        struct iosc_touch_point *p = &g_touch_points[i];
+        if (!p->active || p->surface != s) continue;
+        if (!cancelled) {
+            touch_cancel_client(wl_resource_get_client(s->resource));
+            cancelled = 1;
+        }
+        p->active = 0;
+    }
+}
+
+static struct iosc_touch_point *touch_point_by_id(int id)
+{
+    for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++)
+        if (g_touch_points[i].active && g_touch_points[i].id == id)
+            return &g_touch_points[i];
+    return NULL;
+}
+
+static void handle_touch(int id, int phase, int x, int y)
+{
+    idle_note_activity();
+    if (phase == IOSC_TOUCH_CANCEL) {
+        touch_cancel_all();
+        return;
+    }
+    if (phase == IOSC_TOUCH_DOWN) {
+        struct iosc_surface *hit = surface_at(x, y);   /* honors session lock */
+        if (!hit) return;
+        struct iosc_touch_point *p = touch_point_by_id(id);
+        if (!p)
+            for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++)
+                if (!g_touch_points[i].active) { p = &g_touch_points[i]; break; }
+        if (!p) return;                                /* all slots busy */
+        p->active = 1;
+        p->id = id;
+        p->surface = hit;
+        /* Same focus-on-press rules as the pointer: raise + keyboard focus,
+         * except for no-keyboard layer panels. */
+        int take_focus = !(hit->role == IOSC_ROLE_LAYER && hit->layer &&
+            hit->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+        if (take_focus) {
+            int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == hit);
+            surface_raise(hit);
+            keyboard_set_focus(hit);
+            if (!was_top) recomposite_all();
+        }
+        struct wl_client *cl = wl_resource_get_client(hit->resource);
+        uint32_t serial = wl_display_next_serial(g_display);
+        uint32_t t = now_ms();
+        for (int i = 0; i < g_ntch; i++)
+            if (wl_resource_get_client(g_tch[i]) == cl)
+                wl_touch_send_down(g_tch[i], serial, t, hit->resource, id,
+                                   wl_fixed_from_int(x - hit->dx),
+                                   wl_fixed_from_int(y - hit->dy));
+        touch_frame_client(cl);
+        return;
+    }
+    /* MOTION / UP go to the point's grab surface, coords relative to it. */
+    struct iosc_touch_point *p = touch_point_by_id(id);
+    if (!p || !p->surface) return;
+    struct wl_client *cl = wl_resource_get_client(p->surface->resource);
+    uint32_t t = now_ms();
+    if (phase == IOSC_TOUCH_MOTION) {
+        for (int i = 0; i < g_ntch; i++)
+            if (wl_resource_get_client(g_tch[i]) == cl)
+                wl_touch_send_motion(g_tch[i], t, id,
+                                     wl_fixed_from_int(x - p->surface->dx),
+                                     wl_fixed_from_int(y - p->surface->dy));
+        touch_frame_client(cl);
+    } else if (phase == IOSC_TOUCH_UP) {
+        uint32_t serial = wl_display_next_serial(g_display);
+        for (int i = 0; i < g_ntch; i++)
+            if (wl_resource_get_client(g_tch[i]) == cl)
+                wl_touch_send_up(g_tch[i], serial, t, id);
+        touch_frame_client(cl);
+        p->active = 0;
+    }
+}
+
 /* ---- wl_pointer / wl_keyboard / wl_touch resources ------------------------ */
 
 static void pointer_set_cursor(struct wl_client *c, struct wl_resource *r, uint32_t serial,
@@ -3299,6 +3437,7 @@ static const struct wl_touch_interface touch_impl = { .release = input_release }
 
 static void pointer_res_destroy(struct wl_resource *r){ reslist_remove(g_ptr, &g_nptr, r); }
 static void keyboard_res_destroy(struct wl_resource *r){ reslist_remove(g_kbd, &g_nkbd, r); }
+static void touch_res_destroy(struct wl_resource *r){ reslist_remove(g_tch, &g_ntch, r); }
 
 static void seat_get_pointer(struct wl_client *c, struct wl_resource *r, uint32_t id)
 {
@@ -3331,8 +3470,13 @@ static void seat_get_keyboard(struct wl_client *c, struct wl_resource *r, uint32
     }
 }
 static void seat_get_touch(struct wl_client *c, struct wl_resource *r, uint32_t id)
-{ struct wl_resource *t = wl_resource_create(c, &wl_touch_interface, wl_resource_get_version(r), id);
-  if (t) wl_resource_set_implementation(t, &touch_impl, NULL, NULL); }
+{
+    struct wl_resource *t = wl_resource_create(c, &wl_touch_interface, wl_resource_get_version(r), id);
+    if (!t) return;
+    wl_resource_set_implementation(t, &touch_impl, NULL, touch_res_destroy);
+    if (g_ntch < IOSC_MAX_SEATRES) g_tch[g_ntch++] = t;
+    fprintf(stderr, "iosc: wl_touch bound (now %d)\n", g_ntch);
+}
 static void seat_release(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static const struct wl_seat_interface seat_impl = {
     .get_pointer = seat_get_pointer, .get_keyboard = seat_get_keyboard,
@@ -3344,6 +3488,7 @@ static void seat_bind(struct wl_client *client, void *data, uint32_t version, ui
     if (!r) { wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(r, &seat_impl, NULL, NULL);
     wl_seat_send_capabilities(r, WL_SEAT_CAPABILITY_POINTER |
+                                 WL_SEAT_CAPABILITY_TOUCH |
                                  (g_have_keyboard ? WL_SEAT_CAPABILITY_KEYBOARD : 0));
     if (version >= 2) wl_seat_send_name(r, "seat0");
 }
@@ -4251,6 +4396,7 @@ static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
 #define IOSC_IN_KEY    3
 #define IOSC_IN_TEXT   4
 #define IOSC_IN_TRAITS 5
+#define IOSC_IN_TOUCH  6   /* code = touch id, state = IOSC_TOUCH_* phase */
 struct iosc_in_msg {            /* native-endian; app + iosc are both arm64 */
     uint32_t type;
     int32_t  x, y;             /* output px (motion / button) */
@@ -4310,6 +4456,7 @@ static void in_dispatch(const struct iosc_in_msg *m)
         case IOSC_IN_BUTTON: handle_motion(x, y);
                              handle_button((int)m->code, (int)m->state); break;
         case IOSC_IN_KEY:    handle_key(m->code, m->mods); break;
+        case IOSC_IN_TOUCH:  handle_touch((int)m->code, (int)m->state, x, y); break;
     }
     wl_display_flush_clients(g_display);   /* push the events out immediately */
 }
@@ -5413,6 +5560,7 @@ static void slock_mgr_lock(struct wl_client *c, struct wl_resource *r, uint32_t 
         if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
         dnd_end();
     }
+    touch_cancel_all();                /* nor can in-flight touch sequences */
     recomposite_all();                 /* blank the output right away */
 }
 
