@@ -26,13 +26,19 @@
 #                 GeocodeGlib-2.0, library geocode-glib-2, pc geocode-glib-2.0, and the gir
 #                 --includes Json-1.0 + Soup-3.0 (those girs must be on device; row is gated
 #                 and skipped if they aren't — it is not boot-critical, scan for completeness).
-#   Gdm         — libgdm CLIENT-only build is gnome-session's pending handoff (lead decision:
-#                 build it, don't patch the shell). Params below are upstream gdm 46
-#                 libgdm/meson.build; row is header-gated so it no-ops until the deb lands.
-#                 CONFIRM pc name + header dir against the actual libgdm-dev deb at handoff.
+#   Gdm         — libgdm CLIENT-only deb built by gnome-session (lead decision: build it,
+#                 don't patch the shell). Params CONFIRMED against the shipped deb: gdm.pc,
+#                 headers include/gdm/{gdm-client,gdm-sessions,gdm-user-switching,
+#                 gdm-client-glue}.h, libgdm.1.dylib (NOUNDEFS) + unversioned libgdm.dylib
+#                 symlink in -dev, gir includes GLib-2.0/GObject-2.0/Gio-2.0. Only the CLIENT
+#                 glue is installed (no gdm-manager-glue.h), matching upstream — the Gdm API
+#                 the shell imports lives in the client glue. Meson-fallback caveat: the recipe
+#                 REMOVED the cross generate_gir block and drops the daemon, so a meson-route
+#                 rescan must use the client-only top-level meson.build the fixes script
+#                 writes (configures only common/ + libgdm/).
 #
 # PREREQUISITES on device: the -dev debs installed (libupower-glib-dev, libgeoclue-dev,
-# libgweather-4-dev, libgeocode-glib-dev, libgdm-dev when it lands), the GI toolchain
+# libgweather-4-dev, libgeocode-glib-dev, libgdm-dev), the GI toolchain
 # bootstrapped (gir-ondevice.sh bootstrap: g-ir-scanner/g-ir-compiler, sljit_shim.dylib,
 # clang-ios), and GObject-2.0 + Gio-2.0 girs present (gir1.2-glib-2.0).
 #
@@ -99,7 +105,7 @@ scan_one GWeather 4.0 GWeather gweather gweather-4 gweather4 \
 
 scan_one Gdm 1.0 Gdm gdm gdm gdm \
   "$PREFIX/include/gdm/*.h" \
-  --include=GObject-2.0 --include=Gio-2.0 \
+  --include=GLib-2.0 --include=GObject-2.0 --include=Gio-2.0 \
   --cflags-begin -I$PREFIX/include -I$PREFIX/include/gdm --cflags-end
 
 if [ -f $PREFIX/share/gir-1.0/Json-1.0.gir ] && [ -f $PREFIX/share/gir-1.0/Soup-3.0.gir ]; then
