@@ -21,40 +21,42 @@ IMAGE=procursus-xbuild:bookworm-arm64
 OUT="$HERE/out"
 mkdir -p "$OUT"
 
-# --- locate the W0 wayland-client dev + runtime debs -----------------------
-# The W0 build (memory: wayland-w0-ios-build) produces libwayland-dev_*.deb and
-# the runtime libwayland-client.0.dylib. Search the usual spots; override with
-# SYSROOT if you already have an extracted tree (must contain
+# --- locate the W0 wayland debs --------------------------------------------
+# The W0 build (memory: wayland-w0-ios-build) produces libwayland-dev_*.deb (the
+# headers + the .dylib link stub) and libwayland0_*.deb (the runtime dylib), in
+# linux-build/out/. Extraction happens INSIDE the container (dpkg-deb is not on a
+# macOS host). Override with SYSROOT=/path to a pre-extracted tree (must contain
 #   var/jb/usr/include/wayland-client.h and var/jb/usr/lib/libwayland-client*.dylib).
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"          # .../x11
-find_deb() { find "$REPO_ROOT" -name "$1" 2>/dev/null | head -1; }
-
+DEBS_DIR="$REPO_ROOT/linux-build/out"
 SYSROOT="${SYSROOT:-}"
-if [[ -z "$SYSROOT" ]]; then
-  WL_DEV_DEB="$(find_deb 'libwayland-dev_*.deb')"
-  WL_RUN_DEB="$(find_deb 'libwayland-client*_*.deb')"
-  [[ -z "$WL_RUN_DEB" ]] && WL_RUN_DEB="$(find_deb 'libwayland*0_*.deb')"
-  if [[ -z "$WL_DEV_DEB" ]]; then
-    echo "ERROR: could not find libwayland-dev_*.deb under $REPO_ROOT" >&2
-    echo "       Build the W0 stack first (wayland-w0-ios-build) or set SYSROOT=." >&2
-    exit 1
-  fi
-  SYSROOT="$OUT/sysroot"
-  rm -rf "$SYSROOT"; mkdir -p "$SYSROOT"
-  dpkg-deb -x "$WL_DEV_DEB" "$SYSROOT"
-  [[ -n "$WL_RUN_DEB" ]] && dpkg-deb -x "$WL_RUN_DEB" "$SYSROOT" || true
-  echo "extracted sysroot from:"
-  echo "  $WL_DEV_DEB"
-  [[ -n "$WL_RUN_DEB" ]] && echo "  $WL_RUN_DEB"
+if [[ -z "$SYSROOT" && ! -d "$DEBS_DIR" ]]; then
+  echo "ERROR: $DEBS_DIR not found and no SYSROOT set (build the W0 stack first)." >&2
+  exit 1
 fi
 
 # --- run the cross-build inside the toolchain image ------------------------
 docker run --rm --entrypoint /bin/bash \
-  -v "$HERE":/work -v "$SYSROOT":/sysroot:ro \
+  -v "$HERE":/work -v "$DEBS_DIR":/debs:ro \
+  ${SYSROOT:+-v "$SYSROOT":/presysroot:ro} \
   "$IMAGE" -euo pipefail -c '
     CC=/root/cctools/bin/aarch64-apple-darwin-clang
     SDK=/root/cctools/SDK/iPhoneOS16.5.sdk
     cd /work
+
+    # Sysroot: use a pre-extracted tree if mounted, else extract the W0 debs here
+    # (dpkg-deb lives in the container, not on the macOS host).
+    if [ -d /presysroot ]; then
+      SYS=/presysroot
+    else
+      SYS=/tmp/wl-sysroot; rm -rf $SYS; mkdir -p $SYS
+      dev=$(ls /debs/libwayland-dev_*_iphoneos-arm64.deb 2>/dev/null | head -1)
+      run=$(ls /debs/libwayland0_*_iphoneos-arm64.deb /debs/libwayland-client*_*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)
+      [ -n "$dev" ] || { echo "ERROR: libwayland-dev_*.deb not in /debs"; exit 1; }
+      dpkg-deb -x "$dev" $SYS
+      [ -n "$run" ] && dpkg-deb -x "$run" $SYS || true
+      echo "extracted W0 sysroot: $(basename "$dev") ${run:+$(basename "$run")}"
+    fi
 
     # wayland-scanner (Debian 1.21 — ABI-stable vs the 1.23.1 W0 libs, same as iosc)
     if ! command -v wayland-scanner >/dev/null; then
@@ -68,8 +70,8 @@ docker run --rm --entrypoint /bin/bash \
       wayland-scanner private-code  protocols/$p.xml gen/$p-protocol.c
     done
 
-    SYSINC=/sysroot/var/jb/usr/include
-    SYSLIB=/sysroot/var/jb/usr/lib
+    SYSINC=$SYS/var/jb/usr/include
+    SYSLIB=$SYS/var/jb/usr/lib
     CFLAGS="-arch arm64 -isysroot $SDK -Igen -I$SYSINC -Wall -Wextra -O2 -std=gnu11"
     # link: only libwayland-client (+ libSystem implicit). @rpath = on-device libdir.
     LDFLAGS="-arch arm64 -isysroot $SDK -L$SYSLIB -lwayland-client \
