@@ -298,10 +298,16 @@ meta_backend_ios_constructed (GObject *object)
       {
         /* Before serving: name the flavor (typed HELLO -> app cursor overlay) and advertise the
          * input socket in xios.json so the app routes keyboard/pointer/scroll here (else it falls
-         * to a dead XTEST path — mutter runs no X server). This path matches the socket
-         * MetaInputIOS listens on (XIOS_INPUT_SOCKET_DEFAULT). Must precede xios_server_start. */
+         * to a dead XTEST path — mutter runs no X server). Resolve the path the SAME way post_init
+         * resolves the pump's bind path (env XIOS_INPUT_SOCKET, else the default) so advertise ==
+         * bind even under an env override — a mismatch would send the app's input into the void.
+         * Must precede xios_server_start (the writer emits "input_socket" at serve time). */
+        const char *input_sock = g_getenv ("XIOS_INPUT_SOCKET");
+
+        if (!input_sock)
+          input_sock = XIOS_INPUT_SOCKET_DEFAULT;
         xios_set_compositor_id ("mutter-ios");
-        xios_set_input_socket (XIOS_INPUT_SOCKET_DEFAULT);
+        xios_set_input_socket (input_sock);
 
         if (xios_server_start ("/var/jb/tmp/mutter-ddx.sock", "/var/jb/tmp/xios.json",
                                width, height, stride) != 0)
