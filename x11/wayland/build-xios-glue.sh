@@ -65,7 +65,7 @@ $CC $CFLAGS $INCS \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation \
     -Wl,-rpath,/var/jb/lib/angle -o /out/libxios_glue.dylib
-mkdir -p /out/xios-glue-include
+rm -rf /out/xios-glue-include; mkdir -p /out/xios-glue-include
 cp "$X11/linux-build/patches/xios/xios_surface.h" "$X11/wayland/xios_egl.h" \
    "$X11/wayland/xios_input_socket.h" "$X11/wayland/xios-glue-stub.h" \
    /out/xios-glue-include/
