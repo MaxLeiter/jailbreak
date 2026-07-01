@@ -17,8 +17,10 @@
 #     UPowerGlib-1.0       -> pending gnome-session lib+headers handoff (mirror AccountsService)
 #     GWeather-4.0         -> pending gnome-session lib+headers handoff
 #     Geoclue-2.0          -> pending gnome-session lib+headers handoff
-# (Gdm and Rsvg are NOT built — Rsvg is patched out of the shell source, see
-# gnome-shell-ios-fixes.sh Rsvg-ectomy; Gdm decision pending.) dependencies.js is the
+#     Gdm-1.0              -> pending gnome-session lib+headers handoff (libgdm CLIENT-only)
+# (Rsvg is the ONLY patch-out — it's a Rust lib + the padOsd/wacom user is dead on iOS; see
+# gnome-shell-ios-fixes.sh Rsvg-ectomy. Gdm was NOT patched: lead confirmed gnome-session builds
+# libgdm client-only, so Gdm-1.0 joins the on-device scan batch above.) dependencies.js is the
 # authoritative boot-typelib list: every gi://X?version pin there must resolve on-device.
 #
 # PREREQUISITES on the device (install via main's device window first):
