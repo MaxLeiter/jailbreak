@@ -1,0 +1,15 @@
+Package: libmozjs-115-jit-0
+Version: 115.12.0
+Architecture: iphoneos-arm64
+MinimumOSVersion: 14.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Provides: libmozjs-115-0
+Conflicts: libmozjs-115-0
+Replaces: libmozjs-115-0
+Section: Libraries
+Homepage: https://spidermonkey.dev/
+Description: JavaScript engine library (SpiderMonkey 115, JIT)
+ JIT-enabled SpiderMonkey 115 (ESR), cross-compiled for iOS. Uses the mprotect
+ W^X path on devices without APRR (A10) and the pthread_jit fast path on A11+.
+ Drop-in replacement for libmozjs-115-0. Pairs with gjs 1.78. Consumers must
+ carry the dynamic-codesigning entitlement (see docs/mozjs-jit-plan.md).

@@ -1,0 +1,10 @@
+Package: libmozjs-115-0
+Version: 115.12.0
+Architecture: iphoneos-arm64
+MinimumOSVersion: 14.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: 
+Section: Libraries
+Homepage: https://spidermonkey.dev/
+Description: JavaScript engine library (SpiderMonkey 115)
+ JIT-less SpiderMonkey 115 (ESR), cross-compiled for iOS. Pairs with gjs 1.78.
