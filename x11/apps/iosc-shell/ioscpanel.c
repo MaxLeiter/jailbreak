@@ -49,7 +49,18 @@
 #include <sys/stat.h>
 
 /* ------------------------------------------------------------------ config */
-#define PANEL_H     64     /* logical; >= TH_TOUCH (44+ iOS pt at the 1.5 default) */
+/* Reference design space (matches preview-host.c + shell-theme.h tuning). The
+ * panel is always drawn PL_REF_W wide x PL_REF_H tall in these units, then
+ * scaled to the real output by P.ui so its on-glass size is -logical-invariant. */
+#define IOSCPANEL_VER "0.9.5"
+
+#define PL_REF_W    1440
+#define PL_REF_H    64     /* >= TH_TOUCH (44+ iOS pt at the 1.5 default) */
+#define PANEL_H     PL_REF_H
+
+/* logical <-> reference conversions via the current UI scale */
+static double pl_ui(void);
+static inline int pl_to_ref(int logical) { double u = pl_ui(); return (int)lround(logical / u); }
 #define LAUNCH_MAX  PL_MAX_LAUNCH
 #define TASK_MAX    PL_MAX_TASK
 
@@ -79,11 +90,18 @@ static struct {
     struct wl_surface    *surf;
     struct zwlr_layer_surface_v1 *layer;
     int   width, height, scale, scale_env, configured, running;
+    /* UI scale: keep the chrome a CONSTANT on-glass size at any -logical.
+     * ui = logical_width / PL_REF_W. The panel is drawn in a fixed
+     * PL_REF_W x PL_REF_H reference space (what shell-theme.h is tuned for) and
+     * scaled by ui, so raising -logical shrinks app content WITHOUT shrinking
+     * the panel's 44pt+ touch targets. ui = 1.0 at the 1440x1080 default. */
+    double ui;
+    int   req_h;                       /* last layer height we requested */
 
     /* quick-settings surface (created on open, destroyed on close) */
     struct wl_surface    *qs_surf;
     struct zwlr_layer_surface_v1 *qs_layer;
-    int   qs_w, qs_h, qs_configured;
+    int   qs_w, qs_h, qs_wref, qs_href, qs_configured;
     cairo_surface_t *qs_backdrop;
     struct qs_model  qs;
     struct panel_hits qs_hits;
@@ -110,6 +128,15 @@ static struct {
     struct panel_hits hits;
     char  self_dir[512];               /* for spawning ioscoverview */
 } P;
+
+/* Current UI scale (logical_width / reference_width), clamped to a sane range. */
+static double pl_ui(void)
+{
+    double u = P.ui > 0 ? P.ui : 1.0;
+    if (u < 0.6) u = 0.6;
+    if (u > 2.5) u = 2.5;
+    return u;
+}
 
 /* Resolve + load an icon for `name` at the current scale, or NULL. */
 static cairo_surface_t *load_icon(const char *name)
@@ -157,7 +184,8 @@ static void build_model(struct panel_model *m)
 {
     memset(m, 0, sizeof *m);
     m->bg_alpha = P.bg_alpha;
-    if (P.ptr_surf == P.surf) { m->have_ptr = P.have_ptr; m->px = P.px; m->py = P.py; }
+    /* hover coords are logical; the panel draws in reference space, so convert */
+    if (P.ptr_surf == P.surf) { m->have_ptr = P.have_ptr; m->px = pl_to_ref(P.px); m->py = pl_to_ref(P.py); }
     st_clock(m->clock, sizeof m->clock);
     st_date_short(m->date, sizeof m->date);
     m->batt_pct = P.batt_pct; m->batt_charging = P.batt_charging;
@@ -189,10 +217,15 @@ static void render(void)
                                                &cr, &surf, &map, &size);
     if (!buf) { fprintf(stderr, "ioscpanel: cairo buffer alloc failed\n"); return; }
 
+    /* draw the fixed reference panel, zoomed by ui to fill the real output */
+    double ui = pl_ui();
+    cairo_scale(cr, ui, ui);
+    int wref = (int)lround(P.width / ui);   /* == PL_REF_W */
+
     pr_text_ctx t = pr_text_ctx_new(cr);
     struct panel_model m;
     build_model(&m);
-    panel_draw_topbar(cr, &t, P.width, P.height, &m, &P.hits);
+    panel_draw_topbar(cr, &t, wref, PL_REF_H, &m, &P.hits);
     pr_text_ctx_free(&t);
 
     cairo_surface_flush(surf);
@@ -221,14 +254,16 @@ static void render_qs(void)
     cairo_restore(cr);
 
     P.qs.backdrop = P.qs_backdrop;
-    if (P.ptr_surf == P.qs_surf) { P.qs.have_ptr = P.have_ptr; P.qs.px = P.px; P.qs.py = P.py; }
+    if (P.ptr_surf == P.qs_surf) { P.qs.have_ptr = P.have_ptr; P.qs.px = pl_to_ref(P.px); P.qs.py = pl_to_ref(P.py); }
     else P.qs.have_ptr = 0;
     if (P.touch_surf == P.qs_surf) { P.qs.press_kind = P.press_kind; P.qs.press_idx = P.press_idx; }
     else P.qs.press_kind = 0;
     P.qs.batt_pct = P.batt_pct; P.qs.batt_charging = P.batt_charging;
 
+    double ui = pl_ui();
+    cairo_scale(cr, ui, ui);
     pr_text_ctx t = pr_text_ctx_new(cr);
-    panel_draw_qs(cr, &t, P.qs_w, P.qs_h, &P.qs, &P.qs_hits);
+    panel_draw_qs(cr, &t, P.qs_wref, P.qs_href, &P.qs, &P.qs_hits);
     pr_text_ctx_free(&t);
 
     cairo_surface_flush(surf);
@@ -281,13 +316,21 @@ static void qs_open(void)
     st_device_name(P.qs.device, sizeof P.qs.device, "iPad");
     st_date_long(P.qs.date_long, sizeof P.qs.date_long);
     P.qs.batt_pct = P.batt_pct; P.qs.batt_charging = P.batt_charging;
-    P.qs_w = panel_qs_width(P.width);   /* responsive: caps wide, fits narrow */
-    P.qs_h = panel_qs_height(&P.qs);
+
+    /* card is sized in reference space (constant on-glass), then scaled to
+     * logical px by ui for the layer surface + capture region. */
+    double ui = pl_ui();
+    P.qs_wref = panel_qs_width(PL_REF_W);   /* caps wide, fits narrow */
+    P.qs_href = panel_qs_height(&P.qs);
+    P.qs_w = (int)lround(P.qs_wref * ui);
+    P.qs_h = (int)lround(P.qs_href * ui);
+    int margin = (int)lround(QS_MARGIN * ui);
+    int panel_h = (int)lround(PL_REF_H * ui);
 
     /* frosted backdrop: capture the region the card will cover (physical px).
      * The card sits just below the panel at the right edge. */
     if (P.scm) {
-        int lx = P.width - QS_MARGIN - P.qs_w, ly = PANEL_H + QS_MARGIN;
+        int lx = P.width - margin - P.qs_w, ly = panel_h + margin;
         cairo_surface_t *cap = sc_capture(P.dpy, P.shm, P.scm, P.scm_version, P.output,
                                           lx * P.scale, ly * P.scale,
                                           P.qs_w * P.scale, P.qs_h * P.scale);
@@ -304,7 +347,7 @@ static void qs_open(void)
     zwlr_layer_surface_v1_set_anchor(P.qs_layer,
         ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
     zwlr_layer_surface_v1_set_size(P.qs_layer, (uint32_t)P.qs_w, (uint32_t)P.qs_h);
-    zwlr_layer_surface_v1_set_margin(P.qs_layer, QS_MARGIN, QS_MARGIN, 0, 0);
+    zwlr_layer_surface_v1_set_margin(P.qs_layer, margin, margin, 0, 0);
     zwlr_layer_surface_v1_set_keyboard_interactivity(P.qs_layer, 0);
     wl_surface_commit(P.qs_surf);   /* no-buffer commit -> configure */
     render();   /* light the status cluster */
@@ -389,10 +432,13 @@ static int pdbg(void)
 static void hit_at(struct wl_surface *sf, int x, int y)
 {
     const struct panel_hits *hs = sf == P.qs_surf && P.qs_surf ? &P.qs_hits : &P.hits;
-    int i = pl_hit_test(hs, x, y);
+    /* x,y are logical (surface-local); the hit table is in reference space */
+    int rx = pl_to_ref(x), ry = pl_to_ref(y);
+    int i = pl_hit_test(hs, rx, ry);
     if (pdbg())
-        fprintf(stderr, "panel: hit_at %s (%d,%d) -> %d (kind=%d idx=%d) of %d rects\n",
-                sf == P.qs_surf ? "qs" : "bar", x, y, i,
+        fprintf(stderr, "panel: hit_at %s logical(%d,%d) ref(%d,%d) ui=%.3f -> %d "
+                "(kind=%d idx=%d) of %d rects\n",
+                sf == P.qs_surf ? "qs" : "bar", x, y, rx, ry, pl_ui(), i,
                 i >= 0 ? hs->v[i].kind : -1, i >= 0 ? hs->v[i].idx : -1, hs->n);
     if (i >= 0) act_on_hit(&hs->v[i]);
 }
@@ -514,9 +560,9 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     P.touch_surf = sf; P.touch_id = id;
     P.px = wl_fixed_to_int(x); P.py = wl_fixed_to_int(y);
     const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
-    int i = pl_hit_test(hs, P.px, P.py);
-    if (pdbg()) fprintf(stderr, "panel: tc_down id=%d %s (%d,%d) -> press %d\n",
-                        id, sf == P.qs_surf ? "qs" : "bar", P.px, P.py, i);
+    int i = pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py));
+    if (pdbg()) fprintf(stderr, "panel: tc_down id=%d %s logical(%d,%d) ui=%.3f -> press %d\n",
+                        id, sf == P.qs_surf ? "qs" : "bar", P.px, P.py, pl_ui(), i);
     if (i >= 0) { P.press_kind = hs->v[i].kind; P.press_idx = hs->v[i].idx; }
     rerender_for(sf);
 }
@@ -588,10 +634,22 @@ static const struct wl_output_listener output_listener = {
 
 static void layer_configure(void *d, struct zwlr_layer_surface_v1 *ls, uint32_t serial, uint32_t w, uint32_t h)
 {
-    (void)d;
+    (void)d; (void)h;   /* height is derived from ui, not taken from configure */
     if (w) P.width = (int)w;
-    if (h) P.height = (int)h;
     zwlr_layer_surface_v1_ack_configure(ls, serial);
+
+    /* Scale the bar's logical HEIGHT so its on-glass size is constant: the
+     * output width sets ui, and the panel is PL_REF_H reference px tall. */
+    P.ui = P.width > 0 ? (double)P.width / PL_REF_W : 1.0;
+    int want = (int)lround(PL_REF_H * pl_ui());
+    if (want != P.req_h) {
+        P.req_h = want;
+        zwlr_layer_surface_v1_set_size(P.layer, 0, (uint32_t)want);
+        zwlr_layer_surface_v1_set_exclusive_zone(P.layer, want);
+    }
+    P.height = want;
+    if (pdbg()) fprintf(stderr, "panel: configure w=%u -> ui=%.3f panel_h=%d\n",
+                        w, pl_ui(), want);
     P.configured = 1;
     render();
 }
@@ -641,7 +699,8 @@ int main(int argc, char **argv)
 {
     signal(SIGCHLD, SIG_IGN);
     memset(&P, 0, sizeof P);
-    P.width = 1440; P.height = PANEL_H; P.scale = 2; P.running = 1;
+    P.width = PL_REF_W; P.height = PANEL_H; P.scale = 2; P.running = 1;
+    P.ui = 1.0; P.req_h = PANEL_H;
     P.batt_pct = -1;
     P.bg_alpha = 0.85;  /* translucent over the wallpaper (iosc blends layer
                          * surfaces since e11aa52); IOSC_PANEL_OPACITY overrides */
@@ -674,6 +733,10 @@ int main(int argc, char **argv)
     for (int i = 0; i < P.nlaunch; i++)
         P.launch_icon[i] = load_icon(P.launch[i].icon[0] ? P.launch[i].icon : P.launch[i].name);
     poll_battery();
+    /* Version banner: confirms WHICH panel binary is live on device (a
+     * "looks like the old panel" report is usually a stale process). */
+    fprintf(stderr, "ioscpanel " IOSCPANEL_VER ": tablet panel, opacity=%d%% "
+            "(translucency needs iosc>=0.9.1 blend)\n", (int)lround(P.bg_alpha * 100));
     fprintf(stderr, "ioscpanel: %d launcher(s), foreign-toplevel=%s, screencopy=%s, battery=%s\n",
             P.nlaunch, P.ftm ? "yes" : "no (taskbar disabled)",
             P.scm ? "yes" : "no (QS backdrop/screenshot off)",
