@@ -22,6 +22,15 @@ for b in xios-login1-stub xios-polkit-stub xios-accounts-stub; do
   [ -f "$STUBOUT/$b" ] || { echo "!! missing $STUBOUT/$b — run wayland/build-session-stubs.sh first"; exit 1; }
   install -m 0755 "$STUBOUT/$b" "$PKGDIR/var/jb/usr/libexec/$b"
 done
+# xios-sysintd (native-bundle: iPad volume buttons -> PA + iOS dark-mode -> GTK). Optional — the
+# launcher guards it with -x — so stage it only if native-bundle has built it (wayland/
+# build-sysintd.sh); otherwise ship without it.
+if [ -f "$STUBOUT/xios-sysintd" ]; then
+  install -m 0755 "$STUBOUT/xios-sysintd" "$PKGDIR/var/jb/usr/libexec/xios-sysintd"
+  echo "   + xios-sysintd"
+else
+  echo "   (xios-sysintd absent — packaging without it; launcher -x guard covers it)"
+fi
 chmod 0755 "$PKGDIR/var/jb/usr/bin/launch-gnome-session.sh"
 
 VER="$(awk -F': ' '/^Version:/{print $2}' "$PKGDIR/DEBIAN/control")"

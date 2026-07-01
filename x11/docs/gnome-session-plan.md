@@ -320,6 +320,9 @@ exec dbus-run-session -- sh -c '
   /var/jb/usr/libexec/xios-polkit-stub &
   /var/jb/usr/libexec/xios-accounts-stub &
   [ -x /var/jb/usr/libexec/xios-hwbridged ] && /var/jb/usr/libexec/xios-hwbridged &  # UPower (xios-fhs)
+  # volume buttons -> PA + iOS dark-mode -> GTK (native-bundle); needs the session bus + PULSE_SERVER
+  export PULSE_SERVER="${PULSE_SERVER:-unix:/var/jb/tmp/pulse/native}"
+  [ -x /var/jb/usr/libexec/xios-sysintd ] && /var/jb/usr/libexec/xios-sysintd >/var/jb/tmp/xios-sysintd.log 2>&1 &
   sleep 1   # let the stubs claim their names before the shell queries them
   exec gnome-session --builtin --session=xios
 '

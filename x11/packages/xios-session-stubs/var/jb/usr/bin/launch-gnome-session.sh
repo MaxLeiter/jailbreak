@@ -43,6 +43,12 @@ exec dbus-run-session -- sh -c '
   '"$LIBEXEC"'/xios-polkit-stub &
   '"$LIBEXEC"'/xios-accounts-stub &
   [ -x '"$LIBEXEC"'/xios-hwbridged ] && '"$LIBEXEC"'/xios-hwbridged &
+  # xios-sysintd (native-bundle): iPad hardware volume buttons -> PulseAudio (pactl on the
+  # xios sink), and iOS light/dark -> GTK color-scheme. Needs the session bus (gsettings/dconf)
+  # and PULSE_SERVER; our launcher builds its own env and never sources profile.d, so export
+  # PULSE_SERVER here (the :- form yields to any real profile.d value).
+  export PULSE_SERVER="${PULSE_SERVER:-unix:/var/jb/tmp/pulse/native}"
+  [ -x '"$LIBEXEC"'/xios-sysintd ] && '"$LIBEXEC"'/xios-sysintd >/var/jb/tmp/xios-sysintd.log 2>&1 &
   sleep 1   # let the stubs claim their names before the shell queries them
   exec gnome-session --builtin --session=xios
 '

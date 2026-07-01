@@ -74,7 +74,7 @@ DEBS="\
   libgeocode-glib-2-0_3.26.4_iphoneos-arm64.deb \
   libgweather-4-0_4.4.2_iphoneos-arm64.deb \
   libupower-glib3_1.90.2_iphoneos-arm64.deb \
-  xios-session-stubs_0.1.1_iphoneos-arm64.deb \
+  xios-session-stubs_0.1.2_iphoneos-arm64.deb \
 "
 
 # The -dev debs below are needed ONLY for gtk4-gpu's on-device gir/typelib scan

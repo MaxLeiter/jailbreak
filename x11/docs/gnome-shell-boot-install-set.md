@@ -41,7 +41,10 @@ libstartup-notification0, gnome-shell, libaccountsservice0, libgdm1, libgeoclue-
 61–66: libpsl5, libsoup-3.0-0, libgeocode-glib-2-0, libgweather-4-0, libupower-glib3,
 xios-session-stubs
 
-The authoritative, versioned list is in `linux-build/install-gnome-boot.sh` (`$DEBS`).
+`xios-session-stubs` (#66, now 0.1.2) also ships `xios-sysintd` (native-bundle's volume-button
++ iOS dark-mode bridge) alongside the three D-Bus stubs, and its launcher autostarts it; it
+Recommends `pulseaudio-utils` (sysintd shells out to `pactl`). The authoritative, versioned
+list is in `linux-build/install-gnome-boot.sh` (`$DEBS`).
 
 ## The libwayland-server0 landmine (defused by ordering)
 

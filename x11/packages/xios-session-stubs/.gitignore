@@ -3,5 +3,6 @@
 /var/jb/usr/libexec/xios-login1-stub
 /var/jb/usr/libexec/xios-polkit-stub
 /var/jb/usr/libexec/xios-accounts-stub
+/var/jb/usr/libexec/xios-sysintd
 # Local build artifact (also gitignored globally under out/).
 *.deb
