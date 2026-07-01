@@ -145,7 +145,9 @@ shape: background reader thread, main-actor apply):
 
 The decoder conforms to the v1.1 schema: `t` discriminator, `parent:0` = window
 root, `remove{id}` takes the whole subtree, `frame` as `[x,y,w,h]` ints, the
-locked twelve-string traits vocabulary, and unconditional attach/detach.
+locked thirteen-string traits vocabulary (twelve trait bits + `modal`, which
+maps to the `accessibilityViewIsModal` property), and unconditional
+attach/detach.
 
 ## Protocol additions (acked, folded into v1.1)
 
@@ -186,10 +188,10 @@ or a new field with a safe default.
 4. attach/detach: wire messages from day one (hosts send unconditionally);
    helper behavior (traffic muting) lands in P4.
 
-## Residual gap (flagged to the a11y owner)
+## Residual gap — RESOLVED (a11y owner, 2c4f90a)
 
-Modal dialogs: a11y-plan.md maps the AT-SPI MODAL state to a container element
-with `accessibilityViewIsModal`, but the locked v1.1 traits vocabulary has no
-`modal` string and no other field carries modality. Needs either a thirteenth
-trait string or a dedicated upsert field before P3 (modal dialogs). The host
-already handles a `modal` trait string if one is added.
+Modal dialogs: the v1.1 traits vocabulary is now thirteen strings; the
+thirteenth is `modal`, carried on the dialog's container element. The
+vocabulary is ours, not literal UIAccessibilityTraits — `modal` maps to the
+`accessibilityViewIsModal` property, not a trait bit, which is exactly what
+the host's upsert path already does. No host changes were needed.
