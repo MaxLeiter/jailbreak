@@ -18,6 +18,7 @@ karchive-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,karchive))
 	$(call EXTRACT_TAR,karchive-$(KF6_VERSION).tar.xz,karchive-$(KF6_VERSION),karchive)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/karchive/.build_complete),)
 karchive:

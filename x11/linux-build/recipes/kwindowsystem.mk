@@ -22,6 +22,7 @@ kwindowsystem-setup: setup
 	$(call EXTRACT_TAR,kwindowsystem-$(KF6_VERSION).tar.xz,kwindowsystem-$(KF6_VERSION),kwindowsystem)
 	sed -i '/set(KWINDOWSYSTEM_WAYLAND OFF)/d' $(BUILD_WORK)/kwindowsystem/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kwindowsystem/.build_complete),)
 kwindowsystem:

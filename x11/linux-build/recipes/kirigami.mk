@@ -18,6 +18,7 @@ kirigami-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kirigami))
 	$(call EXTRACT_TAR,kirigami-$(KF6_VERSION).tar.xz,kirigami-$(KF6_VERSION),kirigami)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kirigami/.build_complete),)
 kirigami:

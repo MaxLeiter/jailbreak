@@ -110,6 +110,11 @@ host_kf ki18n             lib/cmake/KF6I18n/KF6I18nConfig.cmake
 host_kf kpackage          lib/cmake/KF6Package/KF6PackageConfig.cmake
 
 # --- stage 1.5: park staged libxpc headers that shadow the SDK (same as build-qt.sh) --
+# NOTE: this driver-level parking is NOT sufficient on its own — Procursus `setup`
+# re-stages xpc/ + os/log.h on every make invocation (proven in the Qt module ladder),
+# so the authoritative fix is $(call QT6_RM_SHADOW_HEADERS) emitted as the last line of
+# every unit's -setup by gen-kf6-recipes.py. This block just cleans the state the first
+# unit's make would otherwise inherit from earlier drivers.
 BB_INC=${BB}/usr/include
 if [ -d "${BB_INC}/xpc" ] && [ ! -d "${BB_INC}/.parked-xpc" ]; then
   echo "==> parking staged xpc/ headers (shadow the 16.4 SDK)"

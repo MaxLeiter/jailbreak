@@ -15,6 +15,7 @@ kbookmarks-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kbookmarks))
 	$(call EXTRACT_TAR,kbookmarks-$(KF6_VERSION).tar.xz,kbookmarks-$(KF6_VERSION),kbookmarks)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kbookmarks/.build_complete),)
 kbookmarks:

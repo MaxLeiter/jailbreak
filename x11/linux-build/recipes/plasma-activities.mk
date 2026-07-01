@@ -17,6 +17,7 @@ plasma-activities-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-activities))
 	$(call EXTRACT_TAR,plasma-activities-$(PLASMA_VERSION).tar.xz,plasma-activities-$(PLASMA_VERSION),plasma-activities)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/plasma-activities/.build_complete),)
 plasma-activities:

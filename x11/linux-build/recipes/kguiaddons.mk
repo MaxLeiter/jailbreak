@@ -25,6 +25,7 @@ kguiaddons-setup: setup
 	sed -i 's/if (UNIX AND NOT ANDROID AND NOT APPLE)/if (UNIX AND NOT ANDROID)/' $(BUILD_WORK)/kguiaddons/CMakeLists.txt
 	sed -i 's/^if(APPLE)$$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kguiaddons/src/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kguiaddons/.build_complete),)
 kguiaddons:

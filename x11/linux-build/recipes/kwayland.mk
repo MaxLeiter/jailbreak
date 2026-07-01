@@ -17,6 +17,7 @@ kwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kwayland))
 	$(call EXTRACT_TAR,kwayland-$(PLASMA_VERSION).tar.xz,kwayland-$(PLASMA_VERSION),kwayland)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kwayland/.build_complete),)
 kwayland:

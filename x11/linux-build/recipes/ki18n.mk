@@ -18,6 +18,7 @@ ki18n-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,ki18n))
 	$(call EXTRACT_TAR,ki18n-$(KF6_VERSION).tar.xz,ki18n-$(KF6_VERSION),ki18n)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/ki18n/.build_complete),)
 ki18n:

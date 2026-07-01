@@ -27,6 +27,7 @@ knotifications-setup: setup
 	sed -i '/notifybymacosnotificationcenter.mm/d' $(BUILD_WORK)/knotifications/src/CMakeLists.txt
 	sed -i '/-framework AppKit/d' $(BUILD_WORK)/knotifications/src/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/knotifications/.build_complete),)
 knotifications:

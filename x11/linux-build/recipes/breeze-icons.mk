@@ -18,6 +18,7 @@ breeze-icons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,breeze-icons))
 	$(call EXTRACT_TAR,breeze-icons-$(KF6_VERSION).tar.xz,breeze-icons-$(KF6_VERSION),breeze-icons)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/breeze-icons/.build_complete),)
 breeze-icons:

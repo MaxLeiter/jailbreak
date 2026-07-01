@@ -16,6 +16,7 @@ DEB_PLASMAWAYLANDPROTOCOLS_V ?= $(PLASMAWAYLANDPROTOCOLS_VERSION)
 plasma-wayland-protocols-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/plasma-wayland-protocols/plasma-wayland-protocols-$(PWP_VERSION).tar.xz)
 	$(call EXTRACT_TAR,plasma-wayland-protocols-$(PWP_VERSION).tar.xz,plasma-wayland-protocols-$(PWP_VERSION),plasma-wayland-protocols)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/plasma-wayland-protocols/.build_complete),)
 plasma-wayland-protocols:

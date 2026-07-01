@@ -418,6 +418,13 @@ def emit_recipe(e):
         setup.append("\t%s" % s)
     if e["kind"] not in ("ecm", "pwp"):
         setup.append("\t$(call QT6_WRITE_IOSEXEC_FIXUP)")
+    # Staged xpc/ + os/log.h headers shadow the 16.4 SDK (xpc_session API newer than
+    # the SDK; ObjC++ TUs die in Foundation.h). Procursus `setup` RE-STAGES them on
+    # EVERY make invocation, so driver-level parking is undone by the next unit's make
+    # (proven in the Qt module ladder, cef1068) — the rm must be in-recipe, last line
+    # of every -setup. Unconditional for all units: idempotent, and qt6-common.mk is
+    # always in makefiles/ (build-kf6.sh copies it ahead of kf6-common.mk).
+    setup.append("\t$(call QT6_RM_SHADOW_HEADERS)")
     setup.append("")
 
     build = ["ifneq ($(wildcard $(BUILD_WORK)/%s/.build_complete),)" % t,

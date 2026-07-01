@@ -14,6 +14,7 @@ kconfigwidgets-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kconfigwidgets))
 	$(call EXTRACT_TAR,kconfigwidgets-$(KF6_VERSION).tar.xz,kconfigwidgets-$(KF6_VERSION),kconfigwidgets)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kconfigwidgets/.build_complete),)
 kconfigwidgets:

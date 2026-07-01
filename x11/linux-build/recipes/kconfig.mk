@@ -17,6 +17,7 @@ kconfig-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kconfig))
 	$(call EXTRACT_TAR,kconfig-$(KF6_VERSION).tar.xz,kconfig-$(KF6_VERSION),kconfig)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kconfig/.build_complete),)
 kconfig:

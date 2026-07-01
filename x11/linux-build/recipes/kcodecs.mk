@@ -15,6 +15,7 @@ kcodecs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcodecs))
 	$(call EXTRACT_TAR,kcodecs-$(KF6_VERSION).tar.xz,kcodecs-$(KF6_VERSION),kcodecs)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kcodecs/.build_complete),)
 kcodecs:

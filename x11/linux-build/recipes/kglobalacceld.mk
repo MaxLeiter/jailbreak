@@ -17,6 +17,7 @@ kglobalacceld-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kglobalacceld))
 	$(call EXTRACT_TAR,kglobalacceld-$(PLASMA_VERSION).tar.xz,kglobalacceld-$(PLASMA_VERSION),kglobalacceld)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kglobalacceld/.build_complete),)
 kglobalacceld:

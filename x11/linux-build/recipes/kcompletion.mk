@@ -14,6 +14,7 @@ kcompletion-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcompletion))
 	$(call EXTRACT_TAR,kcompletion-$(KF6_VERSION).tar.xz,kcompletion-$(KF6_VERSION),kcompletion)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kcompletion/.build_complete),)
 kcompletion:

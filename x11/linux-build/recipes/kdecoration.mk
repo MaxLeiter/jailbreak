@@ -17,6 +17,7 @@ kdecoration-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kdecoration))
 	$(call EXTRACT_TAR,kdecoration-$(PLASMA_VERSION).tar.xz,kdecoration-$(PLASMA_VERSION),kdecoration)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kdecoration/.build_complete),)
 kdecoration:

@@ -16,6 +16,7 @@ kcrash-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcrash))
 	$(call EXTRACT_TAR,kcrash-$(KF6_VERSION).tar.xz,kcrash-$(KF6_VERSION),kcrash)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kcrash/.build_complete),)
 kcrash:

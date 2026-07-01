@@ -17,6 +17,7 @@ kcmutils-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcmutils))
 	$(call EXTRACT_TAR,kcmutils-$(KF6_VERSION).tar.xz,kcmutils-$(KF6_VERSION),kcmutils)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kcmutils/.build_complete),)
 kcmutils:

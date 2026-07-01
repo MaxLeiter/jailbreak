@@ -17,6 +17,7 @@ layer-shell-qt-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,layer-shell-qt))
 	$(call EXTRACT_TAR,layer-shell-qt-$(PLASMA_VERSION).tar.xz,layer-shell-qt-$(PLASMA_VERSION),layer-shell-qt)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/layer-shell-qt/.build_complete),)
 layer-shell-qt:

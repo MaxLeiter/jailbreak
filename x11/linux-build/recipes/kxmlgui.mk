@@ -17,6 +17,7 @@ kxmlgui-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kxmlgui))
 	$(call EXTRACT_TAR,kxmlgui-$(KF6_VERSION).tar.xz,kxmlgui-$(KF6_VERSION),kxmlgui)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kxmlgui/.build_complete),)
 kxmlgui:

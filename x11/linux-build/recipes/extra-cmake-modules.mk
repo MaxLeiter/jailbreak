@@ -16,6 +16,7 @@ DEB_EXTRACMAKEMODULES_V ?= $(EXTRACMAKEMODULES_VERSION)
 extra-cmake-modules-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,extra-cmake-modules))
 	$(call EXTRACT_TAR,extra-cmake-modules-$(KF6_VERSION).tar.xz,extra-cmake-modules-$(KF6_VERSION),extra-cmake-modules)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/extra-cmake-modules/.build_complete),)
 extra-cmake-modules:

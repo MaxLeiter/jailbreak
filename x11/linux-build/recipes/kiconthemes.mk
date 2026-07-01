@@ -14,6 +14,7 @@ kiconthemes-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kiconthemes))
 	$(call EXTRACT_TAR,kiconthemes-$(KF6_VERSION).tar.xz,kiconthemes-$(KF6_VERSION),kiconthemes)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kiconthemes/.build_complete),)
 kiconthemes:

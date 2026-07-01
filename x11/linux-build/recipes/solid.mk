@@ -25,6 +25,7 @@ solid-setup: setup
 	sed -i '/find_package(IOKit REQUIRED)/d' $(BUILD_WORK)/solid/CMakeLists.txt
 	sed -i '/add_device_backend(iokit)/d' $(BUILD_WORK)/solid/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/solid/.build_complete),)
 solid:

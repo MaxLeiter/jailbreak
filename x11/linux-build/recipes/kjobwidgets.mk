@@ -16,6 +16,7 @@ kjobwidgets-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kjobwidgets))
 	$(call EXTRACT_TAR,kjobwidgets-$(KF6_VERSION).tar.xz,kjobwidgets-$(KF6_VERSION),kjobwidgets)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kjobwidgets/.build_complete),)
 kjobwidgets:

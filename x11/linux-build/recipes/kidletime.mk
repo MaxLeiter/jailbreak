@@ -25,6 +25,7 @@ kidletime-setup: setup
 	sed -i '/cmake_find_frameworks(CoreFoundation Carbon)/d' $(BUILD_WORK)/kidletime/CMakeLists.txt
 	sed -i '/add_subdirectory(osx)/d' $(BUILD_WORK)/kidletime/src/plugins/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kidletime/.build_complete),)
 kidletime:

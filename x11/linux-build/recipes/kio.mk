@@ -20,6 +20,7 @@ kio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kio))
 	$(call EXTRACT_TAR,kio-$(KF6_VERSION).tar.xz,kio-$(KF6_VERSION),kio)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kio/.build_complete),)
 kio:

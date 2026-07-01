@@ -17,6 +17,7 @@ ktextwidgets-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,ktextwidgets))
 	$(call EXTRACT_TAR,ktextwidgets-$(KF6_VERSION).tar.xz,ktextwidgets-$(KF6_VERSION),ktextwidgets)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/ktextwidgets/.build_complete),)
 ktextwidgets:

@@ -17,6 +17,7 @@ kglobalaccel-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kglobalaccel))
 	$(call EXTRACT_TAR,kglobalaccel-$(KF6_VERSION).tar.xz,kglobalaccel-$(KF6_VERSION),kglobalaccel)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
+	$(call QT6_RM_SHADOW_HEADERS)
 
 ifneq ($(wildcard $(BUILD_WORK)/kglobalaccel/.build_complete),)
 kglobalaccel:
