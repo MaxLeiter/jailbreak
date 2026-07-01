@@ -12,15 +12,6 @@
          mach port (zero-copy framebuffer rendezvous; see XSurface.c). -->
     <key>get-task-allow</key>
     <true/>
-    <!-- JIT (SpiderMonkey/gjs): allow the W^X mprotect flip (mmap RW -> write -> mprotect RX)
-         inside the sandbox. On the A10 there is no APRR/MAP_JIT (de-risked 2026-07-01,
-         ports/mozjs/tools/wxprobe.c), so this is the mprotect path, not Apple fast-WX.
-         dynamic-codesigning is the iOS-honored key; allow-jit is its macOS spelling. Needed
-         only by the JIT libmozjs-115-jit build; harmless to the JIT-less build. -->
-    <key>dynamic-codesigning</key>
-    <true/>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
     <key>com.apple.security.iokit-user-client-class</key>
     <array>
         <string>AGXDeviceUserClient</string>
