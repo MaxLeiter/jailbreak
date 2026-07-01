@@ -151,7 +151,7 @@ this fold-in:
 3. **Unversioned libintl links, bridged via libintl-dev.** Six debs contain
    binaries linking `@rpath/libintl.dylib` instead of `libintl.8.dylib`:
    ibus (ibus-daemon, ibus-portal), libibus-1.0-5, libgee-0.8-2,
-   libenchant-2-2, libgeocode-glib0, libgweather-4-0. (libpulse0's 17.0-1
+   libenchant-2-2, libgeocode-glib-2-0, libgweather-4-0. (libpulse0's 17.0-1
    rebuild fixed its two; the audit list predated it.) On the dev device the
    name resolves only because Procursus **libintl-dev** ships the
    `/var/jb/usr/lib/libintl.dylib -> libintl.8.dylib` symlink. We must NOT

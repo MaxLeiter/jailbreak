@@ -62,7 +62,7 @@ DEPENDS_ADD = {
     "ibus":                     ["libintl-dev"],
     "libenchant-2-2":           ["libintl-dev"],
     "libgee-0.8-2":             ["libintl-dev"],
-    "libgeocode-glib0":         ["libintl-dev"],
+    "libgeocode-glib-2-0":         ["libintl-dev"],
     "libgweather-4-0":          ["libintl-dev"],
     "libibus-1.0-5":            ["libintl-dev"],
 }

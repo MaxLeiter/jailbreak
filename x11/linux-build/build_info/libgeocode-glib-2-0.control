@@ -1,4 +1,4 @@
-Package: libgeocode-glib0
+Package: libgeocode-glib-2-0
 Version: @DEB_GEOCODE-GLIB_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
@@ -6,6 +6,9 @@ Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/geocode-glib
 Depends: libglib2.0-0, libjson-glib-1.0-0, libsoup-3.0-0
-Description: Geocoding convenience library (build dep of libgweather-4)
+Description: Geocoding convenience library, API 2.0 (build dep of libgweather-4)
  geocode-glib for rootless iOS. Client library for forward/reverse geocoding via
- the Nominatim service. A build dependency of libgweather-4.
+ the Nominatim service. A build dependency of libgweather-4. Built against
+ libsoup 3 (-Dsoup2=false), which makes this the geocode-glib-2 API: the dylib is
+ libgeocode-glib-2.0.dylib and the pkg-config file is geocode-glib-2.0.pc, and
+ the package name matches Debian's libgeocode-glib-2-0.

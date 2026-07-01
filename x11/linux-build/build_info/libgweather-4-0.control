@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/libgweather
-Depends: libglib2.0-0, libxml2, libgeocode-glib0, libsoup-3.0-0
+Depends: libglib2.0-0, libxml2, libgeocode-glib-2-0, libsoup-3.0-0
 Description: GNOME weather/location library (libgweather-4)
  libgweather-4 for rootless iOS. gnome-shell imports gi://GWeather (4.0) in
  dateMenu.js at boot, so this library and its on-device GWeather-4.0 typelib are

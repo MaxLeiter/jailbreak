@@ -47,18 +47,18 @@ geocode-glib: geocode-glib-setup glib2.0 json-glib libsoup3
 endif
 
 geocode-glib-package: geocode-glib-stage
-	rm -rf $(BUILD_DIST)/libgeocode-glib0 $(BUILD_DIST)/libgeocode-glib-dev
-	mkdir -p $(BUILD_DIST)/libgeocode-glib0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
-		$(BUILD_DIST)/libgeocode-glib-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	rm -rf $(BUILD_DIST)/libgeocode-glib-2-0 $(BUILD_DIST)/libgeocode-glib-2-dev
+	mkdir -p $(BUILD_DIST)/libgeocode-glib-2-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/libgeocode-glib-2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgeocode-glib*.dylib \
-		$(BUILD_DIST)/libgeocode-glib0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
+		$(BUILD_DIST)/libgeocode-glib-2-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
 	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
-		$(BUILD_DIST)/libgeocode-glib-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/ 2>/dev/null || true
+		$(BUILD_DIST)/libgeocode-glib-2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/ 2>/dev/null || true
 	cp -a $(BUILD_STAGE)/geocode-glib/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \
-		$(BUILD_DIST)/libgeocode-glib-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/ 2>/dev/null || true
-	$(call SIGN,libgeocode-glib0,general.xml)
-	$(call PACK,libgeocode-glib0,DEB_GEOCODE-GLIB_V)
-	$(call PACK,libgeocode-glib-dev,DEB_GEOCODE-GLIB_V)
-	rm -rf $(BUILD_DIST)/libgeocode-glib0 $(BUILD_DIST)/libgeocode-glib-dev
+		$(BUILD_DIST)/libgeocode-glib-2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/ 2>/dev/null || true
+	$(call SIGN,libgeocode-glib-2-0,general.xml)
+	$(call PACK,libgeocode-glib-2-0,DEB_GEOCODE-GLIB_V)
+	$(call PACK,libgeocode-glib-2-dev,DEB_GEOCODE-GLIB_V)
+	rm -rf $(BUILD_DIST)/libgeocode-glib-2-0 $(BUILD_DIST)/libgeocode-glib-2-dev
 
 .PHONY: geocode-glib geocode-glib-package

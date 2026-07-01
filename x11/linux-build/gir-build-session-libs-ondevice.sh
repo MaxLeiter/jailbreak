@@ -38,7 +38,7 @@
 #                 writes (configures only common/ + libgdm/).
 #
 # PREREQUISITES on device: the -dev debs installed (libupower-glib-dev, libgeoclue-dev,
-# libgweather-4-dev, libgeocode-glib-dev, libgdm-dev), the GI toolchain
+# libgweather-4-dev, libgeocode-glib-2-dev, libgdm-dev), the GI toolchain
 # bootstrapped (gir-ondevice.sh bootstrap: g-ir-scanner/g-ir-compiler, sljit_shim.dylib,
 # clang-ios), and GObject-2.0 + Gio-2.0 girs present (gir1.2-glib-2.0).
 #
