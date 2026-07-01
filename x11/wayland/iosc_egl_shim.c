@@ -185,17 +185,34 @@ static const struct wl_buffer_listener buf_listener = { buf_release };
 
 /* ---- intercepted EGL entrypoints ------------------------------------------ */
 
+/* Create the ANGLE-Metal EGLDisplay EXACTLY as iosc/xios_egl.c does — the one
+ * proven-good path: the EXT entrypoint resolved via eglGetProcAddress + EGLint
+ * ANGLE-type attribs + EGL_DEFAULT_DISPLAY. NB: ANGLE's CORE eglGetPlatformDisplay
+ * (EGL 1.5, dlsym'd) returns NO_DISPLAY with err=SUCCESS for the ANGLE platform on
+ * this build — only the EXT variant actually constructs the Metal display. The
+ * client's wl_display is recorded separately (g_wl) for later wl_egl_window
+ * binding; it is NEVER passed to ANGLE as the native display. */
+static EGLDisplay angle_metal_display(void)
+{
+    typedef EGLDisplay (*getpd_ext_fn)(EGLenum, void *, const EGLint *);
+    getpd_ext_fn get = (getpd_ext_fn)REAL(eglGetProcAddress)("eglGetPlatformDisplayEXT");
+    if (!get) {
+        if (egl_debug()) fprintf(stderr, "iosc_egl: real eglGetPlatformDisplayEXT missing\n");
+        return EGL_NO_DISPLAY;
+    }
+    const EGLint a[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
+    EGLDisplay dpy = get(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
+    if (egl_debug())
+        fprintf(stderr, "iosc_egl: ANGLE Metal display = %p (err 0x%x)\n", dpy, REAL(eglGetError)());
+    return dpy;
+}
+
 EGLDisplay eglGetPlatformDisplay(EGLenum platform, void *native_display, const EGLAttrib *attrs)
 {
-    (void)attrs;
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
         g_wl = (struct wl_display *)native_display;   /* remember the client's wl_display */
-        const EGLAttrib a[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
-        EGLDisplay dpy = REAL(eglGetPlatformDisplay)(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
-        if (egl_debug())
-            fprintf(stderr, "iosc_egl: GetPlatformDisplay(WAYLAND) -> ANGLE Metal = %p (err 0x%x)\n",
-                    dpy, REAL(eglGetError)());
-        return dpy;
+        if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplay(WAYLAND)\n");
+        return angle_metal_display();
     }
     return REAL(eglGetPlatformDisplay)(platform, native_display, attrs);
 }
@@ -203,16 +220,8 @@ EGLDisplay eglGetPlatformDisplayEXT(EGLenum platform, void *native_display, cons
 {
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
         g_wl = (struct wl_display *)native_display;
-        /* Route through the CORE eglGetPlatformDisplay (EGLAttrib), the path iosc
-         * proved works for ANGLE Metal — NOT REAL(eglGetPlatformDisplayEXT), which
-         * ANGLE may not export for dlsym / may not handle the ANGLE+Metal combo,
-         * silently returning NO_DISPLAY (GDK -> "Failed to create EGL display"). */
-        const EGLAttrib a[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
-        EGLDisplay dpy = REAL(eglGetPlatformDisplay)(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
-        if (egl_debug())
-            fprintf(stderr, "iosc_egl: GetPlatformDisplayEXT(WAYLAND) -> ANGLE Metal = %p (err 0x%x)\n",
-                    dpy, REAL(eglGetError)());
-        return dpy;
+        if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplayEXT(WAYLAND)\n");
+        return angle_metal_display();
     }
     return REAL(eglGetPlatformDisplayEXT)(platform, native_display, attrs);
 }
@@ -221,8 +230,8 @@ EGLDisplay eglGetDisplay(EGLNativeDisplayType native)
     /* GDK may use eglGetDisplay(wl_display). Treat a non-default arg as wayland. */
     if (native != EGL_DEFAULT_DISPLAY) {
         g_wl = (struct wl_display *)native;
-        const EGLAttrib a[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
-        return REAL(eglGetPlatformDisplay)(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
+        if (egl_debug()) fprintf(stderr, "iosc_egl: GetDisplay(non-default)\n");
+        return angle_metal_display();
     }
     return REAL(eglGetDisplay)(native);
 }
