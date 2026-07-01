@@ -2,6 +2,7 @@
 KitchenHub.xcodeproj/
 # Build artifacts
 build/
+build-sim/
 DerivedData/
 Resources/Info.generated.plist
 *.xcuserstate
