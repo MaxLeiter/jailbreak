@@ -922,6 +922,17 @@ static char probe_ch(uint32_t p)
     return '?';
 }
 
+/* IOSC_DEBUG=1 turns on the per-frame validation readbacks + logs. They call
+ * glReadPixels (a synchronous GPU->CPU stall) and fprintf every recompose, so
+ * they must stay OFF in normal operation. Event-driven logs (focus, drag, lock,
+ * tablet) are not gated by this — only the per-frame spam is. Cached once. */
+static int iosc_debug(void)
+{
+    static int v = -1;
+    if (v < 0) v = getenv("IOSC_DEBUG") ? 1 : 0;
+    return v;
+}
+
 /* Recomposite ALL mapped surfaces back-to-front onto the output, on the GPU. */
 static void recomposite_all(void)
 {
@@ -935,8 +946,9 @@ static void recomposite_all(void)
             composite_cursor();
             iosc_gl_end();
             xios_notify_dirty();
-            fprintf(stderr, "iosc: recomposited (session locked; lock surface %s)\n",
-                    g_slock.surface && g_slock.surface->current_buffer ? "shown" : "pending");
+            if (iosc_debug())
+                fprintf(stderr, "iosc: recomposited (session locked; lock surface %s)\n",
+                        g_slock.surface && g_slock.surface->current_buffer ? "shown" : "pending");
             return;
         }
         for (int i = 0; i < g_nmapped; i++)
@@ -948,19 +960,22 @@ static void recomposite_all(void)
             iosc_gl_end_cursor();
         }
         composite_cursor();
-        uint32_t center = iosc_gl_end();
+        iosc_gl_end();
         xios_notify_dirty();
-        /* Validation: read each window's EXPOSED top-left corner (a lower window's
-         * center is occluded by the one cascaded over it), proving every window is
-         * present at its placement; `center` shows the top window wins the overlap. */
-        fprintf(stderr, "iosc: recomposited %d surface(s) on GPU:", g_nmapped);
-        for (int i = 0; i < g_nmapped; i++) {
-            struct iosc_surface *s = g_mapped[i];
-            int os = output_scale();
-            uint32_t px = iosc_gl_read_at((s->dx + 30) * os, (s->dy + 30) * os);
-            fprintf(stderr, " [w%d @%d,%d corner=0x%08x]", i, s->dx, s->dy, px);
+        /* Validation (IOSC_DEBUG only — each readback is a synchronous GPU->CPU
+         * stall): read every window's EXPOSED top-left corner (a lower window's
+         * center is occluded by the one cascaded over it), proving each is present
+         * at its placement; `center` shows the top window wins the overlap. */
+        if (iosc_debug()) {
+            fprintf(stderr, "iosc: recomposited %d surface(s) on GPU:", g_nmapped);
+            for (int i = 0; i < g_nmapped; i++) {
+                struct iosc_surface *s = g_mapped[i];
+                int os = output_scale();
+                uint32_t px = iosc_gl_read_at((s->dx + 30) * os, (s->dy + 30) * os);
+                fprintf(stderr, " [w%d @%d,%d corner=0x%08x]", i, s->dx, s->dy, px);
+            }
+            fprintf(stderr, " overlap-center=0x%08x\n", iosc_gl_read_center());
         }
-        fprintf(stderr, " overlap-center=0x%08x\n", center);
         /* IOSC_PROBE=1: app-space 2D map of the WHOLE output (top-left origin = what
          * the app actually displays), rows top->bottom, cols left->right. Legend:
          * '.'=bg t=teal O=orange b=blue g=green r=red ?=other. Reveals both window
@@ -2230,11 +2245,11 @@ static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) { snprintf(s->title, sizeof(s->title), "%s", t ? t : ""); ftl_broadcast_title(s); }
-  fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
+  if (iosc_debug()) fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
 static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) { snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : ""); ftl_broadcast_app_id(s); }
-  fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
+  if (iosc_debug()) fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
 static void xt_show_window_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y){ (void)c;(void)r;(void)seat;(void)serial;(void)x;(void)y; }
 static void xt_move(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial)
 { (void)c; (void)seat; (void)serial; interactive_begin(wl_resource_get_user_data(r), IOSC_INTERACTIVE_MOVE, 0); }

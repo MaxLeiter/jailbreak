@@ -42,6 +42,14 @@ static float  s_opaque = 1.f;                  /* 1 = force opaque (windows); 0 
 #define MAXBUF 16
 static struct { void *surf; EGLSurface pb; GLuint tex; } s_cache[MAXBUF];
 
+/* Per-frame completion fence (EGL_KHR_fence_sync). Resolved at init; NULL => the
+ * extension is unavailable and iosc_gl_end() falls back to glFinish. */
+#ifdef EGL_KHR_fence_sync
+static PFNEGLCREATESYNCKHRPROC     s_create_sync;
+static PFNEGLCLIENTWAITSYNCKHRPROC s_client_wait_sync;
+static PFNEGLDESTROYSYNCKHRPROC    s_destroy_sync;
+#endif
+
 /* ---- helpers ------------------------------------------------------------- */
 
 static GLuint compile(GLenum type, const char *src)
@@ -136,6 +144,19 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
     s_u_opaque = glGetUniformLocation(s_prog, "opaque");
 
     glGenTextures(1, &s_shm_tex);
+
+    /* Prefer a per-frame fence over glFinish for the present barrier. */
+#ifdef EGL_KHR_fence_sync
+    const char *egl_exts = eglQueryString(s_dpy, EGL_EXTENSIONS);
+    if (egl_exts && strstr(egl_exts, "EGL_KHR_fence_sync")) {
+        s_create_sync     = (PFNEGLCREATESYNCKHRPROC)eglGetProcAddress("eglCreateSyncKHR");
+        s_client_wait_sync = (PFNEGLCLIENTWAITSYNCKHRPROC)eglGetProcAddress("eglClientWaitSyncKHR");
+        s_destroy_sync    = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
+        if (!s_create_sync || !s_client_wait_sync || !s_destroy_sync)
+            s_create_sync = NULL;   /* partial: fall back to glFinish */
+    }
+    fprintf(stderr, "iosc_gl: frame barrier = %s\n", s_create_sync ? "EGL fence" : "glFinish");
+#endif
 
     s_ok = 1;
     fprintf(stderr, "iosc_gl: GPU compositor ready (output %dx%d)\n", w, h);
@@ -234,11 +255,31 @@ void iosc_gl_draw_shm(const void *data, int sw, int sh, int stride,
               0);   /* wl_shm is top-left (v=0 = top): no V flip */
 }
 
-uint32_t iosc_gl_end(void)
+void iosc_gl_end(void)
 {
-    glFinish();   /* subsumes glFlush: blocks until the GPU has composited the output */
-    uint32_t px = 0;
-    /* glReadPixels reads the FBO (the output) — proof the GPU composited. BGRA. */
+    /* Barrier before the (separate-process) Xios app presents the output IOSurface
+     * via Metal: it must not sample a half-composited frame. A per-frame fence
+     * blocks only on THIS frame's work instead of draining the whole pipeline the
+     * way glFinish does, and drops the old per-frame center glReadPixels (a
+     * synchronous GPU->CPU stall) — that readback now lives in the IOSC_DEBUG
+     * path only. */
+    glFlush();
+#ifdef EGL_KHR_fence_sync
+    if (s_create_sync) {
+        EGLSyncKHR fence = s_create_sync(s_dpy, EGL_SYNC_FENCE_KHR, NULL);
+        if (fence != EGL_NO_SYNC_KHR) {
+            s_client_wait_sync(s_dpy, fence, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
+            s_destroy_sync(s_dpy, fence);
+            return;
+        }
+    }
+#endif
+    glFinish();   /* fallback: no fence-sync extension */
+}
+
+uint32_t iosc_gl_read_center(void)
+{
+    uint32_t px = 0;   /* FBO center pixel (BGRA); validation only */
     glReadPixels(s_ow / 2, s_oh / 2, 1, 1, GL_BGRA_EXT, GL_UNSIGNED_BYTE, &px);
     return px;
 }

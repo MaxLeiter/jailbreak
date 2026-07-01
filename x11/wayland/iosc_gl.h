@@ -37,13 +37,16 @@ void iosc_gl_draw_shm(const void *data, int sw, int sh, int stride,
                       int sx, int sy, int src_w, int src_h,
                       int dx, int dy, int dw, int dh);
 
-/* End the frame: flush so the output IOSurface is ready to present. Returns the
- * composited output center pixel (BGRA, via glReadPixels) for validation. */
-uint32_t iosc_gl_end(void);
+/* End the frame: kick the GPU and block on a per-frame fence (glFinish fallback)
+ * so the output IOSurface is fully composited before the Xios app presents it. */
+void iosc_gl_end(void);
 
 /* Read one composited output pixel (BGRA) at top-left coord (x,y) — validation
  * (proves a given window's content landed at its placement). Call after iosc_gl_end. */
 uint32_t iosc_gl_read_at(int x, int y);
+
+/* Read the composited output center pixel (BGRA) — validation only (IOSC_DEBUG). */
+uint32_t iosc_gl_read_center(void);
 
 /* Wrap the cursor surface's composite in premultiplied-alpha blending so its ARGB8888
  * alpha is honored (transparent around the arrow) instead of drawing an opaque black
