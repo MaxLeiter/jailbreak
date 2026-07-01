@@ -30,6 +30,7 @@ qtdeclarative-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtdeclarative))
 	$(call EXTRACT_TAR,qtdeclarative-everywhere-src-$(QTDECLARATIVE_VERSION).tar.xz,qtdeclarative-everywhere-src-$(QTDECLARATIVE_VERSION),qtdeclarative)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtdeclarative)
+	$(call QT6_WRITE_IOSEXEC_FIXUP)
 
 ifneq ($(wildcard $(BUILD_WORK)/qtdeclarative/.build_complete),)
 qtdeclarative:

@@ -18,6 +18,7 @@ qtimageformats-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtimageformats))
 	$(call EXTRACT_TAR,qtimageformats-everywhere-src-$(QTIMAGEFORMATS_VERSION).tar.xz,qtimageformats-everywhere-src-$(QTIMAGEFORMATS_VERSION),qtimageformats)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtimageformats)
+	$(call QT6_WRITE_IOSEXEC_FIXUP)
 
 ifneq ($(wildcard $(BUILD_WORK)/qtimageformats/.build_complete),)
 qtimageformats:

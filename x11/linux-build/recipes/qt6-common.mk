@@ -23,7 +23,32 @@ QT6_MINOR   = 6.6
 QT6_HOST_PATH = $(BUILD_TOOLS)/host-qt-$(QT6_VERSION)
 
 # $(call QT6_MODULE_URL,qtsvg) -> official 6.6.3 submodule tarball URL.
+# NOTE (qtbase attempt-1 lesson): EXTRACT_TAR silently SKIPS extraction when
+# build_work/<name> already exists — on any version bump, rm -rf the build_work tree
+# first or you rebuild a stale tree.
 QT6_MODULE_URL = https://download.qt.io/archive/qt/$(QT6_MINOR)/$(QT6_VERSION)/submodules/$(1)-everywhere-src-$(QT6_VERSION).tar.xz
+
+# libiosexec macro vs C++ members (qtbase.mk fix #3, attempt-3 lesson): build_base's staged
+# stdlib.h/unistd.h force-include libiosexec.h, whose `#define system ie_system` mangles
+# C++ members named system() (QRandomGenerator64::system, QLocale::system, ...) —
+# qtdeclarative hits both. The fixup is force-included in every C++/ObjC++ TU (see the
+# CMAKE_CXX/OBJCXX overrides in QT6_MODULE_CMAKE_FLAGS below): C TUs keep the full
+# interposition (exec*/posix_spawn/system -> ie_*, -liosexec still links); C++ TUs keep the
+# exec* reroute (QProcess wants it) but drop the `system` macro. A C++ call to ::system()
+# would then hit the __IOS_PROHIBITED libc declaration and fail loudly at compile time.
+# ONE shared header in BUILD_TOOLS (content identical for every module); each module-setup
+# (re)writes it, idempotently. Usage in a -setup recipe: $(call QT6_WRITE_IOSEXEC_FIXUP)
+# The `\#` escapes are mandatory: an unescaped `#` inside a make VARIABLE value starts a
+# comment (qtbase.mk dodges this by inlining the printf in a recipe line, where `#` is
+# literal); \# expands to a literal # that the recipe shell then sees.
+QT6_IOSEXEC_FIXUP_H = $(BUILD_TOOLS)/qt-ios-iosexec-fixup.h
+QT6_WRITE_IOSEXEC_FIXUP = \
+	printf '%s\n' \
+		'\#include <stdlib.h>' \
+		'\#include <unistd.h>' \
+		'\#ifdef __cplusplus' \
+		'\#undef system' \
+		'\#endif' > $(QT6_IOSEXEC_FIXUP_H)
 
 # Everything a module's cmake invocation needs beyond its own feature flags. Recap of the
 # qtbase.mk gotchas (each module is an independent cmake project and re-runs the same
@@ -34,6 +59,8 @@ QT6_MODULE_URL = https://download.qt.io/archive/qt/$(QT6_MINOR)/$(QT6_VERSION)/s
 #     exec the hardcoded /usr/bin/xcrun, absent on the Linux host (sysroot is iPhoneOS 16.4).
 #   - CMAKE_OBJC(XX)_FLAGS: qtbase enables OBJC/OBJCXX on Apple and DEFAULT_CMAKE_FLAGS only
 #     covers C/CXX; without these, .mm compiles miss the libc++ -isystem paths.
+#   - CMAKE_CXX/OBJCXX re-passed WITH the iosexec fixup -include: the later -D wins over the
+#     plain one inside DEFAULT_CMAKE_FLAGS (same trick qtbase.mk uses).
 #   - QT_HOST_PATH(+_CMAKE_DIR): where find_package(Qt6 ... ) resolves host *Tools packages.
 QT6_MODULE_CMAKE_FLAGS = \
 	$(DEFAULT_CMAKE_FLAGS) \
@@ -42,7 +69,8 @@ QT6_MODULE_CMAKE_FLAGS = \
 	-DQT_INTERNAL_APPLE_SDK_VERSION=16.4 \
 	-DQT_INTERNAL_XCODE_VERSION=15.0 \
 	-DCMAKE_OBJC_FLAGS="$(CFLAGS)" \
-	-DCMAKE_OBJCXX_FLAGS="$(CXXFLAGS)" \
+	-DCMAKE_CXX_FLAGS="$(CXXFLAGS) -include $(QT6_IOSEXEC_FIXUP_H)" \
+	-DCMAKE_OBJCXX_FLAGS="$(CXXFLAGS) -include $(QT6_IOSEXEC_FIXUP_H)" \
 	-DQT_HOST_PATH=$(QT6_HOST_PATH) \
 	-DQT_HOST_PATH_CMAKE_DIR=$(QT6_HOST_PATH)/lib/cmake \
 	-DBUILD_SHARED_LIBS=ON \

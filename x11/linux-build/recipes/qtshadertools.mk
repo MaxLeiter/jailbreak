@@ -18,6 +18,7 @@ qtshadertools-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtshadertools))
 	$(call EXTRACT_TAR,qtshadertools-everywhere-src-$(QTSHADERTOOLS_VERSION).tar.xz,qtshadertools-everywhere-src-$(QTSHADERTOOLS_VERSION),qtshadertools)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtshadertools)
+	$(call QT6_WRITE_IOSEXEC_FIXUP)
 
 ifneq ($(wildcard $(BUILD_WORK)/qtshadertools/.build_complete),)
 qtshadertools:
