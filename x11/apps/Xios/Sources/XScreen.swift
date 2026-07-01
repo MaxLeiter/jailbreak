@@ -544,6 +544,20 @@ final class XScreenView: UIView {
         return true
     }
 
+    /// True if xios.json now advertises a DIFFERENT iosurface than the one adopted
+    /// (compositor restarted at a new -logical, or a different compositor took over).
+    /// Compared against the adopted socket + surface size (fbWidth/fbHeight), which
+    /// equal the xios.json we last adopted from — so it never loops in steady state.
+    private func ddxConfigChanged() -> Bool {
+        guard let data = FileManager.default.contents(atPath: configPath),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (obj["ddx"] as? String) == "iosurface" else { return false }
+        let sock = (obj["socket"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ddxSockPath
+        let w = (obj["width"] as? Int) ?? fbWidth
+        let h = (obj["height"] as? Int) ?? fbHeight
+        return sock != ddxSockPath || w != fbWidth || h != fbHeight
+    }
+
     private func teardownIOSurface() {
         if let c = xconn { xsurface_close(c); xconn = nil }
         iosTexture = nil
@@ -579,6 +593,17 @@ final class XScreenView: UIView {
         // Zero-copy IOSurface path: re-present only when the server signals a change
         // (or once for the initial frame, via needsPresent).
         if usingIOSurface {
+            // Watchdog: while presenting, tick() never re-reads xios.json, so a
+            // compositor that RESTARTS at a new -logical (the output IOSurface changes
+            // size), or a DIFFERENT compositor taking over, would be missed — the app
+            // stays pinned to the STALE surface (also the case for a FrontBoard-resumed
+            // instance that kept old state after a kill+relaunch). Every ~1.5s re-check
+            // xios.json; if it now names a different socket or surface size, teardown +
+            // re-adopt the CURRENT one (adoptIOSurface then re-fits via resetZoom).
+            if tickCount % 30 == 0, !userPinned, ddxConfigChanged() {
+                teardownIOSurface()
+                return
+            }
             guard let conn = xconn, let tex = iosTexture else { return }
             let r = xsurface_drain(conn)
             if r < 0 { teardownIOSurface(); return }
