@@ -1,0 +1,7 @@
+[Icon Theme]
+Name=Default
+Comment=Default cursor theme for the Xios desktop
+# The "default" icon theme is how libXcursor picks a system-wide cursor theme
+# when no XCURSOR_THEME env var or Xcursor.theme X resource is set. Inheriting
+# Adwaita makes the bundled Adwaita cursors the default for X11 and GTK clients.
+Inherits=Adwaita

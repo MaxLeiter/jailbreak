@@ -1,0 +1,11 @@
+#!/bin/sh
+# Rebuild the fontconfig cache so the iOS system fonts (now in the font path) are indexed.
+set -e
+case "$1" in
+  configure|install|"")
+    PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+    export PATH
+    fc-cache -f >/dev/null 2>&1 || true
+    ;;
+esac
+exit 0

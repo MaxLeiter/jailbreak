@@ -1,0 +1,13 @@
+# Xios desktop defaults — pin GNOME interface gsettings so the desktop is
+# coherent on rootless iOS. The "zz-" prefix makes this the last override
+# applied (highest priority). glib-compile-schemas (run in the postinst)
+# compiles these into the default gsettings DB.
+#
+# Stock gsettings-desktop-schemas already defaults monospace-font-name to
+# 'Source Code Pro 10', but assumes the font is installed; we now ship it
+# (see the bundled Source Code Pro TTFs) and pin the value explicitly so the
+# desktop does not drift with upstream schema changes.
+
+[org.gnome.desktop.interface]
+monospace-font-name='Source Code Pro 11'
+color-scheme='prefer-dark'

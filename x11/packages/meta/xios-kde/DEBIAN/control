@@ -1,0 +1,20 @@
+Package: xios-kde
+Name: Xios Desktop (KDE Plasma Mobile)
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.0), xios-core, kwin, plasma-mobile, plasma-nano, qt6-wayland, kf6-breeze-icons
+MinimumOSVersion: 16.0.0
+Description: the KDE Plasma Mobile desktop flavor for Xios
+ KDE Plasma Mobile on KWin, rendered on the iPad GPU through the iosc
+ compositor and ANGLE. Pulls in the Qt 6 runtime, the KDE Frameworks 6
+ subset Plasma needs, KWin, and the Plasma Mobile shell with the Breeze
+ look.
+ .
+ Installing this package is the whole setup: open the Xios app afterwards
+ and the Plasma session starts.
+ .
+ Needs iOS 16.0 or newer on a rootless jailbreak (/var/jb).

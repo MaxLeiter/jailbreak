@@ -1,0 +1,14 @@
+Package: x11-fonts-sf
+Name: San Francisco fonts for X11
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: fontconfig
+Section: X11
+Priority: optional
+Description: San Francisco as the default X11 font
+ Exposes the live iOS system fonts to X11/fontconfig apps and makes San Francisco the
+ default: .SF UI for sans-serif/serif/system-ui and .SF UI Mono for monospace (terminals,
+ code). No font files are copied or redistributed - fontconfig is pointed straight at
+ /System/Library/Fonts, so it always tracks the OS and picks up emoji + CJK for free.

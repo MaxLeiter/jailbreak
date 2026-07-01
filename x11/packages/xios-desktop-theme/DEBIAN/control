@@ -1,0 +1,17 @@
+Package: xios-desktop-theme
+Name: Xios desktop theme
+Version: 1.1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: xios-desktop-defaults, adwaita-icon-theme, hicolor-icon-theme
+Section: X11
+Priority: optional
+Description: Adwaita cursors and wallpaper for the Xios desktop
+ Gives the Xios desktop a complete look. Pulls in the Adwaita icon theme (via
+ the adwaita-icon-theme package, the single owner of the icon/cursor data) so
+ GTK and GNOME apps show real toolbar, menu, folder and file-type icons instead
+ of empty squares, sets the matching Adwaita cursor theme as the system default
+ at a touch-friendly size, and ships a default wallpaper. The icon theme, cursor
+ theme and background are selected through a gsettings override and a default
+ cursor-theme entry, so X11 and GTK clients both pick them up.

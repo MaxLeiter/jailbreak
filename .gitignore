@@ -7,6 +7,9 @@
 packages/
 *.deb
 
+# ...except x11 hand-rolled package *sources* (their .debs stay ignored above)
+!x11/packages/
+
 # Editor / OS cruft
 .DS_Store
 *.swp

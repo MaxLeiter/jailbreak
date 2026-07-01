@@ -1,0 +1,17 @@
+#!/bin/sh
+# Compile the gsettings override so the desktop adopts the icon/cursor theme and
+# wallpaper. The Adwaita icon cache is rebuilt by the adwaita-icon-theme package
+# (this package's only Depends), so we don't touch it here. Idempotent.
+set -e
+case "$1" in
+  configure|install|"")
+    PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+    export PATH
+
+    if command -v glib-compile-schemas >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/glib-2.0/schemas ]; then
+      glib-compile-schemas /var/jb/usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+exit 0
