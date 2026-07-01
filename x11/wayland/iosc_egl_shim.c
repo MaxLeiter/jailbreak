@@ -253,7 +253,21 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
     struct iosc_egl_win *w = as_win(surf);
     if (!w) return REAL(eglSwapBuffers)(dpy, surf);
 
-    glFinish();                              /* GPU render into ios[cur] complete */
+    /* Barrier: the GPU render into ios[cur] must complete before iosc (a separate
+     * process) samples that IOSurface. A per-frame fence blocks on just this
+     * frame's work; glFinish drains the whole device. Fall back to glFinish if
+     * EGL fence sync doesn't resolve. */
+    EGLSync (*mk)(EGLDisplay, EGLenum, const EGLAttrib *) = REAL(eglCreateSync);
+    EGLint (*fwait)(EGLDisplay, EGLSync, EGLint, EGLTime) = REAL(eglClientWaitSync);
+    EGLBoolean (*del)(EGLDisplay, EGLSync)               = REAL(eglDestroySync);
+    EGLSync fence = (mk && fwait && del) ? mk(dpy, EGL_SYNC_FENCE, NULL) : EGL_NO_SYNC;
+    if (fence != EGL_NO_SYNC) {
+        glFlush();
+        fwait(dpy, fence, EGL_SYNC_FLUSH_COMMANDS_BIT, EGL_FOREVER);
+        del(dpy, fence);
+    } else {
+        glFinish();                          /* GPU render into ios[cur] complete */
+    }
     int i = w->cur;
     wl_surface_attach(w->surface, w->buf[i], 0, 0);
     wl_surface_damage(w->surface, 0, 0, w->w, w->h);
