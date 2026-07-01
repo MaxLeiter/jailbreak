@@ -62,7 +62,8 @@ TARGETS="${TARGETS:-\
   gnome-session-package \
   libnotify-package \
   gnome-settings-daemon-package \
-  accountsservice-package}"
+  accountsservice-package \
+  libgdm-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"
@@ -71,7 +72,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in dconf gnome-session libnotify gnome-settings-daemon libaccountsservice; do
+for pat in dconf gnome-session libnotify gnome-settings-daemon libaccountsservice libgdm; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

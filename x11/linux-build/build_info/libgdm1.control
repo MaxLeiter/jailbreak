@@ -1,0 +1,15 @@
+Package: libgdm1
+Version: @DEB_LIBGDM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gdm
+Depends: libglib2.0-0
+Description: GNOME Display Manager (client library)
+ The libgdm client library for rootless iOS. gnome-shell imports gi://Gdm at
+ boot (dependencies, system actions, the unlock and login dialogs), so this
+ library and its on-device generated Gdm-1.0 typelib are required for the shell
+ to start. The gdm daemon itself is Linux-only and is not built; without it
+ Gdm.Client cannot connect and the shell's greeter/lock integrations degrade
+ gracefully. Session enumeration uses a single-session sd-login shim.

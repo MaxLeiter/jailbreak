@@ -1,0 +1,12 @@
+Package: libgdm-dev
+Version: @DEB_LIBGDM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gdm
+Depends: libgdm1 (= @DEB_LIBGDM_V@), libglib2.0-dev
+Description: GNOME Display Manager (client library development files)
+ Headers, pkg-config file and the unversioned dylib symlink for libgdm1.
+ Required on-device to generate the Gdm-1.0 gir/typelib that gnome-shell
+ imports at boot.
