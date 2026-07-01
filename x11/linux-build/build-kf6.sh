@@ -111,6 +111,9 @@ host_kf() { # <name> <marker-relative-to-KF6HOST>
     -DKCOREADDONS_USE_QML=OFF \
     -DKCONFIG_USE_QML=OFF \
     -DBUILD_WITH_QML=OFF \
+    -DWITH_BZIP2=OFF \
+    -DWITH_LIBLZMA=OFF \
+    -DWITH_LIBZSTD=OFF \
     -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE
   ninja -C "${builddir}"
   ninja -C "${builddir}" install
