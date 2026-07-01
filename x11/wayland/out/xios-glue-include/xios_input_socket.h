@@ -28,6 +28,42 @@
 #define XIOS_IN_BUTTON 2u   /* code = button (1/2/3 -> L/R/M), state = up/down */
 #define XIOS_IN_KEY    3u   /* code = X keysym, state = pressed/released, mods */
 #define XIOS_IN_TEXT   4u   /* code = payload byte length; UTF-8 text follows  */
+/* Additive fixed 24-byte records (no payload); readers that predate them pass
+ * unknown types through untouched. Phases for both: state = 0 up, 1 down,
+ * 2 motion, 3 cancel. */
+#define XIOS_IN_TOUCH  6u   /* real multitouch: code = touch id (slot 0..9)    */
+#define XIOS_IN_TABLET 7u   /* pen/stylus: code = pressure 0..65535,
+                             * mods = (tilt_x_deg+90) | (tilt_y_deg+90)<<8     */
+#define XIOS_IN_TRAITS 5u   /* server->CLIENT: on-screen-keyboard traits (code=hint,
+                             * state=purpose, mods=enabled); sent via _broadcast   */
+#define XIOS_IN_BIND   8u   /* scope this connection's input to one window
+                             * (code = window id); sent once after connect by
+                             * native-ipadOS per-window hosts (IoscInput.c had 8
+                             * on-wire before this header did — 8 is BIND forever) */
+#define XIOS_IN_AXIS   9u   /* two-finger / wheel scroll: x,y = dx,dy in 1/256
+                             * output-pixel fixed point, wl_pointer sign (positive
+                             * = content scrolls down/right); code = source
+                             * (0 finger, 1 wheel); state bit0 = axis_stop (end of
+                             * gesture, deltas 0 — lets clients fling kinetically);
+                             * mods = modifier mask (1 shift, 2 ctrl, 4 alt) held
+                             * for the frame — pinch-zoom sends ctrl+scroll        */
+/* Native-feel system integration (rotation / volume / appearance / haptics).
+ * OUTPUT + HAPTIC ride the compositor input socket; VOLUME + APPEARANCE go to
+ * the separate xios-sysintd session daemon (same 24-byte framing, its own
+ * socket /var/jb/tmp/xios-sysint.sock) so the compositor stays out of audio
+ * and theme policy. One shared type registry so the families never collide. */
+#define XIOS_IN_OUTPUT 10u  /* app->server: reconfigure the output for a device
+                             * rotation. code = wl_output transform (0 normal,
+                             * 1 = 90, 2 = 180, 3 = 270); x,y = requested LOGICAL
+                             * WxH (0,0 = derive: quarter-turns swap the launch
+                             * logical size); state/mods reserved (0)           */
+#define XIOS_IN_HAPTIC 11u  /* server->CLIENT broadcast: fire a haptic. code =
+                             * style (0 light, 1 medium, 2 heavy, 3 selection);
+                             * sent e.g. when a press lands on shell chrome     */
+#define XIOS_IN_VOLUME 12u  /* app->sysintd: absolute output volume,
+                             * code = 0..65535 (maps to sink 0..100%)           */
+#define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style,
+                             * code = 1 dark, 0 light                           */
 #endif
 
 /* Fixed 24-byte record header. Layout matches iosc.c/ios-inputd.c iosc_in_msg. */
@@ -61,6 +97,15 @@ int xios_input_socket_fd(xios_input_socket *s);
 /* Drain every currently-complete record, invoking `cb` for each. Returns the count
  * dispatched (>=0), or <0 on a fatal socket error (caller should tear down). */
 int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user);
+
+/* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
+ * client; a client whose write fails is dropped. Returns the number written to.
+ * The reader owns the client fds, so this is the server->client path. */
+int xios_input_socket_broadcast(xios_input_socket *s, const void *buf, size_t len);
+
+/* Number of currently-connected clients (lets a caller detect a new connection
+ * across dispatch calls, e.g. to send initial state). */
+int xios_input_socket_client_count(xios_input_socket *s);
 
 void xios_input_socket_free(xios_input_socket *s);
 

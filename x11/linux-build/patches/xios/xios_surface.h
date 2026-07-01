@@ -120,6 +120,13 @@ int xios_have_typed_client(void);
  * The xios.json write stays as a transitional discovery fallback for now. */
 void xios_set_compositor_id(const char *id);
 
+/* Advertise the input socket the app should send keyboard/pointer to, emitted as
+ * the "input_socket" field in xios.json. The app only auto-infers an input socket
+ * when the ddx socket path contains "iosc", so any other compositor (e.g. mutter
+ * on mutter-ddx.sock) MUST set this or it gets no input. Call before
+ * xios_server_start; if unset the field is omitted (app keeps its inference). */
+void xios_set_input_socket(const char *path);
+
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);
 

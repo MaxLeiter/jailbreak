@@ -72,10 +72,16 @@ static int s_clients[XIOS_MAX_CLIENTS];
 static int s_client_typed[XIOS_MAX_CLIENTS];   /* parallel: client speaks the typed stream */
 static int s_nclients = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
+static char s_input_socket[108] = "";          /* app input socket; emitted in xios.json when set */
 
 void xios_set_compositor_id(const char *id)
 {
     snprintf(s_compositor_id, sizeof(s_compositor_id), "%s", id ? id : "");
+}
+
+void xios_set_input_socket(const char *path)
+{
+    snprintf(s_input_socket, sizeof(s_input_socket), "%s", path ? path : "");
 }
 
 /* ---- helpers -------------------------------------------------------------- */
@@ -423,9 +429,20 @@ int xios_server_start(const char *sock_path, const char *json_path,
         fprintf(jf,
                 "{\"width\":%d,\"height\":%d,\"stride\":%d,"
                 "\"format\":\"BGRA\",\"ddx\":\"iosurface\",\"socket\":\"%s\","
-                "\"display\":\":%s\"}\n",
+                "\"display\":\":%s\"",
                 width, height, stride, sock_path, display ? display : "0");
+        /* Where the app should send keyboard/pointer. The app auto-infers this only
+         * for an "iosc"-named ddx socket; any other compositor (mutter) must set it
+         * or it gets no input. Omitted when unset so iosc keeps the app's inference. */
+        if (s_input_socket[0])
+            fprintf(jf, ",\"input_socket\":\"%s\"", s_input_socket);
+        fprintf(jf, "}\n");
         fclose(jf);
+        /* The app runs as mobile; make the handshake file world-readable so it can
+         * read it regardless of the compositor's launch umask. The socket already
+         * gets the mobile treatment; the json didn't until now (a tighter umask
+         * would have made it root-only => app stuck in the Xvfb fallback). */
+        chmod(json_path, 0644);
     }
 
     if (pthread_create(&s_thread, NULL, accept_loop, NULL) != 0) {
