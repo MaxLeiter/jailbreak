@@ -168,6 +168,29 @@ meta_virtual_input_device_ios_notify_keyval (ClutterVirtualInputDevice *virtual_
 }
 
 static void
+meta_virtual_input_device_ios_notify_scroll_continuous (ClutterVirtualInputDevice *virtual_device,
+                                                        uint64_t                   time_us,
+                                                        double                     dx,
+                                                        double                     dy,
+                                                        ClutterScrollSource        scroll_source,
+                                                        ClutterScrollFinishFlags   finish_flags)
+{
+  ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
+  ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
+  graphene_point_t coords = GRAPHENE_POINT_INIT (0.f, 0.f);
+  graphene_point_t delta = GRAPHENE_POINT_INIT ((float) dx, (float) dy);
+  ClutterModifierType modifiers = 0;
+  ClutterEvent *event;
+
+  clutter_seat_query_state (seat, pointer, NULL, &coords, &modifiers);
+
+  event = clutter_event_scroll_smooth_new (CLUTTER_EVENT_NONE, resolve_time (time_us),
+                                           pointer, NULL, modifiers, coords,
+                                           delta, scroll_source, finish_flags);
+  _clutter_event_push (event, FALSE);
+}
+
+static void
 meta_virtual_input_device_ios_init (MetaVirtualInputDeviceIOS *self)
 {
 }
@@ -188,6 +211,8 @@ meta_virtual_input_device_ios_class_init (MetaVirtualInputDeviceIOSClass *klass)
     meta_virtual_input_device_ios_notify_key;
   virtual_input_device_class->notify_keyval =
     meta_virtual_input_device_ios_notify_keyval;
-  /* scroll + touch notify_* are left unset: the Xios input pump drives only pointer
-   * motion/buttons and keys. */
+  virtual_input_device_class->notify_scroll_continuous =
+    meta_virtual_input_device_ios_notify_scroll_continuous;
+  /* touch notify_* are left unset: the Xios input pump maps multitouch to pointer
+   * motion/buttons/scroll, not to per-slot ClutterVirtualInputDevice touch. */
 }

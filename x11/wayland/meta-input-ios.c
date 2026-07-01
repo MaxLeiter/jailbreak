@@ -104,6 +104,41 @@ on_input_msg (const struct xios_in_msg *m,
                                                            : CLUTTER_KEY_STATE_RELEASED);
       break;
 
+    case XIOS_IN_AXIS:
+      {
+        /* Two-finger / wheel scroll. x,y are deltas in 1/256 output px (wl_fixed units);
+         * the stage wants LOGICAL px, so divide by 256*scale. state bit0 = the fingers
+         * left the glass -> finish flags so Clutter's kinetic scroll flings. mods bit1 =
+         * latch Ctrl around the frame (the app's pinch-to-zoom = ctrl+scroll). code 1 =
+         * wheel notch, else continuous finger scroll. */
+        double scale = xios_output_scale ();
+        ClutterScrollFinishFlags finish = (m->state & 1)
+          ? (CLUTTER_SCROLL_FINISHED_HORIZONTAL | CLUTTER_SCROLL_FINISHED_VERTICAL)
+          : CLUTTER_SCROLL_FINISHED_NONE;
+
+        if (scale <= 0.0)
+          scale = 1.0;
+        if (m->mods & 2)
+          clutter_virtual_input_device_notify_keyval (input->keyboard,
+                                                      CLUTTER_CURRENT_TIME,
+                                                      0xffe3 /* XK_Control_L */,
+                                                      CLUTTER_KEY_STATE_PRESSED);
+        clutter_virtual_input_device_notify_scroll_continuous (input->pointer,
+                                                               CLUTTER_CURRENT_TIME,
+                                                               m->x / (256.0 * scale),
+                                                               m->y / (256.0 * scale),
+                                                               m->code == 1
+                                                                 ? CLUTTER_SCROLL_SOURCE_WHEEL
+                                                                 : CLUTTER_SCROLL_SOURCE_FINGER,
+                                                               finish);
+        if (m->mods & 2)
+          clutter_virtual_input_device_notify_keyval (input->keyboard,
+                                                      CLUTTER_CURRENT_TIME,
+                                                      0xffe3 /* XK_Control_L */,
+                                                      CLUTTER_KEY_STATE_RELEASED);
+        break;
+      }
+
     case XIOS_IN_TEXT:
       /* Committed text (soft keyboard / paste): type each byte as a keyval click.
        * '\n' -> Return; Latin-1 keysyms equal their codepoint. Multibyte UTF-8 is
