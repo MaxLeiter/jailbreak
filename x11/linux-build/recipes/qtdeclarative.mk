@@ -40,10 +40,19 @@ else
 # No `rm -rf build` (incremental iteration, qtbase.mk).
 qtdeclarative: qtdeclarative-setup
 	mkdir -p $(BUILD_WORK)/qtdeclarative/build
+# qml_profiler/qml_preview OFF: their tools/ subdirs pass the `NOT IOS` gate (we
+# masquerade as Darwin for the MACOS-sed approach), and a cross build hard-requires
+# every gated tool to exist in the HOST Qt6QmlTools package — but the host build
+# (default features) never produced qmlprofiler/qmlpreview. Cost: no on-device QML
+# profiler/preview *services*; re-enable both features host+cross together if wanted.
+# qmltestrunner has the same gate shape but Qt6Test is absent from build_base, so
+# QuickTest (its TARGET condition) never appears.
 	cd $(BUILD_WORK)/qtdeclarative/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \
-		-DFEATURE_qml_jit=OFF
+		-DFEATURE_qml_jit=OFF \
+		-DFEATURE_qml_profiler=OFF \
+		-DFEATURE_qml_preview=OFF
 # OOM guard (7.7GiB Docker VM, 16-way default ninja): qmldom TUs are the memory
 # hogs; full-speed pass keeps its survivors, -j2 retry finishes the stragglers.
 	+ninja -C $(BUILD_WORK)/qtdeclarative/build || ninja -C $(BUILD_WORK)/qtdeclarative/build -j2
