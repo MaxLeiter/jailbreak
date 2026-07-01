@@ -174,21 +174,25 @@ dbus deb (built), fontconfig + fonts (xios-desktop-defaults), icon theme repack
 pipeline, XDG_RUNTIME_DIR conventions from iosc, login1 stub, and the chooser gate
 itself (`stamp-minos.py --json` closure floors).
 
-### GPU entitlements on every GL-touching binary (mandatory, from P0.1)
+### GPU entitlements on every GL-touching binary (mandatory, P0.1-validated)
 
 Any process that creates the ANGLE Metal display must be signed with the GPU IOKit
 entitlements (`AGXDeviceUserClient` + `IOGPUDeviceUserClient`; the full client set is
 `x11/wayland/iosc-gpu-client-ent.xml`) and must NOT carry
 `com.apple.private.security.no-container`, or `MTLCreateSystemDefaultDevice` returns nil
-and display creation fails silently. This lands on the KDE flavor's EXECUTABLES, not its
-libraries: entitlements are a property of the Mach-O the kernel exec's, and the Procursus
+and display creation fails silently. Team-lead confirmed the exact model on-device (P0.1,
+kgx): the GPU entitlement went on the EXECUTABLE (`/var/jb/usr/bin/kgx`) while the EGL
+shim and ANGLE dylibs stayed bare `ldid -S`; no bundle re-sign. It lands on executables
+because entitlements are a property of the Mach-O the kernel exec's, and the Procursus
 `SIGN` macro already signs dylibs/bundles with a bare `ldid -S` (no entitlements) while
 signing plain executables with `entitlements/$(2)`. So the Qt/KF6 module recipes need no
-change — but `kwin_wayland`, `plasmashell`, and the `qml` test launcher (any binary that
-touches GL) must pass the GPU entitlement as the `SIGN` entitlement argument. Practical
-steps for the W/P recipes: copy `iosc-gpu-client-ent.xml` into
-`build_misc/entitlements/` and call `$(call SIGN,<pkg>,iosc-gpu-client-ent.xml)`. Bake
-this in from the first KWin recipe; do not defer it to Q4.
+change. The rule of thumb: whatever initializes the QtQuick/QRhi OpenGL context is the
+process that needs the entitlement — for the runtime that is the compositor
+(`kwin_wayland`) and the shell (`plasmashell`), plus the `qml` launcher for smoke tests,
+and any GL-initializing Qt tool/daemon we ship. Practical steps for the W/P recipes: copy
+`iosc-gpu-client-ent.xml` into `build_misc/entitlements/` and call
+`$(call SIGN,<pkg>,iosc-gpu-client-ent.xml)` for the executable's package. Bake this in
+from the first KWin recipe; do not defer it to Q4.
 
 ## Risks, ranked
 
