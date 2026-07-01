@@ -7,14 +7,15 @@ import UIKit
 /// window's HostScreenView.
 ///
 /// INERT until xios-a11yd ships: it only connects while VoiceOver is running,
-/// and retries quietly if the socket is absent. NDJSON field names follow
-/// a11y-plan.md protocol v1 with a "t" discriminator and are PROVISIONAL until
-/// the a11y owner publishes the authoritative schema — decode() is the one
-/// place to adjust.
+/// and retries quietly if the socket is absent. Wire format is a11y-plan.md
+/// "Protocol v1.1 (authoritative wire schema)" — NDJSON, "t" discriminator,
+/// ids helper-assigned uint32 unique per generation.
 final class HostA11yClient {
     static let shared = HostA11yClient()
 
-    /// Provisional; the listener lives in the ioscd runtime dir (a11y-plan.md).
+    /// Authoritative (v1.1): fixed path, one listener for desktop and native
+    /// clients. Never derive from $XDG_RUNTIME_DIR — ioscd points that at
+    /// per-app private bus dirs.
     private let sockPath = "/var/jb/tmp/xios-a11y.sock"
 
     private var appID = ""
@@ -132,6 +133,7 @@ final class HostA11yClient {
     fileprivate func action(_ id: Int, idx: Int)    { send(["t": "action", "id": id, "idx": idx]) }
     fileprivate func adjust(_ id: Int, dir: Int)    { send(["t": "adjust", "id": id, "dir": dir]) }
     fileprivate func scroll(_ id: Int, dir: String) { send(["t": "scroll", "id": id, "dir": dir]) }
+    fileprivate func voFocus(_ id: Int)             { send(["t": "vo-focus", "id": id]) }
 
     // MARK: apply (main)
 
@@ -201,7 +203,7 @@ final class HostA11yClient {
     }
 }
 
-// MARK: - wire message (helper -> app, provisional schema)
+// MARK: - wire message (helper -> app, protocol v1.1)
 
 private struct A11yMsg: Decodable {
     let t: String
@@ -215,7 +217,7 @@ private struct A11yMsg: Decodable {
     let hint: String?
     let traits: [String]?
     let actions: [String]?
-    let frame: [Double]?      // [x, y, w, h] window-relative px
+    let frame: [Double]?      // [x, y, w, h]; window-relative px on bound conns
     let title: String?
     let appid: String?
     let focused: Bool?
@@ -223,7 +225,7 @@ private struct A11yMsg: Decodable {
     let x: Double?
     let y: Double?
     let gen: Int?
-    let ver: Int?
+    let v: Int?
 }
 
 // MARK: - per-window element store
@@ -254,7 +256,9 @@ final class HostA11yWindowStore {
         } else {
             el = HostA11yElement(nodeID: id, client: client,
                                  container: view ?? NSObject())
-            nodes[id] = Node(parent: m.parent ?? -1, idx: m.idx ?? 0, el: el)
+            // parent:0 = window root (v1.1); flatten already treats any absent
+            // parent id as a root, so the sentinel needs no special case.
+            nodes[id] = Node(parent: m.parent ?? 0, idx: m.idx ?? 0, el: el)
         }
         if let l = m.label { el.accessibilityLabel = l }
         if let v = m.value { el.accessibilityValue = v }
@@ -270,9 +274,15 @@ final class HostA11yWindowStore {
         scheduleFlatten()
     }
 
-    /// Returns true if the node belonged to this store.
+    /// Removes the node AND its subtree (v1.1: children go with it). Returns
+    /// true if the node belonged to this store.
     func remove(_ id: Int) -> Bool {
-        guard nodes.removeValue(forKey: id) != nil else { return false }
+        guard nodes[id] != nil else { return false }
+        var doomed = [id]
+        while let victim = doomed.popLast() {
+            nodes.removeValue(forKey: victim)
+            doomed.append(contentsOf: nodes.filter { $0.value.parent == victim }.map(\.key))
+        }
         scheduleFlatten()
         return true
     }
@@ -351,6 +361,10 @@ final class HostA11yElement: UIAccessibilityElement {
         guard let view = accessibilityContainer as? HostScreenView else { return false }
         view.a11yEscape()
         return true
+    }
+
+    override func accessibilityElementDidBecomeFocused() {
+        client.voFocus(nodeID)   // logging/metrics only in v1.1; never GrabFocus
     }
 
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {

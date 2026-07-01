@@ -1,10 +1,12 @@
 # Native-flavor accessibility: per-app hosts publishing UIAccessibility trees
 
-Status: spec + host-side prototype (compile-clean, inert until xios-a11yd exists).
-This is the native-iPadOS half of `a11y-plan.md`, which owns the bridge design and
-the helper (`xios-a11yd`). Everything here is ADDITIVE to that plan's protocol v1;
-the additions are marked PROPOSED until the a11y owner acks them. Host-side code
-lives in `apps/iosc-host/Sources/HostA11y.swift` (native-ipados owns it).
+Status: spec ACKED + host-side prototype (compile-clean, inert until xios-a11yd
+exists). This is the native-iPadOS half of `a11y-plan.md`, which owns the bridge
+design and the helper (`xios-a11yd`). Every addition below was acked by the a11y
+owner and folded into a11y-plan.md's "Protocol v1.1 (authoritative wire schema)"
+(commit 853a5e3) — that section is normative; this doc explains the native
+rationale. Host-side code lives in `apps/iosc-host/Sources/HostA11y.swift`
+(native-ipados owns it) and conforms to v1.1.
 
 ## Why native is the showcase
 
@@ -42,10 +44,15 @@ publication filters) is shared machinery.
 
 ## Connection contract
 
-1. Host connects to the helper socket (same socket as the Xios client; the
-   listener is in the ioscd runtime dir, mode 0600).
-2. Host sends `bind{appid}` (PROPOSED, app->helper) immediately after connect.
-   An unbound connection = desktop semantics (Xios app, unchanged).
+1. Host connects to `/var/jb/tmp/xios-a11y.sock` (authoritative in v1.1; one
+   listener serves the Xios client and all native hosts, mode 0600, fixed path —
+   never derive from `$XDG_RUNTIME_DIR`, which ioscd points at per-app private
+   bus dirs, ioscd.c:255).
+2. Host sends `bind{appid}` (v1.1, app->helper) immediately after connect.
+   An unbound connection = desktop semantics (Xios app, unchanged). bind is a
+   persistent filter: on cold launch the helper holds it and starts publishing
+   when the app's Socket.Embed arrives; on app exit it sends `reset` and
+   re-publishes on relaunch.
 3. Host sends `enable{true}` only while `UIAccessibility.isVoiceOverRunning`;
    on VoiceOver off it sends `enable{false}` and the helper drops the mirror
    work for this connection. Whole pipeline is quiescent without VoiceOver.
@@ -58,7 +65,7 @@ publication filters) is shared machinery.
 Binding `appid` to an AT-SPI application:
 
 - ioscd spawned the Linux process for that appid (`ioscd_send_launch`), so it
-  knows (appid, pid). PROPOSED: ioscd streams spawn/exit records to xios-a11yd
+  knows (appid, pid). v1.1: ioscd streams spawn/exit records to xios-a11yd
   (it also starts the helper, so a pipe or the runtime-dir socket both work):
   `spawn{appid,pid}` / `exit{appid,pid}`.
 - The helper resolves each registered AT-SPI application's connection to a PID
@@ -83,8 +90,8 @@ the helper publishes subtrees for ALL mapped toplevels of the bound app, and the
 per-window caps from `a11y-plan.md` (SHOWING+VISIBLE gate, layout-container
 filter, ~200 element soft cap, 50 ms debounce) apply per window. The host tells
 the helper which windows are actually attached to scenes via `attach{win}` /
-`detach{win}` (PROPOSED, app->helper) so backgrounded-but-mapped windows do not
-generate event traffic.
+`detach{win}` (v1.1, app->helper). Hosts send them unconditionally from P1; the
+helper may ignore them until it implements traffic muting (P4).
 
 ## Coordinates in the host
 
@@ -105,7 +112,7 @@ need no re-push (same trick as the Xios spec).
 | double-tap (activate) | `activate{id}` -> helper: `Action.DoAction(0)` |
 | custom action | `action{id,idx}` -> helper |
 | adjustable inc/dec | `adjust{id,dir}` -> helper writes `Value.CurrentValue` |
-| helper fallback `tap{win,x,y}` | LOCAL: `iosc_input_motion`+`button` on the window's own input connection (no compositor round trip; `win` field is PROPOSED — desktop tap has no window) |
+| helper fallback `tap{win,x,y}` | LOCAL: `iosc_input_motion`+`button` on the window's own input connection (no compositor round trip; `win` field is in v1.1, present on bound connections) |
 | 2-finger Z (escape) | LOCAL: Esc keysym via the scene's IoscInput connection |
 | scroll gestures | `scroll{id,dir}` -> helper (v1); LOCAL wheel synth is a P4 option |
 | text entry | existing tap+type path; activate focuses the field, iOS keyboard types |
@@ -136,11 +143,11 @@ shape: background reader thread, main-actor apply):
   (helper sends resolved traits[] strings; host maps to UIAccessibilityTraits —
   iOS 16 floor, so checked state rides accessibilityValue, no .toggleButton).
 
-NDJSON field names follow protocol v1's message names with a `t` discriminator
-(`{"t":"upsert",...}`). PROVISIONAL until the a11y owner publishes the schema;
-the decoder is one small file to adjust.
+The decoder conforms to the v1.1 schema: `t` discriminator, `parent:0` = window
+root, `remove{id}` takes the whole subtree, `frame` as `[x,y,w,h]` ints, the
+locked twelve-string traits vocabulary, and unconditional attach/detach.
 
-## PROPOSED protocol additions (summary for the a11y owner)
+## Protocol additions (acked, folded into v1.1)
 
 | addition | direction | why |
 |---|---|---|
@@ -156,22 +163,33 @@ or a new field with a safe default.
 
 ## Phasing (hooks into a11y-plan.md phases)
 
-- P1 (read-only browse): the native host can be the FIRST publisher, not P4 —
-  it needs only `bind` + multi-connection from the additions above (correlation
-  can start on the name-match fallback; the spawn feed hardens it in P2).
-  Accept: VoiceOver swipes through gnome-console running in its own host scene.
+- P1 (read-only browse): a11y-plan.md now ENDORSES the native host as the first
+  P1 publisher — it needs only `bind` + multi-connection from the additions
+  above (correlation can start on the name-match fallback; the spawn feed
+  hardens it in P2). It supplements, not replaces, the desktop P1 acceptance.
+  Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
+  gate removed from ioscd, IsEnabled property write, atspi-dump smoke test)
+  gate this path exactly as they gate the desktop one. Accept: VoiceOver swipes
+  through gnome-console (kgx) running in its own host scene. Use a GTK4 app for
+  acceptance — GTK3 apps stay dark until the gtk3 atk-bridge rebuild.
 - P2 (interaction): activate/adjust/custom actions + the spawn feed.
 - P4: attach/detach traffic muting, local wheel synth, same-app Split View test,
   popup (xdg_popup) extents once the desktop flavors solve them.
 
-## Open questions for the a11y owner
+## Resolved questions (answered by the a11y owner, 2026-07-01)
 
-1. NDJSON schema: field names + `t` discriminator — publish the authoritative
-   schema (or a C header of struct-tags) so the host decoder locks down.
-2. Socket path: one listener for both desktop and native clients, or a second
-   socket? (Host assumes one, in the ioscd runtime dir; constant is provisional.)
-3. `bind` race: if the host binds before the Linux app registers on the a11y
-   bus (cold launch), helper should hold the filter and start publishing on
-   registration — confirm that is the intended semantics.
-4. Does the helper want scene visibility (`attach`/`detach`) in P1, or is
-   all-toplevels traffic acceptable until P4?
+1. Schema: published as "Protocol v1.1 (authoritative wire schema)" in
+   a11y-plan.md; the host decoder is conformant.
+2. Socket: ONE listener for desktop + native, `/var/jb/tmp/xios-a11y.sock`.
+3. bind race: filter is persistent through cold launch; publishing starts on
+   Socket.Embed; reset on app exit, re-publish on relaunch. Normative in v1.1.
+4. attach/detach: wire messages from day one (hosts send unconditionally);
+   helper behavior (traffic muting) lands in P4.
+
+## Residual gap (flagged to the a11y owner)
+
+Modal dialogs: a11y-plan.md maps the AT-SPI MODAL state to a container element
+with `accessibilityViewIsModal`, but the locked v1.1 traits vocabulary has no
+`modal` string and no other field carries modality. Needs either a thirteenth
+trait string or a dedicated upsert field before P3 (modal dialogs). The host
+already handles a `modal` trait string if one is added.
