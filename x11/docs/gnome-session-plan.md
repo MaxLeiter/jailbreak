@@ -139,6 +139,22 @@ gsd is optional for first boot. Its `keyboard` plugin links GTK3-x11 and does X 
 a pure Wayland session (no Xwayland) it may warn or no-op. Keep it out of the initial
 `RequiredComponents` if the session fails to reach `RUNNING` with it in.
 
+### Disabled gsd plugins — resolution backlog
+
+The seven dropped plugins are tracked here so they are not silently degraded. Status is one of
+IN PROGRESS, QUEUED (a re-enable follow-up), or LEAVE (documented, intentionally not shipped).
+The disable itself lives in `recipes/gnome-settings-daemon-ios-fixes.sh` (section 3).
+
+| Plugin | Status | Plan |
+|---|---|---|
+| `power` | IN PROGRESS | Battery + brightness. UPower comes from `xios-hwbridged` (IOKit shim, xios-fhs) already wired into the launch; the brightness slider needs the `power` plugin un-dropped. That un-drop is a real port, not a flip: gsd-power hard-includes `libgnome-desktop/gnome-rr.h` (RandR, removed from our GTK4 `gnome-desktop-4`) and `gtk/gtk.h` (its GTK daemon skeleton). Section 5 of the ios-fixes script already excises the plugin's libcanberra (no-op stub) and raw-X11 screensaver/DPMS (gated behind `!__APPLE__`) as dormant groundwork; finishing means gating all `gnome_rr_*` out of gsd-backlight.{c,h} + gpm-common.c + gsd-power-manager.c (the Darwin backlight backend reading `/var/jb/sys/class/backlight/xios_backlight/{brightness,max_brightness}` replaces the RandR fallback) and resolving the GTK skeleton. Coordinate with xios-fhs (task #15). |
+| `media-keys` | QUEUED | The iOS hardware volume buttons are being bridged to desktop PulseAudio by a native-bundle agent. Either re-enable `media-keys` (it consumes gvc/upower/canberra — needs the same libcanberra treatment as `power`) or handle volume entirely in that bridge. Coordinate with native-bundle. |
+| `sound` | QUEUED | Event sounds + volume feedback. The PA daemon exists (audio-desktop track, `libpulse0`/`pulseaudio` shipped), so re-enable `gsd-sound` once a canberra sound backend routes to PA (it links libcanberra + ALSA; we build `-Dalsa=false`, so it needs a PA/canberra path). |
+| `datetime` | QUEUED (low) | Read the iOS timezone + a simple NTP sync. Stock gsd-datetime hard-needs timedated + geoclue (for auto-timezone); the lightweight path is to skip geoclue and just surface the iOS timezone, so this is a small custom bit rather than the full plugin. |
+| `color` | LEAVE | No colorimeter hardware; colord/geoclue absent. Nothing to manage. |
+| `xsettings` | LEAVE | X11-only (bridges XSETTINGS to legacy X clients). A pure Wayland session has no X display; not needed. |
+| `sharing` | LEAVE | Drives NetworkManager-based network sharing; no relevant iOS sharing target. |
+
 ## Session component graph and the custom .session
 
 The stock `gnome.session` lists these `RequiredComponents`:
@@ -334,13 +350,11 @@ Notes:
 
 ## What is deferred, and why
 
-- gsd plugins beyond the minimal four. power/media-keys/color/datetime/sound are the useful
-  ones but each needs a heavy dep (upower client lib, libgeoclue client lib, libcanberra with
-  a sound backend, geocode-glib + gweather4). None is needed for a working desktop. Adding
-  them is a self-contained follow-up: build those five deps (three are easy: libnotify done,
-  geocode-glib and gweather4 are glib+libsoup; two need Darwin client-lib patches: upower and
-  geoclue daemons are Linux-only but their client libs are D-Bus proxies), then re-enable the
-  plugins in `gnome-settings-daemon-ios-fixes.sh`.
+- gsd plugins beyond the minimal four. Tracked per-plugin in "Disabled gsd plugins —
+  resolution backlog" above (power in progress; media-keys/sound/datetime queued;
+  color/xsettings/sharing leave-with-reason). None is needed for a working desktop. The
+  five client-lib deps that the queued plugins want (upower-glib, libgeoclue, geocode-glib-2,
+  gweather-4, libnotify) are already BUILT.
 - polkitd and accountsservice daemons. The real daemons are Linux-only; we ship auto-allow /
   single-user D-Bus stubs (`xios-polkit-stub`, `xios-accounts-stub`) instead, which is enough
   for the shell. Swap in real daemons only if per-action policy or multi-user is ever wanted.
