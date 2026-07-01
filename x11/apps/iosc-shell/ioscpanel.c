@@ -36,10 +36,10 @@
 #include "panel-icons.h"
 #include "shell-status.h"
 #include "shell-blur.h"
-#include "shell-screencopy.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
+#include "shell-screencopy.h"
 
 #include <time.h>
 #include <poll.h>
