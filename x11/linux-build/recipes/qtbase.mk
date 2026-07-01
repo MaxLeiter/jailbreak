@@ -34,6 +34,10 @@ DEB_QTBASE_V   ?= $(QTBASE_VERSION)-2
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
 QT_HOST_CMAKE_DIR := $(QT_HOST_PATH)/lib/cmake
 
+# Staged sysroot prefix (build_base/.../var/jb/usr) — round-2 cache seeds + FindATSPI2 synth
+# point here for the libs pkg-config would have located (pkg_config feature is OFF cross).
+QT_SYSROOT := $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
+
 # iOS stand-ins for the frameworks the disabled CONDITION-MACOS blocks would have linked
 # (CoreServices/MobileCoreServices carry UTType*, Security; UIKit for qcore_mac.mm's Q_OS_IOS
 # UIApplication refs). Injected into EVERY dylib/plugin/exe link via *_LINKER_FLAGS — they all
@@ -114,14 +118,42 @@ qtbase-setup: setup
 	sed -i -e 's/CONDITION UNIX AND NOT APPLE$$/CONDITION UNIX/' \
 		-e 's/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX AND NOT APPLE$$/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX/' \
 		$(BUILD_WORK)/qtbase/src/gui/CMakeLists.txt
-	# 7) xkbcommon on a headless (X11-off) build. Qt gates qt_find_package(XKB) behind
-	#    `if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)` — X11_SUPPORTED is false here (no xcb),
-	#    so XKB is never searched, XKB_FOUND stays false, and FEATURE_xkbcommon can't turn ON (qtwayland
-	#    keyboard needs it). Un-gate ONLY the plain-xkbcommon find (XKB::XKB) to run unconditionally;
-	#    leave the xcb/xkbcommon-x11 blocks gated (we don't want X11). The -DXKB_* cache seeds above
-	#    make FindXKB's find_library/find_path succeed deterministically under the cross find-root.
-	perl -0pi -e 's{if\(\(X11_SUPPORTED\) OR QT_FIND_ALL_PACKAGES_ALWAYS\)\n(\s*qt_find_package\(XKB 0\.5\.0 PROVIDED_TARGETS XKB::XKB[^\n]*\n)\s*endif\(\)}{if(TRUE)  # xios: xkbcommon without X11\n$1endif()}g' \
+	# 7) xkbcommon on a headless (X11-off) build. Two problems: (a) Qt gates qt_find_package(XKB)
+	#    behind `if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)` — X11_SUPPORTED is false here
+	#    (no xcb), so XKB is never searched; (b) the stock FindXKB is pkg-config-driven, but Qt's
+	#    pkg_config feature is OFF in this cross build (everything else uses find_library), so even
+	#    un-gated it gets an empty XKB_VERSION and the `XKB 0.5.0` version check fails. Fix both:
+	#    un-gate ONLY the plain-xkbcommon find (XKB::XKB), and replace FindXKB with a synth target
+	#    from the staged libxkbcommon (mirrors patch 8's FindATSPI2). Leave the xcb/xkbcommon-x11
+	#    blocks gated (we don't want X11). NOTE the make-escaped $$1 — a bare $1 is eaten by make
+	#    and would delete the captured qt_find_package line.
+	perl -0pi -e 's{if\(\(X11_SUPPORTED\) OR QT_FIND_ALL_PACKAGES_ALWAYS\)\n(\s*qt_find_package\(XKB 0\.5\.0 PROVIDED_TARGETS XKB::XKB[^\n]*\n)\s*endif\(\)}{if(TRUE)  # xios: xkbcommon without X11\n$$1endif()}g' \
 		$(BUILD_WORK)/qtbase/src/gui/configure.cmake
+	printf '%s\n' \
+		'if(NOT TARGET XKB::XKB)' \
+		'  add_library(XKB::XKB UNKNOWN IMPORTED)' \
+		'  set_target_properties(XKB::XKB PROPERTIES IMPORTED_LOCATION "$(QT_SYSROOT)/lib/libxkbcommon.dylib"' \
+		'    INTERFACE_INCLUDE_DIRECTORIES "$(QT_SYSROOT)/include")' \
+		'endif()' \
+		'set(XKB_LIBRARY "$(QT_SYSROOT)/lib/libxkbcommon.dylib")' \
+		'set(XKB_INCLUDE_DIR "$(QT_SYSROOT)/include")' \
+		'set(XKB_VERSION 1.7.0)' \
+		'include(FindPackageHandleStandardArgs)' \
+		'find_package_handle_standard_args(XKB REQUIRED_VARS XKB_LIBRARY XKB_INCLUDE_DIR VERSION_VAR XKB_VERSION)' \
+		> $(BUILD_WORK)/qtbase/cmake/3rdparty/kwin/FindXKB.cmake
+	# 8) ATSPI2 for the accessibility bridge. FindATSPI2.cmake is pkg-config-ONLY
+	#    (pkg_check_modules atspi-2, no find_library fallback), but Qt's pkg_config feature is OFF
+	#    in this cross build (everything else uses find_library), so ATSPI2_FOUND is always 0 and
+	#    FEATURE_accessibility_atspi_bridge can't enable. Replace the module with a synthesized
+	#    INTERFACE target built from the staged at-spi2-core-dev headers — the Qt AT-SPI bridge is a
+	#    pure QtDBus adaptor (Gui pulls PkgConfig::ATSPI2 include dirs only, never links libatspi).
+	printf '%s\n' \
+		'if(NOT TARGET PkgConfig::ATSPI2)' \
+		'  add_library(PkgConfig::ATSPI2 INTERFACE IMPORTED)' \
+		'  set_target_properties(PkgConfig::ATSPI2 PROPERTIES INTERFACE_INCLUDE_DIRECTORIES' \
+		'    "$(QT_SYSROOT)/include/at-spi-2.0;$(QT_SYSROOT)/include/dbus-1.0;$(QT_SYSROOT)/lib/dbus-1.0/include;$(QT_SYSROOT)/include/glib-2.0;$(QT_SYSROOT)/lib/glib-2.0/include;$(QT_SYSROOT)/include")' \
+		'endif()' \
+		'set(ATSPI2_FOUND 1)' > $(BUILD_WORK)/qtbase/cmake/FindATSPI2.cmake
 
 ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:
@@ -192,8 +224,6 @@ qtbase: qtbase-setup
 		-DINPUT_openssl=no \
 		-DFEATURE_dbus=ON \
 		-DFEATURE_xkbcommon=ON \
-		-DXKB_INCLUDE_DIR=$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
-		-DXKB_LIBRARY=$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libxkbcommon.dylib \
 		-DFEATURE_accessibility=ON \
 		-DFEATURE_accessibility_atspi_bridge=ON \
 		-DFEATURE_glib=OFF \
