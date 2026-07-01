@@ -65,7 +65,9 @@ mozjs-jit: mozjs-jit-setup
 		python3 ./mach build
 	# Stage obj/dist/{bin,include} (mach install isn't a thing for --enable-project=js).
 	mkdir -p $(BUILD_STAGE)/mozjs-jit$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib,include,bin,lib/pkgconfig}
-	cp -a $(MOZJSJIT_WORK)/obj/dist/bin/libmozjs-115*.dylib $(BUILD_STAGE)/mozjs-jit$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
+	# -aL: obj/dist/bin/libmozjs-115.dylib is a SYMLINK into obj/js/src/build; dereference it so
+	# the packaged deb ships the real Mach-O, not a build-tree-relative dangling symlink.
+	cp -aL $(MOZJSJIT_WORK)/obj/dist/bin/libmozjs-115*.dylib $(BUILD_STAGE)/mozjs-jit$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
 	# -aL DEREFERENCES the dist/include symlink tree so the -dev deb is self-contained.
 	cp -aL $(MOZJSJIT_WORK)/obj/dist/include/. $(BUILD_STAGE)/mozjs-jit$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
 	-cp -a $(MOZJSJIT_WORK)/obj/dist/bin/js-config $(BUILD_STAGE)/mozjs-jit$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/ 2>/dev/null
