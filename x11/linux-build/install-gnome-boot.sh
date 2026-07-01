@@ -116,8 +116,25 @@ if ! ls p11-kit-1-dev_*_iphoneos-arm64.deb >/dev/null 2>&1; then
   apt-get download p11-kit-1-dev 2>/dev/null || echo "   (p11-kit-1-dev not fetched — grab it before the gir batch, or gtk4-gpu meson-routes gck/gcr)"
 fi
 
-echo "==> installing the boot debs in dependency order (dpkg -i is idempotent — safe to re-run)"
-dpkg -i $DEBS
+# CONFLICT 1 (PulseAudio): the device may carry audio-desktop's libpulse-simple-xios0 (the
+# CoreAudio-server client shim), which package-Conflicts the full libpulse0. gnome-shell + gsd
+# need the FULL libpulse0 (gvc volume control), not the simple shim — and libpulse0 is declared
+# to supersede it (Provides: libpulse-simple0, Conflicts+Replaces libpulse-simple-xios0). So
+# remove the shim first; anything that linked libpulse-simple0 still resolves via libpulse0.
+if dpkg -s libpulse-simple-xios0 >/dev/null 2>&1; then
+  echo "==> removing libpulse-simple-xios0 (superseded by the full libpulse0 for gvc/gnome-shell)"
+  dpkg -r libpulse-simple-xios0 || echo "   (blocked — a package Depends it; coordinate with audio-desktop before proceeding)"
+fi
+
+# CONFLICT 2 (icon themes): hicolor-icon-theme + adwaita-icon-theme (hard deps of libgtk-3-0)
+# ship index.theme files that xios-desktop-defaults 1.1.1 also carries. The icon-theme packages
+# are the canonical owners of those files, and xios's theming is applied via gsettings overrides
+# (not by owning index.theme), so --force-overwrite is safe here. FOLLOW-UP: xios-desktop-defaults
+# should Replaces: hicolor-icon-theme, adwaita-icon-theme (or stop shipping those files) to make
+# this clean without the flag; tracked separately.
+echo "==> installing the boot debs in dependency order (--force-overwrite for the icon-theme file"
+echo "    conflict with xios-desktop-defaults; dpkg -i is idempotent — safe to re-run)"
+dpkg -i --force-overwrite $DEBS
 echo "==> boot set installed."
 echo "==> Phase 2 (gir scan prereq): dpkg -i \$GIR_DEV_DEBS  — the 14 -dev debs + p11-kit-1-dev;"
 echo "    then gtk4-gpu runs the closure scan (GDesktopEnums-3.0 is meson-routed, not a deb)."
