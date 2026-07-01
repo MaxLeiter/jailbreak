@@ -6,6 +6,7 @@
  * and sampled while rendering into the output IOSurface's FBO — no memcpy.
  */
 #include "iosc_gl.h"
+#include "xios_egl.h"           /* shared ANGLE-Metal EGL + IOSurface plumbing (job 1) */
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -16,19 +17,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef EGL_PLATFORM_ANGLE_ANGLE
-#define EGL_PLATFORM_ANGLE_ANGLE            0x3202
-#define EGL_PLATFORM_ANGLE_TYPE_ANGLE       0x3203
-#endif
-#ifndef EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE
-#define EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE 0x3489
-#endif
-#ifndef EGL_IOSURFACE_ANGLE
-#define EGL_IOSURFACE_ANGLE                 0x3454
-#define EGL_IOSURFACE_PLANE_ANGLE           0x345A
-#define EGL_TEXTURE_TYPE_ANGLE              0x345C
-#define EGL_TEXTURE_INTERNAL_FORMAT_ANGLE   0x345D
-#endif
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT                         0x80E1
 #endif
@@ -38,9 +26,9 @@
 static int s_ok = 0;
 static int s_ow = 0, s_oh = 0;
 
+/* The display/config/context live in xios_egl (shared); iosc_gl caches the display
+ * only for the one eglMakeCurrent in init. */
 static EGLDisplay s_dpy = EGL_NO_DISPLAY;
-static EGLContext s_ctx = EGL_NO_CONTEXT;
-static EGLConfig  s_config;
 static EGLSurface s_out_pb = EGL_NO_SURFACE;   /* pbuffer bound to output IOSurface */
 static GLuint     s_out_tex = 0;               /* output IOSurface as a GL texture   */
 static GLuint     s_fbo = 0;                   /* renders into s_out_tex             */
@@ -66,45 +54,14 @@ static GLuint compile(GLenum type, const char *src)
     return s;
 }
 
-/* Create an ANGLE pbuffer wrapping a BGRA IOSurface (no GL calls — safe before a
- * context is current). */
-static EGLSurface create_iosurface_pbuffer(void *iosurface, int w, int h)
-{
-    const EGLint attrs[] = {
-        EGL_WIDTH, w, EGL_HEIGHT, h,
-        EGL_IOSURFACE_PLANE_ANGLE, 0,
-        EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
-        EGL_TEXTURE_INTERNAL_FORMAT_ANGLE, GL_BGRA_EXT,
-        EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
-        EGL_TEXTURE_TYPE_ANGLE, GL_UNSIGNED_BYTE,
-        EGL_NONE };
-    EGLSurface pb = eglCreatePbufferFromClientBuffer(s_dpy, EGL_IOSURFACE_ANGLE,
-                        (EGLClientBuffer) iosurface, s_config, attrs);
-    if (pb == EGL_NO_SURFACE)
-        fprintf(stderr, "iosc_gl: pbuffer from IOSurface failed 0x%x\n", eglGetError());
-    return pb;
-}
-
-/* Bind a pbuffer's IOSurface to a fresh GL_TEXTURE_2D (requires a current context). */
-static GLuint bind_pbuffer_texture(EGLSurface pb)
-{
-    GLuint tex = 0; glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    eglBindTexImage(s_dpy, pb, EGL_BACK_BUFFER);
-    return tex;
-}
-
-/* Make an ANGLE pbuffer + bound GL texture (context must be current). */
+/* Make an ANGLE pbuffer + bound GL texture (context must be current). The EGL
+ * mechanics live in xios_egl (shared with the Mutter backend). */
 static int make_iosurface_tex_wh(void *iosurface, int w, int h,
                                  EGLSurface *out_pb, GLuint *out_tex)
 {
-    EGLSurface pb = create_iosurface_pbuffer(iosurface, w, h);
+    EGLSurface pb = xios_egl_create_iosurface_pbuffer(iosurface, w, h);
     if (pb == EGL_NO_SURFACE) return -1;
-    *out_pb = pb; *out_tex = bind_pbuffer_texture(pb);
+    *out_pb = pb; *out_tex = xios_egl_bind_pbuffer_texture(pb);
     return 0;
 }
 
@@ -130,38 +87,22 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
 {
     s_ow = w; s_oh = h;
 
-    EGLDisplay (*getPlatformDisplay)(EGLenum, void *, const EGLint *) =
-        (void *) eglGetProcAddress("eglGetPlatformDisplayEXT");
-    if (!getPlatformDisplay) { fprintf(stderr, "iosc_gl: no eglGetPlatformDisplayEXT\n"); return -1; }
-    const EGLint da[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
-    s_dpy = getPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, da);
-    if (s_dpy == EGL_NO_DISPLAY) { fprintf(stderr, "iosc_gl: getPlatformDisplay failed\n"); return -1; }
-    EGLint maj = 0, min = 0;
-    if (!eglInitialize(s_dpy, &maj, &min)) { fprintf(stderr, "iosc_gl: eglInitialize failed\n"); return -1; }
-
-    const EGLint cfg[] = {
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-        EGL_BIND_TO_TEXTURE_RGBA, EGL_TRUE,
-        EGL_NONE };
-    EGLint n = 0;
-    if (!eglChooseConfig(s_dpy, cfg, &s_config, 1, &n) || n == 0) {
-        fprintf(stderr, "iosc_gl: eglChooseConfig failed\n"); return -1; }
-
-    const EGLint ca[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
-    s_ctx = eglCreateContext(s_dpy, s_config, EGL_NO_CONTEXT, ca);
-    if (s_ctx == EGL_NO_CONTEXT) { fprintf(stderr, "iosc_gl: eglCreateContext failed\n"); return -1; }
+    /* The ANGLE-Metal display / config / ES2 context now come from xios_egl (the
+     * shared glue). Same bring-up as before, just factored out. */
+    s_dpy = xios_egl_display();
+    if (s_dpy == EGL_NO_DISPLAY) { fprintf(stderr, "iosc_gl: xios_egl_display failed\n"); return -1; }
+    EGLContext ctx = xios_egl_context(2);
+    if (ctx == EGL_NO_CONTEXT) { fprintf(stderr, "iosc_gl: xios_egl_context failed\n"); return -1; }
 
     /* The output IOSurface as a render target. Create the pbuffer FIRST, make the
      * context current on it, THEN create the GL texture + FBO (GL calls need a
      * current context, so this ordering matters). */
-    s_out_pb = create_iosurface_pbuffer(output_iosurface, w, h);
+    s_out_pb = xios_egl_create_iosurface_pbuffer(output_iosurface, w, h);
     if (s_out_pb == EGL_NO_SURFACE) return -1;
-    if (!eglMakeCurrent(s_dpy, s_out_pb, s_out_pb, s_ctx)) {
+    if (!eglMakeCurrent(s_dpy, s_out_pb, s_out_pb, ctx)) {
         fprintf(stderr, "iosc_gl: eglMakeCurrent failed 0x%x\n", eglGetError()); return -1; }
     fprintf(stderr, "iosc_gl: GL_RENDERER=%s\n", glGetString(GL_RENDERER));
-    s_out_tex = bind_pbuffer_texture(s_out_pb);
+    s_out_tex = xios_egl_bind_pbuffer_texture(s_out_pb);
 
     glGenFramebuffers(1, &s_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
@@ -310,10 +251,7 @@ void iosc_gl_forget_iosurface(void *client_iosurface)
 {
     for (int i = 0; i < MAXBUF; i++) {
         if (s_cache[i].surf == client_iosurface) {
-            if (s_cache[i].pb != EGL_NO_SURFACE) {
-                eglReleaseTexImage(s_dpy, s_cache[i].pb, EGL_BACK_BUFFER);
-                eglDestroySurface(s_dpy, s_cache[i].pb);
-            }
+            xios_egl_destroy_pbuffer(s_cache[i].pb);
             if (s_cache[i].tex) glDeleteTextures(1, &s_cache[i].tex);
             s_cache[i].surf = NULL; s_cache[i].pb = EGL_NO_SURFACE; s_cache[i].tex = 0;
             return;

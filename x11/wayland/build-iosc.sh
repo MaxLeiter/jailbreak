@@ -125,6 +125,7 @@ echo "==> [5/5] cross-compile"
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
     "$X11/wayland/iosc_gl.c" \
+    "$X11/wayland/xios_egl.c" \
     "$X11/wayland/iosc_input.c" \
     "$GEN/xdg-shell-protocol.c" \
     "$GEN/xdg-decoration-unstable-v1-protocol.c" \
