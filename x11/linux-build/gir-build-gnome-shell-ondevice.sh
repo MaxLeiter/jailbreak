@@ -9,6 +9,12 @@
 # on-device): EDS stays patched out, and the gir blocks are gated on
 # `not meson.is_cross_build()` — a native build takes the gir path automatically.
 #
+# BOOT SIBLING: gnome-shell's panel boot ALSO statically imports gi://AccountsService, which
+# is a standalone lib OUTSIDE this tree — its typelib is NOT produced here. Run
+# gir-build-accountsservice-ondevice.sh as well (same on-device pattern) or the shell crashes
+# building the top panel even with St/Shell present. (Watch for other runtime-only gi://
+# imports in the session layer; each standalone lib needs its own on-device scan.)
+#
 # PREREQUISITES on the device (install via main's device window first):
 #   1. The gnome-shell chain runtime+dev debs: libmutter-14-0/-dev, gjs/libgjs0/-dev,
 #      at-spi2-core(+libatspi2.0-0/libatk-bridge2.0-0)/-dev, libgcr-4-4/gcr4-dev,
