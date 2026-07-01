@@ -28,6 +28,12 @@ DEB_QTBASE_V   ?= $(QTBASE_VERSION)
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
 QT_HOST_CMAKE_DIR := $(QT_HOST_PATH)/lib/cmake
 
+# iOS stand-ins for the frameworks the disabled CONDITION-MACOS blocks would have linked
+# (CoreServices/MobileCoreServices carry UTType*, Security; UIKit for qcore_mac.mm's Q_OS_IOS
+# UIApplication refs). Injected into EVERY dylib/plugin/exe link via *_LINKER_FLAGS — they all
+# live in the dyld shared cache, so linking them where unused costs nothing.
+QTBASE_IOS_FRAMEWORKS := -framework UIKit -framework CoreServices -framework MobileCoreServices -framework Security
+
 qtbase-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.qt.io/archive/qt/$(QT_MINOR)/$(QTBASE_VERSION)/submodules/qtbase-everywhere-src-$(QTBASE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,qtbase-everywhere-src-$(QTBASE_VERSION).tar.xz,qtbase-everywhere-src-$(QTBASE_VERSION),qtbase)
@@ -73,6 +79,20 @@ qtbase-setup: setup
 	#    the next make. Nothing in the Qt stack needs the staged copies.
 	rm -rf $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/xpc
 	rm -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/os/log.h
+	# 5) re-add the Darwin-GENERIC pieces the MACOS-block disable (patch 2) also dropped:
+	#    qcollator_macx.cpp (upstream CONDITION "MACOS AND NOT QT_FEATURE_icu" — but it is pure
+	#    CoreFoundation, fine on iOS, and with ICU off Core would otherwise have NO collator impl)
+	#    and the kqueue filesystem watcher (qfilesystemwatcher.cpp's Darwin engine chooser calls
+	#    it; the fsevents alternative is genuinely macOS-only). The frameworks the dropped MACOS
+	#    LIBRARIES block carried (CoreServices for UTType*, Security) plus UIKit (qcore_mac.mm's
+	#    Q_OS_IOS path references UIApplication) are injected globally via *_LINKER_FLAGS below.
+	if ! grep -q "xios iOS re-adds" $(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt; then \
+		printf '%s\n' \
+			'# xios iOS re-adds (see qtbase.mk patch 5)' \
+			'qt_internal_extend_target(Core' \
+			'    SOURCES text/qcollator_macx.cpp io/qfilesystemwatcher_kqueue.cpp io/qfilesystemwatcher_kqueue_p.h' \
+			')' >> $(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt ; \
+	fi
 
 ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:
@@ -106,6 +126,9 @@ qtbase: qtbase-setup
 		-DCMAKE_OBJC_FLAGS="$(CFLAGS)" \
 		-DCMAKE_CXX_FLAGS="$(CXXFLAGS) -include $(BUILD_WORK)/qtbase/qt-ios-iosexec-fixup.h" \
 		-DCMAKE_OBJCXX_FLAGS="$(CXXFLAGS) -include $(BUILD_WORK)/qtbase/qt-ios-iosexec-fixup.h" \
+		-DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) $(QTBASE_IOS_FRAMEWORKS)" \
+		-DCMAKE_MODULE_LINKER_FLAGS="$(LDFLAGS) $(QTBASE_IOS_FRAMEWORKS)" \
+		-DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS) $(QTBASE_IOS_FRAMEWORKS)" \
 		-DQT_HOST_PATH=$(QT_HOST_PATH) \
 		-DQT_HOST_PATH_CMAKE_DIR=$(QT_HOST_CMAKE_DIR) \
 		-DBUILD_SHARED_LIBS=ON \
