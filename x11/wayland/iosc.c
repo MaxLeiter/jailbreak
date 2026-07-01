@@ -229,6 +229,33 @@ static struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
 static struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
 static struct iosc_surface *g_cursor_surface;
 static int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
+
+/* Drag-and-drop (wl_data_device.start_drag). While a drag is active the source
+ * client holds an implicit pointer grab, and the pointer drives wl_data_device
+ * enter/leave/motion/drop to the destination under the cursor (not normal
+ * wl_pointer events). The offer handed to the destination forwards
+ * accept/receive/finish straight to the source, so bytes stream source->dest
+ * over a pipe with no compositor copy. Full impl lives with the data-device
+ * code; these are forward-declared for handle_motion/handle_button + unmap. */
+struct iosc_dnd {
+    int                  active;
+    struct wl_resource  *source;         /* wl_data_source (NULL: icon-only drag) */
+    struct wl_listener   source_destroy; /* cancel the drag if the source dies */
+    struct iosc_surface *origin;
+    struct wl_client    *origin_client;
+    struct iosc_surface *icon;           /* drag icon surface (follows the pointer) */
+    struct iosc_surface *focus;          /* destination surface under the pointer */
+    struct wl_resource  *offer;          /* wl_data_offer handed to focus's client */
+    int                  target_accepted;/* dest called accept(mime != NULL) */
+    uint32_t             action;         /* negotiated dnd action */
+};
+static struct iosc_dnd g_dnd;
+static void dnd_update_motion(int x, int y, uint32_t t);
+static void dnd_drop(void);
+static void dnd_end(void);
+/* start_drag is only honored against the serial of a still-held button press. */
+static uint32_t g_button_serial;
+static int g_button_down;
 enum iosc_interactive_op { IOSC_INTERACTIVE_NONE, IOSC_INTERACTIVE_MOVE, IOSC_INTERACTIVE_RESIZE };
 static enum iosc_interactive_op g_interactive_op;
 static struct iosc_surface *g_interactive_surface;
@@ -882,6 +909,12 @@ static void recomposite_all(void)
         iosc_gl_begin();   /* clears the output to black (desktop background) */
         for (int i = 0; i < g_nmapped; i++)
             composite_one(g_mapped[i]);
+        /* Drag icon rides above the windows, just under the cursor (blended). */
+        if (g_dnd.active && g_dnd.icon && g_dnd.icon->current_buffer) {
+            iosc_gl_begin_cursor();
+            composite_surface_at(g_dnd.icon, g_cursor_x, g_cursor_y);
+            iosc_gl_end_cursor();
+        }
         composite_cursor();
         uint32_t center = iosc_gl_end();
         xios_notify_dirty();
@@ -1149,6 +1182,17 @@ static void surface_map(struct iosc_surface *s)
 }
 static void surface_unmap(struct iosc_surface *s)
 {
+    /* A surface leaving mid-drag: a gone destination just drops the drag focus; a
+     * gone origin/icon cancels the whole drag. Checked before the mapped gate
+     * because the drag icon never maps yet still funnels through here from
+     * surface_resource_destroy. */
+    if (g_dnd.active) {
+        if (g_dnd.focus == s) { g_dnd.focus = NULL; g_dnd.offer = NULL; g_dnd.target_accepted = 0; }
+        if (g_dnd.origin == s || g_dnd.icon == s) {
+            if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
+            dnd_end();
+        }
+    }
     if (!s->mapped) return;
     if (s->role == IOSC_ROLE_TOPLEVEL)
         ftl_toplevel_closed(s);        /* remove from taskbar/foreign-toplevel clients */
@@ -3082,6 +3126,13 @@ static void handle_motion(int x, int y)
     int moved = (x != g_cursor_x || y != g_cursor_y);
     g_cursor_x = x;
     g_cursor_y = y;
+    /* An active drag drives wl_data_device (enter/motion/leave) + the drag icon,
+     * not normal wl_pointer events. */
+    if (g_dnd.active) {
+        dnd_update_motion(x, y, now_ms());
+        if (moved) recomposite_all();          /* move the drag icon */
+        return;
+    }
     if (g_interactive_op != IOSC_INTERACTIVE_NONE) {
         interactive_update(x, y);
         return;
@@ -3147,6 +3198,13 @@ static void handle_button(int btn, int down)
 {
     (void)btn;
     idle_note_activity();
+    g_button_down = down;
+    /* During a drag the button is owned by the grab: releasing it performs the
+     * drop (or cancels); a press is swallowed. */
+    if (g_dnd.active) {
+        if (!down) dnd_drop();
+        return;
+    }
     if (!down && g_interactive_op != IOSC_INTERACTIVE_NONE) {
         interactive_end();
         return;
@@ -3168,6 +3226,7 @@ static void handle_button(int btn, int down)
     struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
     uint32_t serial = wl_display_next_serial(g_display);
     uint32_t t = now_ms();
+    if (down) g_button_serial = serial;
     for (int i = 0; i < g_nptr; i++)
         if (wl_resource_get_client(g_ptr[i]) == fc)
             wl_pointer_send_button(g_ptr[i], serial, t, BTN_LEFT,
@@ -3314,7 +3373,7 @@ static void subcompositor_bind(struct wl_client *client, void *data, uint32_t ve
 #define IOSC_CLIP_MAX (1024u * 1024u)
 #define IOSC_MAX_DATA_DEVICES 32
 #define IOSC_MAX_CLIP_CLIENTS 4
-#define IOSC_MAX_CLIP_MIMES 8
+#define IOSC_MAX_CLIP_MIMES 16   /* DnD sources offer many type variants */
 
 struct iosc_clip_msg {
     uint32_t type;
@@ -3335,6 +3394,7 @@ struct iosc_data_source {
     struct wl_resource *resource;
     char *mimes[IOSC_MAX_CLIP_MIMES];
     int nmimes;
+    uint32_t actions;    /* dnd actions from wl_data_source.set_actions (v3) */
 };
 
 struct iosc_data_device {
@@ -3604,7 +3664,9 @@ static void data_offer_resource_destroy(struct wl_resource *r)
 static void data_source_offer(struct wl_client *c, struct wl_resource *r, const char *m)
 { (void)c;
     struct iosc_data_source *s = wl_resource_get_user_data(r);
-    if (!s || !is_clip_mime(m) || s->nmimes >= IOSC_MAX_CLIP_MIMES) return;
+    /* Store any mime (DnD carries arbitrary drag types); the clipboard bridge stays
+     * gated by clip_item_set, so relaxing this only affects what DnD can offer. */
+    if (!s || !m || s->nmimes >= IOSC_MAX_CLIP_MIMES) return;
     for (int i = 0; i < s->nmimes; i++)
         if (!strcmp(s->mimes[i], m)) return;
     char *copy = strdup(m);
@@ -3615,7 +3677,10 @@ static void data_source_offer(struct wl_client *c, struct wl_resource *r, const 
 static void data_source_destroy(struct wl_client *c, struct wl_resource *r)
 { (void)c; wl_resource_destroy(r); }
 static void data_source_set_actions(struct wl_client *c, struct wl_resource *r, uint32_t a)
-{ (void)c; (void)r; (void)a; }
+{ (void)c;
+    struct iosc_data_source *s = wl_resource_get_user_data(r);
+    if (s) s->actions = a;
+}
 
 static const struct wl_data_source_interface data_source_impl = {
     .offer = data_source_offer,
@@ -3677,9 +3742,285 @@ static int source_readable(int fd, uint32_t mask, void *data)
     return 0;
 }
 
+/* ---- drag-and-drop (wl_data_device.start_drag) ----------------------------
+ * Unlike the clipboard offers above (which snapshot the data in the compositor),
+ * a DnD offer FORWARDS every request to the live drag source: accept -> target,
+ * receive -> send (the pipe fd passes straight through, bytes never touch the
+ * compositor), finish -> dnd_finished. The offer keeps its own source pointer +
+ * destroy listener so a post-drop receive/finish still works after the grab (and
+ * g_dnd) is long gone. */
+
+struct iosc_dnd_offer {
+    struct wl_resource *resource;
+    struct wl_resource *source;        /* wl_data_source; NULL once the source dies */
+    struct wl_listener  source_destroy;
+    int dropped;                       /* drop was delivered through this offer */
+    int finished;                      /* destination called wl_data_offer.finish */
+};
+
+static void dnd_offer_source_destroyed(struct wl_listener *l, void *data)
+{ (void)data;
+    struct iosc_dnd_offer *o = wl_container_of(l, o, source_destroy);
+    o->source = NULL;   /* the signal's list dies with the resource; just unlink us */
+}
+
+/* v<3 sources never call set_actions; treat them as plain copy so v3
+ * destinations still negotiate a non-none action. */
+static uint32_t dnd_source_actions_of(struct wl_resource *src)
+{
+    struct iosc_data_source *s = src ? wl_resource_get_user_data(src) : NULL;
+    uint32_t a = s ? s->actions : 0;
+    return a ? a : WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY;
+}
+
+static void dnd_offer_accept(struct wl_client *c, struct wl_resource *r,
+                             uint32_t serial, const char *mime)
+{ (void)c; (void)serial;
+    struct iosc_dnd_offer *o = wl_resource_get_user_data(r);
+    if (!o) return;
+    if (o->source) wl_data_source_send_target(o->source, mime);
+    if (g_dnd.active && g_dnd.offer == r) g_dnd.target_accepted = mime != NULL;
+}
+
+static void dnd_offer_receive(struct wl_client *c, struct wl_resource *r,
+                              const char *mime, int fd)
+{ (void)c;
+    struct iosc_dnd_offer *o = wl_resource_get_user_data(r);
+    if (o && o->source) wl_data_source_send_send(o->source, mime, fd);
+    close(fd);   /* our copy; the source client got a dup through the wire */
+}
+
+static void dnd_offer_destroy_req(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+
+static void dnd_offer_finish(struct wl_client *c, struct wl_resource *r)
+{ (void)c;
+    struct iosc_dnd_offer *o = wl_resource_get_user_data(r);
+    if (!o || !o->dropped || o->finished) return;
+    o->finished = 1;
+    if (o->source && wl_resource_get_version(o->source) >= WL_DATA_SOURCE_DND_FINISHED_SINCE_VERSION)
+        wl_data_source_send_dnd_finished(o->source);
+    fprintf(stderr, "iosc: dnd finished\n");
+}
+
+static void dnd_offer_set_actions(struct wl_client *c, struct wl_resource *r,
+                                  uint32_t actions, uint32_t preferred)
+{ (void)c;
+    struct iosc_dnd_offer *o = wl_resource_get_user_data(r);
+    if (!o) return;
+    uint32_t both = dnd_source_actions_of(o->source) & actions;
+    uint32_t chosen = 0;
+    if (preferred & both)                                      chosen = preferred;
+    else if (both & WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY)    chosen = WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY;
+    else if (both & WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE)    chosen = WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE;
+    else if (both & WL_DATA_DEVICE_MANAGER_DND_ACTION_ASK)     chosen = WL_DATA_DEVICE_MANAGER_DND_ACTION_ASK;
+    if (g_dnd.active && g_dnd.offer == r) g_dnd.action = chosen;
+    if (wl_resource_get_version(r) >= WL_DATA_OFFER_ACTION_SINCE_VERSION)
+        wl_data_offer_send_action(r, chosen);
+    if (o->source && wl_resource_get_version(o->source) >= WL_DATA_SOURCE_ACTION_SINCE_VERSION)
+        wl_data_source_send_action(o->source, chosen);
+}
+
+static const struct wl_data_offer_interface dnd_offer_impl = {
+    .accept = dnd_offer_accept,
+    .receive = dnd_offer_receive,
+    .destroy = dnd_offer_destroy_req,
+    .finish = dnd_offer_finish,
+    .set_actions = dnd_offer_set_actions,
+};
+
+static void dnd_offer_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_dnd_offer *o = wl_resource_get_user_data(r);
+    if (!o) return;
+    if (g_dnd.active && g_dnd.offer == r) { g_dnd.offer = NULL; g_dnd.target_accepted = 0; }
+    if (o->source) {
+        /* Destroying a v3 offer post-drop without finish rejects the drop. */
+        if (o->dropped && !o->finished &&
+            wl_resource_get_version(o->source) >= WL_DATA_SOURCE_DND_FINISHED_SINCE_VERSION)
+            wl_data_source_send_cancelled(o->source);
+        wl_list_remove(&o->source_destroy.link);
+    }
+    free(o);
+}
+
+static struct iosc_data_device *data_device_for_client(struct wl_client *c)
+{
+    for (int i = 0; i < g_ndata_devices; i++)
+        if (g_data_devices[i] && g_data_devices[i]->client == c)
+            return g_data_devices[i];
+    return NULL;
+}
+
+static void dnd_focus_leave(void)
+{
+    if (g_dnd.focus) {
+        struct iosc_data_device *d =
+            data_device_for_client(wl_resource_get_client(g_dnd.focus->resource));
+        if (d) wl_data_device_send_leave(d->resource);
+    }
+    if (g_dnd.source && g_dnd.action &&
+        wl_resource_get_version(g_dnd.source) >= WL_DATA_SOURCE_ACTION_SINCE_VERSION)
+        wl_data_source_send_action(g_dnd.source, WL_DATA_DEVICE_MANAGER_DND_ACTION_NONE);
+    g_dnd.focus = NULL;
+    g_dnd.offer = NULL;   /* the destination client owns + destroys the object */
+    g_dnd.target_accepted = 0;
+    g_dnd.action = 0;
+}
+
+static void dnd_focus_enter(struct iosc_surface *hit, int x, int y)
+{
+    struct wl_client *dc = wl_resource_get_client(hit->resource);
+    struct iosc_data_device *d = data_device_for_client(dc);
+    g_dnd.focus = hit;
+    g_dnd.offer = NULL;
+    g_dnd.target_accepted = 0;
+    g_dnd.action = 0;
+    if (!d) return;                        /* no data device: surface can't accept */
+    struct wl_resource *offer = NULL;
+    if (g_dnd.source) {
+        struct iosc_data_source *s = wl_resource_get_user_data(g_dnd.source);
+        struct iosc_dnd_offer *o = calloc(1, sizeof(*o));
+        offer = wl_resource_create(dc, &wl_data_offer_interface,
+                                   wl_resource_get_version(d->resource), 0);
+        if (!offer || !o) { free(o); if (offer) wl_resource_destroy(offer); return; }
+        o->resource = offer;
+        o->source = g_dnd.source;
+        o->source_destroy.notify = dnd_offer_source_destroyed;
+        wl_resource_add_destroy_listener(g_dnd.source, &o->source_destroy);
+        wl_resource_set_implementation(offer, &dnd_offer_impl, o, dnd_offer_resource_destroy);
+        wl_data_device_send_data_offer(d->resource, offer);
+        if (s)
+            for (int i = 0; i < s->nmimes; i++)
+                wl_data_offer_send_offer(offer, s->mimes[i]);
+    }
+    g_dnd.offer = offer;
+    uint32_t serial = wl_display_next_serial(g_display);
+    wl_data_device_send_enter(d->resource, serial, hit->resource,
+                              wl_fixed_from_int(x - hit->dx),
+                              wl_fixed_from_int(y - hit->dy), offer);
+    if (offer && wl_resource_get_version(offer) >= WL_DATA_OFFER_SOURCE_ACTIONS_SINCE_VERSION)
+        wl_data_offer_send_source_actions(offer, dnd_source_actions_of(g_dnd.source));
+    fprintf(stderr, "iosc: dnd enter surface=%p offer=%p\n", (void *)hit, (void *)offer);
+}
+
+static void dnd_update_motion(int x, int y, uint32_t t)
+{
+    struct iosc_surface *hit = surface_at(x, y);
+    /* A NULL-source drag is client-internal by spec: only the origin client's
+     * surfaces see enter/leave/motion. */
+    if (hit && !g_dnd.source &&
+        wl_resource_get_client(hit->resource) != g_dnd.origin_client)
+        hit = NULL;
+    if (hit != g_dnd.focus) {
+        dnd_focus_leave();
+        if (hit) dnd_focus_enter(hit, x, y);
+        return;
+    }
+    if (hit) {
+        struct iosc_data_device *d =
+            data_device_for_client(wl_resource_get_client(hit->resource));
+        if (d) wl_data_device_send_motion(d->resource, t,
+                                          wl_fixed_from_int(x - hit->dx),
+                                          wl_fixed_from_int(y - hit->dy));
+    }
+}
+
+static void dnd_drop(void)
+{
+    struct iosc_data_device *d = g_dnd.focus ?
+        data_device_for_client(wl_resource_get_client(g_dnd.focus->resource)) : NULL;
+    struct iosc_dnd_offer *o = g_dnd.offer ? wl_resource_get_user_data(g_dnd.offer) : NULL;
+    /* A real drop needs a destination that accepted a mime and (for v3 offers) a
+     * non-none negotiated action; a NULL-source drag just needs a destination.
+     * Anything else cancels the source. */
+    int v3 = g_dnd.offer &&
+             wl_resource_get_version(g_dnd.offer) >= WL_DATA_OFFER_ACTION_SINCE_VERSION;
+    int ok = d && (!g_dnd.source ||
+                   (g_dnd.offer && g_dnd.target_accepted && (!v3 || g_dnd.action)));
+    if (ok) {
+        wl_data_device_send_drop(d->resource);
+        if (o) o->dropped = 1;
+        if (g_dnd.source &&
+            wl_resource_get_version(g_dnd.source) >= WL_DATA_SOURCE_DND_DROP_PERFORMED_SINCE_VERSION)
+            wl_data_source_send_dnd_drop_performed(g_dnd.source);
+        fprintf(stderr, "iosc: dnd drop on %p action=%u\n",
+                (void *)g_dnd.focus, g_dnd.action);
+    } else {
+        if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
+        if (d) wl_data_device_send_leave(d->resource);
+        fprintf(stderr, "iosc: dnd cancelled (accepted=%d action=%u)\n",
+                g_dnd.target_accepted, g_dnd.action);
+    }
+    dnd_end();
+}
+
+static void dnd_end(void)
+{
+    if (!g_dnd.active) return;
+    if (g_dnd.source) wl_list_remove(&g_dnd.source_destroy.link);
+    memset(&g_dnd, 0, sizeof(g_dnd));
+    /* Pointer focus was suppressed by the grab; the next motion re-enters (every
+     * input burst leads with a motion, so a follow-up tap self-heals too). */
+    g_ptr_focus = NULL;
+    recomposite_all();   /* erase the drag icon */
+}
+
+static void dnd_source_destroyed(struct wl_listener *l, void *data)
+{ (void)l; (void)data;
+    /* The live drag's source died mid-drag: cancel. Clear source FIRST so
+     * dnd_focus_leave/dnd_end neither message the dead resource nor unlink the
+     * listener from a list that is being torn down. */
+    g_dnd.source = NULL;
+    dnd_focus_leave();
+    dnd_end();
+    fprintf(stderr, "iosc: dnd source died; drag cancelled\n");
+}
+
 static void data_device_start_drag(struct wl_client *c, struct wl_resource *r, struct wl_resource *src,
                                    struct wl_resource *org, struct wl_resource *icon, uint32_t serial)
-{ (void)c; (void)r; (void)src; (void)org; (void)icon; (void)serial; }
+{
+    struct iosc_surface *origin = org ? wl_resource_get_user_data(org) : NULL;
+    if (!origin || g_dnd.active) return;
+    if (!g_button_down || serial != g_button_serial) {
+        fprintf(stderr, "iosc: start_drag ignored (stale serial %u)\n", serial);
+        return;
+    }
+    struct iosc_surface *ic = NULL;
+    if (icon) {
+        ic = wl_resource_get_user_data(icon);
+        if (ic && ic->role != IOSC_ROLE_NONE) {
+            wl_resource_post_error(r, WL_DATA_DEVICE_ERROR_ROLE,
+                                   "drag icon surface already has a role");
+            return;
+        }
+    }
+    memset(&g_dnd, 0, sizeof(g_dnd));
+    g_dnd.active = 1;
+    g_dnd.source = src;
+    g_dnd.origin = origin;
+    g_dnd.origin_client = c;
+    g_dnd.icon = ic;
+    if (src) {
+        g_dnd.source_destroy.notify = dnd_source_destroyed;
+        wl_resource_add_destroy_listener(src, &g_dnd.source_destroy);
+    }
+    /* The implicit grab takes the pointer away from its focus for the duration
+     * of the drag; wl_data_device events replace wl_pointer ones. */
+    if (g_ptr_focus) {
+        struct wl_client *oc = wl_resource_get_client(g_ptr_focus->resource);
+        uint32_t ls = wl_display_next_serial(g_display);
+        for (int i = 0; i < g_nptr; i++)
+            if (wl_resource_get_client(g_ptr[i]) == oc)
+                wl_pointer_send_leave(g_ptr[i], ls, g_ptr_focus->resource);
+        pointer_frame_client(oc);
+        g_ptr_focus = NULL;
+    }
+    fprintf(stderr, "iosc: drag started (source=%p icon=%p origin=%p)\n",
+            (void *)src, (void *)ic, (void *)origin);
+    dnd_update_motion(g_cursor_x, g_cursor_y, now_ms());
+    recomposite_all();   /* show the drag icon (if it has a buffer already) */
+}
 
 static void data_device_set_selection(struct wl_client *c, struct wl_resource *r,
                                       struct wl_resource *src, uint32_t serial)

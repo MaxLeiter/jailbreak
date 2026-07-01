@@ -253,6 +253,15 @@ $CC $CFLAGS $INCS \
     $RPATH -o /out/iosc-spb-test
 echo "   built /out/iosc-spb-test"
 
+# drag-and-drop test client: press-drag-release inside its window self-drops a
+# text/plain payload through the full data_device flow; --no-drag = pure target.
+$CC $CFLAGS $INCS \
+    "$X11/wayland/iosc-dnd-test.c" \
+    "$GEN/xdg-shell-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    $RPATH -o /out/iosc-dnd-test
+echo "   built /out/iosc-dnd-test"
+
 # screencopy test client: captures the whole output into wl_shm + prints a probe.
 $CC $CFLAGS $INCS \
     "$X11/wayland/iosc-screenshot-test.c" \
