@@ -1,0 +1,16 @@
+Package: gnome-settings-daemon
+Version: @DEB_GSD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-settings-daemon
+Depends: libglib2.0-0, libglib2.0-bin, libgtk-3-0, libgnome-desktop-4-2, gsettings-desktop-schemas, libnotify4, libpolkit-gobject-1-0, libpulse0, dbus, libgtkintl, libx11-6
+Description: GNOME settings daemon (minimal) for the Xios desktop
+ A minimal gnome-settings-daemon 46 for rootless iOS. Only the plugins that
+ apply to a Wayland tablet are built: a11y-settings, housekeeping, keyboard and
+ screensaver-proxy. The hardware/service plugins (power, color, datetime,
+ media-keys, sound, xsettings, sharing, print, rfkill, wwan, smartcard, wacom,
+ usb-protection) are dropped because iOS has no matching hardware, no systemd/
+ logind and no X11 display in the Wayland session. Started as child components by
+ gnome-session (classic path). See docs/gnome-session-plan.md.

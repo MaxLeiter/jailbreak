@@ -1,0 +1,12 @@
+Package: libnotify4
+Version: @DEB_LIBNOTIFY_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libnotify
+Depends: libglib2.0-0, libgdk-pixbuf-2.0-0
+Description: Desktop notification client library
+ libnotify sends desktop notifications to a org.freedesktop.Notifications daemon
+ (provided at runtime by gnome-shell). Built for rootless iOS; used by
+ gnome-settings-daemon and GNOME apps.

@@ -54,11 +54,13 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-# dconf first (session settings persistence; glib-only), then the session manager.
-# gnome-settings-daemon is added once its minimal dep set is patched in (separate step).
+# dconf (settings persistence; glib-only), the session manager, libnotify (gsd's one extra
+# dep), then the minimal gnome-settings-daemon.
 TARGETS="${TARGETS:-\
   dconf-package \
-  gnome-session-package}"
+  gnome-session-package \
+  libnotify-package \
+  gnome-settings-daemon-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"
@@ -67,7 +69,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in dconf gnome-session gnome-settings-daemon; do
+for pat in dconf gnome-session libnotify gnome-settings-daemon; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

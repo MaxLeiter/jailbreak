@@ -1,0 +1,10 @@
+Package: libnotify-dev
+Version: @DEB_LIBNOTIFY_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libnotify
+Depends: libnotify4 (= @DEB_LIBNOTIFY_V@), libglib2.0-dev, libgdk-pixbuf-2.0-dev
+Description: Desktop notification client library (development files)
+ Headers, pkg-config file and the unversioned dylib symlink for libnotify4.
