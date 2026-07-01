@@ -63,13 +63,21 @@ mozjs: mozjs-setup readline zlib
 		python3 ./mach configure && \
 		python3 ./mach build
 	# `mach install` isn't a command for --enable-project=js; the build already populates
-	# obj/dist/{bin,include}. Stage that as the install tree. (js-config + mozjs-115.pc are
-	# emitted under obj/js/src/build — copy if present.)
+	# obj/dist/{bin,include}. Stage that as the install tree.
 	mkdir -p $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib,include,bin,lib/pkgconfig}
 	cp -a $(BUILD_WORK)/mozjs/obj/dist/bin/libmozjs-115*.dylib $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
-	cp -a $(BUILD_WORK)/mozjs/obj/dist/include/* $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
+	# obj/dist/include is a tree of SYMLINKS into obj/ + the source tree; -aL DEREFERENCES
+	# them to real files so the -dev deb is self-contained (plain -a captured symlinks that
+	# dangle the moment build_work is cleaned — the on-device gir build then can't compile
+	# against gjs). The link targets exist now (fresh build tree), so this needs no extra vol.
+	cp -aL $(BUILD_WORK)/mozjs/obj/dist/include/. $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
 	-cp -a $(BUILD_WORK)/mozjs/obj/dist/bin/js-config $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/ 2>/dev/null
-	-find $(BUILD_WORK)/mozjs/obj -name 'mozjs-115.pc' -exec cp {} $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/ \; 2>/dev/null
+	# SpiderMonkey emits the pkg-config file as obj/js/src/build/js.pc (NOT mozjs-115.pc, which
+	# is why the old `find -name mozjs-115.pc` silently produced nothing). Rename it and retarget
+	# its prefix (js.pc ships prefix=/usr/local) so gjs-1.0.pc's Requires.private resolves.
+	sed 's|^prefix=.*|prefix=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)|' \
+		$(BUILD_WORK)/mozjs/obj/js/src/build/js.pc \
+		> $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/mozjs-115.pc
 	$(call AFTER_BUILD)
 endif
 
@@ -82,7 +90,8 @@ mozjs-package: mozjs-stage
 	cp -a $(BUILD_STAGE)/mozjs/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmozjs-115*.dylib \
 		$(BUILD_DIST)/libmozjs-115-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# dev: headers, js-config, .pc, static lib
+	# dev: real-file headers (deref'd at stage) + mozjs-115.pc + js-config. NO libjs_static.a
+	# (615MB, and nothing in the stack links it — gjs/consumers use libmozjs-115.dylib).
 	cp -a $(BUILD_STAGE)/mozjs/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libmozjs-115-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/mozjs/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \

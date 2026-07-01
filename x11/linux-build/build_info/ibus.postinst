@@ -1,0 +1,13 @@
+#!/bin/sh
+# ibus ships org.freedesktop.ibus.gschema.xml; GNOME Shell reads those settings at
+# startup, and GSettings aborts on uncompiled schemas.
+set -e
+
+SCHEMADIR="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/share/glib-2.0/schemas"
+GLIB_COMPILE_SCHEMAS="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/bin/glib-compile-schemas"
+
+if [ -d "$SCHEMADIR" ] && [ -x "$GLIB_COMPILE_SCHEMAS" ]; then
+    "$GLIB_COMPILE_SCHEMAS" "$SCHEMADIR" || true
+fi
+
+exit 0

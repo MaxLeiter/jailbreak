@@ -1,0 +1,11 @@
+Package: at-spi2-core
+Version: @DEB_ATSPI2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/at-spi2-core
+Depends: libatspi2.0-0, dbus
+Description: Assistive Technology Service Provider Interface - a11y bus
+ The AT-SPI accessibility bus: the bus launcher, the registry daemon and their
+ D-Bus service files. Built without X11 support for the Wayland session.

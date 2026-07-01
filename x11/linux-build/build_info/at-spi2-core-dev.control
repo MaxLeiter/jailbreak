@@ -1,0 +1,11 @@
+Package: at-spi2-core-dev
+Version: @DEB_ATSPI2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/at-spi2-core
+Depends: libatspi2.0-0, libatk-bridge2.0-0, libatk1.0-dev
+Description: Assistive Technology Service Provider Interface - development files
+ Headers, pkg-config files and unversioned library links for libatspi and the
+ ATK bridge. Needed on-device for the gnome-shell introspection build.

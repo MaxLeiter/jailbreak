@@ -1,0 +1,11 @@
+Package: libpolkit-agent-1-0
+Version: @DEB_POLKIT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/polkit/polkit
+Depends: libpolkit-gobject-1-0, libglib2.0-0
+Description: PolicyKit authentication agent API
+ Library for PolicyKit authentication agents. GNOME Shell links it for its
+ built-in agent; without a polkitd the agent simply never gets asked.

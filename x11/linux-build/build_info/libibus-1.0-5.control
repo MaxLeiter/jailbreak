@@ -1,0 +1,11 @@
+Package: libibus-1.0-5
+Version: @DEB_IBUS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/ibus/ibus
+Depends: libglib2.0-0
+Description: Intelligent Input Bus - client library
+ libibus is the GLib/GDBus client library for the IBus input method
+ framework. GNOME Shell links it for its input source handling.

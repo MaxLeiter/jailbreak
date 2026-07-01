@@ -1,0 +1,11 @@
+Package: gcr4-dev
+Version: @DEB_GCR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libgcr-4-4
+Description: GNOME crypto services library - development files
+ Headers, pkg-config files and unversioned library links for gcr-4 and gck-2.
+ Needed on-device for the gnome-shell introspection build.

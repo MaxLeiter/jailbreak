@@ -1,0 +1,11 @@
+Package: libibus-dev
+Version: @DEB_IBUS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/ibus/ibus
+Depends: libibus-1.0-5
+Description: Intelligent Input Bus - development files
+ Headers, pkg-config file and unversioned library link for libibus-1.0.
+ Needed on-device for the gnome-shell introspection build.

@@ -1,0 +1,12 @@
+Package: libgcr-4-4
+Version: @DEB_GCR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libglib2.0-0, libp11-kit0, libgcrypt20, libgpg-error0
+Description: GNOME crypto services library (gcr-4 and gck-2)
+ gcr provides certificate/key parsing and the system prompter interfaces used
+ by GNOME Shell for keyring prompts; gck wraps PKCS#11 modules. Built without
+ the GTK4 viewer widgets and without the ssh-agent.

@@ -1,0 +1,12 @@
+Package: libatspi2.0-0
+Version: @DEB_ATSPI2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/at-spi2-core
+Depends: libglib2.0-0, dbus
+Description: Assistive Technology Service Provider Interface - client library
+ libatspi is the D-Bus client library for the AT-SPI accessibility protocol.
+ Screen readers and other assistive tools use it to inspect and drive
+ applications.

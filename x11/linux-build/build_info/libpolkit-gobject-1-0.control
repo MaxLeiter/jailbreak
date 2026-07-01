@@ -1,0 +1,12 @@
+Package: libpolkit-gobject-1-0
+Version: @DEB_POLKIT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/polkit/polkit
+Depends: libglib2.0-0
+Description: PolicyKit authorization API
+ Client library for the polkit authority. Library-only build: there is no
+ polkitd on this system; the library is present so PolicyKit-aware programs
+ like GNOME Shell can load and run.

@@ -1,0 +1,12 @@
+Package: polkit-dev
+Version: @DEB_POLKIT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/polkit/polkit
+Depends: libpolkit-gobject-1-0, libpolkit-agent-1-0
+Description: PolicyKit libraries - development files
+ Headers, pkg-config files and unversioned library links for
+ polkit-gobject-1 and polkit-agent-1. Needed on-device for the gnome-shell
+ introspection build.

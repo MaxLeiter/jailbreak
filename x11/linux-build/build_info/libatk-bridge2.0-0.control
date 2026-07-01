@@ -1,0 +1,11 @@
+Package: libatk-bridge2.0-0
+Version: @DEB_ATSPI2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/at-spi2-core
+Depends: libatspi2.0-0, libatk1.0-0, libglib2.0-0, dbus
+Description: AT-SPI 2 toolkit bridge
+ The ATK to AT-SPI bridge exposes ATK-based toolkits (GTK 3, GNOME Shell's St)
+ on the AT-SPI accessibility bus.
