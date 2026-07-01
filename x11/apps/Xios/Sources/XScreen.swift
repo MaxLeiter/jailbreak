@@ -51,6 +51,9 @@ final class XScreenView: UIView {
     private weak var toolsButton: UIButton?
     private weak var pickerOverlay: UIView?
     private let requestPath = "/var/jb/tmp/xios-request.json"
+    private let sessionStatusPath = "/var/jb/tmp/xios-session-status.json"
+    private weak var sessionStatusLabel: UILabel?
+    private var sessionStatusTimer: Timer?
     private let debugPath = "/var/jb/tmp/xios-debug.txt"
     private var lastToolMessage = "No profile request sent"
     // UITextInputTraits — keep the keyboard literal so one tap is one char (no
@@ -701,6 +704,29 @@ final class XScreenView: UIView {
             lastToolMessage = "Wrote \(profile.detail)"
         } catch {
             lastToolMessage = "Request failed: \(error.localizedDescription)"
+        }
+        writeDebugSnapshot()
+    }
+
+    /// Pick a desktop flavor from the device: write a {"action":"session",...} request
+    /// to the shared xios-request.json channel that xios-sessiond watches (it ignores
+    /// non-"session" actions, so it coexists with display-profile requests). created_at
+    /// changes every write, so re-picking the same preset re-triggers.
+    private func writeSessionRequest(_ preset: String, app: String? = nil) {
+        var obj: [String: Any] = [
+            "action": "session",
+            "preset": preset,
+            "created_by": "Xios.app",
+            "created_at": ISO8601DateFormatter().string(from: Date()),
+        ]
+        if let app = app { obj["app"] = app }
+        do {
+            let data = try JSONSerialization.data(withJSONObject: obj,
+                                                  options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
+            lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
+        } catch {
+            lastToolMessage = "Session request failed: \(error.localizedDescription)"
         }
         writeDebugSnapshot()
     }
@@ -1573,11 +1599,16 @@ final class XScreenView: UIView {
         let zoomIn = chromeButton("+")
         zoomIn.addAction(UIAction { [weak self] _ in self?.zoomIn() }, for: .touchUpInside)
 
-        // Minimal chrome: zoom + the manual keyboard toggle only. The display picker
-        // (⊞ chip) and the dev Tools panel (⚙) are intentionally NOT surfaced as
-        // buttons — they read as debug/dev affordances. The picker stays reachable via
-        // the 3-finger tap below for power users; Tools is dev-only (no UI entry point).
-        let bar = UIStackView(arrangedSubviews: [zoomOut, zoom, zoomIn, kb])
+        // Desktop-flavor switcher (iosc / Mutter / GNOME / launch app / stop) — the
+        // headline "pick your desktop" control. Opens the session picker, which writes a
+        // session request the on-device xios-sessiond serves.
+        let session = chromeButton("⧉")
+        session.addAction(UIAction { [weak self] _ in self?.openSessionPicker() }, for: .touchUpInside)
+
+        // Minimal chrome: the desktop switcher + zoom + the manual keyboard toggle. The
+        // display picker (⊞ chip) and dev Tools panel (⚙) stay OFF the bar (debug/dev);
+        // the display picker is still reachable via the 3-finger tap below.
+        let bar = UIStackView(arrangedSubviews: [session, zoomOut, zoom, zoomIn, kb])
         bar.axis = .horizontal
         bar.spacing = 8
         bar.translatesAutoresizingMaskIntoConstraints = false
@@ -1642,6 +1673,87 @@ final class XScreenView: UIView {
     }
 
     @objc private func openPicker() { presentPicker(discoverDisplays()) }
+
+    @objc private func openSessionPicker() { presentSessionPicker() }
+
+    /// One-line "preset: state — message" from xios-sessiond's status file.
+    private func sessionStatusText() -> String {
+        guard let data = FileManager.default.contents(atPath: sessionStatusPath),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "No session started yet"
+        }
+        let preset = obj["preset"] as? String ?? "?"
+        let state = obj["state"] as? String ?? "?"
+        let msg = (obj["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return "\(preset): \(state)" + (msg.map { " — \($0)" } ?? "")
+    }
+
+    /// Refresh the picker's status line from the daemon's status file for ~16s after a
+    /// pick (so Max watches starting → up/error). Self-cancels when the card is closed.
+    private func startSessionStatusPoll() {
+        sessionStatusTimer?.invalidate()
+        sessionStatusLabel?.text = sessionStatusText()
+        var ticks = 0
+        sessionStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] t in
+            guard let self, self.pickerOverlay != nil, let label = self.sessionStatusLabel else {
+                t.invalidate(); return
+            }
+            label.text = self.sessionStatusText()
+            ticks += 1
+            if ticks >= 20 { t.invalidate() }
+        }
+    }
+
+    /// The desktop-flavor picker: tap a preset → writeSessionRequest → xios-sessiond
+    /// tears down + brings up the flavor; the status line reflects the result.
+    private func presentSessionPicker() {
+        let (overlay, card) = presentModalCard()
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(stack)
+
+        stack.addArrangedSubview(panelLabel("Desktop Session", size: 18, weight: .bold))
+        let status = panelLabel(sessionStatusText(), size: 12, color: UIColor(white: 0.72, alpha: 1))
+        stack.addArrangedSubview(status)
+        sessionStatusLabel = status
+        startSessionStatusPoll()
+
+        let pick: (String, String?) -> Void = { [weak self] preset, app in
+            self?.writeSessionRequest(preset, app: app)
+            self?.startSessionStatusPoll()
+        }
+
+        addSection("Switch desktop", to: stack)
+        for (label, preset) in [("iosc  ·  lightweight (works today)", "iosc"),
+                                ("Mutter  ·  raw compositor", "mutter"),
+                                ("GNOME Shell  ·  experimental", "gnome")] {
+            stack.addArrangedSubview(panelButton(label) { pick(preset, nil) })
+        }
+
+        addSection("Launch app (onto the running desktop)", to: stack)
+        stack.addArrangedSubview(buttonRow([
+            panelButton("+ Console")     { pick("app", "kgx") },
+            panelButton("+ Text Editor") { pick("app", "gnome-text-editor") },
+            panelButton("+ Calculator")  { pick("app", "gnome-calculator") },
+        ]))
+
+        stack.addArrangedSubview(panelButton("Stop  (back to SpringBoard)") { pick("stop", nil) })
+        stack.addArrangedSubview(pillButton("Close") { [weak self] in self?.dismissPicker() })
+
+        NSLayoutConstraint.activate([
+            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
+            card.widthAnchor.constraint(greaterThanOrEqualToConstant: 380),
+            card.widthAnchor.constraint(lessThanOrEqualToConstant: 500),
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18),
+        ])
+    }
 
     /// Build the dimmed full-screen overlay with a tap-to-dismiss backdrop and an
     /// empty centered card. Shared by the display picker and tools sheets; sets
