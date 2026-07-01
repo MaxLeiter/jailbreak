@@ -119,7 +119,6 @@ void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
 
 int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled) {
     if (s_fd < 0) return -1;
-    int got = 0;
     for (;;) {
         ssize_t r = read(s_fd, s_rx + s_rx_have, sizeof(s_rx) - (size_t)s_rx_have);
         if (r > 0) {
@@ -132,14 +131,17 @@ int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled)
                     if (hint) *hint = m.code;
                     if (purpose) *purpose = m.state;
                     if (enabled) *enabled = m.mods;
-                    got = 1;
+                    // One record per call: the auto-keyboard policy needs every
+                    // enable/disable transition, so a disable+enable pair queued
+                    // in the same tick must not coalesce into the newest values.
+                    return 1;
                 }
             }
             continue;
         }
         if (r == 0) { iosc_input_close(); return -1; }
         if (errno == EINTR) continue;
-        if (errno == EAGAIN || errno == EWOULDBLOCK) return got;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
         iosc_input_close();
         return -1;
     }

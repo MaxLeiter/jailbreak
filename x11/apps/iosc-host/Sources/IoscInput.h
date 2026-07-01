@@ -32,6 +32,9 @@ void iosc_input_text(iosc_input_t *h, const char *utf8);
 void iosc_input_touch(iosc_input_t *h, int slot, int phase, int x, int y);
 void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressure16,
                        int tilt_x_deg, int tilt_y_deg);
+/* Drain the server->app stream. Returns 1 with ONE TRAITS record's fields filled
+ * (call again for more; every enable/disable transition is delivered, nothing
+ * coalesces), 0 when no complete record is pending, -1 on disconnect. */
 int  iosc_input_poll_traits(iosc_input_t *h, unsigned *hint, unsigned *purpose, unsigned *enabled);
 
 #endif
