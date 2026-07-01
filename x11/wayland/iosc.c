@@ -4883,7 +4883,21 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
 }
 
 /* Push the current on-screen-keyboard traits to every connected app client. The
- * shared reader owns the client fds, so this goes through its broadcast path. */
+ * shared reader owns the client fds, so this goes through its broadcast path.
+ *
+ * CONTRACT (frozen — the auto-keyboard bridge's responder policy depends on it;
+ * see x11/docs/osk-plan.md). Do NOT "optimize" any of this without coordinating:
+ *  - Field packing is fixed: code=content_hint, state=content_purpose,
+ *    mods=enabled(0/1). The OSK bridge decodes exactly these.
+ *  - Broadcast on EVERY text_input.commit and every keyboard-focus change, even
+ *    when hint/purpose/enabled are unchanged. NO server-side dedupe: the repeat
+ *    broadcasts (e.g. caret-move commits in the same field) are the signal the app
+ *    uses to cancel its pending hide during same-field activity, and they are the
+ *    hook for the future v2 caret-rect record.
+ *  - New clients get a snapshot on connect (input_sock_readable), so a client that
+ *    connects mid-session learns the current field state without waiting for an edit.
+ * v2 (deferred): an additive XIOS_IN_CARET record with ti->rect_* in output px on
+ * the same commits, so the app can pan the focused field above the keyboard. */
 static void input_clients_send_traits(void)
 {
     struct iosc_text_input *ti = text_input_for_focus();
