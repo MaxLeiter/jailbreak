@@ -1,0 +1,11 @@
+Package: qt6-5compat-dev
+Version: @DEB_QT5COMPAT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-5compat (= @DEB_QT5COMPAT_V@), qt6-base-dev
+Description: Development files for the Qt 6 compatibility library
+ Headers and CMake package files for Qt6Core5Compat. Needed to cross-build
+ KDE Frameworks components such as KIO that still use QTextCodec.

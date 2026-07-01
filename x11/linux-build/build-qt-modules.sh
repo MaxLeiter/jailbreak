@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # build-qt-modules.sh — cross-build the Qt 6 MODULE layer on top of qtbase for rootless iOS,
-# OFF-DEVICE: qtshadertools -> qtdeclarative -> qtwayland -> qtsvg -> qtimageformats (ladder
+# OFF-DEVICE: qtshadertools -> qtdeclarative -> qt5compat -> qtwayland -> qtsvg -> qtimageformats (ladder
 # order matters: declarative needs shadertools' target cmake package from build_base).
 # Companion to build-qt.sh (qtbase); a SEPARATE script on purpose so it can be developed and
 # mounted without touching build-qt.sh while the qtbase build is in flight. Same volume rules:
@@ -11,7 +11,7 @@
 #     -v procursus-vol-qt:/work/Procursus \
 #     -v "$PWD/build-qt-modules.sh:/work/build-qt-modules.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
-#     -e TARGETS="qtshadertools qtdeclarative qtwayland qtsvg qtimageformats" \
+#     -e TARGETS="qtshadertools qtdeclarative qt5compat qtwayland qtsvg qtimageformats" \
 #     procursus-xbuild:bookworm-arm64 -c 'bash /work/build-qt-modules.sh' 2>&1 | tee qt-modules-build.log
 #
 # TWO-STAGE, like build-qt.sh. Stage 1 EXTENDS the host Qt (built by build-qt.sh stage 1)
@@ -28,7 +28,7 @@ QTVER=6.6.3
 QTMINOR=6.6
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
-TARGETS="${TARGETS:-qtshadertools qtdeclarative qtwayland qtsvg qtimageformats}"
+TARGETS="${TARGETS:-qtshadertools qtdeclarative qt5compat qtwayland qtsvg qtimageformats}"
 
 cd /work/Procursus
 
@@ -115,7 +115,7 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 # --- stage 2: Procursus cross builds (recipes + control files, then make <target>-package) ---
 echo "==> installing qt module recipes into makefiles/"
-for r in qt6-common.mk qtshadertools.mk qtdeclarative.mk qtwayland.mk qtsvg.mk qtimageformats.mk; do
+for r in qt6-common.mk qtshadertools.mk qtdeclarative.mk qt5compat.mk qtwayland.mk qtsvg.mk qtimageformats.mk; do
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 cp -v /work/build_info/qt6-*.control build_info/ 2>/dev/null || true

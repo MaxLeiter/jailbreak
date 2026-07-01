@@ -1,0 +1,15 @@
+Package: qt6-5compat
+Version: @DEB_QT5COMPAT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base, qt6-declarative
+Description: Qt 6 compatibility library for Qt 5 APIs on the Xios desktop
+ Qt5Compat carries APIs removed from Qt 6, most importantly QTextCodec and
+ the wide codec set, plus the Qt5Compat.GraphicalEffects QML module that
+ Plasma and Kirigami themes still use.
+ .
+ Required by KDE Frameworks (KIO) in the KDE Plasma Mobile flavor of the
+ Xios desktop.

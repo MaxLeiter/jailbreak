@@ -44,11 +44,24 @@ Done criteria: `qt6-base` + `qt6-base-dev` debs in `out/`, `Qt6Config.cmake` sta
    glslang/SPIRV-Cross, no new external deps.
 2. `qtdeclarative.mk` - QML + QtQuick, the big one. JIT off; QtQuick renders via the
    software scenegraph adaptation until Q4.
-3. `qtwayland.mk` - the wayland QPA, client only (`FEATURE_wayland_server=OFF`).
+3. `qt5compat.mk` - Qt6Core5Compat (QTextCodec) + `Qt5Compat.GraphicalEffects` QML
+   module. Added on the KF6 K0 audit: KIO 6.3 hard-requires Qt6Core5Compat, and KIO is
+   unavoidable in the KWin-enabling subset (libplasma + kglobalacceld pull it). After
+   qtdeclarative, not qtbase-only: the library needs only qtbase but the GraphicalEffects
+   QML module needs the target Qt6Qml/Quick packages + host qmlcachegen.
+4. `qtwayland.mk` - the wayland QPA, client only (`FEATURE_wayland_server=OFF`).
    Round 1 is wl_shm buffers; that still exercises xdg-shell, seats, clipboard, DnD
    against iosc.
-4. `qtsvg.mk` - Breeze icons and Plasma themes are SVG everywhere.
-5. `qtimageformats.mk` - tiff/webp (bundled), tga/icns/wbmp.
+5. `qtsvg.mk` - Breeze icons and Plasma themes are SVG everywhere.
+6. `qtimageformats.mk` - tiff/webp (bundled), tga/icns/wbmp.
+
+Later Qt modules the K0 audit flagged for the KWin/W layer (not KF6, so not built yet;
+tracked for the module set's final shape): KWin's `find_package` wants QtConcurrent (in
+qtbase, confirm it builds), Core5Compat (covered here), UiTools (the separate `qttools`
+module, NOT a qtbase component) and Sensors (the separate `qtsensors` module). Add
+`qttools`/`qtsensors` recipes at the W layer; both are qtbase-only cross builds on this
+same pattern. KWin also runs `ecm_find_qmlmodule` for QtQuick.Controls/Layouts/Window,
+all provided by qtdeclarative above.
 
 Driver: `build-qt-modules.sh` (separate from `build-qt.sh` on purpose, so the in-flight
 qtbase build's mounted script is never edited). Stage 1 extends the host Qt with host
