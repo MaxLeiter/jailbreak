@@ -29,6 +29,9 @@ export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
 # the 2160x1620 panel = ~1.5 effective scale (Max-approved). Override to retune.
 export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
+# Input tracing to /var/jb/tmp/ioscpanel.log — default ON while the panel-tap
+# bug is being hunted (Max: panel dead to taps, 2026-07-01). Flip to 0 after.
+export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-1}"
 
 SOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 log() { echo "run-shell: $*" >&2; }

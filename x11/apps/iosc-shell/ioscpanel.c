@@ -376,10 +376,24 @@ static void act_on_hit(const struct panel_hit *r)
     }
 }
 
+/* Input tracing (IOSC_SHELL_DEBUG=1): stderr lands in /var/jb/tmp/ioscpanel.log
+ * via run-shell.sh, so a dead-to-taps report can be diagnosed from the log —
+ * it shows whether events arrive at all, with what coords, and what they hit. */
+static int pdbg(void)
+{
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("IOSC_SHELL_DEBUG"); on = e && *e && *e != '0'; }
+    return on;
+}
+
 static void hit_at(struct wl_surface *sf, int x, int y)
 {
     const struct panel_hits *hs = sf == P.qs_surf && P.qs_surf ? &P.qs_hits : &P.hits;
     int i = pl_hit_test(hs, x, y);
+    if (pdbg())
+        fprintf(stderr, "panel: hit_at %s (%d,%d) -> %d (kind=%d idx=%d) of %d rects\n",
+                sf == P.qs_surf ? "qs" : "bar", x, y, i,
+                i >= 0 ? hs->v[i].kind : -1, i >= 0 ? hs->v[i].idx : -1, hs->n);
     if (i >= 0) act_on_hit(&hs->v[i]);
 }
 
@@ -447,7 +461,13 @@ static void rerender_for(struct wl_surface *sf)
 }
 
 static void pt_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y)
-{ (void)d;(void)p;(void)s; P.ptr_surf=sf; P.have_ptr=1; P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y); rerender_for(sf); }
+{
+    (void)d;(void)p;(void)s;
+    P.ptr_surf=sf; P.have_ptr=1; P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y);
+    if (pdbg()) fprintf(stderr, "panel: pt_enter %s (%d,%d)\n",
+                        sf == P.qs_surf ? "qs" : "bar", P.px, P.py);
+    rerender_for(sf);
+}
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf)
 { (void)d;(void)p;(void)s; P.have_ptr=0; P.ptr_surf=NULL; rerender_for(sf); }
 static void pt_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y)
@@ -455,6 +475,8 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, w
 static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t, uint32_t button, uint32_t state)
 {
     (void)d;(void)p;(void)serial;(void)t;
+    if (pdbg()) fprintf(stderr, "panel: pt_button 0x%x state=%u surf=%s at (%d,%d)\n",
+                        button, state, P.ptr_surf ? "yes" : "NULL", P.px, P.py);
     if (state != WL_POINTER_BUTTON_STATE_PRESSED || button != 0x110 /*BTN_LEFT*/) return;
     if (P.ptr_surf) hit_at(P.ptr_surf, P.px, P.py);
 }
@@ -493,6 +515,8 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     P.px = wl_fixed_to_int(x); P.py = wl_fixed_to_int(y);
     const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
     int i = pl_hit_test(hs, P.px, P.py);
+    if (pdbg()) fprintf(stderr, "panel: tc_down id=%d %s (%d,%d) -> press %d\n",
+                        id, sf == P.qs_surf ? "qs" : "bar", P.px, P.py, i);
     if (i >= 0) { P.press_kind = hs->v[i].kind; P.press_idx = hs->v[i].idx; }
     rerender_for(sf);
 }
@@ -522,6 +546,9 @@ static const struct wl_touch_listener touch_listener = {
 static void seat_caps(void *d, struct wl_seat *s, uint32_t caps)
 {
     (void)d;
+    if (pdbg()) fprintf(stderr, "panel: seat caps=0x%x (ptr=%d touch=%d)\n",
+                        caps, !!(caps & WL_SEAT_CAPABILITY_POINTER),
+                        !!(caps & WL_SEAT_CAPABILITY_TOUCH));
     if ((caps & WL_SEAT_CAPABILITY_POINTER) && !P.ptr) {
         P.ptr = wl_seat_get_pointer(s); wl_pointer_add_listener(P.ptr, &pointer_listener, NULL);
     }
