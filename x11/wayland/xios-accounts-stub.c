@@ -17,18 +17,23 @@
 
 #include <gio/gio.h>
 #include <unistd.h>
-#include <pwd.h>
+
+#include "xios-session-identity.h"
 
 #define ACCOUNTS_NAME    "org.freedesktop.Accounts"
 #define MANAGER_PATH     "/org/freedesktop/Accounts"
 #define USER_IFACE       "org.freedesktop.Accounts.User"
 
+/* The single user we expose, filled from xios_identity() at startup (real uid, username,
+ * display name, home, avatar, locale — see xios-session-identity.c). */
 static char user_path[64];      /* /org/freedesktop/Accounts/User<uid> */
 static guint64 user_uid;
 static const char *user_name = "mobile";
 static const char *user_real = "iOS User";
 static const char *user_home = "/var/mobile";
 static const char *user_shell = "/bin/sh";
+static const char *user_icon = "";
+static const char *user_lang = "";
 
 static const char manager_xml[] =
   "<node>"
@@ -150,9 +155,9 @@ user_get_property (GDBusConnection *c, const gchar *s, const gchar *o,
   if (g_str_equal (prop, "HomeDirectory"))  return g_variant_new_string (user_home);
   if (g_str_equal (prop, "Shell"))          return g_variant_new_string (user_shell);
   if (g_str_equal (prop, "Email"))          return g_variant_new_string ("");
-  if (g_str_equal (prop, "Language"))       return g_variant_new_string ("");
-  if (g_str_equal (prop, "Session"))        return g_variant_new_string ("");
-  if (g_str_equal (prop, "IconFile"))       return g_variant_new_string ("");
+  if (g_str_equal (prop, "Language"))       return g_variant_new_string (user_lang);
+  if (g_str_equal (prop, "Session"))        return g_variant_new_string ("xios");
+  if (g_str_equal (prop, "IconFile"))       return g_variant_new_string (user_icon);
   if (g_str_equal (prop, "Locked"))         return g_variant_new_boolean (FALSE);
   if (g_str_equal (prop, "PasswordMode"))   return g_variant_new_int32 (0);
   if (g_str_equal (prop, "SystemAccount"))  return g_variant_new_boolean (FALSE);
@@ -226,27 +231,23 @@ main (int argc, char **argv)
   GMainLoop *loop;
   GBusType bus_type = G_BUS_TYPE_SYSTEM;
   const char *which;
-  struct passwd *pw;
+  const XiosIdentity *id;
   guint owner_id;
 
   (void) argc; (void) argv;
 
-  user_uid = (guint64) getuid ();
+  /* The shared identity resolves username, display name (MobileGestalt device name), home,
+   * avatar (~/.face), and locale once for all the session stubs. */
+  id = xios_identity ();
+  user_uid   = (guint64) id->uid;
+  user_name  = id->username;
+  user_real  = id->realname;
+  user_home  = id->home;
+  user_shell = id->shell;
+  user_icon  = id->icon_file;
+  user_lang  = id->language;
   g_snprintf (user_path, sizeof user_path, "/org/freedesktop/Accounts/User%llu",
               (unsigned long long) user_uid);
-  /* Prefer the real passwd entry if there is one, else keep the Xios defaults. */
-  pw = getpwuid ((uid_t) user_uid);
-  if (pw)
-    {
-      if (pw->pw_name && *pw->pw_name)
-        user_name = g_strdup (pw->pw_name);
-      if (pw->pw_gecos && *pw->pw_gecos)
-        user_real = g_strdup (pw->pw_gecos);
-      if (pw->pw_dir && *pw->pw_dir)
-        user_home = g_strdup (pw->pw_dir);
-      if (pw->pw_shell && *pw->pw_shell)
-        user_shell = g_strdup (pw->pw_shell);
-    }
 
   which = g_getenv ("XIOS_ACCOUNTS_BUS");
   if (which && g_str_equal (which, "session"))

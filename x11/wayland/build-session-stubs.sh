@@ -41,17 +41,51 @@ export PKG_CONFIG_SYSROOT_DIR="$SYSROOT_ROOT"
 
 CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
 # -liosexec: the Procursus SDK redirects sandbox-sensitive libc calls (getpwuid -> ie_getpwuid)
-# into libiosexec, so anything using <pwd.h> must link it (xios-accounts-stub does).
+# into libiosexec, so anything using <pwd.h> must link it (the shared identity helper and the
+# accounts stub do).
 DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -liosexec"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
+
+# The login1 + accounts stubs share xios-session-identity.c, which resolves the real user
+# once. It reads MobileGestalt for the device name via CoreFoundation, so those two stubs also
+# link -framework CoreFoundation. polkit does not need the identity.
+IDENTITY_SRC="$SRC/xios-session-identity.c"
+
+# install_name_tool: rewrite the linker's unversioned @rpath/libintl.dylib (a dev-only
+# symlink not shipped at runtime) to the versioned libintl.8.dylib that the device actually
+# has. Must run BEFORE ldid, since editing load commands invalidates a signature. The cctools
+# in this image are triple-prefixed (aarch64-apple-darwin-*), so probe those names first.
+TOOLBIN="$(dirname "$(command -v "$CC")")"
+INT=""; OTOOL=""
+for cand in "$TOOLBIN/aarch64-apple-darwin-install_name_tool" aarch64-apple-darwin-install_name_tool install_name_tool; do
+  command -v "$cand" >/dev/null 2>&1 && { INT="$cand"; break; }
+done
+for cand in "$TOOLBIN/aarch64-apple-darwin-otool" aarch64-apple-darwin-otool otool; do
+  command -v "$cand" >/dev/null 2>&1 && { OTOOL="$cand"; break; }
+done
+
+fix_libintl () {
+  local bin="$1"
+  [ -n "$INT" ] && [ -n "$OTOOL" ] || { echo "   (no otool/install_name_tool; skipping libintl fixup)"; return; }
+  if "$OTOOL" -L "$bin" 2>/dev/null | grep -q '@rpath/libintl.dylib'; then
+    "$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib "$bin"
+    echo "   libintl: @rpath/libintl.dylib -> @rpath/libintl.8.dylib"
+  fi
+}
 
 for stub in login1 polkit accounts; do
   s="$SRC/xios-${stub}-stub.c"
   o="$OUT/xios-${stub}-stub"
   [ -f "$s" ] || { echo "   skip $stub (no source)"; continue; }
   echo "==> build xios-${stub}-stub"
+  extra_src=""; extra_ldflags=""
+  if [ "$stub" = "login1" ] || [ "$stub" = "accounts" ]; then
+    extra_src="$IDENTITY_SRC"
+    extra_ldflags="-framework CoreFoundation"
+  fi
   # shellcheck disable=SC2086
-  $CC $CFLAGS "$s" $DEPFLAGS -o "$o"
+  $CC $CFLAGS "$s" $extra_src $DEPFLAGS $extra_ldflags -o "$o"
+  fix_libintl "$o"
   if [ -n "$LDID" ]; then
     "$LDID" -S "$o"           # ad-hoc: plain daemons, no special entitlements
   fi

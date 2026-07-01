@@ -33,8 +33,12 @@
 #define SESSION_PATH       "/org/freedesktop/login1/session/_31"
 #define SEAT_ID            "seat0"
 #define SEAT_PATH          "/org/freedesktop/login1/seat/seat0"
-#define USER_UID           ((guint32) 501)
-#define USER_PATH          "/org/freedesktop/login1/user/_501"
+
+/* The real logged-in user, resolved once at startup from xios_identity(). logind forms a
+ * user object path as a literal "_<uid>" (a uid needs no D-Bus path escaping). */
+static guint32     user_uid;
+static const char *user_name = "mobile";
+static char        user_path[64];   /* /org/freedesktop/login1/user/_<uid> */
 
 /* Only the members gnome-session / gsd / Mutter actually call. Clients invoke a subset;
  * anything unlisted returns org.freedesktop.DBus.Error.UnknownMethod, which those daemons
@@ -113,6 +117,23 @@ static const char session_xml[] =
   "  </interface>"
   "</node>";
 
+static const char user_xml[] =
+  "<node>"
+  "  <interface name='org.freedesktop.login1.User'>"
+  "    <method name='Terminate'/>"
+  "    <method name='Kill'><arg type='i' name='signal_number' direction='in'/></method>"
+  "    <property name='UID' type='u' access='read'/>"
+  "    <property name='GID' type='u' access='read'/>"
+  "    <property name='Name' type='s' access='read'/>"
+  "    <property name='RuntimePath' type='s' access='read'/>"
+  "    <property name='State' type='s' access='read'/>"
+  "    <property name='Display' type='(so)' access='read'/>"
+  "    <property name='Sessions' type='a(so)' access='read'/>"
+  "    <property name='IdleHint' type='b' access='read'/>"
+  "    <property name='Linger' type='b' access='read'/>"
+  "  </interface>"
+  "</node>";
+
 static const char seat_xml[] =
   "<node>"
   "  <interface name='org.freedesktop.login1.Seat'>"
@@ -128,6 +149,18 @@ static const char seat_xml[] =
 /* The stub's mutable session state (what SetIdleHint/SetLockedHint touch). */
 static gboolean session_idle_hint = FALSE;
 static gboolean session_locked_hint = FALSE;
+
+/* Inhibitor cleanup: the client holds one end of the inhibitor pipe and releases the lock
+ * by closing it (or by dying), which raises POLLHUP on our retained end. Close it and drop
+ * the watch so nothing leaks across the many idle/lock inhibitors a session takes. */
+static gboolean
+inhibitor_hangup (gint fd, GIOCondition condition, gpointer user_data)
+{
+  (void) condition;
+  (void) user_data;
+  close (fd);
+  return G_SOURCE_REMOVE;
+}
 
 /* ---- org.freedesktop.login1.Manager ------------------------------------------------- */
 
@@ -155,24 +188,25 @@ manager_method_call (GDBusConnection       *connection,
   else if (g_str_equal (method_name, "GetUser"))
     {
       g_dbus_method_invocation_return_value (invocation,
-                                             g_variant_new ("(o)", USER_PATH));
+                                             g_variant_new ("(o)", user_path));
     }
   else if (g_str_equal (method_name, "ListSessions"))
     {
       GVariantBuilder b;
 
       g_variant_builder_init (&b, G_VARIANT_TYPE ("a(susso)"));
-      g_variant_builder_add (&b, "(susso)", SESSION_ID, USER_UID, "mobile",
+      g_variant_builder_add (&b, "(susso)", SESSION_ID, user_uid, user_name,
                              SEAT_ID, SESSION_PATH);
       g_dbus_method_invocation_return_value (invocation,
                                              g_variant_new ("(a(susso))", &b));
     }
   else if (g_str_equal (method_name, "Inhibit"))
     {
-      /* Hand back a pipe read-end; the client holds it for the lifetime of the lock, and
-       * releases by closing it. We never act on inhibitors — this just satisfies the API
-       * gsd-power / gnome-session use for idle/sleep/shutdown locks. The write end is held
-       * open so the returned fd never reports EOF. */
+      /* Hand the client the write end of a pipe; it holds it for the lifetime of the lock
+       * and releases by closing it (or by exiting). We keep the read end and watch it for
+       * POLLHUP so the retained fd is reclaimed on release — no per-inhibitor leak. We never
+       * act on inhibitors; this just satisfies the API gsd-power / gnome-session use for
+       * idle/sleep/shutdown locks. */
       GUnixFDList *fd_list;
       GError *error = NULL;
       int pipefd[2];
@@ -189,18 +223,20 @@ manager_method_call (GDBusConnection       *connection,
       (void) fcntl (pipefd[1], F_SETFD, FD_CLOEXEC);
 
       fd_list = g_unix_fd_list_new ();
-      idx = g_unix_fd_list_append (fd_list, pipefd[0], &error);
-      close (pipefd[0]);   /* the fd list dup'd it */
-      /* deliberately leak pipefd[1]: it must stay open for the inhibitor's lifetime */
+      idx = g_unix_fd_list_append (fd_list, pipefd[1], &error);
+      close (pipefd[1]);   /* the fd list dup'd the client's write end */
 
       if (idx < 0)
         {
-          close (pipefd[1]);
+          close (pipefd[0]);
           g_object_unref (fd_list);
           g_dbus_method_invocation_return_gerror (invocation, error);
           g_clear_error (&error);
           return;
         }
+
+      /* Reclaim our read end when the client drops its write end. */
+      g_unix_fd_add (pipefd[0], G_IO_HUP | G_IO_ERR, inhibitor_hangup, NULL);
 
       g_dbus_method_invocation_return_value_with_unix_fd_list (
         invocation, g_variant_new ("(h)", idx), fd_list);
@@ -279,9 +315,9 @@ session_get_property (GDBusConnection *connection,
   if (g_str_equal (property_name, "Id"))
     return g_variant_new_string (SESSION_ID);
   if (g_str_equal (property_name, "Name"))
-    return g_variant_new_string ("mobile");
+    return g_variant_new_string (user_name);
   if (g_str_equal (property_name, "User"))
-    return g_variant_new ("(uo)", USER_UID, USER_PATH);
+    return g_variant_new ("(uo)", user_uid, user_path);
   if (g_str_equal (property_name, "Seat"))
     return g_variant_new ("(so)", SEAT_ID, SEAT_PATH);
   if (g_str_equal (property_name, "VTNr"))
@@ -362,6 +398,75 @@ seat_get_property (GDBusConnection *connection,
   return NULL;
 }
 
+/* ---- org.freedesktop.login1.User ---------------------------------------------------- */
+
+static void
+user_method_call (GDBusConnection       *connection,
+                  const gchar           *sender,
+                  const gchar           *object_path,
+                  const gchar           *interface_name,
+                  const gchar           *method_name,
+                  GVariant              *parameters,
+                  GDBusMethodInvocation *invocation,
+                  gpointer               user_data)
+{
+  /* Terminate / Kill: accepted as no-ops (we do not manage the user's processes). */
+  if (g_str_equal (method_name, "Terminate") ||
+      g_str_equal (method_name, "Kill"))
+    {
+      g_dbus_method_invocation_return_value (invocation, NULL);
+    }
+  else
+    {
+      g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                             G_DBUS_ERROR_UNKNOWN_METHOD,
+                                             "login1 stub: unhandled User.%s",
+                                             method_name);
+    }
+}
+
+static GVariant *
+user_get_property (GDBusConnection *connection,
+                   const gchar     *sender,
+                   const gchar     *object_path,
+                   const gchar     *interface_name,
+                   const gchar     *property_name,
+                   GError         **error,
+                   gpointer         user_data)
+{
+  if (g_str_equal (property_name, "UID"))
+    return g_variant_new_uint32 (user_uid);
+  if (g_str_equal (property_name, "GID"))
+    return g_variant_new_uint32 (user_uid);   /* single-user: gid tracks uid */
+  if (g_str_equal (property_name, "Name"))
+    return g_variant_new_string (user_name);
+  if (g_str_equal (property_name, "RuntimePath"))
+    {
+      const char *rd = g_getenv ("XDG_RUNTIME_DIR");
+      return g_variant_new_string (rd && *rd ? rd : "/var/jb/tmp/xios-run");
+    }
+  if (g_str_equal (property_name, "State"))
+    return g_variant_new_string ("active");
+  if (g_str_equal (property_name, "Display"))
+    return g_variant_new ("(so)", SESSION_ID, SESSION_PATH);
+  if (g_str_equal (property_name, "Sessions"))
+    {
+      GVariantBuilder b;
+
+      g_variant_builder_init (&b, G_VARIANT_TYPE ("a(so)"));
+      g_variant_builder_add (&b, "(so)", SESSION_ID, SESSION_PATH);
+      return g_variant_new ("a(so)", &b);
+    }
+  if (g_str_equal (property_name, "IdleHint"))
+    return g_variant_new_boolean (session_idle_hint);
+  if (g_str_equal (property_name, "Linger"))
+    return g_variant_new_boolean (FALSE);
+
+  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY,
+               "login1 stub: unknown User property %s", property_name);
+  return NULL;
+}
+
 /* ---- registration ------------------------------------------------------------------- */
 
 static const GDBusInterfaceVTable manager_vtable = {
@@ -374,6 +479,10 @@ static const GDBusInterfaceVTable session_vtable = {
 static const GDBusInterfaceVTable seat_vtable = {
   .method_call = seat_method_call,
   .get_property = seat_get_property,
+};
+static const GDBusInterfaceVTable user_vtable = {
+  .method_call = user_method_call,
+  .get_property = user_get_property,
 };
 
 static gboolean
@@ -416,6 +525,7 @@ on_bus_acquired (GDBusConnection *connection,
   register_object (connection, MANAGER_PATH, manager_xml, &manager_vtable);
   register_object (connection, SESSION_PATH, session_xml, &session_vtable);
   register_object (connection, SEAT_PATH, seat_xml, &seat_vtable);
+  register_object (connection, user_path, user_xml, &user_vtable);
 }
 
 static void
@@ -443,10 +553,18 @@ main (int argc, char **argv)
   GMainLoop *loop;
   GBusType bus_type = G_BUS_TYPE_SYSTEM;
   const char *which;
+  const XiosIdentity *id;
   guint owner_id;
 
   (void) argc;
   (void) argv;
+
+  /* Resolve the real logged-in user once, and form its logind object path. */
+  id = xios_identity ();
+  user_uid = (guint32) id->uid;
+  user_name = id->username;
+  g_snprintf (user_path, sizeof user_path,
+              "/org/freedesktop/login1/user/_%u", user_uid);
 
   /* logind normally lives on the system bus; allow the session bus for a
    * dbus-run-session bring-up where there is no system bus. */
