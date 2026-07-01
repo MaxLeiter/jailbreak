@@ -11,8 +11,9 @@
  * - launcher: up to LAUNCH_MAX quick-launch buttons scanned from
  *   /var/jb/usr/share/applications (the .desktop set); a tap fork+execs the app.
  * - taskbar: one button per open toplevel, driven by
- *   zwlr_foreign_toplevel_management_v1. A tap activates (raises) that window.
- *   Empty until iosc advertises the foreign-toplevel global (degrades cleanly).
+ *   zwlr_foreign_toplevel_management_v1. A tap on the label activates (raises)
+ *   that window; a tap on the right-edge [x] closes it. Empty until iosc
+ *   advertises the foreign-toplevel global (degrades cleanly).
  * - clock: HH:MM, repainted each minute off a poll() timeout in the wl loop.
  *
  * Build: build-panel.sh (Docker cross-compile). Needs iosc to implement
@@ -40,13 +41,14 @@
 #define BTN_W          120
 #define LAUNCH_W       40
 #define PAD            8
+#define CLOSE_W        16     /* the [x] close zone on the right of a task button */
 
 struct task_item {
     struct zwlr_foreign_toplevel_handle_v1 *handle;
     char  title[64];
     int   activated;
 };
-struct hitrect { int x, w; int kind; int idx; };  /* kind: 1=launch 2=task */
+struct hitrect { int x, w; int kind; int idx; };  /* kind: 1=launch 2=activate 3=close */
 
 static struct {
     struct wl_display    *dpy;
@@ -67,7 +69,7 @@ static struct {
     struct task_item tasks[TASK_MAX];
     int   ntasks;
 
-    struct hitrect hits[LAUNCH_MAX + TASK_MAX];
+    struct hitrect hits[LAUNCH_MAX + TASK_MAX * 2];   /* each task: activate + close */
     int   nhits;
 } P;
 
@@ -125,14 +127,25 @@ static void render(void)
     for (int i = 0; i < P.ntasks; i++) {
         int bx = task_left + i * (bw + 4);
         if (bx + bw > task_right) break;
-        int hover = (P.have_ptr && P.px >= bx && P.px < bx+bw);
+        /* Wide-enough buttons carve an [x] close zone off the right edge; the rest
+         * of the button is the activate zone. Narrow buttons are activate-only. */
+        int show_close = bw >= 60;
+        int aw = show_close ? bw - CLOSE_W : bw;        /* activate-zone width */
+        int hover = (P.have_ptr && P.px >= bx && P.px < bx+aw);
         uint32_t bg = P.tasks[i].activated ? BTN_ACTIVE : (hover ? BTN_HOVER : PANEL_BG);
         sd_fill_rect(&cv, bx, 4, bw, P.height-8, bg);
-        if (P.tasks[i].activated) sd_fill_rect(&cv, bx, P.height-3, bw, 2, PANEL_ACCENT);
+        if (P.tasks[i].activated) sd_fill_rect(&cv, bx, P.height-3, aw, 2, PANEL_ACCENT);
         char lbl[40];
-        sd_fit_label(lbl, sizeof lbl, P.tasks[i].title[0] ? P.tasks[i].title : "WINDOW", (bw-12)/6);
+        sd_fit_label(lbl, sizeof lbl, P.tasks[i].title[0] ? P.tasks[i].title : "WINDOW", (aw-12)/6);
         sd_draw_text(&cv, lbl, bx + 6, ty, PANEL_FG);
-        P.hits[P.nhits++] = (struct hitrect){ bx, bw, 2, i };
+        P.hits[P.nhits++] = (struct hitrect){ bx, aw, 2, i };
+        if (show_close) {
+            int cx = bx + bw - CLOSE_W;
+            int chover = (P.have_ptr && P.px >= cx && P.px < cx+CLOSE_W);
+            if (chover) sd_fill_rect(&cv, cx, 4, CLOSE_W, P.height-8, PANEL_ACCENT);
+            sd_draw_text(&cv, "x", cx + (CLOSE_W-6)/2, ty, chover ? PANEL_BG : PANEL_FG);
+            P.hits[P.nhits++] = (struct hitrect){ cx, CLOSE_W, 3, i };
+        }
     }
 
     wl_buffer_add_listener(buf, &buf_listener, NULL);
@@ -209,6 +222,8 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t
         if (r->kind == 1 && r->idx < P.nlaunch) sd_launch(P.launch[r->idx].exec);
         else if (r->kind == 2 && r->idx < P.ntasks && P.tasks[r->idx].handle)
             zwlr_foreign_toplevel_handle_v1_activate(P.tasks[r->idx].handle, P.seat);
+        else if (r->kind == 3 && r->idx < P.ntasks && P.tasks[r->idx].handle)
+            zwlr_foreign_toplevel_handle_v1_close(P.tasks[r->idx].handle);
         return;
     }
 }
