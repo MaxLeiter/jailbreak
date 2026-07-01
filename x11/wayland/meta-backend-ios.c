@@ -294,9 +294,19 @@ meta_backend_ios_constructed (GObject *object)
     if (!xios_surface_create (width, height, &stride, &alloc))
       g_warning ("MetaBackendIOS: xios_surface_create failed (IOSurface entitlement?) — "
                  "nothing will be displayable");
-    else if (xios_server_start ("/var/jb/tmp/mutter-ddx.sock", "/var/jb/tmp/xios.json",
-                                width, height, stride) != 0)
-      g_warning ("MetaBackendIOS: xios_server_start failed — the Xios app can't find the output");
+    else
+      {
+        /* Before serving: name the flavor (typed HELLO -> app cursor overlay) and advertise the
+         * input socket in xios.json so the app routes keyboard/pointer/scroll here (else it falls
+         * to a dead XTEST path — mutter runs no X server). This path matches the socket
+         * MetaInputIOS listens on (XIOS_INPUT_SOCKET_DEFAULT). Must precede xios_server_start. */
+        xios_set_compositor_id ("mutter-ios");
+        xios_set_input_socket (XIOS_INPUT_SOCKET_DEFAULT);
+
+        if (xios_server_start ("/var/jb/tmp/mutter-ddx.sock", "/var/jb/tmp/xios.json",
+                               width, height, stride) != 0)
+          g_warning ("MetaBackendIOS: xios_server_start failed — the Xios app can't find the output");
+      }
   }
 
   /* One synthetic GPU so MetaMonitorManagerIOS has something to read_current from. */
