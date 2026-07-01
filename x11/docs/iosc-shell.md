@@ -18,6 +18,132 @@ tile-4, focus dimming, dock magnify.
 
 ---
 
+## 0. Design vision: a hybrid tablet DE (mobile OS × desktop OS)
+
+**Mandate (Max, 2026-07-01):** *"Think carefully about what a good tablet/phone
+desktop environment is like — a MIX of a mobile OS and a desktop OS."* The north
+star is NOT "a GNOME panel, smaller." It is a genuine synthesis: the touch-first,
+glanceable, gesture-driven feel of iPadOS fused with the real windows,
+multitasking and launchers of a desktop. The first shell (a top bar with
+launchers + a taskbar + a status cluster) was a shrunk desktop; this section is
+the rethink that should drive everything below.
+
+### 0.1 What each side does well (and what we take)
+
+| From mobile (iPadOS, Plasma Mobile, good launchers) | From desktop (GNOME, Plasma, elementary, macOS) |
+|---|---|
+| Big thumb-reachable targets; no hover-only affordances | Real overlapping/resizable windows; multitasking |
+| A **dock** of favorites + running apps, always one thumb away | A **taskbar/switcher** for many windows |
+| **Control Center**: swipe-down grid of big toggles + sliders | A system status area + settings |
+| A **home/idle state** (wallpaper + dock) you always return to | Persistent launchers + a searchable app list |
+| **Gestures**: swipe up = home/switcher, swipe down = control | Keyboard/pointer precision when a trackpad is attached |
+| Translucency, depth, generous spacing, motion | Information density when you want it |
+
+The synthesis: **touch-first, pointer-enhanced.** Every target is finger-sized
+(≥44pt) and reachable; a mouse/trackpad (iPad supports both) adds hover states
+and precise resize, but nothing REQUIRES a pointer. This is the opposite of the
+old top-bar, whose 22px close-× and hover-only pills were pointer-only.
+
+### 0.2 The core surfaces (what replaces the single top bar)
+
+Four surfaces, each doing one job, instead of one bar doing four badly:
+
+1. **Slim status bar (top, ~36 logical px, always visible).** Glanceable only:
+   clock (center or left), and a right **status cluster** (battery, Wi-Fi, and
+   indicators). It is the *pull-down handle* for Control Center and the exclusive
+   zone that keeps windows from opening under it. NO launchers, NO taskbar here —
+   those move to the dock. Think iPadOS status bar fused with GNOME's top bar,
+   stripped to pure status.
+
+2. **The dock (bottom, floating, the heart of the shell).** A centered, rounded,
+   translucent pill: **favorites** (pinned launchers) · a divider · **running
+   apps** (each a big icon with a running-dot; this is the "taskbar," but as a
+   dock, tap-to-raise/tap-to-launch) · a divider · the **apps/overview button**.
+   Big icons (≥48pt), generous spacing, hover-magnify with a pointer. This fuses
+   the mac/iPadOS dock with the desktop taskbar — the one surface that is both
+   your launcher and your window switcher. Auto-hides when a window is fullscreen
+   (reveal by swiping up from the bottom edge / a mouse to the edge); always
+   shown on the home/overview.
+
+3. **Control Center (swipe down from the top-right, or tap the status cluster).**
+   The quick-settings card, reframed as iPadOS Control Center: a grid of big
+   rounded **toggle tiles** (Wi-Fi, Bluetooth, Rotation Lock, Dark Mode, Airplane,
+   Screenshot) + **sliders** (Brightness, Volume) + a battery readout + (later) a
+   media widget. Everything tappable, glanceable, no menus.
+
+4. **Overview / Home (swipe up from the bottom, the apps button, or the idle
+   state).** The full-screen home + switcher: a big **search** field, **open
+   window cards** (live-ish thumbnails, tap to raise, swipe up to close), and the
+   **app grid** below. This is GNOME Activities fused with the iPadOS App
+   Switcher and Home Screen. When no window is focused, this (or just
+   wallpaper+dock) is where you rest — a real home state, not a blank desktop.
+
+### 0.3 The window model (mobile default, desktop on demand)
+
+Tablet-native, escalating to desktop power:
+
+- **Fullscreen-first.** One app fills the work area by default (mobile mental
+  model). The dock + status bar frame it; the home indicator returns you home.
+- **Split view.** Drag a window (or a dock icon) to a screen edge → it takes half,
+  the other half offers the switcher (iPadOS Split View / desktop snap). iosc
+  already has interactive move + clamp + maximize + `work_area()` — snap is a
+  small addition (see §5.5).
+- **Floating / Stage.** Power users get overlapping, resizable windows with the
+  touch chrome from §5.5 (grab-handle + one big close, NO mac traffic lights).
+  A "stage strip" of other window groups can live at the left edge (Stage Manager
+  pattern) — future.
+- The **overview** is the switcher between all of these.
+
+### 0.4 Gestures + the home indicator
+
+The gesture grammar (touch), each with a pointer/keyboard equivalent:
+
+| Gesture | Action | Pointer/keys |
+|---|---|---|
+| Swipe **up** from bottom edge | Home / overview; reveal dock in fullscreen | Apps button; Super |
+| Swipe **down** from top-right | Control Center | Tap status cluster |
+| Swipe **down** from top-left | Notifications (later) | — |
+| Swipe up **and hold** | App switcher (overview, window cards focused) | Super+Tab |
+| A thin **home-indicator** pill at the bottom center | affordance for "swipe up"; drag it left/right to switch apps | — |
+
+Gestures ride iosc's existing touch wire (`wl_touch`, type 6) + the AXIS/gesture
+work (touch-scroll task); edge-swipes are the shell recognizing touch that starts
+in an edge band. No new protocol for the basics.
+
+### 0.5 Idle/home state + how shell and windows coexist
+
+- **Idle/home:** wallpaper + dock + slim status bar. No window = you see home. A
+  clock/date could sit large on the wallpaper (lock-screen-like) — optional.
+- **In an app:** status bar always visible (thin, glanceable, exclusive). Dock
+  auto-hides in fullscreen, one swipe away; always present in split/float/overview.
+- **Translucency everywhere** (iosc's layer blend is live): the status bar, dock,
+  and Control Center float as frosted glass over the wallpaper/windows, giving the
+  depth that reads "modern tablet," not "opaque desktop panel."
+
+### 0.6 What this means for the code (surfaces → clients)
+
+Each surface is its own layer-shell client (the §1 architecture already supports
+this cleanly):
+
+| Surface | Client | Layer | Notes |
+|---|---|---|---|
+| Slim status bar | `ioscbar` (was ioscpanel's top half) | TOP, anchor top, exclusive | glanceable + CC handle |
+| Dock | `ioscdock` (NEW) | TOP, anchor bottom, exclusive-or-autohide | favorites + running + apps btn |
+| Control Center | spawned by the bar (as QS is today) | OVERLAY, anchor top-right | toggle grid + sliders |
+| Overview / Home | `ioscoverview` (exists; reframe) | OVERLAY, fullscreen | search + cards + grid |
+| Wallpaper | `ioscbg` (exists) | BACKGROUND | unchanged |
+
+Migration is incremental and low-risk: split today's `ioscpanel` into `ioscbar`
+(status only) + `ioscdock` (launchers + running apps), reframe the QS card as
+Control Center, keep `ioscbg`/`ioscoverview`. The scale-invariance work (ui =
+logical_w / reference) applies unchanged to every surface.
+
+**Sequencing:** design + mockups (this section + `design/preview-*.png`) → Max's
+eyes → build. The two live bugs (panel taps, scale) are being fixed in parallel
+so the current shell stays usable while this lands.
+
+---
+
 ## 1. The decision: layer-shell clients, not chrome baked into iosc
 
 **Recommendation: iosc implements `zwlr_layer_shell_v1`, and every shell
