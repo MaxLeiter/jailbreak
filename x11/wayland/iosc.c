@@ -79,7 +79,8 @@ static int               g_output_scale = 2; /* logical -> physical output pixel
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
 static void clipboard_selection_send_to_client(struct wl_client *client);
-static void recomposite_all(void);
+static void recomposite_all(void);   /* coalesced: schedules one repaint per loop iteration */
+static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
 
 static uint32_t now_ms(void)
 {
@@ -938,8 +939,11 @@ static int iosc_debug(void)
     return v;
 }
 
-/* Recomposite ALL mapped surfaces back-to-front onto the output, on the GPU. */
-static void recomposite_all(void)
+/* Recomposite ALL mapped surfaces back-to-front onto the output, on the GPU.
+ * Synchronous: paints immediately. Most callers should use recomposite_all()
+ * (coalesced) instead; recomposite_now() is for paths that read the output back
+ * in the same call (screencopy). */
+static void recomposite_now(void)
 {
     if (iosc_gl_ok()) {
         iosc_gl_begin();   /* clears the output to black (desktop background) */
@@ -1016,6 +1020,31 @@ static void recomposite_all(void)
     xios_notify_dirty();
 }
 
+/* Coalesce repaints: a burst of commits, input events, or state changes in one
+ * event-loop iteration all funnel through recomposite_all(), but we only paint
+ * ONCE — scheduled as a one-shot idle that runs after the current events are
+ * processed, before the loop blocks again. Without this, e.g. an input-socket
+ * read that drains several motion messages, or several clients committing on the
+ * same wakeup, each forced a full GPU recomposite. */
+static int g_recompose_scheduled;
+static void recompose_idle(void *data)
+{
+    (void)data;
+    g_recompose_scheduled = 0;
+    recomposite_now();
+}
+static void recomposite_all(void)
+{
+    if (g_recompose_scheduled) return;
+    struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
+    /* Before the event loop is running (early bring-up), paint synchronously. */
+    if (!loop || !wl_event_loop_add_idle(loop, recompose_idle, NULL)) {
+        recomposite_now();
+        return;
+    }
+    g_recompose_scheduled = 1;
+}
+
 /* ---- wlr-screencopy-v1: screenshots (SOFTWARE readback; GPU-blit later) --- *
  * A client (grim, xdg-desktop-portal, spectacle) binds the manager, asks to
  * capture the output (or a sub-region), receives a `buffer` event advertising the
@@ -1057,14 +1086,14 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
 
     int restore_cursor = 0;
     if (!f->with_cursor && g_cursor_visible) { g_cursor_visible = 0; restore_cursor = 1; }
-    recomposite_all();          /* ensure the output holds the latest frame */
+    recomposite_now();          /* synchronous: the readback below needs THIS frame */
 
     wl_shm_buffer_begin_access(shm);
     int rc = xios_read_output_region(f->x, f->y, f->w, f->h,
                                      wl_shm_buffer_get_data(shm), f->stride);
     wl_shm_buffer_end_access(shm);
 
-    if (restore_cursor) { g_cursor_visible = 1; recomposite_all(); }
+    if (restore_cursor) { g_cursor_visible = 1; recomposite_now(); }
 
     if (rc != 0) { zwlr_screencopy_frame_v1_send_failed(f->resource); return; }
 
