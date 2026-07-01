@@ -56,9 +56,26 @@ list is in `linux-build/install-gnome-boot.sh` (`$DEBS`).
 - **libxcb-util1**: `libstartup-notification0` Depends it (gnome-shell Depends that), but we do
   not build it and it was absent on-device. The script now `apt-get download`s it from the
   device's Procursus sources if absent, and installs it before libstartup-notification0.
-- **hicolor / adwaita-icon-theme**: adwaita Depends hicolor; both were left unconfigured only as
-  a cascade of the big `dpkg -i` aborting on the bad libpulse0 archive (hicolor's own archive +
-  postinst are clean). A corrected re-run (`dpkg -i` is idempotent) configures them in order.
+- **hicolor / adwaita-icon-theme**: adwaita Depends hicolor. Two issues: (1) an initial cascade
+  from the bad libpulse0 archive, and (2) a real FILE conflict — both ship `index.theme` files
+  under `/var/jb/usr/share/icons/hicolor/` that `xios-desktop-defaults 1.1.1` also carries. The
+  icon-theme packages are the canonical owners and xios theming is applied via gsettings
+  overrides (not by owning index.theme), so the script installs with `--force-overwrite`.
+  FOLLOW-UP: `xios-desktop-defaults` should `Replaces: hicolor-icon-theme, adwaita-icon-theme`
+  (or stop shipping those files) so the flag is not needed — tracked with that package's owner.
+
+### On-device package conflicts (pre-installed xios tracks)
+
+- **libpulse0 vs libpulse-simple-xios0**: the device may already carry audio-desktop's
+  `libpulse-simple-xios0` (the CoreAudio-server client shim), which package-`Conflicts` the full
+  `libpulse0`. gnome-shell + gsd need the FULL libpulse0 (gvc volume control), which the simple
+  shim does not provide. libpulse0 is declared to supersede it (`Provides: libpulse-simple0`,
+  `Conflicts + Replaces libpulse-simple-xios0`), so the script removes the shim first
+  (`dpkg -r libpulse-simple-xios0`) — anything that linked `libpulse-simple0` still resolves via
+  libpulse0. This migrates the device to the real PA-17 client stack, which is the one gvc/GTK
+  apps want anyway. Coordinated with audio-desktop.
+- **libmozjs-115-0 vs libmozjs-115-jit-0**: EXPECTED, ignore — the JIT variant declares
+  `Provides/Conflicts/Replaces libmozjs-115-0` (drop-in), so the dpkg "conflict" line is benign.
 
 ## The libwayland-server0 landmine (defused by ordering)
 
