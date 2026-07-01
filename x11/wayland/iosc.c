@@ -33,6 +33,11 @@
 #include "virtual-keyboard-unstable-v1-server-protocol.h"
 #include "wlr-layer-shell-unstable-v1-server-protocol.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-server-protocol.h"
+#include "pointer-constraints-unstable-v1-server-protocol.h"
+#include "relative-pointer-unstable-v1-server-protocol.h"
+#include "primary-selection-unstable-v1-server-protocol.h"
+#include "idle-inhibit-unstable-v1-server-protocol.h"
+#include "ext-idle-notify-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -241,6 +246,16 @@ static void ftl_toplevel_closed(struct iosc_surface *s);
 static void ftl_broadcast_state(struct iosc_surface *s);
 static void ftl_broadcast_title(struct iosc_surface *s);
 static void ftl_broadcast_app_id(struct iosc_surface *s);
+/* pointer-constraints (zwp_pointer_constraints_v1) + relative-pointer */
+static void relptr_send(uint32_t time, double dx, double dy);
+static int  pointer_locked_for(struct iosc_surface *s);
+static void constraints_update_focus(struct iosc_surface *newfocus);
+static int  confine_point(struct iosc_surface *s, int *x, int *y);
+static void constraints_surface_gone(struct iosc_surface *s);
+/* idle (ext_idle_notify_v1 + zwp_idle_inhibit_manager_v1) */
+static void idle_note_activity(void);
+/* primary selection (zwp_primary_selection_device_manager_v1) */
+static void primary_selection_send_to_client(struct wl_client *client);
 
 static int clampi(int v, int lo, int hi)
 {
@@ -554,9 +569,13 @@ static void composite_one(struct iosc_surface *s)
 static void composite_cursor(void)
 {
     if (!g_cursor_visible || !g_cursor_surface || !g_cursor_surface->current_buffer) return;
+    /* The cursor is a premultiplied ARGB8888 wl_shm surface: blend it so its alpha is
+     * honored, otherwise the transparent pixels around the arrow draw as a black box. */
+    iosc_gl_begin_cursor();
     composite_surface_at(g_cursor_surface,
                          g_cursor_x - g_cursor_hot_x,
                          g_cursor_y - g_cursor_hot_y);
+    iosc_gl_end_cursor();
 }
 
 /* IOSC_PROBE classifier: map a BGRA output pixel to a legend char for the app-space
@@ -722,6 +741,7 @@ static void surface_unmap(struct iosc_surface *s)
     }
     /* Drop focus that pointed at us; hand it to the top focusable window. */
     if (g_ptr_focus == s) g_ptr_focus = NULL;
+    constraints_surface_gone(s);       /* release any pointer lock/confine on us */
     if (g_kbd_focus == s)
         keyboard_set_focus(topmost_focusable());
 }
@@ -2520,6 +2540,7 @@ static void keyboard_set_focus(struct iosc_surface *s)
         fprintf(stderr, "iosc: keyboard focus -> surface %p (%d kbd resource(s))\n",
                 (void *)s, nk);
         clipboard_selection_send_to_client(nc);
+        primary_selection_send_to_client(nc);
         if (g_refocus_timer) wl_event_source_timer_update(g_refocus_timer, 600);
     }
 }
@@ -2574,6 +2595,7 @@ static int input_method_forward_grab_key(uint32_t time, uint32_t key, uint32_t s
  * right modifier mask, then press + release. */
 static void handle_key(uint32_t keysym, uint32_t appmods)
 {
+    idle_note_activity();
     if (!g_kbd_focus) return;
     uint32_t evdev = 0; int needs_shift = 0;
     if (iosc_input_lookup(keysym, &evdev, &needs_shift) != 0) {
@@ -2612,6 +2634,21 @@ static void pointer_frame_client(struct wl_client *cl)
 
 static void handle_motion(int x, int y)
 {
+    idle_note_activity();
+    int prev_x = g_cursor_x, prev_y = g_cursor_y;
+
+    /* pointer-constraints: a LOCKED pointer freezes the cursor in place and the
+     * client navigates purely by relative-pointer deltas (games, 3D viewports,
+     * gnome-shell mouse-look). Suppress all absolute pointer events + the cursor
+     * move; only report the relative delta. */
+    if (pointer_locked_for(g_ptr_focus)) {
+        double rdx = (double)(x - prev_x), rdy = (double)(y - prev_y);
+        if (rdx != 0.0 || rdy != 0.0) relptr_send(now_ms(), rdx, rdy);
+        return;
+    }
+    /* A CONFINED pointer is clamped to its surface's rectangle. */
+    if (g_ptr_focus) confine_point(g_ptr_focus, &x, &y);
+
     int moved = (x != g_cursor_x || y != g_cursor_y);
     g_cursor_x = x;
     g_cursor_y = y;
@@ -2621,6 +2658,11 @@ static void handle_motion(int x, int y)
     }
     struct iosc_surface *hit = surface_at(x, y);
     uint32_t t = now_ms();
+    /* relative-pointer: deltas go to whoever holds pointer focus, lock or not. */
+    {
+        double rdx = (double)(x - prev_x), rdy = (double)(y - prev_y);
+        if (g_ptr_focus && (rdx != 0.0 || rdy != 0.0)) relptr_send(t, rdx, rdy);
+    }
     if (hit != g_ptr_focus) {
         uint32_t serial = wl_display_next_serial(g_display);
         if (g_ptr_focus) {
@@ -2631,6 +2673,7 @@ static void handle_motion(int x, int y)
             pointer_frame_client(oc);
         }
         g_ptr_focus = hit;
+        constraints_update_focus(hit);
         if (hit) {
             struct wl_client *nc = wl_resource_get_client(hit->resource);
             wl_fixed_t sx = wl_fixed_from_int(x - hit->dx), sy = wl_fixed_from_int(y - hit->dy);
@@ -2673,6 +2716,7 @@ static void surface_raise(struct iosc_surface *s)
 static void handle_button(int btn, int down)
 {
     (void)btn;
+    idle_note_activity();
     if (!down && g_interactive_op != IOSC_INTERACTIVE_NONE) {
         interactive_end();
         return;
@@ -3888,6 +3932,538 @@ static void layer_shell_bind(struct wl_client *client, void *data,
     fprintf(stderr, "iosc: client bound zwlr_layer_shell_v1 v%u\n", version);
 }
 
+/* ---- wm control socket (/var/jb/tmp/iosc-wm.sock) ------------------------ */
+/* A tiny line protocol so a NON-Wayland client (ioscd, the panel) can raise an
+ * existing window by app_id without becoming a wl client: `raise\t<app_id>\n` ->
+ * surface_raise + keyboard_set_focus, reply "ok\n" / "notfound\n". This is the
+ * "second-tap raises the live window" hook (docs/iosc-desktop-env.md §7); it just
+ * drives the same raise+focus the xdg-activation path does, keyed by the app_id
+ * we already store on the surface. Graceful-degrades: absent, the window is still
+ * mapped, it just may not restack to the top. */
+
+#define IOSC_MAX_WM_CLIENTS 8
+#define IOSC_WM_BUF 256
+struct iosc_wm_client { int fd; struct wl_event_source *src; char buf[IOSC_WM_BUF]; int have; };
+static struct iosc_wm_client *g_wm_clients[IOSC_MAX_WM_CLIENTS];
+
+static struct iosc_surface *wm_find_toplevel_by_app_id(const char *app_id)
+{
+    if (!app_id || !*app_id) return NULL;
+    for (int i = g_nmapped - 1; i >= 0; i--) {   /* top-most match wins */
+        struct iosc_surface *s = g_mapped[i];
+        if (s->role == IOSC_ROLE_TOPLEVEL && s->app_id[0] &&
+            strcmp(s->app_id, app_id) == 0)
+            return s;
+    }
+    return NULL;
+}
+
+static int wm_raise_app(const char *app_id)
+{
+    struct iosc_surface *s = wm_find_toplevel_by_app_id(app_id);
+    if (!s) return 0;
+    surface_raise(s);
+    keyboard_set_focus(s);
+    recomposite_all();
+    wl_display_flush_clients(g_display);
+    fprintf(stderr, "iosc: wm raise app_id=\"%s\" -> raised\n", app_id);
+    return 1;
+}
+
+/* Handle one line: "raise\t<app_id>". Best-effort reply on fd. */
+static void wm_handle_line(int fd, char *line)
+{
+    char *tab = strchr(line, '\t');
+    const char *reply = "err\n";
+    if (tab && (size_t)(tab - line) == 5 && strncmp(line, "raise", 5) == 0)
+        reply = wm_raise_app(tab + 1) ? "ok\n" : "notfound\n";
+    ssize_t n = write(fd, reply, strlen(reply));   /* best-effort */
+    (void)n;
+}
+
+static void wm_client_drop(struct iosc_wm_client *c)
+{
+    if (!c) return;
+    for (int i = 0; i < IOSC_MAX_WM_CLIENTS; i++)
+        if (g_wm_clients[i] == c) g_wm_clients[i] = NULL;
+    if (c->src) wl_event_source_remove(c->src);
+    if (c->fd >= 0) close(c->fd);
+    free(c);
+}
+
+static int wm_client_readable(int fd, uint32_t mask, void *data)
+{
+    struct iosc_wm_client *c = data;
+    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) { wm_client_drop(c); return 0; }
+    for (;;) {
+        if (c->have >= IOSC_WM_BUF - 1) c->have = 0;   /* overflow: drop partial */
+        ssize_t r = read(fd, c->buf + c->have, IOSC_WM_BUF - 1 - c->have);
+        if (r > 0) {
+            c->have += (int)r;
+            char *nl;
+            while ((nl = memchr(c->buf, '\n', (size_t)c->have)) != NULL) {
+                *nl = 0;
+                char *cr = strchr(c->buf, '\r'); if (cr) *cr = 0;
+                wm_handle_line(fd, c->buf);
+                int consumed = (int)(nl + 1 - c->buf);
+                c->have -= consumed;
+                memmove(c->buf, nl + 1, (size_t)c->have);
+            }
+            continue;
+        }
+        if (r == 0) { wm_client_drop(c); return 0; }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        if (errno == EINTR) continue;
+        wm_client_drop(c); return 0;
+    }
+    return 0;
+}
+
+static int wm_listen_readable(int fd, uint32_t mask, void *data)
+{
+    (void)mask;
+    struct wl_event_loop *loop = data;
+    int cfd = accept(fd, NULL, NULL);
+    if (cfd < 0) return 0;
+    fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
+    int slot = -1;
+    for (int i = 0; i < IOSC_MAX_WM_CLIENTS; i++) if (!g_wm_clients[i]) { slot = i; break; }
+    if (slot < 0) { close(cfd); return 0; }
+    struct iosc_wm_client *c = calloc(1, sizeof(*c));
+    if (!c) { close(cfd); return 0; }
+    c->fd = cfd;
+    c->src = wl_event_loop_add_fd(loop, cfd, WL_EVENT_READABLE, wm_client_readable, c);
+    g_wm_clients[slot] = c;
+    return 0;
+}
+
+static int wm_socket_start(struct wl_event_loop *loop, const char *path)
+{
+    unlink(path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    struct sockaddr_un addr; memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); return -1; }
+    if (listen(fd, 4) < 0) { close(fd); return -1; }
+    chmod(path, 0777);   /* ioscd / the panel connect from outside the app sandbox */
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, wm_listen_readable, loop);
+    return 0;
+}
+
+/* ===========================================================================
+ * relative-pointer (zwp_relative_pointer_manager_v1)
+ *
+ * iosc only ever receives ABSOLUTE positions from the Xios app, so the relative
+ * delta is synthesised in handle_motion() (Δ from the previous absolute point)
+ * and reported here. Deltas go to the client that currently holds pointer focus.
+ * Unaccelerated == accelerated (no pointer accel curve on a touch device).
+ * =========================================================================== */
+
+#define IOSC_MAX_RELPTR 32
+static struct wl_resource *g_relptr[IOSC_MAX_RELPTR]; static int g_nrelptr;
+
+static void relptr_res_destroy(struct wl_resource *r){ reslist_remove(g_relptr, &g_nrelptr, r); }
+static void relptr_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_relative_pointer_v1_interface relptr_impl = { .destroy = relptr_destroy };
+
+static void relptr_send(uint32_t time, double dx, double dy)
+{
+    if (!g_ptr_focus) return;
+    struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
+    uint64_t us = (uint64_t)time * 1000u;
+    uint32_t hi = (uint32_t)(us >> 32), lo = (uint32_t)(us & 0xffffffffu);
+    wl_fixed_t fdx = wl_fixed_from_double(dx), fdy = wl_fixed_from_double(dy);
+    for (int i = 0; i < g_nrelptr; i++)
+        if (wl_resource_get_client(g_relptr[i]) == fc)
+            zwp_relative_pointer_v1_send_relative_motion(g_relptr[i], hi, lo, fdx, fdy, fdx, fdy);
+}
+
+static void relptr_mgr_get(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                           struct wl_resource *pointer)
+{ (void)pointer;
+    struct wl_resource *rp = wl_resource_create(c, &zwp_relative_pointer_v1_interface,
+                                                wl_resource_get_version(r), id);
+    if (!rp) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(rp, &relptr_impl, NULL, relptr_res_destroy);
+    if (g_nrelptr < IOSC_MAX_RELPTR) g_relptr[g_nrelptr++] = rp;
+}
+static void relptr_mgr_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_relative_pointer_manager_v1_interface relptr_mgr_impl = {
+    .destroy = relptr_mgr_destroy, .get_relative_pointer = relptr_mgr_get };
+static void relptr_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_relative_pointer_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &relptr_mgr_impl, NULL, NULL);
+}
+
+/* ===========================================================================
+ * pointer-constraints (zwp_pointer_constraints_v1)
+ *
+ * A constraint targets a surface. It becomes ACTIVE when that surface holds
+ * pointer focus (constraints_update_focus, called on focus change + on create).
+ *   - locked:  the cursor freezes; handle_motion() reports only relative deltas.
+ *   - confined: the cursor is clamped to the surface rectangle.
+ * region is ignored (whole-surface constraint). oneshot lifetime constraints are
+ * marked dead after their first deactivation and never re-activate.
+ * =========================================================================== */
+
+#define IOSC_MAX_CONSTRAINTS 16
+struct iosc_constraint {
+    struct wl_resource *resource;
+    struct iosc_surface *surface;
+    int type;            /* 0 = locked, 1 = confined */
+    uint32_t lifetime;   /* ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_* */
+    int active;
+    int dead;            /* oneshot consumed */
+};
+static struct iosc_constraint *g_constraints[IOSC_MAX_CONSTRAINTS]; static int g_nconstraints;
+static struct iosc_constraint *g_active_constraint;
+
+static struct iosc_constraint *constraint_for_surface(struct iosc_surface *s)
+{
+    if (!s) return NULL;
+    for (int i = 0; i < g_nconstraints; i++)
+        if (!g_constraints[i]->dead && g_constraints[i]->surface == s)
+            return g_constraints[i];
+    return NULL;
+}
+static void constraint_deactivate(struct iosc_constraint *cc)
+{
+    if (!cc || !cc->active) return;
+    cc->active = 0;
+    if (cc->type == 0) zwp_locked_pointer_v1_send_unlocked(cc->resource);
+    else               zwp_confined_pointer_v1_send_unconfined(cc->resource);
+    if (cc->lifetime == ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT) cc->dead = 1;
+    if (g_active_constraint == cc) g_active_constraint = NULL;
+}
+static void constraint_activate(struct iosc_constraint *cc)
+{
+    if (!cc || cc->active) return;
+    cc->active = 1;
+    g_active_constraint = cc;
+    if (cc->type == 0) zwp_locked_pointer_v1_send_locked(cc->resource);
+    else               zwp_confined_pointer_v1_send_confined(cc->resource);
+}
+static void constraints_update_focus(struct iosc_surface *newfocus)
+{
+    if (g_active_constraint && g_active_constraint->surface != newfocus)
+        constraint_deactivate(g_active_constraint);
+    if (!g_active_constraint) {
+        struct iosc_constraint *cc = constraint_for_surface(newfocus);
+        if (cc) constraint_activate(cc);
+    }
+}
+static int pointer_locked_for(struct iosc_surface *s)
+{
+    return g_active_constraint && g_active_constraint->active &&
+           g_active_constraint->type == 0 && g_active_constraint->surface == s;
+}
+static int confine_point(struct iosc_surface *s, int *x, int *y)
+{
+    if (!(g_active_constraint && g_active_constraint->active &&
+          g_active_constraint->type == 1 && g_active_constraint->surface == s))
+        return 0;
+    int w = 0, h = 0; surface_display_size(s, &w, &h);
+    if (w > 0) *x = clampi(*x, s->dx, s->dx + w - 1);
+    if (h > 0) *y = clampi(*y, s->dy, s->dy + h - 1);
+    return 1;
+}
+static void constraints_surface_gone(struct iosc_surface *s)
+{
+    for (int i = 0; i < g_nconstraints; i++)
+        if (g_constraints[i]->surface == s) {
+            if (g_constraints[i]->active) constraint_deactivate(g_constraints[i]);
+            g_constraints[i]->surface = NULL;
+        }
+}
+
+static void constraint_res_destroy(struct wl_resource *r)
+{
+    struct iosc_constraint *cc = wl_resource_get_user_data(r);
+    if (!cc) return;
+    if (g_active_constraint == cc) g_active_constraint = NULL;
+    for (int i = 0; i < g_nconstraints; i++)
+        if (g_constraints[i] == cc) { g_constraints[i] = g_constraints[--g_nconstraints]; break; }
+    free(cc);
+}
+static void constraint_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static void locked_ptr_set_hint(struct wl_client *c, struct wl_resource *r, wl_fixed_t x, wl_fixed_t y)
+{ (void)c; (void)r; (void)x; (void)y; }
+static void constraint_set_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region)
+{ (void)c; (void)r; (void)region; }   /* whole-surface constraint; region ignored */
+
+static const struct zwp_locked_pointer_v1_interface locked_ptr_impl = {
+    .destroy = constraint_destroy_req,
+    .set_cursor_position_hint = locked_ptr_set_hint,
+    .set_region = constraint_set_region,
+};
+static const struct zwp_confined_pointer_v1_interface confined_ptr_impl = {
+    .destroy = constraint_destroy_req,
+    .set_region = constraint_set_region,
+};
+
+static void constraint_new(struct wl_client *c, struct wl_resource *r, uint32_t id,
+        struct wl_resource *surface, uint32_t lifetime, int type,
+        const struct wl_interface *iface, const void *impl)
+{
+    if (g_nconstraints >= IOSC_MAX_CONSTRAINTS) { wl_client_post_no_memory(c); return; }
+    struct iosc_constraint *cc = calloc(1, sizeof(*cc));
+    if (!cc) { wl_client_post_no_memory(c); return; }
+    cc->resource = wl_resource_create(c, iface, wl_resource_get_version(r), id);
+    if (!cc->resource) { free(cc); wl_client_post_no_memory(c); return; }
+    cc->surface  = surface ? wl_resource_get_user_data(surface) : NULL;
+    cc->type     = type;
+    cc->lifetime = lifetime;
+    wl_resource_set_implementation(cc->resource, impl, cc, constraint_res_destroy);
+    g_constraints[g_nconstraints++] = cc;
+    /* Activate right away if the target already owns the pointer. */
+    if (cc->surface && cc->surface == g_ptr_focus && !g_active_constraint)
+        constraint_activate(cc);
+}
+static void constraints_lock_pointer(struct wl_client *c, struct wl_resource *r, uint32_t id,
+        struct wl_resource *surface, struct wl_resource *pointer,
+        struct wl_resource *region, uint32_t lifetime)
+{ (void)pointer; (void)region;
+    constraint_new(c, r, id, surface, lifetime, 0, &zwp_locked_pointer_v1_interface, &locked_ptr_impl);
+}
+static void constraints_confine_pointer(struct wl_client *c, struct wl_resource *r, uint32_t id,
+        struct wl_resource *surface, struct wl_resource *pointer,
+        struct wl_resource *region, uint32_t lifetime)
+{ (void)pointer; (void)region;
+    constraint_new(c, r, id, surface, lifetime, 1, &zwp_confined_pointer_v1_interface, &confined_ptr_impl);
+}
+static void constraints_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_pointer_constraints_v1_interface constraints_impl = {
+    .destroy = constraints_destroy,
+    .lock_pointer = constraints_lock_pointer,
+    .confine_pointer = constraints_confine_pointer,
+};
+static void constraints_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_pointer_constraints_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &constraints_impl, NULL, NULL);
+}
+
+/* ===========================================================================
+ * primary selection (zwp_primary_selection_device_manager_v1)
+ *
+ * The X11-style middle-click selection, kept SEPARATE from wl_data_device's
+ * CLIPBOARD and from the UIPasteboard bridge. Direct brokering: the current
+ * source lives in its owning client; a reader's offer.receive is forwarded to
+ * that source's `send` event (no in-memory copy). The current selection is
+ * pushed to whichever client holds keyboard focus.
+ * =========================================================================== */
+
+#define IOSC_MAX_PRIMARY_MIMES   16
+#define IOSC_MAX_PRIMARY_DEVICES 32
+struct iosc_primary_source {
+    struct wl_resource *resource;
+    char *mimes[IOSC_MAX_PRIMARY_MIMES];
+    int nmimes;
+};
+static struct iosc_primary_source *g_primary_source;      /* current owner, or NULL */
+static struct wl_resource *g_primary_devices[IOSC_MAX_PRIMARY_DEVICES];
+static int g_nprimary_devices;
+
+static void primary_offer_receive(struct wl_client *c, struct wl_resource *r,
+                                  const char *mime, int fd)
+{ (void)c; (void)r;
+    if (g_primary_source && g_primary_source->resource)
+        zwp_primary_selection_source_v1_send_send(g_primary_source->resource, mime, fd);
+    close(fd);
+}
+static void primary_offer_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_primary_selection_offer_v1_interface primary_offer_impl = {
+    .receive = primary_offer_receive, .destroy = primary_offer_destroy_req };
+
+static void primary_selection_send_to_device(struct wl_resource *dev)
+{
+    struct wl_client *c = wl_resource_get_client(dev);
+    if (!g_primary_source) { zwp_primary_selection_device_v1_send_selection(dev, NULL); return; }
+    struct wl_resource *offer = wl_resource_create(c, &zwp_primary_selection_offer_v1_interface,
+                                                   wl_resource_get_version(dev), 0);
+    if (!offer) return;
+    wl_resource_set_implementation(offer, &primary_offer_impl, NULL, NULL);
+    zwp_primary_selection_device_v1_send_data_offer(dev, offer);
+    for (int i = 0; i < g_primary_source->nmimes; i++)
+        zwp_primary_selection_offer_v1_send_offer(offer, g_primary_source->mimes[i]);
+    zwp_primary_selection_device_v1_send_selection(dev, offer);
+}
+static void primary_selection_send_to_client(struct wl_client *client)
+{
+    if (!client) return;
+    for (int i = 0; i < g_nprimary_devices; i++)
+        if (wl_resource_get_client(g_primary_devices[i]) == client)
+            primary_selection_send_to_device(g_primary_devices[i]);
+}
+static void primary_selection_broadcast(void)
+{
+    if (g_kbd_focus) primary_selection_send_to_client(wl_resource_get_client(g_kbd_focus->resource));
+}
+
+static void primary_source_offer(struct wl_client *c, struct wl_resource *r, const char *mime)
+{
+    struct iosc_primary_source *s = wl_resource_get_user_data(r);
+    if (!s || !mime || s->nmimes >= IOSC_MAX_PRIMARY_MIMES) return;
+    char *copy = strdup(mime);
+    if (!copy) { wl_client_post_no_memory(c); return; }
+    s->mimes[s->nmimes++] = copy;
+}
+static void primary_source_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_primary_selection_source_v1_interface primary_source_impl = {
+    .offer = primary_source_offer, .destroy = primary_source_destroy_req };
+static void primary_source_res_destroy(struct wl_resource *r)
+{
+    struct iosc_primary_source *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    for (int i = 0; i < s->nmimes; i++) free(s->mimes[i]);
+    if (g_primary_source == s) { g_primary_source = NULL; primary_selection_broadcast(); }
+    free(s);
+}
+
+static void primary_device_set_selection(struct wl_client *c, struct wl_resource *r,
+                                         struct wl_resource *source, uint32_t serial)
+{ (void)c; (void)r; (void)serial;
+    g_primary_source = source ? wl_resource_get_user_data(source) : NULL;
+    primary_selection_broadcast();
+}
+static void primary_device_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_primary_selection_device_v1_interface primary_device_impl = {
+    .set_selection = primary_device_set_selection, .destroy = primary_device_destroy_req };
+static void primary_device_res_destroy(struct wl_resource *r)
+{ reslist_remove(g_primary_devices, &g_nprimary_devices, r); }
+
+static void primary_mgr_create_source(struct wl_client *c, struct wl_resource *r, uint32_t id)
+{
+    struct iosc_primary_source *s = calloc(1, sizeof(*s));
+    if (!s) { wl_client_post_no_memory(c); return; }
+    s->resource = wl_resource_create(c, &zwp_primary_selection_source_v1_interface,
+                                     wl_resource_get_version(r), id);
+    if (!s->resource) { free(s); wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(s->resource, &primary_source_impl, s, primary_source_res_destroy);
+}
+static void primary_mgr_get_device(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                                   struct wl_resource *seat)
+{ (void)seat;
+    if (g_nprimary_devices >= IOSC_MAX_PRIMARY_DEVICES) { wl_client_post_no_memory(c); return; }
+    struct wl_resource *dev = wl_resource_create(c, &zwp_primary_selection_device_v1_interface,
+                                                 wl_resource_get_version(r), id);
+    if (!dev) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(dev, &primary_device_impl, NULL, primary_device_res_destroy);
+    g_primary_devices[g_nprimary_devices++] = dev;
+    if (g_kbd_focus && wl_resource_get_client(g_kbd_focus->resource) == c)
+        primary_selection_send_to_device(dev);
+}
+static void primary_mgr_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_primary_selection_device_manager_v1_interface primary_mgr_impl = {
+    .create_source = primary_mgr_create_source,
+    .get_device = primary_mgr_get_device,
+    .destroy = primary_mgr_destroy };
+static void primary_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_primary_selection_device_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &primary_mgr_impl, NULL, NULL);
+}
+
+/* ===========================================================================
+ * idle: ext_idle_notifier_v1 (notifications) + zwp_idle_inhibit_manager_v1.
+ *
+ * Each notification arms a timer for its timeout; input activity (pointer/key)
+ * resets every timer and sends `resumed` to any that had `idled`. While any idle
+ * inhibitor exists (video players, presentations) the timers never fire idle.
+ * =========================================================================== */
+
+#define IOSC_MAX_IDLE_NOTIF 32
+struct iosc_idle_notif {
+    struct wl_resource *resource;
+    uint32_t timeout_ms;
+    struct wl_event_source *timer;
+    int idled;
+};
+static struct iosc_idle_notif *g_idle_notifs[IOSC_MAX_IDLE_NOTIF]; static int g_nidle_notifs;
+static int g_idle_inhibitors;
+
+static int idle_timer_cb(void *data)
+{
+    struct iosc_idle_notif *n = data;
+    if (g_idle_inhibitors > 0) {          /* inhibited: stay awake, re-arm */
+        if (n->timer && n->timeout_ms) wl_event_source_timer_update(n->timer, n->timeout_ms);
+        return 0;
+    }
+    if (!n->idled) { n->idled = 1; ext_idle_notification_v1_send_idled(n->resource); }
+    return 0;
+}
+static void idle_note_activity(void)
+{
+    for (int i = 0; i < g_nidle_notifs; i++) {
+        struct iosc_idle_notif *n = g_idle_notifs[i];
+        if (n->idled) { n->idled = 0; ext_idle_notification_v1_send_resumed(n->resource); }
+        if (n->timer && n->timeout_ms) wl_event_source_timer_update(n->timer, n->timeout_ms);
+    }
+}
+
+static void idle_notif_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct ext_idle_notification_v1_interface idle_notif_impl = { .destroy = idle_notif_destroy_req };
+static void idle_notif_res_destroy(struct wl_resource *r)
+{
+    struct iosc_idle_notif *n = wl_resource_get_user_data(r);
+    if (!n) return;
+    if (n->timer) wl_event_source_remove(n->timer);
+    for (int i = 0; i < g_nidle_notifs; i++)
+        if (g_idle_notifs[i] == n) { g_idle_notifs[i] = g_idle_notifs[--g_nidle_notifs]; break; }
+    free(n);
+}
+static void idle_notifier_get(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                              uint32_t timeout, struct wl_resource *seat)
+{ (void)seat;
+    if (g_nidle_notifs >= IOSC_MAX_IDLE_NOTIF) { wl_client_post_no_memory(c); return; }
+    struct iosc_idle_notif *n = calloc(1, sizeof(*n));
+    if (!n) { wl_client_post_no_memory(c); return; }
+    n->resource = wl_resource_create(c, &ext_idle_notification_v1_interface, wl_resource_get_version(r), id);
+    if (!n->resource) { free(n); wl_client_post_no_memory(c); return; }
+    n->timeout_ms = timeout ? timeout : 1;
+    wl_resource_set_implementation(n->resource, &idle_notif_impl, n, idle_notif_res_destroy);
+    n->timer = wl_event_loop_add_timer(wl_display_get_event_loop(g_display), idle_timer_cb, n);
+    if (n->timer) wl_event_source_timer_update(n->timer, n->timeout_ms);
+    g_idle_notifs[g_nidle_notifs++] = n;
+}
+static void idle_notifier_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct ext_idle_notifier_v1_interface idle_notifier_impl = {
+    .destroy = idle_notifier_destroy, .get_idle_notification = idle_notifier_get };
+static void idle_notifier_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &ext_idle_notifier_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &idle_notifier_impl, NULL, NULL);
+}
+
+static void idle_inhibitor_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_idle_inhibitor_v1_interface idle_inhibitor_impl = { .destroy = idle_inhibitor_destroy_req };
+static void idle_inhibitor_res_destroy(struct wl_resource *r){ (void)r; if (g_idle_inhibitors > 0) g_idle_inhibitors--; }
+static void idle_inhibit_create(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                                struct wl_resource *surface)
+{ (void)surface;
+    struct wl_resource *inh = wl_resource_create(c, &zwp_idle_inhibitor_v1_interface, wl_resource_get_version(r), id);
+    if (!inh) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(inh, &idle_inhibitor_impl, NULL, idle_inhibitor_res_destroy);
+    g_idle_inhibitors++;
+}
+static void idle_inhibit_mgr_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_idle_inhibit_manager_v1_interface idle_inhibit_mgr_impl = {
+    .create_inhibitor = idle_inhibit_create, .destroy = idle_inhibit_mgr_destroy };
+static void idle_inhibit_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_idle_inhibit_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &idle_inhibit_mgr_impl, NULL, NULL);
+}
+
 /* ---- main ---------------------------------------------------------------- */
 
 int main(int argc, char **argv)
@@ -3974,6 +4550,15 @@ int main(int argc, char **argv)
     /* Window list as a protocol: the taskbar/overview enumerates + drives toplevels. */
     wl_global_create(g_display, &zwlr_foreign_toplevel_manager_v1_interface, 3, NULL,
                      ftl_manager_bind);
+    /* Pointer lock + relative motion: games, 3D viewports, gnome-shell mouse-look. */
+    wl_global_create(g_display, &zwp_pointer_constraints_v1_interface, 1, NULL, constraints_bind);
+    wl_global_create(g_display, &zwp_relative_pointer_manager_v1_interface, 1, NULL, relptr_mgr_bind);
+    /* X11-style middle-click primary selection (separate from the clipboard). */
+    wl_global_create(g_display, &zwp_primary_selection_device_manager_v1_interface, 1, NULL,
+                     primary_mgr_bind);
+    /* Idle detection + inhibition (screensavers/power; video players stay awake). */
+    wl_global_create(g_display, &ext_idle_notifier_v1_interface, 1, NULL, idle_notifier_bind);
+    wl_global_create(g_display, &zwp_idle_inhibit_manager_v1_interface, 1, NULL, idle_inhibit_mgr_bind);
 
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
@@ -3995,6 +4580,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: clipboard socket failed -> no UIPasteboard bridge\n");
     else
         fprintf(stderr, "iosc: clipboard socket up at /var/jb/tmp/iosc-clipboard.sock\n");
+    if (wm_socket_start(wl_display_get_event_loop(g_display),
+                        "/var/jb/tmp/iosc-wm.sock") != 0)
+        fprintf(stderr, "iosc: wm control socket failed -> no raise-by-app_id\n");
+    else
+        fprintf(stderr, "iosc: wm control socket up at /var/jb/tmp/iosc-wm.sock\n");
 
     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
             sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");
@@ -4006,7 +4596,10 @@ int main(int argc, char **argv)
                     "zxdg_decoration_manager_v1 v1, xdg_activation_v1 v1, "
                     "zwp_text_input_manager_v3 v1, zwp_input_method_manager_v2 v1, "
                     "zwp_virtual_keyboard_manager_v1 v1, zwlr_layer_shell_v1 v4, "
-                    "zwlr_foreign_toplevel_manager_v1 v3\n");
+                    "zwlr_foreign_toplevel_manager_v1 v3, "
+                    "zwp_pointer_constraints_v1 v1, zwp_relative_pointer_manager_v1 v1, "
+                    "zwp_primary_selection_device_manager_v1 v1, "
+                    "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);

@@ -47,6 +47,11 @@ INPUT_METHOD_XML="$X11/wayland/protocols/input-method-unstable-v2.xml"
 VIRTUAL_KEYBOARD_XML="$X11/wayland/protocols/virtual-keyboard-unstable-v1.xml"
 LAYER_SHELL_XML="$X11/apps/iosc-shell/protocols/wlr-layer-shell-unstable-v1.xml"
 FOREIGN_TOPLEVEL_XML="$X11/apps/iosc-shell/protocols/wlr-foreign-toplevel-management-unstable-v1.xml"
+POINTER_CONSTRAINTS_XML="$PREFIX/share/wayland-protocols/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml"
+RELATIVE_POINTER_XML="$PREFIX/share/wayland-protocols/unstable/relative-pointer/relative-pointer-unstable-v1.xml"
+PRIMARY_SELECTION_XML="$PREFIX/share/wayland-protocols/unstable/primary-selection/primary-selection-unstable-v1.xml"
+IDLE_INHIBIT_XML="$PREFIX/share/wayland-protocols/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml"
+IDLE_NOTIFY_XML="$PREFIX/share/wayland-protocols/staging/ext-idle-notify/ext-idle-notify-v1.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
 [ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
 [ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
@@ -59,6 +64,11 @@ FOREIGN_TOPLEVEL_XML="$X11/apps/iosc-shell/protocols/wlr-foreign-toplevel-manage
 [ -f "$VIRTUAL_KEYBOARD_XML" ] || { echo "!! virtual-keyboard-unstable-v1.xml not found at $VIRTUAL_KEYBOARD_XML"; exit 1; }
 [ -f "$LAYER_SHELL_XML" ] || { echo "!! wlr-layer-shell-unstable-v1.xml not found at $LAYER_SHELL_XML"; exit 1; }
 [ -f "$FOREIGN_TOPLEVEL_XML" ] || { echo "!! wlr-foreign-toplevel-management-unstable-v1.xml not found at $FOREIGN_TOPLEVEL_XML"; exit 1; }
+[ -f "$POINTER_CONSTRAINTS_XML" ] || { echo "!! pointer-constraints-unstable-v1.xml not found at $POINTER_CONSTRAINTS_XML"; exit 1; }
+[ -f "$RELATIVE_POINTER_XML" ] || { echo "!! relative-pointer-unstable-v1.xml not found at $RELATIVE_POINTER_XML"; exit 1; }
+[ -f "$PRIMARY_SELECTION_XML" ] || { echo "!! primary-selection-unstable-v1.xml not found at $PRIMARY_SELECTION_XML"; exit 1; }
+[ -f "$IDLE_INHIBIT_XML" ] || { echo "!! idle-inhibit-unstable-v1.xml not found at $IDLE_INHIBIT_XML"; exit 1; }
+[ -f "$IDLE_NOTIFY_XML" ] || { echo "!! ext-idle-notify-v1.xml not found at $IDLE_NOTIFY_XML"; exit 1; }
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
@@ -99,6 +109,16 @@ wayland-scanner private-code  "$LAYER_SHELL_XML" "$GEN/wlr-layer-shell-unstable-
 wayland-scanner server-header "$FOREIGN_TOPLEVEL_XML" "$GEN/wlr-foreign-toplevel-management-unstable-v1-server-protocol.h"
 wayland-scanner client-header "$FOREIGN_TOPLEVEL_XML" "$GEN/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 wayland-scanner private-code  "$FOREIGN_TOPLEVEL_XML" "$GEN/wlr-foreign-toplevel-management-unstable-v1-protocol.c"
+wayland-scanner server-header "$POINTER_CONSTRAINTS_XML" "$GEN/pointer-constraints-unstable-v1-server-protocol.h"
+wayland-scanner private-code  "$POINTER_CONSTRAINTS_XML" "$GEN/pointer-constraints-unstable-v1-protocol.c"
+wayland-scanner server-header "$RELATIVE_POINTER_XML" "$GEN/relative-pointer-unstable-v1-server-protocol.h"
+wayland-scanner private-code  "$RELATIVE_POINTER_XML" "$GEN/relative-pointer-unstable-v1-protocol.c"
+wayland-scanner server-header "$PRIMARY_SELECTION_XML" "$GEN/primary-selection-unstable-v1-server-protocol.h"
+wayland-scanner private-code  "$PRIMARY_SELECTION_XML" "$GEN/primary-selection-unstable-v1-protocol.c"
+wayland-scanner server-header "$IDLE_INHIBIT_XML" "$GEN/idle-inhibit-unstable-v1-server-protocol.h"
+wayland-scanner private-code  "$IDLE_INHIBIT_XML" "$GEN/idle-inhibit-unstable-v1-protocol.c"
+wayland-scanner server-header "$IDLE_NOTIFY_XML" "$GEN/ext-idle-notify-v1-server-protocol.h"
+wayland-scanner private-code  "$IDLE_NOTIFY_XML" "$GEN/ext-idle-notify-v1-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
 wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
@@ -139,6 +159,11 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/virtual-keyboard-unstable-v1-protocol.c" \
     "$GEN/wlr-layer-shell-unstable-v1-protocol.c" \
     "$GEN/wlr-foreign-toplevel-management-unstable-v1-protocol.c" \
+    "$GEN/pointer-constraints-unstable-v1-protocol.c" \
+    "$GEN/relative-pointer-unstable-v1-protocol.c" \
+    "$GEN/primary-selection-unstable-v1-protocol.c" \
+    "$GEN/idle-inhibit-unstable-v1-protocol.c" \
+    "$GEN/ext-idle-notify-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
