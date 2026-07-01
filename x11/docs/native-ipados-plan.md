@@ -279,6 +279,91 @@ What does carry over:
    just the catalog floor; no DE stack to install, so it is the lightest
    flavor and likely the default suggestion on non-M1 hardware).
 
+## 7b. Implementation scoping against current iosc (2026-07-01 recon)
+
+Re-verified against the real tree so the compositor work is anchored to exact
+functions, not the sketch above. Findings that change the estimate downward:
+
+- **The typed record already carries `window_id`.** `xios_surface.h`'s `xios_msg`
+  has a `window_id` field (0 = the single/default surface) and DIRTY is defined
+  as per-window already (`XIOS_MSG_DIRTY ... window_id`). Native DIRTY is a value
+  change, not a wire change. Codes 0x40-0x5f are already reserved for native.
+- **The GL compositor can already retarget.** `iosc_gl_resize(output_iosurface,
+  w, h)` (iosc_gl.h) tears down and rebinds the output pbuffer/texture/FBO to a
+  NEW IOSurface while keeping the EGL context, shaders, and client-texture cache.
+  Per-window rendering = call a factored-out `iosc_gl_bind_target(canvas, w, h)`
+  (the inner half of `iosc_gl_resize`) once per dirty window, then the existing
+  `iosc_gl_begin` / `composite_one` / `iosc_gl_end` unchanged.
+- **The mach hand-off is one surface argument away from general.**
+  `deliver_surface_port(pid, portname)` in xios_surface.c hardcodes the global
+  `s_surface`. Generalized: `deliver_canvas_port(reply_port, canvas)` —
+  identical `IOSurfaceCreateMachPort` + `mach_port_extract_right` + timed
+  `mach_msg`, but the surface is a per-window canvas and the destination port
+  comes from BIND's `d` field (the receive-port name) instead of a per-connection
+  hello. iosc still `task_for_pid`s the host (BIND carries its pid via socket
+  peer creds, same as today's hello).
+
+### The concrete changes, by file
+
+1. **`xios_surface.c` — 1 surface -> N canvases (separable, non-frozen).**
+   New registry: canvases keyed by `window_id`, each an `IOSurfaceCreate` at a
+   toplevel's configured size via the exact align path `xios_surface_create`
+   uses. New `iosc-native.sock` listener with the BIND handshake (app_id +
+   reply-port name) alongside the existing ddx socket (byte-identical for other
+   flavors). `deliver_canvas_port` as above. `xios_notify_dirty` gains a
+   window-scoped variant that stamps the canvas's `window_id`. This is a new
+   translation unit (`xios_canvas.c`) that does NOT touch the frozen iosc.c, so
+   it can be written and compile-checked in parallel with the module refactor.
+
+2. **`iosc.c` — per-window compositing (frozen; lands post-refactor).**
+   - `surface_map` (line 1312): on a TOPLEVEL map in native mode, allocate its
+     canvas, register the `window_id <-> canvas <-> host(app_id)` binding, emit
+     `WINDOW_NEW` + deliver the canvas port. `surface_unmap` (1370) emits
+     `WINDOW_GONE` and frees the canvas.
+   - `recomposite_now` (1032): native mode iterates dirty toplevels instead of
+     the single output. For each, `iosc_gl_bind_target(canvas)`, composite that
+     toplevel + its popups/subsurfaces (they already carry `parent` + rel_x/y),
+     `iosc_gl_end`, `xios_notify_dirty(window_id)`. The `g_mapped[]` z-order and
+     `composite_one` are reused verbatim per window.
+   - Title/app_id already tracked on `iosc_surface` (title[256]/app_id[256]);
+     `WINDOW_TITLE` piggybacks the existing foreign-toplevel title path.
+   - xdg_positioner constraint to window bounds for popups (section 5).
+
+3. **`iosc_gl.c` — factor `iosc_gl_bind_target` out of `iosc_gl_resize`.**
+   Mechanical: the resize body already does exactly this; split the target
+   rebind from the "forget old output" bookkeeping. Small, and it can land
+   pre-refactor (pure addition, no behavior change for the single-output path).
+
+4. **Input scoping — `XIOS_IN_BIND=8`** in the shared `xios_input_socket.h`
+   (iosc-protocols owns it) + honored in iosc's input reader. The host already
+   sends it (IoscInput.c). Additive record type, like TOUCH=6 / TABLET=7.
+
+5. **ioscd native mode** — DONE (native flag, skip `foreground_xios`,
+   gen-launchers `--native`).
+
+### Build -> demo path
+
+1. (now, parallel-safe) `xios_canvas.c`: N-canvas registry + `iosc-native.sock`
+   BIND server + `deliver_canvas_port`. Standalone TU, compile-checked against
+   the current tree; no iosc.c edits.
+2. (pre-refactor OK) `iosc_gl_bind_target` split — pure addition.
+3. (post-refactor) iosc.c native-mode `recomposite`/`surface_map` wiring into
+   the new module boundaries.
+4. `XIOS_IN_BIND=8` into the shared header + iosc reader (with iosc-protocols).
+5. Wire `IOSCHost`'s `NativeClient` to the real ports; `build-host.sh`.
+6. On-device (needs the device, currently tied up): `gen-launchers.sh --native`,
+   tap a GTK4 app icon (kgx/gnome-console), validate it opens as its own iPad
+   window, type into it, home out, confirm the app-switcher card.
+
+### Blockers
+
+- **Freeze:** the iosc.c half (change 2) lands post monolith->modules refactor,
+  cleanly into the new module structure — coordinate boundaries with
+  iosc-protocols. Changes 1 and 3 are separable and can start now.
+- **`XIOS_IN_BIND=8`** not yet in the authoritative header (iosc-protocols).
+- **Device time** is on the mutter/gnome-shell bring-up; no device needed until
+  step 6.
+
 ## 8. Open questions for Max
 
 - **Q1 (the gate): confirm scene-per-app hosting, Variant A.** Each generated
