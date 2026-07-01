@@ -56,6 +56,9 @@ docker run --rm --entrypoint /bin/bash \
 
     BASE="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -Igen -I/work \
           -isystem $BUILD_BASE/var/jb/usr/include -Wall -Wextra -O2 -std=gnu11"
+    # Link lines need the deployment target too, else ld64 stamps the SDK
+    # version (16.5) as LC_BUILD_VERSION minos and the deb floor overshoots.
+    LINK="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0"
     # The staged iOS SDK headers macro-rename exec*()->ie_exec*() (the Procursus
     # iosexec posix_spawn shim); sd_launch() uses execl, so all clients link it.
     RPATH="-Wl,-rpath,/var/jb/usr/lib -framework CoreFoundation -liosexec"
@@ -74,15 +77,15 @@ docker run --rm --entrypoint /bin/bash \
 
     echo "== linking ioscpanel (cairo/pangocairo + screencopy) =="
     $CC $BASE $UI_CFLAGS -c ioscpanel.c -o gen/ioscpanel.o
-    $CC gen/ioscpanel.o $PROTO $UI_LIBS $RPATH -o out/ioscpanel
+    $CC $LINK gen/ioscpanel.o $PROTO $UI_LIBS $RPATH -o out/ioscpanel
 
     echo "== linking ioscoverview (cairo/pangocairo + screencopy) =="
     $CC $BASE $UI_CFLAGS -c ioscoverview.c -o gen/ioscoverview.o
-    $CC gen/ioscoverview.o $PROTO $UI_LIBS $RPATH -o out/ioscoverview
+    $CC $LINK gen/ioscoverview.o $PROTO $UI_LIBS $RPATH -o out/ioscoverview
 
     echo "== linking ioscbg (wl_shm + CoreGraphics/ImageIO) =="
     $CC $BASE $WL_CFLAGS -c ioscbg.c -o gen/ioscbg.o
-    $CC gen/ioscbg.o gen/layer.o gen/xdg.o $WL_LIBS $RPATH \
+    $CC $LINK gen/ioscbg.o gen/layer.o gen/xdg.o $WL_LIBS $RPATH \
         -framework CoreGraphics -framework ImageIO -o out/ioscbg
 
     # Match the shipped gettext: device has libintl.8.dylib, not libintl.dylib

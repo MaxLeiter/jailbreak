@@ -18,7 +18,7 @@ OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
 REPODEBS=/Users/max/Documents/jailbreak/repo/debs
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.8.0"
+VER="0.9.0"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 IMG="procursus-xbuild:bookworm-arm64"
@@ -78,6 +78,9 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  subsurfaces, viewporter, fractional-scale, and clipboard via wl_data_device),
  stacks multiple windows with focus-on-tap, and routes touch and keyboard from the
  Xios app into the focused window so you can tap and type into a live terminal.
+ Since 0.9 it also provides the shell-side protocols (wlr layer-shell,
+ foreign-toplevel management and screencopy) that the iosc-shell desktop
+ package builds on.
  .
  Needs the Xios app installed (the on-screen display front end) and at least one
  Wayland client to be useful. Install the gnome-console package and run run-kgx.sh
