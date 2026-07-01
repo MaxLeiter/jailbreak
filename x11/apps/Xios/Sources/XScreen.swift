@@ -978,7 +978,75 @@ final class XScreenView: UIView {
         zoomButton?.setTitle("\(Int((zoomScale * 100).rounded()))%", for: .normal)
     }
 
+    // MARK: iosc real multitouch + Apple Pencil (wire types XIOS_IN_TOUCH/XIOS_IN_TABLET)
+
+    /// The touch/tablet records are ADDITIVE: the legacy single-finger pointer
+    /// emulation below keeps firing alongside them, so nothing regresses if a
+    /// client ignores wl_touch. Flip to true if apps double-handle taps
+    /// (pointer click + touch tap) so a forwarded touch consumes the event.
+    private static let ioscTouchReplacesPointer = false
+    /// Stable per-touch slot ids (0..9), assigned on began, freed on ended/cancelled.
+    private var touchSlots: [UITouch: Int32] = [:]
+
+    private func touchSlot(for t: UITouch) -> Int32 {
+        if let s = touchSlots[t] { return s }
+        var s: Int32 = 0
+        while touchSlots.values.contains(s) { s += 1 }
+        touchSlots[t] = s
+        return s
+    }
+
+    private func ioscPoint(_ t: UITouch) -> (Int32, Int32)? {
+        framebufferPoint(from: t.location(in: self)) ?? lastTouchPt
+    }
+
+    /// Forward one UITouch to iosc as touch (finger) or tablet (Pencil) events.
+    /// Returns whether anything was forwarded (only false off-iosc).
+    /// phase: 0 up, 1 down, 2 motion, 3 cancel (the wire's phase encoding).
+    private func forwardIosc(_ t: UITouch, phase: Int32, event: UIEvent?) -> Bool {
+        guard usingIosc, inputConnected else { return false }
+        if t.type == .pencil {
+            if phase == 0 || phase == 3 {          // iosc ignores coords on up/cancel
+                let p = ioscPoint(t) ?? (0, 0)
+                iosc_input_tablet(phase, p.0, p.1, 0, 0, 0)
+                return true
+            }
+            // Coalesced touches carry the full 240Hz Pencil sample train.
+            let samples = (phase == 2 ? event?.coalescedTouches(for: t) : nil) ?? [t]
+            for s in samples {
+                guard let (x, y) = ioscPoint(s) else { continue }
+                lastTouchPt = (x, y)
+                let force = s.maximumPossibleForce > 0
+                    ? Double(s.force / s.maximumPossibleForce) : 1.0
+                let mag = 90.0 - Double(s.altitudeAngle) * 180.0 / .pi  // 0 = pen vertical
+                let az = Double(s.azimuthAngle(in: self))
+                iosc_input_tablet(phase, x, y,
+                                  UInt32((force * 65535.0).rounded()),
+                                  Int32((mag * cos(az)).rounded()),
+                                  Int32((mag * sin(az)).rounded()))
+            }
+            return true
+        }
+        let slot = touchSlot(for: t)
+        if phase == 0 || phase == 3 { touchSlots[t] = nil }
+        guard let (x, y) = ioscPoint(t) else {
+            // Outside the framebuffer: still deliver up/cancel so iosc frees the id.
+            if phase == 0 || phase == 3 { iosc_input_touch(slot, phase, 0, 0) }
+            return true
+        }
+        lastTouchPt = (x, y)
+        iosc_input_touch(slot, phase, x, y)
+        return true
+    }
+
+    private func forwardIoscAll(_ touches: Set<UITouch>, phase: Int32, event: UIEvent?) -> Bool {
+        var handled = false
+        for t in touches where forwardIosc(t, phase: phase, event: event) { handled = true }
+        return handled
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if forwardIoscAll(touches, phase: 1, event: event) && Self.ioscTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
@@ -986,6 +1054,7 @@ final class XScreenView: UIView {
         sendMotion(x, y); sendButton(1, true, at: (x, y))
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if forwardIoscAll(touches, phase: 2, event: event) && Self.ioscTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
@@ -993,9 +1062,11 @@ final class XScreenView: UIView {
         sendMotion(x, y)
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if forwardIoscAll(touches, phase: 0, event: event) && Self.ioscTouchReplacesPointer { return }
         if inputConnected { sendButton(1, false, at: lastTouchPt) }
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if forwardIoscAll(touches, phase: 3, event: event) && Self.ioscTouchReplacesPointer { return }
         if inputConnected { sendButton(1, false, at: lastTouchPt) }
     }
 

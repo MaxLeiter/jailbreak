@@ -17,6 +17,8 @@ static int s_fd = -1;
 #define IOSC_IN_KEY    3
 #define IOSC_IN_TEXT   4
 #define IOSC_IN_TRAITS 5
+#define IOSC_IN_TOUCH  6   // code = touch id (slot 0..9), state = phase 0 up/1 down/2 motion/3 cancel
+#define IOSC_IN_TABLET 7   // code = pressure 0..65535, state = phase, mods = tilt+90 packed
 
 struct iosc_in_msg {
     uint32_t type;
@@ -95,6 +97,24 @@ void iosc_input_text(const char *utf8) {
     struct iosc_in_msg m = { .type = IOSC_IN_TEXT, .code = (uint32_t)len };
     send_msg(&m);
     send_bytes(utf8, len);
+}
+
+void iosc_input_touch(int slot, int phase, int x, int y) {
+    struct iosc_in_msg m = { .type = IOSC_IN_TOUCH, .x = x, .y = y,
+                             .code = (uint32_t)slot, .state = (uint32_t)phase };
+    send_msg(&m);
+}
+
+void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
+                       int tilt_x_deg, int tilt_y_deg) {
+    if (tilt_x_deg < -90) tilt_x_deg = -90; if (tilt_x_deg > 90) tilt_x_deg = 90;
+    if (tilt_y_deg < -90) tilt_y_deg = -90; if (tilt_y_deg > 90) tilt_y_deg = 90;
+    struct iosc_in_msg m = { .type = IOSC_IN_TABLET, .x = x, .y = y,
+                             .code = pressure16 > 65535u ? 65535u : pressure16,
+                             .state = (uint32_t)phase,
+                             .mods = (uint32_t)(tilt_x_deg + 90) |
+                                     ((uint32_t)(tilt_y_deg + 90) << 8) };
+    send_msg(&m);
 }
 
 int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled) {

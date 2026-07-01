@@ -21,6 +21,11 @@ void iosc_input_motion(int x, int y);                       // absolute, output 
 void iosc_input_button(int button, bool down, int x, int y);// 1=left 2=mid 3=right
 void iosc_input_key(unsigned keysym, unsigned mods);        // X keysym + mod bitmask
 void iosc_input_text(const char *utf8);                     // committed UTF-8 text
+// Real multitouch + Apple Pencil (wire spec: x11/wayland/xios_input_socket.h).
+// phase: 0 up, 1 down, 2 motion, 3 cancel. slot = stable per-touch id 0..9.
+void iosc_input_touch(int slot, int phase, int x, int y);
+void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
+                       int tilt_x_deg, int tilt_y_deg);     // pressure 0..65535
 int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled);
 
 #endif
