@@ -22,7 +22,9 @@ endif
 SUBPROJECTS    += qtbase
 QTBASE_VERSION := 6.6.3
 QT_MINOR       := 6.6
-DEB_QTBASE_V   ?= $(QTBASE_VERSION)
+# Round 2 (-2): dbus + printsupport + xkbcommon + atspi bridge flipped ON (KF6/a11y need
+# them). See the FEATURE_* block below and docs/kde-plasma-plan.md Q3. Round 1 was 6.6.3.
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)-2
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
@@ -116,6 +118,13 @@ else
 # NOTE: base libs (zlib/libpng/freetype/fontconfig/harfbuzz/pcre2) are already staged in build_base
 # (warm volume) — do NOT list them as prereqs (would trigger unpatched rebuilds, per mutter.mk).
 # cmake finds them via CMAKE_FIND_ROOT_PATH=build_base. double-conversion/md4c/b2 are bundled by Qt.
+# ROUND-2 PREREQ (dbus/xkbcommon/atspi features below): libdbus-1 + libxkbcommon are already in
+# build_base; ATSPI2 is NOT staged by any earlier track, so the round-2 rebuild needs the
+# at-spi2-core-dev + libatspi2.0-0 debs (from out/, GNOME track) unpacked into build_base first:
+#   for d in libatspi2.0-0 at-spi2-core-dev; do dpkg-deb -x out/$${d}_*.deb tmp && \
+#     cp -a tmp/var/jb/usr/* $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/; done
+# Only atspi-2.pc + headers are consumed (FindATSPI2 = pkg_check_modules; the bridge is a pure
+# QtDBus adaptor, so libatspi is not linked — staging the runtime dylib is belt-and-suspenders).
 # INSTALL_* dirs follow Debian's layout (plugins/qml/mkspecs under lib/qt6, data under share/qt6) so
 # packaging and later Qt/KF6 modules have one canonical archdatadir.
 # CMAKE_OSX_DEPLOYMENT_TARGET is defined-but-EMPTY on purpose: Qt would otherwise default it to its
@@ -160,7 +169,8 @@ qtbase: qtbase-setup
 		-DFEATURE_network=ON \
 		-DFEATURE_sql=OFF \
 		-DFEATURE_testlib=OFF \
-		-DFEATURE_printsupport=OFF \
+		-DFEATURE_printsupport=ON \
+		-DFEATURE_cups=OFF \
 		-DFEATURE_opengl=OFF \
 		-DINPUT_opengl=no \
 		-DFEATURE_egl=OFF \
@@ -168,7 +178,12 @@ qtbase: qtbase-setup
 		-DFEATURE_icu=OFF \
 		-DFEATURE_openssl=OFF \
 		-DINPUT_openssl=no \
-		-DFEATURE_dbus=OFF \
+		-DFEATURE_dbus=ON \
+		-DFEATURE_dbus_linked=ON \
+		-DINPUT_dbus=linked \
+		-DFEATURE_xkbcommon=ON \
+		-DFEATURE_accessibility=ON \
+		-DFEATURE_accessibility_atspi_bridge=ON \
 		-DFEATURE_glib=OFF \
 		-DFEATURE_zstd=OFF \
 		-DFEATURE_brotli=OFF \
