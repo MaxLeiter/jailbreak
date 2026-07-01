@@ -69,6 +69,39 @@ Floor notes:
 - x11 is dragged to 16.5 by libdrm2 and xwayland (same drift). A pinned
   rebuild would drop it to 16.0. Optional polish, not blocking.
 
+### Known follow-up: SDK-drift floors (root cause found 2026-07-01)
+
+iosc-shell traced the mechanism: link lines that omit
+`-miphoneos-version-min` make ld64 stamp the build SDK's version as the
+Mach-O LC_BUILD_VERSION minos, which stamp-minos then treats as the floor.
+No recipe in linux-build passes the flag, so every deb's own floor is
+whichever SDK epoch its builder image had: 16.0 for most, 16.2 for the
+libgtkintl / gobject-introspection / libgirepository era, 16.5 for the
+recent gjs / libgjs0 / libei1 / libdrm2 / libgtop-2.0-11 / iosc-shell
+builds (iosc-shell has since pinned its own link line and will drop to
+16.0 at next build).
+
+Offending build steps, for the recipe owners:
+- bare `$(CC) -dynamiclib` shim links (no `$(CFLAGS)`, no pin):
+  `recipes/libdrm.mk:56`, `recipes/libei.mk:50`, `recipes/libgtop.mk:27`,
+  `recipes/gtk+3.0.mk:102` (the libgtkintl shim). Fix: add
+  `-miphoneos-version-min=16.0` to the link line.
+- meson cross builds whose generated cross.txt has no
+  c_args/c_link_args: `recipes/gjs.mk`, `recipes/gobject-introspection.mk`
+  (every recipe's cross.txt shares this gap; these are the two whose debs
+  currently drift). Fix: add the pin to c_args + c_link_args, or pin it
+  once in the builder image's CC wrapper so no recipe can drift again.
+
+Simulated floor effect through the real dependency graph (out/ debs +
+DEPENDS_ADD, 2026-07-01):
+- pin the 16.5 group only: xios-x11 16.5 -> 16.0 (via libdrm2/xwayland),
+  xios-gnome 16.5 -> 16.2, gnome-shell/libmutter/gnome-console -> 16.2.
+- pin the 16.2 group too (libgtkintl + g-i + libgirepository): the whole
+  catalog and ALL flavor floors flatten to 16.0.
+Not urgent (current floors are correct, just higher than necessary), but
+each pinned rebuild permanently widens device compatibility; re-run
+`tools/stamp-minos.py` after any of them to restamp.
+
 ## Version variants: exactly one per package in repo/debs
 
 `make-repo.py` indexes every .deb in `repo/debs/`; two versions of one
