@@ -46,6 +46,18 @@ qtwayland-setup: setup
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtwayland)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
+	# qgenericunixthemes never built in our qtbase (gated UNIX AND NOT MACOS; MACOS
+	# stays set under the masquerade — the seds only disable `CONDITION MACOS` forms),
+	# so its private header isn't staged. The sibling unix fontdb/eventdispatcher/
+	# services headers ARE staged (verified), so only the theme hookup goes: nullptr
+	# theme = Qt default; the Plasma flavor later gets real theming from
+	# plasma-integration's own platformtheme plugin, which replaces the generic one.
+	sed -i '/#include <QtGui\/private\/qgenericunixthemes_p.h>/d' \
+		$(BUILD_WORK)/qtwayland/src/client/qwaylandintegration.cpp
+	sed -i 's/return QGenericUnixTheme::themeNames();/return QStringList();/' \
+		$(BUILD_WORK)/qtwayland/src/client/qwaylandintegration.cpp
+	sed -i 's/return QGenericUnixTheme::createUnixTheme(name);/return nullptr;/' \
+		$(BUILD_WORK)/qtwayland/src/client/qwaylandintegration.cpp
 
 ifneq ($(wildcard $(BUILD_WORK)/qtwayland/.build_complete),)
 qtwayland:
