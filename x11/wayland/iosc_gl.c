@@ -34,8 +34,9 @@ static GLuint     s_out_tex = 0;               /* output IOSurface as a GL textu
 static GLuint     s_fbo = 0;                   /* renders into s_out_tex             */
 
 static GLuint s_prog = 0;
-static GLint  s_a_pos = -1, s_a_uv = -1, s_u_tex = -1;
+static GLint  s_a_pos = -1, s_a_uv = -1, s_u_tex = -1, s_u_opaque = -1;
 static GLuint s_shm_tex = 0;                   /* reused upload texture for wl_shm    */
+static float  s_opaque = 1.f;                  /* 1 = force opaque (windows); 0 = keep alpha (cursor) */
 
 /* small cache: client IOSurface -> its sampling pbuffer + texture */
 #define MAXBUF 16
@@ -117,10 +118,12 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
         "attribute vec2 pos; attribute vec2 uv; varying vec2 v;\n"
         "void main(){ v = uv; gl_Position = vec4(pos, 0.0, 1.0); }\n";
     const char *fs =
-        "precision mediump float; varying vec2 v; uniform sampler2D t;\n"
-        /* force opaque: XRGB8888 wl_shm buffers have undefined alpha and windows
-         * are opaque, so sample rgb with alpha=1 to avoid transparent output. */
-        "void main(){ gl_FragColor = vec4(texture2D(t, v).rgb, 1.0); }\n";
+        "precision mediump float; varying vec2 v; uniform sampler2D t; uniform float opaque;\n"
+        /* Windows (opaque=1): XRGB8888 wl_shm buffers have undefined alpha and windows
+         * are opaque, so force alpha=1 to avoid transparent output. The cursor is an
+         * ARGB8888 (premultiplied) wl_shm buffer with a real alpha channel, so it draws
+         * with opaque=0 to keep its alpha (blended premultiplied by the caller). */
+        "void main(){ vec4 c = texture2D(t, v); gl_FragColor = vec4(c.rgb, mix(c.a, 1.0, opaque)); }\n";
     s_prog = glCreateProgram();
     glAttachShader(s_prog, compile(GL_VERTEX_SHADER, vs));
     glAttachShader(s_prog, compile(GL_FRAGMENT_SHADER, fs));
@@ -130,6 +133,7 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
     s_a_pos = glGetAttribLocation(s_prog, "pos");
     s_a_uv  = glGetAttribLocation(s_prog, "uv");
     s_u_tex = glGetUniformLocation(s_prog, "t");
+    s_u_opaque = glGetUniformLocation(s_prog, "opaque");
 
     glGenTextures(1, &s_shm_tex);
 
@@ -178,6 +182,7 @@ static void draw_quad(int dx, int dy, int dw, int dh,
     };
     glUseProgram(s_prog);
     glUniform1i(s_u_tex, 0);
+    glUniform1f(s_u_opaque, s_opaque);
     glVertexAttribPointer(s_a_pos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), verts);
     glEnableVertexAttribArray(s_a_pos);
     glVertexAttribPointer(s_a_uv, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), verts + 2);
@@ -245,6 +250,25 @@ uint32_t iosc_gl_read_at(int x, int y)
     /* The FBO is GL bottom-left origin; our coords are top-left. */
     glReadPixels(x, s_oh - 1 - y, 1, 1, GL_BGRA_EXT, GL_UNSIGNED_BYTE, &px);
     return px;
+}
+
+/* Cursor draw wraps its composite in premultiplied alpha blending. The cursor is
+ * an ARGB8888 wl_shm surface whose alpha channel is real (transparent around the
+ * arrow); without this it would draw opaque (a black box). Wayland SHM buffers are
+ * PREMULTIPLIED, so the blend is (GL_ONE, GL_ONE_MINUS_SRC_ALPHA) and the shader
+ * emits the sampled color unmodified (opaque=0 keeps c.a). Windows keep opaque=1
+ * and blend disabled, so their path is byte-identical to before. */
+void iosc_gl_begin_cursor(void)
+{
+    s_opaque = 0.f;
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);   /* premultiplied-alpha over */
+}
+
+void iosc_gl_end_cursor(void)
+{
+    glDisable(GL_BLEND);
+    s_opaque = 1.f;
 }
 
 void iosc_gl_forget_iosurface(void *client_iosurface)

@@ -45,6 +45,13 @@ uint32_t iosc_gl_end(void);
  * (proves a given window's content landed at its placement). Call after iosc_gl_end. */
 uint32_t iosc_gl_read_at(int x, int y);
 
+/* Wrap the cursor surface's composite in premultiplied-alpha blending so its ARGB8888
+ * alpha is honored (transparent around the arrow) instead of drawing an opaque black
+ * box. Call begin before the cursor draw and end after; windows draw between frames
+ * with blending off and alpha forced opaque (unchanged). */
+void iosc_gl_begin_cursor(void);
+void iosc_gl_end_cursor(void);
+
 /* Drop the cached pbuffer/texture for a client IOSurface that is going away. */
 void iosc_gl_forget_iosurface(void *client_iosurface);
 
