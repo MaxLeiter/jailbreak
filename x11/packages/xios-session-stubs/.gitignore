@@ -1,0 +1,7 @@
+# Staged stub binaries are copied from x11/wayland/out/ (the tracked source of truth) by
+# build.sh; do not double-commit them here.
+/var/jb/usr/libexec/xios-login1-stub
+/var/jb/usr/libexec/xios-polkit-stub
+/var/jb/usr/libexec/xios-accounts-stub
+# Local build artifact (also gitignored globally under out/).
+*.deb
