@@ -46,9 +46,11 @@ CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra
 DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -liosexec"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
 
-# The login1 + accounts stubs share xios-session-identity.c, which resolves the real user
+# All three stubs share xios-stub-dbus.c (register-object + own-name main loop). The login1
+# + accounts stubs additionally share xios-session-identity.c, which resolves the real user
 # once. It reads MobileGestalt for the device name via CoreFoundation, so those two stubs also
 # link -framework CoreFoundation. polkit does not need the identity.
+STUB_DBUS_SRC="$SRC/xios-stub-dbus.c"
 IDENTITY_SRC="$SRC/xios-session-identity.c"
 
 # install_name_tool: rewrite the linker's unversioned @rpath/libintl.dylib (a dev-only
@@ -78,9 +80,9 @@ for stub in login1 polkit accounts; do
   o="$OUT/xios-${stub}-stub"
   [ -f "$s" ] || { echo "   skip $stub (no source)"; continue; }
   echo "==> build xios-${stub}-stub"
-  extra_src=""; extra_ldflags=""
+  extra_src="$STUB_DBUS_SRC"; extra_ldflags=""
   if [ "$stub" = "login1" ] || [ "$stub" = "accounts" ]; then
-    extra_src="$IDENTITY_SRC"
+    extra_src="$extra_src $IDENTITY_SRC"
     extra_ldflags="-framework CoreFoundation"
   fi
   # shellcheck disable=SC2086

@@ -1,0 +1,12 @@
+Package: qt6-sensors
+Version: @DEB_QTSENSORS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base, qt6-declarative
+Description: Qt 6 Sensors libraries for the Xios desktop
+ QtSensors, sensor plugins, and the optional QtSensors QML module. Native
+ hardware backends are a later polish item; this package satisfies the KWin
+ and Plasma Mobile build-time Sensors dependency.

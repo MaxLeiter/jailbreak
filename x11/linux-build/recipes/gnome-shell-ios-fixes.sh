@@ -90,7 +90,36 @@ sed -i "s|serviceconf.set('gjs', gjs.full_path())|serviceconf.set('gjs', '$GJS')
 # absent on Darwin), while <elf.h> and every ElfW() use are already gated on
 # HAVE_EXE_INTROSPECTION (false on iOS: cc.has_header('elf.h') and 'link.h' both fail).
 # Move the bare include inside that same guard so the non-ELF build compiles.
-perl -0pi -e 's{#include <link\.h>\n\n#ifdef HAVE_EXE_INTROSPECTION\n#include <dlfcn\.h>\n#include <elf\.h>\n#endif}{#ifdef HAVE_EXE_INTROSPECTION\n#include <dlfcn.h>\n#include <link.h>\n#include <elf.h>\n#endif}' "$SRC/src/main.c"
+python3 - "$SRC/src/main.c" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+s = s.replace(
+"""#include <link.h>
+
+#ifdef HAVE_EXE_INTROSPECTION
+#include <dlfcn.h>
+#include <elf.h>
+#endif""",
+"""#ifdef HAVE_EXE_INTROSPECTION
+#include <dlfcn.h>
+#include <link.h>
+#include <elf.h>
+#endif""")
+p.write_text(s)
+PY
+
+# --- (4b) ATK bridge off for iOS ------------------------------------------------
+# at-spi2-core 2.52's atk-bridge links against ATK 2.52 document symbols, while
+# the current stack ships standalone ATK 2.38. Accessibility remains initialized
+# through Cally, but the AT-SPI bridge adaptor is disabled for this bring-up.
+sed -i "s/^atk_bridge_dep = dependency('atk-bridge-2.0')$/atk_bridge_dep = declare_dependency()/" \
+  "$SRC/meson.build"
+sed -i 's|^#include <atk-bridge.h>$|/* iOS: atk-bridge disabled; current bridge requires newer ATK document symbols. */|' \
+  "$SRC/src/main.c"
+sed -i 's|^      atk_bridge_adaptor_init (NULL, NULL);$|      /* iOS: atk-bridge disabled until ATK/at-spi versions are aligned. */|' \
+  "$SRC/src/main.c"
 
 # --- (5) <xlocale.h> for shell-util.c's locale_t users -------------------------
 # shell-util.c uses locale_t / newlocale / uselocale / freelocale / LC_MESSAGES_MASK
@@ -98,8 +127,23 @@ perl -0pi -e 's{#include <link\.h>\n\n#ifdef HAVE_EXE_INTROSPECTION\n#include <d
 # live in <xlocale.h>, which nothing here pulls in -> "unknown type name 'locale_t'".
 # Inject the Apple-guarded include after config.h, exactly like nautilus-ios-fixes.sh.
 if ! grep -q "xlocale.h" "$SRC/src/shell-util.c"; then
-  perl -0pi -e 's{(#include "config.h"\n)}{$1\n#ifdef __APPLE__\n#include <xlocale.h>\n#endif\n}' \
-    "$SRC/src/shell-util.c"
+  python3 - "$SRC/src/shell-util.c" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+s = s.replace(
+"""#include "config.h"
+""",
+"""#include "config.h"
+
+#ifdef __APPLE__
+#include <xlocale.h>
+#endif
+""",
+1)
+p.write_text(s)
+PY
 fi
 
 # --- (6) Rsvg-ectomy: gi://Rsvg is reached ONLY via the wacom pad-OSD (show-pad-osd signal
@@ -111,7 +155,19 @@ fi
 # Rsvg.Handle.* uses live in PadDiagram methods that never run without a drawing tablet.
 sed -i "/^import 'gi:\/\/Rsvg?version=2.0';$/d" "$SRC/js/misc/dependencies.js"
 if grep -q "^import Rsvg from 'gi://Rsvg';" "$SRC/js/ui/padOsd.js"; then
-  perl -0pi -e "s{^import Rsvg from 'gi://Rsvg';\$}{// iOS: librsvg (Rust cross-build) is not shipped; the pad OSD (wacom-tablet only) is the\n// sole gi://Rsvg user and never runs on iOS. Stub the namespace so the module loads.\nconst Rsvg = {Handle: {new_from_file() {throw new Error('padOsd unsupported on iOS (no librsvg)');},\n                       new_from_stream_sync() {throw new Error('padOsd unsupported on iOS (no librsvg)');}}};}m" "$SRC/js/ui/padOsd.js"
+  python3 - "$SRC/js/ui/padOsd.js" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+s = s.replace(
+"""import Rsvg from 'gi://Rsvg';""",
+"""// iOS: librsvg (Rust cross-build) is not shipped; the pad OSD (wacom-tablet only) is the
+// sole gi://Rsvg user and never runs on iOS. Stub the namespace so the module loads.
+const Rsvg = {Handle: {new_from_file() {throw new Error('padOsd unsupported on iOS (no librsvg)');},
+                       new_from_stream_sync() {throw new Error('padOsd unsupported on iOS (no librsvg)');}}};""")
+p.write_text(s)
+PY
 fi
 
 # --- verification --------------------------------------------------------------
@@ -130,6 +186,9 @@ fi
 check meson.build "introspection=' + (meson.is_cross_build()"
 check meson.build "find_program('gjs', required: false)"
 check js/dbusServices/meson.build "serviceconf.set('gjs', '$GJS')"
+check meson.build "atk_bridge_dep = declare_dependency()"
+absent src/main.c "atk-bridge.h"
+absent src/main.c "atk_bridge_adaptor_init"
 # link.h must now sit inside the HAVE_EXE_INTROSPECTION guard (right after dlfcn.h), and
 # NOT be the bare include right after atk-bridge.h.
 if grep -A1 '#include <atk-bridge.h>' "$SRC/src/main.c" | grep -q '#include <link.h>'; then

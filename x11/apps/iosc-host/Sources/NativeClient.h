@@ -7,7 +7,7 @@
  * Client half of the native per-window rendezvous (iosc-native.sock v2). One
  * connection per host process = one app_id; it carries every window that app
  * maps. See iosc_native_proto.h for the wire contract and x11/docs/
- * native-ipados-protocol.md for the full spec (iosc server half not built yet).
+ * native-ipados-protocol.md for the full spec.
  *
  * Usage:
  *   c = iosc_native_connect(NULL, "org.gnome.Console", w, h, 2);

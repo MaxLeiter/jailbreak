@@ -35,16 +35,12 @@ A1 is live and confirmed on the iPad (iPad7,12, iPadOS 17.6.1, palera1n rootless
   connected.
 - `xios-audio-play` (the native smoke-test sine client) routes PCM into the daemon over
   `/var/jb/tmp/xios-audio.sock`.
-- The `libpulse-simple` shim is verified on device too: a client compiled against only the
-  public `pulse/*` headers and dynamically linked to the shipped
-  `/var/jb/usr/lib/libpulse-simple.0.dylib` plays through `pa_simple_write()` into the daemon
-  (see `build-shim-test.sh` / `pulse-shim-test.c`).
 - Lifecycle: `SIGTERM`/`SIGINT` shut the daemon down cleanly and unlink the socket
   (handlers installed via `sigaction` without `SA_RESTART`; lifecycle signals blocked in
   client threads so the main accept loop receives them).
 
-Still untested on device: a real GTK/XFCE app. Next real-world step is wiring an actual
-app's sound through the shim (or via SDL2/PortAudio CoreAudio output).
+Still untested on device in this early note: a real GTK/XFCE app. The current desktop
+audio path is the real PulseAudio daemon described in `audio-desktop-plan.md`.
 
 ## What already exists
 
@@ -95,16 +91,14 @@ Acceptance:
 - one active output stream plays with low enough latency for UI sounds/video;
 - daemon restart does not require restarting the X server.
 
-### A2: expose Linux app compatibility [partly implemented]
+### A2: expose Linux app audio [implemented through PulseAudio]
 
 Pick the compatibility surface based on target apps:
 
 - Fastest: configure apps that support `libao`, PortAudio, SDL2, or mpg123 CoreAudio output.
-- Implemented now: a `libpulse-simple.0.dylib` compatibility shim forwards
-  `pa_simple_write()` playback into `xios-audiod`.
-- Still future work for the broadest desktop layer: package full PulseAudio or write a
-  Pulse native-protocol server/sink that forwards PCM to `xios-audiod`.
-- Lower-level fallback: provide a minimal ALSA PCM plugin or shim that forwards to
+- Implemented now: the real PulseAudio daemon exposes `/var/jb/tmp/pulse/native`;
+  `module-xios-sink` forwards mixed PCM to `xios-audiod`.
+- Lower-level option: provide a minimal ALSA PCM plugin that forwards to
   `xios-audiod`.
 - Defer PipeWire unless GNOME portal/screencast/media-session work becomes the main target;
   it drags in more policy and desktop-session assumptions than basic playback needs.
@@ -146,4 +140,4 @@ be userspace.
 2. Add a small build target that signs it with `audio.xml`.
 3. Run on-device and record the exact entitlement/framework requirements.
 4. If output works, build `xios-audiod` around the same RemoteIO code.
-5. Only then decide whether the first compatibility shim should be PulseAudio or ALSA.
+5. Only then choose any additional app-specific audio backends.

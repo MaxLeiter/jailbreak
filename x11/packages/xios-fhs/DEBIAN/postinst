@@ -11,14 +11,17 @@ case "$1" in
     BAT="$SYS/class/power_supply/BAT0"
     AC="$SYS/class/power_supply/AC0"
 
-    mkdir -p "$BL" "$BAT" "$AC"
+    IIO="$SYS/bus/iio/devices/iio:device0"
+    TRIG="$SYS/bus/iio/devices/trigger0"
+
+    mkdir -p "$BL" "$BAT" "$AC" "$IIO" "$TRIG"
 
     # The session (gsd-power, xios-hwbridged) writes these nodes with
     # g_file_set_contents, which creates a temp file and renames — that needs write
     # permission on the DIRECTORIES, not just the files. Own the tree as mobile (501)
     # and keep the leaf dirs group/other-writable so both root and mobile sessions work.
     chown -R 501:501 "$SYS" 2>/dev/null || true
-    chmod 0775 "$BL" "$BAT" "$AC" 2>/dev/null || true
+    chmod 0775 "$BL" "$BAT" "$AC" "$IIO" "$TRIG" 2>/dev/null || true
 
     # Backlight node (Linux `backlight` class shape). brightness is world-writable so the
     # unprivileged gsd-power backend and the shell slider can set it.
@@ -37,6 +40,20 @@ case "$1" in
     [ -e "$BAT/capacity" ] || printf '100\n' > "$BAT/capacity"
     [ -e "$BAT/status" ]   || printf 'Unknown\n' > "$BAT/status"
     [ -e "$AC/online" ]    || printf '1\n' > "$AC/online"
+
+    # CoreMotion/IIO identity. xios-sensord refreshes the raw values at runtime.
+    printf 'xios-coremotion\n' > "$IIO/name"
+    printf '10\n'              > "$IIO/sampling_frequency"
+    printf '0.00980665\n'      > "$IIO/in_accel_scale"
+    printf '0.001\n'           > "$IIO/in_anglvel_scale"
+    printf '0.001\n'           > "$IIO/in_magn_scale"
+    for n in \
+      in_accel_x_raw in_accel_y_raw in_accel_z_raw \
+      in_anglvel_x_raw in_anglvel_y_raw in_anglvel_z_raw \
+      in_magn_x_raw in_magn_y_raw in_magn_z_raw; do
+      [ -e "$IIO/$n" ] || printf '0\n' > "$IIO/$n"
+    done
+    printf 'xios-coremotion-trigger\n' > "$TRIG/name"
 
     # os-release: only patched readers resolve /var/jb/etc, but it is cheap and the About
     # panels + assorted tools look for it. Do not clobber a hand-edited one.

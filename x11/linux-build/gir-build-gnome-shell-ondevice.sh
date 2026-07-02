@@ -13,11 +13,13 @@
 # boot from environment.js, plus panel/status modules) several typelibs from standalone libs
 # OUTSIDE this tree — NOT produced here. Each needs its own on-device scan or the shell crashes
 # at load even with St/Shell present. The full standalone boot-typelib set gnome-session builds:
-#     AccountsService-1.0  -> gir-build-accountsservice-ondevice.sh (wired)
-#     UPowerGlib-1.0       -> pending gnome-session lib+headers handoff (mirror AccountsService)
-#     GWeather-4.0         -> pending gnome-session lib+headers handoff
-#     Geoclue-2.0          -> pending gnome-session lib+headers handoff
-#     Gdm-1.0              -> pending gnome-session lib+headers handoff (libgdm CLIENT-only)
+#     AccountsService-1.0  -> gir-build-accountsservice-ondevice.sh
+#     UPowerGlib-1.0       -> gir-build-session-libs-ondevice.sh
+#     GWeather-4.0         -> gir-build-session-libs-ondevice.sh
+#     Geoclue-2.0          -> gir-build-session-libs-ondevice.sh
+#     Gdm-1.0              -> gir-build-session-libs-ondevice.sh (libgdm CLIENT-only)
+#     Gcr-4/PolkitAgent-1.0/Atk-1.0/etc. -> gir-build-shell-closure-ondevice.sh (run FIRST,
+#                             see prerequisite 3; full run order in docs/handoff/gtk4-typelibs.md)
 # (Rsvg is the ONLY patch-out — it's a Rust lib + the padOsd/wacom user is dead on iOS; see
 # gnome-shell-ios-fixes.sh Rsvg-ectomy. Gdm was NOT patched: lead confirmed gnome-session builds
 # libgdm client-only, so Gdm-1.0 joins the on-device scan batch above.) dependencies.js is the
@@ -33,17 +35,14 @@
 #      sljit_shim.dylib, clang-ios, ninja2 — per memory x11-gtk4-typelibs-ondevice.
 #   3. Dependency girs installed in /var/jb/usr/share/gir-1.0: the GTK4 set + the mutter
 #      set (Meta-14, Clutter-14, Cogl-14, Mtk-14, Cally-14 — gir-build-mutter-ondevice.sh)
-#      + Gcr-4/PolkitAgent-1.0 are NOT needed as girs — wait, they ARE gir includes of
-#      Shell-14: install gir1.2 equivalents by also running the dep scans if the scan
-#      fails on missing Gcr-4/PolkitAgent-1.0 (see NOTE below).
+#      + the closure set from gir-build-shell-closure-ondevice.sh (Shell-14's gir
+#      --includes Gcr-4 and PolkitAgent-1.0, produced there — run it before this script).
 #   4. Native build tools: meson, ninja, clang, glib tools, gettext, pkg-config, perl
 #      (data-to-c.pl), python3.
 #
-# NOTE the Shell-14 scan --include's Gcr-4 and PolkitAgent-1.0, whose girs don't exist
-# yet (gcr/polkit were cross-built introspection-off). If the Shell scan fails on those,
-# first generate them on-device with the same pattern (each project's own native meson
-# build: gcr -Dintrospection=true; polkit -Dintrospection=true -Dlibs-only=true + the
-# polkitagent meson patch from recipes/polkit.mk), then re-run this script. St-14 has no
+# NOTE the Shell-14 scan --include's Gcr-4 and PolkitAgent-1.0 (cross-built
+# introspection-off): if the Shell scan fails on those, run
+# gir-build-shell-closure-ondevice.sh, then re-run this script. St-14 has no
 # Gcr/Polkit includes and builds regardless — enough for St/theme work in the meantime.
 #
 # Usage (from the Mac build host):
@@ -69,7 +68,7 @@ echo "==> [$BASE] pushing source + fixes script to device"
 echo "==> [$BASE] native build + install shell typelibs on-device"
 # shellcheck disable=SC2087
 "${SSH[@]}" "BASE='$BASE' bash -s" <<'EOSH'
-set -e
+set -eo pipefail
 WORK=/var/jb/tmp/gnome-shell-gir
 GISPIKE=/var/jb/tmp/gi-spike
 PREFIX=/var/jb/usr
@@ -117,7 +116,7 @@ EOSH
 
 echo "==> [$BASE] validate gjs can import St-14"
 "${SSH[@]}" bash -s <<'EOSH'
-export DYLD_LIBRARY_PATH=/var/jb/usr/lib
+export DYLD_LIBRARY_PATH=/var/jb/usr/lib:/var/jb/usr/lib/gnome-shell:/var/jb/usr/lib/mutter-14:/var/jb/lib/angle
 export GI_TYPELIB_PATH=/var/jb/usr/lib/girepository-1.0:/var/jb/usr/lib/mutter-14
 gjs -c 'imports.gi.versions.St="14"; const St = imports.gi.St; print("imports.gi.St OK: " + typeof St.Widget);' \
   && echo "==> MILESTONE: gjs loads St-14" || echo "!! gjs St import FAILED"

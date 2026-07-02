@@ -7,15 +7,14 @@ import UIKit
 /// window's HostScreenView.
 ///
 /// INERT until xios-a11yd ships: it only connects while VoiceOver is running,
-/// and retries quietly if the socket is absent. Wire format is a11y-plan.md
-/// "Protocol v1.1 (authoritative wire schema)" — NDJSON, "t" discriminator,
-/// ids helper-assigned uint32 unique per generation.
+/// and retries quietly if the socket is absent. Wire format is the authoritative
+/// a11y-plan.md NDJSON schema: "t" discriminator, ids helper-assigned uint32
+/// unique per generation.
 final class HostA11yClient {
     static let shared = HostA11yClient()
 
-    /// Authoritative (v1.1): fixed path, one listener for desktop and native
-    /// clients. Never derive from $XDG_RUNTIME_DIR — ioscd points that at
-    /// per-app private bus dirs.
+    /// Fixed path, one listener for desktop and native clients. Never derive
+    /// from $XDG_RUNTIME_DIR — ioscd points that at per-app private bus dirs.
     private let sockPath = "/var/jb/tmp/xios-a11y.sock"
 
     private var appID = ""
@@ -63,30 +62,9 @@ final class HostA11yClient {
 
     // MARK: socket
 
-    private func connectSocket() -> Int32 {
-        let s = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard s >= 0 else { return -1 }
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let ok: Bool = withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-            let path = Array(sockPath.utf8)
-            guard path.count < raw.count else { return false }
-            raw.copyBytes(from: path)
-            return true
-        }
-        guard ok else { close(s); return -1 }
-        let r = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(s, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        if r != 0 { close(s); return -1 }
-        return s
-    }
-
     private func readerLoop() {
         while running {
-            let s = connectSocket()
+            let s = connectUnixSocket(sockPath)
             if s < 0 { Thread.sleep(forTimeInterval: 2.0); continue }
             fd = s
             send(["t": "bind", "appid": appID])
@@ -181,7 +159,7 @@ final class HostA11yClient {
             let store = m.win.flatMap { stores[$0] } ?? stores.values.first { $0.view != nil }
             store?.view?.a11ySynthTap(x: Int32(x), y: Int32(y))
         default:
-            break
+            print("iosc-a11y: unknown message type \(m.t)")
         }
     }
 
@@ -203,7 +181,7 @@ final class HostA11yClient {
     }
 }
 
-// MARK: - wire message (helper -> app, protocol v1.1)
+// MARK: - wire message (helper -> app)
 
 private struct A11yMsg: Decodable {
     let t: String
@@ -225,7 +203,6 @@ private struct A11yMsg: Decodable {
     let x: Double?
     let y: Double?
     let gen: Int?
-    let v: Int?
 }
 
 // MARK: - per-window element store
@@ -256,7 +233,7 @@ final class HostA11yWindowStore {
         } else {
             el = HostA11yElement(nodeID: id, client: client,
                                  container: view ?? NSObject())
-            // parent:0 = window root (v1.1); flatten already treats any absent
+            // parent:0 = window root; flatten already treats any absent
             // parent id as a root, so the sentinel needs no special case.
             nodes[id] = Node(parent: m.parent ?? 0, idx: m.idx ?? 0, el: el)
         }
@@ -274,8 +251,8 @@ final class HostA11yWindowStore {
         scheduleFlatten()
     }
 
-    /// Removes the node AND its subtree (v1.1: children go with it). Returns
-    /// true if the node belonged to this store.
+    /// Removes the node AND its subtree. Returns true if the node belonged to
+    /// this store.
     func remove(_ id: Int) -> Bool {
         guard nodes[id] != nil else { return false }
         var doomed = [id]
@@ -364,7 +341,7 @@ final class HostA11yElement: UIAccessibilityElement {
     }
 
     override func accessibilityElementDidBecomeFocused() {
-        client.voFocus(nodeID)   // logging/metrics only in v1.1; never GrabFocus
+        client.voFocus(nodeID)   // logging/metrics only; never GrabFocus
     }
 
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {

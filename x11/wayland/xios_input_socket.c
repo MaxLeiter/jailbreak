@@ -20,6 +20,7 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/event.h>
+#include <pwd.h>
 
 #define XIOS_MAX_INPUT_CLIENTS 4
 #define XIOS_IN_TEXT_MAX       4096u
@@ -40,6 +41,15 @@ struct xios_input_socket {
     char path[108];   /* sun_path max */
     struct xios_in_client *clients[XIOS_MAX_INPUT_CLIENTS];
 };
+
+static void chmod_mobile_socket(const char *path)
+{
+    struct passwd *pw = getpwnam("mobile");
+    if (pw && chown(path, pw->pw_uid, pw->pw_gid) == 0)
+        chmod(path, 0660);
+    else
+        chmod(path, 0777);
+}
 
 static void set_nonblock(int fd)
 {
@@ -64,7 +74,9 @@ xios_input_socket *xios_input_socket_new(const char *path)
     strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); free(s); return NULL; }
     if (listen(fd, 4) < 0) { close(fd); free(s); return NULL; }
-    chmod(path, 0777);   /* the Xios app runs as mobile and must connect */
+    /* The Xios app runs as mobile and must connect. Prefer mobile-owned 0660;
+     * fall back to 0777 only if the user lookup/chown fails on a dev image. */
+    chmod_mobile_socket(path);
     set_nonblock(fd);
     s->listen_fd = fd;
 
@@ -108,7 +120,7 @@ static void client_reset(struct xios_in_client *c)
 /* Drain a readable client, invoking cb for each complete record. Returns the
  * number dispatched; sets *closed if the client hit EOF/error and was dropped. */
 static int client_read(xios_input_socket *s, struct xios_in_client *c,
-                       xios_input_bound_cb cb, void *user, int *closed)
+                       xios_input_cb cb, void *user, int *closed)
 {
     int n = 0;
     for (;;) {
@@ -165,6 +177,8 @@ static void accept_clients(xios_input_socket *s)
         int cfd = accept(s->listen_fd, NULL, NULL);
         if (cfd < 0) break;                 /* EAGAIN when no more pending */
         set_nonblock(cfd);
+        int on = 1;                         /* broadcast writes must get EPIPE, not SIGPIPE */
+        setsockopt(cfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
         int slot = -1;
         for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++)
             if (!s->clients[i]) { slot = i; break; }
@@ -179,7 +193,7 @@ static void accept_clients(xios_input_socket *s)
     }
 }
 
-int xios_input_socket_dispatch_bound(xios_input_socket *s, xios_input_bound_cb cb, void *user)
+int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user)
 {
     if (!s || s->kq < 0) return -1;
     struct kevent evs[8];
@@ -203,25 +217,6 @@ int xios_input_socket_dispatch_bound(xios_input_socket *s, xios_input_bound_cb c
     return dispatched;
 }
 
-struct xios_input_legacy_dispatch {
-    xios_input_cb cb;
-    void *user;
-};
-
-static void legacy_dispatch_cb(const struct xios_in_msg *m, const char *text,
-                               size_t text_len, uint32_t bound_window, void *user)
-{
-    (void)bound_window;
-    struct xios_input_legacy_dispatch *d = user;
-    if (d && d->cb) d->cb(m, text, text_len, d->user);
-}
-
-int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user)
-{
-    struct xios_input_legacy_dispatch d = { cb, user };
-    return xios_input_socket_dispatch_bound(s, legacy_dispatch_cb, &d);
-}
-
 static int write_all(int fd, const void *buf, size_t len)
 {
     const char *p = buf;
@@ -235,17 +230,41 @@ static int write_all(int fd, const void *buf, size_t len)
     return 0;
 }
 
-int xios_input_socket_broadcast(xios_input_socket *s, const void *buf, size_t len)
+static int client_matches_bound(struct xios_in_client *c, uint32_t bound_window)
+{
+    return bound_window == 0 || c->bound_window == 0 || c->bound_window == bound_window;
+}
+
+static int broadcast_to_clients(xios_input_socket *s, uint32_t bound_window,
+                                const void *buf, size_t len)
 {
     if (!s || !buf || len == 0) return -1;
     int sent = 0;
     for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++) {
         struct xios_in_client *c = s->clients[i];
         if (!c || c->fd < 0) continue;
-        if (write_all(c->fd, buf, len) == 0) sent++;
-        else client_drop(s, c);   /* dead peer: drop it (matches read-path behavior) */
+        if (!client_matches_bound(c, bound_window)) continue;
+        if (write_all(c->fd, buf, len) == 0) { sent++; continue; }
+        /* Dead/wedged peer. Do NOT free here: broadcast runs inside dispatch's
+         * callback (e.g. iosc click-to-focus -> traits), so `c` may be the client
+         * client_read() is mid-loop on, or a later udata in the same kevent
+         * batch. Shut the socket down instead; kqueue reports EOF and the
+         * read path, the sole owner of client lifetime, does the one free. */
+        shutdown(c->fd, SHUT_RDWR);
     }
     return sent;
+}
+
+int xios_input_socket_broadcast(xios_input_socket *s, const void *buf, size_t len)
+{
+    return broadcast_to_clients(s, 0, buf, len);
+}
+
+int xios_input_socket_broadcast_bound(xios_input_socket *s, uint32_t bound_window,
+                                      const void *buf, size_t len)
+{
+    if (bound_window == 0) return -1;
+    return broadcast_to_clients(s, bound_window, buf, len);
 }
 
 int xios_input_socket_client_count(xios_input_socket *s)

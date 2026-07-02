@@ -27,14 +27,14 @@ WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 
 [ -x "$MUTTER" ] || { echo "!! $MUTTER missing/not executable — scp out/mutter there first"; exit 1; }
 
-echo "==> stop the iosc demo (iosc + Xios app + panel + any client); mutter replaces the compositor"
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscpanel|ioscoverview|/usr/bin/mutter" \
+echo "==> stop the iosc demo (iosc + Xios app + shell + any client); mutter replaces the compositor"
+ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter" \
   | awk '{print $1}' | while read -r pid; do
       [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
   done
 sleep 1
 rm -f "$WSOCK" "$WSOCK.lock" "$TMP/mutter-ddx.sock" "$TMP/xios.json" \
-      "$TMP/xios-input.sock" "$TMP/mutter.log" 2>/dev/null
+      "$TMP/mutter-input.sock" "$TMP/xios-input.sock" "$TMP/mutter.log" 2>/dev/null
 
 echo "==> ANGLE Linux so-name symlinks (cogl's GLES driver dlopens libGLESv2.so.2 / libEGL.so.1)"
 ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so.2" 2>/dev/null

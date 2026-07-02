@@ -96,14 +96,44 @@ fi
 # --- (3) wire the shim into the library + drop logind/crypt -------------------
 # add the shim source to the library
 if ! grep -q "xios-sd-login-shim.c" "$LIB/meson.build"; then
-  perl -0pi -e "s/sources = files\(\n  'act-user\.c',\n  'act-user-manager\.c',\n\)/sources = files(\n  'act-user.c',\n  'act-user-manager.c',\n  'xios-sd-login-shim.c',\n)/m" "$LIB/meson.build"
+  python3 - "$LIB/meson.build" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+s = s.replace(
+"""sources = files(
+  'act-user.c',
+  'act-user-manager.c',
+)""",
+"""sources = files(
+  'act-user.c',
+  'act-user-manager.c',
+  'xios-sd-login-shim.c',
+)""")
+p.write_text(s)
+PY
 fi
 # drop logind_dep from the library's dependency list (crypt_dep stays: libxcrypt is
 # present and act-user.c's set_password helper links crypt_gensalt).
 sed -i '/^  logind_dep,$/d' "$LIB/meson.build"
 
 # --- (4) neutralize the top-level logind/libsystemd probe (required, would fail) ----
-perl -0pi -e "s/if get_option\('elogind'\)\n  logind_dep = dependency\('libelogind', version: '>= 229\.4'\)\nelse\n  logind_dep = dependency\('libsystemd', version: '>= 186'\)\nendif/# iOS: no logind; libaccountsservice links a single-session sd-login shim instead.\nlogind_dep = declare_dependency()/m" "$SRC/meson.build"
+python3 - "$SRC/meson.build" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+s = s.replace(
+"""if get_option('elogind')
+  logind_dep = dependency('libelogind', version: '>= 229.4')
+else
+  logind_dep = dependency('libsystemd', version: '>= 186')
+endif""",
+"""# iOS: no logind; libaccountsservice links a single-session sd-login shim instead.
+logind_dep = declare_dependency()""")
+p.write_text(s)
+PY
 
 # --- verification --------------------------------------------------------------
 fail=0

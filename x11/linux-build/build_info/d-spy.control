@@ -2,7 +2,7 @@ Package: d-spy
 Version: @DEB_D-SPY_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Section: Development
+Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://apps.gnome.org/Dspy/
 Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, dbus

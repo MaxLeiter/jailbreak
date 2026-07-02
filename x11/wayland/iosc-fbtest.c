@@ -51,9 +51,10 @@ int main(void)
     if(!s){ printf("FAIL IOSurfaceCreate\n"); return 1; }
 
     EGLDisplay (*getPD)(EGLenum,void*,const EGLint*) = (void*)eglGetProcAddress("eglGetPlatformDisplayEXT");
+    if(!getPD){ printf("FAIL eglGetPlatformDisplayEXT missing\n"); return 1; }
     const EGLint da[]={EGL_PLATFORM_ANGLE_TYPE_ANGLE,EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE,EGL_NONE};
     EGLDisplay dpy=getPD(EGL_PLATFORM_ANGLE_ANGLE,EGL_DEFAULT_DISPLAY,da);
-    eglInitialize(dpy,0,0);
+    if(dpy==EGL_NO_DISPLAY||!eglInitialize(dpy,0,0)){ printf("FAIL eglInitialize 0x%x\n",eglGetError()); return 1; }
     const EGLint ca[]={EGL_SURFACE_TYPE,EGL_PBUFFER_BIT,EGL_RED_SIZE,8,EGL_GREEN_SIZE,8,
         EGL_BLUE_SIZE,8,EGL_ALPHA_SIZE,8,EGL_RENDERABLE_TYPE,EGL_OPENGL_ES2_BIT,
         EGL_BIND_TO_TEXTURE_RGBA,EGL_TRUE,EGL_NONE};

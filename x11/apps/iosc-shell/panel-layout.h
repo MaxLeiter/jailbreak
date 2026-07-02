@@ -1,6 +1,6 @@
 /*
  * panel-layout.h — the iosc panel's visual language + arrangement, as
- * wayland-free draw functions shared by ioscpanel.c (wl_shm) and preview-host.c
+ * wayland-free draw functions shared by the shell clients (wl_shm) and preview-host.c
  * (PNG). Tokens live in shell-theme.h; primitives in panel-render.h. Keeping
  * the arrangement here is what makes design iteration cheap: only this file
  * changes, never the compositor plumbing.
@@ -83,6 +83,7 @@ struct panel_model {
     char   date[32];             /* "Tue Jul 1" ("" hides) */
     int    batt_pct;             /* 0..100, or -1 to hide the indicator */
     int    batt_charging;
+    int    wifi_on;              /* 1 = Wi-Fi up (glyph shown); 0 hides it */
     int    qs_open;              /* status cluster stays lit while QS is up */
     int    px, py, have_ptr;     /* pointer, logical px */
     int    press_kind, press_idx;/* finger-down hit (touch feedback); 0 = none */
@@ -179,16 +180,16 @@ static void pl_draw_wifi_glyph(cairo_t *cr, double cx, double cy, uint32_t color
 {
     cairo_save(cr);
     pr_set(cr, color);
-    cairo_set_line_width(cr, 2.0);
+    cairo_set_line_width(cr, 1.8);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     for (int i = 1; i <= 3; i++) {
-        double r = i * 4.2;
+        double r = i * 3.5;
         cairo_new_sub_path(cr);
-        cairo_arc(cr, cx, cy + 6, r, -2.70, -0.44);
+        cairo_arc(cr, cx, cy + 5, r, -2.70, -0.44);
         cairo_stroke(cr);
     }
     cairo_new_sub_path(cr);
-    cairo_arc(cr, cx, cy + 6, 1.6, 0, 2 * M_PI);
+    cairo_arc(cr, cx, cy + 5, 1.3, 0, 2 * M_PI);
     cairo_fill(cr);
     cairo_restore(cr);
 }
@@ -392,6 +393,7 @@ static void panel_draw_statusbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
 
     int right = W - 18;
     int cluster_w = 122;
+    if (!m->wifi_on) cluster_w -= 27;   /* glyph (≈26px) + its gap */
     int pctw = 0, ph = 0;
     char pct[8] = "";
     if (m->batt_pct >= 0 && W >= LO_BP_PCT) {
@@ -416,7 +418,8 @@ static void panel_draw_statusbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
             x -= 14;
         }
     }
-    pl_draw_wifi_glyph(cr, x - 13, cy, TH_FG_DIM);
+    if (m->wifi_on)
+        pl_draw_wifi_glyph(cr, x - 13, cy, TH_FG_DIM);
     hits->v[hits->n++] = (struct panel_hit){ x0 - 8, 0, cluster_w + 16, H, PL_HIT_STATUS, 0 };
 }
 
@@ -436,6 +439,16 @@ static void dock__draw_item(cairo_t *cr, pr_text_ctx *t, const struct panel_item
     }
 }
 
+/* Hairline divider between dock segments: draws centered in the DOCK_SEP band
+ * and advances *x past it.  Callers must emit exactly as many of these as the
+ * width math reserves. */
+static void dock__sep(cairo_t *cr, int *x, int iy, int icon, int gap)
+{
+    *x = *x - gap + (DOCK_SEP - gap) / 2;
+    pr_fill_rect(cr, *x, iy + 6, 1.5, icon - 12, TH_SEP);
+    *x += (DOCK_SEP - gap) / 2 + gap;
+}
+
 static void panel_draw_dock(cairo_t *cr, pr_text_ctx *t, int W, int H,
                             const struct panel_model *m, struct panel_hits *hits)
 {
@@ -445,19 +458,21 @@ static void panel_draw_dock(cairo_t *cr, pr_text_ctx *t, int W, int H,
     int nfav = m->nlaunch, nrun = m->ntasks;
     if (nfav < 0) nfav = 0;
     if (nrun < 0) nrun = 0;
+    /* one divider after each non-empty segment (favorites, running) */
+    int nsep = (nfav ? 1 : 0) + (nrun ? 1 : 0);
 
     int max_items = nfav + nrun + 1;
     int inner = max_items * icon + (max_items > 1 ? (max_items - 1) * gap : 0);
-    inner += DOCK_SEP * (nrun ? 2 : 1);
+    inner += DOCK_SEP * nsep;
     int dw = inner + 2 * pad;
     int max_dw = W - 2 * TH_PAD;
     if (dw > max_dw) {
-        int avail = max_dw - 2 * pad - DOCK_SEP * (nrun ? 2 : 1)
+        int avail = max_dw - 2 * pad - DOCK_SEP * nsep
                     - (max_items > 1 ? (max_items - 1) * gap : 0);
         icon = avail / (max_items > 0 ? max_items : 1);
         if (icon < 40) icon = 40;
         inner = max_items * icon + (max_items > 1 ? (max_items - 1) * gap : 0);
-        inner += DOCK_SEP * (nrun ? 2 : 1);
+        inner += DOCK_SEP * nsep;
         dw = inner + 2 * pad;
     }
 
@@ -486,9 +501,7 @@ static void panel_draw_dock(cairo_t *cr, pr_text_ctx *t, int W, int H,
         x += icon + gap;
     }
 
-    x = x - gap + (DOCK_SEP - gap) / 2;
-    pr_fill_rect(cr, x, iy + 6, 1.5, icon - 12, TH_SEP);
-    x += (DOCK_SEP - gap) / 2 + gap;
+    if (nfav) dock__sep(cr, &x, iy, icon, gap);
 
     for (int i = 0; i < nrun; i++) {
         int hov = pl__hover(m, x - 2, iy - 2, icon + 4, icon + 16);
@@ -499,9 +512,7 @@ static void panel_draw_dock(cairo_t *cr, pr_text_ctx *t, int W, int H,
         x += icon + gap;
     }
 
-    x = x - gap + (DOCK_SEP - gap) / 2;
-    pr_fill_rect(cr, x, iy + 6, 1.5, icon - 12, TH_SEP);
-    x += (DOCK_SEP - gap) / 2 + gap;
+    if (nrun) dock__sep(cr, &x, iy, icon, gap);
 
     int hov = pl__hover(m, x - 2, iy - 2, icon + 4, icon + 4);
     int prs = pl__pressed(pk, pi, PL_HIT_APPGRID, 0);

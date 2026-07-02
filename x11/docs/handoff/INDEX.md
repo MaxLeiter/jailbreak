@@ -20,7 +20,8 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 7. **kde-kf6.md** — Qt6 modules (DONE) + KF6/KDE Plasma build (in progress).
 8. **native-ipados.md** — the native per-window iPad flavor.
 9. **session-launcher.md** — the flavor switcher (CLI + daemon + in-app picker).
-10. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
+10. **svg-loader.md** — real `librsvg`/GdkPixbuf SVG loader audit for GTK/GNOME icon themes.
+11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
 
 ## Current headline status
 - **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.

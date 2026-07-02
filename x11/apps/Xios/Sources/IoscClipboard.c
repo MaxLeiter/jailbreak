@@ -151,33 +151,3 @@ int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
         return 1;
     }
 }
-
-// ---- transitional text-only wrappers (see header) --------------------------
-
-bool iosc_clipboard_set_text(const char *utf8) {
-    size_t len = utf8 ? strnlen(utf8, IOSC_CLIP_ITEM_MAX) : 0;
-    iosc_clipboard_send_begin();
-    if (len == 0) return send_record(IOSC_CLIP_KIND_NONE, NULL, 0);
-    return iosc_clipboard_send_item(IOSC_CLIP_KIND_TEXT, utf8, len);
-}
-
-bool iosc_clipboard_poll(char *out, int out_cap, int *out_len) {
-    if (out_len) *out_len = 0;
-    if (!out || out_cap <= 0) return false;
-    for (;;) {
-        uint32_t kind = 0, gen = 0, len = 0;
-        uint8_t *data = NULL;
-        int r = iosc_clipboard_poll_item(&kind, &gen, &data, &len);
-        if (r <= 0) return false;
-        if (kind != IOSC_CLIP_KIND_TEXT && kind != IOSC_CLIP_KIND_NONE) {
-            free(data);          // image/uri item: the text-only caller drops it
-            continue;
-        }
-        int copy = (len < (uint32_t)(out_cap - 1)) ? (int)len : out_cap - 1;
-        if (copy > 0) memcpy(out, data, (size_t)copy);
-        out[copy] = '\0';
-        if (out_len) *out_len = copy;
-        free(data);
-        return true;             // KIND_NONE lands as empty text (= clear)
-    }
-}

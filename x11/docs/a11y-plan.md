@@ -327,16 +327,15 @@ New files, roughly 600-900 lines of Swift total:
 6. Synthetic tap service: `tap {x, y}` from the helper feeds the existing
    touch-to-pointer injection at desktop-px coordinates.
 
-### Protocol v1.1 (authoritative wire schema)
+### Authoritative Wire Schema
 
 Transport: NDJSON over the unix socket `/var/jb/tmp/xios-a11y.sock`, mode 0600.
 Fixed path on purpose, same convention as `ioscd.sock`/`iosc-wm.sock`; do NOT
 derive it from `$XDG_RUNTIME_DIR`, which ioscd points at per-app private bus dirs
 (`ioscd.c:255`). ONE listener serves every client: the Xios desktop app and N
 native per-app hosts concurrently. Each connection carries its own bind filter,
-enable state, and generation counter. v1.1 folds in the native-flavor additions
-from `native-ipados-a11y.md`; nothing changed shape for the desktop client —
-every addition is a new message or an optional field.
+enable state, and generation counter. The native-flavor messages from
+`native-ipados-a11y.md` are part of this single current schema.
 
 Encoding: one JSON object per line, discriminator `t`. `id`/`win` are
 helper-assigned uint32, unique within a generation. `frame` is `[x,y,w,h]` ints —
@@ -352,7 +351,7 @@ AT-SPI action index.
 
 helper -> app:
 
-- `{"t":"hello","v":1,"gen":G}`
+- `{"t":"hello","gen":G}`
 - `{"t":"window","id":W,"appid":S,"title":S,"frame":F,"focused":B}`
 - `{"t":"upsert","id":N,"win":W,"parent":P,"idx":I,"role":S,"label":S,"value":S,"hint":S,"traits":[...],"actions":[...],"frame":F}` (`parent:0` = window root)
 - `{"t":"remove","id":N}` (removes the subtree; children go with it)
@@ -376,7 +375,7 @@ app -> helper:
   visibility from native hosts; in the schema from day one so hosts can send
   them unconditionally, but the helper may ignore them until it implements
   traffic muting (P4)
-- `{"t":"vo-focus","id":N}` (logging/metrics only in v1)
+- `{"t":"vo-focus","id":N}` (logging/metrics only)
 
 Bound-connection semantics: `bind` is a persistent filter. If the AT-SPI app has
 not registered yet (cold launch), the helper holds the filter and starts
@@ -409,7 +408,7 @@ NDJSON is deliberate: trees are small after filtering and it is debuggable with
   filtered by app. Recommend making this flavor the a11y showcase. Spec'd in
   detail in `native-ipados-a11y.md` (host-side prototype exists in
   `apps/iosc-host/Sources/HostA11y.swift`); its protocol additions are folded
-  into v1.1 above.
+  into the schema above.
 - iosc-shell: our panel/launcher are bare cairo, invisible to AT-SPI. Two options:
   (a) implement a minimal AT-SPI server in the panel (Socket.Embed + Accessible +
   Component + Action over raw libdbus; the panel has a dozen static elements, this

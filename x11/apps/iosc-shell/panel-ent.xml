@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  ioscpanel entitlements. A wl_shm layer-shell client: it draws on the CPU and
+  iosc shell client entitlements. wl_shm layer-shell clients draw on the CPU and
   hands wl_shm buffers to iosc (iosc does the GPU compositing), so it needs NO
   AGX/IOGPU/IOSurface IOKit entitlements (cf. kgx's cairo->wl_shm path, which
   needs no GPU entitlement). It only needs to reach the Wayland/runtime sockets,

@@ -6,7 +6,9 @@
 #   * relink any mach-o that IMPORTS g_libintl_* (the renamed proxy-libintl symbols) onto
 #     @rpath/libgtkintl.dylib — the shim shipped by the libgtkintl package, which reexports
 #     libintl.8 and re-adds the g_libintl_* names dyld needs;
-#   * re-sign it ad-hoc (ldid -S, since the relink invalidates the signature);
+#   * re-sign it (ldid -S, since the relink invalidates the signature). GTK/Qt/EGL
+#     app executables are signed with the GPU-client entitlement so the post-pass
+#     does not strip AGX/IOGPU access after the package recipe added it;
 #   * declare `Depends: libgtkintl` so apt installs the shim;
 #   * regenerate DEBIAN/md5sums and repack (zstd).
 #
@@ -26,6 +28,47 @@ OTOOL="$(pick aarch64-apple-darwin-otool llvm-otool llvm-otool-14 otool)"
 LDID="$(pick ldid)"
 DEB="$(pick dpkg-deb)"
 SHIM=libgtkintl
+GPU_ENT="$(dirname "$0")/../build_info/iosc-gpu-client-ent.xml"
+[ -f "$GPU_ENT" ] || GPU_ENT="/work/build_info/iosc-gpu-client-ent.xml"
+[ -f "$GPU_ENT" ] || GPU_ENT="/work/Procursus/build_misc/entitlements/iosc-gpu-client-ent.xml"
+GL_ENT="$(dirname "$0")/../build_info/iosc-gl-ent.xml"
+[ -f "$GL_ENT" ] || GL_ENT="/work/build_info/iosc-gl-ent.xml"
+[ -f "$GL_ENT" ] || GL_ENT="/work/Procursus/build_misc/entitlements/iosc-gl-ent.xml"
+
+is_process_macho() {
+  case "${1##*.}" in
+    a|dylib|bundle|so) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+needs_gpu_entitlement() {
+  local f="$1"
+  is_process_macho "$f" || return 1
+  "$OTOOL" -L "$f" 2>/dev/null \
+    | grep -qE 'libgtk-4|libadwaita|libEGL|libGLESv2|QtGui|QtWayland|libmutter|libepoxy|libGL\.1'
+}
+
+needs_compositor_entitlement() {
+  local f="$1"
+  is_process_macho "$f" || return 1
+  "$OTOOL" -L "$f" 2>/dev/null | grep -q 'libmutter'
+}
+
+has_gpu_entitlement() {
+  "$LDID" -e "$1" 2>/dev/null | grep -qE 'AGXDeviceUserClient|IOGPUDeviceUserClient'
+}
+
+sign_macho() {
+  local f="$1"
+  if needs_compositor_entitlement "$f" && [ -f "$GL_ENT" ]; then
+    "$LDID" -S"$GL_ENT" "$f"
+  elif needs_gpu_entitlement "$f" && [ -f "$GPU_ENT" ]; then
+    "$LDID" -S"$GPU_ENT" "$f"
+  else
+    "$LDID" -S "$f"
+  fi
+}
 
 fix_deb() {
   local deb="$1" work pkg changed=0 needdep=0 f
@@ -41,7 +84,10 @@ fix_deb() {
     if "$OTOOL" -L "$f" 2>/dev/null | grep -qE '@rpath/libintl(\.8)?\.dylib'; then
       "$INT" -change @rpath/libintl.dylib   "@rpath/$SHIM.dylib" "$f" 2>/dev/null || true
       "$INT" -change @rpath/libintl.8.dylib "@rpath/$SHIM.dylib" "$f" 2>/dev/null || true
-      "$LDID" -S "$f"
+      sign_macho "$f"
+      changed=1
+    elif needs_gpu_entitlement "$f" && ! has_gpu_entitlement "$f"; then
+      sign_macho "$f"
       changed=1
     fi
   done < <(find "$work" -path "$work/DEBIAN" -prune -o -type f -print)

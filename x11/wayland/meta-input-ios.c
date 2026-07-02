@@ -39,6 +39,8 @@ struct _MetaInputIOS
   guint                      source_id;
   int                        last_client_count;  /* log connect/disconnect edges */
   int                        msg_log_budget;     /* log the first few decoded records */
+  int                        cursor_x;
+  int                        cursor_y;
 };
 
 static uint32_t
@@ -51,6 +53,29 @@ map_button (uint32_t code)
     case 2: return IOS_BTN_MIDDLE;
     default: return code;   /* already an evdev BTN_* */
     }
+}
+
+/* Ratio mapping output-pixel wire coordinates/deltas into the stage's coordinate space,
+ * which is meta_monitor_manager_get_screen_size() — the SAME value meta-stage-ios uses for
+ * its geometry. In the DEFAULT PHYSICAL layout mode the screen is the full output size
+ * (e.g. 2160x1620), so this is identity; only with the experimental scale-monitor-framebuffer
+ * feature (LOGICAL mode) is it the /scale'd size. Dividing by a fixed xios_output_scale()=2
+ * was WRONG in PHYSICAL mode. Shared by the MOTION and AXIS cases so they cannot drift. */
+static void
+output_to_stage_ratio (MetaInputIOS *input,
+                       double       *ratio_x,
+                       double       *ratio_y)
+{
+  MetaMonitorManager *monitor_manager =
+    meta_backend_get_monitor_manager (input->backend);
+  int out_w = 0, out_h = 0, screen_w = 0, screen_h = 0;
+
+  xios_output_geometry (&out_w, &out_h);
+  if (monitor_manager)
+    meta_monitor_manager_get_screen_size (monitor_manager, &screen_w, &screen_h);
+
+  *ratio_x = (out_w > 0 && screen_w > 0) ? (double) screen_w / out_w : 1.0;
+  *ratio_y = (out_h > 0 && screen_h > 0) ? (double) screen_h / out_h : 1.0;
 }
 
 static void
@@ -69,9 +94,11 @@ static void
 on_input_msg (const struct xios_in_msg *m,
               const char               *text,
               size_t                    text_len,
+              uint32_t                  bound_window,
               void                     *user)
 {
   MetaInputIOS *input = user;
+  (void) bound_window;
 
   /* Diagnostic: log the first handful of decoded records so a device-side inject test can
    * confirm bytes arrive + decode with the right 24-byte layout (type/x/y). Bounded so it
@@ -88,34 +115,28 @@ on_input_msg (const struct xios_in_msg *m,
     case XIOS_IN_MOTION:
       {
         /* Socket carries ABSOLUTE output-pixel position (0..2160 x 0..1620). Map it into the
-         * stage's coordinate space, which is meta_monitor_manager_get_screen_size() — the SAME
-         * value meta-stage-ios uses for its geometry. In the DEFAULT PHYSICAL layout mode the
-         * screen is the full 2160x1620, so this is identity; only with the experimental
-         * scale-monitor-framebuffer feature (LOGICAL mode) is it the /scale'd size. Dividing by a
-         * fixed xios_output_scale()=2 was WRONG in PHYSICAL mode: it parked the pointer in the
-         * top-left quadrant, so clicks landed on the wrong widget (or nothing) and buttons never
-         * activated. Ratio-mapping to the live screen size is correct in either mode + survives
-         * rotation. */
-        MetaMonitorManager *monitor_manager =
-          meta_backend_get_monitor_manager (input->backend);
-        int out_w = 0, out_h = 0, screen_w = 0, screen_h = 0;
-        double x, y;
+         * stage's coordinate space via output_to_stage_ratio(): a fixed /xios_output_scale()
+         * parked the pointer in the top-left quadrant in PHYSICAL mode, so clicks landed on
+         * the wrong widget (or nothing) and buttons never activated. Ratio-mapping to the live
+         * screen size is correct in either mode + survives rotation. */
+        double rx, ry, x, y;
 
-        xios_output_geometry (&out_w, &out_h);
-        if (monitor_manager)
-          meta_monitor_manager_get_screen_size (monitor_manager, &screen_w, &screen_h);
+        output_to_stage_ratio (input, &rx, &ry);
+        x = m->x * rx;
+        y = m->y * ry;
 
-        x = (out_w > 0 && screen_w > 0) ? (double) m->x * screen_w / out_w : (double) m->x;
-        y = (out_h > 0 && screen_h > 0) ? (double) m->y * screen_h / out_h : (double) m->y;
-
-        /* Diagnostic: the exact coords handed to Clutter + the mapping inputs, so an inject test
-         * confirms the pointer lands where expected (in-bounds of screen_w x screen_h). */
+        /* Diagnostic: the exact coords handed to Clutter + the mapping ratio, so an inject test
+         * confirms the pointer lands where expected (in-bounds of the stage screen size). */
         if (input->msg_log_budget > 0)
-          g_message ("MetaInputIOS: motion out(%d,%d)/%dx%d -> stage(%.1f,%.1f) in %dx%d",
-                     m->x, m->y, out_w, out_h, x, y, screen_w, screen_h);
+          g_message ("MetaInputIOS: motion out(%d,%d) *(%.3f,%.3f) -> stage(%.1f,%.1f)",
+                     m->x, m->y, rx, ry, x, y);
 
         clutter_virtual_input_device_notify_absolute_motion (input->pointer,
                                                              CLUTTER_CURRENT_TIME, x, y);
+
+        input->cursor_x = m->x;
+        input->cursor_y = m->y;
+        xios_notify_cursor (input->cursor_x, input->cursor_y, 1, 1);
         break;
       }
 
@@ -140,17 +161,17 @@ on_input_msg (const struct xios_in_msg *m,
     case XIOS_IN_AXIS:
       {
         /* Two-finger / wheel scroll. x,y are deltas in 1/256 output px (wl_fixed units);
-         * the stage wants LOGICAL px, so divide by 256*scale. state bit0 = the fingers
-         * left the glass -> finish flags so Clutter's kinetic scroll flings. mods bit1 =
-         * latch Ctrl around the frame (the app's pinch-to-zoom = ctrl+scroll). code 1 =
-         * wheel notch, else continuous finger scroll. */
-        double scale = xios_output_scale ();
+         * map them into stage px with the same live ratio as MOTION (identity in the default
+         * PHYSICAL layout mode — a fixed /xios_output_scale() halved scroll distances there).
+         * state bit0 = the fingers left the glass -> finish flags so Clutter's kinetic scroll
+         * flings. mods bit1 = latch Ctrl around the frame (the app's pinch-to-zoom =
+         * ctrl+scroll). code 1 = wheel notch, else continuous finger scroll. */
+        double rx, ry;
         ClutterScrollFinishFlags finish = (m->state & 1)
           ? (CLUTTER_SCROLL_FINISHED_HORIZONTAL | CLUTTER_SCROLL_FINISHED_VERTICAL)
           : CLUTTER_SCROLL_FINISHED_NONE;
 
-        if (scale <= 0.0)
-          scale = 1.0;
+        output_to_stage_ratio (input, &rx, &ry);
         if (m->mods & 2)
           clutter_virtual_input_device_notify_keyval (input->keyboard,
                                                       CLUTTER_CURRENT_TIME,
@@ -158,8 +179,8 @@ on_input_msg (const struct xios_in_msg *m,
                                                       CLUTTER_KEY_STATE_PRESSED);
         clutter_virtual_input_device_notify_scroll_continuous (input->pointer,
                                                                CLUTTER_CURRENT_TIME,
-                                                               m->x / (256.0 * scale),
-                                                               m->y / (256.0 * scale),
+                                                               m->x / 256.0 * rx,
+                                                               m->y / 256.0 * ry,
                                                                m->code == 1
                                                                  ? CLUTTER_SCROLL_SOURCE_WHEEL
                                                                  : CLUTTER_SCROLL_SOURCE_FINGER,
@@ -217,6 +238,7 @@ on_poll_tick (gpointer user_data)
   n = xios_input_socket_dispatch (input->socket, on_input_msg, input);
   if (n < 0)
     {
+      g_warning ("MetaInputIOS: fatal input socket error, stopping the input pump");
       input->source_id = 0;
       return G_SOURCE_REMOVE;
     }

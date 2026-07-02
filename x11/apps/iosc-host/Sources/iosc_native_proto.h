@@ -3,7 +3,7 @@
  * rendezvous (iosc-native.sock). Shared by BOTH ends:
  *   - the per-app host app's client (apps/iosc-host/Sources/NativeClient.c), and
  *   - iosc's server half (to be implemented in wayland/iosc.c per x11/docs/
- *     native-ipados-protocol.md — NOT built yet).
+ *     native-ipados-protocol.md).
  *
  * Native mode gives each xdg_toplevel its OWN presentation IOSurface ("canvas")
  * and its OWN UIWindowScene in the host, instead of compositing every window into

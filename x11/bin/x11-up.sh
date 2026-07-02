@@ -36,7 +36,6 @@ alive(){ ps ax 2>/dev/null | grep -v grep | grep -q "$1"; }
 # packaged Xvnc already execs that helper via /var/jb/bin/sh (rootless has no
 # /bin/sh), so no symlink hack is needed — just make sure the output dir exists.
 mkdir -p /var/jb/var/lib/xkb
-command -v xios_load_xresources >/dev/null 2>&1 && xios_load_xresources
 
 # --- launch the X/VNC server -------------------------------------------------
 pkill -f "$(basename "$XVNC") :1" 2>/dev/null; sleep 1

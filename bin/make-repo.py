@@ -22,11 +22,29 @@ REPO = os.path.abspath(os.path.join(HERE, "..", "repo"))
 DEBS = os.path.join(REPO, "debs")
 META = os.path.join(REPO, "meta")
 
+APP_SECTION = "X11/Wayland Apps"
+APP_SECTION_PACKAGES = {
+    "baobab",
+    "d-spy",
+    "file-roller",
+    "gnome-calculator",
+    "gnome-console",
+    "gnome-font-viewer",
+    "gnome-terminal",
+    "gnome-text-editor",
+    "hitori",
+    "nautilus",
+    "thunar",
+    "xfce4-appfinder",
+}
+
 # ── identity / theme ─────────────────────────────────────────────────────────
 BASE_URL    = "https://repo.maxleiter.com"
-ORIGIN      = "Max's Tweaks"
-DESCRIPTION = "Jailbreak tweaks by Max"
+REPO_NAME   = "Max's Repo"
+ORIGIN      = REPO_NAME
+DESCRIPTION = "Jailbreak packages by Max"
 ARCH        = "iphoneos-arm64"
+PUBLISHER   = "Max Leiter <maxwell.leiter@gmail.com>"
 ACCENT      = (85, 170, 255)      # #55aaff (maxleiter.com brand blue)
 ACCENT_HEX  = "#55aaff"
 ICON_BG     = (16, 16, 20)
@@ -71,6 +89,16 @@ def control_dict(deb_bytes):
             k, v = ln.split(": ", 1); d[k] = v; order.append(k)
     d["__order__"] = order
     return d
+
+def normalize_section(ctrl):
+    if ctrl.get("Package") in APP_SECTION_PACKAGES:
+        ctrl["Section"] = APP_SECTION
+
+def normalize_publisher(ctrl):
+    for key in ("Maintainer", "Author"):
+        ctrl[key] = PUBLISHER
+        if key not in ctrl["__order__"]:
+            ctrl["__order__"].append(key)
 
 def human_size(n):
     return f"{n/1024:.1f} KiB" if n >= 1024 else f"{n} B"
@@ -160,6 +188,13 @@ def _glyph_tiles(d, S):            # Desktop — 2x2 flavor tiles, one filled
         if i == 0: d.rounded_rectangle(box, radius=rad, fill=A)
         else:      d.rounded_rectangle(box, radius=rad, outline=A, width=w)
 
+def _glyph_apps(d, S):             # X11/Wayland Apps — overlapping app windows
+    A = ACCENT + (255,); w = max(2, int(S * 0.045)); rad = int(S * 0.045)
+    d.rounded_rectangle([S * 0.30, S * 0.24, S * 0.74, S * 0.58], radius=rad, outline=A, width=w)
+    d.line([S * 0.30, S * 0.35, S * 0.74, S * 0.35], fill=A, width=w)
+    d.rounded_rectangle([S * 0.22, S * 0.40, S * 0.66, S * 0.74], radius=rad, fill=ICON_BG + (255,), outline=A, width=w)
+    d.line([S * 0.22, S * 0.51, S * 0.66, S * 0.51], fill=A, width=w)
+
 def _glyph_box(d, S):              # default / unknown section — package box
     A = ACCENT + (255,); w = max(2, int(S * 0.05))
     d.rounded_rectangle([S * 0.24, S * 0.28, S * 0.76, S * 0.72],
@@ -169,6 +204,7 @@ def _glyph_box(d, S):              # default / unknown section — package box
 
 CATEGORY_GLYPH = {
     "Desktop": _glyph_tiles,
+    "X11/Wayland Apps": _glyph_apps,
     "Tweaks": _glyph_sliders,
     "Utilities": _glyph_gear,
     "X11": _glyph_window,
@@ -203,13 +239,19 @@ def load_meta(pkgid):
         with open(p) as f: return json.load(f)
     return {}
 
+def package_developer(meta, ctrl):
+    developer = meta.get("developer")
+    if not developer or developer == "Max":
+        return ctrl.get("Author", ctrl.get("Maintainer", ""))
+    return developer
+
 # ── native (Sileo) depiction ─────────────────────────────────────────────────
 def native_depiction(ctrl, meta, size):
     pid = ctrl["Package"]
     info = [
         ("Version", ctrl.get("Version", "")),
         ("Size", human_size(size)),
-        ("Developer", meta.get("developer", ctrl.get("Author", ctrl.get("Maintainer", "")))),
+        ("Developer", package_developer(meta, ctrl)),
         ("Section", ctrl.get("Section", "Tweaks")),
         ("Identifier", pid),
     ]
@@ -238,7 +280,7 @@ def html_depiction(ctrl, meta, size):
     rows = "".join(
         f"<tr><td>{html.escape(k)}</td><td>{html.escape(v)}</td></tr>" for k, v in [
             ("Version", ctrl.get("Version", "")), ("Size", human_size(size)),
-            ("Developer", meta.get("developer", ctrl.get("Author", ""))),
+            ("Developer", package_developer(meta, ctrl)),
             ("Section", ctrl.get("Section", "Tweaks")), ("Identifier", pid)])
     body = md_to_html(meta.get("description", ctrl.get("Description", "")))
     name = html.escape(ctrl.get("Name", pid))
@@ -413,9 +455,9 @@ INDEX_JS = """
 """
 
 # category display order on the landing page (unknown sections fall after these)
-SECTION_ORDER = ["Desktop", "Tweaks", "Utilities", "X11", "Development", "Libraries"]
+SECTION_ORDER = ["Desktop", "X11/Wayland Apps", "Tweaks", "Utilities", "X11", "Development", "Libraries"]
 # categories expanded by default; large dependency buckets start collapsed
-OPEN_SECTIONS = {"Desktop", "Tweaks", "Utilities", "X11"}
+OPEN_SECTIONS = {"Desktop", "X11/Wayland Apps", "Tweaks", "Utilities", "X11"}
 
 # theme toggle (sun shown in dark mode, moon in light mode)
 THEME_BTN = (
@@ -551,6 +593,8 @@ def main():
             continue
         blob = open(os.path.join(DEBS, fn), "rb").read()
         ctrl = control_dict(blob); pid = ctrl["Package"]
+        normalize_section(ctrl)
+        normalize_publisher(ctrl)
         meta = load_meta(pid)
         pkgs.append({"ctrl": ctrl, "meta": meta})
 
@@ -579,8 +623,9 @@ def main():
             f"Icon: {BASE_URL}/icons/{pid}.png",
             f"Depiction: {BASE_URL}/depictions/{pid}.html",
             f"Native Depiction: {BASE_URL}/depictions/{pid}.json",
-            f"Homepage: {meta.get('homepage', BASE_URL)}",
         ]
+        if "Homepage" not in ctrl:
+            lines.append(f"Homepage: {meta.get('homepage', BASE_URL)}")
         stanzas.append("\n".join(lines))
         featured.append({"title": ctrl.get("Name", pid), "package": pid,
                          "url": f"{BASE_URL}/banners/{pid}.png"})
@@ -601,7 +646,7 @@ def main():
         return name, len(b), hashlib.md5(b).hexdigest(), hashlib.sha256(b).hexdigest()
     idx = [h("Packages"), h("Packages.gz")]
     import email.utils
-    rel = [f"Origin: {ORIGIN}", f"Label: {ORIGIN}", "Suite: stable", "Version: 1.0",
+    rel = [f"Origin: {ORIGIN}", f"Label: {REPO_NAME}", f"Name: {REPO_NAME}", "Suite: stable", "Version: 1.0",
            "Codename: ios", f"Architectures: {ARCH}", "Components: main",
            f"Description: {DESCRIPTION}",
            f"Date: {email.utils.formatdate(usegmt=True)}", "MD5Sum:"]

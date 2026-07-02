@@ -19,9 +19,24 @@
       "url": "https://repo.maxleiter.com/banners/angle.png"
     },
     {
+      "title": "ANGLE (GLES via Metal)",
+      "package": "angle",
+      "url": "https://repo.maxleiter.com/banners/angle.png"
+    },
+    {
       "title": "baobab",
       "package": "baobab",
       "url": "https://repo.maxleiter.com/banners/baobab.png"
+    },
+    {
+      "title": "Bun",
+      "package": "bun",
+      "url": "https://repo.maxleiter.com/banners/bun.png"
+    },
+    {
+      "title": "Bun",
+      "package": "bun",
+      "url": "https://repo.maxleiter.com/banners/bun.png"
     },
     {
       "title": "AutoLockPicker",
@@ -32,6 +47,11 @@
       "title": "PullToRespring2",
       "package": "com.max.pulltorespring2",
       "url": "https://repo.maxleiter.com/banners/com.max.pulltorespring2.png"
+    },
+    {
+      "title": "curl",
+      "package": "curl",
+      "url": "https://repo.maxleiter.com/banners/curl.png"
     },
     {
       "title": "d-spy",
@@ -129,19 +149,14 @@
       "url": "https://repo.maxleiter.com/banners/hitori.png"
     },
     {
-      "title": "iosc desktop shell",
-      "package": "iosc-shell",
-      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
+      "title": "icu-devtools",
+      "package": "icu-devtools",
+      "url": "https://repo.maxleiter.com/banners/icu-devtools.png"
     },
     {
       "title": "iosc desktop shell",
       "package": "iosc-shell",
       "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
-    },
-    {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
     },
     {
       "title": "iosc (Wayland compositor)",
@@ -199,6 +214,16 @@
       "url": "https://repo.maxleiter.com/banners/libcairo2.png"
     },
     {
+      "title": "libcurl4-openssl-dev",
+      "package": "libcurl4-openssl-dev",
+      "url": "https://repo.maxleiter.com/banners/libcurl4-openssl-dev.png"
+    },
+    {
+      "title": "libcurl4",
+      "package": "libcurl4",
+      "url": "https://repo.maxleiter.com/banners/libcurl4.png"
+    },
+    {
       "title": "libeditorconfig-dev",
       "package": "libeditorconfig-dev",
       "url": "https://repo.maxleiter.com/banners/libeditorconfig-dev.png"
@@ -207,6 +232,16 @@
       "title": "libeditorconfig0",
       "package": "libeditorconfig0",
       "url": "https://repo.maxleiter.com/banners/libeditorconfig0.png"
+    },
+    {
+      "title": "libenchant-2-2",
+      "package": "libenchant-2-2",
+      "url": "https://repo.maxleiter.com/banners/libenchant-2-2.png"
+    },
+    {
+      "title": "libenchant-2-dev",
+      "package": "libenchant-2-dev",
+      "url": "https://repo.maxleiter.com/banners/libenchant-2-dev.png"
     },
     {
       "title": "libepoll-shim-dev",
@@ -314,6 +349,11 @@
       "url": "https://repo.maxleiter.com/banners/libglapi-mesa.png"
     },
     {
+      "title": "libglew2.2",
+      "package": "libglew2.2",
+      "url": "https://repo.maxleiter.com/banners/libglew2.2.png"
+    },
+    {
       "title": "libglib2.0-0",
       "package": "libglib2.0-0",
       "url": "https://repo.maxleiter.com/banners/libglib2.0-0.png"
@@ -332,6 +372,11 @@
       "title": "libglib2.0-dev",
       "package": "libglib2.0-dev",
       "url": "https://repo.maxleiter.com/banners/libglib2.0-dev.png"
+    },
+    {
+      "title": "libglu1-mesa",
+      "package": "libglu1-mesa",
+      "url": "https://repo.maxleiter.com/banners/libglu1-mesa.png"
     },
     {
       "title": "libgnome-autoar-0-0",
@@ -434,6 +479,16 @@
       "url": "https://repo.maxleiter.com/banners/libharfbuzz0b.png"
     },
     {
+      "title": "libicu-dev",
+      "package": "libicu-dev",
+      "url": "https://repo.maxleiter.com/banners/libicu-dev.png"
+    },
+    {
+      "title": "libicu74",
+      "package": "libicu74",
+      "url": "https://repo.maxleiter.com/banners/libicu74.png"
+    },
+    {
       "title": "libjpeg62-turbo",
       "package": "libjpeg62-turbo",
       "url": "https://repo.maxleiter.com/banners/libjpeg62-turbo.png"
@@ -462,6 +517,16 @@
       "title": "libmpfr6",
       "package": "libmpfr6",
       "url": "https://repo.maxleiter.com/banners/libmpfr6.png"
+    },
+    {
+      "title": "libmutter-14-0",
+      "package": "libmutter-14-0",
+      "url": "https://repo.maxleiter.com/banners/libmutter-14-0.png"
+    },
+    {
+      "title": "libmutter-14-dev",
+      "package": "libmutter-14-dev",
+      "url": "https://repo.maxleiter.com/banners/libmutter-14-dev.png"
     },
     {
       "title": "libpango-1.0-0",
@@ -504,6 +569,26 @@
       "url": "https://repo.maxleiter.com/banners/libpsl5.png"
     },
     {
+      "title": "librsvg2-2",
+      "package": "librsvg2-2",
+      "url": "https://repo.maxleiter.com/banners/librsvg2-2.png"
+    },
+    {
+      "title": "librsvg2-bin",
+      "package": "librsvg2-bin",
+      "url": "https://repo.maxleiter.com/banners/librsvg2-bin.png"
+    },
+    {
+      "title": "librsvg2-common",
+      "package": "librsvg2-common",
+      "url": "https://repo.maxleiter.com/banners/librsvg2-common.png"
+    },
+    {
+      "title": "librsvg2-dev",
+      "package": "librsvg2-dev",
+      "url": "https://repo.maxleiter.com/banners/librsvg2-dev.png"
+    },
+    {
       "title": "libsoup-3.0-0",
       "package": "libsoup-3.0-0",
       "url": "https://repo.maxleiter.com/banners/libsoup-3.0-0.png"
@@ -527,6 +612,11 @@
       "title": "libuuid16",
       "package": "libuuid16",
       "url": "https://repo.maxleiter.com/banners/libuuid16.png"
+    },
+    {
+      "title": "libvte-2.91-dev",
+      "package": "libvte-2.91-dev",
+      "url": "https://repo.maxleiter.com/banners/libvte-2.91-dev.png"
     },
     {
       "title": "libvte-2.91-gtk4-0",
@@ -649,9 +739,54 @@
       "url": "https://repo.maxleiter.com/banners/libyaml-0-2.png"
     },
     {
+      "title": "Mesa GL demo utilities",
+      "package": "mesa-demos",
+      "url": "https://repo.maxleiter.com/banners/mesa-demos.png"
+    },
+    {
       "title": "nautilus",
       "package": "nautilus",
       "url": "https://repo.maxleiter.com/banners/nautilus.png"
+    },
+    {
+      "title": "OpenCode",
+      "package": "opencode",
+      "url": "https://repo.maxleiter.com/banners/opencode.png"
+    },
+    {
+      "title": "qt-wayland-gl-smoke",
+      "package": "qt-wayland-gl-smoke",
+      "url": "https://repo.maxleiter.com/banners/qt-wayland-gl-smoke.png"
+    },
+    {
+      "title": "qt6-base-dev",
+      "package": "qt6-base-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-base-dev.png"
+    },
+    {
+      "title": "qt6-base",
+      "package": "qt6-base",
+      "url": "https://repo.maxleiter.com/banners/qt6-base.png"
+    },
+    {
+      "title": "qt6-wayland-dev",
+      "package": "qt6-wayland-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-wayland-dev.png"
+    },
+    {
+      "title": "qt6-wayland-dev",
+      "package": "qt6-wayland-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-wayland-dev.png"
+    },
+    {
+      "title": "qt6-wayland",
+      "package": "qt6-wayland",
+      "url": "https://repo.maxleiter.com/banners/qt6-wayland.png"
+    },
+    {
+      "title": "qt6-wayland",
+      "package": "qt6-wayland",
+      "url": "https://repo.maxleiter.com/banners/qt6-wayland.png"
     },
     {
       "title": "tigervnc-common",
@@ -684,6 +819,11 @@
       "url": "https://repo.maxleiter.com/banners/xauth.png"
     },
     {
+      "title": "xios-audio-server",
+      "package": "xios-audio-server",
+      "url": "https://repo.maxleiter.com/banners/xios-audio-server.png"
+    },
+    {
       "title": "Xios Desktop Core",
       "package": "xios-core",
       "url": "https://repo.maxleiter.com/banners/xios-core.png"
@@ -692,6 +832,26 @@
       "title": "Xios desktop defaults",
       "package": "xios-desktop-defaults",
       "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
+    },
+    {
+      "title": "Xios desktop defaults",
+      "package": "xios-desktop-defaults",
+      "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
+    },
+    {
+      "title": "Xios desktop defaults",
+      "package": "xios-desktop-defaults",
+      "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
+    },
+    {
+      "title": "Xios desktop defaults",
+      "package": "xios-desktop-defaults",
+      "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
+    },
+    {
+      "title": "Xios desktop theme",
+      "package": "xios-desktop-theme",
+      "url": "https://repo.maxleiter.com/banners/xios-desktop-theme.png"
     },
     {
       "title": "Xios desktop theme",
@@ -717,6 +877,16 @@
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
+    },
+    {
+      "title": "Xios GNOME session D-Bus stubs",
+      "package": "xios-session-stubs",
+      "url": "https://repo.maxleiter.com/banners/xios-session-stubs.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
     },
     {
       "title": "Xios session launcher",

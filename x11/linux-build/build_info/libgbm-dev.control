@@ -1,0 +1,10 @@
+Package: libgbm-dev
+Version: @DEB_GBM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libgbm1 (= @DEB_GBM_V@)
+Section: Development
+Priority: optional
+Homepage: https://www.mesa3d.org/
+Description: GBM library (iOS shim, development files)
+ Minimal gbm.h and pkg-config metadata for the iOS links-only GBM shim.

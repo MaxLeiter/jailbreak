@@ -1,7 +1,9 @@
 # Native iPadOS flavor: Linux apps as first-class iPad windows
 
-Design + recon only. Nothing here is implemented; Max must confirm the hosting
-model (question Q1, section 8) before real code.
+Implementation status: the recommended per-app host topology is now implemented
+behind a runtime native mode and is in device validation. This file remains the
+architecture note and rationale; current status and test steps live in
+`docs/handoff/native-ipados.md`.
 
 The idea: instead of one fullscreen Xios window containing a whole Linux desktop
 (the GNOME / KDE / X11 flavors), each Linux app presents as its OWN iPadOS
@@ -87,9 +89,9 @@ one identity" behavior is exactly right.
 
 ### 2.1 iosc native mode
 
-`IOSC_NATIVE=1` (env or flag, set by ioscd when the chooser selected this
-flavor) changes presentation only. Wayland-facing behavior (protocols, input
-delivery, clipboard) is untouched.
+Native mode (selected at runtime by ioscd, `IOSC_NATIVE=1`, or `iosc -native`)
+changes presentation only. Wayland-facing behavior (protocols, input delivery,
+clipboard) is untouched, and the same binary can still run classic mode.
 
 - No shared fullscreen output surface. On xdg_toplevel map, iosc allocates a
   canvas IOSurface at the window's configured size (same
@@ -315,12 +317,12 @@ functions, not the sketch above. Findings that change the estimate downward:
    translation unit (`xios_canvas.c`) that does NOT touch the frozen iosc.c, so
    it can be written and compile-checked in parallel with the module refactor.
 
-2. **`iosc.c` — per-window compositing (frozen; lands post-refactor).**
-   - `surface_map` (line 1312): on a TOPLEVEL map in native mode, allocate its
+2. **`iosc.c` — per-window compositing (implemented).**
+   - `surface_map`: on a TOPLEVEL map in native mode, allocate its
      canvas, register the `window_id <-> canvas <-> host(app_id)` binding, emit
-     `WINDOW_NEW` + deliver the canvas port. `surface_unmap` (1370) emits
+     `WINDOW_NEW` + deliver the canvas port. `surface_unmap` emits
      `WINDOW_GONE` and frees the canvas.
-   - `recomposite_now` (1032): native mode iterates dirty toplevels instead of
+   - `recomposite_now`: native mode iterates mapped toplevels instead of
      the single output. For each, `iosc_gl_bind_target(canvas)`, composite that
      toplevel + its popups/subsurfaces (they already carry `parent` + rel_x/y),
      `iosc_gl_end`, `xios_notify_dirty(window_id)`. The `g_mapped[]` z-order and
@@ -343,26 +345,20 @@ functions, not the sketch above. Findings that change the estimate downward:
 
 ### Build -> demo path
 
-1. (now, parallel-safe) `xios_canvas.c`: N-canvas registry + `iosc-native.sock`
-   BIND server + `deliver_canvas_port`. Standalone TU, compile-checked against
-   the current tree; no iosc.c edits.
-2. (pre-refactor OK) `iosc_gl_bind_target` split — pure addition.
-3. (post-refactor) iosc.c native-mode `recomposite`/`surface_map` wiring into
-   the new module boundaries.
-4. `XIOS_IN_BIND=8` into the shared header + iosc reader (with iosc-protocols).
-5. Wire `IOSCHost`'s `NativeClient` to the real ports; `build-host.sh`.
-6. On-device (needs the device, currently tied up): `gen-launchers.sh --native`,
+1. `xios_canvas.c`: N-canvas registry + `iosc-native.sock`
+   BIND server + `deliver_canvas_port`.
+2. `iosc_gl_bind_target` split.
+3. iosc.c native-mode `recomposite`/`surface_map` wiring.
+4. `XIOS_IN_BIND=8` into the shared header + iosc reader.
+5. `IOSCHost` `NativeClient` wired to the real ports; `build-host.sh` passes.
+6. On-device: `gen-launchers.sh --native`,
    tap a GTK4 app icon (kgx/gnome-console), validate it opens as its own iPad
    window, type into it, home out, confirm the app-switcher card.
 
 ### Blockers
 
-- **Freeze:** the iosc.c half (change 2) lands post monolith->modules refactor,
-  cleanly into the new module structure — coordinate boundaries with
-  iosc-protocols. Changes 1 and 3 are separable and can start now.
-- **`XIOS_IN_BIND=8`** not yet in the authoritative header (iosc-protocols).
-- **Device time** is on the mutter/gnome-shell bring-up; no device needed until
-  step 6.
+- **Device validation:** needs a real-device pass for app launch, scene resize,
+  input focus/text, close, and host relaunch replay.
 
 ## 8. Open questions for Max
 

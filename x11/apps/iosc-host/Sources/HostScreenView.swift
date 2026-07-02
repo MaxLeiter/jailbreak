@@ -10,9 +10,9 @@ import IOSurface
 /// single window: no display picker, no zoom/pan (the compositor reflows the app to
 /// the scene via RESIZE, so the canvas already fills the scene), no X/XTEST path.
 /// The canvas is delivered by NativeManager over iosc-native.sock; DIRTY events
-/// drive re-present; input goes over a per-scene iosc-input connection bound to the
-/// window id.
-final class HostScreenView: UIView {
+/// drive re-present; input goes over a per-scene iosc-native-input connection
+/// bound to the window id.
+final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     let window_id: UInt32
     private weak var manager: NativeManager?
 
@@ -32,10 +32,14 @@ final class HostScreenView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
 
     // iosc input (Wayland), one connection bound to this window.
-    private let inputSock = "/var/jb/tmp/iosc-input.sock"
+    private let inputSock = "/var/jb/tmp/iosc-native-input.sock"
     private var input: OpaquePointer?          // iosc_input_t*
+    private var lastInputConnectAttempt = Date.distantPast
     private var lastPt: (Int32, Int32)?
     private var touchSlots: [UITouch: Int32] = [:]
+    private var pointerTouch: UITouch?         // owns the emulated wl_pointer press
+    private weak var keyboardRevealPan: UIPanGestureRecognizer?
+    private var keyboardSwipeTriggered = false
 
     // UITextInputTraits — literal keyboard (one tap one char).
     @objc var autocorrectionType: UITextAutocorrectionType = .no
@@ -49,13 +53,14 @@ final class HostScreenView: UIView {
     private var modCtrl = false, modAlt = false, modShift = false
 
     // Auto keyboard (x11/docs/osk-plan.md): TRAITS enable raises the iOS keyboard,
-    // disable lowers it. TRAITS broadcasts are still global, so every scene hears
-    // every broadcast; only the key window's view pops.
+    // disable lowers it. Classic/fallback paths can still broadcast broadly, so
+    // only the key window's view pops.
     private var lastTraitEnabled: UInt32 = 0
     private var oskAutoShown = false          // the auto path raised the keyboard
     private var oskUserDismissed = false      // user hid it while the field was still enabled
     private var oskProgrammaticResign = false // our resign vs the user's
     private var oskHideTimer: Timer?
+    private var lifecycleObservers: [NSObjectProtocol] = []
 
     init(window_id: UInt32, manager: NativeManager) {
         self.window_id = window_id
@@ -63,6 +68,7 @@ final class HostScreenView: UIView {
         super.init(frame: .zero)
         backgroundColor = .black
         isMultipleTouchEnabled = true
+        installGestures()
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -77,6 +83,7 @@ final class HostScreenView: UIView {
         metalReady = true
         makePlaceholder()
         openInput()
+        installLifecycleObservers()
         let dl = CADisplayLink(target: self, selector: #selector(tick))
         dl.add(to: .main, forMode: .common)
         displayLink = dl
@@ -154,6 +161,74 @@ final class HostScreenView: UIView {
         if render() { needsPresent = false }
     }
 
+    private func installGestures() {
+        let keyboardPan = UIPanGestureRecognizer(target: self, action: #selector(handleKeyboardRevealPan(_:)))
+        keyboardPan.minimumNumberOfTouches = 1
+        keyboardPan.maximumNumberOfTouches = 1
+        keyboardPan.cancelsTouchesInView = true
+        keyboardPan.delegate = self
+        addGestureRecognizer(keyboardPan)
+        keyboardRevealPan = keyboardPan
+    }
+
+    @objc private func handleKeyboardRevealPan(_ g: UIPanGestureRecognizer) {
+        switch g.state {
+        case .began:
+            keyboardSwipeTriggered = false
+        case .changed:
+            guard !keyboardSwipeTriggered else { return }
+            let t = g.translation(in: self)
+            guard t.y < -36, abs(t.y) > abs(t.x) * 1.4 else { return }
+            keyboardSwipeTriggered = true
+            releasePointerPress()
+            oskUserDismissed = false
+            oskHideTimer?.invalidate()
+            oskHideTimer = nil
+            _ = becomeFirstResponder()
+        case .ended, .cancelled, .failed:
+            keyboardSwipeTriggered = false
+        default:
+            break
+        }
+    }
+
+    private func refreshAutoKeyboardFromTraits() {
+        serviceTraits()
+        raiseKeyboardFromCurrentTraitsIfNeeded()
+    }
+
+    private func installLifecycleObservers() {
+        guard lifecycleObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        lifecycleObservers.append(center.addObserver(
+            forName: UIScene.didActivateNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, note.object as? UIScene === self.window?.windowScene else { return }
+            self.refreshAutoKeyboardFromTraits()
+        })
+        lifecycleObservers.append(center.addObserver(
+            forName: UIWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, note.object as? UIWindow === self.window else { return }
+            self.refreshAutoKeyboardFromTraits()
+        })
+    }
+
+    private func aspectFitRect(content: CGSize, in container: CGSize) -> CGRect {
+        guard content.width > 0, content.height > 0,
+              container.width > 0, container.height > 0 else { return .zero }
+        let scale = min(container.width / content.width, container.height / content.height)
+        let fitted = CGSize(width: content.width * scale, height: content.height * scale)
+        return CGRect(x: (container.width - fitted.width) / 2,
+                      y: (container.height - fitted.height) / 2,
+                      width: fitted.width,
+                      height: fitted.height)
+    }
+
+    private func canvasRectInView() -> CGRect {
+        aspectFitRect(content: CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH)), in: bounds.size)
+    }
+
     @discardableResult
     private func render() -> Bool {
         guard metalReady, let drawable = metalLayer.nextDrawable(),
@@ -165,9 +240,10 @@ final class HostScreenView: UIView {
         guard dw > 0, dh > 0 else { return false }
         // Aspect-fit: at steady state canvas == scene so this is identity; during a
         // resize transition the canvas may briefly differ and this letterboxes it.
-        let scale = min(dw / Float(tw), dh / Float(th))
-        let sx = Float(tw) * scale / dw
-        let sy = Float(th) * scale / dh
+        let fit = aspectFitRect(content: CGSize(width: CGFloat(tw), height: CGFloat(th)),
+                                in: CGSize(width: CGFloat(dw), height: CGFloat(dh)))
+        let sx = Float(fit.width) / dw
+        let sy = Float(fit.height) / dh
         var verts: [Float] = [
             -sx,  sy, 0, 0,
             -sx, -sy, 0, 1,
@@ -195,6 +271,12 @@ final class HostScreenView: UIView {
     private func openInput() {
         if let h = input, iosc_input_is_open(h) { return }
         if input != nil { iosc_input_close(input); input = nil }
+        // serviceTraits() retries from the 60 Hz display link while the
+        // compositor is away; throttle the socket()+connect() attempts the
+        // same way HostSystemAppearance.ensureConnected does.
+        let now = Date()
+        guard now.timeIntervalSince(lastInputConnectAttempt) >= 1 else { return }
+        lastInputConnectAttempt = now
         input = iosc_input_open(inputSock, window_id)
     }
 
@@ -216,8 +298,8 @@ final class HostScreenView: UIView {
     }
 
     private func applyTraits(hint: UInt32, purpose: UInt32, enabled: UInt32) {
-        updateAutoKeyboard(enabled: enabled != 0)
         lastTraitEnabled = enabled
+        updateAutoKeyboard(enabled: enabled != 0)
         if enabled == 0 {
             isSecureTextEntry = false; keyboardType = .default; returnKeyType = .default
             autocorrectionType = .no; spellCheckingType = .no; autocapitalizationType = .none
@@ -244,10 +326,7 @@ final class HostScreenView: UIView {
     private func canvasPoint(from p: CGPoint) -> (Int32, Int32)? {
         guard canvasTexture != nil, canvasW > 0, canvasH > 0,
               bounds.width > 0, bounds.height > 0 else { return nil }
-        let scale = min(bounds.width / CGFloat(canvasW), bounds.height / CGFloat(canvasH))
-        let sizeW = CGFloat(canvasW) * scale, sizeH = CGFloat(canvasH) * scale
-        let ox = bounds.midX - sizeW / 2, oy = bounds.midY - sizeH / 2
-        let rect = CGRect(x: ox, y: oy, width: sizeW, height: sizeH)
+        let rect = canvasRectInView()
         guard rect.contains(p) else { return nil }
         let fx = (p.x - rect.minX) / rect.width * CGFloat(canvasW)
         let fy = (p.y - rect.minY) / rect.height * CGFloat(canvasH)
@@ -263,10 +342,9 @@ final class HostScreenView: UIView {
     /// points (identity at steady state; letterboxed only mid-resize).
     func viewRect(fromCanvas r: CGRect) -> CGRect {
         guard canvasW > 0, canvasH > 0, bounds.width > 0, bounds.height > 0 else { return .zero }
-        let scale = min(bounds.width / CGFloat(canvasW), bounds.height / CGFloat(canvasH))
-        let ox = bounds.midX - CGFloat(canvasW) * scale / 2
-        let oy = bounds.midY - CGFloat(canvasH) * scale / 2
-        return CGRect(x: ox + r.minX * scale, y: oy + r.minY * scale,
+        let rect = canvasRectInView()
+        let scale = rect.width / CGFloat(canvasW)
+        return CGRect(x: rect.minX + r.minX * scale, y: rect.minY + r.minY * scale,
                       width: r.width * scale, height: r.height * scale)
     }
 
@@ -326,10 +404,12 @@ final class HostScreenView: UIView {
     // pointer (so wl_pointer clients react even if they ignore wl_touch), same
     // additive policy as the Xios app.
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        refreshAutoKeyboardFromTraits()
         for t in touches { forward(t, phase: 1, event: event) }
         if (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
            let (x, y) = canvasPoint(from: t.location(in: self)), let h = input {
             lastPt = (x, y); iosc_input_motion(h, x, y); iosc_input_button(h, 1, true, x, y)
+            pointerTouch = t
         }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -341,20 +421,30 @@ final class HostScreenView: UIView {
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches { forward(t, phase: 0, event: event) }
-        if let h = input, let p = lastPt { iosc_input_button(h, 1, false, p.0, p.1) }
+        releasePointerIfNeeded(touches)
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches { forward(t, phase: 3, event: event) }
-        if let h = input, let p = lastPt { iosc_input_button(h, 1, false, p.0, p.1) }
+        releasePointerIfNeeded(touches)
+    }
+    /// Balance the emulated press from touchesBegan: release only when the touch
+    /// that sent it lifts (mirrors XScreen's leftPressSent gate; without this a
+    /// multi-finger gesture emitted unmatched releases, which warp the pointer to
+    /// a stale point and abort compositor drags/interactive ops).
+    private func releasePointerIfNeeded(_ touches: Set<UITouch>) {
+        guard let pt = pointerTouch, touches.contains(pt) else { return }
+        releasePointerPress()
+    }
+
+    private func releasePointerPress() {
+        pointerTouch = nil
+        guard let h = input, let p = lastPt else { return }
+        iosc_input_button(h, 1, false, p.0, p.1)
     }
 
     // MARK: keyboard
 
     override var canBecomeFirstResponder: Bool { true }
-
-    func toggleKeyboard() {
-        if isFirstResponder { _ = resignFirstResponder() } else { _ = becomeFirstResponder() }
-    }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -365,7 +455,7 @@ final class HostScreenView: UIView {
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
         if ok && !oskProgrammaticResign {
-            // The user hid the keyboard (toggle or dismiss key) while the field
+            // The user hid the keyboard (dismiss key) while the field
             // may still be focused: don't fight them on the next broadcast.
             if lastTraitEnabled != 0 { oskUserDismissed = true }
             oskAutoShown = false
@@ -379,10 +469,7 @@ final class HostScreenView: UIView {
         if enabled {
             oskHideTimer?.invalidate()
             oskHideTimer = nil
-            // The broadcast is desktop-wide for now, so gate on being the key scene.
-            if !isFirstResponder && !oskUserDismissed && window?.isKeyWindow == true {
-                if becomeFirstResponder() { oskAutoShown = true }
-            }
+            raiseKeyboardFromCurrentTraitsIfNeeded()
         } else {
             oskUserDismissed = false   // focus left the field; the next enable may raise again
             guard oskAutoShown, oskHideTimer == nil else { return }
@@ -398,6 +485,15 @@ final class HostScreenView: UIView {
                 self.oskAutoShown = false
             }
         }
+    }
+
+    private func raiseKeyboardFromCurrentTraitsIfNeeded() {
+        guard lastTraitEnabled != 0,
+              !isFirstResponder,
+              !oskUserDismissed,
+              window?.isKeyWindow == true
+        else { return }
+        if becomeFirstResponder() { oskAutoShown = true }
     }
 
     fileprivate func keysym(for ch: Character) -> UInt? {
@@ -424,7 +520,11 @@ final class HostScreenView: UIView {
     fileprivate func clearStickyMods() { modCtrl = false; modAlt = false; modShift = false }
 
     // Accessory row: esc/tab/ctrl/alt/shift/arrows, same idea as XScreen's modRow.
-    override var inputAccessoryView: UIView? { buildModRow() }
+    // Built once and cached (as in XScreen): UIKit re-queries this on every responder
+    // change and on reloadInputViews() (each TRAITS record while first responder), and
+    // a fresh instance per query makes UIKit tear down and re-install the bar each time.
+    private lazy var modRow: UIView = buildModRow()
+    override var inputAccessoryView: UIView? { modRow }
 
     private func buildModRow() -> UIView {
         let bar = UIInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48),
@@ -445,12 +545,19 @@ final class HostScreenView: UIView {
             b.addAction(UIAction { _ in a() }, for: .touchUpInside)
             return b
         }
-        func special(_ ks: UInt) { sendKeysym(ks, ctrl: modCtrl, alt: modAlt, shift: modShift); clearStickyMods() }
+        // [weak self] throughout: self retains the cached row, so a strong capture
+        // here would be a permanent self -> modRow -> button -> action -> self cycle
+        // (and HostScreenView is per-window, torn down on window close).
+        let special: (UInt) -> Void = { [weak self] ks in
+            guard let self else { return }
+            self.sendKeysym(ks, ctrl: self.modCtrl, alt: self.modAlt, shift: self.modShift)
+            self.clearStickyMods()
+        }
         stack.addArrangedSubview(cap("esc") { special(0xff1b) })
         stack.addArrangedSubview(cap("tab") { special(0xff09) })
-        stack.addArrangedSubview(cap("ctrl") { self.modCtrl.toggle() })
-        stack.addArrangedSubview(cap("alt") { self.modAlt.toggle() })
-        stack.addArrangedSubview(cap("shift") { self.modShift.toggle() })
+        stack.addArrangedSubview(cap("ctrl") { [weak self] in self?.modCtrl.toggle() })
+        stack.addArrangedSubview(cap("alt") { [weak self] in self?.modAlt.toggle() })
+        stack.addArrangedSubview(cap("shift") { [weak self] in self?.modShift.toggle() })
         stack.addArrangedSubview(cap("←") { special(0xff51) })
         stack.addArrangedSubview(cap("↑") { special(0xff52) })
         stack.addArrangedSubview(cap("↓") { special(0xff54) })
@@ -460,10 +567,22 @@ final class HostScreenView: UIView {
 
     func teardown() {
         displayLink?.invalidate(); displayLink = nil
+        for obs in lifecycleObservers { NotificationCenter.default.removeObserver(obs) }
+        lifecycleObservers.removeAll()
         oskHideTimer?.invalidate(); oskHideTimer = nil
         if input != nil { iosc_input_close(input); input = nil }
         canvasTexture = nil
         accessibilityElements = nil
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if let keyboardRevealPan, gestureRecognizer === keyboardRevealPan {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let p = pan.location(in: self)
+            let v = pan.velocity(in: self)
+            return p.y >= bounds.height * 0.72 && v.y < -40 && abs(v.y) > abs(v.x)
+        }
+        return true
     }
 }
 

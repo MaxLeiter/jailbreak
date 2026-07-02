@@ -244,7 +244,11 @@ static void replay_windows_for_client_locked(struct canvas_client *c)
  * port name comes from BIND (per host) rather than a per-connection hello. */
 static int deliver_canvas_port(pid_t pid, mach_port_name_t reply_port, IOSurfaceRef canvas)
 {
-    if (canvas == NULL || reply_port == MACH_PORT_NULL) return -1;
+    if (canvas == NULL || reply_port == MACH_PORT_NULL) {
+        fprintf(stderr, "xios-canvas: cannot deliver canvas port pid=%d reply_port=0x%x canvas=%p\n",
+                (int)pid, reply_port, (void *)canvas);
+        return -1;
+    }
 
     task_t task = MACH_PORT_NULL;
     kern_return_t kr = task_for_pid(mach_task_self(), (int)pid, &task);
@@ -476,6 +480,8 @@ static int handle_bind(int fd)
     c->pid = peer_pid;
     c->reply_port = (mach_port_name_t)(uint32_t)h.d;
     snprintf(c->app_id, sizeof(c->app_id), "%s", app_id);
+    fprintf(stderr, "xios-canvas: BIND app_id=\"%s\" pid=%d fd=%d scene=%dx%d scale=%d reply_port=0x%x\n",
+            app_id, (int)peer_pid, fd, h.a, h.b, h.c, c->reply_port);
     replay_windows_for_client_locked(c);
     pthread_mutex_unlock(&s_lock);
 
@@ -498,21 +504,24 @@ static void drop_client_locked(int i)
 }
 
 /* Dispatch one fully-read 32-byte control record from a host. Called on the
- * reader thread WITHOUT s_lock held (handlers may call back into iosc). */
-static void dispatch_control(const xios_msg *m)
+ * reader thread WITHOUT s_lock held (handlers may call back into iosc). Returns
+ * 0 to keep the host, -1 for a protocol mismatch. */
+static int dispatch_control(const xios_msg *m)
 {
     switch (m->type) {
     case XIOS_MSG_RESIZE:
         if (s_handlers.resize) s_handlers.resize(m->window_id, m->a, m->b, s_handlers.user);
-        break;
+        return 0;
     case XIOS_MSG_ACTIVATE:
         if (s_handlers.activate) s_handlers.activate(m->window_id, m->a != 0, s_handlers.user);
-        break;
+        return 0;
     case XIOS_MSG_CLOSED:
         if (s_handlers.closed) s_handlers.closed(m->window_id, s_handlers.user);
-        break;
+        return 0;
     default:
-        break;   /* unknown host->iosc record: ignore (forward-compat) */
+        fprintf(stderr, "xios-canvas: unknown host record type=0x%x window=%u; dropping host\n",
+                m->type, m->window_id);
+        return -1;
     }
 }
 
@@ -543,8 +552,9 @@ static int client_readable_locked(int idx)
         if (m.magic != XIOS_MSG_MAGIC) return -1;           /* desync => drop */
         /* Dispatch outside the lock: a handler may call xios_canvas_* back. */
         pthread_mutex_unlock(&s_lock);
-        dispatch_control(&m);
+        int bad = dispatch_control(&m);
         pthread_mutex_lock(&s_lock);
+        if (bad < 0) return -1;
         /* s_clients may have been reshuffled by a concurrent drop; re-find by fd
          * is unnecessary here because only THIS thread mutates the array, and we
          * re-read c below via idx which is still valid (no drop happened yet). */

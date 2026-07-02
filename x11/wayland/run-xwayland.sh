@@ -13,9 +13,10 @@
 #   ssh root@ipad 'APP=hitori bash -s' < run-xwayland.sh # the GTK3 marquee case
 #
 # NB rootful (not rootless): rootless Xwayland needs the compositor to be an X
-# window manager (an XWM), which iosc is not. Rootful shows the entire X screen
-# as one surface and works under any compositor. (Mutter's built-in XWM is the
-# later rootless path.)
+# window manager (an XWM), which iosc is not. Rootful is Xwayland's default here
+# (this build has `-rootless`, but no `-rootful` flag): the entire X screen is
+# one surface and works under any compositor. Mutter's built-in XWM is the later
+# rootless path.
 set -u
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export XDG_RUNTIME_DIR=/var/jb/tmp
@@ -52,12 +53,12 @@ sleep 3
 [ -S "$WSOCK" ] || { echo "!! wayland-0 socket missing — aborting"; exit 1; }
 
 echo "==> start Xwayland $XDISP ROOTFUL as an iosc client -> $TMP/xwl.log"
-# -rootful: whole X screen = one xdg_toplevel. -retro: classic stipple root (so a
-# bare X screen is visibly non-black). -noreset: survive the last client exiting.
+# Rootful default: whole X screen = one xdg_toplevel. -retro: classic stipple root
+# (so a bare X screen is visibly non-black). -noreset: survive the last client exiting.
 # -geometry sizes the X screen to the output. XWAYLAND_NO_GLAMOR belt-and-suspenders
 # for the X0 (software) deb — the software build has no glamor anyway.
 nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=wayland-0 XWAYLAND_NO_GLAMOR=1 \
-  "$XWL" "$XDISP" -rootful -geometry "$GEOM" -retro -noreset \
+  "$XWL" "$XDISP" -geometry "$GEOM" -retro -noreset \
   >"$TMP/xwl.log" 2>&1 </dev/null &
 XWLPID=$!
 # wait for the X display socket

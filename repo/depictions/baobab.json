@@ -27,17 +27,17 @@
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "375.3 KiB"
+          "text": "311.6 KiB"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Developer",
-          "text": "Procursus Team <support@procurs.us>"
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Applications"
+          "text": "X11/Wayland Apps"
         },
         {
           "class": "DepictionTableTextView",

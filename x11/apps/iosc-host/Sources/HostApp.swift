@@ -19,6 +19,14 @@ final class HostAppDelegate: UIResponder, UIApplicationDelegate {
         cfg.delegateClass = HostSceneDelegate.self
         return cfg
     }
+
+    /// The user removed scenes from the app switcher. This — not sceneDidDisconnect,
+    /// which also fires when the system reclaims a background scene — is the close
+    /// signal, so this is where Linux toplevels get closed.
+    func application(_ application: UIApplication,
+                     didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
+        NativeManager.shared.sessionsDiscarded(sceneSessions)
+    }
 }
 
 final class HostSceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -42,11 +50,22 @@ final class HostSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let ws = scene as? UIWindowScene { NativeManager.shared.sceneDisconnected(ws) }
     }
     func sceneDidBecomeActive(_ scene: UIScene) {
-        HostSystemAppearance.shared.update(from: scene)
-        if let ws = scene as? UIWindowScene { NativeManager.shared.sceneBecameKey(ws) }
+        guard let ws = scene as? UIWindowScene else { return }
+        HostSystemAppearance.shared.update(from: ws.traitCollection)
+        NativeManager.shared.sceneBecameKey(ws)
     }
     func sceneWillResignActive(_ scene: UIScene) {
         if let ws = scene as? UIWindowScene { NativeManager.shared.sceneResignedKey(ws) }
+    }
+
+    /// Snapshot the scene's bound window id so a relaunched host (jetsam) can rebind
+    /// the restored scene to the same window once iosc replays WINDOW_NEW.
+    func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
+        guard let ws = scene as? UIWindowScene,
+              let id = NativeManager.shared.windowID(for: ws) else { return nil }
+        let activity = NSUserActivity(activityType: NativeManager.windowActivityType)
+        activity.userInfo = ["window": NSNumber(value: id)]
+        return activity
     }
 
     private func windowID(from activity: NSUserActivity?) -> UInt32? {

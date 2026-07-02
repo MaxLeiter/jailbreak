@@ -1,0 +1,10 @@
+Package: libdisplay-info1
+Version: @DEB_LIBDISPLAYINFO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/emersion/libdisplay-info
+Description: EDID and DisplayID library (iOS links-only shim)
+ Minimal libdisplay-info ABI shim for KWin first-light. Parsing returns
+ unsupported metadata until a real libdisplay-info port is added.

@@ -96,7 +96,17 @@ gnome-shell-package: gnome-shell-stage
 	rm -rf $(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man \
 		$(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/doc
 
-	$(call SIGN,gnome-shell,general.xml)
+	$(call SIGN,gnome-shell,iosc-gl-ent.xml,,,nogeneral)
+	for dir in $(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin \
+		$(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec; do \
+		if [ -d "$$dir" ]; then \
+			for f in $$(find "$$dir" -type f); do \
+				if file "$$f" | grep -q 'Mach-O'; then \
+					ldid -Sbuild_misc/entitlements/iosc-gl-ent.xml "$$f"; \
+				fi; \
+			done; \
+		fi; \
+	done
 	$(call PACK,gnome-shell,DEB_GNOME-SHELL_V)
 	rm -rf $(BUILD_DIST)/gnome-shell
 

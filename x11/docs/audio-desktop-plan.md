@@ -39,8 +39,8 @@ no special entitlements; to it, the iPad is just a Unix socket.
 gvc is a full native-protocol client: `pa_context_connect`, sink/source
 introspection, subscription events, `pa_context_set_sink_volume_by_index`,
 default-sink queries. That is the server side of the native protocol plus a
-live sink object with volume; a `pa_simple`-level shim cannot fake it, and
-extending the shim to a full libpulse would mean reimplementing PulseAudio.
+live sink object with volume; a tiny simple-playback API bridge cannot fake it,
+and extending that into full libpulse would mean reimplementing PulseAudio.
 Meanwhile apps are the same story: anything GTK-adjacent that plays sound
 does it through libpulse, libcanberra, or GStreamer's pulsesink, all of which
 speak the native protocol.
@@ -50,24 +50,13 @@ the same source tree as the already-shipped client libs, with one custom
 sink module as its hardware output. The alternative (per-app patches onto
 SDL/libao/CoreAudio backends) does not reach gvc at all.
 
-### 2. libpulse0 vs the libpulse-simple-xios0 shim: resolved, real PA wins.
+### 2. libpulse-simple is the real PulseAudio library.
 
-Already decided and encoded in packaging (verified in the built deb):
-`libpulse0` Provides `libpulse-simple0`, Conflicts/Replaces
-`libpulse-simple-xios0`; `libpulse-dev` the same for the -dev shim. apt
-evicts the shim on install. The shim existed only because Procursus had no
-PulseAudio; the real `libpulse-simple.0.dylib` serves the same
-`pa_simple_write()` API, now through the daemon like everything else.
-
-One real leftover from the shim era, now fixed: `xios-audio-session.sh`
-(profile.d, shipped in xios-audio-server) exports
-`PULSE_SERVER=unix:/var/jb/tmp/xios-audio.sock`. That was correct for the
-shim, which spoke the XIOA protocol, but real libpulse clients would send a
-native-protocol handshake at a socket expecting XIOA magic and fail. The
-pulseaudio deb ships `/var/jb/etc/profile.d/xios-pulse.sh`, which sources
-after `xios-audio.sh` (alphabetical) and overrides `PULSE_SERVER` to
-`unix:/var/jb/tmp/pulse/native`. `client.conf` carries the same default for
-processes that never source profile.d.
+There is no Xios `libpulse-simple` compatibility package in the public stack.
+The PulseAudio build ships the real `libpulse-simple.0.dylib`, and
+`xios-audio-session.sh` no longer points `PULSE_SERVER` at the XIOA socket.
+Real libpulse clients use `/var/jb/tmp/pulse/native`; the XIOA socket stays
+reserved for `module-xios-sink`, `xios-audiod`, and the local smoke-test client.
 
 ### 3. The missing piece was a PA server with a CoreAudio-daemon sink. Built.
 

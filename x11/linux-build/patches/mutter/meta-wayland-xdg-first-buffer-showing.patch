@@ -1,0 +1,15 @@
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -1802,6 +1802,10 @@ meta_wayland_xdg_surface_apply_state (MetaWaylandSurfaceRole  *surface_role,
+   if (!window)
+     return;
+ 
+-  if (surface->buffer)
+-    priv->first_buffer_attached = TRUE;
++  if (surface->buffer)
++    {
++      if (!priv->first_buffer_attached)
++        meta_window_update_visibility (window);
++      priv->first_buffer_attached = TRUE;
++    }
+ }

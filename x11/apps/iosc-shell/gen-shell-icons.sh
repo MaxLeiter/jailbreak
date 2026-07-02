@@ -2,7 +2,7 @@
 #
 # gen-shell-icons.sh — pre-rasterize app icons for the iosc panel.
 #
-# There is no librsvg on device, so ioscpanel can't render the SVG icons that
+# There is no librsvg on device, so the shell clients can't render the SVG icons that
 # GNOME apps ship (hicolor/scalable/apps/*.svg). This script rasterises each
 # installed app's icon to a PNG the panel loads with cairo's built-in PNG reader
 # (panel-icons.h resolves Icon= -> <IconName>.png in the shipped set).

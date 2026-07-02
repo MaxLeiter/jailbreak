@@ -7,13 +7,19 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, the request
 - `xios-session-lib.sh` — single source of truth: ONE bulletproof teardown (kills iosc/mutter/gnome-shell/Xios/panels/clients/session-buses + rm stale wayland-0/xios.json/*-ddx.sock/*-input.sock) + preset fns that CALL `run-shell.sh`/`run-mutter.sh`/`run-gnome-shell.sh`. Resolver prefers the INSTALLED script (/var/jb/usr/local/bin, then /var/jb/usr/bin) over a pinned libexec copy.
 - `xios-session` — CLI: `xios-session iosc|mutter|gnome|app <name>|stop|status`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal).
 - `xios-sessiond` + `com.max.xios-sessiond.plist` — LaunchDaemon watching `/var/jb/tmp/xios-request.json` for `{"action":"session","preset":...}` (same channel the app uses for display-profiles; filters on `action`). Serves the request via the lib.
-- `package-session.sh` → `xios-session_1.0.1_iphoneos-arm64.deb` (in repo/debs + linux-build/out). `install-xios-session.sh` — lead-run scp+bootstrap. Doc: `x11/docs/session-launcher.md`.
+- `package-session.sh` → current `xios-session_1.0.4_iphoneos-arm64.deb` (in repo/debs + linux-build/out). `install-xios-session.sh` — lead-run scp+bootstrap. Doc: `x11/docs/session-launcher.md`.
 - In-app picker: xios-app commit 828435f (⧉ button → modal; writes xios-request.json). Status line polls `/var/jb/tmp/xios-session-status.json`.
 
-## Current state — built, installed (1.0.1), CLI works
+## Current state — built, installed (1.0.4), CLI works
 - Presets: iosc (works), mutter (up), gnome (experimental), app <name> (launch a client, no teardown), stop (→ SpringBoard).
 - GNOME success signal keys off "GNOME Shell started at" in gnome-shell.log (not xios.json). IOSC_PANEL_OPACITY forwarded. Resolver flip applied.
 - Local pickup: `xios-sessiond` now parses optional `width`/`height`/`dpi` fields on `action=session` requests. For iosc it exports `IOSC_LOGICAL=WxH` before calling the shared launcher, so the in-app ⧉ picker can choose the next desktop dimensions. Verified on-device via `width=1080 height=1440 dpi=176`: daemon log showed the fields and launched `iosc -logical 1080x1440`; `xios.json` reported the expected `2160x2880` IOSurface.
+
+## Active display ownership — FIXED in 1.0.4
+- `xios-session-lib.sh` records the owner in `/var/jb/tmp/xios-active-session` when launching `iosc`, `mutter`, or `gnome`, and clears it on `stop`.
+- `ioscd` and the classic `iosc` binary respect that owner: direct/classic iosc is refused while the active owner is another session, with `IOSC_IGNORE_ACTIVE_SESSION=1` as an explicit diagnostic override. Native iosc remains allowed.
+- Verified with Mutter active: `/var/jb/usr/local/bin/iosc` exited 2, logged `iosc: refusing classic output because active session is mutter`, and left Mutter's `xios.json` unchanged.
+- Installed on-device: `dpkg -s xios-session` reports `Version: 1.0.4`; `xios-session mutter` starts Mutter with `mutter-ddx.sock`/`mutter-input.sock` and active owner `mutter`.
 
 ## Flavor-switch jetsam — FIXED in 1.0.2 (needs on-device deploy + verify)
 Max hit it: switching iosc→mutter jetsammed the Xios app (took two tries). Root cause: killing the old compositor (~30MB GPU IOSurface + Metal/ANGLE ctx) while a new one immediately allocates spikes GPU memory past the foreground-app limit. `xios-session_1.0.2` (repo/debs + linux-build/out) applies all three fixes in `xios-session-lib.sh`:

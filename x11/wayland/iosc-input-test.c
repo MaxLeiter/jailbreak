@@ -1,17 +1,19 @@
 /*
  * iosc-input-test.c — inject input into the iosc compositor for testing, without
  * the Xios app. Speaks the same fixed 24-byte protocol the app uses over
- * /var/jb/tmp/xios-input.sock or /var/jb/tmp/iosc-input.sock. Lets us prove
+ * /var/jb/tmp/mutter-input.sock or /var/jb/tmp/iosc-input.sock. Lets us prove
  * wl_keyboard/wl_pointer dispatch (e.g.
  * "type ls<Enter> into kgx") before wiring the device-side UIKit path.
  *
  *   iosc-input-test "ls -la" "echo hi"   # type each arg as a line (auto <Enter>)
  *   iosc-input-test -c 680 400           # left click at output pixel 680,400
  *   iosc-input-test -D 300 300 900 500   # slow press-drag-release (DnD test)
+ *   iosc-input-test -s 680 400 0 -240    # smooth scroll -240px vertical (axis + stop)
  *   iosc-input-test -t 500 400           # two-finger touch gesture (wl_touch)
  *   iosc-input-test -p 300 300 900 500   # pencil stroke w/ pressure ramp (tablet-v2)
+ *   iosc-input-test -k 0x6e 3            # one keysym w/ mods (bit0 shift, 1 ctrl, 2 alt)
  *
- *   iosc-input-test --socket /var/jb/tmp/xios-input.sock -c 1080 810
+ *   iosc-input-test --socket /var/jb/tmp/mutter-input.sock -c 1080 810
  *
  * Coordinates are physical output pixels (the compositor maps to logical/stage space).
  * MIT.
@@ -32,8 +34,9 @@
 #define IOSC_IN_TABLET 7   /* code = pressure 0..65535; state as touch; mods = tilt+90 packed */
 #define IOSC_IN_AXIS   9   /* x,y = dx,dy 1/256 px; code = source; state bit0 = stop */
 
-#define MUTTER_IN_SOCK "/var/jb/tmp/xios-input.sock"
-#define IOSC_IN_SOCK   "/var/jb/tmp/iosc-input.sock"
+#define MUTTER_IN_SOCK        "/var/jb/tmp/mutter-input.sock"
+#define MUTTER_LEGACY_IN_SOCK "/var/jb/tmp/xios-input.sock"
+#define IOSC_IN_SOCK          "/var/jb/tmp/iosc-input.sock"
 
 struct iosc_in_msg {
     uint32_t type;
@@ -79,19 +82,29 @@ static int connect_sock(const char *path)
     int fd = connect_path(MUTTER_IN_SOCK, 1);
     if (fd >= 0)
         return fd;
+    fd = connect_path(MUTTER_LEGACY_IN_SOCK, 1);
+    if (fd >= 0)
+        return fd;
     fd = connect_path(IOSC_IN_SOCK, 1);
     if (fd >= 0)
         return fd;
 
-    fprintf(stderr, "connect: no input socket up (tried %s, %s)\n",
-            MUTTER_IN_SOCK, IOSC_IN_SOCK);
+    fprintf(stderr, "connect: no input socket up (tried %s, %s, %s)\n",
+            MUTTER_IN_SOCK, MUTTER_LEGACY_IN_SOCK, IOSC_IN_SOCK);
     return -1;
 }
 
 static void usage(const char *argv0)
 {
     fprintf(stderr,
-            "usage: %s [--socket PATH] [-c x y | -D x0 y0 x1 y1 | -s x y dx dy | text...]\n"
+            "usage: %s [--socket PATH] [mode | text...]\n"
+            "  -c x y             left click\n"
+            "  -D x0 y0 x1 y1     slow press-drag-release (DnD test)\n"
+            "  -s x y dx dy       smooth scroll dx,dy px at x,y (axis + stop)\n"
+            "  -t x y             two-finger touch gesture (wl_touch)\n"
+            "  -p x0 y0 x1 y1     pencil stroke w/ pressure ramp (tablet-v2)\n"
+            "  -k keysym [mods]   one key; mods bit0 shift, bit1 ctrl, bit2 alt\n"
+            "  text...            type each arg as a line (auto <Enter>)\n"
             "       %s --mutter -c 1080 810\n"
             "       %s --iosc \"echo hi\"\n",
             argv0, argv0, argv0);

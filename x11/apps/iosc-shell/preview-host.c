@@ -163,6 +163,7 @@ int main(int argc, char **argv)
     snprintf(pm.clock, sizeof pm.clock, "9:41");
     snprintf(pm.date, sizeof pm.date, "Tue Jul 1");
     pm.batt_pct = 82; pm.batt_charging = 0;
+    pm.wifi_on = 1;
     pm.nlaunch = 4;
     set_item(&pm.launch[0], "Files",       "F", i_files, 0);
     set_item(&pm.launch[1], "Text Editor", "T", i_text,  0);
@@ -200,7 +201,7 @@ int main(int argc, char **argv)
         int qx = LW - QS_MARGIN - qw, qy = BAR_REF_H + QS_MARGIN;
 
         /* crop the card region from the desktop (physical px) and frost it —
-         * the exact path ioscpanel runs via screencopy */
+         * the exact path the shell clients use via screencopy */
         cairo_surface_t *crop = cairo_image_surface_create(CAIRO_FORMAT_RGB24,
                                     (int)(qw * SCALE), (int)(qh * SCALE));
         cairo_t *cc = cairo_create(crop);

@@ -29,6 +29,8 @@ DRM_SYMS := drmFreeVersion drmGetCap drmGetRenderDeviceNameFromFd drmGetVersion 
   drmModeGetResources drmModeMoveCursor drmModeObjectGetProperties drmModeObjectSetProperty \
   drmModePageFlip drmModeRmFB drmModeSetCrtc drmModeSetCursor drmModeSetCursor2 drmPrimeHandleToFD \
   drmSetClientCap drmSyncobjCreate drmSyncobjDestroy drmSyncobjExportSyncFile drmWaitVBlank \
+  drmAuthMagic drmSyncobjEventfd drmSyncobjFDToHandle drmSyncobjImportSyncFile \
+  drmSyncobjTimelineSignal drmSyncobjTransfer \
   drmGetDevices2 drmFreeDevices drmGetMagic drmModeGetFB2 drmModeFreeFB2 drmModeRevokeLease \
   drmModeCreateLease drmModeListLessees drmModeGetLease drmIsMaster \
   drmFreeDevice drmModeGetConnectorCurrent drmGetDeviceFromDevId drmDevicesEqual \
@@ -49,6 +51,8 @@ libdrm: libdrm-setup
 	cp -a $(BUILD_WORK)/libdrm/xf86drm.h $(BUILD_WORK)/libdrm/xf86drmMode.h \
 		$(BUILD_WORK)/libdrm/include/drm/*.h \
 		$(BUILD_STAGE)/libdrm$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libdrm/
+	cp -a $(BUILD_STAGE)/libdrm$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libdrm/*.h \
+		$(BUILD_STAGE)/libdrm$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
 	# generate the links-only stub source + compile a stub libdrm.dylib
 	printf '/* iOS links-only stub: dmabuf path inert, replaced by IOSurface (MetaBackendIOS). */\n' \
 		> $(BUILD_WORK)/libdrm/drm_stub.c
@@ -58,7 +62,7 @@ libdrm: libdrm-setup
 		-o $(BUILD_STAGE)/libdrm$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libdrm.dylib \
 		$(BUILD_WORK)/libdrm/drm_stub.c
 	# libdrm.pc so mutter's dependency('libdrm', version: '>= 2.4.118') resolves
-	printf 'prefix=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)\nlibdir=$${prefix}/lib\nincludedir=$${prefix}/include\n\nName: libdrm\nDescription: iOS links-only shim (dmabuf inert; IOSurface in MetaBackendIOS)\nVersion: $(LIBDRM_VERSION)\nLibs: -L$${libdir} -ldrm\nCflags: -I$${includedir}/libdrm\n' \
+	printf 'prefix=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)\nlibdir=$${prefix}/lib\nincludedir=$${prefix}/include\n\nName: libdrm\nDescription: iOS links-only shim (dmabuf inert; IOSurface in MetaBackendIOS)\nVersion: $(LIBDRM_VERSION)\nLibs: -L$${libdir} -ldrm\nCflags: -I$${includedir}\n' \
 		> $(BUILD_STAGE)/libdrm$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libdrm.pc
 	$(call AFTER_BUILD,copy)
 endif

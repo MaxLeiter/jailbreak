@@ -7,7 +7,8 @@
          DefaultDevice + IOSurface texturing). get-task-allow lets iosc task_for_pid
          this host to mach_msg each window's canvas IOSurface (native rendezvous).
          can-allow-non-platform loads fakesigned dylibs; path exception covers the
-         /var/jb/tmp sockets (iosc-native.sock / iosc-input.sock / ioscd.sock). -->
+         /var/jb/tmp sockets (iosc-native.sock / iosc-native-input.sock /
+         ioscd.sock). -->
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
     <key>get-task-allow</key>

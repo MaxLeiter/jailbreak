@@ -37,6 +37,8 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <mach/mach.h>
 #include <limits.h>
+#include <stdint.h>
+#include <string.h>
 
 /* ANGLE enums, self-contained (values match eglext_angle.h; same set as
  * xios_egl.c so we do not depend on the angle -dev headers here). */
@@ -59,6 +61,18 @@
 #ifndef EGL_NO_CONFIG_KHR
 #define EGL_NO_CONFIG_KHR                   ((EGLConfig)0)
 #endif
+#ifndef EGL_KHR_fence_sync
+typedef void *EGLSyncKHR;
+#endif
+#ifndef EGL_SYNC_FENCE_KHR
+#define EGL_SYNC_FENCE_KHR                  0x30F9
+#define EGL_SYNC_FLUSH_COMMANDS_BIT_KHR     0x0001
+#define EGL_FOREVER_KHR                     0xFFFFFFFFFFFFFFFFull
+#define EGL_NO_SYNC_KHR                     ((EGLSyncKHR)0)
+#endif
+typedef EGLSyncKHR (*xwl_egl_create_sync_khr_fn)(EGLDisplay, EGLenum, const EGLint *);
+typedef EGLint (*xwl_egl_client_wait_sync_khr_fn)(EGLDisplay, EGLSyncKHR, EGLint, uint64_t);
+typedef EGLBoolean (*xwl_egl_destroy_sync_khr_fn)(EGLDisplay, EGLSyncKHR);
 
 struct xwl_iosurface_private {
     struct iosc_iosurface *iosc_iosurface; /* the compositor's export global */
@@ -75,6 +89,10 @@ struct xwl_pixmap {
 };
 
 static DevPrivateKeyRec xwl_iosurface_private_key;
+static xwl_egl_create_sync_khr_fn xwl_iosurface_create_sync;
+static xwl_egl_client_wait_sync_khr_fn xwl_iosurface_client_wait_sync;
+static xwl_egl_destroy_sync_khr_fn xwl_iosurface_destroy_sync;
+static int xwl_iosurface_sync_init_done;
 
 /* Consumed by the (patched) glamor_egl_make_current in xwayland-glamor.c:
  * stays EGL_NO_SURFACE unless surfaceless MakeCurrent turned out unsupported
@@ -86,6 +104,57 @@ xwl_iosurface_get(struct xwl_screen *xwl_screen)
 {
     return dixLookupPrivate(&xwl_screen->screen->devPrivates,
                             &xwl_iosurface_private_key);
+}
+
+static void
+xwl_iosurface_init_frame_barrier(EGLDisplay dpy)
+{
+    const char *exts;
+
+    if (xwl_iosurface_sync_init_done)
+        return;
+    xwl_iosurface_sync_init_done = 1;
+
+    exts = eglQueryString(dpy, EGL_EXTENSIONS);
+    if (exts && strstr(exts, "EGL_KHR_fence_sync")) {
+        xwl_iosurface_create_sync =
+            (xwl_egl_create_sync_khr_fn) eglGetProcAddress("eglCreateSyncKHR");
+        xwl_iosurface_client_wait_sync =
+            (xwl_egl_client_wait_sync_khr_fn) eglGetProcAddress("eglClientWaitSyncKHR");
+        xwl_iosurface_destroy_sync =
+            (xwl_egl_destroy_sync_khr_fn) eglGetProcAddress("eglDestroySyncKHR");
+
+        if (!xwl_iosurface_create_sync ||
+            !xwl_iosurface_client_wait_sync ||
+            !xwl_iosurface_destroy_sync)
+            xwl_iosurface_create_sync = NULL;
+    }
+
+    LogMessageVerb(X_INFO, 3, "glamor/iosurface: frame barrier = %s\n",
+                   xwl_iosurface_create_sync ? "EGL fence" : "glFinish");
+}
+
+static void
+xwl_iosurface_frame_barrier(struct xwl_screen *xwl_screen)
+{
+    EGLSyncKHR fence;
+
+    xwl_iosurface_init_frame_barrier(xwl_screen->egl_display);
+    glFlush();
+
+    if (xwl_iosurface_create_sync) {
+        fence = xwl_iosurface_create_sync(xwl_screen->egl_display,
+                                          EGL_SYNC_FENCE_KHR, NULL);
+        if (fence != EGL_NO_SYNC_KHR) {
+            xwl_iosurface_client_wait_sync(xwl_screen->egl_display, fence,
+                                           EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
+                                           EGL_FOREVER_KHR);
+            xwl_iosurface_destroy_sync(xwl_screen->egl_display, fence);
+            return;
+        }
+    }
+
+    glFinish();
 }
 
 /* ---- IOSurface creation (proven shape: iosc-gpu-client.c) ---------------- */
@@ -378,12 +447,10 @@ xwl_glamor_iosurface_post_damage(struct xwl_window *xwl_window,
 
     /* The compositor samples the IOSurface from its own Metal device; GL
      * commands must be COMPLETE (not just flushed) before the commit is
-     * visible, or it composites a half-rendered frame. glFinish on
-     * ANGLE-Metal waits for command-buffer completion (the same ordering
-     * iosc-gpu-client proved). TODO(perf): EGL_KHR_fence_sync /
-     * EGL_ANGLE_metal_shared_event_sync instead of a full finish. */
+     * visible, or it composites a half-rendered frame. Prefer a per-frame EGL
+     * fence over draining the whole GPU pipeline with glFinish. */
     xwl_glamor_egl_make_current(xwl_screen);
-    glFinish();
+    xwl_iosurface_frame_barrier(xwl_screen);
 
     return TRUE;
 }

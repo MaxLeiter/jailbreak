@@ -1,0 +1,12 @@
+Package: librsvg2-common
+Version: @DEB_LIBRSVG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/LibRsvg
+Depends: librsvg2-2 (= @DEB_LIBRSVG_V@), libgdk-pixbuf-2.0-0, libglib2.0-0
+Description: SVG loader for GdkPixbuf
+ This package contains the GdkPixbuf loader module that lets GTK and GNOME
+ applications load SVG images transparently through the normal icon-theme and
+ pixbuf APIs.

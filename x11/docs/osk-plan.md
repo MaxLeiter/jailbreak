@@ -16,7 +16,8 @@ keyboard, specified here.
 2. iosc tracks per-client text-input state. Every `text_input.commit` and
    every keyboard-focus change calls `input_clients_send_traits()`
    (iosc.c:4763), which broadcasts one fixed 24-byte record on the app input
-   socket (`iosc-input.sock`) to every connected host:
+   socket (`iosc-input.sock` for classic, `iosc-native-input.sock` for native)
+   to every connected host:
    `XIOS_IN_TRAITS { code = content_hint, state = content_purpose,
    mods = enabled }`. New connections get a snapshot on connect.
 3. The host app polls the socket every display-link tick.
@@ -176,8 +177,8 @@ override func resignFirstResponder() -> Bool {
 
 HostScreenView.swift carries the same policy against its `applyTraits`
 (landed, built clean via build-host.sh), with two host-specific twists: the
-user-dismiss latch keys off toggleKeyboard/dismiss-key resigns (no chrome
-button), and because TRAITS are not window-scoped yet (XIOS_IN_BIND still
+user-dismiss latch keys off dismiss-key resigns (no chrome button, no
+toggle method), and because TRAITS are not window-scoped yet (XIOS_IN_BIND still
 proposed), every scene hears every broadcast, so the auto-pop is gated on
 `window?.isKeyWindow` and only the scene the user is in raises the
 keyboard. When BIND lands in iosc's reader, drop the gate in favor of

@@ -46,6 +46,7 @@
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
+#include "xios_canvas.h"
 #include "iosc_gl.h"
 #include "iosc_input.h"
 #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
@@ -53,6 +54,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <stdint.h>
 #include <sys/socket.h>
@@ -61,6 +63,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <pwd.h>
 
 /* xios_surface.c writes the geometry handshake JSON and references `display`
  * (the X display-number string) for it. There is no X server here; this is only
@@ -82,6 +85,7 @@ static int               g_height = 2160;
 static int               g_stride;    /* real bytes-per-row (IOSurface-padded) */
 static int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
 static int               g_output_scale = 2; /* logical -> physical output pixels */
+static int               g_native_mode;
 
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
@@ -187,6 +191,8 @@ struct iosc_surface {
     int                 sw, sh;          /* current buffer source dimensions */
     int                 gl_dirty;        /* wl_shm content changed since last GPU upload */
     int                 dx, dy;          /* placement (top-left) on the output */
+    int                 native_canvas_w, native_canvas_h, native_canvas_stride;
+    int                 native_canvas_live;
     int                 pending_buffer_scale;
     int                 current_buffer_scale;
     int                 pending_scale_dirty;
@@ -257,6 +263,15 @@ static struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
 static struct iosc_surface *g_cursor_surface;
 static int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
 
+enum native_cmd_type { NATIVE_CMD_RESIZE = 1, NATIVE_CMD_ACTIVATE, NATIVE_CMD_CLOSED };
+struct native_cmd {
+    uint32_t type;
+    uint32_t window_id;
+    int32_t a, b;
+};
+static int g_native_cmd_pipe[2] = { -1, -1 };
+static struct wl_event_source *g_native_cmd_src;
+
 /* Drag-and-drop (wl_data_device.start_drag). While a drag is active the source
  * client holds an implicit pointer grab, and the pointer drives wl_data_device
  * enter/leave/motion/drop to the destination under the cursor (not normal
@@ -308,6 +323,11 @@ static int g_interactive_dx, g_interactive_dy;
 static int g_interactive_w, g_interactive_h;
 static uint32_t g_interactive_edges;
 static uint64_t g_presentation_seq;
+static struct wl_event_source *g_present_ack_timer;
+static uint64_t g_present_wait_seq;
+static uint32_t g_present_wait_started_ms;
+static int g_output_damage_valid;
+static int g_output_damage_x0, g_output_damage_y0, g_output_damage_x1, g_output_damage_y1;
 static void keyboard_set_focus(struct iosc_surface *s);
 static void keyboard_send_mods(uint32_t mask);
 static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state);
@@ -315,6 +335,7 @@ static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surfa
 static void input_method_update_active(void);
 static void input_clients_send_traits(void);
 static void surface_raise(struct iosc_surface *s);
+static void toplevel_send_configure(struct iosc_surface *s, int w, int h);
 /* foreign-toplevel (zwlr_foreign_toplevel_management_v1) — taskbar/window list */
 static void ftl_toplevel_mapped(struct iosc_surface *s);
 static void ftl_toplevel_closed(struct iosc_surface *s);
@@ -467,6 +488,14 @@ static struct iosc_surface *surface_by_window_id(uint32_t window_id)
     return NULL;
 }
 
+static struct iosc_surface *native_focus_toplevel(void)
+{
+    struct iosc_surface *s = g_kbd_focus;
+    while (s && s->role != IOSC_ROLE_TOPLEVEL && s->parent)
+        s = s->parent;
+    return (s && s->role == IOSC_ROLE_TOPLEVEL) ? s : NULL;
+}
+
 /* Compute the anchored size and send a layer_surface.configure the client acks. */
 static void layer_send_configure(struct iosc_surface *s)
 {
@@ -574,8 +603,54 @@ static void frame_callbacks_after_repaint(void)
 {
     uint32_t t = now_ms();
     struct iosc_surface *s, *tmp;
-    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link)
+    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
+        presentation_present_surface(s);
         surface_send_frame_callbacks(s, t);
+    }
+}
+
+static int present_ack_timer_cb(void *data)
+{
+    (void)data;
+    const uint32_t timeout_ms = 100;   /* old app / suspended app safety valve */
+    uint64_t seq = g_present_wait_seq;
+    if (seq == 0) {
+        wl_event_source_timer_update(g_present_ack_timer, 0);
+        return 0;
+    }
+    if (xios_presented_generation() >= seq ||
+        now_ms() - g_present_wait_started_ms >= timeout_ms) {
+        g_present_wait_seq = 0;
+        frame_callbacks_after_repaint();
+        wl_event_source_timer_update(g_present_ack_timer, 0);
+        return 0;
+    }
+    wl_event_source_timer_update(g_present_ack_timer, 1);
+    return 0;
+}
+
+static void frame_callbacks_after_present(void)
+{
+    uint64_t seq = xios_dirty_generation();
+    if (seq == 0 || !xios_have_app_client()) {
+        frame_callbacks_after_repaint();
+        return;
+    }
+
+    g_present_wait_seq = seq;
+    g_present_wait_started_ms = now_ms();
+    struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
+    if (!loop) {
+        frame_callbacks_after_repaint();
+        return;
+    }
+    if (!g_present_ack_timer)
+        g_present_ack_timer = wl_event_loop_add_timer(loop, present_ack_timer_cb, NULL);
+    if (!g_present_ack_timer) {
+        frame_callbacks_after_repaint();
+        return;
+    }
+    wl_event_source_timer_update(g_present_ack_timer, 1);
 }
 
 /* CPU-fallback blit of the top wl_shm surface. Kept simple; the ANGLE/GPU path is
@@ -664,11 +739,13 @@ static void spb_mgr_create_u32_rgba(struct wl_client *c, struct wl_resource *r,
 { (void)r;
     struct iosc_single_pixel_buffer *spb = calloc(1, sizeof(*spb));
     if (!spb) { wl_client_post_no_memory(c); return; }
-    /* uint32 fraction (value/0xFFFFFFFF) -> 8-bit; +0x800000 rounds to nearest. */
-    spb->bgra[0] = (uint8_t)((bb + 0x800000u) >> 24);
-    spb->bgra[1] = (uint8_t)((gg + 0x800000u) >> 24);
-    spb->bgra[2] = (uint8_t)((rr + 0x800000u) >> 24);
-    spb->bgra[3] = (uint8_t)((aa + 0x800000u) >> 24);
+    /* uint32 fraction (value/0xFFFFFFFF) -> 8-bit, exact round-to-nearest in
+     * 64-bit. (A 32-bit `(v + 0x800000) >> 24` wraps for v >= 0xFF800000 and
+     * turned saturated channels -- e.g. opaque white -- into 0.) */
+    spb->bgra[0] = (uint8_t)(((uint64_t)bb * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
+    spb->bgra[1] = (uint8_t)(((uint64_t)gg * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
+    spb->bgra[2] = (uint8_t)(((uint64_t)rr * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
+    spb->bgra[3] = (uint8_t)(((uint64_t)aa * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
     struct wl_resource *buf = wl_resource_create(c, &wl_buffer_interface, 1, id);
     if (!buf) { free(spb); wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(buf, &spb_buffer_impl, spb, spb_buffer_resource_destroy);
@@ -712,7 +789,6 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
                          wl_shm_buffer_get_stride(shm), sx, sy, src_w, src_h,
                          dxp, dyp, dwp, dhp);
         wl_shm_buffer_end_access(shm);
-        s->gl_dirty = 0;
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &iosurface_buffer_impl)) {
         struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(buf);
         if (ib && ib->surface)
@@ -723,6 +799,7 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
         if (spb)   /* 1x1 texel, sampled across the whole destination rect (uncached) */
             iosc_gl_draw_shm(NULL, 1, spb->bgra, 1, 1, 4, 0, 0, 1, 1, dxp, dyp, dwp, dhp);
     }
+    s->gl_dirty = 0;   /* committed damage consumed by this composite (all buffer types) */
 }
 
 /* Does the client's opaque_region cover the WHOLE surface? Then it's guaranteed
@@ -759,12 +836,296 @@ static int surface_blends(struct iosc_surface *s)
     return 0;
 }
 
-static void composite_one(struct iosc_surface *s)
+static void composite_surface_at_blended(struct iosc_surface *s, int x, int y)
 {
     int blend = surface_blends(s);
     if (blend) iosc_gl_begin_blend();
-    composite_surface_at(s, s->dx, s->dy);
+    composite_surface_at(s, x, y);
     if (blend) iosc_gl_end_blend();
+}
+
+static void composite_one(struct iosc_surface *s)
+{
+    composite_surface_at_blended(s, s->dx, s->dy);
+}
+
+static int surface_rect(struct iosc_surface *s, int *x0, int *y0, int *x1, int *y1)
+{
+    if (!s || !s->current_buffer) return 0;
+    int w = 0, h = 0;
+    surface_display_size(s, &w, &h);
+    if (w <= 0 || h <= 0) return 0;
+    *x0 = s->dx;
+    *y0 = s->dy;
+    *x1 = s->dx + w;
+    *y1 = s->dy + h;
+    return 1;
+}
+
+static int surface_fully_covers(struct iosc_surface *top, struct iosc_surface *bottom)
+{
+    if (!top || surface_blends(top)) return 0;
+    int tx0, ty0, tx1, ty1, bx0, by0, bx1, by1;
+    if (!surface_rect(top, &tx0, &ty0, &tx1, &ty1) ||
+        !surface_rect(bottom, &bx0, &by0, &bx1, &by1))
+        return 0;
+    return tx0 <= bx0 && ty0 <= by0 && tx1 >= bx1 && ty1 >= by1;
+}
+
+static int surface_occluded_by_single_opaque_above(int mapped_index)
+{
+    struct iosc_surface *s = g_mapped[mapped_index];
+    for (int j = mapped_index + 1; j < g_nmapped; j++)
+        if (surface_fully_covers(g_mapped[j], s))
+            return 1;
+    return 0;
+}
+
+static void output_damage_add_px(int x, int y, int w, int h)
+{
+    if (w <= 0 || h <= 0) return;
+    int x0 = x, y0 = y, x1 = x + w, y1 = y + h;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > g_width) x1 = g_width;
+    if (y1 > g_height) y1 = g_height;
+    if (x1 <= x0 || y1 <= y0) return;
+    if (!g_output_damage_valid) {
+        g_output_damage_x0 = x0; g_output_damage_y0 = y0;
+        g_output_damage_x1 = x1; g_output_damage_y1 = y1;
+        g_output_damage_valid = 1;
+        return;
+    }
+    if (x0 < g_output_damage_x0) g_output_damage_x0 = x0;
+    if (y0 < g_output_damage_y0) g_output_damage_y0 = y0;
+    if (x1 > g_output_damage_x1) g_output_damage_x1 = x1;
+    if (y1 > g_output_damage_y1) g_output_damage_y1 = y1;
+}
+
+static void output_damage_add_surface(struct iosc_surface *s)
+{
+    int x0, y0, x1, y1;
+    if (!surface_rect(s, &x0, &y0, &x1, &y1)) return;
+    int os = output_scale();
+    output_damage_add_px(x0 * os, y0 * os, (x1 - x0) * os, (y1 - y0) * os);
+}
+
+static void output_damage_add_surface_rect(struct iosc_surface *s, int x, int y, int w, int h)
+{
+    if (!s || w <= 0 || h <= 0 || !s->mapped) return;
+    int os = output_scale();
+    output_damage_add_px((s->dx + x) * os, (s->dy + y) * os, w * os, h * os);
+}
+
+static int native_toplevel_canvas_live(struct iosc_surface *s)
+{
+    return s && s->role == IOSC_ROLE_TOPLEVEL && s->mapped && s->native_canvas_live;
+}
+
+static uint32_t native_window_flags(struct iosc_surface *s)
+{
+    uint32_t flags = 0;
+    if (s->toplevel_maximized) flags |= XIOS_NWIN_MAXIMIZED;
+    if (s->toplevel_fullscreen) flags |= XIOS_NWIN_FULLSCREEN;
+    return flags;
+}
+
+static void native_update_window_metadata(struct iosc_surface *s)
+{
+    if (!g_native_mode || !native_toplevel_canvas_live(s))
+        return;
+    xios_canvas_announce(s->window_id, s->app_id, s->title, native_window_flags(s));
+}
+
+static int native_canvas_size_for_surface(struct iosc_surface *s, int *w, int *h)
+{
+    int lw = 0, lh = 0;
+    surface_display_size(s, &lw, &lh);
+    int os = output_scale();
+    int pw = (lw > 0 ? lw : 1) * os;
+    int ph = (lh > 0 ? lh : 1) * os;
+    if (pw <= 0 || ph <= 0) return -1;
+    if (w) *w = pw;
+    if (h) *h = ph;
+    return 0;
+}
+
+static int native_ensure_canvas(struct iosc_surface *s, int w, int h, int send_geom)
+{
+    if (!s || s->role != IOSC_ROLE_TOPLEVEL || w <= 0 || h <= 0) return -1;
+    if (s->native_canvas_live &&
+        s->native_canvas_w == w && s->native_canvas_h == h)
+        return 0;
+    int stride = 0;
+    if (!xios_canvas_create(s->window_id, w, h, &stride))
+        return -1;
+    s->native_canvas_w = w;
+    s->native_canvas_h = h;
+    s->native_canvas_stride = stride;
+    s->native_canvas_live = 1;
+    if (send_geom) xios_canvas_geom(s->window_id);
+    return 0;
+}
+
+static void native_composite_toplevel(struct iosc_surface *s)
+{
+    if (!s || s->role != IOSC_ROLE_TOPLEVEL || !s->mapped)
+        return;
+    int cw = 0, ch = 0;
+    if (native_canvas_size_for_surface(s, &cw, &ch) != 0)
+        return;
+    if (native_ensure_canvas(s, cw, ch, s->native_canvas_live) != 0)
+        return;
+    void *canvas = xios_canvas_surface(s->window_id);
+    if (!canvas) return;
+    if (iosc_gl_bind_target(canvas, s->native_canvas_w, s->native_canvas_h) != 0)
+        return;
+
+    iosc_gl_begin();
+    composite_surface_at_blended(s, 0, 0);
+    for (int i = 0; i < g_nmapped; i++) {
+        struct iosc_surface *c = g_mapped[i];
+        if (c != s && c->parent == s &&
+            (c->role == IOSC_ROLE_POPUP || c->role == IOSC_ROLE_SUBSURFACE))
+            composite_surface_at_blended(c, c->dx - s->dx, c->dy - s->dy);
+    }
+    iosc_gl_end();
+    xios_canvas_notify_dirty(s->window_id, 0, 0, 0, 0);
+}
+
+static void native_recomposite_now(void)
+{
+    if (!iosc_gl_ok()) return;
+    for (int i = 0; i < g_nmapped; i++) {
+        struct iosc_surface *s = g_mapped[i];
+        if (s->role == IOSC_ROLE_TOPLEVEL)
+            native_composite_toplevel(s);
+    }
+    frame_callbacks_after_repaint();
+}
+
+static void native_queue_cmd(uint32_t type, uint32_t window_id, int32_t a, int32_t b)
+{
+    if (g_native_cmd_pipe[1] < 0) return;
+    struct native_cmd cmd = { type, window_id, a, b };
+    ssize_t n;
+    do {
+        n = write(g_native_cmd_pipe[1], &cmd, sizeof(cmd));
+    } while (n < 0 && errno == EINTR);
+}
+
+static void native_host_resize(uint32_t window, int w, int h, void *user)
+{
+    (void)user;
+    native_queue_cmd(NATIVE_CMD_RESIZE, window, w, h);
+}
+
+static void native_host_activate(uint32_t window, int active, void *user)
+{
+    (void)user;
+    native_queue_cmd(NATIVE_CMD_ACTIVATE, window, active, 0);
+}
+
+static void native_host_closed(uint32_t window, void *user)
+{
+    (void)user;
+    native_queue_cmd(NATIVE_CMD_CLOSED, window, 0, 0);
+}
+
+static void native_close_cmd_pipe(void)
+{
+    for (int i = 0; i < 2; i++) {
+        if (g_native_cmd_pipe[i] >= 0) close(g_native_cmd_pipe[i]);
+        g_native_cmd_pipe[i] = -1;
+    }
+}
+
+static int native_cmd_readable(int fd, uint32_t mask, void *data)
+{
+    (void)data;
+    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR))
+        return 0;
+
+    struct native_cmd cmd;
+    for (;;) {
+        ssize_t n = read(fd, &cmd, sizeof(cmd));
+        if (n == 0) break;
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            break;
+        }
+        if (n != (ssize_t)sizeof(cmd))
+            break;
+
+        struct iosc_surface *s = surface_by_window_id(cmd.window_id);
+        if (!s || s->role != IOSC_ROLE_TOPLEVEL)
+            continue;
+
+        switch (cmd.type) {
+        case NATIVE_CMD_RESIZE: {
+            int os = output_scale();
+            int lw = (cmd.a + os - 1) / os;
+            int lh = (cmd.b + os - 1) / os;
+            if (lw < 1) lw = 1;
+            if (lh < 1) lh = 1;
+            toplevel_send_configure(s, lw, lh);
+            break;
+        }
+        case NATIVE_CMD_ACTIVATE:
+            if (cmd.a) {
+                surface_raise(s);
+                keyboard_set_focus(s);
+            } else if (g_kbd_focus == s) {
+                keyboard_set_focus(NULL);
+            }
+            break;
+        case NATIVE_CMD_CLOSED:
+            if (s->xdg_toplevel)
+                xdg_toplevel_send_close(s->xdg_toplevel);
+            break;
+        default:
+            break;
+        }
+    }
+    return 0;
+}
+
+static int native_start(struct wl_event_loop *loop)
+{
+    if (!loop) return -1;
+    if (pipe(g_native_cmd_pipe) != 0) {
+        perror("iosc: native command pipe");
+        return -1;
+    }
+    for (int i = 0; i < 2; i++) {
+        int flags = fcntl(g_native_cmd_pipe[i], F_GETFD, 0);
+        if (flags >= 0) fcntl(g_native_cmd_pipe[i], F_SETFD, flags | FD_CLOEXEC);
+        flags = fcntl(g_native_cmd_pipe[i], F_GETFL, 0);
+        if (flags >= 0) fcntl(g_native_cmd_pipe[i], F_SETFL, flags | O_NONBLOCK);
+    }
+    g_native_cmd_src = wl_event_loop_add_fd(loop, g_native_cmd_pipe[0],
+                                            WL_EVENT_READABLE, native_cmd_readable, NULL);
+    if (!g_native_cmd_src) {
+        native_close_cmd_pipe();
+        return -1;
+    }
+
+    struct xios_canvas_handlers h = {
+        .resize = native_host_resize,
+        .activate = native_host_activate,
+        .closed = native_host_closed,
+        .user = NULL,
+    };
+    xios_canvas_set_handlers(&h);
+    if (xios_canvas_server_start(NULL) != 0) {
+        wl_event_source_remove(g_native_cmd_src);
+        g_native_cmd_src = NULL;
+        native_close_cmd_pipe();
+        return -1;
+    }
+    fprintf(stderr, "iosc: native iPadOS window mode enabled at %s\n", XIOS_CANVAS_SOCK);
+    return 0;
 }
 
 /* ---- cursor-shape-v1: compositor-drawn named cursors --------------------- *
@@ -1028,18 +1389,65 @@ static int iosc_debug(void)
     return v;
 }
 
+static int env_truthy(const char *env)
+{
+    return env && *env &&
+           strcmp(env, "0") &&
+           strcasecmp(env, "false") &&
+           strcasecmp(env, "no") &&
+           strcasecmp(env, "off");
+}
+
+static int active_session_allows_classic_iosc(void)
+{
+    const char *path = "/var/jb/tmp/xios-active-session";
+    char buf[64];
+    int fd;
+    ssize_t n;
+
+    if (env_truthy(getenv("IOSC_IGNORE_ACTIVE_SESSION")))
+        return 1;
+
+    fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return 1;
+    n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0)
+        return 1;
+
+    buf[n] = 0;
+    buf[strcspn(buf, "\r\n\t ")] = 0;
+    if (buf[0] == 0 || !strcmp(buf, "iosc") || !strcmp(buf, "stop"))
+        return 1;
+
+    fprintf(stderr,
+            "iosc: refusing classic output because active session is %s "
+            "(set IOSC_IGNORE_ACTIVE_SESSION=1 to override)\n",
+            buf);
+    return 0;
+}
+
 /* IOSC_APP_CURSOR=1: hand the pointer to a present-side overlay in the Xios app.
  * iosc stops compositing the cursor into the output IOSurface and instead signals
  * position + shape over the app socket (xios_notify_cursor), so a plain cursor
- * MOVE costs one 32-byte socket write and ZERO recomposite (the P0.2/P0.4 capstone)
- * instead of a full-screen GPU repaint. Off by default = classic composited cursor
- * (no regression); the lead flips it on in the batched Xios rebuild that adds the
- * overlay + typed-socket support. */
+ * MOVE costs one 32-byte socket write and ZERO recomposite instead of a full-screen
+ * GPU repaint. Default auto: use the overlay once an app client is connected.
+ * Set IOSC_APP_CURSOR=0/1 to force either path. */
 static int iosc_app_cursor(void)
 {
-    static int v = -1;
-    if (v < 0) v = getenv("IOSC_APP_CURSOR") ? 1 : 0;
-    return v;
+    static int v = -2;   /* -2 unparsed, -1 auto, 0/1 forced */
+    if (v == -2) {
+        const char *env = getenv("IOSC_APP_CURSOR");
+        if (!env || !*env) {
+            v = -1;
+        } else if (!env_truthy(env)) {
+            v = 0;
+        } else {
+            v = 1;
+        }
+    }
+    return v >= 0 ? v : xios_have_app_client();
 }
 
 /* Signal the current pointer position + shape to the app's cursor overlay. The
@@ -1063,6 +1471,10 @@ static void app_cursor_notify(void)
  * in the same call (screencopy). */
 static void recomposite_now(void)
 {
+    if (g_native_mode) {
+        native_recomposite_now();
+        return;
+    }
     if (iosc_gl_ok()) {
         iosc_gl_begin();   /* clears the output to black (desktop background) */
         if (g_slock.locked) {
@@ -1073,14 +1485,17 @@ static void recomposite_now(void)
             composite_cursor();
             iosc_gl_end();
             xios_notify_dirty();
-            frame_callbacks_after_repaint();
+            frame_callbacks_after_present();
             if (iosc_debug())
                 fprintf(stderr, "iosc: recomposited (session locked; lock surface %s)\n",
                         g_slock.surface && g_slock.surface->current_buffer ? "shown" : "pending");
             return;
         }
-        for (int i = 0; i < g_nmapped; i++)
+        for (int i = 0; i < g_nmapped; i++) {
+            if (surface_occluded_by_single_opaque_above(i))
+                continue;
             composite_one(g_mapped[i]);
+        }
         /* Drag icon rides above the windows, just under the cursor (blended). */
         if (g_dnd.active && g_dnd.icon && g_dnd.icon->current_buffer) {
             iosc_gl_begin_blend();
@@ -1090,7 +1505,7 @@ static void recomposite_now(void)
         composite_cursor();
         iosc_gl_end();
         xios_notify_dirty();
-        frame_callbacks_after_repaint();
+        frame_callbacks_after_present();
         /* Validation (IOSC_DEBUG only — each readback is a synchronous GPU->CPU
          * stall): read every window's EXPOSED top-left corner (a lower window's
          * center is occluded by the one cascaded over it), proving each is present
@@ -1128,6 +1543,18 @@ static void recomposite_now(void)
         return;
     }
     /* CPU fallback: only the top surface, top-left (no multi-surface on CPU). */
+    static int cpu_fallback_warned;
+    if (!cpu_fallback_warned) {
+        cpu_fallback_warned = 1;
+        fprintf(stderr,
+                "\n"
+                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+                "!! IOSC CPU COMPOSITOR FALLBACK ACTIVE\n"
+                "!! GPU compositor is unavailable. This path is degraded:\n"
+                "!! only the top surface is drawn and window composition is incomplete.\n"
+                "!! Treat this as a release-blocking environment/configuration issue.\n"
+                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
+    }
     if (g_nmapped == 0) return;
     struct iosc_surface *s = g_mapped[g_nmapped - 1];
     if (!s->current_buffer) return;
@@ -1138,7 +1565,7 @@ static void recomposite_now(void)
         if (ib && ib->surface) xios_blit_client_iosurface(ib->surface);
     }
     xios_notify_dirty();
-    frame_callbacks_after_repaint();
+    frame_callbacks_after_present();
 }
 
 /* Coalesce repaints: a burst of commits, input events, or state changes in one
@@ -1240,12 +1667,37 @@ static void screencopy_frame_copy(struct wl_client *c, struct wl_resource *r,
     screencopy_do_copy(f, buffer);
 }
 
+static void screencopy_send_damage(struct iosc_screencopy_frame *f)
+{
+    int x0, y0, x1, y1;
+    if (g_output_damage_valid) {
+        x0 = g_output_damage_x0 > f->x ? g_output_damage_x0 : f->x;
+        y0 = g_output_damage_y0 > f->y ? g_output_damage_y0 : f->y;
+        x1 = g_output_damage_x1 < f->x + f->w ? g_output_damage_x1 : f->x + f->w;
+        y1 = g_output_damage_y1 < f->y + f->h ? g_output_damage_y1 : f->y + f->h;
+    } else {
+        x0 = f->x; y0 = f->y; x1 = f->x + f->w; y1 = f->y + f->h;
+    }
+    if (x1 <= x0 || y1 <= y0)
+        return;
+    zwlr_screencopy_frame_v1_send_damage(f->resource,
+        x0 - f->x, y0 - f->y, x1 - x0, y1 - y0);
+}
+
 static void screencopy_frame_copy_with_damage(struct wl_client *c, struct wl_resource *r,
                                               struct wl_resource *buffer)
 {
-    /* We don't track per-frame damage; a full copy is correct (just not optimal).
-     * The damage event is optional, so we simply don't send one. */
-    screencopy_frame_copy(c, r, buffer);
+    (void)c;
+    struct iosc_screencopy_frame *f = wl_resource_get_user_data(r);
+    if (!f) return;
+    if (f->used) {
+        wl_resource_post_error(r, ZWLR_SCREENCOPY_FRAME_V1_ERROR_ALREADY_USED,
+                               "screencopy frame already used");
+        return;
+    }
+    f->used = 1;
+    screencopy_send_damage(f);
+    screencopy_do_copy(f, buffer);
 }
 
 static const struct zwlr_screencopy_frame_v1_interface screencopy_frame_impl = {
@@ -1390,6 +1842,17 @@ static void surface_map(struct iosc_surface *s)
     g_nmapped++;
     s->mapped = 1;
     if (s->role == IOSC_ROLE_LAYER) work_area_recompute();
+    if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL) {
+        int cw = 0, ch = 0;
+        if (native_canvas_size_for_surface(s, &cw, &ch) == 0 &&
+            native_ensure_canvas(s, cw, ch, 0) == 0) {
+            int ar = xios_canvas_announce(s->window_id, s->app_id, s->title,
+                                          native_window_flags(s));
+            if (iosc_debug())
+                fprintf(stderr, "iosc: native announce window=%u app_id=\"%s\" rc=%d\n",
+                        s->window_id, s->app_id, ar);
+        }
+    }
     fprintf(stderr, "iosc: surface mapped role=%d band=%d at (%d,%d)%s; %d window(s)\n",
             s->role, band, s->dx, s->dy,
             (s->role == IOSC_ROLE_TOPLEVEL && s->parent) ? " transient(above parent)" : "",
@@ -1425,8 +1888,14 @@ static void surface_unmap(struct iosc_surface *s)
         recomposite_all();
     }
     if (!s->mapped) return;
-    if (s->role == IOSC_ROLE_TOPLEVEL)
+    if (s->role == IOSC_ROLE_TOPLEVEL) {
+        if (g_native_mode && s->native_canvas_live) {
+            xios_canvas_gone(s->window_id);
+            s->native_canvas_live = 0;
+            s->native_canvas_w = s->native_canvas_h = s->native_canvas_stride = 0;
+        }
         ftl_toplevel_closed(s);        /* remove from taskbar/foreign-toplevel clients */
+    }
     for (int i = 0; i < g_nmapped; i++)
         if (g_mapped[i] == s) {
             for (int j = i; j < g_nmapped - 1; j++) g_mapped[j] = g_mapped[j + 1];
@@ -1514,9 +1983,12 @@ static void surface_attach(struct wl_client *c, struct wl_resource *r,
 }
 static void surface_damage(struct wl_client *c, struct wl_resource *r,
                            int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c; (void)x; (void)y; (void)w; (void)h;
+{ (void)c;
   struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) s->gl_dirty = 1;   /* in-place redraw (no re-attach): re-upload on next composite */ }
+  if (s) {
+      s->gl_dirty = 1;   /* in-place redraw (no re-attach): re-upload on next composite */
+      output_damage_add_surface_rect(s, x, y, w, h);
+  } }
 
 static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t cb)
 {
@@ -1554,7 +2026,6 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
     (void)c;
     struct iosc_surface *s = wl_resource_get_user_data(r);
     int need_recomposite = 0;
-    int send_presented = 0;
 
     if (s->pending_scale_dirty) {
         s->current_buffer_scale = s->pending_buffer_scale > 0 ? s->pending_buffer_scale : 1;
@@ -1605,17 +2076,23 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
                  s->role == IOSC_ROLE_SUBSURFACE ||
                  (s->role == IOSC_ROLE_LAYER && s->layer && s->layer->configured)))
                 surface_map(s);
+            output_damage_add_surface(s);
         } else {
             /* NULL buffer attach + commit = unmap the surface */
             surface_set_buffer(s, NULL, 0, 0, 1);
             surface_unmap(s);
         }
         need_recomposite = 1;
-        send_presented = 1;
     }
 
+    /* Damage-only commit (in-place redraw into the already-attached buffer, no
+     * re-attach): the content changed, so it must repaint like an attach does.
+     * gl_dirty is cleared by the next composite, so this stays one coalesced
+     * repaint per committed frame. */
+    if (!need_recomposite && s->mapped && s->current_buffer && s->gl_dirty)
+        need_recomposite = 1;
+
     if (need_recomposite) recomposite_all();
-    if (send_presented) presentation_present_surface(s);
 
     /* Frame callbacks are retired after the coalesced repaint, not at commit
      * time, so throttled clients don't draw ahead of the compositor. */
@@ -1639,9 +2116,15 @@ static void surface_set_buffer_scale(struct wl_client *c, struct wl_resource *r,
 }
 static void surface_damage_buffer(struct wl_client *c, struct wl_resource *r,
                                   int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c; (void)x; (void)y; (void)w; (void)h;
+{ (void)c;
   struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) s->gl_dirty = 1; }
+  if (s) {
+      s->gl_dirty = 1;
+      int scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
+      output_damage_add_surface_rect(s, x / scale, y / scale,
+                                     (w + scale - 1) / scale,
+                                     (h + scale - 1) / scale);
+  } }
 
 static const struct wl_surface_interface surface_impl = {
     .destroy              = surface_handle_destroy,
@@ -1693,6 +2176,11 @@ static void surface_resource_destroy(struct wl_resource *r)
         work_area_recompute();
     }
     if (s->xdg_popup) wl_resource_set_user_data(s->xdg_popup, NULL);
+    /* Same disarm for the xdg_toplevel/xdg_surface resources: at client
+     * disconnect resources die in arbitrary order, so their destructors (and
+     * any late request) must not touch the freed iosc_surface. */
+    if (s->xdg_toplevel) wl_resource_set_user_data(s->xdg_toplevel, NULL);
+    if (s->xdg_surface) wl_resource_set_user_data(s->xdg_surface, NULL);
     if (g_cursor_surface == s) {
         g_cursor_surface = NULL;
         g_cursor_visible = 0;
@@ -2416,6 +2904,7 @@ static void toplevel_reconfigure_state(struct iosc_surface *s)
     } else {
         toplevel_send_configure(s, default_window_w(), default_window_h());
     }
+    native_update_window_metadata(s);
     if (s->mapped) recomposite_all();
 }
 
@@ -2533,11 +3022,21 @@ static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_
 }
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) { snprintf(s->title, sizeof(s->title), "%s", t ? t : ""); ftl_broadcast_title(s); }
+  if (s) {
+      snprintf(s->title, sizeof(s->title), "%s", t ? t : "");
+      ftl_broadcast_title(s);
+      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped)
+          xios_canvas_title(s->window_id, s->title);
+  }
   if (iosc_debug()) fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
 static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
-  if (s) { snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : ""); ftl_broadcast_app_id(s); }
+  if (s) {
+      snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : "");
+      ftl_broadcast_app_id(s);
+      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped && s->native_canvas_live)
+          xios_canvas_announce(s->window_id, s->app_id, s->title, native_window_flags(s));
+  }
   if (iosc_debug()) fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
 static void xt_show_window_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y){ (void)c;(void)r;(void)seat;(void)serial;(void)x;(void)y; }
 static void xt_move(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial)
@@ -2568,6 +3067,21 @@ static const struct xdg_toplevel_interface xdg_toplevel_impl = {
     .unset_fullscreen = xt_unset_fullscreen, .set_minimized = xt_set_minimized,
 };
 
+/* Destroying the xdg_toplevel gives up the role and unmaps the surface
+ * (xdg-shell requires it), mirroring popup_resource_destroy — otherwise the
+ * window keeps compositing forever and s->xdg_toplevel dangles into a later
+ * toplevel_send_configure/xdg_toplevel_send_close. */
+static void toplevel_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    surface_unmap(s);
+    s->xdg_toplevel = NULL;
+    s->role = IOSC_ROLE_NONE;
+    s->configured = 0;
+    recomposite_all();
+}
+
 /* xdg_surface */
 static void xs_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static void xs_get_toplevel(struct wl_client *c, struct wl_resource *r, uint32_t id)
@@ -2576,7 +3090,8 @@ static void xs_get_toplevel(struct wl_client *c, struct wl_resource *r, uint32_t
     struct wl_resource *tl = wl_resource_create(c, &xdg_toplevel_interface,
                                                 wl_resource_get_version(r), id);
     if (!tl) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(tl, &xdg_toplevel_impl, s, NULL);
+    wl_resource_set_implementation(tl, &xdg_toplevel_impl, s, toplevel_resource_destroy);
+    if (!s) return;   /* wl_surface already destroyed; leave the object inert */
     s->role = IOSC_ROLE_TOPLEVEL;
     s->xdg_toplevel = tl;
     fprintf(stderr, "iosc: xdg_toplevel created -> sending initial configure %dx%d\n",
@@ -2593,6 +3108,7 @@ static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id
                                                wl_resource_get_version(r), id);
     if (!p) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(p, &popup_impl, s, popup_resource_destroy);
+    if (!s) return;   /* wl_surface already destroyed; leave the object inert */
     s->role = IOSC_ROLE_POPUP;
     s->parent = ps;
     s->xdg_popup = p;
@@ -2626,6 +3142,11 @@ static void wb_create_positioner(struct wl_client *c, struct wl_resource *r, uin
     if (!p) { free(pos); wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(p, &positioner_impl, pos, positioner_destroy_resource);
 }
+static void xdg_surface_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (s) s->xdg_surface = NULL;
+}
 static void wb_get_xdg_surface(struct wl_client *c, struct wl_resource *r,
                                uint32_t id, struct wl_resource *surface)
 {
@@ -2633,7 +3154,7 @@ static void wb_get_xdg_surface(struct wl_client *c, struct wl_resource *r,
     struct wl_resource *xs = wl_resource_create(c, &xdg_surface_interface,
                                                 wl_resource_get_version(r), id);
     if (!xs) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(xs, &xdg_surface_impl, s, NULL);
+    wl_resource_set_implementation(xs, &xdg_surface_impl, s, xdg_surface_resource_destroy);
     s->xdg_surface = xs;
     fprintf(stderr, "iosc: xdg_surface created for wl_surface\n");
 }
@@ -3439,10 +3960,12 @@ static void handle_key(uint32_t keysym, uint32_t appmods)
                   | ((appmods & 4) ? iosc_input_mod_alt()  : 0);
 
     struct wl_client *fc = wl_resource_get_client(g_kbd_focus->resource);
-    int nk = 0;
-    for (int i = 0; i < g_nkbd; i++) if (wl_resource_get_client(g_kbd[i]) == fc) nk++;
-    fprintf(stderr, "iosc: key keysym=0x%x -> evdev=%u shift=%d mask=0x%x to %d kbd(s)\n",
-            keysym, evdev, want_shift, mask, nk);
+    if (iosc_debug()) {
+        int nk = 0;
+        for (int i = 0; i < g_nkbd; i++) if (wl_resource_get_client(g_kbd[i]) == fc) nk++;
+        fprintf(stderr, "iosc: key keysym=0x%x -> evdev=%u shift=%d mask=0x%x to %d kbd(s)\n",
+                keysym, evdev, want_shift, mask, nk);
+    }
     uint32_t t = now_ms();
     if (input_method_forward_grab_key(t, evdev, WL_KEYBOARD_KEY_STATE_PRESSED, mask) &&
         input_method_forward_grab_key(t, evdev, WL_KEYBOARD_KEY_STATE_RELEASED, 0))
@@ -3580,6 +4103,21 @@ static void surface_raise(struct iosc_surface *s)
     surface_raise_children(s, IOSC_MAX_SURFACES);
 }
 
+/* Focus-on-press policy shared by pointer, touch, and pencil DOWN: a panel
+ * (layer surface with keyboard_interactivity=none) must never steal focus or
+ * reorder — it still gets its input events; anything else is raised, takes
+ * keyboard focus, and triggers a recomposite if it wasn't already on top. */
+static void press_focus(struct iosc_surface *hit)
+{
+    if (hit->role == IOSC_ROLE_LAYER && hit->layer &&
+        hit->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
+        return;
+    int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == hit);
+    surface_raise(hit);
+    keyboard_set_focus(hit);
+    if (!was_top) recomposite_all();   /* show the raised window on top */
+}
+
 static void handle_button(int btn, int down)
 {
     /* Wire buttons are X-style (1 left, 2 middle, 3 right; raw evdev codes
@@ -3602,19 +4140,8 @@ static void handle_button(int btn, int down)
         interactive_end();
         return;
     }
-    if (down && g_ptr_focus) {
-        struct iosc_surface *pf = g_ptr_focus;
-        /* A panel (layer surface with keyboard_interactivity=none) must never
-         * steal focus or reorder; it still gets its pointer events below. */
-        int take_focus = !(pf->role == IOSC_ROLE_LAYER && pf->layer &&
-            pf->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
-        if (take_focus) {
-            int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == pf);
-            surface_raise(pf);
-            keyboard_set_focus(pf);
-            if (!was_top) recomposite_all();   /* show the raised window on top */
-        }
-    }
+    if (down && g_ptr_focus)
+        press_focus(g_ptr_focus);
     if (!g_ptr_focus) return;
     struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
     uint32_t serial = wl_display_next_serial(g_display);
@@ -3762,16 +4289,7 @@ static void handle_touch(int id, int phase, int x, int y)
         p->active = 1;
         p->id = id;
         p->surface = hit;
-        /* Same focus-on-press rules as the pointer: raise + keyboard focus,
-         * except for no-keyboard layer panels. */
-        int take_focus = !(hit->role == IOSC_ROLE_LAYER && hit->layer &&
-            hit->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
-        if (take_focus) {
-            int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == hit);
-            surface_raise(hit);
-            keyboard_set_focus(hit);
-            if (!was_top) recomposite_all();
-        }
+        press_focus(hit);
         struct wl_client *cl = wl_resource_get_client(hit->resource);
         uint32_t serial = wl_display_next_serial(g_display);
         uint32_t t = now_ms();
@@ -3878,15 +4396,7 @@ static void handle_pencil(int phase, int x, int y, uint32_t pressure, int tiltx,
         struct iosc_surface *hit = surface_at(x, y);   /* honors session lock */
         if (hit != g_pen_focus) pen_leave(t);
         if (!hit) return;
-        /* Same focus-on-press rules as pointer/touch. */
-        int take_focus = !(hit->role == IOSC_ROLE_LAYER && hit->layer &&
-            hit->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
-        if (take_focus) {
-            int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == hit);
-            surface_raise(hit);
-            keyboard_set_focus(hit);
-            if (!was_top) recomposite_all();
-        }
+        press_focus(hit);
         int entering = (g_pen_focus != hit);
         g_pen_focus = hit;
         g_pen_down = 1;
@@ -4950,9 +5460,18 @@ static int clip_listen_readable(int fd, uint32_t mask, void *data)
     return 0;
 }
 
+static void chmod_mobile_socket(const char *path)
+{
+    struct passwd *pw = getpwnam("mobile");
+    if (pw && chown(path, pw->pw_uid, pw->pw_gid) == 0)
+        chmod(path, 0660);
+    else
+        chmod(path, 0777);
+}
+
 /* Create a listening AF_UNIX stream socket at `path` and register its accept
  * handler on the event loop. Shared by the clipboard + input bridges; the Xios
- * app runs as mobile and must connect, so the socket is world-accessible. */
+ * app runs as mobile and must connect, so prefer mobile-owned 0660. */
 static int unix_listen_start(struct wl_event_loop *loop, const char *path,
                              int (*on_accept)(int, uint32_t, void *))
 {
@@ -4964,7 +5483,7 @@ static int unix_listen_start(struct wl_event_loop *loop, const char *path,
     strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); return -1; }
     if (listen(fd, 4) < 0) { close(fd); return -1; }
-    chmod(path, 0777);
+    chmod_mobile_socket(path);
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, on_accept, loop);
     return 0;
@@ -4988,11 +5507,13 @@ static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
  * types (XIOS_IN_*) + struct xios_in_msg live in xios_input_socket.h. */
 static xios_input_socket *g_input_sock;
 static struct wl_event_source *g_input_src;
+static int g_input_wayland_dirty;
 
 /* Commit a UTF-8 TEXT record: prefer the focused text-input; else synthesize
  * ASCII keystrokes so a plain terminal still receives typed text. */
 static void in_dispatch_text(const char *text, size_t len)
 {
+    g_input_wayland_dirty = 1;
     int r = text_input_commit_text(text, len);
     if (r == 0) {
         for (size_t i = 0; i < len; i++) {
@@ -5001,7 +5522,6 @@ static void in_dispatch_text(const char *text, size_t len)
                 handle_key(c == '\n' ? 0xff0d : (uint32_t)c, 0);
         }
     }
-    wl_display_flush_clients(g_display);
 }
 
 /* One complete input record from the shared reader -> the compositor's handlers.
@@ -5015,6 +5535,7 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
     if (bound && (m->type == XIOS_IN_KEY || m->type == XIOS_IN_TEXT))
         keyboard_set_focus(bound);
     if (m->type == XIOS_IN_TEXT) { in_dispatch_text(text, text_len); return; }
+    g_input_wayland_dirty = 1;
     int x = physical_to_logical(m->x);
     int y = physical_to_logical(m->y);
     if (bound) {
@@ -5037,7 +5558,6 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
                              handle_axis(m->x, m->y, m->code,
                                          (int)(m->state & 1u), m->mods); break;
     }
-    wl_display_flush_clients(g_display);   /* push the events out immediately */
 }
 
 /* Push the current on-screen-keyboard traits to every connected app client. The
@@ -5065,7 +5585,12 @@ static void input_clients_send_traits(void)
         .state = ti ? ti->content_purpose : 0,
         .mods = ti ? (uint32_t)ti->enabled : 0,
     };
-    xios_input_socket_broadcast(g_input_sock, &msg, sizeof(msg));
+    struct iosc_surface *native_focus = g_native_mode ? native_focus_toplevel() : NULL;
+    if (native_focus)
+        xios_input_socket_broadcast_bound(g_input_sock, native_focus->window_id,
+                                          &msg, sizeof(msg));
+    else
+        xios_input_socket_broadcast(g_input_sock, &msg, sizeof(msg));
 }
 
 /* The shared reader's kqueue fd became readable (a new connection or client
@@ -5076,7 +5601,11 @@ static int g_input_nclients;
 static int input_sock_readable(int fd, uint32_t mask, void *data)
 {
     (void)fd; (void)mask; (void)data;
-    xios_input_socket_dispatch_bound(g_input_sock, iosc_input_record, NULL);
+    xios_input_socket_dispatch(g_input_sock, iosc_input_record, NULL);
+    if (g_input_wayland_dirty) {
+        g_input_wayland_dirty = 0;
+        wl_display_flush_clients(g_display);
+    }
     int now = xios_input_socket_client_count(g_input_sock);
     if (now > g_input_nclients) input_clients_send_traits();
     g_input_nclients = now;
@@ -5538,18 +6067,9 @@ static int wm_listen_readable(int fd, uint32_t mask, void *data)
 
 static int wm_socket_start(struct wl_event_loop *loop, const char *path)
 {
-    unlink(path);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return -1;
-    struct sockaddr_un addr; memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); return -1; }
-    if (listen(fd, 4) < 0) { close(fd); return -1; }
-    chmod(path, 0777);   /* ioscd / the panel connect from outside the app sandbox */
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, wm_listen_readable, loop);
-    return 0;
+    /* ioscd / the panel connect from outside the app sandbox; unix_listen_start
+     * already makes the socket world-accessible. */
+    return unix_listen_start(loop, path, wm_listen_readable);
 }
 
 /* ===========================================================================
@@ -5874,8 +6394,11 @@ static void primary_mgr_bind(struct wl_client *c, void *data, uint32_t version, 
  * idle: ext_idle_notifier_v1 (notifications) + zwp_idle_inhibit_manager_v1.
  *
  * Each notification arms a timer for its timeout; input activity (pointer/key)
- * resets every timer and sends `resumed` to any that had `idled`. While any idle
- * inhibitor exists (video players, presentations) the timers never fire idle.
+ * just stamps g_idle_last_activity_ms — no timer syscalls on the hot input
+ * path — and sends `resumed` to any that had `idled`. When a timer fires it
+ * checks the stamp and re-arms itself for the remaining time if there was
+ * activity since it was armed. While any idle inhibitor exists (video players,
+ * presentations) the timers never fire idle.
  * =========================================================================== */
 
 #define IOSC_MAX_IDLE_NOTIF 32
@@ -5887,6 +6410,7 @@ struct iosc_idle_notif {
 };
 static struct iosc_idle_notif *g_idle_notifs[IOSC_MAX_IDLE_NOTIF]; static int g_nidle_notifs;
 static int g_idle_inhibitors;
+static uint32_t g_idle_last_activity_ms;
 
 static int idle_timer_cb(void *data)
 {
@@ -5895,14 +6419,21 @@ static int idle_timer_cb(void *data)
         if (n->timer && n->timeout_ms) wl_event_source_timer_update(n->timer, n->timeout_ms);
         return 0;
     }
+    uint32_t elapsed = now_ms() - g_idle_last_activity_ms;
+    if (elapsed < n->timeout_ms) {        /* activity since arming: sleep the rest */
+        if (n->timer) wl_event_source_timer_update(n->timer, n->timeout_ms - elapsed);
+        return 0;
+    }
     if (!n->idled) { n->idled = 1; ext_idle_notification_v1_send_idled(n->resource); }
     return 0;
 }
 static void idle_note_activity(void)
 {
+    g_idle_last_activity_ms = now_ms();   /* timers check this lazily when they fire */
     for (int i = 0; i < g_nidle_notifs; i++) {
         struct iosc_idle_notif *n = g_idle_notifs[i];
-        if (n->idled) { n->idled = 0; ext_idle_notification_v1_send_resumed(n->resource); }
+        if (!n->idled) continue;
+        n->idled = 0; ext_idle_notification_v1_send_resumed(n->resource);
         if (n->timer && n->timeout_ms) wl_event_source_timer_update(n->timer, n->timeout_ms);
     }
 }
@@ -6121,7 +6652,9 @@ int main(int argc, char **argv)
     const char *sock_name = "wayland-0";
     const char *ddx_sock  = "/var/jb/tmp/iosc-ddx.sock";
     const char *json_path = "/var/jb/tmp/xios.json";   /* the Xios app reads this */
+    const char *input_sock = "/var/jb/tmp/iosc-input.sock";
     int logical_w = 0, logical_h = 0;   /* -logical WxH: target logical desktop */
+    int native_arg = -1;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-g") && i + 1 < argc) {
             sscanf(argv[++i], "%dx%d", &g_width, &g_height);
@@ -6139,8 +6672,26 @@ int main(int argc, char **argv)
             if (scale > 0) g_output_scale = scale;
         } else if (!strcmp(argv[i], "-s") && i + 1 < argc) {
             sock_name = argv[++i];
+        } else if (!strcmp(argv[i], "-ddx-sock") && i + 1 < argc) {
+            ddx_sock = argv[++i];
+        } else if (!strcmp(argv[i], "-json") && i + 1 < argc) {
+            json_path = argv[++i];
+        } else if (!strcmp(argv[i], "-input-sock") && i + 1 < argc) {
+            input_sock = argv[++i];
+        } else if (!strcmp(argv[i], "-native")) {
+            native_arg = 1;
+        } else if (!strcmp(argv[i], "-classic")) {
+            native_arg = 0;
         }
     }
+    if (native_arg >= 0) {
+        g_native_mode = native_arg;
+    } else if (env_truthy(getenv("IOSC_NATIVE"))) {
+        g_native_mode = 1;
+    }
+    if (!g_native_mode && !active_session_allows_classic_iosc())
+        return 2;
+
     /* -logical wins over -g: derive the oversized output IOSurface from the target
      * logical desktop and the (final) scale. */
     if (logical_w > 0 && logical_h > 0) {
@@ -6156,7 +6707,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: xios_surface_create failed (IOSurface entitlement?)\n");
         return 1;
     }
-    xios_set_compositor_id("iosc");   /* typed clients learn the flavor via the in-band HELLO */
+    xios_set_compositor_id("iosc");   /* app clients learn the flavor via the in-band HELLO */
     if (xios_server_start(ddx_sock, json_path, g_width, g_height, g_stride) != 0) {
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;
@@ -6168,9 +6719,18 @@ int main(int argc, char **argv)
 
     /* 1b) GPU compositor: an ANGLE context whose render target is the output
      *     IOSurface, so commits are composited on the GPU (client IOSurfaces
-     *     sampled zero-copy). Falls back to the CPU blit if GL init fails. */
-    if (iosc_gl_init(xios_get_output_iosurface(), g_width, g_height) != 0)
-        fprintf(stderr, "iosc: GPU compositor unavailable -> CPU fallback path\n");
+     *     sampled zero-copy). If GL init fails, keep running for diagnostics but
+     *     make the degraded CPU path unmistakable in logs. */
+    if (iosc_gl_init(xios_get_output_iosurface(), g_width, g_height) != 0) {
+        fprintf(stderr,
+                "\n"
+                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+                "!! IOSC GPU COMPOSITOR FAILED TO START\n"
+                "!! Continuing with CPU fallback for diagnostics only.\n"
+                "!! Expect broken/incomplete composition until ANGLE/IOSurface works.\n"
+                "!! This is intentionally non-fatal but must be fixed before release.\n"
+                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
+    }
 
     /* 2) Wayland display + globals. */
     g_display = wl_display_create();
@@ -6235,6 +6795,12 @@ int main(int argc, char **argv)
 
     wl_global_create(g_display, &zwp_tablet_manager_v2_interface, 1, NULL, tablet_mgr_bind);
 
+    if (g_native_mode &&
+        native_start(wl_display_get_event_loop(g_display)) != 0) {
+        fprintf(stderr, "iosc: native iPadOS window mode failed to start; using classic output\n");
+        g_native_mode = 0;
+    }
+
     /* 2b) Input: xkb keymap + the app input socket on this display's event loop.
      *     Keyboard cap is only advertised if the keymap compiled. */
     if (iosc_input_init() == 0) {
@@ -6245,11 +6811,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: keyboard unavailable (xkb keymap) -> pointer only\n");
     g_refocus_timer = wl_event_loop_add_timer(wl_display_get_event_loop(g_display),
                                               refocus_cb, NULL);
-    if (input_socket_start(wl_display_get_event_loop(g_display),
-                           "/var/jb/tmp/iosc-input.sock") != 0)
+    if (input_socket_start(wl_display_get_event_loop(g_display), input_sock) != 0)
         fprintf(stderr, "iosc: input socket failed -> no app input\n");
     else
-        fprintf(stderr, "iosc: input socket up at /var/jb/tmp/iosc-input.sock\n");
+        fprintf(stderr, "iosc: input socket up at %s\n", input_sock);
     if (clipboard_socket_start(wl_display_get_event_loop(g_display),
                                "/var/jb/tmp/iosc-clipboard.sock") != 0)
         fprintf(stderr, "iosc: clipboard socket failed -> no UIPasteboard bridge\n");
@@ -6282,6 +6847,7 @@ int main(int argc, char **argv)
     wl_display_run(g_display);
 
     wl_display_destroy(g_display);
+    if (g_native_mode) xios_canvas_server_stop();
     xios_server_stop();
     return 0;
 }

@@ -11,7 +11,7 @@ VERSION=0.1.0
 
 CC="${CC:-aarch64-apple-darwin-clang}"
 SYSROOT="${SYSROOT:-/root/cctools/SDK/iPhoneOS.sdk}"
-CFLAGS="-isysroot $SYSROOT -miphoneos-version-min=16.0 -arch arm64 -O2 -Wall -Wextra -I$SRC -I$SRC/pulse"
+CFLAGS="-isysroot $SYSROOT -miphoneos-version-min=16.0 -arch arm64 -O2 -Wall -Wextra -I$SRC"
 LDFLAGS="-isysroot $SYSROOT -miphoneos-version-min=16.0 -arch arm64"
 
 rm -rf "$BUILD"
@@ -26,15 +26,9 @@ echo "==> compile xios-audio-play"
 $CC $CFLAGS "$SRC/xios_audio_client.c" "$SRC/xios-audio-play.c" \
     -o "$BUILD/xios-audio-play" $LDFLAGS
 
-echo "==> compile libpulse-simple shim"
-$CC $CFLAGS -dynamiclib "$SRC/xios_audio_client.c" "$SRC/libpulse-simple-xios.c" \
-    -o "$BUILD/libpulse-simple.0.dylib" $LDFLAGS \
-    -install_name "$PREFIX/lib/libpulse-simple.0.dylib"
-
 if command -v ldid >/dev/null 2>&1; then
     ldid -S"$SRC/audio.xml" "$BUILD/xios-audiod" || ldid -S "$BUILD/xios-audiod"
     ldid -S"$SRC/audio.xml" "$BUILD/xios-audio-play" || ldid -S "$BUILD/xios-audio-play"
-    ldid -S"$SRC/audio.xml" "$BUILD/libpulse-simple.0.dylib" || ldid -S "$BUILD/libpulse-simple.0.dylib"
 fi
 
 pkg_root() {
@@ -69,42 +63,5 @@ install -m0644 "$SRC/xios_audio_protocol.h" "$BUILD/server$PREFIX/share/xios/xio
 install -m0755 "$SRC/xios-audio-session.sh" "$BUILD/server/var/jb/etc/profile.d/xios-audio.sh"
 dpkg-deb --root-owner-group -b "$BUILD/server" "$OUT/xios-audio-server_${VERSION}_${ARCH}.deb"
 
-echo "==> package libpulse-simple-xios0"
-pkg_root pulse0
-write_control pulse0 libpulse-simple-xios0 "xios-audio-server" "libpulse-simple compatibility shim for Xios audio"
-cat >> "$BUILD/pulse0/DEBIAN/control" <<'EOF'
-Provides: libpulse-simple0
-Conflicts: libpulse-simple0
-Replaces: libpulse-simple0
-EOF
-mkdir -p "$BUILD/pulse0$PREFIX/lib"
-install -m0755 "$BUILD/libpulse-simple.0.dylib" "$BUILD/pulse0$PREFIX/lib/libpulse-simple.0.dylib"
-ln -s libpulse-simple.0.dylib "$BUILD/pulse0$PREFIX/lib/libpulse-simple.dylib"
-dpkg-deb --root-owner-group -b "$BUILD/pulse0" "$OUT/libpulse-simple-xios0_${VERSION}_${ARCH}.deb"
-
-echo "==> package libpulse-simple-xios-dev"
-pkg_root pulsedev
-write_control pulsedev libpulse-simple-xios-dev "libpulse-simple-xios0 (= $VERSION)" "development headers for the Xios libpulse-simple shim"
-cat >> "$BUILD/pulsedev/DEBIAN/control" <<'EOF'
-Provides: libpulse-simple-dev
-Conflicts: libpulse-simple-dev
-Replaces: libpulse-simple-dev
-EOF
-mkdir -p "$BUILD/pulsedev$PREFIX/include/pulse" "$BUILD/pulsedev$PREFIX/lib/pkgconfig"
-install -m0644 "$SRC/pulse/"*.h "$BUILD/pulsedev$PREFIX/include/pulse/"
-cat > "$BUILD/pulsedev$PREFIX/lib/pkgconfig/libpulse-simple.pc" <<EOF
-prefix=$PREFIX
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: libpulse-simple-xios
-Description: Xios libpulse-simple compatibility shim
-Version: $VERSION
-Libs: -L\${libdir} -lpulse-simple
-Cflags: -I\${includedir}
-EOF
-dpkg-deb --root-owner-group -b "$BUILD/pulsedev" "$OUT/libpulse-simple-xios-dev_${VERSION}_${ARCH}.deb"
-
 echo "==> audio artifacts:"
-ls -l "$OUT"/xios-audio-server_* "$OUT"/libpulse-simple-xios*
+ls -l "$OUT"/xios-audio-server_*

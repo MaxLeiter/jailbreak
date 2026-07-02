@@ -103,6 +103,21 @@ scan_one() {
        "$@" \
        --warn-all --quiet --output="$NS-$VER.gir" $HDRS >"$NS.scan.log" 2>&1 \
      && [ -s "$NS-$VER.gir" ] \
+     && case "$NS" in
+          Gck)
+            # g-ir-scanner sees the GckPassword property accessors but marks the
+            # methods non-introspectable, which makes g-ir-compiler reject the
+            # getter references. The property metadata is enough for shell boot.
+            python3 - "$NS-$VER.gir" <<'PY'
+import re
+import sys
+path = sys.argv[1]
+text = open(path).read()
+text = re.sub(r'\s+getter="get_(?:key|module|token)"', '', text)
+open(path, "w").write(text)
+PY
+            ;;
+        esac \
      && g-ir-compiler "$NS-$VER.gir" -o "$NS-$VER.typelib" >>"$NS.scan.log" 2>&1; then
     cp "$NS-$VER.gir" $PREFIX/share/gir-1.0/
     cp "$NS-$VER.typelib" $PREFIX/lib/girepository-1.0/
@@ -131,6 +146,11 @@ elif [ -f "$GDS_TAR" ]; then
      && GIR=$(find "$BASE/_build" -name 'GDesktopEnums-3.0.gir' | head -1) && [ -n "$GIR" ] \
      && TLB=$(find "$BASE/_build" -name 'GDesktopEnums-3.0.typelib' | head -1) && [ -n "$TLB" ]; then
     cp "$GIR" $PREFIX/share/gir-1.0/ && cp "$TLB" $PREFIX/lib/girepository-1.0/
+    HDR=$(find "$BASE" -name 'gdesktop-enums.h' | head -1)
+    if [ -n "$HDR" ]; then
+      mkdir -p $PREFIX/include/gsettings-desktop-schemas
+      cp "$HDR" $PREFIX/include/gsettings-desktop-schemas/
+    fi
     echo "-- OK GDesktopEnums-3.0 installed (meson route)"; OK="$OK GDesktopEnums"
   else
     echo "-- FAIL GDesktopEnums (log tail):"; tail -12 "$BASE/meson.log" 2>/dev/null
@@ -146,24 +166,24 @@ pkg-config --exists p11-kit-1 2>/dev/null \
   || echo "!! WARNING: p11-kit-1.pc missing -> Gck-2/Gcr-4 scans will fail in pkg-config (install p11-kit-1-dev)"
 
 scan_one Atk 1.0 Atk atk atk-1.0 atk \
-  "$PREFIX/include/atk-1.0/atk/*.h" \
+  "$PREFIX/include/atk-1.0/atk/atk.h" \
   --include=GObject-2.0 --c-include=atk/atk.h \
   --cflags-begin -I$PREFIX/include/atk-1.0 --cflags-end
 
 scan_one Atspi 2.0 Atspi atspi atspi atspi-2 \
-  "$PREFIX/include/at-spi-2.0/atspi/*.h" \
-  --include=DBus-1.0 --include=GLib-2.0 --include=GObject-2.0 --c-include=atspi/atspi.h \
-  --cflags-begin -I$PREFIX/include/at-spi-2.0 -I$PREFIX/include/at-spi-2.0/atspi --cflags-end
+  "$PREFIX/include/at-spi-2.0/atspi/atspi.h" \
+  --include=DBus-1.0 --include=GLib-2.0 --include=GObject-2.0 --c-include=atspi/atspi.h --pkg=dbus-1 \
+  --cflags-begin -I$PREFIX/include/at-spi-2.0 -I$PREFIX/include/at-spi-2.0/atspi -I$PREFIX/include/dbus-1.0 -I$PREFIX/lib/dbus-1.0/include --cflags-end
 
 scan_one Gck 2 Gck gck gck-2 gck-2 \
-  "$PREFIX/include/gck-2/gck/*.h" \
-  --include=GObject-2.0 --include=Gio-2.0 --c-include=gck/gck.h \
-  --cflags-begin -DGCK_COMPILATION -DGCK_API_SUBJECT_TO_CHANGE -I$PREFIX/include/gck-2 --cflags-end
+  "$PREFIX/include/gck-2/gck/gck.h" \
+  --include=GObject-2.0 --include=Gio-2.0 --c-include=gck/gck.h --pkg=p11-kit-1 \
+  --cflags-begin -DGCK_COMPILATION -DGCK_API_SUBJECT_TO_CHANGE -I$PREFIX/include/gck-2 -I$PREFIX/include/p11-kit-1 --cflags-end
 
 scan_one Gcr 4 Gcr gcr gcr-4 gcr-4 \
-  "$PREFIX/include/gcr-4/gcr/*.h" \
-  --include=GObject-2.0 --include=Gio-2.0 --include=Gck-2 --c-include=gcr/gcr.h \
-  --cflags-begin -DGCR_COMPILATION -DGCR_API_SUBJECT_TO_CHANGE -I$PREFIX/include/gcr-4 --cflags-end
+  "$PREFIX/include/gcr-4/gcr/gcr.h" \
+  --include=GObject-2.0 --include=Gio-2.0 --include=Gck-2 --c-include=gcr/gcr.h --pkg=p11-kit-1 \
+  --cflags-begin -DGCR_COMPILATION -DGCR_API_SUBJECT_TO_CHANGE -I$PREFIX/include/gcr-4 -I$PREFIX/include/p11-kit-1 --cflags-end
 
 scan_one Polkit 1.0 Polkit polkit polkit-gobject-1 polkit-gobject-1 \
   "$PREFIX/include/polkit-1/polkit/*.h" \
@@ -171,9 +191,9 @@ scan_one Polkit 1.0 Polkit polkit polkit-gobject-1 polkit-gobject-1 \
   --cflags-begin -D_POLKIT_COMPILATION -I$PREFIX/include/polkit-1 --cflags-end
 
 scan_one PolkitAgent 1.0 PolkitAgent polkit_agent polkit-agent-1 polkit-agent-1 \
-  "$PREFIX/include/polkit-1/polkitagent/*.h" \
+  "$PREFIX/include/polkit-1/polkitagent/polkitagent.h" \
   --include=Gio-2.0 --include=Polkit-1.0 --c-include=polkitagent/polkitagent.h \
-  --cflags-begin -D_POLKIT_COMPILATION -I$PREFIX/include/polkit-1 --cflags-end
+  --cflags-begin -D_POLKIT_COMPILATION -DPOLKIT_AGENT_I_KNOW_API_IS_SUBJECT_TO_CHANGE -I$PREFIX/include/polkit-1 --cflags-end
 
 scan_one IBus 1.0 IBus ibus ibus-1.0 ibus-1.0 \
   "$PREFIX/include/ibus-1.0/*.h" \
@@ -183,12 +203,12 @@ scan_one IBus 1.0 IBus ibus ibus-1.0 ibus-1.0 \
 scan_one GnomeDesktop 4.0 Gnome gnome gnome-desktop-4 gnome-desktop-4 \
   "$PREFIX/include/gnome-desktop-4.0/libgnome-desktop/*.h" \
   --include=GObject-2.0 --include=Gio-2.0 --include=GDesktopEnums-3.0 --include=GdkPixbuf-2.0 \
-  --cflags-begin -DGNOME_DESKTOP_USE_UNSTABLE_API -I$PREFIX/include/gnome-desktop-4.0 -I$PREFIX/include/gnome-desktop-4.0/libgnome-desktop --cflags-end
+  --cflags-begin -DGNOME_DESKTOP_USE_UNSTABLE_API -I$PREFIX/include/gsettings-desktop-schemas -I$PREFIX/include/gnome-desktop-4.0 -I$PREFIX/include/gnome-desktop-4.0/libgnome-desktop --cflags-end
 
 scan_one GnomeBG 4.0 Gnome gnome gnome-bg-4 gnome-bg-4 \
   "$PREFIX/include/gnome-desktop-4.0/gnome-bg/*.h" \
   --include=GnomeDesktop-4.0 --include=GdkPixbuf-2.0 --include=Gdk-4.0 \
-  --cflags-begin -DGNOME_DESKTOP_USE_UNSTABLE_API -I$PREFIX/include/gnome-desktop-4.0 -I$PREFIX/include/gnome-desktop-4.0/gnome-bg --cflags-end
+  --cflags-begin -DGNOME_DESKTOP_USE_UNSTABLE_API -I$PREFIX/include/gsettings-desktop-schemas -I$PREFIX/include/gnome-desktop-4.0 -I$PREFIX/include/gnome-desktop-4.0/gnome-bg --cflags-end
 
 echo "--- gjs import smoke (version-pinned like dependencies.js; note Gck=2, Gcr=4) ---"
 for nsver in GDesktopEnums:3.0 Atk:1.0 Atspi:2.0 Gck:2 Gcr:4 Polkit:1.0 PolkitAgent:1.0 IBus:1.0 GnomeDesktop:4.0 GnomeBG:4.0; do

@@ -1,0 +1,10 @@
+Package: libgbm1
+Version: @DEB_GBM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.mesa3d.org/
+Description: GBM library (iOS links-only shim)
+ iOS has no Mesa GBM device. This package provides an inert GBM ABI shim so
+ KWin's non-native DRM/GBM paths can link during first-light bring-up.

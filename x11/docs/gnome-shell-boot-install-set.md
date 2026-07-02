@@ -66,14 +66,9 @@ list is in `linux-build/install-gnome-boot.sh` (`$DEBS`).
 
 ### On-device package conflicts (pre-installed xios tracks)
 
-- **libpulse0 vs libpulse-simple-xios0**: the device may already carry audio-desktop's
-  `libpulse-simple-xios0` (the CoreAudio-server client shim), which package-`Conflicts` the full
-  `libpulse0`. gnome-shell + gsd need the FULL libpulse0 (gvc volume control), which the simple
-  shim does not provide. libpulse0 is declared to supersede it (`Provides: libpulse-simple0`,
-  `Conflicts + Replaces libpulse-simple-xios0`), so the script removes the shim first
-  (`dpkg -r libpulse-simple-xios0`) — anything that linked `libpulse-simple0` still resolves via
-  libpulse0. This migrates the device to the real PA-17 client stack, which is the one gvc/GTK
-  apps want anyway. Coordinated with audio-desktop.
+- **PulseAudio**: public installs use the real PA-17 `libpulse0`/`pulseaudio`
+  stack. There is no Xios `libpulse-simple` compatibility package in the current
+  artifact set.
 - **libmozjs-115-0 vs libmozjs-115-jit-0**: EXPECTED, ignore — the JIT variant declares
   `Provides/Conflicts/Replaces libmozjs-115-0` (drop-in), so the dpkg "conflict" line is benign.
 

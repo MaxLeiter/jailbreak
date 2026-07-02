@@ -19,7 +19,7 @@ int ioscd_send_launch(const char *app_id, const char *exec)
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) { close(fd); return -1; }
 
     char line[8192];
-    int n = snprintf(line, sizeof(line), "LAUNCH\t%s\t%s\n",
+    int n = snprintf(line, sizeof(line), "LAUNCH_NATIVE\t%s\t%s\n",
                      app_id ? app_id : "", exec ? exec : "");
     if (n < 0) { close(fd); return -1; }
     size_t left = (size_t)n; const char *p = line;

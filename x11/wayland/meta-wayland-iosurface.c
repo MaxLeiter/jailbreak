@@ -35,7 +35,6 @@ struct _MetaWaylandIosurfaceBuffer
 {
   GObject parent;
 
-  MetaWaylandCompositor *compositor;
   void                  *iosurface;   /* opaque IOSurfaceRef (owned) */
   int                    width;
   int                    height;
@@ -193,7 +192,6 @@ iosurface_create_buffer (struct wl_client   *client,
                          int32_t             height,
                          uint32_t            format)
 {
-  MetaWaylandCompositor *compositor = wl_resource_get_user_data (resource);
   MetaWaylandIosurfaceBuffer *self;
   struct wl_resource *buffer_resource;
   pid_t pid = 0;
@@ -226,7 +224,6 @@ iosurface_create_buffer (struct wl_client   *client,
     }
 
   self = g_object_new (META_TYPE_WAYLAND_IOSURFACE_BUFFER, NULL);
-  self->compositor = compositor;
   self->iosurface = iosurface;
   self->width = w;
   self->height = h;

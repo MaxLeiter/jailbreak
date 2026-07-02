@@ -2,7 +2,7 @@ Package: gnome-terminal
 Version: @DEB_GNOME-TERMINAL_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Section: Applications
+Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://wiki.gnome.org/Apps/Terminal
 Depends: libglib2.0-0, libgtk-3-0, libvte-2.91-0, libpcre2-8-0, gsettings-desktop-schemas, dconf, dbus

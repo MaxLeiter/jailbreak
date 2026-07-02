@@ -320,6 +320,7 @@ exec dbus-run-session -- sh -c '
   /var/jb/usr/libexec/xios-polkit-stub &
   /var/jb/usr/libexec/xios-accounts-stub &
   [ -x /var/jb/usr/libexec/xios-hwbridged ] && /var/jb/usr/libexec/xios-hwbridged &  # UPower (xios-fhs)
+  [ -x /var/jb/usr/libexec/xios-sensord ] && /var/jb/usr/libexec/xios-sensord &      # SensorProxy/IIO (xios-fhs)
   # volume buttons -> PA + iOS dark-mode -> GTK (native-bundle); needs the session bus + PULSE_SERVER
   export PULSE_SERVER="${PULSE_SERVER:-unix:/var/jb/tmp/pulse/native}"
   [ -x /var/jb/usr/libexec/xios-sysintd ] && /var/jb/usr/libexec/xios-sysintd >/var/jb/tmp/xios-sysintd.log 2>&1 &

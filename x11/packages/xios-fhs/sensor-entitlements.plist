@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- xios-sensord: reads CoreMotion and mirrors low-rate sensor state into
+         the synthetic /var/jb/sys tree for Linux desktop clients. -->
+
+    <!-- Load the fakesigned GLib/GIO dylib graph. -->
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+
+    <!-- Some iOS builds gate motion/fintess data through TCC. This is scoped to
+         the sensor daemon; xios-hwbridged keeps its narrower entitlement file. -->
+    <key>com.apple.private.tcc.allow</key>
+    <array>
+        <string>kTCCServiceMotion</string>
+    </array>
+
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/sys/</string>
+        <string>/private/var/jb/sys/</string>
+        <string>/var/jb/tmp/</string>
+        <string>/private/var/jb/tmp/</string>
+    </array>
+</dict>
+</plist>

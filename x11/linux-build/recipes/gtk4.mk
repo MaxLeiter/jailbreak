@@ -5,7 +5,7 @@ endif
 SUBPROJECTS   += gtk4
 GTK4_MAJOR_V  := 4.14
 GTK4_VERSION  := $(GTK4_MAJOR_V).5
-DEB_LIBGTK4_V ?= $(GTK4_VERSION)
+DEB_LIBGTK4_V ?= $(GTK4_VERSION)+wl1
 
 gtk4-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gtk/$(GTK4_MAJOR_V)/gtk-$(GTK4_VERSION).tar.xz)
@@ -111,11 +111,16 @@ gtk4-package: gtk4-stage
 		cp -a $(BUILD_STAGE)/gtk4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/gtk-4-bin/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
 	fi
 
-	# gtk4.mk Sign
-	$(call SIGN,libgtk-4-1,general.xml)
-	$(call SIGN,gtk-4-bin,general.xml)
+		# gtk4.mk Sign
+		$(call SIGN,libgtk-4-1,general.xml)
+		$(call SIGN,gtk-4-bin,iosc-gpu-client-ent.xml,,,nogeneral)
+		for f in $$(find $(BUILD_DIST)/gtk-4-bin/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin -type f 2>/dev/null); do \
+			if file "$$f" | grep -q 'Mach-O'; then \
+				ldid -Sbuild_misc/entitlements/iosc-gpu-client-ent.xml "$$f"; \
+			fi; \
+		done
 
-	# gtk4.mk Make .debs
+		# gtk4.mk Make .debs
 	$(call PACK,libgtk-4-1,DEB_LIBGTK4_V)
 	$(call PACK,libgtk-4-dev,DEB_LIBGTK4_V)
 	$(call PACK,gtk-4-bin,DEB_LIBGTK4_V)

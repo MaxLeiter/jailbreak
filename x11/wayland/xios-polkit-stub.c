@@ -23,6 +23,8 @@
 
 #include <gio/gio.h>
 
+#include "xios-stub-dbus.h"
+
 #define POLKIT_NAME  "org.freedesktop.PolicyKit1"
 #define AUTH_PATH    "/org/freedesktop/PolicyKit1/Authority"
 #define AUTH_IFACE   "org.freedesktop.PolicyKit1.Authority"
@@ -152,7 +154,7 @@ authority_get_property (GDBusConnection *connection,
                         gpointer         user_data)
 {
   (void) connection; (void) sender; (void) object_path;
-  (void) interface_name; (void) error; (void) user_data;
+  (void) interface_name; (void) user_data;
 
   if (g_str_equal (property_name, "BackendName"))
     return g_variant_new_string ("xios-polkit-stub");
@@ -160,6 +162,8 @@ authority_get_property (GDBusConnection *connection,
     return g_variant_new_string ("1");
   if (g_str_equal (property_name, "BackendFeatures"))
     return g_variant_new_uint32 (0);
+  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY,
+               "PolicyKit1 stub: unknown property %s", property_name);
   return NULL;
 }
 
@@ -174,77 +178,17 @@ on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
 {
-  GDBusNodeInfo *node;
-  GError *error = NULL;
-  guint id;
-
   (void) name; (void) user_data;
-
-  node = g_dbus_node_info_new_for_xml (authority_xml, &error);
-  if (!node)
-    {
-      g_warning ("polkit stub: bad introspection XML: %s", error->message);
-      g_clear_error (&error);
-      return;
-    }
-  id = g_dbus_connection_register_object (connection, AUTH_PATH, node->interfaces[0],
-                                          &authority_vtable, NULL, NULL, &error);
-  g_dbus_node_info_unref (node);
-  if (id == 0)
-    {
-      g_warning ("polkit stub: failed to register %s: %s", AUTH_PATH, error->message);
-      g_clear_error (&error);
-    }
-}
-
-static void
-on_name_acquired (GDBusConnection *connection,
-                  const gchar     *name,
-                  gpointer         user_data)
-{
-  (void) connection; (void) user_data;
-  g_message ("polkit stub: owning %s (auto-allow)", name);
-}
-
-static void
-on_name_lost (GDBusConnection *connection,
-              const gchar     *name,
-              gpointer         user_data)
-{
-  GMainLoop *loop = user_data;
-
-  (void) connection;
-  g_warning ("polkit stub: lost %s (real polkitd present, or bus gone) — exiting", name);
-  g_main_loop_quit (loop);
+  xios_stub_register_object (connection, AUTH_PATH, authority_xml, &authority_vtable,
+                             "polkit stub");
 }
 
 int
 main (int argc, char **argv)
 {
-  GMainLoop *loop;
-  GBusType bus_type = G_BUS_TYPE_SYSTEM;
-  const char *which;
-  guint owner_id;
-
   (void) argc; (void) argv;
 
-  /* polkitd normally lives on the system bus; allow the session bus for a dbus-run-session
-   * bring-up. Either way, point DBUS_SYSTEM_BUS_ADDRESS at the session bus so clients that
-   * ask for G_BUS_TYPE_SYSTEM (libpolkit) meet us. */
-  which = g_getenv ("XIOS_POLKIT_BUS");
-  if (which && g_str_equal (which, "session"))
-    bus_type = G_BUS_TYPE_SESSION;
-
-  loop = g_main_loop_new (NULL, FALSE);
-
-  owner_id = g_bus_own_name (bus_type, POLKIT_NAME,
-                             G_BUS_NAME_OWNER_FLAGS_NONE,
-                             on_bus_acquired, on_name_acquired, on_name_lost,
-                             loop, NULL);
-
-  g_main_loop_run (loop);
-
-  g_bus_unown_name (owner_id);
-  g_main_loop_unref (loop);
-  return 0;
+  /* Under dbus-run-session, point DBUS_SYSTEM_BUS_ADDRESS at the session bus so clients
+   * that ask for G_BUS_TYPE_SYSTEM (libpolkit) meet us. */
+  return xios_stub_run ("polkit stub", "XIOS_POLKIT_BUS", POLKIT_NAME, on_bus_acquired);
 }

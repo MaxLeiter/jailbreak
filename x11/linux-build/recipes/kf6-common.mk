@@ -63,9 +63,15 @@ KF6_HOST_TOOLING = $(BUILD_TOOLS)/kf6-host/lib/cmake
 #     Darwin is rejected. The error message names this exact escape hatch. Harmless for
 #     the tier-1 units that don't run the check. (Host builds run natively on Linux, so
 #     they pass without it.)
+#   - GETTEXT_*_EXECUTABLE pinned to HOST tools: cross find-root otherwise discovers
+#     the staged iOS msgfmt/msgmerge under build_base/usr/bin, then ki18n tries to run
+#     target Mach-O binaries while generating .mo files.
 KF6_CMAKE_FLAGS = \
 	$(QT6_MODULE_CMAKE_FLAGS) \
 	-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
+	-DGETTEXT_MSGFMT_EXECUTABLE=/usr/bin/msgfmt \
+	-DGETTEXT_MSGMERGE_EXECUTABLE=/usr/bin/msgmerge \
+	-DGETTEXT_XGETTEXT_EXECUTABLE=/usr/bin/xgettext \
 	-DKF_IGNORE_PLATFORM_CHECK=TRUE \
 	-DKF6_HOST_TOOLING=$(KF6_HOST_TOOLING) \
 	-DBUILD_TESTING=OFF \

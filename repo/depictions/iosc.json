@@ -22,17 +22,17 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.9.1"
+          "text": "0.9.2"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "82.4 KiB"
+          "text": "74.5 KiB"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Developer",
-          "text": "Max"
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
         },
         {
           "class": "DepictionTableTextView",

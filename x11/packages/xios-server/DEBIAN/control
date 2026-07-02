@@ -16,8 +16,8 @@ Description: Native IOSurface X server for the Xios iOS app
  .
  Xios writes /var/jb/tmp/xios.json describing the surface and the rendezvous socket
  so the app picks the zero-copy path automatically; touch/keyboard come back in via
- XTEST. For the portable file-mmap fallback instead, use Xvfb (the x11-xvfb package)
- with x11-server.sh.
+ XTEST. Xvfb remains available separately for headless/debug X11 sessions, but is not
+ the app display path.
  .
  Like the rest of the stack it is rebuilt for rootless /var/jb and ad-hoc/DER signed,
  and its XKB init spawns xkbcomp via /var/jb/bin/sh so keyboard setup works with no

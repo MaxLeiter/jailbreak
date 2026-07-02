@@ -28,9 +28,6 @@ struct _MetaVirtualInputDeviceIOS
 {
   ClutterVirtualInputDevice parent;
 
-  ClutterInputDevice *pointer_source;
-  ClutterInputDevice *keyboard_source;
-
   /* The last commanded absolute pointer position. Events are pushed onto Clutter's queue and
    * processed LATER, so clutter_seat_query_state() still returns the PRE-motion position when the
    * pump synchronously sends motion-then-button in one drain — a button would then land at the
@@ -51,61 +48,36 @@ resolve_time (uint64_t time_us)
 }
 
 static ClutterInputDevice *
-ensure_source_device (MetaVirtualInputDeviceIOS *self,
-                      ClutterVirtualInputDevice *virtual_device,
+get_core_device (ClutterVirtualInputDevice *virtual_device,
                       ClutterInputDeviceType     device_type)
 {
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice **device_slot;
-  ClutterInputCapabilities capabilities;
-  const char *name;
 
   if (device_type == CLUTTER_KEYBOARD_DEVICE)
-    {
-      device_slot = &self->keyboard_source;
-      capabilities = CLUTTER_INPUT_CAPABILITY_KEYBOARD;
-      name = "iOS virtual keyboard source";
-    }
+    return clutter_seat_get_keyboard (seat);
   else
+    return clutter_seat_get_pointer (seat);
+}
+
+static ClutterModifierType
+button_mask (uint32_t button)
+{
+  switch (button)
     {
-      device_slot = &self->pointer_source;
-      capabilities = CLUTTER_INPUT_CAPABILITY_POINTER;
-      name = "iOS virtual pointer source";
+    case CLUTTER_BUTTON_PRIMARY:
+      return CLUTTER_BUTTON1_MASK;
+    case CLUTTER_BUTTON_MIDDLE:
+      return CLUTTER_BUTTON2_MASK;
+    case CLUTTER_BUTTON_SECONDARY:
+      return CLUTTER_BUTTON3_MASK;
+    default:
+      return 0;
     }
-
-  if (*device_slot)
-    return *device_slot;
-
-  /* Keep these as floating event devices so Clutter's event path picks the actor
-   * under the coordinates. Mutter's Wayland filter normally ignores non-physical
-   * source devices; our synthetic events carry CLUTTER_EVENT_FLAG_INPUT_METHOD to
-   * mark them as trusted compositor-generated input. */
-  *device_slot = g_object_new (CLUTTER_TYPE_INPUT_DEVICE,
-                               "name", name,
-                               "device-type", device_type,
-                               "capabilities", capabilities,
-                               "device-mode", CLUTTER_INPUT_MODE_FLOATING,
-                               "seat", seat,
-                               NULL);
-
-  return *device_slot;
 }
 
 static void
 push_synthetic_event (ClutterEvent *event)
 {
-  ClutterInputDevice *device = clutter_event_get_device (event);
-  ClutterInputDevice *source_device = clutter_event_get_source_device (event);
-
-  g_message ("MetaVirtualInputIOS: queue type=%d flags=0x%x "
-             "device=%s mode=%d source=%s mode=%d",
-             clutter_event_type (event),
-             clutter_event_get_flags (event),
-             device ? clutter_input_device_get_device_name (device) : "(null)",
-             device ? clutter_input_device_get_device_mode (device) : -1,
-             source_device ? clutter_input_device_get_device_name (source_device) : "(null)",
-             source_device ? clutter_input_device_get_device_mode (source_device) : -1);
-
   _clutter_event_push (event, FALSE);
 }
 
@@ -117,17 +89,18 @@ meta_virtual_input_device_ios_notify_absolute_motion (ClutterVirtualInputDevice 
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = ensure_source_device (self, virtual_device,
-                                                      CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = get_core_device (virtual_device,
+                                                 CLUTTER_POINTER_DEVICE);
   graphene_point_t coords = GRAPHENE_POINT_INIT ((float) x, (float) y);
   graphene_point_t zero = GRAPHENE_POINT_INIT (0.f, 0.f);
   ClutterModifierType modifiers = 0;
   ClutterEvent *event;
 
   clutter_seat_query_state (seat, pointer, NULL, NULL, &modifiers);
+  clutter_seat_warp_pointer (seat, (int) x, (int) y);
   self->last_coords = coords;
 
-  event = clutter_event_motion_new (CLUTTER_EVENT_FLAG_INPUT_METHOD,
+  event = clutter_event_motion_new (CLUTTER_EVENT_NONE,
                                     resolve_time (time_us),
                                     pointer, NULL, modifiers, coords,
                                     zero, zero, zero, NULL);
@@ -142,8 +115,8 @@ meta_virtual_input_device_ios_notify_relative_motion (ClutterVirtualInputDevice 
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = ensure_source_device (self, virtual_device,
-                                                      CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = get_core_device (virtual_device,
+                                                 CLUTTER_POINTER_DEVICE);
   graphene_point_t coords = self->last_coords;
   graphene_point_t delta = GRAPHENE_POINT_INIT ((float) dx, (float) dy);
   ClutterModifierType modifiers = 0;
@@ -152,9 +125,10 @@ meta_virtual_input_device_ios_notify_relative_motion (ClutterVirtualInputDevice 
   clutter_seat_query_state (seat, pointer, NULL, NULL, &modifiers);
   coords.x += (float) dx;
   coords.y += (float) dy;
+  clutter_seat_warp_pointer (seat, (int) coords.x, (int) coords.y);
   self->last_coords = coords;
 
-  event = clutter_event_motion_new (CLUTTER_EVENT_FLAG_INPUT_METHOD,
+  event = clutter_event_motion_new (CLUTTER_EVENT_FLAG_RELATIVE_MOTION,
                                     resolve_time (time_us),
                                     pointer, NULL, modifiers, coords,
                                     delta, delta, delta, NULL);
@@ -169,8 +143,8 @@ meta_virtual_input_device_ios_notify_button (ClutterVirtualInputDevice *virtual_
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = ensure_source_device (self, virtual_device,
-                                                      CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = get_core_device (virtual_device,
+                                                 CLUTTER_POINTER_DEVICE);
   graphene_point_t coords = self->last_coords;   /* where our last motion put the pointer */
   ClutterModifierType modifiers = 0;
   ClutterEventType type;
@@ -189,8 +163,10 @@ meta_virtual_input_device_ios_notify_button (ClutterVirtualInputDevice *virtual_
 
   type = (button_state == CLUTTER_BUTTON_STATE_PRESSED)
     ? CLUTTER_BUTTON_PRESS : CLUTTER_BUTTON_RELEASE;
+  if (button_state == CLUTTER_BUTTON_STATE_PRESSED)
+    modifiers |= button_mask (clutter_button);
 
-  event = clutter_event_button_new (type, CLUTTER_EVENT_FLAG_INPUT_METHOD,
+  event = clutter_event_button_new (type, CLUTTER_EVENT_NONE,
                                     resolve_time (time_us),
                                     pointer, NULL, modifiers, coords,
                                     clutter_button, button, NULL);
@@ -203,9 +179,8 @@ meta_virtual_input_device_ios_notify_key (ClutterVirtualInputDevice *virtual_dev
                                           uint32_t                   key,
                                           ClutterKeyState            key_state)
 {
-  ClutterInputDevice *keyboard = ensure_source_device (META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device),
-                                                       virtual_device,
-                                                       CLUTTER_KEYBOARD_DEVICE);
+  ClutterInputDevice *keyboard = get_core_device (virtual_device,
+                                                  CLUTTER_KEYBOARD_DEVICE);
   ClutterModifierSet raw_modifiers = { 0 };
   ClutterEventType type;
   ClutterEvent *event;
@@ -215,7 +190,7 @@ meta_virtual_input_device_ios_notify_key (ClutterVirtualInputDevice *virtual_dev
   type = (key_state == CLUTTER_KEY_STATE_PRESSED)
     ? CLUTTER_KEY_PRESS : CLUTTER_KEY_RELEASE;
 
-  event = clutter_event_key_new (type, CLUTTER_EVENT_FLAG_INPUT_METHOD,
+  event = clutter_event_key_new (type, CLUTTER_EVENT_NONE,
                                  resolve_time (time_us),
                                  keyboard, raw_modifiers, 0,
                                  0 /* keyval (resolved downstream) */,
@@ -229,9 +204,8 @@ meta_virtual_input_device_ios_notify_keyval (ClutterVirtualInputDevice *virtual_
                                              uint32_t                   keyval,
                                              ClutterKeyState            key_state)
 {
-  ClutterInputDevice *keyboard = ensure_source_device (META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device),
-                                                       virtual_device,
-                                                       CLUTTER_KEYBOARD_DEVICE);
+  ClutterInputDevice *keyboard = get_core_device (virtual_device,
+                                                  CLUTTER_KEYBOARD_DEVICE);
   ClutterModifierSet raw_modifiers = { 0 };
   gunichar unicode;
   ClutterEventType type;
@@ -244,7 +218,7 @@ meta_virtual_input_device_ios_notify_keyval (ClutterVirtualInputDevice *virtual_
   type = (key_state == CLUTTER_KEY_STATE_PRESSED)
     ? CLUTTER_KEY_PRESS : CLUTTER_KEY_RELEASE;
 
-  event = clutter_event_key_new (type, CLUTTER_EVENT_FLAG_INPUT_METHOD,
+  event = clutter_event_key_new (type, CLUTTER_EVENT_NONE,
                                  resolve_time (time_us),
                                  keyboard, raw_modifiers, 0,
                                  keyval, 0 /* evcode */, 0 /* keycode */, unicode);
@@ -261,8 +235,8 @@ meta_virtual_input_device_ios_notify_scroll_continuous (ClutterVirtualInputDevic
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = ensure_source_device (self, virtual_device,
-                                                      CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = get_core_device (virtual_device,
+                                                 CLUTTER_POINTER_DEVICE);
   graphene_point_t coords = self->last_coords;   /* scroll at the pointer's last position */
   graphene_point_t delta = GRAPHENE_POINT_INIT ((float) dx, (float) dy);
   ClutterModifierType modifiers = 0;
@@ -270,7 +244,7 @@ meta_virtual_input_device_ios_notify_scroll_continuous (ClutterVirtualInputDevic
 
   clutter_seat_query_state (seat, pointer, NULL, NULL, &modifiers);
 
-  event = clutter_event_scroll_smooth_new (CLUTTER_EVENT_FLAG_INPUT_METHOD,
+  event = clutter_event_scroll_smooth_new (CLUTTER_EVENT_NONE,
                                            resolve_time (time_us),
                                            pointer, NULL, modifiers, coords,
                                            delta, scroll_source, finish_flags);
@@ -283,24 +257,10 @@ meta_virtual_input_device_ios_init (MetaVirtualInputDeviceIOS *self)
 }
 
 static void
-meta_virtual_input_device_ios_dispose (GObject *object)
-{
-  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (object);
-
-  g_clear_object (&self->pointer_source);
-  g_clear_object (&self->keyboard_source);
-
-  G_OBJECT_CLASS (meta_virtual_input_device_ios_parent_class)->dispose (object);
-}
-
-static void
 meta_virtual_input_device_ios_class_init (MetaVirtualInputDeviceIOSClass *klass)
 {
-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
   ClutterVirtualInputDeviceClass *virtual_input_device_class =
     CLUTTER_VIRTUAL_INPUT_DEVICE_CLASS (klass);
-
-  object_class->dispose = meta_virtual_input_device_ios_dispose;
 
   virtual_input_device_class->notify_absolute_motion =
     meta_virtual_input_device_ios_notify_absolute_motion;

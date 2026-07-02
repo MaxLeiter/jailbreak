@@ -38,25 +38,28 @@ int xios_server_start(const char *sock_path, const char *json_path,
 /* Notify every connected client that the framebuffer changed (the app then
  * re-presents the zero-copy texture). Called from the X server's block handler;
  * a no-op when no clients are attached. Non-blocking — a backed-up/suspended
- * client never stalls the X server. */
+ * client never stalls the X server. Each DIRTY carries a monotonic present
+ * sequence in a/b that the app echoes with XIOS_MSG_PRESENTED after Metal
+ * command-buffer completion. */
 void xios_notify_dirty(void);
 
-/* ---- typed app-socket framing (present / cursor / native envelope) ---------
- * The classic ddx protocol (xios_hello -> xios_reply -> a stream of bare
- * XIOS_DIRTY bytes) stays BYTE-IDENTICAL for existing clients. A client that
- * sets XIOS_HELLO_TYPED in xios_hello.reserved instead gets a stream of typed
- * 32-byte records after the same xios_reply handshake, so the compositor can
- * multiplex DIRTY + CURSOR (and later an in-band HELLO + the native per-window
- * lifecycle) over one connection. This is the shared envelope the cursor-overlay,
- * the xios.json->in-band-hello refactor, and the native-iPadOS flavor all use. */
-#define XIOS_HELLO_TYPED 0x54595031u   /* 'TYP1' in xios_hello.reserved => typed stream */
+uint64_t xios_dirty_generation(void);
+uint64_t xios_presented_generation(void);
+
+/* ---- app-socket framing (present / cursor / native envelope) ----------------
+ * xios_hello.reserved must be XIOS_HELLO_TYPED. After xios_reply, the server sends
+ * one in-band HELLO record followed by a typed 32-byte record stream, so DIRTY,
+ * CURSOR, clipboard-family constants, and native per-window records share one
+ * grammar across every iosc<->host channel. */
+#define XIOS_HELLO_TYPED 0x54595031u   /* 'TYP1' in xios_hello.reserved, required */
 #define XIOS_MSG_MAGIC   0x584D5331u   /* 'XMS1' per-record frame sync */
 enum {
     XIOS_MSG_HELLO  = 0x01,  /* compositor->app: a=w b=h c=stride d=format; payload=compositor-id */
-    XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b,c,d = damage x,y,w,h (all 0 = whole); window_id */
+    XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b = present seq lo/hi; c,d reserved */
     XIOS_MSG_CURSOR = 0x03,  /* compositor->app: a=x b=y c=shape_id d=flags(bit0 visible) */
     XIOS_MSG_CLIPBOARD = 0x04,  /* BOTH directions, on the CLIPBOARD socket only (see below) */
-    /* 0x05-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
+    XIOS_MSG_PRESENTED = 0x05,  /* app->compositor: a,b = displayed DIRTY seq lo/hi */
+    /* 0x06-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
 };
 typedef struct {
     uint32_t magic;      /* XIOS_MSG_MAGIC */
@@ -103,21 +106,21 @@ enum {
 #define XIOS_CLIP_ITEM_MAX (16u * 1024u * 1024u)   /* per-item payload cap */
 
 /* Send a CURSOR record (pointer position + wp_cursor_shape id, shape_id 0 = hidden)
- * to every TYPED client. No-op for classic clients / when none are attached. Lets
+ * to every app client. No-op when none are attached. Lets
  * a present-side cursor overlay in the app move the pointer with ZERO compositor
  * recomposite. Non-blocking, same never-stall posture as xios_notify_dirty. */
 void xios_notify_cursor(int x, int y, int visible, int shape_id);
 
-/* True if at least one connected client negotiated the typed stream (so the
- * compositor knows the app will draw its own cursor overlay and can stop
- * compositing the cursor into the output). */
-int xios_have_typed_client(void);
+/* True if at least one app client is attached (so the compositor knows the app
+ * can draw its own cursor overlay and can stop compositing the cursor into the
+ * output). */
+int xios_have_app_client(void);
 
 /* Identify which compositor is driving (e.g. "iosc", "mutter-ios"). Sent to
- * typed clients in the in-band XIOS_MSG_HELLO on connect, so the app learns the
- * flavor + geometry from the socket itself instead of reading the xios.json
- * side-file. Call before/after xios_server_start; default is empty (unknown).
- * The xios.json write stays as a transitional discovery fallback for now. */
+ * clients in the in-band XIOS_MSG_HELLO on connect, so the app learns the
+ * flavor + geometry from the socket itself. xios.json remains the startup
+ * discovery sidecar that tells the app which socket to adopt. Call before/after
+ * xios_server_start; default is empty (unknown). */
 void xios_set_compositor_id(const char *id);
 
 /* Advertise the input socket the app should send keyboard/pointer to, emitted as

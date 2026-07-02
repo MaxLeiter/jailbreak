@@ -1,0 +1,292 @@
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -411,7 +411,12 @@
+   float x, y, sx, sy;
+ 
+   if (!pointer->focus_client)
+-    return;
++    {
++      g_message ("MetaWaylandPointerIOS: send_motion skipped no focus_client "
++                 "focus_surface=%p current=%p",
++                 pointer->focus_surface, pointer->current);
++      return;
++    }
+ 
+   time = clutter_event_get_time (event);
+   clutter_event_get_coords (event, &x, &y);
+@@ -446,6 +451,10 @@
+ 
+   event_type = clutter_event_type (event);
+ 
++  g_message ("MetaWaylandPointerIOS: send_button type=%d focus_client=%p "
++             "focus_surface=%p current=%p",
++             event_type, pointer->focus_client, pointer->focus_surface, pointer->current);
++
+   if (pointer->focus_client &&
+       !wl_list_empty (&pointer->focus_client->pointer_resources))
+     {
+@@ -563,6 +572,7 @@
+ {
+   if (pointer->current == surface)
+     return;
++  g_message ("MetaWaylandPointerIOS: set_current %p -> %p", pointer->current, surface);
+ 
+   if (pointer->current)
+     {
+@@ -573,6 +583,7 @@
+ 
+   if (surface)
+     {
++      g_message ("MetaWaylandPointerIOS: current surface accepted %p", surface);
+       pointer->current = surface;
+       pointer->current_surface_destroyed_handler_id =
+         g_signal_connect (surface, "destroy",
+@@ -583,19 +594,67 @@
+   meta_wayland_pointer_update_cursor_surface (pointer);
+ }
+ 
++
++static void
++log_pick_tree (ClutterActor *actor,
++               int           depth)
++{
++  ClutterActor *child;
++  ClutterActorBox box;
++  float tx = 0.0f;
++  float ty = 0.0f;
++
++  if (!actor || depth > 3)
++    return;
++
++  clutter_actor_get_allocation_box (actor, &box);
++  clutter_actor_get_transformed_position (actor, &tx, &ty);
++
++  g_message ("MetaWaylandPointerIOS: tree depth=%d actor=%s mapped=%d "
++             "visible=%d reactive=%d alloc=%.1f,%.1f %.1fx%.1f "
++             "transformed=%.1f,%.1f wayland=%d",
++             depth,
++             G_OBJECT_TYPE_NAME (actor),
++             clutter_actor_is_mapped (actor),
++             clutter_actor_is_visible (actor),
++             clutter_actor_get_reactive (actor),
++             box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1,
++             tx, ty,
++             META_IS_SURFACE_ACTOR_WAYLAND (actor));
++
++  for (child = clutter_actor_get_first_child (actor);
++       child;
++       child = clutter_actor_get_next_sibling (child))
++    log_pick_tree (child, depth + 1);
++}
++
+ static void
+ repick_for_event (MetaWaylandPointer *pointer,
+                   const ClutterEvent *for_event)
+ {
+   ClutterActor *actor;
+   MetaWaylandSurface *surface;
++  float event_x = 0.0f;
++  float event_y = 0.0f;
+   MetaBackend *backend = backend_from_pointer (pointer);
+   ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
++
++  clutter_event_get_coords (for_event, &event_x, &event_y);
+ 
+   actor = clutter_stage_get_device_actor (stage,
+                                           clutter_event_get_device (for_event),
+                                           clutter_event_get_event_sequence (for_event));
+ 
++  g_message ("MetaWaylandPointerIOS: repick event_type=%d coords=%.1f,%.1f "
++             "device=%s actor=%s is_wayland=%d",
++             clutter_event_type (for_event),
++             event_x, event_y,
++             clutter_input_device_get_device_name (clutter_event_get_device (for_event)),
++             actor ? G_OBJECT_TYPE_NAME (actor) : "(null)",
++             META_IS_SURFACE_ACTOR_WAYLAND (actor));
++
++  log_pick_tree (CLUTTER_ACTOR (stage), 0);
++
+   if (META_IS_SURFACE_ACTOR_WAYLAND (actor))
+     {
+       MetaSurfaceActorWayland *actor_wayland =
+@@ -605,6 +664,9 @@
+ 
+       if (surface && meta_window_has_modals (meta_wayland_surface_get_window (surface)))
+         surface = NULL;
++
++      g_message ("MetaWaylandPointerIOS: repick wayland surface=%p window=%p",
++                 surface, surface ? meta_wayland_surface_get_window (surface) : NULL);
+     }
+   else
+     {
+
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -1679,8 +1679,20 @@ window_has_buffer (MetaWindow *window)
+   if (meta_is_wayland_compositor ())
+     {
+       MetaWaylandSurface *surface = meta_window_get_wayland_surface (window);
+-      if (!surface || !meta_wayland_surface_get_buffer (surface))
+-        return FALSE;
++      if (!surface)
++        {
++          g_message ("MetaWindowIOS: window_has_buffer false no-surface window=%p desc=%s",
++                     window, window->desc);
++          return FALSE;
++        }
++      if (!meta_wayland_surface_get_buffer (surface))
++        {
++          g_message ("MetaWindowIOS: window_has_buffer false no-buffer window=%p surface=%p desc=%s",
++                     window, surface, window->desc);
++          return FALSE;
++        }
++      g_message ("MetaWindowIOS: window_has_buffer true window=%p surface=%p desc=%s",
++                 window, surface, window->desc);
+     }
+ #endif
+ 
+@@ -1726,6 +1737,10 @@ implement_showing (MetaWindow *window,
+   /* Actually show/hide the window */
+   meta_verbose ("Implement showing = %d for window %s",
+                 showing, window->desc);
++  g_message ("MetaWindowIOS: implement_showing showing=%d window=%p desc=%s "
++             "hidden=%d iconic=%d mapped=%d placed=%d visible_to_compositor=%d pending_effect=%d",
++             showing, window, window->desc, window->hidden, window->iconic,
++             window->mapped, window->placed, window->visible_to_compositor, window->pending_compositor_effect);
+ 
+   /* Some windows are not stackable until being showed, so add those now. */
+   if (meta_window_is_stackable (window) && !meta_window_is_in_stack (window))
+@@ -1761,7 +1776,12 @@ implement_showing (MetaWindow *window,
+ void
+ meta_window_update_visibility (MetaWindow  *window)
+ {
+-  implement_showing (window, meta_window_should_be_showing (window));
++  gboolean should_show;
++
++  should_show = meta_window_should_be_showing (window);
++  g_message ("MetaWindowIOS: update_visibility should_show=%d window=%p desc=%s",
++             should_show, window, window->desc);
++  implement_showing (window, should_show);
+ }
+ 
+ void
+@@ -2326,6 +2346,9 @@ meta_window_show (MetaWindow *window)
+           break;
+         }
+ 
++      g_message ("MetaWindowIOS: compositor_show window=%p desc=%s effect=%d",
++                 window, window->desc, effect);
++
+       meta_compositor_show_window (window->display->compositor,
+                                    window, effect);
+       window->pending_compositor_effect = META_COMP_EFFECT_NONE;
+
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -1012,6 +1012,8 @@ meta_window_actor_show (MetaWindowActor   *self,
+     meta_window_actor_get_instance_private (self);
+   MetaCompositor *compositor = priv->compositor;
+   MetaPluginEffect event;
++  gboolean switching_workspace;
++  gboolean effect_started = FALSE;
+ 
+   g_return_if_fail (!priv->visible);
+ 
+@@ -1031,14 +1033,29 @@ meta_window_actor_show (MetaWindowActor   *self,
+       g_assert_not_reached();
+     }
+ 
++  g_message ("MetaWindowActorIOS: show actor=%p window=%p effect=%d event=%d "
++             "clutter_visible_before=%d mapped_before=%d",
++             self, priv->window, effect, event,
++             clutter_actor_is_visible (CLUTTER_ACTOR (self)),
++             clutter_actor_is_mapped (CLUTTER_ACTOR (self)));
++
+   if (event == META_PLUGIN_MAP)
+     meta_window_actor_sync_actor_geometry (self, TRUE);
+ 
+-  if (meta_compositor_is_switching_workspace (compositor) ||
+-      !start_simple_effect (self, event))
++  switching_workspace = meta_compositor_is_switching_workspace (compositor);
++  if (!switching_workspace)
++    effect_started = start_simple_effect (self, event);
++
++  g_message ("MetaWindowActorIOS: show decision actor=%p switching=%d effect_started=%d "
++             "clutter_visible_mid=%d mapped_mid=%d",
++             self, switching_workspace, effect_started,
++             clutter_actor_is_visible (CLUTTER_ACTOR (self)),
++             clutter_actor_is_mapped (CLUTTER_ACTOR (self)));
++
++  if (switching_workspace || !effect_started)
+     {
+       clutter_actor_show (CLUTTER_ACTOR (self));
+     }
+ }
+ 
+ void
+
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -849,15 +849,26 @@ meta_wayland_xdg_toplevel_apply_state (MetaWaylandSurfaceRole  *surface_role,
+ 
+   window = meta_wayland_surface_get_window (surface);
+   if (!window)
+     {
++      g_message ("MetaXdgIOS: toplevel_apply no-window surface=%p buffer=%p first=%d configure_sent=%d",
++                 surface, surface->buffer, xdg_surface_priv->first_buffer_attached,
++                 xdg_surface_priv->configure_sent);
+       meta_wayland_actor_surface_queue_frame_callbacks (actor_surface, pending);
+       return;
+     }
+ 
++  g_message ("MetaXdgIOS: toplevel_apply surface=%p window=%p buffer=%p first=%d "
++             "configure_sent=%d ack=%d size_changed=%d",
++             surface, window, surface->buffer, xdg_surface_priv->first_buffer_attached,
++             xdg_surface_priv->configure_sent, pending->has_acked_configure_serial,
++             pending->derived.surface_size_changed);
++
+   if (!surface->buffer && xdg_surface_priv->first_buffer_attached)
+     {
++      g_message ("MetaXdgIOS: toplevel_apply reset surface=%p window=%p lost-buffer-after-first",
++                 surface, window);
+       meta_wayland_xdg_surface_reset (xdg_surface);
+       meta_wayland_actor_surface_queue_frame_callbacks (actor_surface,
+                                                         pending);
+       return;
+     }
+@@ -914,6 +925,12 @@ meta_wayland_xdg_toplevel_post_apply_state (MetaWaylandSurfaceRole  *surface_role,
+   window_geometry = meta_wayland_xdg_surface_get_window_geometry (xdg_surface);
+   geometry_changed = !mtk_rectangle_equal (&old_geometry, &window_geometry);
+ 
++  g_message ("MetaXdgIOS: toplevel_post_apply surface=%p window=%p geom=%d,%d %dx%d "
++             "geometry_changed=%d ack=%d size_changed=%d",
++             surface, window, window_geometry.x, window_geometry.y, window_geometry.width,
++             window_geometry.height, geometry_changed, pending->has_acked_configure_serial,
++             pending->derived.surface_size_changed);
++
+   if (geometry_changed ||
+       pending->derived.surface_size_changed ||
+       pending->has_acked_configure_serial)
+@@ -1798,12 +1815,20 @@ meta_wayland_xdg_surface_apply_state (MetaWaylandSurfaceRole  *surface_role,
+   /* Ignore commits when unassigned. */
+   if (!priv->resource)
+     return;
+ 
+   if (!window)
+-    return;
++    {
++      g_message ("MetaXdgIOS: surface_apply assigned-no-window surface=%p buffer=%p first=%d",
++                 surface, surface->buffer, priv->first_buffer_attached);
++      return;
++    }
+ 
+   if (surface->buffer)
+-    priv->first_buffer_attached = TRUE;
++    {
++      g_message ("MetaXdgIOS: surface_apply first-buffer surface=%p window=%p buffer=%p",
++                 surface, window, surface->buffer);
++      priv->first_buffer_attached = TRUE;
++    }
+ }
+ 
+ static void

@@ -2,7 +2,7 @@ Package: gnome-calculator
 Version: @DEB_GNOME-CALCULATOR_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Section: Applications
+Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://apps.gnome.org/Calculator/
 Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0, libsoup-3.0-0, libgee-0.8-2, libmpfr6, libmpc3, dbus

@@ -1,0 +1,13 @@
+Package: librsvg2-2
+Version: @DEB_LIBRSVG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/LibRsvg
+Depends: libglib2.0-0, libgdk-pixbuf-2.0-0, libcairo2, libcairo-gobject2, libpango-1.0-0, libfreetype6, libharfbuzz0b, libxml2
+Description: SVG rendering library
+ librsvg renders non-animated SVG images to Cairo surfaces.
+ .
+ This package contains the runtime library used by the GdkPixbuf SVG loader
+ and applications that link directly against librsvg.

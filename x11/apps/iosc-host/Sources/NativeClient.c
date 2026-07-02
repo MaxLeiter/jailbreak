@@ -8,8 +8,8 @@
  * receive port we named in BIND. We recv it (bounded) right after reading the
  * record, so the two stay correlated by arrival order on one connection.
  *
- * The iosc server half is NOT implemented yet; this is the authoritative client
- * the spec is written against.
+ * The iosc server half lives in wayland/xios_canvas.c + wayland/iosc.c; this is
+ * the host-side reference client for the same wire contract.
  */
 #include "NativeClient.h"
 #include "iosc_native_proto.h"
@@ -139,8 +139,9 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
     if (!c) { mach_port_mod_refs(self, rx, MACH_PORT_RIGHT_RECEIVE, -1); close(fd); return NULL; }
     c->fd = fd;
     c->rx = rx;
-    /* Non-blocking socket; iosc_native_next uses poll() for the timeout. */
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    /* Keep the fd blocking. iosc_native_next polls before each record, then
+     * read_full drains the whole record/payload. A non-blocking fd can return
+     * EAGAIN mid-record and look like a compositor disconnect. */
     return c;
 }
 
@@ -218,10 +219,9 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
         ev->type = IOSC_NEV_NONE;
         return 0;
     default:
-        /* Unknown type: ignore the record, report as a benign timeout so the
-         * caller loops. Forward-compat with new iosc->host messages. */
-        ev->type = IOSC_NEV_NONE;
-        return 0;
+        fprintf(stderr, "iosc-native: unknown compositor record type=0x%x; disconnecting\n",
+                h.type);
+        goto dead;
     }
 
 dead:

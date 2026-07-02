@@ -27,12 +27,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "794.1 KiB"
+          "text": "817.4 KiB"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Developer",
-          "text": "Max"
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
         },
         {
           "class": "DepictionTableTextView",

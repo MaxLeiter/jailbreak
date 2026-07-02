@@ -7,10 +7,7 @@ Priority: optional
 Homepage: https://www.freedesktop.org/wiki/Software/PulseAudio/
 Depends: libpulse0
 Provides: libpulse-simple-dev
-Conflicts: libpulse-simple-xios-dev
-Replaces: libpulse-simple-xios-dev
 Description: PulseAudio client libraries - development files
  Headers, pkg-config files and unversioned library links for the PulseAudio
  client libraries. Needed on-device for the gnome-shell introspection build.
- Ships the real libpulse-simple.pc and supersedes the libpulse-simple-xios-dev
- shim.
+ Ships the real libpulse-simple.pc.

@@ -1,0 +1,13 @@
+Package: mesa-demos
+Name: Mesa GL demo utilities
+Version: @DEB_MESA_DEMOS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libgl1, libglu1, libglew2.2, libx11-6, libxext6, libwayland0, angle
+Section: X11
+Priority: optional
+Homepage: https://mesa3d.org/
+Description: GLX and Wayland OpenGL demo utilities
+ This package provides Mesa's basic GL utilities for Xios, including the
+ classic X11 GLX tools glxinfo and glxgears plus the Wayland/OpenGL ES
+ gears demo es2gears_wayland.

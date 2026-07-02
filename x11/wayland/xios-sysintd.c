@@ -98,10 +98,7 @@ static void apply_appearance(int dark)
 {
     char *scheme[] = { "gsettings", "set", "org.gnome.desktop.interface",
                        "color-scheme", dark ? "prefer-dark" : "prefer-light", NULL };
-    char *scheme_fallback[] = { "gsettings", "set", "org.gnome.desktop.interface",
-                                "color-scheme", "default", NULL };
-    if (run(scheme) != 0 && !dark)
-        run(scheme_fallback);
+    run(scheme);
     if (!s_no_gtk3) {
         char *theme[] = { "gsettings", "set", "org.gnome.desktop.interface",
                           "gtk-theme",
@@ -169,10 +166,7 @@ int main(void)
             fprintf(stderr, "xios-sysintd: poll: %s\n", strerror(errno));
             break;
         }
-        /* The input-socket callback grew bound_window in the native-window workstream.
-         * xios-sysintd ignores that field, so this remains compatible with either
-         * header shape while that refactor is in flight. */
-        if (pr > 0 && xios_input_socket_dispatch(srv, (xios_input_cb)on_record, NULL) < 0) {
+        if (pr > 0 && xios_input_socket_dispatch(srv, on_record, NULL) < 0) {
             fprintf(stderr, "xios-sysintd: socket error, exiting\n");
             break;
         }

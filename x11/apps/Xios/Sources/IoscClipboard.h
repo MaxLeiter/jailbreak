@@ -38,10 +38,4 @@ bool iosc_clipboard_send_clear(void);
 int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
                              uint8_t **data, uint32_t *len);
 
-// TRANSITIONAL text-only wrappers keeping the pre-multi-mime XScreen.swift
-// call sites compiling (and text sync working) until the full pasteboard
-// patch in docs/clipboard-plan.md lands. New code uses the item API above.
-bool iosc_clipboard_set_text(const char *utf8);
-bool iosc_clipboard_poll(char *out, int out_cap, int *out_len);
-
 #endif

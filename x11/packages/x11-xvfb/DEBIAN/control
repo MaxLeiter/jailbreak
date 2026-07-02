@@ -21,7 +21,7 @@ Description: Virtual framebuffer X server for rootless jailbreaks
  (the shell lives at /var/jb/bin/sh). This build fixes the spawn path so
  keyboard init succeeds with no on-device hacks.
  .
- It backs the native Xios iOS app: Xvfb renders to a framebuffer file (-fbdir)
- that the app mmaps and displays, while touch/keyboard are fed back in via XTEST.
- Pair with a window manager (fluxbox), xterm, and the x11-fonts-sf package.
- Built for iPadOS/iOS rootless (palera1n/Dopamine, /var/jb).
+ Use it for headless/debug X11 sessions or software-only bring-up. The public
+ Xios app display path uses the IOSurface Xios server instead. Pair with a window
+ manager (fluxbox), xterm, and the x11-fonts-sf package. Built for iPadOS/iOS
+ rootless (palera1n/Dopamine, /var/jb).

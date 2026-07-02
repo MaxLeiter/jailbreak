@@ -325,7 +325,8 @@ and `framebufferPoint()` picks up the new `fbWidth/fbHeight` on adopt.
   system volume still scales the RemoteIO output, so mirroring gives an
   effective v^2 curve — acceptable for v1, revisit if it feels steep.
 - xios-desktop-theme: appearance flip writes `color-scheme`
-  (prefer-dark/prefer-light, falling back to default on older schemas) and,
+  (prefer-dark/prefer-light; the shipped gsettings-desktop-schemas 46.1 always
+  carries both enum values) and,
   unless `XIOS_SYSINT_NO_GTK3=1`, `gtk-theme`
   Adwaita/Adwaita-dark (overridable via `XIOS_SYSINT_GTK3_LIGHT/_DARK`). Both
   are user-level dconf writes, so they win over the packaged gschema override

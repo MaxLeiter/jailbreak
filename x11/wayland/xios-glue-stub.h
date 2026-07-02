@@ -77,12 +77,8 @@ typedef struct xios_input_socket xios_input_socket;
 typedef void (*xios_input_cb) (const struct xios_in_msg *m,
                                const char               *text,
                                size_t                    text_len,
+                               uint32_t                  bound_window,
                                void                     *user);
-typedef void (*xios_input_bound_cb) (const struct xios_in_msg *m,
-                                     const char               *text,
-                                     size_t                    text_len,
-                                     uint32_t                  bound_window,
-                                     void                     *user);
 
 /* Create the AF_UNIX listener at `path` (unlinks a stale node). NULL on failure. */
 xios_input_socket *xios_input_socket_new (const char *path);
@@ -93,11 +89,13 @@ int xios_input_socket_fd (xios_input_socket *s);
 /* Drain every currently-complete record, invoking `cb` for each. Returns the count
  * dispatched (>=0), or <0 on a fatal socket error (caller should tear down). */
 int xios_input_socket_dispatch (xios_input_socket *s, xios_input_cb cb, void *user);
-int xios_input_socket_dispatch_bound (xios_input_socket *s, xios_input_bound_cb cb, void *user);
 
 /* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
  * client; a client whose write fails is dropped. Returns the number written to. */
 int xios_input_socket_broadcast (xios_input_socket *s, const void *buf, size_t len);
+
+int xios_input_socket_broadcast_bound (xios_input_socket *s, uint32_t bound_window,
+                                       const void *buf, size_t len);
 
 /* Number of currently-connected clients (detect a new connection across dispatch). */
 int xios_input_socket_client_count (xios_input_socket *s);
@@ -138,6 +136,7 @@ void        xios_egl_destroy_image (EGLImageKHR image);
 EGLDisplay xios_egl_display (void);          /* lazy getter; matches libxios_glue */
 void      *xios_get_output_iosurface (void);
 void       xios_notify_dirty (void);
+void       xios_notify_cursor (int x, int y, int visible, int shape_id);
 
 /* The pbuffer + RGBA8 + BIND_TO_TEXTURE_RGBA EGLConfig xios_egl chose the IOSurface pbuffers
  * against (matches libxios_glue xios_egl.h). MetaRendererIOS points its Cogl winsys config at

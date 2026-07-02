@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
+#include <poll.h>
 #include <pwd.h>
 #include <mach/mach.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -31,8 +32,6 @@ extern char *display;
 
 #define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
 #define XIOS_FMT_BGRA   0x42475241u   /* 'BGRA' */
-#define XIOS_DIRTY      0x01          /* one-byte "framebuffer changed" signal */
-
 /* app -> server, sent once on connect */
 typedef struct {
     uint32_t magic;
@@ -62,15 +61,20 @@ typedef struct {
 
 #define XIOS_MAX_CLIENTS 8
 
+struct app_client {
+    int fd;
+};
+
 static IOSurfaceRef s_surface = NULL;
 static int s_width, s_height, s_stride;
 
 static int s_listen_fd = -1;
 static pthread_t s_thread;
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
-static int s_clients[XIOS_MAX_CLIENTS];
-static int s_client_typed[XIOS_MAX_CLIENTS];   /* parallel: client speaks the typed stream */
+static struct app_client s_clients[XIOS_MAX_CLIENTS];
 static int s_nclients = 0;
+static uint64_t s_dirty_seq = 0;
+static uint64_t s_presented_seq = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
 static char s_input_socket[108] = "";          /* app input socket; emitted in xios.json when set */
 
@@ -269,19 +273,102 @@ static int deliver_surface_port(int pid, unsigned portname)
     return 0;
 }
 
-static void add_client(int fd, int typed)
+static int add_client(int fd)
 {
+    int ok = 0;
     pthread_mutex_lock(&s_lock);
     if (s_nclients < XIOS_MAX_CLIENTS) {
-        s_client_typed[s_nclients] = typed;
-        s_clients[s_nclients++] = fd;
-        fprintf(stderr, "xios: client attached (fd=%d, typed=%d, total=%d)\n",
-                fd, typed, s_nclients);
+        s_clients[s_nclients++].fd = fd;
+        ok = 1;
+        fprintf(stderr, "xios: app client attached (typed fd=%d, total=%d)\n",
+                fd, s_nclients);
     } else {
         close(fd);
         fprintf(stderr, "xios: too many clients, rejecting fd=%d\n", fd);
     }
     pthread_mutex_unlock(&s_lock);
+    return ok;
+}
+
+static void drop_client_fd_locked(int fd)
+{
+    for (int i = 0; i < s_nclients; i++) {
+        if (s_clients[i].fd != fd)
+            continue;
+        fprintf(stderr, "xios: client fd=%d dropped\n", fd);
+        close(s_clients[i].fd);
+        s_clients[i] = s_clients[s_nclients - 1];
+        s_nclients--;
+        return;
+    }
+}
+
+static void handle_client_msg(const xios_msg *m)
+{
+    if (m->type != XIOS_MSG_PRESENTED)
+        return;
+    uint64_t seq = ((uint64_t)(uint32_t)m->b << 32) | (uint32_t)m->a;
+    pthread_mutex_lock(&s_lock);
+    if (seq > s_presented_seq)
+        s_presented_seq = seq;
+    pthread_mutex_unlock(&s_lock);
+}
+
+static void *client_read_loop(void *arg)
+{
+    int fd = *(int *)arg;
+    free(arg);
+
+    unsigned char rxbuf[sizeof(xios_msg)];
+    int rxlen = 0;
+    int skip = 0;
+    for (;;) {
+        struct pollfd pfd = { fd, POLLIN | POLLHUP | POLLERR, 0 };
+        int pr;
+        do {
+            pr = poll(&pfd, 1, -1);
+        } while (pr < 0 && errno == EINTR);
+        if (pr <= 0 || (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)))
+            break;
+
+        for (;;) {
+            if (skip > 0) {
+                unsigned char scratch[128];
+                int want = skip < (int)sizeof(scratch) ? skip : (int)sizeof(scratch);
+                ssize_t r = recv(fd, scratch, want, MSG_DONTWAIT);
+                if (r > 0) { skip -= (int)r; continue; }
+                if (r == 0) goto out;
+                if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+                if (errno == EINTR) continue;
+                goto out;
+            }
+            ssize_t r = recv(fd, rxbuf + rxlen, (int)sizeof(xios_msg) - rxlen,
+                             MSG_DONTWAIT);
+            if (r > 0) {
+                rxlen += (int)r;
+                if (rxlen < (int)sizeof(xios_msg))
+                    continue;
+                xios_msg m;
+                memcpy(&m, rxbuf, sizeof(m));
+                rxlen = 0;
+                if (m.magic != XIOS_MSG_MAGIC)
+                    goto out;
+                handle_client_msg(&m);
+                if (m.length > 0)
+                    skip = (int)m.length;
+                continue;
+            }
+            if (r == 0) goto out;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            if (errno == EINTR) continue;
+            goto out;
+        }
+    }
+out:
+    pthread_mutex_lock(&s_lock);
+    drop_client_fd_locked(fd);
+    pthread_mutex_unlock(&s_lock);
+    return NULL;
 }
 
 static void handle_client(int fd)
@@ -297,6 +384,13 @@ static void handle_client(int fd)
     xios_hello hello;
     if (read_full(fd, &hello, sizeof(hello)) != 0 || hello.magic != XIOS_MAGIC) {
         fprintf(stderr, "xios: bad handshake from fd=%d\n", fd);
+        close(fd);
+        return;
+    }
+    if (hello.reserved != XIOS_HELLO_TYPED) {
+        fprintf(stderr, "xios: rejecting non-typed client fd=%d reserved=0x%x "
+                        "(typed app protocol is required)\n",
+                fd, hello.reserved);
         close(fd);
         return;
     }
@@ -327,25 +421,31 @@ static void handle_client(int fd)
         close(fd);
         return;
     }
-    /* Typed clients also get an in-band HELLO (geometry + which compositor is
-     * driving) right after the classic reply — the socket-native replacement for
-     * the app reading xios.json. Sent while still blocking (pre-O_NONBLOCK) so the
-     * app reliably has it before the DIRTY/CURSOR stream begins. */
-    int typed = (hello.reserved == XIOS_HELLO_TYPED);
-    if (typed) {
-        uint32_t idlen = (uint32_t) strlen(s_compositor_id);
-        xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO, 0, idlen,
-                       s_width, s_height, s_stride, (int32_t) XIOS_FMT_BGRA };
-        if (write_full(fd, &h, sizeof(h)) != 0 ||
-            (idlen && write_full(fd, s_compositor_id, idlen) != 0)) {
-            close(fd);
-            return;
-        }
+    /* The app gets an in-band HELLO (geometry + compositor id) right after the
+     * reply. Sent while still blocking (pre-O_NONBLOCK) so the app reliably has
+     * it before the DIRTY/CURSOR stream begins. */
+    uint32_t idlen = (uint32_t) strlen(s_compositor_id);
+    xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO, 0, idlen,
+                   s_width, s_height, s_stride, (int32_t) XIOS_FMT_BGRA };
+    if (write_full(fd, &h, sizeof(h)) != 0 ||
+        (idlen && write_full(fd, s_compositor_id, idlen) != 0)) {
+        close(fd);
+        return;
     }
     /* Damage notifications are non-blocking: a suspended/backed-up app must never
      * stall the X server's block handler. */
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    add_client(fd, typed);
+    if (!add_client(fd))
+        return;
+    int *rfd = malloc(sizeof(*rfd));
+    if (rfd) {
+        *rfd = fd;
+        pthread_t reader;
+        if (pthread_create(&reader, NULL, client_read_loop, rfd) == 0)
+            pthread_detach(reader);
+        else
+            free(rfd);
+    }
 }
 
 static void *accept_loop(void *arg)
@@ -422,8 +522,7 @@ int xios_server_start(const char *sock_path, const char *json_path,
     s_listen_fd = fd;
 
     /* Geometry handshake file: the app reads this to detect IOSurface mode and
-     * find the socket. Presence of "ddx":"iosurface" gates zero-copy vs the old
-     * Xvfb file-mmap fallback. */
+     * find the socket before adopting the typed app stream. */
     FILE *jf = fopen(json_path, "w");
     if (jf) {
         fprintf(jf,
@@ -440,8 +539,8 @@ int xios_server_start(const char *sock_path, const char *json_path,
         fclose(jf);
         /* The app runs as mobile; make the handshake file world-readable so it can
          * read it regardless of the compositor's launch umask. The socket already
-         * gets the mobile treatment; the json didn't until now (a tighter umask
-         * would have made it root-only => app stuck in the Xvfb fallback). */
+         * gets the mobile treatment; the json needs the same posture for future
+         * rootful launches. */
         chmod(json_path, 0644);
     }
 
@@ -459,16 +558,15 @@ int xios_server_start(const char *sock_path, const char *json_path,
 /* Swap-remove client index i (caller holds s_lock). */
 static void drop_client_locked(int i)
 {
-    fprintf(stderr, "xios: client fd=%d dropped\n", s_clients[i]);
-    close(s_clients[i]);
+    fprintf(stderr, "xios: client fd=%d dropped\n", s_clients[i].fd);
+    close(s_clients[i].fd);
     s_clients[i] = s_clients[s_nclients - 1];
-    s_client_typed[i] = s_client_typed[s_nclients - 1];
     s_nclients--;
 }
 
-/* Non-blocking send of a whole fixed record (typed clients). Returns 1 = sent,
- * 0 = would-block (skip; DIRTY/CURSOR coalesce so a stale record is fine to
- * drop), -1 = error or PARTIAL write (a partial write desyncs a typed stream, so
+/* Non-blocking send of a whole fixed record. Returns 1 = sent, 0 = would-block
+ * (skip; DIRTY/CURSOR coalesce so a stale record is fine to drop), -1 = error or
+ * PARTIAL write (a partial write desyncs the typed stream, so
  * the caller drops the client — matches the never-stall/drop-on-error posture). */
 static int send_record(int fd, const void *buf, size_t len)
 {
@@ -481,25 +579,38 @@ static int send_record(int fd, const void *buf, size_t len)
 
 void xios_notify_dirty(void)
 {
-    const unsigned char b = XIOS_DIRTY;
-    xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY, 0, 0, 0, 0, 0, 0 };  /* whole-surface */
+    uint64_t seq;
 
     pthread_mutex_lock(&s_lock);
+    seq = ++s_dirty_seq;
+    xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY, 0, 0,
+                     (int32_t)(uint32_t)(seq & 0xffffffffu),
+                     (int32_t)(uint32_t)(seq >> 32), 0, 0 };
     int i = 0;
     while (i < s_nclients) {
-        int ok;
-        if (s_client_typed[i]) {
-            ok = send_record(s_clients[i], &rec, sizeof(rec));
-        } else {
-            ssize_t r = write(s_clients[i], &b, 1);
-            /* classic 1-byte DIRTY: delivered, or behind (coalesces) => keep */
-            ok = (r == 1) ? 1 : (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) ? 0
-               : (r < 0 && errno == EINTR) ? 0 : -1;
-        }
+        int ok = send_record(s_clients[i].fd, &rec, sizeof(rec));
         if (ok >= 0) { i++; continue; }
         drop_client_locked(i);
     }
     pthread_mutex_unlock(&s_lock);
+}
+
+uint64_t xios_dirty_generation(void)
+{
+    uint64_t seq;
+    pthread_mutex_lock(&s_lock);
+    seq = s_dirty_seq;
+    pthread_mutex_unlock(&s_lock);
+    return seq;
+}
+
+uint64_t xios_presented_generation(void)
+{
+    uint64_t seq;
+    pthread_mutex_lock(&s_lock);
+    seq = s_presented_seq;
+    pthread_mutex_unlock(&s_lock);
+    return seq;
 }
 
 void xios_notify_cursor(int x, int y, int visible, int shape_id)
@@ -509,19 +620,17 @@ void xios_notify_cursor(int x, int y, int visible, int shape_id)
     pthread_mutex_lock(&s_lock);
     int i = 0;
     while (i < s_nclients) {
-        if (!s_client_typed[i]) { i++; continue; }   /* classic clients can't parse it */
-        if (send_record(s_clients[i], &rec, sizeof(rec)) >= 0) { i++; continue; }
+        if (send_record(s_clients[i].fd, &rec, sizeof(rec)) >= 0) { i++; continue; }
         drop_client_locked(i);
     }
     pthread_mutex_unlock(&s_lock);
 }
 
-int xios_have_typed_client(void)
+int xios_have_app_client(void)
 {
-    int any = 0;
+    int any;
     pthread_mutex_lock(&s_lock);
-    for (int i = 0; i < s_nclients; i++)
-        if (s_client_typed[i]) { any = 1; break; }
+    any = s_nclients > 0;
     pthread_mutex_unlock(&s_lock);
     return any;
 }
@@ -662,7 +771,7 @@ void xios_server_stop(void)
 {
     pthread_mutex_lock(&s_lock);
     for (int i = 0; i < s_nclients; i++)
-        close(s_clients[i]);
+        close(s_clients[i].fd);
     s_nclients = 0;
     pthread_mutex_unlock(&s_lock);
 

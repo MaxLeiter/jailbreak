@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Start the X server that backs the native Xios app. Runs ON THE DEVICE:
+# Start an Xvfb debug/headless X server. Runs ON THE DEVICE:
 #   ssh root@ipad 'bash -s' < x11-server.sh        (or scp + run)
 #
-# Xvfb renders to a framebuffer FILE (-fbdir) that the Xios app mmaps + displays;
-# xios.json hands the app the geometry. Input (touch/keyboard) comes later via XTEST.
+# This does not feed the public Xios app display path. Use xios-server.sh for the
+# IOSurface server that the app presents. This script is for bring-up/debug clients
+# that connect directly to Xvfb over the local X socket.
 set -u
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export HOME=/var/root
@@ -13,7 +14,7 @@ command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dir
 
 FBDIR=/var/jb/tmp
 DISP="${DISP:-:3}"
-# iPad 7 native: 2160x1620 (4:3, same aspect as the screen) -> app displays 1:1, crisp.
+# iPad 7 native: 2160x1620 (4:3, same aspect as the screen).
 W="${W:-2160}"; H="${H:-1620}"; DPI="${DPI:-264}"
 apply_app_display_request() {
   REQ="$FBDIR/xios-request.json"
@@ -53,8 +54,8 @@ nohup Xvfb "$DISP" -screen 0 "${W}x${H}x24" -fbdir "$FBDIR" -dpi "$DPI" -ac -nol
 sleep 3
 if ! alive "Xvfb $DISP"; then echo "!! Xvfb failed:"; tail -8 "$FBDIR/xvfb.log"; exit 1; fi
 
-# hand the app its geometry + the display it should drive (XTEST input)
-printf '{"width":%d,"height":%d,"display":"%s"}\n' "$W" "$H" "$DISP" > "$FBDIR/xios.json"
+# Debug sidecar for tools that want to know the display geometry.
+printf '{"width":%d,"height":%d,"display":"%s","ddx":"xvfb-debug"}\n' "$W" "$H" "$DISP" > "$FBDIR/xios.json"
 
 echo "==> launching a window manager + clients on $DISP"
 export DISPLAY="$DISP" XAUTHORITY=/var/root/.Xauthority
@@ -70,5 +71,5 @@ fi
 nohup xeyes -geometry 360x360+1700+80 >/dev/null 2>&1 & echo $! >> "$PIDFILE"
 nohup xclock -geometry 320x320+1740+1220 -update 1 >/dev/null 2>&1 & echo $! >> "$PIDFILE"
 
-echo "==> X server up on $DISP. Open the X11 app on the iPad to see it."
+echo "==> Xvfb debug server up on $DISP. Connect X11 clients directly to this display."
 echo "    framebuffer: $FBDIR/Xvfb_screen0   geometry: $FBDIR/xios.json"

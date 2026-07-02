@@ -7,8 +7,7 @@ endif
 # History: first built -Ddaemon=false for gnome-shell's vendored gvc (which
 # hard-requires libpulse + libpulse-mainloop-glib >= 12.99.3; Procursus has no
 # PulseAudio). Now the daemon is on: gvc is a full native-protocol client
-# (context/introspect/subscribe), so a real PA server must answer it — the old
-# pa_simple shim can't and was never meant to. The server's hardware output is
+# (context/introspect/subscribe), so a real PA server must answer it. The server's hardware output is
 # module-xios-sink (injected by recipes/pulseaudio-ios-fixes.sh), which
 # forwards the mixed stream to xios-audiod's Unix socket; xios-audiod (the
 # audio track's fakesigned CoreAudio RemoteIO daemon, package xios-audio-server)
@@ -16,13 +15,9 @@ endif
 #   gvc / GTK apps -> libpulse -> pulseaudio -> module-xios-sink
 #     -> /var/jb/tmp/xios-audio.sock -> xios-audiod -> RemoteIO -> speakers
 #
-# NOTE: the audio track's libpulse-simple-xios0 SHIM overlaps our real
-# libpulse-simple. DECIDED (team lead): the real PA 17 lib SUPERSEDES the shim.
-# Encoded in build_info: libpulse0 Provides libpulse-simple0 + Conflicts/
-# Replaces libpulse-simple-xios0 (and libpulse-dev the -dev equivalents), so
-# apt evicts the shim on install. PA builds on macOS (Homebrew) with the
-# daemon, so the Darwin server path is exercised upstream; the only iOS delta
-# is the module set (no CoreAudio HAL — see pulseaudio-ios-fixes.sh).
+# PA builds on macOS (Homebrew) with the daemon, so the Darwin server path is
+# exercised upstream; the only iOS delta is the module set (no CoreAudio HAL —
+# see pulseaudio-ios-fixes.sh).
 #
 # Packaging split (Debian-shaped):
 #   libpulse0         client dylibs + private libpulsecommon (UNCHANGED content)

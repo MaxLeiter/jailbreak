@@ -3,11 +3,10 @@
 # applied (highest priority). glib-compile-schemas (run in the postinst)
 # compiles these into the default gsettings DB.
 #
-# Stock gsettings-desktop-schemas already defaults monospace-font-name to
-# 'Source Code Pro 10', but assumes the font is installed; we now ship it
-# (see the bundled Source Code Pro TTFs) and pin the value explicitly so the
-# desktop does not drift with upstream schema changes.
+# x11-fonts-sf exposes Apple's live system fonts and maps the generic
+# monospace family to .SF UI Mono. Pin the GNOME interface setting to the same
+# native family so GTK/VTE clients agree with fontconfig.
 
 [org.gnome.desktop.interface]
-monospace-font-name='Source Code Pro 11'
+monospace-font-name='.SF UI Mono 11'
 color-scheme='prefer-dark'

@@ -21,9 +21,9 @@ a container, keep the Mac clean, and get reproducible artifacts.
 | `tigervnc-standalone-server_*_iphoneos-arm64.deb` | Corrected **Xvnc** — installs with plain `dpkg -i` (no `--force`), keyboard/XKB init works |
 | `tigervnc-common_*.deb` | Xvnc companion (`vncconfig`, `vncpasswd`, config) |
 | `tigervnc-scraping-server`, `tigervnc-xorg-extension` debs | Built alongside; not needed on-device |
-| `Xvfb` | Signed virtual-framebuffer X server (Stage 1 display path: `-fbdir` file the app mmaps) |
+| `Xvfb` | Signed virtual-framebuffer X server for bring-up/debug; the app display path is IOSurface |
 | `Xios` | The **same** binary carrying the IOSurface DDX, signed with a minimal IOKit/`task_for_pid` entitlement set (`-iosurface` activates the zero-copy backend) |
-| `xios-audio-server`, `libpulse-simple-xios0`, `libpulse-simple-xios-dev` | CoreAudio/RemoteIO audio daemon, smoke-test client, and a `libpulse-simple` playback shim |
+| `xios-audio-server` | CoreAudio/RemoteIO audio daemon plus `xios-audio-play` smoke-test client |
 | `libfribidi*`, `libpango*`, `gtk*`, … debs | The GTK3 desktop stack (from `build-gtk.sh`) |
 
 The `+rootless1`-revision debs are the rootless variants to publish.
@@ -54,9 +54,9 @@ What `run.sh` (Mac side) does:
    DER-encoded entitlements, which iOS 15+/16 AMFI requires to honor
    `iokit-user-client-class` (without DER, `IOSurfaceCreate()` returns NULL even though
    `ldid -e` reads the XML fine).
-5. Builds the Xios audio packages from `audio/`: `xios-audiod` mixes local PCM clients into
-   iOS RemoteIO output, `xios-audio-play` is the on-device smoke test, and
-   `libpulse-simple-xios0` makes simple PulseAudio clients write into the Xios audio socket.
+5. Builds the Xios audio package from `audio/`: `xios-audiod` mixes local PCM clients into
+   iOS RemoteIO output, and `xios-audio-play` is the on-device smoke test. Real PulseAudio
+   clients use the PulseAudio package and its native socket.
 
 The tigervnc/Xvnc build is what `run.sh` drives by default. The GTK3 stack is a separate
 container invocation (see below).

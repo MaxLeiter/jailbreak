@@ -96,13 +96,18 @@ per-session under XDG_RUNTIME_DIR; revisit only if a port hardcodes it).
 - **Battery via synthetic sysfs + real upowerd** — rejected for now: needs a Docker rebuild
   of upower with a new backend AND the daemon carries history/statistics machinery nothing
   uses; the D-Bus surface the clients need is small and stable.
-- **Chosen: one daemon, two faces.** `xios-hwbridged` (GLib/GDBus, same build pattern as the
-  session stubs in `wayland/build-session-stubs.sh`):
+- **Chosen: small daemons, Linux-shaped faces.** `xios-hwbridged` (GLib/GDBus, same
+  build pattern as the session stubs in `wayland/build-session-stubs.sh`):
   - claims **`org.freedesktop.UPower`** on the session bus (the session runs with
     `DBUS_SYSTEM_BUS_ADDRESS` pointed at the session bus, so system-bus clients land there —
     same trick as login1/polkit/accounts stubs);
   - maintains the **synthetic sysfs** under `/var/jb/sys` (`XIOS_SYS` env override) for
     file-based consumers, and watches the backlight `brightness` file for writes.
+
+  `xios-sensord` is the sibling for low-rate CoreMotion data. It owns
+  `net.hadess.SensorProxy` on the bus and mirrors accelerometer/gyroscope/magnetometer
+  readings into `$XIOS_SYS/bus/iio/devices/iio:device0`. Camera, microphone and location
+  stay out of this package's first wave: they need streaming or TCC-specific bridges.
 
 ### Battery: UPower D-Bus shim backed by IOKit
 
@@ -192,15 +197,19 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
 `x11/packages/xios-fhs/` (layout-style package like xios-desktop-defaults, plus a compiled
 daemon dropped in by the build script):
 
-- `DEBIAN/control` — Package: xios-fhs; Depends: libglib2.0-0. Provides: xios-hwbridge.
+- `DEBIAN/control` — Package: xios-fhs; Depends: libglib2.0-0. Provides: xios-hwbridge, xios-sensor-bridge.
 - `DEBIAN/postinst` — creates `/var/jb/sys/class/{backlight/xios_backlight,power_supply/{BAT0,AC0}}`
-  (mobile-writable), seeds `max_brightness`/`type`, writes `/var/jb/etc/os-release` if absent.
-- `var/jb/usr/libexec/xios-hwbridged` — the daemon (built by `build-hwbridge.sh` in the
+  and `/var/jb/sys/bus/iio/devices/{iio:device0,trigger0}` (mobile-writable), seeds
+  `max_brightness`/`type` and sensor identity/scale files, writes `/var/jb/etc/os-release`
+  if absent.
+- `var/jb/usr/libexec/xios-hwbridged` — the power/brightness daemon (built by `build-hwbridge.sh` in the
   Procursus cross image, session-stubs pattern; ldid with entitlements).
+- `var/jb/usr/libexec/xios-sensord` — the CoreMotion/SensorProxy/IIO daemon (same build script,
+  signed with `sensor-entitlements.plist`).
 - Launch: session component next to the login1/polkit/accounts stubs (the xios.session
   wrapper the gnome-session layer owns starts it on the session bus). NOT a LaunchDaemon —
   it needs the session bus, and brightness/battery only matter while a desktop runs.
-- Source: `packages/xios-fhs/src/xios-hwbridged.c`.
+- Source: `packages/xios-fhs/src/xios-hwbridged.c`, `packages/xios-fhs/src/xios-sensord.m`.
 
 Sysfs battery files (informational mirror for file-based tools; the D-Bus shim is the
 authoritative path and reads IOKit directly): `BAT0/{type,present,status,capacity,model_name,
@@ -210,6 +219,8 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
 
 - [x] Survey + mechanism decision (this doc)
 - [x] Package skeleton: control/postinst, daemon source, build script
+- [x] Sensor bridge added: `xios-sensord` serves `net.hadess.SensorProxy` and synthetic IIO
+      accel/gyro/magnetometer nodes from CoreMotion
 - [ ] Build daemon in Procursus image, pack deb
 - [ ] Device validation: BKS brightness write, IOPS values, shell indicator + slider
 - [x] Darwin gsd-backlight backend patch (patches/gnome-settings-daemon/0001-...) — DORMANT:

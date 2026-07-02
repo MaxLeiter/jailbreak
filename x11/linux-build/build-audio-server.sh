@@ -47,9 +47,10 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # in the recipe would skip the daemon reconfigure. Wipe only in that case, so
 # packaging-only reruns stay fast.
 PW=build_work/iphoneos-arm64-rootless/1900/pulseaudio
+PS=build_stage/iphoneos-arm64-rootless/1900/pulseaudio
 if [ -d "$PW" ] && [ ! -f "$PW/build/src/daemon/pulseaudio" ]; then
   echo "==> wiping the client-only pulseaudio build tree"
-  rm -rf "$PW" build_stage/pulseaudio
+  rm -rf "$PW" "$PS"
 fi
 
 # libltdl7 (the daemon's module loader) must ship as a deb, not just get

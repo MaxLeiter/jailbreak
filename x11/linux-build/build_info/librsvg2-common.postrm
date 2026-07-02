@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+dir=@MEMO_PREFIX@@MEMO_SUB_PREFIX@/lib/gdk-pixbuf-2.0/2.10.0
+if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
+    if ls "$dir"/loaders/* >/dev/null 2>&1; then
+        gdk-pixbuf-query-loaders "$dir"/loaders/* > "$dir/loaders.cache" 2>/dev/null || true
+    else
+        rm -f "$dir/loaders.cache"
+    fi
+fi
+exit 0

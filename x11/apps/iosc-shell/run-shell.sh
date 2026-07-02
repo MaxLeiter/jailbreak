@@ -76,12 +76,11 @@ start() {  # start <name> (skips if already running)
 }
 start ioscbg
 sleep 0.3          # let the wallpaper map first (clean first frame)
-if [ -x "$BIN/ioscbar" ] && [ -x "$BIN/ioscdock" ]; then
-    start ioscbar
-    start ioscdock
-else
-    log "split shell clients missing; falling back to legacy ioscpanel"
-    start ioscpanel
+if [ ! -x "$BIN/ioscbar" ] || [ ! -x "$BIN/ioscdock" ]; then
+    log "ERROR: split shell clients missing (need both ioscbar and ioscdock)"
+    exit 1
 fi
+start ioscbar
+start ioscdock
 
 log "shell up. Dock apps button opens overview; status cluster opens Control Center."

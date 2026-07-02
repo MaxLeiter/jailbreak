@@ -4,7 +4,7 @@
 The shell that runs on the iosc compositor: the slim status bar, floating dock, Control Center, wallpaper, and overview/app-grid. Plus the tablet-DE redesign vision. NOT the compositor itself (that's iosc-compositor.md) and NOT the app scaling (that's xios-app.md).
 
 ## Key files
-- `x11/apps/iosc-shell/ioscpanel.c` — shared layer-shell client: runs as `ioscbar` (status + Control Center trigger), `ioscdock` (favorites/running apps/apps button), or legacy `ioscpanel` based on `argv[0]`. Scale-invariant since 0.9.5 (draws at a 1440 reference, scales by `ui = logical_width/1440`).
+- `x11/apps/iosc-shell/iosc-shell.c` — shared layer-shell implementation: must run as `ioscbar` (status + Control Center trigger) or `ioscdock` (favorites/running apps/apps button). Scale-invariant since 0.9.5 (draws at a 1440 reference, scales by `ui = logical_width/1440`).
 - `x11/apps/iosc-shell/ioscbg.c` — wallpaper (layer-shell background).
 - `x11/apps/iosc-shell/ioscoverview.c` — the overview: search + Open Windows + Applications grid.
 - `x11/apps/iosc-shell/panel-layout.h`, `panel-render.h`, `preview-*.c` (off-device mockup renderer).
@@ -13,15 +13,14 @@ The shell that runs on the iosc compositor: the slim status bar, floating dock, 
 - Build: `build-panel.sh`, `build-preview.sh`. Env: `IOSC_SHELL_DEBUG=1` (input trace), `IOSC_PANEL_SCALE=2`, `IOSC_PANEL_OPACITY` (0-100, default 85).
 
 ## Current state
-- **0.9.6 deployed** (repo/debs + linux-build/out, minos 16.2): scale-invariant panel, full input-event trace to `/var/jb/tmp/ioscpanel.log`, a safety clamp on the launcher strip, version banner ("ioscpanel 0.9.6: ...").
+- **0.9.6 deployed** (repo/debs + linux-build/out, minos 16.2): scale-invariant panel, full input-event trace to `/var/jb/tmp/iosc-shell.log`, a safety clamp on the launcher strip.
 - Panel input path PROVEN correct on-device: `pt_enter`/`pt_button`/`hit_at` all fire and resolve to the right control (injected-tap test). iosc delivers pointer+touch to layer surfaces (role-agnostic pick, confirmed by iosc-compositor).
 - The "search bar / window-pill cut off at the right" was measured OFF-DEVICE at exactly logical 1600 → the shell does NOT overflow (search pill centered at x=460..1140, all rects ≤1600). It was the APP's stale-scale bug (xios-app.md), NOT shell layout. No shell change needed for that.
 - **Tablet-DE vision written + mocked** (docs §0, vision-home.png + vision-control.png) and now used as the basis for the 0.9.7 split-surface first pass.
-- **0.9.7 split-surface first pass built locally**: `ioscpanel.c` now runs as three roles based on `argv[0]`:
+- **0.9.7 split-surface first pass built locally**: `iosc-shell.c` now runs as two roles based on `argv[0]`:
   - `ioscbar`: slim top status bar (focused app, centered clock, wifi/battery) + Control Center trigger.
   - `ioscdock`: bottom-anchored floating dock (favorites, running-window icons/dots, apps button).
-  - `ioscpanel`: legacy combined top panel fallback.
-  `build-panel.sh` cross-builds/signs `out/ioscbar`, `out/ioscdock`, `out/ioscpanel`, `out/ioscoverview`, `out/ioscbg`; `run-shell.sh` starts bar+dock when present and falls back to `ioscpanel`.
+  `build-panel.sh` cross-builds/signs `out/ioscbar`, `out/ioscdock`, `out/ioscoverview`, `out/ioscbg`; `run-shell.sh` requires bar+dock.
 - Off-device previews regenerated from the real layout (`build-preview.sh`): `preview-desktop.png`, `preview-quicksettings.png`, `preview-compact.png` now show the split status bar + dock composition. Real iOS cross-build passed on 2026-07-01.
 
 ## The tablet-DE vision (docs/iosc-shell.md §0) — a mobile×desktop hybrid, not a shrunk GNOME
@@ -33,7 +32,7 @@ Four surfaces, each one job:
 Plus a window model (fullscreen→split→float, Stage-Manager style) and a gesture grammar (swipe up=home, down=control) with pointer/keyboard equivalents (touch-first, never touch-only).
 
 ## Open items
-1. **On-device validate 0.9.7 split shell**: deploy `ioscbar`, `ioscdock`, `ioscpanel`, `ioscoverview`, `ioscbg`; start via `run-shell.sh`; confirm:
+1. **On-device validate 0.9.7 split shell**: deploy `ioscbar`, `ioscdock`, `ioscoverview`, `ioscbg`; start via `run-shell.sh`; confirm:
    - `ioscbar` maps at top, opens Control Center from the status cluster.
    - `ioscdock` maps at bottom, apps button opens overview.
    - running-window icons activate via foreign-toplevel.
@@ -44,7 +43,7 @@ Plus a window model (fullscreen→split→float, Stage-Manager style) and a gest
 
 ## Deploy (shell-only, cheap — no compositor rebuild)
 ```
-scp -O x11/apps/iosc-shell/out/ioscbar x11/apps/iosc-shell/out/ioscdock x11/apps/iosc-shell/out/ioscpanel x11/apps/iosc-shell/out/ioscoverview x11/apps/iosc-shell/out/ioscbg root@ipad:/var/jb/usr/local/bin/
+scp -O x11/apps/iosc-shell/out/ioscbar x11/apps/iosc-shell/out/ioscdock x11/apps/iosc-shell/out/ioscoverview x11/apps/iosc-shell/out/ioscbg root@ipad:/var/jb/usr/local/bin/
 ssh: pkill by PID (pkill-by-name can miss), then relaunch via run-shell.sh or directly with IOSC_SHELL_DEBUG=1 IOSC_PANEL_SCALE=2.
 ```
 Depends on iosc ≥ 0.9.1 for layer-surface translucency (see iosc-compositor.md).

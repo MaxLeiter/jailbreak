@@ -1,7 +1,7 @@
 #!/bin/sh
 # Compile the gsettings override so the desktop adopts the icon/cursor theme and
-# wallpaper. The Adwaita icon cache is rebuilt by the adwaita-icon-theme package
-# (this package's only Depends), so we don't touch it here. Idempotent.
+# wallpaper. Icon cache and SVG loader caches are rebuilt by adwaita-icon-theme
+# and librsvg2-common, so we don't touch them here. Idempotent.
 set -e
 case "$1" in
   configure|install|"")

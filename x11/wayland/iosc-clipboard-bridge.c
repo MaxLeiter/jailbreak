@@ -226,6 +226,9 @@ static int rx_dispatch(struct clip_client *c)
     const xios_msg *m = &c->rx_msg;
     uint32_t kind = (uint32_t)m->a;
     uint32_t gen = (uint32_t)m->b;
+    /* Future kind: skip WITHOUT consuming the generation change, so the set's
+     * first processable record still arrives with first=1 below. */
+    if (kind > CLIP_MAX_KIND) return 0;
     int first = (gen != c->last_rx_gen);
     c->last_rx_gen = gen;
 
@@ -236,7 +239,6 @@ static int rx_dispatch(struct clip_client *c)
         if (g_recv_cb) g_recv_cb(XIOS_CLIP_KIND_NONE, "", 0, 1, g_recv_ud);
         return 0;
     }
-    if (kind > CLIP_MAX_KIND) return 0;      /* future kind: skip, stay in sync */
 
     /* Mirror into the bridge store (snapshot source for later connects) and
      * relay to any other connected host, renumbered to our own generation. */
@@ -300,6 +302,10 @@ static int listen_dispatch(int fd, uint32_t mask, void *data)
     int cfd = accept(fd, NULL, NULL);
     if (cfd < 0) return 0;
     fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
+    /* tx_flush() writes to this fd; Darwin has no MSG_NOSIGNAL, so a dead host
+     * must surface as EPIPE (client_drop) rather than a fatal SIGPIPE. */
+    int on = 1;
+    setsockopt(cfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
 
     int slot = -1;
     for (int i = 0; i < CLIP_MAX_CLIENTS; i++)

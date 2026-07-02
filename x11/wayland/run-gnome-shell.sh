@@ -31,6 +31,7 @@ ANGLE=/var/jb/lib/angle
 PLUGINS=/var/jb/usr/lib/mutter-14/plugins
 LIBEXEC=/var/jb/usr/libexec
 SHELL_BIN=/var/jb/usr/bin/gnome-shell
+SHELL_LIB=/var/jb/usr/lib/gnome-shell
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 
 [ -x "$SHELL_BIN" ] || { echo "!! $SHELL_BIN missing — install the gnome-shell deb"; exit 1; }
@@ -68,14 +69,14 @@ ldid -S"$ENT" "$SHELL_BIN" && echo "   signed: $SHELL_BIN"
 ldid -e "$SHELL_BIN" 2>/dev/null | grep -q AGXDeviceUserClient || { echo "!! entitlements did not stick — abort"; exit 1; }
 
 # --- (1) stop the mutter smoke / iosc / Xios app (gnome-shell replaces the compositor) ---------
-echo "==> stop the running compositor (mutter smoke or iosc) + the Xios app + any panel/clients"
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscpanel|ioscoverview|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session" \
+echo "==> stop the running compositor (mutter smoke or iosc) + the Xios app + any shell/clients"
+ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session" \
   | awk '{print $1}' | while read -r pid; do
       [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
   done
 sleep 1
 rm -f "$WSOCK" "$WSOCK.lock" "$TMP/mutter-ddx.sock" "$TMP/xios.json" \
-      "$TMP/xios-input.sock" "$TMP/gnome-shell.log" 2>/dev/null
+      "$TMP/mutter-input.sock" "$TMP/xios-input.sock" "$TMP/gnome-shell.log" 2>/dev/null
 
 # --- (2) the so-name symlinks cogl's GLES driver + the mutter plugin loader need ---------------
 echo "==> ANGLE + mutter-plugin so-name symlinks"
@@ -95,7 +96,7 @@ echo "==> ensure GSettings schemas compiled"
 echo "==> start the session stubs + gnome-shell --wayland -> $TMP/gnome-shell.log"
 nohup env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" HOME="$HOME" \
-  DYLD_LIBRARY_PATH="/var/jb/usr/lib:/var/jb/usr/lib/mutter-14:$ANGLE" \
+  DYLD_LIBRARY_PATH="/var/jb/usr/lib:$SHELL_LIB:/var/jb/usr/lib/mutter-14:$ANGLE" \
   XDG_DATA_DIRS=/var/jb/usr/share \
   GSETTINGS_SCHEMA_DIR=/var/jb/usr/share/glib-2.0/schemas \
   XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_CLASS=user \
@@ -107,6 +108,7 @@ nohup env \
     [ -x '"$LIBEXEC"'/xios-polkit-stub ]  && '"$LIBEXEC"'/xios-polkit-stub &
     [ -x '"$LIBEXEC"'/xios-accounts-stub ] && '"$LIBEXEC"'/xios-accounts-stub &
     [ -x '"$LIBEXEC"'/xios-hwbridged ]    && '"$LIBEXEC"'/xios-hwbridged &
+    [ -x '"$LIBEXEC"'/xios-sensord ]      && '"$LIBEXEC"'/xios-sensord &
     export PULSE_SERVER="${PULSE_SERVER:-unix:/var/jb/tmp/pulse/native}"
     [ -x '"$LIBEXEC"'/xios-sysintd ]      && '"$LIBEXEC"'/xios-sysintd &
     sleep 1

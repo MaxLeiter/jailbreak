@@ -3,14 +3,10 @@
 #
 #   bash x11/apps/iosc-desktop/package-session.sh
 #
-# Ships the "pick a preset -> it launches" flow:
-#   /var/jb/usr/local/bin/xios-session                 the on-device CLI (in PATH)
-#   /var/jb/libexec/xios-session/xios-session-lib.sh   shared teardown + presets
-#   /var/jb/libexec/xios-session/xios-sessiond         request-file watcher daemon
-#   /var/jb/libexec/xios-session/run-shell.sh          iosc bring-up   (reused copy)
-#   /var/jb/libexec/xios-session/run-mutter.sh         mutter bring-up (reused copy)
-#   /var/jb/libexec/xios-session/run-gnome-shell.sh    gnome bring-up  (reused copy)
-#   /var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist
+# Ships the "pick a preset -> it launches" flow. The file list (CLI, lib,
+# daemon, reused run-*.sh bring-up copies, LaunchDaemon plist) lives in ONE
+# place — session-files.sh — shared with install-xios-session.sh, so the deb
+# and the scp fast path cannot diverge.
 #
 # Pure shell — nothing to compile or sign. Output: xios-session_<ver>_iphoneos-arm64.deb
 # in x11/linux-build/out and repo/debs.
@@ -18,49 +14,24 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
-WAYLAND="$REPO_ROOT/x11/wayland"
-SHELLDIR="$REPO_ROOT/x11/apps/iosc-shell"
 OUTDIR="$REPO_ROOT/x11/linux-build/out"
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT=/private/tmp/xios-session-deb
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.2"
+VER="1.0.4"
 ARCH="iphoneos-arm64"
 DEB="xios-session_${VER}_${ARCH}.deb"
 IMG="procursus-xbuild:bookworm-arm64"
 
-BIN="$STAGE/var/jb/usr/local/bin"
-LIBEXEC="$STAGE/var/jb/libexec/xios-session"
-LD="$STAGE/var/jb/Library/LaunchDaemons"
-
+# 1. stage the ship manifest (single source of truth: session-files.sh)
+. "$HERE/session-files.sh"
 rm -rf "$STAGEROOT"
-mkdir -p "$BIN" "$LIBEXEC" "$LD" "$STAGE/DEBIAN"
-
-# 1. CLI (in PATH)
-cp "$HERE/xios-session" "$BIN/xios-session"
-chmod 0755 "$BIN/xios-session"
-
-# 2. library + daemon
-cp "$HERE/xios-session-lib.sh" "$LIBEXEC/xios-session-lib.sh"
-cp "$HERE/xios-sessiond"       "$LIBEXEC/xios-sessiond"
-chmod 0644 "$LIBEXEC/xios-session-lib.sh"
-chmod 0755 "$LIBEXEC/xios-sessiond"
-
-# 3. reused bring-up scripts (call the REAL run-*.sh — see xios-session-lib.sh).
-#    Copies live in our libexec so the presets resolve even if iosc-shell / the
-#    dev tree aren't the ones that installed them.
-cp "$SHELLDIR/run-shell.sh"        "$LIBEXEC/run-shell.sh"
-cp "$WAYLAND/run-mutter.sh"        "$LIBEXEC/run-mutter.sh"
-cp "$WAYLAND/run-gnome-shell.sh"   "$LIBEXEC/run-gnome-shell.sh"
-chmod 0755 "$LIBEXEC/run-shell.sh" "$LIBEXEC/run-mutter.sh" "$LIBEXEC/run-gnome-shell.sh"
-
-# 4. LaunchDaemon
-cp "$HERE/com.max.xios-sessiond.plist" "$LD/com.max.xios-sessiond.plist"
-chmod 0644 "$LD/com.max.xios-sessiond.plist"
+mkdir -p "$STAGE/DEBIAN"
+stage_session_files "$STAGE/var/jb"
 
 INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
 
-# 5. control
+# 2. control
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: xios-session
 Name: Xios session launcher
@@ -86,22 +57,19 @@ Description: pick-a-desktop session launcher for the Xios stack
  logic behind a clean name, with one bulletproof teardown so switching sessions
  never leaves a stale compositor or socket behind.
  .
- It also installs xios-sessiond, a small root daemon that watches the same
- request file the Xios app already writes (/var/jb/tmp/xios-request.json) for a
- {"action":"session","preset":...} pick, so an in-app session picker can bring up
- a flavor with no terminal. This is the first concrete step of the "install one
- xios meta-package, then pick your flavor" distribution.
+ It also installs xios-sessiond as a compatibility watcher for the request file
+ (/var/jb/tmp/xios-request.json). Newer Xios app builds prefer the existing
+ ioscd control socket for session picks and fall back to that file while package
+ versions may be out of sync.
 EOF
 
-# 6. postinst — (re)bootstrap the watcher daemon
+# 3. postinst — (re)bootstrap the watcher daemon. No chmod/chown here: modes
+#    come from the staged tree (session-files.sh) and ownership from the
+#    container's chown -R 0:0; dpkg preserves both.
 cat > "$STAGE/DEBIAN/postinst" <<'EOF'
 #!/bin/bash
 set -e
 PLIST=/var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist
-chown root:wheel "$PLIST" 2>/dev/null || true
-chmod 0644 "$PLIST" 2>/dev/null || true
-chmod 0755 /var/jb/usr/local/bin/xios-session /var/jb/libexec/xios-session/xios-sessiond \
-           /var/jb/libexec/xios-session/run-*.sh 2>/dev/null || true
 if command -v launchctl >/dev/null 2>&1; then
     launchctl bootout system "$PLIST" 2>/dev/null || true
     launchctl bootstrap system "$PLIST" 2>/dev/null || true
@@ -110,7 +78,7 @@ exit 0
 EOF
 chmod 0755 "$STAGE/DEBIAN/postinst"
 
-# 7. prerm — stop the daemon before removal
+# 4. prerm — stop the daemon before removal
 cat > "$STAGE/DEBIAN/prerm" <<'EOF'
 #!/bin/bash
 set -e
@@ -126,7 +94,7 @@ echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
 echo "installed=${INSTKB}KB"
 
-# 8. assemble the deb via the container's dpkg-deb (root-owned, zstd like the rest)
+# 5. assemble the deb via the container's dpkg-deb (root-owned, zstd like the rest)
 docker run --rm --platform linux/arm64 -v "$STAGEROOT":/stage "$IMG" \
   -c "chown -R 0:0 /stage/xios-session && dpkg-deb -Zzstd --build /stage/xios-session /stage/${DEB}"
 

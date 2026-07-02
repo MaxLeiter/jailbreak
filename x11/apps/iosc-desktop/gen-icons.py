@@ -21,10 +21,8 @@ from PIL import Image, ImageDraw, ImageFont
 # iOS icon outputs: (filename, pixel size). Base names match CFBundleIconFiles.
 OUTPUTS = [
     ("AppIcon60x60@2x.png", 120),
-    ("AppIcon76x76@2x.png", 152),
     ("AppIcon76x76@2x~ipad.png", 152),
     ("AppIcon83.5x83.5@2x~ipad.png", 167),
-    ("AppIcon-1024.png", 1024),
 ]
 
 # freedesktop raster sizes, largest first (we want the crispest source).

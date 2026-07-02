@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #include "xios-session-identity.h"
+#include "xios-stub-dbus.h"
 
 #define LOGIN1_NAME        "org.freedesktop.login1"
 #define MANAGER_PATH       "/org/freedesktop/login1"
@@ -37,7 +38,7 @@
 /* The real logged-in user, resolved once at startup from xios_identity(). logind forms a
  * user object path as a literal "_<uid>" (a uid needs no D-Bus path escaping). */
 static guint32     user_uid;
-static const char *user_name = "mobile";
+static const char *user_name;
 static char        user_path[64];   /* /org/freedesktop/login1/user/_<uid> */
 
 /* Only the members gnome-session / gsd / Mutter actually call. Clients invoke a subset;
@@ -266,6 +267,27 @@ manager_method_call (GDBusConnection       *connection,
 
 /* ---- org.freedesktop.login1.Session ------------------------------------------------- */
 
+/* Broadcast org.freedesktop.DBus.Properties.PropertiesChanged for one Session property,
+ * so subscribers (gsd-power, gnome-shell) see IdleHint/LockedHint move without polling. */
+static void
+session_emit_properties_changed (GDBusConnection *connection,
+                                 const char      *property_name,
+                                 GVariant        *value)
+{
+  GVariantBuilder changed;
+
+  g_variant_builder_init (&changed, G_VARIANT_TYPE ("a{sv}"));
+  g_variant_builder_add (&changed, "{sv}", property_name, value);
+  g_dbus_connection_emit_signal (connection, NULL, SESSION_PATH,
+                                 "org.freedesktop.DBus.Properties",
+                                 "PropertiesChanged",
+                                 g_variant_new ("(sa{sv}@as)",
+                                                "org.freedesktop.login1.Session",
+                                                &changed,
+                                                g_variant_new_strv (NULL, 0)),
+                                 NULL);
+}
+
 static void
 session_method_call (GDBusConnection       *connection,
                      const gchar           *sender,
@@ -276,22 +298,40 @@ session_method_call (GDBusConnection       *connection,
                      GDBusMethodInvocation *invocation,
                      gpointer               user_data)
 {
-  if (g_str_equal (method_name, "SetIdleHint"))
-    g_variant_get (parameters, "(b)", &session_idle_hint);
-  else if (g_str_equal (method_name, "SetLockedHint"))
-    g_variant_get (parameters, "(b)", &session_locked_hint);
-
-  /* Activate / Lock / Unlock / Terminate / TakeControl / ReleaseControl / the two hints:
-   * all accepted as no-ops (there is no VT to switch, no device to lease). */
-  if (g_str_equal (method_name, "Activate") ||
-      g_str_equal (method_name, "Lock") ||
-      g_str_equal (method_name, "Unlock") ||
-      g_str_equal (method_name, "Terminate") ||
-      g_str_equal (method_name, "TakeControl") ||
-      g_str_equal (method_name, "ReleaseControl") ||
-      g_str_equal (method_name, "SetIdleHint") ||
+  if (g_str_equal (method_name, "SetIdleHint") ||
       g_str_equal (method_name, "SetLockedHint"))
     {
+      gboolean is_idle = g_str_equal (method_name, "SetIdleHint");
+      gboolean *state = is_idle ? &session_idle_hint : &session_locked_hint;
+      gboolean value;
+
+      g_variant_get (parameters, "(b)", &value);
+      if (value != *state)
+        {
+          *state = value;
+          session_emit_properties_changed (connection,
+                                           is_idle ? "IdleHint" : "LockedHint",
+                                           g_variant_new_boolean (value));
+        }
+      g_dbus_method_invocation_return_value (invocation, NULL);
+    }
+  else if (g_str_equal (method_name, "Lock") ||
+           g_str_equal (method_name, "Unlock"))
+    {
+      /* Real logind's Lock()/Unlock() do exactly one thing: broadcast the matching signal
+       * on the session object. gnome-shell's misc/loginManager.js listens on its Session
+       * proxy and drives the screen shield from these, so the emit IS the lock mechanism. */
+      g_dbus_connection_emit_signal (connection, NULL, SESSION_PATH,
+                                     "org.freedesktop.login1.Session",
+                                     method_name, NULL, NULL);
+      g_dbus_method_invocation_return_value (invocation, NULL);
+    }
+  else if (g_str_equal (method_name, "Activate") ||
+           g_str_equal (method_name, "Terminate") ||
+           g_str_equal (method_name, "TakeControl") ||
+           g_str_equal (method_name, "ReleaseControl"))
+    {
+      /* Accepted as no-ops (there is no VT to switch, no device to lease). */
       g_dbus_method_invocation_return_value (invocation, NULL);
     }
   else
@@ -485,76 +525,25 @@ static const GDBusInterfaceVTable user_vtable = {
   .get_property = user_get_property,
 };
 
-static gboolean
-register_object (GDBusConnection              *connection,
-                 const char                   *path,
-                 const char                   *xml,
-                 const GDBusInterfaceVTable   *vtable)
-{
-  GDBusNodeInfo *node;
-  GError *error = NULL;
-  guint id;
-
-  node = g_dbus_node_info_new_for_xml (xml, &error);
-  if (!node)
-    {
-      g_warning ("login1 stub: bad introspection XML: %s", error->message);
-      g_clear_error (&error);
-      return FALSE;
-    }
-
-  id = g_dbus_connection_register_object (connection, path, node->interfaces[0],
-                                          vtable, NULL, NULL, &error);
-  g_dbus_node_info_unref (node);
-
-  if (id == 0)
-    {
-      g_warning ("login1 stub: failed to register %s: %s", path, error->message);
-      g_clear_error (&error);
-      return FALSE;
-    }
-
-  return TRUE;
-}
-
 static void
 on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
 {
-  register_object (connection, MANAGER_PATH, manager_xml, &manager_vtable);
-  register_object (connection, SESSION_PATH, session_xml, &session_vtable);
-  register_object (connection, SEAT_PATH, seat_xml, &seat_vtable);
-  register_object (connection, user_path, user_xml, &user_vtable);
-}
-
-static void
-on_name_acquired (GDBusConnection *connection,
-                  const gchar     *name,
-                  gpointer         user_data)
-{
-  g_message ("login1 stub: owning %s", name);
-}
-
-static void
-on_name_lost (GDBusConnection *connection,
-              const gchar     *name,
-              gpointer         user_data)
-{
-  GMainLoop *loop = user_data;
-
-  g_warning ("login1 stub: lost %s (real logind present, or bus gone) — exiting", name);
-  g_main_loop_quit (loop);
+  xios_stub_register_object (connection, MANAGER_PATH, manager_xml, &manager_vtable,
+                             "login1 stub");
+  xios_stub_register_object (connection, SESSION_PATH, session_xml, &session_vtable,
+                             "login1 stub");
+  xios_stub_register_object (connection, SEAT_PATH, seat_xml, &seat_vtable,
+                             "login1 stub");
+  xios_stub_register_object (connection, user_path, user_xml, &user_vtable,
+                             "login1 stub");
 }
 
 int
 main (int argc, char **argv)
 {
-  GMainLoop *loop;
-  GBusType bus_type = G_BUS_TYPE_SYSTEM;
-  const char *which;
   const XiosIdentity *id;
-  guint owner_id;
 
   (void) argc;
   (void) argv;
@@ -566,22 +555,5 @@ main (int argc, char **argv)
   g_snprintf (user_path, sizeof user_path,
               "/org/freedesktop/login1/user/_%u", user_uid);
 
-  /* logind normally lives on the system bus; allow the session bus for a
-   * dbus-run-session bring-up where there is no system bus. */
-  which = g_getenv ("XIOS_LOGIN1_BUS");
-  if (which && g_str_equal (which, "session"))
-    bus_type = G_BUS_TYPE_SESSION;
-
-  loop = g_main_loop_new (NULL, FALSE);
-
-  owner_id = g_bus_own_name (bus_type, LOGIN1_NAME,
-                             G_BUS_NAME_OWNER_FLAGS_NONE,
-                             on_bus_acquired, on_name_acquired, on_name_lost,
-                             loop, NULL);
-
-  g_main_loop_run (loop);
-
-  g_bus_unown_name (owner_id);
-  g_main_loop_unref (loop);
-  return 0;
+  return xios_stub_run ("login1 stub", "XIOS_LOGIN1_BUS", LOGIN1_NAME, on_bus_acquired);
 }

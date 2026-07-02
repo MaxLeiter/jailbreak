@@ -2,7 +2,7 @@ Package: thunar
 Version: @DEB_THUNAR_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Section: Utilities
+Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://docs.xfce.org/xfce/thunar/start
 Depends: libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, libxfce4ui-2-0, libexo-2-0

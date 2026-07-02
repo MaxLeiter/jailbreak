@@ -173,6 +173,12 @@ meta_seat_ios_constructed (GObject *object)
   self->devices = g_list_append (self->devices, self->core_keyboard);
 
   self->keymap = g_object_new (META_TYPE_KEYMAP_IOS, NULL);
+
+  /* Mutter's Wayland pointer path keeps focus on the seat's core pointer.
+   * With no native input thread behind us, the iOS backend must make Clutter
+   * repick that core pointer for every motion/button event instead of relying
+   * on cached hardware state. */
+  clutter_seat_inhibit_unfocus (CLUTTER_SEAT (self));
 }
 
 static void

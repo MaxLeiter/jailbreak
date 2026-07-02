@@ -1,0 +1,10 @@
+Package: libdisplay-info-dev
+Version: @DEB_LIBDISPLAYINFO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libdisplay-info1 (= @DEB_LIBDISPLAYINFO_V@)
+Section: Development
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/emersion/libdisplay-info
+Description: EDID and DisplayID library (iOS shim, development files)
+ Minimal headers and pkg-config metadata for the iOS libdisplay-info shim.

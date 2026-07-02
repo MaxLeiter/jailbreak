@@ -127,16 +127,16 @@ this cleanly):
 
 | Surface | Client | Layer | Notes |
 |---|---|---|---|
-| Slim status bar | `ioscbar` (was ioscpanel's top half) | TOP, anchor top, exclusive | glanceable + CC handle |
+| Slim status bar | `ioscbar` | TOP, anchor top, exclusive | glanceable + CC handle |
 | Dock | `ioscdock` (NEW) | TOP, anchor bottom, exclusive-or-autohide | favorites + running + apps btn |
 | Control Center | spawned by the bar (as QS is today) | OVERLAY, anchor top-right | toggle grid + sliders |
 | Overview / Home | `ioscoverview` (exists; reframe) | OVERLAY, fullscreen | search + cards + grid |
 | Wallpaper | `ioscbg` (exists) | BACKGROUND | unchanged |
 
-Migration is incremental and low-risk: split today's `ioscpanel` into `ioscbar`
-(status only) + `ioscdock` (launchers + running apps), reframe the QS card as
-Control Center, keep `ioscbg`/`ioscoverview`. The scale-invariance work (ui =
-logical_w / reference) applies unchanged to every surface.
+Implementation is split-shell: `ioscbar` owns status + Control Center,
+`ioscdock` owns launchers + running apps, and `ioscbg`/`ioscoverview` keep their
+single-purpose surfaces. The scale-invariance work (ui = logical_w / reference)
+applies unchanged to every surface.
 
 **Sequencing:** design + mockups (this section + `design/preview-*.png`) → Max's
 eyes → build. The two live bugs (panel taps, scale) are being fixed in parallel
@@ -206,7 +206,7 @@ protocols.
 
 ---
 
-## 2. The panel (`apps/iosc-shell/ioscpanel.c`)
+## 2. The Shell Clients (`apps/iosc-shell/iosc-shell.c`)
 
 A single anchored bar across the top edge:
 

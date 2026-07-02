@@ -8,7 +8,7 @@
 # /var/jb/tmp/xios.json ({..."ddx":"iosurface"...}) which tells the app to use the
 # zero-copy path and where the rendezvous socket is. Input comes via XTEST.
 #
-# For the old file-mmap fallback instead, use x11-server.sh (launches Xvfb -fbdir).
+# For Xvfb bring-up/debug without the app display path, use x11-server.sh.
 set -u
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export HOME=/var/root

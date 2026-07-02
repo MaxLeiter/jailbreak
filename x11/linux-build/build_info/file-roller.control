@@ -2,7 +2,7 @@ Package: file-roller
 Version: @DEB_FILE-ROLLER_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Section: Applications
+Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://apps.gnome.org/FileRoller/
 Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libarchive13, libjson-glib-1.0-0

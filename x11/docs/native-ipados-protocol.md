@@ -11,10 +11,10 @@ written and type/compile-checked:
 Design rationale and the iPadOS-side lifecycle are in
 `x11/docs/native-ipados-plan.md`. This doc is only the iosc-side contract.
 
-Scope note: this is NOT scheduled to land now. iosc-protocols is on GNOME
-first-pixels + the cursor-overlay / typed-app-socket refactor. This is the spec
-to implement afterward. FRAMING IS AGREED (2026-07-01, iosc-protocols): the
-shared 32-byte `xios_msg` record ('XMS1'), core codes 0x01-0x0f owned by
+Scope note: this protocol is now implemented by `wayland/xios_canvas.c`,
+`wayland/iosc.c`, and `apps/iosc-host/Sources/NativeClient.c`; remaining work is
+device validation and polish. FRAMING IS AGREED (2026-07-01, iosc-protocols):
+the shared 32-byte `xios_msg` record ('XMS1'), core codes 0x01-0x0f owned by
 iosc-protocols (HELLO/DIRTY/CURSOR), range 0x40-0x5f reserved for native. This
 spec and the reference client are written against that header; native reuses
 core DIRTY and CURSOR with `window_id` set instead of defining per-window
@@ -82,12 +82,10 @@ struct native_host {
 ```
 
 Framing is the shared typed record `xios_msg` (fixed 32 bytes: magic 'XMS1',
-type, window_id, length, then int32 a,b,c,d) + optional `length`-byte payload —
-the SAME header the cursor-overlay refactor uses on the classic app socket. See
-`iosc_native_proto.h` (which mirrors the authoritative shape). Read a whole
-header, then the payload, then dispatch on `type`. Because no classic client
-ever connects to this socket, it is typed from byte 0: no hello-flag version
-negotiation needed here (that gating exists only on the classic ddx socket).
+type, window_id, length, then int32 a,b,c,d) + optional `length`-byte payload.
+See `iosc_native_proto.h` (which mirrors the authoritative shape). Read a whole
+header, then the payload, then dispatch on `type`; unknown types are protocol
+errors while the product is unreleased.
 
 ---
 
@@ -209,19 +207,19 @@ pixels. `window_id` is COMPOSITOR-assigned (a monotonic u32, stored on
 
 iosc's input reader (`xios_input_socket.c` + the `handle_*` paths in iosc.c)
 currently hit-tests one shared coordinate space. Native input is already
-per-window: each UIWindowScene's `HostScreenView` opens its OWN
-`iosc-input.sock` connection and sends one `XIOS_IN_BIND` record (type 8,
-`code` = window id) before any event (`IoscInput.c` in iosc-host).
+per-window: each UIWindowScene's `HostScreenView` opens its own
+`iosc-native-input.sock` connection and sends one `XIOS_IN_BIND` record (type 8,
+`code` = window id) before any event (`IoscInput.c` in iosc-host). Classic Xios
+desktop input continues to use `iosc-input.sock`, so both compositor namespaces
+can be live on-device.
 
-Add to iosc's input reader:
+Implemented in iosc's input reader:
 
-1. Define `XIOS_IN_BIND 8u` in the authoritative header
-   `x11/wayland/xios_input_socket.h` (and its `xios-glue-stub.h` twin — keep them
-   identical, additive, no `.c` change for the shared reader since it passes
-   unknown types through). This is a shared-header edit; coordinate before landing.
-2. In iosc, tag each input client connection with its bound window (default: none
-   = the legacy shared behavior, so classic mode is untouched). On `XIOS_IN_BIND`,
-   store the window on that connection.
+1. `XIOS_IN_BIND 8u` is defined in the authoritative header
+   `x11/wayland/xios_input_socket.h` and its `xios-glue-stub.h` twin.
+2. The shared reader tags each input client connection with its bound window.
+   Unbound connections keep output-wide hit-testing; `XIOS_IN_BIND` stores the
+   target window on that connection.
 3. For a bound connection, route events directly to that window's toplevel with NO
    hit test: `MOTION`/`BUTTON`/`TOUCH`/`TABLET` coordinates are already
    canvas-local (the host maps them), so deliver straight to that surface's
@@ -298,10 +296,7 @@ cursor-overlay work. The agreed division:
 - 0x40-0x5f is RESERVED for native lifecycle codes; current assignments are §6
   (0x40-0x43 host to compositor, 0x50-0x53 compositor to host). Codes 0x44-0x4f
   and 0x54-0x5f are free for native growth.
-- Separate socket confirmed: iosc-native.sock is typed from byte 0 (no classic
-  client ever connects), so none of the classic ddx socket's hello-flag version
-  gating applies here. The classic socket stays byte-identical for the other
-  flavors.
+- Separate socket confirmed: iosc-native.sock is typed from byte 0.
 - iosc-protocols flags any field change when the cursor-overlay implementation
   lands; expected stable.
 

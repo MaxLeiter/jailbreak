@@ -50,6 +50,7 @@ XS_BIN="${XS_BIN:-$XS_JB/usr/local/bin}"
 XS_LIBEXEC_DIR="${XS_LIBEXEC_DIR:-$XS_JB/libexec/xios-session}"
 XS_LOG="${XS_LOG:-$XS_TMP/xios-session.log}"
 XS_STATUS="${XS_STATUS:-$XS_TMP/xios-session-status.json}"
+XS_ACTIVE="${XS_ACTIVE:-$XS_TMP/xios-active-session}"
 XS_WAYLAND_SOCK="$XS_TMP/wayland-0"
 XS_XIOS_BUNDLE="com.max.xios"
 XS_UIOPEN="$XS_JB/usr/bin/uiopen"
@@ -73,6 +74,19 @@ xs_write_status() {
     printf '{"preset":"%s","state":"%s","message":"%s","at":"%s"}\n' \
         "$preset" "$state" "$(printf '%s' "$msg" | sed 's/"/\\"/g')" \
         "$(date '+%Y-%m-%dT%H:%M:%S')" >"$XS_STATUS" 2>/dev/null || true
+}
+
+# The active-display owner. /var/jb/tmp/xios.json is a single pointer to the
+# framebuffer Xios should show; it is not a compositor registry. Keep a tiny owner
+# marker beside it so helpers such as ioscd know whether they are allowed to start
+# classic iosc and overwrite that pointer.
+xs_set_active() {
+    local preset="$1"
+    printf '%s\n' "$preset" >"$XS_ACTIVE" 2>/dev/null || true
+}
+
+xs_clear_active() {
+    rm -f "$XS_ACTIVE" 2>/dev/null || true
 }
 
 # Resolve one of the bring-up scripts. Prefer the LIVE installed copy (the one the
@@ -100,20 +114,27 @@ xs_find_bringup() {
 # run-kgx.sh, anchored to binary paths so it never matches this script itself
 # (xios-session / xios-sessiond) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscpanel|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|/bin/kgx|gnome-text-editor|gnome-calculator|dbus-daemon.*--session|dbus-run-session'
+xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|/bin/kgx|gnome-text-editor|gnome-calculator|dbus-daemon.*--session|dbus-run-session'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
     xs_log "teardown ($why): killing compositors + apps + clients"
-    local self=$$ parent=$PPID pid
-    ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" \
-        | awk '{print $1}' | while read -r pid; do
-            [ -z "$pid" ] && continue
-            [ "$pid" = "$self" ] && continue
-            [ "$pid" = "$parent" ] && continue
-            kill -9 "$pid" 2>/dev/null || true
-        done
+    local self=$$ parent=$PPID pid pids
+    pids="$(
+        ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" \
+            | awk '{print $1}' \
+            | while read -r pid; do
+                [ -z "$pid" ] && continue
+                [ "$pid" = "$self" ] && continue
+                [ "$pid" = "$parent" ] && continue
+                printf '%s\n' "$pid"
+            done
+    )"
+    for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
     sleep 1
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    done
     # rm every stale rendezvous/socket file (gotcha a). Globs cover iosc-ddx,
     # mutter-ddx, xios-ddx and every *-input.sock; explicit names cover the rest.
     rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
@@ -185,6 +206,7 @@ xios_session_iosc() {
     xs_write_status iosc stopping "stopping current session"
     xios_session_teardown "-> iosc"
     xs_settle
+    xs_set_active iosc
     xs_write_status iosc starting "starting iosc + shell"
     local script; script="$(xs_find_bringup run-shell.sh)" || {
         xs_log "ERROR: run-shell.sh not found (install iosc-shell)"; xs_write_status iosc error "run-shell.sh missing"; return 1; }
@@ -213,6 +235,7 @@ xios_session_mutter() {
     xs_write_status mutter stopping "stopping current session"
     xios_session_teardown "-> mutter"
     xs_settle
+    xs_set_active mutter
     xs_write_status mutter starting "starting mutter --wayland (compositor + display)"
     local script; script="$(xs_find_bringup run-mutter.sh)" || {
         xs_log "ERROR: run-mutter.sh not found"; xs_write_status mutter error "run-mutter.sh missing"; return 1; }
@@ -236,6 +259,7 @@ xios_session_gnome() {
     xs_write_status gnome stopping "stopping current session"
     xios_session_teardown "-> gnome"
     xs_settle
+    xs_set_active gnome
     xs_write_status gnome starting "starting gnome-shell --wayland (experimental)"
     local script; script="$(xs_find_bringup run-gnome-shell.sh)" || {
         xs_log "ERROR: run-gnome-shell.sh not found"; xs_write_status gnome error "run-gnome-shell.sh missing"; return 1; }
@@ -326,6 +350,7 @@ xios_session_app() {
 xios_session_stop() {
     xs_write_status stop stopping "stopping session"
     xios_session_teardown "-> stop"
+    xs_clear_active
     xs_log "session stopped; Xios app killed, back to SpringBoard."
     xs_write_status stop stopped "all sessions stopped"
 }

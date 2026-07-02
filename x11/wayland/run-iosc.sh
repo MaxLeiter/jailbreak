@@ -12,11 +12,16 @@ TMP=/var/jb/tmp
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 BIN=/var/jb/usr/local/bin
 
-echo "==> stop any Xios X server, app, and prior iosc"
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|iosc" \
-  | awk '{print $1}' | while read -r pid; do kill -9 "$pid" 2>/dev/null; done
+echo "==> stop any Xios X server, app, prior iosc, and test clients"
+# Anchor iosc to binary paths (plain "iosc" matches this script's own path when
+# run over SSH) and never kill our own shell or parent.
+ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|(^|[ /])iosc-client( |$)" \
+  | awk '{print $1}' | while read -r pid; do
+      [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
+  done
 sleep 1
-rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/xios.json" \
+rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/iosc-native-ddx.sock" \
+      "$TMP/iosc-native.sock" "$TMP/xios.json" "$TMP/xios-native.json" \
       "$TMP/iosc.log" "$TMP/iosc-client.log" "$TMP/iosc-shm-"* 2>/dev/null
 
 # Logical desktop; iosc renders a 2x-oversized IOSurface the app supersamples down
@@ -35,8 +40,14 @@ echo "   wayland socket: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
 echo "   xios.json: $(cat "$TMP/xios.json" 2>/dev/null)"
 
 echo "==> relaunch the Xios app (adopts iosc's IOSurface)"
-uiopen com.max.xios 2>/dev/null || uiopen -b com.max.xios 2>/dev/null
-sleep 3
+uiopen -b com.max.xios 2>/dev/null || uiopen com.max.xios 2>/dev/null
+J="$(cat "$TMP/xios.json" 2>/dev/null)"
+JW="$(printf '%s' "$J" | sed -n 's/.*"width":\([0-9][0-9]*\).*/\1/p')"
+JH="$(printf '%s' "$J" | sed -n 's/.*"height":\([0-9][0-9]*\).*/\1/p')"
+for _ in $(seq 1 20); do
+  grep -q "iosurface-zerocopy ${JW}x${JH}" "$TMP/xios-status.txt" 2>/dev/null && break
+  sleep 0.5
+done
 
 echo "==> run iosc-client (paints a wl_shm frame) -> $TMP/iosc-client.log"
 nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=wayland-0 \

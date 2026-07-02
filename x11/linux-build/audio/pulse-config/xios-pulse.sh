@@ -1,10 +1,7 @@
 #!/var/jb/bin/sh
-# Profile snippet shipped by the pulseaudio deb. Sources AFTER xios-audio.sh
-# (alphabetical order in profile.d), and overrides its PULSE_SERVER: that one
-# predates the real PulseAudio daemon and pointed libpulse at xios-audiod's
-# XIOA socket, which real libpulse clients cannot speak. With this package
-# installed the PA daemon is the one true libpulse endpoint; xios-audiod's
-# socket stays reserved for module-xios-sink and legacy direct clients.
+# Profile snippet shipped by the pulseaudio deb. The PA daemon is the one true
+# libpulse endpoint; xios-audiod's XIOA socket stays reserved for module-xios-sink
+# and local debug clients.
 export PULSE_SERVER="unix:/var/jb/tmp/pulse/native"
 export PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-/var/jb/tmp/pulse}"
 

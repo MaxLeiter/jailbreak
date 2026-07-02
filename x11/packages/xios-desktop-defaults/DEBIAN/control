@@ -1,6 +1,6 @@
 Package: xios-desktop-defaults
 Name: Xios desktop defaults
-Version: 1.1.1
+Version: 1.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -12,7 +12,7 @@ Description: Retina, XDG, GTK, font and session defaults for Xios
  at home on rootless iOS: rootless PATH and XDG directories, UTF-8 locale,
  native iPad retina display profile, Xft antialiasing/DPI resources, GTK3/GTK4
  defaults, a minimal hicolor icon-theme index, touch-friendly cursor sizing,
- and cache/schema/database setup hooks. Ships Source Code Pro as the system
- monospace font, with a fontconfig alias and a gschema override, so terminals
- (VTE/Console) render a tight monospace instead of falling back to Apple's
- wide .SF UI Mono. The profile is sourced by launchers when present.
+ and cache/schema/database setup hooks. Uses Apple's .SF UI Mono as the
+ system monospace through fontconfig and a gschema override, so terminals
+ (VTE/Console) follow the native San Francisco stack. The profile is sourced
+ by launchers when present.

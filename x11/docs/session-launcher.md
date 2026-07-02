@@ -100,19 +100,29 @@ xios-session status               # last session status (JSON)
 ```
 
 The CLI calls the shared library directly, so it works with no daemon running.
-Add `-d`/`--via-daemon` to instead write the request file the in-app picker uses
-(exercises the daemon path).
+Add `-d`/`--via-daemon` to exercise the app-style daemon path: it prefers the
+existing `/var/jb/tmp/ioscd.sock` control socket, falling back to the legacy
+request file if no Unix-socket client is installed.
 
-### Path 2 — in-app picker (writes the request; daemon serves it)
+### Path 2 — in-app picker (socket first; request-file fallback)
 
-The Xios app's Tools card gets a "Desktop Session" section. Tapping a preset writes
+The Xios app's Tools card gets a "Desktop Session" section. Tapping a preset
+connects to `/var/jb/tmp/ioscd.sock` and writes:
+
+```text
+SESSION<TAB>iosc<TAB><TAB>1080<TAB>1440<TAB>176
+```
+
+`ioscd` forks the existing `xios-session` CLI, so the same shared library owns
+teardown, settle, and bring-up. If the socket is absent or an older `ioscd` does
+not understand `SESSION`, the app falls back to writing
 `/var/jb/tmp/xios-request.json`:
 
 ```json
 { "action": "session", "preset": "iosc", "created_at": "2026-07-01T14:00:00" }
 ```
 
-`xios-sessiond` watches that file (the SAME channel the app already uses for
+`xios-sessiond` still watches that file (the SAME channel the app already uses for
 `display-profile` requests — it ignores any `action` other than `session`, so the
 two coexist) and runs the matching preset. `created_at` changes on every write, so
 re-picking the same preset re-triggers. The daemon primes itself with the file's
@@ -127,7 +137,7 @@ painted"). The app can surface `message` live so the picker shows what's launchi
 ## Install
 
 - Deb (shippable): `bash x11/apps/iosc-desktop/package-session.sh` →
-  `xios-session_1.0.2_iphoneos-arm64.deb` (postinst bootstraps the daemon). Depends
+  `xios-session_1.0.3_iphoneos-arm64.deb` (postinst bootstraps the daemon). Depends
   on `iosc`; recommends `iosc-shell` (for `run-shell.sh` + panel) and `xios` (the app).
 - Fast iterate (lead, touches device):
   `bash x11/apps/iosc-desktop/install-xios-session.sh` (scp + bootstrap).

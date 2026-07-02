@@ -32,12 +32,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Developer",
-          "text": "Procursus Team <support@procurs.us>"
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Games"
+          "text": "X11/Wayland Apps"
         },
         {
           "class": "DepictionTableTextView",

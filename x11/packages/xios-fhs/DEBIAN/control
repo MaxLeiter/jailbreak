@@ -5,15 +5,17 @@ Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libglib2.0-0
-Provides: xios-hwbridge
+Provides: xios-hwbridge, xios-sensor-bridge
 Section: X11
 Priority: optional
-Description: Standard Linux paths + battery/brightness for the Xios desktop
+Description: Standard Linux paths + hardware bridges for the Xios desktop
  Makes the rootless iOS filesystem present the layout desktop software expects,
  and bridges the hardware it reads there. Lays down a synthetic /var/jb/sys with
  backlight and power-supply nodes and an os-release, then runs xios-hwbridged: a
  small session daemon that owns org.freedesktop.UPower (so the GNOME battery
  indicator and low-battery notifications work, backed by IOKit power sources) and
  applies screen-brightness writes through BackBoardServices, keeping the synthetic
- backlight tree in sync with Control Center. No per-app hacks: the shell and
- gnome-settings-daemon talk their normal D-Bus and sysfs interfaces.
+ backlight tree in sync with Control Center. It also ships xios-sensord, a
+ CoreMotion bridge that serves net.hadess.SensorProxy and a synthetic IIO tree
+ for accelerometer, gyroscope and magnetometer data. No per-app hacks: the shell
+ and desktop services talk their normal D-Bus and sysfs interfaces.

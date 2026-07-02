@@ -32,9 +32,17 @@ case "$1" in
        && [ -d /var/jb/usr/share/icons/hicolor ]; then
       gtk-update-icon-cache -q -f /var/jb/usr/share/icons/hicolor >/dev/null 2>&1 || true
     fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/icons/Adwaita ]; then
+      gtk-update-icon-cache -q -f /var/jb/usr/share/icons/Adwaita >/dev/null 2>&1 || true
+    fi
     if command -v gtk4-update-icon-cache >/dev/null 2>&1 \
        && [ -d /var/jb/usr/share/icons/hicolor ]; then
       gtk4-update-icon-cache -q -f /var/jb/usr/share/icons/hicolor >/dev/null 2>&1 || true
+    fi
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1 \
+       && [ -d /var/jb/usr/share/icons/Adwaita ]; then
+      gtk4-update-icon-cache -q -f /var/jb/usr/share/icons/Adwaita >/dev/null 2>&1 || true
     fi
     if command -v update-mime-database >/dev/null 2>&1 \
        && [ -d /var/jb/usr/share/mime ]; then

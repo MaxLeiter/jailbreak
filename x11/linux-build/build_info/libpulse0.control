@@ -7,13 +7,7 @@ Priority: optional
 Homepage: https://www.freedesktop.org/wiki/Software/PulseAudio/
 Depends: libglib2.0-0, libsndfile1, libintl8
 Provides: libpulse-simple0
-Conflicts: libpulse-simple-xios0
-Replaces: libpulse-simple-xios0
 Description: PulseAudio client libraries
  libpulse, libpulse-simple and libpulse-mainloop-glib, built without the
  daemon. GNOME Shell's volume control (gvc) links these; with no PulseAudio
  server running the connection stays idle.
- .
- This ships the real libpulse-simple.0.dylib and supersedes the audio track's
- libpulse-simple-xios0 stopgap shim (which existed only because Procursus had no
- PulseAudio); apt removes the shim on install.

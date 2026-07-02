@@ -8,7 +8,8 @@
  *   create_renderer        -> MetaRendererIOS      (ANGLE-Metal winsys -> output IOSurface)
  *   create_monitor_manager -> MetaMonitorManagerIOS (fed by the MetaGpuIOS added in constructed)
  *   create_default_seat    -> MetaSeatIOS
- *   get_cursor_renderer    -> a software MetaCursorRenderer (no hardware cursor plane on iOS)
+ *   get_cursor_renderer    -> a no-paint MetaCursorRenderer; Xios draws the visible cursor
+ *                             from CURSOR records in the app overlay
  * post_init starts the Xios input pump (meta-input-ios.c), which drives a
  * MetaVirtualInputDeviceIOS on the seat. get_keymap returns a real compiled "us" xkb_keymap
  * (same idiom as the native backend); layout is single-group, single monitor, no pointer
@@ -38,7 +39,18 @@
 #include "clutter/clutter-mutter.h"
 
 /* Where the Xios app streams its input protocol (overridable for testing). */
-#define XIOS_INPUT_SOCKET_DEFAULT "/var/jb/tmp/xios-input.sock"
+#define XIOS_INPUT_SOCKET_DEFAULT "/var/jb/tmp/mutter-input.sock"
+
+/* The one resolution of the input-socket path. Both the xios.json advertisement
+ * (constructed) and the pump bind (post_init) call this — advertise MUST equal bind,
+ * even under an env override, or the app's input goes into the void. */
+static const char *
+ios_input_socket_path (void)
+{
+  const char *path = g_getenv ("XIOS_INPUT_SOCKET");
+
+  return path ? path : XIOS_INPUT_SOCKET_DEFAULT;
+}
 
 struct _MetaBackendIOS
 {
@@ -52,6 +64,50 @@ struct _MetaBackendIOS
 };
 
 G_DEFINE_TYPE (MetaBackendIOS, meta_backend_ios, META_TYPE_BACKEND)
+
+typedef struct _MetaCursorRendererIOS
+{
+  MetaCursorRenderer parent;
+} MetaCursorRendererIOS;
+
+typedef struct _MetaCursorRendererIOSClass
+{
+  MetaCursorRendererClass parent_class;
+} MetaCursorRendererIOSClass;
+
+#define META_TYPE_CURSOR_RENDERER_IOS (meta_cursor_renderer_ios_get_type ())
+GType meta_cursor_renderer_ios_get_type (void);
+G_DEFINE_TYPE (MetaCursorRendererIOS,
+               meta_cursor_renderer_ios,
+               META_TYPE_CURSOR_RENDERER)
+
+static gboolean
+meta_cursor_renderer_ios_update_cursor (MetaCursorRenderer *renderer,
+                                        MetaCursorSprite   *cursor_sprite)
+{
+  (void) renderer;
+  (void) cursor_sprite;
+
+  /* Xios draws the cursor as a present-side CALayer overlay from CURSOR records.
+   * Keep Mutter's cursor bookkeeping alive, but do not paint a second software
+   * cursor into the IOSurface. */
+  return FALSE;
+}
+
+static void
+meta_cursor_renderer_ios_class_init (MetaCursorRendererIOSClass *klass)
+{
+  MetaCursorRendererClass *cursor_renderer_class =
+    META_CURSOR_RENDERER_CLASS (klass);
+
+  cursor_renderer_class->update_cursor = meta_cursor_renderer_ios_update_cursor;
+}
+
+static void
+meta_cursor_renderer_ios_init (MetaCursorRendererIOS *renderer)
+{
+  (void) renderer;
+}
 
 static ClutterBackend *
 meta_backend_ios_create_clutter_backend (MetaBackend *backend)
@@ -99,10 +155,12 @@ meta_backend_ios_get_cursor_renderer (MetaBackend        *backend,
 {
   MetaBackendIOS *self = META_BACKEND_IOS (backend);
 
-  /* One shared software cursor renderer (Clutter-drawn — iOS has no hardware cursor plane). */
+  /* One shared no-paint cursor renderer. Xios draws the visible cursor from
+   * xios_notify_cursor(), so Mutter must not also draw a software cursor into
+   * the IOSurface. */
   if (!self->cursor_renderer)
     {
-      self->cursor_renderer = g_object_new (META_TYPE_CURSOR_RENDERER,
+      self->cursor_renderer = g_object_new (META_TYPE_CURSOR_RENDERER_IOS,
                                             "backend", backend,
                                             "device", device,
                                             NULL);
@@ -265,9 +323,7 @@ meta_backend_ios_post_init (MetaBackend *backend)
 
   META_BACKEND_CLASS (meta_backend_ios_parent_class)->post_init (backend);
 
-  socket_path = g_getenv ("XIOS_INPUT_SOCKET");
-  if (!socket_path)
-    socket_path = XIOS_INPUT_SOCKET_DEFAULT;
+  socket_path = ios_input_socket_path ();
 
   /* Start pumping the Xios input socket into a MetaVirtualInputDeviceIOS on the seat. */
   self->input = meta_input_ios_new (backend, socket_path);
@@ -298,14 +354,11 @@ meta_backend_ios_constructed (GObject *object)
       {
         /* Before serving: name the flavor (typed HELLO -> app cursor overlay) and advertise the
          * input socket in xios.json so the app routes keyboard/pointer/scroll here (else it falls
-         * to a dead XTEST path — mutter runs no X server). Resolve the path the SAME way post_init
-         * resolves the pump's bind path (env XIOS_INPUT_SOCKET, else the default) so advertise ==
-         * bind even under an env override — a mismatch would send the app's input into the void.
-         * Must precede xios_server_start (the writer emits "input_socket" at serve time). */
-        const char *input_sock = g_getenv ("XIOS_INPUT_SOCKET");
+         * to a dead XTEST path — mutter runs no X server). ios_input_socket_path keeps advertise
+         * == the pump's bind path in post_init. Must precede xios_server_start (the writer emits
+         * "input_socket" at serve time). */
+        const char *input_sock = ios_input_socket_path ();
 
-        if (!input_sock)
-          input_sock = XIOS_INPUT_SOCKET_DEFAULT;
         xios_set_compositor_id ("mutter-ios");
         xios_set_input_socket (input_sock);
 

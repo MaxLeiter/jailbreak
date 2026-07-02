@@ -86,19 +86,21 @@ remote/debug path.
 ### Stage 1 — Native iOS X server app ("Xios") — **DONE & verified**
 
 No Xorg display driver exists for iOS. Rather than ship an embedded VNC viewer (good VNC
-clients already exist), Xios goes straight to a native server. The **Stage 1 display path,
-verified end-to-end on the iPad**:
+clients already exist), Xios goes straight to a native server. The public app display path is
+the IOSurface DDX:
 
 ```
-Xvfb (framebuffer X server, -fbdir file)
-   → app mmaps the framebuffer file
-   → uploads to a CAMetalLayer  → Metal display at RETINA 2160×1620
+Xios IOSurface DDX
+   → typed app socket transfers the IOSurface mach port
+   → app maps it as a Metal texture  → Metal display at RETINA 2160×1620
    → UIKit touches → X pointer events via XTEST
 ```
 
-The X server is a stock-ish `Xvfb` from the same patched `xorg-server` we built for Stage 0
-(the `/var/jb/bin/sh` fix is what lets its XKB keyboard init succeed). The app (`apps/Xios/`,
-Swift + Metal + a small C/Xlib shim) owns the screen surface and feeds input back in.
+The X server is built from the same patched `xorg-server` tree we used for Stage 0 (the
+`/var/jb/bin/sh` fix is what lets XKB keyboard init succeed), with the IOSurface backend
+enabled by `-iosurface`. Xvfb remains useful for headless/debug X11 sessions, but it is not
+the app display path. The app (`apps/Xios/`, Swift + Metal + a small C shim) presents the
+shared surface and feeds input back in.
 
 Two hard-won, non-obvious gotchas for **fakesigned (ad-hoc / non-App-Store) apps that need
 the GPU and `/var/jb`**:
@@ -110,7 +112,7 @@ the GPU and `/var/jb`**:
    must request it.
 
 2. **Use a sandbox path-exception for `/var/jb`, not `no-container`.** Filesystem access to
-   `/var/jb` (libraries, fonts, xkb, the framebuffer file) is granted with a
+   `/var/jb` (libraries, fonts, xkb, runtime sockets) is granted with a
    `com.apple.security.exception.files.absolute-path.read-write` path exception — the same
    mechanism Sileo uses. Do **not** use `com.apple.private.security.no-container`: it also
    strips the process of the entitlements path that reaches the GPU IOKit user client, so
@@ -118,11 +120,10 @@ the GPU and `/var/jb`**:
 
 This is the multi-week custom piece the whole cross-compile/quilt investment was for.
 
-### Stage 2 — IOSurface zero-copy DDX — **in flight (landing now)**
+### Stage 2 — IOSurface zero-copy DDX — **landed**
 
-The Stage 1 path copies pixels twice (X draws into the `-fbdir` file → app uploads to a
-Metal texture each frame). Stage 2 removes the copies: a **custom kdrive-style DDX** whose
-screen *is* an **IOSurface** the app textures directly (zero-copy blit).
+The IOSurface DDX removes per-frame file upload: the screen *is* an **IOSurface** the app
+textures directly.
 
 Implementation (sources in `linux-build/patches/xios/`, dropped into `xorg-server`'s
 `hw/vfb` by the tigervnc recipe so the rebuilt `Xios` binary carries the backend):

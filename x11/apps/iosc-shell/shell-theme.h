@@ -66,9 +66,9 @@
 /* Pango descriptions; generic "Sans" resolves to Apple SF via the on-device
  * x11-fonts-sf fontconfig rule (and the preview container mirrors it).
  * Sizes are tuned for 1 logical px = 0.75 iOS pt (17 here reads as iOS body). */
-#define TH_FONT_LABEL       "Sans 17"
-#define TH_FONT_LABEL_MED   "Sans Medium 17"
-#define TH_FONT_CLOCK       "Sans Medium 19"
+#define TH_FONT_LABEL       "Sans 15"
+#define TH_FONT_LABEL_MED   "Sans Medium 15"
+#define TH_FONT_CLOCK       "Sans Medium 17"
 #define TH_FONT_MONO        "Sans 20"
 #define TH_FONT_TITLE       "Sans Semi-Bold 20"
 #define TH_FONT_SECTION     "Sans Semi-Bold 17"

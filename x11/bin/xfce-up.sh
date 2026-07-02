@@ -5,7 +5,7 @@
 #
 # Layering (deliberate — see docs/lightde-plan.md):
 #   * The X SERVER is started separately: apps/Xios/xios-server.sh (IOSurface, :3) or
-#     apps/Xios/x11-server.sh (Xvfb fallback). This script does NOT start an X server
+#     apps/Xios/x11-server.sh (Xvfb debug/headless). This script does NOT start an X server
 #     and will refuse to run if one isn't up on $DISP.
 #   * Those server scripts also launch a throwaway fluxbox + demo clients. We take the
 #     screen over cleanly with `xfwm4 --replace` rather than duplicating WM/X logic.
@@ -28,7 +28,7 @@ if ! ps ax | grep -v grep | grep -qE "X(ios|vfb|vnc) ${DISP}( |\$)" \
    && [ ! -S "/tmp/.X11-unix/X${DNUM}" ] && [ ! -S "$TMP/.X11-unix/X${DNUM}" ]; then
   echo "!! No X server detected on $DISP."
   echo "   Start one first, e.g.:  bash apps/Xios/xios-server.sh   (IOSurface, $DISP)"
-  echo "                      or:  bash apps/Xios/x11-server.sh     (Xvfb fallback)"
+  echo "                      or:  bash apps/Xios/x11-server.sh     (Xvfb debug/headless)"
   exit 1
 fi
 

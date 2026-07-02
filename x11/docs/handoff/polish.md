@@ -19,7 +19,7 @@ These are the smaller, mostly-landed-or-parked tracks. Each has a wire type or a
 - Wire types 10-13 (OUTPUT/HAPTIC/VOLUME/APPEARANCE) registered. VOLUME(12)+APPEARANCE(13) go to a separate `xios-sysintd` daemon (socket /var/jb/tmp/xios-sysint.sock, same framing) so the compositor stays out of audio/theme. HAPTIC(11) rides the compositor socket (server→client broadcast). sysintd + app senders landed; iosc.c/Xios hunks pending with owners. (A volume HUD was seen working on-device.) Plan: `x11/docs/native-feel-plan.md`. Memory: x11-native-feel-bundle.
 
 ## AT-SPI → VoiceOver a11y bridge
-- Design committed `x11/docs/a11y-plan.md`; native-flavor half `x11/docs/native-ipados-a11y.md` (HostA11y.swift inert until an xios-a11yd). Wire schema locked as protocol v1.1. qtbase bridge blocked on FEATURE_dbus (fold into a Qt round-2 with printsupport). GTK3 atk-bridge compiled out → rebuild needed. Memory: x11-a11y-voiceover-bridge.
+- Design committed `x11/docs/a11y-plan.md`; native-flavor half `x11/docs/native-ipados-a11y.md` (HostA11y.swift inert until an xios-a11yd). Wire schema is the authoritative NDJSON schema in that doc. qtbase bridge blocked on FEATURE_dbus (fold into a Qt round-2 with printsupport). GTK3 atk-bridge compiled out → rebuild needed. Memory: x11-a11y-voiceover-bridge.
 
 ## gsd plugins (tasks #15, #25, #26)
 - #15 power: un-drop + Darwin backlight backend (brightness slider); gsd-power backlight is Darwin-ifdef'd-out → needs a 2-file backend, no udev/logind. Pairs with `packages/xios-fhs` xios-hwbridged (UPower D-Bus shim via IOKit IOPS — closes the battery indicator; synthetic /var/jb/sys backlight + BKS brightness). Memory: x11-fhs-hwbridge.

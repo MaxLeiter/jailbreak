@@ -71,7 +71,7 @@ Today (`-iosurface`, single screen 0):
   `IOSurfaceGetBaseAddress` (zero-copy). `vfbAllocateIOSurfaceFramebuffer()` points
   `pvfb->pfbMemory` at it and honours the surface's aligned `bytesPerRow`.
 - One screen-wide `DamageCreate` on `pScreen->root`; the block handler `xiosBlockHandler`
-  calls `xios_notify_dirty()` → writes one `XIOS_DIRTY` byte to every socket client.
+  calls `xios_notify_dirty()` → writes one typed DIRTY record to every app client.
 - `xios_server_start()` runs an AF_UNIX accept loop. Per client: read `xios_hello`
   `{magic,pid,portname}`, validate the peer via `LOCAL_PEERPID`, `task_for_pid` the app,
   `mach_port_extract_right` its receive port, `IOSurfaceCreateMachPort`, `mach_msg` the
@@ -418,7 +418,7 @@ Stage 2's `xios_surface.c` is the *primitive* Stage 3 multiplies by N:
 - `xios_surface_create` → a per-window allocator returning a handle (surface + stride +
   base), called on map / resize instead of once at screen init.
 - the single root `DamageCreate` + `xiosBlockHandler` → one Damage per window, flushing
-  `WIN_DAMAGE(xid)` instead of one global `XIOS_DIRTY`.
+  a per-window typed DIRTY record instead of one global record.
 - `xios_server_start` accept loop, `LOCAL_PEERPID` validation, chmod-to-`mobile`, JSON
   handshake, and the `task_for_pid`+`mach_port_extract_right`+`IOSurfaceCreateMachPort`+
   `mach_msg` hand-off → reused verbatim; the hand-off just runs once per window with

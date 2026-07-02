@@ -61,14 +61,17 @@ bin/logs.sh HelloWorld
 
 ## Sileo repo (hosted on Vercel)
 
-A static APT repo is published at **https://repo.maxleiter.com** (Vercel project
-`repo` under the `maxleiters-team` scope). `repo/` holds the static site;
-`bin/make-repo.py` generates the index (`Packages`, `Packages.gz`, `Release`,
-`index.html`, `CydiaIcon.png`) from the `.deb`s in `repo/debs/` — no extra deps.
+A static APT repo is published at **https://repo.maxleiter.com**. `repo/` holds
+the static site; `bin/make-repo.py` generates the index (`Packages`,
+`Packages.gz`, `Release`, `index.html`, `CydiaIcon.png`) from the `.deb`s in
+`repo/debs/` — no extra deps. Use the dev publisher for low-cache iteration;
+production `.deb` filenames are immutable, so bump the package version/revision
+instead of replacing an already-published file.
 
 ```bash
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
+bin/publish-dev-repo.sh                      # regenerate index + deploy low-cache dev
 bin/publish-repo.sh                          # regenerate index + deploy to prod
 ```
 

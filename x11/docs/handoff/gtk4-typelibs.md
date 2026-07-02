@@ -13,15 +13,21 @@ Producing the GIR typelibs GNOME Shell + gjs need, by running g-ir-scanner ON TH
   5. `gir-build-session-libs-ondevice.sh`
 - The 15 GIR -dev debs (libmutter-14-dev, libgjs-dev, libaccountsservice-dev, libgdm-dev, libupower-glib-dev, libgeocode-glib-2-dev, libgweather-4-dev, libgeoclue-dev, libatk1.0-dev, at-spi2-core-dev, gcr4-dev, polkit-dev, libibus-dev, libgnome-desktop-dev, p11-kit-1-dev) were `dpkg -i`'d for the headers. Scans only need the unpacked headers/.pc, not full config.
 
-## Current state — UNKNOWN, needs a status check
-- The -dev debs were installed. The 5 gir scripts were handed off to run. The agent then went idle ~4h with no container — so the gir batch may have finished, partially finished, or stalled. **FIRST ACTION: check whether the typelibs are scanned + installed** (look for the .typelib files on-device / the script logs), report per-namespace pass/fail.
+## Current state — checked 2026-07-01 23:55 PDT
+- Phase 2 is complete on the device. The boot-critical typelibs are installed in `/var/jb/usr/lib/girepository-1.0` and import under gjs with:
+  - `DYLD_LIBRARY_PATH=/var/jb/usr/lib:/var/jb/usr/lib/gnome-shell:/var/jb/usr/lib/mutter-14:/var/jb/lib/angle`
+  - `GI_TYPELIB_PATH=/var/jb/usr/lib/girepository-1.0:/var/jb/usr/lib/mutter-14`
+- Passing namespaces: `Meta-14`, `Clutter-14`, `St-14`, `Shell-14`, `Gvc-1.0`, `Shew-0`, `AccountsService-1.0`, `Gdm-1.0`, `UPowerGlib-1.0`, `GWeather-4.0`, `Geoclue-2.0`, `Gcr-4`, `PolkitAgent-1.0`, `GnomeDesktop-4.0`, `GnomeBG-4.0`, `IBus-1.0`, `Atspi-2.0`, `Atk-1.0`.
+- `gir-build-mutter-ondevice.sh` now stages the Linux input shim and scan-local linker symlinks needed for `Meta-14` (`libpixman-1`, `libcolord`, `libICE`, `libX11-xcb`).
+- `gir-build-gnome-shell-ondevice.sh` validation now includes `/var/jb/usr/lib/gnome-shell`, `/var/jb/usr/lib/mutter-14`, and ANGLE in `DYLD_LIBRARY_PATH`.
+- `gnome-shell-ios-fixes.sh` disables the ATK bridge link on iOS because the current `libatk-bridge2.0-0 2.52.0` expects ATK 2.52 document symbols and the installed standalone ATK is 2.38.
 
 ## Open items
-1. **Confirm/finish the 5-script gir batch** (closure-first order above). Runs on-device (CPU/build only — does NOT disturb the live iosc desktop). Report per-namespace pass/fail.
-2. If a scan fails on a missing -dev header → name the exact deb (team-lead/build owner can supply it).
-3. When all typelibs are in → hand to gnome-session for Phase 3 (run-gnome-shell.sh).
+1. Hand to gnome-session for Phase 3 (`run-gnome-shell.sh`). That launch stops the current iosc compositor/session, so coordinate the device first.
+2. Longer-term packaging cleanup: align ATK/at-spi versions or package an ATK 2.52-compatible runtime before re-enabling `atk-bridge-2.0`.
 
 ## Prior gotchas (from the introspection track)
+- Missing on-device dev metadata/packages encountered and installed/staged during this pass: `libgjs-dev`, `libstartup-notification-dev` (installed with `--force-overwrite` because the dev/runtime packages both ship the unversioned dylib link), `libpulse-dev`, `perl`, `libp11-kit-dev`, `libsoup-3.0-dev`, `libpsl-dev`, DBus headers from the matching 1.14.10 source tarball, and the local Wayland/DRM/X11 dev packages needed by the Mutter scan.
 - mozjs-115-dev deb was dangling symlinks + no .pc (synthesized). ibus compose-table needs a host tool; glib-compile-resources was a cross wall (solved by scanning on-device). gtk4 typelibs (Gtk-4.0/Gdk/Gsk/Pango) already scanned natively via each lib's meson (gir-build-ondevice.sh) — a gjs GTK4 window renders under Xvfb.
 
 ## Verify

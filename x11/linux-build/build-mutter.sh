@@ -124,49 +124,19 @@ fi
 # Cogl's cogl-dma-buf-handle.c includes <linux/dma-buf.h> (kernel uapi, no iOS equivalent) for the
 # DMA_BUF_IOCTL_SYNC path. Stage a minimal stub so it compiles; the ioctl is INERT on iOS (the
 # dmabuf path is replaced by IOSurface in MetaBackendIOS). Links-only, like libdrm.
+# The stub is the CANONICAL file recipes/build_info/linux-dma-buf.h (also staged on-device by
+# gir-build-mutter-ondevice.sh — the introspection build must see the same stub ABI).
 echo "==> staging stub <linux/dma-buf.h> (dmabuf path inert on iOS; IOSurface in MetaBackendIOS)"
 mkdir -p "$SYSROOT/include/linux"
-cat > "$SYSROOT/include/linux/dma-buf.h" <<'DMABUF'
-/* iOS links-only stub of the Linux dma-buf uapi. The dmabuf sync/export ioctls are inert on iOS;
- * the GPU buffer path is replaced by IOSurface in the MetaBackendIOS compositor backend (iosc). */
-#ifndef _LINUX_DMA_BUF_H_IOS_STUB
-#define _LINUX_DMA_BUF_H_IOS_STUB
-#include <sys/ioctl.h>
-#include <stdint.h>
-struct dma_buf_sync { uint64_t flags; };
-struct dma_buf_export_sync_file { uint32_t flags; int32_t fd; };
-struct dma_buf_import_sync_file { uint32_t flags; int32_t fd; };
-#define DMA_BUF_SYNC_READ      (1 << 0)
-#define DMA_BUF_SYNC_WRITE     (2 << 0)
-#define DMA_BUF_SYNC_RW        (DMA_BUF_SYNC_READ | DMA_BUF_SYNC_WRITE)
-#define DMA_BUF_SYNC_START     (0 << 2)
-#define DMA_BUF_SYNC_END       (1 << 2)
-#define DMA_BUF_BASE           'b'
-#define DMA_BUF_IOCTL_SYNC              _IOW(DMA_BUF_BASE, 0, struct dma_buf_sync)
-#define DMA_BUF_IOCTL_EXPORT_SYNC_FILE  _IOWR(DMA_BUF_BASE, 2, struct dma_buf_export_sync_file)
-#define DMA_BUF_IOCTL_IMPORT_SYNC_FILE  _IOW(DMA_BUF_BASE, 3, struct dma_buf_import_sync_file)
-#endif
-DMABUF
+cp /work/recipes/build_info/linux-dma-buf.h "$SYSROOT/include/linux/dma-buf.h"
 # meta-context-main.c guards #include <systemd/sd-login.h> on HAVE_WAYLAND (on) but the sd_* USAGE
 # on HAVE_LIBSYSTEMD (off) — so the header must exist but the functions aren't compiled. Stage a
 # declarations-only stub. (logind/session tracking is inert on iOS; the logind D-Bus stub is the
 # separate runtime piece — gnome-plan #4.)
-if [ ! -e "$SYSROOT/include/systemd/sd-login.h" ]; then
-  echo "==> staging stub <systemd/sd-login.h> (session tracking inert on iOS; logind stub is runtime)"
-  mkdir -p "$SYSROOT/include/systemd"
-  cat > "$SYSROOT/include/systemd/sd-login.h" <<'SDLOGIN'
-/* iOS declarations-only stub of systemd sd-login. Usage is HAVE_LIBSYSTEMD-gated (off), so these
- * are not compiled/linked; the header only needs to exist for the HAVE_WAYLAND-gated #include. */
-#ifndef _SD_LOGIN_H_IOS_STUB
-#define _SD_LOGIN_H_IOS_STUB
-#include <sys/types.h>
-int sd_pid_get_session(pid_t pid, char **session);
-int sd_pid_get_user_unit(pid_t pid, char **unit);
-int sd_session_get_type(const char *session, char **type);
-int sd_uid_get_sessions(uid_t uid, int require_active, char ***sessions);
-#endif
-SDLOGIN
-fi
+# Canonical file recipes/build_info/systemd-sd-login.h (shared with gir-build-mutter-ondevice.sh).
+echo "==> staging stub <systemd/sd-login.h> (session tracking inert on iOS; logind stub is runtime)"
+mkdir -p "$SYSROOT/include/systemd"
+cp /work/recipes/build_info/systemd-sd-login.h "$SYSROOT/include/systemd/sd-login.h"
 if [ ! -e "$SYSROOT/lib/pkgconfig/egl.pc" ]; then
   ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep -v "+es3" | head -1)
   if [ -n "$ANGLE_DEB" ]; then

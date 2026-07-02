@@ -38,9 +38,17 @@ static GLint  s_a_pos = -1, s_a_uv = -1, s_u_tex = -1, s_u_opaque = -1;
 static GLuint s_shm_tex = 0;                   /* reused upload texture for wl_shm    */
 static float  s_opaque = 1.f;                  /* 1 = force opaque (windows); 0 = keep alpha (cursor) */
 
-/* small cache: client IOSurface -> its sampling pbuffer + texture */
-#define MAXBUF 16
-static struct { void *surf; EGLSurface pb; GLuint tex; } s_cache[MAXBUF];
+/* Client IOSurface -> sampling pbuffer + texture. This grows instead of failing
+ * at a fixed prototype-era ceiling; it is still bounded so a broken client cannot
+ * pin unbounded GL objects. Entries are released when the wl_buffer dies. */
+struct iosurf_cache_ent { void *surf; EGLSurface pb; GLuint tex; };
+static struct iosurf_cache_ent *s_cache;
+static int s_cache_cap;
+
+/* wl_shm upload texture cache, one texture per surface key. */
+struct shm_cache_ent { void *key; GLuint tex; int w, h; };
+static struct shm_cache_ent *s_shm_cache;
+static int s_shm_cache_cap;
 
 /* Per-frame completion fence (EGL_KHR_fence_sync). Resolved at init; NULL => the
  * extension is unavailable and iosc_gl_end() falls back to glFinish. */
@@ -74,11 +82,75 @@ static int make_iosurface_tex_wh(void *iosurface, int w, int h,
     return 0;
 }
 
+static int cache_limit(const char *name, int def)
+{
+    const char *v = getenv(name);
+    if (!v || !*v) return def;
+    char *end = NULL;
+    long n = strtol(v, &end, 10);
+    if (end == v || n < 1 || n > 4096) return def;
+    return (int)n;
+}
+
+static int ensure_iosurf_cache_slot(void)
+{
+    int max = cache_limit("IOSC_GL_MAX_IOSURFACES", 512);
+    if (s_cache_cap == 0) {
+        s_cache_cap = 64;
+        if (s_cache_cap > max) s_cache_cap = max;
+        s_cache = calloc((size_t)s_cache_cap, sizeof(*s_cache));
+        return s_cache ? 0 : -1;
+    }
+    for (int i = 0; i < s_cache_cap; i++)
+        if (s_cache[i].surf == NULL)
+            return 0;
+    if (s_cache_cap >= max)
+        return -1;
+    int old = s_cache_cap;
+    int next = old * 2;
+    if (next > max) next = max;
+    void *p = realloc(s_cache, (size_t)next * sizeof(*s_cache));
+    if (!p) return -1;
+    s_cache = p;
+    memset(s_cache + old, 0, (size_t)(next - old) * sizeof(*s_cache));
+    s_cache_cap = next;
+    fprintf(stderr, "iosc_gl: grew IOSurface texture cache to %d slots\n", s_cache_cap);
+    return 0;
+}
+
+static int ensure_shm_cache_slot(void)
+{
+    int max = cache_limit("IOSC_GL_MAX_SHM_TEXTURES", 256);
+    if (s_shm_cache_cap == 0) {
+        s_shm_cache_cap = 32;
+        if (s_shm_cache_cap > max) s_shm_cache_cap = max;
+        s_shm_cache = calloc((size_t)s_shm_cache_cap, sizeof(*s_shm_cache));
+        return s_shm_cache ? 0 : -1;
+    }
+    for (int i = 0; i < s_shm_cache_cap; i++)
+        if (s_shm_cache[i].key == NULL)
+            return 0;
+    if (s_shm_cache_cap >= max)
+        return -1;
+    int old = s_shm_cache_cap;
+    int next = old * 2;
+    if (next > max) next = max;
+    void *p = realloc(s_shm_cache, (size_t)next * sizeof(*s_shm_cache));
+    if (!p) return -1;
+    s_shm_cache = p;
+    memset(s_shm_cache + old, 0, (size_t)(next - old) * sizeof(*s_shm_cache));
+    s_shm_cache_cap = next;
+    fprintf(stderr, "iosc_gl: grew shm texture cache to %d slots\n", s_shm_cache_cap);
+    return 0;
+}
+
 static GLuint cache_get(void *surf, int w, int h)
 {
-    for (int i = 0; i < MAXBUF; i++)
+    if (ensure_iosurf_cache_slot() != 0)
+        return 0;
+    for (int i = 0; i < s_cache_cap; i++)
         if (s_cache[i].surf == surf) return s_cache[i].tex;
-    for (int i = 0; i < MAXBUF; i++) {
+    for (int i = 0; i < s_cache_cap; i++) {
         if (s_cache[i].surf == NULL) {
             EGLSurface pb; GLuint tex;
             if (make_iosurface_tex_wh(surf, w, h, &pb, &tex) != 0) return 0;
@@ -86,7 +158,12 @@ static GLuint cache_get(void *surf, int w, int h)
             return tex;
         }
     }
-    fprintf(stderr, "iosc_gl: IOSurface texture cache full\n");
+    static int warned;   /* once, with the dropped surface: draw skips are silent otherwise */
+    if (!warned) {
+        warned = 1;
+        fprintf(stderr, "iosc_gl: IOSurface texture cache full (cap=%d), surface %p not drawn\n",
+                s_cache_cap, surf);
+    }
     return 0;
 }
 
@@ -107,7 +184,10 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
      * context current on it, THEN create the GL texture + FBO (GL calls need a
      * current context, so this ordering matters). */
     s_out_pb = xios_egl_create_iosurface_pbuffer(output_iosurface, w, h);
-    if (s_out_pb == EGL_NO_SURFACE) return -1;
+    if (s_out_pb == EGL_NO_SURFACE) {
+        fprintf(stderr, "iosc_gl: ERROR output IOSurface pbuffer failed; GPU compositor unavailable\n");
+        return -1;
+    }
     if (!eglMakeCurrent(s_dpy, s_out_pb, s_out_pb, ctx)) {
         fprintf(stderr, "iosc_gl: eglMakeCurrent failed 0x%x\n", eglGetError()); return -1; }
     fprintf(stderr, "iosc_gl: GL_RENDERER=%s\n", glGetString(GL_RENDERER));
@@ -118,7 +198,7 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_out_tex, 0);
     GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
-        fprintf(stderr, "iosc_gl: output FBO incomplete 0x%x\n", fb_status);
+        fprintf(stderr, "iosc_gl: ERROR output FBO incomplete 0x%x; GPU compositor unavailable\n", fb_status);
         return -1;
     }
 
@@ -173,7 +253,7 @@ int iosc_gl_bind_target(void *iosurface, int w, int h)
     /* Bring up the NEW target first so a failure leaves the old one intact. */
     EGLSurface new_pb = xios_egl_create_iosurface_pbuffer(iosurface, w, h);
     if (new_pb == EGL_NO_SURFACE) {
-        fprintf(stderr, "iosc_gl: target pbuffer failed -> CPU fallback\n");
+        fprintf(stderr, "iosc_gl: ERROR target pbuffer failed -> CPU compositor fallback active\n");
         s_ok = 0;
         return -1;
     }
@@ -199,7 +279,7 @@ int iosc_gl_bind_target(void *iosurface, int w, int h)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_out_tex, 0);
     GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
-        fprintf(stderr, "iosc_gl: target FBO incomplete 0x%x -> CPU fallback\n", fb_status);
+        fprintf(stderr, "iosc_gl: ERROR target FBO incomplete 0x%x -> CPU compositor fallback active\n", fb_status);
         s_ok = 0;
         return -1;
     }
@@ -279,15 +359,14 @@ void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
  * frame — including cursor-move repaints that changed no window content. With
  * it, a surface is uploaded only when it committed new content (its `dirty`
  * flag); an idle window under a moving cursor uploads nothing. */
-#define MAXSHM 24
-static struct { void *key; GLuint tex; int w, h; } s_shm_cache[MAXSHM];
-
 /* Bind the texture for `key` (allocating one on first use), reporting whether
  * its storage must be (re)allocated at sw x sh. Returns 0 if the cache is full. */
 static GLuint shm_cache_bind(void *key, int sw, int sh, int *need_alloc)
 {
+    if (ensure_shm_cache_slot() != 0)
+        return 0;
     int free_slot = -1;
-    for (int i = 0; i < MAXSHM; i++) {
+    for (int i = 0; i < s_shm_cache_cap; i++) {
         if (s_shm_cache[i].key == key) {
             *need_alloc = (s_shm_cache[i].w != sw || s_shm_cache[i].h != sh);
             s_shm_cache[i].w = sw; s_shm_cache[i].h = sh;
@@ -366,7 +445,7 @@ void iosc_gl_draw_shm(void *key, int dirty, const void *data, int sw, int sh, in
 
 void iosc_gl_forget_shm(void *key)
 {
-    for (int i = 0; i < MAXSHM; i++) {
+    for (int i = 0; i < s_shm_cache_cap; i++) {
         if (s_shm_cache[i].key == key) {
             if (s_shm_cache[i].tex) glDeleteTextures(1, &s_shm_cache[i].tex);
             s_shm_cache[i].key = NULL; s_shm_cache[i].tex = 0;
@@ -436,7 +515,7 @@ void iosc_gl_end_blend(void)
 
 void iosc_gl_forget_iosurface(void *client_iosurface)
 {
-    for (int i = 0; i < MAXBUF; i++) {
+    for (int i = 0; i < s_cache_cap; i++) {
         if (s_cache[i].surf == client_iosurface) {
             xios_egl_destroy_pbuffer(s_cache[i].pb);
             if (s_cache[i].tex) glDeleteTextures(1, &s_cache[i].tex);

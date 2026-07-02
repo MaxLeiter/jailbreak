@@ -67,9 +67,10 @@ on-device (mutter-on-iosc.md UPDATE-f). Residual risk is runtime-only.
   `iosc_iosurface.create_buffer(port, w, h, BGRA)` — the compositor extracts the
   send right from our task by the wl socket peer pid (same rendezvous iosc
   already runs, reversed). Protocol: `x11/wayland/iosc-iosurface.xml`.
-- `post_damage`: `glFinish()` before commit (ANGLE-Metal command-buffer
-  completion ordering). TODO(perf): `EGL_KHR_fence_sync` /
-  `EGL_ANGLE_metal_shared_event_sync` instead of a full finish.
+- `post_damage`: per-frame `EGL_KHR_fence_sync` when available, falling back to
+  `glFinish()` only if fence sync cannot be resolved. This preserves
+  ANGLE-Metal command-buffer completion ordering without draining the whole GPU
+  pipeline on the normal path.
 - `backend_flags = NEEDS_N_BUFFERING`: the core multi-buffers window pixmaps and
   rotates on `wl_buffer.release`, so we never render into a buffer the
   compositor is sampling.
@@ -92,6 +93,10 @@ X11/xwayland-OFF (libxcb dyld failures, see `x11-distribution-chooser`) -> that
 flag + the libxcb closure must be flipped for Mutter-hosted rootless. Off the
 critical path.
 
+For Xwayland 23.2.7, rootful is the default. Use `-geometry`/`-fullscreen` as
+needed; do not pass `-rootful` (this build accepts `-rootless`, but not
+`-rootful`).
+
 ## GLX (honest)
 
 `xwayland-glx.c` (EGL-backed GLX provider) is built, but direct-rendering
@@ -112,9 +117,14 @@ libepoxy+angle). Two flavors from one recipe:
 - **X1** (default): glamor on ANGLE, GPU-accelerated pixmaps. First real
   GPU-composited X app through iosc.
 
-Produces `xwayland`, `libxcvt0`, `libxcvt-dev` debs. Xwayland is signed with the
-GPU entitlement set (`xwayland-ent.xml`: AGX/IOGPU/IOSurface IOKit +
-get-task-allow, NOT no-container).
+Produces `xwayland`, `libxcvt0`, `libxcvt-dev`, `libxshmfence1`, and `libdrm2`
+debs. Xwayland is signed with the GPU entitlement set (`xwayland-ent.xml`:
+AGX/IOGPU/IOSurface IOKit + get-task-allow, NOT no-container).
+
+Packaging gotcha found on-device: `libxshmfence.1.dylib` is a symlink to
+`libxshmfence.1.0.0.dylib`; the runtime deb must ship both. A package containing
+only the symlink fails at Xwayland startup with dyld `Library not loaded:
+@rpath/libxshmfence.1.dylib`.
 
 ## Effort / risk
 

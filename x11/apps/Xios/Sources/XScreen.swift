@@ -2,6 +2,7 @@ import UIKit
 import Metal
 import QuartzCore
 import IOSurface
+import Darwin
 
 /// Root VC: a full-screen view that displays the X server's framebuffer.
 final class XServerViewController: UIViewController {
@@ -37,6 +38,7 @@ final class XScreenView: UIView {
     private var userPinned = false              // user picked a display → stop auto-reloading xios.json
     private weak var pickerOverlay: UIView?
     private let requestPath = "/var/jb/tmp/xios-request.json"
+    private let ioscdSocketPath = "/var/jb/tmp/ioscd.sock"
     private let sessionStatusPath = "/var/jb/tmp/xios-session-status.json"
     private weak var sessionStatusLabel: UILabel?
     // Session-switch resilience: when the compositor dies mid-session the ddx surface
@@ -131,6 +133,7 @@ final class XScreenView: UIView {
     private var lastCursorSeq: UInt32 = 0
     private var cursorIsText = false
     private var hardwarePointerActive = false
+    private var iosurfaceCompositorID = ""
 
     private var displayLink: CADisplayLink?
     private var testBuf: UnsafeMutablePointer<UInt8>?
@@ -345,8 +348,10 @@ final class XScreenView: UIView {
 
     private func adoptIOSurface(_ conn: OpaquePointer) {
         xconn = conn
+        iosurfaceCompositorID = String(cString: xsurface_compositor_id(conn))
         guard syncSurfaceGeometry(conn) else {
             dbg("iosurface-texture-fail"); xsurface_close(conn); xconn = nil
+            iosurfaceCompositorID = ""
             iosConnectStarted = false   // let the %30 poll retry the connect
             return
         }
@@ -409,7 +414,7 @@ final class XScreenView: UIView {
         if seq == lastCursorSeq { return }    // no new pointer state this tick
         lastCursorSeq = seq
 
-        if !hardwarePointerActive {
+        if !hardwarePointerActive && iosurfaceCompositorID != "mutter-ios" {
             cursorLayer?.isHidden = true
             return
         }
@@ -651,6 +656,7 @@ final class XScreenView: UIView {
     /// through the switch instead of getting jetsammed.
     private func teardownIOSurface(lost: Bool = false) {
         if let c = xconn { xsurface_close(c); xconn = nil }
+        iosurfaceCompositorID = ""
         iosTexture = nil
         usingIOSurface = false
         removeCursorOverlay()
@@ -804,8 +810,23 @@ final class XScreenView: UIView {
         } else {
             fb = "holding-frame awaiting iosurface \(fbWidth)x\(fbHeight) [metal]"
         }
-        let inp = !inputConnected ? "input-not-connected"
-            : (usingIosc ? "input-connected iosc(wayland)" : "input-connected \(xDisplay)")
+        let inp: String
+        if !inputConnected {
+            inp = "input-not-connected"
+        } else if usingIosc {
+            switch iosurfaceCompositorID {
+            case "mutter-ios":
+                inp = "input-connected mutter(wayland)"
+            case "iosc":
+                inp = "input-connected iosc(wayland)"
+            case "":
+                inp = "input-connected wayland"
+            default:
+                inp = "input-connected \(iosurfaceCompositorID)(wayland)"
+            }
+        } else {
+            inp = "input-connected \(xDisplay)"
+        }
         try? "\(fb)\n\(inp)\n".write(toFile: "/var/jb/tmp/xios-status.txt", atomically: true, encoding: .utf8)
     }
 
@@ -867,12 +888,82 @@ final class XScreenView: UIView {
         writeDebugSnapshot()
     }
 
-    /// Pick a desktop flavor from the device: write a {"action":"session",...} request
-    /// to the shared xios-request.json channel that xios-sessiond watches (it ignores
-    /// non-"session" actions, so it coexists with display-profile requests). created_at
-    /// changes every write, so re-picking the same preset re-triggers.
-    private func writeSessionRequest(_ preset: String, app: String? = nil,
-                                     display: DisplayProfile? = nil) {
+    private func connectUnixSocket(_ path: String) -> Int32 {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return -1 }
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on,
+                   socklen_t(MemoryLayout.size(ofValue: on)))
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let ok: Bool = withUnsafeMutableBytes(of: &addr.sun_path) { raw in
+            let bytes = Array(path.utf8)
+            guard bytes.count < raw.count else { return false }
+            raw.copyBytes(from: bytes)
+            return true
+        }
+        guard ok else { close(fd); return -1 }
+
+        let rc = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard rc == 0 else { close(fd); return -1 }
+        return fd
+    }
+
+    private func writeAll(_ fd: Int32, _ line: String) -> Bool {
+        let bytes = Array(line.utf8)
+        return bytes.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return false }
+            var sent = 0
+            while sent < bytes.count {
+                let n = Darwin.write(fd, base.advanced(by: sent), bytes.count - sent)
+                if n > 0 {
+                    sent += n
+                    continue
+                }
+                if n < 0 && errno == EINTR { continue }
+                return false
+            }
+            return true
+        }
+    }
+
+    private func sendSessionRequestToIOSCD(_ preset: String, app: String?,
+                                           display: DisplayProfile?) -> Bool {
+        let fd = connectUnixSocket(ioscdSocketPath)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+
+        var width = ""
+        var height = ""
+        var dpi = ""
+        if preset != "app", preset != "stop", let display {
+            width = String(display.width)
+            height = String(display.height)
+            if display.dpi > 0 { dpi = String(display.dpi) }
+        }
+        let line = ["SESSION", preset, app ?? "", width, height, dpi]
+            .joined(separator: "\t") + "\n"
+        guard writeAll(fd, line) else { return false }
+
+        var ack = [UInt8](repeating: 0, count: 64)
+        let ackCap = ack.count - 1
+        let n = ack.withUnsafeMutableBytes { raw in
+            read(fd, raw.baseAddress, ackCap)
+        }
+        guard n > 0 else { return false }
+        let s = String(decoding: ack.prefix(Int(n)), as: UTF8.self)
+        return s.hasPrefix("SESSION_STARTED")
+    }
+
+    private func writeSessionRequestFile(_ preset: String, app: String?,
+                                         display: DisplayProfile?) -> Bool {
+        // Compatibility path for older installs where ioscd does not yet speak
+        // SESSION. The xios-sessiond LaunchDaemon watches this file.
         var obj: [String: Any] = [
             "action": "session",
             "preset": preset,
@@ -890,10 +981,23 @@ final class XScreenView: UIView {
             let data = try JSONSerialization.data(withJSONObject: obj,
                                                   options: [.prettyPrinted, .sortedKeys])
             try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
-            lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
-                + (display.map { " \($0.detail)" } ?? "")
+            return true
         } catch {
             lastToolMessage = "Session request failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Pick a desktop flavor from the device. Prefer the ioscd control socket for
+    /// request/reply behavior; fall back to the legacy request file while package
+    /// versions may be out of sync.
+    private func writeSessionRequest(_ preset: String, app: String? = nil,
+                                     display: DisplayProfile? = nil) {
+        let viaSocket = sendSessionRequestToIOSCD(preset, app: app, display: display)
+        let ok = viaSocket || writeSessionRequestFile(preset, app: app, display: display)
+        if ok {
+            lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
+                + (display.map { " \($0.detail)" } ?? "")
         }
         writeDebugSnapshot()
         // Track the switch from here on (card line + full-screen banner once dismissed),
@@ -1330,7 +1434,7 @@ final class XScreenView: UIView {
     /// dx/dy are view-point finger deltas. iosc gets AXIS records in 1/256
     /// framebuffer-pixel fixed point with wl_pointer's sign (natural scroll:
     /// fingers up = content scrolls down the page = positive); XTEST keeps
-    /// the legacy wheel-click emulation.
+    /// wheel-click emulation for plain X11 input.
     private func sendScroll(dx: CGFloat, dy: CGFloat) {
         guard inputConnected else { return }
         if usingIosc {
@@ -1505,7 +1609,7 @@ final class XScreenView: UIView {
 
     // MARK: iosc real multitouch + Apple Pencil (wire types XIOS_IN_TOUCH/XIOS_IN_TABLET)
 
-    /// The touch/tablet records are ADDITIVE: the legacy single-finger pointer
+    /// The touch/tablet records are ADDITIVE: the single-finger pointer
     /// emulation below keeps firing alongside them, so nothing regresses if a
     /// client ignores wl_touch. Flip to true if apps double-handle taps
     /// (pointer click + touch tap) so a forwarded touch consumes the event.
@@ -2008,7 +2112,7 @@ final class XScreenView: UIView {
         ]))
 
         addSection("Switch desktop", to: stack)
-        for (label, preset) in [("iosc  ·  lightweight (works today)", "iosc"),
+        for (label, preset) in [("iosc  ·  desktop shell (bar + dock + wallpaper)", "iosc"),
                                 ("Mutter  ·  raw compositor", "mutter"),
                                 ("GNOME Shell  ·  experimental", "gnome")] {
             stack.addArrangedSubview(panelButton(label) { pick(preset, nil) })

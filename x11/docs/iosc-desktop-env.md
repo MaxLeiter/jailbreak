@@ -153,8 +153,11 @@ a binary and writing files, so the generator is light and scriptable.
 2. Centre the source on a consistent dark, brand-blue-framed square (so
    transparent or odd-aspect Linux icons still look at home next to iOS icons).
 3. Emit the iPad sizes referenced by `CFBundleIcons`:
-   `AppIcon60x60@2x` (120), `AppIcon76x76@2x[~ipad]` (152),
-   `AppIcon83.5x83.5@2x~ipad` (167), plus a 1024 master.
+   `AppIcon60x60@2x` (120), `AppIcon76x76@2x~ipad` (152),
+   `AppIcon83.5x83.5@2x~ipad` (167). The 1024px master is composed in memory
+   only (for crisp downscaling); nothing in the bundle references it, so it is
+   not written out. (The bundles are `UIDeviceFamily=[2]`, so a non-`~ipad`
+   76pt variant would never be selected either.)
 4. If nothing resolves, draw a branded placeholder tile with the app's initial.
 
 Because the icons live on the **device** but the generator runs on the **host**,
@@ -190,7 +193,9 @@ sandbox permits the `connect()` to the daemon socket). That's all it needs.
 ## 6. The daemon (`ioscd`) and lifecycle
 
 `ioscd` listens on `/var/jb/tmp/ioscd.sock` (mode 0666 so `mobile` launchers can
-connect). For each `LAUNCH\t<app_id>\t<exec>`:
+connect). It accepts app launches (`LAUNCH[_NATIVE|_CLASSIC]\t<app_id>\t<exec>`)
+and session switches (`SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>`). For each
+launch:
 
 1. **Ensure iosc is up.** If the compositor pid is dead or `wayland-0` is gone,
    it clears the stale socket and starts `iosc` exactly like `run-iosc.sh`
@@ -240,9 +245,10 @@ per-app tweaking for well-behaved GNOME apps.
 
 ## 8. Security / footprint notes
 
-- `ioscd.sock` is world-connectable on a single-user device; the only verb is
-  `LAUNCH`, which any local process could already do directly. Acceptable; can be
-  tightened to a `mobile`-group socket later.
+- `ioscd.sock` is world-connectable on a single-user device; its verbs map to
+  things a local rootless desktop process can already request through the CLI or
+  launcher apps (`LAUNCH`, `SESSION`). Acceptable; can be tightened to a
+  `mobile`-group socket later.
 - `ioscd` runs as root but only ever `exec`s fixed binaries (`iosc`, `uiopen`,
   `dbus-run-session`/`bash -lc <exec>`). `<exec>` comes from an installed
   `.desktop` the user chose to make a launcher for — same trust level as running

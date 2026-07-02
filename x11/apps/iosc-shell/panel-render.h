@@ -1,12 +1,12 @@
 /*
  * panel-render.h — cairo/pangocairo rendering primitives for the iosc shell.
  *
- * This replaces the 5x7-bitmap + letter-square software renderer (shell-draw.h)
- * with real vector drawing: San Francisco text via pangocairo, rounded surfaces,
+ * This replaces the original 5x7-bitmap + letter-square software renderer
+ * (formerly in shell-draw.h, since deleted) with real vector drawing: San Francisco text via pangocairo, rounded surfaces,
  * gradients, and PNG app icons. It is deliberately WAYLAND-FREE so the exact same
  * draw code runs in two places:
  *
- *   - ioscpanel.c   : wraps a wl_shm buffer as a cairo ARGB32 surface (on device)
+ *   - ioscbar/dock  : wraps a wl_shm buffer as a cairo ARGB32 surface (on device)
  *   - preview-host.c: renders to a PNG off-device for fast visual iteration
  *
  * Colour model: we author straight-alpha 0xAARRGGBB and let cairo premultiply.

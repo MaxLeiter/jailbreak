@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compile-check: validate ioscpanel.c + generated protocol code cross-compile to
+# Compile-check: validate shell chrome + generated protocol code cross-compile to
 # an iOS arm64 object. Run INSIDE procursus-xbuild with /work = this dir.
 set -e
 CC=/root/cctools/bin/aarch64-apple-darwin-clang
@@ -40,11 +40,11 @@ CFLAGS="-arch arm64 -isysroot $SDK -Igen -Igen/wlinc -Wall -Wextra -O2 -std=gnu1
 $CC $CFLAGS -c gen/wlr-layer-shell-unstable-v1-protocol.c -o gen/layer.o
 $CC $CFLAGS -c gen/wlr-foreign-toplevel-management-unstable-v1-protocol.c -o gen/ftm.o
 $CC $CFLAGS -c gen/xdg-shell-protocol.c -o gen/xdg.o
-$CC $CFLAGS -c ioscpanel.c    -o gen/ioscpanel.o      # uses shell-draw.h
+$CC $CFLAGS -c iosc-shell.c   -o gen/iosc-shell.o     # uses shell-draw.h
 $CC $CFLAGS -c ioscoverview.c -o gen/ioscoverview.o   # uses shell-draw.h
 echo "### OK: objects built (both clients) ###"
 ls -la gen/*.o
 echo
 echo "### symbol sanity (unresolved wl_* are expected; resolved at link w/ W0 libwayland-client) ###"
-/root/cctools/bin/aarch64-apple-darwin-nm gen/ioscpanel.o 2>/dev/null | grep -E "U _wl_|U _zwlr" | head -8 || true
+/root/cctools/bin/aarch64-apple-darwin-nm gen/iosc-shell.o 2>/dev/null | grep -E "U _wl_|U _zwlr" | head -8 || true
 echo "### note: final LINK needs the W0 libwayland-client.dylib (iOS), not apt's Linux .so ###"

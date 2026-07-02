@@ -1,0 +1,11 @@
+Package: qt6-tools-dev
+Version: @DEB_QTTOOLS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-tools (= @DEB_QTTOOLS_V@), qt6-base-dev
+Description: Development files for Qt 6 UiTools
+ Headers and CMake package files for Qt6UiTools/Qt6UiPlugin. Needed to
+ cross-build KWin's W-layer without pulling the full qttools application set.

@@ -27,7 +27,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "3234.5 KiB"
+          "text": "2242.1 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,7 +37,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Applications"
+          "text": "X11/Wayland Apps"
         },
         {
           "class": "DepictionTableTextView",

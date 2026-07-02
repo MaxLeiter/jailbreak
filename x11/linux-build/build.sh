@@ -140,8 +140,7 @@ def darwinsrc(s):
                      "CXXFLAGS            := $(CFLAGS) -stdlib=libc++", 1)
 edit("Makefile", darwinsrc)
 
-# 11) Build Xvfb from the same patched xserver (Stage-1 framebuffer for the native iOS
-#     server: `Xvfb -fbdir` writes the screen to a file the app mmaps).
+# 11) Build Xvfb from the same patched xserver for headless/debug X11 sessions.
 edit("makefiles/tigervnc.mk", lambda s: s.replace("--disable-xvfb", "--enable-xvfb", 1))
 PY
 

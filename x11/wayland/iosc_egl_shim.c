@@ -144,15 +144,32 @@ static int ensure_factory(struct wl_display *wl)
 
 /* ---- window surface (the IOSurface swapchain) ----------------------------- */
 
+struct iosc_egl_win;
+
+/* One swapchain buffer, heap-allocated so it can outlive its slot: on
+ * wl_egl_window resize the swapchain is rebuilt, but a buffer still attached
+ * in iosc (busy) must live until its wl_buffer.release — and a wl_buffer's
+ * listener data is fixed at creation, so the slot itself is the listener data. */
+struct iosc_egl_buf {
+    struct iosc_egl_win *win;
+    IOSurfaceRef         ios;
+    EGLSurface           pbuf;
+    struct wl_buffer    *buf;
+    int                  busy;     /* attached, awaiting wl_buffer.release */
+    int                  retired;  /* slot replaced by resize; free on release */
+    struct iosc_egl_buf *next;     /* link in the window's retired list */
+};
+
 struct iosc_egl_win {
-    uint32_t            magic;
-    struct wl_surface  *surface;
-    int                 w, h;
-    int                 cur;
-    IOSurfaceRef        ios[IOSC_NBUF];
-    EGLSurface          pbuf[IOSC_NBUF];
-    struct wl_buffer   *buf[IOSC_NBUF];
-    int                 busy[IOSC_NBUF];   /* attached, awaiting wl_buffer.release */
+    uint32_t              magic;
+    struct wl_egl_window *ewin;    /* wl_egl_window_resize updates its fields */
+    struct wl_surface    *surface;
+    EGLDisplay            dpy;
+    EGLConfig             cfg;
+    int                   w, h;
+    int                   cur;
+    struct iosc_egl_buf  *bufs[IOSC_NBUF];
+    struct iosc_egl_buf  *retired; /* busy buffers whose slot was replaced */
 };
 /* registry of live wrappers so we can tell our handles from real EGLSurfaces. */
 static struct iosc_egl_win *s_wins[IOSC_MAX_WINS];
@@ -181,13 +198,118 @@ static IOSurfaceRef make_ios(int w, int h)
     return s;
 }
 
+static void buf_destroy(struct iosc_egl_buf *bb)
+{
+    if (bb->pbuf != EGL_NO_SURFACE) REAL(eglDestroySurface)(bb->win->dpy, bb->pbuf);
+    if (bb->buf) wl_buffer_destroy(bb->buf);
+    if (bb->ios) CFRelease(bb->ios);
+    free(bb);
+}
+
 static void buf_release(void *data, struct wl_buffer *b)
 {
     (void)b;
-    int *busy = data;
-    *busy = 0;
+    struct iosc_egl_buf *bb = data;
+    if (!bb->retired) {
+        bb->busy = 0;
+        return;
+    }
+    /* A resize replaced this buffer's slot; iosc is done with it now. */
+    for (struct iosc_egl_buf **p = &bb->win->retired; *p; p = &(*p)->next)
+        if (*p == bb) { *p = bb->next; break; }
+    buf_destroy(bb);
 }
 static const struct wl_buffer_listener buf_listener = { buf_release };
+
+/* (Re)build the IOSurface swapchain at w->w x w->h into w->bufs[]. */
+static void win_alloc_bufs(struct iosc_egl_win *w)
+{
+    const EGLint pa[] = {
+        EGL_WIDTH, w->w, EGL_HEIGHT, w->h, EGL_IOSURFACE_PLANE_ANGLE, 0,
+        EGL_TEXTURE_TARGET, EGL_TEXTURE_2D, EGL_TEXTURE_INTERNAL_FORMAT_ANGLE, GL_BGRA_EXT,
+        EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA, EGL_TEXTURE_TYPE_ANGLE, GL_UNSIGNED_BYTE, EGL_NONE };
+    mach_port_t ports[IOSC_NBUF];
+    for (int i = 0; i < IOSC_NBUF; i++) {
+        struct iosc_egl_buf *bb = calloc(1, sizeof(*bb));
+        bb->win = w;
+        bb->ios = make_ios(w->w, w->h);
+        bb->pbuf = REAL(eglCreatePbufferFromClientBuffer)(w->dpy, EGL_IOSURFACE_ANGLE,
+                        (EGLClientBuffer)bb->ios, w->cfg, pa);
+        ports[i] = IOSurfaceCreateMachPort(bb->ios);
+        bb->buf = iosc_iosurface_create_buffer(g_factory, (uint32_t)ports[i], w->w, w->h, 0);
+        wl_proxy_set_queue((struct wl_proxy *)bb->buf, g_queue);
+        wl_buffer_add_listener(bb->buf, &buf_listener, bb);
+        if (bb->pbuf == EGL_NO_SURFACE)
+            fprintf(stderr, "iosc_egl: pbuffer %d failed 0x%x\n", i, REAL(eglGetError)());
+        w->bufs[i] = bb;
+    }
+    /* The port is a one-shot handoff token: iosc extracts its own COPY_SEND right
+     * while processing create_buffer. Roundtrip so that's done, then drop our send
+     * right — otherwise each port pins its IOSurface in the kernel forever and every
+     * destroyed window surface leaks IOSC_NBUF full-window IOSurfaces + port names. */
+    wl_display_roundtrip_queue(g_wl, g_queue);
+    for (int i = 0; i < IOSC_NBUF; i++)
+        if (ports[i] != MACH_PORT_NULL)
+            mach_port_deallocate(mach_task_self(), ports[i]);
+}
+
+/* Resize contract (Mesa wayland-egl semantics): wl_egl_window_resize only
+ * updates ewin->width/height; the EGL platform re-reads them at the next
+ * buffer acquisition. Rebuild the swapchain when they changed. Buffers iosc
+ * still holds are retired and freed on their wl_buffer.release; free ones go
+ * now. Returns 1 if the swapchain was rebuilt (w->cur reset to 0). */
+static int win_sync_size(struct iosc_egl_win *w)
+{
+    int nw = w->ewin->width, nh = w->ewin->height;
+    if (nw <= 0) nw = 1; if (nh <= 0) nh = 1;
+    if (nw == w->w && nh == w->h) return 0;
+    for (int i = 0; i < IOSC_NBUF; i++) {
+        struct iosc_egl_buf *bb = w->bufs[i];
+        if (bb->busy) {
+            bb->retired = 1;
+            bb->next = w->retired;
+            w->retired = bb;
+        } else {
+            buf_destroy(bb);
+        }
+        w->bufs[i] = NULL;
+    }
+    w->w = nw; w->h = nh; w->cur = 0;
+    win_alloc_bufs(w);
+    if (egl_debug())
+        fprintf(stderr, "iosc_egl: window surface resized to %dx%d\n", w->w, w->h);
+    return 1;
+}
+
+static int win_find_free_buffer(struct iosc_egl_win *w, int start)
+{
+    for (int n = 0; n < IOSC_NBUF; n++) {
+        int idx = (start + n) % IOSC_NBUF;
+        if (!w->bufs[idx]->busy)
+            return idx;
+    }
+    return -1;
+}
+
+static int win_next_buffer(struct iosc_egl_win *w, int start)
+{
+    int idx;
+
+    wl_display_dispatch_queue_pending(g_wl, g_queue);
+    idx = win_find_free_buffer(w, start);
+    if (idx >= 0)
+        return idx;
+
+    /* All buffers are still attached. Block only for real swapchain backpressure,
+     * not because the arbitrary next slot is busy while another slot is free. */
+    do {
+        if (wl_display_roundtrip_queue(g_wl, g_queue) < 0)
+            return -1;
+        idx = win_find_free_buffer(w, start);
+    } while (idx < 0);
+
+    return idx;
+}
 
 /* ---- intercepted EGL entrypoints ------------------------------------------ */
 
@@ -246,26 +368,16 @@ static EGLSurface make_window(EGLDisplay dpy, EGLConfig cfg, struct wl_egl_windo
 {
     if (!g_wl || ensure_factory(g_wl) != 0) return EGL_NO_SURFACE;
     struct iosc_egl_win *w = calloc(1, sizeof(*w));
+    if (!w) return EGL_NO_SURFACE;
     w->magic = WIN_MAGIC;
+    w->ewin = ewin;
     w->surface = ewin->surface;       /* the wl_surface (last member of wl_egl_window) */
+    w->dpy = dpy;
+    w->cfg = cfg;
     w->w = ewin->width; w->h = ewin->height;
     if (w->w <= 0) w->w = 1; if (w->h <= 0) w->h = 1;
 
-    const EGLint pa[] = {
-        EGL_WIDTH, w->w, EGL_HEIGHT, w->h, EGL_IOSURFACE_PLANE_ANGLE, 0,
-        EGL_TEXTURE_TARGET, EGL_TEXTURE_2D, EGL_TEXTURE_INTERNAL_FORMAT_ANGLE, GL_BGRA_EXT,
-        EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA, EGL_TEXTURE_TYPE_ANGLE, GL_UNSIGNED_BYTE, EGL_NONE };
-    for (int i = 0; i < IOSC_NBUF; i++) {
-        w->ios[i] = make_ios(w->w, w->h);
-        w->pbuf[i] = REAL(eglCreatePbufferFromClientBuffer)(dpy, EGL_IOSURFACE_ANGLE,
-                        (EGLClientBuffer)w->ios[i], cfg, pa);
-        mach_port_t port = IOSurfaceCreateMachPort(w->ios[i]);
-        w->buf[i] = iosc_iosurface_create_buffer(g_factory, (uint32_t)port, w->w, w->h, 0);
-        wl_proxy_set_queue((struct wl_proxy *)w->buf[i], g_queue);
-        wl_buffer_add_listener(w->buf[i], &buf_listener, &w->busy[i]);
-        if (w->pbuf[i] == EGL_NO_SURFACE)
-            fprintf(stderr, "iosc_egl: pbuffer %d failed 0x%x\n", i, REAL(eglGetError)());
-    }
+    win_alloc_bufs(w);
     win_register(w);
     fprintf(stderr, "iosc_egl: window surface %dx%d (%d IOSurface buffers)\n", w->w, w->h, IOSC_NBUF);
     return (EGLSurface)w;
@@ -285,7 +397,9 @@ EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLC
 {
     struct iosc_egl_win *w = as_win(draw);
     if (w) {
-        EGLSurface pb = w->pbuf[w->cur];
+        win_sync_size(w);
+        struct iosc_egl_buf *bb = w->bufs[w->cur];
+        EGLSurface pb = bb ? bb->pbuf : EGL_NO_SURFACE;
         return REAL(eglMakeCurrent)(dpy, pb, pb, ctx);
     }
     return REAL(eglMakeCurrent)(dpy, draw, read, ctx);
@@ -312,20 +426,25 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
         glFinish();                          /* GPU render into ios[cur] complete */
     }
     int i = w->cur;
-    wl_surface_attach(w->surface, w->buf[i], 0, 0);
+    struct iosc_egl_buf *bb = w->bufs[i];
+    if (!bb || !bb->buf)
+        return EGL_FALSE;
+    wl_surface_attach(w->surface, bb->buf, 0, 0);
     wl_surface_damage(w->surface, 0, 0, w->w, w->h);
     wl_surface_commit(w->surface);
-    w->busy[i] = 1;
+    bb->busy = 1;
     wl_display_flush(g_wl);
 
-    /* rotate to the next buffer; wait (bounded) for it to be released by iosc. */
-    w->cur = (i + 1) % IOSC_NBUF;
-    int spins = 0;
-    while (w->busy[w->cur] && spins++ < 100)
-        wl_display_roundtrip_queue(g_wl, g_queue);
+    /* Rotate to any released buffer. The old path waited on exactly cur+1, which
+     * could stall even when another swapchain buffer had already been released. */
+    int next = win_next_buffer(w, (i + 1) % IOSC_NBUF);
+    if (next < 0)
+        return EGL_FALSE;
+    w->cur = next;
 
     EGLContext ctx = REAL(eglGetCurrentContext)();
-    EGLSurface pb = w->pbuf[w->cur];
+    bb = w->bufs[w->cur];
+    EGLSurface pb = bb ? bb->pbuf : EGL_NO_SURFACE;
     REAL(eglMakeCurrent)(dpy, pb, pb, ctx);  /* next frame renders into the new buffer */
     return EGL_TRUE;
 }
@@ -336,7 +455,8 @@ EGLBoolean eglQuerySurface(EGLDisplay dpy, EGLSurface surf, EGLint attr, EGLint 
     if (w) {
         if (attr == EGL_WIDTH)  { *value = w->w; return EGL_TRUE; }
         if (attr == EGL_HEIGHT) { *value = w->h; return EGL_TRUE; }
-        return REAL(eglQuerySurface)(dpy, w->pbuf[w->cur], attr, value);
+        struct iosc_egl_buf *bb = w->bufs[w->cur];
+        return REAL(eglQuerySurface)(dpy, bb ? bb->pbuf : EGL_NO_SURFACE, attr, value);
     }
     return REAL(eglQuerySurface)(dpy, surf, attr, value);
 }
@@ -345,10 +465,13 @@ EGLBoolean eglDestroySurface(EGLDisplay dpy, EGLSurface surf)
     struct iosc_egl_win *w = as_win(surf);
     if (!w) return REAL(eglDestroySurface)(dpy, surf);
     win_unregister(w);
-    for (int i = 0; i < IOSC_NBUF; i++) {
-        if (w->pbuf[i] != EGL_NO_SURFACE) REAL(eglDestroySurface)(dpy, w->pbuf[i]);
-        if (w->buf[i]) wl_buffer_destroy(w->buf[i]);
-        if (w->ios[i]) CFRelease(w->ios[i]);
+    for (int i = 0; i < IOSC_NBUF; i++)
+        if (w->bufs[i])
+            buf_destroy(w->bufs[i]);
+    while (w->retired) {
+        struct iosc_egl_buf *next = w->retired->next;
+        buf_destroy(w->retired);
+        w->retired = next;
     }
     free(w);
     return EGL_TRUE;
@@ -499,6 +622,7 @@ EGLSurface eglGetCurrentSurface(EGLint r){ return REAL(eglGetCurrentSurface)(r);
 EGLDisplay eglGetCurrentDisplay(void){ return REAL(eglGetCurrentDisplay)(); }
 EGLBoolean eglQueryContext(EGLDisplay d, EGLContext c, EGLint a, EGLint *v){ return REAL(eglQueryContext)(d,c,a,v); }
 EGLSurface eglCreatePbufferSurface(EGLDisplay d, EGLConfig c, const EGLint *a){ return REAL(eglCreatePbufferSurface)(d,c,a); }
+EGLSurface eglCreatePixmapSurface(EGLDisplay d, EGLConfig c, EGLNativePixmapType p, const EGLint *a){ return REAL(eglCreatePixmapSurface)(d,c,p,a); }
 EGLSurface eglCreatePbufferFromClientBuffer(EGLDisplay d, EGLenum t, EGLClientBuffer b, EGLConfig c, const EGLint *a){ return REAL(eglCreatePbufferFromClientBuffer)(d,t,b,c,a); }
 EGLBoolean eglBindAPI(EGLenum a){ return REAL(eglBindAPI)(a); }
 EGLenum    eglQueryAPI(void){ return REAL(eglQueryAPI)(); }

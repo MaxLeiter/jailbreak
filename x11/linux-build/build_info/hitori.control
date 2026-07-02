@@ -2,7 +2,7 @@ Package: hitori
 Version: @DEB_HITORI_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Section: Games
+Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://wiki.gnome.org/Apps/Hitori
 Depends: libglib2.0-0, libgtk-3-0, libcairo2

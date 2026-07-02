@@ -151,6 +151,49 @@ built in the same Procursus volume. Override the set with `TARGETS=...` (e.g. ju
 
 ## Apps reachable now vs deferred
 
+### Repo section: `X11/Wayland Apps`
+
+The package repo now has a dedicated **`X11/Wayland Apps`** section for user-facing GUI clients
+that run on the Xios/iosc display stack. This replaces the vague `Applications` bucket for the
+GNOME apps and also absorbs lightweight X11-first GUI clients that users launch directly. Keep
+desktop meta-packages in `Desktop`, display servers/session glue in `X11` or `System`, shared
+libraries in `Libraries`, and headers/tools in `Development`.
+
+Current build metadata that belongs in this section:
+- **GNOME/GTK4 on Wayland or X11:** `gnome-console`, `gnome-text-editor`, `gnome-font-viewer`,
+  `gnome-calculator`, `nautilus`, `baobab`, `file-roller`, `d-spy`.
+- **GTK3/X11 clients:** `gnome-terminal`, `hitori`, `thunar`, `xfce4-appfinder`.
+
+Already present as debs in `repo/debs`: `gnome-console`, `gnome-text-editor`,
+`gnome-font-viewer`, `gnome-calculator`, `nautilus`, `baobab`, `file-roller`, `d-spy`,
+and `hitori`. These are no longer "maybe build" candidates; the next question is whether each
+one has passed an on-device launch/use smoke test and should be featured or recommended by a
+meta-package.
+
+Not yet present as debs, but recipe/control metadata exists: `gnome-terminal`, `thunar`,
+and `xfce4-appfinder`.
+
+Recommended app validation/featuring order, biased toward **likely to work** plus **useful to
+real users**:
+
+| Priority | App | Why it is likely to work | Why users want it |
+|---|---|---|---|
+| 1 | **gnome-console** | Already the lightest GTK4/libadwaita terminal path; vte stack is in-tree. | A terminal makes the desktop immediately useful and debuggable. |
+| 2 | **gnome-text-editor** | GTK4/libadwaita plus gtksourceview/enchant; no gjs or typelibs. | Basic file editing on-device. |
+| 3 | **d-spy** | Pure C GTK4/libadwaita, only needs the D-Bus session we already ship. | Developer/user diagnostic tool for the desktop bus. |
+| 4 | **file-roller** | GTK4/libadwaita + libarchive/json-glib; optional features trimmed. | Archive create/extract is a real daily utility on a filesystem desktop. |
+| 5 | **gnome-font-viewer** | Pure C, shallow GTK4 app; pairs with the packaged iOS/SF font work. | Lets users inspect installed fonts and validates fontconfig/UI rendering. |
+| 6 | **baobab** | Shallow Vala app over GTK4/libadwaita; validates the Vala flow after calculator. | Helps users find what is consuming scarce device storage. |
+| 7 | **gnome-calculator** | Vala path is understood; extra deps are already mapped. | Small, familiar utility and a useful Vala proof. |
+| 8 | **hitori** | Pure C/GTK3, zero new sub-deps beyond the GTK3 stack. | Cheap touch-friendly game/smoke test; not critical, but nice. |
+| 9 | **nautilus** | Built, but still has the heaviest runtime tree: tracker/portal/gnome-desktop. | Full GNOME Files experience once the heavier app stack is stable. |
+| 10 | **xfce4-appfinder** | Existing GTK3/XFCE recipe; small dependency set. | Keyboard-friendly app launcher before a full shell/app grid is polished. |
+| 11 | **thunar** | Existing GTK3 recipe with gudev/libnotify disabled; local browsing should work. | Lightweight file manager; good fallback if Nautilus is too heavy. |
+
+Hold off for now on JS/GJS apps (`gnome-characters`, `gnome-weather`) and plugin-heavy editors
+(`gedit` current line): they reintroduce runtime typelibs or plugin-loader complexity. Also defer
+media/camera/audio-first apps until the desktop audio/session story is boring.
+
 ### Drafted (the named GTK4 targets)
 - **gnome-console / kgx** (GTK4) — lightest; deps fully covered (libadwaita + vte-gtk4).
 - **gnome-text-editor** (GTK4) — the gedit replacement; clean (libadwaita + gtksourceview5 + enchant).

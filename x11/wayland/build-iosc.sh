@@ -13,7 +13,10 @@
 #   x11/wayland/iosc.c, iosc-client.c, iosc-gpu-client.c, iosc-iosurface.xml
 #   x11/linux-build/patches/xios/xios_surface.{c,h}   (reused output path)
 #   x11/linux-build/out/{libwayland,libepoll-shim,wayland-protocols,angle}*.deb
-# Outputs: /out/{iosc, iosc-client, iosc-gpu-client}  (unsigned Mach-O arm64; sign on device).
+# Outputs: /out/{iosc, iosc-client, iosc-gpu-client}
+#   /out/iosc is unsigned from the container. Before deploying it directly to a
+#   device, sign it on the Mac with:
+#     x11/wayland/sign-iosc.sh x11/wayland/out/iosc
 set -euo pipefail
 umask 022
 
@@ -277,6 +280,16 @@ $CC $CFLAGS $INCS \
     -L"$PREFIX/lib" -lwayland-client \
     $RPATH -o /out/iosc-touch-test
 echo "   built /out/iosc-touch-test"
+
+# mutter pointer logger: fullscreen shm toplevel that logs wl_pointer
+# enter/motion/button and writes /var/jb/tmp/mutter-pointer-hit on press;
+# the dispatch-validation probe from docs/handoff/mutter.md.
+$CC $CFLAGS $INCS \
+    "$X11/wayland/mutter-pointer-test.c" \
+    "$GEN/xdg-shell-protocol.c" \
+    -L"$PREFIX/lib" -lwayland-client \
+    $RPATH -o /out/mutter-pointer-test
+echo "   built /out/mutter-pointer-test"
 
 # tablet test client: prints zwp_tablet_tool_v2 pen strokes with pressure/tilt;
 # drive with iosc-input-test -p.

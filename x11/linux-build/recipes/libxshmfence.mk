@@ -44,8 +44,10 @@ libxshmfence-package: libxshmfence-stage
 	rm -rf $(BUILD_DIST)/libxshmfence{1,-dev}
 	mkdir -p $(BUILD_DIST)/libxshmfence{1,-dev}/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# runtime dylib
-	cp -a $(BUILD_STAGE)/libxshmfence/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libxshmfence.1.dylib \
+	# runtime dylib + its real install-name target. `libxshmfence.1.dylib`
+	# is a symlink to `libxshmfence.1.0.0.dylib`; ship both or dyld sees a
+	# dangling @rpath dependency at runtime.
+	cp -a $(BUILD_STAGE)/libxshmfence/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libxshmfence.1*.dylib \
 		$(BUILD_DIST)/libxshmfence1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# -dev: headers, .pc, .a, unversioned .dylib symlink

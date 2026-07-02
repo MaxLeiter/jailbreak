@@ -80,24 +80,25 @@ static inline int ov__hover(const struct ov_model *m, int x, int y, int w, int h
     return m->have_ptr && m->px >= x && m->px < x + w && m->py >= y && m->py < y + h;
 }
 
-/* Content height (logical px) below OV_SECT_TOP for the given model — the
- * client clamps scroll_y to max(0, content - (H - OV_SECT_TOP)). */
-static int ov_content_height(const struct ov_model *m, int W)
+/* Content height (logical px) below OV_SECT_TOP — the client clamps scroll_y
+ * to max(0, content - (H - OV_SECT_TOP)). Takes the counts directly (not an
+ * ov_model) so the scroll hot path doesn't have to build one. */
+static int ov_content_height(int napps, int nwins, int searching, int W)
 {
     int cols = (W - 2 * OV_MARGIN + OV_GAP) / (OV_CELL_W + OV_GAP);
     if (cols < 1) cols = 1;
     int h = 0;
-    if (m->nwins > 0 && !m->searching) {
+    if (nwins > 0 && !searching) {
         int grid_w0 = cols * OV_CELL_W + (cols - 1) * OV_GAP;
         int x0 = (W - grid_w0) / 2;
         int chw = OV_CHIP_W;                 /* clamp chips to the row */
         if (chw > W - 2 * x0) chw = W - 2 * x0;
         int ccols = (W - 2 * x0 + OV_GAP) / (chw + OV_GAP);
         if (ccols < 1) ccols = 1;
-        int crows = (m->nwins + ccols - 1) / ccols;
+        int crows = (nwins + ccols - 1) / ccols;
         h += OV_SECT_HDR + crows * (OV_CHIP_H + OV_GAP) + OV_SECT_GAP;
     }
-    int arows = (m->napps + cols - 1) / cols;
+    int arows = (napps + cols - 1) / cols;
     h += OV_SECT_HDR + arows * (OV_CELL_H + OV_GAP);
     return h;
 }

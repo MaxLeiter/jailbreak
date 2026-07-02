@@ -13,7 +13,7 @@
 # 2. In its place: module-xios-sink, a timer-clocked sink that forwards the
 #    rendered/mixed/volume-applied stream to xios-audiod's Unix socket using
 #    the XIOA protocol (source lives in linux-build/audio/, shared with the
-#    daemon + the old pa_simple shim).
+#    xios-audiod daemon and smoke-test client).
 #
 # 3. The shared sysroot carries a STUB linux/input.h (staged by the mutter
 #    track's inert libei/dma-buf shim for keycode constants), so PA's

@@ -1,0 +1,11 @@
+Package: librsvg2-dev
+Version: @DEB_LIBRSVG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/LibRsvg
+Depends: librsvg2-2 (= @DEB_LIBRSVG_V@), libgdk-pixbuf-2.0-dev, libcairo2-dev, libpango1.0-dev, libfreetype-dev, libharfbuzz-dev, libxml2-dev
+Description: Development files for librsvg
+ Headers, unversioned library symlinks, pkg-config files and optional GIR
+ metadata for building software against librsvg.

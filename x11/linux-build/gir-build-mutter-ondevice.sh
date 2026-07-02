@@ -38,14 +38,28 @@ BASE="$(basename "$TAR" .tar)"   # mutter-46.0
 WORK=/var/jb/tmp/mutter-gir
 GISPIKE=/var/jb/tmp/gi-spike     # sljit_shim.dylib, clang-ios, ninja2 (gir-ondevice.sh bootstrap)
 
-echo "==> [$BASE] pushing source to device"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+LIBEI_HDR_DIR="$HERE/src-tarballs/libei-1.3.0/src"
+
+echo "==> [$BASE] pushing source + stub headers to device"
 "${SSH[@]}" "mkdir -p $WORK"
-"${SCP[@]}" "$TAR" "$DEVICE:$WORK/" >/dev/null
+# The stub headers are the CANONICAL copies build-mutter.sh stages into the cross sysroot —
+# the on-device introspection build must compile against the same stub ABI.
+"${SCP[@]}" "$TAR" \
+  "$HERE/recipes/build_info/linux-dma-buf.h" \
+  "$HERE/recipes/build_info/linux-input.h" \
+  "$HERE/recipes/build_info/input-event-codes.h" \
+  "$HERE/recipes/build_info/systemd-sd-login.h" \
+  "$DEVICE:$WORK/" >/dev/null
+if [ -f "$LIBEI_HDR_DIR/libeis.h" ]; then
+  "${SCP[@]}" "$LIBEI_HDR_DIR/libei.h" "$LIBEI_HDR_DIR/libeis.h" "$LIBEI_HDR_DIR/liboeffis.h" \
+    "$DEVICE:$WORK/" >/dev/null
+fi
 
 echo "==> [$BASE] native introspection build + install typelibs on-device"
 # shellcheck disable=SC2087
 "${SSH[@]}" "BASE='$BASE' bash -s" <<'EOSH'
-set -e
+set -eo pipefail
 WORK=/var/jb/tmp/mutter-gir
 GISPIKE=/var/jb/tmp/gi-spike
 PREFIX=/var/jb/usr
@@ -68,47 +82,42 @@ if [ ! -f $PREFIX/lib/pkgconfig/zlib.pc ]; then
   printf 'prefix=%s\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: zlib\nDescription: zlib\nVersion: 1.2.12\nLibs: -L${libdir} -lz\nCflags:\n' "$PREFIX" > $PREFIX/lib/pkgconfig/zlib.pc
 fi
 
-# --- stub headers mutter compiles against (inert on iOS; same as the cross build stages) ---
+# --- stub headers mutter compiles against (inert on iOS) — the canonical copies from
+#     recipes/build_info/ scp'd next to the tarball, the SAME files build-mutter.sh stages
+#     into the cross sysroot. Unconditional cp so a stale on-device stub never wins. ---
 mkdir -p $PREFIX/include/linux $PREFIX/include/systemd
-if [ ! -e $PREFIX/include/linux/dma-buf.h ]; then
-  cat > $PREFIX/include/linux/dma-buf.h <<'DMABUF'
-/* iOS links-only stub: dmabuf sync/export ioctls inert (IOSurface path in MetaBackendIOS). */
-#ifndef _LINUX_DMA_BUF_H_IOS_STUB
-#define _LINUX_DMA_BUF_H_IOS_STUB
-#include <sys/ioctl.h>
-#include <stdint.h>
-struct dma_buf_sync { uint64_t flags; };
-struct dma_buf_export_sync_file { uint32_t flags; int32_t fd; };
-struct dma_buf_import_sync_file { uint32_t flags; int32_t fd; };
-#define DMA_BUF_SYNC_READ (1<<0)
-#define DMA_BUF_SYNC_WRITE (2<<0)
-#define DMA_BUF_SYNC_RW (DMA_BUF_SYNC_READ|DMA_BUF_SYNC_WRITE)
-#define DMA_BUF_SYNC_START (0<<2)
-#define DMA_BUF_SYNC_END (1<<2)
-#define DMA_BUF_BASE 'b'
-#define DMA_BUF_IOCTL_SYNC _IOW(DMA_BUF_BASE,0,struct dma_buf_sync)
-#define DMA_BUF_IOCTL_EXPORT_SYNC_FILE _IOWR(DMA_BUF_BASE,2,struct dma_buf_export_sync_file)
-#define DMA_BUF_IOCTL_IMPORT_SYNC_FILE _IOW(DMA_BUF_BASE,3,struct dma_buf_import_sync_file)
-#endif
-DMABUF
-fi
-if [ ! -e $PREFIX/include/systemd/sd-login.h ]; then
-  cat > $PREFIX/include/systemd/sd-login.h <<'SDLOGIN'
-/* iOS declarations-only stub: usage is HAVE_LIBSYSTEMD-gated (off); header only needs to exist. */
-#ifndef _SD_LOGIN_H_IOS_STUB
-#define _SD_LOGIN_H_IOS_STUB
-#include <sys/types.h>
-int sd_pid_get_session(pid_t pid, char **session);
-int sd_pid_get_user_unit(pid_t pid, char **unit);
-int sd_session_get_type(const char *session, char **type);
-int sd_uid_get_sessions(uid_t uid, int require_active, char ***sessions);
-#endif
-SDLOGIN
-fi
+cp $WORK/linux-dma-buf.h $PREFIX/include/linux/dma-buf.h
+cp $WORK/linux-input.h $PREFIX/include/linux/input.h
+cp $WORK/input-event-codes.h $PREFIX/include/linux/input-event-codes.h
+cp $WORK/systemd-sd-login.h $PREFIX/include/systemd/sd-login.h
+for h in libei.h libeis.h liboeffis.h; do
+  [ -f $WORK/$h ] && cp $WORK/$h $PREFIX/include/
+done
+[ -f $PREFIX/lib/pkgconfig/libeis-1.0.pc ] || cat > $PREFIX/lib/pkgconfig/libeis-1.0.pc <<'PC'
+prefix=/var/jb/usr
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: libeis
+Description: iOS links-only shim (input capture inert)
+Version: 1.3.0
+Libs: -L${libdir} -leis
+Cflags: -I${includedir}
+PC
 # Cogl includes <EGL/eglmesaext.h>; ANGLE's EGL headers lack it. Stage a no-op if absent.
 [ -e $PREFIX/include/EGL/eglmesaext.h ] || { mkdir -p $PREFIX/include/EGL; \
   printf '/* iOS stub: MESA EGL ext decls resolved via eglGetProcAddress at runtime. */\n' \
   > $PREFIX/include/EGL/eglmesaext.h; }
+# Some -dev packages ship only the Mach-O install-name leaf while their .pc
+# exposes the Linux-ish linker name. Add scan-local linker symlinks if needed.
+[ -e $PREFIX/lib/libpixman-1.dylib ] || [ ! -e $PREFIX/lib/libpixman-1.0.dylib ] || \
+  ln -sf libpixman-1.0.dylib $PREFIX/lib/libpixman-1.dylib
+[ -e $PREFIX/lib/libcolord.dylib ] || [ ! -e $PREFIX/lib/libcolord.2.dylib ] || \
+  ln -sf libcolord.2.dylib $PREFIX/lib/libcolord.dylib
+[ -e $PREFIX/lib/libICE.dylib ] || [ ! -e $PREFIX/lib/libICE.6.dylib ] || \
+  ln -sf libICE.6.dylib $PREFIX/lib/libICE.dylib
+[ -e $PREFIX/lib/libX11-xcb.dylib ] || [ ! -e $PREFIX/lib/libX11-xcb.1.dylib ] || \
+  ln -sf libX11-xcb.1.dylib $PREFIX/lib/libX11-xcb.dylib
 
 cd $WORK
 rm -rf "$BASE"
@@ -118,8 +127,37 @@ cd "$BASE"
 # --- iOS portability patches (identical to recipes/mutter.mk's accreting block) ---
 sed -i "s/dependency('libeis-1.0', version: libei_req)/dependency('libeis-1.0', version: libei_req, required: false)/" meson.build
 sed -i "s/dependency('libei-1.0', version: libei_req)/dependency('libei-1.0', version: libei_req, required: false)/" meson.build
-perl -0pi -e 's{return create_native_backend \(context, error\);\n#endif /\* HAVE_NATIVE_BACKEND \*/}{return create_native_backend (context, error);\n#else\n      g_assert_not_reached ();\n      return NULL;\n#endif /* HAVE_NATIVE_BACKEND */}' src/core/meta-context-main.c
-perl -0pi -e 's{else if \(sd_pid_get_user_unit \(0, &unit\) < 0\)\n        return META_X11_DISPLAY_POLICY_MANDATORY;\n      else\n        return META_X11_DISPLAY_POLICY_ON_DEMAND;}{else\n        \{\n#ifdef HAVE_LIBSYSTEMD\n          if (sd_pid_get_user_unit (0, &unit) < 0)\n            return META_X11_DISPLAY_POLICY_MANDATORY;\n          else\n            return META_X11_DISPLAY_POLICY_ON_DEMAND;\n#else\n          (void) unit;\n          return META_X11_DISPLAY_POLICY_MANDATORY;\n#endif\n        \}}' src/core/meta-context-main.c
+python3 - <<'PY'
+from pathlib import Path
+p = Path("src/core/meta-context-main.c")
+s = p.read_text()
+s = s.replace(
+"""return create_native_backend (context, error);
+#endif /* HAVE_NATIVE_BACKEND */""",
+"""return create_native_backend (context, error);
+#else
+      g_assert_not_reached ();
+      return NULL;
+#endif /* HAVE_NATIVE_BACKEND */""")
+s = s.replace(
+"""else if (sd_pid_get_user_unit (0, &unit) < 0)
+        return META_X11_DISPLAY_POLICY_MANDATORY;
+      else
+        return META_X11_DISPLAY_POLICY_ON_DEMAND;""",
+"""else
+        {
+#ifdef HAVE_LIBSYSTEMD
+          if (sd_pid_get_user_unit (0, &unit) < 0)
+            return META_X11_DISPLAY_POLICY_MANDATORY;
+          else
+            return META_X11_DISPLAY_POLICY_ON_DEMAND;
+#else
+          (void) unit;
+          return META_X11_DISPLAY_POLICY_MANDATORY;
+#endif
+        }""")
+p.write_text(s)
+PY
 
 echo "--- meson setup (introspection=enabled, native) ---"
 # Native build (no cross file). Same feature flags as the cross recipe but introspection ON.

@@ -9,8 +9,9 @@
  * provider the shell degrades to an empty user name; this stub fills it in with the single
  * root user of the Xios session so the UI reads correctly.
  *
- * It exposes one user (uid = getuid(), name "mobile", real name "iOS User") as the Manager
- * plus one User object. Property setters are accepted and ignored. Accounts is a SYSTEM-bus
+ * It exposes one user, resolved via xios_identity() (uid, username, display name, home,
+ * avatar, locale — see xios-session-identity.c), as the Manager plus one User object.
+ * Property setters are accepted and ignored. Accounts is a SYSTEM-bus
  * service; under dbus-run-session point DBUS_SYSTEM_BUS_ADDRESS at the session bus (so
  * G_BUS_TYPE_SYSTEM meets us) or set XIOS_ACCOUNTS_BUS=session. Pure GLib/GIO. GPL-2.0+.
  */
@@ -19,6 +20,7 @@
 #include <unistd.h>
 
 #include "xios-session-identity.h"
+#include "xios-stub-dbus.h"
 
 #define ACCOUNTS_NAME    "org.freedesktop.Accounts"
 #define MANAGER_PATH     "/org/freedesktop/Accounts"
@@ -28,12 +30,12 @@
  * display name, home, avatar, locale — see xios-session-identity.c). */
 static char user_path[64];      /* /org/freedesktop/Accounts/User<uid> */
 static guint64 user_uid;
-static const char *user_name = "mobile";
-static const char *user_real = "iOS User";
-static const char *user_home = "/var/mobile";
-static const char *user_shell = "/bin/sh";
-static const char *user_icon = "";
-static const char *user_lang = "";
+static const char *user_name;
+static const char *user_real;
+static const char *user_home;
+static const char *user_shell;
+static const char *user_icon;
+static const char *user_lang;
 
 static const char manager_xml[] =
   "<node>"
@@ -120,9 +122,11 @@ static GVariant *
 manager_get_property (GDBusConnection *c, const gchar *s, const gchar *o,
                       const gchar *i, const gchar *prop, GError **e, gpointer u)
 {
-  (void) c; (void) s; (void) o; (void) i; (void) e; (void) u;
+  (void) c; (void) s; (void) o; (void) i; (void) u;
   if (g_str_equal (prop, "DaemonVersion"))
     return g_variant_new_string ("xios-accounts-stub");
+  g_set_error (e, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY,
+               "Accounts stub: unknown property %s", prop);
   return NULL;
 }
 
@@ -146,7 +150,7 @@ static GVariant *
 user_get_property (GDBusConnection *c, const gchar *s, const gchar *o,
                    const gchar *i, const gchar *prop, GError **e, gpointer u)
 {
-  (void) c; (void) s; (void) o; (void) i; (void) e; (void) u;
+  (void) c; (void) s; (void) o; (void) i; (void) u;
 
   if (g_str_equal (prop, "Uid"))            return g_variant_new_uint64 (user_uid);
   if (g_str_equal (prop, "UserName"))       return g_variant_new_string (user_name);
@@ -163,6 +167,8 @@ user_get_property (GDBusConnection *c, const gchar *s, const gchar *o,
   if (g_str_equal (prop, "SystemAccount"))  return g_variant_new_boolean (FALSE);
   if (g_str_equal (prop, "LoginFrequency")) return g_variant_new_uint64 (1);
   if (g_str_equal (prop, "AutomaticLogin")) return g_variant_new_boolean (FALSE);
+  g_set_error (e, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY,
+               "Accounts stub: unknown property %s", prop);
   return NULL;
 }
 
@@ -173,66 +179,20 @@ static const GDBusInterfaceVTable user_vtable = {
   .method_call = user_method_call, .get_property = user_get_property,
 };
 
-static gboolean
-register_object (GDBusConnection *connection, const char *path, const char *xml,
-                 const GDBusInterfaceVTable *vtable)
-{
-  GDBusNodeInfo *node;
-  GError *error = NULL;
-  guint id;
-
-  node = g_dbus_node_info_new_for_xml (xml, &error);
-  if (!node)
-    {
-      g_warning ("accounts stub: bad XML: %s", error->message);
-      g_clear_error (&error);
-      return FALSE;
-    }
-  id = g_dbus_connection_register_object (connection, path, node->interfaces[0],
-                                          vtable, NULL, NULL, &error);
-  g_dbus_node_info_unref (node);
-  if (id == 0)
-    {
-      g_warning ("accounts stub: register %s failed: %s", path, error->message);
-      g_clear_error (&error);
-      return FALSE;
-    }
-  return TRUE;
-}
-
 static void
 on_bus_acquired (GDBusConnection *connection, const gchar *name, gpointer user_data)
 {
   (void) name; (void) user_data;
-  register_object (connection, MANAGER_PATH, manager_xml, &manager_vtable);
-  register_object (connection, user_path, user_xml, &user_vtable);
-}
-
-static void
-on_name_acquired (GDBusConnection *connection, const gchar *name, gpointer user_data)
-{
-  (void) connection; (void) user_data;
-  g_message ("accounts stub: owning %s (user %s)", name, user_name);
-}
-
-static void
-on_name_lost (GDBusConnection *connection, const gchar *name, gpointer user_data)
-{
-  GMainLoop *loop = user_data;
-
-  (void) connection;
-  g_warning ("accounts stub: lost %s — exiting", name);
-  g_main_loop_quit (loop);
+  xios_stub_register_object (connection, MANAGER_PATH, manager_xml, &manager_vtable,
+                             "accounts stub");
+  xios_stub_register_object (connection, user_path, user_xml, &user_vtable,
+                             "accounts stub");
 }
 
 int
 main (int argc, char **argv)
 {
-  GMainLoop *loop;
-  GBusType bus_type = G_BUS_TYPE_SYSTEM;
-  const char *which;
   const XiosIdentity *id;
-  guint owner_id;
 
   (void) argc; (void) argv;
 
@@ -249,18 +209,6 @@ main (int argc, char **argv)
   g_snprintf (user_path, sizeof user_path, "/org/freedesktop/Accounts/User%llu",
               (unsigned long long) user_uid);
 
-  which = g_getenv ("XIOS_ACCOUNTS_BUS");
-  if (which && g_str_equal (which, "session"))
-    bus_type = G_BUS_TYPE_SESSION;
-
-  loop = g_main_loop_new (NULL, FALSE);
-  owner_id = g_bus_own_name (bus_type, ACCOUNTS_NAME,
-                             G_BUS_NAME_OWNER_FLAGS_NONE,
-                             on_bus_acquired, on_name_acquired, on_name_lost,
-                             loop, NULL);
-  g_main_loop_run (loop);
-
-  g_bus_unown_name (owner_id);
-  g_main_loop_unref (loop);
-  return 0;
+  return xios_stub_run ("accounts stub", "XIOS_ACCOUNTS_BUS", ACCOUNTS_NAME,
+                        on_bus_acquired);
 }

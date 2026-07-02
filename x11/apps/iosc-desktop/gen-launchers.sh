@@ -252,17 +252,13 @@ for b in "${BUILT[@]}"; do echo "    $b"; done
 if [ "$DEPLOY" = "1" ]; then
   echo
   echo "==> --deploy: installing to the device (needs $REPO_ROOT/device.env)"
-  [ -f "$REPO_ROOT/device.env" ] && { set -a; . "$REPO_ROOT/device.env"; set +a; }
-  IP="${THEOS_DEVICE_IP:-MaxsiPad.local}"; PORT="${THEOS_DEVICE_PORT:-22}"
-  KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-  SSH_OPTS=(-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -i "$KEY")
+  . "$HERE/deploy-env.sh"   # IP/PORT/SSH_OPTS + ssh_/scp_ (loads device.env)
   for b in "${BUILT[@]}"; do
     dest="/var/jb/Applications/$(basename "$b")"
     echo "   -> $IP:$dest"
-    ssh -p "$PORT" "${SSH_OPTS[@]}" "root@$IP" "rm -rf '$dest'"
-    scp -P "$PORT" "${SSH_OPTS[@]}" -r "$b" "root@$IP:/var/jb/Applications/"
-    ssh -p "$PORT" "${SSH_OPTS[@]}" "root@$IP" \
-      "chmod -R 0755 '$dest'; /var/jb/usr/bin/uicache -p '$dest'"
+    ssh_ "rm -rf '$dest'"
+    scp_ -r "$b" "root@$IP:/var/jb/Applications/"
+    ssh_ "chmod -R 0755 '$dest'; /var/jb/usr/bin/uicache -p '$dest'"
   done
   echo "==> deployed. Tap the new icons on the Home Screen."
 fi

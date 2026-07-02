@@ -1,10 +1,7 @@
 #!/var/jb/bin/sh
 export XIOS_AUDIO_SERVER="${XIOS_AUDIO_SERVER:-/var/jb/tmp/xios-audio.sock}"
-# Correct only for the legacy pa_simple shim (libpulse-simple-xios0), which
-# spoke XIOA at this socket. When the real PulseAudio daemon is installed,
-# profile.d/xios-pulse.sh (sourced after this file) overrides PULSE_SERVER to
-# the PA native socket; real libpulse clients cannot speak XIOA.
-export PULSE_SERVER="${PULSE_SERVER:-unix:${XIOS_AUDIO_SERVER}}"
+# PulseAudio owns PULSE_SERVER. This XIOA socket is reserved for xios-audiod and
+# module-xios-sink, plus the local xios-audio-play smoke test.
 export SDL_AUDIODRIVER="${SDL_AUDIODRIVER:-coreaudio}"
 
 xios_audio_start() {
@@ -21,4 +18,3 @@ xios_audio_start() {
         sleep 1
     fi
 }
-

@@ -31,14 +31,6 @@ final class HostSystemAppearance {
         flush()
     }
 
-    func update(from scene: UIScene) {
-        if let windowScene = scene as? UIWindowScene {
-            update(from: windowScene.traitCollection)
-        } else {
-            update(from: UITraitCollection.current)
-        }
-    }
-
     private func flush() {
         guard let dark = desiredDark, dark != sentDark else { return }
         guard ensureConnected() else { return }
@@ -60,37 +52,8 @@ final class HostSystemAppearance {
         guard now.timeIntervalSince(lastConnectAttempt) >= 1 else { return false }
         lastConnectAttempt = now
 
-        let sock = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard sock >= 0 else { return false }
-
-        var noSigpipe: Int32 = 1
-        setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &noSigpipe,
-                   socklen_t(MemoryLayout.size(ofValue: noSigpipe)))
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let sunPathCapacity = MemoryLayout.size(ofValue: addr.sun_path)
-        _ = xiosSysintSocket.withCString { pathPtr in
-            withUnsafeMutablePointer(to: &addr.sun_path) { tuplePtr in
-                tuplePtr.withMemoryRebound(to: CChar.self,
-                                           capacity: sunPathCapacity) { sunPath in
-                    strncpy(sunPath, pathPtr, sunPathCapacity - 1)
-                }
-            }
-        }
-
-        let rc = withUnsafePointer(to: &addr) { addrPtr -> Int32 in
-            addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
-                connect(sock, saPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        guard rc == 0 else {
-            close(sock)
-            return false
-        }
-
-        fd = sock
-        return true
+        fd = connectUnixSocket(xiosSysintSocket)
+        return fd >= 0
     }
 
     private func writeAll(_ msg: XiosSysintMessage) -> Bool {

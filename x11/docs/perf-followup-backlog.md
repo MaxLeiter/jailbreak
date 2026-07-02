@@ -1,6 +1,6 @@
-# Perf / Followup Backlog (audit 2026-06-30 — line numbers cited below drift as files change; treat them as anchors, re-grep before editing)
+# Perf / Followup Backlog (audit 2026-06-30; implementation passes through 2026-07-02 — line numbers cited below drift as files change; treat them as anchors, re-grep before editing)
 
-AUDIT COMPLETE (read-only; nothing changed). Prioritized backlog for the X11-on-iOS project, evidence-cited. Repo root /Users/max/Documents/jailbreak.
+AUDIT COMPLETE with follow-up fixes landing incrementally. Prioritized backlog for the X11-on-iOS project, evidence-cited. Repo root /Users/max/Documents/jailbreak.
 
 === P0 — CPU where GPU should be (north-star violations, ranked by per-frame cost) ===
 
@@ -20,7 +20,7 @@ P0.3 ✅ DONE (b9cbdec; validated on-device 2026-07-01 — "frame barrier = EGL 
 - Fix: gate all validation reads/logs behind an IOSC_DEBUG env (IOSC_PROBE already is, iosc.c:968); replace glFinish with glFlush + a fence/EGL sync before xios_notify_dirty.
 - Effort: small. Owner: iosc compositor track. Cheapest P0 — do first.
 
-P0.4 ◐ PARTIAL 2026-07-02 — repaint is coalesced to one idle per event-loop turn, present-side cursor overlay support exists, and wl_surface.frame callbacks now retire after the coalesced repaint instead of immediately at commit. REMAINING: true output-refresh pacing from Xios/CADisplayLink present ack; callbacks are post-repaint but still event-loop paced, not display-vblank paced. Original finding: No frame pacing: every commit triggers an immediate synchronous full recomposite; frame callbacks fire instantly.
+P0.4 ◐ PARTIAL 2026-07-02 — repaint is coalesced to one idle per event-loop turn, present-side cursor overlay support exists and now auto-enables when a typed Xios client is connected (`IOSC_APP_CURSOR=0/1` can force either path), wl_surface.frame callbacks retire after the coalesced repaint instead of immediately at commit, and presentation-time feedback is likewise sent after repaint instead of at commit. REMAINING: true output-refresh pacing from Xios/CADisplayLink present ack; callbacks are post-repaint but still event-loop paced, not display-vblank paced. Original finding: No frame pacing: every commit triggers an immediate synchronous full recomposite; frame callbacks fire instantly.
 - iosc.c:1408-1416 — commit → recomposite_all (with the P0.3 glFinish) → wl_callback_send_done immediately. An animating client re-renders as fast as it can; two busy clients = 2 full composites per their combined commit rate, unbounded by display refresh.
 - Fix: damage-accumulate + coalesce into one repaint per output refresh (a frame clock; the Xios app already runs a CADisplayLink, XScreen.swift:162 — the dirty/present channel could carry pacing back), send frame done on present. Also relevant to Mutter integration (mutter-on-iosc.md risk #7: reconcile CoglOnscreen swap with single-surface present; likely 2-3 output IOSurface rotation — which also removes the current tearing window of compositing into the same IOSurface the app is presenting from).
 - Effort: medium. Owner: iosc compositor track.
@@ -30,8 +30,10 @@ P0.5 wlr-screencopy is a software row-memcpy readback (the known one — confirm
 - Per-screenshot, not per-frame, so it ranks below P0.1-P0.4 despite being the marquee example. Fix per the seam comment: GPU blit (glReadPixels into a PBO, or blit output→staging IOSurface) inside xios_read_output_region + fast-path in screencopy_copy (iosc.c:1022-1043).
 - Effort: small-medium. Owner: iosc compositor track.
 
-P0.6 ✅ DONE 2026-07-02 — eglSwapBuffers in the EGL shim now uses an EGL fence/client wait with glFlush and falls back to glFinish only if sync is unavailable; IOSC_NBUF=3 rotates on wl_buffer.release. Original finding: Client-side glFinish per swap in the EGL shim.
+P0.6 ✅ DONE 2026-07-02 — eglSwapBuffers in the EGL shim now uses an EGL fence/client wait with glFlush and falls back to glFinish only if sync is unavailable; IOSC_NBUF=3 rotates on wl_buffer.release and scans all buffers before blocking so it no longer stalls on an arbitrary `cur+1` buffer while another buffer is free. Original finding: Client-side glFinish per swap in the EGL shim.
 - iosc_egl_shim.c header (line ~16): eglSwapBuffers = "glFinish, hand pbuf[cur]'s IOSurface to iosc". Full client GPU sync every frame for every GPU client. Fix: fence/sync object + buffer-release-driven rotation (IOSC_NBUF is already 3). Effort: small-medium. Matters more once P0.1 makes GPU clients the norm.
+
+P0.7 ✅ DONE 2026-07-02 — Xwayland glamor IOSurface damage now uses a per-frame EGL fence when `EGL_KHR_fence_sync` is available, falling back to `glFinish()` only when sync support is missing. Original finding: Xwayland's IOSurface glamor backend drained the whole GPU pipeline on every damage post.
 
 === P1 — Shortcuts/stopgaps that risk correctness or block features ===
 
@@ -47,6 +49,8 @@ P1.5 ✅ DONE 2026-07-02 — xdg-activation tokens now store serial/seat/surface
 
 P1.6 ioscd.sock is world-connectable with a root daemon behind it (documented as acceptable-for-now, iosc-desktop-env.md §8: "can be tightened to a mobile-group socket later"). ioscd only execs fixed binaries, so bounded — but it is a root launch service; tighten when packaging.
 
+P1.7 ✅ DONE 2026-07-02 — iosc's shared input socket now flushes Wayland clients once per drained socket batch instead of after every record, and the per-key stderr trace is behind `IOSC_DEBUG`. Original finding: motion/touch/text bursts paid repeated flush syscalls and every key emitted unconditional stderr.
+
 === P2 — Deferred followups / cleanups ===
 
 P2.1 iosc.c megafile refactor is QUEUED and the file keeps growing: refactor-plan.md says 4021 lines; it's now 5733 (plus XScreen.swift 1676). Plan's precondition list (panel + input-unification landed, blend fix validated, freeze announced) — input-unification (P1.1) is now done, so the refactor gate is closer. XScreen.swift split is low-contention and can go first per the plan.
@@ -61,7 +65,7 @@ P2.5 Nautilus ecosystem holes: no gvfs (Trash/Network empty), tracker-sparql bui
 
 P2.6 ✅ DONE 2026-07-02 — iosc-desktop-env.md now documents the landed app_id raise socket and `ngl` GTK default; refactor-plan.md line counts/gates were refreshed. Original finding: iosc-desktop-env.md §7 still says iosc "cannot" raise by app_id and requests the feature — it HAS landed (wm control socket + wm_find_toplevel_by_app_id, iosc.c:4898-4940, socket up at iosc.c:5705). refactor-plan.md line counts stale (P2.1). Worth a doc pass so future agents don't re-implement.
 
-P2.7 Uncommitted WIP in the working tree: apps/iosc-shell (build-panel.sh, ioscpanel.c +219/-178, shell-draw.h), linux-build/recipes/startup-notification.mk, and rebuilt wayland/out binaries. The panel is PARKED per the distribution-chooser pivot — decide commit-or-drop so the parked track isn't half-staged.
+P2.7 Uncommitted WIP in the working tree: apps/iosc-shell (build-panel.sh, iosc-shell.c, shell-draw.h), linux-build/recipes/startup-notification.mk, and rebuilt wayland/out binaries. The shell is PARKED per the distribution-chooser pivot — decide commit-or-drop so the parked track isn't half-staged.
 
 P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/jb/usr/bin/bash -i`; the stale `-e <cmd>` memory note was incorrect for the current scripts. Original finding: kgx quirk: needs `-e <cmd>` to launch (memory note) — root-cause the default-shell spawn rather than carrying the workaround into launcher .desktop files.
 
@@ -71,8 +75,8 @@ P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/j
 - libei/libeis links-only shim (recipes/libei.mk:5-12): input capture / remote-desktop input NON-FUNCTIONAL by design, inert feature. Same pattern as stubbed libdrm.
 - xios-login1-stub (wayland/xios-login1-stub.c): answers the logind calls gnome-session/gsd make; no real session/power management — intended.
 - CPU fallback composite mode (iosc.c:984-994, activated at 5622 "GPU compositor unavailable"): top surface only, no stacking — fine as a fallback, never the product path.
-- X11/legacy flavor stays software (Xvfb/llvmpipe; Xios app's Xvfb-file path uploads ~14 MB/frame, XScreen.swift:26-28) — explicitly lowest priority per the distribution-chooser; ANGLE-accel (glamor or Xwayland-on-iosc) possible later.
-- ioscpanel cairo/pango CPU renderer — parked with the custom-shell track; renderer may be reused for native-mode window chrome.
+- X11 flavor stays software for now (Xvfb/llvmpipe outside the app display path) — explicitly lowest priority per the distribution-chooser; ANGLE-accel (glamor or Xwayland-on-iosc) possible later.
+- split-shell cairo/pango CPU renderer — adequate for bar/dock chrome; renderer may be reused for native-mode window chrome.
 - gedit skipped in favor of gnome-text-editor (libpeas-2 typelib chain, gnome-apps.md:175-182).
 - gnome-shell JS is interpreter-only (JIT-less mozjs) — animations may be sluggish on the A10; compositing stays GPU (mutter-on-iosc.md risk #5). Inherent, not fixable by us.
 - ios-inputd degrades gracefully when input-method-v2/virtual-keyboard-v1 absent (ios-inputd.c:293-305) — both protocols are advertised by iosc, so messages are belt-and-braces.

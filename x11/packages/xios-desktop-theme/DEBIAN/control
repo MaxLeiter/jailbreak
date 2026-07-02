@@ -1,10 +1,10 @@
 Package: xios-desktop-theme
 Name: Xios desktop theme
-Version: 1.1.0
+Version: 1.1.1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: xios-desktop-defaults, adwaita-icon-theme, hicolor-icon-theme
+Depends: xios-desktop-defaults, adwaita-icon-theme, hicolor-icon-theme, librsvg2-common
 Section: X11
 Priority: optional
 Description: Adwaita cursors and wallpaper for the Xios desktop

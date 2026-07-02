@@ -20,8 +20,16 @@
 # CHANGE, so a stale request left over from a previous boot never auto-launches.
 set -u
 
-LIB="${XIOS_SESSION_LIB:-/var/jb/libexec/xios-session/xios-session-lib.sh}"
-[ -r "$LIB" ] || LIB="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/xios-session-lib.sh"
+LIB_CANDIDATES=(
+    "${XIOS_SESSION_LIB:-}"
+    "/var/jb/libexec/xios-session/xios-session-lib.sh"
+    "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/xios-session-lib.sh"
+)
+LIB=""
+for c in "${LIB_CANDIDATES[@]}"; do
+    [ -n "$c" ] && [ -r "$c" ] && { LIB="$c"; break; }
+done
+[ -n "$LIB" ] || { echo "xios-sessiond: cannot find xios-session-lib.sh" >&2; exit 1; }
 # shellcheck source=/dev/null
 . "$LIB"
 
@@ -29,8 +37,11 @@ REQ="${XS_TMP:-/var/jb/tmp}/xios-request.json"
 POLL="${XIOS_SESSIOND_POLL:-1}"   # seconds between polls
 
 # sed JSON scalar reader (string or number), same style as xios-server.sh.
-json_get() {  # json_get <key> <file>
-    sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p; s/.*\"$1\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$2" 2>/dev/null | head -n 1
+# Parses the JSON passed as $2 (NOT the file): each iteration works from the one
+# snapshot taken at change detection, so a concurrent rewrite of the request file
+# can't mix fields from two requests or defeat the compare-against-last dedupe.
+json_get() {  # json_get <key> <json>
+    printf '%s\n' "$2" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p; s/.*\"$1\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" 2>/dev/null | head -n 1
 }
 
 xs_log "xios-sessiond up; watching $REQ (poll ${POLL}s)"
@@ -45,14 +56,14 @@ while :; do
     last="$cur"
     [ -n "$cur" ] || continue
 
-    action="$(json_get action "$REQ")"
+    action="$(json_get action "$cur")"
     [ "$action" = "session" ] || continue   # not ours (e.g. display-profile)
 
-    preset="$(json_get preset "$REQ")"
-    app="$(json_get app "$REQ")"
-    width="$(json_get width "$REQ")"
-    height="$(json_get height "$REQ")"
-    dpi="$(json_get dpi "$REQ")"
+    preset="$(json_get preset "$cur")"
+    app="$(json_get app "$cur")"
+    width="$(json_get width "$cur")"
+    height="$(json_get height "$cur")"
+    dpi="$(json_get dpi "$cur")"
     xs_log "request: preset=${preset:-?} ${app:+app=$app}${width:+ width=$width}${height:+ height=$height}${dpi:+ dpi=$dpi}"
     # Serve it. Run in a subshell so a preset failure can't kill the watcher.
     (

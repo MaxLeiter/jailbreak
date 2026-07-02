@@ -8,7 +8,7 @@
 - `x11/wayland/xios_input_socket.{h,c}` — the 24-byte input wire (shared by iosc AND mutter's MetaBackendIOS). Types: 1 MOTION, 2 BUTTON, 3 KEY, 4 TEXT, 5 TRAITS(→client OSK), 6 TOUCH, 7 TABLET/Pencil, 8 BIND(per-window native), 9 AXIS(scroll), 10 OUTPUT(rotation), 11 HAPTIC, 12 VOLUME, 13 APPEARANCE. x,y = absolute OUTPUT-pixel.
 - `x11/wayland/xios_surface.{c,h}` — the DDX present side (IOSurface, typed HELLO/DIRTY/CURSOR framing).
 - `x11/wayland/xios.json` contract: `{width,height,stride,format:BGRA,ddx:"iosurface",socket:<ddx>,input_socket:<path>,display}`.
-- Run: `run-shell.sh` (iosc + ioscbg + ioscpanel), `run-kgx.sh` (a client).
+- Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
 
 ## Current state
 - iosc composites at logical N×M with 2× supersample → output IOSurface = 2N×2M (e.g. `-logical 1600x1200` → 3200×2400). Default in run-shell.sh is 1440×1080.
@@ -27,4 +27,4 @@
 4. Un-freeze plan: the monolith→modules refactor unblocks clipboard + native-per-window cleanly.
 
 ## Verify
-`/var/jb/tmp/iosc.log` (logical/output/clients), `/var/jb/tmp/ioscpanel.log` (with IOSC_SHELL_DEBUG=1). Input socket is `/var/jb/tmp/iosc-input.sock` for iosc.
+`/var/jb/tmp/iosc.log` (logical/output/clients), shell stderr logs (with IOSC_SHELL_DEBUG=1). Input socket is `/var/jb/tmp/iosc-input.sock` for iosc.

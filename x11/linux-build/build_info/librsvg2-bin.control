@@ -1,0 +1,10 @@
+Package: librsvg2-bin
+Version: @DEB_LIBRSVG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/LibRsvg
+Depends: librsvg2-2 (= @DEB_LIBRSVG_V@), libglib2.0-0, libgdk-pixbuf-2.0-0, libcairo2, libpango-1.0-0
+Description: command-line SVG conversion tools
+ Command-line tools for rendering SVGs, including rsvg-convert.

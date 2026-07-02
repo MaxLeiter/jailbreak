@@ -1,0 +1,13 @@
+Package: qt6-tools
+Version: @DEB_QTTOOLS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base
+Description: Minimal Qt 6 tools libraries for the Xios desktop
+ QtUiTools runtime pieces from qttools. The target desktop applications from
+ qttools are intentionally not shipped in this bring-up package.
+ .
+ Required by the KWin layer of the KDE Plasma Mobile flavor of Xios.

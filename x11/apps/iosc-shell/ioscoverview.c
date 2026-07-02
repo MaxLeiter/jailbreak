@@ -19,7 +19,7 @@
  * Build: build-panel.sh. Needs iosc's zwlr_layer_shell_v1.
  */
 #define _GNU_SOURCE
-#define SD_NO_DRAW                 /* .desktop scan + launch + shm fd only */
+#define SD_CAIRO                   /* sd_alloc_cairo_buffer from shell-draw.h */
 #include "shell-draw.h"
 #include "shell-theme.h"
 #include "panel-render.h"
@@ -71,8 +71,9 @@ static struct {
 
     int   width, height, scale, scale_env, configured, running;
     int   px, py, have_ptr;
+    int   ptr_kind, ptr_idx;
     int   press_kind, press_idx;
-    int   touch_active, touch_id, touch_drag;
+    int   touch_active, touch_id, touch_drag, touch_moved;
     int   touch_x0, touch_y0, drag_scroll0;
     int   scroll_y;
     double anim_t;
@@ -124,9 +125,6 @@ static void refilter(void)
 
 /* ------------------------------------------------------------- rendering -- */
 
-static void buf_release(void *d, struct wl_buffer *b){ (void)d; wl_buffer_destroy(b); }
-static const struct wl_buffer_listener buf_listener = { .release = buf_release };
-
 static void build_model(struct ov_model *m)
 {
     memset(m, 0, sizeof *m);
@@ -158,9 +156,8 @@ static void build_model(struct ov_model *m)
 
 static void clamp_scroll(void)
 {
-    struct ov_model m;
-    build_model(&m);
-    int max = ov_content_height(&m, O.width) - (O.height - OV_SECT_TOP) + 24;
+    int max = ov_content_height(O.nfiltered, O.nwins, O.query[0] != 0, O.width)
+              - (O.height - OV_SECT_TOP) + 24;
     if (max < 0) max = 0;
     if (O.scroll_y > max) O.scroll_y = max;
     if (O.scroll_y < 0)   O.scroll_y = 0;
@@ -169,23 +166,10 @@ static void clamp_scroll(void)
 static void render(void)
 {
     if (!O.configured) return;
-    int s = O.scale, bw = O.width * s, bh = O.height * s;
-    int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, bw);
-    size_t size = (size_t)stride * bh;
-    int fd = sd_create_anon_fd(size);
-    if (fd < 0) return;
-    void *map = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    if (map == MAP_FAILED) { close(fd); return; }
-    struct wl_shm_pool *pool = wl_shm_create_pool(O.shm, fd, (int32_t)size);
-    struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, bw, bh, stride,
-                                                      WL_SHM_FORMAT_ARGB8888);
-    wl_shm_pool_destroy(pool);
-    close(fd);
-
-    cairo_surface_t *surf = cairo_image_surface_create_for_data(
-        (unsigned char *)map, CAIRO_FORMAT_ARGB32, bw, bh, stride);
-    cairo_t *cr = cairo_create(surf);
-    cairo_scale(cr, s, s);
+    cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
+    struct wl_buffer *buf = sd_alloc_cairo_buffer(O.shm, O.width, O.height, O.scale,
+                                                  &cr, &surf, &map, &size);
+    if (!buf) return;
 
     pr_text_ctx t = pr_text_ctx_new(cr);
     struct ov_model m;
@@ -198,10 +182,10 @@ static void render(void)
     cairo_surface_destroy(surf);
     munmap(map, size);
 
-    wl_buffer_add_listener(buf, &buf_listener, NULL);
+    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
     wl_surface_set_buffer_scale(O.surf, O.scale);
     wl_surface_attach(O.surf, buf, 0, 0);
-    wl_surface_damage_buffer(O.surf, 0, 0, bw, bh);
+    wl_surface_damage_buffer(O.surf, 0, 0, O.width * O.scale, O.height * O.scale);
     wl_surface_commit(O.surf);
 }
 
@@ -287,12 +271,25 @@ static const struct zwlr_foreign_toplevel_manager_v1_listener ftm_listener = {
 
 /* --------------------------------------------------------- input: pointer */
 
+static void ptr_update_hover(void)
+{
+    int i = O.have_ptr ? ov_hit_test(&O.hits, O.px, O.py) : -1;
+    O.ptr_kind = i >= 0 ? O.hits.v[i].kind : -1;
+    O.ptr_idx = i >= 0 ? O.hits.v[i].idx : -1;
+}
+
 static void pt_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y)
-{ (void)d;(void)p;(void)s;(void)sf; O.have_ptr=1; O.px=wl_fixed_to_int(x); O.py=wl_fixed_to_int(y); render(); }
+{ (void)d;(void)p;(void)s;(void)sf; O.have_ptr=1; O.px=wl_fixed_to_int(x); O.py=wl_fixed_to_int(y); ptr_update_hover(); render(); }
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf)
-{ (void)d;(void)p;(void)s;(void)sf; O.have_ptr=0; render(); }
+{ (void)d;(void)p;(void)s;(void)sf; O.have_ptr=0; O.ptr_kind=-1; O.ptr_idx=-1; render(); }
 static void pt_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y)
-{ (void)d;(void)p;(void)t; O.px=wl_fixed_to_int(x); O.py=wl_fixed_to_int(y); render(); }
+{
+    (void)d;(void)p;(void)t;
+    int old_kind = O.ptr_kind, old_idx = O.ptr_idx;
+    O.px=wl_fixed_to_int(x); O.py=wl_fixed_to_int(y);
+    ptr_update_hover();
+    if (O.ptr_kind != old_kind || O.ptr_idx != old_idx) render();
+}
 static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t, uint32_t button, uint32_t state)
 {
     (void)d;(void)p;(void)serial;(void)t;
@@ -304,9 +301,10 @@ static void pt_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t a, wl_fi
 {
     (void)d;(void)p;(void)t;
     if (a != WL_POINTER_AXIS_VERTICAL_SCROLL) return;
+    int old_scroll = O.scroll_y;
     O.scroll_y += wl_fixed_to_int(v) * 3;
     clamp_scroll();
-    render();
+    if (O.scroll_y != old_scroll) render();
 }
 static void pt_frame(void *d, struct wl_pointer *p){ (void)d;(void)p; }
 static void pt_axis_src(void *d, struct wl_pointer *p, uint32_t s){ (void)d;(void)p;(void)s; }
@@ -331,8 +329,9 @@ static const struct wl_pointer_listener pointer_listener = {
 };
 
 /* ----------------------------------------------------------- input: touch */
-/* Tap = press feedback + act on up. Vertical drag past the slop scrolls the
- * grid instead (press feedback cancels). */
+/* Tap = press feedback + act on up. Movement past the slop in either axis
+ * cancels the tap (press feedback clears); a vertical drag also scrolls the
+ * grid. */
 #define TOUCH_SLOP 8
 
 static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
@@ -340,7 +339,7 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
 {
     (void)d;(void)t;(void)serial;(void)time;(void)sf;
     if (O.touch_active) return;
-    O.touch_active = 1; O.touch_id = id; O.touch_drag = 0;
+    O.touch_active = 1; O.touch_id = id; O.touch_drag = 0; O.touch_moved = 0;
     O.px = wl_fixed_to_int(x); O.py = wl_fixed_to_int(y);
     O.touch_x0 = O.px; O.touch_y0 = O.py; O.drag_scroll0 = O.scroll_y;
     int i = ov_hit_test(&O.hits, O.px, O.py);
@@ -354,25 +353,32 @@ static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id, wl
     (void)d;(void)t;(void)time;
     if (!O.touch_active || id != O.touch_id) return;
     O.px = wl_fixed_to_int(x); O.py = wl_fixed_to_int(y);
-    int dy = O.py - O.touch_y0;
-    if (!O.touch_drag && (dy > TOUCH_SLOP || dy < -TOUCH_SLOP)) {
-        O.touch_drag = 1;
-        O.press_kind = 0; O.press_idx = 0;      /* it's a scroll, not a tap */
+    int dx = O.px - O.touch_x0, dy = O.py - O.touch_y0;
+    int adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+    int need_render = 0;
+    if (!O.touch_moved && (adx > TOUCH_SLOP || ady > TOUCH_SLOP)) {
+        O.touch_moved = 1;                      /* movement: not a tap */
+        O.press_kind = 0; O.press_idx = 0;
+        need_render = 1;
     }
+    if (!O.touch_drag && ady > TOUCH_SLOP)
+        O.touch_drag = 1;                       /* vertical drag scrolls */
     if (O.touch_drag) {
+        int old_scroll = O.scroll_y;
         O.scroll_y = O.drag_scroll0 - dy;
         clamp_scroll();
-        render();
+        if (O.scroll_y != old_scroll) need_render = 1;
     }
+    if (need_render) render();
 }
 static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, int32_t id)
 {
     (void)d;(void)t;(void)serial;(void)time;
     if (!O.touch_active || id != O.touch_id) return;
-    int was_drag = O.touch_drag;
-    O.touch_active = 0; O.touch_drag = 0;
+    int moved = O.touch_moved;
+    O.touch_active = 0; O.touch_drag = 0; O.touch_moved = 0;
     O.press_kind = 0; O.press_idx = 0;
-    if (!was_drag) {
+    if (!moved) {
         int i = ov_hit_test(&O.hits, O.px, O.py);
         if (i >= 0) act_on_hit(&O.hits.v[i]);
     }
@@ -380,7 +386,7 @@ static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, i
 }
 static void tc_frame(void *d, struct wl_touch *t){ (void)d;(void)t; }
 static void tc_cancel(void *d, struct wl_touch *t)
-{ (void)d;(void)t; O.touch_active=0; O.touch_drag=0; O.press_kind=0; O.press_idx=0; render(); }
+{ (void)d;(void)t; O.touch_active=0; O.touch_drag=0; O.touch_moved=0; O.press_kind=0; O.press_idx=0; render(); }
 static void tc_shape(void *d, struct wl_touch *t, int32_t id, wl_fixed_t maj, wl_fixed_t min)
 { (void)d;(void)t;(void)id;(void)maj;(void)min; }
 static void tc_orient(void *d, struct wl_touch *t, int32_t id, wl_fixed_t o)
@@ -540,11 +546,12 @@ int main(void)
     signal(SIGCHLD, SIG_IGN);
     memset(&O, 0, sizeof O);
     O.width = 1440; O.height = 1080; O.scale = 2; O.running = 1;
+    O.ptr_kind = -1; O.ptr_idx = -1;
     const char *es = getenv("IOSC_PANEL_SCALE");
     if (es && atoi(es) > 0) { O.scale = atoi(es); O.scale_env = 1; }
-    int animate = 1;
+    int animate = 0;
     const char *ea = getenv("IOSC_SHELL_ANIM");
-    if (ea && !strcmp(ea, "0")) animate = 0;
+    if (ea && *ea && strcmp(ea, "0")) animate = 1;
 
     O.dpy = wl_display_connect(NULL);
     if (!O.dpy) { fprintf(stderr, "ioscoverview: cannot connect to WAYLAND_DISPLAY\n"); return 1; }
