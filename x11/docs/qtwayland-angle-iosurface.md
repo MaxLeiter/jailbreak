@@ -9,7 +9,7 @@ This is the accelerated Qt path for Plasma on iosc:
 - `qtbase` round 3 enables `INPUT_opengl=es2` and `FEATURE_egl=ON`, with EGL/GLES resolved from the staged ANGLE package under `/var/jb/lib/angle`.
 - `qtwayland` now keeps its stock `wayland-egl` client buffer integration. The ANGLE package installs the iosc EGL shim as `libEGL.dylib`, so Qt's normal Wayland EGL calls are intercepted and translated to ANGLE Metal plus IOSurface buffers.
 - `qt6-base` and `qt6-wayland` depend on `angle`; both recipes add `/var/jb/lib/angle` as an LC_RPATH where needed.
-- GPU entitlements still belong on the executable that creates the ANGLE Metal display, not on Qt library packages. For smoke tests that means `qml`; for Plasma that means `kwin_wayland`, `plasmashell`, and any GL-initializing helper process.
+- GPU entitlements still belong on the executable that creates the ANGLE Metal display, not on Qt library packages. QtGui executables also need `platform-application` on this Darwin/iOS build because they link UIKit; without it ANGLE returns `EGL_NO_DISPLAY` even though non-UIKit EGL clients work. For smoke tests that means `qt-wayland-gl-smoke`/`qml`; for Plasma that means `kwin_wayland`, `plasmashell`, and any GL-initializing helper process.
 
 ## Load-Bearing EGL Contract
 

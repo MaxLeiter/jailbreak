@@ -130,8 +130,9 @@ fi
 
 case " ${TARGETS} " in *" qtwayland "*)
   if ls /out/angle_*_iphoneos-arm64.deb >/dev/null 2>&1; then
-    ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep '+es3' | head -1 || true)
-    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | head -1)
+    ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep -E '\+es3-[0-9]+' | sort -V | tail -1 || true)
+    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep '+es3' | sort -V | tail -1 || true)
+    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1)
     echo "==> staging ANGLE for qtwayland EGL integration: ${ANGLE_DEB}"
     rm -rf /tmp/angle-qt && mkdir -p /tmp/angle-qt
     dpkg-deb -x "$ANGLE_DEB" /tmp/angle-qt

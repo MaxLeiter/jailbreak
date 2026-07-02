@@ -31,6 +31,9 @@ endif
 SUBPROJECTS       += qtwayland
 QTWAYLAND_VERSION := 6.6.3
 DEB_QTWAYLAND_V   ?= $(QTWAYLAND_VERSION)
+QTWAYLAND_ANGLE_PREFIX := $(BUILD_BASE)$(MEMO_PREFIX)
+QTWAYLAND_ANGLE_INC    := $(QTWAYLAND_ANGLE_PREFIX)/include
+QTWAYLAND_ANGLE_LIB    := $(QTWAYLAND_ANGLE_PREFIX)/lib/angle
 
 qtwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtwayland))
@@ -68,10 +71,20 @@ qtwayland: qtwayland-setup
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \
 		-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
+		-DEGL_INCLUDE_DIR=$(QTWAYLAND_ANGLE_INC) \
+		-DEGL_LIBRARY=$(QTWAYLAND_ANGLE_LIB)/libEGL.dylib \
+		-DGLESv2_INCLUDE_DIR=$(QTWAYLAND_ANGLE_INC) \
+		-DGLESv2_LIBRARY=$(QTWAYLAND_ANGLE_LIB)/libGLESv2.dylib \
+		-DFEATURE_egl_extension_platform_wayland=OFF \
+		-DFEATURE_wayland_egl=ON \
+		-DFEATURE_wayland_drm_egl_server_buffer=OFF \
+		-DFEATURE_wayland_libhybris_egl_server_buffer=OFF \
+		-DFEATURE_wayland_shm_emulation_server_buffer=OFF \
 		-DFEATURE_wayland_client=ON \
 		-DFEATURE_wayland_server=OFF
 	+ninja -C $(BUILD_WORK)/qtwayland/build
 	+DESTDIR="$(BUILD_STAGE)/qtwayland" ninja -C $(BUILD_WORK)/qtwayland/build install
+	test -f "$(BUILD_STAGE)/qtwayland/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/qt6/plugins/wayland-graphics-integration-client/libqt-plugin-wayland-egl.dylib"
 	$(call AFTER_BUILD,copy,qtwayland,/var/jb/lib/angle)
 endif
 

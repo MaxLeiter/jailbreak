@@ -5,6 +5,8 @@
 # .so/.so.2) that were hand-made and dpkg-unowned on the dev device; without them a fresh
 # install can't load libmutter (links libGLESv2.2.dylib) or satisfy cogl's dlopen of the
 # .so sonames.
+# -3 revision: updates the iosc Wayland-platform shim so toolkit EGL extension probes work
+# before an EGLDisplay exists.
 set -euo pipefail
 
 BUILD=/private/tmp/angle-ios-build/angle/out/ios-arm64
@@ -13,7 +15,7 @@ OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
 SHIM=${IOSC_EGL_SHIM:-/Users/max/Documents/jailbreak/x11/wayland/out/libiosc_egl.dylib}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
-VER="2.1.0+git20260630.a32d31d+es3-2"
+VER="2.1.0+git20260630.a32d31d+es3-3"
 DEB="angle_${VER}_iphoneos-arm64.deb"
 
 rm -rf "$STAGEROOT"

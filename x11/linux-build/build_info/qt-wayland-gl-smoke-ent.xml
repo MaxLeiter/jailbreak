@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- QtGui links UIKit on this Darwin/iOS Qt build. In practice the process needs
+     platform-application in addition to the GPU IOKit classes, or ANGLE's Metal
+     display creation returns EGL_NO_DISPLAY while non-UIKit EGL clients work. -->
+<plist version="1.0">
+<dict>
+    <key>platform-application</key>
+    <true/>
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+    <key>com.apple.private.skip-library-validation</key>
+    <true/>
+    <key>task_for_pid-allow</key>
+    <true/>
+    <key>com.apple.system-task-ports</key>
+    <true/>
+    <key>com.apple.security.iokit-user-client-class</key>
+    <array>
+        <string>AGXDeviceUserClient</string>
+        <string>IOGPUDeviceUserClient</string>
+        <string>IOSurfaceRootUserClient</string>
+        <string>IOSurfaceSendRight</string>
+        <string>IOSurfaceAcceleratorClient</string>
+    </array>
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/</string>
+        <string>/tmp/</string>
+        <string>/var/</string>
+        <string>/private/var/</string>
+    </array>
+</dict>
+</plist>

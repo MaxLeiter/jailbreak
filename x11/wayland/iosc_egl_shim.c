@@ -422,18 +422,22 @@ EGLint     eglGetError(void){ return REAL(eglGetError)(); }
  * eglGetPlatformDisplay(WAYLAND), which the shim then remaps to ANGLE Metal. */
 const char *eglQueryString(EGLDisplay d, EGLint n)
 {
-    const char *real = REAL(eglQueryString)(d, n);
     if (d == EGL_NO_DISPLAY && n == EGL_EXTENSIONS) {
-        static char buf[1024];
-        /* KHR_platform_base first so GDK prefers the CORE eglGetPlatformDisplay
-         * (the proven+instrumented path) over the EXT entrypoint. */
-        const char *inject = "EGL_KHR_platform_base EGL_EXT_platform_base "
-                             "EGL_KHR_platform_wayland EGL_EXT_platform_wayland ";
-        snprintf(buf, sizeof(buf), "%s%s", inject, real ? real : "");
+        /* QtWayland probes client extensions before creating the display. Do not
+         * forward that EGL_NO_DISPLAY query into ANGLE: on iOS this can leave the
+         * later ANGLE Metal platform display creation returning EGL_NO_DISPLAY.
+         * The shim only needs to advertise enough client-side platform support for
+         * toolkits to proceed to eglGetPlatformDisplay*(WAYLAND), which we remap. */
+        static const char exts[] =
+            "EGL_EXT_client_extensions "
+            "EGL_EXT_platform_base "
+            "EGL_KHR_platform_wayland "
+            "EGL_EXT_platform_wayland ";
         if (egl_debug())
-            fprintf(stderr, "iosc_egl: client EGL_EXTENSIONS (+platform_wayland): %s\n", buf);
-        return buf;
+            fprintf(stderr, "iosc_egl: client EGL_EXTENSIONS (+platform_wayland): %s\n", exts);
+        return exts;
     }
+    const char *real = REAL(eglQueryString)(d, n);
     return real;
 }
 EGLBoolean eglGetConfigs(EGLDisplay d, EGLConfig *c, EGLint n, EGLint *m){ return REAL(eglGetConfigs)(d,c,n,m); }

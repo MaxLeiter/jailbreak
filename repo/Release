@@ -1,15 +1,16 @@
-Origin: Max's Tweaks
-Label: Max's Tweaks
+Origin: Max's Repo
+Label: Max's Repo
+Name: Max's Repo
 Suite: stable
 Version: 1.0
 Codename: ios
 Architectures: iphoneos-arm64
 Components: main
-Description: Jailbreak tweaks by Max
-Date: Thu, 02 Jul 2026 02:56:22 GMT
+Description: Jailbreak packages by Max
+Date: Thu, 02 Jul 2026 05:51:46 GMT
 MD5Sum:
- bad2e64c8f696b40db4dd7f656f8f3b4 120111 Packages
- 8490fd9e680e8457d64d41d01ec8b323 26202 Packages.gz
+ b087aa1263b23aa8cde22d03705fc3c4 148926 Packages
+ 38fcf999bbbae130da2bc7e2bdde0679 31219 Packages.gz
 SHA256:
- dcad3a6a96565e168d9e1a0b581555c2b7e4c87263d36ebf97f376e419461da9 120111 Packages
- 9422bccff00a8c7942c56001a8bf0aad25ad884aaf7bb5d4fee4443c93d90410 26202 Packages.gz
+ 592b4563c520d6ace2ca7836a761444aadb20e39d3d980ccec040726c3739b9a 148926 Packages
+ 5dd3b2265fadbcc5271af07f5f5da6e9c44329d2723c59ed766309de15315afd 31219 Packages.gz

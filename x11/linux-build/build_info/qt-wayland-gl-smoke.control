@@ -1,0 +1,12 @@
+Package: qt-wayland-gl-smoke
+Version: @DEB_QT_WAYLAND_GL_SMOKE_V@
+Architecture: @DEB_ARCH@
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://repo.maxleiter.com/
+Depends: qt6-base (>= 6.6.3-3), qt6-wayland (>= 6.6.3-1), angle (>= 2.1.0+git20260630.a32d31d+es3-3), libwayland0, ldid
+Description: Qt Wayland OpenGL smoke test for Xios
+ Tiny QtGui/OpenGL executable that defaults to the Wayland QPA plugin and
+ renders through QtWayland EGL. It is intended to validate the
+ QtWayland -> ANGLE/Metal -> IOSurface path without pulling in Plasma.
