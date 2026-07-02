@@ -49,8 +49,8 @@ final class HostScreenView: UIView {
     private var modCtrl = false, modAlt = false, modShift = false
 
     // Auto keyboard (x11/docs/osk-plan.md): TRAITS enable raises the iOS keyboard,
-    // disable lowers it. TRAITS are not window-scoped yet (XIOS_IN_BIND pending),
-    // so every scene hears every broadcast; only the key window's view pops.
+    // disable lowers it. TRAITS broadcasts are still global, so every scene hears
+    // every broadcast; only the key window's view pops.
     private var lastTraitEnabled: UInt32 = 0
     private var oskAutoShown = false          // the auto path raised the keyboard
     private var oskUserDismissed = false      // user hid it while the field was still enabled

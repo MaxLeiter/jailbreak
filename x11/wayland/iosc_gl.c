@@ -165,20 +165,20 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
 
 int iosc_gl_ok(void) { return s_ok; }
 
-int iosc_gl_resize(void *output_iosurface, int w, int h)
+int iosc_gl_bind_target(void *iosurface, int w, int h)
 {
     if (!s_ok) return -1;
     EGLContext ctx = xios_egl_context(2);
 
     /* Bring up the NEW target first so a failure leaves the old one intact. */
-    EGLSurface new_pb = xios_egl_create_iosurface_pbuffer(output_iosurface, w, h);
+    EGLSurface new_pb = xios_egl_create_iosurface_pbuffer(iosurface, w, h);
     if (new_pb == EGL_NO_SURFACE) {
-        fprintf(stderr, "iosc_gl: resize pbuffer failed -> CPU fallback\n");
+        fprintf(stderr, "iosc_gl: target pbuffer failed -> CPU fallback\n");
         s_ok = 0;
         return -1;
     }
     if (!eglMakeCurrent(s_dpy, new_pb, new_pb, ctx)) {
-        fprintf(stderr, "iosc_gl: resize eglMakeCurrent failed 0x%x\n", eglGetError());
+        fprintf(stderr, "iosc_gl: target eglMakeCurrent failed 0x%x\n", eglGetError());
         xios_egl_destroy_pbuffer(new_pb);
         s_ok = 0;
         return -1;
@@ -199,13 +199,19 @@ int iosc_gl_resize(void *output_iosurface, int w, int h)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_out_tex, 0);
     GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
-        fprintf(stderr, "iosc_gl: resize FBO incomplete 0x%x -> CPU fallback\n", fb_status);
+        fprintf(stderr, "iosc_gl: target FBO incomplete 0x%x -> CPU fallback\n", fb_status);
         s_ok = 0;
         return -1;
     }
     s_ow = w; s_oh = h;
-    fprintf(stderr, "iosc_gl: output rebound (%dx%d)\n", w, h);
     return 0;
+}
+
+int iosc_gl_resize(void *output_iosurface, int w, int h)
+{
+    int r = iosc_gl_bind_target(output_iosurface, w, h);
+    if (r == 0) fprintf(stderr, "iosc_gl: output rebound (%dx%d)\n", w, h);
+    return r;
 }
 
 void iosc_gl_begin(void)

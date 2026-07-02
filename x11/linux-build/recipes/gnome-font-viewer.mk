@@ -62,7 +62,7 @@ gnome-font-viewer-package: gnome-font-viewer-stage
 	cp -a $(BUILD_STAGE)/gnome-font-viewer/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/gnome-font-viewer/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/gnome-font-viewer/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/gnome-font-viewer/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,gnome-font-viewer,general.xml)
+	$(call SIGN,gnome-font-viewer,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,gnome-font-viewer,DEB_GNOME-FONT-VIEWER_V)
 	rm -rf $(BUILD_DIST)/gnome-font-viewer
 

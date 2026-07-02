@@ -153,6 +153,13 @@ def _glyph_code(d, S):             # Development — </> brackets
     d.line([S * 0.60, S * 0.33, S * 0.73, S * 0.50, S * 0.60, S * 0.67], fill=A, width=w, joint="curve")
     d.line([S * 0.55, S * 0.30, S * 0.45, S * 0.70], fill=A, width=w)
 
+def _glyph_tiles(d, S):            # Desktop — 2x2 flavor tiles, one filled
+    A = ACCENT + (255,); w = max(2, int(S * 0.05)); rad = int(S * 0.04)
+    for i, (x0, y0) in enumerate(((0.26, 0.26), (0.54, 0.26), (0.26, 0.54), (0.54, 0.54))):
+        box = [S * x0, S * y0, S * (x0 + 0.20), S * (y0 + 0.20)]
+        if i == 0: d.rounded_rectangle(box, radius=rad, fill=A)
+        else:      d.rounded_rectangle(box, radius=rad, outline=A, width=w)
+
 def _glyph_box(d, S):              # default / unknown section — package box
     A = ACCENT + (255,); w = max(2, int(S * 0.05))
     d.rounded_rectangle([S * 0.24, S * 0.28, S * 0.76, S * 0.72],
@@ -161,6 +168,7 @@ def _glyph_box(d, S):              # default / unknown section — package box
     d.line([S * 0.50, S * 0.44, S * 0.50, S * 0.72], fill=A, width=w)
 
 CATEGORY_GLYPH = {
+    "Desktop": _glyph_tiles,
     "Tweaks": _glyph_sliders,
     "Utilities": _glyph_gear,
     "X11": _glyph_window,
@@ -405,9 +413,9 @@ INDEX_JS = """
 """
 
 # category display order on the landing page (unknown sections fall after these)
-SECTION_ORDER = ["Tweaks", "Utilities", "X11", "Development", "Libraries"]
+SECTION_ORDER = ["Desktop", "Tweaks", "Utilities", "X11", "Development", "Libraries"]
 # categories expanded by default; large dependency buckets start collapsed
-OPEN_SECTIONS = {"Tweaks", "Utilities", "X11"}
+OPEN_SECTIONS = {"Desktop", "Tweaks", "Utilities", "X11"}
 
 # theme toggle (sun shown in dark mode, moon in light mode)
 THEME_BTN = (

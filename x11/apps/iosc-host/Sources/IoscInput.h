@@ -12,10 +12,9 @@
  * static fd. Wire format and coordinate space are otherwise identical to the
  * Xios shim (fixed 24-byte record; coords are output/canvas pixels).
  *
- * XIOS_IN_BIND (code = window id) is PROPOSED, not yet in the authoritative
- * header x11/wayland/xios_input_socket.h nor honored by iosc's reader — it must
- * be added there + handled by iosc before native input routes correctly. See
- * x11/docs/native-ipados-protocol.md.
+ * XIOS_IN_BIND (code = window id) is authoritative in
+ * x11/wayland/xios_input_socket.h and honored by iosc's bound-aware dispatch
+ * path. See x11/docs/native-ipados-protocol.md.
  */
 
 typedef struct iosc_input iosc_input_t;

@@ -26,6 +26,7 @@
 
 struct xios_in_client {
     int fd;
+    uint32_t bound_window;
     uint8_t hdr[sizeof(struct xios_in_msg)];
     int hdr_have;
     struct xios_in_msg msg;
@@ -107,7 +108,7 @@ static void client_reset(struct xios_in_client *c)
 /* Drain a readable client, invoking cb for each complete record. Returns the
  * number dispatched; sets *closed if the client hit EOF/error and was dropped. */
 static int client_read(xios_input_socket *s, struct xios_in_client *c,
-                       xios_input_cb cb, void *user, int *closed)
+                       xios_input_bound_cb cb, void *user, int *closed)
 {
     int n = 0;
     for (;;) {
@@ -117,12 +118,15 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
                 c->hdr_have += (int)r;
                 if (c->hdr_have < (int)sizeof(c->hdr)) continue;
                 memcpy(&c->msg, c->hdr, sizeof(c->msg));
-                if (c->msg.type == XIOS_IN_TEXT) {
+                if (c->msg.type == XIOS_IN_BIND) {
+                    c->bound_window = c->msg.code;
+                    client_reset(c);
+                } else if (c->msg.type == XIOS_IN_TEXT) {
                     if (c->msg.code == 0 || c->msg.code > XIOS_IN_TEXT_MAX) goto drop;
                     c->payload = calloc(1, c->msg.code + 1u);
                     if (!c->payload) goto drop;
                 } else {
-                    if (cb) cb(&c->msg, NULL, 0, user);
+                    if (cb) cb(&c->msg, NULL, 0, c->bound_window, user);
                     n++;
                     client_reset(c);
                 }
@@ -142,7 +146,7 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
             goto drop;
         }
         if (c->msg.type == XIOS_IN_TEXT) {
-            if (cb) cb(&c->msg, c->payload, c->msg.code, user);
+            if (cb) cb(&c->msg, c->payload, c->msg.code, c->bound_window, user);
             n++;
             client_reset(c);
             continue;
@@ -175,7 +179,7 @@ static void accept_clients(xios_input_socket *s)
     }
 }
 
-int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user)
+int xios_input_socket_dispatch_bound(xios_input_socket *s, xios_input_bound_cb cb, void *user)
 {
     if (!s || s->kq < 0) return -1;
     struct kevent evs[8];
@@ -197,6 +201,25 @@ int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *use
             client_drop(s, c);
     }
     return dispatched;
+}
+
+struct xios_input_legacy_dispatch {
+    xios_input_cb cb;
+    void *user;
+};
+
+static void legacy_dispatch_cb(const struct xios_in_msg *m, const char *text,
+                               size_t text_len, uint32_t bound_window, void *user)
+{
+    (void)bound_window;
+    struct xios_input_legacy_dispatch *d = user;
+    if (d && d->cb) d->cb(m, text, text_len, d->user);
+}
+
+int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user)
+{
+    struct xios_input_legacy_dispatch d = { cb, user };
+    return xios_input_socket_dispatch_bound(s, legacy_dispatch_cb, &d);
 }
 
 static int write_all(int fd, const void *buf, size_t len)

@@ -13,8 +13,9 @@
  *   - eglCreateWindowSurface(wl_egl_window) -> N IOSurfaces + ANGLE iosurface
  *     pbuffers; the client renders into pbuf[cur] as FBO 0 (proven renderable).
  *   - eglMakeCurrent(window)                -> bind pbuf[cur]
- *   - eglSwapBuffers(window)                -> glFinish, hand pbuf[cur]'s IOSurface
- *     to iosc (create_buffer + attach + commit), rotate, bind the next pbuffer.
+ *   - eglSwapBuffers(window)                -> fence/flush pbuf[cur], hand its
+ *     IOSurface to iosc (create_buffer + attach + commit), then rotate to the
+ *     next released pbuffer.
  * Loaded in place of ANGLE's libEGL (the GL client / libepoxy resolves us first).
  *
  * MIT.
@@ -67,11 +68,16 @@ static void *s_angle;
 static void  ensure_angle(void)
 {
     if (s_angle) return;
-    /* The real ANGLE libEGL. Default to the deb's path; override via env when the
-     * shim is installed AS /var/jb/lib/angle/libEGL.dylib (so it can't dlopen
-     * itself) — point ANGLE_REAL_LIBEGL at the renamed real library. */
+    /* The real ANGLE libEGL. When the shim is installed as the standing
+     * /var/jb/lib/angle/libEGL.dylib, the package keeps ANGLE itself at
+     * libEGL.angle.dylib so we don't dlopen ourselves. ANGLE_REAL_LIBEGL can
+     * still override this for ad-hoc testing. */
     const char *path = getenv("ANGLE_REAL_LIBEGL");
-    if (!path || !*path) path = "/var/jb/lib/angle/libEGL.dylib";
+    if (!path || !*path) {
+        path = access("/var/jb/lib/angle/libEGL.angle.dylib", R_OK) == 0
+             ? "/var/jb/lib/angle/libEGL.angle.dylib"
+             : "/var/jb/lib/angle/libEGL.dylib";
+    }
     s_angle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!s_angle) {
         fprintf(stderr, "iosc_egl: dlopen ANGLE libEGL (%s) failed: %s\n", path, dlerror());

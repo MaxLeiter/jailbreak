@@ -10,24 +10,35 @@ set -euo pipefail
 BUILD=/private/tmp/angle-ios-build/angle/out/ios-arm64
 INC=/private/tmp/angle-ios-build/angle/include
 OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
+SHIM=${IOSC_EGL_SHIM:-/Users/max/Documents/jailbreak/x11/wayland/out/libiosc_egl.dylib}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
-VER="2.1.0+git20260630.a32d31d+es3-1"
+VER="2.1.0+git20260630.a32d31d+es3-2"
 DEB="angle_${VER}_iphoneos-arm64.deb"
 
 rm -rf "$STAGEROOT"
 mkdir -p "$STAGE/var/jb/lib/angle" "$STAGE/var/jb/include" "$STAGE/DEBIAN"
 
-# 1. framework binary -> plain dylib
-cp "$BUILD/libEGL.framework/libEGL"       "$STAGE/var/jb/lib/angle/libEGL.dylib"
+# 1. framework binary -> plain dylib. libEGL.dylib is the iosc Wayland-platform
+# shim when available; the real ANGLE libEGL stays beside it for forwarding.
+cp "$BUILD/libEGL.framework/libEGL"       "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
 cp "$BUILD/libGLESv2.framework/libGLESv2" "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
 chmod 0755 "$STAGE/var/jb/lib/angle/"*.dylib
+if [ -f "$SHIM" ]; then
+  cp "$SHIM" "$STAGE/var/jb/lib/angle/libEGL.dylib"
+  chmod 0755 "$STAGE/var/jb/lib/angle/libEGL.dylib"
+else
+  echo "WARN: iosc EGL shim not found at $SHIM; packaging real ANGLE libEGL directly"
+  cp "$STAGE/var/jb/lib/angle/libEGL.angle.dylib" "$STAGE/var/jb/lib/angle/libEGL.dylib"
+fi
 
 # 2. absolute install names
-install_name_tool -id /var/jb/lib/angle/libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.dylib"
+install_name_tool -id /var/jb/lib/angle/libEGL.angle.dylib "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
+install_name_tool -id /var/jb/lib/angle/libEGL.dylib       "$STAGE/var/jb/lib/angle/libEGL.dylib"
 install_name_tool -id /var/jb/lib/angle/libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
 
 # 3. ad-hoc sign
+ldid -S "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
 ldid -S "$STAGE/var/jb/lib/angle/libEGL.dylib"
 ldid -S "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
 
@@ -61,6 +72,9 @@ Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/
  GPU, built from upstream google/angle for arm64 iOS. Installs under /var/jb/lib/angle
  (does not collide with Mesa's software libEGL/libGLESv2). Supports
  EGL_ANGLE_iosurface_client_buffer for zero-copy GLES-into-IOSurface rendering.
+ libEGL.dylib is the iosc Wayland-platform shim when built; it forwards non-Wayland
+ EGL calls to the real ANGLE library at libEGL.angle.dylib and lets GTK4/GSK create
+ wl_egl_window surfaces that render into IOSurfaces zero-copy.
  This build admits Apple GPU Family 3 (A10) to the ES3 tier so EGL configs advertise
  EGL_OPENGL_ES3_BIT and ES3 contexts validate (needed for GTK4/GSK GL renderer).
  Ships the Debian soname and .so alias symlinks (libEGL.2.dylib, libEGL.so, libEGL.so.1,

@@ -55,7 +55,7 @@ hitori-package: hitori-stage
 	cp -a $(BUILD_STAGE)/hitori/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/hitori/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/hitori/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/hitori/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,hitori,general.xml)
+	$(call SIGN,hitori,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,hitori,DEB_HITORI_V)
 	rm -rf $(BUILD_DIST)/hitori
 

@@ -45,10 +45,6 @@ final class XScreenView: UIView {
     // newer load() superseded it, so switching displays can't adopt a stale surface.
     private var loadGeneration = 0
     private var userPinned = false              // user picked a display → stop auto-reloading xios.json
-    private var displayChip: UIButton?
-    private var zoomButton: UIButton?
-    private weak var keyboardButton: UIButton?
-    private weak var toolsButton: UIButton?
     private weak var pickerOverlay: UIView?
     private let requestPath = "/var/jb/tmp/xios-request.json"
     private let sessionStatusPath = "/var/jb/tmp/xios-session-status.json"
@@ -89,6 +85,7 @@ final class XScreenView: UIView {
     private weak var ctrlBtn: UIButton?
     private weak var altBtn: UIButton?
     private weak var shiftBtn: UIButton?
+    private weak var keyboardRevealPan: UIPanGestureRecognizer?
     private var activeDisplayNumber: Int? { Int(xDisplay.dropFirst()) }
 
     // View transform. The framebuffer is rendered aspect-fit at zoom=1, then scaled
@@ -113,10 +110,6 @@ final class XScreenView: UIView {
     private enum TwoFingerMode { case undecided, scroll, zoom }
     private var twoFingerMode = TwoFingerMode.undecided
     private var twoFingerActive = 0     // live pan/pinch recognizers (0..2)
-    private var pinchLastScale: CGFloat = 1
-    /// ~3 wheel notches of ctrl+scroll per pinch doubling (45 logical px at
-    /// output scale 2, in 1/256 fixed point). Tune on device.
-    private static let pinchZoomGain: CGFloat = 23040
     /// Deferred left press: a stationary single finger only commits to a left
     /// press when it moves (drag) or lifts (tap); held past the threshold it
     /// becomes a right click instead (touch-and-hold = context menu).
@@ -125,6 +118,8 @@ final class XScreenView: UIView {
     private var pendingPressViewPoint = CGPoint.zero
     private var leftPressSent = false
     private var longPressFired = false
+    private var keyboardSwipeTriggered = false
+    private var appGestureTouchSuppression = false
     private static let longPressSeconds: TimeInterval = 0.55
     private static let longPressSlopPt: CGFloat = 12
 
@@ -184,6 +179,75 @@ final class XScreenView: UIView {
         let height: Int
         let dpi: Int
         let detail: String
+    }
+
+    private var pendingSessionDisplay: DisplayProfile?
+
+    private struct FitTransform {
+        let fbWidth: Int
+        let fbHeight: Int
+        let viewBounds: CGRect
+        let drawableSize: CGSize
+        let contentsScale: CGFloat
+        let scale: CGFloat
+        let contentRect: CGRect
+
+        static func make(fbWidth: Int, fbHeight: Int, viewBounds: CGRect,
+                         drawableSize: CGSize, contentsScale: CGFloat,
+                         zoom: CGFloat, pan: CGPoint) -> FitTransform? {
+            guard fbWidth > 0, fbHeight > 0,
+                  viewBounds.width > 0, viewBounds.height > 0,
+                  drawableSize.width > 0, drawableSize.height > 0,
+                  contentsScale > 0 else { return nil }
+            let baseScale = min(viewBounds.width / CGFloat(fbWidth),
+                                viewBounds.height / CGFloat(fbHeight))
+            let scale = baseScale * zoom
+            let size = CGSize(width: CGFloat(fbWidth) * scale,
+                              height: CGFloat(fbHeight) * scale)
+            let origin = CGPoint(
+                x: viewBounds.midX - size.width / 2 + pan.x,
+                y: viewBounds.midY - size.height / 2 + pan.y)
+            return FitTransform(
+                fbWidth: fbWidth,
+                fbHeight: fbHeight,
+                viewBounds: viewBounds,
+                drawableSize: drawableSize,
+                contentsScale: contentsScale,
+                scale: scale,
+                contentRect: CGRect(origin: origin, size: size))
+        }
+
+        func framebufferPoint(from point: CGPoint) -> CGPoint? {
+            guard contentRect.contains(point),
+                  contentRect.width > 0, contentRect.height > 0 else { return nil }
+            let fx = (point.x - contentRect.minX) / contentRect.width * CGFloat(fbWidth)
+            let fy = (point.y - contentRect.minY) / contentRect.height * CGFloat(fbHeight)
+            return CGPoint(
+                x: max(0, min(CGFloat(fbWidth - 1), fx)),
+                y: max(0, min(CGFloat(fbHeight - 1), fy)))
+        }
+
+        func clipVertices() -> [Float]? {
+            let dw = drawableSize.width
+            let dh = drawableSize.height
+            guard dw > 0, dh > 0 else { return nil }
+
+            let left = contentRect.minX * contentsScale
+            let right = contentRect.maxX * contentsScale
+            let top = contentRect.minY * contentsScale
+            let bottom = contentRect.maxY * contentsScale
+            let x0 = Float(2 * left / dw - 1)
+            let x1 = Float(2 * right / dw - 1)
+            let y0 = Float(1 - 2 * top / dh)
+            let y1 = Float(1 - 2 * bottom / dh)
+
+            return [
+                x0, y0, 0, 0,
+                x0, y1, 0, 1,
+                x1, y0, 1, 0,
+                x1, y1, 1, 1,
+            ]
+        }
     }
 
     // Metal
@@ -291,30 +355,10 @@ final class XScreenView: UIView {
     }
 
     private func adoptIOSurface(_ conn: OpaquePointer) {
-        // C owns the IOSurface ref (released in xsurface_close); borrow it here.
-        let surface = xsurface_get(conn).takeUnretainedValue()
         xconn = conn
-        fbWidth = Int(xsurface_width(conn))
-        fbHeight = Int(xsurface_height(conn))
-        // Always snap to fit on adopt (zoom 1, pan 0) — one source of truth for the
-        // present scale. render() aspect-fits fbWidth/fbHeight into the drawable every
-        // frame but MULTIPLIES by zoomScale; a stale zoom (calibrated for a previous
-        // -logical size, and NOT reset when the adopt sees no size delta — e.g. a
-        // cold-launch adopt after loadConfig already set the new size) makes the present
-        // over-scale the current fb → the desktop overflows/clips AND touch inverse-maps
-        // at the wrong scale → taps land offset. Resetting unconditionally guarantees
-        // present + input both derive from the CURRENT fb at the fit scale, no cache.
-        resetZoom()
-
-        let td = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: fbWidth, height: fbHeight, mipmapped: false)
-        td.usage = .shaderRead
-        td.storageMode = .shared
-        // Metal reads the surface's own (possibly padded) bytesPerRow; zero-copy.
-        guard let tex = device.makeTexture(descriptor: td, iosurface: surface, plane: 0) else {
+        guard syncSurfaceGeometry(conn) else {
             dbg("iosurface-texture-fail"); xsurface_close(conn); xconn = nil; return
         }
-        iosTexture = tex
         usingIOSurface = true
         awaitingCompositor = false                // new compositor surface is live again
         usingTestPattern = false
@@ -324,6 +368,42 @@ final class XScreenView: UIView {
         displayLink?.preferredFramesPerSecond = 60
         connectInput()
         writeStatus()
+    }
+
+    /// Keep Swift's framebuffer geometry + Metal texture aligned with the adopted
+    /// IOSurface connection. Typed streams can refresh width/height in-band after
+    /// xsurface_drain(); without re-reading here, render/input keep using stale fb dims.
+    @discardableResult
+    private func syncSurfaceGeometry(_ conn: OpaquePointer) -> Bool {
+        let newWidth = Int(xsurface_width(conn))
+        let newHeight = Int(xsurface_height(conn))
+        guard newWidth > 0, newHeight > 0 else { return false }
+
+        let geometryChanged = newWidth != fbWidth || newHeight != fbHeight
+        let textureChanged = iosTexture?.width != newWidth || iosTexture?.height != newHeight
+        guard geometryChanged || textureChanged else { return true }
+
+        // C owns the IOSurface ref (released in xsurface_close); borrow it here.
+        let surface = xsurface_get(conn).takeUnretainedValue()
+        let td = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: newWidth, height: newHeight, mipmapped: false)
+        td.usage = .shaderRead
+        td.storageMode = .shared
+        // Metal reads the surface's own (possibly padded) bytesPerRow; zero-copy.
+        guard let tex = device.makeTexture(descriptor: td, iosurface: surface, plane: 0) else {
+            return false
+        }
+
+        fbWidth = newWidth
+        fbHeight = newHeight
+        iosTexture = tex
+        // Always snap to fit on adopt/resize (zoom 1, pan 0) — one source of truth for
+        // present scale. A stale zoom over-scales the current fb and makes the inverse
+        // touch mapping land offset.
+        resetZoom()
+        dumpGeom()
+        if usingIOSurface { writeStatus() }
+        return true
     }
 
     // MARK: present-side cursor overlay
@@ -456,7 +536,6 @@ final class XScreenView: UIView {
         metalLayer.drawableSize = CGSize(width: bounds.width * s, height: bounds.height * s)
         panOffset = clampedPanOffset(panOffset, zoom: zoomScale)
         needsPresent = true
-        updateZoomButton()
         dumpGeom()
         // contentRect() moved (rotation/resize/zoom); re-place an idle cursor overlay.
         if let conn = xconn, cursorLayer != nil { lastCursorSeq = 0; updateCursorOverlay(conn) }
@@ -632,13 +711,15 @@ final class XScreenView: UIView {
                 teardownIOSurface()
                 return
             }
-            guard let conn = xconn, let tex = iosTexture else { return }
+            guard let conn = xconn else { return }
             let r = xsurface_drain(conn)
             if r < 0 { teardownIOSurface(lost: true); return }
+            if !syncSurfaceGeometry(conn) { teardownIOSurface(); return }
             if r > 0 { needsPresent = true }
             // Reposition the cursor overlay independently of surface damage: a pure
             // pointer move updates the CALayer without re-presenting the framebuffer.
             updateCursorOverlay(conn)
+            guard let tex = iosTexture else { return }
             if needsPresent, render(tex) { needsPresent = false }
             return
         }
@@ -691,22 +772,10 @@ final class XScreenView: UIView {
     @discardableResult
     private func render(_ tex: MTLTexture) -> Bool {
         guard let drawable = metalLayer.nextDrawable(),
-              let cmd = queue.makeCommandBuffer() else { return false }
-        let dw = Float(metalLayer.drawableSize.width), dh = Float(metalLayer.drawableSize.height)
-        guard dw > 0, dh > 0 else { return false }
-        let s = Float(metalLayer.contentsScale)
-        let scale = min(dw / Float(fbWidth), dh / Float(fbHeight)) * Float(zoomScale)
-        let sx = Float(fbWidth) * scale / dw
-        let sy = Float(fbHeight) * scale / dh
-        let cx = 2 * Float(panOffset.x) * s / dw
-        let cy = -2 * Float(panOffset.y) * s / dh
+              let cmd = queue.makeCommandBuffer(),
+              let fit = fitTransform(),
+              var verts = fit.clipVertices() else { return false }
         // triangle strip: TL, BL, TR, BR  (pos.xy, uv.xy); uv origin top-left
-        var verts: [Float] = [
-            cx - sx, cy + sy, 0, 0,
-            cx - sx, cy - sy, 0, 1,
-            cx + sx, cy + sy, 1, 0,
-            cx + sx, cy - sy, 1, 1,
-        ]
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = drawable.texture
         rpd.colorAttachments[0].loadAction = .clear
@@ -735,7 +804,6 @@ final class XScreenView: UIView {
         let inp = !inputConnected ? "input-not-connected"
             : (usingIosc ? "input-connected iosc(wayland)" : "input-connected \(xDisplay)")
         try? "\(fb)\n\(inp)\n".write(toFile: "/var/jb/tmp/xios-status.txt", atomically: true, encoding: .utf8)
-        updateChip()
     }
 
     private var displayProfiles: [DisplayProfile] {
@@ -754,6 +822,24 @@ final class XScreenView: UIView {
             DisplayProfile(name: "Current", width: fbWidth, height: fbHeight, dpi: 0,
                            detail: "\(fbWidth)x\(fbHeight), keep DPI"),
         ]
+    }
+
+    private var sessionDisplayProfiles: [DisplayProfile] {
+        [
+            DisplayProfile(name: "Landscape", width: 1440, height: 1080, dpi: 176,
+                           detail: "1440x1080 logical"),
+            DisplayProfile(name: "Portrait", width: 1080, height: 1440, dpi: 176,
+                           detail: "1080x1440 logical"),
+            DisplayProfile(name: "Compact", width: 810, height: 1080, dpi: 132,
+                           detail: "810x1080 logical"),
+        ]
+    }
+
+    private func sessionDisplaySummary() -> String {
+        if let p = pendingSessionDisplay {
+            return "\(p.name): \(p.detail)" + (p.dpi > 0 ? " @ \(p.dpi) DPI" : "")
+        }
+        return "Keep current/default size"
     }
 
     private func writeDisplayRequest(_ profile: DisplayProfile) {
@@ -782,7 +868,8 @@ final class XScreenView: UIView {
     /// to the shared xios-request.json channel that xios-sessiond watches (it ignores
     /// non-"session" actions, so it coexists with display-profile requests). created_at
     /// changes every write, so re-picking the same preset re-triggers.
-    private func writeSessionRequest(_ preset: String, app: String? = nil) {
+    private func writeSessionRequest(_ preset: String, app: String? = nil,
+                                     display: DisplayProfile? = nil) {
         var obj: [String: Any] = [
             "action": "session",
             "preset": preset,
@@ -790,11 +877,18 @@ final class XScreenView: UIView {
             "created_at": ISO8601DateFormatter().string(from: Date()),
         ]
         if let app = app { obj["app"] = app }
+        if preset != "app", preset != "stop", let display {
+            obj["display_profile"] = display.name
+            obj["width"] = display.width
+            obj["height"] = display.height
+            if display.dpi > 0 { obj["dpi"] = display.dpi }
+        }
         do {
             let data = try JSONSerialization.data(withJSONObject: obj,
                                                   options: [.prettyPrinted, .sortedKeys])
             try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
             lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
+                + (display.map { " \($0.detail)" } ?? "")
         } catch {
             lastToolMessage = "Session request failed: \(error.localizedDescription)"
         }
@@ -1160,25 +1254,24 @@ final class XScreenView: UIView {
         xinput_button(button, false)
     }
 
-    private func fittedScale(in size: CGSize) -> CGFloat {
-        guard fbWidth > 0, fbHeight > 0, size.width > 0, size.height > 0 else { return 1 }
-        return min(size.width / CGFloat(fbWidth), size.height / CGFloat(fbHeight))
+    private func fitTransform(zoom: CGFloat? = nil, pan: CGPoint? = nil) -> FitTransform? {
+        FitTransform.make(
+            fbWidth: fbWidth,
+            fbHeight: fbHeight,
+            viewBounds: bounds,
+            drawableSize: metalLayer.drawableSize,
+            contentsScale: metalLayer.contentsScale,
+            zoom: zoom ?? zoomScale,
+            pan: pan ?? panOffset)
     }
 
     private func contentRect(zoom: CGFloat? = nil, pan: CGPoint? = nil) -> CGRect {
-        let z = zoom ?? zoomScale
-        let p = pan ?? panOffset
-        let scale = fittedScale(in: bounds.size) * z
-        let size = CGSize(width: CGFloat(fbWidth) * scale, height: CGFloat(fbHeight) * scale)
-        let origin = CGPoint(
-            x: bounds.midX - size.width / 2 + p.x,
-            y: bounds.midY - size.height / 2 + p.y)
-        return CGRect(origin: origin, size: size)
+        fitTransform(zoom: zoom, pan: pan)?.contentRect ?? .zero
     }
 
     private func clampedPanOffset(_ p: CGPoint, zoom: CGFloat) -> CGPoint {
-        guard bounds.width > 0, bounds.height > 0 else { return .zero }
-        let rect = contentRect(zoom: zoom, pan: .zero)
+        guard let fit = fitTransform(zoom: zoom, pan: .zero) else { return .zero }
+        let rect = fit.contentRect
         let maxX = max(0, (rect.width - bounds.width) / 2)
         let maxY = max(0, (rect.height - bounds.height) / 2)
         return CGPoint(
@@ -1187,11 +1280,9 @@ final class XScreenView: UIView {
     }
 
     private func framebufferFloatPoint(from p: CGPoint) -> CGPoint? {
-        guard fbWidth > 0, fbHeight > 0, bounds.width > 0, bounds.height > 0 else { return nil }
-        let rect = contentRect()
-        guard rect.contains(p) else { return nil }
-        let fx = (p.x - rect.minX) / rect.width * CGFloat(fbWidth)
-        let fy = (p.y - rect.minY) / rect.height * CGFloat(fbHeight)
+        guard let fit = fitTransform(),
+              let fp = fit.framebufferPoint(from: p) else { return nil }
+        let rect = fit.contentRect
         // Touch-coordinate diagnostic (overwrites, so it holds the latest tap): reveals
         // exactly what the app maps a tap to vs the geometry it used, to chase the
         // reported input offset. Remove once the coordinate bug is understood.
@@ -1200,11 +1291,9 @@ final class XScreenView: UIView {
             + "fb=\(fbWidth)x\(fbHeight) drawable=\(Int(ds.width))x\(Int(ds.height)) "
             + "cs=\(metalLayer.contentsScale) zoom=\(zoomScale) pan=(\(Int(panOffset.x)),\(Int(panOffset.y))) "
             + "rect=(\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))) "
-            + "-> fb=(\(Int(fx)),\(Int(fy)))\n"
+            + "fitScale=\(fit.scale) -> fb=(\(Int(fp.x)),\(Int(fp.y)))\n"
         try? dbg.write(toFile: "/var/jb/tmp/xios-touch.log", atomically: true, encoding: .utf8)
-        return CGPoint(
-            x: max(0, min(CGFloat(fbWidth - 1), fx)),
-            y: max(0, min(CGFloat(fbHeight - 1), fy)))
+        return fp
     }
 
     private func framebufferPoint(from p: CGPoint) -> (Int32, Int32)? {
@@ -1218,15 +1307,13 @@ final class XScreenView: UIView {
         let ux = oldRect.width > 0 ? (anchor.x - oldRect.minX) / oldRect.width : 0.5
         let uy = oldRect.height > 0 ? (anchor.y - oldRect.minY) / oldRect.height : 0.5
         let nextZoom = min(max(z, minZoomScale), maxZoomScale)
-        let baseScale = fittedScale(in: bounds.size) * nextZoom
-        let nextSize = CGSize(width: CGFloat(fbWidth) * baseScale, height: CGFloat(fbHeight) * baseScale)
+        let nextSize = fitTransform(zoom: nextZoom, pan: .zero)?.contentRect.size ?? oldRect.size
         let nextPan = CGPoint(
             x: anchor.x - bounds.midX + nextSize.width * (0.5 - ux),
             y: anchor.y - bounds.midY + nextSize.height * (0.5 - uy))
         zoomScale = nextZoom
         panOffset = clampedPanOffset(nextPan, zoom: nextZoom)
         needsPresent = true
-        updateZoomButton()
     }
 
     private func resetZoom() {
@@ -1234,13 +1321,6 @@ final class XScreenView: UIView {
         panOffset = .zero
         scrollRemainder = .zero
         needsPresent = true
-        updateZoomButton()
-    }
-
-    private func pixelPerfectZoom() -> CGFloat {
-        let fit = fittedScale(in: bounds.size)
-        guard fit > 0, metalLayer.contentsScale > 0 else { return 1 }
-        return min(max(1 / (fit * metalLayer.contentsScale), minZoomScale), maxZoomScale)
     }
 
     /// dx/dy are view-point finger deltas. iosc gets AXIS records in 1/256
@@ -1250,7 +1330,8 @@ final class XScreenView: UIView {
     private func sendScroll(dx: CGFloat, dy: CGFloat) {
         guard inputConnected else { return }
         if usingIosc {
-            let ptToFb = 256 / (fittedScale(in: bounds.size) * zoomScale)
+            guard let fit = fitTransform(), fit.scale > 0 else { return }
+            let ptToFb = 256 / fit.scale
             axisRemainder.x -= dx * ptToFb
             axisRemainder.y -= dy * ptToFb
             let sx = axisRemainder.x.rounded(.towardZero)
@@ -1296,26 +1377,9 @@ final class XScreenView: UIView {
         switch g.state {
         case .began:
             twoFingerBegan()
-            pinchLastScale = g.scale
             pinchStartZoom = zoomScale
             pinchAnchorFramebuffer = framebufferFloatPoint(from: g.location(in: self))
         case .changed:
-            if usingIosc && zoomScale <= 1.01 {
-                if twoFingerMode == .undecided && abs(g.scale - 1) > 0.08 {
-                    twoFingerMode = .zoom
-                    if let (x, y) = framebufferPoint(from: g.location(in: self)) {
-                        lastTouchPt = (x, y)
-                        sendMotion(x, y)   // zoom the window under the fingers
-                    }
-                }
-                guard twoFingerMode == .zoom, inputConnected else { return }
-                let ratio = g.scale / max(pinchLastScale, 0.01)
-                pinchLastScale = g.scale
-                // ctrl+scroll-up zooms in, so pinch-out = negative axis
-                let dy256 = -log2(ratio) * Self.pinchZoomGain
-                iosc_input_axis(0, Int32(dy256.rounded()), 0, 2, false)
-                return
-            }
             let location = g.location(in: self)
             setZoom(pinchStartZoom * g.scale, around: location)
             if let fp = pinchAnchorFramebuffer {
@@ -1326,9 +1390,6 @@ final class XScreenView: UIView {
                 needsPresent = true
             }
         case .ended, .cancelled, .failed:
-            if twoFingerMode == .zoom && usingIosc && inputConnected {
-                iosc_input_axis(0, 0, 0, 2, true)
-            }
             pinchAnchorFramebuffer = nil
             twoFingerEnded()
         default:
@@ -1393,31 +1454,26 @@ final class XScreenView: UIView {
         sendButton(3, false, at: (x, y))
     }
 
-    @objc private func handleTwoFingerDoubleTap(_ g: UITapGestureRecognizer) {
-        if zoomScale > 1.01 { resetZoom() }
-        else { setZoom(pixelPerfectZoom(), around: g.location(in: self)) }
-    }
-
-    @objc private func zoomOut() {
-        if zoomScale <= 1.01 { resetZoom() }
-        else { setZoom(zoomScale / 1.25) }
-    }
-
-    @objc private func zoomIn() {
-        setZoom(zoomScale * 1.25)
-    }
-
-    @objc private func cycleZoom() {
-        if zoomScale <= 1.01 {
-            let z = pixelPerfectZoom()
-            setZoom(z > 1.01 ? z : 2)
-        } else {
-            resetZoom()
+    @objc private func handleKeyboardRevealPan(_ g: UIPanGestureRecognizer) {
+        switch g.state {
+        case .began:
+            keyboardSwipeTriggered = false
+        case .changed:
+            guard !keyboardSwipeTriggered else { return }
+            let t = g.translation(in: self)
+            guard t.y < -36, abs(t.y) > abs(t.x) * 1.4 else { return }
+            keyboardSwipeTriggered = true
+            cancelPendingPress()
+            if inputConnected && leftPressSent {
+                sendButton(1, false, at: lastTouchPt)
+                leftPressSent = false
+            }
+            _ = becomeFirstResponder()
+        case .ended, .cancelled, .failed:
+            keyboardSwipeTriggered = false
+        default:
+            break
         }
-    }
-
-    private func updateZoomButton() {
-        zoomButton?.setTitle("\(Int((zoomScale * 100).rounded()))%", for: .normal)
     }
 
     // MARK: iosc real multitouch + Apple Pencil (wire types XIOS_IN_TOUCH/XIOS_IN_TABLET)
@@ -1487,7 +1543,35 @@ final class XScreenView: UIView {
         return handled
     }
 
+    private func allTouchesEndedOrCancelled(_ event: UIEvent?) -> Bool {
+        guard let all = event?.allTouches, !all.isEmpty else { return true }
+        return all.allSatisfy { $0.phase == .ended || $0.phase == .cancelled }
+    }
+
+    private func cancelPointerInteraction() {
+        cancelPendingPress()
+        longPressFired = false
+        if inputConnected && leftPressSent {
+            sendButton(1, false, at: lastTouchPt)
+            leftPressSent = false
+        }
+    }
+
+    private func beginAppGestureSuppression(event: UIEvent?) {
+        appGestureTouchSuppression = true
+        cancelPointerInteraction()
+        if usingIosc, inputConnected, let all = event?.allTouches {
+            for t in all { _ = forwardIosc(t, phase: 3, event: event) }
+            touchSlots.removeAll()
+        }
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if appGestureTouchSuppression { return }
+        if (event?.allTouches?.count ?? touches.count) >= 3 {
+            beginAppGestureSuppression(event: event)
+            return
+        }
         if forwardIoscAll(touches, phase: 1, event: event) && Self.ioscTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1 else {
             cancelPendingPress()   // a second finger means gesture, not click
@@ -1514,6 +1598,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if appGestureTouchSuppression { return }
         if forwardIoscAll(touches, phase: 2, event: event) && Self.ioscTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
@@ -1530,6 +1615,10 @@ final class XScreenView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if appGestureTouchSuppression {
+            if allTouchesEndedOrCancelled(event) { appGestureTouchSuppression = false }
+            return
+        }
         if forwardIoscAll(touches, phase: 0, event: event) && Self.ioscTouchReplacesPointer { return }
         guard inputConnected else { cancelPendingPress(); longPressFired = false; return }
         if longPressFired { longPressFired = false; return }
@@ -1541,6 +1630,13 @@ final class XScreenView: UIView {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if appGestureTouchSuppression {
+            if allTouchesEndedOrCancelled(event) {
+                appGestureTouchSuppression = false
+                touchSlots.removeAll()
+            }
+            return
+        }
         if forwardIoscAll(touches, phase: 3, event: event) && Self.ioscTouchReplacesPointer { return }
         cancelPendingPress()
         longPressFired = false
@@ -1664,52 +1760,30 @@ final class XScreenView: UIView {
         }
         connectInput()
         writeStatus()
-        updateChip()
     }
 
     // MARK: picker chrome
 
     private func installChrome() {
-        let kb = chromeButton("⌨")   // pops up the iOS keyboard, typed into X via XTEST
-        kb.addAction(UIAction { [weak self] _ in self?.toggleKeyboard() }, for: .touchUpInside)
-        keyboardButton = kb
+        let displayTap = UITapGestureRecognizer(target: self, action: #selector(openPicker))
+        displayTap.numberOfTouchesRequired = 3
+        addGestureRecognizer(displayTap)
 
-        let zoomOut = chromeButton("−")
-        zoomOut.addAction(UIAction { [weak self] _ in self?.zoomOut() }, for: .touchUpInside)
-        let zoom = chromeButton("100%")
-        zoom.addAction(UIAction { [weak self] _ in self?.cycleZoom() }, for: .touchUpInside)
-        zoomButton = zoom
-        let zoomIn = chromeButton("+")
-        zoomIn.addAction(UIAction { [weak self] _ in self?.zoomIn() }, for: .touchUpInside)
-
-        // Desktop-flavor switcher (iosc / Mutter / GNOME / launch app / stop) — the
-        // headline "pick your desktop" control. Opens the session picker, which writes a
-        // session request the on-device xios-sessiond serves.
-        let session = chromeButton("⧉")
-        session.addAction(UIAction { [weak self] _ in self?.openSessionPicker() }, for: .touchUpInside)
-
-        // Minimal chrome: the desktop switcher + zoom + the manual keyboard toggle. The
-        // display picker (⊞ chip) and dev Tools panel (⚙) stay OFF the bar (debug/dev);
-        // the display picker is still reachable via the 3-finger tap below.
-        let bar = UIStackView(arrangedSubviews: [session, zoomOut, zoom, zoomIn, kb])
-        bar.axis = .horizontal
-        bar.spacing = 8
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(bar)
-        NSLayoutConstraint.activate([
-            bar.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 12),
-            bar.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 10),
-        ])
-
-        // Only single-finger touches are forwarded to X, so a 3-finger tap is a free
-        // gesture for opening the picker anywhere on screen.
-        let g = UITapGestureRecognizer(target: self, action: #selector(openPicker))
-        g.numberOfTouchesRequired = 3
-        addGestureRecognizer(g)
+        let sessionTap = UITapGestureRecognizer(target: self, action: #selector(openSessionPicker))
+        sessionTap.numberOfTouchesRequired = 4
+        addGestureRecognizer(sessionTap)
 
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         pinch.delegate = self
         addGestureRecognizer(pinch)
+
+        let keyboardPan = UIPanGestureRecognizer(target: self, action: #selector(handleKeyboardRevealPan(_:)))
+        keyboardPan.minimumNumberOfTouches = 1
+        keyboardPan.maximumNumberOfTouches = 1
+        keyboardPan.cancelsTouchesInView = true
+        keyboardPan.delegate = self
+        addGestureRecognizer(keyboardPan)
+        keyboardRevealPan = keyboardPan
 
         let twoFingerPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
         twoFingerPan.minimumNumberOfTouches = 2
@@ -1726,33 +1800,9 @@ final class XScreenView: UIView {
         wheelPan.maximumNumberOfTouches = 0
         addGestureRecognizer(wheelPan)
 
-        let twoFingerDoubleTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerDoubleTap(_:)))
-        twoFingerDoubleTap.numberOfTouchesRequired = 2
-        twoFingerDoubleTap.numberOfTapsRequired = 2
-        addGestureRecognizer(twoFingerDoubleTap)
-
         let twoFingerTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerTap(_:)))
         twoFingerTap.numberOfTouchesRequired = 2
-        twoFingerTap.require(toFail: twoFingerDoubleTap)
         addGestureRecognizer(twoFingerTap)
-    }
-
-    private func chromeButton(_ title: String) -> UIButton {
-        let b = UIButton(type: .system)
-        b.translatesAutoresizingMaskIntoConstraints = false
-        b.setTitle(title, for: .normal)
-        b.titleLabel?.font = .monospacedSystemFont(ofSize: 13, weight: .medium)
-        b.setTitleColor(.white, for: .normal)
-        b.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-        b.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
-        b.layer.cornerRadius = 11
-        b.layer.borderWidth = 1
-        b.layer.borderColor = UIColor.white.withAlphaComponent(0.25).cgColor
-        return b
-    }
-
-    private func updateChip() {
-        displayChip?.setTitle("⊞ \(xDisplay)", for: .normal)
     }
 
     @objc private func openPicker() { presentPicker(discoverDisplays()) }
@@ -1887,8 +1937,39 @@ final class XScreenView: UIView {
         startSessionIndicator()
 
         let pick: (String, String?) -> Void = { [weak self] preset, app in
-            self?.writeSessionRequest(preset, app: app)
+            guard let self else { return }
+            self.writeSessionRequest(preset, app: app, display: self.pendingSessionDisplay)
         }
+
+        addSection("Display size", to: stack)
+        stack.addArrangedSubview(panelLabel(sessionDisplaySummary(), size: 12,
+                                            color: UIColor(white: 0.72, alpha: 1)))
+        let defaults = panelButton("Default") { [weak self] in
+            self?.pendingSessionDisplay = nil
+            self?.presentSessionPicker()
+        }
+        let landscape = panelButton("Landscape") { [weak self] in
+            guard let self else { return }
+            self.pendingSessionDisplay = self.sessionDisplayProfiles[0]
+            self.presentSessionPicker()
+        }
+        let portrait = panelButton("Portrait") { [weak self] in
+            guard let self else { return }
+            self.pendingSessionDisplay = self.sessionDisplayProfiles[1]
+            self.presentSessionPicker()
+        }
+        stylePanelToggle(defaults, on: pendingSessionDisplay == nil)
+        stylePanelToggle(landscape, on: pendingSessionDisplay?.name == "Landscape")
+        stylePanelToggle(portrait, on: pendingSessionDisplay?.name == "Portrait")
+        stack.addArrangedSubview(buttonRow([defaults, landscape, portrait]))
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Compact Portrait") { [weak self] in
+                guard let self else { return }
+                self.pendingSessionDisplay = self.sessionDisplayProfiles[2]
+                self.presentSessionPicker()
+            },
+            panelButton("Advanced…") { [weak self] in self?.presentDisplayAdvancedPicker() },
+        ]))
 
         addSection("Switch desktop", to: stack)
         for (label, preset) in [("iosc  ·  lightweight (works today)", "iosc"),
@@ -1912,6 +1993,72 @@ final class XScreenView: UIView {
             card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
             card.widthAnchor.constraint(greaterThanOrEqualToConstant: 380),
             card.widthAnchor.constraint(lessThanOrEqualToConstant: 500),
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18),
+        ])
+    }
+
+    private func presentDisplayAdvancedPicker() {
+        let (overlay, card) = presentModalCard()
+
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(stack)
+
+        stack.addArrangedSubview(panelLabel("Display Size", size: 18, weight: .bold))
+        stack.addArrangedSubview(panelLabel("Logical desktop size for the next session", size: 12,
+                                            color: UIColor(white: 0.72, alpha: 1)))
+
+        let source = pendingSessionDisplay
+        let widthField = panelTextField("Width")
+        widthField.keyboardType = .numberPad
+        widthField.text = source.map { String($0.width) } ?? ""
+        let heightField = panelTextField("Height")
+        heightField.keyboardType = .numberPad
+        heightField.text = source.map { String($0.height) } ?? ""
+        let dpiField = panelTextField("DPI")
+        dpiField.keyboardType = .numberPad
+        dpiField.text = source.flatMap { $0.dpi > 0 ? String($0.dpi) : nil } ?? ""
+        stack.addArrangedSubview(viewRow([widthField, heightField, dpiField]))
+
+        let message = panelLabel("", size: 12, color: UIColor.systemRed.withAlphaComponent(0.9))
+        stack.addArrangedSubview(message)
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Apply") { [weak self, weak widthField, weak heightField, weak dpiField, weak message] in
+                guard let self else { return }
+                let w = Int(widthField?.text ?? "") ?? 0
+                let h = Int(heightField?.text ?? "") ?? 0
+                guard w >= 640, h >= 480, w <= 4096, h <= 4096 else {
+                    message?.text = "Use width/height from 640 to 4096."
+                    return
+                }
+                let dpi = Int(dpiField?.text ?? "") ?? 0
+                if dpi != 0 && (dpi < 72 || dpi > 360) {
+                    message?.text = "Use DPI from 72 to 360."
+                    return
+                }
+                self.pendingSessionDisplay = DisplayProfile(
+                    name: "Custom", width: w, height: h, dpi: dpi,
+                    detail: "\(w)x\(h) logical")
+                self.presentSessionPicker()
+            },
+            panelButton("Clear") { [weak self] in
+                self?.pendingSessionDisplay = nil
+                self?.presentSessionPicker()
+            },
+            panelButton("Back") { [weak self] in self?.presentSessionPicker() },
+        ]))
+
+        NSLayoutConstraint.activate([
+            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
+            card.widthAnchor.constraint(greaterThanOrEqualToConstant: 380),
+            card.widthAnchor.constraint(lessThanOrEqualToConstant: 520),
             stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
             stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
             stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
@@ -2246,6 +2393,14 @@ final class XScreenView: UIView {
         return row
     }
 
+    private func viewRow(_ views: [UIView]) -> UIStackView {
+        let row = UIStackView(arrangedSubviews: views)
+        row.axis = .horizontal
+        row.spacing = 8
+        row.distribution = .fillEqually
+        return row
+    }
+
     private func stylePanelToggle(_ b: UIButton?, on: Bool) {
         b?.backgroundColor = on ? UIColor.systemBlue.withAlphaComponent(0.85) : UIColor(white: 0.25, alpha: 1)
     }
@@ -2263,15 +2418,9 @@ final class XScreenView: UIView {
 
     override var canBecomeFirstResponder: Bool { true }
 
-    @objc private func toggleKeyboard() {
-        if isFirstResponder { _ = resignFirstResponder() }
-        else { _ = becomeFirstResponder() }
-    }
-
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
         if ok {
-            keyboardButton?.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.7)
             oskUserDismissed = false
         }
         return ok
@@ -2279,7 +2428,6 @@ final class XScreenView: UIView {
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
         if ok {
-            keyboardButton?.backgroundColor = UIColor.black.withAlphaComponent(0.55)
             if !oskProgrammaticResign {
                 // The user hid the keyboard (toggle or dismiss key) while the field
                 // may still be focused: don't fight them on the next broadcast.
@@ -2426,6 +2574,16 @@ extension XScreenView: UIKeyInput {
         guard inputConnected else { return }
         sendKeysym(0xff08, ctrl: modCtrl, alt: modAlt, shift: modShift)   // XK_BackSpace
         clearStickyMods()
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if let keyboardRevealPan, gestureRecognizer === keyboardRevealPan {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let p = pan.location(in: self)
+            let v = pan.velocity(in: self)
+            return p.y >= bounds.height * 0.72 && v.y < -40 && abs(v.y) > abs(v.x)
+        }
+        return true
     }
 }
 

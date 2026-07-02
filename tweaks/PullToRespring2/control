@@ -1,0 +1,9 @@
+Package: com.max.pulltorespring2
+Name: PullToRespring2
+Version: 2.0.1
+Architecture: iphoneos-arm64
+Description: Pull down at the top of Settings to respring. Rootless refresh of NoahSaso's PullToRespring for modern iOS.
+Maintainer: Max
+Author: Max (original by Noah Saso)
+Section: Tweaks
+Depends: mobilesubstrate

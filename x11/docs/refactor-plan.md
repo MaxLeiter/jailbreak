@@ -12,10 +12,10 @@ Only OUR source > ~500 lines. EXCLUDE vendored/third-party entirely (do not touc
 - Generated `*-protocol.c/.h` (wayland-scanner output).
 
 ## Real candidates (our code)
-1. `x11/wayland/iosc.c` — **4021 lines** — the compositor monolith. HOTTEST file
+1. `x11/wayland/iosc.c` — **~6200 lines** — the compositor monolith. HOTTEST file
    (edited by iosc-input = panel/protocols, iosc-cursor = blend; mutter meta-*-ios do NOT
    touch it). Refactor LAST, behind a coordinated freeze.
-2. `x11/apps/Xios/Sources/XScreen.swift` — **1676 lines** — Xios app screen/render/input.
+2. `x11/apps/Xios/Sources/XScreen.swift` — **~2500 lines** — Xios app screen/render/input.
    Lower contention; can go first.
 
 (Note: iosc_gl.c, xios_egl.c, xios_surface.c, xios_input_socket.c already factored out of
@@ -43,9 +43,9 @@ Verify at run-time; proposed by concern:
 - `XScreenX11.swift` — X11-specific attach logic, if present.
 
 ## Why LATER + coordination
-- iosc.c is in active flux: iosc-input (panel, pending input-socket unification),
+- iosc.c is in active flux: iosc-input/panel followups,
   iosc-cursor (blend fix). Refactoring now collides + invalidates their diffs.
-- RUN the iosc.c split ONLY after: (a) iosc-input's panel + input-unification land;
+- RUN the iosc.c split ONLY after: (a) iosc-input's panel work settles;
   (b) iosc-cursor's blend fix lands + is on-device validated; (c) a "iosc.c freeze"
   is announced to the team so no one edits it mid-split.
 - XScreen.swift is lower-contention — can be done sooner.

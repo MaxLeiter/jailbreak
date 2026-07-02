@@ -1,0 +1,10 @@
+{
+  "tagline": "The shared base every Xios desktop flavor builds on",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "cube.box",
+  "description": "**xios-core** is the foundation package for the Xios desktop. It installs the pieces every flavor needs: the iosc Wayland compositor, the ANGLE GPU stack (OpenGL ES on Metal), the D-Bus message bus, desktop audio, and the distro defaults for fonts, locale, and paths.\n\nYou normally do not install this package directly. Pick a flavor instead and it pulls xios-core in automatically:\n\n- **xios-gnome**: real GNOME Shell on Mutter\n- **xios-kde**: KDE Plasma Mobile on KWin\n- **xios-native**: Linux apps as regular iPadOS windows\n- **xios-x11**: the classic X11 server path\n\nThe Xios display app itself is sideloaded separately; this repo provides everything that runs behind it. Rootless jailbreaks only (/var/jb).",
+  "changelog": [
+    { "version": "0.1.0", "date": "2026-07-01", "notes": "- First release: iosc + ANGLE + D-Bus + audio + desktop defaults as one base package" }
+  ]
+}

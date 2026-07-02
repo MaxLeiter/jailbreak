@@ -29,6 +29,12 @@ int  iosc_gl_ok(void);
  * the GPU path is marked unavailable (iosc_gl_ok() false => CPU fallback). */
 int  iosc_gl_resize(void *output_iosurface, int w, int h);
 
+/* Rebind the current EGL render target/FBO to an IOSurface without recreating the
+ * context, shader program, or client texture caches. This is the native-iPadOS
+ * per-window hook: callers can bind a window canvas, draw, end, then bind another
+ * canvas. It is also the implementation behind iosc_gl_resize(). */
+int  iosc_gl_bind_target(void *iosurface, int w, int h);
+
 /* Begin a frame: bind the output FBO and clear to black. */
 void iosc_gl_begin(void);
 

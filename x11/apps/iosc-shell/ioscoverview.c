@@ -36,8 +36,13 @@
 #include <signal.h>
 #include <ctype.h>
 
+#define IOSCOVERVIEW_VER "0.9.7"
 #define APP_MAX   OV_MAX_APPS
 #define WIN_MAX   OV_MAX_WINS
+
+/* IOSC_SHELL_DEBUG=1 -> trace to /var/jb/tmp/ioscoverview.log */
+static int ovdbg(void)
+{ static int on=-1; if(on<0){ const char*e=getenv("IOSC_SHELL_DEBUG"); on=e&&*e&&*e!='0'; } return on; }
 
 struct win_item {
     struct zwlr_foreign_toplevel_handle_v1 *handle;
@@ -469,6 +474,10 @@ static void layer_configure(void *d, struct zwlr_layer_surface_v1 *ls, uint32_t 
     if (h) O.height = (int)h;
     zwlr_layer_surface_v1_ack_configure(ls, serial);
     O.configured = 1;
+    if (ovdbg())
+        fprintf(stderr, "ioscoverview: configure w=%u h=%u scale=%d -> buffer %dx%d "
+                "(search pill centered in W=%d; expect w==logical output width)\n",
+                w, h, O.scale, O.width*O.scale, O.height*O.scale, O.width);
     render();
 }
 static void layer_closed(void *d, struct zwlr_layer_surface_v1 *ls){ (void)d;(void)ls; O.running = 0; }
@@ -566,7 +575,8 @@ int main(void)
             cairo_surface_destroy(cap);
         }
     }
-    fprintf(stderr, "ioscoverview: %d app(s), foreign-toplevel=%s, backdrop=%s\n",
+    fprintf(stderr, "ioscoverview " IOSCOVERVIEW_VER ": %d app(s), foreign-toplevel=%s, backdrop=%s "
+            "(layout centers on the configured output width)\n",
             O.napps, O.ftm ? "yes" : "no", O.backdrop ? "frosted" : "gradient");
 
     O.surf  = wl_compositor_create_surface(O.comp);

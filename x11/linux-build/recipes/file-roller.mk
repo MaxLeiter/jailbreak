@@ -81,7 +81,7 @@ file-roller-package: file-roller-stage
 	fi
 	cp -a $(BUILD_STAGE)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,file-roller,general.xml)
+	$(call SIGN,file-roller,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,file-roller,DEB_FILE-ROLLER_V)
 	rm -rf $(BUILD_DIST)/file-roller
 

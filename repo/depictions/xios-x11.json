@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/xios-x11.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**xios-x11** is the compatibility flavor: a real X11 environment on the iPad. It installs the original Xios X server for plain X11 apps, plus Xwayland so X11 clients can also run inside the GPU-accelerated iosc compositor.\n\nUse this flavor for software that predates Wayland, for window managers and tools that expect a bare X server, or simply because the classic path started this whole project.\n\nXvfb and the TigerVNC server are recommended alongside it for headless and remote-display setups.\n\nNeeds iOS 16.5 or newer on a rootless jailbreak (/var/jb)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "0.1.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "900 B"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Desktop"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "xios-x11"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 0.1.0  \u00b7  2026-07-01\n- First release: Xios X server + Xwayland as one install"
+        }
+      ]
+    }
+  ]
+}

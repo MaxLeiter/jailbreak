@@ -94,11 +94,11 @@ gtk4-package: gtk4-stage
 		fi; \
 	done
 
-	# gtk4.mk Default GSK_RENDERER=cairo. GTK4's GL renderer fatally dlopens desktop
-	# OpenGL.framework (absent on iOS); cairo renders in software and works today.
-	# Drop this once a GLES path (ANGLE->Metal) lands libEGL/libGLESv2.
+	# gtk4.mk Default GSK_RENDERER=ngl. GTK4's GL renderer routes through the
+	# libEGL shim to ANGLE-Metal IOSurfaces; set IOSC_GSK_RENDERER=cairo in launchers
+	# for the wl_shm fallback.
 	mkdir -p $(BUILD_DIST)/libgtk-4-1/$(MEMO_PREFIX)/etc/profile.d
-	printf 'export GSK_RENDERER=cairo\n' \
+	printf 'export GSK_RENDERER=$${IOSC_GSK_RENDERER:-ngl}\n' \
 		> $(BUILD_DIST)/libgtk-4-1/$(MEMO_PREFIX)/etc/profile.d/10-gtk-renderer.sh
 	chmod 0755 $(BUILD_DIST)/libgtk-4-1/$(MEMO_PREFIX)/etc/profile.d/10-gtk-renderer.sh
 

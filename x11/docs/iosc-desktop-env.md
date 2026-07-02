@@ -206,9 +206,9 @@ connect). For each `LAUNCH\t<app_id>\t<exec>`:
    and `exec` the client under the iosc environment — the same env `run-kgx.sh`
    proved good:
    `dbus-run-session -- bash -lc "<exec>"` with `WAYLAND_DISPLAY` = absolute
-   `/var/jb/tmp/wayland-0`, `GDK_BACKEND=wayland`, `GSK_RENDERER=cairo` (client
-   renders on the CPU; **iosc** does the GPU compositing, so the client needs no
-   GPU entitlement), `GSETTINGS_BACKEND=memory`, `GTK_A11Y=none`,
+   `/var/jb/tmp/wayland-0`, `GDK_BACKEND=wayland`, `GSK_RENDERER=${IOSC_GSK_RENDERER:-ngl}`
+   (GTK4 defaults to the ANGLE/Metal wl_egl_window shim; set `IOSC_GSK_RENDERER=cairo`
+   for the old wl_shm fallback), `GSETTINGS_BACKEND=memory`, `GTK_A11Y=none`,
    `HOME=/var/jb/var/root`, and a private 0700 `XDG_RUNTIME_DIR` for the session
    bus. Records `app_id → pid`; reply `LAUNCHED`. A `SIGCHLD` reaper clears the
    entry when the app exits, so a later tap relaunches.
@@ -218,31 +218,17 @@ Screen path; those remain as manual dev tools.
 
 ---
 
-## 7. Second tap → raise the existing window (needs a small iosc change)
+## 7. Second tap → raise the existing window
 
 `ioscd` already tracks `app_id → pid`, so it knows on a re-tap that the app is
-live and should be *raised*, not *duplicated*. To actually re-stack/focus that
-window, iosc must be able to find it by `app_id`. Today it cannot:
+live and should be *raised*, not *duplicated*. iosc stores `xdg_toplevel.set_app_id`
+on each toplevel and serves `/var/jb/tmp/iosc-wm.sock`; `ioscd` sends
+`raise\t<app_id>\n`, then iosc finds the mapped surface and runs the same
+`surface_raise()` + `keyboard_set_focus()` path used by xdg-activation.
 
-- `iosc.c`'s `xt_set_app_id()` **logs the app_id and discards it** — surfaces
-  don't store it.
-- there is no external control channel to raise a specific window.
-
-**Requested iosc additions (route to the iosc maintainer):**
-
-1. Store the toplevel `app_id` on `struct iosc_surface` (set in `xt_set_app_id`,
-   freed on destroy).
-2. Serve a tiny control socket `/var/jb/tmp/iosc-wm.sock` accepting
-   `raise\t<app_id>\n`: find the mapped surface whose stored `app_id` matches and
-   call the existing `surface_raise()` + `keyboard_set_focus()`; reply `ok` /
-   `notfound`. (These functions already exist — `surface_raise` at iosc.c:220,
-   focus at iosc.c:1908; the xdg-activation path at iosc.c:1076 already does
-   exactly raise+focus, this just drives it from app_id instead of a wl client.)
-
-`ioscd` calls this opportunistically (`iosc_raise()` in `ioscd.c`). **Until it
-lands the feature degrades gracefully**: `connect()` to `iosc-wm.sock` fails
-silently, `uiopen` still brings the display forward, and the window is already
-mapped — it simply may not be re-stacked to the top. So the basic experience
+This remains best-effort: if the compositor is not running, the socket is absent,
+or no mapped surface has that `app_id`, `ioscd` still foregrounds Xios and the
+window remains mapped; it simply may not move to the top.
 ships without any iosc change; this only sharpens multi-window focus.
 
 Note on app_id matching: GTK reports the application-id as the Wayland `app_id`

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build-panel.sh — cross-compile the iosc shell clients for rootless iOS arm64.
+# build-panel.sh — cross-compile the iosc shell clients for iOS arm64.
 #
 #   ioscbar       — the slim tablet status bar + Control Center.
 #   ioscdock      — the floating tablet dock (favorites + running apps).
@@ -11,7 +11,8 @@
 #                   (no cairo, no new deps).
 #
 # All are pure libwayland-CLIENT programs (own poll() loop). The GTK-stack
-# dylibs (cairo/pango/glib/…) resolve on device from /var/jb/usr/lib via @rpath.
+# dylibs (cairo/pango/glib/…) resolve on device from the selected Procursus
+# prefix via @rpath (/var/jb/usr/lib for rootless, /usr/lib for rootful).
 #
 # Usage: ./build-panel.sh
 # Output: out/ioscbar, out/ioscdock, out/ioscpanel, out/ioscoverview, out/ioscbg.
@@ -19,8 +20,34 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 IMAGE=procursus-xbuild:bookworm-arm64
-GTK_VOL=procursus-vol-gtk
+GTK_VOL="${IOSC_PROC_VOL:-${GTK_VOL:-procursus-vol-gtk}}"
 OUT="$HERE/out"
+SCHEME="${IOSC_PACKAGE_SCHEME:-${THEOS_PACKAGE_SCHEME:-rootless}}"
+CFVER="${MEMO_CFVER:-1900}"
+
+case "$SCHEME" in
+  rootless)
+    MEMO_TARGET_DEFAULT=iphoneos-arm64-rootless
+    MEMO_PREFIX_DEFAULT=/var/jb
+    ;;
+  rootful)
+    MEMO_TARGET_DEFAULT=iphoneos-arm64
+    MEMO_PREFIX_DEFAULT=
+    ;;
+  *)
+    echo "ERROR: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME must be rootless or rootful (got $SCHEME)" >&2
+    exit 1
+    ;;
+esac
+
+MEMO_TARGET="${MEMO_TARGET:-$MEMO_TARGET_DEFAULT}"
+MEMO_PREFIX="${MEMO_PREFIX-$MEMO_PREFIX_DEFAULT}"
+MEMO_SUB_PREFIX="${MEMO_SUB_PREFIX:-/usr}"
+MEMO_ALT_PREFIX="${MEMO_ALT_PREFIX:-}"
+BUILD_BASE="/work/Procursus/build_base/$MEMO_TARGET/$CFVER"
+SYSROOT_PREFIX="$BUILD_BASE$MEMO_PREFIX$MEMO_SUB_PREFIX"
+RPATH_PREFIX="$MEMO_PREFIX$MEMO_SUB_PREFIX"
+
 mkdir -p "$OUT"
 
 if ! docker volume ls --format '{{.Name}}' | grep -qx "$GTK_VOL"; then
@@ -30,16 +57,27 @@ if ! docker volume ls --format '{{.Name}}' | grep -qx "$GTK_VOL"; then
 fi
 
 docker run --rm --entrypoint /bin/bash \
+  -e BUILD_BASE="$BUILD_BASE" \
+  -e MEMO_PREFIX="$MEMO_PREFIX" \
+  -e MEMO_SUB_PREFIX="$MEMO_SUB_PREFIX" \
+  -e MEMO_ALT_PREFIX="$MEMO_ALT_PREFIX" \
+  -e IOSC_PACKAGE_SCHEME="$SCHEME" \
+  -e SYSROOT_PREFIX="$SYSROOT_PREFIX" \
+  -e RPATH_PREFIX="$RPATH_PREFIX" \
   -v "$HERE":/work -v "$GTK_VOL":/work/Procursus:ro \
   "$IMAGE" -euo pipefail -c '
-    export BUILD_BASE=/work/Procursus/build_base/iphoneos-arm64-rootless/1900
-    export MEMO_PREFIX=/var/jb MEMO_SUB_PREFIX=/usr MEMO_ALT_PREFIX=
     PKGC=/work/Procursus/build_tools/cross-pkg-config
     CC=/root/cctools/bin/aarch64-apple-darwin-clang
     OTOOL=/root/cctools/bin/aarch64-apple-darwin-otool
     INT=/root/cctools/bin/aarch64-apple-darwin-install_name_tool
     SDK=/root/cctools/SDK/iPhoneOS.sdk
     cd /work
+
+    if [ ! -d "$SYSROOT_PREFIX/include" ] || [ ! -d "$SYSROOT_PREFIX/lib" ]; then
+      echo "ERROR: missing selected Procursus sysroot at $SYSROOT_PREFIX" >&2
+      echo "       scheme=$IOSC_PACKAGE_SCHEME target=$MEMO_TARGET prefix=${MEMO_PREFIX:-/}; set IOSC_PROC_VOL/GTK_VOL or build that target first." >&2
+      exit 1
+    fi
 
     # Linux wayland-scanner (Debian) — ABI-stable vs the staged 1.23 libs.
     if ! command -v wayland-scanner >/dev/null; then
@@ -55,13 +93,13 @@ docker run --rm --entrypoint /bin/bash \
     done
 
     BASE="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -Igen -I/work \
-          -isystem $BUILD_BASE/var/jb/usr/include -Wall -Wextra -O2 -std=gnu11"
+          -isystem $SYSROOT_PREFIX/include -Wall -Wextra -O2 -std=gnu11"
     # Link lines need the deployment target too, else ld64 stamps the SDK
     # version (16.5) as LC_BUILD_VERSION minos and the deb floor overshoots.
     LINK="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0"
     # The staged iOS SDK headers macro-rename exec*()->ie_exec*() (the Procursus
     # iosexec posix_spawn shim); sd_launch() uses execl, so all clients link it.
-    RPATH="-Wl,-rpath,/var/jb/usr/lib -framework CoreFoundation -liosexec"
+    RPATH="-Wl,-rpath,$RPATH_PREFIX/lib -framework CoreFoundation -liosexec"
 
     WL_CFLAGS=$("$PKGC" --cflags wayland-client)
     WL_LIBS=$("$PKGC" --libs wayland-client)
@@ -112,5 +150,6 @@ else
 fi
 
 echo "DONE -> $OUT/ioscbar  $OUT/ioscdock  $OUT/ioscpanel  $OUT/ioscoverview  $OUT/ioscbg"
-echo "Deploy: scp out/iosc{bar,dock,panel,overview,bg} root@ipad:/var/jb/usr/local/bin/"
+echo "scheme=$SCHEME target=$MEMO_TARGET prefix=${MEMO_PREFIX:-/}"
+echo "Deploy: scp out/iosc{bar,dock,panel,overview,bg} root@ipad:${MEMO_PREFIX}/usr/local/bin/"
 echo "Run (needs iosc with zwlr_layer_shell_v1): see run-shell.sh"

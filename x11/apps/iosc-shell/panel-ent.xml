@@ -4,8 +4,9 @@
   ioscpanel entitlements. A wl_shm layer-shell client: it draws on the CPU and
   hands wl_shm buffers to iosc (iosc does the GPU compositing), so it needs NO
   AGX/IOGPU/IOSurface IOKit entitlements (cf. kgx's cairo->wl_shm path, which
-  needs no GPU entitlement). It only needs to reach the wayland + (optional)
-  ioscd sockets under /var/jb/tmp and to fork/exec launched apps.
+  needs no GPU entitlement). It only needs to reach the Wayland/runtime sockets,
+  app metadata, icons, and launched apps for either rootless (/var/jb) or rootful
+  (/) jailbreak layouts.
 -->
 <plist version="1.0">
 <dict>
@@ -17,8 +18,14 @@
     <true/>
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
+        <string>/tmp/</string>
+        <string>/private/tmp/</string>
+        <string>/usr/share/</string>
+        <string>/usr/local/share/</string>
         <string>/var/jb/tmp/</string>
-        <string>/var/jb/usr/share/applications/</string>
+        <string>/private/var/jb/tmp/</string>
+        <string>/var/jb/usr/share/</string>
+        <string>/private/var/jb/usr/share/</string>
     </array>
 </dict>
 </plist>

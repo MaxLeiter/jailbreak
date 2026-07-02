@@ -1,7 +1,8 @@
 /*
  * iosc-input-test.c — inject input into the iosc compositor for testing, without
  * the Xios app. Speaks the same fixed 24-byte protocol the app uses over
- * /var/jb/tmp/iosc-input.sock. Lets us prove wl_keyboard/wl_pointer dispatch (e.g.
+ * /var/jb/tmp/xios-input.sock or /var/jb/tmp/iosc-input.sock. Lets us prove
+ * wl_keyboard/wl_pointer dispatch (e.g.
  * "type ls<Enter> into kgx") before wiring the device-side UIKit path.
  *
  *   iosc-input-test "ls -la" "echo hi"   # type each arg as a line (auto <Enter>)
@@ -10,9 +11,12 @@
  *   iosc-input-test -t 500 400           # two-finger touch gesture (wl_touch)
  *   iosc-input-test -p 300 300 900 500   # pencil stroke w/ pressure ramp (tablet-v2)
  *
- * Coordinates are physical output pixels (iosc converts to logical itself).
+ *   iosc-input-test --socket /var/jb/tmp/xios-input.sock -c 1080 810
+ *
+ * Coordinates are physical output pixels (the compositor maps to logical/stage space).
  * MIT.
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +32,9 @@
 #define IOSC_IN_TABLET 7   /* code = pressure 0..65535; state as touch; mods = tilt+90 packed */
 #define IOSC_IN_AXIS   9   /* x,y = dx,dy 1/256 px; code = source; state bit0 = stop */
 
+#define MUTTER_IN_SOCK "/var/jb/tmp/xios-input.sock"
+#define IOSC_IN_SOCK   "/var/jb/tmp/iosc-input.sock"
+
 struct iosc_in_msg {
     uint32_t type;
     int32_t  x, y;
@@ -36,17 +43,58 @@ struct iosc_in_msg {
     uint32_t mods;     /* bit0 shift, bit1 ctrl, bit2 alt */
 };
 
-static int connect_sock(void)
+static int connect_path(const char *path, int quiet)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { perror("socket"); return -1; }
     struct sockaddr_un a; memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
-    strncpy(a.sun_path, "/var/jb/tmp/iosc-input.sock", sizeof(a.sun_path) - 1);
-    if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) {
-        perror("connect (is iosc running?)"); close(fd); return -1;
+    if (strlen(path) >= sizeof(a.sun_path)) {
+        fprintf(stderr, "socket path too long: %s\n", path);
+        close(fd);
+        return -1;
     }
+    strncpy(a.sun_path, path, sizeof(a.sun_path) - 1);
+    if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) {
+        if (!quiet)
+            fprintf(stderr, "connect %s: %s\n", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    fprintf(stderr, "connected to %s\n", path);
     return fd;
+}
+
+static int connect_sock(const char *path)
+{
+    const char *env_path = getenv("XIOS_INPUT_SOCK");
+    if (!env_path || !env_path[0])
+        env_path = getenv("IOSC_INPUT_SOCK");
+
+    if (path && path[0])
+        return connect_path(path, 0);
+    if (env_path && env_path[0])
+        return connect_path(env_path, 0);
+
+    int fd = connect_path(MUTTER_IN_SOCK, 1);
+    if (fd >= 0)
+        return fd;
+    fd = connect_path(IOSC_IN_SOCK, 1);
+    if (fd >= 0)
+        return fd;
+
+    fprintf(stderr, "connect: no input socket up (tried %s, %s)\n",
+            MUTTER_IN_SOCK, IOSC_IN_SOCK);
+    return -1;
+}
+
+static void usage(const char *argv0)
+{
+    fprintf(stderr,
+            "usage: %s [--socket PATH] [-c x y | -D x0 y0 x1 y1 | -s x y dx dy | text...]\n"
+            "       %s --mutter -c 1080 810\n"
+            "       %s --iosc \"echo hi\"\n",
+            argv0, argv0, argv0);
 }
 
 static void send_msg(int fd, struct iosc_in_msg *m)
@@ -63,14 +111,36 @@ static void key_tap(int fd, uint32_t keysym)
 
 int main(int argc, char **argv)
 {
-    int fd = connect_sock();
+    const char *socket_path = NULL;
+    int argi = 1;
+
+    while (argi < argc) {
+        if (!strcmp(argv[argi], "--socket")) {
+            if (argi + 1 >= argc) { usage(argv[0]); return 1; }
+            socket_path = argv[argi + 1];
+            argi += 2;
+        } else if (!strcmp(argv[argi], "--mutter")) {
+            socket_path = MUTTER_IN_SOCK;
+            argi++;
+        } else if (!strcmp(argv[argi], "--iosc")) {
+            socket_path = IOSC_IN_SOCK;
+            argi++;
+        } else if (!strcmp(argv[argi], "-h") || !strcmp(argv[argi], "--help")) {
+            usage(argv[0]);
+            return 0;
+        } else {
+            break;
+        }
+    }
+
+    int fd = connect_sock(socket_path);
     if (fd < 0) return 1;
 
     /* -k <keysym_hex> <mods>: one key with modifiers (bit0 shift,1 ctrl,2 alt).
      * e.g. -k 0x6e 3 => Ctrl+Shift+n (a GTK accelerator test). */
-    if (argc >= 3 && !strcmp(argv[1], "-k")) {
-        uint32_t ks = (uint32_t)strtoul(argv[2], NULL, 0);
-        uint32_t mods = (argc >= 4) ? (uint32_t)strtoul(argv[3], NULL, 0) : 0;
+    if (argc - argi >= 2 && !strcmp(argv[argi], "-k")) {
+        uint32_t ks = (uint32_t)strtoul(argv[argi + 1], NULL, 0);
+        uint32_t mods = (argc - argi >= 3) ? (uint32_t)strtoul(argv[argi + 2], NULL, 0) : 0;
         struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = ks, .state = 1, .mods = mods };
         send_msg(fd, &m);
         fprintf(stderr, "sent key 0x%x mods %u\n", ks, mods);
@@ -79,9 +149,9 @@ int main(int argc, char **argv)
 
     /* -D x0 y0 x1 y1: press at x0,y0, drag in steps to x1,y1, release. Slow
      * enough that a client can react mid-drag (start_drag / accept an offer). */
-    if (argc >= 6 && !strcmp(argv[1], "-D")) {
-        int x0 = atoi(argv[2]), y0 = atoi(argv[3]);
-        int x1 = atoi(argv[4]), y1 = atoi(argv[5]);
+    if (argc - argi >= 5 && !strcmp(argv[argi], "-D")) {
+        int x0 = atoi(argv[argi + 1]), y0 = atoi(argv[argi + 2]);
+        int x1 = atoi(argv[argi + 3]), y1 = atoi(argv[argi + 4]);
         struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x0, .y = y0 };
         send_msg(fd, &mv); usleep(50000);
         struct iosc_in_msg bd = { .type = IOSC_IN_BUTTON, .x = x0, .y = y0, .code = 1, .state = 1 };
@@ -100,8 +170,8 @@ int main(int argc, char **argv)
 
     /* -t x y: two-finger multitouch — ids 0 and 1 (120px apart) go down, slide
      * 80px downward together, then lift. Exercises independent wl_touch ids. */
-    if (argc >= 4 && !strcmp(argv[1], "-t")) {
-        int x = atoi(argv[2]), y = atoi(argv[3]);
+    if (argc - argi >= 3 && !strcmp(argv[argi], "-t")) {
+        int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
         struct iosc_in_msg d0 = { .type = IOSC_IN_TOUCH, .x = x,       .y = y, .code = 0, .state = 1 };
         struct iosc_in_msg d1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y, .code = 1, .state = 1 };
         send_msg(fd, &d0); send_msg(fd, &d1); usleep(80000);
@@ -119,9 +189,9 @@ int main(int argc, char **argv)
 
     /* -p x0 y0 x1 y1: a pencil stroke — down at x0,y0, 12 motion steps to x1,y1
      * with pressure ramping 20%..100% and a fixed 30/-15 degree tilt, then up. */
-    if (argc >= 6 && !strcmp(argv[1], "-p")) {
-        int x0 = atoi(argv[2]), y0 = atoi(argv[3]);
-        int x1 = atoi(argv[4]), y1 = atoi(argv[5]);
+    if (argc - argi >= 5 && !strcmp(argv[argi], "-p")) {
+        int x0 = atoi(argv[argi + 1]), y0 = atoi(argv[argi + 2]);
+        int x1 = atoi(argv[argi + 3]), y1 = atoi(argv[argi + 4]);
         uint32_t tilt = (uint32_t)(30 + 90) | ((uint32_t)(-15 + 90) << 8);
         struct iosc_in_msg dn = { .type = IOSC_IN_TABLET, .x = x0, .y = y0,
                                   .code = 65535 / 5, .state = 1, .mods = tilt };
@@ -143,9 +213,9 @@ int main(int argc, char **argv)
     /* -s x y dx dy: smooth scroll — park the pointer at x,y then emit 24 AXIS
      * deltas totalling dx,dy output px (1/256 fixed point) at ~120Hz, ending
      * with an axis_stop so kinetic clients fling. */
-    if (argc >= 6 && !strcmp(argv[1], "-s")) {
-        int x = atoi(argv[2]), y = atoi(argv[3]);
-        int dx = atoi(argv[4]), dy = atoi(argv[5]);
+    if (argc - argi >= 5 && !strcmp(argv[argi], "-s")) {
+        int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
+        int dx = atoi(argv[argi + 3]), dy = atoi(argv[argi + 4]);
         struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x, .y = y };
         send_msg(fd, &mv); usleep(50000);
         for (int i = 0; i < 24; i++) {
@@ -159,8 +229,8 @@ int main(int argc, char **argv)
         usleep(100000); close(fd); return 0;
     }
 
-    if (argc >= 4 && !strcmp(argv[1], "-c")) {
-        int x = atoi(argv[2]), y = atoi(argv[3]);
+    if (argc - argi >= 3 && !strcmp(argv[argi], "-c")) {
+        int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
         struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x, .y = y };
         send_msg(fd, &mv); usleep(30000);
         struct iosc_in_msg bd = { .type = IOSC_IN_BUTTON, .x = x, .y = y, .code = 1, .state = 1 };
@@ -171,7 +241,7 @@ int main(int argc, char **argv)
         usleep(100000); close(fd); return 0;
     }
 
-    for (int i = 1; i < argc; i++) {
+    for (int i = argi; i < argc; i++) {
         for (const char *p = argv[i]; *p; p++) {
             unsigned char c = (unsigned char)*p;
             uint32_t ks = (c == '\n') ? 0xff0d : (uint32_t)c;   /* ASCII keysym == codepoint */

@@ -54,7 +54,7 @@ gnome-console-package: gnome-console-stage
 	cp -a $(BUILD_STAGE)/gnome-console/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/gnome-console/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/gnome-console/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/gnome-console/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,gnome-console,general.xml)
+	$(call SIGN,gnome-console,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,gnome-console,DEB_GNOME-CONSOLE_V)
 	rm -rf $(BUILD_DIST)/gnome-console
 

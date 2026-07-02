@@ -237,8 +237,9 @@ static void iosc_raise(const char *app_id)
 
 /* Spawn <exec> as a Wayland client of iosc. Mirrors run-kgx.sh's environment:
  * a private 0700 bus dir for dbus-run-session, WAYLAND_DISPLAY by absolute path,
- * GDK wayland backend, cairo (CPU) rendering — iosc does the GPU compositing —
- * and a writable HOME. We exec through `bash -lc` so the client also picks up
+ * GDK wayland backend, GPU GTK rendering by default — iosc composites imported
+ * IOSurfaces zero-copy — and a writable HOME. We exec through `bash -lc` so the
+ * client also picks up
  * the /var/jb/etc/profile.d login scripts (PATH + ANGLE/lib paths the run
  * scripts rely on). */
 static pid_t launch_client(const char *app_id, const char *exec)
@@ -260,14 +261,11 @@ static pid_t launch_client(const char *app_id, const char *exec)
         setenv("XDG_RUNTIME_DIR", busdir, 1);          /* private, dbus-friendly */
         setenv("WAYLAND_DISPLAY", WAYLAND_SOCK, 1);    /* absolute path */
         setenv("GDK_BACKEND", "wayland", 1);
-        /* Client-side rendering path. DEFAULT cairo: GTK CPU-paints into wl_shm and
-         * iosc GPU-composites. Opt in to the GPU client path by launching ioscd with
-         * IOSC_GSK_RENDERER=ngl (or gl) — GTK's GL renderer then goes through the
-         * wl_egl_window shim (ANGLE Metal -> IOSurface, no CPU cairo paint). That
-         * REQUIRES the on-device libEGL shim swap + the GSK-ngl-on-ANGLE validation
-         * still owned by the device side; cairo stays the safe fallback. */
+        /* Client-side rendering path. DEFAULT ngl: GTK's GL renderer goes through
+         * the wl_egl_window shim (ANGLE Metal -> IOSurface, no CPU cairo paint).
+         * Set IOSC_GSK_RENDERER=cairo to force the old wl_shm fallback. */
         const char *gsk = getenv("IOSC_GSK_RENDERER");
-        if (!gsk || !*gsk) gsk = "cairo";
+        if (!gsk || !*gsk) gsk = "ngl";
         setenv("GSK_RENDERER", gsk, 1);
         if (strcmp(gsk, "cairo") != 0) {
             /* Tell the swapped-in shim where the real ANGLE libEGL lives. */

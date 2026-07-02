@@ -173,6 +173,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
     "$X11/wayland/iosc_gl.c" \
     "$X11/wayland/xios_egl.c" \
+    "$X11/wayland/xios_canvas.c" \
     "$X11/wayland/iosc_input.c" \
     "$X11/wayland/xios_input_socket.c" \
     "$GEN/xdg-shell-protocol.c" \
@@ -315,8 +316,8 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
 echo "   built /out/iosc-gpu-client"
 
 # wayland-egl↔ANGLE shim (libiosc_egl.dylib): a libEGL that forwards to ANGLE and
-# routes window surfaces through IOSurface + iosc_iosurface. dlopens ANGLE libEGL
-# at runtime (not linked); links libwayland-client + GLESv2 (glFinish) + frameworks.
+# routes window surfaces through IOSurface + iosc_iosurface. dlopens the real
+# ANGLE libEGL at runtime (not linked); links libwayland-client + GLESv2 + frameworks.
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -dynamiclib -install_name /var/jb/usr/local/lib/libiosc_egl.dylib \
     "$X11/wayland/iosc_egl_shim.c" \

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Package the iosc desktop shell clients as an installable rootless-iOS deb.
+# Package the iosc desktop shell clients as an installable iOS deb.
 # Host-side: stage the tree and ldid-sign the binaries on macOS, then assemble
 # the .deb with the container's dpkg-deb (chowned root:root). Same pipeline as
 # wayland/package-iosc.sh.
@@ -17,6 +17,7 @@
 #   run-shell.sh      on-device bring-up script
 #   panel-ent.xml     the (non-GPU) client entitlement set
 # Output: iosc-shell_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
+# Env: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME=rootless|rootful (default rootless).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -26,12 +27,30 @@ STAGEROOT=/private/tmp/iosc-shell-deb
 STAGE="$STAGEROOT/iosc-shell"
 VER="0.9.7"
 ARCH="iphoneos-arm64"
-DEB="iosc-shell_${VER}_${ARCH}.deb"
 IMG="procursus-xbuild:bookworm-arm64"
+SCHEME="${IOSC_PACKAGE_SCHEME:-${THEOS_PACKAGE_SCHEME:-rootless}}"
 
-BIN="$STAGE/var/jb/usr/local/bin"
-ICONS="$STAGE/var/jb/usr/share/iosc-shell/icons"   # PI_ASSETS_DEFAULT (panel-icons.h)
-SHARE="$STAGE/var/jb/usr/local/share/iosc-shell"
+case "$SCHEME" in
+  rootless)
+    DEB_PREFIX=/var/jb
+    VERSION_SUFFIX="${IOSC_VERSION_SUFFIX:-}"
+    ;;
+  rootful)
+    DEB_PREFIX=
+    VERSION_SUFFIX="${IOSC_VERSION_SUFFIX:-+rootful}"
+    ;;
+  *)
+    echo "ERROR: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME must be rootless or rootful (got $SCHEME)" >&2
+    exit 1
+    ;;
+esac
+
+PKG_VER="${VER}${VERSION_SUFFIX}"
+DEB="iosc-shell_${PKG_VER}_${ARCH}.deb"
+PREFIX_ROOT="$STAGE$DEB_PREFIX"
+BIN="$PREFIX_ROOT/usr/local/bin"
+ICONS="$PREFIX_ROOT/usr/share/iosc-shell/icons"
+SHARE="$PREFIX_ROOT/usr/local/share/iosc-shell"
 
 for f in out/ioscbar out/ioscdock out/ioscpanel out/ioscoverview out/ioscbg run-shell.sh panel-ent.xml; do
   [[ -e "$HERE/$f" ]] || { echo "ERROR: $HERE/$f missing (run build-panel.sh first)" >&2; exit 1; }
@@ -40,7 +59,7 @@ done
 rm -rf "$STAGEROOT"
 mkdir -p "$BIN" "$ICONS" "$SHARE" "$STAGE/DEBIAN"
 
-# 1. shell clients -> /var/jb/usr/local/bin, signed with the client entitlement
+# 1. shell clients -> <prefix>/usr/local/bin, signed with the client entitlement
 #    set (wayland socket + .desktop scan + launch; no GPU IOKit classes needed,
 #    iosc does the compositing).
 for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
@@ -48,6 +67,29 @@ for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
   chmod 0755 "$BIN/$b"
   ldid -S"$HERE/panel-ent.xml" "$BIN/$b"
 done
+
+if command -v otool >/dev/null; then
+  for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
+    case "$SCHEME" in
+      rootless)
+        otool -l "$BIN/$b" | grep -q "/var/jb/usr/lib" || {
+          echo "ERROR: $b is not linked for rootless (/var/jb/usr/lib rpath missing)" >&2
+          echo "       Rebuild with IOSC_PACKAGE_SCHEME=rootless ./build-panel.sh" >&2
+          exit 1
+        }
+        ;;
+      rootful)
+        if otool -l "$BIN/$b" | grep -q "/var/jb"; then
+          echo "ERROR: $b still contains /var/jb paths; refusing rootful package" >&2
+          echo "       Rebuild with IOSC_PACKAGE_SCHEME=rootful ./build-panel.sh" >&2
+          exit 1
+        fi
+        ;;
+    esac
+  done
+else
+  echo "WARNING: otool not found; skipping scheme/rpath validation" >&2
+fi
 
 # 2. bring-up script (compositor if needed, then wallpaper, bar and dock)
 cp "$HERE/run-shell.sh" "$BIN/run-shell.sh"
@@ -61,14 +103,14 @@ chmod 0644 "$ICONS"/*.png 2>/dev/null || true
 cp "$HERE/panel-ent.xml" "$SHARE/panel-ent.xml"
 chmod 0644 "$SHARE/panel-ent.xml"
 
-INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
+INSTKB=$(du -sk "$BIN" "$ICONS" "$SHARE" | awk '{s += $1} END {print s + 0}')
 
 # 5. control. iosc >= 0.9.0 is a hard floor: the shell needs the compositor's
 #    zwlr-layer-shell v4, foreign-toplevel v3 and screencopy v1 (0.8.0 has none).
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: iosc-shell
 Name: iosc desktop shell
-Version: ${VER}
+Version: ${PKG_VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -78,7 +120,7 @@ Section: X11
 Priority: optional
 Installed-Size: ${INSTKB}
 Description: lightweight desktop shell for the iosc compositor
- The iosc desktop shell is a small, fast desktop for the Xios stack on rootless
+ The iosc desktop shell is a small, fast desktop for the Xios stack on jailbroken
  iOS: a slim status bar with battery, time and Control Center; a floating dock
  with app launchers and running-window activation; a full-screen overview with
  app search, an application grid and open window cards over a frosted snapshot
@@ -97,7 +139,7 @@ EOF
 
 echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
-echo "installed=${INSTKB}KB"
+echo "scheme=${SCHEME} prefix=${DEB_PREFIX:-/} installed=${INSTKB}KB"
 echo "=== ioscbar entitlements (client set, no GPU classes) ==="
 ldid -e "$BIN/ioscbar" | grep -E "no-container|get-task-allow|absolute-path" | sed 's/^/   /' || true
 

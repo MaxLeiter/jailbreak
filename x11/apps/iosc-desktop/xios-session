@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# xios-session — on-device CLI to pick a desktop session/flavor on the iPad.
+#
+# This is the terminal trigger that replaces "the team lead SSHes a run-*.sh
+# script each time". Run it as root on the device (or over SSH):
+#
+#   xios-session iosc            # lightweight iosc desktop (works today)
+#   xios-session mutter          # raw Mutter --wayland (flat stage)
+#   xios-session gnome           # gnome-shell --wayland (EXPERIMENTAL)
+#   xios-session app kgx         # launch a client against the running compositor
+#   xios-session app gnome-text-editor
+#   xios-session stop            # tear everything down, back to SpringBoard
+#   xios-session status          # print the last session status
+#
+# Optional for --via-daemon requests:
+#   XIOS_SESSION_WIDTH=1080 XIOS_SESSION_HEIGHT=1440 XIOS_SESSION_DPI=176 xios-session -d iosc
+#
+# By default it acts IMMEDIATELY (calls the shared library — no daemon needed, so
+# it works over a bare SSH shell). Pass -d/--via-daemon to instead write the same
+# request file the in-app picker writes (/var/jb/tmp/xios-request.json), which the
+# xios-sessiond daemon serves — handy for exercising the app's exact code path.
+#
+# GOTCHA (b): the iPad screen must be AWAKE + UNLOCKED, or the Xios Metal app is
+# suspended by FrontBoard and presents a black frame. Unlock the device first.
+set -u
+
+LIB_CANDIDATES=(
+    "${XIOS_SESSION_LIB:-}"
+    "/var/jb/libexec/xios-session/xios-session-lib.sh"
+    "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/xios-session-lib.sh"
+)
+LIB=""
+for c in "${LIB_CANDIDATES[@]}"; do
+    [ -n "$c" ] && [ -r "$c" ] && { LIB="$c"; break; }
+done
+[ -n "$LIB" ] || { echo "xios-session: cannot find xios-session-lib.sh" >&2; exit 1; }
+# shellcheck source=/dev/null
+. "$LIB"
+
+REQ="${XS_TMP:-/var/jb/tmp}/xios-request.json"
+VIA_DAEMON=0
+
+usage() { xios_session_run help; exit "${1:-2}"; }
+
+# option scan (only -d/--via-daemon; the rest are the preset + args)
+ARGS=()
+for a in "$@"; do
+    case "$a" in
+        -d|--via-daemon) VIA_DAEMON=1 ;;
+        -h|--help)       usage 0 ;;
+        *)               ARGS+=("$a") ;;
+    esac
+done
+set -- "${ARGS[@]:-}"
+
+PRESET="${1:-}"
+[ -n "$PRESET" ] || usage 2
+
+case "$PRESET" in
+    status)
+        cat "${XS_STATUS:-/var/jb/tmp/xios-session-status.json}" 2>/dev/null \
+            || echo '{"state":"unknown","message":"no status yet"}'
+        exit 0 ;;
+esac
+
+if [ "$VIA_DAEMON" = 1 ]; then
+    # Mirror the in-app picker: write the session request; the daemon serves it.
+    APP="${2:-}"
+    ts="$(date '+%Y-%m-%dT%H:%M:%S')"
+    {
+        printf '{\n'
+        printf '  "action": "session",\n'
+        printf '  "preset": "%s",\n' "$PRESET"
+        [ -n "$APP" ] && printf '  "app": "%s",\n' "$APP"
+        [ -n "${XIOS_SESSION_WIDTH:-}" ] && printf '  "width": %s,\n' "$XIOS_SESSION_WIDTH"
+        [ -n "${XIOS_SESSION_HEIGHT:-}" ] && printf '  "height": %s,\n' "$XIOS_SESSION_HEIGHT"
+        [ -n "${XIOS_SESSION_DPI:-}" ] && printf '  "dpi": %s,\n' "$XIOS_SESSION_DPI"
+        printf '  "created_by": "xios-session-cli",\n'
+        printf '  "created_at": "%s"\n' "$ts"
+        printf '}\n'
+    } >"$REQ.tmp" && mv -f "$REQ.tmp" "$REQ"
+    echo "xios-session: wrote session request preset=$PRESET${APP:+ app=$APP} -> $REQ (xios-sessiond will serve it)"
+    exit 0
+fi
+
+# Immediate path: do the work now.
+xios_session_run "$PRESET" "${2:-}"

@@ -3,8 +3,8 @@
 /*
  * meta-seat-ios.c — the MetaBackendIOS ClutterSeat (synthetic input only).
  *
- * Two logical core devices (pointer + keyboard), a MetaKeymapIOS, and the 13 ClutterSeat
- * vfuncs implemented minimally: there is no physical input to enumerate, so query_state
+ * Two synthetic core devices (pointer + keyboard), a MetaKeymapIOS, and the 13 ClutterSeat
+ * vfuncs implemented minimally: there is no hardware input to enumerate, so query_state
  * returns the last synthesized pointer position and create_virtual_device yields a
  * MetaVirtualInputDeviceIOS (the thing the Xios input pump pushes events into). Modeled on
  * MetaSeatX11 with the X server / XInput device enumeration removed. GPL-2.0+.
@@ -43,7 +43,11 @@ create_core_device (MetaSeatIOS              *self,
                        "name", name,
                        "device-type", device_type,
                        "capabilities", capabilities,
-                       "device-mode", CLUTTER_INPUT_MODE_LOGICAL,
+                       /* Mutter's Wayland seat deliberately ignores LOGICAL devices when
+                        * advertising wl_seat capabilities and routing events to clients.
+                        * These are synthetic, but they are the only user-facing devices the
+                        * iOS backend has, so expose them as PHYSICAL to the Wayland layer. */
+                       "device-mode", CLUTTER_INPUT_MODE_PHYSICAL,
                        "seat", self,
                        NULL);
 }

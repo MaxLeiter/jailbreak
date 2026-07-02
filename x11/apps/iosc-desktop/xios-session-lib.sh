@@ -1,0 +1,361 @@
+#!/usr/bin/env bash
+# xios-session-lib.sh — the session-launcher core (sourced, never run directly).
+#
+# One place that knows how to (1) tear down whatever desktop session is currently
+# on the iPad and (2) bring up a chosen one, then relaunch the Xios display app.
+# Both the on-device CLI (`xios-session`) and the request-file daemon
+# (`xios-sessiond`) source this file and call `xios_session_run`, so there is ONE
+# code path whether Max picks a preset from the Xios app or a terminal.
+#
+# Presets (see xios_session_run):
+#   iosc         iosc compositor + wallpaper + panel   (the lightweight desktop; works today)
+#   mutter       raw Mutter 46 --wayland               (up: flat stage, no shell yet)
+#   gnome        gnome-shell --wayland                 (EXPERIMENTAL: mid-bring-up)
+#   app <name>   launch a Wayland client against the RUNNING compositor (no teardown)
+#   stop         tear everything down, return to SpringBoard
+#
+# It REUSES the existing bring-up scripts rather than reinventing them: the iosc,
+# mutter and gnome presets call run-shell.sh / run-mutter.sh / run-gnome-shell.sh.
+# The one thing this library guarantees on top of them is a *bulletproof* teardown
+# (gotcha a: kill ALL of iosc/mutter/gnome-shell/Xios/panels/clients + rm every
+# stale socket, or the next compositor collides on wayland-0 / the ddx sockets).
+#
+# Env overrides honoured (passed through to the run scripts):
+#   IOSC_LOGICAL        logical desktop size for iosc/ioscd (default 1440x1080)
+#   IOSC_PANEL_OPACITY  iosc panel translucency 0-100 (iosc-shell >= 0.9.3; only
+#                       forwarded when set, so the panel's 85% default otherwise stands)
+#   MUTTER              path to the mutter binary (run-mutter.sh default)
+#   XIOS_SESSION_BRINGUP_DIR   override dir to find the run-*.sh scripts
+#   XIOS_SESSION_SETTLE   seconds to wait after teardown before starting the next
+#                       compositor (default 2) — see the jetsam note below
+#
+# JETSAM NOTE (why the settle exists): switching flavors kills the old compositor
+# (which holds a large GPU IOSurface + Metal/ANGLE context, ~30MB) and starts a new
+# one that allocates its own surface + context. Doing that back-to-back spikes GPU
+# memory and iOS jetsams the foreground Xios app mid-transition. So the presets:
+# tear down (kill old compositor + the app so it isn't holding stale GPU state),
+# SETTLE (let the kernel reclaim the old surface), THEN start the new compositor,
+# then relaunch the display once the new surface exists. Status is updated at every
+# step so the picker shows what's happening instead of going dark.
+#
+# Status "state" vocabulary (xios-session-status.json):
+#   stopping | starting | waiting | relaunching | up | error | stopped | compositor-only
+
+# ---------------------------------------------------------------------------
+# paths + small helpers
+# ---------------------------------------------------------------------------
+XS_JB="${XS_JB:-/var/jb}"
+XS_TMP="${XS_TMP:-$XS_JB/tmp}"
+XS_BIN="${XS_BIN:-$XS_JB/usr/local/bin}"
+XS_LIBEXEC_DIR="${XS_LIBEXEC_DIR:-$XS_JB/libexec/xios-session}"
+XS_LOG="${XS_LOG:-$XS_TMP/xios-session.log}"
+XS_STATUS="${XS_STATUS:-$XS_TMP/xios-session-status.json}"
+XS_WAYLAND_SOCK="$XS_TMP/wayland-0"
+XS_XIOS_BUNDLE="com.max.xios"
+XS_UIOPEN="$XS_JB/usr/bin/uiopen"
+XS_DBUS_RUN="$XS_JB/usr/bin/dbus-run-session"
+XS_BASH="$XS_JB/usr/bin/bash"
+
+export PATH="$XS_JB/usr/bin:$XS_JB/usr/sbin:$XS_JB/bin:$XS_JB/sbin:/usr/bin:/bin:$PATH"
+
+xs_log() {
+    # timestamped line to both the log file and stderr
+    local line
+    line="$(date '+%Y-%m-%dT%H:%M:%S') $*"
+    printf '%s\n' "$line" >>"$XS_LOG" 2>/dev/null || true
+    printf 'xios-session: %s\n' "$*" >&2
+}
+
+# xs_write_status <preset> <state> <message>
+#   state = starting | up | error | stopped   (the app / CLI can poll this)
+xs_write_status() {
+    local preset="$1" state="$2" msg="$3"
+    printf '{"preset":"%s","state":"%s","message":"%s","at":"%s"}\n' \
+        "$preset" "$state" "$(printf '%s' "$msg" | sed 's/"/\\"/g')" \
+        "$(date '+%Y-%m-%dT%H:%M:%S')" >"$XS_STATUS" 2>/dev/null || true
+}
+
+# Resolve one of the bring-up scripts. Prefer the LIVE installed copy (the one the
+# owning package ships + versions alongside its binaries) over our pinned libexec
+# snapshot, so owner edits (e.g. run-shell.sh's -logical line, run-gnome-shell.sh's
+# launcher lines) are tracked automatically instead of drifting behind a stale pin.
+# Order: explicit override -> /var/jb/usr/local/bin (iosc-shell's run-shell.sh) ->
+# /var/jb/usr/bin (gnome-session's suggested live location) -> our pinned copy last.
+xs_find_bringup() {
+    local name="$1" c
+    for c in \
+        "${XIOS_SESSION_BRINGUP_DIR:+$XIOS_SESSION_BRINGUP_DIR/$name}" \
+        "$XS_BIN/$name" \
+        "$XS_JB/usr/bin/$name" \
+        "$XS_LIBEXEC_DIR/$name"; do
+        [ -n "$c" ] && [ -r "$c" ] && { printf '%s\n' "$c"; return 0; }
+    done
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# teardown (gotcha a) — kill every compositor/app/client + rm every stale socket
+# ---------------------------------------------------------------------------
+# Union of the teardown greps in run-iosc.sh / run-mutter.sh / run-gnome-shell.sh /
+# run-kgx.sh, anchored to binary paths so it never matches this script itself
+# (xios-session / xios-sessiond) or our own shell. We additionally exclude $$ and
+# the parent pid as belt-and-braces.
+xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscpanel|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|/bin/kgx|gnome-text-editor|gnome-calculator|dbus-daemon.*--session|dbus-run-session'
+
+xios_session_teardown() {
+    local why="${1:-switching sessions}"
+    xs_log "teardown ($why): killing compositors + apps + clients"
+    local self=$$ parent=$PPID pid
+    ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" \
+        | awk '{print $1}' | while read -r pid; do
+            [ -z "$pid" ] && continue
+            [ "$pid" = "$self" ] && continue
+            [ "$pid" = "$parent" ] && continue
+            kill -9 "$pid" 2>/dev/null || true
+        done
+    sleep 1
+    # rm every stale rendezvous/socket file (gotcha a). Globs cover iosc-ddx,
+    # mutter-ddx, xios-ddx and every *-input.sock; explicit names cover the rest.
+    rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
+          "$XS_TMP/xios.json" \
+          "$XS_TMP"/*-ddx.sock \
+          "$XS_TMP"/*-input.sock \
+          "$XS_TMP/iosc-wm.sock" \
+          "$XS_TMP/iosc-native.sock" 2>/dev/null || true
+    xs_log "teardown done"
+}
+
+# Loosen perms on a root-owned rendezvous socket so the (mobile) Xios app can
+# connect — identical to what the run scripts do. Best-effort.
+xs_fix_ddx_perms() {
+    local s
+    for s in "$XS_TMP"/*-ddx.sock; do
+        [ -S "$s" ] || continue
+        chown mobile:mobile "$s" 2>/dev/null && chmod 0660 "$s" 2>/dev/null \
+            || chmod 0777 "$s" 2>/dev/null || true
+    done
+}
+
+# Foreground the Xios display app. NOTE (gotcha b): if the iPad screen is asleep
+# or locked, FrontBoard suspends the Metal app and it presents nil — the caller
+# must have the screen awake + unlocked. We can't force that from a daemon.
+xs_foreground_xios() {
+    "$XS_UIOPEN" -b "$XS_XIOS_BUNDLE" 2>/dev/null \
+        || "$XS_UIOPEN" "$XS_XIOS_BUNDLE" 2>/dev/null || true
+}
+
+xs_wait_socket() {  # xs_wait_socket <path> <tries>
+    local p="$1" n="${2:-40}" i=0
+    while [ ! -S "$p" ] && [ "$i" -lt "$n" ]; do sleep 0.2; i=$((i+1)); done
+    [ -S "$p" ]
+}
+
+# Let the kernel reclaim the old compositor's GPU IOSurface + context before the
+# next compositor allocates, so the two don't co-reside and jetsam the app. Runs
+# AFTER teardown (which already killed the old compositor + the app). Tunable.
+xs_settle() {
+    local s="${XIOS_SESSION_SETTLE:-2}"
+    xs_log "settling ${s}s (freeing the old GPU surface before the next compositor allocates)"
+    sleep "$s"
+}
+
+# Make sure the Xios display app is up after the new compositor exists. If it's
+# alive, just bring it forward; if teardown killed it (it did) or iOS jetsammed it
+# during bring-up, relaunch it and mark the status "relaunching display".
+xs_ensure_xios() {  # xs_ensure_xios <preset>
+    local preset="${1:-session}"
+    if pgrep -f "Xios.app/Xios" >/dev/null 2>&1; then
+        xs_foreground_xios
+        return 0
+    fi
+    xs_log "Xios app not running; relaunching display"
+    xs_write_status "$preset" relaunching "relaunching display (Xios app)"
+    xs_foreground_xios
+    sleep 1
+}
+
+# ---------------------------------------------------------------------------
+# presets
+# ---------------------------------------------------------------------------
+
+# iosc: teardown, then run-shell.sh (starts iosc + wallpaper + panel), then fix
+# the ddx socket perms + foreground Xios (run-shell.sh does neither — it just
+# says "open the Xios app"). This is the flavor that works today.
+xios_session_iosc() {
+    xs_write_status iosc stopping "stopping current session"
+    xios_session_teardown "-> iosc"
+    xs_settle
+    xs_write_status iosc starting "starting iosc + shell"
+    local script; script="$(xs_find_bringup run-shell.sh)" || {
+        xs_log "ERROR: run-shell.sh not found (install iosc-shell)"; xs_write_status iosc error "run-shell.sh missing"; return 1; }
+    xs_log "iosc: $script"
+    # run-shell.sh starts the compositor because teardown removed the socket. Pass
+    # through the tunables it honours: IOSC_LOGICAL (desktop size) and, since
+    # iosc-shell 0.9.3, IOSC_PANEL_OPACITY (0-100; the panel is 85% translucent by
+    # default). Only export opacity when the caller set it, so an unset value never
+    # overrides the panel's own default.
+    export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
+    [ -n "${IOSC_PANEL_OPACITY:-}" ] && export IOSC_PANEL_OPACITY
+    sh "$script" || true
+    xs_write_status iosc waiting "waiting for compositor surface"
+    if ! xs_wait_socket "$XS_WAYLAND_SOCK" 50; then
+        xs_log "ERROR: iosc did not create wayland-0"; xs_write_status iosc error "wayland-0 never appeared"; return 1
+    fi
+    xs_fix_ddx_perms
+    xs_ensure_xios iosc
+    xs_log "iosc up. Awake the Xios app to see the desktop."
+    xs_write_status iosc up "iosc + shell running"
+}
+
+# mutter: teardown, then run-mutter.sh. That script does its own (now redundant)
+# teardown, starts mutter --wayland, chowns the ddx socket and relaunches Xios.
+xios_session_mutter() {
+    xs_write_status mutter stopping "stopping current session"
+    xios_session_teardown "-> mutter"
+    xs_settle
+    xs_write_status mutter starting "starting mutter --wayland (compositor + display)"
+    local script; script="$(xs_find_bringup run-mutter.sh)" || {
+        xs_log "ERROR: run-mutter.sh not found"; xs_write_status mutter error "run-mutter.sh missing"; return 1; }
+    xs_log "mutter: $script"
+    # run-mutter.sh's own (now no-op) teardown finds nothing to kill after ours +
+    # the settle, so it just starts mutter, waits for xios.json, and relaunches Xios.
+    bash "$script" || true
+    xs_ensure_xios mutter   # relaunch the display if it got jetsammed during bring-up
+    if [ -f "$XS_TMP/xios.json" ]; then
+        xs_log "mutter up (flat clutter stage; no shell yet)."
+        xs_write_status mutter up "mutter --wayland running"
+    else
+        xs_log "ERROR: mutter did not write xios.json (see $XS_TMP/mutter.log)"
+        xs_write_status mutter error "mutter failed; see mutter.log"; return 1
+    fi
+}
+
+# gnome: EXPERIMENTAL. teardown, then run-gnome-shell.sh (re-signs gnome-shell,
+# starts session stubs + gnome-shell --wayland, relaunches Xios). May not paint.
+xios_session_gnome() {
+    xs_write_status gnome stopping "stopping current session"
+    xios_session_teardown "-> gnome"
+    xs_settle
+    xs_write_status gnome starting "starting gnome-shell --wayland (experimental)"
+    local script; script="$(xs_find_bringup run-gnome-shell.sh)" || {
+        xs_log "ERROR: run-gnome-shell.sh not found"; xs_write_status gnome error "run-gnome-shell.sh missing"; return 1; }
+    xs_log "gnome (experimental): $script"
+    bash "$script" || true
+    xs_ensure_xios gnome    # relaunch the display if it got jetsammed during bring-up
+    xs_write_status gnome waiting "waiting for GNOME Shell to paint"
+    # Do NOT gate "gnome up" on xios.json: Mutter writes it BEFORE the gjs shell
+    # loads, so it only proves the compositor came up (identical to bare mutter).
+    # The real success marker (per gnome-session) is "GNOME Shell started at" in
+    # gnome-shell.log, printed only after the JS UI + stage load. Poll for that, a
+    # hard failure, or process exit for ~15s; a compositor that never paints the
+    # shell is reported distinctly (not as a win).
+    local log="$XS_TMP/gnome-shell.log" i=0 outcome=timeout
+    local fail_re='Failed to load module|couldn.t be found|JS ERROR|Execution of main\.js threw exception|MTLCreateSystemDefaultDevice'
+    while [ "$i" -lt 30 ]; do
+        if grep -q "GNOME Shell started at" "$log" 2>/dev/null; then outcome=started; break; fi
+        if grep -qE "$fail_re" "$log" 2>/dev/null; then outcome=failed; break; fi
+        pgrep -f "/usr/bin/gnome-shell" >/dev/null 2>&1 || { outcome=exited; break; }
+        sleep 0.5; i=$((i+1))
+    done
+    case "$outcome" in
+        started)
+            xs_log "gnome-shell painted (GNOME Shell started)."
+            xs_write_status gnome up "GNOME Shell started" ;;
+        failed|exited)
+            xs_log "gnome-shell FAILED ($outcome). Last 40 lines of $log:"
+            tail -40 "$log" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
+            xs_write_status gnome error "gnome-shell $outcome; see gnome-shell.log"
+            return 1 ;;
+        timeout)
+            if [ -f "$XS_TMP/xios.json" ]; then
+                xs_log "gnome-shell: Mutter up but no 'GNOME Shell started' after ~15s (compositor-only). Last 40 lines of $log:"
+                tail -40 "$log" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
+                xs_write_status gnome compositor-only "Mutter up; GNOME Shell JS did not report started (see gnome-shell.log)"
+            else
+                xs_log "gnome-shell: no xios.json and no start marker; bring-up failed."
+                xs_write_status gnome error "gnome-shell did not start; see gnome-shell.log"
+                return 1
+            fi ;;
+    esac
+}
+
+# app <name>: launch a Wayland client against the CURRENTLY RUNNING compositor.
+# No teardown — this rides on whatever compositor is up. Reuses run-kgx.sh's proven
+# client environment (private dbus bus dir, absolute WAYLAND_DISPLAY, GDK wayland,
+# cairo, memory gsettings, writable HOME) under dbus-run-session.
+xios_session_app() {
+    local name="$1"
+    [ -n "$name" ] || { xs_log "ERROR: 'app' needs a name"; xs_write_status app error "no app name"; return 1; }
+    if [ ! -S "$XS_WAYLAND_SOCK" ]; then
+        xs_log "ERROR: no compositor running (no $XS_WAYLAND_SOCK). Pick iosc/mutter/gnome first."
+        xs_write_status app error "no compositor; start a session first"; return 1
+    fi
+    xs_write_status "app:$name" starting "launching $name"
+
+    # name -> exec. kgx is special: a bare `kgx` registers as the GApplication
+    # primary and returns WITHOUT mapping a window in this bus-only environment, so
+    # it must be given an explicit command that stays alive (run-kgx.sh gotcha).
+    local exec
+    case "$name" in
+        kgx|console|gnome-console)          exec="kgx -T iosc-kgx -- $XS_BASH -i" ;;
+        text-editor|gnome-text-editor|editor) exec="gnome-text-editor" ;;
+        calculator|gnome-calculator|calc)   exec="gnome-calculator" ;;
+        *)                                  exec="$name" ;;   # run as given
+    esac
+
+    local busdir="$XS_TMP/xios-session-bus"
+    mkdir -p "$busdir"; chmod 0700 "$busdir"
+    xs_log "app: launching '$exec' as a wayland client of the running compositor"
+    nohup env \
+        XDG_RUNTIME_DIR="$busdir" \
+        WAYLAND_DISPLAY="$XS_WAYLAND_SOCK" \
+        GDK_BACKEND=wayland \
+        GSK_RENDERER="${IOSC_GSK_RENDERER:-ngl}" \
+        GSETTINGS_BACKEND=memory \
+        GTK_A11Y=none \
+        HOME="$XS_JB/var/root" \
+        "$XS_DBUS_RUN" -- "$XS_BASH" -lc "$exec" \
+        >>"$XS_TMP/xios-session-client.log" 2>&1 </dev/null &
+    # bring the shared Xios display forward so the new window is visible
+    xs_foreground_xios
+    xs_log "app '$name' launched (pid $!). Window maps into the current compositor."
+    xs_write_status "app:$name" up "$name launched"
+}
+
+# stop: tear everything down and return to SpringBoard.
+xios_session_stop() {
+    xs_write_status stop stopping "stopping session"
+    xios_session_teardown "-> stop"
+    xs_log "session stopped; Xios app killed, back to SpringBoard."
+    xs_write_status stop stopped "all sessions stopped"
+}
+
+# ---------------------------------------------------------------------------
+# dispatcher — the ONE entry point the CLI and daemon call.
+#   xios_session_run <preset> [arg]
+# ---------------------------------------------------------------------------
+xios_session_run() {
+    local preset="$1"; shift 2>/dev/null || true
+    case "$preset" in
+        iosc)        xios_session_iosc ;;
+        mutter)      xios_session_mutter ;;
+        gnome)       xios_session_gnome ;;
+        app)         xios_session_app "${1:-}" ;;
+        stop|off)    xios_session_stop ;;
+        ""|help|-h|--help)
+            cat >&2 <<EOF
+xios-session presets:
+  iosc            iosc compositor + wallpaper + panel (works today)
+  mutter          raw Mutter 46 --wayland (flat stage, no shell yet)
+  gnome           gnome-shell --wayland (EXPERIMENTAL)
+  app <name>      launch a client (kgx|gnome-text-editor|gnome-calculator|<exec>)
+                  against the running compositor
+  stop            tear everything down, back to SpringBoard
+EOF
+            return 2 ;;
+        *)
+            xs_log "ERROR: unknown preset '$preset'"
+            xs_write_status "$preset" error "unknown preset"
+            return 2 ;;
+    esac
+}

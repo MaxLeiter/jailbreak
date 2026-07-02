@@ -60,7 +60,7 @@ baobab-package: baobab-stage
 	cp -a $(BUILD_STAGE)/baobab/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/baobab/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/baobab/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/baobab/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,baobab,general.xml)
+	$(call SIGN,baobab,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,baobab,DEB_BAOBAB_V)
 	rm -rf $(BUILD_DIST)/baobab
 

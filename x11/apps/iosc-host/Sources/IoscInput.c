@@ -19,8 +19,7 @@
 #define XIOS_IN_TRAITS 5u
 #define XIOS_IN_TOUCH  6u
 #define XIOS_IN_TABLET 7u
-/* PROPOSED: scope this connection to one window (code = window id). Add to
- * x11/wayland/xios_input_socket.h + iosc's reader before it does anything. */
+/* Scope this connection to one window (code = window id). */
 #define XIOS_IN_BIND   8u
 
 struct xios_in_msg {

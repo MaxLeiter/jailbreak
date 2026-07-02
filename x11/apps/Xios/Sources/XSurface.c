@@ -265,10 +265,18 @@ static int drain_typed(XSurfaceConn *c)
                 c->cur_shape = m.c; c->cur_vis = (m.d & 1);
                 c->cur_seq++;
                 break;
-            case XIOS_MSG_HELLO:               /* rare post-connect geometry refresh */
-                if (m.a > 0) c->width = m.a;
-                if (m.b > 0) c->height = m.b;
-                if (m.c > 0) c->stride = m.c;
+            case XIOS_MSG_HELLO:               /* compositor identity / geometry reminder */
+                /* The IOSurface backing this connection is immutable. If a later
+                 * HELLO advertises different dimensions, the server has moved to a
+                 * new surface and this connection must be re-adopted from scratch
+                 * (new mach port + new Metal texture), not patched in place. */
+                if ((m.a > 0 && m.a != c->width) ||
+                    (m.b > 0 && m.b != c->height) ||
+                    (m.c > 0 && m.c != c->stride)) {
+                    xlog("typed HELLO geometry changed %dx%d/%d -> %dx%d/%d; reconnect",
+                         c->width, c->height, c->stride, m.a, m.b, m.c);
+                    return -1;
+                }
                 break;
             default:                           /* unknown core/native type: ignore */
                 break;

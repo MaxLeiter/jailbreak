@@ -67,7 +67,7 @@ gnome-calculator-package: gnome-calculator-stage
 	cp -a $(BUILD_STAGE)/gnome-calculator/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/gnome-calculator/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/gnome-calculator/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/gnome-calculator/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,gnome-calculator,general.xml)
+	$(call SIGN,gnome-calculator,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,gnome-calculator,DEB_GNOME-CALCULATOR_V)
 	rm -rf $(BUILD_DIST)/gnome-calculator
 

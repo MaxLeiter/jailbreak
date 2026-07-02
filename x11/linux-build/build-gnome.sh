@@ -43,6 +43,10 @@ echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
 fi
+mkdir -p build_misc/entitlements
+if [ -f /work/build_info/iosc-gpu-client-ent.xml ]; then
+  cp -v /work/build_info/iosc-gpu-client-ent.xml build_misc/entitlements/
+fi
 
 # Same clang wrapper build-gtk.sh uses: the Procursus wrapper injects -Wl,-adhoc_codesign, and
 # meson's compile-only probes add -Werror=unused-command-line-argument, so every cc.sizeof()

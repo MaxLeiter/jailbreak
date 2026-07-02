@@ -176,6 +176,8 @@ struct iosc_presentation_feedback {
 struct iosc_layer_state;
 
 struct iosc_surface {
+    uint32_t            window_id;       /* compositor id for native per-window input/present */
+    struct wl_list      surface_link;    /* all live wl_surface resources */
     struct wl_resource *resource;        /* wl_surface */
     struct wl_resource *pending_buffer;  /* last wl_surface.attach (may be NULL) */
     int                 buffer_attached; /* attach was called this cycle */
@@ -246,6 +248,8 @@ static int default_window_h(void)
 #define IOSC_MAX_SURFACES 16
 static struct iosc_surface *g_mapped[IOSC_MAX_SURFACES];
 static int g_nmapped = 0;
+static uint32_t g_next_window_id = 1;
+static struct wl_list g_surfaces;
 
 /* Input focus (set by the seat code below; (un)map adjusts it). */
 static struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
@@ -454,6 +458,15 @@ static struct iosc_surface *topmost_focusable(void)
     return NULL;
 }
 
+static struct iosc_surface *surface_by_window_id(uint32_t window_id)
+{
+    if (!window_id) return NULL;
+    for (int i = 0; i < g_nmapped; i++)
+        if (g_mapped[i]->window_id == window_id)
+            return g_mapped[i];
+    return NULL;
+}
+
 /* Compute the anchored size and send a layer_surface.configure the client acks. */
 static void layer_send_configure(struct iosc_surface *s)
 {
@@ -544,6 +557,25 @@ static void presentation_discard_surface(struct iosc_surface *s)
         wp_presentation_feedback_send_discarded(fb->resource);
         wl_resource_destroy(fb->resource);
     }
+}
+
+static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
+{
+    struct iosc_frame *f, *tmp;
+    wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link) {
+        wl_callback_send_done(f->resource, time);
+        wl_resource_destroy(f->resource);
+        wl_list_remove(&f->link);
+        free(f);
+    }
+}
+
+static void frame_callbacks_after_repaint(void)
+{
+    uint32_t t = now_ms();
+    struct iosc_surface *s, *tmp;
+    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link)
+        surface_send_frame_callbacks(s, t);
 }
 
 /* CPU-fallback blit of the top wl_shm surface. Kept simple; the ANGLE/GPU path is
@@ -1041,6 +1073,7 @@ static void recomposite_now(void)
             composite_cursor();
             iosc_gl_end();
             xios_notify_dirty();
+            frame_callbacks_after_repaint();
             if (iosc_debug())
                 fprintf(stderr, "iosc: recomposited (session locked; lock surface %s)\n",
                         g_slock.surface && g_slock.surface->current_buffer ? "shown" : "pending");
@@ -1057,6 +1090,7 @@ static void recomposite_now(void)
         composite_cursor();
         iosc_gl_end();
         xios_notify_dirty();
+        frame_callbacks_after_repaint();
         /* Validation (IOSC_DEBUG only — each readback is a synchronous GPU->CPU
          * stall): read every window's EXPOSED top-left corner (a lower window's
          * center is occluded by the one cascaded over it), proving each is present
@@ -1104,6 +1138,7 @@ static void recomposite_now(void)
         if (ib && ib->surface) xios_blit_client_iosurface(ib->surface);
     }
     xios_notify_dirty();
+    frame_callbacks_after_repaint();
 }
 
 /* Coalesce repaints: a burst of commits, input events, or state changes in one
@@ -1582,16 +1617,10 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
     if (need_recomposite) recomposite_all();
     if (send_presented) presentation_present_surface(s);
 
-    /* Fire (and retire) frame callbacks: tells the client it may draw the next
-     * frame. Without this, throttled clients (simple-shm, GTK) stall after one. */
-    uint32_t t = now_ms();
-    struct iosc_frame *f, *tmp;
-    wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link) {
-        wl_callback_send_done(f->resource, t);
-        wl_resource_destroy(f->resource);
-        wl_list_remove(&f->link);
-        free(f);
-    }
+    /* Frame callbacks are retired after the coalesced repaint, not at commit
+     * time, so throttled clients don't draw ahead of the compositor. */
+    if (!need_recomposite && !wl_list_empty(&s->frame_callbacks))
+        surface_send_frame_callbacks(s, now_ms());
 }
 static void surface_set_buffer_transform(struct wl_client *c, struct wl_resource *r,
                                          int32_t transform)
@@ -1633,6 +1662,7 @@ static void surface_resource_destroy(struct wl_resource *r)
     struct iosc_surface *s = wl_resource_get_user_data(r);
     if (!s) return;
     int was_mapped = s->mapped;
+    wl_list_remove(&s->surface_link);
     surface_unmap(s);
     iosc_gl_forget_shm(s);   /* evict the per-surface shm texture (address may be reused) */
     /* Drop the retained buffer's destroy listener (client is going away; no
@@ -1725,16 +1755,25 @@ static void compositor_create_surface(struct wl_client *client,
 {
     struct iosc_surface *s = calloc(1, sizeof(*s));
     if (!s) { wl_client_post_no_memory(client); return; }
+    wl_list_init(&s->surface_link);
     wl_list_init(&s->frame_callbacks);
     wl_list_init(&s->presentation_feedbacks);
+    wl_list_insert(&g_surfaces, &s->surface_link);
+    s->window_id = g_next_window_id++;
+    if (g_next_window_id == 0) g_next_window_id = 1;
     s->pending_buffer_scale = 1;
     s->current_buffer_scale = 1;
     s->resource = wl_resource_create(client, &wl_surface_interface,
                                      wl_resource_get_version(resource), id);
-    if (!s->resource) { free(s); wl_client_post_no_memory(client); return; }
+    if (!s->resource) {
+        wl_list_remove(&s->surface_link);
+        free(s);
+        wl_client_post_no_memory(client);
+        return;
+    }
     wl_resource_set_implementation(s->resource, &surface_impl, s,
                                    surface_resource_destroy);
-    fprintf(stderr, "iosc: wl_surface created\n");
+    fprintf(stderr, "iosc: wl_surface created window_id=%u\n", s->window_id);
 }
 static void compositor_create_region(struct wl_client *client,
                                       struct wl_resource *resource, uint32_t id)
@@ -1976,9 +2015,45 @@ static void decoration_manager_bind(struct wl_client *client, void *data,
 
 struct iosc_activation_token {
     int used;
+    uint32_t serial;
+    struct wl_resource *seat;
+    struct wl_resource *surface;
+    char app_id[256];
 };
 
 static uint32_t g_activation_token_id;
+
+struct iosc_activation_record {
+    char token[32];
+    char app_id[256];
+    struct iosc_surface *surface;
+    uint32_t serial;
+};
+
+#define IOSC_ACTIVATION_RECORDS 64
+static struct iosc_activation_record g_activation_records[IOSC_ACTIVATION_RECORDS];
+static unsigned g_activation_record_next;
+
+static void activation_remember(const char *token, const struct iosc_activation_token *tok)
+{
+    struct iosc_activation_record *rec =
+        &g_activation_records[g_activation_record_next++ % IOSC_ACTIVATION_RECORDS];
+    memset(rec, 0, sizeof(*rec));
+    snprintf(rec->token, sizeof(rec->token), "%s", token ? token : "");
+    snprintf(rec->app_id, sizeof(rec->app_id), "%s", tok && tok->app_id[0] ? tok->app_id : "");
+    rec->surface = tok && tok->surface ? wl_resource_get_user_data(tok->surface) : NULL;
+    rec->serial = tok ? tok->serial : 0;
+}
+
+static const struct iosc_activation_record *activation_find(const char *token)
+{
+    if (!token || !*token) return NULL;
+    for (unsigned i = 0; i < IOSC_ACTIVATION_RECORDS; i++) {
+        const struct iosc_activation_record *rec = &g_activation_records[i];
+        if (rec->token[0] && strcmp(rec->token, token) == 0) return rec;
+    }
+    return NULL;
+}
 
 static void activation_token_destroy_resource(struct wl_resource *r)
 {
@@ -1987,13 +2062,25 @@ static void activation_token_destroy_resource(struct wl_resource *r)
 
 static void activation_token_set_serial(struct wl_client *c, struct wl_resource *r,
                                         uint32_t serial, struct wl_resource *seat)
-{ (void)c; (void)r; (void)serial; (void)seat; }
+{
+    (void)c;
+    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
+    if (tok) { tok->serial = serial; tok->seat = seat; }
+}
 static void activation_token_set_app_id(struct wl_client *c, struct wl_resource *r,
                                         const char *app_id)
-{ (void)c; (void)r; (void)app_id; }
+{
+    (void)c;
+    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
+    if (tok) snprintf(tok->app_id, sizeof(tok->app_id), "%s", app_id ? app_id : "");
+}
 static void activation_token_set_surface(struct wl_client *c, struct wl_resource *r,
                                          struct wl_resource *surface)
-{ (void)c; (void)r; (void)surface; }
+{
+    (void)c;
+    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
+    if (tok) tok->surface = surface;
+}
 static void activation_token_commit(struct wl_client *c, struct wl_resource *r)
 {
     (void)c;
@@ -2006,6 +2093,7 @@ static void activation_token_commit(struct wl_client *c, struct wl_resource *r)
     tok->used = 1;
     char token[32];
     snprintf(token, sizeof(token), "iosc-%u", ++g_activation_token_id);
+    activation_remember(token, tok);
     xdg_activation_token_v1_send_done(r, token);
 }
 static void activation_token_destroy(struct wl_client *c, struct wl_resource *r)
@@ -2033,7 +2121,12 @@ static void activation_get_token(struct wl_client *c, struct wl_resource *r, uin
 static void activation_activate(struct wl_client *c, struct wl_resource *r,
                                 const char *token, struct wl_resource *surface)
 {
-    (void)c; (void)r; (void)token;
+    (void)c; (void)r;
+    const struct iosc_activation_record *rec = activation_find(token);
+    if (iosc_debug() && rec) {
+        fprintf(stderr, "iosc: xdg-activation token=%s app_id=\"%s\" serial=%u\n",
+                token ? token : "", rec->app_id, rec->serial);
+    }
     struct iosc_surface *s = wl_resource_get_user_data(surface);
     if (!s || !s->mapped) return;
     surface_raise(s);
@@ -4915,12 +5008,19 @@ static void in_dispatch_text(const char *text, size_t len)
  * Runs on the compositor thread (the reader's kqueue fd is on the wl event loop),
  * so no locking. Same routing the inline reader did; unknown types are ignored. */
 static void iosc_input_record(const struct xios_in_msg *m, const char *text,
-                              size_t text_len, void *user)
+                              size_t text_len, uint32_t bound_window, void *user)
 {
     (void)user;
+    struct iosc_surface *bound = surface_by_window_id(bound_window);
+    if (bound && (m->type == XIOS_IN_KEY || m->type == XIOS_IN_TEXT))
+        keyboard_set_focus(bound);
     if (m->type == XIOS_IN_TEXT) { in_dispatch_text(text, text_len); return; }
     int x = physical_to_logical(m->x);
     int y = physical_to_logical(m->y);
+    if (bound) {
+        x += bound->dx;
+        y += bound->dy;
+    }
     switch (m->type) {
         case XIOS_IN_MOTION: handle_motion(x, y); break;
         case XIOS_IN_BUTTON: handle_motion(x, y);
@@ -4933,7 +5033,8 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
         /* AXIS x,y are fixed-point scroll DELTAS, not positions — pass raw
          * (handle_axis does its own /output_scale), NOT the physical_to_logical'd
          * locals. */
-        case XIOS_IN_AXIS:   handle_axis(m->x, m->y, m->code,
+        case XIOS_IN_AXIS:   if (bound) g_ptr_focus = bound;
+                             handle_axis(m->x, m->y, m->code,
                                          (int)(m->state & 1u), m->mods); break;
     }
     wl_display_flush_clients(g_display);   /* push the events out immediately */
@@ -4975,7 +5076,7 @@ static int g_input_nclients;
 static int input_sock_readable(int fd, uint32_t mask, void *data)
 {
     (void)fd; (void)mask; (void)data;
-    xios_input_socket_dispatch(g_input_sock, iosc_input_record, NULL);
+    xios_input_socket_dispatch_bound(g_input_sock, iosc_input_record, NULL);
     int now = xios_input_socket_client_count(g_input_sock);
     if (now > g_input_nclients) input_clients_send_traits();
     g_input_nclients = now;
@@ -6074,6 +6175,7 @@ int main(int argc, char **argv)
     /* 2) Wayland display + globals. */
     g_display = wl_display_create();
     if (!g_display) { fprintf(stderr, "iosc: wl_display_create failed\n"); return 1; }
+    wl_list_init(&g_surfaces);
 
     if (wl_display_add_socket(g_display, sock_name) != 0) {
         fprintf(stderr, "iosc: wl_display_add_socket(%s) failed "

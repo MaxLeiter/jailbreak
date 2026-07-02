@@ -4,6 +4,16 @@
   "itemCornerRadius": 8,
   "banners": [
     {
+      "title": "adwaita-icon-theme",
+      "package": "adwaita-icon-theme",
+      "url": "https://repo.maxleiter.com/banners/adwaita-icon-theme.png"
+    },
+    {
+      "title": "ANGLE (GLES via Metal)",
+      "package": "angle",
+      "url": "https://repo.maxleiter.com/banners/angle.png"
+    },
+    {
       "title": "ANGLE (GLES via Metal)",
       "package": "angle",
       "url": "https://repo.maxleiter.com/banners/angle.png"
@@ -17,6 +27,11 @@
       "title": "AutoLockPicker",
       "package": "com.max.autolockpicker",
       "url": "https://repo.maxleiter.com/banners/com.max.autolockpicker.png"
+    },
+    {
+      "title": "PullToRespring2",
+      "package": "com.max.pulltorespring2",
+      "url": "https://repo.maxleiter.com/banners/com.max.pulltorespring2.png"
     },
     {
       "title": "d-spy",
@@ -104,9 +119,29 @@
       "url": "https://repo.maxleiter.com/banners/gtk4-layer-shell.png"
     },
     {
+      "title": "hicolor-icon-theme",
+      "package": "hicolor-icon-theme",
+      "url": "https://repo.maxleiter.com/banners/hicolor-icon-theme.png"
+    },
+    {
       "title": "hitori",
       "package": "hitori",
       "url": "https://repo.maxleiter.com/banners/hitori.png"
+    },
+    {
+      "title": "iosc desktop shell",
+      "package": "iosc-shell",
+      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
+    },
+    {
+      "title": "iosc desktop shell",
+      "package": "iosc-shell",
+      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
+    },
+    {
+      "title": "iosc (Wayland compositor)",
+      "package": "iosc",
+      "url": "https://repo.maxleiter.com/banners/iosc.png"
     },
     {
       "title": "iosc (Wayland compositor)",
@@ -299,6 +334,11 @@
       "url": "https://repo.maxleiter.com/banners/libglib2.0-dev.png"
     },
     {
+      "title": "libgnome-autoar-0-0",
+      "package": "libgnome-autoar-0-0",
+      "url": "https://repo.maxleiter.com/banners/libgnome-autoar-0-0.png"
+    },
+    {
       "title": "libgnome-desktop-4-2",
       "package": "libgnome-desktop-4-2",
       "url": "https://repo.maxleiter.com/banners/libgnome-desktop-4-2.png"
@@ -359,6 +399,11 @@
       "url": "https://repo.maxleiter.com/banners/libgtkintl.png"
     },
     {
+      "title": "libgtksourceview-5-0",
+      "package": "libgtksourceview-5-0",
+      "url": "https://repo.maxleiter.com/banners/libgtksourceview-5-0.png"
+    },
+    {
       "title": "libgtop-2.0-11",
       "package": "libgtop-2.0-11",
       "url": "https://repo.maxleiter.com/banners/libgtop-2.0-11.png"
@@ -394,6 +439,11 @@
       "url": "https://repo.maxleiter.com/banners/libjpeg62-turbo.png"
     },
     {
+      "title": "libjson-glib-1.0-0",
+      "package": "libjson-glib-1.0-0",
+      "url": "https://repo.maxleiter.com/banners/libjson-glib-1.0-0.png"
+    },
+    {
       "title": "libmozjs-115-0",
       "package": "libmozjs-115-0",
       "url": "https://repo.maxleiter.com/banners/libmozjs-115-0.png"
@@ -402,6 +452,16 @@
       "title": "libmozjs-115-dev",
       "package": "libmozjs-115-dev",
       "url": "https://repo.maxleiter.com/banners/libmozjs-115-dev.png"
+    },
+    {
+      "title": "libmpc3",
+      "package": "libmpc3",
+      "url": "https://repo.maxleiter.com/banners/libmpc3.png"
+    },
+    {
+      "title": "libmpfr6",
+      "package": "libmpfr6",
+      "url": "https://repo.maxleiter.com/banners/libmpfr6.png"
     },
     {
       "title": "libpango-1.0-0",
@@ -424,6 +484,16 @@
       "url": "https://repo.maxleiter.com/banners/libpng16-16.png"
     },
     {
+      "title": "libportal-gtk4-1",
+      "package": "libportal-gtk4-1",
+      "url": "https://repo.maxleiter.com/banners/libportal-gtk4-1.png"
+    },
+    {
+      "title": "libportal1",
+      "package": "libportal1",
+      "url": "https://repo.maxleiter.com/banners/libportal1.png"
+    },
+    {
       "title": "libpsl-dev",
       "package": "libpsl-dev",
       "url": "https://repo.maxleiter.com/banners/libpsl-dev.png"
@@ -442,6 +512,16 @@
       "title": "libsoup-3.0-dev",
       "package": "libsoup-3.0-dev",
       "url": "https://repo.maxleiter.com/banners/libsoup-3.0-dev.png"
+    },
+    {
+      "title": "libtracker-sparql-3.0-0",
+      "package": "libtracker-sparql-3.0-0",
+      "url": "https://repo.maxleiter.com/banners/libtracker-sparql-3.0-0.png"
+    },
+    {
+      "title": "libunistring5",
+      "package": "libunistring5",
+      "url": "https://repo.maxleiter.com/banners/libunistring5.png"
     },
     {
       "title": "libuuid16",
@@ -477,6 +557,11 @@
       "title": "libxau6",
       "package": "libxau6",
       "url": "https://repo.maxleiter.com/banners/libxau6.png"
+    },
+    {
+      "title": "libxcb-render0",
+      "package": "libxcb-render0",
+      "url": "https://repo.maxleiter.com/banners/libxcb-render0.png"
     },
     {
       "title": "libxcb1",
@@ -564,6 +649,11 @@
       "url": "https://repo.maxleiter.com/banners/libyaml-0-2.png"
     },
     {
+      "title": "nautilus",
+      "package": "nautilus",
+      "url": "https://repo.maxleiter.com/banners/nautilus.png"
+    },
+    {
       "title": "tigervnc-common",
       "package": "tigervnc-common",
       "url": "https://repo.maxleiter.com/banners/tigervnc-common.png"
@@ -594,6 +684,11 @@
       "url": "https://repo.maxleiter.com/banners/xauth.png"
     },
     {
+      "title": "Xios Desktop Core",
+      "package": "xios-core",
+      "url": "https://repo.maxleiter.com/banners/xios-core.png"
+    },
+    {
       "title": "Xios desktop defaults",
       "package": "xios-desktop-defaults",
       "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
@@ -604,9 +699,34 @@
       "url": "https://repo.maxleiter.com/banners/xios-desktop-theme.png"
     },
     {
+      "title": "Xios Desktop (GNOME)",
+      "package": "xios-gnome",
+      "url": "https://repo.maxleiter.com/banners/xios-gnome.png"
+    },
+    {
+      "title": "Xios Desktop (KDE Plasma Mobile)",
+      "package": "xios-kde",
+      "url": "https://repo.maxleiter.com/banners/xios-kde.png"
+    },
+    {
+      "title": "Xios Desktop (Native iPadOS)",
+      "package": "xios-native",
+      "url": "https://repo.maxleiter.com/banners/xios-native.png"
+    },
+    {
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios Desktop (X11)",
+      "package": "xios-x11",
+      "url": "https://repo.maxleiter.com/banners/xios-x11.png"
     },
     {
       "title": "xkbcomp",

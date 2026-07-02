@@ -55,6 +55,10 @@ float xios_output_scale (void);
                              * gesture, deltas 0 — lets clients fling kinetically);
                              * mods = modifier mask (1 shift, 2 ctrl, 4 alt) held
                              * for the frame — pinch-zoom sends ctrl+scroll        */
+#define XIOS_IN_OUTPUT 10u  /* app->server: output transform/size change       */
+#define XIOS_IN_HAPTIC 11u  /* server->CLIENT broadcast: haptic feedback       */
+#define XIOS_IN_VOLUME 12u  /* app->sysintd: absolute output volume            */
+#define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style            */
 
 /* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */
 struct xios_in_msg
@@ -74,6 +78,11 @@ typedef void (*xios_input_cb) (const struct xios_in_msg *m,
                                const char               *text,
                                size_t                    text_len,
                                void                     *user);
+typedef void (*xios_input_bound_cb) (const struct xios_in_msg *m,
+                                     const char               *text,
+                                     size_t                    text_len,
+                                     uint32_t                  bound_window,
+                                     void                     *user);
 
 /* Create the AF_UNIX listener at `path` (unlinks a stale node). NULL on failure. */
 xios_input_socket *xios_input_socket_new (const char *path);
@@ -84,6 +93,7 @@ int xios_input_socket_fd (xios_input_socket *s);
 /* Drain every currently-complete record, invoking `cb` for each. Returns the count
  * dispatched (>=0), or <0 on a fatal socket error (caller should tear down). */
 int xios_input_socket_dispatch (xios_input_socket *s, xios_input_cb cb, void *user);
+int xios_input_socket_dispatch_bound (xios_input_socket *s, xios_input_bound_cb cb, void *user);
 
 /* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
  * client; a client whose write fails is dropped. Returns the number written to. */

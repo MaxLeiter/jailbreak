@@ -80,7 +80,7 @@ nautilus-package: nautilus-stage
 	fi
 	cp -a $(BUILD_STAGE)/nautilus/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/nautilus/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,nautilus,general.xml)
+	$(call SIGN,nautilus,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,nautilus,DEB_NAUTILUS_V)
 	rm -rf $(BUILD_DIST)/nautilus
 

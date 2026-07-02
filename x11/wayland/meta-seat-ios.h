@@ -4,7 +4,7 @@
  * meta-seat-ios.h — the MetaBackendIOS ClutterSeat.
  *
  * native_backend=false compiles out MetaSeatNative and MetaSeatX11 needs an X display, so
- * MetaBackendIOS supplies its own seat: a logical core pointer + keyboard, a minimal keymap
+ * MetaBackendIOS supplies its own seat: synthetic pointer + keyboard devices, a minimal keymap
  * (MetaKeymapIOS), and a create_virtual_device that hands back a MetaVirtualInputDeviceIOS
  * (which the Xios input pump drives). No physical devices — all input is synthetic, injected
  * through the virtual device. GPL-2.0+, modeled on MetaSeatX11 minus the X server.

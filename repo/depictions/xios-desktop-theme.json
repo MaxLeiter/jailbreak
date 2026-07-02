@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Adwaita icons, cursors and wallpaper for the Xios desktop"
+          "markdown": "Adwaita cursors and wallpaper for the Xios desktop"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "1.0.0"
+          "text": "1.1.0"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "5581.4 KiB"
+          "text": "212.3 KiB"
         },
         {
           "class": "DepictionTableTextView",

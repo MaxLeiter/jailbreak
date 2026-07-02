@@ -66,7 +66,7 @@ gnome-text-editor-package: gnome-text-editor-stage
 	cp -a $(BUILD_STAGE)/gnome-text-editor/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/gnome-text-editor/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/gnome-text-editor/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/gnome-text-editor/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,gnome-text-editor,general.xml)
+	$(call SIGN,gnome-text-editor,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,gnome-text-editor,DEB_GNOME-TEXT-EDITOR_V)
 	rm -rf $(BUILD_DIST)/gnome-text-editor
 

@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/xios-gnome.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**xios-gnome** installs the complete GNOME desktop for Xios: GNOME Shell 46 on Mutter, running on the iPad GPU through the iosc compositor and ANGLE.\n\nThis one package pulls in the whole session: gnome-session, gnome-settings-daemon, dconf, the single-user service stubs (login1, PolicyKit, Accounts), the introspection typelibs the shell needs at boot, and the Adwaita look with icons, cursors, and a wallpaper.\n\nAfter it installs, open the Xios app and the GNOME session starts. That is the entire setup.\n\nGNOME apps pair well with it and install individually from this repo:\n\n- **gnome-console** for a terminal\n- **nautilus** for files\n- **gnome-text-editor** and **gnome-calculator**\n\nNeeds iOS 16.5 or newer on a rootless jailbreak (/var/jb)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "0.1.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "1.0 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Desktop"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "xios-gnome"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 0.1.0  \u00b7  2026-07-01\n- First release: GNOME Shell 46 + Mutter + full session layer as one install"
+        }
+      ]
+    }
+  ]
+}

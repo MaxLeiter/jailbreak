@@ -86,6 +86,11 @@ typedef void (*xios_input_cb)(const struct xios_in_msg *m,
                               const char               *text,
                               size_t                    text_len,
                               void                     *user);
+typedef void (*xios_input_bound_cb)(const struct xios_in_msg *m,
+                                    const char               *text,
+                                    size_t                    text_len,
+                                    uint32_t                  bound_window,
+                                    void                     *user);
 
 /* Create the AF_UNIX listener at `path` (unlinks a stale node, chmod 0777 so the
  * mobile-uid app can connect). NULL on failure. */
@@ -97,6 +102,7 @@ int xios_input_socket_fd(xios_input_socket *s);
 /* Drain every currently-complete record, invoking `cb` for each. Returns the count
  * dispatched (>=0), or <0 on a fatal socket error (caller should tear down). */
 int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user);
+int xios_input_socket_dispatch_bound(xios_input_socket *s, xios_input_bound_cb cb, void *user);
 
 /* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
  * client; a client whose write fails is dropped. Returns the number written to.

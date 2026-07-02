@@ -63,7 +63,7 @@ d-spy-package: d-spy-stage
 	fi
 	cp -a $(BUILD_STAGE)/d-spy/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/d-spy/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	$(call SIGN,d-spy,general.xml)
+	$(call SIGN,d-spy,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,d-spy,DEB_D-SPY_V)
 	rm -rf $(BUILD_DIST)/d-spy
 

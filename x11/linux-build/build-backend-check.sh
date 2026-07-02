@@ -30,6 +30,113 @@ REF_SRC='../src/backends/meta-monitor-manager-dummy.c'
 rm -rf /tmp/ios-check && mkdir -p "$STAGE"
 cp "$SRCDIR"/*.h "$STAGE"/ 2>/dev/null || true
 
+# The MetaBackendIOS files intentionally compile against xios-glue-stub.h, while
+# libxios_glue ships canonical headers. Catch contract drift before compiling so a
+# stale stub cannot quietly type-check against a different API.
+python3 - "$STAGE" <<'PY'
+import pathlib
+import re
+import sys
+
+stage = pathlib.Path(sys.argv[1])
+stub_path = stage / "xios-glue-stub.h"
+input_path = stage / "xios_input_socket.h"
+egl_path = stage / "xios_egl.h"
+
+if not stub_path.exists():
+    raise SystemExit("FAIL: xios-glue-stub.h was not staged")
+
+stub = stub_path.read_text()
+
+def read_optional(path):
+    return path.read_text() if path.exists() else ""
+
+def defines(text):
+    out = {}
+    for m in re.finditer(r"^\s*#define\s+(XIOS_IN_[A-Z0-9_]+)\s+([0-9]+)u?\b", text, re.M):
+        out[m.group(1)] = m.group(2)
+    return out
+
+def msg_fields(text):
+    m = re.search(r"struct\s+xios_in_msg\s*\{(?P<body>.*?)\};", text, re.S)
+    if not m:
+        return []
+    fields = []
+    for raw in m.group("body").splitlines():
+        line = raw.split("/*", 1)[0].strip()
+        if not line:
+            continue
+        line = re.sub(r"\s+", " ", line)
+        fields.append(line)
+    return fields
+
+def prototype_map(text, names):
+    collapsed = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    collapsed = re.sub(r"\s+", " ", collapsed)
+    out = {}
+    for name in names:
+        m = re.search(r"([A-Za-z_][A-Za-z0-9_\s\*]*\b" + re.escape(name) +
+                      r"\s*\([^;]*\));", collapsed)
+        if m:
+            proto = re.sub(r"\s+", " ", m.group(1)).strip()
+            proto = proto.replace(" *", "*").replace("* ", "*")
+            proto = re.sub(r"\s+\(", "(", proto)
+            out[name] = proto
+    return out
+
+errors = []
+
+if input_path.exists():
+    input_text = input_path.read_text()
+    stub_defs = defines(stub)
+    input_defs = defines(input_text)
+    if stub_defs != input_defs:
+        errors.append("XIOS_IN_* registry differs between xios-glue-stub.h and xios_input_socket.h")
+        errors.append(f"  stub:  {stub_defs}")
+        errors.append(f"  input: {input_defs}")
+
+    stub_fields = msg_fields(stub)
+    input_fields = msg_fields(input_text)
+    if stub_fields != input_fields:
+        errors.append("struct xios_in_msg differs between xios-glue-stub.h and xios_input_socket.h")
+        errors.append(f"  stub:  {stub_fields}")
+        errors.append(f"  input: {input_fields}")
+
+    names = [
+        "xios_input_socket_new",
+        "xios_input_socket_fd",
+        "xios_input_socket_dispatch",
+        "xios_input_socket_broadcast",
+        "xios_input_socket_client_count",
+        "xios_input_socket_free",
+    ]
+    if prototype_map(stub, names) != prototype_map(input_text, names):
+        errors.append("xios_input_socket_* prototypes differ between stub and canonical header")
+
+egl_text = read_optional(egl_path)
+if egl_text:
+    names = [
+        "xios_egl_display",
+        "xios_egl_config",
+        "xios_egl_create_iosurface_pbuffer",
+        "xios_egl_image_from_iosurface",
+        "xios_egl_destroy_image",
+        "xios_output_geometry",
+        "xios_output_scale",
+    ]
+    missing = sorted(set(prototype_map(egl_text, names)) - set(prototype_map(stub, names)))
+    if missing:
+        errors.append("xios-glue-stub.h is missing canonical xios_egl.h prototypes: " + ", ".join(missing))
+
+if errors:
+    print("FAIL: xios glue contract drift detected", file=sys.stderr)
+    for e in errors:
+        print(e, file=sys.stderr)
+    raise SystemExit(1)
+
+print("==> xios glue contract check: OK")
+PY
+
 # Generate wayland server-protocol headers from any real protocol .xml in /src (skip the
 # codesign entitlement plists that share the .xml extension). Uses the native (Linux) scanner
 # the W0 wayland track built into the volume.

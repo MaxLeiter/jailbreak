@@ -60,7 +60,7 @@ echo "==> assert wayland socket is present before launching the client"
 ls -l "$WSOCK" 2>&1 | sed 's/^/   /'
 [ -S "$WSOCK" ] || { echo "!! wayland-0 socket missing — aborting"; exit 1; }
 
-echo "==> run kgx under a session bus (GDK wayland, cairo, a11y off) -> $TMP/kgx.log"
+echo "==> run kgx under a session bus (GDK wayland, GSK renderer, a11y off) -> $TMP/kgx.log"
 # NOTE: kgx MUST be launched with an explicit COMMAND (a bare `kgx` registers as the
 # GApplication primary, runs startup, then returns 0 WITHOUT mapping a window in this
 # headless/bus-only environment). Use the `-- <cmd> [args]` form, NOT `-e <cmd>`:
@@ -70,11 +70,9 @@ echo "==> run kgx under a session bus (GDK wayland, cairo, a11y off) -> $TMP/kgx
 # xdg_toplevel through iosc, and receives keystrokes via iosc's wl_keyboard → PTY.
 rm -f "$TMP/kgx.exit"
 mkdir -p "$BUS_DIR"; chmod 700 "$BUS_DIR"
-# Client render path. DEFAULT cairo (GTK CPU-paints into wl_shm; iosc GPU-composites).
-# Set IOSC_GSK_RENDERER=ngl to route GTK's GL renderer through the wl_egl_window shim
-# (ANGLE Metal -> IOSurface). That needs the on-device libEGL shim swap + is gated on
-# the GSK-ngl-on-ANGLE validation; cairo stays the safe fallback.
-GSK_SEL="${IOSC_GSK_RENDERER:-cairo}"
+# Client render path. DEFAULT ngl routes GTK's GL renderer through the wl_egl_window
+# shim (ANGLE Metal -> IOSurface). Set IOSC_GSK_RENDERER=cairo for the wl_shm fallback.
+GSK_SEL="${IOSC_GSK_RENDERER:-ngl}"
 SHIM_ENV=""
 [ "$GSK_SEL" = "cairo" ] || SHIM_ENV="ANGLE_REAL_LIBEGL=${ANGLE_REAL_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"
 nohup bash -c "

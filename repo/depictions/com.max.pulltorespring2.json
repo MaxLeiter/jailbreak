@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/com.max.pulltorespring2.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "Pull down at the very top of the **Settings** app to respring your device. A pull-to-refresh gesture, repurposed to relaunch SpringBoard.\n\n- Adds a **pull-to-respring** control to the root Settings list\n- No buttons, no menus, no extra apps\n- Rootless refresh of Noah Saso's original *PullToRespring* for modern iOS\n\nBuilt for iPadOS 17, rootless (palera1n)."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "2.0.1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "6.5 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Tweaks"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "com.max.pulltorespring2"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 2.0.1  \u00b7  2026-06-30\n- Fix: respring now works on iOS 17 (FBSSystemService + SBSRelaunchAction; the old _relaunchSpringBoardNow path was dead)\n- Easier trigger: a deliberate over-pull fires it, so the Settings search bar no longer swallows the gesture\n\n## 2.0.0  \u00b7  2026-06-30\n- Rootless (arm64, /var/jb) rewrite for iOS 17\n- Modern UIRefreshControl on the Settings root list\n- Credit: original PullToRespring by Noah Saso (MIT)"
+        }
+      ]
+    }
+  ]
+}
