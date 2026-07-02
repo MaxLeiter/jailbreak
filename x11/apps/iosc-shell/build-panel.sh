@@ -58,6 +58,8 @@ fi
 
 docker run --rm --entrypoint /bin/bash \
   -e BUILD_BASE="$BUILD_BASE" \
+  -e MEMO_TARGET="$MEMO_TARGET" \
+  -e MEMO_CFVER="$CFVER" \
   -e MEMO_PREFIX="$MEMO_PREFIX" \
   -e MEMO_SUB_PREFIX="$MEMO_SUB_PREFIX" \
   -e MEMO_ALT_PREFIX="$MEMO_ALT_PREFIX" \
@@ -73,8 +75,10 @@ docker run --rm --entrypoint /bin/bash \
     SDK=/root/cctools/SDK/iPhoneOS.sdk
     cd /work
 
-    if [ ! -d "$SYSROOT_PREFIX/include" ] || [ ! -d "$SYSROOT_PREFIX/lib" ]; then
+    if [ ! -d "$SYSROOT_PREFIX/include" ] || [ ! -d "$SYSROOT_PREFIX/lib" ] ||
+       [ ! -f "$SYSROOT_PREFIX/lib/pkgconfig/wayland-client.pc" ]; then
       echo "ERROR: missing selected Procursus sysroot at $SYSROOT_PREFIX" >&2
+      echo "       expected $SYSROOT_PREFIX/lib/pkgconfig/wayland-client.pc" >&2
       echo "       scheme=$IOSC_PACKAGE_SCHEME target=$MEMO_TARGET prefix=${MEMO_PREFIX:-/}; set IOSC_PROC_VOL/GTK_VOL or build that target first." >&2
       exit 1
     fi

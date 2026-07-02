@@ -21,12 +21,12 @@ icons); this is the chrome *inside* the Xios display.
 | `panel-layout.h` / `overview-layout.h` | wayland-free scene layout + hit-testing, shared verbatim by the device clients and the preview harness. |
 | `shell-blur.h` | the frosted "material": box-blur passes + tint over a screencopy capture. |
 | `shell-screencopy.h` | one-shot synchronous zwlr-screencopy capture into a cairo surface. |
-| `shell-status.h` | battery/charging + date/time readers (IOKit-free: sysfs-style /var/jb paths + libproc fallbacks). |
+| `shell-status.h` | battery/charging + date/time readers (IOKit/CoreFoundation, with clean fallbacks). |
 | `shell-draw.h` | `.desktop` scan + app launch + anon-fd/shm helpers (SD_NO_DRAW mode); legacy 5x7 software renderer for the v1 clients. |
 | `panel-icons.h` | Icon= name -> shipped PNG resolution (no SVG loader on device; see `gen-shell-icons.sh`). |
 | `preview-host.c` | off-device preview harness: renders the real layout code to `design/preview-{desktop,quicksettings,overview}.png` with SF type. The design iteration loop. |
 | `protocols/` | vendored protocol XML: wlr-layer-shell, wlr-foreign-toplevel-management, wlr-screencopy, xdg-shell. |
-| `build-panel.sh` | cross-compile + link + sign the shell clients for rootless iOS arm64 (Docker; cairo/pango stack from procursus-vol-gtk). |
+| `build-panel.sh` | cross-compile + link + sign the shell clients for iOS arm64 (Docker; cairo/pango stack from procursus-vol-gtk). |
 | `build-preview.sh` | compile + run `preview-host.c` natively in the container (fast visual iteration; no device). |
 | `run-shell.sh` | on-device bring-up: iosc (if needed) -> ioscbg -> ioscbar + ioscdock, with legacy ioscpanel fallback. |
 | `package-shell.sh` | assemble the `iosc-shell` deb (binaries + run script + icon set). |
@@ -39,6 +39,18 @@ icons); this is the chrome *inside* the Xios display.
 ./build-preview.sh      # -> design/preview-*.png (the design loop; SF type)
 ./package-shell.sh      # -> iosc-shell_<ver>_iphoneos-arm64.deb (out/ + repo/debs)
 ```
+
+Rootless is the default scheme. For rootful builds/packages, use:
+
+```sh
+IOSC_PACKAGE_SCHEME=rootful ./build-panel.sh
+IOSC_PACKAGE_SCHEME=rootful ./package-shell.sh
+```
+
+`build-panel.sh` maps `rootless` to Procursus target `iphoneos-arm64-rootless`
+with prefix `/var/jb`, and `rootful` to target `iphoneos-arm64` with prefix `/`.
+Use `IOSC_PROC_VOL`/`GTK_VOL` if the rootful Procursus sysroot lives in a
+different Docker volume.
 
 Gotcha: the *link* lines need `-miphoneos-version-min` too, or ld64 stamps the
 SDK version (16.5) as the dyld floor and the deb's stamped minos overshoots.

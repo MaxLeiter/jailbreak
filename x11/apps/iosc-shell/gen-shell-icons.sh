@@ -12,7 +12,8 @@
 #   out/icons/<IconName>.png   at MASTER px (downscaled crisply at draw time).
 #
 # Host tools: ar, tar, zstd, rsvg-convert (brew install librsvg).
-# Deploy: scp -r out/icons/* root@ipad:/var/jb/usr/share/iosc-shell/icons/
+# Deploy rootless: scp -r out/icons/* root@ipad:/var/jb/usr/share/iosc-shell/icons/
+# Deploy rootful:  scp -r out/icons/* root@ipad:/usr/share/iosc-shell/icons/
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -43,9 +44,16 @@ for deb in "$DEBS"/*.deb; do
   extract_deb "$deb"
 done
 
-SHARE="$MERGE/var/jb/usr/share"
+SHARE="${IOSC_SHARE_ROOT:-}"
+if [ -z "$SHARE" ]; then
+  if [ -d "$MERGE/var/jb/usr/share" ]; then
+    SHARE="$MERGE/var/jb/usr/share"
+  elif [ -d "$MERGE/usr/share" ]; then
+    SHARE="$MERGE/usr/share"
+  fi
+fi
 APPS="$SHARE/applications"
-[ -d "$APPS" ] || { echo "no applications/ found in debs" >&2; exit 1; }
+[ -n "$SHARE" ] && [ -d "$APPS" ] || { echo "no applications/ found in debs" >&2; exit 1; }
 
 HICOLOR_SIZES="512x512 256x256 192x192 128x128 96x96 64x64 48x48"
 

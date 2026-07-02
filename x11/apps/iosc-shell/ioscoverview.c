@@ -40,7 +40,7 @@
 #define APP_MAX   OV_MAX_APPS
 #define WIN_MAX   OV_MAX_WINS
 
-/* IOSC_SHELL_DEBUG=1 -> trace to /var/jb/tmp/ioscoverview.log */
+/* IOSC_SHELL_DEBUG=1 -> trace to $XDG_RUNTIME_DIR/ioscoverview.log */
 static int ovdbg(void)
 { static int on=-1; if(on<0){ const char*e=getenv("IOSC_SHELL_DEBUG"); on=e&&*e&&*e!='0'; } return on; }
 

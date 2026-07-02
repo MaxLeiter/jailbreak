@@ -217,9 +217,10 @@ A single anchored bar across the top edge:
 - **Layer:** `top`, anchored `top|left|right`, `set_size(0, 44)` (width 0 = span
   the output), `set_exclusive_zone(44)` so maximized toplevels don't draw under
   it. `keyboard_interactivity = none` (a panel wants pointer, never keyboard).
-- **Launcher tiles** (left): up to 8 quick-launch buttons scanned from
-  `/var/jb/usr/share/applications/*.desktop` (`Name`, `Exec` with freedesktop
-  field codes stripped, `NoDisplay` filtered). A tap `fork+exec`s the app under
+- **Launcher tiles** (left): up to 8 quick-launch buttons scanned from the
+  selected jailbreak prefix's `usr/share/applications/*.desktop` plus
+  `usr/local/share/applications` (`IOSC_JBROOT` / `JBROOT` override, `/var/jb`
+  autodetect, rootful `/` fallback). A tap `fork+exec`s the app under
   the same Wayland/dbus env `run-kgx.sh` proved good (`WAYLAND_DISPLAY`,
   `GDK_BACKEND=wayland`, `dbus-run-session`, `GSETTINGS_BACKEND=memory`, …). The
   panel runs outside the iOS app sandbox (started by `ioscd` / a run-script), so
@@ -249,11 +250,14 @@ retina IOSurface (`IOSC_PANEL_SCALE`, default 2).
 
 ### Build status (done) and the gaps (flagged)
 
-**Done:** `ioscpanel.c` + the generated protocol code **cross-compile to iOS
-arm64** through the Procursus cctools toolchain (`aarch64-apple-darwin-clang`,
-iPhoneOS SDK) — validated in `procursus-xbuild:bookworm-arm64`. `build-panel.sh`
-runs the full pipeline (wayland-scanner codegen → compile → link →
-`ldid -Spanel-ent.xml`). See `apps/iosc-shell/README.md` for the exact run.
+**Done:** the shell clients **cross-compile to iOS arm64** through the Procursus
+cctools toolchain (`aarch64-apple-darwin-clang`, iPhoneOS SDK) — validated in
+`procursus-xbuild:bookworm-arm64`. `build-panel.sh` runs the full pipeline
+(wayland-scanner codegen → compile → link → `ldid -Spanel-ent.xml`) and supports
+`IOSC_PACKAGE_SCHEME=rootless|rootful`; rootless maps to Procursus target
+`iphoneos-arm64-rootless` with prefix `/var/jb`, rootful maps to
+`iphoneos-arm64` with prefix `/`. See `apps/iosc-shell/README.md` for the exact
+run.
 
 **Gap 1 — the link needs the W0 iOS `libwayland-client.dylib.`** The compile
 (source + headers, validated) is done; the final link resolves the `wl_*` /
