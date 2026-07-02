@@ -18,6 +18,9 @@ OUT="$X11DIR/linux-build/out"
 IMAGE="debian:bookworm-slim"
 
 echo "==> stage stub binaries from $STUBOUT"
+# The libexec staging dir holds only build artifacts, so it isn't git-tracked; create it so a
+# clean checkout doesn't fail the install below.
+mkdir -p "$PKGDIR/var/jb/usr/libexec"
 for b in xios-login1-stub xios-polkit-stub xios-accounts-stub; do
   [ -f "$STUBOUT/$b" ] || { echo "!! missing $STUBOUT/$b — run wayland/build-session-stubs.sh first"; exit 1; }
   install -m 0755 "$STUBOUT/$b" "$PKGDIR/var/jb/usr/libexec/$b"

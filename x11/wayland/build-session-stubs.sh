@@ -43,7 +43,7 @@ CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra
 # -liosexec: the Procursus SDK redirects sandbox-sensitive libc calls (getpwuid -> ie_getpwuid)
 # into libiosexec, so anything using <pwd.h> must link it (the shared identity helper and the
 # accounts stub do).
-DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -liosexec"
+DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -liosexec -Wl,-rpath,/var/jb/usr/lib"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
 
 # All three stubs share xios-stub-dbus.c (register-object + own-name main loop). The login1

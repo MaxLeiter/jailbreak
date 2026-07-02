@@ -36,9 +36,14 @@ export PKG_CONFIG_LIBDIR="$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT_ROOT"
 
 CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
+# glib/gio/gobject/libintl.8 are referenced as @rpath but the binaries carry no
+# LC_RPATH, so @rpath doesn't resolve on device without DYLD_LIBRARY_PATH. Bake an
+# LC_RPATH pointing at where those libs live on device (/var/jb/usr/lib). Set at link
+# time so it survives the later install_name_tool + ldid fixups.
+LDRPATH="-Wl,-rpath,/var/jb/usr/lib"
 # CoreFoundation for the IOPS dictionaries; IOKit/BackBoardServices come via dlopen.
-DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreFoundation"
-SENSOR_DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreMotion -lobjc"
+DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreFoundation $LDRPATH"
+SENSOR_DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreMotion -lobjc $LDRPATH"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
 
 INT=""
