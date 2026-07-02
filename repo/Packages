@@ -83,6 +83,7 @@ Homepage: https://repo.maxleiter.com
 Package: baobab
 Version: 46.0
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11/Wayland Apps
 Priority: optional
@@ -92,13 +93,51 @@ Description: GNOME Disk Usage Analyzer (Baobab, GTK4)
 Installed-Size: 3752
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/baobab_46.0_iphoneos-arm64.deb
-Size: 384290
-MD5sum: e7cb52d19b25e835d51b2d1dcb611656
-SHA1: 7e165a8818000aebf03a8c5fb66b098084afddc3
-SHA256: 1cc9f369a55bdc88c5b835528e71072887df92d5ee43695e2556590b452953c4
+Size: 319048
+MD5sum: 648075b99ca5b029e3bdf5e73a75e9ff
+SHA1: f0074e00641a9e25d649dc89b0fbad548b12e6c5
+SHA256: e34e68771621f629648f284a6bf5c655d13a17ceb54f9d5d5aed81d58cd0ae02
 Icon: https://repo.maxleiter.com/icons/baobab.png
 Depiction: https://repo.maxleiter.com/depictions/baobab.html
 Native Depiction: https://repo.maxleiter.com/depictions/baobab.json
+
+Package: bun
+Name: Bun
+Version: 1.4.0~canary.1+git5b55beb711+ios0.1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://bun.sh
+Description: Bun JavaScript runtime for rootless iOS.
+Filename: debs/bun_1.4.0~canary.1+git5b55beb711+ios0.1_iphoneos-arm64.deb
+Size: 13753656
+MD5sum: dac1429ba2f37dec4c72d9f8333bb3a1
+SHA1: 1afd4683c57fd95c297efacd2a41f33a28312694
+SHA256: 35e990e6968fd50ca147cb3df3128070c10fdf182b49e9155996d9e795f1575e
+Icon: https://repo.maxleiter.com/icons/bun.png
+Depiction: https://repo.maxleiter.com/depictions/bun.html
+Native Depiction: https://repo.maxleiter.com/depictions/bun.json
+
+Package: bun
+Name: Bun
+Version: 1.4.0~canary.1+git5b55beb711+ios0.2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://bun.sh
+Description: Bun JavaScript runtime for rootless iOS.
+Filename: debs/bun_1.4.0~canary.1+git5b55beb711+ios0.2_iphoneos-arm64.deb
+Size: 13836576
+MD5sum: 40e7a88ecf3c504732f2446e0122c7d2
+SHA1: 560cce1bd67c35d241fcd0492f05f85765e5b5c9
+SHA256: f61ad2fa8f26cb03065aee993b6e1793a9bc2f81d6a3cce8de5ebc6295f92fbb
+Icon: https://repo.maxleiter.com/icons/bun.png
+Depiction: https://repo.maxleiter.com/depictions/bun.html
+Native Depiction: https://repo.maxleiter.com/depictions/bun.json
 
 Package: com.max.autolockpicker
 Name: AutoLockPicker
@@ -163,6 +202,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/curl.json
 Package: d-spy
 Version: 1.10.0
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11/Wayland Apps
 Priority: optional
@@ -172,10 +212,10 @@ Description: D-Spy (GTK4 D-Bus explorer)
 Installed-Size: 920
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/d-spy_1.10.0_iphoneos-arm64.deb
-Size: 111370
-MD5sum: 419d293f734ca28a3e11d0e950119e97
-SHA1: fb43f6e5fded9f3fa9138745761bac341dd10146
-SHA256: 97c6e1fa183e1ee30e7e304d350225563761ebf38c6315c7dc79560a73b4e4dc
+Size: 95718
+MD5sum: 32b3aad38ab1404f6a149aeae4bb0da2
+SHA1: 3935c931c849559c720a4f85c0d8f9b69da4ab00
+SHA256: b71616e088d067f06c3c4a54a6e988200345ff508c2c72c83bfbbf4b3db0ea52
 Icon: https://repo.maxleiter.com/icons/d-spy.png
 Depiction: https://repo.maxleiter.com/depictions/d-spy.html
 Native Depiction: https://repo.maxleiter.com/depictions/d-spy.json
@@ -203,6 +243,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/dbus.json
 Package: file-roller
 Version: 44.7
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11/Wayland Apps
 Priority: optional
@@ -213,10 +254,10 @@ Description: File Roller (GNOME archive manager, GTK4)
 Installed-Size: 6668
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/file-roller_44.7_iphoneos-arm64.deb
-Size: 990654
-MD5sum: 7baecc5e2ff093682faf908b83a3f5fb
-SHA1: 384e3a998dcb4d5a032dec256696462f6f92cc19
-SHA256: 82d4a69f66cd58c7d166b232ac976eb6cd057918037b4f254b0eaec83316d2b2
+Size: 772190
+MD5sum: fe7375455e3814b98ae9fc653fe57fe2
+SHA1: 15c677f6c41d322b51d61b3eb2f942f96dc4042e
+SHA256: 7497284f1cea0111448ae756b7e2275c118c74f5772b35e115bd95e2684c9135
 Icon: https://repo.maxleiter.com/icons/file-roller.png
 Depiction: https://repo.maxleiter.com/depictions/file-roller.html
 Native Depiction: https://repo.maxleiter.com/depictions/file-roller.json
@@ -327,10 +368,10 @@ Description: GNOME Calculator (GTK4, Vala)
 Installed-Size: 10952
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/gnome-calculator_46.2_iphoneos-arm64.deb
-Size: 1432788
-MD5sum: a2085ea65ede9f2f3f858475e3d5afe3
-SHA1: 90c3ed64509ba1ea9e5aac0371976bbe5fc00b4b
-SHA256: d78980aaf9f5b7f956160b062ea7e2c92b2baffc4864044dbda2cc302830affd
+Size: 1057594
+MD5sum: f9754513b7a2fa0cb2d4611a34b331f5
+SHA1: 1cc0b0ff9c4f7651cd173450163b14e43094c4c4
+SHA256: f61d8e9e65ab26c9769e8205c5ab734844565ed082f2445ee39b6b2245cabf2b
 Icon: https://repo.maxleiter.com/icons/gnome-calculator.png
 Depiction: https://repo.maxleiter.com/depictions/gnome-calculator.html
 Native Depiction: https://repo.maxleiter.com/depictions/gnome-calculator.json
@@ -344,13 +385,13 @@ Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/console
 Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libadwaita-1-0, libvte-2.91-gtk4-0, libpcre2-8-0, libgtop-2.0-11, dbus
 Description: Simple user-friendly terminal emulator (GTK4)
-Installed-Size: 1300
+Installed-Size: 1284
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/gnome-console_46.0_iphoneos-arm64.deb
-Size: 187882
-MD5sum: f034492e4c5eb8708f1747fb47ba5971
-SHA1: b49a081ac0a2fa1d2a5d23494463c42db749e8ce
-SHA256: 4cd7cf8c2655894285ed6a14eb8304d18aad4b9e0f440a60b9f51aaf82d32637
+Size: 162154
+MD5sum: 4093e19b03bf4080be88d05d31993d67
+SHA1: 5a2bd3496ee31cdf17743c7f874542f3d54fa228
+SHA256: 7a5a97a72df7cc8bf0f0c7bd1c560124b38f6b1a983fe1ddb8a4784c7d3223af
 Icon: https://repo.maxleiter.com/icons/gnome-console.png
 Depiction: https://repo.maxleiter.com/depictions/gnome-console.html
 Native Depiction: https://repo.maxleiter.com/depictions/gnome-console.json
@@ -367,10 +408,10 @@ Description: GNOME Fonts, a GTK4 font browser/previewer
 Installed-Size: 2400
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/gnome-font-viewer_46.0_iphoneos-arm64.deb
-Size: 240250
-MD5sum: 278e6f52a697720ece5531c32f7f8824
-SHA1: 67806d4707afbe10d8e0b4daba26c48ff0f2692b
-SHA256: a65d2f5cb643bd189b4980c9130572490d820e8450b4b7cbae020f6cdef700a8
+Size: 199624
+MD5sum: 138c1badb741f778d23fbcef4038f0d7
+SHA1: 101e4768c45a4a9864bf0961009ddc29ad8d2e9e
+SHA256: 8c64a2b183f12a439b4d1520f159651be98096822aa237cca73e46a3c0cb1262
 Icon: https://repo.maxleiter.com/icons/gnome-font-viewer.png
 Depiction: https://repo.maxleiter.com/depictions/gnome-font-viewer.html
 Native Depiction: https://repo.maxleiter.com/depictions/gnome-font-viewer.json
@@ -387,10 +428,10 @@ Description: Simple GTK4 text editor for GNOME
 Installed-Size: 3504
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/gnome-text-editor_46.3_iphoneos-arm64.deb
-Size: 572590
-MD5sum: 8f619d74b5730c89c98feb9d6832a3dc
-SHA1: 7c60c73cb286f0581f005e6d07fd44efccfba857
-SHA256: 53bde908865f4a96a51ae6c2ba9235598191e56cd986ec7d9e50719fbacd9320
+Size: 467208
+MD5sum: b78f7cde2d02ead8f734ee8c9628c5fe
+SHA1: feea81c73e61dd071b57f8012eaf626a00cf3cdc
+SHA256: e6c9037cec49a5cd006bffcf944137dce8fdf60cc7001deade5b8330c2281b2d
 Icon: https://repo.maxleiter.com/icons/gnome-text-editor.png
 Depiction: https://repo.maxleiter.com/depictions/gnome-text-editor.html
 Native Depiction: https://repo.maxleiter.com/depictions/gnome-text-editor.json
@@ -456,19 +497,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/gtk-3-bin.json
 Package: gtk-4-bin
 Version: 4.14.5+wl1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libiosexec1 (>= 1.3.1), libgtk-4-1 (= 4.14.5+wl1), libglib2.0-bin, libgtkintl
+Depends: libiosexec1 (>= 1.3.1), libgtk-4-1 (= 4.14.5+wl1), libglib2.0-bin, libgtkintl, libxkbcommon0, libwayland0, libcairo-script-interpreter2
 Description: Programs for the GTK 4 graphical user interface library
 Installed-Size: 9256
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/gtk-4-bin_4.14.5+wl1_iphoneos-arm64.deb
-Size: 2839902
-MD5sum: d8a90cbac8b5455befd48cac837cfb7c
-SHA1: 06ab682bbb836b1a68713c2f221fa31c22511df0
-SHA256: 6b5f374c7f9547406f28812ffe20904bf119310a8365071e70bf0bbe8b5ab7ca
+Size: 2403482
+MD5sum: 1455008409eacde7c09841050fabe4c6
+SHA1: 9f84d5c6a7d5b83dd0688065f62ee95f31cdbd12
+SHA256: d91c2af3ec794f3330ca5ea99e0b5544acc69dedc3eef42c3a920d1b7c6598cb
 Icon: https://repo.maxleiter.com/icons/gtk-4-bin.png
 Depiction: https://repo.maxleiter.com/depictions/gtk-4-bin.html
 Native Depiction: https://repo.maxleiter.com/depictions/gtk-4-bin.json
@@ -587,10 +629,10 @@ Priority: optional
 Installed-Size: 300
 Description: GPU-accelerated Wayland compositor for the Xios desktop
 Filename: debs/iosc_0.9.2_iphoneos-arm64.deb
-Size: 88600
-MD5sum: a80318d8dcd4e19aa73d8946aa0fb204
-SHA1: d1785f16eed2aced4c101eb16755df8d8e1892ce
-SHA256: 34c625d63cb3de3cf7585e7054ac9f8737bb2307dfd69ea6a78f22e1b2adb9c2
+Size: 76306
+MD5sum: 2b39b001b6681ab78cf3d5b8df0f7db0
+SHA1: daf563efad287dc5762930fb0975b02d6a1fcd28
+SHA256: 33da72d7c6c75eb9bdecdbdf8c41479ec4219eb72b9cee65c69353a32a71f389
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 Native Depiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -2045,13 +2087,13 @@ Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libgraphene-1.0-0, li
 Section: Libraries
 Priority: optional
 Description: window manager library from the Mutter window manager
-Installed-Size: 9016
+Installed-Size: 9000
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/libmutter-14-0_46.0_iphoneos-arm64.deb
-Size: 2288536
-MD5sum: 9606274fa3581da66ce58b3b9a7cf32e
-SHA1: 6401bde94cdacdd8def230a80492872f2c260270
-SHA256: d6e2ccd77f352c9b77a0d16e802beeac39fc784967219dc8ff92a5e995eaaf98
+Size: 2022568
+MD5sum: 8598de63f28accc809493f21655f5531
+SHA1: 8d0a28cdc266c4de7a88d455755c026c184018fe
+SHA256: 131b2a40e2da9a26eddac4a12e92fa263715f021465ffc135d40a20fdfb1e4e8
 Icon: https://repo.maxleiter.com/icons/libmutter-14-0.png
 Depiction: https://repo.maxleiter.com/depictions/libmutter-14-0.html
 Native Depiction: https://repo.maxleiter.com/depictions/libmutter-14-0.json
@@ -2068,10 +2110,10 @@ Description: window manager library from the Mutter window manager (development 
 Installed-Size: 1904
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/libmutter-14-dev_46.0_iphoneos-arm64.deb
-Size: 312006
-MD5sum: c90b57960109bd46942041dce8d2032c
-SHA1: f2fab27bcb1fb157e771a5412d864df9fa2f51cd
-SHA256: b2eb1f8201a3479d7ebd3abdb77fc8547cf1f0e823715fecdfcc4d9a3730ab55
+Size: 309260
+MD5sum: c992bec333bb228f90a9779ddcb0fd7e
+SHA1: 33885d475e5f6e99f657cfaf1c56a0e8100c8ed5
+SHA256: 06c1477e2d703d835376b56e6d2a1f30f18fa0b62ed324deaff3747f390a846b
 Icon: https://repo.maxleiter.com/icons/libmutter-14-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libmutter-14-dev.html
 Native Depiction: https://repo.maxleiter.com/depictions/libmutter-14-dev.json
@@ -2933,10 +2975,10 @@ Description: GLX and Wayland OpenGL demo utilities
 Installed-Size: 4200
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/mesa-demos_8.4.0+xios1_iphoneos-arm64.deb
-Size: 1346454
-MD5sum: 4fcc5f6dcb4c0ee0d42622cd5818e383
-SHA1: 0eaab41ca103795ac84814443f0f1fbe809e19a5
-SHA256: 227a0a4edcdecd867ed83ce615ad0098b5c7807b68d5900876995fc94a5b5c7e
+Size: 1139988
+MD5sum: 89767ac30fa46fd41b8467e08c05f915
+SHA1: b9aabe5357db6d3fc81bfd7c37ce4fa4fca92702
+SHA256: b124da54b58460896bba0e4a20636347fe7e3a2fa7fa67b34d763553f19eb08a
 Icon: https://repo.maxleiter.com/icons/mesa-demos.png
 Depiction: https://repo.maxleiter.com/depictions/mesa-demos.html
 Native Depiction: https://repo.maxleiter.com/depictions/mesa-demos.json
@@ -2953,13 +2995,33 @@ Description: GNOME Files, the GTK4 file manager
 Installed-Size: 15024
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/nautilus_46.4_iphoneos-arm64.deb
-Size: 3312104
-MD5sum: b1a8447e208bcdbf2fce222eb0c89d1c
-SHA1: a6b0e2e2d7c8dd38bafb2a78be0aea7e86a10eac
-SHA256: d06b74f9178c20fffeb896cebfe081d22d2c4e09df02dbab2a03c55f6229e1e4
+Size: 2295930
+MD5sum: d41c5ac63a6f40e2006865ac068ddbb8
+SHA1: bf5d493a8a91db98a84642322b18a6386d5c729c
+SHA256: 07cf7924e8ca687c63b075db5428a4dab392b0ba845a9854b59802a024cbae24
 Icon: https://repo.maxleiter.com/icons/nautilus.png
 Depiction: https://repo.maxleiter.com/depictions/nautilus.html
 Native Depiction: https://repo.maxleiter.com/depictions/nautilus.json
+
+Package: opencode
+Name: OpenCode
+Version: 1.17.13~ios0.1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://opencode.ai
+Depends: bun
+Description: OpenCode CLI for rootless iOS.
+Filename: debs/opencode_1.17.13~ios0.1_iphoneos-arm64.deb
+Size: 14043024
+MD5sum: b21290bf7c9acd2333da8e08b95a4075
+SHA1: 534d8d4498894ce65ec9ca241960abed5876e291
+SHA256: 31107c945d2244f0eebc49f0293b9a32f05c31adeda360f71aa0ffbeb9f45762
+Icon: https://repo.maxleiter.com/icons/opencode.png
+Depiction: https://repo.maxleiter.com/depictions/opencode.html
+Native Depiction: https://repo.maxleiter.com/depictions/opencode.json
 
 Package: qt-wayland-gl-smoke
 Version: 0.1.0
@@ -2973,10 +3035,10 @@ Description: Qt Wayland OpenGL smoke test for Xios
 Installed-Size: 124
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Filename: debs/qt-wayland-gl-smoke_0.1.0_iphoneos-arm64.deb
-Size: 7444
-MD5sum: f8a14280692372adb26ca0488d8cca99
-SHA1: 0f4cbd2d91241adfbccf920732b44530e0f4a7f6
-SHA256: 90e139165a477be3b0fd81455ee5970f52ceb4c76354265fe1ed3c1f93a9eaaf
+Size: 7016
+MD5sum: 0c81a515b8aaad007e941b48eacbaac7
+SHA1: b4f24ef1fe030b0e3aabe82afa3fe138c6e0dbe6
+SHA256: 97c1ffd383eb5664a943e01209e6c5238fc15fcd7b12f8a9d8adc2d3ae83140e
 Icon: https://repo.maxleiter.com/icons/qt-wayland-gl-smoke.png
 Depiction: https://repo.maxleiter.com/depictions/qt-wayland-gl-smoke.html
 Native Depiction: https://repo.maxleiter.com/depictions/qt-wayland-gl-smoke.json
@@ -3505,6 +3567,29 @@ Size: 17476
 MD5sum: e29e0c8cba2bfeb8e216f2bdc0443562
 SHA1: 1d9ae3052fad39c3e0f47b60714551ba9d76d5cf
 SHA256: 28b9a19187e9fc8e335b5b24111dcfeb4a62e18fbdc576d34af5d7d2e820deb6
+Icon: https://repo.maxleiter.com/icons/xios-session.png
+Depiction: https://repo.maxleiter.com/depictions/xios-session.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-session
+Name: Xios session launcher
+Version: 1.0.4
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: iosc (>= 0.9.0)
+Recommends: iosc-shell, xios
+Suggests: libmutter-14-0, gnome-shell
+Section: X11
+Priority: optional
+Installed-Size: 60
+Description: pick-a-desktop session launcher for the Xios stack
+Filename: debs/xios-session_1.0.4_iphoneos-arm64.deb
+Size: 17680
+MD5sum: 5ae48334f0a293c59cac2707c5c889aa
+SHA1: b92c3d1b5e7362acc31987c423ca11372223de49
+SHA256: 29c265ff709d36be7c3cde61f6133ba97940c162c2d9d1e06cba1df7ba7515fa
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json

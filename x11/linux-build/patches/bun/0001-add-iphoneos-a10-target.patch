@@ -1,0 +1,2236 @@
+diff --git a/scripts/build.ts b/scripts/build.ts
+index 4d2b6141f3..ac10e3def7 100644
+--- a/scripts/build.ts
++++ b/scripts/build.ts
+@@ -399,6 +399,7 @@ function parseArgs(argv: string[]): CliArgs {
+     "buildType",
+     "mode",
+     "webkit",
++    "applePlatform",
+     "buildDir",
+     "cacheDir",
+     "nodejsVersion",
+diff --git a/scripts/build/config.ts b/scripts/build/config.ts
+index 20b5a23827..e1a5c8e462 100644
+--- a/scripts/build/config.ts
++++ b/scripts/build/config.ts
+@@ -23,6 +23,7 @@ export type Abi = "gnu" | "musl" | "android";
+ export type BuildType = "Debug" | "Release" | "RelWithDebInfo" | "MinSizeRel";
+ export type BuildMode = "full" | "cpp-only" | "rust-only" | "link-only";
+ export type WebKitMode = "prebuilt" | "local";
++export type ApplePlatform = "macos" | "ios";
+ 
+ /**
+  * Host platform — what's running the build. Distinguish from target
+@@ -86,6 +87,9 @@ export interface Config {
+   unix: boolean;
+   /** darwin || freebsd — kqueue-based event loop */
+   kqueue: boolean;
++  /** Darwin subplatform: macOS by default, iPhoneOS for the Xios/iPad port. */
++  applePlatform: ApplePlatform;
++  ios: boolean;
+   x64: boolean;
+   arm64: boolean;
+ 
+@@ -349,6 +353,7 @@ export interface PartialConfig {
+   ci?: boolean;
+   buildkite?: boolean;
+   webkit?: WebKitMode;
++  applePlatform?: ApplePlatform;
+   buildDir?: string;
+   cacheDir?: string;
+   /** Override NDK location (default: $ANDROID_NDK_ROOT etc). Only used when abi=android. */
+@@ -694,6 +699,8 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+ 
+   const linux = os === "linux";
+   const darwin = os === "darwin";
++  const applePlatform = darwin ? (partial.applePlatform ?? "macos") : "macos";
++  const ios = darwin && applePlatform === "ios";
+   const windows = os === "windows";
+   const freebsd = os === "freebsd";
+   const unix = linux || darwin || freebsd;
+@@ -732,7 +739,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   // Each is resolved exactly once here.
+ 
+   // ASAN: default on for debug builds on arm64 macOS or linux
+-  const asanDefault = debug && ((darwin && arm64) || linux);
++  const asanDefault = debug && ((darwin && arm64 && !ios) || linux);
+   // Android: force off. NDK ASAN deployment needs wrap.sh + runtime .so
+   // shipping alongside the binary; UBSan likewise. Not worth the matrix.
+   // FreeBSD: force off. Cross-compiled — we'd need to ship FreeBSD's
+@@ -866,7 +873,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   // TinyCC: off on Windows ARM64 (not supported), Android (no upstream
+   // bionic support; FFI cc() falls back to dlopen-only), and FreeBSD
+   // (oven-sh/tinycc has no FreeBSD target).
+-  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd);
++  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd || ios);
+ 
+   const valgrind = partial.valgrind ?? false;
+   const fuzzilli = partial.fuzzilli ?? false;
+@@ -909,6 +916,8 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+ 
+   // ─── Validation ───
+   assert(!baseline || x64, "baseline=true requires arch=x64 (baseline disables AVX which is x64-only)");
++  assert(!ios || (darwin && arm64), "applePlatform=ios requires os=darwin arch=aarch64");
++  assert(!ios || partial.webkit === "local", "applePlatform=ios requires --webkit=local (no iOS WebKit prebuilt exists)");
+   assert(!valgrind || linux, "valgrind=true requires os=linux");
+   assert(!(asan && valgrind), "Cannot enable both asan and valgrind simultaneously");
+   assert(os !== "linux" || abi !== undefined, "Linux builds require an abi (gnu, musl, or android)");
+@@ -1045,8 +1054,14 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   let osxDeploymentTarget: string | undefined;
+   let osxSysroot: string | undefined;
+   if (darwin && host.os === "darwin") {
+-    ({ osxDeploymentTarget, osxSysroot } = detectMacosSdk(ci));
+-    if (partial.osxDeploymentTarget !== undefined) osxDeploymentTarget = partial.osxDeploymentTarget;
++    if (ios) {
++      osxDeploymentTarget = partial.osxDeploymentTarget ?? "16.0";
++      osxSysroot = execSync("xcrun --sdk iphoneos --show-sdk-path", { encoding: "utf8" }).trim();
++      crossTarget = "arm64-apple-ios";
++    } else {
++      ({ osxDeploymentTarget, osxSysroot } = detectMacosSdk(ci));
++      if (partial.osxDeploymentTarget !== undefined) osxDeploymentTarget = partial.osxDeploymentTarget;
++    }
+   }
+ 
+   // ─── Cross-compilation (macOS from a non-darwin host) ───
+@@ -1111,6 +1126,8 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     freebsd,
+     unix,
+     kqueue,
++    applePlatform,
++    ios,
+     x64,
+     arm64,
+     host,
+@@ -1151,8 +1168,8 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     vendorDir,
+     cc: toolchain.cc,
+     cxx: toolchain.cxx,
+-    hostCc: toolchain.hostCc ?? toolchain.cc,
+-    hostCxx: toolchain.hostCxx ?? toolchain.cxx,
++    hostCc: ios ? execSync("xcrun --sdk macosx --find clang", { encoding: "utf8" }).trim() : (toolchain.hostCc ?? toolchain.cc),
++    hostCxx: ios ? execSync("xcrun --sdk macosx --find clang++", { encoding: "utf8" }).trim() : (toolchain.hostCxx ?? toolchain.cxx),
+     clangVersion: toolchain.clangVersion,
+     clangResourceDir: toolchain.clangResourceDir,
+     ar: toolchain.ar,
+diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
+index 3c8091adc8..38ab4a9acf 100644
+--- a/scripts/build/deps/webkit.ts
++++ b/scripts/build/deps/webkit.ts
+@@ -278,6 +278,9 @@ export const webkit: Dependency = {
+     if (cfg.freebsd && cfg.crossTarget !== undefined) {
+       optFlags.push(`--target=${cfg.crossTarget}`, `--sysroot=${cfg.sysroot!}`);
+     }
++    if (cfg.applePlatform === "ios") {
++      optFlags.push(`--target=${cfg.crossTarget!}`, "-isysroot", cfg.osxSysroot!, "-miphoneos-version-min=16.0");
++    }
+     const optFlagStr = optFlags.join(" ");
+     let cxxOptFlagStr = optFlagStr;
+     if (cfg.abi === "android") {
+@@ -321,6 +324,15 @@ export const webkit: Dependency = {
+             CMAKE_FIND_ROOT_PATH_MODE_INCLUDE: "BOTH",
+           }
+         : {}),
++      ...(cfg.applePlatform === "ios"
++        ? {
++            CMAKE_SYSTEM_NAME: "iOS",
++            CMAKE_SYSTEM_PROCESSOR: "arm64",
++            CMAKE_OSX_ARCHITECTURES: "arm64",
++            CMAKE_OSX_SYSROOT: cfg.osxSysroot!,
++            CMAKE_OSX_DEPLOYMENT_TARGET: cfg.osxDeploymentTarget!,
++          }
++        : {}),
+       // Match bun's -fno-pic: WebKit's CMake defaults POSITION_INDEPENDENT_CODE
+       // to ON for static-archive targets, which puts ~550 KB of vtables into
+       // .data.rel.ro. We link -no-pie so this is dead weight in the RW
+@@ -330,7 +342,8 @@ export const webkit: Dependency = {
+       PORT: "JSCOnly",
+       ENABLE_STATIC_JSC: "ON",
+       USE_THIN_ARCHIVES: "OFF",
+-      ENABLE_FTL_JIT: "ON",
++      ENABLE_FTL_JIT: cfg.applePlatform === "ios" ? "OFF" : "ON",
++      ...(cfg.applePlatform === "ios" ? { ENABLE_JIT: "OFF" } : {}),
+       CMAKE_EXPORT_COMPILE_COMMANDS: "ON",
+       USE_BUN_JSC_ADDITIONS: "ON",
+       USE_BUN_EVENT_LOOP: "ON",
+diff --git a/scripts/build/flags.ts b/scripts/build/flags.ts
+index dc7284349a..e4f36f05fd 100644
+--- a/scripts/build/flags.ts
++++ b/scripts/build/flags.ts
+@@ -49,9 +49,14 @@ export interface Flag {
+ export const cpuTargetFlags: Flag[] = [
+   {
+     flag: "-mcpu=apple-m1",
+-    when: c => c.darwin && c.arm64,
++    when: c => c.darwin && c.arm64 && c.applePlatform !== "ios",
+     desc: "Target Apple M1 (works on all Apple Silicon)",
+   },
++  {
++    flag: "-mcpu=apple-a10",
++    when: c => c.darwin && c.arm64 && c.applePlatform === "ios",
++    desc: "Target iPad7/A10 (ARMv8.0-A; avoids LSE/RCpc instructions)",
++  },
+   {
+     flag: ["-march=armv8-a+crc", "-mtune=ampere1"],
+     when: c => (c.linux || c.freebsd) && c.arm64 && c.abi !== "android",
+@@ -214,9 +219,13 @@ export const globalFlags: Flag[] = [
+     // CMake auto-added these via CMAKE_OSX_DEPLOYMENT_TARGET/CMAKE_OSX_SYSROOT;
+     // we must add explicitly. Without this, clang/ld64 default to the host SDK
+     // version — CI builds get minos=15.0, breaking macOS 13/14 users at launch.
+-    flag: c => [`-mmacosx-version-min=${c.osxDeploymentTarget!}`, "-isysroot", c.osxSysroot!],
++    flag: c => [
++      `${c.applePlatform === "ios" ? "-miphoneos-version-min" : "-mmacosx-version-min"}=${c.osxDeploymentTarget!}`,
++      "-isysroot",
++      c.osxSysroot!,
++    ],
+     when: c => c.darwin && c.osxDeploymentTarget !== undefined && c.osxSysroot !== undefined,
+-    desc: "macOS deployment target + SDK (sets LC_BUILD_VERSION minos)",
++    desc: "Apple deployment target + SDK (sets LC_BUILD_VERSION minos)",
+   },
+ 
+   // ─── MSVC runtime (Windows) ───
+@@ -1066,7 +1075,7 @@ export const linkerFlags: Flag[] = [
+     // prebuilt WebKit archives are compiled with -faddrsig too, so WebKit
+     // code participates in the folding.
+     flag: "-Wl,--icf=safe",
+-    when: c => c.darwin && c.crossTarget !== undefined && c.release,
++    when: c => c.darwin && c.crossTarget !== undefined && c.release && c.ld.length > 0,
+     desc: "macOS cross-link: fold identical address-insignificant functions",
+   },
+   {
+@@ -1085,7 +1094,11 @@ export const linkerFlags: Flag[] = [
+     // -platform_version argument ld64.lld requires (without it the driver
+     // assumes an ancient host ld64 and emits nothing usable); the exact
+     // value only gates driver behavior, so track a recent ld64 release.
+-    flag: c => [`--target=${c.crossTarget!}`, "-mlinker-version=705", `--ld-path=${c.ld}`],
++    flag: c => {
++      const flags = [`--target=${c.crossTarget!}`, "-mlinker-version=705"];
++      if (c.ld.length > 0) flags.push(`--ld-path=${c.ld}`);
++      return flags;
++    },
+     when: c => c.darwin && c.crossTarget !== undefined,
+     desc: "macOS cross-link: target triple + ld64.lld + modern linker arg style",
+   },
+@@ -1107,9 +1120,13 @@ export const linkerFlags: Flag[] = [
+     // Must also be passed at link: ld64 reads this to write LC_BUILD_VERSION.minos.
+     // Without it, ld64 defaults to the SDK version (15.0 on CI) → binary refuses
+     // to launch on macOS 13/14. globalFlags doesn't flow to ldflags, so repeat here.
+-    flag: c => [`-mmacosx-version-min=${c.osxDeploymentTarget!}`, "-isysroot", c.osxSysroot!],
++    flag: c => [
++      `${c.applePlatform === "ios" ? "-miphoneos-version-min" : "-mmacosx-version-min"}=${c.osxDeploymentTarget!}`,
++      "-isysroot",
++      c.osxSysroot!,
++    ],
+     when: c => c.darwin && c.osxDeploymentTarget !== undefined && c.osxSysroot !== undefined,
+-    desc: "macOS deployment target at link (sets LC_BUILD_VERSION minos)",
++    desc: "Apple deployment target at link (sets LC_BUILD_VERSION minos)",
+   },
+   {
+     flag: "-Wl,-w",
+diff --git a/scripts/build/rust.ts b/scripts/build/rust.ts
+index 73ef199323..69d570d3fe 100644
+--- a/scripts/build/rust.ts
++++ b/scripts/build/rust.ts
+@@ -47,6 +47,7 @@ import { streamPath } from "./stream.ts";
+  */
+ export function rustTarget(cfg: Config): string {
+   const arch = cfg.x64 ? "x86_64" : "aarch64";
++  if (cfg.darwin && cfg.applePlatform === "ios") return `${arch}-apple-ios`;
+   if (cfg.darwin) return `${arch}-apple-darwin`;
+   if (cfg.windows) return `${arch}-pc-windows-msvc`;
+   if (cfg.freebsd) return `${arch}-unknown-freebsd`;
+@@ -459,8 +460,10 @@ export function emitRust(n: Ninja, cfg: Config, inputs: RustBuildInputs): string
+     ? cfg.baseline
+       ? "nehalem"
+       : "haswell"
+-    : cfg.darwin
+-      ? "apple-m1"
++    : cfg.darwin && cfg.applePlatform === "ios"
++      ? "apple-a10"
++      : cfg.darwin
++        ? "apple-m1"
+       : // armv8-a+crc isn't a CPU name — closest LLVM model with CRC baseline:
+         "cortex-a72";
+   rustflags.push(`-Ctarget-cpu=${cpuTarget}`);
+@@ -521,7 +524,7 @@ export function emitRust(n: Ninja, cfg: Config, inputs: RustBuildInputs): string
+   // had ~0 embedded source paths. Kept off for debug and `release-assertions`
+   // where panic messages are read locally. Nightly-only; the pinned toolchain
+   // is nightly.
+-  if (cfg.release && !cfg.assertions) {
++  if (cfg.release && !cfg.assertions && cfg.applePlatform !== "ios") {
+     rustflags.push("-Zlocation-detail=none");
+   }
+   // Path remapping (CI reproducibility) — rustc equivalent of the C/C++
+@@ -707,7 +710,8 @@ export function emitRust(n: Ninja, cfg: Config, inputs: RustBuildInputs): string
+     if (cfg.osxDeploymentTarget !== undefined) env.MACOSX_DEPLOYMENT_TARGET = cfg.osxDeploymentTarget;
+     if (cfg.osxSysroot !== undefined && cfg.crossTarget !== undefined && cfg.osxDeploymentTarget !== undefined) {
+       env.SDKROOT = cfg.osxSysroot;
+-      const sdkFlags = `--target=${cfg.crossTarget} -isysroot ${cfg.osxSysroot} -mmacosx-version-min=${cfg.osxDeploymentTarget}`;
++      const minFlag = cfg.applePlatform === "ios" ? "-miphoneos-version-min" : "-mmacosx-version-min";
++      const sdkFlags = `--target=${cfg.crossTarget} -isysroot ${cfg.osxSysroot} ${minFlag}=${cfg.osxDeploymentTarget}`;
+       const tripleEnv = triple.replace(/-/g, "_");
+       env[`CFLAGS_${tripleEnv}`] = sdkFlags;
+       env[`CXXFLAGS_${tripleEnv}`] = sdkFlags;
+diff --git a/scripts/build/shims.ts b/scripts/build/shims.ts
+index 4aaa6a1118..906adde576 100644
+--- a/scripts/build/shims.ts
++++ b/scripts/build/shims.ts
+@@ -160,7 +160,7 @@ export function registerShimRules(n: Ninja, cfg: Config): void {
+     // Host tool — compiled for the BUILD machine (no --target/-isysroot),
+     // since it runs as part of the link/strip commands on this host.
+     n.rule("host_tool_cc", {
+-      command: `${q(cfg.cc)} -std=c11 -O2 -o $out $in`,
++      command: `${q(cfg.hostCc)} -std=c11 -O2 -o $out $in`,
+       description: "host-tool $out",
+     });
+   }
+diff --git a/scripts/build/source.ts b/scripts/build/source.ts
+index 92fc48cfac..4c95019f16 100644
+--- a/scripts/build/source.ts
++++ b/scripts/build/source.ts
+@@ -1166,6 +1166,7 @@ function emitNestedCmake(
+   // CI box); that's fine — the cmake rules are emitted but never pulled.
+   // If pulled without an SDK, cmake fails with its own clear error.
+   if (cfg.darwin && cfg.osxDeploymentTarget !== undefined && cfg.osxSysroot !== undefined) {
++    if (cfg.applePlatform === "ios") args.push("-DCMAKE_SYSTEM_NAME=iOS");
+     args.push(`-DCMAKE_OSX_DEPLOYMENT_TARGET=${cfg.osxDeploymentTarget}`);
+     args.push(`-DCMAKE_OSX_SYSROOT=${cfg.osxSysroot}`);
+   }
+diff --git a/src/bun_alloc/c_thunks.rs b/src/bun_alloc/c_thunks.rs
+index c8cfc8f594..d62df10f88 100644
+--- a/src/bun_alloc/c_thunks.rs
++++ b/src/bun_alloc/c_thunks.rs
+@@ -19,9 +19,10 @@ use crate::default_alloc as raw;
+ 
+ /// zlib `alloc_func` → default allocator `malloc(items * size)` (non-zeroing).
+ pub extern "C" fn mi_malloc_items(_: *mut c_void, items: c_uint, size: c_uint) -> *mut c_void {
+-    let p = raw::malloc((items * size) as usize);
++    let len = (items as usize).saturating_mul(size as usize).max(1);
++    let p = raw::malloc(len);
+     if p.is_null() {
+-        unreachable!();
++        crate::out_of_memory();
+     }
+     p
+ }
+diff --git a/src/bun_core/Global.rs b/src/bun_core/Global.rs
+index dd59d7770b..785b231207 100644
+--- a/src/bun_core/Global.rs
++++ b/src/bun_core/Global.rs
+@@ -539,9 +539,9 @@ pub fn set_thread_name(name: &ZStr) {
+             let _ = libc::prctl(libc::PR_SET_NAME, name.as_ptr() as usize);
+         }
+     }
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     {
+-        // SAFETY: macOS pthread_setname_np takes the current thread implicitly.
++        // SAFETY: Darwin pthread_setname_np takes the current thread implicitly.
+         unsafe {
+             let _ = libc::pthread_setname_np(name.as_ptr().cast::<c_char>());
+         }
+diff --git a/src/bun_core/env.rs b/src/bun_core/env.rs
+index 3328cb84e0..070f48c0b0 100644
+--- a/src/bun_core/env.rs
++++ b/src/bun_core/env.rs
+@@ -21,6 +21,7 @@ pub(crate) const IS_WASM: bool = matches!(BUILD_TARGET, BuildTarget::Wasm);
+ pub const IS_NATIVE: bool = matches!(BUILD_TARGET, BuildTarget::Native);
+ pub(crate) const IS_WASI: bool = matches!(BUILD_TARGET, BuildTarget::Wasi);
+ pub(crate) const IS_MAC: bool = IS_NATIVE && cfg!(target_os = "macos");
++pub(crate) const IS_IOS: bool = IS_NATIVE && cfg!(target_os = "ios");
+ pub(crate) const IS_BROWSER: bool = !IS_WASI && IS_WASM;
+ pub const IS_WINDOWS: bool = cfg!(windows);
+ pub(crate) const IS_POSIX: bool = !IS_WINDOWS && !IS_WASM;
+@@ -41,8 +42,8 @@ pub(crate) const IS_TEST: bool = cfg!(test);
+ // code paths are skipped.
+ pub const IS_LINUX: bool = cfg!(any(target_os = "linux", target_os = "android"));
+ pub(crate) const IS_FREEBSD: bool = cfg!(target_os = "freebsd");
+-/// kqueue-based event loop (macOS + FreeBSD share most of this path).
+-pub const IS_KQUEUE: bool = IS_MAC || IS_FREEBSD;
++/// kqueue-based event loop (Darwin + FreeBSD share most of this path).
++pub const IS_KQUEUE: bool = IS_MAC || IS_IOS || IS_FREEBSD;
+ pub(crate) const IS_AARCH64: bool = cfg!(target_arch = "aarch64");
+ pub(crate) const IS_X64: bool = cfg!(target_arch = "x86_64");
+ pub const IS_MUSL: bool = cfg!(target_env = "musl");
+@@ -183,7 +184,7 @@ crate::comptime_string_map! {
+     };
+ }
+ 
+-pub const OS: OperatingSystem = if IS_MAC {
++pub const OS: OperatingSystem = if IS_MAC || IS_IOS {
+     OperatingSystem::Mac
+ } else if IS_LINUX {
+     OperatingSystem::Linux
+diff --git a/src/bun_core/util.rs b/src/bun_core/util.rs
+index 472eeae62d..6d491f2979 100644
+--- a/src/bun_core/util.rs
++++ b/src/bun_core/util.rs
+@@ -4946,9 +4946,9 @@ fn spawn_sync_inherit_impl(
+             }
+             pid as libc::pid_t
+         };
+-        // macOS: Apple's posix_spawnp is a kernel fast-path (no fork); keep it
++        // Darwin: Apple's posix_spawnp is a kernel fast-path (no fork); keep it
+         // for the non-PTY inherit case. PTY spawns go through spawn_sys.
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         let pid: libc::pid_t = {
+             // StdinBehavior::Ignore → file action opening /dev/null onto fd 0;
+             // stdout/stderr stay inherited.
+@@ -5027,6 +5027,7 @@ fn spawn_sync_inherit_impl(
+             target_os = "linux",
+             target_os = "freebsd",
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "android",
+         )))]
+         let pid: libc::pid_t = {
+diff --git a/src/crash_handler/lib.rs b/src/crash_handler/lib.rs
+index c35b775afc..45c83aff83 100644
+--- a/src/crash_handler/lib.rs
++++ b/src/crash_handler/lib.rs
+@@ -1874,6 +1874,15 @@ mod draft {
+                 let _ = writer.write_all(&Output::pretty_fmt::<true>("<r>"));
+             }
+             let _ = writeln!(writer, ": {}", reason);
++            if let Some(location) = info.location() {
++                let _ = writeln!(
++                    writer,
++                    "panic location: {}:{}:{}",
++                    location.file(),
++                    location.line(),
++                    location.column()
++                );
++            }
+ 
+             if let Some(action) = CURRENT_ACTION.with(|c| c.get()) {
+                 let _ = writeln!(writer, "Crashed while {}", action);
+@@ -2338,6 +2347,10 @@ mod draft {
+             {
+                 b'M'
+             }
++            #[cfg(all(target_os = "ios", target_arch = "aarch64"))]
++            {
++                b'I'
++            }
+             #[cfg(all(windows, target_arch = "x86_64"))]
+             {
+                 if Environment::BASELINE { b'e' } else { b'w' }
+@@ -2424,7 +2437,7 @@ mod draft {
+                     },
+                 });
+             }
+-            #[cfg(target_os = "macos")]
++            #[cfg(any(target_os = "macos", target_os = "ios"))]
+             {
+                 let address = if addr == 0 { 0 } else { addr - 1 };
+ 
+@@ -2506,7 +2519,7 @@ mod draft {
+                 let _ = name_bytes;
+                 return None;
+             }
+-            #[cfg(not(any(windows, target_os = "macos")))]
++            #[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
+             {
+                 let _ = name_bytes;
+                 let address = addr.saturating_sub(1);
+@@ -2542,7 +2555,7 @@ mod draft {
+ 
+     impl fmt::Display for StackLine {
+         fn fmt(&self, writer: &mut fmt::Formatter<'_>) -> fmt::Result {
+-            let addr_display: u64 = if cfg!(target_os = "macos") {
++            let addr_display: u64 = if cfg!(any(target_os = "macos", target_os = "ios")) {
+                 self.address as u64 + 0x100000000
+             } else {
+                 self.address as u64
+@@ -2749,6 +2762,7 @@ mod draft {
+     /// information (PII). The stackframes point to Bun's open-source native code
+     /// (not user code), and are safe to share publicly and with the Bun team.
+     fn report(url: &[u8]) {
++        let _ = url;
+         if !is_reporting_enabled() {
+             return;
+         }
+diff --git a/src/errno/lib.rs b/src/errno/lib.rs
+index 5706e9ce42..42e8347ba8 100644
+--- a/src/errno/lib.rs
++++ b/src/errno/lib.rs
+@@ -176,9 +176,9 @@ macro_rules! __uv_e_rows {
+     };
+ }
+ 
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ pub mod darwin_errno;
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ pub use darwin_errno::*;
+ #[cfg(target_os = "freebsd")]
+ pub mod freebsd_errno;
+@@ -211,7 +211,7 @@ pub mod posix {
+     #[cfg(any(target_os = "linux", target_os = "android"))]
+     pub type mode_t = u32;
+     /// Darwin/FreeBSD `mode_t` == `__uint16_t` in `<sys/types.h>`.
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub type mode_t = u16;
+ 
+     /// Kernel errno enum. `E` and `SystemErrno` share the exact same
+diff --git a/src/install/PackageInstall.rs b/src/install/PackageInstall.rs
+index 723488062e..2ddf4cfe6c 100644
+--- a/src/install/PackageInstall.rs
++++ b/src/install/PackageInstall.rs
+@@ -105,6 +105,7 @@ impl Method {
+     }
+ }
+ 
++#[allow(dead_code)]
+ type BackendSupport = enum_map::EnumMap<Method, bool>;
+ 
+ bun_core::comptime_string_map! {
+diff --git a/src/install_types/resolver_hooks.rs b/src/install_types/resolver_hooks.rs
+index b1aea8524e..2c77e61b51 100644
+--- a/src/install_types/resolver_hooks.rs
++++ b/src/install_types/resolver_hooks.rs
+@@ -839,7 +839,7 @@ impl OperatingSystem {
+     pub const CURRENT: Self = Self(Self::LINUX);
+     #[cfg(target_os = "android")]
+     pub const CURRENT: Self = Self(Self::ANDROID);
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub const CURRENT: Self = Self(Self::DARWIN);
+     #[cfg(windows)]
+     pub const CURRENT: Self = Self(Self::WIN32);
+diff --git a/src/io/lib.rs b/src/io/lib.rs
+index b0d1553e56..fd86efb692 100644
+--- a/src/io/lib.rs
++++ b/src/io/lib.rs
+@@ -548,7 +548,7 @@ mod windows_ffi {
+ mod safe_c {
+     use core::ffi::c_int;
+     unsafe extern "C" {
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         pub(super) safe fn kqueue() -> c_int;
+         #[cfg(any(target_os = "linux", target_os = "android"))]
+         pub(super) safe fn epoll_create1(flags: c_int) -> c_int;
+@@ -580,7 +580,7 @@ mod linux {
+ 
+ /// The value (0x8000) is the
+ /// same on Darwin and FreeBSD (sys/event.h: `#define EV_EOF 0x8000`).
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ const EV_EOF: u16 = 0x8000;
+ 
+ /// Kqueue event struct. Darwin's kevent64_s carries a 2-slot ext[] used for
+@@ -589,12 +589,12 @@ const EV_EOF: u16 = 0x8000;
+ /// `kevent_call` for the syscall difference.
+ #[cfg(target_os = "freebsd")]
+ type KEvent = libc::kevent;
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ type KEvent = libc::kevent64_s;
+ 
+ /// Thin shim over kevent64() vs kevent(). Darwin's kevent64 takes an extra
+ /// `flags` arg between nevents and timeout; FreeBSD's kevent does not.
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ #[inline(always)]
+ fn kevent_call(
+     kq: i32,
+@@ -609,7 +609,7 @@ fn kevent_call(
+         // SAFETY: thin wrapper over libc kevent; caller upholds invariants.
+         return unsafe { libc::kevent(kq, changes, nchanges, events, nevents, timeout) as isize };
+     }
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     {
+         // SAFETY: thin wrapper over libc kevent64; caller upholds invariants.
+         return unsafe {
+@@ -620,7 +620,7 @@ fn kevent_call(
+ 
+ #[cfg(any(target_os = "linux", target_os = "android"))]
+ type EventType = linux::epoll_event;
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ type EventType = KEvent;
+ 
+ // ─── IoRequestLoop ──────────────────────────────────────────────────────────
+@@ -829,7 +829,7 @@ impl IoRequestLoop {
+         {
+             self.tick_epoll();
+         }
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         {
+             self.tick_kqueue();
+         }
+@@ -837,6 +837,7 @@ impl IoRequestLoop {
+             target_os = "linux",
+             target_os = "android",
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "freebsd"
+         )))]
+         {
+@@ -988,7 +989,7 @@ impl IoRequestLoop {
+         self.waker.get_fd()
+     }
+ 
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub fn tick_kqueue(&self) {
+         self.update_now();
+ 
+@@ -1367,17 +1368,17 @@ impl Pollable {
+ 
+ // ─── Poll ─────────────────────────────────────────────────────────────────────
+ 
+-#[cfg(all(target_os = "macos", debug_assertions))]
++#[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+ type GenerationNumberInt = u64;
+ 
+ // Only the IO thread touches this, so `Relaxed` is sufficient.
+-#[cfg(all(target_os = "macos", debug_assertions))]
++#[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+ static GENERATION_NUMBER_MONOTONIC: core::sync::atomic::AtomicU64 =
+     core::sync::atomic::AtomicU64::new(0);
+ 
+ pub struct Poll {
+     pub flags: FlagsSet,
+-    #[cfg(all(target_os = "macos", debug_assertions))]
++    #[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+     pub generation_number: GenerationNumberInt,
+ }
+ 
+@@ -1385,7 +1386,7 @@ impl Default for Poll {
+     fn default() -> Self {
+         Self {
+             flags: FlagsSet::empty(),
+-            #[cfg(all(target_os = "macos", debug_assertions))]
++            #[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+             generation_number: 0,
+         }
+     }
+@@ -1452,7 +1453,7 @@ pub type FlagsSet = enumset::EnumSet<Flags>;
+ // `match`es on it.
+ // Three call sites, each with a literal variant — trivially inlined; kqueue
+ // registration is not hot enough for the lost monomorphization to matter.
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ #[derive(PartialEq, Eq, Clone, Copy)]
+ pub enum ApplyAction {
+     Readable,
+@@ -1461,7 +1462,7 @@ pub enum ApplyAction {
+ }
+ 
+ impl Flags {
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub fn from_kqueue_event(kqueue_event: &KEvent) -> FlagsSet {
+         let mut flags = FlagsSet::empty();
+         if kqueue_event.filter == libc::EVFILT_READ {
+@@ -1482,7 +1483,7 @@ impl Flags {
+             log!("proc");
+             flags.insert(Flags::Process);
+         } else {
+-            #[cfg(target_os = "macos")]
++            #[cfg(any(target_os = "macos", target_os = "ios"))]
+             if kqueue_event.filter == libc::EVFILT_MACHPORT {
+                 log!("machport");
+                 flags.insert(Flags::Machport);
+@@ -1515,7 +1516,7 @@ impl Flags {
+ }
+ 
+ impl Poll {
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     #[inline]
+     pub fn apply_kqueue(
+         action: ApplyAction,
+@@ -1560,7 +1561,7 @@ impl Poll {
+         kqueue_event.udata = udata as _;
+         // Darwin's kevent64_s.ext[0] carries the generation number for the
+         // optional sanity assertion (GenerationNumberInt is u0 elsewhere).
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             #[cfg(debug_assertions)]
+             let gen_: u64 = if action == ApplyAction::Cancel {
+@@ -1593,7 +1594,7 @@ impl Poll {
+ 
+         // The generation-number sanity check rides in kevent64_s.ext[0],
+         // which only exists on Darwin (GenerationNumberInt is u0 elsewhere).
+-        #[cfg(all(target_os = "macos", debug_assertions))]
++        #[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+         if action != ApplyAction::Cancel {
+             // Only the IO thread mutates this counter; Relaxed is sufficient.
+             poll.generation_number =
+@@ -1615,9 +1616,9 @@ impl Poll {
+         self.flags.remove(Flags::Registered);
+     }
+ 
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub fn on_update_kqueue(event: KEvent) {
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         if event.filter == libc::EVFILT_MACHPORT {
+             return;
+         }
+@@ -1984,7 +1985,7 @@ pub mod waker {
+     #[cfg(not(windows))]
+     use bun_sys::Fd;
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub type Waker = KEventWaker;
+     /// FreeBSD 13+ has eventfd(2), so the Linux waker works as-is.
+     #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+@@ -2044,10 +2045,10 @@ pub mod waker {
+ 
+     // ── macOS (kqueue + machport) ─────────────────────────────────────────────
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     use core::ffi::{c_int, c_void};
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub struct KEventWaker {
+         pub kq: i32,
+         pub machport: bun_core::mach_port,
+@@ -2055,10 +2056,10 @@ pub mod waker {
+         pub has_pending_wake: bool,
+     }
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     type Kevent64 = libc::kevent64_s;
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     unsafe extern "C" {
+         // Defined in src/io/io_darwin.cpp. `mach_port` is a by-value `u32`;
+         // bad/dead ports are reported by mach return codes, not UB.
+@@ -2066,7 +2067,7 @@ pub mod waker {
+         safe fn io_darwin_schedule_wakeup(port: bun_core::mach_port) -> bool;
+     }
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     impl KEventWaker {
+         // SAFETY: all-zero is a valid kevent64_s array (POD).
+         const ZEROED: [Kevent64; 16] = bun_core::ffi::zeroed();
+diff --git a/src/io/posix_event_loop.rs b/src/io/posix_event_loop.rs
+index 8f36b301a9..573dd26708 100644
+--- a/src/io/posix_event_loop.rs
++++ b/src/io/posix_event_loop.rs
+@@ -55,7 +55,7 @@ where
+ /// the kernel stores the errno *value* in `data`. That is not the -1-sentinel
+ /// return-code convention `errno_sys` decodes — feeding `data` through it
+ /// yields `None` for every real errno.
+-#[cfg(any(target_os = "macos", all(test, not(windows))))]
++#[cfg(any(target_os = "macos", target_os = "ios", all(test, not(windows))))]
+ #[inline]
+ fn kevent_change_error(data: i64) -> sys::Result<()> {
+     sys::Result::Err(sys::Error::from_code(
+@@ -148,19 +148,19 @@ pub fn js_vm_ctx() -> EventLoopCtx {
+ // ──────────────────────────────────────────────────────────────────────────
+ 
+ // `KQueueGenerationNumber` is `usize` on macOS-debug, else a zero-size sentinel.
+-#[cfg(all(target_os = "macos", debug_assertions))]
++#[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+ type KQueueGenerationNumber = usize;
+-#[cfg(all(unix, not(all(target_os = "macos", debug_assertions))))]
++#[cfg(all(unix, not(all(any(target_os = "macos", target_os = "ios"), debug_assertions))))]
+ type KQueueGenerationNumber = u8; // Note: conceptually zero-width; smallest Rust int is u8. Gated by cfg below.
+ 
+ // Debug-only diagnostic; `Relaxed` (no synchronization implied).
+-#[cfg(all(target_os = "macos", debug_assertions))]
++#[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+ static MAX_GENERATION_NUMBER: core::sync::atomic::AtomicUsize =
+     core::sync::atomic::AtomicUsize::new(0);
+ 
+ /// Darwin uses the extended `kevent64_s` (extra `ext` field carries our
+ /// generation number); FreeBSD only has the plain `struct kevent`.
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ type KQueueEvent = bun_sys::darwin::kevent64_s;
+ #[cfg(target_os = "freebsd")]
+ type KQueueEvent = bun_sys::freebsd::Kevent;
+@@ -190,7 +190,7 @@ fn make_kevent(
+ 
+ /// The kernel value is the
+ /// same as Darwin/OpenBSD (sys/event.h: `#define EV_EOF 0x8000`).
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ const EV_EOF: u16 = 0x8000;
+ 
+ // ──────────────────────────────────────────────────────────────────────────
+@@ -356,17 +356,17 @@ impl FilePoll {
+     // that downstream `__bun_run_file_poll` handlers conjure via
+     // `EventLoopCtx::platform_event_loop()` when they re-enter the loop
+     // (`register_with_fd`/`unregister`/`deinit`).
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub fn on_kqueue_event(&mut self, kqueue_event: &KQueueEvent) {
+         self.update_flags(Flags::from_kqueue_event(kqueue_event));
+         syslog!("onKQueueEvent: {}", self);
+ 
+-        #[cfg(all(target_os = "macos", debug_assertions))]
++        #[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+         debug_assert!(self.generation_number == kqueue_event.ext[0] as usize);
+ 
+         // EVFILT_MEMORYSTATUS reports the pressure level in `fflags`, not `data`;
+         // thread it through `size_or_offset` so the dispatch arm can read it.
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         if kqueue_event.filter == bun_sys::darwin::EVFILT::MEMORYSTATUS {
+             self.on_update(kqueue_event.fflags as i64);
+             return;
+@@ -569,12 +569,12 @@ impl FilePoll {
+             owner,
+             next_to_free: ptr::null_mut(),
+             allocator_type: if vm.is_js() { AllocatorType::Js } else { AllocatorType::Mini },
+-            #[cfg(all(target_os = "macos", debug_assertions))]
++            #[cfg(all(any(target_os = "macos", target_os = "ios"), debug_assertions))]
+             // Single-threaded event loop so `Relaxed` ordering is sufficient.
+             generation_number: MAX_GENERATION_NUMBER
+                 .fetch_add(1, core::sync::atomic::Ordering::Relaxed)
+                 .wrapping_add(1),
+-            #[cfg(not(all(target_os = "macos", debug_assertions)))]
++            #[cfg(not(all(any(target_os = "macos", target_os = "ios"), debug_assertions)))]
+             generation_number: 0,
+         }
+     }
+@@ -655,6 +655,7 @@ impl FilePoll {
+             target_os = "linux",
+             target_os = "android",
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "freebsd"
+         ))]
+         return self.register_with_fd_impl(loop_, flag, one_shot, fd);
+@@ -662,6 +663,7 @@ impl FilePoll {
+             target_os = "linux",
+             target_os = "android",
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "freebsd"
+         )))]
+         {
+@@ -674,6 +676,7 @@ impl FilePoll {
+         target_os = "linux",
+         target_os = "android",
+         target_os = "macos",
++        target_os = "ios",
+         target_os = "freebsd"
+     ))]
+     fn register_with_fd_impl(
+@@ -748,7 +751,7 @@ impl FilePoll {
+                 return errno;
+             }
+         }
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             use bun_sys::darwin::{EV, EVFILT, NOTE, kevent64_s};
+             // SAFETY: all-zero is a valid kevent64_s
+@@ -963,6 +966,7 @@ impl FilePoll {
+             target_os = "linux",
+             target_os = "android",
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "freebsd"
+         ))]
+         let result = self.unregister_with_fd_impl(loop_, fd, force_unregister);
+@@ -970,6 +974,7 @@ impl FilePoll {
+             target_os = "linux",
+             target_os = "android",
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "freebsd"
+         )))]
+         let result: sys::Result<()> = {
+@@ -984,6 +989,7 @@ impl FilePoll {
+         target_os = "linux",
+         target_os = "android",
+         target_os = "macos",
++        target_os = "ios",
+         target_os = "freebsd"
+     ))]
+     fn unregister_with_fd_impl(
+@@ -1066,7 +1072,7 @@ impl FilePoll {
+                 e => return sys::Result::Err(sys::Error::from_code(e, sys::Tag::epoll_ctl)),
+             }
+         }
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             use bun_sys::darwin::{EV, EVFILT, NOTE, kevent64, kevent64_s};
+             // SAFETY: all-zero is a valid kevent64_s
+@@ -1322,9 +1328,9 @@ impl Flags {
+         }
+     }
+ 
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub fn from_kqueue_event(kqueue_event: &KQueueEvent) -> FlagsSet {
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         use bun_sys::darwin::EVFILT;
+         #[cfg(target_os = "freebsd")]
+         use bun_sys::freebsd::EVFILT;
+@@ -1342,11 +1348,11 @@ impl Flags {
+         } else if kqueue_event.filter == EVFILT::PROC {
+             flags.insert(Flags::Process);
+         } else {
+-            #[cfg(target_os = "macos")]
++            #[cfg(any(target_os = "macos", target_os = "ios"))]
+             if kqueue_event.filter == EVFILT::MACHPORT {
+                 flags.insert(Flags::Machport);
+             }
+-            #[cfg(target_os = "macos")]
++            #[cfg(any(target_os = "macos", target_os = "ios"))]
+             if kqueue_event.filter == EVFILT::MEMORYSTATUS {
+                 flags.insert(Flags::MemoryPressure);
+             }
+@@ -1571,6 +1577,7 @@ impl Pollable {
+     target_os = "linux",
+     target_os = "android",
+     target_os = "macos",
++    target_os = "ios",
+     target_os = "freebsd"
+ ))]
+ #[unsafe(no_mangle)]
+@@ -1602,13 +1609,13 @@ pub(crate) unsafe extern "C" fn Bun__internal_dispatch_ready_poll(
+     // handler is free to form its own `&mut Loop`.
+     let ev = unsafe { &*loop_ }.current_ready_event();
+ 
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     file_poll.on_kqueue_event(&ev);
+     #[cfg(any(target_os = "linux", target_os = "android"))]
+     file_poll.on_epoll_event(&ev);
+ }
+ 
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ static TIMEOUT: bun_sys::posix::timespec = bun_sys::posix::timespec {
+     tv_sec: 0,
+     tv_nsec: 0,
+@@ -1635,7 +1642,7 @@ const INVALID_FD: Fd = Fd::INVALID;
+ // ──────────────────────────────────────────────────────────────────────────
+ 
+ pub use crate::closer::Closer;
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ pub use crate::waker::KEventWaker;
+ #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+ pub use crate::waker::Waker;
+diff --git a/src/jsc/bindings/BunProcess.cpp b/src/jsc/bindings/BunProcess.cpp
+index 7e0cf2334e..995f78432e 100644
+--- a/src/jsc/bindings/BunProcess.cpp
++++ b/src/jsc/bindings/BunProcess.cpp
+@@ -2548,7 +2548,7 @@ static JSValue constructProcessConfigObject(VM& vm, JSObject* processObject)
+     variables->putDirect(vm, JSC::Identifier::fromString(vm, "force_dynamic_crt"_s), JSC::jsNumber(0), 0);
+     variables->putDirect(vm, JSC::Identifier::fromString(vm, "napi_build_version"_s), JSC::jsNumber(Napi::DEFAULT_NAPI_VERSION), 0);
+     variables->putDirect(vm, JSC::Identifier::fromString(vm, "nasm_version"_s), JSC::jsNumber(2), 0);
+-#elif OS(MACOS)
++#elif OS(MACOS) || defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+     // Real Node on macOS reports clang=1; common.gypi only applies
+     // CLANG_CXX_LANGUAGE_STANDARD (gnu++20) to addon builds when clang==1,
+     // and Apple clang's default standard is far older.
+diff --git a/src/jsc/bindings/NoOrphansTracker.cpp b/src/jsc/bindings/NoOrphansTracker.cpp
+index 621e11102c..f3e4b27da3 100644
+--- a/src/jsc/bindings/NoOrphansTracker.cpp
++++ b/src/jsc/bindings/NoOrphansTracker.cpp
+@@ -31,7 +31,7 @@
+ 
+ #include "root.h"
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+ 
+ #include <libproc.h>
+ #include <signal.h>
+@@ -268,7 +268,7 @@ extern "C" void Bun__noOrphans_onFork() { Bun::NoOrphansTracker::get().scan(); }
+ extern "C" void Bun__noOrphans_onExit(pid_t pid) { Bun::NoOrphansTracker::get().onExit(pid); }
+ extern "C" void Bun__noOrphans_killTracked() { Bun::NoOrphansTracker::get().killTracked(); }
+ 
+-#else // !OS(DARWIN)
++#else // !(OS(DARWIN) && !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__))
+ 
+ extern "C" void Bun__noOrphans_begin(int, int) {}
+ extern "C" void Bun__noOrphans_releaseKq() {}
+diff --git a/src/jsc/bindings/NodeVMScript.cpp b/src/jsc/bindings/NodeVMScript.cpp
+index 90d1df51b5..9d9ecf262a 100644
+--- a/src/jsc/bindings/NodeVMScript.cpp
++++ b/src/jsc/bindings/NodeVMScript.cpp
+@@ -164,6 +164,7 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+                 codeBlock = JSC::ProgramCodeBlock::create(vm, executable, unlinkedBlock, jsScope);
+                 RETURN_IF_EXCEPTION(scope, {});
+             }
++#if ENABLE(JIT)
+             JSC::CompilationResult compilationResult = JIT::compileSync(vm, codeBlock, JITCompilationEffort::JITCompilationCanFail);
+             if (compilationResult != JSC::CompilationResult::CompilationFailed) {
+                 executable->installCode(codeBlock);
+@@ -171,6 +172,9 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+             } else {
+                 script->cachedDataRejected(TriState::True);
+             }
++#else
++            script->cachedDataRejected(TriState::True);
++#endif
+         }
+     } else if (produceCachedData) {
+         script->cacheBytecode();
+diff --git a/src/jsc/bindings/NodeVMSourceTextModule.cpp b/src/jsc/bindings/NodeVMSourceTextModule.cpp
+index ae87e5b014..4096456f41 100644
+--- a/src/jsc/bindings/NodeVMSourceTextModule.cpp
++++ b/src/jsc/bindings/NodeVMSourceTextModule.cpp
+@@ -141,12 +141,14 @@ NodeVMSourceTextModule* NodeVMSourceTextModule::create(VM& vm, JSGlobalObject* g
+             RETURN_IF_EXCEPTION(scope, nullptr);
+         }
+         if (codeBlock) {
++#if ENABLE(JIT)
+             CompilationResult compilationResult = JIT::compileSync(vm, codeBlock, JITCompilationEffort::JITCompilationCanFail);
+             RETURN_IF_EXCEPTION(scope, nullptr);
+             if (compilationResult != CompilationResult::CompilationFailed) {
+                 executable->installCode(codeBlock);
+                 return ptr;
+             }
++#endif
+         }
+     }
+ 
+diff --git a/src/jsc/bindings/SecretsDarwin.cpp b/src/jsc/bindings/SecretsDarwin.cpp
+index c25ff88e4c..c4f8ad864e 100644
+--- a/src/jsc/bindings/SecretsDarwin.cpp
++++ b/src/jsc/bindings/SecretsDarwin.cpp
+@@ -27,7 +27,9 @@ public:
+     CFStringRef kSecAttrAccount;
+     CFStringRef kSecValueData;
+     CFStringRef kSecReturnData;
++#if !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+     CFStringRef kSecAttrAccess;
++#endif
+     CFBooleanRef kCFBooleanTrue;
+     CFAllocatorRef kCFAllocatorDefault;
+ 
+@@ -50,7 +52,9 @@ public:
+     OSStatus (*SecItemUpdate)(CFDictionaryRef query, CFDictionaryRef attributesToUpdate);
+     OSStatus (*SecItemDelete)(CFDictionaryRef query);
+     CFStringRef (*SecCopyErrorMessageString)(OSStatus status, void* reserved);
++#if !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+     OSStatus (*SecAccessCreate)(CFStringRef descriptor, CFArrayRef trustedList, SecAccessRef* accessRef);
++#endif
+     Boolean (*CFStringGetCString)(CFStringRef theString, char* buffer, CFIndex bufferSize, CFStringEncoding encoding);
+     const char* (*CFStringGetCStringPtr)(CFStringRef theString, CFStringEncoding encoding);
+     CFIndex (*CFStringGetLength)(CFStringRef theString);
+@@ -110,9 +114,11 @@ private:
+         if (!ptr) return false;
+         kSecReturnData = *(CFStringRef*)ptr;
+ 
++#if !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+         ptr = dlsym(handle, "kSecAttrAccess");
+         if (!ptr) return false;
+         kSecAttrAccess = *(CFStringRef*)ptr;
++#endif
+ 
+         ptr = dlsym(cf_handle, "kCFBooleanTrue");
+         if (!ptr) return false;
+@@ -152,9 +158,15 @@ private:
+         SecItemUpdate = (OSStatus (*)(CFDictionaryRef, CFDictionaryRef))dlsym(handle, "SecItemUpdate");
+         SecItemDelete = (OSStatus (*)(CFDictionaryRef))dlsym(handle, "SecItemDelete");
+         SecCopyErrorMessageString = (CFStringRef (*)(OSStatus, void*))dlsym(handle, "SecCopyErrorMessageString");
++#if !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+         SecAccessCreate = (OSStatus (*)(CFStringRef, CFArrayRef, SecAccessRef*))dlsym(handle, "SecAccessCreate");
++#endif
+ 
+-        return CFRelease && CFStringCreateWithCString && CFDataCreate && CFDataGetBytePtr && CFDataGetLength && CFDictionaryCreateMutable && CFDictionaryAddValue && SecItemAdd && SecItemCopyMatching && SecItemUpdate && SecItemDelete && SecCopyErrorMessageString && SecAccessCreate && CFStringGetCString && CFStringGetCStringPtr && CFStringGetLength && CFStringGetMaximumSizeForEncoding;
++        return CFRelease && CFStringCreateWithCString && CFDataCreate && CFDataGetBytePtr && CFDataGetLength && CFDictionaryCreateMutable && CFDictionaryAddValue && SecItemAdd && SecItemCopyMatching && SecItemUpdate && SecItemDelete && SecCopyErrorMessageString
++#if !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++            && SecAccessCreate
++#endif
++            && CFStringGetCString && CFStringGetCStringPtr && CFStringGetLength && CFStringGetMaximumSizeForEncoding;
+     }
+ };
+ 
+@@ -340,6 +352,7 @@ Error setPassword(const CString& service, const CString& name, CString&& passwor
+ 
+     // For headless CI environments (like MacStadium), optionally create an access object
+     // that allows all applications to access this keychain item without user interaction
++#if !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+     SecAccessRef accessRef = nullptr;
+     if (allowUnrestrictedAccess) {
+         ScopedCFRef accessDescription(framework->CFStringCreateWithCString(
+@@ -361,13 +374,18 @@ Error setPassword(const CString& service, const CString& name, CString&& passwor
+             }
+         }
+     }
++#else
++    UNUSED_PARAM(allowUnrestrictedAccess);
++#endif
+ 
+     OSStatus status = framework->SecItemAdd((CFDictionaryRef)query.get(), NULL);
+ 
++#if !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+     // Clean up accessRef if it was created
+     if (accessRef) {
+         framework->CFRelease(accessRef);
+     }
++#endif
+ 
+     if (status == errSecDuplicateItem) {
+         // Password exists -- update it
+diff --git a/src/jsc/bindings/v8/V8Array.cpp b/src/jsc/bindings/v8/V8Array.cpp
+index 4ab770f33d..dbf19a6cc6 100644
+--- a/src/jsc/bindings/v8/V8Array.cpp
++++ b/src/jsc/bindings/v8/V8Array.cpp
+@@ -11,6 +11,7 @@
+ #include "JavaScriptCore/ThrowScope.h"
+ #include "JavaScriptCore/IteratorOperations.h"
+ #include "JavaScriptCore/ArgList.h"
++#include <utility>
+ 
+ ASSERT_V8_TYPE_LAYOUT_MATCHES(v8::Array)
+ 
+@@ -100,6 +101,17 @@ MaybeLocal<Array> Array::New(Local<Context> context, size_t length,
+     return handleScope.Escape(result);
+ }
+ 
++#if defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++MaybeLocal<Array> ArrayNewStdFunctionABIBridge(Local<Context> context, size_t length,
++    std::function<MaybeLocal<v8::Value>()> next_value_callback)
++    __asm__("__ZN2v85Array3NewENS_5LocalINS_7ContextEEEmSt8functionIFNS_10MaybeLocalINS_5ValueEEEvEE");
++MaybeLocal<Array> ArrayNewStdFunctionABIBridge(Local<Context> context, size_t length,
++    std::function<MaybeLocal<v8::Value>()> next_value_callback)
++{
++    return Array::New(context, length, std::move(next_value_callback));
++}
++#endif
++
+ // Get array length
+ uint32_t Array::Length() const
+ {
+diff --git a/src/jsc/bindings/webcore/JSPerformance.cpp b/src/jsc/bindings/webcore/JSPerformance.cpp
+index 8f0fa04800..5c5f1ed94e 100644
+--- a/src/jsc/bindings/webcore/JSPerformance.cpp
++++ b/src/jsc/bindings/webcore/JSPerformance.cpp
+@@ -267,11 +267,16 @@ size_t JSPerformance::estimatedSize(JSCell* cell, VM& vm)
+ void JSPerformance::finishCreation(VM& vm)
+ {
+     Base::finishCreation(vm);
++#if ENABLE(JIT)
+     static const JSC::DOMJIT::Signature DOMJITSignatureForPerformanceNow(
+         functionPerformanceNowWithoutTypeCheck,
+         JSPerformance::info(),
+         JSC::DOMJIT::Effect::forWriteKinds(DFG::AbstractHeapKind::SideState),
+         SpecDoubleReal);
++    const auto* domJITSignatureForPerformanceNow = &DOMJITSignatureForPerformanceNow;
++#else
++    const JSC::DOMJIT::Signature* domJITSignatureForPerformanceNow = nullptr;
++#endif
+ 
+     JSFunction* now = JSFunction::create(
+         vm,
+@@ -279,7 +284,7 @@ void JSPerformance::finishCreation(VM& vm)
+         0,
+         String("now"_s),
+         functionPerformanceNow, ImplementationVisibility::Public, NoIntrinsic, callHostFunctionAsConstructor,
+-        &DOMJITSignatureForPerformanceNow);
++        domJITSignatureForPerformanceNow);
+     this->putDirect(vm, JSC::Identifier::fromString(vm, "now"_s), now, 0);
+ 
+     this->putDirect(
+diff --git a/src/jsc/bindings/workaround-missing-symbols.cpp b/src/jsc/bindings/workaround-missing-symbols.cpp
+index 0ee12bafda..f5ecdc498e 100644
+--- a/src/jsc/bindings/workaround-missing-symbols.cpp
++++ b/src/jsc/bindings/workaround-missing-symbols.cpp
+@@ -43,6 +43,38 @@ extern "C" int kill(int pid, int sig)
+ 
+ #endif
+ 
++#if defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++#include <stdlib.h>
++
++extern "C" {
++struct TCCState;
++using TCCErrorFunc = void (*)(void*, const char*);
++using TCCSymbolCallback = void (*)(void*, const char*, const void*);
++
++void quick_exit(int code) { _Exit(code); }
++TCCState* tcc_new() { return nullptr; }
++void tcc_delete(TCCState*) {}
++void tcc_set_lib_path(TCCState*, const char*) {}
++void tcc_set_error_func(TCCState*, void*, TCCErrorFunc) {}
++int tcc_set_options(TCCState*, const char*) { return -1; }
++int tcc_add_include_path(TCCState*, const char*) { return -1; }
++int tcc_add_sysinclude_path(TCCState*, const char*) { return -1; }
++void tcc_define_symbol(TCCState*, const char*, const char*) {}
++void tcc_undefine_symbol(TCCState*, const char*) {}
++int tcc_add_file(TCCState*, const char*) { return -1; }
++int tcc_compile_string(TCCState*, const char*) { return -1; }
++int tcc_set_output_type(TCCState*, int) { return -1; }
++int tcc_add_library_path(TCCState*, const char*) { return -1; }
++int tcc_add_library(TCCState*, const char*) { return -1; }
++int tcc_add_symbol(TCCState*, const char*, const void*) { return -1; }
++int tcc_output_file(TCCState*, const char*) { return -1; }
++int tcc_run(TCCState*, int, char**) { return -1; }
++int tcc_relocate(TCCState*) { return -1; }
++void* tcc_get_symbol(TCCState*, const char*) { return nullptr; }
++void tcc_list_symbols(TCCState*, void*, TCCSymbolCallback) {}
++}
++#endif
++
+ #if !defined(WIN32)
+ #ifndef UNLIKELY
+ #define UNLIKELY(x) __builtin_expect(!!(x), 0)
+diff --git a/src/jsc/modules/BunJSCModule.h b/src/jsc/modules/BunJSCModule.h
+index deb683bb80..85ba7efcd1 100644
+--- a/src/jsc/modules/BunJSCModule.h
++++ b/src/jsc/modules/BunJSCModule.h
+@@ -582,7 +582,11 @@ JSC_DECLARE_HOST_FUNCTION(functionTotalCompileTime);
+ JSC_DEFINE_HOST_FUNCTION(functionTotalCompileTime,
+     (JSGlobalObject*, CallFrame*))
+ {
++#if ENABLE(JIT)
+     return JSValue::encode(jsNumber(JIT::totalCompileTime().milliseconds()));
++#else
++    return JSValue::encode(jsNumber(0));
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGetProtectedObjects);
+diff --git a/src/runtime/ffi/ffi_body.rs b/src/runtime/ffi/ffi_body.rs
+index d3645a35ea..02e3b4a518 100644
+--- a/src/runtime/ffi/ffi_body.rs
++++ b/src/runtime/ffi/ffi_body.rs
+@@ -1448,7 +1448,7 @@ impl FFI {
+                 // Android shared libraries are `.so` (ELF, same as Linux/FreeBSD).
+                 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+                 () => b"so",
+-                #[cfg(target_os = "macos")]
++                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                 () => b"dylib",
+                 #[cfg(windows)]
+                 () => b"dll",
+diff --git a/src/runtime/node/StatFS.rs b/src/runtime/node/StatFS.rs
+index feded77e7e..d19b65252c 100644
+--- a/src/runtime/node/StatFS.rs
++++ b/src/runtime/node/StatFS.rs
+@@ -66,6 +66,7 @@ macro_rules! define_statfs_type {
+                     target_os = "linux",
+                     target_os = "android",
+                     target_os = "macos",
++                    target_os = "ios",
+                     target_os = "freebsd",
+                     windows
+                 ))]
+diff --git a/src/runtime/node/dir_iterator.rs b/src/runtime/node/dir_iterator.rs
+index 386934e1df..e9b9087c85 100644
+--- a/src/runtime/node/dir_iterator.rs
++++ b/src/runtime/node/dir_iterator.rs
+@@ -99,7 +99,7 @@ impl<const B: bool> WrappedSelect<B> for () {}
+ // ──────────────────────────────────────────────────────────────────────────
+ // macOS
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ mod platform {
+     use super::*;
+     use core::ptr::addr_of;
+@@ -913,7 +913,7 @@ where
+     (): WrappedSelect<IS_U16>,
+ {
+     pub fn init(dir: Fd) -> Self {
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             return Self {
+                 iter: NewIterator {
+diff --git a/src/runtime/node/node_fs.rs b/src/runtime/node/node_fs.rs
+index 2dd0060799..60b699ef6a 100644
+--- a/src/runtime/node/node_fs.rs
++++ b/src/runtime/node/node_fs.rs
+@@ -5051,7 +5051,7 @@ impl NodeFS {
+     /// https://github.com/nodejs/node/issues/34624
+     fn copy_file_inner(&mut self, args: &args::CopyFile) -> Maybe<ret::CopyFile> {
+         // TODO: do we need to fchown?
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             let mut src_buf = PathBuffer::uninit();
+             let mut dest_buf = PathBuffer::uninit();
+@@ -5474,6 +5474,7 @@ impl NodeFS {
+ 
+         #[cfg(not(any(
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "freebsd",
+             target_os = "linux",
+             target_os = "android",
+diff --git a/src/runtime/node/node_os.rs b/src/runtime/node/node_os.rs
+index bb04eda2ff..8367f60edd 100644
+--- a/src/runtime/node/node_os.rs
++++ b/src/runtime/node/node_os.rs
+@@ -277,7 +277,7 @@ mod _impl {
+     pub(crate) fn cpus(global: &JSGlobalObject) -> JsResult<JSValue> {
+         #[cfg(any(target_os = "linux", target_os = "android"))]
+         let result = cpus_impl_linux(global);
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         let result = cpus_impl_darwin(global);
+         #[cfg(target_os = "freebsd")]
+         let result = cpus_impl_freebsd(global);
+@@ -556,12 +556,12 @@ mod _impl {
+         Ok(values)
+     }
+ 
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     unsafe extern "C" {
+         safe fn bun_sysconf__SC_CLK_TCK() -> isize;
+     }
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     fn cpus_impl_darwin(global_this: &JSGlobalObject) -> Result<JSValue, OsError> {
+         // Fetch the CPU info structure
+         let mut num_cpus: c::natural_t = 0;
+@@ -869,7 +869,7 @@ mod _impl {
+     }
+ 
+     pub(crate) fn loadavg(global: &JSGlobalObject) -> JsResult<JSValue> {
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         let result: [f64; 3] = 'loadavg: {
+             let mut avg: c::struct_loadavg = bun_core::ffi::zeroed();
+             if bun_sys::posix::sysctl_read(c"vm.loadavg", &mut avg).is_err() {
+@@ -993,7 +993,7 @@ mod _impl {
+             #[cfg(any(target_os = "linux", target_os = "android"))]
+             // SAFETY: ifa_addr is non-null per check above
+             return unsafe { (*iface.ifa_addr).sa_family } as c_int == libc::AF_PACKET;
+-            #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+             // SAFETY: ifa_addr is non-null per check above
+             return unsafe { (*iface.ifa_addr).sa_family } as c_int == libc::AF_LINK;
+         }
+@@ -1162,7 +1162,7 @@ mod _impl {
+                     // SAFETY: ll_addr is a sockaddr_ll* per is_link_layer check
+                     let addr_data: &[u8] =
+                         unsafe { &(*ll_addr.cast::<libc::sockaddr_ll>()).sll_addr };
+-                    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++                    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+                     let addr_data: &[u8] = {
+                         // SAFETY: ll_addr is a sockaddr_dl* per is_link_layer check.
+                         // `sdl_data` is `[c_char; N]` (signedness varies by platform);
+@@ -1416,7 +1416,7 @@ mod _impl {
+             name_buffer[..result.len()].copy_from_slice(result);
+             &name_buffer[0..result.len()]
+         };
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         let value: &[u8] = 'slice: {
+             name_buffer.fill(0);
+             if bun_sys::posix::sysctl_read_slice(c"kern.osrelease", &mut name_buffer[..]).is_err() {
+@@ -1517,7 +1517,7 @@ mod _impl {
+     }
+ 
+     pub(crate) fn totalmem() -> u64 {
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             let mut memory_: [core::ffi::c_ulonglong; 32] = [0; 32];
+             if bun_sys::posix::sysctl_read_slice(c"hw.memsize", &mut memory_[..]).is_err() {
+@@ -1566,7 +1566,7 @@ mod _impl {
+             }
+             return Ok(uptime_value);
+         }
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         {
+             let _ = global;
+             let mut boot_time: bun_sys::posix::timeval = bun_core::ffi::zeroed();
+@@ -1639,7 +1639,7 @@ mod _impl {
+     pub(crate) fn version() -> JsResult<BunString> {
+         let mut name_buffer = [0u8; HOST_NAME_MAX];
+ 
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         let slice: &[u8] = 'slice: {
+             name_buffer.fill(0);
+             if bun_sys::posix::sysctl_read_slice(c"kern.version", &mut name_buffer[..]).is_err() {
+diff --git a/src/runtime/node/path_watcher.rs b/src/runtime/node/path_watcher.rs
+index 90d734ca8e..3b5c99a576 100644
+--- a/src/runtime/node/path_watcher.rs
++++ b/src/runtime/node/path_watcher.rs
+@@ -24,11 +24,11 @@
+ //! new handler appended. `detach()` removes a handler; the last one out tears down
+ //! the OS watch.
+ 
+-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+ use core::cell::Cell;
+ use core::cell::UnsafeCell;
+ use core::ffi::c_void;
+-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+ use core::sync::atomic::{AtomicBool, Ordering};
+ 
+ #[cfg(any(target_os = "linux", target_os = "android"))]
+@@ -38,17 +38,17 @@ use bun_collections::{ArrayHashMap, StringArrayHashMap};
+ use bun_core::ZBox;
+ #[cfg(any(target_os = "linux", target_os = "android"))]
+ use bun_core::strings;
+-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+ use bun_core::{Output, zstr};
+ use bun_core::{ZStr, handle_oom};
+ use bun_paths as path;
+ #[cfg(any(target_os = "linux", target_os = "android"))]
+ use bun_paths::PathBuffer;
+-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+ use bun_paths::platform;
+-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+ use bun_paths::resolve_path::{join_string_buf, join_z_buf};
+-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+ use bun_sys::FdExt;
+ use bun_sys::{self as sys, E, Fd, Tag};
+ use bun_threading::Mutex;
+@@ -98,23 +98,23 @@ pub(crate) struct PathWatcherManager {
+     /// Platform-specific dispatch maps (inotify wd_map / kqueue entries).
+     /// On macOS this is empty — FSEvents owns its own thread via `fs_events.rs`.
+     /// Interior-mutable for the same reason as `watchers`.
+-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+     platform: UnsafeCell<Platform>,
+ 
+     /// inotify/kqueue fd. Set once in `Platform::init` *before* the reader thread
+     /// spawns, never reassigned (process-lifetime singleton, no teardown). Hoisted
+     /// out of `UnsafeCell<Platform>` so reads are safe `Cell::get()` instead of
+     /// raw deref; thread-spawn happens-before makes the cross-thread read sound.
+-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+     platform_fd: Cell<Fd>,
+ 
+     /// Reader-thread loop flag. Initialized `true`, never cleared (no teardown).
+-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+     running: AtomicBool,
+ 
+     /// Monotonic kevent generation counter (FreeBSD). Bumped under `mutex`.
+     /// `Cell` so the bump is a safe `.get()/.set()` instead of a raw deref.
+-    #[cfg(target_os = "freebsd")]
++    #[cfg(any(target_os = "ios", target_os = "freebsd"))]
+     next_gen: Cell<usize>,
+ }
+ 
+@@ -135,13 +135,13 @@ impl Default for PathWatcherManager {
+         Self {
+             mutex: Mutex::new(),
+             watchers: UnsafeCell::new(StringArrayHashMap::default()),
+-            #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++            #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+             platform: UnsafeCell::new(Platform::default()),
+-            #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++            #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+             platform_fd: Cell::new(Fd::INVALID),
+-            #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++            #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+             running: AtomicBool::new(true),
+-            #[cfg(target_os = "freebsd")]
++            #[cfg(any(target_os = "ios", target_os = "freebsd"))]
+             next_gen: Cell::new(1),
+         }
+     }
+@@ -211,7 +211,7 @@ pub struct PathWatcher {
+     path: ZBox,
+     #[cfg(not(windows))]
+     recursive: bool,
+-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+     is_file: bool,
+ 
+     /// JS `FSWatcher` contexts sharing this OS watch. Each gets its own ChangeEvent
+@@ -328,6 +328,7 @@ impl PathWatcher {
+     }
+ 
+     #[cfg(not(any(windows, target_os = "freebsd")))]
++    #[allow(dead_code)]
+     fn emit_error(&mut self, err: &sys::Error) {
+         for &ctx in self.handlers.keys() {
+             (FSWatcher::ON_PATH_UPDATE)(Some(ctx), Event::Error(err.clone()), false);
+@@ -503,7 +504,7 @@ pub fn watch(
+         return Ok(existing);
+     }
+ 
+-    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "freebsd")))]
++    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd")))]
+     let _ = is_file;
+     // New watcher: own the key and path.
+     let watcher = PathWatcher::new(PathWatcher {
+@@ -512,7 +513,7 @@ pub fn watch(
+         path: ZBox::from_bytes(resolved.as_bytes()),
+         #[cfg(not(windows))]
+         recursive,
+-        #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++        #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+         is_file,
+         handlers: ArrayHashMap::default(),
+         #[cfg(not(windows))]
+@@ -597,7 +598,7 @@ pub fn watch(
+ /// (inotify delivers file events on the parent dir's wd so we only need a watch
+ /// per directory; kqueue needs an fd per file too). Best-effort — an unreadable
+ /// subdirectory just stops that branch (matches Node).
+-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "freebsd"))]
+ fn walk_subtree<const DIRS_ONLY: bool>(
+     abs_dir: &ZStr,
+     rel_dir: &[u8],
+@@ -654,9 +655,9 @@ type Platform = Darwin;
+ #[cfg(target_os = "macos")]
+ type PlatformWatch = DarwinWatch;
+ 
+-#[cfg(target_os = "freebsd")]
++#[cfg(any(target_os = "ios", target_os = "freebsd"))]
+ type Platform = Kqueue;
+-#[cfg(target_os = "freebsd")]
++#[cfg(any(target_os = "ios", target_os = "freebsd"))]
+ type PlatformWatch = KqueueWatch;
+ 
+ // win_watcher.rs imports `EventType` from this file, so this module must
+@@ -1320,7 +1321,7 @@ impl Darwin {
+ /// thread, per-watch open file descriptors registered with EVFILT_VNODE. kqueue gives
+ /// no filenames, so directory events surface as a bare `rename` with an empty path —
+ /// same behaviour as libuv on FreeBSD; callers are expected to re-scan.
+-#[cfg(target_os = "freebsd")]
++#[cfg(any(target_os = "ios", target_os = "freebsd"))]
+ #[derive(Default)]
+ pub(crate) struct Kqueue {
+     /// ident (fd number) → entry (by value — avoids a per-entry heap alloc for
+@@ -1329,7 +1330,7 @@ pub(crate) struct Kqueue {
+     entries: ArrayHashMap<i32, KqEntry>,
+ }
+ 
+-#[cfg(target_os = "freebsd")]
++#[cfg(any(target_os = "ios", target_os = "freebsd"))]
+ struct KqEntry {
+     /// Raw `*mut`. See `WdOwner.watcher` — stored long-lived,
+     /// mutated through (`emit`) under `manager.mutex`; outlives the entry because
+@@ -1342,14 +1343,14 @@ struct KqEntry {
+     is_file: bool,
+ }
+ 
+-#[cfg(target_os = "freebsd")]
++#[cfg(any(target_os = "ios", target_os = "freebsd"))]
+ #[derive(Default)]
+ pub(crate) struct KqueueWatch {
+     fds: Vec<i32>,
+ }
+ // Drop: Vec frees automatically.
+ 
+-#[cfg(target_os = "freebsd")]
++#[cfg(any(target_os = "ios", target_os = "freebsd"))]
+ impl PathWatcherManager {
+     /// Set-once kqueue fd. Assigned exactly once in [`Kqueue::init`] *before*
+     /// the reader thread is spawned and never reassigned afterwards (the
+@@ -1361,7 +1362,7 @@ impl PathWatcherManager {
+     }
+ }
+ 
+-#[cfg(target_os = "freebsd")]
++#[cfg(any(target_os = "ios", target_os = "freebsd"))]
+ impl Kqueue {
+     fn init(manager: &mut PathWatcherManager) -> sys::Result<()> {
+         let kq = match sys::kqueue() {
+@@ -1409,7 +1410,23 @@ impl Kqueue {
+         subpath: &[u8],
+         is_file: bool,
+     ) -> sys::Result<()> {
++        #[cfg(target_os = "freebsd")]
+         use bun_sys::freebsd::{EV, EVFILT, Kevent, NOTE, kevent};
++        #[cfg(target_os = "ios")]
++        use bun_sys::darwin::{EV, EVFILT, NOTE};
++        #[cfg(target_os = "ios")]
++        type Kevent = libc::kevent;
++        #[cfg(target_os = "ios")]
++        unsafe fn kevent(
++            kq: i32,
++            changes: *const Kevent,
++            nchanges: i32,
++            events: *mut Kevent,
++            nevents: i32,
++            timeout: *const libc::timespec,
++        ) -> isize {
++            unsafe { libc::kevent(kq, changes, nchanges, events, nevents, timeout) as isize }
++        }
+         let plat: *mut Kqueue = manager.platform.get();
+         // O_EVTONLY: we only need the fd for kevent registration, never for I/O.
+         // (No-op on FreeBSD where EVTONLY is 0; semantic here for kqueue-on-macOS.)
+@@ -1507,7 +1524,23 @@ impl Kqueue {
+     }
+ 
+     fn thread_main(manager: &'static PathWatcherManager) {
++        #[cfg(target_os = "freebsd")]
+         use bun_sys::freebsd::{Kevent, NOTE, kevent};
++        #[cfg(target_os = "ios")]
++        use bun_sys::darwin::NOTE;
++        #[cfg(target_os = "ios")]
++        type Kevent = libc::kevent;
++        #[cfg(target_os = "ios")]
++        unsafe fn kevent(
++            kq: i32,
++            changes: *const Kevent,
++            nchanges: i32,
++            events: *mut Kevent,
++            nevents: i32,
++            timeout: *const libc::timespec,
++        ) -> isize {
++            unsafe { libc::kevent(kq, changes, nchanges, events, nevents, timeout) as isize }
++        }
+         Output::Source::configure_named_thread(zstr!("fs.watch"));
+         let plat: *mut Kqueue = manager.platform.get();
+         let kq = manager.kq_fd();
+diff --git a/src/runtime/webcore/blob/copy_file.rs b/src/runtime/webcore/blob/copy_file.rs
+index 831c84a0be..00464fe8f6 100644
+--- a/src/runtime/webcore/blob/copy_file.rs
++++ b/src/runtime/webcore/blob/copy_file.rs
+@@ -535,7 +535,7 @@ impl<'a> CopyFile<'a> {
+         Ok(())
+     }
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub fn do_fcopy_file_with_read_write_loop_fallback(&mut self) -> Result<(), bun_core::Error> {
+         match bun_sys::fcopyfile(
+             self.source_fd,
+@@ -583,7 +583,7 @@ impl<'a> CopyFile<'a> {
+         Ok(())
+     }
+ 
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub fn do_clonefile(&mut self) -> Result<(), bun_core::Error> {
+         let mut source_buf = PathBuffer::uninit();
+         let mut dest_buf = PathBuffer::uninit();
+@@ -635,9 +635,9 @@ impl<'a> CopyFile<'a> {
+         {
+             // defer task.onFinish();
+ 
+-            #[cfg(target_os = "macos")]
++            #[cfg(any(target_os = "macos", target_os = "ios"))]
+             let mut stat_: Option<Stat> = None;
+-            #[cfg(not(target_os = "macos"))]
++            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+             let stat_: Option<Stat> = None;
+ 
+             if let PathOrFileDescriptor::Fd(fd) = &self.destination_file_store.pathlike {
+@@ -652,7 +652,7 @@ impl<'a> CopyFile<'a> {
+             if self.destination_fd == Fd::INVALID && self.source_fd == Fd::INVALID {
+                 // First, we attempt to clonefile() on macOS
+                 // This is the fastest way to copy a file.
+-                #[cfg(target_os = "macos")]
++                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                 {
+                     if self.offset == 0
+                         && matches!(
+@@ -874,7 +874,7 @@ impl<'a> CopyFile<'a> {
+                 return;
+             }
+ 
+-            #[cfg(target_os = "macos")]
++            #[cfg(any(target_os = "macos", target_os = "ios"))]
+             {
+                 if self.do_fcopy_file_with_read_write_loop_fallback().is_err() {
+                     self.do_close();
+@@ -933,6 +933,7 @@ impl<'a> CopyFile<'a> {
+                 target_os = "linux",
+                 target_os = "android",
+                 target_os = "macos",
++                target_os = "ios",
+                 target_os = "freebsd"
+             )))]
+             {
+diff --git a/src/standalone_graph/StandaloneModuleGraph.rs b/src/standalone_graph/StandaloneModuleGraph.rs
+index 4996592491..0c6ed9663c 100644
+--- a/src/standalone_graph/StandaloneModuleGraph.rs
++++ b/src/standalone_graph/StandaloneModuleGraph.rs
+@@ -272,7 +272,7 @@ pub enum ModuleFormat {
+     Cjs = 2,
+ }
+ 
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ mod macho {
+     // Declared inline rather than in a dedicated `*_sys` crate: this crate is
+     // the symbol's only consumer.
+@@ -528,6 +528,7 @@ bitflags::bitflags! {
+ const TRAILER: &[u8] = b"\n---- Bun! ----\n";
+ 
+ impl StandaloneModuleGraph {
++    #[allow(dead_code)]
+     fn from_bytes(
+         raw_ptr: *mut u8,
+         raw_len: usize,
+@@ -680,6 +681,7 @@ unsafe fn slice_to(base: *const u8, len: usize, ptr: StringPointer) -> &'static
+ ///
+ /// SAFETY: caller guarantees `base[..len]` is a live allocation with write permission and
+ /// that `[ptr.offset, ptr.offset + ptr.length)` is in-bounds.
++#[allow(dead_code)]
+ unsafe fn slice_to_mut(base: *mut u8, len: usize, ptr: StringPointer) -> *mut [u8] {
+     let off = ptr.offset as usize;
+     let n = ptr.length as usize;
+@@ -691,6 +693,7 @@ unsafe fn slice_to_mut(base: *mut u8, len: usize, ptr: StringPointer) -> *mut [u
+ 
+ /// SAFETY: as `slice_to`, plus `base[ptr.offset + ptr.length] == 0` (written by
+ /// `to_bytes` via `appendCountZ`).
++#[allow(dead_code)]
+ unsafe fn slice_to_z(base: *const u8, len: usize, ptr: StringPointer) -> &'static ZStr {
+     if ptr.length == 0 {
+         return ZStr::EMPTY;
+@@ -1146,7 +1149,7 @@ pub(crate) fn inject(
+             break 'brk file;
+         }
+ 
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             // if we're on a mac, use clonefile() if we can
+             // failure is okay, clonefile is just a fast path.
+@@ -1959,7 +1962,7 @@ impl StandaloneModuleGraph {
+     /// Loads the standalone module graph from the executable, allocates it on the heap,
+     /// sets it globally, and returns the pointer.
+     pub fn from_executable() -> Result<Option<*mut StandaloneModuleGraph>, BunError> {
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             let Some((base, len)) = macho::get_data() else {
+                 return Ok(None);
+@@ -2042,6 +2045,7 @@ impl StandaloneModuleGraph {
+ 
+         #[cfg(not(any(
+             target_os = "macos",
++            target_os = "ios",
+             windows,
+             target_os = "linux",
+             target_os = "android",
+@@ -2067,7 +2071,7 @@ impl StandaloneModuleGraph {
+         #[cfg(not(windows))]
+         {
+             let (base, len): (*mut u8, usize) = {
+-                #[cfg(target_os = "macos")]
++                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                 {
+                     match macho::get_data() {
+                         Some(b) => b,
+@@ -2081,13 +2085,18 @@ impl StandaloneModuleGraph {
+                         None => return,
+                     }
+                 }
+-                #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]
++                #[cfg(not(any(
++                    target_os = "macos",
++                    target_os = "ios",
++                    target_os = "linux",
++                    target_os = "android"
++                )))]
+                 {
+                     return;
+                 }
+             };
+ 
+-            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "android"))]
++            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "linux", target_os = "android"))]
+             {
+                 if len == 0 {
+                     return;
+@@ -2126,6 +2135,7 @@ impl StandaloneModuleGraph {
+ 
+ /// Allocates a StandaloneModuleGraph in the process-static `INSTANCE`,
+ /// populates it from bytes, sets it globally, and returns the pointer.
++#[allow(dead_code)]
+ fn from_bytes_alloc(
+     raw_ptr: *mut u8,
+     raw_len: usize,
+diff --git a/src/sys/copy_file.rs b/src/sys/copy_file.rs
+index 843fea1298..53b3c4f929 100644
+--- a/src/sys/copy_file.rs
++++ b/src/sys/copy_file.rs
+@@ -84,7 +84,7 @@ pub fn copy_file_with_state(
+ ) -> CopyFileReturnType {
+     #[cfg(not(any(target_os = "linux", target_os = "android")))]
+     let _ = copy_file_state;
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     {
+         unsafe extern "C" {
+             // safe: by-value `c_int` fds + `u32` flags; bad fd → `EBADF`/
+diff --git a/src/sys/fd.rs b/src/sys/fd.rs
+index 22ac4f10b0..9d88d60246 100644
+--- a/src/sys/fd.rs
++++ b/src/sys/fd.rs
+@@ -137,7 +137,7 @@ impl FdExt for Fd {
+                     _ => None,
+                 }
+             }
+-            #[cfg(target_os = "macos")]
++            #[cfg(any(target_os = "macos", target_os = "ios"))]
+             {
+                 debug_assert!(self.native() >= 0);
+                 match sys::get_errno(close_nocancel(self.native())) {
+@@ -489,7 +489,7 @@ impl fmt::Display for MovableIfWindowsFd {
+ // ──────────────────────────────────────────────────────────────────────────
+ // Platform helpers (Windows libuv / macOS close_nocancel).
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ unsafe extern "C" {
+     // Darwin libc: close that doesn't get interrupted by pthread cancellation.
+     // By-value `c_int` only; bad fd → `EBADF`, no UB.
+diff --git a/src/sys/lib.rs b/src/sys/lib.rs
+index cc90af0069..569bde7dd5 100644
+--- a/src/sys/lib.rs
++++ b/src/sys/lib.rs
+@@ -298,7 +298,7 @@ pub mod dir_iterator {
+             // DT_WHT (14) — Darwin/FreeBSD union-mount whiteout. The `libc`
+             // crate omits this constant on both Apple and FreeBSD targets;
+             // literal matches <sys/dirent.h>.
+-            #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+             14 /* DT_WHT */ => EntryKind::Whiteout,
+             // DT_UNKNOWN: some filesystems (bind mounts, FUSE, NFS) don't
+             // provide d_type. Callers should lstatat() to resolve when needed.
+@@ -376,8 +376,8 @@ pub mod dir_iterator {
+         }
+     }
+ 
+-    // ── macOS ────────────────────────────────────────────────────────────
+-    #[cfg(target_os = "macos")]
++    // ── Darwin ────────────────────────────────────────────────────────────
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     struct State {
+         buf: AlignedBuf,
+         seek: i64,
+@@ -385,7 +385,7 @@ pub mod dir_iterator {
+         end_index: usize,
+         received_eof: bool,
+     }
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     impl State {
+         #[inline]
+         fn new() -> State {
+@@ -930,8 +930,6 @@ pub use tmp::Tmpfile;
+ // `#[cfg(windows)]` arms in dependents.
+ pub mod windows;
+ 
+-#[cfg(not(windows))]
+-use core::ffi::c_int;
+ use core::ffi::{c_char, c_void};
+ 
+ // ──────────────────────────────────────────────────────────────────────────
+@@ -1627,7 +1625,7 @@ pub(crate) mod safe_libc {
+         ) -> c_int;
+         // BSD/Linux event-queue / notification syscalls — all by-value scalars;
+         // bad args → errno (`EINVAL`/`EMFILE`/…), never UB.
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         pub(crate) safe fn kqueue() -> c_int;
+         #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+         pub(crate) safe fn eventfd(initval: libc::c_uint, flags: c_int) -> c_int;
+@@ -2828,7 +2826,7 @@ mod posix_impl {
+     }
+     /// `lchmod` is BSD/Darwin-only; Linux: `fchmodat(.., AT_SYMLINK_NOFOLLOW)`.
+     pub fn lchmod(path: &ZStr, mode: Mode) -> Maybe<()> {
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         {
+             // The `libc` crate omits the `lchmod` binding on both Darwin
+             // (libSystem since 10.5) and FreeBSD (libc since 3.0). Declare
+@@ -2844,7 +2842,7 @@ mod posix_impl {
+             );
+             Ok(())
+         }
+-        #[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
++        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "freebsd")))]
+         {
+             const SYS_FCHMODAT2: libc::c_long = 452;
+             loop {
+@@ -3280,7 +3278,8 @@ mod posix_impl {
+     }
+ 
+     // ── macOS clonefile / copyfile ──
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
++    #[allow(dead_code, unreachable_pub)]
+     mod darwin_copy {
+         use super::*;
+         unsafe extern "C" {
+@@ -3355,7 +3354,8 @@ mod posix_impl {
+             Ok(())
+         }
+     }
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
++    #[allow(unused_imports, unreachable_pub)]
+     pub use darwin_copy::{
+         clonefile_ as clonefile, clonefileat_ as clonefileat, copyfile_ as copyfile,
+         fcopyfile_ as fcopyfile,
+@@ -5051,7 +5051,7 @@ pub mod c {
+     // `@cImport` of system headers. The `libc` crate already binds all of
+     // these; re-export so callers (`node_os.rs`, `node_fs.rs`, …) keep a
+     // single `bun_sys::c::*` import path matching the `bun.c` namespacing.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub use libc::{
+         _NSGetEnviron,
+         COPYFILE_ACL,
+@@ -5118,14 +5118,14 @@ pub mod c {
+     /// Safe rc-returning `clonefile(2)` — callers that want their own
+     /// `sys::Tag` / path boxing (`errno_sys_p`) take the raw `c_int` instead
+     /// of the `Maybe<()>`-shaped [`super::clonefile`].
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     #[inline]
+     pub fn clonefile_rc(src: &bun_core::ZStr, dst: &bun_core::ZStr, flags: u32) -> c_int {
+         // SAFETY: `&ZStr` guarantees a readable NUL-terminated buffer.
+         unsafe { libc::clonefile(src.as_ptr(), dst.as_ptr(), flags) }
+     }
+     /// Safe rc-returning `copyfile(3)` with a null state handle.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     #[inline]
+     pub fn copyfile_rc(
+         src: &bun_core::ZStr,
+@@ -5138,13 +5138,13 @@ pub mod c {
+     }
+     /// `PROCESSOR_CPU_LOAD_INFO_COUNT` — sizeof(processor_cpu_load_info)/sizeof(natural_t).
+     /// Not bound by `libc`; <mach/processor_info.h>.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub const PROCESSOR_CPU_LOAD_INFO_COUNT: u32 =
+         (core::mem::size_of::<libc::processor_cpu_load_info>()
+             / core::mem::size_of::<libc::natural_t>()) as u32;
+     /// `<sys/sysctl.h> struct loadavg` — used by `os.loadavg()` via
+     /// `vm.loadavg` sysctl. Not bound by `libc`.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     #[repr(C)]
+     #[derive(Clone, Copy)]
+     #[allow(non_camel_case_types)]
+@@ -5153,14 +5153,14 @@ pub mod c {
+         pub fscale: core::ffi::c_long,
+     }
+     // SAFETY: integers only; all-zero is valid pre-`sysctl` state.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     unsafe impl bun_core::ffi::Zeroable for struct_loadavg {}
+ 
+     // ── <mach/mach_init.h> / <mach-o/dyld.h> — declared directly because the
+     // `libc` crate has deprecated these in favour of the `mach2` crate. We
+     // bind the C symbols ourselves so the workspace
+     // stays free of an extra dependency and of deprecation noise.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     unsafe extern "C" {
+         /// `extern mach_port_t mach_task_self_` — the task's send right,
+         /// cached by libsystem at startup. `mach_task_self()` in C is a macro
+@@ -5179,28 +5179,28 @@ pub mod c {
+         safe fn dyld_get_image_header_raw(image_index: u32) -> *const core::ffi::c_void;
+     }
+     /// `mach_task_self()` — C macro `#define mach_task_self() mach_task_self_`.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     #[inline]
+     pub fn mach_task_self() -> libc::mach_port_t {
+         mach_task_self_
+     }
+     /// `_dyld_get_image_header(i)` — on 64-bit Darwin every loaded image is
+     /// 64-bit, so present it as `*const mach_header_64`.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     #[inline]
+     pub fn _dyld_get_image_header(image_index: u32) -> *const super::macho::mach_header_64 {
+         dyld_get_image_header_raw(image_index).cast()
+     }
+ 
+     /// `bun.c.kqueue` — create a new kqueue fd.
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     #[inline]
+     pub fn kqueue() -> c_int {
+         crate::safe_libc::kqueue()
+     }
+ 
+     /// `bun.c.kevent` — raw BSD kqueue event syscall (Darwin/FreeBSD only).
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub unsafe fn kevent(
+         kq: c_int,
+         changelist: *const libc::kevent,
+@@ -5218,7 +5218,7 @@ pub mod c {
+     /// bytes-sent count back through `*len` before returning -1 — callers MUST
+     /// advance their offset by `*len` even on error. This wrapper is raw (no
+     /// EINTR retry); the caller owns the offset bookkeeping.
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub unsafe fn sendfile(
+         fd: c_int,
+         s: c_int,
+@@ -5649,7 +5649,7 @@ pub mod linux {
+ }
+ 
+ // ── `bun.darwin` — Darwin-only platform surface. ──
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ pub mod darwin {
+     use core::ffi::{c_char, c_void};
+ 
+@@ -5905,7 +5905,7 @@ pub mod darwin {
+         }
+     }
+ }
+-#[cfg(not(target_os = "macos"))]
++#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+ pub mod darwin {}
+ 
+ // ── Mach-O header parsing (subset). ──────────────────────────────────────
+@@ -7377,7 +7377,7 @@ pub fn preallocate_file(
+ }
+ 
+ /// `kqueue()` — BSD kernel event queue (Darwin/FreeBSD only).
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ pub fn kqueue() -> Maybe<Fd> {
+     let rc = safe_libc::kqueue();
+     if rc < 0 {
+@@ -7388,7 +7388,7 @@ pub fn kqueue() -> Maybe<Fd> {
+ 
+ /// `kevent()` — slice-wrapped Maybe form. Retries on EINTR.
+ /// Returns the number of events written into `eventlist`.
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ pub fn kevent(
+     fd: Fd,
+     changelist: &[libc::kevent],
+@@ -7402,9 +7402,9 @@ pub fn kevent(
+             libc::kevent(
+                 fd.native(),
+                 changelist.as_ptr(),
+-                changelist.len() as c_int,
++                changelist.len() as libc::c_int,
+                 eventlist.as_mut_ptr(),
+-                eventlist.len() as c_int,
++                eventlist.len() as libc::c_int,
+                 timeout.map_or(core::ptr::null(), std::ptr::from_ref),
+             )
+         };
+@@ -7534,7 +7534,7 @@ pub fn get_fd_path<'a>(fd: Fd, out: &'a mut bun_paths::PathBuffer) -> Maybe<&'a
+             }
+         }
+     }
+-    #[cfg(target_os = "macos")]
++    #[cfg(any(target_os = "macos", target_os = "ios"))]
+     {
+         out.0.fill(0);
+         fcntl(fd, libc::F_GETPATH, out.0.as_mut_ptr() as isize)?;
+@@ -7584,6 +7584,7 @@ pub fn get_fd_path<'a>(fd: Fd, out: &'a mut bun_paths::PathBuffer) -> Maybe<&'a
+         target_os = "linux",
+         target_os = "android",
+         target_os = "macos",
++        target_os = "ios",
+         target_os = "freebsd",
+         windows
+     )))]
+@@ -8430,7 +8431,7 @@ pub mod elf {
+ 
+     /// Result of [`find_loaded_module`]: the loaded ELF object whose `PT_LOAD`
+     /// segment spans a given address.
+-    #[cfg(not(any(windows, target_os = "macos")))]
++    #[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
+     pub struct LoadedModule {
+         /// `dlpi_addr` — link-map base address (subtract from the lookup address
+         /// to get an image-relative offset).
+@@ -8444,7 +8445,7 @@ pub mod elf {
+     /// via `dl_iterate_phdr`, returning the one whose `PT_LOAD` segment contains
+     /// `address`. Shared by `bun_crash_handler::StackLine::from_address` and
+     /// `bun_jsc::btjs::SelfInfo::lookup_module_dl` / `lookup_module_name_dl`.
+-    #[cfg(not(any(windows, target_os = "macos")))]
++    #[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
+     pub fn find_loaded_module(address: usize) -> Option<LoadedModule> {
+         use core::ffi::{c_int, c_void};
+ 
+diff --git a/src/sys_jsc/error_jsc.rs b/src/sys_jsc/error_jsc.rs
+index 49ffac035f..523df997c0 100644
+--- a/src/sys_jsc/error_jsc.rs
++++ b/src/sys_jsc/error_jsc.rs
+@@ -157,15 +157,15 @@ pub mod TestingAPIs {
+                 fn sigemptyset(set: *mut sigset_t) -> core::ffi::c_int;
+                 fn sigaddset(set: *mut sigset_t, signum: core::ffi::c_int) -> core::ffi::c_int;
+             }
+-            // From <signal.h>: SIGUSR2 is 12 on Linux/Android, 31 on macOS/FreeBSD.
+-            // SA_RESTART is 0x10000000 on Linux/Android, 0x0002 on macOS/FreeBSD.
++            // From <signal.h>: SIGUSR2 is 12 on Linux/Android, 31 on Darwin/FreeBSD.
++            // SA_RESTART is 0x10000000 on Linux/Android, 0x0002 on Darwin/FreeBSD.
+             #[cfg(any(target_os = "linux", target_os = "android"))]
+             const SIGUSR2: core::ffi::c_int = 12;
+-            #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+             const SIGUSR2: core::ffi::c_int = 31;
+             #[cfg(any(target_os = "linux", target_os = "android"))]
+             const SA_RESTART: core::ffi::c_int = 0x10000000;
+-            #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+             const SA_RESTART: core::ffi::c_int = 0x0002;
+             // SAFETY: sigemptyset/sigaddset/sigaction are thin libc wrappers;
+             // the sigset_t/sigaction storage is fully owned and initialized
+diff --git a/src/uws_sys/Loop.rs b/src/uws_sys/Loop.rs
+index 8a6a20a832..7e86f98f4a 100644
+--- a/src/uws_sys/Loop.rs
++++ b/src/uws_sys/Loop.rs
+@@ -86,7 +86,7 @@ const _: () = {
+ // branches on `LIBUS_USE_EPOLL` vs `LIBUS_USE_KQUEUE`, not on libc).
+ #[cfg(any(target_os = "linux", target_os = "android"))]
+ pub type EventType = libc::epoll_event;
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ pub type EventType = libc::kevent64_s;
+ // usockets aliases kevent64_s → struct kevent on FreeBSD (epoll_kqueue.h),
+ // so ready_polls is `struct kevent[1024]` there.
+diff --git a/src/watcher/Watcher.rs b/src/watcher/Watcher.rs
+index 0c7edc5e83..7d4dc8f71c 100644
+--- a/src/watcher/Watcher.rs
++++ b/src/watcher/Watcher.rs
+@@ -14,7 +14,7 @@ use crate::watcher_trace as WatcherTrace;
+ // Android: same kernel inotify ABI as glibc/musl Linux, so list both.
+ #[cfg(any(target_os = "linux", target_os = "android"))]
+ use crate::inotify_watcher as platform;
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ use crate::kevent_watcher as platform;
+ #[cfg(windows)]
+ use crate::windows_watcher as platform;
+@@ -27,17 +27,17 @@ bun_core::define_scoped_log!(log, watcher, visible);
+ 
+ pub const MAX_COUNT: usize = 128;
+ 
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ pub const REQUIRES_FILE_DESCRIPTORS: bool = true;
+-#[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
++#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "freebsd")))]
+ pub const REQUIRES_FILE_DESCRIPTORS: bool = false;
+ 
+ /// Open flags for an fd that exists only to receive kqueue VNODE events.
+ /// Darwin has O_EVTONLY (no read/write access requested); FreeBSD has no
+ /// equivalent, so the watch fd is a plain O_RDONLY.
+-#[cfg(target_os = "macos")]
++#[cfg(any(target_os = "macos", target_os = "ios"))]
+ pub const WATCH_OPEN_FLAGS: i32 = libc::O_EVTONLY;
+-#[cfg(not(target_os = "macos"))]
++#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+ pub const WATCH_OPEN_FLAGS: i32 = bun_sys::O::RDONLY;
+ 
+ pub type Event = WatchEvent;
+@@ -397,7 +397,7 @@ impl Watcher {
+             // carries its old `udata` (= pre-swap index). Rewrite it so subsequent kevents
+             // route to the right module; EV_ADD on an existing (ident, filter) replaces in
+             // place. See #29524.
+-            #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+             {
+                 if (item as usize) < self.watchlist.len() {
+                     let moved_fd = self.watchlist.items_fd()[item as usize];
+@@ -433,7 +433,7 @@ impl Watcher {
+     /// skip-if-registered guard here silently reintroduces #29524.
+     ///
+     /// Does not propagate kevent registration errors.
+-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+     pub fn add_file_descriptor_to_kqueue_without_checks(&mut self, fd: Fd, watchlist_id: usize) {
+         // Raw libc::kevent on purpose:
+         // this is a registration-only call (nevents = 0) whose return value
+@@ -475,7 +475,7 @@ impl Watcher {
+         };
+     }
+ 
+-    #[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
++    #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "freebsd")))]
+     pub fn add_file_descriptor_to_kqueue_without_checks(&mut self, _fd: Fd, _watchlist_id: usize) {}
+ 
+     fn append_file_assume_capacity<const CLONE_FILE_PATH: bool>(
+@@ -500,7 +500,7 @@ impl Watcher {
+             }
+         }
+ 
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         let watchlist_id = self.watchlist.len();
+ 
+         // `WatchItem.file_path` is an owning `Cow<'static, [u8]>` column so the
+@@ -515,7 +515,7 @@ impl Watcher {
+             Cow::Borrowed(unsafe { bun_collections::detach_lifetime(file_path) })
+         };
+ 
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         self.add_file_descriptor_to_kqueue_without_checks(fd, watchlist_id);
+         #[cfg(any(target_os = "linux", target_os = "android"))]
+         let eventlist_index = {
+@@ -591,10 +591,10 @@ impl Watcher {
+         let parent_hash =
+             Self::get_hash(bun_paths::fs::PathName::init(file_path).dir_with_trailing_slash());
+ 
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         let watchlist_id = self.watchlist.len();
+ 
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         self.add_file_descriptor_to_kqueue_without_checks(fd, watchlist_id);
+         #[cfg(any(target_os = "linux", target_os = "android"))]
+         let eventlist_index = {
+@@ -814,7 +814,7 @@ impl Watcher {
+         }
+ 
+         // Only open fd if we might need it
+-        #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+         let fd: Fd = {
+             let mut path_z = bun_paths::PathBuffer::uninit();
+             if file_path.len() >= path_z.len() {
+@@ -830,13 +830,13 @@ impl Watcher {
+                 Err(_) => return false,
+             }
+         };
+-        #[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
++        #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "freebsd")))]
+         let fd: Fd = Fd::INVALID;
+ 
+         let res = self.add_file::<true>(fd, file_path, hash, loader, Fd::INVALID, None);
+         match res {
+             Ok(()) => {
+-                #[cfg(any(target_os = "macos", target_os = "freebsd"))]
++                #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+                 if fd.is_valid() {
+                     self.mutex.lock();
+                     let maybe_idx = self.index_of(hash);
+diff --git a/src/watcher/lib.rs b/src/watcher/lib.rs
+index 3a98dbec28..c3ddf25542 100644
+--- a/src/watcher/lib.rs
++++ b/src/watcher/lib.rs
+@@ -13,7 +13,7 @@
+ #[path = "INotifyWatcher.rs"]
+ pub mod inotify_watcher;
+ 
+-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
++#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))]
+ #[path = "KEventWatcher.rs"]
+ pub mod kevent_watcher;
+ 

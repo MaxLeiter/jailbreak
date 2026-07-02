@@ -1,81 +1,92 @@
-# OpenCode / Bun iOS Spike
+# OpenCode / Bun iOS Package
 
-Goal: run OpenCode inside the iosc Wayland desktop by building everything off
-device, packaging for rootless iOS, and running only the final binaries on the
-A10 iPad.
+Goal: run OpenCode on the jailbroken iPad by building off-device, packaging for
+rootless iOS, and installing only debs on the device.
 
-## Current Findings
+## Status
 
-- Current OpenCode (`anomalyco/opencode`) is a Bun/TypeScript app compiled into
-  platform binaries. It does not ship an iOS target.
-- The current npm release checked here is `opencode-ai` / `opencode-darwin-arm64`
-  `1.17.13` (`anomalyco/opencode` tag `v1.17.13`, commit
-  `10c894bdeef3618f5666fb506ef7f9491bb964d8`).
-- The pinned OpenCode inputs live in `linux-build/build_info/opencode.lock`;
-  bumping OpenCode is an explicit version, commit, and tarball SHA-512 change.
-- Bun's upstream release platform table includes Darwin, Linux, Linux musl,
-  Android, FreeBSD, and Windows. It does not include iOS.
-- Re-signing the upstream `bun-darwin-aarch64` binary is not enough. On the iPad
-  it fails in dyld while loading macOS-platform libraries, e.g.
-  `/usr/lib/libicucore.A.dylib` is present only as the wrong platform for this
-  process.
-- Re-stamping the upstream OpenCode Darwin arm64 standalone as iOS fixes that
-  first dyld platform failure, but exposes macOS-only Bun runtime imports:
-  `___clear_cache`, `_pthread_jit_write_protect_np`, and
-  `_pthread_jit_write_protect_supported_np`.
-- `linux-build/tools/macho-opencode-ios-patch.py` reproducibly adds a tiny iOS
-  shim dylib and rewrites only those chained-fixups imports to the shim.
-- After that patch, both OpenCode and a one-line Bun standalone still crash on
-  iPad7,12/A10 with `SIGILL` before `main`, inside the upstream macOS Bun
-  runtime initializer. The first faulting instruction was ARMv8.3 `ldapr`; a
-  local experiment rewrote all 756 `ldapr` instructions to older `ldar`, which
-  moved the crash to ARMv8.1 LSE `casal`. A10 does not support LSE atomics, and
-  replacing scattered atomics with LL/SC loops is not a safe Mach-O patch. That
-  makes the current upstream standalone payload a non-release path; we need an
-  actual iOS/A10-safe Bun runtime build (`arm64-apple-ios`, no LSE/RCpc).
+- `bun` is built from pinned upstream Bun source for iPhoneOS arm64/A10.
+- `opencode` is built from pinned upstream OpenCode source as a Bun-targeted JS
+  bundle and installed behind `/var/jb/usr/bin/opencode`.
+- Both packages are installed on the iPad and published at
+  `https://repo.maxleiter.com`.
 
-## Harness
+Published packages:
 
-Use the isolated spike runner:
-
-```bash
-bash linux-build/run-bun.sh
+```text
+bun 1.4.0~canary.1+git5b55beb711+ios0.2
+opencode 1.17.13~ios0.1
 ```
 
-Artifacts land in `linux-build/out/`:
+On-device verification:
 
-- `bun-preflight`: a tiny `iphoneos-arm64` binary built with the repo's
-  cctools/iPhoneOS SDK path. This proves the build/sign/deploy loop.
-- `bun-preflight_0.0.1_iphoneos-arm64.deb`: the same smoke binary packaged as a
-  rootless deb.
-- `bun-darwin-arm64-upstream`: the upstream macOS Bun binary, kept only as an
-  expected-failure probe.
-
-To also run the probes on the device:
-
-```bash
-DEPLOY=1 bash linux-build/run-bun.sh
+```sh
+/var/jb/usr/bin/bun -e 'const fs=require("fs"); console.log(fs.realpathSync("/var/jb/tmp"))'
+TMPDIR=/var/jb/tmp TMP=/var/jb/tmp TEMP=/var/jb/tmp /var/jb/usr/bin/opencode --version
 ```
 
-Use the OpenCode bring-up runner:
+Expected output includes the real `/private/preboot/.../procursus/tmp` path and:
 
-```bash
-bash linux-build/run-opencode.sh
+```text
+1.17.13
 ```
 
-It sources `linux-build/build_info/opencode.lock`, fetches the pinned
-`opencode-darwin-arm64@1.17.13` npm tarball with scripts disabled, verifies the
-SHA-512 integrity, builds the tracked iOS shim source, restamps/patches the
-Mach-O, signs the binary and shim, and runs an on-device smoke test. It
-intentionally refuses to build an installable `opencode` deb until that smoke
-test passes. Set `PACKAGE=1 SMOKE_DEVICE=1` only after the runtime blocker is
-fixed.
+## Rebuild
 
-## Next Step
+Pinned inputs:
 
-Patch Bun's build configuration to add an iPhoneOS target instead of repackaging
-the Darwin binary. The repo's existing Docker image already has the useful
-pieces: arm64 Debian host, cctools-port, staged iPhoneOS SDK, `ldid`, clang,
-cmake, ninja, git, and curl. The likely work is in Bun's build configuration,
-dependency build flags, JavaScriptCore/WebKit linkage, ICU, libuv/kqueue, and
-Mach-O post-link/signing.
+- Bun/WebKit: `linux-build/build_info/bun-ios.lock`
+- OpenCode: `linux-build/build_info/opencode.lock`
+- Bun patch: `linux-build/patches/bun/0001-add-iphoneos-a10-target.patch`
+- WebKit patch: `linux-build/patches/bun-webkit/0001-jsconly-skip-mach-exceptions-ios.patch`
+
+Build Bun:
+
+```sh
+PACKAGE=1 LLVM_PREFIX=/opt/homebrew/opt/llvm@21 bash linux-build/run-bun-ios.sh
+```
+
+Build OpenCode:
+
+```sh
+PACKAGE=1 SMOKE_DEVICE=1 bash linux-build/build-opencode.sh
+```
+
+Publish:
+
+```sh
+cp linux-build/out/bun_1.4.0~canary.1+git5b55beb711+ios0.2_iphoneos-arm64.deb ../repo/debs/
+cp linux-build/out/opencode_1.17.13~ios0.1_iphoneos-arm64.deb ../repo/debs/
+../bin/publish-repo.sh
+```
+
+## Package Layout
+
+`bun`:
+
+- `/var/jb/usr/libexec/bun-ios/bun`
+- `/var/jb/usr/bin/bun`
+
+The wrapper sets `GIGACAGE_ENABLED=0` before executing the iOS Bun binary. Bun
+currently prints a JavaScriptCore warning when Gigacage is disabled; it is noisy
+but expected.
+
+`opencode`:
+
+- `/var/jb/usr/libexec/opencode-js/*`
+- `/var/jb/usr/bin/opencode`
+
+The wrapper sets `TMPDIR`, `TMP`, and `TEMP` to `/var/jb/tmp` by default and
+executes the bundled OpenCode entrypoint with `/var/jb/usr/bin/bun`.
+
+## Notes
+
+- The old approach of repackaging upstream `opencode-darwin-arm64` is retained
+  only as historical context: the embedded macOS Bun runtime used unsupported
+  A10 instructions and is not the release path.
+- Bun's `macho-postlink` helper still gets killed after the link on this build
+  host. `linux-build/build-bun-ios.sh` accepts that specific post-link failure
+  only when the linked `bun-profile` binary exists, then packages that binary.
+- The `ios0.2` Bun package fixes the OpenCode startup blocker by treating iOS
+  like macOS for `get_fd_path`/`F_GETPATH`, which makes `fs.realpathSync` work
+  on rootless iOS paths.

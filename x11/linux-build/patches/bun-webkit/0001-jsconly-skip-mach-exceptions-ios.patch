@@ -1,0 +1,220 @@
+diff --git a/Source/JavaScriptCore/assembler/FastJITPermissions.h b/Source/JavaScriptCore/assembler/FastJITPermissions.h
+index 4e4067d009e..51bee1fb93a 100644
+--- a/Source/JavaScriptCore/assembler/FastJITPermissions.h
++++ b/Source/JavaScriptCore/assembler/FastJITPermissions.h
+@@ -94,7 +94,7 @@ static ALWAYS_INLINE void threadSelfRestrict()
+         RELEASE_ASSERT_NOT_REACHED();
+ }
+ 
+-#elif CPU(ARM64)
++#elif CPU(ARM64) && !OS(IOS_FAMILY)
+ #include <pthread.h>
+ 
+ template <MemoryRestriction restriction>
+diff --git a/Source/JavaScriptCore/domjit/DOMJITEffect.h b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+index 6ba85116d1b..7f727fd9453 100644
+--- a/Source/JavaScriptCore/domjit/DOMJITEffect.h
++++ b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+@@ -25,9 +25,21 @@
+ 
+ #pragma once
+ 
+-#include "DFGAbstractHeap.h"
+ #include "DOMJITHeapRange.h"
+ 
++#if ENABLE(DFG_JIT)
++#include "DFGAbstractHeap.h"
++#else
++namespace JSC {
++namespace DFG {
++enum AbstractHeapKind {
++    InvalidAbstractHeap,
++    Heap,
++};
++}
++}
++#endif
++
+ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
+ 
+ namespace JSC {
+diff --git a/Source/JavaScriptCore/wasm/WasmAddressType.cpp b/Source/JavaScriptCore/wasm/WasmAddressType.cpp
+index d6656dcdc22..c7f47a93e51 100644
+--- a/Source/JavaScriptCore/wasm/WasmAddressType.cpp
++++ b/Source/JavaScriptCore/wasm/WasmAddressType.cpp
+@@ -27,9 +27,12 @@
+ 
+ #if ENABLE(WEBASSEMBLY)
+ 
+-#include "B3Type.h"
+ #include "WasmOps.h"
+ 
++#if ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)
++#include "B3Type.h"
++#endif
++
+ namespace JSC { namespace Wasm {
+ 
+ AddressType::AddressType(AddressType::Kind addressType) : m_type(addressType) { };
+@@ -52,7 +55,7 @@ AddressType::AddressType(TypeKind typeKind)
+     }
+ }
+ 
+-#if !PLATFORM(PLAYSTATION)
++#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
+ AddressType::AddressType(B3::Type type)
+ {
+     switch (type.kind()) {
+@@ -80,7 +83,7 @@ TypeKind AddressType::asWasmTypeKind() const
+     RELEASE_ASSERT_NOT_REACHED(invalidAddressTypeConversion);
+ }
+ 
+-#if !PLATFORM(PLAYSTATION)
++#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
+ B3::TypeKind AddressType::asB3TypeKind() const
+ {
+     switch (m_type) {
+diff --git a/Source/JavaScriptCore/wasm/WasmAddressType.h b/Source/JavaScriptCore/wasm/WasmAddressType.h
+index 16d20c32b6a..e5aeb418bc5 100644
+--- a/Source/JavaScriptCore/wasm/WasmAddressType.h
++++ b/Source/JavaScriptCore/wasm/WasmAddressType.h
+@@ -45,14 +45,16 @@ public:
+     AddressType() = default;
+     AddressType(TypeKind);
+     AddressType(AddressType::Kind);
+-#if !PLATFORM(PLAYSTATION)
++#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
+     AddressType(B3::Type);
+ #endif
+     explicit AddressType(bool is64bit);
+ 
+     AddressType::Kind type() const { return m_type; }
+     TypeKind NODELETE asWasmTypeKind() const;
++#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
+     B3::TypeKind NODELETE asB3TypeKind() const;
++#endif
+ 
+     friend bool NODELETE operator==(const AddressType& lhs, const AddressType& rhs);
+     friend bool operator!=(const AddressType& lhs, const AddressType& rhs);
+diff --git a/Source/WTF/wtf/PlatformHave.h b/Source/WTF/wtf/PlatformHave.h
+index 54b4e045881..e92480df896 100644
+--- a/Source/WTF/wtf/PlatformHave.h
++++ b/Source/WTF/wtf/PlatformHave.h
+@@ -101,7 +101,7 @@
+ #define HAVE_HISERVICES 1
+ #endif
+ 
+-#if PLATFORM(IOS_FAMILY)
++#if PLATFORM(IOS_FAMILY) && !defined(BUILDING_JSCONLY__)
+ #define HAVE_READLINE 1
+ #endif
+ 
+@@ -221,7 +221,7 @@
+ #define HAVE_PTHREAD_SETNAME_NP 1
+ #endif
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !OS(IOS_FAMILY)
+ #define HAVE_READLINE 1
+ #endif
+ 
+diff --git a/Source/WTF/wtf/PlatformJSCOnly.cmake b/Source/WTF/wtf/PlatformJSCOnly.cmake
+index 399bd2d2aae..966bc3cca6a 100644
+--- a/Source/WTF/wtf/PlatformJSCOnly.cmake
++++ b/Source/WTF/wtf/PlatformJSCOnly.cmake
+@@ -87,32 +87,35 @@ if (WIN32)
+         win/MemoryPressureHandlerWin.cpp
+     )
+ elseif (APPLE)
+-    # When cross-compiling from a non-Darwin host, WebKitXcodeSDK.cmake (which
+-    # sets Mig_EXECUTABLE via xcrun) is not included; fall back to PATH lookup.
+-    if (NOT Mig_EXECUTABLE)
+-        find_program(Mig_EXECUTABLE mig REQUIRED)
+-    endif ()
+-    file(COPY mac/MachExceptions.defs DESTINATION ${WTF_DERIVED_SOURCES_DIR})
+-    add_custom_command(
+-        OUTPUT
+-            ${WTF_DERIVED_SOURCES_DIR}/MachExceptionsServer.h
+-            ${WTF_DERIVED_SOURCES_DIR}/mach_exc.h
++    if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
++        # When cross-compiling from a non-Darwin host, WebKitXcodeSDK.cmake (which
++        # sets Mig_EXECUTABLE via xcrun) is not included; fall back to PATH lookup.
++        if (NOT Mig_EXECUTABLE)
++            find_program(Mig_EXECUTABLE mig REQUIRED)
++        endif ()
++        file(COPY mac/MachExceptions.defs DESTINATION ${WTF_DERIVED_SOURCES_DIR})
++        add_custom_command(
++            OUTPUT
++                ${WTF_DERIVED_SOURCES_DIR}/MachExceptionsServer.h
++                ${WTF_DERIVED_SOURCES_DIR}/mach_exc.h
++                ${WTF_DERIVED_SOURCES_DIR}/mach_excServer.c
++                ${WTF_DERIVED_SOURCES_DIR}/mach_excUser.c
++            MAIN_DEPENDENCY mac/MachExceptions.defs
++            WORKING_DIRECTORY ${WTF_DERIVED_SOURCES_DIR}
++            COMMAND ${Mig_EXECUTABLE} -header mach_exc.h -user mach_excUser.c
++                -sheader MachExceptionsServer.h -server mach_excServer.c
++                -DMACH_EXC_SERVER_TASKIDTOKEN_STATE -isysroot ${CMAKE_OSX_SYSROOT}
++                MachExceptions.defs
++            VERBATIM)
++        list(APPEND WTF_SOURCES
+             ${WTF_DERIVED_SOURCES_DIR}/mach_excServer.c
+             ${WTF_DERIVED_SOURCES_DIR}/mach_excUser.c
+-        MAIN_DEPENDENCY mac/MachExceptions.defs
+-        WORKING_DIRECTORY ${WTF_DERIVED_SOURCES_DIR}
+-        COMMAND ${Mig_EXECUTABLE} -header mach_exc.h -user mach_excUser.c
+-            -sheader MachExceptionsServer.h -server mach_excServer.c
+-            -DMACH_EXC_SERVER_TASKIDTOKEN_STATE -isysroot ${CMAKE_OSX_SYSROOT}
+-            MachExceptions.defs
+-        VERBATIM)
++        )
++    endif ()
+     list(APPEND WTF_SOURCES
+         cocoa/MemoryFootprintCocoa.cpp
+ 
+         generic/MemoryPressureHandlerGeneric.cpp
+-
+-        ${WTF_DERIVED_SOURCES_DIR}/mach_excServer.c
+-        ${WTF_DERIVED_SOURCES_DIR}/mach_excUser.c
+     )
+ elseif (ANDROID)
+     list(APPEND WTF_SOURCES
+diff --git a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+index 2d2a68d9c26..a4c951ecdc3 100644
+--- a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
++++ b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+@@ -49,11 +49,11 @@
+ #endif // OS(DARWIN)
+ #endif // ENABLE(JIT_CAGE)
+ 
+-#if PLATFORM(COCOA)
++#if PLATFORM(COCOA) && !OS(IOS_FAMILY)
+ #include <wtf/spi/cocoa/MachVMSPI.h>
+ #endif
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !OS(IOS_FAMILY)
+ 
+ #include <mach/mach.h>
+ #include <mach/mach_vm.h>
+@@ -63,7 +63,11 @@
+ 
+ #endif
+ 
+-#ifdef BUN_MACOSX
++#ifndef BUN_MACOSX
++#define BUN_MACOSX 0
++#endif
++
++#if BUN_MACOSX
+ #define BUN_VM_CHILD_PROCESS_INHERIT VM_INHERIT_NONE
+ #else
+ #ifdef VM_INHERIT_DEFAULT
+@@ -187,7 +191,7 @@ void* OSAllocator::tryReserveUncommittedAligned(size_t bytes, size_t alignment,
+ {
+     ASSERT(hasOneBitSet(alignment) && alignment >= pageSize());
+ 
+-#if PLATFORM(MAC) || USE(APPLE_INTERNAL_SDK) || BUN_MACOSX
++#if (PLATFORM(MAC) || USE(APPLE_INTERNAL_SDK) || BUN_MACOSX) && !OS(IOS_FAMILY)
+     ASSERT_UNUSED(numGuardPagesToAddOnEachEnd, !numGuardPagesToAddOnEachEnd);
+     ASSERT_UNUSED(jitCageEnabled, !jitCageEnabled); // Not supported for mach API.
+     vm_prot_t protections = VM_PROT_READ;

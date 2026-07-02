@@ -1,0 +1,13 @@
+Package: bun
+Name: Bun
+Version: @DEB_VERSION@
+Architecture: @DEB_ARCH@
+Maintainer: max
+Author: max
+Section: Development
+Priority: optional
+Homepage: https://bun.sh
+Description: Bun JavaScript runtime for rootless iOS.
+ Built from upstream Bun commit @BUN_COMMIT@ for iPhoneOS arm64/A10.
+ The command wrapper disables JavaScriptCore Gigacage on iOS so it can run
+ inside the iPad process address-space policy.
