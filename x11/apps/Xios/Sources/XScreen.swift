@@ -17,26 +17,16 @@ final class XServerViewController: UIViewController {
 }
 
 /// Displays an X11 framebuffer on a CAMetalLayer at native retina resolution and
-/// injects touch as X pointer events via XTEST. Until a framebuffer exists, shows a
-/// live test pattern.
-///
-/// Two display paths, selected by `xios.json`:
-///  • IOSurface (zero-copy) — when `"ddx":"iosurface"`: the Xios DDX shares its
-///    framebuffer as an IOSurface; we map it straight into a Metal texture
-///    (`makeTexture(descriptor:iosurface:)`) and re-present only on damage. No
-///    per-frame upload (vs. ~14 MB/frame at 2160×1620).
-///  • Xvfb file (fallback) — the original `-fbdir` mmap path, uploaded each frame.
-///
-/// Pixel format is 32-bit BGRA on both paths.
+/// injects touch as X pointer events via XTEST/iosc input. The public display path
+/// is IOSurface: `xios.json` must advertise `"ddx":"iosurface"`, then the app maps
+/// that IOSurface into a Metal texture and re-presents only on damage.
 final class XScreenView: UIView {
     private var fbWidth = 1024
     private var fbHeight = 768
-    private var fbHeaderOffset = 0
-    private let fbPath = "/var/jb/tmp/Xvfb_screen0"
     private let configPath = "/var/jb/tmp/xios.json"
     // Which X display to drive (XTEST input). The server advertises this in
-    // xios.json so the app and the launch scripts can't disagree; `:3` is only a
-    // fallback for an older server that doesn't write the field. Not pinned: the
+    // xios.json so the app and the launch scripts can't disagree; `:3` is only the
+    // holding default before config arrives. Not pinned: the
     // picker can switch it to any open display (see discoverDisplays()/load()).
     private var xDisplay = ":3"
     private var xAuthPath: String?              // MIT-MAGIC-COOKIE-1 file from xios.json
@@ -140,10 +130,9 @@ final class XScreenView: UIView {
     private var cursorLayer: CALayer?
     private var lastCursorSeq: UInt32 = 0
     private var cursorIsText = false
+    private var hardwarePointerActive = false
 
     private var displayLink: CADisplayLink?
-    private var mapped: UnsafeMutableRawPointer?
-    private var mappedLen = 0
     private var testBuf: UnsafeMutablePointer<UInt8>?
     private var usingTestPattern = false
     // The animated test card is a LAST-RESORT no-signal diagnostic only. During
@@ -272,15 +261,13 @@ final class XScreenView: UIView {
         if !setupMetal() { observeForegroundRetry(); return }
         metalReady = true
 
+        startTestPattern()
         if ddxIsIOSurface {
             // Zero-copy path. Connect off the main thread (the handshake does a
-            // blocking mach_msg); show the test pattern until the surface arrives.
-            startTestPattern()
+            // blocking mach_msg); keep the holding frame until the surface arrives.
             startIOSurfaceConnect()
-        } else if !mapFramebuffer() {
-            startTestPattern()
         } else {
-            makeTexture()
+            awaitingCompositor = true
         }
         connectInput()
         writeStatus()
@@ -323,6 +310,7 @@ final class XScreenView: UIView {
         testBuf?.initialize(repeating: 0, count: fbWidth * fbHeight * 4)   // clean black
         testPatternStartTick = tickCount
         makeTexture()
+        needsPresent = true         // upload + present the initial clean-black frame once
         displayLink?.preferredFramesPerSecond = 20
     }
 
@@ -358,7 +346,9 @@ final class XScreenView: UIView {
     private func adoptIOSurface(_ conn: OpaquePointer) {
         xconn = conn
         guard syncSurfaceGeometry(conn) else {
-            dbg("iosurface-texture-fail"); xsurface_close(conn); xconn = nil; return
+            dbg("iosurface-texture-fail"); xsurface_close(conn); xconn = nil
+            iosConnectStarted = false   // let the %30 poll retry the connect
+            return
         }
         usingIOSurface = true
         awaitingCompositor = false                // new compositor surface is live again
@@ -419,6 +409,10 @@ final class XScreenView: UIView {
         if seq == lastCursorSeq { return }    // no new pointer state this tick
         lastCursorSeq = seq
 
+        if !hardwarePointerActive {
+            cursorLayer?.isHidden = true
+            return
+        }
         if cursorLayer == nil { makeCursorLayer(shape: shape) }
         guard let layer = cursorLayer else { return }
         if vis == 0 { layer.isHidden = true; return }
@@ -496,6 +490,7 @@ final class XScreenView: UIView {
         cursorLayer?.removeFromSuperlayer()
         cursorLayer = nil
         lastCursorSeq = 0
+        hardwarePointerActive = false
     }
 
     // MARK: Metal setup
@@ -559,15 +554,32 @@ final class XScreenView: UIView {
 
     // MARK: framebuffer
 
+    /// The xios.json fields read by BOTH the loader and the ~1.5s watchdog, normalized
+    /// identically (empty socket → nil, non-positive width/height → nil) so change
+    /// detection and adoption can never disagree about what the file says. Fallbacks
+    /// deliberately stay with the callers: loadConfig() falls back to hard defaults,
+    /// ddxConfigChanged() to the adopted state (so it never loops in steady state).
+    private struct DDXFields {
+        let isIOSurface: Bool
+        let socket: String?
+        let width: Int?
+        let height: Int?
+        init(_ obj: [String: Any]) {
+            // Presence of "ddx":"iosurface" selects the zero-copy IOSurface path.
+            isIOSurface = (obj["ddx"] as? String) == "iosurface"
+            socket = (obj["socket"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            width = (obj["width"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+            height = (obj["height"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+        }
+    }
+
     @discardableResult
     private func loadConfig() -> Bool {
-        guard let data = FileManager.default.contents(atPath: configPath),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return false }
+        guard let obj = readConfig() else { return false }
+        let ddx = DDXFields(obj)
 
         let oldWidth = fbWidth
         let oldHeight = fbHeight
-        let oldOffset = fbHeaderOffset
         let oldDisplay = xDisplay
         let oldAuth = xAuthPath
         let oldIsIOSurface = ddxIsIOSurface
@@ -576,12 +588,10 @@ final class XScreenView: UIView {
         let oldIoscClipSock = ioscClipboardSock
 
         resetConfigDefaults(resetDisplay: true)
-        if let w = obj["width"] as? Int, w > 0 { fbWidth = w }
-        if let h = obj["height"] as? Int, h > 0 { fbHeight = h }
-        if let o = obj["offset"] as? Int, o >= 0 { fbHeaderOffset = o }
-        // Presence of "ddx":"iosurface" selects the zero-copy IOSurface path.
-        ddxIsIOSurface = (obj["ddx"] as? String) == "iosurface"
-        if let s = obj["socket"] as? String, !s.isEmpty { ddxSockPath = s }
+        if let w = ddx.width { fbWidth = w }
+        if let h = ddx.height { fbHeight = h }
+        ddxIsIOSurface = ddx.isIOSurface
+        if let s = ddx.socket { ddxSockPath = s }
         // Honor the display the server actually started on (set via $DISP), instead
         // of pinning XTEST input to :3.
         if let d = obj["display"] as? String, !d.isEmpty { xDisplay = d }
@@ -604,8 +614,7 @@ final class XScreenView: UIView {
         }
 
         let renderStateChanged = oldWidth != fbWidth || oldHeight != fbHeight ||
-            oldOffset != fbHeaderOffset || oldIsIOSurface != ddxIsIOSurface ||
-            oldSocket != ddxSockPath
+            oldIsIOSurface != ddxIsIOSurface || oldSocket != ddxSockPath
         let inputStateChanged = oldDisplay != xDisplay || oldAuth != xAuthPath ||
             oldIoscSock != ioscInputSock || oldIoscClipSock != ioscClipboardSock
         if renderStateChanged || inputStateChanged {
@@ -618,35 +627,17 @@ final class XScreenView: UIView {
         return true
     }
 
-    private func mapFramebuffer() -> Bool {
-        let fd = open(fbPath, O_RDONLY)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        var st = stat()
-        let pixels = fbWidth * fbHeight * 4
-        guard fstat(fd, &st) == 0, st.st_size >= off_t(pixels) else { return false }
-        let len = Int(st.st_size)
-        if fbHeaderOffset == 0 { fbHeaderOffset = len - pixels }   // XWD header + colormap
-        // validate offset is within bounds (defensive)
-        guard fbHeaderOffset >= 0, fbHeaderOffset + pixels <= len else { return false }
-        let p = mmap(nil, len, PROT_READ, MAP_SHARED, fd, 0)
-        guard p != MAP_FAILED else { return false }
-        mapped = p; mappedLen = len
-        return true
-    }
-
     /// True if xios.json now advertises a DIFFERENT iosurface than the one adopted
     /// (compositor restarted at a new -logical, or a different compositor took over).
     /// Compared against the adopted socket + surface size (fbWidth/fbHeight), which
     /// equal the xios.json we last adopted from — so it never loops in steady state.
     private func ddxConfigChanged() -> Bool {
-        guard let data = FileManager.default.contents(atPath: configPath),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              (obj["ddx"] as? String) == "iosurface" else { return false }
-        let sock = (obj["socket"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ddxSockPath
-        let w = (obj["width"] as? Int) ?? fbWidth
-        let h = (obj["height"] as? Int) ?? fbHeight
-        return sock != ddxSockPath || w != fbWidth || h != fbHeight
+        guard let obj = readConfig() else { return false }
+        let ddx = DDXFields(obj)
+        guard ddx.isIOSurface else { return false }
+        return (ddx.socket ?? ddxSockPath) != ddxSockPath ||
+            (ddx.width ?? fbWidth) != fbWidth ||
+            (ddx.height ?? fbHeight) != fbHeight
     }
 
     /// Release the adopted IOSurface + its Metal texture. `lost` distinguishes the two
@@ -676,11 +667,8 @@ final class XScreenView: UIView {
             startSessionIndicator()
         } else if ddxIsIOSurface {
             startIOSurfaceConnect()   // last frame stays frozen until the server returns
-        } else if mapFramebuffer() {
-            makeTexture()
-            connectInput()
-            displayLink?.preferredFramesPerSecond = 60
         } else {
+            awaitingCompositor = true
             startTestPattern()
         }
     }
@@ -721,13 +709,15 @@ final class XScreenView: UIView {
             // pointer move updates the CALayer without re-presenting the framebuffer.
             updateCursorOverlay(conn)
             guard let tex = iosTexture else { return }
-            if needsPresent, render(tex) { needsPresent = false }
+            if needsPresent {
+                let seq = xsurface_dirty_sequence(conn)
+                if render(tex, presentedSeq: seq, conn: conn) { needsPresent = false }
+            }
             return
         }
 
-        // Poll for a backend (handles the app launching before the X server, in
-        // either IOSurface or Xvfb-file mode). Reached only when not yet on IOSurface.
-        if mapped == nil && tickCount % 30 == 0 {
+        // Poll for the IOSurface backend. Reached only while the holding frame is live.
+        if tickCount % 30 == 0 {
             if !userPinned { _ = loadConfig() }   // auto mode picks up xios.json; a manual
                                               // pick keeps its own display/backend choice
             if usingTestPattern, texture?.width != fbWidth || texture?.height != fbHeight {
@@ -735,10 +725,8 @@ final class XScreenView: UIView {
             }
             if ddxIsIOSurface {
                 startIOSurfaceConnect()
-            } else if mapFramebuffer() {
-                usingTestPattern = false; awaitingCompositor = false
-                makeTexture(); connectInput(); writeStatus()
-                displayLink?.preferredFramesPerSecond = 60
+            } else {
+                awaitingCompositor = true
             }
         }
         // Keep the test-pattern buffer + texture sized to the CURRENT fb before writing.
@@ -753,25 +741,33 @@ final class XScreenView: UIView {
         guard let texture = texture else { return }
 
         let base: UnsafeRawPointer
-        if let m = mapped {
-            base = UnsafeRawPointer(m).advanced(by: fbHeaderOffset)
-        } else if let b = testBuf {
+        if let b = testBuf {
             // Clean black by default (the buffer stays zeroed); the animated card is a
             // last-resort no-signal diagnostic shown only after the grace period.
             if tickCount - testPatternStartTick >= Self.testPatternGraceTicks, !awaitingCompositor {
                 renderTestPattern(into: b)   // stay clean black mid-switch; banner shows status
+                needsPresent = true          // animated frame changed: re-upload + re-present
             }
+            // Static hold (clean black, esp. awaitingCompositor — the low-footprint
+            // window that dodges the flavor-switch jetsam): the buffer is unchanged, so
+            // skip the fbW*fbH*4 texture upload + render pass; the layer keeps the last
+            // presented frame. needsPresent re-arms on startTestPattern (first frame /
+            // resize) and on transform changes (layout/zoom/pan), same as the IOSurface
+            // path's dirty-present discipline.
+            guard needsPresent else { return }
             base = UnsafeRawPointer(b)
         } else { return }
 
         texture.replace(region: MTLRegionMake2D(0, 0, fbWidth, fbHeight),
                         mipmapLevel: 0, withBytes: base, bytesPerRow: fbWidth * 4)
-        _ = render(texture)
+        if render(texture) { needsPresent = false }
     }
 
     /// Draw the texture using the current fit/zoom/pan transform.
     @discardableResult
-    private func render(_ tex: MTLTexture) -> Bool {
+    private func render(_ tex: MTLTexture,
+                        presentedSeq: UInt64 = 0,
+                        conn: OpaquePointer? = nil) -> Bool {
         guard let drawable = metalLayer.nextDrawable(),
               let cmd = queue.makeCommandBuffer(),
               let fit = fitTransform(),
@@ -788,6 +784,14 @@ final class XScreenView: UIView {
         enc.setFragmentTexture(tex, index: 0)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         enc.endEncoding()
+        if let conn, presentedSeq != 0 {
+            cmd.addCompletedHandler { [weak self] _ in
+                DispatchQueue.main.async {
+                    guard let self, self.xconn == conn else { return }
+                    _ = xsurface_presented(conn, presentedSeq)
+                }
+            }
+        }
         cmd.present(drawable)
         cmd.commit()
         return true
@@ -797,10 +801,8 @@ final class XScreenView: UIView {
         let fb: String
         if usingIOSurface {
             fb = "iosurface-zerocopy \(fbWidth)x\(fbHeight) [metal]"
-        } else if mapped != nil {
-            fb = "framebuffer-mapped \(fbWidth)x\(fbHeight) off=\(fbHeaderOffset) [metal]"
         } else {
-            fb = "test-pattern (no framebuffer at \(fbPath)) [metal]"
+            fb = "holding-frame awaiting iosurface \(fbWidth)x\(fbHeight) [metal]"
         }
         let inp = !inputConnected ? "input-not-connected"
             : (usingIosc ? "input-connected iosc(wayland)" : "input-connected \(xDisplay)")
@@ -850,7 +852,7 @@ final class XScreenView: UIView {
             "width": profile.width,
             "height": profile.height,
             "display": xDisplay,
-            "backend": ddxIsIOSurface ? "iosurface" : "xvfb",
+            "backend": "iosurface",
             "created_by": "Xios.app",
             "created_at": ISO8601DateFormatter().string(from: Date()),
         ]
@@ -902,10 +904,7 @@ final class XScreenView: UIView {
     private func reloadRuntimeConfig() {
         _ = loadConfig()
         if ddxIsIOSurface, !usingIOSurface { startIOSurfaceConnect() }
-        if !ddxIsIOSurface, mapped == nil, mapFramebuffer() {
-            usingTestPattern = false
-            makeTexture()
-        }
+        if !ddxIsIOSurface { awaitingCompositor = true; startTestPattern() }
         connectInput()
         needsPresent = true
         writeStatus()
@@ -939,9 +938,9 @@ final class XScreenView: UIView {
         return [
             "Xios Debug",
             "display=\(xDisplay)",
-            "backend=\(usingIOSurface ? "iosurface" : (mapped != nil ? "xvfb-file" : "test-pattern"))",
+            "backend=\(usingIOSurface ? "iosurface" : "holding-frame")",
             "ddx_iosurface=\(ddxIsIOSurface)",
-            "fb=\(fbWidth)x\(fbHeight) offset=\(fbHeaderOffset)",
+            "fb=\(fbWidth)x\(fbHeight)",
             "view=\(Int(bounds.width))x\(Int(bounds.height)) drawable=\(Int(ds.width))x\(Int(ds.height)) scale=\(metalLayer.contentsScale)",
             "native=\(Int(nb.width))x\(Int(nb.height)) zoom=\(Int((zoomScale * 100).rounded())) pan=\(Int(panOffset.x)),\(Int(panOffset.y))",
             "input=\(inputConnected ? "connected" : "not-connected") backend=\(inputBackendName())",
@@ -949,7 +948,7 @@ final class XScreenView: UIView {
             "ddx_socket=\(ddxSockPath)",
             "iosc_input=\(ioscInputSock ?? "(none)")",
             "iosc_clipboard=\(ioscClipboardSock ?? "(none)")",
-            "mapped_len=\(mappedLen) test_pattern=\(usingTestPattern)",
+            "test_pattern=\(usingTestPattern)",
             "last_message=\(lastToolMessage)",
             "xios_json=\(cfg)",
             "xios_request=\(req)",
@@ -1281,20 +1280,24 @@ final class XScreenView: UIView {
     }
 
     private func framebufferFloatPoint(from p: CGPoint) -> CGPoint? {
-        guard let fit = fitTransform(),
-              let fp = fit.framebufferPoint(from: p) else { return nil }
+        guard let fit = fitTransform() else { return nil }
+        return fit.framebufferPoint(from: p)
+    }
+
+    /// Touch-coordinate diagnostic (overwrites, so it holds the latest committed
+    /// press): the deploy-verify workflow in docs/handoff/xios-app.md reads
+    /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
+    /// the motion / coalesced-Pencil path must stay free of file I/O.
+    private func logTouchDiagnostic(viewPoint p: CGPoint, fb: (x: Int32, y: Int32)) {
+        guard let fit = fitTransform() else { return }
         let rect = fit.contentRect
-        // Touch-coordinate diagnostic (overwrites, so it holds the latest tap): reveals
-        // exactly what the app maps a tap to vs the geometry it used, to chase the
-        // reported input offset. Remove once the coordinate bug is understood.
         let ds = metalLayer.drawableSize
         let dbg = "p=(\(Int(p.x)),\(Int(p.y))) bounds=\(Int(bounds.width))x\(Int(bounds.height)) "
             + "fb=\(fbWidth)x\(fbHeight) drawable=\(Int(ds.width))x\(Int(ds.height)) "
             + "cs=\(metalLayer.contentsScale) zoom=\(zoomScale) pan=(\(Int(panOffset.x)),\(Int(panOffset.y))) "
             + "rect=(\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))) "
-            + "fitScale=\(fit.scale) -> fb=(\(Int(fp.x)),\(Int(fp.y)))\n"
+            + "fitScale=\(fit.scale) -> fb=(\(fb.x),\(fb.y))\n"
         try? dbg.write(toFile: "/var/jb/tmp/xios-touch.log", atomically: true, encoding: .utf8)
-        return fp
     }
 
     private func framebufferPoint(from p: CGPoint) -> (Int32, Int32)? {
@@ -1372,6 +1375,32 @@ final class XScreenView: UIView {
         guard axisActive else { return }
         axisActive = false
         if inputConnected && usingIosc { iosc_input_axis(0, 0, 0, 0, true) }
+    }
+
+    private func suppressCursorOverlayForTouch() {
+        hardwarePointerActive = false
+        cursorLayer?.isHidden = true
+    }
+
+    private func suppressCursorOverlayForTouchFirstInput(_ touches: Set<UITouch>) {
+        if touches.contains(where: { $0.type == .direct || $0.type == .pencil }) {
+            suppressCursorOverlayForTouch()
+        }
+    }
+
+    private func activateCursorOverlayForHardwarePointer() {
+        if !hardwarePointerActive {
+            hardwarePointerActive = true
+            lastCursorSeq = 0
+        }
+    }
+
+    @available(iOS 13.4, *)
+    @objc private func handlePointerHover(_ g: UIHoverGestureRecognizer) {
+        activateCursorOverlayForHardwarePointer()
+        guard inputConnected, let (x, y) = framebufferPoint(from: g.location(in: self)) else { return }
+        lastTouchPt = (x, y)
+        sendMotion(x, y)
     }
 
     @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
@@ -1465,10 +1494,7 @@ final class XScreenView: UIView {
             guard t.y < -36, abs(t.y) > abs(t.x) * 1.4 else { return }
             keyboardSwipeTriggered = true
             cancelPendingPress()
-            if inputConnected && leftPressSent {
-                sendButton(1, false, at: lastTouchPt)
-                leftPressSent = false
-            }
+            releaseLeftPress()
             _ = becomeFirstResponder()
         case .ended, .cancelled, .failed:
             keyboardSwipeTriggered = false
@@ -1549,13 +1575,18 @@ final class XScreenView: UIView {
         return all.allSatisfy { $0.phase == .ended || $0.phase == .cancelled }
     }
 
-    private func cancelPointerInteraction() {
-        cancelPendingPress()
-        longPressFired = false
+    /// Release the emulated left button if it is down (guarded, idempotent).
+    private func releaseLeftPress() {
         if inputConnected && leftPressSent {
             sendButton(1, false, at: lastTouchPt)
             leftPressSent = false
         }
+    }
+
+    private func cancelPointerInteraction() {
+        cancelPendingPress()
+        longPressFired = false
+        releaseLeftPress()
     }
 
     private func beginAppGestureSuppression(event: UIEvent?) {
@@ -1568,6 +1599,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
         if (event?.allTouches?.count ?? touches.count) >= 3 {
             beginAppGestureSuppression(event: event)
@@ -1593,12 +1625,14 @@ final class XScreenView: UIView {
             }
         } else {
             // Pencil / trackpad: press immediately, no long-press synthesis.
+            logTouchDiagnostic(viewPoint: t.location(in: self), fb: (x, y))
             sendMotion(x, y); sendButton(1, true, at: (x, y))
             leftPressSent = true
         }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
         if forwardIoscAll(touches, phase: 2, event: event) && Self.ioscTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1,
@@ -1616,6 +1650,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression {
             if allTouchesEndedOrCancelled(event) { appGestureTouchSuppression = false }
             return
@@ -1624,13 +1659,11 @@ final class XScreenView: UIView {
         guard inputConnected else { cancelPendingPress(); longPressFired = false; return }
         if longPressFired { longPressFired = false; return }
         if pendingPress != nil { flushPendingPress() }   // stationary tap = click
-        if leftPressSent {
-            sendButton(1, false, at: lastTouchPt)
-            leftPressSent = false
-        }
+        releaseLeftPress()
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression {
             if allTouchesEndedOrCancelled(event) {
                 appGestureTouchSuppression = false
@@ -1639,12 +1672,7 @@ final class XScreenView: UIView {
             return
         }
         if forwardIoscAll(touches, phase: 3, event: event) && Self.ioscTouchReplacesPointer { return }
-        cancelPendingPress()
-        longPressFired = false
-        if inputConnected && leftPressSent {
-            sendButton(1, false, at: lastTouchPt)
-            leftPressSent = false
-        }
+        cancelPointerInteraction()
     }
 
     // MARK: deferred press helpers
@@ -1659,6 +1687,7 @@ final class XScreenView: UIView {
     private func flushPendingPress() {
         guard let p = pendingPress else { return }
         cancelPendingPress()
+        logTouchDiagnostic(viewPoint: pendingPressViewPoint, fb: p)
         sendMotion(p.x, p.y)
         sendButton(1, true, at: (p.x, p.y))
         leftPressSent = true
@@ -1668,6 +1697,10 @@ final class XScreenView: UIView {
         guard let p = pendingPress, inputConnected else { cancelPendingPress(); return }
         cancelPendingPress()
         longPressFired = true
+        logTouchDiagnostic(viewPoint: pendingPressViewPoint, fb: p)
+        // Physical confirmation the hold promoted (no-op without a Taptic
+        // Engine, e.g. iPad 7).
+        SystemIntegration.shared.rightClickHaptic()
         // Touch-and-hold = secondary click; GNOME/GTK open their context menus.
         sendMotion(p.x, p.y)
         sendButton(3, true, at: (p.x, p.y))
@@ -1713,7 +1746,7 @@ final class XScreenView: UIView {
     }
 
     private func resetConfigDefaults(resetDisplay: Bool = false) {
-        fbWidth = 1024; fbHeight = 768; fbHeaderOffset = 0
+        fbWidth = 1024; fbHeight = 768
         ddxIsIOSurface = false
         ddxSockPath = "/var/jb/tmp/xios-ddx.sock"
         xAuthPath = nil
@@ -1728,7 +1761,6 @@ final class XScreenView: UIView {
         if let c = xconn { xsurface_close(c); xconn = nil }
         removeCursorOverlay()
         iosTexture = nil; usingIOSurface = false; iosConnectStarted = false; needsPresent = false
-        if let m = mapped { munmap(m, mappedLen); mapped = nil; mappedLen = 0 }
         testBuf?.deallocate(); testBuf = nil
         usingTestPattern = false
         resetZoom()
@@ -1749,11 +1781,8 @@ final class XScreenView: UIView {
             if ddxIsIOSurface {
                 startTestPattern()
                 startIOSurfaceConnect()
-            } else if mapFramebuffer() {
-                usingTestPattern = false
-                makeTexture()
-                displayLink?.preferredFramesPerSecond = 60
             } else {
+                awaitingCompositor = true
                 startTestPattern()
             }
         } else {
@@ -1804,6 +1833,12 @@ final class XScreenView: UIView {
         let twoFingerTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerTap(_:)))
         twoFingerTap.numberOfTouchesRequired = 2
         addGestureRecognizer(twoFingerTap)
+
+        if #available(iOS 13.4, *) {
+            let hover = UIHoverGestureRecognizer(target: self, action: #selector(handlePointerHover(_:)))
+            hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+            addGestureRecognizer(hover)
+        }
     }
 
     @objc private func openPicker() { presentPicker(discoverDisplays()) }
@@ -2164,7 +2199,7 @@ final class XScreenView: UIView {
         if let cfg = d.config {
             let w = (cfg["width"] as? Int) ?? 0
             let h = (cfg["height"] as? Int) ?? 0
-            let backend = (cfg["ddx"] as? String) == "iosurface" ? "IOSurface" : "Xvfb"
+            let backend = (cfg["ddx"] as? String) == "iosurface" ? "IOSurface" : "unsupported"
             desc = "\(w)×\(h)  \(backend)"
         } else {
             desc = "input only (no framebuffer)"
