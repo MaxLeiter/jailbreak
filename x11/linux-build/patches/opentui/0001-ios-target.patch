@@ -1,0 +1,80 @@
+diff --git a/packages/core/src/zig/build.zig b/packages/core/src/zig/build.zig
+index 90347572..7327e8b8 100644
+--- a/packages/core/src/zig/build.zig
++++ b/packages/core/src/zig/build.zig
+@@ -27,10 +27,21 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
+     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
+     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
+     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
++    // iOS device (jailbroken). The miniaudio CoreAudio backend on iOS uses
++    // AVAudioSession Objective-C APIs, so the shim is compiled as Objective-C
++    // and the Apple audio frameworks are linked against the iPhoneOS SDK named
++    // by the IOS_SDK_PATH environment variable.
++    .{ .zig_target = "aarch64-ios.16.0", .output_name = "aarch64-ios", .description = "iOS aarch64 (device)" },
+ };
+ 
+ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
+ 
++fn iosSDKPath(b: *std.Build) []const u8 {
++    if (b.graph.env_map.get("IOS_SDK_PATH")) |p| return p;
++    if (b.graph.env_map.get("IPHONEOS_SDK_PATH")) |p| return p;
++    @panic("iOS target requires IOS_SDK_PATH env var pointing at an iPhoneOS*.sdk");
++}
++
+ const LIB_NAME = "opentui";
+ const ROOT_SOURCE_FILE = "lib.zig";
+ 
+@@ -121,13 +132,25 @@ fn addMiniaudioShim(
+             flags[3] = macos_sdk_path.?;
+             break :blk flags;
+         },
++        .ios => blk: {
++            const flags = b.allocator.alloc([]const u8, 4) catch @panic("OOM");
++            flags[0] = "-DMA_NO_RUNTIME_LINKING";
++            flags[1] = "-fno-objc-arc";
++            flags[2] = "-isysroot";
++            flags[3] = iosSDKPath(b);
++            break :blk flags;
++        },
+         else => &.{"-std=c99"},
+     };
+ 
++    // On iOS the shim must build as Objective-C (AVAudioSession); the `.m`
++    // extension selects clang's Objective-C frontend automatically.
++    const shim_file = if (target.result.os.tag == .ios) "miniaudio_shim_ios.m" else "miniaudio_shim.c";
++
+     artifact.addIncludePath(b.path("."));
+     artifact.linkLibC();
+     artifact.addCSourceFile(.{
+-        .file = b.path("miniaudio_shim.c"),
++        .file = b.path(shim_file),
+         .flags = c_flags,
+     });
+ }
+@@ -151,6 +174,18 @@ fn addMacOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk
+     addMacOSSDKSearchPaths(b, artifact, sdk_path);
+ }
+ 
++fn addIOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
++    artifact.linkFramework("CoreFoundation");
++    artifact.linkFramework("CoreAudio");
++    artifact.linkFramework("AudioToolbox");
++    artifact.linkFramework("AVFoundation");
++    artifact.linkFramework("Foundation");
++    artifact.linkSystemLibrary("objc");
++    // addMacOSSDKSearchPaths only joins usr/include, System/Library/Frameworks
++    // and usr/lib under the SDK, so it works for any Apple SDK layout.
++    addMacOSSDKSearchPaths(b, artifact, sdk_path);
++}
++
+ fn addNativeAudioDependencies(
+     b: *std.Build,
+     artifact: *std.Build.Step.Compile,
+@@ -161,6 +196,7 @@ fn addNativeAudioDependencies(
+ 
+     switch (target.result.os.tag) {
+         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
++        .ios => addIOSSystemLibraries(b, artifact, iosSDKPath(b)),
+         .linux => {
+             artifact.linkSystemLibrary("dl");
+             artifact.linkSystemLibrary("pthread");
