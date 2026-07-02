@@ -1,0 +1,11 @@
+Package: libexempi-dev
+Version: @DEB_EXEMPI_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://libopenraw.freedesktop.org/exempi/
+Depends: libexempi8 (= @DEB_EXEMPI_V@)
+Description: library to parse XMP metadata - development files
+ Headers, pkg-config metadata (exempi-2.0) and the unversioned shared-library
+ symlink needed to build software against Exempi (e.g. the Papers document viewer).

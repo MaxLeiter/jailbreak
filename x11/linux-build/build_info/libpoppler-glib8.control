@@ -1,0 +1,12 @@
+Package: libpoppler-glib8
+Version: @DEB_POPPLER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://poppler.freedesktop.org/
+Depends: libpoppler140 (= @DEB_POPPLER_V@), libglib2.0-0, libcairo2, libfreetype6, libintl8
+Description: PDF rendering library - GLib interface
+ Poppler is a PDF rendering library based on the xpdf-3.0 code base. This package
+ contains the shared library for the GLib-based interface (libpoppler-glib), used
+ by GTK document viewers such as Papers/Evince.

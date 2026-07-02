@@ -1,0 +1,11 @@
+Package: libexempi8
+Version: @DEB_EXEMPI_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://libopenraw.freedesktop.org/exempi/
+Description: library to parse XMP metadata - runtime
+ Exempi is a port of Adobe's XMP SDK to work on UNIX. It parses and manipulates
+ the XMP metadata embedded in files (e.g. PDFs). This package contains the shared
+ library, used by the Papers GTK4 document viewer.
