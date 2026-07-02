@@ -43,6 +43,17 @@ echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
 fi
+# The wayland track keeps its build inputs under recipes/build_info/ — not just control
+# templates but also wayland-darwin.patch (applied by wayland.mk for Darwin portability),
+# input-event-codes shims, etc. Copy them all so the wayland/epoll/xkb recipes resolve.
+if [ -d /work/recipes/build_info ] && compgen -G "/work/recipes/build_info/*" >/dev/null 2>&1; then
+  cp -v /work/recipes/build_info/* build_info/ 2>/dev/null || true
+fi
+# gtk4-package signs gtk-4-bin with iosc-gpu-client-ent.xml; SIGN reads from build_misc/entitlements.
+mkdir -p build_misc/entitlements
+for x in /work/build_info/iosc-*.xml /work/recipes/build_info/iosc-*.xml; do
+  [ -f "$x" ] && cp -v "$x" build_misc/entitlements/ || true
+done
 
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's
 # compile-only probes add -Werror=unused-command-line-argument, so every cc.sizeof()
@@ -91,9 +102,12 @@ fi
 # so wayland-client/egl + wayland-protocols + xkbcommon resolve at configure time.
 # (gtk4.mk separately seds out GTK4 meson's `if os_darwin: wayland_enabled=false` gate.)
 echo "==> staging Wayland backend prerequisites for GTK4"
-apt-get install -y --no-install-recommends libwayland-bin linux-libc-dev >/dev/null 2>&1 || true
+# libexpat1-dev/libffi-dev are HOST deps for wayland.mk's native wayland-scanner (pass 1),
+# which links host expat to parse protocol XML. (The cross wayland libs get expat/ffi from
+# build_base.) Without them the native scanner's meson aborts: "Dependency expat not found".
+apt-get install -y --no-install-recommends libwayland-bin linux-libc-dev libexpat1-dev libffi-dev >/dev/null 2>&1 || true
 for d in libwayland0 libwayland-dev wayland-protocols libxkbcommon0 libxkbcommon-dev libepoll-shim0 libepoll-shim-dev; do
-  f=$(ls /out/${d}_*.deb 2>/dev/null | head -1)
+  f=$(ls /out/${d}_*.deb 2>/dev/null | head -1) || true
   [ -n "$f" ] && dpkg-deb -x "$f" /work/Procursus/build_base/iphoneos-arm64-rootless/1900 2>/dev/null || true
 done
 mkdir -p "$BBINC/linux" "$BBINC/sys"
