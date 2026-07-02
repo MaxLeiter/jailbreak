@@ -123,6 +123,24 @@ for r in qt6-common.mk qtshadertools.mk qtdeclarative.mk qt5compat.mk qtwayland.
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 cp -v /work/build_info/qt6-*.control build_info/ 2>/dev/null || true
+mkdir -p build_misc/entitlements
+if [ -f /work/build_info/iosc-gpu-client-ent.xml ]; then
+  cp -v /work/build_info/iosc-gpu-client-ent.xml build_misc/entitlements/
+fi
+
+case " ${TARGETS} " in *" qtwayland "*)
+  if ls /out/angle_*_iphoneos-arm64.deb >/dev/null 2>&1; then
+    ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep '+es3' | head -1 || true)
+    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | head -1)
+    echo "==> staging ANGLE for qtwayland EGL integration: ${ANGLE_DEB}"
+    rm -rf /tmp/angle-qt && mkdir -p /tmp/angle-qt
+    dpkg-deb -x "$ANGLE_DEB" /tmp/angle-qt
+    mkdir -p "$BB"
+    cp -a /tmp/angle-qt/var/jb/* "$BB"/
+  else
+    echo "WARN: no angle deb in /out; qtwayland may skip/fail EGL integration"
+  fi
+esac
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"

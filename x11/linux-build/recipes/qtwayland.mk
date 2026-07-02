@@ -5,24 +5,16 @@ endif
 # qtwayland.mk — the Wayland CLIENT QPA (platform plugin) for rootless iOS: how every Qt
 # app (and eventually KWin-nested + Plasma Mobile) gets a window on iosc.
 #
-# SCOPE, round 1 (this recipe): wl_shm client only. qtbase round 1 has opengl/egl OFF, so
-# qtwayland's EGL hardware-integration plugins auto-disable and the client renders through
-# shared-memory buffers; QtQuick pairs with QT_QUICK_BACKEND=software. That is deliberate
-# de-risking: it exercises the whole QPA (xdg-shell, seats, clipboard, DnD) with zero GL.
+# SCOPE, round 3: wl_shm remains the safe fallback, but qtbase now exposes EGL/OpenGL ES
+# through the ANGLE package. QtWayland's stock `wayland-egl` client buffer integration is
+# built and resolves EGL calls to /var/jb/lib/angle/libEGL.dylib, which is the iosc shim:
+# it advertises EGL_PLATFORM_WAYLAND, remaps the display to ANGLE Metal, renders window
+# surfaces into IOSurface pbuffers, and hands those buffers to iosc zero-copy.
 #
-# THE ONE REAL WALL (round 2.5, docs/kde-plasma-plan.md phase Q4 has the full recipe):
-# QtQuick-on-GL needs GLES-on-ANGLE-Metal, but ANGLE has NO wayland platform at all. The
-# escape hatch is a PLUGIN: qtwayland's client hardware integration
-# (wayland-graphics-integration-client/) lets us write an `iosurface` integration that
-# creates the ANGLE *Metal* display itself and renders GLES into IOSurface-backed pbuffers
-# (EGL_ANGLE_iosurface_client_buffer, validated on-device), handing them to iosc zero-copy.
-# On-device P0.1 (GTK4 path) pinned the exact EGL bring-up to reuse: display via
-# eglGetPlatformDisplayEXT (the CORE eglGetPlatformDisplay is a silent no-op on this ANGLE)
-# with an EGLint attrib list {EGL_PLATFORM_ANGLE_TYPE_ANGLE, ..._TYPE_METAL_ANGLE,
-# EGL_NONE} and native_display=EGL_DEFAULT_DISPLAY (NOT the wl_display); swap barrier via
-# EGL_KHR_fence_sync; and the process MUST carry the GPU IOKit entitlements or Metal-device
-# creation returns nil. No qtwayland flag here changes for that; it lands as a new plugin +
-# qtbase round 2.5. See x11/wayland/xios_egl.c for the byte-exact call.
+# If stock QtWayland rejects that shim during device validation, the fallback is the
+# private-ABI plugin described in docs/qtwayland-angle-iosurface.md: move the same
+# swapchain logic into a Qt `wayland-graphics-integration-client` plugin named
+# `iosurface`. Do that only if validation proves the generic shim is insufficient.
 #
 # Build deps:
 #   - TARGET: wayland-client (W0 debs, staged in build_base — the driver verifies
@@ -80,7 +72,7 @@ qtwayland: qtwayland-setup
 		-DFEATURE_wayland_server=OFF
 	+ninja -C $(BUILD_WORK)/qtwayland/build
 	+DESTDIR="$(BUILD_STAGE)/qtwayland" ninja -C $(BUILD_WORK)/qtwayland/build install
-	$(call AFTER_BUILD,copy)
+	$(call AFTER_BUILD,copy,qtwayland,/var/jb/lib/angle)
 endif
 
 qtwayland-package: qtwayland-stage

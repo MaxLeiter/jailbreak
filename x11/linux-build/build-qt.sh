@@ -23,6 +23,7 @@ TARBALL=qtbase-everywhere-src-${QTVER}.tar.xz
 SRCURL=https://download.qt.io/archive/qt/${QTMINOR}/${QTVER}/submodules/${TARBALL}
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 HOSTQT_BUILD=/work/Procursus/build_tools/host-qt-build   # in-volume so a failed run can resume
+BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
 
 cd /work/Procursus
 
@@ -86,6 +87,21 @@ for r in qtbase.mk; do
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 cp -v /work/build_info/qt6-*.control build_info/ 2>/dev/null || true
+
+# Qt round 3 links QtGui/EGL support against the ANGLE deb. ANGLE deliberately lives
+# outside /var/jb/usr at /var/jb/lib/angle plus /var/jb/include, so stage it into the
+# sysroot here instead of relying on CMAKE_FIND_ROOT_PATH.
+if ls /out/angle_*_iphoneos-arm64.deb >/dev/null 2>&1; then
+  ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep '+es3' | head -1 || true)
+  [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | head -1)
+  echo "==> staging ANGLE for Qt GL/EGL: ${ANGLE_DEB}"
+  rm -rf /tmp/angle-qt && mkdir -p /tmp/angle-qt
+  dpkg-deb -x "$ANGLE_DEB" /tmp/angle-qt
+  mkdir -p "$BB"
+  cp -a /tmp/angle-qt/var/jb/* "$BB"/
+else
+  echo "WARN: no angle deb in /out; qtbase GL/EGL configure will fail until angle is staged"
+fi
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"

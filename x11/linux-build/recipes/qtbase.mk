@@ -12,8 +12,8 @@ endif
 #   - FEATURE_framework=OFF: Qt on Apple defaults to .framework bundles; we need plain .dylib in
 #     /var/jb/usr/lib (same reason ANGLE ships dylibs not frameworks). MUST be off.
 #   - The cocoa platform plugin needs AppKit (absent on iOS) -> not built; default QPA = offscreen.
-#   - GL/ICU/OpenSSL OFF for the first build (offscreen needs none; GL comes later via ANGLE, the
-#     GTK4/Cogl path). Enable incrementally.
+#   - ICU/OpenSSL remain OFF for now. GL/EGL is ON in round 3 via ANGLE/Metal; the
+#     default QPA stays offscreen so non-Wayland tools do not accidentally require a compositor.
 # HOST tools: cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the IDENTICAL version
 # via QT_HOST_PATH. Target is 6.6.3 (Plasma 6.0/6.1 era), which no Debian release ships, so
 # build-qt.sh bootstraps a native host qtbase 6.6.3 from the same tarball into build_tools/ (one-time,
@@ -22,6 +22,7 @@ endif
 SUBPROJECTS    += qtbase
 QTBASE_VERSION := 6.6.3
 QT_MINOR       := 6.6
+# Round 3 (-3): ANGLE/OpenGL ES + EGL flipped ON for QtQuick/QtWayland GPU clients.
 # Round 2 (-2): dbus + printsupport + xkbcommon + atspi bridge flipped ON (KF6/a11y need
 # them). See the FEATURE_* block below and docs/kde-plasma-plan.md Q3. Round 1 was 6.6.3.
 # dbus is RUNTIME (dlopen) not linked: Qt's QtDBus loader uses QLibrary("dbus-1",3) which on a
@@ -34,7 +35,7 @@ QT_MINOR       := 6.6
 # widget deps are present) but links dead (vtable, no impl), so force printdialog +
 # printpreviewdialog OFF. kxmlgui wants the module for QPrinter, not the picker UI; nobody prints
 # from the iPad desktop. If a KF6 unit references QPrintDialog, patch it out KF6-side (plan Q3).
-DEB_QTBASE_V   ?= $(QTBASE_VERSION)-2
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)-3
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
@@ -43,6 +44,9 @@ QT_HOST_CMAKE_DIR := $(QT_HOST_PATH)/lib/cmake
 # Staged sysroot prefix (build_base/.../var/jb/usr) — round-2 cache seeds + FindATSPI2 synth
 # point here for the libs pkg-config would have located (pkg_config feature is OFF cross).
 QT_SYSROOT := $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
+QT_ANGLE_PREFIX := $(BUILD_BASE)$(MEMO_PREFIX)
+QT_ANGLE_INC    := $(QT_ANGLE_PREFIX)/include
+QT_ANGLE_LIB    := $(QT_ANGLE_PREFIX)/lib/angle
 
 # iOS stand-ins for the frameworks the disabled CONDITION-MACOS blocks would have linked
 # (CoreServices/MobileCoreServices carry UTType*, Security; UIKit for qcore_mac.mm's Q_OS_IOS
@@ -223,9 +227,14 @@ qtbase: qtbase-setup
 		-DFEATURE_cups=OFF \
 		-DFEATURE_printdialog=OFF \
 		-DFEATURE_printpreviewdialog=OFF \
-		-DFEATURE_opengl=OFF \
-		-DINPUT_opengl=no \
-		-DFEATURE_egl=OFF \
+		-DFEATURE_opengl=ON \
+		-DFEATURE_opengles2=ON \
+		-DINPUT_opengl:STRING=es2 \
+		-DFEATURE_egl=ON \
+		-DEGL_INCLUDE_DIR=$(QT_ANGLE_INC) \
+		-DEGL_LIBRARY=$(QT_ANGLE_LIB)/libEGL.dylib \
+		-DGLESv2_INCLUDE_DIR=$(QT_ANGLE_INC) \
+		-DGLESv2_LIBRARY=$(QT_ANGLE_LIB)/libGLESv2.dylib \
 		-DFEATURE_vulkan=OFF \
 		-DFEATURE_icu=OFF \
 		-DFEATURE_openssl=OFF \
@@ -256,7 +265,7 @@ qtbase: qtbase-setup
 		-DQT_QPA_DEFAULT_PLATFORM=offscreen
 	+ninja -C $(BUILD_WORK)/qtbase/build
 	+DESTDIR="$(BUILD_STAGE)/qtbase" ninja -C $(BUILD_WORK)/qtbase/build install
-	$(call AFTER_BUILD,copy)
+	$(call AFTER_BUILD,copy,qtbase,/var/jb/lib/angle)
 endif
 
 qtbase-package: qtbase-stage

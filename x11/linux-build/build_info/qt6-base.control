@@ -5,11 +5,11 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: libfontconfig1, libfreetype6, libharfbuzz0b, libpng16-16, libjpeg62-turbo, libpcre2-16-0, libxkbcommon0, dbus
+Depends: libfontconfig1, libfreetype6, libharfbuzz0b, libpng16-16, libjpeg62-turbo, libpcre2-16-0, libxkbcommon0, dbus, angle
 Description: Qt 6 core libraries for the Xios desktop
  Qt is a cross-platform C++ application framework. This build targets the
  rootless jailbreak environment as plain dylibs in /var/jb/usr/lib, built
- against the iPhoneOS SDK. The default platform plugin is offscreen until
- the Wayland platform lands.
+ against the iPhoneOS SDK. OpenGL ES/EGL resolves through ANGLE/Metal for
+ Wayland clients that use accelerated QtQuick or widgets.
  .
  Foundation package for the KDE Plasma Mobile flavor of the Xios desktop.

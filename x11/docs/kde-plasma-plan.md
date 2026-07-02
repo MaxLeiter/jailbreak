@@ -111,19 +111,22 @@ Round-2 procedure (recipe is already written for this, no structural change):
 ICU stays off for now (Qt falls back to its own tables; revisit if text segmentation
 bugs show up in Plasma - the ICU debs exist since the GNOME track built them).
 
-### Q4. GL on ANGLE: the wall, and the plan
+### Q4. GL on ANGLE: implemented first path, validation pending
 
-Naive qtwayland-EGL cannot work here: ANGLE's Metal backend has no wayland platform at
-all, and its window surfaces want a CAMetalLayer (see `hardware-gles-angle-metal-cli`;
-GDK hit the identical config wall on X11). This is the ONE real depth risk in the track.
+Naive ANGLE cannot speak Wayland: the Metal backend has no real Wayland platform, and
+native window surfaces want Apple objects, not `wl_egl_window`. The GTK4 work solved that
+with the iosc EGL shim now packaged as `/var/jb/lib/angle/libEGL.dylib`: clients think
+they are using Wayland EGL, while the shim creates an ANGLE Metal display and swaps
+IOSurface-backed Wayland buffers.
 
-Qt's escape hatch is cleaner than GTK's: the client buffer path in qtwayland is a
-designed plugin interface (`wayland-graphics-integration-client`), so the QPA creates the
-ANGLE Metal display itself and never asks ANGLE for a wayland platform.
+Qt round 3 now takes the same first path instead of starting with a Qt private-ABI plugin:
+`qtbase.mk` enables ES2/EGL against ANGLE, `qtwayland.mk` builds the stock `wayland-egl`
+client buffer integration, and the package metadata depends on `angle`. The detailed
+bring-up and fallback design live in `docs/qtwayland-angle-iosurface.md`.
 
 The concrete EGL bring-up below is transferred VERBATIM from team-lead's on-device P0.1
 validation of the GTK4/gdk-wayland-on-ANGLE path (2026-07-01); it is `xios_egl.c`'s exact
-sequence and must be matched byte-for-byte in the qtwayland integration plugin:
+sequence and must keep matching the shim:
 
 1. Display bring-up (the big one): the CORE `eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE)`
    returns `EGL_NO_DISPLAY` with `err=SUCCESS` on this ANGLE build — a silent no-op. ONLY
@@ -133,9 +136,10 @@ sequence and must be matched byte-for-byte in the qtwayland integration plugin:
    `native_display = EGL_DEFAULT_DISPLAY`. Do NOT pass the `wl_display` as the native
    display — ANGLE cannot make a Metal display from it (also `NO_DISPLAY`). Entrypoint and
    attrib width are both load-bearing; they are not spec-interchangeable here.
-2. There is NO `EGL_PLATFORM_WAYLAND` use anywhere. Surfaces come from `wl_egl_window` +
-   `EGL_ANGLE_iosurface_client_buffer` (the one-call pbuffer API, validated on the A10);
-   the plugin hands the resulting IOSurface to iosc over the existing zero-copy protocol.
+2. The client may request `EGL_PLATFORM_WAYLAND`, but only against the shim. The shim
+   remaps that to ANGLE Metal. Surfaces come from `wl_egl_window` +
+   `EGL_ANGLE_iosurface_client_buffer` (the one-call pbuffer API, validated on the A10)
+   and are handed to iosc over the existing zero-copy protocol.
 3. Swap barrier: `EGL_KHR_fence_sync` works on the A10 (validated) — use it, not
    `glFinish`.
 4. Packaging is not optional (this cost team-lead hours): the process needs GPU IOKit
@@ -144,9 +148,14 @@ sequence and must be matched byte-for-byte in the qtwayland integration plugin:
    with `NO_DISPLAY`, silently. See the packaging note below; this is baked into the KDE
    flavor from the start, not bolted on at Q4.
 
-Build side, qtbase round 2.5: `FEATURE_egl` + `FEATURE_opengles2` ON, pointed at
+Build side, qtbase round 3: `FEATURE_egl` + `INPUT_opengl=es2` are ON, pointed at
 `/var/jb/lib/angle/{libEGL,libGLESv2}.dylib`. Qt links EGL directly (it does not use
-epoxy), so this is cmake-level lib/include hints, not a loader shim.
+epoxy), so this is cmake-level lib/include hints plus an LC_RPATH to `/var/jb/lib/angle`.
+
+Fallback if stock QtWayland rejects the shim: build the pinned-Qt-6.6.3 private
+`wayland-graphics-integration-client/iosurface` plugin described in
+`docs/qtwayland-angle-iosurface.md`, moving the same swapchain logic out of the shim and
+behind Qt's client buffer integration ABI.
 
 This phase is not a gate for K/W1/P below; the software path carries them.
 

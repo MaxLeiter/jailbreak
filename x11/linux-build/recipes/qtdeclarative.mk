@@ -16,10 +16,10 @@ endif
 #     Q_OS_IOS disables it at runtime anyway. Turning the feature off also drops the
 #     assembler from the build. NO SpiderMonkey-style wall — this is the reason the KDE
 #     track is structurally easier than GNOME (x11-distribution-chooser memory).
-#   - Rendering: qtbase round 1 is built with opengl OFF, so QtQuick's RHI has no GL; the
-#     always-built SOFTWARE scenegraph adaptation (QT_QUICK_BACKEND=software, QPainter
-#     raster) is the first-light path over wayland-shm. GL-on-ANGLE lands with qtbase
-#     round 2 (docs/kde-plasma-plan.md, phase Q4).
+#   - Rendering: the SOFTWARE scenegraph adaptation (QT_QUICK_BACKEND=software, QPainter
+#     raster) remains the first-light fallback over wayland-shm. With qtbase round 3,
+#     QtQuick's OpenGL path resolves EGL/GLES through ANGLE/Metal for accelerated
+#     Wayland clients.
 # Shared Apple/Darwin flags + MACOS-condition fix: qt6-common.mk (rationale in qtbase.mk).
 
 SUBPROJECTS           += qtdeclarative
@@ -89,7 +89,10 @@ qtdeclarative-package: qtdeclarative-stage
 	done
 
 	$(call SIGN,qt6-declarative,general.xml)
-	$(call SIGN,qt6-declarative-dev,general.xml)
+	# qt6-declarative-dev carries the target `qml` runtime launcher used for the
+	# on-device GL smoke test. That executable creates the ANGLE Metal display, so
+	# it needs the GPU entitlement set and must skip general.xml/no-container.
+	$(call SIGN,qt6-declarative-dev,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,qt6-declarative,DEB_QTDECLARATIVE_V)
 	$(call PACK,qt6-declarative-dev,DEB_QTDECLARATIVE_V)
 	rm -rf $(BUILD_DIST)/qt6-declarative $(BUILD_DIST)/qt6-declarative-dev

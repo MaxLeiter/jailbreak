@@ -8,5 +8,5 @@ Homepage: https://www.qt.io/
 Depends: qt6-wayland (= @DEB_QTWAYLAND_V@), qt6-base-dev, libwayland-dev
 Description: Development files for the Qt 6 Wayland client
  Headers, CMake package files and private API glue for QtWaylandClient.
- Needed to build client buffer integration plugins (the planned IOSurface
- integration for ANGLE) and KDE components that use Wayland client APIs.
+ Needed for KDE components that use Wayland client APIs and for a future
+ IOSurface graphics-integration plugin if the stock EGL path needs replacing.
