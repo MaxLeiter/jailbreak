@@ -467,9 +467,14 @@ static void panel_draw_dock(cairo_t *cr, pr_text_ctx *t, int W, int H,
     int pk = m->press_kind, pi = m->press_idx;
 
     pr_fill_rrect(cr, dx, dy + 8, dw, dh, dh / 2, 0x4D000000u);
+    cairo_save(cr);
+    pr_rrect_path(cr, dx, dy, dw, dh, dh / 2);
+    cairo_clip(cr);
     pr_fill_rrect(cr, dx, dy, dw, dh, dh / 2, pl_with_alpha(TH_CARD, ba * 0.78));
+    pr_fill_rect(cr, dx + 18, dy + 1, dw - 36, 1.5, TH_HILITE);
+    pr_fill_rect(cr, dx + 24, dy + dh - 1.0, dw - 48, 1.0, 0x22000000u);
+    cairo_restore(cr);
     pr_stroke_rrect(cr, dx, dy, dw, dh, dh / 2, TH_BORDER, 1.0);
-    pr_fill_rrect(cr, dx + 1, dy + 1, dw - 2, 2, dh / 2, TH_HILITE);
 
     int x = dx + pad, iy = dy + pad;
     for (int i = 0; i < nfav; i++) {
@@ -504,7 +509,7 @@ static void panel_draw_dock(cairo_t *cr, pr_text_ctx *t, int W, int H,
     pl_draw_appgrid_glyph(cr, x + icon / 2.0, iy + icon / 2.0, TH_FG);
     hits->v[hits->n++] = (struct panel_hit){ x - 4, iy - 8, icon + 8, icon + 22, PL_HIT_APPGRID, 0 };
 
-    pr_fill_rrect(cr, W / 2 - 70, H - 9, 140, 5, 2.5, 0x80FFFFFFu);
+    pr_fill_rrect(cr, W / 2 - 44, H - 8, 88, 4, 2, 0x70FFFFFFu);
 }
 
 /* ---------------------------------------------------- quick settings ------ */

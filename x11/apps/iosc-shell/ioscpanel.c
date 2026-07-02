@@ -119,6 +119,12 @@ static struct {
     int   press_kind, press_idx;       /* touch-down feedback */
     struct wl_surface *touch_surf;
     int   touch_id;
+    int   touch_x0, touch_y0;
+    int   touch_moved;
+    uint32_t input_time;
+    uint32_t last_touch_up_time;
+    uint32_t last_launch_time;
+    int   last_launch_idx;
 
     /* deferred actions (never run screencopy/spawn inside a listener) */
     int   want_qs_toggle, want_overview, want_shot;
@@ -437,13 +443,25 @@ static void take_screenshot(void)
     cairo_surface_destroy(cap);
 }
 
+static int pdbg(void);
+
 /* Act on a hit (panel or QS). Heavy actions (screencopy, spawn) are deferred
  * to the main loop via want_* flags — never run roundtrips inside a listener. */
 static void act_on_hit(const struct panel_hit *r)
 {
     switch (r->kind) {
     case PL_HIT_LAUNCH:
-        if (r->idx < P.nlaunch) sd_launch(P.launch[r->idx].exec);
+        if (r->idx < P.nlaunch) {
+            uint32_t dt = P.input_time - P.last_launch_time;
+            if (P.last_launch_idx >= 0 && P.last_launch_idx == r->idx && dt < 700) {
+                if (pdbg()) fprintf(stderr, "%s: suppress duplicate launch idx=%d dt=%u\n",
+                                    mode_name(), r->idx, dt);
+                break;
+            }
+            P.last_launch_idx = r->idx;
+            P.last_launch_time = P.input_time;
+            sd_launch(P.launch[r->idx].exec);
+        }
         break;
     case PL_HIT_ACTIVATE:
         if (r->idx < P.ntasks && P.tasks[r->idx].handle)
@@ -565,6 +583,12 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t
     if (pdbg()) fprintf(stderr, "%s: pt_button 0x%x state=%u surf=%s at (%d,%d)\n",
                         mode_name(), button, state, P.ptr_surf ? "yes" : "NULL", P.px, P.py);
     if (state != WL_POINTER_BUTTON_STATE_PRESSED || button != 0x110 /*BTN_LEFT*/) return;
+    P.input_time = t;
+    if (P.last_touch_up_time && t - P.last_touch_up_time < 450) {
+        if (pdbg()) fprintf(stderr, "%s: suppress synthetic pointer after touch dt=%u\n",
+                            mode_name(), t - P.last_touch_up_time);
+        return;
+    }
     if (P.ptr_surf) hit_at(P.ptr_surf, P.px, P.py);
 }
 static void pt_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t a, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)a;(void)v; }
@@ -591,7 +615,7 @@ static const struct wl_pointer_listener pointer_listener = {
 };
 
 /* --------------------------------------------------------------- touch --- */
-/* Finger down = press feedback on the hit under it; finger up = act. */
+/* Finger down = press feedback; short tap acts; intentional swipes trigger shell gestures. */
 
 static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
                     struct wl_surface *sf, int32_t id, wl_fixed_t x, wl_fixed_t y)
@@ -599,7 +623,9 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     (void)d;(void)t;(void)serial;(void)time;
     if (P.touch_surf) return;                    /* single-touch UI */
     P.touch_surf = sf; P.touch_id = id;
+    P.input_time = time;
     P.px = wl_fixed_to_int(x); P.py = wl_fixed_to_int(y);
+    P.touch_x0 = P.px; P.touch_y0 = P.py; P.touch_moved = 0;
     const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
     int i = pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py));
     if (pdbg()) fprintf(stderr, "%s: tc_down id=%d %s logical(%d,%d) ui=%.3f -> press %d\n",
@@ -612,12 +638,41 @@ static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, i
     (void)d;(void)t;(void)serial;(void)time;
     if (!P.touch_surf || id != P.touch_id) return;
     struct wl_surface *sf = P.touch_surf;
+    P.input_time = time;
+    P.last_touch_up_time = time;
+    int dx = P.px - P.touch_x0, dy = P.py - P.touch_y0;
+    int adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
     P.touch_surf = NULL; P.press_kind = 0; P.press_idx = 0;
-    hit_at(sf, P.px, P.py);
+    if (ady >= 34 && ady > adx * 2) {
+        if (sf == P.surf && P.mode == MODE_DOCK && dy < 0) {
+            P.want_overview = 1;
+            if (pdbg()) fprintf(stderr, "%s: gesture dock swipe up -> overview\n", mode_name());
+        } else if (sf == P.surf && P.mode == MODE_BAR && dy > 0) {
+            P.want_qs_toggle = 1;
+            if (pdbg()) fprintf(stderr, "%s: gesture status swipe down -> quick settings\n", mode_name());
+        } else if (sf == P.qs_surf && dy < 0) {
+            P.want_qs_toggle = 1;
+            if (pdbg()) fprintf(stderr, "%s: gesture qs swipe up -> close\n", mode_name());
+        }
+    } else if (!P.touch_moved) {
+        hit_at(sf, P.px, P.py);
+    } else if (pdbg()) {
+        fprintf(stderr, "%s: touch ended after drag dx=%d dy=%d -> no tap\n", mode_name(), dx, dy);
+    }
     rerender_for(sf);
 }
 static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id, wl_fixed_t x, wl_fixed_t y)
-{ (void)d;(void)t;(void)time; if (P.touch_surf && id == P.touch_id) { P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y); } }
+{
+    (void)d;(void)t;(void)time;
+    if (P.touch_surf && id == P.touch_id) {
+        P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y);
+        int dx = P.px - P.touch_x0, dy = P.py - P.touch_y0;
+        if ((dx < 0 ? -dx : dx) > 10 || (dy < 0 ? -dy : dy) > 10) {
+            P.touch_moved = 1;
+            if (P.press_kind) { P.press_kind = 0; P.press_idx = 0; rerender_for(P.touch_surf); }
+        }
+    }
+}
 static void tc_frame(void *d, struct wl_touch *t){ (void)d;(void)t; }
 static void tc_cancel(void *d, struct wl_touch *t)
 { (void)d;(void)t; struct wl_surface *sf = P.touch_surf; P.touch_surf=NULL; P.press_kind=0; P.press_idx=0; if (sf) rerender_for(sf); }
@@ -741,6 +796,7 @@ int main(int argc, char **argv)
     signal(SIGCHLD, SIG_IGN);
     memset(&P, 0, sizeof P);
     P.mode = MODE_PANEL;
+    P.last_launch_idx = -1;
     if (argc > 0) {
         char btmp[512]; snprintf(btmp, sizeof btmp, "%s", argv[0]);
         char *bn = basename(btmp);
