@@ -251,10 +251,41 @@ static int wayland_sock_live(const char *path)
     return live;
 }
 
+/* Bring up the desktop audio stack (xios-audiod + PulseAudio) via the pulse
+ * profile helper, the same way the run-*.sh launchers do. We shell out because
+ * xios_pulse_start lives in profile.d and ioscd links nothing audio-related.
+ * Idempotent: the helper no-ops when each daemon is already up, so calling it
+ * from every ensure_iosc is cheap. Synchronous wait (the helper sleeps ~1s at
+ * most) so the daemons are up before the first client connects. */
+static void ensure_audio(void)
+{
+    pid_t pid = fork();
+    if (pid < 0) return;
+    if (pid == 0) {
+        setsid();
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            dup2(devnull, 0); dup2(devnull, 1); dup2(devnull, 2);
+            if (devnull > 2) close(devnull);
+        }
+        setenv("XDG_RUNTIME_DIR", TMP, 1);
+        setenv("PATH", "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin", 1);
+        execl(BASH_BIN, "bash", "-lc",
+              ". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null && xios_pulse_start",
+              (char *)NULL);
+        _exit(127);
+    }
+    int status;
+    waitpid(pid, &status, 0);
+}
+
 /* Start iosc the way run-iosc.sh does: nohup it with XDG_RUNTIME_DIR=/var/jb/tmp,
  * wait for the wayland socket + the app-handshake json, then fix socket perms. */
 static int ensure_iosc(int native)
 {
+    /* Desktop audio comes up alongside the compositor, before any client. */
+    ensure_audio();
+
     const struct mode_cfg *mode = mode_cfg(native);
     char owner[64];
 

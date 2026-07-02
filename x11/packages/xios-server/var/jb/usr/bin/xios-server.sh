@@ -16,7 +16,10 @@ export HOME=/var/root
 [ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
 command -v xios_apply_display_profile >/dev/null 2>&1 && xios_apply_display_profile
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
-command -v xios_audio_start >/dev/null 2>&1 && xios_audio_start
+# Desktop audio: the pulse profile helper starts xios-audiod AND PulseAudio and
+# exports PULSE_SERVER at the PA native socket, so we call it instead of the old
+# xios_audio_start (which only started the XIOA daemon). Idempotent.
+[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
 
 TMP=/var/jb/tmp
 DISP="${DISP:-:3}"

@@ -45,7 +45,10 @@ mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" /var/jb/var/lib
 chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
 command -v xios_load_xresources >/dev/null 2>&1 && xios_load_xresources
-command -v xios_audio_start >/dev/null 2>&1 && xios_audio_start
+# Desktop audio: the pulse profile helper starts xios-audiod AND PulseAudio and
+# exports PULSE_SERVER at the PA native socket, so we call it instead of the old
+# xios_audio_start (which only started the XIOA daemon). Idempotent.
+[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
 
 # --- kill the previous XFCE session WE started (scoped to this display) -------
 # Kill by recorded PID only — never a global pkill (would nuke another session).

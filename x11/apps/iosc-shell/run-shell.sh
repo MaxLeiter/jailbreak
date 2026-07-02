@@ -52,6 +52,12 @@ export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-1}"
 SOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 log() { echo "run-shell: $*" >&2; }
 
+# -- 0. desktop audio --------------------------------------------------------
+# Start xios-audiod + PulseAudio (and export PULSE_SERVER) before the compositor
+# so shell clients find a live PA socket. Idempotent; the trailing `|| true`
+# keeps `set -e` from aborting when the profile snippet isn't installed.
+[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start || true
+
 # -- 1. compositor -----------------------------------------------------------
 if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
     if [ -x "$BIN/iosc" ]; then

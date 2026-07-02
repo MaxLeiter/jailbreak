@@ -32,6 +32,10 @@ sleep 1
 rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/xios.json" \
       "$TMP/iosc.log" "$TMP/kgx.log" 2>/dev/null
 
+# Desktop audio (xios-audiod + PulseAudio, PULSE_SERVER export) before the
+# compositor so kgx and any GTK client find a live PA socket. Idempotent.
+[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+
 echo "==> start iosc (compositor) -> $TMP/iosc.log"
 nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" >"$TMP/iosc.log" 2>&1 </dev/null &
 ICPID=$!

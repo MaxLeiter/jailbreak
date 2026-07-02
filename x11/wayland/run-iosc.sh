@@ -27,6 +27,11 @@ rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/iosc-native-ddx.sock" \
 # Logical desktop; iosc renders a 2x-oversized IOSurface the app supersamples down
 # to the panel for the ~1.5 effective scale (Max-approved). Override via IOSC_LOGICAL.
 IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
+
+# Bring up the desktop audio stack (xios-audiod + PulseAudio, PULSE_SERVER export)
+# before the compositor so Wayland clients find a live PA socket. Idempotent.
+[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+
 echo "==> start iosc (compositor, logical $IOSC_LOGICAL) -> $TMP/iosc.log"
 nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
 ICPID=$!

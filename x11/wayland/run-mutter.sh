@@ -50,6 +50,11 @@ if [ ! -e /var/jb/usr/share/glib-2.0/schemas/gschemas.compiled ]; then
   glib-compile-schemas /var/jb/usr/share/glib-2.0/schemas 2>/dev/null || true
 fi
 
+# Desktop audio (xios-audiod + PulseAudio, PULSE_SERVER export) before the
+# compositor so clients launched under mutter find a live PA socket; the export
+# is inherited by the dbus-run-session child below. Idempotent.
+[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+
 echo "==> start mutter --wayland (MetaBackendIOS) -> $TMP/mutter.log"
 # DYLD_LIBRARY_PATH resolves @rpath leaf names: libmutter-14.dylib (usr/lib), the cogl/clutter/mtk
 # sub-dylibs (usr/lib/mutter-14), and libGLESv2/libEGL (lib/angle). Mutter acquires org.gnome.Mutter*

@@ -109,7 +109,7 @@ nohup env \
     [ -x '"$LIBEXEC"'/xios-accounts-stub ] && '"$LIBEXEC"'/xios-accounts-stub &
     [ -x '"$LIBEXEC"'/xios-hwbridged ]    && '"$LIBEXEC"'/xios-hwbridged &
     [ -x '"$LIBEXEC"'/xios-sensord ]      && '"$LIBEXEC"'/xios-sensord &
-    export PULSE_SERVER="${PULSE_SERVER:-unix:/var/jb/tmp/pulse/native}"
+    [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
     [ -x '"$LIBEXEC"'/xios-sysintd ]      && '"$LIBEXEC"'/xios-sysintd &
     sleep 1
     exec gnome-shell --wayland

@@ -17,6 +17,10 @@ export HOME=/var/root
 [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
 command -v xios_apply_display_profile >/dev/null 2>&1 && xios_apply_display_profile
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
+# Desktop audio: start xios-audiod + PulseAudio and export PULSE_SERVER via the
+# pulse profile helper (plays through the device speakers regardless of the VNC
+# viewer). Idempotent.
+[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
 export DISPLAY=:1
 export XAUTHORITY=$HOME/.Xauthority
 
