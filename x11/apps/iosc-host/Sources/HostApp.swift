@@ -42,6 +42,7 @@ final class HostSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let ws = scene as? UIWindowScene { NativeManager.shared.sceneDisconnected(ws) }
     }
     func sceneDidBecomeActive(_ scene: UIScene) {
+        HostSystemAppearance.shared.update(from: scene)
         if let ws = scene as? UIWindowScene { NativeManager.shared.sceneBecameKey(ws) }
     }
     func sceneWillResignActive(_ scene: UIScene) {

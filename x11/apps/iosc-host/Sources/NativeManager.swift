@@ -172,11 +172,12 @@ final class NativeManager: NSObject {
         guard let p = pending[id] else { return }
         pending[id] = nil
         let view = HostScreenView(window_id: id, manager: self)
-        let vc = UIViewController()
+        let vc = HostSceneViewController()
         vc.view = view
         let win = UIWindow(windowScene: scene)
         win.rootViewController = vc
         win.makeKeyAndVisible()
+        HostSystemAppearance.shared.update(from: scene.traitCollection)
         objc_setAssociatedObject(scene, &Self.windowKey, win, .OBJC_ASSOCIATION_RETAIN)
         view.start()
         view.adoptCanvas(p.surface, width: p.width, height: p.height)

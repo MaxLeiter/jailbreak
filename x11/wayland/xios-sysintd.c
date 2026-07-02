@@ -61,19 +61,27 @@ static uint64_t now_ms(void)
 
 /* Spawn argv[0] via PATH, wait, log failures. The appliers are quick one-shots
  * (pactl/gsettings); waiting keeps the daemon zombie-free and serializes writes. */
-static void run(char *const argv[])
+static int run(char *const argv[])
 {
     pid_t pid;
     int rc = posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ);
     if (rc != 0) {
         fprintf(stderr, "xios-sysintd: spawn %s failed: %s\n", argv[0], strerror(rc));
-        return;
+        return 127;
     }
     int st = 0;
     while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
         ;
-    if (WIFEXITED(st) && WEXITSTATUS(st) != 0)
-        fprintf(stderr, "xios-sysintd: %s exited %d\n", argv[0], WEXITSTATUS(st));
+    if (WIFEXITED(st)) {
+        if (WEXITSTATUS(st) != 0)
+            fprintf(stderr, "xios-sysintd: %s exited %d\n", argv[0], WEXITSTATUS(st));
+        return WEXITSTATUS(st);
+    }
+    if (WIFSIGNALED(st)) {
+        fprintf(stderr, "xios-sysintd: %s killed by signal %d\n", argv[0], WTERMSIG(st));
+        return 128 + WTERMSIG(st);
+    }
+    return 1;
 }
 
 static void apply_volume(int v16)
@@ -89,8 +97,11 @@ static void apply_volume(int v16)
 static void apply_appearance(int dark)
 {
     char *scheme[] = { "gsettings", "set", "org.gnome.desktop.interface",
-                       "color-scheme", dark ? "prefer-dark" : "default", NULL };
-    run(scheme);
+                       "color-scheme", dark ? "prefer-dark" : "prefer-light", NULL };
+    char *scheme_fallback[] = { "gsettings", "set", "org.gnome.desktop.interface",
+                                "color-scheme", "default", NULL };
+    if (run(scheme) != 0 && !dark)
+        run(scheme_fallback);
     if (!s_no_gtk3) {
         char *theme[] = { "gsettings", "set", "org.gnome.desktop.interface",
                           "gtk-theme",
@@ -101,9 +112,9 @@ static void apply_appearance(int dark)
 }
 
 static void on_record(const struct xios_in_msg *m, const char *text,
-                      size_t text_len, void *user)
+                      size_t text_len, uint32_t bound_window, void *user)
 {
-    (void)text; (void)text_len; (void)user;
+    (void)text; (void)text_len; (void)bound_window; (void)user;
     switch (m->type) {
     case XIOS_IN_VOLUME: {
         int v = (int)(m->code > 65535u ? 65535u : m->code);
@@ -158,7 +169,10 @@ int main(void)
             fprintf(stderr, "xios-sysintd: poll: %s\n", strerror(errno));
             break;
         }
-        if (pr > 0 && xios_input_socket_dispatch(srv, on_record, NULL) < 0) {
+        /* The input-socket callback grew bound_window in the native-window workstream.
+         * xios-sysintd ignores that field, so this remains compatible with either
+         * header shape while that refactor is in flight. */
+        if (pr > 0 && xios_input_socket_dispatch(srv, (xios_input_cb)on_record, NULL) < 0) {
             fprintf(stderr, "xios-sysintd: socket error, exiting\n");
             break;
         }
