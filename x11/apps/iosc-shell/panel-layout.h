@@ -416,7 +416,7 @@ static void panel_draw_statusbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
             x -= 14;
         }
     }
-    pl_draw_wifi_glyph(cr, x - 13, cy - 7, TH_FG_DIM);
+    pl_draw_wifi_glyph(cr, x - 13, cy, TH_FG_DIM);
     hits->v[hits->n++] = (struct panel_hit){ x0 - 8, 0, cluster_w + 16, H, PL_HIT_STATUS, 0 };
 }
 
