@@ -40,6 +40,10 @@
 #define LO_BP_DATE      900    /* below this the panel drops the date  */
 #define LO_BP_PCT       680    /* below this it drops the battery %    */
 
+/* Right-side space reserved from the launcher strip for the status cluster +
+ * a minimum taskbar (safety cap so the strip can never run off the edge). */
+#define LO_LAUNCH_RESERVE  360
+
 #define QS_MAXW         380    /* quick-settings card width cap */
 #define QS_MARGIN       10     /* gap between panel/screen edge and the card */
 /* The card fills the output minus margins on narrow screens, capped wide. */
@@ -194,8 +198,13 @@ static void panel_draw_topbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
     x += LO_PAD;
 
     /* -- launcher strip: real icons, subtle hover backplate -- */
+    /* Safety: never let the strip run into the status cluster / off the right
+     * edge. Reserve room on the right; stop drawing launchers past it. (At
+     * realistic app counts the strip is far shorter, so this is a no-op guard.) */
+    int launch_limit = W - LO_LAUNCH_RESERVE;
     for (int i = 0; i < m->nlaunch; i++) {
         int cell = LO_ICON + LO_ICON_PADX * 2;
+        if (x + cell > launch_limit) break;
         int iy = (H - LO_ICON) / 2;
         int hov = pl__hover(m, x, 0, cell, H);
         int prs = pl__pressed(pk, pi, PL_HIT_LAUNCH, i);

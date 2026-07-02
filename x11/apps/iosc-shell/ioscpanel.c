@@ -52,7 +52,7 @@
 /* Reference design space (matches preview-host.c + shell-theme.h tuning). The
  * panel is always drawn PL_REF_W wide x PL_REF_H tall in these units, then
  * scaled to the real output by P.ui so its on-glass size is -logical-invariant. */
-#define IOSCPANEL_VER "0.9.5"
+#define IOSCPANEL_VER "0.9.6"
 
 #define PL_REF_W    1440
 #define PL_REF_H    64     /* >= TH_TOUCH (44+ iOS pt at the 1.5 default) */
