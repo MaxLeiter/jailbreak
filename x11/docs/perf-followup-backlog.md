@@ -53,7 +53,7 @@ P1.7 ✅ DONE 2026-07-02 — iosc's shared input socket now flushes Wayland clie
 
 === P2 — Deferred followups / cleanups ===
 
-P2.1 iosc.c megafile refactor is QUEUED and the file keeps growing: refactor-plan.md says 4021 lines; it's now 5733 (plus XScreen.swift 1676). Plan's precondition list (panel + input-unification landed, blend fix validated, freeze announced) — input-unification (P1.1) is now done, so the refactor gate is closer. XScreen.swift split is low-contention and can go first per the plan.
+P2.1 iosc.c megafile refactor is QUEUED and the file keeps growing: it's now 7153 lines (plus XScreen.swift 2735); refactor-plan.md is updated to match. Plan's precondition list (panel + input-unification landed, blend fix validated, freeze announced) — input-unification (P1.1) is now done, so the refactor gate is closer. XScreen.swift split is low-contention and can go first per the plan.
 
 P2.2 Post-ICU re-enables (ICU build is task #3, in progress): (a) restore EDS/calendar-server in gnome-shell — recipes/gnome-shell-ios-fixes.sh:4-10 does the "EDS-ectomy," JS side degrades to an empty calendar; (b) rebuild tracker with ICU — tracker.mk:52-58 forces unistring ("only cost is no ICU-quality locale collation").
 
@@ -65,7 +65,7 @@ P2.5 Nautilus ecosystem holes: no gvfs (Trash/Network empty), tracker-sparql bui
 
 P2.6 ✅ DONE 2026-07-02 — iosc-desktop-env.md now documents the landed app_id raise socket and `ngl` GTK default; refactor-plan.md line counts/gates were refreshed. Original finding: iosc-desktop-env.md §7 still says iosc "cannot" raise by app_id and requests the feature — it HAS landed (wm control socket + wm_find_toplevel_by_app_id, iosc.c:4898-4940, socket up at iosc.c:5705). refactor-plan.md line counts stale (P2.1). Worth a doc pass so future agents don't re-implement.
 
-P2.7 Uncommitted WIP in the working tree: apps/iosc-shell (build-panel.sh, iosc-shell.c, shell-draw.h), linux-build/recipes/startup-notification.mk, and rebuilt wayland/out binaries. The shell is PARKED per the distribution-chooser pivot — decide commit-or-drop so the parked track isn't half-staged.
+P2.7 Uncommitted WIP in the working tree: apps/iosc-shell (build-panel.sh, iosc-shell.c, shell-draw.h), linux-build/recipes/startup-notification.mk, and rebuilt wayland/out binaries. NOTE (2026-07-02): the "PARKED per the distribution-chooser pivot" framing is now stale — the iosc-shell track has active, committed development (e.g. 1ee9ed9 configurable desktop widgets, b4819cd redraw hot-path optimization, 906f36d dock gestures, 4a99f44 bar/dock surface split), and iosc-shell.c + panel-layout.h are again modified in the working tree. Treat this as an active track, not a parked one; the residual action is still to commit-or-drop the loose working-tree changes so it isn't half-staged.
 
 P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/jb/usr/bin/bash -i`; the stale `-e <cmd>` memory note was incorrect for the current scripts. Original finding: kgx quirk: needs `-e <cmd>` to launch (memory note) — root-cause the default-shell spawn rather than carrying the workaround into launcher .desktop files.
 

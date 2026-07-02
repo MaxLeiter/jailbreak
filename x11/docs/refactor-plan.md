@@ -12,10 +12,10 @@ Only OUR source > ~500 lines. EXCLUDE vendored/third-party entirely (do not touc
 - Generated `*-protocol.c/.h` (wayland-scanner output).
 
 ## Real candidates (our code)
-1. `x11/wayland/iosc.c` — **~6200 lines** — the compositor monolith. HOTTEST file
+1. `x11/wayland/iosc.c` — **~7153 lines** — the compositor monolith. HOTTEST file
    (edited by iosc-input = panel/protocols, iosc-cursor = blend; mutter meta-*-ios do NOT
    touch it). Refactor LAST, behind a coordinated freeze.
-2. `x11/apps/Xios/Sources/XScreen.swift` — **~2500 lines** — Xios app screen/render/input.
+2. `x11/apps/Xios/Sources/XScreen.swift` — **~2735 lines** — Xios app screen/render/input.
    Lower contention; can go first.
 
 (Note: iosc_gl.c, xios_egl.c, xios_surface.c, xios_input_socket.c already factored out of

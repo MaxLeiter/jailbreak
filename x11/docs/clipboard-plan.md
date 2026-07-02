@@ -10,6 +10,26 @@ lead's call — the ~150-line delete-and-extract here is itself refactor-
 shaped, so landing with/just-after the split may be cleanest), and the
 XScreen.swift pasteboard patch is with xios-app.
 
+## Status update (2026-07-02)
+
+- **App side LANDED (9470335):** `serviceIoscClipboard` was rewritten to the
+  multi-item API on the 32-byte 'XMS1' typed envelope (`XIOS_MSG_CLIPBOARD`
+  0x04); `lastSentPasteboard` and the transitional text-only wrappers are gone.
+- **Compositor side NOT yet landed:** the `iosc-clipboard-bridge.{c,h}` files
+  are committed (e83e216) but INERT — not added to the iosc compile line in
+  `build-iosc.sh` and not `#include`d/called from `iosc.c`. iosc.c still runs
+  the OLD inline text-only clipboard framing (`struct iosc_clip_msg {type,len}`,
+  8-byte header). So there is a live WIRE-SKEW: the app speaks the 32-byte 0x04
+  record, iosc speaks the old 8-byte framing, so cross-system sync is dead until
+  the "iosc.c integration" step-list below lands.
+- **wlr-data-control (009bbd8) is LANDED and complementary, not competing.** The
+  `zwlr_data_control_manager_v1` protocol is implemented and compiled into iosc
+  (iosc.c + build-iosc.sh). It shares the SAME `g_clip_items` selection store as
+  `wl_data_device` via `clip_ingest_source()` (so wl-copy/wl-paste and clipboard
+  managers work without keyboard focus, and `source_read_done` still feeds the
+  iOS-pasteboard bridge). It does not replace this plan's iOS<->Wayland bridge;
+  it feeds the same store the bridge would publish from.
+
 ## What already existed
 
 iosc has held the desktop clipboard since the wl_data_device work: a copying

@@ -14,7 +14,7 @@
 - iosc composites at logical N×M with 2× supersample → output IOSurface = 2N×2M (e.g. `-logical 1600x1200` → 3200×2400). Default in run-shell.sh is 1440×1080.
 - Input path PROVEN correct on-device: `surface_at()` pick is role-agnostic (delivers wl_pointer + wl_touch to layer surfaces too, not just toplevels); `handle_motion`/`handle_button`/`handle_touch` route to the hit surface's client; `iosc_input_record` divides output-px by `output_scale` ONCE (`iosc.c:4922-4923`) — no double-divide. Injected known-coord taps land dead-on.
 - Layer-surface translucency (alpha blend) needs iosc ≥ 0.9.1 (commit e11aa52); deployed iosc has it.
-- Cursor overlay + typed HELLO/DIRTY/CURSOR framing landed. AXIS scroll wire + touch (type 6) + tablet/Pencil (type 7) wire decode landed (Xios app halves for 6/7 were pending in the scroll/clipboard next-wave).
+- Cursor overlay + typed HELLO/DIRTY/CURSOR framing landed. AXIS scroll wire + touch (type 6) + tablet/Pencil (type 7) wire decode landed (3ebf085). The Xios app halves also landed (`sendScroll`/`iosc_input_touch`/`iosc_input_tablet`, 9470335) — both sides are in, not pending.
 
 ## Known compositor-side issues
 1. **Zombie surfaces**: iosc appears to keep compositing a surface after its client dies (restarting a shell client many times stacks stale panels visible over the live one). WORTH INVESTIGATING: does iosc destroy client surfaces on wl_client disconnect? If not, that's a resource leak + the zombie-panel cause. Workaround today = restart iosc to clear all surfaces.
