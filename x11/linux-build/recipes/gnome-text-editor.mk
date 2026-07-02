@@ -23,7 +23,7 @@ gnome-text-editor-setup: setup
 	# iOS port: src/editor-path.c uses wordexp()/wordfree() (unavailable on iOS,
 	# sandbox). Patch to a GLib leading-~ expansion (idempotent; mounted at /work/recipes).
 	bash /work/recipes/gnome-text-editor-ios-fixes.sh $(BUILD_WORK)/gnome-text-editor
-	mkdir -p $(BUILD_WORK)/gnome-text-editor/build
+	rm -rf $(BUILD_WORK)/gnome-text-editor/build && mkdir -p $(BUILD_WORK)/gnome-text-editor/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
 	cpu_family = '$(shell echo $(GNU_HOST_TRIPLE) | cut -d- -f1)'\n \
@@ -43,16 +43,11 @@ ifneq ($(wildcard $(BUILD_WORK)/gnome-text-editor/.build_complete),)
 gnome-text-editor:
 	@echo "Using previously built gnome-text-editor."
 else
-gnome-text-editor: gnome-text-editor-setup gtk4 libadwaita gtksourceview5 editorconfig
-	# enchant=disabled: the enchant spell feature unconditionally pulls icu-uc, and ICU
-	# does not cross-compile cleanly here (its autotools host-tools stage loses
-	# -stdlib=libc++ -> <memory> not found). Spellcheck is a non-essential feature; drop
-	# it so the editor builds. Revisit if ICU gets a working cross recipe. (editorconfig
-	# stays — it built fine via its own CMake recipe.)
+gnome-text-editor: gnome-text-editor-setup gtk4 libadwaita gtksourceview5 editorconfig enchant
 	cd $(BUILD_WORK)/gnome-text-editor/build && meson \
 		--cross-file cross.txt \
 		-Ddevelopment=false \
-		-Denchant=disabled \
+		-Denchant=enabled \
 		..
 	+ninja -C $(BUILD_WORK)/gnome-text-editor/build
 	+DESTDIR="$(BUILD_STAGE)/gnome-text-editor" ninja -C $(BUILD_WORK)/gnome-text-editor/build install

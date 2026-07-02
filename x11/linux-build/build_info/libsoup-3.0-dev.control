@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://libsoup.org/
-Depends: libsoup-3.0-0 (= @DEB_LIBSOUP3_V@), libglib2.0-dev
+Depends: libsoup-3.0-0 (= @DEB_LIBSOUP3_V@), libglib2.0-dev, libbrotli-dev
 Description: Development files for libsoup 3
  Development headers, the unversioned shared-library symlink, and the pkg-config
  file needed to build software against libsoup-3.0.

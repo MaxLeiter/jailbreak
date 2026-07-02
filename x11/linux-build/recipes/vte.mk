@@ -10,7 +10,8 @@ endif
 # widget (libvte-2.91) for gnome-terminal once GTK3 lands: flip `-Dgtk3=true`, add `gtk+3.0`
 # to the deps line, and re-add the libvte-2.91-0 packaging block (kept below, commented).
 #
-# DEPENDS (target): gtk4 (gtk-builder) + libxml2 + pcre2 (+ pango/fribidi/glib in stack).
+# DEPENDS (target): gtk4 (gtk-builder) + libxml2 + pcre2 + gnutls + icu4c
+#   (+ pango/fribidi/glib in stack).
 #
 # DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
 
@@ -22,7 +23,7 @@ DEB_VTE_V    ?= $(VTE_VERSION)
 vte-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/vte/$(VTE_MAJOR_V)/vte-$(VTE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,vte-$(VTE_VERSION).tar.xz,vte-$(VTE_VERSION),vte)
-	mkdir -p $(BUILD_WORK)/vte/build
+	rm -rf $(BUILD_WORK)/vte/build && mkdir -p $(BUILD_WORK)/vte/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
 	cpu_family = '$(shell echo $(GNU_HOST_TRIPLE) | cut -d- -f1)'\n \
@@ -42,7 +43,7 @@ ifneq ($(wildcard $(BUILD_WORK)/vte/.build_complete),)
 vte:
 	@echo "Using previously built vte."
 else
-vte: vte-setup gtk4 libxml2 pcre2
+vte: vte-setup gtk4 libxml2 pcre2 gnutls icu4c
 	cd $(BUILD_WORK)/vte/build && meson \
 		--cross-file cross.txt \
 		-D_systemd=false \
@@ -50,10 +51,10 @@ vte: vte-setup gtk4 libxml2 pcre2
 		-Dgtk4=true \
 		-Dvapi=false \
 		-Dgir=false \
-		-Dgnutls=false \
+		-Dgnutls=true \
 		-Ddocs=false \
 		-D_b_symbolic_functions=false \
-		-Dicu=false \
+		-Dicu=true \
 		..
 	+ninja -C $(BUILD_WORK)/vte/build
 	+DESTDIR="$(BUILD_STAGE)/vte" ninja -C $(BUILD_WORK)/vte/build install

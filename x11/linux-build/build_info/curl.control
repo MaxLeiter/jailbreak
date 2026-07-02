@@ -1,0 +1,12 @@
+Package: curl
+Version: @DEB_CURL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Networking
+Priority: optional
+Homepage: https://curl.se/
+Depends: libcurl4 (= @DEB_CURL_V@)
+Description: command line URL transfer tool
+ curl is a command-line tool for transferring data with URL syntax. This build
+ uses OpenSSL and includes HTTP/2, IDN, PSL, Brotli, and zstd support while
+ omitting SSH, RTMP, c-ares, and HTTP/3 backends.

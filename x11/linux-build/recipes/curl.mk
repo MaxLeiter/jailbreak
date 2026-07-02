@@ -4,9 +4,8 @@ endif
 
 # curl.mk — OVERRIDE of upstream Procursus curl for the GNOME (build-gnome.sh) track.
 # Only here because AppStream 1.0 hard-requires libcurl. AppStream only needs basic HTTP(S)
-# downloads, so this strips the heavy/blocking backends: upstream pulls nghttp2 (HTTP/2), whose
-# OWN recipe deps nghttp3 + ngtcp2 (HTTP/3 tooling) — and nghttp3 fails to cross-compile
-# (std::invoke_result_t / C++17). Also drop libssh2, librtmp, c-ares. Keep openssl (TLS) plus
+# downloads, so this strips the heavy/blocking backends: libssh2, librtmp, c-ares, and HTTP/3
+# tooling. Keep HTTP/2 via our lib-only nghttp2 recipe plus openssl (TLS) and
 # zstd/brotli/libidn2 (already built in the volume → free). Result: a lean libcurl.4 that
 # satisfies appstream's pkg-config probe without the HTTP/2+3 dependency tree.
 
@@ -24,7 +23,7 @@ ifneq ($(wildcard $(BUILD_WORK)/curl/.build_complete),)
 curl:
 	@echo "Using previously built curl."
 else
-curl: curl-setup gettext openssl libidn2 brotli zstd
+curl: curl-setup gettext openssl libidn2 brotli zstd nghttp2
 	cd $(BUILD_WORK)/curl && autoreconf -vi
 	cd $(BUILD_WORK)/curl && ./configure -C \
 		$(DEFAULT_CONFIGURE_FLAGS) \
@@ -32,7 +31,7 @@ curl: curl-setup gettext openssl libidn2 brotli zstd
 		--with-libidn2 \
 		--with-brotli \
 		--with-zstd \
-		--without-nghttp2 \
+		--with-nghttp2 \
 		--without-nghttp3 \
 		--without-ngtcp2 \
 		--without-libssh2 \

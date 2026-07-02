@@ -1,0 +1,14 @@
+Package: libcurl4-openssl-dev
+Version: @DEB_CURL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://curl.se/
+Provides: libcurl-dev (= @DEB_CURL_V@)
+Depends: libcurl4 (= @DEB_CURL_V@), libidn2-dev, libssl-dev, libnghttp2-dev, libpsl-dev, libzstd-dev, libbrotli-dev
+Replaces: curl (<< @DEB_CURL_V@)
+Conflicts: curl (<< @DEB_CURL_V@)
+Description: development files for libcurl
+ Headers, pkg-config metadata, the unversioned shared-library symlink, static
+ library, and manual pages for building software against this OpenSSL libcurl.

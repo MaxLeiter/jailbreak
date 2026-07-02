@@ -52,7 +52,7 @@ from the original GNOME-45 draft forced one soname change: **libadwaita 1.5 requ
 | `libxmlb.mk` | libxmlb2, -dev | 0.3.14 | glib (+ prebuilt lzma/zstd) | EASY |
 | `appstream.mk` | **libappstream5**, -dev | **1.0.3** | glib, libxml2, libyaml, libxmlb | MEDIUM |
 | `libadwaita.mk` | libadwaita-1-0, -dev | **1.5.0** | **gtk4**, appstream, fribidi | MEDIUM |
-| `vte.mk` | libvte-2.91-gtk4-0, -dev | **0.76.6** | **gtk4**, libxml2, pcre2 | MEDIUM |
+| `vte.mk` | libvte-2.91-gtk4-0, -dev | **0.76.6** | **gtk4**, libxml2, pcre2, gnutls, icu4c | MEDIUM |
 | `gtksourceview5.mk` | libgtksourceview-5-0, -dev | **5.12.1** | **gtk4**, libxml2, pcre2 | EASY-MED |
 | `enchant.mk` | libenchant-2-2, -dev | 2.6.1 | glib (autotools) | EASY |
 | `json-glib.mk` | libjson-glib-1.0-0, -dev | 1.8.0 | glib | EASY |
@@ -62,7 +62,7 @@ from the original GNOME-45 draft forced one soname change: **libadwaita 1.5 requ
 | `gnome-desktop.mk` | libgnome-desktop-4-2, -dev | **44.1** | **gtk4**, gsettings-desktop-schemas, iso-codes, libxkbcommon | MEDIUM-HARD |
 | `iso-codes.mk` | iso-codes | 4.15.0 | (data; autotools) | EASY |
 | `gnome-console.mk` | gnome-console | **46.0** | **gtk4**, libadwaita, vte(gtk4) | MEDIUM |
-| `gnome-text-editor.mk` | gnome-text-editor | **46.3** | **gtk4**, libadwaita, gtksourceview5, enchant† | MEDIUM |
+| `gnome-text-editor.mk` | gnome-text-editor | **46.3** | **gtk4**, libadwaita, gtksourceview5, enchant | MEDIUM |
 | `gnome-font-viewer.mk` | gnome-font-viewer | **46.0** | **gtk4**, libadwaita, gnome-desktop (rest prebuilt) | MEDIUM (pure C, zero new sub-deps) |
 | `nautilus.mk` | nautilus | **46.4** | **gtk4**, libadwaita, gnome-desktop, gnome-autoar, libportal, tracker | HARD (big tree) |
 | **Vala route** ↓ | | | | |
@@ -71,8 +71,6 @@ from the original GNOME-45 draft forced one soname change: **libadwaita 1.5 requ
 | `libgee.mk` | libgee-0.8-2, -dev | **0.20.8** | glib (Vala lib → emits gee-0.8.vapi) | MEDIUM (Vala) |
 | `gnome-calculator.mk` | gnome-calculator | **46.2** | **gtk4**, libadwaita, gtksourceview5, libsoup3, libgee (+mpfr/mpc prebuilt) | MEDIUM (Vala) |
 | `gnome-terminal.mk` | gnome-terminal | 3.50.1 | **gtk+3.0**, vte(gtk3), dconf, gsettings-desktop-schemas | MEDIUM (GTK3, optional-later) |
-
-† gnome-text-editor 46 may use `libspelling` rather than `enchant` — verify the spell backend at build.
 
 Facts that shaped the chain:
 - **libadwaita 1.4 hard-requires AppStream** (`src/meson.build`, `required:true`) → it drags

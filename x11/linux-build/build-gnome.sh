@@ -97,7 +97,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in dbus dconf gsettings-desktop-schemas \
+for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
            libjson-glib libxmlb libappstream libadwaita \
            libvte libgtksourceview libenchant \
            libpsl libsoup libgee \

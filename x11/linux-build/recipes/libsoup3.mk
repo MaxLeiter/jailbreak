@@ -20,7 +20,7 @@ DEB_LIBSOUP3_V   ?= $(LIBSOUP3_VERSION)
 libsoup3-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libsoup/$(LIBSOUP3_MAJOR_V)/libsoup-$(LIBSOUP3_VERSION).tar.xz)
 	$(call EXTRACT_TAR,libsoup-$(LIBSOUP3_VERSION).tar.xz,libsoup-$(LIBSOUP3_VERSION),libsoup3)
-	mkdir -p $(BUILD_WORK)/libsoup3/build
+	rm -rf $(BUILD_WORK)/libsoup3/build && mkdir -p $(BUILD_WORK)/libsoup3/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
 	cpu_family = '$(shell echo $(GNU_HOST_TRIPLE) | cut -d- -f1)'\n \
@@ -40,7 +40,7 @@ ifneq ($(wildcard $(BUILD_WORK)/libsoup3/.build_complete),)
 libsoup3:
 	@echo "Using previously built libsoup3."
 else
-libsoup3: libsoup3-setup glib2.0 libpsl libxml2 nghttp2 sqlite3
+libsoup3: libsoup3-setup glib2.0 libpsl libxml2 nghttp2 sqlite3 brotli
 	cd $(BUILD_WORK)/libsoup3/build && meson \
 		--cross-file cross.txt \
 		-Dintrospection=disabled \
@@ -49,7 +49,7 @@ libsoup3: libsoup3-setup glib2.0 libpsl libxml2 nghttp2 sqlite3
 		-Ddocs=disabled \
 		-Dsysprof=disabled \
 		-Dtls_check=false \
-		-Dbrotli=disabled \
+		-Dbrotli=enabled \
 		-Dntlm=disabled \
 		-Dgssapi=disabled \
 		..
