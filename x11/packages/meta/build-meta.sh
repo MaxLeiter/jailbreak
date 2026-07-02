@@ -14,26 +14,25 @@
 set -euo pipefail
 
 METADIR="$(cd "$(dirname "$0")" && pwd)"            # x11/packages/meta
+_x="$METADIR"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
 X11DIR="$(cd "$METADIR/../.." && pwd)"              # x11
 OUT="$X11DIR/linux-build/out"
-IMAGE="debian:bookworm-slim"
 
-docker run --rm -v "$METADIR":/work -w /work "$IMAGE" bash -euo pipefail -c '
-  for pkgdir in xios-core xios-gnome xios-kde xios-native xios-x11; do
-    ver="$(awk -F": " "/^Version:/{print \$2}" "$pkgdir/DEBIAN/control")"
-    deb="${pkgdir}_${ver}_iphoneos-arm64.deb"
-    stage=/tmp/stage-$pkgdir
-    rm -rf "$stage"; mkdir -p "$stage"
-    cp -a "$pkgdir/DEBIAN" "$stage/"
-    chown -R root:root "$stage"
-    find "$stage" -type d -exec chmod 0755 {} +
-    find "$stage" -type f -exec chmod 0644 {} +
-    dpkg-deb -Zzstd -b "$stage" "/work/$deb"
-  done
-'
-
-mkdir -p "$OUT"
-for deb in "$METADIR"/xios-*_*_iphoneos-arm64.deb; do
-  cp -v "$deb" "$OUT/"
+# Each flavor meta is control-only: stage its DEBIAN dir host-side, set the perms,
+# then let xmkdeb chown root:root + build the zstd .deb (in the cross-build
+# container on a macOS host).
+for pkgdir in xios-core xios-gnome xios-kde xios-native xios-x11; do
+  stageroot="/private/tmp/xios-meta-stage/$pkgdir"
+  stage="$stageroot/$pkgdir"
+  rm -rf "$stageroot"; mkdir -p "$stage"
+  cp -a "$METADIR/$pkgdir/DEBIAN" "$stage/"
+  find "$stage" -type d -exec chmod 0755 {} +
+  find "$stage" -type f -exec chmod 0644 {} +
+  built="$(xmkdeb "$stage" "$OUT")"
+  # Keep the historical copy next to this script too.
+  cp -v "$built" "$METADIR/"
 done
+
 echo "==> built $(ls "$METADIR"/xios-*_*_iphoneos-arm64.deb | wc -l | tr -d ' ') meta debs (copied to linux-build/out/)"

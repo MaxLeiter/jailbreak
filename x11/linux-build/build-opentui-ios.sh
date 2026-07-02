@@ -21,6 +21,9 @@ export LC_ALL=C
 export TZ=UTC
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
 OUT="${OUT:-$HERE/out}"
 WORK="${WORK:-$OUT/opentui-ios-work}"
 PATCH_DIR="${OPENTUI_PATCH_DIR:-$HERE/patches/opentui}"
@@ -102,7 +105,7 @@ SYMS="$(nm -gU "$BUILT" | wc -l | tr -d ' ')"
 
 # --- fakesign ---
 if command -v ldid >/dev/null; then
-  ldid -S "$BUILT"
+  xsign "$BUILT"
 else
   echo "ldid not on host; sign on device after copy (ldid -S)" >&2
 fi

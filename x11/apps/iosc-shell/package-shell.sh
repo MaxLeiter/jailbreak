@@ -20,6 +20,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
 OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
 REPODEBS=/Users/max/Documents/jailbreak/repo/debs
 STAGEROOT=/private/tmp/iosc-shell-deb
@@ -64,7 +66,7 @@ mkdir -p "$BIN" "$ICONS" "$SHARE" "$STAGE/DEBIAN"
 for b in ioscbar ioscdock ioscoverview ioscbg; do
   cp "$HERE/out/$b" "$BIN/$b"
   chmod 0755 "$BIN/$b"
-  ldid -S"$HERE/panel-ent.xml" "$BIN/$b"
+  xsign "$BIN/$b" "$HERE/panel-ent.xml" com.apple.private.skip-library-validation
 done
 
 if command -v otool >/dev/null; then
@@ -143,11 +145,9 @@ echo "scheme=${SCHEME} prefix=${DEB_PREFIX:-/} installed=${INSTKB}KB"
 echo "=== ioscbar entitlements (client set, no GPU classes) ==="
 ldid -e "$BIN/ioscbar" | grep -E "no-container|get-task-allow|absolute-path" | sed 's/^/   /' || true
 
-# 6. assemble the deb via the container's dpkg-deb (root-owned, zstd like the rest)
-docker run --rm --platform linux/arm64 -v "$STAGEROOT":/stage "$IMG" \
-  -c "chown -R 0:0 /stage/iosc-shell && dpkg-deb -Zzstd --build /stage/iosc-shell /stage/${DEB}"
-
-cp "$STAGEROOT/${DEB}" "$OUTDIR/${DEB}"
-cp "$STAGEROOT/${DEB}" "$REPODEBS/${DEB}"
+# 6. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
+#    macOS host, or directly when already running as root inside one.
+built="$(xmkdeb "$STAGE" "$OUTDIR")"
+cp "$built" "$REPODEBS/${DEB}"
 echo "=== DEB BUILT ==="
 ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"

@@ -12,13 +12,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
 X11DIR="$(cd "$HERE/../.." && pwd)"
 OUT="$X11DIR/linux-build/out"
-IMG="debian:bookworm-slim"
-ARCH="iphoneos-arm64"
-
-VER="$(awk -F': ' '/^Version:/{print $2}' "$HERE/DEBIAN/control")"
-DEB="xios-fhs_${VER}_${ARCH}.deb"
 
 for f in \
   "$HERE/var/jb/usr/libexec/xios-hwbridged" \
@@ -30,23 +28,20 @@ for f in \
   }
 done
 
-mkdir -p "$OUT"
-docker run --rm \
-  -v "$HERE":/work:ro \
-  -v "$OUT":/out \
-  "$IMG" bash -euo pipefail -c '
-    stage=/tmp/xios-fhs
-    rm -rf "$stage"
-    mkdir -p "$stage"
-    cp -a /work/DEBIAN "$stage/"
-    cp -a /work/var "$stage/"
-    chown -R root:root "$stage"
-    find "$stage" -type d -exec chmod 0755 {} +
-    chmod 0755 "$stage/DEBIAN/postinst"
-    find "$stage/var" -type f -exec chmod 0644 {} +
-    chmod 0755 "$stage/var/jb/usr/libexec/xios-hwbridged" \
-               "$stage/var/jb/usr/libexec/xios-sensord"
-    dpkg-deb -Zzstd -b "$stage" "/out/'"$DEB"'"
-  '
+# Stage DEBIAN + var only (src/, out/ and helper scripts must not ship), set the
+# perms host-side, then let xmkdeb chown root:root + build the zstd .deb (in the
+# cross-build container on a macOS host).
+STAGEROOT=/private/tmp/xios-fhs-stage
+STAGE="$STAGEROOT/xios-fhs"
+rm -rf "$STAGEROOT"
+mkdir -p "$STAGE"
+cp -a "$HERE/DEBIAN" "$STAGE/"
+cp -a "$HERE/var" "$STAGE/"
+find "$STAGE" -type d -exec chmod 0755 {} +
+chmod 0755 "$STAGE/DEBIAN/postinst"
+find "$STAGE/var" -type f -exec chmod 0644 {} +
+chmod 0755 "$STAGE/var/jb/usr/libexec/xios-hwbridged" \
+           "$STAGE/var/jb/usr/libexec/xios-sensord"
 
-echo "==> built $OUT/$DEB"
+built="$(xmkdeb "$STAGE" "$OUT")"
+echo "==> built $built"

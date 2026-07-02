@@ -11,6 +11,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
 SRC="$HERE/src"
 OUT="$HERE/out"
 mkdir -p "$OUT"
@@ -31,8 +33,8 @@ echo "==> compiling ioscd (root daemon, CLI)"
   "$SRC/ioscd.c" -o "$OUT/ioscd"
 
 echo "==> pseudo-signing with ldid"
-ldid -S"$HERE/launcher-ent.xml" "$OUT/IOSCLaunch"
-ldid -S"$HERE/ioscd-ent.xml"    "$OUT/ioscd"
+xsign "$OUT/IOSCLaunch" "$HERE/launcher-ent.xml"
+xsign "$OUT/ioscd"      "$HERE/ioscd-ent.xml" platform-application
 
 echo "==> done"
 ls -la "$OUT/IOSCLaunch" "$OUT/ioscd"

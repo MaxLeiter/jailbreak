@@ -9,6 +9,10 @@
 # before an EGLDisplay exists.
 set -euo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
 BUILD=/private/tmp/angle-ios-build/angle/out/ios-arm64
 INC=/private/tmp/angle-ios-build/angle/include
 OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
@@ -39,10 +43,11 @@ install_name_tool -id /var/jb/lib/angle/libEGL.angle.dylib "$STAGE/var/jb/lib/an
 install_name_tool -id /var/jb/lib/angle/libEGL.dylib       "$STAGE/var/jb/lib/angle/libEGL.dylib"
 install_name_tool -id /var/jb/lib/angle/libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
 
-# 3. ad-hoc sign
-ldid -S "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-ldid -S "$STAGE/var/jb/lib/angle/libEGL.dylib"
-ldid -S "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+# 3. ad-hoc sign (the libs carry no entitlements; the GPU-using *process* is the
+#    one that must be ldid-signed with the AGX/IOSurface set, see control below)
+xsign "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
+xsign "$STAGE/var/jb/lib/angle/libEGL.dylib"
+xsign "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
 
 # 3b. compat symlinks (Debian soname + .so aliases consumers link/dlopen)
 ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.2.dylib"

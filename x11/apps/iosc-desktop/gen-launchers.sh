@@ -26,6 +26,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 OUT="$HERE/out/bundles"
 ICONS_ROOT=""
@@ -237,9 +239,10 @@ PLIST
   # entitlements (Metal present + task_for_pid canvas rendezvous); the classic stub
   # needs only the minimal launcher set.
   if [ "$NATIVE" = "1" ]; then
-    ldid -S"$HOST_DIR/entitlements.plist" "$BDIR/IOSCHost"
+    xsign "$BDIR/IOSCHost" "$HOST_DIR/entitlements.plist" \
+      AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient
   else
-    ldid -S"$HERE/launcher-ent.xml" "$BDIR/IOSCLaunch"
+    xsign "$BDIR/IOSCLaunch" "$HERE/launcher-ent.xml"
   fi
 
   BUILT+=("$BDIR")

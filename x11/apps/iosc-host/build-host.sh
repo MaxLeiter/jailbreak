@@ -12,6 +12,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
 OUT="$HERE/out"
 mkdir -p "$OUT"
 
@@ -42,7 +44,8 @@ cp "$APP/default.metallib" "$OUT/default.metallib"
 chmod 0755 "$OUT/IOSCHost"
 
 echo "==> pseudo-signing the host binary"
-ldid -S"$HERE/entitlements.plist" "$OUT/IOSCHost"
+xsign "$OUT/IOSCHost" "$HERE/entitlements.plist" \
+  AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient
 
 echo "==> done"
 ls -la "$OUT/IOSCHost" "$OUT/default.metallib"

@@ -18,6 +18,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
 IMAGE=procursus-xbuild:bookworm-arm64
 GTK_VOL="${IOSC_PROC_VOL:-${GTK_VOL:-procursus-vol-gtk}}"
 OUT="$HERE/out"
@@ -145,7 +147,7 @@ docker run --rm --entrypoint /bin/bash \
 # --- ad-hoc sign with the client entitlements ------------------------------
 if command -v ldid >/dev/null; then
   for b in ioscbar ioscdock ioscoverview ioscbg; do
-    ldid -S"$HERE/panel-ent.xml" "$OUT/$b" && echo "signed: $OUT/$b"
+    xsign "$OUT/$b" "$HERE/panel-ent.xml" com.apple.private.skip-library-validation
   done
 else
   echo "NOTE: ldid not on host PATH; sign on-device: ldid -Spanel-ent.xml iosc{bar,dock,overview,bg}" >&2

@@ -13,6 +13,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 OUTDIR="$REPO_ROOT/x11/linux-build/out"
 REPODEBS="$REPO_ROOT/repo/debs"
@@ -94,12 +96,10 @@ echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
 echo "installed=${INSTKB}KB"
 
-# 5. assemble the deb via the container's dpkg-deb (root-owned, zstd like the rest)
-docker run --rm --platform linux/arm64 -v "$STAGEROOT":/stage "$IMG" \
-  -c "chown -R 0:0 /stage/xios-session && dpkg-deb -Zzstd --build /stage/xios-session /stage/${DEB}"
-
+# 5. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
+#    macOS host, or directly when already running as root inside one.
 mkdir -p "$OUTDIR" "$REPODEBS"
-cp "$STAGEROOT/${DEB}" "$OUTDIR/${DEB}"
-cp "$STAGEROOT/${DEB}" "$REPODEBS/${DEB}"
+built="$(xmkdeb "$STAGE" "$OUTDIR")"
+cp "$built" "$REPODEBS/${DEB}"
 echo "=== DEB BUILT ==="
 ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"

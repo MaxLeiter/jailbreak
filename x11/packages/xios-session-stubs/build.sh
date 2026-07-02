@@ -12,10 +12,12 @@
 set -euo pipefail
 
 PKGDIR="$(cd "$(dirname "$0")" && pwd)"             # x11/packages/xios-session-stubs
+_x="$PKGDIR"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
 X11DIR="$(cd "$PKGDIR/../.." && pwd)"               # x11
 STUBOUT="$X11DIR/wayland/out"
 OUT="$X11DIR/linux-build/out"
-IMAGE="debian:bookworm-slim"
 
 echo "==> stage stub binaries from $STUBOUT"
 # The libexec staging dir holds only build artifacts, so it isn't git-tracked; create it so a
@@ -40,17 +42,17 @@ VER="$(awk -F': ' '/^Version:/{print $2}' "$PKGDIR/DEBIAN/control")"
 DEB="xios-session-stubs_${VER}_iphoneos-arm64.deb"
 
 echo "==> dpkg-deb build $DEB"
-docker run --rm -v "$PKGDIR":/pkg -v "$PKGDIR":/work -w /work "$IMAGE" bash -euo pipefail -c '
-  stage=/tmp/stage-xios-session-stubs
-  rm -rf "$stage"; mkdir -p "$stage"
-  cp -a /pkg/DEBIAN /pkg/var "$stage/"
-  chown -R root:root "$stage"
-  find "$stage" -type d -exec chmod 0755 {} +
-  chmod 0755 "$stage/DEBIAN/postinst"
-  chmod 0755 "$stage/var/jb/usr/libexec/"* "$stage/var/jb/usr/bin/"*
-  dpkg-deb -Zzstd -b "$stage" "/work/'"$DEB"'"
-'
+# Stage DEBIAN + var host-side (only these ship), set the perms, then let xmkdeb
+# chown root:root + build the zstd .deb (in the cross-build container on macOS).
+STAGEROOT=/private/tmp/xios-session-stubs-stage
+STAGE="$STAGEROOT/xios-session-stubs"
+rm -rf "$STAGEROOT"; mkdir -p "$STAGE"
+cp -a "$PKGDIR/DEBIAN" "$PKGDIR/var" "$STAGE/"
+find "$STAGE" -type d -exec chmod 0755 {} +
+chmod 0755 "$STAGE/DEBIAN/postinst"
+chmod 0755 "$STAGE/var/jb/usr/libexec/"* "$STAGE/var/jb/usr/bin/"*
 
-mkdir -p "$OUT"
-cp -v "$PKGDIR/$DEB" "$OUT/"
+built="$(xmkdeb "$STAGE" "$OUT")"
+# Keep the historical copy next to this script too.
+cp -v "$built" "$PKGDIR/$DEB"
 echo "==> built $DEB (copied to linux-build/out/)"

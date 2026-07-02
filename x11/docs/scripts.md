@@ -53,9 +53,55 @@ When converting a site to `xsign`:
 
 ## Migration status
 
-Converted + verified end-to-end: `wayland/sign-iosc.sh`, `wayland/build-iosc.sh`
-(xdeb_extract + host xsign), `wayland/package-iosc.sh` (xsign + xmkdeb).
+Converted + verified (each passes `bash -n`; the three references were run
+end-to-end):
 
-Remaining `ldid`/`dpkg-deb` sites are being migrated in waves. **Skip files with
-uncommitted changes** (they are under concurrent edit); migrate a script the next
-time it is touched rather than sweeping a dirty file.
+- Reference: `wayland/sign-iosc.sh`, `wayland/build-iosc.sh` (xdeb_extract + host
+  xsign), `wayland/package-iosc.sh` (xsign + xmkdeb).
+- Host-side signing → `xsign`: `apps/iosc-desktop/build-stub.sh`,
+  `apps/iosc-desktop/gen-launchers.sh` (bundle binaries only; the `--deploy`
+  on-device ldid stays), `apps/iosc-host/build-host.sh`,
+  `apps/iosc-shell/build-panel.sh`, `apps/iosc-shell/package-shell.sh`,
+  `ports/angle/package-angle-es3.sh`, `linux-build/run.sh` (host Xios re-sign),
+  `linux-build/build-opentui-ios.sh`.
+- Host-side packaging → `xmkdeb`: `apps/iosc-desktop/package-session.sh`,
+  `apps/iosc-shell/package-shell.sh`, `packages/xios-fhs/package-fhs.sh`,
+  `packages/xios-session-stubs/build.sh`, `packages/meta/build-meta.sh`.
+
+### Intentionally NOT converted (with reasons — do not "fix" these blindly)
+
+- **In-container build scripts** (`build.sh`, `build-gtk/kwin/mutter/qt/qt-modules/
+  xwayland.sh`, `build-audio.sh`, `build-bun.sh`, `build-cogl-smoke.sh`,
+  `build-gjs-manual.sh`, `build-qt-wayland-gl-smoke.sh`,
+  `packages/xios-fhs/build-hwbridge.sh`, `recipes/relink-gtkintl.sh`,
+  `wayland/build-session-stubs.sh`, `wayland/build-xios-glue.sh`, ...): their
+  `ldid`/`dpkg-deb` run *inside* the container, where `x11/lib` is not mounted, so
+  `xlib.sh` cannot be sourced. Their `docker run` mounts would each need
+  `x11/lib` added before they could use the helpers — a separate, deliberate step.
+  (Their in-container `ldid` is also DER-less; the real sign is the host re-sign,
+  which IS converted.)
+- **On-device / sh-only helpers** (`gir-ondevice.sh`, `gi-package.sh`,
+  `wayland/run-gnome-shell.sh`, `wayland/run-mutter.sh`, `run-*` deploy blocks):
+  the `ldid` runs on the device over ssh, or the script is `#!/bin/sh` (xlib.sh
+  needs bash `BASH_SOURCE`).
+- **`build-opencode.sh`**: packages with `dpkg-deb -Zxz` under `LC_ALL=C`/`TZ=UTC`
+  for byte-reproducible output; `xmkdeb` uses `-Zzstd` + the procursus image, which
+  would change the bytes. Left on purpose.
+- **`ports/angle/package-angle-es3.sh` packaging**: deliberately uses
+  `debian:bookworm-slim` for `dpkg-deb` (documented host-bash workaround);
+  `xmkdeb` assumes the procursus image's bash entrypoint. Its signing IS converted.
+- **`packages/xios-desktop-theme/build.sh`**: `dpkg-deb` is inside a bespoke
+  in-container step that also generates the wallpaper — a restructure, not a swap.
+
+### Notes
+
+- The publish-time `finalize_x11_graphics_debs` step in `bin/publish-dev-repo.sh`
+  references `X11/linux-build/resign-graphics-packages.py`, which does **not exist**
+  in the tree — so that step is currently inert (its `[ -x "$signer" ] || return 0`
+  guard returns early). It is not a live signing path. The `X11/` (vs `x11/`) case
+  in that reference is also a latent non-macOS portability trap.
+- To extend unification into the container, add `x11/lib` to the relevant
+  `docker run -v` mounts, then the in-container scripts can source `xlib.sh` too.
+
+Always **skip files with uncommitted changes** (concurrent edits); migrate a dirty
+script the next time it is touched rather than sweeping it.

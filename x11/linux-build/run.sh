@@ -8,6 +8,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
 IMAGE="procursus-xbuild:bookworm-arm64"
 # Named volume holding the cloned + already-built Procursus tree. Persisting it
 # across runs means the ~50 deps (mesa, libx11, ...) keep their .build_complete
@@ -52,7 +56,9 @@ if [ -f out/Xios ]; then
   command -v ldid >/dev/null || { echo "ERROR: ldid not found — cannot DER-sign Xios; 'brew install ldid'"; exit 1; }
   [ -f out/xios-ent.xml ] || { echo "ERROR: out/xios-ent.xml missing (build.sh should have written it)"; exit 1; }
   echo "==> re-signing Xios with the Mac ldid (DER entitlements, for IOKit/IOSurface)"
-  ldid -Sout/xios-ent.xml out/Xios
+  xsign out/Xios out/xios-ent.xml \
+    platform-application com.apple.private.skip-library-validation task_for_pid-allow \
+    IOSurfaceRootUserClient
 fi
 
 echo "==> artifacts:"
