@@ -41,6 +41,7 @@
 #include "single-pixel-buffer-v1-server-protocol.h"
 #include "cursor-shape-v1-server-protocol.h"
 #include "wlr-screencopy-unstable-v1-server-protocol.h"
+#include "wlr-data-control-unstable-v1-server-protocol.h"
 #include "ext-session-lock-v1-server-protocol.h"
 #include "tablet-v2-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
@@ -2881,10 +2882,22 @@ static void toplevel_send_configure(struct iosc_surface *s, int w, int h)
     s->configured = 1;
 }
 
-/* Send the initial configure that lets a client map. */
+/* Send the initial configure that lets a client map. In native mode, size it to
+ * the tapped host's scene (physical px -> logical) so the app's first mapped frame
+ * fills the iPad window exactly instead of flashing at a default size and then
+ * reflowing on the first RESIZE round-trip. */
 static void send_initial_configure(struct iosc_surface *s)
 {
-    toplevel_send_configure(s, default_window_w(), default_window_h());
+    int w = default_window_w(), h = default_window_h();
+    if (g_native_mode) {
+        int pw = 0, ph = 0;
+        if (xios_canvas_default_scene(&pw, &ph) == 0 && pw > 0 && ph > 0) {
+            int os = output_scale();
+            int lw = (pw + os - 1) / os, lh = (ph + os - 1) / os;
+            if (lw > 0 && lh > 0) { w = lw; h = lh; }
+        }
+    }
+    toplevel_send_configure(s, w, h);
 }
 
 static void toplevel_reconfigure_state(struct iosc_surface *s)
@@ -4720,6 +4733,29 @@ static int g_nclip_items;
 static const struct wl_data_offer_interface data_offer_impl;
 static void data_offer_resource_destroy(struct wl_resource *r);
 
+/* wlr-data-control: a privileged, focus-INDEPENDENT clipboard manager (wl-clipboard,
+ * clipboard managers). It shares the SAME selection state as wl_data_device: a
+ * data-control set_selection materializes its source into g_clip_items through the
+ * same pipe path as wl_data_device.set_selection (so the iOS clipboard bridge fires
+ * exactly as it does for a GTK copy), and a receive() reads back out of g_clip_items.
+ * Every selection change is broadcast to EVERY bound device regardless of keyboard
+ * focus. Primary selection is unified with the zwp primary-selection store below
+ * (at most one owner of either interface at a time). */
+#define IOSC_MAX_DATA_CONTROL_DEVICES 32
+struct iosc_data_control_source {
+    struct wl_resource *resource;
+    char *mimes[IOSC_MAX_CLIP_MIMES];
+    int nmimes;
+    int used;    /* set once handed to set_(primary_)selection; further offers are a protocol error */
+};
+static struct wl_resource *g_data_control_devices[IOSC_MAX_DATA_CONTROL_DEVICES];
+static int g_ndata_control_devices;
+static struct iosc_data_control_source *g_data_control_clip_source; /* dc owner of CLIPBOARD, or NULL */
+static struct iosc_data_control_source *g_primary_dc_source;        /* dc owner of PRIMARY,   or NULL */
+static void data_control_clipboard_broadcast(void);
+static void data_control_primary_broadcast(void);
+static void data_control_cancel_clip_source(void);
+
 static int is_text_mime(const char *mime)
 {
     return mime && (!strcmp(mime, "text/plain") ||
@@ -4891,13 +4927,15 @@ static void clipboard_selection_send_to_client(struct wl_client *client)
 
 static void clipboard_selection_broadcast(void)
 {
-    if (!g_kbd_focus) return;
-    clipboard_selection_send_to_client(wl_resource_get_client(g_kbd_focus->resource));
+    if (g_kbd_focus)
+        clipboard_selection_send_to_client(wl_resource_get_client(g_kbd_focus->resource));
+    data_control_clipboard_broadcast();   /* focus-independent listeners get it too */
 }
 
 static void clip_set_text(const char *text, size_t len, int send_to_app)
 {
     if (len > IOSC_CLIP_MAX) len = IOSC_CLIP_MAX;
+    data_control_cancel_clip_source();   /* a fresh clipboard supersedes any data-control owner */
     clip_clear_items();
     if (clip_item_set("text/plain;charset=utf-8", text ? text : "", len) != 0) return;
     if (send_to_app) clip_send_set_to_app(text ? text : "", len);
@@ -5312,27 +5350,39 @@ static void data_device_start_drag(struct wl_client *c, struct wl_resource *r, s
     recomposite_all();   /* show the drag icon (if it has a buffer already) */
 }
 
-static void data_device_set_selection(struct wl_client *c, struct wl_resource *r,
-                                      struct wl_resource *src, uint32_t serial)
-{ (void)c; (void)r; (void)serial;
-    if (!src) { clip_set_text("", 0, 1); return; }
-    struct iosc_data_source *s = wl_resource_get_user_data(src);
-    if (!s || s->nmimes == 0) return;
+/* Materialize a selection source into the shared clipboard store: open a pipe per
+ * offered mime, ask the source to write it (send_fn is the interface-specific
+ * *_send_send), and let source_readable/source_read_done drain each into
+ * g_clip_items. Shared by wl_data_device and wlr-data-control so both selection
+ * paths feed ONE clipboard (and, via source_read_done, the same iOS-sync path). */
+static void clip_ingest_source(struct wl_resource *src, char *const *mimes, int nmimes,
+                               void (*send_fn)(struct wl_resource *, const char *, int32_t))
+{
     clip_clear_items();
-    for (int i = 0; i < s->nmimes; i++) {
+    for (int i = 0; i < nmimes; i++) {
         int fds[2];
         if (pipe(fds) != 0) continue;
         fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL, 0) | O_NONBLOCK);
         struct iosc_source_read *rd = calloc(1, sizeof(*rd));
         if (!rd) { close(fds[0]); close(fds[1]); continue; }
         rd->fd = fds[0];
-        rd->mime = strdup(s->mimes[i]);
+        rd->mime = strdup(mimes[i]);
         if (!rd->mime) { close(fds[0]); close(fds[1]); free(rd); continue; }
         rd->src = wl_event_loop_add_fd(wl_display_get_event_loop(g_display), fds[0],
                                        WL_EVENT_READABLE, source_readable, rd);
-        wl_data_source_send_send(src, s->mimes[i], fds[1]);
+        send_fn(src, mimes[i], fds[1]);
         close(fds[1]);
     }
+}
+
+static void data_device_set_selection(struct wl_client *c, struct wl_resource *r,
+                                      struct wl_resource *src, uint32_t serial)
+{ (void)c; (void)r; (void)serial;
+    data_control_cancel_clip_source();   /* wl_data_device supersedes any data-control owner */
+    if (!src) { clip_set_text("", 0, 1); return; }
+    struct iosc_data_source *s = wl_resource_get_user_data(src);
+    if (!s || s->nmimes == 0) return;
+    clip_ingest_source(src, s->mimes, s->nmimes, wl_data_source_send_send);
 }
 
 static void data_device_release(struct wl_client *c, struct wl_resource *r)
@@ -6285,16 +6335,40 @@ struct iosc_primary_source {
     char *mimes[IOSC_MAX_PRIMARY_MIMES];
     int nmimes;
 };
-static struct iosc_primary_source *g_primary_source;      /* current owner, or NULL */
+static struct iosc_primary_source *g_primary_source;      /* zwp owner of primary, or NULL */
 static struct wl_resource *g_primary_devices[IOSC_MAX_PRIMARY_DEVICES];
 static int g_nprimary_devices;
+
+/* Unified primary-selection owner: exactly one of g_primary_source (zwp) and
+ * g_primary_dc_source (wlr-data-control) is ever non-NULL, so wl-clipboard's
+ * --primary and GTK middle-click share one primary selection. Receive is direct
+ * brokered to whichever source owns it (no in-memory copy). */
+static int primary_active(void) { return g_primary_source || g_primary_dc_source; }
+static int primary_nmimes(void)
+{
+    if (g_primary_source) return g_primary_source->nmimes;
+    if (g_primary_dc_source) return g_primary_dc_source->nmimes;
+    return 0;
+}
+static const char *primary_mime(int i)
+{
+    if (g_primary_source) return g_primary_source->mimes[i];
+    if (g_primary_dc_source) return g_primary_dc_source->mimes[i];
+    return NULL;
+}
+static void primary_forward_send(const char *mime, int fd)
+{
+    if (g_primary_source && g_primary_source->resource)
+        zwp_primary_selection_source_v1_send_send(g_primary_source->resource, mime, fd);
+    else if (g_primary_dc_source && g_primary_dc_source->resource)
+        zwlr_data_control_source_v1_send_send(g_primary_dc_source->resource, mime, fd);
+    close(fd);
+}
 
 static void primary_offer_receive(struct wl_client *c, struct wl_resource *r,
                                   const char *mime, int fd)
 { (void)c; (void)r;
-    if (g_primary_source && g_primary_source->resource)
-        zwp_primary_selection_source_v1_send_send(g_primary_source->resource, mime, fd);
-    close(fd);
+    primary_forward_send(mime, fd);
 }
 static void primary_offer_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static const struct zwp_primary_selection_offer_v1_interface primary_offer_impl = {
@@ -6303,14 +6377,14 @@ static const struct zwp_primary_selection_offer_v1_interface primary_offer_impl 
 static void primary_selection_send_to_device(struct wl_resource *dev)
 {
     struct wl_client *c = wl_resource_get_client(dev);
-    if (!g_primary_source) { zwp_primary_selection_device_v1_send_selection(dev, NULL); return; }
+    if (!primary_active()) { zwp_primary_selection_device_v1_send_selection(dev, NULL); return; }
     struct wl_resource *offer = wl_resource_create(c, &zwp_primary_selection_offer_v1_interface,
                                                    wl_resource_get_version(dev), 0);
     if (!offer) return;
     wl_resource_set_implementation(offer, &primary_offer_impl, NULL, NULL);
     zwp_primary_selection_device_v1_send_data_offer(dev, offer);
-    for (int i = 0; i < g_primary_source->nmimes; i++)
-        zwp_primary_selection_offer_v1_send_offer(offer, g_primary_source->mimes[i]);
+    for (int i = 0; i < primary_nmimes(); i++)
+        zwp_primary_selection_offer_v1_send_offer(offer, primary_mime(i));
     zwp_primary_selection_device_v1_send_selection(dev, offer);
 }
 static void primary_selection_send_to_client(struct wl_client *client)
@@ -6323,6 +6397,7 @@ static void primary_selection_send_to_client(struct wl_client *client)
 static void primary_selection_broadcast(void)
 {
     if (g_kbd_focus) primary_selection_send_to_client(wl_resource_get_client(g_kbd_focus->resource));
+    data_control_primary_broadcast();   /* focus-independent listeners get it too */
 }
 
 static void primary_source_offer(struct wl_client *c, struct wl_resource *r, const char *mime)
@@ -6348,6 +6423,12 @@ static void primary_source_res_destroy(struct wl_resource *r)
 static void primary_device_set_selection(struct wl_client *c, struct wl_resource *r,
                                          struct wl_resource *source, uint32_t serial)
 { (void)c; (void)r; (void)serial;
+    /* A zwp primary owner supersedes any data-control primary owner. */
+    if (g_primary_dc_source) {
+        if (g_primary_dc_source->resource)
+            zwlr_data_control_source_v1_send_cancelled(g_primary_dc_source->resource);
+        g_primary_dc_source = NULL;
+    }
     g_primary_source = source ? wl_resource_get_user_data(source) : NULL;
     primary_selection_broadcast();
 }
@@ -6388,6 +6469,222 @@ static void primary_mgr_bind(struct wl_client *c, void *data, uint32_t version, 
     struct wl_resource *r = wl_resource_create(c, &zwp_primary_selection_device_manager_v1_interface, version, id);
     if (!r) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(r, &primary_mgr_impl, NULL, NULL);
+}
+
+/* ===========================================================================
+ * wlr-data-control (zwlr_data_control_manager_v1, v2) — focus-INDEPENDENT
+ * clipboard access for wl-clipboard (wl-copy/wl-paste) and clipboard managers.
+ *
+ * CLIPBOARD is shared with wl_data_device: set_selection materializes the source
+ * into g_clip_items via clip_ingest_source (same pipe path -> same iOS bridge),
+ * and offer.receive reads back out of g_clip_items. PRIMARY is unified with the
+ * zwp primary-selection store (direct brokered to the owning source). A single
+ * data_offer object serves both, tagged is_primary. Selection changes are pushed
+ * to EVERY bound device with no regard for keyboard focus (the whole point).
+ * =========================================================================== */
+
+struct iosc_data_control_offer { int is_primary; };
+
+static const struct zwlr_data_control_offer_v1_interface data_control_offer_impl;
+
+static void data_control_offer_receive(struct wl_client *c, struct wl_resource *r,
+                                       const char *mime, int fd)
+{ (void)c;
+    struct iosc_data_control_offer *o = wl_resource_get_user_data(r);
+    if (o && o->is_primary) { primary_forward_send(mime, fd); return; }
+    struct iosc_mime_data *m = clip_find_item(mime);
+    if (m && m->data) write_all_fd(fd, m->data, m->len);
+    close(fd);
+}
+static void data_control_offer_destroy_req(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct zwlr_data_control_offer_v1_interface data_control_offer_impl = {
+    .receive = data_control_offer_receive,
+    .destroy = data_control_offer_destroy_req,
+};
+static void data_control_offer_res_destroy(struct wl_resource *r)
+{ free(wl_resource_get_user_data(r)); }
+
+static struct wl_resource *data_control_new_offer(struct wl_resource *dev, int is_primary)
+{
+    struct wl_resource *offer = wl_resource_create(wl_resource_get_client(dev),
+                                                   &zwlr_data_control_offer_v1_interface,
+                                                   wl_resource_get_version(dev), 0);
+    if (!offer) return NULL;
+    struct iosc_data_control_offer *o = calloc(1, sizeof(*o));
+    if (!o) { wl_resource_destroy(offer); return NULL; }
+    o->is_primary = is_primary;
+    wl_resource_set_implementation(offer, &data_control_offer_impl, o,
+                                   data_control_offer_res_destroy);
+    return offer;
+}
+
+static void data_control_send_selection_to_device(struct wl_resource *dev)
+{
+    if (g_nclip_items == 0) { zwlr_data_control_device_v1_send_selection(dev, NULL); return; }
+    struct wl_resource *offer = data_control_new_offer(dev, 0);
+    if (!offer) return;
+    zwlr_data_control_device_v1_send_data_offer(dev, offer);
+    for (int i = 0; i < g_nclip_items; i++)
+        zwlr_data_control_offer_v1_send_offer(offer, g_clip_items[i].mime);
+    if (clip_find_exact_item("text/plain;charset=utf-8") && !clip_find_exact_item("text/plain"))
+        zwlr_data_control_offer_v1_send_offer(offer, "text/plain");
+    zwlr_data_control_device_v1_send_selection(dev, offer);
+}
+static void data_control_send_primary_to_device(struct wl_resource *dev)
+{
+    if (wl_resource_get_version(dev) < ZWLR_DATA_CONTROL_DEVICE_V1_PRIMARY_SELECTION_SINCE_VERSION)
+        return;
+    if (!primary_active()) { zwlr_data_control_device_v1_send_primary_selection(dev, NULL); return; }
+    struct wl_resource *offer = data_control_new_offer(dev, 1);
+    if (!offer) return;
+    zwlr_data_control_device_v1_send_data_offer(dev, offer);
+    for (int i = 0; i < primary_nmimes(); i++)
+        zwlr_data_control_offer_v1_send_offer(offer, primary_mime(i));
+    zwlr_data_control_device_v1_send_primary_selection(dev, offer);
+}
+static void data_control_clipboard_broadcast(void)
+{
+    for (int i = 0; i < g_ndata_control_devices; i++)
+        data_control_send_selection_to_device(g_data_control_devices[i]);
+}
+static void data_control_primary_broadcast(void)
+{
+    for (int i = 0; i < g_ndata_control_devices; i++)
+        data_control_send_primary_to_device(g_data_control_devices[i]);
+}
+static void data_control_cancel_clip_source(void)
+{
+    if (g_data_control_clip_source && g_data_control_clip_source->resource)
+        zwlr_data_control_source_v1_send_cancelled(g_data_control_clip_source->resource);
+    g_data_control_clip_source = NULL;
+}
+
+/* ---- source ---- */
+static void data_control_source_offer(struct wl_client *c, struct wl_resource *r, const char *mime)
+{
+    struct iosc_data_control_source *s = wl_resource_get_user_data(r);
+    if (!s || !mime) return;
+    if (s->used) {
+        wl_resource_post_error(r, ZWLR_DATA_CONTROL_SOURCE_V1_ERROR_INVALID_OFFER,
+                               "offer after set_selection");
+        return;
+    }
+    if (s->nmimes >= IOSC_MAX_CLIP_MIMES) return;
+    for (int i = 0; i < s->nmimes; i++)
+        if (!strcmp(s->mimes[i], mime)) return;
+    char *copy = strdup(mime);
+    if (!copy) { wl_client_post_no_memory(c); return; }
+    s->mimes[s->nmimes++] = copy;
+}
+static void data_control_source_destroy_req(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct zwlr_data_control_source_v1_interface data_control_source_impl = {
+    .offer = data_control_source_offer,
+    .destroy = data_control_source_destroy_req,
+};
+static void data_control_source_res_destroy(struct wl_resource *r)
+{
+    struct iosc_data_control_source *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    for (int i = 0; i < s->nmimes; i++) free(s->mimes[i]);
+    if (g_data_control_clip_source == s) g_data_control_clip_source = NULL;
+    if (g_primary_dc_source == s) { g_primary_dc_source = NULL; primary_selection_broadcast(); }
+    free(s);
+}
+
+/* ---- device ---- */
+static void data_control_device_set_selection(struct wl_client *c, struct wl_resource *r,
+                                              struct wl_resource *source)
+{ (void)c;
+    struct iosc_data_control_source *s = source ? wl_resource_get_user_data(source) : NULL;
+    if (s) {
+        if (s->used) {
+            wl_resource_post_error(r, ZWLR_DATA_CONTROL_DEVICE_V1_ERROR_USED_SOURCE,
+                                   "source already used");
+            return;
+        }
+        s->used = 1;
+    }
+    /* Supersede any previous data-control clipboard owner (unless re-set to same). */
+    if (g_data_control_clip_source && g_data_control_clip_source != s &&
+        g_data_control_clip_source->resource)
+        zwlr_data_control_source_v1_send_cancelled(g_data_control_clip_source->resource);
+    g_data_control_clip_source = s;
+    if (!s) { clip_set_text("", 0, 1); return; }
+    if (s->nmimes == 0) { clip_clear_items(); clipboard_selection_broadcast(); return; }
+    /* Materialize into the shared clipboard; source_read_done broadcasts as data lands. */
+    clip_ingest_source(source, s->mimes, s->nmimes, zwlr_data_control_source_v1_send_send);
+}
+static void data_control_device_set_primary_selection(struct wl_client *c, struct wl_resource *r,
+                                                      struct wl_resource *source)
+{ (void)c;
+    struct iosc_data_control_source *s = source ? wl_resource_get_user_data(source) : NULL;
+    if (s) {
+        if (s->used) {
+            wl_resource_post_error(r, ZWLR_DATA_CONTROL_DEVICE_V1_ERROR_USED_SOURCE,
+                                   "source already used");
+            return;
+        }
+        s->used = 1;
+    }
+    if (g_primary_dc_source && g_primary_dc_source != s && g_primary_dc_source->resource)
+        zwlr_data_control_source_v1_send_cancelled(g_primary_dc_source->resource);
+    g_primary_dc_source = s;
+    /* Unify with the zwp primary store: the data-control source now owns primary. */
+    if (g_primary_source) {
+        if (g_primary_source->resource)
+            zwp_primary_selection_source_v1_send_cancelled(g_primary_source->resource);
+        g_primary_source = NULL;
+    }
+    primary_selection_broadcast();
+}
+static void data_control_device_destroy_req(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct zwlr_data_control_device_v1_interface data_control_device_impl = {
+    .set_selection = data_control_device_set_selection,
+    .destroy = data_control_device_destroy_req,
+    .set_primary_selection = data_control_device_set_primary_selection,
+};
+static void data_control_device_res_destroy(struct wl_resource *r)
+{ reslist_remove(g_data_control_devices, &g_ndata_control_devices, r); }
+
+/* ---- manager ---- */
+static void data_control_mgr_create_source(struct wl_client *c, struct wl_resource *r, uint32_t id)
+{
+    struct iosc_data_control_source *s = calloc(1, sizeof(*s));
+    if (!s) { wl_client_post_no_memory(c); return; }
+    s->resource = wl_resource_create(c, &zwlr_data_control_source_v1_interface,
+                                     wl_resource_get_version(r), id);
+    if (!s->resource) { free(s); wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(s->resource, &data_control_source_impl, s,
+                                   data_control_source_res_destroy);
+}
+static void data_control_mgr_get_device(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                                        struct wl_resource *seat)
+{ (void)seat;
+    if (g_ndata_control_devices >= IOSC_MAX_DATA_CONTROL_DEVICES) { wl_client_post_no_memory(c); return; }
+    struct wl_resource *dev = wl_resource_create(c, &zwlr_data_control_device_v1_interface,
+                                                 wl_resource_get_version(r), id);
+    if (!dev) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(dev, &data_control_device_impl, NULL, data_control_device_res_destroy);
+    g_data_control_devices[g_ndata_control_devices++] = dev;
+    /* Focus-independent: hand the current selection(s) over as soon as it binds. */
+    data_control_send_selection_to_device(dev);
+    data_control_send_primary_to_device(dev);
+}
+static void data_control_mgr_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct zwlr_data_control_manager_v1_interface data_control_mgr_impl = {
+    .create_data_source = data_control_mgr_create_source,
+    .get_data_device = data_control_mgr_get_device,
+    .destroy = data_control_mgr_destroy,
+};
+static void data_control_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwlr_data_control_manager_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &data_control_mgr_impl, NULL, NULL);
 }
 
 /* ===========================================================================
@@ -6791,6 +7088,9 @@ int main(int argc, char **argv)
     /* Screenshots: software readback of the output IOSurface (grim, portals, spectacle). */
     wl_global_create(g_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, screencopy_mgr_bind);
 
+    /* Focus-independent clipboard access (wl-clipboard, clipboard managers). */
+    wl_global_create(g_display, &zwlr_data_control_manager_v1_interface, 2, NULL, data_control_mgr_bind);
+
     wl_global_create(g_display, &ext_session_lock_manager_v1_interface, 1, NULL, slock_mgr_bind);
 
     wl_global_create(g_display, &zwp_tablet_manager_v2_interface, 1, NULL, tablet_mgr_bind);
@@ -6841,7 +7141,7 @@ int main(int argc, char **argv)
                     "zwp_primary_selection_device_manager_v1 v1, "
                     "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1, "
                     "wp_single_pixel_buffer_manager_v1 v1, wp_cursor_shape_manager_v1 v1, "
-                    "zwlr_screencopy_manager_v1 v3\n");
+                    "zwlr_screencopy_manager_v1 v3, zwlr_data_control_manager_v1 v2\n");
 
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);

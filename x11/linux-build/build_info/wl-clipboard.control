@@ -1,0 +1,13 @@
+Package: wl-clipboard
+Version: @DEB_WL_CLIPBOARD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/bugaevc/wl-clipboard
+Depends: libwayland0
+Description: Command-line copy/paste utilities for Wayland
+ wl-clipboard provides wl-copy and wl-paste, the Wayland equivalents of
+ xclip/xsel. It uses the wlr-data-control protocol to read and write the
+ selection without holding keyboard focus, so it shares one clipboard with
+ GTK/Qt apps under the iosc compositor. Runs as a native Wayland client.
