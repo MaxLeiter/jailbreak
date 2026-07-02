@@ -286,15 +286,17 @@ final class XScreenView: UIView {
         // C owns the IOSurface ref (released in xsurface_close); borrow it here.
         let surface = xsurface_get(conn).takeUnretainedValue()
         xconn = conn
-        let oldW = fbWidth, oldH = fbHeight
         fbWidth = Int(xsurface_width(conn))
         fbHeight = Int(xsurface_height(conn))
-        // Re-fit on a resized output. render() aspect-fits fbWidth/fbHeight into the
-        // drawable every frame, but multiplies by zoomScale — and a zoom calibrated
-        // for the OLD size overflows the drawable and clips the desktop when the
-        // compositor's -logical size changes (the app re-adopts a bigger surface).
-        // Snap back to fit (zoom 1, pan 0) so ANY output size fills the screen crop-free.
-        if fbWidth != oldW || fbHeight != oldH { resetZoom() }
+        // Always snap to fit on adopt (zoom 1, pan 0) — one source of truth for the
+        // present scale. render() aspect-fits fbWidth/fbHeight into the drawable every
+        // frame but MULTIPLIES by zoomScale; a stale zoom (calibrated for a previous
+        // -logical size, and NOT reset when the adopt sees no size delta — e.g. a
+        // cold-launch adopt after loadConfig already set the new size) makes the present
+        // over-scale the current fb → the desktop overflows/clips AND touch inverse-maps
+        // at the wrong scale → taps land offset. Resetting unconditionally guarantees
+        // present + input both derive from the CURRENT fb at the fit scale, no cache.
+        resetZoom()
 
         let td = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: fbWidth, height: fbHeight, mipmapped: false)
@@ -1160,6 +1162,16 @@ final class XScreenView: UIView {
         guard rect.contains(p) else { return nil }
         let fx = (p.x - rect.minX) / rect.width * CGFloat(fbWidth)
         let fy = (p.y - rect.minY) / rect.height * CGFloat(fbHeight)
+        // Touch-coordinate diagnostic (overwrites, so it holds the latest tap): reveals
+        // exactly what the app maps a tap to vs the geometry it used, to chase the
+        // reported input offset. Remove once the coordinate bug is understood.
+        let ds = metalLayer.drawableSize
+        let dbg = "p=(\(Int(p.x)),\(Int(p.y))) bounds=\(Int(bounds.width))x\(Int(bounds.height)) "
+            + "fb=\(fbWidth)x\(fbHeight) drawable=\(Int(ds.width))x\(Int(ds.height)) "
+            + "cs=\(metalLayer.contentsScale) zoom=\(zoomScale) pan=(\(Int(panOffset.x)),\(Int(panOffset.y))) "
+            + "rect=(\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))) "
+            + "-> fb=(\(Int(fx)),\(Int(fy)))\n"
+        try? dbg.write(toFile: "/var/jb/tmp/xios-touch.log", atomically: true, encoding: .utf8)
         return CGPoint(
             x: max(0, min(CGFloat(fbWidth - 1), fx)),
             y: max(0, min(CGFloat(fbHeight - 1), fy)))
