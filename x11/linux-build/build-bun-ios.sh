@@ -19,7 +19,7 @@ PATCH="${BUN_IOS_PATCH:-$HERE/patches/bun/0001-add-iphoneos-a10-target.patch}"
 WEBKIT_PATCH_DIR="${BUN_WEBKIT_PATCH_DIR:-$HERE/patches/bun-webkit}"
 BUILD_DIR="${BUILD_DIR:-build/ios-a10}"
 CONTROL="${BUN_IOS_CONTROL:-$HERE/build_info/bun.control}"
-BUN_VERSION="${BUN_VERSION:-1.4.0~canary.1+git5b55beb711+ios0.3}"
+BUN_VERSION="${BUN_VERSION:-1.4.0~canary.1+git5b55beb711+ios0.4}"
 ARCH="${ARCH:-iphoneos-arm64}"
 PKG="bun_${BUN_VERSION}_${ARCH}.deb"
 
