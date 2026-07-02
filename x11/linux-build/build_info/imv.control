@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://sr.ht/~exec64/imv/
-Depends: libwayland0, libxkbcommon0, libpango-1.0-0, libpangocairo-1.0-0, libcairo2, libglib2.0-0, libpng16-16, libjpeg-turbo, libgbm1
+Depends: libwayland0, libxkbcommon0, libpango-1.0-0, libcairo2, libglib2.0-0, libpng16-16, libturbojpeg0
 Description: Command-line image viewer for Wayland
  imv is a fast, configurable image viewer. This build targets the Wayland
  backend (EGL/wl_shm) with libpng and libjpeg-turbo image support, pangocairo

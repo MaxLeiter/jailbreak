@@ -236,7 +236,10 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # then the standalone clients: wl-clipboard, and the mpv media stack (ffmpeg -> libass -> mpv).
 # NOTE: mpv is pinned to 0.36.0 (libplacebo optional there); 0.37+ hard-requires libplacebo
 # (>=6.338), so we step down and use --vo=gpu instead of building the whole libplacebo stack.
-TARGETS="${TARGETS:-wayland-protocols-package tllist-package fcft-package foot-package imv-package wl-clipboard-package ffmpeg-package libass-package mpv-package}"
+# libutf8proc-package MUST precede fcft/foot (both import @rpath/libutf8proc.3.dylib; never
+# packaged before, so foot dyld-failed on-device). libjpeg-turbo-package precedes imv/mpv: it
+# produces libturbojpeg0 (libturbojpeg.0, imv's missing dylib) + libjpeg62-turbo (libjpeg.62, mpv).
+TARGETS="${TARGETS:-wayland-protocols-package libutf8proc-package tllist-package fcft-package foot-package libjpeg-turbo-package imv-package wl-clipboard-package ffmpeg-package libass-package mpv-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"
@@ -249,7 +252,7 @@ for pat in libtllist libfcft foot imv libgrapheme wayland-protocols \
            wl-clipboard mpv libmpv libavcodec libavformat libavutil libavfilter \
            libavdevice libswscale libswresample libpostproc ffmpeg libass libplacebo \
            libharfbuzz libutf8proc libfontconfig libfreetype libpixman \
-           libcairo libpango libfribidi libglib2.0 libpng libjpeg; do
+           libcairo libpango libfribidi libglib2.0 libpng libjpeg libturbojpeg; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

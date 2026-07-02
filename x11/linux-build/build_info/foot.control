@@ -6,6 +6,7 @@ Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://codeberg.org/dnkl/foot
 Depends: libwayland0, libxkbcommon0, libpixman-1-0, libfontconfig1, libfcft4, libutf8proc3, libepoll-shim0
+Replaces: ncurses-term
 Description: Fast, lightweight and minimalistic Wayland terminal emulator
  foot is a fast, lightweight Wayland terminal emulator with no toolkit
  dependency: it rasterizes glyphs itself (via fcft) and presents through
