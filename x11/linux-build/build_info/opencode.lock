@@ -1,0 +1,10 @@
+# Pinned upstream inputs for linux-build/build-opencode.sh.
+#
+# This is a shell-compatible manifest on purpose: the build script sources it
+# directly, so changing upstream OpenCode requires an explicit version/hash diff.
+OPENCODE_NPM_PACKAGE=opencode-darwin-arm64
+OPENCODE_VERSION=1.17.13
+OPENCODE_GIT_REPO=https://github.com/anomalyco/opencode
+OPENCODE_GIT_TAG=v1.17.13
+OPENCODE_GIT_COMMIT=10c894bdeef3618f5666fb506ef7f9491bb964d8
+OPENCODE_TARBALL_SHA512=JSIDA4DUMzg2rOyUvnb4YnI4FDvPuI4Hjmlg+OoAcUCZJUGLFabPZLDfMNzEmzmRa3LWR00GFcgxVctXQ25xzg==

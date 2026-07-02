@@ -1,0 +1,12 @@
+Package: opencode
+Name: OpenCode
+Version: @DEB_VERSION@
+Architecture: @DEB_ARCH@
+Maintainer: max
+Author: max
+Section: Development
+Priority: optional
+Homepage: https://opencode.ai
+Description: OpenCode terminal coding agent for rootless iOS.
+ Upstream OpenCode @OPENCODE_VERSION@ packaged for the Xios/iPad environment.
+ This package is emitted only after the iPad smoke test passes.
