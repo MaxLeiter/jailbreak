@@ -10,9 +10,8 @@
 # signature can never ship):
 #   out/ioscbar       slim status bar + Control Center
 #   out/ioscdock      floating dock
-#   out/ioscpanel     legacy combined panel + quick settings fallback
 #   out/ioscoverview  launcher / window switcher
-#   out/ioscbg        wallpaper (wl_shm + ImageIO)
+#   out/ioscbg        wallpaper + desktop widgets (wl_shm + ImageIO + cairo)
 #   out/icons/        pre-rasterised app icon PNGs (gen-shell-icons.sh)
 #   run-shell.sh      on-device bring-up script
 #   panel-ent.xml     the (non-GPU) client entitlement set
@@ -52,7 +51,7 @@ BIN="$PREFIX_ROOT/usr/local/bin"
 ICONS="$PREFIX_ROOT/usr/share/iosc-shell/icons"
 SHARE="$PREFIX_ROOT/usr/local/share/iosc-shell"
 
-for f in out/ioscbar out/ioscdock out/ioscpanel out/ioscoverview out/ioscbg run-shell.sh panel-ent.xml; do
+for f in out/ioscbar out/ioscdock out/ioscoverview out/ioscbg run-shell.sh panel-ent.xml; do
   [[ -e "$HERE/$f" ]] || { echo "ERROR: $HERE/$f missing (run build-panel.sh first)" >&2; exit 1; }
 done
 
@@ -62,14 +61,14 @@ mkdir -p "$BIN" "$ICONS" "$SHARE" "$STAGE/DEBIAN"
 # 1. shell clients -> <prefix>/usr/local/bin, signed with the client entitlement
 #    set (wayland socket + .desktop scan + launch; no GPU IOKit classes needed,
 #    iosc does the compositing).
-for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
+for b in ioscbar ioscdock ioscoverview ioscbg; do
   cp "$HERE/out/$b" "$BIN/$b"
   chmod 0755 "$BIN/$b"
   ldid -S"$HERE/panel-ent.xml" "$BIN/$b"
 done
 
 if command -v otool >/dev/null; then
-  for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
+  for b in ioscbar ioscdock ioscoverview ioscbg; do
     case "$SCHEME" in
       rootless)
         otool -l "$BIN/$b" | grep -q "/var/jb/usr/lib" || {
@@ -124,8 +123,9 @@ Description: lightweight desktop shell for the iosc compositor
  iOS: a slim status bar with battery, time and Control Center; a floating dock
  with app launchers and running-window activation; a full-screen overview with
  app search, an application grid and open window cards over a frosted snapshot
- of the desktop; and a wallpaper client. Everything is plain C drawing through
- cairo and pango, so it starts instantly and stays light.
+ of the desktop; and a wallpaper client with draggable, persistent system
+ widgets for storage, memory, load and uptime. Everything is plain C drawing
+ through cairo and pango, so it starts instantly and stays light.
  .
  The shell runs as Wayland layer-shell clients of the iosc compositor. It uses
  no JavaScript and no desktop runtime; the bar, dock, overview and wallpaper are

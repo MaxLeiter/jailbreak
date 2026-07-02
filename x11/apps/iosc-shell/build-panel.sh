@@ -4,18 +4,17 @@
 #
 #   ioscbar       — the slim tablet status bar + Control Center.
 #   ioscdock      — the floating tablet dock (favorites + running apps).
-#   ioscpanel     — legacy combined panel + quick settings compatibility.
 #   ioscoverview  — the launcher/window switcher. Same cairo stack + screencopy
 #                   (frosted desktop backdrop).
-#   ioscbg        — the wallpaper. Pure wl_shm + CoreGraphics/ImageIO decode
-#                   (no cairo, no new deps).
+#   ioscbg        — the wallpaper + draggable desktop widgets. Uses cairo for
+#                   widget typography and CoreGraphics/ImageIO for wallpaper decode.
 #
 # All are pure libwayland-CLIENT programs (own poll() loop). The GTK-stack
 # dylibs (cairo/pango/glib/…) resolve on device from the selected Procursus
 # prefix via @rpath (/var/jb/usr/lib for rootless, /usr/lib for rootful).
 #
 # Usage: ./build-panel.sh
-# Output: out/ioscbar, out/ioscdock, out/ioscpanel, out/ioscoverview, out/ioscbg.
+# Output: out/ioscbar, out/ioscdock, out/ioscoverview, out/ioscbg.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -117,43 +116,42 @@ docker run --rm --entrypoint /bin/bash \
     $CC $BASE $WL_CFLAGS -c gen/xdg-shell-protocol.c -o gen/xdg.o
     PROTO="gen/layer.o gen/ftm.o gen/scopy.o gen/xdg.o"
 
-    echo "== linking ioscpanel (cairo/pangocairo + screencopy) =="
-    $CC $BASE $UI_CFLAGS -c ioscpanel.c -o gen/ioscpanel.o
-    $CC $LINK gen/ioscpanel.o $PROTO $UI_LIBS $RPATH -o out/ioscpanel
-    cp out/ioscpanel out/ioscbar
-    cp out/ioscpanel out/ioscdock
+    echo "== linking shell chrome (cairo/pangocairo + screencopy) =="
+    $CC $BASE $UI_CFLAGS -c iosc-shell.c -o gen/iosc-shell.o
+    $CC $LINK gen/iosc-shell.o $PROTO $UI_LIBS $RPATH -o out/ioscbar
+    cp out/ioscbar out/ioscdock
 
     echo "== linking ioscoverview (cairo/pangocairo + screencopy) =="
     $CC $BASE $UI_CFLAGS -c ioscoverview.c -o gen/ioscoverview.o
     $CC $LINK gen/ioscoverview.o $PROTO $UI_LIBS $RPATH -o out/ioscoverview
 
-    echo "== linking ioscbg (wl_shm + CoreGraphics/ImageIO) =="
-    $CC $BASE $WL_CFLAGS -c ioscbg.c -o gen/ioscbg.o
-    $CC $LINK gen/ioscbg.o gen/layer.o gen/xdg.o $WL_LIBS $RPATH \
+    echo "== linking ioscbg (cairo/pangocairo + CoreGraphics/ImageIO) =="
+    $CC $BASE $UI_CFLAGS -c ioscbg.c -o gen/ioscbg.o
+    $CC $LINK gen/ioscbg.o gen/layer.o gen/xdg.o $UI_LIBS $RPATH \
         -framework CoreGraphics -framework ImageIO -o out/ioscbg
 
     # Match the shipped gettext: device has libintl.8.dylib, not libintl.dylib
     # (same fixup as build-hello-gtk.sh).
-    for b in out/ioscpanel out/ioscbar out/ioscdock out/ioscoverview; do
+    for b in out/ioscbar out/ioscdock out/ioscoverview out/ioscbg; do
       "$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib "$b" 2>/dev/null || true
     done
 
-    echo "== ioscpanel linked dylibs =="
-    "$OTOOL" -L out/ioscpanel | grep -iE "cairo|pango|glib|gobject|wayland|intl|harfbuzz|fontconfig" | head -20
-    echo "== ioscbg linked frameworks =="
-    "$OTOOL" -L out/ioscbg | grep -iE "wayland|CoreGraphics|ImageIO|CoreFoundation" | head -10
+    echo "== ioscbar linked dylibs =="
+    "$OTOOL" -L out/ioscbar | grep -iE "cairo|pango|glib|gobject|wayland|intl|harfbuzz|fontconfig" | head -20
+    echo "== ioscbg linked dylibs/frameworks =="
+    "$OTOOL" -L out/ioscbg | grep -iE "cairo|pango|glib|gobject|wayland|intl|CoreGraphics|ImageIO|CoreFoundation" | head -20
   '
 
 # --- ad-hoc sign with the client entitlements ------------------------------
 if command -v ldid >/dev/null; then
-  for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
+  for b in ioscbar ioscdock ioscoverview ioscbg; do
     ldid -S"$HERE/panel-ent.xml" "$OUT/$b" && echo "signed: $OUT/$b"
   done
 else
-  echo "NOTE: ldid not on host PATH; sign on-device: ldid -Spanel-ent.xml iosc{bar,dock,panel,overview,bg}" >&2
+  echo "NOTE: ldid not on host PATH; sign on-device: ldid -Spanel-ent.xml iosc{bar,dock,overview,bg}" >&2
 fi
 
-echo "DONE -> $OUT/ioscbar  $OUT/ioscdock  $OUT/ioscpanel  $OUT/ioscoverview  $OUT/ioscbg"
+echo "DONE -> $OUT/ioscbar  $OUT/ioscdock  $OUT/ioscoverview  $OUT/ioscbg"
 echo "scheme=$SCHEME target=$MEMO_TARGET prefix=${MEMO_PREFIX:-/}"
-echo "Deploy: scp out/iosc{bar,dock,panel,overview,bg} root@ipad:${MEMO_PREFIX}/usr/local/bin/"
+echo "Deploy: scp out/iosc{bar,dock,overview,bg} root@ipad:${MEMO_PREFIX}/usr/local/bin/"
 echo "Run (needs iosc with zwlr_layer_shell_v1): see run-shell.sh"

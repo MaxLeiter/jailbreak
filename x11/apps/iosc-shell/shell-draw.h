@@ -1,16 +1,13 @@
 /*
- * shell-draw.h — shared wl_shm software renderer for the iosc shell clients
- * (ioscpanel, ioscoverview). Header-only, all `static`: each binary compiles its
- * own copy (they are separate executables, so no link conflict). Keeps the panel
- * and overview on ONE renderer instead of divergent copies.
+ * shell-draw.h — shared non-drawing helpers for the iosc shell clients
+ * (ioscbar/ioscdock, ioscoverview, ioscbg). Header-only, all `static`: each binary
+ * compiles its own copy (they are separate executables, so no link conflict).
  *
- * Provides: a 5x7 bitmap font, a `shell_canvas` (an mmap'd ARGB8888 wl_shm buffer
- * scaled logical->physical), fill/glyph/text draw primitives in logical px, a
- * .desktop launcher scan, and the fork+exec launch used by both clients.
- *
- * Colors are BGRA-in-memory (iosc's IOSurface order): write 0xAARRGGBB and the
- * little-endian bytes land as B,G,R,A. Alpha is currently ignored by iosc (it
- * forces opaque), so backgrounds should be fully opaque (A=0xff).
+ * Provides: jbroot path resolution, an anonymous wl_shm-pool fd, the shared
+ * wl_buffer release listener, the cairo-wrapped wl_shm buffer (SD_CAIRO), the
+ * .desktop launcher scan, and the fork+exec launch used by all clients. Actual
+ * drawing lives in panel-render.h (cairo/pango); the original 5x7-bitmap
+ * renderer that gave this header its name is gone.
  */
 #ifndef SHELL_DRAW_H
 #define SHELL_DRAW_H
@@ -46,9 +43,8 @@ static void sd_join_path(char *dst, size_t dstsz, const char *root,
     }
 }
 
-/* An anonymous, unlinked, sized fd for a wl_shm pool (shared by the bitmap
- * canvas below AND ioscpanel's cairo-backed buffer). Kept outside SD_NO_DRAW so
- * the cairo panel can reuse it without pulling in the bitmap renderer. */
+/* An anonymous, unlinked, sized fd for a wl_shm pool (backs the clients'
+ * cairo-drawn wl_shm buffers). */
 static int sd_create_anon_fd(size_t size)
 {
     const char *root = sd_jbroot();
@@ -69,140 +65,46 @@ static int sd_create_anon_fd(size_t size)
     return -1;
 }
 
-/* Everything from here to the matching #endif is the legacy 5x7-bitmap software
- * renderer, still used by ioscoverview. ioscpanel now draws with cairo/pango
- * (panel-render.h) and defines SD_NO_DRAW to skip this block. */
-#ifndef SD_NO_DRAW
-/* ------------------------------------------------------------- 5x7 font ---
- * Column-major, 5 columns/glyph, LSB = top row. Digits, ':', space, A-Z, and a
- * few punctuation; lowercase folds to uppercase at draw time. */
-struct sd_glyph { char c; uint8_t col[5]; };
-static const struct sd_glyph SD_FONT[] = {
-    {' ', {0x00,0x00,0x00,0x00,0x00}},
-    {'0', {0x3E,0x51,0x49,0x45,0x3E}}, {'1', {0x00,0x42,0x7F,0x40,0x00}},
-    {'2', {0x42,0x61,0x51,0x49,0x46}}, {'3', {0x21,0x41,0x45,0x4B,0x31}},
-    {'4', {0x18,0x14,0x12,0x7F,0x10}}, {'5', {0x27,0x45,0x45,0x45,0x39}},
-    {'6', {0x3C,0x4A,0x49,0x49,0x30}}, {'7', {0x01,0x71,0x09,0x05,0x03}},
-    {'8', {0x36,0x49,0x49,0x49,0x36}}, {'9', {0x06,0x49,0x49,0x29,0x1E}},
-    {':', {0x00,0x36,0x36,0x00,0x00}}, {'.', {0x00,0x60,0x60,0x00,0x00}},
-    {'-', {0x08,0x08,0x08,0x08,0x08}}, {'/', {0x20,0x10,0x08,0x04,0x02}},
-    {'%', {0x23,0x13,0x08,0x64,0x62}}, {'+', {0x08,0x08,0x3E,0x08,0x08}},
-    {'A', {0x7E,0x11,0x11,0x11,0x7E}}, {'B', {0x7F,0x49,0x49,0x49,0x36}},
-    {'C', {0x3E,0x41,0x41,0x41,0x22}}, {'D', {0x7F,0x41,0x41,0x22,0x1C}},
-    {'E', {0x7F,0x49,0x49,0x49,0x41}}, {'F', {0x7F,0x09,0x09,0x09,0x01}},
-    {'G', {0x3E,0x41,0x49,0x49,0x7A}}, {'H', {0x7F,0x08,0x08,0x08,0x7F}},
-    {'I', {0x00,0x41,0x7F,0x41,0x00}}, {'J', {0x20,0x40,0x41,0x3F,0x01}},
-    {'K', {0x7F,0x08,0x14,0x22,0x41}}, {'L', {0x7F,0x40,0x40,0x40,0x40}},
-    {'M', {0x7F,0x02,0x0C,0x02,0x7F}}, {'N', {0x7F,0x04,0x08,0x10,0x7F}},
-    {'O', {0x3E,0x41,0x41,0x41,0x3E}}, {'P', {0x7F,0x09,0x09,0x09,0x06}},
-    {'Q', {0x3E,0x41,0x51,0x21,0x5E}}, {'R', {0x7F,0x09,0x19,0x29,0x46}},
-    {'S', {0x46,0x49,0x49,0x49,0x31}}, {'T', {0x01,0x01,0x7F,0x01,0x01}},
-    {'U', {0x3F,0x40,0x40,0x40,0x3F}}, {'V', {0x1F,0x20,0x40,0x20,0x1F}},
-    {'W', {0x7F,0x20,0x18,0x20,0x7F}}, {'X', {0x63,0x14,0x08,0x14,0x63}},
-    {'Y', {0x07,0x08,0x70,0x08,0x07}}, {'Z', {0x61,0x51,0x49,0x45,0x43}},
-};
+/* wl_buffer release -> destroy; the one listener every shell buffer uses. */
+static void sd_buf_release(void *d, struct wl_buffer *b){ (void)d; wl_buffer_destroy(b); }
+static const struct wl_buffer_listener sd_buf_listener = { .release = sd_buf_release };
 
-static const struct sd_glyph *sd_glyph_for(char c)
-{
-    if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-    for (size_t i = 0; i < sizeof(SD_FONT)/sizeof(SD_FONT[0]); i++)
-        if (SD_FONT[i].c == c) return &SD_FONT[i];
-    return NULL; /* -> hollow box */
-}
+/* -------------------------------------------------- cairo wl_shm buffer ---
+ * Opt in with `#define SD_CAIRO` before including (ioscbar/ioscdock,
+ * ioscoverview, and ioscbg's widget overlay). */
+#ifdef SD_CAIRO
+#include <cairo/cairo.h>
 
-/* --------------------------------------------------------------- canvas --- */
-
-struct shell_canvas {
-    uint32_t *px;        /* mmap'd ARGB8888 pixels */
-    int bw, bh;          /* physical buffer dims (logical * scale) */
-    int scale;           /* logical -> physical */
-};
-
-/* Allocate a fresh wl_shm buffer sized logical_w*logical_h*scale; fills *cv with
- * the mmap'd pixels. Returns the wl_buffer (attach it, destroy on release). */
-static struct wl_buffer *sd_canvas_alloc(struct wl_shm *shm, int logical_w,
-                                         int logical_h, int scale,
-                                         struct shell_canvas *cv)
+/* Allocate a wl_shm buffer and wrap its mmap as a cairo ARGB32 surface (scaled
+ * logical->physical). Caller destroys cr+surf and munmaps after commit; the
+ * wl_buffer is destroyed on release (sd_buf_listener). */
+static struct wl_buffer *sd_alloc_cairo_buffer(struct wl_shm *shm, int lw, int lh,
+                                               int scale, cairo_t **out_cr,
+                                               cairo_surface_t **out_surf,
+                                               void **out_map, size_t *out_size)
 {
     int s = scale > 0 ? scale : 1;
-    int bw = logical_w * s, bh = logical_h * s;
-    int stride = bw * 4;
+    int bw = lw * s, bh = lh * s;
+    int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, bw);
     size_t size = (size_t)stride * bh;
     int fd = sd_create_anon_fd(size);
     if (fd < 0) return NULL;
-    uint32_t *px = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    if (px == MAP_FAILED) { close(fd); return NULL; }
+    void *map = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED) { close(fd); return NULL; }
     struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)size);
     struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, bw, bh, stride,
                                                       WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
-    cv->px = px; cv->bw = bw; cv->bh = bh; cv->scale = s;
+
+    cairo_surface_t *surf = cairo_image_surface_create_for_data(
+        (unsigned char *)map, CAIRO_FORMAT_ARGB32, bw, bh, stride);
+    cairo_t *cr = cairo_create(surf);
+    cairo_scale(cr, s, s);
+    *out_cr = cr; *out_surf = surf; *out_map = map; *out_size = size;
     return buf;
 }
-
-/* fill a logical rect with color (BGRA-in-memory). */
-static void sd_fill_rect(struct shell_canvas *cv, int x, int y, int w, int h, uint32_t c)
-{
-    int s = cv->scale;
-    int px0 = x*s, py0 = y*s, px1 = (x+w)*s, py1 = (y+h)*s;
-    if (px0 < 0) px0 = 0; if (py0 < 0) py0 = 0;
-    if (px1 > cv->bw) px1 = cv->bw; if (py1 > cv->bh) py1 = cv->bh;
-    for (int yy = py0; yy < py1; yy++) {
-        uint32_t *row = cv->px + (size_t)yy * cv->bw;
-        for (int xx = px0; xx < px1; xx++) row[xx] = c;
-    }
-}
-
-/* draw one glyph at logical (x,y) top-left, scaled. */
-static void sd_draw_glyph(struct shell_canvas *cv, const struct sd_glyph *g,
-                          int x, int y, uint32_t c)
-{
-    int s = cv->scale;
-    if (!g) { sd_fill_rect(cv, x, y, 5, 7, c); return; }
-    for (int col = 0; col < 5; col++) {
-        uint8_t bits = g->col[col];
-        for (int row = 0; row < 7; row++) {
-            if (!(bits & (1u << row))) continue;
-            int bx = (x+col)*s, by = (y+row)*s;
-            for (int dy = 0; dy < s; dy++) {
-                if (by+dy >= cv->bh) break;
-                uint32_t *p = cv->px + (size_t)(by+dy) * cv->bw + bx;
-                for (int dx = 0; dx < s; dx++)
-                    if (bx+dx < cv->bw) p[dx] = c;
-            }
-        }
-    }
-}
-
-/* draw a string; returns logical x advance. 6 logical px/char (5 + 1 gap). */
-static int sd_draw_text(struct shell_canvas *cv, const char *str, int x, int y, uint32_t c)
-{
-    for (; *str; str++) { sd_draw_glyph(cv, sd_glyph_for(*str), x, y, c); x += 6; }
-    return x;
-}
-static int sd_text_w(const char *s) { return (int)strlen(s) * 6; }
-
-/* ellipsize src into dst so it fits maxchars (with a trailing '.'). */
-static void sd_fit_label(char *dst, size_t dstsz, const char *src, int maxchars)
-{
-    int n = (int)strlen(src);
-    if (maxchars < 2) maxchars = 2;
-    if (n <= maxchars) { snprintf(dst, dstsz, "%s", src); return; }
-    snprintf(dst, dstsz, "%.*s.", maxchars-1, src);
-}
-
-/* draw a string centered horizontally in [x0,x0+w] at logical y. */
-static void sd_draw_text_centered(struct shell_canvas *cv, const char *s,
-                                  int x0, int w, int y, uint32_t c)
-{
-    int tw = sd_text_w(s);
-    int x = x0 + (w - tw) / 2;
-    if (x < x0) x = x0;
-    sd_draw_text(cv, s, x, y, c);
-}
-
-#endif /* SD_NO_DRAW — end of the legacy bitmap renderer */
+#endif /* SD_CAIRO */
 
 /* ------------------------------------------------------- .desktop scan ---- */
 
