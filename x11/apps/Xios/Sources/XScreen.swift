@@ -53,7 +53,15 @@ final class XScreenView: UIView {
     private let requestPath = "/var/jb/tmp/xios-request.json"
     private let sessionStatusPath = "/var/jb/tmp/xios-session-status.json"
     private weak var sessionStatusLabel: UILabel?
-    private var sessionStatusTimer: Timer?
+    // Session-switch resilience: when the compositor dies mid-session the ddx surface
+    // is lost; the app releases GPU state and holds on the test pattern (awaitingCompositor)
+    // rather than jetsamming, while a full-screen banner shows the launcher's live status
+    // (xios-session-status.json) so the switch reads as progress, not a dark screen.
+    private var awaitingCompositor = false
+    private var sessionBanner: UILabel?
+    private var sessionIndicatorTimer: Timer?
+    private var sessionIndicatorDeadline = Date.distantPast
+    private var sessionIndicatorSawTransition = false
     private let debugPath = "/var/jb/tmp/xios-debug.txt"
     private var lastToolMessage = "No profile request sent"
     // UITextInputTraits — keep the keyboard literal so one tap is one char (no
@@ -308,6 +316,7 @@ final class XScreenView: UIView {
         }
         iosTexture = tex
         usingIOSurface = true
+        awaitingCompositor = false                // new compositor surface is live again
         usingTestPattern = false
         testBuf?.deallocate(); testBuf = nil
         texture = nil                             // drop the test-pattern texture (~14 MB)
@@ -560,7 +569,16 @@ final class XScreenView: UIView {
         return sock != ddxSockPath || w != fbWidth || h != fbHeight
     }
 
-    private func teardownIOSurface() {
+    /// Release the adopted IOSurface + its Metal texture. `lost` distinguishes the two
+    /// callers: the watchdog (lost == false) fires when xios.json already names a NEW,
+    /// live surface, so re-adopt immediately; the drain (lost == true) fires when the
+    /// compositor DIED (socket EOF) — the new surface may not exist yet, so drop to the
+    /// low-footprint test pattern and let the %30 poll re-adopt once xios.json names a
+    /// live socket. Dropping GPU state promptly on loss is what keeps the app OUT of the
+    /// flavor-switch memory spike (our iosTexture otherwise pins the old ~30MB IOSurface,
+    /// so the compositor's death frees nothing until we let go) and lets it stay up
+    /// through the switch instead of getting jetsammed.
+    private func teardownIOSurface(lost: Bool = false) {
         if let c = xconn { xsurface_close(c); xconn = nil }
         iosTexture = nil
         usingIOSurface = false
@@ -568,7 +586,15 @@ final class XScreenView: UIView {
         if !userPinned { _ = loadConfig() }
         writeStatus()
         iosConnectStarted = false
-        if ddxIsIOSurface {
+        if lost {
+            // Compositor gone: show a clean holding frame + the live switch status, and
+            // wait for a new surface (poll path re-reads xios.json + re-adopts). Do NOT
+            // eagerly reconnect here — the old socket is dead and may be replaced by a
+            // DIFFERENT compositor at a different path.
+            awaitingCompositor = true
+            startTestPattern()
+            startSessionIndicator()
+        } else if ddxIsIOSurface {
             startIOSurfaceConnect()   // last frame stays frozen until the server returns
         } else if mapFramebuffer() {
             makeTexture()
@@ -608,7 +634,7 @@ final class XScreenView: UIView {
             }
             guard let conn = xconn, let tex = iosTexture else { return }
             let r = xsurface_drain(conn)
-            if r < 0 { teardownIOSurface(); return }
+            if r < 0 { teardownIOSurface(lost: true); return }
             if r > 0 { needsPresent = true }
             // Reposition the cursor overlay independently of surface damage: a pure
             // pointer move updates the CALayer without re-presenting the framebuffer.
@@ -628,7 +654,8 @@ final class XScreenView: UIView {
             if ddxIsIOSurface {
                 startIOSurfaceConnect()
             } else if mapFramebuffer() {
-                usingTestPattern = false; makeTexture(); connectInput(); writeStatus()
+                usingTestPattern = false; awaitingCompositor = false
+                makeTexture(); connectInput(); writeStatus()
                 displayLink?.preferredFramesPerSecond = 60
             }
         }
@@ -649,8 +676,8 @@ final class XScreenView: UIView {
         } else if let b = testBuf {
             // Clean black by default (the buffer stays zeroed); the animated card is a
             // last-resort no-signal diagnostic shown only after the grace period.
-            if tickCount - testPatternStartTick >= Self.testPatternGraceTicks {
-                renderTestPattern(into: b)
+            if tickCount - testPatternStartTick >= Self.testPatternGraceTicks, !awaitingCompositor {
+                renderTestPattern(into: b)   // stay clean black mid-switch; banner shows status
             }
             base = UnsafeRawPointer(b)
         } else { return }
@@ -772,6 +799,9 @@ final class XScreenView: UIView {
             lastToolMessage = "Session request failed: \(error.localizedDescription)"
         }
         writeDebugSnapshot()
+        // Track the switch from here on (card line + full-screen banner once dismissed),
+        // so it survives the app staying up through a compositor swap.
+        startSessionIndicator()
     }
 
     private func reloadRuntimeConfig() {
@@ -1729,32 +1759,114 @@ final class XScreenView: UIView {
 
     @objc private func openSessionPicker() { presentSessionPicker() }
 
-    /// One-line "preset: state — message" from xios-sessiond's status file.
-    private func sessionStatusText() -> String {
+    /// Parse xios-sessiond's status file (preset / state / human message). nil when the
+    /// file is absent or unparseable. State walks stopping → starting → waiting →
+    /// relaunching → up (or error / compositor-only).
+    private func sessionStatus() -> (preset: String, state: String, message: String)? {
         guard let data = FileManager.default.contents(atPath: sessionStatusPath),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return "No session started yet"
+            return nil
         }
-        let preset = obj["preset"] as? String ?? "?"
-        let state = obj["state"] as? String ?? "?"
-        let msg = (obj["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        return "\(preset): \(state)" + (msg.map { " — \($0)" } ?? "")
+        return (obj["preset"] as? String ?? "?",
+                obj["state"] as? String ?? "?",
+                obj["message"] as? String ?? "")
     }
 
-    /// Refresh the picker's status line from the daemon's status file for ~16s after a
-    /// pick (so Max watches starting → up/error). Self-cancels when the card is closed.
-    private func startSessionStatusPoll() {
-        sessionStatusTimer?.invalidate()
-        sessionStatusLabel?.text = sessionStatusText()
-        var ticks = 0
-        sessionStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] t in
-            guard let self, self.pickerOverlay != nil, let label = self.sessionStatusLabel else {
-                t.invalidate(); return
-            }
-            label.text = self.sessionStatusText()
-            ticks += 1
-            if ticks >= 20 { t.invalidate() }
+    /// One-line "preset: state — message" for the picker card.
+    private func sessionStatusText() -> String {
+        guard let s = sessionStatus() else { return "No session started yet" }
+        return "\(s.preset): \(s.state)" + (s.message.isEmpty ? "" : " — \(s.message)")
+    }
+
+    /// The human message for the full-screen banner: the daemon's message verbatim when
+    /// present, else a phrase derived from the state (so a blank message still reads as
+    /// progress rather than a dark screen).
+    private func sessionBannerText() -> String {
+        guard let s = sessionStatus() else { return "Switching desktop…" }
+        if !s.message.isEmpty { return s.message }
+        switch s.state {
+        case "stopping":       return "Stopping \(s.preset)…"
+        case "starting":       return "Starting \(s.preset)…"
+        case "waiting":        return "Waiting for compositor surface…"
+        case "relaunching":    return "Relaunching display…"
+        case "up":             return "\(s.preset) ready"
+        case "compositor-only": return "\(s.preset) up — reconnecting display…"
+        case "error":          return "Session error"
+        default:               return "\(s.preset): \(s.state)"
         }
+    }
+
+    private func ensureSessionBanner() -> UILabel {
+        if let b = sessionBanner { return b }
+        let b = UILabel()
+        b.font = .systemFont(ofSize: 15, weight: .semibold)
+        b.textColor = .white
+        b.textAlignment = .center
+        b.backgroundColor = UIColor.black.withAlphaComponent(0.72)
+        b.layer.cornerRadius = 12
+        b.layer.masksToBounds = true
+        b.numberOfLines = 1
+        b.adjustsFontSizeToFitWidth = true
+        b.minimumScaleFactor = 0.7
+        b.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(b)
+        NSLayoutConstraint.activate([
+            b.centerXAnchor.constraint(equalTo: centerXAnchor),
+            b.centerYAnchor.constraint(equalTo: centerYAnchor),
+            b.heightAnchor.constraint(equalToConstant: 44),
+            b.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, multiplier: 0.8),
+        ])
+        sessionBanner = b
+        return b
+    }
+
+    /// Poll the launcher's status file at 0.5s while a flavor switch is in flight (a pick,
+    /// or a mid-session surface loss). Feeds BOTH the picker card line and — once the
+    /// picker is dismissed and there's no live desktop to look at — a full-screen banner,
+    /// so the switch reads as "starting mutter / waiting for compositor / relaunching"
+    /// instead of a dark screen. Stops when a live surface is presenting again at "up",
+    /// or after a 60s backstop.
+    private func startSessionIndicator() {
+        sessionIndicatorDeadline = Date().addingTimeInterval(60)
+        sessionIndicatorSawTransition = false
+        updateSessionIndicator()
+        if sessionIndicatorTimer != nil { return }
+        sessionIndicatorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            self.updateSessionIndicator()
+            if self.sessionIndicatorTimer == nil { t.invalidate() }
+        }
+    }
+
+    private func updateSessionIndicator() {
+        let state = sessionStatus()?.state ?? ""
+        sessionStatusLabel?.text = sessionStatusText()          // picker card, if open
+        // Don't treat a stale "up" (from before the pick landed) as settled — only stop
+        // after we've actually seen the switch move (a transient state or a surface loss).
+        if awaitingCompositor || (!state.isEmpty && state != "up") {
+            sessionIndicatorSawTransition = true
+        }
+        let presenting = usingIOSurface && !awaitingCompositor
+        let settled = sessionIndicatorSawTransition && presenting && state == "up"
+        if settled || Date() > sessionIndicatorDeadline {
+            stopSessionIndicator(); return
+        }
+        // Full-screen banner only when there's no live desktop AND the picker card isn't
+        // already showing the status.
+        if !presenting && pickerOverlay == nil {
+            let b = ensureSessionBanner()
+            b.text = "   " + sessionBannerText() + "   "
+            b.isHidden = false
+            bringSubviewToFront(b)
+        } else {
+            sessionBanner?.isHidden = true
+        }
+    }
+
+    private func stopSessionIndicator() {
+        sessionIndicatorTimer?.invalidate()
+        sessionIndicatorTimer = nil
+        sessionBanner?.isHidden = true
     }
 
     /// The desktop-flavor picker: tap a preset → writeSessionRequest → xios-sessiond
@@ -1772,11 +1884,10 @@ final class XScreenView: UIView {
         let status = panelLabel(sessionStatusText(), size: 12, color: UIColor(white: 0.72, alpha: 1))
         stack.addArrangedSubview(status)
         sessionStatusLabel = status
-        startSessionStatusPoll()
+        startSessionIndicator()
 
         let pick: (String, String?) -> Void = { [weak self] preset, app in
             self?.writeSessionRequest(preset, app: app)
-            self?.startSessionStatusPoll()
         }
 
         addSection("Switch desktop", to: stack)
