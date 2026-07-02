@@ -11,7 +11,7 @@ index 4d2b6141f3..ac10e3def7 100644
      "cacheDir",
      "nodejsVersion",
 diff --git a/scripts/build/config.ts b/scripts/build/config.ts
-index 20b5a23827..e1a5c8e462 100644
+index 20b5a23827..4e06a13b55 100644
 --- a/scripts/build/config.ts
 +++ b/scripts/build/config.ts
 @@ -23,6 +23,7 @@ export type Abi = "gnu" | "musl" | "android";
@@ -58,15 +58,6 @@ index 20b5a23827..e1a5c8e462 100644
    // Android: force off. NDK ASAN deployment needs wrap.sh + runtime .so
    // shipping alongside the binary; UBSan likewise. Not worth the matrix.
    // FreeBSD: force off. Cross-compiled — we'd need to ship FreeBSD's
-@@ -866,7 +873,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
-   // TinyCC: off on Windows ARM64 (not supported), Android (no upstream
-   // bionic support; FFI cc() falls back to dlopen-only), and FreeBSD
-   // (oven-sh/tinycc has no FreeBSD target).
--  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd);
-+  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd || ios);
- 
-   const valgrind = partial.valgrind ?? false;
-   const fuzzilli = partial.fuzzilli ?? false;
 @@ -909,6 +916,8 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
  
    // ─── Validation ───
@@ -113,6 +104,34 @@ index 20b5a23827..e1a5c8e462 100644
      clangVersion: toolchain.clangVersion,
      clangResourceDir: toolchain.clangResourceDir,
      ar: toolchain.ar,
+diff --git a/scripts/build/deps/tinycc.ts b/scripts/build/deps/tinycc.ts
+index 499a83bc16..c7980c0465 100644
+--- a/scripts/build/deps/tinycc.ts
++++ b/scripts/build/deps/tinycc.ts
+@@ -28,7 +28,10 @@ export const tinycc: Dependency = {
+     commit: TINYCC_COMMIT,
+   }),
+ 
+-  patches: ["patches/tinycc/tcc.h.patch"],
++  patches: cfg =>
++    cfg.ios
++      ? ["patches/tinycc/tcc.h.patch", "patches/tinycc/tccrun-ios-mmap.patch"]
++      : ["patches/tinycc/tcc.h.patch"],
+ 
+   build: cfg => {
+     const sources = ["libtcc.c", "tccpp.c", "tccgen.c", "tccdbg.c", "tccelf.c", "tccasm.c", "tccrun.c"];
+@@ -50,7 +53,10 @@ export const tinycc: Dependency = {
+     };
+     if (cfg.darwin) {
+       defines.TCC_TARGET_MACHO = true;
+-      defines.CONFIG_CODESIGN = true;
++      // iOS libc has no system(3); tccmacho.c's CONFIG_CODESIGN path calls it
++      // to sign FILE output. bun:ffi uses in-memory output (nothing to sign),
++      // and on-device JIT pages need no signature, so leave it off for iOS.
++      if (!cfg.ios) defines.CONFIG_CODESIGN = true;
+       defines.CONFIG_NEW_MACHO = true;
+       // CONFIG_USR_INCLUDE was set to sysroot in the cmake version. tccrun
+       // uses it to find system headers at runtime; bun:ffi doesn't exercise
 diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
 index 3c8091adc8..38ab4a9acf 100644
 --- a/scripts/build/deps/webkit.ts
@@ -272,7 +291,7 @@ index 73ef199323..69d570d3fe 100644
        env[`CFLAGS_${tripleEnv}`] = sdkFlags;
        env[`CXXFLAGS_${tripleEnv}`] = sdkFlags;
 diff --git a/scripts/build/shims.ts b/scripts/build/shims.ts
-index 4aaa6a1118..906adde576 100644
+index 4aaa6a1118..000aea4b77 100644
 --- a/scripts/build/shims.ts
 +++ b/scripts/build/shims.ts
 @@ -160,7 +160,7 @@ export function registerShimRules(n: Ninja, cfg: Config): void {
@@ -280,14 +299,23 @@ index 4aaa6a1118..906adde576 100644
      // since it runs as part of the link/strip commands on this host.
      n.rule("host_tool_cc", {
 -      command: `${q(cfg.cc)} -std=c11 -O2 -o $out $in`,
-+      command: `${q(cfg.hostCc)} -std=c11 -O2 -o $out $in`,
++      command: `${cfg.host.os === "darwin" ? 'SDKROOT="$$(xcrun --sdk macosx --show-sdk-path)" ' : ""}${q(cfg.hostCc)} -std=c11 -O2 -o $out $in`,
        description: "host-tool $out",
      });
    }
 diff --git a/scripts/build/source.ts b/scripts/build/source.ts
-index 92fc48cfac..4c95019f16 100644
+index 92fc48cfac..c7b879cdc7 100644
 --- a/scripts/build/source.ts
 +++ b/scripts/build/source.ts
+@@ -632,7 +632,7 @@ export function registerDepRules(n: Ninja, cfg: Config): void {
+   // when cross-compiling for windows, cc is clang-cl and defaults to a
+   // *-windows-msvc triple — host tools must stay plain clang.
+   n.rule("dep_host_cc", {
+-    command: `${q(cfg.hostCc)} $flags -o $out $in`,
++    command: `${cfg.host.os === "darwin" ? 'SDKROOT="$$(xcrun --sdk macosx --show-sdk-path)" ' : ""}${q(cfg.hostCc)} $flags -o $out $in`,
+     description: "host-cc $out",
+   });
+ 
 @@ -1166,6 +1166,7 @@ function emitNestedCmake(
    // CI box); that's fine — the cmake rules are emitted but never pulled.
    // If pulled without an SDK, cmake fails with its own clear error.
@@ -1146,43 +1174,16 @@ index 8f0fa04800..5c5f1ed94e 100644
  
      this->putDirect(
 diff --git a/src/jsc/bindings/workaround-missing-symbols.cpp b/src/jsc/bindings/workaround-missing-symbols.cpp
-index 0ee12bafda..f5ecdc498e 100644
+index 0ee12bafda..ebdd839631 100644
 --- a/src/jsc/bindings/workaround-missing-symbols.cpp
 +++ b/src/jsc/bindings/workaround-missing-symbols.cpp
-@@ -43,6 +43,38 @@ extern "C" int kill(int pid, int sig)
+@@ -43,6 +43,11 @@ extern "C" int kill(int pid, int sig)
  
  #endif
  
 +#if defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
 +#include <stdlib.h>
-+
-+extern "C" {
-+struct TCCState;
-+using TCCErrorFunc = void (*)(void*, const char*);
-+using TCCSymbolCallback = void (*)(void*, const char*, const void*);
-+
-+void quick_exit(int code) { _Exit(code); }
-+TCCState* tcc_new() { return nullptr; }
-+void tcc_delete(TCCState*) {}
-+void tcc_set_lib_path(TCCState*, const char*) {}
-+void tcc_set_error_func(TCCState*, void*, TCCErrorFunc) {}
-+int tcc_set_options(TCCState*, const char*) { return -1; }
-+int tcc_add_include_path(TCCState*, const char*) { return -1; }
-+int tcc_add_sysinclude_path(TCCState*, const char*) { return -1; }
-+void tcc_define_symbol(TCCState*, const char*, const char*) {}
-+void tcc_undefine_symbol(TCCState*, const char*) {}
-+int tcc_add_file(TCCState*, const char*) { return -1; }
-+int tcc_compile_string(TCCState*, const char*) { return -1; }
-+int tcc_set_output_type(TCCState*, int) { return -1; }
-+int tcc_add_library_path(TCCState*, const char*) { return -1; }
-+int tcc_add_library(TCCState*, const char*) { return -1; }
-+int tcc_add_symbol(TCCState*, const char*, const void*) { return -1; }
-+int tcc_output_file(TCCState*, const char*) { return -1; }
-+int tcc_run(TCCState*, int, char**) { return -1; }
-+int tcc_relocate(TCCState*) { return -1; }
-+void* tcc_get_symbol(TCCState*, const char*) { return nullptr; }
-+void tcc_list_symbols(TCCState*, void*, TCCSymbolCallback) {}
-+}
++extern "C" void quick_exit(int code) { _Exit(code); }
 +#endif
 +
  #if !defined(WIN32)

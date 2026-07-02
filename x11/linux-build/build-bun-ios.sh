@@ -63,6 +63,14 @@ git -C "$SRC" reset --quiet --hard "$BUN_GIT_COMMIT"
 git -C "$SRC" clean -fd --quiet
 git -C "$SRC" apply "$PATCH"
 
+# TinyCC iOS run-memory patch: bun's build graph (scripts/build/deps/tinycc.ts)
+# applies it from $SRC/patches/tinycc/ when cfg.ios. It lives in our tree, so
+# stage it into the (reset+cleaned) checkout after the main patch is applied.
+TINYCC_IOS_PATCH="${TINYCC_IOS_PATCH:-$HERE/patches/tinycc/tccrun-ios-mmap.patch}"
+[ -f "$TINYCC_IOS_PATCH" ] || { echo "TinyCC iOS patch not found: $TINYCC_IOS_PATCH" >&2; exit 1; }
+install -d "$SRC/patches/tinycc"
+cp "$TINYCC_IOS_PATCH" "$SRC/patches/tinycc/tccrun-ios-mmap.patch"
+
 LLVM_PREFIX="${LLVM_PREFIX:-/opt/homebrew/opt/llvm@21}"
 if [ -x "$LLVM_PREFIX/bin/clang" ]; then
   export PATH="$LLVM_PREFIX/bin:$PATH"

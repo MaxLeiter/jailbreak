@@ -1,0 +1,46 @@
+--- tccrun.c
++++ tccrun.c
+@@ -130,7 +130,12 @@ static int rt_mem(TCCState *s1, int size)
+     //printf("map %p %p %p\n", ptr, prw, (void*)ptr_diff);
+     size *= 2;
+ #else
+-    ptr = tcc_malloc(size += PAGESIZE); /* one extra page to align malloc memory */
++    /* iOS: executable run memory must come from mmap, not the heap; mprotect
++       on malloc'd pages returns EINVAL. An mmap'd anon region can go r-w -> r-x. */
++    size += PAGESIZE; /* one extra page to align the base */
++    ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
++    if (ptr == MAP_FAILED)
++        return tcc_error_noabort("tccrun: could not map memory");
+ #endif
+     s1->run_ptr = ptr;
+     s1->run_size = size;
+@@ -188,12 +193,8 @@ ST_FUNC void tcc_run_free(TCCState *s1)
+ #ifdef CONFIG_SELINUX
+     munmap(ptr, size);
+ #else
+-    /* unprotect memory to make it usable for malloc again */
+-    protect_pages((void*)PAGEALIGN(ptr), size - PAGESIZE, 2 /*rw*/);
+-# ifdef _WIN64
+-    win64_del_function_table(s1->run_function_table);
+-# endif
+-    tcc_free(ptr);
++    /* iOS: run memory is mmap'd in rt_mem (see above); release with munmap. */
++    munmap(ptr, size);
+ #endif
+ }
+ 
+@@ -473,8 +474,14 @@ static int protect_pages(void *ptr, unsigned long length, int mode)
+ /* XXX: BSD sometimes dump core with bad system call */
+ # if (defined TCC_TARGET_ARM && !TARGETOS_BSD) || defined TCC_TARGET_ARM64
+     if (mode == 0 || mode == 3) {
++#  if defined(__APPLE__)
++        /* Apple arm64 has no libgcc __clear_cache; use the OS icache flush. */
++        void sys_icache_invalidate(void *start, size_t len);
++        sys_icache_invalidate(ptr, length);
++#  else
+         void __clear_cache(void *beginning, void *end);
+         __clear_cache(ptr, (char *)ptr + length);
++#  endif
+     }
+ # endif
+ #endif
