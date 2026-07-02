@@ -116,6 +116,7 @@ static struct {
     /* input routing: which of our surfaces the pointer/touch is on */
     struct wl_surface *ptr_surf;
     int   px, py, have_ptr;
+    int   ptr_kind, ptr_idx;
     int   press_kind, press_idx;       /* touch-down feedback */
     struct wl_surface *touch_surf;
     int   touch_id;
@@ -565,18 +566,35 @@ static void rerender_for(struct wl_surface *sf)
     if (P.qs_surf && sf == P.qs_surf) render_qs(); else render();
 }
 
+static void ptr_update_hover(struct wl_surface *sf)
+{
+    const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
+    int i = P.have_ptr ? pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py)) : -1;
+    P.ptr_kind = i >= 0 ? hs->v[i].kind : -1;
+    P.ptr_idx = i >= 0 ? hs->v[i].idx : -1;
+}
+
 static void pt_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf, wl_fixed_t x, wl_fixed_t y)
 {
     (void)d;(void)p;(void)s;
     P.ptr_surf=sf; P.have_ptr=1; P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y);
+    ptr_update_hover(sf);
     if (pdbg()) fprintf(stderr, "%s: pt_enter %s (%d,%d)\n",
                         mode_name(), sf == P.qs_surf ? "qs" : mode_name(), P.px, P.py);
     rerender_for(sf);
 }
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf)
-{ (void)d;(void)p;(void)s; P.have_ptr=0; P.ptr_surf=NULL; rerender_for(sf); }
+{ (void)d;(void)p;(void)s; P.have_ptr=0; P.ptr_surf=NULL; P.ptr_kind=-1; P.ptr_idx=-1; rerender_for(sf); }
 static void pt_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y)
-{ (void)d;(void)p;(void)t; P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y); rerender_for(P.ptr_surf); }
+{
+    (void)d;(void)p;(void)t;
+    struct wl_surface *sf = P.ptr_surf;
+    int old_kind = P.ptr_kind, old_idx = P.ptr_idx;
+    P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y);
+    if (!sf) return;
+    ptr_update_hover(sf);
+    if (P.ptr_kind != old_kind || P.ptr_idx != old_idx) rerender_for(sf);
+}
 static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t, uint32_t button, uint32_t state)
 {
     (void)d;(void)p;(void)serial;(void)t;
@@ -796,6 +814,7 @@ int main(int argc, char **argv)
     signal(SIGCHLD, SIG_IGN);
     memset(&P, 0, sizeof P);
     P.mode = MODE_PANEL;
+    P.ptr_kind = -1; P.ptr_idx = -1;
     P.last_launch_idx = -1;
     if (argc > 0) {
         char btmp[512]; snprintf(btmp, sizeof btmp, "%s", argv[0]);

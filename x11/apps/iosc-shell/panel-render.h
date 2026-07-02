@@ -110,24 +110,47 @@ static void pr_fill_vgrad(cairo_t *cr, double x, double y, double w, double h,
 /* One reusable Pango layout per canvas. Font strings are pango descriptions,
  * e.g. "Sans 13", "Sans Medium 13". Generic "Sans" resolves to Apple .SF UI via
  * the x11-fonts-sf fontconfig rule, so we get San Francisco with no font files. */
-typedef struct { PangoLayout *lay; } pr_text_ctx;
+typedef struct {
+    PangoLayout *lay;
+    PangoFontDescription *fd;
+    char font[64];
+} pr_text_ctx;
 
 static pr_text_ctx pr_text_ctx_new(cairo_t *cr)
 {
-    pr_text_ctx t; t.lay = pango_cairo_create_layout(cr);
+    pr_text_ctx t;
+    memset(&t, 0, sizeof t);
+    t.lay = pango_cairo_create_layout(cr);
     return t;
 }
-static void pr_text_ctx_free(pr_text_ctx *t){ if (t->lay) g_object_unref(t->lay); t->lay = NULL; }
+static void pr_text_ctx_free(pr_text_ctx *t)
+{
+    if (t->fd) pango_font_description_free(t->fd);
+    if (t->lay) g_object_unref(t->lay);
+    memset(t, 0, sizeof *t);
+}
+
+static void pr_text_set_font(pr_text_ctx *t, const char *font)
+{
+    if (!font) font = "";
+    if (!t->fd || strcmp(t->font, font)) {
+        if (t->fd) pango_font_description_free(t->fd);
+        t->fd = pango_font_description_from_string(font);
+        snprintf(t->font, sizeof t->font, "%s", font);
+    }
+    pango_layout_set_font_description(t->lay, t->fd);
+}
 
 static void pr_text_measure(pr_text_ctx *t, const char *font, const char *s, int *w, int *h)
 {
-    PangoFontDescription *fd = pango_font_description_from_string(font);
-    pango_layout_set_font_description(t->lay, fd);
+    pr_text_set_font(t, font);
     pango_layout_set_text(t->lay, s, -1);
     pango_layout_set_attributes(t->lay, NULL);
+    pango_layout_set_width(t->lay, -1);
+    pango_layout_set_ellipsize(t->lay, PANGO_ELLIPSIZE_NONE);
+    pango_layout_set_single_paragraph_mode(t->lay, FALSE);
     int pw, ph; pango_layout_get_pixel_size(t->lay, &pw, &ph);
     if (w) *w = pw; if (h) *h = ph;
-    pango_font_description_free(fd);
 }
 
 /* Draw `s` with its left edge at x and vertically centred on cy. If max_w>0 the
@@ -135,8 +158,7 @@ static void pr_text_measure(pr_text_ctx *t, const char *font, const char *s, int
 static int pr_text(cairo_t *cr, pr_text_ctx *t, const char *font, const char *s,
                    double x, double cy, uint32_t color, int max_w)
 {
-    PangoFontDescription *fd = pango_font_description_from_string(font);
-    pango_layout_set_font_description(t->lay, fd);
+    pr_text_set_font(t, font);
     pango_layout_set_text(t->lay, s, -1);
     if (max_w > 0) {
         pango_layout_set_width(t->lay, max_w * PANGO_SCALE);
@@ -145,6 +167,7 @@ static int pr_text(cairo_t *cr, pr_text_ctx *t, const char *font, const char *s,
     } else {
         pango_layout_set_width(t->lay, -1);
         pango_layout_set_ellipsize(t->lay, PANGO_ELLIPSIZE_NONE);
+        pango_layout_set_single_paragraph_mode(t->lay, FALSE);
     }
     int pw, ph; pango_layout_get_pixel_size(t->lay, &pw, &ph);
     cairo_save(cr);
@@ -152,7 +175,6 @@ static int pr_text(cairo_t *cr, pr_text_ctx *t, const char *font, const char *s,
     cairo_move_to(cr, x, cy - ph / 2.0);
     pango_cairo_show_layout(cr, t->lay);
     cairo_restore(cr);
-    pango_font_description_free(fd);
     return pw;
 }
 
