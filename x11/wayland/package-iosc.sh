@@ -13,15 +13,18 @@
 # Output: iosc_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
 set -euo pipefail
 
-WAYLAND=/Users/max/Documents/jailbreak/x11/wayland
-OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
-REPODEBS=/Users/max/Documents/jailbreak/repo/debs
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
+WAYLAND="$HERE"
+OUTDIR="$XLIB_ROOT/linux-build/out"
+REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.2"
+VER="0.9.3"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
-IMG="procursus-xbuild:bookworm-arm64"
 
 BIN="$STAGE/var/jb/usr/local/bin"
 SHARE="$STAGE/var/jb/usr/local/share/iosc"
@@ -34,13 +37,15 @@ mkdir -p "$BIN" "$SHARE" "$STAGE/DEBIAN"
 #    iosc cannot reach the GPU and falls back to the CPU compositor; see iosc-gl-ent.xml.
 cp "$WAYLAND/out/iosc" "$BIN/iosc"
 chmod 0755 "$BIN/iosc"
-ldid -S"$WAYLAND/iosc-gl-ent.xml" "$BIN/iosc"
+xsign "$BIN/iosc" "$WAYLAND/iosc-gl-ent.xml" \
+  platform-application com.apple.private.skip-library-validation task_for_pid-allow \
+  AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient
 
 # 2. wl_shm self-test client (pure software; ad-hoc sign, no entitlements needed).
 #    Lets run-iosc.sh paint a test window with no GNOME app installed.
 cp "$WAYLAND/out/iosc-client" "$BIN/iosc-client"
 chmod 0755 "$BIN/iosc-client"
-ldid -S "$BIN/iosc-client"
+xsign "$BIN/iosc-client"
 
 # 3. orchestration scripts (run on-device as root; reference $BIN/iosc by abs path)
 cp "$WAYLAND/run-iosc.sh" "$BIN/run-iosc.sh"
@@ -95,12 +100,9 @@ echo "installed=${INSTKB}KB"
 echo "=== iosc entitlements (should be the GPU set) ==="
 ldid -e "$BIN/iosc" | grep -E "iokit-user-client-class|AGXDevice|IOGPU|no-container|task_for_pid" | sed 's/^/   /' || true
 
-# 6. assemble the deb via the container's dpkg-deb (root-owned, zstd like the rest).
-#    The image's ENTRYPOINT is /bin/bash, so pass the script with -c directly.
-docker run --rm --platform linux/arm64 -v "$STAGEROOT":/stage "$IMG" \
-  -c "chown -R 0:0 /stage/iosc && dpkg-deb -Zzstd --build /stage/iosc /stage/${DEB}"
-
-cp "$STAGEROOT/${DEB}" "$OUTDIR/${DEB}"
-cp "$STAGEROOT/${DEB}" "$REPODEBS/${DEB}"
+# 6. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
+#    macOS host, or directly when already running as root inside one.
+built="$(xmkdeb "$STAGE" "$OUTDIR")"
+cp "$built" "$REPODEBS/${DEB}"
 echo "=== DEB BUILT ==="
 ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"

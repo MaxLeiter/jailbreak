@@ -71,31 +71,23 @@ SYS="$WORK/sysroot"
 GEN="$WORK/gen"
 rm -rf "$WORK"; mkdir -p "$SYS" "$GEN" /out
 
-# Deb search dirs, in priority order. Both are read-only mounts (either may be
-# absent); a deb is taken from the first dir that has it.
-DEB_DIRS=()
-[ -d /work/debs ]      && DEB_DIRS+=(/work/debs)
-[ -d /work/repo-debs ] && DEB_DIRS+=(/work/repo-debs)
-[ ${#DEB_DIRS[@]} -gt 0 ] || { echo "!! no deb dirs mounted (/work/debs, /work/repo-debs)"; exit 1; }
+# Shared helpers (xdeb_extract). Sourced via walk-up so it works at any depth,
+# including inside the container where X11 is /work/x11.
+_x="$X11"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
 
-find_deb() {   # $1 = package stem; prints the newest matching deb path, or nothing
-  local pat="$1" d f
-  for d in "${DEB_DIRS[@]}"; do
-    f=$(ls -t "$d/${pat}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)
-    [ -n "$f" ] && { echo "$f"; return 0; }
-  done
-  return 1
-}
+# Deb search dirs, in priority order (either mount may be absent; first with the
+# deb wins): linux-build/out then the published repo/debs.
+DEB_DIRS=""
+[ -d /work/debs ]      && DEB_DIRS="$DEB_DIRS /work/debs"
+[ -d /work/repo-debs ] && DEB_DIRS="$DEB_DIRS /work/repo-debs"
+[ -n "$DEB_DIRS" ] || { echo "!! no deb dirs mounted (/work/debs, /work/repo-debs)"; exit 1; }
 
 echo "==> [1/5] extract W0 dev debs (+ angle for the GPU client) into a sysroot"
-echo "   (searching: ${DEB_DIRS[*]})"
-for pat in libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
-           libxkbcommon-dev libxkbcommon0; do
-  f=$(find_deb "$pat" || true)
-  [ -n "$f" ] || { echo "!! missing deb: $pat (searched ${DEB_DIRS[*]})"; exit 1; }
-  dpkg-deb -x "$f" "$SYS"
-  echo "   + $(basename "$f")"
-done
+echo "   (searching:$DEB_DIRS)"
+xdeb_extract "$SYS" "$DEB_DIRS" \
+  libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
+  libxkbcommon-dev libxkbcommon0
 PREFIX="$SYS/var/jb/usr"       # wayland headers/libs
 ANGLE_INC="$SYS/var/jb/include" # angle EGL/GLES headers
 ANGLE_LIB="$SYS/var/jb/lib/angle"
