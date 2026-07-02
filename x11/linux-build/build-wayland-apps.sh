@@ -174,6 +174,62 @@ if [ "$WP_VER" != "1.44" ]; then
          build_stage/iphoneos-arm64-rootless/1900/wayland-protocols 2>/dev/null || true
 fi
 
+# libpulse (PulseAudio CLIENT lib) is built on procursus-vol-shell, not here. mpv's `pulse` AO
+# links it (-Dpulse=enabled). Stage the prebuilt libpulse0 + libpulse-dev debs from /out into
+# build_base so libpulse.pc / pulse/*.h / libpulse.dylib resolve at mpv configure+link time
+# (same dpkg-deb -x pattern build-gtk.sh uses for the Wayland libs). No PA DAEMON is rebuilt here.
+echo "==> staging libpulse client (libpulse0 + libpulse-dev) into build_base for mpv's pulse AO"
+for d in libpulse0 libpulse-dev; do
+  f=$(ls -1 /out/${d}_*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1) || true
+  if [ -n "${f:-}" ]; then
+    echo "    staging $f"
+    dpkg-deb -x "$f" /work/Procursus/build_base/iphoneos-arm64-rootless/1900 2>/dev/null || true
+  else
+    echo "    WARNING: no ${d} deb found in /out — mpv pulse AO will fail to configure"
+  fi
+done
+
+# mpv was previously built video-only (.build_complete set); its recipe guard would skip the
+# reconfigure that now enables the pulse AO. Drop the marker (mpv-setup re-wipes build/ and
+# reconfigures) so the -Dpulse=enabled meson run actually happens. Source tree is left intact.
+if [ "${FORCE_MPV_REBUILD:-1}" = "1" ]; then
+  rm -f build_work/iphoneos-arm64-rootless/1900/mpv/.build_complete 2>/dev/null || true
+fi
+# ffmpeg was built with videotoolbox/audiotoolbox OFF; the recipe now enables them (unblocked by
+# the os/object.h backport above). Drop its marker so configure re-runs with the Apple frameworks.
+if [ "${FORCE_FFMPEG_REBUILD:-0}" = "1" ]; then
+  rm -f build_work/iphoneos-arm64-rootless/1900/ffmpeg/.build_complete 2>/dev/null || true
+fi
+
+# --- iOS SDK os/object.h fix (unblocks Apple ObjC framework probes) ---------------------------
+# The cross toolchain's iPhoneOS16.5.sdk os/object.h predates the OS_OBJECT_DECL_SENDABLE_* macros,
+# but the newer xpc/session.h (pulled transitively by any Foundation -> NSXPCConnection probe, e.g.
+# ffmpeg's VideoToolbox/AudioToolbox checks and mpv's audiounit AVAudioSession AO) requires them.
+# Without the macros clang reports "a parameter list without types is only allowed in a function
+# definition" at xpc/session.h and every such probe hard-fails. Backport the 3 missing macros as
+# aliases to their non-sendable forms (identical expansion on the C/ObjC, non-Swift path). This
+# patches only the ephemeral container's SDK copy (discarded on --rm); no volume/toolchain-on-disk
+# change. Idempotent (guarded). This is what re-enables ffmpeg videotoolbox/audiotoolbox + mpv
+# audiounit below.
+OSOBJ=/root/cctools/SDK/iPhoneOS16.5.sdk/usr/include/os/object.h
+if [ -f "$OSOBJ" ] && ! grep -q OS_OBJECT_DECL_SENDABLE_CLASS "$OSOBJ"; then
+  echo "==> backporting OS_OBJECT_DECL_SENDABLE_* into $OSOBJ"
+  cat >> "$OSOBJ" <<'EOF'
+
+/* XIOS: backport OS_OBJECT_DECL_SENDABLE_* (this 16.5 SDK os/object.h predates them, but its
+ * newer xpc/session.h requires them; alias to the non-sendable forms — identical C/ObjC path). */
+#ifndef OS_OBJECT_DECL_SENDABLE_CLASS
+#define OS_OBJECT_DECL_SENDABLE_CLASS(name) OS_OBJECT_DECL_CLASS(name)
+#endif
+#ifndef OS_OBJECT_DECL_SENDABLE_SWIFT
+#define OS_OBJECT_DECL_SENDABLE_SWIFT(name) OS_OBJECT_DECL_SWIFT(name)
+#endif
+#ifndef OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT
+#define OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT(name, super) OS_OBJECT_DECL_SUBCLASS_SWIFT(name, super)
+#endif
+EOF
+fi
+
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 # Dependency order: wayland-protocols (bump) -> tllist -> fcft -> foot -> imv,

@@ -13,10 +13,16 @@ endif
 # ObjC path (cocoa, gl-cocoa, videotoolbox-gl, ios-gl, audiounit, swift) are DISABLED — the ObjC
 # framework sources transitively pull Foundation -> the jailbreak's broken xpc/session.h (same wall
 # ffmpeg's videotoolbox probe hit), and we don't need them for the wayland-egl renderer.
-# AUDIO: no audio output is enabled yet — audiounit/coreaudio need the broken Apple ObjC headers,
-# and libpulse is not built on this volume. mpv builds/plays video-only (null AO); wiring PulseAudio
-# (the desktop already runs a PA daemon) or fixing the xpc header for the iOS audiounit AO is the
-# follow-up. FFmpeg here is our lean decode-first build (software decoders, no external codecs).
+# AUDIO: PulseAudio (-Dpulse=enabled) AND the native iOS audiounit AO (-Daudiounit=enabled, the
+# RemoteIO/AVAudioSession path). `coreaudio` stays disabled — that AO is macOS-only (AudioHardware
+# default-device APIs absent on iOS). audiounit's AVAudioSession probe used to fail on the broken
+# xpc/session.h; build-wayland-apps.sh's os/object.h sendable-macro backport unblocks it. So mpv
+# has BOTH a self-contained native AO (audiounit) and the PA `pulse` AO for the desktop's PA 17
+# daemon (module-xios-sink). The libpulse CLIENT lib (libpulse.dylib + pulse/*.h + libpulse.pc,
+# built on procursus-vol-shell as the libpulse0/-dev debs) is staged into build_base from /out by
+# build-wayland-apps.sh before the make loop — libpulse is NOT a Procursus subproject on this volume,
+# so it is staged as a prebuilt deb rather than listed as a make prerequisite. Runtime Depends:
+# libpulse0. FFmpeg here is our lean decode-first build (software decoders, no external codecs).
 #
 # BUILD-HOST TOOLS (via build-wayland-apps.sh): native wayland-scanner (mpv codegens its wayland
 # protocol glue), python3 (mpv's build scripts). DEPENDS (target): ffmpeg(libav*/libsw*), libass,
@@ -32,6 +38,15 @@ mpv-setup: setup
 	$(call EXTRACT_TAR,v$(MPV_VERSION).tar.gz,mpv-$(MPV_VERSION),mpv)
 	# Darwin/iOS portability shim (pipe2), force-included into every mpv C TU via c_args below.
 	cp $(BUILD_INFO)/mpv-compat.h $(BUILD_WORK)/mpv/mpv-compat.h
+	# mpv's meson only registers the ObjC language (needed for ao_audiounit.m) after detecting a
+	# macOS SDK via `xcrun`/xcodebuild — which don't exist in this Linux->iOS cross env, so
+	# macos_sdk_version stays '0.0' and add_languages('objc') never runs, aborting with
+	# "No host machine compiler for ao_audiounit.m". Force an unconditional add_languages('objc')
+	# (the cross file supplies objc = $(CC)); the dormant macos_sdk block is left alone so its
+	# empty-path -isysroot link flags are never added. Idempotent-guarded.
+	grep -q "XIOS-force-objc" $(BUILD_WORK)/mpv/meson.build || \
+		sed -i "s|^xcrun = find_program('xcrun'|add_languages('objc') # XIOS-force-objc\nxcrun = find_program('xcrun'|" \
+			$(BUILD_WORK)/mpv/meson.build
 	rm -rf $(BUILD_WORK)/mpv/build && mkdir -p $(BUILD_WORK)/mpv/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
@@ -110,7 +125,7 @@ mpv: mpv-setup ffmpeg libass freetype fontconfig harfbuzz libfribidi wayland way
 		-Dsdl2-gamepad=disabled \
 		-Dsdl2-audio=disabled \
 		-Dplain-gl=disabled \
-		-Daudiounit=disabled \
+		-Daudiounit=enabled \
 		-Dcoreaudio=disabled \
 		-Dalsa=disabled \
 		-Djack=disabled \
@@ -118,7 +133,7 @@ mpv: mpv-setup ffmpeg libass freetype fontconfig harfbuzz libfribidi wayland way
 		-Dopensles=disabled \
 		-Doss-audio=disabled \
 		-Dpipewire=disabled \
-		-Dpulse=disabled \
+		-Dpulse=enabled \
 		-Dsndio=disabled \
 		-Dwasapi=disabled \
 		-Dlua=disabled \

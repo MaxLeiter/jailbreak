@@ -8,14 +8,21 @@ endif
 # x264/x265, tesseract, sdl2, ...) that is not built on procursus-vol-wayland. Instead we ship
 # FFmpeg's own native decoders/demuxers/parsers/protocols (which cover H.264/HEVC/VP8/VP9/AV1-sw/
 # AAC/MP3/Opus/Vorbis/FLAC/matroska/mp4/webm/... out of the box), with NO external -lXXX deps.
-# Both Apple frameworks (VideoToolbox HW decode + AudioToolbox) are DISABLED: their ObjC framework
-# probes transitively pull Foundation -> NSXPCConnection -> the jailbreak's
-# /var/jb/usr/include/xpc/session.h, which is malformed against this SDK
-# (OS_OBJECT_DECL_SENDABLE_CLASS -> "a parameter list without types is only allowed in a function
-# definition"), so both checks hard-fail. Software decode covers the codecs; the Apple accelerators
-# can return once that private xpc header is fixed on the volume. That keeps the soname debs self-contained (they
-# depend only on each other), which is why we also override the stock controls (Procursus's
+# Both Apple frameworks (VideoToolbox HW decode + AudioToolbox) are now ENABLED. Their ObjC
+# framework probes transitively pull Foundation -> NSXPCConnection -> xpc/session.h, which used to
+# hard-fail because the cross toolchain's iPhoneOS16.5.sdk os/object.h predates the
+# OS_OBJECT_DECL_SENDABLE_* macros session.h needs (clang: "a parameter list without types is only
+# allowed in a function definition"). build-wayland-apps.sh now backports those 3 macros into the
+# SDK's os/object.h before configure, so both probes compile. VideoToolbox gives HW-accelerated
+# H.264/HEVC decode; AudioToolbox adds Apple's native AAC/etc decoders. These link only Apple SYSTEM
+# frameworks (VideoToolbox/CoreMedia/CoreVideo/AudioToolbox), so the soname debs stay self-contained
+# (they depend only on each other) — which is why we also override the stock controls (Procursus's
 # libavcodec59.control Depends on libvpx7/libdav1d6/... which don't exist here).
+# NOTE: the libavdevice AudioToolbox in/out DEVICE (libavdevice/audiotoolbox.m) is force-disabled:
+# it uses the macOS-only CoreAudio HAL (AudioDeviceID/kAudioHardwarePropertyDevices/AudioObject*),
+# which does not exist on iOS. Only the libavcodec AudioToolbox CODECS (AAC via AudioConverter) and
+# the VideoToolbox HW decoders are kept — those are iOS-supported. (mpv builds with
+# -Dlibavdevice=disabled anyway, so it never touches libavdevice.)
 #
 # SONAMEs (5.1.2): libavutil.57 libavcodec.59 libavformat.59 libavdevice.59 libavfilter.8
 # No `ffmpeg`/`ffplay`/`ffprobe` CLI deb (--disable-programs) — mpv only links the libs.
@@ -51,8 +58,10 @@ ffmpeg: ffmpeg-setup
 		--host-cc="$(CC_FOR_BUILD)" \
 		--host-cflags="$(CFLAGS_FOR_BUILD)" \
 		--host-ldflags="$(LDFLAGS_FOR_BUILD)" \
-		--disable-videotoolbox \
-		--disable-audiotoolbox \
+		--enable-videotoolbox \
+		--enable-audiotoolbox \
+		--disable-indev=audiotoolbox \
+		--disable-outdev=audiotoolbox \
 		--disable-programs \
 		--disable-doc \
 		--disable-debug \
