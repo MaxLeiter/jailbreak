@@ -43,6 +43,20 @@ const parserWorker = fs.realpathSync(fs.existsSync(localPath) ? localPath : root
 const workerPath = "./src/cli/tui/worker.ts"
 const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
 
+// The TUI RPC transport (src/util/rpc.ts) runs opencode's core in a worker that
+// the main thread reaches via `new Worker(OPENCODE_WORKER_PATH)`. Upstream bakes
+// the source specifier "./src/cli/tui/worker.ts" here because their real build
+// is a `bun build --compile` single-file exe with an embedded bunfs where that
+// path resolves. We ship a plain multi-file Bun bundle instead: the worker entry
+// is emitted as .js (not .ts), the .ts source is not shipped, and `new Worker`
+// is called AFTER process.chdir() into the user's project -- so a relative
+// specifier resolves against the wrong base. The worker then fails with
+// ModuleNotFound, is terminated, and the first `client.call("fetch")` throws on
+// postMessage to the dead worker. Bake the absolute install path of the compiled
+// worker instead (same fixed-path approach as the OpenTUI dylib alias); it is
+// robust to chdir and needs no import.meta resolution.
+const OPENCODE_WORKER_INSTALL_PATH = "/var/jb/usr/libexec/opencode-js/src/cli/tui/worker.js"
+
 const result = await Bun.build({
   conditions: ["bun", "node"],
   tsconfig: "./tsconfig.json",
@@ -60,7 +74,7 @@ const result = await Bun.build({
     OPENCODE_VERSION: JSON.stringify(pkg.version),
     OPENCODE_MODELS_DEV: generated.modelsData,
     OTUI_TREE_SITTER_WORKER_PATH: `/${workerRelativePath}`,
-    OPENCODE_WORKER_PATH: workerPath,
+    OPENCODE_WORKER_PATH: OPENCODE_WORKER_INSTALL_PATH,
     OPENCODE_CHANNEL: JSON.stringify("latest"),
     OPENCODE_LIBC: "",
   },
