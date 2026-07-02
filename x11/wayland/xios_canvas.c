@@ -52,6 +52,15 @@ struct canvas_client {
     size_t           infill;              /* bytes accumulated toward one record */
 };
 
+/* Pending async delivery. The blocking mach-port hand-off (task_for_pid +
+ * mach_msg, which a suspended host can stall for the full send timeout) must NEVER
+ * run on iosc's wl event-loop thread. So the wl thread only flags a window here +
+ * nudges the reader thread; the reader drains the flag and does the actual
+ * WINDOW_NEW/GEOM record + port hand-off (process_pending_deliveries). */
+#define CANVAS_DELIVER_NONE 0
+#define CANVAS_DELIVER_NEW  1             /* WINDOW_NEW + first canvas port */
+#define CANVAS_DELIVER_GEOM 2             /* WINDOW_GEOM + fresh port (post-resize) */
+
 /* A per-window canvas. app_id is copied at announce; senders resolve the host by
  * matching it, so client swap-remove / host reconnect never dangle a pointer. */
 struct canvas_entry {
@@ -61,7 +70,8 @@ struct canvas_entry {
     char         app_id[256];
     char         title[256];
     uint32_t     flags;
-    int          announced;               /* WINDOW_NEW sent (so DIRTY may flow) */
+    int          announced;               /* WINDOW_NEW delivered (so DIRTY may flow) */
+    int          deliver_pending;         /* CANVAS_DELIVER_* queued for the reader */
 };
 
 static int s_listen_fd = -1;
@@ -73,6 +83,12 @@ static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct canvas_client s_clients[XIOS_CANVAS_MAX_CLIENTS];
 static int s_nclients = 0;
 static struct canvas_entry s_windows[XIOS_CANVAS_MAX_WINDOWS];
+
+/* Scene size (physical px) of the most recently bound host. iosc reads this to
+ * size a toplevel's initial configure so its first mapped frame fits the tapped
+ * scene exactly (the app_id isn't reliably set at initial-configure time, so we
+ * key on "the host that just launched" instead). Guarded by s_lock. */
+static int s_last_scene_w = 0, s_last_scene_h = 0;
 
 static struct xios_canvas_handlers s_handlers;
 
@@ -121,6 +137,15 @@ static int send_record(int fd, const void *buf, size_t len)
     if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
     if (r < 0 && errno == EINTR) return send_record(fd, buf, len);
     return -1;
+}
+
+/* Nudge the reader thread out of poll() so it drains queued canvas deliveries.
+ * One byte is enough (the reader processes ALL pending entries per wake), and the
+ * pipe is non-blocking so a full pipe (many coalesced nudges) is harmlessly
+ * dropped — the reader still scans everything. */
+static void wake_reader(void)
+{
+    if (s_wake_pipe[1] >= 0) { char b = 1; (void)write(s_wake_pipe[1], &b, 1); }
 }
 
 /* ---- IOSurface allocation (BGRA8, aligned — same as xios_surface_create) --- */
@@ -197,32 +222,11 @@ static struct canvas_client *client_for_app(const char *app_id)
 
 static int deliver_canvas_port(pid_t pid, mach_port_name_t reply_port, IOSurfaceRef canvas);
 
-static int send_window_new_locked(struct canvas_client *c, struct canvas_entry *e)
-{
-    if (!c || !e || !e->surface) return -1;
-    size_t tlen = strlen(e->title);
-    if (tlen > 255) tlen = 255;
-
-    xios_msg h;
-    memset(&h, 0, sizeof(h));
-    h.magic = XIOS_MSG_MAGIC;
-    h.type = XIOS_MSG_WINDOW_NEW;
-    h.window_id = e->window_id;
-    h.length = (uint32_t)tlen;
-    h.a = e->w;
-    h.b = e->h;
-    h.c = e->stride;
-    h.d = (int32_t)e->flags;
-
-    int wrote = (write_full(c->fd, &h, sizeof(h)) == 0) &&
-                (tlen == 0 || write_full(c->fd, e->title, tlen) == 0);
-    if (!wrote) return -1;
-
-    int dr = deliver_canvas_port(c->pid, c->reply_port, e->surface);
-    e->announced = (dr == 0);
-    return dr == 0 ? 0 : -1;
-}
-
+/* Queue every live window for this app_id for (re)delivery — a host binding for
+ * the first time, or rebinding after a jetsam kill, gets WINDOW_NEW + the live
+ * canvas port for each. Runs on the reader thread under s_lock; the delivery
+ * itself happens in process_pending_deliveries at the bottom of the same loop
+ * iteration, so it never blocks here. */
 static void replay_windows_for_client_locked(struct canvas_client *c)
 {
     if (!c || !c->app_id[0]) return;
@@ -230,9 +234,7 @@ static void replay_windows_for_client_locked(struct canvas_client *c)
         struct canvas_entry *e = &s_windows[i];
         if (!e->window_id || !e->surface) continue;
         if (strcmp(e->app_id, c->app_id) != 0) continue;
-        if (send_window_new_locked(c, e) != 0)
-            fprintf(stderr, "xios-canvas: replay failed for window=%u app_id=\"%s\"\n",
-                    e->window_id, c->app_id);
+        e->deliver_pending = CANVAS_DELIVER_NEW;
     }
 }
 
@@ -329,6 +331,17 @@ void *xios_canvas_create(uint32_t window_id, int w, int h, int *stride)
     return s;   /* opaque IOSurfaceRef; iosc owns the registry ref */
 }
 
+int xios_canvas_default_scene(int *w_px, int *h_px)
+{
+    pthread_mutex_lock(&s_lock);
+    int w = s_last_scene_w, h = s_last_scene_h;
+    pthread_mutex_unlock(&s_lock);
+    if (w <= 0 || h <= 0) return -1;
+    if (w_px) *w_px = w;
+    if (h_px) *h_px = h;
+    return 0;
+}
+
 void *xios_canvas_surface(uint32_t window_id)
 {
     pthread_mutex_lock(&s_lock);
@@ -351,26 +364,28 @@ int xios_canvas_announce(uint32_t window_id, const char *app_id,
     struct canvas_client *c = client_for_app(e->app_id);
     if (!c) { pthread_mutex_unlock(&s_lock); return 0; }   /* no host: catch-all */
 
-    /* Header + title first, THEN the canvas port (arrival order correlates the
-     * mach_msg with this record on the host — see NativeClient.recv_canvas). */
-    int dr = send_window_new_locked(c, e);
+    /* Queue the WINDOW_NEW + canvas hand-off for the reader thread (never block the
+     * compositor on a slow/suspended host). `announced` stays 0 until the reader
+     * actually delivers, which gates DIRTY so it can't precede WINDOW_NEW. */
+    e->deliver_pending = CANVAS_DELIVER_NEW;
+    wake_reader();
     pthread_mutex_unlock(&s_lock);
-    return dr == 0 ? 1 : -1;
+    return 1;   /* a host is bound; delivery queued */
 }
 
 void xios_canvas_geom(uint32_t window_id)
 {
     pthread_mutex_lock(&s_lock);
     struct canvas_entry *e = window_find(window_id);
-    if (!e || !e->surface || !e->announced) { pthread_mutex_unlock(&s_lock); return; }
+    if (!e || !e->surface) { pthread_mutex_unlock(&s_lock); return; }
     struct canvas_client *c = client_for_app(e->app_id);
     if (!c) { pthread_mutex_unlock(&s_lock); return; }
-    xios_msg h;
-    memset(&h, 0, sizeof(h));
-    h.magic = XIOS_MSG_MAGIC; h.type = XIOS_MSG_WINDOW_GEOM; h.window_id = window_id;
-    h.a = e->w; h.b = e->h; h.c = e->stride;
-    if (write_full(c->fd, &h, sizeof(h)) == 0)
-        deliver_canvas_port(c->pid, c->reply_port, e->surface);
+    /* A pending WINDOW_NEW already carries the latest geometry (read at delivery
+     * time), so don't downgrade it to GEOM — that would send WINDOW_GEOM for a
+     * window the host never saw a WINDOW_NEW for. */
+    if (e->deliver_pending != CANVAS_DELIVER_NEW)
+        e->deliver_pending = e->announced ? CANVAS_DELIVER_GEOM : CANVAS_DELIVER_NEW;
+    wake_reader();
     pthread_mutex_unlock(&s_lock);
 }
 
@@ -416,7 +431,11 @@ void xios_canvas_gone(uint32_t window_id)
     pthread_mutex_lock(&s_lock);
     struct canvas_entry *e = window_find(window_id);
     if (e) {
-        struct canvas_client *c = e->announced ? client_for_app(e->app_id) : NULL;
+        /* Send WINDOW_GONE even if `announced` is still 0: a WINDOW_NEW may be
+         * in-flight on the reader thread right now, and gating on `announced`
+         * would drop the GONE and orphan a scene the host is about to create. A
+         * GONE for a window the host never saw is a harmless no-op there. */
+        struct canvas_client *c = client_for_app(e->app_id);
         if (c) {
             xios_msg h;
             memset(&h, 0, sizeof(h));
@@ -480,6 +499,9 @@ static int handle_bind(int fd)
     c->pid = peer_pid;
     c->reply_port = (mach_port_name_t)(uint32_t)h.d;
     snprintf(c->app_id, sizeof(c->app_id), "%s", app_id);
+    /* Remember this host's scene size so iosc can size a freshly-launched app's
+     * initial configure to the tapped scene (xios_canvas_default_scene). */
+    if (h.a > 0 && h.b > 0) { s_last_scene_w = h.a; s_last_scene_h = h.b; }
     fprintf(stderr, "xios-canvas: BIND app_id=\"%s\" pid=%d fd=%d scene=%dx%d scale=%d reply_port=0x%x\n",
             app_id, (int)peer_pid, fd, h.a, h.b, h.c, c->reply_port);
     replay_windows_for_client_locked(c);
@@ -563,6 +585,65 @@ static int client_readable_locked(int idx)
     return 0;
 }
 
+/* Drain queued canvas deliveries — the ONLY place the blocking mach hand-off runs
+ * (reader thread, never the compositor). Single-threaded here, so each window's
+ * {WINDOW_NEW/GEOM record, canvas port} pair stays correlated on the host
+ * (recv_canvas reads the port right after the record). The record write stays
+ * under s_lock (serialized with the wl thread's DIRTY/TITLE writes; the fd is
+ * non-blocking so it can't stall); the mach send runs unlocked so a suspended
+ * host stalls only this thread, not the compositor. */
+static void process_pending_deliveries(void)
+{
+    for (int i = 0; i < XIOS_CANVAS_MAX_WINDOWS; i++) {
+        pthread_mutex_lock(&s_lock);
+        struct canvas_entry *e = &s_windows[i];
+        if (!e->window_id || !e->surface || e->deliver_pending == CANVAS_DELIVER_NONE) {
+            pthread_mutex_unlock(&s_lock);
+            continue;
+        }
+        struct canvas_client *c = client_for_app(e->app_id);
+        if (!c) {                         /* host vanished before we delivered */
+            e->deliver_pending = CANVAS_DELIVER_NONE;
+            pthread_mutex_unlock(&s_lock);
+            continue;
+        }
+        int kind = e->deliver_pending;
+        e->deliver_pending = CANVAS_DELIVER_NONE;
+        uint32_t window_id = e->window_id;
+        int fd = c->fd;
+        pid_t pid = c->pid;
+        mach_port_name_t reply_port = c->reply_port;
+
+        xios_msg rec;
+        memset(&rec, 0, sizeof(rec));
+        rec.magic = XIOS_MSG_MAGIC;
+        rec.type = (kind == CANVAS_DELIVER_NEW) ? XIOS_MSG_WINDOW_NEW : XIOS_MSG_WINDOW_GEOM;
+        rec.window_id = window_id;
+        rec.a = e->w; rec.b = e->h; rec.c = e->stride; rec.d = (int32_t)e->flags;
+        size_t tlen = (kind == CANVAS_DELIVER_NEW) ? strlen(e->title) : 0;
+        if (tlen > 255) tlen = 255;
+        rec.length = (uint32_t)tlen;
+        int wrote = (write_full(fd, &rec, sizeof(rec)) == 0) &&
+                    (tlen == 0 || write_full(fd, e->title, tlen) == 0);
+        IOSurfaceRef surf = e->surface;
+        CFRetain(surf);                   /* hold across the unlocked mach hand-off */
+        pthread_mutex_unlock(&s_lock);
+
+        int dr = wrote ? deliver_canvas_port(pid, reply_port, surf) : -1;
+        CFRelease(surf);
+
+        pthread_mutex_lock(&s_lock);
+        e = window_find(window_id);       /* may have been torn down meanwhile */
+        if (e && kind == CANVAS_DELIVER_NEW)
+            e->announced = (wrote && dr == 0);
+        pthread_mutex_unlock(&s_lock);
+
+        if (!wrote || dr != 0)
+            fprintf(stderr, "xios-canvas: deliver (kind=%d) failed for window=%u\n",
+                    kind, window_id);
+    }
+}
+
 static void *reader_loop(void *arg)
 {
     (void)arg;
@@ -606,6 +687,10 @@ static void *reader_loop(void *arg)
             }
             pthread_mutex_unlock(&s_lock);
         }
+
+        /* After every wake (a nudge from announce/geom, a fresh BIND's replay, or
+         * host traffic) drain any queued canvas hand-offs on THIS thread. */
+        process_pending_deliveries();
     }
     return NULL;
 }
@@ -642,12 +727,24 @@ int xios_canvas_server_start(const char *sock_path)
         perror("xios-canvas: bind"); close(fd); return -1;
     }
     if (listen(fd, 8) < 0) { perror("xios-canvas: listen"); close(fd); return -1; }
-    /* Hosts run as mobile; connect() needs write on the socket. Restrict to
-     * mobile + 0660, fall back to 0777 only if the user can't be resolved. */
+    /* Hosts run as mobile; connect() needs write on the socket. Lock it to mobile
+     * (0660) so no other uid can bind an app_id and receive its canvas ports. The
+     * whole native flavor's isolation rests on app_id addressing, so never leave
+     * this world-writable — fall back to mobile's canonical uid, and only if even
+     * that fails degrade to root-only (native mode won't work, but nothing leaks).
+     * getpwnam("mobile") resolving is the universal case on iOS. */
     {
         struct passwd *pw = getpwnam("mobile");
-        if (pw && chown(path, pw->pw_uid, pw->pw_gid) == 0) chmod(path, 0660);
-        else chmod(path, 0777);
+        uid_t muid = pw ? pw->pw_uid : 501;   /* mobile is uid 501 on iOS */
+        gid_t mgid = pw ? pw->pw_gid : 501;
+        if (chown(path, muid, mgid) == 0) {
+            chmod(path, 0660);
+        } else {
+            chmod(path, 0600);
+            fprintf(stderr, "xios-canvas: WARNING could not chown %s to mobile "
+                            "(%s); native hosts may fail to connect\n",
+                    path, strerror(errno));
+        }
     }
     if (pipe(s_wake_pipe) == 0) {
         set_cloexec(s_wake_pipe[0]); set_cloexec(s_wake_pipe[1]);

@@ -75,6 +75,11 @@ void *xios_canvas_create(uint32_t window_id, int w, int h, int *stride);
 /* The opaque IOSurfaceRef for window_id (for iosc_gl_bind_target), or NULL. */
 void *xios_canvas_surface(uint32_t window_id);
 
+/* Scene size (physical px) of the most recently bound host, for sizing a
+ * freshly-launched toplevel's initial configure so its first frame fits the
+ * tapped scene. 0 on success (fills w_px and h_px), -1 if no host bound yet. */
+int   xios_canvas_default_scene(int *w_px, int *h_px);
+
 /* Announce a mapped toplevel to the host that bound `app_id`: send WINDOW_NEW
  * (a=w b=h c=stride d=flags, payload=title) then mach_msg the canvas send-right
  * to that host's BIND reply port. Returns 1 if a bound host received it, 0 if no

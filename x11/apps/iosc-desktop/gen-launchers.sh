@@ -253,12 +253,42 @@ if [ "$DEPLOY" = "1" ]; then
   echo
   echo "==> --deploy: installing to the device (needs $REPO_ROOT/device.env)"
   . "$HERE/deploy-env.sh"   # IP/PORT/SSH_OPTS + ssh_/scp_ (loads device.env)
+
+  # Which executable + entitlements each bundle carries (native host vs classic stub).
+  if [ "$NATIVE" = "1" ]; then
+    EXE_NAME=IOSCHost;   ENT_SRC="$HOST_DIR/entitlements.plist"
+  else
+    EXE_NAME=IOSCLaunch; ENT_SRC="$HERE/launcher-ent.xml"
+  fi
+  # Stage the entitlements on-device once so we can re-sign each bundle's actual
+  # on-device copy. Signing host-side is not enough: SpringBoard launches a tapped
+  # bundle through AMFI, which rejects a bundle whose on-disk cdhash it doesn't
+  # trust (the "launch error 3" the native-ipados plan §6 warned about). Re-signing
+  # in place with ldid + registering the cdhash is what makes the first tap work.
+  DEV_ENT="/var/jb/tmp/iosc-deploy-ent.plist"
+  scp_ "$ENT_SRC" "root@$IP:$DEV_ENT"
+
   for b in "${BUILT[@]}"; do
     dest="/var/jb/Applications/$(basename "$b")"
+    exe="$dest/$EXE_NAME"
     echo "   -> $IP:$dest"
     ssh_ "rm -rf '$dest'"
     scp_ -r "$b" "root@$IP:/var/jb/Applications/"
-    ssh_ "chmod -R 0755 '$dest'; /var/jb/usr/bin/uicache -p '$dest'"
+    # exec bit + re-sign the on-device binary, then register its cdhash in the
+    # trust cache if the jailbreak provides a CLI (palera1n/ellekit accept the
+    # ldid ad-hoc signature directly, so this is best-effort and non-fatal), then
+    # uicache so SpringBoard shows the icon.
+    ssh_ "set -e
+      chmod -R 0755 '$dest'
+      if command -v ldid >/dev/null 2>&1; then ldid -S'$DEV_ENT' '$exe'; fi
+      if command -v jbctl >/dev/null 2>&1; then jbctl trust add '$exe' 2>/dev/null || jbctl trustcache add '$exe' 2>/dev/null || true
+      elif command -v trustcache >/dev/null 2>&1; then trustcache add '$exe' 2>/dev/null || true
+      elif command -v ellekitc >/dev/null 2>&1; then ellekitc trustcache '$exe' 2>/dev/null || true
+      else echo 'note: no trust-cache CLI found; relying on the ldid ad-hoc signature (fine on palera1n/ellekit)'; fi
+      /var/jb/usr/bin/uicache -p '$dest'"
   done
+  ssh_ "rm -f '$DEV_ENT'"
   echo "==> deployed. Tap the new icons on the Home Screen."
+  echo "    If a tap fails with launch error 3/9, the JB needs an explicit"
+  echo "    trust-cache add for /var/jb/Applications/*/$EXE_NAME (see above)."
 fi

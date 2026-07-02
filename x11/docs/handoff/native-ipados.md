@@ -18,7 +18,35 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - `iosc.c` native mode now starts `iosc-native.sock`, creates/destroys per-window canvases on toplevel map/unmap, composites each toplevel into its own IOSurface, and handles host resize/activate/close requests on the Wayland event loop.
 - `XIOS_IN_BIND` is honored by the shared input reader + iosc's bound-aware dispatch path: host scene input connections can now be scoped to a compositor window id, including native-mode keyboard TRAITS broadcasts for the focused window.
 - Native launch is now explicit per request: iosc-host sends `LAUNCH_NATIVE`, and ioscd starts a native compositor namespace on `wayland-native-0` + `iosc-native-input.sock` + `xios-native.json`. Classic launchers keep `wayland-0` + `iosc-input.sock`, so native wrapped apps and the classic Xios desktop can coexist on the same device.
-- Standalone compositor deploys need host-side signing after `build-iosc.sh`: `wayland/sign-iosc.sh wayland/out/iosc`. This keeps the GPU/IOSurface/task_for_pid entitlements DER-signed before the binary is copied to a device.
+- Build the compositor with just `x11/wayland/build-iosc.sh` (no docker flags): on the Mac it re-execs inside the cross-build image with the mounts wired, reads dev debs from `linux-build/out` then `repo/debs` as a fallback, and host-signs `wayland/out/iosc` (GPU/IOSurface/task_for_pid DER entitlements) so it is device-ready. `IOSC_NO_SIGN=1` skips signing; `IOSC_XBUILD_IMAGE=` overrides the image.
+
+## Hardening (2026-07-02, from the native-integration review)
+- **Blocking mach hand-off moved off the compositor thread.** `deliver_canvas_port`
+  (task_for_pid + a timed mach_msg a suspended host can stall) previously ran on
+  iosc's wl event-loop thread under `s_lock` from `xios_canvas_announce`/`_geom`,
+  so a window mapping/resizing against a slow host could freeze every other native
+  window's input+present. Now the wl thread only flags the window
+  (`deliver_pending`) + nudges the reader thread; the reader does the record write
+  (still under the lock, on a non-blocking fd) + the unlocked mach send in
+  `process_pending_deliveries`. Single-threaded delivery keeps each
+  {WINDOW_NEW/GEOM, port} pair correlated for `recv_canvas`. `announced` still gates
+  DIRTY so it can't precede WINDOW_NEW.
+- **Map/unmap race closed.** `xios_canvas_gone` now sends WINDOW_GONE regardless of
+  `announced` (a WINDOW_NEW may be in-flight on the reader thread); a GONE for a
+  window the host never saw is a harmless no-op there. Prevents an orphaned scene.
+- **Socket is never world-writable.** The `0777` fallback in
+  `xios_canvas_server_start` is gone; it now locks the rendezvous socket to mobile
+  (uid 501 fallback if `getpwnam` fails), degrading to root-only 0600 + a warning
+  rather than opening it to every uid (app_id is the flavor's only isolation).
+- **First frame fits the tapped scene.** BIND's scene size is remembered
+  (`xios_canvas_default_scene`) and `send_initial_configure` sizes a native
+  toplevel's initial xdg configure to it, so the first mapped frame fills the iPad
+  window instead of flashing a default size then reflowing on the first RESIZE.
+- **Deploy re-signs on device + registers cdhash.** `gen-launchers.sh --deploy`
+  now stages the entitlements, `ldid -S`-resigns each bundle's on-device binary,
+  and best-effort trust-cache-adds the cdhash (jbctl/trustcache/ellekitc) before
+  uicache — the plan §6 "launch error 3" guard. ldid ad-hoc alone suffices on
+  palera1n/ellekit; the trust-cache step is non-fatal.
 
 ## Open items
 1. On-device demo (per-window presentation): `gen-launchers.sh --native`, tap a generated app, confirm it opens as its own iPad window, resizes, focuses, accepts text, and closes cleanly.

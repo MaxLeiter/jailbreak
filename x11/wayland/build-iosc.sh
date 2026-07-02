@@ -1,37 +1,98 @@
 #!/usr/bin/env bash
 # Cross-compile the iosc Wayland compositor + its test clients for rootless iOS.
-# Runs INSIDE the Procursus cross-build image (it has the cctools aarch64 toolchain
-# + iPhoneOS SDK frameworks, exactly as the Xios DDX build uses). Fire host-side:
 #
-#   docker run --rm --platform linux/arm64 \
-#     -v "$PWD/..:/work/x11:ro" \
-#     -v "$PWD/../linux-build/out:/work/debs:ro" \
-#     -v "$PWD/out:/out" \
-#     procursus-xbuild:bookworm-arm64 -c "bash /work/x11/wayland/build-iosc.sh"
+# Just run it from the Mac — no docker flags to get wrong:
 #
-# Inputs it consumes from the repo (read-only):
+#   x11/wayland/build-iosc.sh
+#
+# On the host it re-execs itself inside the Procursus cross-build image (cctools
+# aarch64 toolchain + iPhoneOS SDK) with every mount wired up, then signs the
+# result. Inside the container (IOSC_XBUILD_INNER=1) it runs the actual build.
+#
+# Dev debs are read from x11/linux-build/out first, then the published repo/debs
+# as a fallback, so a freshly-cleaned linux-build/out still builds. Override the
+# image with IOSC_XBUILD_IMAGE; skip the auto-sign with IOSC_NO_SIGN=1.
+#
+# Inputs it consumes (read-only):
 #   x11/wayland/iosc.c, iosc-client.c, iosc-gpu-client.c, iosc-iosurface.xml
 #   x11/linux-build/patches/xios/xios_surface.{c,h}   (reused output path)
-#   x11/linux-build/out/{libwayland,libepoll-shim,wayland-protocols,angle}*.deb
-# Outputs: /out/{iosc, iosc-client, iosc-gpu-client}
-#   /out/iosc is unsigned from the container. Before deploying it directly to a
-#   device, sign it on the Mac with:
-#     x11/wayland/sign-iosc.sh x11/wayland/out/iosc
+#   {libwayland,libepoll-shim,wayland-protocols,angle,libxkbcommon}*.deb
+# Outputs: x11/wayland/out/{iosc, iosc-client, iosc-gpu-client}
+#   iosc is signed on the host after the build (needs ldid) so it is device-ready.
 set -euo pipefail
 umask 022
 
+# ---- host launcher: wire the mounts + re-exec in the image, then sign ---------
+if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
+  HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"     # x11/wayland
+  X11_DIR="$(cd "$HERE/.." && pwd)"                        # x11
+  REPO_ROOT="$(cd "$X11_DIR/.." && pwd)"                   # repo root
+  IMAGE="${IOSC_XBUILD_IMAGE:-procursus-xbuild:bookworm-arm64}"
+  command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not found on the host" >&2; exit 1; }
+  mkdir -p "$HERE/out"
+
+  mounts=(-v "$X11_DIR:/work/x11:ro" -v "$HERE/out:/out")
+  # Both deb dirs are mounted read-only when present; the inner build searches
+  # /work/debs (linux-build/out) first, then /work/repo-debs (published repo).
+  found_debs=0
+  if [ -d "$X11_DIR/linux-build/out" ]; then
+    mounts+=(-v "$X11_DIR/linux-build/out:/work/debs:ro"); found_debs=1
+  fi
+  if [ -d "$REPO_ROOT/repo/debs" ]; then
+    mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); found_debs=1
+  fi
+  [ "$found_debs" = 1 ] || {
+    echo "ERROR: no deb dir found (looked for $X11_DIR/linux-build/out and $REPO_ROOT/repo/debs)" >&2
+    exit 1
+  }
+
+  echo "==> cross-building iosc in $IMAGE"
+  docker run --rm --platform linux/arm64 -e IOSC_XBUILD_INNER=1 \
+    "${mounts[@]}" "$IMAGE" -c "bash /work/x11/wayland/build-iosc.sh"
+
+  # Container output is unsigned; sign on the host so it is device-ready (the
+  # single easiest thing to forget — the handoff calls it out explicitly).
+  if [ "${IOSC_NO_SIGN:-0}" = "1" ]; then
+    echo "==> IOSC_NO_SIGN=1: skipping host signing (binary is UNSIGNED, not device-ready)"
+  elif command -v ldid >/dev/null 2>&1; then
+    echo "==> signing $HERE/out/iosc for device"
+    "$HERE/sign-iosc.sh" "$HERE/out/iosc"
+  else
+    echo "!! ldid not found on the host: iosc is UNSIGNED. Before deploying, run:" >&2
+    echo "     $HERE/sign-iosc.sh $HERE/out/iosc" >&2
+  fi
+  exit 0
+fi
+
+# ---- inner build (runs inside the container) ----------------------------------
 X11=/work/x11
-DEBS=/work/debs
 WORK=/tmp/iosc-build
 SYS="$WORK/sysroot"
 GEN="$WORK/gen"
 rm -rf "$WORK"; mkdir -p "$SYS" "$GEN" /out
 
+# Deb search dirs, in priority order. Both are read-only mounts (either may be
+# absent); a deb is taken from the first dir that has it.
+DEB_DIRS=()
+[ -d /work/debs ]      && DEB_DIRS+=(/work/debs)
+[ -d /work/repo-debs ] && DEB_DIRS+=(/work/repo-debs)
+[ ${#DEB_DIRS[@]} -gt 0 ] || { echo "!! no deb dirs mounted (/work/debs, /work/repo-debs)"; exit 1; }
+
+find_deb() {   # $1 = package stem; prints the newest matching deb path, or nothing
+  local pat="$1" d f
+  for d in "${DEB_DIRS[@]}"; do
+    f=$(ls -t "$d/${pat}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)
+    [ -n "$f" ] && { echo "$f"; return 0; }
+  done
+  return 1
+}
+
 echo "==> [1/5] extract W0 dev debs (+ angle for the GPU client) into a sysroot"
+echo "   (searching: ${DEB_DIRS[*]})"
 for pat in libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
            libxkbcommon-dev libxkbcommon0; do
-  f=$(ls "$DEBS/${pat}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)
-  [ -n "$f" ] || { echo "!! missing deb: $pat"; exit 1; }
+  f=$(find_deb "$pat" || true)
+  [ -n "$f" ] || { echo "!! missing deb: $pat (searched ${DEB_DIRS[*]})"; exit 1; }
   dpkg-deb -x "$f" "$SYS"
   echo "   + $(basename "$f")"
 done
@@ -179,6 +240,7 @@ echo "==> [5/5] cross-compile"
 # compositor (iosc_gl.c: GLES->Metal composite onto the output IOSurface) + frameworks.
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
+    "$X11/wayland/iosc-clipboard-bridge.c" \
     "$X11/wayland/iosc_gl.c" \
     "$X11/wayland/xios_egl.c" \
     "$X11/wayland/xios_canvas.c" \
