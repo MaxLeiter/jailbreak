@@ -51,6 +51,7 @@
 #include "iosc_gl.h"
 #include "iosc_input.h"
 #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
+#include "iosc-clipboard-bridge.h"   /* Linux<->iOS clipboard sync over the dedicated socket */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -4672,26 +4673,9 @@ static void subcompositor_bind(struct wl_client *client, void *data, uint32_t ve
 
 /* ---- clipboard / wl_data_device ------------------------------------------ */
 
-#define IOSC_CLIP_SET 1u
-#define IOSC_CLIP_MAX (1024u * 1024u)
+#define IOSC_CLIP_MAX (16u * 1024u * 1024u)   /* per-item cap; matches XIOS_CLIP_ITEM_MAX (PNG-safe) */
 #define IOSC_MAX_DATA_DEVICES 32
-#define IOSC_MAX_CLIP_CLIENTS 4
 #define IOSC_MAX_CLIP_MIMES 16   /* DnD sources offer many type variants */
-
-struct iosc_clip_msg {
-    uint32_t type;
-    uint32_t len;
-};
-
-struct iosc_clip_client {
-    int fd;
-    struct wl_event_source *src;
-    uint8_t hdr[sizeof(struct iosc_clip_msg)];
-    int hdr_have;
-    struct iosc_clip_msg msg;
-    char *payload;
-    uint32_t payload_have;
-};
 
 struct iosc_data_source {
     struct wl_resource *resource;
@@ -4725,7 +4709,6 @@ struct iosc_source_read {
     char *mime;
 };
 
-static struct iosc_clip_client *g_clip_clients[IOSC_MAX_CLIP_CLIENTS];
 static struct iosc_data_device *g_data_devices[IOSC_MAX_DATA_DEVICES];
 static int g_ndata_devices;
 static struct iosc_mime_data g_clip_items[IOSC_MAX_CLIP_MIMES];
@@ -4768,7 +4751,8 @@ static int is_clip_mime(const char *mime)
 {
     return is_text_mime(mime) ||
            (mime && (!strcmp(mime, "text/uri-list") ||
-                     !strcmp(mime, "text/html")));
+                     !strcmp(mime, "text/html") ||
+                     !strcmp(mime, "image/png")));
 }
 
 static void mime_data_clear(struct iosc_mime_data *m)
@@ -4848,35 +4832,6 @@ static int write_all_fd(int fd, const void *buf, size_t len)
     return 0;
 }
 
-static void clip_client_drop(struct iosc_clip_client *c)
-{
-    if (!c) return;
-    for (int i = 0; i < IOSC_MAX_CLIP_CLIENTS; i++)
-        if (g_clip_clients[i] == c) g_clip_clients[i] = NULL;
-    if (c->src) wl_event_source_remove(c->src);
-    if (c->fd >= 0) close(c->fd);
-    free(c->payload);
-    free(c);
-    fprintf(stderr, "iosc: clipboard client disconnected\n");
-}
-
-static int clip_send_set_to_client(struct iosc_clip_client *c, const char *text, size_t len)
-{
-    if (!c || c->fd < 0 || len > IOSC_CLIP_MAX) return -1;
-    struct iosc_clip_msg h = { .type = IOSC_CLIP_SET, .len = (uint32_t)len };
-    if (write_all_fd(c->fd, &h, sizeof(h)) != 0) return -1;
-    if (len && write_all_fd(c->fd, text, len) != 0) return -1;
-    return 0;
-}
-
-static void clip_send_set_to_app(const char *text, size_t len)
-{
-    for (int i = 0; i < IOSC_MAX_CLIP_CLIENTS; i++) {
-        struct iosc_clip_client *c = g_clip_clients[i];
-        if (c && clip_send_set_to_client(c, text, len) != 0) clip_client_drop(c);
-    }
-}
-
 static void clipboard_selection_send_to_device(struct iosc_data_device *d)
 {
     if (!d || !d->resource) return;
@@ -4938,7 +4893,24 @@ static void clip_set_text(const char *text, size_t len, int send_to_app)
     data_control_cancel_clip_source();   /* a fresh clipboard supersedes any data-control owner */
     clip_clear_items();
     if (clip_item_set("text/plain;charset=utf-8", text ? text : "", len) != 0) return;
-    if (send_to_app) clip_send_set_to_app(text ? text : "", len);
+    if (send_to_app) {
+        ioscclip_selection_begin();
+        ioscclip_publish(XIOS_CLIP_KIND_TEXT, text ? text : "", len);
+    }
+    clipboard_selection_broadcast();
+}
+
+/* iOS-side pasteboard changed: fold it into the selection store and offer it to
+ * Wayland clients. first_of_set starts a new logical clipboard. Never republish
+ * to the bridge from here — it already mirrored + relayed the record. */
+static void clipboard_from_app(uint32_t kind, const void *data, size_t len,
+                               int first_of_set, void *ud)
+{ (void)ud;
+    if (first_of_set) clip_clear_items();
+    if (kind != XIOS_CLIP_KIND_NONE) {
+        const char *mime = ioscclip_mime_for_kind(kind);
+        if (!mime || clip_item_set(mime, data ? data : "", len) != 0) return;
+    }
     clipboard_selection_broadcast();
 }
 
@@ -5028,8 +5000,9 @@ static void data_source_resource_destroy(struct wl_resource *r)
 static void source_read_done(struct iosc_source_read *rd, int publish)
 {
     if (publish && rd->mime && clip_item_set(rd->mime, rd->buf ? rd->buf : "", rd->len) == 0) {
-        if (is_text_mime(rd->mime))
-            clip_send_set_to_app(rd->buf ? rd->buf : "", rd->len);
+        uint32_t k = ioscclip_kind_for_mime(rd->mime);
+        if (k != XIOS_CLIP_KIND_NONE)
+            ioscclip_publish(k, rd->buf ? rd->buf : "", rd->len);
         clipboard_selection_broadcast();
     }
     if (rd->src) wl_event_source_remove(rd->src);
@@ -5359,6 +5332,11 @@ static void clip_ingest_source(struct wl_resource *src, char *const *mimes, int 
                                void (*send_fn)(struct wl_resource *, const char *, int32_t))
 {
     clip_clear_items();
+    /* A new Linux-side selection is starting (this is the source branch of BOTH
+     * wl_data_device.set_selection and wlr-data-control.set_selection): bump the
+     * outbound clipboard generation once, then source_read_done() publishes each
+     * snapshotted representation to iOS as its pipe read lands. */
+    ioscclip_selection_begin();
     for (int i = 0; i < nmimes; i++) {
         int fds[2];
         if (pipe(fds) != 0) continue;
@@ -5379,7 +5357,12 @@ static void data_device_set_selection(struct wl_client *c, struct wl_resource *r
                                       struct wl_resource *src, uint32_t serial)
 { (void)c; (void)r; (void)serial;
     data_control_cancel_clip_source();   /* wl_data_device supersedes any data-control owner */
-    if (!src) { clip_set_text("", 0, 1); return; }
+    if (!src) {
+        clip_clear_items();
+        ioscclip_selection_clear();       /* tell iOS the selection is gone (KIND_NONE) */
+        clipboard_selection_broadcast();
+        return;
+    }
     struct iosc_data_source *s = wl_resource_get_user_data(src);
     if (!s || s->nmimes == 0) return;
     clip_ingest_source(src, s->mimes, s->nmimes, wl_data_source_send_send);
@@ -5441,75 +5424,6 @@ static void ddm_bind(struct wl_client *client, void *data, uint32_t version, uin
   if (!r) { wl_client_post_no_memory(client); return; }
   wl_resource_set_implementation(r, &ddm_impl, NULL, NULL); }
 
-static void clip_rx_reset(struct iosc_clip_client *c)
-{
-    free(c->payload);
-    c->payload = NULL;
-    c->payload_have = 0;
-    c->hdr_have = 0;
-    memset(&c->msg, 0, sizeof(c->msg));
-}
-
-static int clip_client_readable(int fd, uint32_t mask, void *data)
-{
-    struct iosc_clip_client *c = data;
-    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) goto drop;
-    for (;;) {
-        if (c->hdr_have < (int)sizeof(c->hdr)) {
-            ssize_t r = read(fd, c->hdr + c->hdr_have, sizeof(c->hdr) - (size_t)c->hdr_have);
-            if (r > 0) {
-                c->hdr_have += (int)r;
-                if (c->hdr_have < (int)sizeof(c->hdr)) continue;
-                memcpy(&c->msg, c->hdr, sizeof(c->msg));
-                if (c->msg.len > IOSC_CLIP_MAX) goto drop;
-                c->payload = c->msg.len ? calloc(1, c->msg.len + 1u) : NULL;
-                if (c->msg.len && !c->payload) goto drop;
-            } else {
-                if (r == 0) goto drop;
-                if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-                if (errno == EINTR) continue;
-                goto drop;
-            }
-        }
-        while (c->payload_have < c->msg.len) {
-            ssize_t r = read(fd, c->payload + c->payload_have, c->msg.len - c->payload_have);
-            if (r > 0) { c->payload_have += (uint32_t)r; continue; }
-            if (r == 0) goto drop;
-            if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
-            if (errno == EINTR) continue;
-            goto drop;
-        }
-        if (c->msg.type == IOSC_CLIP_SET)
-            clip_set_text(c->payload ? c->payload : "", c->msg.len, 0);
-        clip_rx_reset(c);
-    }
-    return 0;
-drop:
-    clip_client_drop(c);
-    return 0;
-}
-
-static int clip_listen_readable(int fd, uint32_t mask, void *data)
-{
-    (void)mask;
-    struct wl_event_loop *loop = data;
-    int cfd = accept(fd, NULL, NULL);
-    if (cfd < 0) return 0;
-    fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
-    struct iosc_clip_client *c = calloc(1, sizeof(*c));
-    if (!c) { close(cfd); return 0; }
-    c->fd = cfd;
-    c->src = wl_event_loop_add_fd(loop, cfd, WL_EVENT_READABLE, clip_client_readable, c);
-    int slot = -1;
-    for (int i = 0; i < IOSC_MAX_CLIP_CLIENTS; i++) if (!g_clip_clients[i]) { slot = i; break; }
-    if (slot < 0) { clip_client_drop(c); return 0; }
-    g_clip_clients[slot] = c;
-    struct iosc_mime_data *text = clip_find_item("text/plain;charset=utf-8");
-    if (text) clip_send_set_to_client(c, text->data ? text->data : "", text->len);
-    fprintf(stderr, "iosc: clipboard client connected (fd=%d)\n", cfd);
-    return 0;
-}
-
 static void chmod_mobile_socket(const char *path)
 {
     struct passwd *pw = getpwnam("mobile");
@@ -5537,11 +5451,6 @@ static int unix_listen_start(struct wl_event_loop *loop, const char *path,
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, on_accept, loop);
     return 0;
-}
-
-static int clipboard_socket_start(struct wl_event_loop *loop, const char *path)
-{
-    return unix_listen_start(loop, path, clip_listen_readable);
 }
 
 /* ---- input transport: a tiny AF_UNIX socket the Xios app writes events to ---
@@ -7115,8 +7024,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: input socket failed -> no app input\n");
     else
         fprintf(stderr, "iosc: input socket up at %s\n", input_sock);
-    if (clipboard_socket_start(wl_display_get_event_loop(g_display),
-                               "/var/jb/tmp/iosc-clipboard.sock") != 0)
+    if (ioscclip_start(wl_display_get_event_loop(g_display),
+                       "/var/jb/tmp/iosc-clipboard.sock",
+                       clipboard_from_app, NULL) != 0)
         fprintf(stderr, "iosc: clipboard socket failed -> no UIPasteboard bridge\n");
     else
         fprintf(stderr, "iosc: clipboard socket up at /var/jb/tmp/iosc-clipboard.sock\n");
