@@ -25,14 +25,40 @@
 #include <dirent.h>
 #include <sys/mman.h>
 
+static const char *sd_jbroot(void)
+{
+    const char *env = getenv("IOSC_JBROOT");
+    if (env && *env) return env;
+    env = getenv("JBROOT");
+    if (env && *env) return env;
+    if (access("/var/jb/usr", X_OK) == 0) return "/var/jb";
+    return "";
+}
+
+static void sd_join_path(char *dst, size_t dstsz, const char *root,
+                         const char *suffix)
+{
+    if (!root || !*root || !strcmp(root, "/")) snprintf(dst, dstsz, "%s", suffix);
+    else {
+        size_t n = strlen(root);
+        const char *tail = (n && root[n - 1] == '/' && suffix[0] == '/') ? suffix + 1 : suffix;
+        snprintf(dst, dstsz, "%s%s", root, tail);
+    }
+}
+
 /* An anonymous, unlinked, sized fd for a wl_shm pool (shared by the bitmap
  * canvas below AND ioscpanel's cairo-backed buffer). Kept outside SD_NO_DRAW so
  * the cairo panel can reuse it without pulling in the bitmap renderer. */
 static int sd_create_anon_fd(size_t size)
 {
-    static const char *dirs[] = { "/var/jb/tmp", "/tmp" };
+    const char *root = sd_jbroot();
+    char rooted_tmp[256];
+    sd_join_path(rooted_tmp, sizeof rooted_tmp, root, "/tmp");
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    const char *dirs[] = { xdg, rooted_tmp, "/tmp" };
     for (size_t i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
-        char tmpl[64];
+        if (!dirs[i] || !*dirs[i]) continue;
+        char tmpl[512];
         snprintf(tmpl, sizeof tmpl, "%s/ioscshell-XXXXXX", dirs[i]);
         int fd = mkstemp(tmpl);
         if (fd < 0) continue;
@@ -180,8 +206,6 @@ static void sd_draw_text_centered(struct shell_canvas *cv, const char *s,
 
 /* ------------------------------------------------------- .desktop scan ---- */
 
-#define SD_APPS_DIR "/var/jb/usr/share/applications"
-
 struct sd_app { char name[64]; char exec[256]; char icon[128]; };
 
 static void sd_strip_field_codes(char *exec)
@@ -195,17 +219,16 @@ static void sd_strip_field_codes(char *exec)
     while (w > exec && w[-1] == ' ') *--w = 0;
 }
 
-/* scan SD_APPS_DIR for Type=Application, !NoDisplay entries; fill apps[], return count. */
-static int sd_scan_apps(struct sd_app *apps, int max)
+/* scan a .desktop dir for Type=Application, !NoDisplay entries. */
+static int sd_scan_apps_dir(const char *dir, struct sd_app *apps, int n, int max)
 {
-    DIR *d = opendir(SD_APPS_DIR);
-    if (!d) return 0;
-    int n = 0;
+    DIR *d = opendir(dir);
+    if (!d) return n;
     struct dirent *e;
     while ((e = readdir(d)) && n < max) {
         size_t len = strlen(e->d_name);
         if (len < 9 || strcmp(e->d_name + len - 8, ".desktop")) continue;
-        char path[512]; snprintf(path, sizeof path, "%s/%s", SD_APPS_DIR, e->d_name);
+        char path[512]; snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
         FILE *f = fopen(path, "r"); if (!f) continue;
         char line[512], name[64] = {0}, exec[256] = {0}, icon[128] = {0};
         int nodisplay = 0, in_entry = 0;
@@ -230,6 +253,21 @@ static int sd_scan_apps(struct sd_app *apps, int max)
     return n;
 }
 
+static int sd_scan_apps(struct sd_app *apps, int max)
+{
+    int n = 0;
+    const char *override = getenv("IOSC_APPS_DIR");
+    if (override && *override) n = sd_scan_apps_dir(override, apps, n, max);
+
+    const char *root = sd_jbroot();
+    char sys_apps[256], local_apps[256];
+    sd_join_path(sys_apps, sizeof sys_apps, root, "/usr/share/applications");
+    sd_join_path(local_apps, sizeof local_apps, root, "/usr/local/share/applications");
+    n = sd_scan_apps_dir(sys_apps, apps, n, max);
+    if (strcmp(local_apps, sys_apps)) n = sd_scan_apps_dir(local_apps, apps, n, max);
+    return n;
+}
+
 /* fork+exec a .desktop Exec under the same Wayland/dbus env run-kgx.sh proved
  * good. The shell clients run outside the iOS app sandbox (started by ioscd or a
  * run-script), so this is the direct path. */
@@ -238,16 +276,35 @@ static void sd_launch(const char *exec)
     pid_t pid = fork();
     if (pid != 0) return;
     setsid();
-    setenv("WAYLAND_DISPLAY", "/var/jb/tmp/wayland-0", 1);
-    setenv("XDG_RUNTIME_DIR", "/var/jb/tmp", 1);
+    const char *root = sd_jbroot();
+    char tmp[256], wayland[256], home[256], path[512];
+    char dbus_run[256], sh_bin[256], usr_sh[256];
+    sd_join_path(tmp, sizeof tmp, root, "/tmp");
+    sd_join_path(wayland, sizeof wayland, root, "/tmp/wayland-0");
+    sd_join_path(home, sizeof home, root, "/var/root");
+    sd_join_path(dbus_run, sizeof dbus_run, root, "/usr/bin/dbus-run-session");
+    sd_join_path(sh_bin, sizeof sh_bin, root, "/bin/sh");
+    sd_join_path(usr_sh, sizeof usr_sh, root, "/usr/bin/sh");
+    if (!root || !*root || !strcmp(root, "/"))
+        snprintf(path, sizeof path, "/usr/bin:/bin:/usr/sbin:/sbin");
+    else
+        snprintf(path, sizeof path,
+                 "%s/usr/bin:%s/usr/sbin:%s/bin:%s/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
+                 root, root, root, root);
+    const char *env_wayland = getenv("WAYLAND_DISPLAY");
+    const char *env_runtime = getenv("XDG_RUNTIME_DIR");
+    setenv("WAYLAND_DISPLAY", (env_wayland && *env_wayland) ? env_wayland : wayland, 1);
+    setenv("XDG_RUNTIME_DIR", (env_runtime && *env_runtime) ? env_runtime : tmp, 1);
     setenv("GDK_BACKEND", "wayland", 1);
     setenv("GSK_RENDERER", "cairo", 1);
     setenv("GSETTINGS_BACKEND", "memory", 1);
     setenv("GTK_A11Y", "none", 1);
-    if (!getenv("HOME")) setenv("HOME", "/var/jb/var/root", 1);
-    execl("/var/jb/usr/bin/dbus-run-session", "dbus-run-session", "--",
-          "/bin/sh", "-lc", exec, (char*)NULL);
-    execl("/bin/sh", "sh", "-lc", exec, (char*)NULL);
+    setenv("SHELL", sh_bin, 1);
+    setenv("PATH", path, 1);
+    if (!getenv("HOME")) setenv("HOME", home, 1);
+    execl(dbus_run, "dbus-run-session", "--", sh_bin, "-lc", exec, (char*)NULL);
+    execl(sh_bin, "sh", "-lc", exec, (char*)NULL);
+    execl(usr_sh, "sh", "-lc", exec, (char*)NULL);
     _exit(127);
 }
 

@@ -6,7 +6,7 @@
  * SVG into a shipped PNG set (see gen-shell-icons.sh), and here we resolve to a
  * PNG only, in this order:
  *
- *   1. shipped set   $IOSC_SHELL_ICONS or /var/jb/usr/share/iosc-shell/icons
+ *   1. shipped set   $IOSC_SHELL_ICONS or <jbroot>/usr/share/iosc-shell/icons
  *                    (<name>.png, or <name>@2x.png / @3x.png for hidpi)
  *   2. hicolor PNGs  <root>/icons/hicolor/<size>/apps/<name>.png (largest first)
  *   3. flat pixmaps  <root>/pixmaps/<name>.png
@@ -22,13 +22,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define PI_ASSETS_DEFAULT "/var/jb/usr/share/iosc-shell/icons"
-
-/* freedesktop share roots to search for hicolor/pixmaps (largest raster wins). */
-static const char *PI_SHARE_ROOTS[] = {
-    "/var/jb/usr/share",
-    "/var/jb/usr/local/share",
-};
 static const char *PI_HICOLOR_SIZES[] = {
     "512x512", "256x256", "192x192", "128x128", "96x96", "64x64", "48x48",
 };
@@ -75,17 +68,25 @@ static int pi_resolve(const char *name, int scale, char *out, size_t outsz)
     }
 
     const char *assets = getenv("IOSC_SHELL_ICONS");
-    if (!assets || !*assets) assets = PI_ASSETS_DEFAULT;
+    char default_assets[256];
+    if (!assets || !*assets) {
+        sd_join_path(default_assets, sizeof default_assets, sd_jbroot(),
+                     "/usr/share/iosc-shell/icons");
+        assets = default_assets;
+    }
     if (pi_shipped(assets, base, scale, out, outsz)) return 1;
 
     /* hicolor rasters, largest first */
-    for (size_t r = 0; r < sizeof(PI_SHARE_ROOTS)/sizeof(PI_SHARE_ROOTS[0]); r++) {
+    char share_roots[2][256];
+    sd_join_path(share_roots[0], sizeof share_roots[0], sd_jbroot(), "/usr/share");
+    sd_join_path(share_roots[1], sizeof share_roots[1], sd_jbroot(), "/usr/local/share");
+    for (size_t r = 0; r < sizeof(share_roots)/sizeof(share_roots[0]); r++) {
         for (size_t s = 0; s < sizeof(PI_HICOLOR_SIZES)/sizeof(PI_HICOLOR_SIZES[0]); s++) {
             snprintf(out, outsz, "%s/icons/hicolor/%s/apps/%s.png",
-                     PI_SHARE_ROOTS[r], PI_HICOLOR_SIZES[s], base);
+                     share_roots[r], PI_HICOLOR_SIZES[s], base);
             if (pi_is_file(out)) return 1;
         }
-        snprintf(out, outsz, "%s/pixmaps/%s.png", PI_SHARE_ROOTS[r], base);
+        snprintf(out, outsz, "%s/pixmaps/%s.png", share_roots[r], base);
         if (pi_is_file(out)) return 1;
     }
     return 0;

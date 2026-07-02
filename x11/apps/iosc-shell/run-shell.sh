@@ -21,16 +21,31 @@
 # desktop — no Mutter, no JS, pure C/Wayland. Package: package-shell.sh.
 set -e
 
-JB=/var/jb
-BIN=$JB/usr/local/bin
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$JB/tmp}"
+detect_jbroot() {
+    if [ -n "${IOSC_JBROOT:-}" ]; then printf '%s\n' "${IOSC_JBROOT%/}"; return; fi
+    if [ -n "${JBROOT:-}" ]; then printf '%s\n' "${JBROOT%/}"; return; fi
+    if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
+    printf '%s\n' ''
+}
+
+jb_path() {
+    case "$JB" in
+        ''|/) printf '%s\n' "$1" ;;
+        *)    printf '%s\n' "$JB$1" ;;
+    esac
+}
+
+JB=$(detect_jbroot)
+BIN=$(jb_path /usr/local/bin)
+TMP=$(jb_path /tmp)
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$TMP}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
 # Logical desktop the shell designs its elements for. iosc renders a 2x-oversized
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
 # the 2160x1620 panel = ~1.5 effective scale (Max-approved). Override to retune.
 export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
-# Input tracing to /var/jb/tmp/{ioscbar,ioscdock}.log — default ON while the shell-tap
+# Input tracing to $XDG_RUNTIME_DIR/{ioscbar,ioscdock}.log — default ON while the shell-tap
 # bug is being hunted (Max: panel dead to taps, 2026-07-01). Flip to 0 after.
 export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-1}"
 
@@ -41,7 +56,7 @@ log() { echo "run-shell: $*" >&2; }
 if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
     if [ -x "$BIN/iosc" ]; then
         log "starting iosc (logical $IOSC_LOGICAL)..."
-        "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$JB/tmp/iosc.log" 2>&1 &
+        "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
     else
         log "ERROR: no wayland socket at $SOCK and $BIN/iosc not found"
         log "start the compositor first (wayland/run-iosc.sh)"; exit 1
@@ -56,7 +71,7 @@ fi
 # -- 2 + 3 + 4. shell clients -------------------------------------------------
 start() {  # start <name> (skips if already running)
     if pgrep -x "$1" >/dev/null 2>&1; then log "$1 already running"; return; fi
-    if [ -x "$BIN/$1" ]; then "$BIN/$1" >"$JB/tmp/$1.log" 2>&1 & log "$1 started";
+    if [ -x "$BIN/$1" ]; then "$BIN/$1" >"$TMP/$1.log" 2>&1 & log "$1 started";
     else log "WARNING: $BIN/$1 not found (skipped)"; fi
 }
 start ioscbg

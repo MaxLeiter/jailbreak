@@ -9,7 +9,7 @@
  * resolves, it paints the theme's deep indigo gradient instead.
  *
  * Wallpaper path: $IOSC_WALLPAPER, else the xios-desktop-theme default
- * /var/jb/usr/share/backgrounds/xios/xios-default.jpg.
+ * <jbroot>/usr/share/backgrounds/xios/xios-default.jpg.
  *
  * No input, no timers: it renders on configure (and re-renders if the output
  * size changes, e.g. a future rotation) and then just keeps the connection
@@ -30,8 +30,6 @@
 #include <CoreGraphics/CoreGraphics.h>
 #include <ImageIO/ImageIO.h>
 #endif
-
-#define WALLPAPER_DEFAULT "/var/jb/usr/share/backgrounds/xios/xios-default.jpg"
 
 static struct {
     struct wl_display    *dpy;
@@ -209,7 +207,12 @@ int main(void)
     if (es && atoi(es) > 0) { B.scale = atoi(es); B.scale_env = 1; }
 
     const char *wp = getenv("IOSC_WALLPAPER");
-    if (!wp || !*wp) wp = WALLPAPER_DEFAULT;
+    char default_wp[256];
+    if (!wp || !*wp) {
+        sd_join_path(default_wp, sizeof default_wp, sd_jbroot(),
+                     "/usr/share/backgrounds/xios/xios-default.jpg");
+        wp = default_wp;
+    }
 #ifdef __APPLE__
     B.image = load_wallpaper(wp);
     fprintf(stderr, "ioscbg: wallpaper %s (%s)\n", wp, B.image ? "loaded" : "missing -> gradient");

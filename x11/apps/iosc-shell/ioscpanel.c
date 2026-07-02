@@ -400,7 +400,8 @@ static void spawn_overview(void)
     char path[600];
     snprintf(path, sizeof path, "%s/ioscoverview", P.self_dir);
     execl(path, "ioscoverview", (char*)NULL);
-    execl("/var/jb/usr/local/bin/ioscoverview", "ioscoverview", (char*)NULL);
+    sd_join_path(path, sizeof path, sd_jbroot(), "/usr/local/bin/ioscoverview");
+    execl(path, "ioscoverview", (char*)NULL);
     execlp("ioscoverview", "ioscoverview", (char*)NULL);
     _exit(127);
 }
@@ -417,7 +418,10 @@ static void take_screenshot(void)
     char name[64];
     strftime(name, sizeof name, "xios-%Y%m%d-%H%M%S.png", &tm);
 
-    static const char *dirs[] = { "/var/jb/var/mobile/Documents", "/var/jb/tmp" };
+    char docs[256], tmpdir[256];
+    sd_join_path(docs, sizeof docs, sd_jbroot(), "/var/mobile/Documents");
+    sd_join_path(tmpdir, sizeof tmpdir, sd_jbroot(), "/tmp");
+    const char *dirs[] = { docs, tmpdir };
     char path[300] = "";
     for (size_t i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
         struct stat st;
@@ -456,7 +460,7 @@ static void act_on_hit(const struct panel_hit *r)
     }
 }
 
-/* Input tracing (IOSC_SHELL_DEBUG=1): stderr lands in /var/jb/tmp/ioscpanel.log
+/* Input tracing (IOSC_SHELL_DEBUG=1): stderr lands in $XDG_RUNTIME_DIR/ioscpanel.log
  * via run-shell.sh, so a dead-to-taps report can be diagnosed from the log —
  * it shows whether events arrive at all, with what coords, and what they hit. */
 static int pdbg(void)
@@ -757,7 +761,7 @@ int main(int argc, char **argv)
     if (argc > 0 && strchr(argv[0], '/')) {
         char tmp[512]; snprintf(tmp, sizeof tmp, "%s", argv[0]);
         snprintf(P.self_dir, sizeof P.self_dir, "%s", dirname(tmp));
-    } else snprintf(P.self_dir, sizeof P.self_dir, "/var/jb/usr/local/bin");
+    } else sd_join_path(P.self_dir, sizeof P.self_dir, sd_jbroot(), "/usr/local/bin");
 
     P.dpy = wl_display_connect(NULL);
     if (!P.dpy) { fprintf(stderr, "ioscpanel: cannot connect to WAYLAND_DISPLAY\n"); return 1; }
