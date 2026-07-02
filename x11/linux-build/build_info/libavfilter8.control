@@ -1,0 +1,10 @@
+Package: libavfilter8
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Depends: libavutil57 (= @DEB_FFMPEG_V@), libavcodec59 (= @DEB_FFMPEG_V@), libavformat59 (= @DEB_FFMPEG_V@), libswscale6 (= @DEB_FFMPEG_V@), libswresample4 (= @DEB_FFMPEG_V@), libpostproc56 (= @DEB_FFMPEG_V@)
+Description: FFmpeg audio/video filtering library - runtime
+ FFmpeg multimedia library (Xios lean decode-first build: native de/muxers +
+ VideoToolbox/AudioToolbox, no external codec libraries).

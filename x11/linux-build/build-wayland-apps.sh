@@ -33,18 +33,15 @@ if ! command -v wayland-scanner >/dev/null 2>&1 || ! command -v tic >/dev/null 2
 fi
 
 echo "==> installing our recipes into makefiles/"
-cp -v /work/recipes/tllist.mk /work/recipes/fcft.mk /work/recipes/foot.mk /work/recipes/imv.mk \
-      /work/recipes/libgrapheme.mk \
-      /work/recipes/wayland.mk /work/recipes/wayland-protocols.mk /work/recipes/libxkbcommon.mk \
-      /work/recipes/libpixman.mk makefiles/ 2>/dev/null || true
+cp -v /work/recipes/*.mk makefiles/ 2>/dev/null || true
 
-echo "==> installing our control templates into build_info/"
+echo "==> installing our control templates + compat headers into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
-  cp -v /work/build_info/libtllist-dev.control \
-        /work/build_info/libfcft4.control /work/build_info/libfcft-dev.control \
-        /work/build_info/foot.control /work/build_info/foot-compat.h /work/build_info/imv.control \
-        /work/build_info/imv-compat.h /work/build_info/libgrapheme-dev.control \
-        /work/build_info/iosc-gpu-client-ent.xml build_info/ 2>/dev/null || true
+  cp -v /work/build_info/* build_info/ 2>/dev/null || true
+fi
+mkdir -p build_misc/entitlements
+if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
+  cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 fi
 
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's compile-only
@@ -179,8 +176,11 @@ fi
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
-# Dependency order: wayland-protocols (bump) -> tllist -> fcft -> foot -> imv.
-TARGETS="${TARGETS:-wayland-protocols-package tllist-package fcft-package foot-package imv-package}"
+# Dependency order: wayland-protocols (bump) -> tllist -> fcft -> foot -> imv,
+# then the standalone clients: wl-clipboard, and the mpv media stack (ffmpeg -> libass -> mpv).
+# NOTE: mpv is pinned to 0.36.0 (libplacebo optional there); 0.37+ hard-requires libplacebo
+# (>=6.338), so we step down and use --vo=gpu instead of building the whole libplacebo stack.
+TARGETS="${TARGETS:-wayland-protocols-package tllist-package fcft-package foot-package imv-package wl-clipboard-package ffmpeg-package libass-package mpv-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"
@@ -190,6 +190,8 @@ done
 echo "==> collect debs -> /out"
 mkdir -p /out
 for pat in libtllist libfcft foot imv libgrapheme wayland-protocols \
+           wl-clipboard mpv libmpv libavcodec libavformat libavutil libavfilter \
+           libavdevice libswscale libswresample libpostproc ffmpeg libass libplacebo \
            libharfbuzz libutf8proc libfontconfig libfreetype libpixman \
            libcairo libpango libfribidi libglib2.0 libpng libjpeg; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true

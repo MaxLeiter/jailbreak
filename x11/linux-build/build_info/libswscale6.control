@@ -1,0 +1,10 @@
+Package: libswscale6
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Depends: libavutil57 (= @DEB_FFMPEG_V@)
+Description: FFmpeg image scaling library - runtime
+ FFmpeg multimedia library (Xios lean decode-first build: native de/muxers +
+ VideoToolbox/AudioToolbox, no external codec libraries).

@@ -1,0 +1,10 @@
+Package: libavcodec-dev
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Depends: libavcodec59 (= @DEB_FFMPEG_V@), libavutil-dev (= @DEB_FFMPEG_V@), libswresample-dev (= @DEB_FFMPEG_V@)
+Description: FFmpeg codec library - development
+ FFmpeg multimedia library (Xios lean decode-first build: native de/muxers +
+ VideoToolbox/AudioToolbox, no external codec libraries).

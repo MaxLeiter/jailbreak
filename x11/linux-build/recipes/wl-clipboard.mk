@@ -24,8 +24,8 @@ WL_CLIPBOARD_VERSION := 2.2.1
 DEB_WL_CLIPBOARD_V   ?= $(WL_CLIPBOARD_VERSION)
 
 wl-clipboard-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v$(WL_CLIPBOARD_VERSION).tar.gz,wl-clipboard-$(WL_CLIPBOARD_VERSION).tar.gz)
-	$(call EXTRACT_TAR,wl-clipboard-$(WL_CLIPBOARD_VERSION).tar.gz,wl-clipboard-$(WL_CLIPBOARD_VERSION),wl-clipboard)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v$(WL_CLIPBOARD_VERSION).tar.gz)
+	$(call EXTRACT_TAR,v$(WL_CLIPBOARD_VERSION).tar.gz,wl-clipboard-$(WL_CLIPBOARD_VERSION),wl-clipboard)
 	mkdir -p $(BUILD_WORK)/wl-clipboard/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
@@ -47,13 +47,18 @@ wl-clipboard:
 	@echo "Using previously built wl-clipboard."
 else
 wl-clipboard: wl-clipboard-setup wayland wayland-protocols
-	cd $(BUILD_WORK)/wl-clipboard/build && meson \
+	# wl-clipboard runs the native wayland-scanner on its vendored protocol XMLs; point a native
+	# file at the version-matched scanner + its .pc (same trick as foot/imv).
+	cd $(BUILD_WORK)/wl-clipboard/build && \
+		printf "[binaries]\npkgconfig = 'pkg-config'\n[built-in options]\npkg_config_path = ['$(WAYLAND_NATIVE_ROOT)/lib/pkgconfig']\n" > native.txt && \
+		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \
 		--cross-file cross.txt \
+		--native-file native.txt \
 		--buildtype=release \
 		-Dzshcompletiondir=no \
 		-Dfishcompletiondir=no \
 		..
-	+ninja -C $(BUILD_WORK)/wl-clipboard/build
+	+PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" ninja -C $(BUILD_WORK)/wl-clipboard/build
 	+DESTDIR="$(BUILD_STAGE)/wl-clipboard" ninja -C $(BUILD_WORK)/wl-clipboard/build install
 	$(call AFTER_BUILD,copy)
 endif

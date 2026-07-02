@@ -1,0 +1,10 @@
+Package: libavfilter-dev
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Depends: libavfilter8 (= @DEB_FFMPEG_V@), libavcodec-dev (= @DEB_FFMPEG_V@), libavformat-dev (= @DEB_FFMPEG_V@), libswscale-dev (= @DEB_FFMPEG_V@), libswresample-dev (= @DEB_FFMPEG_V@), libpostproc-dev (= @DEB_FFMPEG_V@), libavutil-dev (= @DEB_FFMPEG_V@)
+Description: FFmpeg filtering library - development
+ FFmpeg multimedia library (Xios lean decode-first build: native de/muxers +
+ VideoToolbox/AudioToolbox, no external codec libraries).

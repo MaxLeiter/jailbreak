@@ -1,0 +1,10 @@
+Package: libavutil-dev
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Depends: libavutil57 (= @DEB_FFMPEG_V@)
+Description: FFmpeg portable utility library - development
+ FFmpeg multimedia library (Xios lean decode-first build: native de/muxers +
+ VideoToolbox/AudioToolbox, no external codec libraries).

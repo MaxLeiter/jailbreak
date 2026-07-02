@@ -1,0 +1,9 @@
+Package: libavutil57
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Description: FFmpeg portable utility library - runtime
+ FFmpeg multimedia library (Xios lean decode-first build: native de/muxers,
+ no external codec libraries). This is the core utility library.
