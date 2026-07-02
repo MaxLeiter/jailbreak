@@ -630,6 +630,15 @@ final class XScreenView: UIView {
                 displayLink?.preferredFramesPerSecond = 60
             }
         }
+        // Keep the test-pattern buffer + texture sized to the CURRENT fb before writing.
+        // fbWidth/fbHeight can grow (compositor resize / re-adopt / session switch) after
+        // testBuf+texture were allocated, and both renderTestPattern (CPU write) and
+        // texture.replace (GPU) below write fbWidth*fbHeight*4 — a stale, smaller buffer
+        // overflows and SIGSEGVs (seen on session-switch teardown). The %30 poll's realloc
+        // isn't enough on its own: the write runs every tick, so re-check it here.
+        if usingTestPattern, texture?.width != fbWidth || texture?.height != fbHeight {
+            startTestPattern()
+        }
         guard let texture = texture else { return }
 
         let base: UnsafeRawPointer
