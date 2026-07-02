@@ -87,7 +87,8 @@ echo "==> [1/5] extract W0 dev debs (+ angle for the GPU client) into a sysroot"
 echo "   (searching:$DEB_DIRS)"
 xdeb_extract "$SYS" "$DEB_DIRS" \
   libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
-  libxkbcommon-dev libxkbcommon0
+  libxkbcommon-dev libxkbcommon0 \
+  libxcb1 libxcb1-dev
 PREFIX="$SYS/var/jb/usr"       # wayland headers/libs
 ANGLE_INC="$SYS/var/jb/include" # angle EGL/GLES headers
 ANGLE_LIB="$SYS/var/jb/lib/angle"
@@ -114,6 +115,7 @@ SINGLE_PIXEL_XML="$PREFIX/share/wayland-protocols/staging/single-pixel-buffer/si
 CURSOR_SHAPE_XML="$PREFIX/share/wayland-protocols/staging/cursor-shape/cursor-shape-v1.xml"
 TABLET_XML="$PREFIX/share/wayland-protocols/stable/tablet/tablet-v2.xml"
 SESSION_LOCK_XML="$PREFIX/share/wayland-protocols/staging/ext-session-lock/ext-session-lock-v1.xml"
+XWLSHELL_XML="$X11/wayland/protocols/xwayland-shell-v1.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
 [ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
 [ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
@@ -137,6 +139,7 @@ SESSION_LOCK_XML="$PREFIX/share/wayland-protocols/staging/ext-session-lock/ext-s
 [ -f "$CURSOR_SHAPE_XML" ] || { echo "!! cursor-shape-v1.xml not found at $CURSOR_SHAPE_XML"; exit 1; }
 [ -f "$TABLET_XML" ] || { echo "!! tablet-v2.xml not found at $TABLET_XML"; exit 1; }
 [ -f "$SESSION_LOCK_XML" ] || { echo "!! ext-session-lock-v1.xml not found at $SESSION_LOCK_XML"; exit 1; }
+[ -f "$XWLSHELL_XML" ] || { echo "!! xwayland-shell-v1.xml not found at $XWLSHELL_XML"; exit 1; }
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
@@ -207,6 +210,9 @@ wayland-scanner private-code  "$CURSOR_SHAPE_XML" "$GEN/cursor-shape-v1-protocol
 wayland-scanner server-header "$SESSION_LOCK_XML" "$GEN/ext-session-lock-v1-server-protocol.h"
 wayland-scanner client-header "$SESSION_LOCK_XML" "$GEN/ext-session-lock-v1-client-protocol.h"
 wayland-scanner private-code  "$SESSION_LOCK_XML" "$GEN/ext-session-lock-v1-protocol.c"
+# xwayland-shell-v1: the surface<->X-window association global (rootless XWM).
+wayland-scanner server-header "$XWLSHELL_XML" "$GEN/xwayland-shell-v1-server-protocol.h"
+wayland-scanner private-code  "$XWLSHELL_XML" "$GEN/xwayland-shell-v1-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
 wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
@@ -233,6 +239,7 @@ echo "==> [5/5] cross-compile"
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
     "$X11/wayland/iosc-clipboard-bridge.c" \
+    "$X11/wayland/iosc_xwm.c" \
     "$X11/wayland/iosc_gl.c" \
     "$X11/wayland/xios_egl.c" \
     "$X11/wayland/xios_canvas.c" \
@@ -261,9 +268,10 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/wlr-screencopy-unstable-v1-protocol.c" \
     "$GEN/wlr-data-control-unstable-v1-protocol.c" \
     "$GEN/ext-session-lock-v1-protocol.c" \
+    "$GEN/xwayland-shell-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
-    -L"$PREFIX/lib" -lwayland-server -lxkbcommon \
+    -L"$PREFIX/lib" -lwayland-server -lxkbcommon -lxcb \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation \
     $RPATH -Wl,-rpath,/var/jb/lib/angle -o /out/iosc

@@ -52,6 +52,7 @@
 #include "iosc_input.h"
 #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
 #include "iosc-clipboard-bridge.h"   /* Linux<->iOS clipboard sync over the dedicated socket */
+#include "iosc_xwm.h"                /* rootless Xwayland X window manager (opt-in via IOSC_XWAYLAND) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -199,6 +200,7 @@ struct iosc_surface {
     int                 current_buffer_scale;
     int                 pending_scale_dirty;
     int                 mapped;          /* present in the z-order list */
+    int                 is_xwayland;     /* adopted X11 window (no xdg role; XWM drives close/focus) */
     enum iosc_role      role;
     struct iosc_surface *parent;         /* subsurface/popup parent, OR xdg_toplevel.set_parent (transient/modal) */
     int                 rel_x, rel_y;
@@ -253,7 +255,7 @@ static int default_window_h(void)
 
 /* Mapped surfaces in z-order: [0] = bottom, [g_nmapped-1] = top. The compositor
  * recomposites this whole list (back to front) on every commit. */
-#define IOSC_MAX_SURFACES 16
+#define IOSC_MAX_SURFACES 64
 static struct iosc_surface *g_mapped[IOSC_MAX_SURFACES];
 static int g_nmapped = 0;
 static uint32_t g_next_window_id = 1;
@@ -1083,7 +1085,9 @@ static int native_cmd_readable(int fd, uint32_t mask, void *data)
             }
             break;
         case NATIVE_CMD_CLOSED:
-            if (s->xdg_toplevel)
+            if (s->is_xwayland)
+                iosc_xwm_request_close(s->resource);
+            else if (s->xdg_toplevel)
                 xdg_toplevel_send_close(s->xdg_toplevel);
             break;
         default:
@@ -1921,6 +1925,54 @@ static void surface_unmap(struct iosc_surface *s)
         keyboard_set_focus(topmost_focusable());
 }
 
+/* ---- rootless Xwayland XWM glue (iosc_xwm.h contract) --------------------- *
+ * The XWM (iosc_xwm.c) speaks only in opaque wl_surface wl_resource pointers; we
+ * resolve each to its iosc_surface here. All no-op unless IOSC_XWAYLAND spawned
+ * the XWM and the surface is an adopted X11 window. */
+struct wl_display *iosc_xwm_wl_display(void) { return g_display; }
+
+int iosc_xwm_adopt_surface(struct wl_resource *res,
+                           const struct iosc_xwm_window_info *info)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(res);
+    if (!s || !info) return -1;
+    if (s->role != IOSC_ROLE_NONE && !s->is_xwayland) return -1; /* already has an xdg role */
+    s->is_xwayland = 1;
+    s->role = info->override_redirect ? IOSC_ROLE_POPUP : IOSC_ROLE_TOPLEVEL;
+    snprintf(s->title,  sizeof s->title,  "%s",
+             (info->title && info->title[0]) ? info->title : "X11");
+    snprintf(s->app_id, sizeof s->app_id, "%s", info->wm_class ? info->wm_class : "");
+    if (info->override_redirect) { s->dx = info->x; s->dy = info->y; }
+    if (!s->mapped && s->current_buffer) surface_map(s);
+    return 0;
+}
+
+void iosc_xwm_unadopt_surface(struct wl_resource *res)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(res);
+    if (!s || !s->is_xwayland) return;
+    surface_unmap(s);
+    s->is_xwayland = 0;
+    s->role = IOSC_ROLE_NONE;
+}
+
+void iosc_xwm_configure_surface(struct wl_resource *res, int x, int y, int w, int h)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(res);
+    if (!s || !s->is_xwayland) return;
+    if (s->role == IOSC_ROLE_POPUP) { s->dx = x; s->dy = y; }
+    (void)w; (void)h;   /* Xwayland is authoritative over buffer size; resize = TODO(polish) */
+    if (s->mapped) recomposite_all();
+}
+
+void iosc_xwm_set_title(struct wl_resource *res, const char *title)
+{
+    struct iosc_surface *s = wl_resource_get_user_data(res);
+    if (!s || !s->is_xwayland) return;
+    snprintf(s->title, sizeof s->title, "%s", title ? title : "");
+    if (s->role == IOSC_ROLE_TOPLEVEL) ftl_broadcast_title(s);
+}
+
 static void iosurface_factory_create_buffer(struct wl_client *client,
         struct wl_resource *res, uint32_t id, uint32_t mach_port_name,
         int32_t width, int32_t height, uint32_t format)
@@ -2028,6 +2080,8 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
     (void)c;
     struct iosc_surface *s = wl_resource_get_user_data(r);
     int need_recomposite = 0;
+
+    iosc_xwm_surface_commit(r);   /* apply pending Xwayland association (no-op otherwise) */
 
     if (s->pending_scale_dirty) {
         s->current_buffer_scale = s->pending_buffer_scale > 0 ? s->pending_buffer_scale : 1;
@@ -3896,6 +3950,7 @@ static void keyboard_set_focus(struct iosc_surface *s)
     text_input_focus_surface(old, s);
     g_kbd_focus = s;
     g_kbd_mods = 0;
+    iosc_xwm_notify_focus(s ? s->resource : NULL);   /* mirror focus to X (no-op if not XWM) */
     ftl_broadcast_state(old);          /* focus moved: update ACTIVATED on the taskbar */
     ftl_broadcast_state(s);
     if (s) {
@@ -5732,7 +5787,8 @@ static void ftlh_activate(struct wl_client *c, struct wl_resource *h, struct wl_
   if (s) { surface_raise(s); keyboard_set_focus(s); recomposite_all(); } }
 static void ftlh_close(struct wl_client *c, struct wl_resource *h)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s && s->xdg_toplevel) xdg_toplevel_send_close(s->xdg_toplevel); }
+  if (s && s->is_xwayland) iosc_xwm_request_close(s->resource);
+  else if (s && s->xdg_toplevel) xdg_toplevel_send_close(s->xdg_toplevel); }
 static void ftlh_set_rectangle(struct wl_client *c, struct wl_resource *h, struct wl_resource *surf,
                                int32_t x, int32_t y, int32_t w, int32_t ht)
 { (void)c; (void)h; (void)surf; (void)x; (void)y; (void)w; (void)ht; /* minimize hint; unused */ }
@@ -7053,9 +7109,17 @@ int main(int argc, char **argv)
                     "wp_single_pixel_buffer_manager_v1 v1, wp_cursor_shape_manager_v1 v1, "
                     "zwlr_screencopy_manager_v1 v3, zwlr_data_control_manager_v1 v2\n");
 
+    /* 2c) Rootless Xwayland XWM (opt-in): spawns Xwayland, owns WM_S0, advertises
+     *      xwayland_shell_v1. Each X window becomes its own iosc surface. */
+    if (env_truthy(getenv("IOSC_XWAYLAND"))) {
+        if (iosc_xwm_start(wl_display_get_event_loop(g_display)) != 0)
+            fprintf(stderr, "iosc: Xwayland XWM failed to start\n");
+    }
+
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);
 
+    iosc_xwm_shutdown();
     wl_display_destroy(g_display);
     if (g_native_mode) xios_canvas_server_stop();
     xios_server_stop();
