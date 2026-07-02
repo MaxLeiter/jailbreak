@@ -2,9 +2,9 @@
 #
 # build-panel.sh — cross-compile the iosc shell clients for rootless iOS arm64.
 #
-#   ioscpanel     — the panel + quick settings. cairo + pangocairo (SF text,
-#                   rounded surfaces, PNG icons) + screencopy for the frosted
-#                   QS backdrop and the Screenshot action.
+#   ioscbar       — the slim tablet status bar + Control Center.
+#   ioscdock      — the floating tablet dock (favorites + running apps).
+#   ioscpanel     — legacy combined panel + quick settings compatibility.
 #   ioscoverview  — the launcher/window switcher. Same cairo stack + screencopy
 #                   (frosted desktop backdrop).
 #   ioscbg        — the wallpaper. Pure wl_shm + CoreGraphics/ImageIO decode
@@ -14,7 +14,7 @@
 # dylibs (cairo/pango/glib/…) resolve on device from /var/jb/usr/lib via @rpath.
 #
 # Usage: ./build-panel.sh
-# Output: out/ioscpanel, out/ioscoverview, out/ioscbg (ldid-signed, panel-ent.xml).
+# Output: out/ioscbar, out/ioscdock, out/ioscpanel, out/ioscoverview, out/ioscbg.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -78,6 +78,8 @@ docker run --rm --entrypoint /bin/bash \
     echo "== linking ioscpanel (cairo/pangocairo + screencopy) =="
     $CC $BASE $UI_CFLAGS -c ioscpanel.c -o gen/ioscpanel.o
     $CC $LINK gen/ioscpanel.o $PROTO $UI_LIBS $RPATH -o out/ioscpanel
+    cp out/ioscpanel out/ioscbar
+    cp out/ioscpanel out/ioscdock
 
     echo "== linking ioscoverview (cairo/pangocairo + screencopy) =="
     $CC $BASE $UI_CFLAGS -c ioscoverview.c -o gen/ioscoverview.o
@@ -90,7 +92,7 @@ docker run --rm --entrypoint /bin/bash \
 
     # Match the shipped gettext: device has libintl.8.dylib, not libintl.dylib
     # (same fixup as build-hello-gtk.sh).
-    for b in out/ioscpanel out/ioscoverview; do
+    for b in out/ioscpanel out/ioscbar out/ioscdock out/ioscoverview; do
       "$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib "$b" 2>/dev/null || true
     done
 
@@ -102,13 +104,13 @@ docker run --rm --entrypoint /bin/bash \
 
 # --- ad-hoc sign with the client entitlements ------------------------------
 if command -v ldid >/dev/null; then
-  for b in ioscpanel ioscoverview ioscbg; do
+  for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
     ldid -S"$HERE/panel-ent.xml" "$OUT/$b" && echo "signed: $OUT/$b"
   done
 else
-  echo "NOTE: ldid not on host PATH; sign on-device: ldid -Spanel-ent.xml iosc{panel,overview,bg}" >&2
+  echo "NOTE: ldid not on host PATH; sign on-device: ldid -Spanel-ent.xml iosc{bar,dock,panel,overview,bg}" >&2
 fi
 
-echo "DONE -> $OUT/ioscpanel  $OUT/ioscoverview  $OUT/ioscbg"
-echo "Deploy: scp out/iosc{panel,overview,bg} root@ipad:/var/jb/usr/local/bin/"
+echo "DONE -> $OUT/ioscbar  $OUT/ioscdock  $OUT/ioscpanel  $OUT/ioscoverview  $OUT/ioscbg"
+echo "Deploy: scp out/iosc{bar,dock,panel,overview,bg} root@ipad:/var/jb/usr/local/bin/"
 echo "Run (needs iosc with zwlr_layer_shell_v1): see run-shell.sh"

@@ -3,14 +3,15 @@
 # run-shell.sh — start the iosc desktop shell ON DEVICE.
 #
 # Brings up the full lightweight desktop: the iosc compositor, then the shell
-# layer-shell clients (wallpaper, panel). The overview is spawned on demand by
-# the panel's ⊞ button / QS "Overview" (or run `ioscoverview` yourself).
+# layer-shell clients (wallpaper, status bar, dock). The overview is spawned on
+# demand by the dock's apps button / Control Center "Overview" action.
 #
 #   1. iosc        the compositor (skipped if a wayland-0 socket already lives —
 #                  e.g. wayland/run-iosc.sh or ioscd already started it; open the
 #                  Xios app to see the output either way)
 #   2. ioscbg      wallpaper (background layer)
-#   3. ioscpanel   panel + quick settings (top layer)
+#   3. ioscbar     slim status bar + Control Center (top layer)
+#   4. ioscdock    floating launcher/task dock (bottom layer)
 #
 # Usage:  run-shell.sh [--no-compositor]
 # Env:    IOSC_PANEL_SCALE (default 2), IOSC_WALLPAPER, IOSC_SHELL_ICONS,
@@ -29,7 +30,7 @@ export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
 # the 2160x1620 panel = ~1.5 effective scale (Max-approved). Override to retune.
 export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
-# Input tracing to /var/jb/tmp/ioscpanel.log — default ON while the panel-tap
+# Input tracing to /var/jb/tmp/{ioscbar,ioscdock}.log — default ON while the shell-tap
 # bug is being hunted (Max: panel dead to taps, 2026-07-01). Flip to 0 after.
 export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-1}"
 
@@ -52,7 +53,7 @@ if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
     log "iosc up ($SOCK). Open the Xios app to see the display."
 fi
 
-# -- 2 + 3. shell clients ------------------------------------------------------
+# -- 2 + 3 + 4. shell clients -------------------------------------------------
 start() {  # start <name> (skips if already running)
     if pgrep -x "$1" >/dev/null 2>&1; then log "$1 already running"; return; fi
     if [ -x "$BIN/$1" ]; then "$BIN/$1" >"$JB/tmp/$1.log" 2>&1 & log "$1 started";
@@ -60,6 +61,12 @@ start() {  # start <name> (skips if already running)
 }
 start ioscbg
 sleep 0.3          # let the wallpaper map first (clean first frame)
-start ioscpanel
+if [ -x "$BIN/ioscbar" ] && [ -x "$BIN/ioscdock" ]; then
+    start ioscbar
+    start ioscdock
+else
+    log "split shell clients missing; falling back to legacy ioscpanel"
+    start ioscpanel
+fi
 
-log "shell up. ⊞ (panel, far left) opens the overview; status cluster opens quick settings."
+log "shell up. Dock apps button opens overview; status cluster opens Control Center."

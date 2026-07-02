@@ -13,8 +13,8 @@
  * layout code knows these numbers — W/H flow in like a compositor configure.
  *
  * Outputs (basenames under the out dir given as argv[1], default "design"):
- *   preview-desktop.png        wallpaper + split-view windows + the panel
- *   preview-quicksettings.png  ... + the QS card over a frosted crop (real blur)
+ *   preview-desktop.png        wallpaper + split-view windows + status bar + dock
+ *   preview-quicksettings.png  ... + Control Center card over a frosted crop
  *   preview-overview.png       the overview over the frosted desktop (real blur)
  *   preview-compact.png        720x1080 half-screen output: responsive proof
  *
@@ -34,8 +34,6 @@
 /* iPad 7 logical canvas at the 1.5 default effective scale. */
 static const int    LW = 1440, LH = 1080;
 static const double SCALE = 1.5;
-static const int    PANEL_H = 64;          /* >= TH_TOUCH, matches ioscpanel */
-
 /* compact scene: half-screen (Split View-ish) output */
 static const int CW = 720, CH = 1080;
 
@@ -117,7 +115,7 @@ static void draw_desktop_base(cairo_t *cr, pr_text_ctx *t, int W, int H, int nwi
     cairo_paint(cr);
     cairo_pattern_destroy(g);
 
-    int gap = 12, top = PANEL_H + gap, bot = H - gap;
+    int gap = 12, top = BAR_REF_H + gap, bot = H - DOCK_REF_H + 4;
     if (nwin >= 2) {
         int split = (int)(W * 0.56);
         mock_window(cr, t, gap, top, split - gap - gap / 2, bot - top, 0, "Text Editor");
@@ -161,7 +159,7 @@ int main(int argc, char **argv)
     /* ---- shared panel model ------------------------------------------- */
     struct panel_model pm; memset(&pm, 0, sizeof pm);
     pm.bg_alpha = 0.85;   /* iosc blends layers since e11aa52 */
-    pm.have_ptr = 1; pm.px = 700; pm.py = PANEL_H / 2;   /* hover a pill */
+    pm.have_ptr = 1; pm.px = 700; pm.py = BAR_REF_H / 2;
     snprintf(pm.clock, sizeof pm.clock, "9:41");
     snprintf(pm.date, sizeof pm.date, "Tue Jul 1");
     pm.batt_pct = 82; pm.batt_charging = 0;
@@ -181,7 +179,11 @@ int main(int argc, char **argv)
     cairo_t *cr; cairo_surface_t *desk = new_canvas(&cr, LW, LH);
     pr_text_ctx t = pr_text_ctx_new(cr);
     draw_desktop_base(cr, &t, LW, LH, 2);
-    panel_draw_topbar(cr, &t, LW, PANEL_H, &pm, &hits);
+    panel_draw_statusbar(cr, &t, LW, BAR_REF_H, &pm, &hits);
+    cairo_save(cr);
+    cairo_translate(cr, 0, LH - DOCK_REF_H);
+    panel_draw_dock(cr, &t, LW, DOCK_REF_H, &pm, &hits);
+    cairo_restore(cr);
     pr_text_ctx_free(&t);
     cairo_destroy(cr);
     ok &= save(desk, outdir, "preview-desktop.png");
@@ -195,7 +197,7 @@ int main(int argc, char **argv)
         int qw = panel_qs_width(LW);
         int qh = panel_qs_height(&qm);
         qm.have_ptr = 1; qm.px = 90; qm.py = qh - TH_CARD_PAD - 30; /* hover "Overview" */
-        int qx = LW - QS_MARGIN - qw, qy = PANEL_H + QS_MARGIN;
+        int qx = LW - QS_MARGIN - qw, qy = BAR_REF_H + QS_MARGIN;
 
         /* crop the card region from the desktop (physical px) and frost it —
          * the exact path ioscpanel runs via screencopy */
@@ -267,7 +269,11 @@ int main(int argc, char **argv)
         cpm.have_ptr = 0;
         cpm.nlaunch = 3;                     /* tighter strip on narrow outputs */
         struct panel_hits chits;
-        panel_draw_topbar(c4, &t4, CW, PANEL_H, &cpm, &chits);
+        panel_draw_statusbar(c4, &t4, CW, BAR_REF_H, &cpm, &chits);
+        cairo_save(c4);
+        cairo_translate(c4, 0, CH - DOCK_REF_H);
+        panel_draw_dock(c4, &t4, CW, DOCK_REF_H, &cpm, &chits);
+        cairo_restore(c4);
         pr_text_ctx_free(&t4);
         cairo_destroy(c4);
         ok &= save(cmp, outdir, "preview-compact.png");

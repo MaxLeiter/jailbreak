@@ -8,7 +8,9 @@
 #
 # Inputs (built by build-panel.sh; sign happens here too, so a stale build-time
 # signature can never ship):
-#   out/ioscpanel     panel + quick settings (cairo/pangocairo layer-shell client)
+#   out/ioscbar       slim status bar + Control Center
+#   out/ioscdock      floating dock
+#   out/ioscpanel     legacy combined panel + quick settings fallback
 #   out/ioscoverview  launcher / window switcher
 #   out/ioscbg        wallpaper (wl_shm + ImageIO)
 #   out/icons/        pre-rasterised app icon PNGs (gen-shell-icons.sh)
@@ -22,7 +24,7 @@ OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
 REPODEBS=/Users/max/Documents/jailbreak/repo/debs
 STAGEROOT=/private/tmp/iosc-shell-deb
 STAGE="$STAGEROOT/iosc-shell"
-VER="0.9.6"
+VER="0.9.7"
 ARCH="iphoneos-arm64"
 DEB="iosc-shell_${VER}_${ARCH}.deb"
 IMG="procursus-xbuild:bookworm-arm64"
@@ -31,7 +33,7 @@ BIN="$STAGE/var/jb/usr/local/bin"
 ICONS="$STAGE/var/jb/usr/share/iosc-shell/icons"   # PI_ASSETS_DEFAULT (panel-icons.h)
 SHARE="$STAGE/var/jb/usr/local/share/iosc-shell"
 
-for f in out/ioscpanel out/ioscoverview out/ioscbg run-shell.sh panel-ent.xml; do
+for f in out/ioscbar out/ioscdock out/ioscpanel out/ioscoverview out/ioscbg run-shell.sh panel-ent.xml; do
   [[ -e "$HERE/$f" ]] || { echo "ERROR: $HERE/$f missing (run build-panel.sh first)" >&2; exit 1; }
 done
 
@@ -41,13 +43,13 @@ mkdir -p "$BIN" "$ICONS" "$SHARE" "$STAGE/DEBIAN"
 # 1. shell clients -> /var/jb/usr/local/bin, signed with the client entitlement
 #    set (wayland socket + .desktop scan + launch; no GPU IOKit classes needed,
 #    iosc does the compositing).
-for b in ioscpanel ioscoverview ioscbg; do
+for b in ioscbar ioscdock ioscpanel ioscoverview ioscbg; do
   cp "$HERE/out/$b" "$BIN/$b"
   chmod 0755 "$BIN/$b"
   ldid -S"$HERE/panel-ent.xml" "$BIN/$b"
 done
 
-# 2. bring-up script (compositor if needed, then wallpaper, then panel)
+# 2. bring-up script (compositor if needed, then wallpaper, bar and dock)
 cp "$HERE/run-shell.sh" "$BIN/run-shell.sh"
 chmod 0755 "$BIN/run-shell.sh"
 
@@ -77,27 +79,27 @@ Priority: optional
 Installed-Size: ${INSTKB}
 Description: lightweight desktop shell for the iosc compositor
  The iosc desktop shell is a small, fast desktop for the Xios stack on rootless
- iOS: a top panel with app launchers, a window taskbar and a battery, date and
- time status cluster; a quick settings card; a full-screen overview with app
- search, an application grid and open window cards over a frosted snapshot of
- the desktop; and a wallpaper client. Everything is plain C drawing through
+ iOS: a slim status bar with battery, time and Control Center; a floating dock
+ with app launchers and running-window activation; a full-screen overview with
+ app search, an application grid and open window cards over a frosted snapshot
+ of the desktop; and a wallpaper client. Everything is plain C drawing through
  cairo and pango, so it starts instantly and stays light.
  .
  The shell runs as Wayland layer-shell clients of the iosc compositor. It uses
- no JavaScript and no desktop runtime; the panel, overview and wallpaper are
- three small programs that together take a few megabytes of memory.
+ no JavaScript and no desktop runtime; the bar, dock, overview and wallpaper are
+ small programs that together take a few megabytes of memory.
  .
- Run run-shell.sh on the device to bring up the compositor, wallpaper and
- panel, then open the Xios app to see the desktop. The panel's grid button or
- the quick settings card opens the overview. Apps are discovered from installed
- .desktop files, with pre-rendered icons for common GNOME applications.
+ Run run-shell.sh on the device to bring up the compositor, wallpaper, status
+ bar and dock, then open the Xios app to see the desktop. The dock's grid button
+ or the Control Center card opens the overview. Apps are discovered from
+ installed .desktop files, with pre-rendered icons for common GNOME applications.
 EOF
 
 echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
 echo "installed=${INSTKB}KB"
-echo "=== ioscpanel entitlements (client set, no GPU classes) ==="
-ldid -e "$BIN/ioscpanel" | grep -E "no-container|get-task-allow|absolute-path" | sed 's/^/   /' || true
+echo "=== ioscbar entitlements (client set, no GPU classes) ==="
+ldid -e "$BIN/ioscbar" | grep -E "no-container|get-task-allow|absolute-path" | sed 's/^/   /' || true
 
 # 6. assemble the deb via the container's dpkg-deb (root-owned, zstd like the rest)
 docker run --rm --platform linux/arm64 -v "$STAGEROOT":/stage "$IMG" \

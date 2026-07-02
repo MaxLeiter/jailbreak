@@ -52,11 +52,17 @@
 /* Reference design space (matches preview-host.c + shell-theme.h tuning). The
  * panel is always drawn PL_REF_W wide x PL_REF_H tall in these units, then
  * scaled to the real output by P.ui so its on-glass size is -logical-invariant. */
-#define IOSCPANEL_VER "0.9.6"
+#define IOSCPANEL_VER "0.9.7"
 
 #define PL_REF_W    1440
 #define PL_REF_H    64     /* >= TH_TOUCH (44+ iOS pt at the 1.5 default) */
 #define PANEL_H     PL_REF_H
+
+enum shell_surface_mode {
+    MODE_PANEL = 0,   /* legacy combined top panel */
+    MODE_BAR   = 1,   /* tablet-DE slim status bar */
+    MODE_DOCK  = 2,   /* tablet-DE floating bottom dock */
+};
 
 /* logical <-> reference conversions via the current UI scale */
 static double pl_ui(void);
@@ -89,6 +95,7 @@ static struct {
     /* panel surface */
     struct wl_surface    *surf;
     struct zwlr_layer_surface_v1 *layer;
+    enum shell_surface_mode mode;
     int   width, height, scale, scale_env, configured, running;
     /* UI scale: keep the chrome a CONSTANT on-glass size at any -logical.
      * ui = logical_width / PL_REF_W. The panel is drawn in a fixed
@@ -128,6 +135,24 @@ static struct {
     struct panel_hits hits;
     char  self_dir[512];               /* for spawning ioscoverview */
 } P;
+
+static const char *mode_name(void)
+{
+    switch (P.mode) {
+    case MODE_BAR:  return "ioscbar";
+    case MODE_DOCK: return "ioscdock";
+    default:        return "ioscpanel";
+    }
+}
+
+static int mode_ref_h(void)
+{
+    switch (P.mode) {
+    case MODE_BAR:  return BAR_REF_H;
+    case MODE_DOCK: return DOCK_REF_H;
+    default:        return PL_REF_H;
+    }
+}
 
 /* Current UI scale (logical_width / reference_width), clamped to a sane range. */
 static double pl_ui(void)
@@ -215,7 +240,12 @@ static void render(void)
     cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
     struct wl_buffer *buf = alloc_cairo_buffer(P.width, P.height, P.scale,
                                                &cr, &surf, &map, &size);
-    if (!buf) { fprintf(stderr, "ioscpanel: cairo buffer alloc failed\n"); return; }
+    if (!buf) { fprintf(stderr, "%s: cairo buffer alloc failed\n", mode_name()); return; }
+
+    cairo_save(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_restore(cr);
 
     /* draw the fixed reference panel, zoomed by ui to fill the real output */
     double ui = pl_ui();
@@ -225,7 +255,12 @@ static void render(void)
     pr_text_ctx t = pr_text_ctx_new(cr);
     struct panel_model m;
     build_model(&m);
-    panel_draw_topbar(cr, &t, wref, PL_REF_H, &m, &P.hits);
+    if (P.mode == MODE_BAR)
+        panel_draw_statusbar(cr, &t, wref, BAR_REF_H, &m, &P.hits);
+    else if (P.mode == MODE_DOCK)
+        panel_draw_dock(cr, &t, wref, DOCK_REF_H, &m, &P.hits);
+    else
+        panel_draw_topbar(cr, &t, wref, PL_REF_H, &m, &P.hits);
     pr_text_ctx_free(&t);
 
     cairo_surface_flush(surf);
@@ -325,7 +360,7 @@ static void qs_open(void)
     P.qs_w = (int)lround(P.qs_wref * ui);
     P.qs_h = (int)lround(P.qs_href * ui);
     int margin = (int)lround(QS_MARGIN * ui);
-    int panel_h = (int)lround(PL_REF_H * ui);
+    int panel_h = (int)lround(mode_ref_h() * ui);
 
     /* frosted backdrop: capture the region the card will cover (physical px).
      * The card sits just below the panel at the right edge. */
@@ -342,7 +377,7 @@ static void qs_open(void)
 
     P.qs_surf  = wl_compositor_create_surface(P.comp);
     P.qs_layer = zwlr_layer_shell_v1_get_layer_surface(P.layer_shell, P.qs_surf, NULL,
-                    ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "quick-settings");
+                    ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "control-center");
     zwlr_layer_surface_v1_add_listener(P.qs_layer, &qs_layer_listener, NULL);
     zwlr_layer_surface_v1_set_anchor(P.qs_layer,
         ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
@@ -436,9 +471,9 @@ static void hit_at(struct wl_surface *sf, int x, int y)
     int rx = pl_to_ref(x), ry = pl_to_ref(y);
     int i = pl_hit_test(hs, rx, ry);
     if (pdbg())
-        fprintf(stderr, "panel: hit_at %s logical(%d,%d) ref(%d,%d) ui=%.3f -> %d "
+        fprintf(stderr, "%s: hit_at %s logical(%d,%d) ref(%d,%d) ui=%.3f -> %d "
                 "(kind=%d idx=%d) of %d rects\n",
-                sf == P.qs_surf ? "qs" : "bar", x, y, rx, ry, pl_ui(), i,
+                mode_name(), sf == P.qs_surf ? "qs" : mode_name(), x, y, rx, ry, pl_ui(), i,
                 i >= 0 ? hs->v[i].kind : -1, i >= 0 ? hs->v[i].idx : -1, hs->n);
     if (i >= 0) act_on_hit(&hs->v[i]);
 }
@@ -510,8 +545,8 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_surfac
 {
     (void)d;(void)p;(void)s;
     P.ptr_surf=sf; P.have_ptr=1; P.px=wl_fixed_to_int(x); P.py=wl_fixed_to_int(y);
-    if (pdbg()) fprintf(stderr, "panel: pt_enter %s (%d,%d)\n",
-                        sf == P.qs_surf ? "qs" : "bar", P.px, P.py);
+    if (pdbg()) fprintf(stderr, "%s: pt_enter %s (%d,%d)\n",
+                        mode_name(), sf == P.qs_surf ? "qs" : mode_name(), P.px, P.py);
     rerender_for(sf);
 }
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf)
@@ -521,8 +556,8 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, w
 static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t, uint32_t button, uint32_t state)
 {
     (void)d;(void)p;(void)serial;(void)t;
-    if (pdbg()) fprintf(stderr, "panel: pt_button 0x%x state=%u surf=%s at (%d,%d)\n",
-                        button, state, P.ptr_surf ? "yes" : "NULL", P.px, P.py);
+    if (pdbg()) fprintf(stderr, "%s: pt_button 0x%x state=%u surf=%s at (%d,%d)\n",
+                        mode_name(), button, state, P.ptr_surf ? "yes" : "NULL", P.px, P.py);
     if (state != WL_POINTER_BUTTON_STATE_PRESSED || button != 0x110 /*BTN_LEFT*/) return;
     if (P.ptr_surf) hit_at(P.ptr_surf, P.px, P.py);
 }
@@ -561,8 +596,8 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     P.px = wl_fixed_to_int(x); P.py = wl_fixed_to_int(y);
     const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
     int i = pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py));
-    if (pdbg()) fprintf(stderr, "panel: tc_down id=%d %s logical(%d,%d) ui=%.3f -> press %d\n",
-                        id, sf == P.qs_surf ? "qs" : "bar", P.px, P.py, pl_ui(), i);
+    if (pdbg()) fprintf(stderr, "%s: tc_down id=%d %s logical(%d,%d) ui=%.3f -> press %d\n",
+                        mode_name(), id, sf == P.qs_surf ? "qs" : mode_name(), P.px, P.py, pl_ui(), i);
     if (i >= 0) { P.press_kind = hs->v[i].kind; P.press_idx = hs->v[i].idx; }
     rerender_for(sf);
 }
@@ -592,8 +627,8 @@ static const struct wl_touch_listener touch_listener = {
 static void seat_caps(void *d, struct wl_seat *s, uint32_t caps)
 {
     (void)d;
-    if (pdbg()) fprintf(stderr, "panel: seat caps=0x%x (ptr=%d touch=%d)\n",
-                        caps, !!(caps & WL_SEAT_CAPABILITY_POINTER),
+    if (pdbg()) fprintf(stderr, "%s: seat caps=0x%x (ptr=%d touch=%d)\n",
+                        mode_name(), caps, !!(caps & WL_SEAT_CAPABILITY_POINTER),
                         !!(caps & WL_SEAT_CAPABILITY_TOUCH));
     if ((caps & WL_SEAT_CAPABILITY_POINTER) && !P.ptr) {
         P.ptr = wl_seat_get_pointer(s); wl_pointer_add_listener(P.ptr, &pointer_listener, NULL);
@@ -638,18 +673,18 @@ static void layer_configure(void *d, struct zwlr_layer_surface_v1 *ls, uint32_t 
     if (w) P.width = (int)w;
     zwlr_layer_surface_v1_ack_configure(ls, serial);
 
-    /* Scale the bar's logical HEIGHT so its on-glass size is constant: the
-     * output width sets ui, and the panel is PL_REF_H reference px tall. */
+    /* Scale the surface's logical HEIGHT so its on-glass size is constant: the
+     * output width sets ui, and each role owns a fixed reference height. */
     P.ui = P.width > 0 ? (double)P.width / PL_REF_W : 1.0;
-    int want = (int)lround(PL_REF_H * pl_ui());
+    int want = (int)lround(mode_ref_h() * pl_ui());
     if (want != P.req_h) {
         P.req_h = want;
         zwlr_layer_surface_v1_set_size(P.layer, 0, (uint32_t)want);
         zwlr_layer_surface_v1_set_exclusive_zone(P.layer, want);
     }
     P.height = want;
-    if (pdbg()) fprintf(stderr, "panel: configure w=%u -> ui=%.3f panel_h=%d\n",
-                        w, pl_ui(), want);
+    if (pdbg()) fprintf(stderr, "%s: configure w=%u -> ui=%.3f surface_h=%d\n",
+                        mode_name(), w, pl_ui(), want);
     P.configured = 1;
     render();
 }
@@ -699,8 +734,15 @@ int main(int argc, char **argv)
 {
     signal(SIGCHLD, SIG_IGN);
     memset(&P, 0, sizeof P);
-    P.width = PL_REF_W; P.height = PANEL_H; P.scale = 2; P.running = 1;
-    P.ui = 1.0; P.req_h = PANEL_H;
+    P.mode = MODE_PANEL;
+    if (argc > 0) {
+        char btmp[512]; snprintf(btmp, sizeof btmp, "%s", argv[0]);
+        char *bn = basename(btmp);
+        if (strstr(bn, "ioscbar")) P.mode = MODE_BAR;
+        else if (strstr(bn, "ioscdock")) P.mode = MODE_DOCK;
+    }
+    P.width = PL_REF_W; P.height = mode_ref_h(); P.scale = 2; P.running = 1;
+    P.ui = 1.0; P.req_h = mode_ref_h();
     P.batt_pct = -1;
     P.bg_alpha = 0.85;  /* translucent over the wallpaper (iosc blends layer
                          * surfaces since e11aa52); IOSC_PANEL_OPACITY overrides */
@@ -735,22 +777,28 @@ int main(int argc, char **argv)
     poll_battery();
     /* Version banner: confirms WHICH panel binary is live on device (a
      * "looks like the old panel" report is usually a stale process). */
-    fprintf(stderr, "ioscpanel " IOSCPANEL_VER ": tablet panel, opacity=%d%% "
-            "(translucency needs iosc>=0.9.1 blend)\n", (int)lround(P.bg_alpha * 100));
-    fprintf(stderr, "ioscpanel: %d launcher(s), foreign-toplevel=%s, screencopy=%s, battery=%s\n",
-            P.nlaunch, P.ftm ? "yes" : "no (taskbar disabled)",
+    fprintf(stderr, "%s " IOSCPANEL_VER ": %s, opacity=%d%% "
+            "(translucency needs iosc>=0.9.1 blend)\n", mode_name(),
+            P.mode == MODE_BAR ? "tablet status bar"
+            : P.mode == MODE_DOCK ? "tablet dock"
+            : "tablet panel",
+            (int)lround(P.bg_alpha * 100));
+    fprintf(stderr, "%s: %d launcher(s), foreign-toplevel=%s, screencopy=%s, battery=%s\n",
+            mode_name(), P.nlaunch, P.ftm ? "yes" : "no (taskbar disabled)",
             P.scm ? "yes" : "no (QS backdrop/screenshot off)",
             P.batt_pct >= 0 ? "yes" : "no");
 
     P.surf  = wl_compositor_create_surface(P.comp);
     P.layer = zwlr_layer_shell_v1_get_layer_surface(P.layer_shell, P.surf, NULL,
-                ZWLR_LAYER_SHELL_V1_LAYER_TOP, "panel");
+                ZWLR_LAYER_SHELL_V1_LAYER_TOP, mode_name());
     zwlr_layer_surface_v1_add_listener(P.layer, &layer_listener, NULL);
-    zwlr_layer_surface_v1_set_anchor(P.layer,
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
-    zwlr_layer_surface_v1_set_size(P.layer, 0, PANEL_H);
-    zwlr_layer_surface_v1_set_exclusive_zone(P.layer, PANEL_H);
+    uint32_t anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+                      ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT |
+                      (P.mode == MODE_DOCK ? ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM
+                                           : ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
+    zwlr_layer_surface_v1_set_anchor(P.layer, anchor);
+    zwlr_layer_surface_v1_set_size(P.layer, 0, (uint32_t)P.req_h);
+    zwlr_layer_surface_v1_set_exclusive_zone(P.layer, P.req_h);
     zwlr_layer_surface_v1_set_keyboard_interactivity(P.layer, 0);
     wl_surface_commit(P.surf);
 
