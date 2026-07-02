@@ -1,0 +1,11 @@
+Package: libgirara-gtk3-dev
+Version: @DEB_GIRARA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://pwmt.org/projects/girara/
+Depends: libgirara-gtk3-4 (= @DEB_GIRARA_V@), libglib2.0-dev, libgtk-3-dev
+Description: minimalistic GTK3 user-interface library - development files
+ Development headers, the unversioned shared-library symlink, and the
+ pkg-config file needed to build software (e.g. zathura) against girara.

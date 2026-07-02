@@ -1,0 +1,12 @@
+Package: libgirara-gtk3-4
+Version: @DEB_GIRARA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://pwmt.org/projects/girara/
+Depends: libglib2.0-0, libgtk-3-0, libpango-1.0-0, libjson-glib-1.0-0
+Description: minimalistic GTK3 user-interface library - runtime
+ girara is a small library that implements a user interface focusing on
+ a command-line/statusbar/inputbar layout. It is the GTK3 UI toolkit used by
+ the zathura document viewer. This package contains the shared library.

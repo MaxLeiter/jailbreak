@@ -59,7 +59,9 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 
 # exempi (libexempi8) is Papers' unconditional XMP dep; poppler (libpoppler140 +
 # libpoppler-glib8) is the PDF backend. Both land regardless of the Rust/Papers blocker.
-TARGETS="${TARGETS:-exempi-package poppler-package}"
+# The zathura stack is the pragmatic PDF viewer (Papers is Rust-blocked): girara (GTK3 UI lib) ->
+# zathura (app) -> zathura-pdf-poppler (the poppler PDF backend plugin), built in that order.
+TARGETS="${TARGETS:-exempi-package poppler-package girara-package zathura-package zathura-pdf-poppler-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"
@@ -68,7 +70,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in libexempi libpoppler papers; do
+for pat in libexempi libpoppler papers libgirara zathura; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

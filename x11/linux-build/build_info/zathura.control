@@ -1,0 +1,14 @@
+Package: zathura
+Version: @DEB_ZATHURA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://pwmt.org/projects/zathura/
+Depends: libgirara-gtk3-4, libglib2.0-0, libgtk-3-0, libcairo2, libjson-glib-1.0-0, libsqlite3-1, libpango-1.0-0
+Description: keyboard-driven document viewer (core)
+ zathura is a highly customizable, keyboard-driven document viewer. It is
+ plugin-based: install a backend (e.g. zathura-pdf-poppler) to view documents.
+ Pure C/GTK3 via girara. Runs as a plain X11 client under the Xios desktop.
+ Built for iOS with the seccomp/landlock sandboxes and libmagic disabled;
+ file-type detection falls back to GLib content-type guessing.
