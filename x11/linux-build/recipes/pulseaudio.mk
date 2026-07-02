@@ -174,6 +174,19 @@ pulseaudio-package: pulseaudio-stage
 		[ -f $$f ] && $(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f; \
 	done
 
+	# The utils (pactl/pacat/pacmd/pasuspender) link @rpath/libpulsecommon
+	# DIRECTLY, and it is their first-listed dep, so libpulse.0's rpath can't
+	# rescue them transitively (dyld resolves each direct dep against the loading
+	# image's own rpaths). They need /var/jb/usr/lib/pulseaudio on their own
+	# LC_RPATH too. Skip symlinks (pamon/paplay/parec/parecord -> pacat, patched
+	# via pacat itself) and the pa-info shell script (magic-byte gated).
+	for f in $(BUILD_DIST)/pulseaudio-utils/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/pa*; do \
+		[ -f $$f ] || continue; [ -L $$f ] && continue; \
+		case "$$(od -An -N4 -tx1 $$f 2>/dev/null | tr -d ' \n')" in \
+			cffaedfe) $(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f;; \
+		esac; \
+	done
+
 	$(call SIGN,libpulse0,general.xml)
 	$(call SIGN,pulseaudio,general.xml)
 	$(call SIGN,pulseaudio-utils,general.xml)
