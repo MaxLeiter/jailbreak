@@ -1,0 +1,11 @@
+Package: libtllist-dev
+Version: @DEB_TLLIST_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://codeberg.org/dnkl/tllist
+Description: Typesafe intrusive linked-list C library (headers)
+ tllist is a single-header, typesafe, intrusive doubly-linked-list implementation
+ in C, by foot's author. Header-only: this package ships tllist.h and its
+ pkg-config file, used to build fcft and foot.

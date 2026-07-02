@@ -1,0 +1,12 @@
+Package: libgrapheme-dev
+Version: @DEB_LIBGRAPHEME_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://libs.suckless.org/libgrapheme/
+Description: Unicode string segmentation library (static)
+ libgrapheme is a small, freestanding C library implementing the Unicode text
+ segmentation algorithms (grapheme clusters, words, sentences, line breaks) and
+ case conversion. Ships the static archive, header, and pkg-config file; imv
+ links it statically for its Unicode backend.

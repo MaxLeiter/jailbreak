@@ -1,0 +1,98 @@
+ifneq ($(PROCURSUS),1)
+$(error Use the main Makefile)
+endif
+
+# foot.mk — foot, a fast, lightweight Wayland terminal emulator (codeberg.org/dnkl/foot).
+# Pure C, no toolkit: renders glyphs itself via fcft into pixman buffers and presents through
+# wl_shm. The protocols it drives (xdg-shell, xdg-decoration, primary-selection,
+# presentation-time, cursor-shape, ...) are all served by the iosc compositor.
+#
+# PORTABILITY: foot's event loop is epoll-based; on non-Linux it uses epoll-shim (already built,
+# `dependency('epoll-shim')`), which also supplies timerfd/eventfd. The only Linux header it needs
+# is <linux/input-event-codes.h> (BTN_*/KEY_* codes) — the driver drops the same lightweight shim
+# used for the GTK4 Wayland backend. utmp logging is disabled (iOS has no utmp).
+#
+# BUILD-HOST TOOLS (installed by build-wayland-apps.sh): wayland-scanner (protocol codegen, native),
+# tic (terminfo compiler, from ncurses-bin), python3, env. PGO/tests are OFF (target can't run here).
+#
+# DEPENDS (target): wayland, wayland-protocols(>=1.41), libxkbcommon, fcft, tllist(build), pixman,
+# fontconfig, utf8proc, epoll-shim.
+
+SUBPROJECTS  += foot
+FOOT_VERSION := 1.27.0
+DEB_FOOT_V   ?= $(FOOT_VERSION)
+
+foot-setup: setup
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/foot/releases/download/$(FOOT_VERSION)/foot-$(FOOT_VERSION).tar.gz)
+	$(call EXTRACT_TAR,foot-$(FOOT_VERSION).tar.gz,foot-$(FOOT_VERSION),foot)
+	rm -rf $(BUILD_WORK)/foot/build && mkdir -p $(BUILD_WORK)/foot/build
+	# Darwin's wchar_t is 32-bit UTF-32 (like the BSDs) but doesn't advertise __STDC_ISO_10646__;
+	# treat __APPLE__ like the BSD branch in foot's compile-time UTF-32 guard.
+	sed -i 's/&& !defined(__OpenBSD__)/\&\& !defined(__OpenBSD__) \&\& !defined(__APPLE__)/' $(BUILD_WORK)/foot/char32.c
+	# Darwin/iOS libc portability shim, force-included into every foot TU via c_args below:
+	# declares reallocarray, defines struct itimerspec + SOCK_CLOEXEC/NONBLOCK, and wraps the
+	# glibc atomic-flag pipe2/accept4/mkostemp over their flagless POSIX variants.
+	cp $(BUILD_INFO)/foot-compat.h $(BUILD_WORK)/foot/foot-compat.h
+	# macOS/iOS pthread_setname_np takes only the name (sets the calling thread); foot's render.c
+	# has FreeBSD/NetBSD branches but falls through to the glibc 2-arg form on Darwin. Add an
+	# __APPLE__ branch mapping to the 1-arg call (blue-paint stops the macro self-recursing).
+	if ! grep -q 'defined(__APPLE__)' $(BUILD_WORK)/foot/render.c; then \
+		sed -i 's|#elif defined(__NetBSD__)|#elif defined(__APPLE__)\n #define pthread_setname_np(thread, name) pthread_setname_np(name)\n#elif defined(__NetBSD__)|' $(BUILD_WORK)/foot/render.c; \
+	fi
+	echo -e "[host_machine]\n \
+	system = 'darwin'\n \
+	cpu_family = '$(shell echo $(GNU_HOST_TRIPLE) | cut -d- -f1)'\n \
+	cpu = '$(MEMO_ARCH)'\n \
+	endian = 'little'\n \
+	[properties]\n \
+	root = '$(BUILD_BASE)'\n \
+	needs_exe_wrapper = true\n \
+	[built-in options]\n \
+	prefix ='$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)'\n \
+	c_args = ['-include', '$(BUILD_WORK)/foot/foot-compat.h', '-Wno-error']\n \
+	[binaries]\n \
+	c = '$(CC)'\n \
+	cpp = '$(CXX)'\n \
+	pkgconfig = '$(BUILD_TOOLS)/cross-pkg-config'\n" > $(BUILD_WORK)/foot/build/cross.txt
+
+ifneq ($(wildcard $(BUILD_WORK)/foot/.build_complete),)
+foot:
+	@echo "Using previously built foot."
+else
+foot: foot-setup wayland wayland-protocols libxkbcommon fcft tllist libpixman fontconfig libutf8proc epoll-shim
+	# foot resolves `dependency('wayland-scanner', native:true)` via pkg-config; Debian's
+	# libwayland-bin ships no wayland-scanner.pc, so point a native file at the version-matched
+	# native scanner the wayland build left in WAYLAND_NATIVE_ROOT (same trick as wayland-protocols).
+	cd $(BUILD_WORK)/foot/build && \
+		printf "[binaries]\npkgconfig = 'pkg-config'\n[built-in options]\npkg_config_path = ['$(WAYLAND_NATIVE_ROOT)/lib/pkgconfig']\n" > native.txt && \
+		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \
+		--cross-file cross.txt \
+		--native-file native.txt \
+		--buildtype=release \
+		-Ddocs=disabled \
+		-Dthemes=true \
+		-Dime=true \
+		-Dgrapheme-clustering=enabled \
+		-Dtests=false \
+		-Dterminfo=enabled \
+		-Dutmp-backend=none \
+		..
+	+ninja -C $(BUILD_WORK)/foot/build
+	+DESTDIR="$(BUILD_STAGE)/foot" ninja -C $(BUILD_WORK)/foot/build install
+	$(call AFTER_BUILD,copy)
+endif
+
+foot-package: foot-stage
+	rm -rf $(BUILD_DIST)/foot
+	mkdir -p $(BUILD_DIST)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
+	# app: bin/{foot,footclient} + share (terminfo, themes, desktop, icons)
+	cp -a $(BUILD_STAGE)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
+	if [ -d "$(BUILD_STAGE)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share" ]; then \
+		cp -a $(BUILD_STAGE)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
+	fi
+
+	$(call SIGN,foot,iosc-gpu-client-ent.xml,,,nogeneral)
+	$(call PACK,foot,DEB_FOOT_V)
+	rm -rf $(BUILD_DIST)/foot
+
+.PHONY: foot foot-package

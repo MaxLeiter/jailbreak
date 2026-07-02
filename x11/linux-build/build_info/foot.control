@@ -1,0 +1,13 @@
+Package: foot
+Version: @DEB_FOOT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://codeberg.org/dnkl/foot
+Depends: libwayland0, libxkbcommon0, libpixman-1-0, libfontconfig1, libfcft4, libutf8proc3, libepoll-shim0
+Description: Fast, lightweight and minimalistic Wayland terminal emulator
+ foot is a fast, lightweight Wayland terminal emulator with no toolkit
+ dependency: it rasterizes glyphs itself (via fcft) and presents through
+ wl_shm. Ships the foot server, footclient, terminfo, and color themes.
+ Runs as a native Wayland client under the iosc compositor.

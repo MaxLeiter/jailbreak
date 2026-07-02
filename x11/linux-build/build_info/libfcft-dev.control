@@ -1,0 +1,11 @@
+Package: libfcft-dev
+Version: @DEB_FCFT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://codeberg.org/dnkl/fcft
+Depends: libfcft4 (= @DEB_FCFT_V@), libfreetype-dev, libfontconfig-dev, libpixman-1-dev, libharfbuzz-dev, libutf8proc-dev
+Description: Development files for fcft
+ Headers, the unversioned shared-library symlink, and the pkg-config file
+ needed to build software (foot) against fcft.

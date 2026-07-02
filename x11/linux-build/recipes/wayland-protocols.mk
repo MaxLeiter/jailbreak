@@ -12,7 +12,10 @@ endif
 #   control file  -> Procursus/build_info/wayland-protocols.control
 
 SUBPROJECTS            += wayland-protocols
-WAYLANDPROTOCOLS_VERSION := 1.38
+# Bumped 1.38 -> 1.44 for foot 1.27, whose meson hard-requires wayland-protocols >= 1.41 and
+# references color-management-v1 (added 1.41) + xdg-toplevel-tag-v1 (>=1.43 gate). Pure data,
+# backward compatible; only foot/imv consume it in the wayland volume.
+WAYLANDPROTOCOLS_VERSION := 1.44
 DEB_WAYLANDPROTOCOLS_V ?= $(WAYLANDPROTOCOLS_VERSION)
 
 wayland-protocols-setup: setup
