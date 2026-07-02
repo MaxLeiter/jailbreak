@@ -269,6 +269,7 @@ static void render(void)
     munmap(map, size);   /* iosc copies the shm data during commit access */
 
     wl_buffer_add_listener(buf, &buf_listener, NULL);
+    wl_surface_set_buffer_scale(P.surf, P.scale);
     wl_surface_attach(P.surf, buf, 0, 0);
     wl_surface_damage_buffer(P.surf, 0, 0, P.width * P.scale, P.height * P.scale);
     wl_surface_commit(P.surf);
@@ -307,6 +308,7 @@ static void render_qs(void)
     munmap(map, size);
 
     wl_buffer_add_listener(buf, &buf_listener, NULL);
+    wl_surface_set_buffer_scale(P.qs_surf, P.scale);
     wl_surface_attach(P.qs_surf, buf, 0, 0);
     wl_surface_damage_buffer(P.qs_surf, 0, 0, P.qs_w * P.scale, P.qs_h * P.scale);
     wl_surface_commit(P.qs_surf);

@@ -134,6 +134,7 @@ static void render(void)
     munmap(map, size);
 
     wl_buffer_add_listener(buf, &buf_listener, NULL);
+    wl_surface_set_buffer_scale(B.surf, B.scale);
     wl_surface_attach(B.surf, buf, 0, 0);
     wl_surface_damage_buffer(B.surf, 0, 0, bw, bh);
     wl_surface_commit(B.surf);
