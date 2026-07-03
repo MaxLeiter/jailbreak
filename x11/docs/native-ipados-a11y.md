@@ -194,8 +194,12 @@ or a new field with a safe default.
   increment/decrement messages to AT-SPI Value.SetCurrentValue and publishes
   value text/current values in snapshots; the stable Console smoke had no
   value-bearing nodes, so this still needs a slider/spinbutton target. Real
-  VoiceOver gesture validation is still pending. The spawn feed hardens
-  correlation in P2. It supplements, not replaces, the desktop P1 acceptance.
+  VoiceOver gesture validation is still pending. `atspi-dump` in
+  `xios-a11y-tools_0.2.8` now prints actions and value ranges so future native
+  smokes can identify suitable control targets quickly; the first `0.2.8` dump
+  printed kgx frame/window actions and panel `overview.open`. The spawn feed
+  hardens correlation in P2. It supplements, not replaces, the desktop P1
+  acceptance.
   Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
   gate removed from ioscd, IsEnabled property write, atspi-dump smoke test)
   gate this path exactly as they gate the desktop one. Accept: VoiceOver swipes

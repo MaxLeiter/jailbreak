@@ -26,6 +26,64 @@ static void print_indent(int depth)
     for (int i = 0; i < depth; i++) fputs("  ", stdout);
 }
 
+static void print_actions(AtspiAccessible *obj)
+{
+    AtspiAction *action = atspi_accessible_get_action(obj);
+    if (!action) return;
+
+    GError *error = NULL;
+    int n = atspi_action_get_n_actions(action, &error);
+    if (error) {
+        clear_error(&error);
+        n = 0;
+    }
+    if (n > 0) {
+        fputs(" actions=[", stdout);
+        for (int i = 0; i < n; i++) {
+            char *name = atspi_action_get_localized_name(action, i, &error);
+            clear_error(&error);
+            if (!name || !*name) {
+                g_free(name);
+                name = atspi_action_get_action_name(action, i, &error);
+                clear_error(&error);
+            }
+            if (i > 0) fputs(", ", stdout);
+            printf("\"%s\"", name && *name ? name : "?");
+            g_free(name);
+        }
+        fputc(']', stdout);
+    }
+
+    g_object_unref(action);
+}
+
+static void print_value(AtspiAccessible *obj)
+{
+    AtspiValue *value = atspi_accessible_get_value(obj);
+    if (!value) return;
+
+    GError *error = NULL;
+    char *text = atspi_value_get_text(value, &error);
+    clear_error(&error);
+    double current = atspi_value_get_current_value(value, &error);
+    clear_error(&error);
+    double min = atspi_value_get_minimum_value(value, &error);
+    clear_error(&error);
+    double max = atspi_value_get_maximum_value(value, &error);
+    clear_error(&error);
+    double inc = atspi_value_get_minimum_increment(value, &error);
+    clear_error(&error);
+
+    if ((text && *text) || current != 0.0 || min != 0.0 || max != 0.0 || inc != 0.0) {
+        fputs(" value={", stdout);
+        if (text && *text) printf("text=\"%s\" ", text);
+        printf("current=%.6g min=%.6g max=%.6g inc=%.6g}", current, min, max, inc);
+    }
+
+    g_free(text);
+    g_object_unref(value);
+}
+
 static void dump_accessible(AtspiAccessible *obj, int depth)
 {
     if (!obj || depth > max_depth) return;
@@ -42,6 +100,8 @@ static void dump_accessible(AtspiAccessible *obj, int depth)
     printf("- role=%s", role && *role ? role : "?");
     if (name && *name) printf(" name=\"%s\"", name);
     if (desc && *desc) printf(" desc=\"%s\"", desc);
+    print_actions(obj);
+    print_value(obj);
     putchar('\n');
 
     g_free(name);
