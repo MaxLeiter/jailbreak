@@ -61,10 +61,16 @@ PA_MODULE_USAGE(
 #define DEFAULT_SINK_NAME "xios"
 #define BLOCK_USEC (25 * PA_USEC_PER_MSEC)
 #define RECONNECT_USEC (2 * PA_USEC_PER_SEC)
-/* Bounded wait to finish a half-written message on EAGAIN: the XIOA stream
- * has no resync marker, so a message must complete or the connection must be
- * torn down. The daemon reads greedily, so this all but never triggers. */
-#define WRITE_STALL_MSEC 100
+/* Enlarge the send socket buffer so a whole timer burst of audio fits without
+ * bumping the kernel's per-socket limit and returning EAGAIN. xios-audiod
+ * drains asynchronously; giving the burst somewhere to sit is what keeps the
+ * common case off the EAGAIN path entirely. */
+#define SEND_BUF_BYTES (256 * 1024)
+/* Upper bound on how long a single message may wait for the socket to drain on
+ * EAGAIN before it is given up on. Kept near one block period so the PA timer
+ * thread is never stalled long enough to starve the upstream stream, yet long
+ * enough to ride out a momentary xios-audiod drain hiccup without dropping. */
+#define WRITE_STALL_USEC (40 * PA_USEC_PER_MSEC)
 
 struct userdata {
     pa_core *core;
@@ -79,6 +85,12 @@ struct userdata {
     int fd;                     /* connected + OPEN sent, or -1 */
     pa_usec_t next_connect;     /* rtclock time of the next connect attempt */
     bool warned;                /* "daemon not reachable" logged once per outage */
+
+    uint8_t *sndbuf;            /* scratch holding header+payload contiguously so
+                                 * a stalled send that wrote nothing can be
+                                 * dropped whole without desyncing the stream */
+    size_t sndbuf_cap;
+    unsigned long dropped;      /* blocks dropped to backpressure (for logging) */
 
     pa_usec_t block_usec;
     pa_usec_t timestamp;
@@ -101,48 +113,96 @@ static void xios_disconnect(struct userdata *u, pa_usec_t now) {
     u->next_connect = now + RECONNECT_USEC;
 }
 
-static int write_full(struct userdata *u, const void *data, size_t len) {
+/* write_full result codes. */
+enum { XIOS_WR_OK = 0, XIOS_WR_TIMEOUT = 1, XIOS_WR_ERROR = -1 };
+
+/* Write the whole buffer, retrying on EINTR and waiting (bounded) for the
+ * socket to become writable on EAGAIN rather than giving up on the first stall.
+ * Returns XIOS_WR_OK once every byte is out, XIOS_WR_ERROR on a real disconnect
+ * (EPIPE/ECONNRESET/EBADF, a POLLHUP, or a 0-byte peer close), or
+ * XIOS_WR_TIMEOUT if the socket stayed unwritable past WRITE_STALL_USEC. On
+ * timeout *sent reports how many bytes made it out, so the caller can tell a
+ * clean nothing-written drop from a half-written one (the markerless XIOA
+ * stream cannot resync after a partial message). */
+static int write_full(struct userdata *u, const void *data, size_t len, size_t *sent) {
     const uint8_t *p = data;
-    int stalled = 0;
+    size_t done = 0;
+    pa_usec_t deadline = pa_rtclock_now() + WRITE_STALL_USEC;
 
-    while (len > 0) {
-        ssize_t n = pa_write(u->fd, p, len, NULL);
+    while (done < len) {
+        ssize_t n = pa_write(u->fd, p + done, len - done, NULL);
 
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                struct pollfd pfd;
-                pfd.fd = u->fd;
-                pfd.events = POLLOUT;
-                pfd.revents = 0;
-                if (stalled++ > 0 || pa_poll(&pfd, 1, WRITE_STALL_MSEC) <= 0)
-                    return -1;
-                continue;
+        if (n > 0) {
+            done += (size_t) n;
+            continue;
+        }
+        if (n == 0)                 /* peer closed the socket */
+            break;
+
+        if (errno == EINTR)
+            continue;
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            pa_usec_t now = pa_rtclock_now();
+            struct pollfd pfd = { .fd = u->fd, .events = POLLOUT, .revents = 0 };
+            int pr;
+
+            if (now >= deadline) {
+                *sent = done;
+                return XIOS_WR_TIMEOUT;
             }
-            return -1;
+            pr = pa_poll(&pfd, 1, (int) ((deadline - now) / PA_USEC_PER_MSEC) + 1);
+            if (pr == 0) {
+                *sent = done;
+                return XIOS_WR_TIMEOUT;
+            }
+            if (pr < 0) {
+                if (errno == EINTR)
+                    continue;
+                break;
+            }
+            if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
+                break;
+            continue;               /* writable now: retry the same offset */
         }
 
-        p += n;
-        len -= (size_t) n;
+        break;                      /* EPIPE, ECONNRESET, EBADF, ... */
     }
 
-    return 0;
+    *sent = done;
+    return done == len ? XIOS_WR_OK : XIOS_WR_ERROR;
 }
 
+/* Serialize header+payload into one contiguous buffer and send it. Returns 0 on
+ * success, 1 if the message was dropped whole to backpressure (nothing was
+ * written, so the connection is still healthy and MUST NOT be torn down), or -1
+ * if the connection has to be torn down (a real disconnect, or a partial write
+ * that desynced the stream). */
 static int xios_send(struct userdata *u, uint32_t type, const void *payload, uint32_t size) {
-    xios_audio_msg msg;
+    size_t total = sizeof(xios_audio_msg) + size;
+    xios_audio_msg *msg;
+    size_t sent = 0;
+    int r;
 
-    msg.magic = XIOS_AUDIO_MAGIC;
-    msg.version = XIOS_AUDIO_VERSION;
-    msg.type = type;
-    msg.size = size;
+    if (total > u->sndbuf_cap) {
+        u->sndbuf = pa_xrealloc(u->sndbuf, total);
+        u->sndbuf_cap = total;
+    }
 
-    if (write_full(u, &msg, sizeof(msg)) < 0)
-        return -1;
-    if (size > 0 && write_full(u, payload, size) < 0)
-        return -1;
-    return 0;
+    msg = (xios_audio_msg *) u->sndbuf;
+    msg->magic = XIOS_AUDIO_MAGIC;
+    msg->version = XIOS_AUDIO_VERSION;
+    msg->type = type;
+    msg->size = size;
+    if (size > 0)
+        memcpy(u->sndbuf + sizeof(xios_audio_msg), payload, size);
+
+    r = write_full(u, u->sndbuf, total, &sent);
+    if (r == XIOS_WR_OK)
+        return 0;
+    if (r == XIOS_WR_TIMEOUT)
+        return sent == 0 ? 1 : -1;  /* clean drop only if nothing left the buffer */
+    return -1;
 }
 
 static void xios_try_connect(struct userdata *u, pa_usec_t now) {
@@ -177,6 +237,16 @@ static void xios_try_connect(struct userdata *u, pa_usec_t now) {
     }
 
     pa_make_fd_nonblock(fd);
+
+    /* Give the socket a generous send buffer so a full 25 ms audio burst lands
+     * without hitting EAGAIN when xios-audiod is mid-drain. Best-effort: the
+     * bounded POLLOUT wait in write_full() covers whatever the kernel caps this
+     * to (SO_SNDBUF is advisory and often doubled/clamped). */
+    {
+        int sndbuf = SEND_BUF_BYTES;
+        setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+    }
+
     u->fd = fd;
 
     open_msg.sample_rate = u->sink->sample_spec.rate;
@@ -184,7 +254,9 @@ static void xios_try_connect(struct userdata *u, pa_usec_t now) {
     open_msg.format = XIOS_AUDIO_FMT_F32LE;
     open_msg.flags = 0;
 
-    if (xios_send(u, XIOS_AUDIO_MSG_OPEN, &open_msg, sizeof(open_msg)) < 0) {
+    /* A dropped-to-backpressure OPEN (return 1) is as unusable as an error: the
+     * daemon never learned the stream format, so retry the whole connect. */
+    if (xios_send(u, XIOS_AUDIO_MSG_OPEN, &open_msg, sizeof(open_msg)) != 0) {
         pa_log_warn("failed to send OPEN to %s: %s", u->socket_path, pa_cstrerror(errno));
         xios_disconnect(u, now);
         return;
@@ -244,8 +316,20 @@ static void process_render(struct userdata *u, pa_usec_t now) {
             pa_memblock_release(chunk.memblock);
 
             if (r < 0) {
-                pa_log_warn("write to xios-audiod failed (%s), reconnecting", pa_cstrerror(errno));
+                /* Real disconnect (or a partial write that desynced the stream):
+                 * tear down and let xios_try_connect reopen. errno is unreliable
+                 * here (the last syscall may have been a benign EAGAIN), so keep
+                 * the message reason-free. */
+                pa_log_warn("lost connection to xios-audiod, reconnecting");
                 xios_disconnect(u, now);
+            } else if (r > 0) {
+                /* Transient backpressure: xios-audiod could not drain within the
+                 * stall budget, so this one block was dropped whole. The socket
+                 * stays up (no reconnect storm). Rate-limit the notice to debug
+                 * so continuous playback does not spam the log. */
+                if (u->dropped++ % 200 == 0)
+                    pa_log_debug("xios-audiod backpressure: dropped audio block(s) (%lu total)",
+                                 u->dropped);
             }
         }
 
@@ -416,6 +500,7 @@ void pa__done(pa_module *m) {
     if (u->fd >= 0)
         pa_close(u->fd);
 
+    pa_xfree(u->sndbuf);
     pa_xfree(u->socket_path);
     pa_xfree(u);
 }
