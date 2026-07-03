@@ -54,12 +54,13 @@ for package in ["X11", "Canberra", "ICU"]:
     )
 
 keep = {
+    "applets",
+    "containments",
+    "imports",
+    "imports/activitymanager/",
     "layout-templates",
     "runners",
-    "containments",
     "toolboxes",
-    "applets",
-    "imports",
 }
 
 def subdir_repl(match: re.Match[str]) -> str:
@@ -122,7 +123,9 @@ path = Path(sys.argv[1])
 if not path.exists():
     raise SystemExit(0)
 text = path.read_text()
+text = text.replace("#include <KWindowInfo>\n", "#if HAVE_X11\n#include <KWindowInfo>\n#endif\n")
 text = text.replace("#include <KX11Extras>\n", "#if HAVE_X11\n#include <KX11Extras>\n#endif\n")
+text = text.replace("#include <xwindowtasksmodel.h>\n", "#if HAVE_X11\n#include <xwindowtasksmodel.h>\n#endif\n")
 path.write_text(text)
 PY
 
