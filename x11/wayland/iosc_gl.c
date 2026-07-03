@@ -37,6 +37,18 @@ static GLuint s_prog = 0;
 static GLint  s_a_pos = -1, s_a_uv = -1, s_u_tex = -1, s_u_opaque = -1;
 static GLuint s_shm_tex = 0;                   /* reused upload texture for wl_shm    */
 static float  s_opaque = 1.f;                  /* 1 = force opaque (windows); 0 = keep alpha (cursor) */
+static int    s_scissor_active = 0;
+
+struct upload_stats {
+    unsigned long long draws;
+    unsigned long long full_uploads;
+    unsigned long long rect_uploads;
+    unsigned long long full_bytes;
+    unsigned long long rect_bytes;
+    unsigned long long last_report_uploads;
+};
+static struct upload_stats s_upload_stats;
+static int s_upload_stats_enabled = -1;
 
 /* Client IOSurface -> sampling pbuffer + texture. This grows instead of failing
  * at a fixed prototype-era ceiling; it is still bounded so a broken client cannot
@@ -90,6 +102,31 @@ static int cache_limit(const char *name, int def)
     long n = strtol(v, &end, 10);
     if (end == v || n < 1 || n > 4096) return def;
     return (int)n;
+}
+
+static int upload_stats_enabled(void)
+{
+    if (s_upload_stats_enabled < 0) {
+        const char *v = getenv("IOSC_UPLOAD_STATS");
+        s_upload_stats_enabled = (v && *v && strcmp(v, "0") != 0);
+    }
+    return s_upload_stats_enabled;
+}
+
+static void upload_stats_maybe_report(void)
+{
+    if (!upload_stats_enabled()) return;
+    unsigned long long uploads = s_upload_stats.full_uploads + s_upload_stats.rect_uploads;
+    if (uploads == 0) return;
+    if (uploads != 1 && uploads - s_upload_stats.last_report_uploads < 30) return;
+    s_upload_stats.last_report_uploads = uploads;
+    fprintf(stderr,
+            "iosc_gl: upload-stats draws=%llu full=%llu rect=%llu full_mb=%.2f rect_mb=%.2f\n",
+            s_upload_stats.draws,
+            s_upload_stats.full_uploads,
+            s_upload_stats.rect_uploads,
+            (double)s_upload_stats.full_bytes / (1024.0 * 1024.0),
+            (double)s_upload_stats.rect_bytes / (1024.0 * 1024.0));
 }
 
 static int ensure_iosurf_cache_slot(void)
@@ -296,8 +333,28 @@ int iosc_gl_resize(void *output_iosurface, int w, int h)
 
 void iosc_gl_begin(void)
 {
+    iosc_gl_begin_damage(0, 0, s_ow, s_oh);
+}
+
+void iosc_gl_begin_damage(int x, int y, int w, int h)
+{
     glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
     glViewport(0, 0, s_ow, s_oh);
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > s_ow) w = s_ow - x;
+    if (y + h > s_oh) h = s_oh - y;
+    if (w <= 0 || h <= 0 || (x == 0 && y == 0 && w == s_ow && h == s_oh)) {
+        glDisable(GL_SCISSOR_TEST);
+        s_scissor_active = 0;
+    } else {
+        /* iosc's output coordinates are top-left from the app's point of view.
+         * draw_quad intentionally maps app-top to GL-bottom to cancel the Metal
+         * presentation mirror, so the same numeric y clips the matching pixels. */
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(x, y, w, h);
+        s_scissor_active = 1;
+    }
     glClearColor(0.f, 0.f, 0.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -358,7 +415,8 @@ void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
  * re-uploads every window's whole buffer (e.g. 2160x1620x4 = 14MB) on EVERY
  * frame — including cursor-move repaints that changed no window content. With
  * it, a surface is uploaded only when it committed new content (its `dirty`
- * flag); an idle window under a moving cursor uploads nothing. */
+ * flag); an idle window under a moving cursor uploads nothing. If the commit
+ * used damage_buffer, cached texture uploads are clipped to those buffer rects. */
 /* Bind the texture for `key` (allocating one on first use), reporting whether
  * its storage must be (re)allocated at sw x sh. Returns 0 if the cache is full. */
 static GLuint shm_cache_bind(void *key, int sw, int sh, int *need_alloc)
@@ -394,35 +452,78 @@ static GLuint shm_cache_bind(void *key, int sw, int sh, int *need_alloc)
 /* Upload `data` into the currently-bound texture: (re)allocate at sw x sh when
  * need_alloc, otherwise update in place. GLES2 has no UNPACK_ROW_LENGTH, so a
  * padded stride goes row by row (most wl_shm buffers are tight). */
-static void shm_upload(const void *data, int sw, int sh, int stride, int need_alloc)
+static size_t shm_upload(const void *data, int sw, int sh, int stride, int need_alloc)
 {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     int tight = (stride == sw * 4);
     if (need_alloc) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, sw, sh, 0, GL_BGRA_EXT,
                      GL_UNSIGNED_BYTE, tight ? data : NULL);
-        if (tight) return;
+        if (tight) return (size_t)sw * (size_t)sh * 4u;
     } else if (tight) {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_BGRA_EXT,
                         GL_UNSIGNED_BYTE, data);
-        return;
+        return (size_t)sw * (size_t)sh * 4u;
     }
     const unsigned char *p = data;
     for (int y = 0; y < sh; y++)
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, sw, 1, GL_BGRA_EXT,
                         GL_UNSIGNED_BYTE, p + (size_t)y * stride);
+    return (size_t)sw * (size_t)sh * 4u;
+}
+
+static size_t shm_upload_rect(const void *data, int sw, int sh, int stride,
+                              int x, int y, int w, int h)
+{
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > sw) w = sw - x;
+    if (y + h > sh) h = sh - y;
+    if (w <= 0 || h <= 0) return 0;
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    const unsigned char *p = (const unsigned char *)data + (size_t)y * stride + (size_t)x * 4;
+    int tight = (stride == sw * 4 && w == sw);
+    if (tight) {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_BGRA_EXT,
+                        GL_UNSIGNED_BYTE, p);
+        return (size_t)w * (size_t)h * 4u;
+    }
+    for (int row = 0; row < h; row++)
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, y + row, w, 1, GL_BGRA_EXT,
+                        GL_UNSIGNED_BYTE, p + (size_t)row * stride);
+    return (size_t)w * (size_t)h * 4u;
 }
 
 void iosc_gl_draw_shm(void *key, int dirty, const void *data, int sw, int sh, int stride,
+                      int dirty_rect_count, const int *dirty_rects,
                       int sx, int sy, int src_w, int src_h,
                       int dx, int dy, int dw, int dh)
 {
+    s_upload_stats.draws++;
     glActiveTexture(GL_TEXTURE0);
     int need_alloc = 1;
     if (key) {
         GLuint tex = shm_cache_bind(key, sw, sh, &need_alloc);
         if (tex) {
-            if (dirty || need_alloc) shm_upload(data, sw, sh, stride, need_alloc);
+            if (need_alloc) {
+                s_upload_stats.full_uploads++;
+                s_upload_stats.full_bytes += shm_upload(data, sw, sh, stride, 1);
+            } else if (dirty) {
+                if (dirty_rect_count > 0 && dirty_rects) {
+                    for (int i = 0; i < dirty_rect_count; i++) {
+                        const int *r = dirty_rects + i * 4;
+                        size_t bytes = shm_upload_rect(data, sw, sh, stride, r[0], r[1], r[2], r[3]);
+                        if (bytes) {
+                            s_upload_stats.rect_uploads++;
+                            s_upload_stats.rect_bytes += bytes;
+                        }
+                    }
+                } else {
+                    s_upload_stats.full_uploads++;
+                    s_upload_stats.full_bytes += shm_upload(data, sw, sh, stride, 0);
+                }
+            }
         } else {
             key = NULL;   /* cache full: fall through to the shared upload texture */
         }
@@ -435,8 +536,10 @@ void iosc_gl_draw_shm(void *key, int dirty, const void *data, int sw, int sh, in
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        shm_upload(data, sw, sh, stride, 1);
+        s_upload_stats.full_uploads++;
+        s_upload_stats.full_bytes += shm_upload(data, sw, sh, stride, 1);
     }
+    upload_stats_maybe_report();
     draw_quad(dx, dy, dw, dh,
               (float)sx / sw, (float)sy / sh,
               (float)(sx + src_w) / sw, (float)(sy + src_h) / sh,
@@ -464,6 +567,10 @@ void iosc_gl_end(void)
      * synchronous GPU->CPU stall) — that readback now lives in the IOSC_DEBUG
      * path only. */
     glFlush();
+    if (s_scissor_active) {
+        glDisable(GL_SCISSOR_TEST);
+        s_scissor_active = 0;
+    }
 #ifdef EGL_KHR_fence_sync
     if (s_create_sync) {
         EGLSyncKHR fence = s_create_sync(s_dpy, EGL_SYNC_FENCE_KHR, NULL);

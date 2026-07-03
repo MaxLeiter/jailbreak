@@ -180,6 +180,8 @@ struct iosc_presentation_feedback {
     struct wl_list link;
 };
 
+#define IOSC_MAX_SHM_DIRTY_RECTS 16
+
 struct iosc_layer_state;
 
 struct iosc_surface {
@@ -193,6 +195,8 @@ struct iosc_surface {
     int                 buffer_listener_active;
     int                 sw, sh;          /* current buffer source dimensions */
     int                 gl_dirty;        /* wl_shm content changed since last GPU upload */
+    int                 gl_dirty_rect_count;
+    int                 gl_dirty_rects[IOSC_MAX_SHM_DIRTY_RECTS * 4]; /* x,y,w,h in buffer px */
     int                 dx, dy;          /* placement (top-left) on the output */
     int                 native_canvas_w, native_canvas_h, native_canvas_stride;
     int                 native_canvas_live;
@@ -332,6 +336,9 @@ static uint64_t g_present_wait_seq;
 static uint32_t g_present_wait_started_ms;
 static int g_output_damage_valid;
 static int g_output_damage_x0, g_output_damage_y0, g_output_damage_x1, g_output_damage_y1;
+static int g_last_present_damage_valid;
+static int g_last_present_damage_x0, g_last_present_damage_y0;
+static int g_last_present_damage_x1, g_last_present_damage_y1;
 static void keyboard_set_focus(struct iosc_surface *s);
 static void keyboard_send_mods(uint32_t mask);
 static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state);
@@ -790,7 +797,9 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
         wl_shm_buffer_begin_access(shm);
         iosc_gl_draw_shm(s, s->gl_dirty, wl_shm_buffer_get_data(shm),
                          wl_shm_buffer_get_width(shm), wl_shm_buffer_get_height(shm),
-                         wl_shm_buffer_get_stride(shm), sx, sy, src_w, src_h,
+                         wl_shm_buffer_get_stride(shm),
+                         s->gl_dirty_rect_count, s->gl_dirty_rects,
+                         sx, sy, src_w, src_h,
                          dxp, dyp, dwp, dhp);
         wl_shm_buffer_end_access(shm);
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &iosurface_buffer_impl)) {
@@ -801,9 +810,12 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &spb_buffer_impl)) {
         struct iosc_single_pixel_buffer *spb = wl_resource_get_user_data(buf);
         if (spb)   /* 1x1 texel, sampled across the whole destination rect (uncached) */
-            iosc_gl_draw_shm(NULL, 1, spb->bgra, 1, 1, 4, 0, 0, 1, 1, dxp, dyp, dwp, dhp);
+            iosc_gl_draw_shm(NULL, 1, spb->bgra, 1, 1, 4,
+                             0, NULL,
+                             0, 0, 1, 1, dxp, dyp, dwp, dhp);
     }
     s->gl_dirty = 0;   /* committed damage consumed by this composite (all buffer types) */
+    s->gl_dirty_rect_count = 0;
 }
 
 /* Does the client's opaque_region cover the WHOLE surface? Then it's guaranteed
@@ -906,6 +918,30 @@ static void output_damage_add_px(int x, int y, int w, int h)
     if (y1 > g_output_damage_y1) g_output_damage_y1 = y1;
 }
 
+static void output_damage_consume(int *x0, int *y0, int *x1, int *y1)
+{
+    if (g_output_damage_valid) {
+        *x0 = g_output_damage_x0; *y0 = g_output_damage_y0;
+        *x1 = g_output_damage_x1; *y1 = g_output_damage_y1;
+    } else {
+        *x0 = 0; *y0 = 0; *x1 = g_width; *y1 = g_height;
+    }
+    g_last_present_damage_valid = 1;
+    g_last_present_damage_x0 = *x0; g_last_present_damage_y0 = *y0;
+    g_last_present_damage_x1 = *x1; g_last_present_damage_y1 = *y1;
+    g_output_damage_valid = 0;
+}
+
+static int output_damage_intersects_surface(struct iosc_surface *s,
+                                            int dx0, int dy0, int dx1, int dy1)
+{
+    int x0, y0, x1, y1;
+    if (!surface_rect(s, &x0, &y0, &x1, &y1)) return 0;
+    int os = output_scale();
+    x0 *= os; y0 *= os; x1 *= os; y1 *= os;
+    return x1 > dx0 && x0 < dx1 && y1 > dy0 && y0 < dy1;
+}
+
 static void output_damage_add_surface(struct iosc_surface *s)
 {
     int x0, y0, x1, y1;
@@ -914,11 +950,59 @@ static void output_damage_add_surface(struct iosc_surface *s)
     output_damage_add_px(x0 * os, y0 * os, (x1 - x0) * os, (y1 - y0) * os);
 }
 
+static int output_damage_add_surface_at(struct iosc_surface *s, int lx, int ly)
+{
+    if (!s || !s->current_buffer) return 0;
+    int w = 0, h = 0;
+    surface_display_size(s, &w, &h);
+    if (w <= 0 || h <= 0) return 0;
+    int os = output_scale();
+    output_damage_add_px(lx * os, ly * os, w * os, h * os);
+    return 1;
+}
+
+static int output_damage_add_overlay_surface(struct iosc_surface *s)
+{
+    if (!s) return 0;
+    if (s == g_cursor_surface && !iosc_app_cursor())
+        return output_damage_add_surface_at(s, g_cursor_x - g_cursor_hot_x,
+                                            g_cursor_y - g_cursor_hot_y);
+    if (g_dnd.active && s == g_dnd.icon)
+        return output_damage_add_surface_at(s, g_cursor_x, g_cursor_y);
+    return 0;
+}
+
 static void output_damage_add_surface_rect(struct iosc_surface *s, int x, int y, int w, int h)
 {
     if (!s || w <= 0 || h <= 0 || !s->mapped) return;
     int os = output_scale();
     output_damage_add_px((s->dx + x) * os, (s->dy + y) * os, w * os, h * os);
+}
+
+static void surface_gl_dirty_full(struct iosc_surface *s)
+{
+    if (!s) return;
+    s->gl_dirty = 1;
+    s->gl_dirty_rect_count = 0;
+}
+
+static void surface_gl_dirty_buffer_rect(struct iosc_surface *s, int x, int y, int w, int h)
+{
+    if (!s || w <= 0 || h <= 0) return;
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (s->sw > 0 && x + w > s->sw) w = s->sw - x;
+    if (s->sh > 0 && y + h > s->sh) h = s->sh - y;
+    if (w <= 0 || h <= 0) return;
+    if (s->gl_dirty && s->gl_dirty_rect_count == 0)
+        return;   /* already fell back to a full texture upload */
+    s->gl_dirty = 1;
+    if (s->gl_dirty_rect_count >= IOSC_MAX_SHM_DIRTY_RECTS) {
+        s->gl_dirty_rect_count = 0;   /* too many small rects: upload full once */
+        return;
+    }
+    int *r = s->gl_dirty_rects + s->gl_dirty_rect_count++ * 4;
+    r[0] = x; r[1] = y; r[2] = w; r[3] = h;
 }
 
 static int native_toplevel_canvas_live(struct iosc_surface *s)
@@ -1146,6 +1230,7 @@ static int native_start(struct wl_event_loop *loop)
 static uint32_t g_named_cursor;         /* wp_cursor_shape enum; 0 = use client surface */
 static uint8_t  g_cur_bmp[IOSC_CUR_DIM * IOSC_CUR_DIM * 4];   /* premultiplied BGRA */
 static int      g_cur_w, g_cur_h, g_cur_hotx, g_cur_hoty;
+static void output_damage_add_cursor_at(int x, int y);
 
 static void cur_px(int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
@@ -1295,6 +1380,7 @@ static void composite_named_cursor(void)
     int lx = g_cursor_x - g_cur_hotx, ly = g_cursor_y - g_cur_hoty;
     iosc_gl_begin_blend();
     iosc_gl_draw_shm(NULL, 1, g_cur_bmp, g_cur_w, g_cur_h, g_cur_w * 4,
+                     0, NULL,
                      0, 0, g_cur_w, g_cur_h,
                      lx * os, ly * os, g_cur_w * os, g_cur_h * os);
     iosc_gl_end_blend();
@@ -1311,10 +1397,12 @@ static void cshape_dev_set_shape(struct wl_client *c, struct wl_resource *r,
                                "invalid cursor shape %u", shape);
         return;
     }
+    output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
     g_named_cursor = shape;         /* named shape supersedes any client surface cursor */
     g_cursor_surface = NULL;
     cursor_build_shape(shape);
     g_cursor_visible = 1;
+    output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
     if (iosc_app_cursor()) app_cursor_notify();   /* overlay: push the new shape, no repaint */
     else recomposite_all();
 }
@@ -1366,6 +1454,26 @@ static void composite_cursor(void)
                          g_cursor_x - g_cursor_hot_x,
                          g_cursor_y - g_cursor_hot_y);
     iosc_gl_end_blend();
+}
+
+static void output_damage_add_cursor_at(int x, int y)
+{
+    if (iosc_app_cursor() || !g_cursor_visible) return;
+    if (g_named_cursor) {
+        if (!g_cur_w || !g_cur_h) return;
+        int os = output_scale();
+        output_damage_add_px((x - g_cur_hotx) * os, (y - g_cur_hoty) * os,
+                             g_cur_w * os, g_cur_h * os);
+        return;
+    }
+    if (g_cursor_surface)
+        output_damage_add_surface_at(g_cursor_surface, x - g_cursor_hot_x, y - g_cursor_hot_y);
+}
+
+static void output_damage_add_dnd_icon_at(int x, int y)
+{
+    if (g_dnd.active && g_dnd.icon)
+        output_damage_add_surface_at(g_dnd.icon, x, y);
 }
 
 /* IOSC_PROBE classifier: map a BGRA output pixel to a legend char for the app-space
@@ -1482,11 +1590,18 @@ static void recomposite_now(void)
         return;
     }
     if (iosc_gl_ok()) {
-        iosc_gl_begin();   /* clears the output to black (desktop background) */
+        int dx0, dy0, dx1, dy1;
+        output_damage_consume(&dx0, &dy0, &dx1, &dy1);
+        if (env_truthy(getenv("IOSC_DAMAGE_STATS")))
+            fprintf(stderr, "iosc: output-damage %d,%d %dx%d%s\n",
+                    dx0, dy0, dx1 - dx0, dy1 - dy0,
+                    (dx0 == 0 && dy0 == 0 && dx1 == g_width && dy1 == g_height) ? " full" : "");
+        iosc_gl_begin_damage(dx0, dy0, dx1 - dx0, dy1 - dy0);
         if (g_slock.locked) {
             /* Session locked: ONLY the lock surface may show (blank until it
              * maps); windows, layer shells and the drag icon must not leak. */
-            if (g_slock.surface && g_slock.surface->current_buffer)
+            if (g_slock.surface && g_slock.surface->current_buffer &&
+                output_damage_intersects_surface(g_slock.surface, dx0, dy0, dx1, dy1))
                 composite_one(g_slock.surface);
             composite_cursor();
             iosc_gl_end();
@@ -1498,6 +1613,8 @@ static void recomposite_now(void)
             return;
         }
         for (int i = 0; i < g_nmapped; i++) {
+            if (!output_damage_intersects_surface(g_mapped[i], dx0, dy0, dx1, dy1))
+                continue;
             if (surface_occluded_by_single_opaque_above(i))
                 continue;
             composite_one(g_mapped[i]);
@@ -1676,11 +1793,11 @@ static void screencopy_frame_copy(struct wl_client *c, struct wl_resource *r,
 static void screencopy_send_damage(struct iosc_screencopy_frame *f)
 {
     int x0, y0, x1, y1;
-    if (g_output_damage_valid) {
-        x0 = g_output_damage_x0 > f->x ? g_output_damage_x0 : f->x;
-        y0 = g_output_damage_y0 > f->y ? g_output_damage_y0 : f->y;
-        x1 = g_output_damage_x1 < f->x + f->w ? g_output_damage_x1 : f->x + f->w;
-        y1 = g_output_damage_y1 < f->y + f->h ? g_output_damage_y1 : f->y + f->h;
+    if (g_last_present_damage_valid) {
+        x0 = g_last_present_damage_x0 > f->x ? g_last_present_damage_x0 : f->x;
+        y0 = g_last_present_damage_y0 > f->y ? g_last_present_damage_y0 : f->y;
+        x1 = g_last_present_damage_x1 < f->x + f->w ? g_last_present_damage_x1 : f->x + f->w;
+        y1 = g_last_present_damage_y1 < f->y + f->h ? g_last_present_damage_y1 : f->y + f->h;
     } else {
         x0 = f->x; y0 = f->y; x1 = f->x + f->w; y1 = f->y + f->h;
     }
@@ -1782,6 +1899,12 @@ static void on_buffer_destroyed(struct wl_listener *l, void *data)
 static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
                                int sw, int sh, int send_release_on_old)
 {
+    int can_preserve_shm_damage =
+        buf && s->current_buffer &&
+        wl_shm_buffer_get(buf) && wl_shm_buffer_get(s->current_buffer) &&
+        s->sw == sw && s->sh == sh &&
+        s->gl_dirty && s->gl_dirty_rect_count > 0;
+
     if (s->current_buffer && s->current_buffer != buf) {
         if (s->buffer_listener_active) {
             wl_list_remove(&s->buffer_destroy.link);
@@ -1791,7 +1914,8 @@ static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
     }
     s->current_buffer = buf;
     s->sw = sw; s->sh = sh;
-    s->gl_dirty = 1;   /* new committed content: the cached shm texture is stale */
+    if (!can_preserve_shm_damage)
+        surface_gl_dirty_full(s);   /* new/unknown content: refresh the whole cached texture */
     if (buf && !s->buffer_listener_active) {
         s->buffer_destroy.notify = on_buffer_destroyed;
         wl_resource_add_destroy_listener(buf, &s->buffer_destroy);
@@ -1894,6 +2018,7 @@ static void surface_unmap(struct iosc_surface *s)
         recomposite_all();
     }
     if (!s->mapped) return;
+    output_damage_add_surface(s);
     if (s->role == IOSC_ROLE_TOPLEVEL) {
         if (g_native_mode && s->native_canvas_live) {
             xios_canvas_gone(s->window_id);
@@ -1960,9 +2085,13 @@ void iosc_xwm_configure_surface(struct wl_resource *res, int x, int y, int w, in
 {
     struct iosc_surface *s = wl_resource_get_user_data(res);
     if (!s || !s->is_xwayland) return;
+    if (s->mapped) output_damage_add_surface(s);
     if (s->role == IOSC_ROLE_POPUP) { s->dx = x; s->dy = y; }
     (void)w; (void)h;   /* Xwayland is authoritative over buffer size; resize = TODO(polish) */
-    if (s->mapped) recomposite_all();
+    if (s->mapped) {
+        output_damage_add_surface(s);
+        recomposite_all();
+    }
 }
 
 void iosc_xwm_set_title(struct wl_resource *res, const char *title)
@@ -2040,8 +2169,9 @@ static void surface_damage(struct wl_client *c, struct wl_resource *r,
 { (void)c;
   struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) {
-      s->gl_dirty = 1;   /* in-place redraw (no re-attach): re-upload on next composite */
-      output_damage_add_surface_rect(s, x, y, w, h);
+      surface_gl_dirty_full(s);   /* surface-space damage can be transformed; be conservative */
+      if (!output_damage_add_overlay_surface(s))
+          output_damage_add_surface_rect(s, x, y, w, h);
   } }
 
 static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t cb)
@@ -2053,6 +2183,14 @@ static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t c
     if (!f->resource) { free(f); wl_client_post_no_memory(c); return; }
     /* No impl/user-data: a callback has no requests; we destroy it after done. */
     wl_list_insert(&s->frame_callbacks, &f->link);
+
+    /* Opt-in nested-compositor experiment: KWin's Wayland backend can request
+     * a frame callback after the commit that made its output visible. A pulse
+     * can advance that render loop, but doing it globally makes ordinary shell
+     * clients repaint forever, so keep it gated until a real frame clock lands. */
+    if (env_truthy(getenv("IOSC_FRAME_PULSE")) &&
+        s && s->mapped && s->current_buffer && !g_recompose_scheduled)
+        recomposite_all();
 }
 static void surface_set_opaque_region(struct wl_client *c, struct wl_resource *r,
                                       struct wl_resource *region)
@@ -2084,8 +2222,10 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
     iosc_xwm_surface_commit(r);   /* apply pending Xwayland association (no-op otherwise) */
 
     if (s->pending_scale_dirty) {
+        if (s->mapped) output_damage_add_surface(s);
         s->current_buffer_scale = s->pending_buffer_scale > 0 ? s->pending_buffer_scale : 1;
         s->pending_scale_dirty = 0;
+        if (s->mapped) output_damage_add_surface(s);
         need_recomposite = s->mapped;
     }
 
@@ -2099,11 +2239,13 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
             layer_send_configure(s);
         } else if (L->configured && s->mapped) {
             int cw, ch, cx, cy;
+            output_damage_add_surface(s);
             layer_compute(s, &cw, &ch, &cx, &cy);
             s->dx = cx;
             s->dy = cy;
             if (cw != L->cfg_w || ch != L->cfg_h) layer_send_configure(s);
             work_area_recompute();
+            output_damage_add_surface(s);
             need_recomposite = 1;
         }
     }
@@ -2132,7 +2274,8 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
                  s->role == IOSC_ROLE_SUBSURFACE ||
                  (s->role == IOSC_ROLE_LAYER && s->layer && s->layer->configured)))
                 surface_map(s);
-            output_damage_add_surface(s);
+            if (!output_damage_add_overlay_surface(s))
+                output_damage_add_surface(s);
         } else {
             /* NULL buffer attach + commit = unmap the surface */
             surface_set_buffer(s, NULL, 0, 0, 1);
@@ -2175,11 +2318,12 @@ static void surface_damage_buffer(struct wl_client *c, struct wl_resource *r,
 { (void)c;
   struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) {
-      s->gl_dirty = 1;
+      surface_gl_dirty_buffer_rect(s, x, y, w, h);
       int scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
-      output_damage_add_surface_rect(s, x / scale, y / scale,
-                                     (w + scale - 1) / scale,
-                                     (h + scale - 1) / scale);
+      if (!output_damage_add_overlay_surface(s))
+          output_damage_add_surface_rect(s, x / scale, y / scale,
+                                         (w + scale - 1) / scale,
+                                         (h + scale - 1) / scale);
   } }
 
 static const struct wl_surface_interface surface_impl = {
@@ -2238,6 +2382,7 @@ static void surface_resource_destroy(struct wl_resource *r)
     if (s->xdg_toplevel) wl_resource_set_user_data(s->xdg_toplevel, NULL);
     if (s->xdg_surface) wl_resource_set_user_data(s->xdg_surface, NULL);
     if (g_cursor_surface == s) {
+        output_damage_add_overlay_surface(s);
         g_cursor_surface = NULL;
         g_cursor_visible = 0;
     }
@@ -2675,7 +2820,7 @@ static void activation_activate(struct wl_client *c, struct wl_resource *r,
     if (!s || !s->mapped) return;
     surface_raise(s);
     keyboard_set_focus(s);
-    recomposite_all();
+    if (g_output_damage_valid) recomposite_all();
 }
 static const struct xdg_activation_v1_interface activation_impl = {
     .destroy = activation_destroy,
@@ -2899,9 +3044,13 @@ static void popup_reposition(struct wl_client *c, struct wl_resource *r,
     (void)c;
     struct iosc_surface *s = wl_resource_get_user_data(r);
     struct iosc_positioner *p = wl_resource_get_user_data(positioner);
+    if (s && s->mapped) output_damage_add_surface(s);
     popup_place(s, p);
     popup_send_configure(s, (int)token);
-    if (s->mapped) recomposite_all();
+    if (s && s->mapped) {
+        output_damage_add_surface(s);
+        recomposite_all();
+    }
 }
 static const struct xdg_popup_interface popup_impl = {
     .destroy = popup_destroy, .grab = popup_grab, .reposition = popup_reposition,
@@ -2957,6 +3106,7 @@ static void send_initial_configure(struct iosc_surface *s)
 
 static void toplevel_reconfigure_state(struct iosc_surface *s)
 {
+    if (s->mapped) output_damage_add_surface(s);
     if (s->toplevel_fullscreen) {
         /* Fullscreen covers the whole output, ignoring reserved panel edges. */
         s->dx = 0;
@@ -2973,6 +3123,7 @@ static void toplevel_reconfigure_state(struct iosc_surface *s)
         toplevel_send_configure(s, default_window_w(), default_window_h());
     }
     native_update_window_metadata(s);
+    if (s->mapped) output_damage_add_surface(s);
     if (s->mapped) recomposite_all();
 }
 
@@ -3039,8 +3190,10 @@ static void interactive_update(int x, int y)
         int max_y = wy + wh - (h > 0 ? h : 1);
         if (max_x < wx) max_x = wx;
         if (max_y < wy) max_y = wy;
+        output_damage_add_surface(s);
         s->dx = clampi(g_interactive_dx + dx, wx, max_x);
         s->dy = clampi(g_interactive_dy + dy, wy, max_y);
+        output_damage_add_surface(s);
         recomposite_all();
         return;
     }
@@ -3054,9 +3207,11 @@ static void interactive_update(int x, int y)
     nh = clampi(nh, 60, wh);
     nx = clampi(nx, wx, wx + ww - nw);
     ny = clampi(ny, wy, wy + wh - nh);
+    output_damage_add_surface(s);
     s->dx = nx;
     s->dy = ny;
     toplevel_send_configure(s, nw, nh);
+    output_damage_add_surface(s);
     recomposite_all();
 }
 
@@ -4079,7 +4234,13 @@ static void handle_motion(int x, int y)
      * not normal wl_pointer events. */
     if (g_dnd.active) {
         dnd_update_motion(x, y, now_ms());
-        if (moved) recomposite_all();          /* move the drag icon */
+        if (moved) {
+            output_damage_add_dnd_icon_at(prev_x, prev_y);
+            output_damage_add_dnd_icon_at(g_cursor_x, g_cursor_y);
+            output_damage_add_cursor_at(prev_x, prev_y);
+            output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+            recomposite_all();          /* move the drag icon */
+        }
         return;
     }
     if (g_interactive_op != IOSC_INTERACTIVE_NONE) {
@@ -4125,8 +4286,11 @@ static void handle_motion(int x, int y)
     if (moved) {
         if (iosc_app_cursor())
             app_cursor_notify();          /* overlay: one socket write, no recomposite */
-        else if (g_cursor_visible)
+        else if (g_cursor_visible) {
+            output_damage_add_cursor_at(prev_x, prev_y);
+            output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
             recomposite_all();            /* classic: repaint to move the composited cursor */
+        }
     }
 }
 
@@ -4144,6 +4308,7 @@ static void surface_raise_one(struct iosc_surface *s)
         top = i;
     }
     if (top == idx) return;
+    output_damage_add_surface(s);
     for (int i = idx; i < top; i++) g_mapped[i] = g_mapped[i + 1];
     g_mapped[top] = s;
 }
@@ -4593,11 +4758,13 @@ static void pointer_set_cursor(struct wl_client *c, struct wl_resource *r, uint3
 { (void)r; (void)serial;
     if (g_ptr_focus && wl_resource_get_client(g_ptr_focus->resource) != c)
         return;
+    output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
     g_named_cursor = 0;   /* a client cursor surface supersedes any cursor-shape */
     g_cursor_surface = surf ? wl_resource_get_user_data(surf) : NULL;
     g_cursor_hot_x = hx;
     g_cursor_hot_y = hy;
     g_cursor_visible = g_cursor_surface != NULL;
+    output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
     if (iosc_app_cursor()) app_cursor_notify();   /* overlay: push shape/visibility, no repaint */
     else recomposite_all();
 }
@@ -4685,15 +4852,19 @@ static void subsurface_set_position(struct wl_client *c, struct wl_resource *r, 
     (void)c;
     struct iosc_subsurface *ss = wl_resource_get_user_data(r);
     if (!ss || !ss->surface) return;
+    if (ss->surface->mapped) output_damage_add_surface(ss->surface);
     ss->x = x; ss->y = y;
     ss->surface->rel_x = x;
     ss->surface->rel_y = y;
     surface_place_child(ss->surface);
-    if (ss->surface->mapped) recomposite_all();
+    if (ss->surface->mapped) {
+        output_damage_add_surface(ss->surface);
+        recomposite_all();
+    }
 }
 static void subsurface_place_above(struct wl_client *c, struct wl_resource *r, struct wl_resource *s)
 { (void)c; (void)s; struct iosc_subsurface *ss = wl_resource_get_user_data(r);
-  if (ss && ss->surface) { surface_raise(ss->surface); recomposite_all(); } }
+  if (ss && ss->surface) { surface_raise(ss->surface); if (g_output_damage_valid) recomposite_all(); } }
 static void subsurface_place_below(struct wl_client *c, struct wl_resource *r, struct wl_resource *s)
 { (void)c; (void)r; (void)s; }
 static void subsurface_set_sync(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
@@ -5314,6 +5485,7 @@ static void dnd_drop(void)
 static void dnd_end(void)
 {
     if (!g_dnd.active) return;
+    output_damage_add_dnd_icon_at(g_cursor_x, g_cursor_y);
     if (g_dnd.source) wl_list_remove(&g_dnd.source_destroy.link);
     memset(&g_dnd, 0, sizeof(g_dnd));
     /* Pointer focus was suppressed by the grab; the next motion re-enters (every
@@ -5375,6 +5547,7 @@ static void data_device_start_drag(struct wl_client *c, struct wl_resource *r, s
     fprintf(stderr, "iosc: drag started (source=%p icon=%p origin=%p)\n",
             (void *)src, (void *)ic, (void *)origin);
     dnd_update_motion(g_cursor_x, g_cursor_y, now_ms());
+    output_damage_add_dnd_icon_at(g_cursor_x, g_cursor_y);
     recomposite_all();   /* show the drag icon (if it has a buffer already) */
 }
 
@@ -5784,7 +5957,7 @@ static void ftlh_unset_minimized(struct wl_client *c, struct wl_resource *h)
   if (s) { s->toplevel_minimized = 0; ftl_broadcast_state(s); } }
 static void ftlh_activate(struct wl_client *c, struct wl_resource *h, struct wl_resource *seat)
 { (void)c; (void)seat; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { surface_raise(s); keyboard_set_focus(s); recomposite_all(); } }
+  if (s) { surface_raise(s); keyboard_set_focus(s); if (g_output_damage_valid) recomposite_all(); } }
 static void ftlh_close(struct wl_client *c, struct wl_resource *h)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
   if (s && s->is_xwayland) iosc_xwm_request_close(s->resource);
@@ -6007,7 +6180,7 @@ static int wm_raise_app(const char *app_id)
     if (!s) return 0;
     surface_raise(s);
     keyboard_set_focus(s);
-    recomposite_all();
+    if (g_output_damage_valid) recomposite_all();
     wl_display_flush_clients(g_display);
     fprintf(stderr, "iosc: wm raise app_id=\"%s\" -> raised\n", app_id);
     return 1;

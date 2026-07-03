@@ -38,6 +38,11 @@ int  iosc_gl_bind_target(void *iosurface, int w, int h);
 /* Begin a frame: bind the output FBO and clear to black. */
 void iosc_gl_begin(void);
 
+/* Begin a partial frame: clear/draw only the output-pixel damage rect. Coordinates
+ * are in iosc's top-left output space; the GL backend maps them to its mirrored FBO
+ * convention. Passing an empty/full rect is equivalent to iosc_gl_begin(). */
+void iosc_gl_begin_damage(int x, int y, int w, int h);
+
 /* Draw a client IOSurface (opaque IOSurfaceRef) of source size sw x sh as a quad
  * at output-pixel dest rect (dx,dy,dw,dh). Zero-copy: the IOSurface is sampled
  * directly as a GL/Metal texture (the texture is sized to the surface, sw x sh). */
@@ -48,9 +53,11 @@ void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
 /* Draw a wl_shm BGRA buffer as a quad at the dest rect. `key` (a stable
  * per-surface pointer) caches one GL texture per surface: the buffer is uploaded
  * only when `dirty` (or the size changed), so an unchanged surface re-drawn on a
- * cursor-move repaint costs no upload. Pass key=NULL for transient/uncached
- * buffers (single-pixel, the procedural cursor); those always upload. */
+ * cursor-move repaint costs no upload. When dirty rectangles are supplied, only
+ * those buffer-regions are uploaded. Pass key=NULL for transient/uncached buffers
+ * (single-pixel, the procedural cursor); those always upload. */
 void iosc_gl_draw_shm(void *key, int dirty, const void *data, int sw, int sh, int stride,
+                      int dirty_rect_count, const int *dirty_rects,
                       int sx, int sy, int src_w, int src_h,
                       int dx, int dy, int dw, int dh);
 
