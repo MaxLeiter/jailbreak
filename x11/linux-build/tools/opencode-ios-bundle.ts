@@ -32,6 +32,49 @@ const opentuiNativeAliasPlugin: import("bun").BunPlugin = {
     }))
   },
 }
+
+// @ff-labs/fff-bun (opencode's preferred file/content search backend, gated by
+// Fff.available() in packages/core/src/filesystem/search.ts) dlopens a native
+// Rust cdylib. Its resolver has two arms (src/ffi.ts loadLibrary):
+//   embeddedLibPath  (src/embedded.ts) -- `import(\`@ff-labs/fff-bin-darwin-\
+//     ${process.arch}/libfff_c.dylib\`, { with: { type: "file" } })`
+//   findBinary()     (src/download.ts) -- fs lookups in the platform npm
+//     package / a cargo dev workspace
+// Neither resolves in our shipped multi-file bundle: the platform package is
+// not installed, there is no Cargo workspace, and (as with tree-sitter) a
+// `{ type: "file" }` import in a split bundle yields a chunk path, not the real
+// asset -- worse here, the specifier is a runtime template literal the bundler
+// cannot statically intercept at all. So we replace fff-bun's two static
+// resolver modules with virtual ones that hand back the absolute install path
+// of our iOS-native cdylib. loadLibrary then dlopens that path directly.
+// The device path exists after install; `opencode --version` never loads fff.
+const FFF_IOS_DYLIB = "/var/jb/usr/libexec/opencode-js/libfff_c.dylib"
+const fffNativeAliasPlugin: import("bun").BunPlugin = {
+  name: "fff-native-ios-alias",
+  setup(build) {
+    // Only the fff-bun copies of ./embedded and ./download (matched via the
+    // importer path), so unrelated modules with those names are untouched.
+    const filter = /^\.\/(embedded|download)$/
+    build.onResolve({ filter }, (args) => {
+      if (!args.importer.replaceAll("\\", "/").includes("/@ff-labs/fff-bun/")) return
+      const which = args.path.endsWith("embedded") ? "embedded" : "download"
+      return { path: which, namespace: "fff-ios-native" }
+    })
+    build.onLoad({ filter: /.*/, namespace: "fff-ios-native" }, (args) => {
+      const lib = JSON.stringify(FFF_IOS_DYLIB)
+      if (args.path === "embedded") {
+        return { contents: `export const embeddedLibPath = ${lib};`, loader: "js" }
+      }
+      // download.ts exports findBinary + binaryExists (index.ts re-exports both).
+      return {
+        contents:
+          `export function findBinary() { return ${lib}; }\n` +
+          `export function binaryExists() { return true; }\n`,
+        loader: "js",
+      }
+    })
+  },
+}
 const outdir = path.join(dir, "dist/opencode-ios-js")
 
 await Bun.$`rm -rf ${outdir}`
@@ -60,7 +103,7 @@ const OPENCODE_WORKER_INSTALL_PATH = "/var/jb/usr/libexec/opencode-js/src/cli/tu
 const result = await Bun.build({
   conditions: ["bun", "node"],
   tsconfig: "./tsconfig.json",
-  plugins: [plugin, opentuiNativeAliasPlugin],
+  plugins: [plugin, opentuiNativeAliasPlugin, fffNativeAliasPlugin],
   external: ["node-gyp"],
   format: "esm",
   minify: true,

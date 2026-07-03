@@ -26,7 +26,7 @@ BUNDLE_SCRIPT="${OPENCODE_BUNDLE_SCRIPT:-$HERE/tools/opencode-ios-bundle.ts}"
 VERSION="${OPENCODE_VERSION:?OPENCODE_VERSION missing from $LOCK}"
 GIT_REPO="${OPENCODE_GIT_REPO:?OPENCODE_GIT_REPO missing from $LOCK}"
 GIT_COMMIT="${OPENCODE_GIT_COMMIT:?OPENCODE_GIT_COMMIT missing from $LOCK}"
-PKG_VERSION="${OPENCODE_DEB_VERSION:-${VERSION}~ios0.4}"
+PKG_VERSION="${OPENCODE_DEB_VERSION:-${VERSION}~ios0.5}"
 ARCH="${ARCH:-iphoneos-arm64}"
 PKG="opencode_${PKG_VERSION}_${ARCH}.deb"
 
@@ -102,6 +102,20 @@ OPENTUI_IOS_DYLIB="${OPENTUI_IOS_DYLIB:-$HERE/out/opentui-ios/libopentui.dylib}"
 }
 cp "$OPENTUI_IOS_DYLIB" "$WORK/pkg/var/jb/usr/libexec/opencode-js/libopentui.dylib"
 chmod 0644 "$WORK/pkg/var/jb/usr/libexec/opencode-js/libopentui.dylib"
+
+# @ff-labs/fff-bun dlopen()s this cdylib for opencode's preferred fuzzy file +
+# content search (falls back to ripgrep when absent). The bundle aliases fff-bun's
+# native resolver to this fixed path (see tools/opencode-ios-bundle.ts). The
+# artifact is produced by $HERE/build-fff-ios.sh and MUST already be fakesigned
+# (ldid -S) before it lands here -- we deliberately do not re-sign in this script.
+FFF_IOS_DYLIB="${FFF_IOS_DYLIB:-$HERE/out/fff-ios/libfff_c.dylib}"
+[ -f "$FFF_IOS_DYLIB" ] || {
+  echo "iOS fff dylib not found: $FFF_IOS_DYLIB" >&2
+  echo "Build it first with $HERE/build-fff-ios.sh (or set FFF_IOS_DYLIB)." >&2
+  exit 1
+}
+cp "$FFF_IOS_DYLIB" "$WORK/pkg/var/jb/usr/libexec/opencode-js/libfff_c.dylib"
+chmod 0644 "$WORK/pkg/var/jb/usr/libexec/opencode-js/libfff_c.dylib"
 
 cat > "$WORK/pkg/var/jb/usr/bin/opencode" <<'EOF'
 #!/var/jb/usr/bin/sh
