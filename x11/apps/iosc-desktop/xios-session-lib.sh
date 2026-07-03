@@ -125,7 +125,7 @@ xs_find_bringup() {
 # ---------------------------------------------------------------------------
 # Union of the teardown greps in run-iosc.sh / run-mutter.sh / run-gnome-shell.sh /
 # run-kgx.sh, anchored to binary paths so it never matches this script itself
-# (xios-session / xios-sessiond) or our own shell. We additionally exclude $$ and
+# (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
 xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|dbus-daemon.*--session|dbus-run-session'
 
