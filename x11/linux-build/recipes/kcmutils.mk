@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS += kcmutils
 KCMUTILS_VERSION = $(KF6_VERSION)
-DEB_KCMUTILS_V ?= $(KCMUTILS_VERSION)
+DEB_KCMUTILS_V ?= $(KCMUTILS_VERSION)+ios1
 
 kcmutils-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcmutils))

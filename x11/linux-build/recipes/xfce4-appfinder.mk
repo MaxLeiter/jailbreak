@@ -7,7 +7,7 @@ endif
 SUBPROJECTS            += xfce4-appfinder
 XFCE4APPFINDER_MAJOR_V := 4.16
 XFCE4APPFINDER_VERSION := $(XFCE4APPFINDER_MAJOR_V).0
-DEB_XFCE4APPFINDER_V   ?= $(XFCE4APPFINDER_VERSION)
+DEB_XFCE4APPFINDER_V   ?= $(XFCE4APPFINDER_VERSION)+ios1
 
 xfce4-appfinder-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/xfce4-appfinder/$(XFCE4APPFINDER_MAJOR_V)/xfce4-appfinder-$(XFCE4APPFINDER_VERSION).tar.bz2)

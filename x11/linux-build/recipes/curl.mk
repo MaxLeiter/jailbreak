@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS  += curl
 CURL_VERSION := 8.7.1
-DEB_CURL_V   ?= $(CURL_VERSION)
+DEB_CURL_V   ?= $(CURL_VERSION)+ios1
 
 curl-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://curl.haxx.se/download/curl-$(CURL_VERSION).tar.xz{$(comma).asc})

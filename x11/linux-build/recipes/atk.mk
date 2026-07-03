@@ -5,7 +5,7 @@ endif
 SUBPROJECTS  += atk
 ATK_MAJOR_V  := 2.38
 ATK_VERSION  := $(ATK_MAJOR_V).0
-DEB_LIBATK_V ?= $(ATK_VERSION)
+DEB_LIBATK_V ?= $(ATK_VERSION)+ios1
 
 atk-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/atk/$(ATK_MAJOR_V)/atk-$(ATK_VERSION).tar.xz)

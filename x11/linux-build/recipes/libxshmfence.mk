@@ -18,7 +18,7 @@ endif
 
 SUBPROJECTS          += libxshmfence
 LIBXSHMFENCE_VERSION := 1.3.2
-DEB_LIBXSHMFENCE_V   ?= $(LIBXSHMFENCE_VERSION)
+DEB_LIBXSHMFENCE_V   ?= $(LIBXSHMFENCE_VERSION)+ios1
 
 libxshmfence-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/lib/libxshmfence-$(LIBXSHMFENCE_VERSION).tar.xz)

@@ -12,7 +12,7 @@ endif
 
 SUBPROJECTS += kirigami
 KIRIGAMI_VERSION = $(KF6_VERSION)
-DEB_KIRIGAMI_V ?= $(KIRIGAMI_VERSION)
+DEB_KIRIGAMI_V ?= $(KIRIGAMI_VERSION)+ios1
 
 kirigami-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kirigami))

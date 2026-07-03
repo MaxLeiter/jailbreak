@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS       += libpixman
 LIBPIXMAN_VERSION := 0.42.2
-DEB_LIBPIXMAN_V   ?= $(LIBPIXMAN_VERSION)
+DEB_LIBPIXMAN_V   ?= $(LIBPIXMAN_VERSION)+ios1
 
 libpixman-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://cairographics.org/releases/pixman-$(LIBPIXMAN_VERSION).tar.gz)

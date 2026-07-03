@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS   += mozjs
 MOZJS_VERSION := 115.12.0
-DEB_MOZJS_V   ?= $(MOZJS_VERSION)
+DEB_MOZJS_V   ?= $(MOZJS_VERSION)+ios1
 # mozjs ships inside the firefox-esr source tarball; the standalone "mozjs" tarball mirrors it.
 MOZJS_SRC     := mozjs-$(MOZJS_VERSION)
 

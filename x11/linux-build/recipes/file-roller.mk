@@ -23,7 +23,7 @@ endif
 SUBPROJECTS         += file-roller
 FILE-ROLLER_MAJOR_V := 44
 FILE-ROLLER_VERSION := $(FILE-ROLLER_MAJOR_V).7
-DEB_FILE-ROLLER_V   ?= $(FILE-ROLLER_VERSION)
+DEB_FILE-ROLLER_V   ?= $(FILE-ROLLER_VERSION)+ios1
 
 file-roller-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/file-roller/$(FILE-ROLLER_MAJOR_V)/file-roller-$(FILE-ROLLER_VERSION).tar.xz)

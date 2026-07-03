@@ -18,7 +18,7 @@ endif
 SUBPROJECTS        += libadwaita
 LIBADWAITA_MAJOR_V := 1.5
 LIBADWAITA_VERSION := $(LIBADWAITA_MAJOR_V).0
-DEB_LIBADWAITA_V   ?= $(LIBADWAITA_VERSION)
+DEB_LIBADWAITA_V   ?= $(LIBADWAITA_VERSION)+ios1
 
 libadwaita-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libadwaita/$(LIBADWAITA_MAJOR_V)/libadwaita-$(LIBADWAITA_VERSION).tar.xz)

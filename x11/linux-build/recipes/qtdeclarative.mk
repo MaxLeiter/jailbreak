@@ -24,7 +24,7 @@ endif
 
 SUBPROJECTS           += qtdeclarative
 QTDECLARATIVE_VERSION := 6.6.3
-DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)
+DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios1
 
 qtdeclarative-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtdeclarative))

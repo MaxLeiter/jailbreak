@@ -15,7 +15,7 @@ endif
 SUBPROJECTS      += libsoup3
 LIBSOUP3_MAJOR_V := 3.4
 LIBSOUP3_VERSION := $(LIBSOUP3_MAJOR_V).4
-DEB_LIBSOUP3_V   ?= $(LIBSOUP3_VERSION)
+DEB_LIBSOUP3_V   ?= $(LIBSOUP3_VERSION)+ios1
 
 libsoup3-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libsoup/$(LIBSOUP3_MAJOR_V)/libsoup-$(LIBSOUP3_VERSION).tar.xz)

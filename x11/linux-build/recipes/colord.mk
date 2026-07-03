@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS    += colord
 COLORD_VERSION := 1.4.7
-DEB_COLORD_V   ?= $(COLORD_VERSION)
+DEB_COLORD_V   ?= $(COLORD_VERSION)+ios1
 
 colord-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/colord/releases/colord-$(COLORD_VERSION).tar.xz)

@@ -23,7 +23,7 @@ endif
 SUBPROJECTS      += poppler
 POPPLER_VERSION  := 24.08.0
 POPPLER_SOV      := 140
-DEB_POPPLER_V    ?= $(POPPLER_VERSION)
+DEB_POPPLER_V    ?= $(POPPLER_VERSION)+ios1
 
 poppler-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://poppler.freedesktop.org/poppler-$(POPPLER_VERSION).tar.xz)

@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS      += qttools
 QTTOOLS_VERSION  := 6.6.3
-DEB_QTTOOLS_V    ?= $(QTTOOLS_VERSION)
+DEB_QTTOOLS_V    ?= $(QTTOOLS_VERSION)+ios1
 
 qttools-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qttools))

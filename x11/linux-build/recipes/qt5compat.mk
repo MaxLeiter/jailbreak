@@ -18,7 +18,7 @@ endif
 
 SUBPROJECTS       += qt5compat
 QT5COMPAT_VERSION := 6.6.3
-DEB_QT5COMPAT_V   ?= $(QT5COMPAT_VERSION)
+DEB_QT5COMPAT_V   ?= $(QT5COMPAT_VERSION)+ios1
 
 qt5compat-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qt5compat))

@@ -35,7 +35,7 @@ QT_MINOR       := 6.6
 # widget deps are present) but links dead (vtable, no impl), so force printdialog +
 # printpreviewdialog OFF. kxmlgui wants the module for QPrinter, not the picker UI; nobody prints
 # from the iPad desktop. If a KF6 unit references QPrintDialog, patch it out KF6-side (plan Q3).
-DEB_QTBASE_V   ?= $(QTBASE_VERSION)-3
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)-3+ios1
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)

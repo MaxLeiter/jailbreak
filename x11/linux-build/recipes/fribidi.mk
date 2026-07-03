@@ -5,7 +5,7 @@ endif
 SUBPROJECTS       += fribidi
 FRIBIDI_VERSION   := 1.0.13
 # Procursus ships build_info/libfribidi*.control templates keyed on @DEB_LIBFRIBIDI_V@.
-DEB_LIBFRIBIDI_V  ?= $(FRIBIDI_VERSION)
+DEB_LIBFRIBIDI_V  ?= $(FRIBIDI_VERSION)+ios1
 
 fribidi-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/fribidi/fribidi/releases/download/v$(FRIBIDI_VERSION)/fribidi-$(FRIBIDI_VERSION).tar.xz)

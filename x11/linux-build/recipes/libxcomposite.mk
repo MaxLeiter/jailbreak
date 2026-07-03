@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS          += libxcomposite
 LIBXCOMPOSITE_VERSION := 0.4.6
-DEB_LIBXCOMPOSITE_V   ?= $(LIBXCOMPOSITE_VERSION)
+DEB_LIBXCOMPOSITE_V   ?= $(LIBXCOMPOSITE_VERSION)+ios1
 
 libxcomposite-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/lib/libXcomposite-$(LIBXCOMPOSITE_VERSION).tar.gz{$(comma).sig})

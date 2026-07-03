@@ -20,7 +20,7 @@ endif
 
 SUBPROJECTS         += libutf8proc
 LIBUTF8PROC_VERSION := 2.9.0
-DEB_LIBUTF8PROC_V   ?= $(LIBUTF8PROC_VERSION)
+DEB_LIBUTF8PROC_V   ?= $(LIBUTF8PROC_VERSION)+ios1
 
 libutf8proc-setup: setup
 	$(call GITHUB_ARCHIVE,JuliaStrings,utf8proc,$(LIBUTF8PROC_VERSION),v$(LIBUTF8PROC_VERSION),libutf8proc)

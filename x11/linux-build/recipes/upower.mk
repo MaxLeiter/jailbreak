@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS      += upower
 UPOWER_VERSION   := 1.90.2
-DEB_UPOWER_V     ?= $(UPOWER_VERSION)
+DEB_UPOWER_V     ?= $(UPOWER_VERSION)+ios1
 
 upower-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/upower/upower/-/archive/v$(UPOWER_VERSION)/upower-v$(UPOWER_VERSION).tar.bz2)

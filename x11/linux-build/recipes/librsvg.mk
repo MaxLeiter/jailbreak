@@ -12,7 +12,7 @@ endif
 SUBPROJECTS       += librsvg
 LIBRSVG_MAJOR_V   := 2.56
 LIBRSVG_VERSION   := $(LIBRSVG_MAJOR_V).5
-DEB_LIBRSVG_V     ?= $(LIBRSVG_VERSION)
+DEB_LIBRSVG_V     ?= $(LIBRSVG_VERSION)+ios1
 LIBRSVG_CCTOOLS_BIN := $(dir $(shell command -v $(GNU_HOST_TRIPLE)-ld))
 LIBRSVG_RUSTFLAGS := -Clink-arg=-B$(LIBRSVG_CCTOOLS_BIN) -Clink-arg=-isysroot -Clink-arg=$(TARGET_SYSROOT) -Clink-arg=-miphoneos-version-min=16.0
 

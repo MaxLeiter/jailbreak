@@ -19,7 +19,7 @@ endif
 
 SUBPROJECTS         += gtk4-layer-shell
 GTK4-LAYER-SHELL_VERSION := 1.3.0
-DEB_GTK4-LAYER-SHELL_V   ?= $(GTK4-LAYER-SHELL_VERSION)
+DEB_GTK4-LAYER-SHELL_V   ?= $(GTK4-LAYER-SHELL_VERSION)+ios1
 
 gtk4-layer-shell-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/wmww/gtk4-layer-shell/archive/refs/tags/v$(GTK4-LAYER-SHELL_VERSION).tar.gz)

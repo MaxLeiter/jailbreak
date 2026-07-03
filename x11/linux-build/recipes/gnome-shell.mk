@@ -18,7 +18,7 @@ endif
 SUBPROJECTS          += gnome-shell
 GNOME-SHELL_MAJOR_V  := 46
 GNOME-SHELL_VERSION  := $(GNOME-SHELL_MAJOR_V).0
-DEB_GNOME-SHELL_V    ?= $(GNOME-SHELL_VERSION)
+DEB_GNOME-SHELL_V    ?= $(GNOME-SHELL_VERSION)+ios1
 
 # GNOME_SHELL_WITH_EDS=1 flips reality #1 below: keep EDS + calendar-server (ICU and
 # evolution-data-server are built now — recipes/evolution-data-server.mk). STAGED but not
@@ -27,7 +27,7 @@ DEB_GNOME-SHELL_V    ?= $(GNOME-SHELL_VERSION)
 # deletes lines in-place and EXTRACT_TAR no-ops), which that driver path handles.
 GNOME_SHELL_WITH_EDS ?= 0
 ifeq ($(GNOME_SHELL_WITH_EDS),1)
-DEB_GNOME-SHELL_V    := $(GNOME-SHELL_VERSION)-2
+DEB_GNOME-SHELL_V    := $(GNOME-SHELL_VERSION)-2+ios1
 endif
 
 gnome-shell-setup: setup

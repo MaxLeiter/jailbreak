@@ -19,7 +19,7 @@ endif
 SUBPROJECTS     += girara
 GIRARA_VERSION  := 0.4.5
 GIRARA_SOV      := 4
-DEB_GIRARA_V    ?= $(GIRARA_VERSION)
+DEB_GIRARA_V    ?= $(GIRARA_VERSION)+ios1
 
 girara-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://pwmt.org/projects/girara/download/girara-$(GIRARA_VERSION).tar.xz)

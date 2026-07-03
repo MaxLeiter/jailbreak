@@ -22,7 +22,7 @@ endif
 SUBPROJECTS      += exempi
 EXEMPI_VERSION   := 2.5.2
 EXEMPI_SOV       := 8
-DEB_EXEMPI_V     ?= $(EXEMPI_VERSION)
+DEB_EXEMPI_V     ?= $(EXEMPI_VERSION)+ios1
 
 exempi-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://libopenraw.freedesktop.org/download/exempi-$(EXEMPI_VERSION).tar.bz2)

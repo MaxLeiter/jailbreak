@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS      += geoclue
 GEOCLUE_VERSION  := 2.7.1
-DEB_GEOCLUE_V    ?= $(GEOCLUE_VERSION)
+DEB_GEOCLUE_V    ?= $(GEOCLUE_VERSION)+ios1
 
 geoclue-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/geoclue/geoclue/-/archive/$(GEOCLUE_VERSION)/geoclue-$(GEOCLUE_VERSION).tar.bz2)

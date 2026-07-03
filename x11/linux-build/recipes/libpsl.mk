@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS    += libpsl
 LIBPSL_VERSION := 0.21.5
-DEB_LIBPSL_V   ?= $(LIBPSL_VERSION)
+DEB_LIBPSL_V   ?= $(LIBPSL_VERSION)+ios1
 
 libpsl-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/rockdaboot/libpsl/releases/download/$(LIBPSL_VERSION)/libpsl-$(LIBPSL_VERSION).tar.gz)

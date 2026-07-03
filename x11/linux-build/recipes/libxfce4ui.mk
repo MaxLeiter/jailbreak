@@ -7,7 +7,7 @@ endif
 SUBPROJECTS        += libxfce4ui
 LIBXFCE4UI_MAJOR_V := 4.16
 LIBXFCE4UI_VERSION := $(LIBXFCE4UI_MAJOR_V).0
-DEB_LIBXFCE4UI_V   ?= $(LIBXFCE4UI_VERSION)
+DEB_LIBXFCE4UI_V   ?= $(LIBXFCE4UI_VERSION)+ios1
 
 libxfce4ui-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/libxfce4ui/$(LIBXFCE4UI_MAJOR_V)/libxfce4ui-$(LIBXFCE4UI_VERSION).tar.bz2)

@@ -21,7 +21,7 @@ endif
 SUBPROJECTS += icu4c
 ICU_VERSION := 74.2
 ICU_API_V   := $(shell echo $(ICU_VERSION) | cut -f1 -d.)
-DEB_ICU_V   ?= $(ICU_VERSION)
+DEB_ICU_V   ?= $(ICU_VERSION)+ios1
 
 RANLIB_FOR_BUILD := $(shell command -v ranlib)
 

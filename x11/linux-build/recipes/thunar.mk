@@ -8,7 +8,7 @@ endif
 SUBPROJECTS    += thunar
 THUNAR_MAJOR_V := 4.16
 THUNAR_VERSION := $(THUNAR_MAJOR_V).11
-DEB_THUNAR_V   ?= $(THUNAR_VERSION)
+DEB_THUNAR_V   ?= $(THUNAR_VERSION)+ios1
 
 thunar-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/thunar/$(THUNAR_MAJOR_V)/thunar-$(THUNAR_VERSION).tar.bz2)

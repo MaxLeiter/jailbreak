@@ -30,7 +30,7 @@ endif
 SUBPROJECTS      += papers
 PAPERS_MAJOR_V   := 46
 PAPERS_VERSION   := 46.2
-DEB_PAPERS_V     ?= $(PAPERS_VERSION)
+DEB_PAPERS_V     ?= $(PAPERS_VERSION)+ios1
 
 papers-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/papers/$(PAPERS_MAJOR_V)/papers-$(PAPERS_VERSION).tar.xz)

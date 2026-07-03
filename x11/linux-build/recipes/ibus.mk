@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS  += ibus
 IBUS_VERSION := 1.5.29
-DEB_IBUS_V   ?= $(IBUS_VERSION)
+DEB_IBUS_V   ?= $(IBUS_VERSION)+ios1
 
 ibus-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/ibus/ibus/releases/download/$(IBUS_VERSION)/ibus-$(IBUS_VERSION).tar.gz)

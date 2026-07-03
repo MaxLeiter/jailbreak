@@ -11,7 +11,7 @@ endif
 SUBPROJECTS    += at-spi2-core
 ATSPI2_MAJOR_V := 2.52
 ATSPI2_VERSION := $(ATSPI2_MAJOR_V).0
-DEB_ATSPI2_V   ?= $(ATSPI2_VERSION)
+DEB_ATSPI2_V   ?= $(ATSPI2_VERSION)+ios1
 
 at-spi2-core-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/at-spi2-core/$(ATSPI2_MAJOR_V)/at-spi2-core-$(ATSPI2_VERSION).tar.xz)

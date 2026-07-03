@@ -29,7 +29,7 @@ endif
 
 SUBPROJECTS      += zathura
 ZATHURA_VERSION  := 0.5.12
-DEB_ZATHURA_V    ?= $(ZATHURA_VERSION)
+DEB_ZATHURA_V    ?= $(ZATHURA_VERSION)+ios1
 
 zathura-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://pwmt.org/projects/zathura/download/zathura-$(ZATHURA_VERSION).tar.xz)

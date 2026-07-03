@@ -570,7 +570,7 @@ def write_index(pkgs):
     </div>
   </div>
   {sections_html}
-  <footer>Add the URL above to your package manager to install. &middot; <a href="https://maxleiter.com">maxleiter.com</a></footer>
+  <footer><a href="https://maxleiter.com">maxleiter.com</a></footer>
 </div>{INDEX_JS}{THEME_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
 

@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS     += enchant
 ENCHANT_VERSION := 2.6.1
-DEB_ENCHANT_V   ?= $(ENCHANT_VERSION)
+DEB_ENCHANT_V   ?= $(ENCHANT_VERSION)+ios1
 
 enchant-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/AbiWord/enchant/releases/download/v$(ENCHANT_VERSION)/enchant-$(ENCHANT_VERSION).tar.gz)

@@ -7,7 +7,7 @@ endif
 # dbus <=1.14 is autotools; 1.16+ is meson-only, so we pin 1.14.x.
 SUBPROJECTS  += dbus
 DBUS_VERSION := 1.14.10
-DEB_DBUS_V   ?= $(DBUS_VERSION)
+DEB_DBUS_V   ?= $(DBUS_VERSION)+ios1
 
 dbus-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://dbus.freedesktop.org/releases/dbus/dbus-$(DBUS_VERSION).tar.xz)

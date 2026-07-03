@@ -23,7 +23,7 @@ endif
 SUBPROJECTS           += gnome-session
 GNOME-SESSION_MAJOR_V := 46
 GNOME-SESSION_VERSION := $(GNOME-SESSION_MAJOR_V).0
-DEB_GNOME-SESSION_V   ?= $(GNOME-SESSION_VERSION)
+DEB_GNOME-SESSION_V   ?= $(GNOME-SESSION_VERSION)+ios1
 
 gnome-session-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-session/$(GNOME-SESSION_MAJOR_V)/gnome-session-$(GNOME-SESSION_VERSION).tar.xz)

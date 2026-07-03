@@ -17,7 +17,7 @@ endif
 
 SUBPROJECTS += solid
 SOLID_VERSION = $(KF6_VERSION)
-DEB_SOLID_V ?= $(SOLID_VERSION)
+DEB_SOLID_V ?= $(SOLID_VERSION)+ios1
 
 solid-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,solid))

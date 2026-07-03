@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS       += gweather4
 GWEATHER4_VERSION := 4.4.2
-DEB_GWEATHER4_V   ?= $(GWEATHER4_VERSION)
+DEB_GWEATHER4_V   ?= $(GWEATHER4_VERSION)+ios1
 
 gweather4-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libgweather/$(shell echo $(GWEATHER4_VERSION) | cut -f-2 -d.)/libgweather-$(GWEATHER4_VERSION).tar.xz)

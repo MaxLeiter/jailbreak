@@ -19,7 +19,7 @@ endif
 SUBPROJECTS       += nautilus
 NAUTILUS_MAJOR_V  := 46
 NAUTILUS_VERSION  := $(NAUTILUS_MAJOR_V).4
-DEB_NAUTILUS_V    ?= $(NAUTILUS_VERSION)
+DEB_NAUTILUS_V    ?= $(NAUTILUS_VERSION)+ios1
 
 nautilus-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/nautilus/$(NAUTILUS_MAJOR_V)/nautilus-$(NAUTILUS_VERSION).tar.xz)

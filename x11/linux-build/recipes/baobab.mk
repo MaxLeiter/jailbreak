@@ -18,7 +18,7 @@ endif
 SUBPROJECTS       += baobab
 BAOBAB_MAJOR_V    := 46
 BAOBAB_VERSION    := $(BAOBAB_MAJOR_V).0
-DEB_BAOBAB_V      ?= $(BAOBAB_VERSION)
+DEB_BAOBAB_V      ?= $(BAOBAB_VERSION)+ios1
 
 baobab-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/baobab/$(BAOBAB_MAJOR_V)/baobab-$(BAOBAB_VERSION).tar.xz)

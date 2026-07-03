@@ -14,7 +14,7 @@ endif
 
 SUBPROJECTS   += libgdm
 LIBGDM_VERSION := 46.0
-DEB_LIBGDM_V  ?= $(LIBGDM_VERSION)
+DEB_LIBGDM_V  ?= $(LIBGDM_VERSION)+ios1
 
 libgdm-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gdm/$(shell echo $(LIBGDM_VERSION) | cut -f-1 -d.)/gdm-$(LIBGDM_VERSION).tar.xz)

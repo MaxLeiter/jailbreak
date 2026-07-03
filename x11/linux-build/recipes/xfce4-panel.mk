@@ -7,7 +7,7 @@ endif
 SUBPROJECTS        += xfce4-panel
 XFCE4PANEL_MAJOR_V := 4.16
 XFCE4PANEL_VERSION := $(XFCE4PANEL_MAJOR_V).6
-DEB_XFCE4PANEL_V   ?= $(XFCE4PANEL_VERSION)
+DEB_XFCE4PANEL_V   ?= $(XFCE4PANEL_VERSION)+ios1
 
 xfce4-panel-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/xfce4-panel/$(XFCE4PANEL_MAJOR_V)/xfce4-panel-$(XFCE4PANEL_VERSION).tar.bz2)

@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS += kjobwidgets
 KJOBWIDGETS_VERSION = $(KF6_VERSION)
-DEB_KJOBWIDGETS_V ?= $(KJOBWIDGETS_VERSION)
+DEB_KJOBWIDGETS_V ?= $(KJOBWIDGETS_VERSION)+ios1
 
 kjobwidgets-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kjobwidgets))

@@ -25,7 +25,7 @@ endif
 
 SUBPROJECTS  += grim
 GRIM_VERSION := 1.4.1
-DEB_GRIM_V   ?= $(GRIM_VERSION)
+DEB_GRIM_V   ?= $(GRIM_VERSION)+ios1
 
 grim-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~emersion/grim/archive/v$(GRIM_VERSION).tar.gz)

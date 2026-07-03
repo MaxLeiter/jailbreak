@@ -18,7 +18,7 @@ endif
 SUBPROJECTS           += gnome-desktop
 GNOME-DESKTOP_MAJOR_V := 44
 GNOME-DESKTOP_VERSION := $(GNOME-DESKTOP_MAJOR_V).1
-DEB_GNOME-DESKTOP_V   ?= $(GNOME-DESKTOP_VERSION)
+DEB_GNOME-DESKTOP_V   ?= $(GNOME-DESKTOP_VERSION)+ios1
 
 gnome-desktop-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-desktop/$(GNOME-DESKTOP_MAJOR_V)/gnome-desktop-$(GNOME-DESKTOP_VERSION).tar.xz)

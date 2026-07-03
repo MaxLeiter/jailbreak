@@ -18,7 +18,7 @@ endif
 SUBPROJECTS  += vte
 VTE_MAJOR_V  := 0.76
 VTE_VERSION  := $(VTE_MAJOR_V).6
-DEB_VTE_V    ?= $(VTE_VERSION)
+DEB_VTE_V    ?= $(VTE_VERSION)+ios1
 
 vte-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/vte/$(VTE_MAJOR_V)/vte-$(VTE_VERSION).tar.xz)

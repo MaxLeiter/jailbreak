@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += kbookmarks
 KBOOKMARKS_VERSION = $(KF6_VERSION)
-DEB_KBOOKMARKS_V ?= $(KBOOKMARKS_VERSION)
+DEB_KBOOKMARKS_V ?= $(KBOOKMARKS_VERSION)+ios1
 
 kbookmarks-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kbookmarks))

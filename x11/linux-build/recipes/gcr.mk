@@ -11,7 +11,7 @@ endif
 SUBPROJECTS  += gcr
 GCR_MAJOR_V  := 4.2
 GCR_VERSION  := $(GCR_MAJOR_V).1
-DEB_GCR_V    ?= $(GCR_VERSION)
+DEB_GCR_V    ?= $(GCR_VERSION)+ios1
 
 gcr-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gcr/$(GCR_MAJOR_V)/gcr-$(GCR_VERSION).tar.xz)

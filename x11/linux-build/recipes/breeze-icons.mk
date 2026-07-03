@@ -14,7 +14,7 @@ endif
 
 SUBPROJECTS += breeze-icons
 BREEZEICONS_VERSION = $(KF6_VERSION)
-DEB_BREEZEICONS_V ?= $(BREEZEICONS_VERSION)
+DEB_BREEZEICONS_V ?= $(BREEZEICONS_VERSION)+ios1
 
 breeze-icons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,breeze-icons))

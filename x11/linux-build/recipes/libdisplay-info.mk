@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += libdisplay-info
 LIBDISPLAYINFO_VERSION := 0.1.1
-DEB_LIBDISPLAYINFO_V   ?= $(LIBDISPLAYINFO_VERSION)
+DEB_LIBDISPLAYINFO_V   ?= $(LIBDISPLAYINFO_VERSION)+ios1
 
 libdisplay-info-setup: setup
 	rm -rf $(BUILD_WORK)/libdisplay-info

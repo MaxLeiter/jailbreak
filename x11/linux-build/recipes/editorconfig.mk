@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS          += editorconfig
 EDITORCONFIG_VERSION := 0.12.11
-DEB_EDITORCONFIG_V   ?= $(EDITORCONFIG_VERSION)
+DEB_EDITORCONFIG_V   ?= $(EDITORCONFIG_VERSION)+ios1
 
 editorconfig-setup: setup
 	$(call GITHUB_ARCHIVE,editorconfig,editorconfig-core-c,$(EDITORCONFIG_VERSION),v$(EDITORCONFIG_VERSION))

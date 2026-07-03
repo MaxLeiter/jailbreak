@@ -31,7 +31,7 @@ endif
 
 SUBPROJECTS  += mpv
 MPV_VERSION  := 0.36.0
-DEB_MPV_V    ?= $(MPV_VERSION)
+DEB_MPV_V    ?= $(MPV_VERSION)+ios1
 
 mpv-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/mpv-player/mpv/archive/refs/tags/v$(MPV_VERSION).tar.gz)

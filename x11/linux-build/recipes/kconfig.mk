@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS += kconfig
 KCONFIG_VERSION = $(KF6_VERSION)
-DEB_KCONFIG_V ?= $(KCONFIG_VERSION)
+DEB_KCONFIG_V ?= $(KCONFIG_VERSION)+ios1
 
 kconfig-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kconfig))

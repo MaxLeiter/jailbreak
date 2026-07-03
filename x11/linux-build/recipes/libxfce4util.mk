@@ -7,7 +7,7 @@ endif
 SUBPROJECTS         += libxfce4util
 LIBXFCE4UTIL_MAJOR_V := 4.16
 LIBXFCE4UTIL_VERSION := $(LIBXFCE4UTIL_MAJOR_V).0
-DEB_LIBXFCE4UTIL_V   ?= $(LIBXFCE4UTIL_VERSION)
+DEB_LIBXFCE4UTIL_V   ?= $(LIBXFCE4UTIL_VERSION)+ios1
 
 libxfce4util-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/libxfce4util/$(LIBXFCE4UTIL_MAJOR_V)/libxfce4util-$(LIBXFCE4UTIL_VERSION).tar.bz2)

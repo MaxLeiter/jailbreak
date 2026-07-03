@@ -17,7 +17,7 @@ endif
 
 SUBPROJECTS       += libgrapheme
 LIBGRAPHEME_VERSION := 2.0.2
-DEB_LIBGRAPHEME_V ?= $(LIBGRAPHEME_VERSION)
+DEB_LIBGRAPHEME_V ?= $(LIBGRAPHEME_VERSION)+ios1
 
 libgrapheme-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://dl.suckless.org/libgrapheme/libgrapheme-$(LIBGRAPHEME_VERSION).tar.gz)

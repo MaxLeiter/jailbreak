@@ -13,7 +13,7 @@ endif
 SUBPROJECTS            += gnome-console
 GNOME-CONSOLE_MAJOR_V  := 46
 GNOME-CONSOLE_VERSION  := $(GNOME-CONSOLE_MAJOR_V).0
-DEB_GNOME-CONSOLE_V    ?= $(GNOME-CONSOLE_VERSION)
+DEB_GNOME-CONSOLE_V    ?= $(GNOME-CONSOLE_VERSION)+ios1
 
 gnome-console-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-console/$(GNOME-CONSOLE_MAJOR_V)/gnome-console-$(GNOME-CONSOLE_VERSION).tar.xz)

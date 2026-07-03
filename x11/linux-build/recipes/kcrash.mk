@@ -14,7 +14,7 @@ endif
 
 SUBPROJECTS += kcrash
 KCRASH_VERSION = $(KF6_VERSION)
-DEB_KCRASH_V ?= $(KCRASH_VERSION)
+DEB_KCRASH_V ?= $(KCRASH_VERSION)+ios1
 
 kcrash-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcrash))

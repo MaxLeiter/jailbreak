@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS    += libxmlb
 LIBXMLB_VERSION := 0.3.14
-DEB_LIBXMLB_V  ?= $(LIBXMLB_VERSION)
+DEB_LIBXMLB_V  ?= $(LIBXMLB_VERSION)+ios1
 
 libxmlb-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/hughsie/libxmlb/releases/download/$(LIBXMLB_VERSION)/libxmlb-$(LIBXMLB_VERSION).tar.xz)

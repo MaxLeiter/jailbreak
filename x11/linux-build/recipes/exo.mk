@@ -7,7 +7,7 @@ endif
 SUBPROJECTS += exo
 EXO_MAJOR_V := 4.16
 EXO_VERSION := $(EXO_MAJOR_V).4
-DEB_EXO_V   ?= $(EXO_VERSION)
+DEB_EXO_V   ?= $(EXO_VERSION)+ios1
 
 exo-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/exo/$(EXO_MAJOR_V)/exo-$(EXO_VERSION).tar.bz2)

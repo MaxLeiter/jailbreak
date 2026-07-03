@@ -17,7 +17,7 @@ endif
 
 SUBPROJECTS += kguiaddons
 KGUIADDONS_VERSION = $(KF6_VERSION)
-DEB_KGUIADDONS_V ?= $(KGUIADDONS_VERSION)
+DEB_KGUIADDONS_V ?= $(KGUIADDONS_VERSION)+ios1
 
 kguiaddons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kguiaddons))

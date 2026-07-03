@@ -29,7 +29,7 @@ endif
 
 SUBPROJECTS    += ffmpeg
 FFMPEG_VERSION := 5.1.2
-DEB_FFMPEG_V   ?= $(FFMPEG_VERSION)
+DEB_FFMPEG_V   ?= $(FFMPEG_VERSION)+ios1
 
 ffmpeg-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ffmpeg.org/releases/ffmpeg-$(FFMPEG_VERSION).tar.xz)

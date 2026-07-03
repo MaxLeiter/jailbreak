@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS     += nghttp2
 NGHTTP2_VERSION := 1.61.0
-DEB_NGHTTP2_V   ?= $(NGHTTP2_VERSION)
+DEB_NGHTTP2_V   ?= $(NGHTTP2_VERSION)+ios1
 
 nghttp2-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/nghttp2/nghttp2/releases/download/v$(NGHTTP2_VERSION)/nghttp2-$(NGHTTP2_VERSION).tar.xz)

@@ -12,7 +12,7 @@ endif
 
 SUBPROJECTS       += appstream
 APPSTREAM_VERSION := 1.0.3
-DEB_APPSTREAM_V   ?= $(APPSTREAM_VERSION)
+DEB_APPSTREAM_V   ?= $(APPSTREAM_VERSION)+ios1
 
 appstream-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/appstream/releases/AppStream-$(APPSTREAM_VERSION).tar.xz)

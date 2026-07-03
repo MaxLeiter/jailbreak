@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS += ksvg
 KSVG_VERSION = $(KF6_VERSION)
-DEB_KSVG_V ?= $(KSVG_VERSION)
+DEB_KSVG_V ?= $(KSVG_VERSION)+ios1
 
 ksvg-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,ksvg))

@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS   += qtsvg
 QTSVG_VERSION := 6.6.3
-DEB_QTSVG_V   ?= $(QTSVG_VERSION)
+DEB_QTSVG_V   ?= $(QTSVG_VERSION)+ios1
 
 qtsvg-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtsvg))

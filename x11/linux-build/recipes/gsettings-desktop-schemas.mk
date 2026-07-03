@@ -12,7 +12,7 @@ endif
 SUBPROJECTS  += gsettings-desktop-schemas
 GSDS_MAJOR_V := 46
 GSDS_VERSION := $(GSDS_MAJOR_V).1
-DEB_GSDS_V   ?= $(GSDS_VERSION)
+DEB_GSDS_V   ?= $(GSDS_VERSION)+ios1
 
 gsettings-desktop-schemas-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gsettings-desktop-schemas/$(GSDS_MAJOR_V)/gsettings-desktop-schemas-$(GSDS_VERSION).tar.xz)

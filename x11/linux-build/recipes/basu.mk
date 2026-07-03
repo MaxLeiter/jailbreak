@@ -30,7 +30,7 @@ endif
 
 SUBPROJECTS  += basu
 BASU_VERSION := 0.2.1
-DEB_BASU_V   ?= $(BASU_VERSION)
+DEB_BASU_V   ?= $(BASU_VERSION)+ios1
 
 basu-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~emersion/basu/archive/v$(BASU_VERSION).tar.gz)

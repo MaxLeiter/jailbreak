@@ -8,7 +8,7 @@ endif
 SUBPROJECTS   += xfconf
 XFCONF_MAJOR_V := 4.16
 XFCONF_VERSION := $(XFCONF_MAJOR_V).0
-DEB_XFCONF_V   ?= $(XFCONF_VERSION)
+DEB_XFCONF_V   ?= $(XFCONF_VERSION)+ios1
 
 xfconf-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/xfconf/$(XFCONF_MAJOR_V)/xfconf-$(XFCONF_VERSION).tar.bz2)

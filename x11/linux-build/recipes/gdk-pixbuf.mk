@@ -5,7 +5,7 @@ endif
 SUBPROJECTS        += gdk-pixbuf
 GDK_PIXBUF_MAJOR_V := 2.42
 GDK_PIXBUF_VERSION := $(GDK_PIXBUF_MAJOR_V).12
-DEB_LIBGDKPIXBUF_V ?= $(GDK_PIXBUF_VERSION)
+DEB_LIBGDKPIXBUF_V ?= $(GDK_PIXBUF_VERSION)+ios1
 
 gdk-pixbuf-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/$(GDK_PIXBUF_MAJOR_V)/gdk-pixbuf-$(GDK_PIXBUF_VERSION).tar.xz)

@@ -4,7 +4,7 @@ endif
 
 SUBPROJECTS              += xkeyboard-config
 XKEYBOARD-CONFIG_VERSION := 2.32
-DEB_XKEYBOARD-CONFIG_V   ?= $(XKEYBOARD-CONFIG_VERSION)
+DEB_XKEYBOARD-CONFIG_V   ?= $(XKEYBOARD-CONFIG_VERSION)+ios1
 
 xkeyboard-config-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.x.org/archive/individual/data/xkeyboard-config/xkeyboard-config-$(XKEYBOARD-CONFIG_VERSION).tar.gz)

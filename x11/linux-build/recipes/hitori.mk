@@ -14,7 +14,7 @@ endif
 SUBPROJECTS    += hitori
 HITORI_MAJOR_V := 44
 HITORI_VERSION := $(HITORI_MAJOR_V).0
-DEB_HITORI_V   ?= $(HITORI_VERSION)
+DEB_HITORI_V   ?= $(HITORI_VERSION)+ios1
 
 hitori-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/hitori/$(HITORI_MAJOR_V)/hitori-$(HITORI_VERSION).tar.xz)

@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS += kxmlgui
 KXMLGUI_VERSION = $(KF6_VERSION)
-DEB_KXMLGUI_V ?= $(KXMLGUI_VERSION)
+DEB_KXMLGUI_V ?= $(KXMLGUI_VERSION)+ios1
 
 kxmlgui-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kxmlgui))

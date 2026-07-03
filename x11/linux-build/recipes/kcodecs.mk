@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += kcodecs
 KCODECS_VERSION = $(KF6_VERSION)
-DEB_KCODECS_V ?= $(KCODECS_VERSION)
+DEB_KCODECS_V ?= $(KCODECS_VERSION)+ios1
 
 kcodecs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcodecs))

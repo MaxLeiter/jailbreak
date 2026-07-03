@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS      += harfbuzz
 HARFBUZZ_VERSION := 2.8.1
-DEB_HARFBUZZ_V   ?= $(HARFBUZZ_VERSION)
+DEB_HARFBUZZ_V   ?= $(HARFBUZZ_VERSION)+ios1
 
 harfbuzz-setup: setup
 	$(call GITHUB_ARCHIVE,harfbuzz,harfbuzz,$(HARFBUZZ_VERSION),$(HARFBUZZ_VERSION))

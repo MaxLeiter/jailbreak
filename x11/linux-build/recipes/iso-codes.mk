@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS        += iso-codes
 ISO-CODES_VERSION  := 4.15.0
-DEB_ISO-CODES_V    ?= $(ISO-CODES_VERSION)
+DEB_ISO-CODES_V    ?= $(ISO-CODES_VERSION)+ios1
 
 iso-codes-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://salsa.debian.org/iso-codes-team/iso-codes/-/archive/v$(ISO-CODES_VERSION)/iso-codes-v$(ISO-CODES_VERSION).tar.gz)

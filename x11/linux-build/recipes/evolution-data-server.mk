@@ -49,7 +49,7 @@ endif
 SUBPROJECTS   += evolution-data-server
 EDS_MAJOR_V   := 3.52
 EDS_VERSION   := $(EDS_MAJOR_V).4
-DEB_EDS_V     ?= $(EDS_VERSION)
+DEB_EDS_V     ?= $(EDS_VERSION)+ios1
 
 evolution-data-server-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/evolution-data-server/$(EDS_MAJOR_V)/evolution-data-server-$(EDS_VERSION).tar.xz)

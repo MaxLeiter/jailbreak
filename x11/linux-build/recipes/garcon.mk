@@ -7,7 +7,7 @@ endif
 SUBPROJECTS    += garcon
 GARCON_MAJOR_V := 4.16
 GARCON_VERSION := $(GARCON_MAJOR_V).1
-DEB_GARCON_V   ?= $(GARCON_VERSION)
+DEB_GARCON_V   ?= $(GARCON_VERSION)+ios1
 
 garcon-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/garcon/$(GARCON_MAJOR_V)/garcon-$(GARCON_VERSION).tar.bz2)

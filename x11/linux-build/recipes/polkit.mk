@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS    += polkit
 POLKIT_VERSION := 124
-DEB_POLKIT_V   ?= $(POLKIT_VERSION)
+DEB_POLKIT_V   ?= $(POLKIT_VERSION)+ios1
 
 polkit-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/polkit/polkit/-/archive/$(POLKIT_VERSION)/polkit-$(POLKIT_VERSION).tar.gz)

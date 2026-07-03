@@ -17,7 +17,7 @@ endif
 SUBPROJECTS      += gnome-settings-daemon
 GSD_MAJOR_V      := 46
 GSD_VERSION      := $(GSD_MAJOR_V).0
-DEB_GSD_V        ?= $(GSD_VERSION)
+DEB_GSD_V        ?= $(GSD_VERSION)+ios1
 
 gnome-settings-daemon-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-settings-daemon/$(GSD_MAJOR_V)/gnome-settings-daemon-$(GSD_VERSION).tar.xz)

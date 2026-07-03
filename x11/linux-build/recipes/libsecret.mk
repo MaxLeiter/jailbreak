@@ -9,7 +9,7 @@ endif
 SUBPROJECTS       += libsecret
 LIBSECRET_MAJOR_V := 0.21
 LIBSECRET_VERSION := $(LIBSECRET_MAJOR_V).4
-DEB_LIBSECRET_V   ?= $(LIBSECRET_VERSION)
+DEB_LIBSECRET_V   ?= $(LIBSECRET_VERSION)+ios1
 
 libsecret-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libsecret/$(LIBSECRET_MAJOR_V)/libsecret-$(LIBSECRET_VERSION).tar.xz)

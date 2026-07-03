@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS       += qtsensors
 QTSENSORS_VERSION := 6.6.3
-DEB_QTSENSORS_V   ?= $(QTSENSORS_VERSION)
+DEB_QTSENSORS_V   ?= $(QTSENSORS_VERSION)+ios1
 
 qtsensors-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtsensors))

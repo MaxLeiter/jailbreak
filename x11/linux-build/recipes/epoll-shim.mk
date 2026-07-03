@@ -17,7 +17,7 @@ endif
 
 SUBPROJECTS       += epoll-shim
 EPOLLSHIM_VERSION := 0.0.20240608
-DEB_EPOLLSHIM_V   ?= $(EPOLLSHIM_VERSION)
+DEB_EPOLLSHIM_V   ?= $(EPOLLSHIM_VERSION)+ios1
 
 epoll-shim-setup: setup
 	$(call GITHUB_ARCHIVE,jiixyj,epoll-shim,$(EPOLLSHIM_VERSION),v$(EPOLLSHIM_VERSION))

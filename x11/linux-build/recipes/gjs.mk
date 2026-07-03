@@ -10,7 +10,7 @@ endif
 SUBPROJECTS   += gjs
 GJS_MAJOR_V   := 1.78
 GJS_VERSION   := $(GJS_MAJOR_V).0
-DEB_GJS_V     ?= $(GJS_VERSION)
+DEB_GJS_V     ?= $(GJS_VERSION)+ios1
 
 gjs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gjs/$(GJS_MAJOR_V)/gjs-$(GJS_VERSION).tar.xz)

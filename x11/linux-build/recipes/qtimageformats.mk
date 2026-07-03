@@ -12,7 +12,7 @@ endif
 
 SUBPROJECTS            += qtimageformats
 QTIMAGEFORMATS_VERSION := 6.6.3
-DEB_QTIMAGEFORMATS_V   ?= $(QTIMAGEFORMATS_VERSION)
+DEB_QTIMAGEFORMATS_V   ?= $(QTIMAGEFORMATS_VERSION)+ios1
 
 qtimageformats-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtimageformats))

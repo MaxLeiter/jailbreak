@@ -21,7 +21,7 @@ endif
 
 SUBPROJECTS     += wayland
 WAYLAND_VERSION := 1.23.1
-DEB_WAYLAND_V   ?= $(WAYLAND_VERSION)
+DEB_WAYLAND_V   ?= $(WAYLAND_VERSION)+ios1
 
 # Host (build-machine) prefix holding the version-matched native wayland-scanner + its .pc,
 # consumed by the cross build's native pkg-config. Self-contained under BUILD_WORK.

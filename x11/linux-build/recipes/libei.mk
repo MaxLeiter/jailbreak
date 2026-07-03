@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS  += libei
 LIBEI_VERSION := 1.3.0
-DEB_LIBEI_V   ?= $(LIBEI_VERSION)
+DEB_LIBEI_V   ?= $(LIBEI_VERSION)+ios1
 
 # eis_* symbols Mutter's unconditional input-capture files reference (grep of meta-input-capture*.c).
 EIS_SYMS := eis_backend_fd_add_client eis_client_connect eis_client_disconnect eis_client_get_name \

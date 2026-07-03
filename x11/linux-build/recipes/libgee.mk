@@ -15,7 +15,7 @@ endif
 SUBPROJECTS    += libgee
 LIBGEE_MAJOR_V := 0.20
 LIBGEE_VERSION := $(LIBGEE_MAJOR_V).8
-DEB_LIBGEE_V   ?= $(LIBGEE_VERSION)
+DEB_LIBGEE_V   ?= $(LIBGEE_VERSION)+ios1
 
 libgee-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libgee/$(LIBGEE_MAJOR_V)/libgee-$(LIBGEE_VERSION).tar.xz)

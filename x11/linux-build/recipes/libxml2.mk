@@ -12,7 +12,7 @@ endif
 
 SUBPROJECTS     += libxml2
 LIBXML2_VERSION := 2.9.12
-DEB_LIBXML2_V   ?= $(LIBXML2_VERSION)
+DEB_LIBXML2_V   ?= $(LIBXML2_VERSION)+ios1
 
 ### Provided by macOS/iOS and only used for tools. Try not to link anything to this.
 

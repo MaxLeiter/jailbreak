@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS      += libnotify
 LIBNOTIFY_VERSION := 0.8.3
-DEB_LIBNOTIFY_V  ?= $(LIBNOTIFY_VERSION)
+DEB_LIBNOTIFY_V  ?= $(LIBNOTIFY_VERSION)+ios1
 
 libnotify-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libnotify/$(shell echo $(LIBNOTIFY_VERSION) | cut -f-2 -d.)/libnotify-$(LIBNOTIFY_VERSION).tar.xz)

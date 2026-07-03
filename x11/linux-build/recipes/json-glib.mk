@@ -10,7 +10,7 @@ endif
 SUBPROJECTS       += json-glib
 JSON-GLIB_MAJOR_V := 1.8
 JSON-GLIB_VERSION := $(JSON-GLIB_MAJOR_V).0
-DEB_JSON-GLIB_V   ?= $(JSON-GLIB_VERSION)
+DEB_JSON-GLIB_V   ?= $(JSON-GLIB_VERSION)+ios1
 
 json-glib-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/json-glib/$(JSON-GLIB_MAJOR_V)/json-glib-$(JSON-GLIB_VERSION).tar.xz)

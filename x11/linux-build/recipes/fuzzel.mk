@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS   += fuzzel
 FUZZEL_VERSION := 1.12.0
-DEB_FUZZEL_V   ?= $(FUZZEL_VERSION)
+DEB_FUZZEL_V   ?= $(FUZZEL_VERSION)+ios1
 
 fuzzel-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/fuzzel/releases/download/$(FUZZEL_VERSION)/fuzzel-$(FUZZEL_VERSION).tar.gz)

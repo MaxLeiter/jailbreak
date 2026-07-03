@@ -25,7 +25,7 @@ endif
 
 SUBPROJECTS                   += gobject-introspection
 GOBJECT-INTROSPECTION_VERSION := 1.78.0
-DEB_GOBJECT-INTROSPECTION_V   ?= $(GOBJECT-INTROSPECTION_VERSION)
+DEB_GOBJECT-INTROSPECTION_V   ?= $(GOBJECT-INTROSPECTION_VERSION)+ios1
 
 gobject-introspection-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gobject-introspection/$(shell echo $(GOBJECT-INTROSPECTION_VERSION) | cut -f-2 -d.)/gobject-introspection-$(GOBJECT-INTROSPECTION_VERSION).tar.xz)

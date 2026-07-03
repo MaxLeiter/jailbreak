@@ -21,7 +21,7 @@ endif
 SUBPROJECTS                += gnome-font-viewer
 GNOME-FONT-VIEWER_MAJOR_V  := 46
 GNOME-FONT-VIEWER_VERSION  := $(GNOME-FONT-VIEWER_MAJOR_V).0
-DEB_GNOME-FONT-VIEWER_V    ?= $(GNOME-FONT-VIEWER_VERSION)
+DEB_GNOME-FONT-VIEWER_V    ?= $(GNOME-FONT-VIEWER_VERSION)+ios1
 
 gnome-font-viewer-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-font-viewer/$(GNOME-FONT-VIEWER_MAJOR_V)/gnome-font-viewer-$(GNOME-FONT-VIEWER_VERSION).tar.xz)

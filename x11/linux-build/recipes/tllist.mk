@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS   += tllist
 TLLIST_VERSION := 1.1.0
-DEB_TLLIST_V   ?= $(TLLIST_VERSION)
+DEB_TLLIST_V   ?= $(TLLIST_VERSION)+ios1
 
 tllist-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/tllist/releases/download/$(TLLIST_VERSION)/tllist-$(TLLIST_VERSION).tar.gz)

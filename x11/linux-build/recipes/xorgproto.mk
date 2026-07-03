@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS       += xorgproto
 XORGPROTO_VERSION := 2024.1
-DEB_XORGPROTO_V   ?= $(XORGPROTO_VERSION)
+DEB_XORGPROTO_V   ?= $(XORGPROTO_VERSION)+ios1
 
 xorgproto-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/proto/xorgproto-$(XORGPROTO_VERSION).tar.xz)

@@ -23,7 +23,7 @@ endif
 SUBPROJECTS               += gnome-calculator
 GNOME-CALCULATOR_MAJOR_V  := 46
 GNOME-CALCULATOR_VERSION  := $(GNOME-CALCULATOR_MAJOR_V).2
-DEB_GNOME-CALCULATOR_V    ?= $(GNOME-CALCULATOR_VERSION)
+DEB_GNOME-CALCULATOR_V    ?= $(GNOME-CALCULATOR_VERSION)+ios1
 
 gnome-calculator-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-calculator/$(GNOME-CALCULATOR_MAJOR_V)/gnome-calculator-$(GNOME-CALCULATOR_VERSION).tar.xz)

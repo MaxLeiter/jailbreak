@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS += kservice
 KSERVICE_VERSION = $(KF6_VERSION)
-DEB_KSERVICE_V ?= $(KSERVICE_VERSION)
+DEB_KSERVICE_V ?= $(KSERVICE_VERSION)+ios1
 
 kservice-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kservice))

@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS   += libxcvt
 LIBXCVT_VERSION := 0.1.2
-DEB_LIBXCVT_V   ?= $(LIBXCVT_VERSION)
+DEB_LIBXCVT_V   ?= $(LIBXCVT_VERSION)+ios1
 
 libxcvt-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/lib/libxcvt-$(LIBXCVT_VERSION).tar.xz)

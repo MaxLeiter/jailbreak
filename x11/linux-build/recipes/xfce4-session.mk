@@ -8,7 +8,7 @@ endif
 SUBPROJECTS          += xfce4-session
 XFCE4SESSION_MAJOR_V := 4.16
 XFCE4SESSION_VERSION := $(XFCE4SESSION_MAJOR_V).0
-DEB_XFCE4SESSION_V   ?= $(XFCE4SESSION_VERSION)
+DEB_XFCE4SESSION_V   ?= $(XFCE4SESSION_VERSION)+ios1
 
 xfce4-session-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/xfce4-session/$(XFCE4SESSION_MAJOR_V)/xfce4-session-$(XFCE4SESSION_VERSION).tar.bz2)

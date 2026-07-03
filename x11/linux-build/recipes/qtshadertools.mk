@@ -12,7 +12,7 @@ endif
 
 SUBPROJECTS           += qtshadertools
 QTSHADERTOOLS_VERSION := 6.6.3
-DEB_QTSHADERTOOLS_V   ?= $(QTSHADERTOOLS_VERSION)
+DEB_QTSHADERTOOLS_V   ?= $(QTSHADERTOOLS_VERSION)+ios1
 
 qtshadertools-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtshadertools))

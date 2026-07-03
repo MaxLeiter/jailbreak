@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS  += gusb
 GUSB_VERSION := 0.4.8
-DEB_GUSB_V   ?= $(GUSB_VERSION)
+DEB_GUSB_V   ?= $(GUSB_VERSION)+ios1
 
 gusb-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gusb/$(basename $(GUSB_VERSION))/gusb-$(GUSB_VERSION).tar.xz)

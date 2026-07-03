@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += kiconthemes
 KICONTHEMES_VERSION = $(KF6_VERSION)
-DEB_KICONTHEMES_V ?= $(KICONTHEMES_VERSION)
+DEB_KICONTHEMES_V ?= $(KICONTHEMES_VERSION)+ios1
 
 kiconthemes-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kiconthemes))

@@ -17,7 +17,7 @@ endif
 
 SUBPROJECTS += karchive
 KARCHIVE_VERSION = $(KF6_VERSION)
-DEB_KARCHIVE_V ?= $(KARCHIVE_VERSION)
+DEB_KARCHIVE_V ?= $(KARCHIVE_VERSION)+ios1
 
 karchive-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,karchive))

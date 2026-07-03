@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS   += dconf
 DCONF_VERSION := 0.40.0
-DEB_DCONF_V   ?= $(DCONF_VERSION)
+DEB_DCONF_V   ?= $(DCONF_VERSION)+ios1
 
 dconf-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/dconf/$(shell echo $(DCONF_VERSION) | cut -f-2 -d.)/dconf-$(DCONF_VERSION).tar.xz)

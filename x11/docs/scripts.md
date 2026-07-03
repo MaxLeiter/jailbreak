@@ -103,5 +103,34 @@ end-to-end):
 - To extend unification into the container, add `x11/lib` to the relevant
   `docker run -v` mounts, then the in-container scripts can source `xlib.sh` too.
 
+## Version marking (`+iosN`)
+
+Every upstream package we rebuild for iOS carries a build marker appended to its
+deb version — the house style is `+ios1` (older tracks used `+wl1`, `+angle1`,
+`+rootless1`, `+xios1`, `+es3-3`; all equivalent in intent). This makes our deb
+unambiguously *our* build and sorts it above a same-named upstream deb
+(`2.52.0+ios1` > `2.52.0` and > `2.52.0-3` upstream revision). Our own originals
+(`iosc`, `iosc-shell`, `xios-*`, `com.max.*`, `libgtkintl`, `bun-preflight`,
+`x11-fonts-sf`, `qt-wayland-gl-smoke`) keep their own versions and are **not**
+marked.
+
+Where it lives:
+- **In recipes** (the source of truth): on the deb-version seam
+  `DEB_<PKG>_V ?= $(<PKG>_VERSION)+ios1`. Never append to the upstream
+  `<PKG>_VERSION` var itself — that drives the source-tarball URL/dir and would
+  break the download. Revision-suffixed recipes keep the revision first
+  (`$(QTBASE_VERSION)-3+ios1`). `xmkdeb` reads the resulting version straight
+  from `DEBIAN/control`, so a rebuilt deb inherits the marker automatically.
+- **In the shipped debs**: the ~300 already-published debs were back-filled once
+  by a repack that re-tars each archive with the new `Version:` and renames the
+  file. The payload (every Mach-O and its DER code signature) is byte-identical
+  across the repack — only the deb wrapper and `DEBIAN/control` change — so
+  signatures survive untouched. Dependency resolution is unaffected: the repo has
+  zero `(= x)` / `(>= x)` version pins, and the `xios-*` metas depend on bare
+  names.
+
+When adding a new upstream port, set `DEB_<PKG>_V ?= $(<PKG>_VERSION)+ios1` in its
+recipe and it ships marked from the first build — no repack needed.
+
 Always **skip files with uncommitted changes** (concurrent edits); migrate a dirty
 script the next time it is touched rather than sweeping it.

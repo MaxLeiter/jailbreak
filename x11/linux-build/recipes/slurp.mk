@@ -23,7 +23,7 @@ endif
 
 SUBPROJECTS   += slurp
 SLURP_VERSION := 1.5.0
-DEB_SLURP_V   ?= $(SLURP_VERSION)
+DEB_SLURP_V   ?= $(SLURP_VERSION)+ios1
 
 slurp-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/emersion/slurp/releases/download/v$(SLURP_VERSION)/slurp-$(SLURP_VERSION).tar.gz)

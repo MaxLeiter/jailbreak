@@ -13,7 +13,7 @@ endif
 SUBPROJECTS           += gnome-autoar
 GNOME-AUTOAR_MAJOR_V  := 0.4
 GNOME-AUTOAR_VERSION  := $(GNOME-AUTOAR_MAJOR_V).5
-DEB_GNOME-AUTOAR_V    ?= $(GNOME-AUTOAR_VERSION)
+DEB_GNOME-AUTOAR_V    ?= $(GNOME-AUTOAR_VERSION)+ios1
 
 gnome-autoar-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-autoar/$(GNOME-AUTOAR_MAJOR_V)/gnome-autoar-$(GNOME-AUTOAR_VERSION).tar.xz)

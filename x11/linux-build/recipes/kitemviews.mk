@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += kitemviews
 KITEMVIEWS_VERSION = $(KF6_VERSION)
-DEB_KITEMVIEWS_V ?= $(KITEMVIEWS_VERSION)
+DEB_KITEMVIEWS_V ?= $(KITEMVIEWS_VERSION)+ios1
 
 kitemviews-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kitemviews))

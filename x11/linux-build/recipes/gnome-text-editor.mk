@@ -15,7 +15,7 @@ endif
 SUBPROJECTS               += gnome-text-editor
 GNOME-TEXT-EDITOR_MAJOR_V := 46
 GNOME-TEXT-EDITOR_VERSION := $(GNOME-TEXT-EDITOR_MAJOR_V).3
-DEB_GNOME-TEXT-EDITOR_V   ?= $(GNOME-TEXT-EDITOR_VERSION)
+DEB_GNOME-TEXT-EDITOR_V   ?= $(GNOME-TEXT-EDITOR_VERSION)+ios1
 
 gnome-text-editor-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-text-editor/$(GNOME-TEXT-EDITOR_MAJOR_V)/gnome-text-editor-$(GNOME-TEXT-EDITOR_VERSION).tar.xz)

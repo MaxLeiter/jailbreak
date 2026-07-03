@@ -22,7 +22,7 @@ endif
 
 SUBPROJECTS     += libical
 LIBICAL_VERSION := 3.0.17
-DEB_LIBICAL_V   ?= $(LIBICAL_VERSION)
+DEB_LIBICAL_V   ?= $(LIBICAL_VERSION)+ios1
 
 libical-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/libical/libical/releases/download/v$(LIBICAL_VERSION)/libical-$(LIBICAL_VERSION).tar.gz)

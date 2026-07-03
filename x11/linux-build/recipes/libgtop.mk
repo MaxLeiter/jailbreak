@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS     += libgtop
 LIBGTOP_VERSION := 2.41.3
-DEB_LIBGTOP_V   ?= $(LIBGTOP_VERSION)
+DEB_LIBGTOP_V   ?= $(LIBGTOP_VERSION)+ios1
 
 libgtop-setup: setup
 	mkdir -p $(BUILD_WORK)/libgtop

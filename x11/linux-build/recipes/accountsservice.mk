@@ -14,7 +14,7 @@ endif
 
 SUBPROJECTS      += accountsservice
 ACCOUNTSSERVICE_VERSION := 23.13.9
-DEB_ACCOUNTSSERVICE_V   ?= $(ACCOUNTSSERVICE_VERSION)
+DEB_ACCOUNTSSERVICE_V   ?= $(ACCOUNTSSERVICE_VERSION)+ios1
 
 accountsservice-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/accountsservice/accountsservice-$(ACCOUNTSSERVICE_VERSION).tar.xz)

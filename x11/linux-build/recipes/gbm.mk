@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += gbm
 GBM_VERSION := 21.0.0
-DEB_GBM_V   ?= $(GBM_VERSION)
+DEB_GBM_V   ?= $(GBM_VERSION)+ios1
 
 gbm-setup: setup
 	rm -rf $(BUILD_WORK)/gbm

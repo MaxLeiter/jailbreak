@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS += plasma-wayland-protocols
 PLASMAWAYLANDPROTOCOLS_VERSION = $(PWP_VERSION)
-DEB_PLASMAWAYLANDPROTOCOLS_V ?= $(PLASMAWAYLANDPROTOCOLS_VERSION)
+DEB_PLASMAWAYLANDPROTOCOLS_V ?= $(PLASMAWAYLANDPROTOCOLS_VERSION)+ios1
 
 plasma-wayland-protocols-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/plasma-wayland-protocols/plasma-wayland-protocols-$(PWP_VERSION).tar.xz)

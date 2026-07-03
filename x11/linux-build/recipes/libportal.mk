@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS        += libportal
 LIBPORTAL_VERSION  := 0.7.1
-DEB_LIBPORTAL_V    ?= $(LIBPORTAL_VERSION)
+DEB_LIBPORTAL_V    ?= $(LIBPORTAL_VERSION)+ios1
 
 libportal-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/flatpak/libportal/releases/download/$(LIBPORTAL_VERSION)/libportal-$(LIBPORTAL_VERSION).tar.xz)

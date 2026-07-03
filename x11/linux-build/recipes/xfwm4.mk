@@ -8,7 +8,7 @@ endif
 SUBPROJECTS   += xfwm4
 XFWM4_MAJOR_V := 4.16
 XFWM4_VERSION := $(XFWM4_MAJOR_V).1
-DEB_XFWM4_V   ?= $(XFWM4_VERSION)
+DEB_XFWM4_V   ?= $(XFWM4_VERSION)+ios1
 
 xfwm4-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/xfwm4/$(XFWM4_MAJOR_V)/xfwm4-$(XFWM4_VERSION).tar.bz2)

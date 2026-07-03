@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS += ki18n
 KI18N_VERSION = $(KF6_VERSION)
-DEB_KI18N_V ?= $(KI18N_VERSION)
+DEB_KI18N_V ?= $(KI18N_VERSION)+ios1
 
 ki18n-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,ki18n))

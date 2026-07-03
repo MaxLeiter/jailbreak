@@ -16,7 +16,7 @@ endif
 
 SUBPROJECTS += kidletime
 KIDLETIME_VERSION = $(KF6_VERSION)
-DEB_KIDLETIME_V ?= $(KIDLETIME_VERSION)
+DEB_KIDLETIME_V ?= $(KIDLETIME_VERSION)+ios1
 
 kidletime-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kidletime))

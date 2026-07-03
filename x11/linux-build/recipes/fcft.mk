@@ -15,7 +15,7 @@ endif
 SUBPROJECTS   += fcft
 FCFT_MAJOR_V  := 4
 FCFT_VERSION  := 3.3.3
-DEB_FCFT_V    ?= $(FCFT_VERSION)
+DEB_FCFT_V    ?= $(FCFT_VERSION)+ios1
 
 fcft-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/fcft/releases/download/$(FCFT_VERSION)/fcft-$(FCFT_VERSION).tar.gz)

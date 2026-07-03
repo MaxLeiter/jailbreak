@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += kdbusaddons
 KDBUSADDONS_VERSION = $(KF6_VERSION)
-DEB_KDBUSADDONS_V ?= $(KDBUSADDONS_VERSION)
+DEB_KDBUSADDONS_V ?= $(KDBUSADDONS_VERSION)+ios1
 
 kdbusaddons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kdbusaddons))

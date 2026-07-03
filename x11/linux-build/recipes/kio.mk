@@ -19,7 +19,7 @@ endif
 
 SUBPROJECTS += kio
 KIO_VERSION = $(KF6_VERSION)
-DEB_KIO_V ?= $(KIO_VERSION)
+DEB_KIO_V ?= $(KIO_VERSION)+ios1
 
 kio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kio))

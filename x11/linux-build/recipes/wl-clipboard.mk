@@ -21,7 +21,7 @@ endif
 
 SUBPROJECTS       += wl-clipboard
 WL_CLIPBOARD_VERSION := 2.2.1
-DEB_WL_CLIPBOARD_V   ?= $(WL_CLIPBOARD_VERSION)
+DEB_WL_CLIPBOARD_V   ?= $(WL_CLIPBOARD_VERSION)+ios1
 
 wl-clipboard-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v$(WL_CLIPBOARD_VERSION).tar.gz)

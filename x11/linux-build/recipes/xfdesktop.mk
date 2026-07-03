@@ -7,7 +7,7 @@ endif
 SUBPROJECTS       += xfdesktop
 XFDESKTOP_MAJOR_V := 4.16
 XFDESKTOP_VERSION := $(XFDESKTOP_MAJOR_V).1
-DEB_XFDESKTOP_V   ?= $(XFDESKTOP_VERSION)
+DEB_XFDESKTOP_V   ?= $(XFDESKTOP_VERSION)+ios1
 
 xfdesktop-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/xfdesktop/$(XFDESKTOP_MAJOR_V)/xfdesktop-$(XFDESKTOP_VERSION).tar.bz2)

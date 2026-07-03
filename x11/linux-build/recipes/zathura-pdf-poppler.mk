@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS       += zathura-pdf-poppler
 ZPP_VERSION       := 0.3.3
-DEB_ZPP_V         ?= $(ZPP_VERSION)
+DEB_ZPP_V         ?= $(ZPP_VERSION)+ios1
 
 zathura-pdf-poppler-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://pwmt.org/projects/zathura-pdf-poppler/download/zathura-pdf-poppler-$(ZPP_VERSION).tar.xz)

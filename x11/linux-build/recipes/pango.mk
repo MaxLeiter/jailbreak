@@ -5,7 +5,7 @@ endif
 SUBPROJECTS    += pango
 PANGO_MAJOR_V  := 1.50
 PANGO_VERSION  := $(PANGO_MAJOR_V).14
-DEB_LIBPANGO_V ?= $(PANGO_VERSION)
+DEB_LIBPANGO_V ?= $(PANGO_VERSION)+ios1
 
 pango-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/pango/$(PANGO_MAJOR_V)/pango-$(PANGO_VERSION).tar.xz)

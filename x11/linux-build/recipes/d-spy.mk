@@ -18,7 +18,7 @@ endif
 SUBPROJECTS       += d-spy
 D-SPY_MAJOR_V     := 1.10
 D-SPY_VERSION     := $(D-SPY_MAJOR_V).0
-DEB_D-SPY_V       ?= $(D-SPY_VERSION)
+DEB_D-SPY_V       ?= $(D-SPY_VERSION)+ios1
 
 d-spy-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/d-spy/$(D-SPY_MAJOR_V)/d-spy-$(D-SPY_VERSION).tar.xz)

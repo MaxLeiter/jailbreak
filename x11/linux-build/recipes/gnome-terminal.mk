@@ -16,7 +16,7 @@ endif
 SUBPROJECTS             += gnome-terminal
 GNOME-TERMINAL_MAJOR_V  := 3.50
 GNOME-TERMINAL_VERSION  := $(GNOME-TERMINAL_MAJOR_V).1
-DEB_GNOME-TERMINAL_V    ?= $(GNOME-TERMINAL_VERSION)
+DEB_GNOME-TERMINAL_V    ?= $(GNOME-TERMINAL_VERSION)+ios1
 
 gnome-terminal-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-terminal/$(GNOME-TERMINAL_MAJOR_V)/gnome-terminal-$(GNOME-TERMINAL_VERSION).tar.xz)

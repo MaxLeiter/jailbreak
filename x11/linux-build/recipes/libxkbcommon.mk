@@ -19,7 +19,7 @@ endif
 
 SUBPROJECTS        += libxkbcommon
 LIBXKBCOMMON_VERSION := 1.7.0
-DEB_LIBXKBCOMMON_V ?= $(LIBXKBCOMMON_VERSION)
+DEB_LIBXKBCOMMON_V ?= $(LIBXKBCOMMON_VERSION)+ios1
 
 libxkbcommon-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xkbcommon.org/download/libxkbcommon-$(LIBXKBCOMMON_VERSION).tar.xz)

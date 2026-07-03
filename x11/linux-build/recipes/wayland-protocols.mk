@@ -16,7 +16,7 @@ SUBPROJECTS            += wayland-protocols
 # references color-management-v1 (added 1.41) + xdg-toplevel-tag-v1 (>=1.43 gate). Pure data,
 # backward compatible; only foot/imv consume it in the wayland volume.
 WAYLANDPROTOCOLS_VERSION := 1.44
-DEB_WAYLANDPROTOCOLS_V ?= $(WAYLANDPROTOCOLS_VERSION)
+DEB_WAYLANDPROTOCOLS_V ?= $(WAYLANDPROTOCOLS_VERSION)+ios1
 
 wayland-protocols-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/$(WAYLANDPROTOCOLS_VERSION)/downloads/wayland-protocols-$(WAYLANDPROTOCOLS_VERSION).tar.xz)

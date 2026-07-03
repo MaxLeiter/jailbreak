@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += kcolorscheme
 KCOLORSCHEME_VERSION = $(KF6_VERSION)
-DEB_KCOLORSCHEME_V ?= $(KCOLORSCHEME_VERSION)
+DEB_KCOLORSCHEME_V ?= $(KCOLORSCHEME_VERSION)+ios1
 
 kcolorscheme-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcolorscheme))

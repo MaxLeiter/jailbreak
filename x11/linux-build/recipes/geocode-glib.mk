@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS         += geocode-glib
 GEOCODE-GLIB_VERSION := 3.26.4
-DEB_GEOCODE-GLIB_V  ?= $(GEOCODE-GLIB_VERSION)
+DEB_GEOCODE-GLIB_V  ?= $(GEOCODE-GLIB_VERSION)+ios1
 
 geocode-glib-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/geocode-glib/$(shell echo $(GEOCODE-GLIB_VERSION) | cut -f-2 -d.)/geocode-glib-$(GEOCODE-GLIB_VERSION).tar.xz)

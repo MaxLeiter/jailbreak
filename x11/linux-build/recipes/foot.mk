@@ -20,7 +20,7 @@ endif
 
 SUBPROJECTS  += foot
 FOOT_VERSION := 1.27.0
-DEB_FOOT_V   ?= $(FOOT_VERSION)
+DEB_FOOT_V   ?= $(FOOT_VERSION)+ios1
 
 foot-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/foot/releases/download/$(FOOT_VERSION)/foot-$(FOOT_VERSION).tar.gz)

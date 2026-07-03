@@ -25,7 +25,7 @@ endif
 
 SUBPROJECTS  += mako
 MAKO_VERSION := 1.9.0
-DEB_MAKO_V   ?= $(MAKO_VERSION)
+DEB_MAKO_V   ?= $(MAKO_VERSION)+ios1
 
 mako-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/emersion/mako/releases/download/v$(MAKO_VERSION)/mako-$(MAKO_VERSION).tar.gz)

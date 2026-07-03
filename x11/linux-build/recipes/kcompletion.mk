@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += kcompletion
 KCOMPLETION_VERSION = $(KF6_VERSION)
-DEB_KCOMPLETION_V ?= $(KCOMPLETION_VERSION)
+DEB_KCOMPLETION_V ?= $(KCOMPLETION_VERSION)+ios1
 
 kcompletion-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcompletion))

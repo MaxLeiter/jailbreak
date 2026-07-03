@@ -8,7 +8,7 @@ endif
 SUBPROJECTS     += libwnck3
 LIBWNCK3_MAJOR_V := 3.36
 LIBWNCK3_VERSION := $(LIBWNCK3_MAJOR_V).0
-DEB_LIBWNCK3_V   ?= $(LIBWNCK3_VERSION)
+DEB_LIBWNCK3_V   ?= $(LIBWNCK3_VERSION)+ios1
 
 libwnck3-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/libwnck/$(LIBWNCK3_MAJOR_V)/libwnck-$(LIBWNCK3_VERSION).tar.xz)

@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS += kcoreaddons
 KCOREADDONS_VERSION = $(KF6_VERSION)
-DEB_KCOREADDONS_V ?= $(KCOREADDONS_VERSION)
+DEB_KCOREADDONS_V ?= $(KCOREADDONS_VERSION)+ios1
 
 kcoreaddons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcoreaddons))

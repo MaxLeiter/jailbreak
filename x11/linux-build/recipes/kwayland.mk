@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS += kwayland
 KWAYLAND_VERSION = $(PLASMA_VERSION)
-DEB_KWAYLAND_V ?= $(KWAYLAND_VERSION)
+DEB_KWAYLAND_V ?= $(KWAYLAND_VERSION)+ios1
 
 kwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kwayland))

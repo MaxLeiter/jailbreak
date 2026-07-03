@@ -12,7 +12,7 @@ endif
 
 SUBPROJECTS += kauth
 KAUTH_VERSION = $(KF6_VERSION)
-DEB_KAUTH_V ?= $(KAUTH_VERSION)
+DEB_KAUTH_V ?= $(KAUTH_VERSION)+ios1
 
 kauth-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kauth))

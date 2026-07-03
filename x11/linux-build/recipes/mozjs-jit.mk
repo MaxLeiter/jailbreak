@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS   += mozjs-jit
 MOZJSJIT_VERSION := 115.12.0
-DEB_MOZJSJIT_V   ?= $(MOZJSJIT_VERSION)
+DEB_MOZJSJIT_V   ?= $(MOZJSJIT_VERSION)+ios1
 MOZJSJIT_WORK  := $(BUILD_WORK)/mozjs-jit
 
 mozjs-jit-setup: setup

@@ -8,7 +8,7 @@ endif
 SUBPROJECTS           += xfce4-settings
 XFCE4SETTINGS_MAJOR_V := 4.16
 XFCE4SETTINGS_VERSION := $(XFCE4SETTINGS_MAJOR_V).5
-DEB_XFCE4SETTINGS_V   ?= $(XFCE4SETTINGS_VERSION)
+DEB_XFCE4SETTINGS_V   ?= $(XFCE4SETTINGS_VERSION)+ios1
 
 xfce4-settings-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/xfce4-settings/$(XFCE4SETTINGS_MAJOR_V)/xfce4-settings-$(XFCE4SETTINGS_VERSION).tar.bz2)

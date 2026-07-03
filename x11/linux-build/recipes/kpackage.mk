@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS += kpackage
 KPACKAGE_VERSION = $(KF6_VERSION)
-DEB_KPACKAGE_V ?= $(KPACKAGE_VERSION)
+DEB_KPACKAGE_V ?= $(KPACKAGE_VERSION)+ios1
 
 kpackage-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kpackage))

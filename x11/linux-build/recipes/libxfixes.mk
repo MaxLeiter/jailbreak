@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS       += libxfixes
 LIBXFIXES_VERSION := 6.0.1
-DEB_LIBXFIXES_V   ?= $(LIBXFIXES_VERSION)
+DEB_LIBXFIXES_V   ?= $(LIBXFIXES_VERSION)+ios1
 
 libxfixes-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.x.org/releases/individual/lib/libXfixes-$(LIBXFIXES_VERSION).tar.xz)

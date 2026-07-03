@@ -4,7 +4,7 @@ endif
 
 SUBPROJECTS        += graphene
 GRAPHENE_VERSION   := 1.10.8
-DEB_LIBGRAPHENE_V  ?= $(GRAPHENE_VERSION)
+DEB_LIBGRAPHENE_V  ?= $(GRAPHENE_VERSION)+ios1
 
 graphene-setup: setup
 	$(call GITHUB_ARCHIVE,ebassi,graphene,$(GRAPHENE_VERSION),$(GRAPHENE_VERSION))

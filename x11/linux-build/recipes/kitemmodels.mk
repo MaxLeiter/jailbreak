@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS += kitemmodels
 KITEMMODELS_VERSION = $(KF6_VERSION)
-DEB_KITEMMODELS_V ?= $(KITEMMODELS_VERSION)
+DEB_KITEMMODELS_V ?= $(KITEMMODELS_VERSION)+ios1
 
 kitemmodels-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kitemmodels))
