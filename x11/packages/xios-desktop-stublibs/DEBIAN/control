@@ -1,0 +1,23 @@
+Package: xios-desktop-stublibs
+Name: Xios desktop compatibility stub libraries
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libglib2.0-0
+Section: X11
+Priority: optional
+Description: iOS stub libraries for the GNOME desktop stack (udev/gudev/pwquality/gsound)
+ Four small ABI-compatible stub libraries that stand in for Linux subsystems the GNOME
+ desktop links but that have no implementation on a jailbroken iPad. They export the real
+ upstream public ABI (built against the real headers) and provide small iOS-safe behavior:
+ .
+   libgudev-1.0    enumerates no udev devices (input comes via Wayland/Mutter)
+   libudev         hwdb returns empty (gnome-bluetooth pin.c name lookup)
+   libpwquality    password scoring and random generation without cracklib
+   libgsound       best-effort short system sounds without libcanberra
+ .
+ Required at runtime by gnome-control-center (GNOME Settings) and gnome-bluetooth. Building
+ the real Linux libraries is impossible/impractical on iOS (no udev/sysfs, cracklib+zlib,
+ libcanberra), and the stubbed behaviour is correct for a tablet. Built for iPadOS/iOS
+ rootless (palera1n/Dopamine).

@@ -1,0 +1,18 @@
+Package: gnome-control-center
+Version: @DEB_GCC_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-control-center
+Depends: libgtk-4-1, libadwaita-1-0, libgnome-desktop-4-2, gsettings-desktop-schemas, libcolord2, libaccountsservice0, libpolkit-gobject-1-0, libgcr-4-4, libpulse0, libupower-glib3, gnome-settings-daemon, dconf, xios-desktop-stublibs, libgtkintl
+Description: GNOME Settings for the Xios desktop
+ gnome-control-center 46 (GNOME Settings) built for rootless iOS. The
+ config panels that make sense on a Wayland tablet are built (appearance/
+ background, display, keyboard, mouse, sound, notifications, search,
+ applications, privacy, universal access, power, search, sharing and sound);
+ panels whose backends have no iOS implementation are compiled out: network
+ and mobile (NetworkManager/ModemManager), printers (CUPS), online accounts
+ (gnome-online-accounts) and wacom. The Bluetooth panel is an optional build
+ (gnome-bluetooth) backed by the xios-bluez-stub org.bluez bridge. Built for
+ iPadOS/iOS rootless (palera1n/Dopamine).
