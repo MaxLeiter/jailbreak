@@ -288,7 +288,7 @@ def html_depiction(ctrl, meta, size):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#000000">
-<title>{name} · {html.escape(ORIGIN)}</title><link rel="icon" href="../favicon.ico">{PAGE_CSS}{HEAD_JS}</head>
+<title>{name} · {html.escape(ORIGIN)}</title><link rel="icon" href="../favicon.ico">{head_links("../")}{HEAD_JS}</head>
 <body><div class="wrap">
   <a class="back" href="../index.html">{BACK_SVG}<span>{html.escape(ORIGIN)}</span></a>
   <header class="masthead"><img src="../icons/{pid}.png" alt="">
@@ -299,10 +299,17 @@ def html_depiction(ctrl, meta, size):
 </div>{THEME_JS}</body></html>"""
 
 # ── shared CSS ───────────────────────────────────────────────────────────────
-PAGE_CSS = f"""<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">
-<style>
+FONT_LINKS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">')
+
+def head_links(prefix=""):
+    # Font <link>s stay inline (tiny); the stylesheet is one shared, cacheable file
+    # (site.css) instead of a ~7 KB <style> block duplicated into every page.
+    return f'{FONT_LINKS}<link rel="stylesheet" href="{prefix}site.css">'
+
+# Written once to repo/site.css by main(); linked by index + every depiction.
+SITE_CSS = f"""
   :root{{
     color-scheme:dark;
     --bg:#000; --surface:#0a0a0a; --surface-2:#141414;
@@ -422,7 +429,7 @@ PAGE_CSS = f"""<link rel="preconnect" href="https://fonts.googleapis.com">
       animation-delay:calc(var(--i,0)*38ms)}}
     @keyframes rise{{to{{opacity:1;transform:none}}}}
   }}
-</style>"""
+"""
 
 # left-chevron used by the depiction "back" link
 BACK_SVG = ('<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">'
@@ -552,7 +559,7 @@ def write_index(pkgs):
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#000000">
-<title>{html.escape(ORIGIN)}</title><link rel="icon" href="favicon.ico">{PAGE_CSS}{HEAD_JS}</head>
+<title>{html.escape(ORIGIN)}</title><link rel="icon" href="favicon.ico">{head_links("")}{HEAD_JS}</head>
 <body><div class="wrap">
   <header class="masthead reveal" style="--i:0"><img src="CydiaIcon.png" alt="">
     <div><h1>{html.escape(ORIGIN)}</h1>
@@ -578,6 +585,9 @@ def write_index(pkgs):
 def main():
     for d in ("icons", "banners", "depictions"):
         os.makedirs(os.path.join(REPO, d), exist_ok=True)
+
+    # one shared, cacheable stylesheet for index + all depictions (was inlined per page)
+    open(os.path.join(REPO, "site.css"), "w").write(SITE_CSS)
 
     # repo icon from the website favicon
     if os.path.isdir(FAVICON_SRC):
