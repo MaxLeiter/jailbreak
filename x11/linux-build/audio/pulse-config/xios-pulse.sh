@@ -5,9 +5,9 @@
 export PULSE_SERVER="unix:/var/jb/tmp/pulse/native"
 export PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-/var/jb/tmp/pulse}"
 
-# Session launchers call this after xios_audio_start (both are safe to call
-# unconditionally; each is a no-op when its daemon is already up). No pgrep on
-# device, hence ps|grep.
+# Session launchers call this after xios_audio_start/xios_media_start (all are
+# safe to call unconditionally; each is a no-op when its daemon is already up).
+# No pgrep on device, hence ps|grep.
 xios_pulse_start() {
     # The hardware half first: module-xios-sink reconnects on its own, but
     # starting xios-audiod here makes one call sufficient for a full stack.
@@ -18,6 +18,17 @@ xios_pulse_start() {
             # but background it anyway: any future --foreground default or a
             # pre-fork stall (session activation) must not block the session.
             xios-audiod >/var/jb/tmp/xios-audiod.log 2>&1 &
+            sleep 1
+        fi
+    fi
+
+    # The capture half: module-xios-source reconnects on its own, but starting
+    # xios-mediad here makes PulseAudio expose a live default source without
+    # requiring apps to know about the Xios media socket.
+    if command -v xios-mediad >/dev/null 2>&1; then
+        if ! ps aux 2>/dev/null | grep -v grep | grep -q "xios-mediad"; then
+            rm -f "${XIOS_MEDIA_MIC_SERVER:-/var/jb/tmp/xios-media-mic.sock}" 2>/dev/null
+            xios-mediad >/var/jb/tmp/xios-mediad.log 2>&1 &
             sleep 1
         fi
     fi

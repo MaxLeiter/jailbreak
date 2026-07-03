@@ -97,7 +97,8 @@ Pick the compatibility surface based on target apps:
 
 - Fastest: configure apps that support `libao`, PortAudio, SDL2, or mpg123 CoreAudio output.
 - Implemented now: the real PulseAudio daemon exposes `/var/jb/tmp/pulse/native`;
-  `module-xios-sink` forwards mixed PCM to `xios-audiod`.
+  `module-xios-sink` forwards mixed PCM to `xios-audiod`, and
+  `module-xios-source` exposes `xios-mediad` microphone capture as `xios_mic`.
 - Lower-level option: provide a minimal ALSA PCM plugin that forwards to
   `xios-audiod`.
 - Defer PipeWire unless GNOME portal/screencast/media-session work becomes the main target;
@@ -109,9 +110,10 @@ to talk to it through `libpulse`, and a Unix socket maps naturally onto the root
 
 ### A3: input and session polish
 
-Microphone capture can come later. It needs a deliberate permission story and probably a
-separate route through `AVAudioSession` or RemoteIO input. Treat it as a different feature
-from playback.
+Microphone capture is implemented through `xios-mediad` plus the PulseAudio
+`module-xios-source` adapter. Camera capture is a separate desktop-integration
+feature: the right desktop surface is PipeWire/portal camera or a GStreamer
+source plugin backed by the existing Xios app camera broker/media framing.
 
 Longer-term polish:
 

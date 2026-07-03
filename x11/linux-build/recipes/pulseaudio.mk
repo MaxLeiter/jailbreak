@@ -8,12 +8,15 @@ endif
 # hard-requires libpulse + libpulse-mainloop-glib >= 12.99.3; Procursus has no
 # PulseAudio). Now the daemon is on: gvc is a full native-protocol client
 # (context/introspect/subscribe), so a real PA server must answer it. The server's hardware output is
-# module-xios-sink (injected by recipes/pulseaudio-ios-fixes.sh), which
-# forwards the mixed stream to xios-audiod's Unix socket; xios-audiod (the
-# audio track's fakesigned CoreAudio RemoteIO daemon, package xios-audio-server)
-# keeps sole ownership of the device. Pipeline:
+# module-xios-sink/module-xios-source (injected by
+# recipes/pulseaudio-ios-fixes.sh), which forward playback to xios-audiod and
+# capture from xios-mediad. The Xios daemons keep sole ownership of the iOS
+# device APIs. Playback pipeline:
 #   gvc / GTK apps -> libpulse -> pulseaudio -> module-xios-sink
 #     -> /var/jb/tmp/xios-audio.sock -> xios-audiod -> RemoteIO -> speakers
+# Capture pipeline:
+#   GTK/GStreamer/parec -> libpulse -> pulseaudio -> module-xios-source
+#     -> /var/jb/tmp/xios-media-mic.sock -> xios-mediad -> RemoteIO input
 #
 # PA builds on macOS (Homebrew) with the daemon, so the Darwin server path is
 # exercised upstream; the only iOS delta is the module set (no CoreAudio HAL —
@@ -22,15 +25,15 @@ endif
 # Packaging split (Debian-shaped):
 #   libpulse0         client dylibs + private libpulsecommon (UNCHANGED content)
 #   libpulse-dev      headers, .pc, unversioned symlinks
-#   pulseaudio        daemon, modules (incl. module-xios-sink), libpulsecore,
+#   pulseaudio        daemon, modules (incl. module-xios-sink/source), libpulsecore,
 #                     etc/pulse configs, profile.d/xios-pulse.sh
 #   pulseaudio-utils  pactl/pacat/paplay/... debug + scripting tools
 #
 # The daemon needs ltdl (module loader) -> depends on the libtool subproject.
 # adrian-aec=true because meson hard-errors a daemon build with zero echo
 # cancellers (speex/webrtc are disabled); adrian is bundled dependency-free C.
-# Requires /work/audio mounted (module-xios-sink.c, xios_audio_protocol.h,
-# pulse-config/) — see build-audio-server.sh.
+# Requires /work/audio and /work/media mounted (module-xios-*.c, protocol
+# headers, pulse-config/) — see build-audio-server.sh.
 
 SUBPROJECTS         += pulseaudio
 PULSEAUDIO_VERSION  := 17.0
@@ -39,7 +42,7 @@ DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-6+ios1
 pulseaudio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-$(PULSEAUDIO_VERSION).tar.xz)
 	$(call EXTRACT_TAR,pulseaudio-$(PULSEAUDIO_VERSION).tar.xz,pulseaudio-$(PULSEAUDIO_VERSION),pulseaudio)
-	bash /work/recipes/pulseaudio-ios-fixes.sh $(BUILD_WORK)/pulseaudio /work/audio
+	bash /work/recipes/pulseaudio-ios-fixes.sh $(BUILD_WORK)/pulseaudio /work/audio /work/media
 	rm -rf $(BUILD_WORK)/pulseaudio/build
 	mkdir -p $(BUILD_WORK)/pulseaudio/build
 	echo -e "[host_machine]\n \
@@ -137,7 +140,7 @@ pulseaudio-package: pulseaudio-stage
 	cp -a $(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse-simple.dylib \
 		$(BUILD_DIST)/libpulse-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib 2>/dev/null || true
 
-	# pulseaudio — daemon + private core lib + modules (module-xios-sink among
+	# pulseaudio — daemon + private core lib + modules (module-xios-sink/source among
 	# them) + our iOS configs. Ship the stock etc/pulse tree first, then force
 	# the Xios daemon.conf/default.pa/client.conf over it.
 	#

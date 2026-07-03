@@ -26,6 +26,25 @@ gvc (gnome-shell volume UI)      GTK/GNOME apps, paplay, gst pulsesink...
         AVAudioSession + CoreAudio RemoteIO
                       |
                 iPad speakers / current route
+
+GNOME/GTK capture goes through the same PA daemon:
+
+```
+GNOME/GTK apps, GStreamer pulsesrc, parec...
+                      |
+             PA native protocol, unix:/var/jb/tmp/pulse/native
+                      |
+              pulseaudio daemon
+                      |
+             module-xios-source                (in the pulseaudio deb)
+        continuous drain, 48 kHz mono f32le, XIOS media framing
+                      |
+          unix:/var/jb/tmp/xios-media-mic.sock
+                      |
+              xios-mediad                      (xios-media-server deb)
+        AVAudioSession + RemoteIO input
+                      |
+                 iPad microphone
 ```
 
 `xios-audiod` keeps sole ownership of the device and the entitlement story
@@ -46,19 +65,20 @@ does it through libpulse, libcanberra, or GStreamer's pulsesink, all of which
 speak the native protocol.
 
 So the middle of the pipeline is the real PulseAudio 17 daemon, built from
-the same source tree as the already-shipped client libs, with one custom
-sink module as its hardware output. The alternative (per-app patches onto
-SDL/libao/CoreAudio backends) does not reach gvc at all.
+the same source tree as the already-shipped client libs, with custom Xios
+sink/source modules as its hardware-facing edge. The alternative (per-app
+patches onto SDL/libao/CoreAudio backends) does not reach gvc at all.
 
 ### 2. libpulse-simple is the real PulseAudio library.
 
 There is no Xios `libpulse-simple` compatibility package in the public stack.
 The PulseAudio build ships the real `libpulse-simple.0.dylib`, and
 `xios-audio-session.sh` no longer points `PULSE_SERVER` at the XIOA socket.
-Real libpulse clients use `/var/jb/tmp/pulse/native`; the XIOA socket stays
-reserved for `module-xios-sink`, `xios-audiod`, and the local smoke-test client.
+Real libpulse clients use `/var/jb/tmp/pulse/native`; the XIOA/Xios media
+sockets stay reserved for `module-xios-sink`, `module-xios-source`, the Xios
+daemons, and local smoke-test clients.
 
-### 3. The missing piece was a PA server with a CoreAudio-daemon sink. Built.
+### 3. The missing playback piece was a PA server with a CoreAudio-daemon sink. Built.
 
 `module-xios-sink` (`linux-build/audio/module-xios-sink.c`), compiled inside
 the PA tree by the extended recipe. Design points:
@@ -80,25 +100,37 @@ the PA tree by the extended recipe. Design points:
 - **iOS module set.** Upstream's darwin modules are macOS-only
   (module-coreaudio-* speak the CoreAudio HAL, `AudioHardware.h`, absent in
   the iOS SDK). `recipes/pulseaudio-ios-fixes.sh` swaps that block for
-  module-xios-sink.
+  module-xios-sink and module-xios-source.
 
-Known, accepted v1 limits: pa_rtclock vs HAL clock drift is absorbed by the
+Known, accepted playback v1 limits: pa_rtclock vs HAL clock drift is absorbed by the
 daemon's 4 s ring rather than corrected (worst case an occasional dropped or
 repeated block after hours of playback); the trivial resampler serves
 44.1 kHz streams (speex/soxr are compiled out; revisit if music playback
-warrants it); no capture path yet (mic is a separate feature with a
-permission story, per audio-plan.md A3).
+warrants it).
+
+### 4. The microphone is a PA source, not an app-specific socket. Built.
+
+`module-xios-source` (`linux-build/audio/module-xios-source.c`) reads
+`xios-mediad`'s mic socket and exposes a normal PA source named `xios_mic`.
+It is fixed at 48 kHz mono f32le to match `xios-mediad` and sets
+`media.class = Audio/Source`, so libpulse clients, GStreamer `pulsesrc`, and
+GNOME control surfaces see a microphone without learning Xios framing.
+
+Important implementation detail: the source must continuously drain the media
+socket while connected. A timer-throttled one-frame-per-250-ms loop filled the
+socket buffer and caused `xios-mediad` to drop the PA client; the module now
+uses its read timeout for pacing and immediately wakes again while connected.
 
 ## Packaging
 
 Same recipe builds everything from one tree (`recipes/pulseaudio.mk`,
-`-Ddaemon=true`), Debian-shaped split, version 17.0-1:
+`-Ddaemon=true`), Debian-shaped split, currently `17.0-6+ios1`:
 
 | deb | contents |
 | --- | --- |
 | libpulse0 | client dylibs + private libpulsecommon (content unchanged) |
 | libpulse-dev | headers, .pc, unversioned symlinks |
-| pulseaudio | daemon, libpulsecore, modules incl. module-xios-sink, etc/pulse configs, profile.d/xios-pulse.sh. Depends: xios-audio-server, libltdl7 |
+| pulseaudio | daemon, libpulsecore, modules incl. module-xios-sink/source, etc/pulse configs, profile.d/xios-pulse.sh. Depends: xios-audio-server, xios-media-server, libltdl7 |
 | pulseaudio-utils | pactl/pacat/paplay/... |
 
 The daemon needs ltdl, so the recipe grew a dependency on the Procursus
@@ -113,8 +145,10 @@ faces an empty sink list.
 
 Driver: `linux-build/build-audio-server.sh` on procursus-vol-shell (wipes the
 client-only pulseaudio build tree when present; the recipe's `.build_complete`
-guard would otherwise skip the daemon reconfigure). It also runs
-`libtool-package`: libltdl7 must ship as a deb, not just get staged.
+guard would otherwise skip the daemon reconfigure). It also fingerprints the
+injected Xios module sources/fixes script and invalidates stale PA daemon
+builds when those sources change. It runs `libtool-package`: libltdl7 must
+ship as a deb, not just get staged.
 
 ### Cross-build gotchas (why the recipe/fixes script look the way they do)
 
@@ -138,16 +172,16 @@ guard would otherwise skip the daemon reconfigure). It also runs
   walk). Fix: `install_name_tool -add_rpath /var/jb/usr/lib/pulseaudio` on
   libpulse.0/-simple.0/-mainloop-glib.0 and the daemon binary at package
   time. dyld consults the loading dylib's own LC_RPATHs, so fixing libpulse.0
-  fixes all of its consumers transitively. 17.0-1 supersedes the 17.0 debs
-  (dpkg orders 17.0-1 above 17.0).
+  fixes all of its consumers transitively. The `+ios1` package revision
+  supersedes the earlier local 17.0 debs.
 - meson names PA modules `module-*.dylib` here and upstream sets
   `PA_SOEXT ".dylib"` on darwin, so the loader and the files agree; no rename
   needed.
 
 ## Session integration (gnome-session / launcher owner)
 
-1. Install `pulseaudio` (pulls xios-audio-server, libltdl7). Optionally
-   `pulseaudio-utils` for debugging.
+1. Install `pulseaudio` (pulls xios-audio-server, xios-media-server,
+   libltdl7). Optionally `pulseaudio-utils` for debugging.
 2. Launchers source profile.d as they already do; the only new call is
    `xios_pulse_start` (idempotent, also starts xios-audiod if needed) before
    gnome-session/gnome-shell comes up. No gsd changes: gvc in gnome-shell
@@ -155,7 +189,9 @@ guard would otherwise skip the daemon reconfigure). It also runs
 3. Expected gvc behavior: one sink named `xios`, description
    "iPad speakers (xios-audiod)"; volume slider and mute work (PA soft
    volume); output device switching UI stays single-entry (iOS owns real
-   route changes, invisible to PA, which is correct here).
+   route changes, invisible to PA, which is correct here). Expected capture
+   behavior: one default source named `xios_mic`, description
+   "iPad microphone (xios-mediad)".
 
 ## On-device validation sequence
 
@@ -165,7 +201,9 @@ apt install pulseaudio pulseaudio-utils
 xios_pulse_start
 pactl info                      # Server Name: pulseaudio, Default Sink: xios
 pactl list sinks short          # xios ... FLOAT32LE 2ch 48000Hz
+pactl list sources short        # xios_mic ... FLOAT32LE 1ch 48000Hz
 paplay /var/jb/usr/share/sounds/... .wav   # audible end to end
+timeout 3 parec --raw --format=float32le --rate=48000 --channels=1 --device=xios_mic >/var/jb/tmp/pa-mic.f32
 pactl set-sink-volume xios 50%  # audibly quieter (proves the gvc path)
 ```
 
@@ -181,4 +219,6 @@ Then the desktop: launch the GNOME session, open the shell volume slider
 - enable-shm after an on-device shm_open test between fakesigned processes.
 - Drift correction (rate-adjust the sink from xios-audiod ring depth
   feedback) only if long-session drift is audible in practice.
-- Capture (mic) per audio-plan.md A3.
+- Camera is intentionally not solved by the PA work. The desktop-facing route
+  should be PipeWire/portal camera or a GStreamer source plugin, backed by the
+  existing Xios app camera broker / media framing, not raw sockets in GNOME apps.

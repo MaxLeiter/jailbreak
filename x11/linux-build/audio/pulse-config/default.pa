@@ -16,6 +16,11 @@ load-module module-native-protocol-unix auth-anonymous=1 socket=/var/jb/tmp/puls
 load-module module-xios-sink sink_name=xios
 set-default-sink xios
 
+# The iPad microphone. xios-mediad may come up later or restart; the source
+# stays loaded and reconnects on its own.
+load-module module-xios-source source_name=xios_mic
+set-default-source xios_mic
+
 # If module-xios-sink ever fails to load, keep a null sink so clients and the
 # gvc volume UI still have something to talk to instead of erroring out.
 load-module module-always-sink

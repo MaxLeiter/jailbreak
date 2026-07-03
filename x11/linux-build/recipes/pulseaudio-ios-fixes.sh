@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pulseaudio-ios-fixes.sh <extracted pulseaudio tree> <audio source dir>
+# pulseaudio-ios-fixes.sh <extracted pulseaudio tree> <audio source dir> [media source dir]
 #
 # iOS surgery for the PulseAudio 17 DAEMON build (client libs needed none):
 #
@@ -14,6 +14,9 @@
 #    rendered/mixed/volume-applied stream to xios-audiod's Unix socket using
 #    the XIOA protocol (source lives in linux-build/audio/, shared with the
 #    xios-audiod daemon and smoke-test client).
+#
+#    module-xios-source mirrors that for capture: it reads xios-mediad's mic
+#    stream and exposes it as an ordinary PulseAudio source.
 #
 # 3. The shared sysroot carries a STUB linux/input.h (staged by the mutter
 #    track's inert libei/dma-buf shim for keycode constants), so PA's
@@ -39,8 +42,9 @@
 #    to get the executable path, which works inside the iOS sandbox.
 set -euo pipefail
 
-TREE="${1:?usage: pulseaudio-ios-fixes.sh <pulseaudio tree> <audio dir>}"
-AUDIO="${2:?usage: pulseaudio-ios-fixes.sh <pulseaudio tree> <audio dir>}"
+TREE="${1:?usage: pulseaudio-ios-fixes.sh <pulseaudio tree> <audio dir> [media dir] }"
+AUDIO="${2:?usage: pulseaudio-ios-fixes.sh <pulseaudio tree> <audio dir> [media dir] }"
+MEDIA="${3:-$AUDIO}"
 MESON="$TREE/src/modules/meson.build"
 CORE_MESON="$TREE/src/pulsecore/meson.build"
 
@@ -122,11 +126,12 @@ print("==> pulseaudio-ios-fixes: src/pulse/util.c patched")
 EOF
 fi
 
-echo "==> pulseaudio-ios-fixes: injecting module-xios-sink"
+echo "==> pulseaudio-ios-fixes: injecting Xios PulseAudio modules"
 mkdir -p "$TREE/src/modules/xios"
 cp -v "$AUDIO/module-xios-sink.c" "$AUDIO/xios_audio_protocol.h" "$TREE/src/modules/xios/"
+cp -v "$AUDIO/module-xios-source.c" "$MEDIA/xios_media_protocol.h" "$TREE/src/modules/xios/"
 
-if grep -q "module-xios-sink" "$MESON"; then
+if grep -q "module-xios-source" "$MESON"; then
   echo "==> pulseaudio-ios-fixes: meson.build already patched"
   exit 0
 fi
@@ -146,9 +151,11 @@ block = re.compile(
 
 replacement = """if host_machine.system() == 'darwin'
   # iOS: no CoreAudio HAL (AudioHardware.h) and no Bonjour. RemoteIO output is
-  # owned by xios-audiod; module-xios-sink forwards the mixed stream to it.
+  # owned by xios-audiod; mic capture is owned by xios-mediad. PulseAudio only
+  # exposes ordinary sink/source objects for desktop clients.
   all_modules += [
     [ 'module-xios-sink', 'xios/module-xios-sink.c', ['xios/xios_audio_protocol.h'] ],
+    [ 'module-xios-source', 'xios/module-xios-source.c', ['xios/xios_media_protocol.h'] ],
   ]
 endif
 """

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the PulseAudio DAEMON (+ module-xios-sink) for rootless iOS via the
+# Build the PulseAudio DAEMON (+ module-xios-sink/source) for rootless iOS via the
 # Procursus/Docker pipeline. Companion to build-shell.sh, which built the
 # client-only pulseaudio for gvc; this flips the same recipe to -Ddaemon=true
 # and packages pulseaudio + pulseaudio-utils next to rebuilt libpulse0/-dev.
@@ -14,10 +14,12 @@
 #     -v "$PWD/build-audio-server.sh:/work/build-audio-server.sh:ro" \
 #     -v "$PWD/recipes:/work/recipes:ro" \
 #     -v "$PWD/audio:/work/audio:ro" \
+#     -v "$PWD/media:/work/media:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-audio-server.sh
 set -euo pipefail
 cd /work/Procursus
+export PATH="/root/cctools/bin:$PATH"
 
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
@@ -32,11 +34,11 @@ fi
 echo "==> installing -Wno-unused-command-line-argument clang wrappers"
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
+exec /root/cctools/bin/aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
 EOF
 cat > build_tools/cxx-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
+exec /root/cctools/bin/aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
@@ -48,6 +50,7 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # packaging-only reruns stay fast.
 PW=build_work/iphoneos-arm64-rootless/1900/pulseaudio
 PS=build_stage/iphoneos-arm64-rootless/1900/pulseaudio
+PF="$PW/.xios_audio_sources.sha256"
 if [ -d "$PW" ] && [ ! -f "$PW/build/src/daemon/pulseaudio" ]; then
   echo "==> wiping the client-only pulseaudio build tree"
   rm -rf "$PW" "$PS"
@@ -55,9 +58,41 @@ fi
 
 # libltdl7 (the daemon's module loader) must ship as a deb, not just get
 # staged: the pulseaudio deb Depends on it.
-echo "==> make libtool-package (libltdl7) + pulseaudio-package (daemon + module-xios-sink)"
+# The volume may also hold an older daemon build that predates
+# module-xios-source. The Procursus recipe's .build_complete guard would then
+# package the stale stage tree forever, so invalidate that exact case.
+if [ -d "$PW" ] && [ -f "$PW/build/src/daemon/pulseaudio" ] && \
+   [ ! -f "$PW/src/modules/xios/module-xios-source.c" ]; then
+  echo "==> wiping stale pulseaudio daemon build without module-xios-source"
+  rm -rf "$PW" "$PS"
+fi
+
+if [ -d "$PW" ] && [ -f "$PW/.build_complete" ]; then
+  NEW_FP="$(sha256sum \
+    /work/recipes/pulseaudio-ios-fixes.sh \
+    /work/audio/module-xios-sink.c \
+    /work/audio/xios_audio_protocol.h \
+    /work/audio/module-xios-source.c \
+    /work/media/xios_media_protocol.h | sha256sum | awk '{print $1}')"
+  OLD_FP="$(cat "$PF" 2>/dev/null || true)"
+  if [ "$NEW_FP" != "$OLD_FP" ]; then
+    echo "==> wiping stale pulseaudio build after Xios module source changes"
+    rm -rf "$PW" "$PS"
+  fi
+fi
+
+echo "==> make libtool-package (libltdl7) + pulseaudio-package (daemon + module-xios-sink/source)"
 make libtool-package $COMMON -j"$(nproc)"
 make pulseaudio-package $COMMON -j"$(nproc)"
+
+if [ -d "$PW" ]; then
+  sha256sum \
+    /work/recipes/pulseaudio-ios-fixes.sh \
+    /work/audio/module-xios-sink.c \
+    /work/audio/xios_audio_protocol.h \
+    /work/audio/module-xios-source.c \
+    /work/media/xios_media_protocol.h | sha256sum | awk '{print $1}' > "$PF"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

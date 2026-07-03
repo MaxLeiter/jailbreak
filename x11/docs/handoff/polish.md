@@ -25,5 +25,6 @@ These are the smaller, mostly-landed-or-parked tracks. Each has a wire type or a
 - #15 power: un-drop + Darwin backlight backend (brightness slider); gsd-power backlight is Darwin-ifdef'd-out → needs a 2-file backend, no udev/logind. Pairs with `packages/xios-fhs` xios-hwbridged (UPower D-Bus shim via IOKit IOPS — closes the battery indicator; synthetic /var/jb/sys backlight + BKS brightness). Memory: x11-fhs-hwbridge.
 - #25 sound: event sounds + volume feedback via PA. #26 datetime: iOS timezone + simple NTP (low priority).
 
-## Audio (deferred)
-- Real PulseAudio 17 daemon w/ timer-clocked module-xios-sink built (17.0-1 debs) for gvc/GTK apps; PULSE_SERVER=unix:/var/jb/tmp/pulse/native. Not device-coherence-tested post-boot. Memory: x11-audio-on-device.
+## Audio / media bridge
+- PulseAudio 17 daemon now exposes both desktop-facing endpoints: sink `xios` via `module-xios-sink` -> `xios-audiod`, and source `xios_mic` via `module-xios-source` -> `xios-mediad`. Installed/restarted on-device from `pulseaudio_17.0-6+ios1`; `pactl list sources short` showed `xios_mic`, default source `xios_mic`, and `timeout 3 parec --raw --format=float32le --rate=48000 --channels=1 --device=xios_mic` wrote 561152 bytes to `/var/jb/tmp/parec-xios-mic.f32`. Direct `xios-mic-dump --seconds 1` still wrote 192512 bytes, so mediad and PA source both work. Docs: `docs/audio-desktop-plan.md`.
+- Camera raw path exists through the Xios app broker/media framing, but GNOME-facing camera is not done. The right surface is PipeWire/xdg-desktop-portal camera or a GStreamer source plugin, not raw Xios sockets in apps.
