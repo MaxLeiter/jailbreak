@@ -105,6 +105,7 @@ static struct {
     struct zwlr_layer_shell_v1 *layer_shell;
     struct wl_surface    *wall_surf, *desk_surf;
     struct zwlr_layer_surface_v1 *wall_layer, *desk_layer;
+    struct sd_cairo_pool wall_pool, desk_pool;
     int   width, height, scale, scale_env, running;
     int   wall_configured, desk_configured;
     uint32_t *base_pixels;             /* cached wallpaper/gradient at current physical size */
@@ -128,6 +129,7 @@ static struct {
 
 static void render_wallpaper(void);
 static void render_desktop(void);
+static void render_desktop_widgets(int mask);
 static void rerender(void);
 
 static int abs_i(int v)
@@ -299,6 +301,7 @@ static int widgets_update_stats(void)
     char old_value[WIDGET_MAX][32];
     char old_detail[WIDGET_MAX][64];
     double old_frac[WIDGET_MAX];
+    int changed = 0;
     for (int i = 0; i < WIDGET_MAX; i++) {
         memcpy(old_value[i], B.widgets[i].value, sizeof old_value[i]);
         memcpy(old_detail[i], B.widgets[i].detail, sizeof old_detail[i]);
@@ -368,9 +371,9 @@ static int widgets_update_stats(void)
         if (memcmp(old_value[i], B.widgets[i].value, sizeof old_value[i]) ||
             memcmp(old_detail[i], B.widgets[i].detail, sizeof old_detail[i]) ||
             old_frac[i] != B.widgets[i].frac)
-            return 1;
+            changed |= 1 << i;
     }
-    return 0;
+    return changed;
 }
 
 static int widget_hit(int x, int y)
@@ -689,79 +692,103 @@ static int ensure_base_cache(int bw, int bh, int stride)
     return 1;
 }
 
-static struct wl_buffer *alloc_shm_buffer(int bw, int bh, int stride,
-                                          uint32_t **out_map, size_t *out_size)
-{
-    size_t size = (size_t)stride * bh;
-    int fd = sd_create_anon_fd(size);
-    if (fd < 0) return NULL;
-    uint32_t *map = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    if (map == MAP_FAILED) { close(fd); return NULL; }
-    struct wl_shm_pool *pool = wl_shm_create_pool(B.shm, fd, (int32_t)size);
-    struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, bw, bh, stride,
-                                                      WL_SHM_FORMAT_ARGB8888);
-    wl_shm_pool_destroy(pool);
-    close(fd);
-    *out_map = map;
-    *out_size = size;
-    return buf;
-}
-
 static void render_wallpaper(void)
 {
     if (!B.wall_configured) return;
     int s = B.scale, bw = B.width * s, bh = B.height * s;
-    int stride = bw * 4;
-    uint32_t *map = NULL;
-    size_t size = 0;
-    struct wl_buffer *buf = alloc_shm_buffer(bw, bh, stride, &map, &size);
+    cairo_t *cr; cairo_surface_t *surf;
+    struct sd_cairo_slot *slot = sd_cairo_pool_begin(&B.wall_pool, B.shm,
+                                                     B.width, B.height, B.scale,
+                                                     &cr, &surf);
+    struct wl_buffer *buf = slot ? slot->buffer : NULL;
     if (!buf) return;
+    int stride = cairo_image_surface_get_stride(surf);
+    size_t size = (size_t)stride * (size_t)bh;
+    uint32_t *map = (uint32_t *)cairo_image_surface_get_data(surf);
 
     if (ensure_base_cache(bw, bh, stride))
         memcpy(map, B.base_pixels, size);
     else
         paint_base(map, bw, bh, stride);
 
-    munmap(map, size);
-    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
+    cairo_surface_flush(surf);
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
     wl_surface_set_buffer_scale(B.wall_surf, B.scale);
     wl_surface_attach(B.wall_surf, buf, 0, 0);
     wl_surface_damage_buffer(B.wall_surf, 0, 0, bw, bh);
     wl_surface_commit(B.wall_surf);
 }
 
-static void render_desktop(void)
+static void render_desktop_region(int dx, int dy, int dw, int dh, int partial, int poll_stats)
 {
     if (!B.desk_configured) return;
     if (!B.widgets_loaded) widgets_load();
     uint64_t now = now_ms();
     pins_reload_if_due(now);
-    if (now - B.last_stats_ms > 2500) widgets_update_stats();
+    if (poll_stats && now - B.last_stats_ms > 2500) widgets_update_stats();
 
     int s = B.scale, bw = B.width * s, bh = B.height * s;
-    int stride = bw * 4;
-    uint32_t *map = NULL;
-    size_t size = 0;
-    struct wl_buffer *buf = alloc_shm_buffer(bw, bh, stride, &map, &size);
+    cairo_t *cr; cairo_surface_t *cs;
+    struct sd_cairo_slot *slot = sd_cairo_pool_begin(&B.desk_pool, B.shm,
+                                                     B.width, B.height, B.scale,
+                                                     &cr, &cs);
+    struct wl_buffer *buf = slot ? slot->buffer : NULL;
     if (!buf) return;
+    int stride = cairo_image_surface_get_stride(cs);
+    size_t size = (size_t)stride * (size_t)bh;
+    uint32_t *map = (uint32_t *)cairo_image_surface_get_data(cs);
     memset(map, 0, size);
 
-    cairo_surface_t *cs = cairo_image_surface_create_for_data(
-        (unsigned char *)map, CAIRO_FORMAT_ARGB32, bw, bh, stride);
-    cairo_t *cr = cairo_create(cs);
-    cairo_scale(cr, s, s);
+    (void)s;
     pins_draw(cr);
     widgets_draw(cr);
     menu_draw(cr);
+    cairo_surface_flush(cs);
     cairo_destroy(cr);
     cairo_surface_destroy(cs);
-    munmap(map, size);
 
-    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
     wl_surface_set_buffer_scale(B.desk_surf, B.scale);
     wl_surface_attach(B.desk_surf, buf, 0, 0);
-    wl_surface_damage_buffer(B.desk_surf, 0, 0, bw, bh);
+    if (partial) {
+        if (dx < 0) { dw += dx; dx = 0; }
+        if (dy < 0) { dh += dy; dy = 0; }
+        if (dx + dw > B.width) dw = B.width - dx;
+        if (dy + dh > B.height) dh = B.height - dy;
+    }
+    if (partial && dw > 0 && dh > 0)
+        wl_surface_damage_buffer(B.desk_surf, dx * s, dy * s, dw * s, dh * s);
+    else
+        wl_surface_damage_buffer(B.desk_surf, 0, 0, bw, bh);
     wl_surface_commit(B.desk_surf);
+}
+
+static void render_desktop(void)
+{
+    render_desktop_region(0, 0, 0, 0, 0, 1);
+}
+
+static void include_widget_damage(int *x0, int *y0, int *x1, int *y1,
+                                  const struct widget *w)
+{
+    const int pad = 12;
+    int wx0 = w->x - pad, wy0 = w->y - pad;
+    int wx1 = w->x + w->w + pad, wy1 = w->y + w->h + pad;
+    if (wx0 < *x0) *x0 = wx0;
+    if (wy0 < *y0) *y0 = wy0;
+    if (wx1 > *x1) *x1 = wx1;
+    if (wy1 > *y1) *y1 = wy1;
+}
+
+static void render_desktop_widgets(int mask)
+{
+    int x0 = B.width, y0 = B.height, x1 = 0, y1 = 0;
+    for (int i = 0; i < WIDGET_MAX; i++) {
+        if (!(mask & (1 << i)) || !B.widgets[i].visible) continue;
+        include_widget_damage(&x0, &y0, &x1, &y1, &B.widgets[i]);
+    }
+    if (x1 <= x0 || y1 <= y0) return;
+    render_desktop_region(x0, y0, x1 - x0, y1 - y0, 1, 0);
 }
 
 static void render(void)
@@ -1124,10 +1151,13 @@ int main(void)
         maybe_begin_drag(ms);
         if (pins_reload_if_due(ms)) {
             rerender();
-        } else if (ms - B.last_stats_ms > 2500 && widgets_update_stats()) {
-            render_desktop();
+        } else if (ms - B.last_stats_ms > 2500) {
+            int changed = widgets_update_stats();
+            if (changed) render_desktop_widgets(changed);
         }
     }
+    sd_cairo_pool_destroy(&B.wall_pool);
+    sd_cairo_pool_destroy(&B.desk_pool);
     wl_display_disconnect(B.dpy);
     base_cache_clear();
 #ifdef __APPLE__

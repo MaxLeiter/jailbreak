@@ -28,7 +28,7 @@
  * Build: build-panel.sh. Needs iosc's zwlr_layer_shell_v1.
  */
 #define _GNU_SOURCE
-#define SD_CAIRO                   /* sd_alloc_cairo_buffer from shell-draw.h */
+#define SD_CAIRO                   /* sd_cairo_pool from shell-draw.h */
 #include "shell-draw.h"
 #include "shell-theme.h"
 #include "panel-render.h"
@@ -96,6 +96,7 @@ static struct {
     /* panel surface */
     struct wl_surface    *surf;
     struct zwlr_layer_surface_v1 *layer;
+    struct sd_cairo_pool surface_pool;
     enum shell_surface_mode mode;
     int   width, height, scale, scale_env, configured, running;
     /* UI scale: keep the chrome a CONSTANT on-glass size at any -logical.
@@ -109,6 +110,7 @@ static struct {
     /* quick-settings surface (created on open, destroyed on close) */
     struct wl_surface    *qs_surf;
     struct zwlr_layer_surface_v1 *qs_layer;
+    struct sd_cairo_pool qs_pool;
     int   qs_w, qs_h, qs_wref, qs_href, qs_configured;
     cairo_surface_t *qs_backdrop;
     struct qs_model  qs;
@@ -117,6 +119,7 @@ static struct {
     /* window-menu popup (created on app-name tap) */
     struct wl_surface    *wm_surf;
     struct zwlr_layer_surface_v1 *wm_layer;
+    struct sd_cairo_pool wm_pool;
     int   wm_w, wm_h, wm_configured;
     struct panel_hits wm_hits;
     int   wm_idx;                      /* task index the menu was opened for */
@@ -296,9 +299,11 @@ static void build_model(struct panel_model *m)
 static void render(void)
 {
     if (!P.configured) return;
-    cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
-    struct wl_buffer *buf = sd_alloc_cairo_buffer(P.shm, P.width, P.height, P.scale,
-                                                  &cr, &surf, &map, &size);
+    cairo_t *cr; cairo_surface_t *surf;
+    struct sd_cairo_slot *slot = sd_cairo_pool_begin(&P.surface_pool, P.shm,
+                                                     P.width, P.height, P.scale,
+                                                     &cr, &surf);
+    struct wl_buffer *buf = slot ? slot->buffer : NULL;
     if (!buf) { fprintf(stderr, "%s: cairo buffer alloc failed\n", mode_name()); return; }
 
     cairo_save(cr);
@@ -325,9 +330,7 @@ static void render(void)
     cairo_surface_flush(surf);
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
-    munmap(map, size);   /* iosc copies the shm data during commit access */
 
-    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
     wl_surface_set_buffer_scale(P.surf, P.scale);
     wl_surface_attach(P.surf, buf, 0, 0);
     wl_surface_damage_buffer(P.surf, 0, 0, P.width * P.scale, P.height * P.scale);
@@ -337,9 +340,11 @@ static void render(void)
 static void render_qs(void)
 {
     if (!P.qs_surf || !P.qs_configured) return;
-    cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
-    struct wl_buffer *buf = sd_alloc_cairo_buffer(P.shm, P.qs_w, P.qs_h, P.scale,
-                                                  &cr, &surf, &map, &size);
+    cairo_t *cr; cairo_surface_t *surf;
+    struct sd_cairo_slot *slot = sd_cairo_pool_begin(&P.qs_pool, P.shm,
+                                                     P.qs_w, P.qs_h, P.scale,
+                                                     &cr, &surf);
+    struct wl_buffer *buf = slot ? slot->buffer : NULL;
     if (!buf) return;
 
     /* the card has rounded corners: start from transparent */
@@ -364,9 +369,7 @@ static void render_qs(void)
     cairo_surface_flush(surf);
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
-    munmap(map, size);
 
-    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
     wl_surface_set_buffer_scale(P.qs_surf, P.scale);
     wl_surface_attach(P.qs_surf, buf, 0, 0);
     wl_surface_damage_buffer(P.qs_surf, 0, 0, P.qs_w * P.scale, P.qs_h * P.scale);
@@ -397,6 +400,7 @@ static void qs_close(void)
     if (!P.qs_surf) return;
     if (P.ptr_surf == P.qs_surf) P.ptr_surf = NULL;
     if (P.touch_surf == P.qs_surf) { P.touch_surf = NULL; P.press_kind = 0; }
+    sd_cairo_pool_destroy(&P.qs_pool);
     zwlr_layer_surface_v1_destroy(P.qs_layer); P.qs_layer = NULL;
     wl_surface_destroy(P.qs_surf);             P.qs_surf = NULL;
     if (P.qs_backdrop) { cairo_surface_destroy(P.qs_backdrop); P.qs_backdrop = NULL; }
@@ -430,6 +434,7 @@ static void wm_close(void)
     if (!P.wm_surf) return;
     if (P.ptr_surf == P.wm_surf) P.ptr_surf = NULL;
     if (P.touch_surf == P.wm_surf) { P.touch_surf = NULL; P.press_kind = 0; }
+    sd_cairo_pool_destroy(&P.wm_pool);
     zwlr_layer_surface_v1_destroy(P.wm_layer); P.wm_layer = NULL;
     wl_surface_destroy(P.wm_surf);             P.wm_surf = NULL;
     P.wm_configured = 0;
@@ -461,9 +466,11 @@ static void wm_open(int task_idx)
 static void wm_render(void)
 {
     if (!P.wm_surf || !P.wm_configured) return;
-    cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
-    struct wl_buffer *buf = sd_alloc_cairo_buffer(P.shm, P.wm_w, P.wm_h, P.scale,
-                                                  &cr, &surf, &map, &size);
+    cairo_t *cr; cairo_surface_t *surf;
+    struct sd_cairo_slot *slot = sd_cairo_pool_begin(&P.wm_pool, P.shm,
+                                                     P.wm_w, P.wm_h, P.scale,
+                                                     &cr, &surf);
+    struct wl_buffer *buf = slot ? slot->buffer : NULL;
     if (!buf) return;
 
     cairo_save(cr);
@@ -482,9 +489,7 @@ static void wm_render(void)
     cairo_surface_flush(surf);
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
-    munmap(map, size);
 
-    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
     wl_surface_set_buffer_scale(P.wm_surf, P.scale);
     wl_surface_attach(P.wm_surf, buf, 0, 0);
     wl_surface_damage_buffer(P.wm_surf, 0, 0, P.wm_w * P.scale, P.wm_h * P.scale);
@@ -1172,6 +1177,9 @@ int main(int argc, char **argv)
             render();
         }
     }
+    sd_cairo_pool_destroy(&P.surface_pool);
+    sd_cairo_pool_destroy(&P.qs_pool);
+    sd_cairo_pool_destroy(&P.wm_pool);
     wl_display_disconnect(P.dpy);
     return 0;
 }

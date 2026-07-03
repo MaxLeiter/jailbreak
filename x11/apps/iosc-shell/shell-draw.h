@@ -79,41 +79,141 @@ static int sd_create_anon_fd(size_t size)
 static void sd_buf_release(void *d, struct wl_buffer *b){ (void)d; wl_buffer_destroy(b); }
 static const struct wl_buffer_listener sd_buf_listener = { .release = sd_buf_release };
 
-/* -------------------------------------------------- cairo wl_shm buffer ---
+/* -------------------------------------------------- cairo wl_shm buffers ---
  * Opt in with `#define SD_CAIRO` before including (ioscbar/ioscdock,
- * ioscoverview, and ioscbg's widget overlay). */
+ * ioscoverview, and ioscbg). */
 #ifdef SD_CAIRO
 #include <cairo/cairo.h>
 
-/* Allocate a wl_shm buffer and wrap its mmap as a cairo ARGB32 surface (scaled
- * logical->physical). Caller destroys cr+surf and munmaps after commit; the
- * wl_buffer is destroyed on release (sd_buf_listener). */
-static struct wl_buffer *sd_alloc_cairo_buffer(struct wl_shm *shm, int lw, int lh,
-                                               int scale, cairo_t **out_cr,
-                                               cairo_surface_t **out_surf,
-                                               void **out_map, size_t *out_size)
+struct sd_cairo_slot {
+    struct wl_buffer *buffer;
+    void *map;
+    size_t size;
+    int lw, lh, scale, bw, bh, stride;
+    int busy;
+    int retire;
+};
+
+struct sd_cairo_pool {
+    struct sd_cairo_slot slots[3];
+};
+
+static void sd_cairo_slot_destroy(struct sd_cairo_slot *slot)
+{
+    if (!slot) return;
+    if (slot->buffer) wl_buffer_destroy(slot->buffer);
+    if (slot->map && slot->size) munmap(slot->map, slot->size);
+    memset(slot, 0, sizeof *slot);
+}
+
+static void sd_cairo_pool_release(void *d, struct wl_buffer *b)
+{
+    struct sd_cairo_slot *slot = d;
+    (void)b;
+    if (!slot) return;
+    slot->busy = 0;
+    if (slot->retire)
+        sd_cairo_slot_destroy(slot);
+}
+
+static const struct wl_buffer_listener sd_cairo_pool_listener = {
+    .release = sd_cairo_pool_release,
+};
+
+static int sd_cairo_slot_matches(const struct sd_cairo_slot *slot,
+                                 int lw, int lh, int scale)
+{
+    return slot->buffer && !slot->retire &&
+           slot->lw == lw && slot->lh == lh && slot->scale == scale;
+}
+
+static int sd_cairo_slot_init(struct sd_cairo_slot *slot, struct wl_shm *shm,
+                              int lw, int lh, int scale)
 {
     int s = scale > 0 ? scale : 1;
     int bw = lw * s, bh = lh * s;
     int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, bw);
-    size_t size = (size_t)stride * bh;
+    size_t size = (size_t)stride * (size_t)bh;
     int fd = sd_create_anon_fd(size);
-    if (fd < 0) return NULL;
+    if (fd < 0) return 0;
     void *map = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    if (map == MAP_FAILED) { close(fd); return NULL; }
+    if (map == MAP_FAILED) { close(fd); return 0; }
     struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)size);
     struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, bw, bh, stride,
                                                       WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
+    if (!buf) { munmap(map, size); return 0; }
+
+    memset(slot, 0, sizeof *slot);
+    slot->buffer = buf;
+    slot->map = map;
+    slot->size = size;
+    slot->lw = lw;
+    slot->lh = lh;
+    slot->scale = s;
+    slot->bw = bw;
+    slot->bh = bh;
+    slot->stride = stride;
+    wl_buffer_add_listener(buf, &sd_cairo_pool_listener, slot);
+    return 1;
+}
+
+static struct sd_cairo_slot *sd_cairo_pool_begin(struct sd_cairo_pool *pool,
+                                                 struct wl_shm *shm,
+                                                 int lw, int lh, int scale,
+                                                 cairo_t **out_cr,
+                                                 cairo_surface_t **out_surf)
+{
+    if (!pool || !shm || lw <= 0 || lh <= 0) return NULL;
+
+    struct sd_cairo_slot *chosen = NULL;
+    for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++) {
+        struct sd_cairo_slot *slot = &pool->slots[i];
+        if (sd_cairo_slot_matches(slot, lw, lh, scale) && !slot->busy) {
+            chosen = slot;
+            break;
+        }
+    }
+    if (!chosen) {
+        for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++) {
+            struct sd_cairo_slot *slot = &pool->slots[i];
+            if (slot->buffer && !slot->busy && !sd_cairo_slot_matches(slot, lw, lh, scale))
+                sd_cairo_slot_destroy(slot);
+            if (!slot->buffer) {
+                if (!sd_cairo_slot_init(slot, shm, lw, lh, scale)) return NULL;
+                chosen = slot;
+                break;
+            }
+        }
+    }
+    if (!chosen) {
+        for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++)
+            if (pool->slots[i].buffer && pool->slots[i].busy)
+                pool->slots[i].retire = 1;
+        return NULL;
+    }
 
     cairo_surface_t *surf = cairo_image_surface_create_for_data(
-        (unsigned char *)map, CAIRO_FORMAT_ARGB32, bw, bh, stride);
+        (unsigned char *)chosen->map, CAIRO_FORMAT_ARGB32,
+        chosen->bw, chosen->bh, chosen->stride);
     cairo_t *cr = cairo_create(surf);
-    cairo_scale(cr, s, s);
-    *out_cr = cr; *out_surf = surf; *out_map = map; *out_size = size;
-    return buf;
+    cairo_scale(cr, chosen->scale, chosen->scale);
+    chosen->busy = 1;
+    *out_cr = cr;
+    *out_surf = surf;
+    return chosen;
 }
+
+static void sd_cairo_pool_destroy(struct sd_cairo_pool *pool)
+{
+    if (!pool) return;
+    for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++) {
+        if (pool->slots[i].busy) pool->slots[i].retire = 1;
+        else sd_cairo_slot_destroy(&pool->slots[i]);
+    }
+}
+
 #endif /* SD_CAIRO */
 
 /* ------------------------------------------------------- .desktop scan ---- */

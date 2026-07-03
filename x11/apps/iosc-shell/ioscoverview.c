@@ -19,7 +19,7 @@
  * Build: build-panel.sh. Needs iosc's zwlr_layer_shell_v1.
  */
 #define _GNU_SOURCE
-#define SD_CAIRO                   /* sd_alloc_cairo_buffer from shell-draw.h */
+#define SD_CAIRO                   /* sd_cairo_pool from shell-draw.h */
 #include "shell-draw.h"
 #include "shell-theme.h"
 #include "panel-render.h"
@@ -70,6 +70,7 @@ static struct {
     int    scm_version;
     struct wl_surface    *surf;
     struct zwlr_layer_surface_v1 *layer;
+    struct sd_cairo_pool surface_pool;
 
     int   width, height, scale, scale_env, configured, running;
     int   px, py, have_ptr;
@@ -177,9 +178,11 @@ static void clamp_scroll(void)
 static void render(void)
 {
     if (!O.configured) return;
-    cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
-    struct wl_buffer *buf = sd_alloc_cairo_buffer(O.shm, O.width, O.height, O.scale,
-                                                  &cr, &surf, &map, &size);
+    cairo_t *cr; cairo_surface_t *surf;
+    struct sd_cairo_slot *slot = sd_cairo_pool_begin(&O.surface_pool, O.shm,
+                                                     O.width, O.height, O.scale,
+                                                     &cr, &surf);
+    struct wl_buffer *buf = slot ? slot->buffer : NULL;
     if (!buf) return;
 
     pr_text_ctx t = pr_text_ctx_new(cr);
@@ -191,9 +194,7 @@ static void render(void)
     cairo_surface_flush(surf);
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
-    munmap(map, size);
 
-    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
     wl_surface_set_buffer_scale(O.surf, O.scale);
     wl_surface_attach(O.surf, buf, 0, 0);
     wl_surface_damage_buffer(O.surf, 0, 0, O.width * O.scale, O.height * O.scale);
@@ -656,6 +657,7 @@ int main(void)
         maybe_pin_pressed_app();
     }
     if (O.backdrop) cairo_surface_destroy(O.backdrop);
+    sd_cairo_pool_destroy(&O.surface_pool);
     wl_display_disconnect(O.dpy);
     return 0;
 }
