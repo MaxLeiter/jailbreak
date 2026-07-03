@@ -46,7 +46,7 @@ case "$KDE_PLASMA_FLAVOR" in
     KDE_PLASMA_FLAVOR=nano
     KDE_PLASMA_LABEL="KDE Plasma Nano"
     PLASMA_ENV+=(PLASMA_DEFAULT_SHELL="${PLASMA_DEFAULT_SHELL:-org.kde.plasma.nano}")
-    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.breeze}"
+    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
     ;;
   mobile|phone|plasma-mobile|kde-mobile)
     KDE_PLASMA_FLAVOR=mobile
@@ -55,7 +55,7 @@ case "$KDE_PLASMA_FLAVOR" in
     PLASMA_ENV+=(PLASMA_PLATFORM="${PLASMA_PLATFORM:-phone:handset}")
     PLASMA_ENV+=(QT_QUICK_CONTROLS_MOBILE="${QT_QUICK_CONTROLS_MOBILE:-true}")
     PLASMA_ENV+=(PLASMA_INTEGRATION_USE_PORTAL="${PLASMA_INTEGRATION_USE_PORTAL:-1}")
-    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.breeze}"
+    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
     ;;
   *)
     echo "!! invalid KDE_PLASMA_FLAVOR=$KDE_PLASMA_FLAVOR, expected desktop|nano|mobile"
