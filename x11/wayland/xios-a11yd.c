@@ -602,35 +602,35 @@ static void process_client_line(struct client *c, const char *line)
 {
     if (!c || !line || !*line) return;
 
-    if (strstr(line, "\"bind\"")) {
+    char type[32] = {0};
+    if (!json_get_string(line, "t", type, sizeof(type))) return;
+
+    if (strcmp(type, "bind") == 0) {
         json_get_string(line, "appid", c->bind_appid, sizeof(c->bind_appid));
         json_get_string(line, "exec", c->bind_exec, sizeof(c->bind_exec));
         g_free(c->last_snapshot);
         c->last_snapshot = NULL;
         snapshot_client(c);
-    }
-    if (strstr(line, "\"enable\"") && (strstr(line, "\"on\":true") || strstr(line, "\"on\": true"))) {
+    } else if (strcmp(type, "enable") == 0 &&
+               (strstr(line, "\"on\":true") || strstr(line, "\"on\": true"))) {
         c->enabled = 1;
         snapshot_client(c);
-    }
-    if (strstr(line, "\"enable\"") && (strstr(line, "\"on\":false") || strstr(line, "\"on\": false"))) {
+    } else if (strcmp(type, "enable") == 0 &&
+               (strstr(line, "\"on\":false") || strstr(line, "\"on\": false"))) {
         c->enabled = 0;
         g_free(c->last_snapshot);
         c->last_snapshot = NULL;
         client_clear_refs(c);
-    }
-    if (strstr(line, "\"activate\"")) {
+    } else if (strcmp(type, "activate") == 0) {
         unsigned id = 0;
         if (json_get_uint(line, "id", &id)) activate_node(c, id);
-    }
-    if (strstr(line, "\"action\"")) {
+    } else if (strcmp(type, "action") == 0) {
         unsigned id = 0;
         unsigned idx = 0;
         if (json_get_uint(line, "id", &id) && json_get_uint(line, "idx", &idx)) {
             do_node_action(c, id, idx);
         }
-    }
-    if (strstr(line, "\"adjust\"")) {
+    } else if (strcmp(type, "adjust") == 0) {
         unsigned id = 0;
         int dir = 0;
         if (json_get_uint(line, "id", &id) && json_get_int(line, "dir", &dir)) {

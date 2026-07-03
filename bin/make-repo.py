@@ -15,7 +15,7 @@ Outputs in repo/:
 Run via the venv that has Pillow:  .repo-venv/bin/python bin/make-repo.py
 Re-run after adding/removing .debs. No network needed.
 """
-import os, io, gzip, json, hashlib, tarfile, html, shutil, math, re
+import functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "repo"))
@@ -102,6 +102,92 @@ def normalize_publisher(ctrl):
 
 def human_size(n):
     return f"{n/1024:.1f} KiB" if n >= 1024 else f"{n} B"
+
+def _deb_order_char(ch):
+    if not ch:
+        return 0
+    if ch == "~":
+        return -1
+    if ch.isalpha():
+        return ord(ch)
+    return ord(ch) + 256
+
+def _deb_verrevcmp(a, b):
+    ia = ib = 0
+    la, lb = len(a), len(b)
+    while ia < la or ib < lb:
+        while (ia < la and not a[ia].isdigit()) or (ib < lb and not b[ib].isdigit()):
+            ca = a[ia] if ia < la and not a[ia].isdigit() else ""
+            cb = b[ib] if ib < lb and not b[ib].isdigit() else ""
+            oa, ob = _deb_order_char(ca), _deb_order_char(cb)
+            if oa != ob:
+                return -1 if oa < ob else 1
+            ia += 1 if ca else 0
+            ib += 1 if cb else 0
+
+        while ia < la and a[ia] == "0":
+            ia += 1
+        while ib < lb and b[ib] == "0":
+            ib += 1
+
+        enda = ia
+        while enda < la and a[enda].isdigit():
+            enda += 1
+        endb = ib
+        while endb < lb and b[endb].isdigit():
+            endb += 1
+
+        lena, lenb = enda - ia, endb - ib
+        if lena != lenb:
+            return -1 if lena < lenb else 1
+        if a[ia:enda] != b[ib:endb]:
+            return -1 if a[ia:enda] < b[ib:endb] else 1
+        ia, ib = enda, endb
+    return 0
+
+def compare_deb_versions(a, b):
+    def split(v):
+        if ":" in v:
+            epoch, rest = v.split(":", 1)
+        else:
+            epoch, rest = "0", v
+        if "-" in rest:
+            upstream, revision = rest.rsplit("-", 1)
+        else:
+            upstream, revision = rest, "0"
+        try:
+            epoch_i = int(epoch)
+        except ValueError:
+            epoch_i = 0
+        return epoch_i, upstream, revision
+
+    ea, ua, ra = split(a)
+    eb, ub, rb = split(b)
+    if ea != eb:
+        return -1 if ea < eb else 1
+    c = _deb_verrevcmp(ua, ub)
+    if c:
+        return c
+    return _deb_verrevcmp(ra, rb)
+
+def compare_deb_filenames(a, b):
+    def split(fn):
+        stem = fn[:-4] if fn.endswith(".deb") else fn
+        parts = stem.split("_", 2)
+        if len(parts) == 3:
+            return parts
+        return stem, "0", ""
+
+    pa, va, aa = split(a)
+    pb, vb, ab = split(b)
+    if pa != pb:
+        return -1 if pa < pb else 1
+    c = compare_deb_versions(va, vb)
+    if c:
+        return c
+    if aa != ab:
+        return -1 if aa < ab else 1
+    return 0
 
 # ── markdown-lite → HTML (for the HTML depiction / landing) ───────────────────
 def md_to_html(md):
@@ -598,7 +684,7 @@ def main():
             shutil.copyfile(ico, os.path.join(REPO, "favicon.ico"))
 
     pkgs, stanzas, featured = [], [], []
-    for fn in sorted(os.listdir(DEBS)):
+    for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
         if not fn.endswith(".deb"):
             continue
         blob = open(os.path.join(DEBS, fn), "rb").read()

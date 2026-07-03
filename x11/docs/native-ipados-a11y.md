@@ -200,9 +200,10 @@ or a new field with a safe default.
   printed kgx frame/window actions and panel `overview.open`. `0.2.9` hardens
   the helper client parser to line-buffered NDJSON, so native hosts and test
   clients can split or batch commands without relying on socket read boundaries;
-  split-write device smoke across `bind`/`enable` still published kgx. The spawn
-  feed hardens correlation in P2. It supplements, not replaces, the desktop P1
-  acceptance.
+  split-write device smoke across `bind`/`enable` still published kgx. `0.2.10`
+  also dispatches helper commands by exact `t` type instead of substring matches.
+  The spawn feed hardens correlation in P2. It supplements, not replaces, the
+  desktop P1 acceptance.
   Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
   gate removed from ioscd, IsEnabled property write, atspi-dump smoke test)
   gate this path exactly as they gate the desktop one. Accept: VoiceOver swipes
