@@ -29,10 +29,12 @@ Commands:
       Check host tools, SSH reachability, and key on-device Xios helpers.
 
   status
-      Print current Xios/iosc/Mutter/GNOME status and important tmp files.
+      Print current Xios/iosc/Mutter/GNOME/KDE status and important tmp files.
 
-  session [--via-daemon] [--width W --height H --dpi DPI] iosc|mutter|gnome|stop
-      Run xios-session on the device. Width/height/dpi are passed through for iosc.
+  session [--via-daemon] [--width W --height H --dpi DPI] PRESET
+      Run xios-session on the device. PRESET is one of iosc, mutter, gnome,
+      kde, kde-nano, kde-mobile, stop, or status. Width/height/dpi are passed
+      through to session presets that honor them.
 
   app NAME
       Launch an app client through the current xios-session, e.g. app kgx.
@@ -121,6 +123,7 @@ collect_files() {
         iosc-client.log
         kgx.log
         gnome-shell.log
+        kde-plasma.log
         mutter.log
         gs-live.log
         ioscd.log
@@ -172,7 +175,7 @@ cmd_doctor() {
 cmd_status() {
     remote '
         echo "== process summary"
-        ps ax | grep -v grep | grep -E "Xios\.app/Xios|/usr/local/bin/iosc|bin/gnome-shell|bin/mutter|bin/kgx|xios-sessiond|ioscd" || true
+        ps ax | grep -v grep | grep -E "Xios\.app/Xios|/usr/local/bin/iosc|bin/gnome-shell|bin/mutter|kwin_wayland|plasmashell|plasmawindowed|bin/kgx|xios-sessiond|ioscd" || true
         echo
         echo "== session status"
         cat /var/jb/tmp/xios-session-status.json 2>/dev/null || echo "(no xios-session-status.json)"
@@ -210,7 +213,7 @@ cmd_session() {
     local preset="${1:-}"
     [ -n "$preset" ] || die "session preset required"
     case "$preset" in
-        iosc|mutter|gnome|stop|status) ;;
+        iosc|mutter|gnome|kde|plasma|kde-desktop|plasma-desktop|kde-nano|plasma-nano|nano|kde-mobile|plasma-mobile|mobile|stop|status) ;;
         *) die "unknown session preset: $preset" ;;
     esac
 
@@ -324,9 +327,9 @@ cmd_collect() {
 cmd_logs() {
     local pattern="${1:-}"
     if [ -n "$pattern" ]; then
-        remote "for f in /var/jb/tmp/iosc.log /var/jb/tmp/gnome-shell.log /var/jb/tmp/kgx.log /var/jb/tmp/mutter.log /var/jb/tmp/xios-touch.log; do [ -r \"\$f\" ] && { echo \"== \$f\"; grep -i -- $(printf '%q' "$pattern") \"\$f\" | tail -n 80; }; done"
+        remote "for f in /var/jb/tmp/iosc.log /var/jb/tmp/kde-plasma.log /var/jb/tmp/gnome-shell.log /var/jb/tmp/kgx.log /var/jb/tmp/mutter.log /var/jb/tmp/xios-touch.log; do [ -r \"\$f\" ] && { echo \"== \$f\"; grep -i -- $(printf '%q' "$pattern") \"\$f\" | tail -n 80; }; done"
     else
-        remote 'for f in /var/jb/tmp/iosc.log /var/jb/tmp/gnome-shell.log /var/jb/tmp/kgx.log /var/jb/tmp/mutter.log /var/jb/tmp/xios-touch.log; do [ -r "$f" ] && { echo "== $f"; tail -n 80 "$f"; }; done'
+        remote 'for f in /var/jb/tmp/iosc.log /var/jb/tmp/kde-plasma.log /var/jb/tmp/gnome-shell.log /var/jb/tmp/kgx.log /var/jb/tmp/mutter.log /var/jb/tmp/xios-touch.log; do [ -r "$f" ] && { echo "== $f"; tail -n 80 "$f"; }; done'
     fi
 }
 

@@ -66,6 +66,8 @@ Runs the installed on-device `xios-session` CLI.
 bin/xios-device session iosc
 bin/xios-device session mutter
 bin/xios-device session gnome
+bin/xios-device session kde
+bin/xios-device session kde-mobile
 bin/xios-device session stop
 bin/xios-device session --width 1080 --height 1440 --dpi 176 iosc
 bin/xios-device session --via-daemon iosc
