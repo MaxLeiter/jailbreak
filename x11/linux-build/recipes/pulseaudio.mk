@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS         += pulseaudio
 PULSEAUDIO_VERSION  := 17.0
-DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-2+ios1
+DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-3+ios1
 
 pulseaudio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-$(PULSEAUDIO_VERSION).tar.xz)
@@ -112,7 +112,8 @@ pulseaudio-package: pulseaudio-stage
 	mkdir -p $(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio \
 		$(BUILD_DIST)/libpulse-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{bin,lib/pulseaudio} \
-		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)/etc/{pulse,profile.d} \
+		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc/pulse \
+		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)/etc/profile.d \
 		$(BUILD_DIST)/pulseaudio-utils/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin
 
 	# libpulse0 — client dylibs + ONLY libpulsecommon from the private dir (the
@@ -139,18 +140,27 @@ pulseaudio-package: pulseaudio-stage
 	# pulseaudio — daemon + private core lib + modules (module-xios-sink among
 	# them) + our iOS configs. Ship the stock etc/pulse tree first, then force
 	# the Xios daemon.conf/default.pa/client.conf over it.
+	#
+	# CONFIG LOCATION: the daemon/clients were compiled with sysconfdir
+	# $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc = /var/jb/usr/etc, so PA only reads
+	# daemon.conf/default.pa/client.conf from /var/jb/usr/etc/pulse. Shipping
+	# them to $(MEMO_PREFIX)/etc/pulse = /var/jb/etc/pulse (as this did before)
+	# meant the daemon never found default.pa and started with zero modules
+	# ("refusing to work"). Install to the compiled sysconfdir. profile.d is a
+	# shell concern, not PA's, so xios-pulse.sh stays at /var/jb/etc/profile.d.
 	cp -a $(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/pulseaudio \
 		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin
 	cp -a $(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio/libpulsecore-*.dylib \
 		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio
 	cp -a $(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio/modules \
 		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio
-	if [ -d "$(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)/etc/pulse" ]; then \
-		cp -a $(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)/etc/pulse/. $(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)/etc/pulse/; \
+	if [ -d "$(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc/pulse" ]; then \
+		cp -a $(BUILD_STAGE)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc/pulse/. \
+			$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc/pulse/; \
 	fi
 	install -m0644 /work/audio/pulse-config/daemon.conf /work/audio/pulse-config/default.pa \
 		/work/audio/pulse-config/client.conf \
-		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)/etc/pulse/
+		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc/pulse/
 	install -m0755 /work/audio/pulse-config/xios-pulse.sh \
 		$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)/etc/profile.d/xios-pulse.sh
 
