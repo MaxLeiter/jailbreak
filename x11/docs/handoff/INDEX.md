@@ -25,6 +25,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 9. **session-launcher.md** — the flavor switcher (CLI + daemon + in-app picker).
 10. **svg-loader.md** — real `librsvg`/GdkPixbuf SVG loader audit for GTK/GNOME icon themes.
 11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
+12. **wayland-apps.md** — the ported desktop app wave (terminal/viewers/media/utilities), why some don't yet map a window in iosc + the fixes (foot PTY, GTK3 wayland backend, mpv EGL shim, hitori schema), the on-device capture/debug tooling, and the app TODO.
 
 ## Current headline status
 - **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.
@@ -32,8 +33,8 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 - **Portrait sizing path exists now:** the in-app Desktop Session picker can attach display dimensions to a session request; the updated session daemon applies them to iosc via `IOSC_LOGICAL`. Verified `1080x1440` logical → `2160x2880` framebuffer for full-height portrait. Latest Xios build removes visible debug chrome: three-finger tap switches existing displays, four-finger tap opens the session/dimension picker, pinch app-zooms in/out to fit, lower-screen one-finger swipe opens the keyboard.
 - **Native iPadOS per-window mode is implemented and runtime-gated, not build-time-gated.** Classic and native can coexist: ioscd accepts explicit `LAUNCH_CLASSIC`/`LAUNCH_NATIVE`; native uses `wayland-native-0`, `iosc-native-input.sock`, and `xios-native.json`.
 - **GNOME Shell 46 reached first light on-device** on 2026-07-02. The latest GNOME handoff has the current chain of fixes and the remaining packaging/persistence/audio/input follow-ups.
-- **KDE/KF6 moved past framework build into KWin W1 packaging.** On-device KWin smoke is the next meaningful KDE validation.
-- **Wayland app ecosystem is growing quickly**: wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim and the rootless Xwayland XWM work are now on local commits. The package repo output is very dirty; coordinate before publishing.
+- **KDE/KF6 has KWin first-light and QtWayland/ANGLE IOSurface smoke working.** Desktop Plasma packaging has started with `libplasma`; the next gate is `plasma-workspace`/`plasmashell`.
+- **Wayland app ecosystem is growing quickly**: wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim and the rootless Xwayland XWM work are now on local commits. The package repo output is very dirty; coordinate before publishing. See **wayland-apps.md** for per-app status, the launch-in-iosc fixes (foot PTY, GTK3 wayland backend, mpv EGL shim, hitori schema — several verified only in code, pending device), and the `bin/iosc-capture*` debug tooling. grim screenshots WORK on device (classic mode); foot is root-caused (PTY + C locale).
 
 ## Key cross-cutting gotchas (all domains touching the app/device)
 - **Deploy Xios.app**: `scp -r` DROPS the exec bit AND the bundle `_CodeSignature`. After scp: `chmod +x Xios.app/Xios`, then re-sign `ldid -e Xios.app/Xios > ents; ldid -S<ents> Xios.app/Xios` (keeps GPU entitlements). `scp -r` into an existing bundle NESTS → `rm -rf` the dest first. `uicache -p` after. Bundle id `com.max.xios`.
