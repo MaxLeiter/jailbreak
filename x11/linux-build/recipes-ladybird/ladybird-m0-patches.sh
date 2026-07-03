@@ -339,4 +339,93 @@ else
   say "LibJS asm host-tool split: already patched"
 fi
 
+# ---------------------------------------------------------------------------------------------
+# 13) launch_services() spawns the Compositor helper unconditionally, but Compositor is deferred
+#     for M0 (patches 7/8, GPU/ANGLE). Gate that one spawn off for iOS so the headless path uses
+#     RequestServer + ImageDecoder + WebContent only (the async_take_document_screenshot raster path
+#     does not need the GPU present helper). Other launch_compositor_process() call sites (restart
+#     handlers) are unreachable when it is never launched.
+# ---------------------------------------------------------------------------------------------
+f=Libraries/LibWebView/Application.cpp
+if grep -q 'TRY(launch_compositor_process());' "$f" && ! grep -q 'iOS M0: Compositor deferred' "$f"; then
+  python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+s=s.replace(
+"""    TRY(launch_request_server());
+    TRY(launch_image_decoder_server());
+    TRY(launch_compositor_process());""",
+"""    TRY(launch_request_server());
+    TRY(launch_image_decoder_server());
+#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper
+    TRY(launch_compositor_process());
+#endif""")
+open(p,"w").write(s)
+print("  [m0-patch] Application.cpp: launch_compositor_process gated off for iOS")
+PY
+else
+  say "launch_services compositor gate: already patched"
+fi
+
+# ---------------------------------------------------------------------------------------------
+# 14) Headless driver. Upstream removed the standalone headless binary; WebView::Application already
+#     carries the full headless machinery (`--headless screenshot --screenshot-path P url` ->
+#     Application::execute() creates a HeadlessWebView, loads the URL, PNG-dumps via
+#     ViewImplementation::take_screenshot, and exits). So the M0 driver is a ~15-line subclass +
+#     ladybird_main that calls create()+execute(). Emitted as Services/HeadlessShot/headless-shot
+#     (bin/), links LibWebView + LibWeb + the four helper client libs.
+# ---------------------------------------------------------------------------------------------
+d=Services/HeadlessShot
+if [ ! -f "$d/main.cpp" ]; then
+  mkdir -p "$d"
+  cat > "$d/main.cpp" <<'EOF'
+/*
+ * Ladybird-on-iOS M0 headless driver.
+ *
+ * WebView::Application already implements the entire headless screenshot flow in execute()
+ * (HeadlessMode::Screenshot -> load URL -> take_screenshot -> PNG -> quit). This is the minimal
+ * binary that wires it up. Invoke on device as:
+ *   headless-shot --headless screenshot --screenshot-path /var/jb/tmp/out.png https://example.com
+ */
+#include <LibMain/Main.h>
+#include <LibWebView/Application.h>
+
+namespace HeadlessShot {
+
+class Application final : public WebView::Application {
+    WEB_VIEW_APPLICATION(Application)
+public:
+    Application() = default;
+};
+
+}
+
+ErrorOr<int> ladybird_main(Main::Arguments arguments)
+{
+    auto app = TRY(HeadlessShot::Application::create(arguments));
+    return app->execute();
+}
+EOF
+  cat > "$d/CMakeLists.txt" <<'EOF'
+# M0 headless PNG driver. Mirrors test-web's link set (minus the test-only libs) and depends on the
+# helper processes + resource files so the build stages them alongside.
+add_executable(headless-shot main.cpp)
+add_dependencies(headless-shot ladybird_build_resource_files ${ladybird_helper_processes})
+target_link_libraries(headless-shot PRIVATE
+    AK LibCore LibFileSystem LibGfx LibImageDecoders LibImageDecoderClient
+    LibIPC LibJS LibMain LibRequests LibURL LibWeb LibWebView)
+EOF
+  say "HeadlessShot: driver source created"
+else
+  say "HeadlessShot: driver source already present"
+fi
+f=Services/CMakeLists.txt
+if ! grep -q 'add_subdirectory(HeadlessShot)' "$f"; then
+  # add before the NOT IOS block so it builds on iOS (it is our M0 headless frontend)
+  printf 'add_subdirectory(HeadlessShot)\n' >> "$f"
+  say "Services: HeadlessShot added to build"
+else
+  say "Services: HeadlessShot already in build"
+fi
+
 echo "  [m0-patch] all M0 patches applied."

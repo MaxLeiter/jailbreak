@@ -79,6 +79,24 @@ ln -sf "$SHIM/sw_vers" /usr/local/bin/sw_vers
 step "re-applying M0 patches (idempotent)"
 bash /work/recipes-ladybird/ladybird-m0-patches.sh "$WORK"
 
+# skia.pc framework-syntax fixup: the staged skia.pc lists four consecutive
+#   `-framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO`
+# in Libs:. CMake's pkg_check_modules IMPORTED-target parser mis-splits consecutive `-framework`
+# pairs -> keeps only `-framework CoreFoundation`, then passes CoreGraphics/CoreText/ImageIO as
+# BARE filenames -> `clang: no such file or directory: 'CoreGraphics'` on link (ImageDecoder,
+# WebContent, ...). All four frameworks DO exist on iOS; the only bug is the CMake mis-parse.
+# Rewrite each to the opaque `-Wl,-framework,NAME` form, which CMake forwards verbatim and clang
+# expands back to `-framework NAME` for ld64. (Mirror this fix into build-ladybird-wave4.sh deps
+# so a fresh stage gets it too.)
+SKIA_PC=$BB/usr/lib/pkgconfig/skia.pc
+if [ -f "$SKIA_PC" ] && grep -q -- '-framework CoreFoundation -framework' "$SKIA_PC"; then
+  sed -i 's/-framework \([A-Za-z0-9_]*\)/-Wl,-framework,\1/g' "$SKIA_PC"
+  echo "  [fixup] skia.pc frameworks -> -Wl,-framework,NAME form"
+  grep -h '^Libs:' "$SKIA_PC"
+else
+  echo "  [fixup] skia.pc frameworks already fixed or absent"
+fi
+
 # ================================================================================================
 step "STAGE hosttools: build gen_asm_offsets (C++/AK) + asmintgen (Rust) NATIVELY (arm64 host)"
 # ================================================================================================
