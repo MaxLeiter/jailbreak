@@ -100,6 +100,33 @@ perl -0pi -e 's/add_subdirectory\(test\)/# ios-firstlight-skip: add_subdirectory
 perl -0pi -e 's/add_subdirectory\(packageplugins\)/# ios-firstlight-skip: add_subdirectory(packageplugins)/g' "$src/shell/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(kconf_update\)/# ios-firstlight-skip: add_subdirectory(kconf_update)/g' "$src/shell/CMakeLists.txt"
 
+python3 - "$src/shell/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+marker = "# iOS first-light QML import shims"
+if marker not in text:
+    needle = "install( FILES dbus/org.kde.PlasmaShell.xml DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR} )\n"
+    if needle not in text:
+        raise SystemExit("plasmashell DBus install marker not found")
+    text = text.replace(
+        needle,
+        needle
+        + f"""
+{marker}: these modules are registered by plasmashell at runtime, but QML still
+# needs importable qmldir markers when resolving upstream shell package imports.
+file(MAKE_DIRECTORY ${{CMAKE_CURRENT_BINARY_DIR}}/ios-qml/org/kde/plasma/shell/panel)
+file(WRITE ${{CMAKE_CURRENT_BINARY_DIR}}/ios-qml/org/kde/plasma/shell/qmldir "module org.kde.plasma.shell\\n")
+file(WRITE ${{CMAKE_CURRENT_BINARY_DIR}}/ios-qml/org/kde/plasma/shell/panel/qmldir "module org.kde.plasma.shell.panel\\n")
+install(FILES ${{CMAKE_CURRENT_BINARY_DIR}}/ios-qml/org/kde/plasma/shell/qmldir DESTINATION ${{KDE_INSTALL_QMLDIR}}/org/kde/plasma/shell)
+install(FILES ${{CMAKE_CURRENT_BINARY_DIR}}/ios-qml/org/kde/plasma/shell/panel/qmldir DESTINATION ${{KDE_INSTALL_QMLDIR}}/org/kde/plasma/shell/panel)
+""",
+    )
+path.write_text(text)
+PY
+
 python3 - "$src/libnotificationmanager/CMakeLists.txt" "$src/libnotificationmanager/mirroredscreenstracker_p.h" <<'PY'
 import sys
 from pathlib import Path
