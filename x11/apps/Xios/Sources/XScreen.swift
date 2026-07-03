@@ -1,4 +1,5 @@
 import UIKit
+import PhotosUI
 import Metal
 import QuartzCore
 import IOSurface
@@ -299,6 +300,8 @@ final class XScreenView: UIView {
     private let requestPath = "/var/jb/tmp/xios-request.json"
     private let ioscdSocketPath = "/var/jb/tmp/ioscd.sock"
     private let sessionStatusPath = "/var/jb/tmp/xios-session-status.json"
+    private let wallpaperConfigPath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper"
+    private let wallpaperImagePath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
     private weak var sessionStatusLabel: UILabel?
     // Session-switch resilience: when the compositor dies mid-session the ddx surface
     // is lost; the app releases GPU state and holds on the test pattern (awaitingCompositor)
@@ -1275,6 +1278,141 @@ final class XScreenView: UIView {
 
     private func inputBackendName() -> String {
         usingIosc ? "iosc" : "XTEST"
+    }
+
+    private func owningViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let vc = current as? UIViewController { return vc }
+            responder = current.next
+        }
+        return nil
+    }
+
+    private func restartIoscForWallpaper() {
+        if activeDesktopPreset() == "iosc" {
+            writeSessionRequest("iosc")
+        } else {
+            lastToolMessage = "Wallpaper saved; start iosc to use it"
+            writeDebugSnapshot()
+        }
+        refreshShellOverlay()
+    }
+
+    private func setDesktopWallpaper(_ image: UIImage) {
+        let fm = FileManager.default
+        let dir = (wallpaperImagePath as NSString).deletingLastPathComponent
+        do {
+            try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            guard let data = image.jpegData(compressionQuality: 0.92) else {
+                lastToolMessage = "Could not encode wallpaper"
+                return
+            }
+            try data.write(to: URL(fileURLWithPath: wallpaperImagePath), options: .atomic)
+            try (wallpaperImagePath + "\n").write(toFile: wallpaperConfigPath,
+                                                  atomically: true,
+                                                  encoding: .utf8)
+            lastToolMessage = "Wallpaper set"
+            restartIoscForWallpaper()
+        } catch {
+            lastToolMessage = "Wallpaper failed: \(error.localizedDescription)"
+            writeDebugSnapshot()
+        }
+    }
+
+    private func resetDesktopWallpaper() {
+        do {
+            try FileManager.default.removeItem(atPath: wallpaperConfigPath)
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain &&
+            error.code == NSFileNoSuchFileError {
+            // Already default.
+        } catch {
+            lastToolMessage = "Reset wallpaper failed: \(error.localizedDescription)"
+            writeDebugSnapshot()
+            return
+        }
+        lastToolMessage = "Wallpaper reset"
+        restartIoscForWallpaper()
+    }
+
+    private func presentDesktopWallpaperPicker() {
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        owningViewController()?.present(picker, animated: true)
+    }
+
+    private func desktopContextMenu() -> UIMenu {
+        let pasteString = UIPasteboard.general.string
+        let canPaste = pasteString?.isEmpty == false
+        let pasteAttrs: UIMenuElement.Attributes = canPaste ? [] : [.disabled]
+
+        var children: [UIMenuElement] = [
+            UIAction(title: "Displays & Sessions", image: UIImage(systemName: "rectangle.3.group")) {
+                [weak self] _ in self?.presentDisplayControl(initial: .sessions)
+            },
+            UIAction(title: "Launch App...", image: UIImage(systemName: "square.grid.2x2")) {
+                [weak self] _ in self?.presentAppLauncher()
+            },
+            UIAction(title: "Show Keyboard", image: UIImage(systemName: "keyboard")) { [weak self] _ in
+                _ = self?.becomeFirstResponder()
+            },
+            UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard"),
+                     attributes: pasteAttrs) { [weak self] _ in
+                self?.sendText(pasteString ?? "")
+            },
+        ]
+
+        if activeDesktopPreset() == "iosc" {
+            children.append(UIMenu(title: "Background", image: UIImage(systemName: "photo"), children: [
+                UIAction(title: "Set Background...", image: UIImage(systemName: "photo.on.rectangle")) {
+                    [weak self] _ in self?.presentDesktopWallpaperPicker()
+                },
+                UIAction(title: "Reset Background", image: UIImage(systemName: "arrow.counterclockwise")) {
+                    [weak self] _ in self?.resetDesktopWallpaper()
+                },
+            ]))
+        }
+
+        children.append(UIMenu(title: "Display", image: UIImage(systemName: "display"), children: [
+            UIAction(title: "Fit Display", image: UIImage(systemName: "arrow.up.left.and.arrow.down.right")) {
+                [weak self] _ in
+                self?.resetZoom()
+                self?.lastToolMessage = "Fit current display"
+                self?.refreshShellOverlay()
+            },
+            UIAction(title: "Reload Display", image: UIImage(systemName: "arrow.clockwise")) {
+                [weak self] _ in
+                self?.reloadRuntimeConfig()
+                self?.lastToolMessage = "Reloaded xios.json"
+                self?.refreshShellOverlay()
+            },
+            UIAction(title: "Reconnect Input",
+                     image: UIImage(systemName: "point.topleft.down.curvedto.point.bottomright.up")) {
+                [weak self] _ in
+                guard let self else { return }
+                self.reconnectInput()
+                self.lastToolMessage = "Reconnected \(self.inputBackendName())"
+                self.refreshShellOverlay()
+            },
+        ]))
+
+        children.append(UIMenu(title: "Maintenance", image: UIImage(systemName: "wrench.and.screwdriver"), children: [
+            UIAction(title: "Copy Debug", image: UIImage(systemName: "doc.on.doc")) {
+                [weak self] _ in self?.copyDebugSnapshot()
+            },
+            UIAction(title: "Tools", image: UIImage(systemName: "slider.horizontal.3")) {
+                [weak self] _ in self?.presentTools()
+            },
+            UIAction(title: "Stop Session", image: UIImage(systemName: "stop.circle"),
+                     attributes: [.destructive]) { [weak self] _ in
+                self?.writeSessionRequest("stop")
+            },
+        ]))
+
+        return UIMenu(title: "", children: children)
     }
 
     private func debugSnapshot() -> String {
@@ -2329,6 +2467,8 @@ final class XScreenView: UIView {
             hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
             addGestureRecognizer(hover)
         }
+
+        addInteraction(UIContextMenuInteraction(delegate: self))
     }
 
     private func installShellOverlay() {
@@ -3419,6 +3559,52 @@ extension XScreenView: UIKeyInput {
             return p.y >= bounds.height * 0.72 && v.y < -40 && abs(v.y) > abs(v.x)
         }
         return true
+    }
+}
+
+extension XScreenView: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                configurationForMenuAtLocation location: CGPoint)
+    -> UIContextMenuConfiguration? {
+        guard pickerOverlay == nil else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
+            [weak self] _ in self?.desktopContextMenu() ?? UIMenu()
+        }
+    }
+
+    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
+                                willDisplayMenuFor configuration: UIContextMenuConfiguration,
+                                animator: UIContextMenuInteractionAnimating?) {
+        cancelPendingPress()
+        releaseLeftPress()
+    }
+}
+
+extension XScreenView: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let provider = results.first?.itemProvider else { return }
+        guard provider.canLoadObject(ofClass: UIImage.self) else {
+            lastToolMessage = "Selected item is not an image"
+            writeDebugSnapshot()
+            return
+        }
+        provider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let error {
+                    self.lastToolMessage = "Wallpaper failed: \(error.localizedDescription)"
+                    self.writeDebugSnapshot()
+                    return
+                }
+                guard let image = object as? UIImage else {
+                    self.lastToolMessage = "Selected item is not an image"
+                    self.writeDebugSnapshot()
+                    return
+                }
+                self.setDesktopWallpaper(image)
+            }
+        }
     }
 }
 
