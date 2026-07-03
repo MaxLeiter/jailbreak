@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS         += pulseaudio
 PULSEAUDIO_VERSION  := 17.0
-DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-3+ios1
+DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-4+ios1
 
 pulseaudio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-$(PULSEAUDIO_VERSION).tar.xz)
