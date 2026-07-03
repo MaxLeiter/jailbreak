@@ -28,6 +28,7 @@
 #define MAX_NODES 300
 #define MAX_DEPTH 8
 #define MAX_REFS MAX_NODES
+#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 
 struct node_ref {
     unsigned id;
@@ -180,19 +181,26 @@ static char *node_state_value_text(AtspiStateSet *states)
     return g_strdup("");
 }
 
-static int json_get_string(const char *json, const char *key, char *out, size_t out_len)
+static const char *json_value_start(const char *json, const char *key)
 {
-    if (!json || !key || !out || out_len == 0) return 0;
+    if (!json || !key) return NULL;
     char needle[64];
     snprintf(needle, sizeof(needle), "\"%s\"", key);
     const char *p = strstr(json, needle);
-    if (!p) return 0;
+    if (!p) return NULL;
     p += strlen(needle);
     p = strchr(p, ':');
-    if (!p) return 0;
+    if (!p) return NULL;
     p++;
     while (*p == ' ' || *p == '\t') p++;
-    if (*p != '"') return 0;
+    return p;
+}
+
+static int json_get_string(const char *json, const char *key, char *out, size_t out_len)
+{
+    if (!json || !key || !out || out_len == 0) return 0;
+    const char *p = json_value_start(json, key);
+    if (!p || *p != '"') return 0;
     p++;
 
     size_t n = 0;
@@ -207,15 +215,8 @@ static int json_get_string(const char *json, const char *key, char *out, size_t 
 static int json_get_uint(const char *json, const char *key, unsigned *out)
 {
     if (!json || !key || !out) return 0;
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\"", key);
-    const char *p = strstr(json, needle);
+    const char *p = json_value_start(json, key);
     if (!p) return 0;
-    p += strlen(needle);
-    p = strchr(p, ':');
-    if (!p) return 0;
-    p++;
-    while (*p == ' ' || *p == '\t') p++;
     if (*p < '0' || *p > '9') return 0;
     unsigned v = 0;
     while (*p >= '0' && *p <= '9') {
@@ -229,15 +230,8 @@ static int json_get_uint(const char *json, const char *key, unsigned *out)
 static int json_get_int(const char *json, const char *key, int *out)
 {
     if (!json || !key || !out) return 0;
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\"", key);
-    const char *p = strstr(json, needle);
+    const char *p = json_value_start(json, key);
     if (!p) return 0;
-    p += strlen(needle);
-    p = strchr(p, ':');
-    if (!p) return 0;
-    p++;
-    while (*p == ' ' || *p == '\t') p++;
     int sign = 1;
     if (*p == '-') {
         sign = -1;
@@ -251,6 +245,22 @@ static int json_get_int(const char *json, const char *key, int *out)
     }
     *out = sign * v;
     return 1;
+}
+
+static int json_get_bool(const char *json, const char *key, int *out)
+{
+    if (!json || !key || !out) return 0;
+    const char *p = json_value_start(json, key);
+    if (!p) return 0;
+    if (strncmp(p, "true", 4) == 0) {
+        *out = 1;
+        return 1;
+    }
+    if (strncmp(p, "false", 5) == 0) {
+        *out = 0;
+        return 1;
+    }
+    return 0;
 }
 
 static const char *basename_no_args(const char *s, char *buf, size_t len)
@@ -682,16 +692,17 @@ static void process_client_line(struct client *c, const char *line)
         g_free(c->last_snapshot);
         c->last_snapshot = NULL;
         snapshot_client(c);
-    } else if (strcmp(type, "enable") == 0 &&
-               (strstr(line, "\"on\":true") || strstr(line, "\"on\": true"))) {
-        c->enabled = 1;
-        snapshot_client(c);
-    } else if (strcmp(type, "enable") == 0 &&
-               (strstr(line, "\"on\":false") || strstr(line, "\"on\": false"))) {
-        c->enabled = 0;
-        g_free(c->last_snapshot);
-        c->last_snapshot = NULL;
-        client_clear_refs(c);
+    } else if (strcmp(type, "enable") == 0) {
+        int on = 0;
+        if (!json_get_bool(line, "on", &on)) return;
+        c->enabled = on;
+        if (on) {
+            snapshot_client(c);
+        } else {
+            g_free(c->last_snapshot);
+            c->last_snapshot = NULL;
+            client_clear_refs(c);
+        }
     } else if (strcmp(type, "activate") == 0) {
         unsigned id = 0;
         if (json_get_uint(line, "id", &id)) activate_node(c, id);
@@ -780,7 +791,7 @@ static void register_event_listeners(void)
     }
 
     unsigned registered = 0;
-    for (unsigned i = 0; i < sizeof(event_types) / sizeof(event_types[0]); i++) {
+    for (unsigned i = 0; i < ARRAY_LEN(event_types); i++) {
         GError *error = NULL;
         if (!atspi_event_listener_register(event_listener, event_types[i], &error)) {
             fprintf(stderr, "xios-a11yd: warning: failed to register %s", event_types[i]);
@@ -792,7 +803,7 @@ static void register_event_listeners(void)
         if (error) g_clear_error(&error);
     }
     fprintf(stderr, "xios-a11yd: registered %u/%u AT-SPI event listeners\n",
-            registered, (unsigned)(sizeof(event_types) / sizeof(event_types[0])));
+            registered, (unsigned)ARRAY_LEN(event_types));
 }
 
 static void pump_atspi_events(void)
