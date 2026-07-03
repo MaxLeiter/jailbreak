@@ -7168,6 +7168,8 @@ int main(int argc, char **argv)
     const char *ddx_sock  = "/var/jb/tmp/iosc-ddx.sock";
     const char *json_path = "/var/jb/tmp/xios.json";   /* the Xios app reads this */
     const char *input_sock = "/var/jb/tmp/iosc-input.sock";
+    const char *clipboard_sock = "/var/jb/tmp/iosc-clipboard.sock";
+    const char *wm_sock = "/var/jb/tmp/iosc-wm.sock";
     int logical_w = 0, logical_h = 0;   /* -logical WxH: target logical desktop */
     int native_arg = -1;
     for (int i = 1; i < argc; i++) {
@@ -7193,6 +7195,10 @@ int main(int argc, char **argv)
             json_path = argv[++i];
         } else if (!strcmp(argv[i], "-input-sock") && i + 1 < argc) {
             input_sock = argv[++i];
+        } else if (!strcmp(argv[i], "-clipboard-sock") && i + 1 < argc) {
+            clipboard_sock = argv[++i];
+        } else if (!strcmp(argv[i], "-wm-sock") && i + 1 < argc) {
+            wm_sock = argv[++i];
         } else if (!strcmp(argv[i], "-native")) {
             native_arg = 1;
         } else if (!strcmp(argv[i], "-classic")) {
@@ -7223,6 +7229,7 @@ int main(int argc, char **argv)
         return 1;
     }
     xios_set_compositor_id("iosc");   /* app clients learn the flavor via the in-band HELLO */
+    xios_set_input_socket(input_sock);
     if (xios_server_start(ddx_sock, json_path, g_width, g_height, g_stride) != 0) {
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;
@@ -7333,17 +7340,15 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: input socket failed -> no app input\n");
     else
         fprintf(stderr, "iosc: input socket up at %s\n", input_sock);
-    if (ioscclip_start(wl_display_get_event_loop(g_display),
-                       "/var/jb/tmp/iosc-clipboard.sock",
+    if (ioscclip_start(wl_display_get_event_loop(g_display), clipboard_sock,
                        clipboard_from_app, NULL) != 0)
         fprintf(stderr, "iosc: clipboard socket failed -> no UIPasteboard bridge\n");
     else
-        fprintf(stderr, "iosc: clipboard socket up at /var/jb/tmp/iosc-clipboard.sock\n");
-    if (wm_socket_start(wl_display_get_event_loop(g_display),
-                        "/var/jb/tmp/iosc-wm.sock") != 0)
+        fprintf(stderr, "iosc: clipboard socket up at %s\n", clipboard_sock);
+    if (wm_socket_start(wl_display_get_event_loop(g_display), wm_sock) != 0)
         fprintf(stderr, "iosc: wm control socket failed -> no raise-by-app_id\n");
     else
-        fprintf(stderr, "iosc: wm control socket up at /var/jb/tmp/iosc-wm.sock\n");
+        fprintf(stderr, "iosc: wm control socket up at %s\n", wm_sock);
 
     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
             sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");

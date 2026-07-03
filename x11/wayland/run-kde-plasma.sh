@@ -37,9 +37,10 @@ jb_path() {
 
 export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 
 TMP="$XDG_RUNTIME_DIR"
-WSOCK="$XDG_RUNTIME_DIR/wayland-0"
+WSOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 IOSC_BIN="${IOSC_BIN:-$XS_PREFIX/local/bin/iosc}"
 KWIN_BIN="${KWIN_BIN:-$(jb_path /Applications/KDE/kwin_wayland.app/kwin_wayland)}"
 PLASMA_BIN="${PLASMA_BIN:-$(jb_path /Applications/KDE/plasmashell.app/plasmashell)}"
@@ -47,13 +48,18 @@ KAMD_BIN="${KAMD_BIN:-$XS_PREFIX/libexec/kactivitymanagerd}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
 IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
+XIOS_JSON_PATH="${XIOS_JSON_PATH:-$TMP/xios.json}"
+IOSC_DDX_SOCK="${IOSC_DDX_SOCK:-$TMP/iosc-ddx.sock}"
+IOSC_INPUT_SOCK="${IOSC_INPUT_SOCK:-$TMP/iosc-input.sock}"
+IOSC_CLIPBOARD_SOCK="${IOSC_CLIPBOARD_SOCK:-$TMP/iosc-clipboard.sock}"
+IOSC_WM_SOCK="${IOSC_WM_SOCK:-$TMP/iosc-wm.sock}"
 KDE_KWIN_SIZE="${KDE_KWIN_SIZE:-1360x1000}"
 KWIN_W="${KDE_KWIN_SIZE%x*}"
 KWIN_H="${KDE_KWIN_SIZE#*x}"
 KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
-KDE_LOG="$TMP/kde-plasma.log"
-IOSC_LOG="$TMP/iosc.log"
+KDE_LOG="${KDE_LOG:-$TMP/kde-plasma.log}"
+IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
 
 PLASMA_ENV=()
 KDE_PLASMA_LABEL="KDE Plasma"
@@ -97,20 +103,22 @@ kde_process_running() {
   ps ax | grep -v grep | grep -E "$1" >/dev/null 2>&1
 }
 
-echo "==> stop prior iosc/KDE session pieces"
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|dbus-daemon.*--session|dbus-run-session" \
-  | awk '{print $1}' | while read -r pid; do
-      [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
-  done
-sleep 1
-ps ax | grep -v grep | grep -E "kwin_wayland|plasmashell|plasmawindowed" \
-  | awk '{print $1}' | while read -r pid; do
-      [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
-  done
+if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
+  echo "==> stop prior iosc/KDE session pieces"
+  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|dbus-daemon.*--session|dbus-run-session" \
+    | awk '{print $1}' | while read -r pid; do
+        [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
+    done
+  sleep 1
+  ps ax | grep -v grep | grep -E "kwin_wayland|plasmashell|plasmawindowed" \
+    | awk '{print $1}' | while read -r pid; do
+        [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
+    done
+fi
 
 rm -f "$WSOCK" "$WSOCK.lock" "$KWIN_SOCK_PATH" "$KWIN_SOCK_PATH.lock" \
-      "$TMP/iosc-ddx.sock" "$TMP/iosc-input.sock" "$TMP/iosc-clipboard.sock" \
-      "$TMP/iosc-wm.sock" "$TMP/xios.json" "$TMP/kde-session-bus" \
+      "$IOSC_DDX_SOCK" "$IOSC_INPUT_SOCK" "$IOSC_CLIPBOARD_SOCK" \
+      "$IOSC_WM_SOCK" "$XIOS_JSON_PATH" "$TMP/kde-session-bus${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}" \
       "$IOSC_LOG" "$KDE_LOG" 2>/dev/null || true
 
 echo "==> ANGLE Linux so-name symlinks"
@@ -164,11 +172,14 @@ nohup env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   IOSC_FRAME_PULSE="${IOSC_FRAME_PULSE:-1}" \
   IOSC_IGNORE_ACTIVE_SESSION=1 \
-  "$IOSC_BIN" -logical "$IOSC_LOGICAL" >"$IOSC_LOG" 2>&1 </dev/null &
+  "$IOSC_BIN" -logical "$IOSC_LOGICAL" -s "$WAYLAND_DISPLAY" \
+    -ddx-sock "$IOSC_DDX_SOCK" -json "$XIOS_JSON_PATH" \
+    -input-sock "$IOSC_INPUT_SOCK" -clipboard-sock "$IOSC_CLIPBOARD_SOCK" \
+    -wm-sock "$IOSC_WM_SOCK" >"$IOSC_LOG" 2>&1 </dev/null &
 ICPID=$!
 
 for _ in $(seq 1 50); do
-  [ -S "$WSOCK" ] && [ -f "$TMP/xios.json" ] && break
+  [ -S "$WSOCK" ] && [ -f "$XIOS_JSON_PATH" ] && break
   kill -0 "$ICPID" 2>/dev/null || break
   sleep 0.2
 done
@@ -179,17 +190,17 @@ if ! kill -0 "$ICPID" 2>/dev/null; then
 fi
 [ -S "$WSOCK" ] || { echo "!! iosc did not create $WSOCK"; exit 1; }
 
-if chown mobile:mobile "$TMP/iosc-ddx.sock" 2>/dev/null || chown 501:501 "$TMP/iosc-ddx.sock" 2>/dev/null; then
-  chmod 0660 "$TMP/iosc-ddx.sock" 2>/dev/null
+if chown mobile:mobile "$IOSC_DDX_SOCK" 2>/dev/null || chown 501:501 "$IOSC_DDX_SOCK" 2>/dev/null; then
+  chmod 0660 "$IOSC_DDX_SOCK" 2>/dev/null
 else
-  chmod 0600 "$TMP/iosc-ddx.sock" 2>/dev/null
-  echo "!! could not hand $TMP/iosc-ddx.sock to mobile; keeping it owner-only"
+  chmod 0600 "$IOSC_DDX_SOCK" 2>/dev/null
+  echo "!! could not hand $IOSC_DDX_SOCK to mobile; keeping it owner-only"
 fi
 
 echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $KDE_LOG"
 nohup env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-  WAYLAND_DISPLAY=wayland-0 \
+  WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
   KWIN_BIN="$KWIN_BIN" \
   PLASMA_BIN="$PLASMA_BIN" \
   KAMD_BIN="$KAMD_BIN" \
@@ -218,10 +229,9 @@ nohup env \
   "${PLASMA_ENV[@]}" \
   dbus-run-session -- "$XS_PREFIX/bin/bash" -lc '
     set -u
-    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > '"$TMP"'/kde-session-bus
+    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > '"$TMP"'/kde-session-bus'"${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"'
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
-    export WAYLAND_DISPLAY=wayland-0
-    "$KWIN_BIN" --wayland-display wayland-0 --socket "$KWIN_SOCKET" \
+    "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
       --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts &
     kwin_pid=$!
     for _ in $(seq 1 60); do
@@ -313,5 +323,5 @@ echo "   outer wayland: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
 echo "   kwin socket:   $([ -S "$KWIN_SOCK_PATH" ] && echo up || echo MISSING)"
 echo "   shell flavor:  $KDE_PLASMA_FLAVOR"
 echo "   plasmashell:   $(kde_process_running "plasmashell" && echo running || echo not-yet)"
-echo "   xios.json:     $(cat "$TMP/xios.json" 2>/dev/null)"
+echo "   xios.json:     $(cat "$XIOS_JSON_PATH" 2>/dev/null)"
 echo "==> logs: $IOSC_LOG and $KDE_LOG"

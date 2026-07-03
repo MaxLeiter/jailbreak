@@ -357,10 +357,24 @@ static void reap_children(void)
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         if (pid == g_iosc_pid[0]) { g_iosc_pid[0] = 0; continue; }
         if (pid == g_iosc_pid[1]) { g_iosc_pid[1] = 0; continue; }
+        int known = 0;
         for (int i = 0; i < g_napps; i++) {
             if (g_apps[i].pid == pid) {
                 g_apps[i] = g_apps[--g_napps];   /* swap-remove */
+                known = 1;
                 break;
+            }
+        }
+        if (!known) {
+            if (WIFEXITED(status)) {
+                fprintf(stderr, "ioscd: child pid=%d exited status=%d\n",
+                        (int)pid, WEXITSTATUS(status));
+            } else if (WIFSIGNALED(status)) {
+                fprintf(stderr, "ioscd: child pid=%d killed signal=%d\n",
+                        (int)pid, WTERMSIG(status));
+            } else {
+                fprintf(stderr, "ioscd: child pid=%d ended status=0x%x\n",
+                        (int)pid, status);
             }
         }
     }
@@ -724,7 +738,7 @@ static int digits_or_empty(const char *s)
  * ioscd; the socket just replaces the tmp-file trigger path. */
 static pid_t launch_session_request(const char *preset, const char *app,
                                     const char *width, const char *height,
-                                    const char *dpi)
+                                    const char *dpi, const char *slot)
 {
     if (!preset || !*preset) return -1;
     if (!digits_or_empty(width) || !digits_or_empty(height) || !digits_or_empty(dpi))
@@ -736,6 +750,11 @@ static pid_t launch_session_request(const char *preset, const char *app,
         setsid();
         child_stdio(g_ioscd_session_log, 1);
         set_rootless_path(1);
+        fprintf(stderr, "ioscd: child exec xios-session preset=%s%s%s%s%s bash=%s path=%s fallback=%s\n",
+                preset, (app && *app) ? " app=" : "", (app && *app) ? app : "",
+                (slot && *slot) ? " slot=" : "", (slot && *slot) ? slot : "",
+                g_bash_bin, g_xios_session_bin, g_xios_session_bin_fallback);
+        fflush(stderr);
         if (width && *width && height && *height) {
             char logical[64];
             snprintf(logical, sizeof(logical), "%sx%s", width, height);
@@ -744,15 +763,17 @@ static pid_t launch_session_request(const char *preset, const char *app,
             setenv("XIOS_SESSION_HEIGHT", height, 1);
         }
         if (dpi && *dpi) setenv("XIOS_SESSION_DPI", dpi, 1);
+        if (slot && *slot) setenv("XIOS_SESSION_SLOT", slot, 1);
 
         if (app && *app)
-            execl(g_xios_session_bin, "xios-session", preset, app, (char *)NULL);
+            execl(g_bash_bin, "bash", g_xios_session_bin, preset, app, (char *)NULL);
         else
-            execl(g_xios_session_bin, "xios-session", preset, (char *)NULL);
+            execl(g_bash_bin, "bash", g_xios_session_bin, preset, (char *)NULL);
         if (app && *app)
-            execl(g_xios_session_bin_fallback, "xios-session", preset, app, (char *)NULL);
+            execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, app, (char *)NULL);
         else
-            execl(g_xios_session_bin_fallback, "xios-session", preset, (char *)NULL);
+            execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, (char *)NULL);
+        fprintf(stderr, "ioscd: exec xios-session failed: %s\n", strerror(errno));
         _exit(127);
     }
     return pid;
@@ -775,10 +796,11 @@ static char *take_tab_field(char **cursor)
 
 static void log_session_started(const char *preset, const char *app,
                                 const char *width, const char *height,
-                                const char *dpi, pid_t pid)
+                                const char *dpi, const char *slot, pid_t pid)
 {
     fprintf(stderr, "ioscd: session preset=%s", preset);
     if (app && *app) fprintf(stderr, " app=%s", app);
+    if (slot && *slot) fprintf(stderr, " slot=%s", slot);
     fprintf(stderr, " pid=%d", (int)pid);
     if (width && *width) fprintf(stderr, " width=%s", width);
     if (height && *height) fprintf(stderr, " height=%s", height);
@@ -793,20 +815,21 @@ static void handle_session_request(int fd, char *payload)
     char *app = take_tab_field(&rest);
     char *width = take_tab_field(&rest);
     char *height = take_tab_field(&rest);
-    char *dpi = rest ? rest : "";
+    char *dpi = take_tab_field(&rest);
+    char *slot = rest ? rest : "";
 
     if (!*preset) {
         reply(fd, "ERR empty preset\n");
         return;
     }
 
-    pid_t pid = launch_session_request(preset, app, width, height, dpi);
+    pid_t pid = launch_session_request(preset, app, width, height, dpi, slot);
     if (pid <= 0) {
         reply(fd, "ERR session start failed\n");
         return;
     }
 
-    log_session_started(preset, app, width, height, dpi, pid);
+    log_session_started(preset, app, width, height, dpi, slot, pid);
     reply(fd, "SESSION_STARTED\n");
 }
 

@@ -345,7 +345,8 @@ private final class XiosShellOverlay: UIView {
 final class XScreenView: UIView {
     private var fbWidth = 1024
     private var fbHeight = 768
-    private var configPath: String { XiosRuntimePaths.firstExisting("xios.json") }
+    private var selectedConfigPath: String?
+    private var configPath: String { selectedConfigPath ?? XiosRuntimePaths.firstExisting("xios.json") }
     // Which X display to drive (XTEST input). The server advertises this in
     // xios.json so the app and the launch scripts can't disagree; `:3` is only the
     // holding default before config arrives. Not pinned: the
@@ -363,6 +364,7 @@ final class XScreenView: UIView {
     private var requestPath: String { XiosRuntimePaths.tmp("xios-request.json") }
     private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
     private var sessionStatusPath: String { XiosRuntimePaths.firstExisting("xios-session-status.json") }
+    private var displayRegistryDir: String { XiosRuntimePaths.tmp("xios-displays.d") }
     private let wallpaperConfigPath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper"
     private let wallpaperImagePath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
     private weak var sessionStatusLabel: UILabel?
@@ -1315,7 +1317,8 @@ final class XScreenView: UIView {
     }
 
     private func sendSessionRequestToIOSCD(_ preset: String, app: String?,
-                                           display: DisplayProfile?) -> String? {
+                                           display: DisplayProfile?,
+                                           slot: String? = nil) -> String? {
         var width = ""
         var height = ""
         var dpi = ""
@@ -1324,7 +1327,7 @@ final class XScreenView: UIView {
             height = String(display.height)
             if display.dpi > 0 { dpi = String(display.dpi) }
         }
-        let line = ["SESSION", preset, app ?? "", width, height, dpi]
+        let line = ["SESSION", preset, app ?? "", width, height, dpi, slot ?? ""]
             .joined(separator: "\t") + "\n"
         return sendIOSCDRequest(line, maxBytes: 4096)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1332,10 +1335,12 @@ final class XScreenView: UIView {
 
     /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
-                                     display: DisplayProfile? = nil) {
-        let response = sendSessionRequestToIOSCD(preset, app: app, display: display)
+                                     display: DisplayProfile? = nil,
+                                     slot: String? = nil) {
+        let response = sendSessionRequestToIOSCD(preset, app: app, display: display, slot: slot)
         if response?.hasPrefix("SESSION_STARTED") == true {
             lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
+                + (slot.map { " slot=\($0)" } ?? "")
                 + (display.map { " \($0.detail)" } ?? "")
             // Track the switch from here on (card line + full-screen banner once dismissed),
             // so it survives the app staying up through a compositor swap.
@@ -1345,6 +1350,14 @@ final class XScreenView: UIView {
             lastToolMessage = "Session request failed: \(detail)"
         }
         writeDebugSnapshot()
+    }
+
+    private func newSessionSlot(for preset: String) -> String {
+        let base = preset.lowercased()
+            .map { $0.isLetter || $0.isNumber || $0 == "-" ? String($0) : "-" }
+            .joined()
+        let stamp = Int(Date().timeIntervalSince1970) % 100000
+        return "\(base)-\(stamp)"
     }
 
     private func reloadRuntimeConfig() {
@@ -2322,20 +2335,49 @@ final class XScreenView: UIView {
 
     // MARK: display discovery + picker
 
-    /// One open X display. `config` is non-nil only when xios.json describes it (so it
-    /// can render a framebuffer); the rest are input-only.
+    /// One visible desktop target. Legacy X displays come from X<n> sockets; slot
+    /// displays come from xios-displays.d and carry their own xios-<slot>.json.
     private struct XDisplayInfo {
         let number: Int
         let config: [String: Any]?
+        let configPath: String?
+        let slot: String?
+        let preset: String?
+        let state: String?
+        let wayland: String?
         var displayStr: String { ":\(number)" }
         var renderable: Bool { config != nil }
     }
 
-    private func readConfig() -> [String: Any]? {
-        guard let data = FileManager.default.contents(atPath: configPath),
+    private func readConfig(path: String? = nil) -> [String: Any]? {
+        guard let data = FileManager.default.contents(atPath: path ?? configPath),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         return obj
+    }
+
+    private func discoverDisplaySlots() -> [XDisplayInfo] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: displayRegistryDir) else { return [] }
+        return entries.sorted().compactMap { entry in
+            guard entry.hasSuffix(".json") else { return nil }
+            let registryPath = "\(displayRegistryDir)/\(entry)"
+            guard let data = fm.contents(atPath: registryPath),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return nil }
+            let jsonPath = obj["json"] as? String
+            let cfg = jsonPath.flatMap { readConfig(path: $0) }
+            let display = (cfg?["display"] as? String) ?? ""
+            let number = display.hasPrefix(":") ? (Int(display.dropFirst()) ?? -1) : -1
+            return XDisplayInfo(
+                number: number,
+                config: cfg,
+                configPath: jsonPath,
+                slot: obj["slot"] as? String,
+                preset: obj["preset"] as? String,
+                state: obj["state"] as? String,
+                wayland: obj["wayland"] as? String)
+        }
     }
 
     /// Every open display = an `X<n>` socket under either `.X11-unix` dir, unioned
@@ -2355,7 +2397,17 @@ final class XScreenView: UIView {
             cfgNumber = n
             numbers.insert(n)   // include the configured display even if its socket dir wasn't scanned
         }
-        return numbers.sorted().map { XDisplayInfo(number: $0, config: $0 == cfgNumber ? cfg : nil) }
+        var rows = numbers.sorted().map {
+            XDisplayInfo(number: $0, config: $0 == cfgNumber ? cfg : nil,
+                         configPath: $0 == cfgNumber ? configPath : nil,
+                         slot: nil, preset: nil, state: nil, wayland: nil)
+        }
+        let seenPaths = Set(rows.compactMap { $0.configPath })
+        rows.append(contentsOf: discoverDisplaySlots().filter { row in
+            guard let path = row.configPath else { return true }
+            return !seenPaths.contains(path)
+        })
+        return rows
     }
 
     // MARK: installed-app enumeration (freedesktop .desktop entries)
@@ -2524,14 +2576,15 @@ final class XScreenView: UIView {
     /// config (or none, for input-only), and start its framebuffer + input path.
     private func load(_ disp: XDisplayInfo) {
         userPinned = true
+        selectedConfigPath = disp.configPath
         teardownConnections()
         loadGeneration += 1
         resetConfigDefaults()
-        xDisplay = disp.displayStr
+        if disp.number >= 0 { xDisplay = disp.displayStr }
 
         if disp.renderable {
-            _ = loadConfig()             // re-read the configured display's xios.json
-            xDisplay = disp.displayStr   // keep the picked display (config should match)
+            _ = loadConfig()             // re-read the configured display's json
+            if disp.number >= 0 { xDisplay = disp.displayStr }   // keep picked X display if any
             if ddxIsIOSurface {
                 startTestPattern()
                 startIOSurfaceConnect()
@@ -2959,6 +3012,7 @@ final class XScreenView: UIView {
             panelButton("Follow Current") { [weak self] in
                 guard let self else { return }
                 self.userPinned = false
+                self.selectedConfigPath = nil
                 self.reloadRuntimeConfig()
                 self.lastToolMessage = "Following xios.json"
                 self.presentDisplayControl(initial: .displays)
@@ -3019,6 +3073,19 @@ final class XScreenView: UIView {
             let prefix = preset == currentPreset ? "Restart " : "Start "
             stack.addArrangedSubview(panelButton(prefix + label) { pick(preset, nil) })
         }
+
+        addSection("Spawn Display Slot", to: stack)
+        let spawn: (String) -> Void = { [weak self, weak message] preset in
+            guard let self else { return }
+            let slot = self.newSessionSlot(for: preset)
+            self.writeSessionRequest(preset, app: nil, display: self.pendingSessionDisplay, slot: slot)
+            message?.text = self.lastToolMessage
+        }
+        stack.addArrangedSubview(buttonRow([
+            panelButton("New iosc") { spawn("iosc") },
+            panelButton("New KDE") { spawn("kde") },
+            panelButton("New GNOME") { spawn("gnome") },
+        ]))
 
         addSection("Launch App", to: stack)
         stack.addArrangedSubview(buttonRow([
@@ -3431,7 +3498,8 @@ final class XScreenView: UIView {
     }
 
     private func makeRow(_ d: XDisplayInfo) -> UIButton {
-        let active = d.number == activeDisplayNumber
+        let active = (d.configPath != nil && d.configPath == configPath) ||
+            (d.slot == nil && d.number == activeDisplayNumber)
         let b = UIButton(type: .system)
         b.contentHorizontalAlignment = .left
         b.titleLabel?.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
@@ -3448,16 +3516,25 @@ final class XScreenView: UIView {
     }
 
     private func rowTitle(_ d: XDisplayInfo, active: Bool) -> String {
+        let name: String
+        if let slot = d.slot {
+            let preset = d.preset.map { " \($0)" } ?? ""
+            let state = d.state.map { " \($0)" } ?? ""
+            name = "\(slot)\(preset)\(state)"
+        } else {
+            name = d.number >= 0 ? ":\(d.number)" : (d.wayland ?? "display")
+        }
         let desc: String
         if let cfg = d.config {
             let w = (cfg["width"] as? Int) ?? 0
             let h = (cfg["height"] as? Int) ?? 0
             let backend = (cfg["ddx"] as? String) == "iosurface" ? "IOSurface" : "unsupported"
-            desc = "\(w)×\(h)  \(backend)"
+            let input = (cfg["input_socket"] as? String).map { "  \($0)" } ?? ""
+            desc = "\(w)×\(h)  \(backend)\(input)"
         } else {
-            desc = "input only (no framebuffer)"
+            desc = d.wayland.map { "\($0) starting" } ?? "input only (no framebuffer)"
         }
-        return "\(active ? "● " : "   "):\(d.number)   \(desc)"
+        return "\(active ? "● " : "   ")\(name)   \(desc)"
     }
 
     private func pillButton(_ title: String, _ action: @escaping () -> Void) -> UIButton {

@@ -40,6 +40,12 @@ BIN=$(jb_path /usr/local/bin)
 TMP=$(jb_path /tmp)
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$TMP}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export XIOS_JSON_PATH="${XIOS_JSON_PATH:-$TMP/xios.json}"
+export IOSC_DDX_SOCK="${IOSC_DDX_SOCK:-$TMP/iosc-ddx.sock}"
+export IOSC_INPUT_SOCK="${IOSC_INPUT_SOCK:-$TMP/iosc-input.sock}"
+export IOSC_CLIPBOARD_SOCK="${IOSC_CLIPBOARD_SOCK:-$TMP/iosc-clipboard.sock}"
+export IOSC_WM_SOCK="${IOSC_WM_SOCK:-$TMP/iosc-wm.sock}"
+IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
 export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
 # Logical desktop the shell designs its elements for. iosc renders a 2x-oversized
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
@@ -63,7 +69,11 @@ PULSE_PROFILE=$(jb_path /etc/profile.d/xios-pulse.sh)
 if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
     if [ -x "$BIN/iosc" ]; then
         log "starting iosc (logical $IOSC_LOGICAL)..."
-        nohup "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
+        nohup env IOSC_IGNORE_ACTIVE_SESSION="${IOSC_IGNORE_ACTIVE_SESSION:-0}" \
+            "$BIN/iosc" -logical "$IOSC_LOGICAL" -s "$WAYLAND_DISPLAY" \
+            -ddx-sock "$IOSC_DDX_SOCK" -json "$XIOS_JSON_PATH" \
+            -input-sock "$IOSC_INPUT_SOCK" -clipboard-sock "$IOSC_CLIPBOARD_SOCK" \
+            -wm-sock "$IOSC_WM_SOCK" >"$IOSC_LOG" 2>&1 &
     else
         log "ERROR: no wayland socket at $SOCK and $BIN/iosc not found"
         log "start the compositor first (wayland/run-iosc.sh)"; exit 1

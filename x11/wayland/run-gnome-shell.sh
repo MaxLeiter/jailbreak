@@ -48,6 +48,7 @@ export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB
 # Match the PROVEN mutter smoke env exactly (run-mutter.sh): same runtime dir (so the rendezvous
 # lands where the Xios app + this script expect), same dyld path, same HOME for dconf/state.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export HOME="${HOME:-$XS_VAR/root}"
 TMP="$XDG_RUNTIME_DIR"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
@@ -55,7 +56,11 @@ PLUGINS="${PLUGINS:-$XS_PREFIX/lib/mutter-14/plugins}"
 LIBEXEC="${LIBEXEC:-$XS_PREFIX/libexec}"
 SHELL_BIN="${SHELL_BIN:-$XS_PREFIX/bin/gnome-shell}"
 SHELL_LIB="${SHELL_LIB:-$XS_PREFIX/lib/gnome-shell}"
-WSOCK="$XDG_RUNTIME_DIR/wayland-0"
+WSOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+XIOS_JSON_PATH="${XIOS_JSON_PATH:-$TMP/xios.json}"
+XIOS_DDX_SOCKET="${XIOS_DDX_SOCKET:-$TMP/mutter-ddx.sock}"
+XIOS_INPUT_SOCKET="${XIOS_INPUT_SOCKET:-$TMP/mutter-input.sock}"
+GNOME_SHELL_LOG="${GNOME_SHELL_LOG:-$TMP/gnome-shell.log}"
 
 [ -x "$SHELL_BIN" ] || { echo "!! $SHELL_BIN missing — install the gnome-shell deb"; exit 1; }
 
@@ -101,14 +106,16 @@ ldid -S"$ENT" "$SHELL_BIN" && echo "   signed: $SHELL_BIN"
 ldid -e "$SHELL_BIN" 2>/dev/null | grep -q AGXDeviceUserClient || { echo "!! entitlements did not stick — abort"; exit 1; }
 
 # --- (1) stop the mutter smoke / iosc / Xios app (gnome-shell replaces the compositor) ---------
-echo "==> stop the running compositor (mutter smoke or iosc) + the Xios app + any shell/clients"
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session" \
-  | awk '{print $1}' | while read -r pid; do
-      [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
-  done
-sleep 1
-rm -f "$WSOCK" "$WSOCK.lock" "$TMP/mutter-ddx.sock" "$TMP/xios.json" \
-      "$TMP/mutter-input.sock" "$TMP/xios-input.sock" "$TMP/gnome-shell.log" 2>/dev/null
+if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
+  echo "==> stop the running compositor (mutter smoke or iosc) + the Xios app + any shell/clients"
+  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session" \
+    | awk '{print $1}' | while read -r pid; do
+        [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
+    done
+  sleep 1
+fi
+rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
+      "$XIOS_INPUT_SOCKET" "$TMP/xios-input.sock" "$GNOME_SHELL_LOG" 2>/dev/null
 
 # --- (2) the so-name symlinks cogl's GLES driver + the mutter plugin loader need ---------------
 echo "==> ANGLE + mutter-plugin so-name symlinks"
@@ -125,7 +132,7 @@ echo "==> ensure GSettings schemas compiled"
 #         brings up Mutter/MetaBackendIOS + the Xios rendezvous. gnome-shell is run DIRECTLY (not
 #         via gnome-session) for the lowest-variable first light; switch to launch-gnome-session.sh
 #         once it paints.
-echo "==> start the session stubs + gnome-shell --wayland -> $TMP/gnome-shell.log"
+echo "==> start the session stubs + gnome-shell --wayland -> $GNOME_SHELL_LOG"
 # Fully detach into a new session: gnome-shell is a GRANDCHILD (dbus-run-session -> sh -> gnome-shell)
 # and nohup only shields the direct command — when this launcher's ssh session closes, SIGHUP reaches
 # the grandchild and kills the shell ~16s after launch. The device has no `setsid`, so use a tiny
@@ -160,6 +167,10 @@ XIOS_TZ="$(readlink /var/db/timezone/localtime 2>/dev/null | sed 's#.*/zoneinfo/
 "$SETSID" env \
   ${XIOS_TZ:+TZ="$XIOS_TZ"} \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" HOME="$HOME" \
+  WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+  XIOS_DDX_SOCKET="$XIOS_DDX_SOCKET" \
+  XIOS_JSON_PATH="$XIOS_JSON_PATH" \
+  XIOS_INPUT_SOCKET="$XIOS_INPUT_SOCKET" \
   DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$SHELL_LIB:$XS_PREFIX/lib/mutter-14:$ANGLE" \
   XDG_DATA_DIRS="$XS_PREFIX/share" \
   GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
@@ -170,7 +181,7 @@ XIOS_TZ="$(readlink /var/db/timezone/localtime 2>/dev/null | sed 's#.*/zoneinfo/
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
     # Persist the (otherwise abstract) session bus address so out-of-session tools
     # (headless screenshots via org.gnome.Shell.Screenshot, gsettings, gdbus) can reach it.
-    printf %s "$DBUS_SESSION_BUS_ADDRESS" > '"$TMP"'/gnome-session-bus
+    printf %s "$DBUS_SESSION_BUS_ADDRESS" > '"$TMP"'/gnome-session-bus'"${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"'
     [ -x '"$LIBEXEC"'/xios-login1-stub ]  && '"$LIBEXEC"'/xios-login1-stub &
     [ -x '"$LIBEXEC"'/xios-polkit-stub ]  && '"$LIBEXEC"'/xios-polkit-stub &
     [ -x '"$LIBEXEC"'/xios-accounts-stub ] && '"$LIBEXEC"'/xios-accounts-stub &
@@ -179,26 +190,26 @@ XIOS_TZ="$(readlink /var/db/timezone/localtime 2>/dev/null | sed 's#.*/zoneinfo/
     [ -r '"$(jb_path /etc/profile.d/xios-pulse.sh)"' ] && . '"$(jb_path /etc/profile.d/xios-pulse.sh)"' && xios_pulse_start
     [ -x '"$LIBEXEC"'/xios-sysintd ]      && '"$LIBEXEC"'/xios-sysintd &
     sleep 1
-    exec gnome-shell --wayland
-  ' >"$TMP/gnome-shell.log" 2>&1 </dev/null &
+    exec gnome-shell --wayland --wayland-display "$WAYLAND_DISPLAY"
+  ' >"$GNOME_SHELL_LOG" 2>&1 </dev/null &
 GPID=$!
 
 echo "==> wait for gnome-shell to create the output IOSurface + write xios.json + serve wayland"
 for _ in $(seq 1 100); do
-  [ -f "$TMP/xios.json" ] && [ -S "$TMP/mutter-ddx.sock" ] && break
+  [ -f "$XIOS_JSON_PATH" ] && [ -S "$XIOS_DDX_SOCKET" ] && break
   kill -0 "$GPID" 2>/dev/null || break
   sleep 0.2
 done
-if ! kill -0 "$GPID" 2>/dev/null; then echo "!! gnome-shell died:"; sed 's/^/   /' "$TMP/gnome-shell.log"; exit 1; fi
-echo "   xios.json:       $(cat "$TMP/xios.json" 2>/dev/null)"
-echo "   mutter-ddx.sock: $([ -S "$TMP/mutter-ddx.sock" ] && echo up || echo MISSING)"
+if ! kill -0 "$GPID" 2>/dev/null; then echo "!! gnome-shell died:"; sed 's/^/   /' "$GNOME_SHELL_LOG"; exit 1; fi
+echo "   xios.json:       $(cat "$XIOS_JSON_PATH" 2>/dev/null)"
+echo "   mutter-ddx.sock: $([ -S "$XIOS_DDX_SOCKET" ] && echo up || echo MISSING)"
 echo "   wayland socket:  $(ls "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | tr '\n' ' ')"
 
-if chown mobile:mobile "$TMP/mutter-ddx.sock" 2>/dev/null || chown 501:501 "$TMP/mutter-ddx.sock" 2>/dev/null; then
-  chmod 0660 "$TMP/mutter-ddx.sock" 2>/dev/null
+if chown mobile:mobile "$XIOS_DDX_SOCKET" 2>/dev/null || chown 501:501 "$XIOS_DDX_SOCKET" 2>/dev/null; then
+  chmod 0660 "$XIOS_DDX_SOCKET" 2>/dev/null
 else
-  chmod 0600 "$TMP/mutter-ddx.sock" 2>/dev/null
-  echo "!! could not hand $TMP/mutter-ddx.sock to mobile; keeping it owner-only"
+  chmod 0600 "$XIOS_DDX_SOCKET" 2>/dev/null
+  echo "!! could not hand $XIOS_DDX_SOCKET to mobile; keeping it owner-only"
 fi
 
 echo "==> relaunch the Xios app (adopts + Metal-presents gnome-shell's output IOSurface)"
@@ -207,7 +218,7 @@ sleep 4
 
 echo "==> gnome-shell log (look for: MetaRendererIOS create_view, IOSurface id=, JS ready; NOT"
 echo "    'Failed to load module', typelib-not-found, or MTLCreateSystemDefaultDevice nil):"
-sed 's/^/   /' "$TMP/gnome-shell.log" | tail -80
+sed 's/^/   /' "$GNOME_SHELL_LOG" | tail -80
 echo "==> gnome-shell still running: $(kill -0 "$GPID" 2>/dev/null && echo yes || echo NO)"
 echo
 echo "SUCCESS = the iPad shows the GNOME Shell top panel + Activities + a wallpaper (not the flat"

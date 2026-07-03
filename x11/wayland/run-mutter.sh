@@ -42,22 +42,29 @@ jb_path() {
 
 export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:$PATH"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 TMP="$XDG_RUNTIME_DIR"
 MUTTER="${MUTTER:-$XS_PREFIX/bin/mutter}"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
 PLUGINS="${PLUGINS:-$XS_PREFIX/lib/mutter-14/plugins}"
-WSOCK="$XDG_RUNTIME_DIR/wayland-0"
+WSOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+XIOS_JSON_PATH="${XIOS_JSON_PATH:-$TMP/xios.json}"
+XIOS_DDX_SOCKET="${XIOS_DDX_SOCKET:-$TMP/mutter-ddx.sock}"
+XIOS_INPUT_SOCKET="${XIOS_INPUT_SOCKET:-$TMP/mutter-input.sock}"
+MUTTER_LOG="${MUTTER_LOG:-$TMP/mutter.log}"
 
 [ -x "$MUTTER" ] || { echo "!! $MUTTER missing/not executable — scp out/mutter there first"; exit 1; }
 
-echo "==> stop the iosc demo (iosc + Xios app + shell + any client); mutter replaces the compositor"
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter" \
-  | awk '{print $1}' | while read -r pid; do
-      [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
-  done
-sleep 1
-rm -f "$WSOCK" "$WSOCK.lock" "$TMP/mutter-ddx.sock" "$TMP/xios.json" \
-      "$TMP/mutter-input.sock" "$TMP/xios-input.sock" "$TMP/mutter.log" 2>/dev/null
+if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
+  echo "==> stop the iosc demo (iosc + Xios app + shell + any client); mutter replaces the compositor"
+  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter" \
+    | awk '{print $1}' | while read -r pid; do
+        [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
+    done
+  sleep 1
+fi
+rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
+      "$XIOS_INPUT_SOCKET" "$TMP/xios-input.sock" "$MUTTER_LOG" 2>/dev/null
 
 echo "==> ANGLE Linux so-name symlinks (cogl's GLES driver dlopens libGLESv2.so.2 / libEGL.so.1)"
 ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so.2" 2>/dev/null
@@ -79,36 +86,39 @@ fi
 PULSE_PROFILE="$(jb_path /etc/profile.d/xios-pulse.sh)"
 [ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start
 
-echo "==> start mutter --wayland (MetaBackendIOS) -> $TMP/mutter.log"
+echo "==> start mutter --wayland (MetaBackendIOS) -> $MUTTER_LOG"
 # DYLD_LIBRARY_PATH resolves @rpath leaf names: libmutter-14.dylib (usr/lib), the cogl/clutter/mtk
 # sub-dylibs (usr/lib/mutter-14), and libGLESv2/libEGL (lib/angle). Mutter acquires org.gnome.Mutter*
 # names -> needs a session bus (dbus-run-session). No DISPLAY/WAYLAND_DISPLAY (it CREATES wayland-0).
 nohup env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+  XIOS_DDX_SOCKET="$XIOS_DDX_SOCKET" \
+  XIOS_JSON_PATH="$XIOS_JSON_PATH" \
+  XIOS_INPUT_SOCKET="$XIOS_INPUT_SOCKET" \
   DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$XS_PREFIX/lib/mutter-14:$ANGLE" \
   XDG_DATA_DIRS="$XS_PREFIX/share" \
   GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
   HOME="$XS_VAR/root" \
-  dbus-run-session -- "$MUTTER" --wayland >"$TMP/mutter.log" 2>&1 </dev/null &
+  dbus-run-session -- "$MUTTER" --wayland --wayland-display "$WAYLAND_DISPLAY" >"$MUTTER_LOG" 2>&1 </dev/null &
 MPID=$!
 
 echo "==> wait for mutter to create the output IOSurface + write xios.json + serve wayland"
 for _ in $(seq 1 50); do
-  [ -f "$TMP/xios.json" ] && [ -S "$TMP/mutter-ddx.sock" ] && break
+  [ -f "$XIOS_JSON_PATH" ] && [ -S "$XIOS_DDX_SOCKET" ] && break
   kill -0 "$MPID" 2>/dev/null || break
   sleep 0.2
 done
-if ! kill -0 "$MPID" 2>/dev/null; then echo "!! mutter died:"; sed 's/^/   /' "$TMP/mutter.log"; exit 1; fi
-echo "   xios.json:       $(cat "$TMP/xios.json" 2>/dev/null)"
-echo "   mutter-ddx.sock: $([ -S "$TMP/mutter-ddx.sock" ] && echo up || echo MISSING)"
+if ! kill -0 "$MPID" 2>/dev/null; then echo "!! mutter died:"; sed 's/^/   /' "$MUTTER_LOG"; exit 1; fi
+echo "   xios.json:       $(cat "$XIOS_JSON_PATH" 2>/dev/null)"
+echo "   mutter-ddx.sock: $([ -S "$XIOS_DDX_SOCKET" ] && echo up || echo MISSING)"
 echo "   wayland socket:  $(ls "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | tr '\n' ' ')"
 
 # the Xios app runs as mobile; let it connect to the (root) rendezvous socket
-if chown mobile:mobile "$TMP/mutter-ddx.sock" 2>/dev/null || chown 501:501 "$TMP/mutter-ddx.sock" 2>/dev/null; then
-  chmod 0660 "$TMP/mutter-ddx.sock" 2>/dev/null
+if chown mobile:mobile "$XIOS_DDX_SOCKET" 2>/dev/null || chown 501:501 "$XIOS_DDX_SOCKET" 2>/dev/null; then
+  chmod 0660 "$XIOS_DDX_SOCKET" 2>/dev/null
 else
-  chmod 0600 "$TMP/mutter-ddx.sock" 2>/dev/null
-  echo "!! could not hand $TMP/mutter-ddx.sock to mobile; keeping it owner-only"
+  chmod 0600 "$XIOS_DDX_SOCKET" 2>/dev/null
+  echo "!! could not hand $XIOS_DDX_SOCKET to mobile; keeping it owner-only"
 fi
 
 echo "==> relaunch the Xios app (adopts + Metal-presents mutter's output IOSurface)"

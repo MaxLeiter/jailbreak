@@ -40,6 +40,8 @@
 
 /* Where the Xios app streams its input protocol (overridable for testing). */
 #define XIOS_INPUT_SOCKET_DEFAULT "/var/jb/tmp/mutter-input.sock"
+#define XIOS_DDX_SOCKET_DEFAULT "/var/jb/tmp/mutter-ddx.sock"
+#define XIOS_JSON_PATH_DEFAULT "/var/jb/tmp/xios.json"
 
 /* The one resolution of the input-socket path. Both the xios.json advertisement
  * (constructed) and the pump bind (post_init) call this — advertise MUST equal bind,
@@ -50,6 +52,22 @@ ios_input_socket_path (void)
   const char *path = g_getenv ("XIOS_INPUT_SOCKET");
 
   return path ? path : XIOS_INPUT_SOCKET_DEFAULT;
+}
+
+static const char *
+ios_ddx_socket_path (void)
+{
+  const char *path = g_getenv ("XIOS_DDX_SOCKET");
+
+  return path ? path : XIOS_DDX_SOCKET_DEFAULT;
+}
+
+static const char *
+ios_json_path (void)
+{
+  const char *path = g_getenv ("XIOS_JSON_PATH");
+
+  return path ? path : XIOS_JSON_PATH_DEFAULT;
 }
 
 struct _MetaBackendIOS
@@ -380,7 +398,7 @@ meta_backend_ios_constructed (GObject *object)
         xios_set_compositor_id ("mutter-ios");
         xios_set_input_socket (input_sock);
 
-        if (xios_server_start ("/var/jb/tmp/mutter-ddx.sock", "/var/jb/tmp/xios.json",
+        if (xios_server_start (ios_ddx_socket_path (), ios_json_path (),
                                width, height, stride) != 0)
           g_warning ("MetaBackendIOS: xios_server_start failed — the Xios app can't find the output");
       }

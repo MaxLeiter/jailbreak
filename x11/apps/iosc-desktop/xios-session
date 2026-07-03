@@ -58,6 +58,23 @@ for c in "${LIB_CANDIDATES[@]}"; do
     [ -n "$c" ] && [ -r "$c" ] && { LIB="$c"; break; }
 done
 [ -n "$LIB" ] || { echo "xios-session: cannot find xios-session-lib.sh" >&2; exit 1; }
+
+PRESCAN=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --slot)
+            [ "$#" -ge 2 ] || { echo "xios-session: --slot needs a name" >&2; exit 2; }
+            export XIOS_SESSION_SLOT="$2"
+            shift 2 ;;
+        --slot=*)
+            export XIOS_SESSION_SLOT="${1#--slot=}"
+            shift ;;
+        *)
+            PRESCAN+=("$1")
+            shift ;;
+    esac
+done
+set -- "${PRESCAN[@]:-}"
 # shellcheck source=/dev/null
 . "$LIB"
 
@@ -66,7 +83,7 @@ VIA_DAEMON=0
 
 usage() { xios_session_run help; exit "${1:-2}"; }
 
-# option scan (only -d/--via-daemon; the rest are the preset + args)
+# option scan (-d/--via-daemon; --slot is pre-scanned before loading the lib)
 ARGS=()
 for a in "$@"; do
     case "$a" in
@@ -90,8 +107,8 @@ esac
 send_ioscd_session() {
     local preset="$1" app="${2:-}" line ack
     [ -S "$IOSCD_SOCK" ] || return 1
-    line=$(printf 'SESSION\t%s\t%s\t%s\t%s\t%s\n' \
-        "$preset" "$app" "${XIOS_SESSION_WIDTH:-}" "${XIOS_SESSION_HEIGHT:-}" "${XIOS_SESSION_DPI:-}")
+    line=$(printf 'SESSION\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$preset" "$app" "${XIOS_SESSION_WIDTH:-}" "${XIOS_SESSION_HEIGHT:-}" "${XIOS_SESSION_DPI:-}" "${XIOS_SESSION_SLOT:-}")
     ack=""
     if command -v nc >/dev/null 2>&1; then
         ack="$(printf '%s' "$line" | nc -U "$IOSCD_SOCK" 2>/dev/null | head -n 1 || true)"

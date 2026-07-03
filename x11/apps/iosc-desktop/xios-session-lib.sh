@@ -35,6 +35,8 @@
 #                       to finish before failing busy (default 45)
 #   XIOS_SESSION_LOCK_STALE  seconds before a stuck lock owner is reaped
 #                       (default 180)
+#   XIOS_SESSION_REQUEST_WAIT seconds to wait for the request-sequence marker
+#                       while marking a session switch request (default 5)
 #
 # JETSAM NOTE (why the settle exists): switching flavors kills the old compositor
 # (which holds a large GPU IOSurface + Metal/ANGLE context, ~30MB) and starts a new
@@ -74,13 +76,51 @@ XS_STATUS="${XS_STATUS:-$XS_TMP/xios-session-status.json}"
 XS_ACTIVE="${XS_ACTIVE:-$XS_TMP/xios-active-session}"
 XS_LOCK_DIR="${XS_LOCK_DIR:-$XS_TMP/xios-session.lock}"
 XS_SESSION_PGIDS="${XS_SESSION_PGIDS:-$XS_TMP/xios-session.pgids}"
-XS_WAYLAND_SOCK="$XS_TMP/wayland-0"
+XS_REQUEST_SEQ="${XS_REQUEST_SEQ:-$XS_TMP/xios-session.request-seq}"
+XS_REQUEST_SEQ_LOCK="${XS_REQUEST_SEQ_LOCK:-$XS_TMP/xios-session.request-seq.lock}"
 XS_XIOS_BUNDLE="com.max.xios"
 XS_UIOPEN="${XS_UIOPEN:-$XS_PREFIX/bin/uiopen}"
 XS_DBUS_RUN="${XS_DBUS_RUN:-$XS_PREFIX/bin/dbus-run-session}"
 XS_DBUS_DAEMON="${XS_DBUS_DAEMON:-$XS_PREFIX/bin/dbus-daemon}"
 XS_BASH="${XS_BASH:-$XS_PREFIX/bin/bash}"
 XS_ANGLE_LIBEGL="${XS_ANGLE_LIBEGL:-$XS_JB/lib/angle/libEGL.angle.dylib}"
+
+XS_SLOT_RAW="${XIOS_SESSION_SLOT:-}"
+XS_SLOT="$(printf '%s' "$XS_SLOT_RAW" | tr -c 'A-Za-z0-9_.-' '-' | sed 's/^-*//; s/-*$//; s/--*/-/g' | cut -c1-48)"
+if [ -n "$XS_SLOT_RAW" ] && [ -z "$XS_SLOT" ]; then XS_SLOT="desktop"; fi
+XS_SLOT_REGISTRY_DIR="${XS_SLOT_REGISTRY_DIR:-$XS_TMP/xios-displays.d}"
+if [ -n "$XS_SLOT" ]; then
+    export XIOS_SESSION_SLOT="$XS_SLOT"
+    if [ "$XS_STATUS" = "$XS_TMP/xios-session-status.json" ]; then
+        XS_STATUS="$XS_TMP/xios-session-$XS_SLOT.json"
+    fi
+    XS_SLOT_REGISTRY="$XS_SLOT_REGISTRY_DIR/$XS_SLOT.json"
+    XS_WAYLAND_NAME="${XS_WAYLAND_NAME:-wayland-$XS_SLOT}"
+    XS_CONFIG_JSON="${XS_CONFIG_JSON:-$XS_TMP/xios-$XS_SLOT.json}"
+    XS_IOSC_DDX_SOCK="${XS_IOSC_DDX_SOCK:-$XS_TMP/iosc-$XS_SLOT-ddx.sock}"
+    XS_IOSC_INPUT_SOCK="${XS_IOSC_INPUT_SOCK:-$XS_TMP/iosc-$XS_SLOT-input.sock}"
+    XS_IOSC_CLIPBOARD_SOCK="${XS_IOSC_CLIPBOARD_SOCK:-$XS_TMP/iosc-$XS_SLOT-clipboard.sock}"
+    XS_IOSC_WM_SOCK="${XS_IOSC_WM_SOCK:-$XS_TMP/iosc-$XS_SLOT-wm.sock}"
+    XS_MUTTER_DDX_SOCK="${XS_MUTTER_DDX_SOCK:-$XS_TMP/mutter-$XS_SLOT-ddx.sock}"
+    XS_MUTTER_INPUT_SOCK="${XS_MUTTER_INPUT_SOCK:-$XS_TMP/mutter-$XS_SLOT-input.sock}"
+    XS_KWIN_SOCKET="${XS_KWIN_SOCKET:-kwin-$XS_SLOT}"
+    XS_IOSC_LOG="${XS_IOSC_LOG:-$XS_TMP/iosc-$XS_SLOT.log}"
+    XS_KDE_LOG="${XS_KDE_LOG:-$XS_TMP/kde-plasma-$XS_SLOT.log}"
+else
+    XS_SLOT_REGISTRY=""
+    XS_WAYLAND_NAME="${XS_WAYLAND_NAME:-wayland-0}"
+    XS_CONFIG_JSON="${XS_CONFIG_JSON:-$XS_TMP/xios.json}"
+    XS_IOSC_DDX_SOCK="${XS_IOSC_DDX_SOCK:-$XS_TMP/iosc-ddx.sock}"
+    XS_IOSC_INPUT_SOCK="${XS_IOSC_INPUT_SOCK:-$XS_TMP/iosc-input.sock}"
+    XS_IOSC_CLIPBOARD_SOCK="${XS_IOSC_CLIPBOARD_SOCK:-$XS_TMP/iosc-clipboard.sock}"
+    XS_IOSC_WM_SOCK="${XS_IOSC_WM_SOCK:-$XS_TMP/iosc-wm.sock}"
+    XS_MUTTER_DDX_SOCK="${XS_MUTTER_DDX_SOCK:-$XS_TMP/mutter-ddx.sock}"
+    XS_MUTTER_INPUT_SOCK="${XS_MUTTER_INPUT_SOCK:-$XS_TMP/mutter-input.sock}"
+    XS_KWIN_SOCKET="${XS_KWIN_SOCKET:-kwin-ios-test}"
+    XS_IOSC_LOG="${XS_IOSC_LOG:-$XS_TMP/iosc.log}"
+    XS_KDE_LOG="${XS_KDE_LOG:-$XS_TMP/kde-plasma.log}"
+fi
+XS_WAYLAND_SOCK="$XS_TMP/$XS_WAYLAND_NAME"
 
 export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
 
@@ -112,6 +152,54 @@ xs_process_alive() {
     local pid="$1"
     case "$pid" in ""|*[!0-9]*) return 1 ;; esac
     kill -0 "$pid" 2>/dev/null
+}
+
+xs_lock_dir_with_timeout() {  # xs_lock_dir_with_timeout <dir> <wait-seconds>
+    local dir="$1" wait="${2:-5}" waited=0
+    while ! mkdir "$dir" 2>/dev/null; do
+        if [ "$wait" -le 0 ] || [ "$waited" -ge "$wait" ]; then
+            return 1
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 0
+}
+
+xs_switch_request_preset() {
+    case "${1:-}" in
+        iosc|mutter|gnome|kde|plasma|kde-desktop|plasma-desktop|kde-nano|plasma-nano|nano|kde-mobile|plasma-mobile|mobile|resize|display|stop|off)
+            return 0 ;;
+        *)
+            return 1 ;;
+    esac
+}
+
+xs_mark_latest_switch_request() {  # xs_mark_latest_switch_request <preset>
+    local preset="${1:-session}" seq=0 now
+    if ! xs_lock_dir_with_timeout "$XS_REQUEST_SEQ_LOCK" "${XIOS_SESSION_REQUEST_WAIT:-5}"; then
+        xs_log "WARN: could not lock session request marker; proceeding without supersede guard"
+        XS_REQUEST_ID=""
+        return 0
+    fi
+    if [ -f "$XS_REQUEST_SEQ" ]; then
+        seq="$(sed -n '1s/[[:space:]].*//p' "$XS_REQUEST_SEQ" 2>/dev/null || echo 0)"
+    fi
+    case "$seq" in ""|*[!0-9]*) seq=0 ;; esac
+    seq=$((seq + 1))
+    now="$(date '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || true)"
+    printf '%s\t%s\t%s\t%s\n' "$seq" "$$" "$preset" "$now" >"$XS_REQUEST_SEQ" 2>/dev/null || true
+    rmdir "$XS_REQUEST_SEQ_LOCK" 2>/dev/null || true
+    XS_REQUEST_ID="$seq"
+    export XS_REQUEST_ID
+}
+
+xs_switch_request_superseded() {
+    local current
+    [ -n "${XS_REQUEST_ID:-}" ] || return 1
+    [ -f "$XS_REQUEST_SEQ" ] || return 1
+    current="$(sed -n '1s/[[:space:]].*//p' "$XS_REQUEST_SEQ" 2>/dev/null || true)"
+    [ -n "$current" ] && [ "$current" != "$XS_REQUEST_ID" ]
 }
 
 xs_reap_pgid() {
@@ -158,6 +246,10 @@ xs_session_lock_is_stale() {
 xs_acquire_session_lock() {  # xs_acquire_session_lock <preset>
     local preset="${1:-session}" wait="${XIOS_SESSION_LOCK_WAIT:-45}" waited=0 pgid
     while ! mkdir "$XS_LOCK_DIR" 2>/dev/null; do
+        if xs_switch_request_superseded; then
+            xs_log "session request '$preset' superseded while waiting; skipping stale request"
+            return 75
+        fi
         if xs_session_lock_is_stale; then
             xs_reap_session_lock_owner
             continue
@@ -180,6 +272,11 @@ xs_acquire_session_lock() {  # xs_acquire_session_lock <preset>
     printf '%s\n' "$pgid" >"$XS_LOCK_DIR/pgid" 2>/dev/null || true
     printf '%s\n' "$preset" >"$XS_LOCK_DIR/preset" 2>/dev/null || true
     date '+%s' >"$XS_LOCK_DIR/started" 2>/dev/null || true
+    if xs_switch_request_superseded; then
+        xs_log "session request '$preset' superseded before start; skipping stale request"
+        xs_release_session_lock
+        return 75
+    fi
     return 0
 }
 
@@ -241,17 +338,20 @@ xs_session_bus_address() {  # xs_session_bus_address <busdir>
 #   state = starting | up | error | stopped   (the app / CLI can poll this)
 xs_write_status() {
     local preset="$1" state="$2" msg="$3"
-    local at active width height stride display ddx socket input_socket extra=""
+    local at active width height stride display ddx socket input_socket meta="" extra=""
     at="$(date '+%Y-%m-%dT%H:%M:%S')"
     active="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
-    width="$(xs_json_get_file "$XS_TMP/xios.json" width)"
-    height="$(xs_json_get_file "$XS_TMP/xios.json" height)"
-    stride="$(xs_json_get_file "$XS_TMP/xios.json" stride)"
-    display="$(xs_json_get_file "$XS_TMP/xios.json" display)"
-    ddx="$(xs_json_get_file "$XS_TMP/xios.json" ddx)"
-    socket="$(xs_json_get_file "$XS_TMP/xios.json" socket)"
-    input_socket="$(xs_json_get_file "$XS_TMP/xios.json" input_socket)"
+    width="$(xs_json_get_file "$XS_CONFIG_JSON" width)"
+    height="$(xs_json_get_file "$XS_CONFIG_JSON" height)"
+    stride="$(xs_json_get_file "$XS_CONFIG_JSON" stride)"
+    display="$(xs_json_get_file "$XS_CONFIG_JSON" display)"
+    ddx="$(xs_json_get_file "$XS_CONFIG_JSON" ddx)"
+    socket="$(xs_json_get_file "$XS_CONFIG_JSON" socket)"
+    input_socket="$(xs_json_get_file "$XS_CONFIG_JSON" input_socket)"
     [ -n "$active" ] && extra="$extra,\"active\":\"$(xs_json_escape "$active")\""
+    [ -n "$XS_SLOT" ] && meta="$meta,\"slot\":\"$(xs_json_escape "$XS_SLOT")\""
+    [ -n "$XS_WAYLAND_NAME" ] && meta="$meta,\"wayland\":\"$(xs_json_escape "$XS_WAYLAND_NAME")\""
+    [ -n "$XS_CONFIG_JSON" ] && meta="$meta,\"json\":\"$(xs_json_escape "$XS_CONFIG_JSON")\""
     [ -n "$width" ] && extra="$extra,\"width\":$width"
     [ -n "$height" ] && extra="$extra,\"height\":$height"
     [ -n "$stride" ] && extra="$extra,\"stride\":$stride"
@@ -263,7 +363,15 @@ xs_write_status() {
     [ -n "${XIOS_SESSION_DPI:-}" ] && extra="$extra,\"requested_dpi\":$XIOS_SESSION_DPI"
     printf '{"preset":"%s","state":"%s","message":"%s","at":"%s"%s}\n' \
         "$(xs_json_escape "$preset")" "$(xs_json_escape "$state")" \
-        "$(xs_json_escape "$msg")" "$at" "$extra" >"$XS_STATUS" 2>/dev/null || true
+        "$(xs_json_escape "$msg")" "$at" "$meta$extra" >"$XS_STATUS" 2>/dev/null || true
+    if [ -n "$XS_SLOT_REGISTRY" ]; then
+        mkdir -p "$XS_SLOT_REGISTRY_DIR" 2>/dev/null || true
+        printf '{"slot":"%s","preset":"%s","state":"%s","message":"%s","at":"%s","wayland":"%s","json":"%s","status":"%s"%s}\n' \
+            "$(xs_json_escape "$XS_SLOT")" "$(xs_json_escape "$preset")" \
+            "$(xs_json_escape "$state")" "$(xs_json_escape "$msg")" "$at" \
+            "$(xs_json_escape "$XS_WAYLAND_NAME")" "$(xs_json_escape "$XS_CONFIG_JSON")" \
+            "$(xs_json_escape "$XS_STATUS")" "$extra" >"$XS_SLOT_REGISTRY" 2>/dev/null || true
+    fi
 }
 
 # The active-display owner. /var/jb/tmp/xios.json is a single pointer to the
@@ -283,19 +391,38 @@ xs_record_session_pgid() {
     local preset="${1:-session}" pgid
     pgid="$(xs_current_pgid)"
     case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
-    printf '%s\t%s\t%s\n' "$pgid" "$preset" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
+    printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "${XS_SLOT:-}" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
 }
 
 xs_reap_recorded_session_pgroups() {
     [ -f "$XS_SESSION_PGIDS" ] || return 0
-    local pgid preset at current
+    local pgid preset slot at current
     current="$(xs_current_pgid)"
-    while IFS=$'\t' read -r pgid preset at; do
+    while IFS=$'\t' read -r pgid preset slot at; do
         case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
         [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
         xs_reap_pgid "$pgid" "previous ${preset:-session}"
     done <"$XS_SESSION_PGIDS"
     rm -f "$XS_SESSION_PGIDS" 2>/dev/null || true
+}
+
+xs_reap_slot_session_pgroups() {
+    local want="$1"
+    [ -n "$want" ] || return 0
+    [ -f "$XS_SESSION_PGIDS" ] || return 0
+    local tmp="$XS_SESSION_PGIDS.$$" pgid preset slot at current
+    current="$(xs_current_pgid)"
+    : >"$tmp" 2>/dev/null || true
+    while IFS=$'\t' read -r pgid preset slot at; do
+        case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
+        if [ "$slot" = "$want" ]; then
+            [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
+            xs_reap_pgid "$pgid" "slot $want ${preset:-session}"
+        else
+            printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$tmp" 2>/dev/null || true
+        fi
+    done <"$XS_SESSION_PGIDS"
+    mv "$tmp" "$XS_SESSION_PGIDS" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
 }
 
 # Resolve one of the bring-up scripts. Prefer the LIVE installed copy (the one the
@@ -430,9 +557,17 @@ xs_ensure_xios() {  # xs_ensure_xios <preset>
 # says "open the Xios app"). This is the flavor that works today.
 xios_session_iosc() {
     xs_write_status iosc stopping "stopping current session"
-    xios_session_teardown "-> iosc"
-    xs_settle
-    xs_set_active iosc
+    if [ -n "$XS_SLOT" ]; then
+        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
+            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
+            xs_write_status iosc error "slot already running: $XS_SLOT"
+            return 1
+        fi
+    else
+        xios_session_teardown "-> iosc"
+        xs_settle
+        xs_set_active iosc
+    fi
     xs_record_session_pgid iosc
     xs_write_status iosc starting "starting iosc + shell"
     local script; script="$(xs_find_bringup run-shell.sh)" || {
@@ -444,6 +579,14 @@ xios_session_iosc() {
     # default). Only export opacity when the caller set it, so an unset value never
     # overrides the panel's own default.
     export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
+    export WAYLAND_DISPLAY="$XS_WAYLAND_NAME"
+    export XIOS_JSON_PATH="$XS_CONFIG_JSON"
+    export IOSC_DDX_SOCK="$XS_IOSC_DDX_SOCK"
+    export IOSC_INPUT_SOCK="$XS_IOSC_INPUT_SOCK"
+    export IOSC_CLIPBOARD_SOCK="$XS_IOSC_CLIPBOARD_SOCK"
+    export IOSC_WM_SOCK="$XS_IOSC_WM_SOCK"
+    export IOSC_LOG="$XS_IOSC_LOG"
+    [ -n "$XS_SLOT" ] && export IOSC_IGNORE_ACTIVE_SESSION=1
     [ -n "${IOSC_PANEL_OPACITY:-}" ] && export IOSC_PANEL_OPACITY
     sh "$script" || true
     xs_write_status iosc waiting "waiting for compositor surface"
@@ -460,9 +603,17 @@ xios_session_iosc() {
 # teardown, starts mutter --wayland, chowns the ddx socket and relaunches Xios.
 xios_session_mutter() {
     xs_write_status mutter stopping "stopping current session"
-    xios_session_teardown "-> mutter"
-    xs_settle
-    xs_set_active mutter
+    if [ -n "$XS_SLOT" ]; then
+        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
+            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
+            xs_write_status mutter error "slot already running: $XS_SLOT"
+            return 1
+        fi
+    else
+        xios_session_teardown "-> mutter"
+        xs_settle
+        xs_set_active mutter
+    fi
     xs_record_session_pgid mutter
     xs_write_status mutter starting "starting mutter --wayland (compositor + display)"
     local script; script="$(xs_find_bringup run-mutter.sh)" || {
@@ -470,9 +621,14 @@ xios_session_mutter() {
     xs_log "mutter: $script"
     # run-mutter.sh's own (now no-op) teardown finds nothing to kill after ours +
     # the settle, so it just starts mutter, waits for xios.json, and relaunches Xios.
+    WAYLAND_DISPLAY="$XS_WAYLAND_NAME" \
+    XIOS_JSON_PATH="$XS_CONFIG_JSON" \
+    XIOS_DDX_SOCKET="$XS_MUTTER_DDX_SOCK" \
+    XIOS_INPUT_SOCKET="$XS_MUTTER_INPUT_SOCK" \
+    MUTTER_LOG="${XS_TMP}/mutter${XS_SLOT:+-$XS_SLOT}.log" \
     bash "$script" || true
     xs_ensure_xios mutter   # relaunch the display if it got jetsammed during bring-up
-    if [ -f "$XS_TMP/xios.json" ]; then
+    if [ -f "$XS_CONFIG_JSON" ]; then
         xs_log "mutter up (flat clutter stage; no shell yet)."
         xs_write_status mutter up "mutter --wayland running"
     else
@@ -485,14 +641,27 @@ xios_session_mutter() {
 # starts session stubs + gnome-shell --wayland, relaunches Xios). May not paint.
 xios_session_gnome() {
     xs_write_status gnome stopping "stopping current session"
-    xios_session_teardown "-> gnome"
-    xs_settle
-    xs_set_active gnome
+    if [ -n "$XS_SLOT" ]; then
+        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
+            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
+            xs_write_status gnome error "slot already running: $XS_SLOT"
+            return 1
+        fi
+    else
+        xios_session_teardown "-> gnome"
+        xs_settle
+        xs_set_active gnome
+    fi
     xs_record_session_pgid gnome
     xs_write_status gnome starting "starting gnome-shell --wayland (experimental)"
     local script; script="$(xs_find_bringup run-gnome-shell.sh)" || {
         xs_log "ERROR: run-gnome-shell.sh not found"; xs_write_status gnome error "run-gnome-shell.sh missing"; return 1; }
     xs_log "gnome (experimental): $script"
+    WAYLAND_DISPLAY="$XS_WAYLAND_NAME" \
+    XIOS_JSON_PATH="$XS_CONFIG_JSON" \
+    XIOS_DDX_SOCKET="$XS_MUTTER_DDX_SOCK" \
+    XIOS_INPUT_SOCKET="$XS_MUTTER_INPUT_SOCK" \
+    GNOME_SHELL_LOG="${XS_TMP}/gnome-shell${XS_SLOT:+-$XS_SLOT}.log" \
     bash "$script" || true
     xs_ensure_xios gnome    # relaunch the display if it got jetsammed during bring-up
     xs_write_status gnome waiting "waiting for GNOME Shell to paint"
@@ -520,7 +689,7 @@ xios_session_gnome() {
             xs_write_status gnome error "gnome-shell $outcome; see gnome-shell.log"
             return 1 ;;
         timeout)
-            if [ -f "$XS_TMP/xios.json" ]; then
+            if [ -f "$XS_CONFIG_JSON" ]; then
                 xs_log "gnome-shell: Mutter up but no 'GNOME Shell started' after ~15s (compositor-only). Last 40 lines of $log:"
                 tail -40 "$log" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
                 xs_write_status gnome compositor-only "Mutter up; GNOME Shell JS did not report started (see gnome-shell.log)"
@@ -550,18 +719,36 @@ xios_session_kde() {
         *) xs_log "ERROR: unknown KDE flavor '$flavor'"; xs_write_status kde error "unknown KDE flavor: $flavor"; return 2 ;;
     esac
     xs_write_status "$preset" stopping "stopping current session"
-    xios_session_teardown "-> $preset"
-    xs_settle
-    xs_set_active "$preset"
+    if [ -n "$XS_SLOT" ]; then
+        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
+            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
+            xs_write_status "$preset" error "slot already running: $XS_SLOT"
+            return 1
+        fi
+    else
+        xios_session_teardown "-> $preset"
+        xs_settle
+        xs_set_active "$preset"
+    fi
     xs_record_session_pgid "$preset"
     xs_write_status "$preset" starting "starting $label (experimental)"
     local script; script="$(xs_find_bringup run-kde-plasma.sh)" || {
         xs_log "ERROR: run-kde-plasma.sh not found"; xs_write_status "$preset" error "run-kde-plasma.sh missing"; return 1; }
     xs_log "$preset (experimental): $script"
+    WAYLAND_DISPLAY="$XS_WAYLAND_NAME" \
+    XIOS_JSON_PATH="$XS_CONFIG_JSON" \
+    IOSC_DDX_SOCK="$XS_IOSC_DDX_SOCK" \
+    IOSC_INPUT_SOCK="$XS_IOSC_INPUT_SOCK" \
+    IOSC_CLIPBOARD_SOCK="$XS_IOSC_CLIPBOARD_SOCK" \
+    IOSC_WM_SOCK="$XS_IOSC_WM_SOCK" \
+    IOSC_LOG="$XS_IOSC_LOG" \
+    KWIN_SOCKET="$XS_KWIN_SOCKET" \
+    KDE_LOG="$XS_KDE_LOG" \
+    XIOS_SESSION_SLOT="$XS_SLOT" \
     KDE_PLASMA_FLAVOR="$flavor" bash "$script" || true
     xs_ensure_xios "$preset"
     xs_write_status "$preset" waiting "waiting for $label"
-    if [ -S "$XS_TMP/kwin-ios-test" ]; then
+    if [ -S "$XS_TMP/$XS_KWIN_SOCKET" ]; then
         if xios_session_process_running "plasmashell"; then
             xs_log "$preset up (kwin-ios-test + plasmashell running)."
             xs_write_status "$preset" up "$label running"
@@ -637,10 +824,22 @@ xios_session_app() {
 # stop: tear everything down and return to SpringBoard.
 xios_session_stop() {
     xs_write_status stop stopping "stopping session"
-    xios_session_teardown "-> stop"
-    xs_clear_active
-    xs_log "session stopped; Xios app killed, back to SpringBoard."
-    xs_write_status stop stopped "all sessions stopped"
+    if [ -n "$XS_SLOT" ]; then
+        xs_reap_slot_session_pgroups "$XS_SLOT"
+        rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
+              "$XS_CONFIG_JSON" "$XS_IOSC_DDX_SOCK" "$XS_IOSC_INPUT_SOCK" \
+              "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
+              "$XS_MUTTER_DDX_SOCK" "$XS_MUTTER_INPUT_SOCK" \
+              "$XS_TMP/$XS_KWIN_SOCKET" "$XS_TMP/$XS_KWIN_SOCKET.lock" 2>/dev/null || true
+        rm -f "$XS_SLOT_REGISTRY" 2>/dev/null || true
+        xs_log "slot $XS_SLOT stopped"
+        xs_write_status stop stopped "slot stopped: $XS_SLOT"
+    else
+        xios_session_teardown "-> stop"
+        xs_clear_active
+        xs_log "session stopped; Xios app killed, back to SpringBoard."
+        xs_write_status stop stopped "all sessions stopped"
+    fi
 }
 
 xios_session_resize() {
@@ -708,6 +907,9 @@ xios_session_run() {
             xios_session_run_unlocked "$@"
             return $? ;;
     esac
+    if xs_switch_request_preset "$preset"; then
+        xs_mark_latest_switch_request "$preset"
+    fi
     xs_acquire_session_lock "$preset" || return $?
     xios_session_run_unlocked "$@"
     rc=$?
