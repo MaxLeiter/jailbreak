@@ -14,7 +14,10 @@ xios_pulse_start() {
     if command -v xios-audiod >/dev/null 2>&1; then
         if ! ps aux 2>/dev/null | grep -v grep | grep -q "xios-audiod"; then
             rm -f "${XIOS_AUDIO_SERVER:-/var/jb/tmp/xios-audio.sock}" 2>/dev/null
-            xios-audiod >/var/jb/tmp/xios-audiod.log 2>&1
+            # xios-audiod self-daemonizes (fork+setsid), so this returns fast,
+            # but background it anyway: any future --foreground default or a
+            # pre-fork stall (session activation) must not block the session.
+            xios-audiod >/var/jb/tmp/xios-audiod.log 2>&1 &
             sleep 1
         fi
     fi

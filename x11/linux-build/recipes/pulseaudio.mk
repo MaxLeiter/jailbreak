@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS         += pulseaudio
 PULSEAUDIO_VERSION  := 17.0
-DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-1
+DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-2+ios1
 
 pulseaudio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-$(PULSEAUDIO_VERSION).tar.xz)
@@ -185,6 +185,24 @@ pulseaudio-package: pulseaudio-stage
 		case "$$(od -An -N4 -tx1 $$f 2>/dev/null | tr -d ' \n')" in \
 			cffaedfe) $(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f;; \
 		esac; \
+	done
+
+	# Loadable modules link sibling helper libs that live in the SAME modules/
+	# dir (e.g. module-native-protocol-unix -> @rpath/libprotocol-native), but
+	# their LC_RPATHs are [@loader_path/../pulsecore, ../pulse, .., <buildpath>,
+	# /var/jb/usr/lib] — none of which is the modules dir itself. So the sibling
+	# never resolves, the native-protocol module fails to load, no unix socket
+	# comes up, and (with every module tripping over its siblings) the daemon
+	# dies "without any loaded modules". Add @loader_path (= the modules dir) to
+	# every module. Gate on the arm64 Mach-O magic; add_rpath errors on an
+	# rpath that already exists, so swallow that to stay idempotent across
+	# repackage runs (same pattern as mutter.mk). The
+	# $(call SIGN,pulseaudio,...) below re-signs the whole tree afterwards, so
+	# the install_name_tool edits do not leave a broken signature.
+	for f in $(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio/modules/*.dylib; do \
+		[ -f $$f ] || continue; [ -L $$f ] && continue; \
+		[ "$$(od -An -N4 -tx1 $$f 2>/dev/null | tr -d ' \n')" = cffaedfe ] || continue; \
+		$(I_N_T) -add_rpath @loader_path $$f 2>/dev/null || true; \
 	done
 
 	$(call SIGN,libpulse0,general.xml)
