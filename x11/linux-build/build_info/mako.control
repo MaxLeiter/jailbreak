@@ -1,0 +1,14 @@
+Package: mako
+Version: @DEB_MAKO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/emersion/mako
+Depends: libwayland0, libcairo2, libpango-1.0-0, libpangocairo-1.0-0, libglib2.0-0, libgdk-pixbuf-2.0-0, libepoll-shim0, basu
+Description: Lightweight Wayland notification daemon
+ mako implements org.freedesktop.Notifications and renders notifications with
+ pangocairo into wl_shm buffers mapped as zwlr_layer_surface_v1. Runs as a
+ native Wayland client under the iosc compositor. NOTE: this package is not yet
+ built for iOS — its sd-bus provider (basu) does not cross-compile to Darwin;
+ see recipes/basu.mk for the blocker catalogue.
