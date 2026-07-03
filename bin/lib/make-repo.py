@@ -15,12 +15,13 @@ Outputs in repo/:
 Run via the venv that has Pillow:  .repo-venv/bin/python bin/lib/make-repo.py
 Re-run after adding/removing .debs. No network needed.
 """
-import functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re
+import functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
 DEBS = os.path.join(REPO, "debs")
 META = os.path.join(REPO, "meta")
+LOGO_SOURCES = os.path.join(HERE, "logo-sources")
 
 APP_SECTION = "X11/Wayland Apps"
 APP_SECTION_PACKAGES = {
@@ -306,6 +307,38 @@ def category_icon(section, px=256):
     CATEGORY_GLYPH.get(section, _glyph_box)(d, S)
     return img.resize((px, px), Image.LANCZOS)
 
+RSVG_CONVERT = shutil.which("rsvg-convert")
+
+# real upstream app icons, extracted once from each .deb's own hicolor icon
+# theme (bin/lib/logo-sources/<pid>.{svg,png}) and composited onto the same
+# dark rounded tile the generated glyphs use, so real + generated icons sit
+# together without looking mismatched.
+def _load_logo_source(pid, px):
+    for ext in ("svg", "png"):
+        path = os.path.join(LOGO_SOURCES, f"{pid}.{ext}")
+        if not os.path.exists(path):
+            continue
+        if ext == "svg":
+            if not RSVG_CONVERT:
+                return None
+            out = subprocess.run(
+                [RSVG_CONVERT, "-w", str(px), "-h", str(px), path],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            if out.returncode != 0:
+                return None
+            return Image.open(io.BytesIO(out.stdout)).convert("RGBA")
+        return Image.open(path).convert("RGBA")
+    return None
+
+def package_icon(pid, section, px=256):
+    s = 4; S = px * s
+    logo = _load_logo_source(pid, S)
+    if logo is None:
+        return category_icon(section, px)
+    img, _, _ = _icon_base(px)
+    img.alpha_composite(logo.resize((S, S), Image.LANCZOS), (0, 0))
+    return img.resize((px, px), Image.LANCZOS)
+
 def make_banner(path, title, tagline, icon_img):
     W, H = 789, 444
     img = Image.new("RGB", (W, H), (9, 9, 12))
@@ -381,7 +414,7 @@ def html_depiction(ctrl, meta, size):
 <body><div class="wrap">
   <a class="back" href="../index.html">{BACK_SVG}<span>{html.escape(ORIGIN)}</span></a>
   <header class="masthead"><img src="../icons/{pid}.png" alt="">
-    <div><h1>{name}</h1><p class="sub">{tagline}</p></div>{THEME_BTN}</header>
+    <div><h1>{name}</h1><p class="sub">{tagline}</p></div>{THEME_PICKER}</header>
   <div class="prose">{body}</div>
   <h2 class="section">Information</h2><table class="info">{rows}</table>
   <footer><a href="../index.html">&larr; All packages</a></footer>
@@ -431,29 +464,28 @@ SITE_CSS = f"""
   .mast-top{{display:flex;align-items:center;gap:12px;padding-bottom:14px;
     border-bottom:1px solid var(--line)}}
   .mast-top .micro{{margin-right:auto}}
+  a.micro{{color:var(--fg-mute);transition:color .15s}}
+  a.micro:hover{{color:var(--fg)}}
   .mast h1{{font-size:clamp(40px,9vw,68px);font-weight:640;letter-spacing:-.045em;
-    line-height:1.04;margin:30px 0 10px}}
-  .mast .sub{{color:var(--fg-dim);font-size:15px;margin:0}}
-  .mast .sub a{{color:var(--fg-dim);border-bottom:1px solid var(--line-hi)}}
-  .mast .sub a:hover{{color:var(--fg)}}
+    line-height:1.04;margin:30px 0 0}}
 
   /* depiction masthead */
   .masthead{{display:flex;align-items:center;gap:16px;margin-bottom:6px}}
   .masthead img{{width:56px;height:56px;flex:0 0 auto}}
   .masthead h1{{font-size:26px;font-weight:640;letter-spacing:-.03em;margin:0}}
   .masthead .sub{{color:var(--fg-dim);margin:4px 0 0;font-size:14.5px}}
-  .masthead .theme-toggle{{margin-left:auto}}
+  .masthead .theme-picker{{margin-left:auto}}
 
-  .theme-toggle{{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
-    width:34px;height:34px;cursor:pointer;border:1px solid var(--line);border-radius:0;
-    background:transparent;color:var(--fg-dim);
-    transition:color .15s,border-color .15s}}
-  .theme-toggle:hover{{color:var(--fg);border-color:var(--line-hi)}}
-  .theme-toggle:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
-  .theme-toggle svg{{width:16px;height:16px;display:block}}
-  .theme-toggle .i-moon{{display:none}}
-  :root[data-theme="light"] .theme-toggle .i-sun{{display:none}}
-  :root[data-theme="light"] .theme-toggle .i-moon{{display:block}}
+  .theme-picker{{flex:0 0 auto;display:inline-flex;border:1px solid var(--line)}}
+  .theme-picker button{{display:inline-flex;align-items:center;justify-content:center;
+    width:32px;height:32px;cursor:pointer;border:0;border-left:1px solid var(--line);
+    border-radius:0;background:transparent;color:var(--fg-mute);padding:0;
+    transition:color .15s,background .15s}}
+  .theme-picker button:first-child{{border-left:0}}
+  .theme-picker button:hover{{color:var(--fg)}}
+  .theme-picker button[aria-pressed="true"]{{color:var(--fg);background:var(--bg-hover)}}
+  .theme-picker button:focus-visible{{outline:2px solid var(--accent);outline-offset:-2px}}
+  .theme-picker svg{{width:15px;height:15px;display:block}}
 
   /* install strip */
   .install{{margin:26px 0 0}}
@@ -479,6 +511,21 @@ SITE_CSS = f"""
   .managers .btn:hover{{z-index:1}}
   .btn.primary{{color:var(--accent)}}
   .btn.primary:hover{{border-color:var(--accent);color:var(--accent)}}
+
+  /* search */
+  .search{{position:relative;margin-top:-1px}}
+  .search input{{width:100%;padding:12px 96px 12px 14px;border:1px solid var(--line);
+    border-radius:0;background:transparent;color:var(--fg);
+    font-family:var(--mono);font-size:13px;-webkit-appearance:none;appearance:none}}
+  .search input::placeholder{{color:var(--fg-mute)}}
+  .search input::-webkit-search-cancel-button{{display:none}}
+  .search input:focus-visible{{outline:none;border-color:var(--line-hi)}}
+  .search .micro{{position:absolute;right:14px;top:50%;transform:translateY(-50%)}}
+  body.searching .tabs,body.searching .lede,body.searching .fl-head,
+  body.searching .flavors{{display:none}}
+  body.searching .reveal{{animation:none;opacity:1;transform:none}}
+  .no-results{{display:none;color:var(--fg-dim);font-size:14px;margin-top:30px}}
+  body.searching .no-results.show{{display:block}}
 
   /* top-level tabs: xiOS / Tweaks */
   .tabs{{display:flex;gap:30px;margin-top:48px;border-bottom:1px solid var(--line)}}
@@ -610,7 +657,7 @@ INDEX_JS = """
 
   var tabs = [].slice.call(document.querySelectorAll(".tab"));
   function showTab(name) {
-    if (!tabs.some(function (t) { return t.dataset.tab === name; })) name = "xios";
+    if (!tabs.some(function (t) { return t.dataset.tab === name; })) name = "tweaks";
     tabs.forEach(function (t) {
       var on = t.dataset.tab === name;
       t.setAttribute("aria-selected", String(on));
@@ -631,6 +678,66 @@ INDEX_JS = """
   });
   addEventListener("hashchange", function () { showTab(location.hash.slice(1)); });
   if (location.hash) showTab(location.hash.slice(1));
+
+  // live search across both tabs ("/" focuses, Esc clears)
+  var qInput = document.getElementById("q");
+  var searchN = document.getElementById("searchN");
+  var noRes = document.getElementById("noResults");
+  var panels = tabs.map(function (t) { return document.getElementById("panel-" + t.dataset.tab); });
+  var cats = [].slice.call(document.querySelectorAll("details.cat"));
+  var solos = [].slice.call(document.querySelectorAll(".list.solo"));
+  var rows = [].slice.call(document.querySelectorAll(".row"));
+  rows.forEach(function (r) {
+    var pid = (r.getAttribute("href") || "").replace(/^depictions\\//, "").replace(/\\.html$/, "");
+    r.dataset.k = (r.textContent + " " + pid).toLowerCase();
+  });
+  var searching = false;
+  function anyVisible(el) {
+    return [].slice.call(el.querySelectorAll(".row")).some(function (r) { return !r.hidden; });
+  }
+  function applySearch() {
+    var terms = qInput.value.trim().toLowerCase().split(/\\s+/).filter(Boolean);
+    var on = terms.length > 0;
+    if (on && !searching)
+      cats.forEach(function (c) { c.dataset.wasOpen = c.open ? "1" : ""; });
+    searching = on;
+    document.body.classList.toggle("searching", on);
+    if (!on) {
+      rows.forEach(function (r) { r.hidden = false; });
+      cats.forEach(function (c) { c.open = !!c.dataset.wasOpen; c.style.display = ""; });
+      solos.forEach(function (l) { l.style.display = ""; });
+      searchN.hidden = true;
+      noRes.classList.remove("show");
+      var cur = tabs.filter(function (t) { return t.getAttribute("aria-selected") === "true"; })[0];
+      showTab(cur ? cur.dataset.tab : "tweaks");
+      return;
+    }
+    panels.forEach(function (p) { p.hidden = false; });
+    var total = 0;
+    rows.forEach(function (r) {
+      var hit = terms.every(function (t) { return r.dataset.k.indexOf(t) !== -1; });
+      r.hidden = !hit;
+      if (hit) total++;
+    });
+    cats.forEach(function (c) {
+      var m = anyVisible(c);
+      c.style.display = m ? "" : "none";
+      c.open = m;
+    });
+    solos.forEach(function (l) { l.style.display = anyVisible(l) ? "" : "none"; });
+    searchN.textContent = total + (total === 1 ? " match" : " matches");
+    searchN.hidden = false;
+    noRes.classList.toggle("show", !total);
+  }
+  qInput.addEventListener("input", applySearch);
+  qInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { qInput.value = ""; applySearch(); qInput.blur(); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
+      e.preventDefault(); qInput.focus();
+    }
+  });
 </script>
 """
 
@@ -644,20 +751,22 @@ TWEAKS_SECTION = "Tweaks"
 FLAVORS = [("xios-gnome", "GNOME"), ("xios-kde", "KDE Plasma"),
            ("xios-native", "Native"), ("xios-x11", "X11")]
 
-# theme toggle (sun shown in dark mode, moon in light mode)
-THEME_BTN = (
-    '<button class="theme-toggle" id="theme-toggle" type="button" '
-    'aria-label="Toggle theme" aria-pressed="false">'
-    '<svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-    '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4'
-    'M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>'
-    '<svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-    '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>'
+# three-way theme picker: system (default) / light / dark
+_SVG = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">')
+THEME_PICKER = (
+    '<div class="theme-picker" role="group" aria-label="Theme">'
+    '<button type="button" data-theme="system" aria-label="Follow system theme" aria-pressed="true">'
+    f'{_SVG}<rect x="3" y="5" width="18" height="12" rx="1"/><path d="M8 21h8M12 17v4"/></svg></button>'
+    '<button type="button" data-theme="light" aria-label="Light theme" aria-pressed="false">'
+    f'{_SVG}<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4'
+    'M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg></button>'
+    '<button type="button" data-theme="dark" aria-label="Dark theme" aria-pressed="false">'
+    f'{_SVG}<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>'
+    '</div>'
 )
 
-# applies the saved/preferred theme before paint to avoid a flash of the wrong theme
+# applies the saved/system theme before paint to avoid a flash of the wrong theme
 HEAD_JS = """
 <script>
   (function () {
@@ -671,25 +780,40 @@ HEAD_JS = """
 </script>
 """
 
-# wires up the toggle button (runs after the DOM is in place)
+# wires up the theme picker; "system" clears the override and tracks the OS live
 THEME_JS = """
 <script>
   (function () {
-    var btn = document.getElementById("theme-toggle");
-    if (!btn) return;
+    var btns = [].slice.call(document.querySelectorAll(".theme-picker button"));
+    if (!btns.length) return;
     var root = document.documentElement;
-    function sync() {
-      var light = root.getAttribute("data-theme") === "light";
-      btn.setAttribute("aria-pressed", String(light));
-      btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
+    var mq = matchMedia("(prefers-color-scheme: light)");
+    function pref() {
+      try {
+        var t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") return t;
+      } catch (e) {}
+      return "system";
     }
-    sync();
-    btn.addEventListener("click", function () {
-      var next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
-      root.setAttribute("data-theme", next);
-      try { localStorage.setItem("theme", next); } catch (e) {}
-      sync();
+    function apply() {
+      var p = pref();
+      root.setAttribute("data-theme", p === "system" ? (mq.matches ? "light" : "dark") : p);
+      btns.forEach(function (b) {
+        b.setAttribute("aria-pressed", String(b.dataset.theme === p));
+      });
+    }
+    btns.forEach(function (b) {
+      b.addEventListener("click", function () {
+        try {
+          if (b.dataset.theme === "system") localStorage.removeItem("theme");
+          else localStorage.setItem("theme", b.dataset.theme);
+        } catch (e) {}
+        apply();
+      });
     });
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else if (mq.addListener) mq.addListener(apply);
+    apply();
   })();
 </script>
 """
@@ -781,9 +905,8 @@ def write_index(pkgs):
 <title>{html.escape(ORIGIN)}</title><link rel="icon" href="favicon.ico">{head_links("")}{HEAD_JS}</head>
 <body><div class="wrap">
   <header class="mast reveal" style="--i:0">
-    <div class="mast-top"><span class="micro">APT repo &middot; {ARCH} &middot; {len(pkgs)} packages</span>{THEME_BTN}</div>
+    <div class="mast-top"><a class="micro" href="https://maxleiter.com">maxleiter.com</a>{THEME_PICKER}</div>
     <h1>{html.escape(ORIGIN)}</h1>
-    <p class="sub">{html.escape(DESCRIPTION)} &middot; <a href="https://maxleiter.com">maxleiter.com</a></p>
   </header>
   <div class="install reveal" style="--i:1">
     <label class="vh" for="repo">Repository URL</label>
@@ -797,19 +920,25 @@ def write_index(pkgs):
       <a class="btn" id="cydia" href="#">Add to Cydia</a>
     </div>
   </div>
+  <div class="search reveal" style="--i:2">
+    <label class="vh" for="q">Search packages</label>
+    <input id="q" type="search" placeholder="Search {len(pkgs)} packages" autocomplete="off" spellcheck="false">
+    <span class="micro" id="searchN" hidden></span>
+  </div>
   <nav class="tabs reveal" style="--i:2" role="tablist" aria-label="Package groups">
-    <button class="tab" id="tab-xios" data-tab="xios" type="button" role="tab" aria-selected="true" aria-controls="panel-xios">xiOS<span class="tab-n">{len(xios)}</span></button>
-    <button class="tab" id="tab-tweaks" data-tab="tweaks" type="button" role="tab" aria-selected="false" aria-controls="panel-tweaks" tabindex="-1">Tweaks<span class="tab-n">{len(tweaks)}</span></button>
+    <button class="tab" id="tab-tweaks" data-tab="tweaks" type="button" role="tab" aria-selected="true" aria-controls="panel-tweaks">Tweaks<span class="tab-n">{len(tweaks)}</span></button>
+    <button class="tab" id="tab-xios" data-tab="xios" type="button" role="tab" aria-selected="false" aria-controls="panel-xios" tabindex="-1">xiOS<span class="tab-n">{len(xios)}</span></button>
   </nav>
-  <section class="panel" id="panel-xios" role="tabpanel" aria-labelledby="tab-xios">
-    <p class="lede reveal" style="--i:3">A desktop for jailbroken iPads: X11, Wayland, GNOME and KDE, cross-compiled to run natively on iOS. <strong>Install one flavor</strong> and it pulls in everything it needs.</p>
+  <section class="panel" id="panel-tweaks" role="tabpanel" aria-labelledby="tab-tweaks">
+    <p class="lede reveal" style="--i:3">Small quality-of-life tweaks for iPadOS on rootless jailbreaks.</p>
+    <div class="list solo">{tweak_rows}</div>
+  </section>
+  <section class="panel" id="panel-xios" role="tabpanel" aria-labelledby="tab-xios" hidden>
+    <p class="lede">A desktop for jailbroken iPads: X11, Wayland, GNOME and KDE, cross-compiled to run natively on iOS. <strong>Install one flavor</strong> and it pulls in everything it needs.</p>
     {flavors_html}
     {sections_html}
   </section>
-  <section class="panel" id="panel-tweaks" role="tabpanel" aria-labelledby="tab-tweaks" hidden>
-    <p class="lede">Small quality-of-life tweaks for iPadOS on rootless jailbreaks.</p>
-    <div class="list solo">{tweak_rows}</div>
-  </section>
+  <p class="no-results" id="noResults">No matching packages.</p>
   <footer><a href="https://maxleiter.com">maxleiter.com</a><span>{ARCH}</span></footer>
 </div>{INDEX_JS}{THEME_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
@@ -843,7 +972,7 @@ def main():
 
         # assets
         if HAVE_PIL:
-            icon = category_icon(ctrl.get("Section", "Tweaks"), 256)
+            icon = package_icon(pid, ctrl.get("Section", "Tweaks"), 256)
             icon.save(os.path.join(REPO, "icons", f"{pid}.png"))
             make_banner(os.path.join(REPO, "banners", f"{pid}.png"),
                         ctrl.get("Name", pid),

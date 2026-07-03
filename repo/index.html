@@ -30,6 +30,11 @@
       <a class="btn" id="cydia" href="#">Add to Cydia</a>
     </div>
   </div>
+  <div class="search reveal" style="--i:2">
+    <label class="vh" for="q">Search packages</label>
+    <input id="q" type="search" placeholder="Search 401 packages" autocomplete="off" spellcheck="false">
+    <span class="micro" id="searchN" hidden></span>
+  </div>
   <nav class="tabs reveal" style="--i:2" role="tablist" aria-label="Package groups">
     <button class="tab" id="tab-tweaks" data-tab="tweaks" type="button" role="tab" aria-selected="true" aria-controls="panel-tweaks">Tweaks<span class="tab-n">2</span></button>
     <button class="tab" id="tab-xios" data-tab="xios" type="button" role="tab" aria-selected="false" aria-controls="panel-xios" tabindex="-1">xiOS<span class="tab-n">399</span></button>
@@ -2114,6 +2119,7 @@
         </a></div>
       </details>
   </section>
+  <p class="no-results" id="noResults">No matching packages.</p>
   <footer><a href="https://maxleiter.com">maxleiter.com</a><span>iphoneos-arm64</span></footer>
 </div>
 <script>
@@ -2155,6 +2161,66 @@
   });
   addEventListener("hashchange", function () { showTab(location.hash.slice(1)); });
   if (location.hash) showTab(location.hash.slice(1));
+
+  // live search across both tabs ("/" focuses, Esc clears)
+  var qInput = document.getElementById("q");
+  var searchN = document.getElementById("searchN");
+  var noRes = document.getElementById("noResults");
+  var panels = tabs.map(function (t) { return document.getElementById("panel-" + t.dataset.tab); });
+  var cats = [].slice.call(document.querySelectorAll("details.cat"));
+  var solos = [].slice.call(document.querySelectorAll(".list.solo"));
+  var rows = [].slice.call(document.querySelectorAll(".row"));
+  rows.forEach(function (r) {
+    var pid = (r.getAttribute("href") || "").replace(/^depictions\//, "").replace(/\.html$/, "");
+    r.dataset.k = (r.textContent + " " + pid).toLowerCase();
+  });
+  var searching = false;
+  function anyVisible(el) {
+    return [].slice.call(el.querySelectorAll(".row")).some(function (r) { return !r.hidden; });
+  }
+  function applySearch() {
+    var terms = qInput.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    var on = terms.length > 0;
+    if (on && !searching)
+      cats.forEach(function (c) { c.dataset.wasOpen = c.open ? "1" : ""; });
+    searching = on;
+    document.body.classList.toggle("searching", on);
+    if (!on) {
+      rows.forEach(function (r) { r.hidden = false; });
+      cats.forEach(function (c) { c.open = !!c.dataset.wasOpen; c.style.display = ""; });
+      solos.forEach(function (l) { l.style.display = ""; });
+      searchN.hidden = true;
+      noRes.classList.remove("show");
+      var cur = tabs.filter(function (t) { return t.getAttribute("aria-selected") === "true"; })[0];
+      showTab(cur ? cur.dataset.tab : "tweaks");
+      return;
+    }
+    panels.forEach(function (p) { p.hidden = false; });
+    var total = 0;
+    rows.forEach(function (r) {
+      var hit = terms.every(function (t) { return r.dataset.k.indexOf(t) !== -1; });
+      r.hidden = !hit;
+      if (hit) total++;
+    });
+    cats.forEach(function (c) {
+      var m = anyVisible(c);
+      c.style.display = m ? "" : "none";
+      c.open = m;
+    });
+    solos.forEach(function (l) { l.style.display = anyVisible(l) ? "" : "none"; });
+    searchN.textContent = total + (total === 1 ? " match" : " matches");
+    searchN.hidden = false;
+    noRes.classList.toggle("show", !total);
+  }
+  qInput.addEventListener("input", applySearch);
+  qInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { qInput.value = ""; applySearch(); qInput.blur(); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
+      e.preventDefault(); qInput.focus();
+    }
+  });
 </script>
 
 <script>

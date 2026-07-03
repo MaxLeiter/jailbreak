@@ -81,6 +81,21 @@
   .btn.primary{color:var(--accent)}
   .btn.primary:hover{border-color:var(--accent);color:var(--accent)}
 
+  /* search */
+  .search{position:relative;margin-top:-1px}
+  .search input{width:100%;padding:12px 96px 12px 14px;border:1px solid var(--line);
+    border-radius:0;background:transparent;color:var(--fg);
+    font-family:var(--mono);font-size:13px;-webkit-appearance:none;appearance:none}
+  .search input::placeholder{color:var(--fg-mute)}
+  .search input::-webkit-search-cancel-button{display:none}
+  .search input:focus-visible{outline:none;border-color:var(--line-hi)}
+  .search .micro{position:absolute;right:14px;top:50%;transform:translateY(-50%)}
+  body.searching .tabs,body.searching .lede,body.searching .fl-head,
+  body.searching .flavors{display:none}
+  body.searching .reveal{animation:none;opacity:1;transform:none}
+  .no-results{display:none;color:var(--fg-dim);font-size:14px;margin-top:30px}
+  body.searching .no-results.show{display:block}
+
   /* top-level tabs: xiOS / Tweaks */
   .tabs{display:flex;gap:30px;margin-top:48px;border-bottom:1px solid var(--line)}
   .tab{appearance:none;background:none;border:0;padding:0 2px 14px;cursor:pointer;
