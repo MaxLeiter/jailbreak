@@ -503,7 +503,7 @@ static int pin_rects_overlap(int ax, int ay, int bx, int by)
 static int pin_position_occupied(int self_idx, int x, int y)
 {
     for (int i = 0; i < B.npins; i++) {
-        if (i == self_idx || !B.pins[i].visible) continue;
+        if (i >= self_idx || !B.pins[i].visible) continue;
         if (pin_rects_overlap(x, y, B.pins[i].x, B.pins[i].y)) return 1;
     }
     return 0;
