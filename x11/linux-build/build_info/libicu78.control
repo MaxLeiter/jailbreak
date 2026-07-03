@@ -1,4 +1,4 @@
-Package: libicu74
+Package: libicu78
 Version: @DEB_ICU_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@

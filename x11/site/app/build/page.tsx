@@ -87,10 +87,8 @@ export default function Build() {
       <Section num="05.3" title="The repo">
         <div className="prose">
           <p>
-            Packages are published to a self-contained apt repo, the same kind of
-            Debian package repo{" "}
-            <Ext href="https://github.com/ProcursusTeam/Procursus">Procursus</Ext>{" "}
-            itself ships.
+            Packages are published to a self-contained apt repo, the same kind
+            every jailbreak uses.
           </p>
         </div>
         <Callout k="Pick a flavor, not a bare package">

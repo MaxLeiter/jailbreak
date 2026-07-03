@@ -383,10 +383,11 @@ static int menu_actions(int kind, int idx, const char **labels, int *actions)
     if (kind == BG_PRESS_PIN && idx >= 0 && idx < B.npins) {
         labels[n] = "Open"; actions[n++] = MENU_ACT_OPEN;
         labels[n] = "Remove from Desktop"; actions[n++] = MENU_ACT_REMOVE_PIN;
+        labels[n] = "Refresh Desktop"; actions[n++] = MENU_ACT_REFRESH;
     } else if (kind == BG_PRESS_WIDGET && idx >= 0 && idx < WIDGET_MAX) {
         labels[n] = "Hide Widget"; actions[n++] = MENU_ACT_HIDE_WIDGET;
+        labels[n] = "Refresh Desktop"; actions[n++] = MENU_ACT_REFRESH;
     }
-    labels[n] = "Refresh Desktop"; actions[n++] = MENU_ACT_REFRESH;
     return n;
 }
 
@@ -399,6 +400,8 @@ static int menu_height_for(int kind, int idx)
 static void menu_open_at(int kind, int idx, int x, int y)
 {
     int h;
+    const char *labels[4]; int actions[4];
+    if (menu_actions(kind, idx, labels, actions) <= 0) return;
     B.menu_open = 1;
     B.menu_kind = kind;
     B.menu_idx = idx;

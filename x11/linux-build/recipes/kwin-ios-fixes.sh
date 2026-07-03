@@ -55,6 +55,33 @@ if(TARGET K::KGlobalAccelD)
 endif()
 EOF
 
+# KWin's private QPA plugin must include Qt's real QOpenGL/QPA classes. epoxy's
+# EGL header includes epoxy/gl.h, whose GL macro layer collides with QtGui's iOS
+# OpenGLES headers, so use the plain ANGLE/Khronos EGL headers in QPA only.
+for f in \
+    "$src/src/plugins/qpa/eglhelpers.h" \
+    "$src/src/plugins/qpa/eglplatformcontext.h" \
+    "$src/src/plugins/qpa/integration.h" \
+    "$src/src/plugins/qpa/offscreensurface.h"; do
+    sed -i 's@#include <epoxy/egl.h>@#include <EGL/egl.h>@' "$f"
+done
+
+# First-light keeps the private QPA plugin on the raster/backing-store path.
+# The QPA OpenGL context code mixes QtGui's iOS OpenGLES private headers with
+# KWin's libepoxy OpenGL wrappers in the same translation units. That is a
+# separate GL polish track; the compositor can still boot nested Wayland with
+# QPainter surfaces while the main kwin binary keeps the GPU entitlements.
+perl -0pi -e 's/[ \t]*eglhelpers\.cpp\n//g; s/[ \t]*eglplatformcontext\.cpp\n//g' "$src/src/plugins/qpa/CMakeLists.txt"
+perl -0pi -e 's/#include <EGL\/egl\.h>\n\n//g' "$src/src/plugins/qpa/integration.h"
+perl -0pi -e 's/#include "eglplatformcontext\.h"\n//g; s/#include "core\/outputbackend\.h"\n//g; s/#include <QtGui\/private\/qgenericunixthemes_p\.h>\n//g' "$src/src/plugins/qpa/integration.cpp"
+perl -0pi -e 's/case OpenGL:\n        return true;/case OpenGL:\n        return false;/g' "$src/src/plugins/qpa/integration.cpp"
+perl -0pi -e 's/QPlatformTheme \*Integration::createPlatformTheme\(const QString &name\) const\n\{\n    return QGenericUnixTheme::createUnixTheme\(name\);\n\}/QPlatformTheme *Integration::createPlatformTheme(const QString \&name) const\n{\n    Q_UNUSED(name)\n    return nullptr;\n}/g' "$src/src/plugins/qpa/integration.cpp"
+perl -0pi -e 's/QStringList Integration::themeNames\(\) const\n\{\n    if \(qEnvironmentVariableIsSet\("KDE_FULL_SESSION"\)\) \{\n        return QStringList\(\{QStringLiteral\("kde"\)\}\);\n    \}\n    return QStringList\(\{QLatin1String\(QGenericUnixTheme::name\)\}\);\n\}/QStringList Integration::themeNames() const\n{\n    return {};\n}/g' "$src/src/plugins/qpa/integration.cpp"
+perl -0pi -e 's/QPlatformOpenGLContext \*Integration::createPlatformOpenGLContext\(QOpenGLContext \*context\) const\n\{\n    if \(kwinApp\(\)->outputBackend\(\)->sceneEglGlobalShareContext\(\) == EGL_NO_CONTEXT\) \{\n        qCWarning\(KWIN_QPA\) << "Attempting to create a QOpenGLContext before the scene is initialized";\n        return nullptr;\n    \}\n    const auto eglDisplay = kwinApp\(\)->outputBackend\(\)->sceneEglDisplayObject\(\);\n    if \(eglDisplay\) \{\n        EGLPlatformContext \*platformContext = new EGLPlatformContext\(context, eglDisplay\);\n        return platformContext;\n    \}\n    return nullptr;\n\}/QPlatformOpenGLContext *Integration::createPlatformOpenGLContext(QOpenGLContext *context) const\n{\n    Q_UNUSED(context)\n    qCWarning(KWIN_QPA) << "QPA OpenGL contexts are disabled on the iOS first-light build";\n    return nullptr;\n}/g' "$src/src/plugins/qpa/integration.cpp"
+perl -0pi -e 's/#include "core\/outputbackend\.h"\n//g; s/#include "main\.h"\n//g; s/#include "opengl\/egldisplay\.h"\n//g' "$src/src/plugins/qpa/offscreensurface.cpp"
+perl -0pi -e 's@// this needs to be on top, epoxy has an error if you include it after GL/gl.h,\n// which Qt does include\n#include "utils/drm_format_helper\.h"\n\n@@g; s/#include "core\/drmdevice\.h"\n//g; s/#include "core\/renderbackend\.h"\n//g' "$src/src/plugins/qpa/window.cpp"
+perl -0pi -e 's/        GraphicsBufferAllocator \*allocator;\n        if \(software\) \{\n            static ShmGraphicsBufferAllocator shmAllocator;\n            allocator = \&shmAllocator;\n        \} else \{\n            allocator = Compositor::self\(\)->backend\(\)->drmDevice\(\)->allocator\(\);\n        \}\n\n        for \(auto it = formats\.begin\(\); it != formats\.end\(\); it\+\+\) \{\n            if \(auto info = FormatInfo::get\(it\.key\(\)\); info && info->bitsPerColor == 8 && info->alphaBits == 8\) \{\n                const auto options = GraphicsBufferOptions\{\n                    \.size = nativeSize,\n                    \.format = it\.key\(\),\n                    \.modifiers = it\.value\(\),\n                    \.software = software,\n                \};\n                auto buffer = allocator->allocate\(options\);\n                if \(!buffer\) \{\n                    continue;\n                \}\n                m_swapchain = std::make_unique<Swapchain>\(allocator, options, buffer\);\n                m_eglContext = context;\n                break;\n            \}\n        \}/        if (!software) {\n            qCWarning(KWIN_QPA) << "QPA OpenGL windows are disabled on the iOS first-light build";\n            return nullptr;\n        }\n\n        static ShmGraphicsBufferAllocator shmAllocator;\n        GraphicsBufferAllocator *allocator = \&shmAllocator;\n        const auto modifiers = formats.value(DRM_FORMAT_ARGB8888, {DRM_FORMAT_MOD_LINEAR});\n        const auto options = GraphicsBufferOptions{\n            .size = nativeSize,\n            .format = DRM_FORMAT_ARGB8888,\n            .modifiers = modifiers,\n            .software = true,\n        };\n        auto buffer = allocator->allocate(options);\n        if (buffer) {\n            m_swapchain = std::make_unique<Swapchain>(allocator, options, buffer);\n            m_eglContext = context;\n        }/g' "$src/src/plugins/qpa/window.cpp"
+
 # The killer helper includes private Qt X11 headers unconditionally. It is not on the
 # critical compositor path, so drop it for the iOS first-light build.
 cat > "$src/src/helpers/CMakeLists.txt" <<'EOF'

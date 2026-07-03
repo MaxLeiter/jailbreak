@@ -72,12 +72,10 @@ body {
   background-color: var(--bg);
   /* faint blueprint grid + a warm/cool radial signal glow */
   background-image:
-    radial-gradient(1100px 700px at 82% -8%, var(--cyan-glow), transparent 60%),
-    radial-gradient(900px 600px at 0% 110%, rgba(234, 164, 60, 0.06), transparent 55%),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 60px 60px, 60px 60px;
-  background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+  background-size: 60px 60px, 60px 60px;
+  background-position: -1px -1px, -1px -1px;
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 16.5px;

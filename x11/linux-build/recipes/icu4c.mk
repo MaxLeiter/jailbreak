@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# icu4c.mk — OVERRIDE of upstream Procursus icu4c (69.1 -> 74.2) for the Linux-Docker cross
+# icu4c.mk — OVERRIDE of upstream Procursus icu4c (69.1 -> 78.3) for the Linux-Docker cross
 # pipeline (build-icu.sh). ICU is built TWICE per its official cross pattern (icu4c/source
 # README "How To Cross Compile ICU"): a NATIVE host build provides the data-generation tools
 # (genrb/icupkg/pkgdata) that the iOS cross build reuses via --with-cross-build. Upstream's
@@ -16,10 +16,14 @@ endif
 #       BUILD_CONFIGURE_FLAGS does not cover them — pin host ones for the host build.
 # Data packaging: default "library" (icudt embedded in libicudata.dylib, same as Debian) —
 # loads through plain dyld, no ICU_DATA path lookup to break on-device.
-# ICU 74.2 = the Ubuntu 24.04 pairing for our GNOME 46 stack (EDS 3.52, tracker 3.x).
+# ICU 78.3 = the EXACT pin Ladybird demands (find_package(ICU 78.3 EXACT REQUIRED)); the
+# icu-uc.pc "Version:" is fed from configure PACKAGE_VERSION=78.3 so the EXACT match passes.
+# NOTE: upstream's release asset naming changed after ICU 74: the tag is now dotted
+# (release-78.3, not release-74-2) and the tarball is icu4c-78.3-sources.tgz (not
+# icu4c-74_2-src.tgz). The URL/EXTRACT below use the dotted $(ICU_VERSION) directly.
 
 SUBPROJECTS += icu4c
-ICU_VERSION := 74.2
+ICU_VERSION := 78.3
 ICU_API_V   := $(shell echo $(ICU_VERSION) | cut -f1 -d.)
 DEB_ICU_V   ?= $(ICU_VERSION)+ios1
 
@@ -27,15 +31,15 @@ RANLIB_FOR_BUILD := $(shell command -v ranlib)
 
 icu4c-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE), \
-		https://github.com/unicode-org/icu/releases/download/release-$(shell echo $(ICU_VERSION) | sed 's/\./-/')/icu4c-$(shell echo $(ICU_VERSION) | sed 's/\./_/g')-src.tgz)
+		https://github.com/unicode-org/icu/releases/download/release-$(ICU_VERSION)/icu4c-$(ICU_VERSION)-sources.tgz)
 	# EXTRACT_TAR no-ops when build_work/icu4c already exists, so a tree left by an older
-	# recipe version (e.g. upstream 69.1) would silently get built instead of $(ICU_VERSION).
-	# Wipe any tree whose extracted version doesn't match before extracting.
+	# recipe version (e.g. upstream 69.1 or our prior 74.2) would silently get built instead
+	# of $(ICU_VERSION). Wipe any tree whose extracted version doesn't match before extracting.
 	if [ -d $(BUILD_WORK)/icu4c ] && ! grep -q "^PACKAGE_VERSION='$(ICU_VERSION)'" $(BUILD_WORK)/icu4c/source/configure 2>/dev/null; then \
 		echo "icu4c: stale source tree in build_work (not $(ICU_VERSION)), wiping"; \
 		rm -rf $(BUILD_WORK)/icu4c; \
 	fi
-	$(call EXTRACT_TAR,icu4c-$(shell echo $(ICU_VERSION) | sed 's/\./_/g')-src.tgz,icu,icu4c)
+	$(call EXTRACT_TAR,icu4c-$(ICU_VERSION)-sources.tgz,icu,icu4c)
 	mkdir -p $(BUILD_WORK)/icu4c/host
 
 ifneq ($(wildcard $(BUILD_WORK)/icu4c/.build_complete),)

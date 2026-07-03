@@ -284,7 +284,7 @@ final class XScreenView: UIView {
         // start() already loaded the display in xios.json (the default). If other
         // displays are also open, offer the picker so the user can choose.
         let displays = discoverDisplays()
-        if displays.count > 1 { presentPicker(displays) }
+        if displays.count > 1 { presentDisplayControl(initial: .displays) }
     }
 
     /// If Metal wasn't available at launch (app started in the background), re-run
@@ -1945,9 +1945,11 @@ final class XScreenView: UIView {
         }
     }
 
-    @objc private func openPicker() { presentPicker(discoverDisplays()) }
+    private enum DisplayControlFocus { case displays, sessions }
 
-    @objc private func openSessionPicker() { presentSessionPicker() }
+    @objc private func openPicker() { presentDisplayControl(initial: .displays) }
+
+    @objc private func openSessionPicker() { presentDisplayControl(initial: .sessions) }
 
     /// Parse xios-sessiond's status file (preset / state / human message). nil when the
     /// file is absent or unparseable. State walks stopping → starting → waiting →
@@ -2059,85 +2061,215 @@ final class XScreenView: UIView {
         sessionBanner?.isHidden = true
     }
 
-    /// The desktop-flavor picker: tap a preset → writeSessionRequest → xios-sessiond
-    /// tears down + brings up the flavor; the status line reflects the result.
-    private func presentSessionPicker() {
+    private func presentScrollableModalCard(maxWidth: CGFloat = 620) -> (overlay: UIView,
+                                                                         card: UIView,
+                                                                         scroll: UIScrollView,
+                                                                         stack: UIStackView) {
         let (overlay, card) = presentModalCard()
+
+        let scroll = UIScrollView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.alwaysBounceVertical = true
+        card.addSubview(scroll)
 
         let stack = UIStackView()
         stack.axis = .vertical
-        stack.spacing = 8
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
+        scroll.addSubview(stack)
 
-        stack.addArrangedSubview(panelLabel("Desktop Session", size: 18, weight: .bold))
-        let status = panelLabel(sessionStatusText(), size: 12, color: UIColor(white: 0.72, alpha: 1))
+        let desiredWidth = card.widthAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.widthAnchor,
+                                                       multiplier: 0.72)
+        desiredWidth.priority = .defaultHigh
+        let minWidth = card.widthAnchor.constraint(greaterThanOrEqualToConstant: 380)
+        minWidth.priority = .defaultHigh
+        let height = card.heightAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.heightAnchor,
+                                                  multiplier: 0.86)
+        height.priority = .defaultHigh
+
+        NSLayoutConstraint.activate([
+            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
+            desiredWidth,
+            minWidth,
+            card.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth),
+            card.widthAnchor.constraint(lessThanOrEqualTo: overlay.safeAreaLayoutGuide.widthAnchor,
+                                        constant: -32),
+            height,
+            card.heightAnchor.constraint(lessThanOrEqualTo: overlay.safeAreaLayoutGuide.heightAnchor,
+                                         constant: -32),
+            scroll.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
+            scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            scroll.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            scroll.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+        ])
+
+        return (overlay, card, scroll, stack)
+    }
+
+    private func currentDisplaySummary() -> String {
+        let backend: String
+        if usingIOSurface {
+            backend = "IOSurface"
+        } else if ddxIsIOSurface {
+            backend = "waiting for IOSurface"
+        } else {
+            backend = "holding frame"
+        }
+        let input = inputConnected ? "\(inputBackendName()) input" : "input offline"
+        return "\(xDisplay)  \(fbWidth)x\(fbHeight)  \(backend)  \(input)"
+    }
+
+    private func activeDesktopPreset() -> String? {
+        guard let preset = sessionStatus()?.preset else { return nil }
+        return ["iosc", "mutter", "gnome"].contains(preset) ? preset : nil
+    }
+
+    private func desktopLabel(_ preset: String) -> String {
+        switch preset {
+        case "iosc": return "iosc Desktop"
+        case "mutter": return "Mutter"
+        case "gnome": return "GNOME Shell"
+        default: return preset
+        }
+    }
+
+    /// One scrollable control surface for the app chrome. It covers the things a
+    /// launcher screen needs to do in practice: inspect/switch the current display,
+    /// choose the logical size for the next compositor, start/switch desktop flavors,
+    /// and launch clients onto a running desktop.
+    private func presentDisplayControl(initial: DisplayControlFocus) {
+        let (_, _, _, stack) = presentScrollableModalCard()
+
+        stack.addArrangedSubview(panelLabel("Displays & Sessions", size: 18, weight: .bold))
+        let status = panelLabel(sessionStatusText(), size: 12,
+                                color: UIColor(white: 0.72, alpha: 1))
         stack.addArrangedSubview(status)
         sessionStatusLabel = status
         startSessionIndicator()
 
-        let pick: (String, String?) -> Void = { [weak self] preset, app in
-            guard let self else { return }
-            self.writeSessionRequest(preset, app: app, display: self.pendingSessionDisplay)
-        }
+        let message = panelLabel(lastToolMessage, size: 12,
+                                 color: UIColor(white: 0.72, alpha: 1))
+        stack.addArrangedSubview(message)
 
-        addSection("Display size", to: stack)
+        addSection("Current Display", to: stack)
+        stack.addArrangedSubview(panelLabel(currentDisplaySummary(), size: 12,
+                                            color: UIColor(white: 0.76, alpha: 1)))
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Fit") { [weak self] in
+                self?.resetZoom()
+                self?.lastToolMessage = "Fit current display"
+                self?.presentDisplayControl(initial: .displays)
+            },
+            panelButton("Reload") { [weak self] in
+                guard let self else { return }
+                self.reloadRuntimeConfig()
+                self.lastToolMessage = "Reloaded xios.json"
+                self.presentDisplayControl(initial: .displays)
+            },
+            panelButton("Reconnect Input") { [weak self] in
+                guard let self else { return }
+                self.reconnectInput()
+                self.lastToolMessage = "Reconnected \(self.inputBackendName())"
+                self.presentDisplayControl(initial: .displays)
+            },
+        ]))
+
+        addSection(initial == .displays ? "Open Displays" : "Displays", to: stack)
+        let displays = discoverDisplays()
+        if displays.isEmpty {
+            stack.addArrangedSubview(panelLabel("No open X displays were found.", size: 13,
+                                                color: UIColor(white: 0.72, alpha: 1)))
+        } else {
+            for d in displays { stack.addArrangedSubview(makeRow(d)) }
+        }
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Rescan") { [weak self] in self?.presentDisplayControl(initial: .displays) },
+            panelButton("Follow Current") { [weak self] in
+                guard let self else { return }
+                self.userPinned = false
+                self.reloadRuntimeConfig()
+                self.lastToolMessage = "Following xios.json"
+                self.presentDisplayControl(initial: .displays)
+            },
+        ]))
+
+        addSection(initial == .sessions ? "Display Size" : "Next Session Size", to: stack)
         stack.addArrangedSubview(panelLabel(sessionDisplaySummary(), size: 12,
-                                            color: UIColor(white: 0.72, alpha: 1)))
+                                            color: UIColor(white: 0.76, alpha: 1)))
         let defaults = panelButton("Default") { [weak self] in
-            self?.pendingSessionDisplay = nil
-            self?.presentSessionPicker()
+            guard let self else { return }
+            self.pendingSessionDisplay = nil
+            self.presentDisplayControl(initial: .sessions)
         }
         let landscape = panelButton("Landscape") { [weak self] in
             guard let self else { return }
             self.pendingSessionDisplay = self.sessionDisplayProfiles[0]
-            self.presentSessionPicker()
+            self.presentDisplayControl(initial: .sessions)
         }
         let portrait = panelButton("Portrait") { [weak self] in
             guard let self else { return }
             self.pendingSessionDisplay = self.sessionDisplayProfiles[1]
-            self.presentSessionPicker()
+            self.presentDisplayControl(initial: .sessions)
         }
         stylePanelToggle(defaults, on: pendingSessionDisplay == nil)
         stylePanelToggle(landscape, on: pendingSessionDisplay?.name == "Landscape")
         stylePanelToggle(portrait, on: pendingSessionDisplay?.name == "Portrait")
         stack.addArrangedSubview(buttonRow([defaults, landscape, portrait]))
+        let compact = panelButton("Compact") { [weak self] in
+            guard let self else { return }
+            self.pendingSessionDisplay = self.sessionDisplayProfiles[2]
+            self.presentDisplayControl(initial: .sessions)
+        }
+        stylePanelToggle(compact, on: pendingSessionDisplay?.name == "Compact")
         stack.addArrangedSubview(buttonRow([
-            panelButton("Compact Portrait") { [weak self] in
-                guard let self else { return }
-                self.pendingSessionDisplay = self.sessionDisplayProfiles[2]
-                self.presentSessionPicker()
-            },
-            panelButton("Advanced…") { [weak self] in self?.presentDisplayAdvancedPicker() },
+            compact,
+            panelButton("Advanced...") { [weak self] in self?.presentDisplayAdvancedPicker() },
         ]))
 
-        addSection("Switch desktop", to: stack)
-        for (label, preset) in [("iosc  ·  desktop shell (bar + dock + wallpaper)", "iosc"),
-                                ("Mutter  ·  raw compositor", "mutter"),
-                                ("GNOME Shell  ·  experimental", "gnome")] {
-            stack.addArrangedSubview(panelButton(label) { pick(preset, nil) })
+        let pick: (String, String?) -> Void = { [weak self, weak message] preset, app in
+            guard let self else { return }
+            self.writeSessionRequest(preset, app: app, display: self.pendingSessionDisplay)
+            message?.text = self.lastToolMessage
         }
 
-        addSection("Launch app (onto the running desktop)", to: stack)
+        addSection("Start / Switch Display", to: stack)
+        let currentPreset = activeDesktopPreset()
+        let applyPreset = currentPreset ?? "iosc"
+        stack.addArrangedSubview(panelButton("Apply Size to \(desktopLabel(applyPreset))") {
+            pick(applyPreset, nil)
+        })
+        for (label, preset) in [("iosc Desktop  -  shell, dock, wallpaper", "iosc"),
+                                ("Mutter  -  raw compositor", "mutter"),
+                                ("GNOME Shell  -  experimental", "gnome")] {
+            let prefix = preset == currentPreset ? "Restart " : "Start "
+            stack.addArrangedSubview(panelButton(prefix + label) { pick(preset, nil) })
+        }
+
+        addSection("Launch App", to: stack)
         stack.addArrangedSubview(buttonRow([
-            panelButton("+ Console")     { pick("app", "kgx") },
-            panelButton("+ Text Editor") { pick("app", "gnome-text-editor") },
-            panelButton("+ Calculator")  { pick("app", "gnome-calculator") },
+            panelButton("Console")     { pick("app", "kgx") },
+            panelButton("Text Editor") { pick("app", "gnome-text-editor") },
+            panelButton("Calculator")  { pick("app", "gnome-calculator") },
         ]))
 
-        stack.addArrangedSubview(panelButton("Stop  (back to SpringBoard)") { pick("stop", nil) })
-        stack.addArrangedSubview(pillButton("Close") { [weak self] in self?.dismissPicker() })
-
-        NSLayoutConstraint.activate([
-            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
-            card.widthAnchor.constraint(greaterThanOrEqualToConstant: 380),
-            card.widthAnchor.constraint(lessThanOrEqualToConstant: 500),
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18),
-        ])
+        addSection("Maintenance", to: stack)
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Copy Debug") { [weak self, weak message] in
+                self?.copyDebugSnapshot()
+                message?.text = self?.lastToolMessage
+            },
+            panelButton("Tools") { [weak self] in self?.presentTools() },
+        ]))
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Stop Session") { pick("stop", nil) },
+            panelButton("Close") { [weak self] in self?.dismissPicker() },
+        ]))
     }
 
     private func presentDisplayAdvancedPicker() {
@@ -2185,13 +2317,13 @@ final class XScreenView: UIView {
                 self.pendingSessionDisplay = DisplayProfile(
                     name: "Custom", width: w, height: h, dpi: dpi,
                     detail: "\(w)x\(h) logical")
-                self.presentSessionPicker()
+                self.presentDisplayControl(initial: .sessions)
             },
             panelButton("Clear") { [weak self] in
                 self?.pendingSessionDisplay = nil
-                self?.presentSessionPicker()
+                self?.presentDisplayControl(initial: .sessions)
             },
-            panelButton("Back") { [weak self] in self?.presentSessionPicker() },
+            panelButton("Back") { [weak self] in self?.presentDisplayControl(initial: .sessions) },
         ]))
 
         NSLayoutConstraint.activate([
@@ -2233,53 +2365,6 @@ final class XScreenView: UIView {
         return (overlay, card)
     }
 
-    private func presentPicker(_ displays: [XDisplayInfo]) {
-        let (overlay, card) = presentModalCard()
-
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.spacing = 8
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
-
-        let title = UILabel()
-        title.text = "X Displays"
-        title.font = .boldSystemFont(ofSize: 18)
-        title.textColor = .white
-        stack.addArrangedSubview(title)
-
-        if displays.isEmpty {
-            let empty = UILabel()
-            empty.text = "No open displays.\nStart a server (xios-server.sh / x11-server.sh)."
-            empty.numberOfLines = 0
-            empty.font = .systemFont(ofSize: 14)
-            empty.textColor = UIColor(white: 0.7, alpha: 1)
-            stack.addArrangedSubview(empty)
-        } else {
-            for d in displays { stack.addArrangedSubview(makeRow(d)) }
-        }
-
-        let controls = UIStackView()
-        controls.axis = .horizontal; controls.spacing = 8; controls.distribution = .fillEqually
-        controls.addArrangedSubview(pillButton("Rescan") { [weak self] in
-            guard let self else { return }
-            self.presentPicker(self.discoverDisplays())
-        })
-        controls.addArrangedSubview(pillButton("Close") { [weak self] in self?.dismissPicker() })
-        stack.addArrangedSubview(controls)
-
-        NSLayoutConstraint.activate([
-            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
-            card.widthAnchor.constraint(greaterThanOrEqualToConstant: 340),
-            card.widthAnchor.constraint(lessThanOrEqualToConstant: 480),
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18),
-        ])
-    }
-
     private func makeRow(_ d: XDisplayInfo) -> UIButton {
         let active = d.number == activeDisplayNumber
         let b = UIButton(type: .system)
@@ -2316,6 +2401,10 @@ final class XScreenView: UIView {
         b.setTitle(title, for: .normal)
         b.setTitleColor(.white, for: .normal)
         b.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        b.titleLabel?.numberOfLines = 2
+        b.titleLabel?.textAlignment = .center
+        b.titleLabel?.adjustsFontSizeToFitWidth = true
+        b.titleLabel?.minimumScaleFactor = 0.75
         b.backgroundColor = UIColor(white: 0.25, alpha: 1)
         b.layer.cornerRadius = 10
         b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)

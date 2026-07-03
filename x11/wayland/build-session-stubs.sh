@@ -94,4 +94,52 @@ for stub in login1 polkit accounts; do
   file "$o" | sed 's/^/   /'
 done
 
-echo "==> done -> $OUT/xios-{login1,polkit,accounts}-stub"
+# --- xios-bluez-stub (ObjC): org.bluez bridge backed by BluetoothManager.framework ----------
+# Unlike the three C stubs this is Objective-C (Foundation/CoreFoundation) and reaches the
+# private BluetoothManager.framework at RUNTIME via dlopen()+ObjC-runtime, so it needs no
+# link-time framework stub in the cross SDK — only -framework Foundation/CoreFoundation + libobjc.
+# It shares xios-stub-dbus.c (own-name loop + register_object) with the C stubs.
+BLUEZ_SRC="$SRC/xios-bluez-stub.m"
+if [ -f "$BLUEZ_SRC" ]; then
+  # os/object.h backport: this cross SDK's os/object.h predates the OS_OBJECT_DECL_SENDABLE_*
+  # macros, but its newer xpc/session.h (pulled transitively by importing <Foundation/Foundation.h>)
+  # requires them -> "a parameter list without types is only allowed in a function definition".
+  # Alias the three sendable forms to their non-sendable equivalents (identical C/ObjC path).
+  # Same fix as linux-build/build-wayland-apps.sh. Idempotent (guarded).
+  OSOBJ="$SDK/usr/include/os/object.h"
+  if [ -f "$OSOBJ" ] && ! grep -q OS_OBJECT_DECL_SENDABLE_CLASS "$OSOBJ"; then
+    echo "==> backporting OS_OBJECT_DECL_SENDABLE_* into $OSOBJ"
+    cat >> "$OSOBJ" <<'EOF'
+
+/* XIOS: backport OS_OBJECT_DECL_SENDABLE_* (this SDK's os/object.h predates them, but its
+ * newer xpc/session.h requires them; alias to the non-sendable forms — identical C/ObjC path). */
+#ifndef OS_OBJECT_DECL_SENDABLE_CLASS
+#define OS_OBJECT_DECL_SENDABLE_CLASS(name) OS_OBJECT_DECL_CLASS(name)
+#endif
+#ifndef OS_OBJECT_DECL_SENDABLE_SWIFT
+#define OS_OBJECT_DECL_SENDABLE_SWIFT(name) OS_OBJECT_DECL_SWIFT(name)
+#endif
+#ifndef OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT
+#define OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT(name, super) OS_OBJECT_DECL_SUBCLASS_SWIFT(name, super)
+#endif
+EOF
+  fi
+  echo "==> build xios-bluez-stub (ObjC)"
+  o="$OUT/xios-bluez-stub"
+  # shellcheck disable=SC2086
+  $CC $CFLAGS -fobjc-arc "$BLUEZ_SRC" "$STUB_DBUS_SRC" $DEPFLAGS \
+      -framework Foundation -framework CoreFoundation -lobjc -o "$o"
+  fix_libintl "$o"
+  # Sign with the com.apple.bluetooth.system entitlement (verified on device: the minimal
+  # unlock for bluetoothd's XPC peer-check — without it BluetoothManager returns no data).
+  BT_ENT="$SRC/xios-bluez-ent.xml"
+  if [ -n "$LDID" ]; then
+    if [ -f "$BT_ENT" ]; then "$LDID" -S"$BT_ENT" "$o"; echo "   signed with $BT_ENT";
+    else "$LDID" -S "$o"; fi
+  fi
+  file "$o" | sed 's/^/   /'
+else
+  echo "   skip bluez (no $BLUEZ_SRC)"
+fi
+
+echo "==> done -> $OUT/xios-{login1,polkit,accounts,bluez}-stub"

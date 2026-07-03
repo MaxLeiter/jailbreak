@@ -32,9 +32,8 @@
 .brand-name {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   letter-spacing: -0.03em;
-  text-transform: uppercase;
   color: var(--ink);
   line-height: 1;
   margin-top: 4px;
@@ -156,7 +155,7 @@
 /* ---------- Panel (figure) ---------- */
 .panel {
   position: relative;
-  background: linear-gradient(180deg, var(--panel), var(--bg-2));
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 22px 24px;
@@ -320,8 +319,7 @@
 /* ---------- Schematic / code panel ---------- */
 .schematic {
   overflow-x: auto;
-  background:
-    linear-gradient(180deg, #0b0f15, #090c11);
+  background: #0b0f15;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 24px 26px;
@@ -578,7 +576,7 @@ table.ref td.desc {
   line-height: 1.45;
 }
 .dg-screen {
-  background: linear-gradient(180deg, rgba(52, 210, 230, 0.1), var(--panel));
+  background: var(--panel);
   border-color: var(--cyan-dim);
   text-align: center;
 }
@@ -641,7 +639,7 @@ table.ref td.desc {
   color: var(--cyan);
 }
 .dg-gpu {
-  background: linear-gradient(180deg, var(--cyan-glow), var(--panel));
+  background: var(--panel);
   border-color: var(--cyan-dim);
   text-align: center;
   margin-top: 8px;
@@ -679,7 +677,7 @@ table.ref td.desc {
 }
 .flow-node.is-end {
   border-color: var(--cyan-dim);
-  background: linear-gradient(180deg, var(--cyan-glow), var(--panel));
+  background: var(--panel);
 }
 .flow-node .fn-n {
   font-family: var(--font-mono);

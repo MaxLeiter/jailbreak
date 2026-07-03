@@ -42,6 +42,11 @@ exec dbus-run-session -- sh -c '
   '"$LIBEXEC"'/xios-login1-stub &
   '"$LIBEXEC"'/xios-polkit-stub &
   '"$LIBEXEC"'/xios-accounts-stub &
+  # org.bluez bridge (BlueZ D-Bus API backed by iOS BluetoothManager) so gnome-shell'"'"'s
+  # Bluetooth quick-toggle + the gnome-control-center Bluetooth panel see real paired devices.
+  # Defaults to the "system" bus, which the DBUS_SYSTEM_BUS_ADDRESS override above maps onto
+  # this session bus — same as the other stubs. Signed with com.apple.bluetooth.system.
+  [ -x '"$LIBEXEC"'/xios-bluez-stub ] && '"$LIBEXEC"'/xios-bluez-stub &
   [ -x '"$LIBEXEC"'/xios-hwbridged ] && '"$LIBEXEC"'/xios-hwbridged &
   # Desktop audio: start xios-audiod + PulseAudio and export PULSE_SERVER via the
   # pulse profile helper. xios-sysintd (native-bundle: iPad hardware volume buttons

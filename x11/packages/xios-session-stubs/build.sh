@@ -27,6 +27,16 @@ for b in xios-login1-stub xios-polkit-stub xios-accounts-stub; do
   [ -f "$STUBOUT/$b" ] || { echo "!! missing $STUBOUT/$b — run wayland/build-session-stubs.sh first"; exit 1; }
   install -m 0755 "$STUBOUT/$b" "$PKGDIR/var/jb/usr/libexec/$b"
 done
+# xios-bluez-stub (ObjC; org.bluez bridge backed by iOS BluetoothManager). Optional — the
+# launcher guards it with -x — so stage it only if the ObjC stub built (needs the Foundation
+# cross-toolchain path). It is already ldid-signed with com.apple.bluetooth.system by
+# build-session-stubs.sh; do NOT re-sign here or the entitlement is lost.
+if [ -f "$STUBOUT/xios-bluez-stub" ]; then
+  install -m 0755 "$STUBOUT/xios-bluez-stub" "$PKGDIR/var/jb/usr/libexec/xios-bluez-stub"
+  echo "   + xios-bluez-stub (org.bluez bridge)"
+else
+  echo "   (xios-bluez-stub absent — packaging without it; launcher -x guard covers it)"
+fi
 # xios-sysintd (native-bundle: iPad volume buttons -> PA + iOS dark-mode -> GTK). Optional — the
 # launcher guards it with -x — so stage it only if native-bundle has built it (wayland/
 # build-sysintd.sh); otherwise ship without it.
@@ -51,6 +61,15 @@ cp -a "$PKGDIR/DEBIAN" "$PKGDIR/var" "$STAGE/"
 find "$STAGE" -type d -exec chmod 0755 {} +
 chmod 0755 "$STAGE/DEBIAN/postinst"
 chmod 0755 "$STAGE/var/jb/usr/libexec/"* "$STAGE/var/jb/usr/bin/"*
+
+# Re-sign the bluez stub with the com.apple.bluetooth.system entitlement using the Mac/Homebrew
+# ldid (which DER-encodes the plist as iOS AMFI requires — the in-container Linux ldid does not).
+# Verified on device: without this entitlement BluetoothManager returns no adapter/device data.
+# Must run AFTER the chmod above and BEFORE xmkdeb (xmkdeb only chown+dpkg-debs, never re-signs).
+BT_ENT="$X11DIR/wayland/xios-bluez-ent.xml"
+if [ -f "$STAGE/var/jb/usr/libexec/xios-bluez-stub" ] && [ -f "$BT_ENT" ]; then
+  xsign "$STAGE/var/jb/usr/libexec/xios-bluez-stub" "$BT_ENT" "com.apple.bluetooth.system"
+fi
 
 built="$(xmkdeb "$STAGE" "$OUT")"
 # Keep the historical copy next to this script too.

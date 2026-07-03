@@ -1,6 +1,21 @@
 # Ladybird on iOS — feasibility & phased build plan
 
-Status: **Phase 0 recon/design only (no builds run).** Companion to [`../SCOPE.md`](../SCOPE.md)
+Status: **Phase 0 recon/design; wall #1 (toolchain) DE-RISKED 2026-07-02.** Companion to [`../SCOPE.md`](../SCOPE.md)
+
+> **Update 2026-07-02 — wall #1 struck.** clang-19 (from apt.llvm.org, added as a cacheable
+> layer in `linux-build/Dockerfile`, committed) + the **stock iPhoneOS 16.5 SDK libc++**
+> compiles Ladybird's C++23 core cross to `arm64-apple-ios16.0`: **47/49 AK + core-LibCore TUs
+> pass `-fsyntax-only`** (the 2 fails were the probe's own stale dep headers, not compiler/libc++
+> gaps). Zero language-level C++23 errors, zero libc++ library-feature errors. The old SDK libc++
+> is missing `<expected>`/`<print>`/`<source_location>`/`<generator>`/`<stacktrace>` and ships
+> `<format>` incomplete, but AK/LibCore touch none of them (own `ErrorOr`/`String`/`Format`), so
+> **no libc++ cross-headers are needed for the foundation** — open-question #1 resolves in our
+> favor for this layer. `-D__IOS__` gates the macOS bundle path off and sets `AK_OS_IOS` as
+> predicted. **Residual:** only AK/LibCore was probed; spot-check a few **LibJS/LibWeb** TUs
+> against the 16.5 libc++ before declaring the whole engine cross-header-free (folded into the
+> first real M0 partial-build). Build-integration notes: AK needs `Debug.h`/`Backtrace.h`
+> configured from their `.in`, and each Lagom lib emits a generated `Export.h` — both are normal
+> CMake, just don't let the recipe fight them.
 and the desktop-apps track. Scope: can we cross-compile the Ladybird browser
 (`LadybirdBrowser/ladybird`) to native `iphoneos-arm64` and render a real web page on the
 jailbroken iPad (A10, iPadOS 17.6.1, palera1n rootless `/var/jb`), and what is the cheapest
@@ -130,10 +145,20 @@ Two facts make it tractable:
   `LibGfx/PaintingSurface.cpp` has a CPU path: when constructed with a **null**
   `SkiaBackendContext`, `create_with_size()` calls `SkSurfaces::WrapPixels(...)` into a plain
   CPU bitmap (lines ~98–124). The Metal path (`WrapBackendRenderTarget` + `GrBackendRenderTargets::MakeMtl`)
-  is only taken when a Metal context is supplied. So a Skia built with
-  `skia_use_metal=false skia_use_gl=false skia_enable_gpu=false` — CPU raster only, with
-  freetype+harfbuzz+icu — is a complete backend for headless rendering and the smallest Skia
-  we can build.
+  is only taken when a Metal context is supplied.
+
+  **Corrected config (see [`ladybird-skia-recipe.md`](ladybird-skia-recipe.md), authoritative).**
+  `skia_enable_gpu=false` is stale nomenclature and, taken literally, **breaks the link**: m144 has
+  no such arg, and Ladybird references `GrDirectContext` / `SkSurfaces::RenderTarget`
+  *unconditionally* at link (`SkiaBackendContext.{h,cpp}`, `PaintingSurface.cpp:105`), guarded only
+  by a runtime null-check. The correct raster build is **`skia_enable_ganesh=true` with every GPU
+  backend off** (`skia_use_gl/metal/vulkan/dawn=false`): Ganesh core symbols stay linkable, zero GPU
+  TUs compile, runtime falls to `WrapPixels`. Also force `skia_use_freetype=true` (iOS defaults to
+  CoreText); build the `:skia` target only, not `:modules`. Pin = chrome milestone **m144**, commit
+  `ee20d565acb08dece4a32e3f209cdd41119015ca`. xcrun-bypass: set `xcode_sysroot="<16.5 SDK>"` so the
+  guarded xcrun call in `gn/skia/BUILD.gn:24` is skipped. Archiver gotcha: iOS uses `libtool -static`
+  (not `ar`), so PATH-shim cctools `aarch64-apple-darwin-libtool` as `libtool`. Bundle all deps
+  (`skia_use_system_*=false`) to dissolve version skew.
 
 Recommended Skia approach: a **standalone GN cross-build** to `ios/arm64`, raster-only, staged
 into the build prefix as a static lib + pkg-config `.pc` (Ladybird's `check_for_dependencies.cmake`
@@ -281,8 +306,11 @@ the GN special-case are worth owning). Package the final Ladybird tree as **one 
 
 ## Open questions / verify on-device
 
-1. **libc++ C++23 gap.** Does the iPhoneOS 16.5 SDK libc++ satisfy every C++23 *library* use in
-   AK/LibWeb, or must we cross clang-19's libc++ headers? Settle by compiling AK+LibCore first.
+1. **libc++ C++23 gap.** ~~Does the iPhoneOS 16.5 SDK libc++ satisfy every C++23 *library* use in
+   AK/LibWeb, or must we cross clang-19's libc++ headers? Settle by compiling AK+LibCore first.~~
+   **RESOLVED for AK/LibCore (clean, 2026-07-02) — no cross-headers needed.** Remaining: spot-check
+   a few LibJS/LibWeb TUs (larger, likelier to hit `<ranges>`/`<format>` edges) in the first M0
+   partial-build.
 2. **Skia iOS GN raster build.** Confirm `target_os="ios"` + raster-only links clean against our
    cctools ld64 and the 16.5 SDK; check Skia's own freetype/harfbuzz/icu wiring vs our staged
    copies (version skew inside Skia).

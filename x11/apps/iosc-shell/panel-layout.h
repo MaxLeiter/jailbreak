@@ -641,7 +641,7 @@ static void panel_draw_qs(cairo_t *cr, pr_text_ctx *t, int W, int H,
 /* ----------------------------------------------------------- window menu --- */
 
 #define WM_W 180
-#define WM_H 140
+#define WM_H 152
 #define WM_BTN_H 40
 
 static void panel_draw_window_menu(cairo_t *cr, pr_text_ctx *t, int W, int H,

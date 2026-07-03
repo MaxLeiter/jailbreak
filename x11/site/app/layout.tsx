@@ -27,8 +27,8 @@ const spaceMono = Space_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "XIOS, native X11 and Wayland on jailbroken iOS",
-    template: "%s / XIOS",
+    default: "xiOS, native X11 and Wayland on jailbroken iOS",
+    template: "%s / xiOS",
   },
   description:
     "How a real X11 server, a GPU-accelerated Wayland compositor, and GNOME apps run as native arm64 binaries on a jailbroken iOS device, rendered through Metal.",

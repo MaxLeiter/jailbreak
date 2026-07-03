@@ -15,7 +15,7 @@ export const NAV: NavItem[] = [
 ];
 
 export const SITE = {
-  name: "XIOS",
+  name: "xiOS",
   tagline: "A native Linux desktop on jailbroken iOS.",
   repo: "https://repo.maxleiter.com",
   device: "Reference device: iPad 7 (A10), iPadOS 17.6.1",

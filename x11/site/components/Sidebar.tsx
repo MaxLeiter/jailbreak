@@ -12,7 +12,7 @@ export function Sidebar() {
       <Link href="/" className="brand" aria-label="Xios wiki home">
         <span className="brand-mark">Project wiki</span>
         <span className="brand-name">
-          XI<b>OS</b>
+          x<b>iOS</b>
         </span>
         <span className="brand-sub">
           X11 and Wayland, running native on jailbroken iOS.
