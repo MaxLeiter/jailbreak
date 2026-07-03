@@ -142,7 +142,7 @@ final class HostA11yClient {
             guard let self, self.fd >= 0,
                   var data = try? JSONSerialization.data(withJSONObject: obj) else { return }
             data.append(0x0a)
-            data.withUnsafeBytes { _ = write(self.fd, $0.baseAddress, $0.count) }
+            _ = data.withUnsafeBytes { writeAll(self.fd, bytes: $0) }
         }
     }
 

@@ -32,3 +32,19 @@ func connectUnixSocket(_ path: String) -> Int32 {
     guard rc == 0 else { close(fd); return -1 }
     return fd
 }
+
+func writeAll(_ fd: Int32, bytes: UnsafeRawBufferPointer) -> Bool {
+    var offset = 0
+    while offset < bytes.count {
+        let wrote = Darwin.write(fd, bytes.baseAddress!.advanced(by: offset),
+                                 bytes.count - offset)
+        if wrote > 0 {
+            offset += wrote
+        } else if wrote < 0 && errno == EINTR {
+            continue
+        } else {
+            return false
+        }
+    }
+    return true
+}

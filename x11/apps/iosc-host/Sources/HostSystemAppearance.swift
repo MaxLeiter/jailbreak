@@ -39,7 +39,7 @@ final class HostSystemAppearance {
                                     x: 0, y: 0,
                                     code: dark == 0 ? 0 : 1,
                                     state: 0, mods: 0)
-        if writeAll(msg) {
+        if writeMessage(msg) {
             sentDark = dark
         } else {
             closeConnection()
@@ -56,23 +56,9 @@ final class HostSystemAppearance {
         return fd >= 0
     }
 
-    private func writeAll(_ msg: XiosSysintMessage) -> Bool {
+    private func writeMessage(_ msg: XiosSysintMessage) -> Bool {
         var message = msg
-        return withUnsafeBytes(of: &message) { bytes in
-            var offset = 0
-            while offset < bytes.count {
-                let wrote = Darwin.write(fd, bytes.baseAddress!.advanced(by: offset),
-                                         bytes.count - offset)
-                if wrote > 0 {
-                    offset += wrote
-                } else if wrote < 0 && errno == EINTR {
-                    continue
-                } else {
-                    return false
-                }
-            }
-            return true
-        }
+        return withUnsafeBytes(of: &message) { writeAll(fd, bytes: $0) }
     }
 
     private func closeConnection() {
