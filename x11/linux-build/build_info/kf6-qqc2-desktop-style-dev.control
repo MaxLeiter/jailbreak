@@ -1,0 +1,11 @@
+Package: kf6-qqc2-desktop-style-dev
+Version: @DEB_QQC2DESKTOPSTYLE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-qqc2-desktop-style (= @DEB_QQC2DESKTOPSTYLE_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-iconthemes-dev, kf6-kirigami-dev
+Description: Development files for QQC2DesktopStyle
+ Headers and CMake package files for QQC2DesktopStyle. Needed to cross-build the
+ KDE components that depend on it.

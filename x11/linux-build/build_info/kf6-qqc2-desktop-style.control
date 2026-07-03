@@ -1,0 +1,13 @@
+Package: kf6-qqc2-desktop-style
+Version: @DEB_QQC2DESKTOPSTYLE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, qt6-svg, kf6-colorscheme, kf6-config, kf6-iconthemes, kf6-kirigami
+Description: QQC2DesktopStyle for the Xios desktop
+ Qt Quick Controls 2 desktop style and the org.kde.desktop QML import.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

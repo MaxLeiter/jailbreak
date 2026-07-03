@@ -137,6 +137,7 @@ overlay_out \
   kf6-newstuff_*_iphoneos-arm64.deb \
   kf6-wallet_*_iphoneos-arm64.deb \
   kf6-notifyconfig_*_iphoneos-arm64.deb \
+  kf6-qqc2-desktop-style_*_iphoneos-arm64.deb \
   xios-session_*_iphoneos-arm64.deb
 
 echo "==> keeping only the newest staged deb for each package"

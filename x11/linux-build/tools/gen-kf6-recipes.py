@@ -182,6 +182,13 @@ TABLE = [
                 "KSvg and libplasma hard-require. Shaders bake at build time through the host",
                 "qsb (QT_HOST_PATH); the cross Qt6ShaderTools cmake package must be staged",
                 "(qtshadertools recipe)."]),
+    dict(t="qqc2-desktop-style", kind="kf", deb="kf6-qqc2-desktop-style",
+         deps=["kcolorscheme", "kconfig", "kiconthemes", "kirigami"],
+         qt_deps=["qt6-base", "qt6-declarative", "qt6-svg"],
+         desc="Qt Quick Controls 2 desktop style and the org.kde.desktop QML import.",
+         notes=["Runtime dependency for Plasma Desktop shell error delegates and desktop QML.",
+                "This package provides the org.kde.desktop QML module that real plasmashell",
+                "loads when the upstream desktop shell is selected."]),
     dict(t="breeze-icons", kind="kf", deb="kf6-breeze-icons", deps=[],
          qt_deps=[], data_only=True, section="Themes",
          flags=["-DBINARY_ICONS_RESOURCE=OFF"],
@@ -630,6 +637,7 @@ def pretty_name(e):
                "kunitconversion": "KUnitConversion", "kparts": "KParts",
                "knewstuff": "KNewStuff", "kwallet": "KWallet",
                "knotifyconfig": "KNotifyConfig",
+               "qqc2-desktop-style": "QQC2DesktopStyle",
                "solid": "Solid", "sonnet": "Sonnet", "kirigami": "Kirigami"}
     if e["t"] in special:
         return special[e["t"]]

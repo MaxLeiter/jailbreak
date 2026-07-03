@@ -25,6 +25,7 @@ SUPPORT_RECIPE_TARGETS=(
   kwallet
   knotifyconfig
   kactivitymanagerd
+  qqc2-desktop-style
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
@@ -47,6 +48,7 @@ COLLECT_DEBS=(
   kf6-newstuff
   kf6-wallet
   kf6-notifyconfig
+  kf6-qqc2-desktop-style
 )
 
 cd /work/Procursus
