@@ -88,6 +88,10 @@ cat > "$src/src/helpers/CMakeLists.txt" <<'EOF'
 add_subdirectory(wayland_wrapper)
 EOF
 
+# The first-light KWin package is built with KWIN_BUILD_DECORATIONS=OFF, so do
+# not try to load the default aurorae decoration plugin at runtime.
+perl -0pi -e 's/return kwinApp\(\)->config\(\)->group\(s_pluginName\)\.readEntry\("NoPlugin", false\);/return kwinApp()->config()->group(s_pluginName).readEntry("NoPlugin", !KWIN_BUILD_DECORATIONS);/g' "$src/src/decorations/decorationbridge.cpp"
+
 # Upstream's native qtwaylandscanner_kde helper guesses KF6_HOST_TOOLING as the complete
 # host prefix. Our host Qt lives beside it, so let the recipe pass NATIVE_PREFIX explicitly.
 
@@ -97,6 +101,300 @@ EOF
 if ! grep -q 'ios-bringup-target-no-qt-opengl' "$src/src/CMakeLists.txt"; then
     perl -0pi -e 's/add_library\(kwin SHARED\)/add_library(kwin SHARED)\ntarget_compile_definitions(kwin PRIVATE QT_NO_OPENGL=1) # ios-bringup-target-no-qt-opengl/g' "$src/src/CMakeLists.txt"
 fi
+
+# iOS/ANGLE clients use the local iosc_iosurface protocol instead of dma-buf.
+# For KWin first-light, expose the global and wrap imported IOSurfaces as a
+# CPU-readable GraphicsBuffer so the existing QPainter compositor can copy them.
+cp /work/recipes/build_info/iosc-iosurface.xml "$src/src/wayland/protocols/iosc-iosurface.xml"
+if ! grep -q 'ios-bringup-iosurface-protocol' "$src/src/wayland/CMakeLists.txt"; then
+    perl -0pi -e 's/target_sources\(kwin PRIVATE/ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml\n    PROTOCOL \${PROJECT_SOURCE_DIR}\/src\/wayland\/protocols\/iosc-iosurface.xml\n    BASENAME iosc-iosurface\n) # ios-bringup-iosurface-protocol\n\ntarget_sources(kwin PRIVATE\n    ioscclientbuffer.cpp/g' "$src/src/wayland/CMakeLists.txt"
+fi
+if ! grep -q 'ios-bringup-iosurface-display' "$src/src/wayland/display.cpp"; then
+    perl -0pi -e 's/#include "linuxdmabufv1clientbuffer_p\.h"/#include "linuxdmabufv1clientbuffer_p.h"\n#include "ioscclientbuffer.h" \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
+    perl -0pi -e 's/    new ShmClientBufferIntegration\(this\);/    new ShmClientBufferIntegration(this);\n    new IoscClientBufferIntegration(this); \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
+    perl -0pi -e 's/    \} else if \(auto buffer = ShmClientBuffer::get\(resource\)\) \{\n        return buffer;/    } else if (auto buffer = ShmClientBuffer::get(resource)) {\n        return buffer;\n    } else if (auto buffer = IoscClientBuffer::get(resource)) {\n        return buffer;/g' "$src/src/wayland/display.cpp"
+fi
+cat > "$src/src/wayland/ioscclientbuffer.h" <<'EOF'
+/*
+    iOS first-light support: iosc_iosurface client buffers for KWin.
+    SPDX-License-Identifier: GPL-2.0-or-later
+*/
+#pragma once
+
+#include "core/graphicsbuffer.h"
+
+#include <QByteArray>
+#include <QObject>
+#include <wayland-server-protocol.h>
+
+struct wl_client;
+struct wl_resource;
+
+namespace KWin
+{
+
+class Display;
+class IoscClientBufferIntegrationPrivate;
+
+class IoscClientBufferIntegration : public QObject
+{
+public:
+    explicit IoscClientBufferIntegration(Display *display);
+    ~IoscClientBufferIntegration() override;
+
+private:
+    std::unique_ptr<IoscClientBufferIntegrationPrivate> d;
+};
+
+class IoscClientBuffer : public GraphicsBuffer
+{
+public:
+    IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client);
+    ~IoscClientBuffer() override;
+
+    Map map(MapFlags flags) override;
+    void unmap() override;
+
+    QSize size() const override;
+    bool hasAlphaChannel() const override;
+    const ShmAttributes *shmAttributes() const override;
+
+    static IoscClientBuffer *get(wl_resource *resource);
+    static const struct wl_buffer_interface implementation;
+
+private:
+    static void bufferDestroyResource(wl_resource *resource);
+    static void bufferDestroy(wl_client *client, wl_resource *resource);
+
+    wl_resource *m_resource = nullptr;
+    void *m_iosurface = nullptr;
+    ShmAttributes m_attributes;
+    QByteArray m_flippedData;
+};
+
+} // namespace KWin
+EOF
+cat > "$src/src/wayland/ioscclientbuffer.cpp" <<'EOF'
+/*
+    iOS first-light support: iosc_iosurface client buffers for KWin.
+    SPDX-License-Identifier: GPL-2.0-or-later
+*/
+
+#include "ioscclientbuffer.h"
+#include "display.h"
+
+#include "qwayland-server-iosc-iosurface.h"
+
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurfaceRef.h>
+#include <QDebug>
+#include <drm_fourcc.h>
+#include <mach/mach.h>
+#include <cstring>
+#include <wayland-server.h>
+#include <wayland-server-protocol.h>
+
+namespace KWin
+{
+
+static constexpr uint32_t xiosLockReadOnly = 0x00000001u;
+
+static void *importClientIOSurface(int pid, uint32_t portName, int *width, int *height)
+{
+    task_t task = MACH_PORT_NULL;
+    kern_return_t kr = task_for_pid(mach_task_self(), pid, &task);
+    if (kr != KERN_SUCCESS) {
+        qWarning("kwin_iosurface: task_for_pid(%d) failed: 0x%x (%s)", pid, kr, mach_error_string(kr));
+        return nullptr;
+    }
+
+    mach_port_t sendPort = MACH_PORT_NULL;
+    mach_msg_type_name_t acquired = 0;
+    kr = mach_port_extract_right(task, static_cast<mach_port_name_t>(portName), MACH_MSG_TYPE_COPY_SEND, &sendPort, &acquired);
+    mach_port_deallocate(mach_task_self(), task);
+    if (kr != KERN_SUCCESS) {
+        qWarning("kwin_iosurface: mach_port_extract_right(pid=%d port=0x%x) failed: 0x%x (%s)", pid, portName, kr, mach_error_string(kr));
+        return nullptr;
+    }
+
+    IOSurfaceRef surface = IOSurfaceLookupFromMachPort(sendPort);
+    mach_port_deallocate(mach_task_self(), sendPort);
+    if (!surface) {
+        qWarning("kwin_iosurface: IOSurfaceLookupFromMachPort returned NULL");
+        return nullptr;
+    }
+
+    if (width) {
+        *width = static_cast<int>(IOSurfaceGetWidth(surface));
+    }
+    if (height) {
+        *height = static_cast<int>(IOSurfaceGetHeight(surface));
+    }
+    qWarning("kwin_iosurface: imported client IOSurface id=%u %zux%zu stride=%zu",
+             static_cast<unsigned>(IOSurfaceGetID(surface)),
+             IOSurfaceGetWidth(surface),
+             IOSurfaceGetHeight(surface),
+             IOSurfaceGetBytesPerRow(surface));
+    return surface;
+}
+
+class IoscClientBufferIntegrationPrivate : public QtWaylandServer::iosc_iosurface
+{
+public:
+    explicit IoscClientBufferIntegrationPrivate(Display *display)
+        : QtWaylandServer::iosc_iosurface(*display, 1)
+    {
+    }
+
+protected:
+    void iosc_iosurface_destroy(Resource *resource) override
+    {
+        wl_resource_destroy(resource->handle);
+    }
+
+    void iosc_iosurface_create_buffer(Resource *resource, uint32_t id, uint32_t machPortName, int32_t width, int32_t height, uint32_t format) override
+    {
+        Q_UNUSED(width)
+        Q_UNUSED(height)
+        Q_UNUSED(format)
+
+        pid_t pid = 0;
+        wl_client_get_credentials(resource->client(), &pid, nullptr, nullptr);
+
+        int importedWidth = 0;
+        int importedHeight = 0;
+        void *surface = importClientIOSurface(static_cast<int>(pid), machPortName, &importedWidth, &importedHeight);
+        if (!surface) {
+            wl_resource *bufferResource = wl_resource_create(resource->client(), &::wl_buffer_interface, 1, id);
+            if (!bufferResource) {
+                wl_client_post_no_memory(resource->client());
+                return;
+            }
+            wl_resource_set_implementation(bufferResource, &IoscClientBuffer::implementation, nullptr, nullptr);
+            wl_resource_post_error(resource->handle, 0, "could not import IOSurface from mach port 0x%x", machPortName);
+            return;
+        }
+
+        new IoscClientBuffer(surface, QSize(importedWidth, importedHeight), id, resource->client());
+    }
+};
+
+const struct wl_buffer_interface IoscClientBuffer::implementation = {
+    .destroy = bufferDestroy,
+};
+
+IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client)
+    : m_iosurface(iosurface)
+{
+    const IOSurfaceRef surface = static_cast<IOSurfaceRef>(m_iosurface);
+    m_attributes.stride = static_cast<int>(IOSurfaceGetBytesPerRow(surface));
+    m_attributes.offset = 0;
+    m_attributes.size = size;
+    m_attributes.format = DRM_FORMAT_ARGB8888;
+
+    connect(this, &GraphicsBuffer::released, [this]() {
+        if (m_resource) {
+            wl_buffer_send_release(m_resource);
+        }
+    });
+
+    m_resource = wl_resource_create(client, &::wl_buffer_interface, 1, id);
+    if (!m_resource) {
+        wl_client_post_no_memory(client);
+        drop();
+        return;
+    }
+    wl_resource_set_implementation(m_resource, &implementation, this, bufferDestroyResource);
+}
+
+IoscClientBuffer::~IoscClientBuffer()
+{
+    if (m_iosurface) {
+        CFRelease(static_cast<IOSurfaceRef>(m_iosurface));
+    }
+}
+
+GraphicsBuffer::Map IoscClientBuffer::map(MapFlags flags)
+{
+    if (!m_iosurface || flags.testFlag(Write)) {
+        return {};
+    }
+    IOSurfaceRef surface = static_cast<IOSurfaceRef>(m_iosurface);
+    if (IOSurfaceLock(surface, xiosLockReadOnly, nullptr) != KERN_SUCCESS) {
+        return {};
+    }
+
+    const size_t stride = IOSurfaceGetBytesPerRow(surface);
+    const int height = m_attributes.size.height();
+    const size_t byteCount = stride * static_cast<size_t>(height);
+    m_flippedData.resize(static_cast<qsizetype>(byteCount));
+
+    const auto *src = static_cast<const unsigned char *>(IOSurfaceGetBaseAddress(surface));
+    auto *dst = reinterpret_cast<unsigned char *>(m_flippedData.data());
+    for (int y = 0; y < height; ++y) {
+        std::memcpy(dst + static_cast<size_t>(y) * stride,
+                    src + static_cast<size_t>(height - 1 - y) * stride,
+                    stride);
+    }
+
+    IOSurfaceUnlock(surface, xiosLockReadOnly, nullptr);
+    return Map{
+        .data = m_flippedData.data(),
+        .stride = static_cast<uint32_t>(stride),
+    };
+}
+
+void IoscClientBuffer::unmap()
+{
+}
+
+QSize IoscClientBuffer::size() const
+{
+    return m_attributes.size;
+}
+
+bool IoscClientBuffer::hasAlphaChannel() const
+{
+    return true;
+}
+
+const ShmAttributes *IoscClientBuffer::shmAttributes() const
+{
+    return &m_attributes;
+}
+
+IoscClientBuffer *IoscClientBuffer::get(wl_resource *resource)
+{
+    if (wl_resource_instance_of(resource, &::wl_buffer_interface, &implementation)) {
+        return static_cast<IoscClientBuffer *>(wl_resource_get_user_data(resource));
+    }
+    return nullptr;
+}
+
+void IoscClientBuffer::bufferDestroyResource(wl_resource *resource)
+{
+    if (IoscClientBuffer *buffer = IoscClientBuffer::get(resource)) {
+        buffer->m_resource = nullptr;
+        buffer->drop();
+    }
+}
+
+void IoscClientBuffer::bufferDestroy(wl_client *client, wl_resource *resource)
+{
+    Q_UNUSED(client)
+    wl_resource_destroy(resource);
+}
+
+IoscClientBufferIntegration::IoscClientBufferIntegration(Display *display)
+    : QObject(display)
+    , d(std::make_unique<IoscClientBufferIntegrationPrivate>(display))
+{
+}
+
+IoscClientBufferIntegration::~IoscClientBufferIntegration() = default;
+
+} // namespace KWin
+EOF
 
 # KWin has Linux/FreeBSD executable path backends only. The sysctl backend is the closest
 # Darwin-family implementation and compiles against the iOS SDK.
