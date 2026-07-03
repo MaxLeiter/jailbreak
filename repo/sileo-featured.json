@@ -14,14 +14,14 @@
       "url": "https://repo.maxleiter.com/banners/angle.png"
     },
     {
-      "title": "at-spi2-core-dev",
-      "package": "at-spi2-core-dev",
-      "url": "https://repo.maxleiter.com/banners/at-spi2-core-dev.png"
-    },
-    {
       "title": "at-spi2-core",
       "package": "at-spi2-core",
       "url": "https://repo.maxleiter.com/banners/at-spi2-core.png"
+    },
+    {
+      "title": "at-spi2-core-dev",
+      "package": "at-spi2-core-dev",
+      "url": "https://repo.maxleiter.com/banners/at-spi2-core-dev.png"
     },
     {
       "title": "baobab",
@@ -29,14 +29,14 @@
       "url": "https://repo.maxleiter.com/banners/baobab.png"
     },
     {
-      "title": "Bun Preflight",
-      "package": "bun-preflight",
-      "url": "https://repo.maxleiter.com/banners/bun-preflight.png"
-    },
-    {
       "title": "Bun",
       "package": "bun",
       "url": "https://repo.maxleiter.com/banners/bun.png"
+    },
+    {
+      "title": "Bun Preflight",
+      "package": "bun-preflight",
+      "url": "https://repo.maxleiter.com/banners/bun-preflight.png"
     },
     {
       "title": "AutoLockPicker",
@@ -64,14 +64,14 @@
       "url": "https://repo.maxleiter.com/banners/dbus.png"
     },
     {
-      "title": "dconf-dev",
-      "package": "dconf-dev",
-      "url": "https://repo.maxleiter.com/banners/dconf-dev.png"
-    },
-    {
       "title": "dconf",
       "package": "dconf",
       "url": "https://repo.maxleiter.com/banners/dconf.png"
+    },
+    {
+      "title": "dconf-dev",
+      "package": "dconf-dev",
+      "url": "https://repo.maxleiter.com/banners/dconf-dev.png"
     },
     {
       "title": "dunst",
@@ -79,14 +79,14 @@
       "url": "https://repo.maxleiter.com/banners/dunst.png"
     },
     {
-      "title": "evolution-data-server-dev",
-      "package": "evolution-data-server-dev",
-      "url": "https://repo.maxleiter.com/banners/evolution-data-server-dev.png"
-    },
-    {
       "title": "evolution-data-server",
       "package": "evolution-data-server",
       "url": "https://repo.maxleiter.com/banners/evolution-data-server.png"
+    },
+    {
+      "title": "evolution-data-server-dev",
+      "package": "evolution-data-server-dev",
+      "url": "https://repo.maxleiter.com/banners/evolution-data-server-dev.png"
     },
     {
       "title": "extra-cmake-modules",
@@ -99,14 +99,14 @@
       "url": "https://repo.maxleiter.com/banners/file-roller.png"
     },
     {
-      "title": "fontconfig-config",
-      "package": "fontconfig-config",
-      "url": "https://repo.maxleiter.com/banners/fontconfig-config.png"
-    },
-    {
       "title": "fontconfig",
       "package": "fontconfig",
       "url": "https://repo.maxleiter.com/banners/fontconfig.png"
+    },
+    {
+      "title": "fontconfig-config",
+      "package": "fontconfig-config",
+      "url": "https://repo.maxleiter.com/banners/fontconfig-config.png"
     },
     {
       "title": "foot",
@@ -229,9 +229,9 @@
       "url": "https://repo.maxleiter.com/banners/imv.png"
     },
     {
-      "title": "iosc desktop shell",
-      "package": "iosc-shell",
-      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
+      "title": "iosc (Wayland compositor)",
+      "package": "iosc",
+      "url": "https://repo.maxleiter.com/banners/iosc.png"
     },
     {
       "title": "iosc (Wayland compositor)",
@@ -239,14 +239,14 @@
       "url": "https://repo.maxleiter.com/banners/iosc.png"
     },
     {
+      "title": "iosc desktop shell",
+      "package": "iosc-shell",
+      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
+    },
+    {
       "title": "iso-codes",
       "package": "iso-codes",
       "url": "https://repo.maxleiter.com/banners/iso-codes.png"
-    },
-    {
-      "title": "kdecoration-dev",
-      "package": "kdecoration-dev",
-      "url": "https://repo.maxleiter.com/banners/kdecoration-dev.png"
     },
     {
       "title": "kdecoration",
@@ -254,9 +254,9 @@
       "url": "https://repo.maxleiter.com/banners/kdecoration.png"
     },
     {
-      "title": "kf6-archive-dev",
-      "package": "kf6-archive-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-archive-dev.png"
+      "title": "kdecoration-dev",
+      "package": "kdecoration-dev",
+      "url": "https://repo.maxleiter.com/banners/kdecoration-dev.png"
     },
     {
       "title": "kf6-archive",
@@ -264,9 +264,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-archive.png"
     },
     {
-      "title": "kf6-auth-dev",
-      "package": "kf6-auth-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-auth-dev.png"
+      "title": "kf6-archive-dev",
+      "package": "kf6-archive-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-archive-dev.png"
     },
     {
       "title": "kf6-auth",
@@ -274,9 +274,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-auth.png"
     },
     {
-      "title": "kf6-bookmarks-dev",
-      "package": "kf6-bookmarks-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-bookmarks-dev.png"
+      "title": "kf6-auth-dev",
+      "package": "kf6-auth-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-auth-dev.png"
     },
     {
       "title": "kf6-bookmarks",
@@ -284,14 +284,14 @@
       "url": "https://repo.maxleiter.com/banners/kf6-bookmarks.png"
     },
     {
+      "title": "kf6-bookmarks-dev",
+      "package": "kf6-bookmarks-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-bookmarks-dev.png"
+    },
+    {
       "title": "kf6-breeze-icons",
       "package": "kf6-breeze-icons",
       "url": "https://repo.maxleiter.com/banners/kf6-breeze-icons.png"
-    },
-    {
-      "title": "kf6-codecs-dev",
-      "package": "kf6-codecs-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-codecs-dev.png"
     },
     {
       "title": "kf6-codecs",
@@ -299,9 +299,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-codecs.png"
     },
     {
-      "title": "kf6-colorscheme-dev",
-      "package": "kf6-colorscheme-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-colorscheme-dev.png"
+      "title": "kf6-codecs-dev",
+      "package": "kf6-codecs-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-codecs-dev.png"
     },
     {
       "title": "kf6-colorscheme",
@@ -309,9 +309,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-colorscheme.png"
     },
     {
-      "title": "kf6-completion-dev",
-      "package": "kf6-completion-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-completion-dev.png"
+      "title": "kf6-colorscheme-dev",
+      "package": "kf6-colorscheme-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-colorscheme-dev.png"
     },
     {
       "title": "kf6-completion",
@@ -319,9 +319,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-completion.png"
     },
     {
-      "title": "kf6-config-dev",
-      "package": "kf6-config-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-config-dev.png"
+      "title": "kf6-completion-dev",
+      "package": "kf6-completion-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-completion-dev.png"
     },
     {
       "title": "kf6-config",
@@ -329,9 +329,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-config.png"
     },
     {
-      "title": "kf6-configwidgets-dev",
-      "package": "kf6-configwidgets-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-configwidgets-dev.png"
+      "title": "kf6-config-dev",
+      "package": "kf6-config-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-config-dev.png"
     },
     {
       "title": "kf6-configwidgets",
@@ -339,9 +339,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-configwidgets.png"
     },
     {
-      "title": "kf6-coreaddons-dev",
-      "package": "kf6-coreaddons-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-coreaddons-dev.png"
+      "title": "kf6-configwidgets-dev",
+      "package": "kf6-configwidgets-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-configwidgets-dev.png"
     },
     {
       "title": "kf6-coreaddons",
@@ -349,9 +349,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-coreaddons.png"
     },
     {
-      "title": "kf6-crash-dev",
-      "package": "kf6-crash-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-crash-dev.png"
+      "title": "kf6-coreaddons-dev",
+      "package": "kf6-coreaddons-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-coreaddons-dev.png"
     },
     {
       "title": "kf6-crash",
@@ -359,9 +359,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-crash.png"
     },
     {
-      "title": "kf6-dbusaddons-dev",
-      "package": "kf6-dbusaddons-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-dbusaddons-dev.png"
+      "title": "kf6-crash-dev",
+      "package": "kf6-crash-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-crash-dev.png"
     },
     {
       "title": "kf6-dbusaddons",
@@ -369,9 +369,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-dbusaddons.png"
     },
     {
-      "title": "kf6-globalaccel-dev",
-      "package": "kf6-globalaccel-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-globalaccel-dev.png"
+      "title": "kf6-dbusaddons-dev",
+      "package": "kf6-dbusaddons-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-dbusaddons-dev.png"
     },
     {
       "title": "kf6-globalaccel",
@@ -379,9 +379,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-globalaccel.png"
     },
     {
-      "title": "kf6-guiaddons-dev",
-      "package": "kf6-guiaddons-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-guiaddons-dev.png"
+      "title": "kf6-globalaccel-dev",
+      "package": "kf6-globalaccel-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-globalaccel-dev.png"
     },
     {
       "title": "kf6-guiaddons",
@@ -389,9 +389,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-guiaddons.png"
     },
     {
-      "title": "kf6-i18n-dev",
-      "package": "kf6-i18n-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-i18n-dev.png"
+      "title": "kf6-guiaddons-dev",
+      "package": "kf6-guiaddons-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-guiaddons-dev.png"
     },
     {
       "title": "kf6-i18n",
@@ -399,9 +399,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-i18n.png"
     },
     {
-      "title": "kf6-iconthemes-dev",
-      "package": "kf6-iconthemes-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-iconthemes-dev.png"
+      "title": "kf6-i18n-dev",
+      "package": "kf6-i18n-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-i18n-dev.png"
     },
     {
       "title": "kf6-iconthemes",
@@ -409,9 +409,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-iconthemes.png"
     },
     {
-      "title": "kf6-idletime-dev",
-      "package": "kf6-idletime-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-idletime-dev.png"
+      "title": "kf6-iconthemes-dev",
+      "package": "kf6-iconthemes-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-iconthemes-dev.png"
     },
     {
       "title": "kf6-idletime",
@@ -419,9 +419,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-idletime.png"
     },
     {
-      "title": "kf6-itemmodels-dev",
-      "package": "kf6-itemmodels-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-itemmodels-dev.png"
+      "title": "kf6-idletime-dev",
+      "package": "kf6-idletime-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-idletime-dev.png"
     },
     {
       "title": "kf6-itemmodels",
@@ -429,9 +429,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-itemmodels.png"
     },
     {
-      "title": "kf6-itemviews-dev",
-      "package": "kf6-itemviews-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-itemviews-dev.png"
+      "title": "kf6-itemmodels-dev",
+      "package": "kf6-itemmodels-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-itemmodels-dev.png"
     },
     {
       "title": "kf6-itemviews",
@@ -439,9 +439,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-itemviews.png"
     },
     {
-      "title": "kf6-jobwidgets-dev",
-      "package": "kf6-jobwidgets-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-jobwidgets-dev.png"
+      "title": "kf6-itemviews-dev",
+      "package": "kf6-itemviews-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-itemviews-dev.png"
     },
     {
       "title": "kf6-jobwidgets",
@@ -449,9 +449,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-jobwidgets.png"
     },
     {
-      "title": "kf6-kcmutils-dev",
-      "package": "kf6-kcmutils-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-kcmutils-dev.png"
+      "title": "kf6-jobwidgets-dev",
+      "package": "kf6-jobwidgets-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-jobwidgets-dev.png"
     },
     {
       "title": "kf6-kcmutils",
@@ -459,9 +459,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-kcmutils.png"
     },
     {
-      "title": "kf6-kio-dev",
-      "package": "kf6-kio-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-kio-dev.png"
+      "title": "kf6-kcmutils-dev",
+      "package": "kf6-kcmutils-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-kcmutils-dev.png"
     },
     {
       "title": "kf6-kio",
@@ -469,9 +469,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-kio.png"
     },
     {
-      "title": "kf6-kirigami-dev",
-      "package": "kf6-kirigami-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-kirigami-dev.png"
+      "title": "kf6-kio-dev",
+      "package": "kf6-kio-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-kio-dev.png"
     },
     {
       "title": "kf6-kirigami",
@@ -479,9 +479,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-kirigami.png"
     },
     {
-      "title": "kf6-notifications-dev",
-      "package": "kf6-notifications-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-notifications-dev.png"
+      "title": "kf6-kirigami-dev",
+      "package": "kf6-kirigami-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-kirigami-dev.png"
     },
     {
       "title": "kf6-notifications",
@@ -489,9 +489,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-notifications.png"
     },
     {
-      "title": "kf6-package-dev",
-      "package": "kf6-package-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-package-dev.png"
+      "title": "kf6-notifications-dev",
+      "package": "kf6-notifications-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-notifications-dev.png"
     },
     {
       "title": "kf6-package",
@@ -499,9 +499,19 @@
       "url": "https://repo.maxleiter.com/banners/kf6-package.png"
     },
     {
-      "title": "kf6-service-dev",
-      "package": "kf6-service-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-service-dev.png"
+      "title": "kf6-package-dev",
+      "package": "kf6-package-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-package-dev.png"
+    },
+    {
+      "title": "kf6-parts",
+      "package": "kf6-parts",
+      "url": "https://repo.maxleiter.com/banners/kf6-parts.png"
+    },
+    {
+      "title": "kf6-parts-dev",
+      "package": "kf6-parts-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-parts-dev.png"
     },
     {
       "title": "kf6-service",
@@ -509,9 +519,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-service.png"
     },
     {
-      "title": "kf6-solid-dev",
-      "package": "kf6-solid-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-solid-dev.png"
+      "title": "kf6-service-dev",
+      "package": "kf6-service-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-service-dev.png"
     },
     {
       "title": "kf6-solid",
@@ -519,9 +529,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-solid.png"
     },
     {
-      "title": "kf6-sonnet-dev",
-      "package": "kf6-sonnet-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-sonnet-dev.png"
+      "title": "kf6-solid-dev",
+      "package": "kf6-solid-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-solid-dev.png"
     },
     {
       "title": "kf6-sonnet",
@@ -529,9 +539,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-sonnet.png"
     },
     {
-      "title": "kf6-svg-dev",
-      "package": "kf6-svg-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-svg-dev.png"
+      "title": "kf6-sonnet-dev",
+      "package": "kf6-sonnet-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-sonnet-dev.png"
     },
     {
       "title": "kf6-svg",
@@ -539,9 +549,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-svg.png"
     },
     {
-      "title": "kf6-textwidgets-dev",
-      "package": "kf6-textwidgets-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-textwidgets-dev.png"
+      "title": "kf6-svg-dev",
+      "package": "kf6-svg-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-svg-dev.png"
     },
     {
       "title": "kf6-textwidgets",
@@ -549,9 +559,19 @@
       "url": "https://repo.maxleiter.com/banners/kf6-textwidgets.png"
     },
     {
-      "title": "kf6-widgetsaddons-dev",
-      "package": "kf6-widgetsaddons-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-widgetsaddons-dev.png"
+      "title": "kf6-textwidgets-dev",
+      "package": "kf6-textwidgets-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-textwidgets-dev.png"
+    },
+    {
+      "title": "kf6-threadweaver",
+      "package": "kf6-threadweaver",
+      "url": "https://repo.maxleiter.com/banners/kf6-threadweaver.png"
+    },
+    {
+      "title": "kf6-threadweaver-dev",
+      "package": "kf6-threadweaver-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-threadweaver-dev.png"
     },
     {
       "title": "kf6-widgetsaddons",
@@ -559,9 +579,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-widgetsaddons.png"
     },
     {
-      "title": "kf6-windowsystem-dev",
-      "package": "kf6-windowsystem-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-windowsystem-dev.png"
+      "title": "kf6-widgetsaddons-dev",
+      "package": "kf6-widgetsaddons-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-widgetsaddons-dev.png"
     },
     {
       "title": "kf6-windowsystem",
@@ -569,9 +589,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-windowsystem.png"
     },
     {
-      "title": "kf6-xmlgui-dev",
-      "package": "kf6-xmlgui-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-xmlgui-dev.png"
+      "title": "kf6-windowsystem-dev",
+      "package": "kf6-windowsystem-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-windowsystem-dev.png"
     },
     {
       "title": "kf6-xmlgui",
@@ -579,9 +599,9 @@
       "url": "https://repo.maxleiter.com/banners/kf6-xmlgui.png"
     },
     {
-      "title": "kglobalacceld-dev",
-      "package": "kglobalacceld-dev",
-      "url": "https://repo.maxleiter.com/banners/kglobalacceld-dev.png"
+      "title": "kf6-xmlgui-dev",
+      "package": "kf6-xmlgui-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-xmlgui-dev.png"
     },
     {
       "title": "kglobalacceld",
@@ -589,9 +609,9 @@
       "url": "https://repo.maxleiter.com/banners/kglobalacceld.png"
     },
     {
-      "title": "kwayland-dev",
-      "package": "kwayland-dev",
-      "url": "https://repo.maxleiter.com/banners/kwayland-dev.png"
+      "title": "kglobalacceld-dev",
+      "package": "kglobalacceld-dev",
+      "url": "https://repo.maxleiter.com/banners/kglobalacceld-dev.png"
     },
     {
       "title": "kwayland",
@@ -599,14 +619,19 @@
       "url": "https://repo.maxleiter.com/banners/kwayland.png"
     },
     {
-      "title": "layer-shell-qt-dev",
-      "package": "layer-shell-qt-dev",
-      "url": "https://repo.maxleiter.com/banners/layer-shell-qt-dev.png"
+      "title": "kwayland-dev",
+      "package": "kwayland-dev",
+      "url": "https://repo.maxleiter.com/banners/kwayland-dev.png"
     },
     {
       "title": "layer-shell-qt",
       "package": "layer-shell-qt",
       "url": "https://repo.maxleiter.com/banners/layer-shell-qt.png"
+    },
+    {
+      "title": "layer-shell-qt-dev",
+      "package": "layer-shell-qt-dev",
+      "url": "https://repo.maxleiter.com/banners/layer-shell-qt-dev.png"
     },
     {
       "title": "libaccountsservice-dev",
@@ -739,14 +764,14 @@
       "url": "https://repo.maxleiter.com/banners/libcairo-script-interpreter2.png"
     },
     {
-      "title": "libcairo2-dev",
-      "package": "libcairo2-dev",
-      "url": "https://repo.maxleiter.com/banners/libcairo2-dev.png"
-    },
-    {
       "title": "libcairo2",
       "package": "libcairo2",
       "url": "https://repo.maxleiter.com/banners/libcairo2.png"
+    },
+    {
+      "title": "libcairo2-dev",
+      "package": "libcairo2-dev",
+      "url": "https://repo.maxleiter.com/banners/libcairo2-dev.png"
     },
     {
       "title": "libcolord-dev",
@@ -759,14 +784,14 @@
       "url": "https://repo.maxleiter.com/banners/libcolord2.png"
     },
     {
-      "title": "libcurl4-openssl-dev",
-      "package": "libcurl4-openssl-dev",
-      "url": "https://repo.maxleiter.com/banners/libcurl4-openssl-dev.png"
-    },
-    {
       "title": "libcurl4",
       "package": "libcurl4",
       "url": "https://repo.maxleiter.com/banners/libcurl4.png"
+    },
+    {
+      "title": "libcurl4-openssl-dev",
+      "package": "libcurl4-openssl-dev",
+      "url": "https://repo.maxleiter.com/banners/libcurl4-openssl-dev.png"
     },
     {
       "title": "libdisplay-info-dev",
@@ -1014,14 +1039,14 @@
       "url": "https://repo.maxleiter.com/banners/libglib2.0-bin.png"
     },
     {
-      "title": "libglib2.0-dev-bin",
-      "package": "libglib2.0-dev-bin",
-      "url": "https://repo.maxleiter.com/banners/libglib2.0-dev-bin.png"
-    },
-    {
       "title": "libglib2.0-dev",
       "package": "libglib2.0-dev",
       "url": "https://repo.maxleiter.com/banners/libglib2.0-dev.png"
+    },
+    {
+      "title": "libglib2.0-dev-bin",
+      "package": "libglib2.0-dev-bin",
+      "url": "https://repo.maxleiter.com/banners/libglib2.0-dev-bin.png"
     },
     {
       "title": "libglu1-mesa",
@@ -1189,14 +1214,14 @@
       "url": "https://repo.maxleiter.com/banners/libjpeg-turbo-progs.png"
     },
     {
-      "title": "libjpeg62-turbo-dev",
-      "package": "libjpeg62-turbo-dev",
-      "url": "https://repo.maxleiter.com/banners/libjpeg62-turbo-dev.png"
-    },
-    {
       "title": "libjpeg62-turbo",
       "package": "libjpeg62-turbo",
       "url": "https://repo.maxleiter.com/banners/libjpeg62-turbo.png"
+    },
+    {
+      "title": "libjpeg62-turbo-dev",
+      "package": "libjpeg62-turbo-dev",
+      "url": "https://repo.maxleiter.com/banners/libjpeg62-turbo-dev.png"
     },
     {
       "title": "libjson-glib-1.0-0",
@@ -1334,6 +1359,16 @@
       "url": "https://repo.maxleiter.com/banners/libpoppler-glib8.png"
     },
     {
+      "title": "libpoppler-qt6-3",
+      "package": "libpoppler-qt6-3",
+      "url": "https://repo.maxleiter.com/banners/libpoppler-qt6-3.png"
+    },
+    {
+      "title": "libpoppler-qt6-dev",
+      "package": "libpoppler-qt6-dev",
+      "url": "https://repo.maxleiter.com/banners/libpoppler-qt6-dev.png"
+    },
+    {
       "title": "libpoppler140",
       "package": "libpoppler140",
       "url": "https://repo.maxleiter.com/banners/libpoppler140.png"
@@ -1459,14 +1494,14 @@
       "url": "https://repo.maxleiter.com/banners/libtracker-sparql-dev.png"
     },
     {
-      "title": "libturbojpeg0-dev",
-      "package": "libturbojpeg0-dev",
-      "url": "https://repo.maxleiter.com/banners/libturbojpeg0-dev.png"
-    },
-    {
       "title": "libturbojpeg0",
       "package": "libturbojpeg0",
       "url": "https://repo.maxleiter.com/banners/libturbojpeg0.png"
+    },
+    {
+      "title": "libturbojpeg0-dev",
+      "package": "libturbojpeg0-dev",
+      "url": "https://repo.maxleiter.com/banners/libturbojpeg0-dev.png"
     },
     {
       "title": "libunistring5",
@@ -1549,14 +1584,14 @@
       "url": "https://repo.maxleiter.com/banners/libxcb-render0.png"
     },
     {
-      "title": "libxcb1-dev",
-      "package": "libxcb1-dev",
-      "url": "https://repo.maxleiter.com/banners/libxcb1-dev.png"
-    },
-    {
       "title": "libxcb1",
       "package": "libxcb1",
       "url": "https://repo.maxleiter.com/banners/libxcb1.png"
+    },
+    {
+      "title": "libxcb1-dev",
+      "package": "libxcb1-dev",
+      "url": "https://repo.maxleiter.com/banners/libxcb1-dev.png"
     },
     {
       "title": "libxcomposite-dev",
@@ -1664,14 +1699,14 @@
       "url": "https://repo.maxleiter.com/banners/libxkbfile1.png"
     },
     {
-      "title": "libxml2-dev",
-      "package": "libxml2-dev",
-      "url": "https://repo.maxleiter.com/banners/libxml2-dev.png"
-    },
-    {
       "title": "libxml2",
       "package": "libxml2",
       "url": "https://repo.maxleiter.com/banners/libxml2.png"
+    },
+    {
+      "title": "libxml2-dev",
+      "package": "libxml2-dev",
+      "url": "https://repo.maxleiter.com/banners/libxml2-dev.png"
     },
     {
       "title": "libxmlb-dev",
@@ -1719,19 +1754,24 @@
       "url": "https://repo.maxleiter.com/banners/nautilus.png"
     },
     {
+      "title": "okular",
+      "package": "okular",
+      "url": "https://repo.maxleiter.com/banners/okular.png"
+    },
+    {
       "title": "OpenCode",
       "package": "opencode",
       "url": "https://repo.maxleiter.com/banners/opencode.png"
     },
     {
-      "title": "plasma-activities-dev",
-      "package": "plasma-activities-dev",
-      "url": "https://repo.maxleiter.com/banners/plasma-activities-dev.png"
-    },
-    {
       "title": "plasma-activities",
       "package": "plasma-activities",
       "url": "https://repo.maxleiter.com/banners/plasma-activities.png"
+    },
+    {
+      "title": "plasma-activities-dev",
+      "package": "plasma-activities-dev",
+      "url": "https://repo.maxleiter.com/banners/plasma-activities-dev.png"
     },
     {
       "title": "plasma-wayland-protocols",
@@ -1744,14 +1784,14 @@
       "url": "https://repo.maxleiter.com/banners/polkit-dev.png"
     },
     {
-      "title": "pulseaudio-utils",
-      "package": "pulseaudio-utils",
-      "url": "https://repo.maxleiter.com/banners/pulseaudio-utils.png"
-    },
-    {
       "title": "pulseaudio",
       "package": "pulseaudio",
       "url": "https://repo.maxleiter.com/banners/pulseaudio.png"
+    },
+    {
+      "title": "pulseaudio-utils",
+      "package": "pulseaudio-utils",
+      "url": "https://repo.maxleiter.com/banners/pulseaudio-utils.png"
     },
     {
       "title": "qt-wayland-gl-smoke",
@@ -1759,19 +1799,14 @@
       "url": "https://repo.maxleiter.com/banners/qt-wayland-gl-smoke.png"
     },
     {
-      "title": "qt6-5compat-dev",
-      "package": "qt6-5compat-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-5compat-dev.png"
-    },
-    {
       "title": "qt6-5compat",
       "package": "qt6-5compat",
       "url": "https://repo.maxleiter.com/banners/qt6-5compat.png"
     },
     {
-      "title": "qt6-base-dev",
-      "package": "qt6-base-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-base-dev.png"
+      "title": "qt6-5compat-dev",
+      "package": "qt6-5compat-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-5compat-dev.png"
     },
     {
       "title": "qt6-base",
@@ -1779,9 +1814,9 @@
       "url": "https://repo.maxleiter.com/banners/qt6-base.png"
     },
     {
-      "title": "qt6-declarative-dev",
-      "package": "qt6-declarative-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-declarative-dev.png"
+      "title": "qt6-base-dev",
+      "package": "qt6-base-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-base-dev.png"
     },
     {
       "title": "qt6-declarative",
@@ -1789,14 +1824,14 @@
       "url": "https://repo.maxleiter.com/banners/qt6-declarative.png"
     },
     {
+      "title": "qt6-declarative-dev",
+      "package": "qt6-declarative-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-declarative-dev.png"
+    },
+    {
       "title": "qt6-image-formats",
       "package": "qt6-image-formats",
       "url": "https://repo.maxleiter.com/banners/qt6-image-formats.png"
-    },
-    {
-      "title": "qt6-sensors-dev",
-      "package": "qt6-sensors-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-sensors-dev.png"
     },
     {
       "title": "qt6-sensors",
@@ -1804,9 +1839,9 @@
       "url": "https://repo.maxleiter.com/banners/qt6-sensors.png"
     },
     {
-      "title": "qt6-shadertools-dev",
-      "package": "qt6-shadertools-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-shadertools-dev.png"
+      "title": "qt6-sensors-dev",
+      "package": "qt6-sensors-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-sensors-dev.png"
     },
     {
       "title": "qt6-shadertools",
@@ -1814,9 +1849,9 @@
       "url": "https://repo.maxleiter.com/banners/qt6-shadertools.png"
     },
     {
-      "title": "qt6-svg-dev",
-      "package": "qt6-svg-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-svg-dev.png"
+      "title": "qt6-shadertools-dev",
+      "package": "qt6-shadertools-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-shadertools-dev.png"
     },
     {
       "title": "qt6-svg",
@@ -1824,9 +1859,9 @@
       "url": "https://repo.maxleiter.com/banners/qt6-svg.png"
     },
     {
-      "title": "qt6-tools-dev",
-      "package": "qt6-tools-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-tools-dev.png"
+      "title": "qt6-svg-dev",
+      "package": "qt6-svg-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-svg-dev.png"
     },
     {
       "title": "qt6-tools",
@@ -1834,14 +1869,19 @@
       "url": "https://repo.maxleiter.com/banners/qt6-tools.png"
     },
     {
-      "title": "qt6-wayland-dev",
-      "package": "qt6-wayland-dev",
-      "url": "https://repo.maxleiter.com/banners/qt6-wayland-dev.png"
+      "title": "qt6-tools-dev",
+      "package": "qt6-tools-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-tools-dev.png"
     },
     {
       "title": "qt6-wayland",
       "package": "qt6-wayland",
       "url": "https://repo.maxleiter.com/banners/qt6-wayland.png"
+    },
+    {
+      "title": "qt6-wayland-dev",
+      "package": "qt6-wayland-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-wayland-dev.png"
     },
     {
       "title": "slurp",
@@ -1944,6 +1984,21 @@
       "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
     },
     {
+      "title": "Xios accessibility tools",
+      "package": "xios-a11y-tools",
+      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
+    },
+    {
+      "title": "Xios accessibility tools",
+      "package": "xios-a11y-tools",
+      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
+    },
+    {
+      "title": "Xios accessibility tools",
+      "package": "xios-a11y-tools",
+      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
+    },
+    {
       "title": "xios-audio-server",
       "package": "xios-audio-server",
       "url": "https://repo.maxleiter.com/banners/xios-audio-server.png"
@@ -1969,16 +2024,16 @@
       "url": "https://repo.maxleiter.com/banners/xios-fhs.png"
     },
     {
-      "title": "Xios GNOME desktop typelibs",
-      "package": "xios-gnome-typelibs",
-      "url": "https://repo.maxleiter.com/banners/xios-gnome-typelibs.png"
-    },
-    {
       "title": "Xios Desktop (GNOME)",
       "package": "xios-gnome",
       "url": "https://repo.maxleiter.com/banners/xios-gnome.png"
     },
     {
+      "title": "Xios GNOME desktop typelibs",
+      "package": "xios-gnome-typelibs",
+      "url": "https://repo.maxleiter.com/banners/xios-gnome-typelibs.png"
+    },
+    {
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
@@ -1987,6 +2042,31 @@
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
     },
     {
       "title": "Xios GNOME session D-Bus stubs",
@@ -1997,31 +2077,6 @@
       "title": "Xios GNOME session D-Bus stubs",
       "package": "xios-session-stubs",
       "url": "https://repo.maxleiter.com/banners/xios-session-stubs.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
     },
     {
       "title": "Xios Desktop (X11)",
@@ -2044,14 +2099,14 @@
       "url": "https://repo.maxleiter.com/banners/xwayland.png"
     },
     {
-      "title": "zathura-pdf-poppler",
-      "package": "zathura-pdf-poppler",
-      "url": "https://repo.maxleiter.com/banners/zathura-pdf-poppler.png"
-    },
-    {
       "title": "zathura",
       "package": "zathura",
       "url": "https://repo.maxleiter.com/banners/zathura.png"
+    },
+    {
+      "title": "zathura-pdf-poppler",
+      "package": "zathura-pdf-poppler",
+      "url": "https://repo.maxleiter.com/banners/zathura-pdf-poppler.png"
     }
   ]
 }

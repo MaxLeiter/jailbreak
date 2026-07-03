@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.9.3"
+          "text": "0.9.4"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "90.7 KiB"
+          "text": "104.1 KiB"
         },
         {
           "class": "DepictionTableTextView",
