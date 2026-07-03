@@ -1,0 +1,14 @@
+Package: grim
+Version: @DEB_GRIM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://sr.ht/~emersion/grim/
+Depends: libwayland0, libpixman-1-0, libpng16-16, libjpeg62-turbo
+Description: Grab images from a Wayland compositor
+ grim is a command-line screenshot utility for Wayland. It captures output
+ pixels through the wlr-screencopy protocol into a wl_shm buffer and writes
+ PNG, JPEG, or PPM. Pairs with slurp for region selection. Runs as a native
+ Wayland client under the iosc compositor (requires the compositor to
+ implement zwlr_screencopy_manager_v1 frame delivery).
