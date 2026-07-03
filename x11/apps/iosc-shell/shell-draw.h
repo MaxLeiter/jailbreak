@@ -22,6 +22,8 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 
 static const char *sd_jbroot(void)
 {
@@ -51,6 +53,47 @@ static int sd_env_truthy(const char *name)
            strcasecmp(v, "false") != 0 &&
            strcasecmp(v, "no") != 0 &&
            strcasecmp(v, "off") != 0;
+}
+
+static int sd_socket_exists(const char *path)
+{
+    struct stat st;
+    return path && stat(path, &st) == 0 && S_ISSOCK(st.st_mode);
+}
+
+static int sd_shared_session_bus(const char *root, const char *busdir,
+                                 char *addr, size_t addr_n)
+{
+    char sock[256], daemon[256], address_arg[320];
+    if (!busdir || !*busdir || !addr || addr_n == 0) return 0;
+    snprintf(sock, sizeof sock, "%s/session-bus", busdir);
+    snprintf(addr, addr_n, "unix:path=%s", sock);
+    if (sd_socket_exists(sock)) return 1;
+
+    mkdir(busdir, 0700);
+    chmod(busdir, 0700);
+    unlink(sock);
+    sd_join_path(daemon, sizeof daemon, root, "/usr/bin/dbus-daemon");
+    snprintf(address_arg, sizeof address_arg, "--address=%s", addr);
+
+    pid_t pid = fork();
+    if (pid < 0) return 0;
+    if (pid == 0) {
+        int fd = open("/dev/null", O_RDWR);
+        if (fd >= 0) {
+            dup2(fd, 0);
+            dup2(fd, 1);
+            dup2(fd, 2);
+            if (fd > 2) close(fd);
+        }
+        execl(daemon, "dbus-daemon", "--session", "--fork",
+              address_arg, "--print-address", (char*)NULL);
+        _exit(127);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return sd_socket_exists(sock);
 }
 
 /* An anonymous, unlinked, sized fd for a wl_shm pool (backs the clients'
@@ -336,11 +379,12 @@ static void sd_launch(const char *exec)
     if (pid != 0) return;
     setsid();
     const char *root = sd_jbroot();
-    char tmp[256], wayland[256], home[256], path[512];
+    char tmp[256], wayland[256], home[256], path[512], busdir[256], bus_addr[320];
     char dbus_run[256], sh_bin[256], usr_sh[256];
     sd_join_path(tmp, sizeof tmp, root, "/tmp");
     sd_join_path(wayland, sizeof wayland, root, "/tmp/wayland-0");
     sd_join_path(home, sizeof home, root, "/var/root");
+    sd_join_path(busdir, sizeof busdir, root, "/tmp/iosc-shell-bus");
     sd_join_path(dbus_run, sizeof dbus_run, root, "/usr/bin/dbus-run-session");
     sd_join_path(sh_bin, sizeof sh_bin, root, "/bin/sh");
     sd_join_path(usr_sh, sizeof usr_sh, root, "/usr/bin/sh");
@@ -353,7 +397,9 @@ static void sd_launch(const char *exec)
     const char *env_wayland = getenv("WAYLAND_DISPLAY");
     const char *env_runtime = getenv("XDG_RUNTIME_DIR");
     setenv("WAYLAND_DISPLAY", (env_wayland && *env_wayland) ? env_wayland : wayland, 1);
-    setenv("XDG_RUNTIME_DIR", (env_runtime && *env_runtime) ? env_runtime : tmp, 1);
+    int have_bus = sd_shared_session_bus(root, busdir, bus_addr, sizeof bus_addr);
+    setenv("XDG_RUNTIME_DIR", have_bus ? busdir : ((env_runtime && *env_runtime) ? env_runtime : tmp), 1);
+    if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
     setenv("GDK_BACKEND", "wayland", 1);
     setenv("GSK_RENDERER", "ngl", 1);
     setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
@@ -372,7 +418,8 @@ static void sd_launch(const char *exec)
                          "xios-start-a11y; fi; exec %s", exec);
         if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
     }
-    execl(dbus_run, "dbus-run-session", "--", sh_bin, "-lc", cmd, (char*)NULL);
+    if (!have_bus)
+        execl(dbus_run, "dbus-run-session", "--", sh_bin, "-lc", cmd, (char*)NULL);
     execl(sh_bin, "sh", "-lc", cmd, (char*)NULL);
     execl(usr_sh, "sh", "-lc", cmd, (char*)NULL);
     _exit(127);

@@ -17,10 +17,14 @@ The shell that runs on the iosc compositor: the slim status bar, floating dock, 
 - Panel input path PROVEN correct on-device: `pt_enter`/`pt_button`/`hit_at` all fire and resolve to the right control (injected-tap test). iosc delivers pointer+touch to layer surfaces (role-agnostic pick, confirmed by iosc-compositor).
 - The "search bar / window-pill cut off at the right" was measured OFF-DEVICE at exactly logical 1600 → the shell does NOT overflow (search pill centered at x=460..1140, all rects ≤1600). It was the APP's stale-scale bug (xios-app.md), NOT shell layout. No shell change needed for that.
 - **Tablet-DE vision written + mocked** (docs §0, vision-home.png + vision-control.png) and now used as the basis for the 0.9.7 split-surface first pass.
-- **0.9.7 split-surface first pass built locally**: `iosc-shell.c` now runs as two roles based on `argv[0]`:
+- **0.9.9 split-surface shell installed on-device**: `iosc-shell.c` now runs as two roles based on `argv[0]`:
   - `ioscbar`: slim top status bar (focused app, centered clock, wifi/battery) + Control Center trigger.
   - `ioscdock`: bottom-anchored floating dock (favorites, running-window icons/dots, apps button).
   `build-panel.sh` cross-builds/signs `out/ioscbar`, `out/ioscdock`, `out/ioscoverview`, `out/ioscbg`; `run-shell.sh` requires bar+dock.
+- `shell-draw.h` launchers now create/reuse `/var/jb/tmp/iosc-shell-bus/session-bus`
+  with `dbus-daemon --session --fork` and fall back to `dbus-run-session` only if
+  direct bus startup fails. This keeps shell-launched GTK apps on one app bus for
+  the AT-SPI bridge instead of stranding each app on a private bus.
 - Off-device previews regenerated from the real layout (`build-preview.sh`): `preview-desktop.png`, `preview-quicksettings.png`, `preview-compact.png` now show the split status bar + dock composition. Real iOS cross-build passed on 2026-07-01.
 - Local dirty tree also adds a small focused-app window menu from the app-name hit target (`Minimize`, `Maximize`, `Close`) backed by foreign-toplevel requests. Treat it as in-progress until built/deployed with the rest of 0.9.7.
 
@@ -33,13 +37,13 @@ Four surfaces, each one job:
 Plus a window model (fullscreen→split→float, Stage-Manager style) and a gesture grammar (swipe up=home, down=control) with pointer/keyboard equivalents (touch-first, never touch-only).
 
 ## Open items
-1. **On-device validate 0.9.7 split shell**: deploy `ioscbar`, `ioscdock`, `ioscoverview`, `ioscbg`; start via `run-shell.sh`; confirm:
+1. **On-device validate the full 0.9.9 shell interactions**: deploy/install `ioscbar`, `ioscdock`, `ioscoverview`, `ioscbg`; start via `run-shell.sh`; confirm:
    - `ioscbar` maps at top, opens Control Center from the status cluster.
    - `ioscdock` maps at bottom, apps button opens overview.
    - running-window icons activate via foreign-toplevel.
    - focused-app window menu opens from the app name and its minimize/maximize/close actions hit the right window.
-   - launchers still fire (`sd_launch`: fork → dbus-run-session → sh -lc <Exec>).
-2. **Package/deploy 0.9.7** after on-device smoke: `package-shell.sh` is updated for the split binaries and deb version 0.9.7, but the deb was not assembled in this pickup.
+   - launchers still fire (`sd_launch`: fork -> shared `iosc-shell-bus` -> sh -lc <Exec>).
+2. **Package/deploy 0.9.9** after full shell interaction smoke: `package-shell.sh` assembles `iosc-shell_0.9.9_iphoneos-arm64.deb`, and that deb was installed during the a11y shared-bus pass. Dock/panel tap behavior still needs a focused launcher-action smoke.
 3. **Launcher-action verify**: taps resolve (`hit_at`→launcher idx) but confirm the launch actually fires with a real app/window. If it resolves but doesn't launch, chase the exec env / launched app stderr.
 4. Server-side decorations (SSD) path for GTK CSD windows (was noted as the decor path; lead-sequenced).
 

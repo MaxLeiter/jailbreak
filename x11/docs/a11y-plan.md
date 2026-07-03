@@ -33,7 +33,8 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   hard-disables the GTK4 backend by default. It is now conditional: set
   `XIOS_ENABLE_A11Y=1` to leave GTK a11y enabled and start
   `/var/jb/usr/libexec/at-spi-bus-launcher` inside the app's session bus
-  (`xios-session app` reuses one shared bus across launched clients).
+  (`xios-session app`, `ioscd`, and shell launchers reuse shared buses across
+  launched clients).
   For smoke tests, `/var/jb/tmp/xios-a11y-force` enables the same path without
   needing to toggle iOS VoiceOver.
 - `xios-a11y-tools_0.2.14` ships `/var/jb/usr/local/bin/atspi-dump` and
@@ -61,6 +62,12 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `xios-a11yd` socket client received two `window` records plus 29 `upsert`
   records. Evidence:
   `artifacts/device-runs/20260703-052614/a11y-shared-bus-probe.txt`.
+  The ioscd/icon-launch path was then moved to the same model: direct
+  `LAUNCH_CLASSIC` requests for kgx plus GNOME Text Editor reused
+  `/var/jb/tmp/ioscd-bus/session-bus`, exposed both apps on
+  `/var/jb/tmp/ioscd-bus/at-spi/bus`, and an enabled `xios-a11yd` client again
+  received two `window` records plus 29 `upsert` records. Evidence:
+  `artifacts/device-runs/20260703-053707-ioscd-a11y-shared-bus/ioscd-shared-bus-probe.txt`.
   The helper caches each client's last snapshot and only sends `reset` plus a
   replacement tree when the published body changes. On-device smoke with `0.2.4`
   saw the expected startup
@@ -562,8 +569,9 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
   is exported, IsEnabled property write, qtbase bridge rebuild/package verified,
   atspi-dump. PARTIAL ACCEPT SHIPPED: `atspi-dump` prints `kgx`/`iosc-kgx` over
   the opt-in AT-SPI bus on device, the opt-in launcher writes both AT-SPI status
-  properties true, and `xios-session_1.0.15` starts `xios-a11yd` when installed
-  while sharing one app-launch D-Bus session across multiple clients.
+  properties true, `xios-session_1.0.15` starts `xios-a11yd` when installed
+  while sharing one app-launch D-Bus session across multiple clients, and ioscd
+  icon/native launch requests now share one daemon-owned app bus too.
   Remaining accept: full gnome-console widget tree, a simple Qt widget app after
   rebuilt qtbase is staged, and mirroring iOS VoiceOver state instead of forcing
   `ScreenReaderEnabled=true`.

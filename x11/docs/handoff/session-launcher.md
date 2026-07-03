@@ -23,9 +23,13 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 
 ## Shared app bus — ADDED in 1.0.15
 - `xios-session app <name>` now creates/reuses one `/var/jb/tmp/xios-session-bus/session-bus` with `dbus-daemon --session --fork` instead of wrapping every client in a fresh `dbus-run-session`.
-- The per-app environment still uses the same `XDG_RUNTIME_DIR`, Wayland socket, GTK Wayland settings, memory gsettings, and a11y prefix. If direct bus creation is unavailable, it falls back to the old `dbus-run-session` wrapper.
+- The per-app environment still uses the same `XDG_RUNTIME_DIR`, Wayland socket, GTK/Qt Wayland settings, memory gsettings, and a11y prefix. If direct bus creation is unavailable, it falls back to the old `dbus-run-session` wrapper.
 - Device smoke on 2026-07-03 launched kgx plus GNOME Text Editor under the force-a11y gate; one session bus, one AT-SPI bus, and one `xios-a11yd` served both apps. Probe transcript:
   `artifacts/device-runs/20260703-052614/a11y-shared-bus-probe.txt`.
+- ioscd now mirrors the same app-bus model at `/var/jb/tmp/ioscd-bus/session-bus`.
+  Direct `LAUNCH_CLASSIC` smoke with kgx plus GNOME Text Editor produced one
+  AT-SPI bus and an enabled daemon snapshot with two windows / 29 upserts:
+  `artifacts/device-runs/20260703-053707-ioscd-a11y-shared-bus/ioscd-shared-bus-probe.txt`.
 
 ## Flavor-switch jetsam — FIXED in 1.0.2 (needs on-device deploy + verify)
 Max hit it: switching iosc→mutter jetsammed the Xios app (took two tries). Root cause: killing the old compositor (~30MB GPU IOSurface + Metal/ANGLE ctx) while a new one immediately allocates spikes GPU memory past the foreground-app limit. `xios-session_1.0.2` (repo/debs + linux-build/out) applies all three fixes in `xios-session-lib.sh`:

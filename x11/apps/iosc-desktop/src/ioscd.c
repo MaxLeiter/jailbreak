@@ -69,6 +69,8 @@
 #define UIOPEN_BIN     "/var/jb/usr/bin/uiopen"
 #define BASH_BIN       "/var/jb/usr/bin/bash"
 #define DBUS_RUN       "/var/jb/usr/bin/dbus-run-session"
+#define DBUS_DAEMON    "/var/jb/usr/bin/dbus-daemon"
+#define IOSCD_BUS_DIR  TMP "/ioscd-bus"
 #define XIOS_BUNDLE    "com.max.xios"
 #define IOSC_LOG       TMP "/iosc.log"
 #define ROOTLESS_PATH  "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin"
@@ -150,6 +152,11 @@ static uint64_t now_ms(void)
 static int path_exists(const char *p)
 {
     struct stat st; return stat(p, &st) == 0;
+}
+
+static int socket_exists(const char *p)
+{
+    struct stat st; return stat(p, &st) == 0 && S_ISSOCK(st.st_mode);
 }
 
 static void mobile_socket_perms(const char *path, const char *label)
@@ -431,8 +438,38 @@ static int env_truthy(const char *name)
            strcasecmp(v, "off") != 0;
 }
 
+static int ensure_session_bus(char *addr, size_t addr_len)
+{
+    const char *busdir = IOSCD_BUS_DIR;
+    char sock[sizeof(IOSCD_BUS_DIR) + 32];
+    char address_arg[sizeof(sock) + 32];
+
+    if (!addr || addr_len == 0) return 0;
+    snprintf(sock, sizeof(sock), "%s/session-bus", busdir);
+    snprintf(addr, addr_len, "unix:path=%s", sock);
+    if (socket_exists(sock)) return 1;
+
+    mkdir(busdir, 0700);
+    chmod(busdir, 0700);
+    unlink(sock);
+    snprintf(address_arg, sizeof(address_arg), "--address=%s", addr);
+
+    pid_t pid = fork();
+    if (pid < 0) return 0;
+    if (pid == 0) {
+        child_stdio(NULL, 0);
+        execl(DBUS_DAEMON, "dbus-daemon", "--session", "--fork",
+              address_arg, "--print-address", (char *)NULL);
+        _exit(127);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return socket_exists(sock);
+}
+
 /* Spawn <exec> as a Wayland client of iosc. Mirrors run-kgx.sh's environment:
- * a private 0700 bus dir for dbus-run-session, WAYLAND_DISPLAY by absolute path,
+ * a shared 0700 session bus dir, WAYLAND_DISPLAY by absolute path,
  * GDK wayland backend, GPU GTK rendering by default — iosc composites imported
  * IOSurfaces zero-copy — and a writable HOME. We exec through `bash -lc` so the
  * client also picks up
@@ -441,9 +478,9 @@ static int env_truthy(const char *name)
 static pid_t launch_client(const char *app_id, const char *exec, int native)
 {
     const struct mode_cfg *mode = mode_cfg(native);
-    const char *busdir = TMP "/ioscd-bus";
-    mkdir(busdir, 0700);
-    chmod(busdir, 0700);
+    const char *busdir = IOSCD_BUS_DIR;
+    char bus_addr[256];
+    int have_bus = ensure_session_bus(bus_addr, sizeof(bus_addr));
 
     pid_t pid = fork();
     if (pid < 0) return -1;
@@ -457,6 +494,7 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
         setenv("GSK_RENDERER", "ngl", 1);
         setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
         setenv("GSETTINGS_BACKEND", "memory", 1);
+        if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
         int enable_a11y = env_truthy("XIOS_ENABLE_A11Y") ||
                           access(TMP "/xios-a11y-force", F_OK) == 0;
         if (enable_a11y) unsetenv("GTK_A11Y");
@@ -475,9 +513,9 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
             if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
         }
 
-        /* dbus-run-session -- bash -lc "<exec>"  (login shell sources profile.d) */
-        execl(DBUS_RUN, "dbus-run-session", "--", BASH_BIN, "-lc", cmd, (char *)NULL);
-        /* if dbus-run-session is missing, try without a session bus */
+        if (!have_bus) {
+            execl(DBUS_RUN, "dbus-run-session", "--", BASH_BIN, "-lc", cmd, (char *)NULL);
+        }
         execl(BASH_BIN, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
