@@ -56,7 +56,12 @@ say "=== iosc-capture: $name ==="
 say "cmd: $*"
 say "env: WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
 : > "$LOG"
-setsid "$@" >>"$LOG" 2>&1 &
+# setsid isn't present on iOS; detach if we have it, otherwise plain background.
+if command -v setsid >/dev/null 2>&1; then
+    setsid "$@" >>"$LOG" 2>&1 &
+else
+    "$@" >>"$LOG" 2>&1 &
+fi
 pid=$!
 # poll up to WAIT seconds; note whether it dies early
 alive=1
