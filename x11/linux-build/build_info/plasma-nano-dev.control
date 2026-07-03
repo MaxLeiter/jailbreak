@@ -1,0 +1,11 @@
+Package: plasma-nano-dev
+Version: @DEB_PLASMANANO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: plasma-nano (= @DEB_PLASMANANO_V@), qt6-base-dev, qt6-declarative-dev
+Description: Development files for Plasma Nano on Xios
+ Headers, CMake exports, and development metadata for the trimmed Plasma Nano
+ package.

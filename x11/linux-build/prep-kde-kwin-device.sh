@@ -80,7 +80,7 @@ find "$SRC" -maxdepth 2 -type f -name "*.deb" | while IFS= read -r deb; do
   [ -n "$pkg" ] || continue
   case "$pkg" in
     *-dev) continue ;;
-    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-wayland-protocols|libdrm2|libgbm1|libdisplay-info1) ;;
+    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-wayland-protocols|libdrm2|libgbm1|libdisplay-info1) ;;
     *) continue ;;
   esac
   old=$(find "$TMP" -maxdepth 1 -type f -name "${pkg}_*.deb" -print -quit)
@@ -106,7 +106,7 @@ overlay_out() {
       base="$(basename "$deb")"
       pkg="${base%%_*}"
       case "$pkg" in
-        *-dev|xios-kde|plasma-mobile|plasma-nano) continue ;;
+        *-dev|xios-kde|plasma-mobile) continue ;;
       esac
       cp -v "$deb" "$STAGE/debs/"
     done
@@ -123,6 +123,7 @@ overlay_out \
   plasma-activities-stats_*_iphoneos-arm64.deb \
   plasma-workspace_*_iphoneos-arm64.deb \
   plasma-desktop_*_iphoneos-arm64.deb \
+  plasma-nano_*_iphoneos-arm64.deb \
   kf6-attica_*_iphoneos-arm64.deb \
   kf6-declarative_*_iphoneos-arm64.deb \
   kf6-runner_*_iphoneos-arm64.deb \
@@ -203,7 +204,7 @@ fi
 
 cd "$BASE"
 
-if ls "$DEBS"/xios-kde_*.deb "$DEBS"/plasma-mobile_*.deb "$DEBS"/plasma-nano_*.deb >/dev/null 2>&1; then
+if ls "$DEBS"/xios-kde_*.deb "$DEBS"/plasma-mobile_*.deb >/dev/null 2>&1; then
   echo "refusing to install the unfinished full Plasma Mobile meta set from this prep script" >&2
   exit 1
 fi
@@ -290,10 +291,10 @@ Created by: linux-build/prep-kde-kwin-device.sh
 Remote path: $REMOTE
 
 Contents:
-- debs/: runtime Qt6, KF6, KWayland/KWin, Plasma Workspace, xios-session, and shim packages
+- debs/: runtime Qt6, KF6, KWayland/KWin, Plasma Workspace/Nano, xios-session, and shim packages
 - install-on-device.sh: installs the package set and writes RUN-LATER.txt
 
-This bundle deliberately excludes xios-kde, plasma-mobile, and plasma-nano.
+This bundle deliberately excludes xios-kde and plasma-mobile.
 It does not launch any compositor or session process.
 EOF
 

@@ -13,7 +13,7 @@ fi
 
 cd "$BASE"
 
-if ls "$DEBS"/xios-kde_*.deb "$DEBS"/plasma-mobile_*.deb "$DEBS"/plasma-nano_*.deb >/dev/null 2>&1; then
+if ls "$DEBS"/xios-kde_*.deb "$DEBS"/plasma-mobile_*.deb >/dev/null 2>&1; then
   echo "refusing to install the unfinished full Plasma Mobile meta set from this prep script" >&2
   exit 1
 fi
