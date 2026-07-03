@@ -208,29 +208,59 @@ else:
     sys.exit("!! gdm/util.js promisify block not found (upstream changed?)")
 PY
 
-# --- (8) Volume-ectomy: js/ui/status/volume.js's getMixerControl() does a SYNCHRONOUS
-# `new Gvc.MixerControl()`, and on iOS that constructor BLOCKS (libgvc/libpulse-17 pa_glib_mainloop
-# setup hangs — verified: the constructor never returns). The Output/InputIndicators call it during
-# panel construction on the compositor MAIN THREAD, so the whole compositor stops servicing the
-# display and an unresponsive-compositor watchdog SIGKILLs gnome-shell ~3.5s into boot (clean
-# SIGKILL, no crash report — this was THE first-paint kill; see docs/handoff/gnome-session.md).
-# Make the two indicators skip the mixer: `super._init()` runs (so quickSettingsItems=[] is valid),
-# then return before getMixerControl(). Volume slider is gone until libgvc/PulseAudio is fixed.
+# --- (8) Volume UI: keep Gvc enabled.
+# Earlier builds skipped js/ui/status/volume.js's MixerControl construction because libpulse/Gvc
+# blocked on iOS before PulseAudio had a real daemon/module setup. The PulseAudio package now
+# starts the native protocol server plus xios sink/source modules before the shell, and the
+# `new Gvc.MixerControl()` repro returns on-device, so do not patch out the volume controls.
 python3 - "$SRC/js/ui/status/volume.js" <<'PY'
 import sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = p.read_text()
-needle = "        this._control = getMixerControl();"
 if "iOS: volume/Gvc disabled" in s:
-    print("volume.js already ectomied")
-elif s.count(needle) >= 2:
-    s = s.replace(needle,
-                  "        return; // iOS: volume/Gvc disabled (Gvc.MixerControl ctor blocks the compositor)\n" + needle)
+    sys.exit("!! volume.js still has the old iOS volume ectomy marker")
+if s.count("        this._control = getMixerControl();") < 2:
+    sys.exit("!! volume.js: expected mixer controls not found (upstream changed?)")
+print("volume.js Gvc mixer controls left enabled")
+PY
+
+# --- (8b) QuickSlider a11y guard ------------------------------------------------
+# GNOME Shell's volume sliders inherit QuickSlider. On the current iOS St/Clutter
+# binding, Slider lacks get_accessible(), so QuickSlider throws before the volume
+# item finishes constructing. Keep the slider/menu/event behavior and only skip
+# the transparent a11y handoff when those methods are not available.
+python3 - "$SRC/js/ui/quickSettings.js" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+old = """        // Make the slider bin transparent for a11y
+        const sliderAccessible = this.slider.get_accessible();
+        sliderAccessible.set_parent(sliderBin.get_parent().get_accessible());
+        sliderBin.set_accessible(sliderAccessible);
+        sliderBin.connect('event', (bin, event) => this.slider.event(event, false));"""
+new = """        // Make the slider bin transparent for a11y when the binding exposes it.
+        // iOS: our current St/Clutter Slider lacks get_accessible(), so keep the
+        // control alive and skip only the a11y parent handoff.
+        if (typeof this.slider.get_accessible === 'function' &&
+            typeof sliderBin.set_accessible === 'function') {
+            const sliderAccessible = this.slider.get_accessible();
+            const parentAccessible = sliderBin.get_parent()?.get_accessible?.();
+            if (sliderAccessible && parentAccessible) {
+                sliderAccessible.set_parent(parentAccessible);
+                sliderBin.set_accessible(sliderAccessible);
+            }
+        }
+        sliderBin.connect('event', (bin, event) => this.slider.event(event, false));"""
+if old in s:
+    s = s.replace(old, new)
     p.write_text(s)
-    print("volume.js Output/InputIndicator mixer skipped")
+    print("quickSettings.js QuickSlider a11y guarded")
+elif "iOS: our current St/Clutter Slider lacks get_accessible()" in s:
+    print("quickSettings.js QuickSlider a11y already guarded")
 else:
-    sys.exit(f"!! volume.js: expected 2x getMixerControl() calls, found {s.count(needle)} (upstream changed?)")
+    sys.exit("!! quickSettings.js QuickSlider a11y block not found (upstream changed?)")
 PY
 
 # --- verification --------------------------------------------------------------
@@ -266,7 +296,9 @@ absent js/ui/padOsd.js "from 'gi://Rsvg'"
 check js/ui/padOsd.js "padOsd unsupported on iOS"
 check js/gdm/util.js "_iosPromisify"
 absent js/gdm/util.js "Gio._promisify(Gdm.Client.prototype, 'open_reauthentication_channel');"
-check js/ui/status/volume.js "iOS: volume/Gvc disabled"
+check js/ui/status/volume.js "this._control = getMixerControl();"
+absent js/ui/status/volume.js "iOS: volume/Gvc disabled"
+check js/ui/quickSettings.js "iOS: our current St/Clutter Slider lacks get_accessible()"
 for f in meson.build src/meson.build src/st/meson.build subprojects/shew/src/meson.build; do
   check "$f" "if not meson.is_cross_build()"
 done

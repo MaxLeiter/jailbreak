@@ -20,8 +20,22 @@ St-14/Shell-14 re-scan + Gdm-1.0) → ship Locations.bin + login-screen schema �
 ectomy** (the final first-paint blocker — `Gvc.MixerControl` ctor hangs → blocks compositor →
 watchdog SIGKILL; skipping it lets the shell paint).
 
+**UPDATE 2026-07-03 04:25 PDT:** PulseAudio/media packaging fixed the old Gvc hang. Installed
+`gnome-shell 46.0+ios2` boots with Gvc enabled, `new Gvc.MixerControl()` returns on-device
+(`pre-construct` → `post-construct` → `post-open`), and GNOME sees both the `xios` output sink and
+`xios_mic` source from the media bridge. Evidence: `artifacts/device-runs/20260703-042507/` and
+`artifacts/device-runs/20260703-042830/` (Mutter/GNOME has no wlr-screencopy, so the latter is a
+status/log bundle, not a compositor PNG).
+
+**UPDATE 2026-07-03 12:37 PDT:** rebuilt and installed `gnome-shell 46.0+ios3` with patch (8b)
+for `QuickSlider` accessibility. Direct `xios-session gnome` verified GNOME reaches `state=up` and
+`GNOME Shell started`; the fresh log no longer has the prior
+`Failed to setup quick settings: this.slider.get_accessible is not a function` or
+`this._output is undefined` volume errors. Gvc still sees the `xios` sink. Evidence:
+`artifacts/device-runs/20260703-123833/`.
+
 REMAINING (polish, not blockers):
-1. **Persistent launch — ALREADY BUILT, use ioscd's SESSION path.** gnome-shell dies only when the
+1. **Persistent launch — VERIFIED 2026-07-03, use ioscd's SESSION path.** gnome-shell dies only when the
    *launching ssh session* closes (sshd reaps its children; `setsid` is absent on device). An
    attached/synchronous run is rock-stable. The desktop's real launch path already solves this:
    ioscd accepts `SESSION` on `/var/jb/tmp/ioscd.sock` and runs `xios-session gnome`
@@ -34,8 +48,17 @@ REMAINING (polish, not blockers):
    SESSION socket. run-gnome-shell.sh also now writes a python fork+setsid shim (helps, but the ioscd path is
    the real fix). Promoted on-device gir scripts: gir-build-lib-ondevice.sh, gir-build-gdm-ondevice.sh,
    gir-rescan-st-shell-ondevice.sh (for regen if a typelib is ever missing).
-2. **Volume slider** is disabled (patch 8) until libgvc/libpulse-17 `Gvc.MixerControl` construction
-   is fixed (fix B) — and the PA daemon module-rpath/`.so`-naming/unsigned issues (audio packaging).
+   2026-07-03 verification: `xios-session -d gnome` initially failed because the device has neither
+   `nc` nor `socat`; `xios-session` now falls back to Python's Unix-socket client and
+   `restore-gnome.sh` includes `/var/jb/usr/local/bin` in `PATH`. After reinstalling the session
+   manifest, GNOME reached `state=up`, `GNOME Shell started`, Xios adopted `2160x1620`, and
+   `dbus-run-session` was parented to PID 1 with `gnome-shell --wayland` alive under it. Evidence:
+   `artifacts/device-runs/20260703-041526/`.
+2. **Volume slider polish:** the old volume ectomy is removed in the recipe and in installed
+   `gnome-shell 46.0+ios3`. Patch (8b) guards the missing QuickSlider a11y handoff while keeping
+   the slider/menu/event path. Fresh `+ios3` logs clear the Quick Settings setup failure and the
+   follow-on `_output is undefined` volume error. Remaining audio polish is functional UI testing
+   of the slider itself plus fixing the harmless Gvc device lookup noise for xios network streams.
 3. Cosmetic: `meta-barrier` runtime-check warnings (pointer barriers unimplemented in MetaBackendIOS);
    "Error registering session with GDM" (no org.gnome.DisplayManager — harmless, no GDM on iOS).
 

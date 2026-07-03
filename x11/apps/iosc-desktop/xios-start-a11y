@@ -1,12 +1,28 @@
 #!/bin/sh
 # Start the optional Xios AT-SPI bridge components inside the current session bus.
 
-LOG=${XIOS_ATSPI_LOG:-/var/jb/tmp/xios-atspi.log}
-A11Y_LOG=${XIOS_A11YD_LOG:-/var/jb/tmp/xios-a11yd.log}
-A11Y_SOCK=${XIOS_A11Y_SOCK:-/var/jb/tmp/xios-a11y.sock}
+SELF_DIR="$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+    case "$SELF_DIR/" in
+        /var/jb/*) XS_JB=/var/jb ;;
+        *)         XS_JB= ;;
+    esac
+fi
+XS_SUBPREFIX=${XS_SUBPREFIX:-/usr}
+if [ -n "$XS_JB" ]; then
+    XIOS_PREFIX=${XIOS_PREFIX:-$XS_JB$XS_SUBPREFIX}
+    XIOS_TMP=${XIOS_TMP:-$XS_JB/tmp}
+else
+    XIOS_PREFIX=${XIOS_PREFIX:-$XS_SUBPREFIX}
+    XIOS_TMP=${XIOS_TMP:-${XIOS_RUNTIME_TMP:-/var/tmp}}
+fi
 
-if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then
-    /var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>"$LOG" 2>&1 &
+LOG=${XIOS_ATSPI_LOG:-$XIOS_TMP/xios-atspi.log}
+A11Y_LOG=${XIOS_A11YD_LOG:-$XIOS_TMP/xios-a11yd.log}
+A11Y_SOCK=${XIOS_A11Y_SOCK:-$XIOS_TMP/xios-a11y.sock}
+
+if [ -x "$XIOS_PREFIX/libexec/at-spi-bus-launcher" ]; then
+    "$XIOS_PREFIX/libexec/at-spi-bus-launcher" --launch-immediately >>"$LOG" 2>&1 &
 elif command -v at-spi-bus-launcher >/dev/null 2>&1; then
     at-spi-bus-launcher --launch-immediately >>"$LOG" 2>&1 &
 fi

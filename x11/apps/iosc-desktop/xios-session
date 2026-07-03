@@ -27,10 +27,31 @@
 # suspended by FrontBoard and presents a black frame. Unlock the device first.
 set -u
 
+XS_SELF_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+    case "$XS_SELF_DIR/" in
+        /var/jb/*) XS_JB=/var/jb ;;
+        *)         XS_JB= ;;
+    esac
+    export XS_JB
+fi
+if [ "${XS_TMP+x}" != x ]; then
+    if [ -n "$XS_JB" ]; then
+        XS_TMP="$XS_JB/tmp"
+    else
+        XS_TMP="${XIOS_RUNTIME_TMP:-/var/tmp}"
+    fi
+    export XS_TMP
+fi
+if [ "${XS_LIBEXEC_DIR+x}" != x ]; then
+    XS_LIBEXEC_DIR="$XS_JB/libexec/xios-session"
+    export XS_LIBEXEC_DIR
+fi
+
 LIB_CANDIDATES=(
     "${XIOS_SESSION_LIB:-}"
-    "/var/jb/libexec/xios-session/xios-session-lib.sh"
-    "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/xios-session-lib.sh"
+    "$XS_LIBEXEC_DIR/xios-session-lib.sh"
+    "$XS_SELF_DIR/xios-session-lib.sh"
 )
 LIB=""
 for c in "${LIB_CANDIDATES[@]}"; do
@@ -40,7 +61,7 @@ done
 # shellcheck source=/dev/null
 . "$LIB"
 
-IOSCD_SOCK="${XS_TMP:-/var/jb/tmp}/ioscd.sock"
+IOSCD_SOCK="${XS_TMP}/ioscd.sock"
 VIA_DAEMON=0
 
 usage() { xios_session_run help; exit "${1:-2}"; }
@@ -61,7 +82,7 @@ PRESET="${1:-}"
 
 case "$PRESET" in
     status)
-        cat "${XS_STATUS:-/var/jb/tmp/xios-session-status.json}" 2>/dev/null \
+        cat "${XS_STATUS:-$XS_TMP/xios-session-status.json}" 2>/dev/null \
             || echo '{"state":"unknown","message":"no status yet"}'
         exit 0 ;;
 esac
@@ -71,12 +92,32 @@ send_ioscd_session() {
     [ -S "$IOSCD_SOCK" ] || return 1
     line=$(printf 'SESSION\t%s\t%s\t%s\t%s\t%s\n' \
         "$preset" "$app" "${XIOS_SESSION_WIDTH:-}" "${XIOS_SESSION_HEIGHT:-}" "${XIOS_SESSION_DPI:-}")
+    ack=""
     if command -v nc >/dev/null 2>&1; then
         ack="$(printf '%s' "$line" | nc -U "$IOSCD_SOCK" 2>/dev/null | head -n 1 || true)"
-    elif command -v socat >/dev/null 2>&1; then
+    fi
+    if [ "$ack" != "SESSION_STARTED" ] && command -v socat >/dev/null 2>&1; then
         ack="$(printf '%s' "$line" | socat -t 3 - "UNIX-CONNECT:$IOSCD_SOCK" 2>/dev/null | head -n 1 || true)"
-    else
-        return 1
+    fi
+    if [ "$ack" != "SESSION_STARTED" ] && command -v python3 >/dev/null 2>&1; then
+        ack="$(IOSCD_SOCK="$IOSCD_SOCK" XIOS_SESSION_LINE="$line" python3 - <<'PY' 2>/dev/null || true
+import os
+import socket
+import sys
+
+sock_path = os.environ["IOSCD_SOCK"]
+line = os.environ["XIOS_SESSION_LINE"].encode()
+
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+    sock.settimeout(3)
+    sock.connect(sock_path)
+    sock.sendall(line)
+    sock.shutdown(socket.SHUT_WR)
+    data = sock.recv(256)
+
+sys.stdout.write(data.decode(errors="replace").splitlines()[0] if data else "")
+PY
+)"
     fi
     [ "$ack" = "SESSION_STARTED" ]
 }
