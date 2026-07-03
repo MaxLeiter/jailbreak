@@ -35,10 +35,12 @@
 #include <errno.h>
 #include <signal.h>
 #include <ctype.h>
+#include <time.h>
 
 #define IOSCOVERVIEW_VER "0.9.7"
 #define APP_MAX   OV_MAX_APPS
 #define WIN_MAX   OV_MAX_WINS
+#define APP_PIN_HOLD_MS 540
 
 /* IOSC_SHELL_DEBUG=1 -> trace to $XDG_RUNTIME_DIR/ioscoverview.log */
 static int ovdbg(void)
@@ -75,6 +77,8 @@ static struct {
     int   press_kind, press_idx;
     int   touch_active, touch_id, touch_drag, touch_moved;
     int   touch_x0, touch_y0, drag_scroll0;
+    uint64_t press_ms;
+    int   long_press_done;
     int   scroll_y;
     double anim_t;
 
@@ -92,6 +96,13 @@ static struct {
     cairo_surface_t *backdrop;        /* pre-blurred desktop capture */
     struct ov_hits hits;
 } O;
+
+static uint64_t mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+}
 
 /* Resolve + load an icon for `name`, or NULL. */
 static cairo_surface_t *load_icon(const char *name)
@@ -340,6 +351,7 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     (void)d;(void)t;(void)serial;(void)time;(void)sf;
     if (O.touch_active) return;
     O.touch_active = 1; O.touch_id = id; O.touch_drag = 0; O.touch_moved = 0;
+    O.long_press_done = 0; O.press_ms = mono_ms();
     O.px = wl_fixed_to_int(x); O.py = wl_fixed_to_int(y);
     O.touch_x0 = O.px; O.touch_y0 = O.py; O.drag_scroll0 = O.scroll_y;
     int i = ov_hit_test(&O.hits, O.px, O.py);
@@ -371,6 +383,23 @@ static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id, wl
     }
     if (need_render) render();
 }
+
+static void maybe_pin_pressed_app(void)
+{
+    if (!O.touch_active || O.long_press_done || O.press_kind != OV_HIT_APP) return;
+    if (O.press_idx < 0 || O.press_idx >= O.nfiltered) return;
+    if (mono_ms() - O.press_ms < APP_PIN_HOLD_MS) return;
+    int app_idx = O.fmap[O.press_idx];
+    if (app_idx >= 0 && app_idx < O.napps) {
+        sd_pin_app_to_desktop(&O.apps[app_idx]);
+        if (ovdbg()) fprintf(stderr, "ioscoverview: pinned %s to desktop\n", O.apps[app_idx].name);
+    }
+    O.long_press_done = 1;
+    O.touch_moved = 1;
+    O.press_kind = 0; O.press_idx = 0;
+    render();
+}
+
 static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, int32_t id)
 {
     (void)d;(void)t;(void)serial;(void)time;
@@ -378,10 +407,11 @@ static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, i
     int moved = O.touch_moved;
     O.touch_active = 0; O.touch_drag = 0; O.touch_moved = 0;
     O.press_kind = 0; O.press_idx = 0;
-    if (!moved) {
+    if (!moved && !O.long_press_done) {
         int i = ov_hit_test(&O.hits, O.px, O.py);
         if (i >= 0) act_on_hit(&O.hits.v[i]);
     }
+    O.long_press_done = 0;
     render();
 }
 static void tc_frame(void *d, struct wl_touch *t){ (void)d;(void)t; }
@@ -617,11 +647,13 @@ int main(void)
         while (wl_display_prepare_read(O.dpy) != 0) wl_display_dispatch_pending(O.dpy);
         wl_display_flush(O.dpy);
         struct pollfd pfd = { .fd = fd, .events = POLLIN };
-        int n = poll(&pfd, 1, -1);
+        int timeout = (O.touch_active && O.press_kind == OV_HIT_APP && !O.long_press_done) ? 50 : -1;
+        int n = poll(&pfd, 1, timeout);
         if (n < 0 && errno != EINTR) { wl_display_cancel_read(O.dpy); break; }
         if (n > 0 && (pfd.revents & POLLIN)) wl_display_read_events(O.dpy);
         else wl_display_cancel_read(O.dpy);
         wl_display_dispatch_pending(O.dpy);
+        maybe_pin_pressed_app();
     }
     if (O.backdrop) cairo_surface_destroy(O.backdrop);
     wl_display_disconnect(O.dpy);

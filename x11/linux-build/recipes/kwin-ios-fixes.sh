@@ -44,10 +44,12 @@ if (EPOLL_SHIM_LIBRARY)
 endif()
 EOF
 
-# Keep the static plugin surface small for the first linkable compositor. Effects and
-# KWin's private QPA plugin can be re-enabled once the core kwin/kwin_wayland binary is
-# stable against an ANGLE-enabled QtGui/QPA private header set.
+# Keep the static plugin surface small for the first linkable compositor. KWin
+# unconditionally selects its private QPA platform, so keep that plugin now that
+# the staged QtGui is ANGLE/OpenGL-capable. The KWindowSystem/IdleTime static
+# plugins stay out of the first-light build until the compositor itself runs.
 cat > "$src/src/plugins/CMakeLists.txt" <<'EOF'
+add_subdirectory(qpa)
 if(TARGET K::KGlobalAccelD)
     add_subdirectory(kglobalaccel)
 endif()
@@ -61,6 +63,13 @@ EOF
 
 # Upstream's native qtwaylandscanner_kde helper guesses KF6_HOST_TOOLING as the complete
 # host prefix. Our host Qt lives beside it, so let the recipe pass NATIVE_PREFIX explicitly.
+
+# Keep Qt's iOS OpenGLES headers out of libkwin's epoxy-using translation units.
+# The private QPA plugin still needs the real Qt OpenGL/QPA classes, so do this
+# on the kwin library target instead of through the global compiler flags.
+if ! grep -q 'ios-bringup-target-no-qt-opengl' "$src/src/CMakeLists.txt"; then
+    perl -0pi -e 's/add_library\(kwin SHARED\)/add_library(kwin SHARED)\ntarget_compile_definitions(kwin PRIVATE QT_NO_OPENGL=1) # ios-bringup-target-no-qt-opengl/g' "$src/src/CMakeLists.txt"
+fi
 
 # KWin has Linux/FreeBSD executable path backends only. The sysctl backend is the closest
 # Darwin-family implementation and compiles against the iOS SDK.
@@ -140,9 +149,16 @@ if ! grep -q 'ios-bringup-no-drm-lease' "$src/src/wayland_server.h"; then
     perl -0pi -e 's/class DrmLeaseManagerV1;/#if !defined(__APPLE__)\nclass DrmLeaseManagerV1;\n#endif \/\/ ios-bringup-no-drm-lease/g' "$src/src/wayland_server.h"
     perl -0pi -e 's/    DrmLeaseManagerV1 \*m_leaseManager = nullptr;/#if !defined(__APPLE__)\n    DrmLeaseManagerV1 *m_leaseManager = nullptr;\n#endif/g' "$src/src/wayland_server.h"
 fi
-if ! grep -q 'ios-bringup-no-qpa-link' "$src/src/CMakeLists.txt"; then
-    perl -0pi -e 's/target_link_libraries\(kwin_wayland\n    KWinQpaPlugin\n    KF6WindowSystemKWinPlugin\n    KF6IdleTimeKWinPlugin\n\)/# ios-bringup-no-qpa-link: QPA\/window-system\/idletime static platform plugins disabled for no-OpenGL staged Qt/g' "$src/src/CMakeLists.txt"
-fi
+perl -0pi -e 's/target_link_libraries\(kwin_wayland\n(?:(?:    (?:KWinQpaPlugin|KF6WindowSystemKWinPlugin|KF6IdleTimeKWinPlugin)\n)|(?:    # ios-bringup-no-qpa-link:[^\n]*\n))+\)/target_link_libraries(kwin_wayland\n    KWinQpaPlugin\n    # ios-bringup-no-qpa-link: KWindowSystem\/IdleTime static plugins disabled for first-light\n)/g' "$src/src/CMakeLists.txt"
+
+perl -0pi -e 's@#include "backends/drm/drm_backend\.h"\n#include "backends/virtual/virtual_backend\.h"@#if !defined(__APPLE__)\n#include "backends/drm/drm_backend.h"\n#include "backends/virtual/virtual_backend.h"\n#endif // ios-bringup-main-wayland@g' "$src/src/main_wayland.cpp"
+perl -0pi -e 's@Q_IMPORT_PLUGIN\(KWindowSystemKWinPlugin\)\nQ_IMPORT_PLUGIN\(KWinIdleTimePoller\)@#if !defined(__APPLE__)\nQ_IMPORT_PLUGIN(KWindowSystemKWinPlugin)\nQ_IMPORT_PLUGIN(KWinIdleTimePoller)\n#endif // ios-bringup-main-wayland@g' "$src/src/main_wayland.cpp"
+perl -0pi -e 's@    if \(parser\.isSet\(drmOption\)\) {\n        backendType = BackendType::Kms;@    if (parser.isSet(drmOption)) {\n#if defined(__APPLE__)\n        std::cerr << "FATAL ERROR: drm backend is not built on Apple/iOS first-light KWin" << std::endl;\n        return 1;\n#else\n        backendType = BackendType::Kms;\n#endif@g' "$src/src/main_wayland.cpp"
+perl -0pi -e 's@    } else if \(parser\.isSet\(virtualFbOption\)\) {\n        backendType = BackendType::Virtual;@    } else if (parser.isSet(virtualFbOption)) {\n#if defined(__APPLE__)\n        std::cerr << "FATAL ERROR: virtual backend is not built on Apple/iOS first-light KWin; use --wayland-display" << std::endl;\n        return 1;\n#else\n        backendType = BackendType::Virtual;\n#endif@g' "$src/src/main_wayland.cpp"
+perl -0pi -e 's@        } else if \(qEnvironmentVariableIsSet\("DISPLAY"\)\) {\n            qInfo\("No backend specified, automatically choosing X11 because DISPLAY is set"\);\n            backendType = BackendType::X11;\n        } else {\n            qInfo\("No backend specified, automatically choosing drm"\);\n            backendType = BackendType::Kms;\n        }@        }\n#if KWIN_BUILD_X11\n        else if (qEnvironmentVariableIsSet("DISPLAY")) {\n            qInfo("No backend specified, automatically choosing X11 because DISPLAY is set");\n            backendType = BackendType::X11;\n        }\n#endif\n        else {\n#if defined(__APPLE__)\n            qInfo("No backend specified, automatically choosing nested Wayland on Apple/iOS");\n            backendType = BackendType::Wayland;\n#else\n            qInfo("No backend specified, automatically choosing drm");\n            backendType = BackendType::Kms;\n#endif\n        }@g' "$src/src/main_wayland.cpp"
+perl -0pi -e 's@    switch \(backendType\) {\n    case BackendType::Kms:@    switch (backendType) {\n#if !defined(__APPLE__)\n    case BackendType::Kms:@g' "$src/src/main_wayland.cpp"
+perl -0pi -e 's@        a\.setOutputBackend\(std::make_unique<KWin::DrmBackend>\(a\.session\(\)\)\);\n        break;\n    case BackendType::Virtual:@        a.setOutputBackend(std::make_unique<KWin::DrmBackend>(a.session()));\n        break;\n    case BackendType::Virtual:@g' "$src/src/main_wayland.cpp"
+perl -0pi -e 's@        a\.setOutputBackend\(std::move\(outputBackend\)\);\n        break;\n    }\n#if KWIN_BUILD_X11@        a.setOutputBackend(std::move(outputBackend));\n        break;\n    }\n#endif // ios-bringup-main-wayland\n#if KWIN_BUILD_X11@g' "$src/src/main_wayland.cpp"
 
 if ! grep -q 'ios-bringup-no-opengl-quickview' "$src/src/effect/offscreenquickview.cpp"; then
     perl -0pi -e 's/#include "opengl\/glutils\.h"\n#include "opengl\/openglcontext\.h"/#include "opengl\/glutils.h"\n#if !defined(KWIN_IOS_QT_NO_OPENGL)\n#include "opengl\/openglcontext.h"\n#endif \/\/ ios-bringup-no-opengl-quickview/g' "$src/src/effect/offscreenquickview.cpp"
@@ -332,7 +348,7 @@ cat > "$src/src/kwin-ios-compat.h" <<'EOF'
 #if defined(__APPLE__)
 #define KWIN_IOS_NO_LIBINPUT 1
 #endif
-#if defined(KWIN_IOS_QT_NO_OPENGL)
+#if defined(KWIN_IOS_QT_NO_OPENGL) && (defined(QT_NO_OPENGL) || (defined(QT_FEATURE_opengl) && QT_FEATURE_opengl < 0))
 class QOpenGLContext
 {
 public:

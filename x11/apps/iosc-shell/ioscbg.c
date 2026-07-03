@@ -21,12 +21,14 @@
 #include "shell-draw.h"
 #include "shell-theme.h"
 #include "panel-render.h"
+#include "panel-icons.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 #include <poll.h>
 #include <errno.h>
 #include <signal.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <time.h>
 
@@ -38,10 +40,31 @@
 #endif
 
 #define WIDGET_MAX       4
-#define WIDGET_W         224
-#define WIDGET_H         104
+#define WIDGET_W         214
+#define WIDGET_H         94
 #define WIDGET_HOLD_MS   540
 #define WIDGET_SLOP      10
+#define PIN_MAX          64
+#define PIN_W            92
+#define PIN_H            110
+#define PIN_ICON         62
+#define MENU_W           184
+#define MENU_ROW_H       42
+#define MENU_PAD         8
+
+enum bg_press_kind {
+    BG_PRESS_NONE = 0,
+    BG_PRESS_WIDGET = 1,
+    BG_PRESS_PIN = 2,
+};
+
+enum bg_menu_action {
+    MENU_ACT_NONE = 0,
+    MENU_ACT_OPEN = 1,
+    MENU_ACT_REMOVE_PIN = 2,
+    MENU_ACT_HIDE_WIDGET = 3,
+    MENU_ACT_REFRESH = 4,
+};
 
 struct widget {
     const char *key;
@@ -50,6 +73,15 @@ struct widget {
     char detail[64];
     double frac;
     int x, y, w, h, visible;
+};
+
+struct desktop_pin {
+    char type[16];       /* app | file */
+    char name[64];
+    char icon[128];
+    char target[256];    /* app Exec or file path */
+    int x, y, visible;
+    cairo_surface_t *icon_surf;
 };
 
 static struct {
@@ -66,14 +98,21 @@ static struct {
     int   width, height, scale, scale_env, configured, running;
     int   drawn_w, drawn_h;           /* last rendered size (skip redundant redraws) */
     struct widget widgets[WIDGET_MAX];
+    struct desktop_pin pins[PIN_MAX];
+    int   npins, pins_loaded, pin_drag_idx, pin_drag_dx, pin_drag_dy;
+    time_t pins_mtime;
+    off_t  pins_size;
     int   widgets_loaded, edit_mode, drag_idx, drag_dx, drag_dy;
-    int   ptr_down, ptr_idx, ptr_x, ptr_y, ptr_x0, ptr_y0;
-    int   touch_active, touch_id, touch_idx, touch_x, touch_y, touch_x0, touch_y0;
+    int   menu_open, menu_x, menu_y, menu_kind, menu_idx;
+    int   ptr_down, ptr_kind, ptr_idx, ptr_x, ptr_y, ptr_x0, ptr_y0, ptr_moved;
+    int   touch_active, touch_id, touch_kind, touch_idx, touch_x, touch_y, touch_x0, touch_y0, touch_moved;
     uint64_t press_ms, last_stats_ms;
 #ifdef __APPLE__
     CGImageRef image;
 #endif
 } B;
+
+static void rerender(void);
 
 static uint64_t now_ms(void)
 {
@@ -92,9 +131,9 @@ static void bg_config_path(char *out, size_t n)
 static void widgets_default(void)
 {
     B.widgets[0] = (struct widget){ "storage", "Storage", "", "", 0, 42, 92, WIDGET_W, WIDGET_H, 1 };
-    B.widgets[1] = (struct widget){ "memory",  "Memory",  "", "", 0, 42, 212, WIDGET_W, WIDGET_H, 1 };
-    B.widgets[2] = (struct widget){ "load",    "Load",    "", "", 0, 42, 332, WIDGET_W, WIDGET_H, 1 };
-    B.widgets[3] = (struct widget){ "uptime",  "Session", "", "", 0, 42, 452, WIDGET_W, WIDGET_H, 1 };
+    B.widgets[1] = (struct widget){ "memory",  "Memory",  "", "", 0, 42, 202, WIDGET_W, WIDGET_H, 1 };
+    B.widgets[2] = (struct widget){ "load",    "Load",    "", "", 0, 42, 312, WIDGET_W, WIDGET_H, 1 };
+    B.widgets[3] = (struct widget){ "uptime",  "Session", "", "", 0, 42, 422, WIDGET_W, WIDGET_H, 1 };
 }
 
 static void widgets_load(void)
@@ -121,6 +160,85 @@ static void widgets_save(void)
     for (int i = 0; i < WIDGET_MAX; i++)
         fprintf(f, "%s %d %d %d\n", B.widgets[i].key, B.widgets[i].x, B.widgets[i].y, B.widgets[i].visible);
     fclose(f);
+}
+
+static void pin_destroy(struct desktop_pin *p)
+{
+    if (p->icon_surf) cairo_surface_destroy(p->icon_surf);
+    memset(p, 0, sizeof *p);
+}
+
+static void pins_save(void)
+{
+    char path[256]; sd_desktop_pins_path(path, sizeof path);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    for (int i = 0; i < B.npins; i++) {
+        struct desktop_pin *p = &B.pins[i];
+        if (!p->visible) continue;
+        fprintf(f, "%s\t%s\t%s\t%s\t%d\t%d\n",
+                p->type[0] ? p->type : "app", p->name, p->icon, p->target, p->x, p->y);
+    }
+    fclose(f);
+}
+
+static void pin_load_icon(struct desktop_pin *p)
+{
+    if (p->icon_surf) { cairo_surface_destroy(p->icon_surf); p->icon_surf = NULL; }
+    char path[512];
+    const char *name = p->icon[0] ? p->icon : p->name;
+    if (pi_resolve(name, B.scale, path, sizeof path))
+        p->icon_surf = pr_icon_load(path);
+}
+
+static void pins_load(void)
+{
+    for (int i = 0; i < B.npins; i++) pin_destroy(&B.pins[i]);
+    B.npins = 0;
+    char path[256]; sd_desktop_pins_path(path, sizeof path);
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        B.pins_mtime = st.st_mtime;
+        B.pins_size = st.st_size;
+    } else {
+        B.pins_mtime = 0;
+        B.pins_size = 0;
+    }
+    FILE *f = fopen(path, "r");
+    if (!f) { B.pins_loaded = 1; return; }
+    char line[768];
+    while (fgets(line, sizeof line, f) && B.npins < PIN_MAX) {
+        char *save = NULL;
+        char *type = strtok_r(line, "\t\r\n", &save);
+        char *name = strtok_r(NULL, "\t\r\n", &save);
+        char *icon = strtok_r(NULL, "\t\r\n", &save);
+        char *target = strtok_r(NULL, "\t\r\n", &save);
+        char *xs = strtok_r(NULL, "\t\r\n", &save);
+        char *ys = strtok_r(NULL, "\t\r\n", &save);
+        if (!type || !name || !target || !xs || !ys) continue;
+        struct desktop_pin *p = &B.pins[B.npins++];
+        snprintf(p->type, sizeof p->type, "%s", type);
+        snprintf(p->name, sizeof p->name, "%s", name);
+        snprintf(p->icon, sizeof p->icon, "%s", icon ? icon : "");
+        snprintf(p->target, sizeof p->target, "%s", target);
+        p->x = atoi(xs); p->y = atoi(ys); p->visible = 1;
+        pin_load_icon(p);
+    }
+    fclose(f);
+    B.pins_loaded = 1;
+}
+
+static void pins_reload_if_changed(void)
+{
+    char path[256]; sd_desktop_pins_path(path, sizeof path);
+    struct stat st;
+    time_t mt = 0;
+    off_t sz = 0;
+    if (stat(path, &st) == 0) {
+        mt = st.st_mtime;
+        sz = st.st_size;
+    }
+    if (!B.pins_loaded || mt != B.pins_mtime || sz != B.pins_size) pins_load();
 }
 
 static void fmt_bytes(char *out, size_t n, uint64_t bytes)
@@ -205,12 +323,184 @@ static int widget_hit(int x, int y)
     return -1;
 }
 
+static int pin_hit(int x, int y)
+{
+    for (int i = B.npins - 1; i >= 0; i--) {
+        struct desktop_pin *p = &B.pins[i];
+        if (!p->visible) continue;
+        if (x >= p->x && x < p->x + PIN_W && y >= p->y && y < p->y + PIN_H) return i;
+    }
+    return -1;
+}
+
 static void widget_clamp(struct widget *w)
 {
     if (w->x < 8) w->x = 8;
     if (w->y < 48) w->y = 48;
     if (B.width > 0 && w->x + w->w > B.width - 8) w->x = B.width - 8 - w->w;
     if (B.height > 0 && w->y + w->h > B.height - 8) w->y = B.height - 8 - w->h;
+}
+
+static void pin_clamp(struct desktop_pin *p)
+{
+    if (p->x < 8) p->x = 8;
+    if (p->y < 48) p->y = 48;
+    if (B.width > 0 && p->x + PIN_W > B.width - 8) p->x = B.width - 8 - PIN_W;
+    if (B.height > 0 && p->y + PIN_H > B.height - 8) p->y = B.height - 8 - PIN_H;
+}
+
+static void quote_sh(char *out, size_t n, const char *s)
+{
+    size_t w = 0;
+    if (w + 1 < n) out[w++] = '\'';
+    for (const char *p = s; *p && w + 5 < n; p++) {
+        if (*p == '\'') {
+            memcpy(out + w, "'\\''", 4);
+            w += 4;
+        } else out[w++] = *p;
+    }
+    if (w + 1 < n) out[w++] = '\'';
+    out[w < n ? w : n - 1] = 0;
+}
+
+static void pin_launch(int idx)
+{
+    if (idx < 0 || idx >= B.npins) return;
+    struct desktop_pin *p = &B.pins[idx];
+    if (!strcmp(p->type, "file")) {
+        char q[320], cmd[384];
+        quote_sh(q, sizeof q, p->target);
+        snprintf(cmd, sizeof cmd, "xdg-open %s", q);
+        sd_launch(cmd);
+    } else {
+        sd_launch(p->target);
+    }
+}
+
+static int menu_actions(int kind, int idx, const char **labels, int *actions)
+{
+    int n = 0;
+    if (kind == BG_PRESS_PIN && idx >= 0 && idx < B.npins) {
+        labels[n] = "Open"; actions[n++] = MENU_ACT_OPEN;
+        labels[n] = "Remove from Desktop"; actions[n++] = MENU_ACT_REMOVE_PIN;
+    } else if (kind == BG_PRESS_WIDGET && idx >= 0 && idx < WIDGET_MAX) {
+        labels[n] = "Hide Widget"; actions[n++] = MENU_ACT_HIDE_WIDGET;
+    }
+    labels[n] = "Refresh Desktop"; actions[n++] = MENU_ACT_REFRESH;
+    return n;
+}
+
+static int menu_height_for(int kind, int idx)
+{
+    const char *labels[4]; int actions[4];
+    return MENU_PAD * 2 + menu_actions(kind, idx, labels, actions) * MENU_ROW_H;
+}
+
+static void menu_open_at(int kind, int idx, int x, int y)
+{
+    int h;
+    B.menu_open = 1;
+    B.menu_kind = kind;
+    B.menu_idx = idx;
+    h = menu_height_for(kind, idx);
+    B.menu_x = x;
+    B.menu_y = y;
+    if (B.menu_x + MENU_W > B.width - 8) B.menu_x = B.width - 8 - MENU_W;
+    if (B.menu_y + h > B.height - 8) B.menu_y = B.height - 8 - h;
+    if (B.menu_x < 8) B.menu_x = 8;
+    if (B.menu_y < 48) B.menu_y = 48;
+}
+
+static int menu_hit(int x, int y)
+{
+    if (!B.menu_open) return MENU_ACT_NONE;
+    const char *labels[4]; int actions[4];
+    int n = menu_actions(B.menu_kind, B.menu_idx, labels, actions);
+    int h = MENU_PAD * 2 + n * MENU_ROW_H;
+    if (x < B.menu_x || x >= B.menu_x + MENU_W || y < B.menu_y || y >= B.menu_y + h)
+        return MENU_ACT_NONE;
+    int row = (y - B.menu_y - MENU_PAD) / MENU_ROW_H;
+    if (row < 0 || row >= n) return MENU_ACT_NONE;
+    return actions[row];
+}
+
+static void menu_remove_pin(int idx)
+{
+    if (idx < 0 || idx >= B.npins) return;
+    pin_destroy(&B.pins[idx]);
+    for (int i = idx; i < B.npins - 1; i++) B.pins[i] = B.pins[i + 1];
+    B.npins--;
+    memset(&B.pins[B.npins], 0, sizeof B.pins[B.npins]);
+    pins_save();
+}
+
+static void menu_act(int action)
+{
+    int kind = B.menu_kind, idx = B.menu_idx;
+    B.menu_open = 0;
+    switch (action) {
+    case MENU_ACT_OPEN:
+        if (kind == BG_PRESS_PIN) pin_launch(idx);
+        break;
+    case MENU_ACT_REMOVE_PIN:
+        if (kind == BG_PRESS_PIN) menu_remove_pin(idx);
+        break;
+    case MENU_ACT_HIDE_WIDGET:
+        if (kind == BG_PRESS_WIDGET && idx >= 0 && idx < WIDGET_MAX) {
+            B.widgets[idx].visible = 0;
+            widgets_save();
+        }
+        break;
+    case MENU_ACT_REFRESH:
+        B.pins_loaded = 0;
+        widgets_update_stats();
+        break;
+    }
+    rerender();
+}
+
+static void menu_draw(cairo_t *cr)
+{
+    if (!B.menu_open) return;
+    const char *labels[4]; int actions[4];
+    int n = menu_actions(B.menu_kind, B.menu_idx, labels, actions);
+    int h = MENU_PAD * 2 + n * MENU_ROW_H;
+    (void)actions;
+    pr_text_ctx t = pr_text_ctx_new(cr);
+    pr_fill_rrect(cr, B.menu_x + 1, B.menu_y + 6, MENU_W, h, 18, 0x38000000u);
+    pr_fill_rrect(cr, B.menu_x, B.menu_y, MENU_W, h, 18, TH_CARD);
+    pr_stroke_rrect(cr, B.menu_x, B.menu_y, MENU_W, h, 18, TH_BORDER, 1.0);
+    for (int i = 0; i < n; i++) {
+        int y = B.menu_y + MENU_PAD + i * MENU_ROW_H;
+        if (i > 0) pr_fill_rect(cr, B.menu_x + 14, y, MENU_W - 28, 1, TH_SEP);
+        pr_text(cr, &t, TH_FONT_STATUS, labels[i], B.menu_x + 16,
+                y + MENU_ROW_H / 2, TH_FG, MENU_W - 32);
+    }
+    pr_text_ctx_free(&t);
+}
+
+static void pins_draw(cairo_t *cr)
+{
+    pr_text_ctx t = pr_text_ctx_new(cr);
+    for (int i = 0; i < B.npins; i++) {
+        struct desktop_pin *p = &B.pins[i];
+        if (!p->visible) continue;
+        pin_clamp(p);
+        int hot = i == B.pin_drag_idx;
+        if (hot)
+            pr_fill_rrect(cr, p->x, p->y, PIN_W, PIN_H, 18, 0x33FFFFFFu);
+        int ix = p->x + (PIN_W - PIN_ICON) / 2;
+        int iy = p->y + 8;
+        if (p->icon_surf)
+            pr_draw_icon(cr, p->icon_surf, ix, iy, PIN_ICON, 0);
+        else
+            pr_draw_monogram(cr, &t, p->name, ix, iy, PIN_ICON, 16, TH_TILE, TH_FG, TH_FONT_TITLE);
+        pr_text_centered(cr, &t, TH_FONT_WIDGET_DETAIL, p->name,
+                         p->x + 4, PIN_W - 8, p->y + PIN_ICON + 28, TH_FG);
+        if (hot)
+            pr_stroke_rrect(cr, p->x + 2, p->y + 2, PIN_W - 4, PIN_H - 4, 16, TH_ACCENT, 1.5);
+    }
+    pr_text_ctx_free(&t);
 }
 
 static void widgets_draw(cairo_t *cr)
@@ -221,13 +511,13 @@ static void widgets_draw(cairo_t *cr)
         if (!w->visible) continue;
         widget_clamp(w);
         int hot = (B.edit_mode && i == B.drag_idx);
-        pr_fill_rrect(cr, w->x + 0, w->y + 8, w->w, w->h, 24, 0x30000000u);
-        pr_fill_rrect(cr, w->x, w->y, w->w, w->h, 24, hot ? 0xB8222328u : 0xA8191A1Fu);
+        pr_fill_rrect(cr, w->x + 0, w->y + 7, w->w, w->h, 22, 0x30000000u);
+        pr_fill_rrect(cr, w->x, w->y, w->w, w->h, 22, hot ? 0xB8222328u : 0xA8191A1Fu);
         pr_fill_rect(cr, w->x + 20, w->y + 1, w->w - 40, 1.2, 0x44FFFFFFu);
-        pr_stroke_rrect(cr, w->x, w->y, w->w, w->h, 24, hot ? TH_ACCENT : 0x36FFFFFFu, hot ? 1.8 : 1.0);
-        pr_text(cr, &t, TH_FONT_SMALL, w->title, w->x + 18, w->y + 22, TH_FG_DIM, w->w - 36);
-        pr_text(cr, &t, "Sans Bold 26", w->value, w->x + 18, w->y + 52, TH_FG, w->w - 36);
-        pr_text(cr, &t, TH_FONT_SMALL, w->detail, w->x + 18, w->y + 78, 0xCCFFFFFFu, w->w - 36);
+        pr_stroke_rrect(cr, w->x, w->y, w->w, w->h, 22, hot ? TH_ACCENT : 0x36FFFFFFu, hot ? 1.8 : 1.0);
+        pr_text(cr, &t, TH_FONT_WIDGET_LABEL, w->title, w->x + 16, w->y + 18, TH_FG_DIM, w->w - 32);
+        pr_text(cr, &t, TH_FONT_WIDGET_VALUE, w->value, w->x + 16, w->y + 46, TH_FG, w->w - 32);
+        pr_text(cr, &t, TH_FONT_WIDGET_DETAIL, w->detail, w->x + 16, w->y + 68, 0xCCFFFFFFu, w->w - 32);
         double barw = w->w - 36;
         pr_fill_rrect(cr, w->x + 18, w->y + w->h - 16, barw, 5, 2.5, 0x33FFFFFFu);
         double frac = w->frac;
@@ -283,6 +573,7 @@ static void render(void)
 {
     if (!B.configured) return;
     if (!B.widgets_loaded) widgets_load();
+    pins_reload_if_changed();
     if (now_ms() - B.last_stats_ms > 2500) widgets_update_stats();
 
     int s = B.scale, bw = B.width * s, bh = B.height * s;
@@ -328,7 +619,9 @@ static void render(void)
         (unsigned char *)map, CAIRO_FORMAT_ARGB32, bw, bh, stride);
     cairo_t *cr = cairo_create(cs);
     cairo_scale(cr, s, s);
+    pins_draw(cr);
     widgets_draw(cr);
+    menu_draw(cr);
     cairo_destroy(cr);
     cairo_surface_destroy(cs);
     munmap(map, size);
@@ -367,6 +660,14 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
 
 static void drag_to(int x, int y)
 {
+    if (B.pin_drag_idx >= 0 && B.pin_drag_idx < B.npins) {
+        struct desktop_pin *p = &B.pins[B.pin_drag_idx];
+        p->x = x - B.pin_drag_dx;
+        p->y = y - B.pin_drag_dy;
+        pin_clamp(p);
+        rerender();
+        return;
+    }
     if (B.drag_idx < 0 || B.drag_idx >= WIDGET_MAX) return;
     struct widget *w = &B.widgets[B.drag_idx];
     w->x = x - B.drag_dx;
@@ -377,28 +678,46 @@ static void drag_to(int x, int y)
 
 static void maybe_begin_drag(uint64_t now)
 {
-    if (B.edit_mode || B.drag_idx >= 0) return;
-    int idx = -1, x = 0, y = 0, x0 = 0, y0 = 0;
-    if (B.touch_active && B.touch_idx >= 0) {
-        idx = B.touch_idx; x = B.touch_x; y = B.touch_y; x0 = B.touch_x0; y0 = B.touch_y0;
-    } else if (B.ptr_down && B.ptr_idx >= 0) {
-        idx = B.ptr_idx; x = B.ptr_x; y = B.ptr_y; x0 = B.ptr_x0; y0 = B.ptr_y0;
+    if (B.menu_open) return;
+    if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) return;
+    int kind = BG_PRESS_NONE, idx = -1, x = 0, y = 0, x0 = 0, y0 = 0;
+    if (B.touch_active) {
+        kind = B.touch_kind; idx = B.touch_idx; x = B.touch_x; y = B.touch_y; x0 = B.touch_x0; y0 = B.touch_y0;
+    } else if (B.ptr_down) {
+        kind = B.ptr_kind; idx = B.ptr_idx; x = B.ptr_x; y = B.ptr_y; x0 = B.ptr_x0; y0 = B.ptr_y0;
     }
-    if (idx < 0 || now - B.press_ms < WIDGET_HOLD_MS) return;
+    if (now - B.press_ms < WIDGET_HOLD_MS) return;
     int dx = x - x0, dy = y - y0;
-    if ((dx < 0 ? -dx : dx) > WIDGET_SLOP || (dy < 0 ? -dy : dy) > WIDGET_SLOP) return;
-    B.edit_mode = 1;
-    B.drag_idx = idx;
-    B.drag_dx = x - B.widgets[idx].x;
-    B.drag_dy = y - B.widgets[idx].y;
+    int moved = (dx < 0 ? -dx : dx) > WIDGET_SLOP || (dy < 0 ? -dy : dy) > WIDGET_SLOP;
+    if (!moved || kind == BG_PRESS_NONE) {
+        menu_open_at(kind, idx, x, y);
+        B.touch_moved = B.ptr_moved = 1;
+        B.touch_kind = B.ptr_kind = BG_PRESS_NONE;
+        B.touch_idx = B.ptr_idx = -1;
+        rerender();
+        return;
+    }
+    if (kind == BG_PRESS_PIN && idx < B.npins) {
+        B.pin_drag_idx = idx;
+        B.pin_drag_dx = x - B.pins[idx].x;
+        B.pin_drag_dy = y - B.pins[idx].y;
+    } else if (kind == BG_PRESS_WIDGET && idx < WIDGET_MAX) {
+        B.edit_mode = 1;
+        B.drag_idx = idx;
+        B.drag_dx = x - B.widgets[idx].x;
+        B.drag_dy = y - B.widgets[idx].y;
+    }
     rerender();
 }
 
 static void drag_finish(void)
 {
     if (B.drag_idx >= 0) widgets_save();
+    if (B.pin_drag_idx >= 0) pins_save();
     B.drag_idx = -1;
+    B.pin_drag_idx = -1;
     B.ptr_idx = B.touch_idx = -1;
+    B.ptr_kind = B.touch_kind = BG_PRESS_NONE;
     rerender();
 }
 
@@ -406,12 +725,17 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_s
                      wl_fixed_t x, wl_fixed_t y)
 { (void)d;(void)p;(void)serial;(void)sf; B.ptr_x = wl_fixed_to_int(x); B.ptr_y = wl_fixed_to_int(y); }
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *sf)
-{ (void)d;(void)p;(void)serial;(void)sf; B.ptr_down = 0; if (B.drag_idx >= 0 && !B.touch_active) drag_finish(); }
+{ (void)d;(void)p;(void)serial;(void)sf; B.ptr_down = 0; if ((B.drag_idx >= 0 || B.pin_drag_idx >= 0) && !B.touch_active) drag_finish(); }
 static void pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y)
 {
     (void)d;(void)p;(void)time;
     B.ptr_x = wl_fixed_to_int(x); B.ptr_y = wl_fixed_to_int(y);
-    if (B.ptr_down && B.drag_idx >= 0) drag_to(B.ptr_x, B.ptr_y);
+    if (B.ptr_down) {
+        int dx = B.ptr_x - B.ptr_x0, dy = B.ptr_y - B.ptr_y0;
+        if ((dx < 0 ? -dx : dx) > WIDGET_SLOP || (dy < 0 ? -dy : dy) > WIDGET_SLOP)
+            B.ptr_moved = 1;
+        if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_to(B.ptr_x, B.ptr_y);
+    }
 }
 static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time,
                       uint32_t button, uint32_t state)
@@ -419,13 +743,28 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t
     (void)d;(void)p;(void)serial;(void)time;
     if (button != 0x110) return;
     if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        if (B.menu_open) {
+            int act = menu_hit(B.ptr_x, B.ptr_y);
+            if (act) menu_act(act);
+            else { B.menu_open = 0; rerender(); }
+            return;
+        }
         B.ptr_down = 1;
         B.ptr_x0 = B.ptr_x; B.ptr_y0 = B.ptr_y;
-        B.ptr_idx = widget_hit(B.ptr_x, B.ptr_y);
+        B.ptr_moved = 0;
+        B.ptr_idx = pin_hit(B.ptr_x, B.ptr_y);
+        B.ptr_kind = B.ptr_idx >= 0 ? BG_PRESS_PIN : BG_PRESS_NONE;
+        if (B.ptr_kind == BG_PRESS_NONE) {
+            B.ptr_idx = widget_hit(B.ptr_x, B.ptr_y);
+            B.ptr_kind = B.ptr_idx >= 0 ? BG_PRESS_WIDGET : BG_PRESS_NONE;
+        }
         B.press_ms = now_ms();
     } else {
+        int was_pin = B.ptr_kind == BG_PRESS_PIN ? B.ptr_idx : -1;
         B.ptr_down = 0;
-        if (B.drag_idx >= 0) drag_finish();
+        if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_finish();
+        else if (!B.ptr_moved && was_pin >= 0) pin_launch(was_pin);
+        B.ptr_kind = BG_PRESS_NONE; B.ptr_idx = -1;
     }
 }
 static void pt_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t a, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)a;(void)v; }
@@ -456,10 +795,23 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
 {
     (void)d;(void)t;(void)serial;(void)time;(void)sf;
     if (B.touch_active) return;
+    int tx = wl_fixed_to_int(x), ty = wl_fixed_to_int(y);
+    if (B.menu_open) {
+        int act = menu_hit(tx, ty);
+        if (act) menu_act(act);
+        else { B.menu_open = 0; rerender(); }
+        return;
+    }
     B.touch_active = 1; B.touch_id = id;
-    B.touch_x = B.touch_x0 = wl_fixed_to_int(x);
-    B.touch_y = B.touch_y0 = wl_fixed_to_int(y);
-    B.touch_idx = widget_hit(B.touch_x, B.touch_y);
+    B.touch_x = B.touch_x0 = tx;
+    B.touch_y = B.touch_y0 = ty;
+    B.touch_moved = 0;
+    B.touch_idx = pin_hit(B.touch_x, B.touch_y);
+    B.touch_kind = B.touch_idx >= 0 ? BG_PRESS_PIN : BG_PRESS_NONE;
+    if (B.touch_kind == BG_PRESS_NONE) {
+        B.touch_idx = widget_hit(B.touch_x, B.touch_y);
+        B.touch_kind = B.touch_idx >= 0 ? BG_PRESS_WIDGET : BG_PRESS_NONE;
+    }
     B.press_ms = now_ms();
 }
 static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id, wl_fixed_t x, wl_fixed_t y)
@@ -467,18 +819,24 @@ static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id, wl
     (void)d;(void)t;(void)time;
     if (!B.touch_active || id != B.touch_id) return;
     B.touch_x = wl_fixed_to_int(x); B.touch_y = wl_fixed_to_int(y);
-    if (B.drag_idx >= 0) drag_to(B.touch_x, B.touch_y);
+    int dx = B.touch_x - B.touch_x0, dy = B.touch_y - B.touch_y0;
+    if ((dx < 0 ? -dx : dx) > WIDGET_SLOP || (dy < 0 ? -dy : dy) > WIDGET_SLOP)
+        B.touch_moved = 1;
+    if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_to(B.touch_x, B.touch_y);
 }
 static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, int32_t id)
 {
     (void)d;(void)t;(void)serial;(void)time;
     if (!B.touch_active || id != B.touch_id) return;
+    int was_pin = B.touch_kind == BG_PRESS_PIN ? B.touch_idx : -1;
     B.touch_active = 0;
-    if (B.drag_idx >= 0) drag_finish();
+    if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_finish();
+    else if (!B.touch_moved && was_pin >= 0) pin_launch(was_pin);
+    B.touch_kind = BG_PRESS_NONE; B.touch_idx = -1;
 }
 static void tc_frame(void *d, struct wl_touch *t){ (void)d;(void)t; }
 static void tc_cancel(void *d, struct wl_touch *t)
-{ (void)d;(void)t; B.touch_active = 0; if (B.drag_idx >= 0) drag_finish(); }
+{ (void)d;(void)t; B.touch_active = 0; if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_finish(); }
 static void tc_shape(void *d, struct wl_touch *t, int32_t id, wl_fixed_t maj, wl_fixed_t min)
 { (void)d;(void)t;(void)id;(void)maj;(void)min; }
 static void tc_orient(void *d, struct wl_touch *t, int32_t id, wl_fixed_t o)
@@ -519,6 +877,7 @@ static void out_scale(void *d, struct wl_output *o, int32_t f)
     (void)d;(void)o;
     if (B.scale_env || f <= 0 || f == B.scale) return;
     B.scale = (int)f;
+    B.pins_loaded = 0;
     B.drawn_w = B.drawn_h = -1;   /* invalidate the size cache: same logical,
                                    * new physical -> must repaint */
     render();
@@ -554,10 +913,11 @@ int main(void)
     memset(&B, 0, sizeof B);
     B.width = 1440; B.height = 1080; B.scale = 2; B.running = 1;
     B.drawn_w = B.drawn_h = -1;
-    B.drag_idx = B.ptr_idx = B.touch_idx = -1;
+    B.drag_idx = B.pin_drag_idx = B.ptr_idx = B.touch_idx = -1;
     const char *es = getenv("IOSC_PANEL_SCALE");
     if (es && atoi(es) > 0) { B.scale = atoi(es); B.scale_env = 1; }
     widgets_load();
+    pins_load();
     widgets_update_stats();
 
     const char *wp = getenv("IOSC_WALLPAPER");

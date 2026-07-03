@@ -245,6 +245,7 @@ final class NativeManager: NSObject {
             bind(scene: scene, to: id)
             return
         }
+        waitingScenes.removeAll { $0.scene === scene }
         waitingScenes.append(WaitingScene(scene: scene, wantedID: wanted))
     }
 

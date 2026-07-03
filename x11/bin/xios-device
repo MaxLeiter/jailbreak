@@ -1,0 +1,355 @@
+#!/usr/bin/env bash
+# Host-side Xios device testing harness.
+#
+# Wraps the repo's existing SSH/device configuration and on-device helpers so
+# agents do not have to rewrite long ssh/scp snippets for every verification.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+X11_ROOT="$(cd "$HERE/.." && pwd)"
+DEPLOY_ENV="$X11_ROOT/apps/iosc-desktop/deploy-env.sh"
+
+if [ ! -r "$DEPLOY_ENV" ]; then
+    echo "xios-device: missing deploy env: $DEPLOY_ENV" >&2
+    exit 1
+fi
+
+# shellcheck source=../apps/iosc-desktop/deploy-env.sh
+. "$DEPLOY_ENV"
+
+TMP_REMOTE=/var/jb/tmp
+ARTIFACT_ROOT="${XIOS_ARTIFACT_ROOT:-$X11_ROOT/artifacts/device-runs}"
+
+usage() {
+    cat <<'EOF'
+usage: bin/xios-device <command> [args]
+
+Commands:
+  doctor
+      Check host tools, SSH reachability, and key on-device Xios helpers.
+
+  status
+      Print current Xios/iosc/Mutter/GNOME status and important tmp files.
+
+  session [--via-daemon] [--width W --height H --dpi DPI] iosc|mutter|gnome|stop
+      Run xios-session on the device. Width/height/dpi are passed through for iosc.
+
+  app NAME
+      Launch an app client through the current xios-session, e.g. app kgx.
+
+  foreground
+      Ask FrontBoard to foreground com.max.xios and print adoption status.
+
+  input [--mutter|--iosc|--socket PATH] MODE ARGS...
+      Inject deterministic input through iosc-input-test.
+      Modes map directly to iosc-input-test: click, drag, scroll, touch, pencil,
+      key, type.
+
+  shot [OUTDIR]
+      Capture visual evidence. Tries Wayland grim first, then iosc-screenshot-test
+      probe output, then host idevicescreenshot if a paired device is visible.
+      Also collects status/log files into OUTDIR.
+
+  collect [OUTDIR]
+      Copy status files and logs from /var/jb/tmp into OUTDIR.
+
+  logs [PATTERN]
+      Print recent compositor/session log lines, optionally filtered by PATTERN.
+
+  exec COMMAND...
+      Run an arbitrary bash command on the device through the shared SSH config.
+
+Environment:
+  XIOS_ARTIFACT_ROOT   Local root for shot/collect artifacts.
+  device.env           Repo-root device config consumed by deploy-env.sh.
+EOF
+}
+
+die() {
+    echo "xios-device: $*" >&2
+    exit 1
+}
+
+stamp() {
+    date '+%Y%m%d-%H%M%S'
+}
+
+make_outdir() {
+    local requested="${1:-}"
+    if [ -n "$requested" ]; then
+        mkdir -p "$requested" || exit 1
+        (cd "$requested" && pwd)
+    else
+        local d="$ARTIFACT_ROOT/$(stamp)"
+        mkdir -p "$d" || exit 1
+        printf '%s\n' "$d"
+    fi
+}
+
+remote() {
+    printf '%s\n' "$1" | ssh_ bash -s
+}
+
+copy_remote_if_exists() {
+    local remote_path="$1" outdir="$2" name="${3:-}"
+    [ -n "$name" ] || name="$(basename "$remote_path")"
+    if ssh_ test -r "$remote_path" 2>/dev/null; then
+        scp_ "root@$IP:$remote_path" "$outdir/$name" >/dev/null 2>&1 \
+            && printf 'copied %s\n' "$outdir/$name"
+    fi
+}
+
+collect_files() {
+    local outdir="$1"
+    mkdir -p "$outdir" || exit 1
+
+    remote 'ps ax > /var/jb/tmp/xios-ps.txt 2>/dev/null || true; \
+        (df -h /var/jb /var/jb/tmp 2>/dev/null || true) > /var/jb/tmp/xios-df.txt; \
+        (launchctl print system/com.max.xios-sessiond 2>/dev/null || true) > /var/jb/tmp/xios-sessiond.launchctl.txt'
+
+    local files=(
+        xios.json
+        xios-status.txt
+        xios-geom.txt
+        xios-touch.log
+        xios-session-status.json
+        xios-active-session
+        xios-ps.txt
+        xios-df.txt
+        xios-sessiond.launchctl.txt
+        iosc.log
+        iosc-client.log
+        kgx.log
+        gnome-shell.log
+        mutter.log
+        gs-live.log
+        ioscd.log
+    )
+    local f
+    for f in "${files[@]}"; do
+        copy_remote_if_exists "$TMP_REMOTE/$f" "$outdir" "$f"
+    done
+}
+
+cmd_doctor() {
+    echo "== host"
+    echo "repo: $X11_ROOT"
+    echo "target: root@$IP:$PORT"
+    echo "key: $KEY"
+    command -v ssh >/dev/null && echo "ssh: $(command -v ssh)" || echo "ssh: missing"
+    command -v scp >/dev/null && echo "scp: $(command -v scp)" || echo "scp: missing"
+    command -v idevicescreenshot >/dev/null && echo "idevicescreenshot: $(command -v idevicescreenshot)" || echo "idevicescreenshot: missing"
+    if command -v idevice_id >/dev/null; then
+        echo "idevice_id usb: $(idevice_id -l 2>/dev/null | tr '\n' ' ' || true)"
+        echo "idevice_id network: $(idevice_id -n -l 2>/dev/null | tr '\n' ' ' || true)"
+    else
+        echo "idevice_id: missing"
+    fi
+
+    echo
+    echo "== device"
+    remote '
+        echo "reachable: yes"
+        uname -a
+        test -d /var/jb && echo "rootless: /var/jb present" || echo "rootless: /var/jb missing"
+        for p in \
+            /var/jb/usr/local/bin/xios-session \
+            /var/jb/usr/local/bin/iosc-input-test \
+            /var/jb/usr/local/bin/iosc-screenshot-test \
+            /var/jb/usr/bin/grim \
+            /var/jb/usr/local/bin/iosc \
+            /var/jb/Applications/Xios.app/Xios
+        do
+            if [ -e "$p" ]; then
+                ls -ld "$p"
+            else
+                echo "missing: $p"
+            fi
+        done
+    ' || exit $?
+}
+
+cmd_status() {
+    remote '
+        echo "== process summary"
+        ps ax | grep -v grep | grep -E "Xios\.app/Xios|/usr/local/bin/iosc|bin/gnome-shell|bin/mutter|bin/kgx|xios-sessiond|ioscd" || true
+        echo
+        echo "== session status"
+        cat /var/jb/tmp/xios-session-status.json 2>/dev/null || echo "(no xios-session-status.json)"
+        echo
+        echo "== active session"
+        cat /var/jb/tmp/xios-active-session 2>/dev/null || echo "(no xios-active-session)"
+        echo
+        echo "== xios.json"
+        cat /var/jb/tmp/xios.json 2>/dev/null || echo "(no xios.json)"
+        echo
+        echo "== app status"
+        cat /var/jb/tmp/xios-status.txt 2>/dev/null || echo "(no xios-status.txt)"
+        echo
+        echo "== app geom"
+        cat /var/jb/tmp/xios-geom.txt 2>/dev/null || echo "(no xios-geom.txt)"
+        echo
+        echo "== recent touch"
+        tail -n 12 /var/jb/tmp/xios-touch.log 2>/dev/null || echo "(no xios-touch.log)"
+    '
+}
+
+cmd_session() {
+    local via=0 width="" height="" dpi=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --via-daemon) via=1; shift ;;
+            --width) width="${2:-}"; [ -n "$width" ] || die "--width needs a value"; shift 2 ;;
+            --height) height="${2:-}"; [ -n "$height" ] || die "--height needs a value"; shift 2 ;;
+            --dpi) dpi="${2:-}"; [ -n "$dpi" ] || die "--dpi needs a value"; shift 2 ;;
+            --help|-h) usage; exit 0 ;;
+            --*) die "unknown session option: $1" ;;
+            *) break ;;
+        esac
+    done
+    local preset="${1:-}"
+    [ -n "$preset" ] || die "session preset required"
+    case "$preset" in
+        iosc|mutter|gnome|stop|status) ;;
+        *) die "unknown session preset: $preset" ;;
+    esac
+
+    local env_prefix=""
+    [ -n "$width" ] && env_prefix="$env_prefix XIOS_SESSION_WIDTH=$width"
+    [ -n "$height" ] && env_prefix="$env_prefix XIOS_SESSION_HEIGHT=$height"
+    [ -n "$dpi" ] && env_prefix="$env_prefix XIOS_SESSION_DPI=$dpi"
+    local daemon_arg=""
+    [ "$via" = 1 ] && daemon_arg="--via-daemon"
+
+    remote "export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH; $env_prefix xios-session $daemon_arg $preset"
+}
+
+cmd_app() {
+    local app="${1:-}"
+    [ -n "$app" ] || die "app name required"
+    remote "export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH; xios-session app $(printf '%q' "$app")"
+}
+
+cmd_foreground() {
+    remote '
+        uiopen -b com.max.xios 2>/dev/null || uiopen com.max.xios 2>/dev/null || true
+        for i in $(seq 1 20); do
+            grep -q "iosurface-zerocopy" /var/jb/tmp/xios-status.txt 2>/dev/null && break
+            sleep 0.5
+        done
+        cat /var/jb/tmp/xios-status.txt 2>/dev/null || true
+    '
+}
+
+cmd_input() {
+    local socket_args=()
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --mutter|--iosc) socket_args+=("$1"); shift ;;
+            --socket) socket_args+=("$1" "${2:-}"); [ -n "${2:-}" ] || die "--socket needs a path"; shift 2 ;;
+            --help|-h) usage; exit 0 ;;
+            *) break ;;
+        esac
+    done
+    local mode="${1:-}"
+    [ -n "$mode" ] || die "input mode required"
+    shift
+
+    local test_bin=/var/jb/usr/local/bin/iosc-input-test
+    local args=("${socket_args[@]}")
+    case "$mode" in
+        click)  [ "$#" -eq 2 ] || die "click needs X Y"; args+=("-c" "$1" "$2") ;;
+        drag)   [ "$#" -eq 4 ] || die "drag needs X0 Y0 X1 Y1"; args+=("-D" "$1" "$2" "$3" "$4") ;;
+        scroll) [ "$#" -eq 4 ] || die "scroll needs X Y DX DY"; args+=("-s" "$1" "$2" "$3" "$4") ;;
+        touch)  [ "$#" -eq 2 ] || die "touch needs X Y"; args+=("-t" "$1" "$2") ;;
+        pencil) [ "$#" -eq 4 ] || die "pencil needs X0 Y0 X1 Y1"; args+=("-p" "$1" "$2" "$3" "$4") ;;
+        key)    [ "$#" -ge 1 ] || die "key needs KEYSYM [MODS]"; args+=("-k" "$@") ;;
+        type)   [ "$#" -ge 1 ] || die "type needs text"; args+=("$@") ;;
+        *) die "unknown input mode: $mode" ;;
+    esac
+
+    local quoted=""
+    local a
+    for a in "${args[@]}"; do
+        quoted+=" $(printf '%q' "$a")"
+    done
+    remote "test -x $test_bin || { echo 'missing $test_bin' >&2; exit 1; }; $test_bin$quoted"
+}
+
+cmd_shot() {
+    local outdir
+    outdir="$(make_outdir "${1:-}")" || exit 1
+    echo "artifact dir: $outdir"
+
+    remote '
+        export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
+        export XDG_RUNTIME_DIR=/var/jb/tmp
+        export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+        rm -f /var/jb/tmp/xios-shot.png /var/jb/tmp/xios-shot.log
+        if command -v grim >/dev/null 2>&1; then
+            grim /var/jb/tmp/xios-shot.png > /var/jb/tmp/xios-shot.log 2>&1 || true
+        elif command -v iosc-screenshot-test >/dev/null 2>&1; then
+            iosc-screenshot-test > /var/jb/tmp/xios-shot.log 2>&1 || true
+        else
+            echo "no grim or iosc-screenshot-test on device" > /var/jb/tmp/xios-shot.log
+        fi
+        ls -l /var/jb/tmp/xios-shot.png /var/jb/tmp/xios-shot.log 2>/dev/null || true
+    '
+
+    copy_remote_if_exists "$TMP_REMOTE/xios-shot.png" "$outdir" "compositor.png"
+    copy_remote_if_exists "$TMP_REMOTE/xios-shot.log" "$outdir" "compositor-shot.log"
+
+    if command -v idevicescreenshot >/dev/null 2>&1 && command -v idevice_id >/dev/null 2>&1; then
+        if [ -n "$(idevice_id -l 2>/dev/null)" ]; then
+            idevicescreenshot "$outdir/device.png" >/dev/null 2>&1 \
+                && echo "copied $outdir/device.png" || true
+        elif [ -n "$(idevice_id -n -l 2>/dev/null)" ]; then
+            idevicescreenshot -n "$outdir/device.png" >/dev/null 2>&1 \
+                && echo "copied $outdir/device.png" || true
+        fi
+    fi
+
+    collect_files "$outdir" >/dev/null
+    echo "done: $outdir"
+}
+
+cmd_collect() {
+    local outdir
+    outdir="$(make_outdir "${1:-}")" || exit 1
+    echo "artifact dir: $outdir"
+    collect_files "$outdir"
+    echo "done: $outdir"
+}
+
+cmd_logs() {
+    local pattern="${1:-}"
+    if [ -n "$pattern" ]; then
+        remote "for f in /var/jb/tmp/iosc.log /var/jb/tmp/gnome-shell.log /var/jb/tmp/kgx.log /var/jb/tmp/mutter.log /var/jb/tmp/xios-touch.log; do [ -r \"\$f\" ] && { echo \"== \$f\"; grep -i -- $(printf '%q' "$pattern") \"\$f\" | tail -n 80; }; done"
+    else
+        remote 'for f in /var/jb/tmp/iosc.log /var/jb/tmp/gnome-shell.log /var/jb/tmp/kgx.log /var/jb/tmp/mutter.log /var/jb/tmp/xios-touch.log; do [ -r "$f" ] && { echo "== $f"; tail -n 80 "$f"; }; done'
+    fi
+}
+
+cmd_exec() {
+    [ "$#" -gt 0 ] || die "exec needs a command"
+    remote "$*"
+}
+
+cmd="${1:-}"
+[ -n "$cmd" ] || { usage; exit 2; }
+shift || true
+
+case "$cmd" in
+    doctor)     cmd_doctor "$@" ;;
+    status)     cmd_status "$@" ;;
+    session)    cmd_session "$@" ;;
+    app)        cmd_app "$@" ;;
+    foreground) cmd_foreground "$@" ;;
+    input)      cmd_input "$@" ;;
+    shot)       cmd_shot "$@" ;;
+    collect)    cmd_collect "$@" ;;
+    logs)       cmd_logs "$@" ;;
+    exec)       cmd_exec "$@" ;;
+    help|-h|--help) usage ;;
+    *) die "unknown command: $cmd" ;;
+esac

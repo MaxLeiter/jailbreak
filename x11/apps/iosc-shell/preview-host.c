@@ -39,7 +39,11 @@ static const int CW = 720, CH = 1080;
 
 static cairo_surface_t *load(const char *dir, const char *name)
 {
-    char p[512]; snprintf(p, sizeof p, "%s/%s.png", dir, name);
+    char p[512];
+    snprintf(p, sizeof p, "%s/%s.svg", dir, name);
+    cairo_surface_t *s = pr_icon_load(p);
+    if (s) return s;
+    snprintf(p, sizeof p, "%s/%s.png", dir, name);
     return pr_icon_load(p);
 }
 

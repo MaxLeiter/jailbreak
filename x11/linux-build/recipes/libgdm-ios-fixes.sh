@@ -125,10 +125,15 @@ if 'libgdm.map' in s:
     s = s[:start] + ('libgdm_link_flags = []'
                      '  # iOS: Apple ld has no version scripts; export everything '
                      '(the on-device gir scan needs the symbols anyway)') + s[end:]
-if 'libgdm_gir = gnome.generate_gir(' in s:
+# iOS: DON'T delete the gir block — GATE it on `not meson.is_cross_build()`. The cross build
+# skips it (Mach-O g-ir-scanner dumper can't run under qemu), but the on-device NATIVE build
+# runs it and produces a COMPLETE Gdm-1.0 typelib (incl. gdm_get_session_ids from gdm-sessions.c,
+# which the header-only fallback scan dropped -> gnome-shell systemActions.js crashed). Idempotent.
+if 'libgdm_gir = gnome.generate_gir(' in s and 'meson.is_cross_build()' not in s:
     start = s.index('libgdm_gir = gnome.generate_gir(')
     end = s.index('\n)\n', start) + len('\n)\n')
-    s = s[:start] + '# iOS: Gdm-1.0 gir/typelib is generated ON-DEVICE (cross g-ir-scanner cannot run Mach-O).\n' + s[end:]
+    block = s[start:end]
+    s = s[:start] + 'if not meson.is_cross_build()\n' + block + 'endif\n' + s[end:]
 open(f, 'w').write(s)
 print('patched libgdm/meson.build')
 PY
@@ -145,5 +150,6 @@ absent "$SRC/common/meson.build" "test_log"
 check  "$SRC/meson.build" "logind_dep = declare_dependency()"
 absent "$SRC/meson.build" "dependency('udev')"
 absent "$SRC/libgdm/meson.build" "version-script,"
-absent "$SRC/libgdm/meson.build" "generate_gir"
+check  "$SRC/libgdm/meson.build" "generate_gir"
+check  "$SRC/libgdm/meson.build" "if not meson.is_cross_build()"
 [ "$fail" = 0 ] && echo "libgdm-ios-fixes: all patches applied + verified" || exit 1

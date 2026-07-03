@@ -116,18 +116,6 @@ static int read_full(int fd, void *buf, size_t n)
     }
     return 0;
 }
-static int write_full(int fd, const void *buf, size_t n)
-{
-    const char *p = buf; size_t put = 0;
-    while (put < n) {
-        ssize_t w = write(fd, p + put, n - put);
-        if (w > 0) { put += (size_t)w; continue; }
-        if (w < 0 && errno == EINTR) continue;
-        return -1;
-    }
-    return 0;
-}
-
 /* Non-blocking send of a whole record (matches xios_surface.c's send_record):
  * 1 = sent, 0 = would-block (drop; DIRTY coalesces), -1 = error/partial. */
 static int send_record(int fd, const void *buf, size_t len)
@@ -221,6 +209,38 @@ static struct canvas_client *client_for_app(const char *app_id)
 }
 
 static int deliver_canvas_port(pid_t pid, mach_port_name_t reply_port, IOSurfaceRef canvas);
+static void drop_client_locked(int i);
+
+static void drop_client_fd_locked(int fd)
+{
+    for (int i = 0; i < s_nclients; i++) {
+        if (s_clients[i].fd == fd) {
+            drop_client_locked(i);
+            return;
+        }
+    }
+}
+
+static int send_buffer_locked(struct canvas_client *c, const void *buf, size_t len)
+{
+    if (!c) return -1;
+    int fd = c->fd;
+    int r = send_record(fd, buf, len);
+    if (r < 0)
+        drop_client_fd_locked(fd);        /* partial stream write: reconnect cleanly */
+    return r;
+}
+
+static int send_msg_locked(struct canvas_client *c, const xios_msg *h,
+                           const void *payload, size_t payload_len)
+{
+    if (payload_len > 255) payload_len = 255;
+    uint8_t buf[sizeof(*h) + 255];
+    memcpy(buf, h, sizeof(*h));
+    if (payload_len)
+        memcpy(buf + sizeof(*h), payload, payload_len);
+    return send_buffer_locked(c, buf, sizeof(*h) + payload_len);
+}
 
 /* Queue every live window for this app_id for (re)delivery — a host binding for
  * the first time, or rebinding after a jetsam kill, gets WINDOW_NEW + the live
@@ -400,7 +420,7 @@ void xios_canvas_notify_dirty(uint32_t window_id, int x, int y, int w, int h)
         memset(&rec, 0, sizeof(rec));
         rec.magic = XIOS_MSG_MAGIC; rec.type = XIOS_MSG_DIRTY; rec.window_id = window_id;
         rec.a = x; rec.b = y; rec.c = w; rec.d = h;
-        (void)send_record(c->fd, &rec, sizeof(rec));   /* drop-on-backpressure */
+        (void)send_msg_locked(c, &rec, NULL, 0);   /* drop-on-backpressure */
     }
     pthread_mutex_unlock(&s_lock);
 }
@@ -414,14 +434,13 @@ void xios_canvas_title(uint32_t window_id, const char *title)
     if (!e->announced) { pthread_mutex_unlock(&s_lock); return; }
     struct canvas_client *c = client_for_app(e->app_id);
     if (c) {
-        size_t tlen = title ? strlen(title) : 0;
-        if (tlen > 255) tlen = 255;
         xios_msg h;
         memset(&h, 0, sizeof(h));
         h.magic = XIOS_MSG_MAGIC; h.type = XIOS_MSG_WINDOW_TITLE; h.window_id = window_id;
+        size_t tlen = title ? strlen(title) : 0;
+        if (tlen > 255) tlen = 255;
         h.length = (uint32_t)tlen;
-        if (write_full(c->fd, &h, sizeof(h)) == 0 && tlen)
-            (void)write_full(c->fd, title, tlen);
+        (void)send_msg_locked(c, &h, title, tlen);
     }
     pthread_mutex_unlock(&s_lock);
 }
@@ -440,7 +459,8 @@ void xios_canvas_gone(uint32_t window_id)
             xios_msg h;
             memset(&h, 0, sizeof(h));
             h.magic = XIOS_MSG_MAGIC; h.type = XIOS_MSG_WINDOW_GONE; h.window_id = window_id;
-            (void)write_full(c->fd, &h, sizeof(h));
+            if (send_msg_locked(c, &h, NULL, 0) == 0)
+                drop_client_fd_locked(c->fd);      /* avoid orphaning a host that is not reading */
         }
         if (e->surface) CFRelease(e->surface);
         memset(e, 0, sizeof(*e));   /* frees the slot (window_id back to 0) */
@@ -572,14 +592,16 @@ static int client_readable_locked(int idx)
         memcpy(&m, c->inbuf, sizeof(m));
         c->infill = 0;
         if (m.magic != XIOS_MSG_MAGIC) return -1;           /* desync => drop */
+        int fd = c->fd;
         /* Dispatch outside the lock: a handler may call xios_canvas_* back. */
         pthread_mutex_unlock(&s_lock);
         int bad = dispatch_control(&m);
         pthread_mutex_lock(&s_lock);
         if (bad < 0) return -1;
-        /* s_clients may have been reshuffled by a concurrent drop; re-find by fd
-         * is unnecessary here because only THIS thread mutates the array, and we
-         * re-read c below via idx which is still valid (no drop happened yet). */
+        idx = -1;
+        for (int i = 0; i < s_nclients; i++)
+            if (s_clients[i].fd == fd) { idx = i; break; }
+        if (idx < 0) return 0;            /* host was already dropped */
         c = &s_clients[idx];
     }
     return 0;
@@ -623,8 +645,11 @@ static void process_pending_deliveries(void)
         size_t tlen = (kind == CANVAS_DELIVER_NEW) ? strlen(e->title) : 0;
         if (tlen > 255) tlen = 255;
         rec.length = (uint32_t)tlen;
-        int wrote = (write_full(fd, &rec, sizeof(rec)) == 0) &&
-                    (tlen == 0 || write_full(fd, e->title, tlen) == 0);
+        uint8_t out[sizeof(rec) + 255];
+        memcpy(out, &rec, sizeof(rec));
+        if (tlen)
+            memcpy(out + sizeof(rec), e->title, tlen);
+        int wrote = send_record(fd, out, sizeof(rec) + tlen) == 1;
         IOSurfaceRef surf = e->surface;
         CFRetain(surf);                   /* hold across the unlocked mach hand-off */
         pthread_mutex_unlock(&s_lock);
@@ -636,6 +661,8 @@ static void process_pending_deliveries(void)
         e = window_find(window_id);       /* may have been torn down meanwhile */
         if (e && kind == CANVAS_DELIVER_NEW)
             e->announced = (wrote && dr == 0);
+        if (!wrote)
+            drop_client_fd_locked(fd);    /* partial/error/backpressure: host can re-BIND */
         pthread_mutex_unlock(&s_lock);
 
         if (!wrote || dr != 0)

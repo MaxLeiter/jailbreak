@@ -9,8 +9,11 @@ endif
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)
-KWIN_IOS_COMPAT_DEFS := $(shell grep -q '^#define QT_FEATURE_opengl -1' "$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/usr/include/QtGui/qtgui-config.h" 2>/dev/null && printf ' -DKWIN_IOS_QT_NO_OPENGL=1')
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios1
+# First-light keeps KWin's effects/QuickView GL paths disabled even when the
+# staged QtGui is ANGLE-capable: Qt's iOS OpenGLES headers and libepoxy's gl*
+# macro layer collide in KWin core. The private QPA plugin is still built.
+KWIN_IOS_COMPAT_DEFS := -DKWIN_IOS_QT_NO_OPENGL=1
 
 kwin-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kwin))
@@ -39,8 +42,8 @@ kwin: kwin-setup
 	cd $(BUILD_WORK)/kwin/build && cmake .. \
 		-G Ninja \
 		$(KF6_CMAKE_FLAGS) \
-		-DCMAKE_CXX_FLAGS="$(CXXFLAGS)$(KWIN_IOS_COMPAT_DEFS) -include $(QT6_IOSEXEC_FIXUP_H) -include $(BUILD_WORK)/kwin/src/kwin-ios-compat.h" \
-		-DCMAKE_OBJCXX_FLAGS="$(CXXFLAGS)$(KWIN_IOS_COMPAT_DEFS) -include $(QT6_IOSEXEC_FIXUP_H) -include $(BUILD_WORK)/kwin/src/kwin-ios-compat.h" \
+		-DCMAKE_CXX_FLAGS="$(CXXFLAGS) $(KWIN_IOS_COMPAT_DEFS) -include $(QT6_IOSEXEC_FIXUP_H) -include $(BUILD_WORK)/kwin/src/kwin-ios-compat.h" \
+		-DCMAKE_OBJCXX_FLAGS="$(CXXFLAGS) $(KWIN_IOS_COMPAT_DEFS) -include $(QT6_IOSEXEC_FIXUP_H) -include $(BUILD_WORK)/kwin/src/kwin-ios-compat.h" \
 		-DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -lepoll-shim" \
 		-DCMAKE_MODULE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -lepoll-shim" \
 		-DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -lepoll-shim" \
@@ -65,6 +68,10 @@ endif
 kwin-package: kwin-stage
 	rm -rf $(BUILD_DIST)/kwin $(BUILD_DIST)/kwin-dev
 	$(call KF6_COPY_RUNTIME,kwin,kwin)
+	if [ -e "$(BUILD_STAGE)/kwin/Applications" ]; then \
+		mkdir -p $(BUILD_DIST)/kwin$(MEMO_PREFIX)/Applications; \
+		cp -a $(BUILD_STAGE)/kwin/Applications/. $(BUILD_DIST)/kwin$(MEMO_PREFIX)/Applications/; \
+	fi
 	$(call KF6_COPY_DEV,kwin,kwin)
 	# kwin_wayland is the compositor side of the ANGLE/IOSurface path. It needs the
 	# iosc GL/platform entitlement set and must not merge general.xml/no-container.

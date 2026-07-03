@@ -5,8 +5,8 @@
  * All the iOS-private bits go through dlopen so we need no private headers and
  * every probe degrades cleanly (battery hides, device name falls back):
  *   - battery:     IOKit IOPSCopyPowerSourcesInfo / ...List / ...Description
- *   - Wi-Fi:       SystemConfiguration SCNetworkReachability (glyph hides
- *                  when there is no non-cellular connectivity)
+ *   - network:     SystemConfiguration SCNetworkReachability. Wi-Fi renders
+ *                  arcs; cellular renders signal bars; no route hides it.
  *   - device name: libMobileGestalt MGCopyAnswer("UserAssignedDeviceName")
  *                  (same pattern as wayland/xios-session-identity.c)
  *
@@ -19,6 +19,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+enum st_network_kind {
+    ST_NET_NONE = 0,
+    ST_NET_WIFI = 1,
+    ST_NET_CELLULAR = 2,
+};
 
 #ifdef __APPLE__
 #include <dlfcn.h>
@@ -78,7 +84,7 @@ static int st_battery(int *pct, int *charging)
  * iPad); 0 when Wi-Fi is off / airplane mode / no network (caller hides the
  * glyph). SystemConfiguration via dlopen, same degrade-by-hiding pattern as
  * st_battery. */
-static int st_wifi(void)
+static enum st_network_kind st_network(void)
 {
     typedef CFTypeRef (*reach_create_fn)(CFAllocatorRef, const struct sockaddr *);
     typedef Boolean   (*reach_flags_fn)(CFTypeRef, uint32_t *);
@@ -88,25 +94,31 @@ static int st_wifi(void)
     if (!sc) {
         sc = dlopen("/System/Library/Frameworks/SystemConfiguration.framework/"
                     "SystemConfiguration", RTLD_LAZY | RTLD_GLOBAL);
-        if (!sc) return 0;
+        if (!sc) return ST_NET_NONE;
         reach_create = (reach_create_fn)dlsym(sc, "SCNetworkReachabilityCreateWithAddress");
         reach_flags  = (reach_flags_fn)dlsym(sc, "SCNetworkReachabilityGetFlags");
     }
-    if (!reach_create || !reach_flags) return 0;
+    if (!reach_create || !reach_flags) return ST_NET_NONE;
 
     struct sockaddr_in zero;
     memset(&zero, 0, sizeof zero);
     zero.sin_len = sizeof zero;
     zero.sin_family = AF_INET;
     CFTypeRef ref = reach_create(NULL, (const struct sockaddr *)&zero);
-    if (!ref) return 0;
+    if (!ref) return ST_NET_NONE;
     uint32_t fl = 0;
     Boolean ok = reach_flags(ref, &fl);
     CFRelease(ref);
-    if (!ok) return 0;
+    if (!ok) return ST_NET_NONE;
     /* kSCNetworkReachabilityFlags: Reachable = 1<<1,
      * ConnectionRequired = 1<<2, IsWWAN = 1<<18 (stable ABI constants). */
-    return (fl & (1u << 1)) && !(fl & (1u << 2)) && !(fl & (1u << 18));
+    if (!(fl & (1u << 1)) || (fl & (1u << 2))) return ST_NET_NONE;
+    return (fl & (1u << 18)) ? ST_NET_CELLULAR : ST_NET_WIFI;
+}
+
+static int st_wifi(void)
+{
+    return st_network() == ST_NET_WIFI;
 }
 
 /* ---------------------------------------------------------- device name --- */
@@ -135,6 +147,7 @@ static void st_device_name(char *out, size_t n, const char *fallback)
 
 #else  /* !__APPLE__ — host-side compile safety only; clients are iOS-only */
 static int st_battery(int *pct, int *charging){ (void)pct;(void)charging; return 0; }
+static enum st_network_kind st_network(void){ return ST_NET_NONE; }
 static int st_wifi(void){ return 0; }
 static void st_device_name(char *out, size_t n, const char *fallback)
 { snprintf(out, n, "%s", fallback); }

@@ -48,7 +48,7 @@ which process owns the UIWindowScenes.
 The `IOSCLaunch` stub stops being a dumb "send LAUNCH and show a splash" app.
 It becomes a small UIKit app that:
 
-1. sends `LAUNCH` to ioscd (unchanged),
+1. sends `LAUNCH_NATIVE` to ioscd,
 2. binds to iosc's native-mode socket with its `IOSCAppID`,
 3. receives the per-window canvas IOSurface for the toplevel(s) that app maps,
 4. Metal-presents it in its own window and forwards its own input.
@@ -89,9 +89,16 @@ one identity" behavior is exactly right.
 
 ### 2.1 iosc native mode
 
-Native mode (selected at runtime by ioscd, `IOSC_NATIVE=1`, or `iosc -native`)
-changes presentation only. Wayland-facing behavior (protocols, input delivery,
-clipboard) is untouched, and the same binary can still run classic mode.
+Native mode is selected per launch at runtime by ioscd (`LAUNCH_NATIVE`), with
+`iosc -native`/`IOSC_NATIVE=1` kept as low-level compositor switches. This is
+not a build-time choice: classic and native sessions can run on the same device.
+Native launches use a separate namespace (`wayland-native-0`,
+`iosc-native-input.sock`, `xios-native.json`) while classic launchers keep
+`wayland-0`, `iosc-input.sock`, and `xios.json`.
+
+Native mode changes presentation only. Wayland-facing behavior (protocols,
+input delivery, clipboard) is untouched, and the same binary can still run
+classic mode.
 
 - No shared fullscreen output surface. On xdg_toplevel map, iosc allocates a
   canvas IOSurface at the window's configured size (same
@@ -165,8 +172,9 @@ LaunchDaemon, install scripts).
    `com.max.iosc.org.gnome.Console`.
 2. The host app starts foreground, connects `iosc-native.sock`, sends
    `BIND org.gnome.Console` with its scene size, and sends
-   `LAUNCH\torg.gnome.Console\t<exec>` to `ioscd.sock` (protocol unchanged).
-3. ioscd ensures iosc is running (now with `IOSC_NATIVE=1`) and spawns the
+   `LAUNCH_NATIVE\torg.gnome.Console\t<exec>` to `ioscd.sock`.
+3. ioscd ensures the native compositor namespace is running (`wayland-native-0`,
+   `iosc-native-input.sock`, `xios-native.json`) and spawns the
    client exactly as today. The `uiopen com.max.xios` step is DROPPED in
    native mode: the tapped host is already the foreground display.
 4. Client maps its toplevel. iosc sizes the initial configure from the bind's
@@ -180,9 +188,11 @@ LaunchDaemon, install scripts).
    relaunches the host, `BIND` re-attaches, iosc re-delivers ports for the
    app's live windows. The Linux process never noticed.
 
-ioscd changes are small: a native-mode flag, skip `foreground_xios()`, and
-keep the existing spawn env. Everything the launch env does today (private
-XDG_RUNTIME_DIR, dbus-run-session, GSK renderer selection) carries over.
+ioscd changes are small: explicit launch mode selection, skip
+`foreground_xios()` for native, and keep the existing spawn env. Everything the
+launch env does today (private XDG_RUNTIME_DIR, dbus-run-session, GSK renderer
+selection) carries over. The old/default launch path remains classic, and
+explicit `LAUNCH_CLASSIC` is also supported.
 
 ## 4. Input routing
 
@@ -281,7 +291,7 @@ What does carry over:
    just the catalog floor; no DE stack to install, so it is the lightest
    flavor and likely the default suggestion on non-M1 hardware).
 
-## 7b. Implementation scoping against current iosc (2026-07-01 recon)
+## 7b. Implementation scoping against current iosc (2026-07-01 recon, updated 2026-07-03)
 
 Re-verified against the real tree so the compositor work is anchored to exact
 functions, not the sketch above. Findings that change the estimate downward:
@@ -303,7 +313,8 @@ functions, not the sketch above. Findings that change the estimate downward:
   `mach_msg`, but the surface is a per-window canvas and the destination port
   comes from BIND's `d` field (the receive-port name) instead of a per-connection
   hello. iosc still `task_for_pid`s the host (BIND carries its pid via socket
-  peer creds, same as today's hello).
+  peer creds, same as today's hello). The blocking Mach hand-off now happens on
+  the native reader/delivery path, not the compositor's Wayland event-loop.
 
 ### The concrete changes, by file
 
@@ -312,10 +323,11 @@ functions, not the sketch above. Findings that change the estimate downward:
    toplevel's configured size via the exact align path `xios_surface_create`
    uses. New `iosc-native.sock` listener with the BIND handshake (app_id +
    reply-port name) alongside the existing ddx socket (byte-identical for other
-   flavors). `deliver_canvas_port` as above. `xios_notify_dirty` gains a
+   flavors). `deliver_canvas_port` as above. The native socket is restricted to
+   root/mobile style permissions, not world-writable. `xios_notify_dirty` gains a
    window-scoped variant that stamps the canvas's `window_id`. This is a new
-   translation unit (`xios_canvas.c`) that does NOT touch the frozen iosc.c, so
-   it can be written and compile-checked in parallel with the module refactor.
+   translation unit (`xios_canvas.c`) so most native rendezvous behavior stays
+   out of the compositor monolith.
 
 2. **`iosc.c` — per-window compositing (implemented).**
    - `surface_map`: on a TOPLEVEL map in native mode, allocate its
@@ -340,13 +352,14 @@ functions, not the sketch above. Findings that change the estimate downward:
    (iosc-protocols owns it) + honored in iosc's input reader. The host already
    sends it (IoscInput.c). Additive record type, like TOUCH=6 / TABLET=7.
 
-5. **ioscd native mode** — DONE (native flag, skip `foreground_xios`,
+5. **ioscd native mode** — DONE (explicit `LAUNCH_NATIVE`/`LAUNCH_CLASSIC`,
+   separate native socket/Wayland/config namespace, skip `foreground_xios`,
    gen-launchers `--native`).
 
-### Build -> demo path
+### Build -> demo path / validation status
 
 1. `xios_canvas.c`: N-canvas registry + `iosc-native.sock`
-   BIND server + `deliver_canvas_port`.
+   BIND server + async `deliver_canvas_port`.
 2. `iosc_gl_bind_target` split.
 3. iosc.c native-mode `recomposite`/`surface_map` wiring.
 4. `XIOS_IN_BIND=8` into the shared header + iosc reader.
@@ -357,8 +370,9 @@ functions, not the sketch above. Findings that change the estimate downward:
 
 ### Blockers
 
-- **Device validation:** needs a real-device pass for app launch, scene resize,
-  input focus/text, close, and host relaunch replay.
+- **Remaining validation:** basic native launch has been reported working, but
+  keep a checklist pass for scene resize, per-window touch transform, keyboard
+  hint replay, close, coexistence with classic Xios, and host relaunch replay.
 
 ## 8. Open questions for Max
 

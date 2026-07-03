@@ -91,19 +91,23 @@ meta_stage_ios_finish_frame (ClutterStageWindow *stage_window,
                              ClutterStageView   *stage_view,
                              ClutterFrame       *frame)
 {
-  /* The present already happened in the redraw path's onscreen swap (MetaOnscreenIOS::
-   * swap_buffers_with_damage = finish + xios_notify_dirty). We do NOT re-present here. The
-   * onscreen has no SYNC_AND_COMPLETE_EVENT winsys feature, so the base cogl_onscreen swap
-   * QUEUES SYNC + COMPLETE frame events that dispatch on the next main-loop idle and drive the
-   * stage view's frame callback -> clutter_stage_view_notify_presented. So a presentation
-   * notification IS coming for this frame — settle the result PENDING_PRESENTED (NOT IDLE). The
-   * frame clock's state machine only accepts notify_presented in state PENDING_PRESENTED (or
-   * DISPATCHING); with IDLE it hit clutter-frame-clock.c:414 g_warn_if_reached every frame and
-   * never advanced. This mirrors the native/x11 backends, which set PENDING_PRESENTED when a
-   * present callback will follow. The COMPLETE event then transitions the clock IDLE +
-   * reschedules. (A swap always precedes finish_frame, so a COMPLETE always follows — no hang.) */
+  /* If this frame actually painted, the redraw path's onscreen swap (MetaOnscreenIOS::
+   * swap_buffers_with_damage) already set the result to PENDING_PRESENTED and a COMPLETE frame
+   * event is on its way to drive clutter_stage_view_notify_presented. If the frame had NO redraw
+   * clip, redraw_view (and therefore the swap) never ran, so there is NO result yet and NO
+   * presentation notification will come. Settle those as IDLE so the ClutterFrameClock re-arms
+   * immediately instead of hanging in PENDING_PRESENTED forever.
+   *
+   * This was THE input-delivery bug: previously finish_frame unconditionally forced
+   * PENDING_PRESENTED, so any input-only frame (pointer events don't dirty the stage, so the
+   * frame carries no redraw clip -> no swap -> no COMPLETE) left the clock stuck. With the clock
+   * stalled, handle_frame_clock_before_frame -> _clutter_stage_process_queued_events never ran
+   * again, so queued MOTION/BUTTON events were never delivered to actors (hover + clicks dead)
+   * even though pointer motion still injected and crossings — emitted synchronously in
+   * clutter_stage_handle_event — kept updating the actor-under-cursor. Mirrors
+   * meta_stage_native_finish_frame's `if (!has_result) set IDLE`. */
   if (!clutter_frame_has_result (frame))
-    clutter_frame_set_result (frame, CLUTTER_FRAME_RESULT_PENDING_PRESENTED);
+    clutter_frame_set_result (frame, CLUTTER_FRAME_RESULT_IDLE);
 }
 
 static void

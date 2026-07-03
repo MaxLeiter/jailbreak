@@ -43,6 +43,15 @@ if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
 fi
 
+# The gnome-shell / kwin SIGN steps ldid against build_misc/entitlements/iosc-gl-ent.xml
+# (GPU IOKit union for MetaBackendIOS/KWin-on-ANGLE). The volume only ships the stock
+# Procursus entitlements, so a clean-volume build fails packaging at ldid (errno=2) until
+# this custom ent is staged. It lives in our build_info/; copy it into place. Idempotent.
+if [ -f build_info/iosc-gl-ent.xml ]; then
+  mkdir -p build_misc/entitlements
+  cp -v build_info/iosc-gl-ent.xml build_misc/entitlements/iosc-gl-ent.xml
+fi
+
 # Same clang wrapper build-gtk.sh/build-gnome.sh use (meson sizeof probes vs the Procursus
 # wrapper's -Wl,-adhoc_codesign + -Werror=unused-command-line-argument).
 echo "==> installing -Wno-unused-command-line-argument clang wrappers"

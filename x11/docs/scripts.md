@@ -95,11 +95,19 @@ end-to-end):
 
 ### Notes
 
-- The publish-time `finalize_x11_graphics_debs` step in `bin/publish-dev-repo.sh`
-  references `X11/linux-build/resign-graphics-packages.py`, which does **not exist**
-  in the tree — so that step is currently inert (its `[ -x "$signer" ] || return 0`
-  guard returns early). It is not a live signing path. The `X11/` (vs `x11/`) case
-  in that reference is also a latent non-macOS portability trap.
+- The publish-time `finalize_x11_graphics_debs` step in `bin/publish-repo.sh` /
+  `bin/publish-dev-repo.sh` DER-re-signs the graphics debs in `repo/debs` via
+  `x11/linux-build/resign-graphics-packages.py` before the index is generated.
+  The script self-classifies each Mach-O by its current entitlements (GPU/IOSurface
+  IOKit markers gate it in; `platform-application`/`task_for_pid` split compositor
+  vs client) and re-signs with `iosc-gl-ent.xml` / `iosc-gpu-client-ent.xml`
+  accordingly, mirroring the per-recipe `$(call SIGN,...)` policy. It is
+  idempotent: `ldid -S` reproduces byte-identical output for an already-correct
+  binary, so on a clean repo it re-signs to identical bytes and repacks nothing
+  (zero churn); it only unpacks/repacks a .deb (host `ar`+`tar`, no dpkg-deb) when
+  a signature was actually degraded. The `[ -x "$signer" ]` guard means it stays a
+  no-op if the script is ever removed. (The `X11/` vs `x11/` case trap in the
+  earlier reference has been fixed.)
 - To extend unification into the container, add `x11/lib` to the relevant
   `docker run -v` mounts, then the in-container scripts can source `xlib.sh` too.
 

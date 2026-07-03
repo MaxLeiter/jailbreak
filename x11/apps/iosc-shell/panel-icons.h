@@ -1,18 +1,18 @@
 /*
- * panel-icons.h — resolve a .desktop Icon= name to a PNG file on disk.
+ * panel-icons.h — resolve a .desktop Icon= name to an image file on disk.
  *
- * There is no librsvg / gdk-pixbuf SVG loader on device, so we never rasterise
- * SVG at runtime. Instead the build pre-rasterises each app's hicolor/scalable
- * SVG into a shipped PNG set (see gen-shell-icons.sh), and here we resolve to a
- * PNG only, in this order:
+ * Runtime loading goes through GdkPixbuf. PNGs remain the fast path, but when
+ * librsvg2-common is installed the same loader path also handles SVG theme
+ * icons. Resolution order:
  *
  *   1. shipped set   $IOSC_SHELL_ICONS or <jbroot>/usr/share/iosc-shell/icons
- *                    (<name>.png, or <name>@2x.png / @3x.png for hidpi)
+ *                    (<name>.svg preferred, then PNG/@2x/@3x fallbacks)
  *   2. hicolor PNGs  <root>/icons/hicolor/<size>/apps/<name>.png (largest first)
- *   3. flat pixmaps  <root>/pixmaps/<name>.png
+ *   3. hicolor SVGs  <root>/icons/hicolor/scalable/apps/<name>.svg
+ *   4. flat pixmaps  <root>/pixmaps/<name>.png or .svg
  *
  * Returns 1 and fills out[] with a path on success, else 0 (caller draws a
- * monogram tile). cairo's built-in PNG reader loads the result — no extra deps.
+ * monogram tile).
  */
 #ifndef PANEL_ICONS_H
 #define PANEL_ICONS_H
@@ -28,10 +28,19 @@ static const char *PI_HICOLOR_SIZES[] = {
 
 static int pi_is_file(const char *p) { return access(p, R_OK) == 0; }
 
+static int pi_try(char *out, size_t outsz, const char *fmt,
+                  const char *a, const char *b, const char *c)
+{
+    snprintf(out, outsz, fmt, a, b, c);
+    return pi_is_file(out);
+}
+
 /* Pick the best shipped variant for the current scale (@3x >= 3, @2x >= 2). */
 static int pi_shipped(const char *assets, const char *name, int scale,
                       char *out, size_t outsz)
 {
+    snprintf(out, outsz, "%s/%s.svg", assets, name);
+    if (pi_is_file(out)) return 1;
     if (scale >= 3) {
         snprintf(out, outsz, "%s/%s@3x.png", assets, name);
         if (pi_is_file(out)) return 1;
@@ -51,7 +60,7 @@ static int pi_resolve(const char *name, int scale, char *out, size_t outsz)
 {
     if (!name || !*name) return 0;
 
-    /* absolute path in the .desktop (Icon=/path/to/foo.png) */
+    /* absolute path in the .desktop (Icon=/path/to/foo.svg or .png) */
     if (name[0] == '/') {
         if (pi_is_file(name)) { snprintf(out, outsz, "%s", name); return 1; }
         return 0;
@@ -82,12 +91,13 @@ static int pi_resolve(const char *name, int scale, char *out, size_t outsz)
     sd_join_path(share_roots[1], sizeof share_roots[1], sd_jbroot(), "/usr/local/share");
     for (size_t r = 0; r < sizeof(share_roots)/sizeof(share_roots[0]); r++) {
         for (size_t s = 0; s < sizeof(PI_HICOLOR_SIZES)/sizeof(PI_HICOLOR_SIZES[0]); s++) {
-            snprintf(out, outsz, "%s/icons/hicolor/%s/apps/%s.png",
-                     share_roots[r], PI_HICOLOR_SIZES[s], base);
-            if (pi_is_file(out)) return 1;
+            if (pi_try(out, outsz, "%s/icons/hicolor/%s/apps/%s.png",
+                       share_roots[r], PI_HICOLOR_SIZES[s], base)) return 1;
         }
-        snprintf(out, outsz, "%s/pixmaps/%s.png", share_roots[r], base);
-        if (pi_is_file(out)) return 1;
+        if (pi_try(out, outsz, "%s/icons/hicolor/%s/apps/%s.svg",
+                   share_roots[r], "scalable", base)) return 1;
+        if (pi_try(out, outsz, "%s/pixmaps/%s.%s", share_roots[r], base, "png")) return 1;
+        if (pi_try(out, outsz, "%s/pixmaps/%s.%s", share_roots[r], base, "svg")) return 1;
     }
     return 0;
 }

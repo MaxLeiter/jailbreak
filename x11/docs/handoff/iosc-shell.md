@@ -22,6 +22,7 @@ The shell that runs on the iosc compositor: the slim status bar, floating dock, 
   - `ioscdock`: bottom-anchored floating dock (favorites, running-window icons/dots, apps button).
   `build-panel.sh` cross-builds/signs `out/ioscbar`, `out/ioscdock`, `out/ioscoverview`, `out/ioscbg`; `run-shell.sh` requires bar+dock.
 - Off-device previews regenerated from the real layout (`build-preview.sh`): `preview-desktop.png`, `preview-quicksettings.png`, `preview-compact.png` now show the split status bar + dock composition. Real iOS cross-build passed on 2026-07-01.
+- Local dirty tree also adds a small focused-app window menu from the app-name hit target (`Minimize`, `Maximize`, `Close`) backed by foreign-toplevel requests. Treat it as in-progress until built/deployed with the rest of 0.9.7.
 
 ## The tablet-DE vision (docs/iosc-shell.md §0) — a mobile×desktop hybrid, not a shrunk GNOME
 Four surfaces, each one job:
@@ -36,6 +37,7 @@ Plus a window model (fullscreen→split→float, Stage-Manager style) and a gest
    - `ioscbar` maps at top, opens Control Center from the status cluster.
    - `ioscdock` maps at bottom, apps button opens overview.
    - running-window icons activate via foreign-toplevel.
+   - focused-app window menu opens from the app name and its minimize/maximize/close actions hit the right window.
    - launchers still fire (`sd_launch`: fork → dbus-run-session → sh -lc <Exec>).
 2. **Package/deploy 0.9.7** after on-device smoke: `package-shell.sh` is updated for the split binaries and deb version 0.9.7, but the deb was not assembled in this pickup.
 3. **Launcher-action verify**: taps resolve (`hit_at`→launcher idx) but confirm the launch actually fires with a real app/window. If it resolves but doesn't launch, chase the exec env / launched app stderr.

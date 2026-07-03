@@ -17,6 +17,7 @@
 #include "backends/ios/meta-onscreen-ios.h"
 
 #include "backends/ios/xios-glue-stub.h"
+#include "clutter/clutter.h"
 #include "cogl/cogl.h"
 /* CoglFramebufferDriverConfig + COGL_FRAMEBUFFER_DRIVER_TYPE_BACK come in via cogl/cogl.h's
  * cogl-mutter.h chain, exactly as in meta-onscreen-native.c (which constructs the same
@@ -55,6 +56,20 @@ meta_onscreen_ios_swap_buffers_with_damage (CoglOnscreen  *onscreen,
    * re-present it. Do NOT call eglSwapBuffers on a pbuffer. */
   cogl_framebuffer_finish (COGL_FRAMEBUFFER (onscreen));
   xios_notify_dirty ();
+
+  /* A swap DID happen for this frame, so a presentation notification is coming: the public
+   * cogl_onscreen_swap_buffers_with_damage() wrapper that invoked us auto-queues SYNC + COMPLETE
+   * frame events (no winsys has the SYNC_AND_COMPLETE_EVENT feature), which dispatch on the next
+   * cogl idle -> MetaStageView::frame_cb -> clutter_stage_view_notify_presented. Mark the frame
+   * PENDING_PRESENTED so the ClutterFrameClock waits for that COMPLETE and then re-arms. user_data
+   * is the ClutterFrame (MetaStageImpl::swap_framebuffer passes `frame` as the swap user_data),
+   * exactly as meta_onscreen_native_swap_buffers_with_damage sets its result. WITHOUT this the
+   * result was set unconditionally in finish_frame, which stalled the clock on any no-redraw-clip
+   * frame (input alone doesn't dirty the stage -> no swap -> no COMPLETE -> PENDING_PRESENTED
+   * forever). See meta-stage-ios.c finish_frame for the IDLE (no-swap) half. */
+  if (user_data)
+    clutter_frame_set_result ((ClutterFrame *) user_data,
+                              CLUTTER_FRAME_RESULT_PENDING_PRESENTED);
 }
 
 MetaOnscreenIOS *

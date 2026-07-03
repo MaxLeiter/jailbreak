@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 #
-# gen-shell-icons.sh — pre-rasterize app icons for the iosc panel.
+# gen-shell-icons.sh — collect app icons for the iosc panel.
 #
-# There is no librsvg on device, so the shell clients can't render the SVG icons that
-# GNOME apps ship (hicolor/scalable/apps/*.svg). This script rasterises each
-# installed app's icon to a PNG the panel loads with cairo's built-in PNG reader
-# (panel-icons.h resolves Icon= -> <IconName>.png in the shipped set).
+# The shell loads icons through GdkPixbuf. SVG is preferred when available
+# (via librsvg2-common); PNG remains supported for apps that only ship rasters.
 #
 # It reads the app .deb files in linux-build/out, resolves each .desktop's Icon=
-# to its best source image (largest raster, or scalable SVG), and writes
-#   out/icons/<IconName>.png   at MASTER px (downscaled crisply at draw time).
+# to its best source image, and writes
+#   out/icons/<IconName>.svg   when a vector source exists, else
+#   out/icons/<IconName>.png   for raster-only apps.
 #
-# Host tools: ar, tar, zstd, rsvg-convert (brew install librsvg).
 # Deploy rootless: scp -r out/icons/* root@ipad:/var/jb/usr/share/iosc-shell/icons/
 # Deploy rootful:  scp -r out/icons/* root@ipad:/usr/share/iosc-shell/icons/
 set -euo pipefail
@@ -20,9 +18,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 DEBS="${DEBS:-$REPO/linux-build/out}"
 OUT="${1:-$HERE/out/icons}"
-MASTER="${MASTER:-256}"       # master raster size (px); draw-time downscale is crisp
-
-command -v rsvg-convert >/dev/null || { echo "need rsvg-convert (brew install librsvg)" >&2; exit 1; }
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 MERGE="$TMP/merge"; mkdir -p "$MERGE"
@@ -83,11 +78,9 @@ for desktop in "$APPS"/*.desktop; do
   [ -n "$icon" ] || continue
   src="$(resolve "$icon")" || true
   [ -n "${src:-}" ] || { echo "  -- $icon: no source"; continue; }
-  dst="$OUT/${icon}.png"
   case "$src" in
-    *.svg) rsvg-convert -w "$MASTER" -h "$MASTER" -o "$dst" "$src" 2>/dev/null && { echo "  OK $icon (svg)"; n=$((n+1)); } ;;
-    *.png) sips -Z "$MASTER" "$src" --out "$dst" >/dev/null 2>&1 && { echo "  OK $icon (png)"; n=$((n+1)); } \
-             || { cp "$src" "$dst"; echo "  OK $icon (png copy)"; n=$((n+1)); } ;;
+    *.svg) cp "$src" "$OUT/${icon}.svg" && { echo "  OK $icon (svg)"; n=$((n+1)); } ;;
+    *.png) cp "$src" "$OUT/${icon}.png" && { echo "  OK $icon (png)"; n=$((n+1)); } ;;
     *)     echo "  -- $icon: unsupported $src" ;;
   esac
 done

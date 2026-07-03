@@ -50,6 +50,10 @@ cat > "$ENT" <<'PLIST'
     <key>platform-application</key><true/>
     <key>com.apple.private.amfi.can-allow-non-platform</key><true/>
     <key>com.apple.private.skip-library-validation</key><true/>
+    <!-- gnome-shell runs gjs = mozjs-115 with the JIT. Executing JIT-generated (unsigned)
+         code needs dynamic-codesigning, or AMFI CS_KILLs the process (SIGKILL, no crash
+         report) the moment mozjs tiers a hot function up to baseline/Ion (~3s into boot). -->
+    <key>dynamic-codesigning</key><true/>
     <key>task_for_pid-allow</key><true/>
     <key>com.apple.system-task-ports</key><true/>
     <key>com.apple.security.iokit-user-client-class</key>
@@ -94,7 +98,39 @@ echo "==> ensure GSettings schemas compiled"
 #         via gnome-session) for the lowest-variable first light; switch to launch-gnome-session.sh
 #         once it paints.
 echo "==> start the session stubs + gnome-shell --wayland -> $TMP/gnome-shell.log"
-nohup env \
+# Fully detach into a new session: gnome-shell is a GRANDCHILD (dbus-run-session -> sh -> gnome-shell)
+# and nohup only shields the direct command — when this launcher's ssh session closes, SIGHUP reaches
+# the grandchild and kills the shell ~16s after launch. The device has no `setsid`, so use a tiny
+# python fork+setsid shim: it puts the whole tree in its own session with no controlling terminal,
+# surviving the launcher/ssh exit. (Confirmed: attached/foreground runs live indefinitely; only the
+# ssh-detach was killing it.)
+SETSID="$(command -v setsid || true)"
+if [ -z "$SETSID" ]; then
+  SETSID="$TMP/xsetsid"
+  cat > "$SETSID" <<'PYEOF'
+#!/var/jb/usr/bin/python3
+import os, sys
+try:
+    os.setsid()
+except OSError:
+    if os.fork() > 0:
+        os._exit(0)
+    os.setsid()
+os.execvp(sys.argv[1], sys.argv[1:])
+PYEOF
+  chmod +x "$SETSID"
+fi
+
+# Timezone: glib/GNOME default to UTC unless the local zone is discoverable. iOS keeps the real
+# zone at /var/db/timezone/localtime but doesn't expose a glib-readable /etc/localtime + zoneinfo
+# dir. Wire glib's zoneinfo dir to iOS's tz database and derive TZ from the device's own zone, so
+# the panel clock shows LOCAL time (this "unixy" wiring belongs in xios-fhs; done here meanwhile).
+[ -e /var/jb/usr/share/zoneinfo ] || ln -sf /var/db/timezone/zoneinfo /var/jb/usr/share/zoneinfo 2>/dev/null
+XIOS_TZ="$(readlink /var/db/timezone/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
+[ -n "$XIOS_TZ" ] && echo "==> timezone: $XIOS_TZ"
+
+"$SETSID" env \
+  ${XIOS_TZ:+TZ="$XIOS_TZ"} \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" HOME="$HOME" \
   DYLD_LIBRARY_PATH="/var/jb/usr/lib:$SHELL_LIB:/var/jb/usr/lib/mutter-14:$ANGLE" \
   XDG_DATA_DIRS=/var/jb/usr/share \

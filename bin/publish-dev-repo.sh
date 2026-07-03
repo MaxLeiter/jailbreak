@@ -21,9 +21,9 @@ snapshot_debs() {
 }
 
 finalize_x11_graphics_debs() {
-  local signer="$REPO_ROOT/X11/linux-build/resign-graphics-packages.py"
-  local gpu_ent="$REPO_ROOT/X11/linux-build/build_info/iosc-gpu-client-ent.xml"
-  local gl_ent="$REPO_ROOT/X11/linux-build/build_info/iosc-gl-ent.xml"
+  local signer="$REPO_ROOT/x11/linux-build/resign-graphics-packages.py"
+  local gpu_ent="$REPO_ROOT/x11/linux-build/build_info/iosc-gpu-client-ent.xml"
+  local gl_ent="$REPO_ROOT/x11/linux-build/build_info/iosc-gl-ent.xml"
   local ldid_bin="${LDID:-/opt/homebrew/bin/ldid}"
 
   [ -x "$signer" ] || return 0

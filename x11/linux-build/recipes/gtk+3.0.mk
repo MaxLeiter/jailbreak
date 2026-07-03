@@ -13,10 +13,18 @@ DEB_LIBGTKINTL_V ?= 1.0
 gtk+3.0-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gtk+/$(GTK_MAJOR_V)/gtk+-$(GTK_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gtk+-$(GTK_VERSION).tar.xz,gtk+-$(GTK_VERSION),gtk+3.0)
-	# GTK's meson forces `x11_enabled = false` inside its `if os_darwin` block, so a
-	# darwin cross-build (our iOS target) ends up with no GDK backend. Drop that line
-	# so -Dx11_backend=true takes effect (quartz/wayland stay off via our options).
-	perl -0pi -e 's/(wayland_enabled = false\n)  x11_enabled = false\n/$$1/g' $(BUILD_WORK)/gtk+3.0/meson.build
+	# GTK's meson force-sets `wayland_enabled = false` AND `x11_enabled = false` inside its
+	# `if os_darwin` block, overriding our -D backend options, so a darwin cross-build (our
+	# iOS target) would end up with no GDK backend. No-op both overrides (rewrite them to
+	# self-assignments) so the multi-backend x11 + wayland build takes effect — GDK then
+	# picks the backend at runtime via GDK_BACKEND. The iosc shell exports
+	# GDK_BACKEND=wayland, so GTK3 apps run as native Wayland clients; the X11 backend stays
+	# available as a fallback. The wayland deps (wayland-client/egl/cursor, wayland-protocols,
+	# xkbcommon) + a host wayland-scanner + the linux/input-event-codes + sys/sysmacros shims
+	# are staged by build-gtk.sh — the very same prerequisites GTK4's wayland backend uses.
+	# (The win32 wayland-off line is neutralised too; harmless, we never target win32.)
+	sed -i 's/wayland_enabled = false/wayland_enabled = wayland_enabled/g' $(BUILD_WORK)/gtk+3.0/meson.build
+	sed -i 's/x11_enabled = false/x11_enabled = x11_enabled/g' $(BUILD_WORK)/gtk+3.0/meson.build
 	# Drop the AT-SPI accessibility bridge (atk-bridge-2.0): it would pull the whole
 	# at-spi2 + D-Bus stack, which we don't have on iOS (and there's no a11y bus to
 	# connect to at runtime). GTK apps run fine without it.
@@ -51,7 +59,7 @@ gtk+3.0: gtk+3.0-setup glib2.0 pango gdk-pixbuf atk cairo libepoxy fribidi \
 	cd $(BUILD_WORK)/gtk+3.0/build && meson \
 		--cross-file cross.txt \
 		-Dx11_backend=true \
-		-Dwayland_backend=false \
+		-Dwayland_backend=true \
 		-Dbroadway_backend=false \
 		-Dquartz_backend=false \
 		-Dprint_backends=file \

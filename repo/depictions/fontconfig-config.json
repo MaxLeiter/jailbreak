@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "2.14.0"
+          "text": "2.14.0+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "70.2 KiB"
+          "text": "69.5 KiB"
         },
         {
           "class": "DepictionTableTextView",

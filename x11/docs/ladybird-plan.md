@@ -1,0 +1,314 @@
+# Ladybird on iOS — feasibility & phased build plan
+
+Status: **Phase 0 recon/design only (no builds run).** Companion to [`../SCOPE.md`](../SCOPE.md)
+and the desktop-apps track. Scope: can we cross-compile the Ladybird browser
+(`LadybirdBrowser/ladybird`) to native `iphoneos-arm64` and render a real web page on the
+jailbroken iPad (A10, iPadOS 17.6.1, palera1n rootless `/var/jb`), and what is the cheapest
+path to first pixels?
+
+Recon was done against a fresh `main` clone (2026-07-02). Line references are to that tree.
+
+---
+
+## TL;DR verdict
+
+**Feasible, and less exotic than it looks.** Ladybird is a from-scratch C++ engine whose
+non-UI core (AK, LibCore, LibJS, LibWeb, LibGfx) is already **Darwin-clean and carries a real
+iOS branch**: `AK/Platform.h` defines `AK_OS_IOS` (+ `AK_OS_BSD_GENERIC`), the event loop is a
+plain **`poll(2)` Unix implementation** (not CFRunLoop, so it runs headless), process spawning
+is **`posix_spawn`** on the non-Linux path (works under this JB, same as bun/opencode), and
+helper-binary path resolution uses `_NSGetExecutablePath` + a Linux-style `libexec/bin` prefix
+search that is **compiled in for iOS** (the macOS bundle path is gated behind `AK_OS_MACOS`,
+which iOS does not set). Two more levers land in our favor:
+
+1. **LibJS is a bytecode interpreter — no JIT.** Ladybird removed its JS JIT. There is **no
+   W^X / `MAP_JIT` / dynamic-codegen wall** (the thing that cost us weeks on bun/mozjs). This
+   is the single biggest de-risker.
+2. **iOS forces fully static linking** (`if (ANDROID OR IOS) set(BUILD_SHARED_LIBS OFF)` in the
+   top `CMakeLists.txt`). The entire third-party closure links into a handful of binaries, so
+   we ship **one deb**, not twenty dependency debs, and version-mismatch hell against our
+   existing debs mostly evaporates (we let the build own its own deps).
+
+The three real walls are all **build-time, not runtime**: (1) the toolchain — Ladybird needs
+**clang ≥ 19** (CI uses clang-21 / gcc-14) and C++23, while the Docker image's Debian-bookworm
+default clang is ~14; (2) **Skia** (vcpkg pin `144`, GN build system) and **ICU 78.3 EXACT**
+(we have 74.2); (3) **no iOS branch in `vcpkg.json`** — the manifest's platform guards know
+`osx/linux/windows/android/bsd` but not `ios`, so a stock `ios` triplet resolves Skia/ANGLE/
+HarfBuzz to *nothing*. All three are tractable with known moves.
+
+**Recommendation:** target the **headless renderer first** (`HeadlessWebView`, already in-tree,
+renders a page to a CPU bitmap via Skia raster with the full multiprocess engine and *no* GUI
+toolkit). That is the shortest path to "a real page rendered on-device" and it sidesteps Qt,
+AppKit, Metal, GPU entitlements, and Wayland all at once. Promote to a live window only after
+the engine is proven.
+
+---
+
+## Dependency inventory (from `vcpkg.json`)
+
+Required C++ standard: **C++23** (`CMAKE_CXX_STANDARD 23`, `_REQUIRED ON`). Minimum compilers
+(`Meta/Utils/find_compiler.py`): **clang 19**, **gcc 14**, Xcode 16.3. `nasm` required.
+
+Every third-party dep is **vcpkg-managed** (pinned in `overrides`); there are no "system"
+deps except the toolchain libc++/frameworks. Full pinned set:
+
+| Dep | Pin | Notes |
+|---|---|---|
+| skia | 144 | GN build; osx=metal, others=raster/vulkan. **Big.** |
+| angle | chromium_7258 | osx=metal feature; GLES→Metal (we already ship `angle`). |
+| icu | **78.3 EXACT** | `find_package(ICU 78.3 EXACT REQUIRED)` — hard pin. |
+| harfbuzz | 10.2.0 | osx=coretext+icu; else freetype+icu. |
+| freetype | 2.13.3 | |
+| fontconfig | 2.17.1 | linux/bsd/osx (not gated off for iOS — see wall #3). |
+| curl | 8.20.0 | brotli, http2, **http3**, openssl, websockets, zstd → pulls nghttp2/nghttp3. |
+| openssl | 3.5.3 | |
+| ffmpeg | 7.1.1 | avcodec/avformat/swresample + dav1d/openh264/opus/webp/theora/vorbis/vpx. |
+| libjxl | 0.11.1 | + highway 1.4.0. |
+| libavif | 1.3.0 | + dav1d 1.5.1. |
+| libwebp | 1.6.0 | anim, mux, simd. |
+| libpng | 1.6.50 | apng. |
+| libjpeg-turbo | 3.1.1 | |
+| tiff | 4.7.1 | zstd. |
+| woff2 | 1.0.2 | + brotli. |
+| wuffs | 0.3.4 | header-only image codecs. |
+| libxml2 | 2.13.8 | |
+| sqlite3 | 3.52.0 | |
+| zlib | 1.3.1 | |
+| simdutf | 7.4.0 | small, SIMD. |
+| simdjson | 4.2.4 | small, SIMD. |
+| fmt | 12.1.0 | |
+| fast-float | 8.1.0 | header-ish. |
+| libtommath | 1.3.0 | bignum for LibCrypto. |
+| mimalloc | 2.2.7 | allocator. |
+| libpsl | 0.21.5 | (we already ship 0.21.5). |
+| libedit | 2024-08-08 | REPL line editing; non-win/android. |
+| sdl3 | 3.2.28 | **Gamepad API only** (`LibWeb/Gamepad`) — candidate to stub/disable for M0. |
+| libproxy | 0.4.18 | `!(android\|bsd)` — skippable. |
+| cpptrace / libdwarf | 1.0.2 / 2.3.0 | backtraces on linux/win/osx — optional. |
+| dbus | 1.16.2 | **linux/freebsd only — N/A on iOS.** |
+| vulkan(-headers) | — | **linux/bsd/android only — N/A on iOS.** |
+| wayland(-protocols) | 1.24 / 1.44 | **GTK feature on linux only — N/A** (we have these anyway). |
+| pthread / mman / dirent | — | **windows only — N/A.** |
+| qtbase | 6.10.0 | Qt feature; windows/freebsd variants only (macOS uses AppKit). |
+| libadwaita / gtk | 1.8.4 / 4.22.0 | GTK feature (linux/osx). |
+
+---
+
+## HAVE vs NEED
+
+Because iOS is a **static** build, "HAVE deb" mostly does not help at link time (the build
+wants matching-version *sources/headers* under its own prefix, and reusing our shared libs
+fights `BUILD_SHARED_LIBS OFF`). The table below is therefore about **build-time provisioning**,
+and the honest recommendation is *let the Ladybird build own its whole dependency closure*
+(via vcpkg or per-dep recipes) rather than splice in our debs, except where the version already
+matches.
+
+| Dep | Status | Detail |
+|---|---|---|
+| libpsl 0.21.5 | **HAVE (exact)** | `libpsl5_0.21.5` — version matches the pin. |
+| angle | **HAVE (adapt)** | `angle` deb = google/angle GLES→Metal, `/var/jb/lib/angle`. Pin is `chromium_7258`; API close enough for a GPU path later. Raster M0 does not need it. |
+| libpulse 17.0 | **HAVE (runtime)** | audio.cmake routes iOS to the **PULSE** backend (not AudioUnit, which is `APPLE AND NOT IOS`). Our pulseaudio bridge already works. |
+| icu | **REBUILD** | HAVE 74.2; NEED **78.3 EXACT**. Reuse `recipes/icu4c.mk` native-then-cross, bump to 78.3. Not a reuse — a version bump. |
+| harfbuzz | **REBUILD** | HAVE 2.8.1 (way too old); NEED 10.2.0. |
+| freetype/fontconfig/libpng/zlib/sqlite3/libxml2/libjpeg-turbo/libwebp | **REBUILD or vcpkg** | Procursus/our debs exist but versions lag the pins; static build wants the pinned source. |
+| curl + openssl + nghttp2/nghttp3 | **NEED** | http3 closure; our base curl lacks it. |
+| ffmpeg 7.1.1 | **NEED** | HAVE libav* 5.1.2 (ffmpeg 5); Ladybird uses the ffmpeg 7 API. Big jump. Video is not on the M0 path — build with a reduced codec set or defer. |
+| skia 144 | **NEED — BIG** | No prior art in our tree. GN + ninja cross to iOS. See below. |
+| simdutf / simdjson / fmt / fast-float / libtommath / mimalloc / woff2 / wuffs / libtiff / libjxl(+highway) / libavif(+dav1d) | **NEED (small–med)** | Mostly clean CMake/meson cross builds; several are header-heavy and trivial. |
+| sdl3 | **NEED or STUB** | Only used by the Gamepad API. For M0, patch it out or ship a stub. |
+| libedit / cpptrace / libdwarf / libproxy | **NEED or SKIP** | REPL/backtrace/proxy niceties; all optional for a headless first light. |
+| dbus / vulkan / wayland / qtbase / gtk / pthread / mman | **N/A (iOS)** | Gated off for iOS by platform, or belong to a frontend we are not building at M0. |
+
+### Skia (the one genuinely hard dep)
+
+Skia's build is **GN + ninja**, not CMake, and vcpkg's Skia port drives GN under the hood.
+Two facts make it tractable:
+
+- **Skia officially supports an iOS target** in GN (`target_os="ios"`, `target_cpu="arm64"`).
+  We are not blazing a trail.
+- **A software-raster Skia sidesteps all GPU/GN-graphics complexity.** Ladybird's
+  `LibGfx/PaintingSurface.cpp` has a CPU path: when constructed with a **null**
+  `SkiaBackendContext`, `create_with_size()` calls `SkSurfaces::WrapPixels(...)` into a plain
+  CPU bitmap (lines ~98–124). The Metal path (`WrapBackendRenderTarget` + `GrBackendRenderTargets::MakeMtl`)
+  is only taken when a Metal context is supplied. So a Skia built with
+  `skia_use_metal=false skia_use_gl=false skia_enable_gpu=false` — CPU raster only, with
+  freetype+harfbuzz+icu — is a complete backend for headless rendering and the smallest Skia
+  we can build.
+
+Recommended Skia approach: a **standalone GN cross-build** to `ios/arm64`, raster-only, staged
+into the build prefix as a static lib + pkg-config `.pc` (Ladybird's `check_for_dependencies.cmake`
+will accept `PkgConfig::skia` when the CONFIG package is absent). Add Metal (`skia_use_metal=true`)
+in a later phase to unlock GPU painting + zero-copy IOSurface present (mirrors the ANGLE track).
+
+---
+
+## Toolchain remediation (wall #1)
+
+**Problem.** `aarch64-apple-darwin-clang` in `linux-build/Dockerfile` is a cctools-port wrapper
+around Debian bookworm's clang (**~14**). Ladybird demands **clang ≥ 19** for C++23; anything
+older fails `find_compiler.py` and will not compile the codebase.
+
+**Fix (cheap, known-good).** Install a modern clang from **apt.llvm.org** into the image
+(`clang-19` or `clang-20`; the LLVM 21-on-macOS libc++ linker bug in `find_compiler.py` is a
+*host-clang* caveat, not ours — we cross-compile, so pick 19/20 to be safe). Keep the existing
+**cctools-port `ld64`** as the linker and the staged **iPhoneOS16.5.sdk** as the sysroot; only
+the *compiler front end* changes. Point CMake at it with
+`-DCMAKE_C_COMPILER=clang-19 -DCMAKE_CXX_COMPILER=clang++-19` plus the `--target=arm64-apple-ios16.0`
++ `-isysroot <sdk>` flags the cross wrapper already injects. Ladybird's `Meta/CMake/use_linker.cmake`
+must be steered to ld64 (not lld/mold) via `-DLINKER=<default>` / letting the Apple path win.
+
+**libc++ / ABI.** We compile with clang-19 but link against the **iPhoneOS 16.5 SDK libc++**
+(Xcode 14.3-era, ~LLVM 16 headers). Language-level C++23 is fine; the risk is **C++23 library**
+features. Ladybird mitigates this by using its own vocabulary types (`AK::Error`/`ErrorOr`,
+`AK::String`, its own `format`) rather than `std::expected`/`std::print`, so the SDK libc++ is
+*probably* sufficient. **Verify** by compiling AK + LibCore first; if a library gap bites,
+supply clang-19's own `libc++` headers/static lib cross-targeted to iOS (the newer libc++
+headers compile clean against the older runtime for the features Ladybird touches). Do **not**
+mix a newer libc++ *dylib* into `/var/jb` — static-link libc++ into the binaries to avoid ABI
+skew with the rest of the desktop stack.
+
+**vcpkg manifest (wall #3).** `vcpkg.json`'s platform expressions have **no `ios` branch**, so
+an `ios` triplet drops Skia, ANGLE, HarfBuzz, fontconfig-variants, etc. entirely. Either (a)
+**patch `vcpkg.json`** to fold `ios` in beside `osx` for the graphics deps (skia raster/metal,
+harfbuzz coretext-or-freetype, angle), or (b) **skip vcpkg** and drive per-dep Procursus-style
+recipes (`recipes/*.mk`) as we do for every other stack — more recipes, but it is the house
+mechanism and gives us the version control (ICU 78.3, ffmpeg-lite) we need anyway. See the
+build-integration choice below.
+
+---
+
+## Build integration: vcpkg-in-container vs Procursus recipes
+
+Two viable strategies; recommend **starting with a hybrid** and hardening toward recipes.
+
+- **Option A — patch `vcpkg.json` + custom `ios-arm64` triplet.** Add an iOS platform branch,
+  write a vcpkg triplet that uses our cctools+clang-19 toolchain (`VCPKG_CMAKE_SYSTEM_NAME iOS`,
+  `VCPKG_TARGET_ARCHITECTURE arm64`, static, our toolchain file), and let vcpkg resolve the
+  whole closure. **Pro:** Ladybird's own ports already know how to build Skia/ffmpeg/etc.;
+  minimal recipe writing. **Con:** vcpkg-on-iOS with a non-Apple host toolchain is unproven;
+  some ports (skia GN, ffmpeg) may need per-port patches; output is a vcpkg install tree we then
+  hand-package into a deb (foreign to our pipeline).
+- **Option B — Procursus recipes per dep.** ~20 `.mk` files (many trivial; ICU/harfbuzz/ffmpeg
+  we partly have). **Pro:** house mechanism, versions under our control, integrates with
+  `xmkdeb`/signing. **Con:** ~20 recipes and Skia's GN doesn't fit the Procursus autotools/meson
+  mold (needs a bespoke recipe shelling out to GN+ninja).
+
+**Recommended:** Option A for the **leaf deps** (fast, low-touch) but a **hand-rolled GN recipe
+for Skia** and our **existing ICU recipe bumped to 78.3** regardless of route (the EXACT pin and
+the GN special-case are worth owning). Package the final Ladybird tree as **one deb**:
+`/var/jb/bin/ladybird` (+ headless), helpers in `/var/jb/libexec/ladybird/`, resources in
+`/var/jb/share/Lagom` (matches the compiled-in non-macOS prefix search).
+
+---
+
+## iOS-specific work vs free-from-macOS
+
+**Free (already Darwin/BSD-generic, no porting):**
+- **AK, LibCore, LibJS, LibWeb, LibGfx core, LibIPC** — all compile under `AK_OS_IOS` /
+  `AK_OS_BSD_GENERIC`.
+- **Event loop** — `EventLoopImplementationUnix` is `poll(2)`-based (`System::poll`, line ~399);
+  no CFRunLoop, runs headless. macOS uses the *same* Unix loop, so it is battle-tested off-GUI.
+- **Process model** — `Core::Process::spawn` uses `posix_spawn`/`posix_spawnp` on the non-Linux
+  branch (Process.cpp ~198–231). Helper binaries (`WebContent`, `RequestServer`, `ImageDecoder`,
+  `WebWorker`, `Compositor`) are located by `get_paths_for_helper_process` via
+  `_NSGetExecutablePath` → dirname → `$prefix/libexec` + `$prefix/bin` candidates
+  (Utilities.cpp ~101). **No hardcoded `/usr` paths**; the Linux-style `libexec` branch is
+  compiled in for iOS (it is gated `!AK_OS_MACOS`). Under this JB, `posix_spawn` of ldid-signed
+  binaries from `/var/jb` is proven (bun/opencode).
+- **No JIT** — LibJS is an interpreter. No `MAP_JIT`, no codegen entitlement, no W^X dance.
+- **Audio** — `audio.cmake` sends iOS to the **PULSE** backend; our pulseaudio stack serves it.
+
+**Genuinely iOS-specific work:**
+- **No iOS frontend exists.** `UI/` has Android, AppKit, Gtk, Qt — no iOS. AppKit is
+  `NSApplication`/Cocoa (macOS only), unusable on UIKit. First light must be **headless**;
+  a real window comes later (UIKit view, or a thin Wayland/SDL3 client under `iosc`).
+- **No iOS build path in the harness.** `Meta/CMake/presets/` has no iOS preset and
+  `host_platform.py` has no iOS host; `IOS`/`__IOS__` are honored in source but nothing *drives*
+  an iOS configure. We supply the toolchain file, `-DIOS=ON`-equivalent (`CMAKE_SYSTEM_NAME iOS`),
+  and a preset ourselves.
+- **Sandbox.** `Services/*/SandboxMacOS.cpp` and `UI/.../RendererSandboxMacOS.cpp` use the macOS
+  Seatbelt (`sandbox_init`) API, which is unavailable/blocked to fakesigned iOS processes. Route
+  iOS to the **`*Unimplemented.cpp`** variants (or run `--disable-sandbox`, an existing flag).
+  Losing the sandbox is acceptable for a jailbroken proof; note it as a security caveat.
+- **Entitlements per helper.** Each spawned binary must be ldid-signed with the `/var/jb`
+  path-exception (like every app here). GPU/Metal entitlements are needed **only if** we build
+  Skia-on-Metal or the ANGLE present path; the raster M0 needs none of that.
+- **`__IOS__` define.** `AK/Platform.h` keys iOS off `__IOS__` (non-standard; clang normally
+  exposes `TARGET_OS_IPHONE` via `TargetConditionals.h`). We must inject `-D__IOS__` (or patch
+  Platform.h to test `TARGET_OS_IPHONE`) in the cross flags.
+
+---
+
+## Frontend + rendering path
+
+**Recommendation: headless-first, raster-first.** Concretely:
+
+- **M0 rendering:** **Skia CPU raster** (`SkSurfaces::WrapPixels` into an `AK::Bitmap`), driven
+  by the in-tree **`HeadlessWebView`** (`Libraries/LibWebView/HeadlessWebView.{h,cpp}`). This
+  exercises the *entire* real engine — WebContent/RequestServer/ImageDecoder multiprocess, full
+  LibWeb layout + paint — and emits a PNG. No GUI toolkit, no Metal, no GPU entitlement, no
+  Wayland. It is the maximum-signal / minimum-surface first light.
+- **M1 live window:** present the headless bitmap through the **existing `iosc` Wayland +
+  IOSurface path** — a thin `wl_shm` (or SDL3) client that blits WebContent's backing bitmap,
+  reusing the Xios/Metal present pipeline exactly as the other desktop apps do. This gets an
+  interactive window with the least new code and no Qt-version risk.
+- **Qt frontend (option, deferred):** Ladybird's Qt UI would reuse our built Qt6 + qtwayland as
+  a client under `iosc`. **But** the pin is **qtbase 6.10.0** and we have **6.6.3** (the Qt UI
+  and its new `Compositor` service lean on platform GPU-buffer handles), so this is a bigger
+  version-chase than M1's shm blit. Treat Qt as the "polished desktop" phase, after the engine
+  is proven and if a Qt 6.10 rebuild is justified.
+- **Skia-on-Metal + zero-copy IOSurface (option, deferred):** rebuild Skia with
+  `skia_use_metal=true`, feed it a Metal context, and let `PaintingSurface`'s
+  `GrBackendRenderTargets::MakeMtl` path render into an IOSurface-backed `MTLTexture` — the same
+  zero-copy win the ANGLE track already proved. Needs the Xios GPU entitlement set. This is the
+  performance endgame, not the first milestone.
+- **Native UIKit frontend (option, latest):** a proper `UIView`/`CAMetalLayer` shell with touch
+  → input events. Most work; do last, once the window path and input semantics are understood.
+
+---
+
+## Phased plan
+
+| Phase | Goal | Work | Effort | Risk |
+|---|---|---|---|---|
+| **M0** | **Headless renders a real page to PNG on-device.** | clang-19 in image; toolchain file + iOS preset; `-D__IOS__`; build dep closure (raster Skia, ICU 78.3, harfbuzz 10, simdutf/simdjson/fmt/woff2/wuffs/libtommath/mimalloc + image/xml/sqlite/curl+ssl); route Sandbox→Unimplemented, `--disable-sandbox`; disable/stub SDL3-gamepad + ffmpeg video; package one deb (bin + libexec helpers + share/Lagom); ldid-sign every helper. Validate `Ladybird`-headless emitting a PNG of a known page. | **High** (the bulk of the project) | **Med.** Walls are the toolchain, Skia GN, ICU EXACT — all known-shape. No JIT/entitlement wall. |
+| **M1** | **Interactive window.** | Thin `wl_shm`/SDL3 client presenting WebContent's bitmap via `iosc`→IOSurface→Xios; wire UIKit touch/keyboard → input events. | Med | Low–Med. Reuses proven present pipeline. |
+| **M2** | **Media + polish.** | Full ffmpeg 7.1.1 (dav1d/opus/vpx…), libjxl/libavif/tiff codecs, libedit REPL, cpptrace backtraces; audio through PULSE bridge. | Med | Low. Additive. |
+| **M3** | **GPU painting.** | Skia-on-Metal (`skia_use_metal=true`) + zero-copy IOSurface present; Xios GPU entitlement set on the WebContent helper. | Med–High | Med. GPU entitlements + Metal context lifetime. |
+| **M4** | **Native/Qt frontend.** | Either UIKit shell or a Qt 6.10 rebuild + Qt UI as `iosc` client; site-isolation/spare-process tuning. | High | Med. Qt version chase or new UIKit code. |
+
+---
+
+## Open questions / verify on-device
+
+1. **libc++ C++23 gap.** Does the iPhoneOS 16.5 SDK libc++ satisfy every C++23 *library* use in
+   AK/LibWeb, or must we cross clang-19's libc++ headers? Settle by compiling AK+LibCore first.
+2. **Skia iOS GN raster build.** Confirm `target_os="ios"` + raster-only links clean against our
+   cctools ld64 and the 16.5 SDK; check Skia's own freetype/harfbuzz/icu wiring vs our staged
+   copies (version skew inside Skia).
+3. **Multiprocess spawn under sandbox exception.** Confirm a WebContent helper posix_spawn'd from
+   `/var/jb/libexec` inherits the path-exception + runs; confirm many-WebContent site isolation
+   is stable on the A10 (memory).
+4. **IPC transport.** Ladybird LibIPC uses `AF_UNIX` socketpair fd-passing between UI and
+   helpers — confirm `SCM_RIGHTS` fd passing behaves under the JB sandbox (it does for our other
+   sockets, but the multiprocess handshake is new surface).
+5. **ICU 78.3 EXACT vs our 74.2.** The `EXACT` pin means nothing older links; confirm the
+   `icu4c.mk` native-then-cross recipe bumps cleanly to 78.3 (data blob size, `--with-cross-build`).
+6. **`__IOS__` vs `TARGET_OS_IPHONE`.** Decide inject-define vs a one-line `AK/Platform.h` patch;
+   check nothing else keys off a macOS-only conditional that iOS should share (audio already
+   handled; sandbox handled).
+7. **curl http3 closure.** nghttp3/ngtcp2/quictls on iOS — is http3 worth the extra libs for a
+   first browser, or ship http2-only to shrink M0?
+8. **SDL3 removal.** Cleanest way to drop the Gamepad dep for M0 without patching LibWeb broadly
+   (build-flag vs stub `SDLGamepadForward.h`).
+9. **Memory ceiling.** WebContent + Skia raster on a 3 GB A10 with the desktop running — measure;
+   may force fewer spare processes / site-isolation off.
+
+---
+
+## One-line summary
+
+A no-JIT, Darwin-clean, statically-linked engine with an in-tree headless renderer — the port
+is real work (a modern clang, a raster Skia, ICU 78.3, and a one-deb package) but has **no
+class of blocker we have not already beaten elsewhere in this project**, and the headless-raster
+M0 reaches a real rendered page without touching Qt, Metal, GPU entitlements, or Wayland.

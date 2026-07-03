@@ -22,7 +22,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "3.4.4"
+          "text": "3.4.4+ios1"
         },
         {
           "class": "DepictionTableTextView",

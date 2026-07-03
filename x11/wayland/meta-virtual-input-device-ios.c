@@ -39,6 +39,15 @@ struct _MetaVirtualInputDeviceIOS
 G_DEFINE_TYPE (MetaVirtualInputDeviceIOS, meta_virtual_input_device_ios,
                CLUTTER_TYPE_VIRTUAL_INPUT_DEVICE)
 
+/* Events are built with the seat's core pointer as the source device. In
+ * clutter_stage_pick_and_update_device() that makes `device == core pointer`, so the repick
+ * (and the crossings/implicit-grab that drive hover + clicks) depends on
+ * clutter_seat_is_unfocus_inhibited() — which MetaSeatIOS pins > 0 for the process lifetime
+ * (meta_seat_ios_constructed calls clutter_seat_inhibit_unfocus and never releases it), so the
+ * repick always runs. (An earlier revision routed events through a dedicated FLOATING device to
+ * force the repick unconditionally; that was working around a stalled frame clock — the real
+ * delivery bug, since fixed in meta-stage-ios.c — not a pick problem, so it was dropped.) */
+
 static int64_t
 resolve_time (uint64_t time_us)
 {
@@ -89,8 +98,7 @@ meta_virtual_input_device_ios_notify_absolute_motion (ClutterVirtualInputDevice 
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = get_core_device (virtual_device,
-                                                 CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
   graphene_point_t coords = GRAPHENE_POINT_INIT ((float) x, (float) y);
   graphene_point_t zero = GRAPHENE_POINT_INIT (0.f, 0.f);
   ClutterModifierType modifiers = 0;
@@ -115,8 +123,7 @@ meta_virtual_input_device_ios_notify_relative_motion (ClutterVirtualInputDevice 
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = get_core_device (virtual_device,
-                                                 CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
   graphene_point_t coords = self->last_coords;
   graphene_point_t delta = GRAPHENE_POINT_INIT ((float) dx, (float) dy);
   ClutterModifierType modifiers = 0;
@@ -143,8 +150,7 @@ meta_virtual_input_device_ios_notify_button (ClutterVirtualInputDevice *virtual_
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = get_core_device (virtual_device,
-                                                 CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
   graphene_point_t coords = self->last_coords;   /* where our last motion put the pointer */
   ClutterModifierType modifiers = 0;
   ClutterEventType type;
@@ -235,8 +241,7 @@ meta_virtual_input_device_ios_notify_scroll_continuous (ClutterVirtualInputDevic
 {
   MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
   ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
-  ClutterInputDevice *pointer = get_core_device (virtual_device,
-                                                 CLUTTER_POINTER_DEVICE);
+  ClutterInputDevice *pointer = clutter_seat_get_pointer (seat);
   graphene_point_t coords = self->last_coords;   /* scroll at the pointer's last position */
   graphene_point_t delta = GRAPHENE_POINT_INIT ((float) dx, (float) dy);
   ClutterModifierType modifiers = 0;

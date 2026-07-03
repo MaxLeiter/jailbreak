@@ -49,6 +49,7 @@ ki18n-package: ki18n-stage
 	$(call SIGN,kf6-i18n-dev,general.xml)
 	$(call PACK,kf6-i18n,DEB_KI18N_V)
 	$(call PACK,kf6-i18n-dev,DEB_KI18N_V)
+	bash /work/recipes/relink-gtkintl.sh $(BUILD_DIST)/ki18n
 	rm -rf $(BUILD_DIST)/kf6-i18n $(BUILD_DIST)/kf6-i18n-dev
 
 .PHONY: ki18n ki18n-package

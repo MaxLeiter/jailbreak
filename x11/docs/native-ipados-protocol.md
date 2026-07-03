@@ -28,8 +28,11 @@ The other three flavors (GNOME / KDE / X11) are unchanged: iosc composites every
 mapped window into ONE output IOSurface (`xios_surface_create`) and the single
 Xios app presents it. That path stays byte-identical.
 
-Native mode adds a SECOND presentation topology, gated by `IOSC_NATIVE=1` (ioscd
-sets it when it starts iosc; see `apps/iosc-desktop/src/ioscd.c`). In native mode
+Native mode adds a SECOND presentation topology. It is selected per launch by
+ioscd's explicit `LAUNCH_NATIVE` request and may also be forced at the
+compositor layer with `iosc -native`/`IOSC_NATIVE=1` for debugging. It is not a
+build-time choice: classic and native compositor namespaces can coexist on the
+same device. In native mode
 iosc gives each `xdg_toplevel` its own "canvas" IOSurface and hands it to a
 per-app host app over a new socket. The host Metal-presents that canvas in its own
 UIWindowScene. So iPadOS multitasking, not iosc, is the window manager.
@@ -49,8 +52,8 @@ run it per-window:
 
 ## 2. Mode gate
 
-Read `getenv("IOSC_NATIVE")` once at startup into a global (`g_native`). When
-set:
+Read native mode from the runtime launch configuration (`-native`,
+`IOSC_NATIVE=1`, or ioscd's native mode for a `LAUNCH_NATIVE` request). When set:
 
 - create the `iosc-native.sock` listener (§3) in addition to the normal startup;
 - keep allocating the output IOSurface as today (harmless; native hosts just
@@ -60,16 +63,21 @@ set:
   instead of the shared cascade placement;
 - `recomposite_all()` becomes per-canvas (§4).
 
-When unset, none of the above runs and iosc behaves exactly as now.
+When unset, none of the above runs and iosc behaves exactly as now. ioscd keeps
+classic on `wayland-0`/`iosc-input.sock`/`xios.json` and native on
+`wayland-native-0`/`iosc-native-input.sock`/`xios-native.json`, so both paths can
+be live together.
 
 ---
 
 ## 3. The socket
 
-Serve `IOSC_NATIVE_SOCK` = `/var/jb/tmp/iosc-native.sock` (chmod 0777 so the
-`mobile`-uid host connects, same as the input socket). One connected host = one
-app_id = the windows of one Linux app. Register the listen fd on the wl event
-loop next to the input socket. Per-connection state:
+Serve `IOSC_NATIVE_SOCK` = `/var/jb/tmp/iosc-native.sock`. The socket must not
+fall back to world-writable permissions: current code chowns/chmods for the
+mobile host when possible and otherwise degrades to root-only 0600 with a
+warning. One connected host = one app_id = the windows of one Linux app. Register
+the listen fd on the wl event loop next to the input socket. Per-connection
+state:
 
 ```
 struct native_host {
@@ -142,11 +150,11 @@ Reverse of the client-import path, and identical in shape to
    `mach_port_deallocate` the created port after send.
 
 Ordering contract the client relies on: write the `XIOS_MSG_WINDOW_NEW` /
-`XIOS_MSG_WINDOW_GEOM` socket record FIRST, then immediately `mach_msg` the
-canvas port. The client reads the record, sees the type, and does one bounded
-`mach_msg(MACH_RCV_MSG | MACH_RCV_TIMEOUT)` to pick up the surface
-(`recv_canvas()` in NativeClient.c). One canvas per NEW/GEOM record; keep them
-one-to-one so arrival order correlates.
+`XIOS_MSG_WINDOW_GEOM` socket record FIRST, then send the matching canvas port.
+Current code queues the delivery from the compositor thread and performs the
+potentially blocking `task_for_pid`/timed `mach_msg` work on the native
+reader/delivery path. One canvas per NEW/GEOM record; keep them one-to-one so
+arrival order correlates.
 
 ---
 
@@ -194,7 +202,9 @@ pixels. `window_id` is COMPOSITOR-assigned (a monotonic u32, stored on
   `xt_set_title` path (which already stores title on `struct iosc_surface`) when
   the surface belongs to a bound host.
 - `XIOS_MSG_WINDOW_GONE` (0x53): the toplevel unmapped or the client exited. Fire
-  from the existing unmap/destroy path. Free the canvas.
+  from the existing unmap/destroy path even if WINDOW_NEW is still in-flight.
+  Free the canvas. A GONE for a window the host never observed is a harmless
+  no-op and prevents orphan scenes during map/unmap races.
 - core `XIOS_MSG_CURSOR` (0x03) with `window_id`: `a`=x `b`=y, `c`=shape_id
   (cursor-shape-v1 enum, 0=hidden), `d`=flags (bit0 visible); optional
   `xios_cursor_bitmap` payload for client-supplied cursor images. The host maps
@@ -302,7 +312,7 @@ cursor-overlay work. The agreed division:
 
 ---
 
-## 11. Validation (when built)
+## 11. Validation
 
 Mirror the existing test-client pattern (`iosc-gpu-client`, `iosc-layer-test`):
 a tiny `iosc-native-test` that BINDs an app_id, maps a toplevel, and checks it
@@ -310,4 +320,6 @@ receives WINDOW_NEW + a canvas whose center pixel matches what a known client
 painted (readback via `IOSurfaceLock`, same as the M-series probes). Then the real
 path: `ioscd` in native mode + one generated host bundle (`gen-launchers.sh
 --native`) + a GTK app, tap the icon, confirm the app appears in its own scene and
-in the app switcher. On-device photons are the lead's confirm.
+in the app switcher. Basic native launch has been reported working; keep logging
+resize/focus/text/close/coexistence/jetsam-replay results in
+`docs/handoff/native-ipados.md`. On-device photons are the lead's confirm.

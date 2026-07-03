@@ -46,12 +46,17 @@ struct _MetaInputIOS
 static uint32_t
 map_button (uint32_t code)
 {
+  /* Wire buttons are X-style (1 = left, 2 = middle, 3 = right), matching the Xios app's
+   * sendClick() panel + single-tap and iosc.c's handle_button ("Wire buttons are X-style").
+   * This backend previously used a 0-based map (0=left, 1=right), so the app's left click /
+   * every single TAP (button 1) was injected as a RIGHT click and nothing activated.
+   * Raw evdev codes (>= BTN_LEFT, e.g. from a physical mouse) pass through unchanged. */
   switch (code)
     {
-    case 0: return IOS_BTN_LEFT;
-    case 1: return IOS_BTN_RIGHT;
+    case 1: return IOS_BTN_LEFT;
     case 2: return IOS_BTN_MIDDLE;
-    default: return code;   /* already an evdev BTN_* */
+    case 3: return IOS_BTN_RIGHT;
+    default: return code;   /* already an evdev BTN_* (>= 0x110) */
     }
 }
 

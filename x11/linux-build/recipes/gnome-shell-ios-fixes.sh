@@ -170,6 +170,69 @@ p.write_text(s)
 PY
 fi
 
+# --- (7) GDM promisify guard: gdm/util.js top-level Gio._promisify()s Gdm.Client /
+# Gdm.UserVerifierProxy async methods at MODULE LOAD (pulled in via ui/init.js). On iOS there
+# is no GDM daemon, AND the on-device Gdm-1.0 typelib is missing the async _finish mates
+# (open_reauthentication_channel_finish, get_user_verifier_finish — the scan dropped them even
+# though libgdm.dylib exports them), so _promisify throws -> init.js fails -> the shell never
+# paints. Wrap each call so it only promisifies when the _finish method actually exists; the
+# GDM auth paths (lock/unlock reauthentication) are unused on iOS anyway. (Blocker #3, docs/
+# handoff/gnome-session.md.)
+python3 - "$SRC/js/gdm/util.js" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+old = """Gio._promisify(Gdm.Client.prototype, 'open_reauthentication_channel');
+Gio._promisify(Gdm.Client.prototype, 'get_user_verifier');
+Gio._promisify(Gdm.UserVerifierProxy.prototype,
+    'call_begin_verification_for_user');
+Gio._promisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification');"""
+new = """// iOS: no GDM daemon + the on-device Gdm-1.0 typelib lacks the async _finish mates,
+// so a bare Gio._promisify throws at load. Guard each so gdm/util.js still loads.
+const _iosPromisify = (proto, name) => {
+    if (proto && typeof proto[`${name}_finish`] === 'function')
+        Gio._promisify(proto, name);
+};
+_iosPromisify(Gdm.Client.prototype, 'open_reauthentication_channel');
+_iosPromisify(Gdm.Client.prototype, 'get_user_verifier');
+_iosPromisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification_for_user');
+_iosPromisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification');"""
+if old in s:
+    s = s.replace(old, new)
+    p.write_text(s)
+    print("gdm/util.js promisify guarded")
+elif "_iosPromisify" in s:
+    print("gdm/util.js already guarded")
+else:
+    sys.exit("!! gdm/util.js promisify block not found (upstream changed?)")
+PY
+
+# --- (8) Volume-ectomy: js/ui/status/volume.js's getMixerControl() does a SYNCHRONOUS
+# `new Gvc.MixerControl()`, and on iOS that constructor BLOCKS (libgvc/libpulse-17 pa_glib_mainloop
+# setup hangs — verified: the constructor never returns). The Output/InputIndicators call it during
+# panel construction on the compositor MAIN THREAD, so the whole compositor stops servicing the
+# display and an unresponsive-compositor watchdog SIGKILLs gnome-shell ~3.5s into boot (clean
+# SIGKILL, no crash report — this was THE first-paint kill; see docs/handoff/gnome-session.md).
+# Make the two indicators skip the mixer: `super._init()` runs (so quickSettingsItems=[] is valid),
+# then return before getMixerControl(). Volume slider is gone until libgvc/PulseAudio is fixed.
+python3 - "$SRC/js/ui/status/volume.js" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+needle = "        this._control = getMixerControl();"
+if "iOS: volume/Gvc disabled" in s:
+    print("volume.js already ectomied")
+elif s.count(needle) >= 2:
+    s = s.replace(needle,
+                  "        return; // iOS: volume/Gvc disabled (Gvc.MixerControl ctor blocks the compositor)\n" + needle)
+    p.write_text(s)
+    print("volume.js Output/InputIndicator mixer skipped")
+else:
+    sys.exit(f"!! volume.js: expected 2x getMixerControl() calls, found {s.count(needle)} (upstream changed?)")
+PY
+
 # --- verification --------------------------------------------------------------
 fail=0
 check() { grep -q "$2" "$SRC/$1" || { echo "!! VERIFY FAILED: $1: missing $2"; fail=1; }; }
@@ -201,6 +264,9 @@ check src/shell-util.c "xlocale.h"
 absent js/misc/dependencies.js "gi://Rsvg"
 absent js/ui/padOsd.js "from 'gi://Rsvg'"
 check js/ui/padOsd.js "padOsd unsupported on iOS"
+check js/gdm/util.js "_iosPromisify"
+absent js/gdm/util.js "Gio._promisify(Gdm.Client.prototype, 'open_reauthentication_channel');"
+check js/ui/status/volume.js "iOS: volume/Gvc disabled"
 for f in meson.build src/meson.build src/st/meson.build subprojects/shew/src/meson.build; do
   check "$f" "if not meson.is_cross_build()"
 done

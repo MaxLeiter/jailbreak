@@ -15,6 +15,7 @@ packages/
 *.swp
 device.env
 .repo-venv/
+x11/artifacts/
 
 # Apple TV pairing credentials (local only)
 apps/KitchenHub/Sources/Services/AppleTV/AppleTVConfig.swift

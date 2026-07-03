@@ -170,6 +170,53 @@ static int sd_scan_apps(struct sd_app *apps, int max)
     return n;
 }
 
+static void sd_desktop_pins_path(char *out, size_t n)
+{
+    const char *env = getenv("IOSC_DESKTOP_PINS");
+    if (env && *env) { snprintf(out, n, "%s", env); return; }
+    snprintf(out, n, "/var/mobile/Library/Preferences/com.max.iosc-desktop-pins.conf");
+}
+
+static int sd_desktop_pin_exists(const char *exec)
+{
+    if (!exec || !*exec) return 1;
+    char path[256]; sd_desktop_pins_path(path, sizeof path);
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char line[768];
+    int found = 0;
+    while (fgets(line, sizeof line, f)) {
+        char *save = NULL;
+        char *type = strtok_r(line, "\t\r\n", &save);
+        char *name = strtok_r(NULL, "\t\r\n", &save);
+        char *icon = strtok_r(NULL, "\t\r\n", &save);
+        char *target = strtok_r(NULL, "\t\r\n", &save);
+        (void)type; (void)name; (void)icon;
+        if (target && !strcmp(target, exec)) { found = 1; break; }
+    }
+    fclose(f);
+    return found;
+}
+
+static void sd_pin_app_to_desktop(const struct sd_app *app)
+{
+    if (!app || !app->exec[0] || sd_desktop_pin_exists(app->exec)) return;
+    char path[256]; sd_desktop_pins_path(path, sizeof path);
+    FILE *f = fopen(path, "a");
+    if (!f) return;
+    int slot = 0;
+    {
+        FILE *r = fopen(path, "r");
+        char line[768];
+        while (r && fgets(line, sizeof line, r)) slot++;
+        if (r) fclose(r);
+    }
+    int x = 300 + (slot % 6) * 104;
+    int y = 96 + (slot / 6) * 122;
+    fprintf(f, "app\t%s\t%s\t%s\t%d\t%d\n", app->name, app->icon, app->exec, x, y);
+    fclose(f);
+}
+
 /* fork+exec a .desktop Exec under the same Wayland/dbus env run-kgx.sh proved
  * good. The shell clients run outside the iOS app sandbox (started by ioscd or a
  * run-script), so this is the direct path. */

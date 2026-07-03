@@ -58,5 +58,20 @@ RUN rm -f /root/cctools/SDK/MacOSX.sdk && ln -s /opt/MacOSX.sdk /root/cctools/SD
 RUN apt-get update && apt-get install -y --no-install-recommends meson python3-mako \
   && rm -rf /var/lib/apt/lists/*
 
+# Modern clang (clang-19) from apt.llvm.org. Debian bookworm's stock clang is ~14,
+# too old for C++23 codebases like Ladybird (needs clang >= 19). This adds ONLY a
+# newer compiler front end; the cross toolchain is unchanged — cctools-port `ld64`
+# stays the linker and the staged iPhoneOS16.5.sdk stays the sysroot. Cross-compiles
+# drive it as `clang-19 --target=arm64-apple-ios<v> -isysroot <sdk> ...`. The existing
+# `aarch64-apple-darwin-clang` cctools wrapper (clang-14 based) is left in place for
+# the rest of the project. Placed last so it never busts the heavy cctools/SDK layers.
+RUN apt-get update && apt-get install -y --no-install-recommends lsb-release wget software-properties-common gnupg \
+  && wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh \
+  && chmod +x /tmp/llvm.sh \
+  && /tmp/llvm.sh 19 \
+  && rm -f /tmp/llvm.sh \
+  && clang-19 --version \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /work
 ENTRYPOINT ["/bin/bash"]

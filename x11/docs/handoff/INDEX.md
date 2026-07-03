@@ -6,29 +6,34 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 - iPad7,12 / A10 / iOS 17.6.1, rootless jailbreak (/var/jb).
 - SSH: `ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 root@MaxsiPad.local`
 - Repo: /Users/max/Documents/jailbreak/x11 (this dir).
+- Agent harness: prefer `bin/xios-device` for SSH status checks, session
+  launch/switch, input injection, screenshots, and evidence collection. See
+  `docs/device-testing.md`.
 
 ## The product
 "Install one `xios` meta-package → pick your desktop flavor": iosc (lightweight Wayland shell, WORKS today) · GNOME Shell/Mutter · KDE Plasma · native-iPadOS per-window. Chooser = Sileo + the in-app Desktop Session picker (four-finger tap in Xios); three-finger tap switches already-running X/Wayland displays.
 
 ## Domains (files here)
-1. **xios-app.md** — the Xios iOS app (Metal present + touch/keyboard input + IOSurface adopt). THE active bug area. HIGHEST PRIORITY: verify/finish the display+touch scale fix.
-2. **iosc-shell.md** — the iosc lightweight shell (panel/dock/overview/wallpaper) + the tablet-DE redesign vision (awaiting approval).
-3. **iosc-compositor.md** — the iosc Wayland compositor (iosc.c) + the wire protocol (input/present/clipboard/etc).
+1. **xios-app.md** — the Xios iOS app (Metal present + touch/keyboard input + IOSurface adopt). Scale/tap/sized-session path is verified; rotation/polish remain.
+2. **iosc-shell.md** — the iosc lightweight shell (panel/dock/overview/wallpaper) + the tablet-DE redesign vision.
+3. **iosc-compositor.md** — the iosc Wayland compositor (iosc.c) + the wire protocol (input/present/clipboard/native/XWM/etc).
 4. **mutter.md** — MetaBackendIOS (Mutter on iOS, = GNOME Shell's compositor).
-5. **gnome-session.md** — GNOME session layer + the shell boot (Phase 3 pending).
-6. **gtk4-typelibs.md** — on-device GObject-Introspection typelibs (the last GNOME boot gate).
-7. **kde-kf6.md** — Qt6 modules (DONE) + KF6/KDE Plasma build (in progress).
-8. **native-ipados.md** — the native per-window iPad flavor.
+5. **gnome-session.md** — GNOME session layer + the shell boot. First light achieved; current work is packaging/persistence/polish.
+6. **gtk4-typelibs.md** — on-device GObject-Introspection typelibs. The boot-critical scan work is no longer the main GNOME gate; packaging the regenerated typelibs remains.
+7. **kde-kf6.md** — Qt6 modules + KF6 + KWin first-light package work.
+8. **native-ipados.md** — the native per-window iPad flavor. Runtime-coexists with classic Xios.
 9. **session-launcher.md** — the flavor switcher (CLI + daemon + in-app picker).
 10. **svg-loader.md** — real `librsvg`/GdkPixbuf SVG loader audit for GTK/GNOME icon themes.
 11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
 
 ## Current headline status
 - **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.
-- **THE recurring bug (being fixed in xios-app):** the app scaled the desktop with a stale factor → desktop overflowed the right edge AND taps landed offset. One root cause was fixed by resetting zoom on every surface adopt (commit a7da822); the deeper geometry-resync fix is now implemented locally and deployed for verification (see xios-app.md). VERIFY THE PHYSICAL TAP FIRST.
+- **The prior stale-scale/tap-offset bug is fixed on the app path:** Xios now re-adopts/re-syncs IOSurface geometry, resets zoom on adopt, and maps input through the current fit transform. Keep checking `/var/jb/tmp/xios-touch.log` when changing present/input code.
 - **Portrait sizing path exists now:** the in-app Desktop Session picker can attach display dimensions to a session request; the updated session daemon applies them to iosc via `IOSC_LOGICAL`. Verified `1080x1440` logical → `2160x2880` framebuffer for full-height portrait. Latest Xios build removes visible debug chrome: three-finger tap switches existing displays, four-finger tap opens the session/dimension picker, pinch app-zooms in/out to fit, lower-screen one-finger swipe opens the keyboard.
-- **GNOME Shell is boot-ready**, gated only on gtk4-typelibs finishing the gir scans.
-- **KDE**: Qt6 modules done; KF6 build underway.
+- **Native iPadOS per-window mode is implemented and runtime-gated, not build-time-gated.** Classic and native can coexist: ioscd accepts explicit `LAUNCH_CLASSIC`/`LAUNCH_NATIVE`; native uses `wayland-native-0`, `iosc-native-input.sock`, and `xios-native.json`.
+- **GNOME Shell 46 reached first light on-device** on 2026-07-02. The latest GNOME handoff has the current chain of fixes and the remaining packaging/persistence/audio/input follow-ups.
+- **KDE/KF6 moved past framework build into KWin W1 packaging.** On-device KWin smoke is the next meaningful KDE validation.
+- **Wayland app ecosystem is growing quickly**: wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim and the rootless Xwayland XWM work are now on local commits. The package repo output is very dirty; coordinate before publishing.
 
 ## Key cross-cutting gotchas (all domains touching the app/device)
 - **Deploy Xios.app**: `scp -r` DROPS the exec bit AND the bundle `_CodeSignature`. After scp: `chmod +x Xios.app/Xios`, then re-sign `ldid -e Xios.app/Xios > ents; ldid -S<ents> Xios.app/Xios` (keeps GPU entitlements). `scp -r` into an existing bundle NESTS → `rm -rf` the dest first. `uicache -p` after. Bundle id `com.max.xios`.

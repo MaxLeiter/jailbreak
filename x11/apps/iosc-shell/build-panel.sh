@@ -108,8 +108,8 @@ docker run --rm --entrypoint /bin/bash \
 
     WL_CFLAGS=$("$PKGC" --cflags wayland-client)
     WL_LIBS=$("$PKGC" --libs wayland-client)
-    UI_CFLAGS=$("$PKGC" --cflags wayland-client cairo pangocairo)
-    UI_LIBS=$("$PKGC" --libs wayland-client cairo pangocairo)
+    UI_CFLAGS=$("$PKGC" --cflags wayland-client cairo pangocairo gdk-pixbuf-2.0)
+    UI_LIBS=$("$PKGC" --libs wayland-client cairo pangocairo gdk-pixbuf-2.0)
 
     # protocol marshalling objects (shared)
     $CC $BASE $WL_CFLAGS -c gen/wlr-layer-shell-unstable-v1-protocol.c -o gen/layer.o

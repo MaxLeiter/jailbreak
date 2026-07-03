@@ -21,6 +21,7 @@
 #define PANEL_RENDER_H
 
 #include <cairo/cairo.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <pango/pangocairo.h>
 #include <stdint.h>
 #include <string.h>
@@ -189,17 +190,55 @@ static void pr_text_centered(cairo_t *cr, pr_text_ctx *t, const char *font,
 
 /* --------------------------------------------------------------- icons ---- */
 
-/* Load a PNG into a cairo image surface (premultiplied ARGB32). Caller keeps the
- * handle for reuse; destroy with cairo_surface_destroy. Returns NULL on failure
- * (including cairo's own "status != SUCCESS" surfaces, which we normalise to NULL). */
+/* Load a PNG/SVG/theme image through GdkPixbuf into a cairo image surface.
+ * Caller keeps the handle for reuse; destroy with cairo_surface_destroy. */
 static cairo_surface_t *pr_icon_load(const char *path)
 {
     if (!path || !*path) return NULL;
-    cairo_surface_t *s = cairo_image_surface_create_from_png(path);
+    GError *err = NULL;
+    GdkPixbuf *pb = gdk_pixbuf_new_from_file(path, &err);
+    if (!pb) {
+        if (err) g_error_free(err);
+        return NULL;
+    }
+
+    int w = gdk_pixbuf_get_width(pb);
+    int h = gdk_pixbuf_get_height(pb);
+    int src_stride = gdk_pixbuf_get_rowstride(pb);
+    int src_channels = gdk_pixbuf_get_n_channels(pb);
+    int has_alpha = gdk_pixbuf_get_has_alpha(pb);
+    const guchar *src = gdk_pixbuf_get_pixels(pb);
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
     if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+        g_object_unref(pb);
         cairo_surface_destroy(s);
         return NULL;
     }
+
+    unsigned char *dst = cairo_image_surface_get_data(s);
+    int dst_stride = cairo_image_surface_get_stride(s);
+    for (int y = 0; y < h; y++) {
+        const guchar *sp = src + (size_t)y * src_stride;
+        uint32_t *dp = (uint32_t *)(dst + (size_t)y * dst_stride);
+        for (int x = 0; x < w; x++) {
+            int r = sp[x * src_channels + 0];
+            int g = sp[x * src_channels + 1];
+            int b = sp[x * src_channels + 2];
+            int a = has_alpha ? sp[x * src_channels + 3] : 255;
+            r = (r * a + 127) / 255;
+            g = (g * a + 127) / 255;
+            b = (b * a + 127) / 255;
+#if G_BYTE_ORDER == G_LITTLE_ENDIAN
+            dp[x] = ((uint32_t)a << 24) | ((uint32_t)r << 16) |
+                    ((uint32_t)g << 8) | (uint32_t)b;
+#else
+            dp[x] = ((uint32_t)b << 24) | ((uint32_t)g << 16) |
+                    ((uint32_t)r << 8) | (uint32_t)a;
+#endif
+        }
+    }
+    cairo_surface_mark_dirty(s);
+    g_object_unref(pb);
     return s;
 }
 

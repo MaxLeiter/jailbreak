@@ -23,7 +23,7 @@ icons); this is the chrome *inside* the Xios display.
 | `shell-screencopy.h` | one-shot synchronous zwlr-screencopy capture into a cairo surface. |
 | `shell-status.h` | battery/charging + date/time readers (IOKit/CoreFoundation, with clean fallbacks). |
 | `shell-draw.h` | `.desktop` scan + app launch + anon-fd/shm helpers. |
-| `panel-icons.h` | Icon= name -> shipped PNG resolution (no SVG loader on device; see `gen-shell-icons.sh`). |
+| `panel-icons.h` | Icon= name -> shipped PNG/SVG resolution; shipped PNGs are the fast path, and theme SVGs load through GdkPixbuf/librsvg when available. |
 | `preview-host.c` | off-device preview harness: renders the real layout code to `design/preview-{desktop,quicksettings,overview}.png` with SF type. The design iteration loop. |
 | `protocols/` | vendored protocol XML: wlr-layer-shell, wlr-foreign-toplevel-management, wlr-screencopy, xdg-shell. |
 | `build-panel.sh` | cross-compile + link + sign the shell clients for iOS arm64 (Docker; cairo/pango stack from procursus-vol-gtk). |

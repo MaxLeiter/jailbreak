@@ -28,9 +28,9 @@ docker run --rm --entrypoint /bin/bash \
   -v "$HERE":/work \
   "$IMAGE" -euo pipefail -c '
     export DEBIAN_FRONTEND=noninteractive
-    if ! pkg-config --exists cairo pangocairo; then
+    if ! pkg-config --exists cairo pangocairo gdk-pixbuf-2.0; then
       apt-get update -qq
-      apt-get install -y -qq libcairo2-dev libpango1.0-dev fontconfig >/dev/null
+      apt-get install -y -qq libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev fontconfig >/dev/null
     fi
     # Font fidelity: install SF and alias the generic families to it (== device).
     if [ -f /work/design/.sf/SFNS.ttf ]; then
@@ -46,7 +46,7 @@ EOF
       fc-cache -f >/dev/null 2>&1 || true
     fi
     cd /work
-    cc preview-host.c $(pkg-config --cflags --libs cairo pangocairo) -lm -o /tmp/preview-host
+    cc preview-host.c $(pkg-config --cflags --libs cairo pangocairo gdk-pixbuf-2.0) -lm -o /tmp/preview-host
     IOSC_SHELL_ICONS=/work/design/preview-icons /tmp/preview-host /work/design
   '
 echo "wrote $HERE/design/preview-{desktop,quicksettings,overview}.png"

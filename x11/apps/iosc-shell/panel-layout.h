@@ -83,7 +83,8 @@ struct panel_model {
     char   date[32];             /* "Tue Jul 1" ("" hides) */
     int    batt_pct;             /* 0..100, or -1 to hide the indicator */
     int    batt_charging;
-    int    wifi_on;              /* 1 = Wi-Fi up (glyph shown); 0 hides it */
+    int    wifi_on;              /* legacy preview knob: 1 = Wi-Fi glyph */
+    int    net_kind;             /* 0 none, 1 Wi-Fi, 2 cellular bars */
     int    qs_open;              /* status cluster stays lit while QS is up */
     int    px, py, have_ptr;     /* pointer, logical px */
     int    press_kind, press_idx;/* finger-down hit (touch feedback); 0 = none */
@@ -105,6 +106,8 @@ enum {
     PL_HIT_LAUNCH = 1, PL_HIT_ACTIVATE = 2, PL_HIT_CLOSE = 3,
     PL_HIT_APPGRID = 4, PL_HIT_STATUS = 5,
     QS_HIT_OVERVIEW = 6, QS_HIT_SHOT = 7,
+    PL_HIT_APPNAME = 8,
+    WM_HIT_CLOSE = 9, WM_HIT_MINIMIZE = 10, WM_HIT_MAXIMIZE = 11,
 };
 struct panel_hit  { int x, y, w, h, kind, idx; };
 struct panel_hits { struct panel_hit v[PL_MAX_LAUNCH + PL_MAX_TASK*2 + 4]; int n; };
@@ -164,16 +167,37 @@ static void pl_draw_battery(cairo_t *cr, double x, double cy, int pct, int charg
     }
 }
 
-/* Compact status-bar battery: same visual language, scaled for the slim bar. */
+/* Compact status-bar battery: bumped slightly and carries percent inside the
+ * body so the slim bar does not need a separate, tall percent label. */
 static void pl_draw_battery_small(cairo_t *cr, double x, double cy, int pct, int charging)
 {
-    double w = 26, h = 13, r = 3.5, y = cy - h / 2;
+    double w = 36, h = 16, r = 4.2, y = cy - h / 2;
     uint32_t fill = charging ? TH_GREEN : (pct <= 20 ? 0xFFFF453Au : TH_FG);
-    pr_stroke_rrect(cr, x, y, w, h, r, TH_FG_DIM, 1.4);
-    pr_fill_rrect(cr, x + w + 1.6, cy - 2.6, 2.4, 5.2, 1.2, TH_FG_DIM);
-    double inset = 2.4, lw = (w - 2 * inset) * (pct < 0 ? 0 : pct) / 100.0;
+    pr_stroke_rrect(cr, x, y, w, h, r, TH_FG_DIM, 1.2);
+    pr_fill_rrect(cr, x + w + 1.8, cy - 3.0, 2.8, 6.0, 1.4, TH_FG_DIM);
+    double inset = 2.6, lw = (w - 2 * inset) * (pct < 0 ? 0 : pct) / 100.0;
     if (lw > 0.5)
         pr_fill_rrect(cr, x + inset, y + inset, lw, h - 2 * inset, 1.8, fill);
+    if (charging) {
+        double cx = x + w / 2.0;
+        cairo_save(cr);
+        cairo_move_to(cr, cx + 1.8, y + 2.0);
+        cairo_line_to(cr, cx - 3.0, cy + 1.0);
+        cairo_line_to(cr, cx - 0.6, cy + 1.0);
+        cairo_line_to(cr, cx - 1.8, y + h - 2.0);
+        cairo_line_to(cr, cx + 3.2, cy - 1.0);
+        cairo_line_to(cr, cx + 0.6, cy - 1.0);
+        cairo_close_path(cr);
+        pr_set(cr, 0xF0000000u);
+        cairo_fill(cr);
+        cairo_restore(cr);
+    } else if (pct >= 0) {
+        char s[5];
+        snprintf(s, sizeof s, "%d", pct);
+        pr_text_ctx t = pr_text_ctx_new(cr);
+        pr_text_centered(cr, &t, "Sans Bold 9", s, x, w, cy + 0.2, 0xE0000000u);
+        pr_text_ctx_free(&t);
+    }
 }
 
 static void pl_draw_wifi_glyph(cairo_t *cr, double cx, double cy, uint32_t color)
@@ -191,6 +215,18 @@ static void pl_draw_wifi_glyph(cairo_t *cr, double cx, double cy, uint32_t color
     cairo_new_sub_path(cr);
     cairo_arc(cr, cx, cy + 5, 1.3, 0, 2 * M_PI);
     cairo_fill(cr);
+    cairo_restore(cr);
+}
+
+static void pl_draw_cell_glyph(cairo_t *cr, double x, double cy, uint32_t color)
+{
+    double bw = 3.2, gap = 2.4, base = cy + 6;
+    cairo_save(cr);
+    pr_set(cr, color);
+    for (int i = 0; i < 4; i++) {
+        double h = 4 + i * 3.0;
+        pr_fill_rrect(cr, x + i * (bw + gap), base - h, bw, h, 1.3, color);
+    }
     cairo_restore(cr);
 }
 
@@ -387,20 +423,17 @@ static void panel_draw_statusbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
         if (m->tasks[i].active && m->tasks[i].label[0]) { focused = m->tasks[i].label; break; }
     }
     if (!focused && m->ntasks > 0 && m->tasks[0].label[0]) focused = m->tasks[0].label;
-    if (focused) pr_text(cr, t, TH_FONT_LABEL_MED, focused, 18, cy, TH_FG, W / 3);
+    if (focused) {
+        int fw = pr_text(cr, t, TH_FONT_STATUS, focused, 18, cy, TH_FG_DIM, W / 3);
+        hits->v[hits->n++] = (struct panel_hit){ 12, 0, fw + 12, H, PL_HIT_APPNAME, 0 };
+    }
 
-    pr_text_centered(cr, t, TH_FONT_CLOCK, m->clock[0] ? m->clock : "00:00", 0, W, cy, TH_FG);
+    pr_text_centered(cr, t, TH_FONT_STATUS_CLOCK, m->clock[0] ? m->clock : "00:00", 0, W, cy, TH_FG_DIM);
 
     int right = W - 18;
-    int cluster_w = 122;
-    if (!m->wifi_on) cluster_w -= 27;   /* glyph (≈26px) + its gap */
-    int pctw = 0, ph = 0;
-    char pct[8] = "";
-    if (m->batt_pct >= 0 && W >= LO_BP_PCT) {
-        snprintf(pct, sizeof pct, "%d%%", m->batt_pct);
-        pr_text_measure(t, TH_FONT_LABEL, pct, &pctw, &ph);
-        cluster_w += pctw + 8;
-    }
+    int net_kind = m->net_kind ? m->net_kind : (m->wifi_on ? 1 : 0);
+    int cluster_w = 58;                 /* battery body + cap + breathing room */
+    if (net_kind) cluster_w += 30;
     int x0 = right - cluster_w;
     int hov = pl__hover(m, x0, 0, cluster_w + 18, H);
     int prs = pl__pressed(m->press_kind, m->press_idx, PL_HIT_STATUS, 0);
@@ -408,18 +441,15 @@ static void panel_draw_statusbar(cairo_t *cr, pr_text_ctx *t, int W, int H,
         pr_fill_rrect(cr, x0 - 8, 2, cluster_w + 16, H - 4, (H - 4) / 2,
                       (prs || m->qs_open) ? TH_PRESS : TH_HOVER);
 
-    int x = right - 30;
+    int x = right - 41;
     if (m->batt_pct >= 0) {
         pl_draw_battery_small(cr, x, cy, m->batt_pct, m->batt_charging);
-        x -= 8;
-        if (pct[0]) {
-            x -= pctw;
-            pr_text(cr, t, TH_FONT_LABEL, pct, x, cy, TH_FG_DIM, 0);
-            x -= 14;
-        }
+        x -= 15;
     }
-    if (m->wifi_on)
+    if (net_kind == 1)
         pl_draw_wifi_glyph(cr, x - 13, cy, TH_FG_DIM);
+    else if (net_kind == 2)
+        pl_draw_cell_glyph(cr, x - 24, cy, TH_FG_DIM);
     hits->v[hits->n++] = (struct panel_hit){ x0 - 8, 0, cluster_w + 16, H, PL_HIT_STATUS, 0 };
 }
 
@@ -606,6 +636,36 @@ static void panel_draw_qs(cairo_t *cr, pr_text_ctx *t, int W, int H,
                TH_ACCENT_DIM, TH_ACCENT, QS_HIT_OVERVIEW);
     qs__button(cr, t, m, hits, x + bw + TH_GAP, y, bw, bh, "Screenshot",
                pl_with_alpha(TH_CARD_INNER, 1.0), TH_FG, QS_HIT_SHOT);
+}
+
+/* ----------------------------------------------------------- window menu --- */
+
+#define WM_W 180
+#define WM_H 140
+#define WM_BTN_H 40
+
+static void panel_draw_window_menu(cairo_t *cr, pr_text_ctx *t, int W, int H,
+                                   struct panel_hits *hits)
+{
+    hits->n = 0;
+    pr_fill_rrect(cr, 0, 0, W, H, TH_R_CARD, TH_CARD);
+    pr_stroke_rrect(cr, 0, 0, W, H, TH_R_CARD, TH_BORDER, 1.0);
+
+    const struct { const char *label; int kind; uint32_t color; } items[] = {
+        { "Minimize",  WM_HIT_MINIMIZE,  TH_FG },
+        { "Maximize",  WM_HIT_MAXIMIZE,  TH_FG },
+        { "Close",     WM_HIT_CLOSE,     0xFFFF453Au },
+    };
+    for (size_t i = 0; i < sizeof(items)/sizeof(items[0]); i++) {
+        double by = TH_GAP + i * (WM_BTN_H + TH_GAP);
+        pr_fill_rrect(cr, TH_GAP, by, W - 2 * TH_GAP, WM_BTN_H, TH_R_BUTTON, TH_CARD_INNER);
+        pr_text(cr, t, TH_FONT_LABEL_MED, items[i].label,
+                TH_GAP * 2, by + WM_BTN_H / 2, items[i].color, W - 4 * TH_GAP);
+        hits->v[hits->n++] = (struct panel_hit){
+            (int)(TH_GAP), (int)by, (int)(W - 2 * TH_GAP), WM_BTN_H,
+            items[i].kind, 0
+        };
+    }
 }
 
 #endif /* PANEL_LAYOUT_H */

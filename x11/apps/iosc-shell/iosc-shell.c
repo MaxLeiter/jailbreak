@@ -114,6 +114,13 @@ static struct {
     struct qs_model  qs;
     struct panel_hits qs_hits;
 
+    /* window-menu popup (created on app-name tap) */
+    struct wl_surface    *wm_surf;
+    struct zwlr_layer_surface_v1 *wm_layer;
+    int   wm_w, wm_h, wm_configured;
+    struct panel_hits wm_hits;
+    int   wm_idx;                      /* task index the menu was opened for */
+
     /* input routing: which of our surfaces the pointer/touch is on */
     struct wl_surface *ptr_surf;
     int   px, py, have_ptr;
@@ -131,11 +138,11 @@ static struct {
     int   reorder_active, reorder_idx, reorder_target, reorder_x, reorder_y;
 
     /* deferred actions (never run screencopy/spawn inside a listener) */
-    int   want_qs_toggle, want_overview, want_shot;
+    int   want_qs_toggle, want_overview, want_shot, want_wm_toggle;
 
     double bg_alpha;
     int   batt_pct, batt_charging;
-    int   wifi_on;
+    int   wifi_on, net_kind;
 
     struct sd_app    launch[LAUNCH_MAX];
     cairo_surface_t *launch_icon[LAUNCH_MAX];
@@ -265,6 +272,7 @@ static void build_model(struct panel_model *m)
     st_date_short(m->date, sizeof m->date);
     m->batt_pct = P.batt_pct; m->batt_charging = P.batt_charging;
     m->wifi_on = P.wifi_on;
+    m->net_kind = P.net_kind;
     m->qs_open = P.qs_surf != NULL;
     if (P.touch_surf == P.surf) { m->press_kind = P.press_kind; m->press_idx = P.press_idx; }
 
@@ -396,6 +404,93 @@ static void qs_close(void)
     render();   /* un-light the status cluster */
 }
 
+/* ----------------------------------------------------------- window menu -- */
+
+static void wm_render(void);
+static void wm_close(void);
+
+static void wm_layer_configure(void *d, struct zwlr_layer_surface_v1 *ls,
+                               uint32_t serial, uint32_t w, uint32_t h)
+{
+    (void)d;
+    if (w) P.wm_w = (int)w;
+    if (h) P.wm_h = (int)h;
+    zwlr_layer_surface_v1_ack_configure(ls, serial);
+    P.wm_configured = 1;
+    wm_render();
+}
+static void wm_layer_closed(void *d, struct zwlr_layer_surface_v1 *ls)
+{ (void)d; (void)ls; wm_close(); }
+static const struct zwlr_layer_surface_v1_listener wm_layer_listener = {
+    .configure = wm_layer_configure, .closed = wm_layer_closed,
+};
+
+static void wm_close(void)
+{
+    if (!P.wm_surf) return;
+    if (P.ptr_surf == P.wm_surf) P.ptr_surf = NULL;
+    if (P.touch_surf == P.wm_surf) { P.touch_surf = NULL; P.press_kind = 0; }
+    zwlr_layer_surface_v1_destroy(P.wm_layer); P.wm_layer = NULL;
+    wl_surface_destroy(P.wm_surf);             P.wm_surf = NULL;
+    P.wm_configured = 0;
+}
+
+static void wm_open(int task_idx)
+{
+    if (P.wm_surf) { wm_close(); return; }
+    P.wm_idx = task_idx;
+
+    double ui = pl_ui();
+    P.wm_w = (int)lround(WM_W * ui);
+    P.wm_h = (int)lround(WM_H * ui);
+
+    P.wm_surf  = wl_compositor_create_surface(P.comp);
+    P.wm_layer = zwlr_layer_shell_v1_get_layer_surface(P.layer_shell, P.wm_surf, NULL,
+                    ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "window-menu");
+    zwlr_layer_surface_v1_add_listener(P.wm_layer, &wm_layer_listener, NULL);
+    zwlr_layer_surface_v1_set_anchor(P.wm_layer,
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+    int margin_top = (int)lround(mode_ref_h() * ui) + 4;
+    int margin_left = 12;
+    zwlr_layer_surface_v1_set_margin(P.wm_layer, margin_top, 0, 0, margin_left);
+    zwlr_layer_surface_v1_set_size(P.wm_layer, (uint32_t)P.wm_w, (uint32_t)P.wm_h);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(P.wm_layer, 0);
+    wl_surface_commit(P.wm_surf);
+}
+
+static void wm_render(void)
+{
+    if (!P.wm_surf || !P.wm_configured) return;
+    cairo_t *cr; cairo_surface_t *surf; void *map; size_t size;
+    struct wl_buffer *buf = sd_alloc_cairo_buffer(P.shm, P.wm_w, P.wm_h, P.scale,
+                                                  &cr, &surf, &map, &size);
+    if (!buf) return;
+
+    cairo_save(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_restore(cr);
+
+    double ui = pl_ui();
+    cairo_scale(cr, ui, ui);
+    int wm_wref = (int)lround(P.wm_w / ui);
+    int wm_href = (int)lround(P.wm_h / ui);
+    pr_text_ctx t = pr_text_ctx_new(cr);
+    panel_draw_window_menu(cr, &t, wm_wref, wm_href, &P.wm_hits);
+    pr_text_ctx_free(&t);
+
+    cairo_surface_flush(surf);
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+    munmap(map, size);
+
+    wl_buffer_add_listener(buf, &sd_buf_listener, NULL);
+    wl_surface_set_buffer_scale(P.wm_surf, P.scale);
+    wl_surface_attach(P.wm_surf, buf, 0, 0);
+    wl_surface_damage_buffer(P.wm_surf, 0, 0, P.wm_w * P.scale, P.wm_h * P.scale);
+    wl_surface_commit(P.wm_surf);
+}
+
 static void qs_open(void)
 {
     if (P.qs_surf) return;
@@ -455,6 +550,12 @@ static void spawn_overview(void)
     execl(path, "ioscoverview", (char*)NULL);
     execlp("ioscoverview", "ioscoverview", (char*)NULL);
     _exit(127);
+}
+
+/* Close the window menu if it's open and the tap is on a different surface. */
+static void wm_dismiss_on_other_tap(struct wl_surface *sf)
+{
+    if (P.wm_surf && sf != P.wm_surf) wm_close();
 }
 
 /* Full-output screenshot -> PNG. Runs from the main loop (roundtrips inside). */
@@ -518,6 +619,25 @@ static void act_on_hit(const struct panel_hit *r)
         break;
     case PL_HIT_APPGRID:  P.want_overview = 1; break;
     case PL_HIT_STATUS:   P.want_qs_toggle = 1; break;
+    case PL_HIT_APPNAME:  P.want_wm_toggle = 1; break;
+    case WM_HIT_CLOSE:
+        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
+            zwlr_foreign_toplevel_handle_v1_close(P.tasks[P.wm_idx].handle);
+            wm_close();
+        }
+        break;
+    case WM_HIT_MINIMIZE:
+        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
+            zwlr_foreign_toplevel_handle_v1_set_minimized(P.tasks[P.wm_idx].handle);
+            wm_close();
+        }
+        break;
+    case WM_HIT_MAXIMIZE:
+        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
+            zwlr_foreign_toplevel_handle_v1_set_maximized(P.tasks[P.wm_idx].handle);
+            wm_close();
+        }
+        break;
     case QS_HIT_OVERVIEW: P.want_overview = 1; P.want_qs_toggle = 1; break;
     case QS_HIT_SHOT:     P.want_shot = 1;     P.want_qs_toggle = 1; break;
     }
@@ -588,12 +708,10 @@ static void dock_maybe_begin_reorder(void)
     if (P.reorder_active || P.mode != MODE_DOCK || P.touch_surf != P.surf) return;
     if (P.press_kind != PL_HIT_LAUNCH || P.press_idx < 0 || P.press_idx >= P.nlaunch) return;
     if (mono_ms() - P.press_ms < DOCK_REORDER_HOLD_MS) return;
-    int dx = P.px - P.touch_x0, dy = P.py - P.touch_y0;
-    int slop = (int)lround(10 * pl_ui());
-    if ((dx < 0 ? -dx : dx) > slop || (dy < 0 ? -dy : dy) > slop) return;
     P.reorder_active = 1;
     P.reorder_idx = P.reorder_target = P.press_idx;
     P.reorder_x = P.px; P.reorder_y = P.py;
+    P.touch_moved = 1;
     render();
 }
 
@@ -701,7 +819,7 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t
                             mode_name(), t - P.last_touch_up_time);
         return;
     }
-    if (P.ptr_surf) hit_at(P.ptr_surf, P.px, P.py);
+    if (P.ptr_surf) { wm_dismiss_on_other_tap(P.ptr_surf); hit_at(P.ptr_surf, P.px, P.py); }
 }
 static void pt_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t a, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)a;(void)v; }
 static void pt_frame(void *d, struct wl_pointer *p){ (void)d;(void)p; }
@@ -777,6 +895,7 @@ static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, i
             if (pdbg()) fprintf(stderr, "%s: gesture qs swipe up -> close\n", mode_name());
         }
     } else if (!P.touch_moved) {
+        wm_dismiss_on_other_tap(sf);
         hit_at(sf, P.px, P.py);
     } else if (pdbg()) {
         fprintf(stderr, "%s: touch ended after drag dx=%d dy=%d -> no tap\n", mode_name(), dx, dy);
@@ -796,7 +915,10 @@ static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id, wl
         int slop = (int)lround(10 * pl_ui());   /* tap-cancel slop, reference px */
         if ((dx < 0 ? -dx : dx) > slop || (dy < 0 ? -dy : dy) > slop) {
             P.touch_moved = 1;
-            if (P.press_kind) { P.press_kind = 0; P.press_idx = 0; rerender_for(P.touch_surf); }
+            if (P.press_kind && !(P.mode == MODE_DOCK && P.touch_surf == P.surf &&
+                                  P.press_kind == PL_HIT_LAUNCH)) {
+                P.press_kind = 0; P.press_idx = 0; rerender_for(P.touch_surf);
+            }
         }
     }
 }
@@ -922,7 +1044,8 @@ static void poll_status(void)
     int pct, chg;
     if (st_battery(&pct, &chg)) { P.batt_pct = pct; P.batt_charging = chg; }
     else P.batt_pct = -1;
-    P.wifi_on = st_wifi();
+    P.net_kind = st_network();
+    P.wifi_on = P.net_kind == ST_NET_WIFI;
 }
 
 int main(int argc, char **argv)
@@ -986,10 +1109,12 @@ int main(int argc, char **argv)
             : P.mode == MODE_DOCK ? "tablet dock"
             : "tablet panel",
             (int)lround(P.bg_alpha * 100));
-    fprintf(stderr, "%s: %d launcher(s), foreign-toplevel=%s, screencopy=%s, battery=%s, wifi=%s\n",
+    fprintf(stderr, "%s: %d launcher(s), foreign-toplevel=%s, screencopy=%s, battery=%s, network=%s\n",
             mode_name(), P.nlaunch, P.ftm ? "yes" : "no (taskbar disabled)",
             P.scm ? "yes" : "no (QS backdrop/screenshot off)",
-            P.batt_pct >= 0 ? "yes" : "no", P.wifi_on ? "yes" : "no");
+            P.batt_pct >= 0 ? "yes" : "no",
+            P.net_kind == ST_NET_WIFI ? "wifi" :
+            P.net_kind == ST_NET_CELLULAR ? "cellular" : "none");
 
     P.surf  = wl_compositor_create_surface(P.comp);
     P.layer = zwlr_layer_shell_v1_get_layer_surface(P.layer_shell, P.surf, NULL,
@@ -1025,7 +1150,17 @@ int main(int argc, char **argv)
         /* deferred actions (safe here: outside any listener) */
         if (P.want_qs_toggle) {
             P.want_qs_toggle = 0;
-            if (P.qs_surf) qs_close(); else qs_open();
+            if (P.qs_surf) qs_close(); else { if (P.wm_surf) wm_close(); qs_open(); }
+        }
+        if (P.want_wm_toggle) {
+            P.want_wm_toggle = 0;
+            if (P.wm_surf) wm_close();
+            else {
+                int idx = -1;
+                for (int i = 0; i < P.ntasks; i++)
+                    if (P.tasks[i].activated || (idx < 0 && P.tasks[i].handle)) idx = i;
+                if (idx >= 0) wm_open(idx);
+            }
         }
         if (P.want_shot)     { P.want_shot = 0; wl_display_roundtrip(P.dpy); take_screenshot(); }
         if (P.want_overview) { P.want_overview = 0; spawn_overview(); }

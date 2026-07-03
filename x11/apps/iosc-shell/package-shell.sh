@@ -12,7 +12,7 @@
 #   out/ioscdock      floating dock
 #   out/ioscoverview  launcher / window switcher
 #   out/ioscbg        wallpaper + desktop widgets (wl_shm + ImageIO + cairo)
-#   out/icons/        pre-rasterised app icon PNGs (gen-shell-icons.sh)
+#   out/icons/        app icon assets, SVG preferred and PNG as fallback
 #   run-shell.sh      on-device bring-up script
 #   panel-ent.xml     the (non-GPU) client entitlement set
 # Output: iosc-shell_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
@@ -96,9 +96,9 @@ fi
 cp "$HERE/run-shell.sh" "$BIN/run-shell.sh"
 chmod 0755 "$BIN/run-shell.sh"
 
-# 3. pre-rasterised icon set (no SVG loader on device; see panel-icons.h)
-cp "$HERE"/out/icons/*.png "$ICONS/" 2>/dev/null || true
-chmod 0644 "$ICONS"/*.png 2>/dev/null || true
+# 3. shipped icon set: SVG preferred, PNG retained for raster-only apps.
+cp "$HERE"/out/icons/*.svg "$HERE"/out/icons/*.png "$ICONS/" 2>/dev/null || true
+chmod 0644 "$ICONS"/*.{svg,png} 2>/dev/null || true
 
 # 4. the entitlement set, for reference / re-signing if ever needed
 cp "$HERE/panel-ent.xml" "$SHARE/panel-ent.xml"
@@ -115,8 +115,8 @@ Version: ${PKG_VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.0), libwayland0, libcairo2, libpango-1.0-0, libglib2.0-0, libharfbuzz0b, libgtkintl
-Recommends: xios-desktop-theme, x11-fonts-sf, gnome-console
+Depends: iosc (>= 0.9.0), libwayland0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libglib2.0-0, libharfbuzz0b, libgtkintl
+Recommends: xios-desktop-theme, librsvg2-common, x11-fonts-sf, gnome-console
 Section: X11
 Priority: optional
 Installed-Size: ${INSTKB}
@@ -136,7 +136,8 @@ Description: lightweight desktop shell for the iosc compositor
  Run run-shell.sh on the device to bring up the compositor, wallpaper, status
  bar and dock, then open the Xios app to see the desktop. The dock's grid button
  or the Control Center card opens the overview. Apps are discovered from
- installed .desktop files, with pre-rendered icons for common GNOME applications.
+ installed .desktop files, with SVG icons for common GNOME applications and PNG
+ fallbacks for raster-only packages.
 EOF
 
 echo "=== staged tree ==="

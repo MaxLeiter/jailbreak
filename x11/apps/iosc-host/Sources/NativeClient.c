@@ -30,6 +30,17 @@ struct iosc_native_client {
     mach_port_t  rx;          /* receive port iosc delivers canvas send-rights to */
 };
 
+static void destroy_receive_port(mach_port_t rx)
+{
+    if (rx == MACH_PORT_NULL) return;
+    mach_port_t self = mach_task_self();
+    /* BIND gave iosc a name for this receive right, but we also inserted a local
+     * send right so task_for_pid + mach_port_extract_right can copy it. Release
+     * both refs; otherwise every reconnect leaks one send right. */
+    mach_port_deallocate(self, rx);
+    mach_port_mod_refs(self, rx, MACH_PORT_RIGHT_RECEIVE, -1);
+}
+
 /* ---- small IO helpers (same shape as XSurface.c) ------------------------- */
 
 static int read_full(int fd, void *buf, size_t n)
@@ -131,12 +142,12 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
                  (int32_t)scene_w, (int32_t)scene_h, (int32_t)scale,
                  (int32_t)rx, (uint32_t)idlen) != 0 ||
         (idlen && write_full(fd, app_id, idlen) != 0)) {
-        mach_port_mod_refs(self, rx, MACH_PORT_RIGHT_RECEIVE, -1);
+        destroy_receive_port(rx);
         close(fd); return NULL;
     }
 
     iosc_native_client *c = calloc(1, sizeof(*c));
-    if (!c) { mach_port_mod_refs(self, rx, MACH_PORT_RIGHT_RECEIVE, -1); close(fd); return NULL; }
+    if (!c) { destroy_receive_port(rx); close(fd); return NULL; }
     c->fd = fd;
     c->rx = rx;
     /* Keep the fd blocking. iosc_native_next polls before each record, then
@@ -247,8 +258,7 @@ void iosc_native_closed(iosc_native_client *c, uint32_t window)
 void iosc_native_close(iosc_native_client *c)
 {
     if (!c) return;
-    if (c->rx != MACH_PORT_NULL)
-        mach_port_mod_refs(mach_task_self(), c->rx, MACH_PORT_RIGHT_RECEIVE, -1);
+    destroy_receive_port(c->rx);
     if (c->fd >= 0) close(c->fd);
     free(c);
 }
