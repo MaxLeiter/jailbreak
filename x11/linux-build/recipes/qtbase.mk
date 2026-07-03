@@ -22,6 +22,8 @@ endif
 SUBPROJECTS    += qtbase
 QTBASE_VERSION := 6.6.3
 QT_MINOR       := 6.6
+# Round 4 (-4): QtSql + SQLite flipped ON for PlasmaActivitiesStats, which
+# plasma-workspace hard-requires before plasmashell.
 # Round 3 (-3): ANGLE/OpenGL ES + EGL flipped ON for QtQuick/QtWayland GPU clients.
 # Round 2 (-2): dbus + printsupport + xkbcommon + atspi bridge flipped ON (KF6/a11y need
 # them). See the FEATURE_* block below and docs/kde-plasma-plan.md Q3. Round 1 was 6.6.3.
@@ -35,7 +37,8 @@ QT_MINOR       := 6.6
 # widget deps are present) but links dead (vtable, no impl), so force printdialog +
 # printpreviewdialog OFF. kxmlgui wants the module for QPrinter, not the picker UI; nobody prints
 # from the iPad desktop. If a KF6 unit references QPrintDialog, patch it out KF6-side (plan Q3).
-DEB_QTBASE_V   ?= $(QTBASE_VERSION)-3+ios1
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)-4+ios1
+QTBASE_NINJA_JOBS ?= 4
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
@@ -164,6 +167,13 @@ qtbase-setup: setup
 		'    "$(QT_SYSROOT)/include/at-spi-2.0;$(QT_SYSROOT)/include/dbus-1.0;$(QT_SYSROOT)/lib/dbus-1.0/include;$(QT_SYSROOT)/include/glib-2.0;$(QT_SYSROOT)/lib/glib-2.0/include;$(QT_SYSROOT)/include")' \
 		'endif()' \
 		'set(ATSPI2_FOUND 1)' > $(BUILD_WORK)/qtbase/cmake/FindATSPI2.cmake
+	# 9) ANGLE's ES3 headers provide the functions Qt wants, but this staged header set can omit
+	#    GLDEBUGPROC. Upstream only typedefs it for the non-ES3.2 path; make the fallback depend on
+	#    the typedef actually being present so the ES3.2 build can keep going.
+	if grep -q "QT_CONFIG(opengles2) && !QT_CONFIG(opengles32)" $(BUILD_WORK)/qtbase/src/gui/opengl/qopenglextrafunctions.h; then \
+		perl -0pi -e 's{#if QT_CONFIG\(opengles2\) && !QT_CONFIG\(opengles32\)\ntypedef void \(QOPENGLF_APIENTRY  \*GLDEBUGPROC\)\(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar \*message,const void \*userParam\);\n#endif}{#if QT_CONFIG(opengles2)\n#ifndef GLDEBUGPROC\ntypedef void (QOPENGLF_APIENTRY  *GLDEBUGPROC)(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam);\n#endif\n#endif}g' \
+			$(BUILD_WORK)/qtbase/src/gui/opengl/qopenglextrafunctions.h ; \
+	fi
 
 ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:
@@ -221,7 +231,9 @@ qtbase: qtbase-setup
 		-DFEATURE_widgets=ON \
 		-DFEATURE_style_mac=OFF \
 		-DFEATURE_network=ON \
-		-DFEATURE_sql=OFF \
+		-DFEATURE_sql=ON \
+		-DFEATURE_sql_sqlite=ON \
+		-DFEATURE_system_sqlite=ON \
 		-DFEATURE_testlib=OFF \
 		-DFEATURE_printsupport=ON \
 		-DFEATURE_cups=OFF \
@@ -263,8 +275,8 @@ qtbase: qtbase-setup
 		-DINSTALL_QMLDIR=lib/qt6/qml \
 		-DINSTALL_LIBEXECDIR=lib/qt6/libexec \
 		-DQT_QPA_DEFAULT_PLATFORM=offscreen
-	+ninja -C $(BUILD_WORK)/qtbase/build
-	+DESTDIR="$(BUILD_STAGE)/qtbase" ninja -C $(BUILD_WORK)/qtbase/build install
+	+ninja -j$(QTBASE_NINJA_JOBS) -C $(BUILD_WORK)/qtbase/build
+	+DESTDIR="$(BUILD_STAGE)/qtbase" ninja -j$(QTBASE_NINJA_JOBS) -C $(BUILD_WORK)/qtbase/build install
 	$(call AFTER_BUILD,copy,qtbase,/var/jb/lib/angle)
 endif
 
