@@ -28,6 +28,7 @@ SUPPORT_RECIPE_TARGETS=(
 COLLECT_DEBS=(
   libplasma
   plasma-activities-stats
+  plasma-workspace
   kf6-attica
   kf6-declarative
   kf6-runner
@@ -106,13 +107,13 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 echo "==> installing Plasma Desktop recipes into makefiles/"
 mkdir -p build_info build_misc/entitlements
-for r in qt6-common.mk kf6-common.mk libplasma.mk plasma-activities-stats.mk; do
+for r in qt6-common.mk kf6-common.mk libplasma.mk plasma-activities-stats.mk plasma-workspace.mk; do
   cp -v /work/recipes/$r makefiles/
 done
 for t in "${SUPPORT_RECIPE_TARGETS[@]}"; do
   cp -v "/work/recipes/${t}.mk" makefiles/
 done
-cp -v /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control build_info/
+cp -v /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/plasma-workspace*.control build_info/
 for deb in "${COLLECT_DEBS[@]}"; do
   cp -v /work/build_info/${deb}*.control build_info/ 2>/dev/null || true
 done

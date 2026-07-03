@@ -1,0 +1,14 @@
+Package: plasma-workspace
+Version: @DEB_PLASMAWORKSPACE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, qt6-svg, qt6-wayland, qt6-5compat, qcoro6, kf6-auth, kf6-parts, kf6-runner, kf6-notifications, kf6-notifyconfig, kf6-newstuff, kf6-wallet, kf6-idletime, kf6-svg, kf6-declarative, kf6-i18n, kf6-kcmutils, kf6-textwidgets, kf6-crash, kf6-globalaccel, kf6-dbusaddons, kf6-coreaddons, kf6-kio, kf6-package, kf6-solid, kf6-guiaddons, kf6-archive, kf6-itemmodels, kf6-iconthemes, kf6-unitconversion, kf6-statusnotifieritem, plasma-activities, plasma-activities-stats, libplasma, kwayland, layer-shell-qt
+Description: First-light Plasma Workspace shell for Xios
+ Plasma Workspace provides plasmashell and supporting workspace libraries. This
+ iOS bring-up package is trimmed to the nested Wayland shell path and omits
+ nonessential Linux desktop services until later productization.
+ .
+ Part of the KDE Plasma Desktop and Plasma Mobile support layer for Xios.
