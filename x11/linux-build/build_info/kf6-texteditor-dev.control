@@ -1,0 +1,11 @@
+Package: kf6-texteditor-dev
+Version: @DEB_KTEXTEDITOR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-texteditor (= @DEB_KTEXTEDITOR_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, kf6-archive-dev, kf6-completion-dev, kf6-config-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-kio-dev, kf6-parts-dev, kf6-sonnet-dev, kf6-syntax-highlighting-dev, kf6-textwidgets-dev
+Description: Development files for KF6 TextEditor
+ Headers and CMake package files for building KDE applications that embed
+ the KTextEditor component.

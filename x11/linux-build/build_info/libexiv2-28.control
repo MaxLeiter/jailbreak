@@ -1,0 +1,12 @@
+Package: libexiv2-28
+Version: @DEB_EXIV2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://exiv2.org/
+Depends: libpng16-16
+Description: Exiv2 image metadata library for the Xios desktop
+ Runtime library for reading and writing Exif/IPTC metadata. This first Xios
+ build keeps the library narrow for Gwenview and disables the command-line
+ tools, tests, NLS, XMP, video, Brotli, and webready support.

@@ -1,0 +1,11 @@
+Package: kf6-texteditor
+Version: @DEB_KTEXTEDITOR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, kf6-archive, kf6-completion, kf6-config, kf6-guiaddons, kf6-i18n, kf6-kio, kf6-parts, kf6-sonnet, kf6-syntax-highlighting, kf6-textwidgets
+Description: KF6 TextEditor for the Xios desktop
+ KDE's embeddable text editor component, used by KWrite and Kate. This first
+ Xios build disables text-to-speech until Qt Multimedia is packaged.

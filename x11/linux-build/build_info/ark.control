@@ -1,0 +1,12 @@
+Package: ark
+Version: @DEB_ARK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/ark/
+Depends: qt6-base, kf6-config, kf6-crash, kf6-dbusaddons, kf6-i18n, kf6-kio, kf6-service, kf6-parts, kf6-widgetsaddons, kf6-windowsystem, kf6-iconthemes, libarchive13
+Description: Ark archive manager (Qt6/KF6)
+ KDE archive manager for creating, browsing, and extracting archives. This
+ first Xios package uses the libarchive backend and avoids KF6Pty and
+ KFileMetaData while the terminal/PTY stack is still being stabilized.

@@ -1,0 +1,11 @@
+Package: kf6-syntax-highlighting
+Version: @DEB_KSYNTAXHIGHLIGHTING_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base
+Description: KF6 SyntaxHighlighting for the Xios desktop
+ Syntax definition engine and bundled definitions used by KTextEditor and
+ KDE text-editing applications.

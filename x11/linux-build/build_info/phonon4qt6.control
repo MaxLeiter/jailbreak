@@ -1,0 +1,12 @@
+Package: phonon4qt6
+Version: @DEB_PHONON_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://community.kde.org/Phonon
+Depends: qt6-base, qt6-5compat
+Description: Phonon4Qt6 runtime for the Xios desktop
+ KDE multimedia abstraction library. This first package ships the Qt 6
+ library needed by Gwenview without demos, designer integration, settings,
+ PulseAudio support, or platform plugins.

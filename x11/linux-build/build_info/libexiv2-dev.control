@@ -1,0 +1,11 @@
+Package: libexiv2-dev
+Version: @DEB_EXIV2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://exiv2.org/
+Depends: libexiv2-28 (= @DEB_EXIV2_V@), libpng16-dev
+Description: Development files for Exiv2
+ Headers, CMake package files, and pkg-config metadata needed to build image
+ viewers and editors against Exiv2 on the Xios desktop.

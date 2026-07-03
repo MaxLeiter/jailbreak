@@ -1,0 +1,12 @@
+Package: gwenview
+Version: @DEB_GWENVIEW_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/gwenview/
+Depends: qt6-base, qt6-svg, qt6-image-formats, phonon4qt6, libexiv2-28, libjpeg62-turbo, libpng16-16, liblcms2-2, kf6-kio, kf6-itemmodels, kf6-i18n, kf6-parts, kf6-windowsystem, kf6-iconthemes, kf6-notifications, kf6-guiaddons, kf6-widgetsaddons
+Description: Gwenview image viewer (Qt6/KF6)
+ KDE image viewer with JPEG/PNG support and Exiv2-backed metadata handling.
+ Optional Baloo, Purpose, RAW, FITS, TIFF, X11, and annotation integrations
+ are disabled in this first Xios package.

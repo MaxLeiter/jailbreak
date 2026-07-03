@@ -1,0 +1,50 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/phonon4qt6.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "Phonon4Qt6 runtime for the Xios desktop"
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "4.12.0+ios1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "152.5 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Libraries"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "phonon4qt6"
+        }
+      ]
+    }
+  ]
+}

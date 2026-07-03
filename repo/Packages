@@ -2691,6 +2691,26 @@ Icon: https://repo.maxleiter.com/icons/kwrite.png
 Depiction: https://repo.maxleiter.com/depictions/kwrite.html
 Native Depiction: https://repo.maxleiter.com/depictions/kwrite.json
 
+Package: kwrite
+Version: 24.08.0+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/kwrite/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-texteditor, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, libgtkintl
+Description: KWrite text editor (Qt6/KF6)
+Installed-Size: 14940
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/kwrite_24.08.0+ios2_iphoneos-arm64.deb
+Size: 1971616
+MD5sum: 324e9f91be6e922af702fbd938cd67d8
+SHA1: 938600fe2c5247358b00d91e9b273acd9d438f94
+SHA256: 821bacbac17dbb15652c19a886f3da41cfddc11673f643b8cf3d57cb937d87cd
+Icon: https://repo.maxleiter.com/icons/kwrite.png
+Depiction: https://repo.maxleiter.com/depictions/kwrite.html
+Native Depiction: https://repo.maxleiter.com/depictions/kwrite.json
+
 Package: layer-shell-qt
 Version: 6.1.5+ios1
 Architecture: iphoneos-arm64
@@ -3709,6 +3729,26 @@ Size: 8286
 MD5sum: f7441a9d241b0a2edd67b12fb39ffa34
 SHA1: 38bd97b953d518ba7549efc1cccdffe9e9b48b57
 SHA256: 61e6e2deffacd47bc1297789a1da990b45850690b4b8b2e9ab91fdd46090fc55
+Icon: https://repo.maxleiter.com/icons/libexiv2-28.png
+Depiction: https://repo.maxleiter.com/depictions/libexiv2-28.html
+Native Depiction: https://repo.maxleiter.com/depictions/libexiv2-28.json
+
+Package: libexiv2-28
+Version: 0.28.3+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://exiv2.org/
+Depends: libiosexec1 (>= 1.3.1), libpng16-16
+Description: Exiv2 image metadata library for the Xios desktop
+Installed-Size: 2252
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libexiv2-28_0.28.3+ios2_iphoneos-arm64.deb
+Size: 731524
+MD5sum: 11fddc9b7bcda2f7fd129bf020a3f014
+SHA1: f94d15c742a2521008743218ea93c53b90c171e7
+SHA256: 222ca4c73adb206aed712964047020863b680385a2553552b94f7907bd0a5b47
 Icon: https://repo.maxleiter.com/icons/libexiv2-28.png
 Depiction: https://repo.maxleiter.com/depictions/libexiv2-28.html
 Native Depiction: https://repo.maxleiter.com/depictions/libexiv2-28.json

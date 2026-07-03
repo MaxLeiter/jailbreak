@@ -1,0 +1,11 @@
+Package: phonon4qt6-dev
+Version: @DEB_PHONON_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://community.kde.org/Phonon
+Depends: phonon4qt6 (= @DEB_PHONON_V@), qt6-base-dev, qt6-5compat-dev, extra-cmake-modules
+Description: Development files for Phonon4Qt6
+ Headers, CMake package files, and pkg-config metadata for building KDE
+ software that links Phonon4Qt6.
