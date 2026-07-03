@@ -1,0 +1,19 @@
+#!/bin/sh
+# Hitori ships a GSettings schema (org.gnome.hitori) that must be compiled into
+# gschemas.compiled, or g_settings_new("org.gnome.hitori") ABORTS the process at
+# startup (GLib fatal: "Settings schema 'org.gnome.hitori' is not installed") and
+# no window ever maps. hitori depends on libgtk-3-0, whose own postinst runs
+# BEFORE hitori's schema is installed, so it never picks up org.gnome.hitori; and
+# GSETTINGS_BACKEND=memory changes only where values are stored, not schema lookup.
+# Recompile the shared schema dir here so the schema resolves. (Same mechanism as
+# the libgtk-3-0 / libgtk-4-1 debs.)
+set -e
+
+SCHEMADIR="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/share/glib-2.0/schemas"
+GLIB_COMPILE_SCHEMAS="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/bin/glib-compile-schemas"
+
+if [ -d "$SCHEMADIR" ] && [ -x "$GLIB_COMPILE_SCHEMAS" ]; then
+    "$GLIB_COMPILE_SCHEMAS" "$SCHEMADIR" || true
+fi
+
+exit 0
