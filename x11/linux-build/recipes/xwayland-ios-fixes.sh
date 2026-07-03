@@ -256,5 +256,31 @@ def glamor_c(s):
             "}")
     return s
 edit("hw/xwayland/xwayland-glamor.c", glamor_c)
+
+# (B7) glamor core: ANGLE/Metal on A10 iOS exposes neither OES nor EXT texture
+# border clamp, but rejecting the context here prevents us from exercising the
+# IOSurface 2D path at all. Keep the diagnostic, but do not force a software
+# fallback solely for this sampler-edge capability.
+def glamor_core_c(s):
+    old = (
+        '        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp")) {\n'
+        '            ErrorF("GL_OES_texture_border_clamp required\\n");\n'
+        '            goto fail;\n'
+        '        }\n')
+    new = (
+        '        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp") &&\n'
+        '            !epoxy_has_gl_extension("GL_EXT_texture_border_clamp")) {\n'
+        '            LogMessageVerb(X_WARNING, 0,\n'
+        '                           "glamor/iosurface: no texture_border_clamp; continuing\\n");\n'
+        '        }\n')
+    s = s.replace(old, new)
+    return s.replace(
+        '        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp") &&\n'
+        '            !epoxy_has_gl_extension("GL_EXT_texture_border_clamp")) {\n'
+        '            ErrorF("GL_{OES,EXT}_texture_border_clamp required\\n");\n'
+        '            goto fail;\n'
+        '        }\n',
+        new)
+edit("glamor/glamor.c", glamor_core_c)
 print("xwayland-ios-fixes: done")
 PY

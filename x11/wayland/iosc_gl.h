@@ -48,7 +48,7 @@ void iosc_gl_begin_damage(int x, int y, int w, int h);
  * directly as a GL/Metal texture (the texture is sized to the surface, sw x sh). */
 void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
                             int sx, int sy, int src_w, int src_h,
-                            int dx, int dy, int dw, int dh);
+                            int dx, int dy, int dw, int dh, int flip_v);
 
 /* Draw a wl_shm BGRA buffer as a quad at the dest rect. `key` (a stable
  * per-surface pointer) caches one GL texture per surface: the buffer is uploaded

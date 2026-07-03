@@ -60,6 +60,14 @@ under `IOSC_SHELL_DEBUG=1`.
 - **grim — WORKS, no fix needed.** Upright full-color screenshot captured in classic
   mode (2880×2160). Orientation is correct: output IOSurface is top-left, iosc.c:1654
   sends `flags=0` (no Y_INVERT) — do NOT "fix" it to Y_INVERT.
+- **Xwayland glamor — WORKS in rootful smoke.** `xwayland 23.2.7+ios2` enables the
+  IOSurface glamor backend by default, depends on `angle`/`libepoxy0`, and no longer
+  forces `XWAYLAND_NO_GLAMOR=1` in the run wrapper unless `XWAYLAND_GLAMOR=0`.
+  On-device evidence shows Xwayland binding `iosc_iosurface`, iosc importing the
+  Xwayland client IOSurfaces, and the compositor presenting via ANGLE/Metal. The
+  Xwayland backend marks IOSurfaces as top-left through bit 31 of the iosc IOSurface
+  `format` word; iosc keeps the old vertical flip for clients that pass `format=0`.
+  Evidence: `artifacts/device-runs/xwayland-glamor-ios2-flipfix-20260703-153036/compositor.png`.
 
 ## Gotchas (device + build)
 

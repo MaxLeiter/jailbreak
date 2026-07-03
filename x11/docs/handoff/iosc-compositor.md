@@ -24,6 +24,7 @@
 - Local compositor upload path now tracks `damage_buffer` dirty rectangles for cached wl_shm textures, so repaint pulses and cursor movement do not force whole-window re-uploads. The nested-compositor frame pulse is deployed in the iosc launch paths with `IOSC_FRAME_PULSE=1` by default.
 - 2026-07-03: `iosc` now cleans up compositor surfaces on client disconnect, accumulates real output damage, and scissors redraws to the damaged output rects instead of recompositing the full output for small surface updates. Debug tracing is behind `IOSC_DAMAGE_STATS=1` and `IOSC_DAMAGE_REASON=1`. Packaged/deployed on-device as `iosc 0.9.4`; installed `/var/jb/usr/local/bin/iosc` sha256 is `82b08437245ff678af0cb9fee66458cb860cd14f1c147c8a0b771b1f2da371c4`.
 - 2026-07-03 on-device soak: clean `xios-session iosc` mapped the four shell layer surfaces; launching `kgx` mapped a fifth toplevel; killing `kgx` and remapping `ioscbar` returned the compositor to `4 window(s)`, confirming the dead client was not retained. Evidence: `artifacts/device-runs/20260703-124645/compositor.png`.
+- 2026-07-03 Xwayland glamor/IOSurface path is verified on-device with `xwayland 23.2.7+ios2`: Xwayland binds `iosc_iosurface`, iosc imports client IOSurfaces from the Xwayland task, and the compositor presents through ANGLE/Metal (`GL_RENDERER=ANGLE ... Apple A10 GPU`, frame barrier `EGL fence`). The iosc IOSurface protocol now treats bit 31 of the `format` word as "already top-left"; old clients passing `0` keep the GL-origin vertical flip, while the Xwayland glamor backend marks its IOSurfaces top-left to avoid inverted X11 output. Evidence: `artifacts/device-runs/xwayland-glamor-ios2-flipfix-20260703-153036/compositor.png`.
 
 ## Known compositor-side issues
 1. **Nested-compositor frame callbacks**: first-light KWin-on-iosc is now verified. `wayland/iosc.c` queues a coalesced repaint pulse when a mapped surface requests `wl_surface.frame` after the commit that made it visible, and `IOSC_FRAME_PULSE=1` is defaulted by `run-iosc.sh`, `run-shell.sh`, `xios-session`, and `ioscd`. Evidence: `x11/artifacts/device-runs/kde-kwin-framepulse-20260702-234309/` shows KWin importing QtWayland IOSurfaces and the Qt client no longer logging the frame-callback timeout loop. Keep soaking for clients that repaint continuously.
@@ -32,9 +33,10 @@
 
 ## Open items
 1. Keep soaking the default rebuilt `iosc 0.9.4` path under normal iosc-shell usage; watch for clients that repaint continuously, stale surfaces after disconnect, or unexpected full-output damage outside startup/geometry changes.
-2. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with classic Xios, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
-3. Rotation (XIOS_IN_OUTPUT=10): reconfigure the output IOSurface on device rotation (paired with xios-app's drawable update). See polish.md #21.
-4. Refactor plan: split input, present/IOSurface, native canvas, clipboard, and XWM glue out of the monolith once behavior settles.
+2. Package/deploy the compositor side of the IOSurface `format` bit once the next iosc package revision is cut; the on-device smoke above used direct `/var/jb/usr/local/bin/iosc` deployment from `wayland/build-iosc.sh`.
+3. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with classic Xios, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
+4. Rotation (XIOS_IN_OUTPUT=10): reconfigure the output IOSurface on device rotation (paired with xios-app's drawable update). See polish.md #21.
+5. Refactor plan: split input, present/IOSurface, native canvas, clipboard, and XWM glue out of the monolith once behavior settles.
 
 ## Verify
 `/var/jb/tmp/iosc.log` (logical/output/clients), shell stderr logs (with IOSC_SHELL_DEBUG=1). Input socket is `/var/jb/tmp/iosc-input.sock` for iosc.

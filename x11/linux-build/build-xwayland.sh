@@ -172,8 +172,11 @@ done
 echo "==> collect debs -> /out"
 mkdir -p /out
 found=0
-for pat in libxcvt libxshmfence libdrm2 libdrm-dev xwayland; do
-  for d in $(find . -name "${pat}*_*_iphoneos-arm64.deb" 2>/dev/null); do
+DIST_ROOT=build_dist/iphoneos-arm64-rootless/1900
+for dir in libxcvt libxshmfence libdrm xwayland; do
+  [ -d "$DIST_ROOT/$dir" ] || continue
+  for d in "$DIST_ROOT/$dir"/*_*_iphoneos-arm64.deb; do
+    [ -e "$d" ] || continue
     cp -v "$d" /out/; found=1
   done
 done

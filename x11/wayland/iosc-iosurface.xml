@@ -35,16 +35,17 @@
         compositor imports the surface named by mach_port_name (an
         IOSurfaceCreateMachPort() name in THIS client's IPC space) by reaching into
         the client's task. width/height/format are advisory; the compositor trusts
-        the imported surface's own geometry. format is a 32-bit fourcc (0 = BGRA8,
-        the only format supported in M1). If the import fails the buffer is created
-        but immediately posts iosc_iosurface.error.import_failed.
+        the imported surface's own geometry. format is a 32-bit fourcc/flag word:
+        0 = BGRA8 with GL-origin vertical flip; bit 31 marks BGRA8 already in
+        top-left presentation order. If the import fails the buffer is created but
+        immediately posts iosc_iosurface.error.import_failed.
       </description>
       <arg name="id" type="new_id" interface="wl_buffer"/>
       <arg name="mach_port_name" type="uint"
            summary="IOSurfaceCreateMachPort() name in the client's task"/>
       <arg name="width" type="int"/>
       <arg name="height" type="int"/>
-      <arg name="format" type="uint" summary="fourcc; 0 = BGRA8"/>
+      <arg name="format" type="uint" summary="fourcc/flags; 0 = BGRA8"/>
     </request>
   </interface>
 </protocol>

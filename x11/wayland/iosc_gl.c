@@ -399,7 +399,7 @@ static void draw_quad(int dx, int dy, int dw, int dh,
 
 void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
                             int sx, int sy, int src_w, int src_h,
-                            int dx, int dy, int dw, int dh)
+                            int dx, int dy, int dw, int dh, int flip_v)
 {
     GLuint tex = cache_get(client_iosurface, sw, sh);   /* texture sized to the surface */
     if (!tex) return;
@@ -408,7 +408,7 @@ void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
     draw_quad(dx, dy, dw, dh,
               (float)sx / sw, (float)sy / sh,
               (float)(sx + src_w) / sw, (float)(sy + src_h) / sh,
-              1);   /* ANGLE-rendered client IOSurface: flip V */
+              flip_v);
 }
 
 /* Per-key (per-surface) wl_shm texture cache. Without it, recomposite_all

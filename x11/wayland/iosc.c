@@ -724,6 +724,7 @@ static void cpu_blit_shm(struct iosc_surface *s)
 struct iosc_iosurface_buffer {
     void *surface;   /* imported IOSurfaceRef (from xios_import_client_iosurface) */
     int   w, h;
+    int   flip_v;    /* 1 = GL-origin client IOSurface; 0 = already top-left */
 };
 
 static void iosurface_buffer_destroy(struct wl_client *c, struct wl_resource *r)
@@ -826,7 +827,7 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
         struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(buf);
         if (ib && ib->surface)
             iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
-                                   dxp, dyp, dwp, dhp);
+                                   dxp, dyp, dwp, dhp, ib->flip_v);
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &spb_buffer_impl)) {
         struct iosc_single_pixel_buffer *spb = wl_resource_get_user_data(buf);
         if (spb)   /* 1x1 texel, sampled across the whole destination rect (uncached) */
@@ -2170,7 +2171,8 @@ static void iosurface_factory_create_buffer(struct wl_client *client,
         struct wl_resource *res, uint32_t id, uint32_t mach_port_name,
         int32_t width, int32_t height, uint32_t format)
 {
-    (void)width; (void)height; (void)format;
+    (void)width; (void)height;
+    enum { IOSC_IOSURFACE_FORMAT_TOP_LEFT = 0x80000000u };
     pid_t pid = 0; uid_t uid = 0; gid_t gid = 0;
     wl_client_get_credentials(client, &pid, &uid, &gid);
 
@@ -2181,6 +2183,7 @@ static void iosurface_factory_create_buffer(struct wl_client *client,
     if (!ib) { if (surf) xios_release_client_iosurface(surf);
                wl_client_post_no_memory(client); return; }
     ib->surface = surf; ib->w = iw; ib->h = ih;
+    ib->flip_v = (format & IOSC_IOSURFACE_FORMAT_TOP_LEFT) ? 0 : 1;
 
     struct wl_resource *buf = wl_resource_create(client, &wl_buffer_interface, 1, id);
     if (!buf) { if (surf) xios_release_client_iosurface(surf); free(ib);
