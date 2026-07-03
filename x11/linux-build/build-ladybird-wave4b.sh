@@ -370,10 +370,16 @@ Description: Ladybird browser engine — headless PNG renderer (M0 bring-up).
 Section: Utilities
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Ladybird contributors; iOS port by Max Leiter
-Depends: libc++1, icu-ios, harfbuzz, libpng, libjpeg, libwebp7, skia
 Installed-Size: $INSTALLED_KB
 MinimumOSVersion: 16.0
 EOF
+    # NB: Skia/skcms/SDL(stub)/rust crates are STATICALLY linked (no Depends). The dynamic runtime
+    # closure (from otool -L, resolved via @rpath=/var/jb/usr/lib) is: libicu78, ffmpeg
+    # (libavcodec/format/util/swresample), harfbuzz, openssl (libssl/libcrypto 3), sqlite3
+    # (libsqlite3-1 in Procursus, NOT -0), libxml2, libpng16, libjpeg-turbo, libwebp7, libbrotli,
+    # libpsl, libwoff2dec, libfmt, libsimdjson, libsimdutf, libmimalloc, libtommath, zlib, libiosexec.
+    # Depends is left empty for the unpublished M0 artifact so it installs cleanly; the exact package
+    # names must be pinned (Procursus naming) before publishing. See report.
     dpkg-deb -Zxz -b "$PKG" "$DEB" && echo "== packaged $DEB ==" && dpkg-deb -c "$DEB" | awk '{print $6}' | grep -E 'bin/|libexec/|Default.ini' | head
     ls -la "$DEB"
   fi
