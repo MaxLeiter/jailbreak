@@ -6,7 +6,7 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 ## Key files (all under `x11/apps/iosc-desktop/`)
 - `xios-session-lib.sh` — single source of truth: ONE bulletproof teardown (kills iosc/mutter/gnome-shell/Xios/panels/clients/session-buses + rm stale wayland-0/xios.json/*-ddx.sock/*-input.sock) + preset fns that CALL `run-shell.sh`/`run-mutter.sh`/`run-gnome-shell.sh`. Resolver prefers the INSTALLED script (/var/jb/usr/local/bin, then /var/jb/usr/bin) over a pinned libexec copy.
 - `xios-session` — CLI: `xios-session iosc|mutter|gnome|kde|app <name>|stop|status`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal).
-- `package-session.sh` → current host-built `xios-session_1.0.10_iphoneos-arm64.deb` (in repo/debs + linux-build/out, not deployed in this pass). `install-xios-session.sh` — lead-run scp+chmod. Doc: `x11/docs/session-launcher.md`.
+- `package-session.sh` → current source package version is `xios-session_1.0.15_iphoneos-arm64.deb`. `install-xios-session.sh` — lead-run scp+chmod. Doc: `x11/docs/session-launcher.md`.
 - In-app picker: ⧉ button → modal; sends `SESSION` over `/var/jb/tmp/ioscd.sock`. Status line polls `/var/jb/tmp/xios-session-status.json`.
 
 ## Current state — built, installed (1.0.4), CLI works
@@ -20,6 +20,12 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 - `ioscd` and the classic `iosc` binary respect that owner: direct/classic iosc is refused while the active owner is another session, with `IOSC_IGNORE_ACTIVE_SESSION=1` as an explicit diagnostic override. Native iosc remains allowed.
 - Verified with Mutter active: `/var/jb/usr/local/bin/iosc` exited 2, logged `iosc: refusing classic output because active session is mutter`, and left Mutter's `xios.json` unchanged.
 - Installed on-device: `dpkg -s xios-session` reports `Version: 1.0.4`; `xios-session mutter` starts Mutter with `mutter-ddx.sock`/`mutter-input.sock` and active owner `mutter`.
+
+## Shared app bus — ADDED in 1.0.15
+- `xios-session app <name>` now creates/reuses one `/var/jb/tmp/xios-session-bus/session-bus` with `dbus-daemon --session --fork` instead of wrapping every client in a fresh `dbus-run-session`.
+- The per-app environment still uses the same `XDG_RUNTIME_DIR`, Wayland socket, GTK Wayland settings, memory gsettings, and a11y prefix. If direct bus creation is unavailable, it falls back to the old `dbus-run-session` wrapper.
+- Device smoke on 2026-07-03 launched kgx plus GNOME Text Editor under the force-a11y gate; one session bus, one AT-SPI bus, and one `xios-a11yd` served both apps. Probe transcript:
+  `artifacts/device-runs/20260703-052614/a11y-shared-bus-probe.txt`.
 
 ## Flavor-switch jetsam — FIXED in 1.0.2 (needs on-device deploy + verify)
 Max hit it: switching iosc→mutter jetsammed the Xios app (took two tries). Root cause: killing the old compositor (~30MB GPU IOSurface + Metal/ANGLE ctx) while a new one immediately allocates spikes GPU memory past the foreground-app limit. `xios-session_1.0.2` (repo/debs + linux-build/out) applies all three fixes in `xios-session-lib.sh`:

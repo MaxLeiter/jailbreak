@@ -58,6 +58,7 @@ XS_WAYLAND_SOCK="$XS_TMP/wayland-0"
 XS_XIOS_BUNDLE="com.max.xios"
 XS_UIOPEN="$XS_JB/usr/bin/uiopen"
 XS_DBUS_RUN="$XS_JB/usr/bin/dbus-run-session"
+XS_DBUS_DAEMON="$XS_JB/usr/bin/dbus-daemon"
 XS_BASH="$XS_JB/usr/bin/bash"
 
 export PATH="$XS_JB/usr/bin:$XS_JB/usr/sbin:$XS_JB/bin:$XS_JB/sbin:/usr/bin:/bin:$PATH"
@@ -108,6 +109,25 @@ xs_a11y_prefix() {
     xs_a11y_enabled || return 0
     helper="$(xs_a11y_start_cmd)"
     [ -n "$helper" ] && printf '%s; ' "$helper"
+}
+
+xs_session_bus_address() {  # xs_session_bus_address <busdir>
+    local busdir="$1" sock addr
+    sock="$busdir/session-bus"
+    addr="unix:path=$sock"
+    mkdir -p "$busdir"; chmod 0700 "$busdir"
+    if [ -S "$sock" ]; then
+        printf '%s' "$addr"
+        return 0
+    fi
+    [ -x "$XS_DBUS_DAEMON" ] || return 1
+    rm -f "$sock"
+    "$XS_DBUS_DAEMON" --session --fork --address="$addr" --print-address >/dev/null 2>&1 || return 1
+    if [ -S "$sock" ]; then
+        printf '%s' "$addr"
+        return 0
+    fi
+    return 1
 }
 
 # xs_write_status <preset> <state> <message>
@@ -209,6 +229,7 @@ xios_session_teardown() {
           "$XS_TMP/kde-session-bus" \
           "$XS_TMP/iosc-wm.sock" \
           "$XS_TMP/iosc-native.sock" 2>/dev/null || true
+    rm -rf "$XS_TMP/xios-session-bus" 2>/dev/null || true
     xs_log "teardown done"
 }
 
@@ -417,8 +438,8 @@ xios_session_kde() {
 
 # app <name>: launch a Wayland client against the CURRENTLY RUNNING compositor.
 # No teardown — this rides on whatever compositor is up. Reuses run-kgx.sh's proven
-# client environment (private dbus bus dir, absolute WAYLAND_DISPLAY, GDK wayland,
-# GTK ngl on ANGLE/IOSurface, memory gsettings, writable HOME) under dbus-run-session.
+# client environment (shared session bus dir, absolute WAYLAND_DISPLAY, GDK wayland,
+# GTK ngl on ANGLE/IOSurface, memory gsettings, writable HOME).
 xios_session_app() {
     local name="$1"
     [ -n "$name" ] || { xs_log "ERROR: 'app' needs a name"; xs_write_status app error "no app name"; return 1; }
@@ -439,13 +460,20 @@ xios_session_app() {
         *)                                  exec="$name" ;;   # run as given
     esac
 
-    local busdir="$XS_TMP/xios-session-bus"
-    mkdir -p "$busdir"; chmod 0700 "$busdir"
+    local busdir="$XS_TMP/xios-session-bus" addr
     xs_log "app: launching '$exec' as a wayland client of the running compositor"
     local a11y_prefix
     a11y_prefix="$(xs_a11y_prefix)"
     local gtk_a11y_env=()
     xs_a11y_enabled || gtk_a11y_env=(GTK_A11Y=none)
+    local dbus_addr=()
+    if addr="$(xs_session_bus_address "$busdir")"; then
+        dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr")
+    fi
+    local launcher=("$XS_BASH" -lc "${a11y_prefix}exec $exec")
+    if [ ${#dbus_addr[@]} -eq 0 ]; then
+        launcher=("$XS_DBUS_RUN" -- "${launcher[@]}")
+    fi
     nohup env \
         XDG_RUNTIME_DIR="$busdir" \
         WAYLAND_DISPLAY="$XS_WAYLAND_SOCK" \
@@ -454,8 +482,9 @@ xios_session_app() {
         ANGLE_REAL_LIBEGL=/var/jb/lib/angle/libEGL.angle.dylib \
         GSETTINGS_BACKEND=memory \
         "${gtk_a11y_env[@]}" \
+        "${dbus_addr[@]}" \
         HOME="$XS_JB/var/root" \
-        "$XS_DBUS_RUN" -- "$XS_BASH" -lc "${a11y_prefix}exec $exec" \
+        "${launcher[@]}" \
         >>"$XS_TMP/xios-session-client.log" 2>&1 </dev/null &
     # bring the shared Xios display forward so the new window is visible
     xs_foreground_xios
