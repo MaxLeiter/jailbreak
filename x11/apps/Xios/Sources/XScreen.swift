@@ -1315,11 +1315,7 @@ final class XScreenView: UIView {
     }
 
     private func sendSessionRequestToIOSCD(_ preset: String, app: String?,
-                                           display: DisplayProfile?) -> Bool {
-        let fd = connectUnixSocket(ioscdSocketPath)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-
+                                           display: DisplayProfile?) -> String? {
         var width = ""
         var height = ""
         var dpi = ""
@@ -1330,29 +1326,23 @@ final class XScreenView: UIView {
         }
         let line = ["SESSION", preset, app ?? "", width, height, dpi]
             .joined(separator: "\t") + "\n"
-        guard writeAll(fd, line) else { return false }
-
-        var ack = [UInt8](repeating: 0, count: 64)
-        let ackCap = ack.count - 1
-        let n = ack.withUnsafeMutableBytes { raw in
-            read(fd, raw.baseAddress, ackCap)
-        }
-        guard n > 0 else { return false }
-        let s = String(decoding: ack.prefix(Int(n)), as: UTF8.self)
-        return s.hasPrefix("SESSION_STARTED")
+        return sendIOSCDRequest(line, maxBytes: 4096)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
                                      display: DisplayProfile? = nil) {
-        if sendSessionRequestToIOSCD(preset, app: app, display: display) {
+        let response = sendSessionRequestToIOSCD(preset, app: app, display: display)
+        if response?.hasPrefix("SESSION_STARTED") == true {
             lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
                 + (display.map { " \($0.detail)" } ?? "")
             // Track the switch from here on (card line + full-screen banner once dismissed),
             // so it survives the app staying up through a compositor swap.
             startSessionIndicator()
         } else {
-            lastToolMessage = "Session request failed: ioscd socket unavailable"
+            let detail = response?.isEmpty == false ? response! : "ioscd socket unavailable"
+            lastToolMessage = "Session request failed: \(detail)"
         }
         writeDebugSnapshot()
     }
@@ -2561,10 +2551,12 @@ final class XScreenView: UIView {
     private func installChrome() {
         let displayTap = UITapGestureRecognizer(target: self, action: #selector(openPicker))
         displayTap.numberOfTouchesRequired = 3
+        displayTap.delegate = self
         addGestureRecognizer(displayTap)
 
         let sessionTap = UITapGestureRecognizer(target: self, action: #selector(openSessionPicker))
         sessionTap.numberOfTouchesRequired = 4
+        sessionTap.delegate = self
         addGestureRecognizer(sessionTap)
 
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
@@ -2592,15 +2584,18 @@ final class XScreenView: UIView {
         wheelPan.allowedScrollTypesMask = .continuous
         wheelPan.allowedTouchTypes = []
         wheelPan.maximumNumberOfTouches = 0
+        wheelPan.delegate = self
         addGestureRecognizer(wheelPan)
 
         let twoFingerTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerTap(_:)))
         twoFingerTap.numberOfTouchesRequired = 2
+        twoFingerTap.delegate = self
         addGestureRecognizer(twoFingerTap)
 
         if #available(iOS 13.4, *) {
             let hover = UIHoverGestureRecognizer(target: self, action: #selector(handlePointerHover(_:)))
             hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+            hover.delegate = self
             addGestureRecognizer(hover)
         }
 
@@ -3959,6 +3954,24 @@ extension XScreenView: PHPickerViewControllerDelegate {
 }
 
 extension XScreenView: UIGestureRecognizerDelegate {
+    private func isChromeTouch(_ touch: UITouch) -> Bool {
+        guard var view = touch.view else { return false }
+        while true {
+            if view is UIControl || view is UITextField || view is UITextView || view is UIScrollView {
+                return true
+            }
+            if let pickerOverlay, view === pickerOverlay { return true }
+            if let shellOverlay, view === shellOverlay { return true }
+            guard let parent = view.superview else { return false }
+            view = parent
+        }
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldReceive touch: UITouch) -> Bool {
+        !isChromeTouch(touch)
+    }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         gestureRecognizer is UIPinchGestureRecognizer || otherGestureRecognizer is UIPinchGestureRecognizer
