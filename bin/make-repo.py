@@ -91,6 +91,9 @@ def control_dict(deb_bytes):
     return d
 
 def normalize_section(ctrl):
+    sec = (ctrl.get("Section") or "").strip()
+    if sec.lower() == "x11":
+        ctrl["Section"] = "X11"
     if ctrl.get("Package") in APP_SECTION_PACKAGES:
         ctrl["Section"] = APP_SECTION
 
@@ -398,116 +401,181 @@ SITE_CSS = f"""
   @font-face{{font-family:"Geist Mono";font-style:normal;font-weight:100 900;font-display:swap;src:url("fonts/GeistMono-Variable.woff2") format("woff2")}}
   :root{{
     color-scheme:dark;
-    --bg:#000; --surface:#0a0a0a; --surface-2:#141414;
-    --border:#232323; --border-hi:#3a3a3a;
-    --fg:#ededed; --fg-dim:#a1a1a1; --fg-mute:#8f8f8f;
-    --accent:{ACCENT_HEX}; --accent-ink:#001321; --glow:.10;
-    --radius:12px; --maxw:720px;
+    --bg:#0a0a0b; --bg-hover:#141417;
+    --line:#26262a; --line-hi:#45454c;
+    --fg:#ececef; --fg-dim:#9c9ca4; --fg-mute:#6b6b73;
+    --accent:{ACCENT_HEX}; --accent-ink:#001321;
+    --mono:"Geist Mono",ui-monospace,monospace;
+    --maxw:760px;
   }}
   :root[data-theme="light"]{{
     color-scheme:light;
-    --bg:#fff; --surface:#fafafa; --surface-2:#f3f3f3;
-    --border:#eaeaea; --border-hi:#cfcfcf;
-    --fg:#171717; --fg-dim:#555; --fg-mute:#767676;
-    --accent:#0a6fce; --accent-ink:#fff; --glow:.06;
+    --bg:#fbfbfa; --bg-hover:#f1f1ee;
+    --line:#e4e4e0; --line-hi:#c6c6bf;
+    --fg:#151514; --fg-dim:#5d5d58; --fg-mute:#8b8b85;
+    --accent:#0a6fce; --accent-ink:#fff;
   }}
   *{{box-sizing:border-box}}
   html{{-webkit-text-size-adjust:100%}}
   body{{margin:0;font-family:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    font-size:16px;line-height:1.6;background:var(--bg);color:var(--fg);
-    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
-    background-image:radial-gradient(62% 46% at 50% -8%, rgba({ACCENT[0]},{ACCENT[1]},{ACCENT[2]},var(--glow)), transparent 70%);
-    background-repeat:no-repeat;background-attachment:fixed}}
-  .wrap{{max-width:var(--maxw);margin:0 auto;padding:64px 24px 96px}}
+    font-size:15.5px;line-height:1.6;background:var(--bg);color:var(--fg);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}}
+  .wrap{{max-width:var(--maxw);margin:0 auto;padding:52px 24px 96px}}
   a{{color:var(--accent);text-decoration:none}}
   .vh{{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
     clip:rect(0,0,0,0);white-space:nowrap;border:0}}
+  .micro{{font-family:var(--mono);font-size:11px;font-weight:500;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--fg-mute)}}
 
-  .masthead{{display:flex;align-items:center;gap:18px;margin-bottom:6px}}
-  .masthead img{{width:60px;height:60px;border-radius:14px;border:1px solid var(--border)}}
-  .masthead h1{{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:0}}
-  .masthead .sub{{color:var(--fg-dim);margin:5px 0 0;font-size:15px}}
-  .theme-toggle{{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;
-    justify-content:center;width:38px;height:38px;border-radius:10px;cursor:pointer;
-    border:1px solid var(--border);background:var(--surface);color:var(--fg-dim);
-    transition:color .15s,border-color .15s,background .15s}}
-  .theme-toggle:hover{{color:var(--fg);border-color:var(--border-hi)}}
+  /* landing masthead */
+  .mast-top{{display:flex;align-items:center;gap:12px;padding-bottom:14px;
+    border-bottom:1px solid var(--line)}}
+  .mast-top .micro{{margin-right:auto}}
+  .mast h1{{font-size:clamp(40px,9vw,68px);font-weight:640;letter-spacing:-.045em;
+    line-height:1.04;margin:30px 0 10px}}
+  .mast .sub{{color:var(--fg-dim);font-size:15px;margin:0}}
+  .mast .sub a{{color:var(--fg-dim);border-bottom:1px solid var(--line-hi)}}
+  .mast .sub a:hover{{color:var(--fg)}}
+
+  /* depiction masthead */
+  .masthead{{display:flex;align-items:center;gap:16px;margin-bottom:6px}}
+  .masthead img{{width:56px;height:56px;flex:0 0 auto}}
+  .masthead h1{{font-size:26px;font-weight:640;letter-spacing:-.03em;margin:0}}
+  .masthead .sub{{color:var(--fg-dim);margin:4px 0 0;font-size:14.5px}}
+  .masthead .theme-toggle{{margin-left:auto}}
+
+  .theme-toggle{{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+    width:34px;height:34px;cursor:pointer;border:1px solid var(--line);border-radius:0;
+    background:transparent;color:var(--fg-dim);
+    transition:color .15s,border-color .15s}}
+  .theme-toggle:hover{{color:var(--fg);border-color:var(--line-hi)}}
   .theme-toggle:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
-  .theme-toggle svg{{width:18px;height:18px;display:block}}
-  .i-moon{{display:none}}
-  :root[data-theme="light"] .i-sun{{display:none}}
-  :root[data-theme="light"] .i-moon{{display:block}}
+  .theme-toggle svg{{width:16px;height:16px;display:block}}
+  .theme-toggle .i-moon{{display:none}}
+  :root[data-theme="light"] .theme-toggle .i-sun{{display:none}}
+  :root[data-theme="light"] .theme-toggle .i-moon{{display:block}}
 
-  .install{{margin:30px 0 4px}}
-  .field{{display:flex;gap:8px}}
-  .field input{{flex:1;min-width:0;padding:11px 14px;border-radius:10px;
-    border:1px solid var(--border);background:var(--surface);color:var(--fg);
-    font-family:"Geist Mono",ui-monospace,monospace;font-size:13.5px}}
-  .field input:focus-visible{{outline:none;border-color:var(--accent)}}
+  /* install strip */
+  .install{{margin:26px 0 0}}
+  .field{{display:flex}}
+  .field input{{flex:1;min-width:0;padding:12px 14px;border:1px solid var(--line);
+    border-right:0;border-radius:0;background:transparent;color:var(--fg);
+    font-family:var(--mono);font-size:13px}}
+  .field input:focus-visible{{outline:none;border-color:var(--line-hi)}}
   .btn{{display:inline-flex;align-items:center;justify-content:center;gap:6px;
-    padding:11px 16px;border-radius:10px;font-weight:500;font-size:14px;cursor:pointer;
-    white-space:nowrap;border:1px solid var(--border);background:var(--surface);color:var(--fg);
-    transition:border-color .15s,background .15s,color .15s}}
-  .btn:hover{{border-color:var(--border-hi)}}
-  .btn:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
-  .btn.copy{{border:0;background:var(--fg);color:var(--bg);font-weight:600;min-width:88px}}
-  .btn.copy:hover{{opacity:.88}}
-  .btn.copy.ok{{background:var(--accent);color:var(--accent-ink)}}
-  .managers{{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}}
-  .btn.primary{{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}}
-  .btn.primary:hover{{filter:brightness(1.08);border-color:var(--accent)}}
+    padding:11px 16px;border:1px solid var(--line);border-radius:0;background:transparent;
+    color:var(--fg-dim);cursor:pointer;white-space:nowrap;
+    font-family:var(--mono);font-size:11.5px;font-weight:500;
+    letter-spacing:.12em;text-transform:uppercase;
+    transition:color .15s,border-color .15s,background .15s,opacity .15s}}
+  .btn:hover{{color:var(--fg);border-color:var(--line-hi)}}
+  .btn:focus-visible{{outline:2px solid var(--accent);outline-offset:2px;z-index:1}}
+  .btn.copy{{border:1px solid var(--fg);background:var(--fg);color:var(--bg);min-width:92px}}
+  .btn.copy:hover{{opacity:.85}}
+  .btn.copy.ok{{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);opacity:1}}
+  .managers{{display:flex;margin-top:-1px}}
+  .managers .btn{{flex:1;position:relative;margin-left:-1px}}
+  .managers .btn:first-child{{margin-left:0}}
+  .managers .btn:hover{{z-index:1}}
+  .btn.primary{{color:var(--accent)}}
+  .btn.primary:hover{{border-color:var(--accent);color:var(--accent)}}
 
-  .cat{{margin-top:34px}}
-  summary.cat-head{{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;
-    padding-bottom:11px;border-bottom:1px solid var(--border);
+  /* top-level tabs: xiOS / Tweaks */
+  .tabs{{display:flex;gap:30px;margin-top:48px;border-bottom:1px solid var(--line)}}
+  .tab{{appearance:none;background:none;border:0;padding:0 2px 14px;cursor:pointer;
+    font-family:inherit;font-size:clamp(27px,5.5vw,40px);font-weight:620;
+    letter-spacing:-.035em;line-height:1;color:var(--fg-mute);position:relative;
+    transition:color .15s}}
+  .tab:hover{{color:var(--fg-dim)}}
+  .tab[aria-selected="true"]{{color:var(--fg)}}
+  .tab[aria-selected="true"]::after{{content:"";position:absolute;left:0;right:0;
+    bottom:-1px;height:2px;background:var(--accent)}}
+  .tab:focus-visible{{outline:2px solid var(--accent);outline-offset:4px}}
+  .tab .tab-n{{font-family:var(--mono);font-size:11.5px;font-weight:500;
+    letter-spacing:0;color:var(--fg-mute);vertical-align:top;
+    margin-left:7px;position:relative;top:2px}}
+
+  .lede{{color:var(--fg-dim);font-size:15px;max-width:58ch;margin:24px 0 0}}
+  .lede strong{{color:var(--fg);font-weight:560}}
+
+  /* flavor chooser */
+  .fl-head{{display:flex;align-items:baseline;gap:10px;margin:36px 0 0;
+    padding-bottom:10px;border-bottom:1px solid var(--line)}}
+  .fl-head h2{{margin:0}}
+  .flavors{{display:grid;grid-template-columns:1fr 1fr;border-left:1px solid var(--line)}}
+  .flavor{{display:block;padding:18px 18px 20px;color:inherit;min-width:0;
+    border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+    transition:background .15s}}
+  .flavor:hover{{background:var(--bg-hover)}}
+  .flavor:focus-visible{{outline:2px solid var(--accent);outline-offset:-2px}}
+  .f-num{{display:block;font-family:var(--mono);font-size:11px;
+    letter-spacing:.14em;color:var(--accent)}}
+  .f-name{{display:block;font-size:22px;font-weight:620;letter-spacing:-.02em;margin-top:12px}}
+  .f-name .arr{{display:inline-block;margin-left:7px;color:var(--accent);opacity:0;
+    transform:translateX(-3px);transition:opacity .15s,transform .15s}}
+  .flavor:hover .f-name .arr{{opacity:1;transform:none}}
+  .f-tag{{display:block;color:var(--fg-dim);font-size:13.5px;line-height:1.5;margin-top:5px}}
+  .f-pkg{{display:block;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--fg-mute)}}
+
+  /* categories + package rows */
+  .cat{{margin-top:36px}}
+  summary.cat-head{{list-style:none;display:flex;align-items:baseline;gap:10px;cursor:pointer;
+    padding-bottom:10px;border-bottom:1px solid var(--line);
     -webkit-tap-highlight-color:transparent}}
   summary.cat-head::-webkit-details-marker{{display:none}}
-  summary.cat-head:focus-visible{{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}}
-  .cat-name{{font-size:12px;text-transform:uppercase;letter-spacing:.09em;
-    color:var(--fg-dim);font-weight:600}}
+  summary.cat-head:focus-visible{{outline:2px solid var(--accent);outline-offset:3px}}
+  .cat-name{{font-family:var(--mono);font-size:11px;font-weight:500;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--fg-dim)}}
   summary.cat-head:hover .cat-name{{color:var(--fg)}}
-  .cat-head .count{{font-family:"Geist Mono",monospace;font-size:12px;color:var(--fg-mute)}}
-  .chev{{width:16px;height:16px;margin-left:auto;color:var(--fg-mute);transition:transform .2s ease}}
-  details.cat[open] .chev{{transform:rotate(90deg)}}
-  details.cat[open] .grid{{margin-top:14px}}
+  .cat-head .count,.fl-head .count{{font-family:var(--mono);font-size:11px;color:var(--fg-mute)}}
+  .cat-head .ind{{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--fg-mute)}}
+  .cat-head .ind::before{{content:"+"}}
+  details.cat[open] .ind::before{{content:"\\2212"}}
 
-  .grid{{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}}
-  .pkg{{display:flex;gap:14px;align-items:center;padding:13px 14px;min-width:0;
-    border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);
-    text-decoration:none;color:inherit;transition:border-color .15s,background .15s}}
-  .pkg:hover{{border-color:var(--border-hi);background:var(--surface-2)}}
-  .pkg:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
-  .pkg img{{width:48px;height:48px;border-radius:11px;flex:0 0 auto;border:1px solid var(--border)}}
-  .pkg .meta{{min-width:0;flex:1}}
-  .pkg .n{{font-weight:600;font-size:16px;letter-spacing:-.01em}}
-  .pkg .t{{color:var(--fg-dim);font-size:14px;margin-top:1px;
+  .list{{display:block}}
+  .list.solo{{margin-top:26px;border-top:1px solid var(--line)}}
+  .row{{display:flex;align-items:baseline;gap:14px;padding:11px 2px;min-width:0;
+    border-bottom:1px solid var(--line);color:inherit;transition:background .15s}}
+  .row:hover{{background:var(--bg-hover)}}
+  .row:focus-visible{{outline:2px solid var(--accent);outline-offset:-2px}}
+  .row .n{{font-weight:560;font-size:15px;letter-spacing:-.01em;white-space:nowrap;
+    transition:color .15s}}
+  .row:hover .n{{color:var(--accent)}}
+  .row .t{{flex:1;min-width:0;color:var(--fg-dim);font-size:13.5px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-  .pkg .v{{margin-left:auto;align-self:center;color:var(--fg-mute);
-    font-family:"Geist Mono",monospace;font-size:12px;
-    border:1px solid var(--border);border-radius:999px;padding:3px 9px;white-space:nowrap}}
+  .row .v{{font-family:var(--mono);font-size:11.5px;color:var(--fg-mute);white-space:nowrap}}
 
+  /* depiction pages */
   .back{{display:inline-flex;align-items:center;gap:7px;color:var(--fg-dim);
-    font-size:14px;margin-bottom:26px;transition:color .15s}}
+    font-family:var(--mono);font-size:11px;font-weight:500;
+    letter-spacing:.14em;text-transform:uppercase;margin-bottom:28px;transition:color .15s}}
   .back:hover{{color:var(--fg)}}
-  .back svg{{width:15px;height:15px;display:block}}
+  .back svg{{width:14px;height:14px;display:block}}
   .prose p{{margin:.6em 0;color:var(--fg-dim)}}
   .prose strong{{color:var(--fg);font-weight:600}} .prose em{{color:var(--fg)}}
   .prose ul{{margin:.5em 0;padding-left:1.15em}} .prose li{{margin:.25em 0;color:var(--fg-dim)}}
-  h2.section{{font-size:12px;text-transform:uppercase;letter-spacing:.09em;
-    color:var(--fg-dim);font-weight:600;margin:34px 0 4px}}
+  h2.section{{font-family:var(--mono);font-size:11px;font-weight:500;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--fg-dim);margin:36px 0 4px}}
   table.info{{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}}
-  table.info td{{padding:11px 2px;border-bottom:1px solid var(--border)}}
+  table.info td{{padding:11px 2px;border-bottom:1px solid var(--line)}}
   table.info tr:last-child td{{border-bottom:0}}
   table.info td:first-child{{color:var(--fg-mute);width:38%}}
-  table.info td:last-child{{font-family:"Geist Mono",monospace;font-size:13px;word-break:break-word}}
+  table.info td:last-child{{font-family:var(--mono);font-size:12.5px;word-break:break-word}}
 
-  footer{{margin-top:48px;padding-top:20px;border-top:1px solid var(--border);
-    color:var(--fg-mute);font-size:13px}}
+  footer{{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);
+    display:flex;justify-content:space-between;gap:12px;
+    font-family:var(--mono);font-size:11px;font-weight:500;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--fg-mute)}}
   footer a{{color:var(--fg-dim)}} footer a:hover{{color:var(--fg)}}
 
   @media (max-width:560px){{
-    .wrap{{padding:40px 18px 72px}}
-    .masthead h1{{font-size:23px}}
+    .wrap{{padding:36px 18px 72px}}
+    .flavors{{grid-template-columns:1fr}}
+    .managers{{flex-wrap:wrap}}
+    .managers .btn{{flex:1 1 100%;margin-left:0;margin-top:-1px}}
+    .row{{flex-wrap:wrap;row-gap:0}}
+    .row .v{{margin-left:auto}}
+    .row .t{{flex:1 1 100%;order:3}}
   }}
   @media (prefers-reduced-motion:no-preference){{
     .reveal{{opacity:0;transform:translateY(9px);
@@ -520,11 +588,6 @@ SITE_CSS = f"""
 # left-chevron used by the depiction "back" link
 BACK_SVG = ('<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">'
             '<path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.6" '
-            'stroke-linecap="round" stroke-linejoin="round"/></svg>')
-
-# right-chevron used by the collapsible category headers (rotates when open)
-CHEV_SVG = ('<svg class="chev" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
-            '<path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" '
             'stroke-linecap="round" stroke-linejoin="round"/></svg>')
 
 # index page behaviour (kept out of the f-string to avoid brace escaping)
@@ -544,13 +607,42 @@ INDEX_JS = """
       setTimeout(function () { b.textContent = prev; b.classList.remove("ok"); }, 1400);
     });
   });
+
+  var tabs = [].slice.call(document.querySelectorAll(".tab"));
+  function showTab(name) {
+    if (!tabs.some(function (t) { return t.dataset.tab === name; })) name = "xios";
+    tabs.forEach(function (t) {
+      var on = t.dataset.tab === name;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById("panel-" + t.dataset.tab).hidden = !on;
+    });
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener("click", function () {
+      showTab(t.dataset.tab);
+      try { history.replaceState(null, "", "#" + t.dataset.tab); } catch (e) {}
+    });
+    t.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      var next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      next.focus(); next.click();
+    });
+  });
+  addEventListener("hashchange", function () { showTab(location.hash.slice(1)); });
+  if (location.hash) showTab(location.hash.slice(1));
 </script>
 """
 
-# category display order on the landing page (unknown sections fall after these)
-SECTION_ORDER = ["Desktop", "X11/Wayland Apps", "Tweaks", "Utilities", "X11", "Development", "Libraries"]
-# categories expanded by default; large dependency buckets start collapsed
-OPEN_SECTIONS = {"Desktop", "X11/Wayland Apps", "Tweaks", "Utilities", "X11"}
+# xiOS category display order on the landing page: pinned head, then unknown
+# sections alphabetically, then the big dependency buckets last (collapsed)
+SECTION_ORDER = ["Desktop", "X11/Wayland Apps", "X11", "Utilities"]
+SECTION_TAIL = ["Development", "Libraries"]
+COLLAPSED_SECTIONS = {"Development", "Libraries"}
+TWEAKS_SECTION = "Tweaks"
+# featured flavor meta-packages (shown when their deb exists), display label
+FLAVORS = [("xios-gnome", "GNOME"), ("xios-kde", "KDE Plasma"),
+           ("xios-native", "Native"), ("xios-x11", "X11")]
 
 # theme toggle (sun shown in dark mode, moon in light mode)
 THEME_BTN = (
@@ -604,52 +696,95 @@ THEME_JS = """
 
 # ── index / landing page ─────────────────────────────────────────────────────
 def write_index(pkgs):
-    # group packages by their Section (category) and order the groups sensibly
-    groups = {}
+    # debs are sorted oldest→newest, so keeping the last stanza per package id
+    # shows each package once, at its newest version
+    latest = {}
     for p in pkgs:
-        sec = (p["ctrl"].get("Section") or "Tweaks").strip()
-        groups.setdefault(sec, []).append(p)
-    order = [s for s in SECTION_ORDER if s in groups] + \
-            sorted(s for s in groups if s not in SECTION_ORDER)
+        latest[p["ctrl"]["Package"]] = p
+    pkgs = list(latest.values())
 
-    # staggered reveal counter (0 = masthead, 1 = install block); cap so the
-    # tail of a long list doesn't wait too long to appear
-    step = [2]
+    def section(p):
+        return (p["ctrl"].get("Section") or TWEAKS_SECTION).strip()
+
+    tweaks = [p for p in pkgs if section(p) == TWEAKS_SECTION]
+    xios = [p for p in pkgs if section(p) != TWEAKS_SECTION]
+
+    # staggered reveal counter (0 = masthead, 1 = install, 2 = tabs); cap so
+    # the tail of a long list doesn't wait too long to appear
+    step = [3]
     def nxt():
         v = min(step[0], 16); step[0] += 1; return v
 
-    sections_html = ""
-    for sec in order:
-        items = sorted(groups[sec],
-                       key=lambda p: p["ctrl"].get("Name", p["ctrl"]["Package"]).lower())
-        cards = ""
-        for p in items:
-            pid = p["ctrl"]["Package"]
-            # one-line tagline for the list: first line, first sentence
-            tag = (p["meta"].get("tagline") or p["ctrl"].get("Description", "")).split("\n")[0].strip()
-            tag = tag.split(". ")[0].strip()
-            cards += f"""
-        <a class="pkg reveal" style="--i:{nxt()}" href="depictions/{pid}.html">
-          <img src="icons/{pid}.png" alt="" loading="lazy">
-          <div class="meta"><div class="n">{html.escape(p['ctrl'].get('Name', pid))}</div>
-            <div class="t">{html.escape(tag)}</div></div>
+    def name(p):
+        return p["ctrl"].get("Name", p["ctrl"]["Package"])
+
+    def tagline(p):
+        # one-line tagline for the list: first line, first sentence
+        tag = (p["meta"].get("tagline") or p["ctrl"].get("Description", "")).split("\n")[0].strip()
+        return tag.split(". ")[0].strip()
+
+    def row(p, idx=None):
+        pid = p["ctrl"]["Package"]
+        return f"""
+        <a class="row reveal" style="--i:{nxt() if idx is None else idx}" href="depictions/{pid}.html">
+          <span class="n">{html.escape(name(p))}</span>
+          <span class="t">{html.escape(tagline(p))}</span>
           <span class="v">v{html.escape(p['ctrl'].get('Version',''))}</span>
         </a>"""
-        is_open = " open" if sec in OPEN_SECTIONS else ""
+
+    # featured flavor chooser (xiOS tab)
+    by_pid = {p["ctrl"]["Package"]: p for p in pkgs}
+    flavor_cards, n_flavors = "", 0
+    for pid, label in FLAVORS:
+        p = by_pid.get(pid)
+        if not p:
+            continue
+        n_flavors += 1
+        flavor_cards += f"""
+        <a class="flavor reveal" style="--i:{nxt()}" href="depictions/{pid}.html">
+          <span class="f-num">{n_flavors:02d}</span>
+          <span class="f-name">{html.escape(label)}<span class="arr" aria-hidden="true">&#8599;</span></span>
+          <span class="f-tag">{html.escape(tagline(p))}</span>
+          <span class="f-pkg">{pid}</span>
+        </a>"""
+    flavors_html = "" if not flavor_cards else f"""
+      <div class="fl-head reveal" style="--i:{nxt()}"><h2 class="cat-name">Pick a flavor</h2><span class="count">{n_flavors}</span></div>
+      <div class="flavors">{flavor_cards}</div>"""
+
+    # xiOS categories: pinned head order, unknown sections alphabetically,
+    # then the big dependency buckets last (collapsed)
+    groups = {}
+    for p in xios:
+        groups.setdefault(section(p), []).append(p)
+    order = ([s for s in SECTION_ORDER if s in groups]
+             + sorted(s for s in groups if s not in SECTION_ORDER + SECTION_TAIL)
+             + [s for s in SECTION_TAIL if s in groups])
+    sections_html = ""
+    for sec in order:
+        items = sorted(groups[sec], key=lambda p: name(p).lower())
+        rows = "".join(row(p) for p in items)
+        is_open = "" if sec in COLLAPSED_SECTIONS else " open"
         sections_html += f"""
       <details class="cat"{is_open}>
-        <summary class="cat-head"><span class="cat-name">{html.escape(sec)}</span><span class="count">{len(items)}</span>{CHEV_SVG}</summary>
-        <div class="grid">{cards}</div>
+        <summary class="cat-head"><span class="cat-name">{html.escape(sec)}</span><span class="count">{len(items)}</span><span class="ind" aria-hidden="true"></span></summary>
+        <div class="list">{rows}</div>
       </details>"""
+
+    # tweaks live in a hidden panel whose reveal animation restarts on tab
+    # switch, so they get their own early stagger indices
+    tweak_rows = "".join(row(p, min(3 + j, 16))
+                         for j, p in enumerate(sorted(tweaks, key=lambda p: name(p).lower())))
 
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#0a0a0b">
 <title>{html.escape(ORIGIN)}</title><link rel="icon" href="favicon.ico">{head_links("")}{HEAD_JS}</head>
 <body><div class="wrap">
-  <header class="masthead reveal" style="--i:0"><img src="CydiaIcon.png" alt="">
-    <div><h1>{html.escape(ORIGIN)}</h1>
-      <p class="sub">{html.escape(DESCRIPTION)} · {len(pkgs)} packages</p></div>{THEME_BTN}</header>
+  <header class="mast reveal" style="--i:0">
+    <div class="mast-top"><span class="micro">APT repo &middot; {ARCH} &middot; {len(pkgs)} packages</span>{THEME_BTN}</div>
+    <h1>{html.escape(ORIGIN)}</h1>
+    <p class="sub">{html.escape(DESCRIPTION)} &middot; <a href="https://maxleiter.com">maxleiter.com</a></p>
+  </header>
   <div class="install reveal" style="--i:1">
     <label class="vh" for="repo">Repository URL</label>
     <div class="field">
@@ -662,8 +797,20 @@ def write_index(pkgs):
       <a class="btn" id="cydia" href="#">Add to Cydia</a>
     </div>
   </div>
-  {sections_html}
-  <footer><a href="https://maxleiter.com">maxleiter.com</a></footer>
+  <nav class="tabs reveal" style="--i:2" role="tablist" aria-label="Package groups">
+    <button class="tab" id="tab-xios" data-tab="xios" type="button" role="tab" aria-selected="true" aria-controls="panel-xios">xiOS<span class="tab-n">{len(xios)}</span></button>
+    <button class="tab" id="tab-tweaks" data-tab="tweaks" type="button" role="tab" aria-selected="false" aria-controls="panel-tweaks" tabindex="-1">Tweaks<span class="tab-n">{len(tweaks)}</span></button>
+  </nav>
+  <section class="panel" id="panel-xios" role="tabpanel" aria-labelledby="tab-xios">
+    <p class="lede reveal" style="--i:3">A desktop for jailbroken iPads: X11, Wayland, GNOME and KDE, cross-compiled to run natively on iOS. <strong>Install one flavor</strong> and it pulls in everything it needs.</p>
+    {flavors_html}
+    {sections_html}
+  </section>
+  <section class="panel" id="panel-tweaks" role="tabpanel" aria-labelledby="tab-tweaks" hidden>
+    <p class="lede">Small quality-of-life tweaks for iPadOS on rootless jailbreaks.</p>
+    <div class="list solo">{tweak_rows}</div>
+  </section>
+  <footer><a href="https://maxleiter.com">maxleiter.com</a><span>{ARCH}</span></footer>
 </div>{INDEX_JS}{THEME_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
 
