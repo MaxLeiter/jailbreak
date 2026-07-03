@@ -20,18 +20,21 @@
 - Cursor overlay + typed HELLO/DIRTY/CURSOR framing landed. AXIS scroll wire + touch (type 6) + tablet/Pencil (type 7) wire decode landed (3ebf085). The Xios app halves also landed (`sendScroll`/`iosc_input_touch`/`iosc_input_tablet`, 9470335) — both sides are in, not pending.
 - Clipboard is no longer split between app and compositor work: `XIOS_MSG_CLIPBOARD` 0x04 is wired into `iosc.c` and should be treated as deploy-coupled with a matching Xios app.
 - Native iPadOS mode is implemented in the same binary and selected at runtime by ioscd/request mode (`LAUNCH_NATIVE`) or `iosc -native`/env. Native gets its own namespace (`wayland-native-0`, `iosc-native-input.sock`, `xios-native.json`) and per-window canvas delivery via `iosc-native.sock`; classic Xios remains available simultaneously.
-- Rootless Xwayland XWM integration landed locally: `iosc_xwm` plus `xwayland-shell-v1.xml`, `build-iosc.sh` glue, and `run-xwayland.sh` MIT-SHM disable for iOS/mesa clients such as `glxgears`.
+- Rootless Xwayland XWM integration landed locally: `iosc_xwm` plus `xwayland-shell-v1.xml`, `build-iosc.sh` glue, and `run-xwayland.sh` MIT-SHM disable for iOS/mesa clients such as `glxgears`. The XWM module is now an explicit build opt-in (`IOSC_BUILD_XWM=1`) so the default iosc binary keeps the known-good non-XCB link profile.
+- Local compositor upload path now tracks `damage_buffer` dirty rectangles for cached wl_shm textures, so repaint pulses and cursor movement do not force whole-window re-uploads. The nested-compositor frame pulse is deployed in the iosc launch paths with `IOSC_FRAME_PULSE=1` by default.
 
 ## Known compositor-side issues
 1. **Zombie surfaces**: iosc appears to keep compositing a surface after its client dies (restarting a shell client many times stacks stale panels visible over the live one). WORTH INVESTIGATING: does iosc destroy client surfaces on wl_client disconnect? If not, that's a resource leak + the zombie-panel cause. Workaround today = restart iosc to clear all surfaces.
-2. `iosc.c` remains a monolith. Clipboard/native/XWM hooks landed because they were product-critical, but further broad behavior changes should still prefer small modules or a deliberate refactor pass.
-3. Native mode still needs device validation around resize/focus/keyboard/jetsam replay, and a decision on whether to retain the classic output IOSurface while native hosts are active.
+2. **Nested-compositor frame callbacks**: first-light KWin-on-iosc is now verified. `wayland/iosc.c` queues a coalesced repaint pulse when a mapped surface requests `wl_surface.frame` after the commit that made it visible, and `IOSC_FRAME_PULSE=1` is defaulted by `run-iosc.sh`, `run-shell.sh`, `xios-session`, and `ioscd`. Evidence: `x11/artifacts/device-runs/kde-kwin-framepulse-20260702-234309/` shows KWin importing QtWayland IOSurfaces and the Qt client no longer logging the frame-callback timeout loop.
+3. `iosc.c` remains a monolith. Clipboard/native/XWM hooks landed because they were product-critical, but further broad behavior changes should still prefer small modules or a deliberate refactor pass.
+4. Native mode still needs device validation around resize/focus/keyboard/jetsam replay, and a decision on whether to retain the classic output IOSurface while native hosts are active.
 
 ## Open items
 1. Investigate/fix the dead-client surface cleanup (zombie surfaces).
-2. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with classic Xios, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
-3. Rotation (XIOS_IN_OUTPUT=10): reconfigure the output IOSurface on device rotation (paired with xios-app's drawable update). See polish.md #21.
-4. Refactor plan: split input, present/IOSurface, native canvas, clipboard, and XWM glue out of the monolith once behavior settles.
+2. Keep soaking the default rebuilt `iosc` path under normal iosc-shell usage now that `IOSC_FRAME_PULSE=1` is on by default; watch for clients that repaint continuously or expose zombie-surface cleanup bugs.
+3. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with classic Xios, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
+4. Rotation (XIOS_IN_OUTPUT=10): reconfigure the output IOSurface on device rotation (paired with xios-app's drawable update). See polish.md #21.
+5. Refactor plan: split input, present/IOSurface, native canvas, clipboard, and XWM glue out of the monolith once behavior settles.
 
 ## Verify
 `/var/jb/tmp/iosc.log` (logical/output/clients), shell stderr logs (with IOSC_SHELL_DEBUG=1). Input socket is `/var/jb/tmp/iosc-input.sock` for iosc.

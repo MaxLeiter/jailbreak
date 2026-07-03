@@ -48,6 +48,7 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
 
   echo "==> cross-building iosc in $IMAGE"
   docker run --rm --platform linux/arm64 -e IOSC_XBUILD_INNER=1 \
+    -e IOSC_BUILD_XWM="${IOSC_BUILD_XWM:-0}" \
     "${mounts[@]}" "$IMAGE" -c "bash /work/x11/wayland/build-iosc.sh"
 
   # Container output is unsigned; sign on the host so it is device-ready (the
@@ -231,15 +232,26 @@ echo "   CC=$CC  SDK=$SDK"
 CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
 INCS="-I$PREFIX/include -I$GEN -I$X11/linux-build/patches/xios"
 RPATH="-Wl,-rpath,/var/jb/usr/lib"
+XWM_CFLAGS=()
+XWM_SRCS=()
+XWM_LIBS=()
+if [ "${IOSC_BUILD_XWM:-0}" = "1" ]; then
+  XWM_CFLAGS=(-DIOSC_ENABLE_XWM=1)
+  XWM_SRCS=("$X11/wayland/iosc_xwm.c")
+  XWM_LIBS=(-lxcb)
+  echo "   XWM: enabled (links libxcb)"
+else
+  echo "   XWM: disabled (set IOSC_BUILD_XWM=1 to include rootless Xwayland XWM)"
+fi
 
 echo "==> [5/5] cross-compile"
 # Compositor: libwayland-server + xdg-shell + our iosc_iosurface + the Xios IOSurface
 # output path (which now also does the client->server IOSurface import) + the ANGLE GPU
 # compositor (iosc_gl.c: GLES->Metal composite onto the output IOSurface) + frameworks.
-$CC $CFLAGS $INCS -I"$ANGLE_INC" \
+$CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
     "$X11/wayland/iosc-clipboard-bridge.c" \
-    "$X11/wayland/iosc_xwm.c" \
+    "${XWM_SRCS[@]}" \
     "$X11/wayland/iosc_gl.c" \
     "$X11/wayland/xios_egl.c" \
     "$X11/wayland/xios_canvas.c" \
@@ -271,7 +283,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$GEN/xwayland-shell-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
-    -L"$PREFIX/lib" -lwayland-server -lxkbcommon -lxcb \
+    -L"$PREFIX/lib" -lwayland-server -lxkbcommon "${XWM_LIBS[@]}" \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation \
     $RPATH -Wl,-rpath,/var/jb/lib/angle -o /out/iosc

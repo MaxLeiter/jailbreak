@@ -93,9 +93,11 @@ static int               g_native_mode;
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
 static void clipboard_selection_send_to_client(struct wl_client *client);
-static void recomposite_all(void);   /* coalesced: schedules one repaint per loop iteration */
+static void recomposite_all_at(const char *reason, int line);   /* coalesced repaint */
+#define recomposite_all() recomposite_all_at(__func__, __LINE__)
 static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
 static void surface_unmap(struct iosc_surface *s);
+static int  env_truthy(const char *env);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 
@@ -340,6 +342,8 @@ static int g_output_damage_x0, g_output_damage_y0, g_output_damage_x1, g_output_
 static int g_last_present_damage_valid;
 static int g_last_present_damage_x0, g_last_present_damage_y0;
 static int g_last_present_damage_x1, g_last_present_damage_y1;
+static const char *g_recompose_reason;
+static int g_recompose_reason_line;
 static void keyboard_set_focus(struct iosc_surface *s);
 static void keyboard_send_mods(uint32_t mask);
 static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state);
@@ -962,6 +966,9 @@ static void output_damage_add_surface(struct iosc_surface *s)
 {
     int x0, y0, x1, y1;
     if (!surface_rect(s, &x0, &y0, &x1, &y1)) return;
+    if (env_truthy(getenv("IOSC_DAMAGE_REASON")))
+        fprintf(stderr, "iosc: damage-add-surface role=%d mapped=%d rect=%d,%d %dx%d\n",
+                s->role, s->mapped, x0, y0, x1 - x0, y1 - y0);
     int os = output_scale();
     output_damage_add_px(x0 * os, y0 * os, (x1 - x0) * os, (y1 - y0) * os);
 }
@@ -993,6 +1000,27 @@ static void output_damage_add_surface_rect(struct iosc_surface *s, int x, int y,
     if (!s || w <= 0 || h <= 0 || !s->mapped) return;
     int os = output_scale();
     output_damage_add_px((s->dx + x) * os, (s->dy + y) * os, w * os, h * os);
+}
+
+static int output_damage_add_surface_dirty_rects(struct iosc_surface *s)
+{
+    if (!s || !s->mapped || !s->gl_dirty || s->gl_dirty_rect_count <= 0)
+        return 0;
+    if (s->viewport && (s->viewport->has_src || s->viewport->has_dst))
+        return 0;   /* transformed buffer damage needs a proper mapper */
+    int scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
+    for (int i = 0; i < s->gl_dirty_rect_count; i++) {
+        const int *r = s->gl_dirty_rects + i * 4;
+        int x0 = r[0] / scale;
+        int y0 = r[1] / scale;
+        int x1 = (r[0] + r[2] + scale - 1) / scale;
+        int y1 = (r[1] + r[3] + scale - 1) / scale;
+        if (env_truthy(getenv("IOSC_DAMAGE_REASON")))
+            fprintf(stderr, "iosc: damage-add-dirty role=%d mapped=%d rect=%d,%d %dx%d\n",
+                    s->role, s->mapped, s->dx + x0, s->dy + y0, x1 - x0, y1 - y0);
+        output_damage_add_surface_rect(s, x0, y0, x1 - x0, y1 - y0);
+    }
+    return 1;
 }
 
 static void surface_gl_dirty_full(struct iosc_surface *s)
@@ -1595,6 +1623,12 @@ static void app_cursor_notify(void)
     xios_notify_cursor(g_cursor_x * os, g_cursor_y * os, g_cursor_visible, shape);
 }
 
+static void recomposite_reason_clear(void)
+{
+    g_recompose_reason = NULL;
+    g_recompose_reason_line = 0;
+}
+
 /* Recomposite ALL mapped surfaces back-to-front onto the output, on the GPU.
  * Synchronous: paints immediately. Most callers should use recomposite_all()
  * (coalesced) instead; recomposite_now() is for paths that read the output back
@@ -1607,7 +1641,13 @@ static void recomposite_now(void)
     }
     if (iosc_gl_ok()) {
         int dx0, dy0, dx1, dy1;
+        int had_damage = g_output_damage_valid;
         output_damage_consume(&dx0, &dy0, &dx1, &dy1);
+        if (env_truthy(getenv("IOSC_DAMAGE_REASON")))
+            fprintf(stderr, "iosc: recompose-reason %s:%d damage=%s\n",
+                    g_recompose_reason ? g_recompose_reason : "sync",
+                    g_recompose_reason_line,
+                    had_damage ? "pending" : "none");
         if (env_truthy(getenv("IOSC_DAMAGE_STATS")))
             fprintf(stderr, "iosc: output-damage %d,%d %dx%d%s\n",
                     dx0, dy0, dx1 - dx0, dy1 - dy0,
@@ -1679,6 +1719,7 @@ static void recomposite_now(void)
                 fprintf(stderr, "   %s\n", row);
             }
         }
+        recomposite_reason_clear();
         return;
     }
     /* CPU fallback: only the top surface, top-left (no multi-surface on CPU). */
@@ -1720,9 +1761,11 @@ static void recompose_idle(void *data)
     g_recompose_scheduled = 0;
     recomposite_now();
 }
-static void recomposite_all(void)
+static void recomposite_all_at(const char *reason, int line)
 {
     if (g_recompose_scheduled) return;
+    g_recompose_reason = reason;
+    g_recompose_reason_line = line;
     struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
     /* Before the event loop is running (early bring-up), paint synchronously. */
     if (!loop || !wl_event_loop_add_idle(loop, recompose_idle, NULL)) {
@@ -2260,19 +2303,23 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
             layer_send_configure(s);
         } else if (L->configured && s->mapped) {
             int cw, ch, cx, cy;
-            output_damage_add_surface(s);
             layer_compute(s, &cw, &ch, &cx, &cy);
+            int moved = (s->dx != cx || s->dy != cy);
+            if (moved) output_damage_add_surface(s);
             s->dx = cx;
             s->dy = cy;
             if (cw != L->cfg_w || ch != L->cfg_h) layer_send_configure(s);
             work_area_recompute();
-            output_damage_add_surface(s);
-            need_recomposite = 1;
+            if (moved) {
+                output_damage_add_surface(s);
+                need_recomposite = 1;
+            }
         }
     }
 
     if (s->buffer_attached) {
         struct wl_resource *buf = s->pending_buffer;
+        int was_mapped = s->mapped;
         s->pending_buffer  = NULL;
         s->buffer_attached = 0;
 
@@ -2295,7 +2342,8 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
                  s->role == IOSC_ROLE_SUBSURFACE ||
                  (s->role == IOSC_ROLE_LAYER && s->layer && s->layer->configured)))
                 surface_map(s);
-            if (!output_damage_add_overlay_surface(s))
+            if (!output_damage_add_overlay_surface(s) &&
+                !(was_mapped && output_damage_add_surface_dirty_rects(s)))
                 output_damage_add_surface(s);
         } else {
             /* NULL buffer attach + commit = unmap the surface */
@@ -2331,6 +2379,10 @@ static void surface_set_buffer_scale(struct wl_client *c, struct wl_resource *r,
                                "invalid buffer scale %d", scale);
         return;
     }
+    if (s->pending_scale_dirty && s->pending_buffer_scale == scale)
+        return;
+    if (!s->pending_scale_dirty && s->current_buffer_scale == scale)
+        return;
     s->pending_buffer_scale = scale;
     s->pending_scale_dirty = 1;
 }
@@ -4367,10 +4419,9 @@ static void press_focus(struct iosc_surface *hit)
     if (hit->role == IOSC_ROLE_LAYER && hit->layer &&
         hit->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
         return;
-    int was_top = (g_nmapped > 0 && g_mapped[g_nmapped - 1] == hit);
     surface_raise(hit);
     keyboard_set_focus(hit);
-    if (!was_top) recomposite_all();   /* show the raised window on top */
+    if (g_output_damage_valid) recomposite_all();   /* show the raised window on top */
 }
 
 static void handle_button(int btn, int down)

@@ -106,7 +106,12 @@ def compose(src, px=1024):
     # fit the source into ~80% of the tile, centred, preserving aspect
     inner = int(px * 0.80)
     s = src.copy()
-    s.thumbnail((inner, inner), Image.LANCZOS)
+    bbox = s.getchannel("A").getbbox()
+    if bbox:
+        s = s.crop(bbox)
+    scale = min(inner / s.width, inner / s.height)
+    size = (max(1, round(s.width * scale)), max(1, round(s.height * scale)))
+    s = s.resize(size, Image.LANCZOS)
     canvas.paste(s, ((px - s.width) // 2, (px - s.height) // 2), s)
     return canvas
 

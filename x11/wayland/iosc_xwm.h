@@ -47,6 +47,7 @@ extern "C" {
  *
  * Gate this behind IOSC_XWAYLAND=1 in iosc's main() (see the integration doc);
  * the XWM is opt-in so a plain Wayland session pays nothing. */
+#if defined(IOSC_ENABLE_XWM) && IOSC_ENABLE_XWM
 int  iosc_xwm_start(struct wl_event_loop *loop);
 
 /* Tear down: kill Xwayland, close the xcb connection, remove the wl_global and
@@ -80,6 +81,38 @@ void iosc_xwm_request_close(struct wl_resource *surface_res);
  * use this to special-case Xwayland (e.g. to keep the shell OSK away from X apps,
  * or to skip xdg-only assumptions). Optional. */
 int  iosc_xwm_is_xwayland_client(struct wl_client *client);
+#else
+static inline int iosc_xwm_start(struct wl_event_loop *loop)
+{
+    (void)loop;
+    return -1;
+}
+
+static inline void iosc_xwm_shutdown(void)
+{
+}
+
+static inline void iosc_xwm_surface_commit(struct wl_resource *surface_res)
+{
+    (void)surface_res;
+}
+
+static inline void iosc_xwm_notify_focus(struct wl_resource *surface_res)
+{
+    (void)surface_res;
+}
+
+static inline void iosc_xwm_request_close(struct wl_resource *surface_res)
+{
+    (void)surface_res;
+}
+
+static inline int iosc_xwm_is_xwayland_client(struct wl_client *client)
+{
+    (void)client;
+    return 0;
+}
+#endif
 
 
 /* =========================================================================
