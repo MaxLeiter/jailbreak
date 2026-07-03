@@ -13,6 +13,10 @@
  *     LAUNCH_NATIVE\t<app_id>\t<exec>\n   -> same, on the native iPadOS path
  *     LAUNCH_CLASSIC\t<app_id>\t<exec>\n  -> same, on the classic Xios path
  *     SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\n -> SESSION_STARTED\n | ERR <msg>\n
+ *     APPS_LIST\n                         -> TSV app list + APPS_END\t<status>\n
+ *     APPS_SYNC\t<native|classic>\t<dry>\n -> sync log + APPS_END\t<status>\n
+ *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
+ *     APP_DISABLE\t<app_id>\n             -> status + APPS_END\t<status>\n
  *
  * For each launch ioscd:
  *   1. ensures iosc (the compositor) is running, restarting it if the wayland
@@ -61,6 +65,7 @@
 #define XIOS_ACTIVE_SESSION TMP "/xios-active-session"
 #define IOSC_BIN       "/var/jb/usr/local/bin/iosc"
 #define XIOS_SESSION_BIN "/var/jb/usr/local/bin/xios-session"
+#define XIOS_LAUNCHER_SYNC "/var/jb/usr/local/bin/xios-launcher-sync"
 #define UIOPEN_BIN     "/var/jb/usr/bin/uiopen"
 #define BASH_BIN       "/var/jb/usr/bin/bash"
 #define DBUS_RUN       "/var/jb/usr/bin/dbus-run-session"
@@ -592,6 +597,102 @@ static void handle_session_request(int fd, char *payload)
     reply(fd, "SESSION_STARTED\n");
 }
 
+static int run_and_stream(int fd, char *const argv[])
+{
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        reply(fd, "ERR pipe failed\n");
+        return -1;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        reply(fd, "ERR fork failed\n");
+        return -1;
+    }
+    if (pid == 0) {
+        close(pipefd[0]);
+        dup2(pipefd[1], 1);
+        dup2(pipefd[1], 2);
+        if (pipefd[1] > 2) close(pipefd[1]);
+        set_rootless_path(1);
+        execv(argv[0], argv);
+        fprintf(stderr, "exec %s failed: %s\n", argv[0], strerror(errno));
+        _exit(127);
+    }
+
+    close(pipefd[1]);
+    char buf[2048];
+    ssize_t n;
+    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0)
+        (void)!write(fd, buf, (size_t)n);
+    close(pipefd[0]);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    int code = WIFEXITED(status) ? WEXITSTATUS(status) : 128;
+    char end[64];
+    snprintf(end, sizeof(end), "APPS_END\t%d\n", code);
+    reply(fd, end);
+    return code == 0 ? 0 : -1;
+}
+
+static void handle_apps_list(int fd)
+{
+    if (access(XIOS_LAUNCHER_SYNC, X_OK) != 0) {
+        reply(fd, "ERR xios-launcher-sync not installed\n");
+        return;
+    }
+    char *argv[] = { XIOS_LAUNCHER_SYNC, "--list", NULL };
+    (void)run_and_stream(fd, argv);
+}
+
+static void handle_apps_sync(int fd, char *payload)
+{
+    if (access(XIOS_LAUNCHER_SYNC, X_OK) != 0) {
+        reply(fd, "ERR xios-launcher-sync not installed\n");
+        return;
+    }
+
+    char *rest = payload;
+    char *mode = take_tab_field(&rest);
+    char *dry = rest ? rest : "";
+    int native = strcmp(mode, "classic") != 0;
+    int dry_run = strcmp(dry, "dry") == 0 || strcmp(dry, "1") == 0 ||
+                  strcasecmp(dry, "true") == 0;
+
+    char *argv[7];
+    int i = 0;
+    argv[i++] = XIOS_LAUNCHER_SYNC;
+    argv[i++] = "--sync";
+    argv[i++] = native ? "--native" : "--classic";
+    if (dry_run) argv[i++] = "--dry-run";
+    argv[i] = NULL;
+    (void)run_and_stream(fd, argv);
+}
+
+static void handle_app_toggle(int fd, const char *verb, char *payload)
+{
+    if (access(XIOS_LAUNCHER_SYNC, X_OK) != 0) {
+        reply(fd, "ERR xios-launcher-sync not installed\n");
+        return;
+    }
+    char *app_id = payload;
+    app_id[strcspn(app_id, "\t\r\n")] = 0;
+    if (!*app_id) {
+        reply(fd, "ERR empty app_id\n");
+        return;
+    }
+    char *argv[] = {
+        XIOS_LAUNCHER_SYNC,
+        strcmp(verb, "APP_ENABLE") == 0 ? "--enable" : "--disable",
+        app_id,
+        NULL
+    };
+    (void)run_and_stream(fd, argv);
+}
+
 static int launch_mode_for_verb(const char *verb, int *native)
 {
     if (strcmp(verb, "LAUNCH") == 0) {
@@ -693,11 +794,30 @@ static void handle_conn(int fd)
     /* split "VERB\t..." */
     char *verb = buf;
     char *t1 = strchr(buf, '\t');
-    if (!t1) { reply(fd, "ERR malformed\n"); return; }
+    if (!t1) {
+        if (strcmp(verb, "APPS_LIST") == 0) {
+            handle_apps_list(fd);
+            return;
+        }
+        reply(fd, "ERR malformed\n");
+        return;
+    }
     *t1 = 0;
 
     if (strcmp(verb, "SESSION") == 0) {
         handle_session_request(fd, t1 + 1);
+        return;
+    }
+    if (strcmp(verb, "APPS_LIST") == 0) {
+        handle_apps_list(fd);
+        return;
+    }
+    if (strcmp(verb, "APPS_SYNC") == 0) {
+        handle_apps_sync(fd, t1 + 1);
+        return;
+    }
+    if (strcmp(verb, "APP_ENABLE") == 0 || strcmp(verb, "APP_DISABLE") == 0) {
+        handle_app_toggle(fd, verb, t1 + 1);
         return;
     }
 

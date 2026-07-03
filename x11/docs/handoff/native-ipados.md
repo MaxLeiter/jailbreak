@@ -21,6 +21,27 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Basic native launch has been reported working on-device. Treat the remaining items below as checklist/polish validation, not as "core protocol missing" work.
 - Build the compositor with just `x11/wayland/build-iosc.sh` (no docker flags): on the Mac it re-execs inside the cross-build image with the mounts wired, reads dev debs from `linux-build/out` then `repo/debs` as a fallback, and host-signs `wayland/out/iosc` (GPU/IOSurface/task_for_pid DER entitlements) so it is device-ready. `IOSC_NO_SIGN=1` skips signing; `IOSC_XBUILD_IMAGE=` overrides the image.
 
+## On-device Home Screen app sync
+- The old Mac-side `gen-launchers.sh --native` path remains useful for dev/test,
+  but the device now has the pieces for on-device `.desktop` -> `.app` sync:
+  `xios-icon-render` renders PNG/SVG theme icons through gdk-pixbuf into the iPad
+  SpringBoard icon sizes, and `xios-launcher-sync` scans
+  `/var/jb/usr/share/applications`, writes per-app `Info.plist` files, copies the
+  shared `IOSCHost`/`default.metallib` payload, signs bundle executables, and can
+  call `uicache`.
+- Dev installer: `x11/apps/iosc-desktop/install-launcher-tools.sh`. It installs
+  `/var/jb/usr/local/bin/xios-icon-render`, `/var/jb/usr/local/bin/xios-launcher-sync`,
+  and shared payloads/entitlements under `/var/jb/usr/libexec/xios-launchers`.
+- `ioscd` exposes settings-pane-ready verbs on `/var/jb/tmp/ioscd.sock`:
+  `APPS_LIST`, `APPS_SYNC\t<native|classic>\t<dry>`,
+  `APP_ENABLE\t<app_id>`, and `APP_DISABLE\t<app_id>`. Responses are streamed
+  and end with `APPS_END\t<status>`.
+- On-device validation done: renderer compiled/runs on iPad and rendered
+  `org.gnome.Console.svg`; staged sync generated a complete native `mpv.app` and
+  `org.pwmt.zathura.app` under `/var/jb/tmp`; daemon verbs returned the 14 visible
+  app candidates and toggled `footclient` enable/disable state. `foot-server` is
+  currently disabled in prefs as a sanity example.
+
 ## Hardening (2026-07-02, from the native-integration review)
 - **Blocking mach hand-off moved off the compositor thread.** `deliver_canvas_port`
   (task_for_pid + a timed mach_msg a suspended host can stall) previously ran on
@@ -56,6 +77,11 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 4. Validate jetsam/relaunch replay: open a native-hosted app, kill/relaunch the host, confirm `WINDOW_NEW` + the live canvas port are replayed from `xios_canvas.c`.
 5. Confirm the keyboard hint path on device: focus a GTK/Qt text field inside a native-hosted window and verify the OSK appears when that scene is key.
 6. Decide whether native mode should keep the classic output IOSurface for tooling/fallback or skip it later to save memory.
+7. Add the Xios settings pane for Home Screen apps: call `APPS_LIST`, show per-app
+   enabled toggles, call `APP_ENABLE`/`APP_DISABLE`, and expose dry-run/apply
+   buttons for native/classic sync. Do this before mass-syncing every candidate
+   to SpringBoard; visible `.desktop` files include borderline entries like
+   `foot-server`/`footclient`.
 
 ## Priority
 Core path is implemented; next pass is validation notes + polish closure.
