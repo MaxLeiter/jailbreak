@@ -17,6 +17,100 @@ final class XServerViewController: UIViewController {
     }
 }
 
+/// Swift-owned shell chrome that floats above the compositor without stealing
+/// desktop touches outside its own controls.
+private final class XiosShellOverlay: UIView {
+    private let statusButton = UIButton(type: .system)
+    private let titleLabel = UILabel()
+    private let detailLabel = UILabel()
+
+    var openSessions: (() -> Void)?
+    var fitDisplay: (() -> Void)?
+    var reloadDisplay: (() -> Void)?
+    var reconnectInput: (() -> Void)?
+    var openTools: (() -> Void)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+        isUserInteractionEnabled = true
+        buildStatusButton()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        for view in subviews where !view.isHidden && view.alpha > 0.01 {
+            let converted = view.convert(point, from: self)
+            if view.point(inside: converted, with: event) { return true }
+        }
+        return false
+    }
+
+    private func buildStatusButton() {
+        statusButton.translatesAutoresizingMaskIntoConstraints = false
+        statusButton.contentHorizontalAlignment = .left
+        statusButton.backgroundColor = UIColor(white: 0.06, alpha: 0.70)
+        statusButton.layer.cornerRadius = 15
+        statusButton.layer.cornerCurve = .continuous
+        statusButton.layer.borderColor = UIColor.white.withAlphaComponent(0.16).cgColor
+        statusButton.layer.borderWidth = 1
+        statusButton.layer.shadowColor = UIColor.black.cgColor
+        statusButton.layer.shadowOpacity = 0.30
+        statusButton.layer.shadowRadius = 18
+        statusButton.layer.shadowOffset = CGSize(width: 0, height: 10)
+        statusButton.addAction(UIAction { [weak self] _ in self?.openSessions?() }, for: .touchUpInside)
+        addSubview(statusButton)
+
+        let stack = UIStackView(arrangedSubviews: [titleLabel, detailLabel])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = 1
+        stack.isUserInteractionEnabled = false
+        statusButton.addSubview(stack)
+
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.textColor = .white
+        titleLabel.lineBreakMode = .byTruncatingTail
+        detailLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        detailLabel.textColor = UIColor(white: 0.74, alpha: 1)
+        detailLabel.lineBreakMode = .byTruncatingTail
+
+        if #available(iOS 14.0, *) {
+            statusButton.menu = UIMenu(children: [
+                UIAction(title: "Displays & Sessions") { [weak self] _ in self?.openSessions?() },
+                UIAction(title: "Fit Display") { [weak self] _ in self?.fitDisplay?() },
+                UIAction(title: "Reload Display") { [weak self] _ in self?.reloadDisplay?() },
+                UIAction(title: "Reconnect Input") { [weak self] _ in self?.reconnectInput?() },
+                UIAction(title: "Tools") { [weak self] _ in self?.openTools?() },
+            ])
+            statusButton.showsMenuAsPrimaryAction = false
+        }
+
+        NSLayoutConstraint.activate([
+            statusButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 8),
+            statusButton.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            statusButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 210),
+            statusButton.widthAnchor.constraint(lessThanOrEqualToConstant: 340),
+            statusButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
+            stack.topAnchor.constraint(equalTo: statusButton.topAnchor, constant: 7),
+            stack.leadingAnchor.constraint(equalTo: statusButton.leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: statusButton.trailingAnchor, constant: -12),
+            stack.bottomAnchor.constraint(equalTo: statusButton.bottomAnchor, constant: -7),
+        ])
+    }
+
+    func update(session: String, detail: String, healthy: Bool) {
+        titleLabel.text = session
+        detailLabel.text = detail
+        statusButton.layer.borderColor = (healthy ? UIColor.systemBlue : UIColor.systemOrange)
+            .withAlphaComponent(0.55).cgColor
+    }
+}
+
 /// Displays an X11 framebuffer on a CAMetalLayer at native retina resolution and
 /// injects touch as X pointer events via XTEST/iosc input. The public display path
 /// is IOSurface: `xios.json` must advertise `"ddx":"iosurface"`, then the app maps
@@ -50,6 +144,7 @@ final class XScreenView: UIView {
     private var sessionIndicatorTimer: Timer?
     private var sessionIndicatorDeadline = Date.distantPast
     private var sessionIndicatorSawTransition = false
+    private weak var shellOverlay: XiosShellOverlay?
     private let debugPath = "/var/jb/tmp/xios-debug.txt"
     private var lastToolMessage = "No profile request sent"
     // UITextInputTraits — keep the keyboard literal so one tap is one char (no
@@ -292,6 +387,7 @@ final class XScreenView: UIView {
         displayLink = dl
 
         installChrome()
+        installShellOverlay()
         // start() already loaded the display in xios.json (the default). If other
         // displays are also open, offer the picker so the user can choose.
         let displays = discoverDisplays()
@@ -551,6 +647,8 @@ final class XScreenView: UIView {
         dumpGeom()
         // contentRect() moved (rotation/resize/zoom); re-place an idle cursor overlay.
         if let conn = xconn, cursorLayer != nil { lastCursorSeq = 0; updateCursorOverlay(conn) }
+        shellOverlay?.setNeedsLayout()
+        refreshShellOverlay()
     }
 
     /// One-line geometry snapshot for diagnosing display sizing (letterboxing).
@@ -839,6 +937,7 @@ final class XScreenView: UIView {
             inp = "input-connected \(xDisplay)"
         }
         try? "\(fb)\n\(inp)\n".write(toFile: "/var/jb/tmp/xios-status.txt", atomically: true, encoding: .utf8)
+        refreshShellOverlay()
     }
 
     private var displayProfiles: [DisplayProfile] {
@@ -2065,6 +2164,54 @@ final class XScreenView: UIView {
             hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
             addGestureRecognizer(hover)
         }
+    }
+
+    private func installShellOverlay() {
+        if shellOverlay != nil { return }
+        let overlay = XiosShellOverlay()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.openSessions = { [weak self] in self?.presentDisplayControl(initial: .sessions) }
+        overlay.fitDisplay = { [weak self] in
+            guard let self else { return }
+            self.resetZoom()
+            self.lastToolMessage = "Fit current display"
+            self.refreshShellOverlay()
+        }
+        overlay.reloadDisplay = { [weak self] in
+            guard let self else { return }
+            self.reloadRuntimeConfig()
+            self.lastToolMessage = "Reloaded xios.json"
+            self.refreshShellOverlay()
+        }
+        overlay.reconnectInput = { [weak self] in
+            guard let self else { return }
+            self.reconnectInput()
+            self.lastToolMessage = "Reconnected \(self.inputBackendName())"
+            self.refreshShellOverlay()
+        }
+        overlay.openTools = { [weak self] in self?.presentTools() }
+        addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        shellOverlay = overlay
+        refreshShellOverlay()
+    }
+
+    private func refreshShellOverlay() {
+        guard let overlay = shellOverlay else { return }
+        let preset = sessionStatus()?.preset ?? iosurfaceCompositorID
+        let state = sessionStatus()?.state ?? (usingIOSurface ? "up" : "waiting")
+        let label = preset.isEmpty ? "Xios" : desktopLabel(preset)
+        let backend = usingIOSurface ? "Metal" : "Waiting"
+        let input = inputConnected ? inputBackendName() : "input offline"
+        overlay.update(
+            session: "\(label)  \(state)",
+            detail: "\(fbWidth)x\(fbHeight)  \(backend)  \(input)",
+            healthy: usingIOSurface && inputConnected)
     }
 
     private enum DisplayControlFocus { case displays, sessions }
