@@ -22,15 +22,16 @@ OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.3"
+VER="0.9.4"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
 BIN="$STAGE/var/jb/usr/local/bin"
 SHARE="$STAGE/var/jb/usr/local/share/iosc"
+LIB="$STAGE/var/jb/usr/local/lib"
 
 rm -rf "$STAGEROOT"
-mkdir -p "$BIN" "$SHARE" "$STAGE/DEBIAN"
+mkdir -p "$BIN" "$SHARE" "$LIB" "$STAGE/DEBIAN"
 
 # 1. compositor binary -> /var/jb/usr/local/bin, signed with the GPU entitlement
 #    set (AGX/IOGPU/IOSurface IOKit + task_for_pid, NO no-container). Without these
@@ -55,6 +56,25 @@ chmod 0755 "$BIN/run-iosc.sh" "$BIN/run-kgx.sh"
 # 4. the GPU entitlement set, for reference / re-signing the binary if ever needed
 cp "$WAYLAND/iosc-gl-ent.xml" "$SHARE/iosc-gl-ent.xml"
 chmod 0644 "$SHARE/iosc-gl-ent.xml"
+
+# 4b. the wayland-egl<->ANGLE GPU shim (libiosc_egl.dylib). This is the client-side
+#     GPU path for ANY wl_egl_window client (GTK4/GSK, mpv, Qt, SDL): a drop-in libEGL
+#     that forwards to ANGLE except for the Wayland platform + window-surface calls,
+#     which it routes through IOSurface + iosc_iosurface (zero-copy into iosc). It is
+#     installed at its own install_name here so it ships in a deb rather than being
+#     hand-copied. NOTE: the load-bearing copy that GPU clients actually bind is the
+#     one the `angle` deb stages AS /var/jb/lib/angle/libEGL.dylib (kgx/GTK4/mpv all
+#     link/dlopen ANGLE's libEGL and transparently get the shim there); this copy is
+#     the canonical standalone artifact (its build install_name) and backs the
+#     iosc-egl-client self-test. Ad-hoc signed (the GPU-using *process* carries the
+#     entitlements, not the dylib).
+if [ -f "$WAYLAND/out/libiosc_egl.dylib" ]; then
+  cp "$WAYLAND/out/libiosc_egl.dylib" "$LIB/libiosc_egl.dylib"
+  chmod 0755 "$LIB/libiosc_egl.dylib"
+  xsign "$LIB/libiosc_egl.dylib"
+else
+  echo "WARN: libiosc_egl.dylib not found at $WAYLAND/out — build-iosc.sh not run?"
+fi
 
 INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
 
