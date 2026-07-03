@@ -2487,15 +2487,51 @@ final class XScreenView: UIView {
             size: 12, color: UIColor(white: 0.72, alpha: 1)))
 
         let apps = discoverDesktopApps()
-        if apps.isEmpty {
-            stack.addArrangedSubview(panelLabel(
-                "No installed apps were found under \(applicationsDirs[0]).",
-                size: 13, color: UIColor(white: 0.72, alpha: 1)))
-        } else {
-            for app in apps {
-                stack.addArrangedSubview(appLaunchRow(app))
+        let search = panelSearchField("Search apps")
+        stack.addArrangedSubview(search)
+
+        let resultsStack = UIStackView()
+        resultsStack.axis = .vertical
+        resultsStack.spacing = 10
+        resultsStack.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(resultsStack)
+
+        let renderResults: (String) -> Void = { [weak self, weak resultsStack] query in
+            guard let self, let resultsStack else { return }
+            for view in resultsStack.arrangedSubviews {
+                resultsStack.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+            let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let filtered = needle.isEmpty ? apps : apps.filter { app in
+                app.name.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil ||
+                app.exec.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil ||
+                app.id.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            }
+            if apps.isEmpty {
+                resultsStack.addArrangedSubview(self.panelLabel(
+                    "No installed apps were found under \(self.applicationsDirs[0]).",
+                    size: 13, color: UIColor(white: 0.72, alpha: 1)))
+            } else if filtered.isEmpty {
+                resultsStack.addArrangedSubview(self.panelLabel(
+                    "No apps match \"\(needle)\".",
+                    size: 13, color: UIColor(white: 0.72, alpha: 1)))
+            } else {
+                for app in filtered {
+                    resultsStack.addArrangedSubview(self.appLaunchRow(app))
+                }
             }
         }
+        search.addAction(UIAction { [weak search] _ in
+            renderResults(search?.text ?? "")
+        }, for: .editingChanged)
+
+        if apps.isEmpty {
+            search.isHidden = true
+        } else {
+            search.becomeFirstResponder()
+        }
+        renderResults("")
 
         stack.addArrangedSubview(buttonRow([
             panelButton("Rescan") { [weak self] in self?.presentAppLauncher() },
@@ -2838,6 +2874,25 @@ final class XScreenView: UIView {
         f.spellCheckingType = .no
         f.clearButtonMode = .whileEditing
         f.font = .systemFont(ofSize: 15)
+        return f
+    }
+
+    private func panelSearchField(_ placeholder: String) -> UISearchTextField {
+        let f = UISearchTextField()
+        f.placeholder = placeholder
+        f.autocorrectionType = .no
+        f.autocapitalizationType = .none
+        f.spellCheckingType = .no
+        f.clearButtonMode = .whileEditing
+        f.font = .systemFont(ofSize: 15)
+        f.textColor = .white
+        f.tintColor = .white
+        f.backgroundColor = UIColor(white: 0.22, alpha: 0.78)
+        f.layer.cornerRadius = 10
+        f.layer.cornerCurve = .continuous
+        f.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: UIColor(white: 0.72, alpha: 1)])
         return f
     }
 
