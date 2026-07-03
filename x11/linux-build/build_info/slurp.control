@@ -1,0 +1,14 @@
+Package: slurp
+Version: @DEB_SLURP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/emersion/slurp
+Depends: libwayland0, libxkbcommon0, libcairo2
+Description: Select a region in a Wayland compositor
+ slurp lets you drag out a rectangle and prints its geometry; paired with grim
+ it is the standard "screenshot a region" tool. It draws the selection overlay
+ with cairo into wl_shm buffers and maps itself as a zwlr_layer_surface_v1, so
+ it needs the compositor's wlr-layer-shell and xdg-output support. Runs as a
+ native Wayland client under the iosc compositor.
