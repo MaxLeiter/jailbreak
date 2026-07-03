@@ -118,8 +118,13 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
 - Qt AT-SPI bridge recipe work has moved forward: `linux-build/recipes/qtbase.mk`
   now carries the round-3 revision with `FEATURE_dbus=ON`,
   `FEATURE_accessibility=ON`, `FEATURE_accessibility_atspi_bridge=ON`, and the
-  synthetic `FindATSPI2.cmake` target for the staged at-spi2 headers. The remaining
-  Qt gate is build/package/device validation, not deciding the recipe shape.
+  synthetic `FindATSPI2.cmake` target for the staged at-spi2 headers. Device
+  validation on 2026-07-03 launched Okular under the force-a11y gate and
+  `atspi-dump` saw a rich Qt tree with menu bars/items, push buttons, labels,
+  editable text, lists, check boxes, trees, and actions. The dump still emitted
+  stale-object-path warnings while walking transient menu objects, but Qt AT-SPI
+  semantics are present on-device. Evidence:
+  `artifacts/device-runs/20260703-124300-qt-okular-a11y/atspi-qt-okular.txt`.
 - The native-iPadOS host-side publisher prototype exists in
   `apps/iosc-host/Sources/HostA11y.swift` and related `HostScreenView` /
   `NativeManager` glue. It is gated by iOS VoiceOver by default, with the
@@ -576,7 +581,7 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 |---|---|---|
 | at-spi2-core (launcher, registryd, libatspi, atk-bridge) | built | 0 |
 | GTK4/Shell AT-SPI backends | in toolkits | config only (drop the GTK_A11Y=none gate) |
-| Qt AT-SPI bridge | recipe enabled, package/device validation pending | rebuild/package current qtbase, verify configure feature summary, then atspi-dump a Qt client on device |
+| Qt AT-SPI bridge | recipe enabled; Okular device AT-SPI tree validated with stale-object warning noise | verify a smaller Qt widget app if needed; fix transient-object warnings only if they break helper snapshots |
 | GTK3 atk-bridge | compiled out (`gtk+3.0.mk:20`) | gtk3 rebuild against the shipped libatk-bridge, before P4 |
 | atspi-dump CLI | shipped in `xios-a11y-tools_0.2.14`; prints role/name/description plus states, action names, and value text/current/min/max/increment | expand output only if xios-a11yd needs more probe coverage |
 | xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.14`; coalesces common AT-SPI object/window/document events into diff-suppressed snapshots with a periodic fallback; line-buffers app commands as NDJSON and dispatches by exact `t`; exposes action names, values, AT-SPI state-derived traits/values, and `focus` when AT-SPI reports one; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue; routes `scroll` to AT-SPI Component.ScrollTo | add geometry correlation, PID correlation, and real VoiceOver status mirroring |
@@ -594,8 +599,8 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
   properties true, `xios-session_1.0.15` starts `xios-a11yd` when installed
   while sharing one app-launch D-Bus session across multiple clients, and ioscd
   icon/native launch requests now share one daemon-owned app bus too.
-  Remaining accept: full gnome-console widget tree, a simple Qt widget app after
-  rebuilt qtbase is staged, and mirroring iOS VoiceOver state instead of forcing
+  Remaining accept: full gnome-console widget tree, a smaller/simple Qt widget
+  app if desired after the Okular probe, and mirroring iOS VoiceOver state instead of forcing
   `ScreenReaderEnabled=true`.
 - P1 read-only browse: xios-a11yd mirror + protocol + Xios elements for the focused
   window (labels, roles, frames). PARTIAL ACCEPT SHIPPED: `xios-a11yd` emits
