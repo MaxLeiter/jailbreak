@@ -12,6 +12,7 @@ _SF_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _SF_REPO_ROOT="$(cd "$_SF_HERE/../../.." && pwd)"
 _SF_WAYLAND="$_SF_REPO_ROOT/x11/wayland"
 _SF_SHELLDIR="$_SF_REPO_ROOT/x11/apps/iosc-shell"
+_SF_PLASMA_XIOS="$_SF_HERE/plasma-xios-shell"
 
 # Prints one line per shipped file:  <abs source>\t<dest relative to /var/jb>\t<mode>
 # The run-*.sh entries are reused copies of the REAL bring-up scripts (see
@@ -24,7 +25,9 @@ session_manifest() {
     "$_SF_SHELLDIR/run-shell.sh"            libexec/xios-session/run-shell.sh                 0755 \
     "$_SF_WAYLAND/run-mutter.sh"            libexec/xios-session/run-mutter.sh                0755 \
     "$_SF_WAYLAND/run-gnome-shell.sh"       libexec/xios-session/run-gnome-shell.sh           0755 \
-    "$_SF_WAYLAND/run-kde-plasma.sh"        libexec/xios-session/run-kde-plasma.sh            0755
+    "$_SF_WAYLAND/run-kde-plasma.sh"        libexec/xios-session/run-kde-plasma.sh            0755 \
+    "$_SF_PLASMA_XIOS/metadata.json"        usr/share/plasma/shells/org.kde.plasma.xios/metadata.json                 0644 \
+    "$_SF_PLASMA_XIOS/contents/views/Desktop.qml" usr/share/plasma/shells/org.kde.plasma.xios/contents/views/Desktop.qml 0644
 }
 
 # stage_session_files <root> — populate <root> (a local /var/jb equivalent)

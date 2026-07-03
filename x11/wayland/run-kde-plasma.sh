@@ -38,6 +38,8 @@ KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-}"
 case "$KDE_PLASMA_FLAVOR" in
   desktop|plasma|kde)
     KDE_PLASMA_FLAVOR=desktop
+    KDE_PLASMA_LABEL="KDE Plasma (Xios first light)"
+    PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-org.kde.plasma.xios}"
     KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
     ;;
   nano|plasma-nano|kde-nano)
@@ -67,6 +69,10 @@ esac
 case "$KWIN_W:$KWIN_H" in
   *[!0-9:]*|":"|*":") echo "!! invalid KDE_KWIN_SIZE=$KDE_KWIN_SIZE, expected WxH"; exit 2 ;;
 esac
+
+kde_process_running() {
+  ps ax | grep -v grep | grep -E "$1" >/dev/null 2>&1
+}
 
 echo "==> stop prior iosc/KDE session pieces"
 ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|dbus-daemon.*--session|dbus-run-session" \
@@ -166,6 +172,8 @@ nohup env \
   KWIN_SOCKET="$KWIN_SOCKET" \
   KWIN_W="$KWIN_W" \
   KWIN_H="$KWIN_H" \
+  PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-}" \
+  PLASMA_NO_RESPAWN="${PLASMA_NO_RESPAWN:-1}" \
   DYLD_LIBRARY_PATH="/var/jb/usr/lib:/var/jb/lib/angle" \
   XDG_DATA_DIRS=/var/jb/usr/share \
   XDG_CONFIG_DIRS=/var/jb/etc/xdg:/var/jb/usr/etc/xdg \
@@ -179,6 +187,9 @@ nohup env \
   QT_PLUGIN_PATH=/var/jb/usr/lib/qt6/plugins \
   QML2_IMPORT_PATH=/var/jb/usr/lib/qt6/qml \
   QML_IMPORT_PATH=/var/jb/usr/lib/qt6/qml \
+  QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}" \
+  QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-software}" \
+  QMLSCENE_DEVICE="${QMLSCENE_DEVICE:-softwarecontext}" \
   QT_QUICK_CONTROLS_STYLE="$KDE_QT_QUICK_CONTROLS_STYLE" \
   "${PLASMA_ENV[@]}" \
   dbus-run-session -- /var/jb/usr/bin/bash -lc '
@@ -206,7 +217,15 @@ nohup env \
       sleep 0.5
     fi
     export WAYLAND_DISPLAY="$KWIN_SOCKET"
-    "$PLASMA_BIN" &
+    plasma_args=()
+    if [ -n "${PLASMA_SHELL_PLUGIN:-}" ]; then
+      plasma_args+=(--shell-plugin "$PLASMA_SHELL_PLUGIN")
+    fi
+    if [ "${PLASMA_NO_RESPAWN:-1}" != 0 ]; then
+      plasma_args+=(--no-respawn)
+    fi
+    echo "launch plasmashell: $PLASMA_BIN ${plasma_args[*]}"
+    "$PLASMA_BIN" "${plasma_args[@]}" &
     plasma_pid=$!
     wait "$kwin_pid"
     kill "$plasma_pid" 2>/dev/null || true
@@ -229,14 +248,14 @@ fi
 echo "==> foreground Xios app (shows the iosc output containing KWin/Plasma)"
 uiopen -b com.max.xios 2>/dev/null || uiopen com.max.xios 2>/dev/null || true
 
-for _ in $(seq 1 20); do
-  pgrep -f "plasmashell" >/dev/null 2>&1 && break
+for _ in $(seq 1 60); do
+  kde_process_running "plasmashell" && break
   sleep 0.5
 done
 
 echo "   outer wayland: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
 echo "   kwin socket:   $([ -S "$KWIN_SOCK_PATH" ] && echo up || echo MISSING)"
 echo "   shell flavor:  $KDE_PLASMA_FLAVOR"
-echo "   plasmashell:   $(pgrep -f "plasmashell" >/dev/null 2>&1 && echo running || echo not-yet)"
+echo "   plasmashell:   $(kde_process_running "plasmashell" && echo running || echo not-yet)"
 echo "   xios.json:     $(cat "$TMP/xios.json" 2>/dev/null)"
 echo "==> logs: $IOSC_LOG and $KDE_LOG"

@@ -362,6 +362,10 @@ xios_session_gnome() {
 # the Plasma shell package via PLASMA_DEFAULT_SHELL where needed. This mirrors the
 # proven KWin first-light smoke instead of treating KWin as a native Xios display
 # server.
+xios_session_process_running() {
+    ps ax | grep -v grep | grep -E "$1" >/dev/null 2>&1
+}
+
 xios_session_kde() {
     local flavor="${1:-desktop}" preset="kde" label="KWin + plasmashell"
     case "$flavor" in
@@ -382,7 +386,7 @@ xios_session_kde() {
     xs_ensure_xios "$preset"
     xs_write_status "$preset" waiting "waiting for $label"
     if [ -S "$XS_TMP/kwin-ios-test" ]; then
-        if pgrep -f "plasmashell" >/dev/null 2>&1; then
+        if xios_session_process_running "plasmashell"; then
             xs_log "$preset up (kwin-ios-test + plasmashell running)."
             xs_write_status "$preset" up "$label running"
         else
