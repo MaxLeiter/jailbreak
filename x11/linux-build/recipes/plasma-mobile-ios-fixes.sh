@@ -154,21 +154,26 @@ Item {
     property int cellWidth: width
     property int cellHeight: 96
     property int flow: 0
+    property int orientation: 0
     property int layoutDirection: Qt.LeftToRight
     property int verticalLayoutDirection: 0
     property int boundsBehavior: 0
     property int boundsMovement: 0
     property int flickableDirection: 0
     property int highlightRangeMode: 0
+    property int headerPositioning: 0
     property int snapMode: 0
     property bool interactive: false
     property bool dragging: false
     property bool moving: false
     property bool reuseItems: false
     property bool keyNavigationWraps: false
+    property bool keyNavigationEnabled: true
     property bool atYBeginning: true
     property bool atYEnd: true
     property real cacheBuffer: 0
+    property real flickDeceleration: 0
+    property real pressDelay: 0
     property real contentX: 0
     property real contentY: 0
     property real contentWidth: width
@@ -182,10 +187,20 @@ Item {
     property real preferredHighlightBegin: 0
     property real preferredHighlightEnd: 0
     property real highlightMoveDuration: 0
+    property real highlightResizeDuration: 0
     property real maximumFlickVelocity: 0
+    property real spacing: 0
     readonly property Item currentItem: null
+    property var add: null
+    property var displaced: null
+    property var header: null
+    property bool highlightFollowsCurrentItem: true
     default property alias content: contentItem.data
     Item { id: contentItem; anchors.fill: parent }
+    signal movementStarted()
+    signal movementEnded()
+    signal flickStarted()
+    signal flickEnded()
     function itemAtIndex(index) { return null }
     function indexAt(x, y) { return -1 }
     function flick(xVelocity, yVelocity) {}
@@ -217,35 +232,142 @@ Item {
     property var homeScreen
     property var folio
     property var actionDrawer
+    property var notificationModel
+    property var notificationSettings
+    property var notificationsWidget
+    property var restrictedPermissions
+    property var historyModel
+    property var pendingNotificationWithAction
+    property var textField
+    property var view
     property Component content
     default property alias contentChildren: contentItem.data
     property int edge: Qt.BottomEdge
+    property int notificationModelType: 0
+    property int historyModelType: 0
+    property int columns: 1
+    property int columnCount: columns
+    property int minimizedColumns: 1
+    property int quickSettingsCount: 0
+    property int rowCount: 0
+    property int pageSize: 0
+    property int previewCharIndex: -1
+    property int animationDuration: 0
+    property int direction: Qt.BottomEdge
     property string queryString: ""
     property string backgroundColor: "transparent"
+    property string pluginName: ""
+    property string pinLabel: ""
+    property string prevText: ""
+    property color color: "transparent"
+    property color headerTextColor: "transparent"
+    property color headerTextInactiveColor: "transparent"
     property bool active: false
     property bool expanded: false
     property bool shown: false
+    property bool dragging: false
+    property bool opened: shown
+    property bool opening: false
+    property bool isOpen: shown
     property bool horizontal: false
     property bool showSecondRow: false
     property bool showDropShadow: false
     property bool disableSystemTray: false
+    property bool actionsRequireUnlock: false
+    property bool openToPinnedMode: false
+    property bool doNotDisturbModeEnabled: false
+    property bool hasNotifications: false
+    property bool listOverflowing: false
+    property bool externalEdit: false
+    property bool isPinMode: false
+    property bool keypadOpen: false
+    property bool showChar: false
+    property bool showFullApplet: false
+    property bool suppressActiveClose: false
+    property bool isCurrent: false
     property real availableHeight: height
+    property real topMargin: 0
     property real bottomMargin: 0
     property real leftMargin: 0
     property real rightMargin: 0
+    property real offset: 0
+    property real oldOffset: 0
+    property real oldMouseY: 0
+    property real offsetDist: 0
+    property real offsetHeight: 0
+    property real totalOffsetDist: 0
+    property real largePortraitThreshold: 0
+    property real maximizedQuickSettingsOffset: 0
+    property real minimizedQuickSettingsOffset: 0
     property real minimizedViewProgress: 0
     property real fullViewProgress: 0
+    property real closedContentY: 0
+    property real oldContentY: 0
+    property real openFactor: 0
+    property real openedContentY: 0
+    property real contentHeight: height
+    property real padding: 0
+    property real horizontalMargin: 0
+    property real intendedCellWidth: 0
+    property real maxCellWidth: 0
+    property real zoomScale: 1
+    property real columnWidth: 0
+    property real fullHeight: height
+    property real intendedColumnWidth: 0
+    property real intendedMinimizedColumnWidth: 0
+    property real minimizedColumnWidth: 0
+    property real minimizedRowHeight: 0
+    property real rowHeight: 0
+    property real dotWidth: 0
+    property var lockScreenState
     property int mode: 0
     Item { id: contentItem; anchors.fill: parent }
     signal closed()
     signal requestedClose()
     signal requestClose()
+    signal drawerClosed()
+    signal drawerOpened()
+    signal permissionsRequested()
+    signal runPendingNotificationAction()
+    signal actionTriggered()
     signal backgroundClicked()
     signal unlockRequested()
+    signal wallpaperSettingsRequested()
     function open() { shown = true }
     function close() { shown = false; closed(); requestedClose(); requestClose() }
+    function closeImmediately() { close() }
     function toggle() { shown = !shown; if (!shown) { backgroundClicked() } }
-    signal wallpaperSettingsRequested()
+    function expand() { expanded = true }
+    function cancelAnimations() {}
+    function updateState() {}
+    function startSwipe() {}
+    function updateOffset(value) { offset = value }
+    function endSwipe() {}
+    function activateNextAction() {}
+    function clearField() {}
+    function requestFocus() { forceActiveFocus() }
+    function startGesture() {}
+    function updateGestureOffset(value) { offset = value }
+    function endGesture() {}
+    function getTrackName() { return "" }
+    function clearHistory() {}
+    function isRowExpanded(row) { return false }
+    function openNotificationSettings() {}
+    function runPendingAction() {}
+    function setGroupExpanded(group, expanded) {}
+    function toggleDoNotDisturbMode() { doNotDisturbModeEnabled = !doNotDisturbModeEnabled }
+    function applyMinMax(value) { return value }
+    function onRunPendingNotificationAction() {}
+    function onOpenedChanged() {}
+    function resetSwipeView() {}
+    function showOverlay() { shown = true }
+    function backspace() {}
+    function clear() {}
+    function enter() {}
+    function keyPress(key, text, modifiers) {}
+    function onPasswordChanged() {}
+    function onUnlockFailed() {}
+    function onUnlockSucceeded() {}
 }
 """
 
@@ -269,8 +391,22 @@ MouseArea {
     id: root
     property var folio
     property var homeScreen
+    property int columns: 1
+    property real horizontalMargin: 0
+    property real intendedCellWidth: 0
+    property real maxCellWidth: 0
+    property real zoomScale: 1
+    property string pluginName: ""
     signal requestClose()
     onClicked: root.requestClose()
+}
+""")
+
+write("containments/homescreens/folio/package/contents/ui/main.qml", """import QtQuick 2.15
+import org.kde.plasma.plasmoid 2.0
+ContainmentItem {
+    id: root
+    Item { anchors.fill: parent }
 }
 """)
 
@@ -280,7 +416,27 @@ Item {
     id: root
     property string password: ""
     property string placeholderText: ""
+    property bool keypadOpen: false
+    property bool showChar: false
+    property bool isPinMode: false
+    property bool externalEdit: false
+    property int previewCharIndex: -1
+    property real dotWidth: 0
+    property color color: "transparent"
+    property color headerTextColor: "transparent"
+    property color headerTextInactiveColor: "transparent"
+    property var lockScreenState
+    property var textField
+    property string pinLabel: ""
+    property string prevText: ""
     signal accepted(string password)
+    function backspace() {}
+    function clear() { password = "" }
+    function enter() { accepted(password) }
+    function keyPress(key, text, modifiers) {}
+    function onPasswordChanged() {}
+    function onUnlockFailed() {}
+    function onUnlockSucceeded() {}
     TextField {
         anchors.centerIn: parent
         width: Math.min(parent.width, 420)
