@@ -173,6 +173,16 @@ final class XScreenView: UIView {
         let detail: String
     }
 
+    private struct SessionStatus {
+        let preset: String
+        let state: String
+        let message: String
+        let width: Int?
+        let height: Int?
+        let display: String?
+        let ddx: String?
+    }
+
     private var pendingSessionDisplay: DisplayProfile?
 
     private struct FitTransform {
@@ -1819,6 +1829,147 @@ final class XScreenView: UIView {
         return numbers.sorted().map { XDisplayInfo(number: $0, config: $0 == cfgNumber ? cfg : nil) }
     }
 
+    // MARK: installed-app enumeration (freedesktop .desktop entries)
+
+    private struct DesktopApp {
+        let name: String    // display name (Name= or filename)
+        let exec: String    // cleaned Exec= (field codes stripped), what we launch
+        let icon: String    // Icon= name/path, used by desktop pins
+        let id: String      // .desktop basename, for stable identity / dedupe
+    }
+
+    private let applicationsDirs = [
+        "/var/jb/usr/share/applications",
+        "/var/jb/usr/local/share/applications",
+    ]
+
+    /// Parse the `[Desktop Entry]` group of a .desktop file into the fields we need.
+    /// Only the first group is read (later `[Desktop Action …]` groups are ignored),
+    /// and only unlocalized keys (`Name=`, not `Name[de]=`) are taken.
+    private func parseDesktopEntry(_ path: String) -> DesktopApp? {
+        let raw: String
+        if let utf8 = try? String(contentsOfFile: path, encoding: .utf8) {
+            raw = utf8
+        } else if let latin1 = try? String(contentsOfFile: path, encoding: .isoLatin1) {
+            raw = latin1
+        } else {
+            return nil
+        }
+        var name = "", exec = "", icon = "", type = ""
+        var noDisplay = false, hidden = false
+        var inEntry = false
+        for lineSub in raw.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = lineSub.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            if line.hasPrefix("[") {
+                inEntry = (line == "[Desktop Entry]")
+                if !inEntry && !name.isEmpty { break }   // past the main group; done
+                continue
+            }
+            guard inEntry, let eq = line.firstIndex(of: "=") else { continue }
+            let key = String(line[..<eq])
+            let val = String(line[line.index(after: eq)...])
+            switch key {
+            case "Name":      if name.isEmpty { name = val }
+            case "Exec":      if exec.isEmpty { exec = val }
+            case "Icon":      if icon.isEmpty { icon = val }
+            case "Type":      type = val
+            case "NoDisplay": noDisplay = (val.lowercased() == "true")
+            case "Hidden":    hidden = (val.lowercased() == "true")
+            default: break    // ignore Name[xx], Icon, Categories, etc.
+            }
+        }
+        guard type == "Application", !noDisplay, !hidden else { return nil }
+        let cleaned = cleanExec(exec)
+        guard !cleaned.isEmpty else { return nil }
+        let id = (path as NSString).lastPathComponent
+        return DesktopApp(name: name.isEmpty ? id : name, exec: cleaned, icon: icon, id: id)
+    }
+
+    /// Strip freedesktop Exec field codes (%f %F %u %U %i %c %k %d %D %n %N %v %m) so
+    /// the remainder is a runnable command. `%%` collapses to a literal `%`.
+    private func cleanExec(_ exec: String) -> String {
+        let drop: Set<Character> = ["f", "F", "u", "U", "i", "c", "k",
+                                    "d", "D", "n", "N", "v", "m"]
+        var out = "", it = exec.makeIterator()
+        var pending: Character? = nil
+        while let ch = pending ?? it.next() {
+            pending = nil
+            if ch == "%", let nxt = it.next() {
+                if nxt == "%" { out.append("%") }
+                else if drop.contains(nxt) { /* skip field code */ }
+                else { out.append(ch); pending = nxt }
+                continue
+            }
+            out.append(ch)
+        }
+        return out.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Enumerate installed GUI apps from the applications dirs, deduped by name and
+    /// sorted case-insensitively. Settings sub-panels, URI handlers and background
+    /// services drop out because they carry `NoDisplay=true`.
+    private func discoverDesktopApps() -> [DesktopApp] {
+        let fm = FileManager.default
+        var byName: [String: DesktopApp] = [:]
+        for dir in applicationsDirs {
+            guard let entries = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+            for e in entries where e.hasSuffix(".desktop") {
+                guard let app = parseDesktopEntry("\(dir)/\(e)") else { continue }
+                let key = app.name.lowercased()
+                if byName[key] == nil { byName[key] = app }   // first dir wins
+            }
+        }
+        return byName.values.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private let desktopPinsPath = "/var/mobile/Library/Preferences/com.max.iosc-desktop-pins.conf"
+
+    private func desktopPinField(_ value: String) -> String {
+        value.replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+    }
+
+    private func pinAppToDesktop(_ app: DesktopApp) {
+        let fm = FileManager.default
+        let dir = (desktopPinsPath as NSString).deletingLastPathComponent
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let existing = (try? String(contentsOfFile: desktopPinsPath, encoding: .utf8)) ?? ""
+        if existing.split(separator: "\n").contains(where: { line in
+            let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+            return fields.count >= 4 && String(fields[3]) == app.exec
+        }) {
+            lastToolMessage = "\(app.name) is already pinned"
+            return
+        }
+        let slot = existing.split(separator: "\n").count
+        let x = 300 + (slot % 6) * 104
+        let y = 96 + (slot / 6) * 122
+        let line = [
+            "app",
+            desktopPinField(app.name),
+            desktopPinField(app.icon),
+            desktopPinField(app.exec),
+            String(x),
+            String(y),
+        ].joined(separator: "\t") + "\n"
+        if !fm.fileExists(atPath: desktopPinsPath) {
+            fm.createFile(atPath: desktopPinsPath, contents: nil)
+        }
+        guard let handle = FileHandle(forWritingAtPath: desktopPinsPath),
+              let data = line.data(using: .utf8) else {
+            lastToolMessage = "Could not pin \(app.name)"
+            return
+        }
+        defer { try? handle.close() }
+        try? handle.seekToEnd()
+        handle.write(data)
+        lastToolMessage = "Pinned \(app.name) to desktop"
+    }
+
     private func resetConfigDefaults(resetDisplay: Bool = false) {
         fbWidth = 1024; fbHeight = 768
         ddxIsIOSurface = false
@@ -1921,23 +2072,30 @@ final class XScreenView: UIView {
 
     @objc private func openSessionPicker() { presentDisplayControl(initial: .sessions) }
 
-    /// Parse xios-sessiond's status file (preset / state / human message). nil when the
+    /// Parse the session launcher's status file (preset / state / human message). nil when the
     /// file is absent or unparseable. State walks stopping → starting → waiting →
     /// relaunching → up (or error / compositor-only).
-    private func sessionStatus() -> (preset: String, state: String, message: String)? {
+    private func sessionStatus() -> SessionStatus? {
         guard let data = FileManager.default.contents(atPath: sessionStatusPath),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
-        return (obj["preset"] as? String ?? "?",
-                obj["state"] as? String ?? "?",
-                obj["message"] as? String ?? "")
+        return SessionStatus(
+            preset: obj["preset"] as? String ?? "?",
+            state: obj["state"] as? String ?? "?",
+            message: obj["message"] as? String ?? "",
+            width: obj["width"] as? Int,
+            height: obj["height"] as? Int,
+            display: obj["display"] as? String,
+            ddx: obj["ddx"] as? String)
     }
 
     /// One-line "preset: state — message" for the picker card.
     private func sessionStatusText() -> String {
         guard let s = sessionStatus() else { return "No session started yet" }
-        return "\(s.preset): \(s.state)" + (s.message.isEmpty ? "" : " — \(s.message)")
+        let geom = (s.width != nil && s.height != nil) ? "  \(s.width!)x\(s.height!)" : ""
+        let display = s.display.map { "  \($0)" } ?? ""
+        return "\(s.preset): \(s.state)\(geom)\(display)" + (s.message.isEmpty ? "" : " — \(s.message)")
     }
 
     /// The human message for the full-screen banner: the daemon's message verbatim when
@@ -2212,7 +2370,7 @@ final class XScreenView: UIView {
         let currentPreset = activeDesktopPreset()
         let applyPreset = currentPreset ?? "iosc"
         stack.addArrangedSubview(panelButton("Apply Size to \(desktopLabel(applyPreset))") {
-            pick(applyPreset, nil)
+            pick("resize", nil)
         })
         for (label, preset) in [("iosc Desktop  -  shell, dock, wallpaper", "iosc"),
                                 ("Mutter  -  raw compositor", "mutter"),
@@ -2227,6 +2385,9 @@ final class XScreenView: UIView {
             panelButton("Text Editor") { pick("app", "gnome-text-editor") },
             panelButton("Calculator")  { pick("app", "gnome-calculator") },
         ]))
+        stack.addArrangedSubview(panelButton("All Apps…") { [weak self] in
+            self?.presentAppLauncher()
+        })
 
         addSection("Maintenance", to: stack)
         stack.addArrangedSubview(buttonRow([
@@ -2306,6 +2467,80 @@ final class XScreenView: UIView {
             stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
             stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18),
         ])
+    }
+
+    /// A scrollable sheet listing every installed GUI app (from the .desktop files
+    /// under the applications dirs). Tapping a row launches it as a Wayland client of
+    /// the running compositor — the same `app` preset path the quick buttons use, so
+    /// it rides all the existing ioscd-socket / status plumbing — then dismisses so the
+    /// desktop is visible while the window maps.
+    private func presentAppLauncher() {
+        let (_, _, _, stack) = presentScrollableModalCard()
+
+        stack.addArrangedSubview(panelLabel("Launch App", size: 18, weight: .bold))
+        let hasCompositor = FileManager.default.fileExists(atPath: "/var/jb/tmp/wayland-0")
+        stack.addArrangedSubview(panelLabel(
+            hasCompositor
+                ? "Opens into the running desktop."
+                : "No desktop is running — start iosc or GNOME first.",
+            size: 12, color: UIColor(white: 0.72, alpha: 1)))
+
+        let apps = discoverDesktopApps()
+        if apps.isEmpty {
+            stack.addArrangedSubview(panelLabel(
+                "No installed apps were found under \(applicationsDirs[0]).",
+                size: 13, color: UIColor(white: 0.72, alpha: 1)))
+        } else {
+            for app in apps {
+                stack.addArrangedSubview(appLaunchRow(app))
+            }
+        }
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Rescan") { [weak self] in self?.presentAppLauncher() },
+            panelButton("Back") { [weak self] in self?.presentDisplayControl(initial: .sessions) },
+        ]))
+        stack.addArrangedSubview(panelButton("Close") { [weak self] in self?.dismissPicker() })
+    }
+
+    /// One left-aligned row: app name on top, the command it runs beneath. Tapping
+    /// launches it and closes the panel.
+    private func appLaunchRow(_ app: DesktopApp) -> UIButton {
+        let b = UIButton(type: .system)
+        b.contentHorizontalAlignment = .left
+        b.setTitleColor(.white, for: .normal)
+        b.titleLabel?.numberOfLines = 2
+        let title = NSMutableAttributedString(
+            string: app.name,
+            attributes: [.font: UIFont.systemFont(ofSize: 15, weight: .semibold),
+                         .foregroundColor: UIColor.white])
+        title.append(NSAttributedString(
+            string: "\n\(app.exec)",
+            attributes: [.font: UIFont.monospacedSystemFont(ofSize: 11, weight: .regular),
+                         .foregroundColor: UIColor(white: 0.62, alpha: 1)]))
+        b.setAttributedTitle(title, for: .normal)
+        b.backgroundColor = UIColor(white: 0.2, alpha: 1)
+        b.layer.cornerRadius = 10
+        b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        b.menu = UIMenu(children: [
+            UIAction(title: "Open") { [weak self] _ in
+                guard let self else { return }
+                self.writeSessionRequest("app", app: app.exec, display: nil)
+                self.dismissPicker()
+            },
+            UIAction(title: "Pin to Desktop") { [weak self] _ in
+                guard let self else { return }
+                self.pinAppToDesktop(app)
+                self.presentAppLauncher()
+            },
+        ])
+        b.showsMenuAsPrimaryAction = false
+        b.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.writeSessionRequest("app", app: app.exec, display: nil)
+            self.dismissPicker()
+        }, for: .touchUpInside)
+        return b
     }
 
     /// Build the dimmed full-screen overlay with a tap-to-dismiss backdrop and an

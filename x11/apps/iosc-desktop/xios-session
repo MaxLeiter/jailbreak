@@ -9,6 +9,7 @@
 #   xios-session gnome           # gnome-shell --wayland (EXPERIMENTAL)
 #   xios-session app kgx         # launch a client against the running compositor
 #   xios-session app gnome-text-editor
+#   xios-session resize          # restart active desktop with XIOS_SESSION_WIDTH/HEIGHT/DPI
 #   xios-session stop            # tear everything down, back to SpringBoard
 #   xios-session status          # print the last session status
 #

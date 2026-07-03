@@ -67,6 +67,18 @@ xs_log() {
     printf 'xios-session: %s\n' "$*" >&2
 }
 
+xs_json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+xs_json_get_file() {  # xs_json_get_file <file> <key>
+    local file="$1" key="$2"
+    [ -f "$file" ] || return 0
+    sed -n \
+        "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p; s/.*\"$key\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" \
+        "$file" 2>/dev/null | head -n 1
+}
+
 xs_a11y_enabled() {
     [ -e "$XS_TMP/xios-a11y-force" ] && return 0
     case "${XIOS_ENABLE_A11Y:-}" in
@@ -84,9 +96,29 @@ xs_a11y_prefix() {
 #   state = starting | up | error | stopped   (the app / CLI can poll this)
 xs_write_status() {
     local preset="$1" state="$2" msg="$3"
-    printf '{"preset":"%s","state":"%s","message":"%s","at":"%s"}\n' \
-        "$preset" "$state" "$(printf '%s' "$msg" | sed 's/"/\\"/g')" \
-        "$(date '+%Y-%m-%dT%H:%M:%S')" >"$XS_STATUS" 2>/dev/null || true
+    local at active width height stride display ddx socket input_socket extra=""
+    at="$(date '+%Y-%m-%dT%H:%M:%S')"
+    active="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
+    width="$(xs_json_get_file "$XS_TMP/xios.json" width)"
+    height="$(xs_json_get_file "$XS_TMP/xios.json" height)"
+    stride="$(xs_json_get_file "$XS_TMP/xios.json" stride)"
+    display="$(xs_json_get_file "$XS_TMP/xios.json" display)"
+    ddx="$(xs_json_get_file "$XS_TMP/xios.json" ddx)"
+    socket="$(xs_json_get_file "$XS_TMP/xios.json" socket)"
+    input_socket="$(xs_json_get_file "$XS_TMP/xios.json" input_socket)"
+    [ -n "$active" ] && extra="$extra,\"active\":\"$(xs_json_escape "$active")\""
+    [ -n "$width" ] && extra="$extra,\"width\":$width"
+    [ -n "$height" ] && extra="$extra,\"height\":$height"
+    [ -n "$stride" ] && extra="$extra,\"stride\":$stride"
+    [ -n "$display" ] && extra="$extra,\"display\":\"$(xs_json_escape "$display")\""
+    [ -n "$ddx" ] && extra="$extra,\"ddx\":\"$(xs_json_escape "$ddx")\""
+    [ -n "$socket" ] && extra="$extra,\"socket\":\"$(xs_json_escape "$socket")\""
+    [ -n "$input_socket" ] && extra="$extra,\"input_socket\":\"$(xs_json_escape "$input_socket")\""
+    [ -n "${IOSC_LOGICAL:-}" ] && extra="$extra,\"requested_logical\":\"$(xs_json_escape "$IOSC_LOGICAL")\""
+    [ -n "${XIOS_SESSION_DPI:-}" ] && extra="$extra,\"requested_dpi\":$XIOS_SESSION_DPI"
+    printf '{"preset":"%s","state":"%s","message":"%s","at":"%s"%s}\n' \
+        "$(xs_json_escape "$preset")" "$(xs_json_escape "$state")" \
+        "$(xs_json_escape "$msg")" "$at" "$extra" >"$XS_STATUS" 2>/dev/null || true
 }
 
 # The active-display owner. /var/jb/tmp/xios.json is a single pointer to the
@@ -377,6 +409,26 @@ xios_session_stop() {
     xs_write_status stop stopped "all sessions stopped"
 }
 
+xios_session_resize() {
+    local owner
+    owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
+    case "$owner" in
+        iosc|mutter|gnome)
+            xs_log "resize: restarting active preset '$owner' with requested display settings"
+            xios_session_run "$owner"
+            ;;
+        ""|stop)
+            xs_log "resize: no active desktop; starting iosc"
+            xios_session_run iosc
+            ;;
+        *)
+            xs_log "ERROR: cannot resize unknown active session '$owner'"
+            xs_write_status resize error "unknown active session: $owner"
+            return 2
+            ;;
+    esac
+}
+
 # ---------------------------------------------------------------------------
 # dispatcher — the ONE entry point the CLI and daemon call.
 #   xios_session_run <preset> [arg]
@@ -388,6 +440,7 @@ xios_session_run() {
         mutter)      xios_session_mutter ;;
         gnome)       xios_session_gnome ;;
         app)         xios_session_app "${1:-}" ;;
+        resize|display) xios_session_resize ;;
         stop|off)    xios_session_stop ;;
         ""|help|-h|--help)
             cat >&2 <<EOF
@@ -397,6 +450,7 @@ xios-session presets:
   gnome           gnome-shell --wayland (EXPERIMENTAL)
   app <name>      launch a client (kgx|gnome-text-editor|gnome-calculator|<exec>)
                   against the running compositor
+  resize          restart the active desktop with XIOS_SESSION_WIDTH/HEIGHT/DPI
   stop            tear everything down, back to SpringBoard
 EOF
             return 2 ;;
