@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage and install the first-light KDE/KF6/KWin runtime set on the device.
+# Stage and install the first-light KDE/KF6/KWin/Plasma runtime set on the device.
 #
 # This is intentionally a prep-only script: it copies and installs packages, writes
 # a small "run later" note, and does not start iosc, kwin_wayland, Plasma, or any
@@ -19,9 +19,10 @@ usage() {
   cat <<'EOF'
 usage: linux-build/prep-kde-kwin-device.sh [--stage-only] [--install]
 
-Stages the latest runtime Qt6/KF6/KWin debs from procursus-vol-kf6, overlays the
-fresh local KWin/shim debs from linux-build/out, pushes them to the device, and
-installs them with dpkg. It never launches KWin or Plasma.
+Stages the latest runtime Qt6/KF6/KWin/Plasma debs from procursus-vol-kf6,
+overlays the fresh local Qt/KWin/Plasma/session debs from linux-build/out,
+pushes them to the device, and installs them with dpkg. It never launches KWin
+or Plasma.
 
 Options:
   --stage-only   build the local staging directory, but do not contact device
@@ -79,7 +80,7 @@ find "$SRC" -maxdepth 2 -type f -name "*.deb" | while IFS= read -r deb; do
   [ -n "$pkg" ] || continue
   case "$pkg" in
     *-dev) continue ;;
-    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kwayland|layer-shell-qt|plasma-activities|plasma-wayland-protocols|libdrm2|libgbm1|libdisplay-info1) ;;
+    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-wayland-protocols|libdrm2|libgbm1|libdisplay-info1) ;;
     *) continue ;;
   esac
   old=$(find "$TMP" -maxdepth 1 -type f -name "${pkg}_*.deb" -print -quit)
@@ -96,21 +97,73 @@ done
 cp -v "$TMP"/*.deb /out/
 '
 
-echo "==> overlaying fresh local KWin/shim runtime debs from linux-build/out"
-for pattern in \
+echo "==> overlaying fresh local Qt/KWin/Plasma/session runtime debs from linux-build/out"
+overlay_out() {
+  local pattern deb base pkg
+  for pattern in "$@"; do
+    for deb in "$HERE/out"/$pattern; do
+      [ -f "$deb" ] || continue
+      base="$(basename "$deb")"
+      pkg="${base%%_*}"
+      case "$pkg" in
+        *-dev|xios-kde|plasma-mobile|plasma-nano) continue ;;
+      esac
+      cp -v "$deb" "$STAGE/debs/"
+    done
+  done
+}
+
+overlay_out \
+  qt6-*_*_iphoneos-arm64.deb \
   kwin_*_iphoneos-arm64.deb \
   libdrm2_*_iphoneos-arm64.deb \
   libgbm1_*_iphoneos-arm64.deb \
-  libdisplay-info1_*_iphoneos-arm64.deb
-do
-  for deb in "$HERE/out"/$pattern; do
-    [ -f "$deb" ] || continue
-    base="$(basename "$deb")"
-    pkg="${base%%_*}"
-    rm -f "$STAGE/debs/${pkg}_"*.deb
-    cp -v "$deb" "$STAGE/debs/"
-  done
+  libdisplay-info1_*_iphoneos-arm64.deb \
+  libplasma_*_iphoneos-arm64.deb \
+  plasma-activities-stats_*_iphoneos-arm64.deb \
+  plasma-workspace_*_iphoneos-arm64.deb \
+  plasma-desktop_*_iphoneos-arm64.deb \
+  kf6-attica_*_iphoneos-arm64.deb \
+  kf6-declarative_*_iphoneos-arm64.deb \
+  kf6-runner_*_iphoneos-arm64.deb \
+  kf6-kded_*_iphoneos-arm64.deb \
+  kf6-statusnotifieritem_*_iphoneos-arm64.deb \
+  kf6-unitconversion_*_iphoneos-arm64.deb \
+  kf6-parts_*_iphoneos-arm64.deb \
+  kf6-newstuff_*_iphoneos-arm64.deb \
+  kf6-wallet_*_iphoneos-arm64.deb \
+  kf6-notifyconfig_*_iphoneos-arm64.deb \
+  xios-session_*_iphoneos-arm64.deb
+
+echo "==> keeping only the newest staged deb for each package"
+docker run --rm --platform linux/arm64 \
+  -v "$STAGE/debs:/debs" \
+  "$IMAGE" \
+  -c '
+set -eu
+TMP=/tmp/kde-prep-dedupe
+rm -rf "$TMP"
+mkdir -p "$TMP"
+for deb in /debs/*.deb; do
+  [ -f "$deb" ] || continue
+  pkg=$(dpkg-deb -f "$deb" Package 2>/dev/null || true)
+  ver=$(dpkg-deb -f "$deb" Version 2>/dev/null || true)
+  [ -n "$pkg" ] || continue
+  [ -n "$ver" ] || continue
+  old=$(find "$TMP" -maxdepth 1 -type f -name "${pkg}_*.deb" -print -quit)
+  if [ -z "$old" ]; then
+    cp "$deb" "$TMP/"
+    continue
+  fi
+  oldver=$(dpkg-deb -f "$old" Version 2>/dev/null || true)
+  if dpkg --compare-versions "$ver" gt "$oldver"; then
+    rm -f "$old"
+    cp "$deb" "$TMP/"
+  fi
 done
+rm -f /debs/*.deb
+cp "$TMP"/*.deb /debs/
+'
 
 echo "==> normalizing KWin app wrappers to the rootless app path"
 docker run --rm --platform linux/arm64 \
@@ -215,14 +268,15 @@ echo "==> apt consistency check"
 apt-get check
 
 cat > "$BASE/RUN-LATER.txt" <<'NOTE'
-KDE/KF6/KWin packages were staged for first-light testing.
+KDE/KF6/KWin/Plasma packages were staged for first-light testing.
 
-This prep script did not start iosc, kwin_wayland, Plasma, xios-session, or any
-other compositor/session process.
+This prep script did not start iosc, kwin_wayland, plasmashell, xios-session,
+or any other compositor/session process.
 
-Next run should be an explicit smoke test under iosc, with the foreground app
-awake and logs open, so socket creation, frame callbacks, teardown, and the
-QtWayland/ANGLE path can be observed deliberately.
+Next run can install the `xios-session` launcher package and explicitly smoke
+test `xios-session kde`, with the foreground app awake and logs open, so outer
+iosc startup, KWin socket creation, plasmashell startup, frame callbacks,
+teardown, and the QtWayland/ANGLE path can be observed deliberately.
 NOTE
 
 echo "==> ready at $BASE; no compositor was launched"
@@ -230,13 +284,13 @@ EOF
 chmod +x "$STAGE/install-on-device.sh"
 
 cat > "$STAGE/README.txt" <<EOF
-KDE/KF6/KWin first-light device prep bundle.
+KDE/KF6/KWin/Plasma first-light device prep bundle.
 
 Created by: linux-build/prep-kde-kwin-device.sh
 Remote path: $REMOTE
 
 Contents:
-- debs/: runtime Qt6, KF6, KWayland/KWin, and shim packages
+- debs/: runtime Qt6, KF6, KWayland/KWin, Plasma Workspace, xios-session, and shim packages
 - install-on-device.sh: installs the package set and writes RUN-LATER.txt
 
 This bundle deliberately excludes xios-kde, plasma-mobile, and plasma-nano.

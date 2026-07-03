@@ -78,14 +78,15 @@ echo "==> apt consistency check"
 apt-get check
 
 cat > "$BASE/RUN-LATER.txt" <<'NOTE'
-KDE/KF6/KWin packages were staged for first-light testing.
+KDE/KF6/KWin/Plasma packages were staged for first-light testing.
 
-This prep script did not start iosc, kwin_wayland, Plasma, xios-session, or any
-other compositor/session process.
+This prep script did not start iosc, kwin_wayland, plasmashell, xios-session,
+or any other compositor/session process.
 
-Next run should be an explicit smoke test under iosc, with the foreground app
-awake and logs open, so socket creation, frame callbacks, teardown, and the
-QtWayland/ANGLE path can be observed deliberately.
+Next run can install the `xios-session` launcher package and explicitly smoke
+test `xios-session kde`, with the foreground app awake and logs open, so outer
+iosc startup, KWin socket creation, plasmashell startup, frame callbacks,
+teardown, and the QtWayland/ANGLE path can be observed deliberately.
 NOTE
 
 echo "==> ready at $BASE; no compositor was launched"
