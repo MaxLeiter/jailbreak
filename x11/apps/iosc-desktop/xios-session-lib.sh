@@ -31,6 +31,10 @@
 #   XIOS_SESSION_BRINGUP_DIR   override dir to find the run-*.sh scripts
 #   XIOS_SESSION_SETTLE   seconds to wait after teardown before starting the next
 #                       compositor (default 2) — see the jetsam note below
+#   XIOS_SESSION_LOCK_WAIT   seconds to wait for another xios-session operation
+#                       to finish before failing busy (default 45)
+#   XIOS_SESSION_LOCK_STALE  seconds before a stuck lock owner is reaped
+#                       (default 180)
 #
 # JETSAM NOTE (why the settle exists): switching flavors kills the old compositor
 # (which holds a large GPU IOSurface + Metal/ANGLE context, ~30MB) and starts a new
@@ -47,21 +51,38 @@
 # ---------------------------------------------------------------------------
 # paths + small helpers
 # ---------------------------------------------------------------------------
-XS_JB="${XS_JB:-/var/jb}"
-XS_TMP="${XS_TMP:-$XS_JB/tmp}"
-XS_BIN="${XS_BIN:-$XS_JB/usr/local/bin}"
+XS_SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+    case "$XS_SOURCE_DIR/" in
+        /var/jb/*) XS_JB=/var/jb ;;
+        *)         XS_JB= ;;
+    esac
+fi
+XS_SUBPREFIX="${XS_SUBPREFIX:-/usr}"
+if [ -n "$XS_JB" ]; then
+    XS_TMP="${XS_TMP:-$XS_JB/tmp}"
+    XS_VAR="${XS_VAR:-$XS_JB/var}"
+else
+    XS_TMP="${XS_TMP:-${XIOS_RUNTIME_TMP:-/var/tmp}}"
+    XS_VAR="${XS_VAR:-${XIOS_RUNTIME_VAR:-/var}}"
+fi
+XS_PREFIX="${XS_PREFIX:-$XS_JB$XS_SUBPREFIX}"
+XS_BIN="${XS_BIN:-$XS_PREFIX/local/bin}"
 XS_LIBEXEC_DIR="${XS_LIBEXEC_DIR:-$XS_JB/libexec/xios-session}"
 XS_LOG="${XS_LOG:-$XS_TMP/xios-session.log}"
 XS_STATUS="${XS_STATUS:-$XS_TMP/xios-session-status.json}"
 XS_ACTIVE="${XS_ACTIVE:-$XS_TMP/xios-active-session}"
+XS_LOCK_DIR="${XS_LOCK_DIR:-$XS_TMP/xios-session.lock}"
+XS_SESSION_PGIDS="${XS_SESSION_PGIDS:-$XS_TMP/xios-session.pgids}"
 XS_WAYLAND_SOCK="$XS_TMP/wayland-0"
 XS_XIOS_BUNDLE="com.max.xios"
-XS_UIOPEN="$XS_JB/usr/bin/uiopen"
-XS_DBUS_RUN="$XS_JB/usr/bin/dbus-run-session"
-XS_DBUS_DAEMON="$XS_JB/usr/bin/dbus-daemon"
-XS_BASH="$XS_JB/usr/bin/bash"
+XS_UIOPEN="${XS_UIOPEN:-$XS_PREFIX/bin/uiopen}"
+XS_DBUS_RUN="${XS_DBUS_RUN:-$XS_PREFIX/bin/dbus-run-session}"
+XS_DBUS_DAEMON="${XS_DBUS_DAEMON:-$XS_PREFIX/bin/dbus-daemon}"
+XS_BASH="${XS_BASH:-$XS_PREFIX/bin/bash}"
+XS_ANGLE_LIBEGL="${XS_ANGLE_LIBEGL:-$XS_JB/lib/angle/libEGL.angle.dylib}"
 
-export PATH="$XS_JB/usr/bin:$XS_JB/usr/sbin:$XS_JB/bin:$XS_JB/sbin:/usr/bin:/bin:$PATH"
+export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
 
 xs_log() {
     # timestamped line to both the log file and stderr
@@ -81,6 +102,91 @@ xs_json_get_file() {  # xs_json_get_file <file> <key>
     sed -n \
         "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p; s/.*\"$key\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" \
         "$file" 2>/dev/null | head -n 1
+}
+
+xs_current_pgid() {
+    ps -p "$$" -o pgid= 2>/dev/null | tr -d '[:space:]'
+}
+
+xs_process_alive() {
+    local pid="$1"
+    case "$pid" in ""|*[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null
+}
+
+xs_reap_pgid() {
+    local pgid="$1" label="${2:-recorded session}"
+    local current
+    current="$(xs_current_pgid)"
+    case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
+    [ -n "$current" ] && [ "$pgid" = "$current" ] && return 0
+    xs_log "reaper: killing $label process group $pgid"
+    kill -TERM "-$pgid" 2>/dev/null || true
+    sleep 0.3
+    kill -KILL "-$pgid" 2>/dev/null || true
+}
+
+xs_reap_session_lock_owner() {
+    local pid pgid preset
+    pid="$(cat "$XS_LOCK_DIR/pid" 2>/dev/null || true)"
+    pgid="$(cat "$XS_LOCK_DIR/pgid" 2>/dev/null || true)"
+    preset="$(cat "$XS_LOCK_DIR/preset" 2>/dev/null || true)"
+    xs_log "reaper: clearing stale session lock${pid:+ pid=$pid}${preset:+ preset=$preset}"
+    xs_reap_pgid "$pgid" "stale xios-session"
+    if xs_process_alive "$pid"; then
+        kill -TERM "$pid" 2>/dev/null || true
+        sleep 0.3
+        xs_process_alive "$pid" && kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -rf "$XS_LOCK_DIR" 2>/dev/null || true
+}
+
+xs_session_lock_is_stale() {
+    local pid started now age stale
+    pid="$(cat "$XS_LOCK_DIR/pid" 2>/dev/null || true)"
+    xs_process_alive "$pid" || return 0
+    started="$(cat "$XS_LOCK_DIR/started" 2>/dev/null || true)"
+    now="$(date '+%s' 2>/dev/null || echo 0)"
+    stale="${XIOS_SESSION_LOCK_STALE:-180}"
+    case "$started" in ""|*[!0-9]*) return 1 ;; esac
+    case "$now" in ""|*[!0-9]*|0) return 1 ;; esac
+    case "$stale" in ""|*[!0-9]*|0) return 1 ;; esac
+    age=$((now - started))
+    [ "$age" -ge "$stale" ]
+}
+
+xs_acquire_session_lock() {  # xs_acquire_session_lock <preset>
+    local preset="${1:-session}" wait="${XIOS_SESSION_LOCK_WAIT:-45}" waited=0 pgid
+    while ! mkdir "$XS_LOCK_DIR" 2>/dev/null; do
+        if xs_session_lock_is_stale; then
+            xs_reap_session_lock_owner
+            continue
+        fi
+        if [ "$wait" -le 0 ] || [ "$waited" -ge "$wait" ]; then
+            xs_log "session busy: another xios-session operation is still running"
+            xs_write_status "$preset" error "another session operation is still running"
+            return 75
+        fi
+        [ "$waited" -eq 0 ] && {
+            xs_log "session busy: waiting for current xios-session operation"
+            xs_write_status "$preset" waiting "waiting for current session operation"
+        }
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    pgid="$(xs_current_pgid)"
+    printf '%s\n' "$$" >"$XS_LOCK_DIR/pid" 2>/dev/null || true
+    printf '%s\n' "$pgid" >"$XS_LOCK_DIR/pgid" 2>/dev/null || true
+    printf '%s\n' "$preset" >"$XS_LOCK_DIR/preset" 2>/dev/null || true
+    date '+%s' >"$XS_LOCK_DIR/started" 2>/dev/null || true
+    return 0
+}
+
+xs_release_session_lock() {
+    local owner
+    owner="$(cat "$XS_LOCK_DIR/pid" 2>/dev/null || true)"
+    [ "$owner" = "$$" ] && rm -rf "$XS_LOCK_DIR" 2>/dev/null || true
 }
 
 xs_a11y_enabled() {
@@ -172,6 +278,25 @@ xs_clear_active() {
     rm -f "$XS_ACTIVE" 2>/dev/null || true
 }
 
+xs_record_session_pgid() {
+    local preset="${1:-session}" pgid
+    pgid="$(xs_current_pgid)"
+    case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
+    printf '%s\t%s\t%s\n' "$pgid" "$preset" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
+}
+
+xs_reap_recorded_session_pgroups() {
+    [ -f "$XS_SESSION_PGIDS" ] || return 0
+    local pgid preset at current
+    current="$(xs_current_pgid)"
+    while IFS=$'\t' read -r pgid preset at; do
+        case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
+        [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
+        xs_reap_pgid "$pgid" "previous ${preset:-session}"
+    done <"$XS_SESSION_PGIDS"
+    rm -f "$XS_SESSION_PGIDS" 2>/dev/null || true
+}
+
 # Resolve one of the bring-up scripts. Prefer the LIVE installed copy (the one the
 # owning package ships + versions alongside its binaries) over our pinned libexec
 # snapshot, so owner edits (e.g. run-shell.sh's -logical line, run-gnome-shell.sh's
@@ -197,11 +322,12 @@ xs_find_bringup() {
 # run-kgx.sh, anchored to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|dbus-daemon.*--session|dbus-run-session'
+xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
     xs_log "teardown ($why): killing compositors + apps + clients"
+    xs_reap_recorded_session_pgroups
     local self=$$ parent=$PPID pid pids
     pids="$(
         ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" \
@@ -215,7 +341,16 @@ xios_session_teardown() {
     )"
     for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
     sleep 1
+    pids="$(
+        {
+            printf '%s\n' $pids
+            ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" | awk '{print $1}'
+        } | awk '!seen[$1]++'
+    )"
     for pid in $pids; do
+        [ -z "$pid" ] && continue
+        [ "$pid" = "$self" ] && continue
+        [ "$pid" = "$parent" ] && continue
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
     done
     # rm every stale rendezvous/socket file (gotcha a). Globs cover iosc-ddx,
@@ -297,6 +432,7 @@ xios_session_iosc() {
     xios_session_teardown "-> iosc"
     xs_settle
     xs_set_active iosc
+    xs_record_session_pgid iosc
     xs_write_status iosc starting "starting iosc + shell"
     local script; script="$(xs_find_bringup run-shell.sh)" || {
         xs_log "ERROR: run-shell.sh not found (install iosc-shell)"; xs_write_status iosc error "run-shell.sh missing"; return 1; }
@@ -326,6 +462,7 @@ xios_session_mutter() {
     xios_session_teardown "-> mutter"
     xs_settle
     xs_set_active mutter
+    xs_record_session_pgid mutter
     xs_write_status mutter starting "starting mutter --wayland (compositor + display)"
     local script; script="$(xs_find_bringup run-mutter.sh)" || {
         xs_log "ERROR: run-mutter.sh not found"; xs_write_status mutter error "run-mutter.sh missing"; return 1; }
@@ -350,6 +487,7 @@ xios_session_gnome() {
     xios_session_teardown "-> gnome"
     xs_settle
     xs_set_active gnome
+    xs_record_session_pgid gnome
     xs_write_status gnome starting "starting gnome-shell --wayland (experimental)"
     local script; script="$(xs_find_bringup run-gnome-shell.sh)" || {
         xs_log "ERROR: run-gnome-shell.sh not found"; xs_write_status gnome error "run-gnome-shell.sh missing"; return 1; }
@@ -414,6 +552,7 @@ xios_session_kde() {
     xios_session_teardown "-> $preset"
     xs_settle
     xs_set_active "$preset"
+    xs_record_session_pgid "$preset"
     xs_write_status "$preset" starting "starting $label (experimental)"
     local script; script="$(xs_find_bringup run-kde-plasma.sh)" || {
         xs_log "ERROR: run-kde-plasma.sh not found"; xs_write_status "$preset" error "run-kde-plasma.sh missing"; return 1; }
@@ -479,11 +618,13 @@ xios_session_app() {
         WAYLAND_DISPLAY="$XS_WAYLAND_SOCK" \
         GDK_BACKEND=wayland \
         GSK_RENDERER=ngl \
-        ANGLE_REAL_LIBEGL=/var/jb/lib/angle/libEGL.angle.dylib \
+        QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}" \
+        QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}" \
+        ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL" \
         GSETTINGS_BACKEND=memory \
         "${gtk_a11y_env[@]}" \
         "${dbus_addr[@]}" \
-        HOME="$XS_JB/var/root" \
+        HOME="$XS_VAR/root" \
         "${launcher[@]}" \
         >>"$XS_TMP/xios-session-client.log" 2>&1 </dev/null &
     # bring the shared Xios display forward so the new window is visible
@@ -507,11 +648,11 @@ xios_session_resize() {
     case "$owner" in
         iosc|mutter|gnome|kde|kde-nano|kde-mobile)
             xs_log "resize: restarting active preset '$owner' with requested display settings"
-            xios_session_run "$owner"
+            xios_session_run_unlocked "$owner"
             ;;
         ""|stop)
             xs_log "resize: no active desktop; starting iosc"
-            xios_session_run iosc
+            xios_session_run_unlocked iosc
             ;;
         *)
             xs_log "ERROR: cannot resize unknown active session '$owner'"
@@ -525,7 +666,7 @@ xios_session_resize() {
 # dispatcher — the ONE entry point the CLI and daemon call.
 #   xios_session_run <preset> [arg]
 # ---------------------------------------------------------------------------
-xios_session_run() {
+xios_session_run_unlocked() {
     local preset="$1"; shift 2>/dev/null || true
     case "$preset" in
         iosc)        xios_session_iosc ;;
@@ -557,4 +698,18 @@ EOF
             xs_write_status "$preset" error "unknown preset"
             return 2 ;;
     esac
+}
+
+xios_session_run() {
+    local preset="${1:-}" rc
+    case "$preset" in
+        ""|help|-h|--help)
+            xios_session_run_unlocked "$@"
+            return $? ;;
+    esac
+    xs_acquire_session_lock "$preset" || return $?
+    xios_session_run_unlocked "$@"
+    rc=$?
+    xs_release_session_lock
+    return "$rc"
 }

@@ -63,7 +63,7 @@ PULSE_PROFILE=$(jb_path /etc/profile.d/xios-pulse.sh)
 if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
     if [ -x "$BIN/iosc" ]; then
         log "starting iosc (logical $IOSC_LOGICAL)..."
-        "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
+        nohup "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
     else
         log "ERROR: no wayland socket at $SOCK and $BIN/iosc not found"
         log "start the compositor first (wayland/run-iosc.sh)"; exit 1
@@ -77,12 +77,12 @@ fi
 
 # -- 2 + 3 + 4. shell clients -------------------------------------------------
 is_running() {
-    ps ax | grep -v grep | grep -Eq "/$1([[:space:]]|$)"
+    ps ax | grep -v grep | grep -F "/$1" >/dev/null 2>&1
 }
 
 start() {  # start <name> (skips if already running)
     if is_running "$1"; then log "$1 already running"; return; fi
-    if [ -x "$BIN/$1" ]; then "$BIN/$1" >"$TMP/$1.log" 2>&1 & log "$1 started";
+    if [ -x "$BIN/$1" ]; then nohup "$BIN/$1" >"$TMP/$1.log" 2>&1 & log "$1 started";
     else log "WARNING: $BIN/$1 not found (skipped)"; fi
 }
 start ioscbg
