@@ -6,7 +6,7 @@ endif
 # libxfce4ui/xfce4-panel. Not in Procursus. Classic autotools (xcb backend).
 SUBPROJECTS  += startup-notification
 STARTUPNOTIFICATION_VERSION := 0.12
-DEB_STARTUPNOTIFICATION_V   ?= $(STARTUPNOTIFICATION_VERSION)+ios1
+DEB_STARTUPNOTIFICATION_V   ?= $(STARTUPNOTIFICATION_VERSION)+ios2
 
 startup-notification-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/startup-notification/releases/startup-notification-$(STARTUPNOTIFICATION_VERSION).tar.gz)
@@ -48,6 +48,7 @@ startup-notification-package: startup-notification-stage
 
 	rm -rf $(BUILD_DIST)/libstartup-notification0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libstartup-notification0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \
+		$(BUILD_DIST)/libstartup-notification0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libstartup-notification-1.dylib \
 		$(BUILD_DIST)/libstartup-notification0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/*.a \
 		$(BUILD_DIST)/libstartup-notification0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/doc
 

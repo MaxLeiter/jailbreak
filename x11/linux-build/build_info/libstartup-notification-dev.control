@@ -5,7 +5,9 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://www.freedesktop.org/software/startup-notification/
-Depends: libstartup-notification0
+Depends: libstartup-notification0 (= @DEB_STARTUPNOTIFICATION_V@)
+Replaces: libstartup-notification0 (<< 0.12+ios2)
+Breaks: libstartup-notification0 (<< 0.12+ios2)
 Description: Startup notification library - development files
  Headers, pkg-config file and unversioned library link for
  libstartup-notification. Needed on-device for the gnome-shell introspection

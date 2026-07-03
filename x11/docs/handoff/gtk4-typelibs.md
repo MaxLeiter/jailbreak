@@ -27,7 +27,7 @@ Producing the GIR typelibs GNOME Shell + gjs need, by running g-ir-scanner ON TH
 2. Longer-term packaging cleanup: align ATK/at-spi versions or package an ATK 2.52-compatible runtime before re-enabling `atk-bridge-2.0`.
 
 ## Prior gotchas (from the introspection track)
-- Missing on-device dev metadata/packages encountered and installed/staged during this pass: `libgjs-dev`, `libstartup-notification-dev` (installed with `--force-overwrite` because the dev/runtime packages both ship the unversioned dylib link), `libpulse-dev`, `perl`, `libp11-kit-dev`, `libsoup-3.0-dev`, `libpsl-dev`, DBus headers from the matching 1.14.10 source tarball, and the local Wayland/DRM/X11 dev packages needed by the Mutter scan.
+- Missing on-device dev metadata/packages encountered and installed/staged during this pass: `libgjs-dev`, `libstartup-notification-dev`, `libpulse-dev`, `perl`, `libp11-kit-dev`, `libsoup-3.0-dev`, `libpsl-dev`, DBus headers from the matching 1.14.10 source tarball, and the local Wayland/DRM/X11 dev packages needed by the Mutter scan. Historical note: `libstartup-notification-dev 0.12+ios1` required `--force-overwrite` because the dev/runtime packages both shipped the unversioned dylib link; the recipe now bumps to `0.12+ios2`, keeps that link only in `-dev`, and exact-depends on the matching runtime.
 - mozjs-115-dev deb was dangling symlinks + no .pc (synthesized). ibus compose-table needs a host tool; glib-compile-resources was a cross wall (solved by scanning on-device). gtk4 typelibs (Gtk-4.0/Gdk/Gsk/Pango) already scanned natively via each lib's meson (gir-build-ondevice.sh) — a gjs GTK4 window renders under Xvfb.
 
 ## Verify
