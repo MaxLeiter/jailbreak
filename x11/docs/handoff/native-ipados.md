@@ -32,6 +32,15 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Dev installer: `x11/apps/iosc-desktop/install-launcher-tools.sh`. It installs
   `/var/jb/usr/local/bin/xios-icon-render`, `/var/jb/usr/local/bin/xios-launcher-sync`,
   and shared payloads/entitlements under `/var/jb/usr/libexec/xios-launchers`.
+- Package path: `x11/apps/iosc-desktop/package-launcher-tools.sh` builds
+  `xios-launcher-tools_0.1.0_iphoneos-arm64.deb` into `x11/linux-build/out/`
+  and the top-level `repo/debs/`. The package ships `ioscd`,
+  `xios-icon-render`, `xios-launcher-sync`, `IOSCLaunch`, `IOSCHost`,
+  `default.metallib`, the entitlements, and
+  `/var/jb/Library/LaunchDaemons/com.max.ioscd.plist`. Postinst re-signs the
+  payloads best-effort and bootstraps `ioscd`; it does **not** run a mass
+  `xios-launcher-sync --sync`, so Home Screen app creation remains settings- or
+  user-triggered.
 - `ioscd` exposes settings-pane-ready verbs on `/var/jb/tmp/ioscd.sock`:
   `APPS_LIST`, `APPS_SYNC\t<native|classic>\t<dry>`,
   `APP_ENABLE\t<app_id>`, and `APP_DISABLE\t<app_id>`. Responses are streamed
@@ -41,6 +50,11 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   `org.pwmt.zathura.app` under `/var/jb/tmp`; daemon verbs returned the 14 visible
   app candidates and toggled `footclient` enable/disable state. `foot-server` is
   currently disabled in prefs as a sanity example.
+- Package validation done: `xios-launcher-tools 0.1.0` installed on-device via
+  `dpkg -i`, restored `/var/jb/tmp/ioscd.sock` as `mobile:mobile` mode `660`,
+  listed apps through the packaged `xios-launcher-sync`, rendered
+  `org.gnome.Console.svg` into all three iPad icon PNG sizes, and returned
+  `APPS_END\t0` for both `APPS_LIST` and `APPS_SYNC\tnative\tdry`.
 
 ## Hardening (2026-07-02, from the native-integration review)
 - **Blocking mach hand-off moved off the compositor thread.** `deliver_canvas_port`
