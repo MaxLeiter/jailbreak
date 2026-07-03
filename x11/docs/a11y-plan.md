@@ -35,7 +35,7 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `/var/jb/usr/libexec/at-spi-bus-launcher` inside the app's `dbus-run-session`.
   For smoke tests, `/var/jb/tmp/xios-a11y-force` enables the same path without
   needing to toggle iOS VoiceOver.
-- `xios-a11y-tools_0.2.12` ships `/var/jb/usr/local/bin/atspi-dump` and
+- `xios-a11y-tools_0.2.13` ships `/var/jb/usr/local/bin/atspi-dump` and
   `/var/jb/usr/local/bin/xios-a11yd`. On-device smoke on 2026-07-02: with fresh
   `iosc` and `XIOS_ENABLE_A11Y=1 xios-session app kgx`, the AT-SPI bus came up,
   registryd activated, and `atspi-dump --depth=4` against
@@ -53,9 +53,9 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   helper socket to `mobile:mobile 0660`; a forced native `org.gnome.Console`
   IOSCHost connected, bound `org.gnome.Console`/`kgx`, attached scene 3, and
   published 12 accessibility elements from the snapshot stream.
-  The helper still polls in lieu of AT-SPI event handling, but now caches each
-  client's last snapshot and only sends `reset` plus a replacement tree when the
-  published body changes. On-device smoke with `0.2.4` saw the expected startup
+  The helper caches each client's last snapshot and only sends `reset` plus a
+  replacement tree when the published body changes. On-device smoke with `0.2.4`
+  saw the expected startup
   empty-tree reset followed by the populated kgx tree, then no further
   reset/publish churn while idle. `0.2.5` adds first interaction plumbing:
   snapshot nodes expose AT-SPI action names and incoming `activate` / `action`
@@ -86,7 +86,11 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   currently focused node when AT-SPI exposes one. `0.2.12` expands `atspi-dump`
   output with high-signal AT-SPI states so state/focus bugs can be diagnosed
   without a custom socket probe; device smoke against Calculator printed frame
-  states including `active`, `sensitive`, `showing`, and `visible`.
+  states including `active`, `sensitive`, `showing`, and `visible`. `0.2.13`
+  registers common AT-SPI object/window/document events and coalesces them into
+  immediate snapshots, while retaining the periodic snapshot fallback. Device
+  smoke against Calculator registered 11/11 event listeners and still published
+  18 upserts with the action-bearing node exposed as `traits:["button"]`.
 - Qt AT-SPI bridge recipe work has moved forward: `linux-build/recipes/qtbase.mk`
   now carries the round-3 revision with `FEATURE_dbus=ON`,
   `FEATURE_accessibility=ON`, `FEATURE_accessibility_atspi_bridge=ON`, and the
@@ -535,8 +539,8 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 | GTK4/Shell AT-SPI backends | in toolkits | config only (drop the GTK_A11Y=none gate) |
 | Qt AT-SPI bridge | recipe enabled, package/device validation pending | rebuild/package current qtbase, verify configure feature summary, then atspi-dump a Qt client on device |
 | GTK3 atk-bridge | compiled out (`gtk+3.0.mk:20`) | gtk3 rebuild against the shipped libatk-bridge, before P4 |
-| atspi-dump CLI | shipped in `xios-a11y-tools_0.2.12`; prints role/name/description plus states, action names, and value text/current/min/max/increment | expand output only if xios-a11yd needs more probe coverage |
-| xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.12`; polls but suppresses unchanged reset/tree republishes; line-buffers app commands as NDJSON and dispatches by exact `t`; exposes action names, values, AT-SPI state-derived traits/values, and polling-based `focus`; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue | add event subscriptions, geometry correlation, PID correlation, and real VoiceOver status mirroring |
+| atspi-dump CLI | shipped in `xios-a11y-tools_0.2.13`; prints role/name/description plus states, action names, and value text/current/min/max/increment | expand output only if xios-a11yd needs more probe coverage |
+| xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.13`; coalesces common AT-SPI object/window/document events into diff-suppressed snapshots with a periodic fallback; line-buffers app commands as NDJSON and dispatches by exact `t`; exposes action names, values, AT-SPI state-derived traits/values, and `focus` when AT-SPI reports one; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue | add geometry correlation, PID correlation, and real VoiceOver status mirroring |
 | iosc geometry feed | new | small compositor + shell-channel addition |
 | Xios app side | desktop publisher still SPEC; native host prototype exists | desktop Xios client still ~600-900 lines Swift; native host waits on helper |
 | iosc-shell AT-SPI objects | new | few hundred lines, libdbus (shipped) |

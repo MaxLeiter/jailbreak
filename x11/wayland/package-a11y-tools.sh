@@ -17,7 +17,7 @@ OUTDIR="$REPO_ROOT/x11/linux-build/out"
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT=/private/tmp/xios-a11y-tools-deb
 STAGE="$STAGEROOT/xios-a11y-tools"
-VER="0.2.12"
+VER="0.2.13"
 ARCH="iphoneos-arm64"
 DEB="xios-a11y-tools_${VER}_${ARCH}.deb"
 
@@ -55,9 +55,10 @@ Description: accessibility smoke tools for Xios
  the Xios accessibility work. atspi-dump connects to the current AT-SPI bus and
  prints the registered desktop/application accessibility trees, including exposed
  states, action names, and value ranges. xios-a11yd is
- the first read-only AT-SPI to Xios NDJSON helper; it listens on
- /var/jb/tmp/xios-a11y.sock, polls the AT-SPI tree, republishes only when the
- snapshot changes, routes basic activate/custom-action requests back to AT-SPI
+ the first AT-SPI to Xios NDJSON helper; it listens on
+ /var/jb/tmp/xios-a11y.sock, coalesces common AT-SPI events into snapshots,
+ keeps a periodic snapshot fallback, republishes only when the snapshot changes,
+ routes basic activate/custom-action requests back to AT-SPI
  Action.DoAction, and falls back to synthetic taps for activations without an
  AT-SPI action. It also publishes AT-SPI Value text/current values and routes
  adjustable increment/decrement requests to Value.SetCurrentValue. Client

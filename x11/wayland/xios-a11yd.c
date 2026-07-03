@@ -1,9 +1,9 @@
 /*
  * xios-a11yd.c — first read-only AT-SPI -> Xios NDJSON bridge helper.
  *
- * v0 polls periodically instead of handling AT-SPI events, but only republishes
- * when the snapshot changes. It is enough to exercise the HostA11y/Xios client
- * side while the event/action bridge is built out.
+ * v0 keeps a periodic snapshot fallback, but also listens for common AT-SPI
+ * object/window/document events so focus and state changes wake the mirror
+ * promptly. Snapshots are diff-suppressed before they reach Xios clients.
  */
 #include <atspi/atspi.h>
 #include <glib.h>
@@ -59,6 +59,8 @@ struct emit_ctx {
 
 static struct client clients[MAX_CLIENTS];
 static unsigned global_gen = 1;
+static AtspiEventListener *event_listener;
+static volatile sig_atomic_t pending_event_snapshot;
 
 static void client_clear_refs(struct client *c);
 
@@ -748,6 +750,65 @@ static void free_clients(void)
     }
 }
 
+static void atspi_event_cb(AtspiEvent *event, void *user_data)
+{
+    (void)event;
+    (void)user_data;
+    pending_event_snapshot = 1;
+}
+
+static void register_event_listeners(void)
+{
+    static const char *event_types[] = {
+        "object:children-changed",
+        "object:property-change",
+        "object:state-changed",
+        "object:text-caret-moved",
+        "object:text-changed",
+        "window:activate",
+        "window:create",
+        "window:deactivate",
+        "window:destroy",
+        "document:load-complete",
+        "document:reload",
+    };
+
+    event_listener = atspi_event_listener_new(atspi_event_cb, NULL, NULL);
+    if (!event_listener) {
+        fprintf(stderr, "xios-a11yd: warning: failed to create AT-SPI event listener\n");
+        return;
+    }
+
+    unsigned registered = 0;
+    for (unsigned i = 0; i < sizeof(event_types) / sizeof(event_types[0]); i++) {
+        GError *error = NULL;
+        if (!atspi_event_listener_register(event_listener, event_types[i], &error)) {
+            fprintf(stderr, "xios-a11yd: warning: failed to register %s", event_types[i]);
+            if (error && error->message) fprintf(stderr, ": %s", error->message);
+            fputc('\n', stderr);
+        } else {
+            registered++;
+        }
+        if (error) g_clear_error(&error);
+    }
+    fprintf(stderr, "xios-a11yd: registered %u/%u AT-SPI event listeners\n",
+            registered, (unsigned)(sizeof(event_types) / sizeof(event_types[0])));
+}
+
+static void pump_atspi_events(void)
+{
+    for (int i = 0; i < 32 && g_main_context_pending(NULL); i++) {
+        g_main_context_iteration(NULL, FALSE);
+    }
+}
+
+static void snapshot_enabled_clients(void)
+{
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        snapshot_client(&clients[i]);
+    }
+}
+
 int main(void)
 {
     signal(SIGPIPE, SIG_IGN);
@@ -763,6 +824,7 @@ int main(void)
         fprintf(stderr, "xios-a11yd: atspi_init failed\n");
         return 1;
     }
+    register_event_listeners();
     int listener = make_listener();
     if (listener < 0) {
         perror("xios-a11yd: listen");
@@ -770,6 +832,7 @@ int main(void)
     }
     fprintf(stderr, "xios-a11yd: listening on %s\n", SOCK_PATH);
 
+    gint64 last_periodic_snapshot = g_get_monotonic_time();
     for (;;) {
         fd_set rfds;
         FD_ZERO(&rfds);
@@ -781,20 +844,28 @@ int main(void)
                 if (clients[i].fd > maxfd) maxfd = clients[i].fd;
             }
         }
-        struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
+        struct timeval tv = { .tv_sec = 0, .tv_usec = 250000 };
         int rc = select(maxfd + 1, &rfds, NULL, NULL, &tv);
         if (rc < 0 && errno == EINTR) continue;
         if (rc < 0) break;
+        pump_atspi_events();
         if (FD_ISSET(listener, &rfds)) accept_client(listener);
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (clients[i].fd >= 0 && FD_ISSET(clients[i].fd, &rfds)) read_client(&clients[i]);
         }
-        if (rc == 0) {
-            for (int i = 0; i < MAX_CLIENTS; i++) snapshot_client(&clients[i]);
+        gint64 now = g_get_monotonic_time();
+        if (pending_event_snapshot || now - last_periodic_snapshot >= 2 * G_USEC_PER_SEC) {
+            pending_event_snapshot = 0;
+            snapshot_enabled_clients();
+            last_periodic_snapshot = now;
         }
     }
     close(listener);
     unlink(SOCK_PATH);
     free_clients();
+    if (event_listener) {
+        g_object_unref(event_listener);
+        event_listener = NULL;
+    }
     return 1;
 }
