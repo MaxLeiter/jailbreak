@@ -628,6 +628,46 @@ static int adjust_node(struct client *c, unsigned id, int dir)
     return ok;
 }
 
+static int scroll_type_for_dir(const char *dir, AtspiScrollType *out)
+{
+    if (!dir || !out) return 0;
+    if (strcmp(dir, "up") == 0) {
+        *out = ATSPI_SCROLL_TOP_EDGE;
+        return 1;
+    }
+    if (strcmp(dir, "down") == 0) {
+        *out = ATSPI_SCROLL_BOTTOM_EDGE;
+        return 1;
+    }
+    if (strcmp(dir, "left") == 0) {
+        *out = ATSPI_SCROLL_LEFT_EDGE;
+        return 1;
+    }
+    if (strcmp(dir, "right") == 0) {
+        *out = ATSPI_SCROLL_RIGHT_EDGE;
+        return 1;
+    }
+    return 0;
+}
+
+static int scroll_node(struct client *c, unsigned id, const char *dir)
+{
+    struct node_ref *ref = client_find_node(c, id);
+    if (!ref || !ref->obj) return 0;
+
+    AtspiScrollType type;
+    if (!scroll_type_for_dir(dir, &type)) return 0;
+
+    AtspiComponent *component = atspi_accessible_get_component(ref->obj);
+    if (!component) return 0;
+
+    GError *error = NULL;
+    int ok = atspi_component_scroll_to(component, type, &error) ? 1 : 0;
+    if (error) g_clear_error(&error);
+    g_object_unref(component);
+    return ok;
+}
+
 static int make_listener(void)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -717,6 +757,12 @@ static void process_client_line(struct client *c, const char *line)
         int dir = 0;
         if (json_get_uint(line, "id", &id) && json_get_int(line, "dir", &dir)) {
             adjust_node(c, id, dir);
+        }
+    } else if (strcmp(type, "scroll") == 0) {
+        unsigned id = 0;
+        char dir[16] = {0};
+        if (json_get_uint(line, "id", &id) && json_get_string(line, "dir", dir, sizeof(dir))) {
+            scroll_node(c, id, dir);
         }
     }
 }

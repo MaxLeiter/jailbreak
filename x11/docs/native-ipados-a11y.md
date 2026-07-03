@@ -206,7 +206,9 @@ or a new field with a safe default.
   traits/values and snapshots append `focus` when AT-SPI exposes a focused node.
   `0.2.12` makes `atspi-dump` print high-signal states alongside actions/values.
   `0.2.13` registers common AT-SPI object/window/document event families and
-  coalesces them into snapshots while keeping a periodic fallback.
+  coalesces them into snapshots while keeping a periodic fallback. `0.2.14`
+  routes HostA11y `scroll{id,dir}` commands to AT-SPI `Component.ScrollTo`
+  for targets that expose a component interface.
   The spawn feed hardens correlation in P2. It supplements, not replaces, the
   desktop P1 acceptance.
   Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
