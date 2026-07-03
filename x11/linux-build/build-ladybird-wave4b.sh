@@ -155,12 +155,15 @@ fi
 #     Compile the upstream bn_mp_set_double.c and stage it in a small static lib the exes link
 #     (-lladybird_gapfill via the toolchain). It calls other tommath fns resolved from the dylib.
 TM=$(dirname "$(find $PROC/build_work -path '*libtommath/bn_mp_set_double.c' 2>/dev/null | head -1)")
-if [ -n "$TM" ] && [ ! -f $BB/usr/lib/libladybird_gapfill.a ]; then
-  "$SHIM/lb-cc" -O2 -DBN_MP_SET_DOUBLE_C -I"$TM" -c "$TM/bn_mp_set_double.c" -o /tmp/mp_set_double.o \
+# NB: bn_mp_set_double.c compiles its real body only under __STDC_IEC_559__ (IEEE754); clang does not
+# define it for arm64-apple-ios, so force it (arm64 IS IEEE754) or the object is empty.
+if [ -n "$TM" ] && ! /root/cctools/bin/aarch64-apple-darwin-nm $BB/usr/lib/libladybird_gapfill.a 2>/dev/null | grep -q '_mp_set_double'; then
+  "$SHIM/lb-cc" -O2 -DBN_MP_SET_DOUBLE_C -D__STDC_IEC_559__=1 -I"$TM" -c "$TM/bn_mp_set_double.c" -o /tmp/mp_set_double.o \
     && "$SHIM/libtool" -static -o $BB/usr/lib/libladybird_gapfill.a /tmp/mp_set_double.o \
-    && echo "  [gapfill] staged libladybird_gapfill.a (mp_set_double)" || echo "  !! mp_set_double build FAILED"
+    && echo "  [gapfill] staged libladybird_gapfill.a ($(/root/cctools/bin/aarch64-apple-darwin-nm $BB/usr/lib/libladybird_gapfill.a 2>/dev/null | grep -c mp_set_double) mp_set_double def)" \
+    || echo "  !! mp_set_double build FAILED"
 else
-  echo "  [gapfill] libladybird_gapfill.a present or tommath src missing"
+  echo "  [gapfill] libladybird_gapfill.a already has mp_set_double or tommath src missing"
 fi
 
 # ================================================================================================
@@ -193,7 +196,9 @@ ensure_generated_headers() {
   ( cd "$BUILD" && ninja -k 0 -j"$(nproc)" WebContent 2>&1 | tail -3 || true )
 }
 
-if run_stage hosttools; then
+if run_stage hosttools && [ -x "$HOST/gen_asm_offsets" ] && [ -x "$HOST/asmintgen" ]; then
+  echo "  host tools already built ($HOST/{gen_asm_offsets,asmintgen}); skipping rebuild"
+elif run_stage hosttools; then
   ensure_generated_headers
 
   SIMD=$(dirname "$(find $PROC/build_work -name simdutf.cpp -path '*simdutf*' 2>/dev/null | head -1)")
