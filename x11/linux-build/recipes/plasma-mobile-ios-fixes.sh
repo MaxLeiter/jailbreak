@@ -89,6 +89,26 @@ for arg in sys.argv[1:]:
     path.write_text(text)
 PY
 
+# Folio registers its private QML types from the containment plugin constructor.
+# Install a module directory so `import org.kde.private.mobile.homescreen.folio`
+# resolves once the containment has registered those types.
+python3 - "$src/containments/homescreens/folio/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+needle = "plasma_install_package(package org.kde.plasma.mobile.homescreen.folio)\n"
+install = """plasma_install_package(package org.kde.plasma.mobile.homescreen.folio)
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/qmldir" "module org.kde.private.mobile.homescreen.folio\\n")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/qmldir" DESTINATION ${KDE_INSTALL_QMLDIR}/org/kde/private/mobile/homescreen/folio)
+"""
+if needle in text and "org/kde/private/mobile/homescreen/folio" not in text:
+    text = text.replace(needle, install)
+path.write_text(text)
+PY
+
 for dir in flashlight nightcolor powermenu screenshot screenrotation; do
   cmake="$src/quicksettings/$dir/CMakeLists.txt"
   [ -f "$cmake" ] || continue

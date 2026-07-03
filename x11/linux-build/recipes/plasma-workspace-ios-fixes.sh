@@ -64,7 +64,7 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-keep_subdirs = {"digital-clock", "notifications"}
+keep_subdirs = {"digital-clock", "kicker", "notifications"}
 keep_packages = {"org.kde.plasma.digitalclock", "org.kde.plasma.notifications"}
 
 text = re.sub(
@@ -316,6 +316,107 @@ new = """        int pipeFds[2];
 if old not in text:
     raise SystemExit("pipe2 block not found")
 text = text.replace(old, new)
+path.write_text(text)
+PY
+
+python3 - "$src/applets/kicker/plugin/dashboardwindow.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("#include <KX11Extras>\n", "#if defined(HAVE_X11) && HAVE_X11\n#include <KX11Extras>\n#endif\n")
+text = text.replace(
+    """        showFullScreen();
+        KX11Extras::forceActiveWindow(winId());
+""",
+    """        showFullScreen();
+#if defined(HAVE_X11) && HAVE_X11
+        if (KWindowSystem::isPlatformX11()) {
+            KX11Extras::forceActiveWindow(winId());
+        } else
+#endif
+        {
+            requestActivate();
+        }
+""",
+)
+text = text.replace(
+    """            if (KWindowSystem::isPlatformX11()) {
+                KX11Extras::setState(winId(), NET::SkipTaskbar | NET::SkipPager | NET::SkipSwitcher);
+            } else {
+                if (m_plasmashell) {
+                    auto *surface = KWayland::Client::Surface::fromQtWinId(winId());
+                    auto *plasmashellSurface = KWayland::Client::PlasmaShellSurface::get(surface);
+
+                    if (!plasmashellSurface) {
+                        plasmashellSurface = m_plasmashell->createSurface(surface, this);
+                    }
+
+                    plasmashellSurface->setSkipSwitcher(true);
+                    plasmashellSurface->setSkipTaskbar(true);
+                }
+            }
+""",
+    """#if defined(HAVE_X11) && HAVE_X11
+            if (KWindowSystem::isPlatformX11()) {
+                KX11Extras::setState(winId(), NET::SkipTaskbar | NET::SkipPager | NET::SkipSwitcher);
+            } else
+#endif
+            {
+                if (m_plasmashell) {
+                    auto *surface = KWayland::Client::Surface::fromQtWinId(winId());
+                    auto *plasmashellSurface = KWayland::Client::PlasmaShellSurface::get(surface);
+
+                    if (!plasmashellSurface) {
+                        plasmashellSurface = m_plasmashell->createSurface(surface, this);
+                    }
+
+                    plasmashellSurface->setSkipSwitcher(true);
+                    plasmashellSurface->setSkipTaskbar(true);
+                }
+            }
+""",
+)
+text = text.replace(
+    """        if (isVisible()) {
+            KX11Extras::forceActiveWindow(winId());
+        }
+""",
+    """        if (isVisible()) {
+#if defined(HAVE_X11) && HAVE_X11
+            if (KWindowSystem::isPlatformX11()) {
+                KX11Extras::forceActiveWindow(winId());
+            } else
+#endif
+            {
+                requestActivate();
+            }
+        }
+""",
+)
+path.write_text(text)
+PY
+
+python3 - "$src/applets/kicker/plugin/windowsystem.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("#include <KX11Extras>\n", "#if defined(HAVE_X11) && HAVE_X11\n#include <KX11Extras>\n#endif\n")
+text = text.replace(
+    """    KX11Extras::forceActiveWindow(item->window()->winId());
+""",
+    """#if defined(HAVE_X11) && HAVE_X11
+    if (KWindowSystem::isPlatformX11()) {
+        KX11Extras::forceActiveWindow(item->window()->winId());
+        return;
+    }
+#endif
+    item->window()->requestActivate();
+""",
+)
 path.write_text(text)
 PY
 
