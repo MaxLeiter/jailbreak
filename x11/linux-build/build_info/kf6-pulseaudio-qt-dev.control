@@ -1,0 +1,10 @@
+Package: kf6-pulseaudio-qt-dev
+Version: @DEB_PULSEAUDIOQT_V@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <max@maxleiter.com>
+Section: libdevel
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-pulseaudio-qt (= @DEB_PULSEAUDIOQT_V@), qt6-base-dev, libpulse-dev
+Description: Development files for KDE PulseAudioQt
+ Headers, CMake config files, and pkg-config metadata for KF6 PulseAudioQt.

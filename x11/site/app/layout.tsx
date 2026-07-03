@@ -45,9 +45,12 @@ export default function RootLayout({
       className={`${archivo.variable} ${plex.variable} ${spaceMono.variable}`}
     >
       <body>
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
         <div className="shell">
           <Sidebar />
-          <main className="main">
+          <main className="main" id="main" tabIndex={-1}>
             <div className="main-inner">{children}</div>
           </main>
         </div>

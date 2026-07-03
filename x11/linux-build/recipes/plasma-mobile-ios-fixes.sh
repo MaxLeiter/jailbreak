@@ -123,3 +123,141 @@ text = re.sub(r"(?ms)^.*?plasma_install_package\(", "plasma_install_package(", t
 path.write_text(text)
 PY
 done
+
+# Several MobileShell QML files are embedded into the private plugin resource
+# system, so package-time QML replacements do not affect the qrc:/ load path.
+# Keep the plugin importable for first light, but replace Flickable-derived
+# startup views and heavy widgets before CMake snapshots them into resources.
+python3 - "$src" <<'PY'
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+
+def write(rel: str, text: str) -> None:
+    path = src / rel
+    if not path.exists():
+        return
+    backup = path.with_suffix(path.suffix + ".upstream")
+    if not backup.exists():
+        backup.write_text(path.read_text())
+    path.write_text(text.strip() + "\n")
+
+view_common = """import QtQuick 2.15
+Item {
+    id: root
+    property var model: null
+    property Component delegate: null
+    property Component highlight: null
+    property int count: 0
+    property int currentIndex: -1
+    property bool interactive: false
+    property bool dragging: false
+    property bool moving: false
+    property bool atYBeginning: true
+    property bool atYEnd: true
+    property real contentX: 0
+    property real contentY: 0
+    property real contentWidth: width
+    property real contentHeight: height
+    property real topMargin: 0
+    property real bottomMargin: 0
+    property real leftMargin: 0
+    property real rightMargin: 0
+    readonly property Item currentItem: null
+    default property alias content: contentItem.data
+    Item { id: contentItem; anchors.fill: parent }
+    function itemAtIndex(index) { return null }
+    function indexAt(x, y) { return -1 }
+    function flick(xVelocity, yVelocity) {}
+    function positionViewAtIndex(index, mode) {}
+    function resizeContent(width, height, center) { contentWidth = width; contentHeight = height }
+    function returnToBounds() {}
+}
+"""
+
+write("components/mobileshell/qml/components/GridView.qml", view_common)
+write("components/mobileshell/qml/components/ListView.qml", view_common)
+write("components/mobileshell/qml/components/Flickable.qml", view_common)
+
+item_stub = """import QtQuick 2.15
+Item {
+    id: root
+    enum Mode { Pages, Grid, List }
+    property var shell
+    property var state
+    property var window
+    property var screen
+    property var panel
+    property var containment
+    property var plasmoid
+    property var model
+    property var sourceModel
+    property var currentPlayer
+    property var popup
+    property var homeScreen
+    property var folio
+    property var actionDrawer
+    property int edge: Qt.BottomEdge
+    property string queryString: ""
+    property string backgroundColor: "transparent"
+    property bool active: false
+    property bool expanded: false
+    property bool shown: false
+    property bool horizontal: false
+    property bool showSecondRow: false
+    property bool showDropShadow: false
+    property bool disableSystemTray: false
+    property real availableHeight: height
+    property real bottomMargin: 0
+    property real leftMargin: 0
+    property real rightMargin: 0
+    property real minimizedViewProgress: 0
+    property real fullViewProgress: 0
+    property int mode: 0
+    signal closed()
+    signal requestedClose()
+    signal requestClose()
+    function open() { shown = true }
+    function close() { shown = false; closed(); requestedClose(); requestClose() }
+    function toggle() { shown = !shown }
+    signal wallpaperSettingsRequested()
+}
+"""
+
+for rel in [
+    "components/mobileshell/qml/actiondrawer/quicksettings/QuickSettings.qml",
+    "components/mobileshell/qml/homescreen/WallpaperSelector.qml",
+    "components/mobileshell/qml/volumeosd/AudioApplet.qml",
+    "components/mobileshell/qml/volumeosd/VolumeOSD.qml",
+    "components/mobileshell/qml/widgets/krunner/KRunnerScreen.qml",
+    "components/mobileshell/qml/widgets/krunner/KRunnerWidget.qml",
+    "components/mobileshell/qml/widgets/mediacontrols/MediaControlsWidget.qml",
+    "components/mobileshell/qml/widgets/notifications/NotificationsWidget.qml",
+]:
+    write(rel, item_stub)
+PY
+
+# The real org.kde.plasma.mm plugin depends on NetworkManagerQt and
+# ModemManagerQt. iPads do not expose that Linux modem stack, but the upstream
+# mobile shell imports the module unconditionally from its status bar and
+# taskpanel. Install a tiny no-cellular singleton so those QML files can load
+# while the real service bridge remains a later package wave.
+python3 - "$src/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+block = r'''
+
+set(IOS_PLASMA_MM_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/ios-plasma-mm-stub")
+file(MAKE_DIRECTORY "${IOS_PLASMA_MM_STUB_DIR}")
+file(WRITE "${IOS_PLASMA_MM_STUB_DIR}/qmldir" "module org.kde.plasma.mm\nsingleton SignalIndicator 1.0 SignalIndicator.qml\n")
+file(WRITE "${IOS_PLASMA_MM_STUB_DIR}/SignalIndicator.qml" "pragma Singleton\nimport QtQuick 2.15\nQtObject {\n    property int strength: 0\n    property string name: \"\"\n    property bool modemAvailable: false\n    property bool simLocked: false\n    property bool simEmpty: true\n    property bool mobileDataSupported: false\n    property bool mobileDataEnabled: false\n    property bool needsAPNAdded: false\n    property var profiles: []\n    property string activeConnectionUni: \"\"\n    function refreshProfiles() {}\n    function activateProfile(connectionUni) {}\n    function addProfile(name, apn, username, password, networkType) {}\n    function removeProfile(connectionUni) {}\n    function updateProfile(connectionUni, name, apn, username, password, networkType) {}\n}\n")
+install(DIRECTORY "${IOS_PLASMA_MM_STUB_DIR}/" DESTINATION ${KDE_INSTALL_QMLDIR}/org/kde/plasma/mm)
+'''
+if "IOS_PLASMA_MM_STUB_DIR" not in text:
+    text += block
+path.write_text(text)
+PY

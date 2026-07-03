@@ -3,9 +3,9 @@
 This repo has two big tracks:
 
 - Top-level jailbreak tweak/app packaging, static APT repo publishing, and small iOS utilities.
-- `X11/`, a larger native X11/Wayland-on-iOS desktop stack with its own build system and notes.
+- `x11/`, a larger native X11/Wayland-on-iOS desktop stack with its own build system and notes.
 
-Prefer stable instructions here. For fast-moving status, read the relevant README, `X11/docs/handoff/`, and local diffs before acting.
+Prefer stable instructions here. For fast-moving status, read the relevant README, `x11/docs/handoff/`, and local diffs before acting.
 
 ## Before Editing
 
@@ -20,7 +20,7 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 - `apps/`: iOS app projects and app-side artifacts.
 - `bin/`: host-side entry points — build, install, simulator, logging, and repo-publish scripts. Repo-pipeline internals (index generator, solvability check, audit) live in `bin/lib/`.
 - `repo/`: generated static APT/Sileo repo deployed by Vercel.
-- `X11/`: native X11/Wayland/iOS desktop stack. See `X11/AGENTS.md`.
+- `x11/`: native X11/Wayland/iOS desktop stack. See `x11/AGENTS.md`.
 - `jarvis/`: on-device AI assistant (bun agent daemon + web console, runs on the iPad). See `jarvis/AGENTS.md` and `jarvis/docs/PLAN.md`.
 
 ## Tweak Workflow
@@ -55,5 +55,5 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 
 ## X11 / Xios
 
-- For anything under `X11/`, read `X11/AGENTS.md` first.
-- Use `X11/docs/handoff/INDEX.md` and the per-domain handoff docs for current status, open work, and on-device verification notes.
+- For anything under `x11/`, read `x11/AGENTS.md` first.
+- Use `x11/docs/handoff/INDEX.md` and the per-domain handoff docs for current status, open work, and on-device verification notes.

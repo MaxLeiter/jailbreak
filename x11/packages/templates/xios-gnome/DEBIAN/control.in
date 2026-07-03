@@ -1,0 +1,24 @@
+Package: xios-gnome
+Name: Xios Desktop (GNOME)
+Version: 0.1.0
+Architecture: @DEB_ARCH@
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.5), xios-core, gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme
+Recommends: gnome-console, nautilus, gnome-text-editor, gnome-calculator
+MinimumOSVersion: 16.5.0
+Description: the GNOME desktop flavor for Xios
+ Real GNOME Shell on Mutter 46, running on the iPad GPU through the iosc
+ compositor and ANGLE. Installs the full session layer: gnome-session,
+ gnome-settings-daemon, dconf, the single-user service stubs (login1,
+ PolicyKit, Accounts), the introspection typelibs the shell needs at boot,
+ and the Adwaita look (icons, cursors, wallpaper).
+ .
+ Installing this package is the whole setup: open the Xios app afterwards
+ and the GNOME session starts. GNOME apps such as Console, Files, and
+ Text Editor are recommended alongside and can be installed individually
+ from this repo.
+ .
+ Needs iOS 16.5 or newer. Target profile: @REPO_PROFILE@.

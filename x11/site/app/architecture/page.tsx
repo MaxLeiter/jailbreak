@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Diagram } from "@/components/Diagram";
-import { Bridges } from "@/components/Figures";
+import { Zoom } from "@/components/Figures";
 import { Callout, Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Architecture" };
@@ -16,7 +17,9 @@ export default function Architecture() {
 
       <Section num="01.1" title="The full path">
         <Panel label="Figure 01. Display and input" fig="app to A10">
-          <Diagram />
+          <Zoom label="Display and input">
+            <Diagram />
+          </Zoom>
         </Panel>
       </Section>
 
@@ -25,12 +28,17 @@ export default function Architecture() {
           <p>
             For the X11 and Wayland desktops, one app carries the whole thing:
             Xios.app, which shows on the Home Screen as X11. It owns a{" "}
-            <code>CAMetalLayer</code> and the UIKit input surface, and it renders
-            none of its own content. At startup a display server creates an output
+            <code>CAMetalLayer</code>{" "}and the UIKit input surface, and it renders
+            none of its own content. At startup a display server creates an
+            output{" "}
             <Ext href="https://developer.apple.com/documentation/iosurface">IOSurface</Ext>{" "}
-            and passes its mach port to the app. The app adopts that
+            and passes its{" "}
+            <abbr title="an iOS kernel channel for handing a resource from one process to another">
+              mach port
+            </abbr>{" "}
+            to the app. The app adopts that
             surface, wraps it as a{" "}
-            <Ext href="https://developer.apple.com/metal/">Metal</Ext> texture,
+            <Ext href="https://developer.apple.com/metal/">Metal</Ext>{" "}texture,
             and draws it every frame. When a server redraws the desktop, the app
             shows the new contents without copying a single pixel.
           </p>
@@ -65,7 +73,7 @@ export default function Architecture() {
           <div className="row">
             <dt>iosc</dt>
             <dd>
-              A clean-room <code>libwayland-server</code> compositor. It
+              A clean-room <code>libwayland-server</code>{" "}compositor. It
               composites clients on the GPU, advertises the protocols real
               toolkits expect (xdg-shell, popups, subsurfaces, viewport,
               fractional-scale, clipboard), and routes input through{" "}
@@ -80,7 +88,7 @@ export default function Architecture() {
           <ol style={{ color: "var(--ink-2)", paddingLeft: 20, lineHeight: 1.7 }}>
             <li>
               A GTK4 app renders with GLES through{" "}
-              <Ext href="https://github.com/google/angle">ANGLE</Ext> into its
+              <Ext href="https://github.com/google/angle">ANGLE</Ext>{" "}into its
               own IOSurface.
             </li>
             <li>
@@ -97,7 +105,7 @@ export default function Architecture() {
             </li>
           </ol>
         </div>
-        <Callout k="The payoff">
+        <Callout>
           No CPU copy happens between step one and step four. A window&apos;s
           pixels are drawn once by the GPU and scanned out by the same GPU.
         </Callout>
@@ -107,11 +115,13 @@ export default function Architecture() {
         <div className="prose">
           <p>
             A tap or keystroke enters UIKit inside the app. For an X11 session it
-            becomes XTEST fed to the X server. For a Wayland session it crosses a
-            small socket to iosc and turns into <code>wl_pointer</code> and{" "}
-            <code>wl_keyboard</code> events for the focused window. That is how a
-            keystroke on the glass reaches a live shell running under GNOME
-            Console.
+            becomes{" "}
+            <abbr title="an X11 extension for injecting synthetic keyboard and pointer events">
+              XTEST
+            </abbr>{" "}
+            fed to the X server. For a Wayland session it crosses a
+            small socket to iosc and turns into <code>wl_pointer</code>{" "}and{" "}
+            <code>wl_keyboard</code>{" "}events for the focused window.
           </p>
         </div>
       </Section>
@@ -120,15 +130,16 @@ export default function Architecture() {
         <div className="prose">
           <p>
             Drawing pixels and routing input is only half the job. A desktop also
-            expects a battery, a brightness slider, sound, a keyboard, orientation,
+            expects a battery, a brightness slider, sound, Bluetooth, orientation,
             and a logged-in user. None of that exists in the Linux sense on iOS, so
-            a set of small daemons translate each one: they read the real iOS API
-            and republish it as the D-Bus service, Wayland protocol, or sysfs file
+            a set of small daemons translate each one, reading the real iOS API and
+            republishing it as the D-Bus service, Wayland protocol, or sysfs file
             the desktop is looking for.
           </p>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <Bridges />
+          <p>
+            <Link href="/system">System integration</Link> walks through how each
+            one works, from audio to Bluetooth.
+          </p>
         </div>
       </Section>
 

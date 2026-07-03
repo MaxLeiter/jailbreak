@@ -1,0 +1,11 @@
+#!/bin/sh
+# Register the app with SpringBoard so the Ladybird icon shows on the home screen.
+set -e
+case "$1" in
+  configure|install|"")
+    if command -v uicache >/dev/null 2>&1; then
+      uicache -p /var/jb/Applications/Ladybird.app || true
+    fi
+    ;;
+esac
+exit 0

@@ -19,7 +19,7 @@
 
   --ink: #e9eef4;
   --ink-2: #a3b1c0;
-  --ink-3: #667585;
+  --ink-3: #7c8a9a;
 
   /* signal traces */
   --cyan: #34d2e6;
@@ -94,6 +94,16 @@ a {
   color: var(--cyan);
   text-decoration: none;
 }
+
+abbr[title] {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--ink-3);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+abbr[title] code {
+  cursor: help;
+}
 a:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -103,6 +113,27 @@ a:hover {
   outline: 2px solid var(--cyan);
   outline-offset: 3px;
   border-radius: 2px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translateY(-120%);
+  z-index: 200;
+  background: var(--cyan);
+  color: #04141a;
+  padding: 10px 18px;
+  border-radius: 0 0 8px 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform 0.15s ease;
+}
+.skip-link:focus {
+  transform: translateY(0);
+  text-decoration: none;
+  outline-offset: -2px;
 }
 
 /* ---------- typographic primitives ---------- */
@@ -194,6 +225,9 @@ p {
   align-items: start;
 }
 
+.main:focus {
+  outline: none;
+}
 .main {
   min-width: 0;
   padding: clamp(28px, 5vw, 72px) var(--pad) 120px;

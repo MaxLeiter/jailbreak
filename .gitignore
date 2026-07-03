@@ -1,21 +1,54 @@
+# Local secrets / machine-specific config
+device.env
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# JavaScript dependencies and build outputs
+node_modules/
+*/node_modules/
+**/node_modules/
+.next/
+dist/
+
 # Theos build artifacts
 .theos/
-*/\.theos/
+*/.theos/
 **/.theos/
 
 # Built packages
 packages/
+!x11/packages/
+!x11/packages/**
 *.deb
 
-# ...except x11 hand-rolled package *sources* (their .debs stay ignored above)
-!X11/packages/
+# Generated Xios outputs
+x11/artifacts/
+x11/linux-build/stage/
+x11/wayland/out/
+x11/packages/*/out/
+x11/packages/**/out/
+x11/apps/iosc-shell/design/.sf/
+x11/docs/*.zip
+
+# Vercel local project state
+.vercel/
+
+# Xcode / Apple local output
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.dSYM/
+*.app.dSYM/
+*.ipa
+*.mobileprovision
+*.p12
 
 # Editor / OS cruft
 .DS_Store
 *.swp
-device.env
 .repo-venv/
-x11/artifacts/
 
 # Apple TV pairing credentials (local only)
 apps/KitchenHub/Sources/Services/AppleTV/AppleTVConfig.swift

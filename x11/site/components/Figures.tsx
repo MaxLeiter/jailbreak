@@ -1,5 +1,163 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
-import { Badge } from "@/components/ui";
+
+/* ---- Lightbox overlay ---- */
+function Lightbox({
+  open,
+  onClose,
+  label,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  label?: string;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return createPortal(
+    <div
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        className="lightbox-close"
+        onClick={onClose}
+        aria-label="Close"
+      >
+        Close
+      </button>
+      <div className="lightbox-inner" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* ---- Wrap non-interactive content (a diagram) to expand on click ---- */
+export function Zoom({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="media-btn"
+        onClick={() => setOpen(true)}
+        aria-label={`Expand: ${label}`}
+      >
+        {children}
+      </button>
+      <Lightbox open={open} onClose={() => setOpen(false)} label={label}>
+        <div className="lightbox-diagram">{children}</div>
+      </Lightbox>
+    </>
+  );
+}
+
+/* ---- On-device screenshot ---- */
+export function Shot({
+  src,
+  alt,
+  caption,
+}: {
+  src: string;
+  alt: string;
+  caption?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <figure className="shot">
+      <button
+        type="button"
+        className="media-btn"
+        onClick={() => setOpen(true)}
+        aria-label={`Expand image: ${caption ?? alt}`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={alt} loading="lazy" />
+      </button>
+      {caption && <figcaption>{caption}</figcaption>}
+      <Lightbox open={open} onClose={() => setOpen(false)} label={caption ?? alt}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={alt} className="lightbox-media" />
+      </Lightbox>
+    </figure>
+  );
+}
+
+/* ---- On-device screen recording ---- */
+export function Clip({
+  label,
+  caption,
+}: {
+  label: string;
+  caption?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <figure className="shot shot--clip">
+      <div className="clip-wrap">
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          controls
+          preload="metadata"
+          poster="/shots/native-switch-poster.jpg"
+          aria-label={label}
+        >
+          <source src="/shots/native-switch.webm" type="video/webm" />
+          <source src="/shots/native-switch.mp4" type="video/mp4" />
+        </video>
+        <button
+          type="button"
+          className="clip-expand"
+          onClick={() => setOpen(true)}
+          aria-label="Expand video"
+        >
+          Expand
+        </button>
+      </div>
+      {caption && <figcaption>{caption}</figcaption>}
+      <Lightbox open={open} onClose={() => setOpen(false)} label={label}>
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          controls
+          className="lightbox-media"
+          aria-label={label}
+        >
+          <source src="/shots/native-switch.webm" type="video/webm" />
+          <source src="/shots/native-switch.mp4" type="video/mp4" />
+        </video>
+      </Lightbox>
+    </figure>
+  );
+}
 
 /* ---- The zero-copy GPU path, as a horizontal flow ---- */
 const FLOW = [
@@ -93,7 +251,7 @@ const HOST_BRIDGES: Bridge[] = [
     body: (
       <>
         IOKit battery and BackBoard brightness become <b>UPower</b> and the
-        shell&apos;s power slider. Built, not yet device-tested.
+        shell&apos;s power slider.
       </>
     ),
   },
@@ -112,8 +270,18 @@ const HOST_BRIDGES: Bridge[] = [
     state: "wip",
     body: (
       <>
-        CoreMotion orientation feeds an <b>iio-sensor-proxy</b> shim. Prototype,
-        accelerometer only.
+        CoreMotion orientation feeds an <b>iio-sensor-proxy</b> shim, so the
+        desktop can auto-rotate.
+      </>
+    ),
+  },
+  {
+    name: "xios-bluez-stub",
+    state: "wip",
+    body: (
+      <>
+        iOS Bluetooth, via the private <b>BluetoothManager</b> framework,
+        republished as <b>org.bluez</b> for GNOME&apos;s Bluetooth panel.
       </>
     ),
   },
@@ -154,8 +322,8 @@ const SESSION_SERVICES: Bridge[] = [
     state: "wip",
     body: (
       <>
-        <b>wl_data_device</b> and UIPasteboard. The app half has landed; the
-        compositor half is not wired yet.
+        <b>wl_data_device</b> selections sync to and from the iOS{" "}
+        <b>UIPasteboard</b>.
       </>
     ),
   },
@@ -164,7 +332,7 @@ const SESSION_SERVICES: Bridge[] = [
     state: "planned",
     body: (
       <>
-        A planned bridge from the desktop <b>accessibility tree</b> to VoiceOver.
+        The desktop <b>accessibility tree</b> is bridged to VoiceOver.
       </>
     ),
   },
@@ -175,7 +343,6 @@ function BridgeCard({ b }: { b: Bridge }) {
     <div className="bridge">
       <div className="b-head">
         <span className="b-name">{b.name}</span>
-        <Badge state={b.state} />
       </div>
       <div className="b-body">{b.body}</div>
     </div>

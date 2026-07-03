@@ -1,0 +1,16 @@
+Package: com.max.taskmanager
+Name: Task Manager
+Version: @VERSION@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Apps
+Priority: optional
+Description: Activity-Monitor-style process monitor
+ See every running app and process with live memory and CPU usage — rolling
+ sparklines per row, a device-wide RAM ring and per-core CPU dashboard — and
+ Quit or Force Kill apps. Reads process stats directly via libproc/sysctl with
+ no root daemon. Universal: iPhone and iPad.
+ .
+ Requires AppSync Unified (install it from the https://cydia.akemi.ai/ repo) to
+ run this unsigned app. Rootless (/var/jb) jailbreaks only, iOS/iPadOS 16+.

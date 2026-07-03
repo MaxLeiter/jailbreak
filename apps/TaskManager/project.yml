@@ -1,0 +1,55 @@
+name: TaskManager
+options:
+  bundleIdPrefix: com.max
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  defaultConfig: Release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"            # Swift 5 language mode (skip Swift 6 strict-concurrency churn)
+    TARGETED_DEVICE_FAMILY: "1,2"   # universal — iPhone + iPad
+    PRODUCT_BUNDLE_IDENTIFIER: com.max.taskmanager
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_OBJC_BRIDGING_HEADER: Sources/TaskManager-Bridging-Header.h
+    # Unsigned build — the device runs it via AppSync Unified after an ldid pseudo-sign.
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_BITCODE: "NO"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    # LSApplicationWorkspace/LSApplicationProxy are private classes with no link
+    # stub in the SDK. Allow them to stay undefined at link time; dyld resolves
+    # them from the shared cache at load. (The classes really exist on device.)
+    OTHER_LDFLAGS:
+      - "-Wl,-U,_OBJC_CLASS_$_LSApplicationWorkspace"
+      - "-Wl,-U,_OBJC_CLASS_$_LSApplicationProxy"
+
+targets:
+  TaskManager:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources/Assets.xcassets
+    info:
+      path: Resources/Info.generated.plist
+      properties:
+        CFBundleDisplayName: Task Manager
+        CFBundleShortVersionString: "0.1.0"
+        UILaunchScreen: {}
+        UIStatusBarHidden: false
+        # iPhone: portrait + both landscapes (no upside-down, per convention).
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # iPad: all four.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight

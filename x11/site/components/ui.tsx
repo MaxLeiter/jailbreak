@@ -52,7 +52,9 @@ export function Section({
   return (
     <section className="section" id={id}>
       <div className="section-head">
-        <span className="section-num">{num}</span>
+        <span className="section-num" aria-hidden="true">
+          {num}
+        </span>
         <h2>{title}</h2>
       </div>
       {children}
@@ -111,7 +113,7 @@ export function Panel({
 }
 
 export function Callout({
-  k = "Note",
+  k,
   children,
 }: {
   k?: string;
@@ -119,9 +121,19 @@ export function Callout({
 }) {
   return (
     <div className="callout">
-      <span className="callout-k">{k}</span>
+      {k && <span className="callout-k">{k}</span>}
       <p>{children}</p>
     </div>
+  );
+}
+
+/** A quiet, jargon-free aside that glosses a dense idea in plain language. */
+export function PlainTerms({ children }: { children: ReactNode }) {
+  return (
+    <aside className="plain" aria-label="In plain terms">
+      <span className="plain-k">In plain terms</span>
+      <p>{children}</p>
+    </aside>
   );
 }
 

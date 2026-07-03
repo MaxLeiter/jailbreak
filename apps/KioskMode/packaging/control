@@ -1,0 +1,17 @@
+Package: com.max.kioskmode-app
+Name: Kiosk Mode
+Version: @VERSION@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Apps
+Priority: optional
+Description: Setup app for Kiosk Mode (lock the iPad to one app)
+ The onboarding and configuration app for Kiosk Mode: pick which app the device
+ should lock to and manage the kiosk settings. The actual lock/auto-relaunch
+ behaviour lives in the companion SpringBoard tweak (package com.max.kioskmode);
+ install both for the full feature. Escape a locked session with a volume-button
+ triple-press.
+ .
+ Requires AppSync Unified (install it from the https://cydia.akemi.ai/ repo) to
+ run this unsigned app. Rootless (/var/jb) jailbreaks only, iOS/iPadOS 17+.

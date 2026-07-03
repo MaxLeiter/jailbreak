@@ -19,6 +19,7 @@ kcmutils-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcmutils))
 	$(call EXTRACT_TAR,kcmutils-$(KF6_VERSION).tar.xz,kcmutils-$(KF6_VERSION),kcmutils)
 	sed -i 's/ Widgets Qml Quick QuickWidgets Test)/ Widgets Qml Quick QuickWidgets)/' $(BUILD_WORK)/kcmutils/CMakeLists.txt
+	sed -i 's|PATHS $${KF6_HOST_TOOLING} $${CMAKE_CURRENT_LIST_DIR}|PATHS $${KF6_HOST_TOOLING} $${CMAKE_CURRENT_LIST_DIR}/.. $${CMAKE_CURRENT_LIST_DIR}|' $(BUILD_WORK)/kcmutils/KF6KCMUtilsConfig.cmake.in
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kcmutils/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)

@@ -64,13 +64,18 @@ sleep 3
 echo "==> start Xwayland $XDISP ROOTFUL as an iosc client -> $TMP/xwl.log"
 # Rootful default: whole X screen = one xdg_toplevel. -retro: classic stipple root
 # (so a bare X screen is visibly non-black). -noreset: survive the last client exiting.
-# -geometry sizes the X screen to the output. XWAYLAND_NO_GLAMOR belt-and-suspenders
-# for the X0 (software) deb — the software build has no glamor anyway.
+# -geometry sizes the X screen to the output. XWAYLAND_GLAMOR=0 keeps the old
+# software fallback for bisects; the default lets the iOS/ANGLE IOSurface glamor
+# backend initialize when the installed Xwayland package supports it.
 # -extension MIT-SHM: iOS blocks SysV shared memory (shmget raises SIGSYS), so mesa's
 # Xlib softpipe driver crashes on glXMakeContextCurrent when the server offers MIT-SHM.
 # Disabling the extension server-side makes mesa fall back to XPutImage, so GL clients
 # like glxgears run. (Client-side equivalent: XLIB_NO_SHM=1.)
-nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=wayland-0 XWAYLAND_NO_GLAMOR=1 \
+GLAMOR_ENV=""
+case "${XWAYLAND_GLAMOR:-1}" in
+  0|no|NO|false|FALSE|off|OFF) GLAMOR_ENV="XWAYLAND_NO_GLAMOR=1" ;;
+esac
+nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=wayland-0 $GLAMOR_ENV \
   "$XWL" "$XDISP" -geometry "$GEOM" -retro -noreset -extension MIT-SHM \
   >"$TMP/xwl.log" 2>&1 </dev/null &
 XWLPID=$!

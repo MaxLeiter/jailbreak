@@ -44,9 +44,9 @@ kwin: kwin-setup
 		$(KF6_CMAKE_FLAGS) \
 		-DCMAKE_CXX_FLAGS="$(CXXFLAGS) $(KWIN_IOS_COMPAT_DEFS) -include $(QT6_IOSEXEC_FIXUP_H) -include $(BUILD_WORK)/kwin/src/kwin-ios-compat.h" \
 		-DCMAKE_OBJCXX_FLAGS="$(CXXFLAGS) $(KWIN_IOS_COMPAT_DEFS) -include $(QT6_IOSEXEC_FIXUP_H) -include $(BUILD_WORK)/kwin/src/kwin-ios-compat.h" \
-		-DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -lepoll-shim" \
-		-DCMAKE_MODULE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -lepoll-shim" \
-		-DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -lepoll-shim" \
+		-DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -framework IOSurface -framework CoreFoundation -lepoll-shim" \
+		-DCMAKE_MODULE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -framework IOSurface -framework CoreFoundation -lepoll-shim" \
+		-DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -framework IOSurface -framework CoreFoundation -lepoll-shim" \
 		-DKWIN_BUILD_X11=OFF \
 		-DKWIN_BUILD_KCMS=OFF \
 		-DKWIN_BUILD_SCREENLOCKER=OFF \

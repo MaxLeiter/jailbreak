@@ -1,0 +1,11 @@
+Package: libsharpyuv0
+Version: @DEB_LIBWEBP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://developers.google.com/speed/webp
+Description: Sharp RGB->YUV conversion library (from libwebp)
+ libsharpyuv is the shared sharp RGB-to-YUV conversion helper split out of
+ libwebp in the 1.x series. Built for the Ladybird leaf closure; libwebp links
+ it at runtime.

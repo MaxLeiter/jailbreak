@@ -1,0 +1,10 @@
+Package: fast-float-dev
+Version: @DEB_FASTFLOAT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/fastfloat/fast_float
+Description: Fast header-only float parser (fast_float) - development
+ Header-only C++ library for fast and exact float/double parsing. Ladybird
+ pin 8.1.0. Ships headers plus CMake config (no runtime library).

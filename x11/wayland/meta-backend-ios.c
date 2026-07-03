@@ -315,6 +315,22 @@ meta_backend_ios_is_headless (MetaBackend *backend)
   return FALSE;
 }
 
+/* The single MetaBackendIOS instance, so meta_backend_ios_notify_osk_traits() (called
+ * from the generic Wayland text-input code) can reach the input socket without threading
+ * a backend pointer through every layer. The backend lives for the whole process. */
+static MetaBackendIOS *_meta_backend_ios_singleton;
+
+void
+meta_backend_ios_notify_osk_traits (guint32  hint,
+                                    guint32  purpose,
+                                    gboolean enabled)
+{
+  MetaBackendIOS *self = _meta_backend_ios_singleton;
+
+  if (self && self->input)
+    meta_input_ios_send_osk_traits (self->input, hint, purpose, enabled);
+}
+
 static void
 meta_backend_ios_post_init (MetaBackend *backend)
 {
@@ -329,6 +345,8 @@ meta_backend_ios_post_init (MetaBackend *backend)
   self->input = meta_input_ios_new (backend, socket_path);
   if (!self->input)
     g_warning ("MetaBackendIOS: could not start the Xios input pump at %s", socket_path);
+
+  _meta_backend_ios_singleton = self;   /* enable OSK-traits forwarding (outbound socket) */
 }
 
 static void

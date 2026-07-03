@@ -19,13 +19,17 @@
  * a lost compositor never takes the volume path down with it.
  *
  * Knobs (env):
- *   XIOS_SYSINT_SOCK        socket path   (default /var/jb/tmp/xios-sysint.sock)
+ *   XIOS_SYSINT_SOCK        socket path   (default XIOS_SYSINT_SOCK_DEFAULT)
  *   XIOS_SYSINT_SINK        PA sink name  (default "xios")
  *   XIOS_SYSINT_GTK3_LIGHT  gtk-theme for light (default "Adwaita")
  *   XIOS_SYSINT_GTK3_DARK   gtk-theme for dark  (default "Adwaita-dark")
  *   XIOS_SYSINT_NO_GTK3=1   only set color-scheme, leave gtk-theme alone
  */
 #include "xios_input_socket.h"
+
+#ifndef XIOS_SYSINT_SOCK_DEFAULT
+#define XIOS_SYSINT_SOCK_DEFAULT "/var/jb/tmp/xios-sysint.sock"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -141,7 +145,7 @@ static void on_record(const struct xios_in_msg *m, const char *text,
 int main(void)
 {
     const char *sock = getenv("XIOS_SYSINT_SOCK");
-    if (!sock || !*sock) sock = "/var/jb/tmp/xios-sysint.sock";
+    if (!sock || !*sock) sock = XIOS_SYSINT_SOCK_DEFAULT;
     const char *e;
     if ((e = getenv("XIOS_SYSINT_SINK")) && *e) s_sink = e;
     if ((e = getenv("XIOS_SYSINT_GTK3_LIGHT")) && *e) s_gtk3_light = e;

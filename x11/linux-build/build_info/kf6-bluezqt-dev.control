@@ -1,0 +1,10 @@
+Package: kf6-bluezqt-dev
+Version: @DEB_BLUEZQT_V@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <max@maxleiter.com>
+Section: libdevel
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-bluezqt (= @DEB_BLUEZQT_V@), qt6-base-dev, qt6-declarative-dev
+Description: Development files for KDE BluezQt
+ Headers, CMake config files, and pkg-config metadata for KF6 BluezQt.

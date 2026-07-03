@@ -1,0 +1,13 @@
+#!/bin/sh
+# Ensure the runtime dir the session uses exists. The stub binaries themselves
+# are shipped under the target libexec dir and need no post-install step; this
+# only prepares the private XDG_RUNTIME_DIR that launch-gnome-session.sh points
+# the session bus and Wayland at.
+set -e
+case "$1" in
+  configure|install|"")
+    mkdir -p @RUNTIME_TMP@/xios-run
+    chmod 700 @RUNTIME_TMP@/xios-run 2>/dev/null || true
+    ;;
+esac
+exit 0

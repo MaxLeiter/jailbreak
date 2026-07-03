@@ -1,0 +1,11 @@
+Package: kf6-pulseaudio-qt
+Version: @DEB_PULSEAUDIOQT_V@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <max@maxleiter.com>
+Section: libs
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, libpulse0, libglib2.0-0
+Description: Qt wrapper library for PulseAudio used by KDE Plasma
+ PulseAudioQt provides KF6::PulseAudioQt and the C++ models consumed by
+ Plasma's volume applet.

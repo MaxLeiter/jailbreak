@@ -1,0 +1,10 @@
+Package: wuffs-dev
+Version: @DEB_WUFFS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/google/wuffs
+Description: Wrangling Untrusted File Formats Safely (header-only) - development
+ Header-only image/codec library (single-file amalgamation wuffs-v0.3.c).
+ Ladybird pin 0.3.4. No runtime library.

@@ -191,10 +191,12 @@ echo "==> gn gen OK"
 # toolchain surfaces immediately without paying for the full compile.
 if [ "${GATE_ONLY:-0}" = "1" ]; then
   echo "==> GATE_ONLY: compiling a bounded TU slice (toolchain mechanics)"
+  # SIGPIPE-safe slice extraction (awk cap, no `head`, tolerate pipefail).
   SLICE="$( cd "$SRC" && ninja -C "$BUILDDIR" -t targets all 2>/dev/null \
-            | grep -oE '[^ ]+\.o:' | sed 's/:$//' | head -40 )"
+            | awk -F: '/\.o$|\.o:/ {sub(/:$/,"",$1); print $1; if(++n>=40) exit}' || true )"
+  [ -n "$SLICE" ] || { echo "FAIL: could not enumerate object targets" >&2; exit 1; }
   ( cd "$SRC" && ninja -C "$BUILDDIR" -j"$JOBS" $SLICE )
-  echo "==> gate slice compiled clean (${SLICE##*$'\n'} ...): toolchain mechanics OK"
+  echo "==> gate slice compiled clean (40 objects): toolchain mechanics OK"
   exit 0
 fi
 
@@ -211,6 +213,45 @@ echo "==> built $LIBSKIA ($(du -h "$LIBSKIA" | cut -f1))"
 # libskcms may be a separate archive or folded into libskia depending on config.
 LIBSKCMS="$SRC/$BUILDDIR/libskcms.a"
 [ -f "$LIBSKCMS" ] && echo "==> built $LIBSKCMS ($(du -h "$LIBSKCMS" | cut -f1))" || echo "==> (no separate libskcms.a — skcms folded into libskia.a)"
+
+# Skia's iOS-device config (gn/skia/BUILD.gn) injects -arch arm64 -arch arm64e, so
+# the archives come out fat (arm64 + arm64e). The A10 target is strictly arm64 (no
+# pointer-auth/arm64e) and the whole toolchain targets arm64, so thin to arm64 for a
+# lean, unambiguous deliverable. (Linking the fat archive would also work — ld picks
+# the arm64 slice — this just halves size and removes the arm64e surprise.)
+LIPO="$(command -v aarch64-apple-darwin-lipo || true)"
+if [ -n "$LIPO" ] && "$LIPO" "$LIBSKIA" -verify_arch arm64e 2>/dev/null; then
+  echo "==> fat archive detected; thinning to arm64 (A10 target)"
+  "$LIPO" "$LIBSKIA" -thin arm64 -output "$LIBSKIA.arm64" && mv "$LIBSKIA.arm64" "$LIBSKIA"
+  if [ -f "$LIBSKCMS" ] && "$LIPO" "$LIBSKCMS" -verify_arch arm64e 2>/dev/null; then
+    "$LIPO" "$LIBSKCMS" -thin arm64 -output "$LIBSKCMS.arm64" && mv "$LIBSKCMS.arm64" "$LIBSKCMS"
+  fi
+  echo "==> thinned libskia.a ($(du -h "$LIBSKIA" | cut -f1))"
+fi
+
+# -------- PathOps splice (FOLDED from build-skia-pathops.sh, 2026-07-03) -------
+# `ninja skia` does NOT compile src/pathops/*.cpp, so Op(SkPath,SkPath,SkPathOp) (SkPathOps boolean
+# ops, referenced by LibWeb for clip-path / CSS geometry) is an undefined symbol at WebContent/
+# WebWorker link. Compile the ~32 pathops TUs with Skia's own core flags and ar them into libskia.a
+# so the staged archive is always link-complete (no separate post-splice step).
+echo "==> splicing src/pathops/*.cpp into libskia.a"
+PO_AR="$(command -v aarch64-apple-darwin-ar || command -v ar)"
+PO_DEFS="-DNDEBUG -DSK_CODEC_DECODES_BMP -DSK_CODEC_DECODES_WBMP -DSK_HIDE_PATH_EDIT_METHODS \
+-DSK_ENABLE_PRECOMPILE -DSK_ASSUME_GL_ES=1 -DSK_GANESH -DSK_DISABLE_TRACING -DSK_ENABLE_API_AVAILABLE \
+-DSK_GAMMA_APPLY_TO_A8 -DSK_DISABLE_LEGACY_NONCONST_SERIAL_PROCS -DSK_ENABLE_AVX512_OPTS \
+-DSKIA_IMPLEMENTATION=1 -DSK_FONTMGR_CORETEXT_AVAILABLE -DSK_TYPEFACE_FACTORY_CORETEXT"
+PO_FLAGS="-I$SRC -Wno-attributes -ffp-contract=off -fPIC -fvisibility=hidden \
+-arch arm64 -miphoneos-version-min=${IOS_MIN} -fstrict-aliasing -O3 -fvisibility-inlines-hidden \
+-std=c++20 -stdlib=libc++ -fno-aligned-allocation -fno-exceptions -fno-rtti -USK_HIDE_PATH_EDIT_METHODS"
+PO_OBJDIR="$SKIA_WORK/pathops-obj"; rm -rf "$PO_OBJDIR"; mkdir -p "$PO_OBJDIR"
+po_n=0
+for f in "$SRC"/src/pathops/*.cpp; do
+  bn="$(basename "$f" .cpp)"
+  "$SHIM/skia-cxx" $PO_DEFS $PO_FLAGS -c "$f" -o "$PO_OBJDIR/pathops.$bn.o" || { echo "FAIL pathops $bn" >&2; exit 1; }
+  po_n=$((po_n+1))
+done
+"$PO_AR" rs "$LIBSKIA" "$PO_OBJDIR"/*.o
+echo "==> spliced $po_n pathops objects; libskia.a = $(du -h "$LIBSKIA" | cut -f1)"
 
 # -------- #1 risk: verify Ganesh-core symbols present-and-defined (§4, §8.1) --
 echo "==> nm verdict on unconditionally-linked Ganesh symbols"
@@ -242,10 +283,30 @@ mkdir -p "$OUT/include/skia/modules"
 mkdir -p "$OUT/include/skia/src"
 ( cd "$SRC" && rsync -am --include='*/' --include='*.h' --exclude='*' src/ "$OUT/include/skia/src/" ) 2>/dev/null || \
   ( cd "$SRC/src" && find . -name '*.h' -print0 | cpio -0 -pdm "$OUT/include/skia/src/" )
-# skcms public header (LibGfx/ColorSpace.cpp needs skcms.h + skcms_public.h)
-find "$SRC/modules/skcms" -maxdepth 2 -name 'skcms*.h' -exec cp {} "$OUT/include/skia/" \; 2>/dev/null || true
+# skcms public header (LibGfx/ColorSpace.cpp needs skcms.h). skcms.h lives at
+# modules/skcms/skcms.h and does #include "src/skcms_public.h" relative to itself,
+# so stage skcms.h at the include root AND its src/*.h under include/skia/src/ so
+# that relative include resolves.
+cp "$SRC/modules/skcms/skcms.h" "$OUT/include/skia/skcms.h"
+mkdir -p "$OUT/include/skia/src"
+cp "$SRC/modules/skcms/src/"*.h "$OUT/include/skia/src/"
+
+# Flatpak fixup (§5): Skia's public headers include each other root-relative as
+#   #include "include/core/SkFoo.h"
+# but Ladybird gets -I$PREFIX/include/skia and includes <core/SkFoo.h>. Strip the
+# leading include/ so those internal includes resolve against the same -I. The
+# src/ and modules/ prefixes are left intact (staged as subtrees above).
+echo "==> rewriting #include \"include/...\" -> #include \"...\" across staged headers"
+grep -rlZ '#include "include/' "$OUT/include/skia" 2>/dev/null \
+  | xargs -0 -r sed -i 's|#include "include/|#include "|g'
 
 # skia.pc (§5) — Version 144, empty Requires (bundled deps archived in).
+# Apple-framework closure (§5 risk / §8.5): a global-undefined survey of libskia.a
+# (nm: U-in-some-member, defined-in-none) shows it references CoreFoundation (~45),
+# CoreGraphics (~40), CoreText (~41, from the compiled-in SkFontMgr_mac_ct alongside
+# freetype), ImageIO (~3, CGImageSource/Destination), and libobjc (1). No Foundation/
+# UIKit/Metal symbols (confirms zero GPU/Metal closure). All are REQUIRED — none trims
+# — so bake them into Libs so PkgConfig::skia hands Ladybird a complete link closure.
 cat > "$OUT/lib/pkgconfig-skia.pc" <<'PC'
 prefix=/var/jb
 exec_prefix=${prefix}
@@ -256,7 +317,7 @@ Name: skia
 Description: 2D graphic library for drawing text, geometries and images.
 URL: https://skia.org/
 Version: 144
-Libs: -L${libdir} -lskia -lskcms
+Libs: -L${libdir} -lskia -lskcms -lobjc -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO
 Cflags: -I${includedir}
 PC
 mkdir -p "$OUT/lib/pkgconfig"

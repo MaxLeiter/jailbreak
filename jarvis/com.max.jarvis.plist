@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.max.jarvis</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/var/jb/usr/bin/sh</string>
+    <string>/var/jb/var/root/jarvis/jarvis-supervisor.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>WorkingDirectory</key>
+  <string>/var/jb/var/root/jarvis</string>
+  <key>StandardOutPath</key>
+  <string>/var/jb/var/root/jarvis/jarvis.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/jb/var/root/jarvis/jarvis.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

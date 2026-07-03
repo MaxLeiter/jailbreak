@@ -1,0 +1,10 @@
+Package: libmimalloc-dev
+Version: @DEB_MIMALLOC_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/microsoft/mimalloc
+Depends: libmimalloc
+Description: Compact general-purpose allocator (mimalloc) - development
+ Headers, static library, symlink, CMake config and pkg-config for mimalloc.

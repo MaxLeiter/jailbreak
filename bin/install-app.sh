@@ -29,30 +29,9 @@ BUNDLE_ID="$(grep -E 'PRODUCT_BUNDLE_IDENTIFIER' "$APP_DIR/project.yml" 2>/dev/n
 [ -n "$BUNDLE_ID" ] || BUNDLE_ID="com.max.$(echo "$APP_NAME" | tr 'A-Z' 'a-z')"
 DEST="/var/jb/Applications/${APP_NAME}.app"
 
-cd "$APP_DIR"
-
-echo "==> Generating Xcode project (xcodegen)"
-xcodegen generate >/dev/null
-
-echo "==> Building ${APP_NAME} (Release, iphoneos, unsigned)"
-xcodebuild \
-  -project "${APP_NAME}.xcodeproj" \
-  -scheme "${APP_NAME}" \
-  -configuration Release \
-  -sdk iphoneos \
-  -derivedDataPath build \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-  -quiet build
-
-APP="build/Build/Products/Release-iphoneos/${APP_NAME}.app"
-[ -d "$APP" ] || { echo "error: build did not produce $APP" >&2; exit 1; }
-
-echo "==> Pseudo-signing with ldid"
-if [ -f "$APP_DIR/entitlements.plist" ]; then
-  ldid -S"$APP_DIR/entitlements.plist" "$APP/${APP_NAME}"
-else
-  ldid -S "$APP/${APP_NAME}"
-fi
+# Build + pseudo-sign via the shared helper (same path bin/package-app.sh uses).
+. "$REPO_ROOT/bin/lib/build-app.sh"
+APP="$(build_app "$APP_DIR")"
 
 echo "==> Installing to $IP:$DEST"
 ssh -p "$PORT" "${SSH_OPTS[@]}" "root@$IP" "rm -rf '$DEST'"

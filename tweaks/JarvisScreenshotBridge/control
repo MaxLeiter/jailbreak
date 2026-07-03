@@ -1,0 +1,9 @@
+Package: com.max.jarvisscreenshotbridge
+Name: JarvisScreenshotBridge
+Version: 0.0.6
+Architecture: iphoneos-arm64
+Description: SpringBoard-side screenshot, speech, and audio bridge for Jarvis.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate

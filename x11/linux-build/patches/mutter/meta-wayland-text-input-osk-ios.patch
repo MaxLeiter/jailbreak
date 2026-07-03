@@ -1,0 +1,42 @@
+Wire Wayland text-input-v3 to the iOS on-screen keyboard (MetaBackendIOS).
+
+When a client enables text input (or changes its content type), broadcast the
+on-screen-keyboard traits to the Xios app over the backend's input socket so it
+raises the iOS keyboard; lower it when the field is disabled or focus leaves.
+This runs independently of any ClutterInputMethod (the iOS backend registers
+none, and GNOME Shell's own IM would otherwise swallow the enable/disable path),
+mirroring iosc's input_clients_send_traits(). meta_backend_ios_notify_osk_traits
+is a no-op on non-iOS backends. GPL-2.0+.
+
+--- a/src/wayland/meta-wayland-text-input.c
++++ b/src/wayland/meta-wayland-text-input.c
+@@ -29,5 +29,7 @@
+ #include "wayland/meta-wayland-versions.h"
+
+ #include "text-input-unstable-v3-server-protocol.h"
++
++#include "backends/ios/meta-backend-ios.h"
+
+ #define META_TYPE_WAYLAND_TEXT_INPUT_FOCUS (meta_wayland_text_input_focus_get_type ())
+@@ -415,4 +417,7 @@
+
+       wl_list_remove (&text_input->surface_listener.link);
+       text_input->surface = NULL;
++
++      /* iOS: the focused text field went away — lower the Xios keyboard. */
++      meta_backend_ios_notify_osk_traits (0, 0, FALSE);
+     }
+@@ -651,4 +656,13 @@
+   if (!client_matches_focus (text_input, client))
+     return;
+
++  /* iOS: drive the Xios on-screen keyboard from text-input state, independent of any
++   * ClutterInputMethod (the iOS backend registers none; GNOME Shell's own IM would
++   * otherwise swallow this). Mirrors iosc's input_clients_send_traits(). */
++  if (text_input->pending_state &
++      (META_WAYLAND_PENDING_STATE_ENABLED | META_WAYLAND_PENDING_STATE_CONTENT_TYPE))
++    meta_backend_ios_notify_osk_traits (text_input->content_type_hint,
++                                        text_input->content_type_purpose,
++                                        text_input->enabled);
++
+   input_method = clutter_backend_get_input_method (clutter_get_default_backend ());

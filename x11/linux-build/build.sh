@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs INSIDE the container (see Dockerfile). Clones Procursus, applies our patches
-# portably, and builds the fixed tigervnc .deb for iphoneos-arm64 / CFVER 1900.
+# portably, and builds the fixed tigervnc .deb for the selected Procursus target.
 # Output debs are copied to /out (bind-mounted from the host by run.sh).
 set -euo pipefail
 umask 022
@@ -145,10 +145,17 @@ edit("makefiles/tigervnc.mk", lambda s: s.replace("--disable-xvfb", "--enable-xv
 PY
 
 echo "==> [3/4] build tigervnc (NO_PGP=1 to skip flaky tarball gpg checks)"
-# iphoneos-arm64-rootless => MEMO_PREFIX=/var/jb (matches the palera1n rootless iPad).
-# Plain iphoneos-arm64 is the rootful (/) target and would NOT install correctly.
-MEMO_TARGET=iphoneos-arm64-rootless
-MEMO_CFVER=1900
+# Default remains the current palera1n rootless target. A target-aware caller can
+# pass XIOS_MEMO_TARGET/XIOS_MEMO_CFVER/XIOS_PREFIX from linux-build/target-lib.sh.
+MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
+MEMO_CFVER="${XIOS_MEMO_CFVER:-${MEMO_CFVER:-1900}}"
+if [ "${XIOS_PREFIX+x}" = x ]; then
+  TARGET_PREFIX="$XIOS_PREFIX"
+else
+  TARGET_PREFIX="/var/jb"
+fi
+EXPECTED_SH="${TARGET_PREFIX}/bin/sh"
+[ -n "$TARGET_PREFIX" ] || EXPECTED_SH="/bin/sh"
 COMMON="MEMO_TARGET=$MEMO_TARGET MEMO_CFVER=$MEMO_CFVER NO_PGP=1"
 # Force tigervnc (and its bundled xserver/hw/vfb) to recompile so the IOSurface DDX
 # changes take effect — Procursus's .build_complete marker would otherwise skip it.
@@ -185,7 +192,22 @@ if [ -n "$XVFB" ]; then
   # anchor drifted, the recipe would silently build a plain Xvfb — catch that here.
   grep -aq "IOSurfaceCreateMachPort" "$OUT"/Xios || {
     echo "!! Xios is missing the IOSurface DDX code (source injection failed)"; exit 1; }
-  cat > /out/xios-ent.xml <<'PLIST'
+  if [ -n "$TARGET_PREFIX" ]; then
+    XIOS_ENTITLEMENT_PATHS="        <string>$TARGET_PREFIX/</string>
+        <string>/tmp/</string>
+        <string>/var/</string>
+        <string>/private/var/</string>"
+    if [ "$TARGET_PREFIX" = "/var/jb" ]; then
+      XIOS_ENTITLEMENT_PATHS="$XIOS_ENTITLEMENT_PATHS
+        <string>/private/var/jb/</string>"
+    fi
+  else
+    XIOS_ENTITLEMENT_PATHS="        <string>/usr/</string>
+        <string>/tmp/</string>
+        <string>/var/</string>
+        <string>/private/var/</string>"
+  fi
+  cat > /out/xios-ent.xml <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -209,10 +231,7 @@ if [ -n "$XVFB" ]; then
     </array>
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
-        <string>/var/jb/</string>
-        <string>/tmp/</string>
-        <string>/var/</string>
-        <string>/private/var/</string>
+$XIOS_ENTITLEMENT_PATHS
     </array>
 </dict>
 </plist>
@@ -238,7 +257,8 @@ for d in $(find . -name 'tigervnc-*_*.deb'); do
   cp -v "$d" "$OUT"/; found=1
 done
 [ "$found" = 1 ] || { echo "!! no tigervnc debs produced"; exit 1; }
-echo "==> done. Verify the /bin/sh fix landed in the binary:"
+echo "==> done. Verify the target shell path landed in the binary:"
+tar_xvnc=".$TARGET_PREFIX/usr/bin/Xvnc"
 dpkg-deb --fsys-tarfile "$OUT"/tigervnc-standalone-server_*.deb 2>/dev/null \
-  | tar -xO ./var/jb/usr/bin/Xvnc 2>/dev/null \
-  | grep -c "/var/jb/bin/sh" | sed 's/^/   "\/var\/jb\/bin\/sh" occurrences in Xvnc: /' || true
+  | tar -xO "$tar_xvnc" 2>/dev/null \
+  | grep -c "$EXPECTED_SH" | sed "s#^#   \"$EXPECTED_SH\" occurrences in Xvnc: #" || true

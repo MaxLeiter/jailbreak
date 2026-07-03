@@ -1,0 +1,9 @@
+Package: libswresample5
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Depends: libavutil59 (= @DEB_FFMPEG_V@)
+Description: FFmpeg audio resampling library - runtime
+ FFmpeg 7.1.1 (Ladybird minimal build). Self-contained, no external deps.

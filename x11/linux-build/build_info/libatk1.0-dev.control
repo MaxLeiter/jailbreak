@@ -1,11 +1,13 @@
 Package: libatk1.0-dev
-Version: @DEB_LIBATK_V@
+Version: @DEB_ATSPI2_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
-Homepage: https://gitlab.gnome.org/GNOME/atk
-Depends: libatk1.0-0 (= @DEB_LIBATK_V@), libglib2.0-dev
+Homepage: https://gitlab.gnome.org/GNOME/at-spi2-core
+Depends: libatk1.0-0 (= @DEB_ATSPI2_V@), libglib2.0-dev
+Replaces: at-spi2-core-dev (<< 2.52.0+ios2)
+Breaks: at-spi2-core-dev (<< 2.52.0+ios2)
 Description: Development files for the ATK accessibility toolkit
  ATK is a toolkit providing accessibility interfaces for applications or other
  toolkits.

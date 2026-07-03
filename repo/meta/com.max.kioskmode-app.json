@@ -1,0 +1,10 @@
+{
+  "tagline": "Lock the iPad to a single app",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "lock.square",
+  "description": "**Kiosk Mode** locks your iPad (or iPhone) to a single app and relaunches it automatically — turn a device into a single-purpose kiosk.\n\nThis is the setup app: pick the target app and manage the kiosk settings from a simple onboarding flow. The lock and auto-relaunch behaviour lives in the companion SpringBoard tweak (**KioskMode**, package `com.max.kioskmode`) — install both for the full feature.\n\n- Choose any installed app to lock to\n- Auto-relaunch if the app is closed\n- Escape a locked session with a volume-button triple-press\n\nBuilt for iOS/iPadOS 17+, rootless (`/var/jb`). Requires **AppSync Unified** to run this unsigned app.",
+  "changelog": [
+    { "version": "0.3.0", "date": "2026-07-03", "notes": "- Onboarding + settings app for Kiosk Mode\n- Packaged for the repo (app half of the KioskMode project)" }
+  ]
+}

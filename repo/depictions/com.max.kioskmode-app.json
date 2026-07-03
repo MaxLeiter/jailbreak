@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/com.max.kioskmode-app.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**Kiosk Mode** locks your iPad (or iPhone) to a single app and relaunches it automatically \u2014 turn a device into a single-purpose kiosk.\n\nThis is the setup app: pick the target app and manage the kiosk settings from a simple onboarding flow. The lock and auto-relaunch behaviour lives in the companion SpringBoard tweak (**KioskMode**, package `com.max.kioskmode`) \u2014 install both for the full feature.\n\n- Choose any installed app to lock to\n- Auto-relaunch if the app is closed\n- Escape a locked session with a volume-button triple-press\n\nBuilt for iOS/iPadOS 17+, rootless (`/var/jb`). Requires **AppSync Unified** to run this unsigned app."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "0.3.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "651.2 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "com.max.kioskmode-app"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 0.3.0  \u00b7  2026-07-03\n- Onboarding + settings app for Kiosk Mode\n- Packaged for the repo (app half of the KioskMode project)"
+        }
+      ]
+    }
+  ]
+}

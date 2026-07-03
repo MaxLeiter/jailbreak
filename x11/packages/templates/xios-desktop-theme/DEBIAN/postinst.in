@@ -1,0 +1,17 @@
+#!/bin/sh
+# Compile the gsettings override so the desktop adopts the icon/cursor theme and
+# wallpaper. Icon cache and SVG loader caches are rebuilt by adwaita-icon-theme
+# and librsvg2-common, so we don't touch them here. Idempotent.
+set -e
+case "$1" in
+  configure|install|"")
+    PATH=@PATH_DIRS@:$PATH
+    export PATH
+
+    if command -v glib-compile-schemas >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/glib-2.0/schemas ]; then
+      glib-compile-schemas @INSTALL_PREFIX@/share/glib-2.0/schemas >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+exit 0

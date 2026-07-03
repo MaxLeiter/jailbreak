@@ -6,11 +6,20 @@
 #
 # Output: x11/linux-build/out/tigervnc-*_iphoneos-arm.deb
 set -euo pipefail
-cd "$(dirname "$0")"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$HERE"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
 . "$_x/lib/xlib.sh"
+. "$HERE/target-lib.sh"
+
+xios_load_target "${1:-${XIOS_TARGET:-rootless-1900}}"
+echo "==> target: $XIOS_TARGET_ID ($XIOS_MEMO_TARGET / CFVER $XIOS_MEMO_CFVER)"
+if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
+  echo "ERROR: linux-build/run.sh still drives rootless-only follow-up steps; use rootless-1900 for now." >&2
+  echo "       Rootful support starts with target-aware package generation and smoke tests." >&2
+  exit 2
+fi
 
 IMAGE="procursus-xbuild:bookworm-arm64"
 # Named volume holding the cloned + already-built Procursus tree. Persisting it
@@ -34,6 +43,10 @@ docker build --platform linux/arm64 -t "$IMAGE" .
 
 echo "==> building tigervnc inside the container (reusing volume $VOLUME)"
 docker run --rm --platform linux/arm64 \
+  -e XIOS_TARGET_ID \
+  -e XIOS_MEMO_TARGET \
+  -e XIOS_MEMO_CFVER \
+  -e XIOS_PREFIX \
   -v "$VOLUME:/work/Procursus" \
   -v "$PWD/build.sh:/work/build.sh:ro" \
   -v "$PWD/patches:/work/patches:ro" \

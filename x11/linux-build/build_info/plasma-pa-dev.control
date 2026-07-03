@@ -1,0 +1,10 @@
+Package: plasma-pa-dev
+Version: @DEB_PLASMAPA_V@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <max@maxleiter.com>
+Section: libdevel
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: plasma-pa (= @DEB_PLASMAPA_V@), kf6-pulseaudio-qt-dev, qt6-base-dev, qt6-declarative-dev, libplasma-dev
+Description: Development files for Plasma PA
+ Headers, CMake config, and development metadata for the Plasma PA build.

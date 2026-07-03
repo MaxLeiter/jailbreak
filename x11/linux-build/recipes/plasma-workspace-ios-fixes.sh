@@ -65,7 +65,7 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-keep_subdirs = {"digital-clock", "kicker", "notifications"}
+keep_subdirs = {"digital-clock", "kicker", "notifications", "systemtray"}
 keep_packages = {"org.kde.plasma.digitalclock", "org.kde.plasma.notifications"}
 
 text = re.sub(

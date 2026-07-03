@@ -1,0 +1,11 @@
+Package: woff2
+Version: @DEB_WOFF2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://github.com/google/woff2
+Depends: libwoff2-1
+Description: WOFF2 font compression tools
+ Command-line tools (woff2_compress, woff2_decompress, woff2_info) for the
+ WOFF2 web font format.

@@ -1,0 +1,1551 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JARVIS · console</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23ffb000' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffb000'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #03070a;
+        --bg-2: #071014;
+        --panel: #091116;
+        --panel-2: #0d1820;
+        --edge: #16313a;
+        --edge-hot: #2a6876;
+        --ink: #dff7ff;
+        --dim: #7ca6b0;
+        --faint: #496a73;
+        --amber: #ffb000;
+        --amber-soft: #ffc953;
+        --mint: #57e0d4;
+        --cyan: #42e8ff;
+        --blue: #5aa7ff;
+        --violet: #a47cff;
+        --red: #ff5a5f;
+        --cut: 12px;
+        --frame-a: rgba(66, 232, 255, 0.34);
+        --frame-b: rgba(255, 176, 0, 0.32);
+        --glass: rgba(4, 12, 16, 0.72);
+        --disp: "Chakra Petch", ui-monospace, monospace;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+        --glow: 0 0 14px rgba(66, 232, 255, 0.34);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        color-scheme: dark;
+        scrollbar-color: var(--edge-hot) var(--bg);
+        scrollbar-width: thin;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: var(--disp);
+        font-weight: 400;
+        background:
+          linear-gradient(135deg, rgba(66, 232, 255, 0.06), transparent 24%),
+          linear-gradient(225deg, rgba(255, 176, 0, 0.05), transparent 28%),
+          radial-gradient(120% 90% at 50% -10%, #0b1a21 0%, var(--bg) 58%, #010304 100%);
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+      /* atmosphere layers */
+      body::before {
+        content: "";
+        position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background-image:
+          linear-gradient(rgba(66, 232, 255, 0.055) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(66, 232, 255, 0.055) 1px, transparent 1px);
+        background-size: 34px 34px;
+        -webkit-mask-image: radial-gradient(130% 100% at 50% 0%, #000 30%, transparent 85%);
+        mask-image: radial-gradient(130% 100% at 50% 0%, #000 30%, transparent 85%);
+      }
+      body::after {
+        content: "";
+        position: fixed; inset: 0; z-index: 9; pointer-events: none;
+        background:
+          repeating-linear-gradient(0deg, transparent 0 2px, rgba(0, 0, 0, 0.22) 2px 3px);
+        opacity: 0.35;
+        mix-blend-mode: multiply;
+      }
+      .grain {
+        position: fixed; inset: 0; z-index: 8; pointer-events: none; opacity: 0.04;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+      .grain::before {
+        content: "";
+        position: absolute;
+        inset: -20%;
+        opacity: 0.42;
+        background:
+          linear-gradient(115deg, transparent 0 42%, rgba(66, 232, 255, 0.18) 48%, transparent 55%),
+          linear-gradient(180deg, transparent, rgba(255, 176, 0, 0.08), transparent);
+        transform: translateX(-42%);
+        animation: data-sweep 9s linear infinite;
+      }
+      .grain::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(circle, rgba(66, 232, 255, 0.36) 0 1px, transparent 1.5px);
+        background-size: 21px 21px;
+        opacity: 0.36;
+        -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 82%, transparent);
+        mask-image: linear-gradient(90deg, transparent, #000 14%, #000 82%, transparent);
+      }
+
+      /* ---------- header / instrument bar ---------- */
+      header {
+        position: relative; z-index: 5;
+        display: flex; align-items: center; gap: 26px;
+        padding: 14px 26px;
+        border-bottom: 1px solid var(--edge);
+        background: linear-gradient(180deg, rgba(13, 24, 32, 0.96), rgba(5, 13, 17, 0.74));
+        box-shadow: inset 0 -1px 0 rgba(66, 232, 255, 0.16), 0 14px 50px rgba(0, 0, 0, 0.24);
+        animation: drop 0.7s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+      }
+      header::before {
+        content: "";
+        position: absolute;
+        left: 0; right: 0; bottom: -1px; height: 1px;
+        background: linear-gradient(90deg, transparent, var(--cyan), transparent 72%);
+        opacity: 0.45;
+      }
+      header::after {
+        content: "";
+        position: absolute;
+        left: 26px;
+        right: 26px;
+        bottom: 0;
+        height: 3px;
+        background:
+          repeating-linear-gradient(90deg, rgba(66, 232, 255, 0.72) 0 18px, transparent 18px 28px),
+          linear-gradient(90deg, transparent, rgba(255, 176, 0, 0.64), transparent);
+        opacity: 0.34;
+        transform: translateY(2px);
+      }
+      .brand { display: flex; flex-direction: column; line-height: 1; }
+      .brand .mark {
+        font-weight: 700; font-size: 22px; letter-spacing: 7px;
+        color: var(--cyan); text-shadow: var(--glow); padding-left: 2px;
+        background: linear-gradient(90deg, var(--cyan), var(--ink), var(--cyan));
+        background-size: 220% 100%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        animation: text-phase 5.2s ease-in-out infinite;
+      }
+      .brand .sub {
+        font-size: 9.5px; letter-spacing: 4px; text-transform: uppercase;
+        color: var(--amber-soft); margin-top: 5px; opacity: 0.54;
+      }
+      .reticle { position: relative; width: 12px; height: 12px; flex: none; }
+      .reticle b {
+        position: absolute; inset: 3px; border-radius: 50%;
+        background: var(--faint); transition: background 0.4s;
+      }
+      .reticle.live b { background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+      .reticle.live::after {
+        content: ""; position: absolute; inset: 0; border-radius: 50%;
+        border: 1px solid var(--mint); animation: ping 2s ease-out infinite;
+      }
+      .readouts { display: flex; gap: 22px; margin-left: auto; }
+      .gauge { display: flex; flex-direction: column; gap: 3px; min-width: 0; position: relative; }
+      .gauge::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: -5px;
+        width: 34px;
+        height: 1px;
+        background: linear-gradient(90deg, var(--cyan), transparent);
+        opacity: 0.42;
+      }
+      .gauge .lbl {
+        font-size: 8.5px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--faint);
+      }
+      .gauge .val {
+        font-family: var(--mono); font-size: 12.5px; color: var(--amber-soft);
+        white-space: nowrap; display: flex; align-items: center; gap: 7px;
+      }
+      .gauge .val.plain { color: var(--ink); }
+      .model-select {
+        min-width: 210px;
+        max-width: min(42vw, 360px);
+        background: linear-gradient(180deg, #091820, #061015);
+        color: var(--amber-soft);
+        border: 1px solid var(--edge-hot);
+        border-radius: 0;
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        padding: 6px 28px 6px 9px;
+        font-family: var(--mono);
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .model-select:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 1px rgba(255, 176, 0, 0.22); }
+      .wake-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 150px;
+      }
+      .wake-button {
+        border: 1px solid var(--edge-hot);
+        border-radius: 0;
+        background: linear-gradient(180deg, #091820, #061015);
+        color: var(--dim);
+        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+        padding: 6px 9px;
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        cursor: pointer;
+      }
+      .wake-button.on {
+        color: #031213;
+        background: linear-gradient(135deg, var(--mint), var(--cyan));
+        border-color: var(--mint);
+        box-shadow: 0 0 18px rgba(87, 224, 212, 0.18);
+      }
+      .wake-text {
+        min-width: 0;
+        color: var(--dim);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ---------- deck ---------- */
+      main {
+        position: relative; z-index: 1;
+        display: grid; grid-template-columns: 1fr 360px; min-height: 0;
+      }
+      main.sidebar-collapsed { grid-template-columns: 1fr 48px; }
+      .feed { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+      #log {
+        overflow-y: auto; padding: 30px 34px 20px;
+        display: flex; flex-direction: column; gap: 14px;
+        animation: fade 0.9s ease 0.15s both;
+        scrollbar-color: var(--edge-hot) var(--bg);
+        scrollbar-width: thin;
+      }
+      /* messages */
+      .msg { max-width: 76%; animation: rise 0.4s cubic-bezier(0.2, 0.9, 0.2, 1) both; }
+      .msg .who {
+        font-size: 8.5px; letter-spacing: 3px; text-transform: uppercase;
+        color: var(--faint); margin-bottom: 6px;
+      }
+      .msg.user { align-self: flex-end; text-align: right; }
+      .msg.user .who { color: var(--dim); }
+      .msg.user .body {
+        display: inline-block; text-align: left;
+        font-family: system-ui, -apple-system, sans-serif; font-size: 14.5px; line-height: 1.55;
+        background: linear-gradient(180deg, rgba(18, 32, 39, 0.94), rgba(9, 18, 23, 0.94));
+        border: 1px solid rgba(255, 176, 0, 0.42); border-radius: 0;
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        padding: 11px 15px; color: var(--ink);
+        box-shadow: inset 0 0 0 1px rgba(255, 176, 0, 0.08), 0 0 24px rgba(255, 176, 0, 0.06);
+        position: relative;
+      }
+      .msg.bot { align-self: flex-start; }
+      .msg.bot .who { color: var(--amber); }
+      .msg.bot .body {
+        font-family: var(--disp); font-weight: 400; font-size: 14.5px; line-height: 1.65;
+        white-space: pre-wrap;
+        padding: 2px 0;
+        color: var(--ink); text-shadow: 0 0 18px rgba(66, 232, 255, 0.08);
+      }
+      .msg.speech { align-self: flex-start; max-width: 68%; }
+      .msg.speech .who { color: var(--mint); }
+      .msg.speech .body {
+        display: inline-block;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 14.5px;
+        line-height: 1.55;
+        background: linear-gradient(180deg, rgba(10, 31, 33, 0.96), rgba(6, 20, 22, 0.96));
+        border: 1px solid rgba(87, 224, 212, 0.46);
+        border-radius: 0;
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        padding: 11px 15px;
+        color: var(--ink);
+        box-shadow: inset 0 0 0 1px rgba(87, 224, 212, 0.08), 0 0 24px rgba(87, 224, 212, 0.06);
+        position: relative;
+      }
+      .msg.speech.no .who { color: var(--red); }
+      .msg.speech.no .body { border-color: rgba(255, 90, 60, 0.55); background: linear-gradient(180deg, #24120e, #190d0b); }
+      .attachments { margin-top: 10px; display: grid; gap: 8px; }
+      .attachment {
+        max-width: min(520px, 100%);
+        border: 1px solid rgba(66, 232, 255, 0.28);
+        background: rgba(3, 7, 10, 0.82);
+        border-radius: 0;
+        clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+        overflow: hidden;
+        position: relative;
+      }
+      .attachment img { display: block; width: 100%; height: auto; max-height: 420px; object-fit: contain; background: #050504; }
+      .attachment audio { display: block; width: 100%; padding: 8px; }
+      .attachment .meta {
+        padding: 7px 9px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.4;
+        color: var(--dim);
+        border-top: 1px solid var(--edge);
+        overflow-wrap: anywhere;
+      }
+      /* telemetry trace */
+      .trace {
+        align-self: flex-start; display: flex; align-items: center; gap: 9px;
+        font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+        padding-left: 2px; animation: slidein 0.3s ease both;
+      }
+      .trace .dot { color: var(--faint); }
+      .trace .k { color: var(--amber); letter-spacing: 0.3px; }
+      .trace.ok .dot, .trace.ok .k { color: var(--mint); }
+      .trace.no .dot, .trace.no .k { color: var(--red); }
+      .trace .arg { color: var(--faint); }
+      .tool-card {
+        align-self: flex-start;
+        width: min(560px, 78%);
+        border: 1px solid rgba(66, 232, 255, 0.22);
+        border-radius: 0;
+        background: rgba(5, 14, 18, 0.78);
+        clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+        padding: 9px 11px;
+        display: grid;
+        gap: 5px;
+        position: relative;
+        animation: slidein 0.3s ease both;
+      }
+      .tool-card::after,
+      .attachment::after,
+      .turn::after,
+      .pin::after,
+      .mcp-card::after,
+      .policy-row::after,
+      .composer::after,
+      .ask::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, var(--frame-a) 0 28px, transparent 28px) top left / 120px 1px no-repeat,
+          linear-gradient(180deg, var(--frame-a) 0 22px, transparent 22px) top left / 1px 86px no-repeat,
+          linear-gradient(270deg, var(--frame-b) 0 26px, transparent 26px) bottom right / 118px 1px no-repeat,
+          linear-gradient(0deg, var(--frame-b) 0 22px, transparent 22px) bottom right / 1px 86px no-repeat;
+        opacity: 0.72;
+      }
+      .composer::after,
+      .ask::after { opacity: 0.9; }
+      .tool-card::after { display: none; }
+      .tool-card > *,
+      .attachment > *,
+      .turn > *,
+      .pin > *,
+      .mcp-card > *,
+      .policy-row > *,
+      .composer > *,
+      .ask > * {
+        position: relative;
+        z-index: 1;
+      }
+      .msg.user .body::after,
+      .msg.speech .body::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, rgba(255, 176, 0, 0.42) 0 20px, transparent 20px) top left / 84px 1px no-repeat,
+          linear-gradient(270deg, rgba(66, 232, 255, 0.26) 0 18px, transparent 18px) bottom right / 72px 1px no-repeat;
+        opacity: 0.72;
+      }
+      .tool-card.ok { border-color: rgba(87, 224, 168, 0.34); }
+      .tool-card.no { border-color: rgba(255, 90, 60, 0.45); }
+      .tool-head { display: flex; align-items: center; gap: 9px; min-width: 0; }
+      .tool-icon {
+        width: 18px; height: 18px; border-radius: 4px;
+        display: grid; place-items: center; flex: none;
+        background: rgba(66, 232, 255, 0.12);
+        color: var(--cyan);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+      .tool-title { min-width: 0; flex: 1; }
+      .tool-title b {
+        display: inline;
+        color: var(--ink);
+        font-family: var(--disp);
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .tool-title span {
+        display: inline;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+      .tool-title span::before { content: " · "; color: var(--faint); }
+      .tool-states { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
+      .pill {
+        border: 1px solid var(--edge);
+        border-radius: 0;
+        clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+        padding: 3px 7px;
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 9.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+      }
+      .pill.on { color: var(--amber-soft); border-color: rgba(255, 176, 0, 0.38); background: rgba(255, 176, 0, 0.06); }
+      .pill.ok { color: var(--mint); border-color: rgba(87, 224, 168, 0.38); }
+      .pill.no { color: var(--red); border-color: rgba(255, 90, 60, 0.45); }
+      .tool-result {
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        padding-left: 27px;
+      }
+
+      /* composer */
+      .composer {
+        display: flex; align-items: center; gap: 12px;
+        margin: 0 22px 22px; padding: 6px 6px 6px 18px;
+        background:
+          linear-gradient(90deg, rgba(66, 232, 255, 0.08), transparent 32%),
+          linear-gradient(180deg, rgba(13, 24, 32, 0.96), rgba(6, 14, 18, 0.96));
+        border: 1px solid rgba(66, 232, 255, 0.28);
+        border-radius: 0;
+        clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+        box-shadow: inset 0 0 0 1px rgba(66, 232, 255, 0.06), 0 12px 44px rgba(0, 0, 0, 0.26);
+        transition: border-color 0.25s, box-shadow 0.25s;
+        animation: drop 0.7s cubic-bezier(0.2, 0.9, 0.2, 1) 0.1s both;
+        position: relative;
+        overflow: hidden;
+      }
+      .composer::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(110deg, transparent, rgba(66, 232, 255, 0.12), transparent);
+        transform: translateX(-120%);
+        animation: panel-sweep 6s ease-in-out infinite;
+      }
+      .composer:focus-within {
+        border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(66, 232, 255, 0.25), 0 0 34px rgba(66, 232, 255, 0.1);
+      }
+      .composer .caret { color: var(--cyan); font-family: var(--mono); font-weight: 700; text-shadow: var(--glow); }
+      .composer input {
+        flex: 1; background: none; border: 0; outline: none;
+        color: var(--ink); font-family: var(--disp); font-size: 15px; padding: 12px 0;
+        caret-color: var(--amber);
+      }
+      .composer input::placeholder { color: var(--faint); }
+      .composer button {
+        width: 44px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, var(--amber), #ffe08a);
+        color: #081014;
+        border: 0;
+        border-radius: 8px;
+        clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+        font-family: var(--mono);
+        font-weight: 800;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        transition: transform 0.1s, filter 0.2s;
+      }
+      .composer button:hover { filter: brightness(1.1); }
+      .composer button:active { transform: translateY(1px) scale(0.98); }
+      .composer button:disabled { opacity: 0.4; cursor: default; filter: grayscale(0.4); }
+
+      /* ---------- instrument stack ---------- */
+      aside {
+        border-left: 1px solid rgba(66, 232, 255, 0.18);
+        background:
+          linear-gradient(rgba(66, 232, 255, 0.032) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(66, 232, 255, 0.032) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(9, 18, 24, 0.76), rgba(2, 7, 10, 0.7)),
+          linear-gradient(90deg, rgba(66, 232, 255, 0.04), transparent 38%);
+        background-size: 22px 22px, 22px 22px, auto, auto;
+        display: grid; grid-template-rows: auto 1fr; min-height: 0;
+        animation: drop 0.7s cubic-bezier(0.2, 0.9, 0.2, 1) 0.05s both;
+      }
+      main.sidebar-collapsed aside {
+        grid-template-rows: auto;
+        overflow: hidden;
+      }
+      .toggles { display: flex; min-width: 0; overflow: hidden; padding: 10px 8px 0; gap: 3px; border-bottom: 1px solid rgba(66, 232, 255, 0.16); }
+      .toggles button {
+        flex: 0 0 auto; min-width: 0; background: rgba(3, 7, 10, 0.34); border: 1px solid transparent; border-bottom: 0;
+        color: var(--faint); padding: 9px 4px; cursor: pointer;
+        font-family: var(--disp); font-size: 8px; font-weight: 600; letter-spacing: 0.7px; text-transform: uppercase;
+        overflow: hidden;
+        text-overflow: clip;
+        white-space: nowrap;
+        border-radius: 0;
+        clip-path: polygon(7px 0, 100% 0, 100% 100%, 0 100%, 0 7px);
+        transition: color 0.2s, background 0.2s, border-color 0.2s;
+      }
+      .toggles .sidebar-toggle {
+        flex: 0 0 30px;
+        font-size: 14px;
+        letter-spacing: 0;
+        color: var(--cyan);
+      }
+      .toggles button.on {
+        color: var(--cyan); background: rgba(8, 22, 29, 0.9); border-color: rgba(66, 232, 255, 0.35);
+        box-shadow: inset 0 2px 0 var(--cyan), 0 0 18px rgba(66, 232, 255, 0.08);
+      }
+      main.sidebar-collapsed .toggles {
+        display: grid;
+        grid-template-columns: 1fr;
+        padding: 10px 8px;
+        border-bottom: 0;
+      }
+      main.sidebar-collapsed .toggles button:not(.sidebar-toggle),
+      main.sidebar-collapsed .pane {
+        display: none;
+      }
+      .pane {
+        overflow-y: auto; padding: 18px 18px 40px; display: none;
+        scrollbar-color: var(--edge-hot) var(--bg);
+        scrollbar-width: thin;
+        position: relative;
+      }
+      .pane.on { display: block; animation: fade 0.4s ease both; }
+      .pane h3 {
+        font-family: var(--mono); font-size: 9.5px; color: var(--faint);
+        text-transform: uppercase; letter-spacing: 2.5px; margin: 0 0 12px;
+        display: flex; align-items: center; gap: 8px;
+      }
+      .pane h3::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border: 1px solid var(--cyan);
+        box-shadow: 0 0 10px rgba(66, 232, 255, 0.22);
+        transform: rotate(45deg);
+        opacity: 0.72;
+      }
+      .pane h3::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--edge-hot), transparent); }
+      .pane h3:not(:first-child) { margin-top: 22px; }
+
+      .pin {
+        font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink);
+        border: 1px solid rgba(66, 232, 255, 0.22); padding: 8px 10px; margin-bottom: 8px;
+        background: linear-gradient(90deg, rgba(66, 232, 255, 0.08), transparent);
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        position: relative;
+      }
+      .kv { font-family: var(--mono); font-size: 12px; line-height: 1.55; color: var(--dim); margin-bottom: 7px; }
+      .kv b { color: var(--amber-soft); font-weight: 500; }
+      .empty { color: var(--faint); font-family: var(--mono); font-size: 11px; letter-spacing: 1px; }
+      .turn {
+        border: 1px solid rgba(66, 232, 255, 0.18);
+        padding: 9px 10px;
+        margin-bottom: 12px;
+        background: linear-gradient(135deg, rgba(66, 232, 255, 0.06), transparent 42%);
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        position: relative;
+      }
+      .turn.user { border-color: rgba(255, 176, 0, 0.24); }
+      .turn.assistant { border-color: rgba(66, 232, 255, 0.24); }
+      .turn .meta {
+        font-family: var(--mono); font-size: 9.5px; color: var(--faint);
+        text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 5px;
+      }
+      .turn .txt {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 12.5px; line-height: 1.45; color: var(--ink);
+        white-space: pre-wrap; overflow-wrap: anywhere;
+      }
+
+      .policy-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+        padding: 10px;
+        margin-bottom: 8px;
+        border: 1px solid rgba(66, 232, 255, 0.14);
+        background: linear-gradient(90deg, rgba(66, 232, 255, 0.045), transparent);
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        position: relative;
+      }
+      .policy-title { color: var(--ink); font-size: 13px; font-weight: 600; }
+      .policy-sub {
+        margin-top: 2px;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+      .policy-row select {
+        background: #061015; color: var(--amber-soft); border: 1px solid var(--edge-hot);
+        border-radius: 0; padding: 5px 8px; font-family: var(--mono); font-size: 11px; cursor: pointer;
+        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+      }
+      .policy-row select:focus { outline: none; border-color: var(--amber); }
+      .policy-row[data-mode="deny"] select, .policy-row[data-access="disabled"] select { color: var(--red); }
+      .policy-row[data-mode="allow"] select, .policy-row[data-access="read"] select { color: var(--mint); }
+      .policy-row:hover,
+      .mcp-card:hover,
+      .action-row:hover,
+      .turn:hover,
+      .tool-card:hover,
+      .pin:hover {
+        border-color: rgba(66, 232, 255, 0.36);
+        box-shadow: inset 0 0 0 1px rgba(66, 232, 255, 0.08), 0 0 24px rgba(66, 232, 255, 0.055);
+      }
+
+      .mcp-card {
+        border: 1px solid rgba(66, 232, 255, 0.16);
+        padding: 11px;
+        margin-bottom: 10px;
+        background:
+          linear-gradient(135deg, rgba(66, 232, 255, 0.06), transparent 44%),
+          rgba(3, 7, 10, 0.38);
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        position: relative;
+      }
+      .mcp-card.off { border-color: rgba(124, 166, 176, 0.14); opacity: 0.72; }
+      .mcp-top {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: start;
+      }
+      .mcp-title b { display: block; color: var(--ink); font-size: 13px; font-weight: 600; }
+      .mcp-title span {
+        display: block;
+        margin-top: 2px;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.35;
+      }
+      .mcp-state {
+        color: var(--mint);
+        border: 1px solid rgba(87, 224, 212, 0.28);
+        padding: 3px 7px;
+        font-family: var(--mono);
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.9px;
+        white-space: nowrap;
+      }
+      .mcp-state.paused { color: var(--amber-soft); border-color: rgba(255, 176, 0, 0.28); }
+      .mcp-state.empty { color: var(--faint); border-color: rgba(124, 166, 176, 0.18); }
+      .mcp-url,
+      .mcp-setup,
+      .mcp-config {
+        margin-top: 8px;
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+      }
+      .mcp-config {
+        white-space: pre-wrap;
+        border: 1px solid rgba(66, 232, 255, 0.12);
+        padding: 9px;
+        background: rgba(1, 5, 7, 0.48);
+      }
+      .mcp-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 10px;
+      }
+      .mcp-actions button {
+        border: 1px solid var(--edge-hot);
+        border-radius: 0;
+        background: rgba(6, 16, 21, 0.9);
+        color: var(--cyan);
+        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+        padding: 6px 9px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        cursor: pointer;
+      }
+      .mcp-actions button.primary {
+        background: linear-gradient(135deg, var(--mint), var(--cyan));
+        color: #031213;
+        border-color: var(--mint);
+      }
+      .mcp-actions button.danger {
+        color: var(--red);
+        border-color: rgba(255, 90, 95, 0.54);
+      }
+      .mcp-actions button:disabled { opacity: 0.45; cursor: default; }
+
+      .action-row {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        gap: 10px;
+        align-items: start;
+        padding: 10px;
+        margin-bottom: 8px;
+        border: 1px solid rgba(66, 232, 255, 0.16);
+        background:
+          linear-gradient(90deg, rgba(66, 232, 255, 0.055), transparent),
+          rgba(3, 7, 10, 0.36);
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        position: relative;
+      }
+      .action-row::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(90deg, var(--frame-a) 0 22px, transparent 22px) top left / 92px 1px no-repeat,
+          linear-gradient(270deg, var(--frame-b) 0 18px, transparent 18px) bottom right / 86px 1px no-repeat;
+        opacity: 0.56;
+      }
+      .action-row > * { position: relative; z-index: 1; }
+      .action-dot {
+        width: 11px;
+        height: 11px;
+        margin-top: 3px;
+        border: 1px solid var(--cyan);
+        transform: rotate(45deg);
+        box-shadow: 0 0 12px rgba(66, 232, 255, 0.18);
+      }
+      .action-row.no .action-dot { border-color: var(--red); box-shadow: 0 0 12px rgba(255, 90, 95, 0.18); }
+      .action-main b {
+        display: block;
+        color: var(--ink);
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .action-main span {
+        display: block;
+        margin-top: 2px;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+      .action-time {
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 9.5px;
+        white-space: nowrap;
+        text-transform: uppercase;
+      }
+
+      table { width: 100%; border-collapse: collapse; }
+      td { padding: 7px 6px; border-bottom: 1px solid var(--edge); vertical-align: top; font-family: var(--mono); font-size: 11px; }
+      td.stat { width: 16px; font-weight: 700; }
+      td .tool { color: var(--ink); }
+      td .scope { color: var(--faint); font-size: 10px; word-break: break-all; }
+      td .mode { color: var(--dim); text-transform: uppercase; letter-spacing: 1px; font-size: 9.5px; }
+      .yes { color: var(--mint); } .nope { color: var(--red); }
+
+      /* ---------- approvals ---------- */
+      #approvals { position: fixed; right: 380px; bottom: 104px; z-index: 20; display: flex; flex-direction: column; gap: 10px; }
+      .ask {
+        width: 316px; padding: 15px 16px; border-radius: 0;
+        background:
+          linear-gradient(135deg, rgba(255, 176, 0, 0.12), transparent 36%),
+          linear-gradient(180deg, #122027, #061015);
+        border: 1px solid rgba(255, 176, 0, 0.58);
+        clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 30px rgba(255, 176, 0, 0.12);
+        animation: alert 0.45s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+        position: relative; overflow: hidden;
+      }
+      .ask::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 176, 0, 0.04) 3px 4px);
+      }
+      .ask .hd {
+        font-size: 8.5px; letter-spacing: 3px; text-transform: uppercase; color: var(--amber);
+        display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
+      }
+      .ask .hd .blip { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); box-shadow: var(--glow); animation: blink 1s steps(2) infinite; }
+      .ask .t { font-size: 15px; color: var(--ink); margin-bottom: 5px; }
+      .ask .t code { font-family: var(--mono); color: var(--amber-soft); }
+      .ask .s { font-family: var(--mono); font-size: 11px; color: var(--dim); word-break: break-all; margin-bottom: 13px; }
+      .ask .row { display: flex; gap: 9px; }
+      .ask button {
+        flex: 1; border: 1px solid transparent; border-radius: 0; padding: 9px;
+        font-family: var(--disp); font-weight: 700; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; cursor: pointer;
+        clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+        transition: transform 0.1s, filter 0.2s;
+      }
+      .ask button:active { transform: translateY(1px); }
+      .ask .allow { background: var(--mint); color: #06210f; }
+      .ask .deny { background: none; color: var(--red); border-color: var(--red); }
+      .ask .deny:hover { background: rgba(255, 90, 60, 0.12); }
+
+      /* scrollbars */
+      ::-webkit-scrollbar { width: 9px; height: 9px; }
+      ::-webkit-scrollbar-track { background: var(--bg); }
+      ::-webkit-scrollbar-thumb { background: var(--edge-hot); border-radius: 0; border: 2px solid var(--bg); background-clip: padding-box; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--cyan); background-clip: padding-box; }
+
+      @keyframes drop { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+      @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+      @keyframes slidein { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+      @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes ping { from { transform: scale(1); opacity: 0.8; } to { transform: scale(2.6); opacity: 0; } }
+      @keyframes blink { 50% { opacity: 0.2; } }
+      @keyframes alert { from { opacity: 0; transform: translateX(24px) scale(0.96); } to { opacity: 1; transform: none; } }
+      @keyframes data-sweep {
+        from { transform: translateX(-42%) skewX(-8deg); }
+        to { transform: translateX(42%) skewX(-8deg); }
+      }
+      @keyframes panel-sweep {
+        0%, 48% { transform: translateX(-120%); opacity: 0; }
+        58% { opacity: 1; }
+        72%, 100% { transform: translateX(120%); opacity: 0; }
+      }
+      @keyframes text-phase {
+        0%, 100% { background-position: 0% 50%; filter: saturate(1); }
+        50% { background-position: 100% 50%; filter: saturate(1.4); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation: none !important; }
+      }
+      @media (max-width: 820px) {
+        main { grid-template-columns: 1fr; }
+        aside { display: none; }
+        #approvals { right: 16px; }
+      }
+      @media (max-width: 620px) {
+        header {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 10px 12px;
+          padding: 12px 14px;
+        }
+        .brand .mark { font-size: 18px; letter-spacing: 5px; }
+        .brand .sub { font-size: 8px; letter-spacing: 3px; }
+        .readouts {
+          grid-column: 1 / -1;
+          width: 100%;
+          margin-left: 0;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .readouts .gauge:last-child { grid-column: 1 / -1; }
+        .wake-control { min-width: 0; }
+        .model-select {
+          min-width: 0;
+          width: 100%;
+          max-width: 100%;
+        }
+        #log { padding: 22px 16px 16px; }
+        .msg, .msg.speech, .tool-card { max-width: 100%; width: auto; }
+        .composer { margin: 0 14px 14px; padding-left: 14px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grain"></div>
+    <header>
+      <span class="reticle" id="reticle"><b></b></span>
+      <div class="brand">
+        <span class="mark">JARVIS</span>
+        <span class="sub">on-device intelligence</span>
+      </div>
+      <div class="readouts">
+        <div class="gauge"><span class="lbl">Link</span><span class="val" id="link">standby</span></div>
+        <div class="gauge"><span class="lbl">Wake</span><span class="val wake-control"><button class="wake-button" id="wake-toggle" type="button">off</button><span class="wake-text" id="wake-status">idle</span></span></div>
+        <div class="gauge"><span class="lbl">Model</span><select class="model-select" id="mdl" aria-label="Model"><option>loading…</option></select></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="feed">
+        <div id="log"></div>
+        <form class="composer" id="composer">
+          <span class="caret">&#10095;</span>
+          <input id="input" placeholder="transmit to jarvis…" autocomplete="off" />
+          <button id="send" type="submit" aria-label="Send"><span aria-hidden="true">&#10148;</span></button>
+        </form>
+      </section>
+
+      <aside>
+        <div class="toggles">
+          <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Collapse sidebar" title="Collapse sidebar">&#10095;</button>
+          <button data-tab="actions" class="on">Actions</button>
+          <button data-tab="knowledge">Knowledge</button>
+          <button data-tab="session">Session</button>
+          <button data-tab="mcp">MCP</button>
+          <button data-tab="policy">Policy</button>
+          <button data-tab="audit">Audit</button>
+        </div>
+        <div id="actions" class="pane on"></div>
+        <div id="knowledge" class="pane"></div>
+        <div id="session" class="pane"></div>
+        <div id="mcp" class="pane"></div>
+        <div id="policy" class="pane"></div>
+        <div id="audit" class="pane"></div>
+      </aside>
+    </main>
+
+    <div id="approvals"></div>
+
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const log = $("#log");
+      const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+      const attr = (s) => esc(s).replace(/"/g, "&quot;");
+      const short = (m) => String(m).split("/").pop();
+      const toolRows = new Map();
+      let knownModels = [];
+      let modelsLoaded = false;
+      let wakeState = { enabled: false };
+      let feedHydrated = false;
+      let sidebarCollapsed = localStorage.getItem("jarvis.sidebarCollapsed") === "1";
+
+      const TOOL_LABELS = {
+        read_file: "Read file",
+        list_dir: "List directory",
+        run_shell: "Run shell",
+        battery: "Battery",
+        memory_topics: "Memory topics",
+        recall_memory: "Recall memory",
+        remember: "Remember",
+        screenshot: "Screenshot",
+        device_settings: "Device settings",
+        set_device_settings: "Set device settings",
+        speak: "Speech",
+        change_voice: "Voice settings",
+        listen: "Listen",
+        wake_loop: "Wake loop",
+        switch_model: "Switch model",
+        mcp_config: "MCP config",
+        session_status: "Session status",
+        session_scrollback: "Session transcript",
+        spawn_subagent: "Subagent",
+      };
+      const CAP_LABELS = {
+        "fs.read": ["Filesystem", "Read files and directories"],
+        "fs.edit": ["Filesystem editing", "Create or modify files"],
+        "sense.power": ["Battery", "Read power state"],
+        "sense.screen": ["Screen", "Capture screenshots"],
+        "sense.device_settings": ["Device settings", "Read brightness and volume"],
+        "sense.microphone": ["Microphone", "Record and transcribe short clips"],
+        "memory.read": ["Memory", "Read durable Jarvis notes"],
+        "memory.write": ["Remember", "Write durable Jarvis notes"],
+        "session.read": ["Transcript", "Read older Jarvis conversation history"],
+        "model.switch": ["Model", "Switch the active AI model"],
+        "mcp.configure": ["MCP setup", "Add, pause, or remove external MCP connections"],
+        "mcp.google_calendar": ["Google Calendar", "Use Calendar MCP tools"],
+        "mcp.gmail": ["Gmail", "Use Gmail MCP tools"],
+        "mcp.github": ["GitHub", "Use GitHub MCP tools"],
+        "agent.spawn": ["Subagents", "Delegate subtasks"],
+        "act.speech": ["Speech", "Speak aloud or change voice"],
+        "act.device_settings": ["Device controls", "Change brightness or volume"],
+        exec: ["Shell", "Run shell commands"],
+      };
+      const modeOptions = [
+        ["allow", "Allow"],
+        ["ask", "Ask"],
+        ["deny", "Block"],
+      ];
+
+      function labelTool(name) {
+        return TOOL_LABELS[name] || name.replace(/_/g, " ");
+      }
+      function labelCapability(cap) {
+        return CAP_LABELS[cap] || [cap.replace(/[._]/g, " "), cap];
+      }
+      function parseJSON(text) {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      }
+      function bytes(n) {
+        const v = Number(n || 0);
+        if (!v) return "";
+        return v > 1_000_000 ? `${(v / 1_000_000).toFixed(1)} MB` : `${Math.round(v / 1000)} KB`;
+      }
+
+      function bubble(role, text, options = {}) {
+        const el = document.createElement("div");
+        el.className = "msg " + role;
+        el.innerHTML = `<div class="who">${options.who || (role === "user" ? "you" : "jarvis &#9662;")}</div><div class="body"></div>`;
+        el.querySelector(".body").textContent = text;
+        if (options.attachments?.length) appendAttachments(el, options.attachments);
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+        return el;
+      }
+      function hydrateFeed(scrollback) {
+        if (feedHydrated || log.children.length || !scrollback?.length) return;
+        for (const m of scrollback) {
+          bubble(m.role === "user" ? "user" : "bot", m.text, {
+            who: m.role === "user" ? "you" : "jarvis &#9662;",
+          });
+        }
+        feedHydrated = true;
+      }
+      function trace(state, html) {
+        const el = document.createElement("div");
+        el.className = "trace " + (state || "");
+        el.innerHTML = `<span class="dot">&#9656;</span>` + html;
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+      }
+      function appendAttachments(el, attachments) {
+        const wrap = document.createElement("div");
+        wrap.className = "attachments";
+        for (const a of attachments) wrap.appendChild(renderAttachment(a));
+        el.appendChild(wrap);
+      }
+      function renderAttachment(a) {
+        const box = document.createElement("div");
+        box.className = "attachment";
+        const url = `/attachment?path=${encodeURIComponent(a.path)}`;
+        if (a.kind === "image") {
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = a.label || "Attachment";
+          box.appendChild(img);
+        } else if (a.kind === "audio") {
+          const audio = document.createElement("audio");
+          audio.controls = true;
+          audio.src = url;
+          box.appendChild(audio);
+        } else {
+          const link = document.createElement("a");
+          link.href = url;
+          link.textContent = a.label || a.path;
+          box.appendChild(link);
+        }
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = a.meta || a.path;
+        box.appendChild(meta);
+        return box;
+      }
+      function attachmentFromResult(tool, content) {
+        const data = parseJSON(content);
+        if (tool !== "screenshot" && tool !== "listen") return null;
+        if (!data?.path) return null;
+        const path = String(data.path);
+        const kind = path.endsWith(".png") ? "image" : path.endsWith(".m4a") ? "audio" : "file";
+        if (kind === "file") return null;
+        const dims = data.width && data.height ? `${data.width}x${data.height}` : "";
+        const size = data.bytes ? bytes(data.bytes) : "";
+        return {
+          kind,
+          path,
+          label: labelTool(tool),
+          meta: [labelTool(tool), dims, size, path].filter(Boolean).join(" · "),
+        };
+      }
+      function toolScope(ev) {
+        const input = ev.input || {};
+        if (ev.tool === "run_shell") return input.cmd || ev.scope || "";
+        if (ev.tool === "speak") return input.text || ev.scope || "";
+        if (ev.tool === "listen") return `${input.duration || 3}s recording`;
+        if (ev.tool === "recall_memory") return input.topic || input.query || "recent";
+        if (ev.tool === "remember") return input.topic || "general";
+        return ev.scope || "";
+      }
+      function resultSummary(tool, content, isError) {
+        if (!content) return "";
+        if (isError) return content.slice(0, 220);
+        const data = parseJSON(content);
+        if (!data) return "";
+        if (tool === "battery") return `${data.level ?? "?"}% · ${data.charging ? "charging" : "not charging"}`;
+        if (tool === "screenshot") return `${data.width}x${data.height} PNG`;
+        if (tool === "device_settings" || tool === "set_device_settings") {
+          return Object.entries(data).map(([k, v]) => `${k} ${v}`).join(" · ");
+        }
+        if (tool === "listen") return data.transcript ? data.transcript.slice(0, 120) : "audio recorded";
+        if (tool === "remember") return "saved";
+        if (tool === "recall_memory") return data.topic ? `loaded ${data.topic}` : "loaded";
+        if (tool === "memory_topics") return Array.isArray(data.topics) ? `${data.topics.length} topics` : "";
+        if (tool === "session_status") return "session state";
+        if (tool === "session_scrollback") return "transcript loaded";
+        return "";
+      }
+      function createToolRow(ev) {
+        const el = document.createElement("div");
+        el.className = "tool-card";
+        el.innerHTML =
+          `<div class="tool-head">` +
+          `<div class="tool-icon">&#8987;</div>` +
+          `<div class="tool-title"><b>${esc(labelTool(ev.tool))}</b><span>${esc(toolScope(ev))}</span></div>` +
+          `<div class="tool-states"><span class="pill on" data-pill="status">called</span></div>` +
+          `</div><div class="tool-result" hidden></div>`;
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+        toolRows.set(ev.id, { el, tool: ev.tool, input: ev.input });
+      }
+      function createSpeechRow(ev) {
+        const text = ev.input?.text || ev.scope || "";
+        const el = bubble("speech", text, { who: "jarvis will say &#9662;" });
+        toolRows.set(ev.id, { el, tool: ev.tool, input: ev.input, speech: true });
+      }
+      function updateToolPermission(ev) {
+        const row = toolRows.get(ev.id);
+        if (!row) return;
+        if (row.speech) {
+          if (!ev.allowed) {
+            row.el.classList.add("no");
+            row.el.querySelector(".who").innerHTML = "speech blocked &#9662;";
+          }
+          return;
+        }
+        const status = row.el.querySelector('[data-pill="status"]');
+        status.textContent = ev.allowed ? "authorized" : "blocked";
+        status.className = `pill ${ev.allowed ? "ok" : "no"}`;
+        row.el.classList.toggle("no", !ev.allowed);
+        if (!ev.allowed && ev.reason) {
+          const result = row.el.querySelector(".tool-result");
+          result.hidden = false;
+          result.textContent = ev.reason;
+        }
+      }
+      function updateToolResult(ev) {
+        const row = toolRows.get(ev.id);
+        if (!row) return;
+        if (row.speech) {
+          const data = parseJSON(ev.content || "");
+          row.el.classList.toggle("no", !!ev.isError);
+          row.el.querySelector(".who").innerHTML = ev.isError ? "speech failed &#9662;" : "jarvis spoke &#9662;";
+          if (data?.spoken) row.el.querySelector(".body").textContent = data.spoken;
+          return;
+        }
+        const status = row.el.querySelector('[data-pill="status"]');
+        status.textContent = ev.isError ? "fault" : "returned";
+        status.className = `pill ${ev.isError ? "no" : "ok"}`;
+        row.el.classList.toggle("ok", !ev.isError);
+        row.el.classList.toggle("no", !!ev.isError);
+        const summary = resultSummary(ev.tool, ev.content || "", ev.isError);
+        const result = row.el.querySelector(".tool-result");
+        if (summary) {
+          result.hidden = false;
+          result.textContent = summary;
+        }
+        const attachment = attachmentFromResult(ev.tool, ev.content || "");
+        if (attachment) appendAttachments(row.el, [attachment]);
+      }
+
+      // tabs
+      document.querySelectorAll(".toggles button").forEach((b) =>
+        b.addEventListener("click", () => {
+          if (!b.dataset.tab) return;
+          document.querySelectorAll(".toggles button").forEach((x) => x.classList.remove("on"));
+          document.querySelectorAll(".pane").forEach((x) => x.classList.remove("on"));
+          b.classList.add("on");
+          $("#" + b.dataset.tab).classList.add("on");
+        }),
+      );
+      function applySidebarState() {
+        document.querySelector("main").classList.toggle("sidebar-collapsed", sidebarCollapsed);
+        $("#sidebar-toggle").innerHTML = sidebarCollapsed ? "&#10094;" : "&#10095;";
+        $("#sidebar-toggle").setAttribute("aria-label", sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar");
+        $("#sidebar-toggle").title = sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar";
+      }
+      $("#sidebar-toggle").addEventListener("click", () => {
+        sidebarCollapsed = !sidebarCollapsed;
+        localStorage.setItem("jarvis.sidebarCollapsed", sidebarCollapsed ? "1" : "0");
+        applySidebarState();
+      });
+      applySidebarState();
+
+      async function refresh() {
+        const s = await fetch("/state").then((r) => r.json());
+        await ensureModels(s.models.base);
+        renderWake(s.wake || { enabled: false });
+
+        const k = s.knowledge;
+        const memory = s.memory || { topics: [] };
+        const session = s.session || { status: {}, scrollback: [] };
+        hydrateFeed(session.scrollback || []);
+        $("#knowledge").innerHTML =
+          `<h3>Root memory</h3>` +
+          (memory.root?.content
+            ? `<div class="turn assistant"><div class="meta">${esc(memory.root.path)}</div><div class="txt">${esc(memory.root.content)}</div></div>`
+            : `<div class="empty">— no root memory yet —</div>`) +
+          `<h3>Memory topics</h3>` +
+          (memory.topics?.length
+            ? memory.topics
+                .map((t) => `<div class="kv"><b>${esc(t.topic)}</b> · ${esc(t.bytes)} bytes · ${esc(new Date(t.updatedAt).toLocaleString())}</div>`)
+                .join("")
+            : `<div class="empty">— no markdown memory files —</div>`) +
+          `<h3>Durable state</h3>` +
+          (k.pinned.length
+            ? k.pinned.map((p) => `<div class="pin">${esc(p)}</div>`).join("")
+            : `<div class="empty">— nothing pinned —</div>`) +
+          `<h3>Rolling summary</h3>` +
+          (k.summary ? `<div class="kv">${esc(k.summary)}</div>` : `<div class="empty">— no compaction yet —</div>`) +
+          `<h3>Window</h3><div class="kv"><b>${k.messages}</b> messages held in context</div>`;
+
+        $("#session").innerHTML =
+          `<h3>Status</h3>` +
+          `<div class="kv"><b>${esc(session.status.liveMessages ?? 0)}</b> live messages · ` +
+          `<b>${esc(session.status.scrollbackMessages ?? 0)}</b> transcript messages · ` +
+          `<b>${esc(session.status.lastInputTokens ?? 0)}</b> last tokens</div>` +
+          `<div class="kv">compact at <b>${esc(session.status.compactAt ?? 0)}</b> · keep recent <b>${esc(session.status.keepRecent ?? 0)}</b> · summary <b>${esc(session.status.summaryChars ?? 0)}</b> chars</div>` +
+          `<h3>Full session</h3>` +
+          (session.scrollback?.length
+            ? session.scrollback
+                .map(
+                  (m) =>
+                    `<div class="turn ${esc(m.role)}">` +
+                    `<div class="meta">${esc(m.role)} · ${esc(new Date(m.ts).toLocaleString())}</div>` +
+                    `<div class="txt">${esc(m.text)}</div></div>`,
+                )
+                .join("")
+            : `<div class="empty">— no persisted transcript yet —</div>`);
+
+        renderPolicy(s.policy, s.tools);
+        renderActions(s);
+        renderMcp(s.mcp || { presets: [], connections: [], clientConfig: { mcpServers: {} } });
+
+        $("#audit").innerHTML =
+          `<h3>Tool ledger</h3><table>` +
+          (s.audit.length
+            ? s.audit
+                .map(
+                  (r) =>
+                    `<tr><td class="stat ${r.allowed ? "yes" : "nope"}">${r.allowed ? "&#10003;" : "&#10007;"}</td>` +
+                    `<td><span class="tool">${esc(labelTool(r.tool))}</span><br><span class="scope">${esc(r.scope || "")}</span></td>` +
+                    `<td class="mode">${esc(modeOptions.find(([value]) => value === r.mode)?.[1] || r.mode)}</td></tr>`,
+                )
+                .join("")
+            : `<tr><td class="empty">— no calls logged —</td></tr>`) +
+          `</table>`;
+      }
+
+      function actionTime(ts) {
+        const d = new Date(ts);
+        const age = Date.now() - d.getTime();
+        if (age < 60_000) return "now";
+        if (age < 3_600_000) return `${Math.floor(age / 60_000)}m`;
+        if (age < 86_400_000) return `${Math.floor(age / 3_600_000)}h`;
+        return d.toLocaleDateString();
+      }
+      function actionScope(scope) {
+        if (!scope) return "";
+        const text = String(scope);
+        return text.length > 110 ? text.slice(0, 107) + "..." : text;
+      }
+      function renderActions(state) {
+        const rows = (state.audit || []).slice(0, 40);
+        const wake = state.wake || {};
+        const wakeRow = wake.enabled || wake.lastTranscript || wake.lastError
+          ? `<div class="action-row ${wake.lastError ? "no" : ""}">` +
+            `<div class="action-dot"></div>` +
+            `<div class="action-main"><b>Wake listener</b><span>${esc(wake.lastError || wake.lastTranscript || `listening for "${wake.phrase || "hey jarvis"}"`)}</span></div>` +
+            `<div class="action-time">live</div></div>`
+          : "";
+        $("#actions").innerHTML =
+          `<h3>Activity feed</h3>` +
+          wakeRow +
+          (rows.length
+            ? rows
+                .map(
+                  (r) =>
+                    `<div class="action-row ${r.allowed ? "" : "no"}">` +
+                    `<div class="action-dot"></div>` +
+                    `<div class="action-main"><b>${esc(labelTool(r.tool))}</b><span>${esc(actionScope(r.scope || r.capabilities?.join(", ") || ""))}</span></div>` +
+                    `<div class="action-time">${esc(actionTime(r.ts))}</div></div>`,
+                )
+                .join("")
+            : `<div class="empty">— no actions logged yet —</div>`) +
+          `<h3>Autonomy</h3>` +
+          `<div class="kv"><b>Manual for now.</b> The feed is ready for scheduled check-ins; the scheduler should run through the same policy, approval, and audit path.</div>`;
+      }
+
+      function renderMcp(mcp) {
+        const presets = mcp.presets || [];
+        const connections = mcp.connections || [];
+        const byPreset = new Map(connections.map((connection) => [connection.presetId, connection]));
+        const cards = presets
+          .map((preset) => {
+            const connection = byPreset.get(preset.id);
+            const state = connection ? (connection.enabled ? "enabled" : "paused") : "not added";
+            const stateClass = connection ? (connection.enabled ? "" : "paused") : "empty";
+            const action = connection ? (connection.enabled ? "disable" : "enable") : "addPreset";
+            const actionLabel = connection ? (connection.enabled ? "Disable" : "Enable") : "Add preset";
+            return (
+              `<div class="mcp-card ${connection?.enabled === false ? "off" : ""}">` +
+              `<div class="mcp-top"><div class="mcp-title"><b>${esc(preset.name)}</b><span>${esc(preset.provider)} · ${esc(preset.description)}</span></div>` +
+              `<div class="mcp-state ${stateClass}">${esc(state)}</div></div>` +
+              `<div class="mcp-url">${esc(preset.transport.toUpperCase())} · ${esc(preset.url)} · ${esc(preset.auth)}</div>` +
+              `<div class="mcp-setup">${esc((preset.setup || []).join(" "))}</div>` +
+              `<div class="mcp-actions">` +
+              `<button class="${connection ? "" : "primary"}" data-mcp-action="${attr(action)}" data-preset-id="${attr(preset.id)}" data-connection-id="${attr(connection?.id || "")}">${esc(actionLabel)}</button>` +
+              (connection
+                ? `<button class="danger" data-mcp-action="remove" data-preset-id="${attr(preset.id)}" data-connection-id="${attr(connection.id)}">Remove</button>`
+                : "") +
+              `</div></div>`
+            );
+          })
+          .join("");
+        $("#mcp").innerHTML =
+          `<h3>Remote endpoints</h3>` +
+          (cards || `<div class="empty">— no presets available —</div>`) +
+          `<h3>Client config</h3>` +
+          `<div class="mcp-config">${esc(JSON.stringify(mcp.clientConfig || { mcpServers: {} }, null, 2))}</div>` +
+          `<h3>Secrets</h3>` +
+          `<div class="kv"><b>Not stored here.</b> OAuth tokens and bearer headers belong in the MCP client/session layer, not settings.json.</div>`;
+        $("#mcp")
+          .querySelectorAll("button[data-mcp-action]")
+          .forEach((button) =>
+            button.addEventListener("click", () =>
+              updateMcp(button.dataset.mcpAction, button.dataset.presetId, button.dataset.connectionId),
+            ),
+          );
+      }
+
+      async function updateMcp(action, presetId, connectionId) {
+        $("#mcp")
+          .querySelectorAll("button[data-mcp-action]")
+          .forEach((button) => (button.disabled = true));
+        const payload = { action, presetId, connectionId };
+        const res = await fetch("/mcp", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then((r) => r.json())
+          .catch(() => null);
+        if (res?.presets) renderMcp(res);
+        refresh();
+      }
+
+      async function ensureModels(selected) {
+        if (!modelsLoaded) {
+          const res = await fetch("/models").then((r) => r.json()).catch(() => ({ data: [] }));
+          knownModels = res.data || [];
+          modelsLoaded = true;
+        }
+        if (selected && !knownModels.some((m) => m.id === selected)) {
+          knownModels.unshift({ id: selected, name: short(selected), type: "language" });
+        }
+        $("#mdl").innerHTML = knownModels
+          .map((m) => `<option value="${attr(m.id)}" ${m.id === selected ? "selected" : ""}>${esc(short(m.id))}</option>`)
+          .join("");
+      }
+
+      function renderWake(state) {
+        wakeState = state || { enabled: false };
+        const button = $("#wake-toggle");
+        const status = $("#wake-status");
+        button.textContent = wakeState.enabled ? "on" : "off";
+        button.classList.toggle("on", !!wakeState.enabled);
+        const bits = [];
+        bits.push(wakeState.enabled ? `listening for "${wakeState.phrase || "hey jarvis"}"` : "idle");
+        if (wakeState.commands) bits.push(`${wakeState.commands} commands`);
+        if (wakeState.lastError) bits.push(`error: ${wakeState.lastError}`);
+        else if (wakeState.lastStatus) bits.push(wakeState.lastStatus);
+        else if (wakeState.lastTranscript) bits.push(wakeState.lastTranscript);
+        status.textContent = bits.join(" · ");
+        status.title = bits.join(" · ");
+      }
+
+      $("#wake-toggle").addEventListener("click", async () => {
+        const enabled = !wakeState.enabled;
+        $("#wake-toggle").disabled = true;
+        const res = await fetch("/wake", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled, phrase: wakeState.phrase || "hey jarvis" }),
+        }).then((r) => r.json()).catch(() => null);
+        if (res?.wake) renderWake(res.wake);
+        $("#wake-toggle").disabled = false;
+      });
+
+      $("#mdl").addEventListener("change", async () => {
+        const model = $("#mdl").value;
+        $("#mdl").disabled = true;
+        await fetch("/model", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model }),
+        });
+        $("#mdl").disabled = false;
+      });
+
+      function filesystemAccess(policy) {
+        if ((policy["fs.read"] || "ask") === "deny") return "disabled";
+        if ((policy["fs.edit"] || "deny") === "deny") return "read";
+        return "read-write";
+      }
+      function renderPolicy(policy, tools) {
+        const fsAccess = filesystemAccess(policy);
+        const rows = Object.entries(policy)
+          .filter(([cap]) => cap !== "fs.read" && cap !== "fs.edit")
+          .map(([cap, mode]) => {
+            const [title, sub] = labelCapability(cap);
+            return (
+              `<div class="policy-row" data-mode="${attr(mode)}">` +
+              `<div><div class="policy-title">${esc(title)}</div><div class="policy-sub">${esc(sub)}</div></div>` +
+              `<select data-cap="${attr(cap)}">` +
+              modeOptions.map(([value, label]) => `<option value="${value}" ${value === mode ? "selected" : ""}>${label}</option>`).join("") +
+              `</select></div>`
+            );
+          })
+          .join("");
+        $("#policy").innerHTML =
+          `<h3>Access</h3>` +
+          `<div class="policy-row" data-access="${attr(fsAccess)}">` +
+          `<div><div class="policy-title">Filesystem</div><div class="policy-sub">Disable, read only, or read with gated edits</div></div>` +
+          `<select id="fs-access">` +
+          `<option value="disabled" ${fsAccess === "disabled" ? "selected" : ""}>Disable</option>` +
+          `<option value="read" ${fsAccess === "read" ? "selected" : ""}>Read</option>` +
+          `<option value="read-write" ${fsAccess === "read-write" ? "selected" : ""}>Read &amp; Write</option>` +
+          `</select></div>` +
+          rows +
+          `<h3>Tools online</h3>` +
+          tools
+            .map((t) => {
+              const caps = t.capabilities.map((c) => labelCapability(c)[0]).join(", ");
+              return `<div class="kv"><b>${esc(labelTool(t.name))}</b> &middot; ${esc(caps)}</div>`;
+            })
+            .join("");
+        $("#fs-access").addEventListener("change", (e) => {
+          const access = e.target.value;
+          e.target.closest(".policy-row").dataset.access = access;
+          const updates =
+            access === "disabled"
+              ? [
+                  { capability: "fs.read", mode: "deny" },
+                  { capability: "fs.edit", mode: "deny" },
+                ]
+              : access === "read"
+                ? [
+                    { capability: "fs.read", mode: "allow" },
+                    { capability: "fs.edit", mode: "deny" },
+                  ]
+                : [
+                    { capability: "fs.read", mode: "allow" },
+                    { capability: "fs.edit", mode: "ask" },
+                  ];
+          fetch("/policy", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ updates }),
+          });
+        });
+        $("#policy")
+          .querySelectorAll("select[data-cap]")
+          .forEach((sel) =>
+            sel.addEventListener("change", () => {
+              sel.closest(".policy-row").dataset.mode = sel.value;
+              fetch("/policy", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ capability: sel.dataset.cap, mode: sel.value }),
+              });
+            }),
+          );
+      }
+
+      // chat
+      $("#composer").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const v = $("#input").value.trim();
+        if (!v) return;
+        $("#input").value = "";
+        $("#send").disabled = true;
+        const r = await fetch("/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ message: v }),
+        });
+        if (r.status === 409) {
+          trace("no", `<span class="k">busy</span> <span class="arg">— mid-transmission</span>`);
+          $("#send").disabled = false;
+        }
+      });
+
+      // approvals
+      function showApproval(a) {
+        const el = document.createElement("div");
+        el.className = "ask";
+        el.id = "ask-" + a.id;
+        el.innerHTML =
+          `<div class="hd"><span class="blip"></span>authorization required</div>` +
+          `<div class="t">Run <code>${esc(labelTool(a.tool))}</code>?</div>` +
+          `<div class="s">${esc(a.scope || "(no scope)")}</div>` +
+          `<div class="row"><button class="allow">Allow</button><button class="deny">Deny</button></div>`;
+        const decide = (allow) =>
+          fetch("/approve", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: a.id, allow }),
+          });
+        el.querySelector(".allow").onclick = () => decide(true);
+        el.querySelector(".deny").onclick = () => decide(false);
+        $("#approvals").appendChild(el);
+      }
+
+      // event stream
+      const es = new EventSource("/events");
+      const setLink = (live, txt) => {
+        $("#reticle").className = "reticle" + (live ? " live" : "");
+        $("#link").textContent = txt;
+        $("#link").style.color = live ? "var(--mint)" : "var(--dim)";
+      };
+      es.addEventListener("hello", () => setLink(true, "live"));
+      es.onerror = () => setLink(false, "reconnecting");
+      es.addEventListener("user", (e) => bubble("user", JSON.parse(e.data).text));
+      es.addEventListener("agent", (e) => {
+        const ev = JSON.parse(e.data);
+        if (ev.type === "turn") trace("", `<span class="k">turn ${ev.turn}</span> <span class="arg">${esc(short(ev.model))}</span>`);
+        else if (ev.type === "tool_use") ev.tool === "speak" ? createSpeechRow(ev) : createToolRow(ev);
+        else if (ev.type === "permission") updateToolPermission(ev);
+        else if (ev.type === "tool_result") updateToolResult(ev);
+        else if (ev.type === "compacting") trace("", `<span class="k">compacting</span> <span class="arg">${ev.messages} messages folded</span>`);
+        else if (ev.type === "text" && ev.text) bubble("bot", ev.text);
+        else if (ev.type === "done") { $("#send").disabled = false; refresh(); }
+      });
+      es.addEventListener("audit", refresh);
+      es.addEventListener("policy", refresh);
+      es.addEventListener("mcp", (e) => renderMcp(JSON.parse(e.data)));
+      es.addEventListener("model", (e) => ensureModels(JSON.parse(e.data).base));
+      es.addEventListener("wake", (e) => renderWake(JSON.parse(e.data)));
+      es.addEventListener("wake_transcript", (e) => trace("", `<span class="k">voice</span> <span class="arg">${esc(JSON.parse(e.data).transcript)}</span>`));
+      es.addEventListener("approval_request", (e) => showApproval(JSON.parse(e.data)));
+      es.addEventListener("approval_resolved", (e) => {
+        const el = $("#ask-" + JSON.parse(e.data).id);
+        if (el) el.remove();
+      });
+
+      refresh();
+    </script>
+  </body>
+</html>

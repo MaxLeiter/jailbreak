@@ -21,17 +21,40 @@
 #      boot; a missing typelib throws at JS module load and the shell never paints.
 #   3. The `angle` deb + gsettings-desktop-schemas installed; the Xios app (com.max.xios) present.
 set -u
-export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+  case "$SCRIPT_DIR/" in
+    /var/jb/*) XS_JB=/var/jb ;;
+    *)         XS_JB= ;;
+  esac
+fi
+XS_SUBPREFIX="${XS_SUBPREFIX:-/usr}"
+if [ -n "$XS_JB" ]; then
+  XS_TMP="${XS_TMP:-$XS_JB/tmp}"
+  XS_VAR="${XS_VAR:-$XS_JB/var}"
+else
+  XS_TMP="${XS_TMP:-${XIOS_RUNTIME_TMP:-/var/tmp}}"
+  XS_VAR="${XS_VAR:-${XIOS_RUNTIME_VAR:-/var}}"
+fi
+XS_PREFIX="${XS_PREFIX:-$XS_JB$XS_SUBPREFIX}"
+jb_path() {
+  case "$XS_JB" in
+    ""|/) printf '%s\n' "$1" ;;
+    *)    printf '%s\n' "$XS_JB$1" ;;
+  esac
+}
+
+export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:$PATH"
 # Match the PROVEN mutter smoke env exactly (run-mutter.sh): same runtime dir (so the rendezvous
 # lands where the Xios app + this script expect), same dyld path, same HOME for dconf/state.
-export XDG_RUNTIME_DIR=/var/jb/tmp
-export HOME=/var/jb/var/root
-TMP=/var/jb/tmp
-ANGLE=/var/jb/lib/angle
-PLUGINS=/var/jb/usr/lib/mutter-14/plugins
-LIBEXEC=/var/jb/usr/libexec
-SHELL_BIN=/var/jb/usr/bin/gnome-shell
-SHELL_LIB=/var/jb/usr/lib/gnome-shell
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+export HOME="${HOME:-$XS_VAR/root}"
+TMP="$XDG_RUNTIME_DIR"
+ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
+PLUGINS="${PLUGINS:-$XS_PREFIX/lib/mutter-14/plugins}"
+LIBEXEC="${LIBEXEC:-$XS_PREFIX/libexec}"
+SHELL_BIN="${SHELL_BIN:-$XS_PREFIX/bin/gnome-shell}"
+SHELL_LIB="${SHELL_LIB:-$XS_PREFIX/lib/gnome-shell}"
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 
 [ -x "$SHELL_BIN" ] || { echo "!! $SHELL_BIN missing — install the gnome-shell deb"; exit 1; }
@@ -42,7 +65,12 @@ WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 #         ad-hoc signature; re-sign with the union entitlement now. Idempotent.
 echo "==> re-sign gnome-shell with the iosc-gl GPU union entitlement"
 ENT=$TMP/iosc-gl-ent.xml
-cat > "$ENT" <<'PLIST'
+if [ -n "$XS_JB" ]; then
+  ENT_PATHS="<string>$XS_JB/</string><string>/tmp/</string><string>/var/</string><string>/private/var/</string>"
+else
+  ENT_PATHS="<string>/usr/</string><string>/tmp/</string><string>/var/</string><string>/private/var/</string>"
+fi
+cat > "$ENT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -65,7 +93,7 @@ cat > "$ENT" <<'PLIST'
         <string>IOSurfaceAcceleratorClient</string>
     </array>
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
-    <array><string>/var/jb/</string><string>/tmp/</string><string>/var/</string><string>/private/var/</string></array>
+    <array>$ENT_PATHS</array>
 </dict>
 </plist>
 PLIST
@@ -89,8 +117,8 @@ ln -sf libEGL.dylib    "$ANGLE/libEGL.so.1"    2>/dev/null; ln -sf libEGL.dylib 
 for f in "$PLUGINS"/*.dylib; do [ -e "$f" ] && ln -sf "$(basename "$f")" "${f%.dylib}.so" 2>/dev/null; done
 
 echo "==> ensure GSettings schemas compiled"
-[ -e /var/jb/usr/share/glib-2.0/schemas/gschemas.compiled ] || \
-  glib-compile-schemas /var/jb/usr/share/glib-2.0/schemas 2>/dev/null || true
+[ -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ] || \
+  glib-compile-schemas "$XS_PREFIX/share/glib-2.0/schemas" 2>/dev/null || true
 
 # --- (3) launch: ONE dbus-run-session holds the session bus; the freedesktop stubs claim their
 #         SYSTEM-bus names on it (DBUS_SYSTEM_BUS_ADDRESS=session), then gnome-shell --wayland
@@ -107,8 +135,8 @@ echo "==> start the session stubs + gnome-shell --wayland -> $TMP/gnome-shell.lo
 SETSID="$(command -v setsid || true)"
 if [ -z "$SETSID" ]; then
   SETSID="$TMP/xsetsid"
-  cat > "$SETSID" <<'PYEOF'
-#!/var/jb/usr/bin/python3
+  cat > "$SETSID" <<PYEOF
+#!$XS_PREFIX/bin/python3
 import os, sys
 try:
     os.setsid()
@@ -125,27 +153,30 @@ fi
 # zone at /var/db/timezone/localtime but doesn't expose a glib-readable /etc/localtime + zoneinfo
 # dir. Wire glib's zoneinfo dir to iOS's tz database and derive TZ from the device's own zone, so
 # the panel clock shows LOCAL time (this "unixy" wiring belongs in xios-fhs; done here meanwhile).
-[ -e /var/jb/usr/share/zoneinfo ] || ln -sf /var/db/timezone/zoneinfo /var/jb/usr/share/zoneinfo 2>/dev/null
+[ -e "$XS_PREFIX/share/zoneinfo" ] || ln -sf /var/db/timezone/zoneinfo "$XS_PREFIX/share/zoneinfo" 2>/dev/null
 XIOS_TZ="$(readlink /var/db/timezone/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
 [ -n "$XIOS_TZ" ] && echo "==> timezone: $XIOS_TZ"
 
 "$SETSID" env \
   ${XIOS_TZ:+TZ="$XIOS_TZ"} \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" HOME="$HOME" \
-  DYLD_LIBRARY_PATH="/var/jb/usr/lib:$SHELL_LIB:/var/jb/usr/lib/mutter-14:$ANGLE" \
-  XDG_DATA_DIRS=/var/jb/usr/share \
-  GSETTINGS_SCHEMA_DIR=/var/jb/usr/share/glib-2.0/schemas \
+  DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$SHELL_LIB:$XS_PREFIX/lib/mutter-14:$ANGLE" \
+  XDG_DATA_DIRS="$XS_PREFIX/share" \
+  GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
   XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_CLASS=user \
   GDK_BACKEND=wayland CLUTTER_BACKEND=wayland \
   G_MESSAGES_DEBUG=all \
   dbus-run-session -- sh -c '
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+    # Persist the (otherwise abstract) session bus address so out-of-session tools
+    # (headless screenshots via org.gnome.Shell.Screenshot, gsettings, gdbus) can reach it.
+    printf %s "$DBUS_SESSION_BUS_ADDRESS" > '"$TMP"'/gnome-session-bus
     [ -x '"$LIBEXEC"'/xios-login1-stub ]  && '"$LIBEXEC"'/xios-login1-stub &
     [ -x '"$LIBEXEC"'/xios-polkit-stub ]  && '"$LIBEXEC"'/xios-polkit-stub &
     [ -x '"$LIBEXEC"'/xios-accounts-stub ] && '"$LIBEXEC"'/xios-accounts-stub &
     [ -x '"$LIBEXEC"'/xios-hwbridged ]    && '"$LIBEXEC"'/xios-hwbridged &
     [ -x '"$LIBEXEC"'/xios-sensord ]      && '"$LIBEXEC"'/xios-sensord &
-    [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+    [ -r '"$(jb_path /etc/profile.d/xios-pulse.sh)"' ] && . '"$(jb_path /etc/profile.d/xios-pulse.sh)"' && xios_pulse_start
     [ -x '"$LIBEXEC"'/xios-sysintd ]      && '"$LIBEXEC"'/xios-sysintd &
     sleep 1
     exec gnome-shell --wayland

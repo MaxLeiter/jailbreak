@@ -26,3 +26,12 @@ MetaInputIOS *meta_input_ios_new (MetaBackend *backend,
 
 /* Stop pumping, drop the virtual devices, close the socket. */
 void meta_input_ios_free (MetaInputIOS *input);
+
+/* Outbound: broadcast on-screen-keyboard traits (from Wayland text-input-v3) to the
+ * Xios app over the SAME input socket, so it raises/lowers the iOS keyboard. `hint` and
+ * `purpose` are the raw zwp_text_input_v3 content-type values; `enabled` is the show
+ * flag. Mirrors iosc's input_clients_send_traits() (XIOS_IN_TRAITS). */
+void meta_input_ios_send_osk_traits (MetaInputIOS *input,
+                                     guint32       hint,
+                                     guint32       purpose,
+                                     gboolean      enabled);

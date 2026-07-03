@@ -80,7 +80,7 @@ find "$SRC" -maxdepth 2 -type f -name "*.deb" | while IFS= read -r deb; do
   [ -n "$pkg" ] || continue
   case "$pkg" in
     *-dev) continue ;;
-    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kactivitymanagerd|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1) ;;
+    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kactivitymanagerd|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma5support|plasma-pa|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1) ;;
     *) continue ;;
   esac
   old=$(find "$TMP" -maxdepth 1 -type f -name "${pkg}_*.deb" -print -quit)
@@ -126,6 +126,11 @@ overlay_out \
   plasma-desktop_*_iphoneos-arm64.deb \
   plasma-nano_*_iphoneos-arm64.deb \
   plasma-mobile_*_iphoneos-arm64.deb \
+  plasma5support_*_iphoneos-arm64.deb \
+  plasma-pa_*_iphoneos-arm64.deb \
+  kf6-bluezqt_*_iphoneos-arm64.deb \
+  kf6-pulseaudio-qt_*_iphoneos-arm64.deb \
+  libpulse0_*_iphoneos-arm64.deb \
   qcoro6_*_iphoneos-arm64.deb \
   kf6-attica_*_iphoneos-arm64.deb \
   kf6-declarative_*_iphoneos-arm64.deb \

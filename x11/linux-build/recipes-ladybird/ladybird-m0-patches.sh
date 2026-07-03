@@ -506,4 +506,306 @@ else
   say "TypefaceSkia CoreText: already patched"
 fi
 
+# ---------------------------------------------------------------------------------------------
+# 16) THE PAINT FIX. In this commit all rasterization (incl. screenshots) was moved into the
+#     separate Compositor process: WebContent only records a display list and ships it over IPC;
+#     LocalNavigable::render_screenshot forwards to compositor_context().request_screenshot(), which
+#     (with no Compositor process on iOS -> null CompositorConnection) immediately fires the callback
+#     with an EMPTY bitmap -> the fully-transparent M0 screenshots. The compositor host itself is
+#     created unconditionally (WebContentCompositorHost) and ~19 mostly-unguarded compositor_context()
+#     call sites during load mean we CANNOT simply drop the host. Fix (bounded, in-process, no GPU/
+#     ANGLE/5th-process): on iOS, record the display list locally and CPU-raster it straight into the
+#     target PaintingSurface via a backend-less (raster) DisplayListPlayerSkia -- exactly what the
+#     Compositor's ContextState::paint_screenshot does under --force-cpu-painting, but inside WebContent.
+#     WebContent never calls initialize_gpu_backend, so the_main_thread_context() is null -> CPU raster.
+# ---------------------------------------------------------------------------------------------
+f=Libraries/LibWeb/HTML/LocalNavigable.cpp
+if ! grep -q 'iOS M0: no Compositor process is launched' "$f"; then
+  python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+# a) include the raster player header (LocalNavigable.cpp already pulls Paintable/PaintableBox/
+#    ViewportPaintable + PaintingSurface; add the Skia display-list player).
+anchor='#include <LibWeb/Painting/ViewportPaintable.h>'
+assert anchor in s, "ViewportPaintable include anchor not found (upstream drift?)"
+s=s.replace(anchor, anchor+'\n#include <LibWeb/Painting/DisplayListPlayerSkia.h>',1)
+# b) replace the whole render_screenshot body with an iOS in-process CPU-raster path (non-iOS
+#    keeps the upstream compositor-forward path verbatim).
+old='''void LocalNavigable::render_screenshot(Gfx::PaintingSurface& painting_surface, PaintConfig paint_config, Function<void()>&& callback)
+{
+    if (!has_compositor_context()) {
+        callback();
+        return;
+    }
+
+    if (!record_display_list_and_scroll_state(paint_config)) {
+        callback();
+        return;
+    }
+    compositor_context().request_screenshot(painting_surface, move(callback));
+}'''
+assert old in s, "render_screenshot body not found (upstream drift?)"
+new='''void LocalNavigable::render_screenshot(Gfx::PaintingSurface& painting_surface, PaintConfig paint_config, Function<void()>&& callback)
+{
+#if defined(AK_OS_IOS)
+    // iOS M0: no Compositor process is launched (GPU/ANGLE deferred). Forwarding to a non-existent
+    // compositor yields a blank bitmap, so record the display list locally and CPU-raster it straight
+    // into the target surface with a backend-less (raster) Skia player -- the in-process equivalent of
+    // Compositor ContextState::paint_screenshot under --force-cpu-painting.
+    auto document = active_document();
+    if (!document) {
+        callback();
+        return;
+    }
+    document->update_paint_and_hit_testing_properties_if_needed();
+    auto display_list = document->record_display_list(paint_config, m_display_list_resource_storage);
+    if (!display_list) {
+        callback();
+        return;
+    }
+    auto document_paintable = document->paintable();
+    VERIFY(document_paintable);
+    document_paintable->refresh_scroll_state();
+    Painting::ScrollStateSnapshot scroll_state_snapshot { document_paintable->scroll_state_snapshot() };
+    Painting::DisplayListPlayerSkia player; // WebContent has no GPU backend -> CPU raster
+    player.execute(*display_list, document_paintable->visual_context_tree(),
+        m_display_list_resource_storage, scroll_state_snapshot,
+        painting_surface, nullptr, nullptr);
+    player.flush(painting_surface);
+    callback();
+    return;
+#else
+    if (!has_compositor_context()) {
+        callback();
+        return;
+    }
+
+    if (!record_display_list_and_scroll_state(paint_config)) {
+        callback();
+        return;
+    }
+    compositor_context().request_screenshot(painting_surface, move(callback));
+#endif
+}'''
+s=s.replace(old,new)
+open(p,"w").write(s)
+print("  [m0-patch] LocalNavigable.cpp: iOS render_screenshot CPU-rasters in-process (real pixels)")
+PY
+else
+  say "render_screenshot iOS CPU raster: already patched"
+fi
+
+# ---------------------------------------------------------------------------------------------
+# 17) Compositor-gate completion (companion to patch 13). create_web_content_client() calls
+#     connect_web_content_to_compositor(*client), which returns "Compositor process is not available"
+#     when no Compositor was launched -> the TRY() propagates and client creation fails (the observed
+#     "Compositor not available" SIGTRAP). Gate that one call off for iOS; patch 16 makes the compositor
+#     connection unnecessary for the headless screenshot path.
+# ---------------------------------------------------------------------------------------------
+f=Libraries/LibWebView/Application.cpp
+if grep -q 'TRY(Application::the().connect_web_content_to_compositor(\*client));' "$f" && ! grep -q 'iOS M0: no compositor process to connect' "$f"; then
+  python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old="    TRY(Application::the().connect_web_content_to_compositor(*client));"
+new="""#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to (patch 13/16)
+    TRY(Application::the().connect_web_content_to_compositor(*client));
+#endif"""
+assert old in s, "connect_web_content_to_compositor call not found (upstream drift?)"
+s=s.replace(old,new)
+open(p,"w").write(s)
+print("  [m0-patch] Application.cpp: connect_web_content_to_compositor gated off for iOS")
+PY
+else
+  say "connect_web_content_to_compositor gate: already patched"
+fi
+
+# =============================================================================================
+# 18) APP-BUILD MODE (LB_APP_BUILD=1 only). The interactive UIKit .app uses the NORMAL compositor
+#     paint cycle, NOT the headless render_screenshot path (patch 16). At 92b0257 the frontend's
+#     m_client_state.front_bitmap is filled ONLY by CompositorClient (IPC callbacks from a live
+#     Compositor process): WebContent records a display list -> Compositor CPU-rasters into a
+#     ShareableBitmap backing store -> ships it to the UI -> server_did_paint -> on_ready_to_paint.
+#     With no Compositor process the window is blank. So for the app we re-enable the Compositor as
+#     a 5th CPU helper (upstream-shaped; the iOS non-MACOS shared-image transport is ShareableBitmap/
+#     AnonymousBuffer over SCM_RIGHTS fds, already portable; NO IOSurface/GPU). This REVERSES the
+#     headless gates (patches 8/12/13/17) for iOS and forces CPU painting. Also wires UI/iOS in.
+#     Guarded by LB_APP_BUILD so the headless deb build (patches only 1-17) is unaffected.
+# =============================================================================================
+if [ "${LB_APP_BUILD:-0}" = "1" ]; then
+  say "APP-BUILD MODE: re-enabling CPU Compositor + wiring UI/iOS"
+
+  # a) Services/CMakeLists.txt: build Compositor on iOS (reverse patch 8). The headless patch
+  #    guarded BOTH Compositor + WebDriver under `if (NOT IOS)`; pull Compositor OUT of the guard
+  #    (WebDriver stays deferred).
+  f=Services/CMakeLists.txt
+  if ! grep -qE '^add_subdirectory\(Compositor\)' "$f"; then
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old="""if (NOT IOS)
+    add_subdirectory(Compositor)
+    add_subdirectory(WebDriver)
+endif()"""
+new="""add_subdirectory(Compositor)
+if (NOT IOS)
+    add_subdirectory(WebDriver)
+endif()"""
+if old in s:
+    s=s.replace(old,new)
+elif "add_subdirectory(Compositor)" in s:
+    # already partially edited form: just ensure Compositor is unguarded
+    s=s.replace("if (NOT IOS)\n    add_subdirectory(Compositor)","add_subdirectory(Compositor)\nif (NOT IOS)")
+open(p,"w").write(s)
+print("  [m0-patch] Services/CMakeLists.txt: Compositor unguarded on iOS (app mode)")
+PY
+  fi
+
+  # a2) Services/Compositor/CMakeLists.txt: the sandbox source is chosen `elseif (APPLE)`, which
+  #     picks SandboxMacOS.cpp on iOS too — but that file uses macOS-only Seatbelt symbols
+  #     (Sandbox::add_seatbelt_path_if_exists / Sandbox::SeatbeltPath) that don't exist here.
+  #     Mirror the WebContent helper: `elseif (APPLE AND NOT IOS)` so iOS falls to
+  #     SandboxUnimplemented.cpp (Seatbelt is unavailable for fakesigned apps anyway).
+  f=Services/Compositor/CMakeLists.txt
+  if grep -qE '^elseif \(APPLE\)$' "$f"; then
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+s=s.replace("elseif (APPLE)\n    target_sources(Compositor PRIVATE SandboxMacOS.cpp)",
+            "elseif (APPLE AND NOT IOS)\n    target_sources(Compositor PRIVATE SandboxMacOS.cpp)",1)
+open(p,"w").write(s)
+print("  [m0-patch] Services/Compositor: SandboxMacOS gated APPLE AND NOT IOS (app mode)")
+PY
+  fi
+
+  # b) ladybird_helper_processes.cmake: add Compositor back to the helper list.
+  f=Meta/CMake/ladybird_helper_processes.cmake
+  if ! grep -q '^    Compositor' "$f"; then
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+s=s.replace("set(ladybird_helper_processes\n","set(ladybird_helper_processes\n    Compositor\n")
+open(p,"w").write(s)
+print("  [m0-patch] ladybird_helper_processes.cmake: Compositor re-added (app mode)")
+PY
+  fi
+
+  # c) Application.cpp: reverse patch 13 (launch) + patch 17 (connect) iOS gates.
+  f=Libraries/LibWebView/Application.cpp
+  python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+changed=False
+# patch-13 form: gate wrapping launch_compositor_process()
+for g in [
+  ("#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper\n    TRY(launch_compositor_process());\n#endif",
+   "    TRY(launch_compositor_process());"),
+  ("#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to (patch 13/16)\n    TRY(Application::the().connect_web_content_to_compositor(*client));\n#endif",
+   "    TRY(Application::the().connect_web_content_to_compositor(*client));"),
+]:
+    if g[0] in s:
+        s=s.replace(g[0],g[1]); changed=True
+# d) force CPU painting on iOS (both WebContent + Compositor pick it up; Compositor arg appends
+#    --force-cpu-painting from web_content_options). Insert right after create_platform_options().
+anchor="create_platform_options(m_browser_options, m_request_server_options, m_web_content_options);"
+inject=anchor+"\n\n#if defined(AK_OS_IOS)\n    // iOS app: no GPU/ANGLE backend -> CPU (Skia) painting in WebContent AND the Compositor.\n    m_web_content_options.force_cpu_painting = ForceCPUPainting::Yes;\n#endif"
+if anchor in s and "iOS app: no GPU/ANGLE backend" not in s:
+    s=s.replace(anchor,inject,1); changed=True
+open(p,"w").write(s)
+print("  [m0-patch] Application.cpp: launch/connect ungated + CPU painting forced (app mode)" if changed
+      else "  [m0-patch] Application.cpp: app-mode gates already applied")
+PY
+
+  # e) top-level CMakeLists.txt: add the UIKit frontend subdir on iOS.
+  f=CMakeLists.txt
+  if ! grep -q 'add_subdirectory(UI/iOS)' "$f"; then
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+anchor="""    if (NOT IOS)  # iOS: skip UI (no AppKit/UIKit frontend at M0)
+        add_subdirectory(UI)
+    endif()"""
+repl="""    if (NOT IOS)  # iOS: skip AppKit/Qt UI
+        add_subdirectory(UI)
+    else()          # iOS app build: our UIKit frontend (m0-patch 18)
+        add_subdirectory(UI/iOS)
+    endif()"""
+assert anchor in s, "UI add_subdirectory guard not found (patch order?)"
+s=s.replace(anchor,repl)
+open(p,"w").write(s)
+print("  [m0-patch] CMakeLists.txt: add_subdirectory(UI/iOS) on iOS (app mode)")
+PY
+  fi
+
+  # f) Compositor egl/gl link stub: the Compositor executable references ANGLE EGL/GLES entry
+  #    points (OpenGLContext.cpp + WebGL replayer) that only run for WebGL/GPU present. Under
+  #    --force-cpu-painting they are never called, but must resolve at link. angle.pc has empty
+  #    Libs, so we add a self-contained stub TU (trap-if-called) to compositorservice on iOS.
+  f=Services/Compositor/CMakeLists.txt
+  if ! grep -q 'AngleStubIOS.cpp' "$f"; then
+    cat > Services/Compositor/AngleStubIOS.cpp <<'STUB'
+// iOS app build (m0-patch 18): trap-if-called stubs for the ANGLE EGL/GLES entry points the
+// Compositor references but never calls under --force-cpu-painting (WebGL/GPU present is off).
+// The concrete symbol list is generated by the build driver from the first link's undefined
+// symbols and appended below between the GEN markers. Keeping the mechanism in-tree keeps the
+// Compositor self-contained (no external ANGLE dylib in the closure).
+extern "C" {
+// __LB_ANGLE_STUBS_BEGIN__
+// __LB_ANGLE_STUBS_END__
+}
+STUB
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+s=s.replace("set(SOURCES\n","set(SOURCES\n    AngleStubIOS.cpp\n",1)
+open(p,"w").write(s)
+print("  [m0-patch] Services/Compositor: AngleStubIOS.cpp added (app mode; driver fills symbols)")
+PY
+  fi
+
+  # g) DEBUG: engine-side boot checkpoints in Application::initialize() so on-device bring-up can
+  #    see how far the (clean-exit, no-crash) launch gets past the frontend's boot: enter trace.
+  #    Writes to the same /var/jb/tmp/ladybird-boot.log. Temporary; remove once app is validated.
+  f=Libraries/LibWebView/Application.cpp
+  if ! grep -q 'LB_ENG_TRACE' "$f"; then
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+# NOTE: real newlines below (no \n escapes); the fprintf format keeps a literal backslash-n via r"..."
+helper = (
+    "\n#if defined(AK_OS_IOS)\n"
+    "#    include <cstdio>\n"
+    '#    define LB_ENG_TRACE(msg) do { FILE* _f = fopen("/var/jb/tmp/ladybird-boot.log", "a"); '
+    'if (_f) { fprintf(_f, ' + r'"[eng] %s\n"' + ', msg); fclose(_f); } } while (0)\n'
+    "#else\n"
+    "#    define LB_ENG_TRACE(msg) do {} while (0)\n"
+    "#endif\n"
+)
+anchor = "ErrorOr<void> Application::initialize(Main::Arguments const& arguments)\n{"
+assert anchor in s, "initialize() anchor not found"
+# Define the macro BEFORE the constructor (which is earlier in the file than initialize()).
+ctor_anchor = "Application::Application(Optional<ByteString> ladybird_binary_path)"
+assert ctor_anchor in s, "ctor anchor not found"
+s = s.replace(ctor_anchor, helper + "\n" + ctor_anchor, 1)
+# init-enter (first thing inside initialize) + constructor trace to bisect ctor vs initialize.
+s = s.replace(anchor, anchor + '\n    LB_ENG_TRACE("init-enter");', 1)
+s = s.replace("    platform_init(move(ladybird_binary_path));",
+              '    LB_ENG_TRACE("ctor: pre-platform_init");\n    platform_init(move(ladybird_binary_path));\n    LB_ENG_TRACE("ctor: post-platform_init");', 1)
+s = s.replace("    TRY(handle_attached_debugger());\n    m_arguments = arguments;",
+              '    LB_ENG_TRACE("init: pre-handle_attached_debugger");\n    TRY(handle_attached_debugger());\n    m_arguments = arguments;\n    LB_ENG_TRACE("init: post-debugger+args");', 1)
+
+def wrap(call, label):
+    global s
+    s = s.replace(call, 'LB_ENG_TRACE("pre-%s");\n    %s\n    LB_ENG_TRACE("post-%s");' % (label, call, label), 1)
+
+wrap("args_parser.parse(m_arguments);", "parse")
+wrap("create_platform_options(m_browser_options, m_request_server_options, m_web_content_options);", "create_platform_options")
+wrap("m_event_loop = &create_platform_event_loop();", "create_platform_event_loop")
+wrap("TRY(launch_services());", "launch_services")
+open(p, "w").write(s)
+print("  [m0-patch] Application.cpp: LB_ENG_TRACE boot checkpoints injected (app mode debug)")
+PY
+  fi
+fi
+
 echo "  [m0-patch] all M0 patches applied."

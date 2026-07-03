@@ -1,0 +1,10 @@
+Package: zlib-dev
+Version: @DEB_ZLIB_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://zlib.net/
+Depends: libz1
+Description: zlib compression library (Ladybird pin 1.3.1) - development
+ Headers, static library, unversioned symlink and pkg-config for zlib 1.3.1.

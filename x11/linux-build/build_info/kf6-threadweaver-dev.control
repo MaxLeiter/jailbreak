@@ -1,0 +1,11 @@
+Package: kf6-threadweaver-dev
+Version: @DEB_THREADWEAVER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://api.kde.org/frameworks/threadweaver/html/
+Depends: kf6-threadweaver (= @DEB_THREADWEAVER_V@), qt6-base-dev
+Description: KDE Frameworks 6 ThreadWeaver development files
+ Headers and CMake package files for building software against KF6
+ ThreadWeaver.

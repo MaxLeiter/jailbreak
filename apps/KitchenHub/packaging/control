@@ -1,0 +1,16 @@
+Package: com.max.kitchenhub
+Name: KitchenHub
+Version: @VERSION@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Apps
+Priority: optional
+Description: Tiling dashboard for a wall-mounted kitchen iPad
+ A full-screen, tiling dashboard app: a 12x8 grid where each panel (clock,
+ timer, and more) snaps to whole cells and can be moved or resized in edit
+ mode. The layout persists between launches. Built as the front-end of the
+ kitchen iPad project; pairs with the KioskMode tweak to lock the iPad to it.
+ .
+ Requires AppSync Unified (install it from the https://cydia.akemi.ai/ repo) to
+ run this unsigned app. Rootless (/var/jb) jailbreaks only, iPadOS 16+.

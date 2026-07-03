@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/com.max.kitchenhub.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**KitchenHub** is a full-screen, tiling dashboard for a wall-mounted kitchen iPad.\n\nThe screen is a 12x8 grid; each panel snaps to whole cells and can be moved or resized in edit mode, and the layout persists between launches.\n\n- Grid engine with move / resize / snap and JSON-persisted layout\n- Clock and Timer panels, with more on the way\n- Long-press-gated edit mode so cooking never rearranges the board\n- Designed to be locked on-screen with the Kiosk Mode tweak\n\nBuilt for iPadOS 16+, rootless (`/var/jb`). Requires **AppSync Unified** to run this unsigned app."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "0.3.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "1256.0 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "com.max.kitchenhub"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 0.3.0  \u00b7  2026-07-03\n- Grid engine (move/resize/snap, persistence)\n- Clock and Timer panels\n- Packaged for the repo"
+        }
+      ]
+    }
+  ]
+}

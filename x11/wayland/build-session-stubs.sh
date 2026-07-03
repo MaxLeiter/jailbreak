@@ -21,7 +21,26 @@ SRC=/work/wayland
 OUT=/out
 mkdir -p "$OUT"
 
-SYSROOT="$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb/usr"
+MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
+MEMO_CFVER="${XIOS_MEMO_CFVER:-${MEMO_CFVER:-1900}}"
+if [ "${XIOS_PREFIX+x}" = x ]; then
+  TARGET_PREFIX="$XIOS_PREFIX"
+elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
+  TARGET_PREFIX="/var/jb"
+else
+  TARGET_PREFIX=""
+fi
+TARGET_SUBPREFIX="${XIOS_SUBPREFIX:-/usr}"
+TARGET_MIN_IOS="${XIOS_DEFAULT_MIN_IOS:-16.0}"
+TARGET_RUNTIME_TMP="${XIOS_RUNTIME_TMP:-}"
+if [ -z "$TARGET_RUNTIME_TMP" ]; then
+  if [ -n "$TARGET_PREFIX" ]; then TARGET_RUNTIME_TMP="$TARGET_PREFIX/tmp"; else TARGET_RUNTIME_TMP="/var/tmp"; fi
+fi
+TARGET_INSTALL_PREFIX="$TARGET_PREFIX$TARGET_SUBPREFIX"
+[ -n "$TARGET_PREFIX" ] || TARGET_INSTALL_PREFIX="$TARGET_SUBPREFIX"
+
+SYSROOT_ROOT="$PROC/build_base/$MEMO_TARGET/$MEMO_CFVER"
+SYSROOT="$SYSROOT_ROOT$TARGET_INSTALL_PREFIX"
 [ -d "$SYSROOT/include/glib-2.0" ] || { echo "!! glib not in sysroot: $SYSROOT"; exit 1; }
 
 echo "==> locate cross clang + tools"
@@ -33,17 +52,26 @@ done
 SDK="$(dirname "$(command -v "$CC")")/../SDK/iPhoneOS.sdk"
 LDID="$(command -v ldid || true)"
 
-# Point plain pkg-config at the cross sysroot (the .pc files use prefix=/var/jb/usr, so the
-# sysroot root is the build_base tree and PKG_CONFIG_SYSROOT_DIR prepends it to -I/-L).
-SYSROOT_ROOT="$PROC/build_base/iphoneos-arm64-rootless/1900"
+# Point plain pkg-config at the cross sysroot. The sysroot root is the
+# build_base tree and PKG_CONFIG_SYSROOT_DIR prepends it to -I/-L.
 export PKG_CONFIG_LIBDIR="$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT_ROOT"
 
-CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
+CFLAGS=(
+  -arch arm64
+  -isysroot "$SDK"
+  -miphoneos-version-min="$TARGET_MIN_IOS"
+  -O2
+  -Wall
+  -Wextra
+  -Wno-unused-parameter
+  "-DXIOS_LOGIN1_RUNTIME_DIR=\"$TARGET_RUNTIME_TMP/xios-run\""
+)
 # -liosexec: the Procursus SDK redirects sandbox-sensitive libc calls (getpwuid -> ie_getpwuid)
 # into libiosexec, so anything using <pwd.h> must link it (the shared identity helper and the
 # accounts stub do).
-DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -liosexec -Wl,-rpath,/var/jb/usr/lib"
+DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -liosexec -Wl,-rpath,$TARGET_INSTALL_PREFIX/lib"
+echo "   target=$MEMO_TARGET/$MEMO_CFVER prefix=${TARGET_PREFIX:-/} runtime=$TARGET_RUNTIME_TMP"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
 
 # All three stubs share xios-stub-dbus.c (register-object + own-name main loop). The login1
@@ -86,7 +114,7 @@ for stub in login1 polkit accounts; do
     extra_ldflags="-framework CoreFoundation"
   fi
   # shellcheck disable=SC2086
-  $CC $CFLAGS "$s" $extra_src $DEPFLAGS $extra_ldflags -o "$o"
+  $CC "${CFLAGS[@]}" "$s" $extra_src $DEPFLAGS $extra_ldflags -o "$o"
   fix_libintl "$o"
   if [ -n "$LDID" ]; then
     "$LDID" -S "$o"           # ad-hoc: plain daemons, no special entitlements
@@ -127,7 +155,7 @@ EOF
   echo "==> build xios-bluez-stub (ObjC)"
   o="$OUT/xios-bluez-stub"
   # shellcheck disable=SC2086
-  $CC $CFLAGS -fobjc-arc "$BLUEZ_SRC" "$STUB_DBUS_SRC" $DEPFLAGS \
+  $CC "${CFLAGS[@]}" -fobjc-arc "$BLUEZ_SRC" "$STUB_DBUS_SRC" $DEPFLAGS \
       -framework Foundation -framework CoreFoundation -lobjc -o "$o"
   fix_libintl "$o"
   # Sign with the com.apple.bluetooth.system entitlement (verified on device: the minimal

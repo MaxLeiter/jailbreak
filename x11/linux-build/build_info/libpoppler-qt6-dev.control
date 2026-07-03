@@ -1,0 +1,11 @@
+Package: libpoppler-qt6-dev
+Version: @DEB_POPPLER_QT6_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://poppler.freedesktop.org/
+Depends: libpoppler-qt6-3 (= @DEB_POPPLER_QT6_V@), libpoppler-dev, qt6-base-dev
+Description: PDF rendering library - Qt6 development files
+ Headers and CMake/pkg-config metadata for building Qt6 software against
+ Poppler.

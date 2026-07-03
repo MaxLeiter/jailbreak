@@ -1,0 +1,3 @@
+# Several shipped stub binaries contain target-specific runtime paths.
+# Add rootful targets only after staging target-built stub binaries.
+rootless-1900

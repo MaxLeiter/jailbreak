@@ -26,10 +26,24 @@
 #include "iosc-iosurface-server-protocol.h"
 #include "backends/meta-backend-private.h"
 #include "clutter/clutter.h"
+#include "cogl/cogl.h"
 #include "cogl/cogl-egl.h"
 #include "meta/meta-multi-texture.h"
 #include "wayland/meta-wayland-buffer.h"
 #include "wayland/meta-wayland-private.h"
+
+/* ANGLE GLES core entrypoints. libmutter already links ANGLE's libGLESv2 (see
+ * `otool -L libmutter-14.0.dylib`) and already imports glBindTexture, so declare
+ * the two we need here rather than pulling <GLES2/gl2.h> into a cogl TU. The GL
+ * ABI types are plain ints, matching cogl's own `unsigned int` GL handles. */
+#ifndef GL_TEXTURE_2D
+#define GL_TEXTURE_2D          0x0DE1
+#endif
+#ifndef GL_TEXTURE_BINDING_2D
+#define GL_TEXTURE_BINDING_2D  0x8069
+#endif
+extern void glBindTexture (unsigned int target, unsigned int texture);
+extern void glGetIntegerv (unsigned int pname, int *params);
 
 struct _MetaWaylandIosurfaceBuffer
 {
@@ -40,6 +54,7 @@ struct _MetaWaylandIosurfaceBuffer
   int                    height;
 
   MetaMultiTexture      *texture;     /* cached import, reused across attach */
+  EGLSurface             pbuffer;     /* ANGLE IOSurface pbuffer aliased into `texture` */
 };
 
 G_DEFINE_TYPE (MetaWaylandIosurfaceBuffer, meta_wayland_iosurface_buffer, G_TYPE_OBJECT)
@@ -50,6 +65,16 @@ meta_wayland_iosurface_buffer_finalize (GObject *object)
   MetaWaylandIosurfaceBuffer *self = META_WAYLAND_IOSURFACE_BUFFER (object);
 
   g_clear_object (&self->texture);
+  if (self->pbuffer != EGL_NO_SURFACE)
+    {
+      EGLDisplay dpy = xios_egl_display ();
+      if (dpy != EGL_NO_DISPLAY)
+        {
+          eglReleaseTexImage (dpy, self->pbuffer, EGL_BACK_BUFFER);
+          eglDestroySurface (dpy, self->pbuffer);
+        }
+      self->pbuffer = EGL_NO_SURFACE;
+    }
   if (self->iosurface)
     {
       xios_release_client_iosurface (self->iosurface);
@@ -70,6 +95,7 @@ meta_wayland_iosurface_buffer_class_init (MetaWaylandIosurfaceBufferClass *klass
 static void
 meta_wayland_iosurface_buffer_init (MetaWaylandIosurfaceBuffer *self)
 {
+  self->pbuffer = EGL_NO_SURFACE;
 }
 
 /* ---- the wl_buffer wrapping the IOSurface ------------------------------------------- */
@@ -116,8 +142,12 @@ meta_wayland_iosurface_buffer_attach (MetaWaylandBuffer  *buffer,
   MetaBackend *backend;
   ClutterBackend *clutter_backend;
   CoglContext *cogl_context;
-  EGLImageKHR egl_image;
   CoglTexture *texture_2d;
+  EGLDisplay dpy;
+  EGLSurface pbuffer;
+  unsigned int gl_handle = 0;
+  unsigned int gl_target = 0;
+  int prev_tex = 0;
 
   self = meta_wayland_iosurface_buffer_from_buffer (buffer);
   if (!self)
@@ -142,30 +172,71 @@ meta_wayland_iosurface_buffer_attach (MetaWaylandBuffer  *buffer,
   clutter_backend = meta_backend_get_clutter_backend (backend);
   cogl_context = clutter_backend_get_cogl_context (clutter_backend);
 
-  egl_image = xios_egl_image_from_iosurface (self->iosurface,
-                                             self->width, self->height);
-  if (egl_image == EGL_NO_IMAGE_KHR)
+  /* ANGLE-Metal does NOT expose EGL_KHR_gl_texture_2D_image at runtime, so the
+   * eglCreateImage(GL_TEXTURE_2D) bridge fails (EGL_BAD_PARAMETER 0x300c) and there
+   * is no direct IOSurface->EGLImage. Instead alias the client IOSurface straight
+   * into a cogl-owned GL_TEXTURE_2D via an ANGLE IOSurface pbuffer + eglBindTexImage
+   * — the exact zero-copy primitive iosc uses (EGL_ANGLE_iosurface_client_buffer).
+   * ANGLE presents the BGRA IOSurface as a correctly-ordered RGBA-sampled texture,
+   * and, being shared memory, it keeps reflecting the latest client contents, so
+   * the cogl texture is created once and reused across commits (cache above). */
+  texture_2d = cogl_texture_2d_new_with_size (cogl_context,
+                                              self->width, self->height);
+  if (!texture_2d)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Failed to bridge IOSurface to an ANGLE EGLImage");
+                   "iosurface: cogl_texture_2d_new_with_size failed");
+      return FALSE;
+    }
+  cogl_texture_set_components (texture_2d, COGL_TEXTURE_COMPONENTS_RGBA);
+  cogl_texture_set_premultiplied (texture_2d, TRUE);
+
+  /* Force GL allocation (glTexImage2D storage) so the GL handle exists to bind onto. */
+  if (!cogl_texture_allocate (texture_2d, error))
+    {
+      g_object_unref (texture_2d);
+      return FALSE;
+    }
+  if (!cogl_texture_get_gl_texture (texture_2d, &gl_handle, &gl_target) ||
+      gl_target != GL_TEXTURE_2D)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "iosurface: cogl texture is not a GL_TEXTURE_2D (target 0x%x)",
+                   gl_target);
+      g_object_unref (texture_2d);
       return FALSE;
     }
 
-  /* BGRA8 premultiplied, matching the IOSurface Xios/ANGLE clients render into. */
-  texture_2d = cogl_egl_texture_2d_new_from_image (cogl_context,
-                                                   self->width, self->height,
-                                                   COGL_PIXEL_FORMAT_BGRA_8888_PRE,
-                                                   egl_image,
-                                                   COGL_EGL_IMAGE_FLAG_NONE,
-                                                   error);
-  /* cogl has bound the image into a GL texture; the EGLImage is no longer needed
-   * (mirrors egl_image_buffer_attach, which destroys it immediately after). */
-  xios_egl_destroy_image (egl_image);
+  dpy = xios_egl_display ();
+  pbuffer = xios_egl_create_iosurface_pbuffer (self->iosurface,
+                                               self->width, self->height);
+  if (dpy == EGL_NO_DISPLAY || pbuffer == EGL_NO_SURFACE)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "iosurface: could not wrap client IOSurface as an ANGLE pbuffer (0x%x)",
+                   eglGetError ());
+      g_object_unref (texture_2d);
+      return FALSE;
+    }
 
-  if (!texture_2d)
-    return FALSE;
+  /* Bind the pbuffer onto cogl's GL texture, restoring the previous GL_TEXTURE_2D
+   * binding so cogl's own texture-unit cache stays consistent. */
+  glGetIntegerv (GL_TEXTURE_BINDING_2D, &prev_tex);
+  glBindTexture (GL_TEXTURE_2D, gl_handle);
+  if (!eglBindTexImage (dpy, pbuffer, EGL_BACK_BUFFER))
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "iosurface: eglBindTexImage(client IOSurface) failed (0x%x)",
+                   eglGetError ());
+      glBindTexture (GL_TEXTURE_2D, (unsigned int) prev_tex);
+      eglDestroySurface (dpy, pbuffer);
+      g_object_unref (texture_2d);
+      return FALSE;
+    }
+  glBindTexture (GL_TEXTURE_2D, (unsigned int) prev_tex);
 
-  self->texture = meta_multi_texture_new_simple (texture_2d);
+  self->pbuffer = pbuffer;                              /* keep alive while sampled */
+  self->texture = meta_multi_texture_new_simple (texture_2d);  /* takes the ref */
   buffer->is_y_inverted = FALSE;
 
   g_clear_object (texture);

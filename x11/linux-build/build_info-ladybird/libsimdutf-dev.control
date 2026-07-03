@@ -1,0 +1,10 @@
+Package: libsimdutf-dev
+Version: @DEB_SIMDUTF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/simdutf/simdutf
+Depends: libsimdutf
+Description: Unicode validation and transcoding library - development
+ Headers, symlink, CMake config and pkg-config for simdutf 7.4.0.

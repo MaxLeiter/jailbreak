@@ -1,0 +1,10 @@
+#!/bin/sh
+# Ensure the writable dir where the X server's xkbcomp helper drops compiled
+# keymaps exists. The Xios binary has this path baked in for this target.
+set -e
+case "$1" in
+  configure|install|"")
+    mkdir -p @RUNTIME_VAR@/lib/xkb
+    ;;
+esac
+exit 0

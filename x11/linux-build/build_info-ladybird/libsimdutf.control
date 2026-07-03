@@ -1,0 +1,10 @@
+Package: libsimdutf
+Version: @DEB_SIMDUTF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/simdutf/simdutf
+Description: Unicode validation and transcoding library - runtime
+ SIMD-accelerated UTF-8/16/32 validation and transcoding. Ladybird pin 7.4.0.
+ This package contains the shared library.

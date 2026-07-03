@@ -19,3 +19,11 @@ G_DECLARE_FINAL_TYPE (MetaBackendIOS, meta_backend_ios, META, BACKEND_IOS, MetaB
 
 MetaBackend *meta_backend_ios_new (MetaContext  *context,
                                    GError      **error);
+
+/* Forward on-screen-keyboard traits from the Wayland text-input layer to the Xios app.
+ * A no-op unless the active backend is MetaBackendIOS. Called from
+ * meta-wayland-text-input.c (patched) so text-input enable/disable/focus drives the
+ * iOS keyboard. `hint`/`purpose` are raw zwp_text_input_v3 content-type values. */
+void meta_backend_ios_notify_osk_traits (guint32  hint,
+                                         guint32  purpose,
+                                         gboolean enabled);

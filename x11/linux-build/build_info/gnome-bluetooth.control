@@ -1,0 +1,16 @@
+Package: gnome-bluetooth
+Version: @DEB_GNOME-BLUETOOTH_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: System
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-bluetooth
+Depends: libgtk-4-1, libadwaita-1-0, libnotify4, libupower-glib3, xios-desktop-stublibs, libgtkintl
+Description: GNOME Bluetooth library for the Xios desktop
+ gnome-bluetooth 46 (libgnome-bluetooth-3.0 + libgnome-bluetooth-ui-3.0), the
+ backend of the GNOME Settings Bluetooth panel and the gnome-shell Bluetooth
+ quick toggle. Built for rootless iOS. It talks to org.bluez, which on iOS is
+ provided by the xios-bluez-stub daemon (in xios-session-stubs) bridging BlueZ's
+ D-Bus API to the private BluetoothManager framework. Introspection typelibs are
+ generated on-device after installation. libudev/gsound are satisfied by the iOS
+ stub libs. Built for iPadOS/iOS rootless (palera1n/Dopamine).

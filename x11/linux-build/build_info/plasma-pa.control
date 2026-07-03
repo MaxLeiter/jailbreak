@@ -1,0 +1,11 @@
+Package: plasma-pa
+Version: @DEB_PLASMAPA_V@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <max@maxleiter.com>
+Section: kde
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: qt6-base, qt6-declarative, kf6-config, kf6-coreaddons, kf6-dbusaddons, kf6-declarative, kf6-globalaccel, kf6-i18n, kf6-itemmodels, kf6-kcmutils, kf6-statusnotifieritem, kf6-svg, libplasma, kf6-pulseaudio-qt, libpulse0, libglib2.0-0
+Description: Plasma volume applet and QML plugin for Xios
+ First-light Plasma PA package carrying org.kde.plasma.private.volume and
+ the upstream volume applet data for Plasma Mobile.

@@ -1,0 +1,10 @@
+Package: libsimdjson
+Version: @DEB_SIMDJSON_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/simdjson/simdjson
+Description: Fast SIMD JSON parser - runtime
+ SIMD-accelerated JSON parsing library. Ladybird pin 4.2.4. This package
+ contains the shared library.

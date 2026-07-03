@@ -1,0 +1,57 @@
+#!/bin/sh
+# Create the standard Xios runtime dirs and refresh desktop caches if their
+# packages are installed. Every command is idempotent so upgrades are cheap.
+set -e
+case "$1" in
+  configure|install|"")
+    PATH=@PATH_DIRS@:$PATH
+    export PATH
+
+    mkdir -p \
+      @PREFIX@/etc/X11/Xresources \
+      @PREFIX@/etc/xdg/gtk-3.0 \
+      @PREFIX@/etc/xdg/gtk-4.0 \
+      @RUNTIME_VAR@/lib/dbus \
+      @RUNTIME_VAR@/lib/xkb \
+      @RUNTIME_VAR@/run/user \
+      @RUNTIME_TMP@/.X11-unix \
+      @RUNTIME_VAR@/tmp
+    chmod 1777 @RUNTIME_TMP@ @RUNTIME_TMP@/.X11-unix @RUNTIME_VAR@/tmp 2>/dev/null || true
+
+    if command -v dbus-uuidgen >/dev/null 2>&1; then
+      dbus-uuidgen --ensure=@RUNTIME_VAR@/lib/dbus/machine-id >/dev/null 2>&1 || true
+    fi
+    if command -v fc-cache >/dev/null 2>&1; then
+      fc-cache -f >/dev/null 2>&1 || true
+    fi
+    if command -v glib-compile-schemas >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/glib-2.0/schemas ]; then
+      glib-compile-schemas @INSTALL_PREFIX@/share/glib-2.0/schemas >/dev/null 2>&1 || true
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/icons/hicolor ]; then
+      gtk-update-icon-cache -q -f @INSTALL_PREFIX@/share/icons/hicolor >/dev/null 2>&1 || true
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/icons/Adwaita ]; then
+      gtk-update-icon-cache -q -f @INSTALL_PREFIX@/share/icons/Adwaita >/dev/null 2>&1 || true
+    fi
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/icons/hicolor ]; then
+      gtk4-update-icon-cache -q -f @INSTALL_PREFIX@/share/icons/hicolor >/dev/null 2>&1 || true
+    fi
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/icons/Adwaita ]; then
+      gtk4-update-icon-cache -q -f @INSTALL_PREFIX@/share/icons/Adwaita >/dev/null 2>&1 || true
+    fi
+    if command -v update-mime-database >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/mime ]; then
+      update-mime-database @INSTALL_PREFIX@/share/mime >/dev/null 2>&1 || true
+    fi
+    if command -v update-desktop-database >/dev/null 2>&1 \
+       && [ -d @INSTALL_PREFIX@/share/applications ]; then
+      update-desktop-database -q @INSTALL_PREFIX@/share/applications >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+exit 0

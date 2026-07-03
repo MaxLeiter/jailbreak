@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lightweight:
+    name: Lightweight checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guard local-only files
+        run: |
+          set -euo pipefail
+          bad="$(git ls-files | grep -E '(^|/)(device\.env|\.env($|\.)|node_modules/|\.DS_Store|\.vercel/|design/\.sf/|.*\.mobileprovision$|.*\.p12$)' || true)"
+          if [ -n "$bad" ]; then
+            echo "Local-only files are tracked:"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: Python syntax
+        run: |
+          git ls-files '*.py' -z | xargs -r -0 python -m py_compile
+
+      - name: Shell syntax
+        run: |
+          git ls-files '*.sh' -z | xargs -r -0 -n1 bash -n
+
+      - name: Package dependency metadata
+        run: |
+          python bin/lib/check-repo-solvable.py repo/Packages
+
+  site:
+    name: Xios site build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: x11/site
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: npm run build

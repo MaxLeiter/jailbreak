@@ -26,9 +26,16 @@ SUPPORT_RECIPE_TARGETS=(
   knotifyconfig
   kactivitymanagerd
   qqc2-desktop-style
+  bluezqt
+  plasma5support
+  pulseaudio-qt
+  plasma-pa
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
+  bluezqt-ios-fixes.sh
+  plasma5support-ios-fixes.sh
+  plasma-pa-ios-fixes.sh
 )
 COLLECT_DEBS=(
   libplasma
@@ -49,9 +56,39 @@ COLLECT_DEBS=(
   kf6-wallet
   kf6-notifyconfig
   kf6-qqc2-desktop-style
+  kf6-bluezqt
+  plasma5support
+  kf6-pulseaudio-qt
+  plasma-pa
 )
 
 cd /work/Procursus
+
+stage_latest_deb_from_out() {
+  local pkg="$1"
+  local best="" bestver="" deb ver
+  for deb in "/out/${pkg}_"*.deb; do
+    [ -f "$deb" ] || continue
+    ver="$(dpkg-deb -f "$deb" Version 2>/dev/null || true)"
+    [ -n "$ver" ] || continue
+    if [ -z "$best" ] || dpkg --compare-versions "$ver" gt "$bestver"; then
+      best="$deb"
+      bestver="$ver"
+    fi
+  done
+  [ -n "$best" ] || return 0
+  echo "==> staging $(basename "$best") into build_base"
+  dpkg-deb -x "$best" /work/Procursus/build_base/iphoneos-arm64-rootless/1900
+}
+
+# Plasma Mobile's volume applet needs PulseAudioQt, which in turn consumes the
+# PulseAudio client pc files from the local audio package wave. Keep this
+# self-contained so a fresh KF6 volume can build plasma-pa without a manual
+# build_base surgery step.
+stage_latest_deb_from_out libpulse0
+stage_latest_deb_from_out libpulse-dev
+stage_latest_deb_from_out libglib2.0-0
+stage_latest_deb_from_out libglib2.0-dev
 
 [ -x "${HOSTQT}/libexec/moc" ] || { echo "ERROR: host Qt missing (${HOSTQT}); run build-qt.sh first." >&2; exit 1; }
 [ -x "${HOSTQT}/libexec/qmlcachegen" ] || { echo "ERROR: host Qt lacks qmlcachegen; run build-qt-modules.sh first." >&2; exit 1; }

@@ -14,23 +14,33 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 OUT="$SRC/out"
 mkdir -p "$OUT"
 
-CFLAGS="-arch arm64 -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
+TARGET_MIN_IOS="${XIOS_DEFAULT_MIN_IOS:-16.0}"
+TARGET_RUNTIME_TMP="${XIOS_RUNTIME_TMP:-/var/jb/tmp}"
+CFLAGS=(
+  -arch arm64
+  -miphoneos-version-min="$TARGET_MIN_IOS"
+  -O2
+  -Wall
+  -Wextra
+  -Wno-unused-parameter
+  "-DXIOS_SYSINT_SOCK_DEFAULT=\"$TARGET_RUNTIME_TMP/xios-sysint.sock\""
+)
 
 if command -v xcrun >/dev/null 2>&1 && xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
   SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-  CC="xcrun --sdk iphoneos clang"
+  CC=(xcrun --sdk iphoneos clang)
 else
   # Procursus cross image (see build-session-stubs.sh for the toolchain layout).
-  CC=""
+  CC=()
   for cand in aarch64-apple-darwin-clang arm64-apple-darwin-clang aarch64-apple-darwin20-clang; do
-    command -v "$cand" >/dev/null 2>&1 && { CC="$cand"; break; }
+    command -v "$cand" >/dev/null 2>&1 && { CC=("$cand"); break; }
   done
-  [ -n "$CC" ] || { echo "!! no xcrun and no cross clang"; exit 1; }
-  SDK="$(dirname "$(command -v "$CC")")/../SDK/iPhoneOS.sdk"
+  [ "${#CC[@]}" -gt 0 ] || { echo "!! no xcrun and no cross clang"; exit 1; }
+  SDK="$(dirname "$(command -v "${CC[0]}")")/../SDK/iPhoneOS.sdk"
 fi
 
-echo "==> cc: $CC (SDK $SDK)"
-$CC $CFLAGS -isysroot "$SDK" -I"$SRC" \
+echo "==> cc: ${CC[*]} (SDK $SDK, runtime $TARGET_RUNTIME_TMP)"
+"${CC[@]}" "${CFLAGS[@]}" -isysroot "$SDK" -I"$SRC" \
     -o "$OUT/xios-sysintd" "$SRC/xios-sysintd.c" "$SRC/xios_input_socket.c"
 
 if command -v ldid >/dev/null 2>&1; then

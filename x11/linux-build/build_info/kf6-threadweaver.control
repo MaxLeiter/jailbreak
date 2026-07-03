@@ -1,0 +1,12 @@
+Package: kf6-threadweaver
+Version: @DEB_THREADWEAVER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://api.kde.org/frameworks/threadweaver/html/
+Depends: qt6-base
+Description: KDE Frameworks 6 ThreadWeaver runtime
+ ThreadWeaver is a helper library for scheduling jobs across worker threads.
+ This package contains the runtime library used by KDE applications such as
+ Okular.

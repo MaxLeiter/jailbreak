@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- The UI app (Ladybird). Signed with DER entitlements by the Mac ldid (xsign). -->
+
+    <!-- Load the fakesigned /var/jb engine + leaf dylibs (icu78, harfbuzz10, ...). -->
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+
+    <!-- posix_spawn the four helpers from the .app bundle. Child inherits the sandbox;
+         each child carries its own can-allow-non-platform (see ladybird-helper.entitlements). -->
+    <key>get-task-allow</key>
+    <true/>
+
+    <!-- Zero-copy present: CAMetalLayer + IOSurface-backed MTLTexture. Fakesigned apps
+         do not get GPU sandbox access by default, so grant the GPU/IOSurface user clients
+         explicitly (same set as Xios.app). If Metal is unavailable the CPU CGImage path is
+         used and these are inert. -->
+    <key>com.apple.security.iokit-user-client-class</key>
+    <array>
+        <string>AGXDeviceUserClient</string>
+        <string>IOGPUDeviceUserClient</string>
+        <string>IOSurfaceRootUserClient</string>
+        <string>IOSurfaceSendRight</string>
+        <string>IOSurfaceAcceleratorClient</string>
+    </array>
+
+    <!-- FS: config/cache/cookies under the app's own dirs + the engine tree under /var/jb. -->
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/</string>
+        <string>/private/var/jb/</string>
+        <string>/tmp/</string>
+        <string>/private/tmp/</string>
+    </array>
+</dict>
+</plist>

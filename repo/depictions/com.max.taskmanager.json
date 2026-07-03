@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/com.max.taskmanager.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**Task Manager** is a native, Activity-Monitor-style process monitor for your jailbroken iPhone or iPad.\n\nSee everything that's running with live memory and CPU usage, and quit or force-kill apps that are misbehaving \u2014 no root daemon required.\n\n- Live process list with per-row memory, CPU%, and a rolling memory sparkline\n- Device dashboard: a RAM usage ring and a per-core CPU meter with an overall-CPU trend\n- Tap any process for larger CPU and memory-over-time charts plus metadata (pid, uid, threads, uptime)\n- **Quit** (SIGTERM) or **Force Kill** (SIGKILL) app processes, behind a confirmation\n- Sort by CPU, memory, or name; segmented **Apps** vs **System** views\n- Reads process stats directly through libproc/sysctl \u2014 a foreground live monitor, not a background daemon\n\nUniversal (iPhone + iPad), dark-first design. Built for rootless (`/var/jb`) jailbreaks, iOS/iPadOS 16+. Requires **AppSync Unified** to run this unsigned app."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "0.1.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "844.2 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "com.max.taskmanager"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 0.1.0  \u00b7  2026-07-03\n- Initial release\n- Live per-process memory + CPU with sparklines\n- RAM ring + per-core CPU dashboard\n- Quit / Force Kill with confirmation\n- Universal iPhone + iPad"
+        }
+      ]
+    }
+  ]
+}

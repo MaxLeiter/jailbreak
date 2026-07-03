@@ -1,0 +1,72 @@
+#!/bin/sh
+# Lay down the synthetic target sysfs skeleton the Xios desktop reads, plus a
+# minimal os-release. xios-hwbridged recreates and refreshes these at runtime;
+# seeding them here means file-based tools see something sane before the
+# daemon's first tick, and the dirs exist with the right mode.
+set -e
+case "$1" in
+  configure|install|"")
+    SYS=@PREFIX@/sys
+    BL="$SYS/class/backlight/xios_backlight"
+    BAT="$SYS/class/power_supply/BAT0"
+    AC="$SYS/class/power_supply/AC0"
+
+    IIO="$SYS/bus/iio/devices/iio:device0"
+    TRIG="$SYS/bus/iio/devices/trigger0"
+
+    mkdir -p "$BL" "$BAT" "$AC" "$IIO" "$TRIG"
+
+    # The session (gsd-power, xios-hwbridged) writes these nodes with
+    # g_file_set_contents, which creates a temp file and renames. That needs
+    # write permission on the directories, not just the files.
+    chown -R 501:501 "$SYS" 2>/dev/null || true
+    chmod 0775 "$BL" "$BAT" "$AC" "$IIO" "$TRIG" 2>/dev/null || true
+
+    # Backlight node (Linux `backlight` class shape). brightness is world-writable so the
+    # unprivileged gsd-power backend and the shell slider can set it.
+    [ -e "$BL/max_brightness" ] || printf '1000\n' > "$BL/max_brightness"
+    [ -e "$BL/type" ]           || printf 'raw\n'   > "$BL/type"
+    [ -e "$BL/brightness" ]     || printf '500\n'   > "$BL/brightness"
+    [ -e "$BL/actual_brightness" ] || printf '500\n' > "$BL/actual_brightness"
+    chmod 0666 "$BL/brightness" 2>/dev/null || true
+
+    # Power-supply identity (values are refreshed by the daemon from IOKit).
+    printf 'Battery\n' > "$BAT/type"
+    printf 'Apple\n'   > "$BAT/manufacturer"
+    printf 'iPad\n'    > "$BAT/model_name"
+    printf 'System\n'  > "$BAT/scope"
+    printf 'Mains\n'   > "$AC/type"
+    [ -e "$BAT/capacity" ] || printf '100\n' > "$BAT/capacity"
+    [ -e "$BAT/status" ]   || printf 'Unknown\n' > "$BAT/status"
+    [ -e "$AC/online" ]    || printf '1\n' > "$AC/online"
+
+    # CoreMotion/IIO identity. xios-sensord refreshes the raw values at runtime.
+    printf 'xios-coremotion\n' > "$IIO/name"
+    printf '10\n'              > "$IIO/sampling_frequency"
+    printf '0.00980665\n'      > "$IIO/in_accel_scale"
+    printf '0.001\n'           > "$IIO/in_anglvel_scale"
+    printf '0.001\n'           > "$IIO/in_magn_scale"
+    for n in \
+      in_accel_x_raw in_accel_y_raw in_accel_z_raw \
+      in_anglvel_x_raw in_anglvel_y_raw in_anglvel_z_raw \
+      in_magn_x_raw in_magn_y_raw in_magn_z_raw; do
+      [ -e "$IIO/$n" ] || printf '0\n' > "$IIO/$n"
+    done
+    printf 'xios-coremotion-trigger\n' > "$TRIG/name"
+
+    # os-release: only patched readers resolve the target etc dir, but it is
+    # cheap and the About panels + assorted tools look for it. Do not clobber a
+    # hand-edited one.
+    if [ ! -e @PREFIX@/etc/os-release ]; then
+      mkdir -p @PREFIX@/etc
+      cat > @PREFIX@/etc/os-release <<'EOF'
+PRETTY_NAME="Xios (iOS desktop)"
+NAME="Xios"
+ID=xios
+ID_LIKE=debian
+HOME_URL="https://repo.maxleiter.com/"
+EOF
+    fi
+    ;;
+esac
+exit 0

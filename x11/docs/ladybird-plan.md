@@ -1,6 +1,34 @@
 # Ladybird on iOS — feasibility & phased build plan
 
-Status: **Phase 0 recon/design; wall #1 (toolchain) DE-RISKED 2026-07-02.** Companion to [`../SCOPE.md`](../SCOPE.md)
+Status: **★ M0 DONE 2026-07-03 — Ladybird RENDERS REAL WEB PAGES on the A10 iPad** (example.com + styled data: page, correct fonts/colors/layout; PNGs in `artifacts/device-runs/ladybird-m0-pixels/`; debs `ladybird-headless_0.1.1+ios1` + `libmimalloc_2.2.7+ios1`). Paint fix = in-process CPU raster of the screenshot display list (patches 16-17); Compositor is CPU-capable not GPU-required. Next = build the UIKit `.app` frontend (code-complete). Companion to [`../SCOPE.md`](../SCOPE.md)
+
+> **Update 2026-07-02/03 — M0 mostly BUILT.** Full leaf closure (Skia + ICU 78.3 + ~19 leaves,
+> Waves 1-3) built + staged on `procursus-vol-ladybird`. Ladybird itself then **configured 100%
+> clean with NO vcpkg** (all `find_package`/`pkg_check_modules` resolve against the staged
+> `/var/jb` closure) and **cross-compiled clean for arm64**: 28 Lagom libs + Skia + 336 TUs across
+> AK/LibCore/LibJS/LibGfx/LibMedia/LibIPC/LibCrypto/LibWasm/… — which **fully closes open-question
+> #1** (C++23 compiles clean vs the 16.5-SDK libc++ across the whole engine, no cross-headers).
+> **2 of 4 helper binaries linked** (`ImageDecoder`, `RequestServer`, arm64 NOUNDEFS). Integration
+> artifacts: `linux-build/recipes-ladybird/ios-toolchain.cmake` (system-name Darwin + `IOS=TRUE`,
+> clang-19, cctools ld64, `/var/jb` find-root, `-liosexec`, fake xcrun/sw_vers),
+> `ladybird-m0-patches.sh` (idempotent source patch series), `build-ladybird-wave4.sh`.
+> **Four corrections to this plan:**
+> 1. **Rust is a HARD build requirement** (not previously noted): 8 workspace crates
+>    (libjs/libweb/libgfx/libunicode/liburl/libregex/libtextcodec/libweb_content_blocker `_rust`)
+>    cross-compile to `aarch64-apple-ios` via rustup + cbindgen. Add rust to the toolchain image.
+> 2. **The feared host-tools cross-split mostly evaporated** — modern Ladybird codegen is all
+>    Python (runs cross). It reduces to exactly **two** LibJS-AsmInterpreter build-time tools
+>    (`gen_asm_offsets` C++/AK, `asmintgen` Rust) that need a native-then-cross host build — the
+>    one remaining wall (Wave 4b). Everything downstream is proven to compile.
+> 3. **`check_for_dependencies.cmake` REQUIRES SDL3, ANGLE, libjxl, libavif, libedit at configure**
+>    — the deps-plan's M2 deferral of jxl/avif is wrong *for configure*. Handled via stub/headers-
+>    only `.pc` + source gates for M0 (real codecs are still M2).
+> 4. **Two dep-recipe fixes:** libpng needs the **APNG patch** (`png_get_acTL`), libwebp needs
+>    **`-DWEBP_BUILD_LIBWEBPMUX=ON`** — both rebuilt (`recipes-ladybird/{libpng16,libwebp}.mk`).
+> Other build facts: `-DENABLE_CRANELIFT_JIT=OFF` (Wasm interpreter, `memfd_create` is Linux-only
+> and JIT is forbidden on iOS anyway); off-Mac CMake targets `CMAKE_SYSTEM_NAME=Darwin` + faked
+> `xcrun`/`sw_vers` + forced `IOS=TRUE` (house qtbase pattern); the compiler wrapper appends
+> `-Wno-error` after `"$@"` (clang-19 stricter than upstream).
 
 > **Update 2026-07-02 — wall #1 struck.** clang-19 (from apt.llvm.org, added as a cacheable
 > layer in `linux-build/Dockerfile`, committed) + the **stock iPhoneOS 16.5 SDK libc++**
@@ -16,6 +44,12 @@ Status: **Phase 0 recon/design; wall #1 (toolchain) DE-RISKED 2026-07-02.** Comp
 > first real M0 partial-build). Build-integration notes: AK needs `Debug.h`/`Backtrace.h`
 > configured from their `.in`, and each Lagom lib emits a generated `Export.h` — both are normal
 > CMake, just don't let the recipe fight them.
+>
+> **Update 2026-07-02 — ICU 78.3 built + Ladybird build volume created.** ICU 78.3 EXACT is done
+> (three `+ios1` debs in `out/`, `.pc` = 78.3, Unicode 17.0 — see HAVE/NEED table). The Ladybird
+> track has its own Procursus build volume **`procursus-vol-ladybird`** (cloned from
+> `procursus-vol-gtk`) so the live GNOME/EDS 74.2 stack in other volumes is never clobbered. ICU
+> recipe/control edits are staged uncommitted under `linux-build/`.
 and the desktop-apps track. Scope: can we cross-compile the Ladybird browser
 (`LadybirdBrowser/ladybird`) to native `iphoneos-arm64` and render a real web page on the
 jailbroken iPad (A10, iPadOS 17.6.1, palera1n rootless `/var/jb`), and what is the cheapest
@@ -39,10 +73,11 @@ which iOS does not set). Two more levers land in our favor:
 1. **LibJS is a bytecode interpreter — no JIT.** Ladybird removed its JS JIT. There is **no
    W^X / `MAP_JIT` / dynamic-codegen wall** (the thing that cost us weeks on bun/mozjs). This
    is the single biggest de-risker.
-2. **iOS forces fully static linking** (`if (ANDROID OR IOS) set(BUILD_SHARED_LIBS OFF)` in the
-   top `CMakeLists.txt`). The entire third-party closure links into a handful of binaries, so
-   we ship **one deb**, not twenty dependency debs, and version-mismatch hell against our
-   existing debs mostly evaporates (we let the build own its own deps).
+2. **`BUILD_SHARED_LIBS OFF` governs only Ladybird's own Lagom libs** (`if (ANDROID OR IOS)` in
+   the top `CMakeLists.txt`) — *corrected 2026-07-02*: the third-party leaf closure is NOT forced
+   static, so the leaves ship as **normal dylib debs** (like ICU), and "one deb" is a later
+   optimization, not an M0 constraint. We still let the build own matched-version deps to avoid
+   version-mismatch hell. See [`ladybird-deps-plan.md`](ladybird-deps-plan.md).
 
 The three real walls are all **build-time, not runtime**: (1) the toolchain — Ladybird needs
 **clang ≥ 19** (CI uses clang-21 / gcc-14) and C++23, while the Docker image's Debian-bookworm
@@ -123,12 +158,12 @@ matches.
 | libpsl 0.21.5 | **HAVE (exact)** | `libpsl5_0.21.5` — version matches the pin. |
 | angle | **HAVE (adapt)** | `angle` deb = google/angle GLES→Metal, `/var/jb/lib/angle`. Pin is `chromium_7258`; API close enough for a GPU path later. Raster M0 does not need it. |
 | libpulse 17.0 | **HAVE (runtime)** | audio.cmake routes iOS to the **PULSE** backend (not AudioUnit, which is `APPLE AND NOT IOS`). Our pulseaudio bridge already works. |
-| icu | **REBUILD** | HAVE 74.2; NEED **78.3 EXACT**. Reuse `recipes/icu4c.mk` native-then-cross, bump to 78.3. Not a reuse — a version bump. |
+| icu | **DONE (2026-07-02)** | Built 78.3 via bumped `recipes/icu4c.mk` native-then-cross. `libicu78_78.3+ios1`, `libicu-dev_78.3+ios1`, `icu-devtools_78.3+ios1` in `out/`; all component `.pc` read `78.3` (EXACT passes), arm64 Mach-O NOUNDEFS, Unicode 17.0. Deltas: dotted release tag/tarball naming (`icu4c-78.3-sources.tgz`), pkg rename `libicu74`→`libicu78`. Clone-hygiene wall: `build_base` is not version-guarded, so a stale 74.2 `libicudata` shadowed the 78.3 stub (`_icudt78_dat` undefined) until wiped — do this before any future ICU bump on a reused volume. |
 | harfbuzz | **REBUILD** | HAVE 2.8.1 (way too old); NEED 10.2.0. |
 | freetype/fontconfig/libpng/zlib/sqlite3/libxml2/libjpeg-turbo/libwebp | **REBUILD or vcpkg** | Procursus/our debs exist but versions lag the pins; static build wants the pinned source. |
 | curl + openssl + nghttp2/nghttp3 | **NEED** | http3 closure; our base curl lacks it. |
-| ffmpeg 7.1.1 | **NEED** | HAVE libav* 5.1.2 (ffmpeg 5); Ladybird uses the ffmpeg 7 API. Big jump. Video is not on the M0 path — build with a reduced codec set or defer. |
-| skia 144 | **NEED — BIG** | No prior art in our tree. GN + ninja cross to iOS. See below. |
+| ffmpeg 7.1.1 | **NEED — M0-CONFIGURE-REQUIRED** | *Corrected 2026-07-02*: NOT deferrable. `check_for_dependencies.cmake` does an unconditional `pkg_check_modules(AVCODEC/AVFORMAT/... REQUIRED)`, so Ladybird configure FAILS without an ffmpeg 7.1.x present, even though playback is M2. HAVE libav* 5.1.2 (ffmpeg 5 API) — no reuse. Build a **minimal ffmpeg 7.1.1** (reduced codec set) to satisfy configure. |
+| skia 144 | **DONE (2026-07-02)** | Built raster-only (m144, `skia_enable_ganesh=true` + all GPU backends off). `libskia.a` 12M arm64 + `libskcms.a` staged at `out/skia-ios-arm64/` (lib + 1718 headers + `skia.pc`), reproducible via `build-skia.sh`. **nm confirmed `SkSurfaces::RenderTarget`/`GrDirectContext` present+DEFINED — no Ladybird ifdef patch needed.** Framework closure (from undefined-symbol survey): CoreFoundation/CoreGraphics/CoreText/ImageIO/libobjc, no Metal. Built in derived image `procursus-xbuild:skia` (base+clang-19+nasm), source in volume `skia-ios-vol`. |
 | simdutf / simdjson / fmt / fast-float / libtommath / mimalloc / woff2 / wuffs / libtiff / libjxl(+highway) / libavif(+dav1d) | **NEED (small–med)** | Mostly clean CMake/meson cross builds; several are header-heavy and trivial. |
 | sdl3 | **NEED or STUB** | Only used by the Gamepad API. For M0, patch it out or ship a stub. |
 | libedit / cpptrace / libdwarf / libproxy | **NEED or SKIP** | REPL/backtrace/proxy niceties; all optional for a headless first light. |
@@ -159,6 +194,13 @@ Two facts make it tractable:
   guarded xcrun call in `gn/skia/BUILD.gn:24` is skipped. Archiver gotcha: iOS uses `libtool -static`
   (not `ar`), so PATH-shim cctools `aarch64-apple-darwin-libtool` as `libtool`. Bundle all deps
   (`skia_use_system_*=false`) to dissolve version skew.
+
+**BUILT + VERIFIED 2026-07-02** — see [`ladybird-skia-recipe.md`](ladybird-skia-recipe.md) and the
+HAVE/NEED row. gn gen clean, full build exit 0, `SkSurfaces::RenderTarget`/`GrDirectContext`
+present+defined (bet held, no source patch), framework closure = CF/CG/CoreText/ImageIO/libobjc
+(no Metal). Staged at `out/skia-ios-arm64/`. Operational deltas folded into `build-skia.sh`:
+`git-sync-deps` retry loop, arm64e-fat→arm64 thinning, public-header `#include "include/..."`
+rewrite on staging.
 
 Recommended Skia approach: a **standalone GN cross-build** to `ios/arm64`, raster-only, staged
 into the build prefix as a static lib + pkg-config `.pc` (Ladybird's `check_for_dependencies.cmake`
@@ -203,6 +245,16 @@ build-integration choice below.
 ---
 
 ## Build integration: vcpkg-in-container vs Procursus recipes
+
+> **DECIDED 2026-07-02 → Option B (full Procursus recipes, no vcpkg).** ICU 78.3 and Skia both
+> built cleanly against our cctools+clang-19 cross toolchain as recipes/drivers, proving the house
+> mechanism handles the hardest deps; vcpkg-on-iOS with a non-Apple Linux host toolchain is
+> unproven and would leave a foreign tree to hand-repackage. So the entire leaf closure is one
+> pipeline on `procursus-vol-ladybird`. Per-dep action list + M0 build order live in
+> [`ladybird-deps-plan.md`](ladybird-deps-plan.md): **19 M0 leaves = 11 bump, 8 new** (5 near-trivial
+> header-only), ICU done. Source-side M0 patches pinned there too: sandbox `elseif (APPLE AND NOT
+> IOS)` in `Services/WebContent/CMakeLists.txt`; SDL3/ffmpeg `find_package` gates in
+> `Meta/CMake/check_for_dependencies.cmake`.
 
 Two viable strategies; recommend **starting with a hybrid** and hardening toward recipes.
 

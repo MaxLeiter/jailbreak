@@ -13,8 +13,22 @@ umask 022
 PROC=/work/Procursus
 SRC=/work/gsound-stub
 OUT=/out
-SYSROOT_ROOT="$PROC/build_base/iphoneos-arm64-rootless/1900"
-SYSROOT="$SYSROOT_ROOT/var/jb/usr"
+MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
+MEMO_CFVER="${XIOS_MEMO_CFVER:-${MEMO_CFVER:-1900}}"
+if [ "${XIOS_PREFIX+x}" = x ]; then
+  TARGET_PREFIX="$XIOS_PREFIX"
+elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
+  TARGET_PREFIX="/var/jb"
+else
+  TARGET_PREFIX=""
+fi
+TARGET_SUBPREFIX="${XIOS_SUBPREFIX:-/usr}"
+TARGET_MIN_IOS="${XIOS_DEFAULT_MIN_IOS:-16.0}"
+TARGET_PACKAGE_PATH_PREFIX="${XIOS_PACKAGE_PATH_PREFIX:-$TARGET_PREFIX}"
+TARGET_INSTALL_PREFIX="$TARGET_PREFIX$TARGET_SUBPREFIX"
+[ -n "$TARGET_PREFIX" ] || TARGET_INSTALL_PREFIX="$TARGET_SUBPREFIX"
+SYSROOT_ROOT="$PROC/build_base/$MEMO_TARGET/$MEMO_CFVER"
+SYSROOT="$SYSROOT_ROOT$TARGET_INSTALL_PREFIX"
 
 CC=""
 for cand in aarch64-apple-darwin-clang arm64-apple-darwin-clang; do
@@ -26,7 +40,7 @@ LDID="$(command -v ldid || true)"
 
 export PKG_CONFIG_LIBDIR="$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT_ROOT"
-CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
+CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=$TARGET_MIN_IOS -O2 -Wall -Wextra -Wno-unused-parameter"
 GLIB_FLAGS="$(pkg-config --cflags --libs gio-2.0 gobject-2.0 glib-2.0)"
 
 DYLIB=libgsound.0.dylib
@@ -35,7 +49,7 @@ echo "==> compiling $DYLIB"
 $CC $CFLAGS -dynamiclib -fvisibility=default \
     -install_name @rpath/$DYLIB -compatibility_version 1.0.0 -current_version 1.0.3 \
     -I"$SRC" "$SRC/gsound-stub.c" $GLIB_FLAGS -L"$SYSROOT/lib" \
-    -Wl,-rpath,/var/jb/usr/lib -o "/tmp/$DYLIB"
+    -Wl,-rpath,"$TARGET_INSTALL_PREFIX/lib" -o "/tmp/$DYLIB"
 [ -n "$LDID" ] && "$LDID" -S "/tmp/$DYLIB"
 file "/tmp/$DYLIB" | sed 's/^/   /'
 
@@ -46,7 +60,7 @@ ln -sf "$DYLIB" "$SYSROOT/lib/libgsound.dylib"    # unversioned dev symlink for 
 # which #includes "gsound-context.h"/"gsound-attr.h" from the same dir.
 cp -v "$SRC/gsound.h" "$SRC/gsound-context.h" "$SRC/gsound-attr.h" "$SYSROOT/include/"
 cat > "$SYSROOT/lib/pkgconfig/gsound.pc" <<PC
-prefix=/var/jb/usr
+prefix=$TARGET_INSTALL_PREFIX
 libdir=\${prefix}/lib
 includedir=\${prefix}/include
 
@@ -60,7 +74,7 @@ PC
 echo "   installed gsound.pc + headers + $DYLIB (+ symlink)"
 
 echo "==> staging runtime tree -> $OUT/gsound-stub-tree"
-DEST="$OUT/gsound-stub-tree/var/jb/usr/lib"
+DEST="$OUT/gsound-stub-tree$TARGET_PACKAGE_PATH_PREFIX$TARGET_SUBPREFIX/lib"
 mkdir -p "$DEST"
 install -m 0755 "/tmp/$DYLIB" "$DEST/$DYLIB"
 ln -sf "$DYLIB" "$DEST/libgsound.dylib"

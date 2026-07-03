@@ -26,6 +26,10 @@
 #include <unistd.h>
 
 #include "xios-session-identity.h"
+
+#ifndef XIOS_LOGIN1_RUNTIME_DIR
+#define XIOS_LOGIN1_RUNTIME_DIR "/var/jb/tmp/xios-run"
+#endif
 #include "xios-stub-dbus.h"
 
 #define LOGIN1_NAME        "org.freedesktop.login1"
@@ -483,7 +487,7 @@ user_get_property (GDBusConnection *connection,
   if (g_str_equal (property_name, "RuntimePath"))
     {
       const char *rd = g_getenv ("XDG_RUNTIME_DIR");
-      return g_variant_new_string (rd && *rd ? rd : "/var/jb/tmp/xios-run");
+      return g_variant_new_string (rd && *rd ? rd : XIOS_LOGIN1_RUNTIME_DIR);
     }
   if (g_str_equal (property_name, "State"))
     return g_variant_new_string ("active");

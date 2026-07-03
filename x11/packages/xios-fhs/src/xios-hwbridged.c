@@ -44,7 +44,9 @@
 #define GSD_POWER_NAME    "org.gnome.SettingsDaemon.Power"
 #define GSD_POWER_PATH    "/org/gnome/SettingsDaemon/Power"
 
+#ifndef DEFAULT_SYS_ROOT
 #define DEFAULT_SYS_ROOT  "/var/jb/sys"
+#endif
 #define MAX_BRIGHTNESS    1000
 #define PERCENT_STEP      5
 

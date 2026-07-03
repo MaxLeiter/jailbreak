@@ -44,6 +44,7 @@ plasma-workspace-package: plasma-workspace-stage
 		mkdir -p $(BUILD_DIST)/plasma-workspace$(MEMO_PREFIX)/Applications; \
 		cp -a $(BUILD_STAGE)/plasma-workspace/Applications/. $(BUILD_DIST)/plasma-workspace$(MEMO_PREFIX)/Applications/; \
 	fi
+	bash /work/recipes/plasma-workspace-ios-qml-stubs.sh $(BUILD_DIST)/plasma-workspace
 	$(call KF6_COPY_DEV,plasma-workspace,plasma-workspace)
 	# plasmashell/plasmawindowed are real QtQuick/Wayland clients; keep them on
 	# the GPU/IOSurface entitlement set instead of Procursus general.xml.

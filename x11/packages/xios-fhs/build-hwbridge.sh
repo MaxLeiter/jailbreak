@@ -19,7 +19,27 @@ SRC=/work/xios-fhs
 OUT=/out
 mkdir -p "$OUT"
 
-SYSROOT="$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb/usr"
+MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
+MEMO_CFVER="${XIOS_MEMO_CFVER:-${MEMO_CFVER:-1900}}"
+if [ "${XIOS_PREFIX+x}" = x ]; then
+  TARGET_PREFIX="$XIOS_PREFIX"
+elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
+  TARGET_PREFIX="/var/jb"
+else
+  TARGET_PREFIX=""
+fi
+TARGET_SUBPREFIX="${XIOS_SUBPREFIX:-/usr}"
+TARGET_MIN_IOS="${XIOS_DEFAULT_MIN_IOS:-16.0}"
+TARGET_INSTALL_PREFIX="$TARGET_PREFIX$TARGET_SUBPREFIX"
+[ -n "$TARGET_PREFIX" ] || TARGET_INSTALL_PREFIX="$TARGET_SUBPREFIX"
+TARGET_SYS_ROOT="${XIOS_SYS_ROOT:-}"
+if [ -z "$TARGET_SYS_ROOT" ]; then
+  if [ -n "$TARGET_PREFIX" ]; then TARGET_SYS_ROOT="$TARGET_PREFIX/sys"; else TARGET_SYS_ROOT="/sys"; fi
+fi
+TARGET_PACKAGE_PATH_PREFIX="${XIOS_PACKAGE_PATH_PREFIX:-$TARGET_PREFIX}"
+
+SYSROOT_ROOT="$PROC/build_base/$MEMO_TARGET/$MEMO_CFVER"
+SYSROOT="$SYSROOT_ROOT$TARGET_INSTALL_PREFIX"
 [ -d "$SYSROOT/include/glib-2.0" ] || { echo "!! glib not in sysroot: $SYSROOT"; exit 1; }
 
 echo "==> locate cross clang + tools"
@@ -31,19 +51,28 @@ done
 SDK="$(dirname "$(command -v "$CC")")/../SDK/iPhoneOS.sdk"
 LDID="$(command -v ldid || true)"
 
-SYSROOT_ROOT="$PROC/build_base/iphoneos-arm64-rootless/1900"
 export PKG_CONFIG_LIBDIR="$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT_ROOT"
 
-CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
+CFLAGS=(
+  -arch arm64
+  -isysroot "$SDK"
+  -miphoneos-version-min="$TARGET_MIN_IOS"
+  -O2
+  -Wall
+  -Wextra
+  -Wno-unused-parameter
+  "-DDEFAULT_SYS_ROOT=\"$TARGET_SYS_ROOT\""
+)
 # glib/gio/gobject/libintl.8 are referenced as @rpath but the binaries carry no
 # LC_RPATH, so @rpath doesn't resolve on device without DYLD_LIBRARY_PATH. Bake an
-# LC_RPATH pointing at where those libs live on device (/var/jb/usr/lib). Set at link
+# LC_RPATH pointing at where those libs live on device. Set at link
 # time so it survives the later install_name_tool + ldid fixups.
-LDRPATH="-Wl,-rpath,/var/jb/usr/lib"
+LDRPATH="-Wl,-rpath,$TARGET_INSTALL_PREFIX/lib"
 # CoreFoundation for the IOPS dictionaries; IOKit/BackBoardServices come via dlopen.
 DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreFoundation $LDRPATH"
 SENSOR_DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreMotion -lobjc $LDRPATH"
+echo "   target=$MEMO_TARGET/$MEMO_CFVER prefix=${TARGET_PREFIX:-/} sys=$TARGET_SYS_ROOT"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
 
 INT=""
@@ -81,18 +110,18 @@ s="$SRC/src/xios-hwbridged.c"
 o="$OUT/xios-hwbridged"
 echo "==> build xios-hwbridged"
 # shellcheck disable=SC2086
-$CC $CFLAGS "$s" $DEPFLAGS -o "$o"
+$CC "${CFLAGS[@]}" "$s" $DEPFLAGS -o "$o"
 fixup_and_sign "$o" "$SRC/entitlements.plist"
 
 s="$SRC/src/xios-sensord.m"
 o2="$OUT/xios-sensord"
 echo "==> build xios-sensord"
 # shellcheck disable=SC2086
-$CC $CFLAGS "$s" $SENSOR_DEPFLAGS -o "$o2"
+$CC "${CFLAGS[@]}" "$s" $SENSOR_DEPFLAGS -o "$o2"
 fixup_and_sign "$o2" "$SRC/sensor-entitlements.plist"
 
 # Drop the binary into the package tree so package-hwbridge (or make-repo) can pack it.
-DEST="$SRC/var/jb/usr/libexec"
+DEST="$SRC$TARGET_PACKAGE_PATH_PREFIX$TARGET_SUBPREFIX/libexec"
 mkdir -p "$DEST"
 cp -a "$OUT/xios-hwbridged" "$DEST/xios-hwbridged"
 cp -a "$OUT/xios-sensord" "$DEST/xios-sensord"

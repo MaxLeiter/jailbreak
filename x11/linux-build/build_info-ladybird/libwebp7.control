@@ -1,0 +1,11 @@
+Package: libwebp7
+Version: @DEB_LIBWEBP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libsharpyuv0
+Section: Libraries
+Priority: optional
+Homepage: https://developers.google.com/speed/webp
+Description: Lossy/lossless compression of digital photographic images (Ladybird pin 1.6.0)
+ Image compression format based on the VP8/VP8L codecs. This package contains
+ the core shared library (libwebp.7.dylib).

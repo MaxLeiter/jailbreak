@@ -4,9 +4,10 @@ A full-screen, tiling **dashboard app** for the wall-mounted kitchen iPad. The
 screen is a 12×8 grid; each panel (clock, timer, …) snaps to whole cells and can
 be moved/resized in edit mode. Layout persists to `Documents/layout.json`.
 
-This is the *front-end* half of the kitchen project. The always-on / kiosk
-behaviour (auto-launch, no-sleep, dock detection) lives in a separate Theos tweak
-(`tweaks/KitchenKiosk`, later phase). See the repo root README for device details.
+This is the *front-end* half of the kitchen project. The kiosk behaviour
+(lock the iPad to one app, auto-relaunch) now lives in the generic **KioskMode**
+tweak + app (`tweaks/KioskMode`, `apps/KioskMode`), which can lock to KitchenHub
+or any other app. See the repo root README for device details.
 
 ## Status
 
@@ -14,9 +15,9 @@ behaviour (auto-launch, no-sleep, dock detection) lives in a separate Theos twea
 |---|---|---|
 | 1 | Project scaffold + unsigned install pipeline | ✅ |
 | 2 | Grid engine (move/resize/snap, persistence) + Clock + Timer panels | ✅ |
-| 3 | Weather + Recipe panels | placeholder |
-| 4 | Remotes (Sonos → LG webOS → Apple TV) | todo |
-| 5 | KitchenKiosk tweak | todo |
+| 3 | Weather + Recipe panels | in progress |
+| 4 | Remotes (Sonos → LG webOS → Apple TV) | planned |
+| 5 | KioskMode tweak + app (generic, lock to any app) | ✅ |
 
 ## Build & install
 

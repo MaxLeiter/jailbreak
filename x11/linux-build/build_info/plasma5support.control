@@ -1,0 +1,15 @@
+Package: plasma5support
+Version: @DEB_PLASMA5SUPPORT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: qt6-base, qt6-declarative, kf6-config, kf6-coreaddons, kf6-guiaddons, kf6-i18n, kf6-service, kf6-solid, kf6-notifications
+Description: Plasma 5 compatibility support for Xios
+ Plasma5Support provides the Plasma::Plasma5Support library and
+ org.kde.plasma.plasma5support QML import used by Plasma Mobile shell
+ components that have not fully moved to newer Plasma 6 APIs.
+ .
+ This iOS bring-up package intentionally skips legacy data engines that require
+ KSysGuard until the broader hardware/service package wave is ready.

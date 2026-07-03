@@ -1,0 +1,10 @@
+Package: plasma5support-dev
+Version: @DEB_PLASMA5SUPPORT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: plasma5support (= @DEB_PLASMA5SUPPORT_V@), qt6-base-dev, qt6-declarative-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-service-dev
+Description: Development files for Plasma5Support on Xios
+ Headers and CMake package files for the Plasma 5 compatibility support layer.

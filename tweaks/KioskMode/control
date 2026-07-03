@@ -1,0 +1,9 @@
+Package: com.max.kioskmode
+Name: KioskMode
+Version: 0.3.1
+Architecture: iphoneos-arm64
+Description: Lock the iPad to a single app. Pick the app and a volume-button escape gesture in the KioskMode app; the device still sleeps and auto-locks normally.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate

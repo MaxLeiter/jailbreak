@@ -1,13 +1,22 @@
-# Max's iOS Tweaks
+# Jailbreak Utilities and Xios
 
-Jailbreak tweak development workspace for **MaxsiPad**.
+Rootless iOS jailbreak projects: Theos tweaks, small companion apps, static APT
+repo tooling, and the Xios X11/Wayland-on-iOS desktop stack.
 
 > **Want to see more about the X11/Wayland work?** See **[`x11/`](x11/)** — a
 > native Linux desktop (a real X11 server, a GPU Wayland compositor, and
-> GNOME/KDE apps) running on this iPad. Full write-up at
+> GNOME/KDE apps) running on a jailbroken iPad. Full write-up at
 > **[xios.maxleiter.com](https://xios.maxleiter.com)**.
 
-## Device
+## Public development
+
+This repo is being prepared for public development. Read
+[`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR and
+[`docs/PUBLIC-READINESS.md`](docs/PUBLIC-READINESS.md) for the remaining launch
+checklist. Package publication, APT signing, Vercel deployment, and device
+verification remain maintainer-controlled.
+
+## Reference Device
 
 | Field | Value |
 |---|---|
@@ -18,26 +27,25 @@ Jailbreak tweak development workspace for **MaxsiPad**.
 | Layout | rootless → everything installs under **`/var/jb`** |
 | Substrate | ElleKit (provides `mobilesubstrate`) |
 | Package manager | Sileo |
-| SSH | OpenSSH on port 22, user `root`, reachable at `MaxsiPad.local` |
+| SSH | OpenSSH on port 22, user `root`; configure the host in `device.env` |
 
 Because this is a **rootless** jailbreak, every tweak builds with
 `THEOS_PACKAGE_SCHEME = rootless`, installs to `/var/jb`, and is packaged as
 `iphoneos-arm64`. (rootful builds install to `/` — not used here.)
 
-## Toolchain (already installed)
+## Toolchain
 
 - **Theos** at `~/theos` (`$THEOS`) — the tweak build system + Logos preprocessor
 - iOS SDK: `iPhoneOS16.5.sdk` in `$THEOS/sdks` (newer SDK, deployment target 15.0)
 - `ldid`, `xz` (via Homebrew) — signing + packaging
 - `libimobiledevice` (via Homebrew) — USB device tools (`idevicesyslog`, `ideviceinfo`)
-- `THEOS=$HOME/theos` is exported in `~/.zshenv` and fish config
+- `THEOS=$HOME/theos` exported in your shell
 
 ## Layout
 
 ```
 jailbreak/
-├── README.md
-├── device.env            # SSH connection info (gitignored)
+├── apps/                 # companion iOS apps
 ├── bin/
 │   ├── build.sh          # build a tweak's .deb
 │   ├── install.sh        # build + install to iPad over SSH, then respring
@@ -45,32 +53,34 @@ jailbreak/
 │   ├── logs.sh           # live device console over USB (idevicesyslog)
 │   ├── publish-repo.sh   # regenerate + deploy the APT repo (--staging for dev.repo)
 │   └── lib/              # repo-pipeline internals (make-repo, solvability check, audit)
-└── tweaks/
-    └── HelloWorld/       # first tweak — alert + log from SpringBoard
-        ├── Makefile
-        ├── control
-        ├── HelloWorld.plist   # filter: which process to inject into
-        └── Tweak.x            # Logos source
+├── docs/                 # public-readiness and process notes
+├── jarvis/               # on-device assistant prototype
+├── repo/                 # generated static APT repo site and metadata
+├── tweaks/               # Theos tweak projects
+└── x11/                  # Xios: X11/Wayland desktop stack for iOS
 ```
 
 ## Workflow
 
 ```bash
 # Build only (produces packages/*.deb)
-bin/build.sh tweaks/HelloWorld
+bin/build.sh tweaks/PullToRespring2
 
 # Build + install to the iPad + respring (needs SSH key set up, see below)
-bin/install.sh tweaks/HelloWorld
+bin/install.sh tweaks/PullToRespring2
+
+# Build + install a companion app
+bin/install-app.sh apps/TaskManager
 
 # Watch the device log live (works over USB, no SSH needed)
-bin/logs.sh HelloWorld
+bin/logs.sh PullToRespring2
 ```
 
 ## Sileo repo (hosted on Vercel)
 
 A static APT repo is published at **https://repo.maxleiter.com**. `repo/` holds
 the static site; `bin/lib/make-repo.py` generates the index (`Packages`,
-`Packages.gz`, `Release`, `index.html`, `CydiaIcon.png`) from the `.deb`s in
+`Packages.gz`, `Release`, `index.html`, `CydiaIcon.png`) from package payloads in
 `repo/debs/` — no extra deps. Use the staging publisher for low-cache iteration;
 production `.deb` filenames are immutable, so bump the package version/revision
 instead of replacing an already-published file.
@@ -98,7 +108,7 @@ Iterate logic here, then `bin/install.sh` to confirm on the iPad. The sim also
 runs whatever runtime you have (e.g. iOS 18.x), **not** the device's 17.6.1.
 
 ```bash
-bin/sim.sh tweaks/HelloWorld     # build for Simulator (arm64) + copy to /opt/simject + resim
+bin/sim.sh tweaks/PullToRespring2     # build for Simulator (arm64) + copy to /opt/simject + resim
 ```
 
 This Mac is Apple Silicon, so the Simulator is **arm64** — ignore older guides
@@ -173,13 +183,16 @@ make clean              # required when switching rootless <-> rootful
 
 ## One-time SSH key setup
 
-So `make install` doesn't prompt for a password every time, authorize your Mac's
-key on the iPad once:
+So install scripts do not prompt for a password every time, authorize your Mac's
+key on the iPad once. Set the host with `device.env` or `THEOS_DEVICE_IP`.
 
 ```bash
 [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
-ssh-copy-id -o StrictHostKeyChecking=accept-new root@MaxsiPad.local   # password: alpine
+ssh-copy-id -o StrictHostKeyChecking=accept-new root@<device-hostname>
 ```
+
+If the device still uses a default root password, change it before putting it on
+an untrusted network.
 
 ## Anatomy of a tweak
 

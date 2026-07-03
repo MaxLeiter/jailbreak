@@ -1,0 +1,27 @@
+Package: x11-xvfb
+Name: Xvfb (virtual framebuffer X server)
+Version: 1.20.11+rootless1
+Architecture: @DEB_ARCH@
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libxfont2, libpixman-1-0, libxau6, libxdmcp6, libiosexec1 (>= 1.3.1), libmd0, xkbcomp, xkeyboard-config, xauth
+Provides: xvfb
+Conflicts: xvfb
+Replaces: xvfb
+Section: X11
+Priority: optional
+Description: Virtual framebuffer X server for rootless jailbreaks
+ Xvfb is a headless X11 server that renders to an in-memory framebuffer instead
+ of real graphics hardware. This is the same Xvfb from xorg-server 1.20.11
+ (as bundled with TigerVNC), rebuilt from source for rootless @PREFIX@ and
+ ad-hoc signed.
+ .
+ Stock X servers crash on startup under rootless because XKB init spawns its
+ xkbcomp helper through /bin/sh, which does not exist on a rootless jailbreak
+ (the shell lives at @PREFIX@/bin/sh). This build fixes the spawn path so
+ keyboard init succeeds with no on-device hacks.
+ .
+ Use it for headless/debug X11 sessions or software-only bring-up. The public
+ Xios app display path uses the IOSurface Xios server instead. Pair with a window
+ manager (fluxbox), xterm, and the x11-fonts-sf package. Built for iPadOS/iOS
+ rootless (palera1n/Dopamine, @PREFIX@).

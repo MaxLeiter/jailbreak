@@ -1,0 +1,13 @@
+Package: libharfbuzz-icu0
+Version: @DEB_HARFBUZZ_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libharfbuzz0b (= @DEB_HARFBUZZ_V@), libfreetype6, libicu78
+Section: Libraries
+Priority: standard
+Multi-Arch: foreign
+Description: OpenType text shaping engine, ICU backend - Ladybird pin 10.2.0
+ HarfBuzz is an implementation of the OpenType Layout engine.
+ .
+ This package contains the ICU backend (libharfbuzz-icu.0.dylib), required by
+ Ladybird's -Dicu=enabled build.

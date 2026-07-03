@@ -1,0 +1,10 @@
+Package: libsimdjson-dev
+Version: @DEB_SIMDJSON_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/simdjson/simdjson
+Depends: libsimdjson
+Description: Fast SIMD JSON parser - development
+ Headers, symlink, CMake config and pkg-config for simdjson 4.2.4.

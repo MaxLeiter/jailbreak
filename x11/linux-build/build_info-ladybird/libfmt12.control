@@ -1,0 +1,11 @@
+Package: libfmt12
+Version: @DEB_LIBFMT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://fmt.dev/
+Description: fast type-safe C++ formatting library -- library
+ This library provides a fast, type-safe, small replacement of (s)printf and
+ related machinery. Ladybird pin 12.1.0. This package contains the shared
+ library.

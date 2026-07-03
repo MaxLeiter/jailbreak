@@ -1,0 +1,13 @@
+Package: okular
+Version: @DEB_OKULAR_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://okular.kde.org/
+Depends: qt6-base, qt6-svg, kf6-archive, kf6-bookmarks, kf6-completion, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-i18n, kf6-kio, kf6-parts, kf6-colorscheme, kf6-crash, kf6-iconthemes, kf6-itemviews, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, kf6-threadweaver, libpoppler140, libpoppler-qt6-3, libfreetype6
+Description: Okular document viewer (Qt6/KF6)
+ Okular is KDE's document viewer. This iOS build is a first-pass desktop
+ package focused on PDF support through Poppler Qt6, with optional backends
+ such as EPUB, DjVu, TIFF, markdown, speech, and media disabled for a smaller
+ and more portable package.

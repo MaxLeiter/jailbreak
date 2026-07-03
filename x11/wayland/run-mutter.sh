@@ -17,12 +17,35 @@
 # already ldid-signed with the iosc-gl union entitlement: task_for_pid + system-task-ports for the
 # Xios mach handshake + AGX/IOGPU/IOSurface user clients for ANGLE-Metal, no-container OFF).
 set -u
-export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-export XDG_RUNTIME_DIR=/var/jb/tmp
-TMP=/var/jb/tmp
-MUTTER="${MUTTER:-/var/jb/usr/bin/mutter}"
-ANGLE=/var/jb/lib/angle
-PLUGINS=/var/jb/usr/lib/mutter-14/plugins
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+  case "$SCRIPT_DIR/" in
+    /var/jb/*) XS_JB=/var/jb ;;
+    *)         XS_JB= ;;
+  esac
+fi
+XS_SUBPREFIX="${XS_SUBPREFIX:-/usr}"
+if [ -n "$XS_JB" ]; then
+  XS_TMP="${XS_TMP:-$XS_JB/tmp}"
+  XS_VAR="${XS_VAR:-$XS_JB/var}"
+else
+  XS_TMP="${XS_TMP:-${XIOS_RUNTIME_TMP:-/var/tmp}}"
+  XS_VAR="${XS_VAR:-${XIOS_RUNTIME_VAR:-/var}}"
+fi
+XS_PREFIX="${XS_PREFIX:-$XS_JB$XS_SUBPREFIX}"
+jb_path() {
+  case "$XS_JB" in
+    ""|/) printf '%s\n' "$1" ;;
+    *)    printf '%s\n' "$XS_JB$1" ;;
+  esac
+}
+
+export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:$PATH"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+TMP="$XDG_RUNTIME_DIR"
+MUTTER="${MUTTER:-$XS_PREFIX/bin/mutter}"
+ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
+PLUGINS="${PLUGINS:-$XS_PREFIX/lib/mutter-14/plugins}"
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 
 [ -x "$MUTTER" ] || { echo "!! $MUTTER missing/not executable — scp out/mutter there first"; exit 1; }
@@ -46,14 +69,15 @@ echo "==> mutter plugin so-name symlink (the loader appends .so to the plugin na
 for f in "$PLUGINS"/*.dylib; do [ -e "$f" ] && ln -sf "$(basename "$f")" "${f%.dylib}.so" 2>/dev/null; done
 
 echo "==> ensure the GSettings schemas are compiled (postinst normally does this)"
-if [ ! -e /var/jb/usr/share/glib-2.0/schemas/gschemas.compiled ]; then
-  glib-compile-schemas /var/jb/usr/share/glib-2.0/schemas 2>/dev/null || true
+if [ ! -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
+  glib-compile-schemas "$XS_PREFIX/share/glib-2.0/schemas" 2>/dev/null || true
 fi
 
 # Desktop audio (xios-audiod + PulseAudio, PULSE_SERVER export) before the
 # compositor so clients launched under mutter find a live PA socket; the export
 # is inherited by the dbus-run-session child below. Idempotent.
-[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+PULSE_PROFILE="$(jb_path /etc/profile.d/xios-pulse.sh)"
+[ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start
 
 echo "==> start mutter --wayland (MetaBackendIOS) -> $TMP/mutter.log"
 # DYLD_LIBRARY_PATH resolves @rpath leaf names: libmutter-14.dylib (usr/lib), the cogl/clutter/mtk
@@ -61,10 +85,10 @@ echo "==> start mutter --wayland (MetaBackendIOS) -> $TMP/mutter.log"
 # names -> needs a session bus (dbus-run-session). No DISPLAY/WAYLAND_DISPLAY (it CREATES wayland-0).
 nohup env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-  DYLD_LIBRARY_PATH="/var/jb/usr/lib:/var/jb/usr/lib/mutter-14:$ANGLE" \
-  XDG_DATA_DIRS=/var/jb/usr/share \
-  GSETTINGS_SCHEMA_DIR=/var/jb/usr/share/glib-2.0/schemas \
-  HOME=/var/jb/var/root \
+  DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$XS_PREFIX/lib/mutter-14:$ANGLE" \
+  XDG_DATA_DIRS="$XS_PREFIX/share" \
+  GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
+  HOME="$XS_VAR/root" \
   dbus-run-session -- "$MUTTER" --wayland >"$TMP/mutter.log" 2>&1 </dev/null &
 MPID=$!
 

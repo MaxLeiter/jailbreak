@@ -79,9 +79,14 @@ fi
 cp -v /work/recipes/build_info/linux-input-event-codes.h "${BB}/usr/include/linux/input-event-codes.h"
 cp -v /work/recipes/build_info/linux-input.h "${BB}/usr/include/linux/input.h"
 
-# libdrm was built earlier for Mutter/Xwayland. KWin needs a few newer syncobj/auth
-# symbols, so force this cheap links-only shim to rebuild from the updated recipe.
-rm -rf build_work/*/*/libdrm build_stage/libdrm build_dist/libdrm2 build_dist/libdrm-dev 2>/dev/null || true
+# The KWin shims are cheap and their recipes carry iOS version markers. Force
+# them through the current recipes so stale unmarked package dirs do not leak
+# into /out from an older volume build.
+rm -rf \
+  build_work/*/*/libdrm build_stage/libdrm build_dist/libdrm build_dist/libdrm2 build_dist/libdrm-dev \
+  build_work/*/*/gbm build_stage/gbm build_dist/gbm build_dist/libgbm1 build_dist/libgbm-dev \
+  build_work/*/*/libdisplay-info build_stage/libdisplay-info build_dist/libdisplay-info build_dist/libdisplay-info1 build_dist/libdisplay-info-dev \
+  2>/dev/null || true
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
@@ -93,9 +98,15 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-find . \( -name "kwin*_*_iphoneos-arm64.deb" \
-       -o -name "libgbm*_*_iphoneos-arm64.deb" \
-       -o -name "libdisplay-info*_*_iphoneos-arm64.deb" \
-       -o -name "libdrm*_*_iphoneos-arm64.deb" \) \
-  -exec cp -v {} /out/ \; 2>/dev/null || true
+for deb in \
+  build_dist/iphoneos-arm64-rootless/1900/kwin/kwin_*.deb \
+  build_dist/iphoneos-arm64-rootless/1900/kwin/kwin-dev_*.deb \
+  build_dist/iphoneos-arm64-rootless/1900/libdrm/libdrm2_*+ios*.deb \
+  build_dist/iphoneos-arm64-rootless/1900/libdrm/libdrm-dev_*+ios*.deb \
+  build_dist/iphoneos-arm64-rootless/1900/gbm/libgbm1_*+ios*.deb \
+  build_dist/iphoneos-arm64-rootless/1900/gbm/libgbm-dev_*+ios*.deb \
+  build_dist/iphoneos-arm64-rootless/1900/libdisplay-info/libdisplay-info1_*+ios*.deb \
+  build_dist/iphoneos-arm64-rootless/1900/libdisplay-info/libdisplay-info-dev_*+ios*.deb; do
+  [ -e "$deb" ] && cp -v "$deb" /out/
+done
 echo "==> done"

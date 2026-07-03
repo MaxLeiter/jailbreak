@@ -1,0 +1,3 @@
+# The bridge binaries embed the synthetic sysfs root.
+# Add rootful targets only after staging target-built bridge binaries.
+rootless-1900

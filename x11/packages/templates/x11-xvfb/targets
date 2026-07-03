@@ -1,0 +1,3 @@
+# This package contains a compiled Xvfb binary with rootless paths baked in.
+# Add rootful targets only after staging a target-built rootful Xvfb artifact.
+rootless-1900

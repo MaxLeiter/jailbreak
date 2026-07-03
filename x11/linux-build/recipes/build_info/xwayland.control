@@ -2,7 +2,7 @@ Package: xwayland
 Version: @DEB_XWAYLAND_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Depends: libwayland0, libxcvt0, libxshmfence1, libdrm2, libpixman-1-0, libxkbcommon0, libxfont2, libfontenc1, libxau6
+Depends: libwayland0, libxcvt0, libxshmfence1, libdrm2, libpixman-1-0, libxkbcommon0, libxfont2, libfontenc1, libxau6, libepoxy0 (>= 1.5.7+angle1), angle
 Section: X11
 Priority: optional
 Homepage: https://wayland.freedesktop.org/xserver.html

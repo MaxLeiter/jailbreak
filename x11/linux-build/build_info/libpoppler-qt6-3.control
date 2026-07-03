@@ -1,0 +1,11 @@
+Package: libpoppler-qt6-3
+Version: @DEB_POPPLER_QT6_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://poppler.freedesktop.org/
+Depends: libpoppler140, qt6-base
+Description: PDF rendering library - Qt6 interface
+ Poppler is a PDF rendering library based on the xpdf code base. This package
+ contains the Qt6 shared library used by Qt/KDE PDF viewers such as Okular.

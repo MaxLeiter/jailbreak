@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>Jarvis runs as a local on-device assistant at http://MaxsiPad.local:8787. These settings are read by the launch daemon and the Jarvis policy broker.</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>Enabled</string>
+			<key>key</key>
+			<string>enabled</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.max.jarvis</string>
+			<key>PostNotification</key>
+			<string>com.max.jarvis.preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>Quiet Hours</string>
+			<key>footerText</key>
+			<string>When quiet hours are enabled, launchd keeps only the lightweight supervisor alive and the Jarvis Bun daemon is stopped during the window.</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>Use Quiet Hours</string>
+			<key>key</key>
+			<string>quietEnabled</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.max.jarvis</string>
+			<key>PostNotification</key>
+			<string>com.max.jarvis.preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSEditTextCell</string>
+			<key>label</key>
+			<string>Quiet Start</string>
+			<key>key</key>
+			<string>quietStart</string>
+			<key>default</key>
+			<string>23:00</string>
+			<key>defaults</key>
+			<string>com.max.jarvis</string>
+			<key>PostNotification</key>
+			<string>com.max.jarvis.preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSEditTextCell</string>
+			<key>label</key>
+			<string>Quiet End</string>
+			<key>key</key>
+			<string>quietEnd</string>
+			<key>default</key>
+			<string>07:00</string>
+			<key>defaults</key>
+			<string>com.max.jarvis</string>
+			<key>PostNotification</key>
+			<string>com.max.jarvis.preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>Permissions</string>
+			<key>footerText</key>
+			<string>Ask means Jarvis can request approval in the dashboard. Deny blocks the capability before the tool runs.</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>label</key>
+			<string>Speech Replies</string>
+			<key>key</key>
+			<string>speechPolicy</string>
+			<key>default</key>
+			<string>ask</string>
+			<key>defaults</key>
+			<string>com.max.jarvis</string>
+			<key>titles</key>
+			<array>
+				<string>Allow</string>
+				<string>Ask</string>
+				<string>Deny</string>
+			</array>
+			<key>values</key>
+			<array>
+				<string>allow</string>
+				<string>ask</string>
+				<string>deny</string>
+			</array>
+			<key>PostNotification</key>
+			<string>com.max.jarvis.preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>label</key>
+			<string>Microphone / Wake</string>
+			<key>key</key>
+			<string>microphonePolicy</string>
+			<key>default</key>
+			<string>ask</string>
+			<key>defaults</key>
+			<string>com.max.jarvis</string>
+			<key>titles</key>
+			<array>
+				<string>Allow</string>
+				<string>Ask</string>
+				<string>Deny</string>
+			</array>
+			<key>values</key>
+			<array>
+				<string>allow</string>
+				<string>ask</string>
+				<string>deny</string>
+			</array>
+			<key>PostNotification</key>
+			<string>com.max.jarvis.preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>label</key>
+			<string>Shell Commands</string>
+			<key>key</key>
+			<string>execPolicy</string>
+			<key>default</key>
+			<string>ask</string>
+			<key>defaults</key>
+			<string>com.max.jarvis</string>
+			<key>titles</key>
+			<array>
+				<string>Allow</string>
+				<string>Ask</string>
+				<string>Deny</string>
+			</array>
+			<key>values</key>
+			<array>
+				<string>allow</string>
+				<string>ask</string>
+				<string>deny</string>
+			</array>
+			<key>PostNotification</key>
+			<string>com.max.jarvis.preferences.changed</string>
+		</dict>
+	</array>
+	<key>title</key>
+	<string>Jarvis</string>
+</dict>
+</plist>

@@ -1,0 +1,11 @@
+../../xios-desktop-defaults/var/jb/etc/X11/Xresources/xios	etc/X11/Xresources/xios	0644
+../../xios-desktop-defaults/var/jb/etc/apt/preferences.d/xios-icu74	etc/apt/preferences.d/xios-icu74	0644
+../../xios-desktop-defaults/var/jb/etc/fonts/conf.d/57-xios-monospace.conf	etc/fonts/conf.d/57-xios-monospace.conf	0644
+files/etc/profile.d/xios.sh.in	etc/profile.d/xios.sh	0644
+../../xios-desktop-defaults/var/jb/etc/xdg/gtk-3.0/settings.ini	etc/xdg/gtk-3.0/settings.ini	0644
+../../xios-desktop-defaults/var/jb/etc/xdg/gtk-4.0/settings.ini	etc/xdg/gtk-4.0/settings.ini	0644
+../../xios-desktop-defaults/var/jb/usr/share/fonts/truetype/source-code-pro/SourceCodePro-Bold.ttf	usr/share/fonts/truetype/source-code-pro/SourceCodePro-Bold.ttf	0644
+../../xios-desktop-defaults/var/jb/usr/share/fonts/truetype/source-code-pro/SourceCodePro-BoldIt.ttf	usr/share/fonts/truetype/source-code-pro/SourceCodePro-BoldIt.ttf	0644
+../../xios-desktop-defaults/var/jb/usr/share/fonts/truetype/source-code-pro/SourceCodePro-It.ttf	usr/share/fonts/truetype/source-code-pro/SourceCodePro-It.ttf	0644
+../../xios-desktop-defaults/var/jb/usr/share/fonts/truetype/source-code-pro/SourceCodePro-Regular.ttf	usr/share/fonts/truetype/source-code-pro/SourceCodePro-Regular.ttf	0644
+../../xios-desktop-defaults/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-defaults.gschema.override	usr/share/glib-2.0/schemas/zz-xios-desktop-defaults.gschema.override	0644

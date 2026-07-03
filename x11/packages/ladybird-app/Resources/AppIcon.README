@@ -1,0 +1,4 @@
+AppIcon.png placeholder — supply a 1024x1024 PNG (or a per-size set) here before shipping.
+The Xios app generates its icon via apps/Xios/make-icon.py; reuse that or drop a Ladybird
+logo. Info.plist references CFBundleIconFiles = [AppIcon]. Not load-bearing for the first
+on-device launch (a blank icon still installs + launches).

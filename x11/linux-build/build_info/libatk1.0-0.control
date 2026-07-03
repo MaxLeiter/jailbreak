@@ -1,5 +1,5 @@
 Package: libatk1.0-0
-Version: @DEB_LIBATK_V@
+Version: @DEB_ATSPI2_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
 Section: Libraries

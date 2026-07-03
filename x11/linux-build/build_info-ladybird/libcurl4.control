@@ -1,0 +1,14 @@
+Package: libcurl4
+Version: @DEB_CURL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://curl.se/
+Depends: libnghttp2-14, libpsl5, libssl3, libzstd1, libbrotli1, libz1
+Replaces: curl (<< @DEB_CURL_V@)
+Conflicts: curl (<< @DEB_CURL_V@)
+Description: client-side URL transfer library
+ libcurl is a client-side URL transfer library. This Ladybird build uses OpenSSL
+ and includes HTTP/2, PSL, Brotli, zstd, and WebSockets support while omitting
+ IDN, SSH, RTMP, c-ares, and HTTP/3 backends.

@@ -1,0 +1,20 @@
+{
+  "name": "jarvis",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "On-device AI assistant harness (Anthropic-native agent loop, in-process tools, permission broker).",
+  "module": "src/main.ts",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "serve": "bun run src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

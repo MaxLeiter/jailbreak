@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Badge, Callout, Ext, NextLinks, PageHeader, Section } from "@/components/ui";
+import { Clip, Shot } from "@/components/Figures";
+import { Callout, Ext, NextLinks, PageHeader, Section } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Desktop flavors" };
 
@@ -50,6 +51,19 @@ export default function Flavors() {
             </div>
           ))}
         </div>
+        <div style={{ marginTop: 18 }}>
+          <Shot
+            src="/shots/iosc-launcher.jpg"
+            alt="The app launcher showing installed apps: Fonts, D-Spy, mpv Media Player, Foot Server, Foot Client, Zathura, Files, Console, Disk Usage Analyzer, File Roller, Foot, Calculator and Hitori."
+            caption="The app launcher"
+          />
+        </div>
+        <div style={{ marginTop: 18 }}>
+          <Clip
+            label="A screen recording of switching between Linux apps running as native iOS windows on the iPad."
+            caption="Native mode: switching between apps"
+          />
+        </div>
       </Section>
 
       <Section num="04.2" title="Bring your own desktop environment">
@@ -64,33 +78,23 @@ export default function Flavors() {
             <span className="card-tag">Mutter and gjs</span>
             <h3>GNOME Shell 46</h3>
             <p>
-              The full <Ext href="https://www.gnome.org">GNOME</Ext> Shell 46,
+              The full <Ext href="https://www.gnome.org">GNOME</Ext>{" "}Shell 46,
               driven by{" "}
-              <Ext href="https://gitlab.gnome.org/GNOME/mutter">Mutter</Ext> with
+              <Ext href="https://gitlab.gnome.org/GNOME/mutter">Mutter</Ext>{" "}with
               a new iOS backend, MetaBackendIOS, that renders to{" "}
               <Ext href="https://developer.apple.com/documentation/iosurface">IOSurfaces</Ext>{" "}
-              and
-              reuses iosc&apos;s GPU glue instead of nesting two compositors. It
-              has reached first light on the A10: it boots, paints, and runs. What
-              is left is packaging, input, and audio, not the introspection
-              typelibs that used to be the gate.
+              and reuses iosc&apos;s GPU glue instead of nesting two compositors.
+              It boots, paints, and runs.
             </p>
-            <div className="card-foot">
-              <Badge state="wip" />
-            </div>
           </div>
           <div className="card">
             <span className="card-tag">KWin and KF6</span>
             <h3>KDE Plasma</h3>
             <p>
-              <Ext href="https://kde.org/plasma-desktop/">Plasma</Ext> Mobile on
-              KWin. The Qt6 module ladder and a KDE Frameworks 6 subset are built,
-              and KWin is packaged. Bringing Plasma up on the device is the next
-              step. The Qt6 Wayland platform plugin already targets iosc.
+              <Ext href="https://kde.org/plasma-desktop/">Plasma</Ext>{" "}Mobile on
+              KWin, built on a cross-compiled Qt6 module ladder and a subset of
+              KDE Frameworks 6. The Qt6 Wayland platform plugin targets iosc.
             </p>
-            <div className="card-foot">
-              <Badge state="wip" />
-            </div>
           </div>
         </div>
         <Callout k="Why the shell port avoids nesting">
@@ -101,40 +105,32 @@ export default function Flavors() {
         </Callout>
       </Section>
 
-      <Section num="04.3" title="GNOME apps that run now">
+      <Section num="04.3" title="GNOME apps, without the desktop">
         <div className="prose">
           <p>
-            You do not need a whole shell to run GNOME software. Individual GTK4
-            and GNOME apps run as windows under iosc today. The headline is GNOME
-            Console with a live shell: it launches, paints through the GPU path,
-            and takes tapped and typed input on the glass.
+            You do not need the GNOME desktop to run GNOME apps. GTK4 and GNOME
+            programs run as windows under iosc whichever flavor you pick, and
+            GNOME Console runs a live shell you can tap and type into.
           </p>
         </div>
         <dl className="deflist" style={{ marginTop: 8 }}>
           <div className="row">
             <dt>Console (kgx)</dt>
-            <dd>
-              A real GNOME terminal with a working shell. <Badge state="live" />
-            </dd>
+            <dd>A real GNOME terminal with a working shell.</dd>
           </div>
           <div className="row">
             <dt>Calculator</dt>
-            <dd>
-              The Vala GNOME app, packaged and running. <Badge state="live" />
-            </dd>
+            <dd>The Vala GNOME app.</dd>
           </div>
           <div className="row">
             <dt>foot, imv, mpv</dt>
             <dd>
-              A wave of Wayland apps cross-built for the device. mpv does audio and
-              VideoToolbox decode. <Badge state="live" />
+              A wave of Wayland apps; mpv does audio and VideoToolbox decode.
             </dd>
           </div>
           <div className="row">
             <dt>Files, text editor</dt>
-            <dd>
-              More GNOME apps in the pipeline. <Badge state="wip" />
-            </dd>
+            <dd>The GNOME file manager and text editor.</dd>
           </div>
         </dl>
       </Section>

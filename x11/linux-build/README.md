@@ -61,6 +61,49 @@ What `run.sh` (Mac side) does:
 The tigervnc/Xvnc build is what `run.sh` drives by default. The GTK3 stack is a separate
 container invocation (see below).
 
+## Target-Aware Stub Libraries
+
+The GNOME compatibility stublibs (`gudev`, `udev`, `pwquality`, `gsound`) can be built
+through the target descriptor layer:
+
+```bash
+bash x11/linux-build/build-stublibs.sh rootless-1900 --package
+bash x11/linux-build/build-stublibs.sh rootful-1900 --package
+```
+
+`build-stublibs.sh` loads `linux-build/targets/<target>.env`, passes the resolved
+`MEMO_TARGET`, `MEMO_CFVER`, prefix, package payload prefix, and minimum iOS version into
+the Procursus container, and stages runtime trees under the matching payload root:
+`var/jb/usr/lib` for rootless, `usr/lib` for rootful. Use `--dry-run` to inspect the
+Docker commands without starting a build. If the image already exists and Docker's BuildKit
+cache is unhealthy, add `--skip-image-build` to run only the producer containers.
+
+Rootful assembly requires rootful producer artifacts to exist first. If the package step
+reports a missing `out/*-stub-tree/usr/lib`, run the producer through `build-stublibs.sh`
+for the rootful target before assembling `xios-desktop-stublibs`.
+
+## Target-Aware X Server Artifacts
+
+`build-xserver-target.sh` drives the patched TigerVNC/Xorg build through
+`linux-build/targets/<target>.env` and stages the resulting binaries under
+`linux-build/out/targets/<target-id>/`:
+
+```bash
+bash x11/linux-build/build-xserver-target.sh rootless-1900 --package-xvfb
+bash x11/linux-build/build-xserver-target.sh rootful-1900 --package-xvfb --package-xios
+```
+
+`packages/x11-xvfb/build.sh` packages `Xvfb` from that target artifact directory. It
+keeps the committed rootless `Xvfb` as a fallback for `rootless-1900`, but refuses
+rootful assembly until `linux-build/out/targets/rootful-1900/Xvfb` exists, so a
+rootless binary cannot be accidentally shipped in a rootful package.
+
+`packages/xios-server/build.sh` does the same for `Xios`. Rootless can fall back
+to the committed package binary; rootful refuses to package until
+`linux-build/out/targets/rootful-1900/Xios` exists. `build.sh` now renders
+`xios-ent.xml` from the selected target prefix so rootful entitlement output does
+not carry rootless `/var/jb` path exceptions.
+
 ## The named volume — why and how
 
 ```

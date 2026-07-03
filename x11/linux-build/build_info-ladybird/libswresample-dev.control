@@ -1,0 +1,9 @@
+Package: libswresample-dev
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Depends: libswresample5 (= @DEB_FFMPEG_V@), libavutil-dev (= @DEB_FFMPEG_V@)
+Description: FFmpeg audio resampling library - development
+ FFmpeg 7.1.1 (Ladybird minimal build). Headers + .pc for libswresample.

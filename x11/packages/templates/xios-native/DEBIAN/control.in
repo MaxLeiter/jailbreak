@@ -1,0 +1,21 @@
+Package: xios-native
+Name: Xios Desktop (Native iPadOS)
+Version: 0.1.0
+Architecture: @DEB_ARCH@
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.0), xios-core, ioscd, xios-native-host
+MinimumOSVersion: 16.0.0
+Description: the native iPadOS flavor for Xios
+ Linux desktop apps as first-class iPadOS windows. There is no Linux shell
+ in this flavor: each app gets its own home screen icon and its own iPadOS
+ window, and Split View and Slide Over take the place of a desktop
+ environment.
+ .
+ Installs the ioscd launch daemon and the per-app host that presents each
+ app's window. App icons appear on the home screen next to your iOS apps;
+ tap one and the app opens like any other iPad app.
+ .
+ Needs iOS 16.0 or newer. Target profile: @REPO_PROFILE@.

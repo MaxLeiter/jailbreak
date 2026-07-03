@@ -32,7 +32,9 @@
 #define SENSOR_PATH  "/net/hadess/SensorProxy"
 #define SENSOR_IFACE "net.hadess.SensorProxy"
 
+#ifndef DEFAULT_SYS_ROOT
 #define DEFAULT_SYS_ROOT "/var/jb/sys"
+#endif
 #define IIO_DEVICE       "iio:device0"
 #define POLL_MS          100
 

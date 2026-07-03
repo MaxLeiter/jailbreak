@@ -7,6 +7,13 @@ ATK_MAJOR_V  := 2.38
 ATK_VERSION  := $(ATK_MAJOR_V).0
 DEB_LIBATK_V ?= $(ATK_VERSION)+ios1
 
+# NOTE: the shippable libatk1.0-0 / libatk1.0-dev debs are NO LONGER produced here.
+# ATK was merged into at-spi2-core at 2.51/2.52, so at-spi2-core.mk builds libatk-1.0 2.52
+# (with atk_document_get_text_selections — the symbol the 2.52 atk-bridge needs) and PACKs
+# libatk1.0-0/libatk1.0-dev at DEB_ATSPI2_V. Shipping the standalone 2.38 here caused the
+# atk/atk-bridge ABI skew (2.38 lib vs 2.52 bridge -> dyld abort). This recipe now builds atk
+# only as a transitional build-dep; its -package target below is a no-op (see PACK guard).
+
 atk-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/atk/$(ATK_MAJOR_V)/atk-$(ATK_VERSION).tar.xz)
 	$(call EXTRACT_TAR,atk-$(ATK_VERSION).tar.xz,atk-$(ATK_VERSION),atk)
@@ -42,30 +49,10 @@ atk: atk-setup glib2.0
 endif
 
 atk-package: atk-stage
-	# atk.mk Package Structure
-	rm -rf $(BUILD_DIST)/libatk1.0-0 $(BUILD_DIST)/libatk1.0-dev
-	mkdir -p $(BUILD_DIST)/libatk1.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
-		$(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-
-	# atk.mk Prep libatk1.0-0 (runtime dylib)
-	cp -a $(BUILD_STAGE)/atk/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/*-1.0.0.dylib $(BUILD_DIST)/libatk1.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-
-	# atk.mk Prep libatk1.0-dev (headers, symlinks, .pc)
-	cp -a $(BUILD_STAGE)/atk/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
-	cp -a $(BUILD_STAGE)/atk/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(*-1.0.0.dylib) $(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	if [ -d "$(BUILD_STAGE)/atk/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share" ]; then \
-		cp -a $(BUILD_STAGE)/atk/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
-	fi
-
-	# atk.mk Sign
-	$(call SIGN,libatk1.0-0,general.xml)
-	$(call SIGN,libatk1.0-dev,general.xml)
-
-	# atk.mk Make .debs
-	$(call PACK,libatk1.0-0,DEB_LIBATK_V)
-	$(call PACK,libatk1.0-dev,DEB_LIBATK_V)
-
-	# atk.mk Build cleanup
-	rm -rf $(BUILD_DIST)/libatk1.0-0 $(BUILD_DIST)/libatk1.0-dev
+	# DISABLED: libatk1.0-0/libatk1.0-dev now ship from at-spi2-core.mk at 2.52 (ABI-consistent
+	# with the 2.52 atk-bridge). Emitting the standalone 2.38 debs here reintroduced the atk skew
+	# (missing atk_document_get_text_selections -> atk-bridge dyld abort). Kept as a no-op so the
+	# target still resolves; re-enabling requires reverting the at-spi2-core.mk carve-out.
+	@echo "atk-package: no-op — libatk1.0-0/libatk1.0-dev are produced by at-spi2-core.mk (2.52)."
 
 .PHONY: atk atk-package

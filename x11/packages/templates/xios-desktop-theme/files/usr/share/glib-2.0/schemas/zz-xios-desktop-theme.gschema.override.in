@@ -1,0 +1,16 @@
+# Xios desktop theme: point the desktop at the bundled Adwaita icon and cursor
+# themes and the default wallpaper. The "zz-" prefix applies this last (highest
+# priority), after zz-xios-desktop-defaults. glib-compile-schemas (run in the
+# postinst) compiles it into the default gsettings DB. Every key here is a long
+# stable key in gsettings-desktop-schemas, which xios-desktop-defaults pulls in,
+# so the override always compiles cleanly.
+
+[org.gnome.desktop.interface]
+icon-theme='Adwaita'
+cursor-theme='Adwaita'
+cursor-size=48
+
+[org.gnome.desktop.background]
+picture-uri='file://@INSTALL_PREFIX@/share/backgrounds/xios/xios-default.jpg'
+picture-options='zoom'
+primary-color='#1d1f21'

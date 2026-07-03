@@ -11,7 +11,8 @@ export const NAV: NavItem[] = [
   { href: "/graphics", label: "The GPU path", idx: "03" },
   { href: "/flavors", label: "Desktop flavors", idx: "04" },
   { href: "/build", label: "Build & packaging", idx: "05" },
-  { href: "/status", label: "Status", idx: "06" },
+  { href: "/system", label: "System integration", idx: "06" },
+  { href: "/try", label: "Try it yourself", idx: "07" },
 ];
 
 export const SITE = {

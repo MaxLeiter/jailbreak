@@ -1,0 +1,22 @@
+#!/bin/sh
+# gnome-control-center ships org.gnome.* GSettings schemas (and its panels abort
+# with "Settings schema ... is not installed" on an uncompiled schema dir). Compile
+# them so a fresh install / upgrade leaves a valid gschemas.compiled. Also refresh
+# the icon cache so panel icons don't render as the missing-image glyph.
+set -e
+
+SCHEMADIR="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/share/glib-2.0/schemas"
+GLIB_COMPILE_SCHEMAS="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/bin/glib-compile-schemas"
+
+if [ -d "$SCHEMADIR" ] && [ -x "$GLIB_COMPILE_SCHEMAS" ]; then
+    "$GLIB_COMPILE_SCHEMAS" "$SCHEMADIR" || true
+fi
+
+for THEME in hicolor Adwaita; do
+    ICONDIR="@MEMO_PREFIX@@MEMO_SUB_PREFIX@/share/icons/$THEME"
+    if command -v gtk-update-icon-cache >/dev/null 2>&1 && [ -d "$ICONDIR" ]; then
+        gtk-update-icon-cache -q -f "$ICONDIR" >/dev/null 2>&1 || true
+    fi
+done
+
+exit 0

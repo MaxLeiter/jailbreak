@@ -1,0 +1,6 @@
+# Xios: keep the ICU 74 family (system ICU everything links) preferred over the
+# Procursus 69.1 downgrade. Our repo ships 74.2+ios1; priority 1002 beats the
+# Procursus o=Procursus 1001 pin so the candidate is 74.2+, never the 69.1 downgrade.
+Package: libicu-dev icu-devtools libicu74 libicu74-dev libicudata74
+Pin: version 74.*
+Pin-Priority: 1002

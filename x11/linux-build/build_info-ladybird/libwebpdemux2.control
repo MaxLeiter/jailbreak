@@ -1,0 +1,11 @@
+Package: libwebpdemux2
+Version: @DEB_LIBWEBP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libwebp7
+Section: Libraries
+Priority: optional
+Homepage: https://developers.google.com/speed/webp
+Description: WebP image demux library (Ladybird pin 1.6.0)
+ Demux/container-parsing library for the WebP image format (animation and
+ extended features). This package contains libwebpdemux.2.dylib.

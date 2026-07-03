@@ -1,0 +1,10 @@
+Package: libmimalloc
+Version: @DEB_MIMALLOC_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/microsoft/mimalloc
+Description: Compact general-purpose allocator (mimalloc) - runtime
+ Microsoft mimalloc, a small and fast drop-in malloc replacement. Ladybird
+ pin 2.2.7. This package contains the shared library.

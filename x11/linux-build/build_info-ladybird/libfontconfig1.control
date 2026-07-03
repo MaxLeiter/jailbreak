@@ -1,0 +1,14 @@
+Package: libfontconfig1
+Version: @DEB_FONTCONFIG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Depends: libfreetype6, firmware (>= 14.0) | libexpat1, fontconfig-config
+Section: Libraries
+Priority: standard
+Description: generic font configuration library - runtime (Ladybird pin 2.17.1)
+ Fontconfig is a font configuration and customization library, which does not
+ depend on the X Window System. It locates fonts and selects them according to
+ application requirements.
+ .
+ This package contains the runtime library. Built --disable-nls with the
+ system expat; the legacy libuuid dependency is gone in 2.17.

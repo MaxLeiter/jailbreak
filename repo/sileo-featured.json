@@ -14,6 +14,11 @@
       "url": "https://repo.maxleiter.com/banners/angle.png"
     },
     {
+      "title": "ark",
+      "package": "ark",
+      "url": "https://repo.maxleiter.com/banners/ark.png"
+    },
+    {
       "title": "at-spi2-core",
       "package": "at-spi2-core",
       "url": "https://repo.maxleiter.com/banners/at-spi2-core.png"
@@ -44,9 +49,24 @@
       "url": "https://repo.maxleiter.com/banners/com.max.autolockpicker.png"
     },
     {
+      "title": "Kiosk Mode",
+      "package": "com.max.kioskmode-app",
+      "url": "https://repo.maxleiter.com/banners/com.max.kioskmode-app.png"
+    },
+    {
+      "title": "KitchenHub",
+      "package": "com.max.kitchenhub",
+      "url": "https://repo.maxleiter.com/banners/com.max.kitchenhub.png"
+    },
+    {
       "title": "PullToRespring2",
       "package": "com.max.pulltorespring2",
       "url": "https://repo.maxleiter.com/banners/com.max.pulltorespring2.png"
+    },
+    {
+      "title": "Task Manager",
+      "package": "com.max.taskmanager",
+      "url": "https://repo.maxleiter.com/banners/com.max.taskmanager.png"
     },
     {
       "title": "curl",
@@ -204,6 +224,11 @@
       "url": "https://repo.maxleiter.com/banners/gtk4-layer-shell.png"
     },
     {
+      "title": "gwenview",
+      "package": "gwenview",
+      "url": "https://repo.maxleiter.com/banners/gwenview.png"
+    },
+    {
       "title": "hicolor-icon-theme",
       "package": "hicolor-icon-theme",
       "url": "https://repo.maxleiter.com/banners/hicolor-icon-theme.png"
@@ -237,6 +262,16 @@
       "title": "iosc (Wayland compositor)",
       "package": "iosc",
       "url": "https://repo.maxleiter.com/banners/iosc.png"
+    },
+    {
+      "title": "iosc desktop shell",
+      "package": "iosc-shell",
+      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
+    },
+    {
+      "title": "iosc desktop shell",
+      "package": "iosc-shell",
+      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
     },
     {
       "title": "iosc desktop shell",
@@ -554,6 +589,16 @@
       "url": "https://repo.maxleiter.com/banners/kf6-svg-dev.png"
     },
     {
+      "title": "kf6-syntax-highlighting",
+      "package": "kf6-syntax-highlighting",
+      "url": "https://repo.maxleiter.com/banners/kf6-syntax-highlighting.png"
+    },
+    {
+      "title": "kf6-texteditor",
+      "package": "kf6-texteditor",
+      "url": "https://repo.maxleiter.com/banners/kf6-texteditor.png"
+    },
+    {
       "title": "kf6-textwidgets",
       "package": "kf6-textwidgets",
       "url": "https://repo.maxleiter.com/banners/kf6-textwidgets.png"
@@ -622,6 +667,16 @@
       "title": "kwayland-dev",
       "package": "kwayland-dev",
       "url": "https://repo.maxleiter.com/banners/kwayland-dev.png"
+    },
+    {
+      "title": "kwrite",
+      "package": "kwrite",
+      "url": "https://repo.maxleiter.com/banners/kwrite.png"
+    },
+    {
+      "title": "kwrite",
+      "package": "kwrite",
+      "url": "https://repo.maxleiter.com/banners/kwrite.png"
     },
     {
       "title": "layer-shell-qt",
@@ -867,6 +922,16 @@
       "title": "libexempi8",
       "package": "libexempi8",
       "url": "https://repo.maxleiter.com/banners/libexempi8.png"
+    },
+    {
+      "title": "libexiv2-28",
+      "package": "libexiv2-28",
+      "url": "https://repo.maxleiter.com/banners/libexiv2-28.png"
+    },
+    {
+      "title": "libexiv2-28",
+      "package": "libexiv2-28",
+      "url": "https://repo.maxleiter.com/banners/libexiv2-28.png"
     },
     {
       "title": "libfcft-dev",
@@ -1454,6 +1519,16 @@
       "url": "https://repo.maxleiter.com/banners/libstartup-notification-dev.png"
     },
     {
+      "title": "libstartup-notification-dev",
+      "package": "libstartup-notification-dev",
+      "url": "https://repo.maxleiter.com/banners/libstartup-notification-dev.png"
+    },
+    {
+      "title": "libstartup-notification0",
+      "package": "libstartup-notification0",
+      "url": "https://repo.maxleiter.com/banners/libstartup-notification0.png"
+    },
+    {
       "title": "libstartup-notification0",
       "package": "libstartup-notification0",
       "url": "https://repo.maxleiter.com/banners/libstartup-notification0.png"
@@ -1774,6 +1849,11 @@
       "url": "https://repo.maxleiter.com/banners/opencode.png"
     },
     {
+      "title": "phonon4qt6",
+      "package": "phonon4qt6",
+      "url": "https://repo.maxleiter.com/banners/phonon4qt6.png"
+    },
+    {
       "title": "plasma-activities",
       "package": "plasma-activities",
       "url": "https://repo.maxleiter.com/banners/plasma-activities.png"
@@ -1802,6 +1882,11 @@
       "title": "pulseaudio-utils",
       "package": "pulseaudio-utils",
       "url": "https://repo.maxleiter.com/banners/pulseaudio-utils.png"
+    },
+    {
+      "title": "qcoro6",
+      "package": "qcoro6",
+      "url": "https://repo.maxleiter.com/banners/qcoro6.png"
     },
     {
       "title": "qt-wayland-gl-smoke",
@@ -2014,6 +2099,11 @@
       "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
     },
     {
+      "title": "Xios accessibility tools",
+      "package": "xios-a11y-tools",
+      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
+    },
+    {
       "title": "xios-audio-server",
       "package": "xios-audio-server",
       "url": "https://repo.maxleiter.com/banners/xios-audio-server.png"
@@ -2057,6 +2147,26 @@
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
     },
     {
       "title": "Xios session launcher",

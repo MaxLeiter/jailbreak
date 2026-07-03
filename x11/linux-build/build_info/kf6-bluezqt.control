@@ -1,0 +1,11 @@
+Package: kf6-bluezqt
+Version: @DEB_BLUEZQT_V@
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <max@maxleiter.com>
+Section: libs
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative
+Description: Qt wrapper library for BlueZ used by KDE Plasma
+ BluezQt provides KF6::BluezQt and the org.kde.bluezqt QML import consumed by
+ Plasma Mobile shell components.

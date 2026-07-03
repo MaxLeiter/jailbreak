@@ -1,0 +1,6 @@
+../../xios-session-stubs/var/jb/usr/libexec/xios-accounts-stub	usr/libexec/xios-accounts-stub	0755
+../../xios-session-stubs/var/jb/usr/libexec/xios-bluez-stub	usr/libexec/xios-bluez-stub	0755
+../../xios-session-stubs/var/jb/usr/libexec/xios-login1-stub	usr/libexec/xios-login1-stub	0755
+../../xios-session-stubs/var/jb/usr/libexec/xios-polkit-stub	usr/libexec/xios-polkit-stub	0755
+../../xios-session-stubs/var/jb/usr/libexec/xios-sysintd	usr/libexec/xios-sysintd	0755
+files/usr/bin/launch-gnome-session.sh.in	usr/bin/launch-gnome-session.sh	0755

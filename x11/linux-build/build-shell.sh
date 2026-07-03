@@ -129,7 +129,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in libstartup-notification libatspi libatk-bridge at-spi2-core \
+for pat in libstartup-notification libatspi libatk-bridge libatk1.0 at-spi2-core \
            libsecret libgcr gcr4-dev libpolkit polkit-dev libibus ibus \
            libpulse gnome-shell; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true

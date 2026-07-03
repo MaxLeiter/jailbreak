@@ -293,3 +293,23 @@ meta_input_ios_free (MetaInputIOS *input)
   xios_input_socket_free (input->socket);
   g_free (input);
 }
+
+void
+meta_input_ios_send_osk_traits (MetaInputIOS *input,
+                                guint32       hint,
+                                guint32       purpose,
+                                gboolean      enabled)
+{
+  /* Byte-identical to iosc's input_clients_send_traits(): code=hint, state=purpose,
+   * mods=enabled. The Xios app maps purpose->UIKeyboardType and raises/lowers the
+   * iOS keyboard on the enabled flag. Broadcast to every connected app client. */
+  struct xios_in_msg msg = {
+    .type  = XIOS_IN_TRAITS,
+    .code  = hint,
+    .state = purpose,
+    .mods  = enabled ? 1u : 0u,
+  };
+
+  if (input && input->socket)
+    xios_input_socket_broadcast (input->socket, &msg, sizeof msg);
+}

@@ -88,7 +88,7 @@ TARGETS="${TARGETS:-\
   libpsl-package libsoup3-package libgee-package \
   gnome-autoar-package libportal-package iso-codes-package tracker-package gnome-desktop-package \
   gnome-console-package gnome-text-editor-package gnome-font-viewer-package nautilus-package \
-  gnome-calculator-package}"
+  gnome-calculator-package baobab-package file-roller-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"
@@ -97,13 +97,16 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
+DIST_ROOT="build_dist/iphoneos-arm64-rootless/1900"
 for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
            libjson-glib libxmlb libappstream libadwaita \
+           libarchive \
            libvte libgtksourceview libenchant \
            libpsl libsoup libgee \
            libgnome-autoar libportal iso-codes libtracker libgnome-desktop \
-           gnome-console gnome-text-editor gnome-font-viewer nautilus gnome-calculator; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+           gnome-console gnome-text-editor gnome-font-viewer nautilus gnome-calculator \
+           baobab file-roller; do
+  find "$DIST_ROOT" -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass: GNOME app libs/binaries link GTK's bundled proxy-libintl and

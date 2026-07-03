@@ -1,0 +1,57 @@
+#!/bin/sh
+# launch-gnome-session.sh: bring up a GNOME session under Mutter/MetaBackendIOS on iOS.
+#
+# Starts the freedesktop stub daemons and gnome-session inside one private
+# session bus. See the gnome-session plan in the Xios docs for the full rationale.
+set -e
+PREFIX=@INSTALL_PREFIX@
+LIBEXEC=$PREFIX/libexec
+
+# 1. runtime dir + env
+export XDG_RUNTIME_DIR=@RUNTIME_TMP@/xios-run
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+export WAYLAND_DISPLAY=wayland-0
+unset DISPLAY
+export GDK_BACKEND=wayland CLUTTER_BACKEND=wayland
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_CLASS=user
+export XDG_DATA_DIRS=$PREFIX/share:@INSTALL_PREFIX@/local/share
+export GSETTINGS_SCHEMA_DIR=$PREFIX/share/glib-2.0/schemas
+export DYLD_LIBRARY_PATH=$PREFIX/lib:$PREFIX/lib/mutter-14:@PREFIX@/lib/angle
+
+# 2. write the custom session (org.gnome.Shell only for first boot) into XDG_CONFIG_DIRS
+CFG=$XDG_RUNTIME_DIR/xdg
+mkdir -p "$CFG/gnome-session/sessions"
+cat > "$CFG/gnome-session/sessions/xios.session" <<EOF
+[GNOME Session]
+Name=Xios GNOME
+RequiredComponents=org.gnome.Shell;
+EOF
+export XDG_CONFIG_DIRS=$CFG:@PREFIX@/etc/xdg
+
+# 3+4. ONE bus for everything. login1/PolicyKit1/Accounts/UPower are normally SYSTEM-bus
+#      services, but under dbus-run-session there is only a session bus. Point
+#      DBUS_SYSTEM_BUS_ADDRESS at it so clients asking for G_BUS_TYPE_SYSTEM meet the stubs,
+#      then run the stubs + gnome-session inside the one dbus-run-session.
+#      xios-hwbridged (from the xios-fhs hardware bridge, if installed) claims
+#      org.freedesktop.UPower there too: battery/AC backed by IOKit, so the shell's
+#      battery indicator and gsd-power light up.
+exec dbus-run-session -- sh -c '
+  export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+  '"$LIBEXEC"'/xios-login1-stub &
+  '"$LIBEXEC"'/xios-polkit-stub &
+  '"$LIBEXEC"'/xios-accounts-stub &
+  # org.bluez bridge (BlueZ D-Bus API backed by iOS BluetoothManager) so gnome-shell'"'"'s
+  # Bluetooth quick-toggle + the gnome-control-center Bluetooth panel see real paired devices.
+  # Defaults to the "system" bus, which the DBUS_SYSTEM_BUS_ADDRESS override above maps onto
+  # this session bus, same as the other stubs. Signed with com.apple.bluetooth.system.
+  [ -x '"$LIBEXEC"'/xios-bluez-stub ] && '"$LIBEXEC"'/xios-bluez-stub &
+  [ -x '"$LIBEXEC"'/xios-hwbridged ] && '"$LIBEXEC"'/xios-hwbridged &
+  # Desktop audio: start xios-audiod + PulseAudio and export PULSE_SERVER via the
+  # pulse profile helper. xios-sysintd (native-bundle: iPad hardware volume buttons
+  # -> PulseAudio via pactl on the xios sink, iOS light/dark -> GTK color-scheme)
+  # inherits that PULSE_SERVER and needs the session bus (gsettings/dconf) below.
+  [ -r @PREFIX@/etc/profile.d/xios-pulse.sh ] && . @PREFIX@/etc/profile.d/xios-pulse.sh && xios_pulse_start
+  [ -x '"$LIBEXEC"'/xios-sysintd ] && '"$LIBEXEC"'/xios-sysintd >@RUNTIME_TMP@/xios-sysintd.log 2>&1 &
+  sleep 1
+  exec gnome-session --builtin --session=xios
+'

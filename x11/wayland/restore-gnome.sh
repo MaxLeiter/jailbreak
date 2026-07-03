@@ -60,7 +60,7 @@ EOSH
 
 echo "==> (3) request the gnome preset via ioscd SESSION (PERSISTENT)"
 "${SSH[@]}" 'bash -s' <<'EOSH'
-export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 if command -v xios-session >/dev/null 2>&1; then
   echo '   launching via ioscd: xios-session -d gnome'
   xios-session -d gnome
@@ -71,6 +71,6 @@ fi
 EOSH
 
 echo "==> (4) wait for GNOME to paint, then confirm it PERSISTS after this ssh session closes"
-"${SSH[@]}" 'bash -lc "for i in \$(seq 1 40); do grep -q \"GNOME Shell started\" /var/jb/tmp/gnome-shell.log 2>/dev/null && { echo painted; break; }; sleep 0.5; done; echo status:; xios-session status 2>/dev/null"'
+"${SSH[@]}" 'bash -lc "export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:\$PATH; for i in \$(seq 1 40); do grep -q \"GNOME Shell started\" /var/jb/tmp/gnome-shell.log 2>/dev/null && { echo painted; break; }; sleep 0.5; done; echo status:; xios-session status 2>/dev/null"'
 echo "   (reconnect in ~20s and run: ssh $DEV 'ps ax|grep -c [g]nome-shell' — expect 1, proving it survived ssh close)"
 echo "==> done. Unlock the iPad screen so the Xios Metal app can present."

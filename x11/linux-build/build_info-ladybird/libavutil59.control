@@ -1,0 +1,9 @@
+Package: libavutil59
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Description: FFmpeg utility library - runtime
+ FFmpeg 7.1.1 (Ladybird minimal build: libav* present to satisfy configure;
+ codec/muxer set is empty at M0, added in M2). Self-contained, no external deps.

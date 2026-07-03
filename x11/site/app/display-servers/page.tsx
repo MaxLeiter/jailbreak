@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Badge, Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
+import { Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Display servers" };
 
@@ -13,17 +13,14 @@ export default function DisplayServers() {
       />
 
       <Section num="02.1" title="Xios, the X11 server">
-        <p style={{ marginBottom: 18 }}>
-          <Badge state="live" />
-        </p>
         <div className="prose">
           <p>
             Xios is derived from Xvfb, the virtual framebuffer X server, with a
             device layer that draws into an{" "}
             <Ext href="https://developer.apple.com/documentation/iosurface">IOSurface</Ext>{" "}
             instead of a memory buffer.
-            X11 clients such as <code>xterm</code> and the classic{" "}
-            <code>x11-apps</code> connect over the ordinary X protocol and are
+            X11 clients such as <code>xterm</code>{" "}and the classic{" "}
+            <code>x11-apps</code>{" "}connect over the ordinary X protocol and are
             none the wiser about where their pixels end up.
           </p>
           <p>
@@ -54,9 +51,6 @@ export default function DisplayServers() {
       </Section>
 
       <Section num="02.2" title="iosc, the Wayland compositor">
-        <p style={{ marginBottom: 18 }}>
-          <Badge state="live" />
-        </p>
         <div className="prose">
           <p>
             iosc is a compositor written from scratch on{" "}
@@ -78,7 +72,7 @@ export default function DisplayServers() {
             <p style={{ margin: 0, color: "var(--ink-2)" }}>
               <code>xdg-shell</code>, <code>xdg-popup</code>, subsurfaces,{" "}
               <code>wp-viewport</code>, fractional-scale,{" "}
-              <code>wl_data_device</code> clipboard, layer-shell,
+              <code>wl_data_device</code>{" "}clipboard, layer-shell,
               foreign-toplevel, cursor-shape, screencopy, session-lock,
               drag-and-drop, plus wired-up touch and Pencil tablet input.
             </p>

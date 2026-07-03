@@ -60,6 +60,7 @@ for p in meta-wayland-buffer-iosurface \
          meta-compositor-ios-server \
          meta-wayland-iosurface-init \
          meta-wayland-xdg-first-buffer-showing \
+         meta-wayland-text-input-osk-ios \
          meson-ios-backend; do
   echo "   $p.patch"
   patch -p1 -d "$MUTTER_ROOT" --forward -r - < "$LB/patches/mutter/$p.patch" \
