@@ -1,0 +1,10 @@
+{
+  "tagline": "dunst, a lightweight notification daemon",
+  "developer": "Dunst contributors",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "bell",
+  "description": "**dunst** is a lightweight and customizable notification daemon, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. dunst implements the freedesktop notification specification over D-Bus, so apps that post notifications get a clean on-screen popup rendered through Pango and Cairo.\n\n- freedesktop notifications over D-Bus\n- Native Wayland via the wlr layer-shell protocol\n- Pango and Cairo rendering with full styling control\n- Rules to filter, group, and route notifications\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Run it inside an Xios desktop session running the iosc compositor.",
+  "changelog": [
+    { "version": "1.13.2+ios1", "date": "2026-07-02", "notes": "- First release: dunst 1.13.2 cross-compiled for rootless iOS\n- Wayland notification daemon on the iosc compositor" }
+  ]
+}
