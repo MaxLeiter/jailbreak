@@ -74,6 +74,10 @@ enum bg_menu_action {
     MENU_ACT_REMOVE_PIN = 2,
     MENU_ACT_HIDE_WIDGET = 3,
     MENU_ACT_REFRESH = 4,
+    MENU_ACT_NEW_FOLDER = 5,
+    MENU_ACT_OPEN_DOCUMENTS = 6,
+    MENU_ACT_SET_WALLPAPER = 7,
+    MENU_ACT_RESET_WALLPAPER = 8,
 };
 
 struct widget {
@@ -131,6 +135,10 @@ static void render_wallpaper(void);
 static void render_desktop(void);
 static void render_desktop_widgets(int mask);
 static void rerender(void);
+static void pin_clamp(struct desktop_pin *p);
+#ifdef __APPLE__
+static CGImageRef load_wallpaper(const char *path);
+#endif
 
 static int abs_i(int v)
 {
@@ -162,6 +170,35 @@ static void bg_config_path(char *out, size_t n)
     const char *env = getenv("IOSC_WIDGET_CONFIG");
     if (env && *env) { snprintf(out, n, "%s", env); return; }
     snprintf(out, n, "/var/mobile/Library/Preferences/com.max.iosc-widgets.conf");
+}
+
+static void wallpaper_config_path(char *out, size_t n)
+{
+    const char *env = getenv("IOSC_WALLPAPER_CONFIG");
+    if (env && *env) { snprintf(out, n, "%s", env); return; }
+    snprintf(out, n, "/var/mobile/Library/Preferences/com.max.iosc-wallpaper");
+}
+
+static void wallpaper_default_path(char *out, size_t n)
+{
+    sd_join_path(out, n, sd_jbroot(), "/usr/share/backgrounds/xios/xios-default.jpg");
+}
+
+static void wallpaper_current_path(char *out, size_t n)
+{
+    const char *wp = getenv("IOSC_WALLPAPER");
+    if (wp && *wp) { snprintf(out, n, "%s", wp); return; }
+    char cfg[256];
+    wallpaper_config_path(cfg, sizeof cfg);
+    FILE *f = fopen(cfg, "r");
+    if (f) {
+        if (fgets(out, (int)n, f)) {
+            out[strcspn(out, "\r\n")] = 0;
+            fclose(f);
+            if (out[0]) return;
+        } else fclose(f);
+    }
+    wallpaper_default_path(out, n);
 }
 
 static void widgets_default(void)
@@ -225,6 +262,32 @@ static void pin_load_icon(struct desktop_pin *p)
     const char *name = p->icon[0] ? p->icon : p->name;
     if (pi_resolve(name, B.scale, path, sizeof path))
         p->icon_surf = pr_icon_load(path);
+}
+
+static int is_image_path(const char *path)
+{
+    const char *dot = path ? strrchr(path, '.') : NULL;
+    if (!dot) return 0;
+    return !strcasecmp(dot, ".jpg") || !strcasecmp(dot, ".jpeg") ||
+           !strcasecmp(dot, ".png") || !strcasecmp(dot, ".heic") ||
+           !strcasecmp(dot, ".tif") || !strcasecmp(dot, ".tiff");
+}
+
+static void pin_add_file(const char *name, const char *target, const char *icon, int x, int y)
+{
+    if (!name || !*name || !target || !*target || B.npins >= PIN_MAX) return;
+    for (int i = 0; i < B.npins; i++)
+        if (!strcmp(B.pins[i].type, "file") && !strcmp(B.pins[i].target, target))
+            return;
+    struct desktop_pin *p = &B.pins[B.npins++];
+    snprintf(p->type, sizeof p->type, "file");
+    snprintf(p->name, sizeof p->name, "%s", name);
+    snprintf(p->icon, sizeof p->icon, "%s", icon && *icon ? icon : "folder");
+    snprintf(p->target, sizeof p->target, "%s", target);
+    p->x = x; p->y = y; p->visible = 1;
+    pin_clamp(p);
+    pin_load_icon(p);
+    pins_save();
 }
 
 static void pins_load(void)
@@ -457,10 +520,18 @@ static int menu_actions(int kind, int idx, const char **labels, int *actions)
     int n = 0;
     if (kind == BG_PRESS_PIN && idx >= 0 && idx < B.npins) {
         labels[n] = "Open"; actions[n++] = MENU_ACT_OPEN;
+        if (!strcmp(B.pins[idx].type, "file") && is_image_path(B.pins[idx].target)) {
+            labels[n] = "Set as Wallpaper"; actions[n++] = MENU_ACT_SET_WALLPAPER;
+        }
         labels[n] = "Remove from Desktop"; actions[n++] = MENU_ACT_REMOVE_PIN;
         labels[n] = "Refresh Desktop"; actions[n++] = MENU_ACT_REFRESH;
     } else if (kind == BG_PRESS_WIDGET && idx >= 0 && idx < WIDGET_MAX) {
         labels[n] = "Hide Widget"; actions[n++] = MENU_ACT_HIDE_WIDGET;
+        labels[n] = "Refresh Desktop"; actions[n++] = MENU_ACT_REFRESH;
+    } else if (kind == BG_PRESS_NONE) {
+        labels[n] = "New Folder"; actions[n++] = MENU_ACT_NEW_FOLDER;
+        labels[n] = "Open Documents"; actions[n++] = MENU_ACT_OPEN_DOCUMENTS;
+        labels[n] = "Reset Wallpaper"; actions[n++] = MENU_ACT_RESET_WALLPAPER;
         labels[n] = "Refresh Desktop"; actions[n++] = MENU_ACT_REFRESH;
     }
     return n;
@@ -512,6 +583,56 @@ static void menu_remove_pin(int idx)
     pins_save();
 }
 
+static void reload_wallpaper_image(void)
+{
+#ifdef __APPLE__
+    if (B.image) { CGImageRelease(B.image); B.image = NULL; }
+    char wp[512];
+    wallpaper_current_path(wp, sizeof wp);
+    B.image = load_wallpaper(wp);
+#endif
+    base_cache_clear();
+    render_wallpaper();
+}
+
+static void menu_set_wallpaper_from_pin(int idx)
+{
+    if (idx < 0 || idx >= B.npins) return;
+    struct desktop_pin *p = &B.pins[idx];
+    if (strcmp(p->type, "file") || !is_image_path(p->target)) return;
+    char cfg[256];
+    wallpaper_config_path(cfg, sizeof cfg);
+    FILE *f = fopen(cfg, "w");
+    if (!f) return;
+    fprintf(f, "%s\n", p->target);
+    fclose(f);
+    reload_wallpaper_image();
+}
+
+static void menu_reset_wallpaper(void)
+{
+    char cfg[256];
+    wallpaper_config_path(cfg, sizeof cfg);
+    unlink(cfg);
+    reload_wallpaper_image();
+}
+
+static void menu_new_folder(void)
+{
+    char docs[256], path[320], name[96];
+    sd_join_path(docs, sizeof docs, sd_jbroot(), "/var/mobile/Documents");
+    mkdir(docs, 0755);
+    for (int i = 0; i < 100; i++) {
+        snprintf(name, sizeof name, i == 0 ? "Untitled Folder" : "Untitled Folder %d", i + 1);
+        snprintf(path, sizeof path, "%s/%s", docs, name);
+        if (mkdir(path, 0755) == 0) {
+            pin_add_file(name, path, "folder", B.menu_x, B.menu_y);
+            return;
+        }
+        if (errno != EEXIST) return;
+    }
+}
+
 static void menu_act(int action)
 {
     int kind = B.menu_kind, idx = B.menu_idx;
@@ -532,6 +653,18 @@ static void menu_act(int action)
     case MENU_ACT_REFRESH:
         B.pins_loaded = 0;
         widgets_update_stats();
+        break;
+    case MENU_ACT_NEW_FOLDER:
+        menu_new_folder();
+        break;
+    case MENU_ACT_OPEN_DOCUMENTS:
+        sd_launch("xdg-open /var/mobile/Documents");
+        break;
+    case MENU_ACT_SET_WALLPAPER:
+        if (kind == BG_PRESS_PIN) menu_set_wallpaper_from_pin(idx);
+        break;
+    case MENU_ACT_RESET_WALLPAPER:
+        menu_reset_wallpaper();
         break;
     }
     rerender();
@@ -862,7 +995,6 @@ static void maybe_begin_drag(uint64_t now)
     if (now - B.press_ms < WIDGET_HOLD_MS) return;
     int dx = x - x0, dy = y - y0;
     int moved = moved_past_slop(dx, dy);
-    if (kind == BG_PRESS_NONE) return;
     if (!moved) {
         menu_open_at(kind, idx, x, y);
         B.touch_moved = B.ptr_moved = 1;
@@ -1082,13 +1214,8 @@ int main(void)
     pins_load();
     widgets_update_stats();
 
-    const char *wp = getenv("IOSC_WALLPAPER");
-    char default_wp[256];
-    if (!wp || !*wp) {
-        sd_join_path(default_wp, sizeof default_wp, sd_jbroot(),
-                     "/usr/share/backgrounds/xios/xios-default.jpg");
-        wp = default_wp;
-    }
+    char wp[512];
+    wallpaper_current_path(wp, sizeof wp);
 #ifdef __APPLE__
     B.image = load_wallpaper(wp);
     fprintf(stderr, "ioscbg: wallpaper %s (%s)\n", wp, B.image ? "loaded" : "missing -> gradient");
