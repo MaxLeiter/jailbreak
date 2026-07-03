@@ -54,6 +54,8 @@ targets:
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: false
         UIApplicationSupportsIndirectInputEvents: true
+        NSCameraUsageDescription: Xios exposes the iPad camera to desktop media clients.
+        NSMicrophoneUsageDescription: Xios exposes the iPad microphone to desktop media clients.
         # Landscape-only: the X desktop is a fixed-aspect landscape surface
         # (2160x1620 on iPad 7, matching the screen 1:1). Allowing portrait made a
         # landscape 4:3 image letterbox hard on a 3:4 screen — so lock to landscape,

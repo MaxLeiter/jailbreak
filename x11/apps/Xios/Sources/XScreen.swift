@@ -266,6 +266,7 @@ final class XScreenView: UIView {
     func start() {
         loadConfig()
         SystemIntegration.shared.install(on: self)
+        XiosCameraBroker.shared.start()
         isMultipleTouchEnabled = true
         // MTLCreateSystemDefaultDevice() returns nil for a backgrounded app (a
         // SpringBoard relaunch, or uicache registration launching us off-screen), so a

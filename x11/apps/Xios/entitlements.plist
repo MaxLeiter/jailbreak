@@ -12,6 +12,17 @@
          mach port (zero-copy framebuffer rendezvous; see XSurface.c). -->
     <key>get-task-allow</key>
     <true/>
+    <key>com.apple.private.avfoundation.capture.nonstandard-client.allow</key>
+    <true/>
+    <key>com.apple.private.avfoundation.capture.allow</key>
+    <true/>
+    <key>com.apple.private.avfoundation.background-camera-access</key>
+    <true/>
+    <key>com.apple.private.tcc.allow</key>
+    <array>
+        <string>kTCCServiceCamera</string>
+        <string>kTCCServiceMicrophone</string>
+    </array>
     <key>com.apple.security.iokit-user-client-class</key>
     <array>
         <string>AGXDeviceUserClient</string>
