@@ -3,9 +3,11 @@
 Status: design plus Linux-side P0/P1 smoke slices shipping. The AT-SPI packages,
 `xios-a11y-tools`/`atspi-dump`, the opt-in `XIOS_ENABLE_A11Y=1` launch path,
 read-only `xios-a11yd` snapshots, and the native-iPadOS host-side publisher
-prototype exist; the desktop Xios VoiceOver publisher does not. Owner of the
-Xios app changes: team lead. This doc specifies the bridge; sections marked SPEC
-describe Xios-side work without touching it.
+prototype exist. A first desktop Xios VoiceOver publisher slice now exists in
+the Xios app and builds, but still needs on-device VoiceOver gesture validation
+against real GTK/Qt controls. Owner of the Xios app changes: team lead. This doc
+specifies the bridge; sections marked IMPLEMENTED describe the Xios-side shape
+that has landed and still needs runtime proof.
 
 ## Goal
 
@@ -117,6 +119,16 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `apps/iosc-host/Sources/HostA11y.swift` and related `HostScreenView` /
   `NativeManager` glue. It is gated by iOS VoiceOver by default, with the
   `/var/jb/tmp/xios-a11y-force` file available for smoke tests.
+- The desktop Xios app now has the first unbound VoiceOver publisher slice in
+  `apps/Xios/Sources/XiosA11y.swift`: it connects to `/var/jb/tmp/xios-a11y.sock`
+  only while iOS VoiceOver or `/var/jb/tmp/xios-a11y-force` is active, sends
+  `enable`, decodes `hello`/`reset`/`window`/`upsert`/`remove`/`focus`/
+  `announce`/`tap`, publishes flattened `UIAccessibilityElement`s onto
+  `XScreenView`, and routes activate/custom action/adjust/scroll/focus callbacks
+  back to `xios-a11yd`. `XScreenView` now exposes framebuffer-px -> view-point
+  frame conversion plus VoiceOver Escape and synthetic-tap helpers. Host-side
+  verification on 2026-07-03: `xcodegen generate` and unsigned Release
+  `iphoneos` `xcodebuild` succeeded for `apps/Xios`.
 - The Xios app already has the screen-point to output-px mapping (`framebufferPoint`
   and inverse, used by the cursor overlay). Element frames reuse it.
 - Xios already synthesizes Wayland pointer input from touches (tap+type path). The
@@ -388,9 +400,9 @@ Escape gesture (2-finger Z): `accessibilityPerformEscape` -> synthesize Esc keyp
 via the existing keyboard injection. Scroll gestures: `accessibilityScroll(direction)`
 -> synthetic wheel/swipe at the container center through the touch path.
 
-## SPEC: Xios app work (lead owns; do not build from this doc without him)
+## IMPLEMENTED FIRST SLICE: Xios app work
 
-New files, roughly 600-900 lines of Swift total:
+New files, roughly 500 lines of Swift total:
 
 1. `XiosA11yClient`: connects to the helper socket, NDJSON decode on a utility queue,
    applies diffs to an element store, swaps the published array on the main queue.
@@ -412,9 +424,9 @@ New files, roughly 600-900 lines of Swift total:
 4. Notifications: `.layoutChanged(element)` on `focus`, `.screenChanged(first)` on
    window switch/reset, `.announcement(text)` on `announce`.
 5. Gating: start the client and tell the helper `enable {true}` only when
-   `UIAccessibility.isVoiceOverRunning`; observe
-   `voiceOverStatusDidChangeNotification`. When VoiceOver is off the entire pipeline
-   (helper mirror included) is quiescent and costs nothing.
+   `UIAccessibility.isVoiceOverRunning` or `/var/jb/tmp/xios-a11y-force` exists;
+   observe `voiceOverStatusDidChangeNotification`. When VoiceOver is off and the
+   force file is absent, the app-side pipeline is quiescent.
 6. Synthetic tap service: `tap {x, y}` from the helper feeds the existing
    touch-to-pointer injection at desktop-px coordinates.
 
@@ -559,7 +571,7 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 | atspi-dump CLI | shipped in `xios-a11y-tools_0.2.14`; prints role/name/description plus states, action names, and value text/current/min/max/increment | expand output only if xios-a11yd needs more probe coverage |
 | xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.14`; coalesces common AT-SPI object/window/document events into diff-suppressed snapshots with a periodic fallback; line-buffers app commands as NDJSON and dispatches by exact `t`; exposes action names, values, AT-SPI state-derived traits/values, and `focus` when AT-SPI reports one; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue; routes `scroll` to AT-SPI Component.ScrollTo | add geometry correlation, PID correlation, and real VoiceOver status mirroring |
 | iosc geometry feed | new | small compositor + shell-channel addition |
-| Xios app side | desktop publisher still SPEC; native host prototype exists | desktop Xios client still ~600-900 lines Swift; native host waits on helper |
+| Xios app side | desktop publisher first slice builds; native host prototype exists | deploy Xios app, run forced socket smoke, then real VoiceOver gesture validation |
 | iosc-shell AT-SPI objects | new | few hundred lines, libdbus (shipped) |
 | Orca stack (optional) | new | 4 debs: espeak-ng, dotconf, speech-dispatcher, orca |
 
@@ -584,7 +596,8 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
   the `0.2.4` helper suppresses unchanged snapshot republishes after the tree
   settles, and `0.2.6` wires the existing HostA11y activate/custom-action
   messages through to AT-SPI actions with a synthetic-tap fallback for plain
-  activation.
+  activation. The desktop Xios app now also has an unbound publisher that builds
+  and mirrors helper frames into UIAccessibilityElements on the Metal view.
   It is still snapshot-only and has not been verified with real VoiceOver gestures
   on device yet. Accept:
   VoiceOver swipes through gnome-console and gtk4-demo controls with correct speech
@@ -592,15 +605,16 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
   (`native-ipados-a11y.md`) is the endorsed FIRST publisher here and its Swift side
   already builds: it now has the helper's bind + multi-connection path, no geometry
   feed and no desktop window-correlation heuristics, so it validates the helper and
-  wire protocol end-to-end before the Xios desktop client lands. It supplements, not
-  replaces, the desktop acceptance above.
+  wire protocol end-to-end. It supplements, not replaces, the desktop acceptance
+  above.
 - P2 interaction: activate, custom actions, adjustable, focus sync, screenChanged.
   FIRST SLICE SHIPPED: helper publishes AT-SPI action names and routes
   `activate` / `action` to `AtspiAction.DoAction`; `activate` falls back to a
   synthetic tap at the node center when no action is available. The HostA11y
   publisher already sends those messages from `accessibilityActivate()` and
-  custom actions. `adjust` now calls AT-SPI Value.SetCurrentValue using the
-  target node's min/max/increment. `scroll` now calls AT-SPI
+  custom actions; the desktop Xios publisher now sends the same activate/action,
+  adjust, scroll, and vo-focus messages. `adjust` now calls AT-SPI
+  Value.SetCurrentValue using the target node's min/max/increment. `scroll` now calls AT-SPI
   Component.ScrollTo for targets that expose a Component interface. Device smoke
   confirms action names are on the wire for kgx, but this has not yet been
   exercised through real VoiceOver gestures or against a confirmed

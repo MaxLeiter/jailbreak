@@ -548,6 +548,8 @@ final class XScreenView: UIView {
         }
         connectInput()
         writeStatus()
+        isAccessibilityElement = false
+        XiosA11yClient.shared.startup(view: self)
 
         let dl = CADisplayLink(target: self, selector: #selector(tick))
         dl.preferredFramesPerSecond = usingTestPattern ? 20 : 60
@@ -1733,6 +1735,35 @@ final class XScreenView: UIView {
         sendMotion(p.0, p.1)
         sendButton(button, true, at: p)
         sendButton(button, false, at: p)
+    }
+
+    // MARK: accessibility (XiosA11y.swift publishes onto this view)
+
+    /// Inverse of framebufferPoint's fit/zoom/pan mapping: framebuffer-px rect
+    /// -> view points, then UIAccessibility converts the result to screen coords.
+    func viewRect(fromFramebuffer r: CGRect) -> CGRect {
+        guard let fit = fitTransform(), fit.scale > 0 else { return .zero }
+        return CGRect(
+            x: fit.contentRect.minX + r.minX * fit.scale,
+            y: fit.contentRect.minY + r.minY * fit.scale,
+            width: r.width * fit.scale,
+            height: r.height * fit.scale)
+    }
+
+    /// VoiceOver escape gesture: Esc through the active desktop input backend.
+    func a11yEscape() {
+        guard inputConnected else { return }
+        sendKeysym(0xff1b, ctrl: false, alt: false, shift: false)
+    }
+
+    /// Helper-requested fallback tap at framebuffer px (element had no AT-SPI Action).
+    func a11ySynthTap(x: Int32, y: Int32) {
+        guard inputConnected else { return }
+        let p = (x, y)
+        lastTouchPt = p
+        sendMotion(p.0, p.1)
+        sendButton(1, true, at: p)
+        sendButton(1, false, at: p)
     }
 
     private func sendWheel(_ button: Int32) {
