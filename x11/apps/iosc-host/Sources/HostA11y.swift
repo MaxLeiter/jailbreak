@@ -16,8 +16,11 @@ final class HostA11yClient {
     /// Fixed path, one listener for desktop and native clients. Never derive
     /// from $XDG_RUNTIME_DIR — ioscd points that at per-app private bus dirs.
     private let sockPath = "/var/jb/tmp/xios-a11y.sock"
+    private let forcePath = "/var/jb/tmp/xios-a11y-force"
+    private let logPath = "/var/jb/tmp/iosc-a11y-host.log"
 
     private var appID = ""
+    private var exec = ""
     private var fd: Int32 = -1
     private var reader: Thread?
     private var running = false
@@ -30,8 +33,10 @@ final class HostA11yClient {
 
     /// Called once from NativeManager.startup(). Arms the VoiceOver gate; the
     /// socket opens only while VoiceOver is on.
-    func startup(appID: String) {
+    func startup(appID: String, exec: String) {
         self.appID = appID
+        self.exec = exec
+        log("startup appid=\(appID) exec=\(exec)")
         NotificationCenter.default.addObserver(
             self, selector: #selector(syncVoiceOver),
             name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
@@ -39,12 +44,20 @@ final class HostA11yClient {
     }
 
     @objc private func syncVoiceOver() {
-        if UIAccessibility.isVoiceOverRunning { start() } else { stop() }
+        let forced = FileManager.default.fileExists(atPath: forcePath)
+        if UIAccessibility.isVoiceOverRunning || forced {
+            log("enable gate voiceover=\(UIAccessibility.isVoiceOverRunning) forced=\(forced)")
+            start()
+        } else {
+            log("disable gate voiceover=false forced=false")
+            stop()
+        }
     }
 
     private func start() {
         guard reader == nil else { return }
         running = true
+        log("reader start")
         let t = Thread { [weak self] in self?.readerLoop() }
         t.name = "iosc-a11y-reader"
         t.stackSize = 256 * 1024
@@ -58,18 +71,30 @@ final class HostA11yClient {
         reader = nil
         stores.values.forEach { $0.unpublish() }
         stores.removeAll()
+        log("reader stop")
     }
 
     // MARK: socket
 
     private func readerLoop() {
+        var failures = 0
         while running {
             let s = connectUnixSocket(sockPath)
-            if s < 0 { Thread.sleep(forTimeInterval: 2.0); continue }
+            if s < 0 {
+                failures += 1
+                if failures == 1 || failures % 10 == 0 {
+                    log("connect pending path=\(sockPath) failures=\(failures)")
+                }
+                Thread.sleep(forTimeInterval: 2.0)
+                continue
+            }
+            failures = 0
             fd = s
-            send(["t": "bind", "appid": appID])
+            log("connected path=\(sockPath); bind appid=\(appID) exec=\(exec)")
+            send(["t": "bind", "appid": appID, "exec": exec])
             send(["t": "enable", "on": true])
             pump(s)
+            log("socket closed")
             if fd >= 0 { close(fd); fd = -1 }
             DispatchQueue.main.async { [weak self] in
                 self?.stores.values.forEach { $0.unpublish() }
@@ -90,9 +115,25 @@ final class HostA11yClient {
                 let line = buf.subdata(in: buf.startIndex..<nl)
                 buf.removeSubrange(buf.startIndex...nl)
                 guard !line.isEmpty,
-                      let m = try? JSONDecoder().decode(A11yMsg.self, from: line) else { continue }
+                      let m = try? JSONDecoder().decode(A11yMsg.self, from: line) else {
+                    log("decode skip bytes=\(line.count)")
+                    continue
+                }
                 DispatchQueue.main.async { [weak self] in self?.apply(m) }
             }
+        }
+    }
+
+    fileprivate func log(_ message: String) {
+        let line = "HostA11y \(Date()) \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: logPath),
+           let fh = try? FileHandle(forWritingTo: URL(fileURLWithPath: logPath)) {
+            defer { try? fh.close() }
+            _ = try? fh.seekToEnd()
+            try? fh.write(contentsOf: data)
+        } else {
+            try? data.write(to: URL(fileURLWithPath: logPath), options: .atomic)
         }
     }
 
@@ -118,13 +159,16 @@ final class HostA11yClient {
     private func apply(_ m: A11yMsg) {
         switch m.t {
         case "hello":
+            log("hello gen=\(m.gen ?? -1)")
             break
         case "reset":
+            log("reset gen=\(m.gen ?? -1)")
             stores.values.forEach { $0.unpublish() }
             stores.removeAll()
             UIAccessibility.post(notification: .screenChanged, argument: nil)
         case "window":
             guard let win = m.id else { break }
+            log("window id=\(win) appid=\(m.appid ?? "") title=\(m.title ?? "")")
             let store = stores[win] ?? HostA11yWindowStore(winID: win, client: self)
             stores[win] = store
             store.title = m.title ?? store.title
@@ -152,6 +196,7 @@ final class HostA11yClient {
             }
         case "announce":
             if let text = m.text {
+                log("announce \(text)")
                 UIAccessibility.post(notification: .announcement, argument: text)
             }
         case "tap":
@@ -159,6 +204,7 @@ final class HostA11yClient {
             let store = m.win.flatMap { stores[$0] } ?? stores.values.first { $0.view != nil }
             store?.view?.a11ySynthTap(x: Int32(x), y: Int32(y))
         default:
+            log("unknown message type \(m.t)")
             print("iosc-a11y: unknown message type \(m.t)")
         }
     }
@@ -176,6 +222,7 @@ final class HostA11yClient {
         if store.view !== pick.view {
             store.view = pick.view
             store.publish()
+            log("attach win=\(store.winID) scene=\(pick.id) title=\(pick.title)")
             send(["t": "attach", "win": store.winID])
         }
     }
@@ -294,11 +341,13 @@ final class HostA11yWindowStore {
         }
         walk(roots)
         view.accessibilityElements = ordered.isEmpty ? nil : ordered
+        client.log("publish win=\(winID) elements=\(ordered.count) view=\(ObjectIdentifier(view))")
     }
 
     func unpublish() {
         view?.accessibilityElements = nil
         nodes.removeAll()
+        client.log("unpublish win=\(winID)")
     }
 }
 

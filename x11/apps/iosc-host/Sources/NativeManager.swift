@@ -71,7 +71,7 @@ final class NativeManager: NSObject {
         }
         startReader()
         // VoiceOver bridge (inert until xios-a11yd ships; gated on VoiceOver).
-        HostA11yClient.shared.startup(appID: appID)
+        HostA11yClient.shared.startup(appID: appID, exec: exec)
     }
 
     /// Connect (retrying) and pump events on a background thread.

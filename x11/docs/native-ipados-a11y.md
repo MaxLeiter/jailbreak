@@ -1,10 +1,12 @@
 # Native-flavor accessibility: per-app hosts publishing UIAccessibility trees
 
-Status: spec ACKED + host-side prototype (compile-clean, inert until xios-a11yd
-exists). This is the native-iPadOS half of `a11y-plan.md`, which owns the bridge
-design and the helper (`xios-a11yd`). Every addition below is folded into
-a11y-plan.md's authoritative wire schema; this doc explains the native
-rationale. Host-side code lives in `apps/iosc-host/Sources/HostA11y.swift`.
+Status: spec ACKED + host-side prototype (compile-clean) + helper-side bound
+snapshot support with unchanged-publish suppression and first action routing +
+forced native-host smoke. This is the native-iPadOS half of
+`a11y-plan.md`, which owns the bridge design and the helper (`xios-a11yd`).
+Every addition below is folded into a11y-plan.md's authoritative wire schema;
+this doc explains the native rationale. Host-side code lives in
+`apps/iosc-host/Sources/HostA11y.swift`.
 
 ## Why native is the showcase
 
@@ -41,18 +43,23 @@ event subscriptions, debounce, publication filters) is shared machinery.
 
 ## Connection contract
 
-1. Host connects to `/var/jb/tmp/xios-a11y.sock` (one
-   listener serves the Xios client and all native hosts, mode 0600, fixed path —
-   never derive from `$XDG_RUNTIME_DIR`, which ioscd points at per-app private
+1. Host connects to `/var/jb/tmp/xios-a11y.sock` (one listener serves the Xios
+   client and all native hosts, owned `mobile:mobile` and mode 0660, fixed path
+   — never derive from `$XDG_RUNTIME_DIR`, which ioscd points at per-app private
    bus dirs, ioscd.c:255).
-2. Host sends `bind{appid}` immediately after connect.
+2. Host sends `bind{appid,exec}` immediately after connect.
    An unbound connection = desktop semantics (Xios app, unchanged). bind is a
    persistent filter: on cold launch the helper holds it and starts publishing
    when the app's Socket.Embed arrives; on app exit it sends `reset` and
-   re-publishes on relaunch.
+   re-publishes on relaunch. `exec` is optional in the schema but shipped by
+   `HostA11yClient` because AT-SPI often reports executable names (`kgx`) rather
+   than freedesktop app ids (`org.gnome.Console`).
 3. Host sends `enable{true}` only while `UIAccessibility.isVoiceOverRunning`;
    on VoiceOver off it sends `enable{false}` and the helper drops the mirror
    work for this connection. Whole pipeline is quiescent without VoiceOver.
+   Smoke tests can create `/var/jb/tmp/xios-a11y-force` before launching a native
+   host; HostA11y treats that as an enable gate and ioscd enables the Linux-side
+   AT-SPI launch prefix for the app.
 4. Helper publishes, for the bound app only: `window` entries for its toplevels
    and `upsert`/`remove`/`focus`/`announce` for their subtrees. Frames are
    window-relative pixels, untranslated.
@@ -61,10 +68,14 @@ event subscriptions, debounce, publication filters) is shared machinery.
 
 Binding `appid` to an AT-SPI application:
 
-- ioscd spawned the Linux process for that appid (`ioscd_send_launch`), so it
-  knows (appid, pid). ioscd streams spawn/exit records to xios-a11yd
-  (it also starts the helper, so a pipe or the runtime-dir socket both work):
-  `spawn{appid,pid}` / `exit{appid,pid}`.
+- Shipped first pass: helper matches the bound connection against AT-SPI
+  application name/title using `appid`, `exec`, and their basenames. On-device
+  smoke verified `bind{appid:"org.gnome.Console",exec:"kgx"}` publishes kgx and a
+  non-matching bind publishes no windows.
+- Intended hardening: ioscd spawned the Linux process for that appid
+  (`ioscd_send_launch`), so it knows (appid, pid). ioscd streams spawn/exit
+  records to xios-a11yd (it also starts the helper, so a pipe or the runtime-dir
+  socket both work): `spawn{appid,pid}` / `exit{appid,pid}`.
 - The helper resolves each registered AT-SPI application's connection to a PID
   via `org.freedesktop.DBus.GetConnectionUnixProcessID` on the a11y bus, and
   joins on PID. No /proc, no name heuristics, no title matching.
@@ -127,6 +138,8 @@ shape: background reader thread, main-actor apply):
   line-buffered JSON decode in. Gated by `voiceOverStatusDidChangeNotification`;
   when VoiceOver is off the socket is closed. Inert if the helper socket does
   not exist (silent retry with backoff) — safe to ship ahead of xios-a11yd.
+  `/var/jb/tmp/xios-a11y-force` is a smoke-only override, and
+  `/var/jb/tmp/iosc-a11y-host.log` records connect/bind/window/publish events.
 - `HostA11yWindowStore`: nodes keyed by helper id, (parent, idx) tree, pre-order
   flatten on each applied batch, published as the bound view's
   `accessibilityElements`.
@@ -150,8 +163,8 @@ attach/detach.
 
 | addition | direction | why |
 |---|---|---|
-| `bind{appid}` | app->helper | scope a connection to one AT-SPI app |
-| multi-connection + per-conn enable/generation | helper | N hosts |
+| `bind{appid,exec?}` | app->helper | scope a connection to one AT-SPI app; `exec` covers app-id/name mismatches |
+| multi-connection + per-conn bind/enable/generation | helper | N hosts |
 | publish all toplevels of bound app (not focused-only) | helper | same-app Split View |
 | `attach{win}` / `detach{win}` | app->helper | mute unscened windows |
 | `tap{win,x,y}` window field | helper->app | native taps are window-relative |
@@ -163,9 +176,23 @@ or a new field with a safe default.
 ## Phasing (hooks into a11y-plan.md phases)
 
 - P1 (read-only browse): a11y-plan.md now ENDORSES the native host as the first
-  P1 publisher — it needs only `bind` + multi-connection from the additions
-  above (correlation can start on the name-match fallback; the spawn feed
-  hardens it in P2). It supplements, not replaces, the desktop P1 acceptance.
+  P1 publisher. Helper-side `bind` + multi-connection exists, and
+  `HostA11yClient` now sends both app id and exec. On-device forced smoke on
+  2026-07-03: generated/deployed a native Console bundle, created
+  `/var/jb/tmp/xios-a11y-force`, launched it, and saw HostA11y connect to
+  `/var/jb/tmp/xios-a11y.sock`, bind `org.gnome.Console`/`kgx`, attach scene 3,
+  and publish 12 elements onto the host view. A follow-up `xios-a11y-tools_0.2.4`
+  smoke kept the same counts after an idle wait, confirming unchanged snapshot
+  republishes are suppressed. `xios-a11y-tools_0.2.6` also routes the existing
+  HostA11y `activate` and custom `action` messages back to AT-SPI Action.DoAction
+  for currently published node ids, with a synthetic-tap fallback for activation
+  when no AT-SPI action is available. On-device direct socket probe saw kgx node
+  `1003` expose `actions:["overview.open"]`. A fresh native Calculator smoke
+  connected and published 18 elements, but the tree still lacked useful labels
+  and was mostly `panel`/`grouping`, so it does not close the full-widget GTK
+  acceptance gate. Real VoiceOver gesture validation is still pending. The spawn
+  feed hardens correlation in P2. It supplements, not replaces, the desktop P1
+  acceptance.
   Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
   gate removed from ioscd, IsEnabled property write, atspi-dump smoke test)
   gate this path exactly as they gate the desktop one. Accept: VoiceOver swipes

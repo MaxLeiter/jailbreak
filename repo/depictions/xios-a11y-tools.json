@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/xios-session.png",
+  "headerImage": "https://repo.maxleiter.com/banners/xios-a11y-tools.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "pick-a-desktop session launcher for the Xios stack"
+          "markdown": "accessibility smoke tools for Xios"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "1.0.9"
+          "text": "0.2.6"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "19.1 KiB"
+          "text": "11.2 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -42,7 +42,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "xios-session"
+          "text": "xios-a11y-tools"
         }
       ]
     }

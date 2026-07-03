@@ -1,7 +1,11 @@
 # Accessibility plan: iOS VoiceOver into the Linux desktop
 
-Status: design (nothing built yet). Owner of the Xios app changes: team lead. This doc
-specifies the bridge; sections marked SPEC describe Xios-side work without touching it.
+Status: design plus Linux-side P0/P1 smoke slices shipping. The AT-SPI packages,
+`xios-a11y-tools`/`atspi-dump`, the opt-in `XIOS_ENABLE_A11Y=1` launch path,
+read-only `xios-a11yd` snapshots, and the native-iPadOS host-side publisher
+prototype exist; the desktop Xios VoiceOver publisher does not. Owner of the
+Xios app changes: team lead. This doc specifies the bridge; sections marked SPEC
+describe Xios-side work without touching it.
 
 ## Goal
 
@@ -23,9 +27,56 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `libatspi` (the AT client library Orca uses), and `libatk-bridge` (GTK3/ATK adaptor).
 - GTK4 has a native AT-SPI backend (no ATK). Qt 6 has its own AT-SPI bridge in QtGui.
   GNOME Shell exposes its whole St/Clutter chrome over AT-SPI (Cally).
-- ioscd exports `GTK_A11Y=none` (`apps/iosc-desktop/src/ioscd.c:274`), which
-  hard-disables the GTK4 backend. This was a startup-cost optimization; it must
-  become conditional (P0 below).
+- ioscd still exports `GTK_A11Y=none` (`apps/iosc-desktop/src/ioscd.c`, client
+  launch path), and the helper launch paths in `apps/iosc-desktop/xios-session-lib.sh`,
+  `apps/iosc-shell/shell-draw.h`, and `wayland/run-kgx.sh` do the same. This
+  hard-disables the GTK4 backend by default. It is now conditional: set
+  `XIOS_ENABLE_A11Y=1` to leave GTK a11y enabled and start
+  `/var/jb/usr/libexec/at-spi-bus-launcher` inside the app's `dbus-run-session`.
+  For smoke tests, `/var/jb/tmp/xios-a11y-force` enables the same path without
+  needing to toggle iOS VoiceOver.
+- `xios-a11y-tools_0.2.6` ships `/var/jb/usr/local/bin/atspi-dump` and
+  `/var/jb/usr/local/bin/xios-a11yd`. On-device smoke on 2026-07-02: with fresh
+  `iosc` and `XIOS_ENABLE_A11Y=1 xios-session app kgx`, the AT-SPI bus came up,
+  registryd activated, and `atspi-dump --depth=4` against
+  `/var/jb/tmp/xios-session-bus/at-spi/bus` printed `application name="kgx"` and
+  frame `iosc-kgx`. `xios-a11yd` listened on `/var/jb/tmp/xios-a11y.sock` and a
+  client `{"t":"enable","on":true}` produced `hello`, `reset`, `window`, and
+  `upsert` records for `kgx`/`iosc-kgx`. `xios-session_1.0.9` launch paths start
+  `xios-a11yd` when installed, avoid duplicate starts when the socket already
+  exists, and tear it down on session switch. The launch prefix also writes
+  `org.a11y.Status.IsEnabled=true` and `ScreenReaderEnabled=true` through `gdbus`
+  inside the same session bus before launching the app. `xios-a11yd` now also
+  supports per-connection `bind` filters; a bound smoke with
+  `appid=org.gnome.Console, exec=kgx` published kgx, while a non-matching bind
+  emitted no window/upsert records. Follow-up native smoke on 2026-07-03 fixed the
+  helper socket to `mobile:mobile 0660`; a forced native `org.gnome.Console`
+  IOSCHost connected, bound `org.gnome.Console`/`kgx`, attached scene 3, and
+  published 12 accessibility elements from the snapshot stream.
+  The helper still polls in lieu of AT-SPI event handling, but now caches each
+  client's last snapshot and only sends `reset` plus a replacement tree when the
+  published body changes. On-device smoke with `0.2.4` saw the expected startup
+  empty-tree reset followed by the populated kgx tree, then no further
+  reset/publish churn while idle. `0.2.5` adds first interaction plumbing:
+  snapshot nodes expose AT-SPI action names and incoming `activate` / `action`
+  messages call `AtspiAction.DoAction` for the currently published node id; if
+  `activate` has no usable AT-SPI action, the helper falls back to a window-
+  relative synthetic `tap` at the node center. The `0.2.6` native Console smoke
+  still connected HostA11y, published 12 elements, stayed flat after an idle
+  wait, and a direct socket probe saw action node `1003` with
+  `actions:["overview.open"]`. A fresh native Calculator smoke published 18
+  elements and exposed one action-rich node, but labels were still empty and the
+  roles were mostly `panel`/`grouping`; treat this as proof that actions are
+  flowing, not proof that GTK widgets are semantically complete.
+- Qt AT-SPI bridge recipe work has moved forward: `linux-build/recipes/qtbase.mk`
+  now carries the round-3 revision with `FEATURE_dbus=ON`,
+  `FEATURE_accessibility=ON`, `FEATURE_accessibility_atspi_bridge=ON`, and the
+  synthetic `FindATSPI2.cmake` target for the staged at-spi2 headers. The remaining
+  Qt gate is build/package/device validation, not deciding the recipe shape.
+- The native-iPadOS host-side publisher prototype exists in
+  `apps/iosc-host/Sources/HostA11y.swift` and related `HostScreenView` /
+  `NativeManager` glue. It is gated by iOS VoiceOver by default, with the
+  `/var/jb/tmp/xios-a11y-force` file available for smoke tests.
 - The Xios app already has the screen-point to output-px mapping (`framebufferPoint`
   and inverse, used by the cursor overlay). Element frames reuse it.
 - Xios already synthesizes Wayland pointer input from touches (tap+type path). The
@@ -115,33 +166,33 @@ bus as a normal AT, exactly like Orca would.
 1. Session start runs `at-spi-bus-launcher --launch-immediately` inside the
    `dbus-run-session` environment. It claims `org.a11y.Bus`, starts the private bus,
    and registryd gets service-activated as `org.a11y.atspi.Registry`.
-2. Remove the unconditional `GTK_A11Y=none` from ioscd. Gate it instead: set
-   `GTK_A11Y=none` only when the bridge is disabled and no AT is expected. Escape
-   hatch stays `NO_AT_BRIDGE=1` (honored by both GTK3's atk-bridge and GTK4).
-3. xios-a11yd sets `IsEnabled=true` on `org.a11y.Bus` at startup and mirrors
-   VoiceOver's state into `ScreenReaderEnabled` (Orca does the same). Do this as a
-   D-Bus property write, not a gsettings write: with the memory gsettings backend the
-   launcher's own view of `toolkit-accessibility` resets every session, and the
-   property write also fires the launcher's listeners.
+2. Remove the unconditional `GTK_A11Y=none` from ioscd. FIRST SLICE SHIPPED:
+   `XIOS_ENABLE_A11Y=1` gates it off and starts `at-spi-bus-launcher`; default
+   remains `GTK_A11Y=none` until the Xios publisher consumes the helper stream.
+   Escape hatch stays `NO_AT_BRIDGE=1` (honored by both GTK3's atk-bridge and GTK4).
+3. The opt-in launch prefix currently sets `IsEnabled=true` on `org.a11y.Bus` and
+   `ScreenReaderEnabled=true` before launching the app (Orca does the same). Keep
+   this as a D-Bus property write, not a gsettings write: with the memory gsettings
+   backend the launcher's own view of `toolkit-accessibility` resets every session,
+   and the property write also fires the launcher's listeners. Later, move
+   `ScreenReaderEnabled` mirroring behind the Xios VoiceOver status signal.
 4. GTK3 apps: CONFIRMED compiled out. The gtk3 recipe stubs the bridge entirely
    (`linux-build/recipes/gtk+3.0.mk:20`: atk-bridge dep made optional, the
    `atk_bridge_adaptor_init` call in gtkaccessibility.c commented away) because
    at-spi2-core did not exist yet when GTK3 was built. GTK3 apps stay dark until a
    gtk3 rebuild against the libatk-bridge we now ship. Not a P0 blocker (GTK4/Qt
    are the priority targets) but queue the rebuild before P4 breadth.
-5. Qt/KDE: qtbase must be configured with the AT-SPI bridge feature, and the
-   current recipe cannot enable it with one flag: the bridge's cmake condition is
-   accessibility + QtDBus + libatspi found via pkg-config, and today's recipe sets
-   `-DFEATURE_dbus=OFF` (`linux-build/recipes/qtbase.mk:160`). Needed: flip
-   `-DFEATURE_dbus=ON` (links the libdbus we already ship; KF6/Plasma needs QtDBus
-   anyway, so this belongs in the same round-2 reconfigure as printsupport), put
-   at-spi2-core dev headers in the qtbase sysroot, and add
-   `-DFEATURE_accessibility_atspi_bridge=ON` so configure errors out instead of
-   silently dropping the bridge. Do this in the round-2 rebuild at the latest;
-   every Qt/KDE app built against a bridgeless qtbase is invisible to any AT.
-6. Smoke test without any Apple-side work: a 50-line `atspi-dump` CLI (libatspi) that
-   prints the tree of every registered app. If `atspi-dump` sees gnome-console's
-   widgets, the Linux half works.
+5. Qt/KDE: recipe work is no longer the blocker. `qtbase.mk` now flips QtDBus,
+   xkbcommon, accessibility, and `accessibility_atspi_bridge` ON, stages the
+   at-spi2 headers into the Qt sysroot, and replaces Qt's pkg-config-only
+   `FindATSPI2.cmake` with a synthetic imported target. Remaining work: rebuild and
+   package the current qtbase revision, verify configure reports the AT-SPI bridge
+   enabled, and run an on-device Qt AT-SPI smoke once `atspi-dump` exists. Every
+   Qt/KDE app built against an older bridgeless qtbase remains invisible to any AT.
+6. Smoke test without any Apple-side work: `atspi-dump` prints the tree of every
+   registered app, and `xios-a11yd` emits the read-only socket protocol. If
+   `atspi-dump` sees a GTK/Qt app's widgets and `xios-a11yd` emits matching
+   `window`/`upsert` records, the Linux half is ready for Xios-side publishing.
 
 ## Tree mirror in xios-a11yd
 
@@ -329,9 +380,10 @@ New files, roughly 600-900 lines of Swift total:
 
 ### Authoritative Wire Schema
 
-Transport: NDJSON over the unix socket `/var/jb/tmp/xios-a11y.sock`, mode 0600.
-Fixed path on purpose, same convention as `ioscd.sock`/`iosc-wm.sock`; do NOT
-derive it from `$XDG_RUNTIME_DIR`, which ioscd points at per-app private bus dirs
+Transport: NDJSON over the unix socket `/var/jb/tmp/xios-a11y.sock`, owned
+`mobile:mobile` and mode 0660 so UIKit hosts can connect. Fixed path on purpose,
+same convention as `ioscd.sock`/`iosc-wm.sock`; do NOT derive it from
+`$XDG_RUNTIME_DIR`, which ioscd points at per-app private bus dirs
 (`ioscd.c:255`). ONE listener serves every client: the Xios desktop app and N
 native per-app hosts concurrently. Each connection carries its own bind filter,
 enable state, and generation counter. The native-flavor messages from
@@ -365,8 +417,11 @@ helper -> app:
 
 app -> helper:
 
-- `{"t":"bind","appid":S}` — first message after connect; scopes the connection
-  to one AT-SPI application. Unbound connection = desktop semantics, unchanged.
+- `{"t":"bind","appid":S,"exec":S?}` — first message after connect; scopes the
+  connection to one AT-SPI application. `exec` is optional but native hosts send
+  it because AT-SPI app names can be executable names (`kgx`) rather than
+  freedesktop app ids (`org.gnome.Console`). Unbound connection = desktop
+  semantics, unchanged.
 - `{"t":"enable","on":B}`
 - `{"t":"activate","id":N}`, `{"t":"action","id":N,"idx":I}`
 - `{"t":"adjust","id":N,"dir":D}` with D = 1 or -1
@@ -383,11 +438,12 @@ publishing when the app's `Socket.Embed` arrives; on app exit it sends `reset`
 and re-publishes on relaunch. Bound connections receive ALL mapped toplevels of
 the app, not focused-only (iPadOS can Split View two scenes of one app); the
 per-window caps, filters, and debounce above apply unchanged per window.
-App-to-appid correlation is deterministic: ioscd streams
-`spawn{appid,pid}`/`exit{appid,pid}` records to the helper (ioscd starts the
-helper, so a pipe or the runtime-dir socket both work), joined against
-`org.freedesktop.DBus.GetConnectionUnixProcessID` on the a11y bus. Name-matching
-survives only as the helper-restart race fallback.
+Current app-to-appid correlation is a pragmatic name match against `appid`,
+`exec`, and their basenames. The intended hardening is deterministic: ioscd
+streams `spawn{appid,pid}`/`exit{appid,pid}` records to the helper (ioscd starts
+the helper, so a pipe or the runtime-dir socket both work), joined against
+`org.freedesktop.DBus.GetConnectionUnixProcessID` on the a11y bus. After that,
+name-matching should survive only as the helper-restart race fallback.
 
 NDJSON is deliberate: trees are small after filtering and it is debuggable with
 `nc`. Revisit binary framing only if profiling says so.
@@ -397,13 +453,13 @@ NDJSON is deliberate: trees are small after filtering and it is debuggable with
 - GNOME: richest tree. GNOME Shell itself registers on the a11y bus, so the top bar,
   overview, and notifications come free through the same bridge. Geometry via
   Shell.Introspect. Orca is also installable here later, but see below.
-- KDE: Qt apps arrive via Qt's bridge once qtbase is built with the atspi feature.
-  Plasma chrome is Qt, so it is covered too. Geometry via KWin D-Bus. Verify the Qt
-  cache old-signature path against libatspi on device (expected fine, it is handled
-  in atspi-misc.c).
+- KDE: Qt apps arrive via Qt's bridge once the current qtbase recipe is rebuilt and
+  staged with the atspi feature. Plasma chrome is Qt, so it is covered too. Geometry
+  via KWin D-Bus. Verify the Qt cache old-signature path against libatspi on device
+  (expected fine, it is handled in atspi-misc.c).
 - native-iPadOS flavor: the best fit of all. Each Linux app has its own UIKit host,
   so elements live in the app's own accessibility context: window origin is (0,0)
-  (no correlation heuristics), VoiceOver's app switcher separates Linux apps
+  (no compositor geometry feed), VoiceOver's app switcher separates Linux apps
   natively, and per-app element counts are small. The same helper serves each host
   filtered by app. Recommend making this flavor the a11y showcase. Spec'd in
   detail in `native-ipados-a11y.md` (host-side prototype exists in
@@ -458,31 +514,56 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 |---|---|---|
 | at-spi2-core (launcher, registryd, libatspi, atk-bridge) | built | 0 |
 | GTK4/Shell AT-SPI backends | in toolkits | config only (drop the GTK_A11Y=none gate) |
-| Qt AT-SPI bridge | in qtbase, disabled | qtbase round-2 reconfigure: FEATURE_dbus=ON + atspi headers in sysroot + bridge feature (P0 item 5) |
+| Qt AT-SPI bridge | recipe enabled, package/device validation pending | rebuild/package current qtbase, verify configure feature summary, then atspi-dump a Qt client on device |
 | GTK3 atk-bridge | compiled out (`gtk+3.0.mk:20`) | gtk3 rebuild against the shipped libatk-bridge, before P4 |
-| atspi-dump CLI | new | trivial |
-| xios-a11yd | new | ~1.5-2k lines C, links libatspi+glib (both shipped) |
+| atspi-dump CLI | shipped in `xios-a11y-tools_0.2.6` | expand output only if xios-a11yd needs more probe coverage |
+| xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.6`; polls but suppresses unchanged reset/tree republishes; exposes action names, routes activate/custom action requests to AT-SPI Action.DoAction, and falls back to synthetic tap for activate-without-action | add event subscriptions, focus events, adjustable values, geometry correlation, PID correlation, and VoiceOver status mirroring |
 | iosc geometry feed | new | small compositor + shell-channel addition |
-| Xios app side | SPEC above | 600-900 lines Swift, no new deps |
+| Xios app side | desktop publisher still SPEC; native host prototype exists | desktop Xios client still ~600-900 lines Swift; native host waits on helper |
 | iosc-shell AT-SPI objects | new | few hundred lines, libdbus (shipped) |
 | Orca stack (optional) | new | 4 debs: espeak-ng, dotconf, speech-dispatcher, orca |
 
 ## Phases
 
-- P0 plumbing: launcher in session, GTK_A11Y gate removed, IsEnabled property write,
-  qtbase round-2 flags queued (item 5 above), atspi-dump. Accept: atspi-dump prints
-  gnome-console's full widget tree on device.
+- P0 plumbing: launcher in session, GTK_A11Y gate removed/conditional everywhere it
+  is exported, IsEnabled property write, qtbase bridge rebuild/package verified,
+  atspi-dump. PARTIAL ACCEPT SHIPPED: `atspi-dump` prints `kgx`/`iosc-kgx` over
+  the opt-in AT-SPI bus on device, the opt-in launcher writes both AT-SPI status
+  properties true, and `xios-session_1.0.9` starts `xios-a11yd` when installed.
+  Remaining accept: full gnome-console widget tree, a simple Qt widget app after
+  rebuilt qtbase is staged, and mirroring iOS VoiceOver state instead of forcing
+  `ScreenReaderEnabled=true`.
 - P1 read-only browse: xios-a11yd mirror + protocol + Xios elements for the focused
-  window (labels, roles, frames). Accept: VoiceOver swipes through gnome-console and
-  gtk4-demo controls with correct speech and touch exploration lands on the right
-  frames. The native host (`native-ipados-a11y.md`) is the endorsed FIRST
-  publisher here: it needs only bind + multi-connection, no geometry feed and no
-  correlation heuristics, so it validates the helper and wire protocol end-to-end
-  before the Xios desktop client lands. It supplements, not replaces, the desktop
-  acceptance above.
+  window (labels, roles, frames). PARTIAL ACCEPT SHIPPED: `xios-a11yd` emits
+  `hello`/`reset`/`window`/`upsert` records for `kgx` over
+  `/var/jb/tmp/xios-a11y.sock`; bound clients can now filter by `appid` plus
+  optional `exec`, and the native host sends both fields. A forced native-host
+  smoke connected HostA11y to the helper and published elements onto the host view;
+  the `0.2.4` helper suppresses unchanged snapshot republishes after the tree
+  settles, and `0.2.6` wires the existing HostA11y activate/custom-action
+  messages through to AT-SPI actions with a synthetic-tap fallback for plain
+  activation.
+  It is still snapshot-only and has not been verified with real VoiceOver gestures
+  on device yet. Accept:
+  VoiceOver swipes through gnome-console and gtk4-demo controls with correct speech
+  and touch exploration lands on the right frames. The native host
+  (`native-ipados-a11y.md`) is the endorsed FIRST publisher here and its Swift side
+  already builds: it now has the helper's bind + multi-connection path, no geometry
+  feed and no desktop window-correlation heuristics, so it validates the helper and
+  wire protocol end-to-end before the Xios desktop client lands. It supplements, not
+  replaces, the desktop acceptance above.
 - P2 interaction: activate, custom actions, adjustable, focus sync, screenChanged.
-  Accept: VoiceOver double-tap toggles a gtk4-demo checkbox, adjusts a slider,
-  activates panel buttons; Tab in a docked keyboard moves the VoiceOver cursor.
+  FIRST SLICE SHIPPED: helper publishes AT-SPI action names and routes
+  `activate` / `action` to `AtspiAction.DoAction`; `activate` falls back to a
+  synthetic tap at the node center when no action is available. The HostA11y
+  publisher already sends those messages from `accessibilityActivate()` and
+  custom actions. Device smoke confirms action names are on the wire for kgx, but
+  this has not yet been exercised through real VoiceOver gestures. Accept:
+  VoiceOver double-tap toggles a gtk4-demo checkbox, adjusts a slider, activates
+  panel buttons; Tab in a docked keyboard moves the VoiceOver cursor. The
+  Calculator smoke above shows why gtk4-demo or another control-dense GTK app is
+  still needed for acceptance: calculator currently publishes actions but not
+  useful labels.
 - P3 live updates: announcements, state/name changes, text value tracking on focused
   editable, modal dialogs. Accept: libadwaita toast is spoken; typing into a GTK
   entry updates its spoken value.
@@ -502,6 +583,10 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 - Event storms on window open are handled by debounce, but a pathological app
   (terminal spew with a screen reader flag set) needs the text-event cap verified.
 - ioscd's C-locale issue (already queued) also affects localized role names here.
+- ATK/at-spi version skew is a real GTK3/GNOME Shell bridge risk: current handoff
+  notes say the Shell GIR path disables the ATK bridge because at-spi2-core 2.52's
+  bridge references newer ATK symbols than the installed standalone ATK 2.38.
+  Align this before treating GTK3 or GNOME Shell Cally coverage as available.
 - The a11y bus grants read and control of every app's UI to any local process; on a
-  jailbroken single-user device this is acceptable, but keep the helper socket 0600
-  and do not TCP-forward the a11y bus.
+  jailbroken single-user device this is acceptable, but keep the helper socket local
+  to `mobile:mobile 0660` and do not TCP-forward the a11y bus.
