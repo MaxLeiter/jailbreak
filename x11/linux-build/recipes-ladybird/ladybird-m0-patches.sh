@@ -22,7 +22,7 @@ say() { echo "  [m0-patch] $*"; }
 # WebContent/RequestServer/ImageDecoder each select the sandbox by platform; the `elseif (APPLE)`
 # arm compiles the macOS Seatbelt path (SeatbeltPath / add_seatbelt_path_if_exists — absent from
 # LibSandbox on iOS). Route all three to the else() Unimplemented arm.
-for f in Services/WebContent/CMakeLists.txt Services/RequestServer/CMakeLists.txt Services/ImageDecoder/CMakeLists.txt; do
+for f in Services/WebContent/CMakeLists.txt Services/RequestServer/CMakeLists.txt Services/ImageDecoder/CMakeLists.txt Services/WebWorker/CMakeLists.txt; do
   if grep -q 'elseif (APPLE)' "$f"; then
     sed -i 's/elseif (APPLE)/elseif (APPLE AND NOT IOS)/' "$f"
     say "sandbox: $f APPLE -> APPLE AND NOT IOS"

@@ -47,10 +47,31 @@ step "STAGE prep: /var/jb symlink + shim toolchain + fake xcrun (idempotent, mir
 if [ ! -e /var/jb ]; then ln -s "$BB" /var/jb; fi
 ls -ld /var/jb
 mkdir -p "$SHIM"
-for t in ld ar ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \
+for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \
          segedit size nmedit; do
   [ -e /root/cctools/bin/aarch64-apple-darwin-$t ] && ln -sf /root/cctools/bin/aarch64-apple-darwin-$t "$SHIM/$t"
 done
+# ar wrapper: CMake archives LibWeb's huge object list via `ar qc <lib> @response-file`, but cctools
+# ar has no @response-file support (treats `@file` as a literal member name -> "No such file or
+# directory"). Wrap ar to expand any @<file> arg (whitespace/newline-separated object paths) before
+# handing off to cctools ar. Non-@ args (incl. the Rust-merge `ar -x`/`ar -qS *.o` steps) pass through.
+cat > "$SHIM/ar" <<'EOF'
+#!/bin/sh
+# rotate through the ORIGINAL args exactly once (n times), popping from the front and pushing the
+# processed result to the back; @<file> expands to the file's whitespace-separated contents.
+n=$#
+i=0
+while [ "$i" -lt "$n" ]; do
+  a=$1; shift
+  case "$a" in
+    @*) f="${a#@}"; for o in $(cat "$f"); do set -- "$@" "$o"; done ;;
+    *)  set -- "$@" "$a" ;;
+  esac
+  i=$((i+1))
+done
+exec /root/cctools/bin/aarch64-apple-darwin-ar "$@"
+EOF
+chmod +x "$SHIM/ar"
 cat > "$SHIM/lb-cc" <<EOF
 #!/bin/sh
 exec clang-19 --target=arm64-apple-ios16.0 -isysroot $SDK \
@@ -193,8 +214,11 @@ step "STAGE build: reconfigure (pick up patch 12 + LB_HOST_*) then compile LibWe
 export LB_STAGED_PREFIX=/var/jb
 if run_stage build; then
   cd "$WORK"
-  # reconfigure in place: patch 12 changed LibJS/CMakeLists.txt and LB_HOST_* are now exported, so
-  # cmake regenerates build.ninja with the host-tool custom commands. Existing objects are kept.
+  # FRESH configure: drop CMakeCache.txt so pkg_check_modules re-parses the fixed skia.pc (its
+  # -Wl,-framework,NAME frameworks; the stale cache kept the old plain -framework list, which CMake's
+  # link de-dup collapsed into one -framework + bare CoreGraphics/CoreText/ImageIO -> link failure).
+  # Compiled objects under CMakeFiles/*.dir persist and ninja reuses them (compile commands unchanged).
+  rm -f "$BUILD/CMakeCache.txt"
   cmake -GNinja -B "$BUILD" -S "$WORK" \
     -DCMAKE_TOOLCHAIN_FILE=/work/recipes-ladybird/ios-toolchain.cmake \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DENABLE_GUI_TARGETS=ON \
@@ -204,14 +228,30 @@ if run_stage build; then
   echo "reconfigure exit: ${PIPESTATUS[0]}"
 
   cd "$BUILD"
-  ninja -k 0 -j"$(nproc)" WebContent RequestServer ImageDecoder WebWorker headless-shot \
-    2>&1 | tee /out/wave4b-build.log
-  echo "build exit: ${PIPESTATUS[0]}"
-  echo "== emitted binaries (arch + undef count) =="
+  TARGETS="WebContent RequestServer ImageDecoder WebWorker headless-shot"
+  # Pass 1: full parallelism, keep-going to enumerate any remaining source walls in one shot.
+  ninja -k 0 -j"$(nproc)" $TARGETS 2>&1 | tee /out/wave4b-build.log
+  p1=${PIPESTATUS[0]}
+  # Pass 2: some LibWebView/LibWeb TUs (e.g. ViewImplementation.cpp) are ~3GB at -O3 and get
+  # OOM-killed ("Killed") under -j16 on this 7.7GiB VM. Retry the few remaining actions at low
+  # parallelism so the giants compile with headroom. Cached objects make this fast.
+  if [ "$p1" -ne 0 ]; then
+    echo "== pass 1 exit $p1; low-parallelism retry (-j2) for OOM-killed TUs =="
+    ninja -k 0 -j2 $TARGETS 2>&1 | tee -a /out/wave4b-build.log
+    echo "build exit (pass2): ${PIPESTATUS[0]}"
+  else
+    echo "build exit: 0"
+  fi
+  echo "== emitted binaries (arch + link status) =="
+  # A produced Mach-O executable inherently has 0 UNRESOLVED symbols (ld64 errors otherwise); the
+  # MH_NOUNDEFS flag (file: <NOUNDEF>) confirms it. nm -u counts dyld imports (libc++/system dylibs),
+  # which is expected and non-zero -- NOT link errors.
   for b in headless-shot WebContent RequestServer ImageDecoder WebWorker; do
     p=$(find "$BUILD" -maxdepth 4 -type f -name "$b" 2>/dev/null | head -1)
     if [ -n "$p" ]; then
-      echo "$b: $(file -b "$p" | cut -c1-45) | undef=$("$SHIM/nm" -u "$p" 2>/dev/null | wc -l)"
+      fl=$(file -b "$p")
+      noundef=$(echo "$fl" | grep -o NOUNDEF || echo "-")
+      echo "$b: $(echo "$fl" | cut -c1-40) | $noundef | dyld-imports=$("$SHIM/nm" -u "$p" 2>/dev/null | wc -l | tr -d ' ')"
     else
       echo "$b: NOT BUILT"
     fi
