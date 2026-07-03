@@ -14,6 +14,7 @@
  * zwlr_layer_shell_v1.
  */
 #define _GNU_SOURCE
+#define SD_DESKTOP_PINS
 #define SD_CAIRO
 #include "shell-draw.h"
 #include "shell-theme.h"

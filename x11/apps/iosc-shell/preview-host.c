@@ -24,7 +24,6 @@
  *   IOSC_SHELL_ICONS=./design/preview-icons ./preview-host design
  */
 #include "shell-theme.h"
-#include "panel-render.h"
 #include "panel-layout.h"
 #include "overview-layout.h"
 #include "shell-blur.h"

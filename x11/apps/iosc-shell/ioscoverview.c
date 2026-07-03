@@ -19,10 +19,11 @@
  * Build: build-panel.sh. Needs iosc's zwlr_layer_shell_v1.
  */
 #define _GNU_SOURCE
+#define SD_APP_SCAN
+#define SD_DESKTOP_PINNING
 #define SD_CAIRO                   /* sd_cairo_pool from shell-draw.h */
 #include "shell-draw.h"
 #include "shell-theme.h"
-#include "panel-render.h"
 #include "overview-layout.h"
 #include "panel-icons.h"
 #include "shell-blur.h"

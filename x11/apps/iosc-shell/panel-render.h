@@ -93,6 +93,7 @@ static void pr_fill_rect(cairo_t *cr, double x, double y, double w, double h, ui
 }
 
 /* Vertical two-stop gradient fill over a rect (top -> bottom). */
+#ifdef PR_ENABLE_GRADIENTS
 static void pr_fill_vgrad(cairo_t *cr, double x, double y, double w, double h,
                           uint32_t top, uint32_t bot)
 {
@@ -105,6 +106,7 @@ static void pr_fill_vgrad(cairo_t *cr, double x, double y, double w, double h,
     cairo_fill(cr);
     cairo_pattern_destroy(p);
 }
+#endif
 
 /* ----------------------------------------------------------------- text --- */
 

@@ -118,10 +118,6 @@ static int sd_create_anon_fd(size_t size)
     return -1;
 }
 
-/* wl_buffer release -> destroy; the one listener every shell buffer uses. */
-static void sd_buf_release(void *d, struct wl_buffer *b){ (void)d; wl_buffer_destroy(b); }
-static const struct wl_buffer_listener sd_buf_listener = { .release = sd_buf_release };
-
 /* -------------------------------------------------- cairo wl_shm buffers ---
  * Opt in with `#define SD_CAIRO` before including (ioscbar/ioscdock,
  * ioscoverview, and ioscbg). */
@@ -261,8 +257,11 @@ static void sd_cairo_pool_destroy(struct sd_cairo_pool *pool)
 
 /* ------------------------------------------------------- .desktop scan ---- */
 
+#if defined(SD_APP_SCAN) || defined(SD_DESKTOP_PINNING)
 struct sd_app { char name[64]; char exec[256]; char icon[128]; };
+#endif
 
+#ifdef SD_APP_SCAN
 static void sd_strip_field_codes(char *exec)
 {
     char *w = exec;
@@ -322,14 +321,18 @@ static int sd_scan_apps(struct sd_app *apps, int max)
     if (strcmp(local_apps, sys_apps)) n = sd_scan_apps_dir(local_apps, apps, n, max);
     return n;
 }
+#endif /* SD_APP_SCAN */
 
+#if defined(SD_DESKTOP_PINS) || defined(SD_DESKTOP_PINNING)
 static void sd_desktop_pins_path(char *out, size_t n)
 {
     const char *env = getenv("IOSC_DESKTOP_PINS");
     if (env && *env) { snprintf(out, n, "%s", env); return; }
     snprintf(out, n, "/var/mobile/Library/Preferences/com.max.iosc-desktop-pins.conf");
 }
+#endif
 
+#ifdef SD_DESKTOP_PINNING
 static int sd_desktop_pin_exists(const char *exec)
 {
     if (!exec || !*exec) return 1;
@@ -369,6 +372,7 @@ static void sd_pin_app_to_desktop(const struct sd_app *app)
     fprintf(f, "app\t%s\t%s\t%s\t%d\t%d\n", app->name, app->icon, app->exec, x, y);
     fclose(f);
 }
+#endif /* SD_DESKTOP_PINNING */
 
 /* fork+exec a .desktop Exec under the same Wayland/dbus env run-kgx.sh proved
  * good. The shell clients run outside the iOS app sandbox (started by ioscd or a

@@ -22,6 +22,7 @@
 #define PANEL_LAYOUT_H
 
 #include "shell-theme.h"
+#define PR_ENABLE_GRADIENTS
 #include "panel-render.h"
 #include "shell-blur.h"
 

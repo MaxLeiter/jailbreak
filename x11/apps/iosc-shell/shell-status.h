@@ -116,11 +116,6 @@ static enum st_network_kind st_network(void)
     return (fl & (1u << 18)) ? ST_NET_CELLULAR : ST_NET_WIFI;
 }
 
-static int st_wifi(void)
-{
-    return st_network() == ST_NET_WIFI;
-}
-
 /* ---------------------------------------------------------- device name --- */
 /* "Max's iPad" via MobileGestalt; falls back to `fallback`. Fills out[]. */
 static void st_device_name(char *out, size_t n, const char *fallback)
@@ -148,7 +143,6 @@ static void st_device_name(char *out, size_t n, const char *fallback)
 #else  /* !__APPLE__ — host-side compile safety only; clients are iOS-only */
 static int st_battery(int *pct, int *charging){ (void)pct;(void)charging; return 0; }
 static enum st_network_kind st_network(void){ return ST_NET_NONE; }
-static int st_wifi(void){ return 0; }
 static void st_device_name(char *out, size_t n, const char *fallback)
 { snprintf(out, n, "%s", fallback); }
 #endif
