@@ -85,4 +85,51 @@ if (!result.success) {
   process.exit(1)
 }
 
+// web-tree-sitter (its CORE runtime and every grammar) is imported as
+//   `import wasm from "./chunk-XXXX.js" with { type: "wasm" }`
+// where each chunk-XXXX.js is a stub whose default export is the relative path
+// of the real .wasm asset (e.g. `var t="./tree-sitter-<hash>.wasm";export{t as
+// default}`). In upstream's `bun build --compile` single-file exe the embedded
+// bunfs resolves that indirection. In our plain multi-file bundle it does NOT:
+// an `import ... with { type: "wasm" }` of a JS chunk makes Bun hand back the
+// STUB CHUNK'S OWN path as the value, not the stub's exported string. shell.ts
+// (packages/opencode/src/tool/shell.ts parses bash/PowerShell with tree-sitter)
+// then passes that JS path to emscripten's locateFile, tree-sitter tries to
+// compile "// @bun..." as WebAssembly, and every shell/edit tool call aborts
+// with "WebAssembly.Module doesn't parse at byte 0: module doesn't start with
+// '\0asm'". Verified on-device: the resolved core path was a chunk-*.js.
+// Fix: overwrite each wasm-stub chunk's contents with the raw bytes of the
+// .wasm it references, so the `type: "wasm"` import lands on a file that IS
+// valid wasm. Detect stubs by shape (a lone default-exported "*.wasm" string)
+// so it survives grammar/version churn. Covers the core runtime and all
+// grammars; photon uses its own explicit __OPENCODE_PHOTON_WASM_PATH and is
+// unaffected.
+const WASM_STUB_RE =
+  /(?:var|let|const)\s+\w+\s*=\s*["'](?:\.\/)?([^"']+\.wasm)["']\s*;?\s*export\s*\{\s*\w+\s+as\s+default\s*\}/
+let wasmStubsPatched = 0
+for (const output of result.outputs) {
+  if (!output.path.endsWith(".js")) continue
+  const match = fs.readFileSync(output.path, "utf8").match(WASM_STUB_RE)
+  if (!match) continue
+  const wasmPath = path.join(outdir, path.basename(match[1]))
+  if (!fs.existsSync(wasmPath)) {
+    console.error(`wasm-stub ${path.basename(output.path)} references missing ${match[1]}`)
+    process.exit(1)
+  }
+  const bytes = fs.readFileSync(wasmPath)
+  const magicOk = bytes.length >= 4 && bytes[0] === 0x00 && bytes[1] === 0x61 && bytes[2] === 0x73 && bytes[3] === 0x6d
+  if (!magicOk) {
+    console.error(`wasm-stub target ${path.basename(wasmPath)} is not valid wasm (bad \\0asm magic)`)
+    process.exit(1)
+  }
+  fs.copyFileSync(wasmPath, output.path)
+  wasmStubsPatched++
+  console.log(`wasm-stub ${path.basename(output.path)} <- ${path.basename(wasmPath)} (${bytes.length} bytes)`)
+}
+if (wasmStubsPatched === 0) {
+  console.error("no web-tree-sitter wasm-stub chunks found to patch (expected >= 1)")
+  process.exit(1)
+}
+
 console.log(result.outputs.map((output) => path.relative(outdir, output.path)).join("\n"))
+console.log(`patched ${wasmStubsPatched} wasm-stub chunk(s)`)
