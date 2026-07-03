@@ -410,6 +410,14 @@ ContainmentItem {
 }
 """)
 
+write("containments/homescreens/halcyon/package/contents/ui/main.qml", """import QtQuick 2.15
+import org.kde.plasma.plasmoid 2.0
+ContainmentItem {
+    id: root
+    Item { anchors.fill: parent }
+}
+""")
+
 write("shell/package/contents/lockscreen/PasswordBar.qml", """import QtQuick 2.15
 import QtQuick.Controls 2.15
 Item {

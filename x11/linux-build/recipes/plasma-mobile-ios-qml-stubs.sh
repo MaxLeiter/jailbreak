@@ -516,6 +516,21 @@ if [ -d "$folio_ui" ]; then
     "}"
 fi
 
+halcyon_ui="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.halcyon/contents/ui"
+if [ -d "$halcyon_ui" ]; then
+  if [ -e "$halcyon_ui/main.qml" ] && [ ! -e "$halcyon_ui/main.qml.upstream" ]; then
+    cp "$halcyon_ui/main.qml" "$halcyon_ui/main.qml.upstream"
+  fi
+  write_file "$halcyon_ui/main.qml" \
+    "// First-light iOS shim: defer the real Halcyon homescreen until Qt Quick views are stable." \
+    "import QtQuick 2.15" \
+    "import org.kde.plasma.plasmoid 2.0" \
+    "ContainmentItem {" \
+    "    id: root" \
+    "    Item { anchors.fill: parent }" \
+    "}"
+fi
+
 lockscreen="$qml/../../../share/plasma/shells/org.kde.plasma.mobileshell/contents/lockscreen"
 if [ -d "$lockscreen" ]; then
   if [ -e "$lockscreen/PasswordBar.qml" ] && [ ! -e "$lockscreen/PasswordBar.qml.upstream" ]; then
