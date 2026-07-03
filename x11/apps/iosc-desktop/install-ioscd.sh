@@ -15,7 +15,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> copy ioscd -> /var/jb/usr/local/bin"
 scp_ "$HERE/out/ioscd" "root@$IP:/var/jb/usr/local/bin/ioscd"
-ssh_ "chmod 0755 /var/jb/usr/local/bin/ioscd"
+scp_ "$HERE/xios-start-a11y" "root@$IP:/var/jb/usr/local/bin/xios-start-a11y"
+ssh_ "chmod 0755 /var/jb/usr/local/bin/ioscd /var/jb/usr/local/bin/xios-start-a11y"
 
 echo "==> install LaunchDaemon + (re)bootstrap"
 scp_ "$HERE/com.max.ioscd.plist" \

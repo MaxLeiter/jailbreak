@@ -1,0 +1,30 @@
+#!/bin/sh
+# Start the optional Xios AT-SPI bridge components inside the current session bus.
+
+LOG=${XIOS_ATSPI_LOG:-/var/jb/tmp/xios-atspi.log}
+A11Y_LOG=${XIOS_A11YD_LOG:-/var/jb/tmp/xios-a11yd.log}
+A11Y_SOCK=${XIOS_A11Y_SOCK:-/var/jb/tmp/xios-a11y.sock}
+
+if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then
+    /var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>"$LOG" 2>&1 &
+elif command -v at-spi-bus-launcher >/dev/null 2>&1; then
+    at-spi-bus-launcher --launch-immediately >>"$LOG" 2>&1 &
+fi
+
+if command -v gdbus >/dev/null 2>&1; then
+    for _ in 1 2 3 4 5; do
+        gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
+            --method org.freedesktop.DBus.Properties.Set \
+            org.a11y.Status IsEnabled '<true>' >>"$LOG" 2>&1 && break
+        sleep 0.2
+    done
+    gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
+        --method org.freedesktop.DBus.Properties.Set \
+        org.a11y.Status ScreenReaderEnabled '<true>' >>"$LOG" 2>&1
+fi
+
+if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S "$A11Y_SOCK" ]; then
+    xios-a11yd >>"$A11Y_LOG" 2>&1 &
+fi
+
+exit 0

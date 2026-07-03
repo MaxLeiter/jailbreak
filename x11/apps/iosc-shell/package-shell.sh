@@ -53,7 +53,7 @@ BIN="$PREFIX_ROOT/usr/local/bin"
 ICONS="$PREFIX_ROOT/usr/share/iosc-shell/icons"
 SHARE="$PREFIX_ROOT/usr/local/share/iosc-shell"
 
-for f in out/ioscbar out/ioscdock out/ioscoverview out/ioscbg run-shell.sh panel-ent.xml; do
+for f in out/ioscbar out/ioscdock out/ioscoverview out/ioscbg run-shell.sh panel-ent.xml ../iosc-desktop/xios-start-a11y; do
   [[ -e "$HERE/$f" ]] || { echo "ERROR: $HERE/$f missing (run build-panel.sh first)" >&2; exit 1; }
 done
 
@@ -95,6 +95,8 @@ fi
 # 2. bring-up script (compositor if needed, then wallpaper, bar and dock)
 cp "$HERE/run-shell.sh" "$BIN/run-shell.sh"
 chmod 0755 "$BIN/run-shell.sh"
+cp "$HERE/../iosc-desktop/xios-start-a11y" "$BIN/xios-start-a11y"
+chmod 0755 "$BIN/xios-start-a11y"
 
 # 3. shipped icon set: SVG preferred, PNG retained for raster-only apps.
 cp "$HERE"/out/icons/*.svg "$HERE"/out/icons/*.png "$ICONS/" 2>/dev/null || true

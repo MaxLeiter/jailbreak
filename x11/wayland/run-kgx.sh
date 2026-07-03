@@ -8,7 +8,7 @@
 #
 #   ssh root@ipad 'bash -s' < run-kgx.sh
 set -u
-export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export XDG_RUNTIME_DIR=/var/jb/tmp
 TMP=/var/jb/tmp
 [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
@@ -86,7 +86,7 @@ GTK_A11Y_ENV="GTK_A11Y=none"
 case "${XIOS_ENABLE_A11Y:-}" in
   1|yes|YES|true|TRUE|on|ON)
     GTK_A11Y_ENV=""
-    A11Y_PREFIX='if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then /var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & elif command -v at-spi-bus-launcher >/dev/null 2>&1; then at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & fi; if command -v gdbus >/dev/null 2>&1; then for _ in 1 2 3 4 5; do gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1 && break; sleep 0.2; done; gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1; fi; if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S /var/jb/tmp/xios-a11y.sock ]; then xios-a11yd >>/var/jb/tmp/xios-a11yd.log 2>&1 & fi; '
+    A11Y_PREFIX='if command -v xios-start-a11y >/dev/null 2>&1; then xios-start-a11y; fi; '
     ;;
 esac
 nohup bash -c "

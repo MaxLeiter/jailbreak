@@ -468,18 +468,10 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
         char a11y_cmd[4096];
         if (enable_a11y) {
             int n = snprintf(a11y_cmd, sizeof(a11y_cmd),
-                             "if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then "
-                             "/var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & "
-                             "elif command -v at-spi-bus-launcher >/dev/null 2>&1; then "
-                             "at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & fi; "
-                             "if command -v gdbus >/dev/null 2>&1; then "
-                             "for _ in 1 2 3 4 5; do "
-                             "gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus "
-                             "--method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '<true>' >>/var/jb/tmp/xios-atspi.log 2>&1 && break; "
-                             "sleep 0.2; done; "
-                             "gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus "
-                             "--method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '<true>' >>/var/jb/tmp/xios-atspi.log 2>&1; "
-                             "fi; if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S /var/jb/tmp/xios-a11y.sock ]; then xios-a11yd >>/var/jb/tmp/xios-a11yd.log 2>&1 & fi; exec %s", exec);
+                             "if [ -x /var/jb/usr/local/bin/xios-start-a11y ]; then "
+                             "/var/jb/usr/local/bin/xios-start-a11y; "
+                             "elif command -v xios-start-a11y >/dev/null 2>&1; then "
+                             "xios-start-a11y; fi; exec %s", exec);
             if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
         }
 

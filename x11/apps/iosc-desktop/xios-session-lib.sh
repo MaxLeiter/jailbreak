@@ -90,9 +90,24 @@ xs_a11y_enabled() {
     esac
 }
 
+xs_a11y_start_cmd() {
+    local source_dir helper
+    source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    for helper in \
+        "${XIOS_A11Y_START:-}" \
+        "$XS_BIN/xios-start-a11y" \
+        "$XS_LIBEXEC_DIR/xios-start-a11y" \
+        "$source_dir/xios-start-a11y"; do
+        [ -n "$helper" ] && [ -x "$helper" ] && { printf '%s' "$helper"; return 0; }
+    done
+    command -v xios-start-a11y 2>/dev/null || true
+}
+
 xs_a11y_prefix() {
+    local helper
     xs_a11y_enabled || return 0
-    printf '%s' 'if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then /var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & elif command -v at-spi-bus-launcher >/dev/null 2>&1; then at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & fi; if command -v gdbus >/dev/null 2>&1; then for _ in 1 2 3 4 5; do gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1 && break; sleep 0.2; done; gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1; fi; if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S /var/jb/tmp/xios-a11y.sock ]; then xios-a11yd >>/var/jb/tmp/xios-a11yd.log 2>&1 & fi; '
+    helper="$(xs_a11y_start_cmd)"
+    [ -n "$helper" ] && printf '%s; ' "$helper"
 }
 
 # xs_write_status <preset> <state> <message>

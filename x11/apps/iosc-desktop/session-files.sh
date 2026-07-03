@@ -21,6 +21,7 @@ _SF_PLASMA_XIOS="$_SF_HERE/plasma-xios-shell"
 session_manifest() {
   printf '%s\t%s\t%s\n' \
     "$_SF_HERE/xios-session"                usr/local/bin/xios-session                        0755 \
+    "$_SF_HERE/xios-start-a11y"             usr/local/bin/xios-start-a11y                     0755 \
     "$_SF_HERE/xios-session-lib.sh"         libexec/xios-session/xios-session-lib.sh          0644 \
     "$_SF_SHELLDIR/run-shell.sh"            libexec/xios-session/run-shell.sh                 0755 \
     "$_SF_WAYLAND/run-mutter.sh"            libexec/xios-session/run-mutter.sh                0755 \
