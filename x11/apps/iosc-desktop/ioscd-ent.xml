@@ -6,7 +6,7 @@
          sandbox (launchd-started, uid 0), so it needs little: it spawns iosc, the
          Wayland client, and uiopen. platform-application keeps AMFI happy for a
          daemon that forks/execs other binaries; the file exceptions cover the
-         /var/jb/tmp sockets and bus dir it manages. -->
+         rootless /var/jb/tmp and rootful /var/tmp sockets and bus dirs it manages. -->
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
     <key>platform-application</key>
@@ -19,6 +19,8 @@
     <array>
         <string>/var/jb/tmp/</string>
         <string>/private/var/jb/tmp/</string>
+        <string>/var/tmp/</string>
+        <string>/private/var/tmp/</string>
     </array>
 </dict>
 </plist>

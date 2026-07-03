@@ -190,6 +190,7 @@ xs_release_session_lock() {
 }
 
 xs_a11y_enabled() {
+    [ -e "$XS_TMP/xios-a11y-enabled" ] && return 0
     [ -e "$XS_TMP/xios-a11y-force" ] && return 0
     case "${XIOS_ENABLE_A11Y:-}" in
         1|yes|YES|true|TRUE|on|ON) return 0 ;;

@@ -8,15 +8,17 @@ import UIKit
 final class XiosA11yClient {
     static let shared = XiosA11yClient()
 
-    private let sockPath = "/var/jb/tmp/xios-a11y.sock"
-    private let forcePath = "/var/jb/tmp/xios-a11y-force"
-    private let logPath = "/var/jb/tmp/xios-a11y-app.log"
+    private var sockPath: String { XiosRuntimePaths.firstExisting("xios-a11y.sock") }
+    private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
+    private var forcePath: String { XiosRuntimePaths.firstExisting("xios-a11y-force") }
+    private var logPath: String { XiosRuntimePaths.tmp("xios-a11y-app.log") }
 
     private weak var view: XScreenView?
     private var fd: Int32 = -1
     private var reader: Thread?
     private var running = false
     private var observerInstalled = false
+    private var lastSentVoiceOverState: Bool?
     private let writeQueue = DispatchQueue(label: "xios-a11y-write")
     private let store = XiosA11yStore()
 
@@ -38,12 +40,40 @@ final class XiosA11yClient {
 
     @objc private func syncVoiceOver() {
         let forced = FileManager.default.fileExists(atPath: forcePath)
-        if UIAccessibility.isVoiceOverRunning || forced {
-            log("enable gate voiceover=\(UIAccessibility.isVoiceOverRunning) forced=\(forced)")
+        let voiceOver = UIAccessibility.isVoiceOverRunning
+        sendVoiceOverState(voiceOver)
+        if voiceOver || forced {
+            log("enable gate voiceover=\(voiceOver) forced=\(forced)")
             start()
         } else {
             log("disable gate voiceover=false forced=false")
             stop()
+        }
+    }
+
+    private func sendVoiceOverState(_ enabled: Bool) {
+        guard lastSentVoiceOverState != enabled else { return }
+        writeQueue.async { [weak self] in
+            guard let self else { return }
+            let fd = xiosConnectUnixSocket(self.ioscdSocketPath)
+            guard fd >= 0 else {
+                self.log("ioscd a11y state pending enabled=\(enabled)")
+                return
+            }
+            defer { close(fd) }
+
+            let line = "A11Y_STATE\t\(enabled ? 1 : 0)\n"
+            let ok = line.data(using: .utf8)?.withUnsafeBytes {
+                xiosWriteAll(fd, bytes: $0)
+            } ?? false
+            if ok {
+                DispatchQueue.main.async { [weak self] in
+                    self?.lastSentVoiceOverState = enabled
+                }
+                self.log("ioscd a11y state sent enabled=\(enabled)")
+            } else {
+                self.log("ioscd a11y state write failed enabled=\(enabled)")
+            }
         }
     }
 

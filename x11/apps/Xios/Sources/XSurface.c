@@ -16,7 +16,11 @@
 /* Diagnostic log (app stderr isn't easily captured on iOS). */
 static void xlog(const char *fmt, ...)
 {
-    FILE *f = fopen("/var/jb/tmp/xsurface.log", "a");
+    const char *tmp = getenv("XIOS_RUNTIME_TMP");
+    if (!tmp || !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/xsurface.log", tmp);
+    FILE *f = fopen(path, "a");
     if (!f) return;
     va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
     fputc('\n', f); fclose(f);

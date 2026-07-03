@@ -17,6 +17,7 @@
  *     APPS_SYNC\t<native|classic>\t<dry>\n -> sync log + APPS_END\t<status>\n
  *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
  *     APP_DISABLE\t<app_id>\n             -> status + APPS_END\t<status>\n
+ *     A11Y_STATE\t<0|1>\n                 -> A11Y_OK\n | ERR <msg>\n
  *
  * For each launch ioscd:
  *   1. ensures iosc (the compositor) is running, restarting it if the wayland
@@ -43,38 +44,20 @@
 #include <time.h>
 #include <poll.h>
 #include <pwd.h>
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 
-#define TMP            "/var/jb/tmp"
-#define CTL_SOCK       TMP "/ioscd.sock"
-#define WAYLAND_SOCK_CLASSIC TMP "/wayland-0"
-#define WAYLAND_SOCK_NATIVE  TMP "/wayland-native-0"
+#define XIOS_BUNDLE    "com.max.xios"
 #define WAYLAND_NAME_CLASSIC "wayland-0"
 #define WAYLAND_NAME_NATIVE  "wayland-native-0"
-#define XIOS_JSON_CLASSIC    TMP "/xios.json"
-#define XIOS_JSON_NATIVE     TMP "/xios-native.json"
-#define IOSC_DDX_SOCK_CLASSIC TMP "/iosc-ddx.sock"
-#define IOSC_DDX_SOCK_NATIVE  TMP "/iosc-native-ddx.sock"
-#define IOSC_INPUT_CLASSIC    TMP "/iosc-input.sock"
-#define IOSC_INPUT_NATIVE     TMP "/iosc-native-input.sock"
-#define IOSC_WM_SOCK   TMP "/iosc-wm.sock"
-#define XIOS_ACTIVE_SESSION TMP "/xios-active-session"
-#define IOSC_BIN       "/var/jb/usr/local/bin/iosc"
-#define XIOS_SESSION_BIN "/var/jb/usr/local/bin/xios-session"
-#define XIOS_LAUNCHER_SYNC "/var/jb/usr/local/bin/xios-launcher-sync"
-#define UIOPEN_BIN     "/var/jb/usr/bin/uiopen"
-#define BASH_BIN       "/var/jb/usr/bin/bash"
-#define DBUS_RUN       "/var/jb/usr/bin/dbus-run-session"
-#define DBUS_DAEMON    "/var/jb/usr/bin/dbus-daemon"
-#define IOSCD_BUS_DIR  TMP "/ioscd-bus"
-#define XIOS_BUNDLE    "com.max.xios"
-#define IOSC_LOG       TMP "/iosc.log"
-#define ROOTLESS_PATH  "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin"
-#define ROOTLESS_LOCAL_PATH "/var/jb/usr/local/bin:" ROOTLESS_PATH
+
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
 
 struct mode_cfg {
     const char *name;
@@ -86,26 +69,170 @@ struct mode_cfg {
     const char *lock_sock;
 };
 
-static const struct mode_cfg g_modes[2] = {
-    {
+static struct mode_cfg g_modes[2];
+
+static char g_jbroot[PATH_MAX];
+static char g_tmp[PATH_MAX];
+static char g_runtime_var[PATH_MAX];
+static char g_ctl_sock[PATH_MAX];
+static char g_iosc_wm_sock[PATH_MAX];
+static char g_active_session[PATH_MAX];
+static char g_iosc_bin[PATH_MAX];
+static char g_xios_session_bin[PATH_MAX];
+static char g_xios_session_bin_fallback[PATH_MAX];
+static char g_xios_launcher_sync[PATH_MAX];
+static char g_uiopen_bin[PATH_MAX];
+static char g_bash_bin[PATH_MAX];
+static char g_dbus_run[PATH_MAX];
+static char g_dbus_daemon[PATH_MAX];
+static char g_ioscd_bus_dir[PATH_MAX];
+static char g_iosc_log[PATH_MAX];
+static char g_ioscd_client_log[PATH_MAX];
+static char g_ioscd_session_log[PATH_MAX];
+static char g_angle_real_libegl[PATH_MAX];
+static char g_home[PATH_MAX];
+static char g_xios_pulse_profile[PATH_MAX];
+static char g_xios_start_a11y[PATH_MAX];
+static char g_native_flag[PATH_MAX];
+static char g_a11y_enabled[PATH_MAX];
+static char g_a11y_force[PATH_MAX];
+static char g_path[PATH_MAX * 2];
+static char g_local_path[PATH_MAX * 2];
+
+static void copy_path(char *dst, size_t dst_len, const char *src)
+{
+    if (!dst || dst_len == 0) return;
+    snprintf(dst, dst_len, "%s", src ? src : "");
+}
+
+static void trim_trailing_slashes(char *s)
+{
+    size_t len;
+    if (!s) return;
+    len = strlen(s);
+    while (len > 1 && s[len - 1] == '/') {
+        s[--len] = 0;
+    }
+}
+
+static void prefixed_path(char *dst, size_t dst_len, const char *suffix)
+{
+    if (!dst || dst_len == 0) return;
+    if (!suffix) suffix = "";
+    if (!g_jbroot[0] || strcmp(g_jbroot, "/") == 0) {
+        snprintf(dst, dst_len, "%s", suffix);
+    } else {
+        snprintf(dst, dst_len, "%s%s", g_jbroot, suffix);
+    }
+}
+
+static void tmp_path(char *dst, size_t dst_len, const char *name)
+{
+    snprintf(dst, dst_len, "%s/%s", g_tmp, name);
+}
+
+static void init_paths(void)
+{
+    const char *root = getenv("IOSC_JBROOT");
+    if (!root || !*root) root = getenv("JBROOT");
+    if (!root || !*root) root = getenv("XIOS_PREFIX");
+    if (!root || !*root) root = (access("/var/jb/usr", X_OK) == 0) ? "/var/jb" : "";
+
+    copy_path(g_jbroot, sizeof(g_jbroot), root);
+    trim_trailing_slashes(g_jbroot);
+    if (strcmp(g_jbroot, "/") == 0) g_jbroot[0] = 0;
+
+    const char *runtime_tmp = getenv("XIOS_RUNTIME_TMP");
+    if (runtime_tmp && *runtime_tmp) {
+        copy_path(g_tmp, sizeof(g_tmp), runtime_tmp);
+    } else if (g_jbroot[0]) {
+        prefixed_path(g_tmp, sizeof(g_tmp), "/tmp");
+    } else {
+        copy_path(g_tmp, sizeof(g_tmp), "/var/tmp");
+    }
+    trim_trailing_slashes(g_tmp);
+
+    const char *runtime_var = getenv("XIOS_RUNTIME_VAR");
+    if (runtime_var && *runtime_var) {
+        copy_path(g_runtime_var, sizeof(g_runtime_var), runtime_var);
+    } else if (g_jbroot[0]) {
+        prefixed_path(g_runtime_var, sizeof(g_runtime_var), "/var");
+    } else {
+        copy_path(g_runtime_var, sizeof(g_runtime_var), "/var");
+    }
+    trim_trailing_slashes(g_runtime_var);
+
+    tmp_path(g_ctl_sock, sizeof(g_ctl_sock), "ioscd.sock");
+    tmp_path(g_iosc_wm_sock, sizeof(g_iosc_wm_sock), "iosc-wm.sock");
+    tmp_path(g_active_session, sizeof(g_active_session), "xios-active-session");
+    tmp_path(g_ioscd_bus_dir, sizeof(g_ioscd_bus_dir), "ioscd-bus");
+    tmp_path(g_iosc_log, sizeof(g_iosc_log), "iosc.log");
+    tmp_path(g_ioscd_client_log, sizeof(g_ioscd_client_log), "ioscd-client.log");
+    tmp_path(g_ioscd_session_log, sizeof(g_ioscd_session_log), "ioscd-session.log");
+    tmp_path(g_native_flag, sizeof(g_native_flag), "iosc.native");
+    tmp_path(g_a11y_enabled, sizeof(g_a11y_enabled), "xios-a11y-enabled");
+    tmp_path(g_a11y_force, sizeof(g_a11y_force), "xios-a11y-force");
+
+    prefixed_path(g_iosc_bin, sizeof(g_iosc_bin), "/usr/local/bin/iosc");
+    prefixed_path(g_xios_session_bin, sizeof(g_xios_session_bin), "/usr/local/bin/xios-session");
+    prefixed_path(g_xios_session_bin_fallback, sizeof(g_xios_session_bin_fallback), "/usr/bin/xios-session");
+    prefixed_path(g_xios_launcher_sync, sizeof(g_xios_launcher_sync), "/usr/local/bin/xios-launcher-sync");
+    prefixed_path(g_uiopen_bin, sizeof(g_uiopen_bin), "/usr/bin/uiopen");
+    prefixed_path(g_bash_bin, sizeof(g_bash_bin), "/usr/bin/bash");
+    prefixed_path(g_dbus_run, sizeof(g_dbus_run), "/usr/bin/dbus-run-session");
+    prefixed_path(g_dbus_daemon, sizeof(g_dbus_daemon), "/usr/bin/dbus-daemon");
+    prefixed_path(g_angle_real_libegl, sizeof(g_angle_real_libegl), "/lib/angle/libEGL.angle.dylib");
+    prefixed_path(g_xios_pulse_profile, sizeof(g_xios_pulse_profile), "/etc/profile.d/xios-pulse.sh");
+    prefixed_path(g_xios_start_a11y, sizeof(g_xios_start_a11y), "/usr/local/bin/xios-start-a11y");
+
+    if (g_jbroot[0]) {
+        snprintf(g_home, sizeof(g_home), "%s/var/root", g_jbroot);
+        snprintf(g_path, sizeof(g_path), "%s/usr/bin:%s/usr/sbin:%s/bin:%s/sbin:/usr/bin:/bin",
+                 g_jbroot, g_jbroot, g_jbroot, g_jbroot);
+        snprintf(g_local_path, sizeof(g_local_path), "%s/usr/local/bin:%s",
+                 g_jbroot, g_path);
+    } else {
+        copy_path(g_home, sizeof(g_home), "/var/root");
+        copy_path(g_path, sizeof(g_path), "/usr/bin:/usr/sbin:/bin:/sbin");
+        copy_path(g_local_path, sizeof(g_local_path), "/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin");
+    }
+
+    static char wayland_classic[PATH_MAX], wayland_native[PATH_MAX];
+    static char json_classic[PATH_MAX], json_native[PATH_MAX];
+    static char ddx_classic[PATH_MAX], ddx_native[PATH_MAX];
+    static char input_classic[PATH_MAX], input_native[PATH_MAX];
+    static char lock_classic[PATH_MAX], lock_native[PATH_MAX];
+
+    tmp_path(wayland_classic, sizeof(wayland_classic), "wayland-0");
+    tmp_path(wayland_native, sizeof(wayland_native), "wayland-native-0");
+    tmp_path(json_classic, sizeof(json_classic), "xios.json");
+    tmp_path(json_native, sizeof(json_native), "xios-native.json");
+    tmp_path(ddx_classic, sizeof(ddx_classic), "iosc-ddx.sock");
+    tmp_path(ddx_native, sizeof(ddx_native), "iosc-native-ddx.sock");
+    tmp_path(input_classic, sizeof(input_classic), "iosc-input.sock");
+    tmp_path(input_native, sizeof(input_native), "iosc-native-input.sock");
+    tmp_path(lock_classic, sizeof(lock_classic), "wayland-0.lock");
+    tmp_path(lock_native, sizeof(lock_native), "wayland-native-0.lock");
+
+    g_modes[0] = (struct mode_cfg){
         .name = "classic",
-        .wayland_sock = WAYLAND_SOCK_CLASSIC,
+        .wayland_sock = wayland_classic,
         .wayland_name = WAYLAND_NAME_CLASSIC,
-        .json = XIOS_JSON_CLASSIC,
-        .ddx_sock = IOSC_DDX_SOCK_CLASSIC,
-        .input_sock = IOSC_INPUT_CLASSIC,
-        .lock_sock = TMP "/wayland-0.lock",
-    },
-    {
+        .json = json_classic,
+        .ddx_sock = ddx_classic,
+        .input_sock = input_classic,
+        .lock_sock = lock_classic,
+    };
+    g_modes[1] = (struct mode_cfg){
         .name = "native",
-        .wayland_sock = WAYLAND_SOCK_NATIVE,
+        .wayland_sock = wayland_native,
         .wayland_name = WAYLAND_NAME_NATIVE,
-        .json = XIOS_JSON_NATIVE,
-        .ddx_sock = IOSC_DDX_SOCK_NATIVE,
-        .input_sock = IOSC_INPUT_NATIVE,
-        .lock_sock = TMP "/wayland-native-0.lock",
-    },
-};
+        .json = json_native,
+        .ddx_sock = ddx_native,
+        .input_sock = input_native,
+        .lock_sock = lock_native,
+    };
+}
 
 /* app_id -> last client pid we spawned (so a re-tap raises, not duplicates). */
 #define MAX_APPS 64
@@ -123,14 +250,13 @@ static pid_t g_iosc_pid[2] = { 0, 0 };  /* [0]=classic, [1]=native */
  * iosc-native-input.sock) so native hosts can coexist with the classic Xios
  * desktop on wayland-0. A tapped native host is already foreground, so ioscd does
  * not uiopen com.max.xios for native launches. */
-#define NATIVE_FLAG    TMP "/iosc.native"
 static int g_default_native = 0;
 
 static int detect_native(void)
 {
     const char *e = getenv("IOSC_NATIVE");
     if (e && (*e == '1' || *e == 't' || *e == 'T' || *e == 'y' || *e == 'Y')) return 1;
-    struct stat st; return stat(NATIVE_FLAG, &st) == 0;
+    struct stat st; return stat(g_native_flag, &st) == 0;
 }
 
 static const struct mode_cfg *mode_cfg(int native) { return &g_modes[native ? 1 : 0]; }
@@ -193,7 +319,7 @@ static void child_stdio(const char *logpath, int append)
 
 static void set_rootless_path(int include_local)
 {
-    setenv("PATH", include_local ? ROOTLESS_LOCAL_PATH : ROOTLESS_PATH, 1);
+    setenv("PATH", include_local ? g_local_path : g_path, 1);
 }
 
 static int read_active_session(char *buf, size_t buflen)
@@ -205,7 +331,7 @@ static int read_active_session(char *buf, size_t buflen)
         return 0;
     buf[0] = 0;
 
-    fd = open(XIOS_ACTIVE_SESSION, O_RDONLY);
+    fd = open(g_active_session, O_RDONLY);
     if (fd < 0)
         return 0;
     n = read(fd, buf, buflen - 1);
@@ -305,13 +431,13 @@ static void ensure_audio(void)
     pid_t pid = fork();
     if (pid < 0) return;
     if (pid == 0) {
+        char cmd[PATH_MAX + 80];
         setsid();
         child_stdio(NULL, 0);
-        setenv("XDG_RUNTIME_DIR", TMP, 1);
+        setenv("XDG_RUNTIME_DIR", g_tmp, 1);
         set_rootless_path(0);
-        execl(BASH_BIN, "bash", "-lc",
-              ". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null && xios_pulse_start",
-              (char *)NULL);
+        snprintf(cmd, sizeof(cmd), ". %s 2>/dev/null && xios_pulse_start", g_xios_pulse_profile);
+        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
     int status;
@@ -356,8 +482,8 @@ static int ensure_iosc(int native)
     if (pid < 0) return -1;
     if (pid == 0) {
         setsid();
-        child_stdio(IOSC_LOG, 0);
-        setenv("XDG_RUNTIME_DIR", TMP, 1);
+        child_stdio(g_iosc_log, 0);
+        setenv("XDG_RUNTIME_DIR", g_tmp, 1);
         set_rootless_path(0);
         if (native) setenv("IOSC_NATIVE", "1", 1);   /* per-window canvas export */
         else unsetenv("IOSC_NATIVE");
@@ -366,7 +492,7 @@ static int ensure_iosc(int native)
          * Env override lets the launcher retune without a rebuild. */
         const char *logical = getenv("IOSC_LOGICAL");
         if (!logical || !*logical) logical = "1440x1080";
-        execl(IOSC_BIN, "iosc",
+        execl(g_iosc_bin, "iosc",
               native ? "-native" : "-classic",
               "-s", mode->wayland_name,
               "-ddx-sock", mode->ddx_sock,
@@ -406,7 +532,7 @@ static void foreground_xios(void)
         /* -b (open as if tapped -> foreground) is required: the bare form
          * returns 0 but FrontBoard suspends the background-launched Metal app
          * before it adopts the IOSurface. Same form the run scripts use. */
-        execl(UIOPEN_BIN, "uiopen", "-b", XIOS_BUNDLE, (char *)NULL);
+        execl(g_uiopen_bin, "uiopen", "-b", XIOS_BUNDLE, (char *)NULL);
         _exit(127);
     }
     /* don't block on it; SIGCHLD reaps it */
@@ -420,7 +546,7 @@ static void iosc_raise(const char *app_id)
     if (fd < 0) return;
     struct sockaddr_un a; memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
-    strncpy(a.sun_path, IOSC_WM_SOCK, sizeof(a.sun_path) - 1);
+    strncpy(a.sun_path, g_iosc_wm_sock, sizeof(a.sun_path) - 1);
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0) {
         char line[300];
         int n = snprintf(line, sizeof(line), "raise\t%s\n", app_id ? app_id : "");
@@ -438,10 +564,17 @@ static int env_truthy(const char *name)
            strcasecmp(v, "off") != 0;
 }
 
+static int a11y_enabled_gate(void)
+{
+    return env_truthy("XIOS_ENABLE_A11Y") ||
+           access(g_a11y_enabled, F_OK) == 0 ||
+           access(g_a11y_force, F_OK) == 0;
+}
+
 static int ensure_session_bus(char *addr, size_t addr_len)
 {
-    const char *busdir = IOSCD_BUS_DIR;
-    char sock[sizeof(IOSCD_BUS_DIR) + 32];
+    const char *busdir = g_ioscd_bus_dir;
+    char sock[PATH_MAX];
     char address_arg[sizeof(sock) + 32];
 
     if (!addr || addr_len == 0) return 0;
@@ -458,7 +591,7 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     if (pid < 0) return 0;
     if (pid == 0) {
         child_stdio(NULL, 0);
-        execl(DBUS_DAEMON, "dbus-daemon", "--session", "--fork",
+        execl(g_dbus_daemon, "dbus-daemon", "--session", "--fork",
               address_arg, "--print-address", (char *)NULL);
         _exit(127);
     }
@@ -466,6 +599,56 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     int status = 0;
     waitpid(pid, &status, 0);
     return socket_exists(sock);
+}
+
+static int write_a11y_enabled_state(int on)
+{
+    if (!on) {
+        unlink(g_a11y_enabled);
+        return 0;
+    }
+
+    int fd = open(g_a11y_enabled, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return -1;
+    (void)!write(fd, "1\n", 2);
+    close(fd);
+    chmod(g_a11y_enabled, 0644);
+    return 0;
+}
+
+static int start_a11y_for_busdir(const char *busdir)
+{
+    char sock[PATH_MAX];
+    char addr[PATH_MAX + 16];
+
+    if (!busdir || !*busdir || access(g_xios_start_a11y, X_OK) != 0)
+        return 0;
+    snprintf(sock, sizeof(sock), "%s/session-bus", busdir);
+    if (!socket_exists(sock))
+        return 0;
+    snprintf(addr, sizeof(addr), "unix:path=%s", sock);
+
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        setsid();
+        child_stdio(g_ioscd_client_log, 1);
+        setenv("XDG_RUNTIME_DIR", busdir, 1);
+        setenv("DBUS_SESSION_BUS_ADDRESS", addr, 1);
+        setenv("HOME", g_home, 1);
+        set_rootless_path(1);
+        execl(g_xios_start_a11y, "xios-start-a11y", (char *)NULL);
+        _exit(127);
+    }
+    return 1;
+}
+
+static void start_a11y_for_existing_buses(void)
+{
+    char session_busdir[PATH_MAX];
+    tmp_path(session_busdir, sizeof(session_busdir), "xios-session-bus");
+    (void)start_a11y_for_busdir(g_ioscd_bus_dir);
+    (void)start_a11y_for_busdir(session_busdir);
 }
 
 /* Spawn <exec> as a Wayland client of iosc. Mirrors run-kgx.sh's environment:
@@ -478,7 +661,7 @@ static int ensure_session_bus(char *addr, size_t addr_len)
 static pid_t launch_client(const char *app_id, const char *exec, int native)
 {
     const struct mode_cfg *mode = mode_cfg(native);
-    const char *busdir = IOSCD_BUS_DIR;
+    const char *busdir = g_ioscd_bus_dir;
     char bus_addr[256];
     int have_bus = ensure_session_bus(bus_addr, sizeof(bus_addr));
 
@@ -486,37 +669,37 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
     if (pid < 0) return -1;
     if (pid == 0) {
         setsid();
-        child_stdio(TMP "/ioscd-client.log", 1);
+        child_stdio(g_ioscd_client_log, 1);
 
         setenv("XDG_RUNTIME_DIR", busdir, 1);          /* private, dbus-friendly */
         setenv("WAYLAND_DISPLAY", mode->wayland_sock, 1);    /* absolute path */
         setenv("GDK_BACKEND", "wayland", 1);
         setenv("GSK_RENDERER", "ngl", 1);
-        setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
+        setenv("ANGLE_REAL_LIBEGL", g_angle_real_libegl, 1);
         setenv("GSETTINGS_BACKEND", "memory", 1);
         if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
-        int enable_a11y = env_truthy("XIOS_ENABLE_A11Y") ||
-                          access(TMP "/xios-a11y-force", F_OK) == 0;
+        int enable_a11y = a11y_enabled_gate();
         if (enable_a11y) unsetenv("GTK_A11Y");
         else setenv("GTK_A11Y", "none", 1);
-        setenv("HOME", "/var/jb/var/root", 1);
+        setenv("HOME", g_home, 1);
         set_rootless_path(0);
 
         const char *cmd = exec;
         char a11y_cmd[4096];
         if (enable_a11y) {
             int n = snprintf(a11y_cmd, sizeof(a11y_cmd),
-                             "if [ -x /var/jb/usr/local/bin/xios-start-a11y ]; then "
-                             "/var/jb/usr/local/bin/xios-start-a11y; "
+                             "if [ -x %s ]; then "
+                             "%s; "
                              "elif command -v xios-start-a11y >/dev/null 2>&1; then "
-                             "xios-start-a11y; fi; exec %s", exec);
+                             "xios-start-a11y; fi; exec %s",
+                             g_xios_start_a11y, g_xios_start_a11y, exec);
             if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
         }
 
         if (!have_bus) {
-            execl(DBUS_RUN, "dbus-run-session", "--", BASH_BIN, "-lc", cmd, (char *)NULL);
+            execl(g_dbus_run, "dbus-run-session", "--", g_bash_bin, "-lc", cmd, (char *)NULL);
         }
-        execl(BASH_BIN, "bash", "-lc", cmd, (char *)NULL);
+        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
     remember_app(app_id, pid, native);
@@ -551,7 +734,7 @@ static pid_t launch_session_request(const char *preset, const char *app,
     if (pid < 0) return -1;
     if (pid == 0) {
         setsid();
-        child_stdio(TMP "/ioscd-session.log", 1);
+        child_stdio(g_ioscd_session_log, 1);
         set_rootless_path(1);
         if (width && *width && height && *height) {
             char logical[64];
@@ -563,13 +746,13 @@ static pid_t launch_session_request(const char *preset, const char *app,
         if (dpi && *dpi) setenv("XIOS_SESSION_DPI", dpi, 1);
 
         if (app && *app)
-            execl(XIOS_SESSION_BIN, "xios-session", preset, app, (char *)NULL);
+            execl(g_xios_session_bin, "xios-session", preset, app, (char *)NULL);
         else
-            execl(XIOS_SESSION_BIN, "xios-session", preset, (char *)NULL);
+            execl(g_xios_session_bin, "xios-session", preset, (char *)NULL);
         if (app && *app)
-            execl("/var/jb/usr/bin/xios-session", "xios-session", preset, app, (char *)NULL);
+            execl(g_xios_session_bin_fallback, "xios-session", preset, app, (char *)NULL);
         else
-            execl("/var/jb/usr/bin/xios-session", "xios-session", preset, (char *)NULL);
+            execl(g_xios_session_bin_fallback, "xios-session", preset, (char *)NULL);
         _exit(127);
     }
     return pid;
@@ -670,17 +853,17 @@ static int run_and_stream(int fd, char *const argv[])
 
 static void handle_apps_list(int fd)
 {
-    if (access(XIOS_LAUNCHER_SYNC, X_OK) != 0) {
+    if (access(g_xios_launcher_sync, X_OK) != 0) {
         reply(fd, "ERR xios-launcher-sync not installed\n");
         return;
     }
-    char *argv[] = { XIOS_LAUNCHER_SYNC, "--list", NULL };
+    char *argv[] = { g_xios_launcher_sync, "--list", NULL };
     (void)run_and_stream(fd, argv);
 }
 
 static void handle_apps_sync(int fd, char *payload)
 {
-    if (access(XIOS_LAUNCHER_SYNC, X_OK) != 0) {
+    if (access(g_xios_launcher_sync, X_OK) != 0) {
         reply(fd, "ERR xios-launcher-sync not installed\n");
         return;
     }
@@ -694,7 +877,7 @@ static void handle_apps_sync(int fd, char *payload)
 
     char *argv[7];
     int i = 0;
-    argv[i++] = XIOS_LAUNCHER_SYNC;
+    argv[i++] = g_xios_launcher_sync;
     argv[i++] = "--sync";
     argv[i++] = native ? "--native" : "--classic";
     if (dry_run) argv[i++] = "--dry-run";
@@ -704,7 +887,7 @@ static void handle_apps_sync(int fd, char *payload)
 
 static void handle_app_toggle(int fd, const char *verb, char *payload)
 {
-    if (access(XIOS_LAUNCHER_SYNC, X_OK) != 0) {
+    if (access(g_xios_launcher_sync, X_OK) != 0) {
         reply(fd, "ERR xios-launcher-sync not installed\n");
         return;
     }
@@ -715,12 +898,40 @@ static void handle_app_toggle(int fd, const char *verb, char *payload)
         return;
     }
     char *argv[] = {
-        XIOS_LAUNCHER_SYNC,
+        g_xios_launcher_sync,
         strcmp(verb, "APP_ENABLE") == 0 ? "--enable" : "--disable",
         app_id,
         NULL
     };
     (void)run_and_stream(fd, argv);
+}
+
+static void handle_a11y_state(int fd, char *payload)
+{
+    char *state = payload;
+    state[strcspn(state, "\t\r\n ")] = 0;
+
+    int on;
+    if (strcmp(state, "1") == 0 || strcasecmp(state, "true") == 0 ||
+        strcasecmp(state, "yes") == 0 || strcasecmp(state, "on") == 0) {
+        on = 1;
+    } else if (strcmp(state, "0") == 0 || strcasecmp(state, "false") == 0 ||
+               strcasecmp(state, "no") == 0 || strcasecmp(state, "off") == 0) {
+        on = 0;
+    } else {
+        reply(fd, "ERR bad a11y state\n");
+        return;
+    }
+
+    if (write_a11y_enabled_state(on) != 0) {
+        reply(fd, "ERR a11y state write failed\n");
+        return;
+    }
+    if (on)
+        start_a11y_for_existing_buses();
+
+    fprintf(stderr, "ioscd: a11y state %s\n", on ? "on" : "off");
+    reply(fd, "A11Y_OK\n");
 }
 
 static int launch_mode_for_verb(const char *verb, int *native)
@@ -769,7 +980,7 @@ static void handle_launch_request(int fd, const char *verb, char *payload)
             reply(fd, "ERR active session is not iosc\n");
             return;
         }
-        fprintf(stderr, "ioscd: %s iosc failed to start (see %s)\n", mode_name(native), IOSC_LOG);
+        fprintf(stderr, "ioscd: %s iosc failed to start (see %s)\n", mode_name(native), g_iosc_log);
         reply(fd, "ERR iosc start failed\n");
         return;
     }
@@ -850,28 +1061,34 @@ static void handle_conn(int fd)
         handle_app_toggle(fd, verb, t1 + 1);
         return;
     }
+    if (strcmp(verb, "A11Y_STATE") == 0) {
+        handle_a11y_state(fd, t1 + 1);
+        return;
+    }
 
     handle_launch_request(fd, verb, t1 + 1);
 }
 
 static int make_ctl_socket(void)
 {
-    unlink(CTL_SOCK);
+    unlink(g_ctl_sock);
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { perror("socket"); return -1; }
     struct sockaddr_un a; memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
-    strncpy(a.sun_path, CTL_SOCK, sizeof(a.sun_path) - 1);
+    strncpy(a.sun_path, g_ctl_sock, sizeof(a.sun_path) - 1);
     if (bind(fd, (struct sockaddr *)&a, sizeof(a)) != 0) { perror("bind"); close(fd); return -1; }
-    mobile_socket_perms(CTL_SOCK, "control socket");
+    mobile_socket_perms(g_ctl_sock, "control socket");
     if (listen(fd, 16) != 0) { perror("listen"); close(fd); return -1; }
     return fd;
 }
 
 int main(void)
 {
+    init_paths();
+
     /* keep TMP present (it normally is; harmless if it exists) */
-    mkdir(TMP, 01777);
+    mkdir(g_tmp, 01777);
 
     g_default_native = detect_native();
     fprintf(stderr, "ioscd: default launch mode=%s; explicit LAUNCH_NATIVE/LAUNCH_CLASSIC supported\n",
@@ -889,7 +1106,7 @@ int main(void)
 
     int lfd = make_ctl_socket();
     if (lfd < 0) return 1;
-    fprintf(stderr, "ioscd: listening on %s\n", CTL_SOCK);
+    fprintf(stderr, "ioscd: listening on %s\n", g_ctl_sock);
 
     for (;;) {
         struct pollfd pfds[2];

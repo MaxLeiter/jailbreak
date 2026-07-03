@@ -6,13 +6,34 @@
 # IOSurface server that the app presents. This script is for bring-up/debug clients
 # that connect directly to Xvfb over the local X socket.
 set -u
-export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+
+detect_jbroot() {
+  if [ -n "${IOSC_JBROOT:-}" ]; then printf '%s\n' "${IOSC_JBROOT%/}"; return; fi
+  if [ -n "${JBROOT:-}" ]; then printf '%s\n' "${JBROOT%/}"; return; fi
+  if [ -n "${XIOS_PREFIX:-}" ]; then printf '%s\n' "${XIOS_PREFIX%/}"; return; fi
+  if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
+  printf '%s\n' ''
+}
+
+jb_path() {
+  case "$JB" in
+    ''|/) printf '%s\n' "$1" ;;
+    *)    printf '%s\n' "$JB$1" ;;
+  esac
+}
+
+JB=$(detect_jbroot)
+export PATH="$(jb_path /usr/bin):$(jb_path /usr/sbin):$(jb_path /bin):$(jb_path /sbin):$PATH"
 export HOME=/var/root
-[ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
+XIOS_PROFILE=$(jb_path /etc/profile.d/xios.sh)
+[ -r "$XIOS_PROFILE" ] && . "$XIOS_PROFILE"
 command -v xios_apply_display_profile >/dev/null 2>&1 && xios_apply_display_profile
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
 
-FBDIR=/var/jb/tmp
+FBDIR="${XIOS_RUNTIME_TMP:-}"
+if [ -z "$FBDIR" ]; then
+  if [ -n "$JB" ]; then FBDIR="$(jb_path /tmp)"; else FBDIR=/var/tmp; fi
+fi
 DISP="${DISP:-:3}"
 # iPad 7 native: 2160x1620 (4:3, same aspect as the screen).
 W="${W:-2160}"; H="${H:-1620}"; DPI="${DPI:-264}"
@@ -45,7 +66,7 @@ fi
 ps ax | grep -v grep | grep -E "Xvfb ${DISP}( |\$)" | while read pid rest; do kill -9 "$pid" 2>/dev/null; done
 sleep 1
 rm -f "$FBDIR/Xvfb_screen0" "/tmp/.X${DNUM}-lock" "/tmp/.X11-unix/X${DNUM}" \
-      "/var/jb/tmp/.X11-unix/X${DNUM}" 2>/dev/null
+      "$FBDIR/.X11-unix/X${DNUM}" 2>/dev/null
 # -nolisten tcp: no network listener, so the only way in is the local Unix socket.
 # (-ac leaves local access open; the app + WM clients depend on it and we don't set
 # up xauth cookies here. On this single-user device the local socket is the surface.)

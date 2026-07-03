@@ -28,11 +28,11 @@ settings:
     SWIFT_OBJC_BRIDGING_HEADER: Sources/Xios-Bridging-Header.h
     HEADER_SEARCH_PATHS: $(SRCROOT)/xlib/include
     LIBRARY_SEARCH_PATHS: $(SRCROOT)/xlib/lib
-    # Procursus dylibs use @rpath install names; add /var/jb/usr/lib so dyld finds them
-    # at runtime (where libX11/libXtst are installed). IOSurface backs the zero-copy
+    # Procursus dylibs use @rpath install names; add rootless and rootful library
+    # roots so dyld finds libX11/libXtst at runtime. IOSurface backs the zero-copy
     # framebuffer (XSurface.c does the mach-port hand-off + IOSurfaceLookupFromMachPort).
     OTHER_LDFLAGS: -framework IOSurface
-    OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -framework IOSurface
+    OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/usr/lib -framework IOSurface
 
 targets:
   Xios:

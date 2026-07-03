@@ -12,14 +12,16 @@
     <key>get-task-allow</key>
     <true/>
 
-    <!-- The app sandbox would otherwise block connect() to /var/jb/tmp/ioscd.sock.
-         A path exception (and no-container, so /var/jb is visible) clears it. -->
+    <!-- The app sandbox would otherwise block connect() to the ioscd socket.
+         Path exceptions cover rootless /var/jb/tmp and rootful /var/tmp. -->
     <key>com.apple.private.security.no-container</key>
     <true/>
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
         <string>/var/jb/tmp/</string>
         <string>/private/var/jb/tmp/</string>
+        <string>/var/tmp/</string>
+        <string>/private/var/tmp/</string>
     </array>
 </dict>
 </plist>

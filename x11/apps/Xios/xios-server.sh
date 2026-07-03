@@ -10,18 +10,41 @@
 #
 # For Xvfb bring-up/debug without the app display path, use x11-server.sh.
 set -u
-export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+
+detect_jbroot() {
+  if [ -n "${IOSC_JBROOT:-}" ]; then printf '%s\n' "${IOSC_JBROOT%/}"; return; fi
+  if [ -n "${JBROOT:-}" ]; then printf '%s\n' "${JBROOT%/}"; return; fi
+  if [ -n "${XIOS_PREFIX:-}" ]; then printf '%s\n' "${XIOS_PREFIX%/}"; return; fi
+  if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
+  printf '%s\n' ''
+}
+
+jb_path() {
+  case "$JB" in
+    ''|/) printf '%s\n' "$1" ;;
+    *)    printf '%s\n' "$JB$1" ;;
+  esac
+}
+
+JB=$(detect_jbroot)
+export PATH="$(jb_path /usr/bin):$(jb_path /usr/sbin):$(jb_path /bin):$(jb_path /sbin):$PATH"
 export HOME=/var/root
-[ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
-[ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
+XIOS_PROFILE=$(jb_path /etc/profile.d/xios.sh)
+XIOS_AUDIO_PROFILE=$(jb_path /etc/profile.d/xios-audio.sh)
+XIOS_PULSE_PROFILE=$(jb_path /etc/profile.d/xios-pulse.sh)
+[ -r "$XIOS_PROFILE" ] && . "$XIOS_PROFILE"
+[ -r "$XIOS_AUDIO_PROFILE" ] && . "$XIOS_AUDIO_PROFILE"
 command -v xios_apply_display_profile >/dev/null 2>&1 && xios_apply_display_profile
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
 # Desktop audio: the pulse profile helper starts xios-audiod AND PulseAudio and
 # exports PULSE_SERVER at the PA native socket, so we call it instead of the old
 # xios_audio_start (which only started the XIOA daemon). Idempotent.
-[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+[ -r "$XIOS_PULSE_PROFILE" ] && . "$XIOS_PULSE_PROFILE" && xios_pulse_start
 
-TMP=/var/jb/tmp
+TMP="${XIOS_RUNTIME_TMP:-}"
+if [ -z "$TMP" ]; then
+  if [ -n "$JB" ]; then TMP="$(jb_path /tmp)"; else TMP=/var/tmp; fi
+fi
 DISP="${DISP:-:3}"
 # iPad 7 native: 2160x1620 (4:3, same aspect as the screen) -> app displays 1:1, crisp.
 W="${W:-2160}"; H="${H:-1620}"; DPI="${DPI:-264}"

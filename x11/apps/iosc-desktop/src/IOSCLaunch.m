@@ -8,7 +8,7 @@
 //
 // Flow on every foreground (first tap AND every re-tap):
 //   1. read IOSCExec/IOSCAppID from Info.plist
-//   2. connect to the root ioscd daemon at /var/jb/tmp/ioscd.sock
+//   2. connect to the root ioscd daemon at /var/jb/tmp/ioscd.sock or /var/tmp/ioscd.sock
 //   3. send  "LAUNCH\t<app_id>\t<exec>\n"
 //   4. ioscd ensures iosc is up, foregrounds Xios.app (the on-screen display),
 //      and either execs <exec> as a new Wayland client or raises the existing
@@ -31,23 +31,49 @@
 #include <string.h>
 #include <errno.h>
 
-static NSString *const kDaemonSocket = @"/var/jb/tmp/ioscd.sock";
+static NSArray<NSString *> *iosc_daemon_socket_candidates(void)
+{
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    NSString *runtimeTmp = NSProcessInfo.processInfo.environment[@"XIOS_RUNTIME_TMP"];
+    if (runtimeTmp.length > 0) {
+        [paths addObject:[runtimeTmp stringByAppendingPathComponent:@"ioscd.sock"]];
+    }
+    [paths addObject:@"/var/jb/tmp/ioscd.sock"];
+    [paths addObject:@"/var/tmp/ioscd.sock"];
+    return paths;
+}
 
 // Send one LAUNCH request to ioscd. Best-effort: any failure just means the
 // daemon isn't installed/running yet, which we surface on the splash label.
 static BOOL iosc_send_launch(NSString *appID, NSString *exec, NSString **errOut)
 {
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) { if (errOut) *errOut = @"socket() failed"; return NO; }
+    int fd = -1;
+    NSString *lastPath = nil;
+    int lastErr = ENOENT;
+    for (NSString *path in iosc_daemon_socket_candidates()) {
+        fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (fd < 0) { if (errOut) *errOut = @"socket() failed"; return NO; }
 
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, kDaemonSocket.fileSystemRepresentation, sizeof(addr.sun_path) - 1);
-
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        if (errOut) *errOut = [NSString stringWithFormat:@"ioscd not reachable (%s)", strerror(errno)];
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, path.fileSystemRepresentation, sizeof(addr.sun_path) - 1);
+        if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+            lastPath = path;
+            lastErr = 0;
+            break;
+        }
+        lastPath = path;
+        lastErr = errno;
         close(fd);
+        fd = -1;
+    }
+    if (lastErr != 0) {
+        if (errOut) {
+            *errOut = [NSString stringWithFormat:@"ioscd not reachable at %@ (%s)",
+                       lastPath ?: @"known sockets", strerror(lastErr)];
+        }
+        if (fd >= 0) close(fd);
         return NO;
     }
 

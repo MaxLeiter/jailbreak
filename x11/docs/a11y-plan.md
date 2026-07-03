@@ -2,12 +2,13 @@
 
 Status: design plus Linux-side P0/P1 smoke slices shipping. The AT-SPI packages,
 `xios-a11y-tools`/`atspi-dump`, the opt-in `XIOS_ENABLE_A11Y=1` launch path,
-read-only `xios-a11yd` snapshots, and the native-iPadOS host-side publisher
-prototype exist. A first desktop Xios VoiceOver publisher slice now exists in
-the Xios app and builds, but still needs on-device VoiceOver gesture validation
-against real GTK/Qt controls. Owner of the Xios app changes: team lead. This doc
-specifies the bridge; sections marked IMPLEMENTED describe the Xios-side shape
-that has landed and still needs runtime proof.
+read-only `xios-a11yd` snapshots, native-iPadOS host-side publisher prototype,
+and first desktop Xios VoiceOver publisher slice exist. The Xios app now mirrors
+iOS VoiceOver state to `ioscd`, and launchers consume the generated runtime gate,
+but real VoiceOver gesture validation against GTK/Qt controls is still pending.
+Owner of the Xios app changes: team lead. This doc specifies the bridge; sections
+marked IMPLEMENTED describe the Xios-side shape that has landed and still needs
+runtime proof.
 
 ## Goal
 
@@ -36,9 +37,12 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `XIOS_ENABLE_A11Y=1` to leave GTK a11y enabled and start
   `/var/jb/usr/libexec/at-spi-bus-launcher` inside the app's session bus
   (`xios-session app`, `ioscd`, and shell launchers reuse shared buses across
-  launched clients).
-  For smoke tests, `/var/jb/tmp/xios-a11y-force` enables the same path without
-  needing to toggle iOS VoiceOver.
+  launched clients). The Xios app sends `A11Y_STATE\t1|0` to `ioscd` when
+  `UIAccessibility.isVoiceOverRunning` changes; `ioscd` persists that as
+  `/var/jb/tmp/xios-a11y-enabled`, and `xios-session`/ioscd app launches treat
+  that file as the normal enable gate. For smoke tests,
+  `/var/jb/tmp/xios-a11y-force` enables the same path without needing to toggle
+  iOS VoiceOver.
 - `xios-a11y-tools_0.2.14` ships `/var/jb/usr/local/bin/atspi-dump` and
   `/var/jb/usr/local/bin/xios-a11yd`. On-device smoke on 2026-07-02: with fresh
   `iosc` and `XIOS_ENABLE_A11Y=1 xios-session app kgx`, the AT-SPI bus came up,
@@ -70,6 +74,11 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `/var/jb/tmp/ioscd-bus/at-spi/bus`, and an enabled `xios-a11yd` client again
   received two `window` records plus 29 `upsert` records. Evidence:
   `artifacts/device-runs/20260703-053707-ioscd-a11y-shared-bus/ioscd-shared-bus-probe.txt`.
+  Follow-up runtime-state smoke on 2026-07-03 verified `A11Y_STATE 1` over
+  `/var/jb/tmp/ioscd.sock` creates `/var/jb/tmp/xios-a11y-enabled`, `A11Y_STATE 0`
+  removes it without touching the force file, and a fresh `xios-session app kgx`
+  launch with only the generated state file present starts `xios-a11yd`,
+  `at-spi-bus-launcher`, `dbus-daemon`, and `at-spi2-registryd`.
   The helper caches each client's last snapshot and only sends `reset` plus a
   replacement tree when the published body changes. On-device smoke with `0.2.4`
   saw the expected startup
@@ -131,8 +140,9 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `/var/jb/tmp/xios-a11y-force` file available for smoke tests.
 - The desktop Xios app now has the first unbound VoiceOver publisher slice in
   `apps/Xios/Sources/XiosA11y.swift`: it connects to `/var/jb/tmp/xios-a11y.sock`
-  only while iOS VoiceOver or `/var/jb/tmp/xios-a11y-force` is active, sends
-  `enable`, decodes `hello`/`reset`/`window`/`upsert`/`remove`/`focus`/
+  only while iOS VoiceOver or `/var/jb/tmp/xios-a11y-force` is active, sends the
+  current VoiceOver state to `ioscd`, sends `enable`, decodes
+  `hello`/`reset`/`window`/`upsert`/`remove`/`focus`/
   `announce`/`tap`, publishes flattened `UIAccessibilityElement`s onto
   `XScreenView`, and routes activate/custom action/adjust/scroll/focus callbacks
   back to `xios-a11yd`. `XScreenView` now exposes framebuffer-px -> view-point
@@ -144,6 +154,10 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `/var/jb/tmp/xios-a11y.sock`, receive `hello`/`reset`, then publish 12
   accessibility elements for one window. Evidence:
   `artifacts/device-runs/20260703-123824/xios-a11y-app.log`.
+  A follow-up state-mirroring smoke observed the app send `A11Y_STATE 0` to
+  `ioscd` while VoiceOver was off; the `A11Y_STATE 1` path was then exercised
+  directly over `ioscd.sock` because physical VoiceOver toggling still needs
+  a human-operated device pass.
 - The Xios app already has the screen-point to output-px mapping (`framebufferPoint`
   and inverse, used by the cursor overlay). Element frames reuse it.
 - Xios already synthesizes Wayland pointer input from touches (tap+type path). The
@@ -438,10 +452,13 @@ New files, roughly 500 lines of Swift total:
    `accessibilityElements = store.orderedElements` (array swapped atomically on main).
 4. Notifications: `.layoutChanged(element)` on `focus`, `.screenChanged(first)` on
    window switch/reset, `.announcement(text)` on `announce`.
-5. Gating: start the client and tell the helper `enable {true}` only when
-   `UIAccessibility.isVoiceOverRunning` or `/var/jb/tmp/xios-a11y-force` exists;
-   observe `voiceOverStatusDidChangeNotification`. When VoiceOver is off and the
-   force file is absent, the app-side pipeline is quiescent.
+5. Gating: observe `voiceOverStatusDidChangeNotification`, send
+   `A11Y_STATE\t1|0` to `/var/jb/tmp/ioscd.sock`, and start the helper client
+   plus `enable {true}` only when `UIAccessibility.isVoiceOverRunning` or
+   `/var/jb/tmp/xios-a11y-force` exists. `ioscd` turns VoiceOver-on into the
+   generated `/var/jb/tmp/xios-a11y-enabled` launch gate for future Linux apps.
+   When VoiceOver is off and the force file is absent, the app-side pipeline is
+   quiescent.
 6. Synthetic tap service: `tap {x, y}` from the helper feeds the existing
    touch-to-pointer injection at desktop-px coordinates.
 
@@ -584,9 +601,9 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 | Qt AT-SPI bridge | recipe enabled; Okular device AT-SPI tree validated with stale-object warning noise | verify a smaller Qt widget app if needed; fix transient-object warnings only if they break helper snapshots |
 | GTK3 atk-bridge | compiled out (`gtk+3.0.mk:20`) | gtk3 rebuild against the shipped libatk-bridge, before P4 |
 | atspi-dump CLI | shipped in `xios-a11y-tools_0.2.14`; prints role/name/description plus states, action names, and value text/current/min/max/increment | expand output only if xios-a11yd needs more probe coverage |
-| xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.14`; coalesces common AT-SPI object/window/document events into diff-suppressed snapshots with a periodic fallback; line-buffers app commands as NDJSON and dispatches by exact `t`; exposes action names, values, AT-SPI state-derived traits/values, and `focus` when AT-SPI reports one; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue; routes `scroll` to AT-SPI Component.ScrollTo | add geometry correlation, PID correlation, and real VoiceOver status mirroring |
+| xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.14`; coalesces common AT-SPI object/window/document events into diff-suppressed snapshots with a periodic fallback; line-buffers app commands as NDJSON and dispatches by exact `t`; exposes action names, values, AT-SPI state-derived traits/values, and `focus` when AT-SPI reports one; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue; routes `scroll` to AT-SPI Component.ScrollTo | add geometry correlation and PID correlation |
 | iosc geometry feed | new | small compositor + shell-channel addition |
-| Xios app side | desktop publisher first slice builds and passed a forced socket/UIAccessibility publish smoke; native host prototype exists | real VoiceOver gesture validation against GTK/Qt controls |
+| Xios app side | desktop publisher first slice builds and passed a forced socket/UIAccessibility publish smoke; VoiceOver state is mirrored to ioscd's generated a11y launch gate; native host prototype exists | real VoiceOver gesture validation against GTK/Qt controls |
 | iosc-shell AT-SPI objects | new | few hundred lines, libdbus (shipped) |
 | Orca stack (optional) | new | 4 debs: espeak-ng, dotconf, speech-dispatcher, orca |
 
@@ -599,9 +616,8 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
   properties true, `xios-session_1.0.15` starts `xios-a11yd` when installed
   while sharing one app-launch D-Bus session across multiple clients, and ioscd
   icon/native launch requests now share one daemon-owned app bus too.
-  Remaining accept: full gnome-console widget tree, a smaller/simple Qt widget
-  app if desired after the Okular probe, and mirroring iOS VoiceOver state instead of forcing
-  `ScreenReaderEnabled=true`.
+  Remaining accept: full gnome-console widget tree and a smaller/simple Qt widget
+  app if desired after the Okular probe.
 - P1 read-only browse: xios-a11yd mirror + protocol + Xios elements for the focused
   window (labels, roles, frames). PARTIAL ACCEPT SHIPPED: `xios-a11yd` emits
   `hello`/`reset`/`window`/`upsert` records for `kgx` over

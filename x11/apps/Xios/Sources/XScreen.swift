@@ -5,6 +5,67 @@ import QuartzCore
 import IOSurface
 import Darwin
 
+enum XiosRuntimePaths {
+    static func trimTrailingSlash(_ path: String) -> String {
+        var out = path
+        while out.count > 1 && out.hasSuffix("/") {
+            out.removeLast()
+        }
+        return out
+    }
+
+    static var runtimeTmp: String {
+        if let tmp = ProcessInfo.processInfo.environment["XIOS_RUNTIME_TMP"], !tmp.isEmpty {
+            return trimTrailingSlash(tmp)
+        }
+        if let root = ProcessInfo.processInfo.environment["XIOS_PREFIX"], !root.isEmpty {
+            let trimmed = trimTrailingSlash(root)
+            return (trimmed == "/" ? "" : trimmed) + "/tmp"
+        }
+        if FileManager.default.fileExists(atPath: "/var/jb/usr") {
+            return "/var/jb/tmp"
+        }
+        return "/var/tmp"
+    }
+
+    static var jbroot: String {
+        if let root = ProcessInfo.processInfo.environment["XIOS_PREFIX"], !root.isEmpty {
+            let trimmed = trimTrailingSlash(root)
+            return trimmed == "/" ? "" : trimmed
+        }
+        if FileManager.default.fileExists(atPath: "/var/jb/usr") {
+            return "/var/jb"
+        }
+        return ""
+    }
+
+    static func join(_ dir: String, _ name: String) -> String {
+        dir == "/" ? "/" + name : dir + "/" + name
+    }
+
+    static func tmp(_ name: String) -> String {
+        join(runtimeTmp, name)
+    }
+
+    static func prefixed(_ suffix: String) -> String {
+        jbroot.isEmpty ? suffix : jbroot + suffix
+    }
+
+    static func tmpCandidates(_ name: String) -> [String] {
+        var paths: [String] = []
+        if let tmp = ProcessInfo.processInfo.environment["XIOS_RUNTIME_TMP"], !tmp.isEmpty {
+            paths.append(join(trimTrailingSlash(tmp), name))
+        }
+        paths.append("/var/jb/tmp/" + name)
+        paths.append("/var/tmp/" + name)
+        return Array(NSOrderedSet(array: paths)) as? [String] ?? paths
+    }
+
+    static func firstExisting(_ name: String) -> String {
+        tmpCandidates(name).first { FileManager.default.fileExists(atPath: $0) } ?? tmp(name)
+    }
+}
+
 /// Root VC: a full-screen view that displays the X server's framebuffer.
 final class XServerViewController: UIViewController {
     private let screen = XScreenView()
@@ -284,22 +345,24 @@ private final class XiosShellOverlay: UIView {
 final class XScreenView: UIView {
     private var fbWidth = 1024
     private var fbHeight = 768
-    private let configPath = "/var/jb/tmp/xios.json"
+    private var configPath: String { XiosRuntimePaths.firstExisting("xios.json") }
     // Which X display to drive (XTEST input). The server advertises this in
     // xios.json so the app and the launch scripts can't disagree; `:3` is only the
     // holding default before config arrives. Not pinned: the
     // picker can switch it to any open display (see discoverDisplays()/load()).
     private var xDisplay = ":3"
     private var xAuthPath: String?              // MIT-MAGIC-COOKIE-1 file from xios.json
-    private let xunixDirs = ["/tmp/.X11-unix", "/var/jb/tmp/.X11-unix"]
+    private var xunixDirs: [String] {
+        ["/tmp/.X11-unix", XiosRuntimePaths.tmp(".X11-unix"), "/var/jb/tmp/.X11-unix", "/var/tmp/.X11-unix"]
+    }
     // Bumped on every load(); the async IOSurface connect captures it and bails if a
     // newer load() superseded it, so switching displays can't adopt a stale surface.
     private var loadGeneration = 0
     private var userPinned = false              // user picked a display → stop auto-reloading xios.json
     private weak var pickerOverlay: UIView?
-    private let requestPath = "/var/jb/tmp/xios-request.json"
-    private let ioscdSocketPath = "/var/jb/tmp/ioscd.sock"
-    private let sessionStatusPath = "/var/jb/tmp/xios-session-status.json"
+    private var requestPath: String { XiosRuntimePaths.tmp("xios-request.json") }
+    private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
+    private var sessionStatusPath: String { XiosRuntimePaths.firstExisting("xios-session-status.json") }
     private let wallpaperConfigPath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper"
     private let wallpaperImagePath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
     private weak var sessionStatusLabel: UILabel?
@@ -313,7 +376,7 @@ final class XScreenView: UIView {
     private var sessionIndicatorDeadline = Date.distantPast
     private var sessionIndicatorSawTransition = false
     private weak var shellOverlay: XiosShellOverlay?
-    private let debugPath = "/var/jb/tmp/xios-debug.txt"
+    private var debugPath: String { XiosRuntimePaths.tmp("xios-debug.txt") }
     private var lastToolMessage = "No profile request sent"
     // UITextInputTraits — keep the keyboard literal so one tap is one char (no
     // autocorrect/autocapitalize substitutions to replay). Settable + @objc so they
@@ -380,7 +443,7 @@ final class XScreenView: UIView {
 
     // IOSurface (zero-copy) path
     private var ddxIsIOSurface = false
-    private var ddxSockPath = "/var/jb/tmp/xios-ddx.sock"
+    private var ddxSockPath = XiosRuntimePaths.tmp("xios-ddx.sock")
     private var xconn: OpaquePointer?            // XSurfaceConn*
     private var iosTexture: MTLTexture?
     private var usingIOSurface = false
@@ -778,7 +841,7 @@ final class XScreenView: UIView {
     // MARK: Metal setup
 
     private func dbg(_ s: String) {
-        try? s.write(toFile: "/var/jb/tmp/xios-metal.txt", atomically: true, encoding: .utf8)
+        try? s.write(toFile: XiosRuntimePaths.tmp("xios-metal.txt"), atomically: true, encoding: .utf8)
     }
 
     private func setupMetal() -> Bool {
@@ -833,7 +896,7 @@ final class XScreenView: UIView {
             + "fb=\(fbWidth)x\(fbHeight) "
             + "native=\(Int(nb.width))x\(Int(nb.height)) "
             + "orient=\(orient) ios=\(usingIOSurface)\n"
-        try? txt.write(toFile: "/var/jb/tmp/xios-geom.txt", atomically: true, encoding: .utf8)
+        try? txt.write(toFile: XiosRuntimePaths.tmp("xios-geom.txt"), atomically: true, encoding: .utf8)
     }
 
     // MARK: framebuffer
@@ -888,12 +951,12 @@ final class XScreenView: UIView {
             if let s = obj["input_socket"] as? String, !s.isEmpty {
                 ioscInputSock = s
             } else if ddxSockPath.contains("iosc") {
-                ioscInputSock = "/var/jb/tmp/iosc-input.sock"
+                ioscInputSock = XiosRuntimePaths.tmp("iosc-input.sock")
             }
             if let s = obj["clipboard_socket"] as? String, !s.isEmpty {
                 ioscClipboardSock = s
             } else if ddxSockPath.contains("iosc") {
-                ioscClipboardSock = "/var/jb/tmp/iosc-clipboard.sock"
+                ioscClipboardSock = XiosRuntimePaths.tmp("iosc-clipboard.sock")
             }
         }
 
@@ -1106,7 +1169,7 @@ final class XScreenView: UIView {
         } else {
             inp = "input-connected \(xDisplay)"
         }
-        try? "\(fb)\n\(inp)\n".write(toFile: "/var/jb/tmp/xios-status.txt", atomically: true, encoding: .utf8)
+        try? "\(fb)\n\(inp)\n".write(toFile: XiosRuntimePaths.tmp("xios-status.txt"), atomically: true, encoding: .utf8)
         refreshShellOverlay()
     }
 
@@ -1815,7 +1878,7 @@ final class XScreenView: UIView {
             + "cs=\(metalLayer.contentsScale) zoom=\(zoomScale) pan=(\(Int(panOffset.x)),\(Int(panOffset.y))) "
             + "rect=(\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))) "
             + "fitScale=\(fit.scale) -> fb=(\(fb.x),\(fb.y))\n"
-        try? dbg.write(toFile: "/var/jb/tmp/xios-touch.log", atomically: true, encoding: .utf8)
+        try? dbg.write(toFile: XiosRuntimePaths.tmp("xios-touch.log"), atomically: true, encoding: .utf8)
     }
 
     private func framebufferPoint(from p: CGPoint) -> (Int32, Int32)? {
@@ -2273,8 +2336,8 @@ final class XScreenView: UIView {
     }
 
     private let applicationsDirs = [
-        "/var/jb/usr/share/applications",
-        "/var/jb/usr/local/share/applications",
+        XiosRuntimePaths.prefixed("/usr/share/applications"),
+        XiosRuntimePaths.prefixed("/usr/local/share/applications"),
     ]
 
     /// Parse the `[Desktop Entry]` group of a .desktop file into the fields we need.
@@ -2407,7 +2470,7 @@ final class XScreenView: UIView {
     private func resetConfigDefaults(resetDisplay: Bool = false) {
         fbWidth = 1024; fbHeight = 768
         ddxIsIOSurface = false
-        ddxSockPath = "/var/jb/tmp/xios-ddx.sock"
+        ddxSockPath = XiosRuntimePaths.tmp("xios-ddx.sock")
         xAuthPath = nil
         ioscInputSock = nil
         ioscClipboardSock = nil
@@ -2968,7 +3031,7 @@ final class XScreenView: UIView {
         let (_, _, _, stack) = presentScrollableModalCard()
 
         stack.addArrangedSubview(panelLabel("Launch App", size: 18, weight: .bold))
-        let hasCompositor = FileManager.default.fileExists(atPath: "/var/jb/tmp/wayland-0")
+        let hasCompositor = FileManager.default.fileExists(atPath: XiosRuntimePaths.tmp("wayland-0"))
         stack.addArrangedSubview(panelLabel(
             hasCompositor
                 ? "Opens into the running desktop."
