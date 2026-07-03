@@ -2519,8 +2519,7 @@ final class XScreenView: UIView {
             attributes: [.font: UIFont.monospacedSystemFont(ofSize: 11, weight: .regular),
                          .foregroundColor: UIColor(white: 0.62, alpha: 1)]))
         b.setAttributedTitle(title, for: .normal)
-        b.backgroundColor = UIColor(white: 0.2, alpha: 1)
-        b.layer.cornerRadius = 10
+        stylePanelSurface(b, fill: UIColor(white: 0.20, alpha: 0.84))
         b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         b.menu = UIMenu(children: [
             UIAction(title: "Open") { [weak self] _ in
@@ -2558,15 +2557,36 @@ final class XScreenView: UIView {
         let backdrop = UIButton(type: .custom)
         backdrop.frame = overlay.bounds
         backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.48)
         backdrop.addAction(UIAction { [weak self] _ in self?.dismissPicker() }, for: .touchUpInside)
         overlay.addSubview(backdrop)
 
         let card = UIView()
         card.translatesAutoresizingMaskIntoConstraints = false
-        card.backgroundColor = UIColor(white: 0.12, alpha: 1)
-        card.layer.cornerRadius = 16
+        card.backgroundColor = UIColor(white: 0.10, alpha: 0.76)
+        card.layer.cornerRadius = 22
+        card.layer.cornerCurve = .continuous
+        card.layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
+        card.layer.borderWidth = 1
+        card.layer.shadowColor = UIColor.black.cgColor
+        card.layer.shadowOpacity = 0.36
+        card.layer.shadowRadius = 26
+        card.layer.shadowOffset = CGSize(width: 0, height: 18)
         overlay.addSubview(card)
+
+        let material = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+        material.translatesAutoresizingMaskIntoConstraints = false
+        material.isUserInteractionEnabled = false
+        material.clipsToBounds = true
+        material.layer.cornerRadius = 22
+        material.layer.cornerCurve = .continuous
+        card.insertSubview(material, at: 0)
+        NSLayoutConstraint.activate([
+            material.topAnchor.constraint(equalTo: card.topAnchor),
+            material.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            material.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            material.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+        ])
         return (overlay, card)
     }
 
@@ -2577,9 +2597,8 @@ final class XScreenView: UIView {
         b.titleLabel?.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
         b.setTitle(rowTitle(d, active: active), for: .normal)
         b.setTitleColor(.white, for: .normal)
-        b.backgroundColor = active ? UIColor.systemBlue.withAlphaComponent(0.35)
-                                   : UIColor(white: 0.2, alpha: 1)
-        b.layer.cornerRadius = 10
+        stylePanelSurface(b, fill: active ? UIColor.systemBlue.withAlphaComponent(0.38)
+                                          : UIColor(white: 0.20, alpha: 0.84))
         b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         b.addAction(UIAction { [weak self] _ in
             self?.dismissPicker()
@@ -2610,11 +2629,19 @@ final class XScreenView: UIView {
         b.titleLabel?.textAlignment = .center
         b.titleLabel?.adjustsFontSizeToFitWidth = true
         b.titleLabel?.minimumScaleFactor = 0.75
-        b.backgroundColor = UIColor(white: 0.25, alpha: 1)
-        b.layer.cornerRadius = 10
+        stylePanelSurface(b, fill: UIColor(white: 0.24, alpha: 0.86))
         b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        b.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         b.addAction(UIAction { _ in action() }, for: .touchUpInside)
         return b
+    }
+
+    private func stylePanelSurface(_ view: UIView, fill: UIColor, radius: CGFloat = 10) {
+        view.backgroundColor = fill
+        view.layer.cornerRadius = radius
+        view.layer.cornerCurve = .continuous
+        view.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+        view.layer.borderWidth = 1
     }
 
     @objc private func dismissPicker() {
