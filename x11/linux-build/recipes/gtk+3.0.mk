@@ -107,8 +107,17 @@ gtk+3.0-package: gtk+3.0-stage
 	# see gtkintl_shim.c). Compiled here in the package step so it is always produced
 	# even on a cached gtk+3.0 build. -Wl,-reexport-lintl pulls in libintl.8 so real
 	# libintl_* still resolve; the wrappers add the g_libintl_* names dyld needs.
+	# NOTE: glib's build stages its *bundled proxy-libintl* (exports g_libintl_* only,
+	# install_name @rpath/libintl.dylib) into $(BUILD_BASE)/.../lib as libintl.8.dylib so
+	# GTK's own link resolves g_libintl_*. That means build_base's libintl no longer carries
+	# the real gettext libintl_* the shim must reexport, so a bare `-lintl` against build_base
+	# fails ("Undefined symbols: _libintl_gettext"). Prepend gettext's own build_stage lib
+	# dir (the real libintl.8.dylib, install_name @rpath/libintl.8.dylib, exports libintl_*)
+	# so -reexport-lintl records a reexport onto @rpath/libintl.8.dylib — the device's real
+	# gettext — while the wrappers still add the g_libintl_* names.
 	$(CC) -dynamiclib -fno-common -install_name @rpath/libgtkintl.dylib \
 		$(BUILD_TOOLS)/gtkintl_shim.c \
+		-L$(BUILD_STAGE)/gettext/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		-L$(BUILD_BASE)/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -Wl,-reexport-lintl \
 		-o $(BUILD_DIST)/libgtkintl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgtkintl.dylib
 
