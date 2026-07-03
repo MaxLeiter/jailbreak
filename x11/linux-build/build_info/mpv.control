@@ -5,10 +5,14 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://mpv.io
-Depends: libwayland0, libxkbcommon0, libass9, libavcodec59, libavformat59, libavutil57, libswscale6, libswresample4, libavfilter8, libfreetype6, libfontconfig1, libharfbuzz0b, libfribidi0, libjpeg62-turbo, libpulse0
+Depends: angle, libwayland0, libxkbcommon0, libass9, libavcodec59, libavformat59, libavutil57, libswscale6, libswresample4, libavfilter8, libfreetype6, libfontconfig1, libharfbuzz0b, libfribidi0, libjpeg62-turbo, libpulse0
 Description: Wayland-native GPU media player
  mpv is a free, cross-platform media player. This build (0.36.0) targets the
  iosc Wayland compositor: the OpenGL video renderer (--vo=gpu) drives the
  desktop EGL/GLES stack on a wl_surface via wayland-egl for zero-copy GPU
- video, with libass subtitle rendering. Audio output is via PulseAudio
- (the desktop PA daemon). Runs as a native Wayland client.
+ video, with libass subtitle rendering. It links /var/jb/lib/angle/libEGL.dylib,
+ which the angle deb installs as the iosc wayland-egl->ANGLE/Metal->IOSurface
+ shim, so --vo=gpu renders on the Apple GPU straight into IOSurfaces handed to
+ iosc (the same path kgx/GTK4 use). Launch via the bundled mpv-iosc wrapper (or
+ its .desktop) to force the wayland GL VO. Audio output is via PulseAudio (the
+ desktop PA daemon). Runs as a native Wayland client.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=mpv (iosc GPU)
+GenericName=Media Player
+Comment=Wayland-native GPU media player on the iosc desktop
+Exec=mpv-iosc %U
+TryExec=mpv-iosc
+Terminal=false
+Categories=AudioVideo;Video;Player;
+MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;audio/mpeg;audio/flac;audio/x-wav;
+Icon=mpv

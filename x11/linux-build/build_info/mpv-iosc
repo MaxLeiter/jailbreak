@@ -1,0 +1,25 @@
+#!/var/jb/usr/bin/bash
+# mpv-iosc — launch mpv as a GPU Wayland client of the iosc compositor.
+#
+# mpv is linked against /var/jb/lib/angle/libEGL.dylib, which the `angle` deb
+# installs as the iosc wayland-egl->ANGLE/Metal->IOSurface shim (the real ANGLE
+# libEGL is kept beside it at libEGL.angle.dylib). So mpv's OpenGL video output
+# (--vo=gpu) on a wl_egl_window renders on the A10 GPU straight into IOSurfaces
+# that iosc composites zero-copy — the exact path kgx/GTK4 already use.
+#
+# This wrapper mirrors run-kgx.sh's client render env: it points the shim at the
+# real ANGLE libEGL (ANGLE_REAL_LIBEGL; the shim also falls back to
+# libEGL.angle.dylib on its own, so this is belt-and-suspenders) and forces the
+# wayland GL VO so a window maps under iosc even before a frame decodes.
+#
+# Usage: mpv-iosc [mpv-args] <file|url>
+# Requires: a running iosc compositor (WAYLAND_DISPLAY set by the session) and
+# the Xios app presenting iosc's IOSurface. mpv itself is signed with the GPU
+# IOKit entitlement set, so Metal init succeeds under a fakesigned process.
+export ANGLE_REAL_LIBEGL="${ANGLE_REAL_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"
+exec /var/jb/usr/bin/mpv \
+  --vo=gpu \
+  --gpu-api=opengl \
+  --gpu-context=wayland \
+  --force-window=yes \
+  "$@"

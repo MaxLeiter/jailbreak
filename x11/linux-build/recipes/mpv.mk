@@ -170,6 +170,17 @@ mpv-package: mpv-stage
 		cp -a $(BUILD_STAGE)/mpv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc $(BUILD_DIST)/mpv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
 	fi
 
+	# GPU Wayland launch wrapper + its .desktop. mpv links /var/jb/lib/angle/libEGL.dylib
+	# (the iosc wayland-egl->ANGLE/Metal->IOSurface shim shipped by the angle deb), so the
+	# wrapper just carries the render env kgx uses and forces the wayland GL VO. Plain
+	# shell scripts (not Mach-O) so SIGN below skips them.
+	cp $(BUILD_INFO)/mpv-iosc $(BUILD_DIST)/mpv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/mpv-iosc
+	chmod 0755 $(BUILD_DIST)/mpv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/mpv-iosc
+	mkdir -p $(BUILD_DIST)/mpv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/applications
+	cp $(BUILD_INFO)/mpv-iosc.desktop \
+		$(BUILD_DIST)/mpv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/applications/mpv-iosc.desktop
+	chmod 0644 $(BUILD_DIST)/mpv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/applications/mpv-iosc.desktop
+
 	$(call SIGN,mpv,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,mpv,DEB_MPV_V)
 	rm -rf $(BUILD_DIST)/mpv
