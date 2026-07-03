@@ -50,6 +50,7 @@
 #define MENU_W           184
 #define MENU_ROW_H       42
 #define MENU_PAD         8
+#define MENU_IDLE_MS     7000
 
 enum bg_press_kind {
     BG_PRESS_NONE = 0,
@@ -124,6 +125,7 @@ static struct {
     uint64_t last_pins_check_ms;
     int   widgets_loaded, edit_mode, drag_idx, drag_dx, drag_dy;
     int   menu_open, menu_x, menu_y, menu_kind, menu_idx;
+    uint64_t menu_opened_ms;
     int   ptr_down, ptr_kind, ptr_idx, ptr_x, ptr_y, ptr_x0, ptr_y0, ptr_moved;
     int   touch_active, touch_id, touch_kind, touch_idx, touch_x, touch_y, touch_x0, touch_y0, touch_moved;
     uint64_t press_ms, last_stats_ms;
@@ -639,6 +641,7 @@ static void menu_open_at(int kind, int idx, int x, int y)
     B.menu_open = 1;
     B.menu_kind = kind;
     B.menu_idx = idx;
+    B.menu_opened_ms = now_ms();
     h = menu_height_for(kind, idx);
     B.menu_x = x;
     B.menu_y = y;
@@ -659,6 +662,14 @@ static int menu_hit(int x, int y)
     int row = (y - B.menu_y - MENU_PAD) / MENU_ROW_H;
     if (row < 0 || row >= n) return MENU_ACT_NONE;
     return actions[row];
+}
+
+static int menu_dismiss_if_idle(uint64_t now)
+{
+    if (!B.menu_open) return 0;
+    if (now - B.menu_opened_ms < MENU_IDLE_MS) return 0;
+    B.menu_open = 0;
+    return 1;
 }
 
 static void menu_remove_pin(int idx)
@@ -1364,7 +1375,9 @@ int main(void)
         wl_display_dispatch_pending(B.dpy);
         uint64_t ms = now_ms();
         maybe_begin_drag(ms);
-        if (pins_reload_if_due(ms)) {
+        if (menu_dismiss_if_idle(ms)) {
+            rerender();
+        } else if (pins_reload_if_due(ms)) {
             rerender();
         } else if (ms - B.last_stats_ms > 2500) {
             int changed = widgets_update_stats();
