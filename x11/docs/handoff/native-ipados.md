@@ -45,6 +45,11 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   `APPS_LIST`, `APPS_SYNC\t<native|classic>\t<dry>`,
   `APP_ENABLE\t<app_id>`, and `APP_DISABLE\t<app_id>`. Responses are streamed
   and end with `APPS_END\t<status>`.
+- Xios.app now exposes those verbs from the in-app Displays & Sessions sheet:
+  **Home Screen Apps** lists launcher candidates from `APPS_LIST`, searches by
+  name/exec/id, toggles enable/disable with `APP_ENABLE`/`APP_DISABLE`, and runs
+  dry/apply sync for native or classic bundles with a streamed report. It is also
+  reachable from the desktop context menu.
 - On-device validation done: renderer compiled/runs on iPad and rendered
   `org.gnome.Console.svg`; staged sync generated a complete native `mpv.app` and
   `org.pwmt.zathura.app` under `/var/jb/tmp`; daemon verbs returned the 14 visible
@@ -55,6 +60,12 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   listed apps through the packaged `xios-launcher-sync`, rendered
   `org.gnome.Console.svg` into all three iPad icon PNG sizes, and returned
   `APPS_END\t0` for both `APPS_LIST` and `APPS_SYNC\tnative\tdry`.
+- Settings-pane build/deploy done: Xios.app Release `iphoneos` build succeeded,
+  deployed to `/var/jb/Applications/Xios.app`, relaunched, and adopted the active
+  iosc IOSurface (`iosurface-zerocopy 2880x2160 [metal]`, input connected).
+  Backend smoke after deploy returned `APPS_END\t0` for `APPS_LIST` and
+  `APPS_SYNC\tnative\tdry`. Remaining validation is a physical/tap-through UI
+  check of the new sheet and one controlled apply sync.
 
 ## Hardening (2026-07-02, from the native-integration review)
 - **Blocking mach hand-off moved off the compositor thread.** `deliver_canvas_port`
@@ -91,11 +102,9 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 4. Validate jetsam/relaunch replay: open a native-hosted app, kill/relaunch the host, confirm `WINDOW_NEW` + the live canvas port are replayed from `xios_canvas.c`.
 5. Confirm the keyboard hint path on device: focus a GTK/Qt text field inside a native-hosted window and verify the OSK appears when that scene is key.
 6. Decide whether native mode should keep the classic output IOSurface for tooling/fallback or skip it later to save memory.
-7. Add the Xios settings pane for Home Screen apps: call `APPS_LIST`, show per-app
-   enabled toggles, call `APP_ENABLE`/`APP_DISABLE`, and expose dry-run/apply
-   buttons for native/classic sync. Do this before mass-syncing every candidate
-   to SpringBoard; visible `.desktop` files include borderline entries like
-   `foot-server`/`footclient`.
+7. Visually validate the new Xios Home Screen Apps settings pane on-device:
+   open the sheet, toggle one app off/on, run dry native/classic, then perform one
+   controlled apply sync after confirming the visible candidate set.
 
 ## Priority
 Core path is implemented; next pass is validation notes + polish closure.

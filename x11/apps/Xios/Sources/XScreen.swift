@@ -509,6 +509,15 @@ final class XScreenView: UIView {
         let ddx: String?
     }
 
+    private struct LauncherApp {
+        let id: String
+        let name: String
+        let exec: String
+        let icon: String
+        let bundlePath: String
+        let enabled: Bool
+    }
+
     private var pendingSessionDisplay: DisplayProfile?
 
     private struct FitTransform {
@@ -1275,6 +1284,36 @@ final class XScreenView: UIView {
         }
     }
 
+    private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20) -> String? {
+        let fd = connectUnixSocket(ioscdSocketPath)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        guard writeAll(fd, line) else { return nil }
+        Darwin.shutdown(fd, SHUT_WR)
+
+        var data = Data()
+        var buf = [UInt8](repeating: 0, count: 4096)
+        while data.count < maxBytes {
+            let n = buf.withUnsafeMutableBytes { raw in
+                read(fd, raw.baseAddress, raw.count)
+            }
+            if n > 0 {
+                data.append(buf, count: Int(n))
+            } else if n < 0 && errno == EINTR {
+                continue
+            } else {
+                break
+            }
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func ioscdResponseLines(_ line: String) -> [String]? {
+        sendIOSCDRequest(line)?.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { String($0).trimmingCharacters(in: .newlines) }
+            .filter { !$0.isEmpty }
+    }
+
     private func sendSessionRequestToIOSCD(_ preset: String, app: String?,
                                            display: DisplayProfile?) -> Bool {
         let fd = connectUnixSocket(ioscdSocketPath)
@@ -1420,6 +1459,9 @@ final class XScreenView: UIView {
             },
             UIAction(title: "Launch App...", image: UIImage(systemName: "square.grid.2x2")) {
                 [weak self] _ in self?.presentAppLauncher()
+            },
+            UIAction(title: "Home Screen Apps", image: UIImage(systemName: "app.badge")) {
+                [weak self] _ in self?.presentHomeScreenApps()
             },
             UIAction(title: "Show Keyboard", image: UIImage(systemName: "keyboard")) { [weak self] _ in
                 _ = self?.becomeFirstResponder()
@@ -2619,6 +2661,57 @@ final class XScreenView: UIView {
 
     @objc private func openSessionPicker() { presentDisplayControl(initial: .sessions) }
 
+    private func fetchLauncherApps() -> (apps: [LauncherApp], error: String?) {
+        guard let lines = ioscdResponseLines("APPS_LIST\n") else {
+            return ([], "ioscd socket unavailable")
+        }
+        var apps: [LauncherApp] = []
+        for line in lines {
+            if line.hasPrefix("ERR ") { return (apps, line) }
+            if line.hasPrefix("APPS_END") { break }
+            let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard fields.count >= 6 else { continue }
+            apps.append(LauncherApp(
+                id: String(fields[0]),
+                name: String(fields[1]),
+                exec: String(fields[2]),
+                icon: String(fields[3]),
+                bundlePath: String(fields[4]),
+                enabled: String(fields[5]).lowercased() != "disabled"))
+        }
+        apps.sort {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        return (apps, nil)
+    }
+
+    private func sendLauncherToggle(_ app: LauncherApp, enabled: Bool) -> Bool {
+        let verb = enabled ? "APP_ENABLE" : "APP_DISABLE"
+        guard let lines = ioscdResponseLines("\(verb)\t\(app.id)\n"),
+              let last = lines.last else {
+            lastToolMessage = "Launcher update failed: ioscd socket unavailable"
+            return false
+        }
+        if last == "APPS_END\t0" {
+            lastToolMessage = "\(enabled ? "Enabled" : "Disabled") \(app.name)"
+            return true
+        }
+        lastToolMessage = "Launcher update failed: \(lines.first ?? last)"
+        return false
+    }
+
+    private func sendLauncherSync(native: Bool, dryRun: Bool) -> [String]? {
+        let mode = native ? "native" : "classic"
+        let dry = dryRun ? "dry" : "apply"
+        guard let lines = ioscdResponseLines("APPS_SYNC\t\(mode)\t\(dry)\n") else {
+            lastToolMessage = "Launcher sync failed: ioscd socket unavailable"
+            return nil
+        }
+        let ok = lines.last == "APPS_END\t0"
+        lastToolMessage = "\(dryRun ? "Dry run" : "Synced") \(mode) launchers\(ok ? "" : " with errors")"
+        return lines
+    }
+
     /// Parse the session launcher's status file (preset / state / human message). nil when the
     /// file is absent or unparseable. State walks stopping → starting → waiting →
     /// relaunching → up (or error / compositor-only).
@@ -2942,6 +3035,15 @@ final class XScreenView: UIView {
             self?.presentAppLauncher()
         })
 
+        addSection("Home Screen Apps", to: stack)
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Manage Apps") { [weak self] in self?.presentHomeScreenApps() },
+            panelButton("Dry Run Native") { [weak self] in
+                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: true) else { return }
+                self.presentLauncherSyncReport(title: "Native Dry Run", lines: lines)
+            },
+        ]))
+
         addSection("Maintenance", to: stack)
         stack.addArrangedSubview(buttonRow([
             panelButton("Copy Debug") { [weak self, weak message] in
@@ -3129,6 +3231,160 @@ final class XScreenView: UIView {
             self.dismissPicker()
         }, for: .touchUpInside)
         return b
+    }
+
+    private func presentHomeScreenApps(query initialQuery: String = "") {
+        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 720)
+
+        stack.addArrangedSubview(panelLabel("Home Screen Apps", size: 18, weight: .bold))
+        let message = panelLabel(lastToolMessage, size: 12, color: UIColor(white: 0.72, alpha: 1))
+        stack.addArrangedSubview(message)
+
+        let state = fetchLauncherApps()
+        if let error = state.error {
+            stack.addArrangedSubview(panelLabel(error, size: 13, color: UIColor.systemRed.withAlphaComponent(0.9)))
+        }
+
+        let search = panelSearchField("Search launchers")
+        search.text = initialQuery
+        stack.addArrangedSubview(search)
+
+        let resultsStack = UIStackView()
+        resultsStack.axis = .vertical
+        resultsStack.spacing = 10
+        resultsStack.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(resultsStack)
+
+        let renderResults: (String) -> Void = { [weak self, weak resultsStack] query in
+            guard let self, let resultsStack else { return }
+            for view in resultsStack.arrangedSubviews {
+                resultsStack.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+            let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let filtered = needle.isEmpty ? state.apps : state.apps.filter { app in
+                app.name.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil ||
+                app.exec.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil ||
+                app.id.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            }
+            if state.apps.isEmpty && state.error == nil {
+                resultsStack.addArrangedSubview(self.panelLabel(
+                    "No launcher candidates were reported by ioscd.",
+                    size: 13, color: UIColor(white: 0.72, alpha: 1)))
+            } else if filtered.isEmpty && !state.apps.isEmpty {
+                resultsStack.addArrangedSubview(self.panelLabel(
+                    "No launchers match \"\(needle)\".",
+                    size: 13, color: UIColor(white: 0.72, alpha: 1)))
+            } else {
+                for app in filtered {
+                    resultsStack.addArrangedSubview(self.launcherAppRow(app, query: needle, message: message))
+                }
+            }
+        }
+        search.addAction(UIAction { [weak search] _ in
+            renderResults(search?.text ?? "")
+        }, for: .editingChanged)
+        renderResults(initialQuery)
+
+        addSection("Sync", to: stack)
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Dry Native") { [weak self] in
+                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: true) else { return }
+                self.presentLauncherSyncReport(title: "Native Dry Run", lines: lines)
+            },
+            panelButton("Dry Classic") { [weak self] in
+                guard let self, let lines = self.sendLauncherSync(native: false, dryRun: true) else { return }
+                self.presentLauncherSyncReport(title: "Classic Dry Run", lines: lines)
+            },
+        ]))
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Apply Native") { [weak self] in
+                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: false) else { return }
+                self.presentLauncherSyncReport(title: "Native Sync", lines: lines)
+            },
+            panelButton("Apply Classic") { [weak self] in
+                guard let self, let lines = self.sendLauncherSync(native: false, dryRun: false) else { return }
+                self.presentLauncherSyncReport(title: "Classic Sync", lines: lines)
+            },
+        ]))
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Refresh") { [weak self, weak search] in
+                self?.presentHomeScreenApps(query: search?.text ?? "")
+            },
+            panelButton("Back") { [weak self] in self?.presentDisplayControl(initial: .sessions) },
+            panelButton("Close") { [weak self] in self?.dismissPicker() },
+        ]))
+    }
+
+    private func launcherAppRow(_ app: LauncherApp, query: String, message: UILabel) -> UIView {
+        let row = UIView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        stylePanelSurface(row, fill: app.enabled ? UIColor(white: 0.20, alpha: 0.84)
+                                                 : UIColor(white: 0.13, alpha: 0.84))
+
+        let textStack = UIStackView()
+        textStack.axis = .vertical
+        textStack.spacing = 3
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(textStack)
+
+        let title = panelLabel(app.name, size: 15, weight: .semibold)
+        let detail = panelLabel("\(app.exec)\n\(app.id)", size: 11,
+                                color: UIColor(white: 0.64, alpha: 1))
+        detail.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textStack.addArrangedSubview(title)
+        textStack.addArrangedSubview(detail)
+
+        let toggle = UISwitch()
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggle.isOn = app.enabled
+        toggle.onTintColor = .systemBlue
+        row.addSubview(toggle)
+        toggle.addAction(UIAction { [weak self, weak toggle, weak message] _ in
+            guard let self, let toggle else { return }
+            if self.sendLauncherToggle(app, enabled: toggle.isOn) {
+                self.presentHomeScreenApps(query: query)
+            } else {
+                toggle.isOn = app.enabled
+                message?.text = self.lastToolMessage
+            }
+        }, for: .valueChanged)
+
+        NSLayoutConstraint.activate([
+            textStack.topAnchor.constraint(equalTo: row.topAnchor, constant: 10),
+            textStack.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 12),
+            textStack.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -10),
+            toggle.leadingAnchor.constraint(equalTo: textStack.trailingAnchor, constant: 12),
+            toggle.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
+            toggle.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 68),
+        ])
+        return row
+    }
+
+    private func presentLauncherSyncReport(title: String, lines: [String]) {
+        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 720)
+        stack.addArrangedSubview(panelLabel(title, size: 18, weight: .bold))
+        stack.addArrangedSubview(panelLabel(lastToolMessage, size: 12,
+                                            color: UIColor(white: 0.72, alpha: 1)))
+
+        let report = UITextView()
+        report.translatesAutoresizingMaskIntoConstraints = false
+        report.isEditable = false
+        report.isScrollEnabled = true
+        report.backgroundColor = UIColor(white: 0.08, alpha: 1)
+        report.textColor = UIColor(white: 0.86, alpha: 1)
+        report.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        report.layer.cornerRadius = 8
+        report.text = lines.joined(separator: "\n")
+        stack.addArrangedSubview(report)
+        report.heightAnchor.constraint(equalToConstant: 260).isActive = true
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Back") { [weak self] in self?.presentHomeScreenApps() },
+            panelButton("Close") { [weak self] in self?.dismissPicker() },
+        ]))
     }
 
     /// Build the dimmed full-screen overlay with a tap-to-dismiss backdrop and an
