@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# build-plasma-desktop.sh — cross-build the first Plasma Desktop shell-layer
-# packages on top of the completed Qt/KF6/KWin volume.
+# build-plasma-desktop.sh — cross-build first-light Plasma shell-layer packages
+# on top of the completed Qt/KF6/KWin volume.
 #
 # This driver is deliberately narrower than the future full Plasma session. The
 # default target is libplasma-package: the shared Plasma framework/theme/QML
-# layer that plasma-workspace and plasma-desktop both need before plasmashell can
-# be built. It does not launch Plasma Mobile/Nano packages.
+# layer that plasma-workspace, plasma-desktop, plasma-nano, and plasma-mobile
+# need before plasmashell/mobile shell testing.
 set -euo pipefail
 
 QTVER=6.6.3
@@ -31,6 +31,7 @@ COLLECT_DEBS=(
   plasma-workspace
   plasma-desktop
   plasma-nano
+  plasma-mobile
   kf6-attica
   kf6-declarative
   kf6-runner
@@ -109,13 +110,13 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 echo "==> installing Plasma Desktop recipes into makefiles/"
 mkdir -p build_info build_misc/entitlements
-for r in qt6-common.mk kf6-common.mk libplasma.mk plasma-activities-stats.mk plasma-workspace.mk plasma-desktop.mk plasma-nano.mk; do
+for r in qt6-common.mk kf6-common.mk libplasma.mk plasma-activities-stats.mk plasma-workspace.mk plasma-desktop.mk plasma-nano.mk plasma-mobile.mk; do
   cp -v /work/recipes/$r makefiles/
 done
 for t in "${SUPPORT_RECIPE_TARGETS[@]}"; do
   cp -v "/work/recipes/${t}.mk" makefiles/
 done
-cp -v /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/plasma-workspace*.control /work/build_info/plasma-desktop*.control /work/build_info/plasma-nano*.control build_info/
+cp -v /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/plasma-workspace*.control /work/build_info/plasma-desktop*.control /work/build_info/plasma-nano*.control /work/build_info/plasma-mobile*.control build_info/
 for deb in "${COLLECT_DEBS[@]}"; do
   cp -v /work/build_info/${deb}*.control build_info/ 2>/dev/null || true
 done

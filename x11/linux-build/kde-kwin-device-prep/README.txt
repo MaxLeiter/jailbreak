@@ -4,8 +4,8 @@ Created by: linux-build/prep-kde-kwin-device.sh
 Remote path: /var/jb/tmp/kde-kwin-prep
 
 Contents:
-- debs/: runtime Qt6, KF6, KWayland/KWin, Plasma Workspace/Nano, xios-session, and shim packages
+- debs/: runtime Qt6, KF6, KWayland/KWin, Plasma Workspace/Nano/Mobile, xios-session, and shim packages
 - install-on-device.sh: installs the package set and writes RUN-LATER.txt
 
-This bundle deliberately excludes xios-kde and plasma-mobile.
+This bundle deliberately excludes xios-kde.
 It does not launch any compositor or session process.
