@@ -102,6 +102,11 @@ The CLI calls the shared library directly. Add `-d`/`--via-daemon` to exercise
 the same `/var/jb/tmp/ioscd.sock` SESSION path used by the app; if ioscd is not
 running or does not acknowledge the request, the command fails.
 
+Current GNOME caveat (2026-07-03): direct `xios-session gnome` is the verified
+path for `gnome-shell 46.0+ios3`. The daemon/app picker path ACKs through ioscd,
+but still needs a concurrency cleanup because delayed/pending `iosc` requests can
+steal the active session after GNOME starts.
+
 ### Path 2 — in-app picker (ioscd socket)
 
 The Xios app's Tools card gets a "Desktop Session" section. Tapping a preset
@@ -114,6 +119,8 @@ SESSION<TAB>iosc<TAB><TAB>1080<TAB>1440<TAB>176
 `ioscd` forks the existing `xios-session` CLI, so the same shared library owns
 teardown, settle, and bring-up. There is no request-file fallback for session
 picks; `/var/jb/tmp/xios-request.json` remains only for display-profile requests.
+For GNOME validation, prefer the direct CLI until the daemon/app picker
+concurrency caveat above is closed.
 
 Result feedback: both paths write `/var/jb/tmp/xios-session-status.json`
 (`{"preset","state","message","at"}`) which the app / CLI can poll. `state` walks

@@ -35,25 +35,16 @@ for `QuickSlider` accessibility. Direct `xios-session gnome` verified GNOME reac
 `artifacts/device-runs/20260703-123833/`.
 
 REMAINING (polish, not blockers):
-1. **Persistent launch — VERIFIED 2026-07-03, use ioscd's SESSION path.** gnome-shell dies only when the
-   *launching ssh session* closes (sshd reaps its children; `setsid` is absent on device). An
-   attached/synchronous run is rock-stable. The desktop's real launch path already solves this:
-   ioscd accepts `SESSION` on `/var/jb/tmp/ioscd.sock` and runs `xios-session gnome`
-   from its launchd-owned process tree, not sshd, so gnome-shell survives. Launch it
-   with **`xios-session -d gnome`** (without `-d` the CLI runs in-process and dies with the ssh shell).
-   Do NOT `ssh 'bash -s' < run-gnome-shell.sh`
-   for a persistent session. **`x11/wayland/restore-gnome.sh`** does the whole comeback: verifies the
-   persistent artifacts (they live under /var/jb, so they survive reboot — only /tmp runtime state is
-   lost), re-asserts the libatk-bridge weak-import, ensures ioscd is reachable, and launches via the
-   SESSION socket. run-gnome-shell.sh also now writes a python fork+setsid shim (helps, but the ioscd path is
-   the real fix). Promoted on-device gir scripts: gir-build-lib-ondevice.sh, gir-build-gdm-ondevice.sh,
-   gir-rescan-st-shell-ondevice.sh (for regen if a typelib is ever missing).
-   2026-07-03 verification: `xios-session -d gnome` initially failed because the device has neither
-   `nc` nor `socat`; `xios-session` now falls back to Python's Unix-socket client and
-   `restore-gnome.sh` includes `/var/jb/usr/local/bin` in `PATH`. After reinstalling the session
-   manifest, GNOME reached `state=up`, `GNOME Shell started`, Xios adopted `2160x1620`, and
-   `dbus-run-session` was parented to PID 1 with `gnome-shell --wayland` alive under it. Evidence:
-   `artifacts/device-runs/20260703-041526/`.
+1. **Launch path — direct CLI verified; daemon/app picker needs cleanup.** Do NOT
+   `ssh 'bash -s' < run-gnome-shell.sh` for normal validation. Use **`xios-session gnome`** from
+   an SSH shell or on-device terminal: with `xios-session 1.0.15` and `gnome-shell 46.0+ios3`, this
+   reaches `state=up`, Xios adopts `2160x1620`, and `gnome-shell --wayland` stays running. Evidence:
+   `artifacts/device-runs/20260703-124040/`. `xios-session -d gnome` now gets an ioscd socket ACK
+   through the Python fallback when local `nc` is unusable, but the daemon/app-triggered path still
+   needs a concurrency pass: delayed/pending `iosc` requests can run after a successful GNOME launch
+   and steal the active session. Promoted on-device gir scripts: gir-build-lib-ondevice.sh,
+   gir-build-gdm-ondevice.sh, gir-rescan-st-shell-ondevice.sh (for regen if a typelib is ever
+   missing).
 2. **Volume slider polish:** the old volume ectomy is removed in the recipe and in installed
    `gnome-shell 46.0+ios3`. Patch (8b) guards the missing QuickSlider a11y handoff while keeping
    the slider/menu/event path. Fresh `+ios3` logs clear the Quick Settings setup failure and the
@@ -62,8 +53,10 @@ REMAINING (polish, not blockers):
 3. Cosmetic: `meta-barrier` runtime-check warnings (pointer barriers unimplemented in MetaBackendIOS);
    "Error registering session with GDM" (no org.gnome.DisplayManager — harmless, no GDM on iOS).
 
-## Current state — checked 2026-07-01 23:55 PDT
-- gnome-shell + gnome-session + gnome-settings-daemon + libmutter-14-0/dev + libgjs0 + gobject-introspection + xios-session-stubs are installed (`dpkg-query` = `ii`).
+## Current state — checked 2026-07-03 12:40 PDT
+- `gnome-shell 46.0+ios3`, `xios-session 1.0.15`, gnome-session,
+  gnome-settings-daemon, libmutter-14-0/dev, libgjs0, gobject-introspection, and
+  xios-session-stubs are installed (`dpkg-query` = `ii`).
 - GTK4 typelibs are present and importable: `Gtk-4.0` imports under gjs.
 - The GNOME Shell boot typelib batch is complete on the device. Live gjs import smoke passed for:
   - Mutter/shell core: `Meta-14`, `Clutter-14`, `St-14`, `Shell-14`, `Gvc-1.0`, `Shew-0`
