@@ -407,10 +407,15 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
 }
 EOF
   cat > "$d/CMakeLists.txt" <<'EOF'
-# M0 headless PNG driver. Mirrors test-web's link set (minus the test-only libs) and depends on the
-# helper processes + resource files so the build stages them alongside.
+# M0 headless PNG driver. Mirrors test-web's link set (minus the test-only libs). It depends on the
+# helper processes so they build alongside. The resource-copy target (ladybird_build_resource_files)
+# lives in UI/, which is skipped on iOS (patch 6) -> guard the dependency; the driver packaging step
+# stages resources straight from Base/res into share/Lagom.
 add_executable(headless-shot main.cpp)
-add_dependencies(headless-shot ladybird_build_resource_files ${ladybird_helper_processes})
+if (TARGET ladybird_build_resource_files)
+    add_dependencies(headless-shot ladybird_build_resource_files)
+endif()
+add_dependencies(headless-shot ${ladybird_helper_processes})
 target_link_libraries(headless-shot PRIVATE
     AK LibCore LibFileSystem LibGfx LibImageDecoders LibImageDecoderClient
     LibIPC LibJS LibMain LibRequests LibURL LibWeb LibWebView)

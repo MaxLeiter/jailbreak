@@ -204,14 +204,89 @@ if run_stage build; then
   echo "reconfigure exit: ${PIPESTATUS[0]}"
 
   cd "$BUILD"
-  ninja -k 0 -j"$(nproc)" WebContent RequestServer ImageDecoder WebWorker \
+  ninja -k 0 -j"$(nproc)" WebContent RequestServer ImageDecoder WebWorker headless-shot \
     2>&1 | tee /out/wave4b-build.log
   echo "build exit: ${PIPESTATUS[0]}"
-  echo "== emitted helper binaries =="
-  for b in WebContent RequestServer ImageDecoder WebWorker; do
+  echo "== emitted binaries (arch + undef count) =="
+  for b in headless-shot WebContent RequestServer ImageDecoder WebWorker; do
     p=$(find "$BUILD" -maxdepth 4 -type f -name "$b" 2>/dev/null | head -1)
-    [ -n "$p" ] && echo "$b: $(file -b "$p" | cut -c1-45) | undef=$("$SHIM/nm" -u "$p" 2>/dev/null | wc -l)"
+    if [ -n "$p" ]; then
+      echo "$b: $(file -b "$p" | cut -c1-45) | undef=$("$SHIM/nm" -u "$p" 2>/dev/null | wc -l)"
+    else
+      echo "$b: NOT BUILT"
+    fi
   done
+fi
+
+# ================================================================================================
+step "STAGE package: iphoneos-arm64 deb (bin/headless-shot + libexec helpers + share/Lagom)"
+# ================================================================================================
+# Layout matches the compiled-in non-macOS helper search (Utilities.cpp find_prefix):
+#   driver at $prefix/bin -> find_prefix -> $prefix ; helpers at $prefix/libexec + $prefix/bin ;
+#   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
+#   (LADYBIRD_LIBEXECDIR is only set on !APPLE; our cross is APPLE), so helpers -> $prefix/libexec.
+LDID=/root/cctools/bin/ldid
+VER="0.1.0+ios1"
+DEB=/out/ladybird-headless_${VER}_iphoneos-arm64.deb
+if run_stage package; then
+  HS=$(find "$BUILD" -maxdepth 4 -type f -name headless-shot 2>/dev/null | head -1)
+  if [ -z "$HS" ]; then echo "!! headless-shot not built; skipping package"; else
+    PKG=/tmp/lbpkg; rm -rf "$PKG"
+    mkdir -p "$PKG/DEBIAN" "$PKG/var/jb/usr/bin" "$PKG/var/jb/usr/libexec" "$PKG/var/jb/usr/share/Lagom"
+
+    # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
+    # user-client at headless M0).
+    ENT=/tmp/ladybird-headless-ent.xml
+    cat > "$ENT" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>platform-application</key><true/>
+    <key>com.apple.private.security.no-container</key><true/>
+    <key>com.apple.private.amfi.can-allow-non-platform</key><true/>
+    <key>com.apple.private.skip-library-validation</key><true/>
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/</string>
+        <string>/tmp/</string>
+        <string>/var/</string>
+        <string>/private/var/</string>
+    </array>
+</dict>
+</plist>
+PLIST
+
+    sign() { "$LDID" -S"$ENT" "$1" 2>/dev/null || "$LDID" -S "$1"; }
+
+    cp "$HS" "$PKG/var/jb/usr/bin/headless-shot"; sign "$PKG/var/jb/usr/bin/headless-shot"
+    for b in WebContent RequestServer ImageDecoder WebWorker; do
+      p=$(find "$BUILD" -maxdepth 4 -type f -name "$b" 2>/dev/null | head -1)
+      if [ -n "$p" ]; then cp "$p" "$PKG/var/jb/usr/libexec/$b"; sign "$PKG/var/jb/usr/libexec/$b"; else echo "!! helper $b missing"; fi
+    done
+
+    # resources straight from Base/res (UI's copy target is skipped on iOS).
+    cp -a "$WORK"/Base/res/. "$PKG/var/jb/usr/share/Lagom/"
+
+    INSTALLED_KB=$(du -sk "$PKG/var/jb" | cut -f1)
+    cat > "$PKG/DEBIAN/control" <<EOF
+Package: ladybird-headless
+Name: Ladybird (headless renderer)
+Version: $VER
+Architecture: iphoneos-arm64
+Description: Ladybird browser engine — headless PNG renderer (M0 bring-up).
+ Multiprocess LibWeb engine (WebContent/RequestServer/ImageDecoder/WebWorker) with a
+ headless-shot driver that loads a URL/HTML and dumps a PNG. GPU/Compositor deferred.
+Section: Utilities
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Ladybird contributors; iOS port by Max Leiter
+Depends: libc++1, icu-ios, harfbuzz, libpng, libjpeg, libwebp7, skia
+Installed-Size: $INSTALLED_KB
+MinimumOSVersion: 16.0
+EOF
+    dpkg-deb -Zxz -b "$PKG" "$DEB" && echo "== packaged $DEB ==" && dpkg-deb -c "$DEB" | awk '{print $6}' | grep -E 'bin/|libexec/|Default.ini' | head
+    ls -la "$DEB"
+  fi
 fi
 
 echo; echo "########## WAVE 4b (stage=$LB_STAGE) done ##########"
