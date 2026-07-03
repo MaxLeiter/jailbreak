@@ -7,7 +7,7 @@ Author: max
 Section: Development
 Priority: optional
 Homepage: https://opencode.ai
-Depends: bun
+Depends: bun, ripgrep
 Description: OpenCode CLI for rootless iOS.
  OpenCode @OPENCODE_VERSION@ bundled from pinned source commit @OPENCODE_COMMIT@
  and executed with the repo's iPhoneOS Bun runtime. The package installs a
