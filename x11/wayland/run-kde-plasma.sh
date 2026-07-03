@@ -20,6 +20,7 @@ WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 IOSC_BIN="${IOSC_BIN:-/var/jb/usr/local/bin/iosc}"
 KWIN_BIN="${KWIN_BIN:-/var/jb/Applications/KDE/kwin_wayland.app/kwin_wayland}"
 PLASMA_BIN="${PLASMA_BIN:-/var/jb/Applications/KDE/plasmashell.app/plasmashell}"
+KAMD_BIN="${KAMD_BIN:-/var/jb/usr/libexec/kactivitymanagerd}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
 IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
@@ -68,7 +69,7 @@ case "$KWIN_W:$KWIN_H" in
 esac
 
 echo "==> stop prior iosc/KDE session pieces"
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|dbus-daemon.*--session|dbus-run-session" \
+ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|dbus-daemon.*--session|dbus-run-session" \
   | awk '{print $1}' | while read -r pid; do
       [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
   done
@@ -92,6 +93,38 @@ ln -sf libEGL.dylib    "$ANGLE/libEGL.so"      2>/dev/null
 echo "==> ensure GSettings schemas are compiled"
 if [ ! -e /var/jb/usr/share/glib-2.0/schemas/gschemas.compiled ]; then
   glib-compile-schemas /var/jb/usr/share/glib-2.0/schemas 2>/dev/null || true
+fi
+
+kde_app_support_link() {
+  local name="$1"
+  local target="/var/jb/usr/share/$name"
+  local link="/var/root/Library/Application Support/$name"
+  [ -e "$target" ] || return 0
+  mkdir -p "/var/root/Library/Application Support"
+  if [ -L "$link" ]; then
+    ln -sfn "$target" "$link" 2>/dev/null || true
+  elif [ ! -e "$link" ]; then
+    ln -s "$target" "$link" 2>/dev/null || true
+  else
+    echo "!! $link already exists; leaving it in place"
+  fi
+}
+
+if [ "${XIOS_KDE_APP_SUPPORT_BRIDGE:-1}" != 0 ]; then
+  echo "==> bridge Qt/KPackage Darwin app-data paths to /var/jb/usr/share"
+  for name in plasma icons applications metainfo mime kservices6 knotifications6 kglobalaccel kpackage dbus-1 krunner qlogging-categories6; do
+    kde_app_support_link "$name"
+  done
+fi
+
+if [ -n "${XIOS_KDE_NO_KAMD+x}" ]; then
+  case "$XIOS_KDE_NO_KAMD" in
+    0|false|FALSE|no|NO) ;;
+    *) PLASMA_ENV+=(XIOS_KDE_NO_KAMD="$XIOS_KDE_NO_KAMD") ;;
+  esac
+elif [ ! -x "$KAMD_BIN" ]; then
+  echo "!! $KAMD_BIN missing; enabling first-light KActivities bypass"
+  PLASMA_ENV+=(XIOS_KDE_NO_KAMD=1)
 fi
 
 [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
@@ -129,6 +162,7 @@ nohup env \
   WAYLAND_DISPLAY=wayland-0 \
   KWIN_BIN="$KWIN_BIN" \
   PLASMA_BIN="$PLASMA_BIN" \
+  KAMD_BIN="$KAMD_BIN" \
   KWIN_SOCKET="$KWIN_SOCKET" \
   KWIN_W="$KWIN_W" \
   KWIN_H="$KWIN_H" \
@@ -165,11 +199,18 @@ nohup env \
       wait "$kwin_pid"
       exit 1
     fi
+    kamd_pid=
+    if [ -x "$KAMD_BIN" ] && [ "${XIOS_KDE_START_KAMD:-1}" != 0 ]; then
+      "$KAMD_BIN" &
+      kamd_pid=$!
+      sleep 0.5
+    fi
     export WAYLAND_DISPLAY="$KWIN_SOCKET"
     "$PLASMA_BIN" &
     plasma_pid=$!
     wait "$kwin_pid"
     kill "$plasma_pid" 2>/dev/null || true
+    [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
   ' >"$KDE_LOG" 2>&1 </dev/null &
 KDEPID=$!
 

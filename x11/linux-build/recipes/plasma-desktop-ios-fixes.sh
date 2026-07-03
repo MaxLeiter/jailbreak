@@ -59,6 +59,7 @@ keep = {
     "containments",
     "toolboxes",
     "applets",
+    "imports",
 }
 
 def subdir_repl(match: re.Match[str]) -> str:
@@ -98,7 +99,18 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-text = re.sub(r"^[ \t]*add_subdirectory\(plugins\)", "# ios-firstlight-skip: add_subdirectory(plugins)", text, flags=re.M)
+text = re.sub(r"^[ \t]*add_subdirectory\(plugins\)", "add_subdirectory(plugins)", text, flags=re.M)
+path.write_text(text)
+PY
+
+python3 - "$src/containments/desktop/plugins/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = re.sub(r"^[ \t]*add_subdirectory\(folder\)", "add_subdirectory(folder)", text, flags=re.M)
 path.write_text(text)
 PY
 

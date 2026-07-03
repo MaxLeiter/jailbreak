@@ -73,6 +73,27 @@ perl -0pi -e 's/add_subdirectory\(test\)/# ios-firstlight-skip: add_subdirectory
 perl -0pi -e 's/add_subdirectory\(packageplugins\)/# ios-firstlight-skip: add_subdirectory(packageplugins)/g' "$src/shell/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(kconf_update\)/# ios-firstlight-skip: add_subdirectory(kconf_update)/g' "$src/shell/CMakeLists.txt"
 
+python3 - "$src/shell/main.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+marker = 'org.kde.KActivities.core.disableAutostart'
+if marker not in text:
+    text = text.replace(
+        "    QApplication app(argc, argv);\n",
+        """    QApplication app(argc, argv);
+#if defined(__APPLE__)
+    if (qEnvironmentVariableIsSet("XIOS_KDE_NO_KAMD")) {
+        app.setProperty("org.kde.KActivities.core.disableAutostart", true);
+    }
+#endif
+""",
+    )
+path.write_text(text)
+PY
+
 mkdir -p "$src/iosc-dbus-interfaces"
 cat > "$src/iosc-dbus-interfaces/kf6_org.freedesktop.ScreenSaver.xml" <<'XML'
 <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"

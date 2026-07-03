@@ -33,6 +33,10 @@ kactivitymanagerd: kactivitymanagerd-setup
 		$(KF6_CMAKE_FLAGS)
 	+ninja -C $(BUILD_WORK)/kactivitymanagerd/build
 	+DESTDIR="$(BUILD_STAGE)/kactivitymanagerd" ninja -C $(BUILD_WORK)/kactivitymanagerd/build install
+	if [ -x "$(BUILD_STAGE)/kactivitymanagerd$(MEMO_PREFIX)/usr/libexec/kactivitymanagerd.app/kactivitymanagerd" ]; then \
+		ln -sfn kactivitymanagerd.app/kactivitymanagerd \
+			"$(BUILD_STAGE)/kactivitymanagerd$(MEMO_PREFIX)/usr/libexec/kactivitymanagerd"; \
+	fi
 	$(call AFTER_BUILD,copy)
 endif
 
