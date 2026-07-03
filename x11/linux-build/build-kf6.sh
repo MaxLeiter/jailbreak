@@ -143,11 +143,13 @@ fi
 # --- cc-nounused wrappers (same as build-qt.sh / build-qt-modules.sh) ------------------
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
+export PATH="/root/cctools/bin:$PATH"
+exec /root/cctools/bin/aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
 EOF
 cat > build_tools/cxx-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
+export PATH="/root/cctools/bin:$PATH"
+exec /root/cctools/bin/aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
@@ -167,6 +169,8 @@ for c in extra-cmake-modules plasma-wayland-protocols plasma-activities kwayland
 done
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+  PATH=/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 for t in $TARGETS; do
