@@ -53,6 +53,7 @@ echo "==> Regenerating index (Packages / Release / depictions / assets)"
 PY="$REPO_ROOT/.repo-venv/bin/python"
 [ -x "$PY" ] || PY="python3"
 "$PY" "$REPO_ROOT/bin/make-repo.py"
+"$PY" "$REPO_ROOT/bin/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
 "$PY" "$REPO_ROOT/bin/audit-repo.py" --repo "$REPO_ROOT/repo"
 
 AFTER_INDEX="$(snapshot_debs)"

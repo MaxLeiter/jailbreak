@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/fuzzel.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**fuzzel** is a fast application launcher for Wayland, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. Built around the wlr layer-shell protocol, fuzzel appears as an overlay, filters your applications as you type, and launches the one you pick.\n\n- Native Wayland launcher via the wlr layer-shell protocol\n- Fuzzy matching with instant filtering\n- Reads desktop entries and shows their icons\n- fcft text rendering for crisp labels\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Launch it inside an Xios desktop session running the iosc compositor."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "1.12.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "108.6 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "The fuzzel authors"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11/Wayland Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "fuzzel"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 1.12.0  \u00b7  2026-07-02\n- First release: fuzzel 1.12.0 cross-compiled for rootless iOS\n- Wayland layer-shell application launcher on the iosc compositor"
+        }
+      ]
+    }
+  ]
+}

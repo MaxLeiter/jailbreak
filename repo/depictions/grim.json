@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/grim.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**grim** captures screenshots on Wayland, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. grim asks the compositor for its pixels through the wlr screencopy protocol and writes them to a PNG or JPEG file. Pair it with `slurp` to grab a selected region.\n\n- Whole-output or region capture\n- PNG and JPEG output\n- Native Wayland via the wlr screencopy protocol\n- Composes cleanly with slurp for region selection\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Use it inside an Xios desktop session running the iosc compositor."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "1.4.1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "14.2 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Simon Ser and contributors"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11/Wayland Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "grim"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 1.4.1  \u00b7  2026-07-02\n- First release: grim 1.4.1 cross-compiled for rootless iOS\n- Wayland screencopy screenshots on the iosc compositor"
+        }
+      ]
+    }
+  ]
+}

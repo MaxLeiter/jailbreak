@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/slurp.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**slurp** lets you select a region on Wayland, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. slurp draws a selection box over the screen, then prints the region you choose. It is the companion to `grim` for taking a screenshot of exactly the area you want.\n\n- Interactive region selection overlay\n- Prints the chosen geometry for other tools\n- Native Wayland via the wlr layer-shell protocol\n- Pairs with grim for region screenshots\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Use it inside an Xios desktop session running the iosc compositor."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "1.5.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "13.9 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Simon Ser and contributors"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11/Wayland Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "slurp"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 1.5.0  \u00b7  2026-07-02\n- First release: slurp 1.5.0 cross-compiled for rootless iOS\n- Wayland region selection on the iosc compositor"
+        }
+      ]
+    }
+  ]
+}

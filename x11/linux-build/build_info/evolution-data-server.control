@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: System
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/evolution-data-server
-Depends: libglib2.0-0, libical3, libsoup-3.0-0, libsecret-1-0, libjson-glib-1.0-0, libsqlite3-1, libxml2, libicu74, libiconv, dbus
+Depends: libglib2.0-0, libical3, libsoup-3.0-0, libsecret-1-0, libjson-glib-1.0-0, libsqlite3-1, libxml2, libicu74, dbus
 Description: evolution database backend server
  Calendar, task and addressbook backend for GNOME: the client libraries
  (libedataserver, libecal, libebook) plus the D-Bus source registry and

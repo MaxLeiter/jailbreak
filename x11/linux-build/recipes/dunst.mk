@@ -37,7 +37,7 @@ endif
 
 SUBPROJECTS   += dunst
 DUNST_VERSION := 1.13.2
-DEB_DUNST_V   ?= $(DUNST_VERSION)+ios1
+DEB_DUNST_V   ?= $(DUNST_VERSION)+ios2
 
 dunst-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/dunst-project/dunst/archive/refs/tags/v$(DUNST_VERSION).tar.gz)

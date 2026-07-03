@@ -6,7 +6,7 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core, gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-typelibs, xios-desktop-theme
+Depends: firmware (>= 16.5), xios-core, gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme
 Recommends: gnome-console, nautilus, gnome-text-editor, gnome-calculator
 MinimumOSVersion: 16.5.0
 Description: the GNOME desktop flavor for Xios

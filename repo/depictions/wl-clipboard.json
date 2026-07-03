@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/wl-clipboard.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**wl-clipboard** provides command-line copy and paste for Wayland, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 build cross-compiled for rootless iOS. It ships two small tools, `wl-copy` and `wl-paste`, that read and write the compositor clipboard so you can move text and data between terminal programs and graphical apps.\n\n- `wl-copy` sends standard input to the clipboard\n- `wl-paste` writes the clipboard to standard output\n- Works with any format the compositor advertises\n- Native Wayland, no X11 required\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Use it inside an Xios desktop session running the iosc compositor."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "2.2.1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "37.1 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Sergey Bugaev and contributors"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11/Wayland Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "wl-clipboard"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 2.2.1  \u00b7  2026-07-02\n- First release: wl-clipboard 2.2.1 cross-compiled for rootless iOS\n- Ships wl-copy and wl-paste for the iosc compositor clipboard"
+        }
+      ]
+    }
+  ]
+}
