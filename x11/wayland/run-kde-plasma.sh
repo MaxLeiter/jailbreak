@@ -12,15 +12,38 @@
 # pass the flavor as the first argument.
 set -u
 
-export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin:$PATH
-export XDG_RUNTIME_DIR=/var/jb/tmp
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+  case "$SCRIPT_DIR/" in
+    /var/jb/*) XS_JB=/var/jb ;;
+    *)         XS_JB= ;;
+  esac
+fi
+XS_SUBPREFIX="${XS_SUBPREFIX:-/usr}"
+if [ -n "$XS_JB" ]; then
+  XS_TMP="${XS_TMP:-$XS_JB/tmp}"
+  XS_VAR="${XS_VAR:-$XS_JB/var}"
+else
+  XS_TMP="${XS_TMP:-${XIOS_RUNTIME_TMP:-/var/tmp}}"
+  XS_VAR="${XS_VAR:-${XIOS_RUNTIME_VAR:-/var}}"
+fi
+XS_PREFIX="${XS_PREFIX:-$XS_JB$XS_SUBPREFIX}"
+jb_path() {
+  case "$XS_JB" in
+    ""|/) printf '%s\n' "$1" ;;
+    *)    printf '%s\n' "$XS_JB$1" ;;
+  esac
+}
 
-TMP=/var/jb/tmp
+export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+
+TMP="$XDG_RUNTIME_DIR"
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
-IOSC_BIN="${IOSC_BIN:-/var/jb/usr/local/bin/iosc}"
-KWIN_BIN="${KWIN_BIN:-/var/jb/Applications/KDE/kwin_wayland.app/kwin_wayland}"
-PLASMA_BIN="${PLASMA_BIN:-/var/jb/Applications/KDE/plasmashell.app/plasmashell}"
-KAMD_BIN="${KAMD_BIN:-/var/jb/usr/libexec/kactivitymanagerd}"
+IOSC_BIN="${IOSC_BIN:-$XS_PREFIX/local/bin/iosc}"
+KWIN_BIN="${KWIN_BIN:-$(jb_path /Applications/KDE/kwin_wayland.app/kwin_wayland)}"
+PLASMA_BIN="${PLASMA_BIN:-$(jb_path /Applications/KDE/plasmashell.app/plasmashell)}"
+KAMD_BIN="${KAMD_BIN:-$XS_PREFIX/libexec/kactivitymanagerd}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
 IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
@@ -28,7 +51,7 @@ KDE_KWIN_SIZE="${KDE_KWIN_SIZE:-1360x1000}"
 KWIN_W="${KDE_KWIN_SIZE%x*}"
 KWIN_H="${KDE_KWIN_SIZE#*x}"
 KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
-ANGLE=/var/jb/lib/angle
+ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
 KDE_LOG="$TMP/kde-plasma.log"
 IOSC_LOG="$TMP/iosc.log"
 
@@ -97,16 +120,16 @@ ln -sf libEGL.dylib    "$ANGLE/libEGL.so.1"    2>/dev/null
 ln -sf libEGL.dylib    "$ANGLE/libEGL.so"      2>/dev/null
 
 echo "==> ensure GSettings schemas are compiled"
-if [ ! -e /var/jb/usr/share/glib-2.0/schemas/gschemas.compiled ]; then
-  glib-compile-schemas /var/jb/usr/share/glib-2.0/schemas 2>/dev/null || true
+if [ ! -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
+  glib-compile-schemas "$XS_PREFIX/share/glib-2.0/schemas" 2>/dev/null || true
 fi
 
 kde_app_support_link() {
   local name="$1"
-  local target="/var/jb/usr/share/$name"
-  local link="/var/root/Library/Application Support/$name"
+  local target="$XS_PREFIX/share/$name"
+  local link="$XS_VAR/root/Library/Application Support/$name"
   [ -e "$target" ] || return 0
-  mkdir -p "/var/root/Library/Application Support"
+  mkdir -p "$XS_VAR/root/Library/Application Support"
   if [ -L "$link" ]; then
     ln -sfn "$target" "$link" 2>/dev/null || true
   elif [ ! -e "$link" ]; then
@@ -117,7 +140,7 @@ kde_app_support_link() {
 }
 
 if [ "${XIOS_KDE_APP_SUPPORT_BRIDGE:-1}" != 0 ]; then
-  echo "==> bridge Qt/KPackage Darwin app-data paths to /var/jb/usr/share"
+  echo "==> bridge Qt/KPackage Darwin app-data paths to $XS_PREFIX/share"
   for name in plasma icons applications metainfo mime kservices6 knotifications6 kglobalaccel kpackage dbus-1 krunner qlogging-categories6; do
     kde_app_support_link "$name"
   done
@@ -133,7 +156,8 @@ elif [ ! -x "$KAMD_BIN" ]; then
   PLASMA_ENV+=(XIOS_KDE_NO_KAMD=1)
 fi
 
-[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+PULSE_PROFILE="$(jb_path /etc/profile.d/xios-pulse.sh)"
+[ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start
 
 echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
 nohup env \
@@ -174,27 +198,27 @@ nohup env \
   KWIN_H="$KWIN_H" \
   PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-}" \
   PLASMA_NO_RESPAWN="${PLASMA_NO_RESPAWN:-1}" \
-  DYLD_LIBRARY_PATH="/var/jb/usr/lib:/var/jb/lib/angle" \
-  XDG_DATA_DIRS=/var/jb/usr/share \
-  XDG_CONFIG_DIRS=/var/jb/etc/xdg:/var/jb/usr/etc/xdg \
-  GSETTINGS_SCHEMA_DIR=/var/jb/usr/share/glib-2.0/schemas \
-  HOME=/var/jb/var/root \
+  DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$ANGLE" \
+  XDG_DATA_DIRS="$XS_PREFIX/share" \
+  XDG_CONFIG_DIRS="$(jb_path /etc/xdg):$XS_PREFIX/etc/xdg" \
+  GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
+  HOME="$XS_VAR/root" \
   KDE_FULL_SESSION=true \
   KDE_SESSION_VERSION=6 \
   XDG_CURRENT_DESKTOP=KDE \
   XDG_SESSION_TYPE=wayland \
   QT_QPA_PLATFORM=wayland \
-  QT_PLUGIN_PATH=/var/jb/usr/lib/qt6/plugins \
-  QML2_IMPORT_PATH=/var/jb/usr/lib/qt6/qml \
-  QML_IMPORT_PATH=/var/jb/usr/lib/qt6/qml \
+  QT_PLUGIN_PATH="$XS_PREFIX/lib/qt6/plugins" \
+  QML2_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml" \
+  QML_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml" \
   QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}" \
   QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-software}" \
   QMLSCENE_DEVICE="${QMLSCENE_DEVICE:-softwarecontext}" \
   QT_QUICK_CONTROLS_STYLE="$KDE_QT_QUICK_CONTROLS_STYLE" \
   "${PLASMA_ENV[@]}" \
-  dbus-run-session -- /var/jb/usr/bin/bash -lc '
+  dbus-run-session -- "$XS_PREFIX/bin/bash" -lc '
     set -u
-    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > /var/jb/tmp/kde-session-bus
+    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > '"$TMP"'/kde-session-bus
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
     export WAYLAND_DISPLAY=wayland-0
     "$KWIN_BIN" --wayland-display wayland-0 --socket "$KWIN_SOCKET" \
