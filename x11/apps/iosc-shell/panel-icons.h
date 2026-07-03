@@ -7,8 +7,8 @@
  *
  *   1. shipped set   $IOSC_SHELL_ICONS or <jbroot>/usr/share/iosc-shell/icons
  *                    (<name>.svg preferred, then PNG/@2x/@3x fallbacks)
- *   2. hicolor PNGs  <root>/icons/hicolor/<size>/apps/<name>.png (largest first)
- *   3. hicolor SVGs  <root>/icons/hicolor/scalable/apps/<name>.svg
+ *   2. hicolor SVGs  <root>/icons/hicolor/scalable/apps/<name>.svg
+ *   3. hicolor PNGs  <root>/icons/hicolor/<size>/apps/<name>.png (largest first)
  *   4. flat pixmaps  <root>/pixmaps/<name>.png or .svg
  *
  * Returns 1 and fills out[] with a path on success, else 0 (caller draws a
@@ -54,8 +54,9 @@ static int pi_shipped(const char *assets, const char *name, int scale,
     return 0;
 }
 
-/* Resolve `name` to a PNG path. `name` is a .desktop Icon= value: a bare theme
- * name (org.gnome.Calculator), or an absolute path, possibly with an extension. */
+/* Resolve `name` to an SVG/PNG path. `name` is a .desktop Icon= value: a bare
+ * theme name (org.gnome.Calculator), or an absolute path, possibly with an
+ * extension. */
 static int pi_resolve(const char *name, int scale, char *out, size_t outsz)
 {
     if (!name || !*name) return 0;
@@ -85,17 +86,18 @@ static int pi_resolve(const char *name, int scale, char *out, size_t outsz)
     }
     if (pi_shipped(assets, base, scale, out, outsz)) return 1;
 
-    /* hicolor rasters, largest first */
+    /* Prefer scalable theme SVGs now that librsvg2-common is part of the shell
+     * install; fall back to rasters for apps that only ship PNG icons. */
     char share_roots[2][256];
     sd_join_path(share_roots[0], sizeof share_roots[0], sd_jbroot(), "/usr/share");
     sd_join_path(share_roots[1], sizeof share_roots[1], sd_jbroot(), "/usr/local/share");
     for (size_t r = 0; r < sizeof(share_roots)/sizeof(share_roots[0]); r++) {
+        if (pi_try(out, outsz, "%s/icons/hicolor/%s/apps/%s.svg",
+                   share_roots[r], "scalable", base)) return 1;
         for (size_t s = 0; s < sizeof(PI_HICOLOR_SIZES)/sizeof(PI_HICOLOR_SIZES[0]); s++) {
             if (pi_try(out, outsz, "%s/icons/hicolor/%s/apps/%s.png",
                        share_roots[r], PI_HICOLOR_SIZES[s], base)) return 1;
         }
-        if (pi_try(out, outsz, "%s/icons/hicolor/%s/apps/%s.svg",
-                   share_roots[r], "scalable", base)) return 1;
         if (pi_try(out, outsz, "%s/pixmaps/%s.%s", share_roots[r], base, "png")) return 1;
         if (pi_try(out, outsz, "%s/pixmaps/%s.%s", share_roots[r], base, "svg")) return 1;
     }

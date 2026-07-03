@@ -115,8 +115,8 @@ Version: ${PKG_VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.0), libwayland0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libglib2.0-0, libharfbuzz0b, libgtkintl
-Recommends: xios-desktop-theme, librsvg2-common, x11-fonts-sf, gnome-console
+Depends: iosc (>= 0.9.0), libwayland0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libglib2.0-0, libharfbuzz0b, libgtkintl, librsvg2-common
+Recommends: xios-desktop-theme, x11-fonts-sf, gnome-console
 Section: X11
 Priority: optional
 Installed-Size: ${INSTKB}
