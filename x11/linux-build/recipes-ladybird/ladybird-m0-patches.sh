@@ -433,4 +433,77 @@ else
   say "Services: HeadlessShot already in build"
 fi
 
+# ---------------------------------------------------------------------------------------------
+# 15) LibGfx TypefaceSkia: font-manager selection. USE_FONTCONFIG=1 is defined (fontconfig found),
+#     so the non-Android/Windows branch calls SkFontMgr_New_FontConfig -- which our Apple Skia build
+#     (skia_use_fontconfig=false) does NOT provide (undefined symbol at WebContent/WebWorker link).
+#     Our libskia DOES provide SkFontMgr_New_CoreText (CoreText is on iOS). Route iOS to CoreText:
+#     add the CoreText fontmgr include + selection for iOS, and drop the fontconfig call from the iOS
+#     compile so its symbol is not referenced. (The macOS-only CGFont/AppKit typeface paths stay
+#     macOS-gated; iOS just needs the CoreText SkFontMgr for text to render.)
+# ---------------------------------------------------------------------------------------------
+f=Libraries/LibGfx/Font/TypefaceSkia.cpp
+if ! grep -q 'iOS: CoreText SkFontMgr' "$f"; then
+  python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+# 1) include the CoreText fontmgr header on iOS (SkFontMgr_New_CoreText declaration).
+s=s.replace(
+"""#ifdef AK_OS_MACOS
+#    include <CoreText/CoreText.h>
+#    include <harfbuzz/hb-coretext.h>
+#    include <ports/SkFontMgr_mac_ct.h>
+#    include <ports/SkTypeface_mac.h>
+#endif""",
+"""#ifdef AK_OS_MACOS
+#    include <CoreText/CoreText.h>
+#    include <harfbuzz/hb-coretext.h>
+#    include <ports/SkFontMgr_mac_ct.h>
+#    include <ports/SkTypeface_mac.h>
+#endif
+#ifdef AK_OS_IOS  // iOS: CoreText SkFontMgr (Apple Skia has no fontconfig fontmgr)
+#    include <CoreText/CoreText.h>
+#    include <ports/SkFontMgr_mac_ct.h>
+#endif""")
+# 2) select CoreText on iOS as well.
+s=s.replace(
+"""#ifdef AK_OS_MACOS
+        if (Gfx::FontDatabase::the().system_font_provider_name() != "FontConfig"sv) {
+            font_manager = SkFontMgr_New_CoreText(nullptr);
+        }
+#endif""",
+"""#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+        if (Gfx::FontDatabase::the().system_font_provider_name() != "FontConfig"sv) {
+            font_manager = SkFontMgr_New_CoreText(nullptr);
+        }
+#endif""")
+# 3) do not compile the fontconfig SkFontMgr call on iOS (its symbol is absent from libskia).
+s=s.replace(
+"""#if defined(AK_OS_ANDROID)
+        font_manager = SkFontMgr_New_Android(nullptr);
+#elif defined(AK_OS_WINDOWS)
+        font_manager = SkFontMgr_New_DirectWrite();
+#else
+        if (!font_manager) {
+            font_manager = SkFontMgr_New_FontConfig(nullptr, SkFontScanner_Make_FreeType());
+        }
+#endif""",
+"""#if defined(AK_OS_ANDROID)
+        font_manager = SkFontMgr_New_Android(nullptr);
+#elif defined(AK_OS_WINDOWS)
+        font_manager = SkFontMgr_New_DirectWrite();
+#elif defined(AK_OS_IOS)
+        // iOS: CoreText SkFontMgr selected above; Apple Skia build has no fontconfig fontmgr.
+#else
+        if (!font_manager) {
+            font_manager = SkFontMgr_New_FontConfig(nullptr, SkFontScanner_Make_FreeType());
+        }
+#endif""")
+open(p,"w").write(s)
+print("  [m0-patch] TypefaceSkia.cpp: iOS uses SkFontMgr_New_CoreText (fontconfig fontmgr dropped)")
+PY
+else
+  say "TypefaceSkia CoreText: already patched"
+fi
+
 echo "  [m0-patch] all M0 patches applied."

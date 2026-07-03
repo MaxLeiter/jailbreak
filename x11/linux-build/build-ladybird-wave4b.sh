@@ -118,6 +118,51 @@ else
   echo "  [fixup] skia.pc frameworks already fixed or absent"
 fi
 
+# --- dependency gap-fills surfaced at WebContent/WebWorker link (Wave 1-3 build gaps) -------------
+# (a) libskia.a: build-skia.sh's raster `ninja skia` omits src/pathops -> Op(SkPath,SkPath,SkPathOp)
+#     undefined. build-skia-pathops.sh spliced the 32 pathops TUs into /out/skia-ios-arm64. Refresh
+#     the staged copy so the link picks it up.
+if [ -f /out/skia-ios-arm64/lib/libskia.a ] && \
+   ! /root/cctools/bin/aarch64-apple-darwin-nm $BB/usr/lib/libskia.a 2>/dev/null | grep -q '__Z2OpRK6SkPath'; then
+  cp /out/skia-ios-arm64/lib/libskia.a $BB/usr/lib/libskia.a
+  echo "  [gapfill] refreshed staged libskia.a (now $(du -h $BB/usr/lib/libskia.a | cut -f1), pathops spliced)"
+else
+  echo "  [gapfill] libskia.a already has pathops or /out copy missing"
+fi
+
+# (b) SDL3 stub is missing 7 joystick/virtual-joystick symbols LibWeb's Gamepad code references.
+#     Append no-op implementations to the staged libSDL3.a (M0: no controllers ever present).
+if ! /root/cctools/bin/aarch64-apple-darwin-nm $BB/usr/lib/libSDL3.a 2>/dev/null | grep -q '_SDL_AttachVirtualJoystick'; then
+  cat > /tmp/sdl3_extra.c <<'EOF'
+#include <SDL3/SDL.h>
+/* M0 headless: no joysticks/gamepads ever present. */
+bool SDL_Init(SDL_InitFlags f){ (void)f; return true; }
+SDL_Joystick *SDL_OpenJoystick(SDL_JoystickID id){ (void)id; return NULL; }
+void SDL_CloseJoystick(SDL_Joystick *j){ (void)j; }
+SDL_JoystickID SDL_AttachVirtualJoystick(const SDL_VirtualJoystickDesc *d){ (void)d; return 0; }
+bool SDL_DetachVirtualJoystick(SDL_JoystickID id){ (void)id; return false; }
+bool SDL_SetJoystickVirtualAxis(SDL_Joystick *j, int a, Sint16 v){ (void)j;(void)a;(void)v; return false; }
+bool SDL_SetJoystickVirtualButton(SDL_Joystick *j, int b, bool d){ (void)j;(void)b;(void)d; return false; }
+EOF
+  "$SHIM/lb-cc" -std=c11 -I$BB/usr/include -c /tmp/sdl3_extra.c -o /tmp/sdl3_extra.o \
+    && "$SHIM/ar" rs $BB/usr/lib/libSDL3.a /tmp/sdl3_extra.o \
+    && echo "  [gapfill] added 7 SDL joystick stubs to libSDL3.a" || echo "  !! SDL3 extra stub FAILED"
+else
+  echo "  [gapfill] libSDL3.a already has joystick stubs"
+fi
+
+# (c) libtommath.dylib was built without mp_set_double (LibCrypto BigInteger::set_to_double uses it).
+#     Compile the upstream bn_mp_set_double.c and stage it in a small static lib the exes link
+#     (-lladybird_gapfill via the toolchain). It calls other tommath fns resolved from the dylib.
+TM=$(dirname "$(find $PROC/build_work -path '*libtommath/bn_mp_set_double.c' 2>/dev/null | head -1)")
+if [ -n "$TM" ] && [ ! -f $BB/usr/lib/libladybird_gapfill.a ]; then
+  "$SHIM/lb-cc" -O2 -DBN_MP_SET_DOUBLE_C -I"$TM" -c "$TM/bn_mp_set_double.c" -o /tmp/mp_set_double.o \
+    && "$SHIM/libtool" -static -o $BB/usr/lib/libladybird_gapfill.a /tmp/mp_set_double.o \
+    && echo "  [gapfill] staged libladybird_gapfill.a (mp_set_double)" || echo "  !! mp_set_double build FAILED"
+else
+  echo "  [gapfill] libladybird_gapfill.a present or tommath src missing"
+fi
+
 # ================================================================================================
 step "STAGE hosttools: build gen_asm_offsets (C++/AK) + asmintgen (Rust) NATIVELY (arm64 host)"
 # ================================================================================================
