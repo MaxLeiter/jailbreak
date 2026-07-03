@@ -80,7 +80,7 @@ find "$SRC" -maxdepth 2 -type f -name "*.deb" | while IFS= read -r deb; do
   [ -n "$pkg" ] || continue
   case "$pkg" in
     *-dev) continue ;;
-    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1) ;;
+    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kactivitymanagerd|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1) ;;
     *) continue ;;
   esac
   old=$(find "$TMP" -maxdepth 1 -type f -name "${pkg}_*.deb" -print -quit)
@@ -121,6 +121,7 @@ overlay_out \
   libdisplay-info1_*_iphoneos-arm64.deb \
   libplasma_*_iphoneos-arm64.deb \
   plasma-activities-stats_*_iphoneos-arm64.deb \
+  kactivitymanagerd_*_iphoneos-arm64.deb \
   plasma-workspace_*_iphoneos-arm64.deb \
   plasma-desktop_*_iphoneos-arm64.deb \
   plasma-nano_*_iphoneos-arm64.deb \

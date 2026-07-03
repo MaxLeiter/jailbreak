@@ -1,0 +1,13 @@
+Package: kactivitymanagerd
+Version: @DEB_KACTIVITYMANAGERD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-kio, kf6-service, kf6-windowsystem, kf6-xmlgui, plasma-activities, plasma-activities-stats
+Description: Plasma activity manager daemon for Xios
+ kactivitymanagerd provides the org.kde.ActivityManager DBus service used by
+ plasmashell to load activities, containments, and resource scoring state.
+ .
+ Part of the KDE Plasma Desktop and Plasma Mobile support layer for Xios.

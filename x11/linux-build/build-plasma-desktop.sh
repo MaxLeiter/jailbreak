@@ -24,10 +24,15 @@ SUPPORT_RECIPE_TARGETS=(
   knewstuff
   kwallet
   knotifyconfig
+  kactivitymanagerd
+)
+SUPPORT_RECIPE_HELPERS=(
+  kactivitymanagerd-ios-fixes.sh
 )
 COLLECT_DEBS=(
   libplasma
   plasma-activities-stats
+  kactivitymanagerd
   plasma-workspace
   plasma-desktop
   plasma-nano
@@ -96,7 +101,13 @@ fi
 
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
-  gettext python3 gzip libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+  gettext python3 gzip libboost-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+if [ ! -f /usr/include/boost/range/algorithm/binary_search.hpp ]; then
+  echo "ERROR: missing Boost headers; kactivitymanagerd needs libboost-dev in the build container." >&2
+  exit 1
+fi
+mkdir -p build_tools/boost-host-include
+ln -sfn /usr/include/boost build_tools/boost-host-include/boost
 
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
@@ -116,7 +127,10 @@ done
 for t in "${SUPPORT_RECIPE_TARGETS[@]}"; do
   cp -v "/work/recipes/${t}.mk" makefiles/
 done
-cp -v /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/plasma-workspace*.control /work/build_info/plasma-desktop*.control /work/build_info/plasma-nano*.control /work/build_info/plasma-mobile*.control build_info/
+for h in "${SUPPORT_RECIPE_HELPERS[@]}"; do
+  cp -v "/work/recipes/${h}" makefiles/ 2>/dev/null || true
+done
+cp -v /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/kactivitymanagerd*.control /work/build_info/plasma-workspace*.control /work/build_info/plasma-desktop*.control /work/build_info/plasma-nano*.control /work/build_info/plasma-mobile*.control build_info/
 for deb in "${COLLECT_DEBS[@]}"; do
   cp -v /work/build_info/${deb}*.control build_info/ 2>/dev/null || true
 done
