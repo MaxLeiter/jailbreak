@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
+
 static int max_depth = 8;
 static int max_children = 200;
 
@@ -89,7 +91,7 @@ static void print_states(AtspiAccessible *obj)
     if (!states) return;
 
     int first = 1;
-    for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+    for (unsigned i = 0; i < ARRAY_LEN(names); i++) {
         if (!atspi_state_set_contains(states, names[i].state)) continue;
         if (first) {
             fputs(" states=[", stdout);
