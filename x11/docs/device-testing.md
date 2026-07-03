@@ -12,6 +12,10 @@ Use it instead of hand-writing SSH snippets in agent sessions.
 - The repo root `device.env` should define the usual device settings if the
   defaults are not enough. `deploy-env.sh` reads `THEOS_DEVICE_IP`,
   `THEOS_DEVICE_PORT`, and `SSH_KEY`.
+- SSH/SCP calls fail fast by default when the iPad is offline or mDNS is broken:
+  `SSH_CONNECT_TIMEOUT=8`, `SSH_SERVER_ALIVE_INTERVAL=5`, and
+  `SSH_SERVER_ALIVE_COUNT_MAX=2`. Override those environment variables for
+  long-running diagnostics on a flaky link.
 - The iPad must be awake/unlocked for Xios foreground presentation. SSH can
   start compositors while the screen is asleep, but the Metal app may not adopt
   or present the IOSurface until foregrounded.

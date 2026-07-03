@@ -11,6 +11,17 @@ _DE_REPO_ROOT="$(cd "$_DE_HERE/../../.." && pwd)"
 [ -f "$_DE_REPO_ROOT/device.env" ] && { set -a; . "$_DE_REPO_ROOT/device.env"; set +a; }
 IP="${THEOS_DEVICE_IP:-MaxsiPad.local}"; PORT="${THEOS_DEVICE_PORT:-22}"
 KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-SSH_OPTS=(-o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -i "$KEY")
+SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-8}"
+SSH_SERVER_ALIVE_INTERVAL="${SSH_SERVER_ALIVE_INTERVAL:-5}"
+SSH_SERVER_ALIVE_COUNT_MAX="${SSH_SERVER_ALIVE_COUNT_MAX:-2}"
+SSH_OPTS=(
+  -o BatchMode=yes
+  -o ConnectTimeout="$SSH_CONNECT_TIMEOUT"
+  -o ServerAliveInterval="$SSH_SERVER_ALIVE_INTERVAL"
+  -o ServerAliveCountMax="$SSH_SERVER_ALIVE_COUNT_MAX"
+  -o IdentitiesOnly=yes
+  -o StrictHostKeyChecking=accept-new
+  -i "$KEY"
+)
 ssh_() { ssh -p "$PORT" "${SSH_OPTS[@]}" "root@$IP" "$@"; }
 scp_() { scp -P "$PORT" "${SSH_OPTS[@]}" "$@"; }
