@@ -299,17 +299,17 @@ def html_depiction(ctrl, meta, size):
 </div>{THEME_JS}</body></html>"""
 
 # ── shared CSS ───────────────────────────────────────────────────────────────
-FONT_LINKS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
-    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-    '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">')
-
 def head_links(prefix=""):
-    # Font <link>s stay inline (tiny); the stylesheet is one shared, cacheable file
-    # (site.css) instead of a ~7 KB <style> block duplicated into every page.
-    return f'{FONT_LINKS}<link rel="stylesheet" href="{prefix}site.css">'
+    # One shared, cacheable stylesheet (site.css) instead of a ~7 KB <style> block
+    # inlined into every page. Fonts are self-hosted via @font-face inside it, so the
+    # site makes no third-party (Google Fonts) requests.
+    return f'<link rel="stylesheet" href="{prefix}site.css">'
 
 # Written once to repo/site.css by main(); linked by index + every depiction.
+# @font-face url() resolves relative to THIS file (repo/site.css) -> repo/fonts/.
 SITE_CSS = f"""
+  @font-face{{font-family:"Geist";font-style:normal;font-weight:100 900;font-display:swap;src:url("fonts/Geist-Variable.woff2") format("woff2")}}
+  @font-face{{font-family:"Geist Mono";font-style:normal;font-weight:100 900;font-display:swap;src:url("fonts/GeistMono-Variable.woff2") format("woff2")}}
   :root{{
     color-scheme:dark;
     --bg:#000; --surface:#0a0a0a; --surface-2:#141414;
