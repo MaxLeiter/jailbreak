@@ -7,7 +7,9 @@
 #   xios-session iosc            # lightweight iosc desktop (works today)
 #   xios-session mutter          # raw Mutter --wayland (flat stage)
 #   xios-session gnome           # gnome-shell --wayland (EXPERIMENTAL)
-#   xios-session kde             # KWin + plasmashell nested on iosc (EXPERIMENTAL)
+#   xios-session kde             # KWin + desktop plasmashell nested on iosc (EXPERIMENTAL)
+#   xios-session kde-mobile      # KWin + Plasma Mobile shell package (EXPERIMENTAL)
+#   xios-session kde-nano        # KWin + Plasma Nano shell package (EXPERIMENTAL)
 #   xios-session app kgx         # launch a client against the running compositor
 #   xios-session app gnome-text-editor
 #   xios-session resize          # restart active desktop with XIOS_SESSION_WIDTH/HEIGHT/DPI
@@ -15,7 +17,7 @@
 #   xios-session status          # print the last session status
 #
 # Optional for ioscd requests:
-#   XIOS_SESSION_WIDTH=1080 XIOS_SESSION_HEIGHT=1440 XIOS_SESSION_DPI=176 xios-session -d kde
+#   XIOS_SESSION_WIDTH=1080 XIOS_SESSION_HEIGHT=1440 XIOS_SESSION_DPI=176 xios-session -d kde-mobile
 #
 # By default it acts IMMEDIATELY (calls the shared library — no daemon needed, so
 # it works over a bare SSH shell). Pass -d/--via-daemon to instead send the same

@@ -2256,7 +2256,7 @@ final class XScreenView: UIView {
 
     private func activeDesktopPreset() -> String? {
         guard let preset = sessionStatus()?.preset else { return nil }
-        return ["iosc", "mutter", "gnome", "kde"].contains(preset) ? preset : nil
+        return ["iosc", "mutter", "gnome", "kde", "kde-nano", "kde-mobile"].contains(preset) ? preset : nil
     }
 
     private func desktopLabel(_ preset: String) -> String {
@@ -2265,6 +2265,8 @@ final class XScreenView: UIView {
         case "mutter": return "Mutter"
         case "gnome": return "GNOME Shell"
         case "kde": return "KDE Plasma"
+        case "kde-nano": return "Plasma Nano"
+        case "kde-mobile": return "Plasma Mobile"
         default: return preset
         }
     }
@@ -2377,7 +2379,9 @@ final class XScreenView: UIView {
         for (label, preset) in [("iosc Desktop  -  shell, dock, wallpaper", "iosc"),
                                 ("Mutter  -  raw compositor", "mutter"),
                                 ("GNOME Shell  -  experimental", "gnome"),
-                                ("KDE Plasma  -  KWin + plasmashell", "kde")] {
+                                ("KDE Plasma  -  KWin + desktop shell", "kde"),
+                                ("Plasma Nano  -  KWin + nano shell", "kde-nano"),
+                                ("Plasma Mobile  -  KWin + mobile shell", "kde-mobile")] {
             let prefix = preset == currentPreset ? "Restart " : "Start "
             stack.addArrangedSubview(panelButton(prefix + label) { pick(preset, nil) })
         }

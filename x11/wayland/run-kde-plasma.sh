@@ -7,8 +7,9 @@
 #
 #   iosc output compositor -> kwin_wayland --socket kwin-ios-test -> plasmashell
 #
-# It is intended to be called by xios-session's "kde" preset, but can be run by
-# hand on-device for diagnosis.
+# It is intended to be called by xios-session's KDE presets, but can be run by
+# hand on-device for diagnosis. Set KDE_PLASMA_FLAVOR=desktop|nano|mobile, or
+# pass the flavor as the first argument.
 set -u
 
 export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin:$PATH
@@ -25,9 +26,39 @@ IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
 KDE_KWIN_SIZE="${KDE_KWIN_SIZE:-1360x1000}"
 KWIN_W="${KDE_KWIN_SIZE%x*}"
 KWIN_H="${KDE_KWIN_SIZE#*x}"
+KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
 ANGLE=/var/jb/lib/angle
 KDE_LOG="$TMP/kde-plasma.log"
 IOSC_LOG="$TMP/iosc.log"
+
+PLASMA_ENV=()
+KDE_PLASMA_LABEL="KDE Plasma"
+KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-}"
+case "$KDE_PLASMA_FLAVOR" in
+  desktop|plasma|kde)
+    KDE_PLASMA_FLAVOR=desktop
+    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
+    ;;
+  nano|plasma-nano|kde-nano)
+    KDE_PLASMA_FLAVOR=nano
+    KDE_PLASMA_LABEL="KDE Plasma Nano"
+    PLASMA_ENV+=(PLASMA_DEFAULT_SHELL="${PLASMA_DEFAULT_SHELL:-org.kde.plasma.nano}")
+    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.breeze}"
+    ;;
+  mobile|phone|plasma-mobile|kde-mobile)
+    KDE_PLASMA_FLAVOR=mobile
+    KDE_PLASMA_LABEL="KDE Plasma Mobile"
+    PLASMA_ENV+=(PLASMA_DEFAULT_SHELL="${PLASMA_DEFAULT_SHELL:-org.kde.plasma.mobileshell}")
+    PLASMA_ENV+=(PLASMA_PLATFORM="${PLASMA_PLATFORM:-phone:handset}")
+    PLASMA_ENV+=(QT_QUICK_CONTROLS_MOBILE="${QT_QUICK_CONTROLS_MOBILE:-true}")
+    PLASMA_ENV+=(PLASMA_INTEGRATION_USE_PORTAL="${PLASMA_INTEGRATION_USE_PORTAL:-1}")
+    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.breeze}"
+    ;;
+  *)
+    echo "!! invalid KDE_PLASMA_FLAVOR=$KDE_PLASMA_FLAVOR, expected desktop|nano|mobile"
+    exit 2
+    ;;
+esac
 
 [ -x "$IOSC_BIN" ] || { echo "!! $IOSC_BIN missing/not executable"; exit 1; }
 [ -x "$KWIN_BIN" ] || { echo "!! $KWIN_BIN missing/not executable"; exit 1; }
@@ -92,7 +123,7 @@ else
   echo "!! could not hand $TMP/iosc-ddx.sock to mobile; keeping it owner-only"
 fi
 
-echo "==> launch KWin + plasmashell in one session bus -> $KDE_LOG"
+echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $KDE_LOG"
 nohup env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   WAYLAND_DISPLAY=wayland-0 \
@@ -114,7 +145,8 @@ nohup env \
   QT_PLUGIN_PATH=/var/jb/usr/lib/qt6/plugins \
   QML2_IMPORT_PATH=/var/jb/usr/lib/qt6/qml \
   QML_IMPORT_PATH=/var/jb/usr/lib/qt6/qml \
-  QT_QUICK_CONTROLS_STYLE=org.kde.desktop \
+  QT_QUICK_CONTROLS_STYLE="$KDE_QT_QUICK_CONTROLS_STYLE" \
+  "${PLASMA_ENV[@]}" \
   dbus-run-session -- /var/jb/usr/bin/bash -lc '
     set -u
     printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > /var/jb/tmp/kde-session-bus
@@ -163,6 +195,7 @@ done
 
 echo "   outer wayland: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
 echo "   kwin socket:   $([ -S "$KWIN_SOCK_PATH" ] && echo up || echo MISSING)"
+echo "   shell flavor:  $KDE_PLASMA_FLAVOR"
 echo "   plasmashell:   $(pgrep -f "plasmashell" >/dev/null 2>&1 && echo running || echo not-yet)"
 echo "   xios.json:     $(cat "$TMP/xios.json" 2>/dev/null)"
 echo "==> logs: $IOSC_LOG and $KDE_LOG"
