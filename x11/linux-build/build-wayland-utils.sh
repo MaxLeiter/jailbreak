@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Build small Wayland desktop utilities (slurp region selector, mako notification daemon) and
-# mako's sd-bus provider (basu) for rootless iOS via the Procursus/Docker pipeline. These pair
-# with the iosc compositor: slurp + grim = region screenshots, mako = org.freedesktop.Notifications.
+# Build small Wayland desktop utilities (slurp region selector, dunst notification daemon; and the
+# BLOCKED mako + its basu sd-bus provider) for rootless iOS via the Procursus/Docker pipeline. These
+# pair with the iosc compositor: slurp + grim = region screenshots, dunst = org.freedesktop.Notifications.
+#
+#   -e TARGETS="dunst-package"   builds the dunst deb (the tractable notification daemon: it speaks
+#   D-Bus via GDBus/gio, so it sidesteps the sd-bus/basu wall that blocks mako on Darwin).
 #
 # Runs on the GTK4-warmed volume (procursus-vol-gtk-calc) because mako needs cairo/pango/
 # pangocairo/glib/gobject/gdk-pixbuf, all already built+staged there (and slurp needs cairo).
@@ -82,7 +85,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in slurp mako basu; do
+for pat in slurp dunst mako basu; do
   find . -name "${pat}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

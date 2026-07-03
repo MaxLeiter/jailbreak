@@ -1,0 +1,15 @@
+Package: dunst
+Version: @DEB_DUNST_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://dunst-project.org/
+Depends: dbus, libwayland0, libcairo2, libpango-1.0-0, libpangocairo-1.0-0, libglib2.0-0, libgdk-pixbuf-2.0-0, libharfbuzz0b, libintl8
+Description: Lightweight notification daemon (Wayland)
+ dunst implements org.freedesktop.Notifications and renders notifications with
+ pangocairo into wl_shm buffers mapped as a zwlr_layer_surface_v1 overlay. It
+ speaks D-Bus via GDBus (gio/GLib) rather than sd-bus, so unlike mako it needs
+ no libsystemd/basu — only a running session bus (dbus). Built Wayland-only (the
+ X11 backend is disabled). Runs as a native Wayland client under the iosc
+ compositor, which must serve wlr-layer-shell (top/overlay) and xdg-shell.
