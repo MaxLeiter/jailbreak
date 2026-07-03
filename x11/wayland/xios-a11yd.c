@@ -43,6 +43,7 @@ struct client {
     char bind_appid[256];
     char bind_exec[256];
     char *last_snapshot;
+    GString *inbuf;
     struct node_ref refs[MAX_REFS];
     unsigned ref_count;
 };
@@ -57,6 +58,8 @@ struct emit_ctx {
 
 static struct client clients[MAX_CLIENTS];
 static unsigned global_gen = 1;
+
+static void client_clear_refs(struct client *c);
 
 static char *json_escape(const char *s)
 {
@@ -91,6 +94,17 @@ static void client_printf(struct client *c, const char *fmt, ...)
         close(c->fd);
         c->fd = -1;
     }
+}
+
+static void close_client(struct client *c)
+{
+    if (!c) return;
+    if (c->fd >= 0) close(c->fd);
+    c->fd = -1;
+    g_free(c->last_snapshot);
+    c->last_snapshot = NULL;
+    if (c->inbuf) g_string_truncate(c->inbuf, 0);
+    client_clear_refs(c);
 }
 
 static const char *trait_for_role(const char *role)
@@ -575,6 +589,8 @@ static void accept_client(int listener)
             clients[i].bind_exec[0] = 0;
             g_free(clients[i].last_snapshot);
             clients[i].last_snapshot = NULL;
+            if (!clients[i].inbuf) clients[i].inbuf = g_string_new("");
+            else g_string_truncate(clients[i].inbuf, 0);
             client_printf(&clients[i], "{\"t\":\"hello\",\"gen\":%u}\n", clients[i].gen);
             return;
         }
@@ -582,52 +598,83 @@ static void accept_client(int listener)
     close(fd);
 }
 
-static void read_client(struct client *c)
+static void process_client_line(struct client *c, const char *line)
 {
-    char buf[1024];
-    ssize_t n = read(c->fd, buf, sizeof(buf) - 1);
-    if (n <= 0) {
-        close(c->fd);
-        c->fd = -1;
-        g_free(c->last_snapshot);
-        c->last_snapshot = NULL;
-        client_clear_refs(c);
-        return;
-    }
-    buf[n] = 0;
-    if (strstr(buf, "\"bind\"")) {
-        json_get_string(buf, "appid", c->bind_appid, sizeof(c->bind_appid));
-        json_get_string(buf, "exec", c->bind_exec, sizeof(c->bind_exec));
+    if (!c || !line || !*line) return;
+
+    if (strstr(line, "\"bind\"")) {
+        json_get_string(line, "appid", c->bind_appid, sizeof(c->bind_appid));
+        json_get_string(line, "exec", c->bind_exec, sizeof(c->bind_exec));
         g_free(c->last_snapshot);
         c->last_snapshot = NULL;
         snapshot_client(c);
     }
-    if (strstr(buf, "\"enable\"") && (strstr(buf, "\"on\":true") || strstr(buf, "\"on\": true"))) {
+    if (strstr(line, "\"enable\"") && (strstr(line, "\"on\":true") || strstr(line, "\"on\": true"))) {
         c->enabled = 1;
         snapshot_client(c);
     }
-    if (strstr(buf, "\"enable\"") && (strstr(buf, "\"on\":false") || strstr(buf, "\"on\": false"))) {
+    if (strstr(line, "\"enable\"") && (strstr(line, "\"on\":false") || strstr(line, "\"on\": false"))) {
         c->enabled = 0;
         g_free(c->last_snapshot);
         c->last_snapshot = NULL;
         client_clear_refs(c);
     }
-    if (strstr(buf, "\"activate\"")) {
+    if (strstr(line, "\"activate\"")) {
         unsigned id = 0;
-        if (json_get_uint(buf, "id", &id)) activate_node(c, id);
+        if (json_get_uint(line, "id", &id)) activate_node(c, id);
     }
-    if (strstr(buf, "\"action\"")) {
+    if (strstr(line, "\"action\"")) {
         unsigned id = 0;
         unsigned idx = 0;
-        if (json_get_uint(buf, "id", &id) && json_get_uint(buf, "idx", &idx)) {
+        if (json_get_uint(line, "id", &id) && json_get_uint(line, "idx", &idx)) {
             do_node_action(c, id, idx);
         }
     }
-    if (strstr(buf, "\"adjust\"")) {
+    if (strstr(line, "\"adjust\"")) {
         unsigned id = 0;
         int dir = 0;
-        if (json_get_uint(buf, "id", &id) && json_get_int(buf, "dir", &dir)) {
+        if (json_get_uint(line, "id", &id) && json_get_int(line, "dir", &dir)) {
             adjust_node(c, id, dir);
+        }
+    }
+}
+
+static void read_client(struct client *c)
+{
+    char buf[1024];
+    ssize_t n = read(c->fd, buf, sizeof(buf));
+    if (n <= 0) {
+        close_client(c);
+        return;
+    }
+
+    if (!c->inbuf) c->inbuf = g_string_new("");
+    g_string_append_len(c->inbuf, buf, (gssize)n);
+
+    for (;;) {
+        char *nl = memchr(c->inbuf->str, '\n', c->inbuf->len);
+        if (!nl) break;
+        size_t line_len = (size_t)(nl - c->inbuf->str);
+        if (line_len > 0 && c->inbuf->str[line_len - 1] == '\r') line_len--;
+        char *line = g_strndup(c->inbuf->str, line_len);
+        g_string_erase(c->inbuf, 0, (gssize)((nl - c->inbuf->str) + 1));
+        process_client_line(c, line);
+        g_free(line);
+        if (c->fd < 0) return;
+    }
+
+    if (c->inbuf->len > 65536) {
+        close_client(c);
+    }
+}
+
+static void free_clients(void)
+{
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        close_client(&clients[i]);
+        if (clients[i].inbuf) {
+            g_string_free(clients[i].inbuf, TRUE);
+            clients[i].inbuf = NULL;
         }
     }
 }
@@ -640,6 +687,7 @@ int main(void)
         clients[i].bind_appid[0] = 0;
         clients[i].bind_exec[0] = 0;
         clients[i].last_snapshot = NULL;
+        clients[i].inbuf = NULL;
         clients[i].ref_count = 0;
     }
     if (atspi_init() != 0) {
@@ -678,5 +726,6 @@ int main(void)
     }
     close(listener);
     unlink(SOCK_PATH);
+    free_clients();
     return 1;
 }

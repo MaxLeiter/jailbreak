@@ -17,7 +17,7 @@ OUTDIR="$REPO_ROOT/x11/linux-build/out"
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT=/private/tmp/xios-a11y-tools-deb
 STAGE="$STAGEROOT/xios-a11y-tools"
-VER="0.2.8"
+VER="0.2.9"
 ARCH="iphoneos-arm64"
 DEB="xios-a11y-tools_${VER}_${ARCH}.deb"
 
@@ -60,7 +60,8 @@ Description: accessibility smoke tools for Xios
  snapshot changes, routes basic activate/custom-action requests back to AT-SPI
  Action.DoAction, and falls back to synthetic taps for activations without an
  AT-SPI action. It also publishes AT-SPI Value text/current values and routes
- adjustable increment/decrement requests to Value.SetCurrentValue.
+ adjustable increment/decrement requests to Value.SetCurrentValue. Client
+ commands are parsed as line-buffered NDJSON.
 EOF
 
 mkdir -p "$OUTDIR" "$REPODEBS"

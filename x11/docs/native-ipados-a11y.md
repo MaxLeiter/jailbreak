@@ -197,8 +197,11 @@ or a new field with a safe default.
   VoiceOver gesture validation is still pending. `atspi-dump` in
   `xios-a11y-tools_0.2.8` now prints actions and value ranges so future native
   smokes can identify suitable control targets quickly; the first `0.2.8` dump
-  printed kgx frame/window actions and panel `overview.open`. The spawn feed
-  hardens correlation in P2. It supplements, not replaces, the desktop P1
+  printed kgx frame/window actions and panel `overview.open`. `0.2.9` hardens
+  the helper client parser to line-buffered NDJSON, so native hosts and test
+  clients can split or batch commands without relying on socket read boundaries;
+  split-write device smoke across `bind`/`enable` still published kgx. The spawn
+  feed hardens correlation in P2. It supplements, not replaces, the desktop P1
   acceptance.
   Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
   gate removed from ioscd, IsEnabled property write, atspi-dump smoke test)
