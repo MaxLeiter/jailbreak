@@ -31,6 +31,7 @@ text = text.replace('PROPERTIES DESCRIPTION "Unicode and Globalization support f
                     'PROPERTIES DESCRIPTION "Unicode and Globalization support for software applications"\n        TYPE OPTIONAL')
 
 keep = {
+    "applets",
     "lookandfeel",
     "libnotificationmanager",
     "libkworkspace",
@@ -53,6 +54,31 @@ text = re.sub(r"^add_subdirectory\(([^)]+)\)", repl, text, flags=re.M)
 text = re.sub(r"^ecm_optional_add_subdirectory\(([^)]+)\)",
               lambda m: f"# ios-firstlight-skip: {m.group(0)}", text, flags=re.M)
 
+path.write_text(text)
+PY
+
+python3 - "$src/applets/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+keep_subdirs = {"digital-clock", "notifications"}
+keep_packages = {"org.kde.plasma.digitalclock", "org.kde.plasma.notifications"}
+
+text = re.sub(
+    r"^add_subdirectory\(([^)]+)\)",
+    lambda m: m.group(0) if m.group(1) in keep_subdirs else f"# ios-firstlight-skip: {m.group(0)}",
+    text,
+    flags=re.M,
+)
+text = re.sub(
+    r"^plasma_install_package\(([^)]+)\)",
+    lambda m: m.group(0) if any(pkg in m.group(1) for pkg in keep_packages) else f"# ios-firstlight-skip: {m.group(0)}",
+    text,
+    flags=re.M,
+)
 path.write_text(text)
 PY
 
@@ -113,6 +139,80 @@ text = text.replace(
 """,
 )
 path.write_text(text)
+PY
+
+python3 - "$src/applets/notifications/notificationapplet.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("#include <KX11Extras>\n", "#if !defined(__APPLE__)\n#include <KX11Extras>\n#endif\n")
+text = text.replace(
+    """    if (window && window->winId()) {
+        KX11Extras::forceActiveWindow(window->winId());
+    }
+""",
+    """#if !defined(__APPLE__)
+    if (window && window->winId()) {
+        KX11Extras::forceActiveWindow(window->winId());
+    }
+#else
+    if (window) {
+        window->requestActivate();
+    }
+#endif
+""",
+)
+path.write_text(text)
+PY
+
+python3 - "$src/applets/digital-clock/plugin/CMakeLists.txt" "$src/applets/digital-clock/plugin/timezonesi18n.h" "$src/applets/digital-clock/plugin/timezonesi18n.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+cmake = Path(sys.argv[1])
+text = cmake.read_text()
+text = text.replace("        ICU::i18n\n", "")
+text = text.replace("        ICU::uc\n", "")
+text = text.replace("        Qt::Qml\n        Qt::Widgets", "        Qt::Qml\n        Qt::DBus\n        Qt::Widgets")
+cmake.write_text(text)
+
+header = Path(sys.argv[2])
+text = header.read_text()
+text = text.replace("#include <unicode/tznames.h>\n\n", "")
+text = text.replace("    QScopedPointer<icu::TimeZoneNames> m_tzNames;\n", "")
+header.write_text(text)
+
+source = Path(sys.argv[3])
+text = source.read_text()
+text = text.replace("#include <unicode/localebuilder.h>\n\n", "")
+text = text.replace(
+    """    if (!m_tzNames) {
+        return timezoneId;
+    }
+
+    icu::UnicodeString result;
+    const auto &cityName = m_tzNames->getExemplarLocationName(icu::UnicodeString::fromUTF8(icu::StringPiece(timezoneId.toStdString())), result);
+
+    return cityName.isBogus() ? timezoneId : QStringView(cityName.getBuffer(), cityName.length()).toString();
+""",
+    """    const QString city = timezoneId.section(QLatin1Char('/'), -1).replace(QLatin1Char('_'), QLatin1Char(' '));
+    return city.isEmpty() ? timezoneId : city;
+""",
+)
+text = text.replace(
+    """    const auto locale = icu::Locale(QLocale::system().name().toLatin1());
+    UErrorCode error = U_ZERO_ERROR;
+    m_tzNames.reset(icu::TimeZoneNames::createInstance(locale, error));
+    if (!U_SUCCESS(error)) {
+        qWarning() << "failed to create timezone names:" << u_errorName(error);
+    }
+
+""",
+    "",
+)
+source.write_text(text)
 PY
 
 python3 - "$src/shell/main.cpp" <<'PY'
