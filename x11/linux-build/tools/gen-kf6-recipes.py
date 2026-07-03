@@ -59,7 +59,7 @@ TABLE = [
     # ---- wave 1: Qt-only frameworks ----
     dict(t="kcoreaddons", kind="kf", deb="kf6-coreaddons", deps=[],
          qt_deps=["qt6-base", "qt6-declarative"], host_tool=True, rev="ios2",
-         seds=["sed -i 's/^if(NOT WIN32)$/if(NOT WIN32 AND NOT APPLE)/' $(BUILD_WORK)/kcoreaddons/src/lib/CMakeLists.txt"],
+         seds=["sed -i 's/^if(NOT WIN32)$$/if(NOT WIN32 AND NOT APPLE)/' $(BUILD_WORK)/kcoreaddons/src/lib/CMakeLists.txt"],
          desc="Qt addon library with utilities for text, io, jobs and plugins.",
          notes=["Host-tooling provider (desktoptojson): stage 1 of build-kf6.sh builds this",
                 "natively; cross consumers resolve the tool via KF6_HOST_TOOLING.",

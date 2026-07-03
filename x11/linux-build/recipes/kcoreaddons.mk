@@ -18,7 +18,7 @@ DEB_KCOREADDONS_V ?= $(KCOREADDONS_VERSION)+ios2
 kcoreaddons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kcoreaddons))
 	$(call EXTRACT_TAR,kcoreaddons-$(KF6_VERSION).tar.xz,kcoreaddons-$(KF6_VERSION),kcoreaddons)
-	sed -i 's/^if(NOT WIN32)$/if(NOT WIN32 AND NOT APPLE)/' $(BUILD_WORK)/kcoreaddons/src/lib/CMakeLists.txt
+	sed -i 's/^if(NOT WIN32)$$/if(NOT WIN32 AND NOT APPLE)/' $(BUILD_WORK)/kcoreaddons/src/lib/CMakeLists.txt
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kcoreaddons/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
