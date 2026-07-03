@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -41,6 +42,15 @@ static void sd_join_path(char *dst, size_t dstsz, const char *root,
         const char *tail = (n && root[n - 1] == '/' && suffix[0] == '/') ? suffix + 1 : suffix;
         snprintf(dst, dstsz, "%s%s", root, tail);
     }
+}
+
+static int sd_env_truthy(const char *name)
+{
+    const char *v = getenv(name);
+    return v && *v && strcmp(v, "0") != 0 &&
+           strcasecmp(v, "false") != 0 &&
+           strcasecmp(v, "no") != 0 &&
+           strcasecmp(v, "off") != 0;
 }
 
 /* An anonymous, unlinked, sized fd for a wl_shm pool (backs the clients'
@@ -245,15 +255,36 @@ static void sd_launch(const char *exec)
     setenv("WAYLAND_DISPLAY", (env_wayland && *env_wayland) ? env_wayland : wayland, 1);
     setenv("XDG_RUNTIME_DIR", (env_runtime && *env_runtime) ? env_runtime : tmp, 1);
     setenv("GDK_BACKEND", "wayland", 1);
-    setenv("GSK_RENDERER", "cairo", 1);
+    setenv("GSK_RENDERER", "ngl", 1);
+    setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
     setenv("GSETTINGS_BACKEND", "memory", 1);
-    setenv("GTK_A11Y", "none", 1);
+    int enable_a11y = sd_env_truthy("XIOS_ENABLE_A11Y") || access("/var/jb/tmp/xios-a11y-force", F_OK) == 0;
+    if (enable_a11y) unsetenv("GTK_A11Y");
+    else setenv("GTK_A11Y", "none", 1);
     setenv("SHELL", sh_bin, 1);
     setenv("PATH", path, 1);
     if (!getenv("HOME")) setenv("HOME", home, 1);
-    execl(dbus_run, "dbus-run-session", "--", sh_bin, "-lc", exec, (char*)NULL);
-    execl(sh_bin, "sh", "-lc", exec, (char*)NULL);
-    execl(usr_sh, "sh", "-lc", exec, (char*)NULL);
+    const char *cmd = exec;
+    char a11y_cmd[4096];
+    if (enable_a11y) {
+        int n = snprintf(a11y_cmd, sizeof(a11y_cmd),
+                         "if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then "
+                         "/var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & "
+                         "elif command -v at-spi-bus-launcher >/dev/null 2>&1; then "
+                         "at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & fi; "
+                         "if command -v gdbus >/dev/null 2>&1; then "
+                         "for _ in 1 2 3 4 5; do "
+                         "gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus "
+                         "--method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '<true>' >>/var/jb/tmp/xios-atspi.log 2>&1 && break; "
+                         "sleep 0.2; done; "
+                         "gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus "
+                         "--method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '<true>' >>/var/jb/tmp/xios-atspi.log 2>&1; "
+                         "fi; if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S /var/jb/tmp/xios-a11y.sock ]; then xios-a11yd >>/var/jb/tmp/xios-a11yd.log 2>&1 & fi; exec %s", exec);
+        if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
+    }
+    execl(dbus_run, "dbus-run-session", "--", sh_bin, "-lc", cmd, (char*)NULL);
+    execl(sh_bin, "sh", "-lc", cmd, (char*)NULL);
+    execl(usr_sh, "sh", "-lc", cmd, (char*)NULL);
     _exit(127);
 }
 

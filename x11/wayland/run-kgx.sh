@@ -41,8 +41,12 @@ nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" >"$TMP/iosc.log" 2>&1 </d
 ICPID=$!
 for _ in $(seq 1 30); do [ -S "$WSOCK" ] && [ -f "$TMP/xios.json" ] && break; sleep 0.2; done
 if ! kill -0 "$ICPID" 2>/dev/null; then echo "!! iosc died:"; cat "$TMP/iosc.log"; exit 1; fi
-chown mobile:mobile "$TMP/iosc-ddx.sock" 2>/dev/null && chmod 0660 "$TMP/iosc-ddx.sock" 2>/dev/null \
-  || chmod 0777 "$TMP/iosc-ddx.sock" 2>/dev/null
+if chown mobile:mobile "$TMP/iosc-ddx.sock" 2>/dev/null || chown 501:501 "$TMP/iosc-ddx.sock" 2>/dev/null; then
+  chmod 0660 "$TMP/iosc-ddx.sock" 2>/dev/null
+else
+  chmod 0600 "$TMP/iosc-ddx.sock" 2>/dev/null
+  echo "!! could not hand $TMP/iosc-ddx.sock to mobile; keeping it owner-only"
+fi
 echo "   wayland socket: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
 echo "   xios.json: $(cat "$TMP/xios.json" 2>/dev/null)"
 
@@ -64,7 +68,7 @@ echo "==> assert wayland socket is present before launching the client"
 ls -l "$WSOCK" 2>&1 | sed 's/^/   /'
 [ -S "$WSOCK" ] || { echo "!! wayland-0 socket missing — aborting"; exit 1; }
 
-echo "==> run kgx under a session bus (GDK wayland, GSK renderer, a11y off) -> $TMP/kgx.log"
+echo "==> run kgx under a session bus (GDK wayland, GSK renderer, a11y ${XIOS_ENABLE_A11Y:-0}) -> $TMP/kgx.log"
 # NOTE: kgx MUST be launched with an explicit COMMAND (a bare `kgx` registers as the
 # GApplication primary, runs startup, then returns 0 WITHOUT mapping a window in this
 # headless/bus-only environment). Use the `-- <cmd> [args]` form, NOT `-e <cmd>`:
@@ -74,16 +78,22 @@ echo "==> run kgx under a session bus (GDK wayland, GSK renderer, a11y off) -> $
 # xdg_toplevel through iosc, and receives keystrokes via iosc's wl_keyboard → PTY.
 rm -f "$TMP/kgx.exit"
 mkdir -p "$BUS_DIR"; chmod 700 "$BUS_DIR"
-# Client render path. DEFAULT ngl routes GTK's GL renderer through the wl_egl_window
-# shim (ANGLE Metal -> IOSurface). Set IOSC_GSK_RENDERER=cairo for the wl_shm fallback.
-GSK_SEL="${IOSC_GSK_RENDERER:-ngl}"
-SHIM_ENV=""
-[ "$GSK_SEL" = "cairo" ] || SHIM_ENV="ANGLE_REAL_LIBEGL=${ANGLE_REAL_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"
+# GTK renders through the wl_egl_window shim (ANGLE Metal -> IOSurface).
+GSK_SEL="ngl"
+SHIM_ENV="ANGLE_REAL_LIBEGL=/var/jb/lib/angle/libEGL.angle.dylib"
+A11Y_PREFIX=""
+GTK_A11Y_ENV="GTK_A11Y=none"
+case "${XIOS_ENABLE_A11Y:-}" in
+  1|yes|YES|true|TRUE|on|ON)
+    GTK_A11Y_ENV=""
+    A11Y_PREFIX='if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then /var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & elif command -v at-spi-bus-launcher >/dev/null 2>&1; then at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & fi; if command -v gdbus >/dev/null 2>&1; then for _ in 1 2 3 4 5; do gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1 && break; sleep 0.2; done; gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1; fi; if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S /var/jb/tmp/xios-a11y.sock ]; then xios-a11yd >>/var/jb/tmp/xios-a11yd.log 2>&1 & fi; '
+    ;;
+esac
 nohup bash -c "
   env XDG_RUNTIME_DIR=$BUS_DIR WAYLAND_DISPLAY=$WSOCK \
     GDK_BACKEND=wayland GSK_RENDERER=$GSK_SEL $SHIM_ENV GSETTINGS_BACKEND=memory \
-    GTK_A11Y=none HOME=/var/jb/var/root \
-    dbus-run-session -- /var/jb/usr/bin/kgx -T iosc-kgx -- $SHELL_BIN -i
+    $GTK_A11Y_ENV HOME=/var/jb/var/root \
+    dbus-run-session -- /var/jb/usr/bin/bash -lc '$A11Y_PREFIX exec /var/jb/usr/bin/kgx -T iosc-kgx -- $SHELL_BIN -i'
   echo \$? >$TMP/kgx.exit
 " >"$TMP/kgx.log" 2>&1 </dev/null &
 KGXPID=$!

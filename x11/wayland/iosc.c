@@ -95,6 +95,7 @@ struct iosc_surface;
 static void clipboard_selection_send_to_client(struct wl_client *client);
 static void recomposite_all(void);   /* coalesced: schedules one repaint per loop iteration */
 static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
+static void surface_unmap(struct iosc_surface *s);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 
@@ -371,6 +372,11 @@ static int clampi(int v, int lo, int hi)
     return v;
 }
 
+static uint8_t u32_fraction_to_u8(uint32_t v)
+{
+    return (uint8_t)(((uint64_t)v * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
+}
+
 /* ---- layer-shell state (zwlr_layer_shell_v1) ----------------------------- */
 
 /* Per-surface state for a wlr layer-shell surface (role == IOSC_ROLE_LAYER).
@@ -446,6 +452,17 @@ static void work_area(int *x, int *y, int *w, int *h)
     if (*h < 1) { *y = 0; *h = oh; }
 }
 
+static int layer_axis_position(int output, int size,
+                               int start_anchor, int end_anchor,
+                               int start_margin, int end_margin)
+{
+    if (start_anchor && !end_anchor)
+        return start_margin;
+    if (end_anchor && !start_anchor)
+        return output - size - end_margin;
+    return (output - size) / 2;
+}
+
 /* Anchored placement + served size for a layer surface. */
 static void layer_compute(struct iosc_surface *s, int *cw, int *ch, int *cx, int *cy)
 {
@@ -457,21 +474,22 @@ static void layer_compute(struct iosc_surface *s, int *cw, int *ch, int *cx, int
     int aL = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
     int aR = a & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
 
-    int w = L->req_w > 0 ? L->req_w
-          : (aL && aR) ? ow - L->margin_l - L->margin_r : ow;
-    int h = L->req_h > 0 ? L->req_h
-          : (aT && aB) ? oh - L->margin_t - L->margin_b : oh;
+    int w = ow;
+    if (L->req_w > 0)
+        w = L->req_w;
+    else if (aL && aR)
+        w = ow - L->margin_l - L->margin_r;
+
+    int h = oh;
+    if (L->req_h > 0)
+        h = L->req_h;
+    else if (aT && aB)
+        h = oh - L->margin_t - L->margin_b;
     if (w < 1) w = ow;
     if (h < 1) h = oh;
 
-    int x;
-    if (aL && !aR)      x = L->margin_l;
-    else if (aR && !aL) x = ow - w - L->margin_r;
-    else                x = (ow - w) / 2;
-    int y;
-    if (aT && !aB)      y = L->margin_t;
-    else if (aB && !aT) y = oh - h - L->margin_b;
-    else                y = (oh - h) / 2;
+    int x = layer_axis_position(ow, w, aL, aR, L->margin_l, L->margin_r);
+    int y = layer_axis_position(oh, h, aT, aB, L->margin_t, L->margin_b);
 
     *cw = w; *ch = h; *cx = x; *cy = y;
 }
@@ -750,13 +768,11 @@ static void spb_mgr_create_u32_rgba(struct wl_client *c, struct wl_resource *r,
 { (void)r;
     struct iosc_single_pixel_buffer *spb = calloc(1, sizeof(*spb));
     if (!spb) { wl_client_post_no_memory(c); return; }
-    /* uint32 fraction (value/0xFFFFFFFF) -> 8-bit, exact round-to-nearest in
-     * 64-bit. (A 32-bit `(v + 0x800000) >> 24` wraps for v >= 0xFF800000 and
-     * turned saturated channels -- e.g. opaque white -- into 0.) */
-    spb->bgra[0] = (uint8_t)(((uint64_t)bb * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
-    spb->bgra[1] = (uint8_t)(((uint64_t)gg * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
-    spb->bgra[2] = (uint8_t)(((uint64_t)rr * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
-    spb->bgra[3] = (uint8_t)(((uint64_t)aa * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
+    /* Exact round-to-nearest; 32-bit shifting wraps saturated channels. */
+    spb->bgra[0] = u32_fraction_to_u8(bb);
+    spb->bgra[1] = u32_fraction_to_u8(gg);
+    spb->bgra[2] = u32_fraction_to_u8(rr);
+    spb->bgra[3] = u32_fraction_to_u8(aa);
     struct wl_resource *buf = wl_resource_create(c, &wl_buffer_interface, 1, id);
     if (!buf) { free(spb); wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(buf, &spb_buffer_impl, spb, spb_buffer_resource_destroy);
@@ -1891,8 +1907,13 @@ static void on_buffer_destroyed(struct wl_listener *l, void *data)
 {
     (void)data;
     struct iosc_surface *s = wl_container_of(l, s, buffer_destroy);
+    int was_mapped = s->mapped;
     s->current_buffer = NULL;          /* listener auto-removed by libwayland */
     s->buffer_listener_active = 0;
+    if (was_mapped) {
+        surface_unmap(s);
+        recomposite_all();
+    }
 }
 
 /* Replace a surface's current buffer; release the old one (double-buffering). */
@@ -5655,10 +5676,15 @@ static void ddm_bind(struct wl_client *client, void *data, uint32_t version, uin
 static void chmod_mobile_socket(const char *path)
 {
     struct passwd *pw = getpwnam("mobile");
-    if (pw && chown(path, pw->pw_uid, pw->pw_gid) == 0)
+    uid_t uid = pw ? pw->pw_uid : 501;
+    gid_t gid = pw ? pw->pw_gid : 501;
+    if (chown(path, uid, gid) == 0) {
         chmod(path, 0660);
-    else
-        chmod(path, 0777);
+    } else {
+        chmod(path, 0600);
+        fprintf(stderr, "iosc: keeping %s owner-only; chown mobile failed: %s\n",
+                path, strerror(errno));
+    }
 }
 
 /* Create a listening AF_UNIX stream socket at `path` and register its accept
@@ -6256,7 +6282,7 @@ static int wm_listen_readable(int fd, uint32_t mask, void *data)
 static int wm_socket_start(struct wl_event_loop *loop, const char *path)
 {
     /* ioscd / the panel connect from outside the app sandbox; unix_listen_start
-     * already makes the socket world-accessible. */
+     * hands the socket to mobile with 0660 permissions. */
     return unix_listen_start(loop, path, wm_listen_readable);
 }
 

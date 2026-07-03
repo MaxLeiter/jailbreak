@@ -67,6 +67,19 @@ xs_log() {
     printf 'xios-session: %s\n' "$*" >&2
 }
 
+xs_a11y_enabled() {
+    [ -e "$XS_TMP/xios-a11y-force" ] && return 0
+    case "${XIOS_ENABLE_A11Y:-}" in
+        1|yes|YES|true|TRUE|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+xs_a11y_prefix() {
+    xs_a11y_enabled || return 0
+    printf '%s' 'if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then /var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & elif command -v at-spi-bus-launcher >/dev/null 2>&1; then at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & fi; if command -v gdbus >/dev/null 2>&1; then for _ in 1 2 3 4 5; do gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1 && break; sleep 0.2; done; gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '"'"'<true>'"'"' >>/var/jb/tmp/xios-atspi.log 2>&1; fi; if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S /var/jb/tmp/xios-a11y.sock ]; then xios-a11yd >>/var/jb/tmp/xios-a11yd.log 2>&1 & fi; '
+}
+
 # xs_write_status <preset> <state> <message>
 #   state = starting | up | error | stopped   (the app / CLI can poll this)
 xs_write_status() {
@@ -114,7 +127,7 @@ xs_find_bringup() {
 # run-kgx.sh, anchored to binary paths so it never matches this script itself
 # (xios-session / xios-sessiond) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|/bin/kgx|gnome-text-editor|gnome-calculator|dbus-daemon.*--session|dbus-run-session'
+xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|dbus-daemon.*--session|dbus-run-session'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
@@ -139,6 +152,7 @@ xios_session_teardown() {
     # mutter-ddx, xios-ddx and every *-input.sock; explicit names cover the rest.
     rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
           "$XS_TMP/xios.json" \
+          "$XS_TMP/xios-a11y.sock" \
           "$XS_TMP"/*-ddx.sock \
           "$XS_TMP"/*-input.sock \
           "$XS_TMP/iosc-wm.sock" \
@@ -146,14 +160,17 @@ xios_session_teardown() {
     xs_log "teardown done"
 }
 
-# Loosen perms on a root-owned rendezvous socket so the (mobile) Xios app can
-# connect — identical to what the run scripts do. Best-effort.
+# Let the mobile-owned Xios app connect to root-created rendezvous sockets.
 xs_fix_ddx_perms() {
     local s
     for s in "$XS_TMP"/*-ddx.sock; do
         [ -S "$s" ] || continue
-        chown mobile:mobile "$s" 2>/dev/null && chmod 0660 "$s" 2>/dev/null \
-            || chmod 0777 "$s" 2>/dev/null || true
+        if chown mobile:mobile "$s" 2>/dev/null || chown 501:501 "$s" 2>/dev/null; then
+            chmod 0660 "$s" 2>/dev/null || true
+        else
+            chmod 0600 "$s" 2>/dev/null || true
+            xs_log "WARN: could not hand $s to mobile; keeping it owner-only"
+        fi
     done
 }
 
@@ -306,7 +323,7 @@ xios_session_gnome() {
 # app <name>: launch a Wayland client against the CURRENTLY RUNNING compositor.
 # No teardown — this rides on whatever compositor is up. Reuses run-kgx.sh's proven
 # client environment (private dbus bus dir, absolute WAYLAND_DISPLAY, GDK wayland,
-# cairo, memory gsettings, writable HOME) under dbus-run-session.
+# GTK ngl on ANGLE/IOSurface, memory gsettings, writable HOME) under dbus-run-session.
 xios_session_app() {
     local name="$1"
     [ -n "$name" ] || { xs_log "ERROR: 'app' needs a name"; xs_write_status app error "no app name"; return 1; }
@@ -330,15 +347,20 @@ xios_session_app() {
     local busdir="$XS_TMP/xios-session-bus"
     mkdir -p "$busdir"; chmod 0700 "$busdir"
     xs_log "app: launching '$exec' as a wayland client of the running compositor"
+    local a11y_prefix
+    a11y_prefix="$(xs_a11y_prefix)"
+    local gtk_a11y_env=()
+    xs_a11y_enabled || gtk_a11y_env=(GTK_A11Y=none)
     nohup env \
         XDG_RUNTIME_DIR="$busdir" \
         WAYLAND_DISPLAY="$XS_WAYLAND_SOCK" \
         GDK_BACKEND=wayland \
-        GSK_RENDERER="${IOSC_GSK_RENDERER:-ngl}" \
+        GSK_RENDERER=ngl \
+        ANGLE_REAL_LIBEGL=/var/jb/lib/angle/libEGL.angle.dylib \
         GSETTINGS_BACKEND=memory \
-        GTK_A11Y=none \
+        "${gtk_a11y_env[@]}" \
         HOME="$XS_JB/var/root" \
-        "$XS_DBUS_RUN" -- "$XS_BASH" -lc "$exec" \
+        "$XS_DBUS_RUN" -- "$XS_BASH" -lc "${a11y_prefix}exec $exec" \
         >>"$XS_TMP/xios-session-client.log" 2>&1 </dev/null &
     # bring the shared Xios display forward so the new window is visible
     xs_foreground_xios

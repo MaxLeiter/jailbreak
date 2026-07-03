@@ -22,18 +22,16 @@
  *      to raise that window (iosc-wm.sock, see NOTE) instead of duplicating it;
  *      otherwise execs <exec> under the iosc client environment and remembers it.
  *
- * NOTE (iosc-side support still needed): raising an existing window by app_id
- * requires iosc to (a) store the xdg_toplevel app_id per surface and (b) accept a
- * `raise\t<app_id>\n` line on /var/jb/tmp/iosc-wm.sock. Until that lands, the
- * raise step is a best-effort no-op: uiopen still brings the display forward and
- * the window is already mapped, it just may not be re-stacked on top. ioscd
- * degrades gracefully (connect failure on iosc-wm.sock is ignored).
+ * Existing-window raises are sent to iosc over /var/jb/tmp/iosc-wm.sock. If the
+ * compositor is from an older build or the socket is gone, ioscd degrades to
+ * foregrounding the shared display and avoids duplicating a known-live client.
  *
  * Standalone: depends on nothing else in this repo. Build with build-stub.sh.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -68,6 +66,8 @@
 #define DBUS_RUN       "/var/jb/usr/bin/dbus-run-session"
 #define XIOS_BUNDLE    "com.max.xios"
 #define IOSC_LOG       TMP "/iosc.log"
+#define ROOTLESS_PATH  "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin"
+#define ROOTLESS_LOCAL_PATH "/var/jb/usr/local/bin:" ROOTLESS_PATH
 
 struct mode_cfg {
     const char *name;
@@ -147,6 +147,43 @@ static int path_exists(const char *p)
     struct stat st; return stat(p, &st) == 0;
 }
 
+static void mobile_socket_perms(const char *path, const char *label)
+{
+    struct passwd *pw = getpwnam("mobile");
+    uid_t uid = pw ? pw->pw_uid : 501;
+    gid_t gid = pw ? pw->pw_gid : 501;
+    if (chown(path, uid, gid) == 0) {
+        chmod(path, 0660);
+    } else {
+        chmod(path, 0600);
+        fprintf(stderr, "ioscd: keeping %s %s owner-only; chown mobile failed: %s\n",
+                label, path, strerror(errno));
+    }
+}
+
+static void child_stdio(const char *logpath, int append)
+{
+    int in = open("/dev/null", O_RDONLY);
+    if (in >= 0) {
+        dup2(in, 0);
+        if (in > 2) close(in);
+    }
+
+    int out = logpath
+        ? open(logpath, O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC), 0644)
+        : open("/dev/null", O_WRONLY);
+    if (out >= 0) {
+        dup2(out, 1);
+        dup2(out, 2);
+        if (out > 2) close(out);
+    }
+}
+
+static void set_rootless_path(int include_local)
+{
+    setenv("PATH", include_local ? ROOTLESS_LOCAL_PATH : ROOTLESS_PATH, 1);
+}
+
 static int read_active_session(char *buf, size_t buflen)
 {
     int fd;
@@ -212,16 +249,10 @@ static void remember_app(const char *app_id, pid_t pid, int native)
     e->pid = pid;
 }
 
-/* Loosen perms on the Xios<->iosc rendezvous socket so the (mobile) Xios app can
- * connect to the root-owned socket — identical to run-iosc.sh. */
+/* Let the mobile-owned Xios app connect to the root-created rendezvous socket. */
 static void fix_ddx_perms(int native)
 {
-    struct passwd *pw = getpwnam("mobile");
-    const char *sock = mode_cfg(native)->ddx_sock;
-    if (pw && chown(sock, pw->pw_uid, pw->pw_gid) == 0)
-        chmod(sock, 0660);
-    else
-        chmod(sock, 0777);
+    mobile_socket_perms(mode_cfg(native)->ddx_sock, "ddx socket");
 }
 
 static int iosc_alive(int native)
@@ -263,13 +294,9 @@ static void ensure_audio(void)
     if (pid < 0) return;
     if (pid == 0) {
         setsid();
-        int devnull = open("/dev/null", O_RDWR);
-        if (devnull >= 0) {
-            dup2(devnull, 0); dup2(devnull, 1); dup2(devnull, 2);
-            if (devnull > 2) close(devnull);
-        }
+        child_stdio(NULL, 0);
         setenv("XDG_RUNTIME_DIR", TMP, 1);
-        setenv("PATH", "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin", 1);
+        set_rootless_path(0);
         execl(BASH_BIN, "bash", "-lc",
               ". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null && xios_pulse_start",
               (char *)NULL);
@@ -317,12 +344,9 @@ static int ensure_iosc(int native)
     if (pid < 0) return -1;
     if (pid == 0) {
         setsid();
-        int log = open(IOSC_LOG, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (log >= 0) { dup2(log, 1); dup2(log, 2); if (log > 2) close(log); }
-        int devnull = open("/dev/null", O_RDONLY);
-        if (devnull >= 0) { dup2(devnull, 0); if (devnull > 2) close(devnull); }
+        child_stdio(IOSC_LOG, 0);
         setenv("XDG_RUNTIME_DIR", TMP, 1);
-        setenv("PATH", "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin", 1);
+        set_rootless_path(0);
         if (native) setenv("IOSC_NATIVE", "1", 1);   /* per-window canvas export */
         else unsetenv("IOSC_NATIVE");
         /* Logical desktop; iosc renders a 2x-oversized IOSurface the Xios app
@@ -366,8 +390,7 @@ static void foreground_xios(void)
     if (pid < 0) return;
     if (pid == 0) {
         setsid();
-        int devnull = open("/dev/null", O_RDWR);
-        if (devnull >= 0) { dup2(devnull, 0); dup2(devnull, 1); dup2(devnull, 2); }
+        child_stdio(NULL, 0);
         /* -b (open as if tapped -> foreground) is required: the bare form
          * returns 0 but FrontBoard suspends the background-launched Metal app
          * before it adopts the IOSurface. Same form the run scripts use. */
@@ -394,6 +417,15 @@ static void iosc_raise(const char *app_id)
     close(fd);
 }
 
+static int env_truthy(const char *name)
+{
+    const char *v = getenv(name);
+    return v && *v && strcmp(v, "0") != 0 &&
+           strcasecmp(v, "false") != 0 &&
+           strcasecmp(v, "no") != 0 &&
+           strcasecmp(v, "off") != 0;
+}
+
 /* Spawn <exec> as a Wayland client of iosc. Mirrors run-kgx.sh's environment:
  * a private 0700 bus dir for dbus-run-session, WAYLAND_DISPLAY by absolute path,
  * GDK wayland backend, GPU GTK rendering by default — iosc composites imported
@@ -412,36 +444,44 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
     if (pid < 0) return -1;
     if (pid == 0) {
         setsid();
-        const char *logpath = TMP "/ioscd-client.log";
-        int log = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (log >= 0) { dup2(log, 1); dup2(log, 2); if (log > 2) close(log); }
-        int devnull = open("/dev/null", O_RDONLY);
-        if (devnull >= 0) { dup2(devnull, 0); if (devnull > 2) close(devnull); }
+        child_stdio(TMP "/ioscd-client.log", 1);
 
         setenv("XDG_RUNTIME_DIR", busdir, 1);          /* private, dbus-friendly */
         setenv("WAYLAND_DISPLAY", mode->wayland_sock, 1);    /* absolute path */
         setenv("GDK_BACKEND", "wayland", 1);
-        /* Client-side rendering path. DEFAULT ngl: GTK's GL renderer goes through
-         * the wl_egl_window shim (ANGLE Metal -> IOSurface, no CPU cairo paint).
-         * Set IOSC_GSK_RENDERER=cairo to force the old wl_shm fallback. */
-        const char *gsk = getenv("IOSC_GSK_RENDERER");
-        if (!gsk || !*gsk) gsk = "ngl";
-        setenv("GSK_RENDERER", gsk, 1);
-        if (strcmp(gsk, "cairo") != 0) {
-            /* Tell the swapped-in shim where the real ANGLE libEGL lives. */
-            const char *real = getenv("ANGLE_REAL_LIBEGL");
-            setenv("ANGLE_REAL_LIBEGL",
-                   real && *real ? real : "/var/jb/lib/angle/libEGL.angle.dylib", 1);
-        }
+        setenv("GSK_RENDERER", "ngl", 1);
+        setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
         setenv("GSETTINGS_BACKEND", "memory", 1);
-        setenv("GTK_A11Y", "none", 1);
+        int enable_a11y = env_truthy("XIOS_ENABLE_A11Y") ||
+                          access(TMP "/xios-a11y-force", F_OK) == 0;
+        if (enable_a11y) unsetenv("GTK_A11Y");
+        else setenv("GTK_A11Y", "none", 1);
         setenv("HOME", "/var/jb/var/root", 1);
-        setenv("PATH", "/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin", 1);
+        set_rootless_path(0);
+
+        const char *cmd = exec;
+        char a11y_cmd[4096];
+        if (enable_a11y) {
+            int n = snprintf(a11y_cmd, sizeof(a11y_cmd),
+                             "if [ -x /var/jb/usr/libexec/at-spi-bus-launcher ]; then "
+                             "/var/jb/usr/libexec/at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & "
+                             "elif command -v at-spi-bus-launcher >/dev/null 2>&1; then "
+                             "at-spi-bus-launcher --launch-immediately >>/var/jb/tmp/xios-atspi.log 2>&1 & fi; "
+                             "if command -v gdbus >/dev/null 2>&1; then "
+                             "for _ in 1 2 3 4 5; do "
+                             "gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus "
+                             "--method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '<true>' >>/var/jb/tmp/xios-atspi.log 2>&1 && break; "
+                             "sleep 0.2; done; "
+                             "gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus "
+                             "--method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '<true>' >>/var/jb/tmp/xios-atspi.log 2>&1; "
+                             "fi; if command -v xios-a11yd >/dev/null 2>&1 && [ ! -S /var/jb/tmp/xios-a11y.sock ]; then xios-a11yd >>/var/jb/tmp/xios-a11yd.log 2>&1 & fi; exec %s", exec);
+            if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
+        }
 
         /* dbus-run-session -- bash -lc "<exec>"  (login shell sources profile.d) */
-        execl(DBUS_RUN, "dbus-run-session", "--", BASH_BIN, "-lc", exec, (char *)NULL);
+        execl(DBUS_RUN, "dbus-run-session", "--", BASH_BIN, "-lc", cmd, (char *)NULL);
         /* if dbus-run-session is missing, try without a session bus */
-        execl(BASH_BIN, "bash", "-lc", exec, (char *)NULL);
+        execl(BASH_BIN, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
     remember_app(app_id, pid, native);
@@ -476,12 +516,8 @@ static pid_t launch_session_request(const char *preset, const char *app,
     if (pid < 0) return -1;
     if (pid == 0) {
         setsid();
-        const char *logpath = TMP "/ioscd-session.log";
-        int log = open(logpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (log >= 0) { dup2(log, 1); dup2(log, 2); if (log > 2) close(log); }
-        int devnull = open("/dev/null", O_RDONLY);
-        if (devnull >= 0) { dup2(devnull, 0); if (devnull > 2) close(devnull); }
-        setenv("PATH", "/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:/usr/bin:/bin", 1);
+        child_stdio(TMP "/ioscd-session.log", 1);
+        set_rootless_path(1);
         if (width && *width && height && *height) {
             char logical[64];
             snprintf(logical, sizeof(logical), "%sx%s", width, height);
@@ -504,7 +540,131 @@ static pid_t launch_session_request(const char *preset, const char *app,
     return pid;
 }
 
-/* Handle one client connection: read a line, dispatch LAUNCH. */
+static char *take_tab_field(char **cursor)
+{
+    if (!cursor || !*cursor)
+        return "";
+    char *field = *cursor;
+    char *tab = strchr(field, '\t');
+    if (tab) {
+        *tab = 0;
+        *cursor = tab + 1;
+    } else {
+        *cursor = NULL;
+    }
+    return field;
+}
+
+static void log_session_started(const char *preset, const char *app,
+                                const char *width, const char *height,
+                                const char *dpi, pid_t pid)
+{
+    fprintf(stderr, "ioscd: session preset=%s", preset);
+    if (app && *app) fprintf(stderr, " app=%s", app);
+    fprintf(stderr, " pid=%d", (int)pid);
+    if (width && *width) fprintf(stderr, " width=%s", width);
+    if (height && *height) fprintf(stderr, " height=%s", height);
+    if (dpi && *dpi) fprintf(stderr, " dpi=%s", dpi);
+    fputc('\n', stderr);
+}
+
+static void handle_session_request(int fd, char *payload)
+{
+    char *rest = payload;
+    char *preset = take_tab_field(&rest);
+    char *app = take_tab_field(&rest);
+    char *width = take_tab_field(&rest);
+    char *height = take_tab_field(&rest);
+    char *dpi = rest ? rest : "";
+
+    if (!*preset) {
+        reply(fd, "ERR empty preset\n");
+        return;
+    }
+
+    pid_t pid = launch_session_request(preset, app, width, height, dpi);
+    if (pid <= 0) {
+        reply(fd, "ERR session start failed\n");
+        return;
+    }
+
+    log_session_started(preset, app, width, height, dpi, pid);
+    reply(fd, "SESSION_STARTED\n");
+}
+
+static int launch_mode_for_verb(const char *verb, int *native)
+{
+    if (strcmp(verb, "LAUNCH") == 0) {
+        *native = g_default_native;
+        return 1;
+    }
+    if (strcmp(verb, "LAUNCH_NATIVE") == 0) {
+        *native = 1;
+        return 1;
+    }
+    if (strcmp(verb, "LAUNCH_CLASSIC") == 0) {
+        *native = 0;
+        return 1;
+    }
+    return 0;
+}
+
+static void handle_launch_request(int fd, const char *verb, char *payload)
+{
+    char *app_id = payload;
+    char *t2 = strchr(app_id, '\t');
+    if (!t2) {
+        reply(fd, "ERR malformed\n");
+        return;
+    }
+    *t2 = 0;
+    char *exec = t2 + 1;
+
+    int native = g_default_native;
+    if (!launch_mode_for_verb(verb, &native)) {
+        reply(fd, "ERR unknown verb\n");
+        return;
+    }
+    if (!*exec) {
+        reply(fd, "ERR empty exec\n");
+        return;
+    }
+
+    reap_children();
+
+    int ensure_rc = ensure_iosc(native);
+    if (ensure_rc != 0) {
+        if (ensure_rc == -2) {
+            reply(fd, "ERR active session is not iosc\n");
+            return;
+        }
+        fprintf(stderr, "ioscd: %s iosc failed to start (see %s)\n", mode_name(native), IOSC_LOG);
+        reply(fd, "ERR iosc start failed\n");
+        return;
+    }
+    if (!native) foreground_xios();
+
+    struct app_entry *e = find_app(app_id, native);
+    if (e && e->pid > 0 && kill(e->pid, 0) == 0) {
+        iosc_raise(app_id);
+        fprintf(stderr, "ioscd: raise mode=%s app_id=%s (pid %d live)\n",
+                mode_name(native), app_id, (int)e->pid);
+        reply(fd, "RAISED\n");
+        return;
+    }
+
+    pid_t pid = launch_client(app_id, exec, native);
+    if (pid <= 0) {
+        reply(fd, "ERR fork failed\n");
+        return;
+    }
+
+    fprintf(stderr, "ioscd: launch mode=%s app_id=%s pid=%d exec=%s\n",
+            mode_name(native), app_id, (int)pid, exec);
+    reply(fd, "LAUNCHED\n");
+}
+
+/* Handle one client connection: read a line, dispatch LAUNCH/SESSION. */
 static void handle_conn(int fd)
 {
     char buf[8192];
@@ -537,77 +697,11 @@ static void handle_conn(int fd)
     *t1 = 0;
 
     if (strcmp(verb, "SESSION") == 0) {
-        char *preset = t1 + 1;
-        char *app = "", *width = "", *height = "", *dpi = "";
-        char *p = strchr(preset, '\t');
-        if (p) { *p = 0; app = p + 1; p = strchr(app, '\t'); }
-        if (p) { *p = 0; width = p + 1; p = strchr(width, '\t'); }
-        if (p) { *p = 0; height = p + 1; p = strchr(height, '\t'); }
-        if (p) { *p = 0; dpi = p + 1; }
-        if (!*preset) { reply(fd, "ERR empty preset\n"); return; }
-        pid_t pid = launch_session_request(preset, app, width, height, dpi);
-        if (pid > 0) {
-            fprintf(stderr, "ioscd: session preset=%s%s%s pid=%d%s%s%s%s%s%s\n",
-                    preset, app && *app ? " app=" : "", app && *app ? app : "",
-                    (int)pid,
-                    width && *width ? " width=" : "", width && *width ? width : "",
-                    height && *height ? " height=" : "", height && *height ? height : "",
-                    dpi && *dpi ? " dpi=" : "", dpi && *dpi ? dpi : "");
-            reply(fd, "SESSION_STARTED\n");
-        } else {
-            reply(fd, "ERR session start failed\n");
-        }
+        handle_session_request(fd, t1 + 1);
         return;
     }
 
-    /* split "LAUNCH[_NATIVE|_CLASSIC]\t<app_id>\t<exec>".
-     * exec is the remainder (may hold spaces). */
-    char *app_id = t1 + 1;
-    char *t2 = strchr(app_id, '\t');
-    if (!t2) { reply(fd, "ERR malformed\n"); return; }
-    *t2 = 0;
-    char *exec = t2 + 1;
-
-    int native = g_default_native;
-    if (strcmp(verb, "LAUNCH_NATIVE") == 0) native = 1;
-    else if (strcmp(verb, "LAUNCH_CLASSIC") == 0) native = 0;
-    else if (strcmp(verb, "LAUNCH") != 0) { reply(fd, "ERR unknown verb\n"); return; }
-    if (!*exec) { reply(fd, "ERR empty exec\n"); return; }
-
-    reap_children();
-
-    int ensure_rc = ensure_iosc(native);
-    if (ensure_rc != 0) {
-        if (ensure_rc == -2) {
-            reply(fd, "ERR active session is not iosc\n");
-            return;
-        }
-        fprintf(stderr, "ioscd: %s iosc failed to start (see %s)\n", mode_name(native), IOSC_LOG);
-        reply(fd, "ERR iosc start failed\n");
-        return;
-    }
-    /* Classic: pull the shared Xios display forward. Native: the tapped per-app
-     * host is already foreground and presents this app's own windows, so don't
-     * steal focus with uiopen. */
-    if (!native) foreground_xios();
-
-    struct app_entry *e = find_app(app_id, native);
-    if (e && e->pid > 0 && kill(e->pid, 0) == 0) {
-        iosc_raise(app_id);
-        fprintf(stderr, "ioscd: raise mode=%s app_id=%s (pid %d live)\n",
-                mode_name(native), app_id, (int)e->pid);
-        reply(fd, "RAISED\n");
-        return;
-    }
-
-    pid_t pid = launch_client(app_id, exec, native);
-    if (pid > 0) {
-        fprintf(stderr, "ioscd: launch mode=%s app_id=%s pid=%d exec=%s\n",
-                mode_name(native), app_id, (int)pid, exec);
-        reply(fd, "LAUNCHED\n");
-    } else {
-        reply(fd, "ERR fork failed\n");
-    }
+    handle_launch_request(fd, verb, t1 + 1);
 }
 
 static int make_ctl_socket(void)
@@ -619,9 +713,7 @@ static int make_ctl_socket(void)
     a.sun_family = AF_UNIX;
     strncpy(a.sun_path, CTL_SOCK, sizeof(a.sun_path) - 1);
     if (bind(fd, (struct sockaddr *)&a, sizeof(a)) != 0) { perror("bind"); close(fd); return -1; }
-    /* world-accessible: the (mobile) launcher apps must be able to connect. Single
-     * user device; the only verb is LAUNCH, which any local process could already do. */
-    chmod(CTL_SOCK, 0666);
+    mobile_socket_perms(CTL_SOCK, "control socket");
     if (listen(fd, 16) != 0) { perror("listen"); close(fd); return -1; }
     return fd;
 }
