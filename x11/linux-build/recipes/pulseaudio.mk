@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS         += pulseaudio
 PULSEAUDIO_VERSION  := 17.0
-DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-5+ios1
+DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-6+ios1
 
 pulseaudio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-$(PULSEAUDIO_VERSION).tar.xz)
@@ -172,28 +172,56 @@ pulseaudio-package: pulseaudio-stage
 	done
 
 	# The private libs (libpulsecommon, libpulsecore) live in lib/pulseaudio/,
-	# which is on NOBODY's run path: meson emits only build-tree-relative
-	# @loader_path entries plus /var/jb/usr/lib. Without this, the daemon dies
-	# on @rpath/libpulsecore and EVERY libpulse client dies on
-	# @rpath/libpulsecommon (dyld consults the loading dylib's own LC_RPATHs,
-	# so fixing libpulse.0 here fixes all of its consumers transitively).
+	# and the libgtkintl shim (that the shared relink pass points every
+	# libintl consumer at) lives in lib/ — NEITHER is on anyone's run path:
+	# meson emits only build-tree-relative @loader_path entries plus a STALE
+	# absolute $(BUILD_BASE)/.../lib that is /work/... on the build host and
+	# absent on device. dyld resolves each @rpath dep against the LOADING
+	# image's own LC_RPATHs, so every image that links libgtkintl/libpulse.0
+	# needs lib/ reachable from ITS rpath, and the private core/common need
+	# lib/pulseaudio. Without this a freshly launched daemon SIGABRTs in dyld
+	# on @rpath/libgtkintl before it can open its log, and standalone
+	# pacat/paplay (no GTK stack to pre-load libgtkintl) die the same way —
+	# which is why they needed DYLD_LIBRARY_PATH=/var/jb/usr/lib. Drop the
+	# stale build-tree rpath and add the real ones. add_rpath errors if the
+	# entry already exists, so swallow to stay idempotent across repackage runs.
+	#
+	# Client dylibs (in lib/): @loader_path == lib/ reaches libgtkintl; add
+	# lib/pulseaudio for libpulsecommon. The daemon + utils (in bin/) reach
+	# lib/ via @loader_path/../lib. Loadable modules (in lib/pulseaudio/modules)
+	# reach lib/ via @loader_path/../.. (their libgtkintl/libpulse.0 deps are
+	# normally already loaded by the daemon, but keep them self-sufficient).
 	for f in $(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse.0.dylib \
 			$(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse-simple.0.dylib \
-			$(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse-mainloop-glib.0.dylib \
-			$(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/pulseaudio; do \
-		[ -f $$f ] && $(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f; \
+			$(BUILD_DIST)/libpulse0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpulse-mainloop-glib.0.dylib; do \
+		[ -f $$f ] || continue; \
+		$(I_N_T) -delete_rpath $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath @loader_path $$f 2>/dev/null || true; \
+	done
+	for f in $(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/pulseaudio; do \
+		[ -f $$f ] || continue; \
+		$(I_N_T) -delete_rpath $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath @loader_path/../lib $$f 2>/dev/null || true; \
 	done
 
 	# The utils (pactl/pacat/pacmd/pasuspender) link @rpath/libpulsecommon
 	# DIRECTLY, and it is their first-listed dep, so libpulse.0's rpath can't
 	# rescue them transitively (dyld resolves each direct dep against the loading
-	# image's own rpaths). They need /var/jb/usr/lib/pulseaudio on their own
-	# LC_RPATH too. Skip symlinks (pamon/paplay/parec/parecord -> pacat, patched
-	# via pacat itself) and the pa-info shell script (magic-byte gated).
+	# image's own rpaths). They need /var/jb/usr/lib/pulseaudio (libpulsecommon)
+	# AND /var/jb/usr/lib (libgtkintl + libpulse.0) on their own LC_RPATH, plus
+	# the stale build-tree rpath dropped — else paplay only ran under
+	# DYLD_LIBRARY_PATH=/var/jb/usr/lib. Skip symlinks (pamon/paplay/parec/
+	# parecord -> pacat, patched via pacat itself) and the pa-info shell script
+	# (magic-byte gated).
 	for f in $(BUILD_DIST)/pulseaudio-utils/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/pa*; do \
 		[ -f $$f ] || continue; [ -L $$f ] && continue; \
 		case "$$(od -An -N4 -tx1 $$f 2>/dev/null | tr -d ' \n')" in \
-			cffaedfe) $(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f;; \
+			cffaedfe) \
+				$(I_N_T) -delete_rpath $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib $$f 2>/dev/null || true; \
+				$(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio $$f 2>/dev/null || true; \
+				$(I_N_T) -add_rpath @loader_path/../lib $$f 2>/dev/null || true;; \
 		esac; \
 	done
 
@@ -209,10 +237,17 @@ pulseaudio-package: pulseaudio-stage
 	# repackage runs (same pattern as mutter.mk). The
 	# $(call SIGN,pulseaudio,...) below re-signs the whole tree afterwards, so
 	# the install_name_tool edits do not leave a broken signature.
+	# Modules also link @rpath/libpulse.0 (and some @rpath/libgtkintl), both in
+	# lib/ two levels up (@loader_path/../..). The daemon normally pre-loads
+	# those before dlopening any module (so install-name reuse would cover it),
+	# but add the rpath anyway so each module is self-sufficient, and drop the
+	# stale build-tree rpath.
 	for f in $(BUILD_DIST)/pulseaudio/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pulseaudio/modules/*.dylib; do \
 		[ -f $$f ] || continue; [ -L $$f ] && continue; \
 		[ "$$(od -An -N4 -tx1 $$f 2>/dev/null | tr -d ' \n')" = cffaedfe ] || continue; \
+		$(I_N_T) -delete_rpath $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib $$f 2>/dev/null || true; \
 		$(I_N_T) -add_rpath @loader_path $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath @loader_path/../.. $$f 2>/dev/null || true; \
 	done
 
 	$(call SIGN,libpulse0,general.xml)
