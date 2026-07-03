@@ -239,12 +239,9 @@ final class XiosCameraBroker: NSObject, AVCaptureVideoDataOutputSampleBufferDele
         guard width <= UInt32.max, height <= UInt32.max, stride <= UInt32.max else { return }
 
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let timestampNs: UInt64
-        if pts.timescale > 0 && pts.value >= 0 {
-            timestampNs = UInt64((pts.value * 1_000_000_000) / Int64(pts.timescale))
-        } else {
-            timestampNs = 0
-        }
+        let seconds = CMTimeGetSeconds(pts)
+        let timestampNs: UInt64 =
+            seconds.isFinite && seconds > 0 ? UInt64(seconds * 1_000_000_000.0) : 0
 
         frameIndex &+= 1
         var frame = XiosMediaVideoFrame(
