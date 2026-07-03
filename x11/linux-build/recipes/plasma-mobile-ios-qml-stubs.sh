@@ -324,12 +324,16 @@ write_mobile_item_stub() {
     "    property var actionDrawer" \
     "    property var notificationModel" \
     "    property var notificationSettings" \
-    "    property var notificationsWidget" \
+    "    property var notificationsWidget: ({" \
+    "        doNotDisturbModeEnabled: false," \
+    "        toggleDoNotDisturbMode: function() { this.doNotDisturbModeEnabled = !this.doNotDisturbModeEnabled }" \
+    "    })" \
     "    property var restrictedPermissions" \
     "    property var historyModel" \
     "    property var pendingNotificationWithAction" \
     "    property var textField" \
     "    property var view" \
+    "    property var statusNotifierSource" \
     "    property Component content" \
     "    default property alias contentChildren: contentItem.data" \
     "    property int edge: Qt.BottomEdge" \
@@ -349,6 +353,7 @@ write_mobile_item_stub() {
     "    property string pluginName: \"\"" \
     "    property string pinLabel: \"\"" \
     "    property string prevText: \"\"" \
+    "    property color colorScopeColor: \"transparent\"" \
     "    property color color: \"transparent\"" \
     "    property color headerTextColor: \"transparent\"" \
     "    property color headerTextInactiveColor: \"transparent\"" \
@@ -375,6 +380,8 @@ write_mobile_item_stub() {
     "    property bool showFullApplet: false" \
     "    property bool suppressActiveClose: false" \
     "    property bool isCurrent: false" \
+    "    property bool isOnLargeScreen: false" \
+    "    property bool showTime: true" \
     "    property real availableHeight: height" \
     "    property real topMargin: 0" \
     "    property real bottomMargin: 0" \
@@ -409,6 +416,14 @@ write_mobile_item_stub() {
     "    property real minimizedRowHeight: 0" \
     "    property real rowHeight: 0" \
     "    property real dotWidth: 0" \
+    "    property real intendedWidth: width" \
+    "    property real minWidthHeight: Math.min(width, height)" \
+    "    property real offsetRatio: 0" \
+    "    property real opacityValue: opacity" \
+    "    property real contentImplicitHeight: implicitHeight" \
+    "    property real elementSpacing: 0" \
+    "    property real smallerTextPixelSize: 12" \
+    "    property real textPixelSize: 14" \
     "    property var lockScreenState" \
     "    property int mode: 0" \
     "    Item { id: contentItem; anchors.fill: parent }" \
@@ -420,6 +435,7 @@ write_mobile_item_stub() {
     "    signal permissionsRequested()" \
     "    signal runPendingNotificationAction()" \
     "    signal actionTriggered()" \
+    "    signal activated()" \
     "    signal backgroundClicked()" \
     "    signal unlockRequested()" \
     "    signal wallpaperSettingsRequested()" \
@@ -466,10 +482,13 @@ for qml_name in \
   AudioApplet \
   KRunnerScreen \
   KRunnerWidget \
+  LandscapeContentContainer \
   MediaControlsWidget \
   NotificationsWidget \
   PortraitContentContainer \
   QuickSettings \
+  QuickSettingsPanel \
+  StatusBar \
   VolumeOSD \
   WallpaperSelector; do
   if [ -e "$mobileshell/$qml_name.qml" ] && [ ! -e "$mobileshell/$qml_name.qml.upstream" ]; then
@@ -477,6 +496,54 @@ for qml_name in \
   fi
   write_mobile_item_stub "$qml_name"
 done
+
+write_file "$mobileshell/ClockText.qml" \
+  "// First-light iOS shim: avoid Plasma5Support time dataengine during Mobile startup." \
+  "import QtQuick 2.15" \
+  "import QtQuick.Controls 2.15" \
+  "Label {" \
+  "    id: root" \
+  "    property var source" \
+  "    property bool is24HourTime: true" \
+  "    text: Qt.formatTime(new Date(), is24HourTime ? \"h:mm\" : \"h:mm ap\")" \
+  "    verticalAlignment: Text.AlignVCenter" \
+  "    Timer {" \
+  "        interval: 60000" \
+  "        running: true" \
+  "        repeat: true" \
+  "        onTriggered: root.text = Qt.formatTime(new Date(), root.is24HourTime ? \"h:mm\" : \"h:mm ap\")" \
+  "    }" \
+  "}"
+
+write_file "$mobileshell/BatteryInfo.qml" \
+  "// First-light iOS shim: avoid Plasma5Support powermanagement dataengine during Mobile startup." \
+  "pragma Singleton" \
+  "import QtQuick 2.15" \
+  "QtObject {" \
+  "    property bool isVisible: true" \
+  "    property int percent: 100" \
+  "    property bool pluggedIn: false" \
+  "}"
+
+write_file "$mobileshell/AudioInfo.qml" \
+  "// First-light iOS shim: avoid PulseAudioQt/GLib event-loop dependencies during Mobile startup." \
+  "pragma Singleton" \
+  "import QtQuick 2.15" \
+  "QtObject {" \
+  "    readonly property bool isVisible: false" \
+  "    readonly property string icon: \"audio-volume-muted\"" \
+  "    readonly property int maxVolumePercent: 100" \
+  "    readonly property int maxVolumeValue: 100" \
+  "    readonly property int volumeStep: 5" \
+  "    property int volumeValue: 0" \
+  "    property var paSinkModel: null" \
+  "    signal volumeChanged()" \
+  "    function increaseVolume() {}" \
+  "    function decreaseVolume() {}" \
+  "    function muteVolume() {}" \
+  "    function iconName(volume, muted, prefix) { return (prefix || \"audio-volume\") + \"-muted\" }" \
+  "    function volumePercent(volume, max) { return 0 }" \
+  "}"
 
 folio_settings="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui/settings"
 if [ -d "$folio_settings" ]; then
