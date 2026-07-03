@@ -223,25 +223,37 @@ final class XiosCameraBroker: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        guard clientCount() > 0 else {
+            stopCaptureIfIdle()
+            return
+        }
         guard let image = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        CVPixelBufferLockBaseAddress(image, .readOnly)
+        guard CVPixelBufferLockBaseAddress(image, .readOnly) == kCVReturnSuccess else {
+            log("pixel buffer lock failed")
+            return
+        }
         defer { CVPixelBufferUnlockBaseAddress(image, .readOnly) }
 
         guard let base = CVPixelBufferGetBaseAddress(image) else { return }
         let width = CVPixelBufferGetWidth(image)
         let height = CVPixelBufferGetHeight(image)
         let stride = CVPixelBufferGetBytesPerRow(image)
-        let byteCount = stride * height
-        guard clientCount() > 0 else {
-            stopCaptureIfIdle()
-            return
-        }
+        guard width > 0, height > 0, stride > 0 else { return }
         guard width <= UInt32.max, height <= UInt32.max, stride <= UInt32.max else { return }
+        guard height <= Int.max / stride else { return }
+        let byteCount = stride * height
+        let maxPayload = Int(UInt32.max) - MemoryLayout<XiosMediaVideoFrame>.size
+        guard byteCount <= maxPayload else { return }
 
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let seconds = CMTimeGetSeconds(pts)
-        let timestampNs: UInt64 =
-            seconds.isFinite && seconds > 0 ? UInt64(seconds * 1_000_000_000.0) : 0
+        let timestampNs: UInt64
+        if seconds.isFinite && seconds > 0 {
+            let ns = seconds * 1_000_000_000.0
+            timestampNs = ns >= Double(UInt64.max) ? UInt64.max : UInt64(ns)
+        } else {
+            timestampNs = 0
+        }
 
         frameIndex &+= 1
         var frame = XiosMediaVideoFrame(
