@@ -37,7 +37,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "x11"
+          "text": "X11"
         },
         {
           "class": "DepictionTableTextView",

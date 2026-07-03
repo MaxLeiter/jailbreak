@@ -1759,6 +1759,16 @@
       "url": "https://repo.maxleiter.com/banners/okular.png"
     },
     {
+      "title": "okular",
+      "package": "okular",
+      "url": "https://repo.maxleiter.com/banners/okular.png"
+    },
+    {
+      "title": "okular",
+      "package": "okular",
+      "url": "https://repo.maxleiter.com/banners/okular.png"
+    },
+    {
       "title": "OpenCode",
       "package": "opencode",
       "url": "https://repo.maxleiter.com/banners/opencode.png"
@@ -1999,6 +2009,11 @@
       "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
     },
     {
+      "title": "Xios accessibility tools",
+      "package": "xios-a11y-tools",
+      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
+    },
+    {
       "title": "xios-audio-server",
       "package": "xios-audio-server",
       "url": "https://repo.maxleiter.com/banners/xios-audio-server.png"
@@ -2042,6 +2057,21 @@
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
     },
     {
       "title": "Xios session launcher",

@@ -2,7 +2,7 @@ Package: adwaita-icon-theme
 Version: 46.0+ios1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Section: x11
+Section: X11
 Priority: optional
 Depends: hicolor-icon-theme
 Description: Adwaita icon theme - GNOME default symbolic + colour icons for GTK3/GTK4/libadwaita apps
@@ -808,7 +808,7 @@ Package: hicolor-icon-theme
 Version: 0.17+ios1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Section: x11
+Section: X11
 Priority: optional
 Description: Default fallback icon theme (hicolor base for all icon themes)
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -7118,6 +7118,46 @@ Icon: https://repo.maxleiter.com/icons/okular.png
 Depiction: https://repo.maxleiter.com/depictions/okular.html
 Native Depiction: https://repo.maxleiter.com/depictions/okular.json
 
+Package: okular
+Version: 24.08.0+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://okular.kde.org/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-svg, kf6-archive, kf6-bookmarks, kf6-completion, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-i18n, kf6-kio, kf6-parts, kf6-colorscheme, kf6-crash, kf6-iconthemes, kf6-itemviews, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, kf6-threadweaver, libpoppler140, libpoppler-qt6-3, libfreetype6
+Description: Okular document viewer (Qt6/KF6)
+Installed-Size: 18136
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/okular_24.08.0+ios2_iphoneos-arm64.deb
+Size: 2170068
+MD5sum: f4da6e9f42cd47e40cb3fc80f41065b9
+SHA1: 5ff68b532dda1b25fd3046b2d008ec416210d34b
+SHA256: 6bda907f95ecf15dffa75b2a91e2d927a3c2e0ee7d792b78ef87b7b38247c979
+Icon: https://repo.maxleiter.com/icons/okular.png
+Depiction: https://repo.maxleiter.com/depictions/okular.html
+Native Depiction: https://repo.maxleiter.com/depictions/okular.json
+
+Package: okular
+Version: 24.08.0+ios3
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://okular.kde.org/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-svg, kf6-archive, kf6-bookmarks, kf6-completion, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-i18n, kf6-kio, kf6-parts, kf6-colorscheme, kf6-crash, kf6-iconthemes, kf6-itemviews, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, kf6-threadweaver, libpoppler140, libpoppler-qt6-3, libfreetype6
+Description: Okular document viewer (Qt6/KF6)
+Installed-Size: 18136
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/okular_24.08.0+ios3_iphoneos-arm64.deb
+Size: 2170472
+MD5sum: e1d11485742283575284b64afcd5860a
+SHA1: 6b9acbbea56e09d8982fc6d14e9db59aa1b71785
+SHA256: f1a18ff26533e745297ef68bb5facade9e4097abe095e0494dac16a8700571a8
+Icon: https://repo.maxleiter.com/icons/okular.png
+Depiction: https://repo.maxleiter.com/depictions/okular.html
+Native Depiction: https://repo.maxleiter.com/depictions/okular.json
+
 Package: opencode
 Name: OpenCode
 Version: 1.17.13~ios0.5
@@ -8094,6 +8134,27 @@ Depiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.html
 Native Depiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.json
 Homepage: https://repo.maxleiter.com
 
+Package: xios-a11y-tools
+Name: Xios accessibility tools
+Version: 0.2.13
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: at-spi2-core, libatspi2.0-0, libglib2.0-0, dbus
+Section: X11
+Priority: optional
+Installed-Size: 144
+Description: accessibility smoke tools for Xios
+Filename: debs/xios-a11y-tools_0.2.13_iphoneos-arm64.deb
+Size: 16010
+MD5sum: 1acabd4e09cf86332fe890e67f811e4e
+SHA1: 9efdfa1b8a73ea1c3953c86c698064f828b0d33a
+SHA256: 17d970af85b1513b55ce8a403aeb8b192ed4c899a40f33c380553be433b52f6e
+Icon: https://repo.maxleiter.com/icons/xios-a11y-tools.png
+Depiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.json
+Homepage: https://repo.maxleiter.com
+
 Package: xios-audio-server
 Version: 0.1.0
 Architecture: iphoneos-arm64
@@ -8391,6 +8452,75 @@ Size: 19520
 MD5sum: 5a2fb48ff1eec2e9b97be04124ac8799
 SHA1: 589c8e01fe3b235d6b30b4d1a731def60030b5a7
 SHA256: 80b6cc10c9e6c4b8c730ee6a5c9df4259d5017de568b198a231b686f1977c0e9
+Icon: https://repo.maxleiter.com/icons/xios-session.png
+Depiction: https://repo.maxleiter.com/depictions/xios-session.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-session
+Name: Xios session launcher
+Version: 1.0.10
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: iosc (>= 0.9.0)
+Recommends: iosc-shell, xios
+Suggests: libmutter-14-0, gnome-shell, kwin, plasma-workspace
+Section: X11
+Priority: optional
+Installed-Size: 68
+Description: pick-a-desktop session launcher for the Xios stack
+Filename: debs/xios-session_1.0.10_iphoneos-arm64.deb
+Size: 19782
+MD5sum: b6b1ea82bd58e9d1ff684a1671379152
+SHA1: 4132e7ebb83e340d61bfb5c36be71fc69d73ea18
+SHA256: 2f28656e3118c6c64cc5d1cf96abd62d9413eb854b36705f7abb0cb66f9a5214
+Icon: https://repo.maxleiter.com/icons/xios-session.png
+Depiction: https://repo.maxleiter.com/depictions/xios-session.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-session
+Name: Xios session launcher
+Version: 1.0.11
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: iosc (>= 0.9.0)
+Recommends: iosc-shell, xios
+Suggests: libmutter-14-0, gnome-shell, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
+Section: X11
+Priority: optional
+Installed-Size: 72
+Description: pick-a-desktop session launcher for the Xios stack
+Filename: debs/xios-session_1.0.11_iphoneos-arm64.deb
+Size: 21026
+MD5sum: 45f9b25240c058e2f5b5836fc367e032
+SHA1: 150285e24cf9170d6e690b07fc3a42c7ab3cbaeb
+SHA256: ec9581f2ed2625721dad29535404ab540b795434332567340e99be4b35fdcba7
+Icon: https://repo.maxleiter.com/icons/xios-session.png
+Depiction: https://repo.maxleiter.com/depictions/xios-session.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-session
+Name: Xios session launcher
+Version: 1.0.12
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: iosc (>= 0.9.0)
+Recommends: iosc-shell, xios
+Suggests: libmutter-14-0, gnome-shell, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
+Section: X11
+Priority: optional
+Installed-Size: 76
+Description: pick-a-desktop session launcher for the Xios stack
+Filename: debs/xios-session_1.0.12_iphoneos-arm64.deb
+Size: 21278
+MD5sum: 8c9c20242a4bc21fe3ffb47fc3f15094
+SHA1: 27b8387ca106328e7be93faf385614d45aeceeea
+SHA256: 96bb8b6d777a47865f8e266b7920754dc60c8adf95c92c7673357318b7227927
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
