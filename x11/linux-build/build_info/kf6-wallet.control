@@ -1,0 +1,13 @@
+Package: kf6-wallet
+Version: @DEB_KWALLET_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-config, kf6-coreaddons, kf6-i18n, kf6-windowsystem
+Description: KWallet for the Xios desktop
+ KWallet client API for secret storage integration.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

@@ -1,0 +1,11 @@
+Package: kf6-unitconversion-dev
+Version: @DEB_KUNITCONVERSION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-unitconversion (= @DEB_KUNITCONVERSION_V@), extra-cmake-modules, qt6-base-dev, kf6-i18n-dev
+Description: Development files for KUnitConversion
+ Headers and CMake package files for KUnitConversion. Needed to cross-build the
+ KDE components that depend on it.

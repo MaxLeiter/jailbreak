@@ -310,10 +310,85 @@ TABLE = [
     dict(t="kcmutils", kind="kf", deb="kf6-kcmutils",
          deps=["kconfigwidgets", "kcoreaddons", "kguiaddons", "ki18n", "kio", "kitemviews", "kxmlgui"],
          qt_deps=["qt6-base", "qt6-declarative"],
+         seds=["sed -i 's|PATHS $${KF6_HOST_TOOLING} $${CMAKE_CURRENT_LIST_DIR}|PATHS $${KF6_HOST_TOOLING} $${CMAKE_CURRENT_LIST_DIR}/.. $${CMAKE_CURRENT_LIST_DIR}|' $(BUILD_WORK)/kcmutils/KF6KCMUtilsConfig.cmake.in"],
          desc="Utilities for KDE System Settings modules (KCMs).",
          notes=["Top of the widget-tier chain: libplasma REQUIREs KCMUtils, KCMUtils REQUIREs",
                 "KXmlGui + KIO, and that chain (not kwin) is what drags ktextwidgets/sonnet/",
-                "kbookmarks into the subset. Uses QtQuickWidgets from qt6-declarative."]),
+                "kbookmarks into the subset. Uses QtQuickWidgets from qt6-declarative.",
+                "Its Config.cmake assumes host-built tooling targets while cross-compiling;",
+                "the sed lets consumers fall back to the installed local tooling targets",
+                "when no host KCMUtils tooling build exists."]),
+
+    # ---- Plasma Workspace support wave ----
+    dict(t="attica", kind="kf", deb="kf6-attica", deps=[],
+         qt_deps=["qt6-base"],
+         desc="Open Collaboration Services client library.",
+         notes=["Workspace pulls this through KNewStuff. It is Qt Core+Network only and",
+                "does not need a first-light feature cut."]),
+    dict(t="kdeclarative", kind="kf", deb="kf6-declarative",
+         deps=["kconfig", "kguiaddons", "ki18n", "kwidgetsaddons"],
+         qt_deps=["qt6-declarative", "qt6-shadertools"],
+         desc="Integration helpers for using KDE frameworks from QtQuick.",
+         notes=["Plasma Workspace REQUIREs KF6::Declarative. On APPLE, upstream already skips",
+                "the KGlobalAccel branch; Qt ShaderTools is needed for the graphical effects",
+                "QML module and is already part of the Qt6 module layer."]),
+    dict(t="krunner", kind="kf", deb="kf6-runner",
+         deps=["kconfig", "kcoreaddons", "ki18n", "kitemmodels"],
+         qt_deps=["qt6-base", "qt6-declarative"],
+         desc="Framework for Plasma runner plugins and query matches.",
+         notes=["KF6ItemModels is optional upstream but staged in our base KF6 set; keep the",
+                "runtime/control dependency explicit because Workspace runner plumbing uses it."]),
+    dict(t="kded", kind="kf", deb="kf6-kded",
+         deps=["kconfig", "kcoreaddons", "kcrash", "kdbusaddons", "kservice"],
+         qt_deps=["qt6-base"],
+         flags=["-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE"],
+         desc="KDE background services daemon framework.",
+         notes=["Plasma Workspace expects KF6KDED. DocTools is optional and disabled for the",
+                "bring-up package to avoid another host-tool/docs branch."]),
+    dict(t="kstatusnotifieritem", kind="kf", deb="kf6-statusnotifieritem",
+         deps=["kwindowsystem"],
+         qt_deps=["qt6-base"],
+         flags=["-DWITHOUT_X11=ON"],
+         seds=["sed -i 's/^if(APPLE)$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kstatusnotifieritem/src/CMakeLists.txt"],
+         desc="Status notifier item support for tray-style application indicators.",
+         notes=["Workspace wants KF6::StatusNotifierItem. X11 probing is disabled explicitly;",
+                "the DBus/freedesktop status notifier path remains. The APPLE source block",
+                "is macOS-only (macutils.mm imports AppKit), so iOS patches it out."]),
+    dict(t="kunitconversion", kind="kf", deb="kf6-unitconversion",
+         deps=["ki18n"],
+         qt_deps=["qt6-base"],
+         desc="Unit conversion framework used by Plasma runners and data engines."),
+    dict(t="kparts", kind="kf", deb="kf6-parts",
+         deps=["kconfig", "kcoreaddons", "ki18n", "kio", "kjobwidgets", "kservice",
+               "kwidgetsaddons", "kxmlgui"],
+         qt_deps=["qt6-base"],
+         desc="Embeddable component framework used by KDE applications and plugins."),
+    dict(t="knewstuff", kind="kf", deb="kf6-newstuff",
+         deps=["attica", "karchive", "kconfig", "kcoreaddons", "ki18n", "kpackage",
+               "kwidgetsaddons"],
+         qt_deps=["qt6-base", "qt6-declarative"],
+         flags=["-DCMAKE_DISABLE_FIND_PACKAGE_KF6Kirigami2=TRUE",
+                "-DCMAKE_DISABLE_FIND_PACKAGE_KF6Syndication=TRUE"],
+         desc="Download and installation framework for add-on content.",
+         notes=["Workspace's component gate requires NewStuff, but first light does not need",
+                "Kirigami2 UI polish or feed support, so both optional branches are disabled."]),
+    dict(t="kwallet", kind="kf", deb="kf6-wallet",
+         deps=["kconfig", "kcoreaddons", "ki18n", "kwindowsystem"],
+         qt_deps=["qt6-base"],
+         flags=["-DBUILD_KWALLETD=OFF", "-DBUILD_KWALLET_QUERY=OFF",
+                "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE"],
+         desc="KWallet client API for secret storage integration.",
+         notes=["API-only first-light build. Disabling kwalletd/query avoids QCA, Gcrypt,",
+                "GpgME and daemon productization while still satisfying Workspace's Wallet",
+                "CMake component."]),
+    dict(t="knotifyconfig", kind="kf", deb="kf6-notifyconfig",
+         deps=["kcompletion", "kconfig", "ki18n", "kio"],
+         qt_deps=["qt6-base"],
+         seds=["sed -i 's/find_package(Phonon4Qt6 4\\.6\\.60 NO_MODULE REQUIRED)/find_package(Phonon4Qt6 4.6.60 NO_MODULE)/' $(BUILD_WORK)/knotifyconfig/CMakeLists.txt"],
+         desc="Configuration widgets for KDE notification events.",
+         notes=["The source already treats Canberra/Phonon as optional after configure; this",
+                "sed demotes the fallback Phonon lookup so sound-preview support can stay off",
+                "without blocking Workspace configuration."]),
 
     # ---- Plasma-released libraries (version 6.1.5), same layer ----
     dict(t="kwayland", kind="plasma", deb="kwayland", deps=[],
@@ -412,7 +487,7 @@ def emit_recipe(e):
     hdr.append("")
     hdr.append("SUBPROJECTS += %s" % t)
     hdr.append("%s_VERSION = %s" % (uv, version_ref(e)))
-    hdr.append("DEB_%s_V ?= $(%s_VERSION)" % (uv, uv))
+    hdr.append("DEB_%s_V ?= $(%s_VERSION)+ios1" % (uv, uv))
     hdr.append("")
 
     setup = ["%s-setup: setup" % t,
@@ -510,6 +585,11 @@ def emit_controls(e):
     if data_only:
         return
     dev_deps = ["%s (= @DEB_%s_V@)" % (deb, uv), "extra-cmake-modules", "qt6-base-dev"]
+    for q in e.get("qt_deps", []):
+        if q.startswith("qt6-"):
+            qdev = "%s-dev" % q
+            if qdev not in dev_deps:
+                dev_deps.append(qdev)
     dev_deps += ["%s-dev" % BY_T[d]["deb"] for d in e["deps"] if not BY_T[d].get("data_only")]
     dev_deps += [BY_T[d]["deb"] for d in e["deps"] if BY_T[d].get("data_only")]
     lines = ["Package: %s-dev" % deb] + common
@@ -544,6 +624,12 @@ def pretty_name(e):
                "kauth": "KAuth", "kcrash": "KCrash", "kservice": "KService",
                "kpackage": "KPackage", "knotifications": "KNotifications",
                "kcompletion": "KCompletion", "kbookmarks": "KBookmarks",
+               "attica": "Attica", "kdeclarative": "KDeclarative",
+               "krunner": "KRunner", "kded": "KDED",
+               "kstatusnotifieritem": "KStatusNotifierItem",
+               "kunitconversion": "KUnitConversion", "kparts": "KParts",
+               "knewstuff": "KNewStuff", "kwallet": "KWallet",
+               "knotifyconfig": "KNotifyConfig",
                "solid": "Solid", "sonnet": "Sonnet", "kirigami": "Kirigami"}
     if e["t"] in special:
         return special[e["t"]]

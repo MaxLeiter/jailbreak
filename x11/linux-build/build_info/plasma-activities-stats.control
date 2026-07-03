@@ -1,0 +1,13 @@
+Package: plasma-activities-stats
+Version: @DEB_PLASMAACTIVITIESSTATS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, plasma-activities
+Description: PlasmaActivitiesStats for the Xios desktop
+ Client library for querying Plasma activity resource statistics. This is a
+ hard plasma-workspace dependency on the path to plasmashell.
+ .
+ Part of the KDE Plasma Desktop and Plasma Mobile support layer for Xios.

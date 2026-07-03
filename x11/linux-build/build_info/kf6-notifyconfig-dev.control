@@ -1,0 +1,11 @@
+Package: kf6-notifyconfig-dev
+Version: @DEB_KNOTIFYCONFIG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-notifyconfig (= @DEB_KNOTIFYCONFIG_V@), extra-cmake-modules, qt6-base-dev, kf6-completion-dev, kf6-config-dev, kf6-i18n-dev, kf6-kio-dev
+Description: Development files for KNotifyConfig
+ Headers and CMake package files for KNotifyConfig. Needed to cross-build the
+ KDE components that depend on it.

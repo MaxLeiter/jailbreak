@@ -1,0 +1,13 @@
+Package: kf6-statusnotifieritem
+Version: @DEB_KSTATUSNOTIFIERITEM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-windowsystem
+Description: KStatusNotifierItem for the Xios desktop
+ Status notifier item support for tray-style application indicators.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

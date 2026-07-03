@@ -1,0 +1,13 @@
+Package: kf6-parts
+Version: @DEB_KPARTS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-config, kf6-coreaddons, kf6-i18n, kf6-kio, kf6-jobwidgets, kf6-service, kf6-widgetsaddons, kf6-xmlgui
+Description: KParts for the Xios desktop
+ Embeddable component framework used by KDE applications and plugins.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

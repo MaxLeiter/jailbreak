@@ -1,0 +1,11 @@
+Package: kf6-wallet-dev
+Version: @DEB_KWALLET_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-wallet (= @DEB_KWALLET_V@), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-i18n-dev, kf6-windowsystem-dev
+Description: Development files for KWallet
+ Headers and CMake package files for KWallet. Needed to cross-build the
+ KDE components that depend on it.

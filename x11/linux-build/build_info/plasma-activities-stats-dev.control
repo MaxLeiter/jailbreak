@@ -1,0 +1,11 @@
+Package: plasma-activities-stats-dev
+Version: @DEB_PLASMAACTIVITIESSTATS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: plasma-activities-stats (= @DEB_PLASMAACTIVITIESSTATS_V@), extra-cmake-modules, qt6-base-dev, plasma-activities-dev
+Description: Development files for PlasmaActivitiesStats
+ Headers and CMake package files for PlasmaActivitiesStats. Needed to
+ cross-build plasma-workspace and the Plasma shell components that depend on it.

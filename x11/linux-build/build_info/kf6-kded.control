@@ -1,0 +1,13 @@
+Package: kf6-kded
+Version: @DEB_KDED_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-service
+Description: KDED for the Xios desktop
+ KDE background services daemon framework.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

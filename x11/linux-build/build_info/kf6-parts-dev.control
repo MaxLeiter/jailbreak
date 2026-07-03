@@ -1,0 +1,11 @@
+Package: kf6-parts-dev
+Version: @DEB_KPARTS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-parts (= @DEB_KPARTS_V@), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-i18n-dev, kf6-kio-dev, kf6-jobwidgets-dev, kf6-service-dev, kf6-widgetsaddons-dev, kf6-xmlgui-dev
+Description: Development files for KParts
+ Headers and CMake package files for KParts. Needed to cross-build the
+ KDE components that depend on it.

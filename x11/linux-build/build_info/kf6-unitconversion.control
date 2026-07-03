@@ -1,0 +1,13 @@
+Package: kf6-unitconversion
+Version: @DEB_KUNITCONVERSION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-i18n
+Description: KUnitConversion for the Xios desktop
+ Unit conversion framework used by Plasma runners and data engines.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

@@ -1,0 +1,13 @@
+Package: kf6-notifyconfig
+Version: @DEB_KNOTIFYCONFIG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-completion, kf6-config, kf6-i18n, kf6-kio
+Description: KNotifyConfig for the Xios desktop
+ Configuration widgets for KDE notification events.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

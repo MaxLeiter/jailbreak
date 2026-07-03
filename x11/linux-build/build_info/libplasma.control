@@ -1,0 +1,12 @@
+Package: libplasma
+Version: @DEB_LIBPLASMA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: qt6-base, qt6-declarative, qt6-svg, qt6-wayland, kf6-archive, kf6-colorscheme, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-kirigami, kf6-kcmutils, kf6-notifications, kf6-package, kf6-svg, kf6-windowsystem, plasma-activities, plasma-wayland-protocols, libwayland0
+Description: Plasma framework libraries for the Xios desktop
+ Shared Plasma libraries, QML imports, and desktop theme data. This is the
+ first package layer needed before plasma-workspace and plasma-desktop can
+ provide a runnable plasmashell session.

@@ -1,0 +1,11 @@
+Package: kf6-declarative-dev
+Version: @DEB_KDECLARATIVE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-declarative (= @DEB_KDECLARATIVE_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-shadertools-dev, kf6-config-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-widgetsaddons-dev
+Description: Development files for KDeclarative
+ Headers and CMake package files for KDeclarative. Needed to cross-build the
+ KDE components that depend on it.
