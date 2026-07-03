@@ -1,0 +1,10 @@
+Package: plasma-desktop-dev
+Version: @DEB_PLASMADESKTOP_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: plasma-desktop (= @DEB_PLASMADESKTOP_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, libplasma-dev, plasma-workspace-dev, plasma-activities-dev, plasma-activities-stats-dev
+Description: Development files for Plasma Desktop on Xios
+ Headers and CMake metadata for the first-light Plasma Desktop build.
