@@ -1,0 +1,12 @@
+Package: qcoro6
+Version: @DEB_QCORO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://qcoro.dev/
+Depends: qt6-base
+Description: QCoro Qt 6 runtime for the Xios desktop
+ QCoro provides C++ coroutine wrappers for Qt asynchronous APIs. This first
+ Xios package ships the Qt 6 Core and DBus runtime libraries needed by the
+ Plasma workspace layer.

@@ -1,0 +1,11 @@
+Package: qcoro6-dev
+Version: @DEB_QCORO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://qcoro.dev/
+Depends: qcoro6 (= @DEB_QCORO_V@), qt6-base-dev
+Description: Development files for QCoro Qt 6
+ Headers and CMake package files for QCoro6 Core and DBus. Needed to
+ cross-build plasma-workspace and other Plasma components that use QCoro.
