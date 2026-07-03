@@ -151,11 +151,24 @@ Item {
     property Component highlight: null
     property int count: 0
     property int currentIndex: -1
+    property int cellWidth: width
+    property int cellHeight: 96
+    property int flow: 0
+    property int layoutDirection: Qt.LeftToRight
+    property int verticalLayoutDirection: 0
+    property int boundsBehavior: 0
+    property int boundsMovement: 0
+    property int flickableDirection: 0
+    property int highlightRangeMode: 0
+    property int snapMode: 0
     property bool interactive: false
     property bool dragging: false
     property bool moving: false
+    property bool reuseItems: false
+    property bool keyNavigationWraps: false
     property bool atYBeginning: true
     property bool atYEnd: true
+    property real cacheBuffer: 0
     property real contentX: 0
     property real contentY: 0
     property real contentWidth: width
@@ -164,6 +177,12 @@ Item {
     property real bottomMargin: 0
     property real leftMargin: 0
     property real rightMargin: 0
+    property real displayMarginBeginning: 0
+    property real displayMarginEnd: 0
+    property real preferredHighlightBegin: 0
+    property real preferredHighlightEnd: 0
+    property real highlightMoveDuration: 0
+    property real maximumFlickVelocity: 0
     readonly property Item currentItem: null
     default property alias content: contentItem.data
     Item { id: contentItem; anchors.fill: parent }
@@ -198,6 +217,8 @@ Item {
     property var homeScreen
     property var folio
     property var actionDrawer
+    property Component content
+    default property alias contentChildren: contentItem.data
     property int edge: Qt.BottomEdge
     property string queryString: ""
     property string backgroundColor: "transparent"
@@ -215,17 +236,23 @@ Item {
     property real minimizedViewProgress: 0
     property real fullViewProgress: 0
     property int mode: 0
+    Item { id: contentItem; anchors.fill: parent }
     signal closed()
     signal requestedClose()
     signal requestClose()
+    signal backgroundClicked()
+    signal unlockRequested()
     function open() { shown = true }
     function close() { shown = false; closed(); requestedClose(); requestClose() }
-    function toggle() { shown = !shown }
+    function toggle() { shown = !shown; if (!shown) { backgroundClicked() } }
     signal wallpaperSettingsRequested()
 }
 """
 
 for rel in [
+    "components/mobileshell/qml/ActionDrawer.qml",
+    "components/mobileshell/qml/ActionDrawerOpenSurface.qml",
+    "components/mobileshell/qml/PortraitContentContainer.qml",
     "components/mobileshell/qml/actiondrawer/quicksettings/QuickSettings.qml",
     "components/mobileshell/qml/homescreen/WallpaperSelector.qml",
     "components/mobileshell/qml/volumeosd/AudioApplet.qml",
@@ -236,6 +263,33 @@ for rel in [
     "components/mobileshell/qml/widgets/notifications/NotificationsWidget.qml",
 ]:
     write(rel, item_stub)
+
+write("containments/homescreens/folio/package/contents/ui/settings/AppletListViewer.qml", """import QtQuick 2.15
+MouseArea {
+    id: root
+    property var folio
+    property var homeScreen
+    signal requestClose()
+    onClicked: root.requestClose()
+}
+""")
+
+write("shell/package/contents/lockscreen/PasswordBar.qml", """import QtQuick 2.15
+import QtQuick.Controls 2.15
+Item {
+    id: root
+    property string password: ""
+    property string placeholderText: ""
+    signal accepted(string password)
+    TextField {
+        anchors.centerIn: parent
+        width: Math.min(parent.width, 420)
+        placeholderText: root.placeholderText
+        echoMode: TextInput.Password
+        onAccepted: root.accepted(text)
+    }
+}
+""")
 PY
 
 # The real org.kde.plasma.mm plugin depends on NetworkManagerQt and

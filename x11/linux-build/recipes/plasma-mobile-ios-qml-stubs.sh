@@ -123,7 +123,7 @@ write_file "$wallpaper/WallpaperPlugin.qml" \
 
 mobileshell="$qml/org/kde/plasma/private/mobileshell"
 mkdir -p "$mobileshell"
-if [ -e "$mobileshell/GridView.qml" ]; then
+if [ -e "$mobileshell/GridView.qml" ] && [ ! -e "$mobileshell/GridView.qml.upstream" ]; then
   cp "$mobileshell/GridView.qml" "$mobileshell/GridView.qml.upstream"
 fi
 write_file "$mobileshell/GridView.qml" \
@@ -136,15 +136,36 @@ write_file "$mobileshell/GridView.qml" \
   "    property int count: 0" \
   "    property int cellWidth: width" \
   "    property int cellHeight: 96" \
+  "    property int flow: 0" \
+  "    property int layoutDirection: Qt.LeftToRight" \
+  "    property int verticalLayoutDirection: 0" \
+  "    property int boundsBehavior: 0" \
+  "    property int boundsMovement: 0" \
+  "    property int flickableDirection: 0" \
+  "    property int highlightRangeMode: 0" \
+  "    property int snapMode: 0" \
   "    property real cacheBuffer: 0" \
   "    property bool reuseItems: false" \
+  "    property bool keyNavigationWraps: false" \
   "    property bool interactive: false" \
   "    property bool dragging: false" \
   "    property bool atYBeginning: true" \
+  "    property bool atYEnd: true" \
+  "    property bool moving: false" \
+  "    property real contentX: 0" \
   "    property real contentY: 0" \
+  "    property real contentWidth: width" \
   "    property real contentHeight: height" \
   "    property real leftMargin: 0" \
   "    property real rightMargin: 0" \
+  "    property real topMargin: 0" \
+  "    property real bottomMargin: 0" \
+  "    property real displayMarginBeginning: 0" \
+  "    property real displayMarginEnd: 0" \
+  "    property real preferredHighlightBegin: 0" \
+  "    property real preferredHighlightEnd: 0" \
+  "    property real highlightMoveDuration: 0" \
+  "    property real maximumFlickVelocity: 0" \
   "    property Component highlight: null" \
   "    readonly property Item currentItem: null" \
   "    property var topEdgeCallback: null" \
@@ -171,15 +192,33 @@ write_file "$mobileshell/ListView.qml" \
   "    property Component highlight: null" \
   "    property int count: 0" \
   "    property int currentIndex: -1" \
+  "    property int boundsBehavior: 0" \
+  "    property int boundsMovement: 0" \
+  "    property int flickableDirection: 0" \
+  "    property int highlightRangeMode: 0" \
+  "    property int snapMode: 0" \
   "    property bool interactive: false" \
   "    property bool dragging: false" \
   "    property bool moving: false" \
+  "    property bool reuseItems: false" \
+  "    property bool keyNavigationWraps: false" \
   "    property bool atYBeginning: true" \
   "    property bool atYEnd: true" \
+  "    property real cacheBuffer: 0" \
+  "    property real contentX: 0" \
   "    property real contentY: 0" \
+  "    property real contentWidth: width" \
   "    property real contentHeight: height" \
   "    property real topMargin: 0" \
   "    property real bottomMargin: 0" \
+  "    property real leftMargin: 0" \
+  "    property real rightMargin: 0" \
+  "    property real displayMarginBeginning: 0" \
+  "    property real displayMarginEnd: 0" \
+  "    property real preferredHighlightBegin: 0" \
+  "    property real preferredHighlightEnd: 0" \
+  "    property real highlightMoveDuration: 0" \
+  "    property real maximumFlickVelocity: 0" \
   "    readonly property Item currentItem: null" \
   "    function itemAtIndex(index) { return null }" \
   "    function indexAt(x, y) { return -1 }" \
@@ -197,6 +236,9 @@ write_file "$mobileshell/Flickable.qml" \
   "    property bool moving: false" \
   "    property bool atYBeginning: true" \
   "    property bool atYEnd: true" \
+  "    property int boundsBehavior: 0" \
+  "    property int boundsMovement: 0" \
+  "    property int flickableDirection: 0" \
   "    property real contentX: 0" \
   "    property real contentY: 0" \
   "    property real contentWidth: width" \
@@ -233,6 +275,8 @@ write_mobile_item_stub() {
     "    property var homeScreen" \
     "    property var folio" \
     "    property var actionDrawer" \
+    "    property Component content" \
+    "    default property alias contentChildren: contentItem.data" \
     "    property int edge: Qt.BottomEdge" \
     "    property string queryString: \"\"" \
     "    property string backgroundColor: \"transparent\"" \
@@ -250,25 +294,31 @@ write_mobile_item_stub() {
     "    property real minimizedViewProgress: 0" \
     "    property real fullViewProgress: 0" \
     "    property int mode: 0" \
+    "    Item { id: contentItem; anchors.fill: parent }" \
     "    signal closed()" \
     "    signal requestedClose()" \
     "    signal requestClose()" \
+    "    signal backgroundClicked()" \
+    "    signal unlockRequested()" \
     "    signal wallpaperSettingsRequested()" \
     "    function open() { shown = true }" \
     "    function close() { shown = false; closed(); requestedClose(); requestClose() }" \
-    "    function toggle() { shown = !shown }" \
+    "    function toggle() { shown = !shown; if (!shown) { backgroundClicked() } }" \
     "}"
 }
 for qml_name in \
+  ActionDrawer \
+  ActionDrawerOpenSurface \
   AudioApplet \
   KRunnerScreen \
   KRunnerWidget \
   MediaControlsWidget \
   NotificationsWidget \
+  PortraitContentContainer \
   QuickSettings \
   VolumeOSD \
   WallpaperSelector; do
-  if [ -e "$mobileshell/$qml_name.qml" ]; then
+  if [ -e "$mobileshell/$qml_name.qml" ] && [ ! -e "$mobileshell/$qml_name.qml.upstream" ]; then
     cp "$mobileshell/$qml_name.qml" "$mobileshell/$qml_name.qml.upstream"
   fi
   write_mobile_item_stub "$qml_name"
@@ -288,6 +338,30 @@ if [ -d "$folio_settings" ]; then
     "    property var homeScreen" \
     "    signal requestClose()" \
     "    onClicked: root.requestClose()" \
+    "}"
+fi
+
+lockscreen="$qml/../../../share/plasma/shells/org.kde.plasma.mobileshell/contents/lockscreen"
+if [ -d "$lockscreen" ]; then
+  if [ -e "$lockscreen/PasswordBar.qml" ] && [ ! -e "$lockscreen/PasswordBar.qml.upstream" ]; then
+    cp "$lockscreen/PasswordBar.qml" "$lockscreen/PasswordBar.qml.upstream"
+  fi
+  write_file "$lockscreen/PasswordBar.qml" \
+    "// First-light iOS shim: avoid raw ListView during lockscreen setup." \
+    "import QtQuick 2.15" \
+    "import QtQuick.Controls 2.15" \
+    "Item {" \
+    "    id: root" \
+    "    property string password: \"\"" \
+    "    property string placeholderText: \"\"" \
+    "    signal accepted(string password)" \
+    "    TextField {" \
+    "        anchors.centerIn: parent" \
+    "        width: Math.min(parent.width, 420)" \
+    "        placeholderText: root.placeholderText" \
+    "        echoMode: TextInput.Password" \
+    "        onAccepted: root.accepted(text)" \
+    "    }" \
     "}"
 fi
 

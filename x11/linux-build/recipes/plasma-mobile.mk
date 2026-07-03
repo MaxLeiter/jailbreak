@@ -43,29 +43,6 @@ plasma-mobile-package: plasma-mobile-stage
 	rm -rf $(BUILD_DIST)/plasma-mobile $(BUILD_DIST)/plasma-mobile-dev
 	$(call KF6_COPY_RUNTIME,plasma-mobile,plasma-mobile)
 	$(call KF6_COPY_DEV,plasma-mobile,plasma-mobile)
-	mkdir -p $(BUILD_DIST)/plasma-mobile$(MEMO_PREFIX)/usr/lib/qt6/qml/org/kde/plasma/mm
-	printf '%s\n' 'module org.kde.plasma.mm' 'singleton SignalIndicator 1.0 SignalIndicator.qml' > $(BUILD_DIST)/plasma-mobile$(MEMO_PREFIX)/usr/lib/qt6/qml/org/kde/plasma/mm/qmldir
-	printf '%s\n' \
-	  'pragma Singleton' \
-	  'import QtQuick 2.15' \
-	  'QtObject {' \
-	  '    property int strength: 0' \
-	  '    property string name: ""' \
-	  '    property bool modemAvailable: false' \
-	  '    property bool simLocked: false' \
-	  '    property bool simEmpty: true' \
-	  '    property bool mobileDataSupported: false' \
-	  '    property bool mobileDataEnabled: false' \
-	  '    property bool needsAPNAdded: false' \
-	  '    property var profiles: []' \
-	  '    property string activeConnectionUni: ""' \
-	  '    function refreshProfiles() {}' \
-	  '    function activateProfile(connectionUni) {}' \
-	  '    function addProfile(name, apn, username, password, networkType) {}' \
-	  '    function removeProfile(connectionUni) {}' \
-	  '    function updateProfile(connectionUni, name, apn, username, password, networkType) {}' \
-	  '}' \
-	  > $(BUILD_DIST)/plasma-mobile$(MEMO_PREFIX)/usr/lib/qt6/qml/org/kde/plasma/mm/SignalIndicator.qml
 	bash /work/recipes/plasma-mobile-ios-qml-stubs.sh $(BUILD_DIST)/plasma-mobile$(MEMO_PREFIX)/usr/lib/qt6/qml
 	$(call SIGN,plasma-mobile,general.xml)
 	$(call SIGN,plasma-mobile-dev,general.xml)

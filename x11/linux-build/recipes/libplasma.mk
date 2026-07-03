@@ -41,6 +41,7 @@ endif
 libplasma-package: libplasma-stage
 	rm -rf $(BUILD_DIST)/libplasma $(BUILD_DIST)/libplasma-dev
 	$(call KF6_COPY_RUNTIME,libplasma,libplasma)
+	bash /work/recipes/libplasma-ios-qml-stubs.sh $(BUILD_DIST)/libplasma
 	$(call KF6_COPY_DEV,libplasma,libplasma)
 	$(call SIGN,libplasma,general.xml)
 	$(call SIGN,libplasma-dev,general.xml)

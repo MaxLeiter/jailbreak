@@ -33,6 +33,7 @@ endif
 qqc2-desktop-style-package: qqc2-desktop-style-stage
 	rm -rf $(BUILD_DIST)/kf6-qqc2-desktop-style $(BUILD_DIST)/kf6-qqc2-desktop-style-dev
 	$(call KF6_COPY_RUNTIME,qqc2-desktop-style,kf6-qqc2-desktop-style)
+	bash /work/recipes/qqc2-desktop-style-ios-qml-stubs.sh $(BUILD_DIST)/kf6-qqc2-desktop-style
 	$(call KF6_COPY_DEV,qqc2-desktop-style,kf6-qqc2-desktop-style)
 	$(call SIGN,kf6-qqc2-desktop-style,general.xml)
 	$(call SIGN,kf6-qqc2-desktop-style-dev,general.xml)
