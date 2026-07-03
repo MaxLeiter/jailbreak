@@ -144,7 +144,8 @@ static void pr_text_set_font(pr_text_ctx *t, const char *font)
     pango_layout_set_font_description(t->lay, t->fd);
 }
 
-static void pr_text_measure(pr_text_ctx *t, const char *font, const char *s, int *w, int *h)
+static void __attribute__((unused))
+pr_text_measure(pr_text_ctx *t, const char *font, const char *s, int *w, int *h)
 {
     pr_text_set_font(t, font);
     pango_layout_set_text(t->lay, s, -1);
@@ -185,9 +186,20 @@ static int pr_text(cairo_t *cr, pr_text_ctx *t, const char *font, const char *s,
 static void pr_text_centered(cairo_t *cr, pr_text_ctx *t, const char *font,
                              const char *s, double x0, double w, double cy, uint32_t color)
 {
-    int pw, ph; pr_text_measure(t, font, s, &pw, &ph);
-    double x = x0 + (w - pw) / 2.0;
-    pr_text(cr, t, font, s, x, cy, color, 0);
+    PangoFontDescription *fd = pango_font_description_from_string(font);
+    pango_layout_set_font_description(t->lay, fd);
+    pango_font_description_free(fd);
+    pango_layout_set_text(t->lay, s ? s : "", -1);
+    pango_layout_set_width(t->lay, (int)(w * PANGO_SCALE));
+    pango_layout_set_ellipsize(t->lay, PANGO_ELLIPSIZE_END);
+    pango_layout_set_single_paragraph_mode(t->lay, TRUE);
+    pango_layout_set_alignment(t->lay, PANGO_ALIGN_CENTER);
+    int pw, ph; (void)pw; pango_layout_get_pixel_size(t->lay, &pw, &ph);
+    cairo_save(cr);
+    pr_set(cr, color);
+    cairo_move_to(cr, x0, cy - ph / 2.0);
+    pango_cairo_show_layout(cr, t->lay);
+    cairo_restore(cr);
 }
 
 /* --------------------------------------------------------------- icons ---- */
