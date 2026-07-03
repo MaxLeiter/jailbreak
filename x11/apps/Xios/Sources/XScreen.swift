@@ -3566,7 +3566,7 @@ extension XScreenView: UIContextMenuInteractionDelegate {
     func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                 configurationForMenuAtLocation location: CGPoint)
     -> UIContextMenuConfiguration? {
-        guard pickerOverlay == nil else { return nil }
+        guard pickerOverlay == nil, activeDesktopPreset() == "iosc" else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
             [weak self] _ in self?.desktopContextMenu() ?? UIMenu()
         }
