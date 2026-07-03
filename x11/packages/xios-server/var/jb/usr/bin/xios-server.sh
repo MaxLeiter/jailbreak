@@ -65,14 +65,13 @@ nohup Xios "$DISP" -screen 0 "${W}x${H}x24" -iosurface -dpi "$DPI" -ac -nolisten
   >"$TMP/xios-server.log" 2>&1 &
 sleep 3
 if ! alive "Xios $DISP"; then echo "!! Xios failed:"; tail -20 "$TMP/xios-server.log"; exit 1; fi
-# The app runs as 'mobile' and needs write perm to connect() to the (root-owned)
-# rendezvous socket. Restrict it to mobile (Xios does the same) rather than world:
-# chown to mobile + 0660, falling back to 0777 only if that user can't be resolved
-# (so the app is never locked out). The mach-port hand-off still verifies the peer.
-if chown mobile:mobile "$SOCK" 2>/dev/null; then
+# The app runs as 'mobile' and needs write perm to connect() to the root-owned
+# rendezvous socket. Restrict it to mobile; numeric 501 covers stripped images.
+if chown mobile:mobile "$SOCK" 2>/dev/null || chown 501:501 "$SOCK" 2>/dev/null; then
   chmod 0660 "$SOCK" 2>/dev/null
 else
-  chmod 0777 "$SOCK" 2>/dev/null
+  chmod 0600 "$SOCK" 2>/dev/null
+  echo "!! could not hand $SOCK to mobile; keeping it owner-only"
 fi
 echo "   xios.json: $(cat "$TMP/xios.json" 2>/dev/null)"
 

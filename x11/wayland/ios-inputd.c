@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pwd.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -212,7 +213,16 @@ static int start_socket(const char *path)
     strncpy(a.sun_path, path, sizeof(a.sun_path) - 1);
     if (bind(fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(fd); return -1; }
     if (listen(fd, 4) < 0) { close(fd); return -1; }
-    chmod(path, 0777);
+    struct passwd *pw = getpwnam("mobile");
+    uid_t uid = pw ? pw->pw_uid : 501;
+    gid_t gid = pw ? pw->pw_gid : 501;
+    if (chown(path, uid, gid) == 0) {
+        chmod(path, 0660);
+    } else {
+        chmod(path, 0600);
+        fprintf(stderr, "ios-inputd: keeping %s owner-only; chown mobile failed: %s\n",
+                path, strerror(errno));
+    }
     set_nonblock(fd);
     return fd;
 }

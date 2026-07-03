@@ -88,8 +88,8 @@ typedef void (*xios_input_cb)(const struct xios_in_msg *m,
                               uint32_t                  bound_window,
                               void                     *user);
 
-/* Create the AF_UNIX listener at `path` (unlinks a stale node, chmod 0777 so the
- * mobile-uid app can connect). NULL on failure. */
+/* Create the AF_UNIX listener at `path` (unlinks a stale node, mobile-owned
+ * 0660 so the host app can connect). NULL on failure. */
 xios_input_socket *xios_input_socket_new(const char *path);
 
 /* The single fd to poll for readability (accepts + client data multiplexed). */

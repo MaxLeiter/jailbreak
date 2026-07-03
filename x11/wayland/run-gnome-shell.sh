@@ -163,8 +163,12 @@ echo "   xios.json:       $(cat "$TMP/xios.json" 2>/dev/null)"
 echo "   mutter-ddx.sock: $([ -S "$TMP/mutter-ddx.sock" ] && echo up || echo MISSING)"
 echo "   wayland socket:  $(ls "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | tr '\n' ' ')"
 
-chown mobile:mobile "$TMP/mutter-ddx.sock" 2>/dev/null && chmod 0660 "$TMP/mutter-ddx.sock" 2>/dev/null \
-  || chmod 0777 "$TMP/mutter-ddx.sock" 2>/dev/null
+if chown mobile:mobile "$TMP/mutter-ddx.sock" 2>/dev/null || chown 501:501 "$TMP/mutter-ddx.sock" 2>/dev/null; then
+  chmod 0660 "$TMP/mutter-ddx.sock" 2>/dev/null
+else
+  chmod 0600 "$TMP/mutter-ddx.sock" 2>/dev/null
+  echo "!! could not hand $TMP/mutter-ddx.sock to mobile; keeping it owner-only"
+fi
 
 echo "==> relaunch the Xios app (adopts + Metal-presents gnome-shell's output IOSurface)"
 uiopen -b com.max.xios 2>/dev/null

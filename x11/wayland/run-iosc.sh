@@ -39,8 +39,12 @@ ICPID=$!
 for _ in $(seq 1 30); do [ -S "$WSOCK" ] && [ -f "$TMP/xios.json" ] && break; sleep 0.2; done
 if ! kill -0 "$ICPID" 2>/dev/null; then echo "!! iosc died:"; cat "$TMP/iosc.log"; exit 1; fi
 # the app runs as mobile; let it connect to the (root) rendezvous socket
-chown mobile:mobile "$TMP/iosc-ddx.sock" 2>/dev/null && chmod 0660 "$TMP/iosc-ddx.sock" 2>/dev/null \
-  || chmod 0777 "$TMP/iosc-ddx.sock" 2>/dev/null
+if chown mobile:mobile "$TMP/iosc-ddx.sock" 2>/dev/null || chown 501:501 "$TMP/iosc-ddx.sock" 2>/dev/null; then
+  chmod 0660 "$TMP/iosc-ddx.sock" 2>/dev/null
+else
+  chmod 0600 "$TMP/iosc-ddx.sock" 2>/dev/null
+  echo "!! could not hand $TMP/iosc-ddx.sock to mobile; keeping it owner-only"
+fi
 echo "   wayland socket: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
 echo "   xios.json: $(cat "$TMP/xios.json" 2>/dev/null)"
 

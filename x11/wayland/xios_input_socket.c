@@ -45,10 +45,15 @@ struct xios_input_socket {
 static void chmod_mobile_socket(const char *path)
 {
     struct passwd *pw = getpwnam("mobile");
-    if (pw && chown(path, pw->pw_uid, pw->pw_gid) == 0)
+    uid_t uid = pw ? pw->pw_uid : 501;
+    gid_t gid = pw ? pw->pw_gid : 501;
+    if (chown(path, uid, gid) == 0) {
         chmod(path, 0660);
-    else
-        chmod(path, 0777);
+    } else {
+        chmod(path, 0600);
+        fprintf(stderr, "xios_input_socket: keeping %s owner-only; chown mobile failed: %s\n",
+                path, strerror(errno));
+    }
 }
 
 static void set_nonblock(int fd)

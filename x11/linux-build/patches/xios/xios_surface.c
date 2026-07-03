@@ -509,15 +509,19 @@ int xios_server_start(const char *sock_path, const char *json_path,
         return -1;
     }
     /* The X server runs as root but the app runs as mobile, and connect() to a Unix
-     * socket needs write permission on the socket file. Rather than 0777 (any local
-     * uid can connect), restrict it to mobile: chown to mobile + 0660. Fall back to
-     * 0777 only if that user can't be resolved, so the app is never locked out. */
+     * socket needs write permission on the socket file. Restrict it to mobile, with
+     * numeric 501 as the stripped-image fallback. */
     {
         struct passwd *pw = getpwnam("mobile");
-        if (pw && chown(sock_path, pw->pw_uid, pw->pw_gid) == 0)
+        uid_t uid = pw ? pw->pw_uid : 501;
+        gid_t gid = pw ? pw->pw_gid : 501;
+        if (chown(sock_path, uid, gid) == 0) {
             chmod(sock_path, 0660);
-        else
-            chmod(sock_path, 0777);
+        } else {
+            chmod(sock_path, 0600);
+            fprintf(stderr, "xios_surface: keeping %s owner-only; chown mobile failed: %s\n",
+                    sock_path, strerror(errno));
+        }
     }
     s_listen_fd = fd;
 

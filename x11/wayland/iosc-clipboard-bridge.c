@@ -350,12 +350,17 @@ int ioscclip_start(struct wl_event_loop *loop, const char *path,
         return -1;
     }
     /* iosc runs as root, the host app as mobile: restrict to mobile (0660)
-     * like the ddx socket; 0777 only if that user can't be resolved. */
+     * like the ddx socket, falling back to numeric mobile on stripped images. */
     struct passwd *pw = getpwnam("mobile");
-    if (pw && chown(path, pw->pw_uid, pw->pw_gid) == 0)
+    uid_t uid = pw ? pw->pw_uid : 501;
+    gid_t gid = pw ? pw->pw_gid : 501;
+    if (chown(path, uid, gid) == 0) {
         chmod(path, 0660);
-    else
-        chmod(path, 0777);
+    } else {
+        chmod(path, 0600);
+        fprintf(stderr, "iosc: keeping clipboard socket %s owner-only; chown mobile failed: %s\n",
+                path, strerror(errno));
+    }
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 
     if (!wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, listen_dispatch, NULL)) {
