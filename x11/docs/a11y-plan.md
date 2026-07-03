@@ -110,6 +110,11 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   18 upserts with the action-bearing node exposed as `traits:["button"]`.
   `0.2.14` routes HostA11y `scroll{id,dir}` commands to AT-SPI
   `Component.ScrollTo` for targets that expose a component interface.
+  A follow-up GTK4 Text Editor probe on 2026-07-03 confirmed the app registers
+  on the AT-SPI bus and exposes a frame with many actions, but its child tree
+  still collapses to `panel`/`grouping` nodes even at `atspi-dump --depth=12`;
+  GNOME Control Center exited before registering. Evidence:
+  `artifacts/device-runs/20260703-124146-gtk-text-editor-a11y/`.
 - Qt AT-SPI bridge recipe work has moved forward: `linux-build/recipes/qtbase.mk`
   now carries the round-3 revision with `FEATURE_dbus=ON`,
   `FEATURE_accessibility=ON`, `FEATURE_accessibility_atspi_bridge=ON`, and the
