@@ -1,0 +1,14 @@
+Package: fuzzel
+Version: @DEB_FUZZEL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://codeberg.org/dnkl/fuzzel
+Depends: libwayland0, libxkbcommon0, libpixman-1-0, libfontconfig1, libfcft4, libutf8proc3, libepoll-shim0, libpng16-16
+Description: Wayland application launcher / dmenu replacement
+ fuzzel is a fast, lightweight application launcher for Wayland, in the style
+ of rofi/dmenu. Like foot (same author) it has no toolkit dependency: it
+ rasterizes glyphs itself via fcft into pixman buffers and presents through
+ wl_shm on a wlr-layer-shell overlay. PNG icons via libpng, SVG icons via the
+ bundled nanosvg. Runs as a native Wayland client under the iosc compositor.

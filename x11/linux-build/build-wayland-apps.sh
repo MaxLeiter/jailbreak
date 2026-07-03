@@ -239,6 +239,9 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # libutf8proc-package MUST precede fcft/foot (both import @rpath/libutf8proc.3.dylib; never
 # packaged before, so foot dyld-failed on-device). libjpeg-turbo-package precedes imv/mpv: it
 # produces libturbojpeg0 (libturbojpeg.0, imv's missing dylib) + libjpeg62-turbo (libjpeg.62, mpv).
+# Extra Wayland utility apps (opt-in via TARGETS, kept out of the default to avoid rebuild churn):
+#   fuzzel-package  — app launcher / dmenu (fcft/tllist/pixman/libpng, wlr-layer-shell)
+#   grim-package    — screenshot tool (wlr-screencopy; pixman/libpng/libjpeg-turbo)
 TARGETS="${TARGETS:-wayland-protocols-package libutf8proc-package tllist-package fcft-package foot-package libjpeg-turbo-package imv-package wl-clipboard-package ffmpeg-package libass-package mpv-package}"
 
 for t in $TARGETS; do
@@ -248,7 +251,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for pat in libtllist libfcft foot imv libgrapheme wayland-protocols \
+for pat in libtllist libfcft foot imv fuzzel grim libgrapheme wayland-protocols \
            wl-clipboard mpv libmpv libavcodec libavformat libavutil libavfilter \
            libavdevice libswscale libswresample libpostproc ffmpeg libass libplacebo \
            libharfbuzz libutf8proc libfontconfig libfreetype libpixman \
