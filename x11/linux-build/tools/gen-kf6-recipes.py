@@ -37,6 +37,7 @@ PWP_V = "1.13.0"         # plasma-wayland-protocols (kwin's minimum)
 # data_only: single deb, no dev split, no SIGN (no Mach-O content).
 # host_tool: framework also gets a NATIVE build in build-kf6.sh stage 1
 #       (provides build-time tools resolved through KF6_HOST_TOOLING).
+# rev: iOS package revision suffix (defaults to ios1).
 # notes: recipe header comment lines (the audit's per-framework findings).
 TABLE = [
     dict(t="extra-cmake-modules", kind="ecm", deb="extra-cmake-modules", deps=[],
@@ -57,10 +58,14 @@ TABLE = [
 
     # ---- wave 1: Qt-only frameworks ----
     dict(t="kcoreaddons", kind="kf", deb="kf6-coreaddons", deps=[],
-         qt_deps=["qt6-base", "qt6-declarative"], host_tool=True,
+         qt_deps=["qt6-base", "qt6-declarative"], host_tool=True, rev="ios2",
+         seds=["sed -i 's/^if(NOT WIN32)$/if(NOT WIN32 AND NOT APPLE)/' $(BUILD_WORK)/kcoreaddons/src/lib/CMakeLists.txt"],
          desc="Qt addon library with utilities for text, io, jobs and plugins.",
          notes=["Host-tooling provider (desktoptojson): stage 1 of build-kf6.sh builds this",
-                "natively; cross consumers resolve the tool via KF6_HOST_TOOLING."]),
+                "natively; cross consumers resolve the tool via KF6_HOST_TOOLING.",
+                "iOS uses the non-mmap shared-data-cache backend: the POSIX backend tears",
+                "down shared mappings with munmap(), which trips iOS guarded VM checks at",
+                "plasmashell shutdown/restart."]),
     dict(t="karchive", kind="kf", deb="kf6-archive", deps=[],
          qt_deps=["qt6-base"], host_tool=True,
          flags=["-DWITH_BZIP2=OFF", "-DWITH_LIBLZMA=OFF", "-DWITH_LIBZSTD=OFF"],
@@ -494,7 +499,7 @@ def emit_recipe(e):
     hdr.append("")
     hdr.append("SUBPROJECTS += %s" % t)
     hdr.append("%s_VERSION = %s" % (uv, version_ref(e)))
-    hdr.append("DEB_%s_V ?= $(%s_VERSION)+ios1" % (uv, uv))
+    hdr.append("DEB_%s_V ?= $(%s_VERSION)+%s" % (uv, uv, e.get("rev", "ios1")))
     hdr.append("")
 
     setup = ["%s-setup: setup" % t,
