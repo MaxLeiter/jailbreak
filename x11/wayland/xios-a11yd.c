@@ -54,6 +54,7 @@ struct emit_ctx {
     unsigned win;
     unsigned next_id;
     unsigned count;
+    unsigned focused_id;
 };
 
 static struct client clients[MAX_CLIENTS];
@@ -107,17 +108,74 @@ static void close_client(struct client *c)
     client_clear_refs(c);
 }
 
-static const char *trait_for_role(const char *role)
+static void append_trait(GString *out, const char *trait)
 {
-    if (!role) return "";
-    if (strstr(role, "button") || strstr(role, "menu item")) return "\"button\"";
-    if (strstr(role, "link")) return "\"link\"";
-    if (strstr(role, "heading")) return "\"header\"";
-    if (strstr(role, "label") || strstr(role, "static")) return "\"static-text\"";
-    if (strstr(role, "image") || strstr(role, "icon")) return "\"image\"";
-    if (strstr(role, "slider") || strstr(role, "spin") || strstr(role, "scroll bar")) return "\"adjustable\"";
-    if (strstr(role, "page tab list")) return "\"tab-bar\"";
-    return "";
+    if (!out || !trait || !*trait) return;
+    if (out->len > 0) g_string_append_c(out, ',');
+    g_string_append_printf(out, "\"%s\"", trait);
+}
+
+static int state_has(AtspiStateSet *states, AtspiStateType state)
+{
+    return states && atspi_state_set_contains(states, state);
+}
+
+static int role_is_interactive(const char *role)
+{
+    if (!role) return 0;
+    return strstr(role, "button") || strstr(role, "menu item") ||
+           strstr(role, "combo box") || strstr(role, "page tab") ||
+           strstr(role, "link") || strstr(role, "slider") ||
+           strstr(role, "spin") || strstr(role, "scroll bar") ||
+           strstr(role, "entry") || strstr(role, "editable") ||
+           strstr(role, "check") || strstr(role, "radio");
+}
+
+static char *node_traits_json(const char *role, AtspiStateSet *states, int has_actions)
+{
+    GString *out = g_string_new("");
+    if (!role) role = "";
+
+    if (strstr(role, "page tab list")) append_trait(out, "tab-bar");
+    else if (strstr(role, "button") || strstr(role, "menu item") ||
+             strstr(role, "combo box") || strstr(role, "page tab")) append_trait(out, "button");
+    else if (strstr(role, "link")) append_trait(out, "link");
+    else if (strstr(role, "heading")) append_trait(out, "header");
+    else if (strstr(role, "label") || strstr(role, "static")) append_trait(out, "static-text");
+    else if (strstr(role, "image") || strstr(role, "icon")) append_trait(out, "image");
+    else if (has_actions) append_trait(out, "button");
+
+    if (strstr(role, "slider") || strstr(role, "spin") || strstr(role, "scroll bar")) {
+        append_trait(out, "adjustable");
+    }
+    if (strstr(role, "progress") || strstr(role, "level") || strstr(role, "status") ||
+        strstr(role, "terminal") || state_has(states, ATSPI_STATE_BUSY)) {
+        append_trait(out, "updates-frequently");
+    }
+    if (strstr(role, "search")) append_trait(out, "search-field");
+    if (state_has(states, ATSPI_STATE_SELECTED) ||
+        ((strstr(role, "radio") || strstr(role, "page tab")) && state_has(states, ATSPI_STATE_CHECKED))) {
+        append_trait(out, "selected");
+    }
+    if (role_is_interactive(role) &&
+        (!state_has(states, ATSPI_STATE_ENABLED) || !state_has(states, ATSPI_STATE_SENSITIVE))) {
+        append_trait(out, "not-enabled");
+    }
+    if (state_has(states, ATSPI_STATE_MODAL)) append_trait(out, "modal");
+
+    return g_string_free(out, FALSE);
+}
+
+static char *node_state_value_text(AtspiStateSet *states)
+{
+    if (!states) return g_strdup("");
+    if (state_has(states, ATSPI_STATE_INDETERMINATE)) return g_strdup("mixed");
+    if (state_has(states, ATSPI_STATE_CHECKED)) return g_strdup("checked");
+    if (state_has(states, ATSPI_STATE_CHECKABLE)) return g_strdup("not checked");
+    if (state_has(states, ATSPI_STATE_PRESSED)) return g_strdup("on");
+    if (state_has(states, ATSPI_STATE_EXPANDED)) return g_strdup("expanded");
+    if (state_has(states, ATSPI_STATE_INVALID_ENTRY)) return g_strdup("invalid");
+    return g_strdup("");
 }
 
 static int json_get_string(const char *json, const char *key, char *out, size_t out_len)
@@ -365,30 +423,38 @@ static void emit_node(struct emit_ctx *ctx, AtspiAccessible *obj, unsigned paren
     char *jname = json_escape(name);
     char *jrole = json_escape(role && *role ? role : "unknown");
     char *jdesc = json_escape(desc);
-    const char *trait = trait_for_role(role);
     unsigned id = ctx->next_id++;
     ctx->count++;
+    AtspiStateSet *states = atspi_accessible_get_state_set(obj);
+    if (state_has(states, ATSPI_STATE_FOCUSED)) ctx->focused_id = id;
     client_remember_node(ctx->c, id, ctx->win, r, obj);
     char *actions = node_actions_json(obj);
+    char *traits = node_traits_json(role, states, actions && *actions);
     char *value = node_value_text(obj);
+    if (!value || !*value) {
+        g_free(value);
+        value = node_state_value_text(states);
+    }
     char *jvalue = json_escape(value);
 
     g_string_append_printf(ctx->out,
                            "{\"t\":\"upsert\",\"id\":%u,\"win\":%u,\"parent\":%u,\"idx\":%d,"
                            "\"role\":\"%s\",\"label\":\"%s\",\"value\":\"%s\",\"hint\":\"%s\","
                            "\"traits\":[%s],\"actions\":[%s],\"frame\":[%d,%d,%d,%d]}\n",
-                           id, ctx->win, parent, idx, jrole, jname, jvalue, jdesc, trait, actions,
+                           id, ctx->win, parent, idx, jrole, jname, jvalue, jdesc, traits, actions,
                            r.x, r.y, r.width, r.height);
 
     g_free(jvalue);
     g_free(value);
     g_free(actions);
+    g_free(traits);
     g_free(jname);
     g_free(jrole);
     g_free(jdesc);
     g_free(name);
     g_free(role);
     g_free(desc);
+    if (states) g_object_unref(states);
 
     if (child_count > 80) child_count = 80;
     for (int i = 0; i < child_count; i++) {
@@ -436,7 +502,7 @@ static void snapshot_client(struct client *c)
                                        "{\"t\":\"window\",\"id\":%u,\"appid\":\"%s\",\"title\":\"%s\","
                                        "\"frame\":[0,0,1,1],\"focused\":true}\n",
                                        win, japp, jtitle);
-                struct emit_ctx ctx = { .c = c, .out = snapshot, .win = win, .next_id = win * 1000, .count = 0 };
+                struct emit_ctx ctx = { .c = c, .out = snapshot, .win = win, .next_id = win * 1000, .count = 0, .focused_id = 0 };
                 int kids = atspi_accessible_get_child_count(top, &error);
                 if (error) { g_clear_error(&error); kids = 0; }
                 for (int i = 0; i < kids; i++) {
@@ -444,6 +510,9 @@ static void snapshot_client(struct client *c)
                     if (error) { g_clear_error(&error); continue; }
                     emit_node(&ctx, child, 0, i, 1);
                     if (child) g_object_unref(child);
+                }
+                if (ctx.focused_id) {
+                    g_string_append_printf(snapshot, "{\"t\":\"focus\",\"id\":%u}\n", ctx.focused_id);
                 }
                 g_free(japp);
                 g_free(jtitle);

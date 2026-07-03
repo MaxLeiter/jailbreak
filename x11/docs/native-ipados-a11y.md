@@ -202,6 +202,8 @@ or a new field with a safe default.
   clients can split or batch commands without relying on socket read boundaries;
   split-write device smoke across `bind`/`enable` still published kgx. `0.2.10`
   also dispatches helper commands by exact `t` type instead of substring matches.
+  `0.2.11` adds polling-based state mirroring: upserts include state-derived
+  traits/values and snapshots append `focus` when AT-SPI exposes a focused node.
   The spawn feed hardens correlation in P2. It supplements, not replaces, the
   desktop P1 acceptance.
   Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
