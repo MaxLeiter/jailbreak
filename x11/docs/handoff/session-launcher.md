@@ -5,14 +5,15 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 
 ## Key files (all under `x11/apps/iosc-desktop/`)
 - `xios-session-lib.sh` — single source of truth: ONE bulletproof teardown (kills iosc/mutter/gnome-shell/Xios/panels/clients/session-buses + rm stale wayland-0/xios.json/*-ddx.sock/*-input.sock) + preset fns that CALL `run-shell.sh`/`run-mutter.sh`/`run-gnome-shell.sh`. Resolver prefers the INSTALLED script (/var/jb/usr/local/bin, then /var/jb/usr/bin) over a pinned libexec copy.
-- `xios-session` — CLI: `xios-session iosc|mutter|gnome|app <name>|stop|status`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal).
-- `package-session.sh` → current `xios-session_1.0.4_iphoneos-arm64.deb` (in repo/debs + linux-build/out). `install-xios-session.sh` — lead-run scp+chmod. Doc: `x11/docs/session-launcher.md`.
+- `xios-session` — CLI: `xios-session iosc|mutter|gnome|kde|app <name>|stop|status`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal).
+- `package-session.sh` → current host-built `xios-session_1.0.10_iphoneos-arm64.deb` (in repo/debs + linux-build/out, not deployed in this pass). `install-xios-session.sh` — lead-run scp+chmod. Doc: `x11/docs/session-launcher.md`.
 - In-app picker: ⧉ button → modal; sends `SESSION` over `/var/jb/tmp/ioscd.sock`. Status line polls `/var/jb/tmp/xios-session-status.json`.
 
 ## Current state — built, installed (1.0.4), CLI works
-- Presets: iosc (works), mutter (up), gnome (experimental), app <name> (launch a client, no teardown), stop (→ SpringBoard).
+- Presets: iosc (works), mutter (up), gnome (experimental), kde (host-prepped experimental KWin + plasmashell nested on iosc), app <name> (launch a client, no teardown), stop (→ SpringBoard).
 - GNOME success signal keys off "GNOME Shell started at" in gnome-shell.log (not xios.json). IOSC_PANEL_OPACITY forwarded. Resolver flip applied.
 - Local pickup: ioscd parses optional `width`/`height`/`dpi` fields on `SESSION` requests and exports `IOSC_LOGICAL=WxH` before calling the shared launcher, so the in-app ⧉ picker can choose the next desktop dimensions.
+- KDE pickup: `run-kde-plasma.sh` is now in the session manifest. It starts outer `iosc` with `IOSC_FRAME_PULSE=1`, launches `kwin_wayland` on `kwin-ios-test`, then starts `plasmashell` on that KWin socket under the same `dbus-run-session`. The Xios in-app picker has a "KDE Plasma" button. This path is packaged and syntax/package-contents checked, but it has not been installed or run on-device.
 
 ## Active display ownership — FIXED in 1.0.4
 - `xios-session-lib.sh` records the owner in `/var/jb/tmp/xios-active-session` when launching `iosc`, `mutter`, or `gnome`, and clears it on `stop`.

@@ -11,13 +11,14 @@
 #   iosc         iosc compositor + wallpaper + panel   (the lightweight desktop; works today)
 #   mutter       raw Mutter 46 --wayland               (up: flat stage, no shell yet)
 #   gnome        gnome-shell --wayland                 (EXPERIMENTAL: mid-bring-up)
+#   kde          KWin + plasmashell nested on iosc     (EXPERIMENTAL)
 #   app <name>   launch a Wayland client against the RUNNING compositor (no teardown)
 #   stop         tear everything down, return to SpringBoard
 #
 # It REUSES the existing bring-up scripts rather than reinventing them: the iosc,
 # mutter and gnome presets call run-shell.sh / run-mutter.sh / run-gnome-shell.sh.
 # The one thing this library guarantees on top of them is a *bulletproof* teardown
-# (gotcha a: kill ALL of iosc/mutter/gnome-shell/Xios/panels/clients + rm every
+# (gotcha a: kill ALL of iosc/mutter/gnome/KDE/Xios/panels/clients + rm every
 # stale socket, or the next compositor collides on wayland-0 / the ddx sockets).
 #
 # Env overrides honoured (passed through to the run scripts):
@@ -159,7 +160,7 @@ xs_find_bringup() {
 # run-kgx.sh, anchored to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|dbus-daemon.*--session|dbus-run-session'
+xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|dbus-daemon.*--session|dbus-run-session'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
@@ -187,6 +188,8 @@ xios_session_teardown() {
           "$XS_TMP/xios-a11y.sock" \
           "$XS_TMP"/*-ddx.sock \
           "$XS_TMP"/*-input.sock \
+          "$XS_TMP/kwin-ios-test" "$XS_TMP/kwin-ios-test.lock" \
+          "$XS_TMP/kde-session-bus" \
           "$XS_TMP/iosc-wm.sock" \
           "$XS_TMP/iosc-native.sock" 2>/dev/null || true
     xs_log "teardown done"
@@ -352,6 +355,37 @@ xios_session_gnome() {
     esac
 }
 
+# kde: EXPERIMENTAL. Starts iosc as the output compositor, then runs nested
+# kwin_wayland and plasmashell on KWin's own Wayland socket. This mirrors the
+# proven KWin first-light smoke instead of treating KWin as a native Xios display
+# server.
+xios_session_kde() {
+    xs_write_status kde stopping "stopping current session"
+    xios_session_teardown "-> kde"
+    xs_settle
+    xs_set_active kde
+    xs_write_status kde starting "starting KWin + plasmashell (experimental)"
+    local script; script="$(xs_find_bringup run-kde-plasma.sh)" || {
+        xs_log "ERROR: run-kde-plasma.sh not found"; xs_write_status kde error "run-kde-plasma.sh missing"; return 1; }
+    xs_log "kde (experimental): $script"
+    bash "$script" || true
+    xs_ensure_xios kde
+    xs_write_status kde waiting "waiting for KWin/Plasma"
+    if [ -S "$XS_TMP/kwin-ios-test" ]; then
+        if pgrep -f "plasmashell" >/dev/null 2>&1; then
+            xs_log "kde up (kwin-ios-test + plasmashell running)."
+            xs_write_status kde up "KWin + plasmashell running"
+        else
+            xs_log "kde compositor up, but plasmashell is not running yet; see $XS_TMP/kde-plasma.log"
+            xs_write_status kde compositor-only "KWin running; plasmashell not confirmed"
+        fi
+    else
+        xs_log "ERROR: KWin did not create kwin-ios-test; see $XS_TMP/kde-plasma.log"
+        xs_write_status kde error "KWin failed; see kde-plasma.log"
+        return 1
+    fi
+}
+
 # app <name>: launch a Wayland client against the CURRENTLY RUNNING compositor.
 # No teardown — this rides on whatever compositor is up. Reuses run-kgx.sh's proven
 # client environment (private dbus bus dir, absolute WAYLAND_DISPLAY, GDK wayland,
@@ -413,7 +447,7 @@ xios_session_resize() {
     local owner
     owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
     case "$owner" in
-        iosc|mutter|gnome)
+        iosc|mutter|gnome|kde)
             xs_log "resize: restarting active preset '$owner' with requested display settings"
             xios_session_run "$owner"
             ;;
@@ -439,6 +473,7 @@ xios_session_run() {
         iosc)        xios_session_iosc ;;
         mutter)      xios_session_mutter ;;
         gnome)       xios_session_gnome ;;
+        kde|plasma)  xios_session_kde ;;
         app)         xios_session_app "${1:-}" ;;
         resize|display) xios_session_resize ;;
         stop|off)    xios_session_stop ;;
@@ -448,6 +483,7 @@ xios-session presets:
   iosc            iosc compositor + wallpaper + panel (works today)
   mutter          raw Mutter 46 --wayland (flat stage, no shell yet)
   gnome           gnome-shell --wayland (EXPERIMENTAL)
+  kde             KWin + plasmashell nested on iosc (EXPERIMENTAL)
   app <name>      launch a client (kgx|gnome-text-editor|gnome-calculator|<exec>)
                   against the running compositor
   resize          restart the active desktop with XIOS_SESSION_WIDTH/HEIGHT/DPI

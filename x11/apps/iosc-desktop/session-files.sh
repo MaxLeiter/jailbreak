@@ -23,7 +23,8 @@ session_manifest() {
     "$_SF_HERE/xios-session-lib.sh"         libexec/xios-session/xios-session-lib.sh          0644 \
     "$_SF_SHELLDIR/run-shell.sh"            libexec/xios-session/run-shell.sh                 0755 \
     "$_SF_WAYLAND/run-mutter.sh"            libexec/xios-session/run-mutter.sh                0755 \
-    "$_SF_WAYLAND/run-gnome-shell.sh"       libexec/xios-session/run-gnome-shell.sh           0755
+    "$_SF_WAYLAND/run-gnome-shell.sh"       libexec/xios-session/run-gnome-shell.sh           0755 \
+    "$_SF_WAYLAND/run-kde-plasma.sh"        libexec/xios-session/run-kde-plasma.sh            0755
 }
 
 # stage_session_files <root> — populate <root> (a local /var/jb equivalent)

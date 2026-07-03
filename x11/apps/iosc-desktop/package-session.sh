@@ -20,7 +20,7 @@ OUTDIR="$REPO_ROOT/x11/linux-build/out"
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT=/private/tmp/xios-session-deb
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.9"
+VER="1.0.10"
 ARCH="iphoneos-arm64"
 DEB="xios-session_${VER}_${ARCH}.deb"
 IMG="procursus-xbuild:bookworm-arm64"
@@ -43,7 +43,7 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: iosc (>= 0.9.0)
 Recommends: iosc-shell, xios
-Suggests: libmutter-14-0, gnome-shell
+Suggests: libmutter-14-0, gnome-shell, kwin, plasma-workspace
 Section: X11
 Priority: optional
 Installed-Size: ${INSTKB}
@@ -53,9 +53,10 @@ Description: pick-a-desktop session launcher for the Xios stack
  .
  It provides one on-device command, xios-session, with named presets:
  iosc (the lightweight iosc compositor + wallpaper + panel), mutter (raw Mutter
- --wayland), gnome (gnome-shell --wayland, experimental), app <name> (launch a
- Wayland client such as gnome-console against the running compositor) and stop
- (tear everything down). Each preset reuses the established run-*.sh bring-up
+ --wayland), gnome (gnome-shell --wayland, experimental), kde (KWin +
+ plasmashell nested on iosc, experimental), app <name> (launch a Wayland client
+ such as gnome-console against the running compositor) and stop (tear everything
+ down). Each preset reuses the established run-*.sh bring-up
  logic behind a clean name, with one bulletproof teardown so switching sessions
  never leaves a stale compositor or socket behind.
  .
