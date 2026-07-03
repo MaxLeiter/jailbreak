@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Deploy Mosaic (the macOS-style window-manager tweak + its Settings pane) and set it on/off.
-#   bin/mosaic.sh on    # install + enable
-#   bin/mosaic.sh off   # install + disable (dormant: no chrome, normal iPad)
-# Device override: MOSAIC_DEV=root@host bin/mosaic.sh off
+#   tweaks/_research/mosaic.sh on    # install + enable
+#   tweaks/_research/mosaic.sh off   # install + disable (dormant: no chrome, normal iPad)
+# Device override: MOSAIC_DEV=root@host tweaks/_research/mosaic.sh off
 set -euo pipefail
 
 STATE="${1:-on}"
 DEV="${MOSAIC_DEV:-root@MaxsiPad.local}"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 TW=$(ls -t "$ROOT"/tweaks/_research/carplayhost/packages/com.max.carplayhost_0.1.0_*.deb | head -1)
 PR=$(ls -t "$ROOT"/tweaks/_research/mosaicprefs/packages/com.max.mosaicprefs_*.deb | head -1)

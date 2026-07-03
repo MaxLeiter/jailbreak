@@ -12,13 +12,13 @@ Outputs in repo/:
   sileo-featured.json                 featured carousel
   meta/<pkg>.json                     (input) optional per-package metadata
 
-Run via the venv that has Pillow:  .repo-venv/bin/python bin/make-repo.py
+Run via the venv that has Pillow:  .repo-venv/bin/python bin/lib/make-repo.py
 Re-run after adding/removing .debs. No network needed.
 """
 import functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, "..", "repo"))
+REPO = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
 DEBS = os.path.join(REPO, "debs")
 META = os.path.join(REPO, "meta")
 

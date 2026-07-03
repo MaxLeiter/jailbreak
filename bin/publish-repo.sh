@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Regenerate the APT repo index and deploy it to Vercel (repo.maxleiter.com).
+# Regenerate the APT repo index and deploy it to Vercel.
+#
+#   bin/publish-repo.sh              # production (repo.maxleiter.com)
+#   bin/publish-repo.sh --staging    # low-cache staging repo (dev.repo.maxleiter.com)
+#   bin/publish-staging.sh           # same as --staging
 #
 # To publish a tweak: build it, copy its .deb into repo/debs/, then run this.
 #   bin/build.sh tweaks/<Name>
@@ -7,8 +11,19 @@
 #   bin/publish-repo.sh
 set -euo pipefail
 
+TARGET=prod
+case "${1:-}" in
+  --staging|staging) TARGET=staging ;;
+  "") ;;
+  *) echo "usage: bin/publish-repo.sh [--staging]" >&2; exit 2 ;;
+esac
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCKDIR="${TMPDIR:-/tmp}/maxleiter-repo-publish.lock"
+SCOPE="${VERCEL_SCOPE:-maxleiters-team}"
+# Staging keeps the historical dev.repo.maxleiter.com domain and repo-dev project.
+STAGING_DOMAIN="${STAGING_REPO_DOMAIN:-dev.repo.maxleiter.com}"
+STAGING_PROJECT="${STAGING_REPO_PROJECT:-repo-dev}"
 
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   echo "ERROR: another repo publish is already running ($LOCKDIR)" >&2
@@ -52,9 +67,9 @@ echo "==> Regenerating index (Packages / Release / depictions / assets)"
 # Use the Pillow venv if present (for icon/banner generation), else system python.
 PY="$REPO_ROOT/.repo-venv/bin/python"
 [ -x "$PY" ] || PY="python3"
-"$PY" "$REPO_ROOT/bin/make-repo.py"
-"$PY" "$REPO_ROOT/bin/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
-"$PY" "$REPO_ROOT/bin/audit-repo.py" --repo "$REPO_ROOT/repo"
+"$PY" "$REPO_ROOT/bin/lib/make-repo.py"
+"$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
+"$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$REPO_ROOT/repo"
 
 AFTER_INDEX="$(snapshot_debs)"
 if [ "$BEFORE" != "$AFTER_INDEX" ]; then
@@ -81,7 +96,14 @@ if [ "$BEFORE" != "$AFTER_SIGN" ]; then
   exit 1
 fi
 
-echo "==> Deploying to Vercel (maxleiters-team -> repo.maxleiter.com)"
 cd "$REPO_ROOT/repo"
-vercel deploy --prod --yes --scope maxleiters-team --local-config "$REPO_ROOT/repo/vercel.prod.json"
-echo "==> Live at https://repo.maxleiter.com"
+if [ "$TARGET" = staging ]; then
+  echo "==> Deploying staging repo to Vercel ($SCOPE/$STAGING_PROJECT -> $STAGING_DOMAIN)"
+  vercel deploy --prod --yes --scope "$SCOPE" --project "$STAGING_PROJECT" \
+    --local-config "$REPO_ROOT/repo/vercel.staging.json" --no-color
+  echo "==> Staging live at https://$STAGING_DOMAIN"
+else
+  echo "==> Deploying to Vercel ($SCOPE -> repo.maxleiter.com)"
+  vercel deploy --prod --yes --scope "$SCOPE" --local-config "$REPO_ROOT/repo/vercel.prod.json"
+  echo "==> Live at https://repo.maxleiter.com"
+fi

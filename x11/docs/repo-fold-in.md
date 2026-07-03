@@ -192,7 +192,7 @@ Steps 1 through 8 are prep. Step 9 is the Max gate.
    xios-session-stubs and xios-typelibs are debs; wave 3 = xios-native;
    wave 4 = xios-kde. A meta never ships before its closure: apt on device
    would fail the install, and Sileo shows a broken package.
-8. **Regenerate and check locally**: run `bin/make-repo.py` via the
+8. **Regenerate and check locally**: run `bin/lib/make-repo.py` via the
    .repo-venv, then sanity-check: every Depends of every staged deb
    resolves inside repo/debs + the live Procursus index (the externals we
    lean on today: libiosexec1, libpcre2-8-0, libmd0, libice6, libsm6,

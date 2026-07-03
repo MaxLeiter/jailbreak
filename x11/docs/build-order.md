@@ -40,7 +40,7 @@ the warm GTK volume, made so long-running tracks don't race the active GNOME age
 | 12 | `build-shell-libs.sh` | `procursus-vol-shell` | libupower-glib, geocode-glib, libgweather-4, libgeoclue | WARM #11; gnome-shell boot-blocker client libs (typelibs generated on-device) |
 | 13 | `build-session.sh` | `procursus-vol-shell` | gnome-session, gsd, session glue | WARM from #11 |
 | 14 | `build-eds.sh` | `procursus-vol-shell` | EDS, libical, tracker-FTS | WARM; needs ICU from #5 |
-| 15 | `build-audio-server.sh` | `procursus-vol-shell` | pulseaudio daemon debs, module-xios-sink | WARM (pulseaudio client + libsndfile + glib present) |
+| 15 | `build-audio-server.sh` | `procursus-vol-shell` | pulseaudio daemon debs, module-xios-sink/source | WARM (pulseaudio client + libsndfile + glib present) |
 | 16 | `build-qt.sh` then `build-qt-modules.sh` | `procursus-vol-qt` | qtbase 6.6.3, Qt6 modules | qt.sh stage 1 builds a native host Qt 6.6.3 into the volume (`QT_HOST_PATH`, one-time ~25 min); modules NEVER concurrent with qt.sh |
 | 17 | `build-kf6.sh` | `procursus-vol-qt` | KF6 wave debs | #16; NEVER concurrent with another build on the volume |
 
@@ -69,7 +69,7 @@ the warm GTK volume, made so long-running tracks don't race the active GNOME age
   entries to weak so libmutter loads on iOS; MANUAL today (GAP: wire it).
 - `tools/stamp-minos.py` — MinimumOSVersion floor stamp; idempotent, byte-identical
   data.tar; MUST run LAST, after `out/` stops churning.
-- `bin/make-repo.py` + `bin/publish-repo.sh` — repo generation (separate `repo/` tree).
+- `bin/lib/make-repo.py` + `bin/publish-repo.sh` — repo generation (separate `repo/` tree).
 
 ## Cascade TARGETS lists
 

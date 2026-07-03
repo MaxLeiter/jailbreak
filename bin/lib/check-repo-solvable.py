@@ -8,14 +8,14 @@ advertises an impossible install (e.g. a flavor meta depending on an unbuilt pkg
 Run over the WHOLE repo, not just metas. A small allowlist covers virtual/base
 names that live outside our repo (firmware, the Procursus base, etc.).
 
-Usage: bin/check-repo-solvable.py [repo/Packages]   (default: repo/Packages)
+Usage: bin/lib/check-repo-solvable.py [repo/Packages]   (default: repo/Packages)
 Exit 0 = clean, 1 = at least one unresolvable dependency.
 """
 import os
 import re
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PACKAGES = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "repo", "Packages")
 
 # Names satisfied outside our repo (Procursus base / virtual / bootstrap). These are
@@ -67,9 +67,9 @@ def main():
     available = set(ALLOW)
 
     # Base universe: names satisfiable outside this repo. Refresh
-    # bin/procursus-base-names.txt from a device by collecting Package/Provides
+    # bin/lib/procursus-base-names.txt from a device by collecting Package/Provides
     # from non-Max apt lists plus dpkg status, then stripping versions/arch quals.
-    base_file = os.path.join(REPO, "bin", "procursus-base-names.txt")
+    base_file = os.path.join(REPO, "bin", "lib", "procursus-base-names.txt")
     if os.path.exists(base_file):
         with open(base_file, encoding="utf-8", errors="replace") as fh:
             for line in fh:

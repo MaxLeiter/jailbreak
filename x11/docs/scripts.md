@@ -96,7 +96,7 @@ end-to-end):
 ### Notes
 
 - The publish-time `finalize_x11_graphics_debs` step in `bin/publish-repo.sh` /
-  `bin/publish-dev-repo.sh` DER-re-signs the graphics debs in `repo/debs` via
+  `bin/publish-staging.sh` DER-re-signs the graphics debs in `repo/debs` via
   `x11/linux-build/resign-graphics-packages.py` before the index is generated.
   The script self-classifies each Mach-O by its current entitlements (GPU/IOSurface
   IOKit markers gate it in; `platform-application`/`task_for_pid` split compositor

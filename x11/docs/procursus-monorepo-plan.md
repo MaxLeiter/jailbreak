@@ -271,8 +271,8 @@ Suites: rootful
 The repo generator should take a profile:
 
 ```bash
-./bin/make-repo.py --profile rootless
-./bin/make-repo.py --profile rootful
+./bin/lib/make-repo.py --profile rootless
+./bin/lib/make-repo.py --profile rootful
 ```
 
 Each profile owns its package input directory, `Packages`, `Release`, depictions, and
@@ -295,7 +295,7 @@ Normal development:
 ```bash
 ./linux-build/build-target.sh rootless-1900 tigervnc-package
 ./linux-build/package-target.sh rootless-1900 xios-server
-./bin/make-repo.py --profile rootless
+./bin/lib/make-repo.py --profile rootless
 ```
 
 Upstream sync:

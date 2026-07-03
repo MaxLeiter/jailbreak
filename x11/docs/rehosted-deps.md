@@ -7,7 +7,7 @@ that repo. This means a clean install of our X stack no longer breaks if
 `apt.procurs.us` is down or drops an old version.
 
 These debs are byte-for-byte the Procursus binaries, only **recompressed from
-zstd to gzip** so `bin/make-repo.py` can parse their control archives (its
+zstd to gzip** so `bin/lib/make-repo.py` can parse their control archives (its
 `control_dict()` uses Python `tarfile`, which has no zstd support). Recompression
 was done with the `procursus-xbuild:bookworm-arm64` container's `dpkg-deb`
 (`dpkg-deb -R` then `dpkg-deb -Zgzip --build`); the unpacked file tree and all

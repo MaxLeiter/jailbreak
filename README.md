@@ -2,6 +2,11 @@
 
 Jailbreak tweak development workspace for **MaxsiPad**.
 
+> **Want to see more about the X11/Wayland work?** See **[`x11/`](x11/)** — a
+> native Linux desktop (a real X11 server, a GPU Wayland compositor, and
+> GNOME/KDE apps) running on this iPad. Full write-up at
+> **[xios.maxleiter.com](https://xios.maxleiter.com)**.
+
 ## Device
 
 | Field | Value |
@@ -37,7 +42,9 @@ jailbreak/
 │   ├── build.sh          # build a tweak's .deb
 │   ├── install.sh        # build + install to iPad over SSH, then respring
 │   ├── sim.sh            # build for the iOS Simulator + load via simject (device-free)
-│   └── logs.sh           # live device console over USB (idevicesyslog)
+│   ├── logs.sh           # live device console over USB (idevicesyslog)
+│   ├── publish-repo.sh   # regenerate + deploy the APT repo (--staging for dev.repo)
+│   └── lib/              # repo-pipeline internals (make-repo, solvability check, audit)
 └── tweaks/
     └── HelloWorld/       # first tweak — alert + log from SpringBoard
         ├── Makefile
@@ -62,16 +69,16 @@ bin/logs.sh HelloWorld
 ## Sileo repo (hosted on Vercel)
 
 A static APT repo is published at **https://repo.maxleiter.com**. `repo/` holds
-the static site; `bin/make-repo.py` generates the index (`Packages`,
+the static site; `bin/lib/make-repo.py` generates the index (`Packages`,
 `Packages.gz`, `Release`, `index.html`, `CydiaIcon.png`) from the `.deb`s in
-`repo/debs/` — no extra deps. Use the dev publisher for low-cache iteration;
+`repo/debs/` — no extra deps. Use the staging publisher for low-cache iteration;
 production `.deb` filenames are immutable, so bump the package version/revision
 instead of replacing an already-published file.
 
 ```bash
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
-bin/publish-dev-repo.sh                      # regenerate index + deploy low-cache dev
+bin/publish-staging.sh                       # regenerate index + deploy low-cache staging (dev.repo.maxleiter.com)
 bin/publish-repo.sh                          # regenerate index + deploy to prod
 ```
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Sync X11 packages from X11/linux-build/out/ to repo/debs/.
+"""Sync X11 packages from x11/linux-build/out/ to repo/debs/.
 
 Usage:
-    python3 _sync_x11_packages.py --dry-run   # just print what would be done
-    python3 _sync_x11_packages.py              # do it
+    x11/tools/sync-packages-to-repo.py --dry-run   # just print what would be done
+    x11/tools/sync-packages-to-repo.py             # do it
 """
 
 import os
@@ -12,8 +12,9 @@ import shutil
 import sys
 from collections import defaultdict
 
-OUT_DIR = "X11/linux-build/out"
-REPO_DIR = "repo/debs"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+OUT_DIR = os.path.join(REPO_ROOT, "x11", "linux-build", "out")
+REPO_DIR = os.path.join(REPO_ROOT, "repo", "debs")
 
 # Parse {name}_{version}_{arch}.deb
 DEB_RE = re.compile(r"^(.+?)_(.+?)\.deb$")

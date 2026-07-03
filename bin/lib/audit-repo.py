@@ -55,7 +55,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--repo",
-        default=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "repo")),
+        default=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "repo")),
         help="repo root containing Packages and debs/",
     )
     args = parser.parse_args()

@@ -2,7 +2,7 @@
 """Re-DER-sign the X11/Wayland graphics packages in a repo/debs directory.
 
 This is the publish-time safety net invoked by ``finalize_x11_graphics_debs`` in
-``bin/publish-repo.sh`` / ``bin/publish-dev-repo.sh``. The per-package build
+``bin/publish-repo.sh`` / ``bin/publish-staging.sh``. The per-package build
 recipes already ``$(call SIGN,<pkg>,<ent>)`` their executables, but a .deb can be
 rebuilt, repacked, or copied through tooling that drops the code signature. iOS
 15+/16 AMFI rejects the IOKit/IOSurface/task_for_pid privileges these binaries
