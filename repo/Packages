@@ -1090,6 +1090,28 @@ Depiction: https://repo.maxleiter.com/depictions/iosc-shell.html
 Native Depiction: https://repo.maxleiter.com/depictions/iosc-shell.json
 Homepage: https://repo.maxleiter.com
 
+Package: iosc-shell
+Name: iosc desktop shell
+Version: 0.9.10
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: iosc (>= 0.9.0), libwayland0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libglib2.0-0, libharfbuzz0b, libgtkintl, librsvg2-common
+Recommends: xios-desktop-theme, x11-fonts-sf, gnome-console
+Section: X11
+Priority: optional
+Installed-Size: 452
+Description: lightweight desktop shell for the iosc compositor
+Filename: debs/iosc-shell_0.9.10_iphoneos-arm64.deb
+Size: 74448
+MD5sum: 408991bf10c21437888cf64a21f28d50
+SHA1: 6efdccc485a02f9d78c629ca28b3019fbd6ff308
+SHA256: 4c057fca3eafe7e12b342c373bfdaf70423ebc30384e5dfab3d8705c9436a3fb
+Icon: https://repo.maxleiter.com/icons/iosc-shell.png
+Depiction: https://repo.maxleiter.com/depictions/iosc-shell.html
+Native Depiction: https://repo.maxleiter.com/depictions/iosc-shell.json
+Homepage: https://repo.maxleiter.com
+
 Package: iso-codes
 Version: 4.15.0+ios1
 Architecture: iphoneos-arm64
@@ -8897,6 +8919,30 @@ Size: 24816
 MD5sum: febcde2b8f9ba238409f4d34a863d770
 SHA1: c59a7cefc38eae5519f8b381adab79289487a4fc
 SHA256: 6898966d52007578d3c6f2cfffcf51a7b4a1c44952776f5393950b9c3d6e25e4
+Icon: https://repo.maxleiter.com/icons/xios-session.png
+Depiction: https://repo.maxleiter.com/depictions/xios-session.html
+Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-session
+Name: Xios session launcher
+Version: 1.0.17
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: iosc (>= 0.9.0)
+Recommends: iosc-shell, xios
+Suggests: libmutter-14-0, gnome-shell, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
+Replaces: iosc-shell (<= 0.9.9)
+Section: X11
+Priority: optional
+Installed-Size: 92
+Description: pick-a-desktop session launcher for the Xios stack
+Filename: debs/xios-session_1.0.17_iphoneos-arm64.deb
+Size: 24818
+MD5sum: 71b97fff372e15574b862f917e3fe82f
+SHA1: 19e943f978f3024f2b6dbe1622465fe455c19abd
+SHA256: a77ccdcfd6a928df5ecaf999686e73481ac09ade34ed7fb9248cf1eadfffafef
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
