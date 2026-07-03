@@ -1,6 +1,6 @@
 Package: xios-server
 Name: Xios (IOSurface X server)
-Version: 1.20.11+ios2
+Version: 1.20.11+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
