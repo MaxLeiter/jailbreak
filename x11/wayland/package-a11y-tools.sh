@@ -17,7 +17,7 @@ OUTDIR="$REPO_ROOT/x11/linux-build/out"
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT=/private/tmp/xios-a11y-tools-deb
 STAGE="$STAGEROOT/xios-a11y-tools"
-VER="0.2.11"
+VER="0.2.12"
 ARCH="iphoneos-arm64"
 DEB="xios-a11y-tools_${VER}_${ARCH}.deb"
 
@@ -54,7 +54,7 @@ Description: accessibility smoke tools for Xios
  xios-a11y-tools installs small command-line probes and early bridge helpers for
  the Xios accessibility work. atspi-dump connects to the current AT-SPI bus and
  prints the registered desktop/application accessibility trees, including exposed
- action names and value ranges. xios-a11yd is
+ states, action names, and value ranges. xios-a11yd is
  the first read-only AT-SPI to Xios NDJSON helper; it listens on
  /var/jb/tmp/xios-a11y.sock, polls the AT-SPI tree, republishes only when the
  snapshot changes, routes basic activate/custom-action requests back to AT-SPI

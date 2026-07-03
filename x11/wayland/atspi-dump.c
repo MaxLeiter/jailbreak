@@ -57,6 +57,52 @@ static void print_actions(AtspiAccessible *obj)
     g_object_unref(action);
 }
 
+struct state_name {
+    AtspiStateType state;
+    const char *name;
+};
+
+static void print_states(AtspiAccessible *obj)
+{
+    static const struct state_name names[] = {
+        { ATSPI_STATE_ACTIVE, "active" },
+        { ATSPI_STATE_BUSY, "busy" },
+        { ATSPI_STATE_CHECKABLE, "checkable" },
+        { ATSPI_STATE_CHECKED, "checked" },
+        { ATSPI_STATE_EDITABLE, "editable" },
+        { ATSPI_STATE_ENABLED, "enabled" },
+        { ATSPI_STATE_EXPANDED, "expanded" },
+        { ATSPI_STATE_FOCUSABLE, "focusable" },
+        { ATSPI_STATE_FOCUSED, "focused" },
+        { ATSPI_STATE_INDETERMINATE, "indeterminate" },
+        { ATSPI_STATE_INVALID_ENTRY, "invalid" },
+        { ATSPI_STATE_MODAL, "modal" },
+        { ATSPI_STATE_PRESSED, "pressed" },
+        { ATSPI_STATE_REQUIRED, "required" },
+        { ATSPI_STATE_SELECTED, "selected" },
+        { ATSPI_STATE_SENSITIVE, "sensitive" },
+        { ATSPI_STATE_SHOWING, "showing" },
+        { ATSPI_STATE_VISIBLE, "visible" },
+    };
+
+    AtspiStateSet *states = atspi_accessible_get_state_set(obj);
+    if (!states) return;
+
+    int first = 1;
+    for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (!atspi_state_set_contains(states, names[i].state)) continue;
+        if (first) {
+            fputs(" states=[", stdout);
+            first = 0;
+        } else {
+            fputs(", ", stdout);
+        }
+        fputs(names[i].name, stdout);
+    }
+    if (!first) fputc(']', stdout);
+    g_object_unref(states);
+}
+
 static void print_value(AtspiAccessible *obj)
 {
     AtspiValue *value = atspi_accessible_get_value(obj);
@@ -100,6 +146,7 @@ static void dump_accessible(AtspiAccessible *obj, int depth)
     printf("- role=%s", role && *role ? role : "?");
     if (name && *name) printf(" name=\"%s\"", name);
     if (desc && *desc) printf(" desc=\"%s\"", desc);
+    print_states(obj);
     print_actions(obj);
     print_value(obj);
     putchar('\n');
