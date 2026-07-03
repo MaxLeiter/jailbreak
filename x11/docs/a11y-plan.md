@@ -35,7 +35,7 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `/var/jb/usr/libexec/at-spi-bus-launcher` inside the app's `dbus-run-session`.
   For smoke tests, `/var/jb/tmp/xios-a11y-force` enables the same path without
   needing to toggle iOS VoiceOver.
-- `xios-a11y-tools_0.2.6` ships `/var/jb/usr/local/bin/atspi-dump` and
+- `xios-a11y-tools_0.2.7` ships `/var/jb/usr/local/bin/atspi-dump` and
   `/var/jb/usr/local/bin/xios-a11yd`. On-device smoke on 2026-07-02: with fresh
   `iosc` and `XIOS_ENABLE_A11Y=1 xios-session app kgx`, the AT-SPI bus came up,
   registryd activated, and `atspi-dump --depth=4` against
@@ -67,7 +67,12 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `actions:["overview.open"]`. A fresh native Calculator smoke published 18
   elements and exposed one action-rich node, but labels were still empty and the
   roles were mostly `panel`/`grouping`; treat this as proof that actions are
-  flowing, not proof that GTK widgets are semantically complete.
+  flowing, not proof that GTK widgets are semantically complete. `0.2.7` adds
+  AT-SPI Value plumbing: snapshot nodes publish `Value.Text` or current numeric
+  value, and incoming `adjust` requests step `CurrentValue` by
+  `MinimumIncrement` clamped to min/max. A stable `0.2.7` native Console smoke
+  still published 12 nodes with no socket close; kgx exposed no value-bearing
+  nodes, so adjust behavior still needs a slider/spinbutton target.
 - Qt AT-SPI bridge recipe work has moved forward: `linux-build/recipes/qtbase.mk`
   now carries the round-3 revision with `FEATURE_dbus=ON`,
   `FEATURE_accessibility=ON`, `FEATURE_accessibility_atspi_bridge=ON`, and the
@@ -516,8 +521,8 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 | GTK4/Shell AT-SPI backends | in toolkits | config only (drop the GTK_A11Y=none gate) |
 | Qt AT-SPI bridge | recipe enabled, package/device validation pending | rebuild/package current qtbase, verify configure feature summary, then atspi-dump a Qt client on device |
 | GTK3 atk-bridge | compiled out (`gtk+3.0.mk:20`) | gtk3 rebuild against the shipped libatk-bridge, before P4 |
-| atspi-dump CLI | shipped in `xios-a11y-tools_0.2.6` | expand output only if xios-a11yd needs more probe coverage |
-| xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.6`; polls but suppresses unchanged reset/tree republishes; exposes action names, routes activate/custom action requests to AT-SPI Action.DoAction, and falls back to synthetic tap for activate-without-action | add event subscriptions, focus events, adjustable values, geometry correlation, PID correlation, and VoiceOver status mirroring |
+| atspi-dump CLI | shipped in `xios-a11y-tools_0.2.7` | expand output only if xios-a11yd needs more probe coverage |
+| xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.7`; polls but suppresses unchanged reset/tree republishes; exposes action names and values; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue | add event subscriptions, focus events, geometry correlation, PID correlation, and VoiceOver status mirroring |
 | iosc geometry feed | new | small compositor + shell-channel addition |
 | Xios app side | desktop publisher still SPEC; native host prototype exists | desktop Xios client still ~600-900 lines Swift; native host waits on helper |
 | iosc-shell AT-SPI objects | new | few hundred lines, libdbus (shipped) |
@@ -557,8 +562,10 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
   `activate` / `action` to `AtspiAction.DoAction`; `activate` falls back to a
   synthetic tap at the node center when no action is available. The HostA11y
   publisher already sends those messages from `accessibilityActivate()` and
-  custom actions. Device smoke confirms action names are on the wire for kgx, but
-  this has not yet been exercised through real VoiceOver gestures. Accept:
+  custom actions. `adjust` now calls AT-SPI Value.SetCurrentValue using the
+  target node's min/max/increment. Device smoke confirms action names are on the
+  wire for kgx, but this has not yet been exercised through real VoiceOver
+  gestures or against a confirmed slider/spinbutton. Accept:
   VoiceOver double-tap toggles a gtk4-demo checkbox, adjusts a slider, activates
   panel buttons; Tab in a docked keyboard moves the VoiceOver cursor. The
   Calculator smoke above shows why gtk4-demo or another control-dense GTK app is

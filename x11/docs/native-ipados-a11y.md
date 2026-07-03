@@ -190,9 +190,12 @@ or a new field with a safe default.
   `1003` expose `actions:["overview.open"]`. A fresh native Calculator smoke
   connected and published 18 elements, but the tree still lacked useful labels
   and was mostly `panel`/`grouping`, so it does not close the full-widget GTK
-  acceptance gate. Real VoiceOver gesture validation is still pending. The spawn
-  feed hardens correlation in P2. It supplements, not replaces, the desktop P1
-  acceptance.
+  acceptance gate. `xios-a11y-tools_0.2.7` also routes HostA11y adjustable
+  increment/decrement messages to AT-SPI Value.SetCurrentValue and publishes
+  value text/current values in snapshots; the stable Console smoke had no
+  value-bearing nodes, so this still needs a slider/spinbutton target. Real
+  VoiceOver gesture validation is still pending. The spawn feed hardens
+  correlation in P2. It supplements, not replaces, the desktop P1 acceptance.
   Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
   gate removed from ioscd, IsEnabled property write, atspi-dump smoke test)
   gate this path exactly as they gate the desktop one. Accept: VoiceOver swipes

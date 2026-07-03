@@ -152,6 +152,33 @@ static int json_get_uint(const char *json, const char *key, unsigned *out)
     return 1;
 }
 
+static int json_get_int(const char *json, const char *key, int *out)
+{
+    if (!json || !key || !out) return 0;
+    char needle[64];
+    snprintf(needle, sizeof(needle), "\"%s\"", key);
+    const char *p = strstr(json, needle);
+    if (!p) return 0;
+    p += strlen(needle);
+    p = strchr(p, ':');
+    if (!p) return 0;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    int sign = 1;
+    if (*p == '-') {
+        sign = -1;
+        p++;
+    }
+    if (*p < '0' || *p > '9') return 0;
+    int v = 0;
+    while (*p >= '0' && *p <= '9') {
+        v = v * 10 + (*p - '0');
+        p++;
+    }
+    *out = sign * v;
+    return 1;
+}
+
 static const char *basename_no_args(const char *s, char *buf, size_t len)
 {
     if (!s || !*s || !buf || len == 0) return "";
@@ -280,6 +307,32 @@ static char *node_actions_json(AtspiAccessible *obj)
     return g_string_free(out, FALSE);
 }
 
+static char *node_value_text(AtspiAccessible *obj)
+{
+    AtspiValue *value = atspi_accessible_get_value(obj);
+    if (!value) return g_strdup("");
+
+    GError *error = NULL;
+    char *text = atspi_value_get_text(value, &error);
+    if (error) {
+        g_clear_error(&error);
+        text = NULL;
+    }
+    if (!text || !*text) {
+        g_free(text);
+        double current = atspi_value_get_current_value(value, &error);
+        if (error) {
+            g_clear_error(&error);
+            text = g_strdup("");
+        } else {
+            text = g_strdup_printf("%.6g", current);
+        }
+    }
+
+    g_object_unref(value);
+    return text ? text : g_strdup("");
+}
+
 static void emit_node(struct emit_ctx *ctx, AtspiAccessible *obj, unsigned parent, int idx, int depth)
 {
     if (!ctx || !obj || depth > MAX_DEPTH || ctx->count >= MAX_NODES) return;
@@ -303,14 +356,18 @@ static void emit_node(struct emit_ctx *ctx, AtspiAccessible *obj, unsigned paren
     ctx->count++;
     client_remember_node(ctx->c, id, ctx->win, r, obj);
     char *actions = node_actions_json(obj);
+    char *value = node_value_text(obj);
+    char *jvalue = json_escape(value);
 
     g_string_append_printf(ctx->out,
                            "{\"t\":\"upsert\",\"id\":%u,\"win\":%u,\"parent\":%u,\"idx\":%d,"
-                           "\"role\":\"%s\",\"label\":\"%s\",\"value\":\"\",\"hint\":\"%s\","
+                           "\"role\":\"%s\",\"label\":\"%s\",\"value\":\"%s\",\"hint\":\"%s\","
                            "\"traits\":[%s],\"actions\":[%s],\"frame\":[%d,%d,%d,%d]}\n",
-                           id, ctx->win, parent, idx, jrole, jname, jdesc, trait, actions,
+                           id, ctx->win, parent, idx, jrole, jname, jvalue, jdesc, trait, actions,
                            r.x, r.y, r.width, r.height);
 
+    g_free(jvalue);
+    g_free(value);
     g_free(actions);
     g_free(jname);
     g_free(jrole);
@@ -436,6 +493,46 @@ static void activate_node(struct client *c, unsigned id)
     client_printf(c, "{\"t\":\"tap\",\"win\":%u,\"x\":%d,\"y\":%d}\n", ref->win, x, y);
 }
 
+static int adjust_node(struct client *c, unsigned id, int dir)
+{
+    struct node_ref *ref = client_find_node(c, id);
+    if (!ref || !ref->obj || dir == 0) return 0;
+    AtspiValue *value = atspi_accessible_get_value(ref->obj);
+    if (!value) return 0;
+
+    GError *error = NULL;
+    double current = atspi_value_get_current_value(value, &error);
+    if (error) {
+        g_clear_error(&error);
+        g_object_unref(value);
+        return 0;
+    }
+    double min = atspi_value_get_minimum_value(value, &error);
+    if (error) {
+        g_clear_error(&error);
+        min = current;
+    }
+    double max = atspi_value_get_maximum_value(value, &error);
+    if (error) {
+        g_clear_error(&error);
+        max = current;
+    }
+    double inc = atspi_value_get_minimum_increment(value, &error);
+    if (error) {
+        g_clear_error(&error);
+        inc = 0.0;
+    }
+    if (inc <= 0.0) inc = (max > min) ? (max - min) / 10.0 : 1.0;
+
+    double next = current + (dir > 0 ? inc : -inc);
+    if (next < min) next = min;
+    if (next > max) next = max;
+    int ok = atspi_value_set_current_value(value, next, &error) ? 1 : 0;
+    if (error) g_clear_error(&error);
+    g_object_unref(value);
+    return ok;
+}
+
 static int make_listener(void)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -524,6 +621,13 @@ static void read_client(struct client *c)
         unsigned idx = 0;
         if (json_get_uint(buf, "id", &id) && json_get_uint(buf, "idx", &idx)) {
             do_node_action(c, id, idx);
+        }
+    }
+    if (strstr(buf, "\"adjust\"")) {
+        unsigned id = 0;
+        int dir = 0;
+        if (json_get_uint(buf, "id", &id) && json_get_int(buf, "dir", &dir)) {
+            adjust_node(c, id, dir);
         }
     }
 }
