@@ -21,18 +21,17 @@ ectomy** (the final first-paint blocker — `Gvc.MixerControl` ctor hangs → bl
 watchdog SIGKILL; skipping it lets the shell paint).
 
 REMAINING (polish, not blockers):
-1. **Persistent launch — ALREADY BUILT, just use the daemon path.** gnome-shell dies only when the
+1. **Persistent launch — ALREADY BUILT, use ioscd's SESSION path.** gnome-shell dies only when the
    *launching ssh session* closes (sshd reaps its children; `setsid` is absent on device). An
    attached/synchronous run is rock-stable. The desktop's real launch path already solves this:
-   `apps/iosc-desktop/xios-sessiond` is a launchd daemon (com.max.xios-sessiond.plist) that watches
-   `/var/jb/tmp/xios-request.json` and runs the `gnome` preset (`xios_session_run gnome` ->
-   run-gnome-shell.sh) from ITS process tree — owned by launchd, not sshd — so gnome-shell survives.
-   Launch it with **`xios-session -d gnome`** (the `-d`/--via-daemon flag writes the request; without
-   `-d` the CLI runs in-process and dies with the ssh shell). Do NOT `ssh 'bash -s' < run-gnome-shell.sh`
+   ioscd accepts `SESSION` on `/var/jb/tmp/ioscd.sock` and runs `xios-session gnome`
+   from its launchd-owned process tree, not sshd, so gnome-shell survives. Launch it
+   with **`xios-session -d gnome`** (without `-d` the CLI runs in-process and dies with the ssh shell).
+   Do NOT `ssh 'bash -s' < run-gnome-shell.sh`
    for a persistent session. **`x11/wayland/restore-gnome.sh`** does the whole comeback: verifies the
    persistent artifacts (they live under /var/jb, so they survive reboot — only /tmp runtime state is
-   lost), re-asserts the libatk-bridge weak-import, brings up xios-sessiond, and launches via the
-   daemon. run-gnome-shell.sh also now writes a python fork+setsid shim (helps, but the daemon path is
+   lost), re-asserts the libatk-bridge weak-import, ensures ioscd is reachable, and launches via the
+   SESSION socket. run-gnome-shell.sh also now writes a python fork+setsid shim (helps, but the ioscd path is
    the real fix). Promoted on-device gir scripts: gir-build-lib-ondevice.sh, gir-build-gdm-ondevice.sh,
    gir-rescan-st-shell-ondevice.sh (for regen if a typelib is ever missing).
 2. **Volume slider** is disabled (patch 8) until libgvc/libpulse-17 `Gvc.MixerControl` construction

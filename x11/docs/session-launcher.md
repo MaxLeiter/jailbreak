@@ -13,8 +13,7 @@ One shared library plus two triggers, all under `x11/apps/iosc-desktop/`:
 |------|--------------|------|
 | `xios-session-lib.sh` | `/var/jb/libexec/xios-session/` | teardown + preset bring-up (single source of truth) |
 | `xios-session` | `/var/jb/usr/local/bin/` (in PATH) | on-device / SSH CLI trigger |
-| `xios-sessiond` | `/var/jb/libexec/xios-session/` | root daemon; serves the in-app picker |
-| `com.max.xios-sessiond.plist` | `/var/jb/Library/LaunchDaemons/` | keeps the daemon up |
+| `ioscd` SESSION verb | `/var/jb/tmp/ioscd.sock` | request/reply path used by the in-app picker |
 | `run-shell.sh`, `run-mutter.sh`, `run-gnome-shell.sh` | `/var/jb/libexec/xios-session/` | reused bring-up scripts |
 
 The library reuses the existing `run-*.sh` scripts behind clean preset names; the
@@ -62,8 +61,8 @@ The `iosc` preset forwards `IOSC_PANEL_OPACITY` (0-100) when set, e.g.
   kills ALL of iosc / mutter / gnome-shell / Xios / panels / clients / session
   buses, then removes every stale `/var/jb/tmp/{wayland-0(.lock), xios.json,
   *-ddx.sock, *-input.sock, iosc-wm.sock, iosc-native.sock}`. The kill pattern is
-  anchored to binary paths so it never matches `xios-session` / `xios-sessiond`
-  themselves (verified), and it also skips `$$`/`$PPID`.
+  anchored to binary paths so it never matches `xios-session` itself
+  (verified), and it also skips `$$`/`$PPID`.
 - **(b) Screen must be awake.** The Xios Metal app returns a nil device when
   backgrounded, so the iPad must be **unlocked and awake** when a preset launches.
   With the in-app picker this is automatic (you're looking at the app). Over SSH,
@@ -99,12 +98,11 @@ xios-session stop                 # back to SpringBoard
 xios-session status               # last session status (JSON)
 ```
 
-The CLI calls the shared library directly, so it works with no daemon running.
-Add `-d`/`--via-daemon` to exercise the app-style daemon path: it prefers the
-existing `/var/jb/tmp/ioscd.sock` control socket, falling back to the legacy
-request file if no Unix-socket client is installed.
+The CLI calls the shared library directly. Add `-d`/`--via-daemon` to exercise
+the same `/var/jb/tmp/ioscd.sock` SESSION path used by the app; if ioscd is not
+running or does not acknowledge the request, the command fails.
 
-### Path 2 — in-app picker (socket first; request-file fallback)
+### Path 2 — in-app picker (ioscd socket)
 
 The Xios app's Tools card gets a "Desktop Session" section. Tapping a preset
 connects to `/var/jb/tmp/ioscd.sock` and writes:
@@ -114,19 +112,8 @@ SESSION<TAB>iosc<TAB><TAB>1080<TAB>1440<TAB>176
 ```
 
 `ioscd` forks the existing `xios-session` CLI, so the same shared library owns
-teardown, settle, and bring-up. If the socket is absent or an older `ioscd` does
-not understand `SESSION`, the app falls back to writing
-`/var/jb/tmp/xios-request.json`:
-
-```json
-{ "action": "session", "preset": "iosc", "created_at": "2026-07-01T14:00:00" }
-```
-
-`xios-sessiond` still watches that file (the SAME channel the app already uses for
-`display-profile` requests — it ignores any `action` other than `session`, so the
-two coexist) and runs the matching preset. `created_at` changes on every write, so
-re-picking the same preset re-triggers. The daemon primes itself with the file's
-current contents at startup, so a stale request never auto-launches on boot.
+teardown, settle, and bring-up. There is no request-file fallback for session
+picks; `/var/jb/tmp/xios-request.json` remains only for display-profile requests.
 
 Result feedback: both paths write `/var/jb/tmp/xios-session-status.json`
 (`{"preset","state","message","at"}`) which the app / CLI can poll. `state` walks
@@ -137,10 +124,10 @@ painted"). The app can surface `message` live so the picker shows what's launchi
 ## Install
 
 - Deb (shippable): `bash x11/apps/iosc-desktop/package-session.sh` →
-  `xios-session_1.0.3_iphoneos-arm64.deb` (postinst bootstraps the daemon). Depends
-  on `iosc`; recommends `iosc-shell` (for `run-shell.sh` + panel) and `xios` (the app).
+  `xios-session_<version>_iphoneos-arm64.deb`. Depends on `iosc`; recommends
+  `iosc-shell` (for `run-shell.sh` + panel) and `xios` (the app).
 - Fast iterate (lead, touches device):
-  `bash x11/apps/iosc-desktop/install-xios-session.sh` (scp + bootstrap).
+  `bash x11/apps/iosc-desktop/install-xios-session.sh` (scp + chmod).
 
 ## In-app picker spec (for the Xios app)
 

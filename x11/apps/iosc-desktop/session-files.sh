@@ -21,11 +21,9 @@ session_manifest() {
   printf '%s\t%s\t%s\n' \
     "$_SF_HERE/xios-session"                usr/local/bin/xios-session                        0755 \
     "$_SF_HERE/xios-session-lib.sh"         libexec/xios-session/xios-session-lib.sh          0644 \
-    "$_SF_HERE/xios-sessiond"               libexec/xios-session/xios-sessiond                0755 \
     "$_SF_SHELLDIR/run-shell.sh"            libexec/xios-session/run-shell.sh                 0755 \
     "$_SF_WAYLAND/run-mutter.sh"            libexec/xios-session/run-mutter.sh                0755 \
-    "$_SF_WAYLAND/run-gnome-shell.sh"       libexec/xios-session/run-gnome-shell.sh           0755 \
-    "$_SF_HERE/com.max.xios-sessiond.plist" Library/LaunchDaemons/com.max.xios-sessiond.plist 0644
+    "$_SF_WAYLAND/run-gnome-shell.sh"       libexec/xios-session/run-gnome-shell.sh           0755
 }
 
 # stage_session_files <root> — populate <root> (a local /var/jb equivalent)

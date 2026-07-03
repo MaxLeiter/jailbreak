@@ -1,19 +1,18 @@
-# session-launcher — the flavor switcher (CLI + daemon + in-app picker)
+# session-launcher — the flavor switcher (CLI + ioscd + in-app picker)
 
 ## Ownership
-Letting the user pick/switch desktop flavors from the iPad: the CLI, the request-watching daemon, and the in-app ⧉ picker's backend. Reuses the real `run-*.sh` bring-up scripts (does not reinvent them).
+Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SESSION` request path, and the in-app ⧉ picker's backend. Reuses the real `run-*.sh` bring-up scripts (does not reinvent them).
 
 ## Key files (all under `x11/apps/iosc-desktop/`)
 - `xios-session-lib.sh` — single source of truth: ONE bulletproof teardown (kills iosc/mutter/gnome-shell/Xios/panels/clients/session-buses + rm stale wayland-0/xios.json/*-ddx.sock/*-input.sock) + preset fns that CALL `run-shell.sh`/`run-mutter.sh`/`run-gnome-shell.sh`. Resolver prefers the INSTALLED script (/var/jb/usr/local/bin, then /var/jb/usr/bin) over a pinned libexec copy.
 - `xios-session` — CLI: `xios-session iosc|mutter|gnome|app <name>|stop|status`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal).
-- `xios-sessiond` + `com.max.xios-sessiond.plist` — LaunchDaemon watching `/var/jb/tmp/xios-request.json` for `{"action":"session","preset":...}` (same channel the app uses for display-profiles; filters on `action`). Serves the request via the lib.
-- `package-session.sh` → current `xios-session_1.0.4_iphoneos-arm64.deb` (in repo/debs + linux-build/out). `install-xios-session.sh` — lead-run scp+bootstrap. Doc: `x11/docs/session-launcher.md`.
-- In-app picker: xios-app commit 828435f (⧉ button → modal; writes xios-request.json). Status line polls `/var/jb/tmp/xios-session-status.json`.
+- `package-session.sh` → current `xios-session_1.0.4_iphoneos-arm64.deb` (in repo/debs + linux-build/out). `install-xios-session.sh` — lead-run scp+chmod. Doc: `x11/docs/session-launcher.md`.
+- In-app picker: ⧉ button → modal; sends `SESSION` over `/var/jb/tmp/ioscd.sock`. Status line polls `/var/jb/tmp/xios-session-status.json`.
 
 ## Current state — built, installed (1.0.4), CLI works
 - Presets: iosc (works), mutter (up), gnome (experimental), app <name> (launch a client, no teardown), stop (→ SpringBoard).
 - GNOME success signal keys off "GNOME Shell started at" in gnome-shell.log (not xios.json). IOSC_PANEL_OPACITY forwarded. Resolver flip applied.
-- Local pickup: `xios-sessiond` now parses optional `width`/`height`/`dpi` fields on `action=session` requests. For iosc it exports `IOSC_LOGICAL=WxH` before calling the shared launcher, so the in-app ⧉ picker can choose the next desktop dimensions. Verified on-device via `width=1080 height=1440 dpi=176`: daemon log showed the fields and launched `iosc -logical 1080x1440`; `xios.json` reported the expected `2160x2880` IOSurface.
+- Local pickup: ioscd parses optional `width`/`height`/`dpi` fields on `SESSION` requests and exports `IOSC_LOGICAL=WxH` before calling the shared launcher, so the in-app ⧉ picker can choose the next desktop dimensions.
 
 ## Active display ownership — FIXED in 1.0.4
 - `xios-session-lib.sh` records the owner in `/var/jb/tmp/xios-active-session` when launching `iosc`, `mutter`, or `gnome`, and clears it on `stop`.

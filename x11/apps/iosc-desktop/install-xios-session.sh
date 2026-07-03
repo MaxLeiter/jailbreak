@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install the Xios session launcher to the device WITHOUT building a deb — scp the
-# scripts + plist and bootstrap the daemon. Run by the LEAD (touches the device);
+# scripts. Run by the LEAD (touches the device);
 # handy for iterating faster than package-session.sh -> Sileo. For a shippable
 # artifact use package-session.sh instead.
 #
@@ -18,19 +18,15 @@ echo "==> mkdir on-device dirs"
 DEST_DIRS="$(session_manifest | awk -F'\t' '{ sub("/[^/]*$", "", $2); print "/var/jb/" $2 }' | sort -u | tr '\n' ' ')"
 ssh_ "mkdir -p $DEST_DIRS"
 
-echo "==> copy the ship manifest (CLI + lib + daemon + bring-up scripts + plist)"
+echo "==> copy the ship manifest (CLI + lib + bring-up scripts)"
 while IFS=$'\t' read -r src dst mode; do
   scp_ "$src" "root@$IP:/var/jb/$dst"
 done < <(session_manifest)
 
-echo "==> perms + (re)bootstrap the watcher daemon"
+echo "==> perms"
 CHMODS="$(session_manifest | awk -F'\t' '{ printf "chmod %s /var/jb/%s; ", $3, $2 }')"
-ssh_ "$CHMODS \
-      chown root:wheel /var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist; \
-      launchctl bootout system /var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist 2>/dev/null; \
-      launchctl bootstrap system /var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist; \
-      sleep 1; echo '--- xios-sessiond.log ---'; tail -5 /var/jb/tmp/xios-sessiond.log 2>/dev/null"
+ssh_ "$CHMODS"
 
 echo "==> installed. From an SSH shell or the terminal on-device:"
 echo "      xios-session iosc | mutter | gnome | app kgx | stop | status"
-echo "    In-app picker prefers /var/jb/tmp/ioscd.sock SESSION; xios-sessiond keeps the request-file fallback."
+echo "    In-app picker requires /var/jb/tmp/ioscd.sock SESSION."

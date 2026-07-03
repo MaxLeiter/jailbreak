@@ -11,10 +11,10 @@
 #
 # This script (1) VERIFIES the persistent artifacts, (2) re-applies the one persistent edit worth
 # re-checking (libatk-bridge weak import), then (3) launches GNOME the PERSISTENT way: through
-# xios-sessiond (`xios-session -d gnome`), whose daemon is owned by launchd — so gnome-shell is
-# NOT a child of this ssh session and survives it closing. (Launching run-gnome-shell.sh directly
-# over ssh makes gnome-shell an sshd child that dies when the connection drops — that was the only
-# reason first-light sessions didn't persist.)
+# ioscd's SESSION socket (`xios-session -d gnome`), whose daemon is owned by launchd — so
+# gnome-shell is NOT a child of this ssh session and survives it closing. (Launching
+# run-gnome-shell.sh directly over ssh makes gnome-shell an sshd child that dies when the
+# connection drops — that was the only reason first-light sessions didn't persist.)
 #
 # If the VERIFY step finds typelibs missing (unexpected — they persist), regenerate them with the
 # on-device gir scripts + the per-lib flag table documented in docs/handoff/gnome-session.md:
@@ -58,21 +58,15 @@ else
 fi
 EOSH
 
-echo "==> (3) ensure xios-sessiond is up (launchd), then request the gnome preset (PERSISTENT)"
+echo "==> (3) request the gnome preset via ioscd SESSION (PERSISTENT)"
 "${SSH[@]}" 'bash -s' <<'EOSH'
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-# bring the watcher daemon up if launchd hasn't (idempotent)
-if ! ps ax | grep -v grep | grep -q xios-sessiond; then
-  launchctl bootstrap system /var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist 2>/dev/null || true
-  sleep 1
-fi
 if command -v xios-session >/dev/null 2>&1; then
-  echo '   launching via daemon: xios-session -d gnome'
+  echo '   launching via ioscd: xios-session -d gnome'
   xios-session -d gnome
 else
-  echo '   xios-session CLI missing; writing the request file directly'
-  printf '{"action":"session","preset":"gnome","created_by":"restore-gnome.sh","created_at":"%s"}\n' \
-    "$(date '+%Y-%m-%dT%H:%M:%S')" > /var/jb/tmp/xios-request.json
+  echo '   xios-session CLI missing; install xios-session first' >&2
+  exit 1
 fi
 EOSH
 

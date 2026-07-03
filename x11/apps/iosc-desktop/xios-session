@@ -12,13 +12,12 @@
 #   xios-session stop            # tear everything down, back to SpringBoard
 #   xios-session status          # print the last session status
 #
-# Optional for --via-daemon requests:
+# Optional for ioscd requests:
 #   XIOS_SESSION_WIDTH=1080 XIOS_SESSION_HEIGHT=1440 XIOS_SESSION_DPI=176 xios-session -d iosc
 #
 # By default it acts IMMEDIATELY (calls the shared library — no daemon needed, so
-# it works over a bare SSH shell). Pass -d/--via-daemon to instead write the same
-# ioscd socket the in-app picker uses, falling back to the legacy request file
-# (/var/jb/tmp/xios-request.json) if no socket client is installed.
+# it works over a bare SSH shell). Pass -d/--via-daemon to instead send the same
+# ioscd socket request the in-app picker uses.
 #
 # GOTCHA (b): the iPad screen must be AWAKE + UNLOCKED, or the Xios Metal app is
 # suspended by FrontBoard and presents a black frame. Unlock the device first.
@@ -37,7 +36,6 @@ done
 # shellcheck source=/dev/null
 . "$LIB"
 
-REQ="${XS_TMP:-/var/jb/tmp}/xios-request.json"
 IOSCD_SOCK="${XS_TMP:-/var/jb/tmp}/ioscd.sock"
 VIA_DAEMON=0
 
@@ -64,24 +62,6 @@ case "$PRESET" in
         exit 0 ;;
 esac
 
-write_request_file() {
-    local preset="$1" app="${2:-}" ts
-    ts="$(date '+%Y-%m-%dT%H:%M:%S')"
-    {
-        printf '{\n'
-        printf '  "action": "session",\n'
-        printf '  "preset": "%s",\n' "$preset"
-        [ -n "$app" ] && printf '  "app": "%s",\n' "$app"
-        [ -n "${XIOS_SESSION_WIDTH:-}" ] && printf '  "width": %s,\n' "$XIOS_SESSION_WIDTH"
-        [ -n "${XIOS_SESSION_HEIGHT:-}" ] && printf '  "height": %s,\n' "$XIOS_SESSION_HEIGHT"
-        [ -n "${XIOS_SESSION_DPI:-}" ] && printf '  "dpi": %s,\n' "$XIOS_SESSION_DPI"
-        printf '  "created_by": "xios-session-cli",\n'
-        printf '  "created_at": "%s"\n' "$ts"
-        printf '}\n'
-    } >"$REQ.tmp" && mv -f "$REQ.tmp" "$REQ"
-    echo "xios-session: wrote session request preset=$preset${app:+ app=$app} -> $REQ (xios-sessiond will serve it)"
-}
-
 send_ioscd_session() {
     local preset="$1" app="${2:-}" line ack
     [ -S "$IOSCD_SOCK" ] || return 1
@@ -98,13 +78,13 @@ send_ioscd_session() {
 }
 
 if [ "$VIA_DAEMON" = 1 ]; then
-    # Mirror the in-app picker: prefer ioscd.sock, then keep the file fallback
-    # for older package sets.
+    # Mirror the in-app picker: send the request to ioscd.sock.
     APP="${2:-}"
     if send_ioscd_session "$PRESET" "$APP"; then
         echo "xios-session: sent session request preset=$PRESET${APP:+ app=$APP} -> $IOSCD_SOCK"
     else
-        write_request_file "$PRESET" "$APP"
+        echo "xios-session: ioscd SESSION request failed at $IOSCD_SOCK" >&2
+        exit 1
     fi
     exit 0
 fi

@@ -3,9 +3,9 @@
 #
 # One place that knows how to (1) tear down whatever desktop session is currently
 # on the iPad and (2) bring up a chosen one, then relaunch the Xios display app.
-# Both the on-device CLI (`xios-session`) and the request-file daemon
-# (`xios-sessiond`) source this file and call `xios_session_run`, so there is ONE
-# code path whether Max picks a preset from the Xios app or a terminal.
+# Both the on-device CLI (`xios-session`) and ioscd's SESSION handler use this
+# file, so there is ONE code path whether Max picks a preset from the Xios app or
+# a terminal.
 #
 # Presets (see xios_session_run):
 #   iosc         iosc compositor + wallpaper + panel   (the lightweight desktop; works today)

@@ -960,49 +960,19 @@ final class XScreenView: UIView {
         return s.hasPrefix("SESSION_STARTED")
     }
 
-    private func writeSessionRequestFile(_ preset: String, app: String?,
-                                         display: DisplayProfile?) -> Bool {
-        // Compatibility path for older installs where ioscd does not yet speak
-        // SESSION. The xios-sessiond LaunchDaemon watches this file.
-        var obj: [String: Any] = [
-            "action": "session",
-            "preset": preset,
-            "created_by": "Xios.app",
-            "created_at": ISO8601DateFormatter().string(from: Date()),
-        ]
-        if let app = app { obj["app"] = app }
-        if preset != "app", preset != "stop", let display {
-            obj["display_profile"] = display.name
-            obj["width"] = display.width
-            obj["height"] = display.height
-            if display.dpi > 0 { obj["dpi"] = display.dpi }
-        }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: obj,
-                                                  options: [.prettyPrinted, .sortedKeys])
-            try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
-            return true
-        } catch {
-            lastToolMessage = "Session request failed: \(error.localizedDescription)"
-            return false
-        }
-    }
-
-    /// Pick a desktop flavor from the device. Prefer the ioscd control socket for
-    /// request/reply behavior; fall back to the legacy request file while package
-    /// versions may be out of sync.
+    /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
                                      display: DisplayProfile? = nil) {
-        let viaSocket = sendSessionRequestToIOSCD(preset, app: app, display: display)
-        let ok = viaSocket || writeSessionRequestFile(preset, app: app, display: display)
-        if ok {
+        if sendSessionRequestToIOSCD(preset, app: app, display: display) {
             lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
                 + (display.map { " \($0.detail)" } ?? "")
+            // Track the switch from here on (card line + full-screen banner once dismissed),
+            // so it survives the app staying up through a compositor swap.
+            startSessionIndicator()
+        } else {
+            lastToolMessage = "Session request failed: ioscd socket unavailable"
         }
         writeDebugSnapshot()
-        // Track the switch from here on (card line + full-screen banner once dismissed),
-        // so it survives the app staying up through a compositor swap.
-        startSessionIndicator()
     }
 
     private func reloadRuntimeConfig() {

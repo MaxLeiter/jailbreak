@@ -4,7 +4,7 @@
 #   bash x11/apps/iosc-desktop/package-session.sh
 #
 # Ships the "pick a preset -> it launches" flow. The file list (CLI, lib,
-# daemon, reused run-*.sh bring-up copies, LaunchDaemon plist) lives in ONE
+# reused run-*.sh bring-up copies) lives in ONE
 # place — session-files.sh — shared with install-xios-session.sh, so the deb
 # and the scp fast path cannot diverge.
 #
@@ -59,44 +59,15 @@ Description: pick-a-desktop session launcher for the Xios stack
  logic behind a clean name, with one bulletproof teardown so switching sessions
  never leaves a stale compositor or socket behind.
  .
- It also installs xios-sessiond as a compatibility watcher for the request file
- (/var/jb/tmp/xios-request.json). Newer Xios app builds prefer the existing
- ioscd control socket for session picks and fall back to that file while package
- versions may be out of sync.
+ In-app session picks use the ioscd control socket; this package does not ship
+ a request-file watcher or legacy fallback path.
 EOF
-
-# 3. postinst — (re)bootstrap the watcher daemon. No chmod/chown here: modes
-#    come from the staged tree (session-files.sh) and ownership from the
-#    container's chown -R 0:0; dpkg preserves both.
-cat > "$STAGE/DEBIAN/postinst" <<'EOF'
-#!/bin/bash
-set -e
-PLIST=/var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist
-if command -v launchctl >/dev/null 2>&1; then
-    launchctl bootout system "$PLIST" 2>/dev/null || true
-    launchctl bootstrap system "$PLIST" 2>/dev/null || true
-fi
-exit 0
-EOF
-chmod 0755 "$STAGE/DEBIAN/postinst"
-
-# 4. prerm — stop the daemon before removal
-cat > "$STAGE/DEBIAN/prerm" <<'EOF'
-#!/bin/bash
-set -e
-PLIST=/var/jb/Library/LaunchDaemons/com.max.xios-sessiond.plist
-if command -v launchctl >/dev/null 2>&1; then
-    launchctl bootout system "$PLIST" 2>/dev/null || true
-fi
-exit 0
-EOF
-chmod 0755 "$STAGE/DEBIAN/prerm"
 
 echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
 echo "installed=${INSTKB}KB"
 
-# 5. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
+# 3. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
 #    macOS host, or directly when already running as root inside one.
 mkdir -p "$OUTDIR" "$REPODEBS"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
