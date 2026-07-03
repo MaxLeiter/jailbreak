@@ -42,6 +42,7 @@ keep = {
     "shell",
     "statusnotifierwatcher",
     "themes",
+    "wallpapers",
 }
 
 def repl(match: re.Match[str]) -> str:
@@ -89,7 +90,7 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-keep = {"containmentlayoutmanager", "dbus", "shellprivate", "lookandfeelqml", "trianglemousefilter", "workspace"}
+keep = {"containmentlayoutmanager", "dbus", "shellprivate", "keyboardlayout", "lookandfeelqml", "trianglemousefilter", "workspace"}
 text = re.sub(r"^add_subdirectory\(([^)]+)\)",
               lambda m: m.group(0) if m.group(1) in keep else f"# ios-firstlight-skip: {m.group(0)}",
               text, flags=re.M)
@@ -99,6 +100,49 @@ PY
 perl -0pi -e 's/add_subdirectory\(test\)/# ios-firstlight-skip: add_subdirectory(test)/g' "$src/libdbusmenuqt/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(packageplugins\)/# ios-firstlight-skip: add_subdirectory(packageplugins)/g' "$src/shell/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(kconf_update\)/# ios-firstlight-skip: add_subdirectory(kconf_update)/g' "$src/shell/CMakeLists.txt"
+perl -0pi -e 's/add_subdirectory\(wallpaperfileitemactionplugin\)/# ios-firstlight-skip: add_subdirectory(wallpaperfileitemactionplugin)/g' "$src/wallpapers/image/CMakeLists.txt"
+
+python3 - "$src/kioworkers/desktop/CMakeLists.txt" "$src/kioworkers/desktop/kio_desktop.cpp" "$src/kioworkers/desktop/desktopnotifier.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+cmake = Path(sys.argv[1])
+text = cmake.read_text()
+marker = "# iOS first-light: KIO's generated KDirNotify headers are not staged"
+if marker not in text:
+    text = text.replace(
+        "include_directories(${CMAKE_CURRENT_BINARY_DIR})\n",
+        "include_directories(${CMAKE_CURRENT_BINARY_DIR})\n"
+        f"{marker}\n"
+        "include_directories(${plasma-workspace_SOURCE_DIR}/../kio/src/core)\n",
+    )
+text = text.replace(
+    """kcoreaddons_add_plugin(desktopnotifier SOURCES desktopnotifier.cpp INSTALL_NAMESPACE "kf6/kded")
+target_link_libraries(desktopnotifier KF6::ConfigCore KF6::KIOCore KF6::DBusAddons)
+""",
+    """# ios-firstlight-skip: desktopnotifier needs unstaged KDirNotify symbols; the worker is enough for desktop:/ reads.
+""",
+)
+cmake.write_text(text)
+
+kio = Path(sys.argv[2])
+text = kio.read_text()
+text = text.replace("#include <KDirNotify>", "#include <kdirnotify.h>")
+text = text.replace(
+    """    org::kde::kded6 kded(QStringLiteral("org.kde.kded6"), QStringLiteral("/kded"), QDBusConnection::sessionBus());
+    auto pending = kded.loadModule("desktopnotifier");
+    pending.waitForFinished();
+""",
+    """    // iOS first-light skips the desktopnotifier KDED sidecar; desktop:/ remains usable.
+""",
+)
+kio.write_text(text)
+
+notifier = Path(sys.argv[3])
+text = notifier.read_text()
+text = text.replace("#include <KDirNotify>", "#include <kdirnotify.h>")
+notifier.write_text(text)
+PY
 
 python3 - "$src/shell/CMakeLists.txt" <<'PY'
 import sys

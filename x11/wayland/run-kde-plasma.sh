@@ -251,6 +251,38 @@ nohup env \
     echo "launch plasmashell: $PLASMA_BIN ${plasma_args[*]}"
     "$PLASMA_BIN" "${plasma_args[@]}" &
     plasma_pid=$!
+
+    sleep "${PLASMA_STARTUP_GRACE:-5}"
+    if ! kill -0 "$plasma_pid" 2>/dev/null; then
+      wait "$plasma_pid"
+      plasma_rc=$?
+      echo "plasmashell exited during startup (rc=$plasma_rc); restarting once"
+      "$PLASMA_BIN" "${plasma_args[@]}" &
+      plasma_pid=$!
+      sleep "${PLASMA_RESTART_GRACE:-3}"
+      if ! kill -0 "$plasma_pid" 2>/dev/null; then
+        wait "$plasma_pid"
+        plasma_rc=$?
+        echo "plasmashell exited after restart (rc=$plasma_rc); stopping KWin"
+        kill "$kwin_pid" 2>/dev/null || true
+        wait "$kwin_pid"
+        [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
+        exit "$plasma_rc"
+      fi
+    fi
+
+    while kill -0 "$kwin_pid" 2>/dev/null; do
+      if ! kill -0 "$plasma_pid" 2>/dev/null; then
+        wait "$plasma_pid"
+        plasma_rc=$?
+        echo "plasmashell exited (rc=$plasma_rc); stopping KWin"
+        kill "$kwin_pid" 2>/dev/null || true
+        wait "$kwin_pid"
+        [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
+        exit "$plasma_rc"
+      fi
+      sleep 1
+    done
     wait "$kwin_pid"
     kill "$plasma_pid" 2>/dev/null || true
     [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
