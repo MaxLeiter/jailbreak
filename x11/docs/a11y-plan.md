@@ -128,7 +128,12 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   back to `xios-a11yd`. `XScreenView` now exposes framebuffer-px -> view-point
   frame conversion plus VoiceOver Escape and synthetic-tap helpers. Host-side
   verification on 2026-07-03: `xcodegen generate` and unsigned Release
-  `iphoneos` `xcodebuild` succeeded for `apps/Xios`.
+  `iphoneos` `xcodebuild` succeeded for `apps/Xios`. Forced on-device smoke on
+  2026-07-03 deployed the rebuilt Xios app, created `/var/jb/tmp/xios-a11y-force`,
+  launched `xios-session app kgx`, and saw XiosA11y connect to
+  `/var/jb/tmp/xios-a11y.sock`, receive `hello`/`reset`, then publish 12
+  accessibility elements for one window. Evidence:
+  `artifacts/device-runs/20260703-123824/xios-a11y-app.log`.
 - The Xios app already has the screen-point to output-px mapping (`framebufferPoint`
   and inverse, used by the cursor overlay). Element frames reuse it.
 - Xios already synthesizes Wayland pointer input from touches (tap+type path). The
@@ -571,7 +576,7 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
 | atspi-dump CLI | shipped in `xios-a11y-tools_0.2.14`; prints role/name/description plus states, action names, and value text/current/min/max/increment | expand output only if xios-a11yd needs more probe coverage |
 | xios-a11yd | snapshot v0 shipped in `xios-a11y-tools_0.2.14`; coalesces common AT-SPI object/window/document events into diff-suppressed snapshots with a periodic fallback; line-buffers app commands as NDJSON and dispatches by exact `t`; exposes action names, values, AT-SPI state-derived traits/values, and `focus` when AT-SPI reports one; routes activate/custom action requests to AT-SPI Action.DoAction; falls back to synthetic tap for activate-without-action; routes `adjust` to AT-SPI Value.SetCurrentValue; routes `scroll` to AT-SPI Component.ScrollTo | add geometry correlation, PID correlation, and real VoiceOver status mirroring |
 | iosc geometry feed | new | small compositor + shell-channel addition |
-| Xios app side | desktop publisher first slice builds; native host prototype exists | deploy Xios app, run forced socket smoke, then real VoiceOver gesture validation |
+| Xios app side | desktop publisher first slice builds and passed a forced socket/UIAccessibility publish smoke; native host prototype exists | real VoiceOver gesture validation against GTK/Qt controls |
 | iosc-shell AT-SPI objects | new | few hundred lines, libdbus (shipped) |
 | Orca stack (optional) | new | 4 debs: espeak-ng, dotconf, speech-dispatcher, orca |
 
@@ -596,8 +601,9 @@ does not, the bug is ours. Ship it as an optional deb set, off by default, with 
   the `0.2.4` helper suppresses unchanged snapshot republishes after the tree
   settles, and `0.2.6` wires the existing HostA11y activate/custom-action
   messages through to AT-SPI actions with a synthetic-tap fallback for plain
-  activation. The desktop Xios app now also has an unbound publisher that builds
-  and mirrors helper frames into UIAccessibilityElements on the Metal view.
+  activation. The desktop Xios app now also has an unbound publisher that builds,
+  mirrors helper frames into UIAccessibilityElements on the Metal view, and passed
+  a forced on-device kgx smoke by publishing 12 elements for one window.
   It is still snapshot-only and has not been verified with real VoiceOver gestures
   on device yet. Accept:
   VoiceOver swipes through gnome-console and gtk4-demo controls with correct speech
