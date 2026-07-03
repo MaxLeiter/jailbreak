@@ -56,7 +56,8 @@ log() { echo "run-shell: $*" >&2; }
 # Start xios-audiod + PulseAudio (and export PULSE_SERVER) before the compositor
 # so shell clients find a live PA socket. Idempotent; the trailing `|| true`
 # keeps `set -e` from aborting when the profile snippet isn't installed.
-[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start || true
+PULSE_PROFILE=$(jb_path /etc/profile.d/xios-pulse.sh)
+[ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start || true
 
 # -- 1. compositor -----------------------------------------------------------
 if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
@@ -75,8 +76,12 @@ if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
 fi
 
 # -- 2 + 3 + 4. shell clients -------------------------------------------------
+is_running() {
+    ps ax | grep -v grep | grep -Eq "/$1([[:space:]]|$)"
+}
+
 start() {  # start <name> (skips if already running)
-    if pgrep -x "$1" >/dev/null 2>&1; then log "$1 already running"; return; fi
+    if is_running "$1"; then log "$1 already running"; return; fi
     if [ -x "$BIN/$1" ]; then "$BIN/$1" >"$TMP/$1.log" 2>&1 & log "$1 started";
     else log "WARNING: $BIN/$1 not found (skipped)"; fi
 }
