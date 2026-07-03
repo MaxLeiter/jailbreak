@@ -137,6 +137,8 @@ static void render_desktop(void);
 static void render_desktop_widgets(int mask);
 static void rerender(void);
 static void pin_clamp(struct desktop_pin *p);
+static void pin_place_without_overlap(struct desktop_pin *p, int self_idx);
+static int pins_resolve_collisions(void);
 #ifdef __APPLE__
 static CGImageRef load_wallpaper(const char *path);
 #endif
@@ -287,6 +289,7 @@ static void pin_add_file(const char *name, const char *target, const char *icon,
     snprintf(p->target, sizeof p->target, "%s", target);
     p->x = x; p->y = y; p->visible = 1;
     pin_clamp(p);
+    pin_place_without_overlap(p, B.npins - 1);
     pin_load_icon(p);
     pins_save();
 }
@@ -322,9 +325,11 @@ static void pins_load(void)
         snprintf(p->icon, sizeof p->icon, "%s", icon ? icon : "");
         snprintf(p->target, sizeof p->target, "%s", target);
         p->x = atoi(xs); p->y = atoi(ys); p->visible = 1;
+        pin_clamp(p);
         pin_load_icon(p);
     }
     fclose(f);
+    if (pins_resolve_collisions()) pins_save();
     B.pins_loaded = 1;
 }
 
@@ -486,6 +491,88 @@ static void pin_clamp(struct desktop_pin *p)
     if (p->y < 48) p->y = 48;
     if (B.width > 0 && p->x + PIN_W > B.width - 8) p->x = B.width - 8 - PIN_W;
     if (B.height > 0 && p->y + PIN_H > B.height - 8) p->y = B.height - 8 - PIN_H;
+}
+
+static int pin_rects_overlap(int ax, int ay, int bx, int by)
+{
+    const int gap = 8;
+    return ax < bx + PIN_W + gap && ax + PIN_W + gap > bx &&
+           ay < by + PIN_H + gap && ay + PIN_H + gap > by;
+}
+
+static int pin_position_occupied(int self_idx, int x, int y)
+{
+    for (int i = 0; i < B.npins; i++) {
+        if (i == self_idx || !B.pins[i].visible) continue;
+        if (pin_rects_overlap(x, y, B.pins[i].x, B.pins[i].y)) return 1;
+    }
+    return 0;
+}
+
+static int pin_grid_cols(void)
+{
+    const int step_x = PIN_W + 16;
+    int usable = B.width > 0 ? B.width - 16 : 1424;
+    int cols = usable / step_x;
+    return cols > 0 ? cols : 1;
+}
+
+static int pin_grid_rows(void)
+{
+    const int step_y = PIN_H + 14;
+    int usable = B.height > 0 ? B.height - 56 : 1024;
+    int rows = usable / step_y;
+    return rows > 0 ? rows : 1;
+}
+
+static void pin_slot_xy(int slot, int *x, int *y)
+{
+    const int step_x = PIN_W + 16;
+    const int step_y = PIN_H + 14;
+    int cols = pin_grid_cols();
+    *x = 8 + (slot % cols) * step_x;
+    *y = 48 + (slot / cols) * step_y;
+}
+
+static void pin_place_without_overlap(struct desktop_pin *p, int self_idx)
+{
+    pin_clamp(p);
+    if (!pin_position_occupied(self_idx, p->x, p->y)) return;
+
+    int cols = pin_grid_cols();
+    int rows = pin_grid_rows();
+    int slots = cols * rows;
+    int step_x = PIN_W + 16;
+    int step_y = PIN_H + 14;
+    int col = (p->x - 8 + step_x / 2) / step_x;
+    int row = (p->y - 48 + step_y / 2) / step_y;
+    if (col < 0) col = 0;
+    if (row < 0) row = 0;
+    int start = (row * cols + col) % (slots > 0 ? slots : 1);
+
+    for (int n = 0; n < slots; n++) {
+        int x, y;
+        pin_slot_xy((start + n) % slots, &x, &y);
+        if (!pin_position_occupied(self_idx, x, y)) {
+            p->x = x;
+            p->y = y;
+            pin_clamp(p);
+            return;
+        }
+    }
+}
+
+static int pins_resolve_collisions(void)
+{
+    int changed = 0;
+    for (int i = 0; i < B.npins; i++) {
+        struct desktop_pin *p = &B.pins[i];
+        if (!p->visible) continue;
+        int old_x = p->x, old_y = p->y;
+        pin_place_without_overlap(p, i);
+        if (p->x != old_x || p->y != old_y) changed = 1;
+    }
+    return changed;
 }
 
 static void quote_sh(char *out, size_t n, const char *s)
