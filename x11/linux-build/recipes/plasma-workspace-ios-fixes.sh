@@ -32,6 +32,7 @@ text = text.replace('PROPERTIES DESCRIPTION "Unicode and Globalization support f
 
 keep = {
     "lookandfeel",
+    "libnotificationmanager",
     "libkworkspace",
     "libdbusmenuqt",
     "libtaskmanager",
@@ -72,6 +73,47 @@ PY
 perl -0pi -e 's/add_subdirectory\(test\)/# ios-firstlight-skip: add_subdirectory(test)/g' "$src/libdbusmenuqt/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(packageplugins\)/# ios-firstlight-skip: add_subdirectory(packageplugins)/g' "$src/shell/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(kconf_update\)/# ios-firstlight-skip: add_subdirectory(kconf_update)/g' "$src/shell/CMakeLists.txt"
+
+python3 - "$src/libnotificationmanager/CMakeLists.txt" "$src/libnotificationmanager/mirroredscreenstracker_p.h" <<'PY'
+import sys
+from pathlib import Path
+
+cmake = Path(sys.argv[1])
+text = cmake.read_text()
+text = text.replace("        KF6::Screen\n", "")
+cmake.write_text(text)
+
+header = Path(sys.argv[2])
+text = header.read_text()
+text = text.replace("#include <KScreen/Config>\n", "")
+header.write_text(text)
+PY
+
+python3 - "$src/libnotificationmanager/server.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("#include <KStartupInfo>\n", "#if !defined(__APPLE__)\n#include <KStartupInfo>\n#endif\n")
+text = text.replace(
+    """        KStartupInfoId startupId;
+        startupId.initId();
+
+        Q_EMIT d->ActivationToken(notificationId, QString::fromUtf8(startupId.id()));
+""",
+    """#if !defined(__APPLE__)
+        KStartupInfoId startupId;
+        startupId.initId();
+
+        Q_EMIT d->ActivationToken(notificationId, QString::fromUtf8(startupId.id()));
+#else
+        Q_EMIT d->ActivationToken(notificationId, QString());
+#endif
+""",
+)
+path.write_text(text)
+PY
 
 python3 - "$src/shell/main.cpp" <<'PY'
 import sys

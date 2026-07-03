@@ -22,7 +22,7 @@ for old, new in [
 ]:
     text = text.replace(old, new)
 
-keep = {"bin", "containments", "quicksettings"}
+keep = {"bin", "components", "containments", "quicksettings"}
 
 def subdir_repl(match: re.Match[str]) -> str:
     name = match.group(1)
@@ -32,6 +32,32 @@ def subdir_repl(match: re.Match[str]) -> str:
 
 text = re.sub(r"^add_subdirectory\(([^)]+)\)", subdir_repl, text, flags=re.M)
 text = re.sub(r"^ki18n_install\(po\)", "# ios-firstlight-skip: ki18n_install(po)", text, flags=re.M)
+path.write_text(text)
+PY
+
+# Keep the QML plugin family needed by the mobile shell/homescreen, while
+# skipping the modem and wallpaper service plugins that need later bridge work.
+python3 - "$src/components/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+keep = {
+    "hapticsplugin",
+    "mobileshell",
+    "mobileshellstate",
+    "quicksettingsplugin",
+    "windowplugin",
+    "shellsettingsplugin",
+}
+text = re.sub(
+    r"^add_subdirectory\(([^)]+)\)",
+    lambda m: m.group(0) if m.group(1) in keep else f"# ios-firstlight-skip: {m.group(0)}",
+    text,
+    flags=re.M,
+)
 path.write_text(text)
 PY
 
@@ -50,7 +76,7 @@ for arg in sys.argv[1:]:
     path.write_text(text)
 PY
 
-python3 - "$src/containments/homescreens/folio/CMakeLists.txt" "$src/containments/homescreens/halcyon/CMakeLists.txt" <<'PY'
+python3 - "$src/containments/homescreens/halcyon/CMakeLists.txt" <<'PY'
 import re
 import sys
 from pathlib import Path

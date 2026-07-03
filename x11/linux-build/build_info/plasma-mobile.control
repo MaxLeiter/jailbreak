@@ -5,13 +5,12 @@ Maintainer: @DEB_MAINTAINER@
 Section: KDE
 Priority: optional
 Homepage: https://kde.org/plasma-mobile/
-Depends: qt6-base, qt6-declarative, qt6-svg, qt6-sensors, qt6-wayland, kf6-config, kf6-coreaddons, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-itemmodels, kf6-jobwidgets, kf6-kcmutils, kf6-kio, kf6-notifications, kf6-package, kf6-service, kf6-windowsystem, kwayland, kwin, libplasma, plasma-workspace, plasma-nano
+Depends: qt6-base, qt6-declarative, qt6-svg, qt6-sensors, qt6-wayland, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-itemmodels, kf6-jobwidgets, kf6-kcmutils, kf6-kio, kf6-notifications, kf6-package, kf6-service, kf6-windowsystem, kwayland, kwin, libplasma, plasma-workspace, plasma-nano
 Description: First-light Plasma Mobile shell data for Xios
- Plasma Mobile provides the mobile look-and-feel, shell package, containment
- package data, quicksetting package data, and session entry files for the KDE
- mobile flavor.
+ Plasma Mobile provides the mobile look-and-feel, shell package, private mobile
+ shell QML plugin family, containment plugins, quicksetting package data, and
+ session entry files for the KDE mobile flavor.
  .
- This iOS bring-up package is intentionally trimmed to QML-first shell
- packaging. Hardware settings, KCMs, KWin effects, and most C++ mobile shell
- plugins are deferred until their support-library and service-bridge packages
- are ready.
+ This iOS bring-up package is intentionally trimmed to the shell path. Hardware
+ settings, KCMs, KWin effects, modem/network backends, and device service
+ bridges are deferred until their support packages are ready.
