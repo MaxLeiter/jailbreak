@@ -1,0 +1,10 @@
+Package: kf6-kirigami-addons-dev
+Version: @DEB_KIRIGAMIADDONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-kirigami-addons (= @DEB_KIRIGAMIADDONS_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-crash-dev, kf6-globalaccel-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-iconthemes-dev, kf6-itemmodels-dev, kf6-kirigami-dev, kf6-svg-dev, kf6-sonnet-dev
+Description: Development files for Kirigami Addons
+ Headers and CMake metadata for the Kirigami Addons package.

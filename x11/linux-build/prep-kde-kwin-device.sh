@@ -129,6 +129,7 @@ overlay_out \
   plasma5support_*_iphoneos-arm64.deb \
   plasma-pa_*_iphoneos-arm64.deb \
   kf6-bluezqt_*_iphoneos-arm64.deb \
+  kf6-kirigami-addons_*_iphoneos-arm64.deb \
   kf6-pulseaudio-qt_*_iphoneos-arm64.deb \
   libpulse0_*_iphoneos-arm64.deb \
   qcoro6_*_iphoneos-arm64.deb \

@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: KDE
 Priority: optional
 Homepage: https://kde.org/plasma-mobile/
-Depends: plasma-mobile (= @DEB_PLASMAMOBILE_V@), qt6-base-dev, qt6-declarative-dev
+Depends: plasma-mobile (= @DEB_PLASMAMOBILE_V@), qt6-base-dev, qt6-declarative-dev, kf6-kirigami-addons-dev
 Description: Development files for Plasma Mobile on Xios
  Headers, CMake exports, and development metadata for the trimmed Plasma Mobile
  package.

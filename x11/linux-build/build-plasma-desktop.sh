@@ -27,6 +27,7 @@ SUPPORT_RECIPE_TARGETS=(
   kactivitymanagerd
   qqc2-desktop-style
   bluezqt
+  kirigami-addons
   plasma5support
   pulseaudio-qt
   plasma-pa
@@ -57,6 +58,7 @@ COLLECT_DEBS=(
   kf6-notifyconfig
   kf6-qqc2-desktop-style
   kf6-bluezqt
+  kf6-kirigami-addons
   plasma5support
   kf6-pulseaudio-qt
   plasma-pa

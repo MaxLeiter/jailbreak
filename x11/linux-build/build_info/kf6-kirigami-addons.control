@@ -1,0 +1,12 @@
+Package: kf6-kirigami-addons
+Version: @DEB_KIRIGAMIADDONS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, qt6-svg, qt6-5compat, kf6-colorscheme, kf6-config, kf6-coreaddons, kf6-crash, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-itemmodels, kf6-kirigami, kf6-svg, kf6-sonnet
+Description: Kirigami Addons for the Xios desktop
+ Extra QML components for Kirigami-based KDE and Plasma shells.
+ .
+ Part of the KDE Plasma shell support tier for Xios.
