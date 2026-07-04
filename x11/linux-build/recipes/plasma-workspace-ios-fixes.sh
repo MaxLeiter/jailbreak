@@ -43,6 +43,7 @@ keep = {
     "statusnotifierwatcher",
     "themes",
     "wallpapers",
+    "kioworkers",
 }
 
 def repl(match: re.Match[str]) -> str:
@@ -97,10 +98,32 @@ text = re.sub(r"^add_subdirectory\(([^)]+)\)",
 path.write_text(text)
 PY
 
+for layout in \
+  "$src/lookandfeel/org.kde.breeze/contents/layouts/org.kde.plasma.desktop-layout.js" \
+  "$src/lookandfeel/org.kde.breezedark/contents/layouts/org.kde.plasma.desktop-layout.js" \
+  "$src/lookandfeel/org.kde.breezetwilight/contents/layouts/org.kde.plasma.desktop-layout.js"; do
+  [ -f "$layout" ] && sed -i "s/desktopsArray\\[j\\]\\.wallpaperPlugin = 'org.kde.image';/desktopsArray[j].wallpaperPlugin = 'org.kde.color';/" "$layout"
+done
+
 perl -0pi -e 's/add_subdirectory\(test\)/# ios-firstlight-skip: add_subdirectory(test)/g' "$src/libdbusmenuqt/CMakeLists.txt"
-perl -0pi -e 's/add_subdirectory\(packageplugins\)/# ios-firstlight-skip: add_subdirectory(packageplugins)/g' "$src/shell/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(kconf_update\)/# ios-firstlight-skip: add_subdirectory(kconf_update)/g' "$src/shell/CMakeLists.txt"
 perl -0pi -e 's/add_subdirectory\(wallpaperfileitemactionplugin\)/# ios-firstlight-skip: add_subdirectory(wallpaperfileitemactionplugin)/g' "$src/wallpapers/image/CMakeLists.txt"
+
+python3 - "$src/kioworkers/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = re.sub(
+    r"^add_subdirectory\(([^)]+)\)",
+    lambda m: m.group(0) if m.group(1) == "desktop" else f"# ios-firstlight-skip: {m.group(0)}",
+    text,
+    flags=re.M,
+)
+path.write_text(text)
+PY
 
 python3 - "$src/kioworkers/desktop/CMakeLists.txt" "$src/kioworkers/desktop/kio_desktop.cpp" "$src/kioworkers/desktop/desktopnotifier.cpp" <<'PY'
 import sys

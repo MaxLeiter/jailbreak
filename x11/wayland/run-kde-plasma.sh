@@ -167,8 +167,25 @@ fi
 PULSE_PROFILE="$(jb_path /etc/profile.d/xios-pulse.sh)"
 [ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start
 
+SETSID="$(command -v setsid || true)"
+if [ -z "$SETSID" ]; then
+  SETSID="$TMP/xsetsid"
+  cat > "$SETSID" <<PYEOF
+#!$XS_PREFIX/bin/python3
+import os, sys
+try:
+    os.setsid()
+except OSError:
+    if os.fork() > 0:
+        os._exit(0)
+    os.setsid()
+os.execvp(sys.argv[1], sys.argv[1:])
+PYEOF
+  chmod +x "$SETSID"
+fi
+
 echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
-nohup env \
+"$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   IOSC_FRAME_PULSE="${IOSC_FRAME_PULSE:-1}" \
   IOSC_IGNORE_ACTIVE_SESSION=1 \
@@ -198,7 +215,7 @@ else
 fi
 
 echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $KDE_LOG"
-nohup env \
+"$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
   KWIN_BIN="$KWIN_BIN" \
@@ -211,6 +228,7 @@ nohup env \
   PLASMA_NO_RESPAWN="${PLASMA_NO_RESPAWN:-1}" \
   DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$ANGLE" \
   XDG_DATA_DIRS="$XS_PREFIX/share" \
+  XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$XS_VAR/root/.config}" \
   XDG_CONFIG_DIRS="$(jb_path /etc/xdg):$XS_PREFIX/etc/xdg" \
   GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
   HOME="$XS_VAR/root" \
@@ -294,8 +312,11 @@ nohup env \
       sleep 1
     done
     wait "$kwin_pid"
+    kwin_rc=$?
+    echo "kwin exited (rc=$kwin_rc); stopping plasmashell"
     kill "$plasma_pid" 2>/dev/null || true
     [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
+    exit "$kwin_rc"
   ' >"$KDE_LOG" 2>&1 </dev/null &
 KDEPID=$!
 

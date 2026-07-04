@@ -1,6 +1,6 @@
 # Xios / X11-on-iOS — team handoff index
 
-One file per domain. Each is a self-contained charter for an independent agent: ownership, current state (as of 2026-07-01 evening), key files/commits/gotchas, open items, and how to verify on-device. Spin up one agent per file and point it at that file.
+One file per domain. Each is a self-contained charter for an independent agent: ownership, current state, key files/commits/gotchas, open items, and how to verify on-device. Spin up one agent per file and point it at that file; use the per-domain timestamps as the status authority.
 
 ## Device
 - iPad7,12 / A10 / iOS 17.6.1, rootless jailbreak (/var/jb).
@@ -36,7 +36,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
   `xios-session gnome` launches and keeps the shell running, Gvc/volume no longer blocks first
   paint, and Quick Settings no longer hits the `get_accessible`/`_output` JS errors. The daemon/app
   picker path still needs session-concurrency cleanup; use the direct CLI for GNOME validation.
-- **KDE/KF6 has KWin first-light, QtWayland/ANGLE IOSurface smoke, packaged `plasma-workspace`/`plasmashell`, a host-prepped `xios-session kde` launcher, and a published first app batch (`ark`, `gwenview`, `kwrite`).** Next gate is real upstream Plasma shell retest plus on-device smoke for the shipped KDE apps.
+- **KDE/KF6 has KWin first-light, QtWayland/ANGLE IOSurface smoke, a working `xios-session kde` first-light shell, real upstream Plasma Desktop reaching a live KIO `desktop:` worker, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** Next gate is installing/retesting the newest Desktop layout packages after device reachability returns, then replacing remaining Mobile/Nano first-light shims with real service bridges.
 - **Wayland app ecosystem is growing quickly**: wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim and the rootless Xwayland XWM work are now on local commits. The package repo output is very dirty; coordinate before publishing. See **wayland-apps.md** for per-app status, the launch-in-iosc fixes (foot PTY, GTK3 wayland backend, mpv EGL shim, hitori schema — several verified only in code, pending device), and the `bin/iosc-capture*` debug tooling. grim screenshots WORK on device (classic mode); foot is root-caused (PTY + C locale).
 
 ## Key cross-cutting gotchas (all domains touching the app/device)

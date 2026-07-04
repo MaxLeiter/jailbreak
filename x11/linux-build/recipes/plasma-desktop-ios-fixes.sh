@@ -93,6 +93,19 @@ text = text.replace("plasma_install_package(keyboardlayout org.kde.plasma.keyboa
 path.write_text(text)
 PY
 
+python3 - "$src/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js" <<'PY'
+import sys
+from pathlib import Path
+
+panel = Path(sys.argv[1])
+text = panel.read_text()
+text = text.replace('panel.addWidget("org.kde.plasma.kickoff")', 'panel.addWidget("org.kde.plasma.kicker")')
+text = text.replace('panel.addWidget("org.kde.plasma.pager")', '// ios-firstlight-skip: panel.addWidget("org.kde.plasma.pager")')
+text = text.replace('panel.addWidget("org.kde.plasma.icontasks")', 'panel.addWidget("org.kde.plasma.windowlist")')
+text = text.replace('panel.addWidget("org.kde.plasma.systemtray")', '// ios-firstlight-skip: panel.addWidget("org.kde.plasma.systemtray")')
+panel.write_text(text)
+PY
+
 python3 - "$src/containments/desktop/CMakeLists.txt" <<'PY'
 import re
 import sys
