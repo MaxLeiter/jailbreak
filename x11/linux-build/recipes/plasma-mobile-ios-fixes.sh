@@ -452,6 +452,18 @@ QtObject {
 }
 """)
 
+panel = src / "shell/contents/views/Panel.qml"
+if panel.exists():
+    text = panel.read_text()
+    needle = "    Connections {\n        target: containment\n        function onActivated() {"
+    if needle in text and "ignoreUnknownSignals: true" not in text:
+        text = text.replace(
+            needle,
+            "    Connections {\n        target: containment\n        ignoreUnknownSignals: true\n        function onActivated() {",
+            1,
+        )
+        panel.write_text(text)
+
 write("containments/homescreens/folio/package/contents/ui/settings/AppletListViewer.qml", """import QtQuick 2.15
 MouseArea {
     id: root

@@ -598,6 +598,25 @@ if [ -d "$halcyon_ui" ]; then
     "}"
 fi
 
+views="$qml/../../../share/plasma/shells/org.kde.plasma.mobileshell/contents/views"
+if [ -e "$views/Panel.qml" ]; then
+  python3 - "$views/Panel.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+needle = "    Connections {\n        target: containment\n        function onActivated() {"
+if needle in text and "ignoreUnknownSignals: true" not in text:
+    text = text.replace(
+        needle,
+        "    Connections {\n        target: containment\n        ignoreUnknownSignals: true\n        function onActivated() {",
+        1,
+    )
+    path.write_text(text)
+PY
+fi
+
 lockscreen="$qml/../../../share/plasma/shells/org.kde.plasma.mobileshell/contents/lockscreen"
 if [ -d "$lockscreen" ]; then
   if [ -e "$lockscreen/PasswordBar.qml" ] && [ ! -e "$lockscreen/PasswordBar.qml.upstream" ]; then
