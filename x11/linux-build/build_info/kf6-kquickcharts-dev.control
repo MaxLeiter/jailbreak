@@ -1,0 +1,10 @@
+Package: kf6-kquickcharts-dev
+Version: @DEB_KQUICKCHARTS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-kquickcharts (= @DEB_KQUICKCHARTS_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-shadertools-dev
+Description: Development files for KQuickCharts
+ Headers and CMake metadata for KQuickCharts.

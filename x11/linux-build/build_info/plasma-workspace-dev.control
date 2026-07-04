@@ -5,6 +5,6 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: plasma-workspace (= @DEB_PLASMAWORKSPACE_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, qt6-5compat-dev, qcoro6-dev, libplasma-dev, plasma-activities-dev, plasma-activities-stats-dev, kwayland-dev, layer-shell-qt-dev
+Depends: plasma-workspace (= @DEB_PLASMAWORKSPACE_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, qt6-5compat-dev, qcoro6-dev, kf6-kquickcharts-dev, libplasma-dev, plasma-activities-dev, plasma-activities-stats-dev, kwayland-dev, layer-shell-qt-dev
 Description: Development files for Plasma Workspace on Xios
  Headers and CMake metadata for the first-light Plasma Workspace build.

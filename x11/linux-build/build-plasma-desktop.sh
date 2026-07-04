@@ -28,6 +28,7 @@ SUPPORT_RECIPE_TARGETS=(
   qqc2-desktop-style
   bluezqt
   kirigami-addons
+  kquickcharts
   plasma5support
   pulseaudio-qt
   plasma-pa
@@ -59,6 +60,7 @@ COLLECT_DEBS=(
   kf6-qqc2-desktop-style
   kf6-bluezqt
   kf6-kirigami-addons
+  kf6-kquickcharts
   plasma5support
   kf6-pulseaudio-qt
   plasma-pa
