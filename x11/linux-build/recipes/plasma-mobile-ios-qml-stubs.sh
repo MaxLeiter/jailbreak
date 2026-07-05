@@ -497,6 +497,28 @@ for qml_name in \
   write_mobile_item_stub "$qml_name"
 done
 
+for qml_name in VolumeOSDProvider VolumeOSDProviderLoader; do
+  if [ -e "$mobileshell/$qml_name.qml" ] && [ ! -e "$mobileshell/$qml_name.qml.upstream" ]; then
+    cp "$mobileshell/$qml_name.qml" "$mobileshell/$qml_name.qml.upstream"
+  fi
+done
+write_file "$mobileshell/VolumeOSDProvider.qml" \
+  "// First-light iOS shim: avoid loading the real volume provider while AudioInfo/VolumeOSD are stubbed." \
+  "import QtQuick 2.15" \
+  "QtObject {" \
+  "    id: root" \
+  "    function showVolumeOverlay() {}" \
+  "}"
+write_file "$mobileshell/VolumeOSDProviderLoader.qml" \
+  "// First-light iOS shim: keep MobileShell.VolumeOSDProviderLoader importable without recursive module loading." \
+  "pragma Singleton" \
+  "import QtQuick 2.15" \
+  "QtObject {" \
+  "    id: root" \
+  "    property bool active: false" \
+  "    function load() { active = true }" \
+  "}"
+
 write_file "$mobileshell/ClockText.qml" \
   "// First-light iOS shim: avoid Plasma5Support time dataengine during Mobile startup." \
   "import QtQuick 2.15" \

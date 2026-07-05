@@ -405,6 +405,22 @@ for rel in [
 ]:
     write(rel, item_stub)
 
+write("components/mobileshell/qml/volumeosd/VolumeOSDProvider.qml", """import QtQuick 2.15
+QtObject {
+    id: root
+    function showVolumeOverlay() {}
+}
+""")
+
+write("components/mobileshell/qml/volumeosd/VolumeOSDProviderLoader.qml", """pragma Singleton
+import QtQuick 2.15
+QtObject {
+    id: root
+    property bool active: false
+    function load() { active = true }
+}
+""")
+
 write("components/mobileshell/qml/statusbar/ClockText.qml", """import QtQuick 2.15
 import QtQuick.Controls 2.15
 Label {
