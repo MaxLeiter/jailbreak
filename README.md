@@ -51,7 +51,7 @@ jailbreak/
 │   ├── install.sh        # build + install to iPad over SSH, then respring
 │   ├── sim.sh            # build for the iOS Simulator + load via simject (device-free)
 │   ├── logs.sh           # live device console over USB (idevicesyslog)
-│   ├── publish-repo.sh   # regenerate + deploy the APT repo (--staging for dev.repo)
+│   ├── publish-repo.sh   # upload debs to Blob + deploy the APT repo (--staging for dev.repo)
 │   └── lib/              # repo-pipeline internals (make-repo, solvability check, audit)
 ├── docs/                 # public-readiness and process notes
 ├── jarvis/               # on-device assistant prototype
@@ -79,17 +79,18 @@ bin/logs.sh PullToRespring2
 ## Sileo repo (hosted on Vercel)
 
 A static APT repo is published at **https://repo.maxleiter.com**. `repo/` holds
-the static site; `bin/lib/make-repo.py` generates the index (`Packages`,
-`Packages.gz`, `Release`, `index.html`, `CydiaIcon.png`) from package payloads in
-`repo/debs/` — no extra deps. Use the staging publisher for low-cache iteration;
-production `.deb` filenames are immutable, so bump the package version/revision
-instead of replacing an already-published file.
+the static site and signed metadata; package payloads live locally in ignored
+`repo/debs/` and are uploaded to Vercel Blob before deployment.
+`bin/lib/make-repo.py` generates the index (`Packages`, `Packages.gz`,
+`Release`, `index.html`, `CydiaIcon.png`) from that local cache. Use the staging
+publisher for low-cache iteration; production `.deb` filenames are immutable, so
+bump the package version/revision instead of replacing an already-published file.
 
 ```bash
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
-bin/publish-staging.sh                       # regenerate index + deploy low-cache staging (dev.repo.maxleiter.com)
-bin/publish-repo.sh                          # regenerate index + deploy to prod
+bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
+bin/publish-repo.sh                          # upload payloads + deploy prod metadata/site
 ```
 
 Add it in Sileo: `sileo://source/https://repo.maxleiter.com/` (the landing page

@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**GNOME Console** (`kgx`) running natively on your jailbroken device through the X11-on-iOS stack. A simple, modern terminal built on GTK4 and libadwaita, with the GNOME look and feel.\n\nRuns as a real native arm64 binary, not an emulator. Renders into the Xios display server and uses San Francisco by default when the `x11-fonts-sf` package is installed.\n\n- Built on the cross-compiled GTK4 stack (also on this repo)\n- VTE terminal widget with truecolor, themes, and tabs\n- libadwaita styling that adapts to light and dark\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Open it from an X session started by `x11-server.sh` or `xios-server.sh`."
+          "markdown": "**GNOME Console** (`kgx`) is a simple modern terminal for the Xios desktop, built on GTK4, libadwaita, and VTE.\n\nIt renders into the Xios display server and uses San Francisco by default when the `x11-fonts-sf` package is installed.\n\n- VTE terminal widget with truecolor, themes, and tabs\n- GTK4/libadwaita interface that adapts to light and dark\n- Works well as the default terminal for GNOME sessions\n\nOpen it from an X session started by `x11-server.sh` or `xios-server.sh`."
         },
         {
           "class": "DepictionSeparatorView"
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 46.0  \u00b7  2026-06-30\n- First release: GNOME Console 46 cross-compiled for rootless iOS\n- GTK4 + libadwaita + VTE 0.76\n- Defaults to SF Mono via the x11-fonts-sf package"
+          "markdown": "## 46.0  \u00b7  2026-06-30\n- First release: GNOME Console 46 for Xios\n- GTK4 + libadwaita + VTE 0.76\n- Defaults to SF Mono via the x11-fonts-sf package"
         }
       ]
     }

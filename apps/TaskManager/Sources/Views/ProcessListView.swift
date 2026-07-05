@@ -19,6 +19,8 @@ enum SortField: String, CaseIterable, Identifiable {
         case .name: return "textformat"
         }
     }
+    /// Natural direction when first selected: names read A→Z, metrics highest-first.
+    var defaultAscending: Bool { self == .name }
 }
 
 /// The app's single screen: a fixed dashboard header over a live, scrolling
@@ -29,17 +31,34 @@ struct ProcessListView: View {
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var scope: ListScope = .apps
     @State private var sort: SortField = .cpu
+    @State private var ascending = false        // CPU/Memory default high→low; Name A→Z
+    @State private var searchText = ""
     @State private var selectedPID: pid_t?
 
+    private var trimmedQuery: String { searchText.trimmingCharacters(in: .whitespaces) }
+
     private var visibleRows: [ProcessRow] {
-        let filtered = engine.rows.filter(scope.includes)
+        var rows = engine.rows.filter(scope.includes)
+        let query = trimmedQuery
+        if !query.isEmpty { rows = rows.filter { $0.matches(query) } }
+        // Direction-aware comparator (no reversed-array copy on the default path).
+        let asc = ascending
         switch sort {
-        case .cpu:    return filtered.sorted { $0.cpuPercent > $1.cpuPercent }
-        case .memory: return filtered.sorted { $0.residentBytes > $1.residentBytes }
-        case .name:   return filtered.sorted {
-            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        case .cpu:    rows.sort { asc ? $0.cpuPercent < $1.cpuPercent : $0.cpuPercent > $1.cpuPercent }
+        case .memory: rows.sort { asc ? $0.residentBytes < $1.residentBytes : $0.residentBytes > $1.residentBytes }
+        case .name:   rows.sort {
+            let order = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+            return asc ? order == .orderedAscending : order == .orderedDescending
         }
         }
+        return rows
+    }
+
+    /// Pick a sort field; re-picking the current field flips direction. A new
+    /// field resets to its natural default (names A→Z, metrics highest-first).
+    private func selectSort(_ field: SortField) {
+        if sort == field { ascending.toggle() }
+        else { sort = field; ascending = field.defaultAscending }
     }
 
     var body: some View {
@@ -48,6 +67,7 @@ struct ProcessListView: View {
             // header while the Apps/System + Sort controls pin to the top. A fixed
             // dashboard would eat the whole screen on iPhone (and on many-core
             // devices), leaving no room for the process list.
+            let rows = visibleRows   // compute the filter+sort once per refresh
             List {
                 Section {
                     dashboard
@@ -58,9 +78,9 @@ struct ProcessListView: View {
                 }
 
                 Section {
-                    processRows
+                    processRows(rows)
                 } header: {
-                    controlBar
+                    controlBar(count: rows.count)
                 }
             }
             .listStyle(.plain)
@@ -68,6 +88,8 @@ struct ProcessListView: View {
             .background(Theme.page.ignoresSafeArea())
             .navigationTitle("Task Manager")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic),
+                        prompt: "Search name or bundle id")
             .sheet(item: $selectedPID) { pid in
                 ProcessDetailView(pid: pid)
                     .environmentObject(engine)
@@ -94,7 +116,7 @@ struct ProcessListView: View {
 
     // MARK: - Controls
 
-    private var controlBar: some View {
+    private func controlBar(count: Int) -> some View {
         HStack(spacing: 12) {
             Picker("Scope", selection: $scope) {
                 ForEach(ListScope.allCases) { Text($0.rawValue).tag($0) }
@@ -104,19 +126,24 @@ struct ProcessListView: View {
 
             Spacer()
 
-            Text("\(visibleRows.count)")
+            Text("\(count)")
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("\(visibleRows.count) processes")
+                .accessibilityLabel("\(count) processes")
 
             Menu {
-                Picker("Sort by", selection: $sort) {
-                    ForEach(SortField.allCases) { field in
-                        Label(field.rawValue, systemImage: field.symbol).tag(field)
+                ForEach(SortField.allCases) { field in
+                    Button { selectSort(field) } label: {
+                        if field == sort {
+                            Label("\(field.rawValue) · \(ascending ? "ascending" : "descending")",
+                                  systemImage: ascending ? "chevron.up" : "chevron.down")
+                        } else {
+                            Label(field.rawValue, systemImage: field.symbol)
+                        }
                     }
                 }
             } label: {
-                Label("Sort: \(sort.rawValue)", systemImage: "arrow.up.arrow.down")
+                Label(sort.rawValue, systemImage: ascending ? "arrow.up" : "arrow.down")
                     .font(.subheadline)
             }
             .menuStyle(.button)
@@ -132,13 +159,16 @@ struct ProcessListView: View {
 
     // MARK: - Rows
 
-    @ViewBuilder private var processRows: some View {
-        if visibleRows.isEmpty {
+    @ViewBuilder private func processRows(_ rows: [ProcessRow]) -> some View {
+        if rows.isEmpty {
             Group {
                 if engine.rows.isEmpty {
                     ContentUnavailableCompat()
                 } else {
-                    Text(scope == .apps ? "No running apps." : "No system processes.")
+                    let empty = !trimmedQuery.isEmpty
+                        ? "No matches for “\(trimmedQuery)”."
+                        : (scope == .apps ? "No running apps." : "No system processes.")
+                    Text(empty)
                         .font(.callout).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 40)
@@ -147,8 +177,10 @@ struct ProcessListView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         } else {
-            ForEach(visibleRows) { row in
-                Button { selectedPID = row.pid } label: { ProcessRowView(row: row) }
+            ForEach(rows) { row in
+                Button { selectedPID = row.pid } label: {
+                    ProcessRowView(row: row, compact: hSize != .regular).equatable()
+                }
                     .buttonStyle(.plain)
                     .listRowBackground(Color.clear)
                     .listRowSeparatorTint(Theme.hairline)

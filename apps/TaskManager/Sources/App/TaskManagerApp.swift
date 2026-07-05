@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 @main
 struct TaskManagerApp: App {
@@ -20,8 +21,28 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ProcessListView()
+        Group {
+#if DEBUG
+            if TaskManagerScreenshotScenario.current == .detail {
+                ProcessDetailView(pid: TaskManagerScreenshotScenario.detailPID)
+            } else {
+                ProcessListView()
+            }
+#else
+            ProcessListView()
+#endif
+        }
+        .task {
+#if DEBUG
+            if TaskManagerScreenshotScenario.current != nil {
+                engine.installScreenshotFixtures()
+            }
+#endif
+        }
             .onChange(of: scenePhase) { phase in
+#if DEBUG
+                if TaskManagerScreenshotScenario.current != nil { return }
+#endif
                 switch phase {
                 case .active: engine.start()
                 default: engine.stop()
@@ -29,3 +50,18 @@ struct RootView: View {
             }
     }
 }
+
+#if DEBUG
+enum TaskManagerScreenshotScenario: String {
+    case overview
+    case detail
+
+    static var current: TaskManagerScreenshotScenario? {
+        ProcessInfo.processInfo.arguments
+            .first { $0.hasPrefix("--screenshot=") }
+            .flatMap { TaskManagerScreenshotScenario(rawValue: String($0.dropFirst("--screenshot=".count))) }
+    }
+
+    static let detailPID: pid_t = 4201
+}
+#endif

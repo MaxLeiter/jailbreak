@@ -3,8 +3,8 @@
   "developer": "The GNOME Project",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "folder",
-  "description": "**GNOME Files** (Nautilus) running natively on your jailbroken device through the X11-on-iOS stack. Browse, search, and manage files with the standard GNOME file manager, built on GTK4 and libadwaita.\n\nRuns as a real native arm64 binary inside an X session. It sees the rootless filesystem under `/var/jb` and your home directory.\n\n- Icon and list views, search, and tabs\n- Bookmarks and a path bar\n- libadwaita styling with light and dark\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`).",
+  "description": "**GNOME Files** (Nautilus) is the standard GNOME file manager for the Xios desktop. Browse, search, and manage files with a GTK4/libadwaita interface.\n\nIt can browse your home directory and the jailbreak filesystem.\n\n- Icon and list views, search, and tabs\n- Bookmarks and a path bar\n- libadwaita styling with light and dark",
   "changelog": [
-    { "version": "46.4", "date": "2026-06-30", "notes": "- First release: GNOME Files 46 cross-compiled for rootless iOS\n- GTK4 + libadwaita" }
+    { "version": "46.4", "date": "2026-06-30", "notes": "- First release: GNOME Files 46 for Xios\n- GTK4 + libadwaita" }
   ]
 }

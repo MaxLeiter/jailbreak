@@ -3,8 +3,8 @@
   "developer": "The zathura contributors",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "doc.richtext",
-  "description": "**zathura** is a highly customizable, keyboard-driven document viewer, running natively on your jailbroken device through the X11-on-iOS stack.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS, built on GTK3 and the girara interface library. With the bundled poppler plugin it opens PDF files and drives them entirely from the keyboard.\n\n- Keyboard-first navigation in the vi tradition\n- PDF rendering through the poppler plugin\n- Search, links, bookmarks, and a fit-to-page view\n- Light and dark recoloring for comfortable reading\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Install `zathura-pdf-poppler` for PDF support, which this repo also ships.",
+  "description": "**zathura** is a highly customizable, keyboard-driven document viewer for Xios.\n\nBuilt on GTK3 and the girara interface library, it opens PDF files through the bundled poppler plugin and drives them entirely from the keyboard.\n\n- Keyboard-first navigation in the vi tradition\n- PDF rendering through the poppler plugin\n- Search, links, bookmarks, and a fit-to-page view\n- Light and dark recoloring for comfortable reading\n\nInstall `zathura-pdf-poppler` for PDF support, which this repo also ships.",
   "changelog": [
-    { "version": "0.5.12", "date": "2026-07-02", "notes": "- First release: zathura 0.5.12 cross-compiled for rootless iOS\n- GTK3 + girara; PDF support via the poppler plugin\n- Keyboard-driven document navigation" }
+    { "version": "0.5.12", "date": "2026-07-02", "notes": "- First release: zathura 0.5.12 for Xios\n- GTK3 + girara; PDF support via the poppler plugin\n- Keyboard-driven document navigation" }
   ]
 }

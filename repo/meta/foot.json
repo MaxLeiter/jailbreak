@@ -3,8 +3,8 @@
   "developer": "The foot authors",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "terminal",
-  "description": "**foot** is a fast, lightweight, and minimalistic terminal emulator, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS, not an emulator. foot talks Wayland directly and renders glyphs with its own fcft text shaping stack, so it stays quick and low on memory.\n\n- Native Wayland client, no X11 required\n- Sixel graphics, truecolor, and a scrollback search\n- Server and daemon mode with the bundled `footclient`\n- Configurable fonts, colors, and key bindings\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Launch it inside an Xios desktop session running the iosc compositor.",
+  "description": "**foot** is a fast, lightweight terminal emulator for the iosc Wayland compositor.\n\nfoot talks Wayland directly and renders glyphs with its own fcft text shaping stack, so it stays quick and low on memory.\n\n- Native Wayland client, no X11 required\n- Sixel graphics, truecolor, and a scrollback search\n- Server and daemon mode with the bundled `footclient`\n- Configurable fonts, colors, and key bindings\n\nLaunch it inside an Xios desktop session running the iosc compositor.",
   "changelog": [
-    { "version": "1.27.0", "date": "2026-07-02", "notes": "- First release: foot 1.27.0 cross-compiled for rootless iOS\n- Native Wayland terminal on the iosc compositor\n- Ships footclient for daemon mode; fcft text rendering" }
+    { "version": "1.27.0", "date": "2026-07-02", "notes": "- First release: foot 1.27.0 for Xios\n- Native Wayland terminal on the iosc compositor\n- Ships footclient for daemon mode; fcft text rendering" }
   ]
 }

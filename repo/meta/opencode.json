@@ -1,0 +1,7 @@
+{
+  "tagline": "Terminal-based AI coding agent",
+  "developer": "OpenCode",
+  "homepage": "https://opencode.ai",
+  "iconGlyph": "chevron.left.forwardslash.chevron.right",
+  "description": "**OpenCode** is a terminal-based AI coding agent that runs from the command line.\n\nIt uses the bundled Bun runtime and ships the terminal UI pieces it needs for interactive coding sessions.\n\n- Launches with the `opencode` command\n- Terminal UI for prompts, diffs, and project work\n- Depends on **bun** and **ripgrep**"
+}

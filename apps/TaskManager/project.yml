@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"            # Swift 5 language mode (skip Swift 6 strict-concurrency churn)
     TARGETED_DEVICE_FAMILY: "1,2"   # universal — iPhone + iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.taskmanager
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.1.1"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_OBJC_BRIDGING_HEADER: Sources/TaskManager-Bridging-Header.h
     # Unsigned build — the device runs it via AppSync Unified after an ldid pseudo-sign.
@@ -39,7 +39,7 @@ targets:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: Task Manager
-        CFBundleShortVersionString: "0.1.0"
+        CFBundleShortVersionString: "0.1.1"
         UILaunchScreen: {}
         UIStatusBarHidden: false
         # iPhone: portrait + both landscapes (no upside-down, per convention).

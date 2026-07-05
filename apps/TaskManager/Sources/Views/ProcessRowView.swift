@@ -3,9 +3,27 @@ import SwiftUI
 /// One process in the list: identity on the left, live metrics on the right,
 /// with an inline memory sparkline. The two metric columns are fixed-width and
 /// tabular so numbers align down the list.
-struct ProcessRowView: View {
+///
+/// `Equatable` (compact passed in, not read from the environment, so it's part
+/// of the comparison) + `.equatable()` at the call site lets unchanged rows skip
+/// re-rendering during the 1 Hz refresh. `==` compares ONLY the fields this row
+/// actually draws — so it doesn't scan the unshown `cpuHistory` ring or metadata
+/// like uid/threadCount that never appear here.
+struct ProcessRowView: View, Equatable {
     let row: ProcessRow
-    @Environment(\.horizontalSizeClass) private var hSize
+    /// Compact (iPhone) width — hides the inline sparkline for name room.
+    let compact: Bool
+
+    static func == (lhs: ProcessRowView, rhs: ProcessRowView) -> Bool {
+        let a = lhs.row, b = rhs.row
+        return lhs.compact == rhs.compact
+            && a.pid == b.pid
+            && a.displayName == b.displayName
+            && a.bundleID == b.bundleID          // drives the icon + App/System label
+            && a.residentBytes == b.residentBytes
+            && a.cpuPercent == b.cpuPercent
+            && a.memoryHistory == b.memoryHistory  // the only history the row draws
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -25,7 +43,7 @@ struct ProcessRowView: View {
 
             // The inline sparkline is a nice-to-have; drop it at compact (iPhone)
             // width so the name/pid isn't squeezed. The detail sheet still charts it.
-            if hSize == .regular {
+            if !compact {
                 Sparkline(values: row.memoryHistory, color: Theme.memory)
                     .frame(width: 56, height: 26)
                     .opacity(row.memoryHistory.count > 1 ? 1 : 0)

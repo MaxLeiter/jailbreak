@@ -3,7 +3,7 @@
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "clock",
-  "description": "Replaces the stock Auto-Lock list in *Settings → Display & Brightness → Auto-Lock*, which caps at **15 minutes**, with a real time picker.\n\n- Pick **any** duration (minutes or hours) with a countdown wheel\n- A **Never** switch to disable auto-lock entirely\n- Uses the same setting iOS itself stores, so it applies right away with no respring\n- The Display & Brightness row updates to show your custom value\n\nBuilt for iPadOS 17, rootless (palera1n).",
+  "description": "Replaces the stock Auto-Lock list in *Settings -> Display & Brightness -> Auto-Lock*, which caps at **15 minutes**, with a real time picker.\n\n- Pick **any** duration (minutes or hours) with a countdown wheel\n- A **Never** switch to disable auto-lock entirely\n- Uses the same setting iOS itself stores, so it applies right away with no respring\n- The Display & Brightness row updates to show your custom value\n\nRequires iPadOS 17+.",
   "changelog": [
     { "version": "0.1.0", "date": "2026-06-28", "notes": "- Initial release\n- Custom Auto-Lock duration picker with a Never toggle" }
   ]

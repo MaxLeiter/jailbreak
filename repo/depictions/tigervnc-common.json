@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Common files (`vncconfig`, `vncpasswd`, config) shared by the TigerVNC server packages. Installed automatically as a dependency of **tigervnc-standalone-server**.\n\nRebuilt from source for rootless `/var/jb`."
+          "markdown": "Common files (`vncconfig`, `vncpasswd`, config) shared by the TigerVNC server packages. Installed automatically as a dependency of **tigervnc-standalone-server**."
         },
         {
           "class": "DepictionSeparatorView"

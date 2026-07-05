@@ -367,9 +367,33 @@ def package_developer(meta, ctrl):
         return ctrl.get("Author", ctrl.get("Maintainer", ""))
     return developer
 
+def screenshot_assets(meta):
+    assets = []
+    for item in meta.get("screenshots", []):
+        if isinstance(item, str):
+            item = {"src": item}
+        src = (item.get("src") or item.get("path") or "").lstrip("/")
+        url = item.get("url")
+        if not src and not url:
+            continue
+        if not url:
+            url = f"{BASE_URL}/{src}"
+        alt = item.get("accessibilityText") or item.get("alt") or "App screenshot"
+        html_src = url if re.match(r"^https?://", url) else f"../{src}"
+        if src:
+            html_src = f"../{src}"
+        assets.append({
+            "url": url,
+            "html_src": html_src,
+            "alt": alt,
+            "caption": item.get("caption", ""),
+        })
+    return assets
+
 # ── native (Sileo) depiction ─────────────────────────────────────────────────
 def native_depiction(ctrl, meta, size):
     pid = ctrl["Package"]
+    screenshots = screenshot_assets(meta)
     info = [
         ("Version", ctrl.get("Version", "")),
         ("Size", human_size(size)),
@@ -378,9 +402,19 @@ def native_depiction(ctrl, meta, size):
         ("Identifier", pid),
     ]
     details = [{"class": "DepictionMarkdownView",
-                "markdown": meta.get("description", ctrl.get("Description", ""))},
-               {"class": "DepictionSeparatorView"},
-               {"class": "DepictionHeaderView", "title": "Information"}]
+                "markdown": meta.get("description", ctrl.get("Description", ""))}]
+    if screenshots:
+        details += [
+            {"class": "DepictionScreenshotsView",
+             "itemCornerRadius": 8,
+             "itemSize": "{220, 320}",
+             "screenshots": [
+                 {"url": s["url"], "accessibilityText": s["alt"]}
+                 for s in screenshots
+             ]},
+        ]
+    details += [{"class": "DepictionSeparatorView"},
+                {"class": "DepictionHeaderView", "title": "Information"}]
     for k, v in info:
         details.append({"class": "DepictionTableTextView", "title": k, "text": v})
 
@@ -392,11 +426,24 @@ def native_depiction(ctrl, meta, size):
         tabs.append({"class": "DepictionStackView", "tabname": "Changelog",
                      "views": [{"class": "DepictionMarkdownView", "markdown": md}]})
 
-    return {"minVersion": "0.1", "class": "DepictionTabView",
+    return {"minVersion": "0.4" if screenshots else "0.1", "class": "DepictionTabView",
             "headerImage": f"{BASE_URL}/banners/{pid}.png",
             "tintColor": ACCENT_HEX, "tabs": tabs}
 
 # ── HTML depiction (Cydia/Zebra) ─────────────────────────────────────────────
+def html_screenshot_gallery(meta):
+    screenshots = screenshot_assets(meta)
+    if not screenshots:
+        return ""
+    figs = []
+    for s in screenshots:
+        cap = (f"<figcaption>{html.escape(s['caption'])}</figcaption>"
+               if s.get("caption") else "")
+        figs.append(
+            f'<figure class="shot"><img src="{html.escape(s["html_src"])}" '
+            f'alt="{html.escape(s["alt"])}" loading="lazy">{cap}</figure>')
+    return f'<h2 class="section">Screenshots</h2><div class="shots">{"".join(figs)}</div>'
+
 def html_depiction(ctrl, meta, size):
     pid = ctrl["Package"]
     rows = "".join(
@@ -405,6 +452,8 @@ def html_depiction(ctrl, meta, size):
             ("Developer", package_developer(meta, ctrl)),
             ("Section", ctrl.get("Section", "Tweaks")), ("Identifier", pid)])
     body = md_to_html(meta.get("description", ctrl.get("Description", "")))
+    gallery = html_screenshot_gallery(meta)
+    gallery_block = f"\n  {gallery}" if gallery else ""
     name = html.escape(ctrl.get("Name", pid))
     tagline = html.escape(meta.get("tagline", ctrl.get("Description", "")))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -415,7 +464,7 @@ def html_depiction(ctrl, meta, size):
   <a class="back" href="../index.html">{BACK_SVG}<span>{html.escape(ORIGIN)}</span></a>
   <header class="masthead"><img src="../icons/{pid}.png" alt="">
     <div><h1>{name}</h1><p class="sub">{tagline}</p></div>{THEME_PICKER}</header>
-  <div class="prose">{body}</div>
+  <div class="prose">{body}</div>{gallery_block}
   <h2 class="section">Information</h2><table class="info">{rows}</table>
   <footer><a href="../index.html">&larr; All packages</a></footer>
 </div>{THEME_JS}</body></html>"""
@@ -601,6 +650,13 @@ SITE_CSS = f"""
   .prose p{{margin:.6em 0;color:var(--fg-dim)}}
   .prose strong{{color:var(--fg);font-weight:600}} .prose em{{color:var(--fg)}}
   .prose ul{{margin:.5em 0;padding-left:1.15em}} .prose li{{margin:.25em 0;color:var(--fg-dim)}}
+  .shots{{display:flex;gap:14px;overflow-x:auto;margin-top:8px;padding:4px 2px 10px;
+    scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}}
+  .shot{{flex:0 0 min(260px,72vw);margin:0;border:1px solid var(--line);
+    border-radius:8px;overflow:hidden;background:var(--bg-hover);scroll-snap-align:start}}
+  .shot img{{display:block;width:100%;height:auto}}
+  .shot figcaption{{padding:9px 10px;border-top:1px solid var(--line);
+    color:var(--fg-dim);font-size:12.5px;line-height:1.35}}
   h2.section{{font-family:var(--mono);font-size:11px;font-weight:500;
     letter-spacing:.14em;text-transform:uppercase;color:var(--fg-dim);margin:36px 0 4px}}
   table.info{{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}}
@@ -747,6 +803,9 @@ SECTION_ORDER = ["Desktop", "X11/Wayland Apps", "X11", "Utilities"]
 SECTION_TAIL = ["Development", "Libraries"]
 COLLAPSED_SECTIONS = {"Development", "Libraries"}
 TWEAKS_SECTION = "Tweaks"
+# Homepage split only: normal iOS apps belong beside jailbreak tweaks on the
+# first tab. Native Linux/X11/Wayland apps keep their explicit xiOS sections.
+HOMEPAGE_TWEAK_SECTIONS = {TWEAKS_SECTION, "Apps"}
 # featured flavor meta-packages (shown when their deb exists), display label
 FLAVORS = [("xios-gnome", "GNOME"), ("xios-kde", "KDE Plasma"),
            ("xios-native", "Native"), ("xios-x11", "X11")]
@@ -830,8 +889,8 @@ def write_index(pkgs):
     def section(p):
         return (p["ctrl"].get("Section") or TWEAKS_SECTION).strip()
 
-    tweaks = [p for p in pkgs if section(p) == TWEAKS_SECTION]
-    xios = [p for p in pkgs if section(p) != TWEAKS_SECTION]
+    tweaks = [p for p in pkgs if section(p) in HOMEPAGE_TWEAK_SECTIONS]
+    xios = [p for p in pkgs if section(p) not in HOMEPAGE_TWEAK_SECTIONS]
 
     # staggered reveal counter (0 = masthead, 1 = install, 2 = tabs); cap so
     # the tail of a long list doesn't wait too long to appear
@@ -930,7 +989,7 @@ def write_index(pkgs):
     <button class="tab" id="tab-xios" data-tab="xios" type="button" role="tab" aria-selected="false" aria-controls="panel-xios" tabindex="-1">xiOS<span class="tab-n">{len(xios)}</span></button>
   </nav>
   <section class="panel" id="panel-tweaks" role="tabpanel" aria-labelledby="tab-tweaks">
-    <p class="lede reveal" style="--i:3">Small quality-of-life tweaks for iPadOS on rootless jailbreaks.</p>
+    <p class="lede reveal" style="--i:3">Small quality-of-life tweaks and companion apps for iPadOS on rootless jailbreaks.</p>
     <div class="list solo">{tweak_rows}</div>
   </section>
   <section class="panel" id="panel-xios" role="tabpanel" aria-labelledby="tab-xios" hidden>
@@ -994,6 +1053,7 @@ def main():
             f"SHA256: {hashlib.sha256(blob).hexdigest()}",
             f"Icon: {BASE_URL}/icons/{pid}.png",
             f"Depiction: {BASE_URL}/depictions/{pid}.html",
+            f"SileoDepiction: {BASE_URL}/depictions/{pid}.json",
             f"Native Depiction: {BASE_URL}/depictions/{pid}.json",
         ]
         if "Homepage" not in ctrl:

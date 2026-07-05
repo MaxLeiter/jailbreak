@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/com.max.kioskmode-app.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,30 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**Kiosk Mode** locks your iPad (or iPhone) to a single app and relaunches it automatically \u2014 turn a device into a single-purpose kiosk.\n\nThis is the setup app: pick the target app and manage the kiosk settings from a simple onboarding flow. The lock and auto-relaunch behaviour lives in the companion SpringBoard tweak (**KioskMode**, package `com.max.kioskmode`) \u2014 install both for the full feature.\n\n- Choose any installed app to lock to\n- Auto-relaunch if the app is closed\n- Escape a locked session with a volume-button triple-press\n\nBuilt for iOS/iPadOS 17+, rootless (`/var/jb`). Requires **AppSync Unified** to run this unsigned app."
+          "markdown": "**Kiosk Mode** locks your iPad (or iPhone) to a single app and relaunches it automatically, turning a device into a single-purpose kiosk.\n\nThis is the setup app: pick the target app and manage the kiosk settings from a simple onboarding flow. The lock and auto-relaunch behavior lives in the companion SpringBoard tweak (**KioskMode**, package `com.max.kioskmode`); install both for the full feature.\n\n- Choose any installed app to lock to\n- Auto-relaunch if the app is closed\n- Escape a locked session with a volume-button triple-press\n\nRequires iOS/iPadOS 17+ and **AppSync Unified** to run the setup app."
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kioskmode-app/01-onboarding.png",
+              "accessibilityText": "Kiosk Mode onboarding screen"
+            },
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kioskmode-app/02-locked.png",
+              "accessibilityText": "Kiosk Mode locked dashboard"
+            },
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kioskmode-app/03-paused.png",
+              "accessibilityText": "Kiosk Mode paused dashboard"
+            },
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kioskmode-app/04-escape.png",
+              "accessibilityText": "Kiosk Mode escape shortcut settings"
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +45,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.3.0"
+          "text": "0.3.2"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "651.2 KiB"
+          "text": "651.9 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -52,7 +75,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.3.0  \u00b7  2026-07-03\n- Onboarding + settings app for Kiosk Mode\n- Packaged for the repo (app half of the KioskMode project)"
+          "markdown": "## 0.3.2  \u00b7  2026-07-03\n- Package rebuild; behaviour unchanged from 0.3.1\n\n## 0.3.1  \u00b7  2026-07-03\n- Fixed: turning the lock off in the app now reliably disarms it (the setting could previously revert)\n\n## 0.3.0  \u00b7  2026-07-03\n- Onboarding + settings app for Kiosk Mode\n- Packaged for the repo (app half of the KioskMode project)"
         }
       ]
     }

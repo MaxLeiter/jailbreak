@@ -69,6 +69,11 @@
       "url": "https://repo.maxleiter.com/banners/com.max.taskmanager.png"
     },
     {
+      "title": "Xios (Settings)",
+      "package": "com.max.xiosprefs",
+      "url": "https://repo.maxleiter.com/banners/com.max.xiosprefs.png"
+    },
+    {
       "title": "curl",
       "package": "curl",
       "url": "https://repo.maxleiter.com/banners/curl.png"
@@ -2139,6 +2144,16 @@
       "url": "https://repo.maxleiter.com/banners/xios-gnome-typelibs.png"
     },
     {
+      "title": "Xios Home Screen launcher tools",
+      "package": "xios-launcher-tools",
+      "url": "https://repo.maxleiter.com/banners/xios-launcher-tools.png"
+    },
+    {
+      "title": "Xios Desktop (Native iPadOS)",
+      "package": "xios-native",
+      "url": "https://repo.maxleiter.com/banners/xios-native.png"
+    },
+    {
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
@@ -2147,6 +2162,21 @@
       "title": "Xios (IOSurface X server)",
       "package": "xios-server",
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
+    },
+    {
+      "title": "Xios session launcher",
+      "package": "xios-session",
+      "url": "https://repo.maxleiter.com/banners/xios-session.png"
     },
     {
       "title": "Xios session launcher",

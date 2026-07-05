@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Makes **San Francisco**, Apple's system typeface, the default font for X11 apps on your jailbroken device, and makes the rest of the built-in iOS fonts (emoji, CJK, and so on) available too.\n\nNo font files are copied. It points the font system at iOS's own `/System/Library/Fonts`, so it always matches the OS and there's nothing to license or update.\n\n- Default sans-serif, serif, and UI font: **San Francisco**\n- Default monospace font: **SF Mono**\n- Refreshes the font cache on install\n\nUseful for anything that draws text in X11 apps (terminals, GTK/Qt apps, window managers). Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+          "markdown": "Makes **San Francisco**, Apple's system typeface, the default font for X11 apps, and makes the rest of the built-in iOS fonts (emoji, CJK, and so on) available too.\n\n- Default sans-serif, serif, and UI font: **San Francisco**\n- Default monospace font: **SF Mono**\n- Refreshes the font cache on install\n\nUseful for anything that draws text in X11 apps: terminals, GTK/Qt apps, and window managers."
         },
         {
           "class": "DepictionSeparatorView"

@@ -21,7 +21,7 @@ Use Vercel for the small mutable APT metadata and landing page:
 
 Use Vercel Blob for `.deb` payloads. This is live:
 
-- Blob store: public package payload store configured in Vercel.
+- Blob store: `xios-debs` (`store_J7LqAmqSi8Q1vMG4`), public, `iad1`.
 - Public package URLs are reachable through the `repo.maxleiter.com/debs/*`
   redirect.
 - `repo.maxleiter.com/debs/*` and `dev.repo.maxleiter.com/debs/*` redirect to Blob.
@@ -29,7 +29,9 @@ Use Vercel Blob for `.deb` payloads. This is live:
 
 Why:
 
-- The local package repo currently has 441 `.deb`s and `repo/debs` is about 318 MB.
+- The local package repo currently has 450 `.deb` payloads in `repo/debs`
+  (about 325 MB), and local, staging, and production metadata all index the same
+  450 package stanzas.
 - Vercel CLI static source uploads are limited by plan, and Vercel's documented limit is 100 MB on Hobby and 1 GB on Pro.
 - Public Blob storage is designed for public assets and large downloads.
 - Vercel recommends treating blobs as immutable, which matches the existing rule that public `.deb` filenames must never be replaced.
@@ -50,8 +52,17 @@ Migration runbook:
 3. Keep `Filename: debs/<filename>.deb` in `Packages`.
 4. Configure `repo.maxleiter.com/debs/*` to redirect to the public Blob URL for the same pathname. Prefer redirects over changing `Filename` to absolute Blob URLs until apt, Sileo, Zebra, and Cydia behavior is verified.
 5. Keep `debs/` in `repo/.vercelignore` so Vercel deploys only metadata and site assets.
+6. Publish through `bin/publish-repo.sh` or `bin/publish-staging.sh`; the scripts now upload local payloads to Blob before deploying signed metadata/site assets.
 
 Validation used for the cutover:
+
+- Staging deployment: `dpl_J7wfPdeymzW716aTfzXcq13mAzM7`, aliased to `https://dev.repo.maxleiter.com`.
+- Production deployment: `dpl_oSjTBfNPkBd4KufsNEHDw6Gysv9c`, aliased to `https://repo.maxleiter.com`.
+- Production `Packages.gz` matches local `repo/Packages`, indexes 450 packages, and includes
+  `com.max.kioskmode-app_0.3.2_iphoneos-arm64.deb`,
+  `com.max.taskmanager_0.1.1_iphoneos-arm64.deb`, and
+  `xios-launcher-tools_0.1.0_iphoneos-arm64.deb`.
+- Production package URL sweep: `checked=450 bad=0 not_blob=0`.
 
 ```bash
 python3 - <<'PY'
@@ -105,7 +116,7 @@ Production publication can become a maintainer-only manual workflow later, but i
 - APT signing key material, or a separate signing step before CI
 - protection so only trusted maintainers can publish
 
-The current local `bin/publish-repo.sh` flow remains the source of truth for metadata signing and deployment. New `.deb` payloads must be uploaded to Blob before publishing metadata that references them.
+The current local `bin/publish-repo.sh` flow remains the source of truth for metadata signing and deployment. It uploads new `.deb` payloads to Blob before publishing metadata that references them, and refuses to overwrite a public Blob path when the remote size differs from the local package.
 
 ## Public PR Expectations
 

@@ -1,13 +1,13 @@
 import SwiftUI
-import Charts
 
-/// A compact line chart with a soft area wash — the app's one chart primitive,
-/// reused inline in rows and (larger) in the detail sheet. Single series, so it
-/// carries no legend or axes; the surrounding label says what it plots.
+/// A compact line+area sparkline drawn with `Canvas` — deliberately NOT a Swift
+/// Charts `Chart`. It renders inline in every process row and refreshes at 1 Hz,
+/// so at ~300 rows a full `Chart` per row (view tree, scales, layout) was the
+/// scroll-jank bottleneck. `Canvas` draws two paths directly, which is an order
+/// of magnitude cheaper. The detail sheet keeps real Swift Charts for its larger,
+/// axis-bearing plots.
 ///
-/// Follows the mark spec: 2px round-capped line, ~12% area wash, no gridlines at
-/// this size. `baseline` fixes the y-scale so a flat-but-busy series and a
-/// flat-but-idle series don't both render as a mid-line.
+/// Mark spec preserved: 2px round-capped line over a soft top-down area wash.
 struct Sparkline: View {
     let values: [Double]
     let color: Color
@@ -15,41 +15,40 @@ struct Sparkline: View {
     var ceiling: Double?
     var showEndDot = false
 
-    private var domainMax: Double {
-        let dataMax = values.max() ?? 1
-        if let ceiling { return max(ceiling, 0.0001) }
-        return max(dataMax, 0.0001)
-    }
-
     var body: some View {
-        Chart(Array(values.enumerated()), id: \.offset) { index, value in
-            AreaMark(
-                x: .value("t", index),
-                yStart: .value("min", 0),
-                yEnd: .value("v", value))
-            .foregroundStyle(
-                .linearGradient(
-                    colors: [color.opacity(0.28), color.opacity(0.02)],
-                    startPoint: .top, endPoint: .bottom))
-            .interpolationMethod(.monotone)
+        Canvas(opaque: false, rendersAsynchronously: false) { ctx, size in
+            guard values.count > 1, size.width > 0, size.height > 0 else { return }
+            let maxV = max(ceiling ?? (values.max() ?? 1), 0.0001)
+            let stepX = size.width / CGFloat(values.count - 1)
+            func point(_ i: Int) -> CGPoint {
+                let clamped = min(max(values[i], 0), maxV)
+                let y = size.height - CGFloat(clamped / maxV) * size.height
+                return CGPoint(x: CGFloat(i) * stepX, y: y)
+            }
 
-            LineMark(
-                x: .value("t", index),
-                y: .value("v", value))
-            .foregroundStyle(color)
-            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-            .interpolationMethod(.monotone)
+            var line = Path()
+            line.move(to: point(0))
+            for i in 1..<values.count { line.addLine(to: point(i)) }
 
-            if showEndDot, index == values.count - 1 {
-                PointMark(x: .value("t", index), y: .value("v", value))
-                    .foregroundStyle(color)
-                    .symbolSize(60)
+            var area = line
+            area.addLine(to: CGPoint(x: size.width, y: size.height))
+            area.addLine(to: CGPoint(x: 0, y: size.height))
+            area.closeSubpath()
+            ctx.fill(area, with: .linearGradient(
+                Gradient(colors: [color.opacity(0.28), color.opacity(0.02)]),
+                startPoint: CGPoint(x: 0, y: 0),
+                endPoint: CGPoint(x: 0, y: size.height)))
+
+            ctx.stroke(line, with: .color(color),
+                       style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+
+            if showEndDot {
+                let p = point(values.count - 1)
+                let r: CGFloat = 3
+                ctx.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
+                         with: .color(color))
             }
         }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartYScale(domain: 0...domainMax)
-        .chartLegend(.hidden)
         .accessibilityHidden(true)  // the numeric value beside it carries the meaning
     }
 }

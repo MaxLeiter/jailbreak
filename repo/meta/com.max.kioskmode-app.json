@@ -3,8 +3,32 @@
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "lock.square",
-  "description": "**Kiosk Mode** locks your iPad (or iPhone) to a single app and relaunches it automatically — turn a device into a single-purpose kiosk.\n\nThis is the setup app: pick the target app and manage the kiosk settings from a simple onboarding flow. The lock and auto-relaunch behaviour lives in the companion SpringBoard tweak (**KioskMode**, package `com.max.kioskmode`) — install both for the full feature.\n\n- Choose any installed app to lock to\n- Auto-relaunch if the app is closed\n- Escape a locked session with a volume-button triple-press\n\nBuilt for iOS/iPadOS 17+, rootless (`/var/jb`). Requires **AppSync Unified** to run this unsigned app.",
+  "description": "**Kiosk Mode** locks your iPad (or iPhone) to a single app and relaunches it automatically, turning a device into a single-purpose kiosk.\n\nThis is the setup app: pick the target app and manage the kiosk settings from a simple onboarding flow. The lock and auto-relaunch behavior lives in the companion SpringBoard tweak (**KioskMode**, package `com.max.kioskmode`); install both for the full feature.\n\n- Choose any installed app to lock to\n- Auto-relaunch if the app is closed\n- Escape a locked session with a volume-button triple-press\n\nRequires iOS/iPadOS 17+ and **AppSync Unified** to run the setup app.",
+  "screenshots": [
+    {
+      "src": "screenshots/com.max.kioskmode-app/01-onboarding.png",
+      "alt": "Kiosk Mode onboarding screen",
+      "caption": "Guided setup for choosing and locking to a single app."
+    },
+    {
+      "src": "screenshots/com.max.kioskmode-app/02-locked.png",
+      "alt": "Kiosk Mode locked dashboard",
+      "caption": "Armed state with the selected locked app and escape shortcut."
+    },
+    {
+      "src": "screenshots/com.max.kioskmode-app/03-paused.png",
+      "alt": "Kiosk Mode paused dashboard",
+      "caption": "Paused state for temporarily using the iPad normally."
+    },
+    {
+      "src": "screenshots/com.max.kioskmode-app/04-escape.png",
+      "alt": "Kiosk Mode escape shortcut settings",
+      "caption": "Hardware-button escape choices for pausing and resuming the lock."
+    }
+  ],
   "changelog": [
+    { "version": "0.3.2", "date": "2026-07-03", "notes": "- Package rebuild; behaviour unchanged from 0.3.1" },
+    { "version": "0.3.1", "date": "2026-07-03", "notes": "- Fixed: turning the lock off in the app now reliably disarms it (the setting could previously revert)" },
     { "version": "0.3.0", "date": "2026-07-03", "notes": "- Onboarding + settings app for Kiosk Mode\n- Packaged for the repo (app half of the KioskMode project)" }
   ]
 }

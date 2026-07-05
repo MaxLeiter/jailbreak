@@ -28,6 +28,15 @@ struct ProcessRow: Identifiable {
 
     var residentMB: Double { Double(residentBytes) / 1_048_576 }
     var uptime: TimeInterval { startEpoch > 0 ? Date().timeIntervalSince1970 - startEpoch : 0 }
+
+    /// Whether this row satisfies a search query — display name, raw process
+    /// name, or bundle id. Lives here (not in the view) so it sits at the same
+    /// altitude as `ListScope.includes`.
+    func matches(_ query: String) -> Bool {
+        displayName.localizedCaseInsensitiveContains(query)
+            || processName.localizedCaseInsensitiveContains(query)
+            || (bundleID?.localizedCaseInsensitiveContains(query) ?? false)
+    }
 }
 
 enum History {

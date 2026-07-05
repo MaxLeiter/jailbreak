@@ -10,8 +10,9 @@ policy hung off it is the product.
 ## Shape
 
 ```
-main.ts        bootstrap: build client + tools + policy + router + store, drive a Session
-harness.ts     the engine (generic, tool-agnostic):
+src/main.ts    thin CLI over the shared daemon
+src/daemon.ts  wiring: client + tools + policy + router + store + model catalog
+src/harness.ts the engine (generic, tool-agnostic):
                  · Session.run()      the loop — call model, dispatch tools, repeat
                  · dispatch()         permission check → run → tool_result (parallel)
                  · PolicyBroker       capability policy, most-restrictive-wins, audited
@@ -19,8 +20,13 @@ harness.ts     the engine (generic, tool-agnostic):
                  · maybeCompact()     fold old history into a summary; never split a
                                       tool_use/tool_result pair; pinned state survives
                  · makeSpawner()      subagents (parallel = call spawn N times)
-tools.ts       example device tools (read_file, list_dir, run_shell, battery, spawn_subagent)
-store.ts       bun:sqlite durable sessions + append-only audit log
+src/tools.ts   in-process tool surface: filesystem, shell, battery, memory,
+               screenshot, speech/voice, listen, MCP config
+src/ios/*      device primitives for power, screenshot, speech, and audio/listen
+src/memory.ts  markdown memory topics under the Jarvis data dir
+src/mcp.ts     MCP server config and client-config export
+src/settings.ts persisted model, policy, MCP, and iOS preferences
+src/store.ts   bun:sqlite durable sessions + append-only audit log
 ```
 
 ## The seams that matter
@@ -97,18 +103,20 @@ It's a control plane, not just a chat box:
   the `PolicyBroker.ask` hook resolves on your click. This is the human-in-the-loop.
 - **Audit** — the append-only log of every tool call.
 
-Endpoints: `GET /events` (SSE), `POST /chat`, `GET /state`, `POST /approve`, `POST /policy`,
-`GET /wake`, `POST /wake`.
+Endpoints: `GET /events` (SSE), `POST /chat`, `GET /state`, `GET /attachment`,
+`POST /approve`, `POST /policy`, `GET /models`, `POST /model`, `GET /mcp`,
+`POST /mcp`, `GET /mcp/client-config`, `GET /wake`, `POST /wake`.
 A native chat surface can later be a thin client of these same endpoints.
 
 ## On-device
 
-The sense/act tools are stubs or mac-shell wrappers here. On the iPad they become
-thin wrappers over the real primitives: IOKit for `battery`, the SpringBoard
-screenshot bridge for `screenshot`, AVSpeech for `speak` and `change_voice`,
-AVFoundation recording plus Apple Speech for `listen`, the input-injection wire
-for tap/type, and SpringBoard hooks for notifications. The harness doesn't
-change — only `tools.ts` grows.
+Several sense/act tools are now real device paths: IOKit for `battery`, the
+SpringBoard screenshot bridge for `screenshot`, AVSpeech for `speak` and
+`change_voice`, AVFoundation recording plus Apple Speech for `listen`, markdown
+memory topics, MCP config export, and model switching through persisted
+settings. Input injection, notifications, accessibility control, and
+brightness/volume remain backlog; the harness does not change as those tools
+land.
 
 The wake path is intentionally Jarvis-owned rather than Siri-backed. The daemon
 can run an explicit short-clip loop from the console; when a transcript contains
@@ -123,4 +131,4 @@ exposed as a Jarvis tool.
 Next: (1) test live "hey jarvis, ..." command quality, (2) add a two-stage wake
 conversation or native helper if the prototype is useful, (3) probe the HID
 entitlement wall for tap/type, (4) route `PolicyBroker.ask` to a real on-device
-prompt, (5) the sensing/memory layer that compiles context about the user.
+prompt, (5) expand the sensing layer that compiles context about the user.

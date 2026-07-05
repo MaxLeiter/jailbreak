@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**Xvfb**, the X virtual framebuffer server, rebuilt from source for **rootless** jailbreaks. It runs a full X11 server with no real display hardware, drawing everything into an off-screen image in memory.\n\nIt's the engine behind the native **Xios** iOS app: Xvfb draws into a shared image that the app puts on screen, and touch and keyboard input are passed back into X11.\n\nStock X servers crash on launch under rootless because they expect a system shell at `/bin/sh`, which isn't present (it lives at `/var/jb/bin/sh`). This build uses the right path, so the keyboard sets up correctly.\n\n- The same Xvfb from xorg-server 1.20.11, built from source\n- Installs cleanly and registers `/var/jb/usr/bin/Xvfb`\n- Pair with a window manager (`fluxbox`), `xterm`, and the `x11-fonts-sf` package\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+          "markdown": "**Xvfb** is the X virtual framebuffer server for headless X11 sessions. It runs a full X11 server with no display hardware, drawing into an off-screen framebuffer.\n\nUse it for headless/debug X11 sessions or software-only bring-up. The public Xios app display path uses **xios-server** instead.\n\n- xorg-server 1.20.11 virtual framebuffer\n- Registers `/var/jb/usr/bin/Xvfb`\n- Pair with a window manager (`fluxbox`), `xterm`, and the `x11-fonts-sf` package"
         },
         {
           "class": "DepictionSeparatorView"

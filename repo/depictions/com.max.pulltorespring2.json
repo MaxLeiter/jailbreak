@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Pull down at the very top of the **Settings** app to respring your device. A pull-to-refresh gesture, repurposed to relaunch SpringBoard.\n\n- Adds a **pull-to-respring** control to the root Settings list\n- No buttons, no menus, no extra apps\n- Rootless refresh of Noah Saso's original *PullToRespring* for modern iOS\n\nBuilt for iPadOS 17, rootless (palera1n)."
+          "markdown": "Pull down at the very top of the **Settings** app to respring your device. A pull-to-refresh gesture, repurposed to relaunch SpringBoard.\n\n- Adds a **pull-to-respring** control to the root Settings list\n- No buttons, no menus, no extra apps\n- Modern iOS refresh of Noah Saso's original *PullToRespring*\n\nRequires iPadOS 17+."
         },
         {
           "class": "DepictionSeparatorView"

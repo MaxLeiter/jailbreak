@@ -1,0 +1,7 @@
+{
+  "tagline": "Fast JavaScript runtime and toolkit",
+  "developer": "Bun",
+  "homepage": "https://bun.sh",
+  "iconGlyph": "bolt",
+  "description": "**Bun** is a fast JavaScript runtime, package manager, test runner, and bundler.\n\nUse it on device to run JavaScript tooling and command-line apps that expect the Bun runtime.\n\n- Runs JavaScript and TypeScript entry points\n- Includes Bun's package-manager and runtime tooling\n- Used by packages such as **OpenCode**"
+}

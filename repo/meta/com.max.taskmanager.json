@@ -3,8 +3,21 @@
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "waveform.path.ecg",
-  "description": "**Task Manager** is a native, Activity-Monitor-style process monitor for your jailbroken iPhone or iPad.\n\nSee everything that's running with live memory and CPU usage, and quit or force-kill apps that are misbehaving — no root daemon required.\n\n- Live process list with per-row memory, CPU%, and a rolling memory sparkline\n- Device dashboard: a RAM usage ring and a per-core CPU meter with an overall-CPU trend\n- Tap any process for larger CPU and memory-over-time charts plus metadata (pid, uid, threads, uptime)\n- **Quit** (SIGTERM) or **Force Kill** (SIGKILL) app processes, behind a confirmation\n- Sort by CPU, memory, or name; segmented **Apps** vs **System** views\n- Reads process stats directly through libproc/sysctl — a foreground live monitor, not a background daemon\n\nUniversal (iPhone + iPad), dark-first design. Built for rootless (`/var/jb`) jailbreaks, iOS/iPadOS 16+. Requires **AppSync Unified** to run this unsigned app.",
+  "description": "**Task Manager** is an Activity-Monitor-style process monitor for your jailbroken iPhone or iPad.\n\nSee everything that's running with live memory and CPU usage, and quit or force-kill apps that are misbehaving; no root daemon required.\n\n- Live process list with per-row memory, CPU%, and a rolling memory sparkline\n- Device dashboard: a RAM usage ring and a per-core CPU meter with an overall-CPU trend\n- Tap any process for larger CPU and memory-over-time charts plus metadata (pid, uid, threads, uptime)\n- **Quit** (SIGTERM) or **Force Kill** (SIGKILL) app processes, behind a confirmation\n- Sort by CPU, memory, or name; segmented **Apps** vs **System** views\n\nUniversal (iPhone + iPad), dark-first design. Requires iOS/iPadOS 16+ and **AppSync Unified**.",
+  "screenshots": [
+    {
+      "src": "screenshots/com.max.taskmanager/01-overview.png",
+      "alt": "Task Manager overview screen with memory, CPU, and process list",
+      "caption": "Live dashboard with memory, per-core CPU, and running app processes."
+    },
+    {
+      "src": "screenshots/com.max.taskmanager/02-detail.png",
+      "alt": "Task Manager process detail screen with CPU and memory charts",
+      "caption": "Per-process detail with history charts, metadata, and quit controls."
+    }
+  ],
   "changelog": [
+    { "version": "0.1.1", "date": "2026-07-03", "notes": "- Search the process list by name or bundle id\n- Sort ascending or descending (tap the sort field again to flip)\n- Much smoother scrolling" },
     { "version": "0.1.0", "date": "2026-07-03", "notes": "- Initial release\n- Live per-process memory + CPU with sparklines\n- RAM ring + per-core CPU dashboard\n- Quit / Force Kill with confirmation\n- Universal iPhone + iPad" }
   ]
 }

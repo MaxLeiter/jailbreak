@@ -23,7 +23,7 @@ build_app() {
       -scheme "${app_name}" \
       -configuration Release \
       -sdk iphoneos \
-      -derivedDataPath build \
+      -derivedDataPath "$app_dir/build" \
       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
       -quiet build >&2
   ) || { echo "build_app: xcodebuild failed for $app_name" >&2; return 1; }

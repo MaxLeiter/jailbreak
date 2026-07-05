@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**slurp** lets you select a region on Wayland, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. slurp draws a selection box over the screen, then prints the region you choose. It is the companion to `grim` for taking a screenshot of exactly the area you want.\n\n- Interactive region selection overlay\n- Prints the chosen geometry for other tools\n- Native Wayland via the wlr layer-shell protocol\n- Pairs with grim for region screenshots\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Use it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**slurp** lets you select a region on the iosc Wayland compositor.\n\nslurp draws a selection box over the screen, then prints the region you choose. It is the companion to `grim` for taking a screenshot of exactly the area you want.\n\n- Interactive region selection overlay\n- Prints the chosen geometry for other tools\n- Native Wayland via the wlr layer-shell protocol\n- Pairs with grim for region screenshots\n\nUse it inside an Xios desktop session running the iosc compositor."
         },
         {
           "class": "DepictionSeparatorView"
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 1.5.0  \u00b7  2026-07-02\n- First release: slurp 1.5.0 cross-compiled for rootless iOS\n- Wayland region selection on the iosc compositor"
+          "markdown": "## 1.5.0  \u00b7  2026-07-02\n- First release: slurp 1.5.0 for Xios\n- Wayland region selection on the iosc compositor"
         }
       ]
     }

@@ -8,7 +8,7 @@
 # To publish a tweak: build it, copy its .deb into repo/debs/, then run this.
 #   bin/build.sh tweaks/<Name>
 #   cp tweaks/<Name>/packages/*.deb repo/debs/
-#   bin/publish-repo.sh
+#   bin/publish-repo.sh          # uploads payloads to Blob, signs metadata, deploys metadata
 set -euo pipefail
 
 TARGET=prod
@@ -93,6 +93,15 @@ fi
 AFTER_SIGN="$(snapshot_debs)"
 if [ "$BEFORE" != "$AFTER_SIGN" ]; then
   echo "ERROR: repo/debs changed after signing; refusing to deploy a stale index." >&2
+  exit 1
+fi
+
+echo "==> Uploading package payloads to Vercel Blob"
+"$REPO_ROOT/bin/upload-debs-to-blob.sh"
+
+AFTER_UPLOAD="$(snapshot_debs)"
+if [ "$BEFORE" != "$AFTER_UPLOAD" ]; then
+  echo "ERROR: repo/debs changed during Blob upload; refusing to deploy a stale index." >&2
   exit 1
 fi
 

@@ -22,16 +22,30 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        Group {
-            if config.configured {
-                NavigationStack { DashboardView() }
-            } else {
-                OnboardingFlow()
-            }
-        }
+        content
         .animation(.smooth(duration: 0.35), value: config.configured)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { config.reload() }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+#if DEBUG
+        if KioskScreenshotScenario.current == .escape {
+            NavigationStack { EscapeSettingsView() }
+        } else {
+            normalContent
+        }
+#else
+        normalContent
+#endif
+    }
+
+    @ViewBuilder private var normalContent: some View {
+        if config.configured {
+            NavigationStack { DashboardView() }
+        } else {
+            OnboardingFlow()
         }
     }
 }

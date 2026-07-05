@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**ANGLE** (Almost Native Graphics Layer Engine) built for jailbroken iOS, translating OpenGL ES to Metal so X11 and GTK apps can use the GPU.\n\nProvides `libEGL` and `libGLESv2` under a private prefix (`/var/jb/lib/angle`) so they sit alongside the Mesa software renderer with no conflict. Verified on-device on the A10 GPU, including `EGL_ANGLE_iosurface_client_buffer` for zero-copy rendering into shared IOSurfaces.\n\n- Real GPU acceleration (Metal backend) for GLES2 and GLES3\n- EGL 1.5 with IOSurface client buffers\n- Coexists with the software GL stack\n\nGPU-using apps must be signed with the appropriate GPU entitlements. Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+          "markdown": "**ANGLE** (Almost Native Graphics Layer Engine) translates OpenGL ES to Metal so X11, Wayland, GTK, and Qt apps can use the GPU.\n\nIt provides EGL/GLES libraries for the Xios graphics stack and supports IOSurface client buffers for the zero-copy display path.\n\n- Metal-backed GLES2/GLES3 acceleration\n- EGL 1.5 with IOSurface client buffers\n- Coexists with the software Mesa stack\n\nGPU-using apps still need the appropriate graphics entitlements."
         },
         {
           "class": "DepictionSeparatorView"

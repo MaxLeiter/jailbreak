@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"     # iPad only
     PRODUCT_BUNDLE_IDENTIFIER: com.max.kioskmode
-    MARKETING_VERSION: "0.3.1"
+    MARKETING_VERSION: "0.3.2"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_OBJC_BRIDGING_HEADER: Sources/KioskMode-Bridging-Header.h
     # Unsigned build — the device runs it via AppSync Unified after an ldid pseudo-sign.
@@ -39,7 +39,7 @@ targets:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: Kiosk Mode
-        CFBundleShortVersionString: "0.3.0"
+        CFBundleShortVersionString: "0.3.2"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: false

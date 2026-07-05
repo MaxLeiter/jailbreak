@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/com.max.kitchenhub.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,30 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**KitchenHub** is a full-screen, tiling dashboard for a wall-mounted kitchen iPad.\n\nThe screen is a 12x8 grid; each panel snaps to whole cells and can be moved or resized in edit mode, and the layout persists between launches.\n\n- Grid engine with move / resize / snap and JSON-persisted layout\n- Clock and Timer panels, with more on the way\n- Long-press-gated edit mode so cooking never rearranges the board\n- Designed to be locked on-screen with the Kiosk Mode tweak\n\nBuilt for iPadOS 16+, rootless (`/var/jb`). Requires **AppSync Unified** to run this unsigned app."
+          "markdown": "**KitchenHub** is a full-screen, tiling dashboard for a wall-mounted kitchen iPad.\n\nThe screen is a 12x8 grid; each panel snaps to whole cells and can be moved or resized in edit mode, and the layout persists between launches.\n\n- Grid engine with move / resize / snap and JSON-persisted layout\n- Clock and Timer panels, with more on the way\n- Long-press-gated edit mode so cooking never rearranges the board\n- Designed to be locked on-screen with the Kiosk Mode tweak\n\nRequires iPadOS 16+ and **AppSync Unified**."
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kitchenhub/01-standby.png",
+              "accessibilityText": "KitchenHub standby screen"
+            },
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kitchenhub/02-dashboard.png",
+              "accessibilityText": "KitchenHub dashboard grid"
+            },
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kitchenhub/03-timers.png",
+              "accessibilityText": "KitchenHub timers screen"
+            },
+            {
+              "url": "https://repo.maxleiter.com/screenshots/com.max.kitchenhub/04-recipe.png",
+              "accessibilityText": "KitchenHub recipe cook mode"
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"

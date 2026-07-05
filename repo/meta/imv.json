@@ -3,8 +3,8 @@
   "developer": "The imv contributors",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "photo",
-  "description": "**imv** is a fast image viewer for the command line, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. imv is a Wayland-native client that handles large image collections with quick navigation and keyboard control.\n\n- Native Wayland client, no X11 required\n- Handles common formats including PNG and JPEG\n- Pan, zoom, and slideshow with keyboard shortcuts\n- Scriptable through its command interface\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Launch it inside an Xios desktop session running the iosc compositor.",
+  "description": "**imv** is a fast command-line image viewer for the iosc Wayland compositor.\n\nimv handles large image collections with quick navigation and keyboard control.\n\n- Native Wayland client, no X11 required\n- Handles common formats including PNG and JPEG\n- Pan, zoom, and slideshow with keyboard shortcuts\n- Scriptable through its command interface\n\nLaunch it inside an Xios desktop session running the iosc compositor.",
   "changelog": [
-    { "version": "5.0.1", "date": "2026-07-02", "notes": "- First release: imv 5.0.1 cross-compiled for rootless iOS\n- Native Wayland image viewer on the iosc compositor" }
+    { "version": "5.0.1", "date": "2026-07-02", "notes": "- First release: imv 5.0.1 for Xios\n- Native Wayland image viewer on the iosc compositor" }
   ]
 }

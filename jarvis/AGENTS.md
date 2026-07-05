@@ -53,10 +53,13 @@ Session.run()            call model → dispatch tool_use blocks (parallel) → 
 |------|------|
 | `src/harness.ts` | The engine. Generic — knows nothing about the device or the provider. `Session`, `PolicyBroker`, `TieredRouter`, compaction, subagents, `SessionEvent`. |
 | `src/daemon.ts` | The one place it's wired together (client, tools, policy, router, store). Shared by the CLI and the server. `buildJarvis()`, `MODELS`, `VIA_GATEWAY`, `DEFAULT_POLICY`. |
-| `src/tools.ts` | The tool surface. In-process tools (no MCP). `read_file`, `list_dir`, `run_shell`, `battery`, `spawn_subagent`. |
-| `src/ios/power.ts` | First real device FFI (`battery` via IOKit over `bun:ffi`). The template for sense tools. |
+| `src/tools.ts` | The first-party tool surface. Filesystem, shell, battery, memory read/write, screenshot, speech/voice, listen/transcription, and MCP config are in-process; subagent/session/model tools are assembled through `daemon.ts`. |
+| `src/ios/power.ts` | Device power FFI (`battery` via IOKit over `bun:ffi`). |
+| `src/ios/screenshot.ts` | SpringBoard screenshot bridge request/status flow. |
+| `src/ios/speech.ts` / `src/ios/audio.ts` | AVSpeech voice output and AVFoundation/Speech listen support. |
+| `src/memory.ts` / `src/mcp.ts` / `src/settings.ts` | Markdown memory topics, MCP server config/client export, and persisted model/policy/preferences. |
 | `src/store.ts` | `bun:sqlite` durable sessions + append-only audit log. |
-| `src/server.ts` | `Bun.serve` web console: SSE stream, `/chat`, `/state`, `/approve`, `/policy`. |
+| `src/server.ts` | `Bun.serve` web console: SSE stream, `/chat`, `/state`, `/attachment`, `/approve`, `/policy`, `/models`, `/model`, `/mcp`, `/mcp/client-config`, `/wake`. |
 | `src/main.ts` | Thin CLI over the same daemon (one-shot turn, non-interactive → gated tools auto-deny). |
 | `public/console.html` | Self-contained web console (no framework/build). Phosphor-instrument aesthetic. |
 | `deploy.sh` / `jarvisctl.sh` | Host-side one-command deploy / device-side daemon control. |

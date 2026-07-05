@@ -26,6 +26,22 @@ final class KHModel: ObservableObject {
             .flatMap { try? JSONDecoder().decode(Prefs.self, from: $0) }
         isDark = prefs?.isDark ?? true
         layout = Layout(rawValue: prefs?.layout ?? "Grid") ?? .grid
+#if DEBUG
+        if let shot = KitchenScreenshotScenario.current {
+            locked = shot == .standby
+            switch shot {
+            case .standby, .dashboard:
+                route = .dashboard
+                layout = .grid
+            case .timers:
+                route = .timers
+                locked = false
+            case .recipe:
+                route = .recipe
+                locked = false
+            }
+        }
+#endif
     }
 
     func open(_ r: Route) { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { route = r } }

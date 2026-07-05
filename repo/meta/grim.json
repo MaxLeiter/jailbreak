@@ -3,8 +3,8 @@
   "developer": "Simon Ser and contributors",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "camera.viewfinder",
-  "description": "**grim** captures screenshots on Wayland, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. grim asks the compositor for its pixels through the wlr screencopy protocol and writes them to a PNG or JPEG file. Pair it with `slurp` to grab a selected region.\n\n- Whole-output or region capture\n- PNG and JPEG output\n- Native Wayland via the wlr screencopy protocol\n- Composes cleanly with slurp for region selection\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Use it inside an Xios desktop session running the iosc compositor.",
+  "description": "**grim** captures screenshots from the iosc Wayland compositor.\n\nIt asks the compositor for its pixels through the wlr screencopy protocol and writes them to a PNG or JPEG file. Pair it with `slurp` to grab a selected region.\n\n- Whole-output or region capture\n- PNG and JPEG output\n- Native Wayland via the wlr screencopy protocol\n- Composes cleanly with slurp for region selection\n\nUse it inside an Xios desktop session running the iosc compositor.",
   "changelog": [
-    { "version": "1.4.1", "date": "2026-07-02", "notes": "- First release: grim 1.4.1 cross-compiled for rootless iOS\n- Wayland screencopy screenshots on the iosc compositor" }
+    { "version": "1.4.1", "date": "2026-07-02", "notes": "- First release: grim 1.4.1 for Xios\n- Wayland screencopy screenshots on the iosc compositor" }
   ]
 }

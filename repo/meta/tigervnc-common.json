@@ -3,7 +3,7 @@
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "display",
-  "description": "Common files (`vncconfig`, `vncpasswd`, config) shared by the TigerVNC server packages. Installed automatically as a dependency of **tigervnc-standalone-server**.\n\nRebuilt from source for rootless `/var/jb`.",
+  "description": "Common files (`vncconfig`, `vncpasswd`, config) shared by the TigerVNC server packages. Installed automatically as a dependency of **tigervnc-standalone-server**.",
   "changelog": [
     { "version": "1.11.0+rootless1", "date": "2026-06-29", "notes": "- Rebuilt from source for rootless /var/jb" }
   ]

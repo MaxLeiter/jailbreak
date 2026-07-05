@@ -66,7 +66,13 @@ final class KioskConfig {
     static let path = "/var/mobile/Library/Preferences/com.max.kioskmode.shared.plist"
     private static let legacyPath = "/var/mobile/Library/Preferences/com.max.kioskmode.plist"
 
-    init() { Self.migrateLegacyIfNeeded(); reload() }
+    init() {
+        Self.migrateLegacyIfNeeded()
+        reload()
+#if DEBUG
+        KioskScreenshotScenario.current?.apply(to: self)
+#endif
+    }
 
     /// One-time move from the old (cfprefsd-clobbered) domain path to the new
     /// shared path, so an already-configured install isn't silently reset on

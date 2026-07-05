@@ -3,7 +3,7 @@
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "apps.ipad",
-  "description": "**xios-native** is the flavor with no desktop environment at all: every Linux app becomes a first-class iPadOS window. Each app gets its own home screen icon, opens in its own window, and multitasks with Split View and Slide Over like any other iPad app.\n\nThis package installs the ioscd launch daemon and the per-app host that puts each app's window on screen. Tap a Linux app icon on the home screen and it opens; iPadOS itself is the window manager.\n\nIt is the lightest flavor and the most iPad-like one. The GNOME and KDE apps in this repo all work as launchable apps here.\n\nNeeds iOS 16.0 or newer on a rootless jailbreak (/var/jb).",
+  "description": "**xios-native** is the flavor with no desktop environment at all: every Linux app becomes a first-class iPadOS window. Each app gets its own home screen icon, opens in its own window, and multitasks with Split View and Slide Over like any other iPad app.\n\nThis package installs the ioscd launch daemon and the per-app host that puts each app's window on screen. Tap a Linux app icon on the home screen and it opens; iPadOS itself is the window manager.\n\nIt is the lightest flavor and the most iPad-like one. The GNOME and KDE apps in this repo all work as launchable apps here.\n\nRequires iOS 16.0+.",
   "changelog": [
     { "version": "0.1.0", "date": "2026-07-01", "notes": "- First release: ioscd launch daemon + per-app iPadOS window host" }
   ]

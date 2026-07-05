@@ -3,8 +3,8 @@
   "developer": "The GNOME Project",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "plus.forwardslash.minus",
-  "description": "**GNOME Calculator** running natively on your jailbroken device through the X11-on-iOS stack. Basic, scientific, financial, and programming modes, built on GTK4 and libadwaita.\n\nThis is the first Vala application in the stack, cross-compiled with valac against the device's own GTK4. It runs as a real native arm64 binary.\n\n- Basic, advanced, financial, and programming modes\n- Unit and currency conversion\n- Precise arithmetic (mpfr/mpc)\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`).",
+  "description": "**GNOME Calculator** brings GNOME's calculator to the Xios desktop: basic, scientific, financial, and programming modes with GTK4/libadwaita styling.\n\n- Basic, advanced, financial, and programming modes\n- Unit and currency conversion\n- Precise arithmetic (mpfr/mpc)",
   "changelog": [
-    { "version": "46.2", "date": "2026-06-30", "notes": "- First release: GNOME Calculator 46 cross-compiled for rootless iOS\n- First Vala app in the stack (valac + vendored vapi)\n- GTK4 + libadwaita; mpfr/mpc precision" }
+    { "version": "46.2", "date": "2026-06-30", "notes": "- First release: GNOME Calculator 46 for Xios\n- First Vala app in the stack (valac + vendored vapi)\n- GTK4 + libadwaita; mpfr/mpc precision" }
   ]
 }

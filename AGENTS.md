@@ -40,12 +40,13 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 ## Static APT Repo Publishing
 
 - The package repo is generated from `repo/debs/` by `bin/lib/make-repo.py` (repo-pipeline internals live in `bin/lib/`; `bin/` itself holds only entry points).
-- `bin/publish-staging.sh` (= `bin/publish-repo.sh --staging`) regenerates, audits, signs, and deploys the low-cache staging repo (served at dev.repo.maxleiter.com) for iteration.
-- `bin/publish-repo.sh` regenerates, audits, signs, and deploys production.
+- `bin/publish-staging.sh` (= `bin/publish-repo.sh --staging`) regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys the low-cache staging repo (served at dev.repo.maxleiter.com) for iteration.
+- `bin/publish-repo.sh` regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys production metadata/site assets.
 - Treat production `.deb` URLs as immutable. Never replace the bytes of a public `.deb` at the same filename; bump the package version or revision so the filename changes.
 - Keep APT metadata (`Packages`, `Packages.gz`, `Release`, `InRelease`, `Release.gpg`) revalidated instead of long-lived immutable.
 - Keep staging package directories out of Vercel deployments. Do not remove `repo/.vercelignore` entries for staging output unless the publish flow changes deliberately.
 - If a publish script fails because `repo/debs` changed during generation/signing, rerun after the active build finishes.
+- If a publish script fails during Blob upload because an existing remote `.deb` has a different size, do not overwrite it; bump the package version/revision so the filename changes.
 
 ## Generated Repo Files
 

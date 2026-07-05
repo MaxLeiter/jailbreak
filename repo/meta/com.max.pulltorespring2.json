@@ -3,7 +3,7 @@
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "arrow.clockwise",
-  "description": "Pull down at the very top of the **Settings** app to respring your device. A pull-to-refresh gesture, repurposed to relaunch SpringBoard.\n\n- Adds a **pull-to-respring** control to the root Settings list\n- No buttons, no menus, no extra apps\n- Rootless refresh of Noah Saso's original *PullToRespring* for modern iOS\n\nBuilt for iPadOS 17, rootless (palera1n).",
+  "description": "Pull down at the very top of the **Settings** app to respring your device. A pull-to-refresh gesture, repurposed to relaunch SpringBoard.\n\n- Adds a **pull-to-respring** control to the root Settings list\n- No buttons, no menus, no extra apps\n- Modern iOS refresh of Noah Saso's original *PullToRespring*\n\nRequires iPadOS 17+.",
   "changelog": [
     { "version": "2.0.1", "date": "2026-06-30", "notes": "- Fix: respring now works on iOS 17 (FBSSystemService + SBSRelaunchAction; the old _relaunchSpringBoardNow path was dead)\n- Easier trigger: a deliberate over-pull fires it, so the Settings search bar no longer swallows the gesture" },
     { "version": "2.0.0", "date": "2026-06-30", "notes": "- Rootless (arm64, /var/jb) rewrite for iOS 17\n- Modern UIRefreshControl on the Settings root list\n- Credit: original PullToRespring by Noah Saso (MIT)" }

@@ -133,4 +133,66 @@ final class MonitorEngine: ObservableObject {
         overallCPU = mean
         History.push(mean, into: &overallCPUHistory)
     }
+
+#if DEBUG
+    func installScreenshotFixtures() {
+        let now = Date().timeIntervalSince1970
+        func hist(_ seed: Double, _ amp: Double = 8) -> [Double] {
+            (0..<History.capacity).map { i in
+                max(0, seed + sin(Double(i) / 6) * amp + Double(i % 7))
+            }
+        }
+        rows = [
+            ProcessRow(pid: 4201, ppid: 1, uid: 501,
+                       displayName: "Task Manager", processName: "TaskManager",
+                       executablePath: "/var/jb/Applications/TaskManager.app/TaskManager",
+                       bundleID: "com.max.taskmanager",
+                       residentBytes: 212_000_000, cpuPercent: 18,
+                       threadCount: 22, startEpoch: now - 3600,
+                       cpuHistory: hist(14, 6), memoryHistory: hist(202, 3)),
+            ProcessRow(pid: 3904, ppid: 1, uid: 501,
+                       displayName: "KitchenHub", processName: "KitchenHub",
+                       executablePath: "/var/jb/Applications/KitchenHub.app/KitchenHub",
+                       bundleID: "com.max.kitchenhub",
+                       residentBytes: 436_000_000, cpuPercent: 11,
+                       threadCount: 35, startEpoch: now - 8200,
+                       cpuHistory: hist(8, 4), memoryHistory: hist(416, 9)),
+            ProcessRow(pid: 181, ppid: 1, uid: 0,
+                       displayName: "SpringBoard", processName: "SpringBoard",
+                       executablePath: "/System/Library/CoreServices/SpringBoard.app/SpringBoard",
+                       bundleID: nil,
+                       residentBytes: 690_000_000, cpuPercent: 6,
+                       threadCount: 74, startEpoch: now - 24_000,
+                       cpuHistory: hist(5, 3), memoryHistory: hist(658, 12)),
+            ProcessRow(pid: 4412, ppid: 1, uid: 501,
+                       displayName: "Safari", processName: "MobileSafari",
+                       executablePath: "/Applications/MobileSafari.app/MobileSafari",
+                       bundleID: "com.apple.mobilesafari",
+                       residentBytes: 301_000_000, cpuPercent: 3,
+                       threadCount: 19, startEpoch: now - 5000,
+                       cpuHistory: hist(2, 2), memoryHistory: hist(287, 5)),
+            ProcessRow(pid: 96, ppid: 1, uid: 0,
+                       displayName: "backboardd", processName: "backboardd",
+                       executablePath: "/usr/libexec/backboardd",
+                       bundleID: nil,
+                       residentBytes: 148_000_000, cpuPercent: 2,
+                       threadCount: 42, startEpoch: now - 24_000,
+                       cpuHistory: hist(1, 1), memoryHistory: hist(141, 4)),
+            ProcessRow(pid: 3988, ppid: 1, uid: 501,
+                       displayName: "Messages", processName: "MobileSMS",
+                       executablePath: "/Applications/MobileSMS.app/MobileSMS",
+                       bundleID: "com.apple.MobileSMS",
+                       residentBytes: 178_000_000, cpuPercent: 1,
+                       threadCount: 16, startEpoch: now - 4600,
+                       cpuHistory: hist(1, 1), memoryHistory: hist(170, 2)),
+        ]
+        memory = MemorySnapshot(total: 48_000_000_000, wired: 9_600_000_000,
+                                active: 11_200_000_000, inactive: 7_000_000_000,
+                                compressed: 4_100_000_000, free: 16_100_000_000)
+        coreUsage = [34, 31, 27, 22, 18, 16, 14, 11]
+        overallCPU = 22
+        overallCPUHistory = hist(20, 5)
+        lastUpdate = Date()
+    }
+#endif
 }

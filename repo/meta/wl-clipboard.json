@@ -3,8 +3,8 @@
   "developer": "Sergey Bugaev and contributors",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "doc.on.clipboard",
-  "description": "**wl-clipboard** provides command-line copy and paste for Wayland, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 build cross-compiled for rootless iOS. It ships two small tools, `wl-copy` and `wl-paste`, that read and write the compositor clipboard so you can move text and data between terminal programs and graphical apps.\n\n- `wl-copy` sends standard input to the clipboard\n- `wl-paste` writes the clipboard to standard output\n- Works with any format the compositor advertises\n- Native Wayland, no X11 required\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Use it inside an Xios desktop session running the iosc compositor.",
+  "description": "**wl-clipboard** provides command-line copy and paste for the iosc Wayland compositor.\n\nIt ships two small tools, `wl-copy` and `wl-paste`, that read and write the compositor clipboard so you can move text and data between terminal programs and graphical apps.\n\n- `wl-copy` sends standard input to the clipboard\n- `wl-paste` writes the clipboard to standard output\n- Works with any format the compositor advertises\n- Native Wayland, no X11 required\n\nUse it inside an Xios desktop session running the iosc compositor.",
   "changelog": [
-    { "version": "2.2.1", "date": "2026-07-02", "notes": "- First release: wl-clipboard 2.2.1 cross-compiled for rootless iOS\n- Ships wl-copy and wl-paste for the iosc compositor clipboard" }
+    { "version": "2.2.1", "date": "2026-07-02", "notes": "- First release: wl-clipboard 2.2.1 for Xios\n- Ships wl-copy and wl-paste for the iosc compositor clipboard" }
   ]
 }

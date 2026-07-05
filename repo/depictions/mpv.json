@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**mpv** is a free, cross-platform media player, running natively on your jailbroken device on the iosc Wayland compositor.\n\nThis is a real native arm64 binary cross-compiled for rootless iOS. It plays video and audio through its bundled FFmpeg libraries and uses the device hardware where it counts.\n\n- VideoToolbox hardware video decode on Apple silicon\n- Real audio output through the CoreAudio and PulseAudio path\n- Native Wayland output on the iosc compositor\n- Wide format support via FFmpeg and libass subtitles\n\nBuilt for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`). Launch it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**mpv** is a flexible media player for the iosc Wayland compositor.\n\nIt plays video and audio through its bundled FFmpeg libraries and uses hardware paths where available.\n\n- VideoToolbox hardware video decode on Apple silicon\n- Audio output through the CoreAudio and PulseAudio path\n- Native Wayland output on the iosc compositor\n- Wide format support via FFmpeg and libass subtitles\n\nLaunch it inside an Xios desktop session running the iosc compositor."
         },
         {
           "class": "DepictionSeparatorView"
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.36.0  \u00b7  2026-07-02\n- First release: mpv 0.36.0 cross-compiled for rootless iOS\n- VideoToolbox hardware decode and real audio output\n- Bundled FFmpeg 5.1 runtime and libass subtitles"
+          "markdown": "## 0.36.0  \u00b7  2026-07-02\n- First release: mpv 0.36.0 for Xios\n- VideoToolbox hardware decode and real audio output\n- Bundled FFmpeg 5.1 runtime and libass subtitles"
         }
       ]
     }

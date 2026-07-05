@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "A from-source rebuild of TigerVNC's **Xvnc**, a virtual X11 display server with built-in VNC, patched to run on **rootless** jailbreaks.\n\nStock builds crash on launch because they expect a system shell at `/bin/sh`, which isn't present on rootless (it lives at `/var/jb/bin/sh`). This build uses the right path, so it starts cleanly.\n\n- Built from source and signed to install on rootless\n- Installs without errors; the unavailable `tigervnc-xorg-extension` dependency is dropped\n- Gives you an X11 desktop you can reach from any VNC client at `127.0.0.1`\n\nPair it with a window manager (`fluxbox`), `xterm`, and fonts. Built for iPadOS/iOS rootless (palera1n/Dopamine, `/var/jb`)."
+          "markdown": "**Xvnc** is a virtual X11 display server with built-in VNC, useful for headless desktops and remote display sessions.\n\nThis package includes the iOS compatibility patch needed for clean startup and drops the unavailable `tigervnc-xorg-extension` dependency.\n\n- Gives you an X11 desktop you can reach from any VNC client at `127.0.0.1`\n- Installs the standalone server alongside the shared TigerVNC tools\n- Works well with a window manager (`fluxbox`), `xterm`, and fonts"
         },
         {
           "class": "DepictionSeparatorView"

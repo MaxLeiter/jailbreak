@@ -33,6 +33,15 @@ struct AppRoot: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .task {
+#if DEBUG
+            if KitchenScreenshotScenario.current != nil {
+                weather.applyScreenshotFixture()
+                timers.applyScreenshotFixture()
+                recipe.applyScreenshotFixture()
+                sonos.applyScreenshotFixture()
+                return
+            }
+#endif
             weather.start()
             sonos.start(manualIP: "")
         }

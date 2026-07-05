@@ -19,6 +19,7 @@ dist/
 
 # Built packages
 packages/
+repo/debs/
 !x11/packages/
 !x11/packages/**
 *.deb
