@@ -10,15 +10,17 @@
 # Presets (see xios_session_run):
 #   iosc         iosc compositor + wallpaper + panel   (the lightweight desktop; works today)
 #   mutter       raw Mutter 46 --wayland               (up: flat stage, no shell yet)
-#   gnome        gnome-shell --wayland                 (EXPERIMENTAL: mid-bring-up)
+#   gnome        full GNOME session + Shell            (verified first-light path)
 #   kde          KWin + desktop plasmashell on iosc    (EXPERIMENTAL)
 #   kde-mobile   KWin + Plasma Mobile shell package    (EXPERIMENTAL)
 #   kde-nano     KWin + Plasma Nano shell package      (EXPERIMENTAL)
 #   app <name>   launch a Wayland client against the RUNNING compositor (no teardown)
 #   stop         tear everything down, return to SpringBoard
 #
-# It REUSES the existing bring-up scripts rather than reinventing them: the iosc,
-# mutter and gnome presets call run-shell.sh / run-mutter.sh / run-gnome-shell.sh.
+# It REUSES the existing bring-up scripts rather than reinventing them: the iosc
+# and mutter presets call run-shell.sh / run-mutter.sh. GNOME uses the packaged
+# launch-gnome-session.sh from xios-session-stubs so gnome-session owns the
+# Shell component.
 # The one thing this library guarantees on top of them is a *bulletproof* teardown
 # (gotcha a: kill ALL of iosc/mutter/gnome/KDE/Xios/panels/clients + rm every
 # stale socket, or the next compositor collides on wayland-0 / the ddx sockets).
@@ -334,6 +336,38 @@ xs_session_bus_address() {  # xs_session_bus_address <busdir>
     return 1
 }
 
+xs_helper_running() {  # xs_helper_running <process-name>
+    ps ax 2>/dev/null | grep -v grep | grep -q "$1"
+}
+
+xs_start_native_helper() {  # xs_start_native_helper <binary> <log> <busdir> <bus_addr>
+    local bin="$1" log="$2" busdir="$3" bus_addr="$4" name
+    [ -x "$bin" ] || return 0
+    name="${bin##*/}"
+    xs_helper_running "$name" && return 0
+    nohup env \
+        XDG_RUNTIME_DIR="$busdir" \
+        DBUS_SESSION_BUS_ADDRESS="$bus_addr" \
+        DBUS_SYSTEM_BUS_ADDRESS="$bus_addr" \
+        XIOS_HWBRIDGE_BUS=session \
+        PULSE_SERVER="${PULSE_SERVER:-unix:$XS_TMP/pulse/native}" \
+        PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$XS_TMP/pulse}" \
+        GSETTINGS_BACKEND=memory \
+        HOME="$XS_VAR/root" \
+        PATH="$XS_BIN:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH" \
+        "$bin" >"$log" 2>&1 </dev/null &
+}
+
+xs_start_native_helpers() {  # xs_start_native_helpers <busdir> <bus_addr>
+    local busdir="$1" bus_addr="$2" profile
+    [ -n "$bus_addr" ] || return 0
+    profile="$XS_JB/etc/profile.d/xios-pulse.sh"
+    [ -r "$profile" ] && . "$profile" && xios_pulse_start
+    xs_start_native_helper "$XS_PREFIX/libexec/xios-hwbridged" "$XS_TMP/xios-hwbridged.log" "$busdir" "$bus_addr"
+    xs_start_native_helper "$XS_PREFIX/libexec/xios-sensord" "$XS_TMP/xios-sensord.log" "$busdir" "$bus_addr"
+    xs_start_native_helper "$XS_PREFIX/libexec/xios-sysintd" "$XS_TMP/xios-sysintd.log" "$busdir" "$bus_addr"
+}
+
 # xs_write_status <preset> <state> <message>
 #   state = starting | up | error | stopped   (the app / CLI can poll this)
 xs_write_status() {
@@ -457,8 +491,8 @@ xs_find_bringup() {
 # ---------------------------------------------------------------------------
 # teardown (gotcha a) — kill every compositor/app/client + rm every stale socket
 # ---------------------------------------------------------------------------
-# Union of the teardown greps in run-iosc.sh / run-mutter.sh / run-gnome-shell.sh /
-# run-kgx.sh, anchored to binary paths so it never matches this script itself
+# Union of the teardown greps in the compositor/app bring-up scripts, anchored
+# to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
 xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
@@ -641,19 +675,25 @@ xios_session_mutter() {
     fi
 }
 
-# gnome: EXPERIMENTAL. teardown, then run-gnome-shell.sh (re-signs gnome-shell,
-# starts session stubs + gnome-shell --wayland, relaunches Xios). May not paint.
+# gnome: teardown, then launch-gnome-session.sh from xios-session-stubs. That
+# launcher re-signs gnome-shell, starts the freedesktop/iOS bridge shims on one
+# private session bus, then runs gnome-session --builtin --session=xios so
+# gnome-session owns org.gnome.Shell.
 xios_session_gnome() {
     xs_prepare_display_session gnome || return $?
-    xs_write_status gnome starting "starting gnome-shell --wayland (experimental)"
-    local script; script="$(xs_find_bringup run-gnome-shell.sh)" || {
-        xs_log "ERROR: run-gnome-shell.sh not found"; xs_write_status gnome error "run-gnome-shell.sh missing"; return 1; }
-    xs_log "gnome (experimental): $script"
+    xs_write_status gnome starting "starting GNOME session"
+    local script; script="$(xs_find_bringup launch-gnome-session.sh)" || {
+        xs_log "ERROR: launch-gnome-session.sh not found (install xios-session-stubs)"
+        xs_write_status gnome error "launch-gnome-session.sh missing"
+        return 1
+    }
+    xs_log "gnome session: $script"
     WAYLAND_DISPLAY="$XS_WAYLAND_NAME" \
     XIOS_JSON_PATH="$XS_CONFIG_JSON" \
     XIOS_DDX_SOCKET="$XS_MUTTER_DDX_SOCK" \
     XIOS_INPUT_SOCKET="$XS_MUTTER_INPUT_SOCK" \
     GNOME_SHELL_LOG="${XS_TMP}/gnome-shell${XS_SLOT:+-$XS_SLOT}.log" \
+    XIOS_SESSION_SLOT="$XS_SLOT" \
     bash "$script" || true
     xs_ensure_xios gnome    # relaunch the display if it got jetsammed during bring-up
     xs_write_status gnome waiting "waiting for GNOME Shell to paint"
@@ -668,12 +708,12 @@ xios_session_gnome() {
     while [ "$i" -lt 30 ]; do
         if grep -q "GNOME Shell started at" "$log" 2>/dev/null; then outcome=started; break; fi
         if grep -qE "$fail_re" "$log" 2>/dev/null; then outcome=failed; break; fi
-        pgrep -f "/usr/bin/gnome-shell" >/dev/null 2>&1 || { outcome=exited; break; }
+        xios_session_process_running "/usr/bin/gnome-shell|gnome-session.*--session=xios" || { outcome=exited; break; }
         sleep 0.5; i=$((i+1))
     done
     case "$outcome" in
         started)
-            xs_log "gnome-shell painted (GNOME Shell started)."
+            xs_log "GNOME session painted (GNOME Shell started)."
             xs_write_status gnome up "GNOME Shell started" ;;
         failed|exited)
             xs_log "gnome-shell FAILED ($outcome). Last 40 lines of $log:"
@@ -696,16 +736,17 @@ xios_session_gnome() {
 # kde: EXPERIMENTAL. Starts iosc as the output compositor, then runs nested
 # kwin_wayland and plasmashell on KWin's own Wayland socket. The flavor selects
 # the Plasma shell package via PLASMA_DEFAULT_SHELL where needed. This mirrors the
-# proven KWin first-light smoke instead of treating KWin as a native Xios display
+# proven KWin nested smoke instead of treating KWin as a native Xios display
 # server.
 xios_session_process_running() {
     ps ax | grep -v grep | grep -E "$1" >/dev/null 2>&1
 }
 
 xios_session_kde() {
-    local flavor="${1:-desktop}" preset="kde" label="KWin + plasmashell"
+    local flavor="${1:-xios}" preset="kde" label="KWin + plasmashell" plasma_shell_plugin=""
     case "$flavor" in
-        desktop|plasma|kde) flavor=desktop; preset=kde; label="KWin + desktop plasmashell" ;;
+        xios|plasma|kde) flavor=desktop; preset=kde; label="KWin + Plasma Desktop"; plasma_shell_plugin="org.kde.plasma.desktop" ;;
+        desktop|plasma-desktop|kde-desktop) flavor=desktop; preset=kde-desktop; label="KWin + Plasma Desktop"; plasma_shell_plugin="org.kde.plasma.desktop" ;;
         nano|plasma-nano|kde-nano) flavor=nano; preset=kde-nano; label="KWin + Plasma Nano" ;;
         mobile|phone|plasma-mobile|kde-mobile) flavor=mobile; preset=kde-mobile; label="KWin + Plasma Mobile" ;;
         *) xs_log "ERROR: unknown KDE flavor '$flavor'"; xs_write_status kde error "unknown KDE flavor: $flavor"; return 2 ;;
@@ -725,19 +766,47 @@ xios_session_kde() {
     KWIN_SOCKET="$XS_KWIN_SOCKET" \
     KDE_LOG="$XS_KDE_LOG" \
     XIOS_SESSION_SLOT="$XS_SLOT" \
+    PLASMA_SHELL_PLUGIN="${plasma_shell_plugin:-${PLASMA_SHELL_PLUGIN-}}" \
     KDE_PLASMA_FLAVOR="$flavor" bash "$script" || true
     xs_ensure_xios "$preset"
     xs_write_status "$preset" waiting "waiting for $label"
-    if [ -S "$XS_TMP/$XS_KWIN_SOCKET" ]; then
-        if xios_session_process_running "plasmashell"; then
-            xs_log "$preset up (kwin-ios-test + plasmashell running)."
-            xs_write_status "$preset" up "$label running"
-        else
-            xs_log "$preset compositor up, but plasmashell is not running yet; see $XS_TMP/kde-plasma.log"
-            xs_write_status "$preset" compositor-only "KWin running; plasmashell not confirmed"
+    local i=0 kde_failed=0 kde_ready=0
+    while [ "$i" -lt 20 ]; do
+        if grep -qE "plasmashell exited|kwin exited|KWin did not create|kwin socket did not appear" "$XS_KDE_LOG" 2>/dev/null; then
+            kde_failed=1
+            break
         fi
+        if xios_session_process_running "kwin_wayland" && xios_session_process_running "plasmashell"; then
+            kde_ready=1
+            break
+        fi
+        sleep 0.5
+        i=$((i+1))
+    done
+    if [ "$kde_ready" = 1 ]; then
+        sleep 0.5
+        if ! xios_session_process_running "kwin_wayland" || ! xios_session_process_running "plasmashell"; then
+            kde_ready=0
+        fi
+    fi
+    if [ "$kde_ready" = 0 ] && [ "$kde_failed" = 0 ]; then
+        if grep -qE "plasmashell exited|kwin exited|KWin did not create|kwin socket did not appear" "$XS_KDE_LOG" 2>/dev/null; then
+            kde_failed=1
+        fi
+    fi
+    if [ "$kde_failed" = 1 ]; then
+        xs_log "$preset FAILED: shell/compositor exited; see $XS_TMP/kde-plasma.log"
+        tail -40 "$XS_KDE_LOG" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
+        xs_write_status "$preset" error "$label exited; see kde-plasma.log"
+        return 1
+    elif [ "$kde_ready" = 1 ]; then
+        xs_log "$preset up (kwin-ios-test + plasmashell running)."
+        xs_write_status "$preset" up "$label running"
+    elif xios_session_process_running "kwin_wayland" || [ -S "$XS_TMP/$XS_KWIN_SOCKET" ]; then
+        xs_log "$preset compositor up, but plasmashell is not running; see $XS_TMP/kde-plasma.log"
+        xs_write_status "$preset" compositor-only "KWin running; plasmashell not confirmed"
     else
-        xs_log "ERROR: KWin did not create kwin-ios-test; see $XS_TMP/kde-plasma.log"
+        xs_log "ERROR: KWin is not running; see $XS_TMP/kde-plasma.log"
         xs_write_status "$preset" error "KWin failed; see kde-plasma.log"
         return 1
     fi
@@ -775,7 +844,8 @@ xios_session_app() {
     xs_a11y_enabled || gtk_a11y_env=(GTK_A11Y=none)
     local dbus_addr=()
     if addr="$(xs_session_bus_address "$busdir")"; then
-        dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr")
+        dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr" DBUS_SYSTEM_BUS_ADDRESS="$addr")
+        xs_start_native_helpers "$busdir" "$addr"
     fi
     local launcher=("$XS_BASH" -lc "${a11y_prefix}exec $exec")
     if [ ${#dbus_addr[@]} -eq 0 ]; then
@@ -853,7 +923,8 @@ xios_session_run_unlocked() {
         iosc)        xios_session_iosc ;;
         mutter)      xios_session_mutter ;;
         gnome)       xios_session_gnome ;;
-        kde|plasma|kde-desktop|plasma-desktop) xios_session_kde desktop ;;
+        kde|plasma)                            xios_session_kde xios ;;
+        kde-desktop|plasma-desktop)            xios_session_kde desktop ;;
         kde-nano|plasma-nano|nano)             xios_session_kde nano ;;
         kde-mobile|plasma-mobile|mobile)       xios_session_kde mobile ;;
         app)         xios_session_app "${1:-}" ;;
@@ -864,7 +935,7 @@ xios_session_run_unlocked() {
 xios-session presets:
   iosc            iosc compositor + wallpaper + panel (works today)
   mutter          raw Mutter 46 --wayland (flat stage, no shell yet)
-  gnome           gnome-shell --wayland (EXPERIMENTAL)
+  gnome           GNOME session + Shell
   kde             KWin + desktop plasmashell nested on iosc (EXPERIMENTAL)
   kde-nano        KWin + Plasma Nano shell package (EXPERIMENTAL)
   kde-mobile      KWin + Plasma Mobile shell package (EXPERIMENTAL)

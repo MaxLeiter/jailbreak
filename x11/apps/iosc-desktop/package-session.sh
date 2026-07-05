@@ -4,7 +4,7 @@
 #   bash x11/apps/iosc-desktop/package-session.sh [target-id] [--stage-only]
 #
 # Ships the "pick a preset -> it launches" flow. The file list (CLI, lib,
-# reused run-*.sh bring-up copies) lives in ONE
+# reused bring-up copies) lives in ONE
 # place — session-files.sh — shared with install-xios-session.sh, so the deb
 # and the scp fast path cannot diverge.
 #
@@ -42,7 +42,7 @@ fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.20"
+VER="1.0.27"
 ARCH="$XIOS_DEB_ARCH"
 DEB="xios-session_${VER}_${ARCH}.deb"
 
@@ -66,7 +66,7 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: iosc (>= 0.9.0)
 Recommends: iosc-shell, xios
-Suggests: libmutter-14-0, gnome-shell, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
+Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
 Section: X11
 Priority: optional
@@ -79,13 +79,14 @@ Description: pick-a-desktop session launcher for the Xios stack
  .
  It provides one on-device command, xios-session, with named presets:
  iosc (the lightweight iosc compositor + wallpaper + panel), mutter (raw Mutter
- --wayland), gnome (gnome-shell --wayland, experimental), kde (KWin + desktop
+ --wayland), gnome (full GNOME session + Shell), kde (KWin + desktop
  plasmashell nested on iosc, experimental), kde-nano (KWin + Plasma Nano shell),
  kde-mobile (KWin + Plasma Mobile shell), app <name> (launch a Wayland client
  such as gnome-console against the running compositor) and stop (tear everything
- down). Each preset reuses the established run-*.sh bring-up
- logic behind a clean name, with one bulletproof teardown so switching sessions
- never leaves a stale compositor or socket behind.
+ down). Each preset reuses the established owner bring-up logic behind a clean
+ name, with GNOME delegated to xios-session-stubs' packaged session launcher
+ and one bulletproof teardown so switching sessions never leaves a stale
+ compositor or socket behind.
  .
  In-app session picks use the ioscd control socket; this package does not ship
  a request-file watcher or legacy fallback path.
