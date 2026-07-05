@@ -64,7 +64,7 @@ write_file "$nm/NetworkStatus.qml" \
   "        networkingEnabled = probe.length === 0 || probe === \"0\"" \
   "    }" \
   "    Component.onCompleted: refresh()" \
-  "    Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 write_file "$nm/NetworkModel.qml" \
   "import QtQuick 2.15" \
@@ -95,7 +95,7 @@ write_file "$nm/ConnectionIcon.qml" \
   "        connectionIcon = (probe.length === 0 || probe === \"0\") ? \"network-wireless-signal-excellent\" : \"network-disconnect\"" \
   "    }" \
   "    Component.onCompleted: refresh()" \
-  "    Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 write_file "$nm/EnabledConnections.qml" \
   "import QtQuick 2.15" \
@@ -127,7 +127,7 @@ write_file "$brightness/ScreenBrightnessControl.qml" \
   "    }" \
   "    onBrightnessChanged: if (!refreshing) MobileShell.ShellUtil.writeTextFile(backlight + \"/brightness\", Math.round(brightness).toString())" \
   "    Component.onCompleted: refresh()" \
-  "    Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "    property Timer refreshTimer: Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
 wallpaper="$qml/org/kde/plasma/private/mobileshell/wallpaperimageplugin"
@@ -603,7 +603,7 @@ write_file "$mobileshell/BatteryInfo.qml" \
   "        pluggedIn = readInt(sysRoot + \"/class/power_supply/AC0/online\", 0) !== 0 || status.indexOf(\"charging\") !== -1" \
   "    }" \
   "    Component.onCompleted: refresh()" \
-  "    Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
 write_file "$mobileshell/AudioInfo.qml" \
@@ -642,7 +642,7 @@ write_file "$mobileshell/AudioInfo.qml" \
   "    }" \
   "    function volumePercent(volume, max) { return Math.round(volume) }" \
   "    Component.onCompleted: refresh()" \
-  "    Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "    property Timer refreshTimer: Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
 folio_settings="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui/settings"

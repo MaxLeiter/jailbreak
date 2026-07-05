@@ -558,7 +558,7 @@ QtObject {
         pluggedIn = readInt(sysRoot + "/class/power_supply/AC0/online", 0) !== 0 || status.indexOf("charging") !== -1
     }
     Component.onCompleted: refresh()
-    Timer {
+    property Timer refreshTimer: Timer {
         interval: 30000
         running: true
         repeat: true
@@ -619,7 +619,7 @@ QtObject {
     }
     function volumePercent(volume, max) { return Math.round(volume) }
     Component.onCompleted: refresh()
-    Timer {
+    property Timer refreshTimer: Timer {
         interval: 10000
         running: true
         repeat: true
