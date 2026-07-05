@@ -1242,55 +1242,12 @@ final class XScreenView: UIView {
         writeDebugSnapshot()
     }
 
-    private func connectUnixSocket(_ path: String) -> Int32 {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return -1 }
-        var on: Int32 = 1
-        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on,
-                   socklen_t(MemoryLayout.size(ofValue: on)))
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        let ok: Bool = withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-            let bytes = Array(path.utf8)
-            guard bytes.count < raw.count else { return false }
-            raw.copyBytes(from: bytes)
-            return true
-        }
-        guard ok else { close(fd); return -1 }
-
-        let rc = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        guard rc == 0 else { close(fd); return -1 }
-        return fd
-    }
-
-    private func writeAll(_ fd: Int32, _ line: String) -> Bool {
-        let bytes = Array(line.utf8)
-        return bytes.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return false }
-            var sent = 0
-            while sent < bytes.count {
-                let n = Darwin.write(fd, base.advanced(by: sent), bytes.count - sent)
-                if n > 0 {
-                    sent += n
-                    continue
-                }
-                if n < 0 && errno == EINTR { continue }
-                return false
-            }
-            return true
-        }
-    }
-
     private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20) -> String? {
-        let fd = connectUnixSocket(ioscdSocketPath)
+        let fd = xiosConnectUnixSocket(ioscdSocketPath)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
-        guard writeAll(fd, line) else { return nil }
+        guard line.data(using: .utf8)?.withUnsafeBytes({ xiosWriteAll(fd, bytes: $0) }) == true
+        else { return nil }
         Darwin.shutdown(fd, SHUT_WR)
 
         var data = Data()
