@@ -43,6 +43,12 @@
 @property (nonatomic, weak) LadybirdWebView* owner;
 @end
 
+@interface LadybirdWebView ()
+- (void)syncKeyboardWithFocusedInputSoon;
+- (void)syncKeyboardWithAutofocusSoon;
+- (void)syncKeyboardWithFocusedInputSoonAllowingProactive:(BOOL)allowProactive reason:(char const*)reason;
+@end
+
 @implementation LadybirdWebView {
     OwnPtr<LadybirdIOS::WebViewBridge> _bridge;
 
@@ -155,6 +161,7 @@
     _bridge->on_load_finish = [weakSelf](URL::URL const&) {
         LadybirdWebView* s = weakSelf;
         [s.observer webViewDidFinishLoading:s];
+        [s syncKeyboardWithAutofocusSoon];
     };
     // on_cursor_change, on_request_alert/confirm/prompt, on_favicon_change, etc. wire
     // to UIKit here as the chrome matures (see AppKit setWebViewCallbacks for the full list).
@@ -361,8 +368,18 @@
 
 - (void)syncKeyboardWithFocusedInputSoon
 {
+    [self syncKeyboardWithFocusedInputSoonAllowingProactive:YES reason:"touch"];
+}
+
+- (void)syncKeyboardWithAutofocusSoon
+{
+    [self syncKeyboardWithFocusedInputSoonAllowingProactive:NO reason:"autofocus"];
+}
+
+- (void)syncKeyboardWithFocusedInputSoonAllowingProactive:(BOOL)allowProactive reason:(char const*)reason
+{
     __weak LadybirdWebView* weakSelf = self;
-    int delays[] = { 80, 180, 400 };
+    int delays[] = { 80, 180, 400, 800, 1400 };
     for (int delay : delays) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
             LadybirdWebView* strongSelf = weakSelf;
@@ -373,9 +390,11 @@
             // signal, but do not require it before becoming first responder: on iOS, the responder
             // handoff is what lets UIKit deliver software-keyboard input to the web view.
             bool hasFocusedInput = strongSelf->_bridge->get_input_caret_rect().has_value();
-            lb_trace("keyboard sync delay=%d caret=%d first=%d", delay, hasFocusedInput, strongSelf.isFirstResponder);
-            if (hasFocusedInput || !strongSelf.isFirstResponder)
-                [strongSelf ensureKeyboardResponder:hasFocusedInput ? "focused-input" : "no-caret-yet"];
+            bool shouldEnsure = hasFocusedInput || (allowProactive && !strongSelf.isFirstResponder);
+            lb_trace("keyboard sync reason=%s delay=%d caret=%d first=%d proactive=%d ensure=%d",
+                reason, delay, hasFocusedInput, strongSelf.isFirstResponder, allowProactive, shouldEnsure);
+            if (shouldEnsure)
+                [strongSelf ensureKeyboardResponder:hasFocusedInput ? reason : "no-caret-yet"];
         });
     }
 }
