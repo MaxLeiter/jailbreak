@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Shared entitlements for the four spawned helpers: WebContent, RequestServer,
-         ImageDecoder, WebWorker. AMFI checks entitlements PER BINARY, so each helper
+    <!-- Shared entitlements for spawned helpers: WebContent, RequestServer, ImageDecoder,
+         WebWorker, and Compositor. AMFI checks entitlements PER BINARY, so each helper
          needs its own signature even though it is spawned by the UI app. -->
 
     <!-- Load fakesigned /var/jb dylibs (each helper statically links the engine but still
@@ -15,6 +15,14 @@
     <key>get-task-allow</key>
     <true/>
 
+    <!-- The CPU Compositor creates IOSurface-backed front/back buffers for zero-copy
+         presentation in the UI process. It still does not use AGX/Metal/WebGL. -->
+    <key>com.apple.security.iokit-user-client-class</key>
+    <array>
+        <string>IOSurfaceRootUserClient</string>
+        <string>IOSurfaceSendRight</string>
+    </array>
+
     <!-- FS closure the helpers touch: engine resources (/var/jb/share/Lagom or the in-bundle
          copy), TLS certs, the IPC socket dir, cookie/cache stores. -->
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
@@ -25,8 +33,8 @@
         <string>/private/tmp/</string>
     </array>
 
-    <!-- WebContent-only, when Skia-on-Metal painting lands (M3): add the GPU user clients
-         (as in ladybird-app.entitlements). Raster M0 paints on CPU inside WebContent and
-         needs none. Kept out of the shared set so RequestServer/ImageDecoder stay minimal. -->
+    <!-- WebContent-only, when Skia-on-Metal/WebGL painting lands: add the GPU user clients
+         (as in ladybird-app.entitlements). Raster M0 paints on CPU; only the Compositor needs
+         IOSurface creation for the shared front buffer. -->
 </dict>
 </plist>

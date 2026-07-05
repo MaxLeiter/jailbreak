@@ -2,17 +2,15 @@
  * LadybirdWebView.mm — see LadybirdWebView.h. Ported method-for-method from
  * UI/AppKit/Interface/LadybirdWebView.mm.
  *
- * Present:  on_ready_to_paint -> presentMetalFrame (IOSurface->MTLTexture blit) if a
- *           Metal device exists, else CALayer.contents = CGImage (CPU path).
+ * Present:  on_ready_to_paint -> presentMetalFrame (IOSurface->MTLTexture blit) when a
+ *           Metal device and IOSurface-backed front buffer exist; otherwise a CPU layer
+ *           displays the same bitmap through CGImage.
  * Input:    UITouch -> Web::MouseEvent (tap=click, pan=MouseMove/drag), UIPanGesture ->
  *           MouseWheel scroll, UILongPress -> Secondary click/context menu, UIPinch ->
  *           Web::PinchEvent, UIKey (hardware) + UIKeyInput (software) -> Web::KeyEvent.
  *
  * Input-enum spellings and event field order are now confirmed against the engine tree
- * (92b0257): see Event.mm / IOSWebViewBridge.cpp. One engine gate remains — the shared
- * image buffer's IOSurface accessor is #ifdef AK_OS_MACOS only, so front_iosurface()
- * returns null on iOS until the engine M0 patch exposes it under AK_OS_IOS. When it does
- * not, presentMetalFrame's `if (!surface)` guard falls back to the CPU CGImage path.
+ * (92b0257): see Event.mm / IOSWebViewBridge.cpp.
  */
 #import "LadybirdWebView.h"
 #import "IOSWebViewBridge.h"
@@ -170,14 +168,16 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
         _metalLayer.contentsGravity = kCAGravityTopLeft;
         [self.layer addSublayer:_metalLayer];
     } else {
-        // Fakesigned app without the GPU entitlement, or Metal unavailable: CPU path.
+        // Fakesigned app without the GPU entitlement, or Metal unavailable: CPU-only path.
         _usingMetal = NO;
-        _cpuLayer = [LadybirdContentLayer layer];
-        _cpuLayer.owner = self;
-        _cpuLayer.contentsGravity = kCAGravityTopLeft;
-        _cpuLayer.contentsScale = scale;
-        [self.layer addSublayer:_cpuLayer];
     }
+
+    _cpuLayer = [LadybirdContentLayer layer];
+    _cpuLayer.owner = self;
+    _cpuLayer.contentsGravity = kCAGravityTopLeft;
+    _cpuLayer.contentsScale = scale;
+    _cpuLayer.hidden = _usingMetal;
+    [self.layer addSublayer:_cpuLayer];
 }
 
 #pragma mark - Bridge callbacks
@@ -230,7 +230,11 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     // The shared bitmap is IOSurface-backed; wrap it as an MTLTexture and blit into the drawable.
     IOSurfaceRef surface = (IOSurfaceRef)_bridge->front_iosurface();
     if (!surface) { // no IOSurface handle -> fall back to CPU CGImage this frame
-        [self.layer setNeedsDisplay];
+        static int s_cpu_fallback_count = 0;
+        if (s_cpu_fallback_count++ < 3)
+            lb_trace("present: no IOSurface; CPU layer fallback");
+        _cpuLayer.hidden = NO;
+        [_cpuLayer setNeedsDisplay];
         return;
     }
 
@@ -244,10 +248,25 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
                                                        mipmapped:NO];
     desc.usage = MTLTextureUsageShaderRead;
     id<MTLTexture> src = [_metalDevice newTextureWithDescriptor:desc iosurface:surface plane:0];
-    if (!src) return;
+    if (!src) {
+        lb_trace("present: newTextureWithDescriptor:iosurface failed; CPU layer fallback");
+        _cpuLayer.hidden = NO;
+        [_cpuLayer setNeedsDisplay];
+        return;
+    }
 
     id<CAMetalDrawable> drawable = [_metalLayer nextDrawable];
-    if (!drawable) return;
+    if (!drawable) {
+        lb_trace("present: nextDrawable failed; CPU layer fallback");
+        _cpuLayer.hidden = NO;
+        [_cpuLayer setNeedsDisplay];
+        return;
+    }
+
+    static int s_metal_present_count = 0;
+    if (s_metal_present_count++ < 3)
+        lb_trace("present: IOSurface Metal blit %.0fx%.0f", dpx.width, dpx.height);
+    _cpuLayer.hidden = YES;
 
     id<MTLCommandBuffer> cb = [_metalQueue commandBuffer];
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];

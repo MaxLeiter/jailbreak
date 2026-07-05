@@ -1,0 +1,752 @@
+--- a/Services/Compositor/CMakeLists.txt
++++ b/Services/Compositor/CMakeLists.txt
+@@ -51,6 +51,12 @@
+ target_link_libraries(Compositor PRIVATE compositorservice LibCore LibMain LibSandbox LibWebView)
+ target_link_libraries(compositorservice PRIVATE LibCore LibGfx LibIPC LibMedia LibSync LibWeb ${ANGLE_TARGETS})
+
++if (APPLE AND IOS)
++    # iOS app build: IOSurface-backed SharedImageBuffer allocation happens in the Compositor.
++    target_link_libraries(Compositor PRIVATE "-framework IOSurface")
++    target_link_libraries(compositorservice PRIVATE "-framework IOSurface")
++endif()
++
+ if (APPLE)
+     target_link_libraries(Compositor PRIVATE "-framework CoreGraphics" "-framework CoreVideo")
+ endif()
+--- a/Libraries/LibCore/IOSurface.cpp
++++ b/Libraries/LibCore/IOSurface.cpp
+@@ -7,11 +7,16 @@
+ #include <AK/OwnPtr.h>
+ #include <LibCore/IOSurface.h>
+
+-#if !defined(AK_OS_MACOS)
+-static_assert(false, "This file must only be used for macOS");
++#if !defined(AK_OS_MACOS) && !defined(AK_OS_IOS)
++static_assert(false, "This file must only be used for Apple platforms");
+ #endif
+
+-#import <IOSurface/IOSurface.h>
++// iOS ships IOSurfaceRef.h but not the macOS umbrella IOSurface.h.
++#if defined(AK_OS_IOS)
++#    import <IOSurface/IOSurfaceRef.h>
++#else
++#    import <IOSurface/IOSurface.h>
++#endif
+
+ namespace Core {
+
+--- a/Libraries/LibCore/CMakeLists.txt
++++ b/Libraries/LibCore/CMakeLists.txt
+@@ -87,9 +87,11 @@
+     list(APPEND SOURCES MachPort.cpp)
+ endif()
+
+-if (APPLE AND NOT IOS)  # iOS: macOS-only IOSurface umbrella + AutoreleasePool .mm
++if (APPLE)  # iOS: IOSurface-backed Ladybird app buffers; AutoreleasePool .mm stays macOS-only
+     list(APPEND SOURCES IOSurface.cpp)
+-    list(APPEND SOURCES Platform/ScopedAutoreleasePoolMacOS.mm)
++    if (NOT IOS)
++        list(APPEND SOURCES Platform/ScopedAutoreleasePoolMacOS.mm)
++    endif()
+ endif()
+
+ ladybird_lib(LibCore core EXPLICIT_SYMBOL_EXPORT)
+@@ -112,9 +114,7 @@
+     target_link_libraries(LibCore PUBLIC "-framework CoreFoundation")
+     target_link_libraries(LibCore PUBLIC "-framework CoreServices")
+     target_link_libraries(LibCore PUBLIC "-framework Foundation")
+-    if (NOT IOS)
+-        target_link_libraries(LibCore PUBLIC "-framework IOSurface")
+-    endif()
++    target_link_libraries(LibCore PUBLIC "-framework IOSurface")
+ endif()
+
+ if (WIN32)
+--- a/Libraries/LibGfx/SharedImage.h
++++ b/Libraries/LibGfx/SharedImage.h
+@@ -15,7 +15,7 @@
+ #include <LibIPC/File.h>
+ #include <LibIPC/Forward.h>
+
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibCore/MachPort.h>
+ #endif
+
+@@ -23,7 +23,7 @@
+
+ class SharedImageBuffer;
+
+-#ifndef AK_OS_MACOS
++#if !defined(AK_OS_MACOS) && !defined(AK_OS_IOS)
+ struct LinuxDmaBufHandle {
+     BitmapFormat bitmap_format;
+     AlphaType alpha_type;
+@@ -49,7 +49,7 @@
+     SharedImage& operator=(SharedImage&&) = default;
+     ~SharedImage() = default;
+
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     explicit SharedImage(Core::MachPort&&);
+ #else
+     explicit SharedImage(ShareableBitmap);
+@@ -57,7 +57,7 @@
+ #endif
+
+ private:
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     Core::MachPort m_port;
+ #else
+     Variant<ShareableBitmap, LinuxDmaBufHandle> m_data;
+@@ -76,7 +76,7 @@
+
+ namespace IPC {
+
+-#ifndef AK_OS_MACOS
++#if !defined(AK_OS_MACOS) && !defined(AK_OS_IOS)
+ template<>
+ ErrorOr<void> encode(Encoder&, Gfx::LinuxDmaBufHandle const&);
+
+--- a/Libraries/LibGfx/SharedImage.cpp
++++ b/Libraries/LibGfx/SharedImage.cpp
+@@ -12,7 +12,7 @@
+ #    include <LibGfx/VulkanImage.h>
+ #endif
+
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ static Core::MachPort copy_send_right(Core::MachPort const& port)
+ {
+     auto result = mach_port_mod_refs(mach_task_self(), port.port(), MACH_PORT_RIGHT_SEND, +1);
+@@ -23,7 +23,7 @@
+
+ namespace Gfx {
+
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ SharedImage::SharedImage(Core::MachPort&& port)
+     : m_port(move(port))
+ {
+@@ -70,7 +70,7 @@
+
+ namespace IPC {
+
+-#ifndef AK_OS_MACOS
++#if !defined(AK_OS_MACOS) && !defined(AK_OS_IOS)
+ enum class SharedImageBackingType : u8 {
+     ShareableBitmap,
+     LinuxDmaBuf,
+@@ -107,7 +107,7 @@
+ template<>
+ ErrorOr<void> encode(Encoder& encoder, Gfx::SharedImage const& shared_image)
+ {
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     TRY(encoder.append_attachment(Attachment::from_mach_port(copy_send_right(shared_image.m_port), Core::MachPort::MessageRight::MoveSend)));
+ #else
+     return shared_image.m_data.visit(
+@@ -128,7 +128,7 @@
+ template<>
+ ErrorOr<Gfx::SharedImage> decode(Decoder& decoder)
+ {
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto attachment = decoder.attachments().dequeue();
+     VERIFY(attachment.message_right() == Core::MachPort::MessageRight::MoveSend);
+     return Gfx::SharedImage { attachment.release_mach_port() };
+--- a/Libraries/LibGfx/SharedImageBuffer.h
++++ b/Libraries/LibGfx/SharedImageBuffer.h
+@@ -12,7 +12,7 @@
+ #include <LibGfx/Bitmap.h>
+ #include <LibGfx/SharedImage.h>
+
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibCore/IOSurface.h>
+ #endif
+
+@@ -33,14 +33,14 @@
+
+     NonnullRefPtr<Bitmap> bitmap() const { return m_bitmap; }
+
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     Core::IOSurfaceHandle const& iosurface_handle() const { return m_iosurface_handle; }
+ #elif defined(USE_VULKAN_DMABUF_IMAGES)
+     LinuxDmaBufHandle const* linux_dmabuf_handle() const { return m_linux_dmabuf_handle.has_value() ? &m_linux_dmabuf_handle.value() : nullptr; }
+ #endif
+
+ private:
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     SharedImageBuffer(Core::IOSurfaceHandle&&, NonnullRefPtr<Bitmap>);
+     Core::IOSurfaceHandle m_iosurface_handle;
+ #else
+--- a/Libraries/LibGfx/SharedImageBuffer.cpp
++++ b/Libraries/LibGfx/SharedImageBuffer.cpp
+@@ -14,7 +14,7 @@
+
+ namespace Gfx {
+
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ static constexpr auto shared_image_buffer_format = BitmapFormat::BGRA8888;
+ static constexpr auto shared_image_buffer_alpha_type = AlphaType::Premultiplied;
+
+@@ -67,7 +67,7 @@
+
+ SharedImageBuffer SharedImageBuffer::create(IntSize size)
+ {
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto iosurface_handle = Core::IOSurfaceHandle::create(size.width(), size.height());
+     auto bitmap = create_bitmap_from_iosurface(iosurface_handle);
+     return SharedImageBuffer(move(iosurface_handle), move(bitmap));
+@@ -78,7 +78,7 @@
+
+ SharedImageBuffer SharedImageBuffer::import_from_shared_image(SharedImage shared_image)
+ {
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto iosurface_handle = Core::IOSurfaceHandle::from_mach_port(shared_image.m_port);
+     auto bitmap = create_bitmap_from_iosurface(iosurface_handle);
+     return SharedImageBuffer(move(iosurface_handle), move(bitmap));
+@@ -107,7 +107,7 @@
+
+ SharedImage SharedImageBuffer::export_shared_image() const
+ {
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     return SharedImage { m_iosurface_handle.create_mach_port() };
+ #else
+     return SharedImage { ShareableBitmap { m_bitmap, ShareableBitmap::ConstructWithKnownGoodBitmap } };
+--- a/Libraries/LibIPC/Forward.h
++++ b/Libraries/LibIPC/Forward.h
+@@ -21,7 +21,7 @@
+ class Stub;
+ class TransportHandle;
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ class MachBootstrapListener;
+ class TransportMachPort;
+ using Transport = TransportMachPort;
+--- a/Libraries/LibIPC/TransportMachPort.h
++++ b/Libraries/LibIPC/TransportMachPort.h
+@@ -8,8 +8,8 @@
+
+ #include <AK/Platform.h>
+
+-#if !defined(AK_OS_MACOS)
+-#    error "TransportMachPort is only available on macOS"
++#if !defined(AK_OS_MACOS) && !defined(AK_OS_IOS)
++#    error "TransportMachPort is only available on Mach platforms"
+ #endif
+
+ #include <AK/Atomic.h>
+--- a/Libraries/LibIPC/Attachment.h
++++ b/Libraries/LibIPC/Attachment.h
+@@ -10,7 +10,7 @@
+ #include <AK/Noncopyable.h>
+ #include <AK/Platform.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibCore/MachPort.h>
+ #endif
+
+@@ -28,7 +28,7 @@
+     static Attachment from_fd(int fd);
+     int to_fd();
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     static Attachment from_mach_port(Core::MachPort, Core::MachPort::MessageRight);
+     Core::MachPort const& mach_port() const { return m_port; }
+     Core::MachPort::MessageRight message_right() const { return m_message_right; }
+@@ -36,7 +36,7 @@
+ #endif
+
+ private:
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     Core::MachPort m_port;
+     Core::MachPort::MessageRight m_message_right { Core::MachPort::MessageRight::MoveSend };
+ #else
+--- a/Libraries/LibIPC/TransportHandle.cpp
++++ b/Libraries/LibIPC/TransportHandle.cpp
+@@ -13,7 +13,7 @@
+
+ namespace IPC {
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+
+ TransportHandle::TransportHandle(Core::MachPort receive_right, Core::MachPort send_right)
+     : m_receive_right(move(receive_right))
+--- a/Libraries/LibIPC/Transport.h
++++ b/Libraries/LibIPC/Transport.h
+@@ -9,7 +9,7 @@
+ #include <AK/Platform.h>
+ #include <LibCore/Socket.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/TransportMachPort.h>
+ #elif !defined(AK_OS_WINDOWS)
+ #    include <LibIPC/TransportSocket.h>
+--- a/Libraries/LibIPC/TransportHandle.h
++++ b/Libraries/LibIPC/TransportHandle.h
+@@ -13,7 +13,7 @@
+ #include <LibIPC/File.h>
+ #include <LibIPC/Forward.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibCore/MachPort.h>
+ #endif
+
+@@ -27,7 +27,7 @@
+     TransportHandle(TransportHandle&&) = default;
+     TransportHandle& operator=(TransportHandle&&) = default;
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     TransportHandle(Core::MachPort receive_right, Core::MachPort send_right);
+ #else
+     explicit TransportHandle(File);
+@@ -36,7 +36,7 @@
+     ErrorOr<NonnullOwnPtr<Transport>> create_transport() const;
+
+ private:
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     mutable Core::MachPort m_receive_right;
+     mutable Core::MachPort m_send_right;
+ #else
+--- a/Libraries/LibCore/MachPort.h
++++ b/Libraries/LibCore/MachPort.h
+@@ -47,7 +47,7 @@
+         CopySend = MACH_MSG_TYPE_COPY_SEND,
+         MakeSend = MACH_MSG_TYPE_MAKE_SEND,
+         MakeSendOnce = MACH_MSG_TYPE_MAKE_SEND_ONCE,
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+         CopyReceive = MACH_MSG_TYPE_COPY_RECEIVE,
+         DisposeReceive = MACH_MSG_TYPE_DISPOSE_RECEIVE,
+         DisposeSend = MACH_MSG_TYPE_DISPOSE_SEND,
+@@ -67,7 +67,7 @@
+
+     ErrorOr<MachPort> insert_right(MessageRight);
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     // https://opensource.apple.com/source/launchd/launchd-842.92.1/liblaunch/bootstrap.h.auto.html
+     static ErrorOr<MachPort> look_up_from_bootstrap_server(ByteString const& service_name);
+     ErrorOr<void> register_with_bootstrap_server(ByteString const& service_name);
+--- a/Libraries/LibCore/MachPort.cpp
++++ b/Libraries/LibCore/MachPort.cpp
+@@ -15,7 +15,7 @@
+ // This is in <mach/mach_error.h> on Darwin, and doesn't seem to be required.
+ #endif
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <bootstrap.h>
+ #endif
+
+@@ -54,7 +54,7 @@
+     return Error::from_string_view(err_view);
+ }
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ static Error bootstrap_error_to_error(kern_return_t error)
+ {
+     char const* err_string = bootstrap_strerror(error);
+@@ -141,7 +141,7 @@
+     return MachPort(associated_port_right(right), m_port);
+ }
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+
+ #    pragma GCC diagnostic push
+ #    pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+--- a/Libraries/LibIPC/ReceivedMessageBytes.h
++++ b/Libraries/LibIPC/ReceivedMessageBytes.h
+@@ -23,7 +23,7 @@
+     ReceivedMessageBytes& operator=(ReceivedMessageBytes&&);
+
+     static ReceivedMessageBytes from_vector(Vector<u8>);
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     static ReceivedMessageBytes adopt_vm_region(void*, size_t);
+ #endif
+
+--- a/Libraries/LibIPC/ReceivedMessageBytes.cpp
++++ b/Libraries/LibIPC/ReceivedMessageBytes.cpp
+@@ -7,7 +7,7 @@
+ #include <AK/RefCounted.h>
+ #include <LibIPC/ReceivedMessageBytes.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <mach/mach.h>
+ #endif
+
+@@ -21,7 +21,7 @@
+     {
+     }
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     Impl(void* vm_region_address, size_t vm_region_size)
+         : m_storage_type(StorageType::VMRegion)
+         , m_vm_region_address(vm_region_address)
+@@ -32,7 +32,7 @@
+
+     ~Impl()
+     {
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+         if (m_storage_type == StorageType::VMRegion && m_vm_region_size > 0)
+             vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(m_vm_region_address), m_vm_region_size);
+ #endif
+@@ -81,7 +81,7 @@
+     return ReceivedMessageBytes { adopt_ref(*new Impl(move(bytes))) };
+ }
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ ReceivedMessageBytes ReceivedMessageBytes::adopt_vm_region(void* address, size_t size)
+ {
+     if (size == 0)
+--- a/Libraries/LibIPC/CMakeLists.txt
++++ b/Libraries/LibIPC/CMakeLists.txt
+@@ -9,7 +9,7 @@
+     TransportHandle.cpp
+ )
+
+-if (APPLE AND NOT IOS)
++if (APPLE)
+     list(APPEND SOURCES
+         AttachmentMachPort.cpp
+         MachBootstrapListener.cpp
+--- a/Libraries/LibIPC/SingleServer.h
++++ b/Libraries/LibIPC/SingleServer.h
+@@ -10,7 +10,7 @@
+ #include <LibIPC/ConnectionFromClient.h>
+ #include <LibIPC/Transport.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/TransportBootstrapMach.h>
+ #else
+ #    include <LibCore/SystemServerTakeover.h>
+@@ -21,7 +21,7 @@
+ template<typename ConnectionFromClientType, typename... Args>
+ ErrorOr<NonnullRefPtr<ConnectionFromClientType>> take_over_accepted_client_from_system_server([[maybe_unused]] StringView mach_server_name, Args&&... args)
+ {
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto ports = TRY(bootstrap_transport_from_mach_server(mach_server_name));
+     return IPC::new_client_connection<ConnectionFromClientType>(
+         make<IPC::Transport>(move(ports.receive_right), move(ports.send_right)),
+--- a/Libraries/LibWebView/Process.cpp
++++ b/Libraries/LibWebView/Process.cpp
+@@ -14,7 +14,7 @@
+
+ #include <fcntl.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/TransportBootstrapMach.h>
+ #    include <LibWebView/Application.h>
+ #endif
+@@ -64,7 +64,7 @@
+         spawn_options.file_actions.append(Core::FileAction::CloseFile { .fd = stderr_pipe[1] });
+     }
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto port_a_recv = TRY(Core::MachPort::create_with_right(Core::MachPort::PortRight::Receive));
+     auto port_a_send = TRY(port_a_recv.insert_right(Core::MachPort::MessageRight::MakeSend));
+     auto port_b_recv = TRY(Core::MachPort::create_with_right(Core::MachPort::PortRight::Receive));
+--- a/Libraries/LibWebView/Application.h
++++ b/Libraries/LibWebView/Application.h
+@@ -38,7 +38,7 @@
+ #include <LibWebView/Settings.h>
+ #include <LibWebView/StorageJar.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/TransportBootstrapMach.h>
+ #endif
+
+@@ -89,7 +89,7 @@
+     static StorageJar& storage_jar() { return *the().m_storage_jar; }
+
+     static ProcessManager& process_manager() { return *the().m_process_manager; }
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     static IPC::TransportBootstrapMachServer& transport_bootstrap_server() { return the().m_transport_bootstrap_server; }
+     void set_browser_process_transport_handler(Function<void(NonnullOwnPtr<IPC::Transport>)> handler);
+ #endif
+@@ -446,7 +446,7 @@
+
+     FileDownloader m_file_downloader;
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     OwnPtr<IPC::MachBootstrapListener> m_mach_port_server;
+     IPC::TransportBootstrapMachServer m_transport_bootstrap_server;
+     Function<void(NonnullOwnPtr<IPC::Transport>)> m_on_browser_process_transport;
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -43,7 +43,7 @@
+ #include <LibWebView/Utilities.h>
+ #include <LibWebView/WebContentClient.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/MachBootstrapListener.h>
+ #    include <LibIPC/Transport.h>
+ #    include <LibIPC/TransportBootstrapMach.h>
+@@ -145,12 +145,16 @@
+         warnln("Unable to increase open file limit: {}", result.error());
+ #endif
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     m_mach_port_server = make<IPC::MachBootstrapListener>(mach_server_name_for_process("Ladybird"sv, Core::System::getpid()));
+     set_mach_server_name(m_mach_port_server->server_port_name());
+
+     m_mach_port_server->on_bootstrap_request = [this](IPC::MachBootstrapListener::BootstrapRequest request) {
++#if defined(AK_OS_IOS)
++        (void)request.task_port;
++#else
+         set_process_mach_port(request.pid, move(request.task_port));
++#endif
+         auto result = MUST(m_transport_bootstrap_server.handle_bootstrap_request(request.pid, move(request.reply_port)));
+         result.visit(
+             [](IPC::TransportBootstrapMachServer::ChildTransportHandled) {
+@@ -262,7 +266,7 @@
+             return true;
+         } });
+     args_parser.add_option(profile_process, "Enable callgrind profiling of the given process name (WebContent, RequestServer, etc.)", "profile-process", 0, "process-name");
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     args_parser.add_option(webdriver_endpoint, "Mach server name for WebDriver IPC", "webdriver-mach-server-name", 0, "name", Core::ArgsParser::OptionHideMode::CommandLineAndMarkdown);
+ #else
+     args_parser.add_option(webdriver_endpoint, "Path to WebDriver IPC for WebContent", "webdriver-content-path", 0, "path", Core::ArgsParser::OptionHideMode::CommandLineAndMarkdown);
+@@ -1155,7 +1159,7 @@
+ }
+ #endif
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ void Application::set_browser_process_transport_handler(Function<void(NonnullOwnPtr<IPC::Transport>)> handler)
+ {
+     m_on_browser_process_transport = move(handler);
+--- a/Libraries/LibWebView/BrowserProcess.cpp
++++ b/Libraries/LibWebView/BrowserProcess.cpp
+@@ -11,7 +11,7 @@
+ #include <LibCore/System.h>
+ #include <LibIPC/ConnectionToServer.h>
+ #include <LibIPC/Transport.h>
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/TransportBootstrapMach.h>
+ #endif
+ #include <LibWebView/Application.h>
+@@ -42,7 +42,7 @@
+     auto [socket_path, pid_path] = TRY(Process::paths_for_process(process_name));
+
+     if (auto pid = TRY(Process::get_process_pid(process_name, pid_path)); pid.has_value()) {
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+         TRY(connect_as_client(*pid, raw_urls, new_window));
+ #else
+         TRY(connect_as_client(socket_path, raw_urls, new_window));
+@@ -50,7 +50,7 @@
+         return ProcessDisposition::ExitProcess;
+     }
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     TRY(connect_as_server());
+ #else
+     TRY(connect_as_server(socket_path));
+@@ -63,7 +63,7 @@
+     return ProcessDisposition::ContinueMainProcess;
+ }
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ ErrorOr<void> BrowserProcess::connect_as_client(pid_t pid, Vector<ByteString> const& raw_urls, NewWindow new_window)
+ {
+     auto transport_ports = TRY(IPC::bootstrap_transport_from_mach_server(mach_server_name_for_process("Ladybird"sv, pid)));
+@@ -104,7 +104,7 @@
+ }
+ #endif
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ ErrorOr<void> BrowserProcess::connect_as_server()
+ {
+     Application::the().set_browser_process_transport_handler([this](auto transport) {
+--- a/Libraries/LibWebView/BrowserProcess.h
++++ b/Libraries/LibWebView/BrowserProcess.h
+@@ -60,7 +60,7 @@
+
+ private:
+     void accept_transport(NonnullOwnPtr<IPC::Transport>);
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     ErrorOr<void> connect_as_client(pid_t pid, Vector<ByteString> const& raw_urls, NewWindow new_window);
+     ErrorOr<void> connect_as_server();
+ #else
+--- a/Services/WebContent/main.cpp
++++ b/Services/WebContent/main.cpp
+@@ -43,7 +43,7 @@
+
+ #include <openssl/thread.h>
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/Transport.h>
+ #    include <LibIPC/TransportBootstrapMach.h>
+ #else
+@@ -259,7 +259,7 @@
+     if (!disable_sandbox)
+         TRY(RendererSandbox::apply_sandbox(config_path));
+
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto browser_port = TRY(Core::MachPort::look_up_from_bootstrap_server(ByteString { mach_server_name }));
+     auto transport_ports = TRY(IPC::bootstrap_transport_from_server_port(browser_port));
+     auto webcontent_client = WebContent::ConnectionFromClient::construct(
+--- a/Services/WebContent/WebDriverConnection.cpp
++++ b/Services/WebContent/WebDriverConnection.cpp
+@@ -17,7 +17,7 @@
+ #include <AK/Vector.h>
+ #include <LibCore/File.h>
+ #include <LibCore/Process.h>
+-#if !defined(AK_OS_MACOS)
++#if !defined(AK_OS_MACOS) && !defined(AK_OS_IOS)
+ #    include <LibCore/Socket.h>
+ #else
+ #    include <LibIPC/TransportBootstrapMach.h>
+@@ -242,7 +242,7 @@
+ ErrorOr<NonnullRefPtr<WebDriverConnection>> WebDriverConnection::connect(Web::PageClient& page_client, ByteString const& webdriver_endpoint)
+ {
+     dbgln_if(WEBDRIVER_DEBUG, "Trying to connect to {}", webdriver_endpoint);
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto transport_ports = TRY(IPC::bootstrap_transport_from_mach_server(webdriver_endpoint));
+ #else
+     auto socket = TRY(Core::LocalSocket::connect(webdriver_endpoint));
+@@ -252,7 +252,7 @@
+     page_client.page().set_should_block_pop_ups(false);
+
+     dbgln_if(WEBDRIVER_DEBUG, "Connected to WebDriver");
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     auto transport = make<IPC::Transport>(move(transport_ports.receive_right), move(transport_ports.send_right));
+ #else
+     auto transport = TRY(IPC::Transport::from_socket(move(socket)));
+--- a/Services/ImageDecoder/ConnectionFromClient.cpp
++++ b/Services/ImageDecoder/ConnectionFromClient.cpp
+@@ -15,6 +15,7 @@
+ #include <LibGfx/Bitmap.h>
+ #include <LibGfx/ImageFormats/ImageDecoder.h>
+ #include <LibGfx/ImageFormats/TIFFMetadata.h>
++#include <LibIPC/Transport.h>
+ #include <LibIPC/TransportHandle.h>
+ #include <LibSync/Mutex.h>
+ #include <LibThreading/ThreadPool.h>
+--- a/Services/RequestServer/ConnectionFromClient.cpp
++++ b/Services/RequestServer/ConnectionFromClient.cpp
+@@ -13,6 +13,7 @@
+ #include <LibCore/StandardPaths.h>
+ #include <LibCore/System.h>
+ #include <LibHTTP/Cache/DiskCache.h>
++#include <LibIPC/Transport.h>
+ #include <LibIPC/TransportHandle.h>
+ #include <LibRequests/NetworkError.h>
+ #include <LibRequests/WebSocket.h>
+--- a/Libraries/LibIPC/MachBootstrapMessages.h
++++ b/Libraries/LibIPC/MachBootstrapMessages.h
+@@ -18,6 +18,16 @@
+
+ namespace IPC {
+
++#if defined(AK_OS_IOS)
++struct MessageWithSelfTaskPort {
++    mach_msg_header_t header;
++};
++
++struct ReceivedMachMessage {
++    mach_msg_header_t header;
++    mach_msg_audit_trailer_t trailer;
++};
++#else
+ struct MessageBodyWithSelfTaskPort {
+     mach_msg_body_t body;
+     mach_msg_port_descriptor_t port_descriptor;
+@@ -34,6 +44,7 @@
+     mach_msg_header_t header;
+     MessageBodyWithSelfTaskPort body;
+ };
++#endif
+
+ struct MessageWithIPCChannelPorts {
+     mach_msg_header_t header;
+--- a/Libraries/LibIPC/TransportBootstrapMach.cpp
++++ b/Libraries/LibIPC/TransportBootstrapMach.cpp
+@@ -22,6 +22,13 @@
+     auto reply_port = TRY(Core::MachPort::create_with_right(Core::MachPort::PortRight::Receive));
+
+     MessageWithSelfTaskPort message {};
++#if defined(AK_OS_IOS)
++    message.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, MACH_MSG_TYPE_MAKE_SEND_ONCE);
++    message.header.msgh_size = sizeof(message);
++    message.header.msgh_remote_port = server_port.port();
++    message.header.msgh_local_port = reply_port.port();
++    message.header.msgh_id = SELF_TASK_PORT_MESSAGE_ID;
++#else
+     message.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, MACH_MSG_TYPE_MAKE_SEND_ONCE) | MACH_MSGH_BITS_COMPLEX;
+     message.header.msgh_size = sizeof(message);
+     message.header.msgh_remote_port = server_port.port();
+@@ -31,6 +38,7 @@
+     message.port_descriptor.name = mach_task_self();
+     message.port_descriptor.disposition = MACH_MSG_TYPE_COPY_SEND;
+     message.port_descriptor.type = MACH_MSG_PORT_DESCRIPTOR;
++#endif
+
+     mach_msg_timeout_t const send_timeout = 100;
+     auto const send_result = mach_msg(&message.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, message.header.msgh_size, 0, MACH_PORT_NULL, send_timeout, MACH_PORT_NULL);
+--- a/Libraries/LibIPC/MachBootstrapListener.cpp
++++ b/Libraries/LibIPC/MachBootstrapListener.cpp
+@@ -69,12 +69,18 @@
+         }
+
+         if (message.header.msgh_id == SELF_TASK_PORT_MESSAGE_ID) {
++#if defined(AK_OS_IOS)
++            VERIFY(MACH_MSGH_BITS_LOCAL(message.header.msgh_bits) == MACH_MSG_TYPE_MOVE_SEND);
++            auto pid = static_cast<pid_t>(message.trailer.msgh_audit.val[5]);
++            Core::MachPort task_port {};
++#else
+             auto const& task_port_message = message.body;
+             VERIFY(MACH_MSGH_BITS_LOCAL(message.header.msgh_bits) == MACH_MSG_TYPE_MOVE_SEND);
+             VERIFY(task_port_message.body.msgh_descriptor_count == 1);
+             VERIFY(task_port_message.port_descriptor.type == MACH_MSG_PORT_DESCRIPTOR);
+             auto pid = static_cast<pid_t>(task_port_message.trailer.msgh_audit.val[5]);
+             auto task_port = Core::MachPort::adopt_right(task_port_message.port_descriptor.name, Core::MachPort::PortRight::Send);
++#endif
+
+             // Extract reply port from the message header (kernel swaps local/remote on receive)
+             auto reply_port = Core::MachPort::adopt_right(message.header.msgh_remote_port, Core::MachPort::PortRight::SendOnce);

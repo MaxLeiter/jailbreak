@@ -8,7 +8,7 @@
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
 
-    <!-- posix_spawn the four helpers from the .app bundle. Child inherits the sandbox;
+    <!-- posix_spawn the five helpers from the .app bundle. Child inherits the sandbox;
          each child carries its own can-allow-non-platform (see ladybird-helper.entitlements). -->
     <key>get-task-allow</key>
     <true/>

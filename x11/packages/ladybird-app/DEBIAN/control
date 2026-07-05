@@ -14,7 +14,8 @@ Description: Ladybird — a standalone native web browser for jailbroken iPad
  .
  This M0 package bundles the Ladybird UI executable, helper processes, runtime dylib
  closure, resources, and fonts inside Ladybird.app. The helpers are spawned from the app
- bundle with socketpair IPC.
+ bundle and use Ladybird's Mach bootstrap IPC on iOS.
  .
- Painting currently uses the CPU-raster app-mode path; the GPU/WebGL and IOSurface
- zero-copy paths are intentionally deferred.
+ Painting currently uses the CPU-raster app-mode path and presents the resulting
+ IOSurface-backed front buffer through Metal when available. GPU/WebGL content remains
+ intentionally deferred.

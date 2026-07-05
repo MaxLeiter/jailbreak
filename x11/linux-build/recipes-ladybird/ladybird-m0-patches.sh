@@ -8,10 +8,43 @@
 # any CMake reached during configure. Source-level iOS is `__IOS__` (injected by the compiler
 # wrapper) -> AK_OS_IOS.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="${1:?usage: ladybird-m0-patches.sh <ladybird-source-dir>}"
 cd "$SRC"
 
 say() { echo "  [m0-patch] $*"; }
+
+apply_quilt_series() {
+  local patch_dir="$1"
+  local series="$patch_dir/series"
+  [ -f "$series" ] || return 0
+
+  if command -v quilt >/dev/null 2>&1; then
+    QUILT_PATCHES="$patch_dir" quilt push -a || {
+      # Idempotent reruns can land here when every patch in the series is already applied.
+      QUILT_PATCHES="$patch_dir" quilt applied >/dev/null 2>&1 && return 0
+      return 1
+    }
+    return 0
+  fi
+
+  while IFS= read -r patch_name; do
+    patch_name="${patch_name%%#*}"
+    patch_name="${patch_name## }"
+    patch_name="${patch_name%% }"
+    [ -n "$patch_name" ] || continue
+    local patch_file="$patch_dir/$patch_name"
+    if patch -p1 --dry-run -f < "$patch_file" >/dev/null 2>&1; then
+      patch -p1 < "$patch_file"
+      say "quilt fallback: applied $patch_name"
+    elif patch -p1 -R --dry-run -f < "$patch_file" >/dev/null 2>&1; then
+      say "quilt fallback: $patch_name already applied"
+    else
+      echo "failed to apply $patch_file" >&2
+      return 1
+    fi
+  done < "$series"
+}
 
 # ---------------------------------------------------------------------------------------------
 # 1) Sandbox -> Unimplemented. Services/WebContent/CMakeLists.txt selects the sandbox by platform;
@@ -190,7 +223,9 @@ fi
 #        (iOS ships only IOSurfaceRef.h); the GPU/IOSurface present path is not part of headless M0.
 # ---------------------------------------------------------------------------------------------
 f=Libraries/LibCore/CMakeLists.txt
-if grep -q 'list(APPEND SOURCES IOSurface.cpp)' "$f" && ! grep -q 'iOS: macOS-only' "$f"; then
+if grep -q 'iOS: IOSurface-backed Ladybird app buffers' "$f"; then
+  say "LibCore app IOSurface gate: already patched"
+elif grep -q 'list(APPEND SOURCES IOSurface.cpp)' "$f" && ! grep -q 'iOS: macOS-only' "$f"; then
   python3 - "$f" <<'PY'
 import sys
 p=sys.argv[1]; s=open(p).read()
@@ -763,7 +798,10 @@ print("  [m0-patch] Services/Compositor: AngleStubIOS.cpp added (app mode; drive
 PY
   fi
 
-  # g) Remove earlier app-mode bring-up traces. These were useful while first pixels were still
+  # g) Quilt-managed engine patch series for the real iOS IOSurface/Mach transport path.
+  apply_quilt_series "$SCRIPT_DIR/patches"
+
+  # h) Remove earlier app-mode bring-up traces. These were useful while first pixels were still
   #    uncertain, but release app builds should not append frame-by-frame logs in /var/jb/tmp.
   f=Libraries/LibWebView/Application.cpp
   if grep -q 'LB_ENG_TRACE' "$f"; then

@@ -3,11 +3,11 @@
 #
 # This is the MECHANICAL packaging driver that runs once the engine agent's build on
 # procursus-vol-ladybird finishes. It does NOT build the engine; it consumes the engine's
-# artifacts (the four helper executables + the built Lagom static libs + share/Lagom
+# artifacts (the five helper executables + the built Lagom static libs + share/Lagom
 # resources) and produces a signed, Sileo-installable .app deb.
 #
 # Pipeline:
-#   1. [BLOCKED-ON-ENGINE] Cross-compile the UIKit frontend against the engine tree.
+#   1. Cross-compile the UIKit frontend against the engine tree.
 #      Copy Sources/ into <ladybird-src>/UI/iOS + this CMakeLists, add_subdirectory it,
 #      build the `Ladybird` target with the SAME Docker cross toolchain the engine used
 #      (clang-19 + cctools ld64 + iPhoneOS16.5.sdk + -D__IOS__), producing the UI Mach-O.
@@ -22,6 +22,7 @@
 #     RequestServer       helper
 #     ImageDecoder        helper
 #     WebWorker           helper
+#     Compositor          helper (--force-cpu-painting)
 #     share/Lagom/...     engine resources (resource root overridden to here at boot)
 #     Info.plist
 #     AppIcon*.png
@@ -45,12 +46,11 @@ die() { echo "build-ladybird-app: $*" >&2; exit 1; }
 # --- Step 1 gate: engine + UI binary must exist ---
 if [ -z "$ENGINE_STAGE" ] || [ -z "$UI_BIN" ]; then
     cat >&2 <<EOF
-BLOCKED ON ENGINE. Set:
+Set:
   LADYBIRD_ENGINE_STAGE=<dir containing WebContent, RequestServer, ImageDecoder,
-                         WebWorker, and share/Lagom>   (from procursus-vol-ladybird)
+                         WebWorker, Compositor, and share/Lagom>
   LADYBIRD_UI_BIN=<path to the cross-built UIKit 'Ladybird' Mach-O>
-Then re-run. Until the engine build lands + step-1 cross-compile is wired, this driver
-stops here by design.
+Then re-run.
 EOF
     exit 3
 fi
@@ -61,18 +61,18 @@ mkdir -p "$APP/share"
 
 # --- Step 2: assemble bundle ---
 cp "$UI_BIN" "$APP/Ladybird"
-for h in WebContent RequestServer ImageDecoder WebWorker; do
+for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
     [ -f "$ENGINE_STAGE/$h" ] || die "missing helper: $ENGINE_STAGE/$h"
     cp "$ENGINE_STAGE/$h" "$APP/$h"
 done
 cp -R "$ENGINE_STAGE/share/Lagom" "$APP/share/Lagom"
 cp "$HERE/Resources/Info.plist" "$APP/Info.plist"
 [ -f "$HERE/Resources/AppIcon.png" ] && cp "$HERE/Resources/AppIcon.png" "$APP/AppIcon.png"
-chmod +x "$APP/Ladybird" "$APP/WebContent" "$APP/RequestServer" "$APP/ImageDecoder" "$APP/WebWorker"
+chmod +x "$APP/Ladybird" "$APP/WebContent" "$APP/RequestServer" "$APP/ImageDecoder" "$APP/WebWorker" "$APP/Compositor"
 
 # --- Step 3: sign (Mac ldid, DER ents; xsign verifies markers) ---
 xsign "$APP/Ladybird" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
-for h in WebContent RequestServer ImageDecoder WebWorker; do
+for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
     xsign "$APP/$h" "$HELPER_ENTS" com.apple.private.amfi.can-allow-non-platform
 done
 

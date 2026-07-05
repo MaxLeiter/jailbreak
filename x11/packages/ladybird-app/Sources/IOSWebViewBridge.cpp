@@ -7,7 +7,7 @@
  *                    last_painted_size }, has_usable_bitmap }, m_backup_shared_image_buffer,
  *   m_backup_bitmap_size, m_device_pixel_ratio, m_maximum_frames_per_second,
  *   device_pixel_ratio(), zoom_level(), handle_resize(), update_zoom(), initialize_client().
- * The one item that stays engine-gated is the IOSurface accessor — see front_iosurface().
+ * The app-mode M0 patch exposes the IOSurface accessor on iOS too; see front_iosurface().
  */
 #include "IOSWebViewBridge.h"
 
@@ -105,21 +105,13 @@ void* WebViewBridge::front_iosurface() const
     if (!m_client_state.has_usable_bitmap || !m_client_state.front_bitmap.shared_image_buffer)
         return nullptr;
 
-#if defined(AK_OS_MACOS)
-    // Accessor spelling CONFIRMED against Gfx::SharedImageBuffer (engine 92b0257) and the AppkKit
+#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+    // Accessor spelling CONFIRMED against Gfx::SharedImageBuffer (engine 92b0257) and the AppKit
     // present path (UI/AppKit/Interface/LadybirdWebView.mm:1070): iosurface_handle() returns a
     // Core::IOSurfaceHandle const&, and core_foundation_pointer() yields the IOSurfaceRef (as
     // void*) the host casts and blits into the CAMetalLayer drawable.
     return m_client_state.front_bitmap.shared_image_buffer->iosurface_handle().core_foundation_pointer();
 #else
-    // BLOCKED-ON-ENGINE (genuinely blocked, engine-owned): Gfx::SharedImageBuffer::iosurface_handle()
-    // is compiled ONLY under `#ifdef AK_OS_MACOS` (SharedImageBuffer.h:36-37). iOS builds as
-    // AK_OS_IOS (AK/Platform.h:90-96 defines AK_OS_MACOS only when !__IOS__), so the accessor and
-    // the m_iosurface_handle member do not exist and the shared image is a plain bitmap with no
-    // IOSurface backing. The Metal zero-copy present path therefore requires the engine agent's M0
-    // patch to expose an IOSurface handle under AK_OS_IOS (broaden the AK_OS_MACOS guards in
-    // SharedImageBuffer.{h,cpp}, LibCore/IOSurface, MetalContext). Until then this returns nullptr
-    // and LadybirdWebView.mm falls back to the CPU CGImage present path (which needs only bitmap()).
     return nullptr;
 #endif
 }

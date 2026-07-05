@@ -9,8 +9,9 @@
  *     /var/jb/Applications/Ladybird.app/WebContent — the helper we ship in the bundle root.
  *   - The iOS resource path default (find_prefix(app_dir)/share/Lagom) points OUTSIDE the
  *     bundle, so we override it explicitly to <bundle>/share/Lagom after boot.
- *   - IPC uses socketpair + SOCKET_TAKEOVER (the AK_OS_MACOS #else branch; iOS is not
- *     AK_OS_MACOS), spawned with posix_spawn — both proven under this jailbreak.
+ *   - App-mode IPC uses the Mach bootstrap transport on iOS too. That is what lets the
+ *     Compositor hand IOSurface-backed SharedImageBuffers to the UI process as Mach send
+ *     rights, while still spawning the helpers from the bundle with posix_spawn.
  */
 #import <UIKit/UIKit.h>
 #import "IOSApplication.h"

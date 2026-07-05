@@ -2,12 +2,12 @@
   "tagline": "Standalone Ladybird browser for iPad",
   "developer": "Ladybird Browser Initiative / Max",
   "homepage": "https://ladybird.org",
-  "description": "**Ladybird** is a standalone browser app for jailbroken iPad, built from Ladybird's LibWeb and LibJS engine rather than WebKit.\n\nTap the home-screen icon and it launches directly as a UIKit app. It bundles the browser executable, helper processes, resources, fonts, and dylib closure inside `Ladybird.app`, so it does not need an Xios desktop session.\n\n- Real upstream Ladybird icon\n- Multiprocess Ladybird engine with bundled helpers\n- Address bar, back/forward/reload, page taps, software keyboard input, and focused text fields\n- M0 CPU-rendered app path; GPU/WebGL and zero-copy IOSurface presentation are deferred\n\nRequires iPadOS/iOS 16+ on a rootless jailbreak.",
+  "description": "**Ladybird** is a standalone browser app for jailbroken iPad, built from Ladybird's LibWeb and LibJS engine rather than WebKit.\n\nTap the home-screen icon and it launches directly as a UIKit app. It bundles the browser executable, helper processes, resources, fonts, and dylib closure inside `Ladybird.app`, so it does not need an Xios desktop session.\n\n- Real upstream Ladybird icon\n- Multiprocess Ladybird engine with bundled helpers\n- Address bar, back/forward/reload, page taps, software keyboard input, and focused text fields\n- CPU-raster app path with IOSurface-backed front-buffer presentation through Metal\n- GPU/WebGL rendering is intentionally deferred\n\nRequires iPadOS/iOS 16+ on a rootless jailbreak.",
   "changelog": [
     {
-      "version": "0.1.10+ios1",
+      "version": "0.1.11+ios1",
       "date": "2026-07-05",
-      "notes": "- Add Ladybird to the repo apps list\n- Friendlier address bar parsing for bare HTTPS hosts\n- Keyboard input and autofocus handoff fixes\n- Real upstream Ladybird app icon\n- Bundled fonts and self-contained app resources"
+      "notes": "- Present Ladybird's IOSurface-backed front buffer through Metal\n- Use Mach bootstrap IPC on iOS for bundled helpers and IOSurface handoff\n- Friendlier address bar parsing for bare HTTPS hosts\n- Keyboard input and autofocus handoff fixes\n- Real upstream Ladybird app icon\n- Bundled fonts and self-contained app resources"
     }
   ]
 }

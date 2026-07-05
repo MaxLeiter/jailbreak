@@ -7,15 +7,16 @@
 # for `if (ANDROID OR IOS)`), so the engine links into this binary.
 #
 # The live paint path is the normal compositor cycle: the CPU Compositor helper (built for
-# iOS by patch #18, launched --force-cpu-painting) rasters the page into a ShareableBitmap
-# backing store and ships it to the UI, which fills m_client_state.front_bitmap and fires
-# on_ready_to_paint -> LadybirdWebView presents via the CPU CGImage path. No IOSurface/GPU.
+# iOS by patch #18, launched --force-cpu-painting) rasters the page into an IOSurface-backed
+# shared buffer and ships its IOSurface as a Mach send right to the UI. LadybirdWebView wraps
+# that front buffer as an MTLTexture for zero-copy presentation, with a CGImage CPU-layer
+# fallback.
 
 cmake_minimum_required(VERSION 3.25)
 
 set(LADYBIRD_IOS_SOURCES
     Sources/IOSWebViewBridge.cpp          # pure C++ ViewImplementation subclass
-    Sources/LadybirdWebView.mm            # UIView host: CPU CGImage present + input
+    Sources/LadybirdWebView.mm            # UIView host: IOSurface/Metal present + input
     Sources/Event.mm                      # UIKit event -> LibWeb input converters
     Sources/BrowserViewController.mm      # M0 chrome: address bar, back/fwd/reload, 1 tab
     Sources/IOSApplication.mm             # WebView::Application subclass + AppDelegate + main()

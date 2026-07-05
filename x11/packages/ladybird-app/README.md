@@ -1,13 +1,13 @@
 # ladybird-app — standalone native UIKit browser for jailbroken iPad
 
 A real home-screen `.app`: tap the icon, Ladybird launches standalone (no iosc / Wayland /
-desktop stack) and renders the web with the from-scratch Ladybird engine. This is a NEW
-UIKit frontend — upstream Ladybird has AppKit/Qt/GTK/Android frontends but no iOS one.
+desktop stack) and renders the web with the from-scratch Ladybird engine. This is a UIKit
+frontend; upstream Ladybird has AppKit/Qt/GTK/Android frontends but no iOS one.
 
-This package is **design + scaffold done in parallel with the engine build** (the engine
-agent owns `linux-build/recipes-ladybird/` + `procursus-vol-ladybird`; this dir touches
-none of that). The app cannot fully link until the engine's `WebContent`/`WebWorker`
-helpers finish, so parts are marked **BLOCKED-ON-ENGINE**.
+The package is self-contained: the app bundle contains the UI executable, the five Ladybird
+helper processes, resources, fonts, and the runtime dylib closure. The engine-side iOS app
+patches live in `linux-build/recipes-ladybird/patches/` and are applied by the Ladybird recipe
+wrapper.
 
 ## Architecture (ports the AppKit frontend method-for-method)
 
@@ -27,14 +27,15 @@ The bridge implements the **three mandatory `ViewImplementation` overrides** —
 verbatim.
 
 ### Present path (mirrors AppKit's two paths)
-Driven by `on_ready_to_paint`. WebContent hands the frontend a **double-buffered
-shared-memory `Gfx::Bitmap`** (BGRA8-premultiplied, device-pixel sized), front/back
-swapped on each `server_did_paint`.
+Driven by `on_ready_to_paint`. The CPU Compositor helper rasters into a double-buffered
+`Gfx::SharedImageBuffer` (BGRA8-premultiplied, device-pixel sized), front/back swapped on
+each `server_did_paint`.
 
 - **Preferred (zero-copy):** the front `Gfx::SharedImageBuffer` is **IOSurface-backed**; we
-  wrap it as an `MTLTexture` (`newTextureWithDescriptor:iosurface:`) and blit it into a
-  `CAMetalLayer` drawable. Identical to AppKit's `presentMetalFrame`, and identical to how
-  every other app in this repo presents (Xios). Needs the GPU IOKit entitlements.
+  carry its IOSurface as a Mach send right, wrap it as an `MTLTexture`
+  (`newTextureWithDescriptor:iosurface:`), and blit it into a `CAMetalLayer` drawable.
+  Identical to AppKit's `presentMetalFrame`, and identical to how every other app in this
+  repo presents (Xios). Needs the GPU/IOSurface IOKit entitlements.
 - **Fallback (CPU):** `CGImageCreate` over the bitmap's pixels → `CALayer.contents`
   (`kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst`). Used when
   `MTLCreateSystemDefaultDevice()` returns nil. Note the project-memory CGContext-dangle
@@ -56,15 +57,13 @@ into device pixels, exactly like AppKit.
 
 ## Multiprocess-in-app-bundle (the critical part) — SOLVED by design
 
-Ladybird is **multiprocess-only** (no single-process build flag exists). The four helpers
-must be bundled inside the `.app` and spawned. The good news, verified against the engine
-source:
+Ladybird is **multiprocess-only** (no single-process build flag exists). The five helpers
+must be bundled inside the `.app` and spawned.
 
-- iOS defines `AK_OS_IOS` (keyed off `-D__IOS__`), **not** `AK_OS_MACOS`. So iOS compiles
-  the **`#else` IPC branch** in `Libraries/LibWebView/Process.cpp`: an `AF_UNIX`
-  `socketpair` whose child end is handed over via the **`SOCKET_TAKEOVER`** env var, spawned
-  with **`posix_spawn`** — both proven under this jailbreak (bun/opencode). No Mach bootstrap
-  server, no `--mach-server-name` (it is gated on the macOS-only `mach_server_name()`).
+- App-mode iOS uses Ladybird's Mach bootstrap transport, with the iOS-specific task-port
+  handoff removed. The helpers are still launched from the bundle with `posix_spawn`, but the
+  live process arguments include `--mach-server-name org.ladybird.Ladybird.helper.<pid>`.
+  This is required for real IOSurface Mach-port handoff between the Compositor and UI process.
 - Helper path resolution (`Libraries/LibWebView/Utilities.cpp:101`): the **same-dir candidate
   `"<app_dir>/<HelperName>"` is always compiled** (line 111). We make `application_directory()`
   return the bundle root by passing `[NSBundle mainBundle].bundlePath` to `WebView::Application`
@@ -78,7 +77,7 @@ source:
 ```
 /var/jb/Applications/Ladybird.app/
   Ladybird        UI exe (statically links the engine)
-  WebContent RequestServer ImageDecoder WebWorker   helpers (same-dir candidate finds them)
+  WebContent RequestServer ImageDecoder WebWorker Compositor
   share/Lagom/…   engine resources (resource root overridden here at boot)
   Info.plist  AppIcon.png
 ```
@@ -89,10 +88,10 @@ separately (Mac `ldid`, DER entitlements, via `xsign`):
 - `entitlements/ladybird-app.entitlements` — `can-allow-non-platform` (load /var/jb
   fakesigned dylibs), `get-task-allow`, the GPU/IOSurface IOKit user clients (Metal present,
   same set as Xios.app), `/var/jb` + `/tmp` file exceptions.
-- `entitlements/ladybird-helper.entitlements` — shared by the four helpers:
-  `can-allow-non-platform`, `get-task-allow`, `/var/jb` + `/tmp` file exceptions. GPU clients
-  are intentionally omitted (raster M0 paints on CPU inside WebContent); add them to
-  WebContent only at M3 (Skia-on-Metal).
+- `entitlements/ladybird-helper.entitlements` — shared by the five helpers:
+  `can-allow-non-platform`, `get-task-allow`, IOSurface user clients for the CPU Compositor's
+  shared front buffer, and `/var/jb` + `/tmp` file exceptions. GPU clients are intentionally
+  omitted from helpers; add them only when Skia-on-Metal/WebGL painting lands.
 
 ### Single-process fallback
 There is **no** in-process mode in Ladybird, so there is no code fallback. If `posix_spawn`
@@ -111,12 +110,17 @@ and the same clang-19 + 16.5-SDK cross toolchain that builds the engine builds `
 a Swift toolchain targeting that SDK. A thin Swift chrome layer over the ObjC++ core is
 possible later but buys nothing for M0.
 
-## Build (mechanical, once the engine lands)
+## Build
 
-`build-ladybird-app.sh` is the driver. It is intentionally gated: it refuses to run until
-`LADYBIRD_ENGINE_STAGE` (the engine agent's staged helpers + `share/Lagom`) and
-`LADYBIRD_UI_BIN` (the cross-built UIKit `Ladybird` Mach-O) are set. Steps:
-1. **[BLOCKED-ON-ENGINE]** cross-compile the frontend: copy `Sources/` + `CMakeLists.txt`
+The current production path is the Linux build wrapper:
+`linux-build/build-ladybird-app-engine.sh` builds the patched engine/UI targets into
+`linux-build/out/app-stage`, then `linux-build/build-ladybird-app-bundle.sh` assembles the
+self-contained `.app` deb.
+
+`build-ladybird-app.sh` remains a lower-level packaging driver for prebuilt artifacts. It
+expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBIRD_UI_BIN`
+(the cross-built UIKit `Ladybird` Mach-O). Steps:
+1. Cross-compile the frontend: copy `Sources/` + `CMakeLists.txt`
    into `<ladybird-src>/UI/iOS`, `add_subdirectory` it, build the `Ladybird` target with the
    engine's Docker cross toolchain (clang-19 / cctools ld64 / iPhoneOS16.5.sdk / `-D__IOS__`).
    On iOS the Lagom libs are static (`if (ANDROID OR IOS)` → `BUILD_SHARED_LIBS OFF`), so the
@@ -129,11 +133,11 @@ possible later but buys nothing for M0.
 
 **User flow:** install one deb in Sileo → Ladybird icon on the home screen → tap → browse.
 
-## What's blocked on the engine finishing
-- Step-1 cross-compile / link (needs the built Lagom static libs + the 4 helper executables).
-- Confirming a few engine symbol spellings used here (marked BLOCKED-ON-ENGINE in-source):
-  `ViewImplementation` protected members (`m_client_state`, `m_backup_*`), `SharedImageBuffer::iosurface_handle()`, and the `Web::MouseEvent`/`KeyEvent`/`PinchEvent` aggregate field order. All are taken from the AppKit path, which is the 1:1 reference.
-- The final `Depends` closure (harfbuzz/freetype/fontconfig/curl+openssl/sqlite3/xml/codecs).
+## Still deferred
+- GPU/WebGL rendering: app mode forces CPU painting and keeps ANGLE/EGL/GLES link stubs
+  trap-if-called under that path.
+- Skia-on-Metal/WebContent GPU painting: helper GPU user-client entitlements should be added
+  only when that rendering path exists.
 
 ## UI/ frontend inventory + toolkit versions (for the later desktop-flavor pick)
 - **AppKit** — macOS Cocoa + Metal (the port reference; unusable as-is on UIKit).
