@@ -24,6 +24,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 
 static const char *sd_jbroot(void)
 {
@@ -53,6 +54,13 @@ static int sd_env_truthy(const char *name)
            strcasecmp(v, "false") != 0 &&
            strcasecmp(v, "no") != 0 &&
            strcasecmp(v, "off") != 0;
+}
+
+static uint64_t sd_mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
 }
 
 static int sd_socket_exists(const char *path)
