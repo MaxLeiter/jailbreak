@@ -1,0 +1,18 @@
+Subject: [PATCH] appstream: use host appstreamcli for cross build
+
+The cross build only needs appstreamcli as a native helper for generating
+AppStream's own metainfo. Do not require a native appstream version matching
+the target source, and do not override find_program() to point at the
+target-built iOS binary.
+
+diff -ruN -U0 --exclude=*.bak a/data/meson.build b/data/meson.build
+--- a/data/meson.build	2024-04-24 11:03:56
++++ b/data/meson.build	2026-07-05 00:24:26
+@@ -12,2 +11,0 @@
+-    dependency('appstream', version: '>=' + as_version, native: true,
+-               not_found_message: 'Native appstream required for cross-building')
+diff -ruN -U0 --exclude=*.bak a/tools/meson.build b/tools/meson.build
+--- a/tools/meson.build	2024-04-24 11:03:56
++++ b/tools/meson.build	2026-07-05 00:24:26
+@@ -20 +19,0 @@
+-meson.override_find_program('appstreamcli', ascli_exe)

@@ -79,6 +79,7 @@ fi
 if target_requests curl || target_requests appstream; then
   stage_required_patch_stack curl
 fi
+target_requests appstream && stage_required_patch_stack appstream
 target_requests gnome-text-editor && stage_required_patch_stack gnome-text-editor
 target_requests nautilus && stage_required_patch_stack nautilus
 
@@ -114,6 +115,20 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # (gtk4/graphene/gdk-pixbuf) and libxkbcommon are pulled in as make prerequisites (their
 # .build_complete markers skip rebuilds). gnome-terminal is omitted (optional GTK3 pass).
 # VALA targets (libgee, gnome-calculator) also need valac + the vendored .vapi staged above.
+
+APPSTREAM_W=build_work/iphoneos-arm64-rootless/1900/appstream
+APPSTREAM_S=build_stage/iphoneos-arm64-rootless/1900/appstream
+APPSTREAM_F="$APPSTREAM_W/.xios_patch_series.sha256"
+if target_requests appstream; then
+  APPSTREAM_FP="$(sha256sum \
+    /work/ports/appstream/patches/series \
+    /work/ports/appstream/patches/*.patch | sha256sum | awk '{print $1}')"
+  APPSTREAM_OLD_FP="$(cat "$APPSTREAM_F" 2>/dev/null || true)"
+  if [ -d "$APPSTREAM_W" ] && [ "$APPSTREAM_FP" != "$APPSTREAM_OLD_FP" ]; then
+    echo "==> wiping stale appstream build after patch changes"
+    rm -rf "$APPSTREAM_W" "$APPSTREAM_S"
+  fi
+fi
 
 CURL_W=build_work/iphoneos-arm64-rootless/1900/curl
 CURL_S=build_stage/iphoneos-arm64-rootless/1900/curl
@@ -186,6 +201,9 @@ if [ -d "$CURL_W" ] && [ -n "${CURL_FP:-}" ]; then
 fi
 if [ -d "$NGHTTP2_W" ] && [ -n "${NGHTTP2_FP:-}" ]; then
   printf '%s\n' "$NGHTTP2_FP" > "$NGHTTP2_F"
+fi
+if [ -d "$APPSTREAM_W" ] && [ -n "${APPSTREAM_FP:-}" ]; then
+  printf '%s\n' "$APPSTREAM_FP" > "$APPSTREAM_F"
 fi
 
 echo "==> collect debs -> /out"

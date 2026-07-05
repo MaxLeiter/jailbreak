@@ -17,17 +17,8 @@ DEB_APPSTREAM_V   ?= $(APPSTREAM_VERSION)+ios1
 appstream-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/appstream/releases/AppStream-$(APPSTREAM_VERSION).tar.xz)
 	$(call EXTRACT_TAR,AppStream-$(APPSTREAM_VERSION).tar.xz,AppStream-$(APPSTREAM_VERSION),appstream)
-	# Cross-build: data/meson.build wants a NATIVE appstream >= our version just to run
-	# `appstreamcli news-to-metainfo` for AppStream's OWN cli metainfo (irrelevant to the
-	# library we ship). The host (Debian bookworm) has appstreamcli 0.16 — fine for that
-	# subcommand but it fails the >= version gate. Drop the version-checked native dependency
-	# and keep the bare find_program('appstreamcli'), which picks up the host binary.
-	sed -i "/dependency('appstream', version:/,/not_found_message:/d" $(BUILD_WORK)/appstream/data/meson.build
-	# tools/meson.build override_find_program() points find_program('appstreamcli') at the
-	# TARGET-built (iOS) appstreamcli, so data/meson.build's news-to-metainfo step tries to run
-	# an iOS binary on the Linux host -> "exe_wrapper needed". Drop that override so the host
-	# appstreamcli on PATH is used for the build-time metainfo generation instead.
-	sed -i "/meson.override_find_program('appstreamcli', ascli_exe)/d" $(BUILD_WORK)/appstream/tools/meson.build
+	# Keep the cross-build appstreamcli source fixes in the port patch stack.
+	$(call DO_PATCH,appstream,appstream,-p1)
 	mkdir -p $(BUILD_WORK)/appstream/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

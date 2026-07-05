@@ -77,6 +77,8 @@ Current converted non-Qt stacks:
 - `ports/colord/patches`: trims colord to the libcolord client path by making
   daemon-only udev/USB deps optional, skipping generated daemon data, and
   removing GNU ld version-script use.
+- `ports/appstream/patches`: keeps AppStream cross-build codegen on the host
+  `appstreamcli` instead of a target-built iOS helper.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
@@ -93,7 +95,7 @@ Remaining non-Qt procedural source edits:
   separate Ladybird-specific cleanup.
 - Smaller recipe-level source edits still exist outside the original helper
   script audit, including lower-level stack recipes such as wayland,
-  appstream/polkit/tracker, and mutter/EDS.
+  polkit/tracker, and mutter/EDS.
   Convert these in small dependency-specific batches after checking whether
   each edit is true upstream source patching versus generated/package metadata
   or a deliberate blocked-port note.
