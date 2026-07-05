@@ -55,7 +55,10 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   `/var/jb/Library/PreferenceBundles/XiosPrefs.bundle` plus
   `/var/jb/Library/PreferenceLoader/Preferences/Xios.plist`, depends on
   `xios-launcher-tools`, and exposes the same `ioscd` list/toggle/dry-run/apply
-  controls in the native iOS Settings app.
+  controls in the native iOS Settings app. The controller sets explicit
+  `PSButtonActionKey` values, handles button rows by stable ids as a fallback,
+  and bounds `ioscd` socket reads so Settings cannot hang on an incomplete daemon
+  reply.
 - On-device validation done: renderer compiled/runs on iPad and rendered
   `org.gnome.Console.svg`; staged sync generated a complete native `mpv.app` and
   `org.pwmt.zathura.app` under `/var/jb/tmp`; daemon verbs returned the 14 visible
@@ -73,12 +76,14 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   `APPS_SYNC\tnative\tdry`. Remaining validation is a physical/tap-through UI
   check of the new sheet and one controlled apply sync.
 - Settings.app PreferenceBundle validation done: `com.max.xiosprefs 0.1.0`
-  built, installed, and copied to the repo deb pool. On-device package contents
-  include the bundle and PreferenceLoader registration plist; `preferenceloader
-  2.2.8` and `xios-launcher-tools 0.1.0` are installed. A URL launch attempt
-  produced no fresh Preferences crash, but USB screenshot capture was unavailable
-  (`idevicescreenshot`: no device found), so visual confirmation in Settings.app
-  is still pending.
+  built, installed, copied to the repo deb pool, and reflected in regenerated
+  local repo metadata. On-device package contents include the bundle and
+  PreferenceLoader registration plist; `preferenceloader 2.2.8` and
+  `xios-launcher-tools 0.1.0` are installed. Backend validation through
+  `/var/jb/tmp/ioscd.sock` returned `APPS_END\t0` for native dry-run after the
+  Settings hardening pass. A URL launch attempt starts Preferences without a
+  fresh crash, but USB screenshot capture was unavailable (`idevicescreenshot`:
+  no device found), so visual confirmation in Settings.app is still pending.
 
 ## Hardening (2026-07-02, from the native-integration review)
 - **Blocking mach hand-off moved off the compositor thread.** `deliver_canvas_port`

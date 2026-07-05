@@ -5,6 +5,7 @@
 #import <errno.h>
 #import <sys/socket.h>
 #import <sys/un.h>
+#import <sys/time.h>
 #import <unistd.h>
 
 static NSString *const XiosPrefsSocketPath = @"/var/jb/tmp/ioscd.sock";
@@ -110,8 +111,36 @@ static NSString *const XiosPrefsSocketPath = @"/var/jb/tmp/ioscd.sock";
                                                          cell:PSButtonCell
                                                          edit:nil];
     spec.buttonAction = selector;
+    [spec setProperty:NSStringFromSelector(selector) forKey:PSButtonActionKey];
     [spec setProperty:identifier forKey:PSIDKey];
     return spec;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    NSString *identifier = [specifier propertyForKey:PSIDKey];
+    if ([self performButtonWithIdentifier:identifier specifier:specifier]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+}
+
+- (BOOL)performButtonWithIdentifier:(NSString *)identifier specifier:(PSSpecifier *)specifier {
+    if ([identifier isEqualToString:@"refresh"]) {
+        [self refreshTapped:specifier];
+    } else if ([identifier isEqualToString:@"dry-native"]) {
+        [self dryNativeTapped:specifier];
+    } else if ([identifier isEqualToString:@"dry-classic"]) {
+        [self dryClassicTapped:specifier];
+    } else if ([identifier isEqualToString:@"apply-native"]) {
+        [self applyNativeTapped:specifier];
+    } else if ([identifier isEqualToString:@"apply-classic"]) {
+        [self applyClassicTapped:specifier];
+    } else {
+        return NO;
+    }
+    return YES;
 }
 
 - (void)refreshTapped:(PSSpecifier *)specifier {
@@ -230,6 +259,10 @@ static NSString *const XiosPrefsSocketPath = @"/var/jb/tmp/ioscd.sock";
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return @[ @"ERR socket failed" ];
 
+    struct timeval timeout = { .tv_sec = 3, .tv_usec = 0 };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
@@ -261,10 +294,23 @@ static NSString *const XiosPrefsSocketPath = @"/var/jb/tmp/ioscd.sock";
 
     NSMutableData *reply = [NSMutableData data];
     uint8_t buf[4096];
+    BOOL timedOut = NO;
+    BOOL sawEnd = NO;
     while (reply.length < (1024 * 1024)) {
         ssize_t n = read(fd, buf, sizeof(buf));
-        if (n > 0) [reply appendBytes:buf length:(NSUInteger)n];
+        if (n > 0) {
+            [reply appendBytes:buf length:(NSUInteger)n];
+            NSString *partial = [[NSString alloc] initWithData:reply encoding:NSUTF8StringEncoding];
+            if ([partial containsString:@"APPS_END\t"]) {
+                sawEnd = YES;
+                break;
+            }
+        }
         else if (n < 0 && errno == EINTR) continue;
+        else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            timedOut = YES;
+            break;
+        }
         else break;
     }
     close(fd);
@@ -275,6 +321,8 @@ static NSString *const XiosPrefsSocketPath = @"/var/jb/tmp/ioscd.sock";
     for (NSString *raw in rawLines) {
         if (raw.length) [lines addObject:raw];
     }
+    if (timedOut && !lines.count) return @[ @"ERR ioscd response timed out" ];
+    if (lines.count && !sawEnd) [lines addObject:@"ERR incomplete ioscd response"];
     return lines.count ? lines : @[ @"ERR empty response" ];
 }
 
