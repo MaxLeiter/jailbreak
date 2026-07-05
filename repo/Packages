@@ -276,12 +276,12 @@ Section: Tweaks
 Depends: preferenceloader, xios-launcher-tools (>= 0.1.0)
 Architecture: iphoneos-arm64
 Version: 0.1.0
-Installed-Size: 180
+Installed-Size: 204
 Filename: debs/com.max.xiosprefs_0.1.0_iphoneos-arm64.deb
-Size: 13060
-MD5sum: 4849a1c8252b0fb1df980a95a8fa5370
-SHA1: 302c3c1bb8c948d4280e3672fd6d6b54cea7c03e
-SHA256: 9527a2d05c452f039f425fad982c85af282e38b7a2790c587ba2abd9d7245013
+Size: 28376
+MD5sum: 8588ecdab134bfaaf73c924000e86dda
+SHA1: e5ff84f2581889fc8a4e9cb0f150434956e32973
+SHA256: e07c23780e6141d582eae44540c720c74f0318ad2d2dd65b8cf7db6dcefa747f
 Icon: https://repo.maxleiter.com/icons/com.max.xiosprefs.png
 Depiction: https://repo.maxleiter.com/depictions/com.max.xiosprefs.html
 SileoDepiction: https://repo.maxleiter.com/depictions/com.max.xiosprefs.json

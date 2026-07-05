@@ -58,7 +58,10 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   controls in the native iOS Settings app. The controller sets explicit
   `PSButtonActionKey` values, handles button rows by stable ids as a fallback,
   and bounds `ioscd` socket reads so Settings cannot hang on an incomplete daemon
-  reply.
+  reply. It also ships PreferenceLoader-sized `icon.png`, `icon@2x.png`, and
+  `icon@3x.png` assets derived from Xios.app's icon; the registration plist uses
+  `<key>icon</key><string>icon</string>` so the Settings sidebar shows the Xios
+  icon instead of a blank row.
 - On-device validation done: renderer compiled/runs on iPad and rendered
   `org.gnome.Console.svg`; staged sync generated a complete native `mpv.app` and
   `org.pwmt.zathura.app` under `/var/jb/tmp`; daemon verbs returned the 14 visible
@@ -82,8 +85,10 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   `xios-launcher-tools 0.1.0` are installed. Backend validation through
   `/var/jb/tmp/ioscd.sock` returned `APPS_END\t0` for native dry-run after the
   Settings hardening pass. A URL launch attempt starts Preferences without a
-  fresh crash, but USB screenshot capture was unavailable (`idevicescreenshot`:
-  no device found), so visual confirmation in Settings.app is still pending.
+  fresh crash. The installed bundle now contains the three PreferenceLoader icon
+  PNGs and the installed registration plist contains the `icon` key. USB
+  screenshot capture was unavailable (`idevicescreenshot`: no device found), so
+  visual confirmation in Settings.app is still pending.
 
 ## Hardening (2026-07-02, from the native-integration review)
 - **Blocking mach hand-off moved off the compositor thread.** `deliver_canvas_port`
