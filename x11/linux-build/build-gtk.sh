@@ -43,9 +43,8 @@ echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
 fi
-# The wayland track keeps its build inputs under recipes/build_info/ — not just control
-# templates but also wayland-darwin.patch (applied by wayland.mk for Darwin portability),
-# input-event-codes shims, etc. Copy them all so the wayland/epoll/xkb recipes resolve.
+# The wayland track keeps its non-source build inputs under recipes/build_info/ — control
+# templates, input-event-codes shims, etc. Copy them all so the wayland/epoll/xkb recipes resolve.
 if [ -d /work/recipes/build_info ] && compgen -G "/work/recipes/build_info/*" >/dev/null 2>&1; then
   cp -v /work/recipes/build_info/* build_info/ 2>/dev/null || true
 fi

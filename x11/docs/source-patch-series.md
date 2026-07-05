@@ -48,6 +48,9 @@ Current converted non-Qt stacks:
   OpenGL include spelling fix, iOS `__sincos`, and the wider es2gears default
   window. The generated `xdg-shell` protocol C/header files stay procedural via
   `mesa-demos-generate-xdg-shell.sh`.
+- `ports/wayland/patches`: carries the base libwayland Darwin/iOS portability
+  patch, including epoll-shim selection, credentials, cloexec, and timerfd
+  fallbacks.
 - `ports/fcft/patches`: carries the iOS `xlocale.h` include needed for
   locale APIs under the iOS SDK.
 - `ports/fuzzel/patches`: carries the Darwin UTF-32/thread-name portability
@@ -103,8 +106,7 @@ Remaining non-Qt procedural source edits:
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.
 - Smaller recipe-level source edits still exist outside the original helper
-  script audit, including lower-level stack recipes such as wayland,
-  mutter/EDS, and smaller focused app/runtime fixes.
+  script audit, including mutter/EDS and smaller focused app/runtime fixes.
   Convert these in small dependency-specific batches after checking whether
   each edit is true upstream source patching versus generated/package metadata
   or a deliberate blocked-port note.

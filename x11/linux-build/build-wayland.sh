@@ -12,6 +12,7 @@
 #     -v procursus-vol-wayland:/work/Procursus \
 #     -v "$PWD/build-wayland.sh:/work/build-wayland.sh:ro" \
 #     -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-wayland.sh
 #
@@ -98,17 +99,49 @@ cp -v /work/recipes/*.mk makefiles/
 # Our control templates live in recipes/build_info/ (the top-level linux-build/build_info/ is the
 # GTK track's and is not mounted here). Copy into the *clone's* build_info/.
 cp -v /work/recipes/build_info/*.control build_info/
-# Source patches (e.g. wayland-darwin.patch) are applied from $(BUILD_INFO) by the recipes.
-cp -v /work/recipes/build_info/*.patch build_info/ 2>/dev/null || true
 
 echo "==> [5/5] build the W0 stack (epoll-shim first; wayland depends on it)"
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 TARGETS="${TARGETS:-epoll-shim-package wayland-package wayland-protocols-package libxkbcommon-package}"
+
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+target_requests wayland && stage_required_patch_stack wayland
+
+WAYLAND_W=build_work/iphoneos-arm64-rootless/1900/wayland
+WAYLAND_S=build_stage/iphoneos-arm64-rootless/1900/wayland
+WAYLAND_F="$WAYLAND_W/.xios_patch_series.sha256"
+if target_requests wayland; then
+  WAYLAND_FP="$(sha256sum \
+    /work/ports/wayland/patches/series \
+    /work/ports/wayland/patches/*.patch | sha256sum | awk '{print $1}')"
+  WAYLAND_OLD_FP="$(cat "$WAYLAND_F" 2>/dev/null || true)"
+  if [ -d "$WAYLAND_W" ] && [ "$WAYLAND_FP" != "$WAYLAND_OLD_FP" ]; then
+    echo "==> wiping stale wayland build after patch changes"
+    rm -rf "$WAYLAND_W" "$WAYLAND_S"
+  fi
+fi
+
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$WAYLAND_W" ] && [ -n "${WAYLAND_FP:-}" ]; then
+  printf '%s\n' "$WAYLAND_FP" > "$WAYLAND_F"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

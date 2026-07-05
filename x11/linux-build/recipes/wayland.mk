@@ -30,13 +30,8 @@ WAYLAND_NATIVE_ROOT := $(BUILD_WORK)/wayland/native-root
 wayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/wayland/wayland/-/releases/$(WAYLAND_VERSION)/downloads/wayland-$(WAYLAND_VERSION).tar.xz)
 	$(call EXTRACT_TAR,wayland-$(WAYLAND_VERSION).tar.xz,wayland-$(WAYLAND_VERSION),wayland)
-	# Pull epoll-shim on darwin (idempotent: the bracket list only matches pre-edit).
-	sed -i "s/in \['freebsd', 'openbsd'\]/in ['freebsd', 'openbsd', 'darwin']/" \
-		$(BUILD_WORK)/wayland/meson.build
-	# Darwin/iOS source portability for libwayland-{client,server} (wayland-os.c + event-loop.c):
-	# SOCK_CLOEXEC + MSG_CMSG_CLOEXEC fallbacks, an __APPLE__ LOCAL_PEERCRED branch, and a
-	# struct itimerspec definition (iOS lacks POSIX timers). -N => idempotent re-apply.
-	cd $(BUILD_WORK)/wayland && patch -p1 -N -r - < $(BUILD_INFO)/wayland-darwin.patch || true
+	# Keep the Darwin/iOS source portability edits in the port patch stack.
+	$(call DO_PATCH,wayland,wayland,-p1)
 	mkdir -p $(BUILD_WORK)/wayland/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
