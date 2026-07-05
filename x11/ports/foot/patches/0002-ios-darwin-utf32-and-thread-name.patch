@@ -1,0 +1,18 @@
+Subject: [PATCH] foot: handle Darwin UTF-32 and thread names
+
+Darwin uses 32-bit UTF-32 wchar_t like the BSDs but does not define
+__STDC_ISO_10646__. It also exposes the one-argument pthread_setname_np()
+form, so map foot's renderer helper to the Darwin signature.
+
+diff -ruN -U0 --exclude=*.bak a/char32.c b/char32.c
+--- a/char32.c	2026-05-14 23:26:04
++++ b/char32.c	2026-07-05 00:31:31
+@@ -37 +37 @@
+-#if (!defined(__STDC_ISO_10646__) || !__STDC_ISO_10646__) && !defined(__FreeBSD__) && !defined(__OpenBSD__)
++#if (!defined(__STDC_ISO_10646__) || !__STDC_ISO_10646__) && !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__APPLE__)
+diff -ruN -U0 --exclude=*.bak a/render.c b/render.c
+--- a/render.c	2026-05-14 23:26:04
++++ b/render.c	2026-07-05 00:31:31
+@@ -17,0 +18,2 @@
++#elif defined(__APPLE__)
++ #define pthread_setname_np(thread, name) pthread_setname_np(name)

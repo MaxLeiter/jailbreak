@@ -26,19 +26,10 @@ foot-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/foot/releases/download/$(FOOT_VERSION)/foot-$(FOOT_VERSION).tar.gz)
 	$(call EXTRACT_TAR,foot-$(FOOT_VERSION).tar.gz,foot-$(FOOT_VERSION),foot)
 	rm -rf $(BUILD_WORK)/foot/build && mkdir -p $(BUILD_WORK)/foot/build
-	# Darwin's wchar_t is 32-bit UTF-32 (like the BSDs) but doesn't advertise __STDC_ISO_10646__;
-	# treat __APPLE__ like the BSD branch in foot's compile-time UTF-32 guard.
-	sed -i 's/&& !defined(__OpenBSD__)/\&\& !defined(__OpenBSD__) \&\& !defined(__APPLE__)/' $(BUILD_WORK)/foot/char32.c
 	# Darwin/iOS libc portability shim, force-included into every foot TU via c_args below:
 	# declares reallocarray, defines struct itimerspec + SOCK_CLOEXEC/NONBLOCK, and wraps the
 	# glibc atomic-flag pipe2/accept4/mkostemp over their flagless POSIX variants.
 	cp $(BUILD_INFO)/foot-compat.h $(BUILD_WORK)/foot/foot-compat.h
-	# macOS/iOS pthread_setname_np takes only the name (sets the calling thread); foot's render.c
-	# has FreeBSD/NetBSD branches but falls through to the glibc 2-arg form on Darwin. Add an
-	# __APPLE__ branch mapping to the 1-arg call (blue-paint stops the macro self-recursing).
-	if ! grep -q 'defined(__APPLE__)' $(BUILD_WORK)/foot/render.c; then \
-		sed -i 's|#elif defined(__NetBSD__)|#elif defined(__APPLE__)\n #define pthread_setname_np(thread, name) pthread_setname_np(name)\n#elif defined(__NetBSD__)|' $(BUILD_WORK)/foot/render.c; \
-	fi
 	$(call DO_PATCH,foot,foot,-p1)
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

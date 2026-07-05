@@ -52,6 +52,8 @@ Current converted non-Qt stacks:
   locale APIs under the iOS SDK.
 - `ports/fuzzel/patches`: carries the Darwin UTF-32/thread-name portability
   edits and skips the `doc/` Meson subdir that otherwise requires `scdoc`.
+- `ports/foot/patches`: carries the Darwin UTF-32/thread-name portability
+  edits plus the iOS locale, PTY bootstrap, and zero-render-worker runtime fixes.
 - `ports/grim/patches`: makes the `librt` Meson lookup optional for iOS,
   where `clock_gettime()` is in libc.
 - `ports/basu/patches`: keeps the Meson-level iOS/ld64 edits as a patch stack;
