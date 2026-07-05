@@ -61,6 +61,13 @@ KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
 KDE_LOG="${KDE_LOG:-$TMP/kde-plasma.log}"
 IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
+KWIN_QT_QUICK_BACKEND="${KWIN_QT_QUICK_BACKEND:-${QT_QUICK_BACKEND:-software}}"
+KWIN_QSG_RHI_BACKEND="${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-software}}"
+KWIN_QMLSCENE_DEVICE="${KWIN_QMLSCENE_DEVICE:-${QMLSCENE_DEVICE:-softwarecontext}}"
+PLASMA_QT_QUICK_BACKEND="${PLASMA_QT_QUICK_BACKEND-${QT_QUICK_BACKEND-}}"
+PLASMA_QSG_RHI_BACKEND="${PLASMA_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
+PLASMA_QMLSCENE_DEVICE="${PLASMA_QMLSCENE_DEVICE-${QMLSCENE_DEVICE-}}"
+PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="${PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}}"
 
 PLASMA_ENV=()
 KDE_PLASMA_LABEL="KDE Plasma"
@@ -241,15 +248,32 @@ echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $K
   QT_PLUGIN_PATH="$XS_PREFIX/lib/qt6/plugins" \
   QML2_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml" \
   QML_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml" \
-  QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}" \
-  QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-software}" \
-  QMLSCENE_DEVICE="${QMLSCENE_DEVICE:-softwarecontext}" \
+  KWIN_QT_QUICK_BACKEND="$KWIN_QT_QUICK_BACKEND" \
+  KWIN_QSG_RHI_BACKEND="$KWIN_QSG_RHI_BACKEND" \
+  KWIN_QMLSCENE_DEVICE="$KWIN_QMLSCENE_DEVICE" \
+  PLASMA_QT_QUICK_BACKEND="$PLASMA_QT_QUICK_BACKEND" \
+  PLASMA_QSG_RHI_BACKEND="$PLASMA_QSG_RHI_BACKEND" \
+  PLASMA_QMLSCENE_DEVICE="$PLASMA_QMLSCENE_DEVICE" \
+  PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="$PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION" \
   QT_QUICK_CONTROLS_STYLE="$KDE_QT_QUICK_CONTROLS_STYLE" \
   "${PLASMA_ENV[@]}" \
   dbus-run-session -- "$XS_PREFIX/bin/bash" -lc '
     set -u
     printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$KDE_SESSION_BUS_FILE"
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+    xios_export_or_unset() {
+      name="$1"; value="$2"
+      if [ -n "$value" ]; then
+        export "$name=$value"
+      else
+        unset "$name"
+      fi
+    }
+    xios_export_or_unset QT_QUICK_BACKEND "$KWIN_QT_QUICK_BACKEND"
+    xios_export_or_unset QSG_RHI_BACKEND "$KWIN_QSG_RHI_BACKEND"
+    xios_export_or_unset QMLSCENE_DEVICE "$KWIN_QMLSCENE_DEVICE"
+    unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+    echo "launch kwin: QT_QUICK_BACKEND=${QT_QUICK_BACKEND-<unset>} QSG_RHI_BACKEND=${QSG_RHI_BACKEND-<unset>}"
     "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
       --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts &
     kwin_pid=$!
@@ -270,6 +294,10 @@ echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $K
       sleep 0.5
     fi
     export WAYLAND_DISPLAY="$KWIN_SOCKET"
+    xios_export_or_unset QT_QUICK_BACKEND "$PLASMA_QT_QUICK_BACKEND"
+    xios_export_or_unset QSG_RHI_BACKEND "$PLASMA_QSG_RHI_BACKEND"
+    xios_export_or_unset QMLSCENE_DEVICE "$PLASMA_QMLSCENE_DEVICE"
+    xios_export_or_unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION "$PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION"
     plasma_args=()
     if [ -n "${PLASMA_SHELL_PLUGIN:-}" ]; then
       plasma_args+=(--shell-plugin "$PLASMA_SHELL_PLUGIN")
@@ -278,6 +306,7 @@ echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $K
       plasma_args+=(--no-respawn)
     fi
     echo "launch plasmashell: $PLASMA_BIN ${plasma_args[*]}"
+    echo "plasma render env: QT_QUICK_BACKEND=${QT_QUICK_BACKEND-<unset>} QSG_RHI_BACKEND=${QSG_RHI_BACKEND-<unset>} QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION-<unset>}"
     "$PLASMA_BIN" "${plasma_args[@]}" &
     plasma_pid=$!
 
