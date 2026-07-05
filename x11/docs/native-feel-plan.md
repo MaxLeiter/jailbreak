@@ -5,14 +5,17 @@ the iPad. Wire types 10-13 are registered in `wayland/xios_input_socket.h`
 (committed). Already landed, no owner action needed:
 
 - `wayland/xios-sysintd.c` + `build-sysintd.sh` + `out/xios-sysintd` — session
-  daemon: VOLUME -> `pactl set-sink-volume xios N%`, APPEARANCE ->
-  `gsettings color-scheme` (+ gtk-theme Adwaita/Adwaita-dark for GTK3, opt-out
-  `XIOS_SYSINT_NO_GTK3=1`). Socket `/var/jb/tmp/xios-sysint.sock`.
+  daemon: app-originated VOLUME -> `pactl set-sink-volume xios N%`; desktop/
+  PulseAudio-originated VOLUME -> broadcast back to Xios so the app sets iOS
+  hardware volume; APPEARANCE -> `gsettings color-scheme` (+ gtk-theme
+  Adwaita/Adwaita-dark for GTK3, opt-out `XIOS_SYSINT_NO_GTK3=1`). Socket
+  `/var/jb/tmp/xios-sysint.sock`.
 - `wayland/iosc_gl.{c,h}` — `iosc_gl_resize()` rebinds the output render target
   (context/program/client-texture cache survive; failure -> CPU fallback).
 - `apps/Xios/Sources/SysIntClient.{c,h}` + `SystemIntegration.swift` — app-side
-  detection + senders, fully self-contained new files (own sockets, own
-  reconnect + state replay; `@_silgen_name`, so no bridging-header edit).
+  detection + senders plus the reverse volume setter (hidden `MPVolumeView`);
+  fully self-contained new files (own sockets, own reconnect + state replay;
+  `@_silgen_name`, so no bridging-header edit).
 
 What remains is one hunk set per owner, below. Everything is additive; record
 types unknown to old readers pass through untouched, and a stock Xios app never

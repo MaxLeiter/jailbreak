@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-notifications (= @DEB_KNOTIFICATIONS_V@), extra-cmake-modules, qt6-base-dev, kf6-config-dev
+Depends: kf6-notifications (= @DEB_KNOTIFICATIONS_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, kf6-config-dev
 Description: Development files for KNotifications
  Headers and CMake package files for KNotifications. Needed to cross-build the
  KDE components that depend on it.

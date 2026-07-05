@@ -1,5 +1,10 @@
 # Rootless Xwayland XWM for iosc (`iosc_xwm`) — plan + resume-here
 
+> **Current status (2026-07-03): integration is no longer pending.** `iosc_xwm` and
+> `xwayland-shell-v1` are wired locally into iosc, and the build keeps XWM off by default unless
+> `IOSC_BUILD_XWM=1` is set. The checklist below is retained as historical implementation notes
+> and as a useful summary of the integration contract.
+
 Goal: make **rootless** Xwayland work under the iosc Wayland compositor, so each
 X11 window becomes an **individual iosc surface** (toplevel or popup), instead of
 today's rootful path where the whole X screen is one `xdg_toplevel` with an in-X
@@ -17,8 +22,9 @@ none. This adds a self-contained XWM module that iosc.c calls into.
   xwayland-shell-v1 protocol (xcb_* left to the device build's `-lxcb`).
 - `wayland/protocols/xwayland-shell-v1.xml` — vendored staging protocol (the
   association mechanism). Build must `wayland-scanner` it.
-- **iosc.c and the build scripts are NOT touched** (frozen + concurrent edits).
-  All the integration is captured as a checklist below.
+- **Originally, iosc.c and the build scripts were not touched** (frozen + concurrent edits).
+  The integration has since landed locally as an explicit opt-in; the checklist below documents
+  the edits that were made and the contract they rely on.
 
 Clean-room: designed only from the xwayland-shell-v1 XML, ICCCM, EWMH, and the
 libxcb core API. No wlroots/Weston/Mutter/Sway xwm code was read.
@@ -81,7 +87,7 @@ X11 client ─X protocol─▶ Xwayland (-rootless, -wm <fd>) ─┬─ wl_surfa
   hard-refused by pid; a `wl_display_set_global_filter` is display-wide so it must
   be owned by iosc.c — see integration note 6).
 
-## iosc.c integration checklist (the frozen edits)
+## Historical iosc.c integration checklist
 
 All of these are additive; none change existing behavior when `IOSC_XWAYLAND` is
 unset.
@@ -182,7 +188,7 @@ unset.
    `iosc_xwm_is_xwayland_client(client)`. Bind is already hard-refused without
    this, so it is cosmetic/hardening.
 
-## build-iosc.sh integration checklist (frozen)
+## Historical build-iosc.sh integration checklist
 
 1. **Scanner step** (add beside the other `wayland-scanner` calls, ~line 209):
    ```sh

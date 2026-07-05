@@ -50,8 +50,9 @@ Verified against upstream 46.0 `plugins/power/gsd-backlight.c`:
 
 ### upower
 
-- We ship **libupower-glib3 only** (`recipes/upower.mk` + `upower-ios-fixes.sh` deletes the
-  `src/` subdir). The daemon normally reads `/sys/class/power_supply/*` via gudev on Linux;
+- We ship **libupower-glib3 only** (`recipes/upower.mk` +
+  `ports/upower/patches` drops the daemon/tools subdirs). The daemon normally
+  reads `/sys/class/power_supply/*` via gudev on Linux;
   upstream also has bsd/openbsd/dummy backends, so the daemon core is portable — kept as the
   upgrade path (section 3), not the first move.
 
@@ -166,7 +167,7 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
   the shim does NOT cover (gsd-power's remaining value): idle-dim, auto-suspend policy,
   low-battery notification actions.
 - **gsd side (patch delivered, port ON HOLD):** the `power` plugin un-drop is in
-  `gnome-settings-daemon-ios-fixes.sh` (gnome-session owner: canberra no-op'd, raw-X11
+  `ports/gnome-settings-daemon/patches` (gnome-session owner: canberra no-op'd, raw-X11
   screensaver/DPMS gated `!__APPLE__`, canberra/x11/xext meson deps dropped). The Darwin
   backend is
   `linux-build/patches/gnome-settings-daemon/0001-gsd-backlight-darwin-xios-node.patch`
@@ -188,7 +189,7 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
 - IOPS on iOS reports percent granularity only (no energy/rate); `TimeToEmpty` is often -1
   early after state changes — clients handle 0 (unknown) fine.
 - upowerd upgrade path if we ever want history/statistics: keep `-Dos_backend=dummy`, stop
-  deleting `src/` in `upower-ios-fixes.sh`, overlay `src/dummy/up-backend.c` with an IOKit
+  dropping `src/` in `ports/upower/patches`, overlay `src/dummy/up-backend.c` with an IOKit
   implementation, link `-framework IOKit`. The shim's D-Bus surface is a strict subset, so
   the swap is invisible to clients.
 

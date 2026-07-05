@@ -1,8 +1,13 @@
 # Wayland on iOS — feasibility & plan
 
-Status: **Phase 1 research/design only (no heavy builds run).** Companion to
+Status: **Historical feasibility baseline; iosc/Wayland is now an active implementation.** Companion to
 [`../SCOPE.md`](../SCOPE.md). Scope: can we stand up Wayland on the jailbroken iPad
 alongside the working native X server (Xios), and is it worth it?
+
+> **Current status (2026-07-03): superseded as a status source.** The Wayland stack moved well
+> past research: iosc is the in-tree compositor, Wayland apps are being packaged/smoked, and
+> Xwayland-on-iosc is active. Use [`docs/handoff/iosc-compositor.md`](handoff/iosc-compositor.md)
+> and [`docs/handoff/wayland-apps.md`](handoff/wayland-apps.md) for current state.
 
 ---
 
@@ -34,12 +39,10 @@ Two findings change the risk profile from "speculative" to "tractable":
    drop-in for iOS, but it is a near-complete design template (and partial code donor) for the
    Wayland glue we'd otherwise write from scratch.
 
-**Recommendation: pursue as a parallel *research/prototype* track; keep X11 as the production
-path.** Wayland buys no user-visible capability over our working X stack *today*, but its
-"one buffer per surface" model is a strictly cleaner substrate for the SCOPE Stage 3/4 endgame
-(each window → a native iOS view), which on X we have to bolt on via XComposite. De-risk it now
-with two cheap steps (dep recipes + a single-surface `wl_shm` MVP); defer GPU GL and per-window
-compositing to ride the ANGLE and X-Stage-3/4 tracks. Do **not** bet the desktop on it yet.
+**Historical recommendation:** pursue as a parallel *research/prototype* track while keeping X11
+usable. That prototype has since become the active iosc/Wayland track, including Wayland app
+packaging and Xwayland integration work. The rationale below still explains why iosc exists, but
+it is no longer a future-only proposal.
 
 ---
 
@@ -257,7 +260,8 @@ is already funding (per-window compositing, GL).
 
 ## Recommendation & worth-it verdict
 
-**Build W0 and W1 as a parallel research track; keep X11 as production.** Reasons:
+**Historical verdict:** build W0 and W1 as a parallel research track while keeping X11 usable.
+That work has happened; keep this section as the original rationale. Reasons:
 
 1. **X11 already works** end-to-end on-device (Xios verified). Wayland delivers **no new
    user-visible capability today** — the GTK/Qt apps we care about run on X via our stack now.
@@ -277,16 +281,16 @@ is already funding (per-window compositing, GL).
    X's. Prove the core, keep X shipping, and only graduate Wayland to "production" if W1–W3
    demonstrate the per-window UX is clearly better than X+XComposite.
 
-**Net:** Wayland on this iPad is **feasible and worth a bounded prototype**, *not* worth dropping
-X11 for. Recommend: get W0 recipes validated (after coordinator go-ahead on the Docker build),
-then a W1 `wl_shm` MVP, and reassess against the X Stage 3/4 result.
+**Net:** Wayland on this iPad proved feasible enough to become the iosc track. The active
+question is no longer whether to prototype it, but which Wayland apps/session paths are ready to
+feature and publish.
 
 ---
 
-## Phase-1 gate (constraints honored)
+## Phase-1 gate (historical constraints)
 
-- This document is **research/design only**. **No Docker build was run**, and
-  `procursus-vol*`, `build-gtk.sh`, and other agents' files were **not touched**.
+- This document was originally **research/design only**. At the time, no Docker build was run,
+  and `procursus-vol*`, `build-gtk.sh`, and other agents' files were not touched.
 - **W0 recipes are now drafted** (new files, distinct names — no GPL code; structure follows the
   proven `fribidi`/`pango`/`brotli` recipes):
   - `linux-build/recipes/{epoll-shim,wayland,wayland-protocols,libxkbcommon}.mk`

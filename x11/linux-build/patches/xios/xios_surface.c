@@ -77,6 +77,9 @@ static uint64_t s_dirty_seq = 0;
 static uint64_t s_presented_seq = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
 static char s_input_socket[108] = "";          /* app input socket; emitted in xios.json when set */
+static unsigned s_generation = 0;              /* bumped by resize; stale handshakes close */
+static char s_sock_path_kept[256] = "";        /* for resize-time xios.json rewrite */
+static char s_json_path_kept[256] = "";
 
 void xios_set_compositor_id(const char *id)
 {
@@ -138,9 +141,32 @@ static int setnum(CFMutableDictionaryRef d, CFStringRef k, int32_t v)
     return 0;
 }
 
+static void write_json(const char *json_path, int width, int height, int stride,
+                       const char *sock_path)
+{
+    FILE *jf = fopen(json_path, "w");
+    if (!jf)
+        return;
+    fprintf(jf,
+            "{\"width\":%d,\"height\":%d,\"stride\":%d,"
+            "\"format\":\"BGRA\",\"ddx\":\"iosurface\",\"socket\":\"%s\","
+            "\"display\":\":%s\"",
+            width, height, stride, sock_path, display ? display : "0");
+    /* Where the app should send keyboard/pointer. The app auto-infers this only
+     * for an "iosc"-named ddx socket; any other compositor (mutter) must set it
+     * or it gets no input. Omitted when unset so iosc keeps the app's inference. */
+    if (s_input_socket[0])
+        fprintf(jf, ",\"input_socket\":\"%s\"", s_input_socket);
+    fprintf(jf, "}\n");
+    fclose(jf);
+    /* The app runs as mobile; make the handshake file world-readable so it can
+     * read it regardless of the compositor's launch umask. */
+    chmod(json_path, 0644);
+}
+
 /* ---- IOSurface ------------------------------------------------------------ */
 
-void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
+static IOSurfaceRef make_surface(int width, int height, int *stride, int *alloc_size)
 {
     const int bpe = 4;   /* BGRA8 */
     if (width <= 0 || height <= 0 || width > INT_MAX / bpe) {
@@ -178,17 +204,12 @@ void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
         return NULL;
     }
 
-    s_surface = s;
-    s_width = width;
-    s_height = height;
-    s_stride = (int) IOSurfaceGetBytesPerRow(s);
     int alloc_sz = (int) IOSurfaceGetAllocSize(s);
 
     /* Zero the buffer so the first frame isn't garbage. */
     if (IOSurfaceLock(s, 0, NULL) != KERN_SUCCESS) {
         fprintf(stderr, "xios: IOSurfaceLock failed during init\n");
         CFRelease(s);
-        s_surface = NULL;
         return NULL;
     }
     void *base = IOSurfaceGetBaseAddress(s);
@@ -196,16 +217,68 @@ void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
         fprintf(stderr, "xios: IOSurfaceGetBaseAddress returned NULL\n");
         IOSurfaceUnlock(s, 0, NULL);
         CFRelease(s);
-        s_surface = NULL;
         return NULL;
     }
     memset(base, 0, (size_t) alloc_sz);
     IOSurfaceUnlock(s, 0, NULL);
 
-    if (stride) *stride = s_stride;
+    if (stride) *stride = (int) IOSurfaceGetBytesPerRow(s);
     if (alloc_size) *alloc_size = alloc_sz;
     fprintf(stderr, "xios: IOSurface %dx%d id=%u stride=%d alloc=%d base=%p\n",
-            width, height, (unsigned) IOSurfaceGetID(s), s_stride, alloc_sz, base);
+            width, height, (unsigned) IOSurfaceGetID(s),
+            (int) IOSurfaceGetBytesPerRow(s), alloc_sz, base);
+    return s;
+}
+
+void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
+{
+    int st = 0, alloc_sz = 0;
+    IOSurfaceRef s = make_surface(width, height, &st, &alloc_sz);
+    if (!s)
+        return NULL;
+
+    s_surface = s;
+    s_width = width;
+    s_height = height;
+    s_stride = st;
+    if (stride) *stride = st;
+    if (alloc_size) *alloc_size = alloc_sz;
+    void *base = IOSurfaceGetBaseAddress(s);
+    return base;
+}
+
+void *xios_surface_resize(int width, int height, int *stride, int *alloc_size)
+{
+    int st = 0, alloc_sz = 0;
+    IOSurfaceRef ns = make_surface(width, height, &st, &alloc_sz);
+    if (!ns)
+        return NULL;
+    void *base = IOSurfaceGetBaseAddress(ns);
+    if (!base) {
+        CFRelease(ns);
+        return NULL;
+    }
+
+    pthread_mutex_lock(&s_lock);
+    IOSurfaceRef old = s_surface;
+    s_surface = ns;
+    s_width = width;
+    s_height = height;
+    s_stride = st;
+    s_generation++;
+    for (int i = 0; i < s_nclients; i++)
+        close(s_clients[i].fd);
+    s_nclients = 0;
+    pthread_mutex_unlock(&s_lock);
+
+    if (old)
+        CFRelease(old);
+    if (s_json_path_kept[0] && s_sock_path_kept[0])
+        write_json(s_json_path_kept, width, height, st, s_sock_path_kept);
+    if (stride) *stride = st;
+    if (alloc_size) *alloc_size = alloc_sz;
+    fprintf(stderr, "xios: output resized to %dx%d stride=%d (clients dropped)\n",
+            width, height, st);
     return base;
 }
 
@@ -213,8 +286,13 @@ void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
 
 /* task_for_pid the app, extract a send right to its receive port, and mach_msg
  * the IOSurface's mach port across. Returns 0 on success. */
-static int deliver_surface_port(int pid, unsigned portname)
+static int deliver_surface_port(int pid, unsigned portname, IOSurfaceRef surf)
 {
+    if (!surf) {
+        fprintf(stderr, "xios: no IOSurface available for hand-off\n");
+        return -1;
+    }
+
     task_t task = MACH_PORT_NULL;
     kern_return_t kr = task_for_pid(mach_task_self(), pid, &task);
     if (kr) {
@@ -236,7 +314,7 @@ static int deliver_surface_port(int pid, unsigned portname)
         return -1;
     }
 
-    mach_port_t sp = IOSurfaceCreateMachPort(s_surface);
+    mach_port_t sp = IOSurfaceCreateMachPort(surf);
     if (sp == MACH_PORT_NULL) {
         fprintf(stderr, "xios: IOSurfaceCreateMachPort failed\n");
         mach_port_deallocate(mach_task_self(), dst);
@@ -273,11 +351,14 @@ static int deliver_surface_port(int pid, unsigned portname)
     return 0;
 }
 
-static int add_client(int fd)
+static int add_client(int fd, unsigned generation)
 {
     int ok = 0;
     pthread_mutex_lock(&s_lock);
-    if (s_nclients < XIOS_MAX_CLIENTS) {
+    if (generation != s_generation) {
+        close(fd);
+        fprintf(stderr, "xios: stale app client fd=%d rejected after resize\n", fd);
+    } else if (s_nclients < XIOS_MAX_CLIENTS) {
         s_clients[s_nclients++].fd = fd;
         ok = 1;
         fprintf(stderr, "xios: app client attached (typed fd=%d, total=%d)\n",
@@ -408,16 +489,23 @@ static void handle_client(int fd)
                         "using the real peer\n", hello.pid, (int) peer_pid);
     }
 
-    int status = deliver_surface_port((int) peer_pid, hello.portname);
+    pthread_mutex_lock(&s_lock);
+    IOSurfaceRef surf = s_surface ? (IOSurfaceRef) CFRetain(s_surface) : NULL;
+    int w = s_width, hgt = s_height, st = s_stride;
+    unsigned gen = s_generation;
+    pthread_mutex_unlock(&s_lock);
+
+    int status = deliver_surface_port((int) peer_pid, hello.portname, surf);
 
     xios_reply reply;
     reply.magic = XIOS_MAGIC;
-    reply.width = (uint32_t) s_width;
-    reply.height = (uint32_t) s_height;
-    reply.stride = (uint32_t) s_stride;
+    reply.width = (uint32_t) w;
+    reply.height = (uint32_t) hgt;
+    reply.stride = (uint32_t) st;
     reply.format = XIOS_FMT_BGRA;
     reply.status = (uint32_t) (status != 0);
     if (write_full(fd, &reply, sizeof(reply)) != 0 || status != 0) {
+        if (surf) CFRelease(surf);
         close(fd);
         return;
     }
@@ -426,16 +514,18 @@ static void handle_client(int fd)
      * it before the DIRTY/CURSOR stream begins. */
     uint32_t idlen = (uint32_t) strlen(s_compositor_id);
     xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO, 0, idlen,
-                   s_width, s_height, s_stride, (int32_t) XIOS_FMT_BGRA };
+                   w, hgt, st, (int32_t) XIOS_FMT_BGRA };
     if (write_full(fd, &h, sizeof(h)) != 0 ||
         (idlen && write_full(fd, s_compositor_id, idlen) != 0)) {
+        if (surf) CFRelease(surf);
         close(fd);
         return;
     }
+    if (surf) CFRelease(surf);
     /* Damage notifications are non-blocking: a suspended/backed-up app must never
      * stall the X server's block handler. */
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    if (!add_client(fd))
+    if (!add_client(fd, gen))
         return;
     int *rfd = malloc(sizeof(*rfd));
     if (rfd) {
@@ -524,29 +614,12 @@ int xios_server_start(const char *sock_path, const char *json_path,
         }
     }
     s_listen_fd = fd;
+    snprintf(s_sock_path_kept, sizeof(s_sock_path_kept), "%s", sock_path);
+    snprintf(s_json_path_kept, sizeof(s_json_path_kept), "%s", json_path);
 
     /* Geometry handshake file: the app reads this to detect IOSurface mode and
      * find the socket before adopting the typed app stream. */
-    FILE *jf = fopen(json_path, "w");
-    if (jf) {
-        fprintf(jf,
-                "{\"width\":%d,\"height\":%d,\"stride\":%d,"
-                "\"format\":\"BGRA\",\"ddx\":\"iosurface\",\"socket\":\"%s\","
-                "\"display\":\":%s\"",
-                width, height, stride, sock_path, display ? display : "0");
-        /* Where the app should send keyboard/pointer. The app auto-infers this only
-         * for an "iosc"-named ddx socket; any other compositor (mutter) must set it
-         * or it gets no input. Omitted when unset so iosc keeps the app's inference. */
-        if (s_input_socket[0])
-            fprintf(jf, ",\"input_socket\":\"%s\"", s_input_socket);
-        fprintf(jf, "}\n");
-        fclose(jf);
-        /* The app runs as mobile; make the handshake file world-readable so it can
-         * read it regardless of the compositor's launch umask. The socket already
-         * gets the mobile treatment; the json needs the same posture for future
-         * rootful launches. */
-        chmod(json_path, 0644);
-    }
+    write_json(json_path, width, height, stride, sock_path);
 
     if (pthread_create(&s_thread, NULL, accept_loop, NULL) != 0) {
         perror("xios: pthread_create");

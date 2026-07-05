@@ -6,7 +6,7 @@
 #
 #   xios-session iosc            # lightweight iosc desktop (works today)
 #   xios-session mutter          # raw Mutter --wayland (flat stage)
-#   xios-session gnome           # gnome-shell --wayland (EXPERIMENTAL)
+#   xios-session gnome           # full GNOME session + Shell
 #   xios-session kde             # KWin + desktop plasmashell nested on iosc (EXPERIMENTAL)
 #   xios-session kde-mobile      # KWin + Plasma Mobile shell package (EXPERIMENTAL)
 #   xios-session kde-nano        # KWin + Plasma Nano shell package (EXPERIMENTAL)

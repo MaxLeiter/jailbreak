@@ -14,15 +14,17 @@ One shared library plus two triggers, all under `x11/apps/iosc-desktop/`:
 | `xios-session-lib.sh` | `/var/jb/libexec/xios-session/` | teardown + preset bring-up (single source of truth) |
 | `xios-session` | `/var/jb/usr/local/bin/` (in PATH) | on-device / SSH CLI trigger |
 | `ioscd` SESSION verb | `/var/jb/tmp/ioscd.sock` | request/reply path used by the in-app picker |
-| `run-shell.sh`, `run-mutter.sh`, `run-gnome-shell.sh` | `/var/jb/libexec/xios-session/` | reused bring-up scripts |
+| `run-shell.sh`, `run-mutter.sh` | `/var/jb/libexec/xios-session/` | reused iosc/Mutter bring-up scripts |
+| `launch-gnome-session.sh` | `/var/jb/usr/bin/` | packaged GNOME session launcher from `xios-session-stubs` |
 
-The library reuses the existing `run-*.sh` scripts behind clean preset names; the
-one thing it adds on top is a **bulletproof teardown** so switching sessions never
-leaves a stale compositor or socket behind.
+The library reuses the existing iosc/Mutter bring-up scripts and the packaged
+GNOME session launcher behind clean preset names; the one thing it adds on top
+is a **bulletproof teardown** so switching sessions never leaves a stale
+compositor or socket behind.
 
 Script resolution prefers the **LIVE installed copy** shipped by the owning package
-(`/var/jb/usr/local/bin/run-shell.sh` from iosc-shell, `/var/jb/usr/bin/…` for the
-GNOME/mutter scripts) over the launcher's own pinned `/var/jb/libexec/xios-session/`
+(`/var/jb/usr/local/bin/run-shell.sh` from iosc-shell, `/var/jb/usr/bin/…` for
+the GNOME/mutter launchers) over the launcher's own pinned `/var/jb/libexec/xios-session/`
 snapshot, which is only a fallback for when the owner package isn't installed. That
 way owner edits (e.g. run-shell.sh's `-logical` line) are tracked automatically
 instead of drifting behind a stale pin. Override with `XIOS_SESSION_BRINGUP_DIR`.
@@ -33,7 +35,7 @@ instead of drifting behind a stale pin. Override with `XIOS_SESSION_BRINGUP_DIR`
 |--------|-----------|-------|
 | `iosc` | iosc compositor + wallpaper + panel (`run-shell.sh`) | **works today** |
 | `mutter` | raw Mutter 46 `--wayland` (`run-mutter.sh`) | up — flat clutter stage, no shell yet |
-| `gnome` | `gnome-shell --wayland` (`run-gnome-shell.sh`) | **experimental** — status reflects the real paint (see below) |
+| `gnome` | GNOME session manager + Shell (`launch-gnome-session.sh`) | verified full-session path; status reflects the real paint (see below) |
 | `app <name>` | a Wayland client against the RUNNING compositor | works where the client + compositor do |
 | `stop` | tears everything down, back to SpringBoard | works |
 
@@ -43,7 +45,8 @@ whatever is already up. Known names: `kgx`/`console`, `gnome-text-editor`/`edito
 
 The `gnome` preset does NOT trust `xios.json` for success — Mutter writes that file
 before the gjs shell loads, so it only proves the compositor came up (identical to
-bare mutter). Instead it polls `gnome-shell.log` for ~15s and reports honestly:
+bare mutter). Instead it launches the packaged full-session wrapper, polls
+`gnome-shell.log` for ~15s, and reports honestly:
 `up` only on `GNOME Shell started at` (JS UI + stage loaded); `error` on a hard
 failure (`Failed to load module` / typelib `couldn't be found` / `JS ERROR` /
 `Execution of main.js threw exception` / `MTLCreateSystemDefaultDevice` nil, or the
@@ -91,7 +94,7 @@ From a terminal on the iPad, or over SSH
 ```sh
 xios-session iosc                 # lightweight iosc desktop
 xios-session mutter               # raw Mutter --wayland
-xios-session gnome                # gnome-shell (experimental)
+xios-session gnome                # full GNOME session + Shell
 xios-session app kgx              # a terminal onto the running compositor
 xios-session app gnome-text-editor
 xios-session stop                 # back to SpringBoard
@@ -102,10 +105,12 @@ The CLI calls the shared library directly. Add `-d`/`--via-daemon` to exercise
 the same `/var/jb/tmp/ioscd.sock` SESSION path used by the app; if ioscd is not
 running or does not acknowledge the request, the command fails.
 
-Current GNOME caveat (2026-07-03): direct `xios-session gnome` is the verified
-path for `gnome-shell 46.0+ios3`. The daemon/app picker path ACKs through ioscd,
-but still needs a concurrency cleanup because delayed/pending `iosc` requests can
-steal the active session after GNOME starts.
+Current GNOME status (2026-07-04 23:15 PDT): the preset routes through
+`launch-gnome-session.sh` so `gnome-session --builtin --session=xios` owns
+`org.gnome.Shell`. With `xios-session 1.0.22`, `xios-session-stubs 0.2.3`, and
+`gnome-shell 46.0+ios3`, both `xios-session gnome` and `xios-session -d gnome`
+reached `state=up`. If GNOME is replaced after that, treat it as a later explicit
+requester winning and check `/var/jb/tmp/ioscd.log` plus `xios-session.log`.
 
 ### Path 2 — in-app picker (ioscd socket)
 
@@ -119,8 +124,9 @@ SESSION<TAB>iosc<TAB><TAB>1080<TAB>1440<TAB>176
 `ioscd` forks the existing `xios-session` CLI, so the same shared library owns
 teardown, settle, and bring-up. There is no request-file fallback for session
 picks; `/var/jb/tmp/xios-request.json` remains only for display-profile requests.
-For GNOME validation, prefer the direct CLI until the daemon/app picker
-concurrency caveat above is closed.
+For GNOME validation, use the direct CLI when you want the shortest path, and use
+`xios-session -d gnome` or the in-app picker when you specifically need to
+exercise ioscd's socket path.
 
 Result feedback: both paths write `/var/jb/tmp/xios-session-status.json`
 (`{"preset","state","message","at"}`) which the app / CLI can poll. `state` walks
@@ -169,7 +175,7 @@ addSection("Desktop Session", to: stack)
 for (label, preset, app) in [
     ("iosc  lightweight (works today)", "iosc", String?.none),
     ("Mutter  raw compositor", "mutter", nil),
-    ("GNOME Shell  experimental", "gnome", nil),
+    ("GNOME Shell  full session", "gnome", nil),
 ] {
     stack.addArrangedSubview(panelButton(label) { [weak self, weak message] in
         self?.writeSessionRequest(preset, app: app)

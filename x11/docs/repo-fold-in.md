@@ -1,6 +1,6 @@
 # Repo fold-in: flavor meta-packages and the staged publish
 
-2026-07-01. How the built debs in `x11/linux-build/out/` become an installable
+Started 2026-07-01; refreshed after the first publish waves. How the built debs in `x11/linux-build/out/` become an installable
 product on repo.maxleiter.com, with Sileo/Cydia as the flavor chooser. No
 custom chooser or greeter ships: a user installs one `xios-<flavor>` package
 and the package manager resolves the whole desktop, and hides or blocks
@@ -18,11 +18,11 @@ Sileo copy comes from `repo/meta/xios-*.json` (already written).
 
 | Package | Pulls in (Depends) | Floor today | Publishable? |
 |---|---|---|---|
-| `xios-core` | iosc, angle, dbus, xios-desktop-defaults, xios-audio-server | **16.0.0** | yes |
-| `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-typelibs, xios-desktop-theme | **16.5.0** | blocked: `xios-session-stubs`, `xios-typelibs` |
-| `xios-kde` | xios-core + kwin, plasma-mobile, plasma-nano, qt6-wayland, kf6-breeze-icons | 16.0.0 (provisional) | blocked: whole Qt6/KF6/Plasma stack |
-| `xios-native` | xios-core + ioscd, xios-native-host | 16.0.0 (provisional) | blocked: ioscd + host exist as binaries, not debs |
-| `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | yes (Xwayland device validation still open) |
+| `xios-core` | iosc, angle, dbus, xios-desktop-defaults, xios-audio-server | **16.0.0** | published |
+| `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme | **16.5.0** | published; CLI GNOME first-light works, daemon/app concurrency cleanup remains |
+| `xios-kde` | xios-core + kwin, plasma-mobile, plasma-nano, qt6-wayland, kf6-breeze-icons | 16.0.0 | built locally; not published as a meta yet |
+| `xios-native` | xios-core + ioscd, xios-native-host | 16.0.0 | built locally; not published as a meta yet |
+| `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | published; Xwayland glamor IOSurface smoke passed |
 
 Redundant deps are trimmed: gnome-shell already pulls dconf, gjs, libmutter,
 gsettings-desktop-schemas and the GTK stacks; xios-server already pulls
@@ -32,16 +32,15 @@ fontconfig. The meta lists only top-level components.
 Recommends (not auto-installed by Sileo, shown as suggestions): xios-core
 recommends pulseaudio and xios-desktop-theme; xios-gnome recommends
 gnome-console, nautilus, gnome-text-editor, gnome-calculator; xios-x11
-recommends x11-xvfb and tigervnc-standalone-server. If the PA daemon turns
-out to be required for gnome-shell boot (gvc), promote pulseaudio into
-xios-gnome Depends before publishing that flavor.
+recommends x11-xvfb and tigervnc-standalone-server. PulseAudio/media packaging
+is now part of the working GNOME first-light path; keep the exact dependency
+choice in sync with `packages/meta/xios-gnome/DEBIAN/control`.
 
-Names still pending owners' confirmation: `xios-session-stubs` (task #35,
-the login1/polkit/accounts stub daemons), `xios-typelibs` (the aggregated
-on-device-scanned typelibs gnome-shell imports at boot), `ioscd` and
-`xios-native-host` (native flavor, tasks #36/37 built the binaries). If a
-different package name ships, update the meta control and rebuild; it is a
-one-line change plus `build-meta.sh`.
+Names that settled since the original fold-in note: `xios-session-stubs` ships
+the login1/polkit/accounts stub daemons, and `xios-gnome-typelibs` ships the
+aggregated on-device-scanned typelibs GNOME Shell imports at boot. `ioscd` and
+`xios-native-host` remain the native flavor package names in the meta control;
+verify they are indexed before publishing `xios-native`.
 
 ## How the store does the gating
 
@@ -186,12 +185,11 @@ Steps 1 through 8 are prep. Step 9 is the Max gate.
    `firmware (>= X)` floor in its control; bump the control and rebuild the
    meta if the closure drifted upward.
 7. **Stage per flavor** into repo/debs, replacing superseded versions per
-   the variant table above. Publish waves: wave 1 = xios-core + xios-x11 +
-   the current catalog refresh (everything in out/ that updates a published
-   package, including pulseaudio 17.0-1); wave 2 = xios-gnome once
-   xios-session-stubs and xios-typelibs are debs; wave 3 = xios-native;
-   wave 4 = xios-kde. A meta never ships before its closure: apt on device
-   would fail the install, and Sileo shows a broken package.
+   the variant table above. Completed publish waves include xios-core,
+   xios-x11, xios-gnome, xios-session-stubs, and xios-gnome-typelibs. Remaining
+   meta waves are xios-native and xios-kde once their complete closures are
+   indexed. A meta never ships before its closure: apt on device would fail the
+   install, and Sileo shows a broken package.
 8. **Regenerate and check locally**: run `bin/lib/make-repo.py` via the
    .repo-venv, then sanity-check: every Depends of every staged deb
    resolves inside repo/debs + the live Procursus index (the externals we

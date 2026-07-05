@@ -74,7 +74,8 @@ export default function DisplayServers() {
               <code>wp-viewport</code>, fractional-scale,{" "}
               <code>wl_data_device</code>{" "}clipboard, layer-shell,
               foreign-toplevel, cursor-shape, screencopy, session-lock,
-              drag-and-drop, plus wired-up touch and Pencil tablet input.
+              drag-and-drop, plus wired-up touch, Pencil tablet input, and live
+              output resize for rotation.
             </p>
           </div>
         </Panel>
@@ -88,7 +89,7 @@ export default function DisplayServers() {
             session launcher can start either one and the app presents it the same
             way. A three-finger tap in the app switches between running X and
             Wayland displays. A four-finger tap opens the session picker, where you
-            choose a desktop and, for portrait, the display dimensions.
+            choose a desktop; iosc can also resize live when the iPad rotates.
           </p>
         </div>
       </Section>

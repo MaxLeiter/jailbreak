@@ -115,7 +115,7 @@ if match "cannot open display|unable to init server|failed to open display|gdk_w
     say "       Xwayland with GDK_BACKEND=x11 DISPLAY=:0."
     hit=1
 fi
-if match "failed to initialize any suitable vo|libegl|eglinitialize|egl.*fail|wl_drm|dmabuf|gpu context"; then
+if match "failed to initialize any suitable vo|egl(init|initialize).*(fail|error)|failed.*egl|libegl.*(missing|failed|error)|wl_drm|dmabuf|gpu context|ANGLE Metal display = 0x0"; then
     say "SIGNATURE: GPU/EGL path — client's libEGL is not the iosc shim, or VO init failed."
     say "  FIX: ensure /var/jb/lib/angle/libEGL.dylib is the shim"
     say "       (nm -U /var/jb/lib/angle/libEGL.dylib | grep iosc_iosurface); install angle (>=es3-3)."

@@ -27,6 +27,13 @@
  * for alignment) and *alloc_size is the total allocation in bytes. */
 void *xios_surface_create(int width, int height, int *stride, int *alloc_size);
 
+/* Replace the output IOSurface with a new width x height one (device rotation).
+ * The new surface is created first; on failure the old surface stays live. On
+ * success the geometry state and xios.json sidecar are updated, current app
+ * clients are disconnected so they re-handshake, and the new framebuffer base is
+ * returned with the same contract as xios_surface_create(). */
+void *xios_surface_resize(int width, int height, int *stride, int *alloc_size);
+
 /* Start the AF_UNIX rendezvous/damage socket at sock_path and write the geometry
  * handshake to json_path (so the app can detect IOSurface mode and find the
  * socket). Spawns one background thread that accepts clients and performs the

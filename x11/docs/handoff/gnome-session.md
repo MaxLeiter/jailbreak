@@ -1,11 +1,11 @@
 # gnome-session — GNOME session layer + the Shell boot
 
 ## Ownership
-Getting GNOME Shell to boot on-device: the session layer (gnome-session, dconf, gsd, stubs), the ordered install, and the run scripts. GNOME Shell IS Mutter (see mutter.md) + gjs UI on top.
+Getting GNOME Shell to boot on-device: the session layer (gnome-session, dconf, gsd, stubs), the ordered install, and the packaged launcher. GNOME Shell IS Mutter (see mutter.md) + gjs UI on top.
 
 ## Key files
 - `x11/linux-build/install-gnome-boot.sh` — the ordered 66-deb install; now does a ONE-PASS external closure fetch (`apt-cache depends --recurse` over the frontier → `apt-get download` the missing → `dpkg -i` with the set). Hard-gated on libsndfile1.
-- `x11/wayland/run-gnome-shell.sh` — the boot: re-sign gnome-shell with GPU entitlements, stop the mutter smoke, start the session stubs, `gnome-shell --wayland`.
+- `x11/packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh` — the packaged full-session launcher: re-sign gnome-shell, start the session stubs/bridges on one bus, then run `gnome-session --builtin --session=xios`.
 - `x11/wayland/run-mutter.sh` — the bare-mutter smoke (first-pixels).
 - Stubs: xios-session-stubs deb (login1/polkit/accounts/logind stubs sharing xios-session-identity; libaccountsservice + libgdm client libs). Plan: `x11/docs/gnome-session-plan.md`.
 
@@ -34,27 +34,67 @@ for `QuickSlider` accessibility. Direct `xios-session gnome` verified GNOME reac
 `this._output is undefined` volume errors. Gvc still sees the `xios` sink. Evidence:
 `artifacts/device-runs/20260703-123833/`.
 
+**UPDATE 2026-07-03 16:18 PDT:** installed `xios-session 1.0.18` and rebuilt/reinstalled
+`ioscd` so the daemon `SESSION` path invokes `/var/jb/usr/bin/bash /var/jb/usr/local/bin/xios-session`
+instead of direct-execing the shell script from launchd. Root cause of the earlier daemon failure:
+ioscd accepted `SESSION gnome` but the child exited 127 with `exec xios-session failed: No such
+file or directory` before the script reached its own log. With explicit bash plus the new queued
+request supersede guard, daemon `xios-session -d gnome` reached `state=up`, Xios adopted the
+`2160x1620` Mutter surface, and `GNOME Shell started` was present. Evidence:
+`artifacts/device-runs/20260703-161839/`. Later newer `stop`/`kde-mobile` requests switched the live
+device away again; that is normal newest-request-wins behavior, not a GNOME boot failure.
+
+**UPDATE 2026-07-04 00:19 PDT:** installed `xios-session 1.0.20` and rebuilt/reinstalled matching
+slot-aware `ioscd` (`/var/jb/usr/local/bin/ioscd` sha256 `8388c38d...`). The audit first exposed a
+real mismatch: `xios-session 1.0.19` sent the new slot-capable six-field `SESSION` line while the
+device still had the older daemon, so ioscd treated the slot field as bad `dpi` and replied
+`ERR session start failed`. After reinstalling ioscd, daemon `xios-session -d gnome` ACKed and
+reached `state=up` / `GNOME Shell started` at 00:19:50 with the usual `2160x1620` Mutter surface.
+A newer `stop`/`kde` request from a parallel agent replaced it seconds later; that remains
+newest-request-wins behavior, not stale app-picker traffic.
+
+**UPDATE 2026-07-04 22:14 PDT:** rebuilt/reinstalled `ioscd` with peer/payload logging for
+`SESSION` requests. Daemon `xios-session -d gnome` logged
+`ioscd: session request pid=15717 uid=0 gid=0 payload="SESSION gnome     "`, reached
+`{"preset":"gnome","state":"up","message":"GNOME Shell started"}` at 22:14:02, and left
+`dbus-run-session`, `gnome-shell --wayland --wayland-display wayland-0`, and Xios alive through the
+dwell. A later direct `stop` at 22:14:35 did not have an ioscd `SESSION` peer log, so it was outside
+the daemon/app-picker path.
+
+**UPDATE 2026-07-04 23:15 PDT:** `xios-session gnome` now resolves the packaged
+`launch-gnome-session.sh` instead of a direct Shell smoke path. Installed
+`xios-session 1.0.22` + `xios-session-stubs 0.2.3`; direct `xios-session gnome` and daemon
+`xios-session -d gnome` both reached `{"preset":"gnome","state":"up","message":"GNOME Shell started"}`
+through `gnome-session --builtin --session=xios`. The launcher keeps the proven Shell
+signing/env/socket setup, writes a runtime `org.gnome.Shell.desktop` wrapper so `gnome-session`
+starts Shell with the requested `--wayland-display`, detaches, and returns for the existing status
+poller. Evidence: `artifacts/device-runs/20260704-231534/`; screenshot attempt
+`artifacts/device-runs/20260704-231559/` only logged `failed to create display`, expected for the
+non-iosc capture path. A later explicit `stop` and KDE launch replaced GNOME; that is
+newest-request-wins behavior, not a GNOME launch failure.
+
 REMAINING (polish, not blockers):
-1. **Launch path — direct CLI verified; daemon/app picker needs cleanup.** Do NOT
-   `ssh 'bash -s' < run-gnome-shell.sh` for normal validation. Use **`xios-session gnome`** from
-   an SSH shell or on-device terminal: with `xios-session 1.0.15` and `gnome-shell 46.0+ios3`, this
-   reaches `state=up`, Xios adopts `2160x1620`, and `gnome-shell --wayland` stays running. Evidence:
-   `artifacts/device-runs/20260703-124040/`. `xios-session -d gnome` now gets an ioscd socket ACK
-   through the Python fallback when local `nc` is unusable, but the daemon/app-triggered path still
-   needs a concurrency pass: delayed/pending `iosc` requests can run after a successful GNOME launch
-   and steal the active session. Promoted on-device gir scripts: gir-build-lib-ondevice.sh,
-   gir-build-gdm-ondevice.sh, gir-rescan-st-shell-ondevice.sh (for regen if a typelib is ever
-   missing).
+1. **Launch path — full-session preset verified.** Use **`xios-session gnome`** from
+   an SSH shell/on-device terminal or **`xios-session -d gnome`** for the ioscd/app-picker path.
+   With `xios-session 1.0.22`, `xios-session-stubs 0.2.3`, and `gnome-shell 46.0+ios3`, both paths
+   reached `state=up` through `gnome-session`. Keep using ioscd's peer/payload log if a later
+   requester replaces GNOME. Promoted on-device gir scripts: gir-build-lib-ondevice.sh, gir-build-gdm-ondevice.sh,
+   gir-rescan-st-shell-ondevice.sh (for regen if a typelib is ever missing).
 2. **Volume slider polish:** the old volume ectomy is removed in the recipe and in installed
    `gnome-shell 46.0+ios3`. Patch (8b) guards the missing QuickSlider a11y handoff while keeping
    the slider/menu/event path. Fresh `+ios3` logs clear the Quick Settings setup failure and the
    follow-on `_output is undefined` volume error. Remaining audio polish is functional UI testing
    of the slider itself plus fixing the harmless Gvc device lookup noise for xios network streams.
-3. Cosmetic: `meta-barrier` runtime-check warnings (pointer barriers unimplemented in MetaBackendIOS);
-   "Error registering session with GDM" (no org.gnome.DisplayManager — harmless, no GDM on iOS).
+3. Nonfatal service polish from the full-session smoke: `dbus-run-session` warns because
+   `XDG_RUNTIME_DIR=/var/jb/tmp` is world-writable; IBus warns about missing
+   `/var/lib/dbus/machine-id` and `ibus-daemon`; GnomeDesktop looks for `iso-codes` under the build
+   root instead of `/var/jb/usr/share/xml/iso-codes`; `org.gnome.Shell.Screencast` still logs missing
+   `Gst-1.0.typelib`; CalendarServer, GeoClue, colord, and the polkit auth agent are absent; and
+   `meta-barrier` runtime-check warnings remain because pointer barriers are unimplemented in
+   MetaBackendIOS. "Error registering session with GDM" is harmless because there is no GDM on iOS.
 
-## Current state — checked 2026-07-03 12:40 PDT
-- `gnome-shell 46.0+ios3`, `xios-session 1.0.15`, gnome-session,
+## Current state — checked 2026-07-04 23:15 PDT
+- `gnome-shell 46.0+ios3`, `xios-session 1.0.22`, `xios-session-stubs 0.2.3`, gnome-session,
   gnome-settings-daemon, libmutter-14-0/dev, libgjs0, gobject-introspection, and
   xios-session-stubs are installed (`dpkg-query` = `ii`).
 - GTK4 typelibs are present and importable: `Gtk-4.0` imports under gjs.
@@ -62,16 +102,16 @@ REMAINING (polish, not blockers):
   - Mutter/shell core: `Meta-14`, `Clutter-14`, `St-14`, `Shell-14`, `Gvc-1.0`, `Shew-0`
   - Session/panel deps: `AccountsService-1.0`, `Gdm-1.0`, `UPowerGlib-1.0`, `GWeather-4.0`, `Geoclue-2.0`
   - Closure deps: `Gcr-4`, `PolkitAgent-1.0`, `GnomeDesktop-4.0`, `GnomeBG-4.0`, `IBus-1.0`, `Atspi-2.0`, `Atk-1.0`
-- `gnome-shell` private dylibs are installed under `/var/jb/usr/lib/gnome-shell/` (`libshell-14.dylib`, `libst-14.dylib`, `libgvc.dylib`, `libshew-0.dylib`). The prior `/var/jb/tmp/gnome-shell.log` failure was dyld not finding `@rpath/libshell-14.dylib`; `run-gnome-shell.sh` now adds `/var/jb/usr/lib/gnome-shell` to `DYLD_LIBRARY_PATH`.
-- For the on-device Shell GIR build, `gnome-shell-ios-fixes.sh` disables the ATK bridge link on iOS. Reason: `libatk-bridge2.0-0 2.52.0` references ATK 2.52 document symbols, while the installed standalone `libatk1.0-0` is 2.38. This avoids the dyld abort during `Shell-14` scanning. Long-term fix is to align ATK/at-spi packaging if AT-SPI bridge support is needed.
+- `gnome-shell` private dylibs are installed under `/var/jb/usr/lib/gnome-shell/` (`libshell-14.dylib`, `libst-14.dylib`, `libgvc.dylib`, `libshew-0.dylib`). The prior `/var/jb/tmp/gnome-shell.log` failure was dyld not finding `@rpath/libshell-14.dylib`; the packaged launcher includes `/var/jb/usr/lib/gnome-shell` in `DYLD_LIBRARY_PATH`.
+- For the on-device Shell GIR build, `ports/gnome-shell/patches` disables the ATK bridge link on iOS. Reason: `libatk-bridge2.0-0 2.52.0` references ATK 2.52 document symbols, while the installed standalone `libatk1.0-0` is 2.38. This avoids the dyld abort during `Shell-14` scanning. Long-term fix is to align ATK/at-spi packaging if AT-SPI bridge support is needed.
 
 ## First launch attempt (2026-07-02) + the stale-binary root cause
-`run-gnome-shell.sh` was run for real. The compositor came up cleanly — `MetaBackendIOS`
+The early manual Shell launch was run for real. The compositor came up cleanly — `MetaBackendIOS`
 allocated the output IOSurface (`2160x1620 id=20`), served `wayland-0`, `MetaInputIOS`
 started polling — but the JS shell then died at boot on **two separate dyld/gjs failures**.
 Both trace to ONE root cause: **the deployed `gnome-shell` binary is stale relative to the
-recipe.** It was built Jul 1 (05:06) from a source tree patched with the OLD
-`gnome-shell-ios-fixes.sh`, which predates two fixes now in the recipe:
+recipe.** It was built Jul 1 (05:06) from a source tree patched with the old
+gnome-shell iOS patch helper, which predates two fixes now in the recipe:
 - **Patch (4b) — atk-bridge drop** (commit bb9535a): the deployed binary still hard-links
   `libatk-bridge-2.0.0.dylib` and calls `atk_bridge_adaptor_init` (2 refs), so dyld aborts on
   the missing ATK 2.52 symbols (`_atk_document_get/set_text_selections`, `_atk_object_get_help_text`).
@@ -119,7 +159,7 @@ has no daemon on iOS, so completing the typelib only moves the wall to the next 
 ectomies (EDS/Rsvg/atk-bridge). (A) remains a worthwhile LATER cleanup if real lock-screen auth
 is ever wanted.
 
-**(B) IMPLEMENTED** as patch (7) in `recipes/gnome-shell-ios-fixes.sh`: wraps the four
+**(B) IMPLEMENTED** in `ports/gnome-shell/patches`: wraps the four
 `Gio._promisify(Gdm.Client/Gdm.UserVerifierProxy …)` calls in `js/gdm/util.js` in an
 `_iosPromisify` helper that only promisifies when the `<name>_finish` method exists. Rebuild
 gnome-shell + redeploy to pick it up (same pipeline as the 4b/6 rebuild above).
@@ -214,7 +254,7 @@ typelib, not a running gdm daemon.
 ### MILESTONE 2026-07-02 ~01:32: ALL typelib/JS walls cleared — shell reaches the daemon layer
 After rebuilding Atk/Atspi/Gck/Gcr/GnomeDesktop(+BG/RR)/GWeather + re-scanning St-14/Shell-14 +
 rebuilding **Gdm-1.0** (50 KB, `get_session_ids` now present — via the gated-generate_gir fix now
-IN `libgdm-ios-fixes.sh`), the main gnome-shell process boots with **zero JS/gi errors**. It gets
+in `ports/libgdm/patches`), the main gnome-shell process boots with **zero JS/gi errors**. It gets
 through Meta backend, Mutter service names (InputMapping/ServiceChannel), IBus, and into session
 setup, then exits at the **daemon layer** (NOT a typelib issue):
 - `Missing required core component Settings` — the gsd/Settings shell component isn't provided.
@@ -262,8 +302,8 @@ Exhaustive bisection of the `EXIT=137` kill. It is DETERMINISTIC: dies ~3.5s in,
   is fine; it's the gjs SHELL's richer scene.
 - **NOT the JIT / JS execution** — standalone `gjs` running a hot loop JITs (2e9 iters in 6s =
   ~333M/s = JIT speed, baseline `b` frames seen) and SURVIVES (exit 0). JIT works on this device.
-- **NOT a codesigning/JIT entitlement** — adding `dynamic-codesigning` to the ent (now in
-  run-gnome-shell.sh) did NOT change the kill.
+- **NOT a codesigning/JIT entitlement** — adding `dynamic-codesigning` to the Shell
+  entitlement did NOT change the kill.
 - **NOT the session stubs** — dies identically with the accounts stub removed, with ALL stubs
   removed, and with any Xios app actively kept from attaching. The AccountsService/`ActUserManager`
   "waiting for user manager to load" lines are concurrent async noise, not the trigger.
@@ -302,11 +342,11 @@ but needs entitlements to stackshot (got CS-killed) — didn't capture the nativ
 
 **FIX PATHS (decision needed):**
 - (A) **Patch gnome-shell to not block on Gvc** — the ectomy pattern (like Rsvg/EDS/GDM): in
-  `gnome-shell-ios-fixes.sh`, make `js/ui/status/volume.js` construct the MixerControl lazily/async
+  `ports/gnome-shell/patches`, make `js/ui/status/volume.js` construct the MixerControl lazily/async
   or skip it (lose the volume slider). Rebuild + redeploy → first light. Fastest, loses audio UI.
 - (B) **Fix why `Gvc.MixerControl` construction hangs** — debug libgvc/libpulse-17 on iOS (get a
   stackshot via an entitled spindump, or add prints to gvc_mixer_control_init). Keeps audio. Deeper.
-Also fold in: run-gnome-shell.sh should start the PA daemon (with the module DYLD path) before the
+Also fold in: the GNOME launcher should start the PA daemon (with the module DYLD path) before the
 shell, and the PA module rpath bug + `.so`/`.dylib` module naming should be fixed in the pulseaudio
 package. The whole audio stack was ad-hoc unsigned on device — sign it in packaging.
 
@@ -321,7 +361,8 @@ at-spi2-core package — track in packaging.
 - Mutter-side readiness is still good: bare Mutter has first pixels, the Xios app can adopt the surface, and the app-side scale/tap mapping is fixed. Current device state during this check was iosc (`/var/jb/tmp/xios.json` advertised `/var/jb/tmp/iosc-ddx.sock`) with stale standalone Mutter processes still alive; clean them before a GNOME attempt.
 
 ## Open items
-1. **Phase 3 = run `run-gnome-shell.sh`** (a full switch OFF iosc — MAX-GATED; coordinate the device).
+1. **Keep launch validation tied to the full packaged launcher:** run `xios-session gnome` and
+   `xios-session -d gnome`, then confirm no later requester superseded it.
 2. **Success signal — do NOT gate on xios.json** (Mutter writes it before the gjs shell loads = only proves the compositor came up). Two-stage read of `/var/jb/tmp/gnome-shell.log`:
    - COMPOSITOR up: xios.json + "MetaRendererIOS create_view".
    - SHELL PAINTED (the real win): the line **"GNOME Shell started at"** (prints only after the JS UI + stage load).

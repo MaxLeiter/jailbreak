@@ -9,4 +9,5 @@ Depends: libglib2.0-0, libgtk-3-0, libcairo2
 Description: Hitori (GNOME logic puzzle)
  Hitori is a small GNOME puzzle game: cross out squares until no number is
  repeated in any row or column, with no two crossed squares adjacent and the
- uncrossed squares all connected. Pure C/GTK3. Runs as a plain X11 client.
+ uncrossed squares all connected. Pure C/GTK3. Runs as a native GTK3 Wayland
+ client under iosc, with X11 still available through the multi-backend GTK3 build.

@@ -119,8 +119,12 @@ final class SystemIntegration {
         }
     }
 
-    private func syncOrientation() {
-        guard let t = currentTransform(), t != lastTransform else { return }
+    func syncOutputNow() {
+        syncOrientation(force: true)
+    }
+
+    private func syncOrientation(force: Bool = false) {
+        guard let t = currentTransform(), force || t != lastTransform else { return }
         lastTransform = t
         c_send_output(t, 0, 0)   // 0,0 = iosc derives the size by swapping
     }

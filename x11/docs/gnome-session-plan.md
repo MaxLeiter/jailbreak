@@ -65,7 +65,7 @@ is satisfied by a single-session shim compiled into `libgdmcommon` — the same 
 libaccountsservice. Built with no version-script (Apple ld) and no cross gir; the **Gdm-1.0
 typelib is generated ON-DEVICE**. At runtime there is no display-manager daemon, so `Gdm.Client`
 simply fails to connect and the shell's greeter/lock paths degrade, which is correct for a
-jailbreak session. Recipe: `recipes/libgdm.mk` + `recipes/libgdm-ios-fixes.sh`.
+jailbreak session. Recipe: `recipes/libgdm.mk` + `ports/libgdm/patches`.
 
 ### libaccountsservice: the hidden boot-blocker
 
@@ -87,7 +87,7 @@ shipped lib + headers. Without that typelib on-device the shell still will not b
 
 Upstream gnome-session 46 hard-requires systemd/libsystemd (no meson toggle) and drives the
 session through `systemd --user` units. iOS has no systemd. The recipe applies
-`patches/gnome-session/0001-ios-no-systemd.patch`, which is the FreeBSD-ports non-systemd
+`ports/gnome-session/patches/0001-ios-no-systemd.patch`, which is the FreeBSD-ports non-systemd
 patch set (it reverts upstream's "Drop consolekit backend and hard depend on systemd" commit)
 adapted to the 46.0 tree, built with:
 
@@ -128,7 +128,7 @@ plugins that make sense on a Wayland tablet and drop the rest:
   `usb-protection`.
 
 The dropped plugins are the only consumers of geocode-glib, gweather4, libcanberra and
-upower-glib, so `recipes/gnome-settings-daemon-ios-fixes.sh` makes those deps `required:false`
+upower-glib, so `ports/gnome-settings-daemon/patches` makes those deps `required:false`
 and adds the heavy plugins to `disabled_plugins`. It also retargets gnome-desktop-3.0 -> 4 and
 removes gsd's malformed macOS `bundle_loader` ldflag in `plugins/common/meson.build`. Built
 with `-Dsystemd=false -Dalsa=false -Dgudev=false -Dwayland=false` and the feature options off.
@@ -143,7 +143,7 @@ a pure Wayland session (no Xwayland) it may warn or no-op. Keep it out of the in
 
 The seven dropped plugins are tracked here so they are not silently degraded. Status is one of
 IN PROGRESS, QUEUED (a re-enable follow-up), or LEAVE (documented, intentionally not shipped).
-The disable itself lives in `recipes/gnome-settings-daemon-ios-fixes.sh` (section 3).
+The disable itself lives in `ports/gnome-settings-daemon/patches`.
 
 | Plugin | Status | Plan |
 |---|---|---|
@@ -281,53 +281,24 @@ Order matters: the login1 stub and the D-Bus bus must exist before gnome-session
 gnome-session starts gnome-shell (which brings up Mutter/MetaBackendIOS and the Xios
 rendezvous server). The Xios app must be running to display the output IOSurface.
 
-```sh
-#!/bin/sh
-# launch-gnome-session.sh — bring up a GNOME session under Mutter/MetaBackendIOS on iOS.
-set -e
-PREFIX=/var/jb/usr
+The implementation lives in
+`packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh` and the
+matching package template under `packages/templates/xios-session-stubs/`. Keep
+the doc at the invariant level instead of copying the whole script here. The
+launcher must:
 
-# 1. runtime dir + env
-export XDG_RUNTIME_DIR=/var/jb/tmp/xios-run
-mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
-export WAYLAND_DISPLAY=wayland-0
-unset DISPLAY
-export GDK_BACKEND=wayland CLUTTER_BACKEND=wayland
-export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_CLASS=user
-export XDG_DATA_DIRS=$PREFIX/share:/var/jb/usr/local/share
-export GSETTINGS_SCHEMA_DIR=$PREFIX/share/glib-2.0/schemas
-export DYLD_LIBRARY_PATH=$PREFIX/lib:$PREFIX/lib/mutter-14:/var/jb/lib/angle
-
-# 2. write the custom session (org.gnome.Shell only for first boot) into XDG_CONFIG_DIRS
-CFG=$XDG_RUNTIME_DIR/xdg
-mkdir -p "$CFG/gnome-session/sessions"
-cat > "$CFG/gnome-session/sessions/xios.session" <<EOF
-[GNOME Session]
-Name=Xios GNOME
-RequiredComponents=org.gnome.Shell;
-EOF
-export XDG_CONFIG_DIRS=$CFG:/var/jb/etc/xdg
-
-# 3+4. ONE bus for everything. login1/PolicyKit1/Accounts are normally SYSTEM-bus services,
-#      but under dbus-run-session there is only a session bus. Point DBUS_SYSTEM_BUS_ADDRESS
-#      at it so clients asking for G_BUS_TYPE_SYSTEM (Mutter's login1, libpolkit,
-#      libaccountsservice) meet the stubs, then run the stubs + gnome-session inside the one
-#      dbus-run-session. gnome-session (classic path) starts gnome-shell, which brings up
-#      Mutter/MetaBackendIOS + the Xios rendezvous server.
-exec dbus-run-session -- sh -c '
-  export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
-  /var/jb/usr/libexec/xios-login1-stub &
-  /var/jb/usr/libexec/xios-polkit-stub &
-  /var/jb/usr/libexec/xios-accounts-stub &
-  [ -x /var/jb/usr/libexec/xios-hwbridged ] && /var/jb/usr/libexec/xios-hwbridged &  # UPower (xios-fhs)
-  [ -x /var/jb/usr/libexec/xios-sensord ] && /var/jb/usr/libexec/xios-sensord &      # SensorProxy/IIO (xios-fhs)
-  # volume buttons -> PA + iOS dark-mode -> GTK (native-bundle); needs the session bus + PULSE_SERVER
-  export PULSE_SERVER="${PULSE_SERVER:-unix:/var/jb/tmp/pulse/native}"
-  [ -x /var/jb/usr/libexec/xios-sysintd ] && /var/jb/usr/libexec/xios-sysintd >/var/jb/tmp/xios-sysintd.log 2>&1 &
-  sleep 1   # let the stubs claim their names before the shell queries them
-  exec gnome-session --builtin --session=xios
-'
-```
+- inherit `WAYLAND_DISPLAY`, `XIOS_JSON_PATH`, `XIOS_DDX_SOCKET`,
+  `XIOS_INPUT_SOCKET`, and `GNOME_SHELL_LOG` from `xios-session`;
+- re-sign `gnome-shell` with the GPU/JIT entitlement set needed by
+  Mutter/MetaBackendIOS on iOS;
+- start login1/polkit/accounts/BlueZ/hardware/audio shims inside the same
+  `dbus-run-session` tree as `gnome-session`;
+- write a temporary `xios.session` with `RequiredComponents=org.gnome.Shell;`;
+- write a temporary `org.gnome.Shell.desktop` wrapper so `gnome-session` starts
+  `gnome-shell --wayland --wayland-display "$WAYLAND_DISPLAY"`;
+- detach, wait briefly for `xios.json` + the Mutter DDX socket, hand the DDX
+  socket to mobile, relaunch Xios, and then return so `xios-session` can poll
+  the standard status signal.
 
 Notes:
 - The stubs and gnome-session share one bus because they all live inside the single

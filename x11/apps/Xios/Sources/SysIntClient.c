@@ -99,7 +99,11 @@ static void link_send(struct si_link *l, const struct si_msg *m,
     *last = *m;
     *have = 1;
     if (link_ensure(l) != 0) return;     // stored; replayed when the link is back
-    link_send_raw(l, m);
+    if (link_send_raw(l, m) != 0) {
+        l->last_try = 0;
+        if (link_ensure(l) == 0)
+            (void)link_send_raw(l, m);
+    }
 }
 
 void sysint_send_volume(unsigned v16)

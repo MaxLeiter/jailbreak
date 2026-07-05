@@ -107,6 +107,8 @@ dev-only symlink not shipped at runtime). Confirm `libintl8` is installed before
 `launch-gnome-session.sh` (shipped by `xios-session-stubs` to `/var/jb/usr/bin`) starts the
 login1/polkit/accounts stubs + `xios-hwbridged` (guarded with `-x`; from the xios-fhs hardware
 bridge — **not in this set yet**, so the battery indicator stays dark until that deb lands) on
-one `dbus-run-session` bus, then `gnome-session --builtin --session=xios` with
-`RequiredComponents=org.gnome.Shell` only. gsd components are added to the session file only
-after the shell is confirmed up. See `docs/gnome-session-plan.md`.
+one `dbus-run-session` bus, writes a runtime `org.gnome.Shell.desktop` wrapper
+for the requested Wayland display, then runs `gnome-session --builtin
+--session=xios` with `RequiredComponents=org.gnome.Shell` only. gsd components
+are added to the session file only after the shell is confirmed up. See
+`docs/gnome-session-plan.md`.

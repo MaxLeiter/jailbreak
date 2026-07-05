@@ -38,6 +38,7 @@ x11/docs/*.zip
 
 # Xcode / Apple local output
 DerivedData/
+apps/*/build-release-check/
 xcuserdata/
 *.xcuserstate
 *.dSYM/

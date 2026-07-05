@@ -30,7 +30,7 @@ endif
 
 SUBPROJECTS       += qtwayland
 QTWAYLAND_VERSION := 6.6.3
-DEB_QTWAYLAND_V   ?= $(QTWAYLAND_VERSION)+ios1
+DEB_QTWAYLAND_V   ?= $(QTWAYLAND_VERSION)-1+ios3
 QTWAYLAND_ANGLE_PREFIX := $(BUILD_BASE)$(MEMO_PREFIX)
 QTWAYLAND_ANGLE_INC    := $(QTWAYLAND_ANGLE_PREFIX)/include
 QTWAYLAND_ANGLE_LIB    := $(QTWAYLAND_ANGLE_PREFIX)/lib/angle
@@ -39,6 +39,7 @@ qtwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtwayland))
 	$(call EXTRACT_TAR,qtwayland-everywhere-src-$(QTWAYLAND_VERSION).tar.xz,qtwayland-everywhere-src-$(QTWAYLAND_VERSION),qtwayland)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtwayland)
+	bash /work/recipes/qtwayland-ios-fixes.sh $(BUILD_WORK)/qtwayland
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 	# qgenericunixthemes never built in our qtbase (gated UNIX AND NOT MACOS; MACOS

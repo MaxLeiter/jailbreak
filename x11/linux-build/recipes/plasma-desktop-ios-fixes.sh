@@ -99,7 +99,17 @@ from pathlib import Path
 
 panel = Path(sys.argv[1])
 text = panel.read_text()
-text = text.replace('panel.addWidget("org.kde.plasma.kickoff")', 'panel.addWidget("org.kde.plasma.kicker")')
+kicker_block = """var kicker = panel.addWidget("org.kde.plasma.kicker")
+kicker.currentConfigGroup = ["General"]
+kicker.writeConfig("favoriteApps", "org.kde.kwrite.desktop,org.kde.gwenview.desktop,org.kde.ark.desktop")
+kicker.writeConfig("favoritesPortedToKAstats", false)"""
+if kicker_block not in text:
+    if 'panel.addWidget("org.kde.plasma.kickoff")' in text:
+        text = text.replace('panel.addWidget("org.kde.plasma.kickoff")', kicker_block)
+    elif 'panel.addWidget("org.kde.plasma.kicker")' in text:
+        text = text.replace('panel.addWidget("org.kde.plasma.kicker")', kicker_block)
+    else:
+        raise SystemExit("default panel launcher widget not found")
 text = text.replace('panel.addWidget("org.kde.plasma.pager")', '// ios-firstlight-skip: panel.addWidget("org.kde.plasma.pager")')
 text = text.replace('panel.addWidget("org.kde.plasma.icontasks")', 'panel.addWidget("org.kde.plasma.windowlist")')
 text = text.replace('panel.addWidget("org.kde.plasma.systemtray")', '// ios-firstlight-skip: panel.addWidget("org.kde.plasma.systemtray")')
@@ -164,6 +174,20 @@ text = text.replace(
         }
 """,
 )
+path.write_text(text)
+PY
+
+python3 - "$src/applets/kicker/package/contents/config/main.xml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = "preferred://browser,org.kde.kontact.desktop,systemsettings.desktop,org.kde.dolphin.desktop,org.kde.discover"
+new = "org.kde.kwrite.desktop,org.kde.gwenview.desktop,org.kde.ark.desktop"
+if old not in text and new not in text:
+    raise SystemExit("kicker favoriteApps default not found")
+text = text.replace(old, new)
 path.write_text(text)
 PY
 

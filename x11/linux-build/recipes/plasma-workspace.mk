@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += plasma-workspace
 PLASMAWORKSPACE_VERSION = $(PLASMA_VERSION)
-DEB_PLASMAWORKSPACE_V ?= $(PLASMAWORKSPACE_VERSION)+ios5
+DEB_PLASMAWORKSPACE_V ?= $(PLASMAWORKSPACE_VERSION)+ios7
 
 plasma-workspace-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-workspace))
@@ -43,6 +43,10 @@ plasma-workspace-package: plasma-workspace-stage
 	if [ -e "$(BUILD_STAGE)/plasma-workspace/Applications" ]; then \
 		mkdir -p $(BUILD_DIST)/plasma-workspace$(MEMO_PREFIX)/Applications; \
 		cp -a $(BUILD_STAGE)/plasma-workspace/Applications/. $(BUILD_DIST)/plasma-workspace$(MEMO_PREFIX)/Applications/; \
+	fi
+	if [ -e "$(BUILD_STAGE)/plasma-workspace$(MEMO_PREFIX)/etc" ]; then \
+		mkdir -p $(BUILD_DIST)/plasma-workspace$(MEMO_PREFIX); \
+		cp -a $(BUILD_STAGE)/plasma-workspace$(MEMO_PREFIX)/etc $(BUILD_DIST)/plasma-workspace$(MEMO_PREFIX)/; \
 	fi
 	bash /work/recipes/plasma-workspace-ios-package-fixes.sh $(BUILD_DIST)/plasma-workspace
 	$(call KF6_COPY_DEV,plasma-workspace,plasma-workspace)

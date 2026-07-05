@@ -7,7 +7,7 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
 - `x11/wayland/meta-input-ios.c` — the input pump (kqueue drain of the app's input socket → ClutterVirtualInputDevice → notify_absolute_motion/notify_button/etc).
 - MetaBackendIOS backend pieces (winsys/monitor-mgr/IOSurface-buffer/login1-stub) — compile against Mutter 46 ABI off-device; build check `build-backend-check.sh`. Backend selected by `gnome-shell --wayland` (compositor-TYPE branch → create_ios_backend, no argv check).
 - `x11/linux-build/out/libmutter-14-0_46.0_*.deb` = **build10** (all fixes below). `mutter` thin exe is separate; the fixes are in libmutter.
-- Run: `x11/wayland/run-mutter.sh` (smoke), and gnome-session's `run-gnome-shell.sh` (the real boot).
+- Run: `x11/wayland/run-mutter.sh` (smoke); GNOME boots through the packaged `launch-gnome-session.sh` via `xios-session gnome`.
 - Output IOSurface is HARDCODED 2160×1620 (`xios_surface_create(2160,1620)`); input ratio-map divides by `xios_output_geometry()` = same 2160×1620.
 
 ## build10 fixes (all landed)

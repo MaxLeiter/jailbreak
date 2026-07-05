@@ -23,8 +23,11 @@ a container, keep the Mac clean, and get reproducible artifacts.
 | `tigervnc-scraping-server`, `tigervnc-xorg-extension` debs | Built alongside; not needed on-device |
 | `Xvfb` | Signed virtual-framebuffer X server for bring-up/debug; the app display path is IOSurface |
 | `Xios` | The **same** binary carrying the IOSurface DDX, signed with a minimal IOKit/`task_for_pid` entitlement set (`-iosurface` activates the zero-copy backend) |
+| `x11-xvfb_*_iphoneos-arm64.deb` | Packaged Xvfb server for rootless installs, built from target artifacts |
+| `xios-server_*_iphoneos-arm64.deb` | Packaged IOSurface X server payload for the Xios app path |
 | `xios-audio-server` | CoreAudio/RemoteIO audio daemon plus `xios-audio-play` smoke-test client |
 | `libfribidi*`, `libpango*`, `gtk*`, … debs | The GTK3 desktop stack (from `build-gtk.sh`) |
+| `iosc*`, `xios-session*`, GNOME/KDE/Wayland app debs | Built by their specialized `build-*.sh` and package scripts; see `docs/handoff/` for the current active lanes |
 
 The `+rootless1`-revision debs are the rootless variants to publish.
 

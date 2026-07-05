@@ -11,8 +11,9 @@
  *
  * The sink is fixed at the daemon's native 48 kHz stereo, streamed as f32le
  * (PA renders float natively, and the daemon ingests XIOS_AUDIO_FMT_F32LE, so
- * nothing is converted twice). PA soft volume/mute apply before the payload is
- * written, so gvc/gnome-shell volume sliders work end to end.
+ * nothing is converted twice). Sink volume is treated as iOS hardware volume:
+ * PA's hardware-volume callback forwards the level to xios-sysintd, which asks
+ * the Xios app to set system volume. Mute remains PA-side software policy.
  *
  * MIT, clean-room against the public PA module API (modeled on the structure
  * of module-null-sink).
@@ -32,6 +33,7 @@
 
 #include <pulse/rtclock.h>
 #include <pulse/timeval.h>
+#include <pulse/volume.h>
 #include <pulse/xmalloc.h>
 
 #include <pulsecore/core-error.h>
@@ -48,6 +50,7 @@
 #include <pulsecore/thread.h>
 
 #include "xios_audio_protocol.h"
+#include "xios_sysint_protocol.h"
 
 PA_MODULE_AUTHOR("xios");
 PA_MODULE_DESCRIPTION("Forward audio to xios-audiod (iOS CoreAudio RemoteIO daemon)");
@@ -56,9 +59,12 @@ PA_MODULE_LOAD_ONCE(false);
 PA_MODULE_USAGE(
         "sink_name=<name of sink> "
         "sink_properties=<properties for the sink> "
-        "socket=<path of xios-audiod socket>");
+        "socket=<path of xios-audiod socket> "
+        "sysint_socket=<path of xios-sysintd socket> "
+        "hw_volume=<enable iOS hardware volume bridge>");
 
 #define DEFAULT_SINK_NAME "xios"
+#define DEFAULT_SYSINT_SOCKET "/var/jb/tmp/xios-sysint.sock"
 #define BLOCK_USEC (25 * PA_USEC_PER_MSEC)
 #define RECONNECT_USEC (2 * PA_USEC_PER_SEC)
 /* Enlarge the send socket buffer so a whole timer burst of audio fits without
@@ -85,6 +91,8 @@ struct userdata {
     int fd;                     /* connected + OPEN sent, or -1 */
     pa_usec_t next_connect;     /* rtclock time of the next connect attempt */
     bool warned;                /* "daemon not reachable" logged once per outage */
+    bool sysint_warned;         /* "sysintd not reachable" logged once per outage */
+    bool hw_volume;             /* mirror PA sink volume to iOS hardware volume */
 
     uint8_t *sndbuf;            /* scratch holding header+payload contiguously so
                                  * a stalled send that wrote nothing can be
@@ -92,6 +100,7 @@ struct userdata {
     size_t sndbuf_cap;
     unsigned long dropped;      /* blocks dropped to backpressure (for logging) */
 
+    char *sysint_socket_path;
     pa_usec_t block_usec;
     pa_usec_t timestamp;
 };
@@ -100,8 +109,73 @@ static const char* const valid_modargs[] = {
     "sink_name",
     "sink_properties",
     "socket",
+    "sysint_socket",
+    "hw_volume",
     NULL
 };
+
+static int write_sysint_record(int fd, const void *buf, size_t len) {
+    const uint8_t *p = buf;
+    size_t done = 0;
+
+    while (done < len) {
+        ssize_t n = pa_write(fd, p + done, len - done, NULL);
+        if (n > 0) {
+            done += (size_t) n;
+            continue;
+        }
+        if (n < 0 && errno == EINTR)
+            continue;
+        return -1;
+    }
+    return 0;
+}
+
+static void send_sysint_volume(struct userdata *u, uint32_t v16) {
+    struct sockaddr_un sa;
+    struct xios_in_msg msg;
+    int fd;
+
+    if (!u->hw_volume || !u->sysint_socket_path || !*u->sysint_socket_path)
+        return;
+
+    if ((fd = pa_socket_cloexec(AF_UNIX, SOCK_STREAM, 0)) < 0)
+        return;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_UNIX;
+    if (strlen(u->sysint_socket_path) >= sizeof(sa.sun_path)) {
+        pa_close(fd);
+        return;
+    }
+    strcpy(sa.sun_path, u->sysint_socket_path);
+
+    if (connect(fd, (struct sockaddr *) &sa, sizeof(sa)) < 0) {
+        if (!u->sysint_warned) {
+            pa_log_warn("xios-sysintd not reachable at %s (%s); iOS hardware volume will not follow PA",
+                        u->sysint_socket_path, pa_cstrerror(errno));
+            u->sysint_warned = true;
+        }
+        pa_close(fd);
+        return;
+    }
+
+    memset(&msg, 0, sizeof(msg));
+    msg.type = XIOS_IN_VOLUME;
+    msg.code = v16 > 65535u ? 65535u : v16;
+    msg.state = XIOS_VOLUME_STATE_TO_DEVICE;
+
+    if (write_sysint_record(fd, &msg, sizeof(msg)) < 0) {
+        if (!u->sysint_warned) {
+            pa_log_warn("failed to send volume to xios-sysintd at %s (%s)",
+                        u->sysint_socket_path, pa_cstrerror(errno));
+            u->sysint_warned = true;
+        }
+    } else
+        u->sysint_warned = false;
+
+    pa_close(fd);
+}
 
 /* --- socket plumbing (IO thread only) ------------------------------------ */
 
@@ -299,6 +373,26 @@ static int sink_set_state_in_io_thread_cb(pa_sink *s, pa_sink_state_t new_state,
     return 0;
 }
 
+static void sink_set_volume_cb(pa_sink *s) {
+    struct userdata *u;
+    pa_volume_t requested, hw;
+    uint32_t v16;
+
+    pa_assert(s);
+    pa_assert_se(u = s->userdata);
+
+    requested = pa_cvolume_max(&s->real_volume);
+    hw = requested > PA_VOLUME_NORM ? PA_VOLUME_NORM : requested;
+    v16 = (uint32_t) (((uint64_t) hw * 65535u + PA_VOLUME_NORM / 2u) / PA_VOLUME_NORM);
+
+    /* Treat the iOS system volume as the hardware volume. PA should not also
+     * attenuate the PCM stream, or GNOME's slider would double-apply volume. */
+    pa_cvolume_set(&s->real_volume, s->sample_spec.channels, hw);
+    pa_cvolume_reset(&s->soft_volume, s->sample_spec.channels);
+
+    send_sysint_volume(u, v16);
+}
+
 static void process_render(struct userdata *u, pa_usec_t now) {
     pa_assert(u);
 
@@ -389,11 +483,16 @@ int pa__init(pa_module *m) {
     pa_channel_map map;
     pa_modargs *ma = NULL;
     pa_sink_new_data data;
+    bool hw_volume = true;
 
     pa_assert(m);
 
     if (!(ma = pa_modargs_new(m->argument, valid_modargs))) {
         pa_log("Failed to parse module arguments.");
+        goto fail;
+    }
+    if (pa_modargs_get_value_boolean(ma, "hw_volume", &hw_volume) < 0) {
+        pa_log("Invalid hw_volume value.");
         goto fail;
     }
 
@@ -410,6 +509,8 @@ int pa__init(pa_module *m) {
     m->userdata = u;
     u->fd = -1;
     u->socket_path = pa_xstrdup(pa_modargs_get_value(ma, "socket", XIOS_AUDIO_DEFAULT_SOCKET));
+    u->sysint_socket_path = pa_xstrdup(pa_modargs_get_value(ma, "sysint_socket", DEFAULT_SYSINT_SOCKET));
+    u->hw_volume = hw_volume;
     u->block_usec = BLOCK_USEC;
 
     u->rtpoll = pa_rtpoll_new();
@@ -446,6 +547,8 @@ int pa__init(pa_module *m) {
     u->sink->parent.process_msg = sink_process_msg;
     u->sink->set_state_in_io_thread = sink_set_state_in_io_thread_cb;
     u->sink->userdata = u;
+    if (u->hw_volume)
+        pa_sink_set_set_volume_callback(u->sink, sink_set_volume_cb);
 
     pa_sink_set_asyncmsgq(u->sink, u->thread_mq.inq);
     pa_sink_set_rtpoll(u->sink, u->rtpoll);
@@ -502,5 +605,6 @@ void pa__done(pa_module *m) {
 
     pa_xfree(u->sndbuf);
     pa_xfree(u->socket_path);
+    pa_xfree(u->sysint_socket_path);
     pa_xfree(u);
 }

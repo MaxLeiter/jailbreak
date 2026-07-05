@@ -1,0 +1,12 @@
+Package: libkscreen
+Version: @DEB_LIBKSCREEN_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/libkscreen
+Depends: qt6-base, qt6-wayland, libwayland0, plasma-wayland-protocols
+Description: KDE screen management library for Xios
+ libkscreen provides the KF6Screen library, KScreen backends, backend launcher,
+ and DPMS helper used by KDE display settings. This Xios build keeps the
+ Wayland/QScreen/fake backends and disables the Linux XRandR/DPMS path on iOS.

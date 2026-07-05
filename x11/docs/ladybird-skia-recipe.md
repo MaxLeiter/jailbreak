@@ -345,8 +345,8 @@ matching house convention:
   `AFTER_BUILD`, `PACK`/`SIGN`). GN + `git-sync-deps` + `ninja` fits none of that; the plan itself
   says Skia "does not fit the Procursus recipe mold cleanly."
 - The house already keeps the awkward, non-Procursus builds as standalone drivers:
-  `build-mutter.sh`, `build-kf6.sh`, `build-bun-ios.sh`, `build-opencode.sh`. Skia belongs with
-  those.
+  `build-mutter.sh`, `build-kf6.sh`, `build-bun-ios.sh`, `build-opentui-ios.sh`,
+  `build-fff-ios.sh`, and `build-opencode.sh`. Skia belongs with those.
 - Skia produces **no deb of its own** - it links into Ladybird - so the Procursus `PACK`/`SIGN`
   machinery is not even wanted. A `.mk` would fight that.
 

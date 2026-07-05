@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Bun/OpenCode bring-up probes for rootless iOS.
+# Legacy Bun/OpenCode bring-up probes for rootless iOS.
 #
 # Runs INSIDE the procursus-xbuild Docker image. This is intentionally isolated
 # from the Procursus recipe graph: first prove the iPhoneOS toolchain/device loop
-# and the upstream Bun binary failure mode, then grow this into a source build.
+# and the upstream Bun binary failure mode. Current package builds live in
+# build-bun-ios.sh / run-bun-ios.sh; keep this script for preflight probes.
 set -euo pipefail
 umask 022
 

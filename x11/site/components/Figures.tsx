@@ -230,8 +230,8 @@ const HOST_BRIDGES: Bridge[] = [
     state: "live",
     body: (
       <>
-        RemoteIO audio out, exposed as a <b>PulseAudio sink</b> that GTK and gvc
-        can control.
+        RemoteIO audio out and mic input, exposed as <b>PulseAudio</b> sink and
+        source.
       </>
     ),
   },
@@ -247,7 +247,7 @@ const HOST_BRIDGES: Bridge[] = [
   },
   {
     name: "xios-hwbridged",
-    state: "wip",
+    state: "live",
     body: (
       <>
         IOKit battery and BackBoard brightness become <b>UPower</b> and the
@@ -257,21 +257,20 @@ const HOST_BRIDGES: Bridge[] = [
   },
   {
     name: "xios-sysintd",
-    state: "wip",
+    state: "live",
     body: (
       <>
-        Volume buttons, dark mode, rotation, and haptics reach{" "}
+        Volume, dark mode, rotation, and haptic requests reach{" "}
         <b>pactl, gsettings, and the compositor</b>.
       </>
     ),
   },
   {
     name: "xios-sensord",
-    state: "wip",
+    state: "live",
     body: (
       <>
-        CoreMotion orientation feeds an <b>iio-sensor-proxy</b> shim, so the
-        desktop can auto-rotate.
+        CoreMotion feeds a <b>SensorProxy</b> shim and synthetic IIO sensor files.
       </>
     ),
   },
@@ -322,17 +321,18 @@ const SESSION_SERVICES: Bridge[] = [
     state: "wip",
     body: (
       <>
-        <b>wl_data_device</b> selections sync to and from the iOS{" "}
-        <b>UIPasteboard</b>.
+        <b>wl_data_device</b> selections are live; iOS pasteboard round trips are
+        still being verified.
       </>
     ),
   },
   {
     name: "AT-SPI to VoiceOver",
-    state: "planned",
+    state: "wip",
     body: (
       <>
-        The desktop <b>accessibility tree</b> is bridged to VoiceOver.
+        The desktop <b>accessibility tree</b> is mirrored into VoiceOver; physical
+        gesture QA remains.
       </>
     ),
   },

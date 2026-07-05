@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS += layer-shell-qt
 LAYERSHELLQT_VERSION = $(PLASMA_VERSION)
-DEB_LAYERSHELLQT_V ?= $(LAYERSHELLQT_VERSION)+ios5
+DEB_LAYERSHELLQT_V ?= $(LAYERSHELLQT_VERSION)+ios9
 
 layer-shell-qt-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,layer-shell-qt))

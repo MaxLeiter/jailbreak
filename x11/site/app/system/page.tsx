@@ -43,10 +43,9 @@ export default function System() {
             </Ext>{" "}
             set to the Playback category, so sound
             keeps going through the mute switch and the lock screen. Apps never
-            talk to it directly. A PulseAudio module, <code>module-xios-sink</code>
-            , presents an ordinary sink, and <code>PULSE_SERVER</code>{" "}points the
-            session at it, so GTK&apos;s volume control and any PulseAudio client
-            route through to the daemon.
+            talk to it directly. PulseAudio modules present an ordinary sink and
+            microphone source, <code>xios</code>{" "}and <code>xios_mic</code>, so GTK,
+            gvc, and PulseAudio clients route through the native daemons.
           </p>
         </div>
       </Section>
@@ -100,11 +99,10 @@ export default function System() {
           <p>
             The rest ride smaller bridges.{" "}
             <Ext href="https://developer.apple.com/documentation/coremotion">CoreMotion</Ext>{" "}
-            orientation feeds an
-            iio-sensor-proxy shim so the desktop can auto-rotate, and{" "}
+            feeds a SensorProxy-compatible shim, and{" "}
             <code>xios-sysintd</code>{" "}wires the hardware volume buttons to{" "}
             <code>pactl</code>, the system light and dark setting to the GNOME
-            color scheme, device rotation to a resize and reconnect, and taps to{" "}
+            color scheme, device rotation to a live iosc resize, and taps to{" "}
             <Ext href="https://developer.apple.com/documentation/uikit/uifeedbackgenerator">
               <code>UIFeedbackGenerator</code>
             </Ext>{" "}

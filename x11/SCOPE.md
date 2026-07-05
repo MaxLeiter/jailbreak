@@ -262,16 +262,18 @@ ports/<pkg>/
 
 Code-review and follow-up items, captured so they aren't lost (status in brackets):
 
-- **Xvfb packaging** [in progress] — ship the signed `Xvfb` as a real deb (`x11-xvfb`,
-  built; `postinst` makes `/var/jb/var/lib/xkb`) rather than a loose binary; same for `Xios`.
+- **Xvfb/Xios server packaging** [done for rootless] — `x11-xvfb` and `xios-server`
+  packages exist in `linux-build/out/` and the repo metadata; keep rootful-target packaging
+  on the target-matrix track.
 - **`build.sh` robustness** [open] — output deb globbing is loose (matches both `_1.11.0_`
   and `+rootless1`); revisit the Docker layer caching, add a `.dockerignore`, and tidy the
   Mac-SDK staging (`rsync --delete` runs only when `sdk/iPhoneOS.sdk` is absent — stale SDKs
   won't refresh).
 - **`xios.json` handshake race** [fixed] — geometry/socket handshake file is now written
   before the app reads it.
-- **`bin/x11-up.sh` stale** [in progress] — still references the byte-patched
-  `/var/jb/tmp/Xvnc.fixed` + `/var/sh` symlink; update to the packaged Xvnc/Xvfb paths.
+- **`bin/x11-up.sh` packaged-Xvnc cleanup** [fixed] — the script now launches
+  `/var/jb/usr/bin/Xvnc`, prepares `/var/jb/var/lib/xkb`, and documents that no
+  `/var/jb/tmp/Xvnc.fixed` or `/var/sh` hack is needed.
 - **xauth vs `-SecurityTypes None`** [decision needed] — Stage 0 uses `-localhost
   -SecurityTypes None`; decide whether to require `xauth` cookies for the on-device server.
 - **Self-contained repo** [in flight] — rehost the Procursus deps we depend on so the Sileo
@@ -323,9 +325,9 @@ own DDX.
    pointer/trackpad semantics are the hard UX problems.
 3. **GL**: software-only (llvmpipe) for X clients; the *compositor* is GPU (Metal). No
    accelerated GL inside X apps yet — acceptable for now.
-4. **Heavy DEs (GNOME/KDE)**: need D-Bus/`dbus-launch` (no systemd), polkit, dconf, a large
-   dep tree not yet in Procursus. The GTK3 stack build is the first step; treat full DEs as
-   a milestone after the per-window compositor (Stage 3/4) makes them feel acceptable.
+4. **Heavy DEs (GNOME/KDE)**: no systemd still forces stubs and single-user assumptions, but
+   this is no longer theoretical. GNOME Shell and KDE/KWin have first-light paths; use
+   `docs/handoff/gnome-session.md` and `docs/handoff/kde-kf6.md` for current blockers.
 
 **Decisions locked:** toolchain = extend Procursus (B1), built in a Linux container; native
 app = custom DDX (no embedded-VNC interim app); fonts = point at system SF (no redistribution).

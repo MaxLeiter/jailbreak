@@ -63,7 +63,7 @@ end-to-end):
   on-device ldid stays), `apps/iosc-host/build-host.sh`,
   `apps/iosc-shell/build-panel.sh`, `apps/iosc-shell/package-shell.sh`,
   `ports/angle/package-angle-es3.sh`, `linux-build/run.sh` (host Xios re-sign),
-  `linux-build/build-opentui-ios.sh`.
+  `linux-build/build-opentui-ios.sh`, `linux-build/build-fff-ios.sh`.
 - Host-side packaging → `xmkdeb`: `apps/iosc-desktop/package-session.sh`,
   `apps/iosc-shell/package-shell.sh`, `packages/xios-fhs/package-fhs.sh`,
   `packages/xios-session-stubs/build.sh`, `packages/meta/build-meta.sh`.
@@ -71,7 +71,7 @@ end-to-end):
 ### Intentionally NOT converted (with reasons — do not "fix" these blindly)
 
 - **In-container build scripts** (`build.sh`, `build-gtk/kwin/mutter/qt/qt-modules/
-  xwayland.sh`, `build-audio.sh`, `build-bun.sh`, `build-cogl-smoke.sh`,
+  xwayland.sh`, `build-audio.sh`, legacy `build-bun.sh`, `build-cogl-smoke.sh`,
   `build-gjs-manual.sh`, `build-qt-wayland-gl-smoke.sh`,
   `packages/xios-fhs/build-hwbridge.sh`, `recipes/relink-gtkintl.sh`,
   `wayland/build-session-stubs.sh`, `wayland/build-xios-glue.sh`, ...): their
@@ -81,12 +81,13 @@ end-to-end):
   (Their in-container `ldid` is also DER-less; the real sign is the host re-sign,
   which IS converted.)
 - **On-device / sh-only helpers** (`gir-ondevice.sh`, `gi-package.sh`,
-  `wayland/run-gnome-shell.sh`, `wayland/run-mutter.sh`, `run-*` deploy blocks):
+  `wayland/run-mutter.sh`, packaged GNOME launcher, `run-*` deploy blocks):
   the `ldid` runs on the device over ssh, or the script is `#!/bin/sh` (xlib.sh
   needs bash `BASH_SOURCE`).
-- **`build-opencode.sh`**: packages with `dpkg-deb -Zxz` under `LC_ALL=C`/`TZ=UTC`
-  for byte-reproducible output; `xmkdeb` uses `-Zzstd` + the procursus image, which
-  would change the bytes. Left on purpose.
+- **`build-opencode.sh`**: after `build-opentui-ios.sh` and `build-fff-ios.sh`
+  produce fakesigned native dylibs, packages with `dpkg-deb -Zxz` under
+  `LC_ALL=C`/`TZ=UTC` for byte-reproducible output; `xmkdeb` uses `-Zzstd` + the
+  procursus image, which would change the bytes. Left on purpose.
 - **`ports/angle/package-angle-es3.sh` packaging**: deliberately uses
   `debian:bookworm-slim` for `dpkg-deb` (documented host-bash workaround);
   `xmkdeb` assumes the procursus image's bash entrypoint. Its signing IS converted.

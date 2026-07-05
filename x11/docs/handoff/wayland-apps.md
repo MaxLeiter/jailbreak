@@ -14,43 +14,51 @@ version for any agent.
 | App | Deb | On device | Launches in iosc? | Notes |
 |---|---|---|---|---|
 | grim 1.4.1 | out/ ✓ | installed | **YES (classic)** | upright screenshot verified; blank in `-native` |
-| slurp 1.5.0 | out/ ✓ | not yet | untested | region select; pairs w/ grim |
-| fuzzel 1.12.0 | out/ ✓ | not yet | untested | launcher; pinned <1.13 (pixman 0.40) |
-| dunst 1.13.2+ios1 | out/ ✓ | not yet | untested | notifications (GDBus, not sd-bus) |
+| slurp 1.5.0 | out/ ✓ | installed | untested | region select; pairs w/ grim |
+| fuzzel 1.12.0 | out/ ✓ | installed | untested | launcher; pinned <1.13 (pixman 0.40) |
+| dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
 | foot 1.27.0+ios3 | out/ ✓ | installed | **YES** | PTY + locale + render-worker path verified |
 | imv 5.0.1 | out/ ✓ | installed | untested | wl_shm path (same as grim, should map) |
-| mpv 0.36.0 | out/ (old) | installed (old) | **fix wired, unverified** | GPU via angle shim; needs classic verify |
-| zathura 0.5.12 | out/ ✓ | installed | **fix ready, unverified** | GTK3 → needs libgtk-3-0+ios1 |
-| hitori 44.0 | none in out/ | installed (old) | **2 fixes, unverified** | schema + GTK3 wayland |
+| mpv 0.36.0+ios2 | out/ ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
+| zathura 0.5.12 | out/ ✓ | installed | **YES (window)** | GTK3 Wayland maps; PDF plugin/content load still needs a real doc/plugin check |
+| hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
 | gnome-calculator 46.2 | in repo/debs | installed | (GTK4, works) | — |
-| wl-clipboard 2.2.1 | out/ ✓ | installed | n/a (CLI) | needs iosc data-control (shipped) |
+| wl-clipboard 2.2.1 | out/ ✓ | installed | **YES (CLI)** | round-trip verified after iosc pipe-drain fix; package bump still pending |
 
 ## The launch-in-iosc fixes
 
 How apps are spawned: shell `sd_launch` (apps/iosc-shell/shell-draw.h:223) forks →
 sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
-`GDK_BACKEND=wayland`, `GSK_RENDERER=cairo`, `GSETTINGS_BACKEND=memory`; terminal
-launch paths also set `LC_CTYPE=UTF-8` → `dbus-run-session -- sh -lc <exec>`.
-Per-client stderr → `$XDG_RUNTIME_DIR/<client>.log`
-under `IOSC_SHELL_DEBUG=1`.
+`GDK_BACKEND=wayland`, `GSK_RENDERER=ngl`, `ANGLE_REAL_LIBEGL`, and
+`GSETTINGS_BACKEND=memory`; terminal launch paths also set `LC_CTYPE=UTF-8` →
+`dbus-run-session -- sh -lc <exec>`. Per-client stderr →
+`$XDG_RUNTIME_DIR/<client>.log` under `IOSC_SHELL_DEBUG=1`.
 
-- **GTK3 apps (zathura, hitori) — FIX BUILT, not yet installed/verified.** GTK3 was
+- **GTK3 apps (zathura, hitori) — FIX INSTALLED + VERIFIED.** GTK3 was
   built with no wayland backend (`recipes/gtk+3.0.mk` `-Dwayland_backend=false`), so
   `gtk_init` fails under `GDK_BACKEND=wayland`. Rebuilt multi-backend (wayland+x11):
   `libgtk-3-0_3.24.38+ios1` in out/ (defines `gdk_wayland_*`, links libwayland-egl/
   cursor + xkbcommon). Build wall fixed: `libgtkintl` proxy-libintl shim reexport
-  (commit 1b17f17). Device still has old 3.24.38 → **install the +ios1 debs**.
-- **hitori schema — FIX COMMITTED (29df69e).** `g_settings_new("org.gnome.hitori")`
+  (commit 1b17f17). Device was updated with `libgtk-3-0_3.24.38+ios1`,
+  `gtk-3-bin_3.24.38+ios1`, and `libgtkintl`; `libgdk-3.0.dylib` now links the
+  Wayland backend libs and exports `gdk_wayland_*`. Captures:
+  `artifacts/device-runs/20260704-appwave-smoke/cap-zathura.png`,
+  `artifacts/device-runs/20260704-appwave-smoke/cap-hitori.png`.
+- **hitori schema — FIX PACKAGED + VERIFIED.** `g_settings_new("org.gnome.hitori")`
   aborts unless the schema is compiled; added build_info/hitori.postinst to run
   glib-compile-schemas. NOTE: `GSETTINGS_BACKEND=memory` does NOT help (schema lookup
-  is separate from value storage). No hitori deb in out/ yet — must be packaged.
-- **mpv GPU — FIX WIRED (f50115a, 926daac), deb not rebuilt.** iosc serves no
+  is separate from value storage). Built and installed `hitori_44.0+ios1_iphoneos-arm64.deb`.
+- **mpv GPU — FIX BUILT + VERIFIED as `mpv 0.36.0+ios2`.** iosc serves no
   `wl_drm`/`zwp_linux_dmabuf` — only `wl_shm` + custom `iosc_iosurface`. The angle deb
   stages `libiosc_egl.dylib` AS `/var/jb/lib/angle/libEGL.dylib` (install_name sub);
   any ANGLE-linking client transparently gets the iosc GPU path (kgx/GTK4 do this).
-  mpv already links that libEGL. Added `Depends: angle` + `mpv-iosc` wrapper forcing
-  `--vo=gpu --gpu-api=opengl --gpu-context=wayland --force-window=yes`. angle shim
-  confirmed present on device (`nm -U /var/jb/lib/angle/libEGL.dylib | grep iosc_iosurface`).
+  mpv already links that libEGL. The wrapper now forces
+  `--hwdec=no --vo=gpu --gpu-api=opengl --gpu-context=wayland --opengl-es=yes
+  --force-window=yes`. The source build also skips hwdec enumeration when hwdec is
+  `no`, avoiding the bad `_av_hwdevice_get_type_name` lazy bind against `libavcodec.59`
+  (the symbol lives in `libavutil.57` on this FFmpeg set). The rebuilt deb was
+  host-DER-signed for GPU client entitlements, installed on-device, and captured:
+  `artifacts/device-runs/20260704-appwave-smoke/cap-mpv-ios2-clean.png`.
 - **foot — FIX BUILT + VERIFIED as `foot 1.27.0+ios3`.** The original crash was
   not Wayland: iOS `posix_openpt()` returns a master that rejects master-side
   `TIOCSWINSZ` until its slave has been opened once. The patch runs
@@ -65,6 +73,21 @@ under `IOSC_SHELL_DEBUG=1`.
 - **grim — WORKS, no fix needed.** Upright full-color screenshot captured in classic
   mode (2880×2160). Orientation is correct: output IOSurface is top-left, iosc.c:1654
   sends `flags=0` (no Y_INVERT) — do NOT "fix" it to Y_INVERT.
+- **wl-clipboard — FIXED in source + direct-deployed for smoke; package pending.**
+  `wl-copy` reached `zwlr_data_control_device_v1.set_selection`, but the compositor's
+  pipe reader returned on `WL_EVENT_HANGUP|ERROR` before draining bytes already queued
+  by the source. On iOS/kqueue that left `g_clip_items` empty and `wl-paste` saw
+  `selection(nil)`. `wayland/iosc.c` now drains first and publishes on hangup. Built
+  with `IOSC_BUILD_XWM=0 wayland/build-iosc.sh`, direct-deployed
+  `/var/jb/usr/local/bin/iosc` sha256
+  `3e06159e628c6aad442f6e91f50a6e6b487fc37dd0c65f56ae9c1e3e73cc7850`, and verified
+  `wl-copy` → `wl-paste` returned `xios clipboard smoke 2026-07-04`. Package this as
+  the next `iosc` deb before publishing.
+- **dunst — WORKS.** Use dunst, not mako. `dunst 1.13.2+ios2` runs as a Wayland
+  layer-shell client under `dbus-run-session`, accepts
+  `org.freedesktop.Notifications.Notify` through GDBus, and visibly renders the
+  notification popup. Capture:
+  `artifacts/device-runs/20260704-appwave-smoke/cap-dunst.png`.
 - **Xwayland glamor — WORKS in rootful smoke.** `xwayland 23.2.7+ios2` enables the
   IOSurface glamor backend by default, depends on `angle`/`libepoxy0`, and no longer
   forces `XWAYLAND_NO_GLAMOR=1` in the run wrapper unless `XWAYLAND_GLAMOR=0`.
@@ -114,12 +137,11 @@ under `IOSC_SHELL_DEBUG=1`.
 
 ## Open items / TODO
 
-- [ ] Verify gtk3-wayland: install `libgtk-3-0_3.24.38+ios1` (+gtk-3-bin+ios1, libgtkintl),
-      launch zathura + hitori in CLASSIC mode, confirm a window maps.
-- [ ] Verify mpv GPU: `mpv-iosc <clip>` (or the wrapper env) in classic; confirm window + video.
-- [ ] Package hitori as a deb carrying build_info/hitori.postinst (none in out/ today).
-- [ ] Rebuild the mpv deb with the wrapper + `Depends: angle` (only recipe committed).
-- [ ] On-device verify slurp / fuzzel / dunst / imv.
+- [ ] Package the wl-clipboard compositor fix as the next `iosc` deb and install from dpkg,
+      not just direct-deploying the rebuilt binary.
+- [ ] zathura: verify real document rendering with the intended PDF/poppler plugin path
+      (the GTK window maps; the smoke PDF was not recognized as a document).
+- [ ] On-device verify slurp / fuzzel / imv.
 - [ ] Publish (Max-gated): copy the app wave + `angle -3` into repo/debs, run make-repo, deploy.
 
 ## How to verify on-device

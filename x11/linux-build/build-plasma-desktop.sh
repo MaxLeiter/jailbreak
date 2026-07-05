@@ -32,12 +32,18 @@ SUPPORT_RECIPE_TARGETS=(
   plasma5support
   pulseaudio-qt
   plasma-pa
+  libkscreen
+  kscreen
+  systemsettings
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
   bluezqt-ios-fixes.sh
   plasma5support-ios-fixes.sh
   plasma-pa-ios-fixes.sh
+  libkscreen-ios-fixes.sh
+  kscreen-ios-fixes.sh
+  systemsettings-ios-fixes.sh
 )
 COLLECT_DEBS=(
   shared-mime-info
@@ -65,12 +71,17 @@ COLLECT_DEBS=(
   plasma5support
   kf6-pulseaudio-qt
   plasma-pa
+  libkscreen
+  kscreen
+  systemsettings
 )
 LOCAL_STAGE_DEBS=(
   libpulse0
   libpulse-dev
   libglib2.0-0
   libglib2.0-dev
+  qt6-sensors
+  qt6-sensors-dev
 )
 
 cd /work/Procursus
@@ -146,6 +157,41 @@ done
 KCMUTILS_CONFIG="${BB}/usr/lib/cmake/KF6KCMUtils/KF6KCMUtilsConfig.cmake"
 if [ -f "$KCMUTILS_CONFIG" ]; then
   sed -i 's|PATHS ${KF6_HOST_TOOLING} ${CMAKE_CURRENT_LIST_DIR}|PATHS ${KF6_HOST_TOOLING} ${CMAKE_CURRENT_LIST_DIR}/.. ${CMAKE_CURRENT_LIST_DIR}|' "$KCMUTILS_CONFIG"
+fi
+KCMUTILS_MACROS="${BB}/usr/lib/cmake/KF6KCMUtils/KF6KCMUtilsMacros.cmake"
+KCM_DESKTOP_GENERATOR="${PWD}/build_tools/kcmdesktopfilegenerator-host"
+cat > "$KCM_DESKTOP_GENERATOR" <<'PY'
+#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+if len(sys.argv) != 3:
+    raise SystemExit("usage: kcmdesktopfilegenerator-host <input.json> <output.desktop>")
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+metadata = json.loads(src.read_text())
+kplugin = metadata.get("KPlugin", {})
+program = "systemsettings" if "X-KDE-System-Settings-Parent-Category" in metadata else "kcmshell6"
+
+lines = [
+    "[Desktop Entry]",
+    "Type=Application",
+    "NoDisplay=true",
+    "X-KDE-AliasFor=systemsettings",
+    f"Exec={program} {src.stem}",
+    f"Icon={kplugin.get('Icon', '')}",
+]
+for key in sorted(kplugin):
+    if key.startswith("Name"):
+        lines.append(f"{key}={kplugin[key]}")
+
+dst.write_text("\n".join(lines) + "\n")
+PY
+chmod +x "$KCM_DESKTOP_GENERATOR"
+if [ -f "$KCMUTILS_MACROS" ]; then
+  sed -i "s|COMMAND KF6::kcmdesktopfilegenerator \${IN_FILE} \${OUT_FILE}|COMMAND ${KCM_DESKTOP_GENERATOR} \${IN_FILE} \${OUT_FILE}|" "$KCMUTILS_MACROS"
 fi
 
 apt-get update >/dev/null 2>&1 || true

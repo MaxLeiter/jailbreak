@@ -1,0 +1,10 @@
+Package: kscreen-dev
+Version: @DEB_KSCREEN_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/kscreen
+Depends: kscreen (= @DEB_KSCREEN_V@), libkscreen-dev, extra-cmake-modules
+Description: Development files for KScreen
+ Development artifacts installed by the KScreen build.

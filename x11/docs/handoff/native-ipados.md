@@ -18,7 +18,7 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - `iosc.c` native mode now starts `iosc-native.sock`, creates/destroys per-window canvases on toplevel map/unmap, composites each toplevel into its own IOSurface, and handles host resize/activate/close requests on the Wayland event loop.
 - `XIOS_IN_BIND` is honored by the shared input reader + iosc's bound-aware dispatch path: host scene input connections can now be scoped to a compositor window id, including native-mode keyboard TRAITS broadcasts for the focused window.
 - Native launch is now explicit per request: iosc-host sends `LAUNCH_NATIVE`, and ioscd starts a native compositor namespace on `wayland-native-0` + `iosc-native-input.sock` + `xios-native.json`. Classic launchers keep `wayland-0` + `iosc-input.sock`, so native wrapped apps and the classic Xios desktop can coexist on the same device.
-- Basic native launch has been reported working on-device. Treat the remaining items below as checklist/polish validation, not as "core protocol missing" work.
+- Basic native launch has been reported working on-device. 2026-07-04 backend coexistence smoke through `ioscd` returned `LAUNCHED` for `LAUNCH_NATIVE\torg.gnome.Calculator\tgnome-calculator` while classic `wayland-0` stayed up. Device state showed `wayland-native-0`, `/var/jb/tmp/xios-native.json`, `iosc-native-input.sock`, `iosc-native.sock`, `iosc -native`, and `gnome-calculator` alive. Treat the remaining items below as physical host-window validation/polish, not as "core protocol missing" work.
 - Build the compositor with just `x11/wayland/build-iosc.sh` (no docker flags): on the Mac it re-execs inside the cross-build image with the mounts wired, reads dev debs from `linux-build/out` then `repo/debs` as a fallback, and host-signs `wayland/out/iosc` (GPU/IOSurface/task_for_pid DER entitlements) so it is device-ready. `IOSC_NO_SIGN=1` skips signing; `IOSC_XBUILD_IMAGE=` overrides the image.
 
 ## On-device Home Screen app sync
@@ -120,7 +120,7 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 
 ## Open items
 1. Record the on-device demo result in this file: `gen-launchers.sh --native`, tap a generated app, confirm it opens as its own iPad window, resizes, focuses, accepts text, and closes cleanly.
-2. Coexistence smoke: keep a classic Xios desktop up, tap a native generated app, and confirm both compositor sockets/configs stay live (`wayland-0`/`xios.json` and `wayland-native-0`/`xios-native.json`).
+2. Physical coexistence smoke: keep a classic Xios desktop up, tap a native generated app, and confirm both compositor sockets/configs stay live (`wayland-0`/`xios.json` and `wayland-native-0`/`xios-native.json`) while the UIKit host window is visible. Backend-only coexistence via `ioscd LAUNCH_NATIVE` passed on 2026-07-04.
 3. **Touch coordinate transform per-window**: verify the host unprojects touches against the canvas's own fb size for every scene.
 4. Validate jetsam/relaunch replay: open a native-hosted app, kill/relaunch the host, confirm `WINDOW_NEW` + the live canvas port are replayed from `xios_canvas.c`.
 5. Confirm the keyboard hint path on device: focus a GTK/Qt text field inside a native-hosted window and verify the OSK appears when that scene is key.

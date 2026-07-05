@@ -1,5 +1,11 @@
 # Xwayland on ANGLE-Metal (X11 apps inside the Wayland desktops)
 
+> **Current status (2026-07-03): core plan landed.** Xwayland 23.2.7 packages exist, the
+> glamor/IOSurface path is verified on-device with local `xwayland 23.2.7+ios2`, and rootless
+> XWM integration has landed locally in iosc as an explicit `IOSC_BUILD_XWM=1` opt-in. Use
+> [`docs/handoff/iosc-compositor.md`](handoff/iosc-compositor.md) and
+> [`docs/handoff/wayland-apps.md`](handoff/wayland-apps.md) for current status.
+
 Run X11-only Linux apps GPU-accelerated as clients of a Wayland compositor
 (iosc now, Mutter/KWin later) on rootless iOS. Path:
 
@@ -12,7 +18,7 @@ This makes X11 apps work inside EVERY Wayland flavor, not just a legacy Xvnc
 sidecar. See memory `xwayland-on-angle-feasibility`, and the north star
 `x11-native-fast-priority`.
 
-## Feasibility verdict (scoped 2026-06-30): FEASIBLE, no structural wall
+## Original feasibility verdict (scoped 2026-06-30): FEASIBLE, no structural wall
 
 Every hard primitive is already proven on-device by other tracks; the only real
 new code is a glamor buffer backend, which has a direct upstream template.
@@ -52,7 +58,8 @@ on-device (mutter-on-iosc.md UPDATE-f). Residual risk is runtime-only.
 ## The one patch: a glamor IOSurface backend
 
 `recipes/build_info/xwayland-glamor-iosurface.c` (installed as
-`hw/xwayland/xwayland-glamor-iosurface.c` by `recipes/xwayland-ios-fixes.sh`):
+`hw/xwayland/xwayland-glamor-iosurface.c` by the `ports/xwayland/patches`
+series plus the local backend source staged from `recipes/build_info/`):
 
 - `init_egl`: ANGLE-Metal EGLDisplay via `eglGetPlatformDisplayEXT(
   EGL_PLATFORM_ANGLE_ANGLE, ..., METAL)`; a bind-to-texture pbuffer EGLConfig;
@@ -75,7 +82,7 @@ on-device (mutter-on-iosc.md UPDATE-f). Residual risk is runtime-only.
   rotates on `wl_buffer.release`, so we never render into a buffer the
   compositor is sampling.
 
-Wired into the vtable by `recipes/xwayland-ios-fixes.sh` (idempotent Python):
+Wired into the vtable by `ports/xwayland/patches`:
 adds `iosurface_backend` to `struct xwl_screen`; hooks `xwl_glamor_init_backends`
 / `select_backend` / `init_wl_registry`; defines `XWL_HAS_IOSURFACE` and makes
 `XWL_HAS_GLAMOR` true for a gbm-less/eglstream-less build; adds the source +
@@ -83,15 +90,14 @@ adds `iosurface_backend` to `struct xwl_screen`; hooks `xwl_glamor_init_backends
 `hw/xwayland/meson.build`; and re-ports the rootless popen fix
 (`/bin/sh` -> `/var/jb/bin/sh` in `os/utils.c`, same as the tigervnc build).
 
-## Rootful first (rootless needs an XWM)
+## Rootful first was the initial path; rootless XWM now exists locally
 
-Rootless Xwayland requires the compositor to be an X window manager. iosc has no
-XWM -> run **rootful** first (whole X screen as one `xdg_toplevel`; an in-server
-X wm like fluxbox manages windows inside it). Works under ANY compositor. Mutter
-has a built-in XWM for real rootless later, but Mutter is currently built
-X11/xwayland-OFF (libxcb dyld failures, see `x11-distribution-chooser`) -> that
-flag + the libxcb closure must be flipped for Mutter-hosted rootless. Off the
-critical path.
+Rootless Xwayland requires the compositor to be an X window manager. The original plan ran
+**rootful** first (whole X screen as one `xdg_toplevel`; an in-server X wm like fluxbox manages
+windows inside it) because iosc had no XWM. That constraint has changed: iosc now has a local
+`iosc_xwm` integration, gated behind `IOSC_BUILD_XWM=1` so the default binary keeps the
+known-good non-XCB link profile. Rootful remains the broad fallback path that works under any
+compositor.
 
 For Xwayland 23.2.7, rootful is the default. Use `-geometry`/`-fullscreen` as
 needed; do not pass `-rootful` (this build accepts `-rootless`, but not
@@ -137,8 +143,9 @@ software (accepted).
 
 - `linux-build/recipes/xwayland.mk` — recipe (23.2.7, glamor toggle).
 - `linux-build/recipes/libxcvt.mk` — the one new dep.
-- `linux-build/recipes/xwayland-ios-fixes.sh` — idempotent source patcher.
-- `linux-build/recipes/build_info/xwayland-glamor-iosurface.c` — the backend.
+- `ports/xwayland/patches/` — quilt-style source patch series.
+- `linux-build/recipes/build_info/xwayland-glamor-iosurface.c` — local backend
+  source staged into the patched tree.
 - `linux-build/recipes/build_info/{xwayland,libxcvt0,libxcvt-dev}.control`,
   `xwayland-ent.xml`, `iosc-iosurface.xml` (vendored from `x11/wayland/`).
 - `linux-build/build-xwayland.sh` — build driver.

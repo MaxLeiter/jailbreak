@@ -10,5 +10,6 @@ Homepage: https://opencode.ai
 Depends: bun, ripgrep
 Description: OpenCode CLI for rootless iOS.
  OpenCode @OPENCODE_VERSION@ bundled from pinned source commit @OPENCODE_COMMIT@
- and executed with the repo's iPhoneOS Bun runtime. The package installs a
- rootless wrapper at /var/jb/usr/bin/opencode.
+ and executed with the repo's iPhoneOS Bun runtime. The package also ships
+ iOS-native OpenTUI and fff dylibs for TUI rendering and fuzzy search, plus
+ a rootless wrapper at /var/jb/usr/bin/opencode.

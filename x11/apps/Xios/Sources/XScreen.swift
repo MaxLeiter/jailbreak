@@ -72,6 +72,9 @@ final class XServerViewController: UIViewController {
     override func loadView() { view = screen }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        screen.allowsAllOrientations ? .all : .landscape
+    }
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
@@ -489,6 +492,7 @@ final class XScreenView: UIView {
     private var clipSuppressText: String?   // echo guards: what we last wrote/read
     private var clipSuppressPNG: Data?
     private var usingIosc: Bool { ioscInputSock != nil }
+    var allowsAllOrientations: Bool { usingIosc }
     // Last single-finger point in output px, so a touch-up (whose UIKit location we may
     // not be able to map) can send the iosc button-release at the right spot.
     private var lastTouchPt: (Int32, Int32)?
@@ -727,6 +731,9 @@ final class XScreenView: UIView {
         needsPresent = true                       // present the initial frame
         displayLink?.preferredFramesPerSecond = 60
         connectInput()
+        if usingIosc {
+            SystemIntegration.shared.syncOutputNow()
+        }
         writeStatus()
     }
 
@@ -902,6 +909,9 @@ final class XScreenView: UIView {
         panOffset = clampedPanOffset(panOffset, zoom: zoomScale)
         needsPresent = true
         dumpGeom()
+        if usingIosc {
+            SystemIntegration.shared.syncOutputNow()
+        }
         // contentRect() moved (rotation/resize/zoom); re-place an idle cursor overlay.
         if let conn = xconn, cursorLayer != nil { lastCursorSeq = 0; updateCursorOverlay(conn) }
         shellOverlay?.setNeedsLayout()
@@ -994,6 +1004,9 @@ final class XScreenView: UIView {
         }
         if inputStateChanged {
             closeInput()
+        }
+        if oldIoscSock != ioscInputSock {
+            owningViewController()?.setNeedsUpdateOfSupportedInterfaceOrientations()
         }
         return true
     }

@@ -836,14 +836,47 @@ xios_session_app() {
         *)                                  exec="$name" ;;   # run as given
     esac
 
-    local busdir="$XS_TMP/xios-session-bus" addr
+    local owner busdir="$XS_TMP/xios-session-bus" addr
+    local app_runtime="$busdir" app_wayland="$XS_WAYLAND_SOCK"
+    local app_env=()
     xs_log "app: launching '$exec' as a wayland client of the running compositor"
     local a11y_prefix
     a11y_prefix="$(xs_a11y_prefix)"
     local gtk_a11y_env=()
     xs_a11y_enabled || gtk_a11y_env=(GTK_A11Y=none)
     local dbus_addr=()
-    if addr="$(xs_session_bus_address "$busdir")"; then
+    owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
+    case "$owner" in
+        kde|kde-desktop|kde-nano|kde-mobile|plasma|plasma-desktop|plasma-nano|plasma-mobile)
+            if [ -S "$XS_TMP/$XS_KWIN_SOCKET" ]; then
+                app_runtime="$XS_TMP"
+                app_wayland="$XS_TMP/$XS_KWIN_SOCKET"
+                app_env+=(
+                    DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$XS_JB/lib/angle"
+                    XDG_DATA_DIRS="$XS_PREFIX/share"
+                    XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$XS_VAR/root/.config}"
+                    XDG_CONFIG_DIRS="$XS_JB/etc/xdg:$XS_PREFIX/etc/xdg"
+                    GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas"
+                    KDE_FULL_SESSION=true
+                    KDE_SESSION_VERSION=6
+                    XDG_CURRENT_DESKTOP=KDE
+                    XDG_SESSION_TYPE=wayland
+                    QT_PLUGIN_PATH="$XS_PREFIX/lib/qt6/plugins"
+                    QML2_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
+                    QML_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
+                    QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-opengl}"
+                    QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}"
+                    QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
+                )
+                local kde_bus_file="$XS_TMP/kde-session-bus${XS_SLOT:+-$XS_SLOT}"
+                if [ -s "$kde_bus_file" ]; then
+                    addr="$(cat "$kde_bus_file" 2>/dev/null || true)"
+                    [ -n "$addr" ] && dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr" DBUS_SYSTEM_BUS_ADDRESS="$addr")
+                fi
+            fi
+            ;;
+    esac
+    if [ ${#dbus_addr[@]} -eq 0 ] && addr="$(xs_session_bus_address "$busdir")"; then
         dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr" DBUS_SYSTEM_BUS_ADDRESS="$addr")
         xs_start_native_helpers "$busdir" "$addr"
     fi
@@ -852,8 +885,8 @@ xios_session_app() {
         launcher=("$XS_DBUS_RUN" -- "${launcher[@]}")
     fi
     nohup env \
-        XDG_RUNTIME_DIR="$busdir" \
-        WAYLAND_DISPLAY="$XS_WAYLAND_SOCK" \
+        XDG_RUNTIME_DIR="$app_runtime" \
+        WAYLAND_DISPLAY="$app_wayland" \
         GDK_BACKEND=wayland \
         GSK_RENDERER=ngl \
         QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}" \
@@ -861,6 +894,7 @@ xios_session_app() {
         ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL" \
         GSETTINGS_BACKEND=memory \
         LC_CTYPE="${LC_CTYPE:-UTF-8}" \
+        "${app_env[@]}" \
         "${gtk_a11y_env[@]}" \
         "${dbus_addr[@]}" \
         HOME="$XS_VAR/root" \

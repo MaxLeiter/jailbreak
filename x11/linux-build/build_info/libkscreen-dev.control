@@ -1,0 +1,10 @@
+Package: libkscreen-dev
+Version: @DEB_LIBKSCREEN_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/libkscreen
+Depends: libkscreen (= @DEB_LIBKSCREEN_V@), extra-cmake-modules, qt6-base-dev, qt6-wayland-dev, plasma-wayland-protocols
+Description: Development files for libkscreen
+ Headers and CMake package files for KF6Screen.

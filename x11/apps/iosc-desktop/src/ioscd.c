@@ -51,6 +51,17 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 
+#if defined(__has_include)
+#  if __has_include(<libproc.h>)
+#    include <libproc.h>
+#    define XIOS_HAVE_LIBPROC 1
+#  endif
+#endif
+
+#ifndef SOL_LOCAL
+#define SOL_LOCAL 0
+#endif
+
 #define XIOS_BUNDLE    "com.max.xios"
 #define WAYLAND_NAME_CLASSIC "wayland-0"
 #define WAYLAND_NAME_NATIVE  "wayland-native-0"
@@ -93,6 +104,9 @@ static char g_angle_real_libegl[PATH_MAX];
 static char g_home[PATH_MAX];
 static char g_xios_pulse_profile[PATH_MAX];
 static char g_xios_start_a11y[PATH_MAX];
+static char g_xios_hwbridged[PATH_MAX];
+static char g_xios_sensord[PATH_MAX];
+static char g_xios_sysintd[PATH_MAX];
 static char g_native_flag[PATH_MAX];
 static char g_a11y_enabled[PATH_MAX];
 static char g_a11y_force[PATH_MAX];
@@ -184,6 +198,9 @@ static void init_paths(void)
     prefixed_path(g_angle_real_libegl, sizeof(g_angle_real_libegl), "/lib/angle/libEGL.angle.dylib");
     prefixed_path(g_xios_pulse_profile, sizeof(g_xios_pulse_profile), "/etc/profile.d/xios-pulse.sh");
     prefixed_path(g_xios_start_a11y, sizeof(g_xios_start_a11y), "/usr/local/bin/xios-start-a11y");
+    prefixed_path(g_xios_hwbridged, sizeof(g_xios_hwbridged), "/usr/libexec/xios-hwbridged");
+    prefixed_path(g_xios_sensord, sizeof(g_xios_sensord), "/usr/libexec/xios-sensord");
+    prefixed_path(g_xios_sysintd, sizeof(g_xios_sysintd), "/usr/libexec/xios-sysintd");
 
     if (g_jbroot[0]) {
         snprintf(g_home, sizeof(g_home), "%s/var/root", g_jbroot);
@@ -615,6 +632,42 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     return socket_exists(sock);
 }
 
+static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_addr, int have_bus)
+{
+    if (!have_bus || !busdir || !*busdir || !bus_addr || !*bus_addr)
+        return;
+
+    pid_t pid = fork();
+    if (pid < 0) return;
+    if (pid == 0) {
+        char cmd[4096];
+        setsid();
+        child_stdio(g_ioscd_client_log, 1);
+        setenv("XDG_RUNTIME_DIR", busdir, 1);
+        setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
+        setenv("DBUS_SYSTEM_BUS_ADDRESS", bus_addr, 1);
+        setenv("XIOS_HWBRIDGE_BUS", "session", 1);
+        setenv("HOME", g_home, 1);
+        set_rootless_path(1);
+        snprintf(cmd, sizeof(cmd),
+                 "if [ -r '%s' ]; then . '%s' 2>/dev/null && xios_pulse_start; fi; "
+                 "start_helper() { b=\"$1\"; log=\"$2\"; name=\"${b##*/}\"; "
+                 "[ -x \"$b\" ] || return 0; "
+                 "ps ax 2>/dev/null | grep -v grep | grep -q \"$name\" && return 0; "
+                 "\"$b\" >\"$log\" 2>&1 & }; "
+                 "start_helper '%s' '%s/xios-hwbridged.log'; "
+                 "start_helper '%s' '%s/xios-sensord.log'; "
+                 "start_helper '%s' '%s/xios-sysintd.log'; "
+                 "sleep 0.2",
+                 g_xios_pulse_profile, g_xios_pulse_profile,
+                 g_xios_hwbridged, busdir,
+                 g_xios_sensord, busdir,
+                 g_xios_sysintd, busdir);
+        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
+        _exit(127);
+    }
+}
+
 static int write_a11y_enabled_state(int on)
 {
     if (!on) {
@@ -675,7 +728,10 @@ static void set_wayland_client_env(const struct mode_cfg *mode, const char *busd
     setenv("GSK_RENDERER", "ngl", 1);
     setenv("ANGLE_REAL_LIBEGL", g_angle_real_libegl, 1);
     setenv("GSETTINGS_BACKEND", "memory", 1);
-    if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
+    if (have_bus) {
+        setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
+        setenv("DBUS_SYSTEM_BUS_ADDRESS", bus_addr, 1);
+    }
     if (enable_a11y) unsetenv("GTK_A11Y");
     else setenv("GTK_A11Y", "none", 1);
     setenv("HOME", g_home, 1);
@@ -695,6 +751,7 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
     const char *busdir = g_ioscd_bus_dir;
     char bus_addr[256];
     int have_bus = ensure_session_bus(bus_addr, sizeof(bus_addr));
+    ensure_native_helpers_for_bus(busdir, bus_addr, have_bus);
 
     pid_t pid = fork();
     if (pid < 0) return -1;
@@ -1038,6 +1095,74 @@ static void handle_launch_request(int fd, const char *verb, char *payload)
     reply(fd, "LAUNCHED\n");
 }
 
+static pid_t peer_pid_for_fd(int fd)
+{
+    pid_t pid = -1;
+#ifdef LOCAL_PEERPID
+    socklen_t len = sizeof(pid);
+    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0 && pid > 0)
+        return pid;
+#endif
+    return -1;
+}
+
+static void describe_peer(int fd, char *dst, size_t dst_len)
+{
+    pid_t pid = peer_pid_for_fd(fd);
+    uid_t uid = (uid_t)-1;
+    gid_t gid = (gid_t)-1;
+    int have_eid = 0;
+    char path[256] = "";
+
+#if defined(__APPLE__)
+    if (getpeereid(fd, &uid, &gid) == 0)
+        have_eid = 1;
+#endif
+#if XIOS_HAVE_LIBPROC
+    if (pid > 0)
+        (void)proc_pidpath(pid, path, (uint32_t)sizeof(path));
+#endif
+
+    if (pid > 0 && path[0]) {
+        if (have_eid)
+            snprintf(dst, dst_len, "pid=%d uid=%ld gid=%ld path=%s",
+                     (int)pid, (long)uid, (long)gid, path);
+        else
+            snprintf(dst, dst_len, "pid=%d path=%s", (int)pid, path);
+    } else if (pid > 0) {
+        if (have_eid)
+            snprintf(dst, dst_len, "pid=%d uid=%ld gid=%ld",
+                     (int)pid, (long)uid, (long)gid);
+        else
+            snprintf(dst, dst_len, "pid=%d", (int)pid);
+    } else if (have_eid) {
+        snprintf(dst, dst_len, "uid=%ld gid=%ld", (long)uid, (long)gid);
+    } else {
+        snprintf(dst, dst_len, "peer=unknown");
+    }
+}
+
+static void sanitized_copy(char *dst, size_t dst_len, const char *src)
+{
+    size_t i;
+    if (!dst || dst_len == 0) return;
+    if (!src) { dst[0] = 0; return; }
+    for (i = 0; i + 1 < dst_len && src[i]; i++) {
+        unsigned char c = (unsigned char)src[i];
+        dst[i] = (c < 32 || c == 127) ? ' ' : (char)c;
+    }
+    dst[i] = 0;
+}
+
+static void log_session_request_peer(int fd, const char *payload)
+{
+    char peer[384];
+    char clean[1024];
+    describe_peer(fd, peer, sizeof(peer));
+    sanitized_copy(clean, sizeof(clean), payload);
+    fprintf(stderr, "ioscd: session request %s payload=\"SESSION %s\"\n", peer, clean);
+}
+
 /* Handle one client connection: read a line, dispatch LAUNCH/SESSION. */
 static void handle_conn(int fd)
 {
@@ -1078,6 +1203,7 @@ static void handle_conn(int fd)
     *t1 = 0;
 
     if (strcmp(verb, "SESSION") == 0) {
+        log_session_request_peer(fd, t1 + 1);
         handle_session_request(fd, t1 + 1);
         return;
     }

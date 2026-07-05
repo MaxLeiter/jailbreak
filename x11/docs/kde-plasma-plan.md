@@ -1,5 +1,11 @@
 # KDE Plasma Mobile on iOS: build roadmap
 
+> **Current status (2026-07-03): superseded as a status source.** This roadmap captured the
+> original Qt/KF6/KWin/Plasma plan. The Qt6 modules, KF6 subset, KWin first-light layer,
+> `plasma-workspace`, first-light Desktop/Nano/Mobile packages, `xios-session kde`, and the first
+> KDE app batch have since built; several are published/smoked. Use
+> [`docs/handoff/kde-kf6.md`](handoff/kde-kf6.md) for current KDE status and next gates.
+
 The KDE flavor of the distribution chooser (see `x11-distribution-chooser` memory and
 `docs/iosc-desktop-env.md`): KWin + Plasma Mobile on Qt 6 / KDE Frameworks 6, all built
 from scratch because Procursus ships no Qt at all. Multi-week track; this doc maps it.
@@ -28,15 +34,16 @@ bump is a coordinated rebuild of host tools + qtbase + every module.
 
 ## Layer Q: Qt
 
-### Q1. qtbase round 1 (IN FLIGHT, kde-plasma agent, procursus-vol-qt)
+### Q1. qtbase round 1 (DONE; historical notes)
 
 `recipes/qtbase.mk` + `build-qt.sh`. Dylibs not frameworks, Qt's Darwin platform against
 the iPhoneOS SDK, the `CONDITION MACOS` cmake fix, offscreen default QPA. Deliberately
 minimal: opengl/egl, dbus, icu, xkbcommon, sql, printsupport all OFF.
-Done criteria: `qt6-base` + `qt6-base-dev` debs in `out/`, `Qt6Config.cmake` staged into
-`build_base` for the module builds.
+Done criteria was `qt6-base` + `qt6-base-dev` debs in `out/`, `Qt6Config.cmake` staged into
+`build_base` for the module builds. This has since been reached and iterated through later Qt
+revisions.
 
-### Q2. Module ladder (recipes written, this doc's companion; build gated on Q1)
+### Q2. Module ladder (DONE; historical notes)
 
 `recipes/qt6-common.mk` (shared Apple/Darwin flags) plus, in build order:
 
@@ -55,7 +62,7 @@ Done criteria: `qt6-base` + `qt6-base-dev` debs in `out/`, `Qt6Config.cmake` sta
 5. `qtsvg.mk` - Breeze icons and Plasma themes are SVG everywhere.
 6. `qtimageformats.mk` - tiff/webp (bundled), tga/icns/wbmp.
 
-Later Qt modules the K0 audit flagged for the KWin/W layer (not KF6, so not built yet;
+Later Qt modules the K0 audit flagged for the KWin/W layer (not part of the initial KF6 wave;
 tracked for the module set's final shape): KWin's `find_package` wants QtConcurrent (in
 qtbase, confirm it builds), Core5Compat (covered here), UiTools (the separate `qttools`
 module, NOT a qtbase component) and Sensors (the separate `qtsensors` module). Add
@@ -63,22 +70,21 @@ module, NOT a qtbase component) and Sensors (the separate `qtsensors` module). A
 same pattern. KWin also runs `ecm_find_qmlmodule` for QtQuick.Controls/Layouts/Window,
 all provided by qtdeclarative above.
 
-Driver: `build-qt-modules.sh` (separate from `build-qt.sh` on purpose, so the in-flight
-qtbase build's mounted script is never edited). Stage 1 extends the host Qt with host
+Driver: `build-qt-modules.sh` (separate from `build-qt.sh` on purpose). Stage 1 extends the host Qt with host
 qtshadertools, qtdeclarative and qtwayland, because the cross builds resolve qsb,
 qmlcachegen/qmlimportscanner and qtwaylandscanner through `QT_HOST_PATH`. The cross
 qtwayland additionally wants the plain `wayland-scanner` on the host (apt: libwayland-bin)
 and wayland-client staged in build_base (W0 debs; the driver gates on both).
 
-On-device validation for Q2, in order:
+Historical on-device validation order for Q2:
 1. `qml -platform offscreen` evaluates a Hello.qml (proves QV4 + type registration).
 2. `qml -platform wayland` with `QT_QUICK_BACKEND=software` shows a window on iosc
    (proves the QPA end to end: buffers, frame callbacks, input).
 3. A QtWidgets app on wayland (proves raster path + cursor/decoration plugins).
 
-### Q3. qtbase round 2: +dbus, +xkbcommon, +printsupport, +atspi bridge
+### Q3. qtbase round 2: +dbus, +xkbcommon, +printsupport, +atspi bridge (DONE enough for KF6)
 
-Four features flip ON before any KF6 work:
+These were the feature flips required before KF6 work:
 - dbus: KF6 hard-requires QtDBus (KDBusAddons, KGlobalAccel, KNotifications, KWin's own
   interfaces). The dbus daemon/libdbus debs exist (GNOME track); prefer
   `FEATURE_dbus_linked=ON` against the staged libdbus over the dlopen-at-runtime mode.
@@ -98,7 +104,7 @@ Four features flip ON before any KF6 work:
   gates the bridge behind Linux-ish conditions; expect a CONDITION un-gate in the same
   spirit as the fontconfig patch 6.
 
-Round-2 procedure (recipe is already written for this, no structural change):
+Historical round-2 procedure:
 1. In `qtbase.mk`, flip `FEATURE_dbus=OFF` to ON (+ add `FEATURE_dbus_linked=ON`),
    `FEATURE_printsupport=OFF` to ON, and add `-DFEATURE_xkbcommon=ON`
    `-DFEATURE_accessibility_atspi_bridge=ON` (cups stays OFF).
@@ -285,9 +291,9 @@ cross mechanism**: kconfig/kcoreaddons/kpackage ship build-time tools
 through `QT_HOST_PATH`. There is still **no introspection/on-device-scan wall** anywhere
 in the KDE track.
 
-## Layer W: KWin
+## Layer W: KWin (W1 DONE; W2/W3 remain future work)
 
-- W1, nested first: `kwin_wayland` with its wayland backend running as an iosc client,
+- W1, nested first (**done for first light**): `kwin_wayland` with its wayland backend running as an iosc client,
   compositing with the QPainter backend (`KWIN_COMPOSE=Q`) over wl_shm. Zero GL, zero
   DRM. This is the KDE analogue of mutter-on-iosc and the main de-risk gate: once a
   KWin-managed window shows up inside iosc, everything after is breadth, not depth.
@@ -305,16 +311,16 @@ in the KDE track.
   (stub exists from the mutter work), libdrm (deb exists from the Xwayland track if a
   header-level dep survives).
 
-## Layer P: Plasma Mobile
+## Layer P: Plasma Mobile / Desktop (first-light packages built; polish remains)
 
-- P0 theming/data: breeze-icons, breeze style, plasma-integration, libplasma,
+- P0 theming/data (**built for first light where needed**): breeze-icons, breeze style, plasma-integration, libplasma,
   plasma-activities (+ kactivities-stats).
-- P1 plasma-workspace, patched down. The biggest patch surface of the whole track,
+- P1 plasma-workspace (**built with first-light cuts**). The biggest patch surface of the whole track,
   treat it like the gnome-shell EDS patch-out: kscreenlocker stubbed (wire to iosc
   session-lock later), NetworkManager-qt off, PipeWire/screencast off, systemd/logind
   stubbed, geolocation off, appstream on (recipe exists). Deliverable is plasmashell
   starting under nested KWin.
-- P2 the mobile shell: plasma-nano + plasma-mobile on top of plasmashell.
+- P2 the mobile shell: plasma-nano + plasma-mobile on top of plasmashell. First-light packages exist; current work is Qt Quick crash/isolation and missing-plugin polish.
 - P3 polish: virtual keyboard (qtvirtualkeyboard or maliit, or lean on the Xios
   tap+type injection path first), a settings-modules subset, session entry in the
   chooser with the stamp-minos floor computed over the KDE closure.
@@ -356,16 +362,16 @@ from the first KWin recipe; do not defer it to Q4.
 5. Rebuild churn from qtbase feature rounds (Q3, Q4): private ABI forces module
    rebuilds; batch the feature flips to keep rounds at two.
 
-## Sequencing and rough effort
+## Sequencing and rough effort (historical)
 
 Q2 half a week once qtbase lands; Q3 half a week (batch with the Q2 rebuild); K one and
 a half to two weeks; W1 one week; Q4+W2 one to two weeks, parallel to K/W1; P two to
-three weeks. K tier 1 can start the moment Q2 debs exist.
+three weeks. These estimates are retained for context; Qt6/KF6/KWin W1 and the first Plasma
+shell/package wave have since landed.
 
-## Coordination
+## Coordination (historical)
 
-procursus-vol-qt belongs to the kde-plasma agent until qtbase is done; the module
-builds take the volume after an explicit handoff (or run on a clone, vol-qtmod), never
-concurrently. Phase 2 gate: kde-plasma reports qtbase-package done and Qt6Config staged
-in build_base. Device installs and on-device validation are owned by team-lead. Never
-touch procursus-vol-gtk, -shell, or -xwl from this track.
+procursus-vol-qt belonged to the kde-plasma agent until qtbase was done; the module
+builds took the volume after explicit handoff/cloning. Current coordination and device-test
+state lives in [`docs/handoff/kde-kf6.md`](handoff/kde-kf6.md). Never touch unrelated active
+Procursus volumes from this track.

@@ -16,7 +16,7 @@ const MODES: Mode[] = [
     name: "Native mode",
     tag: "Per-window",
     state: "wip",
-    body: "X11/Wayland apps show up on your homescreen and launch like normal apps. They rotate, resize, honor dark mode, and talk to VoiceOver. There is no desktop shell at all.",
+    body: "X11/Wayland apps show up on your homescreen and launch like normal apps. They rotate, resize, honor dark mode, and use the same accessibility bridge. There is no desktop shell at all.",
   },
   {
     name: "iosc desktop",

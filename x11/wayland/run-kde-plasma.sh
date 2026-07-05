@@ -165,11 +165,30 @@ kde_app_support_link() {
   fi
 }
 
+kde_config_link() {
+  local name="$1"
+  local target="$2"
+  local base link
+  [ -e "$target" ] || return 0
+  for base in "$XS_VAR/root/Library/Preferences" "/var/root/Library/Preferences"; do
+    mkdir -p "$base"
+    link="$base/$name"
+    if [ -L "$link" ]; then
+      ln -sfn "$target" "$link" 2>/dev/null || true
+    elif [ ! -e "$link" ]; then
+      ln -s "$target" "$link" 2>/dev/null || true
+    else
+      echo "!! $link already exists; leaving it in place"
+    fi
+  done
+}
+
 if [ "${XIOS_KDE_APP_SUPPORT_BRIDGE:-1}" != 0 ]; then
   echo "==> bridge Qt/KPackage Darwin app-data paths to $XS_PREFIX/share"
   for name in plasma icons applications metainfo mime kservices6 knotifications6 kglobalaccel kpackage dbus-1 krunner qlogging-categories6; do
     kde_app_support_link "$name"
   done
+  kde_config_link menus "$(jb_path /etc/xdg/menus)"
 fi
 
 if [ -n "${XIOS_KDE_NO_KAMD+x}" ]; then

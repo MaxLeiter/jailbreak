@@ -4,6 +4,32 @@ set -euo pipefail
 
 root=${1:?usage: plasma-workspace-ios-package-fixes.sh <package-root>}
 
+menu_dir="$root/var/jb/etc/xdg/menus"
+if [ -f "$menu_dir/plasma-applications.menu" ] && [ ! -e "$menu_dir/applications.menu" ]; then
+  ln -s plasma-applications.menu "$menu_dir/applications.menu"
+fi
+
+menu="$menu_dir/plasma-applications.menu"
+if [ -f "$menu" ] && ! grep -q '<AppDir>/var/jb/usr/share/applications</AppDir>' "$menu"; then
+  python3 - "$menu" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+needle = "\t<DefaultAppDirs/>\n\t<DefaultDirectoryDirs/>\n"
+replacement = (
+    "\t<DefaultAppDirs/>\n"
+    "\t<AppDir>/var/jb/usr/share/applications</AppDir>\n"
+    "\t<DefaultDirectoryDirs/>\n"
+    "\t<DirectoryDir>/var/jb/usr/share/desktop-directories</DirectoryDir>\n"
+)
+if needle not in text:
+    raise SystemExit(f"{path}: expected DefaultAppDirs/DefaultDirectoryDirs block not found")
+path.write_text(text.replace(needle, replacement, 1))
+PY
+fi
+
 for layout in \
   "$root/var/jb/usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/layouts/org.kde.plasma.desktop-layout.js" \
   "$root/var/jb/usr/share/plasma/look-and-feel/org.kde.breezedark.desktop/contents/layouts/org.kde.plasma.desktop-layout.js" \

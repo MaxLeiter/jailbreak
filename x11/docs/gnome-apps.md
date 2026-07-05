@@ -1,11 +1,17 @@
 # GNOME apps on the X11-for-iOS stack — recipe chain & dependency map
 
-Status: **Phase 1 — drafts only, nothing built.** Owner: `gnome-track`.
+Status: **Historical app-chain map; many targets are now built/published.** Owner: `gnome-track`.
 Decision (locked by coordinator + user): **GNOME apps (GTK4 + libadwaita) hosted in our iOS
 compositor (`carplayhost`) IS the desktop.** This is now the **primary desktop path** — XFCE
 was deprioritised. GNOME *Shell* stays an off-critical-path research spike (see
 [`gnome-plan.md`](gnome-plan.md) Blockers #1–#4). gtk-builder is now **GTK4-first**
 (gdk-pixbuf → graphene → gtk4), so GTK3 is deferred and the GTK3 apps become optional-later.
+
+> **Current status (2026-07-03):** the build chain below is no longer only drafted. Repo/package
+> output includes GTK4/libadwaita and several GNOME apps (`gnome-console`, `gnome-text-editor`,
+> `gnome-calculator`, `nautilus`, and others). Keep this file for dependency rationale and app
+> validation order; check repo metadata and handoff docs before assuming any listed package is
+> unbuilt.
 
 This doc maps the app chain, records what was drafted, and lays out build order. **The named
 app targets are Files (nautilus), Console (kgx), and Text Editor — all GTK4** — plus
@@ -37,11 +43,12 @@ gnome-terminal (GTK3) as an optional-later earliest-win.
 
 ---
 
-## Recipes drafted with this doc
+## Recipes originally drafted with this doc
 
-All in `linux-build/recipes/` with control templates in `linux-build/build_info/`. **Unbuilt
-drafts**, authored to mirror `recipes/pango.mk` (meson `cross.txt`, `.build_complete` guard,
-`*-package` → `SIGN`/`PACK`). Versions pinned to the **GNOME 45** generation.
+All in `linux-build/recipes/` with control templates in `linux-build/build_info/`. These started
+as unbuilt drafts authored to mirror `recipes/pango.mk` (meson `cross.txt`,
+`.build_complete` guard, `*-package` → `SIGN`/`PACK`). Several have since been built and
+published. Versions are now tracked against the **GNOME 46** generation where the table says so.
 
 | Recipe | Packages | Version | Target deps | Class |
 |---|---|---|---|---|
@@ -194,22 +201,14 @@ Hold off for now on JS/GJS apps (`gnome-characters`, `gnome-weather`) and plugin
 (`gedit` current line): they reintroduce runtime typelibs or plugin-loader complexity. Also defer
 media/camera/audio-first apps until the desktop audio/session story is boring.
 
-### Drafted (the named GTK4 targets)
-- **gnome-console / kgx** (GTK4) — lightest; deps fully covered (libadwaita + vte-gtk4).
-- **gnome-text-editor** (GTK4) — the gedit replacement; clean (libadwaita + gtksourceview5 + enchant).
-- **gnome-font-viewer** (GTK4) — pure C, the lightest second simple win; only new deps are
-  libadwaita + gnome-desktop (both already drafted), rest prebuilt. Bonus: pairs with the
-  x11-fonts-sf work — previews the live iOS system fonts.
-- **gnome-calculator** (GTK4, **Vala**) — the cross-Vala validation target (vendored `.vapi` +
-  `valac` host tool). Drags `libsoup3` (+`libpsl`) and `libgee`; mpfr/mpc are prebuilt. Heavier
-  than the pure-C trio, so it builds after them.
-- **nautilus / Files** (GTK4) — drafted with the heavy leaves trimmed off. The remaining
-  mandatory sub-tree is all drafted: `gnome-desktop-4` (+ `iso-codes`, `libxkbcommon`-with-
-  xkbregistry), `gnome-autoar` (libarchive prebuilt), `libportal` (+gtk4), `tracker-sparql`
-  (+ `json-glib`). It is the **heaviest** of the three and gated on the libxkbcommon
-  coordination above.
-- **gnome-terminal** (GTK3) — drafted but **optional-later** (GTK3 is deferred; build vte with
-  `-Dgtk3=true` to enable it). The earliest *possible* win if GTK3 ever lands.
+### Built or historically drafted targets
+- **gnome-console / kgx** (GTK4) — built; still the lightest terminal validation target.
+- **gnome-text-editor** (GTK4) — built; the gedit replacement path.
+- **gnome-font-viewer** (GTK4) — built; pairs with the iOS/SF font work.
+- **gnome-calculator** (GTK4, **Vala**) — built; validates the Vala route.
+- **nautilus / Files** (GTK4) — built; still the heaviest runtime/app smoke target.
+- **gnome-terminal** (GTK3) — recipe/control metadata exists, but it is no longer the primary
+  GNOME app path.
 
 ### Deferred — messy tree (dependency-mapped, NOT drafted)
 

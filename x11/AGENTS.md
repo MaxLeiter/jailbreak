@@ -48,7 +48,7 @@ This directory contains the native X11/Wayland-on-iOS stack. Keep this file stab
 
 ## Runtime / Verification
 
-- Use the run scripts in `x11/wayland/` (`run-iosc.sh`, `run-mutter.sh`, `run-gnome-shell.sh`, `run-xwayland.sh`, etc.) rather than reconstructing environment variables by hand.
+- Use the run scripts in `x11/wayland/` (`run-iosc.sh`, `run-mutter.sh`, `run-xwayland.sh`, etc.) and the packaged session launchers rather than reconstructing environment variables by hand.
 - Session selection is mediated by the session launcher/daemon; prefer `xios-session ...` flows where available.
 - On-device verification matters. Host syntax checks are useful but do not prove UIKit, IOSurface, Metal, launchd, or package-manager behavior.
 - If a compositor or app restart behaves strangely, check for stale sockets, zombie surfaces, launchd state, and foreground/screen-awake requirements before changing code.

@@ -1,10 +1,18 @@
 # GNOME on the X11-for-iOS stack — feasibility & staged plan
 
-Status: **Phase 1 — research + planning only (no heavy builds).** Owner: `gnome-track`.
+Status: **Historical feasibility baseline; not current status.** Owner: `gnome-track`.
 Context: rootless palera1n iPad 7 (A10, iPadOS 17.6.1, `/var/jb`), Procursus bootstrap,
 cross-compiled in the `linux-build/` Docker pipeline. The GTK3 stack
 (fribidi→pango→gdk-pixbuf→atk→gtk3) is being built in parallel by `gtk-builder`. Display is
 the native **Xios** server (Xvfb/kdrive-derived, software-only) per [`SCOPE.md`](../SCOPE.md).
+
+> **Current status (2026-07-03): superseded as a status source.** This file is the original
+> GNOME feasibility baseline. The gjs/SpiderMonkey and GObject-Introspection gates it called
+> hard blockers are solved; GNOME Shell 46 has first light on-device. Use
+> [`docs/handoff/gnome-session.md`](handoff/gnome-session.md),
+> [`docs/handoff/mutter.md`](handoff/mutter.md), and [`gjs-plan.md`](gjs-plan.md) for current
+> GNOME Shell work. Use [`gnome-apps.md`](gnome-apps.md) plus repo metadata for current app
+> package status.
 
 ---
 
@@ -14,12 +22,12 @@ Two very different targets hide under the word "GNOME":
 
 | Target | Verdict | One-line reason |
 |---|---|---|
-| **GNOME *apps* under a light WM** (fluxbox/twm + GTK apps) | **Feasible with work** | A long-but-mechanical dependency slog. No single wall — just dozens of recipes. The GTK4/libadwaita stack is buildable; Rust is available for librsvg. |
-| **GNOME *Shell* (the full session)** | **Blocked for now** | Two *independent* hard problems: (1) **gjs/SpiderMonkey** JIT-less cross-compile, and (2) **gobject-introspection typelibs cannot be generated for Mach-O** (qemu can't run iOS binaries). Plus Mutter on software-GLX is unproven and the session assumes logind. |
+| **GNOME *apps* under a light WM or iosc** | **Built/published in part** | The GTK4/libadwaita app chain moved from plan to package output; remaining work is per-app smoke, featuring, and meta-package policy. |
+| **GNOME *Shell* (the full session)** | **First light achieved** | gjs/mozjs and typelibs are solved, Mutter-on-iOS exists, and direct plus daemon `xios-session gnome` launches reach a running Shell. Remaining work is polish and missing service shims. |
 
-**Recommendation: stage it.** Ship GNOME *apps* on a light X11 WM first (no Mutter, no gjs,
-no introspection, no logind). Treat GNOME Shell as a later research spike whose two gating
-problems (gjs + typelibs) are tackled in isolation before any session work.
+**Historical recommendation:** this doc correctly argued for staging apps before the Shell, but
+the staging has moved forward. Current GNOME work is no longer blocked on gjs or base typelibs;
+pick up from the handoff docs instead of restarting the research spike below.
 
 > **Synergy with the in-flight XFCE track.** A sibling agent is already cross-compiling
 > **XFCE** (xfwm4/xfce4-panel/xfce4-session/thunar/xfconf/dbus/…). XFCE is the pragmatic proof
@@ -31,9 +39,11 @@ problems (gjs + typelibs) are tackled in isolation before any session work.
 > GTK apps*; GNOME Shell remains the stretch research goal. The `dbus` they build is shared
 > infrastructure both tracks sit on.
 
-### One hard constraint that frames everything: the GNOME version
+### One hard constraint that framed the original X11-Shell plan: the GNOME version
 
-We are on **glib 2.78 → the GNOME 45 generation**. That is *fortunate*, because:
+This original X11-oriented plan assumed **glib 2.78 → the GNOME 45 generation**. Current app and
+Shell work has moved to GNOME 46 components on the iosc/Mutter-on-iOS path, so treat the X11
+version argument below as historical context rather than the active strategy. It mattered because:
 
 - **GNOME 49 (Sept 2025) disabled the X11 session by default**; it is being removed entirely
   in GNOME 49/50. Mutter keeps a `-Dx11=true` build option only through **GNOME 48**, after
@@ -47,10 +57,12 @@ feeds X clients regardless of WM/shell, so none of this depends on solving X inp
 
 ---
 
-## The floor: what Procursus already gives us
+## The floor: what Procursus gave us at the time
 
-Verified against the live repo index (`apt.procurs.us` dist `1900`, `iphoneos-arm64`,
-1369 packages) **and** the recipe clone (`linux-build/procursus-work/makefiles/`, 614 recipes).
+This was verified against the upstream Procursus repo index (`apt.procurs.us` dist `1900`,
+`iphoneos-arm64`, 1369 packages) **and** the recipe clone
+(`linux-build/procursus-work/makefiles/`, 614 recipes). It is a historical upstream-baseline
+inventory, not the current local repo state.
 
 **Prebuilt debs we can `apt install` today (the foundation):**
 `libglib2.0-0/-dev/-bin` (2.78), `libcairo2` (+`-gobject`/`-script`), `libfontconfig1`,
@@ -64,7 +76,8 @@ Xinerama/Xss/Xft/Xcomposite + xcb-* helpers), `xkbcomp`, `x11-apps`, `xterm`, **
 `expat`, **`gobject-introspection`** (recipe present but **disabled — see Blocker #2**),
 plus the in-flight GTK3 recipes (`pango`/`gdk-pixbuf`/`atk`/`gtk+3.0`).
 
-**Absent everywhere (no deb, no recipe) — these are the gnome-track build surface:**
+**Absent from upstream Procursus at the time (no deb, no recipe) — these became the local
+gnome-track build surface:**
 **`dbus`** (!), `dconf`, `gsettings-desktop-schemas`, `at-spi2-core`, `json-glib`,
 `libsoup`, `librsvg`, `gcr`/`libsecret`, `polkit`, `accountsservice`, `gvfs`,
 `adwaita-icon-theme`/`hicolor-icon-theme`, `shared-mime-info`, `desktop-file-utils`,
@@ -122,7 +135,10 @@ Layer 4  THE SHELL
 
 ## The hard blockers, honestly
 
-### ★ Blocker #1 — SpiderMonkey / gjs (the shell's language runtime)
+### Historical Blocker #1 — SpiderMonkey / gjs (the shell's language runtime)
+
+> **Current status:** solved for the baseline path. `libmozjs-115-*` and `gjs` packages exist,
+> and gjs has run JS plus GI imports on-device. Keep the notes below as the original risk model.
 
 `gnome-shell` is written in JavaScript on **gjs**, which embeds **SpiderMonkey**. Our glib
 2.78 pins gjs 1.78 → **mozjs115 (ESR 115)**.
@@ -139,11 +155,14 @@ Layer 4  THE SHELL
   trodden (Homebrew/MacPorts build mozjs *on* macOS, not cross). Expect to fight: host-tool
   vs target-tool confusion, Rust's `aarch64-apple-ios` std target + the cctools linker,
   `//` host-build artifacts, and SpiderMonkey's habit of running just-built tools.
-- **Difficulty: HIGH — the single hardest cross-compile in the tree.** Tractable (Rust is
+- **Historical difficulty: HIGH — the single hardest cross-compile in the tree.** Tractable (Rust is
   available in Procursus via `rust.mk`; the JIT-less path is proven), but a multi-week spike.
-- **Scope: this blocks the *shell only*.** Plain GTK *apps* are C and never touch gjs.
+- **Scope:** this used to block the *shell only*. Plain GTK *apps* are C and never touch gjs.
 
-### ★ Blocker #2 — gobject-introspection typelibs cannot be generated for Mach-O
+### Historical Blocker #2 — GObject-Introspection typelibs for Mach-O
+
+> **Current status:** solved by native on-device scanning. The old cross-build objection below
+> was accurate for qemu-on-Linux, but the iPad can run the Mach-O scanner dumpers directly.
 
 This is the *less obvious* shell blocker and, in some ways, the nastier one.
 
@@ -158,15 +177,20 @@ This is the *less obvious* shell blocker and, in some ways, the nastier one.
   out** — i.e. it is not actually wired into the build. The C libraries that *can* skip
   introspection do (our `pango.mk` builds with `-Dintrospection=disabled`), which is fine for
   C apps but fatal for gjs.
-- **Possible escapes (all unproven here):** (a) generate GIRs/typelibs **natively on the
+- **Proven escape:** generate GIRs/typelibs **natively on the
   iPad** (it *is* arm64 Mach-O — `g-ir-scanner` can run there), then fold them into the debs —
-  abandons pure cross-repro for the introspection step only; (b) build the dumpers for and
+  abandons pure cross-repro for the introspection step only. Other historical options were
+  (b) build the dumpers for and
   run them on an **Apple-Silicon host** if the iOS/macOS ABI proves close enough for the
   scanned values (risky); (c) hand-author/patch typelibs (impractical at GNOME scale).
-- **Difficulty: HIGH. Co-equal with #1 as a shell gate.** Note it is *independent* of gjs:
+- **Historical difficulty: HIGH. Co-equal with #1 as a shell gate.** Note it is *independent* of gjs:
   even a perfect mozjs build is useless to gnome-shell without typelibs.
 
-### ★ Blocker #3 — Mutter on software GLX, no EGL, no KMS
+### Historical Blocker #3 — Mutter on software GLX, no EGL, no KMS
+
+> **Current status:** the active Shell path moved to Mutter-on-iOS/iosc instead of this X11/GLX
+> compositor strategy. `libmutter-14-*` packages exist, and GNOME Shell first light has been
+> reached through the iosc path.
 
 Our mesa is built **software-only**: `-Dgallium-drivers=swrast` (llvmpipe),
 `-Dglx=gallium-xlib` (indirect software GLX via Xlib), `-Dosmesa=true`, **no EGL, no GBM, no
@@ -204,10 +228,10 @@ No systemd, no logind on a jailbroken iPad.
 
 ### D-Bus — listed for completeness, but *not* a hard blocker
 
-`dbus` is simply **unpackaged**, not hard. It's C + expat (both buildable), and a **session
-bus runs fine without systemd** via `dbus-run-session` / `dbus-launch --autolaunch`. The
-**system** bus is irrelevant to plain apps. It is the first thing to build (draft recipe
-below). The only iOS caveat is the usual epoll/kqueue/launchd-autolaunch portability, long
+`dbus` used to be simply **unpackaged**, not hard. It is now packaged alongside `dconf`,
+`gsettings-desktop-schemas`, and `gnome-session`. A **session bus runs fine without systemd**
+via `dbus-run-session` / `dbus-launch --autolaunch`; the **system** bus is mostly irrelevant to
+plain apps. The only iOS caveat is the usual epoll/kqueue/launchd-autolaunch portability, long
 since solved by historical jailbreak dbus ports.
 
 ---
@@ -224,18 +248,22 @@ since solved by historical jailbreak dbus ports.
 | librsvg | 🟡 medium | Rust cross (`rust.mk` exists) **or** pin C-only **2.40.x**. Needed for SVG/symbolic icons. |
 | graphene, GTK4, libadwaita | 🟡 medium | Big but mechanical; required for *modern* GNOME apps. |
 | libsoup3, gcr, libsecret, gvfs | 🟡 medium | Standard deps for richer apps. |
-| **gobject-introspection typelibs** | 🔴 blocked | qemu can't run Mach-O dumpers (#2). Only matters for gjs/shell. |
-| **gjs / mozjs115** | 🔴 hard | JIT-less cross-compile (#1). Shell only. |
-| **mutter** | 🔴 unproven | software-GLX, no EGL (#3). Shell only. |
-| **logind / accountsservice / polkit / gnome-session** | 🔴 blocked/stub | no systemd (#4). Full-session only. |
-| **gnome-shell** | 🔴 blocked | sits on #1+#2+#3+#4 simultaneously. |
+| **gobject-introspection typelibs** | ✅ solved | Generated/scanned on-device for the base, GTK4/libadwaita, and Shell boot batches. |
+| **gjs / mozjs115** | ✅ solved | JIT-less mozjs115 and gjs built, packaged, installed, and smoke-tested on-device. |
+| **mutter** | 🟡 first light | Mutter-on-iOS/iosc path has booted Shell; ongoing work is compositor/session polish, not the old software-GLX question. |
+| **logind / accountsservice / polkit / gnome-session** | 🟡 stubbed | Single-user/session shims are enough for first light; finish only what the running Shell still needs. |
+| **gnome-shell** | 🟡 first light | Direct and daemon `xios-session gnome` reach `state=up` with `gnome-shell 46.0+ios3`; remaining work is polish, service shims, and repeated-picker UX. |
 
 ---
 
-## GTK3 vs GTK4 — a planning fork that matters *now*
+## GTK3 vs GTK4 — historical planning fork
 
-`gtk-builder` is building **GTK3**. But **GNOME migrated almost everything to GTK4 by GNOME
-42**. In the GNOME 45 generation:
+> **Current status:** GTK4/libadwaita is no longer hypothetical. GTK4, libadwaita, GNOME apps,
+> and GTK4 typelibs have been built; this section is retained to explain why the project pivoted
+> toward modern GNOME apps instead of stopping at the older GTK3 app set.
+
+The early `gtk-builder` track started with **GTK3**, but **GNOME migrated almost everything to
+GTK4 by GNOME 42**. In the GNOME 45/46 generation:
 
 - **GTK4 / libadwaita:** nautilus (Files), gnome-console (kgx), **gnome-text-editor**,
   gnome-calculator, eog→Loupe, gnome-system-monitor, most "Apps."
@@ -249,15 +277,16 @@ For the *real* modern GNOME app experience (Files, Console, Text Editor) we will
 the highest-leverage next investment after the foundation. Recommend treating **GTK4 as a
 first-class follow-on to the GTK3 build**, not an afterthought.
 
-Easiest genuine first app targets (validate the whole runtime end-to-end, GTK3 only):
-1. **gnome-terminal** — GTK3 + **vte** (vte 0.70/0.72 gtk3 flavour) + dbus. A terminal proves
-   pango/fontconfig/dbus/gsettings all work together.
-2. **gedit** — GTK3 + gtksourceview4 + dbus; exercises the file dialogs and settings.
-3. A trivial GTK3 app (`gtk3-demo`, from the GTK3 build itself) — smoke test before anything.
+The old GTK3-only first targets were `gnome-terminal`, `gedit`, and `gtk3-demo`. The current
+app validation order lives in [`gnome-apps.md`](gnome-apps.md), biased toward built GTK4 apps
+such as `gnome-console`, `gnome-text-editor`, `d-spy`, `file-roller`, and `nautilus`.
 
 ---
 
-## Staged plan (recommended path)
+## Staged plan (historical path)
+
+> **Current status:** Stages A-D below have mostly landed in some form. Use this as a dependency
+> rationale, not an active checklist.
 
 **Stage A — Foundation bus + settings (tractable now).**
 Build `dbus`, then `dconf` + `gsettings-desktop-schemas`, then `shared-mime-info`,
@@ -284,13 +313,10 @@ Two independent spikes, runnable in parallel, each de-risked alone before any se
 - **D2 — gjs:** cross-compile **mozjs115 JIT-less**, then **gjs**; run a hello-world gjs
   script consuming a typelib from D1. Deliverable: gjs executes GI-bound JS on-device.
 
-**Stage E — GNOME Shell attempt (only after D1+D2 succeed).**
-Build **mutter** (`-Dx11=true`, GNOME ≤48) and spike Cogl-over-software-GLX; stub
-`logind`/`gnome-session` to the minimum gsd needs; attempt `gnome-shell --x11`. High risk;
-explicitly a research milestone, sequenced **after** the per-window iOS compositor (SCOPE
-Stage 3/4) makes a heavy DE feel acceptable. If mutter-on-llvmpipe proves unbearable, the
-fallback is a lightweight compositing WM (e.g. a tweaked fluxbox/openbox or our own iOS-side
-compositor) carrying GTK apps — i.e. **the GNOME *apps* without the GNOME *shell*.**
+**Stage E — GNOME Shell attempt.**
+The original X11/GLX Shell attempt has been superseded by the Mutter-on-iOS/iosc path. Direct
+`xios-session gnome` now reaches first light; remaining GNOME Shell work is tracked in
+[`docs/handoff/gnome-session.md`](handoff/gnome-session.md).
 
 ---
 
@@ -298,8 +324,8 @@ compositor) carrying GTK apps — i.e. **the GNOME *apps* without the GNOME *she
 
 New, GTK-independent, clearly-tractable Procursus recipes (Stage A), authored to mirror the
 house style of `recipes/pango.mk` / `recipes/fribidi.mk` (meson `cross.txt`, `.build_complete`
-guard, `*-package` → `SIGN`/`PACK`). **They are unbuilt drafts** — Phase 1 is research-only and
-Docker is saturated; nothing here has been compiled or verified.
+guard, `*-package` → `SIGN`/`PACK`). These notes are historical; check current recipes,
+`linux-build/out/`, and repo metadata before treating any package below as unbuilt.
 
 ```
 linux-build/recipes/dconf.mk                     + build_info/dconf.control
@@ -329,19 +355,12 @@ fold them into `build-gtk.sh`, which `gtk-builder` owns):
 
 ---
 
-## Open questions / asks to the coordinator
+## Resolved questions from the original plan
 
-1. **Commit to GTK4?** GTK3 reaches only gnome-terminal/gedit. The moment Stage B works, GTK4
-   + libadwaita (Stage C) is what unlocks Files/Console/Text Editor. Want me to draft the
-   `graphene`/GTK4/libadwaita recipe chain next (still no heavy build)?
-2. **Shell ambition level.** Is the goal genuinely *GNOME Shell*, or "GNOME apps that feel
-   native" (which Stages A–C deliver and the SCOPE Stage 3/4 iOS compositor frames far better
-   than mutter-on-llvmpipe ever would)? This decides whether Stage D/E is worth the spikes.
-3. **Introspection strategy.** OK to plan an **on-device `g-ir-scanner`** step for typelibs
-   (the only realistic Mach-O route), accepting that the introspection step alone is not pure
-   cross-repro?
-4. **Build budget.** When Docker frees up, the natural first build is just **dbus** (small,
-   unblocks everything). Flag when I can hand the draft recipes to a builder.
+1. **GTK4/libadwaita:** yes; the GTK4 app chain has packages and typelibs.
+2. **Shell ambition:** yes; GNOME Shell first light is now a live handoff track.
+3. **Introspection strategy:** on-device `g-ir-scanner` is the proven Mach-O route.
+4. **Build budget:** many Stage A-C packages have moved from draft to repo/package output.
 
 ---
 

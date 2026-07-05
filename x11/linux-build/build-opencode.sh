@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Reproducible OpenCode package build for rootless iOS.
+# Default deb version: ${OPENCODE_VERSION}~ios0.5. Requires native dylibs from
+# build-opentui-ios.sh and build-fff-ios.sh before packaging.
 #
 # OpenCode's upstream release binaries embed a macOS Bun runtime, which is not
 # viable on the A10 iPad target. This path builds a Bun-targeted JS bundle from

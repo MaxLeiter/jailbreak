@@ -2,10 +2,11 @@
  * xios-sysintd — session-side receiver for iOS system-integration events.
  *
  * The Xios app mirrors iPad state the desktop can't see from inside the session:
- *   XIOS_IN_VOLUME     hardware volume buttons -> the PulseAudio sink volume, so
- *                      the desktop's own volume UI (gvc / GNOME panel) tracks the
- *                      buttons. This is also the media-keys stand-in: gsd's
- *                      media-keys plugin stays dropped, the buttons work anyway.
+ *   XIOS_IN_VOLUME     bidirectional volume bridge. The app sends hardware
+ *                      volume changes -> PulseAudio so desktop UI tracks the
+ *                      buttons. module-xios-sink sends desktop volume changes
+ *                      back with XIOS_VOLUME_STATE_TO_DEVICE -> app, which sets
+ *                      iOS hardware volume.
  *   XIOS_IN_APPEARANCE iOS light/dark -> org.gnome.desktop.interface color-scheme
  *                      (libadwaita/GTK4) plus a gtk-theme flip for GTK3 apps.
  *
@@ -98,6 +99,18 @@ static void apply_volume(int v16)
     fprintf(stderr, "xios-sysintd: volume -> %s on sink %s\n", vol, s_sink);
 }
 
+static void broadcast_device_volume(xios_input_socket *srv, int v16)
+{
+    struct xios_in_msg out = {
+        .type = XIOS_IN_VOLUME,
+        .code = (uint32_t)(v16 < 0 ? 0 : (v16 > 65535 ? 65535 : v16)),
+        .state = XIOS_VOLUME_STATE_TO_DEVICE,
+    };
+    int n = xios_input_socket_broadcast(srv, &out, sizeof(out));
+    fprintf(stderr, "xios-sysintd: desktop volume -> device %u/65535 (%d client%s)\n",
+            out.code, n, n == 1 ? "" : "s");
+}
+
 static void apply_appearance(int dark)
 {
     char *scheme[] = { "gsettings", "set", "org.gnome.desktop.interface",
@@ -119,6 +132,10 @@ static void on_record(const struct xios_in_msg *m, const char *text,
     switch (m->type) {
     case XIOS_IN_VOLUME: {
         int v = (int)(m->code > 65535u ? 65535u : m->code);
+        if (m->state & XIOS_VOLUME_STATE_TO_DEVICE) {
+            broadcast_device_volume((xios_input_socket *)user, v);
+            break;
+        }
         uint64_t now = now_ms();
         if (now - s_last_volume_ms >= VOLUME_COALESCE_MS) {
             s_last_volume_ms = now;
@@ -170,7 +187,7 @@ int main(void)
             fprintf(stderr, "xios-sysintd: poll: %s\n", strerror(errno));
             break;
         }
-        if (pr > 0 && xios_input_socket_dispatch(srv, on_record, NULL) < 0) {
+        if (pr > 0 && xios_input_socket_dispatch(srv, on_record, srv) < 0) {
             fprintf(stderr, "xios-sysintd: socket error, exiting\n");
             break;
         }

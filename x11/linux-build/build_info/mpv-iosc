@@ -10,7 +10,9 @@
 # This wrapper mirrors run-kgx.sh's client render env: it points the shim at the
 # real ANGLE libEGL (ANGLE_REAL_LIBEGL; the shim also falls back to
 # libEGL.angle.dylib on its own, so this is belt-and-suspenders) and forces the
-# wayland GL VO so a window maps under iosc even before a frame decodes.
+# wayland GLES VO so a window maps under iosc even before a frame decodes. It
+# also keeps decoding on the CPU: iOS has no useful FFmpeg hwdec path here, and
+# the source build skips hwdec enumeration entirely when the option is `no`.
 #
 # Usage: mpv-iosc [mpv-args] <file|url>
 # Requires: a running iosc compositor (WAYLAND_DISPLAY set by the session) and
@@ -18,8 +20,10 @@
 # IOKit entitlement set, so Metal init succeeds under a fakesigned process.
 export ANGLE_REAL_LIBEGL="${ANGLE_REAL_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"
 exec /var/jb/usr/bin/mpv \
+  --hwdec=no \
   --vo=gpu \
   --gpu-api=opengl \
   --gpu-context=wayland \
+  --opengl-es=yes \
   --force-window=yes \
   "$@"

@@ -92,6 +92,13 @@ static int               g_stride;    /* real bytes-per-row (IOSurface-padded) *
 static int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
 static int               g_output_scale = 2; /* logical -> physical output pixels */
 static int               g_native_mode;
+static int               g_output_transform;         /* wl_output transform */
+static int               g_natural_lw, g_natural_lh; /* launch logical size */
+static int               g_advertise_transform = 1;
+
+#define IOSC_MAX_OUTPUT_RES 32
+static struct wl_resource *g_output_res[IOSC_MAX_OUTPUT_RES];     static int g_noutput_res;
+static struct wl_resource *g_xdg_output_res[IOSC_MAX_OUTPUT_RES]; static int g_nxdg_output_res;
 
 /* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
 struct iosc_surface;
@@ -102,6 +109,7 @@ static void recomposite_now(void);   /* synchronous repaint (callers that read t
 static void surface_unmap(struct iosc_surface *s);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
+static void output_send_state(struct wl_resource *r);
 
 static uint32_t now_ms(void)
 {
@@ -3371,6 +3379,79 @@ static void toplevel_reconfigure_state(struct iosc_surface *s)
     if (s->mapped) recomposite_all();
 }
 
+/* Reconfigure the output for a device rotation (XIOS_IN_OUTPUT): reallocate the
+ * IOSurface, rebind the GPU target, re-advertise wl_output/xdg_output, and ask
+ * mapped clients to fit the new logical shape. The app clients are dropped by
+ * xios_surface_resize(), then reconnect through the existing adopt path. */
+static void output_reconfigure(int lw, int lh, int transform)
+{
+    if (lw <= 0 || lh <= 0)
+        return;
+    if (lw == output_logical_width() && lh == output_logical_height() &&
+        transform == g_output_transform)
+        return;
+
+    int pw = lw * output_scale();
+    int ph = lh * output_scale();
+    int stride = 0;
+    void *fb = xios_surface_resize(pw, ph, &stride, NULL);
+    if (!fb) {
+        fprintf(stderr, "iosc: output resize %dx%d failed; keeping %dx%d\n",
+                pw, ph, g_width, g_height);
+        return;
+    }
+
+    g_fb = fb;
+    g_stride = stride;
+    g_width = pw;
+    g_height = ph;
+    g_output_transform = transform;
+    g_output_damage_valid = 0;
+    g_output_damage_rect_count = 0;
+
+    if (iosc_gl_ok() && iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0)
+        fprintf(stderr, "iosc: GPU output rebind failed; CPU fallback remains\n");
+
+    g_cursor_x = clampi(g_cursor_x, 0, output_logical_width() - 1);
+    g_cursor_y = clampi(g_cursor_y, 0, output_logical_height() - 1);
+
+    for (int i = 0; i < g_nxdg_output_res; i++) {
+        zxdg_output_v1_send_logical_position(g_xdg_output_res[i], 0, 0);
+        zxdg_output_v1_send_logical_size(g_xdg_output_res[i],
+                                         output_logical_width(), output_logical_height());
+        if (wl_resource_get_version(g_xdg_output_res[i]) < 3)
+            zxdg_output_v1_send_done(g_xdg_output_res[i]);
+    }
+    for (int i = 0; i < g_noutput_res; i++)
+        output_send_state(g_output_res[i]);
+
+    for (int i = 0; i < g_nmapped; i++) {
+        struct iosc_surface *s = g_mapped[i];
+        if (s->role == IOSC_ROLE_LAYER && s->layer) {
+            layer_send_configure(s);
+        } else if (s->role == IOSC_ROLE_TOPLEVEL) {
+            if (s->toplevel_fullscreen || s->toplevel_maximized) {
+                toplevel_reconfigure_state(s);
+            } else {
+                int w = 0, h = 0, wx, wy, ww, wh;
+                surface_display_size(s, &w, &h);
+                work_area(&wx, &wy, &ww, &wh);
+                int cw = (w > 0 && w <= ww) ? w : ww;
+                int ch = (h > 0 && h <= wh) ? h : wh;
+                if (w > ww || h > wh)
+                    toplevel_send_configure(s, cw, ch);
+                s->dx = clampi(s->dx, wx, wx + ww - cw);
+                s->dy = clampi(s->dy, wy, wy + wh - ch);
+                native_update_window_metadata(s);
+            }
+        }
+    }
+    recomposite_all();
+    wl_display_flush_clients(g_display);
+    fprintf(stderr, "iosc: output now %dx%d logical transform=%d (%dx%d px)\n",
+            output_logical_width(), output_logical_height(), transform, pw, ph);
+}
+
 static int resize_has_left(uint32_t edges)
 {
     return edges == XDG_TOPLEVEL_RESIZE_EDGE_LEFT ||
@@ -3655,10 +3736,6 @@ static const struct wl_output_interface output_impl = {
     .release = output_release,
 };
 
-#define IOSC_MAX_OUTPUT_RES 32
-static struct wl_resource *g_output_res[IOSC_MAX_OUTPUT_RES];     static int g_noutput_res;
-static struct wl_resource *g_xdg_output_res[IOSC_MAX_OUTPUT_RES]; static int g_nxdg_output_res;
-
 static void output_res_remove(struct wl_resource **arr, int *n, struct wl_resource *r)
 {
     for (int i = 0; i < *n; i++) {
@@ -3688,11 +3765,20 @@ static void output_send_done(struct wl_resource *r)
 static void output_send_state(struct wl_resource *r)
 {
     uint32_t version = wl_resource_get_version(r);
-    wl_output_send_geometry(r, 0, 0, output_px_to_mm(g_width), output_px_to_mm(g_height),
+    int mode_w = g_width, mode_h = g_height;
+    int32_t tr = WL_OUTPUT_TRANSFORM_NORMAL;
+    if (g_advertise_transform) {
+        tr = g_output_transform;
+        if (g_output_transform & 1) {
+            mode_w = g_height;
+            mode_h = g_width;
+        }
+    }
+    wl_output_send_geometry(r, 0, 0, output_px_to_mm(mode_w), output_px_to_mm(mode_h),
                             WL_OUTPUT_SUBPIXEL_UNKNOWN,
-                            "iosc", "IOSurface", WL_OUTPUT_TRANSFORM_NORMAL);
+                            "iosc", "IOSurface", tr);
     wl_output_send_mode(r, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED,
-                        g_width, g_height, 60000);
+                        mode_w, mode_h, 60000);
     if (version >= WL_OUTPUT_SCALE_SINCE_VERSION)
         wl_output_send_scale(r, output_scale());
     if (version >= WL_OUTPUT_NAME_SINCE_VERSION)
@@ -4623,6 +4709,8 @@ static void press_focus(struct iosc_surface *hit)
     if (g_output_damage_valid) recomposite_all();   /* show the raised window on top */
 }
 
+static void input_clients_send_haptic(uint32_t style);
+
 static void handle_button(int btn, int down)
 {
     /* Wire buttons are X-style (1 left, 2 middle, 3 right; raw evdev codes
@@ -4645,6 +4733,8 @@ static void handle_button(int btn, int down)
         interactive_end();
         return;
     }
+    if (down && g_ptr_focus && g_ptr_focus->role == IOSC_ROLE_LAYER)
+        input_clients_send_haptic(0);
     if (down && g_ptr_focus)
         press_focus(g_ptr_focus);
     if (!g_ptr_focus) return;
@@ -4786,6 +4876,8 @@ static void handle_touch(int id, int phase, int x, int y)
     if (phase == IOSC_TOUCH_DOWN) {
         struct iosc_surface *hit = surface_at(x, y);   /* honors session lock */
         if (!hit) return;
+        if (hit->role == IOSC_ROLE_LAYER)
+            input_clients_send_haptic(0);
         struct iosc_touch_point *p = touch_point_by_id(id);
         if (!p)
             for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++)
@@ -5534,7 +5626,7 @@ static void source_read_done(struct iosc_source_read *rd, int publish)
 static int source_readable(int fd, uint32_t mask, void *data)
 {
     struct iosc_source_read *rd = data;
-    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) { source_read_done(rd, rd->len > 0); return 0; }
+    int hung = mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR);
     for (;;) {
         char tmp[4096];
         ssize_t r = read(fd, tmp, sizeof(tmp));
@@ -5559,6 +5651,7 @@ static int source_readable(int fd, uint32_t mask, void *data)
         source_read_done(rd, 0);
         return 0;
     }
+    if (hung) { source_read_done(rd, rd->len > 0); return 0; }
     return 0;
 }
 
@@ -6042,6 +6135,13 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
         case XIOS_IN_AXIS:   if (bound) g_ptr_focus = bound;
                              handle_axis(m->x, m->y, m->code,
                                          (int)(m->state & 1u), m->mods); break;
+        case XIOS_IN_OUTPUT: {
+            int tr = (int)(m->code & 3u);
+            int lw = m->x > 0 ? m->x : ((tr & 1) ? g_natural_lh : g_natural_lw);
+            int lh = m->y > 0 ? m->y : ((tr & 1) ? g_natural_lw : g_natural_lh);
+            output_reconfigure(lw, lh, tr);
+            break;
+        }
     }
 }
 
@@ -6076,6 +6176,17 @@ static void input_clients_send_traits(void)
                                           &msg, sizeof(msg));
     else
         xios_input_socket_broadcast(g_input_sock, &msg, sizeof(msg));
+}
+
+static void input_clients_send_haptic(uint32_t style)
+{
+    if (!g_input_sock)
+        return;
+    struct xios_in_msg msg = {
+        .type = XIOS_IN_HAPTIC,
+        .code = style,
+    };
+    xios_input_socket_broadcast(g_input_sock, &msg, sizeof(msg));
 }
 
 /* The shared reader's kqueue fd became readable (a new connection or client
@@ -7448,6 +7559,10 @@ int main(int argc, char **argv)
         g_width  = opts.logical_w * output_scale();
         g_height = opts.logical_h * output_scale();
     }
+    g_natural_lw = output_logical_width();
+    g_natural_lh = output_logical_height();
+    if (getenv("IOSC_NO_OUTPUT_TRANSFORM"))
+        g_advertise_transform = 0;
 
     /* 1) Output: one fullscreen BGRA IOSurface + the rendezvous the Xios app
      *    already speaks. xios_server_start writes xios.json so the app finds us. */

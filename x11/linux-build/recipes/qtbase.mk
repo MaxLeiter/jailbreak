@@ -90,6 +90,10 @@ qtbase-setup: setup
 		'#include <stdlib.h>' \
 		'#include <unistd.h>' \
 		'#ifdef __cplusplus' \
+		'#ifdef __APPLE__' \
+		'#include <_xlocale.h>' \
+		'#include <xlocale/_stdlib.h>' \
+		'#endif' \
 		'#undef system' \
 		'#endif' > $(BUILD_WORK)/qtbase/qt-ios-iosexec-fixup.h
 	# 4) drop the SDK-shadowing Apple system headers. Procursus `setup` (our prerequisite) RE-STAGES

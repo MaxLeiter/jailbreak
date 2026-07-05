@@ -45,10 +45,27 @@ private:
     QScopedPointer<QWaylandXdgActivationV1> m_xdgActivation;
     QScopedPointer<QWaylandLayerXdgWmBase> m_xdgWmBase;
 """
-if old in text:
+if "QWaylandLayerXdgWmBase *xdgWmBase() const" in text:
+    pass
+elif old in text:
     text = text.replace(old, new)
-elif "QWaylandLayerXdgWmBase *xdgWmBase() const" not in text:
+else:
     raise SystemExit("layer-shell integration header block not found")
+while "#include <qwayland-xdg-shell.h>\n#include <qwayland-xdg-shell.h>\n" in text:
+    text = text.replace(
+        "#include <qwayland-xdg-shell.h>\n#include <qwayland-xdg-shell.h>\n",
+        "#include <qwayland-xdg-shell.h>\n",
+    )
+xdg_wm_base_getter = """    QWaylandLayerXdgWmBase *xdgWmBase() const
+    {
+        return m_xdgWmBase.data();
+    }
+"""
+while text.count(xdg_wm_base_getter) > 1:
+    text = text.replace(xdg_wm_base_getter + xdg_wm_base_getter, xdg_wm_base_getter)
+xdg_wm_base_member = "    QScopedPointer<QWaylandLayerXdgWmBase> m_xdgWmBase;\n"
+while text.count(xdg_wm_base_member) > 1:
+    text = text.replace(xdg_wm_base_member + xdg_wm_base_member, xdg_wm_base_member)
 path.write_text(text)
 PY
 
@@ -64,7 +81,7 @@ text = text.replace(
 )
 text = text.replace(
     "#include <QtWaylandClient/private/qwaylandwindow_p.h>\n",
-    "#include <QtWaylandClient/private/qwaylandwindow_p.h>\n\n#include <QVariant>\n#include <QWindow>\n",
+    "#include <QtWaylandClient/private/qwaylandwindow_p.h>\n\n#include <QGuiApplication>\n#include <QVariant>\n#include <QWindow>\n",
 )
 old_ctor = """QWaylandLayerShellIntegration::QWaylandLayerShellIntegration()
     : QWaylandShellIntegrationTemplate<QWaylandLayerShellIntegration>(5)
@@ -92,16 +109,19 @@ old_create = """QtWaylandClient::QWaylandShellSurface *QWaylandLayerShellIntegra
 new_create = """QtWaylandClient::QWaylandShellSurface *QWaylandLayerShellIntegration::createShellSurface(QtWaylandClient::QWaylandWindow *window)
 {
     const Qt::WindowType type = window->window()->type();
+    qCWarning(LAYERSHELLQT) << "layershellqt-ios createShellSurface" << window->window() << "type" << type << "transient" << bool(window->transientParent()) << "anchorRect" << window->window()->property("_q_waylandPopupAnchorRect").isValid();
     if (type == Qt::Popup || type == Qt::ToolTip || window->transientParent()) {
         if (m_xdgWmBase && !m_xdgWmBase->isActive()) {
             m_xdgWmBase->ensureInitialized();
         }
         if (m_xdgWmBase && m_xdgWmBase->isActive()) {
+            qCWarning(LAYERSHELLQT) << "layershellqt-ios create xdg popup shell surface" << window->window();
             return new QWaylandLayerXdgPopupSurface(this, window);
         }
         qCWarning(LAYERSHELLQT) << "Cannot create layer-shell popup without xdg_wm_base" << type << "transient" << bool(window->transientParent());
         return nullptr;
     }
+    qCWarning(LAYERSHELLQT) << "layershellqt-ios create layer shell surface" << window->window();
     return new QWaylandLayerSurface(this, window);
 }
 """
@@ -144,13 +164,45 @@ protected:
     }
 };
 
+static QtWaylandClient::QWaylandWindow *layerPopupParent(QtWaylandClient::QWaylandWindow *window)
+{
+    if (!window) {
+        return nullptr;
+    }
+    if (auto parent = window->transientParent()) {
+        return parent;
+    }
+    if (auto transientWindow = window->window()->transientParent()) {
+        if (auto transientWayland = dynamic_cast<QtWaylandClient::QWaylandWindow *>(transientWindow->handle())) {
+            if (transientWayland->shellSurface()) {
+                return transientWayland;
+            }
+        }
+    }
+
+    const auto windows = QGuiApplication::topLevelWindows();
+    for (QWindow *candidate : windows) {
+        if (!candidate || candidate == window->window() || !candidate->handle()) {
+            continue;
+        }
+        auto waylandWindow = dynamic_cast<QtWaylandClient::QWaylandWindow *>(candidate->handle());
+        if (!waylandWindow || !waylandWindow->shellSurface()) {
+            continue;
+        }
+        if (dynamic_cast<QWaylandLayerSurface *>(waylandWindow->shellSurface())) {
+            return waylandWindow;
+        }
+    }
+    return nullptr;
+}
+
 class QWaylandLayerXdgPopupSurface : public QtWaylandClient::QWaylandShellSurface, public QtWayland::xdg_surface
 {
 public:
     QWaylandLayerXdgPopupSurface(QWaylandLayerShellIntegration *shell, QtWaylandClient::QWaylandWindow *window)
         : QtWaylandClient::QWaylandShellSurface(window)
         , m_window(window)
-        , m_parent(window->transientParent())
+        , m_parent(layerPopupParent(window))
     {
         init(shell->xdgWmBase()->get_xdg_surface(window->wlSurface()));
 
@@ -244,13 +296,35 @@ public:
         positioner->set_size(qMax(1, windowGeometry.width()), qMax(1, windowGeometry.height()));
         positioner->set_constraint_adjustment(constraintAdjustment);
 
+        auto parentShell = m_parent ? m_parent->shellSurface() : nullptr;
+        auto layerParent = dynamic_cast<QWaylandLayerSurface *>(parentShell);
+        ::xdg_surface *xdgParent = nullptr;
+        if (!layerParent) {
+            if (auto popupParent = dynamic_cast<QWaylandLayerXdgPopupSurface *>(parentShell)) {
+                xdgParent = popupParent->xdgSurfaceObject();
+            }
+        }
+        qCWarning(LAYERSHELLQT) << "layershellqt-ios popup ctor" << m_window->window() << "parent" << (m_parent ? m_parent->window() : nullptr) << "layerParent" << bool(layerParent) << "xdgParent" << bool(xdgParent) << "parentShell" << (parentShell ? parentShell->surfaceRole().type().name() : "none");
+
         // wlr-layer-shell requires layer-surface children to be created as
         // xdg_popup with a null xdg parent; QWaylandLayerSurface::attachPopup()
-        // then assigns the layer surface as the popup's effective parent.
-        m_popup = new Popup(this, get_popup(nullptr, positioner->object()));
+        // then assigns the layer surface as the popup's effective parent before
+        // the first commit. Nested/ordinary popups must instead use their xdg
+        // parent at xdg_surface.get_popup() time or KWin rejects them.
+        m_popup = new Popup(this, get_popup(xdgParent, positioner->object()));
         m_popupObject = m_popup->object();
-        if (m_parent && m_parent->shellSurface()) {
-            m_parent->shellSurface()->attachPopup(this);
+        if (layerParent) {
+            qCWarning(LAYERSHELLQT) << "layershellqt-ios attach popup to layer parent";
+            layerParent->attachPopup(this);
+            m_window->display()->flushRequests();
+        } else if (!xdgParent) {
+            qCWarning(LAYERSHELLQT) << "Cannot attach layer-shell popup: no layer or xdg parent window";
+        } else if (parentShell) {
+            qCWarning(LAYERSHELLQT) << "layershellqt-ios notify xdg popup parent";
+            parentShell->attachPopup(this);
+            m_window->display()->flushRequests();
+        } else {
+            qCWarning(LAYERSHELLQT) << "Cannot attach layer-shell popup: no layer parent window";
         }
         positioner->destroy();
         delete positioner;
@@ -268,6 +342,11 @@ public:
     std::any surfaceRole() const override
     {
         return m_popupObject ? std::any(m_popupObject) : std::any();
+    }
+
+    ::xdg_surface *xdgSurfaceObject()
+    {
+        return object();
     }
 
     bool isExposed() const override
@@ -400,25 +479,42 @@ new = """void QWaylandLayerSurface::attachPopup(QtWaylandClient::QWaylandShellSu
         return;
     }
 
+    auto xdgPopupFromRole = [](const std::any &role) -> ::xdg_popup * {
+        if (auto raw = std::any_cast<::xdg_popup *>(&role)) {
+            return *raw;
+        }
+        if (auto rawVoid = std::any_cast<void *>(&role)) {
+            return reinterpret_cast<::xdg_popup *>(*rawVoid);
+        }
+        if (auto generated = std::any_cast<QtWayland::xdg_popup *>(&role)) {
+            return *generated ? (*generated)->object() : nullptr;
+        }
+        return nullptr;
+    };
+
     std::any anyRole = popup->surfaceRole();
 
-    if (auto role = std::any_cast<::xdg_popup *>(&anyRole)) {
-        get_popup(*role);
+    if (auto role = xdgPopupFromRole(anyRole)) {
+        qCWarning(LAYERSHELLQT) << "layershellqt-ios layer get_popup immediate" << role;
+        get_popup(role);
+        window()->display()->flushRequests();
     } else {
         // QtWayland can notify the layer-shell parent before the child popup's
         // xdg role object is visible through surfaceRole(). Retry on the next
         // event-loop turn so zwlr_layer_surface.get_popup() is still sent
         // before the popup commits without a parent.
         QPointer<QtWaylandClient::QWaylandShellSurface> guardedPopup(popup);
-        QTimer::singleShot(0, this, [this, guardedPopup]() {
+        QTimer::singleShot(0, this, [this, guardedPopup, xdgPopupFromRole]() {
             if (!guardedPopup) {
                 return;
             }
             std::any retryRole = guardedPopup->surfaceRole();
-            if (auto retry = std::any_cast<::xdg_popup *>(&retryRole)) {
-                get_popup(*retry);
+            if (auto retry = xdgPopupFromRole(retryRole)) {
+                qCWarning(LAYERSHELLQT) << "layershellqt-ios layer get_popup retry" << retry;
+                get_popup(retry);
+                window()->display()->flushRequests();
             } else {
-                qCWarning(LAYERSHELLQT) << "Cannot attach popup of unknown type";
+                qCWarning(LAYERSHELLQT) << "Cannot attach popup of unknown type" << retryRole.type().name();
             }
         });
     }
@@ -429,5 +525,9 @@ if old not in text:
         raise SystemExit("attachPopup block not found")
 else:
     text = text.replace(old, new)
+text = text.replace(
+    "QTimer::singleShot(0, this, [this, guardedPopup]() {",
+    "QTimer::singleShot(0, this, [this, guardedPopup, xdgPopupFromRole]() {",
+)
 path.write_text(text)
 PY

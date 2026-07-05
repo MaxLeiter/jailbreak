@@ -122,7 +122,8 @@ But it is the wrong substrate for the project's "native and fast" north star:
 - **Software only.** Cogl's host onscreen would use the **GLX** winsys against Xios's *software*
   GLX (gallium-xlib indirect, llvmpipe). ANGLE cannot help: ANGLE-iOS is Metal-only with no X11
   EGL platform, so it cannot back an X11 window. So gnome-shell would composite on llvmpipe — the
-  exact outcome `gnome-plan.md` Blocker #3 flags as "unproven / likely unbearable on an A10."
+  exact outcome the historical `gnome-plan.md` GLX blocker warned about as likely unsuitable
+  on an A10.
 - **Two display servers stacked** (Xios + Mutter), plus the gjs proof already hit Xios's app-
   sandbox X-socket problem (it ran against a root-reachable Xvfb, not the live Xios surface).
 - It throws away every GPU asset we built (iosc_gl, the IOSurface buffer path, the EGL shim).

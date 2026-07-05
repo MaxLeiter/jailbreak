@@ -14,8 +14,8 @@ rootless iOS, and installing only debs on the device.
 Published packages:
 
 ```text
-bun 1.4.0~canary.1+git5b55beb711+ios0.2
-opencode 1.17.13~ios0.1
+bun 1.4.0~canary.1+git5b55beb711+ios0.4
+opencode 1.17.13~ios0.5
 ```
 
 On-device verification:
@@ -38,6 +38,7 @@ Pinned inputs:
 - Bun/WebKit: `linux-build/build_info/bun-ios.lock`
 - OpenCode: `linux-build/build_info/opencode.lock`
 - Bun patch: `linux-build/patches/bun/0001-add-iphoneos-a10-target.patch`
+- TinyCC patch: `linux-build/patches/tinycc/tccrun-ios-mmap.patch`
 - WebKit patch: `linux-build/patches/bun-webkit/0001-jsconly-skip-mach-exceptions-ios.patch`
 
 Build Bun:
@@ -49,14 +50,16 @@ PACKAGE=1 LLVM_PREFIX=/opt/homebrew/opt/llvm@21 bash linux-build/run-bun-ios.sh
 Build OpenCode:
 
 ```sh
+bash linux-build/build-opentui-ios.sh
+bash linux-build/build-fff-ios.sh
 PACKAGE=1 SMOKE_DEVICE=1 bash linux-build/build-opencode.sh
 ```
 
 Publish:
 
 ```sh
-cp linux-build/out/bun_1.4.0~canary.1+git5b55beb711+ios0.2_iphoneos-arm64.deb ../repo/debs/
-cp linux-build/out/opencode_1.17.13~ios0.1_iphoneos-arm64.deb ../repo/debs/
+cp linux-build/out/bun_1.4.0~canary.1+git5b55beb711+ios0.4_iphoneos-arm64.deb ../repo/debs/
+cp linux-build/out/opencode_1.17.13~ios0.5_iphoneos-arm64.deb ../repo/debs/
 ../bin/publish-repo.sh
 ```
 
@@ -75,18 +78,19 @@ but expected.
 
 - `/var/jb/usr/libexec/opencode-js/*`
 - `/var/jb/usr/bin/opencode`
+- `/var/jb/usr/libexec/opencode-js/libopentui.dylib`
+- `/var/jb/usr/libexec/opencode-js/libfff_c.dylib`
 
 The wrapper sets `TMPDIR`, `TMP`, and `TEMP` to `/var/jb/tmp` by default and
 executes the bundled OpenCode entrypoint with `/var/jb/usr/bin/bun`.
+The package depends on `bun` and `ripgrep`; the bundled OpenTUI and fff dylibs
+cover the native TUI renderer and preferred fuzzy search backend.
 
 ## Notes
 
-- The old approach of repackaging upstream `opencode-darwin-arm64` is retained
-  only as historical context: the embedded macOS Bun runtime used unsupported
-  A10 instructions and is not the release path.
 - Bun's `macho-postlink` helper still gets killed after the link on this build
   host. `linux-build/build-bun-ios.sh` accepts that specific post-link failure
   only when the linked `bun-profile` binary exists, then packages that binary.
-- The `ios0.2` Bun package fixes the OpenCode startup blocker by treating iOS
-  like macOS for `get_fd_path`/`F_GETPATH`, which makes `fs.realpathSync` work
-  on rootless iOS paths.
+- Bun package revisions from `ios0.2` onward include the OpenCode startup fix:
+  iOS is treated like macOS for `get_fd_path`/`F_GETPATH`, which makes
+  `fs.realpathSync` work on rootless iOS paths.

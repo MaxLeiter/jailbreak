@@ -1,6 +1,6 @@
 # gjs on the X11-for-iOS stack — feasibility, the introspection breakthrough, and the mozjs plan
 
-Status: **Phase 1.** Owner: `gjs-track`. Sibling docs: [`gnome-plan.md`](gnome-plan.md)
+Status: **Implemented baseline; remaining work is Shell-specific packaging/polish.** Owner: `gjs-track`. Sibling docs: [`gnome-plan.md`](gnome-plan.md)
 (the four GNOME-Shell blockers), [`gnome-apps.md`](gnome-apps.md) (the C/Vala app chain).
 
 This track owns the two **independent** hard blockers that gate gjs (and therefore GNOME Shell
@@ -188,11 +188,12 @@ Shell: **Soup** + **Mutter** (Meta/Clutter/Cogl/St, gated on the mutter build).
 
 ---
 
-## Blocker #1 — mozjs115 / SpiderMonkey (JIT-less) — DRAFT (heavy build gated)
+## Blocker #1 — mozjs115 / SpiderMonkey (JIT-less) — SOLVED
 
 gjs 1.78 (the glib-2.78 generation) embeds **mozjs115** (Firefox ESR 115 SpiderMonkey). This is
-the genuinely hard cross-compile in the whole tree. **Drafted here; not built** — per coordinator,
-check before kicking the heavy build (Docker is loaded).
+the genuinely hard cross-compile in the whole tree. It started as a heavy-build draft, but the
+build and on-device runtime smoke are now complete; the original risk analysis below is retained
+as implementation context.
 
 ### What makes it tractable
 

@@ -1,0 +1,11 @@
+Package: kscreen
+Version: @DEB_KSCREEN_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/kscreen
+Depends: qt6-base, qt6-declarative, qt6-sensors, libkscreen, libplasma, plasma-workspace, kf6-config, kf6-dbusaddons, kf6-i18n, kf6-kcmutils, kf6-svg, kf6-xmlgui, layer-shell-qt
+Description: KDE display configuration tools for Xios
+ KScreen provides the display System Settings module (kcm_kscreen), KDED
+ display daemon, OSD, plasmoid, and command-line display tools.

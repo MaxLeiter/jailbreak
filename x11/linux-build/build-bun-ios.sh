@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Reproducible Bun iPhoneOS/A10 source-build experiment for OpenCode.
+# Reproducible Bun iPhoneOS/A10 package build for OpenCode.
+# Default deb version: 1.4.0~canary.1+git5b55beb711+ios0.4.
 #
 # This is intentionally a source-build path. The upstream macOS standalone
 # runtime crashes with SIGILL on iPad7,12/A10 because it is built for newer

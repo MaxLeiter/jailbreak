@@ -57,7 +57,8 @@ float xios_output_scale (void);
                              * for the frame — pinch-zoom sends ctrl+scroll        */
 #define XIOS_IN_OUTPUT 10u  /* app->server: output transform/size change       */
 #define XIOS_IN_HAPTIC 11u  /* server->CLIENT broadcast: haptic feedback       */
-#define XIOS_IN_VOLUME 12u  /* app->sysintd: absolute output volume            */
+#define XIOS_IN_VOLUME 12u  /* sysintd volume bridge; code = 0..65535          */
+#define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
 #define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style            */
 
 /* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */

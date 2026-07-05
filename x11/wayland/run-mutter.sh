@@ -130,7 +130,7 @@ done
 echo "   app adopted IOSurface: $(grep -q iosurface-zerocopy "$TMP/xios-status.txt" 2>/dev/null && echo yes || echo NO)"
 
 echo "==> mutter log (look for: MetaRendererIOS create_view, IOSurface id=, present):"
-sed 's/^/   /' "$TMP/mutter.log"
+sed 's/^/   /' "$MUTTER_LOG"
 echo "==> Xios app status:"; sed 's/^/   /' "$TMP/xios-status.txt" 2>/dev/null
 echo "==> mutter still running: $(kill -0 "$MPID" 2>/dev/null && echo yes || echo NO)"
 echo

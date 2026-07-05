@@ -1,6 +1,6 @@
 Package: xios-session-stubs
 Name: Xios GNOME session D-Bus stubs
-Version: 0.2.1
+Version: 0.2.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>

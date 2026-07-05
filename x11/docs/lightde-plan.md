@@ -1,14 +1,18 @@
 # Lightweight desktop on the iOS X11 stack — XFCE plan
 
+> **Current status (2026-07-03): historical plan.** This file was written before the GTK3
+> packages landed. `libgtk-3-0`/`libgtk-3-dev` now exist in repo metadata, so the old GTK gate is
+> closed; verify the current XFCE recipe/package state before treating this as an active build
+> checklist.
+
 Goal: a usable **XFCE 4.16** desktop (window manager + panel + desktop + file
 manager + settings) running on the native iOS X server (`Xios`, `DISPLAY=:3`),
 on top of the GTK3 stack the `gtk-builder` agent is cross-compiling into Procursus
 debs. Rootless target (`/var/jb`), iPad 7 / A10, `MEMO_TARGET=iphoneos-arm64-rootless`,
 `MEMO_CFVER=1900`.
 
-This is the **Phase-1 prep**: dependency map + build order + drafted recipes. No heavy
-Docker build is started here — the GTK debs do not exist yet and Docker is saturated.
-Sequencing the build is the coordinator's call.
+This began as **Phase-1 prep**: dependency map + build order + drafted recipes. The dependency
+map remains useful, but package status has moved since the original GTK-missing snapshot.
 
 ---
 
@@ -108,16 +112,17 @@ xfce4-panel-package xfwm4-package thunar-package xfce4-settings-package \
 xfce4-session-package xfdesktop-package xfce4-appfinder-package
 ```
 
-### Blocked on GTK
+### GTK dependency status
 
 Everything from `libxfce4ui` onward needs `libgtk-3-0` + `libgdk-pixbuf-2.0-0` + `libatk1.0-0`
-at link time. `libxfce4util`, `xfconf`, `dbus`, `startup-notification` need only glib/X11/expat
-(already available) — **these four can be built and validated immediately**, ahead of GTK, to
-de-risk the toolchain. `libwnck3` needs gtk3 (blocked).
+at link time. Those GTK3 packages now exist, so this is no longer the blocker it was when the
+plan was drafted. `libxfce4util`, `xfconf`, `dbus`, and `startup-notification` still remain the
+lowest-risk early components because they need only glib/X11/expat.
 
-Recommended sequencing message to coordinator: *"build dbus + startup-notification +
+Historical sequencing message to coordinator was: *"build dbus + startup-notification +
 libxfce4util + xfconf now (GTK-independent); hold libwnck3 + the GTK-linked XFCE components
-until gtk-builder publishes `libgtk-3-0`."*
+until gtk-builder publishes `libgtk-3-0`."* That hold is now stale; check current recipe/deb
+state before resuming the XFCE lane.
 
 ---
 

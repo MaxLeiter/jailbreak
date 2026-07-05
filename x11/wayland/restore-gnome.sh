@@ -7,14 +7,14 @@
 # jailbreak root), NOT /var/jb/tmp: the 9 regenerated typelibs, the patched gnome-shell deb,
 # Locations.bin, the login-screen gschema, the ad-hoc audio-lib signatures, and the
 # libatk-bridge weak-import edit. Only RUNTIME bits are lost on reboot (the PulseAudio daemon,
-# the GPU entitlement file, and of course all processes) — run-gnome-shell.sh recreates those.
+# the GPU entitlement file, and of course all processes) — the packaged GNOME launcher recreates those.
 #
 # This script (1) VERIFIES the persistent artifacts, (2) re-applies the one persistent edit worth
 # re-checking (libatk-bridge weak import), then (3) launches GNOME the PERSISTENT way: through
 # ioscd's SESSION socket (`xios-session -d gnome`), whose daemon is owned by launchd — so
-# gnome-shell is NOT a child of this ssh session and survives it closing. (Launching
-# run-gnome-shell.sh directly over ssh makes gnome-shell an sshd child that dies when the
-# connection drops — that was the only reason first-light sessions didn't persist.)
+# gnome-shell is NOT a child of this ssh session and survives it closing. The deleted
+# early manual launch made gnome-shell an sshd child that died when the connection
+# dropped; the session preset is now the only supported GNOME launch path.
 #
 # If the VERIFY step finds typelibs missing (unexpected — they persist), regenerate them with the
 # on-device gir scripts + the per-lib flag table documented in docs/handoff/gnome-session.md:

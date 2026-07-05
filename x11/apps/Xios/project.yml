@@ -57,10 +57,10 @@ targets:
         NSCameraUsageDescription: Xios exposes the iPad camera to desktop media clients.
         NSMicrophoneUsageDescription: Xios exposes the iPad microphone to desktop media clients.
         NSPhotoLibraryUsageDescription: Xios lets you choose a photo as the iosc desktop background.
-        # Landscape-only: the X desktop is a fixed-aspect landscape surface
-        # (2160x1620 on iPad 7, matching the screen 1:1). Allowing portrait made a
-        # landscape 4:3 image letterbox hard on a 3:4 screen — so lock to landscape,
-        # where it fills edge to edge.
+        # Runtime-gated in XServerViewController: iosc/native sessions can rotate
+        # and resize their IOSurface; legacy fixed-aspect X paths stay landscape.
         UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight

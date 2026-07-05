@@ -84,7 +84,7 @@ find "$SRC" -maxdepth 2 -type f -name "*.deb" | while IFS= read -r deb; do
   [ -n "$pkg" ] || continue
   case "$pkg" in
     *-dev) continue ;;
-    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kactivitymanagerd|kwayland|layer-shell-qt|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma5support|plasma-pa|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1) ;;
+    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kactivitymanagerd|kwayland|layer-shell-qt|libkscreen|kscreen|systemsettings|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma5support|plasma-pa|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1|xios-media-server) ;;
     *) continue ;;
   esac
   old=$(find "$TMP" -maxdepth 1 -type f -name "${pkg}_*.deb" -print -quit)
@@ -123,6 +123,9 @@ overlay_out \
   libdrm2_*_iphoneos-arm64.deb \
   libgbm1_*_iphoneos-arm64.deb \
   libdisplay-info1_*_iphoneos-arm64.deb \
+  libkscreen_*_iphoneos-arm64.deb \
+  kscreen_*_iphoneos-arm64.deb \
+  systemsettings_*_iphoneos-arm64.deb \
   libplasma_*_iphoneos-arm64.deb \
   plasma-activities-stats_*_iphoneos-arm64.deb \
   kactivitymanagerd_*_iphoneos-arm64.deb \
@@ -149,6 +152,7 @@ overlay_out \
   kf6-wallet_*_iphoneos-arm64.deb \
   kf6-notifyconfig_*_iphoneos-arm64.deb \
   kf6-qqc2-desktop-style_*_iphoneos-arm64.deb \
+  xios-media-server_*_iphoneos-arm64.deb \
   xios-session_*_iphoneos-arm64.deb
 
 echo "==> keeping only the newest staged deb for each package"
@@ -202,6 +206,17 @@ else
   echo "   $(basename "$deb") already uses a rootless app path"
 fi
 '
+
+echo "==> DER re-signing graphics binaries in staged debs"
+LDID="${LDID:-$(command -v ldid || true)}"
+if [ -z "$LDID" ]; then
+  echo "ERROR: ldid not found; cannot DER re-sign staged graphics packages" >&2
+  exit 1
+fi
+python3 "$HERE/resign-graphics-packages.py" "$STAGE/debs" \
+  --ldid "$LDID" \
+  --gpu-ent "$HERE/build_info/iosc-gpu-client-ent.xml" \
+  --gl-ent "$HERE/build_info/iosc-gl-ent.xml"
 
 cat > "$STAGE/install-on-device.sh" <<'EOF'
 #!/bin/sh

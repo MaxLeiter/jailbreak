@@ -91,16 +91,19 @@ the PA tree by the extended recipe. Design points:
   time in 25 ms blocks, and the socket is a dumb byte pipe.
 - **Native format end to end.** Fixed 48 kHz stereo f32le, which is the
   daemon's mix format; PA renders float natively, so nothing converts twice.
-  PA soft volume and mute apply during render, which is what makes the gvc
-  slider actually attenuate PCM.
+  Sink volume is now treated as iOS hardware volume: `module-xios-sink` uses
+  PulseAudio's hardware-volume callback to send `XIOS_IN_VOLUME` through
+  `xios-sysintd` to the Xios app, and the app applies it with a hidden
+  `MPVolumeView`. PA mute remains software-side.
 - **Resilient.** Connects lazily, reconnects every 2 s if `xios-audiod` is
   down or restarts, renders to /dev/null in between (the sink object, and
   with it gvc's UI, stays alive). Suspend/resume resets the render clock so
   no stale burst plays after idle.
 - **iOS module set.** Upstream's darwin modules are macOS-only
   (module-coreaudio-* speak the CoreAudio HAL, `AudioHardware.h`, absent in
-  the iOS SDK). `recipes/pulseaudio-ios-fixes.sh` swaps that block for
-  module-xios-sink and module-xios-source.
+  the iOS SDK). `ports/pulseaudio/patches` swaps that block for
+  module-xios-sink and module-xios-source; `recipes/pulseaudio-ios-fixes.sh`
+  injects the local module sources.
 
 Known, accepted playback v1 limits: pa_rtclock vs HAL clock drift is absorbed by the
 daemon's 4 s ring rather than corrected (worst case an occasional dropped or
@@ -187,9 +190,10 @@ ship as a deb, not just get staged.
    gnome-session/gnome-shell comes up. No gsd changes: gvc in gnome-shell
    and gsd's media-keys both just find `PULSE_SERVER`.
 3. Expected gvc behavior: one sink named `xios`, description
-   "iPad speakers (xios-audiod)"; volume slider and mute work (PA soft
-   volume); output device switching UI stays single-entry (iOS owns real
-   route changes, invisible to PA, which is correct here). Expected capture
+   "iPad speakers (xios-audiod)"; volume slider changes the iOS hardware
+   volume via Xios, mute stays PA-side, and output device switching UI stays
+   single-entry (iOS owns real route changes, invisible to PA, which is
+   correct here). Expected capture
    behavior: one default source named `xios_mic`, description
    "iPad microphone (xios-mediad)".
 
@@ -208,7 +212,9 @@ pactl set-sink-volume xios 50%  # audibly quieter (proves the gvc path)
 ```
 
 Then the desktop: launch the GNOME session, open the shell volume slider
-(gvc), confirm it tracks `pactl get-sink-volume xios`.
+(gvc), confirm it tracks `pactl get-sink-volume xios` and, with a current
+Xios app foregrounded, changes the iOS hardware volume. The reverse path was
+implemented off-device on 2026-07-04 and still needs on-device validation.
 
 ## Follow-on work (not this track's blockers)
 

@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-iconthemes (= @DEB_KICONTHEMES_V@), extra-cmake-modules, qt6-base-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-configwidgets-dev, kf6-i18n-dev, kf6-widgetsaddons-dev, kf6-breeze-icons
+Depends: kf6-iconthemes (= @DEB_KICONTHEMES_V@), extra-cmake-modules, qt6-base-dev, qt6-svg-dev, qt6-declarative-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-configwidgets-dev, kf6-i18n-dev, kf6-widgetsaddons-dev, kf6-breeze-icons
 Description: Development files for KIconThemes
  Headers and CMake package files for KIconThemes. Needed to cross-build the
  KDE components that depend on it.

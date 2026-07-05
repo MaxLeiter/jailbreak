@@ -47,6 +47,10 @@ QT6_WRITE_IOSEXEC_FIXUP = \
 		'\#include <stdlib.h>' \
 		'\#include <unistd.h>' \
 		'\#ifdef __cplusplus' \
+		'\#ifdef __APPLE__' \
+		'\#include <_xlocale.h>' \
+		'\#include <xlocale/_stdlib.h>' \
+		'\#endif' \
 		'\#undef system' \
 		'\#endif' > $(QT6_IOSEXEC_FIXUP_H)
 

@@ -4,6 +4,11 @@ set -euo pipefail
 
 src=${1:?usage: plasma-workspace-ios-fixes.sh <plasma-workspace-source-dir>}
 
+cat > "$src/shell/config-X11.h" <<'EOF'
+#pragma once
+#define HAVE_X11 0
+EOF
+
 python3 - "$src/CMakeLists.txt" <<'PY'
 import re
 import sys
@@ -33,11 +38,15 @@ text = text.replace('PROPERTIES DESCRIPTION "Unicode and Globalization support f
 keep = {
     "applets",
     "dataengines",
+    "kcms",
+    "startkde",
     "lookandfeel",
+    "logout-greeter",
     "libnotificationmanager",
     "libkworkspace",
     "libdbusmenuqt",
     "libtaskmanager",
+    "menu",
     "components",
     "plasma-windowed",
     "shell",
@@ -69,7 +78,7 @@ path = Path(sys.argv[1])
 text = path.read_text()
 text = re.sub(
     r"^add_subdirectory\(([^)]+)\)",
-    lambda m: m.group(0) if m.group(1) == "time" else f"# ios-real-desktop-skip: {m.group(0)}",
+    lambda m: m.group(0) if m.group(1) in {"time", "powermanagement"} else f"# ios-real-desktop-skip: {m.group(0)}",
     text,
     flags=re.M,
 )
@@ -127,6 +136,7 @@ keep = {
     "shellprivate",
     "keyboardlayout",
     "lookandfeelqml",
+    "sessionsprivate",
     "trianglemousefilter",
     "workspace",
 }
@@ -134,6 +144,206 @@ text = re.sub(r"^add_subdirectory\(([^)]+)\)",
               lambda m: m.group(0) if m.group(1) in keep else f"# ios-firstlight-skip: {m.group(0)}",
               text, flags=re.M)
 path.write_text(text)
+PY
+
+python3 - "$src/kcms/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+keep = {
+    "krdb",
+    "desktoptheme",
+    "icons",
+    "style",
+    "lookandfeel",
+    "colors",
+    "wallpaper",
+}
+text = re.sub(
+    r"^add_subdirectory\(\s*([^) ]+)\s*\)",
+    lambda m: m.group(0) if m.group(1) in keep else f"# ios-kcm-wave-skip: {m.group(0)}",
+    text,
+    flags=re.M,
+)
+text = re.sub(
+    r"^if\(KF6UserFeedback_FOUND\)\n\s*add_subdirectory\(feedback\)\nendif\(\)",
+    "# ios-kcm-wave-skip: feedback KCM needs KF6UserFeedback",
+    text,
+    flags=re.M,
+)
+text = re.sub(
+    r"^if\(X11_Xcursor_FOUND\)\n\s*add_subdirectory\(cursortheme\)\nendif\(\)",
+    "# ios-kcm-wave-skip: cursor theme KCM is X11-specific",
+    text,
+    flags=re.M,
+)
+text = re.sub(
+    r"^if\(FONTCONFIG_FOUND\)\n\s*add_subdirectory\( kfontinst \)\n\s*add_subdirectory\( fonts \)\nendif\(\)",
+    "# ios-kcm-wave-skip: font KCMs need a separate non-X11 pass",
+    text,
+    flags=re.M,
+)
+path.write_text(text)
+PY
+
+python3 - "$src/startkde/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.write_text("""add_subdirectory(plasmaautostart)
+add_subdirectory(plasma-shutdown)
+""")
+PY
+
+python3 - "$src/kcms/krdb/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    "target_link_libraries(krdb PRIVATE Qt::Widgets Qt::DBus KF6::CoreAddons KF6::DBusAddons KF6::GuiAddons KF6::I18n KF6::WindowSystem KF6::ConfigWidgets X11::X11 Qt::GuiPrivate)",
+    "target_link_libraries(krdb PRIVATE Qt::Widgets Qt::DBus KF6::CoreAddons KF6::DBusAddons KF6::GuiAddons KF6::I18n KF6::WindowSystem KF6::ConfigWidgets)\nif(HAVE_X11)\n    target_link_libraries(krdb PRIVATE X11::X11 Qt::GuiPrivate)\nendif()",
+)
+path.write_text(text)
+PY
+
+python3 - "$src/kcms/colors/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("if(HAVE_X11)\n    target_link_libraries(kcm_colors PRIVATE X11::X11 Qt::GuiPrivate)\nendif()\n", "")
+text = text.replace("    Qt::GuiPrivate\n", "")
+text = text.replace("    X11::X11\n", "")
+path.write_text(text)
+PY
+
+python3 - "$src/kcms/lookandfeel/kcm.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("#include <private/qtx11extras_p.h>\n", "#if defined(HAVE_X11) && HAVE_X11\n#include <private/qtx11extras_p.h>\n#endif\n")
+text = text.replace("#include <X11/Xlib.h>\n", "#if defined(HAVE_X11) && HAVE_X11\n#include <X11/Xlib.h>\n#endif\n")
+path.write_text(text)
+PY
+
+python3 - "$src/components/sessionsprivate/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "xios fallback ScreenSaver DBus interface" not in text:
+    text = text.replace(
+        "set(sessionsprivateplugin_SRCS\n",
+        "if(NOT SCREENSAVER_DBUS_INTERFACE)\n"
+        "    # xios fallback ScreenSaver DBus interface until kscreenlocker is ported.\n"
+        "    set(SCREENSAVER_DBUS_INTERFACE \"${plasma-workspace_SOURCE_DIR}/iosc-dbus-interfaces/kf6_org.freedesktop.ScreenSaver.xml\")\n"
+        "endif()\n\n"
+        "set(sessionsprivateplugin_SRCS\n",
+    )
+path.write_text(text)
+PY
+
+python3 - "$src/logout-greeter/CMakeLists.txt" "$src/logout-greeter/shutdowndlg.cpp" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+cmake = Path(sys.argv[1])
+text = cmake.read_text()
+text = text.replace("    X11::X11\n", "")
+if "target_link_libraries(ksmserver-logout-greeter Qt::GuiPrivate)" in text:
+    text = text.replace("target_link_libraries(ksmserver-logout-greeter Qt::GuiPrivate)", "if(HAVE_X11)\n    target_link_libraries(ksmserver-logout-greeter X11::X11 Qt::GuiPrivate)\nendif()")
+cmake.write_text(text)
+
+source = Path(sys.argv[2])
+text = source.read_text()
+text = text.replace("\n#include <config-workspace.h>\n", "\n")
+text = text.replace('#include "shutdowndlg.h"\n', '#include "shutdowndlg.h"\n#include <config-workspace.h>\n')
+for header in ["#include <private/qtx11extras_p.h>\n", "#include <KX11Extras>\n", "#include <netwm.h>\n"]:
+    text = text.replace(header, f"#if defined(HAVE_X11) && HAVE_X11\n{header}#endif\n")
+text = text.replace("#include <X11/Xatom.h>\n#include <X11/Xutil.h>\n#include <fixx11h.h>\n", "#if defined(HAVE_X11) && HAVE_X11\n#include <X11/Xatom.h>\n#include <X11/Xutil.h>\n#include <fixx11h.h>\n#endif\n")
+for header in ["#include <private/qtx11extras_p.h>\n", "#include <KX11Extras>\n", "#include <netwm.h>\n"]:
+    text = re.sub(
+        rf"(?:#if defined\(HAVE_X11\) && HAVE_X11\n)+{re.escape(header)}(?:#endif\n)+",
+        f"#if defined(HAVE_X11) && HAVE_X11\n{header}#endif\n",
+        text,
+    )
+text = re.sub(
+    r"(?:#if defined\(HAVE_X11\) && HAVE_X11\n)+#include <X11/Xatom\.h>\n#include <X11/Xutil\.h>\n#include <fixx11h\.h>\n(?:#endif\n)+",
+    "#if defined(HAVE_X11) && HAVE_X11\n#include <X11/Xatom.h>\n#include <X11/Xutil.h>\n#include <fixx11h.h>\n#endif\n",
+    text,
+)
+old = """    if (KWindowSystem::isPlatformX11()) {
+        XChangeProperty(QX11Info::display(),
+                        winId(),
+                        XInternAtom(QX11Info::display(), "WM_WINDOW_ROLE", False),
+                        XA_STRING,
+                        8,
+                        PropModeReplace,
+                        (unsigned char *)"logoutdialog",
+                        strlen("logoutdialog"));
+
+        XClassHint classHint;
+        classHint.res_name = const_cast<char *>("ksmserver-logout-greeter");
+        classHint.res_class = const_cast<char *>("ksmserver-logout-greeter");
+        XSetClassHint(QX11Info::display(), winId(), &classHint);
+        KX11Extras::setState(winId(), NET::SkipTaskbar | NET::SkipPager | NET::SkipSwitcher);
+    }
+"""
+new = """#if defined(HAVE_X11) && HAVE_X11
+    if (KWindowSystem::isPlatformX11()) {
+        XChangeProperty(QX11Info::display(),
+                        winId(),
+                        XInternAtom(QX11Info::display(), "WM_WINDOW_ROLE", False),
+                        XA_STRING,
+                        8,
+                        PropModeReplace,
+                        (unsigned char *)"logoutdialog",
+                        strlen("logoutdialog"));
+
+        XClassHint classHint;
+        classHint.res_name = const_cast<char *>("ksmserver-logout-greeter");
+        classHint.res_class = const_cast<char *>("ksmserver-logout-greeter");
+        XSetClassHint(QX11Info::display(), winId(), &classHint);
+        KX11Extras::setState(winId(), NET::SkipTaskbar | NET::SkipPager | NET::SkipSwitcher);
+    }
+#endif
+"""
+if old in text:
+    text = text.replace(old, new)
+elif "KX11Extras::setState(winId(), NET::SkipTaskbar | NET::SkipPager | NET::SkipSwitcher);" not in text:
+    raise SystemExit("logout greeter X11 window metadata block not found")
+old = """    if (KX11Extras::compositingActive()) {
+        // TODO: reenable window mask when we are without composite?
+        //        clearMask();
+    } else {
+        //        setMask(m_view->mask());
+    }
+"""
+new = """#if defined(HAVE_X11) && HAVE_X11
+    if (KX11Extras::compositingActive()) {
+        // TODO: reenable window mask when we are without composite?
+        //        clearMask();
+    } else {
+        //        setMask(m_view->mask());
+    }
+#endif
+"""
+if old in text:
+    text = text.replace(old, new)
+elif "KX11Extras::compositingActive()" not in text:
+    raise SystemExit("logout greeter compositing block not found")
+source.write_text(text)
 PY
 
 for layout in \
@@ -229,6 +439,27 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
+moc_marker = "# iOS cross-build: qdbusxml2cpp sources include generated moc files"
+if moc_marker not in text:
+    needle = "qt_add_dbus_interface(plasma_shell_SRCS ${krunner_xml} krunner_interface)\n\n\n"
+    if needle not in text:
+        raise SystemExit("plasmashell DBus interface marker not found")
+    text = text.replace(
+        needle,
+        needle
+        + f"""{moc_marker}; make the dependency explicit so Ninja does not race
+# the qdbusxml2cpp compile before moc generation.
+set_source_files_properties(
+    ${{CMAKE_CURRENT_BINARY_DIR}}/plasmashelladaptor.cpp
+    PROPERTIES OBJECT_DEPENDS ${{CMAKE_CURRENT_BINARY_DIR}}/moc_plasmashelladaptor.cpp
+)
+set_source_files_properties(
+    ${{CMAKE_CURRENT_BINARY_DIR}}/krunner_interface.cpp
+    PROPERTIES OBJECT_DEPENDS ${{CMAKE_CURRENT_BINARY_DIR}}/moc_krunner_interface.cpp
+)
+
+""",
+    )
 marker = "# iOS first-light QML import shims"
 if marker not in text:
     needle = "install( FILES dbus/org.kde.PlasmaShell.xml DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR} )\n"
@@ -421,6 +652,12 @@ cat > "$src/iosc-dbus-interfaces/kf6_org.freedesktop.ScreenSaver.xml" <<'XML'
 <node>
   <interface name="org.freedesktop.ScreenSaver">
     <method name="Lock"/>
+    <method name="GetActive">
+      <arg name="active" type="b" direction="out"/>
+    </method>
+    <signal name="ActiveChanged">
+      <arg name="active" type="b"/>
+    </signal>
   </interface>
 </node>
 XML
@@ -446,6 +683,174 @@ end = text.index("\nWaylandOutputOrderWatcher::WaylandOutputOrderWatcher")
 x11_impl = text[start:end]
 if "#if defined(HAVE_X11) && HAVE_X11" not in x11_impl:
     text = text[:start] + "\n#if defined(HAVE_X11) && HAVE_X11" + x11_impl + "#endif\n" + text[end:]
+path.write_text(text)
+PY
+
+python3 - "$src/libkworkspace/sessionmanagementbackend.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    "#include <QMutex>\n#include <QMutexLocker>\n",
+    "#include <QMutex>\n#include <QMutexLocker>\n#include <QFileInfo>\n#include <QProcess>\n#include <QStandardPaths>\n#include <QStringList>\n",
+)
+marker = "static SessionBackend *s_backend = nullptr;\n\n"
+shim = r'''
+#if defined(__APPLE__)
+static QString xiosSessionBinary()
+{
+    const QStringList candidates = {
+        QStringLiteral("/var/jb/usr/local/bin/xios-session"),
+        QStringLiteral("/var/jb/usr/bin/xios-session"),
+        QStringLiteral("/usr/local/bin/xios-session"),
+        QStringLiteral("/usr/bin/xios-session"),
+        QStandardPaths::findExecutable(QStringLiteral("xios-session")),
+    };
+    for (const QString &candidate : candidates) {
+        if (!candidate.isEmpty() && QFileInfo(candidate).isExecutable()) {
+            return candidate;
+        }
+    }
+    return QString();
+}
+
+static void runXiosSession(const QStringList &arguments)
+{
+    const QString program = xiosSessionBinary();
+    if (program.isEmpty()) {
+        qWarning() << "xios-session is not installed; cannot perform session action" << arguments;
+        return;
+    }
+    if (!QProcess::startDetached(program, arguments)) {
+        qWarning() << "failed to start xios-session" << arguments;
+    }
+}
+
+class XiosSessionBackend final : public SessionBackend
+{
+public:
+    static bool exists()
+    {
+        return true;
+    }
+
+    SessionManagement::State state() const override
+    {
+        return SessionManagement::State::Ready;
+    }
+
+    void shutdown() override
+    {
+        runXiosSession({QStringLiteral("stop")});
+    }
+    void reboot() override
+    {
+        runXiosSession({QStringLiteral("stop")});
+    }
+    void suspend() override
+    {
+    }
+    void hybridSuspend() override
+    {
+    }
+    void hibernate() override
+    {
+    }
+    void suspendThenHibernate() override
+    {
+    }
+
+    bool canShutdown() const override
+    {
+        return false;
+    }
+    bool canReboot() const override
+    {
+        return false;
+    }
+    bool canSuspend() const override
+    {
+        return false;
+    }
+    bool canHybridSuspend() const override
+    {
+        return false;
+    }
+    bool canHibernate() const override
+    {
+        return false;
+    }
+    bool canSuspendThenHibernate() const override
+    {
+        return false;
+    }
+};
+#endif
+
+'''
+if shim.strip() not in text:
+    if marker not in text:
+        raise SystemExit("session backend singleton marker not found")
+    text = text.replace(marker, marker + shim)
+old = """    if (qEnvironmentVariableIntValue("PLASMA_SESSION_GUI_TEST")) {
+        s_backend = new TestSessionBackend();
+    } else if (LogindSessionBackend::exists()) {
+        s_backend = new LogindSessionBackend();
+    } else {
+        s_backend = new DummySessionBackend();
+    }
+"""
+new = """    if (qEnvironmentVariableIntValue("PLASMA_SESSION_GUI_TEST")) {
+        s_backend = new TestSessionBackend();
+    } else if (LogindSessionBackend::exists()) {
+        s_backend = new LogindSessionBackend();
+#if defined(__APPLE__)
+    } else if (XiosSessionBackend::exists()) {
+        s_backend = new XiosSessionBackend();
+#endif
+    } else {
+        s_backend = new DummySessionBackend();
+    }
+"""
+if old in text:
+    text = text.replace(old, new)
+elif "XiosSessionBackend::exists()" not in text:
+    raise SystemExit("SessionBackend::self selection block not found")
+path.write_text(text)
+PY
+
+python3 - "$src/startkde/plasma-shutdown/shutdown.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = """    if (m_shutdownType == KWorkSpace::ShutdownTypeHalt) {
+        SessionBackend::self()->shutdown();
+    } else if (m_shutdownType == KWorkSpace::ShutdownTypeReboot) {
+        SessionBackend::self()->reboot();
+    } else { // logout
+        qApp->quit();
+    }
+"""
+new = """    if (m_shutdownType == KWorkSpace::ShutdownTypeHalt) {
+        SessionBackend::self()->shutdown();
+    } else if (m_shutdownType == KWorkSpace::ShutdownTypeReboot) {
+        SessionBackend::self()->reboot();
+    } else { // logout
+#if defined(__APPLE__)
+        SessionBackend::self()->shutdown();
+#else
+        qApp->quit();
+#endif
+    }
+"""
+if old in text:
+    text = text.replace(old, new)
+elif "SessionBackend::self()->shutdown();" not in text:
+    raise SystemExit("plasma-shutdown logoutComplete block not found")
 path.write_text(text)
 PY
 
@@ -781,4 +1186,13 @@ text = text.replace("""void ShellCorona::clearPreviousWindow()
 path.write_text(text)
 PY
 
-sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' "$src/CMakeLists.txt"
+python3 - "$src/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = re.sub(r"^([ \t]*)ecm_install_po_files_as_qm\(", r"\1# ios-bringup-no-linguist: ecm_install_po_files_as_qm(", text, flags=re.M)
+path.write_text(text)
+PY

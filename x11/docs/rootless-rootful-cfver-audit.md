@@ -9,30 +9,30 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1788
-- Files with hits: 314
+- Total hits: 1865
+- Files with hits: 322
 
 ### By Category
 
-- `app-runtime`: 42 hits across 22 files
-- `build-target`: 189 hits across 50 files
-- `docs`: 502 hits across 54 files
+- `app-runtime`: 44 hits across 23 files
+- `build-target`: 190 hits across 50 files
+- `docs`: 520 hits across 54 files
 - `entitlements`: 45 hits across 17 files
-- `linker-path`: 220 hits across 57 files
+- `linker-path`: 244 hits across 62 files
 - `other`: 53 hits across 7 files
-- `package-payload`: 168 hits across 42 files
-- `recipe`: 21 hits across 13 files
-- `runtime-path`: 232 hits across 75 files
-- `script-or-source`: 309 hits across 79 files
+- `package-payload`: 173 hits across 43 files
+- `recipe`: 26 hits across 15 files
+- `runtime-path`: 234 hits across 75 files
+- `script-or-source`: 329 hits across 81 files
 - `site-copy`: 2 hits across 2 files
 - `target-infra`: 5 hits across 1 files
 
 ### By Literal
 
-- `/var/jb`: 1613
+- `/var/jb`: 1689
 - `MEMO_CFVER=1900`: 36
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 36
-- `iphoneos-arm64-rootless`: 103
+- `iphoneos-arm64-rootless`: 104
 
 ## Category Guidance
 
@@ -67,10 +67,10 @@ classified as rootless-only.
 - `apps/Xios/Sources/XScreen.swift:37` `/var/jb`: return "/var/jb"
 - `apps/Xios/Sources/XScreen.swift:59` `/var/jb`: paths.append("/var/jb/tmp/" + name)
 - `apps/Xios/Sources/XScreen.swift:356` `/var/jb`: ["/tmp/.X11-unix", XiosRuntimePaths.tmp(".X11-unix"), "/var/jb/tmp/.X11-unix", "/var/tmp/.X11-unix"]
-- `apps/Xios/Sources/XScreen.swift:949` `/var/jb`: // iosc ddx socket (the compositor's rendezvous is /var/jb/tmp/iosc-ddx.sock).
-- `apps/Xios/Sources/XScreen.swift:1870` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
+- `apps/Xios/Sources/XScreen.swift:958` `/var/jb`: // iosc ddx socket (the compositor's rendezvous is /var/jb/tmp/iosc-ddx.sock).
+- `apps/Xios/Sources/XScreen.swift:1902` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
 - `apps/Xios/Sources/XiosCameraBroker.swift:9` `/var/jb`: private let xiosMediaVideoSocket = "/var/jb/tmp/xios-media-video.sock"
-- ... 22 more
+- ... 24 more
 
 ### build-target
 
@@ -94,7 +94,7 @@ classified as rootless-only.
 - `linux-build/build-eds.sh:60` `MEMO_CFVER=1900`: COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 - `linux-build/build-qt.sh:26` `iphoneos-arm64-rootless`: BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
 - `linux-build/build-qt.sh:26` `/var/jb`: BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
-- ... 169 more
+- ... 170 more
 
 ### docs
 
@@ -110,15 +110,15 @@ classified as rootless-only.
 - `SCOPE.md:223` `MEMO_TARGET=iphoneos-arm64-rootless`: - `MEMO_TARGET=iphoneos-arm64-rootless` (plain `iphoneos-arm64` is rootful `/` and would not
 - `SCOPE.md:224` `/var/jb`: install on a `/var/jb` device); `MEMO_CFVER=1900`; `NO_PGP=1` for flaky tarball GPG.
 - `SCOPE.md:224` `MEMO_CFVER=1900`: install on a `/var/jb` device); `MEMO_CFVER=1900`; `NO_PGP=1` for flaky tarball GPG.
-- `SCOPE.md:266` `/var/jb`: built; `postinst` makes `/var/jb/var/lib/xkb`) rather than a loose binary; same for `Xios`.
-- `SCOPE.md:274` `/var/jb`: `/var/jb/tmp/Xvnc.fixed` + `/var/sh` symlink; update to the packaged Xvnc/Xvfb paths.
-- `SCOPE.md:290` `/var/jb`: \| Jailbreak \| palera1n rootless → `/var/jb` \|
-- `SCOPE.md:305` `/var/jb`: - **Rootless (palera1n/Dopamine, modern)**: `/var/jb` prefix, Procursus, `iphoneos-arm64`.
+- `SCOPE.md:275` `/var/jb`: `/var/jb/usr/bin/Xvnc`, prepares `/var/jb/var/lib/xkb`, and documents that no
+- `SCOPE.md:275` `/var/jb`: `/var/jb/usr/bin/Xvnc`, prepares `/var/jb/var/lib/xkb`, and documents that no
+- `SCOPE.md:276` `/var/jb`: `/var/jb/tmp/Xvnc.fixed` or `/var/sh` hack is needed.
+- `SCOPE.md:292` `/var/jb`: \| Jailbreak \| palera1n rootless → `/var/jb` \|
+- `SCOPE.md:307` `/var/jb`: - **Rootless (palera1n/Dopamine, modern)**: `/var/jb` prefix, Procursus, `iphoneos-arm64`.
 - `README.md:5` `/var/jb`: rootless iOS (`/var/jb`) and drawn on the A10 GPU through Metal.
 - `AGENTS.md:25` `/var/jb`: - The target install prefix is rootless `/var/jb`; packages and scripts should not assume rootful `/`.
 - `AGENTS.md:27` `/var/jb`: - Geometry is not globally constant. Read compositor/app-reported dimensions such as `/var/jb/tmp/xios.json` instead of hardcoding framebuffer sizes.
-- `docs/native-ipados-plan.md:116` `/var/jb`: (`/var/jb/tmp/iosc-native.sock`) with a message protocol; the old socket and
-- ... 482 more
+- ... 500 more
 
 ### entitlements
 
@@ -165,8 +165,8 @@ classified as rootless-only.
 - `linux-build/build-qt-wayland-gl-smoke.sh:70` `/var/jb`: -Wl,-rpath,/var/jb/lib/angle
 - `linux-build/build-qt-wayland-gl-smoke.sh:93` `/var/jb`: "$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.2.dylib /var/jb/lib/angle/libGLESv2.dylib \
 - `linux-build/build-qt-wayland-gl-smoke.sh:95` `/var/jb`: "$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.dylib /var/jb/lib/angle/libGLESv2.dylib \
-- `linux-build/build-fff-ios.sh:48` `/var/jb`: INSTALL_PATH="${FFF_INSTALL_PATH:-/var/jb/usr/libexec/opencode-js/libfff_c.dylib}"
-- ... 200 more
+- `linux-build/check-plasma-qml-stubs.sh:23` `/var/jb`: make_dir "$TMP/libplasma/var/jb/usr/lib/qt6/qml/org/kde/plasma/components"
+- ... 224 more
 
 ### other
 
@@ -206,39 +206,37 @@ classified as rootless-only.
 - `packages/ladybird-app/DEBIAN/control:19` `/var/jb`: Built for iPadOS/iOS rootless (palera1n/Dopamine), /var/jb, ad-hoc + DER signed. The
 - `packages/ladybird-app/DEBIAN/control:22` `/var/jb`: /var/jb.
 - `packages/ladybird-app/Sources/IOSApplication.mm:9` `/var/jb`: *     /var/jb/Applications/Ladybird.app/WebContent — the helper we ship in the bundle root.
+- `packages/ladybird-app/Sources/IOSApplication.mm:137` `/var/jb`: // Use /var/jb/tmp/ladybird as the writable root: the app has the /var/jb read-write
+- `packages/ladybird-app/Sources/IOSApplication.mm:137` `/var/jb`: // Use /var/jb/tmp/ladybird as the writable root: the app has the /var/jb read-write
+- `packages/ladybird-app/Sources/IOSApplication.mm:142` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
+- `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log. Remove (or gate) once the app is validated.
+- `packages/ladybird-app/Sources/LBTrace.h:11` `/var/jb`: FILE* f = fopen("/var/jb/tmp/ladybird-boot.log", "a");
 - `packages/xios-desktop-defaults/DEBIAN/postinst:7` `/var/jb`: PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 - `packages/xios-desktop-defaults/DEBIAN/postinst:7` `/var/jb`: PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 - `packages/xios-desktop-defaults/DEBIAN/postinst:7` `/var/jb`: PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-- `packages/xios-desktop-defaults/DEBIAN/postinst:7` `/var/jb`: PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-- `packages/xios-desktop-defaults/DEBIAN/postinst:11` `/var/jb`: /var/jb/etc/X11/Xresources \
-- `packages/xios-desktop-defaults/DEBIAN/postinst:12` `/var/jb`: /var/jb/etc/xdg/gtk-3.0 \
-- `packages/xios-desktop-defaults/DEBIAN/postinst:13` `/var/jb`: /var/jb/etc/xdg/gtk-4.0 \
-- `packages/xios-desktop-defaults/DEBIAN/postinst:14` `/var/jb`: /var/jb/var/lib/dbus \
-- ... 148 more
+- ... 153 more
 
 ### recipe
 
 - `linux-build/build_info/pulseaudio.control:19` `/var/jb`: /var/jb/etc/profile.d/xios-pulse.sh session snippet (PULSE_SERVER export and
 - `linux-build/build_info/mpv-iosc:1` `/var/jb`: #!/var/jb/usr/bin/bash
 - `linux-build/build_info/mpv-iosc:20` `/var/jb`: exec /var/jb/usr/bin/mpv \
-- `linux-build/build_info/opencode.control:14` `/var/jb`: rootless wrapper at /var/jb/usr/bin/opencode.
+- `linux-build/build_info/opencode.control:15` `/var/jb`: a rootless wrapper at /var/jb/usr/bin/opencode.
 - `linux-build/recipes/qtbase.mk:47` `/var/jb`: # Staged sysroot prefix (build_base/.../var/jb/usr) — round-2 cache seeds + FindATSPI2 synth
 - `linux-build/recipes/qtbase.mk:189` `/var/jb`: #     cp -a tmp/var/jb/usr/* $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/; done
 - `linux-build/recipes/evolution-data-server.mk:30` `/var/jb`: #  - find_program resolves into the iOS sysroot (build_base/.../var/jb/usr/bin) ahead of the
 - `linux-build/recipes/evolution-data-server.mk:45` `/var/jb`: #    /var/jb; the desktop's model is one on-device glib-compile-schemas pass post-install.
 - `linux-build/recipes/evolution-data-server.mk:175` `/var/jb`: # prefix (copying $(MEMO_PREFIX) itself would drop the leading var/ from /var/jb).
-- `linux-build/recipes/gnome-shell-ios-fixes.sh:29` `/var/jb`: GJS="${2:-/var/jb/usr/bin/gjs}"
+- `linux-build/recipes/plasma-pa-ios-qml-stubs.sh:15` `/var/jb`: volume_ui="$root/var/jb/usr/share/plasma/plasmoids/org.kde.plasma.volume/contents/ui"
+- `ports/gnome-shell/patches/0001-ios-source-port.patch:11` `/var/jb`: serviceconf.set('gjs', '/var/jb/usr/bin/gjs')
+- `linux-build/recipes/plasma-workspace-ios-package-fixes.sh:23` `/var/jb`: desktopsArray[j].writeConfig('Image', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');
+- `linux-build/recipes/plasma-workspace-ios-package-fixes.sh:24` `/var/jb`: desktopsArray[j].writeConfig('PreviewImage', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');
 - `linux-build/recipes/gnome-session.mk:82` `/var/jb`: # (copying $(MEMO_PREFIX) itself would drop the leading var/ from /var/jb).
 - `linux-build/recipes/startup-notification.mk:37` `/var/jb`: # `var/` from /var/jb -> installs to /jb).
 - `linux-build/recipes/gnome-shell.mk:94` `/var/jb`: # $(MEMO_PREFIX) itself would drop the leading `var/` from /var/jb -> installs to /jb).
 - `linux-build/recipes/xwayland-ios-fixes.sh:5` `/var/jb`: #   (A) rootless popen: /bin/sh -> /var/jb/bin/sh in os/utils.c (rootless has no
 - `linux-build/recipes/xwayland-ios-fixes.sh:39` `/var/jb`: 'execl("/var/jb/bin/sh", "sh", "-c", command, (char *) NULL);'))
-- `linux-build/recipes/dunst.mk:58` `/var/jb`: #    (cross-pkg-config's --variable=pkgdatadir returns the logical /var/jb path, but the native
-- `linux-build/recipes/pulseaudio.mk:148` `/var/jb`: # $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc = /var/jb/usr/etc, so PA only reads
-- `linux-build/recipes/pulseaudio.mk:149` `/var/jb`: # daemon.conf/default.pa/client.conf from /var/jb/usr/etc/pulse. Shipping
-- `linux-build/recipes/pulseaudio.mk:150` `/var/jb`: # them to $(MEMO_PREFIX)/etc/pulse = /var/jb/etc/pulse (as this did before)
-- `linux-build/recipes/pulseaudio.mk:153` `/var/jb`: # shell concern, not PA's, so xios-pulse.sh stays at /var/jb/etc/profile.d.
-- ... 1 more
+- ... 6 more
 
 ### runtime-path
 
@@ -258,11 +256,11 @@ classified as rootless-only.
 - `linux-build/gir-build-lib-ondevice.sh:24` `/var/jb`: [ -f "/var/jb/tmp/$BASE.tar" ] \|\| { echo "!! /var/jb/tmp/$BASE.tar not found"; exit 2; }
 - `linux-build/gir-build-lib-ondevice.sh:26` `/var/jb`: tar xf "/var/jb/tmp/$BASE.tar"
 - `linux-build/build-qt-modules.sh:140` `/var/jb`: cp -a /tmp/angle-qt/var/jb/* "$BB"/
-- `linux-build/build-opencode.sh:122` `/var/jb`: export TMPDIR="${TMPDIR:-/var/jb/tmp}"
-- `linux-build/build-opencode.sh:148` `/var/jb`: scp "${SSH_OPTS[@]}" "$OUT/$PKG" "$DEVICE:/var/jb/tmp/"
-- `linux-build/build-opencode.sh:151` `/var/jb`: dpkg -i /var/jb/tmp/$PKG
-- `linux-build/build-opencode.sh:152` `/var/jb`: TMPDIR=/var/jb/tmp TMP=/var/jb/tmp TEMP=/var/jb/tmp /var/jb/usr/bin/opencode --version
-- ... 212 more
+- `linux-build/build-opencode.sh:124` `/var/jb`: export TMPDIR="${TMPDIR:-/var/jb/tmp}"
+- `linux-build/build-opencode.sh:150` `/var/jb`: scp "${SSH_OPTS[@]}" "$OUT/$PKG" "$DEVICE:/var/jb/tmp/"
+- `linux-build/build-opencode.sh:153` `/var/jb`: dpkg -i /var/jb/tmp/$PKG
+- `linux-build/build-opencode.sh:154` `/var/jb`: TMPDIR=/var/jb/tmp TMP=/var/jb/tmp TEMP=/var/jb/tmp /var/jb/usr/bin/opencode --version
+- ... 214 more
 
 ### script-or-source
 
@@ -286,7 +284,7 @@ classified as rootless-only.
 - `linux-build/build-qt-wayland-gl-smoke.sh:123` `/var/jb`: if [ "$1" = configure ] && [ -x /var/jb/usr/bin/ldid ]; then
 - `linux-build/build-qt-wayland-gl-smoke.sh:124` `/var/jb`: /var/jb/usr/bin/ldid \
 - `linux-build/build-qt-wayland-gl-smoke.sh:125` `/var/jb`: -S/var/jb/usr/share/qt-wayland-gl-smoke/qt-wayland-gl-smoke-ent.xml \
-- ... 289 more
+- ... 309 more
 
 ### site-copy
 
@@ -300,4 +298,3 @@ classified as rootless-only.
 - `linux-build/targets/rootless-1900.env:10` `/var/jb`: package_path_prefix=/var/jb
 - `linux-build/targets/rootless-1900.env:11` `/var/jb`: runtime_tmp=/var/jb/tmp
 - `linux-build/targets/rootless-1900.env:12` `/var/jb`: runtime_var=/var/jb/var
-
