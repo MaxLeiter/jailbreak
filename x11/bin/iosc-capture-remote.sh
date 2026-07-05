@@ -9,7 +9,7 @@
 #   iosc-capture-remote.sh hitori  hitori
 #   iosc-capture-remote.sh zathura zathura /var/jb/tmp/doc.pdf
 #   iosc-capture-remote.sh mpv     mpv-iosc /var/jb/tmp/clip.mp4
-#   iosc-capture-remote.sh foot    foot --log-level=debug
+#   iosc-capture-remote.sh foot    foot --log-level=info
 #
 # Device target comes from the shared deploy env (device.env: THEOS_DEVICE_IP/PORT,
 # default root@MaxsiPad.local:22, key ~/.ssh/id_ed25519).
@@ -38,9 +38,16 @@ fi
 
 # Quote each arg for the remote bash that runs the helper.
 remote_args="$(printf ' %q' "$name" "$@")"
+remote_env=()
+for var in IOSC_CAP_WAIT IOSC_CAP_OUT WAYLAND_DISPLAY XDG_RUNTIME_DIR; do
+    if [ "${!var+x}" = x ]; then
+        remote_env+=("$var=${!var}")
+    fi
+done
+remote_env_args="$(printf ' %q' "${remote_env[@]}")"
 echo "==> run on device: iosc-capture.sh $name $*"
 rc=0
-ssh_ "bash $REMOTE_SH$remote_args" || rc=$?
+ssh_ "env$remote_env_args bash $REMOTE_SH$remote_args" || rc=$?
 
 echo "==> pull artifacts to $LOCAL"
 scp_ "root@$IP:/var/jb/tmp/cap-$name.png" "$LOCAL/" 2>/dev/null \

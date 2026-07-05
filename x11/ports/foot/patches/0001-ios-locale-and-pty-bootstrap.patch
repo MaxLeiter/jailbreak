@@ -1,0 +1,114 @@
+Subject: [PATCH] ios: bootstrap locale, pty master setup, and renderer
+
+iOS accepts LC_CTYPE=UTF-8 through setlocale(LC_CTYPE, ""), but it does
+not provide the Linux-style C.UTF-8/en_US.UTF-8 locale names that foot
+uses as fallbacks. Teach the fallback path to recover by exporting the
+Darwin UTF-8 LC_CTYPE value.
+
+The iOS posix_openpt master also rejects TIOCSWINSZ until its slave has
+been opened at least once. Open and close the slave immediately after
+grantpt/unlockpt so foot's existing master-side TIOCSWINSZ path works
+before the real child process is spawned.
+
+iOS also exposes sem_init() but returns ENOSYS for unnamed semaphores at
+runtime. Force foot's existing zero-worker render path on Apple targets
+and avoid initializing/destroying render-worker semaphores when no worker
+threads are used.
+
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -492,0 +493,25 @@ main(int argc, char *const *argv)
++#if defined(__APPLE__)
++        if (bad_locale) {
++            setenv("LC_CTYPE", "UTF-8", 1);
++            if (setlocale(LC_CTYPE, "") != NULL && locale_is_utf8()) {
++                if (saved_locale != NULL) {
++                    LOG_WARN(
++                        "'%s' is not a UTF-8 locale, falling back to LC_CTYPE=UTF-8",
++                        saved_locale);
++
++                    user_notification_add_fmt(
++                        &user_notifications, USER_NOTIFICATION_WARNING,
++                        "'%s' is not a UTF-8 locale, falling back to LC_CTYPE=UTF-8",
++                        saved_locale);
++                } else {
++                    LOG_WARN("invalid locale, falling back to LC_CTYPE=UTF-8");
++                    user_notification_add_fmt(
++                        &user_notifications, USER_NOTIFICATION_WARNING,
++                        "invalid locale, falling back to LC_CTYPE=UTF-8");
++                }
++
++                bad_locale = false;
++            }
++        }
++#endif
++
+diff --git a/terminal.c b/terminal.c
+--- a/terminal.c
++++ b/terminal.c
+@@ -5,0 +6,2 @@
++#include <stdint.h>
++#include <stdlib.h>
+@@ -710,0 +713,5 @@ initialize_render_workers(struct terminal *term)
++#if defined(__APPLE__)
++    if (term->render.workers.count == 0)
++        return true;
++#endif
++
+@@ -1170,0 +1178,29 @@ static const int PTY_OPEN_FLAGS = O_RDWR | O_NOCTTY;
++#if defined(__APPLE__)
++static bool
++iosc_prime_pty_slave(int ptmx)
++{
++    if (grantpt(ptmx) < 0) {
++        LOG_ERRNO("failed to grantpt()");
++        return false;
++    }
++    if (unlockpt(ptmx) < 0) {
++        LOG_ERRNO("failed to unlockpt()");
++        return false;
++    }
++
++    const char *pts_name = ptsname(ptmx);
++    if (pts_name == NULL) {
++        LOG_ERRNO("failed to ptsname()");
++        return false;
++    }
++
++    int pts = open(pts_name, O_RDWR | O_NOCTTY);
++    if (pts < 0) {
++        LOG_ERRNO("failed to open pseudo terminal slave device");
++        return false;
++    }
++    close(pts);
++    return true;
++}
++#endif
++
+@@ -1232,0 +1269,5 @@ term_init(const struct config *conf, struct fdm *fdm, struct reaper *reaper,
++#if defined(__APPLE__)
++    if (!pty_path && !iosc_prime_pty_slave(ptmx))
++        goto close_fds;
++#endif
++
+@@ -1282,0 +1324,6 @@ term_init(const struct config *conf, struct fdm *fdm, struct reaper *reaper,
++#if defined(__APPLE__)
++    const uint16_t render_worker_count = 0;
++#else
++    const uint16_t render_worker_count = conf->render_worker_count;
++#endif
++
+@@ -1366 +1413 @@ term_init(const struct config *conf, struct fdm *fdm, struct reaper *reaper,
+-                .grid = shm_chain_new(wayl, true, 1 + conf->render_worker_count,
++                .grid = shm_chain_new(wayl, true, 1 + render_worker_count,
+@@ -1387 +1434 @@ term_init(const struct config *conf, struct fdm *fdm, struct reaper *reaper,
+-                .count = conf->render_worker_count,
++                .count = render_worker_count,
+@@ -1907,2 +1954,4 @@ term_destroy(struct terminal *term)
+-    sem_destroy(&term->render.workers.start);
+-    sem_destroy(&term->render.workers.done);
++    if (term->render.workers.count > 0) {
++        sem_destroy(&term->render.workers.start);
++        sem_destroy(&term->render.workers.done);
++    }

@@ -228,6 +228,9 @@ done
 if [ "${FORCE_MPV_REBUILD:-1}" = "1" ]; then
   rm -f build_work/iphoneos-arm64-rootless/1900/mpv/.build_complete 2>/dev/null || true
 fi
+if [ "${FORCE_FOOT_REBUILD:-0}" = "1" ]; then
+  rm -f build_work/iphoneos-arm64-rootless/1900/foot/.build_complete 2>/dev/null || true
+fi
 # ffmpeg was built with videotoolbox/audiotoolbox OFF; the recipe now enables them (unblocked by
 # the os/object.h backport above). Drop its marker so configure re-runs with the Apple frameworks.
 if [ "${FORCE_FFMPEG_REBUILD:-0}" = "1" ]; then

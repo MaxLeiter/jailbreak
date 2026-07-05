@@ -416,6 +416,7 @@ static void sd_launch(const char *exec)
     setenv("GSK_RENDERER", "ngl", 1);
     setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
     setenv("GSETTINGS_BACKEND", "memory", 1);
+    setenv("LC_CTYPE", "UTF-8", 0);
     int enable_a11y = sd_env_truthy("XIOS_ENABLE_A11Y") || access("/var/jb/tmp/xios-a11y-force", F_OK) == 0;
     if (enable_a11y) unsetenv("GTK_A11Y");
     else setenv("GTK_A11Y", "none", 1);

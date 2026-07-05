@@ -20,7 +20,7 @@ endif
 
 SUBPROJECTS  += foot
 FOOT_VERSION := 1.27.0
-DEB_FOOT_V   ?= $(FOOT_VERSION)+ios1
+DEB_FOOT_V   ?= $(FOOT_VERSION)+ios3
 
 foot-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/foot/releases/download/$(FOOT_VERSION)/foot-$(FOOT_VERSION).tar.gz)
@@ -39,6 +39,7 @@ foot-setup: setup
 	if ! grep -q 'defined(__APPLE__)' $(BUILD_WORK)/foot/render.c; then \
 		sed -i 's|#elif defined(__NetBSD__)|#elif defined(__APPLE__)\n #define pthread_setname_np(thread, name) pthread_setname_np(name)\n#elif defined(__NetBSD__)|' $(BUILD_WORK)/foot/render.c; \
 	fi
+	$(call DO_PATCH,foot,foot,-p1)
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
 	cpu_family = '$(shell echo $(GNU_HOST_TRIPLE) | cut -d- -f1)'\n \

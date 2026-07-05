@@ -12,7 +12,7 @@
 #   iosc-capture.sh hitori  hitori
 #   iosc-capture.sh zathura zathura /var/jb/tmp/doc.pdf
 #   iosc-capture.sh mpv     mpv-iosc /var/jb/tmp/clip.mp4
-#   iosc-capture.sh foot    foot --log-level=debug
+#   iosc-capture.sh foot    foot --log-level=info
 #
 # Env overrides:
 #   WAYLAND_DISPLAY   (default /var/jb/tmp/wayland-0)
@@ -33,6 +33,7 @@ fi
 
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-/var/jb/tmp/wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/jb/tmp}"
+export LC_CTYPE="${LC_CTYPE:-UTF-8}"
 WAIT="${IOSC_CAP_WAIT:-4}"
 OUT="${IOSC_CAP_OUT:-$XDG_RUNTIME_DIR}"
 PNG="$OUT/cap-$name.png"
@@ -54,7 +55,7 @@ have_grim=1; command -v grim >/dev/null 2>&1 || have_grim=0
 # ---- launch the client -----------------------------------------------------
 say "=== iosc-capture: $name ==="
 say "cmd: $*"
-say "env: WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+say "env: WAYLAND_DISPLAY=$WAYLAND_DISPLAY XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR LANG=${LANG-} LC_CTYPE=$LC_CTYPE"
 : > "$LOG"
 # setsid isn't present on iOS; detach if we have it, otherwise plain background.
 if command -v setsid >/dev/null 2>&1; then

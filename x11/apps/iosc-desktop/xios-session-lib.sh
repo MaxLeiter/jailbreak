@@ -790,6 +790,7 @@ xios_session_app() {
         QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}" \
         ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL" \
         GSETTINGS_BACKEND=memory \
+        LC_CTYPE="${LC_CTYPE:-UTF-8}" \
         "${gtk_a11y_env[@]}" \
         "${dbus_addr[@]}" \
         HOME="$XS_VAR/root" \
