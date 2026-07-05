@@ -20,6 +20,9 @@ Current converted non-Qt stacks:
   unconditional libmagic dependency in favor of GLib content-type guessing.
 - `ports/gnome-text-editor/patches`: replaces unavailable iOS `wordexp()`
   usage with GLib home-directory expansion.
+- `ports/gnome-desktop/patches`: gates GIR source references when
+  `-Dintrospection=false` so libgnome-desktop-4 can build without the
+  introspection variables.
 - `ports/nautilus/patches`: lowers the GLib floor to the stack's 2.78 baseline,
   adds Darwin `xlocale.h`, and rewrites GLib 2.80-only call sites.
 - `ports/gnome-session/patches`: restores the non-systemd session manager path

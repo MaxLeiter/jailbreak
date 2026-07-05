@@ -83,6 +83,9 @@ target_requests appstream && stage_required_patch_stack appstream
 if target_requests tracker || target_requests nautilus; then
   stage_required_patch_stack tracker
 fi
+if target_requests gnome-desktop || target_requests nautilus || target_requests gnome-font-viewer; then
+  stage_required_patch_stack gnome-desktop
+fi
 target_requests gnome-text-editor && stage_required_patch_stack gnome-text-editor
 target_requests nautilus && stage_required_patch_stack nautilus
 
@@ -203,6 +206,20 @@ if target_requests nautilus; then
   fi
 fi
 
+GNOME_DESKTOP_W=build_work/iphoneos-arm64-rootless/1900/gnome-desktop
+GNOME_DESKTOP_S=build_stage/iphoneos-arm64-rootless/1900/gnome-desktop
+GNOME_DESKTOP_F="$GNOME_DESKTOP_W/.xios_patch_series.sha256"
+if target_requests gnome-desktop || target_requests nautilus || target_requests gnome-font-viewer; then
+  GNOME_DESKTOP_FP="$(sha256sum \
+    /work/ports/gnome-desktop/patches/series \
+    /work/ports/gnome-desktop/patches/*.patch | sha256sum | awk '{print $1}')"
+  GNOME_DESKTOP_OLD_FP="$(cat "$GNOME_DESKTOP_F" 2>/dev/null || true)"
+  if [ -d "$GNOME_DESKTOP_W" ] && [ "$GNOME_DESKTOP_FP" != "$GNOME_DESKTOP_OLD_FP" ]; then
+    echo "==> wiping stale gnome-desktop build after patch changes"
+    rm -rf "$GNOME_DESKTOP_W" "$GNOME_DESKTOP_S"
+  fi
+fi
+
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
@@ -212,6 +229,9 @@ if [ -d "$GTE_W" ] && [ -n "${GTE_FP:-}" ]; then
 fi
 if [ -d "$NAU_W" ] && [ -n "${NAU_FP:-}" ]; then
   printf '%s\n' "$NAU_FP" > "$NAU_F"
+fi
+if [ -d "$GNOME_DESKTOP_W" ] && [ -n "${GNOME_DESKTOP_FP:-}" ]; then
+  printf '%s\n' "$GNOME_DESKTOP_FP" > "$GNOME_DESKTOP_F"
 fi
 if [ -d "$CURL_W" ] && [ -n "${CURL_FP:-}" ]; then
   printf '%s\n' "$CURL_FP" > "$CURL_F"

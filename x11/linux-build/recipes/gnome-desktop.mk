@@ -23,13 +23,8 @@ DEB_GNOME-DESKTOP_V   ?= $(GNOME-DESKTOP_VERSION)+ios1
 gnome-desktop-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-desktop/$(GNOME-DESKTOP_MAJOR_V)/gnome-desktop-$(GNOME-DESKTOP_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-desktop-$(GNOME-DESKTOP_VERSION).tar.xz,gnome-desktop-$(GNOME-DESKTOP_VERSION),gnome-desktop)
-	# iOS/introspection=false fix: gnome.generate_gir() is called unconditionally in
-	# libgnome-desktop/{,gnome-bg/,gnome-rr/}meson.build, but libgnome_desktop_base_gir
-	# is only assigned under `if get_option('introspection')`, so the subdirs' gir
-	# generation hits "Unknown variable" when introspection is off. The helper drops the
-	# base dep's lone gir sources ref and gates the two subdir generate_gir blocks
-	# (idempotent). Script is mounted at /work/recipes by build-gnome.sh.
-	bash /work/recipes/gnome-desktop-introspection-fix.sh $(BUILD_WORK)/gnome-desktop
+	# iOS/introspection=false GIR source gates live in the port patch stack.
+	$(call DO_PATCH,gnome-desktop,gnome-desktop,-p1)
 	mkdir -p $(BUILD_WORK)/gnome-desktop/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

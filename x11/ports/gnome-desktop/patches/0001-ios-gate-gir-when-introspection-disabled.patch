@@ -1,0 +1,30 @@
+Subject: [PATCH] ios: gate GIR sources when introspection is disabled
+
+The iOS cross build configures gnome-desktop with -Dintrospection=false.
+gnome-desktop 44.1 still references libgnome_desktop_base_gir from dependency
+source lists and calls gnome.generate_gir() unconditionally in the gnome-bg and
+gnome-rr subdirectories. With introspection disabled, those variables are not
+defined and Meson aborts before building the libraries.
+
+Keep the library builds intact, but make the GIR source variables empty when
+introspection is disabled.
+--- a/libgnome-desktop/gnome-bg/meson.build
++++ b/libgnome-desktop/gnome-bg/meson.build
+@@ -42,0 +43 @@
++if get_option('introspection') # X11IOS_GIR_GATED
+@@ -53,0 +55,3 @@
++else
++libgnome_bg_gir = []
++endif
+--- a/libgnome-desktop/gnome-rr/meson.build
++++ b/libgnome-desktop/gnome-rr/meson.build
+@@ -46,0 +47 @@
++if get_option('introspection') # X11IOS_GIR_GATED
+@@ -57,0 +59,3 @@
++else
++libgnome_rr_gir = []
++endif
+--- a/libgnome-desktop/meson.build
++++ b/libgnome-desktop/meson.build
+@@ -158 +157,0 @@
+-      libgnome_desktop_base_gir,
