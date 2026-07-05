@@ -124,6 +124,102 @@ path.write_text(text)
 PY
 done
 
+# Give the first-light QML providers a tiny shared bridge to existing Xios
+# services instead of inventing KDE-specific daemons. Battery/brightness use
+# xios-fhs files; audio uses the PulseAudio session helpers.
+python3 - "$src/components/mobileshell/shellutil.h" "$src/components/mobileshell/shellutil.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+header = Path(sys.argv[1])
+source = Path(sys.argv[2])
+
+h = header.read_text()
+if "readTextFile(const QString &path)" not in h:
+    h = h.replace(
+        "    Q_INVOKABLE void executeCommand(const QString &command);\n",
+        """    Q_INVOKABLE void executeCommand(const QString &command);
+
+    /**
+     * Read a small text file for iOS service-backed QML providers.
+     */
+    Q_INVOKABLE QString readTextFile(const QString &path);
+
+    /**
+     * Write a small text file for iOS service-backed QML providers.
+     */
+    Q_INVOKABLE bool writeTextFile(const QString &path, const QString &contents);
+
+    /**
+     * Run a bounded shell command and return stdout. Intended for low-frequency
+     * status probes such as pactl; never call this from animation paths.
+     */
+    Q_INVOKABLE QString runCommand(const QString &command, int timeoutMs = 1500);
+""",
+    )
+    header.write_text(h)
+
+c = source.read_text()
+if "ShellUtil::readTextFile" not in c:
+    c = c.replace(
+        "#include <QProcess>\n",
+        "#include <QProcess>\n#include <QTextStream>\n",
+    )
+    marker = """void ShellUtil::executeCommand(const QString &command)
+{
+    qWarning() << "Executing" << command;
+    const QStringList commandAndArguments = QProcess::splitCommand(command);
+    QProcess::startDetached(commandAndArguments.front(), commandAndArguments.mid(1));
+}
+"""
+    impl = marker + r'''
+QString ShellUtil::readTextFile(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    return QString::fromUtf8(file.readAll()).trimmed();
+}
+
+bool ShellUtil::writeTextFile(const QString &path, const QString &contents)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        qWarning() << "Could not write" << path << file.errorString();
+        return false;
+    }
+    QTextStream stream(&file);
+    stream << contents;
+    if (!contents.endsWith(QLatin1Char('\n'))) {
+        stream << Qt::endl;
+    }
+    return file.error() == QFile::NoError;
+}
+
+QString ShellUtil::runCommand(const QString &command, int timeoutMs)
+{
+    QProcess process;
+    process.start(QStringLiteral("/var/jb/bin/sh"), {QStringLiteral("-lc"), command});
+    if (!process.waitForStarted(timeoutMs)) {
+        qWarning() << "Could not start command" << command;
+        return QString();
+    }
+    if (!process.waitForFinished(timeoutMs)) {
+        qWarning() << "Command timed out" << command;
+        process.kill();
+        process.waitForFinished(250);
+        return QString();
+    }
+    return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+}
+'''
+    if marker not in c:
+        raise SystemExit("shellutil.cpp marker not found")
+    c = c.replace(marker, impl, 1)
+    source.write_text(c)
+PY
+
 # Several MobileShell QML files are embedded into the private plugin resource
 # system, so package-time QML replacements do not affect the qrc:/ load path.
 # Keep the plugin importable for first light, but replace Flickable-derived
@@ -441,30 +537,94 @@ Label {
 write("components/mobileshell/qml/dataproviders/BatteryInfo.qml", """pragma Singleton
 import QtQuick 2.15
 QtObject {
+    id: root
+    readonly property string sysRoot: "/var/jb/sys"
     property bool isVisible: true
     property int percent: 100
     property bool pluggedIn: false
+    function readText(path, fallbackValue) {
+        var text = ShellUtil.readTextFile(path)
+        return text.length > 0 ? text : fallbackValue
+    }
+    function readInt(path, fallbackValue) {
+        var value = parseInt(readText(path, ""))
+        return isNaN(value) ? fallbackValue : value
+    }
+    function refresh() {
+        var present = readInt(sysRoot + "/class/power_supply/BAT0/present", 1)
+        var status = readText(sysRoot + "/class/power_supply/BAT0/status", "Unknown").toLowerCase()
+        isVisible = present !== 0
+        percent = Math.max(0, Math.min(100, readInt(sysRoot + "/class/power_supply/BAT0/capacity", percent)))
+        pluggedIn = readInt(sysRoot + "/class/power_supply/AC0/online", 0) !== 0 || status.indexOf("charging") !== -1
+    }
+    Component.onCompleted: refresh()
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: root.refresh()
+    }
 }
 """)
 
 write("components/mobileshell/qml/dataproviders/AudioInfo.qml", """pragma Singleton
 import QtQuick 2.15
 QtObject {
-    readonly property bool isVisible: false
-    readonly property string icon: "audio-volume-muted"
+    id: root
+    readonly property bool isVisible: true
+    readonly property string icon: iconName(volumeValue, muted)
     readonly property int maxVolumePercent: 100
     readonly property int maxVolumeValue: 100
     readonly property int volumeStep: 5
     property int volumeValue: 0
+    property bool muted: false
     property var paSinkModel: null
     signal volumeChanged()
-    function increaseVolume() {}
-    function decreaseVolume() {}
-    function muteVolume() {}
-    function iconName(volume, muted, prefix) {
-        return (prefix || "audio-volume") + "-muted"
+    function pulse(command) {
+        return ShellUtil.runCommand(". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null; xios_pulse_start >/dev/null 2>&1; " + command, 1500)
     }
-    function volumePercent(volume, max) { return 0 }
+    function refresh() {
+        var volume = pulse("pactl get-sink-volume xios 2>/dev/null | sed -n 's/.*\\\\/ *\\\\([0-9][0-9]*\\\\)%.*/\\\\1/p' | head -1")
+        var value = parseInt(volume)
+        if (!isNaN(value)) {
+            volumeValue = Math.max(0, Math.min(maxVolumePercent, value))
+        }
+        muted = pulse("pactl get-sink-mute xios 2>/dev/null | awk '{print $2}'") === "yes"
+    }
+    function increaseVolume() {
+        pulse("pactl set-sink-volume xios +5%")
+        refresh()
+        volumeChanged()
+    }
+    function decreaseVolume() {
+        pulse("pactl set-sink-volume xios -5%")
+        refresh()
+        volumeChanged()
+    }
+    function muteVolume() {
+        pulse("pactl set-sink-mute xios toggle")
+        refresh()
+        volumeChanged()
+    }
+    function iconName(volume, isMuted, prefix) {
+        var base = prefix || "audio-volume"
+        if (isMuted || volume <= 0) {
+            return base + "-muted"
+        } else if (volume <= 25) {
+            return base + "-low"
+        } else if (volume <= 75) {
+            return base + "-medium"
+        }
+        return base + "-high"
+    }
+    function volumePercent(volume, max) { return Math.round(volume) }
+    Component.onCompleted: refresh()
+    Timer {
+        interval: 10000
+        running: true
+        repeat: true
+        onTriggered: root.refresh()
+    }
 }
 """)
 

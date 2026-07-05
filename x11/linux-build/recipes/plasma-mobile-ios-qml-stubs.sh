@@ -55,7 +55,17 @@ write_file "$nm/Configuration.qml" \
   "QtObject { property bool airplaneModeEnabled: false }"
 write_file "$nm/NetworkStatus.qml" \
   "import QtQuick 2.15" \
-  "QtObject { property bool networkingEnabled: true }"
+  "import org.kde.plasma.private.mobileshell as MobileShell" \
+  "QtObject {" \
+  "    id: root" \
+  "    property bool networkingEnabled: true" \
+  "    function refresh() {" \
+  "        var probe = MobileShell.ShellUtil.runCommand(\"test -e /var/run/resolv.conf -o -e /etc/resolv.conf -o -S /var/jb/tmp/pulse/native; echo \$?\", 500)" \
+  "        networkingEnabled = probe.length === 0 || probe === \"0\"" \
+  "    }" \
+  "    Component.onCompleted: refresh()" \
+  "    Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "}"
 write_file "$nm/NetworkModel.qml" \
   "import QtQuick 2.15" \
   "ListModel {}"
@@ -71,13 +81,21 @@ write_file "$nm/WirelessStatus.qml" \
   "import QtQuick 2.15" \
   "QtObject {" \
   "    property string hotspotSSID: \"\"" \
-  "    property string wifiSSID: \"\"" \
+  "    property string wifiSSID: \"iPad\"" \
   "}"
 write_file "$nm/ConnectionIcon.qml" \
   "import QtQuick 2.15" \
+  "import org.kde.plasma.private.mobileshell as MobileShell" \
   "QtObject {" \
+  "    id: root" \
   "    property string connectionIcon: \"network-wireless-signal-excellent\"" \
   "    property bool connecting: false" \
+  "    function refresh() {" \
+  "        var probe = MobileShell.ShellUtil.runCommand(\"test -e /var/run/resolv.conf -o -e /etc/resolv.conf -o -S /var/jb/tmp/pulse/native; echo \$?\", 500)" \
+  "        connectionIcon = (probe.length === 0 || probe === \"0\") ? \"network-wireless-signal-excellent\" : \"network-disconnect\"" \
+  "    }" \
+  "    Component.onCompleted: refresh()" \
+  "    Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 write_file "$nm/EnabledConnections.qml" \
   "import QtQuick 2.15" \
@@ -90,9 +108,26 @@ write_file "$brightness/qmldir" \
   "ScreenBrightnessControl 1.0 ScreenBrightnessControl.qml"
 write_file "$brightness/ScreenBrightnessControl.qml" \
   "import QtQuick 2.15" \
+  "import org.kde.plasma.private.mobileshell as MobileShell" \
   "QtObject {" \
+  "    id: root" \
+  "    readonly property string backlight: \"/var/jb/sys/class/backlight/xios_backlight\"" \
   "    property int brightness: 50" \
-  "    property int brightnessMax: 100" \
+  "    property int brightnessMax: 1000" \
+  "    property bool refreshing: false" \
+  "    function readInt(name, fallbackValue) {" \
+  "        var value = parseInt(MobileShell.ShellUtil.readTextFile(backlight + \"/\" + name))" \
+  "        return isNaN(value) ? fallbackValue : value" \
+  "    }" \
+  "    function refresh() {" \
+  "        refreshing = true" \
+  "        brightnessMax = Math.max(1, readInt(\"max_brightness\", brightnessMax))" \
+  "        brightness = Math.max(1, Math.min(brightnessMax, readInt(\"brightness\", brightness)))" \
+  "        refreshing = false" \
+  "    }" \
+  "    onBrightnessChanged: if (!refreshing) MobileShell.ShellUtil.writeTextFile(backlight + \"/brightness\", Math.round(brightness).toString())" \
+  "    Component.onCompleted: refresh()" \
+  "    Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
 wallpaper="$qml/org/kde/plasma/private/mobileshell/wallpaperimageplugin"
@@ -103,7 +138,11 @@ write_file "$wallpaper/qmldir" \
 write_file "$wallpaper/WallpaperPlugin.qml" \
   "pragma Singleton" \
   "import QtQuick 2.15" \
+  "import org.kde.plasma.private.mobileshell as MobileShell" \
   "QtObject {" \
+  "    id: root" \
+  "    readonly property string configPath: \"/var/mobile/Library/Preferences/com.max.iosc-wallpaper\"" \
+  "    readonly property string fallbackPath: \"/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg\"" \
   "    property string homescreenWallpaperPath: \"\"" \
   "    property string lockscreenWallpaperPath: \"\"" \
   "    property string homescreenWallpaperPlugin: \"org.kde.image\"" \
@@ -113,12 +152,13 @@ write_file "$wallpaper/WallpaperPlugin.qml" \
   "    property var homescreenConfiguration: ({})" \
   "    property var lockscreenConfiguration: ({})" \
   "    property var wallpaperPluginModel: []" \
-  "    function setHomescreenWallpaper(path) { homescreenWallpaperPath = path }" \
-  "    function setLockscreenWallpaper(path) { lockscreenWallpaperPath = path }" \
-  "    function saveHomescreenSettings() {}" \
-  "    function saveLockscreenSettings() {}" \
-  "    function loadHomescreenSettings() {}" \
-  "    function loadLockscreenSettings() {}" \
+  "    function setHomescreenWallpaper(path) { homescreenWallpaperPath = path; saveHomescreenSettings() }" \
+  "    function setLockscreenWallpaper(path) { lockscreenWallpaperPath = path; saveLockscreenSettings() }" \
+  "    function saveHomescreenSettings() { if (homescreenWallpaperPath.length > 0) MobileShell.ShellUtil.writeTextFile(configPath, homescreenWallpaperPath) }" \
+  "    function saveLockscreenSettings() { if (lockscreenWallpaperPath.length > 0) MobileShell.ShellUtil.writeTextFile(configPath, lockscreenWallpaperPath) }" \
+  "    function loadHomescreenSettings() { homescreenWallpaperPath = MobileShell.ShellUtil.readTextFile(configPath); if (homescreenWallpaperPath.length === 0) homescreenWallpaperPath = fallbackPath }" \
+  "    function loadLockscreenSettings() { lockscreenWallpaperPath = MobileShell.ShellUtil.readTextFile(configPath); if (lockscreenWallpaperPath.length === 0) lockscreenWallpaperPath = fallbackPath }" \
+  "    Component.onCompleted: { loadHomescreenSettings(); loadLockscreenSettings() }" \
   "}"
 
 mobileshell="$qml/org/kde/plasma/private/mobileshell"
@@ -538,33 +578,71 @@ write_file "$mobileshell/ClockText.qml" \
   "}"
 
 write_file "$mobileshell/BatteryInfo.qml" \
-  "// First-light iOS shim: avoid Plasma5Support powermanagement dataengine during Mobile startup." \
+  "// iOS provider: use xios-fhs synthetic power_supply files instead of Plasma5Support powermanagement." \
   "pragma Singleton" \
   "import QtQuick 2.15" \
   "QtObject {" \
+  "    id: root" \
+  "    readonly property string sysRoot: \"/var/jb/sys\"" \
   "    property bool isVisible: true" \
   "    property int percent: 100" \
   "    property bool pluggedIn: false" \
+  "    function readText(path, fallbackValue) {" \
+  "        var text = ShellUtil.readTextFile(path)" \
+  "        return text.length > 0 ? text : fallbackValue" \
+  "    }" \
+  "    function readInt(path, fallbackValue) {" \
+  "        var value = parseInt(readText(path, \"\"))" \
+  "        return isNaN(value) ? fallbackValue : value" \
+  "    }" \
+  "    function refresh() {" \
+  "        var present = readInt(sysRoot + \"/class/power_supply/BAT0/present\", 1)" \
+  "        var status = readText(sysRoot + \"/class/power_supply/BAT0/status\", \"Unknown\").toLowerCase()" \
+  "        isVisible = present !== 0" \
+  "        percent = Math.max(0, Math.min(100, readInt(sysRoot + \"/class/power_supply/BAT0/capacity\", percent)))" \
+  "        pluggedIn = readInt(sysRoot + \"/class/power_supply/AC0/online\", 0) !== 0 || status.indexOf(\"charging\") !== -1" \
+  "    }" \
+  "    Component.onCompleted: refresh()" \
+  "    Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
 write_file "$mobileshell/AudioInfo.qml" \
-  "// First-light iOS shim: avoid PulseAudioQt/GLib event-loop dependencies during Mobile startup." \
+  "// iOS provider: use the existing Xios PulseAudio bridge through bounded pactl probes." \
   "pragma Singleton" \
   "import QtQuick 2.15" \
   "QtObject {" \
-  "    readonly property bool isVisible: false" \
-  "    readonly property string icon: \"audio-volume-muted\"" \
+  "    id: root" \
+  "    readonly property bool isVisible: true" \
+  "    readonly property string icon: iconName(volumeValue, muted)" \
   "    readonly property int maxVolumePercent: 100" \
   "    readonly property int maxVolumeValue: 100" \
   "    readonly property int volumeStep: 5" \
   "    property int volumeValue: 0" \
+  "    property bool muted: false" \
   "    property var paSinkModel: null" \
   "    signal volumeChanged()" \
-  "    function increaseVolume() {}" \
-  "    function decreaseVolume() {}" \
-  "    function muteVolume() {}" \
-  "    function iconName(volume, muted, prefix) { return (prefix || \"audio-volume\") + \"-muted\" }" \
-  "    function volumePercent(volume, max) { return 0 }" \
+  "    function pulse(command) {" \
+  "        return ShellUtil.runCommand(\". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null; xios_pulse_start >/dev/null 2>&1; \" + command, 1500)" \
+  "    }" \
+  "    function refresh() {" \
+  "        var volume = pulse(\"pactl get-sink-volume xios 2>/dev/null | sed -n 's/.*\\\\/ *\\\\([0-9][0-9]*\\\\)%.*/\\\\1/p' | head -1\")" \
+  "        var value = parseInt(volume)" \
+  "        if (!isNaN(value)) volumeValue = Math.max(0, Math.min(maxVolumePercent, value))" \
+  "        muted = pulse(\"pactl get-sink-mute xios 2>/dev/null | awk '{print \$2}'\") === \"yes\"" \
+  "    }" \
+  "    function increaseVolume() { pulse(\"pactl set-sink-volume xios +5%\"); refresh(); volumeChanged() }" \
+  "    function decreaseVolume() { pulse(\"pactl set-sink-volume xios -5%\"); refresh(); volumeChanged() }" \
+  "    function muteVolume() { pulse(\"pactl set-sink-mute xios toggle\"); refresh(); volumeChanged() }" \
+  "    function iconName(volume, isMuted, prefix) {" \
+  "        var base = prefix || \"audio-volume\"" \
+  "        if (isMuted || volume <= 0) return base + \"-muted\"" \
+  "        if (volume <= 25) return base + \"-low\"" \
+  "        if (volume <= 75) return base + \"-medium\"" \
+  "        return base + \"-high\"" \
+  "    }" \
+  "    function volumePercent(volume, max) { return Math.round(volume) }" \
+  "    Component.onCompleted: refresh()" \
+  "    Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
 folio_settings="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui/settings"
