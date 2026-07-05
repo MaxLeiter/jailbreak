@@ -152,6 +152,23 @@ bin/xios-device collect
 bin/xios-device collect /tmp/xios-evidence
 ```
 
+### Session profiling
+
+Use `bin/xios-profile-session` when comparing compositor performance before and
+after KWin, Mutter, GNOME, or iosc changes. It starts or attaches to a preset,
+samples the relevant processes and logs for a fixed interval, then writes a
+summary plus the standard `xios-device collect` bundle:
+
+```bash
+bin/xios-profile-session kde
+bin/xios-profile-session --duration 30 mutter
+bin/xios-profile-session --no-session --duration 10 kde
+```
+
+The summary highlights renderer/backend clues and common bottleneck signatures
+such as Qt Wayland EGL fallback, KWin IOSurface imports, Mutter IOSurface
+present, frame-callback stalls, protocol errors, and compositor crashes.
+
 ### `logs`
 
 Prints recent log tails, optionally filtered:

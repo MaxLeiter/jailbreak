@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# Host-side profiler for Xios desktop sessions.
+#
+# This is intentionally lightweight: it samples process/log state over SSH, then
+# reuses bin/xios-device collect/shot so every KWin/Mutter optimization has a
+# comparable evidence bundle.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+X11_ROOT="$(cd "$HERE/.." && pwd)"
+DEPLOY_ENV="$X11_ROOT/apps/iosc-desktop/deploy-env.sh"
+
+if [ ! -r "$DEPLOY_ENV" ]; then
+    echo "xios-profile-session: missing deploy env: $DEPLOY_ENV" >&2
+    exit 1
+fi
+
+# shellcheck source=../apps/iosc-desktop/deploy-env.sh
+. "$DEPLOY_ENV"
+
+DURATION=20
+INTERVAL=1
+WARMUP=5
+START_SESSION=1
+TAKE_SHOT=0
+OUTDIR=""
+PRESET=""
+
+usage() {
+    cat <<'EOF'
+usage: bin/xios-profile-session [options] PRESET
+
+Profiles an Xios session on the device and writes an evidence bundle.
+
+Options:
+  --duration SEC    Sampling duration after warmup (default: 20)
+  --interval SEC    Seconds between samples (default: 1)
+  --warmup SEC      Delay after session start before sampling (default: 5)
+  --no-session      Do not switch sessions; profile the current device state
+  --shot            Capture a compositor screenshot after sampling
+  --out DIR         Local artifact directory
+  -h, --help        Show this help
+
+Examples:
+  bin/xios-profile-session kde
+  bin/xios-profile-session --duration 30 mutter
+  bin/xios-profile-session --no-session --out /tmp/xios-profile-current current
+EOF
+}
+
+die() {
+    echo "xios-profile-session: $*" >&2
+    exit 1
+}
+
+stamp() {
+    date '+%Y%m%d-%H%M%S'
+}
+
+valid_number() {
+    case "$1" in
+        ""|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+make_outdir() {
+    if [ -n "$OUTDIR" ]; then
+        mkdir -p "$OUTDIR" || exit 1
+        (cd "$OUTDIR" && pwd)
+    else
+        local root="${XIOS_ARTIFACT_ROOT:-$X11_ROOT/artifacts/device-runs}"
+        local d="$root/profile-${PRESET:-current}-$(stamp)"
+        mkdir -p "$d" || exit 1
+        printf '%s\n' "$d"
+    fi
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --duration)
+            DURATION="${2:-}"; valid_number "$DURATION" || die "--duration needs an integer"; shift 2 ;;
+        --interval)
+            INTERVAL="${2:-}"; valid_number "$INTERVAL" || die "--interval needs an integer"; shift 2 ;;
+        --warmup)
+            WARMUP="${2:-}"; valid_number "$WARMUP" || die "--warmup needs an integer"; shift 2 ;;
+        --no-session)
+            START_SESSION=0; shift ;;
+        --shot)
+            TAKE_SHOT=1; shift ;;
+        --out)
+            OUTDIR="${2:-}"; [ -n "$OUTDIR" ] || die "--out needs a directory"; shift 2 ;;
+        -h|--help)
+            usage; exit 0 ;;
+        --*)
+            die "unknown option: $1" ;;
+        *)
+            [ -z "$PRESET" ] || die "only one preset is supported"
+            PRESET="$1"; shift ;;
+    esac
+done
+
+[ -n "$PRESET" ] || die "preset required"
+[ "$INTERVAL" -gt 0 ] || die "--interval must be > 0"
+
+OUT="$(make_outdir)"
+REMOTE_SAMPLE="/var/jb/tmp/xios-profile-${PRESET}.sample"
+REMOTE_SCRIPT="/var/jb/tmp/xios-profile-${PRESET}.sh"
+
+echo "artifact dir: $OUT"
+echo "target: root@$IP:$PORT" | tee "$OUT/profile.log"
+echo "preset: $PRESET duration=${DURATION}s interval=${INTERVAL}s warmup=${WARMUP}s start_session=$START_SESSION" | tee -a "$OUT/profile.log"
+
+if [ "$START_SESSION" = 1 ]; then
+    echo "==> starting session: $PRESET" | tee -a "$OUT/profile.log"
+    if ! "$X11_ROOT/bin/xios-device" session "$PRESET" >"$OUT/session-start.log" 2>&1; then
+        echo "WARN: session start failed; continuing to collect profile state" | tee -a "$OUT/profile.log"
+    fi
+    sed -n '1,160p' "$OUT/session-start.log" | tee -a "$OUT/profile.log"
+fi
+
+if [ "$WARMUP" -gt 0 ]; then
+    echo "==> warmup ${WARMUP}s" | tee -a "$OUT/profile.log"
+    sleep "$WARMUP"
+fi
+
+cat > "$OUT/remote-sampler.sh" <<'REMOTE_EOF'
+#!/var/jb/usr/bin/bash
+set -u
+duration="${1:-20}"
+interval="${2:-1}"
+out="${3:-/var/jb/tmp/xios-profile.sample}"
+preset="${4:-current}"
+pattern='Xios\.app/Xios|/usr/local/bin/iosc|/usr/bin/mutter|gnome-shell|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|ioscbg|ioscbar|ioscdock|dbus-run-session|dbus-daemon'
+case "$preset" in
+    kde|plasma|kde-desktop|plasma-desktop|kde-nano|plasma-nano|nano|kde-mobile|plasma-mobile|mobile)
+        logs="/var/jb/tmp/iosc.log /var/jb/tmp/kde-plasma.log"
+        ;;
+    mutter)
+        logs="/var/jb/tmp/mutter.log"
+        ;;
+    gnome)
+        logs="/var/jb/tmp/mutter.log /var/jb/tmp/gnome-shell.log"
+        ;;
+    iosc)
+        logs="/var/jb/tmp/iosc.log"
+        ;;
+    *)
+        logs="/var/jb/tmp/iosc.log /var/jb/tmp/kde-plasma.log /var/jb/tmp/mutter.log /var/jb/tmp/gnome-shell.log"
+        ;;
+esac
+
+{
+    echo "== xios profile sample =="
+    date
+    uname -a 2>/dev/null || true
+    echo
+    echo "== versions =="
+    dpkg-query -W iosc libmutter-14-0 kwin plasma-workspace plasma-desktop plasma-mobile xios-session 2>/dev/null || true
+    echo
+    echo "== initial status =="
+    cat /var/jb/tmp/xios-session-status.json 2>/dev/null || true
+    echo
+    cat /var/jb/tmp/xios-active-session 2>/dev/null || true
+    echo
+    cat /var/jb/tmp/xios.json 2>/dev/null || true
+    echo
+    cat /var/jb/tmp/xios-status.txt 2>/dev/null || true
+    echo
+} > "$out"
+
+i=0
+while [ "$i" -lt "$duration" ]; do
+    {
+        echo
+        echo "== sample $i $(date '+%H:%M:%S') =="
+        ps ax | grep -v grep | grep -E "$pattern" || true
+        if command -v top >/dev/null 2>&1; then
+            echo "-- top --"
+            top -l 1 -n 30 2>/dev/null | grep -E "$pattern|PID|Processes|CPU usage|PhysMem" || true
+        fi
+    } >> "$out"
+    i=$((i + interval))
+    sleep "$interval"
+done
+
+{
+    echo
+    echo "== final status =="
+    cat /var/jb/tmp/xios-session-status.json 2>/dev/null || true
+    echo
+    cat /var/jb/tmp/xios.json 2>/dev/null || true
+    echo
+    cat /var/jb/tmp/xios-status.txt 2>/dev/null || true
+    echo
+    echo "== log signatures =="
+    for f in $logs; do
+        [ -r "$f" ] || continue
+        echo "-- $f --"
+        grep -E "GL_RENDERER|GPU compositor ready|QPainter|EGL not available|kwin_iosurface|imported client IOSurface|output-damage|occlusion|frame callback|Wayland connection|Protocol error|MetaRendererIOS|MetaOnscreenIOS|IOSurface|PENDING_PRESENTED|present|swap|fatal|crash|Abort trap" "$f" | tail -n 120 || true
+    done
+} >> "$out"
+REMOTE_EOF
+
+scp_ "$OUT/remote-sampler.sh" "root@$IP:$REMOTE_SCRIPT" >/dev/null || die "failed to copy sampler"
+ssh_ "chmod +x '$REMOTE_SCRIPT' && '$REMOTE_SCRIPT' '$DURATION' '$INTERVAL' '$REMOTE_SAMPLE' '$PRESET'" \
+    >"$OUT/sample-run.log" 2>&1 || echo "WARN: remote sampler exited nonzero" | tee -a "$OUT/profile.log"
+scp_ "root@$IP:$REMOTE_SAMPLE" "$OUT/sample.txt" >/dev/null 2>&1 || echo "WARN: no remote sample pulled" | tee -a "$OUT/profile.log"
+
+if [ "$TAKE_SHOT" = 1 ]; then
+    echo "==> screenshot + collect" | tee -a "$OUT/profile.log"
+    "$X11_ROOT/bin/xios-device" shot "$OUT" >"$OUT/shot.log" 2>&1 || true
+else
+    echo "==> collect" | tee -a "$OUT/profile.log"
+    "$X11_ROOT/bin/xios-device" collect "$OUT" >"$OUT/collect.log" 2>&1 || true
+fi
+
+summary="$OUT/summary.txt"
+sample_process="$OUT/sample-process.txt"
+awk '
+    /^== sample / { in_sample = 1 }
+    /^== final status ==/ { in_sample = 0 }
+    in_sample { print }
+' "$OUT/sample.txt" > "$sample_process" 2>/dev/null || true
+
+case "$PRESET" in
+    kde|plasma|kde-desktop|plasma-desktop|kde-nano|plasma-nano|nano|kde-mobile|plasma-mobile|mobile)
+        LOG_SET="$OUT/iosc.log $OUT/kde-plasma.log"
+        ;;
+    mutter)
+        LOG_SET="$OUT/mutter.log"
+        ;;
+    gnome)
+        LOG_SET="$OUT/mutter.log $OUT/gnome-shell.log"
+        ;;
+    iosc)
+        LOG_SET="$OUT/iosc.log"
+        ;;
+    *)
+        LOG_SET="$OUT/iosc.log $OUT/kde-plasma.log $OUT/mutter.log $OUT/gnome-shell.log"
+        ;;
+esac
+
+{
+    echo "xios profile summary"
+    echo "preset=$PRESET duration=${DURATION}s interval=${INTERVAL}s start_session=$START_SESSION"
+    echo "artifact=$OUT"
+    echo
+    echo "== status =="
+    cat "$OUT/xios-session-status.json" 2>/dev/null || true
+    echo
+    cat "$OUT/xios.json" 2>/dev/null || true
+    echo
+    cat "$OUT/xios-status.txt" 2>/dev/null || true
+    echo
+    echo "== process sample counts =="
+    printf '%-16s %s\n' iosc "$(grep -Ec '/usr/local/bin/iosc( |$)' "$sample_process" 2>/dev/null || true)"
+    printf '%-16s %s\n' kwin_wayland "$(grep -Ec 'kwin_wayland' "$sample_process" 2>/dev/null || true)"
+    printf '%-16s %s\n' plasmashell "$(grep -Ec 'plasmashell.app/plasmashell|/plasmashell( |$)' "$sample_process" 2>/dev/null || true)"
+    printf '%-16s %s\n' mutter "$(grep -Ec '^[[:space:]]*[0-9]+[[:space:]].*/var/jb/usr/bin/mutter( |$)' "$sample_process" 2>/dev/null || true)"
+    printf '%-16s %s\n' gnome-shell "$(grep -Ec '/bin/gnome-shell|gnome-shell( |$)' "$sample_process" 2>/dev/null || true)"
+    printf '%-16s %s\n' Xios "$(grep -Ec 'Xios\.app/Xios' "$sample_process" 2>/dev/null || true)"
+    echo
+    echo "== bottleneck signatures =="
+    for f in $LOG_SET "$OUT/sample.txt"; do
+        [ -r "$f" ] || continue
+        echo "-- $(basename "$f") --"
+        grep -E "EGL not available|QPainter|kwin_iosurface|imported client IOSurface|output-damage|occlusion|frame callback|Wayland connection|Protocol error|MetaRendererIOS|MetaOnscreenIOS|PENDING_PRESENTED|Abort trap|crash|fatal|GL_RENDERER|GPU compositor ready" "$f" \
+            | tail -n 80 || true
+    done
+} > "$summary"
+
+echo "summary: $summary"
+echo "sample:  $OUT/sample.txt"
+echo "done:    $OUT"
