@@ -31,6 +31,13 @@ static int split_damage_enabled(void)
     return v && *v && strcmp(v, "0");
 }
 
+static int frame_delay_ms(void)
+{
+    const char *v = getenv("IOSC_CLIENT_FRAME_DELAY_MS");
+    int ms = v && *v ? atoi(v) : 200;
+    return ms > 0 ? ms : 200;
+}
+
 /* ---- anonymous shm file (no memfd on iOS) -------------------------------- */
 
 static int create_shm_file(size_t size)
@@ -178,7 +185,8 @@ int main(void)
      * then idle (the buffer stays on the surface so the screen keeps showing it). */
     while (wl_display_dispatch(dpy) != -1) {
         if (configured && painted && frames < 3) {
-            struct timespec ts = { 0, 200 * 1000 * 1000 };
+            int delay_ms = frame_delay_ms();
+            struct timespec ts = { delay_ms / 1000, (delay_ms % 1000) * 1000 * 1000 };
             nanosleep(&ts, NULL);
             draw();
         }

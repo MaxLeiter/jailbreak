@@ -187,6 +187,7 @@ struct iosc_presentation_feedback {
 
 #define IOSC_MAX_SHM_DIRTY_RECTS 16
 #define IOSC_MAX_OUTPUT_DAMAGE_RECTS 16
+#define IOSC_MAX_VISIBLE_RECTS 32
 
 struct iosc_rect {
     int x0, y0, x1, y1;
@@ -886,25 +887,6 @@ static int surface_rect(struct iosc_surface *s, int *x0, int *y0, int *x1, int *
     return 1;
 }
 
-static int surface_fully_covers(struct iosc_surface *top, struct iosc_surface *bottom)
-{
-    if (!top || surface_blends(top)) return 0;
-    int tx0, ty0, tx1, ty1, bx0, by0, bx1, by1;
-    if (!surface_rect(top, &tx0, &ty0, &tx1, &ty1) ||
-        !surface_rect(bottom, &bx0, &by0, &bx1, &by1))
-        return 0;
-    return tx0 <= bx0 && ty0 <= by0 && tx1 >= bx1 && ty1 >= by1;
-}
-
-static int surface_occluded_by_single_opaque_above(int mapped_index)
-{
-    struct iosc_surface *s = g_mapped[mapped_index];
-    for (int j = mapped_index + 1; j < g_nmapped; j++)
-        if (surface_fully_covers(g_mapped[j], s))
-            return 1;
-    return 0;
-}
-
 static int rects_touch_or_overlap(const struct iosc_rect *a, const struct iosc_rect *b)
 {
     return a->x1 >= b->x0 && a->x0 <= b->x1 &&
@@ -915,6 +897,24 @@ static int rect_intersects_rect(const struct iosc_rect *a, const struct iosc_rec
 {
     return a->x1 > b->x0 && a->x0 < b->x1 &&
            a->y1 > b->y0 && a->y0 < b->y1;
+}
+
+static int rect_intersection(const struct iosc_rect *a, const struct iosc_rect *b,
+                             struct iosc_rect *out)
+{
+    if (!rect_intersects_rect(a, b))
+        return 0;
+    out->x0 = a->x0 > b->x0 ? a->x0 : b->x0;
+    out->y0 = a->y0 > b->y0 ? a->y0 : b->y0;
+    out->x1 = a->x1 < b->x1 ? a->x1 : b->x1;
+    out->y1 = a->y1 < b->y1 ? a->y1 : b->y1;
+    return out->x1 > out->x0 && out->y1 > out->y0;
+}
+
+static int rect_equal(const struct iosc_rect *a, const struct iosc_rect *b)
+{
+    return a->x0 == b->x0 && a->y0 == b->y0 &&
+           a->x1 == b->x1 && a->y1 == b->y1;
 }
 
 static void rect_union_into(struct iosc_rect *dst, const struct iosc_rect *src)
@@ -1036,6 +1036,92 @@ static int output_damage_intersects_surface(struct iosc_surface *s,
     struct iosc_rect a = { x0, y0, x1, y1 };
     struct iosc_rect b = { dx0, dy0, dx1, dy1 };
     return rect_intersects_rect(&a, &b);
+}
+
+static int surface_output_rect_px(struct iosc_surface *s, struct iosc_rect *out)
+{
+    int x0, y0, x1, y1;
+    if (!surface_rect(s, &x0, &y0, &x1, &y1))
+        return 0;
+    int os = output_scale();
+    out->x0 = x0 * os; out->y0 = y0 * os;
+    out->x1 = x1 * os; out->y1 = y1 * os;
+    return out->x1 > out->x0 && out->y1 > out->y0;
+}
+
+static int surface_opaque_output_rect_px(struct iosc_surface *s, struct iosc_rect *out)
+{
+    if (!s || surface_blends(s))
+        return 0;
+    return surface_output_rect_px(s, out);
+}
+
+static int rect_subtract_one(const struct iosc_rect *src, const struct iosc_rect *cut,
+                             struct iosc_rect *out, int cap)
+{
+    struct iosc_rect ix;
+    if (!rect_intersection(src, cut, &ix)) {
+        if (cap < 1) return -1;
+        out[0] = *src;
+        return 1;
+    }
+
+    int n = 0;
+#define IOSC_ADD_VISIBLE_RECT(_x0, _y0, _x1, _y1) do { \
+        if ((_x1) > (_x0) && (_y1) > (_y0)) { \
+            if (n >= cap) return -1; \
+            out[n++] = (struct iosc_rect){ (_x0), (_y0), (_x1), (_y1) }; \
+        } \
+    } while (0)
+    IOSC_ADD_VISIBLE_RECT(src->x0, src->y0, src->x1, ix.y0);
+    IOSC_ADD_VISIBLE_RECT(src->x0, ix.y1, src->x1, src->y1);
+    IOSC_ADD_VISIBLE_RECT(src->x0, ix.y0, ix.x0, ix.y1);
+    IOSC_ADD_VISIBLE_RECT(ix.x1, ix.y0, src->x1, ix.y1);
+#undef IOSC_ADD_VISIBLE_RECT
+    return n;
+}
+
+static int rect_list_subtract_one(struct iosc_rect *rects, int n, int cap,
+                                  const struct iosc_rect *cut)
+{
+    struct iosc_rect tmp[IOSC_MAX_VISIBLE_RECTS];
+    int out_n = 0;
+    for (int i = 0; i < n; i++) {
+        struct iosc_rect pieces[4];
+        int pn = rect_subtract_one(&rects[i], cut, pieces, 4);
+        if (pn < 0 || out_n + pn > cap)
+            return -1;
+        memcpy(&tmp[out_n], pieces, (size_t)pn * sizeof(tmp[0]));
+        out_n += pn;
+    }
+    memcpy(rects, tmp, (size_t)out_n * sizeof(rects[0]));
+    return out_n;
+}
+
+static int surface_visible_damage_rects(int mapped_index, const struct iosc_rect *damage,
+                                        struct iosc_rect *visible, int cap)
+{
+    struct iosc_rect surface_px;
+    if (!surface_output_rect_px(g_mapped[mapped_index], &surface_px))
+        return 0;
+    if (!rect_intersection(&surface_px, damage, &visible[0]))
+        return 0;
+
+    struct iosc_rect original = visible[0];
+    int n = 1;
+    for (int j = mapped_index + 1; j < g_nmapped; j++) {
+        struct iosc_rect opaque_px;
+        if (!surface_opaque_output_rect_px(g_mapped[j], &opaque_px))
+            continue;
+        n = rect_list_subtract_one(visible, n, cap, &opaque_px);
+        if (n < 0) {
+            visible[0] = original;
+            return 1;
+        }
+        if (n == 0)
+            return 0;
+    }
+    return n;
 }
 
 static void output_damage_add_surface(struct iosc_surface *s)
@@ -1781,14 +1867,31 @@ static void recomposite_now(void)
             struct iosc_rect *d = &damage_rects[di];
             iosc_gl_begin_damage(d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
             for (int i = 0; i < g_nmapped; i++) {
-                if (!output_damage_intersects_surface(g_mapped[i],
-                                                      d->x0, d->y0, d->x1, d->y1))
-                    continue;
-                if (surface_occluded_by_single_opaque_above(i))
-                    continue;
-                composite_one(g_mapped[i]);
+                struct iosc_rect surface_px, unclipped;
+                struct iosc_rect visible[IOSC_MAX_VISIBLE_RECTS];
+                int visible_count = surface_visible_damage_rects(i, d, visible,
+                                                                 IOSC_MAX_VISIBLE_RECTS);
+                if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")) &&
+                    surface_output_rect_px(g_mapped[i], &surface_px) &&
+                    rect_intersection(&surface_px, d, &unclipped) &&
+                    (visible_count != 1 ||
+                     (visible_count == 1 && !rect_equal(&visible[0], &unclipped)))) {
+                    fprintf(stderr,
+                            "iosc: occlusion surface=%d role=%d visible=%d clip=%d,%d %dx%d damage=%d,%d %dx%d\n",
+                            i, g_mapped[i]->role, visible_count,
+                            unclipped.x0, unclipped.y0,
+                            unclipped.x1 - unclipped.x0,
+                            unclipped.y1 - unclipped.y0,
+                            d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
+                }
+                for (int vi = 0; vi < visible_count; vi++) {
+                    struct iosc_rect *v = &visible[vi];
+                    iosc_gl_set_damage(v->x0, v->y0, v->x1 - v->x0, v->y1 - v->y0);
+                    composite_one(g_mapped[i]);
+                }
             }
             /* Drag icon rides above the windows, just under the cursor (blended). */
+            iosc_gl_set_damage(d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
             if (g_dnd.active && g_dnd.icon && g_dnd.icon->current_buffer) {
                 iosc_gl_begin_blend();
                 composite_surface_at(g_dnd.icon, g_cursor_x, g_cursor_y);

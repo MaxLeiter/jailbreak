@@ -359,6 +359,22 @@ void iosc_gl_begin_damage(int x, int y, int w, int h)
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
+void iosc_gl_set_damage(int x, int y, int w, int h)
+{
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > s_ow) w = s_ow - x;
+    if (y + h > s_oh) h = s_oh - y;
+    if (w <= 0 || h <= 0 || (x == 0 && y == 0 && w == s_ow && h == s_oh)) {
+        glDisable(GL_SCISSOR_TEST);
+        s_scissor_active = 0;
+        return;
+    }
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x, y, w, h);
+    s_scissor_active = 1;
+}
+
 /* Draw the currently-bound texture as a quad covering output dest rect. Two vertical
  * conventions, both confirmed on-device 2026-06-30 by app-space readback:
  *

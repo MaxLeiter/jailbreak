@@ -43,6 +43,10 @@ void iosc_gl_begin(void);
  * convention. Passing an empty/full rect is equivalent to iosc_gl_begin(). */
 void iosc_gl_begin_damage(int x, int y, int w, int h);
 
+/* Change the current damage scissor without clearing. Used inside a partial frame
+ * to clip a single surface to the rect pieces still visible after occlusion. */
+void iosc_gl_set_damage(int x, int y, int w, int h);
+
 /* Draw a client IOSurface (opaque IOSurfaceRef) of source size sw x sh as a quad
  * at output-pixel dest rect (dx,dy,dw,dh). Zero-copy: the IOSurface is sampled
  * directly as a GL/Metal texture (the texture is sized to the surface, sw x sh). */
