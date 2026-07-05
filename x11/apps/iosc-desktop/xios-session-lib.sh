@@ -425,22 +425,33 @@ xs_reap_slot_session_pgroups() {
     mv "$tmp" "$XS_SESSION_PGIDS" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
 }
 
-# Resolve one of the bring-up scripts. Prefer the LIVE installed copy (the one the
-# owning package ships + versions alongside its binaries) over our pinned libexec
-# snapshot, so owner edits (e.g. run-shell.sh's -logical line, run-gnome-shell.sh's
-# launcher lines) are tracked automatically instead of drifting behind a stale pin.
-# Order: explicit override -> /var/jb/usr/local/bin (iosc-shell's run-shell.sh) ->
-# /var/jb/usr/bin (gnome-session's suggested live location) -> our pinned copy last.
-xs_find_bringup() {
-    local name="$1" c
-    for c in \
-        "${XIOS_SESSION_BRINGUP_DIR:+$XIOS_SESSION_BRINGUP_DIR/$name}" \
-        "$XS_BIN/$name" \
-        "$XS_JB/usr/bin/$name" \
-        "$XS_LIBEXEC_DIR/$name"; do
+xs_first_readable() {
+    local c
+    for c in "$@"; do
         [ -n "$c" ] && [ -r "$c" ] && { printf '%s\n' "$c"; return 0; }
     done
     return 1
+}
+
+# Resolve one of the bring-up scripts. In global mode prefer the live installed
+# owner script so package edits track automatically. In slot mode prefer the
+# pinned libexec script first because stale live owner scripts can silently drop
+# slot-specific env/argv.
+xs_find_bringup() {
+    local name="$1" override="${XIOS_SESSION_BRINGUP_DIR:+$XIOS_SESSION_BRINGUP_DIR/$name}"
+    if [ -n "$XS_SLOT" ]; then
+        xs_first_readable \
+            "$override" \
+            "$XS_LIBEXEC_DIR/$name" \
+            "$XS_BIN/$name" \
+            "$XS_JB/usr/bin/$name"
+    else
+        xs_first_readable \
+            "$override" \
+            "$XS_BIN/$name" \
+            "$XS_JB/usr/bin/$name" \
+            "$XS_LIBEXEC_DIR/$name"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -552,23 +563,28 @@ xs_ensure_xios() {  # xs_ensure_xios <preset>
 # presets
 # ---------------------------------------------------------------------------
 
+xs_prepare_display_session() {  # xs_prepare_display_session <preset>
+    local preset="$1"
+    xs_write_status "$preset" stopping "stopping current session"
+    if [ -n "$XS_SLOT" ]; then
+        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
+            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
+            xs_write_status "$preset" error "slot already running: $XS_SLOT"
+            return 1
+        fi
+    else
+        xios_session_teardown "-> $preset"
+        xs_settle
+        xs_set_active "$preset"
+    fi
+    xs_record_session_pgid "$preset"
+}
+
 # iosc: teardown, then run-shell.sh (starts iosc + wallpaper + panel), then fix
 # the ddx socket perms + foreground Xios (run-shell.sh does neither — it just
 # says "open the Xios app"). This is the flavor that works today.
 xios_session_iosc() {
-    xs_write_status iosc stopping "stopping current session"
-    if [ -n "$XS_SLOT" ]; then
-        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
-            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
-            xs_write_status iosc error "slot already running: $XS_SLOT"
-            return 1
-        fi
-    else
-        xios_session_teardown "-> iosc"
-        xs_settle
-        xs_set_active iosc
-    fi
-    xs_record_session_pgid iosc
+    xs_prepare_display_session iosc || return $?
     xs_write_status iosc starting "starting iosc + shell"
     local script; script="$(xs_find_bringup run-shell.sh)" || {
         xs_log "ERROR: run-shell.sh not found (install iosc-shell)"; xs_write_status iosc error "run-shell.sh missing"; return 1; }
@@ -602,19 +618,7 @@ xios_session_iosc() {
 # mutter: teardown, then run-mutter.sh. That script does its own (now redundant)
 # teardown, starts mutter --wayland, chowns the ddx socket and relaunches Xios.
 xios_session_mutter() {
-    xs_write_status mutter stopping "stopping current session"
-    if [ -n "$XS_SLOT" ]; then
-        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
-            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
-            xs_write_status mutter error "slot already running: $XS_SLOT"
-            return 1
-        fi
-    else
-        xios_session_teardown "-> mutter"
-        xs_settle
-        xs_set_active mutter
-    fi
-    xs_record_session_pgid mutter
+    xs_prepare_display_session mutter || return $?
     xs_write_status mutter starting "starting mutter --wayland (compositor + display)"
     local script; script="$(xs_find_bringup run-mutter.sh)" || {
         xs_log "ERROR: run-mutter.sh not found"; xs_write_status mutter error "run-mutter.sh missing"; return 1; }
@@ -640,19 +644,7 @@ xios_session_mutter() {
 # gnome: EXPERIMENTAL. teardown, then run-gnome-shell.sh (re-signs gnome-shell,
 # starts session stubs + gnome-shell --wayland, relaunches Xios). May not paint.
 xios_session_gnome() {
-    xs_write_status gnome stopping "stopping current session"
-    if [ -n "$XS_SLOT" ]; then
-        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
-            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
-            xs_write_status gnome error "slot already running: $XS_SLOT"
-            return 1
-        fi
-    else
-        xios_session_teardown "-> gnome"
-        xs_settle
-        xs_set_active gnome
-    fi
-    xs_record_session_pgid gnome
+    xs_prepare_display_session gnome || return $?
     xs_write_status gnome starting "starting gnome-shell --wayland (experimental)"
     local script; script="$(xs_find_bringup run-gnome-shell.sh)" || {
         xs_log "ERROR: run-gnome-shell.sh not found"; xs_write_status gnome error "run-gnome-shell.sh missing"; return 1; }
@@ -671,7 +663,7 @@ xios_session_gnome() {
     # gnome-shell.log, printed only after the JS UI + stage load. Poll for that, a
     # hard failure, or process exit for ~15s; a compositor that never paints the
     # shell is reported distinctly (not as a win).
-    local log="$XS_TMP/gnome-shell.log" i=0 outcome=timeout
+    local log="$XS_TMP/gnome-shell${XS_SLOT:+-$XS_SLOT}.log" i=0 outcome=timeout
     local fail_re='Failed to load module|couldn.t be found|JS ERROR|Execution of main\.js threw exception|MTLCreateSystemDefaultDevice'
     while [ "$i" -lt 30 ]; do
         if grep -q "GNOME Shell started at" "$log" 2>/dev/null; then outcome=started; break; fi
@@ -718,19 +710,7 @@ xios_session_kde() {
         mobile|phone|plasma-mobile|kde-mobile) flavor=mobile; preset=kde-mobile; label="KWin + Plasma Mobile" ;;
         *) xs_log "ERROR: unknown KDE flavor '$flavor'"; xs_write_status kde error "unknown KDE flavor: $flavor"; return 2 ;;
     esac
-    xs_write_status "$preset" stopping "stopping current session"
-    if [ -n "$XS_SLOT" ]; then
-        if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
-            xs_log "ERROR: slot '$XS_SLOT' already has a display; stop it before replacing it"
-            xs_write_status "$preset" error "slot already running: $XS_SLOT"
-            return 1
-        fi
-    else
-        xios_session_teardown "-> $preset"
-        xs_settle
-        xs_set_active "$preset"
-    fi
-    xs_record_session_pgid "$preset"
+    xs_prepare_display_session "$preset" || return $?
     xs_write_status "$preset" starting "starting $label (experimental)"
     local script; script="$(xs_find_bringup run-kde-plasma.sh)" || {
         xs_log "ERROR: run-kde-plasma.sh not found"; xs_write_status "$preset" error "run-kde-plasma.sh missing"; return 1; }

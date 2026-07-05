@@ -7162,25 +7162,51 @@ static void slock_mgr_bind(struct wl_client *c, void *data, uint32_t version, ui
 
 /* ---- main ---------------------------------------------------------------- */
 
-int main(int argc, char **argv)
+struct iosc_options {
+    const char *sock_name;
+    const char *ddx_sock;
+    const char *json_path;
+    const char *input_sock;
+    const char *clipboard_sock;
+    const char *wm_sock;
+    int logical_w;
+    int logical_h;
+    int native_arg;
+};
+
+static void iosc_options_init(struct iosc_options *o)
 {
-    const char *sock_name = "wayland-0";
-    const char *ddx_sock  = "/var/jb/tmp/iosc-ddx.sock";
-    const char *json_path = "/var/jb/tmp/xios.json";   /* the Xios app reads this */
-    const char *input_sock = "/var/jb/tmp/iosc-input.sock";
-    const char *clipboard_sock = "/var/jb/tmp/iosc-clipboard.sock";
-    const char *wm_sock = "/var/jb/tmp/iosc-wm.sock";
-    int logical_w = 0, logical_h = 0;   /* -logical WxH: target logical desktop */
-    int native_arg = -1;
+    *o = (struct iosc_options){
+        .sock_name = "wayland-0",
+        .ddx_sock = "/var/jb/tmp/iosc-ddx.sock",
+        .json_path = "/var/jb/tmp/xios.json",
+        .input_sock = "/var/jb/tmp/iosc-input.sock",
+        .clipboard_sock = "/var/jb/tmp/iosc-clipboard.sock",
+        .wm_sock = "/var/jb/tmp/iosc-wm.sock",
+        .native_arg = -1,
+    };
+}
+
+static int parse_size(const char *s, int *w, int *h)
+{
+    int tw = 0, th = 0;
+    if (!s || sscanf(s, "%dx%d", &tw, &th) != 2 || tw <= 0 || th <= 0)
+        return 0;
+    *w = tw;
+    *h = th;
+    return 1;
+}
+
+static void iosc_parse_args(int argc, char **argv, struct iosc_options *o)
+{
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-g") && i + 1 < argc) {
-            sscanf(argv[++i], "%dx%d", &g_width, &g_height);
+            parse_size(argv[++i], &g_width, &g_height);
         } else if (!strcmp(argv[i], "-logical") && i + 1 < argc) {
             /* Express the desktop by its LOGICAL size; the output IOSurface is
-             * derived as logical * scale (resolved after the loop so -scale can
-             * appear in any order). This is the preferred knob — the shell sizes
-             * its elements for the logical desktop, not the oversized buffer. */
-            sscanf(argv[++i], "%dx%d", &logical_w, &logical_h);
+             * derived as logical * scale after parsing so -scale may appear in
+             * any order. */
+            parse_size(argv[++i], &o->logical_w, &o->logical_h);
         } else if (!strcmp(argv[i], "-dpi") && i + 1 < argc) {
             int dpi = atoi(argv[++i]);
             if (dpi > 0) g_output_dpi = dpi;
@@ -7188,25 +7214,83 @@ int main(int argc, char **argv)
             int scale = atoi(argv[++i]);
             if (scale > 0) g_output_scale = scale;
         } else if (!strcmp(argv[i], "-s") && i + 1 < argc) {
-            sock_name = argv[++i];
+            o->sock_name = argv[++i];
         } else if (!strcmp(argv[i], "-ddx-sock") && i + 1 < argc) {
-            ddx_sock = argv[++i];
+            o->ddx_sock = argv[++i];
         } else if (!strcmp(argv[i], "-json") && i + 1 < argc) {
-            json_path = argv[++i];
+            o->json_path = argv[++i];
         } else if (!strcmp(argv[i], "-input-sock") && i + 1 < argc) {
-            input_sock = argv[++i];
+            o->input_sock = argv[++i];
         } else if (!strcmp(argv[i], "-clipboard-sock") && i + 1 < argc) {
-            clipboard_sock = argv[++i];
+            o->clipboard_sock = argv[++i];
         } else if (!strcmp(argv[i], "-wm-sock") && i + 1 < argc) {
-            wm_sock = argv[++i];
+            o->wm_sock = argv[++i];
         } else if (!strcmp(argv[i], "-native")) {
-            native_arg = 1;
+            o->native_arg = 1;
         } else if (!strcmp(argv[i], "-classic")) {
-            native_arg = 0;
+            o->native_arg = 0;
         }
     }
-    if (native_arg >= 0) {
-        g_native_mode = native_arg;
+}
+
+static void create_global(const struct wl_interface *iface, int version,
+                          wl_global_bind_func_t bind)
+{
+    wl_global_create(g_display, iface, version, NULL, bind);
+}
+
+static void register_wayland_globals(void)
+{
+    create_global(&wl_compositor_interface, 4, compositor_bind);
+    create_global(&xdg_wm_base_interface, 4, xdg_wm_base_bind);
+    create_global(&iosc_iosurface_interface, 1, iosc_iosurface_bind);
+    /* GTK4 (GDK-wayland) enablement globals. */
+    create_global(&wl_output_interface, 4, output_bind);
+    create_global(&zxdg_output_manager_v1_interface, 3, xdg_output_manager_bind);
+    create_global(&wl_seat_interface, 5, seat_bind);
+    create_global(&wl_subcompositor_interface, 1, subcompositor_bind);
+    create_global(&wl_data_device_manager_interface, 3, ddm_bind);
+    create_global(&wp_viewporter_interface, 1, viewporter_bind);
+    create_global(&wp_fractional_scale_manager_v1_interface, 1, fractional_scale_bind);
+    create_global(&wp_presentation_interface, 1, presentation_bind);
+    create_global(&zxdg_decoration_manager_v1_interface, 1, decoration_manager_bind);
+    create_global(&xdg_activation_v1_interface, 1, activation_bind);
+    create_global(&zwp_text_input_manager_v3_interface, 1, text_input_manager_bind);
+    create_global(&zwp_input_method_manager_v2_interface, 1, input_method_manager_bind);
+    create_global(&zwp_virtual_keyboard_manager_v1_interface, 1, virtual_keyboard_manager_bind);
+    /* Desktop-shell chrome: panel/overview/gtk4-layer-shell clients. v4 = the
+     * on_demand keyboard interactivity the overview needs. */
+    create_global(&zwlr_layer_shell_v1_interface, 4, layer_shell_bind);
+    /* Window list as a protocol: the taskbar/overview enumerates + drives toplevels. */
+    create_global(&zwlr_foreign_toplevel_manager_v1_interface, 3, ftl_manager_bind);
+    /* Pointer lock + relative motion: games, 3D viewports, gnome-shell mouse-look. */
+    create_global(&zwp_pointer_constraints_v1_interface, 1, constraints_bind);
+    create_global(&zwp_relative_pointer_manager_v1_interface, 1, relptr_mgr_bind);
+    /* X11-style middle-click primary selection (separate from the clipboard). */
+    create_global(&zwp_primary_selection_device_manager_v1_interface, 1, primary_mgr_bind);
+    /* Idle detection + inhibition (screensavers/power; video players stay awake). */
+    create_global(&ext_idle_notifier_v1_interface, 1, idle_notifier_bind);
+    create_global(&zwp_idle_inhibit_manager_v1_interface, 1, idle_inhibit_mgr_bind);
+    /* 1x1 solid-colour buffers (CSD shadows, solid backdrops), scaled via viewporter. */
+    create_global(&wp_single_pixel_buffer_manager_v1_interface, 1, spb_mgr_bind);
+    /* Named cursor shapes (GTK4/Adwaita prefer this over uploading a cursor surface). */
+    create_global(&wp_cursor_shape_manager_v1_interface, 1, cshape_mgr_bind);
+    /* Screenshots: software readback of the output IOSurface (grim, portals, spectacle). */
+    create_global(&zwlr_screencopy_manager_v1_interface, 3, screencopy_mgr_bind);
+    /* Focus-independent clipboard access (wl-clipboard, clipboard managers). */
+    create_global(&zwlr_data_control_manager_v1_interface, 2, data_control_mgr_bind);
+    create_global(&ext_session_lock_manager_v1_interface, 1, slock_mgr_bind);
+    create_global(&zwp_tablet_manager_v2_interface, 1, tablet_mgr_bind);
+}
+
+int main(int argc, char **argv)
+{
+    struct iosc_options opts;
+    iosc_options_init(&opts);
+    iosc_parse_args(argc, argv, &opts);
+
+    if (opts.native_arg >= 0) {
+        g_native_mode = opts.native_arg;
     } else if (env_truthy(getenv("IOSC_NATIVE"))) {
         g_native_mode = 1;
     }
@@ -7215,9 +7299,9 @@ int main(int argc, char **argv)
 
     /* -logical wins over -g: derive the oversized output IOSurface from the target
      * logical desktop and the (final) scale. */
-    if (logical_w > 0 && logical_h > 0) {
-        g_width  = logical_w * output_scale();
-        g_height = logical_h * output_scale();
+    if (opts.logical_w > 0 && opts.logical_h > 0) {
+        g_width  = opts.logical_w * output_scale();
+        g_height = opts.logical_h * output_scale();
     }
 
     /* 1) Output: one fullscreen BGRA IOSurface + the rendezvous the Xios app
@@ -7229,15 +7313,15 @@ int main(int argc, char **argv)
         return 1;
     }
     xios_set_compositor_id("iosc");   /* app clients learn the flavor via the in-band HELLO */
-    xios_set_input_socket(input_sock);
-    if (xios_server_start(ddx_sock, json_path, g_width, g_height, g_stride) != 0) {
+    xios_set_input_socket(opts.input_sock);
+    if (xios_server_start(opts.ddx_sock, opts.json_path, g_width, g_height, g_stride) != 0) {
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;
     }
     fprintf(stderr, "iosc: output IOSurface %dx%d stride=%d; logical=%dx%d scale=%d dpi=%d; app socket=%s\n",
             g_width, g_height, g_stride,
             output_logical_width(), output_logical_height(), output_scale(), g_output_dpi,
-            ddx_sock);
+            opts.ddx_sock);
 
     /* 1b) GPU compositor: an ANGLE context whose render target is the output
      *     IOSurface, so commits are composited on the GPU (client IOSurfaces
@@ -7259,66 +7343,16 @@ int main(int argc, char **argv)
     if (!g_display) { fprintf(stderr, "iosc: wl_display_create failed\n"); return 1; }
     wl_list_init(&g_surfaces);
 
-    if (wl_display_add_socket(g_display, sock_name) != 0) {
+    if (wl_display_add_socket(g_display, opts.sock_name) != 0) {
         fprintf(stderr, "iosc: wl_display_add_socket(%s) failed "
-                        "(XDG_RUNTIME_DIR set + writable?)\n", sock_name);
+                        "(XDG_RUNTIME_DIR set + writable?)\n", opts.sock_name);
         return 1;
     }
     if (wl_display_init_shm(g_display) != 0) {
         fprintf(stderr, "iosc: wl_display_init_shm failed\n");
         return 1;
     }
-    wl_global_create(g_display, &wl_compositor_interface, 4, NULL, compositor_bind);
-    wl_global_create(g_display, &xdg_wm_base_interface, 4, NULL, xdg_wm_base_bind);
-    wl_global_create(g_display, &iosc_iosurface_interface, 1, NULL, iosc_iosurface_bind);
-    /* GTK4 (GDK-wayland) enablement globals. */
-    wl_global_create(g_display, &wl_output_interface, 4, NULL, output_bind);
-    wl_global_create(g_display, &zxdg_output_manager_v1_interface, 3, NULL,
-                     xdg_output_manager_bind);
-    wl_global_create(g_display, &wl_seat_interface, 5, NULL, seat_bind);
-    wl_global_create(g_display, &wl_subcompositor_interface, 1, NULL, subcompositor_bind);
-    wl_global_create(g_display, &wl_data_device_manager_interface, 3, NULL, ddm_bind);
-    wl_global_create(g_display, &wp_viewporter_interface, 1, NULL, viewporter_bind);
-    wl_global_create(g_display, &wp_fractional_scale_manager_v1_interface, 1, NULL,
-                     fractional_scale_bind);
-    wl_global_create(g_display, &wp_presentation_interface, 1, NULL, presentation_bind);
-    wl_global_create(g_display, &zxdg_decoration_manager_v1_interface, 1, NULL,
-                     decoration_manager_bind);
-    wl_global_create(g_display, &xdg_activation_v1_interface, 1, NULL, activation_bind);
-    wl_global_create(g_display, &zwp_text_input_manager_v3_interface, 1, NULL,
-                     text_input_manager_bind);
-    wl_global_create(g_display, &zwp_input_method_manager_v2_interface, 1, NULL,
-                     input_method_manager_bind);
-    wl_global_create(g_display, &zwp_virtual_keyboard_manager_v1_interface, 1, NULL,
-                     virtual_keyboard_manager_bind);
-    /* Desktop-shell chrome: panel/overview/gtk4-layer-shell clients. v4 = the
-     * on_demand keyboard interactivity the overview needs. */
-    wl_global_create(g_display, &zwlr_layer_shell_v1_interface, 4, NULL, layer_shell_bind);
-    /* Window list as a protocol: the taskbar/overview enumerates + drives toplevels. */
-    wl_global_create(g_display, &zwlr_foreign_toplevel_manager_v1_interface, 3, NULL,
-                     ftl_manager_bind);
-    /* Pointer lock + relative motion: games, 3D viewports, gnome-shell mouse-look. */
-    wl_global_create(g_display, &zwp_pointer_constraints_v1_interface, 1, NULL, constraints_bind);
-    wl_global_create(g_display, &zwp_relative_pointer_manager_v1_interface, 1, NULL, relptr_mgr_bind);
-    /* X11-style middle-click primary selection (separate from the clipboard). */
-    wl_global_create(g_display, &zwp_primary_selection_device_manager_v1_interface, 1, NULL,
-                     primary_mgr_bind);
-    /* Idle detection + inhibition (screensavers/power; video players stay awake). */
-    wl_global_create(g_display, &ext_idle_notifier_v1_interface, 1, NULL, idle_notifier_bind);
-    wl_global_create(g_display, &zwp_idle_inhibit_manager_v1_interface, 1, NULL, idle_inhibit_mgr_bind);
-    /* 1x1 solid-colour buffers (CSD shadows, solid backdrops), scaled via viewporter. */
-    wl_global_create(g_display, &wp_single_pixel_buffer_manager_v1_interface, 1, NULL, spb_mgr_bind);
-    /* Named cursor shapes (GTK4/Adwaita prefer this over uploading a cursor surface). */
-    wl_global_create(g_display, &wp_cursor_shape_manager_v1_interface, 1, NULL, cshape_mgr_bind);
-    /* Screenshots: software readback of the output IOSurface (grim, portals, spectacle). */
-    wl_global_create(g_display, &zwlr_screencopy_manager_v1_interface, 3, NULL, screencopy_mgr_bind);
-
-    /* Focus-independent clipboard access (wl-clipboard, clipboard managers). */
-    wl_global_create(g_display, &zwlr_data_control_manager_v1_interface, 2, NULL, data_control_mgr_bind);
-
-    wl_global_create(g_display, &ext_session_lock_manager_v1_interface, 1, NULL, slock_mgr_bind);
-
-    wl_global_create(g_display, &zwp_tablet_manager_v2_interface, 1, NULL, tablet_mgr_bind);
+    register_wayland_globals();
 
     if (g_native_mode &&
         native_start(wl_display_get_event_loop(g_display)) != 0) {
@@ -7336,22 +7370,22 @@ int main(int argc, char **argv)
         fprintf(stderr, "iosc: keyboard unavailable (xkb keymap) -> pointer only\n");
     g_refocus_timer = wl_event_loop_add_timer(wl_display_get_event_loop(g_display),
                                               refocus_cb, NULL);
-    if (input_socket_start(wl_display_get_event_loop(g_display), input_sock) != 0)
+    if (input_socket_start(wl_display_get_event_loop(g_display), opts.input_sock) != 0)
         fprintf(stderr, "iosc: input socket failed -> no app input\n");
     else
-        fprintf(stderr, "iosc: input socket up at %s\n", input_sock);
-    if (ioscclip_start(wl_display_get_event_loop(g_display), clipboard_sock,
+        fprintf(stderr, "iosc: input socket up at %s\n", opts.input_sock);
+    if (ioscclip_start(wl_display_get_event_loop(g_display), opts.clipboard_sock,
                        clipboard_from_app, NULL) != 0)
         fprintf(stderr, "iosc: clipboard socket failed -> no UIPasteboard bridge\n");
     else
-        fprintf(stderr, "iosc: clipboard socket up at %s\n", clipboard_sock);
-    if (wm_socket_start(wl_display_get_event_loop(g_display), wm_sock) != 0)
+        fprintf(stderr, "iosc: clipboard socket up at %s\n", opts.clipboard_sock);
+    if (wm_socket_start(wl_display_get_event_loop(g_display), opts.wm_sock) != 0)
         fprintf(stderr, "iosc: wm control socket failed -> no raise-by-app_id\n");
     else
-        fprintf(stderr, "iosc: wm control socket up at %s\n", wm_sock);
+        fprintf(stderr, "iosc: wm control socket up at %s\n", opts.wm_sock);
 
     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
-            sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");
+            opts.sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");
     fprintf(stderr, "iosc: globals: wl_compositor v4, wl_shm, xdg_wm_base v4, "
                     "iosc_iosurface v1, wl_output v4, zxdg_output_manager_v1 v3, "
                     "wl_seat v5, wl_subcompositor v1, "

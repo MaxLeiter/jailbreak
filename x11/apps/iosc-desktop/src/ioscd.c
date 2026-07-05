@@ -665,6 +665,23 @@ static void start_a11y_for_existing_buses(void)
     (void)start_a11y_for_busdir(session_busdir);
 }
 
+static void set_wayland_client_env(const struct mode_cfg *mode, const char *busdir,
+                                   int have_bus, const char *bus_addr,
+                                   int enable_a11y)
+{
+    setenv("XDG_RUNTIME_DIR", busdir, 1);                 /* private, dbus-friendly */
+    setenv("WAYLAND_DISPLAY", mode->wayland_sock, 1);     /* absolute path */
+    setenv("GDK_BACKEND", "wayland", 1);
+    setenv("GSK_RENDERER", "ngl", 1);
+    setenv("ANGLE_REAL_LIBEGL", g_angle_real_libegl, 1);
+    setenv("GSETTINGS_BACKEND", "memory", 1);
+    if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
+    if (enable_a11y) unsetenv("GTK_A11Y");
+    else setenv("GTK_A11Y", "none", 1);
+    setenv("HOME", g_home, 1);
+    set_rootless_path(0);
+}
+
 /* Spawn <exec> as a Wayland client of iosc. Mirrors run-kgx.sh's environment:
  * a shared 0700 session bus dir, WAYLAND_DISPLAY by absolute path,
  * GDK wayland backend, GPU GTK rendering by default — iosc composites imported
@@ -685,18 +702,8 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
         setsid();
         child_stdio(g_ioscd_client_log, 1);
 
-        setenv("XDG_RUNTIME_DIR", busdir, 1);          /* private, dbus-friendly */
-        setenv("WAYLAND_DISPLAY", mode->wayland_sock, 1);    /* absolute path */
-        setenv("GDK_BACKEND", "wayland", 1);
-        setenv("GSK_RENDERER", "ngl", 1);
-        setenv("ANGLE_REAL_LIBEGL", g_angle_real_libegl, 1);
-        setenv("GSETTINGS_BACKEND", "memory", 1);
-        if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
         int enable_a11y = a11y_enabled_gate();
-        if (enable_a11y) unsetenv("GTK_A11Y");
-        else setenv("GTK_A11Y", "none", 1);
-        setenv("HOME", g_home, 1);
-        set_rootless_path(0);
+        set_wayland_client_env(mode, busdir, have_bus, bus_addr, enable_a11y);
 
         const char *cmd = exec;
         char a11y_cmd[4096];
@@ -733,6 +740,20 @@ static int digits_or_empty(const char *s)
     return 1;
 }
 
+static void set_session_request_env(const char *width, const char *height,
+                                    const char *dpi, const char *slot)
+{
+    if (width && *width && height && *height) {
+        char logical[64];
+        snprintf(logical, sizeof(logical), "%sx%s", width, height);
+        setenv("IOSC_LOGICAL", logical, 1);
+        setenv("XIOS_SESSION_WIDTH", width, 1);
+        setenv("XIOS_SESSION_HEIGHT", height, 1);
+    }
+    if (dpi && *dpi) setenv("XIOS_SESSION_DPI", dpi, 1);
+    if (slot && *slot) setenv("XIOS_SESSION_SLOT", slot, 1);
+}
+
 /* Run the existing xios-session implementation in a child. Keeping the session
  * logic in the shell library avoids a second teardown/startup implementation in
  * ioscd; the socket just replaces the tmp-file trigger path. */
@@ -755,15 +776,7 @@ static pid_t launch_session_request(const char *preset, const char *app,
                 (slot && *slot) ? " slot=" : "", (slot && *slot) ? slot : "",
                 g_bash_bin, g_xios_session_bin, g_xios_session_bin_fallback);
         fflush(stderr);
-        if (width && *width && height && *height) {
-            char logical[64];
-            snprintf(logical, sizeof(logical), "%sx%s", width, height);
-            setenv("IOSC_LOGICAL", logical, 1);
-            setenv("XIOS_SESSION_WIDTH", width, 1);
-            setenv("XIOS_SESSION_HEIGHT", height, 1);
-        }
-        if (dpi && *dpi) setenv("XIOS_SESSION_DPI", dpi, 1);
-        if (slot && *slot) setenv("XIOS_SESSION_SLOT", slot, 1);
+        set_session_request_env(width, height, dpi, slot);
 
         if (app && *app)
             execl(g_bash_bin, "bash", g_xios_session_bin, preset, app, (char *)NULL);

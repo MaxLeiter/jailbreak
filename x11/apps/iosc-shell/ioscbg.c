@@ -51,6 +51,8 @@
 #define MENU_ROW_H       42
 #define MENU_PAD         8
 #define MENU_IDLE_MS     7000
+#define EVDEV_BTN_LEFT   0x110u
+#define EVDEV_BTN_RIGHT  0x111u
 
 enum bg_press_kind {
     BG_PRESS_NONE = 0,
@@ -633,6 +635,9 @@ static int menu_height_for(int kind, int idx)
     return MENU_PAD * 2 + menu_actions(kind, idx, labels, actions) * MENU_ROW_H;
 }
 
+static int menu_hit(int x, int y);
+static void menu_act(int action);
+
 static void menu_open_at(int kind, int idx, int x, int y)
 {
     int h;
@@ -649,6 +654,36 @@ static void menu_open_at(int kind, int idx, int x, int y)
     if (B.menu_y + h > B.height - 8) B.menu_y = B.height - 8 - h;
     if (B.menu_x < 8) B.menu_x = 8;
     if (B.menu_y < 48) B.menu_y = 48;
+}
+
+static void menu_mark_press_consumed(void)
+{
+    B.ptr_moved = 1;
+    B.touch_moved = 1;
+    B.ptr_kind = B.touch_kind = BG_PRESS_NONE;
+    B.ptr_idx = B.touch_idx = -1;
+}
+
+static void menu_press_or_dismiss(int x, int y)
+{
+    int act = menu_hit(x, y);
+    if (act)
+        menu_act(act);
+    else {
+        B.menu_open = 0;
+        rerender();
+    }
+}
+
+static void menu_open_context_at_pointer(void)
+{
+    int kind = BG_PRESS_NONE, idx = -1;
+    press_hit_at(B.ptr_x, B.ptr_y, &kind, &idx);
+    menu_open_at(kind, idx, B.ptr_x, B.ptr_y);
+    if (B.menu_open) {
+        menu_mark_press_consumed();
+        rerender();
+    }
 }
 
 static int menu_hit(int x, int y)
@@ -1081,10 +1116,15 @@ static void drag_to(int x, int y)
     rerender();
 }
 
+static int drag_active(void)
+{
+    return B.drag_idx >= 0 || B.pin_drag_idx >= 0;
+}
+
 static void maybe_begin_drag(uint64_t now)
 {
     if (B.menu_open) return;
-    if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) return;
+    if (drag_active()) return;
     int kind = BG_PRESS_NONE, idx = -1, x = 0, y = 0, x0 = 0, y0 = 0;
     if (B.touch_active) {
         kind = B.touch_kind; idx = B.touch_idx; x = B.touch_x; y = B.touch_y; x0 = B.touch_x0; y0 = B.touch_y0;
@@ -1095,11 +1135,9 @@ static void maybe_begin_drag(uint64_t now)
     int dx = x - x0, dy = y - y0;
     int moved = moved_past_slop(dx, dy);
     if (!moved) {
-        menu_open_at(kind, idx, x, y);
-        B.touch_moved = B.ptr_moved = 1;
-        B.touch_kind = B.ptr_kind = BG_PRESS_NONE;
-        B.touch_idx = B.ptr_idx = -1;
-        rerender();
+        /* Xios promotes a stationary finger hold to BTN_RIGHT. Do not also open
+         * the desktop menu from the raw wl_touch stream, or a normal resting
+         * finger races the app-level secondary-click path and looks automatic. */
         return;
     }
     if (kind == BG_PRESS_PIN && idx < B.npins) {
@@ -1130,7 +1168,7 @@ static void pt_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_s
                      wl_fixed_t x, wl_fixed_t y)
 { (void)d;(void)p;(void)serial;(void)sf; B.ptr_x = wl_fixed_to_int(x); B.ptr_y = wl_fixed_to_int(y); }
 static void pt_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *sf)
-{ (void)d;(void)p;(void)serial;(void)sf; B.ptr_down = 0; if ((B.drag_idx >= 0 || B.pin_drag_idx >= 0) && !B.touch_active) drag_finish(); }
+{ (void)d;(void)p;(void)serial;(void)sf; B.ptr_down = 0; if (drag_active() && !B.touch_active) drag_finish(); }
 static void pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y)
 {
     (void)d;(void)p;(void)time;
@@ -1139,19 +1177,27 @@ static void pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t x
         int dx = B.ptr_x - B.ptr_x0, dy = B.ptr_y - B.ptr_y0;
         if (moved_past_slop(dx, dy))
             B.ptr_moved = 1;
-        if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_to(B.ptr_x, B.ptr_y);
+        if (drag_active()) drag_to(B.ptr_x, B.ptr_y);
     }
 }
 static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time,
                       uint32_t button, uint32_t state)
 {
     (void)d;(void)p;(void)serial;(void)time;
-    if (button != 0x110) return;
+    if (button == EVDEV_BTN_RIGHT) {
+        if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+            if (B.menu_open) {
+                menu_press_or_dismiss(B.ptr_x, B.ptr_y);
+                return;
+            }
+            menu_open_context_at_pointer();
+        }
+        return;
+    }
+    if (button != EVDEV_BTN_LEFT) return;
     if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
         if (B.menu_open) {
-            int act = menu_hit(B.ptr_x, B.ptr_y);
-            if (act) menu_act(act);
-            else { B.menu_open = 0; rerender(); }
+            menu_press_or_dismiss(B.ptr_x, B.ptr_y);
             return;
         }
         B.ptr_down = 1;
@@ -1162,7 +1208,7 @@ static void pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t
     } else {
         int was_pin = B.ptr_kind == BG_PRESS_PIN ? B.ptr_idx : -1;
         B.ptr_down = 0;
-        if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_finish();
+        if (drag_active()) drag_finish();
         else if (!B.ptr_moved && was_pin >= 0) pin_launch(was_pin);
         B.ptr_kind = BG_PRESS_NONE; B.ptr_idx = -1;
     }
@@ -1197,9 +1243,7 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     if (B.touch_active) return;
     int tx = wl_fixed_to_int(x), ty = wl_fixed_to_int(y);
     if (B.menu_open) {
-        int act = menu_hit(tx, ty);
-        if (act) menu_act(act);
-        else { B.menu_open = 0; rerender(); }
+        menu_press_or_dismiss(tx, ty);
         return;
     }
     B.touch_active = 1; B.touch_id = id;
@@ -1217,7 +1261,7 @@ static void tc_motion(void *d, struct wl_touch *t, uint32_t time, int32_t id, wl
     int dx = B.touch_x - B.touch_x0, dy = B.touch_y - B.touch_y0;
     if (moved_past_slop(dx, dy))
         B.touch_moved = 1;
-    if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_to(B.touch_x, B.touch_y);
+    if (drag_active()) drag_to(B.touch_x, B.touch_y);
 }
 static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, int32_t id)
 {
@@ -1225,13 +1269,13 @@ static void tc_up(void *d, struct wl_touch *t, uint32_t serial, uint32_t time, i
     if (!B.touch_active || id != B.touch_id) return;
     int was_pin = B.touch_kind == BG_PRESS_PIN ? B.touch_idx : -1;
     B.touch_active = 0;
-    if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_finish();
+    if (drag_active()) drag_finish();
     else if (!B.touch_moved && was_pin >= 0) pin_launch(was_pin);
     B.touch_kind = BG_PRESS_NONE; B.touch_idx = -1;
 }
 static void tc_frame(void *d, struct wl_touch *t){ (void)d;(void)t; }
 static void tc_cancel(void *d, struct wl_touch *t)
-{ (void)d;(void)t; B.touch_active = 0; if (B.drag_idx >= 0 || B.pin_drag_idx >= 0) drag_finish(); }
+{ (void)d;(void)t; B.touch_active = 0; if (drag_active()) drag_finish(); }
 static void tc_shape(void *d, struct wl_touch *t, int32_t id, wl_fixed_t maj, wl_fixed_t min)
 { (void)d;(void)t;(void)id;(void)maj;(void)min; }
 static void tc_orient(void *d, struct wl_touch *t, int32_t id, wl_fixed_t o)
