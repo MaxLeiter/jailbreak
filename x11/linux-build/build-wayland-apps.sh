@@ -73,6 +73,9 @@ target_requests imv && stage_port_patch_stack imv
 if target_requests fcft || target_requests foot || target_requests fuzzel; then
   stage_port_patch_stack fcft
 fi
+if target_requests harfbuzz || target_requests fcft || target_requests foot || target_requests fuzzel; then
+  stage_port_patch_stack harfbuzz
+fi
 target_requests fuzzel && stage_port_patch_stack fuzzel
 target_requests grim && stage_port_patch_stack grim
 target_requests basu && stage_port_patch_stack basu

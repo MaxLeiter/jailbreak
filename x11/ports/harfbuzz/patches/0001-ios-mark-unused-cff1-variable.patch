@@ -1,0 +1,11 @@
+Subject: [PATCH] harfbuzz: mark unused CFF1 subset variable on iOS
+
+The iOS clang build treats the unused CFF1 supplemental-size variable as an
+error under this recipe's flags. Mark it unused without changing behavior.
+
+diff -ruN -U0 --exclude=*.bak a/src/hb-subset-cff1.cc b/src/hb-subset-cff1.cc
+--- a/src/hb-subset-cff1.cc	2021-05-03 17:07:06
++++ b/src/hb-subset-cff1.cc	2026-07-05 00:10:46
+@@ -405 +405 @@
+-    unsigned int  size0, size1, supp_size;
++    unsigned int  size0, size1, __unused supp_size;

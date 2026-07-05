@@ -66,6 +66,8 @@ Current converted non-Qt stacks:
   optional so the iOS build stays on fontconfig/freetype/cairo.
 - `ports/libepoxy/patches`: enables Apple EGL dispatch for the ANGLE/Mesa
   rootless paths used by GTK4's Wayland renderer.
+- `ports/harfbuzz/patches`: marks the CFF1 supplemental-size local as unused
+  for the iOS clang build.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
@@ -82,7 +84,7 @@ Remaining non-Qt procedural source edits:
   separate Ladybird-specific cleanup.
 - Smaller recipe-level source edits still exist outside the original helper
   script audit, including lower-level stack recipes such as wayland,
-  curl/nghttp2/harfbuzz/exempi, colord, appstream/polkit/tracker, and mutter/EDS.
+  curl/nghttp2/exempi, colord, appstream/polkit/tracker, and mutter/EDS.
   Convert these in small dependency-specific batches after checking whether
   each edit is true upstream source patching versus generated/package metadata
   or a deliberate blocked-port note.
