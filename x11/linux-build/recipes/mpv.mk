@@ -31,22 +31,14 @@ endif
 
 SUBPROJECTS  += mpv
 MPV_VERSION  := 0.36.0
-DEB_MPV_V    ?= $(MPV_VERSION)+ios1
+DEB_MPV_V    ?= $(MPV_VERSION)+ios2
 
 mpv-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/mpv-player/mpv/archive/refs/tags/v$(MPV_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(MPV_VERSION).tar.gz,mpv-$(MPV_VERSION),mpv)
 	# Darwin/iOS portability shim (pipe2), force-included into every mpv C TU via c_args below.
 	cp $(BUILD_INFO)/mpv-compat.h $(BUILD_WORK)/mpv/mpv-compat.h
-	# mpv's meson only registers the ObjC language (needed for ao_audiounit.m) after detecting a
-	# macOS SDK via `xcrun`/xcodebuild — which don't exist in this Linux->iOS cross env, so
-	# macos_sdk_version stays '0.0' and add_languages('objc') never runs, aborting with
-	# "No host machine compiler for ao_audiounit.m". Force an unconditional add_languages('objc')
-	# (the cross file supplies objc = $(CC)); the dormant macos_sdk block is left alone so its
-	# empty-path -isysroot link flags are never added. Idempotent-guarded.
-	grep -q "XIOS-force-objc" $(BUILD_WORK)/mpv/meson.build || \
-		sed -i "s|^xcrun = find_program('xcrun'|add_languages('objc') # XIOS-force-objc\nxcrun = find_program('xcrun'|" \
-			$(BUILD_WORK)/mpv/meson.build
+	$(call DO_PATCH,mpv,mpv,-p1)
 	rm -rf $(BUILD_WORK)/mpv/build && mkdir -p $(BUILD_WORK)/mpv/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

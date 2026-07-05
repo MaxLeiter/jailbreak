@@ -98,6 +98,9 @@ Current converted non-Qt stacks:
 - `ports/evolution-data-server/patches`: carries the EDS SMIME-off,
   ld64-linker, host-generator, GLib include, and Camel no-NSS/NSPR source
   edits for the calendar/addressbook build.
+- `ports/mpv/patches`: carries the iOS runtime guard for disabled hardware
+  decoding and the Meson Objective-C cross-compiler registration needed by the
+  native AudioUnit output path.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.

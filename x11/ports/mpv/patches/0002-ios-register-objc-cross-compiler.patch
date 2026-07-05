@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xios <xios@localhost>
+Date: Sun, 5 Jul 2026 00:15:00 -0700
+Subject: [PATCH] ios: register objc compiler in cross builds
+
+mpv only enables Meson's Objective-C language after detecting a macOS SDK with
+xcrun/xcodebuild. Those tools are not present in the Linux-to-iOS cross-build
+container, so macos_sdk_version remains 0.0 and ao_audiounit.m fails with no
+Objective-C compiler registered even though the cross file supplies objc.
+
+Register Objective-C before the macOS SDK probe. The SDK-specific link flags
+remain guarded by the existing macos_sdk_version block, so the cross build does
+not pick up empty-path -isysroot flags.
+---
+ meson.build | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/meson.build b/meson.build
+index 1111111..2222222 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1495,3 +1495,5 @@ if macos_sdk_version != '0.0'
+ endif
+-
++
++add_languages('objc') # XIOS-force-objc
++
+ xcrun = find_program('xcrun', required: get_option('swift-build').require(darwin))

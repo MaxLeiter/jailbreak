@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Xios <xios@localhost>
+Date: Sat, 4 Jul 2026 23:20:00 -0700
+Subject: [PATCH] ios: skip hwdec enumeration when disabled
+
+The iosc mpv package uses software decode plus Wayland/EGL/GLES presentation.
+With the default hwdec=no, upstream still enumerates every FFmpeg hardware
+decoder before it notices the option. On iOS this hits a bad Mach-O two-level
+bind for av_hwdevice_get_type_name during startup even though no hwdec was
+requested. Return before enumeration when all configured hwdec entries are
+explicitly "no".
+---
+ video/decode/vd_lavc.c | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/video/decode/vd_lavc.c b/video/decode/vd_lavc.c
+index 1111111..2222222 100644
+--- a/video/decode/vd_lavc.c
++++ b/video/decode/vd_lavc.c
+@@ -471,3 +471,16 @@ static void select_and_set_hwdec(struct mp_filter *vd)
+     m_config_cache_update(ctx->opts_cache);
+-
++
++    char **hwdec_api = ctx->opts->hwdec_api;
++    bool hwdec_any_requested = false; // XIOS-no-hwdec-enum
++    for (int i = 0; hwdec_api[i]; i++) {
++        if (!bstr_equals0(bstr0(hwdec_api[i]), "no")) {
++            hwdec_any_requested = true;
++            break;
++        }
++    }
++    if (!hwdec_any_requested) {
++        MP_VERBOSE(vd, "No hardware decoding requested.\n");
++        return;
++    }
++
+     struct hwdec_info *hwdecs = NULL;
+@@ -475,4 +488,2 @@ static void select_and_set_hwdec(struct mp_filter *vd)
+     add_all_hwdec_methods(&hwdecs, &num_hwdecs);
+-
+-    char **hwdec_api = ctx->opts->hwdec_api;
+     for (int i = 0; hwdec_api[i]; i++) {
