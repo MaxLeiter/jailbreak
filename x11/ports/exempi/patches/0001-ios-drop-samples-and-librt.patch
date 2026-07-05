@@ -1,0 +1,46 @@
+Subject: [PATCH] exempi: drop sample programs and librt on iOS
+
+The sample programs are not shipped and pull an unavailable librt edge into
+the iOS link. The library itself also adds -lrt in the UNIX_ENV branch, but
+iOS provides those runtime functions through libSystem.
+
+diff -ruN -U0 --exclude=*.bak a/Makefile.am b/Makefile.am
+--- a/Makefile.am	2019-07-27 19:00:47
++++ b/Makefile.am	2026-07-05 00:18:22
+@@ -39,2 +39,2 @@
+-SUBDIRS = third-party source XMPCore XMPFiles samples exempi
+-DIST_SUBDIRS = build third-party source XMPCore XMPFiles XMPFilesPlugins samples exempi public
++SUBDIRS = third-party source XMPCore XMPFiles exempi
++DIST_SUBDIRS = build third-party source XMPCore XMPFiles XMPFilesPlugins exempi public
+diff -ruN -U0 --exclude=*.bak a/Makefile.in b/Makefile.in
+--- a/Makefile.in	2020-06-23 18:39:51
++++ b/Makefile.in	2026-07-05 00:18:23
+@@ -389,2 +389,2 @@
+-SUBDIRS = third-party source XMPCore XMPFiles samples exempi
+-DIST_SUBDIRS = build third-party source XMPCore XMPFiles XMPFilesPlugins samples exempi public
++SUBDIRS = third-party source XMPCore XMPFiles exempi
++DIST_SUBDIRS = build third-party source XMPCore XMPFiles XMPFilesPlugins exempi public
+diff -ruN -U0 --exclude=*.bak a/exempi/Makefile.am b/exempi/Makefile.am
+--- a/exempi/Makefile.am	2020-06-23 18:58:52
++++ b/exempi/Makefile.am	2026-07-05 00:18:22
+@@ -67 +67 @@
+-libexempi_la_LIBADD += -lrt
++libexempi_la_LIBADD +=
+diff -ruN -U0 --exclude=*.bak a/exempi/Makefile.in b/exempi/Makefile.in
+--- a/exempi/Makefile.in	2020-06-23 19:13:11
++++ b/exempi/Makefile.in	2026-07-05 00:18:22
+@@ -131 +131 @@
+-@UNIX_ENV_TRUE@am__append_1 = -lrt
++@UNIX_ENV_TRUE@am__append_1 =
+diff -ruN -U0 --exclude=*.bak a/samples/source/Makefile.am b/samples/source/Makefile.am
+--- a/samples/source/Makefile.am	2016-12-06 21:07:54
++++ b/samples/source/Makefile.am	2026-07-05 00:18:22
+@@ -57 +57 @@
+-XMPLIBS += -lrt
++XMPLIBS +=
+diff -ruN -U0 --exclude=*.bak a/samples/source/Makefile.in b/samples/source/Makefile.in
+--- a/samples/source/Makefile.in	2020-06-23 18:39:51
++++ b/samples/source/Makefile.in	2026-07-05 00:18:22
+@@ -132 +132 @@
+-@UNIX_ENV_TRUE@am__append_1 = -lrt
++@UNIX_ENV_TRUE@am__append_1 =

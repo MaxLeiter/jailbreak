@@ -44,10 +44,22 @@ if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp -v /work/build_info/iosc-*.xml build_misc/entitlements/
 fi
 
-if [[ " $TARGETS " == *" zathura"* ]]; then
-  echo "==> staging zathura patch series"
-  bash /work/recipes/stage-port-patches.sh zathura /work/ports build_patch
-fi
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+target_requests exempi && stage_required_patch_stack exempi
+target_requests zathura && stage_required_patch_stack zathura
 
 # Same clang wrapper build-gtk.sh/build-gnome.sh use: neutralise the
 # -Werror=unused-command-line-argument that breaks meson's cc.sizeof() probes.
@@ -70,10 +82,24 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # The zathura stack is the pragmatic PDF viewer (Papers is Rust-blocked): girara (GTK3 UI lib) ->
 # zathura (app) -> zathura-pdf-poppler (the poppler PDF backend plugin), built in that order.
 
+EW=build_work/iphoneos-arm64-rootless/1900/exempi
+ES=build_stage/iphoneos-arm64-rootless/1900/exempi
+EF="$EW/.xios_patch_series.sha256"
+if target_requests exempi; then
+  EXEMPI_FP="$(sha256sum \
+    /work/ports/exempi/patches/series \
+    /work/ports/exempi/patches/*.patch | sha256sum | awk '{print $1}')"
+  EXEMPI_OLD_FP="$(cat "$EF" 2>/dev/null || true)"
+  if [ -d "$EW" ] && [ "$EXEMPI_FP" != "$EXEMPI_OLD_FP" ]; then
+    echo "==> wiping stale exempi build after patch changes"
+    rm -rf "$EW" "$ES"
+  fi
+fi
+
 ZW=build_work/iphoneos-arm64-rootless/1900/zathura
 ZS=build_stage/iphoneos-arm64-rootless/1900/zathura
 ZF="$ZW/.xios_patch_series.sha256"
-if [[ " $TARGETS " == *" zathura"* ]]; then
+if target_requests zathura; then
   NEW_FP="$(sha256sum \
     /work/ports/zathura/patches/series \
     /work/ports/zathura/patches/*.patch | sha256sum | awk '{print $1}')"
@@ -90,6 +116,9 @@ for t in $TARGETS; do
 done
 if [ -d "$ZW" ] && [ -n "${NEW_FP:-}" ]; then
   printf '%s\n' "$NEW_FP" > "$ZF"
+fi
+if [ -d "$EW" ] && [ -n "${EXEMPI_FP:-}" ]; then
+  printf '%s\n' "$EXEMPI_FP" > "$EF"
 fi
 
 echo "==> collect debs -> /out"

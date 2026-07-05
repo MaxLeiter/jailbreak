@@ -31,15 +31,9 @@ exempi-setup: setup
 	# with the host's modern copy (librsvg/mozjs precedent).
 	find $(BUILD_WORK)/exempi -name config.sub  -exec cp -f /usr/share/misc/config.sub  {} \; || true
 	find $(BUILD_WORK)/exempi -name config.guess -exec cp -f /usr/share/misc/config.guess {} \; || true
-	# Drop the sample programs from SUBDIRS: they link -lrt (POSIX realtime), which iOS folds
-	# into libSystem (no librt), so ld64 fails "library not found for -lrt". The library,
-	# headers and .pc (built in the XMPCore/XMPFiles/exempi subdirs) are unaffected. Patch
-	# both Makefile.am and Makefile.in so config.status regenerates a samples-free Makefile.
-	sed -i 's/ samples//g' $(BUILD_WORK)/exempi/Makefile.am $(BUILD_WORK)/exempi/Makefile.in
-	# exempi/Makefile.am's UNIX_ENV branch also hardcodes `libexempi_la_LIBADD += -lrt` for
-	# the library itself; strip -lrt from every Makefile.am/.in (clock_gettime/shm_open are in
-	# libSystem on iOS). Patch .in too so the substituted Makefile drops it.
-	find $(BUILD_WORK)/exempi \( -name Makefile.am -o -name Makefile.in \) -exec sed -i 's/-lrt//g' {} \;
+	# Drop unshipped sample programs and the unavailable librt edge through the
+	# port patch stack.
+	$(call DO_PATCH,exempi,exempi,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/exempi/.build_complete),)
 exempi:
