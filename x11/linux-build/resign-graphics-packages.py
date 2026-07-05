@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -126,6 +127,7 @@ def tier(ents: str) -> str | None:
     does not select an entitlement file: binaries are re-signed with their own
     entitlements, not with --gl-ent / --gpu-ent.
     """
+    ents = re.sub(r"<!--.*?-->", "", ents, flags=re.S)
     if not any(m in ents for m in GPU_MARKERS):
         return None
     return "gl" if any(m in ents for m in COMPOSITOR_MARKERS) else "gpu"

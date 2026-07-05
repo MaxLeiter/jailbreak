@@ -2,12 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Entitlements for GPU-rendering GTK/Wayland client processes.
      Do not merge Procursus general.xml here: its no-container entitlement prevents
-     fakesigned processes from opening the AGX/IOGPU user clients, so Metal init
-     returns nil and GTK falls back to CPU cairo. -->
+     fakesigned processes from opening the AGX/IOGPU user clients. Also do not
+     add platform-application: on-device Plasma testing showed it makes
+     QtWayland report "EGL not available" for plasmashell. -->
 <plist version="1.0">
 <dict>
-    <key>platform-application</key>
-    <true/>
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
     <key>com.apple.private.skip-library-validation</key>

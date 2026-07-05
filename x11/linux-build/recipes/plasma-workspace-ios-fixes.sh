@@ -120,7 +120,16 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-keep = {"containmentlayoutmanager", "dbus", "shellprivate", "keyboardlayout", "lookandfeelqml", "trianglemousefilter", "workspace"}
+keep = {
+    "calendar",
+    "containmentlayoutmanager",
+    "dbus",
+    "shellprivate",
+    "keyboardlayout",
+    "lookandfeelqml",
+    "trianglemousefilter",
+    "workspace",
+}
 text = re.sub(r"^add_subdirectory\(([^)]+)\)",
               lambda m: m.group(0) if m.group(1) in keep else f"# ios-firstlight-skip: {m.group(0)}",
               text, flags=re.M)

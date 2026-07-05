@@ -5,11 +5,11 @@
      server set: a process that talks to the GPU must grant the AGX/IOGPU IOKit
      user clients and must NOT use com.apple.private.security.no-container, which
      sandboxes the process away from the GPU (MTLCreateSystemDefaultDevice -> nil).
+     It also must NOT use platform-application: Plasma Desktop + QtWayland EGL
+     regressed to "EGL not available" with that key present on plasmashell.
      get-task-allow lets iosc task_for_pid() us to import the rendered IOSurface. -->
 <plist version="1.0">
 <dict>
-    <key>platform-application</key>
-    <true/>
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
     <key>com.apple.private.skip-library-validation</key>
