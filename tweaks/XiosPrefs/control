@@ -1,0 +1,9 @@
+Package: com.max.xiosprefs
+Name: Xios (Settings)
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Native Settings pane for Xios Home Screen app sync.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: preferenceloader, xios-launcher-tools (>= 0.1.0)
