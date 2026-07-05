@@ -5,22 +5,16 @@ Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libicu78 (>= 78.3), libiosexec1 (>= 1.3.1)
-Section: Utilities
+Section: Apps
 Priority: optional
 Description: Ladybird — a standalone native web browser for jailbroken iPad
  A real home-screen browser app: tap the icon, it launches standalone (no iosc /
  Wayland / desktop stack) and renders the modern web with the from-scratch Ladybird
- engine (LibWeb + LibJS, no WebKit, no JIT). The four engine services (WebContent,
- RequestServer, ImageDecoder, WebWorker) are bundled inside the .app and posix_spawn'd;
- IPC is an AF_UNIX socketpair handed over via SOCKET_TAKEOVER. Painting is presented
- zero-copy through a CAMetalLayer over the shared IOSurface backing store, with a CPU
- CoreGraphics fallback when the GPU entitlement is unavailable.
+ engine (LibWeb + LibJS, no WebKit, no JIT).
  .
- Built for iPadOS/iOS rootless (palera1n/Dopamine), /var/jb, ad-hoc + DER signed. The
- engine's Lagom libraries are statically linked into the app + helpers; only the shared
- leaf libraries (ICU 78.3, and via the engine deps the font/codec/TLS closure) come from
- /var/jb.
+ This M0 package bundles the Ladybird UI executable, helper processes, runtime dylib
+ closure, resources, and fonts inside Ladybird.app. The helpers are spawned from the app
+ bundle with socketpair IPC.
  .
- NOTE (provisional): the full Depends closure (harfbuzz 10, freetype, fontconfig, curl +
- openssl, sqlite3, libxml2, png/jpeg/webp, ...) is finalized against the engine agent's
- leaf deb names once the M0 engine build lands. libskia is static (no dep).
+ Painting currently uses the CPU-raster app-mode path; the GPU/WebGL and IOSurface
+ zero-copy paths are intentionally deferred.

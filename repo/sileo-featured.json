@@ -684,6 +684,11 @@
       "url": "https://repo.maxleiter.com/banners/kwrite.png"
     },
     {
+      "title": "Ladybird",
+      "package": "ladybird-app",
+      "url": "https://repo.maxleiter.com/banners/ladybird-app.png"
+    },
+    {
       "title": "layer-shell-qt",
       "package": "layer-shell-qt",
       "url": "https://repo.maxleiter.com/banners/layer-shell-qt.png"
