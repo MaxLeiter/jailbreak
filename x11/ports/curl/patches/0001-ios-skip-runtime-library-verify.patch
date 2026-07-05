@@ -1,0 +1,11 @@
+Subject: [PATCH] curl: skip runtime library verification on iOS
+
+curl's configure-time runtime library probe is not meaningful for the iOS
+cross build. Drop the probe while leaving the rest of configure.ac intact.
+
+diff -ruN -U1 --exclude=*.bak a/configure.ac b/configure.ac
+--- a/configure.ac	2024-03-26 15:05:31
++++ b/configure.ac	2026-07-05 00:14:03
+@@ -3609,3 +3609,2 @@
+ CURL_CHECK_STRUCT_TIMEVAL
+-CURL_VERIFY_RUNTIMELIBS

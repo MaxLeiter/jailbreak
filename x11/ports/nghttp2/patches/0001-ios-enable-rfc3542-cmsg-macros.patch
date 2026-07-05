@@ -1,0 +1,11 @@
+Subject: [PATCH] nghttp2: enable RFC3542 cmsg macros on iOS
+
+Darwin hides the IPv6 packet-info control-message helpers behind
+__APPLE_USE_RFC_3542. Enable that API surface before nghttp2 includes the
+network headers.
+
+diff -ruN -U0 --exclude=*.bak a/src/util.cc b/src/util.cc
+--- a/src/util.cc	2024-04-04 01:42:44
++++ b/src/util.cc	2026-07-05 00:14:01
+@@ -0,0 +1 @@
++#define __APPLE_USE_RFC_3542 1

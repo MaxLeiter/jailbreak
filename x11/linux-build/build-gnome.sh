@@ -59,14 +59,28 @@ if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp -v /work/build_info/iosc-*.xml build_misc/entitlements/
 fi
 
-if [[ " $TARGETS " == *" gnome-text-editor"* ]]; then
-  echo "==> staging gnome-text-editor patch series"
-  bash /work/recipes/stage-port-patches.sh gnome-text-editor /work/ports build_patch
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+if target_requests nghttp2 || target_requests curl || target_requests appstream || target_requests libsoup3; then
+  stage_required_patch_stack nghttp2
 fi
-if [[ " $TARGETS " == *" nautilus"* ]]; then
-  echo "==> staging nautilus patch series"
-  bash /work/recipes/stage-port-patches.sh nautilus /work/ports build_patch
+if target_requests curl || target_requests appstream; then
+  stage_required_patch_stack curl
 fi
+target_requests gnome-text-editor && stage_required_patch_stack gnome-text-editor
+target_requests nautilus && stage_required_patch_stack nautilus
 
 # Same clang wrapper build-gtk.sh uses: the Procursus wrapper injects -Wl,-adhoc_codesign, and
 # meson's compile-only probes add -Werror=unused-command-line-argument, so every cc.sizeof()
@@ -101,10 +115,38 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # .build_complete markers skip rebuilds). gnome-terminal is omitted (optional GTK3 pass).
 # VALA targets (libgee, gnome-calculator) also need valac + the vendored .vapi staged above.
 
+CURL_W=build_work/iphoneos-arm64-rootless/1900/curl
+CURL_S=build_stage/iphoneos-arm64-rootless/1900/curl
+CURL_F="$CURL_W/.xios_patch_series.sha256"
+if target_requests curl || target_requests appstream; then
+  CURL_FP="$(sha256sum \
+    /work/ports/curl/patches/series \
+    /work/ports/curl/patches/*.patch | sha256sum | awk '{print $1}')"
+  CURL_OLD_FP="$(cat "$CURL_F" 2>/dev/null || true)"
+  if [ -d "$CURL_W" ] && [ "$CURL_FP" != "$CURL_OLD_FP" ]; then
+    echo "==> wiping stale curl build after patch changes"
+    rm -rf "$CURL_W" "$CURL_S"
+  fi
+fi
+
+NGHTTP2_W=build_work/iphoneos-arm64-rootless/1900/nghttp2
+NGHTTP2_S=build_stage/iphoneos-arm64-rootless/1900/nghttp2
+NGHTTP2_F="$NGHTTP2_W/.xios_patch_series.sha256"
+if target_requests nghttp2 || target_requests curl || target_requests appstream || target_requests libsoup3; then
+  NGHTTP2_FP="$(sha256sum \
+    /work/ports/nghttp2/patches/series \
+    /work/ports/nghttp2/patches/*.patch | sha256sum | awk '{print $1}')"
+  NGHTTP2_OLD_FP="$(cat "$NGHTTP2_F" 2>/dev/null || true)"
+  if [ -d "$NGHTTP2_W" ] && [ "$NGHTTP2_FP" != "$NGHTTP2_OLD_FP" ]; then
+    echo "==> wiping stale nghttp2 build after patch changes"
+    rm -rf "$NGHTTP2_W" "$NGHTTP2_S"
+  fi
+fi
+
 GTE_W=build_work/iphoneos-arm64-rootless/1900/gnome-text-editor
 GTE_S=build_stage/iphoneos-arm64-rootless/1900/gnome-text-editor
 GTE_F="$GTE_W/.xios_patch_series.sha256"
-if [[ " $TARGETS " == *" gnome-text-editor"* ]]; then
+if target_requests gnome-text-editor; then
   GTE_FP="$(sha256sum \
     /work/ports/gnome-text-editor/patches/series \
     /work/ports/gnome-text-editor/patches/*.patch | sha256sum | awk '{print $1}')"
@@ -118,7 +160,7 @@ fi
 NAU_W=build_work/iphoneos-arm64-rootless/1900/nautilus
 NAU_S=build_stage/iphoneos-arm64-rootless/1900/nautilus
 NAU_F="$NAU_W/.xios_patch_series.sha256"
-if [[ " $TARGETS " == *" nautilus"* ]]; then
+if target_requests nautilus; then
   NAU_FP="$(sha256sum \
     /work/ports/nautilus/patches/series \
     /work/ports/nautilus/patches/*.patch | sha256sum | awk '{print $1}')"
@@ -138,6 +180,12 @@ if [ -d "$GTE_W" ] && [ -n "${GTE_FP:-}" ]; then
 fi
 if [ -d "$NAU_W" ] && [ -n "${NAU_FP:-}" ]; then
   printf '%s\n' "$NAU_FP" > "$NAU_F"
+fi
+if [ -d "$CURL_W" ] && [ -n "${CURL_FP:-}" ]; then
+  printf '%s\n' "$CURL_FP" > "$CURL_F"
+fi
+if [ -d "$NGHTTP2_W" ] && [ -n "${NGHTTP2_FP:-}" ]; then
+  printf '%s\n' "$NGHTTP2_FP" > "$NGHTTP2_F"
 fi
 
 echo "==> collect debs -> /out"
