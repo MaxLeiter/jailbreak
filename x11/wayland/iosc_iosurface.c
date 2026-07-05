@@ -10,7 +10,8 @@
 #include <wayland-server-protocol.h>
 
 enum {
-    IOSC_IOSURFACE_FORMAT_TOP_LEFT = 0x80000000u,
+    IOSC_IOSURFACE_FORMAT_MASK = 0x0000ffffu,
+    IOSC_IOSURFACE_KNOWN_FLAGS = IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT,
 };
 
 /* A wl_buffer backed by a client IOSurface imported over the iosc_iosurface
@@ -88,6 +89,15 @@ static void iosurface_factory_create_buffer(struct wl_client *client,
         int32_t width, int32_t height, uint32_t format)
 {
     (void)width; (void)height;
+    uint32_t layout = format & IOSC_IOSURFACE_FORMAT_MASK;
+    uint32_t flags = format & ~IOSC_IOSURFACE_FORMAT_MASK;
+    if (layout != IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN ||
+        (flags & ~IOSC_IOSURFACE_KNOWN_FLAGS) != 0) {
+        wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_UNSUPPORTED_FORMAT,
+                               "unsupported IOSurface format/flags 0x%x", format);
+        return;
+    }
+
     pid_t pid = 0; uid_t uid = 0; gid_t gid = 0;
     wl_client_get_credentials(client, &pid, &uid, &gid);
 
@@ -98,7 +108,7 @@ static void iosurface_factory_create_buffer(struct wl_client *client,
     if (!ib) { if (surf) xios_release_client_iosurface(surf);
                wl_client_post_no_memory(client); return; }
     ib->surface = surf; ib->w = iw; ib->h = ih;
-    ib->flip_v = (format & IOSC_IOSURFACE_FORMAT_TOP_LEFT) ? 0 : 1;
+    ib->flip_v = (flags & IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT) ? 0 : 1;
 
     struct wl_resource *buf = wl_resource_create(client, &wl_buffer_interface, 1, id);
     if (!buf) { if (surf) xios_release_client_iosurface(surf); free(ib);

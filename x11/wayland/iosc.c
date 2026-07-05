@@ -202,6 +202,11 @@ struct iosc_surface {
     int                 gl_dirty;        /* wl_shm content changed since last GPU upload */
     int                 gl_dirty_rect_count;
     int                 gl_dirty_rects[IOSC_MAX_SHM_DIRTY_RECTS * 4]; /* x,y,w,h in buffer px */
+    uint64_t            damage_events;
+    uint64_t            damage_surface_events;
+    uint64_t            damage_buffer_events;
+    uint64_t            damage_full_events;
+    uint64_t            damage_pixels;
     int                 dx, dy;          /* placement (top-left) on the output */
     int                 native_canvas_w, native_canvas_h, native_canvas_stride;
     int                 native_canvas_live;
@@ -1020,6 +1025,32 @@ static void surface_gl_dirty_buffer_rect(struct iosc_surface *s, int x, int y, i
     }
     int *r = s->gl_dirty_rects + s->gl_dirty_rect_count++ * 4;
     r[0] = x; r[1] = y; r[2] = w; r[3] = h;
+}
+
+static void surface_damage_stats_note(struct iosc_surface *s, const char *kind,
+                                      int x, int y, int w, int h, int full)
+{
+    if (!s) return;
+    s->damage_events++;
+    if (kind && !strcmp(kind, "buffer"))
+        s->damage_buffer_events++;
+    else
+        s->damage_surface_events++;
+    if (full)
+        s->damage_full_events++;
+    if (w > 0 && h > 0)
+        s->damage_pixels += (uint64_t)w * (uint64_t)h;
+    if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS"))) {
+        fprintf(stderr,
+                "iosc: surface-damage window=%u role=%d mapped=%d kind=%s rect=%d,%d %dx%d%s totals events=%llu surface=%llu buffer=%llu full=%llu pixels=%llu\n",
+                s->window_id, s->role, s->mapped, kind ? kind : "surface",
+                x, y, w, h, full ? " full" : "",
+                (unsigned long long)s->damage_events,
+                (unsigned long long)s->damage_surface_events,
+                (unsigned long long)s->damage_buffer_events,
+                (unsigned long long)s->damage_full_events,
+                (unsigned long long)s->damage_pixels);
+    }
 }
 
 static int native_toplevel_canvas_live(struct iosc_surface *s)
@@ -2146,6 +2177,7 @@ static void surface_damage(struct wl_client *c, struct wl_resource *r,
 { (void)c;
   struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) {
+      surface_damage_stats_note(s, "surface", x, y, w, h, 1);
       surface_gl_dirty_full(s);   /* surface-space damage can be transformed; be conservative */
       if (!output_damage_add_overlay_surface(s))
           output_damage_add_surface_rect(s, x, y, w, h);
@@ -2302,6 +2334,7 @@ static void surface_damage_buffer(struct wl_client *c, struct wl_resource *r,
 { (void)c;
   struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) {
+      surface_damage_stats_note(s, "buffer", x, y, w, h, 0);
       surface_gl_dirty_buffer_rect(s, x, y, w, h);
       int scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
       if (!output_damage_add_overlay_surface(s))

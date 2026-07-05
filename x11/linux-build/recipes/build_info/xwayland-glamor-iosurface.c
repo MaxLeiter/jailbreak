@@ -424,7 +424,8 @@ xwl_glamor_iosurface_get_wl_buffer_for_pixmap(PixmapPtr pixmap)
                                      (uint32_t) xwl_pixmap->port,
                                      pixmap->drawable.width,
                                      pixmap->drawable.height,
-                                     0x80000000u /* BGRA8, top-left */);
+                                     IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN |
+                                     IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT);
 
     if (xwl_pixmap->buffer) {
         wl_buffer_add_listener(xwl_pixmap->buffer,

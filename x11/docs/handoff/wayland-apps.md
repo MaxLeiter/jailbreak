@@ -65,8 +65,9 @@ under `IOSC_SHELL_DEBUG=1`.
   forces `XWAYLAND_NO_GLAMOR=1` in the run wrapper unless `XWAYLAND_GLAMOR=0`.
   On-device evidence shows Xwayland binding `iosc_iosurface`, iosc importing the
   Xwayland client IOSurfaces, and the compositor presenting via ANGLE/Metal. The
-  Xwayland backend marks IOSurfaces as top-left through bit 31 of the iosc IOSurface
-  `format` word; iosc keeps the old vertical flip for clients that pass `format=0`.
+  Xwayland backend marks IOSurfaces as top-left through the documented
+  `iosc_iosurface.format.flag_top_left` enum flag; iosc keeps the old vertical flip
+  for clients that pass `format=0`.
   Evidence: `artifacts/device-runs/xwayland-glamor-ios2-flipfix-20260703-153036/compositor.png`.
 
 ## Gotchas (device + build)

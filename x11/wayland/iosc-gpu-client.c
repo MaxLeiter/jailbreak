@@ -270,7 +270,8 @@ int main(void)
         return 1;
     }
 
-    gpu_buffer = iosc_iosurface_create_buffer(iosurface_factory, (uint32_t)port, W, H, 0 /*BGRA*/);
+    gpu_buffer = iosc_iosurface_create_buffer(iosurface_factory, (uint32_t)port, W, H,
+                                              IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
 
     surface = wl_compositor_create_surface(compositor);
     struct xdg_surface *xs = xdg_wm_base_get_xdg_surface(wm_base, surface);

@@ -236,7 +236,8 @@ static void win_alloc_bufs(struct iosc_egl_win *w)
         bb->pbuf = REAL(eglCreatePbufferFromClientBuffer)(w->dpy, EGL_IOSURFACE_ANGLE,
                         (EGLClientBuffer)bb->ios, w->cfg, pa);
         ports[i] = IOSurfaceCreateMachPort(bb->ios);
-        bb->buf = iosc_iosurface_create_buffer(g_factory, (uint32_t)ports[i], w->w, w->h, 0);
+        bb->buf = iosc_iosurface_create_buffer(g_factory, (uint32_t)ports[i], w->w, w->h,
+                                               IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
         wl_proxy_set_queue((struct wl_proxy *)bb->buf, g_queue);
         wl_buffer_add_listener(bb->buf, &buf_listener, bb);
         if (bb->pbuf == EGL_NO_SURFACE)

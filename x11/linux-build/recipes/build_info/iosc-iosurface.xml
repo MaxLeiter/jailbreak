@@ -23,6 +23,21 @@
     <enum name="error">
       <entry name="import_failed" value="0"
              summary="the named mach port could not be imported as an IOSurface"/>
+      <entry name="unsupported_format" value="1"
+             summary="the requested IOSurface format or flags are unsupported"/>
+    </enum>
+
+    <enum name="format">
+      <description summary="IOSurface pixel format and presentation flags">
+        The low bits identify the IOSurface pixel layout. The high bits are
+        compositor presentation flags for clients whose render target origin
+        differs from iosc's output coordinate system. Unknown low-bit formats or
+        unknown high-bit flags are protocol errors.
+      </description>
+      <entry name="bgra8888_gl_origin" value="0"
+             summary="BGRA8 IOSurface rendered with GL-style bottom-left origin"/>
+      <entry name="flag_top_left" value="0x80000000"
+             summary="buffer contents are already in top-left presentation order"/>
     </enum>
 
     <request name="destroy" type="destructor">
@@ -34,17 +49,18 @@
         Create a wl_buffer from an IOSurface the client has rendered into. The
         compositor imports the surface named by mach_port_name (an
         IOSurfaceCreateMachPort() name in THIS client's IPC space) by reaching into
-        the client's task. width/height/format are advisory; the compositor trusts
-        the imported surface's own geometry. format is a 32-bit fourcc (0 = BGRA8,
-        the only format supported in M1). If the import fails the buffer is created
-        but immediately posts iosc_iosurface.error.import_failed.
+        the client's task. width/height are advisory; the compositor trusts the
+        imported surface's own geometry. format carries an iosc_iosurface.format
+        value: BGRA8 is currently the only pixel layout, with optional presentation
+        flags such as flag_top_left. If the import fails the buffer is created but
+        immediately posts iosc_iosurface.error.import_failed.
       </description>
       <arg name="id" type="new_id" interface="wl_buffer"/>
       <arg name="mach_port_name" type="uint"
            summary="IOSurfaceCreateMachPort() name in the client's task"/>
       <arg name="width" type="int"/>
       <arg name="height" type="int"/>
-      <arg name="format" type="uint" summary="fourcc; 0 = BGRA8"/>
+      <arg name="format" type="uint" enum="format" summary="IOSurface format and flags"/>
     </request>
   </interface>
 </protocol>
