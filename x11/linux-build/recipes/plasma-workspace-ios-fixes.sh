@@ -131,7 +131,25 @@ for layout in \
   "$src/lookandfeel/org.kde.breeze/contents/layouts/org.kde.plasma.desktop-layout.js" \
   "$src/lookandfeel/org.kde.breezedark/contents/layouts/org.kde.plasma.desktop-layout.js" \
   "$src/lookandfeel/org.kde.breezetwilight/contents/layouts/org.kde.plasma.desktop-layout.js"; do
-  [ -f "$layout" ] && sed -i "s/desktopsArray\\[j\\]\\.wallpaperPlugin = 'org.kde.image';/desktopsArray[j].wallpaperPlugin = 'org.kde.color';/" "$layout"
+  [ -f "$layout" ] || continue
+  python3 - "$layout" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = re.sub(
+    r"desktopsArray\[j\]\.wallpaperPlugin = 'org\.kde\.(?:image|color)';",
+    """desktopsArray[j].wallpaperPlugin = 'org.kde.image';
+    desktopsArray[j].currentConfigGroup = Array('Wallpaper', 'org.kde.image', 'General');
+    desktopsArray[j].writeConfig('Image', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');
+    desktopsArray[j].writeConfig('PreviewImage', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');
+    desktopsArray[j].writeConfig('FillMode', 2);""",
+    text,
+)
+path.write_text(text)
+PY
 done
 
 perl -0pi -e 's/add_subdirectory\(test\)/# ios-firstlight-skip: add_subdirectory(test)/g' "$src/libdbusmenuqt/CMakeLists.txt"

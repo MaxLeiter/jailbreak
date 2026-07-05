@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fast host sanity check for the first-light Plasma QML stub installers.
+# Fast host sanity check for the first-light Plasma QML/package fix installers.
 #
 # This does not prove the QML will satisfy plasmashell on-device. It catches the
 # packaging failures and generated-QML traps that waste a rebuild/device cycle.
@@ -26,10 +26,12 @@ run_stub libplasma "$ROOT/linux-build/recipes/libplasma-ios-qml-stubs.sh" "$TMP/
 make_dir "$TMP/qqc2/var/jb/usr/lib/qt6/qml/org/kde/desktop"
 run_stub qqc2-desktop-style "$ROOT/linux-build/recipes/qqc2-desktop-style-ios-qml-stubs.sh" "$TMP/qqc2"
 
-make_dir "$TMP/workspace/var/jb/usr/share/plasma/plasmoids/org.kde.plasma.private.systemtray/contents/ui"
-make_dir "$TMP/workspace/var/jb/usr/lib/qt6/qml/org/kde/breeze/components"
-make_dir "$TMP/workspace/var/jb/usr/share/plasma/plasmoids/org.kde.plasma.notifications/contents/ui"
-run_stub plasma-workspace "$ROOT/linux-build/recipes/plasma-workspace-ios-qml-stubs.sh" "$TMP/workspace"
+workspace_layout="$TMP/workspace/var/jb/usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/layouts"
+make_dir "$workspace_layout"
+cat >"$workspace_layout/org.kde.plasma.desktop-layout.js" <<'EOF'
+desktopsArray[j].wallpaperPlugin = 'org.kde.image';
+EOF
+run_stub plasma-workspace "$ROOT/linux-build/recipes/plasma-workspace-ios-package-fixes.sh" "$TMP/workspace"
 
 make_dir "$TMP/plasma-pa/var/jb/usr/share/plasma/plasmoids/org.kde.plasma.volume/contents/ui"
 run_stub plasma-pa "$ROOT/linux-build/recipes/plasma-pa-ios-qml-stubs.sh" "$TMP/plasma-pa"
