@@ -44,6 +44,38 @@ if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 fi
 
+# Dependency order: wayland-protocols (bump) -> tllist -> fcft -> foot -> imv,
+# then the standalone clients: wl-clipboard, and the mpv media stack (ffmpeg -> libass -> mpv).
+# NOTE: mpv is pinned to 0.36.0 (libplacebo optional there); 0.37+ hard-requires libplacebo
+# (>=6.338), so we step down and use --vo=gpu instead of building the whole libplacebo stack.
+# libutf8proc-package MUST precede fcft/foot (both import @rpath/libutf8proc.3.dylib; never
+# packaged before, so foot dyld-failed on-device). libjpeg-turbo-package precedes imv/mpv: it
+# produces libturbojpeg0 (libturbojpeg.0, imv's missing dylib) + libjpeg62-turbo (libjpeg.62, mpv).
+# Extra Wayland utility apps (opt-in via TARGETS, kept out of the default to avoid rebuild churn):
+#   fuzzel-package  — app launcher / dmenu (fcft/tllist/pixman/libpng, wlr-layer-shell)
+#   grim-package    — screenshot tool (wlr-screencopy; pixman/libpng/libjpeg-turbo)
+TARGETS="${TARGETS:-wayland-protocols-package libutf8proc-package tllist-package fcft-package foot-package libjpeg-turbo-package imv-package wl-clipboard-package ffmpeg-package libass-package mpv-package}"
+
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_port_patch_stack() {
+  local pkg="$1"
+  [ -d "/work/ports/$pkg/patches" ] || return 0
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+target_requests mpv && stage_port_patch_stack mpv
+target_requests foot && stage_port_patch_stack foot
+if target_requests fcft || target_requests foot || target_requests fuzzel; then
+  stage_port_patch_stack fcft
+fi
+target_requests fuzzel && stage_port_patch_stack fuzzel
+target_requests grim && stage_port_patch_stack grim
+target_requests basu && stage_port_patch_stack basu
+
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's compile-only
 # probes add -Werror=unused-command-line-argument, so every cc.sizeof()/cc.has_header() fails
 # ("'linker' input unused") and meson aborts. Route the compiler through a thin wrapper that
@@ -232,17 +264,6 @@ fi
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
-# Dependency order: wayland-protocols (bump) -> tllist -> fcft -> foot -> imv,
-# then the standalone clients: wl-clipboard, and the mpv media stack (ffmpeg -> libass -> mpv).
-# NOTE: mpv is pinned to 0.36.0 (libplacebo optional there); 0.37+ hard-requires libplacebo
-# (>=6.338), so we step down and use --vo=gpu instead of building the whole libplacebo stack.
-# libutf8proc-package MUST precede fcft/foot (both import @rpath/libutf8proc.3.dylib; never
-# packaged before, so foot dyld-failed on-device). libjpeg-turbo-package precedes imv/mpv: it
-# produces libturbojpeg0 (libturbojpeg.0, imv's missing dylib) + libjpeg62-turbo (libjpeg.62, mpv).
-# Extra Wayland utility apps (opt-in via TARGETS, kept out of the default to avoid rebuild churn):
-#   fuzzel-package  — app launcher / dmenu (fcft/tllist/pixman/libpng, wlr-layer-shell)
-#   grim-package    — screenshot tool (wlr-screencopy; pixman/libpng/libjpeg-turbo)
-TARGETS="${TARGETS:-wayland-protocols-package libutf8proc-package tllist-package fcft-package foot-package libjpeg-turbo-package imv-package wl-clipboard-package ffmpeg-package libass-package mpv-package}"
 
 if [[ " $TARGETS " == *" mesa-demos"* ]]; then
   echo "==> staging mesa-demos source patches"

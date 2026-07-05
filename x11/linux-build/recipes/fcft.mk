@@ -20,12 +20,9 @@ DEB_FCFT_V    ?= $(FCFT_VERSION)+ios1
 fcft-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/fcft/releases/download/$(FCFT_VERSION)/fcft-$(FCFT_VERSION).tar.gz)
 	$(call EXTRACT_TAR,fcft-$(FCFT_VERSION).tar.gz,fcft-$(FCFT_VERSION),fcft)
-	# The iOS SDK declares newlocale/uselocale/freelocale/locale_t + LC_NUMERIC_MASK in
-	# <xlocale.h>, not <locale.h> (which gates them behind feature macros that -std=c11 turns
-	# off). Force-include xlocale.h after locale.h. Idempotent (only inserts if not present).
-	if ! grep -q '<xlocale.h>' $(BUILD_WORK)/fcft/fcft.c; then \
-		sed -i 's|#include <locale.h>|#include <locale.h>\n#include <xlocale.h>|' $(BUILD_WORK)/fcft/fcft.c; \
-	fi
+	# iOS exposes locale_t/newlocale through <xlocale.h>; carry that source port as a
+	# quilt-style patch instead of mutating the extracted tree here.
+	$(call DO_PATCH,fcft,fcft,-p1)
 	mkdir -p $(BUILD_WORK)/fcft/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

@@ -1,0 +1,15 @@
+Subject: [PATCH] basu: make Meson link checks iOS/ld64 friendly
+
+iOS has no librt, and Apple ld64 does not understand basu's hardcoded GNU
+linker flags. Leave the deeper sd-bus source port blocked separately.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2022-12-16 02:13:02
++++ b/meson.build	2026-07-04 23:34:31
+@@ -236 +236 @@
+-librt = cc.find_library('rt')
++librt = cc.find_library('rt', required: false)
+@@ -309,2 +309 @@
+-        link_args : ['-shared',
+-                     '-Wl,--version-script=' + libsystemd_sym_path],
++        link_args : [],

@@ -30,8 +30,9 @@ DEB_GRIM_V   ?= $(GRIM_VERSION)+ios1
 grim-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~emersion/grim/archive/v$(GRIM_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(GRIM_VERSION).tar.gz,grim-v$(GRIM_VERSION),grim)
-	# iOS has no librt (clock_gettime is in libc); make the lookup non-fatal.
-	sed -i "s/cc.find_library('rt')/cc.find_library('rt', required: false)/" $(BUILD_WORK)/grim/meson.build
+	# iOS has no librt (clock_gettime is in libc); carry the Meson source edit in
+	# the port patch stack.
+	$(call DO_PATCH,grim,grim,-p1)
 	# wordexp()/wordfree() are unavailable on iOS; force-include a minimal replacement.
 	cp $(BUILD_INFO)/grim-compat.h $(BUILD_WORK)/grim/grim-compat.h
 	rm -rf $(BUILD_WORK)/grim/build && mkdir -p $(BUILD_WORK)/grim/build

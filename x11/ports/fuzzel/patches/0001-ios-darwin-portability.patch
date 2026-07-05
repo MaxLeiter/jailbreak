@@ -1,0 +1,29 @@
+Subject: [PATCH] fuzzel: add Darwin portability edits
+
+Darwin uses 32-bit UTF-32 wchar_t without defining __STDC_ISO_10646__, and
+pthread_setname_np() takes only the name on Apple platforms. Also skip the
+doc/ Meson subdir to avoid the unneeded scdoc host dependency.
+
+diff -ruN -U0 --exclude=*.bak a/char32.c b/char32.c
+--- a/char32.c	2025-04-10 03:22:21
++++ b/char32.c	2026-07-04 23:34:31
+@@ -35 +35 @@
+-#if (!defined(__STDC_ISO_10646__) || !__STDC_ISO_10646__) && !defined(__FreeBSD__)
++#if (!defined(__STDC_ISO_10646__) || !__STDC_ISO_10646__) && !defined(__FreeBSD__) && !defined(__APPLE__)
+diff -ruN -U0 --exclude=*.bak a/match.c b/match.c
+--- a/match.c	2025-04-10 03:22:21
++++ b/match.c	2026-07-04 23:34:31
+@@ -19,0 +20,2 @@
++#elif defined(__APPLE__)
++#define pthread_setname_np(thread, name) pthread_setname_np(name)
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2025-04-10 03:22:21
++++ b/meson.build	2026-07-04 23:34:31
+@@ -206 +205,0 @@
+-subdir('doc')
+diff -ruN -U0 --exclude=*.bak a/render.c b/render.c
+--- a/render.c	2025-04-10 03:22:21
++++ b/render.c	2026-07-04 23:34:31
+@@ -17,0 +18,2 @@
++#elif defined(__APPLE__)
++#define pthread_setname_np(thread, name) pthread_setname_np(name)

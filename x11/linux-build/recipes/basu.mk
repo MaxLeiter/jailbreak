@@ -35,12 +35,9 @@ DEB_BASU_V   ?= $(BASU_VERSION)+ios1
 basu-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~emersion/basu/archive/v$(BASU_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(BASU_VERSION).tar.gz,basu-v$(BASU_VERSION),basu)
-	# iOS has no librt (clock_gettime is in libc); make the lookup non-fatal.
-	sed -i "s/cc.find_library('rt')/cc.find_library('rt', required: false)/" $(BUILD_WORK)/basu/meson.build
-	# Apple ld64 has neither `-shared` (that's the GCC spelling; meson emits -dynamiclib itself)
-	# nor GNU ld's `--version-script`. Collapse the whole hardcoded link_args array to empty so
-	# the library links (perl -0777 spans the two-line array).
-	perl -0777 -i -pe "s/link_args : \['-shared',.*?\],/link_args : [],/s" $(BUILD_WORK)/basu/meson.build
+	# iOS has no librt, and Apple ld64 does not support basu's GNU ld link_args.
+	# Keep those source edits in the port patch stack.
+	$(call DO_PATCH,basu,basu,-p1)
 	rm -rf $(BUILD_WORK)/basu/build && mkdir -p $(BUILD_WORK)/basu/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

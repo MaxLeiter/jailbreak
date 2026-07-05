@@ -1,0 +1,10 @@
+Subject: [PATCH] fcft: include xlocale.h on iOS
+
+The iOS SDK exposes locale_t/newlocale under xlocale.h when building in the
+C11 mode fcft uses.
+
+diff -ruN -U0 --exclude=*.bak a/fcft.c b/fcft.c
+--- a/fcft.c	2025-12-27 03:27:58
++++ b/fcft.c	2026-07-04 23:35:08
+@@ -5,0 +6 @@
++#include <xlocale.h>

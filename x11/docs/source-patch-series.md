@@ -48,12 +48,25 @@ Current converted non-Qt stacks:
   OpenGL include spelling fix, iOS `__sincos`, and the wider es2gears default
   window. The generated `xdg-shell` protocol C/header files stay procedural via
   `mesa-demos-generate-xdg-shell.sh`.
+- `ports/fcft/patches`: carries the iOS `xlocale.h` include needed for
+  locale APIs under the iOS SDK.
+- `ports/fuzzel/patches`: carries the Darwin UTF-32/thread-name portability
+  edits and skips the `doc/` Meson subdir that otherwise requires `scdoc`.
+- `ports/grim/patches`: makes the `librt` Meson lookup optional for iOS,
+  where `clock_gettime()` is in libc.
+- `ports/basu/patches`: keeps the Meson-level iOS/ld64 edits as a patch stack;
+  basu remains documented as a blocked Linux-bound sd-bus port.
 
-Remaining non-Qt patcher-shaped scripts:
+Remaining non-Qt patcher-shaped source edits:
 
 - `pulseaudio-ios-fixes.sh` is intentionally still procedural because it injects
   local Xios module sources after the patch stack has modified the upstream
   module list.
+- `gtk+3.0.mk`, `gtk4.mk`, and `libadwaita.mk` still mutate upstream source
+  after extraction and are the next good candidates for patch stacks. Convert
+  them together with a `build-gtk.sh` patch-staging pass, because that driver
+  does not currently mount/stage `ports/` the way the newer GNOME/session
+  builders do.
 - `recipes-ladybird/ladybird-m0-patches.sh` is not a dependency recipe in this
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.

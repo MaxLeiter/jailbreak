@@ -1,0 +1,11 @@
+Subject: [PATCH] grim: make librt optional on iOS
+
+iOS exposes clock_gettime() from libc and has no separate librt, so make the
+Meson lookup non-fatal.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2023-06-14 05:25:09
++++ b/meson.build	2026-07-04 23:34:30
+@@ -20 +20 @@
+-realtime = cc.find_library('rt')
++realtime = cc.find_library('rt', required: false)

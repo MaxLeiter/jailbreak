@@ -39,18 +39,9 @@ DEB_FUZZEL_V   ?= $(FUZZEL_VERSION)+ios1
 fuzzel-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/fuzzel/releases/download/$(FUZZEL_VERSION)/fuzzel-$(FUZZEL_VERSION).tar.gz)
 	$(call EXTRACT_TAR,fuzzel-$(FUZZEL_VERSION).tar.gz,fuzzel-$(FUZZEL_VERSION),fuzzel)
-	# Darwin's wchar_t is 32-bit UTF-32 (like the BSDs) but doesn't advertise __STDC_ISO_10646__;
-	# exclude __APPLE__ from foot^Wfuzzel's compile-time UTF-32 guard (currently __FreeBSD__-only).
-	sed -i 's/&& !defined(__FreeBSD__)/\&\& !defined(__FreeBSD__) \&\& !defined(__APPLE__)/' $(BUILD_WORK)/fuzzel/char32.c
-	# macOS/iOS pthread_setname_np takes only the name (sets the calling thread). Add an __APPLE__
-	# branch to match.c and render.c mapping to the 1-arg call.
-	for f in match.c render.c; do \
-		if ! grep -q 'defined(__APPLE__)' $(BUILD_WORK)/fuzzel/$$f; then \
-			sed -i 's|#elif defined(__NetBSD__)|#elif defined(__APPLE__)\n#define pthread_setname_np(thread, name) pthread_setname_np(name)\n#elif defined(__NetBSD__)|' $(BUILD_WORK)/fuzzel/$$f; \
-		fi; \
-	done
-	# doc/ hard-requires scdoc (no meson toggle); man pages aren't needed on iOS.
-	sed -i "/subdir('doc')/d" $(BUILD_WORK)/fuzzel/meson.build
+	# Darwin wchar_t/thread-name fixes and the doc/ skip live in the port patch
+	# stack. The local libc shim below is still copied as a build input.
+	$(call DO_PATCH,fuzzel,fuzzel,-p1)
 	# Darwin/iOS libc portability shim, force-included into every fuzzel TU via c_args below.
 	cp $(BUILD_INFO)/fuzzel-compat.h $(BUILD_WORK)/fuzzel/fuzzel-compat.h
 	rm -rf $(BUILD_WORK)/fuzzel/build && mkdir -p $(BUILD_WORK)/fuzzel/build
