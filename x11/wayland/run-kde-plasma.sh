@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# run-kde-plasma.sh — first-light KDE Plasma session on iOS (ROOT).
+# run-kde-plasma.sh — KDE Plasma session on iOS (ROOT).
 #
-# KWin's current first-light backend is nested Wayland: iosc owns the output
+# KWin's current backend is nested Wayland: iosc owns the output
 # IOSurface that Xios presents, then kwin_wayland runs as a QtWayland/ANGLE client
 # inside iosc and exposes its own socket for Plasma clients. This script starts:
 #
@@ -39,12 +39,23 @@ export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 
+XIOS_KDE_NOFILE="${XIOS_KDE_NOFILE:-4096}"
+case "$XIOS_KDE_NOFILE" in
+  ""|*[!0-9]*) ;;
+  *)
+    if ! ulimit -Sn "$XIOS_KDE_NOFILE" 2>/dev/null; then
+      echo "!! could not raise nofile soft limit to $XIOS_KDE_NOFILE; continuing with $(ulimit -Sn 2>/dev/null || echo unknown)"
+    fi
+    ;;
+esac
+
 TMP="$XDG_RUNTIME_DIR"
 WSOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 IOSC_BIN="${IOSC_BIN:-$XS_PREFIX/local/bin/iosc}"
 KWIN_BIN="${KWIN_BIN:-$(jb_path /Applications/KDE/kwin_wayland.app/kwin_wayland)}"
 PLASMA_BIN="${PLASMA_BIN:-$(jb_path /Applications/KDE/plasmashell.app/plasmashell)}"
 KAMD_BIN="${KAMD_BIN:-$XS_PREFIX/libexec/kactivitymanagerd}"
+LIBEXEC="${LIBEXEC:-$XS_PREFIX/libexec}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
 KDE_SESSION_BUS_FILE="$TMP/kde-session-bus${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
@@ -75,8 +86,8 @@ KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
 case "$KDE_PLASMA_FLAVOR" in
   desktop|plasma|kde)
     KDE_PLASMA_FLAVOR=desktop
-    KDE_PLASMA_LABEL="KDE Plasma (Xios first light)"
-    PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-org.kde.plasma.xios}"
+    KDE_PLASMA_LABEL="KDE Plasma Desktop"
+    PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-org.kde.plasma.desktop}"
     ;;
   nano|plasma-nano|kde-nano)
     KDE_PLASMA_FLAVOR=nano
@@ -222,12 +233,14 @@ else
 fi
 
 echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $KDE_LOG"
+echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
 "$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
   KWIN_BIN="$KWIN_BIN" \
   PLASMA_BIN="$PLASMA_BIN" \
   KAMD_BIN="$KAMD_BIN" \
+  LIBEXEC="$LIBEXEC" \
   KWIN_SOCKET="$KWIN_SOCKET" \
   KWIN_W="$KWIN_W" \
   KWIN_H="$KWIN_H" \
@@ -257,25 +270,35 @@ echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $K
   PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="$PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION" \
   QT_QUICK_CONTROLS_STYLE="$KDE_QT_QUICK_CONTROLS_STYLE" \
   "${PLASMA_ENV[@]}" \
-  dbus-run-session -- "$XS_PREFIX/bin/bash" -lc '
-    set -u
-    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$KDE_SESSION_BUS_FILE"
-    export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
-    xios_export_or_unset() {
-      name="$1"; value="$2"
-      if [ -n "$value" ]; then
-        export "$name=$value"
-      else
-        unset "$name"
-      fi
-    }
-    xios_export_or_unset QT_QUICK_BACKEND "$KWIN_QT_QUICK_BACKEND"
-    xios_export_or_unset QSG_RHI_BACKEND "$KWIN_QSG_RHI_BACKEND"
-    xios_export_or_unset QMLSCENE_DEVICE "$KWIN_QMLSCENE_DEVICE"
-    unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
-    echo "launch kwin: QT_QUICK_BACKEND=${QT_QUICK_BACKEND-<unset>} QSG_RHI_BACKEND=${QSG_RHI_BACKEND-<unset>}"
-    "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
-      --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts &
+	  dbus-run-session -- "$XS_PREFIX/bin/bash" -lc '
+	    set -u
+	    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$KDE_SESSION_BUS_FILE"
+	    export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+	    xios_export_or_unset() {
+	      name="$1"; value="$2"
+	      if [ -n "$value" ]; then
+	        export "$name=$value"
+	      else
+	        unset "$name"
+	      fi
+	    }
+	    xios_start_session_helper() {
+	      b="$1"; log="$2"; name="${b##*/}"
+	      [ -x "$b" ] || return 0
+	      ps ax 2>/dev/null | grep -v grep | grep -q "$name" && return 0
+	      "$b" >"$log" 2>&1 &
+	    }
+	    export XIOS_HWBRIDGE_BUS="${XIOS_HWBRIDGE_BUS:-session}"
+	    xios_start_session_helper "$LIBEXEC/xios-hwbridged" "$XDG_RUNTIME_DIR/xios-hwbridged.log"
+	    xios_start_session_helper "$LIBEXEC/xios-sensord" "$XDG_RUNTIME_DIR/xios-sensord.log"
+	    xios_start_session_helper "$LIBEXEC/xios-sysintd" "$XDG_RUNTIME_DIR/xios-sysintd.log"
+	    xios_export_or_unset QT_QUICK_BACKEND "$KWIN_QT_QUICK_BACKEND"
+	    xios_export_or_unset QSG_RHI_BACKEND "$KWIN_QSG_RHI_BACKEND"
+	    xios_export_or_unset QMLSCENE_DEVICE "$KWIN_QMLSCENE_DEVICE"
+	    unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+	    echo "launch kwin: QT_QUICK_BACKEND=${QT_QUICK_BACKEND-<unset>} QSG_RHI_BACKEND=${QSG_RHI_BACKEND-<unset>}"
+	    "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
+	      --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts &
     kwin_pid=$!
     for _ in $(seq 1 60); do
       [ -S "$XDG_RUNTIME_DIR/$KWIN_SOCKET" ] && break
