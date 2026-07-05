@@ -265,10 +265,8 @@ static void pins_save(void)
 static void pin_load_icon(struct desktop_pin *p)
 {
     if (p->icon_surf) { cairo_surface_destroy(p->icon_surf); p->icon_surf = NULL; }
-    char path[512];
     const char *name = p->icon[0] ? p->icon : p->name;
-    if (pi_resolve(name, B.scale, path, sizeof path))
-        p->icon_surf = pr_icon_load(path);
+    p->icon_surf = pi_load_surface(name, B.scale);
 }
 
 static int is_image_path(const char *path)

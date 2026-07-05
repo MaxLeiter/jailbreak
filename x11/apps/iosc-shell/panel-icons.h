@@ -22,6 +22,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "panel-render.h"
+
 static const char *PI_HICOLOR_SIZES[] = {
     "512x512", "256x256", "192x192", "128x128", "96x96", "64x64", "48x48",
 };
@@ -102,6 +104,13 @@ static int pi_resolve(const char *name, int scale, char *out, size_t outsz)
         if (pi_try(out, outsz, "%s/pixmaps/%s.%s", share_roots[r], base, "svg")) return 1;
     }
     return 0;
+}
+
+static cairo_surface_t *pi_load_surface(const char *name, int scale)
+{
+    char path[512];
+    if (!pi_resolve(name, scale, path, sizeof path)) return NULL;
+    return pr_icon_load(path);
 }
 
 #endif /* PANEL_ICONS_H */

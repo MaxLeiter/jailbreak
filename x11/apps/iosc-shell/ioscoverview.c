@@ -106,14 +106,6 @@ static uint64_t mono_ms(void)
     return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
 }
 
-/* Resolve + load an icon for `name`, or NULL. */
-static cairo_surface_t *load_icon(const char *name)
-{
-    char path[512];
-    if (!pi_resolve(name, O.scale, path, sizeof path)) return NULL;
-    return pr_icon_load(path);
-}
-
 /* case-insensitive substring */
 static int ci_match(const char *hay, const char *needle)
 {
@@ -239,7 +231,7 @@ static void ft_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, const 
 {
     (void)d; struct win_item *w = win_for(h); if (!w || !a) return;
     snprintf(w->app_id, sizeof w->app_id, "%s", a);
-    if (!w->icon_tried) { w->icon_tried = 1; w->icon = load_icon(a); }
+    if (!w->icon_tried) { w->icon_tried = 1; w->icon = pi_load_surface(a, O.scale); }
 }
 static void ft_out_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, struct wl_output *o){ (void)d;(void)h;(void)o; }
 static void ft_out_leave(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, struct wl_output *o){ (void)d;(void)h;(void)o; }
@@ -601,7 +593,8 @@ int main(void)
 
     O.napps = sd_scan_apps(O.apps, APP_MAX);
     for (int i = 0; i < O.napps; i++)
-        O.app_icon[i] = load_icon(O.apps[i].icon[0] ? O.apps[i].icon : O.apps[i].name);
+        O.app_icon[i] = pi_load_surface(O.apps[i].icon[0] ? O.apps[i].icon : O.apps[i].name,
+                                        O.scale);
     refilter();
 
     /* Freeze the desktop into the frosted backdrop BEFORE mapping (the capture

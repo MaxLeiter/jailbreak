@@ -255,14 +255,6 @@ static void dock_move_launcher(int from, int to)
     P.reorder_target = to;
 }
 
-/* Resolve + load an icon for `name` at the current scale, or NULL. */
-static cairo_surface_t *load_icon(const char *name)
-{
-    char path[512];
-    if (!pi_resolve(name, P.scale, path, sizeof path)) return NULL;
-    return pr_icon_load(path);
-}
-
 /* ------------------------------------------------------------- rendering -- */
 
 static void build_model(struct panel_model *m)
@@ -733,7 +725,7 @@ static void ft_app_id(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, const 
 {
     (void)d; struct task_item *ti = task_for(h); if (!ti || !a) return;
     snprintf(ti->app_id, sizeof ti->app_id, "%s", a);
-    if (!ti->icon_tried) { ti->icon_tried = 1; ti->icon = load_icon(a); }
+    if (!ti->icon_tried) { ti->icon_tried = 1; ti->icon = pi_load_surface(a, P.scale); }
 }
 static void ft_out_enter(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, struct wl_output *o){ (void)d;(void)h;(void)o; }
 static void ft_out_leave(void *d, struct zwlr_foreign_toplevel_handle_v1 *h, struct wl_output *o){ (void)d;(void)h;(void)o; }
@@ -1104,7 +1096,8 @@ int main(int argc, char **argv)
     P.nlaunch = sd_scan_apps(P.launch, LAUNCH_MAX);
     dock_apply_saved_order();
     for (int i = 0; i < P.nlaunch; i++)
-        P.launch_icon[i] = load_icon(P.launch[i].icon[0] ? P.launch[i].icon : P.launch[i].name);
+        P.launch_icon[i] = pi_load_surface(P.launch[i].icon[0] ? P.launch[i].icon : P.launch[i].name,
+                                           P.scale);
     poll_status();
     /* Version banner: confirms WHICH panel binary is live on device (a
      * "looks like the old panel" report is usually a stale process). */
