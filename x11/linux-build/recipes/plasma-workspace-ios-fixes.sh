@@ -397,7 +397,7 @@ from pathlib import Path
 
 cmake = Path(sys.argv[1])
 text = cmake.read_text()
-marker = "# iOS first-light: KIO's generated KDirNotify headers are not staged"
+marker = "# iOS cross-build: use KIO's generated KDirNotify header from the staged source tree"
 if marker not in text:
     text = text.replace(
         "include_directories(${CMAKE_CURRENT_BINARY_DIR})\n",
@@ -405,13 +405,6 @@ if marker not in text:
         f"{marker}\n"
         "include_directories(${plasma-workspace_SOURCE_DIR}/../kio/src/core)\n",
     )
-text = text.replace(
-    """kcoreaddons_add_plugin(desktopnotifier SOURCES desktopnotifier.cpp INSTALL_NAMESPACE "kf6/kded")
-target_link_libraries(desktopnotifier KF6::ConfigCore KF6::KIOCore KF6::DBusAddons)
-""",
-    """# ios-firstlight-skip: desktopnotifier needs unstaged KDirNotify symbols; the worker is enough for desktop:/ reads.
-""",
-)
 cmake.write_text(text)
 
 kio = Path(sys.argv[2])

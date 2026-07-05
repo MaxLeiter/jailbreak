@@ -443,6 +443,8 @@ final class XScreenView: UIView {
     private var longPressFired = false
     private var keyboardSwipeTriggered = false
     private var appGestureTouchSuppression = false
+    private var configuredTouchReplacesPointer: Bool?
+    private var activeTouchReplacesPointer = false
     private static let longPressSeconds: TimeInterval = 0.55
     private static let longPressSlopPt: CGFloat = 12
 
@@ -969,6 +971,7 @@ final class XScreenView: UIView {
         let oldIoscClipSock = ioscClipboardSock
 
         resetConfigDefaults(resetDisplay: true)
+        configuredTouchReplacesPointer = Self.parseTouchPointerPolicy(obj)
         if let w = ddx.width { fbWidth = w }
         if let h = ddx.height { fbHeight = h }
         ddxIsIOSurface = ddx.isIOSurface
@@ -1393,6 +1396,32 @@ final class XScreenView: UIView {
 
     private func inputBackendName() -> String {
         usingIosc ? "iosc" : "XTEST"
+    }
+
+    private static func parseTouchPointerPolicy(_ obj: [String: Any]) -> Bool? {
+        if let value = obj["touch_replaces_pointer"] as? Bool { return value }
+        guard let raw = obj["touch_pointer_policy"] as? String else { return nil }
+        switch raw.lowercased() {
+        case "touch", "touch-only", "replace-pointer", "touch-replaces-pointer":
+            return true
+        case "additive", "pointer-fallback", "pointer":
+            return false
+        default:
+            return nil
+        }
+    }
+
+    private func sessionWantsTouchToReplacePointer() -> Bool {
+        guard let preset = sessionStatus()?.preset.lowercased() else { return false }
+        return preset == "kde" || preset.hasPrefix("kde-")
+    }
+
+    private func shouldTouchReplacePointer(for touches: Set<UITouch>) -> Bool {
+        guard usingIosc,
+              touches.contains(where: { $0.type == .direct }) else {
+            return false
+        }
+        return configuredTouchReplacesPointer ?? sessionWantsTouchToReplacePointer()
     }
 
     private func owningViewController() -> UIViewController? {
@@ -2139,11 +2168,10 @@ final class XScreenView: UIView {
 
     // MARK: iosc real multitouch + Apple Pencil (wire types XIOS_IN_TOUCH/XIOS_IN_TABLET)
 
-    /// The touch/tablet records are ADDITIVE: the single-finger pointer
-    /// emulation below keeps firing alongside them, so nothing regresses if a
-    /// client ignores wl_touch. Flip to true if apps double-handle taps
-    /// (pointer click + touch tap) so a forwarded touch consumes the event.
-    private static let ioscTouchReplacesPointer = false
+    /// The touch/tablet records default to ADDITIVE pointer fallback, but KDE/Qt
+    /// Quick activates on both wl_touch and the emulated wl_pointer click. For
+    /// direct finger touches in those sessions, consume the pointer emulation so
+    /// one physical tap produces one desktop action.
     /// Stable per-touch slot ids (0..9), assigned on began, freed on ended/cancelled.
     private var touchSlots: [UITouch: Int32] = [:]
 
@@ -2239,7 +2267,11 @@ final class XScreenView: UIView {
             beginAppGestureSuppression(event: event)
             return
         }
-        if forwardIoscAll(touches, phase: 1, event: event) && Self.ioscTouchReplacesPointer { return }
+        let touchConsumesPointer = shouldTouchReplacePointer(for: touches)
+        if forwardIoscAll(touches, phase: 1, event: event) {
+            activeTouchReplacesPointer = touchConsumesPointer
+            if touchConsumesPointer { return }
+        }
         guard (event?.allTouches?.count ?? touches.count) == 1 else {
             cancelPendingPress()   // a second finger means gesture, not click
             return
@@ -2268,7 +2300,7 @@ final class XScreenView: UIView {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
-        if forwardIoscAll(touches, phase: 2, event: event) && Self.ioscTouchReplacesPointer { return }
+        if forwardIoscAll(touches, phase: 2, event: event) && activeTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
@@ -2289,11 +2321,15 @@ final class XScreenView: UIView {
             if allTouchesEndedOrCancelled(event) { appGestureTouchSuppression = false }
             return
         }
-        if forwardIoscAll(touches, phase: 0, event: event) && Self.ioscTouchReplacesPointer { return }
+        if forwardIoscAll(touches, phase: 0, event: event) && activeTouchReplacesPointer {
+            if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
+            return
+        }
         guard inputConnected else { cancelPendingPress(); longPressFired = false; return }
         if longPressFired { longPressFired = false; return }
         if pendingPress != nil { flushPendingPress() }   // stationary tap = click
         releaseLeftPress()
+        if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -2302,11 +2338,16 @@ final class XScreenView: UIView {
             if allTouchesEndedOrCancelled(event) {
                 appGestureTouchSuppression = false
                 touchSlots.removeAll()
+                activeTouchReplacesPointer = false
             }
             return
         }
-        if forwardIoscAll(touches, phase: 3, event: event) && Self.ioscTouchReplacesPointer { return }
+        if forwardIoscAll(touches, phase: 3, event: event) && activeTouchReplacesPointer {
+            if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
+            return
+        }
         cancelPointerInteraction()
+        if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
     }
 
     // MARK: deferred press helpers

@@ -177,18 +177,31 @@ text = text.replace(
 path.write_text(text)
 PY
 
-python3 - "$src/applets/kicker/package/contents/config/main.xml" <<'PY'
+python3 - "$src" <<'PY'
+import re
 import sys
 from pathlib import Path
 
-path = Path(sys.argv[1])
-text = path.read_text()
-old = "preferred://browser,org.kde.kontact.desktop,systemsettings.desktop,org.kde.dolphin.desktop,org.kde.discover"
-new = "org.kde.kwrite.desktop,org.kde.gwenview.desktop,org.kde.ark.desktop"
-if old not in text and new not in text:
-    raise SystemExit("kicker favoriteApps default not found")
-text = text.replace(old, new)
-path.write_text(text)
+src = Path(sys.argv[1])
+favorite_apps = "org.kde.kwrite.desktop,org.kde.gwenview.desktop,org.kde.ark.desktop"
+system_applications = "systemsettings.desktop"
+
+def replace_default(path: Path, entry: str, value: str) -> None:
+    text = path.read_text()
+    pattern = rf'(<entry\s+name="{re.escape(entry)}"[^>]*>.*?<default>)(.*?)(</default>)'
+    text, count = re.subn(pattern, lambda match: f"{match.group(1)}{value}{match.group(3)}", text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"{entry} default not found: {path}")
+    path.write_text(text)
+
+kicker = src / "applets/kicker/package/contents/config/main.xml"
+kickoff = src / "applets/kickoff/package/contents/config/main.xml"
+for path in (kicker, kickoff):
+    if not path.exists():
+        raise SystemExit(f"launcher config not found: {path}")
+replace_default(kicker, "favoriteApps", favorite_apps)
+replace_default(kickoff, "favorites", favorite_apps)
+replace_default(kickoff, "systemApplications", system_applications)
 PY
 
 python3 - "$src/containments/desktop/CMakeLists.txt" <<'PY'

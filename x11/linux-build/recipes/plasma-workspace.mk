@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += plasma-workspace
 PLASMAWORKSPACE_VERSION = $(PLASMA_VERSION)
-DEB_PLASMAWORKSPACE_V ?= $(PLASMAWORKSPACE_VERSION)+ios7
+DEB_PLASMAWORKSPACE_V ?= $(PLASMAWORKSPACE_VERSION)+ios8
 
 plasma-workspace-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-workspace))
@@ -50,9 +50,11 @@ plasma-workspace-package: plasma-workspace-stage
 	fi
 	bash /work/recipes/plasma-workspace-ios-package-fixes.sh $(BUILD_DIST)/plasma-workspace
 	$(call KF6_COPY_DEV,plasma-workspace,plasma-workspace)
-	# plasmashell/plasmawindowed are real QtQuick/Wayland clients; keep them on
-	# the GPU/IOSurface entitlement set instead of Procursus general.xml.
-	$(call SIGN,plasma-workspace,iosc-gpu-client-ent.xml,,,nogeneral)
+	# plasmashell/plasmawindowed are real QtQuick/Wayland clients. With the
+	# QtWayland/ANGLE IOSurface path they need the same GL/platform entitlement
+	# tier as the smoke clients; the narrower GPU-only set leaves Qt Quick unable
+	# to create its RHI context on-device.
+	$(call SIGN,plasma-workspace,iosc-gl-ent.xml,,,nogeneral)
 	$(call SIGN,plasma-workspace-dev,general.xml)
 	$(call PACK,plasma-workspace,DEB_PLASMAWORKSPACE_V)
 	$(call PACK,plasma-workspace-dev,DEB_PLASMAWORKSPACE_V)
