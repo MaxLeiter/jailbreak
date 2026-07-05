@@ -1,0 +1,33 @@
+Subject: [PATCH] gtk3: enable iOS backends and drop AT-SPI bridge
+
+The Darwin Meson path disables both Wayland and X11 backends. For the iOS
+cross build we keep those backend options enabled and make atk-bridge optional,
+because the target has no AT-SPI bus.
+
+diff -ruN -U0 --exclude=*.bak a/gtk/a11y/gtkaccessibility.c b/gtk/a11y/gtkaccessibility.c
+--- a/gtk/a11y/gtkaccessibility.c	2023-05-21 19:22:08
++++ b/gtk/a11y/gtkaccessibility.c	2026-07-04 23:41:36
+@@ -41 +41 @@
+-#include <atk-bridge.h>
++/* atk-bridge.h removed for iOS (no AT-SPI) */
+@@ -992 +992 @@
+-  atk_bridge_adaptor_init (NULL, NULL);
++  /* atk_bridge_adaptor_init disabled for iOS */
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2023-05-21 19:22:08
++++ b/meson.build	2026-07-04 23:41:36
+@@ -160,2 +160,2 @@
+-  wayland_enabled = false
+-  x11_enabled = false
++  wayland_enabled = wayland_enabled
++  x11_enabled = x11_enabled
+@@ -167,2 +167,2 @@
+-  wayland_enabled = false
+-  x11_enabled = false
++  wayland_enabled = wayland_enabled
++  x11_enabled = x11_enabled
+@@ -567 +567 @@
+-  atkbridge_dep  = dependency('atk-bridge-2.0', version: at_spi2_atk_req)
++  atkbridge_dep  = dependency('atk-bridge-2.0', version: at_spi2_atk_req, required: false)
+@@ -586 +585,0 @@
+-  atk_pkgs += ['atk-bridge-2.0']

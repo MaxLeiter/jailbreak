@@ -28,13 +28,11 @@ libadwaita-setup: setup
 	# adw-settings-impl-macos.c. AppKit does not exist on iOS. Force the condition false so the
 	# build falls through to the `else` branch (adw-settings-impl-portal.c — the standard Linux
 	# xdg-desktop-portal backend, correct for our X11/GTK-on-iOS environment).
-	sed -i "s/if target_system == 'darwin'/if target_system == '_ios_force_portal'/" $(BUILD_WORK)/libadwaita/src/meson.build
 	# The C sources gate the same macOS backend on #ifdef __APPLE__ (independently of meson):
 	# adw-settings-impl-private.h declares AdwSettingsImplMacOS (not ...Portal) and adw-settings.c
 	# calls adw_settings_impl_macos_new(). Force both off __APPLE__ so the #else (portal) branch
 	# is taken, matching the meson source selection above. Each file has exactly one such gate.
-	sed -i "s/#ifdef __APPLE__/#if 0 \/* iOS: use portal settings backend *\//" $(BUILD_WORK)/libadwaita/src/adw-settings-impl-private.h
-	sed -i "s/#ifdef __APPLE__/#if 0 \/* iOS: use portal settings backend *\//" $(BUILD_WORK)/libadwaita/src/adw-settings.c
+	$(call DO_PATCH,libadwaita,libadwaita,-p1)
 	mkdir -p $(BUILD_WORK)/libadwaita/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

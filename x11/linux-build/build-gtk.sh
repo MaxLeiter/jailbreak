@@ -5,7 +5,7 @@
 # exist in Procursus (glib/cairo/harfbuzz/freetype/fontconfig/libpng/...) cascade.
 #
 # Run in the container with procursus-vol mounted at /work/Procursus, recipes at
-# /work/recipes, out at /out. Select targets via TARGETS env:
+# /work/recipes, ports at /work/ports, and out at /out. Select targets via TARGETS env:
 #   docker run -e TARGETS="fribidi-package pango-package" ... /work/build-gtk.sh
 set -euo pipefail
 cd /work/Procursus
@@ -55,6 +55,26 @@ for x in /work/build_info/iosc-*.xml /work/recipes/build_info/iosc-*.xml; do
   [ -f "$x" ] && cp -v "$x" build_misc/entitlements/ || true
 done
 
+TARGETS="${TARGETS:-fribidi-package pango-package gdk-pixbuf-package atk-package gtk+3.0-package}"
+
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+target_requests gtk+3.0 && stage_required_patch_stack gtk+3.0
+target_requests gtk4 && stage_required_patch_stack gtk4
+target_requests libadwaita && stage_required_patch_stack libadwaita
+
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's
 # compile-only probes add -Werror=unused-command-line-argument, so every cc.sizeof()
 # fails ("'linker' input unused") and meson aborts (e.g. glib: "no native 16-bit
@@ -100,7 +120,7 @@ fi
 #   - <sys/sysmacros.h> (Linux major()/minor()); Darwin has them in <sys/types.h>
 # Plus the W0 Wayland libs (built by build-wayland.sh, shipped as debs) staged from /out
 # so wayland-client/egl + wayland-protocols + xkbcommon resolve at configure time.
-# (gtk4.mk separately seds out GTK4 meson's `if os_darwin: wayland_enabled=false` gate.)
+# (gtk4.mk applies a source patch for GTK4's `if os_darwin: wayland_enabled=false` gate.)
 echo "==> staging Wayland backend prerequisites for GTK4"
 # libexpat1-dev/libffi-dev are HOST deps for wayland.mk's native wayland-scanner (pass 1),
 # which links host expat to parse protocol XML. (The cross wayland libs get expat/ffi from
@@ -117,7 +137,6 @@ echo '#include <sys/types.h>' > "$BBINC/sys/sysmacros.h"
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
-TARGETS="${TARGETS:-fribidi-package pango-package gdk-pixbuf-package atk-package gtk+3.0-package}"
 
 for t in $TARGETS; do
   echo "==> make $t"

@@ -22,16 +22,11 @@ gtk+3.0-setup: setup
 	# available as a fallback. The wayland deps (wayland-client/egl/cursor, wayland-protocols,
 	# xkbcommon) + a host wayland-scanner + the linux/input-event-codes + sys/sysmacros shims
 	# are staged by build-gtk.sh — the very same prerequisites GTK4's wayland backend uses.
-	# (The win32 wayland-off line is neutralised too; harmless, we never target win32.)
-	sed -i 's/wayland_enabled = false/wayland_enabled = wayland_enabled/g' $(BUILD_WORK)/gtk+3.0/meson.build
-	sed -i 's/x11_enabled = false/x11_enabled = x11_enabled/g' $(BUILD_WORK)/gtk+3.0/meson.build
+	# (The win32 backend-off lines are neutralised too; harmless, we never target win32.)
 	# Drop the AT-SPI accessibility bridge (atk-bridge-2.0): it would pull the whole
 	# at-spi2 + D-Bus stack, which we don't have on iOS (and there's no a11y bus to
 	# connect to at runtime). GTK apps run fine without it.
-	sed -i "s|dependency('atk-bridge-2.0', version: at_spi2_atk_req)|dependency('atk-bridge-2.0', version: at_spi2_atk_req, required: false)|" $(BUILD_WORK)/gtk+3.0/meson.build
-	sed -i "/atk_pkgs += \['atk-bridge-2.0'\]/d" $(BUILD_WORK)/gtk+3.0/meson.build
-	sed -i 's|#include <atk-bridge.h>|/* atk-bridge.h removed for iOS (no AT-SPI) */|' $(BUILD_WORK)/gtk+3.0/gtk/a11y/gtkaccessibility.c
-	sed -i 's|atk_bridge_adaptor_init (NULL, NULL);|/* atk_bridge_adaptor_init disabled for iOS */|' $(BUILD_WORK)/gtk+3.0/gtk/a11y/gtkaccessibility.c
+	$(call DO_PATCH,gtk+3.0,gtk+3.0,-p1)
 	rm -rf $(BUILD_WORK)/gtk+3.0/build
 	mkdir -p $(BUILD_WORK)/gtk+3.0/build
 	echo -e "[host_machine]\n \

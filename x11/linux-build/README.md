@@ -157,6 +157,7 @@ docker run --rm --platform linux/arm64 \
   -v procursus-vol:/work/Procursus \
   -v "$PWD/build-gtk.sh:/work/build-gtk.sh:ro" \
   -v "$PWD/recipes:/work/recipes:ro" \
+  -v "$PWD/../ports:/work/ports:ro" \
   -v "$PWD/out:/out" \
   -e TARGETS="fribidi-package pango-package gdk-pixbuf-package atk-package gtk+3.0-package" \
   procursus-xbuild:bookworm-arm64 /work/build-gtk.sh

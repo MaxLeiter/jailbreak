@@ -1,0 +1,14 @@
+Subject: [PATCH] gtk4: keep Wayland backend enabled on iOS
+
+The Darwin Meson branch force-disables Wayland. The iOS cross build supplies
+the Wayland dependencies and needs the requested backend option to survive.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2024-08-16 07:56:14
++++ b/meson.build	2026-07-04 23:41:40
+@@ -125 +125 @@
+-  wayland_enabled = false
++  wayland_enabled = wayland_enabled
+@@ -132 +132 @@
+-  wayland_enabled = false
++  wayland_enabled = wayland_enabled

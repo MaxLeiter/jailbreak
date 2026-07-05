@@ -56,17 +56,18 @@ Current converted non-Qt stacks:
   where `clock_gettime()` is in libc.
 - `ports/basu/patches`: keeps the Meson-level iOS/ld64 edits as a patch stack;
   basu remains documented as a blocked Linux-bound sd-bus port.
+- `ports/gtk+3.0/patches`: keeps GTK3's Darwin backend gates from disabling
+  the requested X11/Wayland build and drops the unavailable AT-SPI bridge.
+- `ports/gtk4/patches`: keeps GTK4's Darwin backend gates from disabling the
+  requested Wayland backend.
+- `ports/libadwaita/patches`: forces libadwaita's Darwin settings backend onto
+  the portal path instead of the unavailable macOS/AppKit implementation.
 
 Remaining non-Qt patcher-shaped source edits:
 
 - `pulseaudio-ios-fixes.sh` is intentionally still procedural because it injects
   local Xios module sources after the patch stack has modified the upstream
   module list.
-- `gtk+3.0.mk`, `gtk4.mk`, and `libadwaita.mk` still mutate upstream source
-  after extraction and are the next good candidates for patch stacks. Convert
-  them together with a `build-gtk.sh` patch-staging pass, because that driver
-  does not currently mount/stage `ports/` the way the newer GNOME/session
-  builders do.
 - `recipes-ladybird/ladybird-m0-patches.sh` is not a dependency recipe in this
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.

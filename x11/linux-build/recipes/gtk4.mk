@@ -14,7 +14,7 @@ gtk4-setup: setup
 	# block, overriding -Dwayland-backend=true (x11 stays; only wayland is killed on
 	# darwin). No-op it so the multi-backend (x11 + wayland) build takes effect — the
 	# wayland deps (wayland-client/egl, wayland-protocols, xkbcommon) are staged from W0.
-	sed -i 's/wayland_enabled = false/wayland_enabled = wayland_enabled/g' $(BUILD_WORK)/gtk4/meson.build
+	$(call DO_PATCH,gtk4,gtk4,-p1)
 	rm -rf $(BUILD_WORK)/gtk4/build
 	mkdir -p $(BUILD_WORK)/gtk4/build
 	echo -e "[host_machine]\n \

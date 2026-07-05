@@ -1,0 +1,23 @@
+Subject: [PATCH] libadwaita: use portal settings backend on iOS
+
+The Darwin target branch selects the macOS AppKit settings backend. iOS has no
+AppKit, so force the build and source gates onto the portal backend.
+
+diff -ruN -U0 --exclude=*.bak a/src/adw-settings-impl-private.h b/src/adw-settings-impl-private.h
+--- a/src/adw-settings-impl-private.h	2024-03-15 08:17:36
++++ b/src/adw-settings-impl-private.h	2026-07-04 23:41:41
+@@ -45 +45 @@
+-#ifdef __APPLE__
++#if 0 /* iOS: use portal settings backend */
+diff -ruN -U0 --exclude=*.bak a/src/adw-settings.c b/src/adw-settings.c
+--- a/src/adw-settings.c	2024-03-15 08:17:36
++++ b/src/adw-settings.c	2026-07-04 23:41:41
+@@ -147 +147 @@
+-#ifdef __APPLE__
++#if 0 /* iOS: use portal settings backend */
+diff -ruN -U0 --exclude=*.bak a/src/meson.build b/src/meson.build
+--- a/src/meson.build	2024-03-15 08:17:36
++++ b/src/meson.build	2026-07-04 23:41:41
+@@ -324 +324 @@
+-if target_system == 'darwin'
++if target_system == '_ios_force_portal'
