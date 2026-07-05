@@ -16,18 +16,8 @@ DEB_POLKIT_V   ?= $(POLKIT_VERSION)+ios1
 polkit-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/polkit/polkit/-/archive/$(POLKIT_VERSION)/polkit-$(POLKIT_VERSION).tar.gz)
 	$(call EXTRACT_TAR,polkit-$(POLKIT_VERSION).tar.gz,polkit-$(POLKIT_VERSION),polkit)
-	# (a) build polkitagent under libs-only (upstream gates it out with polkitd)
-	perl -0pi -e "s{if not get_option\('libs-only'\)\n  subdir\('polkitbackend'\)\n  subdir\('polkitagent'\)\n  subdir\('programs'\)\nendif}{subdir('polkitagent')\nif not get_option('libs-only')\n  subdir('polkitbackend')\n  subdir('programs')\nendif}" \
-		$(BUILD_WORK)/polkit/src/meson.build
-	# (b) strip the trailing setuid auth-helper block (polkit-agent-helper-1, PAM/shadow)
-	perl -0pi -e "s{\nsources = files\(\n  'polkitagenthelperprivate\.c',.*$$}{\n}s" \
-		$(BUILD_WORK)/polkit/src/polkitagent/meson.build
-	# (c) crypt lives in libSystem on Darwin — no separate libcrypt to find
-	sed -i "s/cc.find_library('crypt')/cc.find_library('crypt', required: false)/" \
-		$(BUILD_WORK)/polkit/meson.build
-	# (d) expat is vestigial in the agent lib (no XML_ use) — dropping it avoids recording
-	# a libexpat LC_LOAD_DYLIB the device has no deb for
-	sed -i "/^  expat_dep,$$/d" $(BUILD_WORK)/polkit/src/polkitagent/meson.build
+	# Keep the libs-only agent library source edits in the port patch stack.
+	$(call DO_PATCH,polkit,polkit,-p1)
 	mkdir -p $(BUILD_WORK)/polkit/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

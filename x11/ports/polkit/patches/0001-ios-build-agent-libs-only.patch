@@ -1,0 +1,42 @@
+Subject: [PATCH] polkit: build agent libraries only on iOS
+
+The shell only needs the polkit gobject and agent client libraries. Build
+polkitagent even with libs-only enabled, strip the setuid auth helper, avoid a
+separate libcrypt lookup on Darwin, and drop the unused expat dependency from
+the agent library link line.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2024-01-17 07:43:53
++++ b/meson.build	2026-07-05 00:26:26
+@@ -278 +278 @@
+-  auth_deps += cc.find_library('crypt')
++  auth_deps += cc.find_library('crypt', required: false)
+diff -ruN -U0 --exclude=*.bak a/src/meson.build b/src/meson.build
+--- a/src/meson.build	2024-01-17 07:43:53
++++ b/src/meson.build	2026-07-05 00:26:26
+@@ -6,0 +7 @@
++subdir('polkitagent')
+@@ -9 +9,0 @@
+-  subdir('polkitagent')
+diff -ruN -U0 --exclude=*.bak a/src/polkitagent/meson.build b/src/polkitagent/meson.build
+--- a/src/polkitagent/meson.build	2024-01-17 07:43:53
++++ b/src/polkitagent/meson.build	2026-07-05 00:26:26
+@@ -39 +38,0 @@
+-  expat_dep,
+@@ -104,16 +102,0 @@
+-sources = files(
+-  'polkitagenthelperprivate.c',
+-  'polkitagenthelper-@0@.c'.format(auth_fw),
+-)
+-
+-deps = auth_deps + [libpolkit_gobject_dep]
+-
+-executable(
+-  '@0@-agent-helper-@1@'.format(meson.project_name(), pk_api_version),
+-  sources,
+-  include_directories: top_inc,
+-  dependencies: deps,
+-  c_args: '-D_POLKIT_COMPILATION',
+-  install: true,
+-  install_dir: pk_libprivdir,
+-)

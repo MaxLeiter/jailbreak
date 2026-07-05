@@ -40,6 +40,34 @@ echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
 
 WITH_EDS="${WITH_EDS:-0}"
+TARGETS="${TARGETS:-\
+  startup-notification-package \
+  at-spi2-core-package \
+  libsecret-package \
+  gcr-package \
+  polkit-package \
+  ibus-package \
+  pulseaudio-package \
+  gnome-shell-package}"
+
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+if target_requests polkit || target_requests gnome-shell; then
+  stage_required_patch_stack polkit
+fi
+
 SHELL_PATCH_DIR=/work/ports/gnome-shell/patches
 if [ "$WITH_EDS" = 1 ]; then
   SHELL_PATCH_DIR=/work/ports/gnome-shell/patches-eds
@@ -130,20 +158,25 @@ if [ "$WITH_EDS" = 1 ]; then
 fi
 
 # Dependency order per docs: the shell's C-link closure first, gnome-shell last.
-TARGETS="${TARGETS:-\
-  startup-notification-package \
-  at-spi2-core-package \
-  libsecret-package \
-  gcr-package \
-  polkit-package \
-  ibus-package \
-  pulseaudio-package \
-  gnome-shell-package}"
+
+POLKIT_W=build_work/iphoneos-arm64-rootless/1900/polkit
+POLKIT_S=build_stage/iphoneos-arm64-rootless/1900/polkit
+POLKIT_F="$POLKIT_W/.xios_patch_series.sha256"
+if target_requests polkit || target_requests gnome-shell; then
+  POLKIT_FP="$(sha256sum \
+    /work/ports/polkit/patches/series \
+    /work/ports/polkit/patches/*.patch | sha256sum | awk '{print $1}')"
+  POLKIT_OLD_FP="$(cat "$POLKIT_F" 2>/dev/null || true)"
+  if [ -d "$POLKIT_W" ] && [ "$POLKIT_FP" != "$POLKIT_OLD_FP" ]; then
+    echo "==> wiping stale polkit build after patch changes"
+    rm -rf "$POLKIT_W" "$POLKIT_S"
+  fi
+fi
 
 GSHELL_W=build_work/iphoneos-arm64-rootless/1900/gnome-shell
 GSHELL_S=build_stage/iphoneos-arm64-rootless/1900/gnome-shell
 GSHELL_F="$GSHELL_W/.xios_patch_series.sha256"
-if [[ " $TARGETS " == *" gnome-shell"* ]]; then
+if target_requests gnome-shell; then
   GSHELL_FP="$(sha256sum \
     "$SHELL_PATCH_DIR/series" \
     "$SHELL_PATCH_DIR"/*.patch | sha256sum | awk '{print $1}')"
@@ -160,6 +193,9 @@ for t in $TARGETS; do
 done
 if [ -d "$GSHELL_W" ] && [ -n "${GSHELL_FP:-}" ]; then
   printf '%s\n' "$GSHELL_FP" > "$GSHELL_F"
+fi
+if [ -d "$POLKIT_W" ] && [ -n "${POLKIT_FP:-}" ]; then
+  printf '%s\n' "$POLKIT_FP" > "$POLKIT_F"
 fi
 
 echo "==> collect debs -> /out"

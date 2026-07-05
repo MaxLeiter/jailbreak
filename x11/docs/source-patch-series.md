@@ -79,6 +79,9 @@ Current converted non-Qt stacks:
   removing GNU ld version-script use.
 - `ports/appstream/patches`: keeps AppStream cross-build codegen on the host
   `appstreamcli` instead of a target-built iOS helper.
+- `ports/polkit/patches`: builds the polkit agent client library under
+  libs-only mode while dropping the setuid helper and unavailable auth-library
+  edges.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
@@ -95,7 +98,7 @@ Remaining non-Qt procedural source edits:
   separate Ladybird-specific cleanup.
 - Smaller recipe-level source edits still exist outside the original helper
   script audit, including lower-level stack recipes such as wayland,
-  polkit/tracker, and mutter/EDS.
+  tracker, and mutter/EDS.
   Convert these in small dependency-specific batches after checking whether
   each edit is true upstream source patching versus generated/package metadata
   or a deliberate blocked-port note.
