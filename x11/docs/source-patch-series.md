@@ -98,6 +98,10 @@ Current converted non-Qt stacks:
 - `ports/evolution-data-server/patches`: carries the EDS SMIME-off,
   ld64-linker, host-generator, GLib include, and Camel no-NSS/NSPR source
   edits for the calendar/addressbook build.
+- `ports/mozjs/patches`: carries the SpiderMonkey 115 iOS target/configure
+  support, JS-shell removal, Darwin old-configure cases, iOS stack-size
+  alignment, and the wasm signal-handler guard shared by the JIT and non-JIT
+  MozJS recipes.
 - `ports/mpv/patches`: carries the iOS runtime guard for disabled hardware
   decoding and the Meson Objective-C cross-compiler registration needed by the
   native AudioUnit output path.
