@@ -6,6 +6,8 @@
      returns nil and GTK falls back to CPU cairo. -->
 <plist version="1.0">
 <dict>
+    <key>platform-application</key>
+    <true/>
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
     <key>com.apple.private.skip-library-validation</key>

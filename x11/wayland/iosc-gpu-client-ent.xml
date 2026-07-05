@@ -8,6 +8,8 @@
      get-task-allow lets iosc task_for_pid() us to import the rendered IOSurface. -->
 <plist version="1.0">
 <dict>
+    <key>platform-application</key>
+    <true/>
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
     <key>com.apple.private.skip-library-validation</key>
