@@ -40,6 +40,7 @@ SUPPORT_RECIPE_HELPERS=(
   plasma-pa-ios-fixes.sh
 )
 COLLECT_DEBS=(
+  shared-mime-info
   libplasma
   plasma-activities-stats
   kactivitymanagerd
@@ -144,7 +145,7 @@ fi
 
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
-  gettext python3 gzip libboost-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+  gettext python3 gzip libboost-dev libxml2-utils libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
 if [ ! -f /usr/include/boost/range/algorithm/binary_search.hpp ]; then
   echo "ERROR: missing Boost headers; kactivitymanagerd needs libboost-dev in the build container." >&2
   exit 1
@@ -166,7 +167,7 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 echo "==> installing Plasma Desktop recipes into makefiles/"
 mkdir -p build_info build_misc/entitlements
-for r in qt6-common.mk kf6-common.mk libplasma.mk plasma-activities-stats.mk plasma-workspace.mk plasma-desktop.mk plasma-nano.mk plasma-mobile.mk; do
+for r in qt6-common.mk kf6-common.mk shared-mime-info.mk libplasma.mk plasma-activities-stats.mk plasma-workspace.mk plasma-desktop.mk plasma-nano.mk plasma-mobile.mk; do
   cp -v /work/recipes/$r makefiles/
 done
 for t in "${SUPPORT_RECIPE_TARGETS[@]}"; do
@@ -175,7 +176,7 @@ done
 for h in "${SUPPORT_RECIPE_HELPERS[@]}"; do
   cp -v "/work/recipes/${h}" makefiles/ 2>/dev/null || true
 done
-cp -v /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/kactivitymanagerd*.control /work/build_info/plasma-workspace*.control /work/build_info/plasma-desktop*.control /work/build_info/plasma-nano*.control /work/build_info/plasma-mobile*.control build_info/
+cp -v /work/build_info/shared-mime-info*.control /work/build_info/shared-mime-info*.postinst /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/kactivitymanagerd*.control /work/build_info/plasma-workspace*.control /work/build_info/plasma-desktop*.control /work/build_info/plasma-nano*.control /work/build_info/plasma-mobile*.control build_info/
 for deb in "${COLLECT_DEBS[@]}"; do
   cp -v /work/build_info/${deb}*.control build_info/ 2>/dev/null || true
 done
@@ -186,9 +187,14 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
+XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"
+source /work/recipes/xios-cache-fingerprint.sh
+
 for t in $TARGETS; do
   echo "==> make ${t}"
+  xios_cache_prepare_target "$t"
   make ${t} $COMMON -j"$(nproc)"
+  xios_cache_record_target "$t"
 done
 
 echo "==> collect Plasma Desktop debs -> /out"

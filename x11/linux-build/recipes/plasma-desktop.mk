@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS += plasma-desktop
 PLASMADESKTOP_VERSION = $(PLASMA_VERSION)
-DEB_PLASMADESKTOP_V ?= $(PLASMADESKTOP_VERSION)+ios1
+DEB_PLASMADESKTOP_V ?= $(PLASMADESKTOP_VERSION)+ios2
 
 plasma-desktop-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-desktop))
@@ -49,6 +49,7 @@ plasma-desktop-package: plasma-desktop-stage
 	rm -rf $(BUILD_DIST)/plasma-desktop $(BUILD_DIST)/plasma-desktop-dev
 	$(call KF6_COPY_RUNTIME,plasma-desktop,plasma-desktop)
 	$(call KF6_COPY_DEV,plasma-desktop,plasma-desktop)
+	bash /work/recipes/plasma-desktop-ios-qml-fixes.sh $(BUILD_DIST)/plasma-desktop
 	$(call SIGN,plasma-desktop,general.xml)
 	$(call SIGN,plasma-desktop-dev,general.xml)
 	$(call PACK,plasma-desktop,DEB_PLASMADESKTOP_V)

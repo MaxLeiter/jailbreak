@@ -24,12 +24,13 @@ endif
 
 SUBPROJECTS           += qtdeclarative
 QTDECLARATIVE_VERSION := 6.6.3
-DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios1
+DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios2
 
 qtdeclarative-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtdeclarative))
 	$(call EXTRACT_TAR,qtdeclarative-everywhere-src-$(QTDECLARATIVE_VERSION).tar.xz,qtdeclarative-everywhere-src-$(QTDECLARATIVE_VERSION),qtdeclarative)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtdeclarative)
+	bash /work/recipes/qtdeclarative-ios-fixes.sh $(BUILD_WORK)/qtdeclarative
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

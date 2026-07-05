@@ -32,6 +32,7 @@ text = text.replace('PROPERTIES DESCRIPTION "Unicode and Globalization support f
 
 keep = {
     "applets",
+    "dataengines",
     "lookandfeel",
     "libnotificationmanager",
     "libkworkspace",
@@ -56,6 +57,34 @@ text = re.sub(r"^add_subdirectory\(([^)]+)\)", repl, text, flags=re.M)
 text = re.sub(r"^ecm_optional_add_subdirectory\(([^)]+)\)",
               lambda m: f"# ios-firstlight-skip: {m.group(0)}", text, flags=re.M)
 
+path.write_text(text)
+PY
+
+python3 - "$src/dataengines/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = re.sub(
+    r"^add_subdirectory\(([^)]+)\)",
+    lambda m: m.group(0) if m.group(1) == "time" else f"# ios-real-desktop-skip: {m.group(0)}",
+    text,
+    flags=re.M,
+)
+text = re.sub(
+    r"^if \(PlasmaActivities_FOUND\)\n\s*add_subdirectory\(activities\)\nendif \(\)",
+    "# ios-real-desktop-skip: PlasmaActivities dataengine",
+    text,
+    flags=re.M,
+)
+text = re.sub(
+    r"^if \(KF6NetworkManagerQt_FOUND\)\n\s*add_subdirectory\(geolocation\)\nendif \(\)",
+    "# ios-real-desktop-skip: NetworkManager geolocation dataengine",
+    text,
+    flags=re.M,
+)
 path.write_text(text)
 PY
 
@@ -309,6 +338,34 @@ text = text.replace(
 source.write_text(text)
 PY
 
+python3 - "$src/applets/kicker/plugin/rootmodel.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    """    , m_favorites(new KAStatsFavoritesModel(this))
+    , m_systemModel(nullptr)
+""",
+    """    , m_favorites(new KAStatsFavoritesModel(this))
+    , m_systemModel(new SystemModel(this))
+""",
+)
+text = text.replace(
+    """    m_systemModel = new SystemModel(this);
+    QObject::connect(m_systemModel, &SystemModel::sessionManagementStateChanged, this, &RootModel::refresh);
+""",
+    """    if (!m_systemModel) {
+        m_systemModel = new SystemModel(this);
+    }
+    QObject::disconnect(m_systemModel, &SystemModel::sessionManagementStateChanged, this, &RootModel::refresh);
+    QObject::connect(m_systemModel, &SystemModel::sessionManagementStateChanged, this, &RootModel::refresh);
+""",
+)
+path.write_text(text)
+PY
+
 python3 - "$src/shell/main.cpp" <<'PY'
 import sys
 from pathlib import Path
@@ -407,9 +464,10 @@ new = """        int pipeFds[2];
         }
 #endif
 """
-if old not in text:
+if old in text:
+    text = text.replace(old, new)
+elif "if (pipe(pipeFds) != 0)" not in text:
     raise SystemExit("pipe2 block not found")
-text = text.replace(old, new)
 path.write_text(text)
 PY
 

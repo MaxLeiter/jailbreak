@@ -1,0 +1,11 @@
+Package: shared-mime-info
+Version: @DEB_SHARED_MIME_INFO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/xdg/shared-mime-info
+Depends: libglib2.0-0, libxml2
+Description: Freedesktop MIME database
+ Shared MIME type database and update-mime-database tool. Plasma and KService
+ use this to resolve common MIME types such as text/html.

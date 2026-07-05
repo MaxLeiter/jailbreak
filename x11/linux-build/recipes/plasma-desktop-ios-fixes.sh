@@ -106,6 +106,67 @@ text = text.replace('panel.addWidget("org.kde.plasma.systemtray")', '// ios-firs
 panel.write_text(text)
 PY
 
+python3 - "$src/applets/window-list/contents/ui/main.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+for name in (
+    "RightPosedTopAlignedPopup",
+    "BottomPosedLeftAlignedPopup",
+    "LeftPosedTopAlignedPopup",
+    "TopPosedLeftAlignedPopup",
+):
+    text = text.replace(f"PlasmaCore.Types.{name}", f"PlasmaExtras.Menu.{name}")
+path.write_text(text)
+PY
+
+python3 - "$src/applets/kicker/package/contents/ui/main.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    """    onSystemFavoritesChanged: {
+        systemFavorites.favorites = Plasmoid.configuration.favoriteSystemActions;
+    }
+""",
+    """    onSystemFavoritesChanged: {
+        if (systemFavorites) {
+            systemFavorites.favorites = Plasmoid.configuration.favoriteSystemActions;
+        }
+    }
+""",
+)
+text = text.replace(
+    """        function onFavoritesChanged() {
+            Plasmoid.configuration.favoriteSystemActions = target.favorites;
+        }
+""",
+    """        function onFavoritesChanged() {
+            if (target) {
+                Plasmoid.configuration.favoriteSystemActions = target.favorites;
+            }
+        }
+""",
+)
+text = text.replace(
+    """        function onFavoriteSystemActionsChanged() {
+            systemFavorites.favorites = Plasmoid.configuration.favoriteSystemActions;
+        }
+""",
+    """        function onFavoriteSystemActionsChanged() {
+            if (systemFavorites) {
+                systemFavorites.favorites = Plasmoid.configuration.favoriteSystemActions;
+            }
+        }
+""",
+)
+path.write_text(text)
+PY
+
 python3 - "$src/containments/desktop/CMakeLists.txt" <<'PY'
 import re
 import sys
@@ -125,6 +186,31 @@ from pathlib import Path
 path = Path(sys.argv[1])
 text = path.read_text()
 text = re.sub(r"^[ \t]*add_subdirectory\(folder\)", "add_subdirectory(folder)", text, flags=re.M)
+path.write_text(text)
+PY
+
+python3 - "$src/containments/desktop/package/contents/ui/main.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = """        Layout.minimumWidth: preferredWidth(!isPopup)
+        Layout.minimumHeight: preferredHeight(!isPopup)
+
+        Layout.preferredWidth: preferredWidth(false)
+        Layout.preferredHeight: preferredHeight(false)
+"""
+new = """        // On iOS/QtWayland the desktop containment is anchored to the screen,
+        // not managed by a Qt Quick Layout. Omit the attached layout hints
+        // here; on iOS they feed a startup binding loop in QQuickLayoutAttached
+        // before the real folder containment can finish loading.
+"""
+if old not in text:
+    if "not managed by a Qt Quick Layout. Omit the attached layout hints" not in text:
+        raise SystemExit("desktop containment layout block not found")
+else:
+    text = text.replace(old, new)
 path.write_text(text)
 PY
 
