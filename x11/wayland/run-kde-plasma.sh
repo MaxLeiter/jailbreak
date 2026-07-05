@@ -47,6 +47,7 @@ PLASMA_BIN="${PLASMA_BIN:-$(jb_path /Applications/KDE/plasmashell.app/plasmashel
 KAMD_BIN="${KAMD_BIN:-$XS_PREFIX/libexec/kactivitymanagerd}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
+KDE_SESSION_BUS_FILE="$TMP/kde-session-bus${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
 IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
 XIOS_JSON_PATH="${XIOS_JSON_PATH:-$TMP/xios.json}"
 IOSC_DDX_SOCK="${IOSC_DDX_SOCK:-$TMP/iosc-ddx.sock}"
@@ -63,20 +64,18 @@ IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
 
 PLASMA_ENV=()
 KDE_PLASMA_LABEL="KDE Plasma"
-KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-}"
+KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
 case "$KDE_PLASMA_FLAVOR" in
   desktop|plasma|kde)
     KDE_PLASMA_FLAVOR=desktop
     KDE_PLASMA_LABEL="KDE Plasma (Xios first light)"
     PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-org.kde.plasma.xios}"
-    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
     ;;
   nano|plasma-nano|kde-nano)
     KDE_PLASMA_FLAVOR=nano
     KDE_PLASMA_LABEL="KDE Plasma Nano"
     PLASMA_SHELL_PLUGIN=
     PLASMA_ENV+=(PLASMA_DEFAULT_SHELL="${PLASMA_DEFAULT_SHELL:-org.kde.plasma.nano}")
-    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
     ;;
   mobile|phone|plasma-mobile|kde-mobile)
     KDE_PLASMA_FLAVOR=mobile
@@ -86,7 +85,6 @@ case "$KDE_PLASMA_FLAVOR" in
     PLASMA_ENV+=(PLASMA_PLATFORM="${PLASMA_PLATFORM:-phone:handset}")
     PLASMA_ENV+=(QT_QUICK_CONTROLS_MOBILE="${QT_QUICK_CONTROLS_MOBILE:-true}")
     PLASMA_ENV+=(PLASMA_INTEGRATION_USE_PORTAL="${PLASMA_INTEGRATION_USE_PORTAL:-1}")
-    KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
     ;;
   *)
     echo "!! invalid KDE_PLASMA_FLAVOR=$KDE_PLASMA_FLAVOR, expected desktop|nano|mobile"
@@ -120,7 +118,7 @@ fi
 
 rm -f "$WSOCK" "$WSOCK.lock" "$KWIN_SOCK_PATH" "$KWIN_SOCK_PATH.lock" \
       "$IOSC_DDX_SOCK" "$IOSC_INPUT_SOCK" "$IOSC_CLIPBOARD_SOCK" \
-      "$IOSC_WM_SOCK" "$XIOS_JSON_PATH" "$TMP/kde-session-bus${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}" \
+      "$IOSC_WM_SOCK" "$XIOS_JSON_PATH" "$KDE_SESSION_BUS_FILE" \
       "$IOSC_LOG" "$KDE_LOG" 2>/dev/null || true
 
 echo "==> ANGLE Linux so-name symlinks"
@@ -226,6 +224,7 @@ echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $K
   KWIN_SOCKET="$KWIN_SOCKET" \
   KWIN_W="$KWIN_W" \
   KWIN_H="$KWIN_H" \
+  KDE_SESSION_BUS_FILE="$KDE_SESSION_BUS_FILE" \
   PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-}" \
   PLASMA_NO_RESPAWN="${PLASMA_NO_RESPAWN:-1}" \
   DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$ANGLE" \
@@ -249,7 +248,7 @@ echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $K
   "${PLASMA_ENV[@]}" \
   dbus-run-session -- "$XS_PREFIX/bin/bash" -lc '
     set -u
-    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > '"$TMP"'/kde-session-bus'"${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"'
+    printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$KDE_SESSION_BUS_FILE"
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
     "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
       --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts &

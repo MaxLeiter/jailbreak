@@ -66,6 +66,12 @@ COLLECT_DEBS=(
   kf6-pulseaudio-qt
   plasma-pa
 )
+LOCAL_STAGE_DEBS=(
+  libpulse0
+  libpulse-dev
+  libglib2.0-0
+  libglib2.0-dev
+)
 
 cd /work/Procursus
 
@@ -90,10 +96,9 @@ stage_latest_deb_from_out() {
 # PulseAudio client pc files from the local audio package wave. Keep this
 # self-contained so a fresh KF6 volume can build plasma-pa without a manual
 # build_base surgery step.
-stage_latest_deb_from_out libpulse0
-stage_latest_deb_from_out libpulse-dev
-stage_latest_deb_from_out libglib2.0-0
-stage_latest_deb_from_out libglib2.0-dev
+for pkg in "${LOCAL_STAGE_DEBS[@]}"; do
+  stage_latest_deb_from_out "$pkg"
+done
 
 [ -x "${HOSTQT}/libexec/moc" ] || { echo "ERROR: host Qt missing (${HOSTQT}); run build-qt.sh first." >&2; exit 1; }
 [ -x "${HOSTQT}/libexec/qmlcachegen" ] || { echo "ERROR: host Qt lacks qmlcachegen; run build-qt-modules.sh first." >&2; exit 1; }

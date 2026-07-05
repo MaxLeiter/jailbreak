@@ -43,6 +43,26 @@ struct _MetaInputIOS
   int                        cursor_y;
 };
 
+static int
+input_log_budget_from_env (void)
+{
+  const char *value = g_getenv ("XIOS_INPUT_LOG_BUDGET");
+  char *end = NULL;
+  gint64 parsed;
+
+  if (!value || !*value)
+    return 0;
+
+  parsed = g_ascii_strtoll (value, &end, 10);
+  if (end == value || *end != '\0' || parsed < 0)
+    {
+      g_warning ("MetaInputIOS: ignoring invalid XIOS_INPUT_LOG_BUDGET=%s", value);
+      return 0;
+    }
+
+  return parsed > G_MAXINT ? G_MAXINT : (int) parsed;
+}
+
 static uint32_t
 map_button (uint32_t code)
 {
@@ -103,12 +123,12 @@ on_input_msg (const struct xios_in_msg *m,
               void                     *user)
 {
   MetaInputIOS *input = user;
+  gboolean log_record = input->msg_log_budget > 0;
   (void) bound_window;
 
-  /* Diagnostic: log the first handful of decoded records so a device-side inject test can
-   * confirm bytes arrive + decode with the right 24-byte layout (type/x/y). Bounded so it
-   * never floods. Remove or lower once the input path is validated. */
-  if (input->msg_log_budget > 0)
+  /* Opt-in diagnostic: log the first N decoded records so a device-side inject test can
+   * confirm bytes arrive + decode with the right 24-byte layout (type/x/y). */
+  if (log_record)
     {
       g_message ("MetaInputIOS: recv type=%u x=%d y=%d code=%u state=%u mods=%u",
                  m->type, m->x, m->y, m->code, m->state, m->mods);
@@ -132,7 +152,7 @@ on_input_msg (const struct xios_in_msg *m,
 
         /* Diagnostic: the exact coords handed to Clutter + the mapping ratio, so an inject test
          * confirms the pointer lands where expected (in-bounds of the stage screen size). */
-        if (input->msg_log_budget > 0)
+        if (log_record)
           g_message ("MetaInputIOS: motion out(%d,%d) *(%.3f,%.3f) -> stage(%.1f,%.1f)",
                      m->x, m->y, rx, ry, x, y);
 
@@ -271,7 +291,9 @@ meta_input_ios_new (MetaBackend *backend,
   input->pointer = clutter_seat_create_virtual_device (seat, CLUTTER_POINTER_DEVICE);
   input->keyboard = clutter_seat_create_virtual_device (seat, CLUTTER_KEYBOARD_DEVICE);
   input->last_client_count = 0;
-  input->msg_log_budget = 20;   /* log the first ~20 records for the inject/touch bring-up test */
+  input->msg_log_budget = input_log_budget_from_env ();
+  if (input->msg_log_budget > 0)
+    g_message ("MetaInputIOS: logging first %d input records", input->msg_log_budget);
 
   /* ~8ms poll of the (kqueue-backed) input socket; see on_poll_tick for why not fd-watched. */
   input->source_id = g_timeout_add (8, on_poll_tick, input);

@@ -1827,7 +1827,7 @@ final class XScreenView: UIView {
     private func sendText(_ text: String) {
         guard inputConnected else { return }
         if usingIosc {
-            _ = text.withCString { iosc_input_text($0) }
+            text.withCString { iosc_input_text($0) }
             return
         }
         for ch in text {
@@ -2546,7 +2546,12 @@ final class XScreenView: UIView {
             return
         }
         defer { try? handle.close() }
-        try? handle.seekToEnd()
+        do {
+            try handle.seekToEnd()
+        } catch {
+            lastToolMessage = "Could not pin \(app.name)"
+            return
+        }
         handle.write(data)
         lastToolMessage = "Pinned \(app.name) to desktop"
     }
@@ -3571,18 +3576,7 @@ final class XScreenView: UIView {
     }
 
     private func presentTools() {
-        let (overlay, card) = presentModalCard()
-
-        let scroll = UIScrollView()
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(scroll)
-
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.spacing = 10
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(stack)
-
+        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 560)
         let title = panelLabel("Tools", size: 18, weight: .bold)
         stack.addArrangedSubview(title)
 
@@ -3709,24 +3703,6 @@ final class XScreenView: UIView {
         ]))
 
         stack.addArrangedSubview(panelButton("Close") { [weak self] in self?.dismissPicker() })
-
-        NSLayoutConstraint.activate([
-            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
-            card.widthAnchor.constraint(greaterThanOrEqualToConstant: 420),
-            card.widthAnchor.constraint(lessThanOrEqualToConstant: 560),
-            card.heightAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.heightAnchor, multiplier: 0.86),
-            card.heightAnchor.constraint(lessThanOrEqualTo: overlay.safeAreaLayoutGuide.heightAnchor, constant: -32),
-            scroll.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
-            scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
-            scroll.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
-            scroll.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16),
-            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-            stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
-        ])
     }
 
     private func addSection(_ title: String, to stack: UIStackView) {

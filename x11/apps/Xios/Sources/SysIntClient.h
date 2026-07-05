@@ -7,7 +7,8 @@
 // actively editing.
 //
 //  - volume + appearance  ->  xios-sysintd  (/var/jb/tmp/xios-sysint.sock);
-//    the session daemon applies them via pactl / gsettings.
+//    the session daemon applies app-originated volume via pactl and can send
+//    desktop-originated volume requests back for the app to apply to iOS.
 //  - output (rotation)    ->  the iosc input socket (a SECOND connection —
 //    iosc's reader multiplexes clients), record type XIOS_IN_OUTPUT.
 //  - haptics              <-  iosc broadcasts XIOS_IN_HAPTIC to every input
@@ -31,5 +32,9 @@ void sysint_send_output(int transform, int logical_w, int logical_h);
 // Drain haptic broadcasts. 1 = *style filled (0 light, 1 medium, 2 heavy,
 // 3 selection), 0 = none pending. Also services the aux link's reconnect.
 int sysint_poll_haptic(unsigned *style);
+
+// Drain desktop-originated volume requests from xios-sysintd. 1 = *v16 filled
+// with absolute volume 0..65535, 0 = none pending.
+int sysint_poll_volume_set(unsigned *v16);
 
 #endif

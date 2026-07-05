@@ -12,11 +12,10 @@
 #   ssh root@ipad 'bash -s' < run-xwayland.sh            # default: xterm
 #   ssh root@ipad 'APP=hitori bash -s' < run-xwayland.sh # the GTK3 marquee case
 #
-# NB rootful (not rootless): rootless Xwayland needs the compositor to be an X
-# window manager (an XWM), which iosc is not. Rootful is Xwayland's default here
-# (this build has `-rootless`, but no `-rootful` flag): the entire X screen is
-# one surface and works under any compositor. Mutter's built-in XWM is the later
-# rootless path.
+# NB rootful (not rootless): this helper intentionally launches the whole X screen
+# as one Wayland surface, which works under any compositor. iosc's rootless XWM is
+# a separate optional compositor build/runtime path; keep this script as the
+# conservative rootful smoke harness.
 set -u
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export XDG_RUNTIME_DIR=/var/jb/tmp

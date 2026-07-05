@@ -14,6 +14,7 @@
 #define SI_HAPTIC     11u
 #define SI_VOLUME     12u
 #define SI_APPEARANCE 13u
+#define SI_VOLUME_TO_DEVICE 1u
 
 struct si_msg {
     uint32_t type;
@@ -123,33 +124,57 @@ void sysint_send_output(int transform, int logical_w, int logical_h)
 // Aux-link reader: iosc broadcasts fixed 24-byte records to every input client
 // (TRAITS for the keyboard bridge, HAPTIC for us). Only HAPTIC is surfaced;
 // everything else is discarded — IoscInput.c's own connection handles traits.
-static uint8_t s_rx[sizeof(struct si_msg)];
-static int s_rx_have;
+static uint8_t s_iosc_rx[sizeof(struct si_msg)];
+static int s_iosc_rx_have;
+static uint8_t s_sysint_rx[sizeof(struct si_msg)];
+static int s_sysint_rx_have;
 
-int sysint_poll_haptic(unsigned *style)
+static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
+                         struct si_msg *out)
 {
-    if (link_ensure(&s_iosc) != 0) return 0;
+    if (link_ensure(l) != 0) return 0;
     for (;;) {
-        ssize_t r = read(s_iosc.fd, s_rx + s_rx_have, sizeof(s_rx) - (size_t)s_rx_have);
+        ssize_t r = read(l->fd, rx + *rx_have, sizeof(struct si_msg) - (size_t)*rx_have);
         if (r > 0) {
-            s_rx_have += (int)r;
-            if (s_rx_have < (int)sizeof(s_rx)) continue;
-            struct si_msg m;
-            memcpy(&m, s_rx, sizeof(m));
-            s_rx_have = 0;
-            if (m.type == SI_HAPTIC) {
-                if (style) *style = m.code;
-                return 1;                // one per call; caller loops to drain
-            }
-            continue;
+            *rx_have += (int)r;
+            if (*rx_have < (int)sizeof(struct si_msg)) continue;
+            memcpy(out, rx, sizeof(*out));
+            *rx_have = 0;
+            return 1;
         }
         if (r == 0) break;               // server closed
         if (errno == EINTR) continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
         break;
     }
-    close(s_iosc.fd);
-    s_iosc.fd = -1;
-    s_rx_have = 0;
+    close(l->fd);
+    l->fd = -1;
+    *rx_have = 0;
+    return 0;
+}
+
+int sysint_poll_haptic(unsigned *style)
+{
+    struct si_msg m;
+    if (link_ensure(&s_iosc) != 0) return 0;
+    while (link_poll_msg(&s_iosc, s_iosc_rx, &s_iosc_rx_have, &m) == 1) {
+        if (m.type == SI_HAPTIC) {
+            if (style) *style = m.code;
+            return 1;                    // one per call; caller loops to drain
+        }
+    }
+    return 0;
+}
+
+int sysint_poll_volume_set(unsigned *v16)
+{
+    struct si_msg m;
+    if (link_ensure(&s_sysint) != 0) return 0;
+    while (link_poll_msg(&s_sysint, s_sysint_rx, &s_sysint_rx_have, &m) == 1) {
+        if (m.type == SI_VOLUME && (m.state & SI_VOLUME_TO_DEVICE)) {
+            if (v16) *v16 = m.code > 65535u ? 65535u : m.code;
+            return 1;
+        }
+    }
     return 0;
 }

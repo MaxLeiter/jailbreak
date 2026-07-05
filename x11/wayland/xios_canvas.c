@@ -99,6 +99,11 @@ static void set_cloexec(int fd)
     int f = fcntl(fd, F_GETFD, 0);
     if (f >= 0) fcntl(fd, F_SETFD, f | FD_CLOEXEC);
 }
+static void set_nonblock(int fd)
+{
+    int f = fcntl(fd, F_GETFL, 0);
+    if (f >= 0) fcntl(fd, F_SETFL, f | O_NONBLOCK);
+}
 static void set_nosigpipe(int fd)
 {
     int on = 1;
@@ -240,6 +245,30 @@ static int send_msg_locked(struct canvas_client *c, const xios_msg *h,
     if (payload_len)
         memcpy(buf + sizeof(*h), payload, payload_len);
     return send_buffer_locked(c, buf, sizeof(*h) + payload_len);
+}
+
+static xios_msg make_msg(uint32_t type, uint32_t window_id)
+{
+    xios_msg m;
+    memset(&m, 0, sizeof(m));
+    m.magic = XIOS_MSG_MAGIC;
+    m.type = type;
+    m.window_id = window_id;
+    return m;
+}
+
+static void chmod_mobile_socket(const char *path, const char *warn_suffix)
+{
+    struct passwd *pw = getpwnam("mobile");
+    uid_t uid = pw ? pw->pw_uid : 501;   /* mobile is uid 501 on iOS */
+    gid_t gid = pw ? pw->pw_gid : 501;
+    if (chown(path, uid, gid) == 0) {
+        chmod(path, 0660);
+        return;
+    }
+    chmod(path, 0600);
+    fprintf(stderr, "xios-canvas: WARNING could not chown %s to mobile (%s); %s\n",
+            path, strerror(errno), warn_suffix);
 }
 
 /* Queue every live window for this app_id for (re)delivery — a host binding for
@@ -416,9 +445,7 @@ void xios_canvas_notify_dirty(uint32_t window_id, int x, int y, int w, int h)
     if (!e || !e->announced) { pthread_mutex_unlock(&s_lock); return; }
     struct canvas_client *c = client_for_app(e->app_id);
     if (c) {
-        xios_msg rec;
-        memset(&rec, 0, sizeof(rec));
-        rec.magic = XIOS_MSG_MAGIC; rec.type = XIOS_MSG_DIRTY; rec.window_id = window_id;
+        xios_msg rec = make_msg(XIOS_MSG_DIRTY, window_id);
         rec.a = x; rec.b = y; rec.c = w; rec.d = h;
         (void)send_msg_locked(c, &rec, NULL, 0);   /* drop-on-backpressure */
     }
@@ -434,9 +461,7 @@ void xios_canvas_title(uint32_t window_id, const char *title)
     if (!e->announced) { pthread_mutex_unlock(&s_lock); return; }
     struct canvas_client *c = client_for_app(e->app_id);
     if (c) {
-        xios_msg h;
-        memset(&h, 0, sizeof(h));
-        h.magic = XIOS_MSG_MAGIC; h.type = XIOS_MSG_WINDOW_TITLE; h.window_id = window_id;
+        xios_msg h = make_msg(XIOS_MSG_WINDOW_TITLE, window_id);
         size_t tlen = title ? strlen(title) : 0;
         if (tlen > 255) tlen = 255;
         h.length = (uint32_t)tlen;
@@ -456,9 +481,7 @@ void xios_canvas_gone(uint32_t window_id)
          * GONE for a window the host never saw is a harmless no-op there. */
         struct canvas_client *c = client_for_app(e->app_id);
         if (c) {
-            xios_msg h;
-            memset(&h, 0, sizeof(h));
-            h.magic = XIOS_MSG_MAGIC; h.type = XIOS_MSG_WINDOW_GONE; h.window_id = window_id;
+            xios_msg h = make_msg(XIOS_MSG_WINDOW_GONE, window_id);
             if (send_msg_locked(c, &h, NULL, 0) == 0)
                 drop_client_fd_locked(c->fd);      /* avoid orphaning a host that is not reading */
         }
@@ -528,7 +551,7 @@ static int handle_bind(int fd)
     pthread_mutex_unlock(&s_lock);
 
     /* Reads of subsequent control records are non-blocking (poll-driven). */
-    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    set_nonblock(fd);
     fprintf(stderr, "xios-canvas: host bound app_id=\"%s\" pid=%d fd=%d (total=%d)\n",
             app_id, (int)peer_pid, fd, s_nclients);
     return 0;
@@ -636,11 +659,8 @@ static void process_pending_deliveries(void)
         pid_t pid = c->pid;
         mach_port_name_t reply_port = c->reply_port;
 
-        xios_msg rec;
-        memset(&rec, 0, sizeof(rec));
-        rec.magic = XIOS_MSG_MAGIC;
-        rec.type = (kind == CANVAS_DELIVER_NEW) ? XIOS_MSG_WINDOW_NEW : XIOS_MSG_WINDOW_GEOM;
-        rec.window_id = window_id;
+        xios_msg rec = make_msg((kind == CANVAS_DELIVER_NEW) ? XIOS_MSG_WINDOW_NEW : XIOS_MSG_WINDOW_GEOM,
+                                window_id);
         rec.a = e->w; rec.b = e->h; rec.c = e->stride; rec.d = (int32_t)e->flags;
         size_t tlen = (kind == CANVAS_DELIVER_NEW) ? strlen(e->title) : 0;
         if (tlen > 255) tlen = 255;
@@ -760,22 +780,11 @@ int xios_canvas_server_start(const char *sock_path)
      * this world-writable — fall back to mobile's canonical uid, and only if even
      * that fails degrade to root-only (native mode won't work, but nothing leaks).
      * getpwnam("mobile") resolving is the universal case on iOS. */
-    {
-        struct passwd *pw = getpwnam("mobile");
-        uid_t muid = pw ? pw->pw_uid : 501;   /* mobile is uid 501 on iOS */
-        gid_t mgid = pw ? pw->pw_gid : 501;
-        if (chown(path, muid, mgid) == 0) {
-            chmod(path, 0660);
-        } else {
-            chmod(path, 0600);
-            fprintf(stderr, "xios-canvas: WARNING could not chown %s to mobile "
-                            "(%s); native hosts may fail to connect\n",
-                    path, strerror(errno));
-        }
-    }
+    chmod_mobile_socket(path, "native hosts may fail to connect");
     if (pipe(s_wake_pipe) == 0) {
         set_cloexec(s_wake_pipe[0]); set_cloexec(s_wake_pipe[1]);
-        fcntl(s_wake_pipe[0], F_SETFL, fcntl(s_wake_pipe[0], F_GETFL, 0) | O_NONBLOCK);
+        set_nonblock(s_wake_pipe[0]);
+        set_nonblock(s_wake_pipe[1]);
     }
     s_listen_fd = fd;
     s_thread_running = 1;

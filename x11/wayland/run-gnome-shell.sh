@@ -176,7 +176,6 @@ XIOS_TZ="$(readlink /var/db/timezone/localtime 2>/dev/null | sed 's#.*/zoneinfo/
   GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
   XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_CLASS=user \
   GDK_BACKEND=wayland CLUTTER_BACKEND=wayland \
-  G_MESSAGES_DEBUG=all \
   dbus-run-session -- sh -c '
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
     # Persist the (otherwise abstract) session bus address so out-of-session tools

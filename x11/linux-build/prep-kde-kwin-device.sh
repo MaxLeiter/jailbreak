@@ -15,6 +15,10 @@ IMAGE="${IMAGE:-procursus-xbuild:bookworm-arm64}"
 
 source "$X11_ROOT/apps/iosc-desktop/deploy-env.sh"
 
+docker_linux() {
+  docker run --rm --platform linux/arm64 "$@"
+}
+
 usage() {
   cat <<'EOF'
 usage: linux-build/prep-kde-kwin-device.sh [--stage-only] [--install]
@@ -64,7 +68,7 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/debs"
 
 echo "==> staging runtime KDE/KF6/Qt6/KWin debs from Docker volume: $VOLUME"
-docker run --rm --platform linux/arm64 \
+docker_linux \
   -v "$VOLUME:/work/Procursus" \
   -v "$STAGE/debs:/out" \
   "$IMAGE" \
@@ -148,7 +152,7 @@ overlay_out \
   xios-session_*_iphoneos-arm64.deb
 
 echo "==> keeping only the newest staged deb for each package"
-docker run --rm --platform linux/arm64 \
+docker_linux \
   -v "$STAGE/debs:/debs" \
   "$IMAGE" \
   -c '
@@ -178,7 +182,7 @@ cp "$TMP"/*.deb /debs/
 '
 
 echo "==> normalizing KWin app wrappers to the rootless app path"
-docker run --rm --platform linux/arm64 \
+docker_linux \
   -v "$STAGE/debs:/debs" \
   "$IMAGE" \
   -c '

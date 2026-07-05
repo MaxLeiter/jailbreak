@@ -60,8 +60,11 @@
 #define XIOS_IN_HAPTIC 11u  /* server->CLIENT broadcast: fire a haptic. code =
                              * style (0 light, 1 medium, 2 heavy, 3 selection);
                              * sent e.g. when a press lands on shell chrome     */
-#define XIOS_IN_VOLUME 12u  /* app->sysintd: absolute output volume,
-                             * code = 0..65535 (maps to sink 0..100%)           */
+#define XIOS_IN_VOLUME 12u  /* bidirectional via sysintd: app->daemon mirrors
+                             * iOS hardware volume into PA; desktop->daemon with
+                             * XIOS_VOLUME_STATE_TO_DEVICE asks the app to set
+                             * iOS hardware volume. code = 0..65535            */
+#define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
 #define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style,
                              * code = 1 dark, 0 light                           */
 #endif

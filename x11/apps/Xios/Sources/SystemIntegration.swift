@@ -1,5 +1,6 @@
 import UIKit
 import AVFoundation
+import MediaPlayer
 
 // Native-feel bundle: rotation, hardware volume, light/dark match, haptics.
 // Self-contained by design — everything here observes iOS state and forwards it
@@ -16,15 +17,20 @@ import AVFoundation
 private func c_send_output(_ transform: Int32, _ lw: Int32, _ lh: Int32)
 @_silgen_name("sysint_poll_haptic")
 private func c_poll_haptic(_ style: UnsafeMutablePointer<UInt32>?) -> Int32
+@_silgen_name("sysint_poll_volume_set")
+private func c_poll_volume_set(_ v16: UnsafeMutablePointer<UInt32>?) -> Int32
 
 final class SystemIntegration {
     static let shared = SystemIntegration()
+    private static let maxNativeEventsPerTick = 4
 
     private weak var hostView: UIView?
     private var installed = false
     private var pump: Timer?
     private var pumpTicks = 0
     private var volumeObservation: NSKeyValueObservation?
+    private var volumeView: MPVolumeView?
+    private weak var volumeSlider: UISlider?
     private var lastTransform: Int32 = -1
     private var lastDark: Int32 = -1
 
@@ -59,6 +65,7 @@ final class SystemIntegration {
         view.addSubview(spy)
         traitSpy = spy
         sendAppearance()
+        installVolumeSetter(on: view)
 
         // Volume: an active (ambient, mixing) session makes outputVolume KVO
         // track the hardware buttons. .mixWithOthers so the PulseAudio daemon's
@@ -131,6 +138,41 @@ final class SystemIntegration {
         try? session.setActive(true)
     }
 
+    private func installVolumeSetter(on view: UIView) {
+        let vv = MPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
+        vv.showsVolumeSlider = true
+        vv.alpha = 0.01
+        vv.isUserInteractionEnabled = false
+        view.addSubview(vv)
+        volumeView = vv
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshVolumeSlider()
+        }
+    }
+
+    private func refreshVolumeSlider() {
+        volumeSlider = volumeView?.subviews.compactMap { $0 as? UISlider }.first
+    }
+
+    private func setDeviceVolume(_ v16: UInt32) {
+        if volumeSlider == nil {
+            refreshVolumeSlider()
+        }
+        guard let slider = volumeSlider else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.setDeviceVolume(v16)
+            }
+            return
+        }
+
+        let clamped = min(v16, 65535)
+        let value = Float(clamped) / 65535.0
+        if abs(slider.value - value) < 0.002 { return }
+        slider.setValue(value, animated: false)
+        slider.sendActions(for: .valueChanged)
+        slider.sendActions(for: .touchUpInside)
+    }
+
     // MARK: appearance
 
     private func sendAppearance() {
@@ -145,13 +187,19 @@ final class SystemIntegration {
 
     // MARK: haptics
 
-    private func tick() {
-        var style: UInt32 = 0
+    private func drainNativeEvents(poll: (UnsafeMutablePointer<UInt32>?) -> Int32,
+                                   handle: (UInt32) -> Void) {
+        var value: UInt32 = 0
         var drained = 0
-        while c_poll_haptic(&style) == 1 && drained < 4 {
-            fire(style: style)
+        while poll(&value) == 1 && drained < Self.maxNativeEventsPerTick {
+            handle(value)
             drained += 1
         }
+    }
+
+    private func tick() {
+        drainNativeEvents(poll: c_poll_haptic) { fire(style: $0) }
+        drainNativeEvents(poll: c_poll_volume_set) { setDeviceVolume($0) }
         pumpTicks += 1
         if pumpTicks % 20 == 0 { syncOrientation() }   // 1 Hz safety net
     }

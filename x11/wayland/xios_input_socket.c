@@ -64,6 +64,7 @@ static void set_nonblock(int fd)
 xios_input_socket *xios_input_socket_new(const char *path)
 {
     if (!path) return NULL;
+    if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) return NULL;
     xios_input_socket *s = calloc(1, sizeof(*s));
     if (!s) return NULL;
     s->listen_fd = -1;
@@ -80,7 +81,7 @@ xios_input_socket *xios_input_socket_new(const char *path)
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) { close(fd); free(s); return NULL; }
     if (listen(fd, 4) < 0) { close(fd); free(s); return NULL; }
     /* The Xios app runs as mobile and must connect. Prefer mobile-owned 0660;
-     * fall back to 0777 only if the user lookup/chown fails on a dev image. */
+     * fall back to owner-only rather than opening the socket to every uid. */
     chmod_mobile_socket(path);
     set_nonblock(fd);
     s->listen_fd = fd;
