@@ -186,6 +186,11 @@ struct iosc_presentation_feedback {
 };
 
 #define IOSC_MAX_SHM_DIRTY_RECTS 16
+#define IOSC_MAX_OUTPUT_DAMAGE_RECTS 16
+
+struct iosc_rect {
+    int x0, y0, x1, y1;
+};
 
 struct iosc_layer_state;
 
@@ -345,8 +350,13 @@ static struct wl_event_source *g_present_ack_timer;
 static uint64_t g_present_wait_seq;
 static uint32_t g_present_wait_started_ms;
 static int g_output_damage_valid;
+static int g_output_damage_coarse;
+static int g_output_damage_rect_count;
+static struct iosc_rect g_output_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
 static int g_output_damage_x0, g_output_damage_y0, g_output_damage_x1, g_output_damage_y1;
 static int g_last_present_damage_valid;
+static int g_last_present_damage_rect_count;
+static struct iosc_rect g_last_present_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
 static int g_last_present_damage_x0, g_last_present_damage_y0;
 static int g_last_present_damage_x1, g_last_present_damage_y1;
 static const char *g_recompose_reason;
@@ -895,6 +905,51 @@ static int surface_occluded_by_single_opaque_above(int mapped_index)
     return 0;
 }
 
+static int rects_touch_or_overlap(const struct iosc_rect *a, const struct iosc_rect *b)
+{
+    return a->x1 >= b->x0 && a->x0 <= b->x1 &&
+           a->y1 >= b->y0 && a->y0 <= b->y1;
+}
+
+static int rect_intersects_rect(const struct iosc_rect *a, const struct iosc_rect *b)
+{
+    return a->x1 > b->x0 && a->x0 < b->x1 &&
+           a->y1 > b->y0 && a->y0 < b->y1;
+}
+
+static void rect_union_into(struct iosc_rect *dst, const struct iosc_rect *src)
+{
+    if (src->x0 < dst->x0) dst->x0 = src->x0;
+    if (src->y0 < dst->y0) dst->y0 = src->y0;
+    if (src->x1 > dst->x1) dst->x1 = src->x1;
+    if (src->y1 > dst->y1) dst->y1 = src->y1;
+}
+
+static void output_damage_set_coarse_union(void)
+{
+    if (!g_output_damage_valid) return;
+    g_output_damage_coarse = 1;
+    g_output_damage_rect_count = 1;
+    g_output_damage_rects[0] = (struct iosc_rect) {
+        g_output_damage_x0, g_output_damage_y0,
+        g_output_damage_x1, g_output_damage_y1
+    };
+}
+
+static void output_damage_union_add_rect(const struct iosc_rect *r)
+{
+    if (!g_output_damage_valid) {
+        g_output_damage_x0 = r->x0; g_output_damage_y0 = r->y0;
+        g_output_damage_x1 = r->x1; g_output_damage_y1 = r->y1;
+        g_output_damage_valid = 1;
+        return;
+    }
+    if (r->x0 < g_output_damage_x0) g_output_damage_x0 = r->x0;
+    if (r->y0 < g_output_damage_y0) g_output_damage_y0 = r->y0;
+    if (r->x1 > g_output_damage_x1) g_output_damage_x1 = r->x1;
+    if (r->y1 > g_output_damage_y1) g_output_damage_y1 = r->y1;
+}
+
 static void output_damage_add_px(int x, int y, int w, int h)
 {
     if (w <= 0 || h <= 0) return;
@@ -904,19 +959,44 @@ static void output_damage_add_px(int x, int y, int w, int h)
     if (x1 > g_width) x1 = g_width;
     if (y1 > g_height) y1 = g_height;
     if (x1 <= x0 || y1 <= y0) return;
-    if (!g_output_damage_valid) {
-        g_output_damage_x0 = x0; g_output_damage_y0 = y0;
-        g_output_damage_x1 = x1; g_output_damage_y1 = y1;
-        g_output_damage_valid = 1;
+    struct iosc_rect r = { x0, y0, x1, y1 };
+    output_damage_union_add_rect(&r);
+
+    if (g_output_damage_coarse) {
+        output_damage_set_coarse_union();
         return;
     }
-    if (x0 < g_output_damage_x0) g_output_damage_x0 = x0;
-    if (y0 < g_output_damage_y0) g_output_damage_y0 = y0;
-    if (x1 > g_output_damage_x1) g_output_damage_x1 = x1;
-    if (y1 > g_output_damage_y1) g_output_damage_y1 = y1;
+
+    for (int i = 0; i < g_output_damage_rect_count; i++) {
+        if (!rects_touch_or_overlap(&g_output_damage_rects[i], &r))
+            continue;
+        rect_union_into(&g_output_damage_rects[i], &r);
+        for (int j = 0; j < g_output_damage_rect_count; ) {
+            if (j == i || !rects_touch_or_overlap(&g_output_damage_rects[i],
+                                                  &g_output_damage_rects[j])) {
+                j++;
+                continue;
+            }
+            rect_union_into(&g_output_damage_rects[i], &g_output_damage_rects[j]);
+            memmove(&g_output_damage_rects[j], &g_output_damage_rects[j + 1],
+                    (size_t)(g_output_damage_rect_count - j - 1) *
+                    sizeof(g_output_damage_rects[0]));
+            g_output_damage_rect_count--;
+            if (j < i) i--;
+        }
+        return;
+    }
+
+    if (g_output_damage_rect_count < IOSC_MAX_OUTPUT_DAMAGE_RECTS) {
+        g_output_damage_rects[g_output_damage_rect_count++] = r;
+        return;
+    }
+
+    output_damage_set_coarse_union();
 }
 
-static void output_damage_consume(int *x0, int *y0, int *x1, int *y1)
+static int output_damage_consume(struct iosc_rect *rects, int max_rects,
+                                 int *x0, int *y0, int *x1, int *y1)
 {
     if (g_output_damage_valid) {
         *x0 = g_output_damage_x0; *y0 = g_output_damage_y0;
@@ -924,10 +1004,26 @@ static void output_damage_consume(int *x0, int *y0, int *x1, int *y1)
     } else {
         *x0 = 0; *y0 = 0; *x1 = g_width; *y1 = g_height;
     }
+    int n = g_output_damage_valid ? g_output_damage_rect_count : 0;
+    if (n <= 0) {
+        n = 1;
+        if (rects && max_rects > 0)
+            rects[0] = (struct iosc_rect) { *x0, *y0, *x1, *y1 };
+    } else if (rects && max_rects > 0) {
+        if (n > max_rects) n = max_rects;
+        memcpy(rects, g_output_damage_rects, (size_t)n * sizeof(rects[0]));
+    }
     g_last_present_damage_valid = 1;
     g_last_present_damage_x0 = *x0; g_last_present_damage_y0 = *y0;
     g_last_present_damage_x1 = *x1; g_last_present_damage_y1 = *y1;
+    g_last_present_damage_rect_count = n;
+    if (n > 0 && rects)
+        memcpy(g_last_present_damage_rects, rects,
+               (size_t)n * sizeof(g_last_present_damage_rects[0]));
     g_output_damage_valid = 0;
+    g_output_damage_coarse = 0;
+    g_output_damage_rect_count = 0;
+    return n;
 }
 
 static int output_damage_intersects_surface(struct iosc_surface *s,
@@ -937,7 +1033,9 @@ static int output_damage_intersects_surface(struct iosc_surface *s,
     if (!surface_rect(s, &x0, &y0, &x1, &y1)) return 0;
     int os = output_scale();
     x0 *= os; y0 *= os; x1 *= os; y1 *= os;
-    return x1 > dx0 && x0 < dx1 && y1 > dy0 && y0 < dy1;
+    struct iosc_rect a = { x0, y0, x1, y1 };
+    struct iosc_rect b = { dx0, dy0, dx1, dy1 };
+    return rect_intersects_rect(&a, &b);
 }
 
 static void output_damage_add_surface(struct iosc_surface *s)
@@ -1636,25 +1734,41 @@ static void recomposite_now(void)
     }
     if (iosc_gl_ok()) {
         int dx0, dy0, dx1, dy1;
+        struct iosc_rect damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
         int had_damage = g_output_damage_valid;
-        output_damage_consume(&dx0, &dy0, &dx1, &dy1);
+        int damage_count = output_damage_consume(damage_rects, IOSC_MAX_OUTPUT_DAMAGE_RECTS,
+                                                 &dx0, &dy0, &dx1, &dy1);
         if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
             fprintf(stderr, "iosc: recompose-reason %s:%d damage=%s\n",
                     g_recompose_reason ? g_recompose_reason : "sync",
                     g_recompose_reason_line,
                     had_damage ? "pending" : "none");
-        if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
-            fprintf(stderr, "iosc: output-damage %d,%d %dx%d%s\n",
+        if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS"))) {
+            fprintf(stderr, "iosc: output-damage rects=%d union=%d,%d %dx%d%s\n",
+                    damage_count,
                     dx0, dy0, dx1 - dx0, dy1 - dy0,
                     (dx0 == 0 && dy0 == 0 && dx1 == g_width && dy1 == g_height) ? " full" : "");
-        iosc_gl_begin_damage(dx0, dy0, dx1 - dx0, dy1 - dy0);
+            if (damage_count > 1) {
+                for (int i = 0; i < damage_count; i++)
+                    fprintf(stderr, "iosc: output-damage-rect %d %d,%d %dx%d\n",
+                            i,
+                            damage_rects[i].x0, damage_rects[i].y0,
+                            damage_rects[i].x1 - damage_rects[i].x0,
+                            damage_rects[i].y1 - damage_rects[i].y0);
+            }
+        }
         if (g_slock.locked) {
             /* Session locked: ONLY the lock surface may show (blank until it
              * maps); windows, layer shells and the drag icon must not leak. */
-            if (g_slock.surface && g_slock.surface->current_buffer &&
-                output_damage_intersects_surface(g_slock.surface, dx0, dy0, dx1, dy1))
-                composite_one(g_slock.surface);
-            composite_cursor();
+            for (int di = 0; di < damage_count; di++) {
+                struct iosc_rect *d = &damage_rects[di];
+                iosc_gl_begin_damage(d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
+                if (g_slock.surface && g_slock.surface->current_buffer &&
+                    output_damage_intersects_surface(g_slock.surface,
+                                                     d->x0, d->y0, d->x1, d->y1))
+                    composite_one(g_slock.surface);
+                composite_cursor();
+            }
             iosc_gl_end();
             xios_notify_dirty();
             frame_callbacks_after_present();
@@ -1663,20 +1777,25 @@ static void recomposite_now(void)
                         g_slock.surface && g_slock.surface->current_buffer ? "shown" : "pending");
             return;
         }
-        for (int i = 0; i < g_nmapped; i++) {
-            if (!output_damage_intersects_surface(g_mapped[i], dx0, dy0, dx1, dy1))
-                continue;
-            if (surface_occluded_by_single_opaque_above(i))
-                continue;
-            composite_one(g_mapped[i]);
+        for (int di = 0; di < damage_count; di++) {
+            struct iosc_rect *d = &damage_rects[di];
+            iosc_gl_begin_damage(d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
+            for (int i = 0; i < g_nmapped; i++) {
+                if (!output_damage_intersects_surface(g_mapped[i],
+                                                      d->x0, d->y0, d->x1, d->y1))
+                    continue;
+                if (surface_occluded_by_single_opaque_above(i))
+                    continue;
+                composite_one(g_mapped[i]);
+            }
+            /* Drag icon rides above the windows, just under the cursor (blended). */
+            if (g_dnd.active && g_dnd.icon && g_dnd.icon->current_buffer) {
+                iosc_gl_begin_blend();
+                composite_surface_at(g_dnd.icon, g_cursor_x, g_cursor_y);
+                iosc_gl_end_blend();
+            }
+            composite_cursor();
         }
-        /* Drag icon rides above the windows, just under the cursor (blended). */
-        if (g_dnd.active && g_dnd.icon && g_dnd.icon->current_buffer) {
-            iosc_gl_begin_blend();
-            composite_surface_at(g_dnd.icon, g_cursor_x, g_cursor_y);
-            iosc_gl_end_blend();
-        }
-        composite_cursor();
         iosc_gl_end();
         xios_notify_dirty();
         frame_callbacks_after_present();
@@ -1843,19 +1962,24 @@ static void screencopy_frame_copy(struct wl_client *c, struct wl_resource *r,
 
 static void screencopy_send_damage(struct iosc_screencopy_frame *f)
 {
-    int x0, y0, x1, y1;
-    if (g_last_present_damage_valid) {
-        x0 = g_last_present_damage_x0 > f->x ? g_last_present_damage_x0 : f->x;
-        y0 = g_last_present_damage_y0 > f->y ? g_last_present_damage_y0 : f->y;
-        x1 = g_last_present_damage_x1 < f->x + f->w ? g_last_present_damage_x1 : f->x + f->w;
-        y1 = g_last_present_damage_y1 < f->y + f->h ? g_last_present_damage_y1 : f->y + f->h;
-    } else {
-        x0 = f->x; y0 = f->y; x1 = f->x + f->w; y1 = f->y + f->h;
-    }
-    if (x1 <= x0 || y1 <= y0)
+    struct iosc_rect frame = { f->x, f->y, f->x + f->w, f->y + f->h };
+    if (!g_last_present_damage_valid || g_last_present_damage_rect_count <= 0) {
+        zwlr_screencopy_frame_v1_send_damage(f->resource, 0, 0, f->w, f->h);
         return;
-    zwlr_screencopy_frame_v1_send_damage(f->resource,
-        x0 - f->x, y0 - f->y, x1 - x0, y1 - y0);
+    }
+    for (int i = 0; i < g_last_present_damage_rect_count; i++) {
+        struct iosc_rect r = g_last_present_damage_rects[i];
+        if (!rect_intersects_rect(&r, &frame))
+            continue;
+        if (r.x0 < frame.x0) r.x0 = frame.x0;
+        if (r.y0 < frame.y0) r.y0 = frame.y0;
+        if (r.x1 > frame.x1) r.x1 = frame.x1;
+        if (r.y1 > frame.y1) r.y1 = frame.y1;
+        if (r.x1 <= r.x0 || r.y1 <= r.y0)
+            continue;
+        zwlr_screencopy_frame_v1_send_damage(f->resource,
+            r.x0 - f->x, r.y0 - f->y, r.x1 - r.x0, r.y1 - r.y0);
+    }
 }
 
 static void screencopy_frame_copy_with_damage(struct wl_client *c, struct wl_resource *r,
@@ -3428,6 +3552,30 @@ static const struct wl_output_interface output_impl = {
     .release = output_release,
 };
 
+#define IOSC_MAX_OUTPUT_RES 32
+static struct wl_resource *g_output_res[IOSC_MAX_OUTPUT_RES];     static int g_noutput_res;
+static struct wl_resource *g_xdg_output_res[IOSC_MAX_OUTPUT_RES]; static int g_nxdg_output_res;
+
+static void output_res_remove(struct wl_resource **arr, int *n, struct wl_resource *r)
+{
+    for (int i = 0; i < *n; i++) {
+        if (arr[i] != r) continue;
+        arr[i] = arr[*n - 1];
+        (*n)--;
+        return;
+    }
+}
+
+static void output_resource_destroy(struct wl_resource *r)
+{
+    output_res_remove(g_output_res, &g_noutput_res, r);
+}
+
+static void xdg_output_resource_destroy(struct wl_resource *r)
+{
+    output_res_remove(g_xdg_output_res, &g_nxdg_output_res, r);
+}
+
 static void output_send_done(struct wl_resource *r)
 {
     if (wl_resource_get_version(r) >= WL_OUTPUT_DONE_SINCE_VERSION)
@@ -3456,7 +3604,9 @@ static void output_bind(struct wl_client *client, void *data, uint32_t version, 
     (void)data;
     struct wl_resource *r = wl_resource_create(client, &wl_output_interface, version, id);
     if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &output_impl, NULL, NULL);
+    wl_resource_set_implementation(r, &output_impl, NULL, output_resource_destroy);
+    if (g_noutput_res < IOSC_MAX_OUTPUT_RES)
+        g_output_res[g_noutput_res++] = r;
     output_send_state(r);
 }
 
@@ -3475,7 +3625,9 @@ static void xdg_output_manager_get(struct wl_client *c, struct wl_resource *r,
     struct wl_resource *xo = wl_resource_create(c, &zxdg_output_v1_interface,
                                                 wl_resource_get_version(r), id);
     if (!xo) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(xo, &xdg_output_impl, NULL, NULL);
+    wl_resource_set_implementation(xo, &xdg_output_impl, NULL, xdg_output_resource_destroy);
+    if (g_nxdg_output_res < IOSC_MAX_OUTPUT_RES)
+        g_xdg_output_res[g_nxdg_output_res++] = xo;
     zxdg_output_v1_send_logical_position(xo, 0, 0);
     zxdg_output_v1_send_logical_size(xo, output_logical_width(), output_logical_height());
     if (wl_resource_get_version(xo) >= ZXDG_OUTPUT_V1_NAME_SINCE_VERSION)

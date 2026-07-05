@@ -25,6 +25,12 @@ static int   configured = 0;
 static int   painted = 0;
 static int   frames = 0;
 
+static int split_damage_enabled(void)
+{
+    const char *v = getenv("IOSC_CLIENT_SPLIT_DAMAGE");
+    return v && *v && strcmp(v, "0");
+}
+
 /* ---- anonymous shm file (no memfd on iOS) -------------------------------- */
 
 static int create_shm_file(size_t size)
@@ -109,7 +115,12 @@ static void draw(void)
     struct wl_buffer *buf = make_frame(want_w, want_h);
     if (!buf) { fprintf(stderr, "client: make_frame failed\n"); return; }
     wl_surface_attach(surface, buf, 0, 0);
-    wl_surface_damage(surface, 0, 0, want_w, want_h);
+    if (split_damage_enabled() && frames > 0) {
+        wl_surface_damage_buffer(surface, 32, 32, 96, 96);
+        wl_surface_damage_buffer(surface, want_w - 160, want_h - 160, 96, 96);
+    } else {
+        wl_surface_damage(surface, 0, 0, want_w, want_h);
+    }
     wl_surface_commit(surface);
     painted = 1;
     frames++;
