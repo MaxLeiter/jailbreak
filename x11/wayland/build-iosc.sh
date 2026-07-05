@@ -250,6 +250,9 @@ echo "==> [5/5] cross-compile"
 # compositor (iosc_gl.c: GLES->Metal composite onto the output IOSurface) + frameworks.
 $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
+    "$X11/wayland/iosc_options.c" \
+    "$X11/wayland/iosc_util.c" \
+    "$X11/wayland/iosc_iosurface.c" \
     "$X11/wayland/iosc-clipboard-bridge.c" \
     "${XWM_SRCS[@]}" \
     "$X11/wayland/iosc_gl.c" \

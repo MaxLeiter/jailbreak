@@ -50,6 +50,9 @@
 #include "xios_canvas.h"
 #include "iosc_gl.h"
 #include "iosc_input.h"
+#include "iosc_iosurface.h"
+#include "iosc_options.h"
+#include "iosc_util.h"
 #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
 #include "iosc-clipboard-bridge.h"   /* Linux<->iOS clipboard sync over the dedicated socket */
 #include "iosc_xwm.h"                /* rootless Xwayland X window manager (opt-in via IOSC_XWAYLAND) */
@@ -97,7 +100,6 @@ static void recomposite_all_at(const char *reason, int line);   /* coalesced rep
 #define recomposite_all() recomposite_all_at(__func__, __LINE__)
 static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
 static void surface_unmap(struct iosc_surface *s);
-static int  env_truthy(const char *env);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 
@@ -716,33 +718,6 @@ static void cpu_blit_shm(struct iosc_surface *s)
     wl_shm_buffer_end_access(shm);
 }
 
-/* ---- iosc_iosurface: zero-copy GPU buffers (ANGLE-Metal clients) ---------- */
-
-/* A wl_buffer backed by a client IOSurface imported over the iosc_iosurface
- * protocol (see iosc-iosurface.xml). The compositor reached into the client's
- * task to look the surface up; ib->surface is a retained IOSurfaceRef (opaque). */
-struct iosc_iosurface_buffer {
-    void *surface;   /* imported IOSurfaceRef (from xios_import_client_iosurface) */
-    int   w, h;
-    int   flip_v;    /* 1 = GL-origin client IOSurface; 0 = already top-left */
-};
-
-static void iosurface_buffer_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static const struct wl_buffer_interface iosurface_buffer_impl = {
-    .destroy = iosurface_buffer_destroy,
-};
-static void iosurface_buffer_resource_destroy(struct wl_resource *r)
-{
-    struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(r);
-    if (!ib) return;
-    if (ib->surface) {
-        iosc_gl_forget_iosurface(ib->surface);   /* drop the cached GL texture/pbuffer */
-        xios_release_client_iosurface(ib->surface);
-    }
-    free(ib);
-}
-
 /* ---- single-pixel-buffer-v1: 1x1 solid-colour wl_buffer ------------------- */
 
 /* A wp_single_pixel_buffer is a 1x1 wl_buffer holding a premultiplied RGBA colour
@@ -823,11 +798,8 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
                          sx, sy, src_w, src_h,
                          dxp, dyp, dwp, dhp);
         wl_shm_buffer_end_access(shm);
-    } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &iosurface_buffer_impl)) {
-        struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(buf);
-        if (ib && ib->surface)
-            iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
-                                   dxp, dyp, dwp, dhp, ib->flip_v);
+    } else if (iosc_iosurface_buffer_draw(buf, sx, sy, src_w, src_h,
+                                          dxp, dyp, dwp, dhp)) {
     } else if (wl_resource_instance_of(buf, &wl_buffer_interface, &spb_buffer_impl)) {
         struct iosc_single_pixel_buffer *spb = wl_resource_get_user_data(buf);
         if (spb)   /* 1x1 texel, sampled across the whole destination rect (uncached) */
@@ -967,7 +939,7 @@ static void output_damage_add_surface(struct iosc_surface *s)
 {
     int x0, y0, x1, y1;
     if (!surface_rect(s, &x0, &y0, &x1, &y1)) return;
-    if (env_truthy(getenv("IOSC_DAMAGE_REASON")))
+    if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
         fprintf(stderr, "iosc: damage-add-surface role=%d mapped=%d rect=%d,%d %dx%d\n",
                 s->role, s->mapped, x0, y0, x1 - x0, y1 - y0);
     int os = output_scale();
@@ -1016,7 +988,7 @@ static int output_damage_add_surface_dirty_rects(struct iosc_surface *s)
         int y0 = r[1] / scale;
         int x1 = (r[0] + r[2] + scale - 1) / scale;
         int y1 = (r[1] + r[3] + scale - 1) / scale;
-        if (env_truthy(getenv("IOSC_DAMAGE_REASON")))
+        if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
             fprintf(stderr, "iosc: damage-add-dirty role=%d mapped=%d rect=%d,%d %dx%d\n",
                     s->role, s->mapped, s->dx + x0, s->dy + y0, x1 - x0, y1 - y0);
         output_damage_add_surface_rect(s, x0, y0, x1 - x0, y1 - y0);
@@ -1548,15 +1520,6 @@ static int iosc_debug(void)
     return v;
 }
 
-static int env_truthy(const char *env)
-{
-    return env && *env &&
-           strcmp(env, "0") &&
-           strcasecmp(env, "false") &&
-           strcasecmp(env, "no") &&
-           strcasecmp(env, "off");
-}
-
 static int active_session_allows_classic_iosc(void)
 {
     const char *path = "/var/jb/tmp/xios-active-session";
@@ -1564,7 +1527,7 @@ static int active_session_allows_classic_iosc(void)
     int fd;
     ssize_t n;
 
-    if (env_truthy(getenv("IOSC_IGNORE_ACTIVE_SESSION")))
+    if (iosc_env_truthy(getenv("IOSC_IGNORE_ACTIVE_SESSION")))
         return 1;
 
     fd = open(path, O_RDONLY);
@@ -1600,7 +1563,7 @@ static int iosc_app_cursor(void)
         const char *env = getenv("IOSC_APP_CURSOR");
         if (!env || !*env) {
             v = -1;
-        } else if (!env_truthy(env)) {
+        } else if (!iosc_env_truthy(env)) {
             v = 0;
         } else {
             v = 1;
@@ -1644,12 +1607,12 @@ static void recomposite_now(void)
         int dx0, dy0, dx1, dy1;
         int had_damage = g_output_damage_valid;
         output_damage_consume(&dx0, &dy0, &dx1, &dy1);
-        if (env_truthy(getenv("IOSC_DAMAGE_REASON")))
+        if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
             fprintf(stderr, "iosc: recompose-reason %s:%d damage=%s\n",
                     g_recompose_reason ? g_recompose_reason : "sync",
                     g_recompose_reason_line,
                     had_damage ? "pending" : "none");
-        if (env_truthy(getenv("IOSC_DAMAGE_STATS")))
+        if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
             fprintf(stderr, "iosc: output-damage %d,%d %dx%d%s\n",
                     dx0, dy0, dx1 - dx0, dy1 - dy0,
                     (dx0 == 0 && dy0 == 0 && dx1 == g_width && dy1 == g_height) ? " full" : "");
@@ -1740,11 +1703,8 @@ static void recomposite_now(void)
     struct iosc_surface *s = g_mapped[g_nmapped - 1];
     if (!s->current_buffer) return;
     if (wl_shm_buffer_get(s->current_buffer)) cpu_blit_shm(s);
-    else if (output_scale() == 1 &&
-             wl_resource_instance_of(s->current_buffer, &wl_buffer_interface, &iosurface_buffer_impl)) {
-        struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(s->current_buffer);
-        if (ib && ib->surface) xios_blit_client_iosurface(ib->surface);
-    }
+    else if (output_scale() == 1)
+        iosc_iosurface_buffer_blit_to_output(s->current_buffer);
     xios_notify_dirty();
     frame_callbacks_after_present();
 }
@@ -2167,56 +2127,6 @@ void iosc_xwm_set_title(struct wl_resource *res, const char *title)
     if (s->role == IOSC_ROLE_TOPLEVEL) ftl_broadcast_title(s);
 }
 
-static void iosurface_factory_create_buffer(struct wl_client *client,
-        struct wl_resource *res, uint32_t id, uint32_t mach_port_name,
-        int32_t width, int32_t height, uint32_t format)
-{
-    (void)width; (void)height;
-    enum { IOSC_IOSURFACE_FORMAT_TOP_LEFT = 0x80000000u };
-    pid_t pid = 0; uid_t uid = 0; gid_t gid = 0;
-    wl_client_get_credentials(client, &pid, &uid, &gid);
-
-    int iw = 0, ih = 0;
-    void *surf = xios_import_client_iosurface((int)pid, mach_port_name, &iw, &ih);
-
-    struct iosc_iosurface_buffer *ib = calloc(1, sizeof(*ib));
-    if (!ib) { if (surf) xios_release_client_iosurface(surf);
-               wl_client_post_no_memory(client); return; }
-    ib->surface = surf; ib->w = iw; ib->h = ih;
-    ib->flip_v = (format & IOSC_IOSURFACE_FORMAT_TOP_LEFT) ? 0 : 1;
-
-    struct wl_resource *buf = wl_resource_create(client, &wl_buffer_interface, 1, id);
-    if (!buf) { if (surf) xios_release_client_iosurface(surf); free(ib);
-                wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(buf, &iosurface_buffer_impl, ib,
-                                   iosurface_buffer_resource_destroy);
-
-    if (!surf) {
-        wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_IMPORT_FAILED,
-                               "IOSurface import failed (pid=%d port=0x%x)",
-                               (int)pid, mach_port_name);
-        return;
-    }
-    fprintf(stderr, "iosc: imported client IOSurface as wl_buffer %dx%d (pid=%d)\n",
-            iw, ih, (int)pid);
-}
-static void iosurface_factory_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static const struct iosc_iosurface_interface iosurface_factory_impl = {
-    .destroy = iosurface_factory_destroy,
-    .create_buffer = iosurface_factory_create_buffer,
-};
-static void iosc_iosurface_bind(struct wl_client *client, void *data,
-                                uint32_t version, uint32_t id)
-{
-    (void)data;
-    struct wl_resource *r = wl_resource_create(client, &iosc_iosurface_interface,
-                                               version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &iosurface_factory_impl, NULL, NULL);
-    fprintf(stderr, "iosc: client bound iosc_iosurface v%u\n", version);
-}
-
 /* ---- wl_surface ---------------------------------------------------------- */
 
 static void surface_handle_destroy(struct wl_client *c, struct wl_resource *r)
@@ -2255,7 +2165,7 @@ static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t c
      * a frame callback after the commit that made its output visible. A pulse
      * can advance that render loop, but doing it globally makes ordinary shell
      * clients repaint forever, so keep it gated until a real frame clock lands. */
-    if (env_truthy(getenv("IOSC_FRAME_PULSE")) &&
+    if (iosc_env_truthy(getenv("IOSC_FRAME_PULSE")) &&
         s && s->mapped && s->current_buffer && !g_recompose_scheduled)
         recomposite_all();
 }
@@ -2331,9 +2241,7 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
             int sw = 0, sh = 0;
             struct wl_shm_buffer *shm = wl_shm_buffer_get(buf);
             if (shm) { sw = wl_shm_buffer_get_width(shm); sh = wl_shm_buffer_get_height(shm); }
-            else if (wl_resource_instance_of(buf, &wl_buffer_interface, &iosurface_buffer_impl)) {
-                struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(buf);
-                if (ib) { sw = ib->w; sh = ib->h; }
+            else if (iosc_iosurface_buffer_get_size(buf, &sw, &sh)) {
             }
             else if (wl_resource_instance_of(buf, &wl_buffer_interface, &spb_buffer_impl)) {
                 sw = 1; sh = 1;   /* single-pixel buffer; scaled up via viewporter */
@@ -7162,77 +7070,6 @@ static void slock_mgr_bind(struct wl_client *c, void *data, uint32_t version, ui
 
 /* ---- main ---------------------------------------------------------------- */
 
-struct iosc_options {
-    const char *sock_name;
-    const char *ddx_sock;
-    const char *json_path;
-    const char *input_sock;
-    const char *clipboard_sock;
-    const char *wm_sock;
-    int logical_w;
-    int logical_h;
-    int native_arg;
-};
-
-static void iosc_options_init(struct iosc_options *o)
-{
-    *o = (struct iosc_options){
-        .sock_name = "wayland-0",
-        .ddx_sock = "/var/jb/tmp/iosc-ddx.sock",
-        .json_path = "/var/jb/tmp/xios.json",
-        .input_sock = "/var/jb/tmp/iosc-input.sock",
-        .clipboard_sock = "/var/jb/tmp/iosc-clipboard.sock",
-        .wm_sock = "/var/jb/tmp/iosc-wm.sock",
-        .native_arg = -1,
-    };
-}
-
-static int parse_size(const char *s, int *w, int *h)
-{
-    int tw = 0, th = 0;
-    if (!s || sscanf(s, "%dx%d", &tw, &th) != 2 || tw <= 0 || th <= 0)
-        return 0;
-    *w = tw;
-    *h = th;
-    return 1;
-}
-
-static void iosc_parse_args(int argc, char **argv, struct iosc_options *o)
-{
-    for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-g") && i + 1 < argc) {
-            parse_size(argv[++i], &g_width, &g_height);
-        } else if (!strcmp(argv[i], "-logical") && i + 1 < argc) {
-            /* Express the desktop by its LOGICAL size; the output IOSurface is
-             * derived as logical * scale after parsing so -scale may appear in
-             * any order. */
-            parse_size(argv[++i], &o->logical_w, &o->logical_h);
-        } else if (!strcmp(argv[i], "-dpi") && i + 1 < argc) {
-            int dpi = atoi(argv[++i]);
-            if (dpi > 0) g_output_dpi = dpi;
-        } else if (!strcmp(argv[i], "-scale") && i + 1 < argc) {
-            int scale = atoi(argv[++i]);
-            if (scale > 0) g_output_scale = scale;
-        } else if (!strcmp(argv[i], "-s") && i + 1 < argc) {
-            o->sock_name = argv[++i];
-        } else if (!strcmp(argv[i], "-ddx-sock") && i + 1 < argc) {
-            o->ddx_sock = argv[++i];
-        } else if (!strcmp(argv[i], "-json") && i + 1 < argc) {
-            o->json_path = argv[++i];
-        } else if (!strcmp(argv[i], "-input-sock") && i + 1 < argc) {
-            o->input_sock = argv[++i];
-        } else if (!strcmp(argv[i], "-clipboard-sock") && i + 1 < argc) {
-            o->clipboard_sock = argv[++i];
-        } else if (!strcmp(argv[i], "-wm-sock") && i + 1 < argc) {
-            o->wm_sock = argv[++i];
-        } else if (!strcmp(argv[i], "-native")) {
-            o->native_arg = 1;
-        } else if (!strcmp(argv[i], "-classic")) {
-            o->native_arg = 0;
-        }
-    }
-}
-
 static void create_global(const struct wl_interface *iface, int version,
                           wl_global_bind_func_t bind)
 {
@@ -7289,9 +7126,14 @@ int main(int argc, char **argv)
     iosc_options_init(&opts);
     iosc_parse_args(argc, argv, &opts);
 
+    g_width = opts.width;
+    g_height = opts.height;
+    g_output_dpi = opts.dpi;
+    g_output_scale = opts.scale;
+
     if (opts.native_arg >= 0) {
         g_native_mode = opts.native_arg;
-    } else if (env_truthy(getenv("IOSC_NATIVE"))) {
+    } else if (iosc_env_truthy(getenv("IOSC_NATIVE"))) {
         g_native_mode = 1;
     }
     if (!g_native_mode && !active_session_allows_classic_iosc())
@@ -7403,7 +7245,7 @@ int main(int argc, char **argv)
 
     /* 2c) Rootless Xwayland XWM (opt-in): spawns Xwayland, owns WM_S0, advertises
      *      xwayland_shell_v1. Each X window becomes its own iosc surface. */
-    if (env_truthy(getenv("IOSC_XWAYLAND"))) {
+    if (iosc_env_truthy(getenv("IOSC_XWAYLAND"))) {
         if (iosc_xwm_start(wl_display_get_event_loop(g_display)) != 0)
             fprintf(stderr, "iosc: Xwayland XWM failed to start\n");
     }
