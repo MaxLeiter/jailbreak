@@ -79,21 +79,27 @@ fi
 cp -v /work/recipes/build_info/linux-input-event-codes.h "${BB}/usr/include/linux/input-event-codes.h"
 cp -v /work/recipes/build_info/linux-input.h "${BB}/usr/include/linux/input.h"
 
-# The KWin shims are cheap and their recipes carry iOS version markers. Force
-# them through the current recipes so stale unmarked package dirs do not leak
-# into /out from an older volume build.
-rm -rf \
-  build_work/*/*/libdrm build_stage/libdrm build_dist/libdrm build_dist/libdrm2 build_dist/libdrm-dev \
-  build_work/*/*/gbm build_stage/gbm build_dist/gbm build_dist/libgbm1 build_dist/libgbm-dev \
-  build_work/*/*/libdisplay-info build_stage/libdisplay-info build_dist/libdisplay-info build_dist/libdisplay-info1 build_dist/libdisplay-info-dev \
-  2>/dev/null || true
+# Normal runs rely on the fingerprint helper below so unchanged shims stay
+# cached. Keep an explicit cleanup escape hatch for one-off stale volume repair.
+if [ "${FORCE_KWIN_SHIM_REBUILD:-0}" = "1" ]; then
+  rm -rf \
+    build_work/*/*/libdrm build_stage/*/*/libdrm build_dist/*/*/libdrm build_dist/*/*/libdrm2 build_dist/*/*/libdrm-dev \
+    build_work/*/*/gbm build_stage/*/*/gbm build_dist/*/*/gbm build_dist/*/*/libgbm1 build_dist/*/*/libgbm-dev \
+    build_work/*/*/libdisplay-info build_stage/*/*/libdisplay-info build_dist/*/*/libdisplay-info build_dist/*/*/libdisplay-info1 build_dist/*/*/libdisplay-info-dev \
+    2>/dev/null || true
+fi
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
+XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"
+source /work/recipes/xios-cache-fingerprint.sh
+
 for t in $TARGETS; do
   echo "==> make ${t}"
+  xios_cache_prepare_target "$t"
   make ${t} $COMMON -j"$(nproc)"
+  xios_cache_record_target "$t"
 done
 
 echo "==> collect debs -> /out"

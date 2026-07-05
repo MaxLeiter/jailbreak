@@ -146,9 +146,14 @@ esac
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
+XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk"
+source /work/recipes/xios-cache-fingerprint.sh
+
 for t in $TARGETS; do
   echo "==> make ${t}-package"
+  xios_cache_prepare_target "$t"
   make ${t}-package $COMMON -j"$(nproc)"
+  xios_cache_record_target "$t"
 done
 
 # collect any debs produced

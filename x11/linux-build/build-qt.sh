@@ -87,6 +87,7 @@ for r in qtbase.mk; do
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 cp -v /work/build_info/qt6-*.control build_info/ 2>/dev/null || true
+source /work/recipes/xios-cache-fingerprint.sh
 
 # Qt round 3 links QtGui/EGL support against the ANGLE deb. ANGLE deliberately lives
 # outside /var/jb/usr at /var/jb/lib/angle plus /var/jb/include, so stage it into the
@@ -109,7 +110,9 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 TARGETS="${TARGETS:-qtbase}"
 for t in $TARGETS; do
   echo "==> make ${t}-package"
+  xios_cache_prepare_target "$t"
   make ${t}-package $COMMON -j"$(nproc)"
+  xios_cache_record_target "$t"
 done
 
 # collect any debs produced
