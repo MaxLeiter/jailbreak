@@ -49,6 +49,58 @@
 - (void)syncKeyboardWithFocusedInputSoonAllowingProactive:(BOOL)allowProactive reason:(char const*)reason;
 @end
 
+static BOOL lb_string_has_whitespace(NSString* text)
+{
+    return [text rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].location != NSNotFound;
+}
+
+static BOOL lb_string_has_url_scheme(NSString* text)
+{
+    NSRange colon = [text rangeOfString:@":"];
+    if (colon.location == NSNotFound || colon.location == 0)
+        return NO;
+
+    NSUInteger firstSeparator = text.length;
+    for (NSString* separator in @[ @"/", @"?", @"#" ]) {
+        NSRange range = [text rangeOfString:separator];
+        if (range.location != NSNotFound)
+            firstSeparator = MIN(firstSeparator, range.location);
+    }
+    if (colon.location > firstSeparator)
+        return NO;
+
+    NSString* candidate = [text substringToIndex:colon.location];
+    NSCharacterSet* invalidSchemeCharacters =
+        [[NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-."] invertedSet];
+    if ([candidate rangeOfCharacterFromSet:invalidSchemeCharacters].location != NSNotFound)
+        return NO;
+
+    // Treat host:port inputs as bare addresses, not custom URL schemes. Common user-entered
+    // schemes do not contain dots; hostnames commonly do.
+    return [candidate rangeOfString:@"."].location == NSNotFound;
+}
+
+static NSString* lb_normalized_address_bar_input(NSString* input)
+{
+    NSString* trimmed = [input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (!trimmed.length || lb_string_has_whitespace(trimmed) || lb_string_has_url_scheme(trimmed))
+        return trimmed;
+
+    if ([trimmed hasPrefix:@"//"])
+        return [@"https:" stringByAppendingString:trimmed];
+
+    BOOL startsWithWWW = trimmed.length >= 4
+        && [trimmed rangeOfString:@"www." options:NSCaseInsensitiveSearch range:NSMakeRange(0, 4)].location == 0;
+    BOOL looksLikeHost = startsWithWWW
+        || [trimmed rangeOfString:@"."].location != NSNotFound
+        || [trimmed rangeOfString:@":"].location != NSNotFound;
+
+    if (looksLikeHost)
+        return [@"https://" stringByAppendingString:trimmed];
+
+    return trimmed;
+}
+
 @implementation LadybirdWebView {
     OwnPtr<LadybirdIOS::WebViewBridge> _bridge;
 
@@ -430,11 +482,13 @@
 
 - (void)loadURL:(NSString*)urlString
 {
-    lb_trace("loadURL: %s", urlString.UTF8String);
+    NSString* raw = urlString ?: @"";
+    NSString* normalized = lb_normalized_address_bar_input(raw);
+    lb_trace("loadURL: raw=%s normalized=%s", raw.UTF8String, normalized.UTF8String);
     // Sanitize user input the way the AppKit/Qt address bars do: bare domains like
     // "github.com" get an "https://" scheme prepended, and non-URL text falls back to the
     // configured search engine. See WebView::sanitize_url / TabController.mm.
-    auto input = StringView { urlString.UTF8String, strlen(urlString.UTF8String) };
+    auto input = StringView { normalized.UTF8String, strlen(normalized.UTF8String) };
     auto url = WebView::sanitize_url(input, WebView::Application::settings().search_engine());
     if (url.has_value())
         _bridge->load(url.value());
