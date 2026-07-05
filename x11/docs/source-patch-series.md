@@ -91,6 +91,10 @@ Current converted non-Qt stacks:
   with the Darwin year-format modifier used by the iOS cross build.
 - `ports/ibus/patches`: lets the disabled-XIM Compose locale check fall through
   while cross-building instead of aborting configure.
+- `ports/mutter/patches`: makes remote-desktop-only input-emulation deps
+  optional and guards systemd-only X11 policy code when libsystemd is off. The
+  no-`/work/x11` fallback backend body remains procedural because that path is
+  conditional.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
@@ -106,7 +110,7 @@ Remaining non-Qt procedural source edits:
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.
 - Smaller recipe-level source edits still exist outside the original helper
-  script audit, including mutter/EDS and smaller focused app/runtime fixes.
+  script audit, including EDS and smaller focused app/runtime fixes.
   Convert these in small dependency-specific batches after checking whether
   each edit is true upstream source patching versus generated/package metadata
   or a deliberate blocked-port note.

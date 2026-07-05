@@ -77,6 +77,7 @@ stage_required_patch_stack() {
 if target_requests colord || target_requests mutter; then
   stage_required_patch_stack colord
 fi
+target_requests mutter && stage_required_patch_stack mutter
 
 # --- MUTTER_CLEAN: wipe the mutter work tree for a from-pristine integrate + full build ---
 # Route A needs the real MetaBackendIOS staged into a PRISTINE mutter tree (integrate applies
@@ -213,12 +214,29 @@ if target_requests colord || target_requests mutter; then
   fi
 fi
 
+MUTTER_W=build_work/iphoneos-arm64-rootless/1900/mutter
+MUTTER_S=build_stage/iphoneos-arm64-rootless/1900/mutter
+MUTTER_F="$MUTTER_W/.xios_patch_series.sha256"
+if target_requests mutter; then
+  MUTTER_FP="$(sha256sum \
+    /work/ports/mutter/patches/series \
+    /work/ports/mutter/patches/*.patch | sha256sum | awk '{print $1}')"
+  MUTTER_OLD_FP="$(cat "$MUTTER_F" 2>/dev/null || true)"
+  if [ -d "$MUTTER_W" ] && [ "$MUTTER_FP" != "$MUTTER_OLD_FP" ]; then
+    echo "==> wiping stale mutter build after patch changes"
+    rm -rf "$MUTTER_W" "$MUTTER_S"
+  fi
+fi
+
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
 if [ -d "$COLORD_W" ] && [ -n "${COLORD_FP:-}" ]; then
   printf '%s\n' "$COLORD_FP" > "$COLORD_F"
+fi
+if [ -d "$MUTTER_W" ] && [ -n "${MUTTER_FP:-}" ]; then
+  printf '%s\n' "$MUTTER_FP" > "$MUTTER_F"
 fi
 
 # collect any debs produced (package targets only)

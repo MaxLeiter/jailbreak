@@ -31,11 +31,6 @@ MUTTER_X11_WEAK := libX11.6.dylib libX11-xcb.1.dylib libXext.6.dylib libXfixes.3
 mutter-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/mutter/$(MUTTER_MAJOR_V)/mutter-$(MUTTER_VERSION).tar.xz)
 	$(call EXTRACT_TAR,mutter-$(MUTTER_VERSION).tar.xz,mutter-$(MUTTER_VERSION),mutter)
-	# --- iOS portability patches (accreting) ---
-	# libei/libeis (input emulation) are dependency()'d unconditionally but only USED under
-	# HAVE_REMOTE_DESKTOP (off here) — make them non-required so configure proceeds without them.
-	sed -i "s/dependency('libeis-1.0', version: libei_req)/dependency('libeis-1.0', version: libei_req, required: false)/" $(BUILD_WORK)/mutter/meson.build
-	sed -i "s/dependency('libei-1.0', version: libei_req)/dependency('libei-1.0', version: libei_req, required: false)/" $(BUILD_WORK)/mutter/meson.build
 	# MetaBackendIOS integration: if the x11 repo is mounted at /work/x11 (build-mutter.sh
 	# -v x11:/work/x11), stage the whole iOS/IOSurface backend + apply the 5 integration patches
 	# (incl. meta-context-main-ios-backend.patch, which gives the wayland+no-native branch a REAL
@@ -48,10 +43,9 @@ mutter-setup: setup
 		echo "==> WARN: /work/x11 not mounted — STOCK typelib-only mutter (NO iOS backend)"; \
 		perl -0pi -e 's{return create_native_backend \(context, error\);\n#endif /\* HAVE_NATIVE_BACKEND \*/}{return create_native_backend (context, error);\n#else\n      g_assert_not_reached ();\n      return NULL;\n#endif /* HAVE_NATIVE_BACKEND */}' $(BUILD_WORK)/mutter/src/core/meta-context-main.c; \
 	fi
-	# meta-context-main.c uses sd_pid_get_user_unit (systemd) guarded only by HAVE_WAYLAND, not
-	# HAVE_LIBSYSTEMD — undefined symbol when systemd is off. Guard it; fall back to MANDATORY X11
-	# policy when systemd is absent (the correct no-logind behaviour on iOS).
-	perl -0pi -e 's{else if \(sd_pid_get_user_unit \(0, &unit\) < 0\)\n        return META_X11_DISPLAY_POLICY_MANDATORY;\n      else\n        return META_X11_DISPLAY_POLICY_ON_DEMAND;}{else\n        \{\n#ifdef HAVE_LIBSYSTEMD\n          if (sd_pid_get_user_unit (0, &unit) < 0)\n            return META_X11_DISPLAY_POLICY_MANDATORY;\n          else\n            return META_X11_DISPLAY_POLICY_ON_DEMAND;\n#else\n          (void) unit;\n          return META_X11_DISPLAY_POLICY_MANDATORY;\n#endif\n        \}}' $(BUILD_WORK)/mutter/src/core/meta-context-main.c
+	# Keep the unconditional iOS portability edits in the port patch stack. The
+	# no-/work/x11 fallback above remains procedural because it is conditional.
+	$(call DO_PATCH,mutter,mutter,-p1)
 	rm -rf $(BUILD_WORK)/mutter/build && mkdir -p $(BUILD_WORK)/mutter/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
