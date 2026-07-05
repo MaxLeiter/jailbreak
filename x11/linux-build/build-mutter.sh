@@ -8,6 +8,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=3 \
 #     -v procursus-vol-gtk:/work/Procursus \
 #     -v "$PWD/build-mutter.sh:/work/build-mutter.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/tools:/work/tools:ro" -v "$PWD/out:/out" \
 #     -v "$PWD/..:/work/x11:ro" \
 #     -e TARGETS="mutter mutter-package" -e MUTTER_CLEAN=1 \
@@ -56,6 +57,26 @@ for r in libxcomposite.mk gusb.mk colord.mk libpixman.mk libxfixes.mk libdrm.mk 
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 [ -d /work/build_info ] && cp -v /work/build_info/* build_info/ 2>/dev/null || true
+
+TARGETS="${TARGETS:-lcms2 libxcomposite libxkbcommon colord}"
+
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+if target_requests colord || target_requests mutter; then
+  stage_required_patch_stack colord
+fi
 
 # --- MUTTER_CLEAN: wipe the mutter work tree for a from-pristine integrate + full build ---
 # Route A needs the real MetaBackendIOS staged into a PRISTINE mutter tree (integrate applies
@@ -178,11 +199,27 @@ fi
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-TARGETS="${TARGETS:-lcms2 libxcomposite libxkbcommon colord}"
+COLORD_W=build_work/iphoneos-arm64-rootless/1900/colord
+COLORD_S=build_stage/iphoneos-arm64-rootless/1900/colord
+COLORD_F="$COLORD_W/.xios_patch_series.sha256"
+if target_requests colord || target_requests mutter; then
+  COLORD_FP="$(sha256sum \
+    /work/ports/colord/patches/series \
+    /work/ports/colord/patches/*.patch | sha256sum | awk '{print $1}')"
+  COLORD_OLD_FP="$(cat "$COLORD_F" 2>/dev/null || true)"
+  if [ -d "$COLORD_W" ] && [ "$COLORD_FP" != "$COLORD_OLD_FP" ]; then
+    echo "==> wiping stale colord build after patch changes"
+    rm -rf "$COLORD_W" "$COLORD_S"
+  fi
+fi
+
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$COLORD_W" ] && [ -n "${COLORD_FP:-}" ]; then
+  printf '%s\n' "$COLORD_FP" > "$COLORD_F"
+fi
 
 # collect any debs produced (package targets only)
 mkdir -p /out

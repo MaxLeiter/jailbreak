@@ -18,25 +18,10 @@ DEB_COLORD_V   ?= $(COLORD_VERSION)+ios1
 colord-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/colord/releases/colord-$(COLORD_VERSION).tar.xz)
 	$(call EXTRACT_TAR,colord-$(COLORD_VERSION).tar.xz,colord-$(COLORD_VERSION),colord)
-	# gusb (USB) + gudev (Linux udev) are daemon-only; the client libcolord (all mutter needs)
-	# doesn't use them. Both are Linux-centric and pointless on iOS. Make them non-required so
-	# the lib-only build (-Ddaemon=false) configures without the USB/udev dependency chain.
-	sed -i "s/dependency('gusb', version : '>= 0.2.7')/dependency('gusb', version : '>= 0.2.7', required: false)/" $(BUILD_WORK)/colord/meson.build
-	sed -i "s/dependency('gudev-1.0')/dependency('gudev-1.0', required: false)/" $(BUILD_WORK)/colord/meson.build
-	sed -i "s/dependency('libudev')/dependency('libudev', required: false)/" $(BUILD_WORK)/colord/meson.build
-	# cd-edid.c guards its udev *usage* with #ifndef PNP_IDS but leaves the #include <libudev.h>
-	# unguarded (upstream oversight) — guard it to match, so the PNP_IDS (file) path needs no udev.
-	sed -i 's|^#include <libudev.h>|#ifndef PNP_IDS\n#include <libudev.h>\n#endif|' $(BUILD_WORK)/colord/lib/colord/cd-edid.c
-	# lib/colorhug is the ColorHug USB colorimeter driver (needs gusb); built unconditionally but
-	# irrelevant on iOS and not used by the libcolord client lib mutter needs. Drop the subdir.
-	sed -i "s/subdir('colorhug')/# colorhug (USB colorimeter) dropped on iOS: needs gusb, unused by libcolord/" $(BUILD_WORK)/colord/lib/meson.build
-	# ld64 (Apple) rejects GNU ld's --version-script symbol-versioning. Drop it — exporting all
-	# symbols is a harmless superset (mutter still resolves the public cd_* it links).
-	sed -i "s|^vflag = .*|vflag = []|" $(BUILD_WORK)/colord/lib/colord/meson.build
-	# The whole data/ subdir (cmf/illuminant/profiles/ref/ti1) generates color-science reference
-	# files by RUNNING just-built target tools (cd-it8/cd-create-profile) — impossible cross. It's
-	# daemon-side data; lib/colord (the client lib mutter needs) doesn't reference any of it. Drop it.
-	sed -i "s/^subdir('data')/# data\/ dropped on iOS: generation runs target tools; unused by libcolord client/" $(BUILD_WORK)/colord/meson.build
+	# Keep the lib-only iOS source edits (daemon-only deps optional, no udev
+	# include on the PNP_IDS path, no ColorHug/data subdirs, no GNU ld
+	# version-script flag) in the port patch stack.
+	$(call DO_PATCH,colord,colord,-p1)
 	rm -rf $(BUILD_WORK)/colord/build && mkdir -p $(BUILD_WORK)/colord/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

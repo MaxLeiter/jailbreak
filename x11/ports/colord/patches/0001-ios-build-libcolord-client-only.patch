@@ -1,0 +1,40 @@
+Subject: [PATCH] colord: build libcolord client library on iOS
+
+The iOS port only needs libcolord as a Mutter client dependency. Make
+daemon-only USB/udev dependencies optional, use the existing PNP_IDS path
+without including libudev, skip the ColorHug and generated data subdirs, and
+drop GNU ld version-script flags that ld64 does not support.
+
+diff -ruN -U0 --exclude=*.bak a/lib/colord/cd-edid.c b/lib/colord/cd-edid.c
+--- a/lib/colord/cd-edid.c	2024-01-22 04:41:38
++++ b/lib/colord/cd-edid.c	2026-07-05 00:22:08
+@@ -27,0 +28 @@
++#ifndef PNP_IDS
+@@ -28,0 +30 @@
++#endif
+diff -ruN -U0 --exclude=*.bak a/lib/colord/meson.build b/lib/colord/meson.build
+--- a/lib/colord/meson.build	2024-01-22 04:41:38
++++ b/lib/colord/meson.build	2026-07-05 00:22:08
+@@ -77 +77 @@
+-vflag = '-Wl,--version-script,@0@/@1@'.format(meson.current_source_dir(), mapfile)
++vflag = []
+diff -ruN -U0 --exclude=*.bak a/lib/meson.build b/lib/meson.build
+--- a/lib/meson.build	2024-01-22 04:41:38
++++ b/lib/meson.build	2026-07-05 00:22:08
+@@ -4 +4 @@
+-subdir('colorhug')
++# colorhug (USB colorimeter) dropped on iOS: needs gusb, unused by libcolord
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2024-01-22 04:41:38
++++ b/meson.build	2026-07-05 00:22:08
+@@ -120,2 +120,2 @@
+-gusb = dependency('gusb', version : '>= 0.2.7')
+-gudev = dependency('gudev-1.0')
++gusb = dependency('gusb', version : '>= 0.2.7', required: false)
++gudev = dependency('gudev-1.0', required: false)
+@@ -123 +123 @@
+-libudev = dependency('libudev')
++libudev = dependency('libudev', required: false)
+@@ -267 +267 @@
+-subdir('data')
++# data/ dropped on iOS: generation runs target tools; unused by libcolord client
