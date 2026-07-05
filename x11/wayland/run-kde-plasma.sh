@@ -74,12 +74,14 @@ case "$KDE_PLASMA_FLAVOR" in
   nano|plasma-nano|kde-nano)
     KDE_PLASMA_FLAVOR=nano
     KDE_PLASMA_LABEL="KDE Plasma Nano"
+    PLASMA_SHELL_PLUGIN=
     PLASMA_ENV+=(PLASMA_DEFAULT_SHELL="${PLASMA_DEFAULT_SHELL:-org.kde.plasma.nano}")
     KDE_QT_QUICK_CONTROLS_STYLE="${KDE_QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
     ;;
   mobile|phone|plasma-mobile|kde-mobile)
     KDE_PLASMA_FLAVOR=mobile
     KDE_PLASMA_LABEL="KDE Plasma Mobile"
+    PLASMA_SHELL_PLUGIN=
     PLASMA_ENV+=(PLASMA_DEFAULT_SHELL="${PLASMA_DEFAULT_SHELL:-org.kde.plasma.mobileshell}")
     PLASMA_ENV+=(PLASMA_PLATFORM="${PLASMA_PLATFORM:-phone:handset}")
     PLASMA_ENV+=(QT_QUICK_CONTROLS_MOBILE="${QT_QUICK_CONTROLS_MOBILE:-true}")
