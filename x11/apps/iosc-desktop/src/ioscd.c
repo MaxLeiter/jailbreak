@@ -887,23 +887,23 @@ static int run_and_stream(int fd, char *const argv[])
     return code == 0 ? 0 : -1;
 }
 
-static void handle_apps_list(int fd)
+static int run_launcher_sync(int fd, char *const argv[])
 {
     if (access(g_xios_launcher_sync, X_OK) != 0) {
         reply(fd, "ERR xios-launcher-sync not installed\n");
-        return;
+        return -1;
     }
+    return run_and_stream(fd, argv);
+}
+
+static void handle_apps_list(int fd)
+{
     char *argv[] = { g_xios_launcher_sync, "--list", NULL };
-    (void)run_and_stream(fd, argv);
+    (void)run_launcher_sync(fd, argv);
 }
 
 static void handle_apps_sync(int fd, char *payload)
 {
-    if (access(g_xios_launcher_sync, X_OK) != 0) {
-        reply(fd, "ERR xios-launcher-sync not installed\n");
-        return;
-    }
-
     char *rest = payload;
     char *mode = take_tab_field(&rest);
     char *dry = rest ? rest : "";
@@ -918,15 +918,11 @@ static void handle_apps_sync(int fd, char *payload)
     argv[i++] = native ? "--native" : "--classic";
     if (dry_run) argv[i++] = "--dry-run";
     argv[i] = NULL;
-    (void)run_and_stream(fd, argv);
+    (void)run_launcher_sync(fd, argv);
 }
 
 static void handle_app_toggle(int fd, const char *verb, char *payload)
 {
-    if (access(g_xios_launcher_sync, X_OK) != 0) {
-        reply(fd, "ERR xios-launcher-sync not installed\n");
-        return;
-    }
     char *app_id = payload;
     app_id[strcspn(app_id, "\t\r\n")] = 0;
     if (!*app_id) {
@@ -939,7 +935,7 @@ static void handle_app_toggle(int fd, const char *verb, char *payload)
         app_id,
         NULL
     };
-    (void)run_and_stream(fd, argv);
+    (void)run_launcher_sync(fd, argv);
 }
 
 static void handle_a11y_state(int fd, char *payload)
