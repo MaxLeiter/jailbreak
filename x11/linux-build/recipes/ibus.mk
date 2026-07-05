@@ -15,11 +15,8 @@ DEB_IBUS_V   ?= $(IBUS_VERSION)+ios1
 ibus-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/ibus/ibus/releases/download/$(IBUS_VERSION)/ibus-$(IBUS_VERSION).tar.gz)
 	$(call EXTRACT_TAR,ibus-$(IBUS_VERSION).tar.gz,ibus-$(IBUS_VERSION),ibus)
-	# ibus's configure hard-AC_CHECK_FILEs the X11 Compose locale.dir, which aborts under
-	# cross-compile ("cannot check for file existence when cross compiling"). The dir is
-	# only used for XIM Compose (disabled); neuter the two cross guards so the check falls
-	# through to the default X11_LOCALEDATADIR=$(datadir)/X11/locale.
-	sed -i 's/.*cannot check for file existence when cross compiling.*/:/' $(BUILD_WORK)/ibus/configure
+	# Keep the X11 Compose locale cross-compile guard fix in the port patch stack.
+	$(call DO_PATCH,ibus,ibus,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/ibus/.build_complete),)
 ibus:

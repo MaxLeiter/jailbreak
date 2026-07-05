@@ -67,6 +67,9 @@ stage_required_patch_stack() {
 if target_requests polkit || target_requests gnome-shell; then
   stage_required_patch_stack polkit
 fi
+if target_requests ibus || target_requests gnome-shell; then
+  stage_required_patch_stack ibus
+fi
 
 SHELL_PATCH_DIR=/work/ports/gnome-shell/patches
 if [ "$WITH_EDS" = 1 ]; then
@@ -173,6 +176,20 @@ if target_requests polkit || target_requests gnome-shell; then
   fi
 fi
 
+IBUS_W=build_work/iphoneos-arm64-rootless/1900/ibus
+IBUS_S=build_stage/iphoneos-arm64-rootless/1900/ibus
+IBUS_F="$IBUS_W/.xios_patch_series.sha256"
+if target_requests ibus || target_requests gnome-shell; then
+  IBUS_FP="$(sha256sum \
+    /work/ports/ibus/patches/series \
+    /work/ports/ibus/patches/*.patch | sha256sum | awk '{print $1}')"
+  IBUS_OLD_FP="$(cat "$IBUS_F" 2>/dev/null || true)"
+  if [ -d "$IBUS_W" ] && [ "$IBUS_FP" != "$IBUS_OLD_FP" ]; then
+    echo "==> wiping stale ibus build after patch changes"
+    rm -rf "$IBUS_W" "$IBUS_S"
+  fi
+fi
+
 GSHELL_W=build_work/iphoneos-arm64-rootless/1900/gnome-shell
 GSHELL_S=build_stage/iphoneos-arm64-rootless/1900/gnome-shell
 GSHELL_F="$GSHELL_W/.xios_patch_series.sha256"
@@ -196,6 +213,9 @@ if [ -d "$GSHELL_W" ] && [ -n "${GSHELL_FP:-}" ]; then
 fi
 if [ -d "$POLKIT_W" ] && [ -n "${POLKIT_FP:-}" ]; then
   printf '%s\n' "$POLKIT_FP" > "$POLKIT_F"
+fi
+if [ -d "$IBUS_W" ] && [ -n "${IBUS_FP:-}" ]; then
+  printf '%s\n' "$IBUS_FP" > "$IBUS_F"
 fi
 
 echo "==> collect debs -> /out"

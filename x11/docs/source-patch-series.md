@@ -84,6 +84,8 @@ Current converted non-Qt stacks:
   edges.
 - `ports/tracker/patches`: replaces Tracker's target-running strftime probe
   with the Darwin year-format modifier used by the iOS cross build.
+- `ports/ibus/patches`: lets the disabled-XIM Compose locale check fall through
+  while cross-building instead of aborting configure.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.

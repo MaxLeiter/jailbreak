@@ -1,0 +1,15 @@
+Subject: [PATCH] ibus: allow Compose locale check while cross building
+
+The XIM Compose locale path is unused in this disabled-XIM build, but
+configure still hard-errors when AC_CHECK_FILE cannot run under cross compile.
+Let it fall through to the default locale directory.
+
+diff -ruN -U0 --exclude=*.bak a/configure b/configure
+--- a/configure	2024-02-13 02:53:06
++++ b/configure	2026-07-05 00:29:47
+@@ -20492 +20492 @@
+-  as_fn_error $? "cannot check for file existence when cross compiling" "$LINENO" 5
++:
+@@ -20514 +20514 @@
+-  as_fn_error $? "cannot check for file existence when cross compiling" "$LINENO" 5
++:
