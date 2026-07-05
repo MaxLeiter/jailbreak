@@ -80,8 +80,16 @@ Web::PinchEvent pinch_event(LadybirdWebView* view, CGPoint at, CGFloat scale)
 Web::KeyEvent key_event_from_text(NSString* text, Web::KeyEvent::Type type)
 {
     u32 code_point = 0;
-    if (text.length > 0)
-        code_point = [text characterAtIndex:0];
+    if (text.length > 0) {
+        unichar first = [text characterAtIndex:0];
+        if (first >= 0xD800 && first <= 0xDBFF && text.length > 1) {
+            unichar second = [text characterAtIndex:1];
+            if (second >= 0xDC00 && second <= 0xDFFF)
+                code_point = 0x10000 + (((u32)first - 0xD800) << 10) + ((u32)second - 0xDC00);
+        }
+        if (!code_point)
+            code_point = first;
+    }
     return Web::KeyEvent {
         type,
         Web::UIEvents::KeyCode::Key_Invalid, // no physical key from soft keyboard text

@@ -44,6 +44,35 @@ cp -a "$STAGE/share/Lagom" "$APP/share/Lagom" 2>/dev/null || echo "(no share/Lag
 cp /work/ladybird-app/Resources/Info.plist "$APP/Info.plist"
 [ -f /work/ladybird-app/Resources/AppIcon.png ] && cp /work/ladybird-app/Resources/AppIcon.png "$APP/AppIcon.png"
 
+# ---- bundle real text fonts (BUG 1 fix) ------------------------------------------------------
+# The sandboxed FrontBoard app cannot read /System/Library/Fonts, so the engine's
+# PathFontProvider finds nothing and Web::Platform::FontPlugin's VERIFY(m_default_fixed_width_font)
+# trips (WebContent crash). Ship the Liberation family (metric-compatible with Arial/Times New
+# Roman/Courier New; the family names "Liberation Sans/Serif/Mono" are ALL in the engine's
+# sans_serif/serif/monospace fallback lists -> no engine patch needed). The UI process copies
+# these into $XDG_DATA_HOME/fonts before spawning helpers.
+step "bundle text fonts (Liberation)"
+FONTS_DIR="$APP/share/Lagom/fonts"
+mkdir -p "$FONTS_DIR"
+LIB_CACHE=/work/Procursus/.font-cache
+mkdir -p "$LIB_CACHE"
+LIB_TARBALL="$LIB_CACHE/liberation-fonts-ttf-2.1.5.tar.gz"
+LIB_URL="https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz"
+if [ ! -s "$LIB_TARBALL" ]; then
+  echo "  downloading Liberation fonts ..."
+  curl -sL --connect-timeout 20 --retry 3 -o "$LIB_TARBALL" "$LIB_URL" || echo "  [warn] Liberation download failed"
+fi
+if [ -s "$LIB_TARBALL" ]; then
+  TMPF=$(mktemp -d); tar xzf "$LIB_TARBALL" -C "$TMPF" 2>/dev/null
+  # Regular + Bold + Italic + BoldItalic for Sans/Serif/Mono (family names match fallback lists).
+  find "$TMPF" -name 'Liberation*.ttf' -exec cp -f {} "$FONTS_DIR/" \;
+  rm -rf "$TMPF"
+fi
+echo "  bundled fonts:"; ls "$FONTS_DIR" | sed 's/^/    /'
+# NB: iOS builds do NOT compile fontconfig (USE_FONTCONFIG is gated `if (NOT APPLE)`), so the
+# engine finds fonts via the XDG font_directories() branch. The app copies these bundled fonts
+# into $XDG_DATA_HOME/fonts at boot (see IOSApplication.mm main()); no fontconfig conf is used.
+
 # ---- discover the recursive leaf-dylib closure -----------------------------------------------
 step "discover dylib closure (otool -L recursion)"
 is_system() { case "$1" in /usr/lib/*|/System/*) return 0;; *) return 1;; esac; }

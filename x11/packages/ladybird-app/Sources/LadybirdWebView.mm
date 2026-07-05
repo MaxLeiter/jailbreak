@@ -29,7 +29,13 @@
 #include <LibGfx/Bitmap.h>
 #include <LibGfx/SharedImageBuffer.h>
 #include <LibURL/URL.h>
+#include <AK/ByteString.h>
+#include <AK/Utf16String.h>
+#include <LibWeb/HTML/VisibilityState.h>
 #include <LibWeb/Page/InputEvent.h>
+#include <LibWebView/Application.h>
+#include <LibWebView/SearchEngine.h>
+#include <LibWebView/URL.h>
 
 // Custom CALayer subclass for the CPU path: its -display forwards to the view so we
 // can push a CGImage. (AppKit uses LadybirdWebViewContentLayer the same way.)
@@ -76,6 +82,16 @@
         lb_trace("LadybirdWebView init: calling initialize_client (spawn WebContent)");
         _bridge->initialize_client(); // defaults to CreateNewClient::Yes (see bridge override)
         lb_trace("LadybirdWebView init: initialize_client returned");
+
+        // CRITICAL: ViewImplementation::m_system_visibility_state defaults to Hidden, and the HTML
+        // event loop's "update the rendering" step (EventLoop::update_the_rendering) filters out every
+        // Document whose visibility state is "hidden" -> paint_next_frame() never runs -> WebContent
+        // never records/ships a display list -> the Compositor never presents a frame -> the content
+        // area stays blank. Every upstream frontend (AppKit/Qt/GTK/Android) explicitly marks its view
+        // Visible; the UIKit frontend must too. Setting it here (before the first document loads) means
+        // the initial document is created Visible; didMoveToWindow keeps it in sync with occlusion.
+        _bridge->set_system_visibility_state(Web::HTML::VisibilityState::Visible);
+        lb_trace("LadybirdWebView init: system visibility -> Visible");
     }
     return self;
 }
@@ -227,6 +243,12 @@
         _metalLayer.contentsScale = scale;
         _cpuLayer.contentsScale = scale;
     }
+    // Keep the page's visibility state in sync with on-screen occlusion (mirrors AppKit's
+    // handleVisibility:). Hidden pages are skipped by EventLoop::update_the_rendering, so a view
+    // that is off-window must be Hidden and an on-window view must be Visible to paint.
+    _bridge->set_system_visibility_state(self.window != nil
+            ? Web::HTML::VisibilityState::Visible
+            : Web::HTML::VisibilityState::Hidden);
 }
 
 #pragma mark - Input: touches
@@ -234,6 +256,8 @@
 - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
 {
     UITouch* t = touches.anyObject;
+    CGPoint p = [t locationInView:self];
+    lb_trace("web touch begin %.1f,%.1f first=%d", p.x, p.y, self.isFirstResponder);
     _bridge->enqueue_input_event(LadybirdIOS::mouse_event_from_touch(self, t, Web::MouseEvent::Type::MouseDown, Web::UIEvents::MouseButton::Primary));
 }
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
@@ -245,7 +269,11 @@
 - (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
 {
     UITouch* t = touches.anyObject;
+    CGPoint p = [t locationInView:self];
+    lb_trace("web touch end %.1f,%.1f first=%d", p.x, p.y, self.isFirstResponder);
     _bridge->enqueue_input_event(LadybirdIOS::mouse_event_from_touch(self, t, Web::MouseEvent::Type::MouseUp, Web::UIEvents::MouseButton::Primary));
+    [self ensureKeyboardResponder:"touch-end"];
+    [self syncKeyboardWithFocusedInputSoon];
 }
 - (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
 {
@@ -297,14 +325,70 @@
 #pragma mark - Input: keyboard (UIKeyInput = software; UIKey/pressesBegan = hardware)
 
 - (BOOL)canBecomeFirstResponder { return YES; }
-- (BOOL)hasText { return NO; }
+- (BOOL)hasText { return YES; }
+
+- (BOOL)becomeFirstResponder
+{
+    BOOL ok = [super becomeFirstResponder];
+    lb_trace("web becomeFirstResponder -> %d first=%d", ok, self.isFirstResponder);
+    return ok;
+}
+
+- (BOOL)resignFirstResponder
+{
+    BOOL ok = [super resignFirstResponder];
+    lb_trace("web resignFirstResponder -> %d first=%d", ok, self.isFirstResponder);
+    return ok;
+}
+
+- (UITextAutocapitalizationType)autocapitalizationType { return UITextAutocapitalizationTypeNone; }
+- (UITextAutocorrectionType)autocorrectionType { return UITextAutocorrectionTypeNo; }
+- (UIKeyboardType)keyboardType { return UIKeyboardTypeDefault; }
+- (UIReturnKeyType)returnKeyType { return UIReturnKeyDefault; }
+
+- (void)ensureKeyboardResponder:(char const*)reason
+{
+    bool hasFocusedInput = _bridge->get_input_caret_rect().has_value();
+    BOOL wasFirstResponder = self.isFirstResponder;
+    BOOL becameFirstResponder = YES;
+    if (!wasFirstResponder)
+        becameFirstResponder = [self becomeFirstResponder];
+    if (self.isFirstResponder)
+        [self reloadInputViews];
+    lb_trace("keyboard ensure reason=%s caret=%d was=%d now=%d became=%d",
+        reason, hasFocusedInput, wasFirstResponder, self.isFirstResponder, becameFirstResponder);
+}
+
+- (void)syncKeyboardWithFocusedInputSoon
+{
+    __weak LadybirdWebView* weakSelf = self;
+    int delays[] = { 80, 180, 400 };
+    for (int delay : delays) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+            LadybirdWebView* strongSelf = weakSelf;
+            if (!strongSelf)
+                return;
+
+            // WebContent publishes this rect only while editable content owns focus. Prefer this
+            // signal, but do not require it before becoming first responder: on iOS, the responder
+            // handoff is what lets UIKit deliver software-keyboard input to the web view.
+            bool hasFocusedInput = strongSelf->_bridge->get_input_caret_rect().has_value();
+            lb_trace("keyboard sync delay=%d caret=%d first=%d", delay, hasFocusedInput, strongSelf.isFirstResponder);
+            if (hasFocusedInput || !strongSelf.isFirstResponder)
+                [strongSelf ensureKeyboardResponder:hasFocusedInput ? "focused-input" : "no-caret-yet"];
+        });
+    }
+}
 
 - (void)insertText:(NSString*)text
 {
-    _bridge->enqueue_input_event(LadybirdIOS::key_event_from_text(text, Web::KeyEvent::Type::KeyDown));
+    lb_trace("web insertText length=%lu first=%d", (unsigned long)text.length, self.isFirstResponder);
+    auto utf8 = ByteString { text.length > 0 ? text.UTF8String : "" };
+    _bridge->commit_text_from_input_method(Utf16String::from_utf8(utf8));
 }
 - (void)deleteBackward
 {
+    lb_trace("web deleteBackward first=%d", self.isFirstResponder);
     _bridge->enqueue_input_event(LadybirdIOS::key_event_backspace(Web::KeyEvent::Type::KeyDown));
 }
 
@@ -328,11 +412,15 @@
 - (void)loadURL:(NSString*)urlString
 {
     lb_trace("loadURL: %s", urlString.UTF8String);
-    auto url = URL::create_with_url_or_path(ByteString(urlString.UTF8String));
+    // Sanitize user input the way the AppKit/Qt address bars do: bare domains like
+    // "github.com" get an "https://" scheme prepended, and non-URL text falls back to the
+    // configured search engine. See WebView::sanitize_url / TabController.mm.
+    auto input = StringView { urlString.UTF8String, strlen(urlString.UTF8String) };
+    auto url = WebView::sanitize_url(input, WebView::Application::settings().search_engine());
     if (url.has_value())
         _bridge->load(url.value());
     else
-        lb_trace("loadURL: URL parse FAILED");
+        lb_trace("loadURL: sanitize_url produced no URL");
 }
 - (void)reload { _bridge->reload(); }
 - (void)goBack { _bridge->traverse_the_history_by_delta(-1); }

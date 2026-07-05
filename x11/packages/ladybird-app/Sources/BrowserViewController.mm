@@ -78,17 +78,49 @@
 - (void)reload { [_webView reload]; }
 
 #pragma mark - UITextFieldDelegate
+- (BOOL)textFieldShouldBeginEditing:(UITextField*)tf
+{
+    lb_trace("address begin? text-len=%lu", (unsigned long)tf.text.length);
+    return YES;
+}
+
+- (void)textFieldDidBeginEditing:(UITextField*)tf
+{
+    lb_trace("address did begin first=%d", tf.isFirstResponder);
+}
+
+- (BOOL)textField:(UITextField*)tf shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString*)string
+{
+    lb_trace("address change loc=%lu len=%lu repl-len=%lu first=%d",
+        (unsigned long)range.location,
+        (unsigned long)range.length,
+        (unsigned long)string.length,
+        tf.isFirstResponder);
+    return YES;
+}
+
 - (BOOL)textFieldShouldReturn:(UITextField*)tf
 {
+    lb_trace("address return text-len=%lu", (unsigned long)tf.text.length);
     [tf resignFirstResponder];
     if (tf.text.length)
         [_webView loadURL:tf.text];
     return YES;
 }
 
+- (void)textFieldDidEndEditing:(UITextField*)tf
+{
+    lb_trace("address did end first=%d text-len=%lu", tf.isFirstResponder, (unsigned long)tf.text.length);
+}
+
 #pragma mark - LadybirdWebViewObserver
 - (void)webView:(LadybirdWebView*)wv didChangeTitle:(NSString*)title { self.title = title; }
-- (void)webView:(LadybirdWebView*)wv didChangeURL:(NSString*)url { _addressBar.text = url; }
+- (void)webView:(LadybirdWebView*)wv didChangeURL:(NSString*)url
+{
+    lb_trace("web url change len=%lu address-first=%d", (unsigned long)url.length, _addressBar.isFirstResponder);
+    if (!_addressBar.isFirstResponder)
+        _addressBar.text = url;
+}
 - (void)webViewDidStartLoading:(LadybirdWebView*)wv { [_spinner startAnimating]; }
 - (void)webViewDidFinishLoading:(LadybirdWebView*)wv { [_spinner stopAnimating]; }
 

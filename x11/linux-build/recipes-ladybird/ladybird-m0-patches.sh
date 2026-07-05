@@ -763,49 +763,132 @@ print("  [m0-patch] Services/Compositor: AngleStubIOS.cpp added (app mode; drive
 PY
   fi
 
-  # g) DEBUG: engine-side boot checkpoints in Application::initialize() so on-device bring-up can
-  #    see how far the (clean-exit, no-crash) launch gets past the frontend's boot: enter trace.
-  #    Writes to the same /var/jb/tmp/ladybird-boot.log. Temporary; remove once app is validated.
+  # g) Remove earlier app-mode bring-up traces. These were useful while first pixels were still
+  #    uncertain, but release app builds should not append frame-by-frame logs in /var/jb/tmp.
   f=Libraries/LibWebView/Application.cpp
-  if ! grep -q 'LB_ENG_TRACE' "$f"; then
+  if grep -q 'LB_ENG_TRACE' "$f"; then
     python3 - "$f" <<'PY'
 import sys
 p=sys.argv[1]; s=open(p).read()
-# NOTE: real newlines below (no \n escapes); the fprintf format keeps a literal backslash-n via r"..."
-helper = (
-    "\n#if defined(AK_OS_IOS)\n"
-    "#    include <cstdio>\n"
-    '#    define LB_ENG_TRACE(msg) do { FILE* _f = fopen("/var/jb/tmp/ladybird-boot.log", "a"); '
-    'if (_f) { fprintf(_f, ' + r'"[eng] %s\n"' + ', msg); fclose(_f); } } while (0)\n'
-    "#else\n"
-    "#    define LB_ENG_TRACE(msg) do {} while (0)\n"
-    "#endif\n"
-)
-anchor = "ErrorOr<void> Application::initialize(Main::Arguments const& arguments)\n{"
-assert anchor in s, "initialize() anchor not found"
-# Define the macro BEFORE the constructor (which is earlier in the file than initialize()).
-ctor_anchor = "Application::Application(Optional<ByteString> ladybird_binary_path)"
-assert ctor_anchor in s, "ctor anchor not found"
-s = s.replace(ctor_anchor, helper + "\n" + ctor_anchor, 1)
-# init-enter (first thing inside initialize) + constructor trace to bisect ctor vs initialize.
-s = s.replace(anchor, anchor + '\n    LB_ENG_TRACE("init-enter");', 1)
-s = s.replace("    platform_init(move(ladybird_binary_path));",
-              '    LB_ENG_TRACE("ctor: pre-platform_init");\n    platform_init(move(ladybird_binary_path));\n    LB_ENG_TRACE("ctor: post-platform_init");', 1)
-s = s.replace("    TRY(handle_attached_debugger());\n    m_arguments = arguments;",
-              '    LB_ENG_TRACE("init: pre-handle_attached_debugger");\n    TRY(handle_attached_debugger());\n    m_arguments = arguments;\n    LB_ENG_TRACE("init: post-debugger+args");', 1)
-
-def wrap(call, label):
-    global s
-    s = s.replace(call, 'LB_ENG_TRACE("pre-%s");\n    %s\n    LB_ENG_TRACE("post-%s");' % (label, call, label), 1)
-
-wrap("args_parser.parse(m_arguments);", "parse")
-wrap("create_platform_options(m_browser_options, m_request_server_options, m_web_content_options);", "create_platform_options")
-wrap("m_event_loop = &create_platform_event_loop();", "create_platform_event_loop")
-wrap("TRY(launch_services());", "launch_services")
+start = s.find("\n#if defined(AK_OS_IOS)\n#    include <cstdio>\n#    define LB_ENG_TRACE")
+if start != -1:
+    end = s.find("#endif\n", start)
+    assert end != -1, "LB_ENG_TRACE block unterminated"
+    s = s[:start] + "\n" + s[end + len("#endif\n"):]
+for line in [
+    '    LB_ENG_TRACE("init-enter");\n',
+    '    LB_ENG_TRACE("ctor: pre-platform_init");\n',
+    '    LB_ENG_TRACE("ctor: post-platform_init");\n',
+    '    LB_ENG_TRACE("init: pre-handle_attached_debugger");\n',
+    '    LB_ENG_TRACE("init: post-debugger+args");\n',
+    'LB_ENG_TRACE("pre-parse");\n    ',
+    '\n    LB_ENG_TRACE("post-parse");',
+    'LB_ENG_TRACE("pre-create_platform_options");\n    ',
+    '\n    LB_ENG_TRACE("post-create_platform_options");',
+    'LB_ENG_TRACE("pre-create_platform_event_loop");\n    ',
+    '\n    LB_ENG_TRACE("post-create_platform_event_loop");',
+    'LB_ENG_TRACE("pre-launch_services");\n    ',
+    '\n    LB_ENG_TRACE("post-launch_services");',
+]:
+    s = s.replace(line, "")
 open(p, "w").write(s)
-print("  [m0-patch] Application.cpp: LB_ENG_TRACE boot checkpoints injected (app mode debug)")
+print("  [m0-patch] Application.cpp: removed app-mode boot trace")
 PY
   fi
+
+  f=Libraries/LibWebView/ViewImplementation.cpp
+  if grep -q 'LB_VIEW_TRACE' "$f"; then
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+start = s.find("\n#if defined(AK_OS_IOS)\n#    include <cstdio>\n#    define LB_VIEW_TRACE")
+if start != -1:
+    end = s.find("#endif\n", start)
+    assert end != -1, "LB_VIEW_TRACE block unterminated"
+    s = s[:start] + "\n" + s[end + len("#endif\n"):]
+for line in [
+    '    LB_VIEW_TRACE("handle_resize vp=%dx%d", viewport_size().width(), viewport_size().height());\n',
+    '    LB_VIEW_TRACE("server_did_paint id=%d %dx%d", bitmap_id, size.width(), size.height());\n',
+    '    LB_VIEW_TRACE("did_allocate_backing_stores front=%d back=%d", front_bitmap_id, back_bitmap_id);\n',
+]:
+    s = s.replace(line, "")
+open(p, "w").write(s)
+print("  [m0-patch] ViewImplementation.cpp: removed present-handshake trace")
+PY
+  fi
+
+  for f in \
+    Libraries/LibWeb/HTML/LocalNavigable.cpp \
+    Services/WebContent/PageClient.cpp \
+    Services/WebContent/CompositorConnection.cpp \
+    Services/Compositor/ConnectionFromWebContent.cpp \
+    Services/Compositor/CompositorState.cpp
+  do
+    if grep -q 'LBTRACE' "$f"; then
+      python3 - "$f" <<'PY'
+import re
+import sys
+
+p = sys.argv[1]
+s = open(p).read()
+s = re.sub(
+    r'\n#include <cstdio>\n#define LBTRACE\(\.\.\.\) do \{ FILE\* _lbf = fopen\("/var/jb/tmp/ladybird-boot\.log", "a"\); if \(_lbf\) \{ fprintf\(_lbf, __VA_ARGS__\); fprintf\(_lbf, "\\n"\); fclose\(_lbf\); \} \} while \(0\)\n',
+    '\n',
+    s)
+for line in [
+    '        LBTRACE("[wc] frame-timer fired");\n',
+    '    LBTRACE("[wc] request_frame active=%d", m_frame_timer->is_active());\n',
+    '    LBTRACE("[wc] record_dl enter has_ctx=%d", has_compositor_context());\n',
+    '        LBTRACE("[wc] record_dl SHIP update_display_list");\n',
+    '    LBTRACE("[wc] paint_next_frame enter has_ctx=%d needs_repaint=%d", has_compositor_context(), m_needs_repaint);\n',
+    '    LBTRACE("[wc] paint_next_frame -> present_frame");\n',
+    '    LBTRACE("[wc] conn.update_display_list can_send=%d", can_send_message_to_compositor());\n',
+    '    LBTRACE("[wc] conn.present_frame can_send=%d", can_send_message_to_compositor());\n',
+    '    LBTRACE("[wc] conn.request_rendering_update RECV");\n',
+    '    LBTRACE("[cmp] recv update_display_list");\n',
+    '    LBTRACE("[cmp] recv present_frame");\n',
+    '    LBTRACE("[cmp] present_frame prepared=%d presents_to_client=%d", prepared_frame.has_value(), context.presents_to_client());\n',
+    '    LBTRACE("[cmp] did_finish_async_present presents=%d", context->presents_to_client());\n',
+    '        LBTRACE("[cmp] SEND did_present_frame");\n',
+]:
+    s = s.replace(line, '')
+open(p, 'w').write(s)
+print(f"  [m0-patch] {p}: removed first-paint diagnostic trace")
+PY
+    fi
+  done
+
+  # h) Compositor create_context idempotency (BUG 2 fix). CompositorState::create_context opens
+  #    with VERIFY(!m_contexts.contains(context_id)). Under our frontend, the SAME page-based
+  #    context_id (== page_id) is registered twice -- once from ViewImplementation::handle_resize
+  #    (UI) and once from the WebContent traversable's PagePresentationRegistration::Yes. The
+  #    duplicate reaches the Compositor's create_context a second time and trips that VERIFY ->
+  #    Compositor SIGTRAP. Its sync CreateContext response then comes back null, so the UI's
+  #    Application::register_compositor_context VERIFYs on the null NonnullOwnPtr response (the
+  #    observed Ladybird crash in handle_resize). Make a duplicate create_context a no-op on iOS:
+  #    keep the existing ContextState (it owns the display list + backing stores); the real
+  #    viewport arrives via a separate update_compositor_viewport IPC right after.
+  f=Services/Compositor/CompositorState.cpp
+  if ! grep -q 'iOS: duplicate create_context is a no-op' "$f"; then
+    python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+anchor = ("void CompositorState::create_context(Web::Compositor::CompositorContextId context_id, "
+          "Optional<u64> page_id, CompositorStateWebContentClient& web_content_client)\n{\n")
+assert anchor in s, "create_context signature not found (upstream drift?)"
+inject = (anchor +
+          "#if defined(AK_OS_IOS)\n"
+          "    // iOS: duplicate create_context is a no-op (two registration paths reach the same\n"
+          "    // page-based context_id; keep the existing ContextState rather than VERIFY-crashing).\n"
+          "    if (m_contexts.contains(context_id))\n"
+          "        return;\n"
+          "#endif\n")
+s = s.replace(anchor, inject, 1)
+open(p,"w").write(s)
+print("  [m0-patch] CompositorState.cpp: create_context idempotent on iOS (app mode)")
+PY
+  fi
+
 fi
 
 echo "  [m0-patch] all M0 patches applied."

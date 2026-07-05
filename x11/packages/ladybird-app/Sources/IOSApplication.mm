@@ -155,7 +155,31 @@ int main(int argc, char* argv[])
                 [fm createDirectoryAtPath:[dir stringByAppendingPathComponent:@"Ladybird"] withIntermediateDirectories:YES attributes:nil error:nil];
                 setenv(key.UTF8String, dir.UTF8String, 1);
             }
-            lb_trace("main: HOME=%s", root.UTF8String);
+
+            // Fonts (BUG 1 fix): on iOS (APPLE) the engine compiles the XDG-directory branch of
+            // Gfx::FontDatabase::font_directories() -- USE_FONTCONFIG is gated `if (NOT APPLE)` in
+            // check_for_dependencies.cmake, so fontconfig is NOT compiled in -- and that branch scans
+            // $XDG_DATA_HOME/fonts (+ /X11/fonts). The sandbox cannot read /System/Library/Fonts, so
+            // without fonts on that path the PathFontProvider finds nothing and Web::Platform::
+            // FontPlugin's VERIFY(m_default_fixed_width_font) trips (WebContent SIGTRAP). Copy the
+            // fonts we bundle inside the .app (Liberation Sans/Serif/Mono + Noto Emoji) into
+            // $XDG_DATA_HOME/fonts. Done in the UI process before UIApplicationMain so the
+            // posix_spawn'd helpers (which inherit XDG_DATA_HOME) read the same populated dir.
+            NSString* bundleFonts = [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"share/Lagom/fonts"];
+            NSString* xdgFonts = [[root stringByAppendingPathComponent:@"data"] stringByAppendingPathComponent:@"fonts"];
+            [fm createDirectoryAtPath:xdgFonts withIntermediateDirectories:YES attributes:nil error:nil];
+            int staged = 0;
+            for (NSString* f in [fm contentsOfDirectoryAtPath:bundleFonts error:nil]) {
+                NSString* ext = f.pathExtension.lowercaseString;
+                if (![ext isEqualToString:@"ttf"] && ![ext isEqualToString:@"otf"] && ![ext isEqualToString:@"ttc"])
+                    continue;
+                NSString* dst = [xdgFonts stringByAppendingPathComponent:f];
+                if ([fm fileExistsAtPath:dst])
+                    continue;
+                if ([fm copyItemAtPath:[bundleFonts stringByAppendingPathComponent:f] toPath:dst error:nil])
+                    ++staged;
+            }
+            lb_trace("main: HOME=%s staged %d fonts -> %s", root.UTF8String, staged, xdgFonts.UTF8String);
         }
         int rc = UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
         lb_trace("main: UIApplicationMain returned %d", rc);
