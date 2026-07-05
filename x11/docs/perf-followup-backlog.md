@@ -55,7 +55,7 @@ P1.7 ✅ DONE 2026-07-02 — iosc's shared input socket now flushes Wayland clie
 
 P2.1 iosc.c megafile refactor is QUEUED and the file keeps growing: it's now 7153 lines (plus XScreen.swift 2735); refactor-plan.md is updated to match. Plan's precondition list (panel + input-unification landed, blend fix validated, freeze announced) — input-unification (P1.1) is now done, so the refactor gate is closer. XScreen.swift split is low-contention and can go first per the plan.
 
-P2.2 Post-ICU re-enables (ICU build is task #3, in progress): (a) restore EDS/calendar-server in gnome-shell — recipes/gnome-shell-ios-fixes.sh:4-10 does the "EDS-ectomy," JS side degrades to an empty calendar; (b) rebuild tracker with ICU — tracker.mk:52-58 forces unistring ("only cost is no ICU-quality locale collation").
+P2.2 Post-ICU re-enables (ICU build is task #3, in progress): (a) validate the EDS/calendar-server gnome-shell flavor now carried in `ports/gnome-shell/patches-eds`; the default `ports/gnome-shell/patches` stack still degrades JS side to an empty calendar; (b) rebuild tracker with ICU — tracker.mk:52-58 forces unistring ("only cost is no ICU-quality locale collation").
 
 P2.3 Audio: only the libpulse-simple shim exists; full PulseAudio (or a native-protocol sink) is "still future work for the broadest desktop layer" and mic capture is explicitly deferred (docs/audio-plan.md:105-121).
 

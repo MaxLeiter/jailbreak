@@ -1,0 +1,26 @@
+Subject: [PATCH] upower: build only libupower-glib on iOS
+
+gnome-shell imports UPowerGlib at panel boot, but the UPower daemon and helper
+tools are Linux-specific. Keep the D-Bus metadata and client library, and drop
+the daemon, rules, docs, and tools for the iOS build.
+
+diff -ruN upower-v1.90.2/meson.build upower-v1.90.2.patched/meson.build
+--- upower-v1.90.2/meson.build	2024-02-13 12:02:22
++++ upower-v1.90.2.patched/meson.build	2026-07-04 23:18:00
+@@ -111,14 +111,11 @@
+ # Generate configuration file
+ config_h = configure_file(output: 'config.h', configuration: cdata)
+ 
+-subdir('etc')
+-subdir('rules')
+ subdir('po')
+ subdir('dbus')
+ subdir('libupower-glib')
+-subdir('src')
+-subdir('tools')
+-subdir('doc')
++# iOS: ship only the client library. The daemon, tools, rules, docs, and
++# host service packaging require Linux udev/systemd/sysfs.
+ 
+ pkgconfig = import('pkgconfig')
+ pkgconfig.generate(

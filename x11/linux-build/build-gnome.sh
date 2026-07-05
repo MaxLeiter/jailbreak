@@ -13,6 +13,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=2 \
 #     -v procursus-vol-gtk:/work/Procursus \
 #     -v "$PWD/build-gnome.sh:/work/build-gnome.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/vapi:/work/vapi:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="gnome-console-package" procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
 set -euo pipefail
@@ -39,6 +40,16 @@ cp -v /work/recipes/*.mk makefiles/
 # gtk+3.0.mk compiles the libgtkintl proxy-libintl shim from this source ($(BUILD_TOOLS)).
 cp -v /work/recipes/gtkintl_shim.c build_tools/ 2>/dev/null || true
 
+TARGETS="${TARGETS:-\
+  dbus-package \
+  gsettings-desktop-schemas-package dconf-package \
+  json-glib-package libxmlb-package appstream-package libadwaita-package \
+  vte-package gtksourceview5-package enchant-package \
+  libpsl-package libsoup3-package libgee-package \
+  gnome-autoar-package libportal-package iso-codes-package tracker-package gnome-desktop-package \
+  gnome-console-package gnome-text-editor-package gnome-font-viewer-package nautilus-package \
+  gnome-calculator-package baobab-package file-roller-package hitori-package}"
+
 echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
@@ -46,6 +57,15 @@ fi
 mkdir -p build_misc/entitlements
 if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp -v /work/build_info/iosc-*.xml build_misc/entitlements/
+fi
+
+if [[ " $TARGETS " == *" gnome-text-editor"* ]]; then
+  echo "==> staging gnome-text-editor patch series"
+  bash /work/recipes/stage-port-patches.sh gnome-text-editor /work/ports build_patch
+fi
+if [[ " $TARGETS " == *" nautilus"* ]]; then
+  echo "==> staging nautilus patch series"
+  bash /work/recipes/stage-port-patches.sh nautilus /work/ports build_patch
 fi
 
 # Same clang wrapper build-gtk.sh uses: the Procursus wrapper injects -Wl,-adhoc_codesign, and
@@ -80,20 +100,45 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # (gtk4/graphene/gdk-pixbuf) and libxkbcommon are pulled in as make prerequisites (their
 # .build_complete markers skip rebuilds). gnome-terminal is omitted (optional GTK3 pass).
 # VALA targets (libgee, gnome-calculator) also need valac + the vendored .vapi staged above.
-TARGETS="${TARGETS:-\
-  dbus-package \
-  gsettings-desktop-schemas-package dconf-package \
-  json-glib-package libxmlb-package appstream-package libadwaita-package \
-  vte-package gtksourceview5-package enchant-package \
-  libpsl-package libsoup3-package libgee-package \
-  gnome-autoar-package libportal-package iso-codes-package tracker-package gnome-desktop-package \
-  gnome-console-package gnome-text-editor-package gnome-font-viewer-package nautilus-package \
-  gnome-calculator-package baobab-package file-roller-package}"
+
+GTE_W=build_work/iphoneos-arm64-rootless/1900/gnome-text-editor
+GTE_S=build_stage/iphoneos-arm64-rootless/1900/gnome-text-editor
+GTE_F="$GTE_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" gnome-text-editor"* ]]; then
+  GTE_FP="$(sha256sum \
+    /work/ports/gnome-text-editor/patches/series \
+    /work/ports/gnome-text-editor/patches/*.patch | sha256sum | awk '{print $1}')"
+  GTE_OLD_FP="$(cat "$GTE_F" 2>/dev/null || true)"
+  if [ -d "$GTE_W" ] && [ "$GTE_FP" != "$GTE_OLD_FP" ]; then
+    echo "==> wiping stale gnome-text-editor build after patch changes"
+    rm -rf "$GTE_W" "$GTE_S"
+  fi
+fi
+
+NAU_W=build_work/iphoneos-arm64-rootless/1900/nautilus
+NAU_S=build_stage/iphoneos-arm64-rootless/1900/nautilus
+NAU_F="$NAU_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" nautilus"* ]]; then
+  NAU_FP="$(sha256sum \
+    /work/ports/nautilus/patches/series \
+    /work/ports/nautilus/patches/*.patch | sha256sum | awk '{print $1}')"
+  NAU_OLD_FP="$(cat "$NAU_F" 2>/dev/null || true)"
+  if [ -d "$NAU_W" ] && [ "$NAU_FP" != "$NAU_OLD_FP" ]; then
+    echo "==> wiping stale nautilus build after patch changes"
+    rm -rf "$NAU_W" "$NAU_S"
+  fi
+fi
 
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$GTE_W" ] && [ -n "${GTE_FP:-}" ]; then
+  printf '%s\n' "$GTE_FP" > "$GTE_F"
+fi
+if [ -d "$NAU_W" ] && [ -n "${NAU_FP:-}" ]; then
+  printf '%s\n' "$NAU_FP" > "$NAU_F"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out
@@ -105,7 +150,7 @@ for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
            libpsl libsoup libgee \
            libgnome-autoar libportal iso-codes libtracker libgnome-desktop \
            gnome-console gnome-text-editor gnome-font-viewer nautilus gnome-calculator \
-           baobab file-roller; do
+           baobab file-roller hitori; do
   find "$DIST_ROOT" -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

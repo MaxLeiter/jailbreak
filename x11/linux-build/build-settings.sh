@@ -15,6 +15,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=4 \
 #     -v procursus-vol-shell:/work/Procursus \
 #     -v "$PWD/build-settings.sh:/work/build-settings.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e GCC_WITH_BLUETOOTH=1 \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-settings.sh
@@ -58,6 +59,25 @@ fi
 
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
+
+echo "==> staging gnome-control-center patch series"
+bash /work/recipes/stage-port-patches.sh gnome-control-center /work/ports build_patch
+if [ "${GCC_WITH_BLUETOOTH:-0}" = 1 ]; then
+  BT_PATCH_DIR=/work/ports/gnome-control-center/patches-bluetooth
+  BT_SERIES="$BT_PATCH_DIR/series"
+  [ -f "$BT_SERIES" ] || { echo "missing $BT_SERIES" >&2; exit 1; }
+  echo "==> staging gnome-control-center Bluetooth patch series"
+  mkdir -p build_patch/gnome-control-center
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    set -- $line
+    [ "$#" -gt 0 ] || continue
+    patch="$BT_PATCH_DIR/$1"
+    [ -f "$patch" ] || { echo "missing $patch" >&2; exit 1; }
+    cp -v "$patch" build_patch/gnome-control-center/
+  done < "$BT_SERIES"
+fi
+
 echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
@@ -78,7 +98,7 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused \
   GCC_WITH_BLUETOOTH=${GCC_WITH_BLUETOOTH:-0}"
 
-# The panel set is selected at configure time (GCC_WITH_BLUETOOTH + the ios-fixes ectomies), but
+# The panel set is selected at configure time (GCC_WITH_BLUETOOTH + the iOS patch stacks), but
 # the recipe short-circuits on .build_complete and would just re-package a stale tree. So when
 # (re)building gnome-control-center, wipe its work/stage/marker to force a pristine re-extract +
 # re-patch + reconfigure (same reason gnome-shell's WITH_EDS path wipes). gnome-bluetooth is a

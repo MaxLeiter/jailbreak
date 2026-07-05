@@ -1,0 +1,548 @@
+Subject: [PATCH] gnome-session: restore non-systemd session manager path
+
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/data/meson.build gs46-test/data/meson.build
+--- a/data/meson.build	2024-03-18 12:30:06
++++ b/data/meson.build	2026-06-30 23:57:30
+@@ -108,6 +108,7 @@
+   install_dir: join_paths(session_datadir, 'glib-2.0', 'schemas'),
+ )
+ 
++if enable_systemd_session
+ unit_conf = configuration_data()
+ unit_conf.set('libexecdir', session_libexecdir)
+ 
+@@ -170,6 +171,7 @@
+       session),
+   )
+ endforeach
++endif
+ 
+ data = files('hardware-compatibility')
+ 
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-app.c gs46-test/gnome-session/gsm-app.c
+--- a/gnome-session/gsm-app.c	2024-03-18 12:30:06
++++ b/gnome-session/gsm-app.c	2026-06-30 23:57:30
+@@ -28,7 +28,7 @@
+ #include "org.gnome.SessionManager.App.h"
+ 
+ /* If a component crashes twice within a minute, we count that as a fatal error */
+-#define _GSM_APP_RESPAWN_RATELIMIT_SECONDS 60
++#define _GSM_APP_RESPAWN_RATELIMIT_SECONDS 3
+ 
+ typedef struct
+ {
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-autostart-app.c gs46-test/gnome-session/gsm-autostart-app.c
+--- a/gnome-session/gsm-autostart-app.c	2024-03-18 12:30:06
++++ b/gnome-session/gsm-autostart-app.c	2026-06-30 23:57:30
+@@ -31,8 +31,12 @@
+ #define GNOME_DESKTOP_USE_UNSTABLE_API
+ #include <libgnome-desktop/gnome-systemd.h>
+ 
++#ifdef HAVE_SYSTEMD
++#ifdef ENABLE_SYSTEMD_JOURNAL
+ #include <systemd/sd-journal.h>
++#endif
+ #include <systemd/sd-daemon.h>
++#endif
+ 
+ #include "gsm-autostart-app.h"
+ #include "gsm-util.h"
+@@ -957,6 +961,7 @@
+                                    NULL, NULL, NULL);
+ }
+ 
++#ifdef ENABLE_SYSTEMD_JOURNAL
+ static void
+ on_child_setup (GsmAutostartApp *app)
+ {
+@@ -983,6 +988,7 @@
+                 close (standard_error);
+         }
+ }
++#endif
+ 
+ static gboolean
+ autostart_app_start_spawn (GsmAutostartApp *app,
+@@ -1033,10 +1039,12 @@
+                 g_app_launch_context_setenv (ctx, "DESKTOP_AUTOSTART_ID", startup_id);
+         }
+ 
++#ifdef ENABLE_SYSTEMD_JOURNAL
+         if (sd_booted () > 0) {
+                 child_setup_func = (GSpawnChildSetupFunc) on_child_setup;
+                 child_setup_data = app;
+         }
++#endif
+ 
+         handler = g_signal_connect (ctx, "launched", G_CALLBACK (app_launched), app);
+         success = g_desktop_app_info_launch_uris_as_manager (priv->app_info,
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-manager.c gs46-test/gnome-session/gsm-manager.c
+--- a/gnome-session/gsm-manager.c	2024-03-18 12:30:06
++++ b/gnome-session/gsm-manager.c	2026-07-01 00:07:37
+@@ -40,9 +40,17 @@
+ #include "gsm-manager.h"
+ #include "org.gnome.SessionManager.h"
+ 
++#ifdef ENABLE_SYSTEMD_JOURNAL
+ #include <systemd/sd-journal.h>
++#endif
+ 
++#ifdef HAVE_SYSTEMD
+ #include <systemd/sd-daemon.h>
++#else
++/* So we don't need to add ifdef's everywhere */
++#define sd_notify(u, m)            do {} while (0)
++#define sd_notifyf(u, m, ...)      do {} while (0)
++#endif
+ 
+ #include "gsm-store.h"
+ #include "gsm-inhibitor.h"
+@@ -276,10 +284,12 @@
+                 allow_logout = !_log_out_is_locked_down (manager);
+         }
+ 
++#ifdef ENABLE_SYSTEMD_JOURNAL
+         sd_journal_send ("MESSAGE_ID=%s", GSM_MANAGER_UNRECOVERABLE_FAILURE_MSGID,
+                          "PRIORITY=%d", 3,
+                          "MESSAGE=Unrecoverable failure in required component %s", app_id,
+                          NULL);
++#endif
+ 
+         gsm_fail_whale_dialog_we_failed (FALSE,
+                                          allow_logout,
+@@ -304,10 +314,12 @@
+                 extensions = NULL;
+         }
+ 
++#ifdef ENABLE_SYSTEMD_JOURNAL
+         sd_journal_send ("MESSAGE_ID=%s", GSM_MANAGER_UNRECOVERABLE_FAILURE_MSGID,
+                          "PRIORITY=%d", 3,
+                          "MESSAGE=Unrecoverable failure in required component %s", app_id,
+                          NULL);
++#endif
+ 
+         gsm_quit ();
+ }
+@@ -962,6 +974,7 @@
+         return FALSE;
+ }
+ 
++#ifdef HAVE_SYSTEMD
+ static void
+ maybe_restart_user_bus (GsmManager *manager)
+ {
+@@ -994,6 +1007,7 @@
+                 g_debug ("GsmManager: reloading user bus failed: %s", error->message);
+         }
+ }
++#endif
+ 
+ static void
+ do_phase_exit (GsmManager *manager)
+@@ -1006,8 +1020,10 @@
+                                    NULL);
+         }
+ 
++#ifdef HAVE_SYSTEMD
+         if (!priv->systemd_managed)
+                 maybe_restart_user_bus (manager);
++#endif
+ 
+         end_phase (manager);
+ }
+@@ -1401,10 +1417,12 @@
+                 do_phase_startup (manager);
+                 break;
+         case GSM_MANAGER_PHASE_RUNNING:
++#ifdef ENABLE_SYSTEMD_JOURNAL
+                 sd_journal_send ("MESSAGE_ID=%s", GSM_MANAGER_STARTUP_SUCCEEDED_MSGID,
+                                  "PRIORITY=%d", 5,
+                                  "MESSAGE=Entering running state",
+                                  NULL);
++#endif
+                 gsm_xsmp_server_start_accepting_new_clients (priv->xsmp_server);
+                 if (priv->pending_end_session_tasks != NULL)
+                         complete_end_session_tasks (manager);
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-system.c gs46-test/gnome-session/gsm-system.c
+--- a/gnome-session/gsm-system.c	2024-03-18 12:30:06
++++ b/gnome-session/gsm-system.c	2026-06-30 23:57:30
+@@ -25,6 +25,9 @@
+ 
+ #include "gsm-systemd.h"
+ 
++#ifdef HAVE_CONSOLEKIT
++#include "gsm-consolekit.h"
++#endif
+ 
+ enum {
+         REQUEST_COMPLETED,
+@@ -266,6 +269,15 @@
+                         g_debug ("Using systemd for session tracking");
+                 }
+         }
++
++#ifdef HAVE_CONSOLEKIT
++        if (system == NULL) {
++                system = GSM_SYSTEM (gsm_consolekit_new ());
++                if (system != NULL) {
++                        g_debug ("Using ConsoleKit for session tracking");
++                }
++        }
++#endif
+ 
+         if (system == NULL) {
+                 system = g_object_new (gsm_system_null_get_type (), NULL);
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-systemd.c gs46-test/gnome-session/gsm-systemd.c
+--- a/gnome-session/gsm-systemd.c	2024-03-18 12:30:06
++++ b/gnome-session/gsm-systemd.c	2026-06-30 23:57:30
+@@ -21,6 +21,8 @@
+ #include "config.h"
+ #include "gsm-systemd.h"
+ 
++#ifdef HAVE_SYSTEMD
++
+ #include <errno.h>
+ #include <string.h>
+ #include <stdlib.h>
+@@ -1169,4 +1171,13 @@
+         }
+ }
+ 
++#else
++
++GsmSystemd *
++gsm_systemd_new (void)
++{
++        return NULL;
++}
++
++#endif
+ 
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-util.c gs46-test/gnome-session/gsm-util.c
+--- a/gnome-session/gsm-util.c	2024-03-18 12:30:06
++++ b/gnome-session/gsm-util.c	2026-06-30 23:57:30
+@@ -73,12 +73,6 @@
+     "LC_COLLATE",
+     "LC_MONETARY",
+     "LC_MESSAGES",
+-    "LC_PAPER",
+-    "LC_NAME",
+-    "LC_ADDRESS",
+-    "LC_TELEPHONE",
+-    "LC_MEASUREMENT",
+-    "LC_IDENTIFICATION",
+     "LC_ALL",
+ 
+     NULL
+@@ -626,6 +620,7 @@
+         return environment_updated;
+ }
+ 
++#ifdef HAVE_SYSTEMD
+ gboolean
+ gsm_util_export_user_environment (GError     **error)
+ {
+@@ -884,6 +879,7 @@
+ 
+         return TRUE;
+ }
++#endif
+ 
+ void
+ gsm_util_setenv (const char *variable,
+@@ -907,12 +903,14 @@
+                 g_clear_error (&error);
+         }
+ 
++#ifdef HAVE_SYSTEMD
+         /* If this fails, the system user session won't get the updated environment
+          */
+         if (!gsm_util_update_user_environment (variable, value, &error)) {
+                 g_debug ("Could not make systemd aware of %s=%s environment variable: %s", variable, value, error->message);
+                 g_clear_error (&error);
+         }
++#endif
+ }
+ 
+ const char * const *
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-util.h gs46-test/gnome-session/gsm-util.h
+--- a/gnome-session/gsm-util.h	2024-03-18 12:30:06
++++ b/gnome-session/gsm-util.h	2026-06-30 23:57:30
+@@ -53,6 +53,7 @@
+ const char * const * gsm_util_get_variable_blacklist(void);
+ 
+ gboolean    gsm_util_export_activation_environment  (GError     **error);
++#ifdef HAVE_SYSTEMD
+ gboolean    gsm_util_export_user_environment        (GError     **error);
+ gboolean    gsm_util_systemd_unit_is_active         (const char  *unit,
+                                                      GError     **error);
+@@ -61,6 +62,7 @@
+                                                      GError     **error);
+ gboolean    gsm_util_systemd_reset_failed           (GError     **error);
+ 
++#endif
+ 
+ void        gsm_quit                                (void);
+ 
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/main.c gs46-test/gnome-session/main.c
+--- a/gnome-session/main.c	2024-03-18 12:30:06
++++ b/gnome-session/main.c	2026-06-30 23:57:30
+@@ -43,11 +43,14 @@
+ #include "gsm-system.h"
+ #include "gsm-fail-whale.h"
+ 
++#ifdef ENABLE_SYSTEMD_JOURNAL
+ #include <systemd/sd-journal.h>
++#endif
+ 
+ #define GSM_DBUS_NAME "org.gnome.SessionManager"
+ 
+ static gboolean systemd_service = FALSE;
++static gboolean use_systemd = USE_SYSTEMD_SESSION;
+ static gboolean failsafe = FALSE;
+ static gboolean show_version = FALSE;
+ static gboolean debug = FALSE;
+@@ -280,6 +283,7 @@
+         }
+ }
+ 
++#ifdef ENABLE_SYSTEMD_SESSION
+ static gboolean
+ leader_term_or_int_signal_cb (gpointer data)
+ {
+@@ -485,6 +489,7 @@
+         gsm_main ();
+         exit(0);
+ }
++#endif /* ENABLE_SYSTEMD_SESSION */
+ 
+ int
+ main (int argc, char **argv)
+@@ -499,7 +504,11 @@
+         guint             name_owner_id;
+         GOptionContext   *options;
+         static GOptionEntry entries[] = {
++#ifdef ENABLE_SYSTEMD_SESSION
+                 { "systemd-service", 0, 0, G_OPTION_ARG_NONE, &systemd_service, N_("Running as systemd service"), NULL },
++                { "systemd", 0, 0, G_OPTION_ARG_NONE, &use_systemd, N_("Use systemd session management"), NULL },
++#endif
++                { "builtin", 0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, &use_systemd, N_("Use builtin session management (rather than the systemd based one)"), NULL },
+                 { "autostart", 'a', 0, G_OPTION_ARG_STRING_ARRAY, &override_autostart_dirs, N_("Override standard autostart directories"), N_("AUTOSTART_DIR") },
+                 { "session", 0, 0, G_OPTION_ARG_STRING, &opt_session_name, N_("Session to use"), N_("SESSION_NAME") },
+                 { "debug", 0, 0, G_OPTION_ARG_NONE, &debug, N_("Enable debugging code"), NULL },
+@@ -553,6 +562,7 @@
+          * journald picks ups the nicer "gnome-session" as the program
+          * name instead of whatever shell script GDM happened to use.
+          */
++#ifdef ENABLE_SYSTEMD_JOURNAL
+         if (!debug) {
+                 int journalfd;
+ 
+@@ -562,6 +572,7 @@
+                         dup2(journalfd, 2);
+                 }
+         }
++#endif
+ 
+         gdm_log_init ();
+         gdm_log_set_debug (debug);
+@@ -636,12 +647,15 @@
+ 
+         session_name = opt_session_name;
+ 
++#ifdef HAVE_SYSTEMD
+         gsm_util_export_user_environment (&error);
+         if (error && !g_getenv ("RUNNING_UNDER_GDM"))
+                 g_warning ("Failed to upload environment to systemd: %s", error->message);
+         g_clear_error (&error);
++#endif
+ 
+-        if (!systemd_service) {
++#ifdef ENABLE_SYSTEMD_SESSION
++        if (use_systemd && !systemd_service) {
+                 const gchar *session_type = NULL;
+                 g_autofree gchar *gnome_session_target = NULL;
+ 
+@@ -688,6 +702,7 @@
+                         exit (1);
+                 }
+         }
++#endif /* ENABLE_SYSTEMD_SESSION */
+ 
+         {
+                 gchar *ibus_path;
+@@ -724,7 +739,9 @@
+ 
+         gsm_main ();
+ 
++#ifdef HAVE_SYSTEMD
+         gsm_util_export_user_environment (NULL);
++#endif
+ 
+         g_clear_object (&manager);
+         g_free (gl_renderer);
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/meson.build gs46-test/gnome-session/meson.build
+--- a/gnome-session/meson.build	2024-03-18 12:30:06
++++ b/gnome-session/meson.build	2026-06-30 23:57:30
+@@ -60,6 +60,10 @@
+   )
+ endforeach
+ 
++if enable_consolekit
++  sources += files('gsm-consolekit.c')
++endif
++
+ cflags = [
+   '-DLOCALE_DIR="@0@"'.format(session_localedir),
+   '-DDATA_DIR="@0@"'.format(session_pkgdatadir),
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/meson.build gs46-test/meson.build
+--- a/meson.build	2024-03-18 12:30:06
++++ b/meson.build	2026-07-01 00:14:27
+@@ -90,7 +90,7 @@
+ session_deps = [
+   gio_dep,
+   glib_dep,
+-  dependency('gnome-desktop-3.0', version: '>= 3.34.2'),
++  dependency('gnome-desktop-4', version: '>= 40'),
+   dependency('json-glib-1.0', version: '>= 0.10')
+ ]
+ 
+@@ -103,19 +103,55 @@
+ # Check for session selector GTK+ UI
+ enable_session_selector = get_option('session_selector')
+ 
+-session_bin_deps += dependency('gio-unix-2.0', version: glib_req_version)
++# Check for session tracking backend
++session_tracking = 'null backend'
+ 
+-# Check for systemd
+-systemd_userunitdir = get_option('systemduserunitdir')
+-if systemd_userunitdir == ''
+-  systemd_dep = dependency('systemd', version: '>= 242', required: true)
+-  systemd_userunitdir = systemd_dep.get_variable(pkgconfig: 'systemduserunitdir',
+-                                                 pkgconfig_define: ['prefix', session_prefix])
+-endif
++enable_systemd = get_option('systemd')
++enable_systemd_session = get_option('systemd_session') != 'disable'
++use_systemd_session = get_option('systemd_session') == 'default'
++enable_systemd_journal = get_option('systemd_journal')
++enable_consolekit = get_option('consolekit')
++# iOS: with both systemd and consolekit off, neither branch below assigns this, but the
++# summary() and data/ install reference it — default it so the no-backend build configures.
++systemd_userunitdir = ''
++if enable_systemd or enable_consolekit
++  session_bin_deps += dependency('gio-unix-2.0', version: glib_req_version)
+ 
+-libsystemd_dep = dependency('libsystemd', version: '>= 209', required: true)
+-session_bin_deps += libsystemd_dep
++  # Check for systemd
++  if enable_systemd
++    systemd_userunitdir = get_option('systemduserunitdir')
++    if systemd_userunitdir == ''
++      systemd_dep = dependency('systemd', version: '>= 242', required: true)
++      systemd_userunitdir = systemd_dep.get_variable(pkgconfig: 'systemduserunitdir',
++                                                     pkgconfig_define: ['prefix', session_prefix])
++    endif
+ 
++    libsystemd_dep = dependency('libsystemd', version: '>= 209', required: true)
++    session_bin_deps += libsystemd_dep
++
++    session_tracking = 'systemd'
++  endif
++
++  # Check for ConsoleKit
++  if enable_consolekit
++    systemd_userunitdir = ''
++
++    if enable_systemd
++      session_tracking += ' (with fallback to ConsoleKit)'
++    else
++      session_tracking = 'ConsoleKit'
++    endif
++  endif
++endif
++if enable_systemd_session
++  assert(enable_systemd, 'Systemd support must be enabled when using systemd session management')
++endif
++config_h.set('HAVE_SYSTEMD', enable_systemd)
++config_h.set('ENABLE_SYSTEMD_SESSION', enable_systemd_session)
++config_h.set('ENABLE_SYSTEMD_JOURNAL', enable_systemd_journal)
++config_h.set('HAVE_CONSOLEKIT', enable_consolekit)
++config_h.set10('USE_SYSTEMD_SESSION', use_systemd_session)
++
+ configure_file(
+   output: 'config.h',
+   configuration: config_h
+@@ -151,6 +187,7 @@
+  'Build manpages': get_option('man'),
+  'Systemd Units Directory': systemd_userunitdir,
+  'Session Selector Enabled': enable_session_selector,
++ 'Session tracking': session_tracking,
+ }
+ 
+ summary_dirs = {
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/meson_options.txt gs46-test/meson_options.txt
+--- a/meson_options.txt	2024-03-18 12:30:06
++++ b/meson_options.txt	2026-06-30 23:57:30
+@@ -1,5 +1,9 @@
+ option('deprecation_flags', type: 'boolean', value: false, description: 'use *_DISABLE_DEPRECATED flags')
+ option('session_selector', type: 'boolean', value: false, description: 'enable building a custom session selector dialog')
++option('systemd', type: 'boolean', value: true, description: 'Use systemd')
++option('systemd_session', type: 'combo', choices: ['disable', 'enable', 'default'], value: 'default', description: 'Whether to include systemd session support and use it by default')
++option('systemd_journal', type: 'boolean', value:'true', description: 'Send log to systemd-journal')
+ option('systemduserunitdir', type: 'string', description: 'Directory for systemd user service files')
++option('consolekit', type: 'boolean', value: false, description: 'Use consolekit')
+ option('docbook', type: 'boolean', value: true, description: 'build documentation')
+ option('man', type: 'boolean', value: true, description: 'build documentation (requires xmlto)')
+diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/tools/meson.build gs46-test/tools/meson.build
+--- a/tools/meson.build	2024-03-18 12:30:06
++++ b/tools/meson.build	2026-07-01 00:08:41
+@@ -11,7 +11,9 @@
+   ['gnome-session-inhibit', session_deps, cflags, session_bindir]
+ ]
+ 
+-programs += [['gnome-session-ctl', session_bin_deps, cflags, session_libexecdir]]
++if enable_systemd_session
++  programs += [['gnome-session-ctl', session_bin_deps, cflags, session_libexecdir]]
++endif
+ 
+ if enable_session_selector
+   deps = [
+@@ -29,32 +31,11 @@
+   programs += [['gnome-session-selector', deps, cflags, session_bindir]]
+ endif
+ 
+-deps = [
+-  gtk_dep,
+-  x11_dep,
+-  dependency('egl'),
+-  dependency('glesv2')
+-]
+-
+-cflags = '-DPKGDATADIR="@0@"'.format(session_pkgdatadir)
+-
+-programs += [['gnome-session-check-accelerated-gles-helper', deps, cflags, session_libexecdir]]
+-
+-deps = [
+-  glib_dep,
+-  x11_dep,
+-  dependency('gl'),
+-  dependency('epoxy'),
+-  dependency('xcomposite')
+-]
+-
+-programs += [['gnome-session-check-accelerated-gl-helper', deps, cflags, session_libexecdir]]
+-
+-deps += [gtk_dep]
+-
+-cflags = '-DLIBEXECDIR="@0@"'.format(session_libexecdir)
+-
+-programs += [['gnome-session-check-accelerated', deps, cflags, session_libexecdir]]
++# iOS: the gnome-session-check-accelerated helpers are dropped. They require desktop
++# GL (gl.pc), GLX and xcomposite, none of which exist on the iOS ANGLE-Metal stack, and
++# they are dead code in a Wayland session anyway: main.c:check_gl() returns early when
++# DISPLAY is unset ("someone else will take care of checking GL"), so the binary is never
++# spawned. Dropping them removes the only gl/egl/glesv2/xcomposite build deps in tools/.
+ 
+ foreach program: programs
+   executable(

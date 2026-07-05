@@ -1,0 +1,406 @@
+Subject: [PATCH] accountsservice: build client library only on iOS
+
+diff -ruN accountsservice-23.13.9/data/meson.build accountsservice-23.13.9.patched/data/meson.build
+--- accountsservice-23.13.9/data/meson.build	2023-03-27 12:27:39
++++ accountsservice-23.13.9.patched/data/meson.build	2026-07-04 22:52:44
+@@ -30,15 +30,8 @@
+   install_dir: dbus_sys_dir,
+ )
+ 
+-policy = act_namespace.to_lower() + '.policy'
++# iOS: polkit .policy dropped (daemon-only; needs host polkit ITS rules).
+ 
+-i18n.merge_file(
+-  input: policy + '.in',
+-  output: policy,
+-  po_dir: po_dir,
+-  install: true,
+-  install_dir: policy_dir,
+-)
+ 
+ if install_systemd_unit_dir
+   service = 'accounts-daemon.service'
+diff -ruN accountsservice-23.13.9/generate-version.sh accountsservice-23.13.9.patched/generate-version.sh
+--- accountsservice-23.13.9/generate-version.sh	2023-03-27 12:27:39
++++ accountsservice-23.13.9.patched/generate-version.sh	2026-07-04 22:52:43
+@@ -1,26 +1,2 @@
+ #!/bin/sh
+-
+-exec 3>&2 2> /dev/null
+-SRCDIR=$(dirname "$0")
+-cd "$SRCDIR"
+-CWD=$(realpath "$PWD")
+-TOPLEVEL_WORKING_DIR=$(realpath "$(git rev-parse --show-toplevel)")
+-exec 2>&3
+-
+-# If it's not from a git checkout, assume it's from a tarball
+-if [ "$TOPLEVEL_WORKING_DIR" != "$CWD" ]; then
+-    VERSION_FROM_DIR_NAME=$(basename "$CWD" | sed -n 's/^accountsservice-\([^-]*\)$/\1/p')
+-
+-    if [ -n "$VERSION_FROM_DIR_NAME" ]; then
+-        echo "$VERSION_FROM_DIR_NAME"
+-        exit 0
+-    fi
+-
+-    echo "Source doesn't appear to come from an accountsservice git clone or tarball. Version unknown."
+-    exit 1
+-fi
+-
+-# If it is from a git checkout, derive the version from the date of the last commit, and the number
+-# of commits since the last release.
+-COMMITS_SINCE_LAST_RELEASE=$(git rev-list $(git describe --abbrev=0)..HEAD --count)
+-date +%y.%V.${COMMITS_SINCE_LAST_RELEASE} -d "@$(git log -1 --pretty=format:%ct)"
++echo 23.13.9
+diff -ruN accountsservice-23.13.9/meson.build accountsservice-23.13.9.patched/meson.build
+--- accountsservice-23.13.9/meson.build	2023-03-27 12:27:39
++++ accountsservice-23.13.9.patched/meson.build	2026-07-04 22:52:44
+@@ -77,37 +77,10 @@
+   config_h.set('HAVE_' + func.underscorify().to_upper(), cc.has_function(func))
+ endforeach
+ 
+-if cc.has_header_symbol('utmpx.h', 'WTMPX_FILENAME', prefix: '#define _GNU_SOURCE')
+-  code = '''#define _GNU_SOURCE
+-  #include <stdio.h>
+-  #include <utmpx.h>
+-  int main (int argc, char **argv) {
+-    printf ("%s\n", WTMPX_FILENAME);
+-    return 0;
+-  }
+-  '''
+-  result = cc.run(code, name : 'value of WTMPX_FILENAME')
+-  path_wtmp = result.stdout().strip()
++# iOS: wtmp watching is a daemon feature (dropped); placeholder path.
++path_wtmp = '/var/log/wtmp'
++config_h.set_quoted('PATH_WTMP', path_wtmp)
+ 
+-  config_h.set('PATH_WTMP', 'WTMPX_FILENAME')
+-elif cc.has_header_symbol('paths.h', '_PATH_WTMPX')
+-  code = '''#include <paths.h>
+-  #include <stdio.h>
+-  int main (int argc, char **argv) {
+-    printf ("%s\n", _PATH_WTMPX);
+-    return 0;
+-  }
+-  '''
+-  result = cc.run(code, name : 'value of _PATH_WTMPX')
+-  path_wtmp = result.stdout().strip()
+-
+-  config_h.set('PATH_WTMP', '_PATH_WTMPX')
+-else
+-  path_wtmp = '/var/log/utx.log'
+-  assert(run_command('test', '-e', path_wtmp, check: false).returncode() == 0, 'Do not know which filename to watch for wtmp changes')
+-  config_h.set_quoted('PATH_WTMP', path_wtmp)
+-endif
+-
+ # compiler flags
+ common_flags = []
+ 
+@@ -213,11 +186,8 @@
+ lightdm_conf_file = get_option('lightdmconffile')
+ config_h.set_quoted('PATH_LIGHTDM_CONF', lightdm_conf_file)
+ 
+-if get_option('elogind')
+-  logind_dep = dependency('libelogind', version: '>= 229.4')
+-else
+-  logind_dep = dependency('libsystemd', version: '>= 186')
+-endif
++# iOS: no logind; libaccountsservice links a single-session sd-login shim instead.
++logind_dep = declare_dependency()
+ 
+ subdir('data')
+ subdir('src')
+@@ -232,7 +202,6 @@
+   subdir('doc/libaccountsservice')
+ endif
+ 
+-subdir('tests')
+ 
+ configure_file(
+   output: 'config.h',
+diff -ruN accountsservice-23.13.9/src/libaccountsservice/meson.build accountsservice-23.13.9.patched/src/libaccountsservice/meson.build
+--- accountsservice-23.13.9/src/libaccountsservice/meson.build	2023-03-27 12:27:39
++++ accountsservice-23.13.9.patched/src/libaccountsservice/meson.build	2026-07-04 22:52:44
+@@ -15,6 +15,7 @@
+ sources = files(
+   'act-user.c',
+   'act-user-manager.c',
++  'xios-sd-login-shim.c',
+ )
+ 
+ enum_types = 'act-user-enum-types'
+@@ -33,7 +34,6 @@
+   gio_unix_dep,
+   glib_dep,
+   libaccounts_generated_dep,
+-  logind_dep,
+ ]
+ 
+ symbol_map = join_paths(meson.current_source_dir(), 'symbol.map')
+diff -ruN accountsservice-23.13.9/src/libaccountsservice/xios-sd-login-shim.c accountsservice-23.13.9.patched/src/libaccountsservice/xios-sd-login-shim.c
+--- accountsservice-23.13.9/src/libaccountsservice/xios-sd-login-shim.c	1969-12-31 16:00:00
++++ accountsservice-23.13.9.patched/src/libaccountsservice/xios-sd-login-shim.c	2026-07-04 22:52:44
+@@ -0,0 +1,193 @@
++/* accountsservice-sd-login-shim.c — a single-session systemd sd-login shim for iOS.
++ *
++ * libaccountsservice's act-user-manager.c calls the sd-login API to learn the current
++ * seat/sessions. There is no logind on jailbroken iOS, but the Xios GNOME session is a
++ * single root user with one Wayland session ("1") on one seat ("seat0"). This shim returns
++ * exactly that, so libaccountsservice loads and its UserManager reports the running user.
++ * The change/monitor fd is a pipe that never fires (our session set never changes).
++ *
++ * Compiled INTO libaccountsservice by the iOS patch stack, so there is no
++ * separate libsystemd on the device. GPL-2.0+.
++ */
++#include <systemd/sd-login.h>
++
++#include <errno.h>
++#include <fcntl.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
++#define XIOS_SESSION_ID "1"
++#define XIOS_SEAT_ID    "seat0"
++
++struct sd_login_monitor {
++  int read_fd;
++  int write_fd;
++};
++
++/* Allocate a NULL-terminated char** with our single session id; returns the count (1). */
++static int
++one_session_list (char ***out)
++{
++  char **v = malloc (2 * sizeof *v);
++
++  if (!v)
++    return -ENOMEM;
++  v[0] = strdup (XIOS_SESSION_ID);
++  v[1] = NULL;
++  if (!v[0])
++    {
++      free (v);
++      return -ENOMEM;
++    }
++  *out = v;
++  return 1;
++}
++
++static int
++dup_string (char **out, const char *value)
++{
++  char *s = strdup (value);
++
++  if (!s)
++    return -ENOMEM;
++  *out = s;
++  return 0;
++}
++
++int
++sd_get_sessions (char ***sessions)
++{
++  if (!sessions)
++    return -EINVAL;
++  return one_session_list (sessions);
++}
++
++int
++sd_uid_get_sessions (uid_t uid, int require_active, char ***sessions)
++{
++  (void) uid;
++  (void) require_active;
++  if (!sessions)
++    return -EINVAL;
++  return one_session_list (sessions);
++}
++
++int
++sd_session_get_uid (const char *session, uid_t *uid)
++{
++  (void) session;
++  if (!uid)
++    return -EINVAL;
++  *uid = getuid ();
++  return 0;
++}
++
++int
++sd_session_get_seat (const char *session, char **seat)
++{
++  (void) session;
++  if (!seat)
++    return -EINVAL;
++  return dup_string (seat, XIOS_SEAT_ID);
++}
++
++int
++sd_session_get_class (const char *session, char **clazz)
++{
++  (void) session;
++  if (!clazz)
++    return -EINVAL;
++  return dup_string (clazz, "user");
++}
++
++int
++sd_session_get_type (const char *session, char **type)
++{
++  (void) session;
++  if (!type)
++    return -EINVAL;
++  return dup_string (type, "wayland");
++}
++
++int
++sd_session_get_state (const char *session, char **state)
++{
++  (void) session;
++  if (!state)
++    return -EINVAL;
++  return dup_string (state, "active");
++}
++
++int
++sd_session_get_display (const char *session, char **display)
++{
++  (void) session;
++  if (!display)
++    return -EINVAL;
++  return dup_string (display, "wayland-0");
++}
++
++int
++sd_seat_can_multi_session (const char *seat)
++{
++  (void) seat;
++  return 0;   /* single seat, no VT switching */
++}
++
++int
++sd_login_monitor_new (const char *category, sd_login_monitor **ret)
++{
++  struct sd_login_monitor *m;
++  int fds[2];
++
++  (void) category;
++  if (!ret)
++    return -EINVAL;
++
++  m = calloc (1, sizeof *m);
++  if (!m)
++    return -ENOMEM;
++
++  if (pipe (fds) != 0)
++    {
++      free (m);
++      return -errno;
++    }
++  (void) fcntl (fds[0], F_SETFD, FD_CLOEXEC);
++  (void) fcntl (fds[1], F_SETFD, FD_CLOEXEC);
++  m->read_fd = fds[0];
++  m->write_fd = fds[1];   /* held open so the read end never reports EOF/POLLHUP */
++
++  *ret = m;
++  return 0;
++}
++
++sd_login_monitor *
++sd_login_monitor_unref (sd_login_monitor *m)
++{
++  if (m)
++    {
++      if (m->read_fd >= 0)
++        close (m->read_fd);
++      if (m->write_fd >= 0)
++        close (m->write_fd);
++      free (m);
++    }
++  return NULL;
++}
++
++int
++sd_login_monitor_flush (sd_login_monitor *m)
++{
++  (void) m;
++  return 0;   /* nothing ever queued */
++}
++
++int
++sd_login_monitor_get_fd (sd_login_monitor *m)
++{
++  if (!m)
++    return -EINVAL;
++  return m->read_fd;   /* never becomes readable: our session set is fixed */
++}
+diff -ruN accountsservice-23.13.9/src/meson.build accountsservice-23.13.9.patched/src/meson.build
+--- accountsservice-23.13.9/src/meson.build	2023-03-27 12:27:39
++++ accountsservice-23.13.9.patched/src/meson.build	2026-07-04 22:52:44
+@@ -47,31 +47,7 @@
+   link_with: libaccounts_generated,
+ )
+ 
+-sources = files(
+-  'daemon.c',
+-  'extensions.c',
+-  'main.c',
+-  'user.c',
+-  'user-classify.c',
+-  'util.c',
+-  'wtmp-helper.c',
+-)
++# iOS: accounts-daemon dropped (utmp/crypt/shadow are Linux-only).
+ 
+-deps = [
+-  gio_unix_dep,
+-  glib_dep,
+-  libaccounts_generated_dep,
+-  polkit_gobject_dep,
+-]
+-
+-daemon = executable(
+-  'accounts-daemon',
+-  sources,
+-  include_directories: top_inc,
+-  dependencies: deps,
+-  c_args: cflags,
+-  install: true,
+-  install_dir: act_libexecdir,
+-)
+ 
+ subdir('libaccountsservice')
+diff -ruN accountsservice-23.13.9/systemd/sd-login.h accountsservice-23.13.9.patched/systemd/sd-login.h
+--- accountsservice-23.13.9/systemd/sd-login.h	1969-12-31 16:00:00
++++ accountsservice-23.13.9.patched/systemd/sd-login.h	2026-07-04 22:52:44
+@@ -0,0 +1,31 @@
++/* systemd/sd-login.h — iOS shim for libaccountsservice.
++ *
++ * accountsservice 23.x hard-uses the systemd sd-login C API to enumerate the current
++ * seat/sessions. iOS has no systemd/logind, but the Xios GNOME session is single-user
++ * (root) with exactly one Wayland session on one seat, so the shim in this patch answers
++ * with those constants. Only the subset that
++ * src/libaccountsservice/act-user-manager.c actually calls is declared. GPL-2.0+.
++ */
++#ifndef _SD_LOGIN_H_XIOS_SHIM
++#define _SD_LOGIN_H_XIOS_SHIM
++
++#include <sys/types.h>
++
++typedef struct sd_login_monitor sd_login_monitor;
++
++int  sd_get_sessions(char ***sessions);
++int  sd_uid_get_sessions(uid_t uid, int require_active, char ***sessions);
++int  sd_session_get_uid(const char *session, uid_t *uid);
++int  sd_session_get_seat(const char *session, char **seat);
++int  sd_session_get_class(const char *session, char **clazz);
++int  sd_session_get_type(const char *session, char **type);
++int  sd_session_get_state(const char *session, char **state);
++int  sd_session_get_display(const char *session, char **display);
++int  sd_seat_can_multi_session(const char *seat);
++
++int  sd_login_monitor_new(const char *category, sd_login_monitor **ret);
++sd_login_monitor *sd_login_monitor_unref(sd_login_monitor *m);
++int  sd_login_monitor_flush(sd_login_monitor *m);
++int  sd_login_monitor_get_fd(sd_login_monitor *m);
++
++#endif /* _SD_LOGIN_H_XIOS_SHIM */

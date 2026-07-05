@@ -7,7 +7,7 @@ endif
 # the Xios desktop (GNOME Papers is Rust-blocked). The zathura executable is the shell; the
 # actual rendering is a dlopen'd backend plugin (zathura-pdf-poppler, built separately).
 #
-# iOS PORTING PATCHES (recipes/zathura-ios-fixes.sh, applied at setup):
+# iOS PORTING PATCHES (ports/zathura/patches, applied at setup):
 #   1. Darwin-ectomy: zathura 0.5.12's meson.build has `if host_machine.system() == 'darwin'`
 #      blocks that (a) require gtk-mac-integration-gtk3 and (b) define -DGTKOSXAPPLICATION, which
 #      drags in <gtkosxapplication.h> + AppKit/Quartz code in main.c. Our cross.txt sets
@@ -34,7 +34,7 @@ DEB_ZATHURA_V    ?= $(ZATHURA_VERSION)+ios1
 zathura-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://pwmt.org/projects/zathura/download/zathura-$(ZATHURA_VERSION).tar.xz)
 	$(call EXTRACT_TAR,zathura-$(ZATHURA_VERSION).tar.xz,zathura-$(ZATHURA_VERSION),zathura)
-	bash /work/recipes/zathura-ios-fixes.sh $(BUILD_WORK)/zathura
+	$(call DO_PATCH,zathura,zathura,-p1)
 	mkdir -p $(BUILD_WORK)/zathura/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

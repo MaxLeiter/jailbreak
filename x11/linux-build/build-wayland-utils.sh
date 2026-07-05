@@ -15,6 +15,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=4 \
 #     -v procursus-vol-gtk-calc:/work/Procursus \
 #     -v "$PWD/build-wayland-utils.sh:/work/build-wayland-utils.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="slurp-package" procursus-xbuild:bookworm-arm64 /work/build-wayland-utils.sh
 set -euo pipefail
@@ -39,6 +40,8 @@ fi
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/ 2>/dev/null || true
 
+TARGETS="${TARGETS:-slurp-package}"
+
 echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/ 2>/dev/null || true
@@ -46,6 +49,11 @@ fi
 mkdir -p build_misc/entitlements
 if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
+fi
+
+if [[ " $TARGETS " == *" dunst"* ]]; then
+  echo "==> staging dunst patch series"
+  bash /work/recipes/stage-port-patches.sh dunst /work/ports build_patch
 fi
 
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's compile-only
@@ -76,12 +84,28 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 # Default: just slurp (the safe quick win). basu-package + mako-package are opt-in via TARGETS
 # because mako's sd-bus provider (basu) is a Linux-centric port with real Darwin walls.
-TARGETS="${TARGETS:-slurp-package}"
+
+DW=build_work/iphoneos-arm64-rootless/1900/dunst
+DS=build_stage/iphoneos-arm64-rootless/1900/dunst
+DF="$DW/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" dunst"* ]]; then
+  NEW_FP="$(sha256sum \
+    /work/ports/dunst/patches/series \
+    /work/ports/dunst/patches/*.patch | sha256sum | awk '{print $1}')"
+  OLD_FP="$(cat "$DF" 2>/dev/null || true)"
+  if [ -d "$DW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
+    echo "==> wiping stale dunst build after patch changes"
+    rm -rf "$DW" "$DS"
+  fi
+fi
 
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$DW" ] && [ -n "${NEW_FP:-}" ]; then
+  printf '%s\n' "$NEW_FP" > "$DF"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

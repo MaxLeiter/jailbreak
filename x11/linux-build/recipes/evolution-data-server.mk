@@ -5,7 +5,7 @@ endif
 # evolution-data-server.mk — EDS 3.52 (libedataserver/libecal/libebook + the D-Bus factories),
 # the GNOME calendar/contacts backend. This is THE package ICU was built to unblock: gnome-shell
 # 46's calendar-server needs libecal-2.0/libedataserver-1.2 (both >= 3.33.1; see
-# recipes/gnome-shell-ios-fixes.sh, whose EDS-ectomy this build makes reversible), and EDS
+# ports/gnome-shell/patches and patches-eds, whose EDS split this build makes reversible), and EDS
 # requires ICU unconditionally (pkg_check_modules icu-i18n; e-alphabet-index is ICU C++).
 # 3.52.4 = last 3.52 point release, the Ubuntu 24.04 / ICU 74.2 / GNOME 46 pairing.
 #

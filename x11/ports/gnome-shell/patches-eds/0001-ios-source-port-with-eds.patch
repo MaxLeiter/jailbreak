@@ -1,0 +1,234 @@
+Subject: [PATCH] gnome-shell: iOS source-port with EDS
+
+diff -ruN gnome-shell-46.0/js/dbusServices/meson.build gnome-shell-46.0.eds/js/dbusServices/meson.build
+--- gnome-shell-46.0/js/dbusServices/meson.build	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/js/dbusServices/meson.build	2026-07-04 23:06:27
+@@ -22,7 +22,7 @@
+ 
+   serviceconf = configuration_data()
+   serviceconf.set('service', service)
+-  serviceconf.set('gjs', gjs.full_path())
++  serviceconf.set('gjs', '/var/jb/usr/bin/gjs')
+   serviceconf.set('pkgdatadir', pkgdatadir)
+ 
+   configure_file(
+diff -ruN gnome-shell-46.0/js/gdm/util.js gnome-shell-46.0.eds/js/gdm/util.js
+--- gnome-shell-46.0/js/gdm/util.js	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/js/gdm/util.js	2026-07-04 23:06:28
+@@ -19,11 +19,16 @@
+ const FprintDeviceInfo = Gio.DBusInterfaceInfo.new_for_xml(
+     loadInterfaceXML('net.reactivated.Fprint.Device'));
+ 
+-Gio._promisify(Gdm.Client.prototype, 'open_reauthentication_channel');
+-Gio._promisify(Gdm.Client.prototype, 'get_user_verifier');
+-Gio._promisify(Gdm.UserVerifierProxy.prototype,
+-    'call_begin_verification_for_user');
+-Gio._promisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification');
++// iOS: no GDM daemon + the on-device Gdm-1.0 typelib lacks the async _finish mates,
++// so a bare Gio._promisify throws at load. Guard each so gdm/util.js still loads.
++const _iosPromisify = (proto, name) => {
++    if (proto && typeof proto[`${name}_finish`] === 'function')
++        Gio._promisify(proto, name);
++};
++_iosPromisify(Gdm.Client.prototype, 'open_reauthentication_channel');
++_iosPromisify(Gdm.Client.prototype, 'get_user_verifier');
++_iosPromisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification_for_user');
++_iosPromisify(Gdm.UserVerifierProxy.prototype, 'call_begin_verification');
+ 
+ export const PASSWORD_SERVICE_NAME = 'gdm-password';
+ export const FINGERPRINT_SERVICE_NAME = 'gdm-fingerprint';
+diff -ruN gnome-shell-46.0/js/misc/dependencies.js gnome-shell-46.0.eds/js/misc/dependencies.js
+--- gnome-shell-46.0/js/misc/dependencies.js	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/js/misc/dependencies.js	2026-07-04 23:06:28
+@@ -22,7 +22,6 @@
+ import 'gi://Pango?version=1.0';
+ import 'gi://Polkit?version=1.0';
+ import 'gi://PolkitAgent?version=1.0';
+-import 'gi://Rsvg?version=2.0';
+ import 'gi://Soup?version=3.0';
+ import 'gi://UPowerGlib?version=1.0';
+ 
+diff -ruN gnome-shell-46.0/js/ui/padOsd.js gnome-shell-46.0.eds/js/ui/padOsd.js
+--- gnome-shell-46.0/js/ui/padOsd.js	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/js/ui/padOsd.js	2026-07-04 23:06:28
+@@ -8,7 +8,10 @@
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+-import Rsvg from 'gi://Rsvg';
++// iOS: librsvg (Rust cross-build) is not shipped; the pad OSD (wacom-tablet only) is the
++// sole gi://Rsvg user and never runs on iOS. Stub the namespace so the module loads.
++const Rsvg = {Handle: {new_from_file() {throw new Error('padOsd unsupported on iOS (no librsvg)');},
++                       new_from_stream_sync() {throw new Error('padOsd unsupported on iOS (no librsvg)');}}};
+ import St from 'gi://St';
+ 
+ import * as Signals from '../misc/signals.js';
+diff -ruN gnome-shell-46.0/js/ui/quickSettings.js gnome-shell-46.0.eds/js/ui/quickSettings.js
+--- gnome-shell-46.0/js/ui/quickSettings.js	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/js/ui/quickSettings.js	2026-07-04 23:06:28
+@@ -321,10 +321,18 @@
+         });
+         box.add_child(sliderBin);
+ 
+-        // Make the slider bin transparent for a11y
+-        const sliderAccessible = this.slider.get_accessible();
+-        sliderAccessible.set_parent(sliderBin.get_parent().get_accessible());
+-        sliderBin.set_accessible(sliderAccessible);
++        // Make the slider bin transparent for a11y when the binding exposes it.
++        // iOS: our current St/Clutter Slider lacks get_accessible(), so keep the
++        // control alive and skip only the a11y parent handoff.
++        if (typeof this.slider.get_accessible === 'function' &&
++            typeof sliderBin.set_accessible === 'function') {
++            const sliderAccessible = this.slider.get_accessible();
++            const parentAccessible = sliderBin.get_parent()?.get_accessible?.();
++            if (sliderAccessible && parentAccessible) {
++                sliderAccessible.set_parent(parentAccessible);
++                sliderBin.set_accessible(sliderAccessible);
++            }
++        }
+         sliderBin.connect('event', (bin, event) => this.slider.event(event, false));
+ 
+         this._menuButton = new St.Button({
+diff -ruN gnome-shell-46.0/meson.build gnome-shell-46.0.eds/meson.build
+--- gnome-shell-46.0/meson.build	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/meson.build	2026-07-04 23:06:28
+@@ -70,7 +70,7 @@
+   keysdir = join_paths(datadir, 'gnome-control-center', 'keybindings')
+ endif
+ 
+-atk_bridge_dep = dependency('atk-bridge-2.0')
++atk_bridge_dep = declare_dependency()
+ ecal_dep = dependency('libecal-2.0', version: ecal_req)
+ eds_dep = dependency('libedataserver-1.2', version: eds_req)
+ gcr_dep = dependency('gcr-4', version: gcr_req)
+@@ -134,7 +134,7 @@
+ 
+ mutter_typelibdir = mutter_dep.get_variable('typelibdir')
+ python = find_program('python3')
+-gjs = find_program('gjs')
++gjs = find_program('gjs', required: false)
+ 
+ cc = meson.get_compiler('c')
+ 
+@@ -245,11 +245,13 @@
+     'pkgdatadir=' + pkgdatadir,
+     'pkglibdir=' + pkglibdir,
+     'static=false',
+-    'introspection=true',
++    'introspection=' + (meson.is_cross_build() ? 'false' : 'true'),
+     'alsa=false'
+   ]
+ )
++if not meson.is_cross_build()
+ libgvc_gir = libgvc.get_variable('libgvc_gir')
++endif
+ 
+ libshew = subproject('shew',
+   default_options: [
+diff -ruN gnome-shell-46.0/src/main.c gnome-shell-46.0.eds/src/main.c
+--- gnome-shell-46.0/src/main.c	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/src/main.c	2026-07-04 23:06:28
+@@ -18,11 +18,10 @@
+ #include <meta/meta-context.h>
+ #include <meta/meta-plugin.h>
+ #include <meta/prefs.h>
+-#include <atk-bridge.h>
+-#include <link.h>
+-
++/* iOS: atk-bridge disabled; current bridge requires newer ATK document symbols. */
+ #ifdef HAVE_EXE_INTROSPECTION
+ #include <dlfcn.h>
++#include <link.h>
+ #include <elf.h>
+ #endif
+ 
+@@ -369,7 +368,7 @@
+     }
+   else
+     {
+-      atk_bridge_adaptor_init (NULL, NULL);
++      /* iOS: atk-bridge disabled until ATK/at-spi versions are aligned. */
+     }
+ }
+ 
+diff -ruN gnome-shell-46.0/src/meson.build gnome-shell-46.0.eds/src/meson.build
+--- gnome-shell-46.0/src/meson.build	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/src/meson.build	2026-07-04 23:06:27
+@@ -221,6 +221,7 @@
+ 
+ libshell_dep = declare_dependency(link_with: libshell)
+ 
++if not meson.is_cross_build()
+ libshell_gir_includes = [
+   'Clutter-@0@'.format(mutter_api_version),
+   'Meta-@0@'.format(mutter_api_version),
+@@ -246,6 +247,7 @@
+   extra_args: ['--quiet'],
+   kwargs: introspection_common,
+ )
++endif
+ 
+ executable('gnome-shell', 'main.c',
+   c_args: gnome_shell_cflags + [
+diff -ruN gnome-shell-46.0/src/shell-util.c gnome-shell-46.0.eds/src/shell-util.c
+--- gnome-shell-46.0/src/shell-util.c	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/src/shell-util.c	2026-07-04 23:06:28
+@@ -2,6 +2,10 @@
+ 
+ #include "config.h"
+ 
++#ifdef __APPLE__
++#include <xlocale.h>
++#endif
++
+ #include <errno.h>
+ #include <math.h>
+ #include <stdlib.h>
+diff -ruN gnome-shell-46.0/src/st/meson.build gnome-shell-46.0.eds/src/st/meson.build
+--- gnome-shell-46.0/src/st/meson.build	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/src/st/meson.build	2026-07-04 23:06:27
+@@ -209,6 +209,7 @@
+   )
+ endif
+ 
++if not meson.is_cross_build()
+ libst_gir = gnome.generate_gir(libst,
+   sources: st_gir_sources,
+   nsversion: mutter_api_version,
+@@ -223,3 +224,4 @@
+   extra_args: ['-DST_COMPILATION', '--quiet'],
+   kwargs: introspection_common,
+ )
++endif
+diff -ruN gnome-shell-46.0/subprojects/extensions-app/subprojects/shew/src/meson.build gnome-shell-46.0.eds/subprojects/extensions-app/subprojects/shew/src/meson.build
+--- gnome-shell-46.0/subprojects/extensions-app/subprojects/shew/src/meson.build	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/subprojects/extensions-app/subprojects/shew/src/meson.build	2026-07-04 23:06:27
+@@ -17,6 +17,7 @@
+   install: true,
+ )
+ 
++if not meson.is_cross_build()
+ libshew_gir = gnome.generate_gir(libshew,
+   sources: shew_sources + shew_public_headers,
+   nsversion: api_version,
+@@ -28,3 +29,4 @@
+   install_dir_typelib: typelibdir,
+   install: true,
+ )
++endif
+diff -ruN gnome-shell-46.0/subprojects/shew/src/meson.build gnome-shell-46.0.eds/subprojects/shew/src/meson.build
+--- gnome-shell-46.0/subprojects/shew/src/meson.build	2024-03-15 17:56:52
++++ gnome-shell-46.0.eds/subprojects/shew/src/meson.build	2026-07-04 23:06:27
+@@ -17,6 +17,7 @@
+   install: true,
+ )
+ 
++if not meson.is_cross_build()
+ libshew_gir = gnome.generate_gir(libshew,
+   sources: shew_sources + shew_public_headers,
+   nsversion: api_version,
+@@ -28,3 +29,4 @@
+   install_dir_typelib: typelibdir,
+   install: true,
+ )
++endif

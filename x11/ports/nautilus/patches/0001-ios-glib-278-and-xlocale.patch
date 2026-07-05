@@ -1,0 +1,55 @@
+Subject: [PATCH] nautilus: source-port for the iOS GNOME 46 stack
+
+Lower the conservative GLib floor to the 2.78 stack used by the rest of the
+port, include xlocale.h for Darwin locale_t APIs, and replace two GLib 2.80
+APIs with 2.78-compatible equivalents.
+
+diff -ruN nautilus-46.4/meson.build nautilus-46.4.patched/meson.build
+--- nautilus-46.4/meson.build	2025-02-03 10:18:01
++++ nautilus-46.4.patched/meson.build	2026-07-04 22:41:12
+@@ -97,7 +97,7 @@
+ ################
+ # Dependencies #
+ ################
+-glib_ver = '>= 2.79.0'
++glib_ver = '>= 2.78.0'
+ 
+ libm = cc.find_library('m')
+ 
+diff -ruN nautilus-46.4/src/nautilus-date-utilities.c nautilus-46.4.patched/src/nautilus-date-utilities.c
+--- nautilus-46.4/src/nautilus-date-utilities.c	2025-02-03 10:18:01
++++ nautilus-46.4.patched/src/nautilus-date-utilities.c	2026-07-04 22:41:12
+@@ -5,6 +5,9 @@
+  */
+ 
+ #include "nautilus-date-utilities.h"
++#ifdef __APPLE__
++#include <xlocale.h>
++#endif
+ 
+ #include "nautilus-global-preferences.h"
+ 
+diff -ruN nautilus-46.4/src/nautilus-file-operations.c nautilus-46.4.patched/src/nautilus-file-operations.c
+--- nautilus-46.4/src/nautilus-file-operations.c	2025-02-03 10:18:01
++++ nautilus-46.4.patched/src/nautilus-file-operations.c	2026-07-04 22:41:12
+@@ -7223,7 +7223,7 @@
+             res = g_file_copy (job->src,
+                                dest,
+                                G_FILE_COPY_TARGET_DEFAULT_PERMS |
+-                               (job->new_mtime ? G_FILE_COPY_TARGET_DEFAULT_MODIFIED_TIME : 0),
++                               (job->new_mtime ? 0 : 0),
+                                common->cancellable,
+                                NULL, NULL,
+                                &error);
+diff -ruN nautilus-46.4/src/nautilus-window-slot.c nautilus-46.4.patched/src/nautilus-window-slot.c
+--- nautilus-46.4/src/nautilus-window-slot.c	2025-02-03 10:18:01
++++ nautilus-46.4.patched/src/nautilus-window-slot.c	2026-07-04 22:41:12
+@@ -1320,7 +1320,7 @@
+         for (GList *l = selection; l != NULL; l = l->next)
+         {
+             NautilusFile *file = l->data;
+-            g_strv_builder_take (selected_uris, nautilus_file_get_uri (file));
++            { char *_niu = nautilus_file_get_uri (file); g_strv_builder_add (selected_uris, _niu); g_free (_niu); }
+         }
+ 
+         nautilus_bookmark_take_selected_uris (self->current_location_bookmark,

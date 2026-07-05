@@ -1,0 +1,179 @@
+Subject: [PATCH] gnome-control-center: trim unavailable iOS panels
+
+diff -ruN gnome-control-center-46.4/meson.build gnome-control-center-46.4.base/meson.build
+--- gnome-control-center-46.4/meson.build	2024-08-05 02:33:47
++++ gnome-control-center-46.4.base/meson.build	2026-07-04 23:03:34
+@@ -184,15 +184,14 @@
+ gnome_bg_dep = dependency('gnome-bg-4')
+ gnome_rr_dep = dependency('gnome-rr-4')
+ gnome_settings_dep = dependency('gnome-settings-daemon', version: '>= 41.0')
+-goa_dep = dependency('goa-1.0', version: goa_req_version)
+ gsettings_desktop_dep = dependency('gsettings-desktop-schemas', version: '>= 46.beta')
+ libxml_dep = dependency('libxml-2.0')
+ pulse_dep = dependency('libpulse', version: pulse_req_version)
+ pulse_mainloop_dep = dependency('libpulse-mainloop-glib', version: pulse_req_version)
+ upower_glib_dep = dependency('upower-glib', version: '>= 0.99.8')
+ gudev_dep = dependency('gudev-1.0', version: '>= 232')
+-x11_dep = dependency('x11', version: '>= 1.8')
+-xi_dep = dependency('xi', version: '>= 1.2')
++x11_dep = dependency('x11')
++xi_dep = dependency('xi')
+ epoxy_dep = dependency('epoxy')
+ gcr_dep = dependency('gcr-4', version: '>= 4.1.0')
+ pwquality_dep = dependency('pwquality', version: '>= 1.2.2')
+@@ -214,13 +213,12 @@
+ # https://gitlab.gnome.org/GNOME/gnome-control-center/-/issues/491
+ polkit_files = [ 'gettext/its/polkit.its', 'gettext/its/polkit.loc' ]
+ foreach polkit_file: polkit_files
+-  r = run_command('build-aux/meson/find_xdg_file.py', polkit_file, check: true)
+-  assert(r.returncode() == 0, 'ITS support missing from polkit, please upgrade or contact your distribution')
++  r = run_command('build-aux/meson/find_xdg_file.py', polkit_file, check: false)
++  # iOS: polkit ITS assert neutered (build-time .policy translation only)
+ endforeach
+ 
+ # Check for CUPS 1.4 or newer
+ cups_dep = dependency('cups', version : '>= 1.4', required: false)
+-assert(cups_dep.found(), 'CUPS 1.4 or newer not found')
+ 
+ # https://bugzilla.gnome.org/show_bug.cgi?id=696766
+ cups_cflags = []
+@@ -235,7 +233,7 @@
+ ]
+ 
+ foreach header: check_headers
+-  assert(cc.has_header(header[1], args: cups_cflags), 'CUPS headers not found: ' + header[1])
++    true
+ endforeach
+ 
+ config_h.set10('HAVE_CUPS_HTTPCONNECT2',
+diff -ruN gnome-control-center-46.4/panels/meson.build gnome-control-center-46.4.base/panels/meson.build
+--- gnome-control-center-46.4/panels/meson.build	2024-08-05 02:33:47
++++ gnome-control-center-46.4.base/panels/meson.build	2026-07-04 23:03:34
+@@ -3,22 +3,17 @@
+ panels = [
+   'applications',
+   'background',
+-  'color',
+   'display',
+   'keyboard',
+   'mouse',
+   'multitasking',
+   'notifications',
+-  'online-accounts',
+   'power',
+-  'printers',
+   'privacy',
+   'search',
+   'sharing',
+   'sound',
+-  'system',
+   'universal-access',
+- 'wwan',
+ ]
+ 
+ if host_is_linux
+diff -ruN gnome-control-center-46.4/panels/privacy/cc-privacy-panel.c gnome-control-center-46.4.base/panels/privacy/cc-privacy-panel.c
+--- gnome-control-center-46.4/panels/privacy/cc-privacy-panel.c	2024-08-05 02:33:47
++++ gnome-control-center-46.4.base/panels/privacy/cc-privacy-panel.c	2026-07-04 23:03:34
+@@ -27,7 +27,6 @@
+ #endif
+ #include "cc-camera-page.h"
+ #include "cc-diagnostics-page.h"
+-#include "cc-firmware-security-page.h"
+ #include "cc-list-row.h"
+ #include "cc-location-page.h"
+ #include "cc-microphone-page.h"
+@@ -76,7 +75,6 @@
+ 
+   g_type_ensure (CC_TYPE_CAMERA_PAGE);
+   g_type_ensure (CC_TYPE_DIAGNOSTICS_PAGE);
+-  g_type_ensure (CC_TYPE_FIRMWARE_SECURITY_PAGE);
+   g_type_ensure (CC_TYPE_LOCATION_PAGE);
+   g_type_ensure (CC_TYPE_MICROPHONE_PAGE);
+   g_type_ensure (CC_TYPE_SCREEN_PAGE);
+diff -ruN gnome-control-center-46.4/panels/privacy/meson.build gnome-control-center-46.4.base/panels/privacy/meson.build
+--- gnome-control-center-46.4/panels/privacy/meson.build	2024-08-05 02:33:47
++++ gnome-control-center-46.4.base/panels/privacy/meson.build	2026-07-04 23:03:34
+@@ -13,11 +13,6 @@
+ sources = files(
+   'cc-camera-page.c',
+   'cc-diagnostics-page.c',
+-  'cc-firmware-security-boot-dialog.c',
+-  'cc-firmware-security-dialog.c',
+-  'cc-firmware-security-help-dialog.c',
+-  'cc-firmware-security-page.c',
+-  'cc-firmware-security-utils.c',
+   'cc-location-page.c',
+   'cc-microphone-page.c',
+   'cc-privacy-panel.c',
+@@ -74,7 +69,6 @@
+ ]
+ 
+ deps = common_deps + [
+-  dependency('libgtop-2.0'),
+ ]
+ 
+ deps = deps + [
+diff -ruN gnome-control-center-46.4/panels/privacy/privacy.gresource.xml gnome-control-center-46.4.base/panels/privacy/privacy.gresource.xml
+--- gnome-control-center-46.4/panels/privacy/privacy.gresource.xml	2024-08-05 02:33:47
++++ gnome-control-center-46.4.base/panels/privacy/privacy.gresource.xml	2026-07-04 23:03:34
+@@ -6,10 +6,6 @@
+     <file preprocess="xml-stripblanks">cc-bolt-page.ui</file>
+     <file preprocess="xml-stripblanks">cc-camera-page.ui</file>
+     <file preprocess="xml-stripblanks">cc-diagnostics-page.ui</file>
+-    <file preprocess="xml-stripblanks">cc-firmware-security-boot-dialog.ui</file>
+-    <file preprocess="xml-stripblanks">cc-firmware-security-dialog.ui</file>
+-    <file preprocess="xml-stripblanks">cc-firmware-security-help-dialog.ui</file>
+-    <file preprocess="xml-stripblanks">cc-firmware-security-page.ui</file>
+     <file preprocess="xml-stripblanks">cc-location-page.ui</file>
+     <file preprocess="xml-stripblanks">cc-microphone-page.ui</file>
+     <file preprocess="xml-stripblanks">cc-privacy-panel.ui</file>
+diff -ruN gnome-control-center-46.4/shell/cc-panel-loader.c gnome-control-center-46.4.base/shell/cc-panel-loader.c
+--- gnome-control-center-46.4/shell/cc-panel-loader.c	2024-08-05 02:33:47
++++ gnome-control-center-46.4.base/shell/cc-panel-loader.c	2026-07-04 23:03:34
+@@ -36,7 +36,6 @@
+ #ifdef BUILD_BLUETOOTH
+ extern GType cc_bluetooth_panel_get_type (void);
+ #endif /* BUILD_BLUETOOTH */
+-extern GType cc_color_panel_get_type (void);
+ extern GType cc_date_time_panel_get_type (void);
+ extern GType cc_display_panel_get_type (void);
+ extern GType cc_keyboard_panel_get_type (void);
+@@ -47,14 +46,11 @@
+ extern GType cc_wifi_panel_get_type (void);
+ #endif /* BUILD_NETWORK */
+ extern GType cc_notifications_panel_get_type (void);
+-extern GType cc_online_accounts_panel_get_type (void);
+ extern GType cc_power_panel_get_type (void);
+-extern GType cc_printers_panel_get_type (void);
+ extern GType cc_privacy_panel_get_type (void);
+ extern GType cc_search_panel_get_type (void);
+ extern GType cc_sharing_panel_get_type (void);
+ extern GType cc_sound_panel_get_type (void);
+-extern GType cc_system_panel_get_type (void);
+ extern GType cc_ua_panel_get_type (void);
+ #ifdef BUILD_WACOM
+ extern GType cc_wacom_panel_get_type (void);
+@@ -90,7 +86,6 @@
+ #ifdef BUILD_BLUETOOTH
+   PANEL_TYPE("bluetooth",        cc_bluetooth_panel_get_type,            NULL),
+ #endif
+-  PANEL_TYPE("color",            cc_color_panel_get_type,                NULL),
+   PANEL_TYPE("display",          cc_display_panel_get_type,              NULL),
+   PANEL_TYPE("keyboard",         cc_keyboard_panel_get_type,             NULL),
+   PANEL_TYPE("mouse",            cc_mouse_panel_get_type,                NULL),
+@@ -100,14 +95,11 @@
+   PANEL_TYPE("wifi",             cc_wifi_panel_get_type,                 cc_wifi_panel_static_init_func),
+ #endif
+   PANEL_TYPE("notifications",    cc_notifications_panel_get_type,        NULL),
+-  PANEL_TYPE("online-accounts",  cc_online_accounts_panel_get_type,      NULL),
+   PANEL_TYPE("power",            cc_power_panel_get_type,                NULL),
+-  PANEL_TYPE("printers",         cc_printers_panel_get_type,             NULL),
+   PANEL_TYPE("privacy",          cc_privacy_panel_get_type,              NULL),
+   PANEL_TYPE("search",           cc_search_panel_get_type,               NULL),
+   PANEL_TYPE("sharing",          cc_sharing_panel_get_type,              cc_sharing_panel_static_init_func),
+   PANEL_TYPE("sound",            cc_sound_panel_get_type,                NULL),
+-  PANEL_TYPE("system",           cc_system_panel_get_type,               NULL),
+   PANEL_TYPE("universal-access", cc_ua_panel_get_type,                   NULL),
+ #ifdef BUILD_WACOM
+   PANEL_TYPE("wacom",            cc_wacom_panel_get_type,                cc_wacom_panel_static_init_func),

@@ -14,7 +14,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=2 \
 #     -v procursus-vol-shell:/work/Procursus \
 #     -v "$PWD/build-session.sh:/work/build-session.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
-#     -v "$PWD/patches:/work/patches:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-session.sh
 set -euo pipefail
@@ -32,6 +32,34 @@ fi
 
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
+
+# dconf (settings persistence; glib-only), the session manager, libnotify (gsd's one extra
+# dep), the minimal gnome-settings-daemon, and libaccountsservice (client lib; gnome-shell
+# imports gi://AccountsService at boot, so this is boot-critical).
+TARGETS="${TARGETS:-\
+  dconf-package \
+  gnome-session-package \
+  libnotify-package \
+  gnome-settings-daemon-package \
+  accountsservice-package \
+  libgdm-package}"
+
+if [[ " $TARGETS " == *" gnome-session"* ]]; then
+  echo "==> staging gnome-session patch series"
+  bash /work/recipes/stage-port-patches.sh gnome-session /work/ports build_patch
+fi
+if [[ " $TARGETS " == *" accountsservice"* ]]; then
+  echo "==> staging accountsservice patch series"
+  bash /work/recipes/stage-port-patches.sh accountsservice /work/ports build_patch
+fi
+if [[ " $TARGETS " == *" libgdm"* ]]; then
+  echo "==> staging libgdm patch series"
+  bash /work/recipes/stage-port-patches.sh libgdm /work/ports build_patch
+fi
+if [[ " $TARGETS " == *" gnome-settings-daemon"* ]]; then
+  echo "==> staging gnome-settings-daemon patch series"
+  bash /work/recipes/stage-port-patches.sh gnome-settings-daemon /work/ports build_patch
+fi
 
 echo "==> installing our control/maintainer-script templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
@@ -54,21 +82,78 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-# dconf (settings persistence; glib-only), the session manager, libnotify (gsd's one extra
-# dep), the minimal gnome-settings-daemon, and libaccountsservice (client lib; gnome-shell
-# imports gi://AccountsService at boot, so this is boot-critical).
-TARGETS="${TARGETS:-\
-  dconf-package \
-  gnome-session-package \
-  libnotify-package \
-  gnome-settings-daemon-package \
-  accountsservice-package \
-  libgdm-package}"
+GSESS_W=build_work/iphoneos-arm64-rootless/1900/gnome-session
+GSESS_S=build_stage/iphoneos-arm64-rootless/1900/gnome-session
+GSESS_F="$GSESS_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" gnome-session"* ]]; then
+  GSESS_FP="$(sha256sum \
+    /work/ports/gnome-session/patches/series \
+    /work/ports/gnome-session/patches/*.patch | sha256sum | awk '{print $1}')"
+  GSESS_OLD_FP="$(cat "$GSESS_F" 2>/dev/null || true)"
+  if [ -d "$GSESS_W" ] && [ "$GSESS_FP" != "$GSESS_OLD_FP" ]; then
+    echo "==> wiping stale gnome-session build after patch changes"
+    rm -rf "$GSESS_W" "$GSESS_S"
+  fi
+fi
+
+ACCTS_W=build_work/iphoneos-arm64-rootless/1900/accountsservice
+ACCTS_S=build_stage/iphoneos-arm64-rootless/1900/accountsservice
+ACCTS_F="$ACCTS_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" accountsservice"* ]]; then
+  ACCTS_FP="$(sha256sum \
+    /work/ports/accountsservice/patches/series \
+    /work/ports/accountsservice/patches/*.patch | sha256sum | awk '{print $1}')"
+  ACCTS_OLD_FP="$(cat "$ACCTS_F" 2>/dev/null || true)"
+  if [ -d "$ACCTS_W" ] && [ "$ACCTS_FP" != "$ACCTS_OLD_FP" ]; then
+    echo "==> wiping stale accountsservice build after patch changes"
+    rm -rf "$ACCTS_W" "$ACCTS_S"
+  fi
+fi
+
+LIBGDM_W=build_work/iphoneos-arm64-rootless/1900/libgdm
+LIBGDM_S=build_stage/iphoneos-arm64-rootless/1900/libgdm
+LIBGDM_F="$LIBGDM_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" libgdm"* ]]; then
+  LIBGDM_FP="$(sha256sum \
+    /work/ports/libgdm/patches/series \
+    /work/ports/libgdm/patches/*.patch | sha256sum | awk '{print $1}')"
+  LIBGDM_OLD_FP="$(cat "$LIBGDM_F" 2>/dev/null || true)"
+  if [ -d "$LIBGDM_W" ] && [ "$LIBGDM_FP" != "$LIBGDM_OLD_FP" ]; then
+    echo "==> wiping stale libgdm build after patch changes"
+    rm -rf "$LIBGDM_W" "$LIBGDM_S"
+  fi
+fi
+
+GSD_W=build_work/iphoneos-arm64-rootless/1900/gnome-settings-daemon
+GSD_S=build_stage/iphoneos-arm64-rootless/1900/gnome-settings-daemon
+GSD_F="$GSD_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" gnome-settings-daemon"* ]]; then
+  GSD_FP="$(sha256sum \
+    /work/ports/gnome-settings-daemon/patches/series \
+    /work/ports/gnome-settings-daemon/patches/*.patch | sha256sum | awk '{print $1}')"
+  GSD_OLD_FP="$(cat "$GSD_F" 2>/dev/null || true)"
+  if [ -d "$GSD_W" ] && [ "$GSD_FP" != "$GSD_OLD_FP" ]; then
+    echo "==> wiping stale gnome-settings-daemon build after patch changes"
+    rm -rf "$GSD_W" "$GSD_S"
+  fi
+fi
 
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$GSESS_W" ] && [ -n "${GSESS_FP:-}" ]; then
+  printf '%s\n' "$GSESS_FP" > "$GSESS_F"
+fi
+if [ -d "$ACCTS_W" ] && [ -n "${ACCTS_FP:-}" ]; then
+  printf '%s\n' "$ACCTS_FP" > "$ACCTS_F"
+fi
+if [ -d "$LIBGDM_W" ] && [ -n "${LIBGDM_FP:-}" ]; then
+  printf '%s\n' "$LIBGDM_FP" > "$LIBGDM_F"
+fi
+if [ -d "$GSD_W" ] && [ -n "${GSD_FP:-}" ]; then
+  printf '%s\n' "$GSD_FP" > "$GSD_F"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

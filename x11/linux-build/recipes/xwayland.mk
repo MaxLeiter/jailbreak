@@ -8,10 +8,10 @@ endif
 # Version pin is LOAD-BEARING: xwayland 23.2.x is the last series with the
 # pluggable `struct xwl_egl_backend` vtable (24.1 hard-wired gbm/dma-buf and
 # removed the struct). We add an IOSurface EGL backend (no gbm, no dma-buf)
-# via that vtable — see recipes/build_info/xwayland-glamor-iosurface.c and
-# recipes/xwayland-ios-fixes.sh. Buffers are handed to the compositor with the
-# iosc_iosurface protocol (x11/wayland/iosc-iosurface.xml), the same mach-port
-# handoff iosc already implements.
+# via that vtable — see ports/xwayland/patches/ plus
+# recipes/build_info/xwayland-glamor-iosurface.c. Buffers are handed to the
+# compositor with the iosc_iosurface protocol (x11/wayland/iosc-iosurface.xml),
+# the same mach-port handoff iosc already implements.
 #
 # Two build flavors from ONE recipe (env XWAYLAND_GLAMOR, default true):
 #   X1 (default) glamor ON  -> GPU: window pixmaps are IOSurface/ANGLE textures.
@@ -45,13 +45,13 @@ endif
 xwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/xserver/xwayland-$(XWAYLAND_VERSION).tar.xz)
 	$(call EXTRACT_TAR,xwayland-$(XWAYLAND_VERSION).tar.xz,xwayland-$(XWAYLAND_VERSION),xwayland)
-	# iOS/ANGLE source edits (idempotent): rootless popen shell + the IOSurface
-	# glamor backend wired into the xwl_egl_backend vtable. The backend .c and
-	# the iosc protocol XML are staged into build_info by build-xwayland.sh.
-	bash $(BUILD_INFO)/xwayland-ios-fixes.sh \
-		$(BUILD_WORK)/xwayland \
-		$(BUILD_INFO)/xwayland-glamor-iosurface.c \
-		$(BUILD_INFO)/iosc-iosurface.xml
+	# iOS/ANGLE source edits: rootless popen shell + the IOSurface glamor
+	# backend hooks wired into the xwl_egl_backend vtable.
+	$(call DO_PATCH,xwayland,xwayland,-p1)
+	# Local backend implementation and private iosc protocol XML are build
+	# inputs, not upstream source patches.
+	cp -v $(BUILD_INFO)/xwayland-glamor-iosurface.c $(BUILD_WORK)/xwayland/hw/xwayland/
+	cp -v $(BUILD_INFO)/iosc-iosurface.xml $(BUILD_WORK)/xwayland/hw/xwayland/
 	mkdir -p $(BUILD_WORK)/xwayland/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

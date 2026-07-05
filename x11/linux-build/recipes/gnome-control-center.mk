@@ -5,9 +5,9 @@ endif
 # gnome-control-center.mk — GNOME Settings 46 for the Xios GNOME session (rootless iOS).
 #
 # A per-panel GTK4/libadwaita app. This builds the tractable CONFIG panels; panels whose
-# backends have no iOS implementation are ectomied by recipes/gnome-control-center-ios-fixes.sh
+# backends have no iOS implementation are ectomied by ports/gnome-control-center/patches
 # (see its header for the exact list). network/bluetooth/wacom are ALREADY auto-dropped off
-# Linux by upstream; the fixes script removes the wwan configure-landmine + the goa
+# Linux by upstream; the patch stack removes the wwan configure-landmine + the goa
 # (online-accounts) and cups (printers) panels/deps.
 #
 # KEPT panels: applications background display keyboard mouse multitasking notifications
@@ -36,7 +36,7 @@ GCC_WITH_BLUETOOTH ?= 0
 gnome-control-center-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-control-center/$(GCC_MAJOR_V)/gnome-control-center-$(GCC_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-control-center-$(GCC_VERSION).tar.xz,gnome-control-center-$(GCC_VERSION),gnome-control-center)
-	WITH_BLUETOOTH=$(GCC_WITH_BLUETOOTH) bash /work/recipes/gnome-control-center-ios-fixes.sh $(BUILD_WORK)/gnome-control-center
+	$(call DO_PATCH,gnome-control-center,gnome-control-center,-p1)
 	rm -rf $(BUILD_WORK)/gnome-control-center/build && mkdir -p $(BUILD_WORK)/gnome-control-center/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

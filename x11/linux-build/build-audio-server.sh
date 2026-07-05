@@ -13,6 +13,7 @@
 #     -v procursus-vol-shell:/work/Procursus \
 #     -v "$PWD/build-audio-server.sh:/work/build-audio-server.sh:ro" \
 #     -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/audio:/work/audio:ro" \
 #     -v "$PWD/media:/work/media:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
@@ -28,6 +29,9 @@ echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
 fi
+
+echo "==> staging pulseaudio patch series"
+bash /work/recipes/stage-port-patches.sh pulseaudio /work/ports build_patch
 
 # Same clang wrapper the other build scripts use (meson sizeof probes vs the
 # Procursus wrapper's -Wl,-adhoc_codesign + -Werror=unused-command-line-argument).
@@ -70,8 +74,11 @@ fi
 if [ -d "$PW" ] && [ -f "$PW/.build_complete" ]; then
   NEW_FP="$(sha256sum \
     /work/recipes/pulseaudio-ios-fixes.sh \
+    /work/ports/pulseaudio/patches/series \
+    /work/ports/pulseaudio/patches/*.patch \
     /work/audio/module-xios-sink.c \
     /work/audio/xios_audio_protocol.h \
+    /work/audio/xios_sysint_protocol.h \
     /work/audio/module-xios-source.c \
     /work/media/xios_media_protocol.h | sha256sum | awk '{print $1}')"
   OLD_FP="$(cat "$PF" 2>/dev/null || true)"
@@ -88,8 +95,11 @@ make pulseaudio-package $COMMON -j"$(nproc)"
 if [ -d "$PW" ]; then
   sha256sum \
     /work/recipes/pulseaudio-ios-fixes.sh \
+    /work/ports/pulseaudio/patches/series \
+    /work/ports/pulseaudio/patches/*.patch \
     /work/audio/module-xios-sink.c \
     /work/audio/xios_audio_protocol.h \
+    /work/audio/xios_sysint_protocol.h \
     /work/audio/module-xios-source.c \
     /work/media/xios_media_protocol.h | sha256sum | awk '{print $1}' > "$PF"
 fi

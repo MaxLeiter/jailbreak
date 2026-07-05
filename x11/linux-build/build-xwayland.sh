@@ -2,7 +2,7 @@
 # build-xwayland.sh — cross-build Xwayland 23.2 (GPU-accelerated on ANGLE-Metal,
 # glamor pixmaps -> IOSurface -> iosc_iosurface) + its one new dep libxcvt, for
 # rootless iOS. See recipes/xwayland.mk, recipes/libxcvt.mk, recipes/
-# xwayland-ios-fixes.sh, recipes/build_info/xwayland-glamor-iosurface.c.
+# ports/xwayland/patches, recipes/build_info/xwayland-glamor-iosurface.c.
 #
 # PREP/HOLD status: this is the build DRIVER; the build is gated on a free volume
 # slot (do NOT collide with the running ICU/gnome-shell/Qt builds). When cleared,
@@ -13,6 +13,7 @@
 #     -v procursus-vol-wayland:/work/Procursus \
 #     -v "$PWD/build-xwayland.sh:/work/build-xwayland.sh:ro" \
 #     -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/out:/out" \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-xwayland.sh
 #
@@ -102,16 +103,18 @@ if ! grep -qE '^Version:\s*1\.[3-9]' "$PPC" 2>/dev/null; then
   echo "   presentproto < 1.3 installed -> forcing xorgproto rebuild at 2024.1"
   rm -rf build_work/*/*/xorgproto 2>/dev/null || true
 fi
-# control templates + the backend .c + iosc protocol XML + the source-fix script
-# all live in recipes/build_info/ and land in the clone's build_info/ (== BUILD_INFO,
-# where xwayland.mk reads xwayland-ios-fixes.sh / the backend / the XML).
+# control templates + the backend .c + iosc protocol XML all live in
+# recipes/build_info/ and land in the clone's build_info/ (== BUILD_INFO,
+# where xwayland.mk reads the backend / XML).
 mkdir -p build_info build_misc/entitlements
 cp -v /work/recipes/build_info/*.control build_info/ 2>/dev/null || true
 cp -v /work/recipes/build_info/xwayland-glamor-iosurface.c build_info/
 cp -v /work/recipes/build_info/iosc-iosurface.xml build_info/
-cp -v /work/recipes/xwayland-ios-fixes.sh build_info/
 # The SIGN macro reads entitlements from build_misc/entitlements/ (NOT build_info/).
 cp -v /work/recipes/build_info/xwayland-ent.xml build_misc/entitlements/
+
+echo "==> staging xwayland patch series"
+bash /work/recipes/stage-port-patches.sh xwayland /work/ports build_patch
 
 # Stage a <linux/input.h> + <linux/input-event-codes.h> shim into the cross
 # sysroot: xwayland-input.c includes <linux/input.h> for the evdev codes (BTN_*,
@@ -163,11 +166,27 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # Package the runtime deps Xwayland links that aren't already Procursus debs:
 # libxcvt0, libxshmfence1, libdrm2 (the shim) — plus xwayland itself. All except
 # xwayland are quick (libs already built as deps; -package just wraps the deb).
+XW=build_work/iphoneos-arm64-rootless/1900/xwayland
+XS=build_stage/iphoneos-arm64-rootless/1900/xwayland
+XF="$XW/.xios_patch_series.sha256"
+NEW_FP="$(sha256sum \
+  /work/ports/xwayland/patches/series \
+  /work/ports/xwayland/patches/*.patch \
+  /work/recipes/build_info/xwayland-glamor-iosurface.c \
+  /work/recipes/build_info/iosc-iosurface.xml | sha256sum | awk '{print $1}')"
+OLD_FP="$(cat "$XF" 2>/dev/null || true)"
+if [ -d "$XW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
+  echo "==> wiping stale xwayland build after patch/backend changes"
+  rm -rf "$XW" "$XS"
+fi
 TARGETS="${TARGETS:-libxcvt-package libxshmfence-package libdrm-package xwayland-package}"
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$XW" ]; then
+  printf '%s\n' "$NEW_FP" > "$XF"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

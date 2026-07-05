@@ -20,7 +20,7 @@ endif
 #
 # PA builds on macOS (Homebrew) with the daemon, so the Darwin server path is
 # exercised upstream; the only iOS delta is the module set (no CoreAudio HAL —
-# see pulseaudio-ios-fixes.sh).
+# see ports/pulseaudio/patches and pulseaudio-ios-fixes.sh).
 #
 # Packaging split (Debian-shaped):
 #   libpulse0         client dylibs + private libpulsecommon (UNCHANGED content)
@@ -37,11 +37,12 @@ endif
 
 SUBPROJECTS         += pulseaudio
 PULSEAUDIO_VERSION  := 17.0
-DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-6+ios1
+DEB_PULSEAUDIO_V    ?= $(PULSEAUDIO_VERSION)-7+ios1
 
 pulseaudio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-$(PULSEAUDIO_VERSION).tar.xz)
 	$(call EXTRACT_TAR,pulseaudio-$(PULSEAUDIO_VERSION).tar.xz,pulseaudio-$(PULSEAUDIO_VERSION),pulseaudio)
+	$(call DO_PATCH,pulseaudio,pulseaudio,-p1)
 	bash /work/recipes/pulseaudio-ios-fixes.sh $(BUILD_WORK)/pulseaudio /work/audio /work/media
 	rm -rf $(BUILD_WORK)/pulseaudio/build
 	mkdir -p $(BUILD_WORK)/pulseaudio/build

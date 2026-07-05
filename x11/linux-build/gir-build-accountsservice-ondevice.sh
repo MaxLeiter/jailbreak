@@ -31,9 +31,9 @@
 #   5. polkit-dev on device (accountsservice's meson dependency()s polkit-gobject-1 for the
 #      library even with the daemon dropped).
 #
-# The source-port fixes are gnome-session's (recipes/accountsservice-ios-fixes.sh +
-# accountsservice-sd-login.h + accountsservice-sd-login-shim.c); this script scp's all three
-# and applies them exactly like the cross build, then flips introspection ON. This "build the
+# The source-port fixes are gnome-session's `ports/accountsservice/patches` stack; this
+# script scp's that series and applies it exactly like the cross build, then flips
+# introspection ON. This "build the
 # lib's own meson" path is preferred because it scans the real act-user.c/act-user-manager.c
 # sources the way upstream generate_gir() does, so the typelib matches upstream exactly.
 #
@@ -57,16 +57,14 @@ SCP=(scp -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes -i "$SSHKEY
 TAR="${1:?usage: gir-build-accountsservice-ondevice.sh <accountsservice-23.13.9.tar>}"
 BASE="$(basename "$TAR" .tar)"   # accountsservice-23.13.9
 HERE="$(cd "$(dirname "$0")" && pwd)"
+PATCH_DIR="$HERE/../ports/accountsservice/patches"
 WORK=/var/jb/tmp/accountsservice-gir
 GISPIKE=/var/jb/tmp/gi-spike     # sljit_shim.dylib, clang-ios, ninja2 (gir-ondevice.sh bootstrap)
 
-echo "==> [$BASE] pushing source + gnome-session fix files to device"
-"${SSH[@]}" "mkdir -p $WORK"
-"${SCP[@]}" "$TAR" \
-  "$HERE/recipes/accountsservice-ios-fixes.sh" \
-  "$HERE/recipes/accountsservice-sd-login.h" \
-  "$HERE/recipes/accountsservice-sd-login-shim.c" \
-  "$DEVICE:$WORK/" >/dev/null
+echo "==> [$BASE] pushing source + accountsservice patch series to device"
+"${SSH[@]}" "mkdir -p $WORK/patches"
+"${SCP[@]}" "$TAR" "$DEVICE:$WORK/" >/dev/null
+"${SCP[@]}" "$PATCH_DIR/series" "$PATCH_DIR"/*.patch "$DEVICE:$WORK/patches/" >/dev/null
 
 echo "==> [$BASE] native introspection build + install typelib on-device"
 # shellcheck disable=SC2087
@@ -93,8 +91,13 @@ cd $WORK
 rm -rf "$BASE"
 tar xf "$BASE.tar"
 
-# Same source-port fixes as the cross build (gnome-session's recipe), applied on-device.
-bash accountsservice-ios-fixes.sh "$WORK/$BASE" "$WORK"
+# Same source-port fixes as the cross build, applied on-device.
+while IFS= read -r line || [ -n "$line" ]; do
+  line=${line%%#*}
+  set -- $line
+  [ "$#" -gt 0 ] || continue
+  patch -p1 -d "$WORK/$BASE" < "$WORK/patches/$1"
+done < "$WORK/patches/series"
 
 cd "$BASE"
 echo "--- meson setup (introspection=true, native) ---"

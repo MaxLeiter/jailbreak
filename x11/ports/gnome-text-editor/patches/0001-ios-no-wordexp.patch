@@ -1,0 +1,30 @@
+Subject: [PATCH] gnome-text-editor: avoid wordexp on iOS
+
+iOS marks wordexp()/wordfree() unavailable. The editor only needs leading
+home-directory expansion here, so use GLib helpers instead of shell word
+expansion.
+
+diff -ruN gnome-text-editor-46.3/src/editor-path.c gnome-text-editor-46.3.patched/src/editor-path.c
+--- gnome-text-editor-46.3/src/editor-path.c	2024-05-09 17:49:58
++++ gnome-text-editor-46.3.patched/src/editor-path.c	2026-07-04 22:41:11
+@@ -44,11 +44,15 @@
+   if (path == NULL)
+     return NULL;
+ 
+-  escaped = g_shell_quote (path);
+-  r = wordexp (escaped, &state, WRDE_NOCMD);
+-  if (r == 0 && state.we_wordc > 0)
+-    ret = g_strdup (state.we_wordv [0]);
+-  wordfree (&state);
++  /* iOS port: wordexp()/wordfree() are __attribute__((unavailable)) (sandbox).
++   * The editor only needs a leading "~/" or "~" expanded to the home dir, which
++   * GLib does without a shell. */
++  (void) state; (void) r;
++  escaped = NULL;
++  if (path[0] == '~' && (path[1] == '/' || path[1] == '\0'))
++    ret = g_build_filename (g_get_home_dir (), &path[1], NULL);
++  else
++    ret = g_strdup (path);
+ 
+   if (!g_path_is_absolute (ret))
+     {

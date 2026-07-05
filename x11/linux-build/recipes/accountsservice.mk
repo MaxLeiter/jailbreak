@@ -7,7 +7,7 @@ endif
 # (js/misc/systemActions.js -> status/system.js -> panel.js), so the shell will NOT boot
 # without the AccountsService typelib + libaccountsservice dylib. The accounts-daemon is
 # Linux-only (utmp/crypt/shadow) and is dropped; the library's systemd sd-login use is
-# satisfied by a single-session shim compiled straight in (recipes/accountsservice-ios-fixes.sh).
+# satisfied by a single-session shim compiled straight in by ports/accountsservice/patches.
 # Introspection is off here; the AccountsService-1.0 typelib is generated ON-DEVICE (the
 # St/Shell/Mutter pattern), so the built lib + headers must ship. Runtime org.freedesktop.Accounts
 # data comes from a stub daemon (or the shell degrades to an empty user name, still boots).
@@ -19,7 +19,7 @@ DEB_ACCOUNTSSERVICE_V   ?= $(ACCOUNTSSERVICE_VERSION)+ios1
 accountsservice-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.freedesktop.org/software/accountsservice/accountsservice-$(ACCOUNTSSERVICE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,accountsservice-$(ACCOUNTSSERVICE_VERSION).tar.xz,accountsservice-$(ACCOUNTSSERVICE_VERSION),accountsservice)
-	bash /work/recipes/accountsservice-ios-fixes.sh $(BUILD_WORK)/accountsservice /work/recipes
+	$(call DO_PATCH,accountsservice,accountsservice,-p1)
 	rm -rf $(BUILD_WORK)/accountsservice/build && mkdir -p $(BUILD_WORK)/accountsservice/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

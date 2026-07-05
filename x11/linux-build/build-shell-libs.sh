@@ -13,6 +13,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=4 \
 #     -v procursus-vol-shell:/work/Procursus \
 #     -v "$PWD/build-shell-libs.sh:/work/build-shell-libs.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-shell-libs.sh
 set -euo pipefail
@@ -31,6 +32,19 @@ fi
 
 echo "==> installing our recipes + control templates"
 cp -v /work/recipes/*.mk makefiles/
+
+# geocode-glib before gweather4 (build dep). gdm added later if the lead confirms.
+TARGETS="${TARGETS:-\
+  upower-package \
+  geocode-glib-package \
+  gweather4-package \
+  geoclue-package}"
+
+if [[ " $TARGETS " == *" upower"* ]]; then
+  echo "==> staging upower patch series"
+  bash /work/recipes/stage-port-patches.sh upower /work/ports build_patch
+fi
+
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
 fi
@@ -49,17 +63,27 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-# geocode-glib before gweather4 (build dep). gdm added later if the lead confirms.
-TARGETS="${TARGETS:-\
-  upower-package \
-  geocode-glib-package \
-  gweather4-package \
-  geoclue-package}"
+UPOW_W=build_work/iphoneos-arm64-rootless/1900/upower
+UPOW_S=build_stage/iphoneos-arm64-rootless/1900/upower
+UPOW_F="$UPOW_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" upower"* ]]; then
+  UPOW_FP="$(sha256sum \
+    /work/ports/upower/patches/series \
+    /work/ports/upower/patches/*.patch | sha256sum | awk '{print $1}')"
+  UPOW_OLD_FP="$(cat "$UPOW_F" 2>/dev/null || true)"
+  if [ -d "$UPOW_W" ] && [ "$UPOW_FP" != "$UPOW_OLD_FP" ]; then
+    echo "==> wiping stale upower build after patch changes"
+    rm -rf "$UPOW_W" "$UPOW_S"
+  fi
+fi
 
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$UPOW_W" ] && [ -n "${UPOW_FP:-}" ]; then
+  printf '%s\n' "$UPOW_FP" > "$UPOW_F"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

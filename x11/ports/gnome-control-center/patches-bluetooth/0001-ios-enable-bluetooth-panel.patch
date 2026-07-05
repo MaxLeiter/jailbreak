@@ -1,0 +1,40 @@
+Subject: [PATCH] gnome-control-center: enable Bluetooth panel on iOS
+
+diff -ruN gnome-control-center-46.4.base/meson.build gnome-control-center-46.4.bluetooth/meson.build
+--- gnome-control-center-46.4.base/meson.build	2026-07-04 23:03:34
++++ gnome-control-center-46.4.bluetooth/meson.build	2026-07-04 23:03:35
+@@ -296,9 +296,9 @@
+ config_h.set('HAVE_WWAN', host_is_linux,
+              description: 'Define to 1 if WWan is available')
+ 
++gnome_bluetooth_dep = dependency('gnome-bluetooth-ui-3.0')  # iOS-forced
+ if host_is_linux_not_s390
+-  # gnome-bluetooth
+-  gnome_bluetooth_dep = dependency('gnome-bluetooth-ui-3.0')
++  # gnome-bluetooth (dep hoisted above for iOS)
+ 
+   libwacom_dep = dependency('libwacom', version: '>= 1.4')
+ 
+@@ -309,9 +309,9 @@
+   message('Bluetooth and Wacom panels will not be built (no USB support on this platform)')
+   message('Thunderbolt panel will not be built (not supported on this platform)')
+ endif
+-config_h.set('BUILD_BLUETOOTH', host_is_linux_not_s390,
++config_h.set('BUILD_BLUETOOTH', true,
+              description: 'Define to 1 to build the Bluetooth panel')
+-config_h.set('HAVE_BLUETOOTH', host_is_linux_not_s390,
++config_h.set('HAVE_BLUETOOTH', true,
+              description: 'Define to 1 if bluetooth support is available')
+ config_h.set('BUILD_WACOM', host_is_linux_not_s390,
+              description: 'Define to 1 to build the Wacom panel')
+diff -ruN gnome-control-center-46.4.base/panels/meson.build gnome-control-center-46.4.bluetooth/panels/meson.build
+--- gnome-control-center-46.4.base/panels/meson.build	2026-07-04 23:03:34
++++ gnome-control-center-46.4.bluetooth/panels/meson.build	2026-07-04 23:03:35
+@@ -14,6 +14,7 @@
+   'sharing',
+   'sound',
+   'universal-access',
++  'bluetooth',
+ ]
+ 
+ if host_is_linux

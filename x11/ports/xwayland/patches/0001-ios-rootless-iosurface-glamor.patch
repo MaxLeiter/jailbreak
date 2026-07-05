@@ -1,0 +1,216 @@
+Subject: [PATCH] xwayland: add rootless iOS IOSurface glamor backend hooks
+
+Xwayland 23.2.x is the last release line with the pluggable
+`xwl_egl_backend` vtable. Wire an iOS IOSurface backend into that vtable,
+allow glamor without GBM/EGLStream, keep ANGLE current on its fallback
+surface, and use /var/jb/bin/sh for rootless popen helpers.
+
+The backend source and iosc protocol XML are local build inputs staged by the
+recipe; this patch only carries the upstream source-tree edits.
+
+diff -ruN xwayland-23.2.7/glamor/glamor.c xwayland-23.2.7.patched/glamor/glamor.c
+--- xwayland-23.2.7/glamor/glamor.c	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/glamor/glamor.c	2026-07-04 22:27:14
+@@ -746,9 +746,10 @@
+             goto fail;
+         }
+ 
+-        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp")) {
+-            ErrorF("GL_OES_texture_border_clamp required\n");
+-            goto fail;
++        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp") &&
++            !epoxy_has_gl_extension("GL_EXT_texture_border_clamp")) {
++            LogMessageVerb(X_WARNING, 0,
++                           "glamor/iosurface: no texture_border_clamp; continuing\n");
+         }
+     }
+ 
+diff -ruN xwayland-23.2.7/hw/xwayland/meson.build xwayland-23.2.7.patched/hw/xwayland/meson.build
+--- xwayland-23.2.7/hw/xwayland/meson.build	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/hw/xwayland/meson.build	2026-07-04 22:27:14
+@@ -126,6 +126,14 @@
+ 
+         srcs += 'xwayland-glamor-eglstream.c'
+     endif
++    if build_iosurface
++        srcs += 'xwayland-glamor-iosurface.c'
++        srcs += client_header.process('iosc-iosurface.xml')
++        srcs += code.process('iosc-iosurface.xml')
++        # IOSurface/CoreFoundation C APIs used by the backend.
++        xwayland_dep += declare_dependency(link_args: [
++            '-Wl,-framework,IOSurface', '-Wl,-framework,CoreFoundation'])
++    endif
+     if build_xv
+         srcs += 'xwayland-glamor-xv.c'
+     endif
+diff -ruN xwayland-23.2.7/hw/xwayland/xwayland-glamor.c xwayland-23.2.7.patched/hw/xwayland/xwayland-glamor.c
+--- xwayland-23.2.7/hw/xwayland/xwayland-glamor.c	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/hw/xwayland/xwayland-glamor.c	2026-07-04 22:27:14
+@@ -47,13 +47,20 @@
+ 
+ #include <sys/mman.h>
+ 
++#ifdef XWL_HAS_IOSURFACE
++extern EGLSurface xwl_iosurface_fallback_surface;
++#endif
++
+ static void
+ glamor_egl_make_current(struct glamor_context *glamor_ctx)
+ {
++    EGLSurface s = EGL_NO_SURFACE;
++#ifdef XWL_HAS_IOSURFACE
++    s = xwl_iosurface_fallback_surface;
++#endif
+     eglMakeCurrent(glamor_ctx->display, EGL_NO_SURFACE,
+                    EGL_NO_SURFACE, EGL_NO_CONTEXT);
+-    if (!eglMakeCurrent(glamor_ctx->display,
+-                        EGL_NO_SURFACE, EGL_NO_SURFACE,
++    if (!eglMakeCurrent(glamor_ctx->display, s, s,
+                         glamor_ctx->ctx))
+         FatalError("Failed to make EGL context current\n");
+ }
+@@ -851,6 +858,13 @@
+                                                               interface,
+                                                               version)) {
+         /* no-op */
++    } else if (xwl_screen->iosurface_backend.is_available &&
++               xwl_screen->iosurface_backend.init_wl_registry(xwl_screen,
++                                                              registry,
++                                                              id,
++                                                              interface,
++                                                              version)) {
++        /* no-op */
+     }
+ }
+ 
+@@ -980,6 +994,11 @@
+     if (!xwl_screen->eglstream_backend.is_available && use_eglstream)
+         ErrorF("Xwayland glamor: EGLStream backend requested but not available\n");
+ #endif
++#ifdef XWL_HAS_IOSURFACE
++    xwl_glamor_init_iosurface(xwl_screen);
++    if (!xwl_screen->iosurface_backend.is_available)
++        ErrorF("Xwayland glamor: IOSurface backend is not available\n");
++#endif
+ }
+ 
+ static Bool
+@@ -1018,6 +1037,23 @@
+     return FALSE;
+ }
+ 
++#ifdef XWL_HAS_IOSURFACE
++static Bool
++xwl_glamor_select_iosurface_backend(struct xwl_screen *xwl_screen)
++{
++    if (xwl_screen->iosurface_backend.is_available &&
++        xwl_glamor_has_wl_interfaces(xwl_screen, &xwl_screen->iosurface_backend)) {
++        xwl_screen->egl_backend = &xwl_screen->iosurface_backend;
++        LogMessageVerb(X_INFO, 3, "glamor: Using IOSurface backend\n");
++        return TRUE;
++    }
++    else
++        LogMessageVerb(X_INFO, 3,
++                       "Missing Wayland requirements for glamor IOSurface backend\n");
++    return FALSE;
++}
++#endif
++
+ void
+ xwl_glamor_select_backend(struct xwl_screen *xwl_screen, Bool use_eglstream)
+ {
+@@ -1025,6 +1061,10 @@
+         if (!use_eglstream)
+             xwl_glamor_select_gbm_backend(xwl_screen);
+     }
++#ifdef XWL_HAS_IOSURFACE
++    if (xwl_screen->egl_backend == NULL)
++        xwl_glamor_select_iosurface_backend(xwl_screen);
++#endif
+ }
+ 
+ Bool
+diff -ruN xwayland-23.2.7/hw/xwayland/xwayland-glamor.h xwayland-23.2.7.patched/hw/xwayland/xwayland-glamor.h
+--- xwayland-23.2.7/hw/xwayland/xwayland-glamor.h	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/hw/xwayland/xwayland-glamor.h	2026-07-04 22:27:14
+@@ -113,6 +113,9 @@
+ 
+ void xwl_glamor_init_backends(struct xwl_screen *xwl_screen,
+                               Bool use_eglstream);
++#ifdef XWL_HAS_IOSURFACE
++void xwl_glamor_init_iosurface(struct xwl_screen *xwl_screen);
++#endif
+ void xwl_glamor_select_backend(struct xwl_screen *xwl_screen,
+                                Bool use_eglstream);
+ Bool xwl_glamor_init(struct xwl_screen *xwl_screen);
+diff -ruN xwayland-23.2.7/hw/xwayland/xwayland-screen.h xwayland-23.2.7.patched/hw/xwayland/xwayland-screen.h
+--- xwayland-23.2.7/hw/xwayland/xwayland-screen.h	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/hw/xwayland/xwayland-screen.h	2026-07-04 22:27:14
+@@ -130,6 +130,7 @@
+ 
+     struct xwl_egl_backend gbm_backend;
+     struct xwl_egl_backend eglstream_backend;
++    struct xwl_egl_backend iosurface_backend;
+     /* pointer to the current backend for creating pixmaps on wayland */
+     struct xwl_egl_backend *egl_backend;
+ 
+diff -ruN xwayland-23.2.7/include/meson.build xwayland-23.2.7.patched/include/meson.build
+--- xwayland-23.2.7/include/meson.build	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/include/meson.build	2026-07-04 22:27:14
+@@ -305,8 +305,9 @@
+                configuration : xkb_data)
+ 
+ xwayland_data = configuration_data()
+-xwayland_data.set('XWL_HAS_GLAMOR', build_glamor and (gbm_dep.found() or build_eglstream) ? '1' : false)
++xwayland_data.set('XWL_HAS_GLAMOR', build_glamor ? '1' : false)
+ xwayland_data.set('XWL_HAS_EGLSTREAM', build_eglstream ? '1' : false)
++xwayland_data.set('XWL_HAS_IOSURFACE', build_iosurface ? '1' : false)
+ xwayland_data.set('XWL_HAS_LIBDECOR', have_libdecor ? '1' : false)
+ xwayland_data.set('XWL_HAS_XWAYLAND_EXTENSION', xwaylandproto_dep.found() ? '1' : false)
+ xwayland_data.set('XWL_HAS_EI', build_ei)
+diff -ruN xwayland-23.2.7/include/xwayland-config.h.meson.in xwayland-23.2.7.patched/include/xwayland-config.h.meson.in
+--- xwayland-23.2.7/include/xwayland-config.h.meson.in	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/include/xwayland-config.h.meson.in	2026-07-04 22:27:14
+@@ -10,6 +10,9 @@
+ /* Build eglstream support for Xwayland */
+ #mesondefine XWL_HAS_EGLSTREAM
+ 
++/* Build the iOS IOSurface glamor backend (ANGLE-Metal) */
++#mesondefine XWL_HAS_IOSURFACE
++
+ /* Build Xwayland with libdecor support*/
+ #mesondefine XWL_HAS_LIBDECOR
+ 
+diff -ruN xwayland-23.2.7/meson.build xwayland-23.2.7.patched/meson.build
+--- xwayland-23.2.7/meson.build	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/meson.build	2026-07-04 22:27:14
+@@ -227,6 +227,8 @@
+     build_eglstream = false
+ endif
+ 
++build_iosurface = build_glamor and not gbm_dep.found() and not build_eglstream
++
+ if build_xwayland
+     libei_dep = dependency('libei-1.0', version: '>= 1.0.0', required: get_option('xwayland_ei') in ['portal', 'socket'])
+     liboeffis_dep = dependency('liboeffis-1.0', version: '>= 1.0.0', required: get_option('xwayland_ei') == 'portal')
+diff -ruN xwayland-23.2.7/os/utils.c xwayland-23.2.7.patched/os/utils.c
+--- xwayland-23.2.7/os/utils.c	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/os/utils.c	2026-07-04 22:27:14
+@@ -1400,7 +1400,7 @@
+             _exit(127);
+         if (setuid(getuid()) == -1)
+             _exit(127);
+-        execl("/bin/sh", "sh", "-c", command, (char *) NULL);
++        execl("/var/jb/bin/sh", "sh", "-c", command, (char *) NULL);
+         _exit(127);
+     default:                   /* parent */
+         do {
+@@ -1486,7 +1486,7 @@
+             }
+             close(pdes[1]);
+         }
+-        execl("/bin/sh", "sh", "-c", command, (char *) NULL);
++        execl("/var/jb/bin/sh", "sh", "-c", command, (char *) NULL);
+         _exit(127);
+     }
+ 

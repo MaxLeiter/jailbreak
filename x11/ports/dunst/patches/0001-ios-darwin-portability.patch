@@ -1,0 +1,98 @@
+Subject: [PATCH] dunst: make config path helpers build on Darwin/iOS
+
+Darwin spells the nanosecond mtime field `st_mtimespec`, not `st_mtim`, and
+iOS marks wordexp()/wordfree() unavailable. Alias the stat field on Apple
+platforms and replace the shell word expansion helper with the GLib expansion
+dunst actually needs for config paths.
+
+diff -ruN dunst-1.13.2/src/utils.c dunst-1.13.2.patched/src/utils.c
+--- dunst-1.13.2/src/utils.c	2026-03-18 03:56:31
++++ dunst-1.13.2.patched/src/utils.c	2026-07-04 22:37:11
+@@ -23,6 +23,9 @@
+ #include "utils.h"
+ #include "log.h"
+ #include "settings_data.h"
++#if defined(__APPLE__)
++#define st_mtim st_mtimespec
++#endif
+ 
+ char *string_replace_char(char needle, char replacement, char *haystack)
+ {
+@@ -179,32 +182,54 @@
+ {
+         ASSERT_OR_RET(string, string);
+ 
+-        wordexp_t we;
+-        switch (wordexp(string, &we, WRDE_NOCMD | WRDE_UNDEF)) {
+-                case 0:
+-                        break;
+-                case WRDE_BADCHAR:
+-                        LOG_W("Expansion of \"%s\" failed. It contains invalid characters.", string);
+-                        return string;
+-                case WRDE_BADVAL:
+-                        LOG_W("Expansion of \"%s\" failed. It contains an undefined variable.", string);
+-                        return string;
+-                case WRDE_CMDSUB:
+-                        LOG_W("Expansion of \"%s\" failed. The requested command substitution is currently not supported.", string);
+-                        return string;
+-                case WRDE_NOSPACE:
+-                        LOG_W("Expansion of \"%s\" failed. We ran out of memory.", string);
+-                        return string;
+-                case WRDE_SYNTAX:
+-                        LOG_W("Expansion of \"%s\" failed. It contains invalid syntax.", string);
+-                        return string;
++        /* iOS/Darwin marks the shell word-expansion API unavailable, so re-implement the
++         * expansion dunst needs directly on GLib: a leading '~' expands to $HOME and
++         * $VAR / ${VAR} are substituted from the environment. Command substitution is
++         * intentionally unsupported (the original was invoked with WRDE_NOCMD anyway). */
++        GString *out = g_string_new(NULL);
++        const char *p = string;
++
++        if (p[0] == '~' && (p[1] == '/' || p[1] == '\0')) {
++                const char *home = g_get_home_dir();
++                if (home)
++                        g_string_append(out, home);
++                p++;
+         }
+-        g_free(string);
+ 
+-        char *res = g_strjoinv(" ", we.we_wordv);
+-        wordfree(&we);
++        while (*p) {
++                if (*p == '$' && p[1] == '{') {
++                        const char *start = p + 2;
++                        const char *end = start;
++                        while (*end && *end != '}')
++                                end++;
++                        if (*end != '}') {
++                                g_string_append_c(out, *p++);
++                                continue;
++                        }
++                        char *name = g_strndup(start, end - start);
++                        const char *val = g_getenv(name);
++                        if (val)
++                                g_string_append(out, val);
++                        g_free(name);
++                        p = end + 1;
++                } else if (*p == '$' && (g_ascii_isalpha(p[1]) || p[1] == '_')) {
++                        const char *start = p + 1;
++                        const char *end = start;
++                        while (*end && (g_ascii_isalnum(*end) || *end == '_'))
++                                end++;
++                        char *name = g_strndup(start, end - start);
++                        const char *val = g_getenv(name);
++                        if (val)
++                                g_string_append(out, val);
++                        g_free(name);
++                        p = end;
++                } else {
++                        g_string_append_c(out, *p++);
++                }
++        }
+ 
+-        return res;
++        g_free(string);
++        return g_string_free(out, FALSE);
+ }
+ 
+ bool safe_string_to_long_long(long long *in, const char *str) {

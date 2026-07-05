@@ -1,0 +1,150 @@
+Subject: [PATCH] zathura: avoid GtkOSX and libmagic in iOS cross builds
+
+The iOS build is Mach-O/Darwin but uses the GTK3/X11 stack, not the macOS
+GtkOSX integration path. Disable those Darwin-only branches and remove the
+unconditional libmagic dependency, relying on zathura's existing GLib content
+type fallback instead.
+
+diff -ruN zathura-0.5.12/meson.build zathura-0.5.12.patched/meson.build
+--- zathura-0.5.12/meson.build	2025-07-03 14:30:01
++++ zathura-0.5.12.patched/meson.build	2026-07-04 22:37:10
+@@ -47,12 +47,11 @@
+ gtk3 = dependency('gtk+-3.0', version: '>=3.24')
+ json_glib = dependency('json-glib-1.0')
+ cairo = dependency('cairo')
+-magic = dependency('libmagic')
+ sqlite = dependency('sqlite3', version: '>=3.6.23')
+ 
+-build_dependencies = [libm, girara, glib, gio, gthread, gmodule, gtk3, cairo, magic, json_glib, sqlite]
++build_dependencies = [libm, girara, glib, gio, gthread, gmodule, gtk3, cairo, json_glib, sqlite]
+ 
+-if host_machine.system() == 'darwin'
++if host_machine.system() == 'iosdisabled'
+   gtk_mac_integration = dependency('gtk-mac-integration-gtk3')
+   build_dependencies += gtk_mac_integration
+ endif
+@@ -67,7 +66,7 @@
+   '-D_DEFAULT_SOURCE',
+ ]
+ 
+-if host_machine.system() == 'darwin'
++if host_machine.system() == 'iosdisabled'
+   defines += '-DGTKOSXAPPLICATION'
+ endif
+ 
+diff -ruN zathura-0.5.12/zathura/content-type.c zathura-0.5.12.patched/zathura/content-type.c
+--- zathura-0.5.12/zathura/content-type.c	2025-07-03 14:30:01
++++ zathura-0.5.12.patched/zathura/content-type.c	2026-07-04 22:37:10
+@@ -1,4 +1,7 @@
+ /* SPDX-License-Identifier: Zlib */
++/* iOS cross build (ports/zathura/patches): libmagic removed. Content-type detection
++ * falls back entirely to GLib's g_content_type_guess, which is sufficient to route documents
++ * (e.g. .pdf) to the correct zathura backend plugin. */
+ 
+ #include "content-type.h"
+ #include "macros.h"
+@@ -6,78 +9,26 @@
+ #include <gio/gio.h>
+ #include <girara/utils.h>
+ #include <glib.h>
+-#include <magic.h>
+ #include <stdio.h>
+ 
+ struct zathura_content_type_context_s {
+-  magic_t magic;
++  int unused;
+ };
+ 
+ zathura_content_type_context_t* zathura_content_type_new(void) {
+-  zathura_content_type_context_t* context = g_try_malloc0(sizeof(zathura_content_type_context_t));
+-  if (context == NULL) {
+-    return NULL;
+-  }
+-
+-  /* creat magic cookie */
+-  static const int flags = MAGIC_ERROR | MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_NO_CHECK_APPTYPE | MAGIC_NO_CHECK_CDF |
+-                           MAGIC_NO_CHECK_ELF | MAGIC_NO_CHECK_ENCODING;
+-  magic_t magic = magic_open(flags);
+-  if (magic == NULL) {
+-    girara_debug("failed creating the magic cookie");
+-    return context;
+-  }
+-
+-  /* ... and load mime database */
+-  if (magic_load(magic, NULL) < 0) {
+-    girara_debug("failed loading the magic database: %s", magic_error(magic));
+-    magic_close(magic);
+-    return context;
+-  }
+-
+-  context->magic = magic;
+-  return context;
++  return g_try_malloc0(sizeof(zathura_content_type_context_t));
+ }
+ 
+ void zathura_content_type_free(zathura_content_type_context_t* context) {
+-  if (context != NULL && context->magic != NULL) {
+-    magic_close(context->magic);
+-  }
+-
+   g_free(context);
+ }
+ 
+-/** Read a most GT_MAX_READ bytes before falling back to file. */
++/** Read at most GT_MAX_READ bytes when sniffing content. */
+ static const size_t GT_MAX_READ = 1 << 16;
+ 
+-static char* guess_type_magic(zathura_content_type_context_t* context, const char* path) {
+-  if (context == NULL || context->magic == NULL) {
+-    return NULL;
+-  }
+-
+-  const char* mime_type = NULL;
+-
+-  /* get the mime type */
+-  mime_type = magic_file(context->magic, path);
+-  if (mime_type == NULL || magic_errno(context->magic) != 0) {
+-    girara_debug("failed guessing filetype: %s", magic_error(context->magic));
+-    return NULL;
+-  }
+-  girara_debug("magic detected filetype: %s", mime_type);
+-
+-  char* content_type = g_content_type_from_mime_type(mime_type);
+-  if (content_type == NULL) {
+-    girara_warning("failed to convert mime type to content type: %s", mime_type);
+-    /* dup so we own the memory */
+-    return g_strdup(mime_type);
+-  }
+-
+-  return content_type;
+-}
+-
+ static char* guess_type_glib(const char* path) {
+   gboolean uncertain = FALSE;
+-  char* content_type = g_content_type_guess(path, NULL, 0, &uncertain);
++  char* content_type  = g_content_type_guess(path, NULL, 0, &uncertain);
+   if (content_type == NULL) {
+     girara_debug("g_content_type failed\n");
+   } else {
+@@ -131,18 +82,9 @@
+ 
+ char* zathura_content_type_guess(zathura_content_type_context_t* context, const char* path,
+                                  const girara_list_t* supported_content_types) {
+-  /* try libmagic first */
+-  char* content_type = guess_type_magic(context, path);
+-  if (content_type != NULL) {
+-    if (supported_content_types == NULL ||
+-        girara_list_find(supported_content_types, compare_content_types, content_type) != NULL) {
+-      return content_type;
+-    }
+-    girara_debug("content type '%s' not supported, trying again", content_type);
+-    g_free(content_type);
+-  }
+-  /* else fallback to g_content_type_guess method */
+-  content_type = guess_type_glib(path);
++  (void)context;
++
++  char* content_type = guess_type_glib(path);
+   if (content_type != NULL) {
+     if (supported_content_types == NULL ||
+        girara_list_find(supported_content_types, compare_content_types, content_type) != NULL) {

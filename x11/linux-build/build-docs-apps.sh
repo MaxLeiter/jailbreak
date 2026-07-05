@@ -12,6 +12,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=4 \
 #     -v procursus-vol-gtk-calc:/work/Procursus \
 #     -v "$PWD/build-docs-apps.sh:/work/build-docs-apps.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="poppler-package exempi-package" procursus-xbuild:bookworm-arm64 /work/build-docs-apps.sh
 set -euo pipefail
@@ -32,6 +33,8 @@ fi
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
 
+TARGETS="${TARGETS:-exempi-package poppler-package girara-package zathura-package zathura-pdf-poppler-package}"
+
 echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/
@@ -39,6 +42,11 @@ fi
 mkdir -p build_misc/entitlements
 if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp -v /work/build_info/iosc-*.xml build_misc/entitlements/
+fi
+
+if [[ " $TARGETS " == *" zathura"* ]]; then
+  echo "==> staging zathura patch series"
+  bash /work/recipes/stage-port-patches.sh zathura /work/ports build_patch
 fi
 
 # Same clang wrapper build-gtk.sh/build-gnome.sh use: neutralise the
@@ -61,12 +69,28 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # libpoppler-glib8) is the PDF backend. Both land regardless of the Rust/Papers blocker.
 # The zathura stack is the pragmatic PDF viewer (Papers is Rust-blocked): girara (GTK3 UI lib) ->
 # zathura (app) -> zathura-pdf-poppler (the poppler PDF backend plugin), built in that order.
-TARGETS="${TARGETS:-exempi-package poppler-package girara-package zathura-package zathura-pdf-poppler-package}"
+
+ZW=build_work/iphoneos-arm64-rootless/1900/zathura
+ZS=build_stage/iphoneos-arm64-rootless/1900/zathura
+ZF="$ZW/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" zathura"* ]]; then
+  NEW_FP="$(sha256sum \
+    /work/ports/zathura/patches/series \
+    /work/ports/zathura/patches/*.patch | sha256sum | awk '{print $1}')"
+  OLD_FP="$(cat "$ZF" 2>/dev/null || true)"
+  if [ -d "$ZW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
+    echo "==> wiping stale zathura build after patch changes"
+    rm -rf "$ZW" "$ZS"
+  fi
+fi
 
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$ZW" ] && [ -n "${NEW_FP:-}" ]; then
+  printf '%s\n' "$NEW_FP" > "$ZF"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

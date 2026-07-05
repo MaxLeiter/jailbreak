@@ -4,8 +4,8 @@ endif
 
 # gnome-shell.mk — cross-build GNOME Shell 46 (C parts + JS/theme gresources) for rootless
 # iOS. Pairs with the libmutter-14 build (mutter.mk). Three iOS realities shape this
-# (all handled by recipes/gnome-shell-ios-fixes.sh, which patches the source so the SAME
-# tarball also serves the on-device native gir build):
+# (handled by the default ports/gnome-shell/patches stack, which patches the
+# source so the SAME tarball also serves the on-device native gir build):
 #   1. EDS is patched OUT (no ICU yet) — no calendar-server, empty calendar UI.
 #   2. girs (St/Shell/Shew/Gvc) are cross-gated — generated ON-DEVICE afterwards
 #      (gir-build-mutter-ondevice.sh pattern; St/Shell build INSIDE this tree).
@@ -23,8 +23,9 @@ DEB_GNOME-SHELL_V    ?= $(GNOME-SHELL_VERSION)+ios3
 # GNOME_SHELL_WITH_EDS=1 flips reality #1 below: keep EDS + calendar-server (ICU and
 # evolution-data-server are built now — recipes/evolution-data-server.mk). STAGED but not
 # the default: the EDS-out shell is mid-bring-up on device, so the lead sequences the flip.
-# Use via build-shell.sh WITH_EDS=1 — a rebuild MUST re-extract pristine source (the ectomy
-# deletes lines in-place and EXTRACT_TAR no-ops), which that driver path handles.
+# Use via build-shell.sh WITH_EDS=1, which stages ports/gnome-shell/patches-eds.
+# A rebuild MUST re-extract pristine source when switching flavors, which that
+# driver path handles.
 GNOME_SHELL_WITH_EDS ?= 0
 ifeq ($(GNOME_SHELL_WITH_EDS),1)
 DEB_GNOME-SHELL_V    := $(GNOME-SHELL_VERSION)-2+ios1
@@ -33,9 +34,7 @@ endif
 gnome-shell-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-shell/$(GNOME-SHELL_MAJOR_V)/gnome-shell-$(GNOME-SHELL_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-shell-$(GNOME-SHELL_VERSION).tar.xz,gnome-shell-$(GNOME-SHELL_VERSION),gnome-shell)
-	WITH_EDS=$(GNOME_SHELL_WITH_EDS) bash /work/recipes/gnome-shell-ios-fixes.sh \
-		$(BUILD_WORK)/gnome-shell \
-		$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/gjs
+	$(call DO_PATCH,gnome-shell,gnome-shell,-p1)
 	rm -rf $(BUILD_WORK)/gnome-shell/build && mkdir -p $(BUILD_WORK)/gnome-shell/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

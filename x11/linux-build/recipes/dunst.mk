@@ -23,9 +23,11 @@ endif
 # the whole libx11/xrandr/xinerama closure), DUNSTIFY=0 (skips the libnotify helper so we don't take
 # a libnotify dep), SYSTEMD=0 and COMPLETIONS=0. VERSION is pinned (the release tarball has no git).
 #
-# PORTABILITY: dunst is clean on Darwin/iOS except two things:
+# PORTABILITY: dunst is mostly clean on Darwin/iOS except:
 #   * config.mk's DEFAULT_LDFLAGS carries `-lrt` — no librt on iOS (clock_gettime is in libc); the
 #     -setup rule seds it out.
+#   * ports/dunst/patches aliases `st_mtim` to Darwin's `st_mtimespec` and replaces the unavailable
+#     iOS wordexp()/wordfree() path with a GLib config-path expansion helper.
 #   * src/input.c, src/wayland/wl.c and src/wayland/wl_seat.c include <linux/input-event-codes.h>
 #     for BTN_* codes — the driver drops the same lightweight shim foot/imv/slurp use into build_base.
 # No inotify (1.13 dropped it), no memfd/timerfd/signalfd/epoll (event loop is GLib's GMainLoop),
@@ -44,8 +46,7 @@ dunst-setup: setup
 	$(call EXTRACT_TAR,v$(DUNST_VERSION).tar.gz,dunst-$(DUNST_VERSION),dunst)
 	# iOS has no librt (clock_gettime lives in libc); drop -lrt from the default link flags.
 	sed -i 's/-lm -lrt/-lm/' $(BUILD_WORK)/dunst/config.mk
-	# Darwin/iOS source patches: st_mtim -> st_mtimespec, and a wordexp-free string_to_path().
-	bash /work/recipes/dunst-ios-fixes.sh $(BUILD_WORK)/dunst
+	$(call DO_PATCH,dunst,dunst,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/dunst/.build_complete),)
 dunst:

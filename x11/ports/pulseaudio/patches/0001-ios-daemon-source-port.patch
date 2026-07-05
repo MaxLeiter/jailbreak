@@ -1,0 +1,96 @@
+Subject: [PATCH] pulseaudio: source-port daemon pieces for rootless iOS
+
+Swap the macOS CoreAudio/Bonjour module block for Xios sink/source module
+entries, disable the evdev keyboard module on iOS, avoid the armv7-only NEON
+SIMD variant, and replace the Darwin executable-name sysctl path with
+_NSGetExecutablePath().
+
+The actual module-xios-* sources are local build inputs copied by the recipe
+helper; this patch only carries the upstream source-tree edits.
+
+diff -ruN pulseaudio-17.0/src/modules/meson.build pulseaudio-17.0.patched/src/modules/meson.build
+--- pulseaudio-17.0/src/modules/meson.build	2024-01-12 09:22:09
++++ pulseaudio-17.0.patched/src/modules/meson.build	2026-07-04 22:27:52
+@@ -76,18 +76,18 @@
+ endif
+ 
+ if host_machine.system() == 'darwin'
+-  bonjour_dep = dependency('appleframeworks', modules : ['CoreFoundation'])
+-  coreaudio_dep = dependency('appleframeworks', modules : ['CoreAudio'])
++  # iOS: no CoreAudio HAL (AudioHardware.h) and no Bonjour. RemoteIO output is
++  # owned by xios-audiod; mic capture is owned by xios-mediad. PulseAudio only
++  # exposes ordinary sink/source objects for desktop clients.
+   all_modules += [
+-    [ 'module-bonjour-publish', 'macosx/module-bonjour-publish.c', [], [], [bonjour_dep] ],
+-    [ 'module-coreaudio-detect', 'macosx/module-coreaudio-detect.c', [], [], [coreaudio_dep] ],
+-    [ 'module-coreaudio-device', 'macosx/module-coreaudio-device.c', [], [], [coreaudio_dep] ],
++    [ 'module-xios-sink', 'xios/module-xios-sink.c', ['xios/xios_audio_protocol.h', 'xios/xios_sysint_protocol.h'] ],
++    [ 'module-xios-source', 'xios/module-xios-source.c', ['xios/xios_media_protocol.h'] ],
+   ]
+ endif
+ 
+ # Modules enabled by headers
+ 
+-if cc.has_header('linux/input.h')
++if false # iOS: sysroot has only a stub linux/input.h (mutter shim), no evdev
+   all_modules += [
+     [ 'module-mmkbd-evdev', 'module-mmkbd-evdev.c' ],
+   ]
+diff -ruN pulseaudio-17.0/src/pulse/util.c pulseaudio-17.0.patched/src/pulse/util.c
+--- pulseaudio-17.0/src/pulse/util.c	2024-01-12 09:22:09
++++ pulseaudio-17.0.patched/src/pulse/util.c	2026-07-04 22:27:52
+@@ -22,6 +22,12 @@
+ #include <config.h>
+ #endif
+ 
++#ifdef OS_IS_DARWIN
++#include <mach-o/dyld.h>
++#include <limits.h>
++#include <stdint.h>
++#endif
++
+ #include <errno.h>
+ #include <limits.h>
+ #include <stdio.h>
+@@ -288,20 +294,17 @@
+ 
+ #ifdef OS_IS_DARWIN
+     {
+-        int mib[] = { CTL_KERN, KERN_PROCARGS, getpid(), 0 };
+-        size_t len, nmib = (sizeof(mib) / sizeof(mib[0])) - 1;
+-        char *buf;
++        /* iOS/macOS: the upstream KERN_PROCARGS sysctl path returns ENOENT on
++         * iOS, and its length probe leaves the size_t length uninitialized, so
++         * the following pa_xmalloc() runs on a garbage size and wedges the very
++         * first pa_log() call every libpulse client makes. _NSGetExecutablePath()
++         * is the documented way to get the executable path on Darwin and works
++         * inside the iOS sandbox. */
++        char execpath[PATH_MAX];
++        uint32_t execpathlen = sizeof(execpath);
+ 
+-        sysctl(mib, nmib, NULL, &len, NULL, 0);
+-        buf = (char *) pa_xmalloc(len);
+-
+-        if (sysctl(mib, nmib, buf, &len, NULL, 0) == 0) {
+-            pa_strlcpy(s, basename(buf), l);
+-            pa_xfree(buf);
+-            return s;
+-        }
+-
+-        pa_xfree(buf);
++        if (_NSGetExecutablePath(execpath, &execpathlen) == 0)
++            return pa_strlcpy(s, pa_path_get_filename(execpath), l);
+ 
+         /* fall thru */
+     }
+diff -ruN pulseaudio-17.0/src/pulsecore/meson.build pulseaudio-17.0.patched/src/pulsecore/meson.build
+--- pulseaudio-17.0/src/pulsecore/meson.build	2024-01-12 09:22:09
++++ pulseaudio-17.0.patched/src/pulsecore/meson.build	2026-07-04 22:27:52
+@@ -177,7 +177,6 @@
+ simd_variants = [
+   { 'mmx' : ['remap_mmx.c', 'svolume_mmx.c'] },
+   { 'sse' : ['remap_sse.c', 'sconv_sse.c', 'svolume_sse.c'] },
+-  { 'neon' : ['remap_neon.c', 'sconv_neon.c', 'mix_neon.c'] },
+ ]
+ 
+ libpulsecore_simd_lib = []

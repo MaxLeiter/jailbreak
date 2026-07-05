@@ -11,7 +11,7 @@ a directory watch and applied through BackBoardServices. Connector is
 reported as "xios" so the shell treats the panel as controllable.
 
 Apply -p1 in the gnome-settings-daemon-46.0 source tree
-(gnome-settings-daemon-ios-fixes.sh). Design: x11/docs/xios-fhs-plan.md.
+(ports/gnome-settings-daemon/patches). Design: x11/docs/xios-fhs-plan.md.
 
 --- a/plugins/power/gsd-backlight.c
 +++ b/plugins/power/gsd-backlight.c

@@ -1,0 +1,185 @@
+Subject: [PATCH] gnome-settings-daemon: trim plugins for iOS
+
+diff -ruN gnome-settings-daemon-46.0/meson.build gnome-settings-daemon-46.0.patched/meson.build
+--- gnome-settings-daemon-46.0/meson.build	2024-03-16 15:14:58
++++ gnome-settings-daemon-46.0.patched/meson.build	2026-07-04 22:57:18
+@@ -90,23 +90,20 @@
+ 
+ glib_dep = dependency('glib-2.0', version: '>=' + glib_min_version)
+ geocode_glib_dep = dependency('geocode-glib-2.0', version: '>= 3.26.3', required: false)
+-if not geocode_glib_dep.found()
+-  geocode_glib_dep = dependency('geocode-glib-1.0', version: '>= 3.10.0')
+-endif
+ gio_dep = dependency('gio-2.0', version: '>= 2.53.0')
+ gio_unix_dep = dependency('gio-unix-2.0')
+-gnome_desktop_dep = dependency('gnome-desktop-3.0', version: '>= 3.37.1')
++gnome_desktop_dep = dependency('gnome-desktop-4', version: '>= 40')
+ gsettings_desktop_dep = dependency('gsettings-desktop-schemas', version: '>= 46.beta')
+ gtk_dep = dependency('gtk+-3.0', version: '>= 3.15.3')
+ gtk_x11_dep = dependency('gtk+-x11-3.0')
+-gweather_dep = dependency('gweather4')
+-libcanberra_gtk_dep = dependency('libcanberra-gtk3')
+-libgeoclue_dep = dependency('libgeoclue-2.0', version: '>= 2.3.1')
++gweather_dep = dependency('gweather4', required: false)
++libcanberra_gtk_dep = dependency('libcanberra-gtk3', required: false)
++libgeoclue_dep = dependency('libgeoclue-2.0', version: '>= 2.3.1', required: false)
+ libnotify_dep = dependency('libnotify', version: '>= 0.7.3')
+ libpulse_mainloop_glib_dep = dependency('libpulse-mainloop-glib', version: '>= 2.0')
+ pango_dep = dependency('pango', version: '>= 1.20.0')
+ polkit_gobject_dep = dependency('polkit-gobject-1', version: '>= 0.114')
+-upower_glib_dep = dependency('upower-glib', version: '>= 0.99.12')
++upower_glib_dep = dependency('upower-glib', version: '>= 0.99.12', required: false)
+ x11_dep = dependency('x11')
+ xfixes_dep = dependency('xfixes', version: '>= 6.0')
+ 
+diff -ruN gnome-settings-daemon-46.0/plugins/common/meson.build gnome-settings-daemon-46.0.patched/plugins/common/meson.build
+--- gnome-settings-daemon-46.0/plugins/common/meson.build	2024-03-16 15:14:58
++++ gnome-settings-daemon-46.0.patched/plugins/common/meson.build	2026-07-04 22:57:18
+@@ -25,7 +25,7 @@
+ 
+ ldflags = []
+ if host_is_darwin
+-  ldflags += ['-Wl,-bundle_loader,@0@'.format(join_paths(), meson.project_build_root(), meson.project_name(), meson.project_name())]
++# iOS: dropped gsd malformed macOS bundle_loader ldflag (join_paths no-arg).
+ endif
+ 
+ libcommon = static_library(
+diff -ruN gnome-settings-daemon-46.0/plugins/meson.build gnome-settings-daemon-46.0.patched/plugins/meson.build
+--- gnome-settings-daemon-46.0/plugins/meson.build	2024-03-16 15:14:58
++++ gnome-settings-daemon-46.0.patched/plugins/meson.build	2026-07-04 22:57:18
+@@ -19,6 +19,8 @@
+ ]
+ 
+ disabled_plugins = []
++# iOS: minimal plugin set — drop everything that needs absent hardware/services or X11.
++disabled_plugins += ['power', 'color', 'datetime', 'media-keys', 'sound', 'xsettings', 'sharing']
+ 
+ if not enable_smartcard
+     disabled_plugins += ['smartcard']
+diff -ruN gnome-settings-daemon-46.0/plugins/power/gpm-common.c gnome-settings-daemon-46.0.patched/plugins/power/gpm-common.c
+--- gnome-settings-daemon-46.0/plugins/power/gpm-common.c	2024-03-16 15:14:58
++++ gnome-settings-daemon-46.0.patched/plugins/power/gpm-common.c	2026-07-04 22:57:19
+@@ -27,8 +27,10 @@
+ #include <math.h>
+ #include <glib.h>
+ #include <glib/gi18n.h>
++#ifndef __APPLE__
+ #include <gdk/gdkx.h>
+ #include <X11/extensions/dpms.h>
++#endif
+ #include <canberra-gtk.h>
+ 
+ #define GNOME_DESKTOP_USE_UNSTABLE_API
+@@ -225,6 +227,10 @@
+ static gboolean
+ disable_builtin_screensaver (gpointer unused)
+ {
++#ifdef __APPLE__
++        (void) unused;
++        return FALSE;  /* iOS: no X server built-in screensaver to police */
++#else
+         int current_server_timeout, current_server_interval;
+         int current_prefer_blank,   current_allow_exp;
+         int desired_server_timeout, desired_server_interval;
+@@ -278,21 +284,23 @@
+         }
+ 
+         return TRUE;
++#endif  /* !__APPLE__ */
+ }
+ 
+ guint
+ gsd_power_enable_screensaver_watchdog (void)
+ {
+-        int dummy;
+         guint id;
+ 
+-        /* Make sure that Xorg's DPMS extension never gets in our
+-         * way. The defaults are now applied in Fedora 20 from
+-         * being "0" by default to being "600" by default */
++#ifndef __APPLE__
++        int dummy;
++
++        /* Make sure that Xorg's DPMS extension never gets in our way. */
+         gdk_x11_display_error_trap_push (gdk_display_get_default ());
+         if (DPMSQueryExtension(GDK_DISPLAY_XDISPLAY (gdk_display_get_default ()), &dummy, &dummy))
+                 DPMSSetTimeouts (GDK_DISPLAY_XDISPLAY (gdk_display_get_default ()), 0, 0, 0);
+         gdk_x11_display_error_trap_pop_ignored (gdk_display_get_default ());
++#endif
+         id = g_timeout_add_seconds (XSCREENSAVER_WATCHDOG_TIMEOUT,
+                                     disable_builtin_screensaver,
+                                     NULL);
+diff -ruN gnome-settings-daemon-46.0/plugins/power/ios-stubs/canberra-gtk.h gnome-settings-daemon-46.0.patched/plugins/power/ios-stubs/canberra-gtk.h
+--- gnome-settings-daemon-46.0/plugins/power/ios-stubs/canberra-gtk.h	1969-12-31 16:00:00
++++ gnome-settings-daemon-46.0.patched/plugins/power/ios-stubs/canberra-gtk.h	2026-07-04 22:57:18
+@@ -0,0 +1,44 @@
++/* canberra-gtk.h — iOS no-op shim for the gnome-settings-daemon power plugin.
++ *
++ * The power plugin plays libcanberra event sounds (low/critical battery, UPS alert). iOS has
++ * no libcanberra and no ALSA/PulseAlert path for these, so we compile the plugin against this
++ * stub: every ca_* call is a no-op returning success. This lets us un-drop the `power` plugin
++ * (for the brightness slider) without pulling libcanberra-gtk / GTK3. Only the handful of
++ * symbols gpm-common.c + gsd-power-manager.c reference are declared. GPL-2.0+.
++ */
++#ifndef CANBERRA_GTK_H_XIOS_STUB
++#define CANBERRA_GTK_H_XIOS_STUB
++
++#include <stdarg.h>
++#include <stdint.h>
++
++typedef struct ca_context ca_context;
++
++/* The only property keys the plugin passes. */
++#define CA_PROP_EVENT_ID          "event.id"
++#define CA_PROP_EVENT_DESCRIPTION "event.description"
++
++static inline ca_context *
++ca_gtk_context_get (void)
++{
++  return 0;
++}
++
++/* Variadic (key,value,... ,NULL) like the real API; we ignore everything. */
++static inline int
++ca_context_play (ca_context *c, uint32_t id, ...)
++{
++  (void) c;
++  (void) id;
++  return 0;   /* CA_SUCCESS */
++}
++
++static inline int
++ca_context_cancel (ca_context *c, uint32_t id)
++{
++  (void) c;
++  (void) id;
++  return 0;   /* CA_SUCCESS */
++}
++
++#endif /* CANBERRA_GTK_H_XIOS_STUB */
+diff -ruN gnome-settings-daemon-46.0/plugins/power/meson.build gnome-settings-daemon-46.0.patched/plugins/power/meson.build
+--- gnome-settings-daemon-46.0/plugins/power/meson.build	2024-03-16 15:14:58
++++ gnome-settings-daemon-46.0.patched/plugins/power/meson.build	2026-07-04 22:57:19
+@@ -6,14 +6,11 @@
+ )
+ 
+ deps = plugins_deps + [
+-  libcanberra_gtk_dep,
+   libcommon_dep,
+   libnotify_dep,
+   gio_unix_dep,
+   gnome_desktop_dep,
+   m_dep,
+   upower_glib_dep,
+-  x11_dep,
+-  dependency('xext')
+ ]
+ 
+@@ -29,6 +26,7 @@
+ endif
+ 
+ cflags += ['-DLIBEXECDIR="@0@"'.format(gsd_libexecdir)]
++cflags += ['-I' + meson.current_source_dir() / 'ios-stubs']  # iOS: canberra-gtk.h stub
+ 
+ gsd_power = executable(
+   'gsd-' + plugin_name,

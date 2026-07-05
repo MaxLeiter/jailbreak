@@ -6,7 +6,7 @@ endif
 # gsd is a set of D-Bus-activated helper daemons (gsd-<plugin>) that gnome-shell + GNOME apps
 # rely on for desktop policy. Most gsd plugins target hardware/services absent on iOS; this
 # build keeps only the ones that make sense on a Wayland tablet and needs no new heavy deps
-# beyond libnotify (see recipes/gnome-settings-daemon-ios-fixes.sh for the plugin audit):
+# beyond libnotify (see ports/gnome-settings-daemon/patches for the plugin audit):
 #   KEEP: a11y-settings, housekeeping, keyboard, screensaver-proxy
 #   DROP: power/color/datetime/media-keys/sound/xsettings/sharing (+ the option-gated
 #         cups/smartcard/wacom/rfkill/wwan/usb-protection/network_manager/colord/alsa/gudev).
@@ -22,7 +22,7 @@ DEB_GSD_V        ?= $(GSD_VERSION)+ios1
 gnome-settings-daemon-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-settings-daemon/$(GSD_MAJOR_V)/gnome-settings-daemon-$(GSD_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-settings-daemon-$(GSD_VERSION).tar.xz,gnome-settings-daemon-$(GSD_VERSION),gnome-settings-daemon)
-	bash /work/recipes/gnome-settings-daemon-ios-fixes.sh $(BUILD_WORK)/gnome-settings-daemon
+	$(call DO_PATCH,gnome-settings-daemon,gnome-settings-daemon,-p1)
 	rm -rf $(BUILD_WORK)/gnome-settings-daemon/build && mkdir -p $(BUILD_WORK)/gnome-settings-daemon/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

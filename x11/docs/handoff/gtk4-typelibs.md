@@ -20,7 +20,7 @@ Producing the GIR typelibs GNOME Shell + gjs need, by running g-ir-scanner ON TH
 - Passing namespaces include `Meta-14`, `Clutter-14`, `St-14`, `Shell-14`, `Gvc-1.0`, `Shew-0`, `AccountsService-1.0`, `Gdm-1.0`, `UPowerGlib-1.0`, `GWeather-4.0`, `Geoclue-2.0`, `Gcr-4`, `Gck-2`, `PolkitAgent-1.0`, `GnomeDesktop-4.0`, `GnomeBG-4.0`, `GnomeRR`, `IBus-1.0`, `Atspi-2.0`, `Atk-1.0`.
 - `gir-build-mutter-ondevice.sh` now stages the Linux input shim and scan-local linker symlinks needed for `Meta-14` (`libpixman-1`, `libcolord`, `libICE`, `libX11-xcb`).
 - `gir-build-gnome-shell-ondevice.sh` validation now includes `/var/jb/usr/lib/gnome-shell`, `/var/jb/usr/lib/mutter-14`, and ANGLE in `DYLD_LIBRARY_PATH`.
-- `gnome-shell-ios-fixes.sh` disables the ATK bridge link on iOS because the current `libatk-bridge2.0-0 2.52.0` expects ATK 2.52 document symbols and the installed standalone ATK is 2.38.
+- `ports/gnome-shell/patches` disables the ATK bridge link on iOS because the current `libatk-bridge2.0-0 2.52.0` expects ATK 2.52 document symbols and the installed standalone ATK is 2.38.
 
 ## Open items
 1. Package the regenerated typelibs/source-build outputs so users do not need this one-device hand-fix path. See `gnome-session.md` for the current list: Atk/Atspi/Gck/Gcr/GnomeDesktop/GWeather/St/Shell/Gdm plus associated data such as `Locations.bin` and login-screen schema.

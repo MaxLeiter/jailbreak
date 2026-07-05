@@ -24,9 +24,7 @@ DEB_NAUTILUS_V    ?= $(NAUTILUS_VERSION)+ios1
 nautilus-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/nautilus/$(NAUTILUS_MAJOR_V)/nautilus-$(NAUTILUS_VERSION).tar.xz)
 	$(call EXTRACT_TAR,nautilus-$(NAUTILUS_VERSION).tar.xz,nautilus-$(NAUTILUS_VERSION),nautilus)
-	# iOS source-port fixes: glib version floor (2.79->2.78) + <xlocale.h> injection for the
-	# locale_t users (idempotent). Script is mounted at /work/recipes by build-gnome.sh.
-	bash /work/recipes/nautilus-ios-fixes.sh $(BUILD_WORK)/nautilus
+	$(call DO_PATCH,nautilus,nautilus,-p1)
 	mkdir -p $(BUILD_WORK)/nautilus/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

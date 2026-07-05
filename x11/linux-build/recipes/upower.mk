@@ -4,7 +4,7 @@ endif
 
 # upower.mk — the libupower-glib CLIENT library only, for rootless iOS. gnome-shell statically
 # imports gi://UPowerGlib in status/system.js at panel boot, so the shell will not start without
-# the UPowerGlib typelib + dylib. The daemon (udev/systemd/sysfs) is dropped (upower-ios-fixes.sh);
+# the UPowerGlib typelib + dylib. The daemon (udev/systemd/sysfs) is dropped by ports/upower/patches;
 # the client library is a GDBus proxy on glib/gio. Introspection off; UPowerGlib-1.0 typelib is
 # generated ON-DEVICE. The udev/systemd install-dir probes are satisfied with explicit paths so
 # the top-level meson does not dependency('udev'/'systemd') (both absent).
@@ -16,7 +16,7 @@ DEB_UPOWER_V     ?= $(UPOWER_VERSION)+ios1
 upower-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/upower/upower/-/archive/v$(UPOWER_VERSION)/upower-v$(UPOWER_VERSION).tar.bz2)
 	$(call EXTRACT_TAR,upower-v$(UPOWER_VERSION).tar.bz2,upower-v$(UPOWER_VERSION),upower)
-	bash /work/recipes/upower-ios-fixes.sh $(BUILD_WORK)/upower
+	$(call DO_PATCH,upower,upower,-p1)
 	rm -rf $(BUILD_WORK)/upower/build && mkdir -p $(BUILD_WORK)/upower/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

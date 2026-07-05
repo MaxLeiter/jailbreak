@@ -8,8 +8,7 @@ endif
 # org.gnome.SessionManager on the session bus and starts gnome-shell (and any other
 # RequiredComponents) as child processes — the classic, non-systemd startup path.
 #
-# Three iOS realities, all handled by recipes/gnome-session-ios-fixes.sh (which applies
-# patches/gnome-session/0001-ios-no-systemd.patch):
+# Three iOS realities, all handled by ports/gnome-session/patches:
 #   1. systemd is made OPTIONAL (upstream 46 hard-requires it). Built -Dsystemd=false
 #      -Dsystemd_session=disable, main() falls to the built-in gsm_manager_start path
 #      (RequiredComponents from the .session file, spawned as children).
@@ -28,7 +27,7 @@ DEB_GNOME-SESSION_V   ?= $(GNOME-SESSION_VERSION)+ios1
 gnome-session-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-session/$(GNOME-SESSION_MAJOR_V)/gnome-session-$(GNOME-SESSION_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-session-$(GNOME-SESSION_VERSION).tar.xz,gnome-session-$(GNOME-SESSION_VERSION),gnome-session)
-	bash /work/recipes/gnome-session-ios-fixes.sh $(BUILD_WORK)/gnome-session
+	$(call DO_PATCH,gnome-session,gnome-session,-p1)
 	rm -rf $(BUILD_WORK)/gnome-session/build && mkdir -p $(BUILD_WORK)/gnome-session/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

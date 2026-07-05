@@ -14,6 +14,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=2 \
 #     -v procursus-vol-gtk:/work/Procursus \
 #     -v "$PWD/build-shell.sh:/work/build-shell.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-shell.sh
 set -euo pipefail
@@ -37,6 +38,24 @@ fi
 
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
+
+WITH_EDS="${WITH_EDS:-0}"
+SHELL_PATCH_DIR=/work/ports/gnome-shell/patches
+if [ "$WITH_EDS" = 1 ]; then
+  SHELL_PATCH_DIR=/work/ports/gnome-shell/patches-eds
+fi
+[ -f "$SHELL_PATCH_DIR/series" ] || { echo "missing $SHELL_PATCH_DIR/series" >&2; exit 1; }
+echo "==> staging gnome-shell patch series ($(basename "$SHELL_PATCH_DIR"))"
+rm -rf build_patch/gnome-shell
+mkdir -p build_patch/gnome-shell
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%%#*}"
+  set -- $line
+  [ "$#" -gt 0 ] || continue
+  patch="$SHELL_PATCH_DIR/$1"
+  [ -f "$patch" ] || { echo "missing $patch" >&2; exit 1; }
+  cp -v "$patch" build_patch/gnome-shell/
+done < "$SHELL_PATCH_DIR/series"
 
 echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
@@ -96,9 +115,8 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # evolution-data-server .build_complete exists. This path (a) wipes the gnome-shell build
 # tree — the EDS-ectomy sed-DELETED lines from the extracted source and EXTRACT_TAR no-ops,
 # so pristine source must re-extract; (b) adds the EDS Depends + fixes the deb description;
-# (c) passes GNOME_SHELL_WITH_EDS=1 through to gnome-shell.mk (which skips the ectomy in
-# gnome-shell-ios-fixes.sh, adds the make prereq, and bumps the deb to 46.0-2).
-WITH_EDS="${WITH_EDS:-0}"
+# (c) stages the EDS-enabled patch flavor, then passes GNOME_SHELL_WITH_EDS=1
+# through to gnome-shell.mk, adding the make prereq and bumping the deb to 46.0-2.
 if [ "$WITH_EDS" = 1 ]; then
   BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
   BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
@@ -122,10 +140,27 @@ TARGETS="${TARGETS:-\
   pulseaudio-package \
   gnome-shell-package}"
 
+GSHELL_W=build_work/iphoneos-arm64-rootless/1900/gnome-shell
+GSHELL_S=build_stage/iphoneos-arm64-rootless/1900/gnome-shell
+GSHELL_F="$GSHELL_W/.xios_patch_series.sha256"
+if [[ " $TARGETS " == *" gnome-shell"* ]]; then
+  GSHELL_FP="$(sha256sum \
+    "$SHELL_PATCH_DIR/series" \
+    "$SHELL_PATCH_DIR"/*.patch | sha256sum | awk '{print $1}')"
+  GSHELL_OLD_FP="$(cat "$GSHELL_F" 2>/dev/null || true)"
+  if [ -d "$GSHELL_W" ] && [ "$GSHELL_FP" != "$GSHELL_OLD_FP" ]; then
+    echo "==> wiping stale gnome-shell build after patch changes"
+    rm -rf "$GSHELL_W" "$GSHELL_S"
+  fi
+fi
+
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$GSHELL_W" ] && [ -n "${GSHELL_FP:-}" ]; then
+  printf '%s\n' "$GSHELL_FP" > "$GSHELL_F"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out

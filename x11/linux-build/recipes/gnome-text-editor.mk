@@ -20,9 +20,7 @@ DEB_GNOME-TEXT-EDITOR_V   ?= $(GNOME-TEXT-EDITOR_VERSION)+ios1
 gnome-text-editor-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-text-editor/$(GNOME-TEXT-EDITOR_MAJOR_V)/gnome-text-editor-$(GNOME-TEXT-EDITOR_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-text-editor-$(GNOME-TEXT-EDITOR_VERSION).tar.xz,gnome-text-editor-$(GNOME-TEXT-EDITOR_VERSION),gnome-text-editor)
-	# iOS port: src/editor-path.c uses wordexp()/wordfree() (unavailable on iOS,
-	# sandbox). Patch to a GLib leading-~ expansion (idempotent; mounted at /work/recipes).
-	bash /work/recipes/gnome-text-editor-ios-fixes.sh $(BUILD_WORK)/gnome-text-editor
+	$(call DO_PATCH,gnome-text-editor,gnome-text-editor,-p1)
 	rm -rf $(BUILD_WORK)/gnome-text-editor/build && mkdir -p $(BUILD_WORK)/gnome-text-editor/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

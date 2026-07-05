@@ -4,9 +4,9 @@
 # and letting its own meson build drive g-ir-scanner. St/Shell build INSIDE the
 # gnome-shell tree, so this is the whole shell-side gir surface.
 #
-# This is gir-build-mutter-ondevice.sh applied to gnome-shell. The SAME source patch set
-# as the cross build applies (recipes/gnome-shell-ios-fixes.sh — scp'd over and run
-# on-device): EDS stays patched out, and the gir blocks are gated on
+# This is gir-build-mutter-ondevice.sh applied to gnome-shell. The SAME default patch
+# stack as the cross build applies (ports/gnome-shell/patches): EDS stays patched out,
+# and the gir blocks are gated on
 # `not meson.is_cross_build()` — a native build takes the gir path automatically.
 #
 # BOOT SIBLINGS: gnome-shell's boot statically imports (via js/misc/dependencies.js, loaded at
@@ -21,7 +21,7 @@
 #     Gcr-4/PolkitAgent-1.0/Atk-1.0/etc. -> gir-build-shell-closure-ondevice.sh (run FIRST,
 #                             see prerequisite 3; full run order in docs/handoff/gtk4-typelibs.md)
 # (Rsvg is the ONLY patch-out — it's a Rust lib + the padOsd/wacom user is dead on iOS; see
-# gnome-shell-ios-fixes.sh Rsvg-ectomy. Gdm was NOT patched: lead confirmed gnome-session builds
+# ports/gnome-shell/patches. Gdm was NOT patched out: lead confirmed gnome-session builds
 # libgdm client-only, so Gdm-1.0 joins the on-device scan batch above.) dependencies.js is the
 # authoritative boot-typelib list: every gi://X?version pin there must resolve on-device.
 #
@@ -58,12 +58,14 @@ SCP=(scp -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes -i "$SSHKEY
 TAR="${1:?usage: gir-build-gnome-shell-ondevice.sh <gnome-shell-46.0.tar>}"
 BASE="$(basename "$TAR" .tar)"   # gnome-shell-46.0
 HERE="$(cd "$(dirname "$0")" && pwd)"
+PATCH_DIR="$(cd "$HERE/../ports/gnome-shell/patches" && pwd)"
 WORK=/var/jb/tmp/gnome-shell-gir
 GISPIKE=/var/jb/tmp/gi-spike     # sljit_shim.dylib, clang-ios, ninja2 (gir-ondevice.sh bootstrap)
 
-echo "==> [$BASE] pushing source + fixes script to device"
-"${SSH[@]}" "mkdir -p $WORK"
-"${SCP[@]}" "$TAR" "$HERE/recipes/gnome-shell-ios-fixes.sh" "$DEVICE:$WORK/" >/dev/null
+echo "==> [$BASE] pushing source + patch series to device"
+"${SSH[@]}" "rm -rf $WORK/patches && mkdir -p $WORK/patches"
+"${SCP[@]}" "$TAR" "$DEVICE:$WORK/" >/dev/null
+"${SCP[@]}" "$PATCH_DIR/series" "$PATCH_DIR"/*.patch "$DEVICE:$WORK/patches/" >/dev/null
 
 echo "==> [$BASE] native build + install shell typelibs on-device"
 # shellcheck disable=SC2087
@@ -91,7 +93,14 @@ rm -rf "$BASE"
 tar xf "$BASE.tar"
 
 # Same patch set as the cross build (EDS out, gir blocks native-gated, device gjs path).
-bash gnome-shell-ios-fixes.sh "$WORK/$BASE" /var/jb/usr/bin/gjs
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%%#*}"
+  set -- $line
+  [ "$#" -gt 0 ] || continue
+  patch_file="$WORK/patches/$1"
+  [ -f "$patch_file" ] || { echo "missing patch: $patch_file" >&2; exit 2; }
+  patch -p1 < "$patch_file"
+done < "$WORK/patches/series"
 
 cd "$BASE"
 echo "--- meson setup (native; girs enabled via the is_cross_build gate) ---"

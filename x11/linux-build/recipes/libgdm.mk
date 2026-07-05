@@ -6,7 +6,7 @@ endif
 # gi://Gdm at boot in 5 files (dependencies.js, systemActions.js, unlockDialog.js,
 # gdm/loginDialog.js, gdm/util.js), so the shell will NOT boot without the Gdm-1.0 typelib +
 # libgdm dylib. The gdm daemon is Linux-only (PAM/udev/utmp/VT) and is dropped by
-# recipes/libgdm-ios-fixes.sh, which replaces the top-level meson.build with a client-only
+# ports/libgdm/patches, which replaces the top-level meson.build with a client-only
 # one and compiles a single-session sd-login shim into libgdmcommon (the accountsservice
 # pattern). The Gdm-1.0 typelib is generated ON-DEVICE, so the -dev package must ship.
 # At runtime there is no display-manager daemon; Gdm.Client simply fails to connect and the
@@ -19,7 +19,7 @@ DEB_LIBGDM_V  ?= $(LIBGDM_VERSION)+ios1
 libgdm-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gdm/$(shell echo $(LIBGDM_VERSION) | cut -f-1 -d.)/gdm-$(LIBGDM_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gdm-$(LIBGDM_VERSION).tar.xz,gdm-$(LIBGDM_VERSION),libgdm)
-	bash /work/recipes/libgdm-ios-fixes.sh $(BUILD_WORK)/libgdm /work/recipes
+	$(call DO_PATCH,libgdm,libgdm,-p1)
 	rm -rf $(BUILD_WORK)/libgdm/build && mkdir -p $(BUILD_WORK)/libgdm/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
