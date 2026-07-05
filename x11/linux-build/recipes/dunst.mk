@@ -44,8 +44,6 @@ DEB_DUNST_V   ?= $(DUNST_VERSION)+ios2
 dunst-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/dunst-project/dunst/archive/refs/tags/v$(DUNST_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(DUNST_VERSION).tar.gz,dunst-$(DUNST_VERSION),dunst)
-	# iOS has no librt (clock_gettime lives in libc); drop -lrt from the default link flags.
-	sed -i 's/-lm -lrt/-lm/' $(BUILD_WORK)/dunst/config.mk
 	$(call DO_PATCH,dunst,dunst,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/dunst/.build_complete),)

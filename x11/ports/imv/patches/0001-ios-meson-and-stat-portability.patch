@@ -1,0 +1,17 @@
+Subject: [PATCH] imv: make Meson/stat usage portable to iOS
+
+iOS has no separate librt, and Darwin exposes a portable st_mtime scalar rather
+than Linux's st_mtim.tv_sec field.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2025-11-27 12:03:44
++++ b/meson.build	2026-07-04 23:46:35
+@@ -98 +98 @@
+-    cc.find_library('rt'),
++    cc.find_library('rt', required: false),
+diff -ruN -U0 --exclude=*.bak a/src/navigator.c b/src/navigator.c
+--- a/src/navigator.c	2025-11-27 12:03:44
++++ b/src/navigator.c	2026-07-04 23:46:35
+@@ -313 +313 @@
+-    time_t file_changed = file_info.st_mtim.tv_sec;
++    time_t file_changed = file_info.st_mtime;

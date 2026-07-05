@@ -1,1 +1,2 @@
 0001-ios-darwin-portability.patch
+0002-ios-drop-librt-link-flag.patch

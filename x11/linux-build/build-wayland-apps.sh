@@ -69,6 +69,7 @@ stage_port_patch_stack() {
 
 target_requests mpv && stage_port_patch_stack mpv
 target_requests foot && stage_port_patch_stack foot
+target_requests imv && stage_port_patch_stack imv
 if target_requests fcft || target_requests foot || target_requests fuzzel; then
   stage_port_patch_stack fcft
 fi

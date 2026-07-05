@@ -1,0 +1,10 @@
+Subject: [PATCH] slurp: make librt optional on iOS
+
+iOS has clock_gettime() in libc and no separate librt.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2023-12-14 02:55:54
++++ b/meson.build	2026-07-04 23:46:35
+@@ -15 +15 @@
+-realtime = cc.find_library('rt')
++realtime = cc.find_library('rt', required: false)

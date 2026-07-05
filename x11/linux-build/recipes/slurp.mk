@@ -30,7 +30,7 @@ slurp-setup: setup
 	$(call EXTRACT_TAR,slurp-$(SLURP_VERSION).tar.gz,slurp-$(SLURP_VERSION),slurp)
 	# iOS has no librt (clock_gettime is in libc); make the lookup non-fatal. The not-found dep
 	# stays in the executable() dependencies list — meson silently ignores unfound libraries.
-	sed -i "s/cc.find_library('rt')/cc.find_library('rt', required: false)/" $(BUILD_WORK)/slurp/meson.build
+	$(call DO_PATCH,slurp,slurp,-p1)
 	rm -rf $(BUILD_WORK)/slurp/build && mkdir -p $(BUILD_WORK)/slurp/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

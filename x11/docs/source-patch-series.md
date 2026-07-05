@@ -14,8 +14,8 @@ Current converted non-Qt stacks:
   module entries, no-evdev, no armv7 NEON, and `_NSGetExecutablePath()`.
   `linux-build/recipes/pulseaudio-ios-fixes.sh` now only injects local module
   sources and verifies the patch series was applied.
-- `ports/dunst/patches`: Darwin `stat` field compatibility and an iOS-safe
-  GLib config-path expansion helper instead of `wordexp()`.
+- `ports/dunst/patches`: Darwin `stat` field compatibility, an iOS-safe GLib
+  config-path expansion helper instead of `wordexp()`, and no `librt` link.
 - `ports/zathura/patches`: skips macOS GtkOSX branches and removes the
   unconditional libmagic dependency in favor of GLib content-type guessing.
 - `ports/gnome-text-editor/patches`: replaces unavailable iOS `wordexp()`
@@ -62,8 +62,13 @@ Current converted non-Qt stacks:
   requested Wayland backend.
 - `ports/libadwaita/patches`: forces libadwaita's Darwin settings backend onto
   the portal path instead of the unavailable macOS/AppKit implementation.
+- `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
+  portable `st_mtime` stat field.
+- `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
+- `ports/mako/patches`: makes the `librt` Meson lookup optional; mako remains
+  blocked by the Linux-bound sd-bus provider path.
 
-Remaining non-Qt patcher-shaped source edits:
+Remaining non-Qt procedural source edits:
 
 - `pulseaudio-ios-fixes.sh` is intentionally still procedural because it injects
   local Xios module sources after the patch stack has modified the upstream
@@ -71,6 +76,12 @@ Remaining non-Qt patcher-shaped source edits:
 - `recipes-ladybird/ladybird-m0-patches.sh` is not a dependency recipe in this
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.
+- Smaller recipe-level source edits still exist outside the original helper
+  script audit, including lower-level stack recipes such as pango, libepoxy,
+  wayland, curl/nghttp2/harfbuzz/exempi, colord, appstream/polkit/tracker, and
+  mutter/EDS. Convert these in small dependency-specific batches after checking
+  whether each edit is true upstream source patching versus generated/package
+  metadata or a deliberate blocked-port note.
 
 Deferred deliberately: Qt/KDE/Plasma/layer-shell-qt patch conversion is skipped
 while that track is under active development. Do not convert those recipe

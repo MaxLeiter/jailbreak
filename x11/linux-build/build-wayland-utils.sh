@@ -42,6 +42,17 @@ cp -v /work/recipes/*.mk makefiles/ 2>/dev/null || true
 
 TARGETS="${TARGETS:-slurp-package}"
 
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_port_patch_stack() {
+  local pkg="$1"
+  [ -d "/work/ports/$pkg/patches" ] || return 0
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
 echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/ 2>/dev/null || true
@@ -51,10 +62,12 @@ if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 fi
 
-if [[ " $TARGETS " == *" dunst"* ]]; then
-  echo "==> staging dunst patch series"
-  bash /work/recipes/stage-port-patches.sh dunst /work/ports build_patch
+target_requests slurp && stage_port_patch_stack slurp
+target_requests dunst && stage_port_patch_stack dunst
+if target_requests mako || target_requests basu; then
+  stage_port_patch_stack basu
 fi
+target_requests mako && stage_port_patch_stack mako
 
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's compile-only
 # probes add -Werror=unused-command-line-argument, so every cc.sizeof()/cc.has_function() fails

@@ -1,0 +1,10 @@
+Subject: [PATCH] dunst: drop librt on iOS
+
+iOS has clock_gettime() in libc and does not ship a separate librt.
+
+diff -ruN -U0 --exclude=*.bak a/config.mk b/config.mk
+--- a/config.mk	2026-03-18 03:56:31
++++ b/config.mk	2026-07-04 23:46:35
+@@ -63 +63 @@
+-DEFAULT_LDFLAGS  = -lm -lrt
++DEFAULT_LDFLAGS  = -lm

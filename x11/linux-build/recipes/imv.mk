@@ -22,13 +22,11 @@ DEB_IMV_V    ?= $(IMV_VERSION)+ios1
 imv-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~exec64/imv/archive/v$(IMV_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(IMV_VERSION).tar.gz,imv-v$(IMV_VERSION),imv)
-	# iOS has no librt (clock_gettime is in libc); make the lookup non-fatal.
-	sed -i "s/cc.find_library('rt')/cc.find_library('rt', required: false)/" $(BUILD_WORK)/imv/meson.build
+	# iOS has no librt and Darwin spells the stat mtime field differently.
+	$(call DO_PATCH,imv,imv,-p1)
 	# Darwin/iOS portability shim (st_mtim -> st_mtimespec, minimal wordexp replacing the
 	# iOS-unavailable one), force-included into every imv C TU via c_args below.
 	cp $(BUILD_INFO)/imv-compat.h $(BUILD_WORK)/imv/imv-compat.h
-	# struct stat: Linux st_mtim.tv_sec -> the portable st_mtime scalar (present on both platforms).
-	sed -i 's/\.st_mtim\.tv_sec/.st_mtime/' $(BUILD_WORK)/imv/src/navigator.c
 	rm -rf $(BUILD_WORK)/imv/build && mkdir -p $(BUILD_WORK)/imv/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

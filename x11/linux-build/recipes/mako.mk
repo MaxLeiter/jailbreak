@@ -30,8 +30,8 @@ DEB_MAKO_V   ?= $(MAKO_VERSION)+ios1
 mako-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/emersion/mako/releases/download/v$(MAKO_VERSION)/mako-$(MAKO_VERSION).tar.gz)
 	$(call EXTRACT_TAR,mako-$(MAKO_VERSION).tar.gz,mako-$(MAKO_VERSION),mako)
-	# iOS has no librt (clock_gettime is in libc); make the lookup non-fatal.
-	sed -i "s/cc.find_library('rt')/cc.find_library('rt', required: false)/" $(BUILD_WORK)/mako/meson.build
+	# iOS has no librt (clock_gettime is in libc); keep the Meson edit in the patch stack.
+	$(call DO_PATCH,mako,mako,-p1)
 	rm -rf $(BUILD_WORK)/mako/build && mkdir -p $(BUILD_WORK)/mako/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
