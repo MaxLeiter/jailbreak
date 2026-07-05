@@ -20,7 +20,6 @@ DEB_LIBEPOXY_V   ?= 1.5.7+angle1
 libepoxy-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libepoxy/$(shell echo $(LIBEPOXY_VERSION) | cut -d. -f-2)/libepoxy-$(LIBEPOXY_VERSION).tar.xz)
 	$(call EXTRACT_TAR,libepoxy-$(LIBEPOXY_VERSION).tar.xz,libepoxy-$(LIBEPOXY_VERSION),libepoxy)
-	sed -i 's/#define PLATFORM_HAS_EGL 0/#define PLATFORM_HAS_EGL ENABLE_EGL/' $(BUILD_WORK)/libepoxy/src/dispatch_common.h
 	# epoxy's __APPLE__ block defines no EGL_LIB and points GLX_LIB at XQuartz (/opt/X11).
 	# Repoint the EGL + GLES2 dispatch at the ANGLE deb (/var/jb/lib/angle) so epoxy
 	# consumers — GTK4's GL/NGL renderer on the Wayland backend — get hardware GLES->Metal/
@@ -29,10 +28,9 @@ libepoxy-setup: setup
 	# GLX/cairo, so there is NO hard package dep on angle. (X11 itself cannot use ANGLE: no
 	# EGL_EXT_platform_x11 + CAMetalLayer-only surfaces — see hwgl-plan.md Phase C; the win
 	# is the Wayland backend.)
-	sed -i 's|#define GLX_LIB "/opt/X11/lib/libGL.1.dylib"|#define GLX_LIB "/var/jb/usr/lib/libGL.1.dylib"\n#define EGL_LIB "/var/jb/lib/angle/libEGL.dylib"|' $(BUILD_WORK)/libepoxy/src/dispatch_common.c
 	# Repoint epoxy's GLES2 dispatch (Apple block only) at ANGLE's libGLESv2 so GLES2 core
 	# entrypoints get dlsym'd from ANGLE's libGLESv2 instead of the absent "libGLESv2.so" soname.
-	sed -i '/#if defined(__APPLE__)/,/#elif/ s|#define GLES2_LIB "libGLESv2.so"|#define GLES2_LIB "/var/jb/lib/angle/libGLESv2.dylib"|' $(BUILD_WORK)/libepoxy/src/dispatch_common.c
+	$(call DO_PATCH,libepoxy,libepoxy,-p1)
 	rm -rf $(BUILD_WORK)/libepoxy/build
 	mkdir -p $(BUILD_WORK)/libepoxy/build
 	echo -e "[host_machine]\n \

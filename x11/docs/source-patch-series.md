@@ -62,6 +62,10 @@ Current converted non-Qt stacks:
   requested Wayland backend.
 - `ports/libadwaita/patches`: forces libadwaita's Darwin settings backend onto
   the portal path instead of the unavailable macOS/AppKit implementation.
+- `ports/pango/patches`: makes Pango's macOS ApplicationServices backend
+  optional so the iOS build stays on fontconfig/freetype/cairo.
+- `ports/libepoxy/patches`: enables Apple EGL dispatch for the ANGLE/Mesa
+  rootless paths used by GTK4's Wayland renderer.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
@@ -77,11 +81,11 @@ Remaining non-Qt procedural source edits:
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.
 - Smaller recipe-level source edits still exist outside the original helper
-  script audit, including lower-level stack recipes such as pango, libepoxy,
-  wayland, curl/nghttp2/harfbuzz/exempi, colord, appstream/polkit/tracker, and
-  mutter/EDS. Convert these in small dependency-specific batches after checking
-  whether each edit is true upstream source patching versus generated/package
-  metadata or a deliberate blocked-port note.
+  script audit, including lower-level stack recipes such as wayland,
+  curl/nghttp2/harfbuzz/exempi, colord, appstream/polkit/tracker, and mutter/EDS.
+  Convert these in small dependency-specific batches after checking whether
+  each edit is true upstream source patching versus generated/package metadata
+  or a deliberate blocked-port note.
 
 Deferred deliberately: Qt/KDE/Plasma/layer-shell-qt patch conversion is skipped
 while that track is under active development. Do not convert those recipe

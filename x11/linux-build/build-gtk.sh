@@ -71,6 +71,12 @@ stage_required_patch_stack() {
   bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
 }
 
+if target_requests pango || target_requests gtk+3.0 || target_requests gtk4 || target_requests libadwaita; then
+  stage_required_patch_stack pango
+fi
+if target_requests libepoxy || target_requests gtk+3.0 || target_requests gtk4 || target_requests libadwaita; then
+  stage_required_patch_stack libepoxy
+fi
 target_requests gtk+3.0 && stage_required_patch_stack gtk+3.0
 target_requests gtk4 && stage_required_patch_stack gtk4
 target_requests libadwaita && stage_required_patch_stack libadwaita

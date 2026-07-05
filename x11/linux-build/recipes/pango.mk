@@ -13,8 +13,7 @@ pango-setup: setup
 	# On darwin pango auto-enables its CoreText backend, which pulls the macOS-only
 	# ApplicationServices framework (absent from the iOS SDK). Make those framework
 	# deps non-required so CoreText stays off and pango uses fontconfig/freetype/cairo.
-	sed -i "s/modules: 'ApplicationServices'))/modules: 'ApplicationServices', required: false))/" $(BUILD_WORK)/pango/meson.build
-	sed -i "s/modules: \[ 'CoreFoundation', 'ApplicationServices' \]/modules: [ 'CoreFoundation', 'ApplicationServices' ], required: false/" $(BUILD_WORK)/pango/meson.build
+	$(call DO_PATCH,pango,pango,-p1)
 	rm -rf $(BUILD_WORK)/pango/build
 	mkdir -p $(BUILD_WORK)/pango/build
 	echo -e "[host_machine]\n \

@@ -1,0 +1,15 @@
+Subject: [PATCH] pango: make ApplicationServices optional on iOS
+
+The Darwin branch tries to enable the CoreText path through ApplicationServices,
+which is macOS-only. Make the framework dependency optional so the iOS build
+uses the fontconfig/freetype/cairo path.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2023-03-02 05:19:55
++++ b/meson.build	2026-07-04 23:50:50
+@@ -344 +344 @@
+-                           dependencies: dependency('appleframeworks', modules: 'ApplicationServices'))
++                           dependencies: dependency('appleframeworks', modules: 'ApplicationServices', required: false))
+@@ -349 +349 @@
+-  pango_deps += dependency('appleframeworks', modules: [ 'CoreFoundation', 'ApplicationServices' ])
++  pango_deps += dependency('appleframeworks', modules: [ 'CoreFoundation', 'ApplicationServices' ], required: false)

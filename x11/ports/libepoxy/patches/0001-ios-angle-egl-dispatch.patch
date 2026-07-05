@@ -1,0 +1,22 @@
+Subject: [PATCH] libepoxy: enable Apple EGL dispatch for ANGLE
+
+The GTK4 Wayland path needs libepoxy's EGL/GLES dispatch on iOS. Let Apple
+builds honor ENABLE_EGL and point the soft dlopen names at the rootless Mesa
+and ANGLE install paths.
+
+diff -ruN -U0 --exclude=*.bak a/src/dispatch_common.c b/src/dispatch_common.c
+--- a/src/dispatch_common.c	2021-04-30 05:17:08
++++ b/src/dispatch_common.c	2026-07-04 23:50:50
+@@ -177 +177,2 @@
+-#define GLX_LIB "/opt/X11/lib/libGL.1.dylib"
++#define GLX_LIB "/var/jb/usr/lib/libGL.1.dylib"
++#define EGL_LIB "/var/jb/lib/angle/libEGL.dylib"
+@@ -180 +181 @@
+-#define GLES2_LIB "libGLESv2.so"
++#define GLES2_LIB "/var/jb/lib/angle/libGLESv2.dylib"
+diff -ruN -U0 --exclude=*.bak a/src/dispatch_common.h b/src/dispatch_common.h
+--- a/src/dispatch_common.h	2021-04-30 05:17:08
++++ b/src/dispatch_common.h	2026-07-04 23:50:50
+@@ -33,0 +34,2 @@
++#undef PLATFORM_HAS_EGL
++#define PLATFORM_HAS_EGL ENABLE_EGL
