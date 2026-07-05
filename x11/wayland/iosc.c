@@ -5133,6 +5133,33 @@ static void data_control_clipboard_broadcast(void);
 static void data_control_primary_broadcast(void);
 static void data_control_cancel_clip_source(void);
 
+static int mime_list_add(struct wl_client *c, char **mimes, int *nmimes,
+                         int max_mimes, const char *mime, int dedupe)
+{
+    if (!mime || *nmimes >= max_mimes)
+        return 0;
+    if (dedupe)
+        for (int i = 0; i < *nmimes; i++)
+            if (!strcmp(mimes[i], mime))
+                return 1;
+    char *copy = strdup(mime);
+    if (!copy) {
+        wl_client_post_no_memory(c);
+        return 0;
+    }
+    mimes[(*nmimes)++] = copy;
+    return 1;
+}
+
+static void mime_list_clear(char **mimes, int *nmimes)
+{
+    for (int i = 0; i < *nmimes; i++) {
+        free(mimes[i]);
+        mimes[i] = NULL;
+    }
+    *nmimes = 0;
+}
+
 static int is_text_mime(const char *mime)
 {
     return mime && (!strcmp(mime, "text/plain") ||
@@ -5360,12 +5387,8 @@ static void data_source_offer(struct wl_client *c, struct wl_resource *r, const 
     struct iosc_data_source *s = wl_resource_get_user_data(r);
     /* Store any mime (DnD carries arbitrary drag types); the clipboard bridge stays
      * gated by clip_item_set, so relaxing this only affects what DnD can offer. */
-    if (!s || !m || s->nmimes >= IOSC_MAX_CLIP_MIMES) return;
-    for (int i = 0; i < s->nmimes; i++)
-        if (!strcmp(s->mimes[i], m)) return;
-    char *copy = strdup(m);
-    if (!copy) { wl_client_post_no_memory(c); return; }
-    s->mimes[s->nmimes++] = copy;
+    if (!s) return;
+    mime_list_add(c, s->mimes, &s->nmimes, IOSC_MAX_CLIP_MIMES, m, 1);
 }
 
 static void data_source_destroy(struct wl_client *c, struct wl_resource *r)
@@ -5386,8 +5409,7 @@ static void data_source_resource_destroy(struct wl_resource *r)
 {
     struct iosc_data_source *s = wl_resource_get_user_data(r);
     if (!s) return;
-    for (int i = 0; i < s->nmimes; i++)
-        free(s->mimes[i]);
+    mime_list_clear(s->mimes, &s->nmimes);
     free(s);
 }
 
@@ -6714,10 +6736,8 @@ static void primary_selection_broadcast(void)
 static void primary_source_offer(struct wl_client *c, struct wl_resource *r, const char *mime)
 {
     struct iosc_primary_source *s = wl_resource_get_user_data(r);
-    if (!s || !mime || s->nmimes >= IOSC_MAX_PRIMARY_MIMES) return;
-    char *copy = strdup(mime);
-    if (!copy) { wl_client_post_no_memory(c); return; }
-    s->mimes[s->nmimes++] = copy;
+    if (!s) return;
+    mime_list_add(c, s->mimes, &s->nmimes, IOSC_MAX_PRIMARY_MIMES, mime, 0);
 }
 static void primary_source_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static const struct zwp_primary_selection_source_v1_interface primary_source_impl = {
@@ -6726,7 +6746,7 @@ static void primary_source_res_destroy(struct wl_resource *r)
 {
     struct iosc_primary_source *s = wl_resource_get_user_data(r);
     if (!s) return;
-    for (int i = 0; i < s->nmimes; i++) free(s->mimes[i]);
+    mime_list_clear(s->mimes, &s->nmimes);
     if (g_primary_source == s) { g_primary_source = NULL; primary_selection_broadcast(); }
     free(s);
 }
@@ -6881,12 +6901,7 @@ static void data_control_source_offer(struct wl_client *c, struct wl_resource *r
                                "offer after set_selection");
         return;
     }
-    if (s->nmimes >= IOSC_MAX_CLIP_MIMES) return;
-    for (int i = 0; i < s->nmimes; i++)
-        if (!strcmp(s->mimes[i], mime)) return;
-    char *copy = strdup(mime);
-    if (!copy) { wl_client_post_no_memory(c); return; }
-    s->mimes[s->nmimes++] = copy;
+    mime_list_add(c, s->mimes, &s->nmimes, IOSC_MAX_CLIP_MIMES, mime, 1);
 }
 static void data_control_source_destroy_req(struct wl_client *c, struct wl_resource *r)
 { (void)c; wl_resource_destroy(r); }
@@ -6898,7 +6913,7 @@ static void data_control_source_res_destroy(struct wl_resource *r)
 {
     struct iosc_data_control_source *s = wl_resource_get_user_data(r);
     if (!s) return;
-    for (int i = 0; i < s->nmimes; i++) free(s->mimes[i]);
+    mime_list_clear(s->mimes, &s->nmimes);
     if (g_data_control_clip_source == s) g_data_control_clip_source = NULL;
     if (g_primary_dc_source == s) { g_primary_dc_source = NULL; primary_selection_broadcast(); }
     free(s);
