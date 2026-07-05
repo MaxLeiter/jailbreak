@@ -80,6 +80,9 @@ if target_requests curl || target_requests appstream; then
   stage_required_patch_stack curl
 fi
 target_requests appstream && stage_required_patch_stack appstream
+if target_requests tracker || target_requests nautilus; then
+  stage_required_patch_stack tracker
+fi
 target_requests gnome-text-editor && stage_required_patch_stack gnome-text-editor
 target_requests nautilus && stage_required_patch_stack nautilus
 
@@ -127,6 +130,20 @@ if target_requests appstream; then
   if [ -d "$APPSTREAM_W" ] && [ "$APPSTREAM_FP" != "$APPSTREAM_OLD_FP" ]; then
     echo "==> wiping stale appstream build after patch changes"
     rm -rf "$APPSTREAM_W" "$APPSTREAM_S"
+  fi
+fi
+
+TRACKER_W=build_work/iphoneos-arm64-rootless/1900/tracker
+TRACKER_S=build_stage/iphoneos-arm64-rootless/1900/tracker
+TRACKER_F="$TRACKER_W/.xios_patch_series.sha256"
+if target_requests tracker || target_requests nautilus; then
+  TRACKER_FP="$(sha256sum \
+    /work/ports/tracker/patches/series \
+    /work/ports/tracker/patches/*.patch | sha256sum | awk '{print $1}')"
+  TRACKER_OLD_FP="$(cat "$TRACKER_F" 2>/dev/null || true)"
+  if [ -d "$TRACKER_W" ] && [ "$TRACKER_FP" != "$TRACKER_OLD_FP" ]; then
+    echo "==> wiping stale tracker build after patch changes"
+    rm -rf "$TRACKER_W" "$TRACKER_S"
   fi
 fi
 
@@ -204,6 +221,9 @@ if [ -d "$NGHTTP2_W" ] && [ -n "${NGHTTP2_FP:-}" ]; then
 fi
 if [ -d "$APPSTREAM_W" ] && [ -n "${APPSTREAM_FP:-}" ]; then
   printf '%s\n' "$APPSTREAM_FP" > "$APPSTREAM_F"
+fi
+if [ -d "$TRACKER_W" ] && [ -n "${TRACKER_FP:-}" ]; then
+  printf '%s\n' "$TRACKER_FP" > "$TRACKER_F"
 fi
 
 echo "==> collect debs -> /out"

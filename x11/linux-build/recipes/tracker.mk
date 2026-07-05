@@ -24,12 +24,8 @@ DEB_TRACKER_V    ?= $(TRACKER_VERSION)-2+ios1
 tracker-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/tracker/$(TRACKER_MAJOR_V)/tracker-$(TRACKER_VERSION).tar.xz)
 	$(call EXTRACT_TAR,tracker-$(TRACKER_VERSION).tar.xz,tracker-$(TRACKER_VERSION),tracker)
-	# meson.build probes the libc strftime 4-digit-year modifier with cc.run() and has NO
-	# cross fallback (unlike the sqlite fts5 probe, which reads a cross property) -> it hard
-	# aborts with "Can not run test applications in this cross environment." Replace the whole
-	# cc.run block with the correct Darwin answer: '%Y' formats every modern (>=1000) date
-	# correctly; only pre-1000 years (irrelevant to a file manager) would differ.
-	perl -0777 -i -pe "s/result = cc\.run\('''.*?year_modifier = result\.stdout\(\)\s*\n\s*endif/year_modifier = '%Y'/s" $(BUILD_WORK)/tracker/meson.build
+	# Keep the strftime cross-build probe fallback in the port patch stack.
+	$(call DO_PATCH,tracker,tracker,-p1)
 	mkdir -p $(BUILD_WORK)/tracker/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

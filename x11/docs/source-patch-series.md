@@ -82,6 +82,8 @@ Current converted non-Qt stacks:
 - `ports/polkit/patches`: builds the polkit agent client library under
   libs-only mode while dropping the setuid helper and unavailable auth-library
   edges.
+- `ports/tracker/patches`: replaces Tracker's target-running strftime probe
+  with the Darwin year-format modifier used by the iOS cross build.
 - `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
   portable `st_mtime` stat field.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
@@ -98,7 +100,7 @@ Remaining non-Qt procedural source edits:
   separate Ladybird-specific cleanup.
 - Smaller recipe-level source edits still exist outside the original helper
   script audit, including lower-level stack recipes such as wayland,
-  tracker, and mutter/EDS.
+  mutter/EDS, and smaller focused app/runtime fixes.
   Convert these in small dependency-specific batches after checking whether
   each edit is true upstream source patching versus generated/package metadata
   or a deliberate blocked-port note.
