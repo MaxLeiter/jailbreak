@@ -54,52 +54,14 @@ DEB_EDS_V     ?= $(EDS_VERSION)+ios2
 evolution-data-server-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/evolution-data-server/$(EDS_MAJOR_V)/evolution-data-server-$(EDS_VERSION).tar.xz)
 	$(call EXTRACT_TAR,evolution-data-server-$(EDS_VERSION).tar.xz,evolution-data-server-$(EDS_VERSION),evolution-data-server)
-	# UPSTREAM BUG (3.52.4): FindSMIME.cmake's header says the nss/nspr search is skipped
-	# "unless -DENABLE_SMIME=OFF is used", but the module never consults the option — its
-	# only return() is the pkg-config-success path, so on a sysroot without nss/nspr the
-	# manual search FATAL_ERRORs ("NSPR headers not found") even with SMIME off. Insert the
-	# missing early return right after the output vars get their documented empty defaults.
-	if ! grep -q 'if(NOT ENABLE_SMIME)' $(BUILD_WORK)/evolution-data-server/cmake/modules/FindSMIME.cmake; then \
-		perl -0pi -e 's{set\(MOZILLA_NSS_LIB_DIR ""\)\n}{set(MOZILLA_NSS_LIB_DIR "")\n\nif(NOT ENABLE_SMIME)\n\treturn()\nendif(NOT ENABLE_SMIME)\n}' \
-			$(BUILD_WORK)/evolution-data-server/cmake/modules/FindSMIME.cmake; \
-	fi
+	# Keep EDS cross-build and no-NSS source edits in the port patch stack.
+	$(call DO_PATCH,evolution-data-server,evolution-data-server,-p1)
 	grep -q 'if(NOT ENABLE_SMIME)' $(BUILD_WORK)/evolution-data-server/cmake/modules/FindSMIME.cmake
-	# SetupBuildFlags.cmake prepends the GNU-ld-only `-Wl,--no-undefined` to ALL linker flags
-	# for any Clang/GNU compiler not on *BSD — Darwin falls in, but ld64 spells it
-	# `-undefined error` and errors out on the GNU form ("ld: unknown option: --no-undefined"),
-	# which torpedoes EVERY configure probe link (sys/wait.h/zlib/fsync all "not found").
-	# Strip it: ld64's default for dylibs/two-level namespace is -undefined error anyway, so
-	# the NOUNDEFS discipline is preserved.
-	sed -i 's/-Wl,--no-undefined //g' \
-		$(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
 	! grep -q -- '--no-undefined' $(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
-	# camel hard-uses NSS/NSPR with no compile guards (unconditional #includes; SMIME-off
-	# only skips the nss/nspr SEARCH — still true through gnome-48, verified). No NSS port
-	# exists for iOS, so strip the usage outright (recipes/eds-camel-no-nss.patch): NSS
-	# init/shutdown in camel.c, the NSPR msgport pipe path (stubs keep the ABI —
-	# camel_msgport_prfd stays exported, returns NULL), and one dead include. Cost:
-	# mail-provider TLS; the calendar/addressbook stack this build ships never touches it.
-	if grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel.c; then \
-		patch -p1 -d $(BUILD_WORK)/evolution-data-server < /work/recipes/eds-camel-no-nss.patch; \
-	fi
 	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel.c
 	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-msgport.c
 	! grep -q 'include <nspr.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-operation.c
-	# UPSTREAM BUG (3.52.4): camel-smime-context.c's tail function (util_nss_error_to_string,
-	# new in 3.52) sits AFTER the #endif /* ENABLE_SMIME */, but every include except the
-	# config header sits inside the guard — with SMIME off, gchar/gint/NULL are undefined.
-	# Nobody builds SMIME-off upstream, so this path never compiled. Give the tail glib.
-	if ! grep -q 'include <glib.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-smime-context.c; then \
-		sed -i 's|^#ifdef ENABLE_SMIME$$|#include <glib.h>\n\n#ifdef ENABLE_SMIME|' \
-			$(BUILD_WORK)/evolution-data-server/src/camel/camel-smime-context.c; \
-	fi
 	grep -q 'include <glib.h>' $(BUILD_WORK)/evolution-data-server/src/camel/camel-smime-context.c
-	# Point the two run-my-own-binary generators at host-built copies (compiled below,
-	# after configure); the iOS generator targets still build+link, they just never run.
-	sed -i 's|COMMAND $${CMAKE_CURRENT_BINARY_DIR}/camel-gen-tables |COMMAND $${CMAKE_BINARY_DIR}/camel-gen-tables-host |' \
-		$(BUILD_WORK)/evolution-data-server/src/camel/CMakeLists.txt
-	sed -i 's|COMMAND $${CMAKE_CURRENT_BINARY_DIR}/gen-western-table |COMMAND $${CMAKE_BINARY_DIR}/gen-western-table-host |' \
-		$(BUILD_WORK)/evolution-data-server/src/addressbook/libebook-contacts/CMakeLists.txt
 	grep -q 'camel-gen-tables-host' $(BUILD_WORK)/evolution-data-server/src/camel/CMakeLists.txt
 	grep -q 'gen-western-table-host' $(BUILD_WORK)/evolution-data-server/src/addressbook/libebook-contacts/CMakeLists.txt
 

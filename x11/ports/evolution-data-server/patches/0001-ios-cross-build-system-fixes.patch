@@ -1,0 +1,43 @@
+Subject: [PATCH] evolution-data-server: fix iOS cross-build probes
+
+When SMIME is disabled, skip the NSS/NSPR finder before its manual fatal
+search path, drop GNU ld-only no-undefined flags for ld64, include GLib for the
+SMIME-off tail helper, and point target-running generator custom commands at
+host-built copies.
+
+diff -ruN -U0 --exclude=*.bak a/cmake/modules/FindSMIME.cmake b/cmake/modules/FindSMIME.cmake
+--- a/cmake/modules/FindSMIME.cmake	2024-08-01 23:20:15
++++ b/cmake/modules/FindSMIME.cmake	2026-07-05 00:38:05
+@@ -28,0 +29,4 @@
++if(NOT ENABLE_SMIME)
++	return()
++endif(NOT ENABLE_SMIME)
++
+diff -ruN -U0 --exclude=*.bak a/cmake/modules/SetupBuildFlags.cmake b/cmake/modules/SetupBuildFlags.cmake
+--- a/cmake/modules/SetupBuildFlags.cmake	2024-08-01 23:20:15
++++ b/cmake/modules/SetupBuildFlags.cmake	2026-07-05 00:38:05
+@@ -81,3 +81,3 @@
+-		set(CMAKE_EXE_LINKER_FLAGS "-Wl,--no-undefined ${CMAKE_EXE_LINKER_FLAGS}")
+-		set(CMAKE_MODULE_LINKER_FLAGS "-Wl,--no-undefined ${CMAKE_MODULE_LINKER_FLAGS}")
+-		set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-undefined ${CMAKE_SHARED_LINKER_FLAGS}")
++		set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
++		set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS}")
++		set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS}")
+diff -ruN -U0 --exclude=*.bak a/src/addressbook/libebook-contacts/CMakeLists.txt b/src/addressbook/libebook-contacts/CMakeLists.txt
+--- a/src/addressbook/libebook-contacts/CMakeLists.txt	2024-08-01 23:20:15
++++ b/src/addressbook/libebook-contacts/CMakeLists.txt	2026-07-05 00:38:05
+@@ -28 +28 @@
+-	COMMAND ${CMAKE_CURRENT_BINARY_DIR}/gen-western-table "${CMAKE_CURRENT_SOURCE_DIR}/e-name-western-tables.h.in" >${CMAKE_CURRENT_BINARY_DIR}/e-name-western-tables.h
++	COMMAND ${CMAKE_BINARY_DIR}/gen-western-table-host "${CMAKE_CURRENT_SOURCE_DIR}/e-name-western-tables.h.in" >${CMAKE_CURRENT_BINARY_DIR}/e-name-western-tables.h
+diff -ruN -U0 --exclude=*.bak a/src/camel/CMakeLists.txt b/src/camel/CMakeLists.txt
+--- a/src/camel/CMakeLists.txt	2024-08-01 23:20:15
++++ b/src/camel/CMakeLists.txt	2026-07-05 00:38:05
+@@ -23 +23 @@
+-	COMMAND ${CMAKE_CURRENT_BINARY_DIR}/camel-gen-tables >${CMAKE_CURRENT_BINARY_DIR}/camel-mime-tables.c
++	COMMAND ${CMAKE_BINARY_DIR}/camel-gen-tables-host >${CMAKE_CURRENT_BINARY_DIR}/camel-mime-tables.c
+diff -ruN -U0 --exclude=*.bak a/src/camel/camel-smime-context.c b/src/camel/camel-smime-context.c
+--- a/src/camel/camel-smime-context.c	2024-08-01 23:20:15
++++ b/src/camel/camel-smime-context.c	2026-07-05 00:38:05
+@@ -27,0 +28,2 @@
++#include <glib.h>
++

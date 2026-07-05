@@ -15,6 +15,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=2 \
 #     -v procursus-vol-shell:/work/Procursus \
 #     -v "$PWD/build-eds.sh:/work/build-eds.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-eds.sh
 # (the image's ENTRYPOINT is /bin/bash, so the bare script path runs under bash)
@@ -38,6 +39,29 @@ fi
 
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
+
+TARGETS="${TARGETS:-\
+  icu4c-package \
+  libical-package \
+  evolution-data-server-package \
+  tracker-package}"
+
+target_requests() {
+  [[ " $TARGETS " == *" $1"* ]]
+}
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+target_requests evolution-data-server && stage_required_patch_stack evolution-data-server
+target_requests tracker && stage_required_patch_stack tracker
 
 echo "==> installing our control templates into build_info/"
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
@@ -68,16 +92,44 @@ if [ -d "$BW/tracker" ] && grep -rqs 'unistring' "$BW/tracker/build/build.ninja"
   rm -rf "$BW/tracker" "$BS/tracker"
 fi
 
-TARGETS="${TARGETS:-\
-  icu4c-package \
-  libical-package \
-  evolution-data-server-package \
-  tracker-package}"
+EDS_W=build_work/iphoneos-arm64-rootless/1900/evolution-data-server
+EDS_S=build_stage/iphoneos-arm64-rootless/1900/evolution-data-server
+EDS_F="$EDS_W/.xios_patch_series.sha256"
+if target_requests evolution-data-server; then
+  EDS_FP="$(sha256sum \
+    /work/ports/evolution-data-server/patches/series \
+    /work/ports/evolution-data-server/patches/*.patch | sha256sum | awk '{print $1}')"
+  EDS_OLD_FP="$(cat "$EDS_F" 2>/dev/null || true)"
+  if [ -d "$EDS_W" ] && [ "$EDS_FP" != "$EDS_OLD_FP" ]; then
+    echo "==> wiping stale evolution-data-server build after patch changes"
+    rm -rf "$EDS_W" "$EDS_S"
+  fi
+fi
+
+TRACKER_W=build_work/iphoneos-arm64-rootless/1900/tracker
+TRACKER_S=build_stage/iphoneos-arm64-rootless/1900/tracker
+TRACKER_F="$TRACKER_W/.xios_patch_series.sha256"
+if target_requests tracker; then
+  TRACKER_FP="$(sha256sum \
+    /work/ports/tracker/patches/series \
+    /work/ports/tracker/patches/*.patch | sha256sum | awk '{print $1}')"
+  TRACKER_OLD_FP="$(cat "$TRACKER_F" 2>/dev/null || true)"
+  if [ -d "$TRACKER_W" ] && [ "$TRACKER_FP" != "$TRACKER_OLD_FP" ]; then
+    echo "==> wiping stale tracker build after patch changes"
+    rm -rf "$TRACKER_W" "$TRACKER_S"
+  fi
+fi
 
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
+if [ -d "$EDS_W" ] && [ -n "${EDS_FP:-}" ]; then
+  printf '%s\n' "$EDS_FP" > "$EDS_F"
+fi
+if [ -d "$TRACKER_W" ] && [ -n "${TRACKER_FP:-}" ]; then
+  printf '%s\n' "$TRACKER_FP" > "$TRACKER_F"
+fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out
