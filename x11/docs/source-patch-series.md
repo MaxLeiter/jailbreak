@@ -119,14 +119,20 @@ Remaining non-Qt procedural source edits:
 - `pulseaudio-ios-fixes.sh` is intentionally still procedural because it injects
   local Xios module sources after the patch stack has modified the upstream
   module list.
+- `build-gtk.sh` and `build-mutter.sh` still edit local build-driver/sysroot
+  state (`makefiles/libxcursor.mk`, `makefiles/libxkbcommon.mk`, and staged
+  Khronos headers). These are per-volume Procursus integration tweaks, not
+  upstream dependency source patches.
+- `recipes/ffmpeg.mk`, `recipes/gobject-introspection.mk`, `build-shell.sh`,
+  and `build-skia.sh` still rewrite generated build/install/package artifacts
+  such as `config.mak`, installed script shebangs, control metadata, and staged
+  public headers. Keep those procedural unless the owning build system grows a
+  stable pre-configure source seam.
 - `recipes-ladybird/ladybird-m0-patches.sh` is not a dependency recipe in this
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.
-- Smaller recipe-level source edits still exist outside the original helper
-  script audit, mostly smaller focused app/runtime fixes.
-  Convert these in small dependency-specific batches after checking whether
-  each edit is true upstream source patching versus generated/package metadata
-  or a deliberate blocked-port note.
+- Ladybird wave/app-engine/bundle scripts are likewise out of scope for this
+  dependency pass; treat them as a separate browser-engine packaging cleanup.
 
 Deferred deliberately: Qt/KDE/Plasma/layer-shell-qt patch conversion is skipped
 while that track is under active development. Do not convert those recipe
