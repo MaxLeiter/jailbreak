@@ -9,9 +9,8 @@ DEB_MESA_DEMOS_V   ?= $(MESA_DEMOS_VERSION)+xios1
 mesa-demos-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.mesa3d.org/demos/mesa-demos-$(MESA_DEMOS_VERSION).tar.gz)
 	$(call EXTRACT_TAR,mesa-demos-$(MESA_DEMOS_VERSION).tar.gz,mesa-demos-$(MESA_DEMOS_VERSION),mesa-demos)
-	sed -i s/OpenGL/GL/ $(BUILD_WORK)/mesa-demos/src/util/gl_wrap.h
-	sed -i s/sincos/__sincos/g $(BUILD_WORK)/mesa-demos/src/egl/opengles2/es2gears.c
-	python3 /work/recipes/mesa-demos-iosc-fixes.py "$(BUILD_WORK)/mesa-demos"
+	$(call DO_PATCH,mesa-demos,mesa-demos,-p1)
+	bash /work/recipes/mesa-demos-generate-xdg-shell.sh "$(BUILD_WORK)/mesa-demos"
 
 ifneq ($(wildcard $(BUILD_WORK)/mesa-demos/.build_complete),)
 mesa-demos:

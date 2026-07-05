@@ -244,6 +244,11 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 #   grim-package    — screenshot tool (wlr-screencopy; pixman/libpng/libjpeg-turbo)
 TARGETS="${TARGETS:-wayland-protocols-package libutf8proc-package tllist-package fcft-package foot-package libjpeg-turbo-package imv-package wl-clipboard-package ffmpeg-package libass-package mpv-package}"
 
+if [[ " $TARGETS " == *" mesa-demos"* ]]; then
+  echo "==> staging mesa-demos source patches"
+  bash /work/recipes/stage-port-patches.sh mesa-demos /work/ports build_patch
+fi
+
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"

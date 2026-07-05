@@ -44,17 +44,16 @@ Current converted non-Qt stacks:
   atk-bridge disabled, and the iOS GDM promisify guard. `patches-eds` carries
   the same iOS port while keeping EDS/calendar enabled, and is staged only when
   `WITH_EDS=1`.
+- `ports/mesa-demos/patches`: carries the iOS Wayland EGLUT source port,
+  OpenGL include spelling fix, iOS `__sincos`, and the wider es2gears default
+  window. The generated `xdg-shell` protocol C/header files stay procedural via
+  `mesa-demos-generate-xdg-shell.sh`.
 
 Remaining non-Qt patcher-shaped scripts:
 
 - `pulseaudio-ios-fixes.sh` is intentionally still procedural because it injects
   local Xios module sources after the patch stack has modified the upstream
   module list.
-- `mesa-demos-iosc-fixes.py` is still procedural because part of it runs
-  `wayland-scanner` to generate `xdg-shell` protocol C/header files for the
-  build tree. The source edits around EGLUT/es2gears should be split into
-  `ports/mesa-demos/patches`, but keep protocol generation as an explicit build
-  step unless the generated files are deliberately vendored in the patch stack.
 - `recipes-ladybird/ladybird-m0-patches.sh` is not a dependency recipe in this
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.
