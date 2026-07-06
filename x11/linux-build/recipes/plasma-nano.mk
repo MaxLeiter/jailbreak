@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += plasma-nano
 PLASMANANO_VERSION = $(PLASMA_VERSION)
-DEB_PLASMANANO_V ?= $(PLASMANANO_VERSION)+ios1
+DEB_PLASMANANO_V ?= $(PLASMANANO_VERSION)+ios3
 
 plasma-nano-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-nano))

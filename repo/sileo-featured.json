@@ -2054,6 +2054,11 @@
       "url": "https://repo.maxleiter.com/banners/plasma-nano.png"
     },
     {
+      "title": "plasma-nano-dev",
+      "package": "plasma-nano-dev",
+      "url": "https://repo.maxleiter.com/banners/plasma-nano-dev.png"
+    },
+    {
       "title": "plasma-pa",
       "package": "plasma-pa",
       "url": "https://repo.maxleiter.com/banners/plasma-pa.png"

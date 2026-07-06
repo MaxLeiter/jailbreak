@@ -9725,6 +9725,48 @@ Depiction: https://repo.maxleiter.com/depictions/plasma-nano.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-nano.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-nano.json
 
+Package: plasma-nano
+Version: 6.1.5+ios3
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-wayland, kf6-i18n, kf6-itemmodels, kf6-service, kf6-windowsystem, kwayland, libplasma, plasma-workspace
+Description: First-light Plasma Nano shell package for Xios
+Installed-Size: 416
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-nano_6.1.5+ios3_iphoneos-arm64.deb
+Size: 32736
+MD5sum: 302e6aaa15b5219c1c7ae7d7fe0e0a8a
+SHA1: c79394b0e181480ed1ff5c594307d7da269de949
+SHA256: a562ad51671c236f64050e071bb3b6df6107d5e276df91a319cec63aebddb8fe
+Icon: https://repo.maxleiter.com/icons/plasma-nano.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-nano.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-nano.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-nano.json
+
+Package: plasma-nano-dev
+Version: 6.1.5+ios3
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: plasma-nano (= 6.1.5+ios3), qt6-base-dev, qt6-declarative-dev
+Description: Development files for Plasma Nano on Xios
+Installed-Size: 16
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-nano-dev_6.1.5+ios3_iphoneos-arm64.deb
+Size: 768
+MD5sum: 32d058880c5bd8984817c9faeb10a165
+SHA1: dbf5025a83973b943e6bc5ae8bc79bb5f2d65bb7
+SHA256: c207f35411890774b26d649ff898e97cd2e8573b79987ef1e5121bd9907a274d
+Icon: https://repo.maxleiter.com/icons/plasma-nano-dev.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-nano-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-nano-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-nano-dev.json
+
 Package: plasma-pa
 Version: 6.1.5+ios1
 Architecture: iphoneos-arm64

@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/plasma-nano.png",
+  "headerImage": "https://repo.maxleiter.com/banners/plasma-nano-dev.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "First-light Plasma Nano shell package for Xios"
+          "markdown": "Development files for Plasma Nano on Xios"
         },
         {
           "class": "DepictionSeparatorView"
@@ -27,7 +27,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "32.0 KiB"
+          "text": "768 B"
         },
         {
           "class": "DepictionTableTextView",
@@ -42,7 +42,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "plasma-nano"
+          "text": "plasma-nano-dev"
         }
       ]
     }
