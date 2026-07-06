@@ -17,6 +17,7 @@ LAUNCHER=""
 LAUNCHER_QUERY=""
 LAUNCHER_ACTIVATE=0
 POINTER_PROBE=0
+SLOT=""
 OUTDIR=""
 WARMUP=8
 CURRENT_PRESET=""
@@ -36,6 +37,7 @@ Options:
   --query TEXT      Type TEXT into the launched Desktop launcher without Enter
   --activate        Press Enter after --query, launching the highlighted result
   --pointer-probe   Inject pointer/touch/pencil probes before capture
+  --slot NAME       Run against a named display slot without foregrounding Xios
   --warmup SEC      Delay after session/app actions before capture (default: 8)
   --out DIR         Local artifact directory
   -h, --help        Show this help
@@ -98,7 +100,25 @@ run_logged() {
 
 device_json_dim() {
     local key="$1"
-    "$XIOS_DEVICE" exec "sed -n 's/.*\"$key\":[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' /var/jb/tmp/xios.json | head -1" 2>/dev/null | tail -1
+    local json="/var/jb/tmp/xios.json"
+    [ -z "$SLOT" ] || json="/var/jb/tmp/xios-$SLOT.json"
+    "$XIOS_DEVICE" exec "sed -n 's/.*\"$key\":[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' $json | head -1" 2>/dev/null | tail -1
+}
+
+iosc_input_args() {
+    if [ -n "$SLOT" ]; then
+        printf '%s\n' --socket "/var/jb/tmp/iosc-$SLOT-input.sock"
+    else
+        printf '%s\n' --iosc
+    fi
+}
+
+iosc_input_array() {
+    if [ -n "$SLOT" ]; then
+        input_args=(--socket "/var/jb/tmp/iosc-$SLOT-input.sock")
+    else
+        input_args=(--iosc)
+    fi
 }
 
 mobile_drawer_swipe() {
@@ -110,17 +130,20 @@ mobile_drawer_swipe() {
     x=$((w / 2))
     y1=$((h * 84 / 100))
     y2=$((h * 28 / 100))
-    run_logged input-drawer "$XIOS_DEVICE" input drag "$x" "$y1" "$x" "$y2"
+    local input_args=()
+    iosc_input_array
+    run_logged input-drawer "$XIOS_DEVICE" input "${input_args[@]}" drag "$x" "$y1" "$x" "$y2"
 }
 
 input_text_chars() {
     local text="$1"
-    local i ch hex
+    local i ch hex input_args=()
+    iosc_input_array
     LC_CTYPE=C
     for ((i = 0; i < ${#text}; i++)); do
         ch="${text:i:1}"
         printf -v hex '0x%02x' "'$ch"
-        run_logged "input-key-$i" "$XIOS_DEVICE" input key "$hex" || return 1
+        run_logged "input-key-$i" "$XIOS_DEVICE" input "${input_args[@]}" key "$hex" || return 1
     done
 }
 
@@ -135,9 +158,11 @@ desktop_pointer_probe() {
     y=$((h * 72 / 100))
     x2=$((x + w / 12))
     y2=$((y - h / 10))
-    run_logged input-pointer-click "$XIOS_DEVICE" input click "$x" "$y" || true
-    run_logged input-touch "$XIOS_DEVICE" input touch "$x" "$y" || true
-    run_logged input-pencil "$XIOS_DEVICE" input pencil "$x" "$y" "$x2" "$y2" || true
+    local input_args=()
+    iosc_input_array
+    run_logged input-pointer-click "$XIOS_DEVICE" input "${input_args[@]}" click "$x" "$y" || true
+    run_logged input-touch "$XIOS_DEVICE" input "${input_args[@]}" touch "$x" "$y" || true
+    run_logged input-pencil "$XIOS_DEVICE" input "${input_args[@]}" pencil "$x" "$y" "$x2" "$y2" || true
 }
 
 desktop_launcher_smoke() {
@@ -150,18 +175,24 @@ desktop_launcher_smoke() {
         *) die "unknown launcher applet: $applet" ;;
     esac
 
-    run_logged launcher-app "$XIOS_DEVICE" app "plasmawindowed $plugin" || true
+    local app_args=()
+    [ -z "$SLOT" ] || app_args=(--slot "$SLOT")
+    run_logged launcher-app "$XIOS_DEVICE" app "${app_args[@]}" "/var/jb/Applications/KDE/plasmawindowed.app/plasmawindowed $plugin" || true
     sleep 2
-    run_logged launcher-open-shot "$XIOS_DEVICE" shot "$OUT/launcher-open" || true
+    local shot_args=()
+    [ -z "$SLOT" ] || shot_args=(--slot "$SLOT")
+    run_logged launcher-open-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-open" || true
 
     if [ -n "$LAUNCHER_QUERY" ]; then
         input_text_chars "$LAUNCHER_QUERY" || true
         sleep 2
-        run_logged launcher-query-shot "$XIOS_DEVICE" shot "$OUT/launcher-query" || true
+        run_logged launcher-query-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-query" || true
         if [ "$LAUNCHER_ACTIVATE" = 1 ]; then
-            run_logged launcher-activate "$XIOS_DEVICE" input key 0xff0d || true
+            local input_args=()
+            iosc_input_array
+            run_logged launcher-activate "$XIOS_DEVICE" input "${input_args[@]}" key 0xff0d || true
             sleep "$WARMUP"
-            run_logged launcher-activate-shot "$XIOS_DEVICE" shot "$OUT/launcher-activate" || true
+            run_logged launcher-activate-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-activate" || true
         fi
     fi
 }
@@ -182,6 +213,10 @@ while [ "$#" -gt 0 ]; do
             LAUNCHER_ACTIVATE=1; shift ;;
         --pointer-probe)
             POINTER_PROBE=1; shift ;;
+        --slot)
+            SLOT="${2:-}"; [ -n "$SLOT" ] || die "--slot needs a name"; shift 2 ;;
+        --slot=*)
+            SLOT="${1#--slot=}"; [ -n "$SLOT" ] || die "--slot needs a name"; shift ;;
         --warmup)
             WARMUP="${2:-}"; valid_number "$WARMUP" || die "--warmup needs an integer"; shift 2 ;;
         --out)
@@ -220,26 +255,37 @@ LOG="$OUT/kde-smoke.log"
     echo "launcher_query: ${LAUNCHER_QUERY:-}"
     echo "launcher_activate: $LAUNCHER_ACTIVATE"
     echo "pointer_probe: $POINTER_PROBE"
+    echo "slot: ${SLOT:-}"
     echo "warmup: $WARMUP"
     echo
 } >"$LOG"
 
-run_logged status-before "$XIOS_DEVICE" status || true
+status_args=()
+[ -z "$SLOT" ] || status_args=(--slot "$SLOT")
+run_logged status-before "$XIOS_DEVICE" status "${status_args[@]}" || true
 CURRENT_PRESET="$(sed -n 's/.*"preset":"\([^"]*\)".*/\1/p' "$OUT/status-before.log" | head -1)"
 if [ -n "$CURRENT_PRESET" ]; then
     echo "current_preset: $CURRENT_PRESET" | tee -a "$LOG"
 fi
 
 if [ "$START_SESSION" = 1 ]; then
-    run_logged session "$XIOS_DEVICE" session "$PRESET" || true
+    session_args=()
+    [ -z "$SLOT" ] || session_args=(--slot "$SLOT")
+    run_logged session "$XIOS_DEVICE" session "${session_args[@]}" "$PRESET" || true
 elif [ -n "$CURRENT_PRESET" ] && [ "$CURRENT_PRESET" != "$PRESET" ]; then
     echo "WARN: --no-session requested $PRESET but device reports $CURRENT_PRESET" | tee -a "$LOG"
 fi
 
-run_logged foreground "$XIOS_DEVICE" foreground || true
+if [ -z "$SLOT" ]; then
+    run_logged foreground "$XIOS_DEVICE" foreground || true
+else
+    echo "==> slot $SLOT: skipping foreground" | tee -a "$LOG"
+fi
 
 if [ -n "$APP" ]; then
-    run_logged app "$XIOS_DEVICE" app "$APP" || true
+    app_args=()
+    [ -z "$SLOT" ] || app_args=(--slot "$SLOT")
+    run_logged app "$XIOS_DEVICE" app "${app_args[@]}" "$APP" || true
 fi
 
 if [ "$DRAWER" = 1 ]; then
@@ -266,7 +312,9 @@ fi
 run_logged package-state "$XIOS_DEVICE" exec \
     "dpkg-query -W iosc xios-session kwin plasma-workspace plasma-desktop plasma-mobile plasma-nano 2>/dev/null || true" || true
 
-run_logged shot "$XIOS_DEVICE" shot "$OUT" || true
+shot_args=()
+[ -z "$SLOT" ] || shot_args=(--slot "$SLOT")
+run_logged shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT" || true
 
 cat >"$OUT/summary.txt" <<EOF
 KDE smoke
@@ -280,6 +328,7 @@ launcher=${LAUNCHER:-}
 launcher_query=${LAUNCHER_QUERY:-}
 launcher_activate=$LAUNCHER_ACTIVATE
 pointer_probe=$POINTER_PROBE
+slot=${SLOT:-}
 
 Key files:
 - kde-smoke.log

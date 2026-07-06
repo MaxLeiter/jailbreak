@@ -30,6 +30,7 @@ Use it instead of hand-writing SSH snippets in agent sessions.
 bin/xios-device doctor
 bin/xios-device status
 bin/xios-device session iosc
+bin/xios-device session --slot codex-kde kde-desktop
 bin/xios-device foreground
 bin/xios-device app kgx
 bin/xios-device input type "echo hello from xios-device"
@@ -72,6 +73,7 @@ bin/xios-device session mutter
 bin/xios-device session gnome
 bin/xios-device session kde
 bin/xios-device session kde-mobile
+bin/xios-device session --slot codex-kde kde-desktop
 bin/xios-device session stop
 bin/xios-device session --width 1080 --height 1440 --dpi 176 iosc
 bin/xios-device session --via-daemon iosc
@@ -181,10 +183,15 @@ drawer, and writes a standard evidence bundle:
 bin/xios-kde-smoke mobile --drawer
 bin/xios-kde-smoke desktop --app systemsettings
 bin/xios-kde-smoke --no-session desktop
+bin/xios-kde-smoke desktop --slot codex-kde
 ```
 
 With `--no-session`, the helper records the current reported preset and warns if
 it differs from the requested flavor.
+With `--slot`, the helper starts or inspects a named secondary display without
+foregrounding Xios or replacing the main active session. Slot screenshots use
+the slot Wayland display and collect `/var/jb/tmp/xios-<slot>.json`,
+`xios-session-<slot>.json`, and slot-specific logs when present.
 
 ### `logs`
 

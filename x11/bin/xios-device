@@ -28,15 +28,15 @@ Commands:
   doctor
       Check host tools, SSH reachability, and key on-device Xios helpers.
 
-  status
+  status [--slot NAME]
       Print current Xios/iosc/Mutter/GNOME/KDE status and important tmp files.
 
-  session [--via-daemon] [--width W --height H --dpi DPI] PRESET
+  session [--via-daemon] [--slot NAME] [--width W --height H --dpi DPI] PRESET
       Run xios-session on the device. PRESET is one of iosc, mutter, gnome,
       kde, kde-nano, kde-mobile, stop, or status. Width/height/dpi are passed
       through to session presets that honor them.
 
-  app NAME
+  app [--slot NAME] NAME
       Launch an app client through the current xios-session, e.g. app kgx.
 
   foreground
@@ -47,12 +47,12 @@ Commands:
       Modes map directly to iosc-input-test: click, drag, scroll, touch, pencil,
       key, type.
 
-  shot [OUTDIR]
+  shot [--slot NAME] [OUTDIR]
       Capture visual evidence. Tries Wayland grim first, then iosc-screenshot-test
       probe output, then host idevicescreenshot if a paired device is visible.
       Also collects status/log files into OUTDIR.
 
-  collect [OUTDIR]
+  collect [--slot NAME] [OUTDIR]
       Copy status files and logs from /var/jb/tmp into OUTDIR.
 
   logs [PATTERN]
@@ -88,6 +88,13 @@ make_outdir() {
     fi
 }
 
+sanitize_slot() {
+    local raw="$1" slot
+    slot="$(printf '%s' "$raw" | tr -c 'A-Za-z0-9_.-' '-' | sed 's/^-*//; s/-*$//; s/--*/-/g' | cut -c1-48)"
+    [ -n "$slot" ] || die "invalid slot name: $raw"
+    printf '%s\n' "$slot"
+}
+
 remote() {
     printf '%s\n' "$1" | ssh_ bash -s
 }
@@ -102,7 +109,7 @@ copy_remote_if_exists() {
 }
 
 collect_files() {
-    local outdir="$1"
+    local outdir="$1" slot="${2:-}"
     mkdir -p "$outdir" || exit 1
 
     remote 'ps ax > /var/jb/tmp/xios-ps.txt 2>/dev/null || true; \
@@ -132,6 +139,13 @@ collect_files() {
     for f in "${files[@]}"; do
         copy_remote_if_exists "$TMP_REMOTE/$f" "$outdir" "$f"
     done
+    if [ -n "$slot" ]; then
+        copy_remote_if_exists "$TMP_REMOTE/xios-session-$slot.json" "$outdir" "xios-session-$slot.json"
+        copy_remote_if_exists "$TMP_REMOTE/xios-$slot.json" "$outdir" "xios-$slot.json"
+        copy_remote_if_exists "$TMP_REMOTE/iosc-$slot.log" "$outdir" "iosc-$slot.log"
+        copy_remote_if_exists "$TMP_REMOTE/kde-plasma-$slot.log" "$outdir" "kde-plasma-$slot.log"
+        copy_remote_if_exists "$TMP_REMOTE/xios-displays.d/$slot.json" "$outdir" "xios-display-$slot.json"
+    fi
 }
 
 cmd_doctor() {
@@ -173,6 +187,34 @@ cmd_doctor() {
 }
 
 cmd_status() {
+    local slot=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --slot) slot="$(sanitize_slot "${2:-}")"; shift 2 ;;
+            --slot=*) slot="$(sanitize_slot "${1#--slot=}")"; shift ;;
+            --help|-h) usage; exit 0 ;;
+            *) die "unknown status option: $1" ;;
+        esac
+    done
+    if [ -n "$slot" ]; then
+        remote "
+        echo \"== process summary\"
+        ps ax | grep -v grep | grep -E \"ioscd|xios-session .*--slot[ =]$slot|wayland-$slot|iosc-$slot|kwin-$slot|kde-plasma-$slot\" || true
+        echo
+        echo \"== slot session status\"
+        cat /var/jb/tmp/xios-session-$slot.json 2>/dev/null || echo \"(no xios-session-$slot.json)\"
+        echo
+        echo \"== slot display registry\"
+        cat /var/jb/tmp/xios-displays.d/$slot.json 2>/dev/null || echo \"(no slot registry)\"
+        echo
+        echo \"== slot xios.json\"
+        cat /var/jb/tmp/xios-$slot.json 2>/dev/null || echo \"(no xios-$slot.json)\"
+        echo
+        echo \"== active session\"
+        cat /var/jb/tmp/xios-active-session 2>/dev/null || echo \"(no xios-active-session)\"
+    "
+        return
+    fi
     remote '
         echo "== process summary"
         ps ax | grep -v grep | grep -E "Xios\.app/Xios|/usr/local/bin/iosc|bin/gnome-shell|bin/mutter|kwin_wayland|plasmashell|plasmawindowed|bin/kgx|xios-sessiond|ioscd" || true
@@ -198,10 +240,12 @@ cmd_status() {
 }
 
 cmd_session() {
-    local via=0 width="" height="" dpi=""
+    local via=0 width="" height="" dpi="" slot=""
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --via-daemon) via=1; shift ;;
+            --slot) slot="$(sanitize_slot "${2:-}")"; shift 2 ;;
+            --slot=*) slot="$(sanitize_slot "${1#--slot=}")"; shift ;;
             --width) width="${2:-}"; [ -n "$width" ] || die "--width needs a value"; shift 2 ;;
             --height) height="${2:-}"; [ -n "$height" ] || die "--height needs a value"; shift 2 ;;
             --dpi) dpi="${2:-}"; [ -n "$dpi" ] || die "--dpi needs a value"; shift 2 ;;
@@ -223,14 +267,28 @@ cmd_session() {
     [ -n "$dpi" ] && env_prefix="$env_prefix XIOS_SESSION_DPI=$dpi"
     local daemon_arg=""
     [ "$via" = 1 ] && daemon_arg="--via-daemon"
+    local slot_arg=""
+    [ -n "$slot" ] && slot_arg="--slot $(printf '%q' "$slot")"
 
-    remote "export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH; $env_prefix xios-session $daemon_arg $preset"
+    remote "export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH; $env_prefix xios-session $slot_arg $daemon_arg $preset"
 }
 
 cmd_app() {
+    local slot=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --slot) slot="$(sanitize_slot "${2:-}")"; shift 2 ;;
+            --slot=*) slot="$(sanitize_slot "${1#--slot=}")"; shift ;;
+            --help|-h) usage; exit 0 ;;
+            --*) die "unknown app option: $1" ;;
+            *) break ;;
+        esac
+    done
     local app="${1:-}"
     [ -n "$app" ] || die "app name required"
-    remote "export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH; xios-session app $(printf '%q' "$app")"
+    local slot_arg=""
+    [ -n "$slot" ] && slot_arg="--slot $(printf '%q' "$slot")"
+    remote "export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH; xios-session $slot_arg app $(printf '%q' "$app")"
 }
 
 cmd_foreground() {
@@ -280,24 +338,39 @@ cmd_input() {
 }
 
 cmd_shot() {
+    local slot="" outarg=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --slot) slot="$(sanitize_slot "${2:-}")"; shift 2 ;;
+            --slot=*) slot="$(sanitize_slot "${1#--slot=}")"; shift ;;
+            --help|-h) usage; exit 0 ;;
+            --*) die "unknown shot option: $1" ;;
+            *) outarg="$1"; shift ;;
+        esac
+    done
     local outdir
-    outdir="$(make_outdir "${1:-}")" || exit 1
+    outdir="$(make_outdir "$outarg")" || exit 1
     echo "artifact dir: $outdir"
 
-    remote '
-        export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
+    local wayland="/var/jb/tmp/wayland-0"
+    [ -n "$slot" ] && wayland="/var/jb/tmp/wayland-$slot"
+    remote "
+        export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH
         export XDG_RUNTIME_DIR=/var/jb/tmp
-        export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+        export WAYLAND_DISPLAY=$wayland
         rm -f /var/jb/tmp/xios-shot.png /var/jb/tmp/xios-shot.log
+        : > /var/jb/tmp/xios-shot.log
         if command -v grim >/dev/null 2>&1; then
-            grim /var/jb/tmp/xios-shot.png > /var/jb/tmp/xios-shot.log 2>&1 || true
-        elif command -v iosc-screenshot-test >/dev/null 2>&1; then
-            iosc-screenshot-test > /var/jb/tmp/xios-shot.log 2>&1 || true
-        else
-            echo "no grim or iosc-screenshot-test on device" > /var/jb/tmp/xios-shot.log
+            grim /var/jb/tmp/xios-shot.png >> /var/jb/tmp/xios-shot.log 2>&1 || true
+        fi
+        if [ ! -s /var/jb/tmp/xios-shot.png ] && command -v iosc-screenshot-test >/dev/null 2>&1; then
+            iosc-screenshot-test >> /var/jb/tmp/xios-shot.log 2>&1 || true
+        fi
+        if [ ! -s /var/jb/tmp/xios-shot.png ] && [ ! -s /var/jb/tmp/xios-shot.log ]; then
+            printf '%s\n' 'no grim or iosc-screenshot-test on device' > /var/jb/tmp/xios-shot.log
         fi
         ls -l /var/jb/tmp/xios-shot.png /var/jb/tmp/xios-shot.log 2>/dev/null || true
-    '
+    "
 
     copy_remote_if_exists "$TMP_REMOTE/xios-shot.png" "$outdir" "compositor.png"
     copy_remote_if_exists "$TMP_REMOTE/xios-shot.log" "$outdir" "compositor-shot.log"
@@ -312,15 +385,25 @@ cmd_shot() {
         fi
     fi
 
-    collect_files "$outdir" >/dev/null
+    collect_files "$outdir" "$slot" >/dev/null
     echo "done: $outdir"
 }
 
 cmd_collect() {
+    local slot="" outarg=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --slot) slot="$(sanitize_slot "${2:-}")"; shift 2 ;;
+            --slot=*) slot="$(sanitize_slot "${1#--slot=}")"; shift ;;
+            --help|-h) usage; exit 0 ;;
+            --*) die "unknown collect option: $1" ;;
+            *) outarg="$1"; shift ;;
+        esac
+    done
     local outdir
-    outdir="$(make_outdir "${1:-}")" || exit 1
+    outdir="$(make_outdir "$outarg")" || exit 1
     echo "artifact dir: $outdir"
-    collect_files "$outdir"
+    collect_files "$outdir" "$slot"
     echo "done: $outdir"
 }
 
