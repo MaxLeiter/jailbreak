@@ -14,7 +14,7 @@ version for any agent.
 | App | Deb | On device | Launches in iosc? | Notes |
 |---|---|---|---|---|
 | grim 1.4.1 | out/ ✓ | installed | **YES (classic)** | upright screenshot verified; blank in `-native` |
-| slurp 1.5.0 | out/ ✓ | installed | **YES (overlay)** | layer-shell overlay maps; region-output path still needs driven input |
+| slurp 1.5.0 | out/ ✓ | installed | **YES** | layer-shell overlay + drag stdout verified |
 | fuzzel 1.12.0+ios1 | out/ ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
 | dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
 | foot 1.27.0+ios3 | out/ ✓ | installed | **YES** | PTY + locale + render-worker path verified |
@@ -91,11 +91,11 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 - **grim — WORKS, no fix needed.** Upright full-color screenshot captured in classic
   mode (2880×2160). Orientation is correct: output IOSurface is top-left, iosc.c:1654
   sends `flags=0` (no Y_INVERT) — do NOT "fix" it to Y_INVERT.
-- **slurp — OVERLAY MAPS.** `slurp 1.5.0` maps its dim layer-shell overlay in
+- **slurp — WORKS.** `slurp 1.5.0` maps its dim layer-shell overlay in
   classic `iosc` with no failure signature:
   `artifacts/device-runs/20260705-imv-slurp-fuzzel-clean/cap-slurp.png`.
-  A no-input smoke naturally exits as `selection cancelled`; still drive a real
-  pointer-drag region if the exact stdout geometry path matters.
+  A driven `slurp -d` smoke also returned rc 0 and stdout geometry
+  `100,100 226x161` after `bin/xios-device input drag 200 200 650 520`.
 - **imv — BLOCKED on renderer path.** `imv 5.0.1` aborts on-device with
   `Assertion failed: (window->egl_context), function create_window, file
   wl_window.c, line 864`. This is not a wl_shm mapping issue: imv's renderer uses
@@ -166,7 +166,6 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 ## Open items / TODO
 
-- [ ] Drive a slurp pointer-drag region and record stdout geometry.
 - [ ] Port/fix imv's renderer for iOS (desktop OpenGL path currently aborts).
 - [ ] Publish (Max-gated): copy the app wave + `angle -3` into repo/debs, run make-repo, deploy.
 
