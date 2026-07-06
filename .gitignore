@@ -30,6 +30,7 @@ x11/linux-build/stage/
 x11/wayland/out/
 x11/packages/*/out/
 x11/packages/**/out/
+x11/apps/iosc-desktop/package-session-*.log
 x11/apps/iosc-shell/design/.sf/
 x11/docs/*.zip
 
