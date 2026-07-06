@@ -9,17 +9,25 @@ rebuilt, repacked, or copied through tooling that drops the code signature. iOS
 need unless the entitlements are carried as a *DER* signature, so before anything
 goes live we walk every .deb and guarantee the DER blob is present and correct.
 
-A binary is a "graphics binary" iff its current entitlements carry a GPU/IOSurface
-IOKit user-client marker (AGXDeviceUserClient / IOGPUDeviceUserClient /
-IOSurface*). Each such binary is re-signed with *its own current entitlements*,
+A binary is a "graphics binary" iff its current entitlements carry a
+GPU/IOSurface IOKit user-client marker (AGXDeviceUserClient /
+IOGPUDeviceUserClient / IOSurface*). Each graphics binary is first classified
+and validated against one of four hardware profiles:
+
+  * gpu-client: unplatformed AGX/IOGPU + IOSurface client.
+  * platform-gl: platform/task-port AGX/IOGPU + IOSurface compositor/helper.
+  * iosurface-ipc: unplatformed IOSurface-only IPC helper.
+  * platform-iosurface: platform/task-port IOSurface-only host.
+
+After validation, each binary is re-signed with *its own current entitlements*,
 extracted with ``ldid -e`` and re-applied with ``ldid -S`` so the DER blob is
 regenerated. Its privileges are NEVER changed: the packages use per-binary
 entitlement sets that differ in detail (e.g. Xios carries
 ``com.apple.private.security.no-container`` and only the IOSurface user-clients,
 which iosc-gl-ent.xml deliberately omits), so imposing a single generic ent file
 would silently add or drop entitlements. Preserving each binary's own set is the
-only safe re-sign. --gpu-ent / --gl-ent are the reference marker sets (and satisfy
-the caller's contract); they are not blindly stamped onto binaries.
+only safe re-sign. --gpu-ent / --gl-ent are validated reference marker sets (and
+satisfy the caller's contract); they are not blindly stamped onto binaries.
 
 A .deb with no GPU-marked binary is not a graphics package and is skipped. A
 graphics binary that carries NO entitlements at all is a build bug (its recipe
@@ -66,15 +74,28 @@ MACHO_MAGICS = {
 # platform-application but hold no GPU markers, so they must never be reclassified
 # and re-signed with a graphics entitlement set (which would strip their real
 # entitlements). Both iosc-gpu-client-ent.xml and iosc-gl-ent.xml carry these.
-GPU_MARKERS = ("AGXDeviceUserClient", "IOGPUDeviceUserClient",
-               "IOSurfaceRootUserClient", "IOSurfaceAcceleratorClient",
-               "IOSurfaceSendRight")
+GPU_ACCEL_MARKERS = ("AGXDeviceUserClient", "IOGPUDeviceUserClient")
+IOSURFACE_MARKERS = ("IOSurfaceRootUserClient", "IOSurfaceSendRight")
+GPU_MARKERS = GPU_ACCEL_MARKERS + IOSURFACE_MARKERS + ("IOSurfaceAcceleratorClient",)
 
-# Among graphics binaries, a compositor additionally holds the platform / task
-# port privileges (drives ANGLE/Metal, imports client IOSurfaces); a plain GPU
-# client does not. These distinguish iosc-gl-ent.xml from iosc-gpu-client-ent.xml.
+# Among graphics binaries, a platform GL/IOSurface process additionally holds
+# the platform / task-port privileges (drives ANGLE/Metal and/or imports client
+# IOSurfaces). These distinguish iosc-gl-ent.xml from iosc-gpu-client-ent.xml.
 COMPOSITOR_MARKERS = ("platform-application", "task_for_pid-allow",
                       "com.apple.system-task-ports")
+GPU_CLIENT_REQUIRED = ("com.apple.private.amfi.can-allow-non-platform",
+                       "get-task-allow")
+PLATFORM_GL_REQUIRED = ("platform-application",
+                        "com.apple.private.amfi.can-allow-non-platform",
+                        "com.apple.private.skip-library-validation",
+                        "task_for_pid-allow",
+                        "com.apple.system-task-ports")
+IOSURFACE_IPC_REQUIRED = ("com.apple.private.amfi.can-allow-non-platform",)
+PLATFORM_IOSURFACE_REQUIRED = ("platform-application",
+                               "com.apple.private.amfi.can-allow-non-platform",
+                               "task_for_pid-allow",
+                               "com.apple.system-task-ports")
+FORBIDDEN_GRAPHICS_MARKERS = ("com.apple.private.security.no-container",)
 
 # (compression suffix -> (decompress argv, compress argv)). Whatever a member was
 # compressed with, it is repacked with the same codec.
@@ -121,16 +142,80 @@ def entitlements(ldid: str, path: str) -> str:
         raise SystemExit(f"ERROR: cannot run ldid ({ldid}): {exc}")
 
 
+def strip_xml_comments(ents: str) -> str:
+    return re.sub(r"<!--.*?-->", "", ents, flags=re.S)
+
+
+def missing_markers(ents: str, markers: tuple[str, ...]) -> list[str]:
+    return [m for m in markers if m not in ents]
+
+
 def tier(ents: str) -> str | None:
-    """Return 'gl' / 'gpu' (a label for logging only) or None if not a graphics
-    binary. None (no GPU markers) means the binary is left untouched. The label
-    does not select an entitlement file: binaries are re-signed with their own
-    entitlements, not with --gl-ent / --gpu-ent.
+    """Return a graphics/IOSurface profile label or None.
+
+    The label does not select an entitlement file: binaries are re-signed with
+    their own entitlements, not with --gl-ent / --gpu-ent.
     """
-    ents = re.sub(r"<!--.*?-->", "", ents, flags=re.S)
+    ents = strip_xml_comments(ents)
     if not any(m in ents for m in GPU_MARKERS):
         return None
-    return "gl" if any(m in ents for m in COMPOSITOR_MARKERS) else "gpu"
+    has_platform = any(m in ents for m in COMPOSITOR_MARKERS)
+    has_gpu_accel = any(m in ents for m in GPU_ACCEL_MARKERS)
+    if has_platform and has_gpu_accel:
+        return "platform-gl"
+    if has_platform:
+        return "platform-iosurface"
+    return "gpu-client" if has_gpu_accel else "iosurface-ipc"
+
+
+def validate_graphics_profile(ents: str, path: str) -> str | None:
+    """Validate the named graphics entitlement profile for a binary.
+
+    This intentionally checks markers rather than plist structure so it works on
+    the ldid -e output we already use. It preserves the existing policy that the
+    finalizer never changes a binary's privileges; it only refuses incoherent
+    profiles before re-DER-signing them.
+    """
+    ents = re.sub(r"<!--.*?-->", "", ents, flags=re.S)
+    kind = tier(ents)
+    if kind is None:
+        return None
+    bad = [m for m in FORBIDDEN_GRAPHICS_MARKERS if m in ents]
+    if bad and kind in ("platform-gl", "gpu-client"):
+        raise SystemExit(
+            f"ERROR: {path} matches graphics profile {kind} but carries forbidden "
+            f"entitlement marker(s): {', '.join(bad)}")
+    missing = missing_markers(ents, IOSURFACE_MARKERS)
+    if missing:
+        raise SystemExit(
+            f"ERROR: {path} matches graphics profile {kind} but is missing "
+            f"IOSurface marker(s): {', '.join(missing)}")
+    if kind in ("platform-gl", "gpu-client"):
+        missing = missing_markers(ents, GPU_ACCEL_MARKERS)
+        if missing:
+            raise SystemExit(
+                f"ERROR: {path} matches graphics profile {kind} but is missing "
+                f"GPU acceleration marker(s): {', '.join(missing)}")
+    if kind == "platform-gl":
+        required = PLATFORM_GL_REQUIRED
+    elif kind == "platform-iosurface":
+        required = PLATFORM_IOSURFACE_REQUIRED
+    elif kind == "gpu-client":
+        required = GPU_CLIENT_REQUIRED
+    else:
+        required = IOSURFACE_IPC_REQUIRED
+    missing = missing_markers(ents, required)
+    if missing:
+        raise SystemExit(
+            f"ERROR: {path} matches graphics profile {kind} but is missing "
+            f"required marker(s): {', '.join(missing)}")
+    if kind in ("gpu-client", "iosurface-ipc"):
+        accidental = [m for m in COMPOSITOR_MARKERS if m in ents]
+        if accidental:
+            raise SystemExit(
+                f"ERROR: {path} matches {kind} but carries platform/task "
+                f"marker(s): {', '.join(accidental)}")
+    return kind
 
 
 def run(argv, **kw):
@@ -258,7 +343,7 @@ class DebResigner:
                 fp = os.path.join(dirpath, fn)
                 if not is_macho(fp):
                     continue
-                kind = tier(entitlements(self.ldid, fp))
+                kind = validate_graphics_profile(entitlements(self.ldid, fp), fp)
                 if kind is None:
                     continue
                 rel = os.path.relpath(fp, root)
@@ -347,6 +432,17 @@ def main() -> int:
             raise SystemExit(f"ERROR: missing entitlements plist: {ent}")
     if shutil.which(args.ldid) is None and not os.path.isfile(args.ldid):
         raise SystemExit(f"ERROR: ldid not found: {args.ldid}")
+
+    with open(args.gpu_ent, "r", encoding="utf-8") as fh:
+        gpu_kind = validate_graphics_profile(fh.read(), args.gpu_ent)
+    if gpu_kind != "gpu-client":
+        raise SystemExit(
+            f"ERROR: --gpu-ent must match gpu-client profile, got {gpu_kind}")
+    with open(args.gl_ent, "r", encoding="utf-8") as fh:
+        gl_kind = validate_graphics_profile(fh.read(), args.gl_ent)
+    if gl_kind != "platform-gl":
+        raise SystemExit(
+            f"ERROR: --gl-ent must match platform-gl profile, got {gl_kind}")
 
     return DebResigner(args).run_dir(args.debs_dir)
 

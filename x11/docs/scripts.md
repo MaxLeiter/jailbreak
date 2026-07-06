@@ -99,10 +99,13 @@ end-to-end):
 - The publish-time `finalize_x11_graphics_debs` step in `bin/publish-repo.sh` /
   `bin/publish-staging.sh` DER-re-signs the graphics debs in `repo/debs` via
   `x11/linux-build/resign-graphics-packages.py` before the index is generated.
-  The script self-classifies each Mach-O by its current entitlements (GPU/IOSurface
-  IOKit markers gate it in; `platform-application`/`task_for_pid` split compositor
-  vs client) and re-signs with `iosc-gl-ent.xml` / `iosc-gpu-client-ent.xml`
-  accordingly, mirroring the per-recipe `$(call SIGN,...)` policy. It is
+  The script self-classifies each Mach-O by its current entitlements. GPU/IOSurface
+  IOKit markers gate it in, then profile validation labels it as `gpu-client`,
+  `platform-gl`, `iosurface-ipc`, or `platform-iosurface`. It preserves each
+  binary's existing entitlement set and DER-re-signs that set; `iosc-gl-ent.xml`
+  and `iosc-gpu-client-ent.xml` are validated reference profiles, not templates
+  stamped over every binary. This mirrors the per-recipe `$(call SIGN,...)`
+  policy. It is
   idempotent: `ldid -S` reproduces byte-identical output for an already-correct
   binary, so on a clean repo it re-signs to identical bytes and repacks nothing
   (zero churn); it only unpacks/repacks a .deb (host `ar`+`tar`, no dpkg-deb) when
