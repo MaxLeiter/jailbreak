@@ -3,7 +3,7 @@
 Owner scope: the ported desktop apps (terminal / viewers / media / utilities), why
 some don't yet open a window in `iosc`, the fixes, and the on-device debug tooling.
 Living doc — update the STATUS table and OPEN ITEMS as things land. Last touched
-2026-07-05.
+2026-07-06.
 
 Related memory-of-record: the session narrative lives in the assistant memory files
 `x11-desktop-apps-wave` and `x11-iosc-app-launch-fixes`; this file is the in-repo
@@ -15,11 +15,11 @@ version for any agent.
 |---|---|---|---|---|
 | grim 1.4.1 | out/ ✓ | installed | **YES (classic)** | upright screenshot verified; blank in `-native` |
 | slurp 1.5.0 | out/ ✓ | installed | **YES** | layer-shell overlay + drag stdout verified |
-| fuzzel 1.12.0+ios1 | out/ ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
+| fuzzel 1.12.0+ios1 | repo/debs ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
 | dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
-| foot 1.27.0+ios3 | out/ ✓ | installed | **YES** | PTY + locale + render-worker path verified |
-| imv 5.0.1+ios3 | out/ ✓ | installed | **YES (Xwayland)** | `imv` wrapper auto-starts rootful Xwayland and execs `imv-x11`; native Wayland EGL still blocked |
-| mpv 0.36.0+ios2 | out/ ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
+| foot 1.27.0+ios3 | repo/debs ✓ | installed | **YES** | PTY + locale + render-worker path verified |
+| imv 5.0.1+ios3 | repo/debs ✓ | installed | **YES (Xwayland)** | `imv` wrapper auto-starts rootful Xwayland and execs `imv-x11`; native Wayland EGL still blocked |
+| mpv 0.36.0+ios2 | repo/debs ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
 | zathura 0.5.12 | out/ ✓ | installed | **YES** | GTK3 Wayland + PDF/poppler content render verified |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
 | gnome-calculator 46.2 | in repo/debs | installed | (GTK4, works) | — |
@@ -156,12 +156,11 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 - **fuzzel pinned <1.13** — 1.13+ needs pixman ≥0.46; the volume ships 0.40 (shared with
   foot/imv, don't bump).
 - **repo/debs is gitignored** — debs deploy from the working tree at publish; only
-  depiction `repo/meta/*.json` are committed. Publish (`bin/publish-repo.sh` →
+  generated repo metadata/depictions are committed. Publish (`bin/publish-repo.sh` →
   `make-repo.py` → `vercel --prod`) is **Max-gated**; it does NOT stamp minos, so debs
-  must be pre-stamped (`tools/stamp-minos.py`). As of the 2026-07-05 audit,
-  `repo/debs` already has angle `+es3-3`, GTK3 `+ios1`, dunst `+ios2`, hitori
-  `+ios1`, zathura, grim, slurp, wl-clipboard, and recent `iosc` builds. The app-wave
-  candidates still staged only in `linux-build/out` are:
+  must be pre-stamped (`tools/stamp-minos.py`). As of 2026-07-06, the verified
+  app-wave candidates have been copied to `repo/debs`, production-published, and
+  observed from the iPad through an isolated `repo.maxleiter.com` apt cache:
   `foot_1.27.0+ios3_iphoneos-arm64.deb`,
   `fuzzel_1.12.0+ios1_iphoneos-arm64.deb`,
   `imv_5.0.1+ios3_iphoneos-arm64.deb`,
@@ -197,8 +196,8 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 - [ ] Port/fix imv's native Wayland renderer for iOS (desktop EGL/OpenGL path
   currently aborts; Xwayland fallback works).
-- [ ] Publish (Max-gated): copy the missing app-wave candidates listed above into
-  `repo/debs`, run make-repo, audit, and deploy.
+- [x] Publish (Max-gated): app-wave candidates are in production `repo.maxleiter.com`;
+  iPad-side isolated apt policy shows the expected production candidates.
 
 ## How to verify on-device
 
