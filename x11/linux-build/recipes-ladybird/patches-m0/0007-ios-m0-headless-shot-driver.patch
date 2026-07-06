@@ -1,0 +1,55 @@
+Subject: [PATCH] ios-m0: add headless-shot driver
+
+Add the minimal M0 executable that wires WebView::Application's existing
+headless screenshot flow into a packageable iOS binary.
+--- a/Services/CMakeLists.txt
++++ b/Services/CMakeLists.txt
+@@ -8,3 +8,4 @@ if (NOT IOS)
+     add_subdirectory(Compositor)
+     add_subdirectory(WebDriver)
+ endif()
++add_subdirectory(HeadlessShot)
+--- /dev/null
++++ b/Services/HeadlessShot/CMakeLists.txt
+@@ -0,0 +1,12 @@
++# M0 headless PNG driver. Mirrors test-web's link set (minus the test-only libs). It depends on the
++# helper processes so they build alongside. The resource-copy target (ladybird_build_resource_files)
++# lives in UI/, which is skipped on iOS (patch 6) -> guard the dependency; the driver packaging step
++# stages resources straight from Base/res into share/Lagom.
++add_executable(headless-shot main.cpp)
++if (TARGET ladybird_build_resource_files)
++    add_dependencies(headless-shot ladybird_build_resource_files)
++endif()
++add_dependencies(headless-shot ${ladybird_helper_processes})
++target_link_libraries(headless-shot PRIVATE
++    AK LibCore LibFileSystem LibGfx LibImageDecoders LibImageDecoderClient
++    LibIPC LibJS LibMain LibRequests LibURL LibWeb LibWebView)
+--- /dev/null
++++ b/Services/HeadlessShot/main.cpp
+@@ -0,0 +1,26 @@
++/*
++ * Ladybird-on-iOS M0 headless driver.
++ *
++ * WebView::Application already implements the entire headless screenshot flow in execute()
++ * (HeadlessMode::Screenshot -> load URL -> take_screenshot -> PNG -> quit). This is the minimal
++ * binary that wires it up. Invoke on device as:
++ *   headless-shot --headless screenshot --screenshot-path /var/jb/tmp/out.png https://example.com
++ */
++#include <LibMain/Main.h>
++#include <LibWebView/Application.h>
++
++namespace HeadlessShot {
++
++class Application final : public WebView::Application {
++    WEB_VIEW_APPLICATION(Application)
++public:
++    Application() = default;
++};
++
++}
++
++ErrorOr<int> ladybird_main(Main::Arguments arguments)
++{
++    auto app = TRY(HeadlessShot::Application::create(arguments));
++    return app->execute();
++}

@@ -4,3 +4,4 @@
 0004-ios-m0-darwin-source-gates.patch
 0005-ios-m0-libjs-host-asm-tools.patch
 0006-ios-m0-webview-compositor-gates.patch
+0007-ios-m0-headless-shot-driver.patch
