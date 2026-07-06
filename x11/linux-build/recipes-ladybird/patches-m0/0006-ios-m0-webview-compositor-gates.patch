@@ -1,0 +1,15 @@
+Subject: [PATCH] ios-m0: gate WebView compositor launch/connect
+
+The default M0 build does not launch the Compositor helper. Gate the WebView
+launch and WebContent connection calls for iOS; app mode can still reverse
+these exact gates before configuring the interactive UIKit build.
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -550,0 +551 @@
++#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to (patch 13/16)
+@@ -551,0 +553 @@
++#endif
+@@ -866,0 +869 @@
++#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper
+@@ -867,0 +871 @@
++#endif

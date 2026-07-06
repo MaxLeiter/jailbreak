@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/plasma-desktop-dev.png",
+  "headerImage": "https://repo.maxleiter.com/banners/kf6-pulseaudio-qt.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for Plasma Desktop on Xios"
+          "markdown": "Qt wrapper library for PulseAudio used by KDE Plasma"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios4"
+          "text": "1.5.0+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "836 B"
+          "text": "82.4 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Development"
+          "text": "libs"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "plasma-desktop-dev"
+          "text": "kf6-pulseaudio-qt"
         }
       ]
     }

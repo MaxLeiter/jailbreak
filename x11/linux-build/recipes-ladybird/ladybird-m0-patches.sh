@@ -56,34 +56,6 @@ apply_quilt_series() {
 apply_quilt_series "$SCRIPT_DIR/patches-m0"
 
 # ---------------------------------------------------------------------------------------------
-# 13) launch_services() spawns the Compositor helper unconditionally, but Compositor is deferred
-#     for M0 (patches 7/8, GPU/ANGLE). Gate that one spawn off for iOS so the headless path uses
-#     RequestServer + ImageDecoder + WebContent only (the async_take_document_screenshot raster path
-#     does not need the GPU present helper). Other launch_compositor_process() call sites (restart
-#     handlers) are unreachable when it is never launched.
-# ---------------------------------------------------------------------------------------------
-f=Libraries/LibWebView/Application.cpp
-if grep -q 'TRY(launch_compositor_process());' "$f" && ! grep -q 'iOS M0: Compositor deferred' "$f"; then
-  python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-s=s.replace(
-"""    TRY(launch_request_server());
-    TRY(launch_image_decoder_server());
-    TRY(launch_compositor_process());""",
-"""    TRY(launch_request_server());
-    TRY(launch_image_decoder_server());
-#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper
-    TRY(launch_compositor_process());
-#endif""")
-open(p,"w").write(s)
-print("  [m0-patch] Application.cpp: launch_compositor_process gated off for iOS")
-PY
-else
-  say "launch_services compositor gate: already patched"
-fi
-
-# ---------------------------------------------------------------------------------------------
 # 14) Headless driver. Upstream removed the standalone headless binary; WebView::Application already
 #     carries the full headless machinery (`--headless screenshot --screenshot-path P url` ->
 #     Application::execute() creates a HeadlessWebView, loads the URL, PNG-dumps via
@@ -309,31 +281,6 @@ print("  [m0-patch] LocalNavigable.cpp: iOS render_screenshot CPU-rasters in-pro
 PY
 else
   say "render_screenshot iOS CPU raster: already patched"
-fi
-
-# ---------------------------------------------------------------------------------------------
-# 17) Compositor-gate completion (companion to patch 13). create_web_content_client() calls
-#     connect_web_content_to_compositor(*client), which returns "Compositor process is not available"
-#     when no Compositor was launched -> the TRY() propagates and client creation fails (the observed
-#     "Compositor not available" SIGTRAP). Gate that one call off for iOS; patch 16 makes the compositor
-#     connection unnecessary for the headless screenshot path.
-# ---------------------------------------------------------------------------------------------
-f=Libraries/LibWebView/Application.cpp
-if grep -q 'TRY(Application::the().connect_web_content_to_compositor(\*client));' "$f" && ! grep -q 'iOS M0: no compositor process to connect' "$f"; then
-  python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-old="    TRY(Application::the().connect_web_content_to_compositor(*client));"
-new="""#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to (patch 13/16)
-    TRY(Application::the().connect_web_content_to_compositor(*client));
-#endif"""
-assert old in s, "connect_web_content_to_compositor call not found (upstream drift?)"
-s=s.replace(old,new)
-open(p,"w").write(s)
-print("  [m0-patch] Application.cpp: connect_web_content_to_compositor gated off for iOS")
-PY
-else
-  say "connect_web_content_to_compositor gate: already patched"
 fi
 
 # =============================================================================================
