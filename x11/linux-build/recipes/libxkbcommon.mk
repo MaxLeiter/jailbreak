@@ -3,8 +3,9 @@ $(error Use the main Makefile)
 endif
 
 # libxkbcommon — keymap compilation for the compositor's wl_keyboard (xkb_keymap_new_*),
-# the Wayland analogue of the X server's XKB. Built minimal: no X11, no wayland helper
-# tool (the compositor links libxkbcommon directly), no docs/tools. xkbregistry IS enabled
+# the Wayland analogue of the X server's XKB. Built with the X11 helper library
+# (`libxkbcommon-x11`) for Xwayland-backed apps such as imv, but no wayland helper
+# tool, docs, or CLI tools. xkbregistry IS enabled
 # (adds only a libxml2 dep, already prebuilt in Procursus): this is the ONE canonical
 # libxkbcommon shared with gnome-track, whose Files (gnome-desktop-4 / GnomeXkbInfo) needs
 # libxkbregistry — Wayland is unaffected by the extra symbol. Keymap *data* comes from
@@ -19,7 +20,7 @@ endif
 
 SUBPROJECTS        += libxkbcommon
 LIBXKBCOMMON_VERSION := 1.7.0
-DEB_LIBXKBCOMMON_V ?= $(LIBXKBCOMMON_VERSION)+ios1
+DEB_LIBXKBCOMMON_V ?= $(LIBXKBCOMMON_VERSION)+ios2
 
 libxkbcommon-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xkbcommon.org/download/libxkbcommon-$(LIBXKBCOMMON_VERSION).tar.xz)
@@ -44,12 +45,12 @@ ifneq ($(wildcard $(BUILD_WORK)/libxkbcommon/.build_complete),)
 libxkbcommon:
 	@echo "Using previously built libxkbcommon."
 else
-libxkbcommon: libxkbcommon-setup libxml2
+libxkbcommon: libxkbcommon-setup libxml2 libxcb
 	cd $(BUILD_WORK)/libxkbcommon/build && meson \
 		--cross-file cross.txt \
 		-Denable-docs=false \
 		-Denable-wayland=false \
-		-Denable-x11=false \
+		-Denable-x11=true \
 		-Denable-xkbregistry=true \
 		-Denable-tools=false \
 		-Dxkb-config-root=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/X11/xkb \
@@ -68,13 +69,14 @@ libxkbcommon-package: libxkbcommon-stage
 
 	# libxkbcommon.mk Prep libxkbcommon0 (runtime dylibs: libxkbcommon + libxkbregistry)
 	cp -a $(BUILD_STAGE)/libxkbcommon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libxkbcommon.*.dylib \
+		$(BUILD_STAGE)/libxkbcommon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libxkbcommon-x11.*.dylib \
 		$(BUILD_STAGE)/libxkbcommon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libxkbregistry.*.dylib \
 		$(BUILD_DIST)/libxkbcommon0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# libxkbcommon.mk Prep libxkbcommon-dev (headers, .pc, unversioned symlinks)
 	cp -a $(BUILD_STAGE)/libxkbcommon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libxkbcommon-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
-	cp -a $(BUILD_STAGE)/libxkbcommon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libxkbcommon.*.dylib|libxkbregistry.*.dylib) \
+	cp -a $(BUILD_STAGE)/libxkbcommon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libxkbcommon.*.dylib|libxkbcommon-x11.*.dylib|libxkbregistry.*.dylib) \
 		$(BUILD_DIST)/libxkbcommon-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# libxkbcommon.mk Sign

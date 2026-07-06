@@ -2,8 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# imv.mk — imv, a Wayland/X11 image viewer (git.sr.ht/~exec64/imv). We build the WAYLAND window
-# backend only (EGL + wl_shm), with libpng + libjpeg-turbo image backends (the heavier optional
+# imv.mk — imv, a Wayland/X11 image viewer (git.sr.ht/~exec64/imv). We build both window
+# backends: Wayland is the native target, while X11 gives iOS a practical fallback through
+# Xwayland/glamor because imv's renderer is fixed-function desktop OpenGL. libpng +
+# libjpeg-turbo image backends are enabled (the heavier optional
 # ones — tiff/rsvg/heif/jxl/webp/nsgif/nsbmp — are left off). Text overlay is rendered with
 # pangocairo; the Unicode segmentation backend is libgrapheme (statically linked) instead of ICU.
 #
@@ -12,7 +14,7 @@ endif
 # (xdg-shell, pointer-gestures-v1) is generated at build time by the host wayland-scanner via
 # meson's unstable-wayland module, from the wayland-protocols data staged in build_base.
 #
-# DEPENDS (target): pango(cairo)/glib/cairo, wayland(+egl), egl/gl (mesa), libxkbcommon,
+# DEPENDS (target): pango(cairo)/glib/cairo, wayland(+egl), egl/gl (mesa), X11/xcb, libxkbcommon,
 # libpng, libjpeg-turbo, libgrapheme (build-only, static). inih is pulled via meson's wrap.
 
 SUBPROJECTS  += imv
@@ -48,7 +50,7 @@ ifneq ($(wildcard $(BUILD_WORK)/imv/.build_complete),)
 imv:
 	@echo "Using previously built imv."
 else
-imv: imv-setup pango wayland wayland-protocols libxkbcommon libpng16 libjpeg-turbo libgrapheme mesa
+imv: imv-setup pango wayland wayland-protocols libxkbcommon libx11 libxcb libpng16 libjpeg-turbo libgrapheme mesa
 	# find_protocol/scan_xml need the host wayland-scanner on PATH (from libwayland-bin) and a
 	# native pkg-config pointed at the version-matched scanner .pc (same trick as foot).
 	cd $(BUILD_WORK)/imv/build && \
@@ -56,7 +58,7 @@ imv: imv-setup pango wayland wayland-protocols libxkbcommon libpng16 libjpeg-tur
 		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \
 		--cross-file cross.txt \
 		--native-file native.txt \
-		-Dwindows=wayland \
+		-Dwindows=all \
 		-Dunicode=grapheme \
 		-Dtest=disabled \
 		-Dman=disabled \

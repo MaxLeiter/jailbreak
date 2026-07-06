@@ -36,6 +36,9 @@ echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/ 2>/dev/null || true
 
 echo "==> installing our control templates + compat headers into build_info/"
+if [ -d /work/recipes/build_info ] && compgen -G "/work/recipes/build_info/*" >/dev/null; then
+  cp -v /work/recipes/build_info/* build_info/ 2>/dev/null || true
+fi
 if [ -d /work/build_info ] && compgen -G "/work/build_info/*" >/dev/null; then
   cp -v /work/build_info/* build_info/ 2>/dev/null || true
 fi
@@ -290,6 +293,12 @@ for pat in libtllist libfcft foot imv fuzzel grim libgrapheme wayland-protocols 
            libharfbuzz libutf8proc libfontconfig libfreetype libpixman \
            libcairo libpango libfribidi libglib2.0 libpng libjpeg libturbojpeg; do
   find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+done
+for target in $TARGETS; do
+  pkg="${target%-package}"
+  [ "$pkg" != "$target" ] || continue
+  find ./build_dist/iphoneos-arm64-rootless/1900/"$pkg" \
+    -name '*_iphoneos-arm64.deb' -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo "==> done"

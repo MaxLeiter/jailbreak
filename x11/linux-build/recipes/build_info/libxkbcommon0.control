@@ -2,7 +2,7 @@ Package: libxkbcommon0
 Version: @DEB_LIBXKBCOMMON_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Depends: xkeyboard-config, libxml2
+Depends: xkeyboard-config, libxml2, libxcb1, libxcb-xkb1
 Section: Libraries
 Priority: optional
 Homepage: https://xkbcommon.org
@@ -10,4 +10,5 @@ Description: Library to handle keyboard descriptions (XKB)
  libxkbcommon is a keymap compiler and support library which processes a
  reduced subset of keymaps as defined by the XKB specification. Used by the
  Wayland compositor to compile keymaps for wl_keyboard. This package contains
- the shared library; keymap data comes from xkeyboard-config.
+ the shared libraries, including libxkbcommon-x11 for Xwayland-backed clients;
+ keymap data comes from xkeyboard-config.
