@@ -12,6 +12,7 @@
 #   BLOB_SKIP_EXISTING=0
 #   BLOB_PUBLIC_BASE_URL=https://<store>.public.blob.vercel-storage.com
 #   BLOB_HEAD_TIMEOUT=20
+#   BLOB_JOBS=8
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,6 +23,15 @@ CACHE_CONTROL_MAX_AGE="${BLOB_CACHE_CONTROL_MAX_AGE:-31536000}"
 PUBLIC_BASE_URL="${BLOB_PUBLIC_BASE_URL:-https://j7lqamqsi8q1vmg4.public.blob.vercel-storage.com}"
 SKIP_EXISTING="${BLOB_SKIP_EXISTING:-1}"
 HEAD_TIMEOUT="${BLOB_HEAD_TIMEOUT:-20}"
+JOBS="${BLOB_JOBS:-8}"
+
+case "$JOBS" in
+  ""|*[!0-9]*) echo "ERROR: BLOB_JOBS must be a positive integer" >&2; exit 1 ;;
+esac
+if [ "$JOBS" -lt 1 ]; then
+  echo "ERROR: BLOB_JOBS must be a positive integer" >&2
+  exit 1
+fi
 
 command -v vercel >/dev/null 2>&1 || {
   echo "ERROR: vercel CLI not found" >&2
@@ -69,15 +79,24 @@ blob_status() {
   curl -sSI --connect-timeout 5 --max-time "$HEAD_TIMEOUT" "$url" | tr -d '\r'
 }
 
-count=0
-uploaded=0
-would_upload=0
-skipped=0
-while IFS= read -r deb; do
+process_deb() {
+  local deb="$1"
+  local name pathname url headers status remote_size local_size upload_log rc
+  local upload_args=(
+    --access public
+    --cache-control-max-age "$CACHE_CONTROL_MAX_AGE"
+    --content-type application/x-debian-package
+    --no-color
+    --non-interactive
+  )
+
+  if [ -n "${BLOB_READ_WRITE_TOKEN:-}" ]; then
+    upload_args+=(--rw-token "$BLOB_READ_WRITE_TOKEN")
+  fi
+
   name="$(basename "$deb")"
   pathname="${PREFIX%/}/$name"
   url="${PUBLIC_BASE_URL%/}/$pathname"
-  count=$((count + 1))
 
   if [ "$SKIP_EXISTING" = "1" ]; then
     headers="$(blob_status "$url" || true)"
@@ -90,9 +109,9 @@ while IFS= read -r deb; do
         echo "       Public package filenames are immutable; build a new package version instead of overwriting." >&2
         exit 1
       fi
-      skipped=$((skipped + 1))
+      printf 'skipped\n' >> "$RESULTS"
       echo "==> skip existing $pathname"
-      continue
+      return 0
     fi
     if [ -n "$status" ] && [ "$status" != "404" ]; then
       echo "ERROR: unexpected Blob status for $pathname: HTTP $status" >&2
@@ -101,14 +120,53 @@ while IFS= read -r deb; do
   fi
 
   if [ "${BLOB_DRY_RUN:-0}" = "1" ]; then
-    would_upload=$((would_upload + 1))
+    printf 'would_upload\n' >> "$RESULTS"
     echo "DRY-RUN vercel blob put $deb --pathname $pathname"
-    continue
+    return 0
   fi
+
   echo "==> upload $name -> $pathname"
-  (cd "$VERCEL_CWD" && vercel blob put "$deb" --pathname "$pathname" "${UPLOAD_ARGS[@]}")
-  uploaded=$((uploaded + 1))
-done < <(find "$DEBS_DIR" -type f -name '*.deb' -print | sort)
+  upload_log="$(mktemp)"
+  if (cd "$VERCEL_CWD" && vercel blob put "$deb" --pathname "$pathname" "${upload_args[@]}") >"$upload_log" 2>&1; then
+    cat "$upload_log"
+    rm -f "$upload_log"
+    printf 'uploaded\n' >> "$RESULTS"
+  else
+    rc=$?
+    cat "$upload_log"
+    if grep -q "This blob already exists" "$upload_log"; then
+      rm -f "$upload_log"
+      printf 'skipped\n' >> "$RESULTS"
+      echo "==> skip existing $pathname (blob put reported existing)"
+      return 0
+    fi
+    rm -f "$upload_log"
+    exit "$rc"
+  fi
+}
+
+RESULTS="$(mktemp)"
+LIST="$(mktemp)"
+trap 'rm -f "$RESULTS" "$LIST"' EXIT
+
+find "$DEBS_DIR" -type f -name '*.deb' -print | sort > "$LIST"
+count="$(wc -l < "$LIST" | tr -d '[:space:]')"
+
+export VERCEL_CWD PREFIX CACHE_CONTROL_MAX_AGE PUBLIC_BASE_URL SKIP_EXISTING
+export HEAD_TIMEOUT RESULTS BLOB_DRY_RUN
+export -f blob_status process_deb
+
+echo "==> processing $count deb(s) with $JOBS upload job(s)"
+if [ "$count" -gt 0 ]; then
+  if ! xargs -n 1 -P "$JOBS" bash -c 'process_deb "$1"' _ < "$LIST"; then
+    echo "ERROR: one or more Blob upload jobs failed" >&2
+    exit 1
+  fi
+fi
+
+uploaded="$(grep -c '^uploaded$' "$RESULTS" 2>/dev/null || true)"
+would_upload="$(grep -c '^would_upload$' "$RESULTS" 2>/dev/null || true)"
+skipped="$(grep -c '^skipped$' "$RESULTS" 2>/dev/null || true)"
 
 if [ "${BLOB_DRY_RUN:-0}" = "1" ]; then
   echo "==> processed $count deb(s): would_upload=$would_upload skipped=$skipped"
