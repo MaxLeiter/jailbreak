@@ -83,3 +83,11 @@ Start the runtime capability registry in
 profiles, ties each one to an entitlement tier, records package/smoke
 expectations, and prints sourceable env blocks. Launchers can now move duplicated
 GTK/Qt/KDE/Xwayland env bundles into this shared registry one caller at a time.
+
+## Current Third Slice
+
+Make `iosc_iosurface` a versioned runtime contract. Protocol version 2 now sends
+a capabilities event (`bgra8888`, `origin_flags`, `mach_port_import`) on bind.
+The direct iosc and Mutter servers validate the same format/flag mask before
+importing client IOSurfaces, and the GPU smoke client binds v2 when available
+and checks the advertised bits.

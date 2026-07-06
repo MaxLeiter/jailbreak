@@ -17,8 +17,13 @@
     zowl_iosurface_v1 shape, adapted to our existing IOSurface plumbing.
   </description>
 
-  <interface name="iosc_iosurface" version="1">
-    <description summary="factory for IOSurface-backed wl_buffers"/>
+  <interface name="iosc_iosurface" version="2">
+    <description summary="factory for IOSurface-backed wl_buffers">
+      Version 1 supports create_buffer with BGRA8 IOSurfaces and the
+      flag_top_left presentation flag. Version 2 adds the capabilities event so
+      clients can verify the compositor-side IOSurface contract before choosing
+      this path over wl_shm or another backend.
+    </description>
 
     <enum name="error">
       <entry name="import_failed" value="0"
@@ -38,6 +43,19 @@
              summary="BGRA8 IOSurface rendered with GL-style bottom-left origin"/>
       <entry name="flag_top_left" value="0x80000000"
              summary="buffer contents are already in top-left presentation order"/>
+    </enum>
+
+    <enum name="capability" bitfield="true">
+      <description summary="supported IOSurface import capabilities">
+        These are stable feature bits for the current protocol major version.
+        Unknown bits must be ignored by clients.
+      </description>
+      <entry name="bgra8888" value="1"
+             summary="BGRA8 IOSurfaces are accepted"/>
+      <entry name="origin_flags" value="2"
+             summary="format presentation flags such as flag_top_left are honored"/>
+      <entry name="mach_port_import" value="4"
+             summary="mach_port_name is imported from the client's task"/>
     </enum>
 
     <request name="destroy" type="destructor">
@@ -62,5 +80,14 @@
       <arg name="height" type="int"/>
       <arg name="format" type="uint" enum="format" summary="IOSurface format and flags"/>
     </request>
+
+    <event name="capabilities" since="2">
+      <description summary="advertise compositor IOSurface support">
+        Sent once after binding version 2 or newer. The current required
+        capability set for accelerated clients is bgra8888, origin_flags, and
+        mach_port_import.
+      </description>
+      <arg name="capabilities" type="uint" enum="capability"/>
+    </event>
   </interface>
 </protocol>

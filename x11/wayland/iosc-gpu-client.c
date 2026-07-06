@@ -206,10 +206,22 @@ static int gpu_render(IOSurfaceRef surface)
 static struct wl_compositor *compositor;
 static struct xdg_wm_base   *wm_base;
 static struct iosc_iosurface *iosurface_factory;
+static uint32_t iosurface_capability_bits;
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial)
 { (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping = wm_base_ping };
+
+static void iosurface_capabilities(void *data, struct iosc_iosurface *factory,
+                                   uint32_t capabilities)
+{
+    (void)data; (void)factory;
+    iosurface_capability_bits = capabilities;
+    fprintf(stderr, "client: iosc_iosurface capabilities=0x%x\n", capabilities);
+}
+static const struct iosc_iosurface_listener iosurface_listener = {
+    .capabilities = iosurface_capabilities,
+};
 
 static void reg_global(void *data, struct wl_registry *reg, uint32_t name,
                        const char *iface, uint32_t version)
@@ -220,8 +232,13 @@ static void reg_global(void *data, struct wl_registry *reg, uint32_t name,
     else if (!strcmp(iface, "xdg_wm_base")) {
         wm_base = wl_registry_bind(reg, name, &xdg_wm_base_interface, 1);
         xdg_wm_base_add_listener(wm_base, &wm_base_listener, NULL);
-    } else if (!strcmp(iface, "iosc_iosurface"))
-        iosurface_factory = wl_registry_bind(reg, name, &iosc_iosurface_interface, 1);
+    } else if (!strcmp(iface, "iosc_iosurface")) {
+        uint32_t bind_version = version < 2 ? version : 2;
+        iosurface_factory = wl_registry_bind(reg, name, &iosc_iosurface_interface,
+                                             bind_version);
+        if (bind_version >= 2)
+            iosc_iosurface_add_listener(iosurface_factory, &iosurface_listener, NULL);
+    }
     fprintf(stderr, "client: global %s v%u\n", iface, version);
 }
 static void reg_global_remove(void *d, struct wl_registry *r, uint32_t n){ (void)d;(void)r;(void)n; }
@@ -268,6 +285,17 @@ int main(void)
         fprintf(stderr, "client: missing globals (compositor=%p wm_base=%p iosc_iosurface=%p)\n",
                 (void*)compositor, (void*)wm_base, (void*)iosurface_factory);
         return 1;
+    }
+    if (iosurface_capability_bits) {
+        uint32_t required = IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
+                            IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
+                            IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT;
+        if ((iosurface_capability_bits & required) != required) {
+            fprintf(stderr, "client: iosc_iosurface missing required capabilities "
+                    "(got=0x%x required=0x%x)\n",
+                    iosurface_capability_bits, required);
+            return 1;
+        }
     }
 
     gpu_buffer = iosc_iosurface_create_buffer(iosurface_factory, (uint32_t)port, W, H,

@@ -12,6 +12,10 @@
 enum {
     IOSC_IOSURFACE_FORMAT_MASK = 0x0000ffffu,
     IOSC_IOSURFACE_KNOWN_FLAGS = IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT,
+    IOSC_IOSURFACE_SUPPORTED_CAPABILITIES =
+        IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
+        IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
+        IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT,
 };
 
 /* A wl_buffer backed by a client IOSurface imported over the iosc_iosurface
@@ -145,5 +149,7 @@ void iosc_iosurface_bind(struct wl_client *client, void *data,
                                                version, id);
     if (!r) { wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(r, &iosurface_factory_impl, NULL, NULL);
+    if (wl_resource_get_version(r) >= 2)
+        iosc_iosurface_send_capabilities(r, IOSC_IOSURFACE_SUPPORTED_CAPABILITIES);
     fprintf(stderr, "iosc: client bound iosc_iosurface v%u\n", version);
 }

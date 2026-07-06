@@ -45,6 +45,16 @@
 extern void glBindTexture (unsigned int target, unsigned int texture);
 extern void glGetIntegerv (unsigned int pname, int *params);
 
+enum
+{
+  IOSC_IOSURFACE_FORMAT_MASK = 0x0000ffffu,
+  IOSC_IOSURFACE_KNOWN_FLAGS = IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT,
+  IOSC_IOSURFACE_SUPPORTED_CAPABILITIES =
+    IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
+    IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
+    IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT,
+};
+
 struct _MetaWaylandIosurfaceBuffer
 {
   GObject parent;
@@ -269,9 +279,19 @@ iosurface_create_buffer (struct wl_client   *client,
   int w = width;
   int h = height;
   void *iosurface;
+  uint32_t layout = format & IOSC_IOSURFACE_FORMAT_MASK;
+  uint32_t flags = format & ~IOSC_IOSURFACE_FORMAT_MASK;
 
-  /* pid comes from the Wayland socket peer credentials, not the client (a client cannot
-   * forge which task the compositor reaches into). format is advisory (0 = BGRA8). */
+  if (layout != IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN ||
+      (flags & ~IOSC_IOSURFACE_KNOWN_FLAGS) != 0)
+    {
+      wl_resource_post_error (resource, IOSC_IOSURFACE_ERROR_UNSUPPORTED_FORMAT,
+                              "unsupported IOSurface format/flags 0x%x", format);
+      return;
+    }
+
+  /* pid comes from the Wayland socket peer credentials, not the client; a client
+   * cannot forge which task the compositor reaches into. */
   wl_client_get_credentials (client, &pid, NULL, NULL);
   iosurface = xios_import_client_iosurface ((int) pid, mach_port_name, &w, &h);
 
@@ -326,11 +346,13 @@ iosurface_bind (struct wl_client *client,
     }
 
   wl_resource_set_implementation (resource, &iosurface_impl, compositor, NULL);
+  if (wl_resource_get_version (resource) >= 2)
+    iosc_iosurface_send_capabilities (resource, IOSC_IOSURFACE_SUPPORTED_CAPABILITIES);
 }
 
 void
 meta_wayland_iosurface_init (MetaWaylandCompositor *compositor)
 {
   wl_global_create (compositor->wayland_display, &iosc_iosurface_interface,
-                    1, compositor, iosurface_bind);
+                    2, compositor, iosurface_bind);
 }
