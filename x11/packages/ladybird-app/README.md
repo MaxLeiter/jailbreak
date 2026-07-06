@@ -139,8 +139,10 @@ expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBI
 **User flow:** install one deb in Sileo → Ladybird icon on the home screen → tap → browse.
 
 ## Still deferred
-- WebGL/GPU runtime validation beyond first paint. `LB_APP_GPU=1` now links real EGL/GLES and
-  removes the CPU `--force-cpu-painting` flag, but this is still an internal probe path.
+- Public-release polish for the GPU path. `LB_APP_GPU=1` now links real ANGLE EGL/GLES, removes
+  the CPU `--force-cpu-painting` flag, and has on-device WebGL smoke evidence under
+  `artifacts/device-runs/ladybird-webgl-screenshot-20260706-125805/`. The remaining work is
+  broader page coverage, not first-light GPU enablement.
 - Non-jailbroken/App Store builds. The current app relies on rootless `/var/jb`, fakesigned
   dylibs, helper spawning, and private IOKit entitlements.
 

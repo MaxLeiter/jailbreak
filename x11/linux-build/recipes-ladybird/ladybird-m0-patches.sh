@@ -84,6 +84,11 @@ patch_semantically_applied() {
         grep -q 'framebuffer before check' Services/Compositor/OpenGLContext.cpp &&
         grep -q 'AK_OS_MACOS) || defined(AK_OS_IOS)' Services/Compositor/OpenGLContext.h
       ;;
+    ios-app-webgl-release-cleanup.patch)
+      grep -q 'LADYBIRD_WEBGL_TRACE' Services/Compositor/OpenGLContext.cpp &&
+        grep -q 'ladybird-webgl-trace' Services/Compositor/CanvasHost.cpp &&
+        grep -q 'leaving WebGL context without a drawing buffer' Services/Compositor/OpenGLContext.cpp
+      ;;
     *)
       return 1
       ;;
@@ -153,6 +158,15 @@ if [ "${LB_APP_BUILD:-0}" = "1" ]; then
       Services/Compositor/OpenGLContext.cpp \
       Services/Compositor/OpenGLContext.h
     say "reset stale partial iOS WebGL patch before app series"
+  fi
+  if [ -d .git ] &&
+     grep -q 'LADYBIRD_WEBGL_TRACE' Services/Compositor/OpenGLContext.cpp 2>/dev/null &&
+     ! grep -q 'leaving WebGL context without a drawing buffer' Services/Compositor/OpenGLContext.cpp 2>/dev/null; then
+    git checkout -- \
+      Services/Compositor/CanvasHost.cpp \
+      Services/Compositor/OpenGLContext.cpp \
+      Services/Compositor/OpenGLContext.h
+    say "reset stale partial iOS WebGL cleanup patch before app series"
   fi
 
   # App-only engine patch series for compositor/UI wiring and IOSurface/Mach transport.

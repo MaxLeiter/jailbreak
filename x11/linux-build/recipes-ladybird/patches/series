@@ -6,3 +6,4 @@ ios-app-input-caret-pageclient-access.patch
 ios-app-real-angle-pkgconfig.patch
 ios-app-angle-compat.patch
 ios-app-webgl-ios-enable.patch
+ios-app-webgl-release-cleanup.patch
