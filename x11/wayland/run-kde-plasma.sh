@@ -199,6 +199,15 @@ case "$KDE_PLASMA_FLAVOR" in
     ;;
 esac
 
+IOSC_FULLSCREEN_TOPLEVELS="${IOSC_FULLSCREEN_TOPLEVELS-}"
+if [ "$KDE_PLASMA_FLAVOR" = mobile ] && [ -z "$IOSC_FULLSCREEN_TOPLEVELS" ]; then
+  IOSC_FULLSCREEN_TOPLEVELS=1
+fi
+IOSC_NO_OUTPUT_TRANSFORM="${IOSC_NO_OUTPUT_TRANSFORM-}"
+if [ "$KDE_PLASMA_FLAVOR" = mobile ] && [ -z "$IOSC_NO_OUTPUT_TRANSFORM" ]; then
+  IOSC_NO_OUTPUT_TRANSFORM=1
+fi
+
 IOSC_LOGICAL_W="$(size_w "$IOSC_LOGICAL")"
 IOSC_LOGICAL_H="$(size_h "$IOSC_LOGICAL")"
 
@@ -459,6 +468,124 @@ EOF
   [ "$seen" = 1 ] || true
 }
 
+kde_mobile_folio_favourites_value() {
+  local favorites oldifs id out="" sep=""
+  favorites="$(kde_desktop_favorites_value)"
+  oldifs="$IFS"
+  IFS=,
+  set -- $favorites
+  IFS="$oldifs"
+  for id in "$@"; do
+    [ -n "$id" ] || continue
+    out="$out$sep{\"storageId\":\"$id\",\"type\":\"application\"}"
+    sep=","
+  done
+  printf '[%s]\n' "$out"
+}
+
+kde_mobile_folio_pages_value() {
+  local favorites oldifs id out="" sep="" col=0
+  favorites="$(kde_desktop_favorites_value)"
+  oldifs="$IFS"
+  IFS=,
+  set -- $favorites
+  IFS="$oldifs"
+  for id in "$@"; do
+    [ -n "$id" ] || continue
+    out="$out$sep{\"column\":$col,\"row\":0,\"storageId\":\"$id\",\"type\":\"application\"}"
+    sep=","
+    col=$((col + 1))
+  done
+  printf '[[%s]]\n' "$out"
+}
+
+kde_mobile_folio_has_pages() {
+  local file="$1" id="$2"
+  awk -v id="$id" '
+    $0 == "[Containments][" id "]" { in_group = 1; next }
+    /^\[/ { in_group = 0 }
+    in_group && /^Pages=/ {
+      value = substr($0, 7)
+      gsub(/[[:space:]]/, "", value)
+      if (value != "" && value != "[]" && value != "[[]]") found = 1
+    }
+    END { exit found ? 0 : 1 }
+  ' "$file"
+}
+
+kde_seed_mobile_folio_config() {
+  [ "$KDE_PLASMA_FLAVOR" = mobile ] || return 0
+  [ "${XIOS_KDE_SEED_MOBILE_FOLIO:-1}" != 0 ] || return 0
+  local file id tmp favourites pages
+  favourites="$(kde_mobile_folio_favourites_value)"
+  pages="$(kde_mobile_folio_pages_value)"
+
+  for file in \
+    "$XS_VAR/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc" \
+    "/var/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc"; do
+    [ -f "$file" ] || continue
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      kde_mobile_folio_has_pages "$file" "$id" && continue
+      kde_backup_user_config "$file"
+      tmp="$file.xios-folio.$$"
+      if awk -v id="$id" -v favourites="$favourites" -v pages="$pages" '
+        function seed() {
+          print "Favourites=" favourites
+          print "Pages=" pages
+          print "homeScreenRows=5"
+          print "homeScreenColumns=4"
+          print "delegateIconSize=64"
+          print "showPagesAppLabels=true"
+          print "showFavoritesAppLabels=true"
+          print "showFavoritesBarBackground=true"
+          print "showWallpaperBlur=false"
+          inserted = 1
+        }
+        $0 == "[Containments][" id "]" {
+          print
+          in_group = 1
+          next
+        }
+        in_group && /^\[/ {
+          if (!inserted) {
+            seed()
+          }
+          in_group = 0
+          print
+          next
+        }
+        in_group && /^(Favourites|Pages|homeScreenRows|homeScreenColumns|delegateIconSize|showPagesAppLabels|showFavoritesAppLabels|showFavoritesBarBackground|showWallpaperBlur)=/ {
+          next
+        }
+        { print }
+        END {
+          if (in_group && !inserted) {
+            seed()
+          }
+        }
+      ' "$file" >"$tmp"; then
+        mv "$tmp" "$file"
+        echo "   seeded Mobile Folio app grid: $file containment $id"
+      else
+        rm -f "$tmp" 2>/dev/null || true
+      fi
+    done <<EOF
+$(awk '
+  /^\[Containments\]\[[0-9][0-9]*\]$/ {
+    id = $0
+    sub(/^\[Containments\]\[/, "", id)
+    sub(/\]$/, "", id)
+    next
+  }
+  /^plugin=org\.kde\.plasma\.mobile\.homescreen\.folio$/ && id != "" {
+    print id
+  }
+' "$file")
+EOF
+  done
+}
+
 if [ "${XIOS_KDE_APP_SUPPORT_BRIDGE:-1}" != 0 ]; then
   echo "==> bridge Qt/KPackage Darwin app-data paths to $XS_PREFIX/share"
   for name in plasma icons color-schemes applications metainfo mime kservices6 knotifications6 kglobalaccel kpackage dbus-1 krunner qlogging-categories6; do
@@ -467,6 +594,7 @@ if [ "${XIOS_KDE_APP_SUPPORT_BRIDGE:-1}" != 0 ]; then
   kde_config_link menus "$(jb_path /etc/xdg/menus)"
 fi
 kde_seed_mobile_wallpaper_config
+kde_seed_mobile_folio_config
 kde_seed_desktop_style_config
 kde_migrate_desktop_user_config
 
@@ -505,6 +633,8 @@ echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   IOSC_FRAME_PULSE="${IOSC_FRAME_PULSE:-1}" \
   IOSC_IGNORE_ACTIVE_SESSION=1 \
+  IOSC_FULLSCREEN_TOPLEVELS="$IOSC_FULLSCREEN_TOPLEVELS" \
+  IOSC_NO_OUTPUT_TRANSFORM="$IOSC_NO_OUTPUT_TRANSFORM" \
   "$IOSC_BIN" -logical "$IOSC_LOGICAL" -s "$WAYLAND_DISPLAY" \
     -ddx-sock "$IOSC_DDX_SOCK" -json "$XIOS_JSON_PATH" \
     -input-sock "$IOSC_INPUT_SOCK" -clipboard-sock "$IOSC_CLIPBOARD_SOCK" \
@@ -523,6 +653,34 @@ if ! kill -0 "$ICPID" 2>/dev/null; then
 fi
 [ -S "$WSOCK" ] || { echo "!! iosc did not create $WSOCK"; exit 1; }
 
+if chown mobile:mobile "$IOSC_DDX_SOCK" 2>/dev/null || chown 501:501 "$IOSC_DDX_SOCK" 2>/dev/null; then
+  chmod 0660 "$IOSC_DDX_SOCK" 2>/dev/null
+else
+  chmod 0600 "$IOSC_DDX_SOCK" 2>/dev/null
+  echo "!! could not hand $IOSC_DDX_SOCK to mobile; keeping it owner-only"
+fi
+
+if [ "$KDE_PLASMA_FLAVOR" = mobile ]; then
+  before_w="$(xios_json_dim width)"
+  before_h="$(xios_json_dim height)"
+  if [ -z "${XIOS_SESSION_SLOT:-}" ] || [ "${XIOS_SLOT_FOREGROUND:-0}" = 1 ]; then
+    echo "==> foreground Xios app before KWin so Mobile sees the rotated output"
+    uiopen -b com.max.xios 2>/dev/null || uiopen com.max.xios 2>/dev/null || true
+    for _ in $(seq 1 40); do
+      cur_w="$(xios_json_dim width)"
+      cur_h="$(xios_json_dim height)"
+      [ -n "$cur_w" ] && [ -n "$cur_h" ] || { sleep 0.25; continue; }
+      if [ "$before_w" != "$cur_w" ] || [ "$before_h" != "$cur_h" ] || [ "$cur_h" -gt "$cur_w" ]; then
+        break
+      fi
+      sleep 0.25
+    done
+  else
+    echo "==> slot $XIOS_SESSION_SLOT: skipping Xios foreground before KWin"
+  fi
+  echo "   iosc output before KWin: $(cat "$XIOS_JSON_PATH" 2>/dev/null)"
+fi
+
 if [ -z "$KDE_KWIN_SIZE_WAS_SET" ]; then
   case "$KDE_PLASMA_FLAVOR" in
     mobile) KDE_KWIN_SIZE="$(mobile_kwin_size_from_logical)" ;;
@@ -531,13 +689,6 @@ if [ -z "$KDE_KWIN_SIZE_WAS_SET" ]; then
 fi
 KWIN_W="${KDE_KWIN_SIZE%x*}"
 KWIN_H="${KDE_KWIN_SIZE#*x}"
-
-if chown mobile:mobile "$IOSC_DDX_SOCK" 2>/dev/null || chown 501:501 "$IOSC_DDX_SOCK" 2>/dev/null; then
-  chmod 0660 "$IOSC_DDX_SOCK" 2>/dev/null
-else
-  chmod 0600 "$IOSC_DDX_SOCK" 2>/dev/null
-  echo "!! could not hand $IOSC_DDX_SOCK to mobile; keeping it owner-only"
-fi
 
 echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $KDE_LOG"
 echo "   KWin logical size: ${KWIN_W}x${KWIN_H}"
@@ -699,8 +850,12 @@ if [ ! -S "$KWIN_SOCK_PATH" ]; then
   exit 1
 fi
 
-echo "==> foreground Xios app (shows the iosc output containing KWin/Plasma)"
-uiopen -b com.max.xios 2>/dev/null || uiopen com.max.xios 2>/dev/null || true
+if [ -z "${XIOS_SESSION_SLOT:-}" ] || [ "${XIOS_SLOT_FOREGROUND:-0}" = 1 ]; then
+  echo "==> foreground Xios app (shows the iosc output containing KWin/Plasma)"
+  uiopen -b com.max.xios 2>/dev/null || uiopen com.max.xios 2>/dev/null || true
+else
+  echo "==> slot $XIOS_SESSION_SLOT: leaving Xios foreground unchanged"
+fi
 
 for _ in $(seq 1 60); do
   kde_process_running "plasmashell" && break

@@ -80,8 +80,15 @@ def ar_members(data):
 def control_dict(deb_bytes):
     m = ar_members(deb_bytes)
     cn = next(n for n in m if n.startswith("control.tar"))
+    data = m[cn]
     mode = {"control.tar.gz": "r:gz", "control.tar.xz": "r:xz", "control.tar": "r:"}.get(cn, "r:*")
-    with tarfile.open(fileobj=io.BytesIO(m[cn]), mode=mode) as tf:
+    if cn == "control.tar.zst":
+        zstd = shutil.which("zstd")
+        if not zstd:
+            raise RuntimeError("control.tar.zst requires zstd in PATH")
+        data = subprocess.check_output([zstd, "-qdc"], input=data)
+        mode = "r:"
+    with tarfile.open(fileobj=io.BytesIO(data), mode=mode) as tf:
         mem = next(x for x in tf.getmembers() if x.name.lstrip("./") == "control")
         text = tf.extractfile(mem).read().decode("utf-8")
     d, order = {}, []
@@ -1018,7 +1025,7 @@ def main():
         if os.path.exists(ico):
             shutil.copyfile(ico, os.path.join(REPO, "favicon.ico"))
 
-    pkgs, stanzas, featured = [], [], []
+    pkgs, stanzas, featured_by_pid = [], [], {}
     for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
         if not fn.endswith(".deb"):
             continue
@@ -1059,8 +1066,8 @@ def main():
         if "Homepage" not in ctrl:
             lines.append(f"Homepage: {meta.get('homepage', BASE_URL)}")
         stanzas.append("\n".join(lines))
-        featured.append({"title": ctrl.get("Name", pid), "package": pid,
-                         "url": f"{BASE_URL}/banners/{pid}.png"})
+        featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
+                                "url": f"{BASE_URL}/banners/{pid}.png"}
 
     packages = "\n\n".join(stanzas) + "\n"
     open(os.path.join(REPO, "Packages"), "w").write(packages)
@@ -1070,7 +1077,7 @@ def main():
     # featured carousel
     with open(os.path.join(REPO, "sileo-featured.json"), "w") as f:
         json.dump({"class": "FeaturedBannersView", "itemSize": "{263, 148}",
-                   "itemCornerRadius": 8, "banners": featured}, f, indent=2)
+                   "itemCornerRadius": 8, "banners": list(featured_by_pid.values())}, f, indent=2)
 
     # Release (+ index hashes)
     def h(name):

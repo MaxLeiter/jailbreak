@@ -269,51 +269,6 @@
       "url": "https://repo.maxleiter.com/banners/iosc.png"
     },
     {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
-    },
-    {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
-    },
-    {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
-    },
-    {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
-    },
-    {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
-    },
-    {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
-    },
-    {
-      "title": "iosc (Wayland compositor)",
-      "package": "iosc",
-      "url": "https://repo.maxleiter.com/banners/iosc.png"
-    },
-    {
-      "title": "iosc desktop shell",
-      "package": "iosc-shell",
-      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
-    },
-    {
-      "title": "iosc desktop shell",
-      "package": "iosc-shell",
-      "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
-    },
-    {
       "title": "iosc desktop shell",
       "package": "iosc-shell",
       "url": "https://repo.maxleiter.com/banners/iosc-shell.png"
@@ -624,16 +579,6 @@
       "url": "https://repo.maxleiter.com/banners/kf6-newstuff.png"
     },
     {
-      "title": "kf6-newstuff",
-      "package": "kf6-newstuff",
-      "url": "https://repo.maxleiter.com/banners/kf6-newstuff.png"
-    },
-    {
-      "title": "kf6-newstuff-dev",
-      "package": "kf6-newstuff-dev",
-      "url": "https://repo.maxleiter.com/banners/kf6-newstuff-dev.png"
-    },
-    {
       "title": "kf6-newstuff-dev",
       "package": "kf6-newstuff-dev",
       "url": "https://repo.maxleiter.com/banners/kf6-newstuff-dev.png"
@@ -862,11 +807,6 @@
       "title": "kwayland-dev",
       "package": "kwayland-dev",
       "url": "https://repo.maxleiter.com/banners/kwayland-dev.png"
-    },
-    {
-      "title": "kwrite",
-      "package": "kwrite",
-      "url": "https://repo.maxleiter.com/banners/kwrite.png"
     },
     {
       "title": "kwrite",
@@ -1122,11 +1062,6 @@
       "title": "libexempi8",
       "package": "libexempi8",
       "url": "https://repo.maxleiter.com/banners/libexempi8.png"
-    },
-    {
-      "title": "libexiv2-28",
-      "package": "libexiv2-28",
-      "url": "https://repo.maxleiter.com/banners/libexiv2-28.png"
     },
     {
       "title": "libexiv2-28",
@@ -1689,16 +1624,6 @@
       "url": "https://repo.maxleiter.com/banners/libpulse-dev.png"
     },
     {
-      "title": "libpulse-dev",
-      "package": "libpulse-dev",
-      "url": "https://repo.maxleiter.com/banners/libpulse-dev.png"
-    },
-    {
-      "title": "libpulse0",
-      "package": "libpulse0",
-      "url": "https://repo.maxleiter.com/banners/libpulse0.png"
-    },
-    {
       "title": "libpulse0",
       "package": "libpulse0",
       "url": "https://repo.maxleiter.com/banners/libpulse0.png"
@@ -1747,16 +1672,6 @@
       "title": "libstartup-notification-dev",
       "package": "libstartup-notification-dev",
       "url": "https://repo.maxleiter.com/banners/libstartup-notification-dev.png"
-    },
-    {
-      "title": "libstartup-notification-dev",
-      "package": "libstartup-notification-dev",
-      "url": "https://repo.maxleiter.com/banners/libstartup-notification-dev.png"
-    },
-    {
-      "title": "libstartup-notification0",
-      "package": "libstartup-notification0",
-      "url": "https://repo.maxleiter.com/banners/libstartup-notification0.png"
     },
     {
       "title": "libstartup-notification0",
@@ -2064,16 +1979,6 @@
       "url": "https://repo.maxleiter.com/banners/okular.png"
     },
     {
-      "title": "okular",
-      "package": "okular",
-      "url": "https://repo.maxleiter.com/banners/okular.png"
-    },
-    {
-      "title": "okular",
-      "package": "okular",
-      "url": "https://repo.maxleiter.com/banners/okular.png"
-    },
-    {
       "title": "OpenCode",
       "package": "opencode",
       "url": "https://repo.maxleiter.com/banners/opencode.png"
@@ -2107,16 +2012,6 @@
       "title": "plasma-desktop",
       "package": "plasma-desktop",
       "url": "https://repo.maxleiter.com/banners/plasma-desktop.png"
-    },
-    {
-      "title": "plasma-desktop",
-      "package": "plasma-desktop",
-      "url": "https://repo.maxleiter.com/banners/plasma-desktop.png"
-    },
-    {
-      "title": "plasma-desktop-dev",
-      "package": "plasma-desktop-dev",
-      "url": "https://repo.maxleiter.com/banners/plasma-desktop-dev.png"
     },
     {
       "title": "plasma-desktop-dev",
@@ -2159,36 +2054,6 @@
       "url": "https://repo.maxleiter.com/banners/plasma-workspace.png"
     },
     {
-      "title": "plasma-workspace",
-      "package": "plasma-workspace",
-      "url": "https://repo.maxleiter.com/banners/plasma-workspace.png"
-    },
-    {
-      "title": "plasma-workspace",
-      "package": "plasma-workspace",
-      "url": "https://repo.maxleiter.com/banners/plasma-workspace.png"
-    },
-    {
-      "title": "plasma-workspace",
-      "package": "plasma-workspace",
-      "url": "https://repo.maxleiter.com/banners/plasma-workspace.png"
-    },
-    {
-      "title": "plasma-workspace-dev",
-      "package": "plasma-workspace-dev",
-      "url": "https://repo.maxleiter.com/banners/plasma-workspace-dev.png"
-    },
-    {
-      "title": "plasma-workspace-dev",
-      "package": "plasma-workspace-dev",
-      "url": "https://repo.maxleiter.com/banners/plasma-workspace-dev.png"
-    },
-    {
-      "title": "plasma-workspace-dev",
-      "package": "plasma-workspace-dev",
-      "url": "https://repo.maxleiter.com/banners/plasma-workspace-dev.png"
-    },
-    {
       "title": "plasma-workspace-dev",
       "package": "plasma-workspace-dev",
       "url": "https://repo.maxleiter.com/banners/plasma-workspace-dev.png"
@@ -2212,16 +2077,6 @@
       "title": "pulseaudio",
       "package": "pulseaudio",
       "url": "https://repo.maxleiter.com/banners/pulseaudio.png"
-    },
-    {
-      "title": "pulseaudio",
-      "package": "pulseaudio",
-      "url": "https://repo.maxleiter.com/banners/pulseaudio.png"
-    },
-    {
-      "title": "pulseaudio-utils",
-      "package": "pulseaudio-utils",
-      "url": "https://repo.maxleiter.com/banners/pulseaudio-utils.png"
     },
     {
       "title": "pulseaudio-utils",
@@ -2339,46 +2194,6 @@
       "url": "https://repo.maxleiter.com/banners/systemsettings.png"
     },
     {
-      "title": "systemsettings",
-      "package": "systemsettings",
-      "url": "https://repo.maxleiter.com/banners/systemsettings.png"
-    },
-    {
-      "title": "systemsettings",
-      "package": "systemsettings",
-      "url": "https://repo.maxleiter.com/banners/systemsettings.png"
-    },
-    {
-      "title": "systemsettings",
-      "package": "systemsettings",
-      "url": "https://repo.maxleiter.com/banners/systemsettings.png"
-    },
-    {
-      "title": "systemsettings",
-      "package": "systemsettings",
-      "url": "https://repo.maxleiter.com/banners/systemsettings.png"
-    },
-    {
-      "title": "systemsettings-dev",
-      "package": "systemsettings-dev",
-      "url": "https://repo.maxleiter.com/banners/systemsettings-dev.png"
-    },
-    {
-      "title": "systemsettings-dev",
-      "package": "systemsettings-dev",
-      "url": "https://repo.maxleiter.com/banners/systemsettings-dev.png"
-    },
-    {
-      "title": "systemsettings-dev",
-      "package": "systemsettings-dev",
-      "url": "https://repo.maxleiter.com/banners/systemsettings-dev.png"
-    },
-    {
-      "title": "systemsettings-dev",
-      "package": "systemsettings-dev",
-      "url": "https://repo.maxleiter.com/banners/systemsettings-dev.png"
-    },
-    {
       "title": "systemsettings-dev",
       "package": "systemsettings-dev",
       "url": "https://repo.maxleiter.com/banners/systemsettings-dev.png"
@@ -2422,81 +2237,6 @@
       "title": "xauth",
       "package": "xauth",
       "url": "https://repo.maxleiter.com/banners/xauth.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
-    },
-    {
-      "title": "Xios accessibility tools",
-      "package": "xios-a11y-tools",
-      "url": "https://repo.maxleiter.com/banners/xios-a11y-tools.png"
     },
     {
       "title": "Xios accessibility tools",
@@ -2559,189 +2299,9 @@
       "url": "https://repo.maxleiter.com/banners/xios-server.png"
     },
     {
-      "title": "Xios (IOSurface X server)",
-      "package": "xios-server",
-      "url": "https://repo.maxleiter.com/banners/xios-server.png"
-    },
-    {
       "title": "Xios session launcher",
       "package": "xios-session",
       "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios session launcher",
-      "package": "xios-session",
-      "url": "https://repo.maxleiter.com/banners/xios-session.png"
-    },
-    {
-      "title": "Xios GNOME session D-Bus stubs",
-      "package": "xios-session-stubs",
-      "url": "https://repo.maxleiter.com/banners/xios-session-stubs.png"
-    },
-    {
-      "title": "Xios GNOME session D-Bus stubs",
-      "package": "xios-session-stubs",
-      "url": "https://repo.maxleiter.com/banners/xios-session-stubs.png"
     },
     {
       "title": "Xios GNOME session D-Bus stubs",

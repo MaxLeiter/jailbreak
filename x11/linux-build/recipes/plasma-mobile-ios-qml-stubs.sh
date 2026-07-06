@@ -12,6 +12,13 @@ write_file() {
   printf '%s\n' "$@" > "$path"
 }
 
+restore_upstream_file() {
+  local path="$1"
+  if [ -e "$path.upstream" ]; then
+    cp "$path.upstream" "$path"
+  fi
+}
+
 mm="$qml/org/kde/plasma/mm"
 mkdir -p "$mm"
 write_file "$mm/qmldir" \
@@ -188,73 +195,15 @@ if [ -e "$mobileshell/GridView.qml" ] && [ ! -e "$mobileshell/GridView.qml.upstr
   cp "$mobileshell/GridView.qml" "$mobileshell/GridView.qml.upstream"
 fi
 write_file "$mobileshell/GridView.qml" \
-  "// First-light iOS shim: QQuickFlickable-derived views currently SIGBUS during Mobile startup." \
-  "import QtQuick 2.15" \
-  "Item {" \
+  "import QtQuick 2.15 as QtQuick" \
+  "" \
+  "QtQuick.GridView {" \
   "    id: root" \
-  "    property var model: null" \
-  "    property Component delegate: null" \
-  "    property int count: 0" \
-  "    property int currentIndex: -1" \
-  "    property int cellWidth: width" \
-  "    property int cellHeight: 96" \
-  "    property int flow: 0" \
-  "    property int orientation: 0" \
-  "    property int layoutDirection: Qt.LeftToRight" \
-  "    property int verticalLayoutDirection: 0" \
-  "    property int boundsBehavior: 0" \
-  "    property int boundsMovement: 0" \
-  "    property int flickableDirection: 0" \
-  "    property int highlightRangeMode: 0" \
-  "    property int headerPositioning: 0" \
-  "    property int snapMode: 0" \
-  "    property real cacheBuffer: 0" \
-  "    property real flickDeceleration: 0" \
-  "    property real pressDelay: 0" \
-  "    property bool reuseItems: false" \
-  "    property bool keyNavigationWraps: false" \
-  "    property bool keyNavigationEnabled: true" \
-  "    property bool interactive: false" \
-  "    property bool dragging: false" \
-  "    property bool atYBeginning: true" \
-  "    property bool atYEnd: true" \
-  "    property bool moving: false" \
-  "    property real contentX: 0" \
-  "    property real contentY: 0" \
-  "    property real contentWidth: width" \
-  "    property real contentHeight: height" \
-  "    property real leftMargin: 0" \
-  "    property real rightMargin: 0" \
-  "    property real topMargin: 0" \
-  "    property real bottomMargin: 0" \
-  "    property real displayMarginBeginning: 0" \
-  "    property real displayMarginEnd: 0" \
-  "    property real preferredHighlightBegin: 0" \
-  "    property real preferredHighlightEnd: 0" \
-  "    property real highlightMoveDuration: 0" \
-  "    property real highlightResizeDuration: 0" \
-  "    property real maximumFlickVelocity: 0" \
-  "    property real spacing: 0" \
-  "    property Component highlight: null" \
-  "    property var add: null" \
-  "    property var displaced: null" \
-  "    property var header: null" \
-  "    property bool highlightFollowsCurrentItem: true" \
-  "    readonly property Item currentItem: null" \
+  "    // xios-mobile-real-gridview: real drawer delegates, with iOS edge-hook placeholders." \
   "    property var topEdgeCallback: null" \
   "    property var bottomEdgeCallback: null" \
   "    property var leftEdgeCallback: null" \
   "    property var rightEdgeCallback: null" \
-  "    signal movementStarted()" \
-  "    signal movementEnded()" \
-  "    signal flickStarted()" \
-  "    signal flickEnded()" \
-  "    function itemAtIndex(index) { return null }" \
-  "    function indexAt(x, y) { return -1 }" \
-  "    function flick(xVelocity, yVelocity) {}" \
-  "    function positionViewAtIndex(index, mode) {}" \
-  "    function resizeContent(width, height, center) { contentWidth = width; contentHeight = height }" \
-  "    function returnToBounds() {}" \
   "}"
 
 for qml_name in ListView Flickable; do
@@ -691,32 +640,112 @@ fi
 
 folio_ui="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui"
 if [ -d "$folio_ui" ]; then
-  if [ -e "$folio_ui/main.qml" ] && [ ! -e "$folio_ui/main.qml.upstream" ]; then
-    cp "$folio_ui/main.qml" "$folio_ui/main.qml.upstream"
+  restore_upstream_file "$folio_ui/main.qml"
+  if [ -e "$folio_ui/delegate/AppDelegate.qml" ]; then
+    python3 - "$folio_ui/delegate/AppDelegate.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "xios-folio-app-fallback" in text:
+    raise SystemExit(0)
+
+needle = """    contentItem: Item {
+        height: folio.FolioSettings.delegateIconSize
+        width: folio.FolioSettings.delegateIconSize
+"""
+fallback = """    contentItem: Item {
+        height: folio.FolioSettings.delegateIconSize
+        width: folio.FolioSettings.delegateIconSize
+
+        // xios-folio-app-fallback: keep homescreen apps visible when Kirigami.Icon is rasterless on iOS.
+        Rectangle {
+            anchors.fill: parent
+            radius: Math.max(8, width * 0.22)
+            color: Kirigami.Theme.highlightColor
+            opacity: 0.82
+            border.color: Qt.rgba(1, 1, 1, 0.22)
+            border.width: 1
+
+            Controls.Label {
+                anchors.centerIn: parent
+                color: Kirigami.Theme.highlightedTextColor
+                text: root.application && root.application.name ? root.application.name.substring(0, 1).toUpperCase() : "?"
+                font.bold: true
+                font.pixelSize: Math.max(18, parent.height * 0.42)
+            }
+        }
+"""
+if needle in text:
+    path.write_text(text.replace(needle, fallback, 1))
+PY
   fi
-  write_file "$folio_ui/main.qml" \
-    "// First-light iOS shim: defer the real Folio homescreen until Qt Quick views are stable." \
-    "import QtQuick 2.15" \
-    "import org.kde.plasma.plasmoid 2.0" \
-    "ContainmentItem {" \
-    "    id: root" \
-    "    Item { anchors.fill: parent }" \
-    "}"
+  if [ -e "$folio_ui/HomeScreenPage.qml" ]; then
+    python3 - "$folio_ui/HomeScreenPage.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "xios-folio-page-fallback" in text:
+    raise SystemExit(0)
+
+needle = """            Loader {
+                id: loader
+                anchors.top: parent.top
+                anchors.left: parent.left
+"""
+fallback = """            // xios-folio-page-fallback: render a usable app tile when the delegate icon path is transparent on iOS.
+            Rectangle {
+                id: xiosAppTileFallback
+                visible: delegate.pageDelegate.type === Folio.FolioDelegate.Application
+                width: Math.min(Math.max(72, folio.FolioSettings.delegateIconSize * 1.3), folio.HomeScreenState.pageCellWidth * 0.62)
+                height: width
+                radius: Math.max(10, width * 0.24)
+                x: (folio.HomeScreenState.pageCellWidth - width) / 2
+                y: Math.max(0, (folio.HomeScreenState.pageCellHeight - height) / 2 - Kirigami.Units.gridUnit)
+                color: Kirigami.Theme.highlightColor
+                opacity: 0.88
+                border.color: Qt.rgba(1, 1, 1, 0.22)
+                border.width: 1
+
+                PC3.Label {
+                    anchors.centerIn: parent
+                    color: Kirigami.Theme.highlightedTextColor
+                    text: delegate.pageDelegate.application && delegate.pageDelegate.application.name ? delegate.pageDelegate.application.name.substring(0, 1).toUpperCase() : "?"
+                    font.bold: true
+                    font.pixelSize: Math.max(22, parent.height * 0.44)
+                }
+            }
+
+            PC3.Label {
+                visible: xiosAppTileFallback.visible && folio.FolioSettings.showPagesAppLabels
+                x: 0
+                y: xiosAppTileFallback.y + xiosAppTileFallback.height + Kirigami.Units.smallSpacing
+                width: folio.HomeScreenState.pageCellWidth
+                color: Kirigami.Theme.textColor
+                text: delegate.pageDelegate.application && delegate.pageDelegate.application.name ? delegate.pageDelegate.application.name : ""
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                maximumLineCount: 1
+                font.pixelSize: 14
+            }
+
+            Loader {
+                id: loader
+                anchors.top: parent.top
+                anchors.left: parent.left
+"""
+if needle in text:
+    path.write_text(text.replace(needle, fallback, 1))
+PY
+  fi
 fi
 
 halcyon_ui="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.halcyon/contents/ui"
 if [ -d "$halcyon_ui" ]; then
-  if [ -e "$halcyon_ui/main.qml" ] && [ ! -e "$halcyon_ui/main.qml.upstream" ]; then
-    cp "$halcyon_ui/main.qml" "$halcyon_ui/main.qml.upstream"
-  fi
-  write_file "$halcyon_ui/main.qml" \
-    "// First-light iOS shim: defer the real Halcyon homescreen until Qt Quick views are stable." \
-    "import QtQuick 2.15" \
-    "import org.kde.plasma.plasmoid 2.0" \
-    "ContainmentItem {" \
-    "    id: root" \
-    "    Item { anchors.fill: parent }" \
-    "}"
+  restore_upstream_file "$halcyon_ui/main.qml"
 fi
 
 views="$qml/../../../share/plasma/shells/org.kde.plasma.mobileshell/contents/views"

@@ -511,7 +511,7 @@ xs_find_bringup() {
 # to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
+xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/Applications/KDE/[^ ]+\.app/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
@@ -575,6 +575,10 @@ xs_fix_ddx_perms() {
 # or locked, FrontBoard suspends the Metal app and it presents nil — the caller
 # must have the screen awake + unlocked. We can't force that from a daemon.
 xs_foreground_xios() {
+    if [ -n "${XS_SLOT:-}" ] && [ "${XIOS_SLOT_FOREGROUND:-0}" != 1 ]; then
+        xs_log "slot $XS_SLOT: leaving Xios foreground unchanged"
+        return 0
+    fi
     "$XS_UIOPEN" -b "$XS_XIOS_BUNDLE" 2>/dev/null \
         || "$XS_UIOPEN" "$XS_XIOS_BUNDLE" 2>/dev/null || true
 }

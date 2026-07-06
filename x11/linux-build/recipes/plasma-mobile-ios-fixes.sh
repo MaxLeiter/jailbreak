@@ -260,6 +260,116 @@ def write(rel: str, text: str) -> None:
         backup.write_text(path.read_text())
     path.write_text(text.strip() + "\n")
 
+def restore_upstream(rel: str) -> None:
+    path = src / rel
+    backup = path.with_suffix(path.suffix + ".upstream")
+    if backup.exists():
+        path.write_text(backup.read_text())
+
+def patch_folio_app_delegate() -> None:
+    path = src / "containments/homescreens/folio/package/contents/ui/delegate/AppDelegate.qml"
+    if not path.exists():
+        return
+    text = path.read_text()
+    if "xios-folio-app-fallback" in text:
+        return
+    needle = """    contentItem: Item {
+        height: folio.FolioSettings.delegateIconSize
+        width: folio.FolioSettings.delegateIconSize
+"""
+    fallback = """    contentItem: Item {
+        height: folio.FolioSettings.delegateIconSize
+        width: folio.FolioSettings.delegateIconSize
+
+        // xios-folio-app-fallback: keep homescreen apps visible when Kirigami.Icon is rasterless on iOS.
+        Rectangle {
+            anchors.fill: parent
+            radius: Math.max(8, width * 0.22)
+            color: Kirigami.Theme.highlightColor
+            opacity: 0.82
+            border.color: Qt.rgba(1, 1, 1, 0.22)
+            border.width: 1
+
+            Controls.Label {
+                anchors.centerIn: parent
+                color: Kirigami.Theme.highlightedTextColor
+                text: root.application && root.application.name ? root.application.name.substring(0, 1).toUpperCase() : "?"
+                font.bold: true
+                font.pixelSize: Math.max(18, parent.height * 0.42)
+            }
+        }
+"""
+    if needle in text:
+        path.write_text(text.replace(needle, fallback, 1))
+
+def patch_folio_home_screen_page() -> None:
+    path = src / "containments/homescreens/folio/package/contents/ui/HomeScreenPage.qml"
+    if not path.exists():
+        return
+    text = path.read_text()
+    if "xios-folio-page-fallback" in text:
+        return
+    needle = """            Loader {
+                id: loader
+                anchors.top: parent.top
+                anchors.left: parent.left
+"""
+    fallback = """            // xios-folio-page-fallback: render a usable app tile when the delegate icon path is transparent on iOS.
+            Rectangle {
+                id: xiosAppTileFallback
+                visible: delegate.pageDelegate.type === Folio.FolioDelegate.Application
+                width: Math.min(Math.max(72, folio.FolioSettings.delegateIconSize * 1.3), folio.HomeScreenState.pageCellWidth * 0.62)
+                height: width
+                radius: Math.max(10, width * 0.24)
+                x: (folio.HomeScreenState.pageCellWidth - width) / 2
+                y: Math.max(0, (folio.HomeScreenState.pageCellHeight - height) / 2 - Kirigami.Units.gridUnit)
+                color: Kirigami.Theme.highlightColor
+                opacity: 0.88
+                border.color: Qt.rgba(1, 1, 1, 0.22)
+                border.width: 1
+
+                PC3.Label {
+                    anchors.centerIn: parent
+                    color: Kirigami.Theme.highlightedTextColor
+                    text: delegate.pageDelegate.application && delegate.pageDelegate.application.name ? delegate.pageDelegate.application.name.substring(0, 1).toUpperCase() : "?"
+                    font.bold: true
+                    font.pixelSize: Math.max(22, parent.height * 0.44)
+                }
+            }
+
+            PC3.Label {
+                visible: xiosAppTileFallback.visible && folio.FolioSettings.showPagesAppLabels
+                x: 0
+                y: xiosAppTileFallback.y + xiosAppTileFallback.height + Kirigami.Units.smallSpacing
+                width: folio.HomeScreenState.pageCellWidth
+                color: Kirigami.Theme.textColor
+                text: delegate.pageDelegate.application && delegate.pageDelegate.application.name ? delegate.pageDelegate.application.name : ""
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                maximumLineCount: 1
+                font.pixelSize: 14
+            }
+
+            Loader {
+                id: loader
+                anchors.top: parent.top
+                anchors.left: parent.left
+"""
+    if needle in text:
+        path.write_text(text.replace(needle, fallback, 1))
+
+grid_view_qml = """import QtQuick 2.15 as QtQuick
+
+QtQuick.GridView {
+    id: root
+    // xios-mobile-real-gridview: real drawer delegates, with iOS edge-hook placeholders.
+    property var topEdgeCallback: null
+    property var bottomEdgeCallback: null
+    property var leftEdgeCallback: null
+    property var rightEdgeCallback: null
+}
+"""
+
 view_common = """import QtQuick 2.15
 Item {
     id: root
@@ -327,7 +437,7 @@ Item {
 }
 """
 
-write("components/mobileshell/qml/components/GridView.qml", view_common)
+write("components/mobileshell/qml/components/GridView.qml", grid_view_qml)
 write("components/mobileshell/qml/components/ListView.qml", view_common)
 write("components/mobileshell/qml/components/Flickable.qml", view_common)
 
@@ -677,21 +787,10 @@ MouseArea {
 }
 """)
 
-write("containments/homescreens/folio/package/contents/ui/main.qml", """import QtQuick 2.15
-import org.kde.plasma.plasmoid 2.0
-ContainmentItem {
-    id: root
-    Item { anchors.fill: parent }
-}
-""")
-
-write("containments/homescreens/halcyon/package/contents/ui/main.qml", """import QtQuick 2.15
-import org.kde.plasma.plasmoid 2.0
-ContainmentItem {
-    id: root
-    Item { anchors.fill: parent }
-}
-""")
+restore_upstream("containments/homescreens/folio/package/contents/ui/main.qml")
+restore_upstream("containments/homescreens/halcyon/package/contents/ui/main.qml")
+patch_folio_app_delegate()
+patch_folio_home_screen_page()
 
 write("shell/package/contents/lockscreen/PasswordBar.qml", """import QtQuick 2.15
 import QtQuick.Controls 2.15

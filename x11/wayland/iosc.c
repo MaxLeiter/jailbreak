@@ -93,6 +93,7 @@ static int               g_stride;    /* real bytes-per-row (IOSurface-padded) *
 static int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
 static int               g_output_scale = 2; /* logical -> physical output pixels */
 static int               g_native_mode;
+static int               g_fullscreen_toplevels;
 static int               g_output_transform;         /* wl_output transform */
 static int               g_natural_lw, g_natural_lh; /* launch logical size */
 static int               g_advertise_transform = 1;
@@ -2201,6 +2202,16 @@ static void surface_map(struct iosc_surface *s)
         layer_compute(s, &cw, &ch, &cx, &cy);
         s->dx = cx;
         s->dy = cy;
+    } else if (s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_fullscreen) {
+        s->dx = 0;
+        s->dy = 0;
+        toplevel_send_configure(s, output_logical_width(), output_logical_height());
+    } else if (s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_maximized) {
+        int wx, wy, ww, wh;
+        work_area(&wx, &wy, &ww, &wh);
+        s->dx = wx;
+        s->dy = wy;
+        toplevel_send_configure(s, ww, wh);
     } else if (s->role == IOSC_ROLE_TOPLEVEL && s->parent && s->parent->mapped) {
         /* Transient/modal dialog: center over its parent (clamped to the work
          * area). It's inserted at the top of its band below, so it maps ABOVE the
@@ -3321,7 +3332,15 @@ static void toplevel_send_configure(struct iosc_surface *s, int w, int h)
 static void send_initial_configure(struct iosc_surface *s)
 {
     int w = default_window_w(), h = default_window_h();
-    if (g_native_mode) {
+    const char *mode = "";
+    if (g_fullscreen_toplevels && !g_native_mode) {
+        s->toplevel_fullscreen = 1;
+        s->dx = 0;
+        s->dy = 0;
+        w = output_logical_width();
+        h = output_logical_height();
+        mode = " fullscreen";
+    } else if (g_native_mode) {
         int pw = 0, ph = 0;
         if (xios_canvas_default_scene(&pw, &ph) == 0 && pw > 0 && ph > 0) {
             int os = output_scale();
@@ -3329,6 +3348,7 @@ static void send_initial_configure(struct iosc_surface *s)
             if (lw > 0 && lh > 0) { w = lw; h = lh; }
         }
     }
+    fprintf(stderr, "iosc: initial toplevel configure %dx%d%s\n", w, h, mode);
     toplevel_send_configure(s, w, h);
 }
 
@@ -3618,8 +3638,7 @@ static void xs_get_toplevel(struct wl_client *c, struct wl_resource *r, uint32_t
     if (!s) return;   /* wl_surface already destroyed; leave the object inert */
     s->role = IOSC_ROLE_TOPLEVEL;
     s->xdg_toplevel = tl;
-    fprintf(stderr, "iosc: xdg_toplevel created -> sending initial configure %dx%d\n",
-            default_window_w(), default_window_h());
+    fprintf(stderr, "iosc: xdg_toplevel created -> sending initial configure\n");
     send_initial_configure(s);
 }
 static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id,
@@ -7526,6 +7545,10 @@ int main(int argc, char **argv)
     } else if (iosc_env_truthy(getenv("IOSC_NATIVE"))) {
         g_native_mode = 1;
     }
+    if (iosc_env_truthy(getenv("IOSC_FULLSCREEN_TOPLEVELS")))
+        g_fullscreen_toplevels = 1;
+    if (g_fullscreen_toplevels)
+        fprintf(stderr, "iosc: fullscreen toplevel mode enabled\n");
     if (!g_native_mode && !active_session_allows_classic_iosc())
         return 2;
 
