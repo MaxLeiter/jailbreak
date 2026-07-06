@@ -251,6 +251,7 @@ echo "==> [5/5] cross-compile"
 $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
     "$X11/wayland/iosc_options.c" \
+    "$X11/wayland/iosc_render_plan.c" \
     "$X11/wayland/iosc_util.c" \
     "$X11/wayland/iosc_iosurface.c" \
     "$X11/wayland/iosc-clipboard-bridge.c" \

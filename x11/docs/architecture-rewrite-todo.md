@@ -115,3 +115,11 @@ and small display/session/app model structs out of `XScreen.swift`. The view
 still owns behavior, but path lookup is now available independently to app
 services like accessibility, and the picker/session data shapes no longer live
 inside the rendering view class.
+
+## Current Seventh Slice
+
+Continue the `iosc` split and explicit render-plan track by moving
+`iosc_render_plan` state/build/log helpers into `iosc_render_plan.{h,c}`.
+`iosc.c` still owns the compositor damage store and passes a consumer callback
+into the plan builder, so behavior stays unchanged while render planning now has
+a standalone module boundary.

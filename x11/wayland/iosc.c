@@ -52,6 +52,7 @@
 #include "iosc_input.h"
 #include "iosc_iosurface.h"
 #include "iosc_options.h"
+#include "iosc_render_plan.h"
 #include "iosc_util.h"
 #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
 #include "iosc-clipboard-bridge.h"   /* Linux<->iOS clipboard sync over the dedicated socket */
@@ -194,12 +195,7 @@ struct iosc_presentation_feedback {
 };
 
 #define IOSC_MAX_SHM_DIRTY_RECTS 16
-#define IOSC_MAX_OUTPUT_DAMAGE_RECTS 16
 #define IOSC_MAX_VISIBLE_RECTS 32
-
-struct iosc_rect {
-    int x0, y0, x1, y1;
-};
 
 struct iosc_layer_state;
 
@@ -368,12 +364,6 @@ static int g_last_present_damage_rect_count;
 static struct iosc_rect g_last_present_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
 static int g_last_present_damage_x0, g_last_present_damage_y0;
 static int g_last_present_damage_x1, g_last_present_damage_y1;
-struct iosc_render_plan {
-    int had_damage;
-    int damage_count;
-    int damage_x0, damage_y0, damage_x1, damage_y1;
-    struct iosc_rect damage[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
-};
 static const char *g_recompose_reason;
 static int g_recompose_reason_line;
 static void keyboard_set_focus(struct iosc_surface *s);
@@ -1038,41 +1028,6 @@ static int output_damage_consume(struct iosc_rect *rects, int max_rects,
     g_output_damage_coarse = 0;
     g_output_damage_rect_count = 0;
     return n;
-}
-
-static void render_plan_build(struct iosc_render_plan *plan)
-{
-    memset(plan, 0, sizeof(*plan));
-    plan->had_damage = g_output_damage_valid;
-    plan->damage_count = output_damage_consume(plan->damage, IOSC_MAX_OUTPUT_DAMAGE_RECTS,
-                                               &plan->damage_x0, &plan->damage_y0,
-                                               &plan->damage_x1, &plan->damage_y1);
-}
-
-static void render_plan_log(const struct iosc_render_plan *plan)
-{
-    if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
-        fprintf(stderr, "iosc: recompose-reason %s:%d damage=%s\n",
-                g_recompose_reason ? g_recompose_reason : "sync",
-                g_recompose_reason_line,
-                plan->had_damage ? "pending" : "none");
-    if (!iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
-        return;
-    fprintf(stderr, "iosc: output-damage rects=%d union=%d,%d %dx%d%s\n",
-            plan->damage_count,
-            plan->damage_x0, plan->damage_y0,
-            plan->damage_x1 - plan->damage_x0,
-            plan->damage_y1 - plan->damage_y0,
-            (plan->damage_x0 == 0 && plan->damage_y0 == 0 &&
-             plan->damage_x1 == g_width && plan->damage_y1 == g_height) ? " full" : "");
-    if (plan->damage_count > 1) {
-        for (int i = 0; i < plan->damage_count; i++)
-            fprintf(stderr, "iosc: output-damage-rect %d %d,%d %dx%d\n",
-                    i,
-                    plan->damage[i].x0, plan->damage[i].y0,
-                    plan->damage[i].x1 - plan->damage[i].x0,
-                    plan->damage[i].y1 - plan->damage[i].y0);
-    }
 }
 
 static int output_damage_intersects_surface(struct iosc_surface *s,
@@ -1869,8 +1824,9 @@ static void recomposite_now(void)
     }
     if (iosc_gl_ok()) {
         struct iosc_render_plan plan;
-        render_plan_build(&plan);
-        render_plan_log(&plan);
+        iosc_render_plan_build(&plan, g_output_damage_valid, output_damage_consume);
+        iosc_render_plan_log(&plan, g_recompose_reason, g_recompose_reason_line,
+                             g_width, g_height);
         if (g_slock.locked) {
             /* Session locked: ONLY the lock surface may show (blank until it
              * maps); windows, layer shells and the drag icon must not leak. */
