@@ -86,6 +86,14 @@ XS_DBUS_RUN="${XS_DBUS_RUN:-$XS_PREFIX/bin/dbus-run-session}"
 XS_DBUS_DAEMON="${XS_DBUS_DAEMON:-$XS_PREFIX/bin/dbus-daemon}"
 XS_BASH="${XS_BASH:-$XS_PREFIX/bin/bash}"
 XS_ANGLE_LIBEGL="${XS_ANGLE_LIBEGL:-$XS_JB/lib/angle/libEGL.angle.dylib}"
+XS_PROFILE_LIB="${XS_PROFILE_LIB:-$XS_LIBEXEC_DIR/xios-capability-profiles.sh}"
+if [ -r "$XS_PROFILE_LIB" ]; then
+    # shellcheck source=./xios-capability-profiles.sh
+    . "$XS_PROFILE_LIB"
+elif [ -r "$XS_SOURCE_DIR/xios-capability-profiles.sh" ]; then
+    # shellcheck source=./xios-capability-profiles.sh
+    . "$XS_SOURCE_DIR/xios-capability-profiles.sh"
+fi
 
 XS_SLOT_RAW="${XIOS_SESSION_SLOT:-}"
 XS_SLOT="$(printf '%s' "$XS_SLOT_RAW" | tr -c 'A-Za-z0-9_.-' '-' | sed 's/^-*//; s/-*$//; s/--*/-/g' | cut -c1-48)"
@@ -838,7 +846,22 @@ xios_session_app() {
 
     local owner busdir="$XS_TMP/xios-session-bus" addr
     local app_runtime="$busdir" app_wayland="$XS_WAYLAND_SOCK"
-    local app_env=()
+    local app_env=() client_env=() kv
+    if command -v xios_profile_env_pairs >/dev/null 2>&1; then
+        while IFS= read -r kv; do
+            [ -n "$kv" ] && client_env+=("$kv")
+        done < <(xios_profile_env_pairs iosc-client-gpu)
+    else
+        client_env=(
+            GDK_BACKEND=wayland
+            GSK_RENDERER=ngl
+            QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
+            QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
+            ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL"
+            GSETTINGS_BACKEND=memory
+            LC_CTYPE="${LC_CTYPE:-UTF-8}"
+        )
+    fi
     xs_log "app: launching '$exec' as a wayland client of the running compositor"
     local a11y_prefix
     a11y_prefix="$(xs_a11y_prefix)"
@@ -851,23 +874,29 @@ xios_session_app() {
             if [ -S "$XS_TMP/$XS_KWIN_SOCKET" ]; then
                 app_runtime="$XS_TMP"
                 app_wayland="$XS_TMP/$XS_KWIN_SOCKET"
-                app_env+=(
-                    DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$XS_JB/lib/angle"
-                    XDG_DATA_DIRS="$XS_PREFIX/share"
-                    XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$XS_VAR/root/.config}"
-                    XDG_CONFIG_DIRS="$XS_JB/etc/xdg:$XS_PREFIX/etc/xdg"
-                    GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas"
-                    KDE_FULL_SESSION=true
-                    KDE_SESSION_VERSION=6
-                    XDG_CURRENT_DESKTOP=KDE
-                    XDG_SESSION_TYPE=wayland
-                    QT_PLUGIN_PATH="$XS_PREFIX/lib/qt6/plugins"
-                    QML2_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
-                    QML_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
-                    QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-opengl}"
-                    QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}"
-                    QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
-                )
+                if command -v xios_profile_env_pairs >/dev/null 2>&1; then
+                    while IFS= read -r kv; do
+                        [ -n "$kv" ] && app_env+=("$kv")
+                    done < <(xios_profile_env_pairs plasma-egl)
+                else
+                    app_env+=(
+                        DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$XS_JB/lib/angle"
+                        XDG_DATA_DIRS="$XS_PREFIX/share"
+                        XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$XS_VAR/root/.config}"
+                        XDG_CONFIG_DIRS="$XS_JB/etc/xdg:$XS_PREFIX/etc/xdg"
+                        GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas"
+                        KDE_FULL_SESSION=true
+                        KDE_SESSION_VERSION=6
+                        XDG_CURRENT_DESKTOP=KDE
+                        XDG_SESSION_TYPE=wayland
+                        QT_PLUGIN_PATH="$XS_PREFIX/lib/qt6/plugins"
+                        QML2_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
+                        QML_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
+                        QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-opengl}"
+                        QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}"
+                        QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
+                    )
+                fi
                 local kde_bus_file="$XS_TMP/kde-session-bus${XS_SLOT:+-$XS_SLOT}"
                 if [ -s "$kde_bus_file" ]; then
                     addr="$(cat "$kde_bus_file" 2>/dev/null || true)"
@@ -887,13 +916,7 @@ xios_session_app() {
     nohup env \
         XDG_RUNTIME_DIR="$app_runtime" \
         WAYLAND_DISPLAY="$app_wayland" \
-        GDK_BACKEND=wayland \
-        GSK_RENDERER=ngl \
-        QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}" \
-        QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}" \
-        ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL" \
-        GSETTINGS_BACKEND=memory \
-        LC_CTYPE="${LC_CTYPE:-UTF-8}" \
+        "${client_env[@]}" \
         "${app_env[@]}" \
         "${gtk_a11y_env[@]}" \
         "${dbus_addr[@]}" \

@@ -101,7 +101,11 @@ xios_profile_unset_line() {
     printf 'unset %s\n' "$1"
 }
 
-xios_profile_env() {
+xios_profile_pair() {
+    printf '%s=%s\n' "$1" "$2"
+}
+
+xios_profile_env_pairs() {
     local profile="${1:-}"
     local angle="${XS_ANGLE_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"
     local prefix="${XS_PREFIX:-/var/jb/usr}"
@@ -109,66 +113,81 @@ xios_profile_env() {
     local root_home="${XS_VAR:-/var/jb/var}/root"
     case "$profile" in
         iosc-client-gpu)
-            xios_profile_export_line GDK_BACKEND wayland
-            xios_profile_export_line GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
-            xios_profile_export_line QT_QPA_PLATFORM "${QT_QPA_PLATFORM:-wayland}"
-            xios_profile_export_line QT_WAYLAND_DISABLE_WINDOWDECORATION "${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
-            xios_profile_export_line ANGLE_REAL_LIBEGL "$angle"
-            xios_profile_export_line GSETTINGS_BACKEND memory
-            xios_profile_export_line LC_CTYPE "${LC_CTYPE:-UTF-8}"
+            xios_profile_pair GDK_BACKEND wayland
+            xios_profile_pair GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
+            xios_profile_pair QT_QPA_PLATFORM "${QT_QPA_PLATFORM:-wayland}"
+            xios_profile_pair QT_WAYLAND_DISABLE_WINDOWDECORATION "${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
+            xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
+            xios_profile_pair GSETTINGS_BACKEND memory
+            xios_profile_pair LC_CTYPE "${LC_CTYPE:-UTF-8}"
             ;;
         iosc-platform-gl)
-            xios_profile_export_line XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-/var/jb/tmp}"
-            xios_profile_export_line ANGLE_REAL_LIBEGL "$angle"
+            xios_profile_pair XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-/var/jb/tmp}"
+            xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             ;;
         kde-kwin)
-            xios_profile_export_line DYLD_LIBRARY_PATH "$prefix/lib:$jb/lib/angle"
-            xios_profile_export_line XDG_DATA_DIRS "$prefix/share"
-            xios_profile_export_line XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
-            xios_profile_export_line XDG_CONFIG_DIRS "$jb/etc/xdg:$prefix/etc/xdg"
-            xios_profile_export_line KDE_FULL_SESSION true
-            xios_profile_export_line KDE_SESSION_VERSION 6
-            xios_profile_export_line XDG_CURRENT_DESKTOP KDE
-            xios_profile_export_line XDG_SESSION_TYPE wayland
-            xios_profile_export_line QT_PLUGIN_PATH "$prefix/lib/qt6/plugins"
-            xios_profile_export_line QML2_IMPORT_PATH "$prefix/lib/qt6/qml"
-            xios_profile_export_line QML_IMPORT_PATH "$prefix/lib/qt6/qml"
-            xios_profile_export_line QSG_RHI_BACKEND "${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-software}}"
-            xios_profile_unset_line QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+            xios_profile_pair DYLD_LIBRARY_PATH "$prefix/lib:$jb/lib/angle"
+            xios_profile_pair XDG_DATA_DIRS "$prefix/share"
+            xios_profile_pair XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
+            xios_profile_pair XDG_CONFIG_DIRS "$jb/etc/xdg:$prefix/etc/xdg"
+            xios_profile_pair KDE_FULL_SESSION true
+            xios_profile_pair KDE_SESSION_VERSION 6
+            xios_profile_pair XDG_CURRENT_DESKTOP KDE
+            xios_profile_pair XDG_SESSION_TYPE wayland
+            xios_profile_pair QT_PLUGIN_PATH "$prefix/lib/qt6/plugins"
+            xios_profile_pair QML2_IMPORT_PATH "$prefix/lib/qt6/qml"
+            xios_profile_pair QML_IMPORT_PATH "$prefix/lib/qt6/qml"
+            xios_profile_pair QSG_RHI_BACKEND "${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-software}}"
             ;;
         plasma-egl)
-            xios_profile_export_line DYLD_LIBRARY_PATH "$prefix/lib:$jb/lib/angle"
-            xios_profile_export_line XDG_DATA_DIRS "$prefix/share"
-            xios_profile_export_line XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
-            xios_profile_export_line XDG_CONFIG_DIRS "$jb/etc/xdg:$prefix/etc/xdg"
-            xios_profile_export_line GSETTINGS_SCHEMA_DIR "$prefix/share/glib-2.0/schemas"
-            xios_profile_export_line KDE_FULL_SESSION true
-            xios_profile_export_line KDE_SESSION_VERSION 6
-            xios_profile_export_line XDG_CURRENT_DESKTOP KDE
-            xios_profile_export_line XDG_SESSION_TYPE wayland
-            xios_profile_export_line QT_PLUGIN_PATH "$prefix/lib/qt6/plugins"
-            xios_profile_export_line QML2_IMPORT_PATH "$prefix/lib/qt6/qml"
-            xios_profile_export_line QML_IMPORT_PATH "$prefix/lib/qt6/qml"
-            xios_profile_export_line QSG_RHI_BACKEND "${PLASMA_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
-            xios_profile_export_line QT_WAYLAND_CLIENT_BUFFER_INTEGRATION "${PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}}"
-            xios_profile_export_line QT_QUICK_CONTROLS_STYLE "${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
+            xios_profile_pair DYLD_LIBRARY_PATH "$prefix/lib:$jb/lib/angle"
+            xios_profile_pair XDG_DATA_DIRS "$prefix/share"
+            xios_profile_pair XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
+            xios_profile_pair XDG_CONFIG_DIRS "$jb/etc/xdg:$prefix/etc/xdg"
+            xios_profile_pair GSETTINGS_SCHEMA_DIR "$prefix/share/glib-2.0/schemas"
+            xios_profile_pair KDE_FULL_SESSION true
+            xios_profile_pair KDE_SESSION_VERSION 6
+            xios_profile_pair XDG_CURRENT_DESKTOP KDE
+            xios_profile_pair XDG_SESSION_TYPE wayland
+            xios_profile_pair QT_PLUGIN_PATH "$prefix/lib/qt6/plugins"
+            xios_profile_pair QML2_IMPORT_PATH "$prefix/lib/qt6/qml"
+            xios_profile_pair QML_IMPORT_PATH "$prefix/lib/qt6/qml"
+            xios_profile_pair QSG_RHI_BACKEND "${PLASMA_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
+            xios_profile_pair QT_WAYLAND_CLIENT_BUFFER_INTEGRATION "${PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}}"
+            xios_profile_pair QT_QUICK_CONTROLS_STYLE "${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
             ;;
         gtk-wayland)
-            xios_profile_export_line GDK_BACKEND wayland
-            xios_profile_export_line GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
-            xios_profile_export_line ANGLE_REAL_LIBEGL "$angle"
-            xios_profile_export_line GSETTINGS_BACKEND memory
+            xios_profile_pair GDK_BACKEND wayland
+            xios_profile_pair GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
+            xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
+            xios_profile_pair GSETTINGS_BACKEND memory
             ;;
         xwayland-glamor)
-            xios_profile_export_line XWAYLAND_GLAMOR "${XWAYLAND_GLAMOR:-1}"
-            xios_profile_export_line ANGLE_REAL_LIBEGL "$angle"
-            xios_profile_export_line XLIB_NO_SHM "${XLIB_NO_SHM:-1}"
+            xios_profile_pair XWAYLAND_GLAMOR "${XWAYLAND_GLAMOR:-1}"
+            xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
+            xios_profile_pair XLIB_NO_SHM "${XLIB_NO_SHM:-1}"
             ;;
         native-host)
-            xios_profile_export_line XIOS_NATIVE_HOST "${XIOS_NATIVE_HOST:-1}"
-            xios_profile_export_line ANGLE_REAL_LIBEGL "$angle"
+            xios_profile_pair XIOS_NATIVE_HOST "${XIOS_NATIVE_HOST:-1}"
+            xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             ;;
         *) return 1 ;;
+    esac
+}
+
+xios_profile_env() {
+    local profile="${1:-}" line key val
+    xios_profile_env_pairs "$profile" >/dev/null || return 1
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        key="${line%%=*}"
+        val="${line#*=}"
+        xios_profile_export_line "$key" "$val"
+    done <<EOF
+$(xios_profile_env_pairs "$profile")
+EOF
+    case "$profile" in
+        kde-kwin) xios_profile_unset_line QT_WAYLAND_CLIENT_BUFFER_INTEGRATION ;;
     esac
 }
 
