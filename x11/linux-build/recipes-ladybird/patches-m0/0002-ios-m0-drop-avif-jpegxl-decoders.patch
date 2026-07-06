@@ -1,0 +1,52 @@
+Subject: [PATCH] ios-m0: drop AVIF and JPEG-XL decoders
+
+The M0 iOS build renders a page to PNG and does not stage libavif or libjxl.
+Gate those dependency checks and compile only the decoders used by the M0
+package. ImageDecoder.cpp keeps the AVIF/JPEG-XL dispatch table entries behind
+the same compile definition for non-M0 builds.
+--- a/Libraries/LibGfx/ImageFormats/ImageDecoder.cpp
++++ b/Libraries/LibGfx/ImageFormats/ImageDecoder.cpp
+@@ -6,0 +7 @@
++#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
+@@ -7,0 +9 @@
++#endif
+@@ -12,0 +15 @@
++#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
+@@ -13,0 +17 @@
++#endif
+@@ -30,0 +35 @@
++#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
+@@ -31,0 +37 @@
++#endif
+@@ -33,0 +40 @@
++#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
+@@ -34,0 +42 @@
++#endif
+--- a/Libraries/LibImageDecoders/CMakeLists.txt
++++ b/Libraries/LibImageDecoders/CMakeLists.txt
+@@ -4 +3,0 @@
+-    ${LIBGFX_IMAGE_FORMATS_DIR}/AVIFLoader.cpp
+@@ -11 +9,0 @@
+-    ${LIBGFX_IMAGE_FORMATS_DIR}/JPEGXLLoader.cpp
+@@ -34 +31,0 @@
+-    avif
+@@ -71 +68,3 @@
+-if (NOT ANDROID)
++if (IOS)
++    # m0: JPEG-XL dropped (no libjxl)
++elseif (NOT ANDROID)
+@@ -75,0 +75,2 @@
++
++target_compile_definitions(LibImageDecoders PRIVATE LADYBIRD_M0_NO_JXL_AVIF)
+--- a/Meta/CMake/check_for_dependencies.cmake
++++ b/Meta/CMake/check_for_dependencies.cmake
+@@ -21 +21,3 @@
+-find_package(LIBAVIF REQUIRED)
++if (NOT IOS)  # m0-gated
++    find_package(LIBAVIF REQUIRED)
++endif()
+@@ -30 +32,3 @@
+-    pkg_check_modules(Jxl REQUIRED IMPORTED_TARGET libjxl)
++    if (NOT IOS)  # m0-gated
++        pkg_check_modules(Jxl REQUIRED IMPORTED_TARGET libjxl)
++    endif()
