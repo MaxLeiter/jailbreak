@@ -187,6 +187,8 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `artifacts/device-runs/appwave-smoke-targeted-20260705/`. The runner guards
   `/var/jb/tmp/xios-active-session == iosc` before each Wayland check so concurrent
   KDE/GNOME session switches fail as session contention instead of app regressions.
+  Fresh exclusive-device full smoke passed all rows on 2026-07-06:
+  `artifacts/device-runs/appwave-smoke-exclusive-20260706/`.
 - Design: the capture core is device-local (grim/wayland/compositor are on the iPad);
   only the orchestration varies (on-device vs mac-driven). Keep it stateless one-shot;
   a persistent daemon isn't worth it for a debug skill.
