@@ -1,0 +1,90 @@
+Subject: [PATCH] imv: prefer Xwayland fallback on iOS
+
+The native Wayland backend creates a desktop OpenGL EGL context and aborts on
+iOS. Prefer the verified Xwayland backend when the normal launcher is invoked
+inside an Xios Wayland session, with an override for native Wayland renderer
+work.
+
+diff -ruN -U2 --exclude=*.bak a/files/imv.in b/files/imv.in
+--- a/files/imv.in	2025-11-27 12:03:44
++++ b/files/imv.in	2026-07-05 21:20:00
+@@ -1,6 +1,75 @@
+ #!/bin/sh
+-if [ -n "${WAYLAND_DISPLAY}" ]; then
+-  exec @bindir@/imv-wayland "$@"
+-else
+-  exec @bindir@/imv-x11 "$@"
++bindir=@bindir@
++
++if [ "${XIOS_IMV_NATIVE_WAYLAND:-0}" = "1" ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
++  exec "$bindir/imv-wayland" "$@"
+ fi
++
++if [ -n "${DISPLAY:-}" ]; then
++  exec "$bindir/imv-x11" "$@"
++fi
++
++if [ -n "${WAYLAND_DISPLAY:-}" ]; then
++  xwayland="${XIOS_IMV_XWAYLAND:-/var/jb/usr/bin/Xwayland}"
++  if [ ! -x "$xwayland" ]; then
++    xwayland="$(command -v Xwayland 2>/dev/null || true)"
++  fi
++
++  if [ -n "$xwayland" ] && [ -x "$xwayland" ]; then
++    XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/jb/tmp}"
++    display="${XIOS_IMV_DISPLAY:-:1}"
++    display_num="${display#:}"
++    sock="/tmp/.X11-unix/X${display_num}"
++    pidfile="${XIOS_IMV_XWAYLAND_PID:-$XDG_RUNTIME_DIR/xwayland-imv.pid}"
++    log="${XIOS_IMV_XWAYLAND_LOG:-$XDG_RUNTIME_DIR/xwl-imv.log}"
++    geom="${XIOS_IMV_XWAYLAND_GEOM:-}"
++
++    if [ -z "$geom" ] && [ -r "$XDG_RUNTIME_DIR/xios.json" ]; then
++      dims="$(sed -n 's/.*"width":\([0-9][0-9]*\).*"height":\([0-9][0-9]*\).*/\1 \2/p' "$XDG_RUNTIME_DIR/xios.json" | head -n 1)"
++      if [ -n "$dims" ]; then
++        w="${dims%% *}"
++        h="${dims#* }"
++        case "$w:$h" in
++          *[!0-9:]*|:|*:|"") ;;
++          *) geom="$((w / 2))x$((h / 2))" ;;
++        esac
++      fi
++    fi
++    geom="${geom:-1080x1440}"
++
++    wl="$WAYLAND_DISPLAY"
++    case "$wl" in
++      /*) wl="${wl##*/}" ;;
++    esac
++
++    running=0
++    if [ -S "$sock" ] && [ -r "$pidfile" ]; then
++      old_pid="$(cat "$pidfile" 2>/dev/null || true)"
++      if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
++        running=1
++      fi
++    fi
++
++    if [ "$running" -ne 1 ]; then
++      rm -f "$sock"
++      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$wl" \
++        "$xwayland" "$display" -geometry "$geom" -retro -terminate -extension MIT-SHM \
++        >"$log" 2>&1 &
++      echo "$!" >"$pidfile"
++      i=0
++      while [ "$i" -lt 25 ]; do
++        [ -S "$sock" ] && break
++        sleep 0.2
++        i=$((i + 1))
++      done
++    fi
++
++    if [ -S "$sock" ]; then
++      XLIB_NO_SHM="${XLIB_NO_SHM:-1}" DISPLAY="$display" exec "$bindir/imv-x11" "$@"
++    fi
++  fi
++
++  exec "$bindir/imv-wayland" "$@"
++fi
++
++exec "$bindir/imv-x11" "$@"

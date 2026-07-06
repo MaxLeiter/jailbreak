@@ -114,8 +114,9 @@ Current converted non-Qt stacks:
 - `ports/mpv/patches`: carries the iOS runtime guard for disabled hardware
   decoding and the Meson Objective-C cross-compiler registration needed by the
   native AudioUnit output path.
-- `ports/imv/patches`: makes the `librt` Meson lookup optional and uses the
-  portable `st_mtime` stat field.
+- `ports/imv/patches`: makes the `librt` Meson lookup optional, uses the
+  portable `st_mtime` stat field, and makes the launcher prefer the verified
+  Xwayland fallback on iOS while keeping an opt-in native Wayland path.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
 - `ports/mako/patches`: makes the `librt` Meson lookup optional; mako remains
   blocked by the Linux-bound sd-bus provider path.
