@@ -52,35 +52,8 @@ apply_quilt_series() {
   done < "$series"
 }
 
-# ---------------------------------------------------------------------------------------------
-# 1) Sandbox -> Unimplemented. Services/WebContent/CMakeLists.txt selects the sandbox by platform;
-#    CMake APPLE is true on our Darwin-system-name cross, so it would compile RendererSandboxMacOS
-#    (Seatbelt sandbox_init, unavailable to fakesigned iOS procs). Route iOS to the else() branch
-#    (RendererSandboxUnimplemented.cpp).
-# ---------------------------------------------------------------------------------------------
-# WebContent/RequestServer/ImageDecoder each select the sandbox by platform; the `elseif (APPLE)`
-# arm compiles the macOS Seatbelt path (SeatbeltPath / add_seatbelt_path_if_exists — absent from
-# LibSandbox on iOS). Route all three to the else() Unimplemented arm.
-for f in Services/WebContent/CMakeLists.txt Services/RequestServer/CMakeLists.txt Services/ImageDecoder/CMakeLists.txt Services/WebWorker/CMakeLists.txt; do
-  if grep -q 'elseif (APPLE)' "$f"; then
-    sed -i 's/elseif (APPLE)/elseif (APPLE AND NOT IOS)/' "$f"
-    say "sandbox: $f APPLE -> APPLE AND NOT IOS"
-  else
-    say "sandbox: $f already patched"
-  fi
-done
-
-# ---------------------------------------------------------------------------------------------
-# 2) libedit: only the `js` REPL utility uses it, and Utilities/ is not built on iOS. The check is
-#    unconditional for non-win/android, so gate it off for iOS to avoid needing a libedit dep.
-# ---------------------------------------------------------------------------------------------
-f=Meta/CMake/check_for_dependencies.cmake
-if grep -q 'if (NOT WIN32 AND NOT ANDROID)' "$f"; then
-  sed -i 's/if (NOT WIN32 AND NOT ANDROID)/if (NOT WIN32 AND NOT ANDROID AND NOT IOS)/' "$f"
-  say "libedit: gated off for iOS ($f)"
-else
-  say "libedit: already patched"
-fi
+# Common M0 source patches that are needed by both headless and app builds.
+apply_quilt_series "$SCRIPT_DIR/patches-m0"
 
 # ---------------------------------------------------------------------------------------------
 # 3) libjxl + libavif: M0 renders a page to PNG and does not need JPEG-XL / AVIF decode. These are

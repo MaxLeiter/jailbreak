@@ -132,9 +132,12 @@ Remaining non-Qt procedural source edits:
   stable pre-configure source seam.
 - `recipes-ladybird/libjpeg-turbo.mk` uses upstream `-DWITH_JPEG8=ON` instead
   of patching generated `jconfig.h`, so it intentionally has no patch stack.
-- `recipes-ladybird/ladybird-m0-patches.sh` is not a dependency recipe in this
-  pass; it is a large engine bring-up patch script and should be converted as a
-  separate Ladybird-specific cleanup.
+- `recipes-ladybird/patches-m0`: common Ladybird M0 engine-tree patches shared
+  by headless and app builds. The initial slice gates macOS sandbox selection
+  and the libedit dependency for iOS.
+- `recipes-ladybird/ladybird-m0-patches.sh` still carries the remaining
+  environment-sensitive Ladybird engine bring-up edits. Convert it in small
+  patches, keeping app-only behavior behind `LB_APP_BUILD`.
 - Ladybird wave/app-engine/bundle scripts are likewise out of scope for this
   dependency pass; treat them as a separate browser-engine packaging cleanup.
 

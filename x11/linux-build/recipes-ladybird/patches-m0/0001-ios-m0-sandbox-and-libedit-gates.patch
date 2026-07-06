@@ -1,0 +1,34 @@
+Subject: [PATCH] ios-m0: gate macOS sandbox and libedit dependency
+
+The iOS cross build uses CMAKE_SYSTEM_NAME=Darwin, so CMake's APPLE branch is
+true. Several helper services select the macOS Seatbelt sandbox from that branch,
+but fakesigned iOS helper processes cannot use Seatbelt and should fall back to
+the unimplemented sandbox.
+
+The standalone JS REPL utility is not built for the M0 headless/app targets, so
+avoid requiring libedit on iOS as well.
+--- a/Meta/CMake/check_for_dependencies.cmake
++++ b/Meta/CMake/check_for_dependencies.cmake
+@@ -5 +5 @@
+-if (NOT WIN32 AND NOT ANDROID)
++if (NOT WIN32 AND NOT ANDROID AND NOT IOS)
+--- a/Services/ImageDecoder/CMakeLists.txt
++++ b/Services/ImageDecoder/CMakeLists.txt
+@@ -27 +27 @@ if (LINUX)
+-elseif (APPLE)
++elseif (APPLE AND NOT IOS)
+--- a/Services/RequestServer/CMakeLists.txt
++++ b/Services/RequestServer/CMakeLists.txt
+@@ -13 +13 @@ if (LINUX)
+-elseif (APPLE)
++elseif (APPLE AND NOT IOS)
+--- a/Services/WebContent/CMakeLists.txt
++++ b/Services/WebContent/CMakeLists.txt
+@@ -43 +43 @@ if (LINUX)
+-elseif (APPLE)
++elseif (APPLE AND NOT IOS)
+--- a/Services/WebWorker/CMakeLists.txt
++++ b/Services/WebWorker/CMakeLists.txt
+@@ -23 +23 @@ if (LINUX)
+-elseif (APPLE)
++elseif (APPLE AND NOT IOS)
