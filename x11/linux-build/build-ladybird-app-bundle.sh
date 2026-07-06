@@ -141,8 +141,13 @@ for d in "$APP"/lib/*.dylib; do
   rewrite "$d"
 done
 
-# ---- sign (ldid, DER entitlements) ----------------------------------------------------------
-step "sign (ldid, DER ents)"
+# ---- preliminary sign -----------------------------------------------------------------------
+# Container ldid leaves XML entitlements visible, but iOS 15+ will not honor
+# IOKit/IOSurface classes unless the final signature carries DER entitlements from the
+# host Mac ldid. This pass only makes the bundle structurally signable inside Docker.
+# Always run packages/ladybird-app/resign-ladybird-app-deb.sh on the produced deb before
+# installing, publishing, or testing on device.
+step "preliminary sign (container ldid; host DER re-sign still required)"
 APP_ENT=/work/ladybird-app/entitlements/ladybird-app.entitlements
 HELPER_ENT=/work/ladybird-app/entitlements/ladybird-helper.entitlements
 for d in "$APP"/lib/*.dylib; do "$LDID" -S "$d" 2>/dev/null || true; done
@@ -150,7 +155,7 @@ for d in "$APP"/lib/*.dylib; do "$LDID" -S "$d" 2>/dev/null || true; done
 for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
   [ -f "$APP/$h" ] && "$LDID" -S"$HELPER_ENT" "$APP/$h"
 done
-echo "signed. verifying entitlement markers on Ladybird:"; "$LDID" -e "$APP/Ladybird" 2>/dev/null | grep -o 'can-allow-non-platform' | head -1 || echo "(none?)"
+echo "preliminary signature markers on Ladybird:"; "$LDID" -e "$APP/Ladybird" 2>/dev/null | grep -o 'can-allow-non-platform' | head -1 || echo "(none?)"
 
 # ---- deb --------------------------------------------------------------------------------------
 step "package deb"
@@ -167,4 +172,7 @@ cp /work/ladybird-app/DEBIAN/postinst "$APPROOT/DEBIAN/postinst"; chmod 0755 "$A
 DEB=/out/ladybird-app_${VER}_iphoneos-arm64.deb
 dpkg-deb -Zxz -b "$APPROOT" "$DEB" && echo "== packaged $DEB ==" && ls -la "$DEB"
 echo "app tree:"; find "$APP" -maxdepth 1 | sed 's/^/  /'
+echo
+echo "!! final step required on the macOS host:"
+echo "   packages/ladybird-app/resign-ladybird-app-deb.sh $DEB <out-dir>"
 echo; echo "########## BUNDLE done (self-contained) ##########"

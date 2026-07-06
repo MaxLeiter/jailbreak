@@ -8,19 +8,31 @@
 
     <!-- Load fakesigned /var/jb dylibs (each helper statically links the engine but still
          pulls leaf dylibs: icu78, harfbuzz, freetype, curl+openssl, sqlite3, ...). -->
+    <key>platform-application</key>
+    <true/>
     <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+    <key>com.apple.private.skip-library-validation</key>
     <true/>
 
     <!-- Inherit-and-debug: lets the parent supervise, and keeps the child spawnable. -->
     <key>get-task-allow</key>
     <true/>
+    <key>task_for_pid-allow</key>
+    <true/>
+    <key>com.apple.system-task-ports</key>
+    <true/>
 
-    <!-- The CPU Compositor creates IOSurface-backed front/back buffers for zero-copy
-         presentation in the UI process. It still does not use AGX/Metal/WebGL. -->
+    <!-- The Compositor uses IOSurface for the shared front/back buffers. GPU-linked builds
+         also need AGX/IOGPU for ANGLE/Metal/WebGL. This is still internal, so keep one
+         helper entitlement set for all spawned helpers. -->
     <key>com.apple.security.iokit-user-client-class</key>
     <array>
+        <string>AGXDeviceUserClient</string>
+        <string>IOGPUDeviceUserClient</string>
         <string>IOSurfaceRootUserClient</string>
         <string>IOSurfaceSendRight</string>
+        <string>IOSurfaceAcceleratorClient</string>
     </array>
 
     <!-- FS closure the helpers touch: engine resources (/var/jb/share/Lagom or the in-bundle
@@ -33,8 +45,5 @@
         <string>/private/tmp/</string>
     </array>
 
-    <!-- WebContent-only, when Skia-on-Metal/WebGL painting lands: add the GPU user clients
-         (as in ladybird-app.entitlements). Raster M0 paints on CPU; only the Compositor needs
-         IOSurface creation for the shared front buffer. -->
 </dict>
 </plist>

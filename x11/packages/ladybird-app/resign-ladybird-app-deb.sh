@@ -43,7 +43,10 @@ for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
     [ -f "$APP/$h" ] || { echo "missing helper: $APP/$h" >&2; exit 1; }
     xsign "$APP/$h" "$HELPER_ENTS" \
         com.apple.private.amfi.can-allow-non-platform \
-        IOSurfaceRootUserClient
+        AGXDeviceUserClient \
+        IOGPUDeviceUserClient \
+        IOSurfaceRootUserClient \
+        IOSurfaceAcceleratorClient
 done
 
 mkdir -p "$OUT_DIR"

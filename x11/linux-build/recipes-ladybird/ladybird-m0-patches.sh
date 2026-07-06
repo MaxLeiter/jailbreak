@@ -13,6 +13,12 @@ SRC="${1:?usage: ladybird-m0-patches.sh <ladybird-source-dir>}"
 cd "$SRC"
 
 say() { echo "  [m0-patch] $*"; }
+truthy() {
+  case "${1:-}" in
+    1|yes|true|on|YES|TRUE|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 apply_quilt_series() {
   local patch_dir="$1"
@@ -728,9 +734,10 @@ PY
   # c) Application.cpp: reverse patch 13 (launch) + patch 17 (connect) iOS gates.
   f=Libraries/LibWebView/Application.cpp
   python3 - "$f" <<'PY'
-import sys
+import os, sys
 p=sys.argv[1]; s=open(p).read()
 changed=False
+gpu_enabled = os.environ.get("LB_APP_GPU", "").lower() in ("1", "yes", "true", "on")
 # patch-13 form: gate wrapping launch_compositor_process()
 for g in [
   ("#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper\n    TRY(launch_compositor_process());\n#endif",
@@ -743,12 +750,19 @@ for g in [
 # d) force CPU painting on iOS (both WebContent + Compositor pick it up; Compositor arg appends
 #    --force-cpu-painting from web_content_options). Insert right after create_platform_options().
 anchor="create_platform_options(m_browser_options, m_request_server_options, m_web_content_options);"
-inject=anchor+"\n\n#if defined(AK_OS_IOS)\n    // iOS app: no GPU/ANGLE backend -> CPU (Skia) painting in WebContent AND the Compositor.\n    m_web_content_options.force_cpu_painting = ForceCPUPainting::Yes;\n#endif"
-if anchor in s and "iOS app: no GPU/ANGLE backend" not in s:
-    s=s.replace(anchor,inject,1); changed=True
+cpu_block="\n\n#if defined(AK_OS_IOS)\n    // iOS app: no GPU/ANGLE backend -> CPU (Skia) painting in WebContent AND the Compositor.\n    m_web_content_options.force_cpu_painting = ForceCPUPainting::Yes;\n#endif"
+if gpu_enabled:
+    if cpu_block in s:
+        s=s.replace(cpu_block,"",1); changed=True
+else:
+    inject=anchor+cpu_block
+    if anchor in s and "iOS app: no GPU/ANGLE backend" not in s:
+        s=s.replace(anchor,inject,1); changed=True
 open(p,"w").write(s)
-print("  [m0-patch] Application.cpp: launch/connect ungated + CPU painting forced (app mode)" if changed
-      else "  [m0-patch] Application.cpp: app-mode gates already applied")
+if changed:
+    print("  [m0-patch] Application.cpp: launch/connect ungated + " + ("GPU painting allowed (app mode)" if gpu_enabled else "CPU painting forced (app mode)"))
+else:
+    print("  [m0-patch] Application.cpp: app-mode gates already applied" + (" (GPU painting allowed)" if gpu_enabled else ""))
 PY
 
   # e) top-level CMakeLists.txt: add the UIKit frontend subdir on iOS.
@@ -772,12 +786,23 @@ print("  [m0-patch] CMakeLists.txt: add_subdirectory(UI/iOS) on iOS (app mode)")
 PY
   fi
 
-  # f) Compositor egl/gl link stub: the Compositor executable references ANGLE EGL/GLES entry
-  #    points (OpenGLContext.cpp + WebGL replayer) that only run for WebGL/GPU present. Under
-  #    --force-cpu-painting they are never called, but must resolve at link. angle.pc has empty
-  #    Libs, so we add a self-contained stub TU (trap-if-called) to compositorservice on iOS.
+  # f) Compositor egl/gl link stub: the CPU app path references ANGLE EGL/GLES entry points
+  #    (OpenGLContext.cpp + WebGL replayer) that are never called under --force-cpu-painting.
+  #    The GPU probe path links real EGL/GLES dylibs instead, so remove the stub if the same
+  #    tree is being flipped from CPU to GPU mode.
   f=Services/Compositor/CMakeLists.txt
-  if ! grep -q 'AngleStubIOS.cpp' "$f"; then
+  if truthy "${LB_APP_GPU:-0}"; then
+    if grep -q 'AngleStubIOS.cpp' "$f"; then
+      python3 - "$f" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+s=s.replace("    AngleStubIOS.cpp\n", "")
+open(p,"w").write(s)
+print("  [m0-patch] Services/Compositor: AngleStubIOS.cpp removed (GPU app mode)")
+PY
+    fi
+    rm -f Services/Compositor/AngleStubIOS.cpp
+  elif ! grep -q 'AngleStubIOS.cpp' "$f"; then
     cat > Services/Compositor/AngleStubIOS.cpp <<'STUB'
 // iOS app build (m0-patch 18): trap-if-called stubs for the ANGLE EGL/GLES entry points the
 // Compositor references but never calls under --force-cpu-painting (WebGL/GPU present is off).
@@ -801,7 +826,55 @@ PY
   # g) Quilt-managed engine patch series for the real iOS IOSurface/Mach transport path.
   apply_quilt_series "$SCRIPT_DIR/patches"
 
-  # h) Remove earlier app-mode bring-up traces. These were useful while first pixels were still
+  # h) Remove temporary IOSurface allocation diagnostics from reused build trees. The patch was
+  #    useful while isolating host-DER signing failures, but release app builds should not write
+  #    failure logs under /var/jb/tmp from LibCore.
+  f=Libraries/LibCore/IOSurface.cpp
+  if grep -q 'ladybird-iosurface.log' "$f"; then
+    python3 - "$f" <<'PY'
+import re
+import sys
+
+p = sys.argv[1]
+s = open(p).read()
+s = s.replace('\n#include <stdio.h>\n', '\n')
+s = re.sub(
+    r'\n#if defined\(AK_OS_IOS\)\n'
+    r'    if \(!ref\) \{\n'
+    r'        FILE\* f = fopen\("/var/jb/tmp/ladybird-iosurface\.log", "a"\);\n'
+    r'        if \(f\) \{\n'
+    r'            fprintf\(f, "IOSurfaceCreate failed width=%d height=%d bpe=%zu format=0x%08x\\n", width, height, bytes_per_element, pixel_format\);\n'
+    r'            fclose\(f\);\n'
+    r'        \}\n'
+    r'    \}\n'
+    r'#endif\n',
+    '\n',
+    s,
+)
+blocks = [
+'''    if (!ref) {
+        if (auto* f = fopen("/var/jb/tmp/ladybird-iosurface.log", "a")) {
+            fprintf(f, "IOSurfaceCreate failed width=%d height=%d bpe=%zu format=0x%08x\\n", width, height, bytes_per_element, pixel_format);
+            fclose(f);
+        }
+    }
+''',
+'''    if (!ref) {
+        if (auto* f = fopen("/var/jb/tmp/ladybird-iosurface.log", "a")) {
+            fprintf(f, "IOSurfaceCreate failed width=%d height=%d bpe=%zu format=0x%08x\n", width, height, bytes_per_element, pixel_format);
+            fclose(f);
+        }
+    }
+''',
+]
+for block in blocks:
+    s = s.replace(block, "")
+open(p, "w").write(s)
+print("  [m0-patch] LibCore/IOSurface.cpp: removed temporary IOSurface diagnostics")
+PY
+  fi
+
+  # i) Remove earlier app-mode bring-up traces. These were useful while first pixels were still
   #    uncertain, but release app builds should not append frame-by-frame logs in /var/jb/tmp.
   f=Libraries/LibWebView/Application.cpp
   if grep -q 'LB_ENG_TRACE' "$f"; then

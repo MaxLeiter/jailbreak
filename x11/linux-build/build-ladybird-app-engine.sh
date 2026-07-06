@@ -2,7 +2,7 @@
 # build-ladybird-app-engine.sh — Phase A+B of the standalone iOS Ladybird .app.
 # Builds, on procursus-vol-ladybird (continues wave4c state):
 #   * the UIKit frontend `Ladybird` (UI/iOS, first real compile of the .mm/.cpp)
-#   * the CPU `Compositor` 5th helper (patch 18, --force-cpu-painting, egl/gl link stubs)
+#   * the `Compositor` 5th helper (CPU fallback by default; real ANGLE/GPU when LB_APP_GPU=1)
 #   * relinks WebContent/RequestServer/ImageDecoder/WebWorker under app-mode patches
 # then stages all 6 binaries + share/Lagom into /out/app-stage for the .app deb driver.
 #
@@ -26,6 +26,11 @@ export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
 export PATH=$CARGO_HOME/bin:$PATH
 export LB_APP_BUILD=1
+export LB_APP_GPU="${LB_APP_GPU:-0}"
+case "$LB_APP_GPU" in
+  1|yes|true|on|YES|TRUE|ON) APP_GPU_ENABLED=1 ;;
+  *) APP_GPU_ENABLED=0 ;;
+esac
 step() { echo; echo "########## $* ##########"; }
 cd "$PROC"
 NM=/root/cctools/bin/aarch64-apple-darwin-nm
@@ -124,9 +129,9 @@ fi
 # ---- complete ANGLE gl2ext_angle.h (Compositor WebGL replayer) -----------------------------
 # The staged build_base gl2ext_angle.h is an older ANGLE revision missing 19
 # GL_ANGLE_robust_client_memory prototypes (incl. glCompressedTex{,Sub}Image{2,3}DRobustANGLE)
-# that the GENERATED Libraries/LibWeb/WebGL/GLFunctions.cpp references. Under --force-cpu-painting
-# these are never called, but must declare at compile. Swap in the complete upstream header from
-# the ANGLE checkout (strict superset, same include guards) so compositorservice compiles.
+# that the GENERATED Libraries/LibWeb/WebGL/GLFunctions.cpp references. The CPU fallback never
+# calls them, but both CPU and GPU builds still need declarations at compile time. Swap in the
+# complete upstream header from the ANGLE checkout (strict superset, same include guards).
 BB_ANGLE=$BB/usr/include/GLES2/gl2ext_angle.h
 if [ -f "$BB_ANGLE" ] && ! grep -q glCompressedTexImage2DRobustANGLE "$BB_ANGLE"; then
   FULL_ANGLE=$(find "$PROC/build_work" -path "*angle/checkout/include/GLES2/gl2ext_angle.h" 2>/dev/null | head -1)
@@ -154,17 +159,21 @@ cmake -GNinja -B "$BUILD" -S "$WORK" \
   -DENABLE_INSTALL_HEADERS=OFF -DENABLE_NETWORK_DOWNLOADS=ON -DENABLE_CLANG_PLUGINS=OFF \
   -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
   -DLADYBIRD_CACHE_DIR=/var/jb/lib/ladybird -DVCPKG_ROOT= 2>&1 | tail -6
-echo "configure exit: ${PIPESTATUS[0]}"
+cfg=${PIPESTATUS[0]}
+echo "configure exit: $cfg"
+[ "$cfg" -eq 0 ] || exit "$cfg"
 cd "$BUILD"
 
-# ---- Compositor egl/gl link stub fill ------------------------------------------------------
-# Build compositorservice, harvest undefined ANGLE egl/gl symbols, generate trap stubs into
-# AngleStubIOS.cpp between the GEN markers, rebuild so the archive is self-satisfying.
-step "Compositor: build service lib + fill egl/gl stubs"
+# ---- Compositor EGL/GLES link path ---------------------------------------------------------
+if [ "$APP_GPU_ENABLED" -eq 1 ]; then
+  step "Compositor: build service lib with real EGL/GLES"
+else
+  step "Compositor: build service lib + fill egl/gl stubs"
+fi
 ninja -k 0 -j"$(nproc)" compositorservice 2>&1 | tail -8
 CS=$(find "$BUILD" -name libcompositorservice.a | head -1)
 STUBSRC="$WORK/Services/Compositor/AngleStubIOS.cpp"
-if [ -n "$CS" ] && [ -f "$STUBSRC" ]; then
+if [ "$APP_GPU_ENABLED" -eq 0 ] && [ -n "$CS" ] && [ -f "$STUBSRC" ]; then
   # undefined egl/gl/EGL symbols across the whole service archive
   SYMS=$("$NM" -u "$CS" 2>/dev/null | sed 's/^ *//' | grep -Eo '_(egl|gl|EGL)[A-Za-z0-9_]*' | sort -u | sed 's/^_//')
   echo "undefined ANGLE symbols: $(echo "$SYMS" | wc -w)"
@@ -191,7 +200,10 @@ p1=${PIPESTATUS[0]}
 if [ "$p1" -ne 0 ]; then
   echo "== pass1 exit $p1; -j2 retry (OOM giants / late undefined stubs) =="
   # second stub harvest from the link log (catches symbols only pulled by the final exe link)
-  MORE=$(grep -Eo '"_(egl|gl|EGL)[A-Za-z0-9_]*"' /out/app-engine-build.log | tr -d '"' | sort -u | sed 's/^_//')
+  MORE=
+  if [ "$APP_GPU_ENABLED" -eq 0 ]; then
+    MORE=$(grep -Eo '"_(egl|gl|EGL)[A-Za-z0-9_]*"' /out/app-engine-build.log | tr -d '"' | sort -u | sed 's/^_//')
+  fi
   if [ -n "$MORE" ] && [ -f "$STUBSRC" ]; then
     HAVE=$(grep -Eo 'void [A-Za-z0-9_]+\(void\)' "$STUBSRC" | awk '{print $2}' | sed 's/(void)//')
     ADD=$(comm -23 <(echo "$MORE"|sort -u) <(echo "$HAVE"|sort -u))
@@ -208,7 +220,9 @@ PY
     fi
   fi
   ninja -k 0 -j2 $TARGETS 2>&1 | tee -a /out/app-engine-build.log | tail -30
-  echo "build exit (pass2): ${PIPESTATUS[0]}"
+  p2=${PIPESTATUS[0]}
+  echo "build exit (pass2): $p2"
+  [ "$p2" -eq 0 ] || exit "$p2"
 else
   echo "build exit: 0"
 fi

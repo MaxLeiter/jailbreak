@@ -1,1 +1,3 @@
 iosurface-mach-ipc.patch
+ios-app-real-angle-pkgconfig.patch
+ios-app-angle-compat.patch

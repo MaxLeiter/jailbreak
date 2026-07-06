@@ -89,9 +89,9 @@ separately (Mac `ldid`, DER entitlements, via `xsign`):
   fakesigned dylibs), `get-task-allow`, the GPU/IOSurface IOKit user clients (Metal present,
   same set as Xios.app), `/var/jb` + `/tmp` file exceptions.
 - `entitlements/ladybird-helper.entitlements` — shared by the five helpers:
-  `can-allow-non-platform`, `get-task-allow`, IOSurface user clients for the CPU Compositor's
-  shared front buffer, and `/var/jb` + `/tmp` file exceptions. GPU clients are intentionally
-  omitted from helpers; add them only when Skia-on-Metal/WebGL painting lands.
+  `can-allow-non-platform`, `get-task-allow`, IOSurface user clients for the Compositor's
+  shared front buffer, the internal GPU user clients for ANGLE/EGL/GLES probes, and
+  `/var/jb` + `/tmp` file exceptions.
 
 ### Single-process fallback
 There is **no** in-process mode in Ladybird, so there is no code fallback. If `posix_spawn`
@@ -112,10 +112,15 @@ possible later but buys nothing for M0.
 
 ## Build
 
-The current production path is the Linux build wrapper:
-`linux-build/build-ladybird-app-engine.sh` builds the patched engine/UI targets into
-`linux-build/out/app-stage`, then `linux-build/build-ladybird-app-bundle.sh` assembles the
-self-contained `.app` deb.
+The current production path is:
+1. `linux-build/build-ladybird-app-engine.sh` builds the patched engine/UI targets into
+   `linux-build/out/app-stage`. Set `LB_APP_GPU=1` to link the real ANGLE/EGL/GLES path;
+   leave it unset for the CPU-painting fallback.
+2. `linux-build/build-ladybird-app-bundle.sh` assembles the self-contained `.app` deb inside
+   the Linux container. This package is only preliminarily signed.
+3. `packages/ladybird-app/resign-ladybird-app-deb.sh <deb> <out-dir>` must run on macOS before
+   install or publish. The host `xsign`/`ldid` pass emits DER entitlements; without that,
+   `IOSurfaceCreate()` returns `NULL` on device even though `ldid -e` prints the XML keys.
 
 `build-ladybird-app.sh` remains a lower-level packaging driver for prebuilt artifacts. It
 expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBIRD_UI_BIN`
@@ -134,10 +139,10 @@ expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBI
 **User flow:** install one deb in Sileo → Ladybird icon on the home screen → tap → browse.
 
 ## Still deferred
-- GPU/WebGL rendering: app mode forces CPU painting and keeps ANGLE/EGL/GLES link stubs
-  trap-if-called under that path.
-- Skia-on-Metal/WebContent GPU painting: helper GPU user-client entitlements should be added
-  only when that rendering path exists.
+- WebGL/GPU runtime validation beyond first paint. `LB_APP_GPU=1` now links real EGL/GLES and
+  removes the CPU `--force-cpu-painting` flag, but this is still an internal probe path.
+- Non-jailbroken/App Store builds. The current app relies on rootless `/var/jb`, fakesigned
+  dylibs, helper spawning, and private IOKit entitlements.
 
 ## UI/ frontend inventory + toolkit versions (for the later desktop-flavor pick)
 - **AppKit** — macOS Cocoa + Metal (the port reference; unusable as-is on UIKit).
