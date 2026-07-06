@@ -14,7 +14,7 @@ headless screenshot flow into a packageable iOS binary.
 @@ -0,0 +1,12 @@
 +# M0 headless PNG driver. Mirrors test-web's link set (minus the test-only libs). It depends on the
 +# helper processes so they build alongside. The resource-copy target (ladybird_build_resource_files)
-+# lives in UI/, which is skipped on iOS (patch 6) -> guard the dependency; the driver packaging step
++# lives in UI/, which is skipped by the common M0 UI guard -> guard the dependency; the driver packaging step
 +# stages resources straight from Base/res into share/Lagom.
 +add_executable(headless-shot main.cpp)
 +if (TARGET ladybird_build_resource_files)

@@ -1,0 +1,89 @@
+Subject: [PATCH] ios-app: restore compositor app build graph
+
+The app build runs the normal compositor paint path. Re-enable the Compositor
+helper for iOS app builds, add the UIKit frontend, ungate WebView's compositor
+launch/connect calls, and tolerate duplicate context registration from the app
+frontend and WebContent.
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -141,8 +141,10 @@ endif()
+ 
+ if (ENABLE_GUI_TARGETS)
+     add_subdirectory(Services)
+-    if (NOT IOS)  # iOS: skip UI (no AppKit/UIKit frontend at M0)
++    if (NOT IOS)  # iOS: skip AppKit/Qt UI
+         add_subdirectory(UI)
++    else()          # iOS app build: UIKit frontend
++        add_subdirectory(UI/iOS)
+     endif()
+ endif()
+ 
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -548,9 +548,7 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(
+ 
+     client->async_connect_to_request_server(move(request_server_handle));
+     client->async_connect_to_image_decoder(move(image_decoder_handle));
+-#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to
+     TRY(Application::the().connect_web_content_to_compositor(*client));
+-#endif
+ 
+     return client;
+ }
+@@ -866,9 +864,7 @@ ErrorOr<void> Application::launch_services()
+ 
+     TRY(launch_request_server());
+     TRY(launch_image_decoder_server());
+-#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper
+     TRY(launch_compositor_process());
+-#endif
+ 
+     if (m_browser_options.devtools_port.has_value())
+         TRY(launch_devtools_server());
+--- a/Meta/CMake/ladybird_helper_processes.cmake
++++ b/Meta/CMake/ladybird_helper_processes.cmake
+@@ -1,5 +1,6 @@
+ # iOS M0: Compositor deferred (GPU/ANGLE)
+ set(ladybird_helper_processes
++    Compositor
+     ImageDecoder
+     RequestServer
+     WebContent
+--- a/Services/CMakeLists.txt
++++ b/Services/CMakeLists.txt
+@@ -4,8 +4,8 @@ add_subdirectory(ImageDecoder)
+ add_subdirectory(RequestServer)
+ add_subdirectory(WebContent)
+ add_subdirectory(WebWorker)
++add_subdirectory(Compositor)
+ if (NOT IOS)
+-    add_subdirectory(Compositor)
+     add_subdirectory(WebDriver)
+ endif()
+ add_subdirectory(HeadlessShot)
+--- a/Services/Compositor/CMakeLists.txt
++++ b/Services/Compositor/CMakeLists.txt
+@@ -38,7 +38,7 @@ add_executable(Compositor main.cpp)
+ 
+ if (LINUX)
+     target_sources(Compositor PRIVATE SandboxLinux.cpp)
+-elseif (APPLE)
++elseif (APPLE AND NOT IOS)
+     target_sources(Compositor PRIVATE SandboxMacOS.cpp)
+ else()
+     target_sources(Compositor PRIVATE SandboxUnimplemented.cpp)
+--- a/Services/Compositor/CompositorState.cpp
++++ b/Services/Compositor/CompositorState.cpp
+@@ -65,6 +65,12 @@ void CompositorState::destroy_contexts_for_web_content_client(CompositorStateWeb
+ 
+ void CompositorState::create_context(Web::Compositor::CompositorContextId context_id, Optional<u64> page_id, CompositorStateWebContentClient& web_content_client)
+ {
++#if defined(AK_OS_IOS)
++    // iOS: duplicate create_context is a no-op (two registration paths reach the same
++    // page-based context_id; keep the existing ContextState rather than VERIFY-crashing).
++    if (m_contexts.contains(context_id))
++        return;
++#endif
+     VERIFY(!m_contexts.contains(context_id));
+     if (page_id.has_value())
+         VERIFY(context_id == Web::Compositor::compositor_context_id_for_page(*page_id));

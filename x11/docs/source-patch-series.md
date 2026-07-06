@@ -142,9 +142,12 @@ Remaining non-Qt procedural source edits:
   launch/connect calls, adds the `headless-shot` M0 driver, and routes Skia
   font-manager setup through CoreText on iOS. For headless screenshots, it
   CPU-rasters the display list inside WebContent when no Compositor is launched.
+- `recipes-ladybird/patches`: app-only Ladybird engine patches applied under
+  `LB_APP_BUILD=1`, including Compositor/UI build-graph restoration,
+  IOSurface/Mach transport, input caret updates, and ANGLE/GPU compatibility.
 - `recipes-ladybird/ladybird-m0-patches.sh` still carries the remaining
-  environment-sensitive Ladybird engine bring-up edits. Convert it in small
-  patches, keeping app-only behavior behind `LB_APP_BUILD`.
+  environment-sensitive Ladybird app bring-up edits: CPU/GPU paint-mode
+  toggles, generated ANGLE trap stubs, and cleanup of traces from reused trees.
 - Ladybird wave/app-engine/bundle scripts are likewise out of scope for this
   dependency pass; treat them as a separate browser-engine packaging cleanup.
 

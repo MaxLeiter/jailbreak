@@ -1,3 +1,4 @@
+ios-app-build-graph.patch
 iosurface-mach-ipc.patch
 ios-app-input-caret-after-events.patch
 ios-app-input-caret-pageclient-access.patch

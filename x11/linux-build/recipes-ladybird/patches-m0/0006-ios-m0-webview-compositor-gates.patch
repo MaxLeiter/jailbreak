@@ -6,7 +6,7 @@ these exact gates before configuring the interactive UIKit build.
 --- a/Libraries/LibWebView/Application.cpp
 +++ b/Libraries/LibWebView/Application.cpp
 @@ -550,0 +551 @@
-+#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to (patch 13/16)
++#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to
 @@ -551,0 +553 @@
 +#endif
 @@ -866,0 +869 @@

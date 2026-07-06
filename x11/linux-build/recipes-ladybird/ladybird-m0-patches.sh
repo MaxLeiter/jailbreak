@@ -56,92 +56,32 @@ apply_quilt_series() {
 apply_quilt_series "$SCRIPT_DIR/patches-m0"
 
 # =============================================================================================
-# 18) APP-BUILD MODE (LB_APP_BUILD=1 only). The interactive UIKit .app uses the NORMAL compositor
-#     paint cycle, NOT the headless render_screenshot path (patch 16). At 92b0257 the frontend's
+# APP-BUILD MODE (LB_APP_BUILD=1 only). The interactive UIKit .app uses the NORMAL compositor
+#     paint cycle, NOT the headless render_screenshot path. At 92b0257 the frontend's
 #     m_client_state.front_bitmap is filled ONLY by CompositorClient (IPC callbacks from a live
 #     Compositor process): WebContent records a display list -> Compositor CPU-rasters into a
 #     ShareableBitmap backing store -> ships it to the UI -> server_did_paint -> on_ready_to_paint.
 #     With no Compositor process the window is blank. So for the app we re-enable the Compositor as
 #     a 5th CPU helper (upstream-shaped; the iOS non-MACOS shared-image transport is ShareableBitmap/
-#     AnonymousBuffer over SCM_RIGHTS fds, already portable; NO IOSurface/GPU). This REVERSES the
-#     headless gates (patches 8/12/13/17) for iOS and forces CPU painting. Also wires UI/iOS in.
-#     Guarded by LB_APP_BUILD so the headless deb build (patches only 1-17) is unaffected.
+#     AnonymousBuffer over SCM_RIGHTS fds, already portable; NO IOSurface/GPU). This applies the
+#     app-only patch stack to reverse headless Compositor gates for iOS and wire UI/iOS in.
+#     Guarded by LB_APP_BUILD so the headless deb build only applies patches-m0.
 # =============================================================================================
 if [ "${LB_APP_BUILD:-0}" = "1" ]; then
   say "APP-BUILD MODE: re-enabling CPU Compositor + wiring UI/iOS"
 
-  # a) Services/CMakeLists.txt: build Compositor on iOS (reverse patch 8). The headless patch
-  #    guarded BOTH Compositor + WebDriver under `if (NOT IOS)`; pull Compositor OUT of the guard
-  #    (WebDriver stays deferred).
-  f=Services/CMakeLists.txt
-  if ! grep -qE '^add_subdirectory\(Compositor\)' "$f"; then
-    python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-old="""if (NOT IOS)
-    add_subdirectory(Compositor)
-    add_subdirectory(WebDriver)
-endif()"""
-new="""add_subdirectory(Compositor)
-if (NOT IOS)
-    add_subdirectory(WebDriver)
-endif()"""
-if old in s:
-    s=s.replace(old,new)
-elif "add_subdirectory(Compositor)" in s:
-    # already partially edited form: just ensure Compositor is unguarded
-    s=s.replace("if (NOT IOS)\n    add_subdirectory(Compositor)","add_subdirectory(Compositor)\nif (NOT IOS)")
-open(p,"w").write(s)
-print("  [m0-patch] Services/CMakeLists.txt: Compositor unguarded on iOS (app mode)")
-PY
-  fi
+  # App-only engine patch series for compositor/UI wiring and IOSurface/Mach transport.
+  apply_quilt_series "$SCRIPT_DIR/patches"
 
-  # a2) Services/Compositor/CMakeLists.txt: the sandbox source is chosen `elseif (APPLE)`, which
-  #     picks SandboxMacOS.cpp on iOS too — but that file uses macOS-only Seatbelt symbols
-  #     (Sandbox::add_seatbelt_path_if_exists / Sandbox::SeatbeltPath) that don't exist here.
-  #     Mirror the WebContent helper: `elseif (APPLE AND NOT IOS)` so iOS falls to
-  #     SandboxUnimplemented.cpp (Seatbelt is unavailable for fakesigned apps anyway).
-  f=Services/Compositor/CMakeLists.txt
-  if grep -qE '^elseif \(APPLE\)$' "$f"; then
-    python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-s=s.replace("elseif (APPLE)\n    target_sources(Compositor PRIVATE SandboxMacOS.cpp)",
-            "elseif (APPLE AND NOT IOS)\n    target_sources(Compositor PRIVATE SandboxMacOS.cpp)",1)
-open(p,"w").write(s)
-print("  [m0-patch] Services/Compositor: SandboxMacOS gated APPLE AND NOT IOS (app mode)")
-PY
-  fi
-
-  # b) ladybird_helper_processes.cmake: add Compositor back to the helper list.
-  f=Meta/CMake/ladybird_helper_processes.cmake
-  if ! grep -q '^    Compositor' "$f"; then
-    python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-s=s.replace("set(ladybird_helper_processes\n","set(ladybird_helper_processes\n    Compositor\n")
-open(p,"w").write(s)
-print("  [m0-patch] ladybird_helper_processes.cmake: Compositor re-added (app mode)")
-PY
-  fi
-
-  # c) Application.cpp: reverse patch 13 (launch) + patch 17 (connect) iOS gates.
+  # CPU app builds force compositor rasterization in software. GPU probe builds link
+  # real EGL/GLES and must not carry the CPU-only force flag.
   f=Libraries/LibWebView/Application.cpp
   python3 - "$f" <<'PY'
 import os, sys
 p=sys.argv[1]; s=open(p).read()
 changed=False
 gpu_enabled = os.environ.get("LB_APP_GPU", "").lower() in ("1", "yes", "true", "on")
-# patch-13 form: gate wrapping launch_compositor_process()
-for g in [
-  ("#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper\n    TRY(launch_compositor_process());\n#endif",
-   "    TRY(launch_compositor_process());"),
-  ("#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to (patch 13/16)\n    TRY(Application::the().connect_web_content_to_compositor(*client));\n#endif",
-   "    TRY(Application::the().connect_web_content_to_compositor(*client));"),
-]:
-    if g[0] in s:
-        s=s.replace(g[0],g[1]); changed=True
-# d) force CPU painting on iOS (both WebContent + Compositor pick it up; Compositor arg appends
+# Force CPU painting on iOS (both WebContent + Compositor pick it up; Compositor arg appends
 #    --force-cpu-painting from web_content_options). Insert right after create_platform_options().
 anchor="create_platform_options(m_browser_options, m_request_server_options, m_web_content_options);"
 cpu_block="\n\n#if defined(AK_OS_IOS)\n    // iOS app: no GPU/ANGLE backend -> CPU (Skia) painting in WebContent AND the Compositor.\n    m_web_content_options.force_cpu_painting = ForceCPUPainting::Yes;\n#endif"
@@ -154,31 +94,10 @@ else:
         s=s.replace(anchor,inject,1); changed=True
 open(p,"w").write(s)
 if changed:
-    print("  [m0-patch] Application.cpp: launch/connect ungated + " + ("GPU painting allowed (app mode)" if gpu_enabled else "CPU painting forced (app mode)"))
+    print("  [m0-patch] Application.cpp: " + ("GPU painting allowed (app mode)" if gpu_enabled else "CPU painting forced (app mode)"))
 else:
-    print("  [m0-patch] Application.cpp: app-mode gates already applied" + (" (GPU painting allowed)" if gpu_enabled else ""))
+    print("  [m0-patch] Application.cpp: CPU/GPU paint mode already set" + (" (GPU painting allowed)" if gpu_enabled else ""))
 PY
-
-  # e) top-level CMakeLists.txt: add the UIKit frontend subdir on iOS.
-  f=CMakeLists.txt
-  if ! grep -q 'add_subdirectory(UI/iOS)' "$f"; then
-    python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-anchor="""    if (NOT IOS)  # iOS: skip UI (no AppKit/UIKit frontend at M0)
-        add_subdirectory(UI)
-    endif()"""
-repl="""    if (NOT IOS)  # iOS: skip AppKit/Qt UI
-        add_subdirectory(UI)
-    else()          # iOS app build: our UIKit frontend (m0-patch 18)
-        add_subdirectory(UI/iOS)
-    endif()"""
-assert anchor in s, "UI add_subdirectory guard not found (patch order?)"
-s=s.replace(anchor,repl)
-open(p,"w").write(s)
-print("  [m0-patch] CMakeLists.txt: add_subdirectory(UI/iOS) on iOS (app mode)")
-PY
-  fi
 
   # f) Compositor egl/gl link stub: the CPU app path references ANGLE EGL/GLES entry points
   #    (OpenGLContext.cpp + WebGL replayer) that are never called under --force-cpu-painting.
@@ -198,7 +117,7 @@ PY
     rm -f Services/Compositor/AngleStubIOS.cpp
   elif ! grep -q 'AngleStubIOS.cpp' "$f"; then
     cat > Services/Compositor/AngleStubIOS.cpp <<'STUB'
-// iOS app build (m0-patch 18): trap-if-called stubs for the ANGLE EGL/GLES entry points the
+// iOS app build: trap-if-called stubs for the ANGLE EGL/GLES entry points the
 // Compositor references but never calls under --force-cpu-painting (WebGL/GPU present is off).
 // The concrete symbol list is generated by the build driver from the first link's undefined
 // symbols and appended below between the GEN markers. Keeping the mechanism in-tree keeps the
@@ -216,9 +135,6 @@ open(p,"w").write(s)
 print("  [m0-patch] Services/Compositor: AngleStubIOS.cpp added (app mode; driver fills symbols)")
 PY
   fi
-
-  # g) Quilt-managed engine patch series for the real iOS IOSurface/Mach transport path.
-  apply_quilt_series "$SCRIPT_DIR/patches"
 
   # h) Remove temporary IOSurface allocation diagnostics from reused build trees. The patch was
   #    useful while isolating host-DER signing failures, but release app builds should not write
@@ -362,37 +278,6 @@ print(f"  [m0-patch] {p}: removed first-paint diagnostic trace")
 PY
     fi
   done
-
-  # h) Compositor create_context idempotency (BUG 2 fix). CompositorState::create_context opens
-  #    with VERIFY(!m_contexts.contains(context_id)). Under our frontend, the SAME page-based
-  #    context_id (== page_id) is registered twice -- once from ViewImplementation::handle_resize
-  #    (UI) and once from the WebContent traversable's PagePresentationRegistration::Yes. The
-  #    duplicate reaches the Compositor's create_context a second time and trips that VERIFY ->
-  #    Compositor SIGTRAP. Its sync CreateContext response then comes back null, so the UI's
-  #    Application::register_compositor_context VERIFYs on the null NonnullOwnPtr response (the
-  #    observed Ladybird crash in handle_resize). Make a duplicate create_context a no-op on iOS:
-  #    keep the existing ContextState (it owns the display list + backing stores); the real
-  #    viewport arrives via a separate update_compositor_viewport IPC right after.
-  f=Services/Compositor/CompositorState.cpp
-  if ! grep -q 'iOS: duplicate create_context is a no-op' "$f"; then
-    python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-anchor = ("void CompositorState::create_context(Web::Compositor::CompositorContextId context_id, "
-          "Optional<u64> page_id, CompositorStateWebContentClient& web_content_client)\n{\n")
-assert anchor in s, "create_context signature not found (upstream drift?)"
-inject = (anchor +
-          "#if defined(AK_OS_IOS)\n"
-          "    // iOS: duplicate create_context is a no-op (two registration paths reach the same\n"
-          "    // page-based context_id; keep the existing ContextState rather than VERIFY-crashing).\n"
-          "    if (m_contexts.contains(context_id))\n"
-          "        return;\n"
-          "#endif\n")
-s = s.replace(anchor, inject, 1)
-open(p,"w").write(s)
-print("  [m0-patch] CompositorState.cpp: create_context idempotent on iOS (app mode)")
-PY
-  fi
 
 fi
 

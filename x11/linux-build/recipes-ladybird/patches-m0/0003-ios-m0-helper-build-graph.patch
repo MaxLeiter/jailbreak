@@ -22,7 +22,7 @@ the Compositor later when `LB_APP_BUILD=1`.
 @@ -1 +1,2 @@
 -add_subdirectory(Compositor)
 +# iOS M0 helper set: the multiprocess engine helpers only. Compositor (ANGLE GLES) + WebDriver
-+# are deferred (see ladybird-m0-patches.sh patch 7).
++# are deferred; app builds re-enable Compositor via recipes-ladybird/patches.
 @@ -5 +5,0 @@
 -add_subdirectory(WebDriver)
 @@ -6,0 +7,4 @@
