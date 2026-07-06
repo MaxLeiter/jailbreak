@@ -18,7 +18,7 @@ version for any agent.
 | fuzzel 1.12.0+ios1 | out/ ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
 | dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
 | foot 1.27.0+ios3 | out/ ✓ | installed | **YES** | PTY + locale + render-worker path verified |
-| imv 5.0.1+ios2 | out/ ✓ | installed | **YES (Xwayland)** | `imv-x11` maps/renders via rootful Xwayland; native Wayland EGL still blocked |
+| imv 5.0.1+ios3 | out/ ✓ | installed | **YES (Xwayland)** | `imv` wrapper auto-starts rootful Xwayland and execs `imv-x11`; native Wayland EGL still blocked |
 | mpv 0.36.0+ios2 | out/ ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
 | zathura 0.5.12 | out/ ✓ | installed | **YES** | GTK3 Wayland + PDF/poppler content render verified |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
@@ -96,20 +96,22 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `artifacts/device-runs/20260705-imv-slurp-fuzzel-clean/cap-slurp.png`.
   A driven `slurp -d` smoke also returned rc 0 and stdout geometry
   `100,100 226x161` after `bin/xios-device input drag 200 200 650 520`.
-- **imv — WORKS via Xwayland as `imv 5.0.1+ios2`.** Native Wayland still aborts
+- **imv — WORKS via Xwayland as `imv 5.0.1+ios3`.** Native Wayland still aborts
   on-device with `Assertion failed: (window->egl_context), function create_window,
   file wl_window.c, line 864`. This is not a wl_shm mapping issue: imv's renderer
   uses desktop OpenGL (`eglBindAPI(EGL_OPENGL_API)`, `glBegin`,
   `GL_TEXTURE_RECTANGLE`) against the ANGLE/libEGL path. The practical fallback is
   now packaged: `imv` builds both Wayland and X11 backends, `libxkbcommon0
   1.7.0+ios2` ships `libxkbcommon-x11`, `libxcb-xkb1` is installed, and
-  `imv_5.0.1+ios2` carries the private `libinih.0.dylib` it links. On-device
-  rootful `Xwayland :1` smoke under classic `iosc` kept `imv-x11
-  /var/jb/tmp/xios-imv-smoke.png` alive with empty stderr and a visible rendered
-  PNG. The local compositor capture may appear rotated in portrait because it is
-  a raw capture path; the on-device presentation was confirmed visually upright.
-  Evidence:
-  `artifacts/device-runs/20260705-imv-x11-fallback-portrait/compositor.png`.
+  `imv_5.0.1+ios3` carries the private `libinih.0.dylib` it links. The packaged
+  `imv` wrapper now defaults to rootful `Xwayland :1` + `imv-x11` inside Xios
+  Wayland sessions; set `XIOS_IMV_NATIVE_WAYLAND=1` to force the native Wayland
+  backend for renderer work. On-device classic `iosc` capture kept plain
+  `imv /var/jb/tmp/xios-imv-smoke.png` alive with empty stderr and a visible
+  rendered PNG. The local compositor capture may appear rotated in portrait
+  because it is a raw capture path; the on-device presentation was confirmed
+  visually upright. Evidence:
+  `artifacts/device-runs/20260705-imv-wrapper-ios3/cap-imv-wrapper.png`.
 - **wl-clipboard — FIX PACKAGED + VERIFIED with `iosc 0.9.10`.**
   `wl-copy` reached `zwlr_data_control_device_v1.set_selection`, but the compositor's
   pipe reader returned on `WL_EVENT_HANGUP|ERROR` before draining bytes already queued
@@ -193,11 +195,9 @@ x11/bin/iosc-capture-remote.sh slurp   slurp
 ```
 Each prints alive/exited + the failure signature and pulls back a screenshot + log.
 
-For the current imv fallback, start classic `iosc`, then run rootful Xwayland and
-force the X11 backend:
+For the current imv fallback, start classic `iosc`, then run plain `imv`; the
+packaged wrapper starts/reuses rootful Xwayland and forces the X11 backend:
 ```
 x11/bin/xios-device session iosc
-x11/bin/xios-device exec 'export XDG_RUNTIME_DIR=/var/jb/tmp; Xwayland :1 -geometry 1080x1440 -retro -noreset -extension MIT-SHM >/var/jb/tmp/xwl-imv.log 2>&1 & echo $! >/var/jb/tmp/xwayland-imv.pid'
-x11/bin/xios-device exec 'env DISPLAY=:1 XLIB_NO_SHM=1 imv-x11 /var/jb/tmp/xios-imv-smoke.png >/var/jb/tmp/imv-x11.log 2>&1 & echo $! >/var/jb/tmp/imv-x11.pid'
-x11/bin/xios-device shot artifacts/device-runs/<label>
+IOSC_CAP_WAIT=6 x11/bin/iosc-capture-remote.sh imv-wrapper imv /var/jb/tmp/xios-imv-smoke.png
 ```
