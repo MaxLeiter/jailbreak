@@ -398,11 +398,15 @@ TABLE = [
          deps=["attica", "karchive", "kconfig", "kcoreaddons", "ki18n", "kpackage",
                "kwidgetsaddons"],
          qt_deps=["qt6-base", "qt6-declarative"],
+         rev="ios2",
          flags=["-DCMAKE_DISABLE_FIND_PACKAGE_KF6Kirigami2=TRUE",
                 "-DCMAKE_DISABLE_FIND_PACKAGE_KF6Syndication=TRUE"],
+         pkg_lines=["rm -f $(BUILD_DIST)/kf6-newstuff/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/applications/org.kde.knewstuff-dialog6.desktop"],
          desc="Download and installation framework for add-on content.",
          notes=["Workspace's component gate requires NewStuff, but first light does not need",
-                "Kirigami2 UI polish or feed support, so both optional branches are disabled."]),
+                "Kirigami2 UI polish or feed support, so both optional branches are disabled.",
+                "The helper app is not installed in this cut, so the package removes its",
+                "desktop entry instead of advertising a missing knewstuff-dialog6 binary."]),
     dict(t="kwallet", kind="kf", deb="kf6-wallet",
          deps=["kconfig", "kcoreaddons", "ki18n", "kwindowsystem"],
          qt_deps=["qt6-base"],
@@ -574,7 +578,10 @@ def emit_recipe(e):
     else:
         pkg += ["\trm -rf $(BUILD_DIST)/%s $(BUILD_DIST)/%s-dev" % (deb, deb),
                 "\t$(call KF6_COPY_RUNTIME,%s,%s)" % (t, deb),
-                "\t$(call KF6_COPY_DEV,%s,%s)" % (t, deb),
+                "\t$(call KF6_COPY_DEV,%s,%s)" % (t, deb)]
+        for line in e.get("pkg_lines", []):
+            pkg.append("\t%s" % line)
+        pkg += [
                 "\t$(call SIGN,%s,general.xml)" % deb,
                 "\t$(call SIGN,%s-dev,general.xml)" % deb,
                 "\t$(call PACK,%s,DEB_%s_V)" % (deb, uv),
