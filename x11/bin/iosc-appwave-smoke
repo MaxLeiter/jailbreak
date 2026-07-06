@@ -126,10 +126,46 @@ run_step() {
     record_result "$id" "$?"
 }
 
-run_capture() {
+guard_classic_iosc() {
     local id="$1"
+    run_logged "guard-$id" "$XIOS_DEVICE" exec '
+        export XDG_RUNTIME_DIR=/var/jb/tmp
+        active="$(cat /var/jb/tmp/xios-active-session 2>/dev/null || true)"
+        if [ "$active" != "iosc" ]; then
+            echo "active session is ${active:-missing}; expected iosc" >&2
+            exit 3
+        fi
+        test -S /var/jb/tmp/wayland-0 || test -e /var/jb/tmp/wayland-0 || {
+            echo "missing /var/jb/tmp/wayland-0" >&2
+            exit 3
+        }
+    '
+}
+
+run_wayland_step() {
+    local id="$1" guard_rc
     shift
     should_run "$id" || return 0
+    guard_classic_iosc "$id"
+    guard_rc=$?
+    if [ "$guard_rc" -ne 0 ]; then
+        record_result "$id" "$guard_rc"
+        return 0
+    fi
+    run_logged "$id" "$@"
+    record_result "$id" "$?"
+}
+
+run_capture() {
+    local id="$1" guard_rc
+    shift
+    should_run "$id" || return 0
+    guard_classic_iosc "$id"
+    guard_rc=$?
+    if [ "$guard_rc" -ne 0 ]; then
+        record_result "$id" "$guard_rc"
+        return 0
+    fi
     echo "==> capture $id: $*" | tee -a "$LOG"
     IOSC_CAP_LOCAL="$OUT" IOSC_CAP_WAIT="$CAP_WAIT" \
         "$CAPTURE_REMOTE" "$id" "$@" >"$OUT/capture-$id.stdout" 2>&1
@@ -229,7 +265,7 @@ fi
 run_step packages "$XIOS_DEVICE" exec \
     "dpkg-query -W iosc grim slurp fuzzel dunst foot imv mpv zathura hitori wl-clipboard libgtk-3-0 libxkbcommon0 libxcb-xkb1 angle"
 
-run_step clipboard "$XIOS_DEVICE" exec '
+run_wayland_step clipboard "$XIOS_DEVICE" exec '
     export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
     export XDG_RUNTIME_DIR=/var/jb/tmp
     export WAYLAND_DISPLAY=/var/jb/tmp/wayland-0
@@ -249,7 +285,7 @@ run_step clipboard "$XIOS_DEVICE" exec '
 
 run_capture zathura zathura /var/jb/tmp/xios-appwave-smoke.pdf
 run_capture hitori hitori
-run_capture mpv mpv-iosc /var/jb/tmp/xios-appwave-smoke.png
+run_capture mpv mpv-iosc --keep-open=yes /var/jb/tmp/xios-appwave-smoke.png
 run_capture foot foot --log-level=info sh -lc 'printf "foot pty ok\n"; sleep 30'
 run_capture fuzzel fuzzel
 run_capture slurp slurp
@@ -257,7 +293,7 @@ run_capture imv imv /var/jb/tmp/xios-appwave-smoke.png
 run_capture dunst dbus-run-session -- sh -lc \
     'dunst >/var/jb/tmp/appwave-dunst.log 2>&1 & sleep 1; gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify xios-appwave 0 "" "Xios app wave" "dunst ok" "[]" "{}" 5000; sleep 30'
 
-run_step shot "$XIOS_DEVICE" shot "$OUT"
+run_wayland_step shot "$XIOS_DEVICE" shot "$OUT"
 
 cat >"$OUT/summary.txt" <<EOF
 iosc app-wave smoke

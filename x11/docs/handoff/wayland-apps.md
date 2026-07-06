@@ -184,7 +184,9 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   for zathura/hitori/mpv/foot/fuzzel/slurp/imv/dunst, verifies wl-clipboard, and
   writes one artifact directory. Use `--only clipboard,foot,imv` for targeted
   reruns before a publish. Initial targeted smoke passed for clipboard+foot:
-  `artifacts/device-runs/appwave-smoke-targeted-20260705/`.
+  `artifacts/device-runs/appwave-smoke-targeted-20260705/`. The runner guards
+  `/var/jb/tmp/xios-active-session == iosc` before each Wayland check so concurrent
+  KDE/GNOME session switches fail as session contention instead of app regressions.
 - Design: the capture core is device-local (grim/wayland/compositor are on the iPad);
   only the orchestration varies (on-device vs mac-driven). Keep it stateless one-shot;
   a persistent daemon isn't worth it for a debug skill.
