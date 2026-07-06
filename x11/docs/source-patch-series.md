@@ -136,7 +136,9 @@ Remaining non-Qt procedural source edits:
   by headless and app builds. The stack gates macOS sandbox selection, libedit,
   the unused AVIF/JPEG-XL decoder dependency path, and the default M0 helper
   build graph for iOS. It also gates macOS-only source/framework paths while
-  extending Darwin-only source guards where iOS has the same ABI behavior.
+  extending Darwin-only source guards where iOS has the same ABI behavior, and
+  lets the LibJS AsmInterpreter codegen use host-built tools when provided by
+  the build driver.
 - `recipes-ladybird/ladybird-m0-patches.sh` still carries the remaining
   environment-sensitive Ladybird engine bring-up edits. Convert it in small
   patches, keeping app-only behavior behind `LB_APP_BUILD`.

@@ -2,3 +2,4 @@
 0002-ios-m0-drop-avif-jpegxl-decoders.patch
 0003-ios-m0-helper-build-graph.patch
 0004-ios-m0-darwin-source-gates.patch
+0005-ios-m0-libjs-host-asm-tools.patch

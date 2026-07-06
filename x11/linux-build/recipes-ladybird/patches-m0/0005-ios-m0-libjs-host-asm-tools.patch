@@ -1,0 +1,69 @@
+Subject: [PATCH] ios-m0: allow host AsmInterpreter generators
+
+The iOS cross build cannot execute target-built `gen_asm_offsets` or
+`asmintgen` on the Linux build host. Let the build driver provide native host
+tools via `LB_HOST_GEN_ASM_OFFSETS` and `LB_HOST_ASMINTGEN`, while preserving
+the upstream target-built path when those variables are absent.
+--- a/Libraries/LibJS/CMakeLists.txt
++++ b/Libraries/LibJS/CMakeLists.txt
+@@ -359,6 +359,14 @@
+-    add_custom_command(
+-        OUTPUT "${ASM_OFFSETS_FILE}"
+-        COMMAND "$<TARGET_FILE:gen_asm_offsets>" > "${ASM_OFFSETS_FILE}"
+-        DEPENDS gen_asm_offsets
+-        COMMENT "Generating asm struct offsets"
+-    )
++    if (DEFINED ENV{LB_HOST_GEN_ASM_OFFSETS})
++        add_custom_command(
++            OUTPUT "${ASM_OFFSETS_FILE}"
++            COMMAND "$ENV{LB_HOST_GEN_ASM_OFFSETS}" > "${ASM_OFFSETS_FILE}"
++            COMMENT "Generating asm struct offsets (host tool)"
++        )
++    else()
++        add_custom_command(
++            OUTPUT "${ASM_OFFSETS_FILE}"
++            COMMAND "$<TARGET_FILE:gen_asm_offsets>" > "${ASM_OFFSETS_FILE}"
++            DEPENDS gen_asm_offsets
++            COMMENT "Generating asm struct offsets"
++        )
++    endif()
+@@ -395,12 +403,27 @@
+-    add_custom_command(
+-        OUTPUT "${ASMINT_GENERATED_S}"
+-        COMMAND "${ASMINTGEN_BIN}" --arch ${ASMINT_ARCH}
+-            --object-format ${ASMINT_OBJ_FORMAT}
+-            --constants "${ASM_OFFSETS_FILE}"
+-            --bytecode-def "${BYTECODE_DEF}"
+-            --input "${ASMINT_DSL}"
+-            --output "${ASMINT_GENERATED_S}"
+-            ${ASMINT_EXTRA_FLAGS}
+-        DEPENDS "${ASMINTGEN_BIN}" "${ASMINT_DSL}" "${ASM_OFFSETS_FILE}" "${BYTECODE_DEF}"
+-        COMMENT "Generating asmint_${ASMINT_ARCH}.S from DSL"
+-    )
++    if (DEFINED ENV{LB_HOST_ASMINTGEN})
++        # A10 target: NO --has-jscvt (ARMv8.1, lacks FEAT_JSCVT); use software ToInt32 fallback.
++        add_custom_command(
++            OUTPUT "${ASMINT_GENERATED_S}"
++            COMMAND "$ENV{LB_HOST_ASMINTGEN}" --arch ${ASMINT_ARCH}
++                --object-format ${ASMINT_OBJ_FORMAT}
++                --constants "${ASM_OFFSETS_FILE}"
++                --bytecode-def "${BYTECODE_DEF}"
++                --input "${ASMINT_DSL}"
++                --output "${ASMINT_GENERATED_S}"
++            DEPENDS "${ASMINT_DSL}" "${ASM_OFFSETS_FILE}" "${BYTECODE_DEF}"
++            COMMENT "Generating asmint_${ASMINT_ARCH}.S from DSL (host tool, no jscvt)"
++        )
++    else()
++        add_custom_command(
++            OUTPUT "${ASMINT_GENERATED_S}"
++            COMMAND "${ASMINTGEN_BIN}" --arch ${ASMINT_ARCH}
++                --object-format ${ASMINT_OBJ_FORMAT}
++                --constants "${ASM_OFFSETS_FILE}"
++                --bytecode-def "${BYTECODE_DEF}"
++                --input "${ASMINT_DSL}"
++                --output "${ASMINT_GENERATED_S}"
++                ${ASMINT_EXTRA_FLAGS}
++            DEPENDS "${ASMINTGEN_BIN}" "${ASMINT_DSL}" "${ASM_OFFSETS_FILE}" "${BYTECODE_DEF}"
++            COMMENT "Generating asmint_${ASMINT_ARCH}.S from DSL"
++        )
++    endif()
