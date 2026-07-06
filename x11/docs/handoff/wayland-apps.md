@@ -23,7 +23,7 @@ version for any agent.
 | zathura 0.5.12 | out/ ✓ | installed | **YES (window)** | GTK3 Wayland maps; PDF plugin/content load still needs a real doc/plugin check |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
 | gnome-calculator 46.2 | in repo/debs | installed | (GTK4, works) | — |
-| wl-clipboard 2.2.1 | out/ ✓ | installed | **YES (CLI)** | round-trip verified after iosc pipe-drain fix; package bump still pending |
+| wl-clipboard 2.2.1 | out/ ✓ | installed | **YES (CLI)** | round-trip verified with package-installed `iosc 0.9.10` |
 
 ## The launch-in-iosc fixes
 
@@ -73,16 +73,16 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 - **grim — WORKS, no fix needed.** Upright full-color screenshot captured in classic
   mode (2880×2160). Orientation is correct: output IOSurface is top-left, iosc.c:1654
   sends `flags=0` (no Y_INVERT) — do NOT "fix" it to Y_INVERT.
-- **wl-clipboard — FIXED in source + direct-deployed for smoke; package pending.**
+- **wl-clipboard — FIX PACKAGED + VERIFIED with `iosc 0.9.10`.**
   `wl-copy` reached `zwlr_data_control_device_v1.set_selection`, but the compositor's
   pipe reader returned on `WL_EVENT_HANGUP|ERROR` before draining bytes already queued
   by the source. On iOS/kqueue that left `g_clip_items` empty and `wl-paste` saw
   `selection(nil)`. `wayland/iosc.c` now drains first and publishes on hangup. Built
-  with `IOSC_BUILD_XWM=0 wayland/build-iosc.sh`, direct-deployed
-  `/var/jb/usr/local/bin/iosc` sha256
-  `3e06159e628c6aad442f6e91f50a6e6b487fc37dd0c65f56ae9c1e3e73cc7850`, and verified
-  `wl-copy` → `wl-paste` returned `xios clipboard smoke 2026-07-04`. Package this as
-  the next `iosc` deb before publishing.
+  with `IOSC_BUILD_XWM=0 wayland/build-iosc.sh`, packaged as
+  `iosc_0.9.10_iphoneos-arm64.deb`, installed with `dpkg -i`, and verified on-device:
+  `dpkg-query -W iosc` reports `0.9.10`, `/var/jb/usr/local/bin/iosc` sha256 is
+  `3e06159e628c6aad442f6e91f50a6e6b487fc37dd0c65f56ae9c1e3e73cc7850`, and
+  `wl-copy --foreground` -> `wl-paste` returned `xios clipboard foreground 0.9.10`.
 - **dunst — WORKS.** Use dunst, not mako. `dunst 1.13.2+ios2` runs as a Wayland
   layer-shell client under `dbus-run-session`, accepts
   `org.freedesktop.Notifications.Notify` through GDBus, and visibly renders the
@@ -137,8 +137,6 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 ## Open items / TODO
 
-- [ ] Package the wl-clipboard compositor fix as the next `iosc` deb and install from dpkg,
-      not just direct-deploying the rebuilt binary.
 - [ ] zathura: verify real document rendering with the intended PDF/poppler plugin path
       (the GTK window maps; the smoke PDF was not recognized as a document).
 - [ ] On-device verify slurp / fuzzel / imv.
