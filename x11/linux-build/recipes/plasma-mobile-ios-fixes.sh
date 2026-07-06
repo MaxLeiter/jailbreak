@@ -109,6 +109,27 @@ if needle in text and "org/kde/private/mobile/homescreen/folio" not in text:
 path.write_text(text)
 PY
 
+# Match the desktop first-light wallpaper default for fresh Mobile configs.
+# Without the concrete org.kde.image config group, the wallpaper backend starts
+# from its preferred:// default and reports Provider.Unknown on iOS.
+python3 - "$src/shell/contents/layout.js" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = '    desktopsArray[j].wallpaperPlugin = "org.kde.image";\n'
+new = '''    desktopsArray[j].wallpaperPlugin = "org.kde.image";
+    desktopsArray[j].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
+    desktopsArray[j].writeConfig("Image", "file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg");
+    desktopsArray[j].writeConfig("PreviewImage", "file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg");
+    desktopsArray[j].writeConfig("FillMode", 2);
+'''
+if old in text and "xios-default.jpg" not in text:
+    text = text.replace(old, new, 1)
+path.write_text(text)
+PY
+
 for dir in flashlight nightcolor powermenu screenshot screenrotation; do
   cmake="$src/quicksettings/$dir/CMakeLists.txt"
   [ -f "$cmake" ] || continue

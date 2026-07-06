@@ -65,9 +65,8 @@ IOSC_DDX_SOCK="${IOSC_DDX_SOCK:-$TMP/iosc-ddx.sock}"
 IOSC_INPUT_SOCK="${IOSC_INPUT_SOCK:-$TMP/iosc-input.sock}"
 IOSC_CLIPBOARD_SOCK="${IOSC_CLIPBOARD_SOCK:-$TMP/iosc-clipboard.sock}"
 IOSC_WM_SOCK="${IOSC_WM_SOCK:-$TMP/iosc-wm.sock}"
-KDE_KWIN_SIZE="${KDE_KWIN_SIZE:-1360x1000}"
-KWIN_W="${KDE_KWIN_SIZE%x*}"
-KWIN_H="${KDE_KWIN_SIZE#*x}"
+KDE_KWIN_SIZE_WAS_SET="${KDE_KWIN_SIZE:+x}"
+KDE_KWIN_SIZE="${KDE_KWIN_SIZE:-}"
 KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
 KDE_LOG="${KDE_LOG:-$TMP/kde-plasma.log}"
@@ -79,6 +78,96 @@ PLASMA_QT_QUICK_BACKEND="${PLASMA_QT_QUICK_BACKEND-${QT_QUICK_BACKEND-}}"
 PLASMA_QSG_RHI_BACKEND="${PLASMA_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
 PLASMA_QMLSCENE_DEVICE="${PLASMA_QMLSCENE_DEVICE-${QMLSCENE_DEVICE-}}"
 PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="${PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}}"
+KDE_QT_QPA_PLATFORMTHEME="${KDE_QT_QPA_PLATFORMTHEME-${QT_QPA_PLATFORMTHEME-}}"
+KDE_QT_STYLE_OVERRIDE="${KDE_QT_STYLE_OVERRIDE-${QT_STYLE_OVERRIDE-}}"
+
+if [ -z "$KDE_QT_QPA_PLATFORMTHEME" ] && ls "$XS_PREFIX"/lib/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.* >/dev/null 2>&1; then
+  KDE_QT_QPA_PLATFORMTHEME=kde
+fi
+if [ -z "$KDE_QT_STYLE_OVERRIDE" ] && ls "$XS_PREFIX"/lib/qt6/plugins/styles/breeze6.* >/dev/null 2>&1; then
+  KDE_QT_STYLE_OVERRIDE=Breeze
+fi
+
+size_w() { printf '%s' "$1" | sed -n 's/^\([0-9][0-9]*\)x[0-9][0-9]*$/\1/p'; }
+size_h() { printf '%s' "$1" | sed -n 's/^[0-9][0-9]*x\([0-9][0-9]*\)$/\1/p'; }
+
+mobile_kwin_size_from_logical() {
+  local w h
+  w="$(size_w "$IOSC_LOGICAL")"
+  h="$(size_h "$IOSC_LOGICAL")"
+  if [ -n "$w" ] && [ -n "$h" ]; then
+    if [ "$w" -gt "$h" ]; then
+      printf '%sx%s\n' "$h" "$w"
+    else
+      printf '%sx%s\n' "$w" "$h"
+    fi
+    return 0
+  fi
+  printf '%s\n' "1080x1440"
+}
+
+xios_json_dim() {
+  local key="$1"
+  sed -n "s/.*\"$key\":[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" "$XIOS_JSON_PATH" 2>/dev/null | head -1
+}
+
+xios_geom_dim() {
+  local key="$1" expr
+  case "$key" in
+    width)  expr='s/.*bounds=\([0-9][0-9]*\)x[0-9][0-9]*.*/\1/p' ;;
+    height) expr='s/.*bounds=[0-9][0-9]*x\([0-9][0-9]*\).*/\1/p' ;;
+    *) return 0 ;;
+  esac
+  sed -n "$expr" "$TMP/xios-geom.txt" 2>/dev/null | tail -1
+}
+
+kwin_size_from_logical_orientation() {
+  local inset="$1" fallback="$2" w h orient_w orient_h tmp min=320
+  w="$(size_w "$IOSC_LOGICAL")"
+  h="$(size_h "$IOSC_LOGICAL")"
+  [ -n "$w" ] && [ -n "$h" ] || { printf '%s\n' "$fallback"; return 0; }
+
+  orient_w="$(xios_geom_dim width)"
+  orient_h="$(xios_geom_dim height)"
+  if [ -z "$orient_w" ] || [ -z "$orient_h" ]; then
+    orient_w="$(xios_json_dim width)"
+    orient_h="$(xios_json_dim height)"
+  fi
+  if [ -n "$orient_w" ] && [ -n "$orient_h" ]; then
+    if { [ "$orient_w" -lt "$orient_h" ] && [ "$w" -gt "$h" ]; } || \
+       { [ "$orient_w" -gt "$orient_h" ] && [ "$w" -lt "$h" ]; }; then
+      tmp="$w"; w="$h"; h="$tmp"
+    fi
+  fi
+
+  if [ "$inset" -gt 0 ]; then
+    w=$((w - inset))
+    h=$((h - inset))
+    [ "$w" -ge "$min" ] || w="$min"
+    [ "$h" -ge "$min" ] || h="$min"
+  fi
+  printf '%sx%s\n' "$w" "$h"
+}
+
+desktop_kwin_size_from_logical() {
+  local inset="${XIOS_KDE_DESKTOP_INSET:-80}" min=320 scale="${XIOS_KDE_OUTPUT_SCALE:-2}"
+  local raw_w raw_h w h
+  raw_w="$(xios_json_dim width)"
+  raw_h="$(xios_json_dim height)"
+  if [ -n "$raw_w" ] && [ -n "$raw_h" ] && [ "$scale" -gt 0 ] 2>/dev/null; then
+    w=$((raw_w / scale))
+    h=$((raw_h / scale))
+    if [ "$inset" -gt 0 ]; then
+      w=$((w - inset))
+      h=$((h - inset))
+      [ "$w" -ge "$min" ] || w="$min"
+      [ "$h" -ge "$min" ] || h="$min"
+    fi
+    printf '%sx%s\n' "$w" "$h"
+    return 0
+  fi
+  kwin_size_from_logical_orientation "$inset" "1360x1000"
+}
 
 PLASMA_ENV=()
 KDE_PLASMA_LABEL="KDE Plasma"
@@ -110,12 +199,22 @@ case "$KDE_PLASMA_FLAVOR" in
     ;;
 esac
 
+IOSC_LOGICAL_W="$(size_w "$IOSC_LOGICAL")"
+IOSC_LOGICAL_H="$(size_h "$IOSC_LOGICAL")"
+
 [ -x "$IOSC_BIN" ] || { echo "!! $IOSC_BIN missing/not executable"; exit 1; }
 [ -x "$KWIN_BIN" ] || { echo "!! $KWIN_BIN missing/not executable"; exit 1; }
 [ -x "$PLASMA_BIN" ] || { echo "!! $PLASMA_BIN missing/not executable"; exit 1; }
-case "$KWIN_W:$KWIN_H" in
-  *[!0-9:]*|":"|*":") echo "!! invalid KDE_KWIN_SIZE=$KDE_KWIN_SIZE, expected WxH"; exit 2 ;;
-esac
+[ -n "$IOSC_LOGICAL_W" ] && [ -n "$IOSC_LOGICAL_H" ] || {
+  echo "!! invalid IOSC_LOGICAL=$IOSC_LOGICAL, expected WxH"
+  exit 2
+}
+if [ -n "$KDE_KWIN_SIZE_WAS_SET" ]; then
+  [ -n "$(size_w "$KDE_KWIN_SIZE")" ] && [ -n "$(size_h "$KDE_KWIN_SIZE")" ] || {
+    echo "!! invalid KDE_KWIN_SIZE=$KDE_KWIN_SIZE, expected WxH"
+    exit 2
+  }
+fi
 
 kde_process_running() {
   ps ax | grep -v grep | grep -E "$1" >/dev/null 2>&1
@@ -153,16 +252,19 @@ fi
 kde_app_support_link() {
   local name="$1"
   local target="$XS_PREFIX/share/$name"
-  local link="$XS_VAR/root/Library/Application Support/$name"
+  local base link
   [ -e "$target" ] || return 0
-  mkdir -p "$XS_VAR/root/Library/Application Support"
-  if [ -L "$link" ]; then
-    ln -sfn "$target" "$link" 2>/dev/null || true
-  elif [ ! -e "$link" ]; then
-    ln -s "$target" "$link" 2>/dev/null || true
-  else
-    echo "!! $link already exists; leaving it in place"
-  fi
+  for base in "$XS_VAR/root/Library/Application Support" "/var/root/Library/Application Support"; do
+    mkdir -p "$base"
+    link="$base/$name"
+    if [ -L "$link" ]; then
+      ln -sfn "$target" "$link" 2>/dev/null || true
+    elif [ ! -e "$link" ]; then
+      ln -s "$target" "$link" 2>/dev/null || true
+    else
+      echo "!! $link already exists; leaving it in place"
+    fi
+  done
 }
 
 kde_config_link() {
@@ -183,13 +285,190 @@ kde_config_link() {
   done
 }
 
+kde_ini_has_key() {
+  local file="$1" group="$2" key="$3"
+  [ -f "$file" ] || return 1
+  awk -v group="[$group]" -v key="$key" '
+    $0 == group { in_group = 1; next }
+    /^\[/ { in_group = 0 }
+    in_group && index($0, key "=") == 1 { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "$file"
+}
+
+kde_ini_set_if_missing() {
+  local file="$1" group="$2" key="$3" value="$4"
+  mkdir -p "$(dirname "$file")"
+  [ -e "$file" ] || : >"$file"
+  kde_ini_has_key "$file" "$group" "$key" && return 0
+  {
+    printf '\n[%s]\n' "$group"
+    printf '%s=%s\n' "$key" "$value"
+  } >>"$file"
+}
+
+kde_seed_desktop_style_config() {
+  [ "$KDE_PLASMA_FLAVOR" = desktop ] || return 0
+  local file
+  for file in \
+    "$XS_VAR/root/Library/Preferences/kdeglobals" \
+    "/var/root/Library/Preferences/kdeglobals"; do
+    kde_ini_set_if_missing "$file" KDE LookAndFeelPackage org.kde.breezedark.desktop
+    kde_ini_set_if_missing "$file" Icons Theme breeze-dark
+    if [ -f "$XS_PREFIX/share/color-schemes/BreezeDark.colors" ]; then
+      kde_ini_set_if_missing "$file" General ColorScheme BreezeDark
+      kde_ini_set_if_missing "$file" General Name "Breeze Dark"
+    fi
+    if ls "$XS_PREFIX"/lib/qt6/plugins/styles/breeze6.* >/dev/null 2>&1; then
+      kde_ini_set_if_missing "$file" KDE widgetStyle Breeze
+    fi
+  done
+}
+
+kde_desktop_favorites_value() {
+  local id path ids="" sep=""
+  for id in org.kde.kwrite.desktop org.kde.gwenview.desktop org.kde.ark.desktop systemsettings.desktop; do
+    for path in \
+      "$XS_PREFIX/share/applications/$id" \
+      "$XS_PREFIX/local/share/applications/$id"; do
+      if [ -f "$path" ]; then
+        ids="$ids$sep$id"
+        sep=","
+        break
+      fi
+    done
+  done
+  [ -n "$ids" ] || ids="org.kde.kwrite.desktop,org.kde.gwenview.desktop,org.kde.ark.desktop"
+  printf '%s\n' "$ids"
+}
+
+kde_backup_user_config() {
+  local file="$1" stamp
+  [ -f "$file" ] || return 0
+  stamp="$(date '+%Y%m%d-%H%M%S' 2>/dev/null || echo now)"
+  cp -p "$file" "$file.before-xios-favorites-migration-$stamp" 2>/dev/null || true
+}
+
+kde_desktop_layout_has_stale_applets() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  grep -F "[Containments][1][Applets]" "$file" >/dev/null 2>&1 || return 1
+  grep -F "[Containments][2]" "$file" >/dev/null 2>&1 || return 1
+  grep -Eq '^plugin=org\.kde\.plasma\.(kickoff|kicker|notifications|systemtray)$' "$file" 2>/dev/null
+}
+
+kde_migrate_desktop_user_config() {
+  [ "$KDE_PLASMA_FLAVOR" = desktop ] || return 0
+  [ "${XIOS_KDE_MIGRATE_STALE_FAVORITES:-1}" != 0 ] || return 0
+
+  local stale_re='preferred://browser|org\.kde\.(kontact|dolphin|discover)(\.desktop)?'
+  local favorites fav1 fav2 fav3 file tmp
+  favorites="$(kde_desktop_favorites_value)"
+  IFS=, read -r fav1 fav2 fav3 _rest <<EOF
+$favorites
+EOF
+  fav1="${fav1:-org.kde.kwrite.desktop}"
+  fav2="${fav2:-$fav1}"
+  fav3="${fav3:-$fav2}"
+
+  for file in \
+    "$XS_VAR/root/Library/Preferences/plasma-org.kde.plasma.desktop-appletsrc" \
+    "/var/root/Library/Preferences/plasma-org.kde.plasma.desktop-appletsrc"; do
+    [ -f "$file" ] || continue
+    if kde_desktop_layout_has_stale_applets "$file"; then
+      kde_backup_user_config "$file"
+      rm -f "$file"
+      echo "   reset stale Plasma Desktop applet layout: $file"
+      continue
+    fi
+    grep -Eq "$stale_re" "$file" 2>/dev/null || continue
+    kde_backup_user_config "$file"
+    tmp="$file.xios-migrate.$$"
+    if awk -v favorites="$favorites" '
+      /^favoriteApps=/ { print "favoriteApps=" favorites; next }
+      { print }
+    ' "$file" >"$tmp"; then
+      mv "$tmp" "$file"
+      echo "   migrated stale Plasma Desktop favorites: $file -> $favorites"
+    else
+      rm -f "$tmp" 2>/dev/null || true
+    fi
+  done
+
+  for file in \
+    "$XS_VAR/root/Library/Preferences/kactivitymanagerd-statsrc" \
+    "/var/root/Library/Preferences/kactivitymanagerd-statsrc"; do
+    [ -f "$file" ] || continue
+    grep -Eq "$stale_re" "$file" 2>/dev/null || continue
+    kde_backup_user_config "$file"
+    tmp="$file.xios-migrate.$$"
+    if sed \
+      -e "s|preferred://browser|$fav1|g" \
+      -e "s|org.kde.kontact.desktop|$fav1|g" \
+      -e "s|org.kde.dolphin.desktop|$fav2|g" \
+      -e "s|org.kde.discover.desktop|$fav3|g" \
+      -e "s|org.kde.discover|$fav3|g" \
+      "$file" >"$tmp"; then
+      mv "$tmp" "$file"
+      echo "   migrated stale KDE activity favorites: $file"
+    else
+      rm -f "$tmp" 2>/dev/null || true
+    fi
+  done
+}
+
+kde_seed_mobile_wallpaper_config() {
+  [ "$KDE_PLASMA_FLAVOR" = mobile ] || return 0
+  local file id seen=0 wallpaper="file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+  for file in \
+    "$XS_VAR/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc" \
+    "/var/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc"; do
+    [ -f "$file" ] || continue
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      seen=1
+      if awk -v id="$id" '
+        $0 == "[Containments][" id "][Wallpaper][org.kde.image][General]" { in_group = 1; next }
+        /^\[/ { in_group = 0 }
+        in_group && /^Image=/ { found = 1 }
+        END { exit found ? 0 : 1 }
+      ' "$file"; then
+        continue
+      fi
+      {
+        printf '\n[Containments][%s][Wallpaper][org.kde.image][General]\n' "$id"
+        printf 'FillMode=2\n'
+        printf 'Image=%s\n' "$wallpaper"
+        printf 'PreviewImage=%s\n' "$wallpaper"
+      } >>"$file"
+      echo "   seeded Mobile wallpaper config: $file containment $id"
+    done <<EOF
+$(awk '
+  /^\[Containments\]\[[0-9][0-9]*\]$/ {
+    id = $0
+    sub(/^\[Containments\]\[/, "", id)
+    sub(/\]$/, "", id)
+    next
+  }
+  /^plugin=org\.kde\.plasma\.mobile\.homescreen\./ && id != "" {
+    print id
+  }
+' "$file")
+EOF
+  done
+  [ "$seen" = 1 ] || true
+}
+
 if [ "${XIOS_KDE_APP_SUPPORT_BRIDGE:-1}" != 0 ]; then
   echo "==> bridge Qt/KPackage Darwin app-data paths to $XS_PREFIX/share"
-  for name in plasma icons applications metainfo mime kservices6 knotifications6 kglobalaccel kpackage dbus-1 krunner qlogging-categories6; do
+  for name in plasma icons color-schemes applications metainfo mime kservices6 knotifications6 kglobalaccel kpackage dbus-1 krunner qlogging-categories6; do
     kde_app_support_link "$name"
   done
   kde_config_link menus "$(jb_path /etc/xdg/menus)"
 fi
+kde_seed_mobile_wallpaper_config
+kde_seed_desktop_style_config
+kde_migrate_desktop_user_config
 
 if [ -n "${XIOS_KDE_NO_KAMD+x}" ]; then
   case "$XIOS_KDE_NO_KAMD" in
@@ -233,7 +512,7 @@ echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
 ICPID=$!
 
 for _ in $(seq 1 50); do
-  [ -S "$WSOCK" ] && [ -f "$XIOS_JSON_PATH" ] && break
+  [ -S "$WSOCK" ] && [ -n "$(xios_json_dim width)" ] && [ -n "$(xios_json_dim height)" ] && break
   kill -0 "$ICPID" 2>/dev/null || break
   sleep 0.2
 done
@@ -244,6 +523,15 @@ if ! kill -0 "$ICPID" 2>/dev/null; then
 fi
 [ -S "$WSOCK" ] || { echo "!! iosc did not create $WSOCK"; exit 1; }
 
+if [ -z "$KDE_KWIN_SIZE_WAS_SET" ]; then
+  case "$KDE_PLASMA_FLAVOR" in
+    mobile) KDE_KWIN_SIZE="$(mobile_kwin_size_from_logical)" ;;
+    *)      KDE_KWIN_SIZE="$(desktop_kwin_size_from_logical)" ;;
+  esac
+fi
+KWIN_W="${KDE_KWIN_SIZE%x*}"
+KWIN_H="${KDE_KWIN_SIZE#*x}"
+
 if chown mobile:mobile "$IOSC_DDX_SOCK" 2>/dev/null || chown 501:501 "$IOSC_DDX_SOCK" 2>/dev/null; then
   chmod 0660 "$IOSC_DDX_SOCK" 2>/dev/null
 else
@@ -252,6 +540,7 @@ else
 fi
 
 echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $KDE_LOG"
+echo "   KWin logical size: ${KWIN_W}x${KWIN_H}"
 echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
 "$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
@@ -287,6 +576,8 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
   PLASMA_QSG_RHI_BACKEND="$PLASMA_QSG_RHI_BACKEND" \
   PLASMA_QMLSCENE_DEVICE="$PLASMA_QMLSCENE_DEVICE" \
   PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="$PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION" \
+  KDE_QT_QPA_PLATFORMTHEME="$KDE_QT_QPA_PLATFORMTHEME" \
+  KDE_QT_STYLE_OVERRIDE="$KDE_QT_STYLE_OVERRIDE" \
   QT_QUICK_CONTROLS_STYLE="$KDE_QT_QUICK_CONTROLS_STYLE" \
   "${PLASMA_ENV[@]}" \
 	  dbus-run-session -- "$XS_PREFIX/bin/bash" -lc '
@@ -311,10 +602,12 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
 	    xios_start_session_helper "$LIBEXEC/xios-hwbridged" "$XDG_RUNTIME_DIR/xios-hwbridged.log"
 	    xios_start_session_helper "$LIBEXEC/xios-sensord" "$XDG_RUNTIME_DIR/xios-sensord.log"
 	    xios_start_session_helper "$LIBEXEC/xios-sysintd" "$XDG_RUNTIME_DIR/xios-sysintd.log"
-	    xios_export_or_unset QT_QUICK_BACKEND "$KWIN_QT_QUICK_BACKEND"
-	    xios_export_or_unset QSG_RHI_BACKEND "$KWIN_QSG_RHI_BACKEND"
-	    xios_export_or_unset QMLSCENE_DEVICE "$KWIN_QMLSCENE_DEVICE"
-	    unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+    xios_export_or_unset QT_QUICK_BACKEND "$KWIN_QT_QUICK_BACKEND"
+    xios_export_or_unset QSG_RHI_BACKEND "$KWIN_QSG_RHI_BACKEND"
+    xios_export_or_unset QMLSCENE_DEVICE "$KWIN_QMLSCENE_DEVICE"
+    xios_export_or_unset QT_QPA_PLATFORMTHEME "$KDE_QT_QPA_PLATFORMTHEME"
+    xios_export_or_unset QT_STYLE_OVERRIDE "$KDE_QT_STYLE_OVERRIDE"
+    unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
 	    echo "launch kwin: QT_QUICK_BACKEND=${QT_QUICK_BACKEND-<unset>} QSG_RHI_BACKEND=${QSG_RHI_BACKEND-<unset>}"
 	    "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
 	      --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts &
@@ -339,6 +632,8 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
     xios_export_or_unset QT_QUICK_BACKEND "$PLASMA_QT_QUICK_BACKEND"
     xios_export_or_unset QSG_RHI_BACKEND "$PLASMA_QSG_RHI_BACKEND"
     xios_export_or_unset QMLSCENE_DEVICE "$PLASMA_QMLSCENE_DEVICE"
+    xios_export_or_unset QT_QPA_PLATFORMTHEME "$KDE_QT_QPA_PLATFORMTHEME"
+    xios_export_or_unset QT_STYLE_OVERRIDE "$KDE_QT_STYLE_OVERRIDE"
     xios_export_or_unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION "$PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION"
     plasma_args=()
     if [ -n "${PLASMA_SHELL_PLUGIN:-}" ]; then

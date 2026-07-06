@@ -35,6 +35,8 @@ SUPPORT_RECIPE_TARGETS=(
   libkscreen
   kscreen
   systemsettings
+  breeze
+  plasma-integration
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
@@ -45,6 +47,7 @@ SUPPORT_RECIPE_HELPERS=(
   kscreen-ios-fixes.sh
   systemsettings-ios-fixes.sh
   systemsettings-prune-actions.py
+  plasma-integration-ios-fixes.sh
 )
 COLLECT_DEBS=(
   shared-mime-info
@@ -75,6 +78,8 @@ COLLECT_DEBS=(
   libkscreen
   kscreen
   systemsettings
+  breeze
+  plasma-integration
 )
 LOCAL_STAGE_DEBS=(
   libpulse0
@@ -118,6 +123,8 @@ done
 for f in \
   usr/lib/cmake/Qt6Quick/Qt6QuickConfig.cmake \
   usr/lib/cmake/Qt6QuickControls2/Qt6QuickControls2Config.cmake \
+  usr/lib/cmake/Qt6DBus/Qt6DBusConfig.cmake \
+  usr/lib/cmake/Qt6Widgets/Qt6WidgetsConfig.cmake \
   usr/lib/cmake/Qt6Sql/Qt6SqlConfig.cmake \
   usr/lib/cmake/Qt6Svg/Qt6SvgConfig.cmake \
   usr/lib/cmake/Qt6WaylandClient/Qt6WaylandClientConfig.cmake \
@@ -133,9 +140,12 @@ for f in \
   usr/lib/cmake/KF6KIO/KF6KIOConfig.cmake \
   usr/lib/cmake/KF6KirigamiPlatform/KF6KirigamiPlatformConfig.cmake \
   usr/lib/cmake/KF6KCMUtils/KF6KCMUtilsConfig.cmake \
+  usr/lib/cmake/KF6JobWidgets/KF6JobWidgetsConfig.cmake \
   usr/lib/cmake/KF6Notifications/KF6NotificationsConfig.cmake \
   usr/lib/cmake/KF6Package/KF6PackageConfig.cmake \
+  usr/lib/cmake/KF6StatusNotifierItem/KF6StatusNotifierItemConfig.cmake \
   usr/lib/cmake/KF6Svg/KF6SvgConfig.cmake \
+  usr/lib/cmake/KF6XmlGui/KF6XmlGuiConfig.cmake \
   usr/lib/cmake/KF6WindowSystem/KF6WindowSystemConfig.cmake \
   usr/lib/cmake/PlasmaActivities/PlasmaActivitiesConfig.cmake \
   usr/lib/cmake/PlasmaWaylandProtocols/PlasmaWaylandProtocolsConfig.cmake \
@@ -232,7 +242,7 @@ cp -v /work/build_info/shared-mime-info*.control /work/build_info/shared-mime-in
 for deb in "${COLLECT_DEBS[@]}"; do
   cp -v /work/build_info/${deb}*.control build_info/ 2>/dev/null || true
 done
-cp -v /work/build_info/iosc-gpu-client-ent.xml build_misc/entitlements/ 2>/dev/null || true
+cp -v /work/build_info/iosc-gpu-client-ent.xml /work/build_info/iosc-gl-ent.xml build_misc/entitlements/ 2>/dev/null || true
 
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   PATH=/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \

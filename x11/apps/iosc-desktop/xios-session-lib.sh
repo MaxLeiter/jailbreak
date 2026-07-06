@@ -154,6 +154,14 @@ xs_json_get_file() {  # xs_json_get_file <file> <key>
         "$file" 2>/dev/null | head -n 1
 }
 
+xs_apply_requested_logical() {
+    [ -z "${IOSC_LOGICAL:-}" ] || return 0
+    local w="${XIOS_SESSION_WIDTH:-}" h="${XIOS_SESSION_HEIGHT:-}"
+    case "$w" in ""|*[!0-9]*) return 0 ;; esac
+    case "$h" in ""|*[!0-9]*) return 0 ;; esac
+    export IOSC_LOGICAL="${w}x${h}"
+}
+
 xs_current_pgid() {
     ps -p "$$" -o pgid= 2>/dev/null | tr -d '[:space:]'
 }
@@ -897,6 +905,12 @@ xios_session_app() {
                         QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
                     )
                 fi
+                if ls "$XS_PREFIX"/lib/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.* >/dev/null 2>&1; then
+                    app_env+=(QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-kde}")
+                fi
+                if ls "$XS_PREFIX"/lib/qt6/plugins/styles/breeze6.* >/dev/null 2>&1; then
+                    app_env+=(QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-Breeze}")
+                fi
                 local kde_bus_file="$XS_TMP/kde-session-bus${XS_SLOT:+-$XS_SLOT}"
                 if [ -s "$kde_bus_file" ]; then
                     addr="$(cat "$kde_bus_file" 2>/dev/null || true)"
@@ -1016,12 +1030,15 @@ xios_session_run() {
             xios_session_run_unlocked "$@"
             return $? ;;
     esac
+    xs_apply_requested_logical
     if xs_switch_request_preset "$preset"; then
         xs_mark_latest_switch_request "$preset"
     fi
     xs_acquire_session_lock "$preset" || return $?
+    trap 'xs_release_session_lock' EXIT HUP INT TERM
     xios_session_run_unlocked "$@"
     rc=$?
     xs_release_session_lock
+    trap - EXIT HUP INT TERM
     return "$rc"
 }

@@ -84,7 +84,7 @@ find "$SRC" -maxdepth 2 -type f -name "*.deb" | while IFS= read -r deb; do
   [ -n "$pkg" ] || continue
   case "$pkg" in
     *-dev) continue ;;
-    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kactivitymanagerd|kwayland|layer-shell-qt|libkscreen|kscreen|systemsettings|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma5support|plasma-pa|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1|xios-media-server) ;;
+    qt6-*|kf6-*|kwin|kdecoration|kglobalacceld|kactivitymanagerd|kwayland|layer-shell-qt|libkscreen|kscreen|systemsettings|breeze|plasma-integration|libplasma|plasma-activities|plasma-activities-stats|plasma-workspace|plasma-desktop|plasma-nano|plasma-mobile|plasma5support|plasma-pa|plasma-wayland-protocols|qcoro6|libdrm2|libgbm1|libdisplay-info1|xios-media-server) ;;
     *) continue ;;
   esac
   old=$(find "$TMP" -maxdepth 1 -type f -name "${pkg}_*.deb" -print -quit)
@@ -126,6 +126,8 @@ overlay_out \
   libkscreen_*_iphoneos-arm64.deb \
   kscreen_*_iphoneos-arm64.deb \
   systemsettings_*_iphoneos-arm64.deb \
+  breeze_*_iphoneos-arm64.deb \
+  plasma-integration_*_iphoneos-arm64.deb \
   libplasma_*_iphoneos-arm64.deb \
   plasma-activities-stats_*_iphoneos-arm64.deb \
   kactivitymanagerd_*_iphoneos-arm64.deb \

@@ -161,6 +161,27 @@ write_file "$wallpaper/WallpaperPlugin.qml" \
   "    Component.onCompleted: { loadHomescreenSettings(); loadLockscreenSettings() }" \
   "}"
 
+mobile_layout="$qml/../../../share/plasma/shells/org.kde.plasma.mobileshell/contents/layout.js"
+if [ -f "$mobile_layout" ]; then
+  python3 - "$mobile_layout" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = '    desktopsArray[j].wallpaperPlugin = "org.kde.image";\n'
+new = '''    desktopsArray[j].wallpaperPlugin = "org.kde.image";
+    desktopsArray[j].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
+    desktopsArray[j].writeConfig("Image", "file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg");
+    desktopsArray[j].writeConfig("PreviewImage", "file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg");
+    desktopsArray[j].writeConfig("FillMode", 2);
+'''
+if old in text and "xios-default.jpg" not in text:
+    text = text.replace(old, new, 1)
+path.write_text(text)
+PY
+fi
+
 mobileshell="$qml/org/kde/plasma/private/mobileshell"
 mkdir -p "$mobileshell"
 if [ -e "$mobileshell/GridView.qml" ] && [ ! -e "$mobileshell/GridView.qml.upstream" ]; then

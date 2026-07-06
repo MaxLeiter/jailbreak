@@ -1,0 +1,12 @@
+Package: plasma-integration
+Version: @DEB_PLASMAINTEGRATION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, qt6-wayland, libwayland0, kf6-colorscheme, kf6-config, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-notifications, kf6-statusnotifieritem, kf6-windowsystem, kf6-xmlgui, plasma-wayland-protocols
+Description: Plasma Qt platform theme for Xios
+ Plasma Integration provides the KDE Qt platform theme plugin, so Qt and KDE
+ applications inherit Plasma fonts, icons, colors, dialogs, and Wayland appmenu
+ integration instead of falling back to generic Qt defaults.

@@ -6,7 +6,7 @@ endif
 
 SUBPROJECTS += systemsettings
 SYSTEMSETTINGS_VERSION = $(PLASMA_VERSION)
-DEB_SYSTEMSETTINGS_V ?= $(SYSTEMSETTINGS_VERSION)+ios3
+DEB_SYSTEMSETTINGS_V ?= $(SYSTEMSETTINGS_VERSION)+ios5
 
 systemsettings-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,systemsettings))
@@ -42,13 +42,13 @@ systemsettings-package: systemsettings-stage
 		cp -a "$(BUILD_STAGE)/systemsettings/Applications/KDE/systemsettings.app" "$(BUILD_DIST)/systemsettings$(MEMO_PREFIX)/Applications/KDE/systemsettings.app"; \
 	fi
 	mkdir -p $(BUILD_DIST)/systemsettings/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin
-	printf '%s\n' '#!/bin/sh' 'export QT_QPA_PLATFORM="$${QT_QPA_PLATFORM:-wayland}"' 'export QT_WAYLAND_DISABLE_WINDOWDECORATION="$${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"' 'exec $(MEMO_PREFIX)/Applications/KDE/systemsettings.app/systemsettings "$$@"' \
+	printf '%s\n' '#!/bin/sh' 'export QT_QPA_PLATFORM="$${QT_QPA_PLATFORM:-wayland}"' 'export QT_WAYLAND_DISABLE_WINDOWDECORATION="$${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"' 'ls "$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)"/lib/qt6/plugins/platformthemes/KDEPlasmaPlatformTheme6.* >/dev/null 2>&1 && export QT_QPA_PLATFORMTHEME="$${QT_QPA_PLATFORMTHEME:-kde}"' 'ls "$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)"/lib/qt6/plugins/styles/breeze6.* >/dev/null 2>&1 && export QT_STYLE_OVERRIDE="$${QT_STYLE_OVERRIDE:-Breeze}"' 'exec $(MEMO_PREFIX)/Applications/KDE/systemsettings.app/systemsettings "$$@"' \
 		> $(BUILD_DIST)/systemsettings/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/systemsettings
 	chmod 0755 $(BUILD_DIST)/systemsettings/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/systemsettings
 	python3 /work/recipes/systemsettings-prune-actions.py \
 		$(BUILD_DIST)/systemsettings/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/applications/systemsettings.desktop \
 		kcm-users kcm-screenlocker kcm-powerdevilprofilesconfig
-	$(call SIGN,systemsettings,iosc-gpu-client-ent.xml,,,nogeneral)
+	$(call SIGN,systemsettings,iosc-gl-ent.xml,,,nogeneral)
 	$(call SIGN,systemsettings-dev,general.xml)
 	$(call PACK,systemsettings,DEB_SYSTEMSETTINGS_V)
 	$(call PACK,systemsettings-dev,DEB_SYSTEMSETTINGS_V)
