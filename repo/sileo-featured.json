@@ -1819,6 +1819,11 @@
       "url": "https://repo.maxleiter.com/banners/libxcb-render0.png"
     },
     {
+      "title": "libxcb-xkb1",
+      "package": "libxcb-xkb1",
+      "url": "https://repo.maxleiter.com/banners/libxcb-xkb1.png"
+    },
+    {
       "title": "libxcb1",
       "package": "libxcb1",
       "url": "https://repo.maxleiter.com/banners/libxcb1.png"
