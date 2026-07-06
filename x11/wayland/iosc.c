@@ -7494,7 +7494,7 @@ static void register_wayland_globals(void)
 {
     create_global(&wl_compositor_interface, 4, compositor_bind);
     create_global(&xdg_wm_base_interface, 4, xdg_wm_base_bind);
-    create_global(&iosc_iosurface_interface, 1, iosc_iosurface_bind);
+    create_global(&iosc_iosurface_interface, IOSC_IOSURFACE_VERSION, iosc_iosurface_bind);
     /* GTK4 (GDK-wayland) enablement globals. */
     create_global(&wl_output_interface, 4, output_bind);
     create_global(&zxdg_output_manager_v1_interface, 3, xdg_output_manager_bind);
@@ -7647,7 +7647,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
             opts.sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");
     fprintf(stderr, "iosc: globals: wl_compositor v4, wl_shm, xdg_wm_base v4, "
-                    "iosc_iosurface v1, wl_output v4, zxdg_output_manager_v1 v3, "
+                    "iosc_iosurface v%d, wl_output v4, zxdg_output_manager_v1 v3, "
                     "wl_seat v5, wl_subcompositor v1, "
                     "wl_data_device_manager v3, wp_viewporter v1, "
                     "wp_fractional_scale_manager_v1 v1, wp_presentation v1, "
@@ -7659,7 +7659,8 @@ int main(int argc, char **argv)
                     "zwp_primary_selection_device_manager_v1 v1, "
                     "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1, "
                     "wp_single_pixel_buffer_manager_v1 v1, wp_cursor_shape_manager_v1 v1, "
-                    "zwlr_screencopy_manager_v1 v3, zwlr_data_control_manager_v1 v2\n");
+                    "zwlr_screencopy_manager_v1 v3, zwlr_data_control_manager_v1 v2\n",
+            IOSC_IOSURFACE_VERSION);
 
     /* 2c) Rootless Xwayland XWM (opt-in): spawns Xwayland, owns WM_S0, advertises
      *      xwayland_shell_v1. Each X window becomes its own iosc surface. */
