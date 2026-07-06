@@ -120,7 +120,7 @@ cp -v /work/ladybird-app/CMakeLists.txt "$WORK/UI/iOS/CMakeLists.txt"
 
 # ---- apply patches (including app-mode series; LB_APP_BUILD=1 exported) ---------------------
 step "apply M0 patches + app-mode patch series"
-bash /work/recipes-ladybird/ladybird-m0-patches.sh "$WORK"
+bash /work/recipes-ladybird/ladybird-m0-patches.sh "$WORK" || exit $?
 SKIA_PC=$BB/usr/lib/pkgconfig/skia.pc
 if [ -f "$SKIA_PC" ] && grep -q -- '-framework CoreFoundation -framework' "$SKIA_PC"; then
   sed -i 's/-framework \([A-Za-z0-9_]*\)/-Wl,-framework,\1/g' "$SKIA_PC"
@@ -143,17 +143,73 @@ if [ -f "$BB_ANGLE" ] && ! grep -q glCompressedTexImage2DRobustANGLE "$BB_ANGLE"
   fi
 fi
 
+# ---- ANGLE runtime for the app GPU build ----------------------------------------------------
+# The build_base also contains Mesa's libGLESv2.2.dylib for other ports. Ladybird's EGL path must
+# pair ANGLE EGL with ANGLE GLES; mixing ANGLE libEGL with Mesa GLES gives a "current" context whose
+# direct gl* entry points return null/zero objects. Pull the real ANGLE payload from the local angle
+# deb and put a higher-priority pkg-config overlay in front of the generic build_base .pc files.
+ANGLE_PC_DIR=$PROC/ladybird-angle-pkgconfig
+if [ "$APP_GPU_ENABLED" -eq 1 ]; then
+  step "stage ANGLE EGL/GLES runtime for GPU build"
+  ANGLE_DIR=$BB/lib/angle
+  mkdir -p "$ANGLE_DIR"
+  if [ ! -f "$ANGLE_DIR/libGLESv2.dylib" ] || [ ! -f "$ANGLE_DIR/libEGL.angle.dylib" ]; then
+    ANGLE_DEB=$(ls -1 /out/angle_*_iphoneos-arm64.deb 2>/dev/null | sort | tail -1 || true)
+    if [ -z "$ANGLE_DEB" ]; then
+      echo "!! LB_APP_GPU=1 needs /out/angle_*_iphoneos-arm64.deb to stage real ANGLE GLES" >&2
+      exit 2
+    fi
+    TMPANGLE=$(mktemp -d)
+    dpkg-deb -x "$ANGLE_DEB" "$TMPANGLE" || exit $?
+    cp -a "$TMPANGLE/var/jb/lib/angle/." "$ANGLE_DIR/"
+    rm -rf "$TMPANGLE"
+    echo "  staged ANGLE runtime from $ANGLE_DEB"
+  fi
+
+  mkdir -p "$ANGLE_PC_DIR"
+  cat > "$ANGLE_PC_DIR/egl.pc" <<'EOF'
+prefix=/var/jb
+libdir=${prefix}/lib/angle
+includedir=${prefix}/usr/include
+
+Name: EGL
+Description: ANGLE EGL (Metal) for the Ladybird iOS app
+Version: 1.5
+Libs: ${libdir}/libEGL.angle.dylib
+Cflags: -I${includedir}
+EOF
+  cat > "$ANGLE_PC_DIR/glesv2.pc" <<'EOF'
+prefix=/var/jb
+libdir=${prefix}/lib/angle
+includedir=${prefix}/usr/include
+
+Name: glesv2
+Description: ANGLE OpenGL ES 2/3 over Metal for the Ladybird iOS app
+Version: 2.1
+Libs: ${libdir}/libGLESv2.dylib
+Cflags: -I${includedir}
+EOF
+fi
+
 # ---- configure ------------------------------------------------------------------------------
 step "configure (separate app build dir)"
 export LB_STAGED_PREFIX=/var/jb
-export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
-export PKG_CONFIG_LIBDIR=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
+PKG_CONFIG_DIRS=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
+if [ "$APP_GPU_ENABLED" -eq 1 ]; then
+  PKG_CONFIG_DIRS="$ANGLE_PC_DIR:$PKG_CONFIG_DIRS"
+fi
+export PKG_CONFIG_PATH="$PKG_CONFIG_DIRS"
+export PKG_CONFIG_LIBDIR="$PKG_CONFIG_DIRS"
 export LB_SHIM="$SHIM"
 export LB_HOST_GEN_ASM_OFFSETS="$HOST/gen_asm_offsets"
 export LB_HOST_ASMINTGEN="$HOST/asmintgen"
+CMAKE_UNSET_ARGS=()
+if [ "$APP_GPU_ENABLED" -eq 1 ]; then
+  CMAKE_UNSET_ARGS=(-UEGL_* -UGLESv2_*)
+fi
 cd "$WORK"
 # reuse ladybird-build's CMakeCache (incremental); cmake re-run picks up the new UI/iOS + Compositor
-cmake -GNinja -B "$BUILD" -S "$WORK" \
+cmake "${CMAKE_UNSET_ARGS[@]}" -GNinja -B "$BUILD" -S "$WORK" \
   -DCMAKE_TOOLCHAIN_FILE=/work/recipes-ladybird/ios-toolchain.cmake \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DENABLE_GUI_TARGETS=ON \
   -DENABLE_INSTALL_HEADERS=OFF -DENABLE_NETWORK_DOWNLOADS=ON -DENABLE_CLANG_PLUGINS=OFF \

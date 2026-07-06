@@ -157,6 +157,11 @@ int main(int argc, char* argv[])
                 setenv(key.UTF8String, dir.UTF8String, 1);
             }
 
+            // ANGLE's libEGL dispatch loader honors ANGLE_FRAMEWORK_PATH. Point it at the bundled
+            // dylib directory so EGL and direct GLES entry points resolve to the same ANGLE copy.
+            NSString* angleLib = [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"lib"];
+            setenv("ANGLE_FRAMEWORK_PATH", angleLib.UTF8String, 1);
+
             // Fonts (BUG 1 fix): on iOS (APPLE) the engine compiles the XDG-directory branch of
             // Gfx::FontDatabase::font_directories() -- USE_FONTCONFIG is gated `if (NOT APPLE)` in
             // check_for_dependencies.cmake, so fontconfig is NOT compiled in -- and that branch scans

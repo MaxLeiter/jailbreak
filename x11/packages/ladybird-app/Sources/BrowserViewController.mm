@@ -6,6 +6,22 @@
 #import "BrowserViewController.h"
 #import "LBTrace.h"
 
+#include <stdlib.h>
+
+static NSString* lb_initial_url()
+{
+    NSString* candidate = nil;
+    char const* env = getenv("LADYBIRD_START_URL");
+    if (env && *env)
+        candidate = [NSString stringWithUTF8String:env];
+
+    if (!candidate.length)
+        candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
+
+    candidate = [candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return candidate.length ? candidate : @"https://example.com/";
+}
+
 @implementation BrowserViewController {
     LadybirdWebView* _webView;
     UITextField* _addressBar;
@@ -67,8 +83,9 @@
         [_webView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
     ]];
 
-    lb_trace("BrowserVC viewDidLoad: loadURL example.com");
-    [_webView loadURL:@"https://example.com/"];
+    NSString* initialURL = lb_initial_url();
+    lb_trace("BrowserVC viewDidLoad: loadURL initial len=%lu", (unsigned long)initialURL.length);
+    [_webView loadURL:initialURL];
     lb_trace("BrowserVC viewDidLoad: done");
 }
 

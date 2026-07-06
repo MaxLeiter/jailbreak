@@ -14,6 +14,82 @@ cd "$SRC"
 
 say() { echo "  [m0-patch] $*"; }
 
+patch_semantically_applied() {
+  local patch_name="$1"
+
+  case "$patch_name" in
+    0002-ios-m0-drop-avif-jpegxl-decoders.patch)
+      # Old cached build trees can have this patch's code changes plus later
+      # dependency-patch context drift, making both forward and reverse dry-runs
+      # fail. The compile definition is the durable marker that the decoder gate
+      # is already active.
+      grep -q 'LADYBIRD_M0_NO_JXL_AVIF' Libraries/LibImageDecoders/CMakeLists.txt &&
+        grep -q 'LADYBIRD_M0_NO_JXL_AVIF' Libraries/LibGfx/ImageFormats/ImageDecoder.cpp
+      ;;
+    0003-ios-m0-helper-build-graph.patch)
+      grep -q 'Compositor deferred' Meta/CMake/ladybird_helper_processes.cmake &&
+        grep -q 'iOS M0 helper set' Services/CMakeLists.txt
+      ;;
+    0004-ios-m0-darwin-source-gates.patch)
+      grep -q 'AK_OS_MACOS) || defined(AK_OS_IOS)' Libraries/LibThreading/Thread.cpp &&
+        grep -q 'AK_OS_MACOS) || defined(AK_OS_IOS)' Libraries/LibWasm/AbstractMachine/BytecodeInterpreter.cpp
+      ;;
+    0005-ios-m0-libjs-host-asm-tools.patch)
+      grep -q 'LB_HOST_GEN_ASM_OFFSETS' Libraries/LibJS/CMakeLists.txt &&
+        grep -q 'LB_HOST_ASMINTGEN' Libraries/LibJS/CMakeLists.txt
+      ;;
+    0006-ios-m0-webview-compositor-gates.patch)
+      grep -q 'iOS M0: no compositor process to connect' Libraries/LibWebView/Application.cpp ||
+        grep -q 'add_subdirectory(UI/iOS)' CMakeLists.txt
+      ;;
+    0007-ios-m0-headless-shot-driver.patch)
+      [ -f Services/HeadlessShot/main.cpp ] &&
+        grep -q 'add_subdirectory(HeadlessShot)' Services/CMakeLists.txt
+      ;;
+    0008-ios-m0-typeface-skia-coretext.patch)
+      grep -q 'iOS: CoreText SkFontMgr' Libraries/LibGfx/Font/TypefaceSkia.cpp
+      ;;
+    0009-ios-m0-localnavigable-screenshot-raster.patch)
+      grep -q 'DisplayListPlayerSkia' Libraries/LibWeb/HTML/LocalNavigable.cpp &&
+        grep -q 'iOS M0: no Compositor process is launched' Libraries/LibWeb/HTML/LocalNavigable.cpp
+      ;;
+    ios-app-build-graph.patch)
+      grep -q 'add_subdirectory(UI/iOS)' CMakeLists.txt &&
+        grep -q 'duplicate create_context is a no-op' Services/Compositor/CompositorState.cpp
+      ;;
+    ios-app-cpu-fallback.patch)
+      grep -q 'LADYBIRD_IOS_APP_GPU' Libraries/LibWebView/Application.cpp &&
+        [ -f Services/Compositor/AngleStubIOS.cpp ]
+      ;;
+    iosurface-mach-ipc.patch)
+      grep -q 'TransportMachPort is only available on Mach platforms' Libraries/LibIPC/TransportMachPort.h &&
+        grep -q 'AK_OS_MACOS) || defined(AK_OS_IOS)' Libraries/LibGfx/SharedImageBuffer.h
+      ;;
+    ios-app-input-caret-after-events.patch)
+      grep -q 'software keyboard handoff needs a fresh editable-caret signal' Services/WebContent/PageClient.cpp
+      ;;
+    ios-app-input-caret-pageclient-access.patch)
+      grep -q 'friend class PageClient' Services/WebContent/ConnectionFromClient.h
+      ;;
+    ios-app-real-angle-pkgconfig.patch)
+      grep -q 'The iOS app GPU probe uses the Procursus-staged ANGLE' Meta/CMake/check_for_dependencies.cmake
+      ;;
+    ios-app-angle-compat.patch)
+      [ -f Services/Compositor/AngleCompatIOS.cpp ] &&
+        grep -q 'glBindVertexArrayOES' Services/Compositor/AngleCompatIOS.cpp
+      ;;
+    ios-app-webgl-ios-enable.patch)
+      grep -q 'ladybird-webgl.log' Services/Compositor/OpenGLContext.cpp &&
+        grep -q 'eglBindAPI GLES' Services/Compositor/OpenGLContext.cpp &&
+        grep -q 'framebuffer before check' Services/Compositor/OpenGLContext.cpp &&
+        grep -q 'AK_OS_MACOS) || defined(AK_OS_IOS)' Services/Compositor/OpenGLContext.h
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 apply_quilt_series() {
   local patch_dir="$1"
   local series="$patch_dir/series"
@@ -34,7 +110,9 @@ apply_quilt_series() {
     patch_name="${patch_name%% }"
     [ -n "$patch_name" ] || continue
     local patch_file="$patch_dir/$patch_name"
-    if patch -p1 --dry-run -f < "$patch_file" >/dev/null 2>&1; then
+    if patch_semantically_applied "$patch_name"; then
+      say "quilt fallback: $patch_name already applied (semantic marker)"
+    elif patch -p1 --dry-run -f < "$patch_file" >/dev/null 2>&1; then
       patch -p1 < "$patch_file"
       say "quilt fallback: applied $patch_name"
     elif patch -p1 -R --dry-run -f < "$patch_file" >/dev/null 2>&1; then
@@ -63,6 +141,19 @@ apply_quilt_series "$SCRIPT_DIR/patches-m0"
 # =============================================================================================
 if [ "${LB_APP_BUILD:-0}" = "1" ]; then
   say "APP-BUILD MODE: re-enabling CPU Compositor + wiring UI/iOS"
+
+  # Cached trees from early WebGL bring-up can contain an older partial version of the
+  # iOS WebGL patch. Reset only the files owned by that patch so the final quilt patch
+  # applies cleanly while leaving the rest of the warmed tree intact.
+  if [ -d .git ] &&
+     grep -q 'ladybird-webgl.log' Services/Compositor/OpenGLContext.cpp 2>/dev/null &&
+     ! grep -q 'eglBindAPI GLES' Services/Compositor/OpenGLContext.cpp 2>/dev/null; then
+    git checkout -- \
+      Services/Compositor/CanvasHost.cpp \
+      Services/Compositor/OpenGLContext.cpp \
+      Services/Compositor/OpenGLContext.h
+    say "reset stale partial iOS WebGL patch before app series"
+  fi
 
   # App-only engine patch series for compositor/UI wiring and IOSurface/Mach transport.
   apply_quilt_series "$SCRIPT_DIR/patches"

@@ -22,6 +22,7 @@ set -uo pipefail
 PROC=/work/Procursus
 BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
 LIBDIR=$BB/usr/lib
+ANGLE_LIBDIR=$BB/lib/angle
 OTOOL=/root/cctools/bin/aarch64-apple-darwin-otool
 INT=/root/cctools/bin/aarch64-apple-darwin-install_name_tool
 LDID=/root/cctools/bin/ldid
@@ -78,6 +79,14 @@ step "discover dylib closure (otool -L recursion)"
 is_system() { case "$1" in /usr/lib/*|/System/*) return 0;; *) return 1;; esac; }
 resolve() { # basename -> real file in build_base libdir
   local base="$1"
+  case "$base" in
+    libEGL.angle.dylib|libGLESv2.dylib)
+      if [ -f "$ANGLE_LIBDIR/$base" ]; then echo "$ANGLE_LIBDIR/$base"; return 0; fi
+      ;;
+    libGLESv2.2.dylib)
+      if [ -f "$ANGLE_LIBDIR/libGLESv2.dylib" ]; then echo "$ANGLE_LIBDIR/libGLESv2.dylib"; return 0; fi
+      ;;
+  esac
   if [ -f "$LIBDIR/$base" ]; then echo "$LIBDIR/$base"; return 0; fi
   find "$LIBDIR" -maxdepth 2 -name "$base" 2>/dev/null | head -1
 }
@@ -103,6 +112,10 @@ while [ ${#WORK[@]} -gt 0 ]; do
   cp -f "$src" "$APP/lib/$base"; chmod +w "$APP/lib/$base"
   for d in $(enqueue_deps "$src"); do WORK+=("$d"); done
 done
+if [ -f "$APP/lib/libEGL.angle.dylib" ] && [ -f "$ANGLE_LIBDIR/libGLESv2.dylib" ] && [ ! -f "$APP/lib/libGLESv2.dylib" ]; then
+  cp -f "$ANGLE_LIBDIR/libGLESv2.dylib" "$APP/lib/libGLESv2.dylib"
+  chmod +w "$APP/lib/libGLESv2.dylib"
+fi
 echo "bundled $(ls "$APP/lib" | wc -l) dylibs:"; ls "$APP/lib" | sort | sed 's/^/  /'
 
 # ---- LSE sanity on mimalloc (must be 0 for A10) ---------------------------------------------
