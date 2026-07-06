@@ -118,8 +118,8 @@ cp -v /work/ladybird-app/Sources/*.mm "$WORK/UI/iOS/Sources/"
 cp -v /work/ladybird-app/Sources/*.cpp "$WORK/UI/iOS/Sources/"
 cp -v /work/ladybird-app/CMakeLists.txt "$WORK/UI/iOS/CMakeLists.txt"
 
-# ---- apply patches (incl. patch 18 app-mode; LB_APP_BUILD=1 exported) ----------------------
-step "apply M0 patches + patch 18 (app mode)"
+# ---- apply patches (including app-mode series; LB_APP_BUILD=1 exported) ---------------------
+step "apply M0 patches + app-mode patch series"
 bash /work/recipes-ladybird/ladybird-m0-patches.sh "$WORK"
 SKIA_PC=$BB/usr/lib/pkgconfig/skia.pc
 if [ -f "$SKIA_PC" ] && grep -q -- '-framework CoreFoundation -framework' "$SKIA_PC"; then

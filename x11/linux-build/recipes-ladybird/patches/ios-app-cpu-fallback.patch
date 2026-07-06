@@ -1,0 +1,54 @@
+Subject: [PATCH] ios-app: keep CPU fallback source hooks in tree
+
+CPU app builds force software painting and include the generated ANGLE trap
+stub source. GPU probe builds set a compile definition and skip the trap stub
+source through the existing LB_APP_GPU build environment.
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -465,6 +465,11 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
+ 
+     create_platform_options(m_browser_options, m_request_server_options, m_web_content_options);
+ 
++#if defined(AK_OS_IOS) && !defined(LADYBIRD_IOS_APP_GPU)
++    // iOS CPU app build: no GPU/ANGLE backend -> CPU (Skia) painting in WebContent and Compositor.
++    m_web_content_options.force_cpu_painting = ForceCPUPainting::Yes;
++#endif
++
+     // Test mode implies experimental interfaces and internals object are exposed and the Skia CPU backend is used.
+     if (m_web_content_options.is_test_mode == IsTestMode::Yes) {
+         m_web_content_options.expose_experimental_interfaces = ExposeExperimentalInterfaces::Yes;
+--- a/Libraries/LibWebView/CMakeLists.txt
++++ b/Libraries/LibWebView/CMakeLists.txt
+@@ -91,6 +91,9 @@ compile_ipc(${LADYBIRD_SOURCE_DIR}/Services/WebContent/WebUIClient.ipc ${CMAKE_B
+ compile_ipc(${LADYBIRD_SOURCE_DIR}/Services/WebContent/WebUIServer.ipc ${CMAKE_BINARY_DIR}/Services/WebContent/WebUIServerEndpoint.h)
+ 
+ ladybird_lib(LibWebView webview EXPLICIT_SYMBOL_EXPORT)
++if (APPLE AND IOS AND DEFINED ENV{LB_APP_GPU} AND "$ENV{LB_APP_GPU}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$")
++    target_compile_definitions(LibWebView PRIVATE LADYBIRD_IOS_APP_GPU)
++endif()
+ target_link_libraries(LibWebView PRIVATE LibCore LibDatabase LibDevTools LibFileSystem LibGfx LibHTTP LibImageDecoderClient LibIPC LibRequests LibJS LibWeb LibUnicode LibURL LibSync LibSyntax LibTextCodec)
+ 
+ # Third-party
+--- /dev/null
++++ b/Services/Compositor/AngleStubIOS.cpp
+@@ -0,0 +1,7 @@
++// iOS CPU app build: trap-if-called stubs for the ANGLE EGL/GLES entry points the
++// Compositor references but never calls under --force-cpu-painting (WebGL/GPU present is off).
++// The build driver fills the concrete symbol list from the first link's undefined symbols.
++extern "C" {
++// __LB_ANGLE_STUBS_BEGIN__
++// __LB_ANGLE_STUBS_END__
++}
+--- a/Services/Compositor/CMakeLists.txt
++++ b/Services/Compositor/CMakeLists.txt
+@@ -12,6 +12,10 @@ set(SOURCES
+     WebGLObjectMap.cpp
+ )
+ 
++if (APPLE AND IOS AND NOT (DEFINED ENV{LB_APP_GPU} AND "$ENV{LB_APP_GPU}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$"))
++    list(APPEND SOURCES AngleStubIOS.cpp)
++endif()
++
+ invoke_py_generator(
+     "WebGLCommandReplayer.cpp"
+     "generate_compositor_webgl_replayer.py"
