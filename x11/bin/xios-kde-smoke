@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# Host-side KDE Plasma smoke helper for Xios.
+#
+# Wraps bin/xios-device so KDE Desktop/Nano/Mobile checks use the same launch,
+# foreground, input, screenshot, and collection flow every time.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+X11_ROOT="$(cd "$HERE/.." && pwd)"
+XIOS_DEVICE="$X11_ROOT/bin/xios-device"
+
+FLAVOR="mobile"
+START_SESSION=1
+DRAWER=0
+APP=""
+OUTDIR=""
+WARMUP=8
+CURRENT_PRESET=""
+
+usage() {
+    cat <<'EOF'
+usage: bin/xios-kde-smoke [options] [desktop|mobile|nano]
+
+Starts or attaches to a KDE Plasma session, foregrounds Xios, optionally
+performs a Mobile drawer swipe or launches an app, then captures evidence.
+
+Options:
+  --no-session      Do not switch sessions; smoke the current device state
+  --drawer          For Mobile, inject an upward drawer swipe before capture
+  --app NAME        Launch a KDE/Wayland app through xios-session before capture
+  --warmup SEC      Delay after session/app actions before capture (default: 8)
+  --out DIR         Local artifact directory
+  -h, --help        Show this help
+
+Examples:
+  bin/xios-kde-smoke mobile --drawer
+  bin/xios-kde-smoke desktop --app systemsettings
+  bin/xios-kde-smoke --no-session --out /tmp/kde-current mobile
+EOF
+}
+
+die() {
+    echo "xios-kde-smoke: $*" >&2
+    exit 1
+}
+
+valid_number() {
+    case "$1" in
+        ""|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+stamp() {
+    date '+%Y%m%d-%H%M%S'
+}
+
+session_for_flavor() {
+    case "$1" in
+        desktop|kde|plasma|kde-desktop|plasma-desktop) printf '%s\n' kde-desktop ;;
+        mobile|phone|kde-mobile|plasma-mobile) printf '%s\n' kde-mobile ;;
+        nano|kde-nano|plasma-nano) printf '%s\n' kde-nano ;;
+        *) return 1 ;;
+    esac
+}
+
+make_outdir() {
+    if [ -n "$OUTDIR" ]; then
+        mkdir -p "$OUTDIR" || exit 1
+        (cd "$OUTDIR" && pwd)
+    else
+        local root="${XIOS_ARTIFACT_ROOT:-$X11_ROOT/artifacts/device-runs}"
+        local d="$root/kde-${FLAVOR}-smoke-$(stamp)"
+        mkdir -p "$d" || exit 1
+        printf '%s\n' "$d"
+    fi
+}
+
+run_logged() {
+    local name="$1"
+    shift
+    echo "==> $*" | tee -a "$LOG"
+    "$@" >"$OUT/$name.log" 2>&1
+    local rc=$?
+    sed -n '1,160p' "$OUT/$name.log" >>"$LOG"
+    echo >>"$LOG"
+    return "$rc"
+}
+
+device_json_dim() {
+    local key="$1"
+    "$XIOS_DEVICE" exec "sed -n 's/.*\"$key\":[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' /var/jb/tmp/xios.json | head -1" 2>/dev/null | tail -1
+}
+
+mobile_drawer_swipe() {
+    local w h x y1 y2
+    w="$(device_json_dim width)"
+    h="$(device_json_dim height)"
+    valid_number "$w" || w=2160
+    valid_number "$h" || h=2880
+    x=$((w / 2))
+    y1=$((h * 84 / 100))
+    y2=$((h * 28 / 100))
+    run_logged input-drawer "$XIOS_DEVICE" input drag "$x" "$y1" "$x" "$y2"
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --no-session)
+            START_SESSION=0; shift ;;
+        --drawer)
+            DRAWER=1; shift ;;
+        --app)
+            APP="${2:-}"; [ -n "$APP" ] || die "--app needs a name"; shift 2 ;;
+        --warmup)
+            WARMUP="${2:-}"; valid_number "$WARMUP" || die "--warmup needs an integer"; shift 2 ;;
+        --out)
+            OUTDIR="${2:-}"; [ -n "$OUTDIR" ] || die "--out needs a directory"; shift 2 ;;
+        -h|--help)
+            usage; exit 0 ;;
+        --*)
+            die "unknown option: $1" ;;
+        *)
+            FLAVOR="$1"; shift ;;
+    esac
+done
+
+PRESET="$(session_for_flavor "$FLAVOR")" || die "unknown KDE flavor: $FLAVOR"
+case "$PRESET" in
+    kde-desktop) FLAVOR=desktop ;;
+    kde-mobile) FLAVOR=mobile ;;
+    kde-nano) FLAVOR=nano ;;
+esac
+
+[ -x "$XIOS_DEVICE" ] || die "missing helper: $XIOS_DEVICE"
+
+OUT="$(make_outdir)"
+LOG="$OUT/kde-smoke.log"
+
+{
+    echo "artifact dir: $OUT"
+    echo "flavor: $FLAVOR"
+    echo "preset: $PRESET"
+    echo "start_session: $START_SESSION"
+    echo "drawer: $DRAWER"
+    echo "app: ${APP:-}"
+    echo "warmup: $WARMUP"
+    echo
+} >"$LOG"
+
+run_logged status-before "$XIOS_DEVICE" status || true
+CURRENT_PRESET="$(sed -n 's/.*"preset":"\([^"]*\)".*/\1/p' "$OUT/status-before.log" | head -1)"
+if [ -n "$CURRENT_PRESET" ]; then
+    echo "current_preset: $CURRENT_PRESET" | tee -a "$LOG"
+fi
+
+if [ "$START_SESSION" = 1 ]; then
+    run_logged session "$XIOS_DEVICE" session "$PRESET" || true
+elif [ -n "$CURRENT_PRESET" ] && [ "$CURRENT_PRESET" != "$PRESET" ]; then
+    echo "WARN: --no-session requested $PRESET but device reports $CURRENT_PRESET" | tee -a "$LOG"
+fi
+
+run_logged foreground "$XIOS_DEVICE" foreground || true
+
+if [ -n "$APP" ]; then
+    run_logged app "$XIOS_DEVICE" app "$APP" || true
+fi
+
+if [ "$DRAWER" = 1 ]; then
+    [ "$FLAVOR" = mobile ] || die "--drawer is only valid for mobile"
+    if [ "$START_SESSION" = 0 ] && [ -n "$CURRENT_PRESET" ] && [ "$CURRENT_PRESET" != kde-mobile ]; then
+        die "--drawer with --no-session requires current preset kde-mobile (got $CURRENT_PRESET)"
+    fi
+    mobile_drawer_swipe || true
+fi
+
+if [ "$WARMUP" -gt 0 ]; then
+    echo "==> warmup ${WARMUP}s" | tee -a "$LOG"
+    sleep "$WARMUP"
+fi
+
+run_logged package-state "$XIOS_DEVICE" exec \
+    "dpkg-query -W iosc xios-session kwin plasma-workspace plasma-desktop plasma-mobile plasma-nano 2>/dev/null || true" || true
+
+run_logged shot "$XIOS_DEVICE" shot "$OUT" || true
+
+cat >"$OUT/summary.txt" <<EOF
+KDE smoke
+flavor=$FLAVOR
+preset=$PRESET
+current_preset=${CURRENT_PRESET:-unknown}
+artifact_dir=$OUT
+drawer=$DRAWER
+app=${APP:-}
+
+Key files:
+- kde-smoke.log
+- status-before.log
+- session.log
+- foreground.log
+- package-state.log
+- shot.log
+- compositor.png/device.png if capture succeeded
+- collected /var/jb/tmp logs and status files
+EOF
+
+echo "artifact dir: $OUT"
+echo "summary: $OUT/summary.txt"

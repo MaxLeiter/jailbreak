@@ -170,6 +170,22 @@ The summary highlights renderer/backend clues and common bottleneck signatures
 such as Qt Wayland EGL fallback, KWin IOSurface imports, Mutter IOSurface
 present, frame-callback stalls, protocol errors, and compositor crashes.
 
+### KDE smoke helper
+
+Use `bin/xios-kde-smoke` for repeatable Plasma Desktop/Mobile/Nano visual
+checks. It wraps `bin/xios-device`, starts or attaches to the requested KDE
+flavor, foregrounds Xios, optionally launches an app or swipes the Mobile app
+drawer, and writes a standard evidence bundle:
+
+```bash
+bin/xios-kde-smoke mobile --drawer
+bin/xios-kde-smoke desktop --app systemsettings
+bin/xios-kde-smoke --no-session desktop
+```
+
+With `--no-session`, the helper records the current reported preset and warns if
+it differs from the requested flavor.
+
 ### `logs`
 
 Prints recent log tails, optionally filtered:
