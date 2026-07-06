@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-desktop.mk — first-light desktop containment/applets package for Xios.
+# plasma-desktop.mk — desktop containment/applets package for Xios.
 # This intentionally packages the Plasma desktop surface above plasmashell, not a
 # full Linux desktop settings stack. The source-fix script keeps containment,
 # panel/layout data, lightweight applet packages, and KRunner helpers while
@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS += plasma-desktop
 PLASMADESKTOP_VERSION = $(PLASMA_VERSION)
-DEB_PLASMADESKTOP_V ?= $(PLASMADESKTOP_VERSION)+ios4
+DEB_PLASMADESKTOP_V ?= $(PLASMADESKTOP_VERSION)+ios5
 
 plasma-desktop-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-desktop))

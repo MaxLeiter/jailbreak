@@ -6,11 +6,11 @@ Section: KDE
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
 Depends: qt6-base, qt6-declarative, qt6-svg, qt6-wayland, qt6-5compat, kf6-auth, kf6-attica, kf6-codecs, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-itemmodels, kf6-kcmutils, kf6-kded, kf6-kio, kf6-kirigami-addons, kf6-newstuff, kf6-notifications, kf6-notifyconfig, kf6-package, kf6-runner, kf6-service, kf6-solid, kf6-svg, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, plasma-activities, plasma-activities-stats, plasma-workspace, libplasma, kwin
-Description: First-light Plasma Desktop containment layer for Xios
+Description: Plasma Desktop containment layer for Xios
  Plasma Desktop provides desktop containment, panel layout templates, launcher
  applet packages, and KRunner desktop helpers above the packaged KWin and
  Plasma Workspace base.
  .
- This iOS bring-up package is intentionally trimmed to the nested Wayland shell
+ This iOS package is intentionally trimmed to the nested Wayland shell
  path and omits Linux desktop KCMs, automount, SDDM, account integration, and
  X11-only helpers until later productization.

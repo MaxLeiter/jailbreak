@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plasma-desktop-ios-fixes.sh — first-light source trims for Plasma Desktop.
+# plasma-desktop-ios-fixes.sh — source trims for Plasma Desktop on Xios/iOS.
 set -euo pipefail
 
 src=${1:?usage: plasma-desktop-ios-fixes.sh <plasma-desktop-source-dir>}
@@ -44,7 +44,7 @@ text = text.replace("""find_package(XCB
     OPTIONAL_COMPONENTS
         XKB XINPUT ATOM RECORD
 )""", """find_package(XCB COMPONENTS XCB SHM IMAGE OPTIONAL_COMPONENTS XKB XINPUT ATOM RECORD)""")
-text = text.replace("include(ConfigureChecks.cmake)", "# ios-firstlight-skip: include(ConfigureChecks.cmake)")
+text = text.replace("include(ConfigureChecks.cmake)", "# xios-ios-skip: include(ConfigureChecks.cmake)")
 for package in ["X11", "Canberra", "ICU"]:
     text = re.sub(
         rf"(set_package_properties\({package} PROPERTIES\b.*?TYPE\s+)REQUIRED(\s*\))",
@@ -67,11 +67,11 @@ def subdir_repl(match: re.Match[str]) -> str:
     name = match.group(1)
     if name in keep:
         return match.group(0)
-    return f"# ios-firstlight-skip: {match.group(0)}"
+    return f"# xios-ios-skip: {match.group(0)}"
 
 text = re.sub(r"^add_subdirectory\(([^)]+)\)", subdir_repl, text, flags=re.M)
-text = re.sub(r"^ki18n_install\(po\)", "# ios-firstlight-skip: ki18n_install(po)", text, flags=re.M)
-text = re.sub(r"^kdoctools_install\(po\)", "# ios-firstlight-skip: kdoctools_install(po)", text, flags=re.M)
+text = re.sub(r"^ki18n_install\(po\)", "# xios-ios-skip: ki18n_install(po)", text, flags=re.M)
+text = re.sub(r"^kdoctools_install\(po\)", "# xios-ios-skip: kdoctools_install(po)", text, flags=re.M)
 text = text.replace("set(INSTALL_SDDM_THEME TRUE)", "set(INSTALL_SDDM_THEME FALSE)")
 
 path.write_text(text)
@@ -85,11 +85,13 @@ from pathlib import Path
 path = Path(sys.argv[1])
 text = path.read_text()
 for name in ["trash", "taskmanager", "pager", "showActivityManager", "kimpanel"]:
-    text = re.sub(rf"^[ \t]*add_subdirectory\({re.escape(name)}\)", f"# ios-firstlight-skip: add_subdirectory({name})", text, flags=re.M)
+    text = re.sub(rf"^[ \t]*add_subdirectory\({re.escape(name)}\)", f"# xios-ios-skip: add_subdirectory({name})", text, flags=re.M)
+text = text.replace("plasma_install_package(activitypager org.kde.plasma.activitypager)",
+                    "# xios-ios-skip: plasma_install_package(activitypager org.kde.plasma.activitypager)")
 text = text.replace("plasma_install_package(icontasks org.kde.plasma.icontasks)",
-                    "# ios-firstlight-skip: plasma_install_package(icontasks org.kde.plasma.icontasks)")
+                    "# xios-ios-skip: plasma_install_package(icontasks org.kde.plasma.icontasks)")
 text = text.replace("plasma_install_package(keyboardlayout org.kde.plasma.keyboardlayout)",
-                    "# ios-firstlight-skip: plasma_install_package(keyboardlayout org.kde.plasma.keyboardlayout)")
+                    "# xios-ios-skip: plasma_install_package(keyboardlayout org.kde.plasma.keyboardlayout)")
 path.write_text(text)
 PY
 
@@ -110,9 +112,9 @@ if kicker_block not in text:
         text = text.replace('panel.addWidget("org.kde.plasma.kicker")', kicker_block)
     else:
         raise SystemExit("default panel launcher widget not found")
-text = text.replace('panel.addWidget("org.kde.plasma.pager")', '// ios-firstlight-skip: panel.addWidget("org.kde.plasma.pager")')
+text = text.replace('panel.addWidget("org.kde.plasma.pager")', '// xios-ios-skip: panel.addWidget("org.kde.plasma.pager")')
 text = text.replace('panel.addWidget("org.kde.plasma.icontasks")', 'panel.addWidget("org.kde.plasma.windowlist")')
-text = text.replace('panel.addWidget("org.kde.plasma.systemtray")', '// ios-firstlight-skip: panel.addWidget("org.kde.plasma.systemtray")')
+text = text.replace('panel.addWidget("org.kde.plasma.systemtray")', '// xios-ios-skip: panel.addWidget("org.kde.plasma.systemtray")')
 panel.write_text(text)
 PY
 

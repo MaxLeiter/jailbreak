@@ -255,7 +255,7 @@ source /work/recipes/xios-cache-fingerprint.sh
 for t in $TARGETS; do
   echo "==> make ${t}"
   xios_cache_prepare_target "$t"
-  make ${t} $COMMON -j"$(nproc)"
+  make ${t} $COMMON -j"${XIOS_BUILD_JOBS:-$(nproc)}"
   xios_cache_record_target "$t"
 done
 

@@ -66,6 +66,8 @@ def repl(match: re.Match[str]) -> str:
 text = re.sub(r"^add_subdirectory\(([^)]+)\)", repl, text, flags=re.M)
 text = re.sub(r"^ecm_optional_add_subdirectory\(([^)]+)\)",
               lambda m: f"# ios-firstlight-skip: {m.group(0)}", text, flags=re.M)
+text = re.sub(r"^ki18n_install\(po\)", "# xios-ios-skip: ki18n_install(po)", text, flags=re.M)
+text = re.sub(r"^kdoctools_install\(po\)", "# xios-ios-skip: kdoctools_install(po)", text, flags=re.M)
 
 path.write_text(text)
 PY
@@ -467,6 +469,26 @@ set_source_files_properties(
 set_source_files_properties(
     ${{CMAKE_CURRENT_BINARY_DIR}}/krunner_interface.cpp
     PROPERTIES OBJECT_DEPENDS ${{CMAKE_CURRENT_BINARY_DIR}}/moc_krunner_interface.cpp
+)
+
+# iOS cross-build: generated logging headers are included by ordinary sources;
+# make the dependency explicit so Ninja does not race those compiles.
+set_source_files_properties(
+    main.cpp
+    panelshadows.cpp
+    panelview.cpp
+    osd.cpp
+    shellcorona.cpp
+    autohidescreenedge.cpp
+    scripting/appinterface.cpp
+    scripting/configgroup.cpp
+    scripting/scriptengine.cpp
+    scripting/scriptengine_v1.cpp
+    PROPERTIES OBJECT_DEPENDS ${{CMAKE_CURRENT_BINARY_DIR}}/debug.h
+)
+set_source_files_properties(
+    screenpool.cpp
+    PROPERTIES OBJECT_DEPENDS ${{CMAKE_CURRENT_BINARY_DIR}}/screenpool-debug.h
 )
 
 """,
