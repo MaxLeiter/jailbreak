@@ -18,7 +18,7 @@ version for any agent.
 | fuzzel 1.12.0+ios1 | out/ ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
 | dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
 | foot 1.27.0+ios3 | out/ ✓ | installed | **YES** | PTY + locale + render-worker path verified |
-| imv 5.0.1 | out/ ✓ | installed | **NO** | aborts creating EGL window; needs GLES/desktop-GL renderer port |
+| imv 5.0.1+ios2 | out/ ✓ | installed | **PARTIAL (Xwayland)** | `imv-x11` maps/renders via rootful Xwayland; content is rotated in portrait; native Wayland EGL still blocked |
 | mpv 0.36.0+ios2 | out/ ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
 | zathura 0.5.12 | out/ ✓ | installed | **YES** | GTK3 Wayland + PDF/poppler content render verified |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
@@ -96,12 +96,19 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `artifacts/device-runs/20260705-imv-slurp-fuzzel-clean/cap-slurp.png`.
   A driven `slurp -d` smoke also returned rc 0 and stdout geometry
   `100,100 226x161` after `bin/xios-device input drag 200 200 650 520`.
-- **imv — BLOCKED on renderer path.** `imv 5.0.1` aborts on-device with
-  `Assertion failed: (window->egl_context), function create_window, file
-  wl_window.c, line 864`. This is not a wl_shm mapping issue: imv's renderer uses
-  desktop OpenGL (`eglBindAPI(EGL_OPENGL_API)`, `glBegin`, `GL_TEXTURE_RECTANGLE`)
-  against the ANGLE/libEGL path. Treat it as a renderer-port task (GLES/modern GL
-  or a real shm renderer), not another launcher/env fix.
+- **imv — PARTIAL via Xwayland as `imv 5.0.1+ios2`.** Native Wayland still aborts
+  on-device with `Assertion failed: (window->egl_context), function create_window,
+  file wl_window.c, line 864`. This is not a wl_shm mapping issue: imv's renderer
+  uses desktop OpenGL (`eglBindAPI(EGL_OPENGL_API)`, `glBegin`,
+  `GL_TEXTURE_RECTANGLE`) against the ANGLE/libEGL path. The practical fallback is
+  now packaged: `imv` builds both Wayland and X11 backends, `libxkbcommon0
+  1.7.0+ios2` ships `libxkbcommon-x11`, `libxcb-xkb1` is installed, and
+  `imv_5.0.1+ios2` carries the private `libinih.0.dylib` it links. On-device
+  rootful `Xwayland :1` smoke under classic `iosc` kept `imv-x11
+  /var/jb/tmp/xios-imv-smoke.png` alive with empty stderr and a visible rendered
+  PNG. Remaining issue: the rootful portrait capture shows the imv content rotated,
+  so this is not yet a polished launcher path. Evidence:
+  `artifacts/device-runs/20260705-imv-x11-fallback-portrait/compositor.png`.
 - **wl-clipboard — FIX PACKAGED + VERIFIED with `iosc 0.9.10`.**
   `wl-copy` reached `zwlr_data_control_device_v1.set_selection`, but the compositor's
   pipe reader returned on `WL_EVENT_HANGUP|ERROR` before draining bytes already queued
@@ -166,7 +173,9 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 ## Open items / TODO
 
-- [ ] Port/fix imv's renderer for iOS (desktop OpenGL path currently aborts).
+- [ ] Finish imv polish: either port native Wayland rendering away from desktop
+  EGL/GL, or fix the Xwayland/rootful portrait transform so `imv-x11` is visually
+  upright without manual rotation.
 - [ ] Publish (Max-gated): copy the app wave + `angle -3` into repo/debs, run make-repo, deploy.
 
 ## How to verify on-device
@@ -183,3 +192,12 @@ x11/bin/iosc-capture-remote.sh fuzzel  fuzzel
 x11/bin/iosc-capture-remote.sh slurp   slurp
 ```
 Each prints alive/exited + the failure signature and pulls back a screenshot + log.
+
+For the current imv fallback, start classic `iosc`, then run rootful Xwayland and
+force the X11 backend:
+```
+x11/bin/xios-device session iosc
+x11/bin/xios-device exec 'export XDG_RUNTIME_DIR=/var/jb/tmp; Xwayland :1 -geometry 1080x1440 -retro -noreset -extension MIT-SHM >/var/jb/tmp/xwl-imv.log 2>&1 & echo $! >/var/jb/tmp/xwayland-imv.pid'
+x11/bin/xios-device exec 'env DISPLAY=:1 XLIB_NO_SHM=1 imv-x11 /var/jb/tmp/xios-imv-smoke.png >/var/jb/tmp/imv-x11.log 2>&1 & echo $! >/var/jb/tmp/imv-x11.pid'
+x11/bin/xios-device shot artifacts/device-runs/<label>
+```
