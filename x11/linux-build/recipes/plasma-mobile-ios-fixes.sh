@@ -109,6 +109,72 @@ if needle in text and "org/kde/private/mobile/homescreen/folio" not in text:
 path.write_text(text)
 PY
 
+# Folio's app drawer must still populate on iOS even if the KWayland window
+# tracking connection is not ready during model construction. The connection is
+# only needed for launch/activate state; KApplicationTrader can already list the
+# installed apps.
+python3 - "$src/containments/homescreens/folio/applicationlistmodel.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = """    // initialize wayland window checking
+    KWayland::Client::ConnectionThread *connection = KWayland::Client::ConnectionThread::fromApplication(this);
+    if (!connection) {
+        return;
+    }
+
+    load();
+"""
+new = """    // initialize wayland window checking when available; app listing itself
+    // must not depend on this being ready during first-light iOS startup.
+    KWayland::Client::ConnectionThread *connection = KWayland::Client::ConnectionThread::fromApplication(this);
+    if (!connection) {
+        qWarning() << \"xios: Folio ApplicationListModel loading without Wayland connection\";
+    }
+
+    load();
+"""
+if old in text:
+    text = text.replace(old, new, 1)
+text = text.replace(
+    """ApplicationListModel::ApplicationListModel(HomeScreen *parent)
+    : QAbstractListModel(parent)
+{""",
+    """ApplicationListModel::ApplicationListModel(HomeScreen *parent)
+    : QAbstractListModel(parent)
+    , m_homeScreen{parent}
+{""",
+    1,
+)
+text = text.replace(
+    """    const KService::List apps = KApplicationTrader::query(filter);
+
+    for (const KService::Ptr &service : apps) {""",
+    """    KService::List apps = KApplicationTrader::query(filter);
+    if (apps.isEmpty()) {
+        const QStringList fallbackIds = {
+            QStringLiteral("org.kde.kwrite.desktop"),
+            QStringLiteral("org.kde.gwenview.desktop"),
+            QStringLiteral("org.kde.ark.desktop"),
+            QStringLiteral("systemsettings.desktop"),
+        };
+        for (const QString &storageId : fallbackIds) {
+            KService::Ptr service = KService::serviceByStorageId(storageId);
+            if (service && filter(service)) {
+                apps << service;
+            }
+        }
+        qWarning() << "xios: Folio ApplicationListModel used storage-id fallback" << apps.size();
+    }
+
+    for (const KService::Ptr &service : apps) {""",
+    1,
+)
+path.write_text(text)
+PY
+
 # Match the desktop first-light wallpaper default for fresh Mobile configs.
 # Without the concrete org.kde.image config group, the wallpaper backend starts
 # from its preferred:// default and reports Provider.Unknown on iOS.
@@ -357,6 +423,21 @@ def patch_folio_home_screen_page() -> None:
 """
     if needle in text:
         path.write_text(text.replace(needle, fallback, 1))
+
+def patch_folio_app_drawer() -> None:
+    path = src / "containments/homescreens/folio/package/contents/ui/AppDrawer.qml"
+    if not path.exists():
+        return
+    text = path.read_text()
+    old = """            opacity: 0
+            headerHeight: root.headerHeight
+"""
+    new = """            // xios-folio-drawer-grid-visible: the parent drawer already gates opacity.
+            opacity: 1
+            headerHeight: root.headerHeight
+"""
+    if old in text and "xios-folio-drawer-grid-visible" not in text:
+        path.write_text(text.replace(old, new, 1))
 
 grid_view_qml = """import QtQuick 2.15 as QtQuick
 
@@ -791,6 +872,7 @@ restore_upstream("containments/homescreens/folio/package/contents/ui/main.qml")
 restore_upstream("containments/homescreens/halcyon/package/contents/ui/main.qml")
 patch_folio_app_delegate()
 patch_folio_home_screen_page()
+patch_folio_app_drawer()
 
 write("shell/package/contents/lockscreen/PasswordBar.qml", """import QtQuick 2.15
 import QtQuick.Controls 2.15

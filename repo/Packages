@@ -9284,6 +9284,69 @@ Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
 
+Package: plasma-mobile
+Version: 6.1.5+ios8
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-sensors, qt6-wayland, kf6-bluezqt, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-itemmodels, kf6-jobwidgets, kf6-kcmutils, kf6-kio, kf6-kirigami-addons, kf6-notifications, kf6-package, kf6-service, kf6-windowsystem, kwayland, kwin, libplasma, plasma-workspace, plasma-nano, plasma5support, plasma-pa
+Description: First-light Plasma Mobile shell data for Xios
+Installed-Size: 5452
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile_6.1.5+ios8_iphoneos-arm64.deb
+Size: 602122
+MD5sum: 9b62b624ad921299824f57417207c8aa
+SHA1: 4d6f4422fdd02b555e85944b723ffdb85eb2ca72
+SHA256: 981aa7b78755454ea0bed0c1a73697919bc1970b6a4f73149081c9919022f913
+Icon: https://repo.maxleiter.com/icons/plasma-mobile.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+
+Package: plasma-mobile
+Version: 6.1.5+ios9
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-sensors, qt6-wayland, kf6-bluezqt, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-itemmodels, kf6-jobwidgets, kf6-kcmutils, kf6-kio, kf6-kirigami-addons, kf6-notifications, kf6-package, kf6-service, kf6-windowsystem, kwayland, kwin, libplasma, plasma-workspace, plasma-nano, plasma5support, plasma-pa
+Description: First-light Plasma Mobile shell data for Xios
+Installed-Size: 5452
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile_6.1.5+ios9_iphoneos-arm64.deb
+Size: 603672
+MD5sum: b95086fbcc66e3b8ffcbf00e150b667e
+SHA1: 4b4baf5e06b8c0b8cb7c975bc979a04b230a397d
+SHA256: 67061505f9c18d88403033198378fadc806425ad8be3ae1daf400e305b7864d7
+Icon: https://repo.maxleiter.com/icons/plasma-mobile.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+
+Package: plasma-mobile
+Version: 6.1.5+ios10
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-sensors, qt6-wayland, kf6-bluezqt, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-itemmodels, kf6-jobwidgets, kf6-kcmutils, kf6-kio, kf6-kirigami-addons, kf6-notifications, kf6-package, kf6-service, kf6-windowsystem, kwayland, kwin, libplasma, plasma-workspace, plasma-nano, plasma5support, plasma-pa
+Description: First-light Plasma Mobile shell data for Xios
+Installed-Size: 5452
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile_6.1.5+ios10_iphoneos-arm64.deb
+Size: 603742
+MD5sum: 1ad7c335ee5bbd29d5d7fa69e293f1a0
+SHA1: 1f0e0b32297ec9c49ae15f11b4a3c8a63323a3f0
+SHA256: c78707bb639911b9ed7c28c5b6b89f5308630599acadc10ffffedf75eac4c6b0
+Icon: https://repo.maxleiter.com/icons/plasma-mobile.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+
 Package: plasma-mobile-dev
 Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
@@ -9405,6 +9468,69 @@ Size: 790
 MD5sum: a1c8d780ab2271d0be689f21b8b1e4b2
 SHA1: b9e659bcf4ca3a1eb66c22b7c2f46f7114ca7e26
 SHA256: e0cd5c7652780c095c850200692239acd770d5dab2a406a348032681de4c258f
+Icon: https://repo.maxleiter.com/icons/plasma-mobile-dev.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+
+Package: plasma-mobile-dev
+Version: 6.1.5+ios8
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: plasma-mobile (= 6.1.5+ios8), qt6-base-dev, qt6-declarative-dev, kf6-kirigami-addons-dev
+Description: Development files for Plasma Mobile on Xios
+Installed-Size: 16
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile-dev_6.1.5+ios8_iphoneos-arm64.deb
+Size: 780
+MD5sum: 5b6a2349be03da26a5337c01100c39e9
+SHA1: 64537634f208c37f9cbd7c23eab6f6bc6cf35fdd
+SHA256: 1b3b8602f1134318fa62b64baedeeb6a81761a5a63011ced47a413f8ec27843a
+Icon: https://repo.maxleiter.com/icons/plasma-mobile-dev.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+
+Package: plasma-mobile-dev
+Version: 6.1.5+ios9
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: plasma-mobile (= 6.1.5+ios9), qt6-base-dev, qt6-declarative-dev, kf6-kirigami-addons-dev
+Description: Development files for Plasma Mobile on Xios
+Installed-Size: 16
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile-dev_6.1.5+ios9_iphoneos-arm64.deb
+Size: 790
+MD5sum: 7e165eeb96004365958d323a98c81a3e
+SHA1: 732d0606c162ea71c33e8cf093b9342ac46cf06d
+SHA256: 0dcfca3bb9e22841ea0a96c0dd601cc13597d0c8c2e0f5ab6105f95d189381ea
+Icon: https://repo.maxleiter.com/icons/plasma-mobile-dev.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+
+Package: plasma-mobile-dev
+Version: 6.1.5+ios10
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: plasma-mobile (= 6.1.5+ios10), qt6-base-dev, qt6-declarative-dev, kf6-kirigami-addons-dev
+Description: Development files for Plasma Mobile on Xios
+Installed-Size: 16
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile-dev_6.1.5+ios10_iphoneos-arm64.deb
+Size: 782
+MD5sum: 9420624b0e5050112f40e11f10a5ff85
+SHA1: f1cbfa14e979ad113c081263c74cdf49adb4083f
+SHA256: 47ff8eca3a7ee618cf6f1629cbe1bc04a4e73e6ca3ac963c9a2149d6ef11c177
 Icon: https://repo.maxleiter.com/icons/plasma-mobile-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json

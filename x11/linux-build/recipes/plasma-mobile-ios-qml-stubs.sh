@@ -189,6 +189,27 @@ path.write_text(text)
 PY
 fi
 
+folio_app_drawer="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui/AppDrawer.qml"
+if [ -f "$folio_app_drawer" ]; then
+  python3 - "$folio_app_drawer" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = """            opacity: 0
+            headerHeight: root.headerHeight
+"""
+new = """            // xios-folio-drawer-grid-visible: the parent drawer already gates opacity.
+            opacity: 1
+            headerHeight: root.headerHeight
+"""
+if old in text and "xios-folio-drawer-grid-visible" not in text:
+    text = text.replace(old, new, 1)
+path.write_text(text)
+PY
+fi
+
 mobileshell="$qml/org/kde/plasma/private/mobileshell"
 mkdir -p "$mobileshell"
 if [ -e "$mobileshell/GridView.qml" ] && [ ! -e "$mobileshell/GridView.qml.upstream" ]; then
