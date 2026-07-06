@@ -103,7 +103,9 @@ Current converted non-Qt stacks:
 - `ports/mutter/patches`: makes remote-desktop-only input-emulation deps
   optional and guards systemd-only X11 policy code when libsystemd is off. The
   no-`/work/x11` fallback backend body remains procedural because that path is
-  conditional.
+  conditional in the cross recipe. `ports/mutter/patches-gir` carries the same
+  no-native-backend fallback for the standalone on-device GIR builder, which
+  now reuses the main Mutter patch series first.
 - `ports/evolution-data-server/patches`: carries the EDS SMIME-off,
   ld64-linker, host-generator, GLib include, and Camel no-NSS/NSPR source
   edits for the calendar/addressbook build.

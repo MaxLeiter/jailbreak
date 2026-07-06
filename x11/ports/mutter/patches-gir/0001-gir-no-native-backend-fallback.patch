@@ -1,0 +1,14 @@
+Subject: [PATCH] mutter: add no-native-backend fallback for GIR builds
+
+The on-device introspection builder does not mount the Xios backend source tree,
+but it still configures Mutter with the native backend disabled. Keep that
+standalone GIR path buildable by giving the no-native-backend branch an
+unreachable fallback body.
+
+diff -ruN -U0 a/src/core/meta-context-main.c b/src/core/meta-context-main.c
+--- a/src/core/meta-context-main.c	2024-03-16 06:43:07
++++ b/src/core/meta-context-main.c	2026-07-06 16:41:08
+@@ -517,0 +518,3 @@
++#else
++      g_assert_not_reached ();
++      return NULL;

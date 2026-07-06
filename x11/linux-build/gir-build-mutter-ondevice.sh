@@ -19,7 +19,7 @@
 #        GObject-2.0 Gio-2.0 (gir1.2-glib-2.0), Graphene-1.0, cairo-1.0, Atk-1.0, Pango-1.0,
 #        PangoCairo-1.0, GL-1.0 xlib-2.0 xfixes-4.0 (gir1.2-freedesktop), GDesktopEnums-3.0
 #        (gsettings-desktop-schemas), Json-1.0 (json-glib).
-#   4. Native build tools: meson, ninja, clang, wayland-scanner, glib-mkenums, gdbus-codegen,
+#   4. Native build tools: patch, meson, ninja, clang, wayland-scanner, glib-mkenums, gdbus-codegen,
 #      python3-mako, bison/flex, pkg-config (Procursus apt). wayland-scanner is the one most
 #      likely missing — `apt-get install wayland` / the W0 wayland deb provides it.
 #
@@ -40,9 +40,15 @@ GISPIKE=/var/jb/tmp/gi-spike     # sljit_shim.dylib, clang-ios, ninja2 (gir-onde
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIBEI_HDR_DIR="$HERE/src-tarballs/libei-1.3.0/src"
+MUTTER_PATCH_DIR="$HERE/../ports/mutter/patches"
+MUTTER_GIR_PATCH_DIR="$HERE/../ports/mutter/patches-gir"
+
+for patch_dir in "$MUTTER_PATCH_DIR" "$MUTTER_GIR_PATCH_DIR"; do
+  [ -f "$patch_dir/series" ] || { echo "ERROR: missing patch series: $patch_dir" >&2; exit 1; }
+done
 
 echo "==> [$BASE] pushing source + stub headers to device"
-"${SSH[@]}" "mkdir -p $WORK"
+"${SSH[@]}" "mkdir -p $WORK/patches/mutter $WORK/patches/mutter-gir"
 # The stub headers are the CANONICAL copies build-mutter.sh stages into the cross sysroot —
 # the on-device introspection build must compile against the same stub ABI.
 "${SCP[@]}" "$TAR" \
@@ -51,6 +57,10 @@ echo "==> [$BASE] pushing source + stub headers to device"
   "$HERE/recipes/build_info/input-event-codes.h" \
   "$HERE/recipes/build_info/systemd-sd-login.h" \
   "$DEVICE:$WORK/" >/dev/null
+"${SCP[@]}" "$MUTTER_PATCH_DIR/series" "$MUTTER_PATCH_DIR"/*.patch \
+  "$DEVICE:$WORK/patches/mutter/" >/dev/null
+"${SCP[@]}" "$MUTTER_GIR_PATCH_DIR/series" "$MUTTER_GIR_PATCH_DIR"/*.patch \
+  "$DEVICE:$WORK/patches/mutter-gir/" >/dev/null
 if [ -f "$LIBEI_HDR_DIR/libeis.h" ]; then
   "${SCP[@]}" "$LIBEI_HDR_DIR/libei.h" "$LIBEI_HDR_DIR/libeis.h" "$LIBEI_HDR_DIR/liboeffis.h" \
     "$DEVICE:$WORK/" >/dev/null
@@ -124,40 +134,21 @@ rm -rf "$BASE"
 tar xf "$BASE.tar"
 cd "$BASE"
 
-# --- iOS portability patches (identical to recipes/mutter.mk's accreting block) ---
-sed -i "s/dependency('libeis-1.0', version: libei_req)/dependency('libeis-1.0', version: libei_req, required: false)/" meson.build
-sed -i "s/dependency('libei-1.0', version: libei_req)/dependency('libei-1.0', version: libei_req, required: false)/" meson.build
-python3 - <<'PY'
-from pathlib import Path
-p = Path("src/core/meta-context-main.c")
-s = p.read_text()
-s = s.replace(
-"""return create_native_backend (context, error);
-#endif /* HAVE_NATIVE_BACKEND */""",
-"""return create_native_backend (context, error);
-#else
-      g_assert_not_reached ();
-      return NULL;
-#endif /* HAVE_NATIVE_BACKEND */""")
-s = s.replace(
-"""else if (sd_pid_get_user_unit (0, &unit) < 0)
-        return META_X11_DISPLAY_POLICY_MANDATORY;
-      else
-        return META_X11_DISPLAY_POLICY_ON_DEMAND;""",
-"""else
-        {
-#ifdef HAVE_LIBSYSTEMD
-          if (sd_pid_get_user_unit (0, &unit) < 0)
-            return META_X11_DISPLAY_POLICY_MANDATORY;
-          else
-            return META_X11_DISPLAY_POLICY_ON_DEMAND;
-#else
-          (void) unit;
-          return META_X11_DISPLAY_POLICY_MANDATORY;
-#endif
-        }""")
-p.write_text(s)
-PY
+apply_patch_series() {
+  local patch_dir="$1"
+  local patch_file
+  while IFS= read -r patch_file || [ -n "$patch_file" ]; do
+    case "$patch_file" in
+      ""|\#*) continue ;;
+    esac
+    echo "   patch: ${patch_dir##*/}/$patch_file"
+    patch -p1 < "$patch_dir/$patch_file"
+  done < "$patch_dir/series"
+}
+
+echo "--- apply mutter iOS patch series ---"
+apply_patch_series "$WORK/patches/mutter"
+apply_patch_series "$WORK/patches/mutter-gir"
 
 echo "--- meson setup (introspection=enabled, native) ---"
 # Native build (no cross file). Same feature flags as the cross recipe but introspection ON.
