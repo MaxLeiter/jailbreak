@@ -1,0 +1,284 @@
+#!/usr/bin/env bash
+# Host-side smoke helper for the iosc desktop app wave.
+#
+# Starts or attaches to the classic iosc session, prepares small on-device
+# fixtures, then runs the capture helper against the app set that matters before
+# a package publish.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+X11_ROOT="$(cd "$HERE/.." && pwd)"
+XIOS_DEVICE="$X11_ROOT/bin/xios-device"
+CAPTURE_REMOTE="$X11_ROOT/bin/iosc-capture-remote.sh"
+
+START_SESSION=1
+OUTDIR=""
+CAP_WAIT=6
+WARMUP=2
+ONLY=""
+SKIP=""
+
+usage() {
+    cat <<'EOF'
+usage: bin/iosc-appwave-smoke [options]
+
+Runs a repeatable classic-iosc smoke for the desktop app wave. The helper
+prepares PNG/PDF fixtures on-device, runs the per-app iosc capture helper, and
+records stdout/logs/screenshots in one artifact directory.
+
+Options:
+  --no-session      Do not switch sessions; smoke the current device state
+  --only LIST       Comma-separated smoke ids to run
+  --skip LIST       Comma-separated smoke ids to skip
+  --wait SEC        Per-app capture wait before screenshot (default: 6)
+  --warmup SEC      Delay after session/foreground before captures (default: 2)
+  --out DIR         Local artifact directory
+  -h, --help        Show this help
+
+Smoke ids:
+  packages, clipboard, zathura, hitori, mpv, foot, fuzzel, slurp, imv, dunst, shot
+
+Examples:
+  bin/iosc-appwave-smoke
+  bin/iosc-appwave-smoke --only clipboard,foot,imv
+  bin/iosc-appwave-smoke --no-session --out /tmp/appwave-current
+EOF
+}
+
+die() {
+    echo "iosc-appwave-smoke: $*" >&2
+    exit 1
+}
+
+valid_number() {
+    case "$1" in
+        ""|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+stamp() {
+    date '+%Y%m%d-%H%M%S'
+}
+
+normalize_list() {
+    printf '%s' "$1" | tr ',' ' '
+}
+
+list_contains() {
+    local item="$1" list
+    list="$(normalize_list "$2")"
+    case " $list " in
+        *" $item "*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+should_run() {
+    local id="$1"
+    if [ -n "$ONLY" ] && ! list_contains "$id" "$ONLY"; then
+        return 1
+    fi
+    if [ -n "$SKIP" ] && list_contains "$id" "$SKIP"; then
+        return 1
+    fi
+    return 0
+}
+
+make_outdir() {
+    if [ -n "$OUTDIR" ]; then
+        mkdir -p "$OUTDIR" || exit 1
+        (cd "$OUTDIR" && pwd)
+    else
+        local root="${XIOS_ARTIFACT_ROOT:-$X11_ROOT/artifacts/device-runs}"
+        local d="$root/appwave-smoke-$(stamp)"
+        mkdir -p "$d" || exit 1
+        printf '%s\n' "$d"
+    fi
+}
+
+run_logged() {
+    local name="$1"
+    shift
+    echo "==> $*" | tee -a "$LOG"
+    "$@" >"$OUT/$name.log" 2>&1
+    local rc=$?
+    sed -n '1,180p' "$OUT/$name.log" >>"$LOG"
+    echo >>"$LOG"
+    return "$rc"
+}
+
+record_result() {
+    local id="$1" rc="$2"
+    if [ "$rc" -eq 0 ]; then
+        printf 'PASS %s\n' "$id" | tee -a "$RESULTS" >/dev/null
+    else
+        printf 'FAIL %s rc=%s\n' "$id" "$rc" | tee -a "$RESULTS" >/dev/null
+        FAILS=$((FAILS + 1))
+    fi
+}
+
+run_step() {
+    local id="$1"
+    shift
+    should_run "$id" || return 0
+    run_logged "$id" "$@"
+    record_result "$id" "$?"
+}
+
+run_capture() {
+    local id="$1"
+    shift
+    should_run "$id" || return 0
+    echo "==> capture $id: $*" | tee -a "$LOG"
+    IOSC_CAP_LOCAL="$OUT" IOSC_CAP_WAIT="$CAP_WAIT" \
+        "$CAPTURE_REMOTE" "$id" "$@" >"$OUT/capture-$id.stdout" 2>&1
+    local rc=$?
+    sed -n '1,220p' "$OUT/capture-$id.stdout" >>"$LOG"
+    echo >>"$LOG"
+    record_result "$id" "$rc"
+}
+
+needs_fixtures() {
+    should_run zathura && return 0
+    should_run mpv && return 0
+    should_run imv && return 0
+    return 1
+}
+
+prepare_fixtures() {
+    run_logged prepare-fixtures "$XIOS_DEVICE" exec '
+        export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
+        export XDG_RUNTIME_DIR=/var/jb/tmp
+        export WAYLAND_DISPLAY=/var/jb/tmp/wayland-0
+        img=/var/jb/tmp/xios-appwave-smoke.png
+        pdf=/var/jb/tmp/xios-appwave-smoke.pdf
+        if command -v pango-view >/dev/null 2>&1; then
+            pango-view --no-display --backend=cairo --font="Sans Bold 64" \
+                --background=white --foreground=#202020 --margin=60 \
+                --text="$(printf "XIOS\nAPP\nOK\n")" --output="$img"
+            pango-view --no-display --backend=cairo --font="Sans Bold 48" \
+                --background=white --foreground=#202020 --margin=72 \
+                --text="$(printf "Zathura PDF\nWayland OK\n")" --output="$pdf"
+        fi
+        test -s "$img" || { echo "missing image fixture: $img" >&2; exit 1; }
+        test -s "$pdf" || { echo "missing pdf fixture: $pdf" >&2; exit 1; }
+        ls -l "$img" "$pdf"
+    '
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --no-session)
+            START_SESSION=0; shift ;;
+        --only)
+            ONLY="${2:-}"; [ -n "$ONLY" ] || die "--only needs a list"; shift 2 ;;
+        --skip)
+            SKIP="${2:-}"; [ -n "$SKIP" ] || die "--skip needs a list"; shift 2 ;;
+        --wait)
+            CAP_WAIT="${2:-}"; valid_number "$CAP_WAIT" || die "--wait needs an integer"; shift 2 ;;
+        --warmup)
+            WARMUP="${2:-}"; valid_number "$WARMUP" || die "--warmup needs an integer"; shift 2 ;;
+        --out)
+            OUTDIR="${2:-}"; [ -n "$OUTDIR" ] || die "--out needs a directory"; shift 2 ;;
+        -h|--help)
+            usage; exit 0 ;;
+        --*)
+            die "unknown option: $1" ;;
+        *)
+            die "unexpected argument: $1" ;;
+    esac
+done
+
+[ -x "$XIOS_DEVICE" ] || die "missing helper: $XIOS_DEVICE"
+[ -x "$CAPTURE_REMOTE" ] || die "missing helper: $CAPTURE_REMOTE"
+
+OUT="$(make_outdir)"
+LOG="$OUT/appwave-smoke.log"
+RESULTS="$OUT/results.txt"
+FAILS=0
+: >"$RESULTS"
+
+{
+    echo "artifact dir: $OUT"
+    echo "start_session: $START_SESSION"
+    echo "cap_wait: $CAP_WAIT"
+    echo "warmup: $WARMUP"
+    echo "only: ${ONLY:-}"
+    echo "skip: ${SKIP:-}"
+    echo
+} >"$LOG"
+
+run_logged status-before "$XIOS_DEVICE" status || true
+
+if [ "$START_SESSION" = 1 ]; then
+    run_logged session "$XIOS_DEVICE" session iosc || true
+fi
+
+run_logged foreground "$XIOS_DEVICE" foreground || true
+
+if [ "$WARMUP" -gt 0 ]; then
+    echo "==> warmup ${WARMUP}s" | tee -a "$LOG"
+    sleep "$WARMUP"
+fi
+
+if needs_fixtures; then
+    prepare_fixtures || record_result prepare-fixtures "$?"
+fi
+
+run_step packages "$XIOS_DEVICE" exec \
+    "dpkg-query -W iosc grim slurp fuzzel dunst foot imv mpv zathura hitori wl-clipboard libgtk-3-0 libxkbcommon0 libxcb-xkb1 angle"
+
+run_step clipboard "$XIOS_DEVICE" exec '
+    export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
+    export XDG_RUNTIME_DIR=/var/jb/tmp
+    export WAYLAND_DISPLAY=/var/jb/tmp/wayland-0
+    msg="xios appwave clipboard"
+    rm -f /var/jb/tmp/appwave-wl-copy.log /var/jb/tmp/appwave-wl-paste.out
+    (printf "%s" "$msg" | wl-copy --foreground > /var/jb/tmp/appwave-wl-copy.log 2>&1) &
+    cpid=$!
+    sleep 1
+    wl-paste > /var/jb/tmp/appwave-wl-paste.out
+    rc=$?
+    kill "$cpid" 2>/dev/null || true
+    wait "$cpid" 2>/dev/null || true
+    cat /var/jb/tmp/appwave-wl-paste.out
+    test "$rc" -eq 0
+    test "$(cat /var/jb/tmp/appwave-wl-paste.out)" = "$msg"
+'
+
+run_capture zathura zathura /var/jb/tmp/xios-appwave-smoke.pdf
+run_capture hitori hitori
+run_capture mpv mpv-iosc /var/jb/tmp/xios-appwave-smoke.png
+run_capture foot foot --log-level=info sh -lc 'printf "foot pty ok\n"; sleep 30'
+run_capture fuzzel fuzzel
+run_capture slurp slurp
+run_capture imv imv /var/jb/tmp/xios-appwave-smoke.png
+run_capture dunst dbus-run-session -- sh -lc \
+    'dunst >/var/jb/tmp/appwave-dunst.log 2>&1 & sleep 1; gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify xios-appwave 0 "" "Xios app wave" "dunst ok" "[]" "{}" 5000; sleep 30'
+
+run_step shot "$XIOS_DEVICE" shot "$OUT"
+
+cat >"$OUT/summary.txt" <<EOF
+iosc app-wave smoke
+artifact_dir=$OUT
+failures=$FAILS
+
+Key files:
+- appwave-smoke.log
+- results.txt
+- status-before.log
+- session.log
+- foreground.log
+- prepare-fixtures.log
+- package-state is packages.log
+- capture-*.stdout plus cap-*.png/cap-*.log
+- compositor.png/device.png if final shot succeeded
+EOF
+
+echo "artifact dir: $OUT"
+echo "summary: $OUT/summary.txt"
+echo "results: $OUT/results.txt"
+cat "$RESULTS"
+
+exit "$FAILS"

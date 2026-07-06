@@ -179,6 +179,12 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `IOSC_EGL_DEBUG=1` logs do not false-positive.
 - `bin/iosc-capture-remote.sh` — MAC-SIDE driver: ships the core over ssh (via
   `apps/iosc-desktop/deploy-env.sh`), runs it, pulls PNG+log into `./iosc-capture-artifacts/`.
+- `bin/iosc-appwave-smoke` — MAC-SIDE app-wave suite: starts/attaches to classic
+  `iosc`, foregrounds Xios, prepares PNG/PDF fixtures, runs the capture helper
+  for zathura/hitori/mpv/foot/fuzzel/slurp/imv/dunst, verifies wl-clipboard, and
+  writes one artifact directory. Use `--only clipboard,foot,imv` for targeted
+  reruns before a publish. Initial targeted smoke passed for clipboard+foot:
+  `artifacts/device-runs/appwave-smoke-targeted-20260705/`.
 - Design: the capture core is device-local (grim/wayland/compositor are on the iPad);
   only the orchestration varies (on-device vs mac-driven). Keep it stateless one-shot;
   a persistent daemon isn't worth it for a debug skill.
@@ -195,6 +201,9 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 Ensure CLASSIC mode first (`ps aux | grep iosc` should show ioscbg + iosc-shell, not
 `iosc -native`). Then, from the Mac:
 ```
+x11/bin/iosc-appwave-smoke
+x11/bin/iosc-appwave-smoke --only clipboard,foot,imv
+
 x11/bin/iosc-capture-remote.sh zathura zathura /var/jb/tmp/doc.pdf
 x11/bin/iosc-capture-remote.sh hitori  hitori
 x11/bin/iosc-capture-remote.sh mpv     mpv-iosc /var/jb/tmp/clip.mp4
