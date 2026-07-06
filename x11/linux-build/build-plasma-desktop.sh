@@ -44,6 +44,7 @@ SUPPORT_RECIPE_HELPERS=(
   libkscreen-ios-fixes.sh
   kscreen-ios-fixes.sh
   systemsettings-ios-fixes.sh
+  systemsettings-prune-actions.py
 )
 COLLECT_DEBS=(
   shared-mime-info
