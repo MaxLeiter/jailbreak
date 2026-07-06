@@ -91,3 +91,11 @@ a capabilities event (`bgra8888`, `origin_flags`, `mach_port_import`) on bind.
 The direct iosc and Mutter servers validate the same format/flag mask before
 importing client IOSurfaces, and the GPU smoke client binds v2 when available
 and checks the advertised bits.
+
+## Current Fourth Slice
+
+Start the explicit compositor render plan inside `iosc.c`. `recomposite_now()`
+now builds an `iosc_render_plan` for the frame, with consumed output damage,
+union bounds, and damage logging owned by that plan instead of scattered local
+variables. The draw order is unchanged; this creates the seam for moving render
+planning out of `iosc.c` and for adding richer draw-op classification later.

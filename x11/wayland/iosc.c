@@ -368,6 +368,12 @@ static int g_last_present_damage_rect_count;
 static struct iosc_rect g_last_present_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
 static int g_last_present_damage_x0, g_last_present_damage_y0;
 static int g_last_present_damage_x1, g_last_present_damage_y1;
+struct iosc_render_plan {
+    int had_damage;
+    int damage_count;
+    int damage_x0, damage_y0, damage_x1, damage_y1;
+    struct iosc_rect damage[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
+};
 static const char *g_recompose_reason;
 static int g_recompose_reason_line;
 static void keyboard_set_focus(struct iosc_surface *s);
@@ -1032,6 +1038,41 @@ static int output_damage_consume(struct iosc_rect *rects, int max_rects,
     g_output_damage_coarse = 0;
     g_output_damage_rect_count = 0;
     return n;
+}
+
+static void render_plan_build(struct iosc_render_plan *plan)
+{
+    memset(plan, 0, sizeof(*plan));
+    plan->had_damage = g_output_damage_valid;
+    plan->damage_count = output_damage_consume(plan->damage, IOSC_MAX_OUTPUT_DAMAGE_RECTS,
+                                               &plan->damage_x0, &plan->damage_y0,
+                                               &plan->damage_x1, &plan->damage_y1);
+}
+
+static void render_plan_log(const struct iosc_render_plan *plan)
+{
+    if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
+        fprintf(stderr, "iosc: recompose-reason %s:%d damage=%s\n",
+                g_recompose_reason ? g_recompose_reason : "sync",
+                g_recompose_reason_line,
+                plan->had_damage ? "pending" : "none");
+    if (!iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
+        return;
+    fprintf(stderr, "iosc: output-damage rects=%d union=%d,%d %dx%d%s\n",
+            plan->damage_count,
+            plan->damage_x0, plan->damage_y0,
+            plan->damage_x1 - plan->damage_x0,
+            plan->damage_y1 - plan->damage_y0,
+            (plan->damage_x0 == 0 && plan->damage_y0 == 0 &&
+             plan->damage_x1 == g_width && plan->damage_y1 == g_height) ? " full" : "");
+    if (plan->damage_count > 1) {
+        for (int i = 0; i < plan->damage_count; i++)
+            fprintf(stderr, "iosc: output-damage-rect %d %d,%d %dx%d\n",
+                    i,
+                    plan->damage[i].x0, plan->damage[i].y0,
+                    plan->damage[i].x1 - plan->damage[i].x0,
+                    plan->damage[i].y1 - plan->damage[i].y0);
+    }
 }
 
 static int output_damage_intersects_surface(struct iosc_surface *s,
@@ -1827,35 +1868,14 @@ static void recomposite_now(void)
         return;
     }
     if (iosc_gl_ok()) {
-        int dx0, dy0, dx1, dy1;
-        struct iosc_rect damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
-        int had_damage = g_output_damage_valid;
-        int damage_count = output_damage_consume(damage_rects, IOSC_MAX_OUTPUT_DAMAGE_RECTS,
-                                                 &dx0, &dy0, &dx1, &dy1);
-        if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
-            fprintf(stderr, "iosc: recompose-reason %s:%d damage=%s\n",
-                    g_recompose_reason ? g_recompose_reason : "sync",
-                    g_recompose_reason_line,
-                    had_damage ? "pending" : "none");
-        if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS"))) {
-            fprintf(stderr, "iosc: output-damage rects=%d union=%d,%d %dx%d%s\n",
-                    damage_count,
-                    dx0, dy0, dx1 - dx0, dy1 - dy0,
-                    (dx0 == 0 && dy0 == 0 && dx1 == g_width && dy1 == g_height) ? " full" : "");
-            if (damage_count > 1) {
-                for (int i = 0; i < damage_count; i++)
-                    fprintf(stderr, "iosc: output-damage-rect %d %d,%d %dx%d\n",
-                            i,
-                            damage_rects[i].x0, damage_rects[i].y0,
-                            damage_rects[i].x1 - damage_rects[i].x0,
-                            damage_rects[i].y1 - damage_rects[i].y0);
-            }
-        }
+        struct iosc_render_plan plan;
+        render_plan_build(&plan);
+        render_plan_log(&plan);
         if (g_slock.locked) {
             /* Session locked: ONLY the lock surface may show (blank until it
              * maps); windows, layer shells and the drag icon must not leak. */
-            for (int di = 0; di < damage_count; di++) {
-                struct iosc_rect *d = &damage_rects[di];
+            for (int di = 0; di < plan.damage_count; di++) {
+                struct iosc_rect *d = &plan.damage[di];
                 iosc_gl_begin_damage(d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
                 if (g_slock.surface && g_slock.surface->current_buffer &&
                     output_damage_intersects_surface(g_slock.surface,
@@ -1871,8 +1891,8 @@ static void recomposite_now(void)
                         g_slock.surface && g_slock.surface->current_buffer ? "shown" : "pending");
             return;
         }
-        for (int di = 0; di < damage_count; di++) {
-            struct iosc_rect *d = &damage_rects[di];
+        for (int di = 0; di < plan.damage_count; di++) {
+            struct iosc_rect *d = &plan.damage[di];
             iosc_gl_begin_damage(d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
             for (int i = 0; i < g_nmapped; i++) {
                 struct iosc_rect surface_px, unclipped;
