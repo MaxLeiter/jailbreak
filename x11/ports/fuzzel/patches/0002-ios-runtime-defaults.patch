@@ -1,0 +1,230 @@
+Subject: [PATCH] fuzzel: avoid iOS semaphore and absolute socket pitfalls
+
+iOS returns ENOSYS for unnamed POSIX semaphores, so default the render and
+match worker pools to zero on Apple targets and keep the zero-worker cleanup
+paths from touching uninitialized synchronization objects.
+
+Xios does not currently provide fuzzel with the keyboard focus lifecycle it
+expects from wlroots compositors, so keep the launcher alive when the compositor
+reports keyboard focus loss.
+
+The Xios launcher commonly exports WAYLAND_DISPLAY as an absolute socket path
+(`/var/jb/tmp/wayland-0`). fuzzel embeds the display name in its lock filename,
+so strip any directory component before building that path.
+
+diff -ruN -U3 --exclude=*.bak a/config.c b/config.c
+--- a/config.c	2025-04-10 03:22:21
++++ b/config.c	2026-07-05 20:14:00
+@@ -1601,8 +1601,13 @@
+         .font = xstrdup("monospace"),
+         .use_bold = false,
+         .dpi_aware = DPI_AWARE_AUTO,
++#ifdef __APPLE__
++        .render_worker_count = 0,
++        .match_worker_count = 0,
++#else
+         .render_worker_count = sysconf(_SC_NPROCESSORS_ONLN),
+         .match_worker_count = sysconf(_SC_NPROCESSORS_ONLN),
++#endif
+         .icons_enabled = true,
+         .icon_theme = xstrdup("hicolor"),
+         .hide_when_prompt_empty = false,
+@@ -1657,7 +1662,11 @@
+         .letter_spacing = {0},
+         .layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+         .keyboard_focus = ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE,
++#ifdef __APPLE__
++        .exit_on_kb_focus_loss = false,
++#else
+         .exit_on_kb_focus_loss = true,
++#endif
+         .list_executables_in_path = false,
+         .cache_path = NULL,
+     };
+diff -ruN -U3 --exclude=*.bak a/main.c b/main.c
+--- a/main.c	2025-04-10 03:22:21
++++ b/main.c	2026-07-05 20:14:00
+@@ -485,6 +485,10 @@
+     if (wayland_display == NULL)
+         return NULL;
+
++    const char *wayland_basename = strrchr(wayland_display, '/');
++    if (wayland_basename != NULL)
++        wayland_display = wayland_basename + 1;
++
+     char *path = xasprintf("%s/fuzzel-%s.lock", xdg_runtime_dir, wayland_display);
+     LOG_DBG("lock file: %s", path);
+     return path;
+diff -ruN -U3 --exclude=*.bak a/match.c b/match.c
+--- a/match.c	2025-04-10 03:22:21
++++ b/match.c	2026-07-05 20:14:00
+@@ -438,11 +438,14 @@
+     return matches;
+
+ err_free_semaphores_and_lock:
+-    mtx_destroy(&matches->workers.lock);
++    if (workers > 0)
++        mtx_destroy(&matches->workers.lock);
+ err_free_semaphores:
+-    sem_destroy(&matches->workers.start);
+-    sem_destroy(&matches->workers.done);
++    if (workers > 0) {
++        sem_destroy(&matches->workers.start);
++        sem_destroy(&matches->workers.done);
++    }
+ err_free_matches:
+     free(matches);
+     return NULL;
+ }
+@@ -478,9 +481,11 @@
+     free(matches->workers.threads);
+     free(matches->matches);
+     free(matches->workers.old_matches);
+-    mtx_destroy(&matches->workers.lock);
+-    sem_destroy(&matches->workers.start);
+-    sem_destroy(&matches->workers.done);
++    if (matches->workers.count > 0) {
++        mtx_destroy(&matches->workers.lock);
++        sem_destroy(&matches->workers.start);
++        sem_destroy(&matches->workers.done);
++    }
+     free(matches);
+ }
+
+diff -ruN -U3 --exclude=*.bak a/render.c b/render.c
+--- a/render.c	2025-04-10 03:22:21
++++ b/render.c	2026-07-05 20:14:00
+@@ -1254,39 +1254,41 @@
+     render->pix_counter_color = rgba2pixman(render->conf->colors.counter);
+     render->pix_placeholder_color = rgba2pixman(render->conf->colors.placeholder);
+
+-    if (sem_init(&render->workers.start, 0, 0) < 0 ||
+-        sem_init(&render->workers.done, 0, 0) < 0)
+-    {
+-        LOG_ERRNO("failed to instantiate render worker semaphores");
+-        goto err_free_render;
+-    }
++    if (render->conf->render_worker_count > 0) {
++        if (sem_init(&render->workers.start, 0, 0) < 0 ||
++            sem_init(&render->workers.done, 0, 0) < 0)
++        {
++            LOG_ERRNO("failed to instantiate render worker semaphores");
++            goto err_free_render;
++        }
+
+-    int err;
+-    if ((err = mtx_init(&render->workers.lock, mtx_plain)) != thrd_success) {
+-        LOG_ERR("failed to instantiate render worker mutex: %d", err);
+-        goto err_free_semaphores;
+-    }
++        int err;
++        if ((err = mtx_init(&render->workers.lock, mtx_plain)) != thrd_success) {
++            LOG_ERR("failed to instantiate render worker mutex: %d", err);
++            goto err_free_semaphores;
++        }
+
+-    render->workers.threads = xcalloc(render->conf->render_worker_count,
+-                                      sizeof(render->workers.threads[0]));
++        render->workers.threads = xcalloc(render->conf->render_worker_count,
++                                          sizeof(render->workers.threads[0]));
+
+-    for (size_t i = 0; i < render->conf->render_worker_count; i++) {
+-        struct thread_context *ctx = xmalloc(sizeof(*ctx));
+-        *ctx = (struct thread_context){
+-            .render = render,
+-            .my_id = 1 + i,
+-        };
++        for (size_t i = 0; i < render->conf->render_worker_count; i++) {
++            struct thread_context *ctx = xmalloc(sizeof(*ctx));
++            *ctx = (struct thread_context){
++                .render = render,
++                .my_id = 1 + i,
++            };
+
+-        int ret = thrd_create(
+-            &render->workers.threads[i], &render_worker_thread, ctx);
++            int ret = thrd_create(
++                &render->workers.threads[i], &render_worker_thread, ctx);
+
+-        if (ret != thrd_success) {
+-            LOG_ERR("failed to create render worker thread: %d", ret);
+-            render->workers.threads[i] = 0;
+-            goto err_free_semaphores_and_lock;
+-        }
++            if (ret != thrd_success) {
++                LOG_ERR("failed to create render worker thread: %d", ret);
++                render->workers.threads[i] = 0;
++                goto err_free_semaphores_and_lock;
++            }
+
+-        render->workers.count++;
++            render->workers.count++;
++        }
+     }
+
+     return render;
+@@ -1290,9 +1292,11 @@
+ err_free_semaphores_and_lock:
+     mtx_destroy(&render->workers.lock);
+ err_free_semaphores:
+-    sem_destroy(&render->workers.start);
+-    sem_destroy(&render->workers.done);
++    if (render->conf->render_worker_count > 0) {
++        sem_destroy(&render->workers.start);
++        sem_destroy(&render->workers.done);
++    }
+ err_free_render:
+     free(render);
+     return NULL;
+ }
+@@ -1401,29 +1405,31 @@
+     if (render == NULL)
+         return;
+
+-    mtx_lock(&render->workers.lock);
+-    {
+-        assert(tll_length(render->workers.queue) == 0);
++    if (render->workers.count > 0) {
++        mtx_lock(&render->workers.lock);
++        {
++            assert(tll_length(render->workers.queue) == 0);
+
+-        for (size_t i = 0; i < render->workers.count; i++) {
+-            assert(render->workers.threads[i] != 0);
+-            sem_post(&render->workers.start);
+-            tll_push_back(render->workers.queue, -2);
++            for (size_t i = 0; i < render->workers.count; i++) {
++                assert(render->workers.threads[i] != 0);
++                sem_post(&render->workers.start);
++                tll_push_back(render->workers.queue, -2);
++            }
+         }
+-    }
+-    mtx_unlock(&render->workers.lock);
++        mtx_unlock(&render->workers.lock);
+
+-    for (size_t i = 0; i < render->workers.count; i++) {
+-        assert(render->workers.threads[i] != 0);
+-        thrd_join(render->workers.threads[i], NULL);
+-    }
++        for (size_t i = 0; i < render->workers.count; i++) {
++            assert(render->workers.threads[i] != 0);
++            thrd_join(render->workers.threads[i], NULL);
++        }
+
+-    free(render->workers.threads);
+-    mtx_destroy(&render->workers.lock);
+-    sem_destroy(&render->workers.start);
+-    sem_destroy(&render->workers.done);
+-    assert(tll_length(render->workers.queue) == 0);
+-    tll_free(render->workers.queue);
++        free(render->workers.threads);
++        mtx_destroy(&render->workers.lock);
++        sem_destroy(&render->workers.start);
++        sem_destroy(&render->workers.done);
++        assert(tll_length(render->workers.queue) == 0);
++        tll_free(render->workers.queue);
++    }
+
+     fcft_text_run_destroy(render->prompt_text_run);
+     fcft_text_run_destroy(render->placeholder_text_run);

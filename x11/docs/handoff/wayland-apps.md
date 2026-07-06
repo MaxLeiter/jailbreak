@@ -14,11 +14,11 @@ version for any agent.
 | App | Deb | On device | Launches in iosc? | Notes |
 |---|---|---|---|---|
 | grim 1.4.1 | out/ ✓ | installed | **YES (classic)** | upright screenshot verified; blank in `-native` |
-| slurp 1.5.0 | out/ ✓ | installed | untested | region select; pairs w/ grim |
-| fuzzel 1.12.0 | out/ ✓ | installed | untested | launcher; pinned <1.13 (pixman 0.40) |
+| slurp 1.5.0 | out/ ✓ | installed | **YES (overlay)** | layer-shell overlay maps; region-output path still needs driven input |
+| fuzzel 1.12.0+ios1 | out/ ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
 | dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
 | foot 1.27.0+ios3 | out/ ✓ | installed | **YES** | PTY + locale + render-worker path verified |
-| imv 5.0.1 | out/ ✓ | installed | untested | wl_shm path (same as grim, should map) |
+| imv 5.0.1 | out/ ✓ | installed | **NO** | aborts creating EGL window; needs GLES/desktop-GL renderer port |
 | mpv 0.36.0+ios2 | out/ ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
 | zathura 0.5.12 | out/ ✓ | installed | **YES** | GTK3 Wayland + PDF/poppler content render verified |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
@@ -78,9 +78,30 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `artifacts/device-runs/20260705-foot-pty/cap-foot-ios3.png` and
   `artifacts/device-runs/20260705-foot-pty/cap-foot-pty-echo.png`; the latter
   rendered `foot pty ok` through a child shell on the pty.
+- **fuzzel — FIX BUILT + VERIFIED as `fuzzel 1.12.0+ios1`.** iOS returns
+  `ENOSYS` from unnamed `sem_init()`, so the port now defaults render/match
+  worker counts to zero and avoids touching uninitialized worker synchronization
+  objects. It also strips directory components from absolute `WAYLAND_DISPLAY`
+  values before building the lock filename (`/var/jb/tmp/wayland-0` must not
+  become a nested lock path), and defaults to staying alive across keyboard-focus
+  loss because Xios does not yet provide fuzzel with the wlroots focus lifecycle
+  it expects. Built from scratch, installed on-device as `1.12.0+ios1`, and
+  captured plain `fuzzel` in classic `iosc` with no failure signature:
+  `artifacts/device-runs/20260705-fuzzel-ios1-plain/cap-fuzzel-ios1-plain.png`.
 - **grim — WORKS, no fix needed.** Upright full-color screenshot captured in classic
   mode (2880×2160). Orientation is correct: output IOSurface is top-left, iosc.c:1654
   sends `flags=0` (no Y_INVERT) — do NOT "fix" it to Y_INVERT.
+- **slurp — OVERLAY MAPS.** `slurp 1.5.0` maps its dim layer-shell overlay in
+  classic `iosc` with no failure signature:
+  `artifacts/device-runs/20260705-imv-slurp-fuzzel-clean/cap-slurp.png`.
+  A no-input smoke naturally exits as `selection cancelled`; still drive a real
+  pointer-drag region if the exact stdout geometry path matters.
+- **imv — BLOCKED on renderer path.** `imv 5.0.1` aborts on-device with
+  `Assertion failed: (window->egl_context), function create_window, file
+  wl_window.c, line 864`. This is not a wl_shm mapping issue: imv's renderer uses
+  desktop OpenGL (`eglBindAPI(EGL_OPENGL_API)`, `glBegin`, `GL_TEXTURE_RECTANGLE`)
+  against the ANGLE/libEGL path. Treat it as a renderer-port task (GLES/modern GL
+  or a real shm renderer), not another launcher/env fix.
 - **wl-clipboard — FIX PACKAGED + VERIFIED with `iosc 0.9.10`.**
   `wl-copy` reached `zwlr_data_control_device_v1.set_selection`, but the compositor's
   pipe reader returned on `WL_EVENT_HANGUP|ERROR` before draining bytes already queued
@@ -145,7 +166,8 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 ## Open items / TODO
 
-- [ ] On-device verify slurp / fuzzel / imv.
+- [ ] Drive a slurp pointer-drag region and record stdout geometry.
+- [ ] Port/fix imv's renderer for iOS (desktop OpenGL path currently aborts).
 - [ ] Publish (Max-gated): copy the app wave + `angle -3` into repo/debs, run make-repo, deploy.
 
 ## How to verify on-device
@@ -158,5 +180,7 @@ x11/bin/iosc-capture-remote.sh hitori  hitori
 x11/bin/iosc-capture-remote.sh mpv     mpv-iosc /var/jb/tmp/clip.mp4
 x11/bin/iosc-capture-remote.sh foot    foot --log-level=info
 x11/bin/iosc-capture-remote.sh foot-pty-echo foot --log-level=info sh -lc 'printf "foot pty ok\n"; sleep 30'
+x11/bin/iosc-capture-remote.sh fuzzel  fuzzel
+x11/bin/iosc-capture-remote.sh slurp   slurp
 ```
 Each prints alive/exited + the failure signature and pulls back a screenshot + log.
