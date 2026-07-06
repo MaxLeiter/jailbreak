@@ -137,10 +137,11 @@ Capture order:
 3. If a USB or network-paired device is visible through `idevice_id`, try
    `idevicescreenshot` and save `device.png`.
 
-The compositor screenshot proves Wayland output contents. The physical device
-screenshot, when available, proves what the iPad display actually shows. For
-app scaling, black-frame, overlay, or foreground bugs, prefer physical device
-evidence.
+The compositor screenshot proves raw Wayland output contents. It may not match
+the final UIKit/Xios presentation orientation or fit transform exactly. The
+physical device screenshot, when available, proves what the iPad display actually
+shows. For app scaling, orientation, black-frame, overlay, or foreground bugs,
+prefer physical device evidence or explicit human confirmation from the iPad.
 
 ### `collect`
 
