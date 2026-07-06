@@ -20,7 +20,7 @@ Sileo copy comes from `repo/meta/xios-*.json` (already written).
 |---|---|---|---|
 | `xios-core` | iosc, angle, dbus, xios-desktop-defaults, xios-audio-server | **16.0.0** | published |
 | `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme | **16.5.0** | published; CLI GNOME first-light works, daemon/app concurrency cleanup remains |
-| `xios-kde` | xios-core + kwin, plasma-mobile, plasma-nano, qt6-wayland, kf6-breeze-icons | 16.0.0 | built locally; not published as a meta yet |
+| `xios-kde` | xios-core + iosc >= 0.9.15, xios-session >= 1.0.46, kwin, plasma-workspace >= 6.1.5+ios10, plasma-desktop >= 6.1.5+ios5, plasma-mobile >= 6.1.5+ios13, plasma-nano >= 6.1.5+ios3, systemsettings, kscreen, qt6-wayland, kf6-breeze-icons, Ark, Gwenview, KWrite | 16.0.0 | built locally as 0.1.2; repo metadata not published yet |
 | `xios-native` | xios-core + ioscd, xios-native-host | 16.0.0 | built locally; not published as a meta yet |
 | `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | published; Xwayland glamor IOSurface smoke passed |
 
