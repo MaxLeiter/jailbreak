@@ -111,6 +111,7 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     LadybirdContentLayer* _cpuLayer;
 
     BOOL _usingMetal;
+    NSUInteger _keyboardSyncGeneration;
 }
 
 + (Class)layerClass { return [CALayer class]; } // real layer chosen in -init below
@@ -336,6 +337,7 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     UITouch* t = touches.anyObject;
     CGPoint p = [t locationInView:self];
     lb_trace("web touch begin %.1f,%.1f first=%d", p.x, p.y, self.isFirstResponder);
+    _keyboardSyncGeneration++;
     _bridge->enqueue_input_event(LadybirdIOS::mouse_event_from_touch(self, t, Web::MouseEvent::Type::MouseDown, Web::UIEvents::MouseButton::Primary));
 }
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
@@ -350,7 +352,6 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     CGPoint p = [t locationInView:self];
     lb_trace("web touch end %.1f,%.1f first=%d", p.x, p.y, self.isFirstResponder);
     _bridge->enqueue_input_event(LadybirdIOS::mouse_event_from_touch(self, t, Web::MouseEvent::Type::MouseUp, Web::UIEvents::MouseButton::Primary));
-    [self ensureKeyboardResponder:"touch-end"];
     [self syncKeyboardWithFocusedInputSoon];
 }
 - (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event
@@ -427,6 +428,11 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 - (void)ensureKeyboardResponder:(char const*)reason
 {
     bool hasFocusedInput = _bridge->get_input_caret_rect().has_value();
+    if (!hasFocusedInput) {
+        lb_trace("keyboard ensure skip reason=%s caret=0 first=%d", reason, self.isFirstResponder);
+        return;
+    }
+
     BOOL wasFirstResponder = self.isFirstResponder;
     BOOL becameFirstResponder = YES;
     if (!wasFirstResponder)
@@ -450,22 +456,29 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 - (void)syncKeyboardWithFocusedInputSoonAllowingProactive:(BOOL)allowProactive reason:(char const*)reason
 {
     __weak LadybirdWebView* weakSelf = self;
+    NSUInteger generation = ++_keyboardSyncGeneration;
     int delays[] = { 80, 180, 400, 800, 1400 };
+    int finalDelay = delays[sizeof(delays) / sizeof(delays[0]) - 1];
     for (int delay : delays) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
             LadybirdWebView* strongSelf = weakSelf;
             if (!strongSelf)
                 return;
+            if (generation != strongSelf->_keyboardSyncGeneration)
+                return;
 
-            // WebContent publishes this rect only while editable content owns focus. Prefer this
-            // signal, but do not require it before becoming first responder: on iOS, the responder
-            // handoff is what lets UIKit deliver software-keyboard input to the web view.
+            // WebContent publishes this rect only while editable content owns focus. Treat that
+            // as the only keyboard-open signal; pointer hover/selection/tap settling should not
+            // summon UIKit's software keyboard by itself.
             bool hasFocusedInput = strongSelf->_bridge->get_input_caret_rect().has_value();
-            bool shouldEnsure = hasFocusedInput || (allowProactive && !strongSelf.isFirstResponder);
-            lb_trace("keyboard sync reason=%s delay=%d caret=%d first=%d proactive=%d ensure=%d",
-                reason, delay, hasFocusedInput, strongSelf.isFirstResponder, allowProactive, shouldEnsure);
+            bool shouldEnsure = hasFocusedInput;
+            bool shouldDismiss = !hasFocusedInput && allowProactive && strongSelf.isFirstResponder && delay == finalDelay;
+            lb_trace("keyboard sync reason=%s delay=%d caret=%d first=%d proactive=%d ensure=%d dismiss=%d",
+                reason, delay, hasFocusedInput, strongSelf.isFirstResponder, allowProactive, shouldEnsure, shouldDismiss);
             if (shouldEnsure)
-                [strongSelf ensureKeyboardResponder:hasFocusedInput ? reason : "no-caret-yet"];
+                [strongSelf ensureKeyboardResponder:reason];
+            else if (shouldDismiss)
+                [strongSelf resignFirstResponder];
         });
     }
 }
