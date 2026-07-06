@@ -49,6 +49,7 @@ keep = {
     "menu",
     "components",
     "plasma-windowed",
+    "runners",
     "shell",
     "statusnotifierwatcher",
     "themes",
@@ -66,6 +67,23 @@ text = re.sub(r"^add_subdirectory\(([^)]+)\)", repl, text, flags=re.M)
 text = re.sub(r"^ecm_optional_add_subdirectory\(([^)]+)\)",
               lambda m: f"# ios-firstlight-skip: {m.group(0)}", text, flags=re.M)
 
+path.write_text(text)
+PY
+
+python3 - "$src/runners/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+keep = {"services"}
+text = re.sub(
+    r"^add_subdirectory\(([^)]+)\)",
+    lambda m: m.group(0) if m.group(1) in keep else f"# ios-real-desktop-skip: {m.group(0)}",
+    text,
+    flags=re.M,
+)
 path.write_text(text)
 PY
 

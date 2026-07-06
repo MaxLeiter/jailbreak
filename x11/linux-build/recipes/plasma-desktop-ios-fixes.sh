@@ -177,6 +177,16 @@ text = text.replace(
 path.write_text(text)
 PY
 
+python3 - "$src/applets/kicker/package/contents/ui/RunnerResultsList.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("verticalAlignment: Text.AlignVTop", "verticalAlignment: Text.AlignTop")
+path.write_text(text)
+PY
+
 python3 - "$src" <<'PY'
 import re
 import sys
