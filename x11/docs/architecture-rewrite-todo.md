@@ -99,3 +99,11 @@ now builds an `iosc_render_plan` for the frame, with consumed output damage,
 union bounds, and damage logging owned by that plan instead of scattered local
 variables. The draw order is unchanged; this creates the seam for moving render
 planning out of `iosc.c` and for adding richer draw-op classification later.
+
+## Current Fifth Slice
+
+Begin the Xios.app host split by moving Swift-owned shell overlay chrome out of
+`XScreen.swift` into `XiosShellOverlay.swift`. This keeps the existing overlay,
+status, dismiss, and top-edge reveal behavior intact while reducing
+`XScreen.swift` toward display connection, input routing, and Metal
+presentation responsibilities.
