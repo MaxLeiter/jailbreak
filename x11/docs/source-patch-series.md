@@ -117,6 +117,9 @@ Current converted non-Qt stacks:
 - `ports/imv/patches`: makes the `librt` Meson lookup optional, uses the
   portable `st_mtime` stat field, and makes the launcher prefer the verified
   Xwayland fallback on iOS while keeping an opt-in native Wayland path.
+- `ports/waybar/patches`: trims the initial iOS build surface to clock/custom
+  modules by dropping Linux-only service modules and compositor integrations
+  from Waybar's source list and factory.
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
 - `ports/mako/patches`: makes the `librt` Meson lookup optional; mako remains
   blocked by the Linux-bound sd-bus provider path.

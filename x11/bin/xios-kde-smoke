@@ -34,8 +34,8 @@ Options:
   --drawer          For Mobile, inject an upward drawer swipe before capture
   --app NAME        Launch a KDE/Wayland app through xios-session before capture
   --launcher NAME   For Desktop, launch an applet window: kickoff or kicker
-  --query TEXT      Type TEXT into the launched Desktop launcher without Enter
-  --activate        Press Enter after --query, launching the highlighted result
+  --query TEXT      Type TEXT into the launched Desktop launcher search field
+  --activate        Activate the highlighted/first result after --query
   --pointer-probe   Inject pointer/touch/pencil probes before capture
   --slot NAME       Run against a named display slot without foregrounding Xios
   --warmup SEC      Delay after session/app actions before capture (default: 8)
@@ -147,6 +147,41 @@ input_text_chars() {
     done
 }
 
+input_text_line() {
+    local text="$1"
+    local input_args=()
+    iosc_input_array
+    run_logged input-type "$XIOS_DEVICE" input "${input_args[@]}" type "$text"
+}
+
+desktop_launcher_focus_search() {
+    local applet="$1"
+    local input_args=()
+    iosc_input_array
+    case "$applet" in
+        kickoff|org.kde.plasma.kickoff)
+            run_logged launcher-search-focus "$XIOS_DEVICE" input "${input_args[@]}" click 520 46 || return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+desktop_launcher_activate_result() {
+    local applet="$1"
+    local input_args=()
+    iosc_input_array
+    case "$applet" in
+        kickoff|org.kde.plasma.kickoff)
+            run_logged launcher-result-click "$XIOS_DEVICE" input "${input_args[@]}" click 110 190
+            ;;
+        *)
+            run_logged launcher-activate "$XIOS_DEVICE" input "${input_args[@]}" key 0xff0d
+            ;;
+    esac
+}
+
 desktop_pointer_probe() {
     local w h x y x2 y2
     [ "$FLAVOR" = desktop ] || die "--pointer-probe is only valid for desktop"
@@ -184,13 +219,12 @@ desktop_launcher_smoke() {
     run_logged launcher-open-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-open" || true
 
     if [ -n "$LAUNCHER_QUERY" ]; then
-        input_text_chars "$LAUNCHER_QUERY" || true
+        desktop_launcher_focus_search "$plugin" || true
+        input_text_line "$LAUNCHER_QUERY" || input_text_chars "$LAUNCHER_QUERY" || true
         sleep 2
         run_logged launcher-query-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-query" || true
         if [ "$LAUNCHER_ACTIVATE" = 1 ]; then
-            local input_args=()
-            iosc_input_array
-            run_logged launcher-activate "$XIOS_DEVICE" input "${input_args[@]}" key 0xff0d || true
+            desktop_launcher_activate_result "$plugin" || true
             sleep "$WARMUP"
             run_logged launcher-activate-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-activate" || true
         fi

@@ -22,43 +22,7 @@ DEB_WAYBAR_V   ?= $(WAYBAR_VERSION)+ios1
 waybar-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/Alexays/Waybar/archive/refs/tags/$(WAYBAR_VERSION).tar.gz)
 	$(call EXTRACT_TAR,$(WAYBAR_VERSION).tar.gz,Waybar-$(WAYBAR_VERSION),waybar)
-	# Keep the first iOS build focused on modules that do not require Linux-only runtime services.
-	sed -i \
-		-e '/src\/AIconLabel.cpp/d' \
-		-e '/src\/AAppIconLabel.cpp/d' \
-		-e '/src\/ASlider.cpp/d' \
-		-e '/src\/modules\/disk.cpp/d' \
-		-e '/src\/modules\/idle_inhibitor.cpp/d' \
-		-e '/src\/modules\/image.cpp/d' \
-		-e '/src\/modules\/load.cpp/d' \
-		-e '/src\/modules\/temperature.cpp/d' \
-		-e '/src\/modules\/user.cpp/d' \
-		$(BUILD_WORK)/waybar/meson.build
-	perl -0pi -e "s/\nif true\n    add_project_arguments\('-DHAVE_SWAY'.*?\nendif\n/\n/sg; \
-		s/\nif true\n    add_project_arguments\('-DHAVE_WLR_TASKBAR'.*?\nendif\n/\n/sg; \
-		s/\nif wayland_protos\.version\(\)\.version_compare\('>=1\.39'\).*?\nendif\n/\n/sg; \
-		s/\nif true\n    add_project_arguments\('-DHAVE_RIVER'.*?\nendif\n/\n/sg; \
-		s/\nif true\n    add_project_arguments\('-DHAVE_DWL'.*?\nendif\n/\n/sg; \
-		s/\nif true\n    add_project_arguments\('-DHAVE_HYPRLAND'.*?\nendif\n/\n/sg; \
-		s/\nif true\n    add_project_arguments\('-DHAVE_WAYFIRE'.*?\nendif\n/\n/sg" \
-		$(BUILD_WORK)/waybar/meson.build
-	sed -i \
-		-e '/#include "modules\/idle_inhibitor.hpp"/d' \
-		-e '/#include "modules\/disk.hpp"/d' \
-		-e '/#include "modules\/cava\/cava_frontend.hpp"/d' \
-		-e '/#include "modules\/cffi.hpp"/d' \
-		-e '/#include "modules\/image.hpp"/d' \
-		-e '/#include "modules\/temperature.hpp"/d' \
-		-e '/#include "modules\/user.hpp"/d' \
-		$(BUILD_WORK)/waybar/src/factory.cpp
-	perl -0pi -e 's/\n    if \(ref == "idle_inhibitor"\).*?\n    \}\n//sg; \
-		s/\n    if \(ref == "user"\).*?\n    \}\n//sg; \
-		s/\n    if \(ref == "disk"\).*?\n    \}\n//sg; \
-		s/\n    if \(ref == "image"\).*?\n    \}\n//sg; \
-		s/\n    if \(ref == "cava"\).*?\n    \}\n//sg; \
-		s/\n    if \(ref == "temperature"\).*?\n    \}\n//sg; \
-		s/\n    if \(ref\.compare\(0, 5, "cffi\/"\).*?\n    \}\n//sg' \
-		$(BUILD_WORK)/waybar/src/factory.cpp
+	$(call DO_PATCH,waybar,waybar,-p1)
 	rm -rf $(BUILD_WORK)/waybar/build && mkdir -p $(BUILD_WORK)/waybar/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
