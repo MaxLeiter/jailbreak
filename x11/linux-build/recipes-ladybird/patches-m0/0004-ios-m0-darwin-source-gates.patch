@@ -1,0 +1,33 @@
+Subject: [PATCH] ios-m0: gate macOS-only sources and Darwin call sites
+
+The iOS cross build is Darwin/APPLE at CMake time, but several Apple branches
+compile macOS-only source files or framework links. Gate those out for the M0
+iOS build, while extending source-level Darwin logic where iOS uses the same
+pthread and ucontext ABI shape as macOS.
+--- a/Libraries/LibCore/CMakeLists.txt
++++ b/Libraries/LibCore/CMakeLists.txt
+@@ -90 +90 @@
+-if (APPLE)
++if (APPLE AND NOT IOS)  # iOS: macOS-only IOSurface umbrella + AutoreleasePool .mm
+@@ -115 +115,3 @@
+-    target_link_libraries(LibCore PUBLIC "-framework IOSurface")
++    if (NOT IOS)
++        target_link_libraries(LibCore PUBLIC "-framework IOSurface")
++    endif()
+--- a/Libraries/LibGfx/CMakeLists.txt
++++ b/Libraries/LibGfx/CMakeLists.txt
+@@ -58,2 +58,2 @@
+-if (APPLE)
+-    list(APPEND SOURCES MetalContext.mm)
++if (APPLE AND NOT IOS)
++    list(APPEND SOURCES MetalContext.mm)  # iOS: Metal deferred past headless M0
+--- a/Libraries/LibThreading/Thread.cpp
++++ b/Libraries/LibThreading/Thread.cpp
+@@ -90 +90 @@
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+--- a/Libraries/LibWasm/AbstractMachine/BytecodeInterpreter.cpp
++++ b/Libraries/LibWasm/AbstractMachine/BytecodeInterpreter.cpp
+@@ -37 +37 @@
+-#    if defined(AK_OS_MACOS)
++#    if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
