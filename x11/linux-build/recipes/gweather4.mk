@@ -10,7 +10,7 @@ endif
 
 SUBPROJECTS       += gweather4
 GWEATHER4_VERSION := 4.4.2
-DEB_GWEATHER4_V   ?= $(GWEATHER4_VERSION)+ios1
+DEB_GWEATHER4_V   ?= $(GWEATHER4_VERSION)+ios2
 
 gweather4-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libgweather/$(shell echo $(GWEATHER4_VERSION) | cut -f-2 -d.)/libgweather-$(GWEATHER4_VERSION).tar.xz)
@@ -60,6 +60,11 @@ gweather4-package: gweather4-stage
 		mkdir -p $(BUILD_DIST)/libgweather-4-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share; \
 		cp -a $(BUILD_STAGE)/gweather4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/libgweather-4 \
 			$(BUILD_DIST)/libgweather-4-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/; \
+	fi
+	if [ -d "$(BUILD_STAGE)/gweather4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgweather-4" ]; then \
+		mkdir -p $(BUILD_DIST)/libgweather-4-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
+		cp -a $(BUILD_STAGE)/gweather4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgweather-4 \
+			$(BUILD_DIST)/libgweather-4-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/; \
 	fi
 	if [ -d "$(BUILD_STAGE)/gweather4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/glib-2.0/schemas" ]; then \
 		mkdir -p $(BUILD_DIST)/libgweather-4-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/glib-2.0; \

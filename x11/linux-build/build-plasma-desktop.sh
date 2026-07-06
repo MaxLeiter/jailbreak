@@ -40,6 +40,7 @@ SUPPORT_RECIPE_TARGETS=(
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
+  qqc2-desktop-style-ios-qml-stubs.sh
   bluezqt-ios-fixes.sh
   plasma5support-ios-fixes.sh
   plasma-pa-ios-fixes.sh

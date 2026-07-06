@@ -19,6 +19,9 @@ if [ -d "$desktop" ]; then
       cp "$desktop/$qml_name.qml" "$desktop/$qml_name.qml.upstream"
     fi
   done
+  if [ -e "$desktop/private/TextFieldContextMenu.qml" ] && [ ! -e "$desktop/private/TextFieldContextMenu.qml.upstream" ]; then
+    cp "$desktop/private/TextFieldContextMenu.qml" "$desktop/private/TextFieldContextMenu.qml.upstream"
+  fi
 
   write_file "$desktop/Menu.qml" \
     "// First-light iOS shim: avoid raw ListView menu contentItem during shell startup." \
@@ -93,5 +96,28 @@ if [ -d "$desktop" ]; then
     "    implicitWidth: 1" \
     "    implicitHeight: 1" \
     "    Item { id: _contentItem; anchors.fill: parent }" \
+    "}"
+
+  write_file "$desktop/private/TextFieldContextMenu.qml" \
+    "// Xios/iOS shim: avoid resolving org.kde.desktop from the private style singleton." \
+    "pragma Singleton" \
+    "import QtQuick 2.15" \
+    "Item {" \
+    "    id: root" \
+    "    property Item target" \
+    "    property bool deselectWhenMenuClosed: true" \
+    "    property int restoredCursorPosition: 0" \
+    "    property int restoredSelectionStart: 0" \
+    "    property int restoredSelectionEnd: 0" \
+    "    function dismiss() {" \
+    "        target = null" \
+    "    }" \
+    "    function targetClick(handlerPoint, targetItem, spellcheckHighlighterInstantiator, mousePosition) {" \
+    "        target = targetItem" \
+    "        dismiss()" \
+    "    }" \
+    "    function targetKeyPressed(event, targetItem) {" \
+    "        target = targetItem" \
+    "    }" \
     "}"
 fi

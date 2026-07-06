@@ -5351,6 +5351,28 @@ Depiction: https://repo.maxleiter.com/depictions/libgdm-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgdm-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgdm-dev.json
 
+Package: libgdm-dev
+Version: 46.0+ios2
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gdm
+Depends: libgdm1 (= 46.0+ios2), libglib2.0-dev
+Description: GNOME Display Manager (client library development files)
+Installed-Size: 156
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgdm-dev_46.0+ios2_iphoneos-arm64.deb
+Size: 20890
+MD5sum: 7ec8c421ad0e82150e8d68a5a79fe242
+SHA1: 32dcf46056be20c0b1dbdbb97daff08d6b29dc2d
+SHA256: d5dc7cec0d78d790fbbc767f8cb34e8ca4b5edc263fc24e4d783e5a026c644bb
+Icon: https://repo.maxleiter.com/icons/libgdm-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgdm-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgdm-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgdm-dev.json
+
 Package: libgdm1
 Version: 46.0+ios1
 Architecture: iphoneos-arm64
@@ -5368,6 +5390,28 @@ Size: 57606
 MD5sum: b391092e7990dd9207b56c8ed6b4241d
 SHA1: bfa6fcfa4f0632199cd09073b4fdf3019b2df602
 SHA256: 155b97f0c49c32bdce4d1a47c3486b8f2d49a0e26117abd37705e34abbeddc75
+Icon: https://repo.maxleiter.com/icons/libgdm1.png
+Depiction: https://repo.maxleiter.com/depictions/libgdm1.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgdm1.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgdm1.json
+
+Package: libgdm1
+Version: 46.0+ios2
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gdm
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0
+Description: GNOME Display Manager (client library)
+Installed-Size: 248
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgdm1_46.0+ios2_iphoneos-arm64.deb
+Size: 58556
+MD5sum: acbaa3c0e306e4d4bc0b0b457553c880
+SHA1: da28851a4dd7d80f59cc92f421a855cbb0294cd6
+SHA256: 6a473798daeccb2bc45fe4659b57bd1e1b6a5a1cffeb2892570090f024392eb7
 Icon: https://repo.maxleiter.com/icons/libgdm1.png
 Depiction: https://repo.maxleiter.com/depictions/libgdm1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgdm1.json
@@ -6230,6 +6274,28 @@ Depiction: https://repo.maxleiter.com/depictions/libgweather-4-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgweather-4-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgweather-4-0.json
 
+Package: libgweather-4-0
+Version: 4.4.2+ios2
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libgweather
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libgeocode-glib-2-0, libsoup-3.0-0, libintl-dev
+Description: GNOME weather/location library (libgweather-4)
+Installed-Size: 1956
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgweather-4-0_4.4.2+ios2_iphoneos-arm64.deb
+Size: 627666
+MD5sum: 1e7a86c2f92fee9c2a44c452e401e5e9
+SHA1: 8d926ce232a60dca097304ab9e3a4ab14cfa11d2
+SHA256: 43e43a1ead873cb02e8a044e1ebccbbee1ff3e13078c69bc2da21c15d98a3306
+Icon: https://repo.maxleiter.com/icons/libgweather-4-0.png
+Depiction: https://repo.maxleiter.com/depictions/libgweather-4-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgweather-4-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgweather-4-0.json
+
 Package: libgweather-4-dev
 Version: 4.4.2+ios1
 Architecture: iphoneos-arm64
@@ -6247,6 +6313,28 @@ Size: 29136
 MD5sum: d4f02e97d9505ce8309ff3d1323ec362
 SHA1: 4db09b2fce62d05ed5bdf9226f4286ae8a75dd68
 SHA256: 417f1a9444cebc5e6b858a0e786d3707653c08d9a966de26f886b1d066a94625
+Icon: https://repo.maxleiter.com/icons/libgweather-4-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgweather-4-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgweather-4-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgweather-4-dev.json
+
+Package: libgweather-4-dev
+Version: 4.4.2+ios2
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libgweather
+Depends: libgweather-4-0 (= 4.4.2+ios2), libglib2.0-dev
+Description: GNOME weather/location library (development files)
+Installed-Size: 140
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgweather-4-dev_4.4.2+ios2_iphoneos-arm64.deb
+Size: 32194
+MD5sum: 5bc55b7863348f9cf16de5b4a0f3f22a
+SHA1: ca6443323a80fc2791d81a130de4d7dfdafd0ae0
+SHA256: 925b614ca823122a7eb04eecac415be5b758785f27ab17f8d2ea02491c0a4c10
 Icon: https://repo.maxleiter.com/icons/libgweather-4-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgweather-4-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgweather-4-dev.json
@@ -9221,6 +9309,27 @@ Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
 
+Package: plasma-desktop
+Version: 6.1.5+ios5
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-wayland, qt6-5compat, kf6-auth, kf6-attica, kf6-codecs, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-itemmodels, kf6-kcmutils, kf6-kded, kf6-kio, kf6-kirigami-addons, kf6-newstuff, kf6-notifications, kf6-notifyconfig, kf6-package, kf6-runner, kf6-service, kf6-solid, kf6-svg, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, plasma-activities, plasma-activities-stats, plasma-workspace, libplasma, kwin
+Description: Plasma Desktop containment layer for Xios
+Installed-Size: 3464
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-desktop_6.1.5+ios5_iphoneos-arm64.deb
+Size: 410694
+MD5sum: c9ee2834f0e1621942139d1d97a85da7
+SHA1: c341ed8f04bfeb0f76e7b70e6f138af1c9075a5a
+SHA256: 421f9b0ccf095b01c7012b1caf9ecfc8f7ec604a5a4d7858aa9ff69e25d1e07f
+Icon: https://repo.maxleiter.com/icons/plasma-desktop.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
+
 Package: plasma-desktop-dev
 Version: 6.1.5+ios3
 Architecture: iphoneos-arm64
@@ -9258,6 +9367,27 @@ Size: 836
 MD5sum: f891f4d0ddeb5e3144c3e75e7dbe30ec
 SHA1: ed2dcc92383ad0afa436c663c3d7d678e6702210
 SHA256: 09d24cec450d59a0f368314514bd5b53184a58096c5d56176cdb96275fa70aaf
+Icon: https://repo.maxleiter.com/icons/plasma-desktop-dev.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.json
+
+Package: plasma-desktop-dev
+Version: 6.1.5+ios5
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://kde.org/plasma-desktop/
+Depends: plasma-desktop (= 6.1.5+ios5), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, kf6-kirigami-addons-dev, libplasma-dev, plasma-workspace-dev, plasma-activities-dev, plasma-activities-stats-dev
+Description: Development files for Plasma Desktop on Xios
+Installed-Size: 16
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-desktop-dev_6.1.5+ios5_iphoneos-arm64.deb
+Size: 824
+MD5sum: f66b209f300ccc4bf4ac60c88b3d604a
+SHA1: 18e1c4d69fa92c02af83a404c3861a21cbda09a6
+SHA256: 8f1245135b3ded34c78c5155d9ccab5f493e14172a91f3dbb3bbcd6cde0b78ed
 Icon: https://repo.maxleiter.com/icons/plasma-desktop-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.json
@@ -9494,6 +9624,27 @@ Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
 
+Package: plasma-mobile
+Version: 6.1.5+ios13
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-sensors, qt6-wayland, kf6-bluezqt, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-itemmodels, kf6-jobwidgets, kf6-kcmutils, kf6-kio, kf6-kirigami-addons, kf6-notifications, kf6-package, kf6-service, kf6-windowsystem, kwayland, kwin, libplasma, plasma-workspace, plasma-nano, plasma5support, plasma-pa
+Description: Plasma Mobile shell data for Xios
+Installed-Size: 5392
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile_6.1.5+ios13_iphoneos-arm64.deb
+Size: 687470
+MD5sum: 4747ce4e1ce8ea3eca110d87b4178579
+SHA1: dec583ad707a8ff7e90ec9f9f8bedfbad9e9b9a7
+SHA256: 403dca08678d07c5bae62fe7b33f53445627249b3565fa008648a041fdb9fd0a
+Icon: https://repo.maxleiter.com/icons/plasma-mobile.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
+
 Package: plasma-mobile-dev
 Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
@@ -9704,6 +9855,27 @@ Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
 
+Package: plasma-mobile-dev
+Version: 6.1.5+ios13
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://kde.org/plasma-mobile/
+Depends: plasma-mobile (= 6.1.5+ios13), qt6-base-dev, qt6-declarative-dev, kf6-kirigami-addons-dev
+Description: Development files for Plasma Mobile on Xios
+Installed-Size: 16
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-mobile-dev_6.1.5+ios13_iphoneos-arm64.deb
+Size: 792
+MD5sum: 9f608912b64d0d980621f0196a684bac
+SHA1: fabfd45381545bae7f549e96a7f44c6f25eac151
+SHA256: a93605b997823d1309a7486f61355dce2e2fa6ce9096fd288840b116df0fdd6e
+Icon: https://repo.maxleiter.com/icons/plasma-mobile-dev.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
+
 Package: plasma-nano
 Version: 6.1.5+ios1
 Architecture: iphoneos-arm64
@@ -9892,6 +10064,27 @@ Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
 
+Package: plasma-workspace
+Version: 6.1.5+ios10
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Utilities
+Priority: optional
+Homepage: https://kde.org/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-wayland, qt6-5compat, qcoro6, breeze, plasma-integration, kf6-auth, kf6-parts, kf6-runner, kf6-notifications, kf6-notifyconfig, kf6-newstuff, kf6-wallet, kf6-idletime, kf6-svg, kf6-declarative, kf6-i18n, kf6-kcmutils, kf6-qqc2-desktop-style, kf6-kquickcharts, kf6-textwidgets, kf6-crash, kf6-globalaccel, kf6-dbusaddons, kf6-coreaddons, kf6-kio, kf6-package, kf6-solid, kf6-guiaddons, kf6-archive, kf6-itemmodels, kf6-iconthemes, kf6-unitconversion, kf6-statusnotifieritem, plasma-activities, plasma-activities-stats, kactivitymanagerd, libplasma, plasma5support, kwayland, layer-shell-qt, xios-desktop-theme, xios-session
+Description: First-light Plasma Workspace shell for Xios
+Installed-Size: 23888
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-workspace_6.1.5+ios10_iphoneos-arm64.deb
+Size: 2825688
+MD5sum: d4a4fb7c958df6fa9feb579d424d5715
+SHA1: 0c3bb4d789a58afa8bceb4d1028002edf9057dd3
+SHA256: a21cc73fe5a50d5b6920c9bb981a0a16ed724d21ec10c4a624626db19bd418e0
+Icon: https://repo.maxleiter.com/icons/plasma-workspace.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
+
 Package: plasma-workspace-dev
 Version: 6.1.5+ios5
 Architecture: iphoneos-arm64
@@ -9971,6 +10164,27 @@ Size: 44096
 MD5sum: b746a99717b414a3a40bcf9ada40add2
 SHA1: 98ed24cbd73879c11e3110c6725218de09a51fdc
 SHA256: 439363f84beb5c2f13caa5cfa90e9492ce5bf418ce60f00fb5954299a823cc8c
+Icon: https://repo.maxleiter.com/icons/plasma-workspace-dev.png
+Depiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.json
+
+Package: plasma-workspace-dev
+Version: 6.1.5+ios10
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: plasma-workspace (= 6.1.5+ios10), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, qt6-5compat-dev, qcoro6-dev, kf6-kquickcharts-dev, libplasma-dev, plasma-activities-dev, plasma-activities-stats-dev, kwayland-dev, layer-shell-qt-dev
+Description: Development files for Plasma Workspace on Xios
+Installed-Size: 416
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/plasma-workspace-dev_6.1.5+ios10_iphoneos-arm64.deb
+Size: 44108
+MD5sum: 115344ffe63539b1246601a8c8d08935
+SHA1: c39fb5e67287c0f52dc1bdb3ddb441a32d216957
+SHA256: 805a70d1fcf6645ee593b0d11830d6b95af09823f014e71f526dc8c7fd46fffb
 Icon: https://repo.maxleiter.com/icons/plasma-workspace-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.json
@@ -11513,6 +11727,29 @@ SileoDepiction: https://repo.maxleiter.com/depictions/xios-gnome.json
 Native Depiction: https://repo.maxleiter.com/depictions/xios-gnome.json
 Homepage: https://repo.maxleiter.com
 
+Package: xios-gnome
+Name: Xios Desktop (GNOME)
+Version: 0.1.1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.5), xios-core, gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, libgdm1 (>= 46.0+ios2), libgeoclue-2-0, libgeocode-glib-2-0, libgweather-4-0 (>= 4.4.2+ios2), libupower-glib3, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme
+Recommends: gnome-console, nautilus, gnome-text-editor, gnome-calculator
+MinimumOSVersion: 16.5.0
+Description: the GNOME desktop flavor for Xios
+Filename: debs/xios-gnome_0.1.1_iphoneos-arm64.deb
+Size: 1134
+MD5sum: fcb215c4c3aa07a01ba1317065a8bb45
+SHA1: 7fae4c2a0201498d54dafa497fae43a870102e0f
+SHA256: 2410aed73b0abf0c3680d37d8ec66e77dfde323e1647b342b42214b005679dae
+Icon: https://repo.maxleiter.com/icons/xios-gnome.png
+Depiction: https://repo.maxleiter.com/depictions/xios-gnome.html
+SileoDepiction: https://repo.maxleiter.com/depictions/xios-gnome.json
+Native Depiction: https://repo.maxleiter.com/depictions/xios-gnome.json
+Homepage: https://repo.maxleiter.com
+
 Package: xios-gnome-typelibs
 Name: Xios GNOME desktop typelibs
 Version: 0.2.0
@@ -11551,6 +11788,28 @@ Size: 948
 MD5sum: 8c53e44a23191471b7e8724356d4c682
 SHA1: 4497a4228642ee3eb054d61801d5d07c27f966d7
 SHA256: a18e0f66705cb67445f4e827f86e18618cfb973dbe7b1c5eb34bac8543cd4b85
+Icon: https://repo.maxleiter.com/icons/xios-kde.png
+Depiction: https://repo.maxleiter.com/depictions/xios-kde.html
+SileoDepiction: https://repo.maxleiter.com/depictions/xios-kde.json
+Native Depiction: https://repo.maxleiter.com/depictions/xios-kde.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-kde
+Name: Xios Desktop (KDE Plasma)
+Version: 0.1.2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.0), xios-core, iosc (>= 0.9.15), xios-session (>= 1.0.46), xios-desktop-theme, kwin, plasma-workspace (>= 6.1.5+ios10), plasma-desktop (>= 6.1.5+ios5), plasma-mobile (>= 6.1.5+ios13), plasma-nano (>= 6.1.5+ios3), systemsettings (>= 6.1.5+ios5), kscreen (>= 6.1.5+ios1), qt6-wayland, kf6-breeze-icons, ark, gwenview, kwrite (>= 24.08.0+ios2)
+MinimumOSVersion: 16.0.0
+Description: KDE Plasma desktop and mobile flavors for Xios
+Filename: debs/xios-kde_0.1.2_iphoneos-arm64.deb
+Size: 1034
+MD5sum: c7d6a65377016132f9498a3617e457c9
+SHA1: 30592f94ac44d45c1f7a31e960d13705d9e9c1a3
+SHA256: 020b84b9c0c3813b1727b31641211e189f07ac38ed12d862904f6cc0c6d01534
 Icon: https://repo.maxleiter.com/icons/xios-kde.png
 Depiction: https://repo.maxleiter.com/depictions/xios-kde.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-kde.json

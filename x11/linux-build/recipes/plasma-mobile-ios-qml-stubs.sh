@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install first-light QML shims for Plasma Mobile imports whose real backends
-# depend on Linux services or later UI support packages.
+# Install Xios-backed QML providers for Plasma Mobile imports whose upstream
+# Linux backends do not exist on iOS.
 set -euo pipefail
 
 qml=${1:?usage: plasma-mobile-ios-qml-stubs.sh <qt6-qml-dir>}
@@ -239,325 +239,28 @@ for qml_name in ListView Flickable; do
   fi
 done
 write_file "$mobileshell/ListView.qml" \
-  "// First-light iOS shim: QQuickFlickable-derived views currently crash during Mobile startup." \
-  "import QtQuick 2.15" \
-  "Item {" \
+  "import QtQuick 2.15 as QtQuick" \
+  "" \
+  "QtQuick.ListView {" \
   "    id: root" \
-  "    property var model: null" \
-  "    property Component delegate: null" \
-  "    property Component highlight: null" \
-  "    property int count: 0" \
+  "    // xios-mobile-real-listview: the Qt Quick iOS Flickable root fix is in qtdeclarative." \
+  "    flickDeceleration: 1500" \
+  "    maximumFlickVelocity: 5000" \
   "    property int currentIndex: -1" \
-  "    property int cellWidth: width" \
-  "    property int cellHeight: 96" \
-  "    property int flow: 0" \
-  "    property int orientation: 0" \
-  "    property int boundsBehavior: 0" \
-  "    property int boundsMovement: 0" \
-  "    property int flickableDirection: 0" \
-  "    property int highlightRangeMode: 0" \
-  "    property int headerPositioning: 0" \
-  "    property int snapMode: 0" \
-  "    property bool interactive: false" \
-  "    property bool dragging: false" \
-  "    property bool moving: false" \
-  "    property bool reuseItems: false" \
-  "    property bool keyNavigationWraps: false" \
-  "    property bool keyNavigationEnabled: true" \
-  "    property bool atYBeginning: true" \
-  "    property bool atYEnd: true" \
-  "    property real cacheBuffer: 0" \
-  "    property real flickDeceleration: 0" \
-  "    property real pressDelay: 0" \
-  "    property real contentX: 0" \
-  "    property real contentY: 0" \
-  "    property real contentWidth: width" \
-  "    property real contentHeight: height" \
-  "    property real topMargin: 0" \
-  "    property real bottomMargin: 0" \
-  "    property real leftMargin: 0" \
-  "    property real rightMargin: 0" \
-  "    property real displayMarginBeginning: 0" \
-  "    property real displayMarginEnd: 0" \
-  "    property real preferredHighlightBegin: 0" \
-  "    property real preferredHighlightEnd: 0" \
-  "    property real highlightMoveDuration: 0" \
-  "    property real highlightResizeDuration: 0" \
-  "    property real maximumFlickVelocity: 0" \
-  "    property real spacing: 0" \
-  "    property var add: null" \
-  "    property var displaced: null" \
-  "    property var header: null" \
-  "    property bool highlightFollowsCurrentItem: true" \
-  "    readonly property Item currentItem: null" \
-  "    signal movementStarted()" \
-  "    signal movementEnded()" \
-  "    signal flickStarted()" \
-  "    signal flickEnded()" \
-  "    function itemAtIndex(index) { return null }" \
-  "    function indexAt(x, y) { return -1 }" \
-  "    function flick(xVelocity, yVelocity) {}" \
-  "    function positionViewAtIndex(index, mode) {}" \
-  "    function resizeContent(width, height, center) { contentWidth = width; contentHeight = height }" \
-  "    function returnToBounds() {}" \
+  "    onActiveFocusChanged: if (!activeFocus) currentIndex = -1" \
+  "    onDraggingChanged: if (dragging) currentIndex = -1" \
   "}"
 write_file "$mobileshell/Flickable.qml" \
-  "// First-light iOS shim: QQuickFlickable currently crashes during Mobile startup." \
-  "import QtQuick 2.15" \
-  "Item {" \
+  "import QtQuick 2.15 as QtQuick" \
+  "" \
+  "QtQuick.Flickable {" \
   "    id: root" \
-  "    default property alias content: contentItem.data" \
-  "    property bool interactive: false" \
-  "    property bool dragging: false" \
-  "    property bool moving: false" \
-  "    property bool atYBeginning: true" \
-  "    property bool atYEnd: true" \
-  "    property int boundsBehavior: 0" \
-  "    property int boundsMovement: 0" \
-  "    property int flickableDirection: 0" \
-  "    property int orientation: 0" \
-  "    property real contentX: 0" \
-  "    property real contentY: 0" \
-  "    property real contentWidth: width" \
-  "    property real contentHeight: height" \
-  "    property real flickDeceleration: 0" \
-  "    property real pressDelay: 0" \
-  "    property real maximumFlickVelocity: 0" \
-  "    property real topMargin: 0" \
-  "    property real bottomMargin: 0" \
-  "    property real leftMargin: 0" \
-  "    property real rightMargin: 0" \
-  "    signal movementStarted()" \
-  "    signal movementEnded()" \
-  "    signal flickStarted()" \
-  "    signal flickEnded()" \
-  "    Item { id: contentItem; anchors.fill: parent }" \
-  "    function flick(xVelocity, yVelocity) {}" \
-  "    function resizeContent(width, height, center) { contentWidth = width; contentHeight = height }" \
-  "    function returnToBounds() {}" \
-  "}"
-
-write_mobile_item_stub() {
-  local name="$1"
-  write_file "$mobileshell/$name.qml" \
-    "// First-light iOS shim: defer the real $name until Qt Quick Flickable/ListView is stable." \
-    "import QtQuick 2.15" \
-    "Item {" \
-    "    id: root" \
-    "    enum Mode { Pages, Grid, List }" \
-    "    property var shell" \
-    "    property var state" \
-    "    property var window" \
-    "    property var screen" \
-    "    property var panel" \
-    "    property var containment" \
-    "    property var plasmoid" \
-    "    property var model" \
-    "    property var sourceModel" \
-    "    property var currentPlayer" \
-    "    property var popup" \
-    "    property var homeScreen" \
-    "    property var folio" \
-    "    property var actionDrawer" \
-    "    property var notificationModel" \
-    "    property var notificationSettings" \
-    "    property var notificationsWidget: ({" \
-    "        doNotDisturbModeEnabled: false," \
-    "        toggleDoNotDisturbMode: function() { this.doNotDisturbModeEnabled = !this.doNotDisturbModeEnabled }" \
-    "    })" \
-    "    property var restrictedPermissions" \
-    "    property var historyModel" \
-    "    property var pendingNotificationWithAction" \
-    "    property var textField" \
-    "    property var view" \
-    "    property var statusNotifierSource" \
-    "    property Component content" \
-    "    default property alias contentChildren: contentItem.data" \
-    "    property int edge: Qt.BottomEdge" \
-    "    property int notificationModelType: 0" \
-    "    property int historyModelType: 0" \
-    "    property int columns: 1" \
-    "    property int columnCount: columns" \
-    "    property int minimizedColumns: 1" \
-    "    property int quickSettingsCount: 0" \
-    "    property int rowCount: 0" \
-    "    property int pageSize: 0" \
-    "    property int previewCharIndex: -1" \
-    "    property int animationDuration: 0" \
-    "    property int direction: Qt.BottomEdge" \
-    "    property string queryString: \"\"" \
-    "    property string backgroundColor: \"transparent\"" \
-    "    property string pluginName: \"\"" \
-    "    property string pinLabel: \"\"" \
-    "    property string prevText: \"\"" \
-    "    property color colorScopeColor: \"transparent\"" \
-    "    property color color: \"transparent\"" \
-    "    property color headerTextColor: \"transparent\"" \
-    "    property color headerTextInactiveColor: \"transparent\"" \
-    "    property bool active: false" \
-    "    property bool expanded: false" \
-    "    property bool shown: false" \
-    "    property bool dragging: false" \
-    "    property bool opened: shown" \
-    "    property bool opening: false" \
-    "    property bool isOpen: shown" \
-    "    property bool horizontal: false" \
-    "    property bool showSecondRow: false" \
-    "    property bool showDropShadow: false" \
-    "    property bool disableSystemTray: false" \
-    "    property bool actionsRequireUnlock: false" \
-    "    property bool openToPinnedMode: false" \
-    "    property bool doNotDisturbModeEnabled: false" \
-    "    property bool hasNotifications: false" \
-    "    property bool listOverflowing: false" \
-    "    property bool externalEdit: false" \
-    "    property bool isPinMode: false" \
-    "    property bool keypadOpen: false" \
-    "    property bool showChar: false" \
-    "    property bool showFullApplet: false" \
-    "    property bool suppressActiveClose: false" \
-    "    property bool isCurrent: false" \
-    "    property bool isOnLargeScreen: false" \
-    "    property bool showTime: true" \
-    "    property real availableHeight: height" \
-    "    property real topMargin: 0" \
-    "    property real bottomMargin: 0" \
-    "    property real leftMargin: 0" \
-    "    property real rightMargin: 0" \
-    "    property real offset: 0" \
-    "    property real oldOffset: 0" \
-    "    property real oldMouseY: 0" \
-    "    property real offsetDist: 0" \
-    "    property real offsetHeight: 0" \
-    "    property real totalOffsetDist: 0" \
-    "    property real largePortraitThreshold: 0" \
-    "    property real maximizedQuickSettingsOffset: 0" \
-    "    property real minimizedQuickSettingsOffset: 0" \
-    "    property real minimizedViewProgress: 0" \
-    "    property real fullViewProgress: 0" \
-    "    property real closedContentY: 0" \
-    "    property real oldContentY: 0" \
-    "    property real openFactor: 0" \
-    "    property real openedContentY: 0" \
-    "    property real contentHeight: height" \
-    "    property real padding: 0" \
-    "    property real horizontalMargin: 0" \
-    "    property real intendedCellWidth: 0" \
-    "    property real maxCellWidth: 0" \
-    "    property real zoomScale: 1" \
-    "    property real columnWidth: 0" \
-    "    property real fullHeight: height" \
-    "    property real intendedColumnWidth: 0" \
-    "    property real intendedMinimizedColumnWidth: 0" \
-    "    property real minimizedColumnWidth: 0" \
-    "    property real minimizedRowHeight: 0" \
-    "    property real rowHeight: 0" \
-    "    property real dotWidth: 0" \
-    "    property real intendedWidth: width" \
-    "    property real minWidthHeight: Math.min(width, height)" \
-    "    property real offsetRatio: 0" \
-    "    property real opacityValue: opacity" \
-    "    property real contentImplicitHeight: implicitHeight" \
-    "    property real elementSpacing: 0" \
-    "    property real smallerTextPixelSize: 12" \
-    "    property real textPixelSize: 14" \
-    "    property var lockScreenState" \
-    "    property int mode: 0" \
-    "    Item { id: contentItem; anchors.fill: parent }" \
-    "    signal closed()" \
-    "    signal requestedClose()" \
-    "    signal requestClose()" \
-    "    signal drawerClosed()" \
-    "    signal drawerOpened()" \
-    "    signal permissionsRequested()" \
-    "    signal runPendingNotificationAction()" \
-    "    signal actionTriggered()" \
-    "    signal activated()" \
-    "    signal backgroundClicked()" \
-    "    signal unlockRequested()" \
-    "    signal wallpaperSettingsRequested()" \
-    "    function open() { shown = true }" \
-    "    function close() { shown = false; closed(); requestedClose(); requestClose() }" \
-    "    function closeImmediately() { close() }" \
-    "    function toggle() { shown = !shown; if (!shown) { backgroundClicked() } }" \
-    "    function expand() { expanded = true }" \
-    "    function cancelAnimations() {}" \
-    "    function updateState() {}" \
-    "    function startSwipe() {}" \
-    "    function updateOffset(value) { offset = value }" \
-    "    function endSwipe() {}" \
-    "    function activateNextAction() {}" \
-    "    function clearField() {}" \
-    "    function requestFocus() { forceActiveFocus() }" \
-    "    function startGesture() {}" \
-    "    function updateGestureOffset(value) { offset = value }" \
-    "    function endGesture() {}" \
-    "    function getTrackName() { return \"\" }" \
-    "    function clearHistory() {}" \
-    "    function isRowExpanded(row) { return false }" \
-    "    function openNotificationSettings() {}" \
-    "    function runPendingAction() {}" \
-    "    function setGroupExpanded(group, expanded) {}" \
-    "    function toggleDoNotDisturbMode() { doNotDisturbModeEnabled = !doNotDisturbModeEnabled }" \
-    "    function applyMinMax(value) { return value }" \
-    "    function onRunPendingNotificationAction() {}" \
-    "    function onOpenedChanged() {}" \
-    "    function resetSwipeView() {}" \
-    "    function showOverlay() { shown = true }" \
-    "    function backspace() {}" \
-    "    function clear() {}" \
-    "    function enter() {}" \
-    "    function keyPress(key, text, modifiers) {}" \
-    "    function onPasswordChanged() {}" \
-    "    function onUnlockFailed() {}" \
-    "    function onUnlockSucceeded() {}" \
-    "}"
-}
-for qml_name in \
-  ActionDrawer \
-  ActionDrawerOpenSurface \
-  AudioApplet \
-  KRunnerScreen \
-  KRunnerWidget \
-  LandscapeContentContainer \
-  MediaControlsWidget \
-  NotificationsWidget \
-  PortraitContentContainer \
-  QuickSettings \
-  QuickSettingsPanel \
-  StatusBar \
-  VolumeOSD \
-  WallpaperSelector; do
-  if [ -e "$mobileshell/$qml_name.qml" ] && [ ! -e "$mobileshell/$qml_name.qml.upstream" ]; then
-    cp "$mobileshell/$qml_name.qml" "$mobileshell/$qml_name.qml.upstream"
-  fi
-  write_mobile_item_stub "$qml_name"
-done
-
-for qml_name in VolumeOSDProvider VolumeOSDProviderLoader; do
-  if [ -e "$mobileshell/$qml_name.qml" ] && [ ! -e "$mobileshell/$qml_name.qml.upstream" ]; then
-    cp "$mobileshell/$qml_name.qml" "$mobileshell/$qml_name.qml.upstream"
-  fi
-done
-write_file "$mobileshell/VolumeOSDProvider.qml" \
-  "// First-light iOS shim: avoid loading the real volume provider while AudioInfo/VolumeOSD are stubbed." \
-  "import QtQuick 2.15" \
-  "QtObject {" \
-  "    id: root" \
-  "    function showVolumeOverlay() {}" \
-  "}"
-write_file "$mobileshell/VolumeOSDProviderLoader.qml" \
-  "// First-light iOS shim: keep MobileShell.VolumeOSDProviderLoader importable without recursive module loading." \
-  "pragma Singleton" \
-  "import QtQuick 2.15" \
-  "QtObject {" \
-  "    id: root" \
-  "    property bool active: false" \
-  "    function load() { active = true }" \
+  "    // xios-mobile-real-flickable: keep upstream behavior with deterministic iOS physics." \
+  "    flickDeceleration: 1500" \
+  "    maximumFlickVelocity: 5000" \
   "}"
 
 write_file "$mobileshell/ClockText.qml" \
-  "// First-light iOS shim: avoid Plasma5Support time dataengine during Mobile startup." \
   "import QtQuick 2.15" \
   "import QtQuick.Controls 2.15" \
   "Label {" \
@@ -642,40 +345,28 @@ write_file "$mobileshell/AudioInfo.qml" \
   "    property Timer refreshTimer: Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
-# Final service-provider overrides. The broad first-light item shims above keep
-# fragile views importable; these files are intentionally active and backed by
-# Xios/iOS state.
+# Active Xios/iOS service providers for Mobile status and quick settings.
 write_block "$mm/SignalIndicator.qml" <<'QML'
 pragma Singleton
 import QtQuick 2.15
-import org.kde.plasma.private.mobileshell as MobileShell
 
 QtObject {
     id: root
-    property int strength: MobileShell.ShellUtil.networkIsCellular() && MobileShell.ShellUtil.networkReachable() ? 100 : 0
-    property string name: MobileShell.ShellUtil.networkIsCellular() ? "Cellular" : ""
-    property bool modemAvailable: MobileShell.ShellUtil.networkIsCellular()
+    property int strength: 0
+    property string name: ""
+    property bool modemAvailable: false
     property bool simLocked: false
-    property bool simEmpty: !modemAvailable
-    property bool mobileDataSupported: modemAvailable
-    property bool mobileDataEnabled: modemAvailable && MobileShell.ShellUtil.networkReachable()
+    property bool simEmpty: true
+    property bool mobileDataSupported: false
+    property bool mobileDataEnabled: false
     property bool needsAPNAdded: false
     property var profiles: []
-    property string activeConnectionUni: mobileDataEnabled ? "xios-cellular" : ""
+    property string activeConnectionUni: ""
     function refreshProfiles() {}
     function activateProfile(connectionUni) {}
     function addProfile(name, apn, username, password, networkType) {}
     function removeProfile(connectionUni) {}
     function updateProfile(connectionUni, name, apn, username, password, networkType) {}
-    function refresh() {
-        strength = MobileShell.ShellUtil.networkIsCellular() && MobileShell.ShellUtil.networkReachable() ? 100 : 0
-        modemAvailable = MobileShell.ShellUtil.networkIsCellular()
-        simEmpty = !modemAvailable
-        mobileDataSupported = modemAvailable
-        mobileDataEnabled = modemAvailable && MobileShell.ShellUtil.networkReachable()
-        activeConnectionUni = mobileDataEnabled ? "xios-cellular" : ""
-    }
-    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }
 }
 QML
 
@@ -809,7 +500,6 @@ import QtQuick 2.15
 import QtQuick.Layouts 1.15
 import org.kde.kirigami 2.20 as Kirigami
 import org.kde.plasma.components 3.0 as PlasmaComponents
-import org.kde.plasma.private.mobileshell as MobileShell
 
 Item {
     id: root
@@ -837,7 +527,7 @@ Item {
             spacing: root.elementSpacing
             PlasmaComponents.Label {
                 visible: root.showTime
-                text: Qt.formatTime(root.now, MobileShell.ShellUtil.isSystem24HourFormat ? "h:mm" : "h:mm ap")
+                text: Qt.formatTime(root.now, ShellUtil.isSystem24HourFormat ? "h:mm" : "h:mm ap")
                 color: Kirigami.Theme.textColor
                 font.pixelSize: root.textPixelSize
             }
@@ -845,26 +535,26 @@ Item {
             Kirigami.Icon {
                 Layout.preferredWidth: Kirigami.Units.iconSizes.small
                 Layout.preferredHeight: Layout.preferredWidth
-                source: MobileShell.ShellUtil.networkReachable()
-                    ? (MobileShell.ShellUtil.networkIsCellular() ? "network-mobile-100" : "network-wireless-signal-excellent")
+                source: ShellUtil.networkReachable()
+                    ? (ShellUtil.networkIsCellular() ? "network-mobile-100" : "network-wireless-signal-excellent")
                     : "network-disconnect"
             }
             Kirigami.Icon {
-                visible: MobileShell.AudioInfo.isVisible
+                visible: AudioInfo.isVisible
                 Layout.preferredWidth: Kirigami.Units.iconSizes.small
                 Layout.preferredHeight: Layout.preferredWidth
-                source: MobileShell.AudioInfo.icon
+                source: AudioInfo.icon
             }
             RowLayout {
-                visible: MobileShell.BatteryInfo.isVisible
+                visible: BatteryInfo.isVisible
                 spacing: Kirigami.Units.smallSpacing / 2
                 Kirigami.Icon {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.small
                     Layout.preferredHeight: Layout.preferredWidth
-                    source: MobileShell.BatteryInfo.icon
+                    source: BatteryInfo.icon
                 }
                 PlasmaComponents.Label {
-                    text: i18n("%1%", MobileShell.BatteryInfo.percent)
+                    text: i18n("%1%", BatteryInfo.percent)
                     color: Kirigami.Theme.textColor
                     font.pixelSize: root.textPixelSize
                 }
@@ -880,8 +570,8 @@ Item {
             }
             Item { Layout.fillWidth: true }
             PlasmaComponents.Label {
-                text: MobileShell.ShellUtil.networkReachable()
-                    ? (MobileShell.ShellUtil.networkIsCellular() ? i18n("Cellular") : i18n("Wi-Fi"))
+                text: ShellUtil.networkReachable()
+                    ? (ShellUtil.networkIsCellular() ? i18n("Cellular") : i18n("Wi-Fi"))
                     : i18n("Offline")
                 color: Kirigami.Theme.disabledTextColor
                 font.pixelSize: root.smallerTextPixelSize
@@ -896,7 +586,6 @@ import QtQuick 2.15
 import QtQuick.Layouts 1.15
 import org.kde.kirigami 2.20 as Kirigami
 import org.kde.plasma.components 3.0 as PC3
-import org.kde.plasma.private.mobileshell as MobileShell
 
 Item {
     id: root
@@ -931,25 +620,25 @@ Item {
             rowSpacing: Kirigami.Units.smallSpacing
             PC3.Button {
                 Layout.fillWidth: true
-                icon.name: MobileShell.ShellUtil.networkReachable()
-                    ? (MobileShell.ShellUtil.networkIsCellular() ? "network-mobile-100" : "network-wireless-signal-excellent")
+                icon.name: ShellUtil.networkReachable()
+                    ? (ShellUtil.networkIsCellular() ? "network-mobile-100" : "network-wireless-signal-excellent")
                     : "network-disconnect"
-                text: MobileShell.ShellUtil.networkReachable()
-                    ? (MobileShell.ShellUtil.networkIsCellular() ? i18n("Cellular") : i18n("Wi-Fi"))
+                text: ShellUtil.networkReachable()
+                    ? (ShellUtil.networkIsCellular() ? i18n("Cellular") : i18n("Wi-Fi"))
                     : i18n("Offline")
                 enabled: false
             }
             PC3.Button {
                 Layout.fillWidth: true
-                icon.name: MobileShell.BatteryInfo.icon
-                text: i18n("%1%", MobileShell.BatteryInfo.percent)
+                icon.name: BatteryInfo.icon
+                text: i18n("%1%", BatteryInfo.percent)
                 enabled: false
             }
             PC3.Button {
                 Layout.fillWidth: true
-                icon.name: MobileShell.AudioInfo.icon
-                text: i18n("%1%", MobileShell.AudioInfo.volumeValue)
-                onClicked: MobileShell.AudioInfo.muteVolume()
+                icon.name: AudioInfo.icon
+                text: i18n("%1%", AudioInfo.volumeValue)
+                onClicked: AudioInfo.muteVolume()
             }
             PC3.Button {
                 Layout.fillWidth: true
@@ -961,14 +650,14 @@ Item {
         BrightnessItem { Layout.fillWidth: true }
         RowLayout {
             Layout.fillWidth: true
-            PC3.ToolButton { icon.name: "audio-volume-low"; onClicked: MobileShell.AudioInfo.decreaseVolume() }
+            PC3.ToolButton { icon.name: "audio-volume-low"; onClicked: AudioInfo.decreaseVolume() }
             PC3.ProgressBar {
                 Layout.fillWidth: true
                 from: 0
-                to: MobileShell.AudioInfo.maxVolumePercent
-                value: MobileShell.AudioInfo.volumeValue
+                to: AudioInfo.maxVolumePercent
+                value: AudioInfo.volumeValue
             }
-            PC3.ToolButton { icon.name: "audio-volume-high"; onClicked: MobileShell.AudioInfo.increaseVolume() }
+            PC3.ToolButton { icon.name: "audio-volume-high"; onClicked: AudioInfo.increaseVolume() }
         }
     }
 }
@@ -978,9 +667,8 @@ write_block "$mobileshell/QuickSettingsPanel.qml" <<'QML'
 import QtQuick 2.15
 import QtQuick.Layouts 1.15
 import org.kde.kirigami 2.20 as Kirigami
-import org.kde.plasma.private.mobileshell as MobileShell
 
-MobileShell.BaseItem {
+BaseItem {
     id: root
     required property var actionDrawer
     required property real fullScreenHeight
@@ -989,7 +677,7 @@ MobileShell.BaseItem {
     contentItem: ColumnLayout {
         id: column
         spacing: Kirigami.Units.smallSpacing
-        MobileShell.StatusBar {
+        StatusBar {
             Layout.fillWidth: true
             Layout.preferredHeight: Kirigami.Units.gridUnit * 1.5
             backgroundColor: "transparent"
@@ -997,11 +685,11 @@ MobileShell.BaseItem {
             showTime: false
             disableSystemTray: root.actionDrawer.restrictedPermissions
         }
-        MobileShell.QuickSettings {
+        QuickSettings {
             Layout.fillWidth: true
             Layout.preferredHeight: fullHeight
             actionDrawer: root.actionDrawer
-            mode: MobileShell.QuickSettings.ScrollView
+            mode: QuickSettings.ScrollView
             minimizedViewProgress: 0
             fullViewProgress: 1
         }
@@ -1058,7 +746,6 @@ import QtQuick 2.15
 import QtQuick.Layouts 1.15
 import org.kde.kirigami 2.20 as Kirigami
 import org.kde.plasma.components 3.0 as PC3
-import org.kde.plasma.private.mobileshell as MobileShell
 
 ColumnLayout {
     spacing: Kirigami.Units.smallSpacing
@@ -1066,8 +753,8 @@ ColumnLayout {
     PC3.ProgressBar {
         Layout.fillWidth: true
         from: 0
-        to: MobileShell.AudioInfo.maxVolumePercent
-        value: MobileShell.AudioInfo.volumeValue
+        to: AudioInfo.maxVolumePercent
+        value: AudioInfo.volumeValue
     }
 }
 QML
@@ -1078,7 +765,6 @@ import QtQuick.Layouts 1.15
 import org.kde.kirigami 2.20 as Kirigami
 import org.kde.plasma.components 3.0 as PC3
 import org.kde.plasma.private.nanoshell 2.0 as NanoShell
-import org.kde.plasma.private.mobileshell as MobileShell
 
 NanoShell.FullScreenOverlay {
     id: window
@@ -1104,9 +790,9 @@ NanoShell.FullScreenOverlay {
         RowLayout {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.gridUnit
-            Kirigami.Icon { Layout.preferredWidth: Kirigami.Units.iconSizes.medium; Layout.preferredHeight: Layout.preferredWidth; source: MobileShell.AudioInfo.icon }
-            PC3.ProgressBar { Layout.fillWidth: true; from: 0; to: MobileShell.AudioInfo.maxVolumePercent; value: MobileShell.AudioInfo.volumeValue }
-            PC3.Label { text: i18n("%1%", MobileShell.AudioInfo.volumeValue) }
+            Kirigami.Icon { Layout.preferredWidth: Kirigami.Units.iconSizes.medium; Layout.preferredHeight: Layout.preferredWidth; source: AudioInfo.icon }
+            PC3.ProgressBar { Layout.fillWidth: true; from: 0; to: AudioInfo.maxVolumePercent; value: AudioInfo.volumeValue }
+            PC3.Label { text: i18n("%1%", AudioInfo.volumeValue) }
         }
     }
 }
@@ -1114,12 +800,11 @@ QML
 
 write_block "$mobileshell/VolumeOSDProvider.qml" <<'QML'
 import QtQuick 2.15
-import org.kde.plasma.private.mobileshell as MobileShell
 
 QtObject {
     id: root
     function showVolumeOverlay() { osd.showOverlay() }
-    Component.onCompleted: MobileShell.AudioInfo.volumeChanged.connect(showVolumeOverlay)
+    Component.onCompleted: AudioInfo.volumeChanged.connect(showVolumeOverlay)
     property var osd: VolumeOSD {}
 }
 QML
@@ -1127,12 +812,11 @@ QML
 write_block "$mobileshell/VolumeOSDProviderLoader.qml" <<'QML'
 pragma Singleton
 import QtQuick 2.15
-import org.kde.plasma.private.mobileshell as MobileShell
 
 Loader {
     id: root
     active: false
-    sourceComponent: Component { MobileShell.VolumeOSDProvider {} }
+    sourceComponent: Component { VolumeOSDProvider {} }
     function load() { active = true }
 }
 QML
@@ -1167,6 +851,26 @@ QtObject {
     function iconName() {
         var bucket = percent < 15 ? "caution" : percent < 35 ? "low" : percent < 75 ? "good" : "full"
         return "battery-" + bucket + (pluggedIn ? "-charging" : "")
+    }
+    Component.onCompleted: refresh()
+    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }
+}
+QML
+
+write_block "$mobileshell/SignalStrengthInfo.qml" <<'QML'
+pragma Singleton
+import QtQuick 2.15
+
+QtObject {
+    id: root
+    property bool reachable: false
+    property bool cellular: false
+    readonly property string icon: cellular && reachable ? "network-mobile-100" : "network-mobile-0"
+    readonly property string label: cellular ? "Cellular" : ""
+    readonly property bool showIndicator: cellular && reachable
+    function refresh() {
+        reachable = ShellUtil.networkReachable()
+        cellular = ShellUtil.networkIsCellular()
     }
     Component.onCompleted: refresh()
     property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }
@@ -1221,25 +925,7 @@ QML
 
 folio_settings="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui/settings"
 if [ -d "$folio_settings" ]; then
-  if [ -e "$folio_settings/AppletListViewer.qml" ] && [ ! -e "$folio_settings/AppletListViewer.qml.upstream" ]; then
-    cp "$folio_settings/AppletListViewer.qml" "$folio_settings/AppletListViewer.qml.upstream"
-  fi
-  write_file "$folio_settings/AppletListViewer.qml" \
-    "// First-light iOS shim: defer the widget picker GridView until Qt Quick views are stable." \
-    "import QtQuick 2.15" \
-    "MouseArea {" \
-    "    id: root" \
-    "    property var folio" \
-    "    property var homeScreen" \
-    "    property int columns: 1" \
-    "    property real horizontalMargin: 0" \
-    "    property real intendedCellWidth: 0" \
-    "    property real maxCellWidth: 0" \
-    "    property real zoomScale: 1" \
-    "    property string pluginName: \"\"" \
-    "    signal requestClose()" \
-    "    onClicked: root.requestClose()" \
-    "}"
+  restore_upstream_file "$folio_settings/AppletListViewer.qml"
 fi
 
 folio_ui="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui"
@@ -1417,46 +1103,7 @@ fi
 
 lockscreen="$qml/../../../share/plasma/shells/org.kde.plasma.mobileshell/contents/lockscreen"
 if [ -d "$lockscreen" ]; then
-  if [ -e "$lockscreen/PasswordBar.qml" ] && [ ! -e "$lockscreen/PasswordBar.qml.upstream" ]; then
-    cp "$lockscreen/PasswordBar.qml" "$lockscreen/PasswordBar.qml.upstream"
-  fi
-  write_file "$lockscreen/PasswordBar.qml" \
-    "// First-light iOS shim: avoid raw ListView during lockscreen setup." \
-    "import QtQuick 2.15" \
-    "import QtQuick.Controls 2.15" \
-    "Item {" \
-    "    id: root" \
-    "    property string password: \"\"" \
-    "    property string placeholderText: \"\"" \
-    "    property bool keypadOpen: false" \
-    "    property bool showChar: false" \
-    "    property bool isPinMode: false" \
-    "    property bool externalEdit: false" \
-    "    property int previewCharIndex: -1" \
-    "    property real dotWidth: 0" \
-    "    property color color: \"transparent\"" \
-    "    property color headerTextColor: \"transparent\"" \
-    "    property color headerTextInactiveColor: \"transparent\"" \
-    "    property var lockScreenState" \
-    "    property var textField" \
-    "    property string pinLabel: \"\"" \
-    "    property string prevText: \"\"" \
-    "    signal accepted(string password)" \
-    "    function backspace() {}" \
-    "    function clear() { password = \"\" }" \
-    "    function enter() { accepted(password) }" \
-    "    function keyPress(key, text, modifiers) {}" \
-    "    function onPasswordChanged() {}" \
-    "    function onUnlockFailed() {}" \
-    "    function onUnlockSucceeded() {}" \
-    "    TextField {" \
-    "        anchors.centerIn: parent" \
-    "        width: Math.min(parent.width, 420)" \
-    "        placeholderText: root.placeholderText" \
-    "        echoMode: TextInput.Password" \
-    "        onAccepted: root.accepted(text)" \
-    "    }" \
-    "}"
+  restore_upstream_file "$lockscreen/PasswordBar.qml"
 fi
 
 mpris="$qml/org/kde/plasma/private/mpris"
@@ -1501,3 +1148,7 @@ write_file "$milou/ResultsListView.qml" \
 # org.kde.kirigamiaddons.* is provided by the real kf6-kirigami-addons package.
 # Keep Plasma Mobile from owning fallback files in that namespace so dpkg can
 # install the real package beside it without path collisions.
+for cleanup_root in "$qml" "$qml/../../../share/plasma"; do
+  [ -d "$cleanup_root" ] || continue
+  find "$cleanup_root" -type f -name '*.upstream' -delete
+done

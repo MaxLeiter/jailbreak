@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "First-light Plasma Mobile shell data for Xios"
+          "markdown": "Plasma Mobile shell data for Xios"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios11"
+          "text": "6.1.5+ios13"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "606.7 KiB"
+          "text": "671.4 KiB"
         },
         {
           "class": "DepictionTableTextView",

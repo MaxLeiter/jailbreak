@@ -1,0 +1,73 @@
+Subject: [PATCH] tofi: adjust Meson for iOS cross builds
+
+Use the target wayland-protocols pkg-config data so protocol XML resolves from
+the staged iOS sysroot, while wayland-scanner remains a native tool. Also skip
+the upstream test subdir for this package build. Darwin exposes st_mtime rather
+than Linux st_mtim.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2023-04-10 00:00:00
++++ b/meson.build	2026-07-06 00:00:00
+@@ -142 +142 @@
+-wayland_protocols = dependency('wayland-protocols', native: true)
++wayland_protocols = dependency('wayland-protocols')
+@@ -202 +201,0 @@
+-subdir('test')
+diff -ruN -U0 --exclude=*.bak a/src/drun.c b/src/drun.c
+--- a/src/drun.c	2023-04-10 00:00:00
++++ b/src/drun.c	2026-07-06 00:00:00
+@@ -254 +254 @@
+-			if (path_sb.st_mtim.tv_sec > sb.st_mtim.tv_sec) {
++			if (path_sb.st_mtime > sb.st_mtime) {
+diff -ruN -U0 --exclude=*.bak a/src/compgen.c b/src/compgen.c
+--- a/src/compgen.c	2023-04-10 00:00:00
++++ b/src/compgen.c	2026-07-06 00:00:00
+@@ -146 +146 @@
+-			if (path_sb.st_mtim.tv_sec > sb.st_mtim.tv_sec) {
++			if (path_sb.st_mtime > sb.st_mtime) {
+diff -ruN -U0 --exclude=*.bak a/src/input.c b/src/input.c
+--- a/src/input.c	2023-04-10 00:00:00
++++ b/src/input.c	2026-07-06 00:00:00
+@@ -4,0 +5,42 @@
++#ifndef __linux__
++static int xios_pipe2(int fildes[2], int flags)
++{
++	int saved_errno = 0;
++
++	if ((flags & ~(O_CLOEXEC | O_NONBLOCK)) != 0) {
++		errno = EINVAL;
++		return -1;
++	}
++
++	if (pipe(fildes) == -1) {
++		return -1;
++	}
++
++	if (flags & O_CLOEXEC) {
++		if (fcntl(fildes[0], F_SETFD, FD_CLOEXEC) == -1
++				|| fcntl(fildes[1], F_SETFD, FD_CLOEXEC) == -1) {
++			goto fail;
++		}
++	}
++
++	if (flags & O_NONBLOCK) {
++		int fd0_flags = fcntl(fildes[0], F_GETFL);
++		int fd1_flags = fcntl(fildes[1], F_GETFL);
++		if (fd0_flags == -1 || fd1_flags == -1
++				|| fcntl(fildes[0], F_SETFL, fd0_flags | O_NONBLOCK) == -1
++				|| fcntl(fildes[1], F_SETFL, fd1_flags | O_NONBLOCK) == -1) {
++			goto fail;
++		}
++	}
++
++	return 0;
++
++fail:
++	saved_errno = errno;
++	close(fildes[0]);
++	close(fildes[1]);
++	errno = saved_errno;
++	return -1;
++}
++#define pipe2 xios_pipe2
++#endif

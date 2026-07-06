@@ -1,0 +1,21 @@
+Subject: [PATCH] transmission: avoid Foundation UTF-8 helper on iPhoneOS
+
+The CLI/daemon package does not need the macOS Foundation-backed UTF-8
+autodetection helper. On iPhoneOS, including Foundation currently pulls in a
+Procursus XPC header path that does not compile with the bundled SDK headers.
+Use Transmission's generic invalid-UTF-8 replacement path instead.
+
+diff -ruN -U0 a/libtransmission/CMakeLists.txt b/libtransmission/CMakeLists.txt
+--- a/libtransmission/CMakeLists.txt	2026-07-06 00:00:00
++++ b/libtransmission/CMakeLists.txt	2026-07-06 00:00:00
+@@ -20,0 +21,4 @@
++
++if(APPLE AND CMAKE_OSX_SYSROOT MATCHES "iPhoneOS")
++    set(IS_APPLE_CLANG FALSE)
++endif()
+diff -ruN -U0 a/libtransmission/utils.cc b/libtransmission/utils.cc
+--- a/libtransmission/utils.cc	2026-07-06 00:00:00
++++ b/libtransmission/utils.cc	2026-07-06 00:00:00
+@@ -316 +316 @@
+-#if !(defined(__APPLE__) && defined(__clang__))
++#if !(defined(__APPLE__) && defined(__clang__)) || defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)

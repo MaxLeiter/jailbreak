@@ -26,6 +26,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 10. **svg-loader.md** — real `librsvg`/GdkPixbuf SVG loader audit for GTK/GNOME icon themes.
 11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
 12. **wayland-apps.md** — the ported desktop app wave (terminal/viewers/media/utilities), why some don't yet map a window in iosc + the fixes (foot PTY, GTK3 wayland backend, mpv EGL shim, hitori schema), the on-device capture/debug tooling, and the app TODO.
+13. **wayland-extra-apps.md** — the next requested standalone app wave: swaybg, tofi, waybar, swayimg, yad, nwg-look, Geary/WebKitGTK, Gnumeric, and Transmission.
 
 ## Current headline status
 - **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.
@@ -38,7 +39,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
   and both reached `gnome/up` with `xios-session 1.0.22` + `xios-session-stubs 0.2.3`. Gvc/volume
   no longer blocks first paint, and Quick Settings no longer hits the `get_accessible`/`_output`
   JS errors. Later stop/KDE requests can still supersede GNOME by design.
-- **KDE/KF6 has KWin first-light, QtWayland/ANGLE IOSurface smoke, `xios-session kde`/`kde-desktop` launching the real upstream Plasma Desktop shell, a live KIO `desktop:` worker, real KScreen/System Settings/KCM packages, Breeze/plasma-integration styling, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** Next gate is productizing stale user-config migration, exercising `systemsettings`/`kcm_kscreen` and app launches, and replacing remaining Mobile/Nano first-light shims with real service bridges.
+- **KDE/KF6 has KWin first-light, QtWayland/ANGLE IOSurface smoke, `xios-session kde`/`kde-desktop` launching the real upstream Plasma Desktop shell, a live KIO `desktop:` worker, real KScreen/System Settings/KCM packages, Breeze/plasma-integration styling, real Xios/iOS-backed Plasma Mobile status/quick-settings providers, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** Next gate is exercising `systemsettings`/`kcm_kscreen` and app launches, then replacing remaining Nano/edge Mobile gaps with real package or service work.
 - **Wayland app ecosystem is now broad enough for daily smoke testing**:
   wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim/dunst/GTK3 apps and the rootless
   Xwayland XWM work are on local commits and have on-device evidence in classic

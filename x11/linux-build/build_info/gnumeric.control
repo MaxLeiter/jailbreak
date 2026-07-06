@@ -1,0 +1,12 @@
+Package: gnumeric
+Version: @DEB_GNUMERIC_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnumeric
+Depends: libglib2.0-0, libgtk-3-0, libgoffice-0.10-10, libgsf-1-114, libxml2, libpango-1.0-0, libcairo2, libz-ng2
+Description: Gnumeric spreadsheet for Xios
+ Gnumeric is the GNOME spreadsheet application. This rootless iOS build ships
+ the GTK3 UI, libspreadsheet, GSettings schemas, desktop/icon data, and a small
+ set of common file-format and formula plugins for the Xios desktop.

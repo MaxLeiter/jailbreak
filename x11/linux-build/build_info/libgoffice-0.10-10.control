@@ -1,0 +1,12 @@
+Package: libgoffice-0.10-10
+Version: @DEB_GOFFICE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/goffice
+Depends: libglib2.0-0, libgtk-3-0, libgsf-1-114, libxml2, libxslt1.1, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0
+Description: GOffice spreadsheet/chart library
+ GOffice provides document, charting, and plugin support used by Gnumeric. This
+ iOS build keeps GTK3 support and omits optional SVG, equation, EPS, and
+ introspection features.

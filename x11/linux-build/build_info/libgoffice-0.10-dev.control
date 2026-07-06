@@ -1,0 +1,11 @@
+Package: libgoffice-0.10-dev
+Version: @DEB_GOFFICE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/goffice
+Depends: libgoffice-0.10-10 (= @DEB_GOFFICE_V@), libgtk-3-dev, libgsf-1-dev, libxml2-dev, libxslt1-dev, libpango1.0-dev, libcairo2-dev, libgdk-pixbuf-2.0-dev
+Description: GOffice spreadsheet/chart library - development files
+ Headers, pkg-config metadata, and the unversioned dylib symlink for building
+ software against libgoffice-0.10.

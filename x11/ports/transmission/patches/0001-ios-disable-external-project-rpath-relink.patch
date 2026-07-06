@@ -1,0 +1,21 @@
+Subject: [PATCH] transmission: avoid Darwin Ninja RPATH relink in bundled NAT libs
+
+The bundled MiniUPnPc and libnatpmp external projects build small helper
+executables in addition to static libraries. On Darwin targets, CMake cannot
+perform the install-time RPATH relink step with the Ninja generator. Build them
+with the install RPATH from the start; the packaged Transmission output only
+uses the static libraries.
+
+diff -ruN -U0 a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2026-07-06 00:00:00
++++ b/CMakeLists.txt	2026-07-06 00:00:00
+@@ -520 +520,2 @@
+-        -DBUILD_SHARED_LIBS=OFF)
++        -DBUILD_SHARED_LIBS=OFF
++        -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
+@@ -538,2 +539,3 @@
+-        -DUPNPC_BUILD_SHARED=OFF
+-        -DUPNPC_BUILD_TESTS=OFF)
++        -DUPNPC_BUILD_SHARED=OFF
++        -DUPNPC_BUILD_TESTS=OFF
++        -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)

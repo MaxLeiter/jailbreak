@@ -1,0 +1,12 @@
+Package: yad
+Version: @DEB_YAD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/v1cont/yad
+Depends: libglib2.0-0, libgtk-3-0, libcairo2, libpango-1.0-0, libintl8
+Description: GTK3 dialog utility for Xios scripts
+ YAD displays GTK dialogs from shell scripts. This iOS build keeps the core
+ GTK3 dialog, tools, icon browser and settings helper, while disabling optional
+ WebKit, spell, GtkSourceView, AppIndicator and tray integrations.

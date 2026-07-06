@@ -14,7 +14,7 @@ endif
 
 SUBPROJECTS   += libgdm
 LIBGDM_VERSION := 46.0
-DEB_LIBGDM_V  ?= $(LIBGDM_VERSION)+ios1
+DEB_LIBGDM_V  ?= $(LIBGDM_VERSION)+ios2
 
 libgdm-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gdm/$(shell echo $(LIBGDM_VERSION) | cut -f-1 -d.)/gdm-$(LIBGDM_VERSION).tar.xz)
@@ -59,6 +59,11 @@ libgdm-package: libgdm-stage
 		$(BUILD_DIST)/libgdm1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/ 2>/dev/null || \
 	cp -a $(BUILD_STAGE)/libgdm/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgdm.dylib \
 		$(BUILD_DIST)/libgdm1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
+	if [ -e "$(BUILD_WORK)/libgdm/data/org.gnome.login-screen.gschema.xml" ]; then \
+		mkdir -p $(BUILD_DIST)/libgdm1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/glib-2.0/schemas; \
+		cp -a "$(BUILD_WORK)/libgdm/data/org.gnome.login-screen.gschema.xml" \
+			$(BUILD_DIST)/libgdm1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/glib-2.0/schemas/; \
+	fi
 
 	# dev: headers, pkgconfig, unversioned symlink — needed by the ON-DEVICE gir/typelib build
 	cp -a $(BUILD_STAGE)/libgdm/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \

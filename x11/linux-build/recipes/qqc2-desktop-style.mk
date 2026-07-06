@@ -11,7 +11,7 @@ endif
 
 SUBPROJECTS += qqc2-desktop-style
 QQC2DESKTOPSTYLE_VERSION = $(KF6_VERSION)
-DEB_QQC2DESKTOPSTYLE_V ?= $(QQC2DESKTOPSTYLE_VERSION)+ios1
+DEB_QQC2DESKTOPSTYLE_V ?= $(QQC2DESKTOPSTYLE_VERSION)+ios2
 
 qqc2-desktop-style-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,qqc2-desktop-style))
@@ -40,6 +40,7 @@ qqc2-desktop-style-package: qqc2-desktop-style-stage
 	rm -rf $(BUILD_DIST)/kf6-qqc2-desktop-style $(BUILD_DIST)/kf6-qqc2-desktop-style-dev
 	$(call KF6_COPY_RUNTIME,qqc2-desktop-style,kf6-qqc2-desktop-style)
 	$(call KF6_COPY_DEV,qqc2-desktop-style,kf6-qqc2-desktop-style)
+	bash /work/recipes/qqc2-desktop-style-ios-qml-stubs.sh $(BUILD_DIST)/kf6-qqc2-desktop-style
 	$(call SIGN,kf6-qqc2-desktop-style,general.xml)
 	$(call SIGN,kf6-qqc2-desktop-style-dev,general.xml)
 	$(call PACK,kf6-qqc2-desktop-style,DEB_QQC2DESKTOPSTYLE_V)

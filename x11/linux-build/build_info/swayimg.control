@@ -1,0 +1,12 @@
+Package: swayimg
+Version: @DEB_SWAYIMG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/artemsen/swayimg
+Depends: libwayland0, libxkbcommon0, libfontconfig1, libfreetype6, luajit, libpng16-16, libjpeg62-turbo
+Description: Lightweight Wayland image viewer
+ swayimg is a configurable image viewer for Wayland. This iOS build enables
+ the Wayland UI, Lua configuration, built-in formats, PNG, and JPEG while
+ disabling DRM and heavier optional image codec stacks.

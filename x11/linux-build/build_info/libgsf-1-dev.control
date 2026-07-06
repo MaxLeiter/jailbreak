@@ -1,0 +1,11 @@
+Package: libgsf-1-dev
+Version: @DEB_LIBGSF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libgsf
+Depends: libgsf-1-114 (= @DEB_LIBGSF_V@), libglib2.0-dev, libxml2-dev, libz-ng-dev
+Description: GNOME structured file library - development files
+ Headers, pkg-config metadata, and the unversioned dylib symlink for building
+ software against libgsf-1.

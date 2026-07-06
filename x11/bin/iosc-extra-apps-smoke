@@ -1,0 +1,359 @@
+#!/usr/bin/env bash
+# Host-side smoke helper for the second Wayland/GTK app wave.
+#
+# Optionally stages the exact local debs from linux-build/out onto the iPad,
+# installs them with dpkg, starts classic iosc, and captures the graphical
+# clients that need compositor proof.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+X11_ROOT="$(cd "$HERE/.." && pwd)"
+XIOS_DEVICE="$X11_ROOT/bin/xios-device"
+CAPTURE_REMOTE="$X11_ROOT/bin/iosc-capture-remote.sh"
+DEPLOY_ENV="$X11_ROOT/apps/iosc-desktop/deploy-env.sh"
+
+# shellcheck source=../apps/iosc-desktop/deploy-env.sh
+. "$DEPLOY_ENV"
+
+START_SESSION=1
+INSTALL=0
+OUTDIR=""
+CAP_WAIT=6
+WARMUP=2
+ONLY=""
+SKIP=""
+
+usage() {
+    cat <<'EOF'
+usage: bin/iosc-extra-apps-smoke [options]
+
+Runs a repeatable classic-iosc smoke for the second app wave: swaybg, tofi, yad,
+Gnumeric, and Transmission. The helper can stage/install the local debs first,
+then records stdout/logs/screenshots in one artifact directory.
+
+Options:
+  --install         scp local linux-build/out debs to the device and dpkg -i them
+  --no-session      Do not switch sessions; smoke the current device state
+  --only LIST       Comma-separated smoke ids to run
+  --skip LIST       Comma-separated smoke ids to skip
+  --wait SEC        Per-app capture wait before screenshot (default: 6)
+  --warmup SEC      Delay after session/foreground before captures (default: 2)
+  --out DIR         Local artifact directory
+  -h, --help        Show this help
+
+Smoke ids:
+  install, packages, transmission, swaybg, tofi, yad, gnumeric, shot
+
+Examples:
+  bin/iosc-extra-apps-smoke --install
+  bin/iosc-extra-apps-smoke --only packages,transmission
+  bin/iosc-extra-apps-smoke --no-session --out /tmp/extra-apps-current
+EOF
+}
+
+die() {
+    echo "iosc-extra-apps-smoke: $*" >&2
+    exit 1
+}
+
+valid_number() {
+    case "$1" in
+        ""|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+stamp() {
+    date '+%Y%m%d-%H%M%S'
+}
+
+normalize_list() {
+    printf '%s' "$1" | tr ',' ' '
+}
+
+list_contains() {
+    local item="$1" list
+    list="$(normalize_list "$2")"
+    case " $list " in
+        *" $item "*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+should_run() {
+    local id="$1"
+    if [ -n "$ONLY" ] && ! list_contains "$id" "$ONLY"; then
+        return 1
+    fi
+    if [ -n "$SKIP" ] && list_contains "$id" "$SKIP"; then
+        return 1
+    fi
+    return 0
+}
+
+make_outdir() {
+    if [ -n "$OUTDIR" ]; then
+        mkdir -p "$OUTDIR" || exit 1
+        (cd "$OUTDIR" && pwd)
+    else
+        local root="${XIOS_ARTIFACT_ROOT:-$X11_ROOT/artifacts/device-runs}"
+        local d="$root/extra-apps-smoke-$(stamp)"
+        mkdir -p "$d" || exit 1
+        printf '%s\n' "$d"
+    fi
+}
+
+run_logged() {
+    local name="$1"
+    shift
+    echo "==> $*" | tee -a "$LOG"
+    "$@" >"$OUT/$name.log" 2>&1
+    local rc=$?
+    sed -n '1,220p' "$OUT/$name.log" >>"$LOG"
+    echo >>"$LOG"
+    return "$rc"
+}
+
+record_result() {
+    local id="$1" rc="$2"
+    if [ "$rc" -eq 0 ]; then
+        printf 'PASS %s\n' "$id" | tee -a "$RESULTS" >/dev/null
+    else
+        printf 'FAIL %s rc=%s\n' "$id" "$rc" | tee -a "$RESULTS" >/dev/null
+        FAILS=$((FAILS + 1))
+    fi
+}
+
+run_step() {
+    local id="$1"
+    shift
+    should_run "$id" || return 0
+    run_logged "$id" "$@"
+    record_result "$id" "$?"
+}
+
+guard_classic_iosc() {
+    local id="$1"
+    run_logged "guard-$id" "$XIOS_DEVICE" exec '
+        export XDG_RUNTIME_DIR=/var/jb/tmp
+        active="$(cat /var/jb/tmp/xios-active-session 2>/dev/null || true)"
+        if [ "$active" != "iosc" ]; then
+            echo "active session is ${active:-missing}; expected iosc" >&2
+            exit 3
+        fi
+        test -S /var/jb/tmp/wayland-0 || test -e /var/jb/tmp/wayland-0 || {
+            echo "missing /var/jb/tmp/wayland-0" >&2
+            exit 3
+        }
+    '
+}
+
+run_wayland_step() {
+    local id="$1" guard_rc
+    shift
+    should_run "$id" || return 0
+    guard_classic_iosc "$id"
+    guard_rc=$?
+    if [ "$guard_rc" -ne 0 ]; then
+        record_result "$id" "$guard_rc"
+        return 0
+    fi
+    run_logged "$id" "$@"
+    record_result "$id" "$?"
+}
+
+run_capture() {
+    local id="$1" guard_rc
+    shift
+    should_run "$id" || return 0
+    guard_classic_iosc "$id"
+    guard_rc=$?
+    if [ "$guard_rc" -ne 0 ]; then
+        record_result "$id" "$guard_rc"
+        return 0
+    fi
+    echo "==> capture $id: $*" | tee -a "$LOG"
+    IOSC_CAP_LOCAL="$OUT" IOSC_CAP_WAIT="$CAP_WAIT" \
+        "$CAPTURE_REMOTE" "$id" "$@" >"$OUT/capture-$id.stdout" 2>&1
+    local rc=$?
+    sed -n '1,260p' "$OUT/capture-$id.stdout" >>"$LOG"
+    echo >>"$LOG"
+    record_result "$id" "$rc"
+}
+
+resolve_debs() {
+    local -a globs=(
+        "$X11_ROOT/linux-build/out/libxslt1.1_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/libgsf-1-114_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/libgoffice-0.10-10_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/swaybg_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/tofi_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/yad_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/transmission_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/gnumeric_"*"_"iphoneos-arm64.deb
+    )
+    local glob matches
+    RESOLVED_DEBS=()
+    shopt -s nullglob
+    for glob in "${globs[@]}"; do
+        matches=( $glob )
+        if [ "${#matches[@]}" -eq 0 ]; then
+            echo "missing local deb matching: $glob" >&2
+            shopt -u nullglob
+            return 1
+        fi
+        RESOLVED_DEBS+=( "${matches[${#matches[@]}-1]}" )
+    done
+    shopt -u nullglob
+}
+
+install_local_debs() {
+    resolve_debs || return 1
+
+    local remote="/var/jb/tmp/xios-extra-apps-debs"
+    echo "==> stage ${#RESOLVED_DEBS[@]} debs to root@$IP:$remote" | tee -a "$LOG"
+    ssh_ "rm -rf '$remote' && mkdir -p '$remote'" >"$OUT/install-stage.log" 2>&1 || return $?
+    scp_ "${RESOLVED_DEBS[@]}" "root@$IP:$remote/" >>"$OUT/install-stage.log" 2>&1 || return $?
+    sed -n '1,180p' "$OUT/install-stage.log" >>"$LOG"
+    echo >>"$LOG"
+
+    run_logged install "$XIOS_DEVICE" exec "
+        cd '$remote' &&
+        ls -lh *.deb &&
+        dpkg -i --force-overwrite ./*.deb &&
+        apt-get check
+    "
+}
+
+needs_fixtures() {
+    should_run swaybg && return 0
+    should_run gnumeric && return 0
+    return 1
+}
+
+prepare_fixtures() {
+    run_logged prepare-fixtures "$XIOS_DEVICE" exec '
+        export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
+        export XDG_RUNTIME_DIR=/var/jb/tmp
+        export WAYLAND_DISPLAY=/var/jb/tmp/wayland-0
+        img=/var/jb/tmp/xios-extra-wallpaper.png
+        csv=/var/jb/tmp/xios-extra-sheet.csv
+        if command -v pango-view >/dev/null 2>&1; then
+            pango-view --no-display --backend=cairo --font="Sans Bold 48" \
+                --background=#1c1c1e --foreground=#f5f5f7 --margin=80 \
+                --text="$(printf "Xios\nextra apps\n")" --output="$img"
+        fi
+        printf "app,status\nswaybg,ok\ntofi,ok\nyad,ok\ngnumeric,ok\n" > "$csv"
+        test -s "$img" || { echo "missing image fixture: $img" >&2; exit 1; }
+        test -s "$csv" || { echo "missing csv fixture: $csv" >&2; exit 1; }
+        ls -l "$img" "$csv"
+    '
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --install)
+            INSTALL=1; shift ;;
+        --no-session)
+            START_SESSION=0; shift ;;
+        --only)
+            ONLY="${2:-}"; [ -n "$ONLY" ] || die "--only needs a list"; shift 2 ;;
+        --skip)
+            SKIP="${2:-}"; [ -n "$SKIP" ] || die "--skip needs a list"; shift 2 ;;
+        --wait)
+            CAP_WAIT="${2:-}"; valid_number "$CAP_WAIT" || die "--wait needs an integer"; shift 2 ;;
+        --warmup)
+            WARMUP="${2:-}"; valid_number "$WARMUP" || die "--warmup needs an integer"; shift 2 ;;
+        --out)
+            OUTDIR="${2:-}"; [ -n "$OUTDIR" ] || die "--out needs a directory"; shift 2 ;;
+        -h|--help)
+            usage; exit 0 ;;
+        --*)
+            die "unknown option: $1" ;;
+        *)
+            die "unexpected argument: $1" ;;
+    esac
+done
+
+[ -x "$XIOS_DEVICE" ] || die "missing helper: $XIOS_DEVICE"
+[ -x "$CAPTURE_REMOTE" ] || die "missing helper: $CAPTURE_REMOTE"
+
+OUT="$(make_outdir)"
+LOG="$OUT/extra-apps-smoke.log"
+RESULTS="$OUT/results.txt"
+FAILS=0
+RESOLVED_DEBS=()
+: >"$RESULTS"
+
+{
+    echo "artifact dir: $OUT"
+    echo "install: $INSTALL"
+    echo "start_session: $START_SESSION"
+    echo "cap_wait: $CAP_WAIT"
+    echo "warmup: $WARMUP"
+    echo "only: ${ONLY:-}"
+    echo "skip: ${SKIP:-}"
+    echo
+} >"$LOG"
+
+run_logged status-before "$XIOS_DEVICE" status || true
+
+if [ "$INSTALL" = 1 ] && should_run install; then
+    install_local_debs
+    record_result install "$?"
+fi
+
+if [ "$START_SESSION" = 1 ]; then
+    run_logged session "$XIOS_DEVICE" session iosc || true
+fi
+
+run_logged foreground "$XIOS_DEVICE" foreground || true
+
+if [ "$WARMUP" -gt 0 ]; then
+    echo "==> warmup ${WARMUP}s" | tee -a "$LOG"
+    sleep "$WARMUP"
+fi
+
+if needs_fixtures; then
+    prepare_fixtures || record_result prepare-fixtures "$?"
+fi
+
+run_step packages "$XIOS_DEVICE" exec \
+    "dpkg-query -W swaybg tofi yad transmission gnumeric libgsf-1-114 libxslt1.1 libgoffice-0.10-10"
+
+run_step transmission "$XIOS_DEVICE" exec '
+    export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
+    transmission-daemon --version
+    transmission-remote --version
+    transmission-show --version
+'
+
+run_capture swaybg sh -lc \
+    'swaybg -i /var/jb/tmp/xios-extra-wallpaper.png -m fill >/var/jb/tmp/xios-extra-swaybg.log 2>&1 & sleep 30'
+run_capture tofi tofi-run --prompt-text 'Xios '
+run_capture yad yad --text 'Xios YAD smoke' --button=OK:0 --width=360 --height=160
+run_capture gnumeric gnumeric /var/jb/tmp/xios-extra-sheet.csv
+
+run_wayland_step shot "$XIOS_DEVICE" shot "$OUT"
+
+cat >"$OUT/summary.txt" <<EOF
+iosc extra-apps smoke
+artifact_dir=$OUT
+failures=$FAILS
+
+Key files:
+- extra-apps-smoke.log
+- results.txt
+- status-before.log
+- install.log / install-stage.log when --install is used
+- package-state is packages.log
+- capture-*.stdout plus cap-*.png/cap-*.log
+- compositor.png/device.png if final shot succeeded
+EOF
+
+echo "artifact dir: $OUT"
+echo "summary: $OUT/summary.txt"
+echo "results: $OUT/results.txt"
+cat "$RESULTS"
+
+exit "$FAILS"

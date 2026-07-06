@@ -1,0 +1,131 @@
+Subject: [PATCH] swayimg: add Darwin/iOS portability shims
+
+iOS has no eventfd/timerfd headers. Use pipe-backed pollable descriptors on
+Apple targets so the existing application poll loop can still wait for wakeups
+and timers. Darwin also exposes st_mtime rather than Linux st_mtim.
+
+diff -ruN -U0 --exclude=*.bak a/src/fdevent.cpp b/src/fdevent.cpp
+--- a/src/fdevent.cpp	2026-06-20 22:41:12
++++ b/src/fdevent.cpp	2026-07-06 00:00:00
+@@ -6,0 +7,5 @@
++#ifdef __APPLE__
++#include <fcntl.h>
++#include <chrono>
++#include <thread>
++#else
+@@ -8,0 +14 @@
++#endif
+@@ -12,0 +19,15 @@
++#ifdef __APPLE__
++static void make_pipe(int& read_fd, int& write_fd)
++{
++    int fds[2] = { -1, -1 };
++    if (pipe(fds) == 0) {
++        read_fd = fds[0];
++        write_fd = fds[1];
++        fcntl(read_fd, F_SETFL, fcntl(read_fd, F_GETFL, 0) | O_NONBLOCK);
++        fcntl(write_fd, F_SETFL, fcntl(write_fd, F_GETFL, 0) | O_NONBLOCK);
++        fcntl(read_fd, F_SETFD, FD_CLOEXEC);
++        fcntl(write_fd, F_SETFD, FD_CLOEXEC);
++    }
++}
++#endif
++
+@@ -19,0 +41,9 @@
++#ifdef __APPLE__
++FdEvent::~FdEvent()
++{
++    if (write_fd != -1) {
++        close(write_fd);
++    }
++}
++#endif
++
+@@ -21,0 +52,3 @@
++#ifdef __APPLE__
++    make_pipe(fd, write_fd);
++#else
+@@ -22,0 +56 @@
++#endif
+@@ -29,0 +64,3 @@
++#ifdef __APPLE__
++        len = write(write_fd, &value, sizeof(value));
++#else
+@@ -30,0 +68 @@
++#endif
+@@ -42,0 +81,10 @@
++#ifdef __APPLE__
++FdTimer::~FdTimer()
++{
++    ++generation;
++    if (write_fd != -1) {
++        close(write_fd);
++    }
++}
++#endif
++
+@@ -44,0 +93,3 @@
++#ifdef __APPLE__
++    make_pipe(fd, write_fd);
++#else
+@@ -45,0 +97 @@
++#endif
+@@ -49,0 +102,19 @@
++#ifdef __APPLE__
++    const size_t gen = ++generation;
++    const int out_fd = write_fd;
++    std::thread([this, gen, out_fd, delay, interval]() {
++        auto wait_ms = delay;
++        do {
++            std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
++            if (generation.load() != gen) {
++                return;
++            }
++            const uint64_t value = 1;
++            ssize_t len;
++            do {
++                len = write(out_fd, &value, sizeof(value));
++            } while (len == -1 && errno == EINTR);
++            wait_ms = interval;
++        } while (interval != 0);
++    }).detach();
++#else
+@@ -55,0 +127 @@
++#endif
+diff -ruN -U0 --exclude=*.bak a/src/fdevent.hpp b/src/fdevent.hpp
+--- a/src/fdevent.hpp	2026-06-20 22:41:12
++++ b/src/fdevent.hpp	2026-07-06 00:00:00
+@@ -8,0 +9,4 @@
++#ifdef __APPLE__
++#include <atomic>
++#endif
++
+@@ -28,0 +33,4 @@
++#ifdef __APPLE__
++    ~FdEvent() override;
++
++#endif
+@@ -35,0 +44,5 @@
++
++#ifdef __APPLE__
++private:
++    int write_fd = -1;
++#endif
+@@ -43,0 +57,4 @@
++#ifdef __APPLE__
++    ~FdTimer() override;
++
++#endif
+@@ -51,0 +69,6 @@
++
++#ifdef __APPLE__
++private:
++    int write_fd = -1;
++    mutable std::atomic_size_t generation { 0 };
++#endif
+diff -ruN -U0 --exclude=*.bak a/src/gallery.cpp b/src/gallery.cpp
+--- a/src/gallery.cpp	2026-06-20 22:41:12
++++ b/src/gallery.cpp	2026-07-06 00:00:00
+@@ -538 +538 @@
+-    if (st_image.st_mtim.tv_sec > st_thumb.st_mtim.tv_sec) {
++    if (st_image.st_mtime > st_thumb.st_mtime) {

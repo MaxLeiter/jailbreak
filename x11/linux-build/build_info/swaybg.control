@@ -1,0 +1,13 @@
+Package: swaybg
+Version: @DEB_SWAYBG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/swaywm/swaybg
+Depends: libwayland0, libcairo2
+Description: Wallpaper tool for Wayland compositors
+ swaybg is a small wallpaper utility for wlroots-compatible Wayland
+ compositors. It maps a background layer-shell surface and draws image buffers
+ with cairo. This iOS build disables gdk-pixbuf to keep the dependency surface
+ small.

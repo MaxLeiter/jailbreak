@@ -1,0 +1,12 @@
+Package: tofi
+Version: @DEB_TOFI_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/philj56/tofi
+Depends: libwayland0, libxkbcommon0, libcairo2, libpango-1.0-0, libglib2.0-0, libharfbuzz0b, libfreetype6
+Description: Tiny dynamic menu for Wayland
+ tofi is a fast dmenu/rofi-style launcher for Wayland compositors. It draws
+ with cairo and pango/harfbuzz into wl_shm buffers and maps as a layer-shell
+ client under the iosc compositor.

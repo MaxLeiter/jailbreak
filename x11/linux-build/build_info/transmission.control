@@ -1,0 +1,12 @@
+Package: transmission
+Version: @DEB_TRANSMISSION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Networking
+Priority: optional
+Homepage: https://transmissionbt.com/
+Depends: libcurl4, libssl3, libpsl5
+Description: Transmission BitTorrent daemon and command-line clients
+ Transmission is a fast and easy BitTorrent client. This Xios build ships the
+ daemon, transmission-cli, transmission-remote, create/edit/show utilities, and
+ the generated web UI. The GTK client is omitted until gtkmm is packaged.

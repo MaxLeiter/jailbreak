@@ -1,0 +1,11 @@
+Package: libxslt1-dev
+Version: @DEB_LIBXSLT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libxslt
+Depends: libxslt1.1 (= @DEB_LIBXSLT_V@), libxml2-dev
+Description: XSLT processing library - development files
+ Headers, pkg-config metadata, and unversioned dylib symlinks for building
+ software against libxslt and libexslt.

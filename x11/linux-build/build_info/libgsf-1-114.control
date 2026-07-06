@@ -1,0 +1,12 @@
+Package: libgsf-1-114
+Version: @DEB_LIBGSF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libgsf
+Depends: libglib2.0-0, libxml2, libz-ng2
+Description: GNOME structured file library
+ libgsf provides access to structured file formats such as OLE2 and Zip-based
+ document containers. This iOS build disables optional bzip2 and thumbnailer
+ support for a small Gnumeric dependency surface.

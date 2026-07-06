@@ -235,19 +235,19 @@ typelib target(s), installs the .gir+.typelib. Per-lib gotchas learned:
   it's the same incomplete-scan issue, NOT a real GDM gap — rebuild the Gdm-1.0 typelib from the
   patched libgdm tree (volume build_work/libgdm, client-only) with introspection.
 
-### ⚠️ PACKAGING FOR USERS (raised by Max 2026-07-02) — none of the above reaches users yet
-Everything in Blocker #4 is a HAND-FIX to this one device. For an end user installing the debs,
-these must be baked into the packages. The packaging TODO:
-1. **8 regenerated typelibs** (Atk-1.0, Atspi-2.0, Gck-2, Gcr-4, GnomeDesktop-4.0/GnomeBG/GnomeRR,
-   GWeather-4.0, St-14, Shell-14, + Gdm-1.0 pending) → ship in the respective `*-dev`/gir debs.
-   Root cause to fix in the pipeline: these libs were cross-built `-Dintrospection=false/disabled`
-   (cross can't run the gir dumper), and the on-device closure-scan fallback produced stubs/partials.
-   The durable answer is an on-device gir-generation PASS in packaging (build each with
-   introspection, capture the .gir+.typelib into the deb) — codify `gir-build-lib.sh` + the per-lib
-   flag table above into a repo script.
-2. **libgweather4 deb**: add `/var/jb/usr/lib/libgweather-4/Locations.bin` (recipe currently drops it).
-3. **gdm/login-screen schema**: ship `org.gnome.login-screen.gschema.xml` (via libgdm or a gdm-data deb).
-4. **libgcrypt symlink** if any packaged lib needs `-lgcrypt` (or fix at the libgcrypt deb).
+### PACKAGING FOR USERS (raised by Max 2026-07-02)
+**UPDATE 2026-07-06:** the clean-install GNOME boot payload is now package-backed instead of
+hand-staged:
+1. `xios-gnome-typelibs 0.2.0` ships the regenerated boot typelibs, including GWeather-4.0,
+   St-14/Shell-14, and Gdm-1.0.
+2. `libgweather-4-0 4.4.2+ios2` ships `/var/jb/usr/lib/libgweather-4/Locations.bin`.
+3. `libgdm1 46.0+ios2` ships `org.gnome.login-screen.gschema.xml`.
+4. `xios-gnome 0.1.1` depends on the GNOME JS-import runtime closure:
+   libgdm, geoclue/geocode, libgweather, and upower, in addition to the session/shell/stub packages.
+
+Remaining packaging polish: keep moving the on-device gir-generation steps into reproducible package
+scripts instead of relying on captured device outputs, and add a libgcrypt development symlink package
+only if a shipped consumer still needs `-lgcrypt` at build time.
 GDM itself is NOT a blocker: libgdm (client-only) exports what the shell calls; it needs a complete
 typelib, not a running gdm daemon.
 

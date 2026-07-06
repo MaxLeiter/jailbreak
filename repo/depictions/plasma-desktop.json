@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "First-light Plasma Desktop containment layer for Xios"
+          "markdown": "Plasma Desktop containment layer for Xios"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios4"
+          "text": "6.1.5+ios5"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "404.4 KiB"
+          "text": "401.1 KiB"
         },
         {
           "class": "DepictionTableTextView",
