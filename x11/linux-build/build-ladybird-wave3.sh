@@ -7,7 +7,9 @@
 #   docker run --rm --platform linux/arm64 \
 #     -v procursus-vol-ladybird:/work/Procursus \
 #     -v "$PWD/build-ladybird-wave3.sh:/work/build-ladybird-wave3.sh:ro" \
+#     -v "$PWD/recipes:/work/recipes:ro" \
 #     -v "$PWD/recipes-ladybird:/work/recipes-ladybird:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build_info-ladybird:/work/build_info-ladybird:ro" \
 #     -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 -c /work/build-ladybird-wave3.sh
@@ -28,6 +30,19 @@ cd /work/Procursus
 echo "==> installing wave-3 recipes into makefiles/ (bumps/new override upstream)"
 cp -v /work/recipes-ladybird/openssl.mk /work/recipes-ladybird/nghttp2.mk \
       /work/recipes-ladybird/curl.mk /work/recipes-ladybird/ffmpeg.mk makefiles/
+
+stage_required_patch_stack() {
+  local pkg="$1"
+  if [ ! -d "/work/ports/$pkg/patches" ]; then
+    echo "ERROR: missing /work/ports/$pkg/patches; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg source patches"
+  bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
+}
+
+stage_required_patch_stack nghttp2
+stage_required_patch_stack curl
 
 echo "==> installing wave-3 override control templates into build_info/"
 # libcurl4: drop libidn2-0 dep. ffmpeg: new 7.1 soname packages (upstream has 59/57/8 etc.).

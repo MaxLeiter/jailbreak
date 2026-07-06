@@ -77,9 +77,11 @@ Current converted non-Qt stacks:
 - `ports/harfbuzz/patches`: marks the CFF1 supplemental-size local as unused
   for the iOS clang build.
 - `ports/nghttp2/patches`: enables Darwin's RFC3542 control-message macros
-  needed by nghttp2's socket utility code.
+  needed by nghttp2's socket utility code. The Ladybird Wave 3 recipe reuses
+  this same stack for its nghttp2 package.
 - `ports/curl/patches`: drops curl's runtime library configure probe, which is
-  not meaningful in the iOS cross-build environment.
+  not meaningful in the iOS cross-build environment. The Ladybird Wave 3 recipe
+  reuses this same stack for its newer curl pin.
 - `ports/exempi/patches`: drops the unshipped sample programs and the
   unavailable `-lrt` link flag for the iOS build.
 - `ports/colord/patches`: trims colord to the libcolord client path by making

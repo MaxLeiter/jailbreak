@@ -26,7 +26,7 @@ curl-setup: setup
 		rm -rf $(BUILD_WORK)/curl $(BUILD_STAGE)/curl; \
 	fi
 	$(call EXTRACT_TAR,curl-$(CURL_VERSION).tar.xz,curl-$(CURL_VERSION),curl)
-	sed -i '/CURL_VERIFY_RUNTIMELIBS/d' $(BUILD_WORK)/curl/configure.ac
+	$(call DO_PATCH,curl,curl,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/curl/.build_complete),)
 curl:

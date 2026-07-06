@@ -16,7 +16,7 @@ DEB_NGHTTP2_V   ?= $(NGHTTP2_VERSION)+ios1
 nghttp2-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/nghttp2/nghttp2/releases/download/v$(NGHTTP2_VERSION)/nghttp2-$(NGHTTP2_VERSION).tar.xz)
 	$(call EXTRACT_TAR,nghttp2-$(NGHTTP2_VERSION).tar.xz,nghttp2-$(NGHTTP2_VERSION),nghttp2)
-	sed -i '1i #define\ __APPLE_USE_RFC_3542\ 1' $(BUILD_WORK)/nghttp2/src/util.cc
+	$(call DO_PATCH,nghttp2,nghttp2,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/nghttp2/.build_complete),)
 nghttp2:
