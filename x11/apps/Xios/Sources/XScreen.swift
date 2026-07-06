@@ -2466,15 +2466,8 @@ final class XScreenView: UIView {
         for line in lines {
             if line.hasPrefix("ERR ") { return (apps, line) }
             if line.hasPrefix("APPS_END") { break }
-            let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
-            guard fields.count >= 6 else { continue }
-            apps.append(LauncherApp(
-                id: String(fields[0]),
-                name: String(fields[1]),
-                exec: String(fields[2]),
-                icon: String(fields[3]),
-                bundlePath: String(fields[4]),
-                enabled: String(fields[5]).lowercased() != "disabled"))
+            guard let app = LauncherApp.parseIOSCDLine(line) else { continue }
+            apps.append(app)
         }
         apps.sort {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
@@ -2513,18 +2506,7 @@ final class XScreenView: UIView {
     /// file is absent or unparseable. State walks stopping → starting → waiting →
     /// relaunching → up (or error / compositor-only).
     private func sessionStatus() -> SessionStatus? {
-        guard let data = FileManager.default.contents(atPath: sessionStatusPath),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        return SessionStatus(
-            preset: obj["preset"] as? String ?? "?",
-            state: obj["state"] as? String ?? "?",
-            message: obj["message"] as? String ?? "",
-            width: obj["width"] as? Int,
-            height: obj["height"] as? Int,
-            display: obj["display"] as? String,
-            ddx: obj["ddx"] as? String)
+        SessionStatus.load(from: sessionStatusPath)
     }
 
     /// One-line "preset: state — message" for the picker card.

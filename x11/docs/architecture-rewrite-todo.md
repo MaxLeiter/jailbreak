@@ -123,3 +123,10 @@ Continue the `iosc` split and explicit render-plan track by moving
 `iosc.c` still owns the compositor damage store and passes a consumer callback
 into the plan builder, so behavior stays unchanged while render planning now has
 a standalone module boundary.
+
+## Current Eighth Slice
+
+Continue the Xios.app host split by moving session-status JSON parsing and
+ioscd launcher-app line parsing into the display/session model types.
+`XScreenView` still controls presentation and actions, but it no longer owns
+those wire-format parsing details.
