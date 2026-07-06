@@ -32,8 +32,8 @@ libjpeg-turbo: libjpeg-turbo-setup
 		-DENABLE_SHARED=ON \
 		-DENABLE_STATIC=ON \
 		-DWITH_TURBOJPEG=ON \
-		-DWITH_SIMD=ON
-	sed -i -E 's/(define[[:space:]]+JPEG_LIB_VERSION[[:space:]]+)62/\180/' $(BUILD_WORK)/libjpeg-turbo/jconfig.h
+		-DWITH_SIMD=ON \
+		-DWITH_JPEG8=ON
 	+$(MAKE) -C $(BUILD_WORK)/libjpeg-turbo
 	+$(MAKE) -C $(BUILD_WORK)/libjpeg-turbo install \
 		DESTDIR="$(BUILD_STAGE)/libjpeg-turbo"

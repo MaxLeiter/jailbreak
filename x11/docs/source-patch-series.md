@@ -130,6 +130,8 @@ Remaining non-Qt procedural source edits:
   such as `config.mak`, installed script shebangs, control metadata, and staged
   public headers. Keep those procedural unless the owning build system grows a
   stable pre-configure source seam.
+- `recipes-ladybird/libjpeg-turbo.mk` uses upstream `-DWITH_JPEG8=ON` instead
+  of patching generated `jconfig.h`, so it intentionally has no patch stack.
 - `recipes-ladybird/ladybird-m0-patches.sh` is not a dependency recipe in this
   pass; it is a large engine bring-up patch script and should be converted as a
   separate Ladybird-specific cleanup.
