@@ -20,7 +20,7 @@ version for any agent.
 | foot 1.27.0+ios3 | out/ ✓ | installed | **YES** | PTY + locale + render-worker path verified |
 | imv 5.0.1 | out/ ✓ | installed | untested | wl_shm path (same as grim, should map) |
 | mpv 0.36.0+ios2 | out/ ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
-| zathura 0.5.12 | out/ ✓ | installed | **YES (window)** | GTK3 Wayland maps; PDF plugin/content load still needs a real doc/plugin check |
+| zathura 0.5.12 | out/ ✓ | installed | **YES** | GTK3 Wayland + PDF/poppler content render verified |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
 | gnome-calculator 46.2 | in repo/debs | installed | (GTK4, works) | — |
 | wl-clipboard 2.2.1 | out/ ✓ | installed | **YES (CLI)** | round-trip verified with package-installed `iosc 0.9.10` |
@@ -44,6 +44,14 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   Wayland backend libs and exports `gdk_wayland_*`. Captures:
   `artifacts/device-runs/20260704-appwave-smoke/cap-zathura.png`,
   `artifacts/device-runs/20260704-appwave-smoke/cap-hitori.png`.
+- **zathura PDF path — WORKS.** The device has `zathura-pdf-poppler 0.3.3`
+  installed at `/var/jb/usr/lib/zathura/libpdf-poppler.dylib` alongside
+  `libpoppler-glib8`. Generated a real Cairo PDF on-device with `pango-view
+  --no-display`, verified the `%PDF-1.5` header, then launched
+  `zathura /var/jb/tmp/xios-zathura-smoke.pdf` in classic `iosc` with
+  `bin/iosc-capture-remote.sh`. The client stayed alive with no failure
+  signature and the compositor capture shows the rendered PDF page:
+  `artifacts/device-runs/20260705-zathura-pdf/cap-zathura-pdf.png`.
 - **hitori schema — FIX PACKAGED + VERIFIED.** `g_settings_new("org.gnome.hitori")`
   aborts unless the schema is compiled; added build_info/hitori.postinst to run
   glib-compile-schemas. NOTE: `GSETTINGS_BACKEND=memory` does NOT help (schema lookup
@@ -137,8 +145,6 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 ## Open items / TODO
 
-- [ ] zathura: verify real document rendering with the intended PDF/poppler plugin path
-      (the GTK window maps; the smoke PDF was not recognized as a document).
 - [ ] On-device verify slurp / fuzzel / imv.
 - [ ] Publish (Max-gated): copy the app wave + `angle -3` into repo/debs, run make-repo, deploy.
 
