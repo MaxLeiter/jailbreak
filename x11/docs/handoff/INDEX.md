@@ -39,7 +39,14 @@ One file per domain. Each is a self-contained charter for an independent agent: 
   no longer blocks first paint, and Quick Settings no longer hits the `get_accessible`/`_output`
   JS errors. Later stop/KDE requests can still supersede GNOME by design.
 - **KDE/KF6 has KWin first-light, QtWayland/ANGLE IOSurface smoke, `xios-session kde`/`kde-desktop` launching the real upstream Plasma Desktop shell, a live KIO `desktop:` worker, real KScreen/System Settings/KCM packages, Breeze/plasma-integration styling, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** Next gate is productizing stale user-config migration, exercising `systemsettings`/`kcm_kscreen` and app launches, and replacing remaining Mobile/Nano first-light shims with real service bridges.
-- **Wayland app ecosystem is growing quickly**: wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim and the rootless Xwayland XWM work are now on local commits. The package repo output is very dirty; coordinate before publishing. See **wayland-apps.md** for per-app status, the launch-in-iosc fixes (foot PTY, GTK3 wayland backend, mpv EGL shim, hitori schema — several verified only in code, pending device), and the `bin/iosc-capture*` debug tooling. grim screenshots WORK on device (classic mode); foot is root-caused (PTY + C locale).
+- **Wayland app ecosystem is now broad enough for daily smoke testing**:
+  wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim/dunst/GTK3 apps and the rootless
+  Xwayland XWM work are on local commits and have on-device evidence in classic
+  `iosc`. The package repo output is very dirty; coordinate before publishing.
+  See **wayland-apps.md** for per-app status, the launch-in-iosc fixes (foot PTY,
+  GTK3 wayland backend, mpv EGL shim, hitori schema, fuzzel worker defaults,
+  imv Xwayland wrapper), and the `bin/iosc-capture*` debug tooling. Remaining
+  app-wave work is native imv Wayland rendering and Max-gated publish.
 
 ## Key cross-cutting gotchas (all domains touching the app/device)
 - **Deploy Xios.app**: `scp -r` DROPS the exec bit AND the bundle `_CodeSignature`. After scp: `chmod +x Xios.app/Xios`, then re-sign `ldid -e Xios.app/Xios > ents; ldid -S<ents> Xios.app/Xios` (keeps GPU entitlements). `scp -r` into an existing bundle NESTS → `rm -rf` the dest first. `uicache -p` after. Bundle id `com.max.xios`.
