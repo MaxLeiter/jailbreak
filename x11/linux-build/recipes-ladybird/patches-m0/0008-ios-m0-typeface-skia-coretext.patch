@@ -1,0 +1,36 @@
+Subject: [PATCH] ios-m0: use CoreText SkFontMgr in TypefaceSkia
+
+The iOS Skia build provides the CoreText font manager, but not the fontconfig
+font manager. Route iOS through CoreText so WebContent/WebWorker do not link
+against the missing SkFontMgr_New_FontConfig symbol.
+--- a/Libraries/LibGfx/Font/TypefaceSkia.cpp
++++ b/Libraries/LibGfx/Font/TypefaceSkia.cpp
+@@ -33,6 +33,10 @@
+ #    include <ports/SkFontMgr_mac_ct.h>
+ #    include <ports/SkTypeface_mac.h>
+ #endif
++#ifdef AK_OS_IOS  // iOS: CoreText SkFontMgr (Apple Skia has no fontconfig fontmgr)
++#    include <CoreText/CoreText.h>
++#    include <ports/SkFontMgr_mac_ct.h>
++#endif
+ 
+ namespace Gfx {
+ 
+@@ -81,7 +85,7 @@ static SkFontMgr& font_manager()
+ {
+     auto& font_manager = skia_font_manager();
+     if (!font_manager) {
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+         if (Gfx::FontDatabase::the().system_font_provider_name() != "FontConfig"sv) {
+             font_manager = SkFontMgr_New_CoreText(nullptr);
+         }
+@@ -90,6 +94,8 @@ static SkFontMgr& font_manager()
+         font_manager = SkFontMgr_New_Android(nullptr);
+ #elif defined(AK_OS_WINDOWS)
+         font_manager = SkFontMgr_New_DirectWrite();
++#elif defined(AK_OS_IOS)
++        // iOS: CoreText SkFontMgr selected above; Apple Skia build has no fontconfig fontmgr.
+ #else
+         if (!font_manager) {
+             font_manager = SkFontMgr_New_FontConfig(nullptr, SkFontScanner_Make_FreeType());

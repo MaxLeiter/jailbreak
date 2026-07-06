@@ -5,3 +5,4 @@
 0005-ios-m0-libjs-host-asm-tools.patch
 0006-ios-m0-webview-compositor-gates.patch
 0007-ios-m0-headless-shot-driver.patch
+0008-ios-m0-typeface-skia-coretext.patch
