@@ -4,6 +4,7 @@
 # directly). Run in the container:
 #   docker run --rm --platform linux/arm64 --cpus=3 --entrypoint /usr/bin/bash \
 #     -v procursus-vol-gjs:/work/Procursus -v procursus-vol-gtk:/from:ro -v "$PWD/out:/out:ro" \
+#     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build-gjs-manual.sh:/work/b.sh:ro" procursus-xbuild:bookworm-arm64 /work/b.sh
 #
 # State as of handoff (2026-06-30): configure was reached with ALL deps resolving incl mozjs-115;
@@ -66,101 +67,18 @@ chmod +x cc cxx
 # --- 3. fetch + configure + build gjs -------------------------------------------------------
 [ -f gjs-1.78.0.tar.xz ] || curl -fsSLo gjs-1.78.0.tar.xz https://download.gnome.org/sources/gjs/1.78/gjs-1.78.0.tar.xz
 rm -rf gjs-1.78.0; tar xf gjs-1.78.0.tar.xz; cd gjs-1.78.0
-python3 - <<'PY'
-from pathlib import Path
-p = Path("meson.build")
-s = p.read_text()
-old = """minimal_program = cxx.run('''
-#include <js/Initialization.h>
-int main(void) {
-    if (!JS_Init()) return 1;
-    JS_ShutDown();
-    return 0;
-}
-''',
-    args: debug_arg, dependencies: spidermonkey,
-    name: 'SpiderMonkey sanity check')
-"""
-new = """minimal_program_source = '''
-#include <js/Initialization.h>
-int main(void) {
-    if (!JS_Init()) return 1;
-    JS_ShutDown();
-    return 0;
-}
-'''
-
-if meson.is_cross_build()
-    minimal_program_compiled = cxx.links(minimal_program_source,
-        args: debug_arg, dependencies: spidermonkey,
-        name: 'SpiderMonkey sanity check')
-    minimal_program_returncode = 0
-else
-    minimal_program = cxx.run(minimal_program_source,
-        args: debug_arg, dependencies: spidermonkey,
-        name: 'SpiderMonkey sanity check')
-    minimal_program_compiled = minimal_program.compiled()
-    minimal_program_returncode = minimal_program.returncode()
-endif
-"""
-if old not in s:
-    raise SystemExit("gjs meson SpiderMonkey sanity block not found")
-s = s.replace(old, new)
-s = s.replace("if not minimal_program.compiled()", "if not minimal_program_compiled")
-s = s.replace("elif minimal_program.returncode() != 0", "elif minimal_program_returncode != 0")
-old = """### Build GjsPrivate introspection library #####################################
-
-gjs_private_gir = gnome.generate_gir(libgjs,
-    includes: ['GObject-2.0', 'Gio-2.0'], sources: libgjs_private_sources,
-    namespace: 'GjsPrivate', nsversion: '1.0', identifier_prefix: 'Gjs',
-    symbol_prefix: 'gjs_', extra_args: '--warn-error', install: true,
-    install_dir_gir: false, install_dir_typelib: pkglibdir / 'girepository-1.0')
-gjs_private_typelib = gjs_private_gir[1]
-"""
-new = """### Build GjsPrivate introspection library #####################################
-
-if meson.is_cross_build()
-    warning('Skipping GjsPrivate GIR generation during the cross build; generate the typelib on-device.')
-    gjs_private_typelib = []
-else
-    gjs_private_gir = gnome.generate_gir(libgjs,
-        includes: ['GObject-2.0', 'Gio-2.0'], sources: libgjs_private_sources,
-        namespace: 'GjsPrivate', nsversion: '1.0', identifier_prefix: 'Gjs',
-        symbol_prefix: 'gjs_', extra_args: '--warn-error', install: true,
-        install_dir_gir: false, install_dir_typelib: pkglibdir / 'girepository-1.0')
-    gjs_private_typelib = gjs_private_gir[1]
-endif
-"""
-if old not in s:
-    raise SystemExit("gjs private GIR block not found")
-s = s.replace(old, new)
-old = """### Tests and test setups ######################################################
-
-subdir('installed-tests')
-
-# Note: The test program in test/ needs to be ported
-#       to Windows before we can build it on Windows.
-if host_machine.system() != 'windows'
-    subdir('test')
-endif
-"""
-new = """### Tests and test setups ######################################################
-
-if not meson.is_cross_build()
-    subdir('installed-tests')
-
-    # Note: The test program in test/ needs to be ported
-    #       to Windows before we can build it on Windows.
-    if host_machine.system() != 'windows'
-        subdir('test')
-    endif
-endif
-"""
-if old not in s:
-    raise SystemExit("gjs test subdir block not found")
-s = s.replace(old, new)
-p.write_text(s)
-PY
+PATCH_DIR="${GJS_PATCH_DIR:-/work/ports/gjs/patches}"
+if [ ! -f "$PATCH_DIR/series" ]; then
+  echo "ERROR: missing $PATCH_DIR/series; mount ports with -v \\$PWD/../ports:/work/ports:ro or set GJS_PATCH_DIR." >&2
+  exit 1
+fi
+while IFS= read -r patch_name; do
+  patch_name="${patch_name%%#*}"
+  patch_name="${patch_name## }"
+  patch_name="${patch_name%% }"
+  [ -n "$patch_name" ] || continue
+  patch -p1 < "$PATCH_DIR/$patch_name"
+done < "$PATCH_DIR/series"
 cat > cross.txt <<EOF
 [host_machine]
 system = 'darwin'

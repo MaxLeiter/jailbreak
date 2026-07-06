@@ -1,0 +1,97 @@
+Subject: [PATCH] ios: make meson cross-build checks non-executing
+
+Avoid target execution while cross-building GJS for iOS. Convert the
+SpiderMonkey sanity run check to a link check, skip GjsPrivate GIR generation
+until the on-device typelib pass, and skip test subdirs during the cross build.
+--- a/meson.build
++++ b/meson.build
+@@ -258,20 +258,31 @@
+ # Check if a minimal SpiderMonkey program compiles, links, and runs. If not,
+ # it's most likely the case that SpiderMonkey was configured incorrectly, for
+ # example by building mozglue as a shared library.
+-minimal_program = cxx.run('''
++minimal_program_source = '''
+ #include <js/Initialization.h>
+ int main(void) {
+     if (!JS_Init()) return 1;
+     JS_ShutDown();
+     return 0;
+ }
+-''',
+-    args: debug_arg, dependencies: spidermonkey,
+-    name: 'SpiderMonkey sanity check')
++'''
+ 
++if meson.is_cross_build()
++    minimal_program_compiled = cxx.links(minimal_program_source,
++        args: debug_arg, dependencies: spidermonkey,
++        name: 'SpiderMonkey sanity check')
++    minimal_program_returncode = 0
++else
++    minimal_program = cxx.run(minimal_program_source,
++        args: debug_arg, dependencies: spidermonkey,
++        name: 'SpiderMonkey sanity check')
++    minimal_program_compiled = minimal_program.compiled()
++    minimal_program_returncode = minimal_program.returncode()
++endif
++
+ recommended_configuration = ''' Check the recommended configuration:
+ https://github.com/spidermonkey-embedders/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md'''
+-if not minimal_program.compiled()
++if not minimal_program_compiled
+     error('''A minimal SpiderMonkey program
+ could not be compiled or linked. Most likely you should build it with a
+ different configuration.''' + recommended_configuration)
+@@ -280,7 +291,7 @@
+ SpiderMonkey program executes will not be performed. Before shipping GJS, you
+ should check that it does not crash on startup, since building SpiderMonkey with
+ the wrong configuration may cause that.''' + recommended_configuration)
+-elif minimal_program.returncode() != 0
++elif minimal_program_returncode != 0
+     error('''A minimal SpiderMonkey program
+ failed to execute. Most likely you should build it with a different
+ configuration.''' + recommended_configuration)
+@@ -583,12 +594,17 @@
+ 
+ ### Build GjsPrivate introspection library #####################################
+ 
+-gjs_private_gir = gnome.generate_gir(libgjs,
+-    includes: ['GObject-2.0', 'Gio-2.0'], sources: libgjs_private_sources,
+-    namespace: 'GjsPrivate', nsversion: '1.0', identifier_prefix: 'Gjs',
+-    symbol_prefix: 'gjs_', extra_args: '--warn-error', install: true,
+-    install_dir_gir: false, install_dir_typelib: pkglibdir / 'girepository-1.0')
+-gjs_private_typelib = gjs_private_gir[1]
++if meson.is_cross_build()
++    warning('Skipping GjsPrivate GIR generation during the cross build; generate the typelib on-device.')
++    gjs_private_typelib = []
++else
++    gjs_private_gir = gnome.generate_gir(libgjs,
++        includes: ['GObject-2.0', 'Gio-2.0'], sources: libgjs_private_sources,
++        namespace: 'GjsPrivate', nsversion: '1.0', identifier_prefix: 'Gjs',
++        symbol_prefix: 'gjs_', extra_args: '--warn-error', install: true,
++        install_dir_gir: false, install_dir_typelib: pkglibdir / 'girepository-1.0')
++    gjs_private_typelib = gjs_private_gir[1]
++endif
+ 
+ ### Build gjs-console interpreter ##############################################
+ 
+@@ -679,12 +695,14 @@
+ 
+ ### Tests and test setups ######################################################
+ 
+-subdir('installed-tests')
++if not meson.is_cross_build()
++    subdir('installed-tests')
+ 
+-# Note: The test program in test/ needs to be ported
+-#       to Windows before we can build it on Windows.
+-if host_machine.system() != 'windows'
+-    subdir('test')
++    # Note: The test program in test/ needs to be ported
++    #       to Windows before we can build it on Windows.
++    if host_machine.system() != 'windows'
++        subdir('test')
++    endif
+ endif
+ 
+ valgrind_environment = environment()

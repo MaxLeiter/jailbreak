@@ -15,6 +15,7 @@ DEB_GJS_V     ?= $(GJS_VERSION)+ios1
 gjs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gjs/$(GJS_MAJOR_V)/gjs-$(GJS_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gjs-$(GJS_VERSION).tar.xz,gjs-$(GJS_VERSION),gjs)
+	$(call DO_PATCH,gjs,gjs,-p1)
 	rm -rf $(BUILD_WORK)/gjs/build
 	mkdir -p $(BUILD_WORK)/gjs/build
 	echo -e "[host_machine]\n \

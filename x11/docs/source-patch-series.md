@@ -47,6 +47,10 @@ Current converted non-Qt stacks:
   atk-bridge disabled, and the iOS GDM promisify guard. `patches-eds` carries
   the same iOS port while keeping EDS/calendar enabled, and is staged only when
   `WITH_EDS=1`.
+- `ports/gjs/patches`: carries the GJS cross-build Meson edits for the
+  SpiderMonkey sanity check, GjsPrivate GIR generation, and test subdirs. The
+  manual GJS build applies this stack directly, and the draft recipe is wired
+  to `DO_PATCH` if that path is revived.
 - `ports/mesa-demos/patches`: carries the iOS Wayland EGLUT source port,
   OpenGL include spelling fix, iOS `__sincos`, and the wider es2gears default
   window. The generated `xdg-shell` protocol C/header files stay procedural via
