@@ -9,7 +9,7 @@ endif
 SUBPROJECTS           += poppler-qt6
 POPPLER_QT6_VERSION   := 24.08.0
 POPPLER_QT6_SOV       := 3
-DEB_POPPLER_QT6_V     ?= $(POPPLER_QT6_VERSION)+qt6ios1
+DEB_POPPLER_QT6_V     ?= $(POPPLER_QT6_VERSION)+qt6ios1+ios1
 
 poppler-qt6-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://poppler.freedesktop.org/poppler-$(POPPLER_QT6_VERSION).tar.xz)
