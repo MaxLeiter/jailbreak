@@ -75,3 +75,11 @@ graphics debs, so it is the right first guardrail for tracks 7 and 8.
 The first implementation defines publish-time hardware profiles for
 `gpu-client`, `platform-gl`, `iosurface-ipc`, and `platform-iosurface` binaries,
 then rejects incoherent packages before DER re-signing.
+
+## Current Second Slice
+
+Start the runtime capability registry in
+`apps/iosc-desktop/xios-capability-profiles.sh`. It names the first cross-stack
+profiles, ties each one to an entitlement tier, records package/smoke
+expectations, and prints sourceable env blocks. Launchers can now move duplicated
+GTK/Qt/KDE/Xwayland env bundles into this shared registry one caller at a time.
