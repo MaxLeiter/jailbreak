@@ -56,60 +56,6 @@ apply_quilt_series() {
 apply_quilt_series "$SCRIPT_DIR/patches-m0"
 
 # ---------------------------------------------------------------------------------------------
-# 6) Root: build the helper Services for iOS but skip the AppKit/Qt UI (no Cocoa on UIKit).
-#    ENABLE_GUI_TARGETS defaults ON; we pass it explicitly. UI is skipped for iOS.
-# ---------------------------------------------------------------------------------------------
-f=CMakeLists.txt
-if grep -q 'add_subdirectory(UI)' "$f" && ! grep -q 'iOS: skip UI' "$f"; then
-  perl -0pi -e 's/(if \(ENABLE_GUI_TARGETS\)\n\s*add_subdirectory\(Services\)\n)(\s*)add_subdirectory\(UI\)/$1$2if (NOT IOS)  # iOS: skip UI (no AppKit\/UIKit frontend at M0)\n$2    add_subdirectory(UI)\n$2endif()/' "$f"
-  say "root: Services built for iOS, UI skipped"
-else
-  say "root: already patched"
-fi
-
-# ---------------------------------------------------------------------------------------------
-# 7) Services: build only the M0 helper set (ImageDecoder, RequestServer, WebContent, WebWorker).
-#    Skip Compositor (links real ANGLE GLES entry points -> GPU path, deferred to M1/M3) and
-#    WebDriver (automation frontend, not needed for headless first-light).
-# ---------------------------------------------------------------------------------------------
-f=Services/CMakeLists.txt
-if ! grep -q 'iOS M0 helper set' "$f"; then
-  cat > "$f" <<'EOF'
-# iOS M0 helper set: the multiprocess engine helpers only. Compositor (ANGLE GLES) + WebDriver
-# are deferred (see ladybird-m0-patches.sh patch 7).
-add_subdirectory(ImageDecoder)
-add_subdirectory(RequestServer)
-add_subdirectory(WebContent)
-add_subdirectory(WebWorker)
-if (NOT IOS)
-    add_subdirectory(Compositor)
-    add_subdirectory(WebDriver)
-endif()
-EOF
-  say "Services: M0 helper set only (no Compositor/WebDriver on iOS)"
-else
-  say "Services: already patched"
-fi
-
-# ---------------------------------------------------------------------------------------------
-# 8) ladybird_helper_processes.cmake: drop Compositor from the helper list on iOS so nothing
-#    depends on the un-built target (the list drives helper spawn-path + install).
-# ---------------------------------------------------------------------------------------------
-f=Meta/CMake/ladybird_helper_processes.cmake
-if grep -q '^    Compositor' "$f" && ! grep -q 'iOS M0' "$f"; then
-  python3 - "$f" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-s=s.replace("set(ladybird_helper_processes\n    Compositor\n",
-            "# iOS M0: Compositor deferred (GPU/ANGLE)\nset(ladybird_helper_processes\n")
-open(p,"w").write(s)
-print("  [m0-patch] helper_processes: Compositor removed for M0")
-PY
-else
-  say "helper_processes: already patched"
-fi
-
-# ---------------------------------------------------------------------------------------------
 # 9) LibCore: gate the macOS-only Platform sources that CMake adds under bare `APPLE`. On our
 #    Darwin-system-name cross APPLE is true, but these are genuinely macOS-only:
 #      - Platform/ScopedAutoreleasePoolMacOS.mm : header ScopedAutoreleasePool.h already provides an

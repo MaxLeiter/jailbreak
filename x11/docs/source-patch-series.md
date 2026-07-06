@@ -134,7 +134,8 @@ Remaining non-Qt procedural source edits:
   of patching generated `jconfig.h`, so it intentionally has no patch stack.
 - `recipes-ladybird/patches-m0`: common Ladybird M0 engine-tree patches shared
   by headless and app builds. The stack gates macOS sandbox selection, libedit,
-  and the unused AVIF/JPEG-XL decoder dependency path for iOS.
+  the unused AVIF/JPEG-XL decoder dependency path, and the default M0 helper
+  build graph for iOS.
 - `recipes-ladybird/ladybird-m0-patches.sh` still carries the remaining
   environment-sensitive Ladybird engine bring-up edits. Convert it in small
   patches, keeping app-only behavior behind `LB_APP_BUILD`.

@@ -1,0 +1,32 @@
+Subject: [PATCH] ios-m0: trim helper build graph
+
+The M0 build uses the multiprocess engine helpers but does not build the
+desktop UI, the GPU Compositor, or WebDriver by default. Keep Services enabled
+for iOS, skip the AppKit/Qt UI, and leave the app-mode script path to re-enable
+the Compositor later when `LB_APP_BUILD=1`.
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -144 +144,3 @@
+-    add_subdirectory(UI)
++    if (NOT IOS)  # iOS: skip UI (no AppKit/UIKit frontend at M0)
++        add_subdirectory(UI)
++    endif()
+--- a/Meta/CMake/ladybird_helper_processes.cmake
++++ b/Meta/CMake/ladybird_helper_processes.cmake
+@@ -0,0 +1 @@
++# iOS M0: Compositor deferred (GPU/ANGLE)
+@@ -2 +2,0 @@
+-    Compositor
+--- a/Services/CMakeLists.txt
++++ b/Services/CMakeLists.txt
+@@ -1 +1,2 @@
+-add_subdirectory(Compositor)
++# iOS M0 helper set: the multiprocess engine helpers only. Compositor (ANGLE GLES) + WebDriver
++# are deferred (see ladybird-m0-patches.sh patch 7).
+@@ -5 +5,0 @@
+-add_subdirectory(WebDriver)
+@@ -6,0 +7,4 @@
++if (NOT IOS)
++    add_subdirectory(Compositor)
++    add_subdirectory(WebDriver)
++endif()
