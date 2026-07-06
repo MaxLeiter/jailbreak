@@ -475,6 +475,24 @@ xs_reap_slot_session_pgroups() {
     mv "$tmp" "$XS_SESSION_PGIDS" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
 }
 
+xs_reap_slot_named_processes() {
+    local slot="$1" needle pid
+    [ -n "$slot" ] || return 0
+    for needle in "wayland-$slot" "iosc-$slot-" "kwin-$slot"; do
+        ps axww | grep -v grep | grep -F "$needle" | awk '{print $1}' | while read -r pid; do
+            case "$pid" in ""|*[!0-9]*|0|1|$$|$PPID) continue ;; esac
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+    done
+    sleep 0.5
+    for needle in "wayland-$slot" "iosc-$slot-" "kwin-$slot"; do
+        ps axww | grep -v grep | grep -F "$needle" | awk '{print $1}' | while read -r pid; do
+            case "$pid" in ""|*[!0-9]*|0|1|$$|$PPID) continue ;; esac
+            kill -KILL "$pid" 2>/dev/null || true
+        done
+    done
+}
+
 xs_first_readable() {
     local c
     for c in "$@"; do
@@ -952,6 +970,7 @@ xios_session_stop() {
     xs_write_status stop stopping "stopping session"
     if [ -n "$XS_SLOT" ]; then
         xs_reap_slot_session_pgroups "$XS_SLOT"
+        xs_reap_slot_named_processes "$XS_SLOT"
         rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
               "$XS_CONFIG_JSON" "$XS_IOSC_DDX_SOCK" "$XS_IOSC_INPUT_SOCK" \
               "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
