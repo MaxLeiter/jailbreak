@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/systemsettings.png",
+  "headerImage": "https://repo.maxleiter.com/banners/gnome-control-center.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "KDE System Settings shell for Xios"
+          "markdown": "GNOME Settings for the Xios desktop"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios5"
+          "text": "46.4+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "136.8 KiB"
+          "text": "4817.7 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "KDE"
+          "text": "System"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "systemsettings"
+          "text": "gnome-control-center"
         }
       ]
     }

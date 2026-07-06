@@ -12,6 +12,12 @@ write_file() {
   printf '%s\n' "$@" > "$path"
 }
 
+write_block() {
+  local path="$1"
+  mkdir -p "$(dirname "$path")"
+  cat > "$path"
+}
+
 restore_upstream_file() {
   local path="$1"
   if [ -e "$path.upstream" ]; then
@@ -636,6 +642,583 @@ write_file "$mobileshell/AudioInfo.qml" \
   "    property Timer refreshTimer: Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
+# Final service-provider overrides. The broad first-light item shims above keep
+# fragile views importable; these files are intentionally active and backed by
+# Xios/iOS state.
+write_block "$mm/SignalIndicator.qml" <<'QML'
+pragma Singleton
+import QtQuick 2.15
+import org.kde.plasma.private.mobileshell as MobileShell
+
+QtObject {
+    id: root
+    property int strength: MobileShell.ShellUtil.networkIsCellular() && MobileShell.ShellUtil.networkReachable() ? 100 : 0
+    property string name: MobileShell.ShellUtil.networkIsCellular() ? "Cellular" : ""
+    property bool modemAvailable: MobileShell.ShellUtil.networkIsCellular()
+    property bool simLocked: false
+    property bool simEmpty: !modemAvailable
+    property bool mobileDataSupported: modemAvailable
+    property bool mobileDataEnabled: modemAvailable && MobileShell.ShellUtil.networkReachable()
+    property bool needsAPNAdded: false
+    property var profiles: []
+    property string activeConnectionUni: mobileDataEnabled ? "xios-cellular" : ""
+    function refreshProfiles() {}
+    function activateProfile(connectionUni) {}
+    function addProfile(name, apn, username, password, networkType) {}
+    function removeProfile(connectionUni) {}
+    function updateProfile(connectionUni, name, apn, username, password, networkType) {}
+    function refresh() {
+        strength = MobileShell.ShellUtil.networkIsCellular() && MobileShell.ShellUtil.networkReachable() ? 100 : 0
+        modemAvailable = MobileShell.ShellUtil.networkIsCellular()
+        simEmpty = !modemAvailable
+        mobileDataSupported = modemAvailable
+        mobileDataEnabled = modemAvailable && MobileShell.ShellUtil.networkReachable()
+        activeConnectionUni = mobileDataEnabled ? "xios-cellular" : ""
+    }
+    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }
+}
+QML
+
+write_block "$nm/NetworkStatus.qml" <<'QML'
+import QtQuick 2.15
+import org.kde.plasma.private.mobileshell as MobileShell
+
+QtObject {
+    id: root
+    property bool networkingEnabled: false
+    property bool limitedConnectivity: false
+    property string status: networkingEnabled ? "Connected" : "Disconnected"
+    function refresh() {
+        networkingEnabled = MobileShell.ShellUtil.networkReachable()
+        limitedConnectivity = false
+    }
+    Component.onCompleted: refresh()
+    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }
+}
+QML
+
+write_block "$nm/ConnectionIcon.qml" <<'QML'
+import QtQuick 2.15
+import org.kde.plasma.private.mobileshell as MobileShell
+
+QtObject {
+    id: root
+    property string connectionIcon: "network-disconnect"
+    property bool connecting: false
+    function refresh() {
+        connectionIcon = MobileShell.ShellUtil.networkReachable()
+            ? (MobileShell.ShellUtil.networkIsCellular() ? "network-mobile-100" : "network-wireless-signal-excellent")
+            : "network-disconnect"
+    }
+    Component.onCompleted: refresh()
+    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }
+}
+QML
+
+write_block "$nm/WirelessStatus.qml" <<'QML'
+import QtQuick 2.15
+import org.kde.plasma.private.mobileshell as MobileShell
+
+QtObject {
+    property string hotspotSSID: ""
+    property string wifiSSID: MobileShell.ShellUtil.networkReachable() && !MobileShell.ShellUtil.networkIsCellular() ? "Wi-Fi" : ""
+}
+QML
+
+write_block "$wallpaper/WallpaperPlugin.qml" <<'QML'
+pragma Singleton
+import QtQuick 2.15
+import org.kde.plasma.private.mobileshell as MobileShell
+
+QtObject {
+    id: root
+    readonly property string configPath: "/var/mobile/Library/Preferences/com.max.iosc-wallpaper"
+    readonly property string nativeWallpaperPath: "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
+    readonly property string defaultWallpaperPath: "/var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+    property string homescreenWallpaperPath: defaultWallpaperPath
+    property string lockscreenWallpaperPath: homescreenWallpaperPath
+    property string homescreenWallpaperPlugin: "org.kde.image"
+    property string homescreenWallpaperPluginSource: "org.kde.image"
+    property string lockscreenWallpaperPlugin: "org.kde.image"
+    property string lockscreenWallpaperPluginSource: "org.kde.image"
+    property var homescreenConfiguration: ({})
+    property var lockscreenConfiguration: ({})
+    property var wallpaperPluginModel: []
+
+    function normalize(path) {
+        if (!path || path.length === 0) {
+            return defaultWallpaperPath
+        }
+        if (path.indexOf("file://") === 0) {
+            return path.substring(7)
+        }
+        return path
+    }
+
+    function plasmaUrl(path) {
+        var normalized = normalize(path)
+        return normalized.indexOf("file://") === 0 ? normalized : "file://" + normalized
+    }
+
+    function refreshConfiguration() {
+        homescreenConfiguration = ({ "Image": plasmaUrl(homescreenWallpaperPath), "PreviewImage": plasmaUrl(homescreenWallpaperPath), "FillMode": 2 })
+        lockscreenConfiguration = ({ "Image": plasmaUrl(lockscreenWallpaperPath), "PreviewImage": plasmaUrl(lockscreenWallpaperPath), "FillMode": 2 })
+    }
+
+    function setHomescreenWallpaper(path) {
+        homescreenWallpaperPath = normalize(path)
+        saveHomescreenSettings()
+        refreshConfiguration()
+    }
+
+    function setLockscreenWallpaper(path) {
+        lockscreenWallpaperPath = normalize(path)
+        saveLockscreenSettings()
+        refreshConfiguration()
+    }
+
+    function saveHomescreenSettings() {
+        if (homescreenWallpaperPath.length > 0) {
+            MobileShell.ShellUtil.writeTextFile(configPath, homescreenWallpaperPath)
+        }
+    }
+
+    function saveLockscreenSettings() {
+        if (lockscreenWallpaperPath.length > 0) {
+            MobileShell.ShellUtil.writeTextFile(configPath, lockscreenWallpaperPath)
+        }
+    }
+
+    function loadHomescreenSettings() {
+        var saved = MobileShell.ShellUtil.readTextFile(configPath)
+        homescreenWallpaperPath = saved.length > 0 ? normalize(saved) : defaultWallpaperPath
+        lockscreenWallpaperPath = homescreenWallpaperPath
+        refreshConfiguration()
+    }
+
+    function loadLockscreenSettings() {
+        loadHomescreenSettings()
+    }
+
+    Component.onCompleted: loadHomescreenSettings()
+}
+QML
+
+write_block "$mobileshell/StatusBar.qml" <<'QML'
+import QtQuick 2.15
+import QtQuick.Layouts 1.15
+import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.components 3.0 as PlasmaComponents
+import org.kde.plasma.private.mobileshell as MobileShell
+
+Item {
+    id: root
+    property bool showDropShadow: false
+    property color backgroundColor: "transparent"
+    property bool showSecondRow: false
+    property bool showTime: true
+    property bool disableSystemTray: false
+    property color colorScopeColor: Kirigami.Theme.backgroundColor
+    property var statusNotifierSource: null
+    readonly property real textPixelSize: 11
+    readonly property real smallerTextPixelSize: 9
+    readonly property real elementSpacing: Kirigami.Units.smallSpacing * 1.5
+    property date now: new Date()
+    Timer { interval: 1000; running: true; repeat: true; onTriggered: root.now = new Date() }
+    Rectangle { anchors.fill: parent; color: root.backgroundColor }
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.leftMargin: Kirigami.Units.smallSpacing * 2
+        anchors.rightMargin: Kirigami.Units.smallSpacing * 2
+        spacing: 0
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: root.elementSpacing
+            PlasmaComponents.Label {
+                visible: root.showTime
+                text: Qt.formatTime(root.now, MobileShell.ShellUtil.isSystem24HourFormat ? "h:mm" : "h:mm ap")
+                color: Kirigami.Theme.textColor
+                font.pixelSize: root.textPixelSize
+            }
+            Item { Layout.fillWidth: true }
+            Kirigami.Icon {
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Layout.preferredWidth
+                source: MobileShell.ShellUtil.networkReachable()
+                    ? (MobileShell.ShellUtil.networkIsCellular() ? "network-mobile-100" : "network-wireless-signal-excellent")
+                    : "network-disconnect"
+            }
+            Kirigami.Icon {
+                visible: MobileShell.AudioInfo.isVisible
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Layout.preferredWidth
+                source: MobileShell.AudioInfo.icon
+            }
+            RowLayout {
+                visible: MobileShell.BatteryInfo.isVisible
+                spacing: Kirigami.Units.smallSpacing / 2
+                Kirigami.Icon {
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                    Layout.preferredHeight: Layout.preferredWidth
+                    source: MobileShell.BatteryInfo.icon
+                }
+                PlasmaComponents.Label {
+                    text: i18n("%1%", MobileShell.BatteryInfo.percent)
+                    color: Kirigami.Theme.textColor
+                    font.pixelSize: root.textPixelSize
+                }
+            }
+        }
+        RowLayout {
+            visible: root.showSecondRow
+            Layout.fillWidth: true
+            PlasmaComponents.Label {
+                text: Qt.formatDate(root.now, "ddd. MMMM d")
+                color: Kirigami.Theme.disabledTextColor
+                font.pixelSize: root.smallerTextPixelSize
+            }
+            Item { Layout.fillWidth: true }
+            PlasmaComponents.Label {
+                text: MobileShell.ShellUtil.networkReachable()
+                    ? (MobileShell.ShellUtil.networkIsCellular() ? i18n("Cellular") : i18n("Wi-Fi"))
+                    : i18n("Offline")
+                color: Kirigami.Theme.disabledTextColor
+                font.pixelSize: root.smallerTextPixelSize
+            }
+        }
+    }
+}
+QML
+
+write_block "$mobileshell/QuickSettings.qml" <<'QML'
+import QtQuick 2.15
+import QtQuick.Layouts 1.15
+import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.components 3.0 as PC3
+import org.kde.plasma.private.mobileshell as MobileShell
+
+Item {
+    id: root
+    required property var actionDrawer
+    required property int mode
+    enum Mode { Pages, ScrollView }
+    readonly property real columns: 2
+    readonly property real columnWidth: width / columns
+    readonly property int minimizedColumns: 4
+    readonly property real minimizedColumnWidth: width / minimizedColumns
+    readonly property real rowHeight: Kirigami.Units.gridUnit * 4
+    readonly property real minimizedRowHeight: Kirigami.Units.gridUnit * 3
+    readonly property real intendedColumnWidth: Kirigami.Units.gridUnit * 7
+    readonly property real intendedMinimizedColumnWidth: Kirigami.Units.gridUnit * 4
+    readonly property int columnCount: 2
+    readonly property int rowCount: 2
+    readonly property int pageSize: 4
+    readonly property int quickSettingsCount: 4
+    readonly property real fullHeight: column.implicitHeight
+    property real minimizedViewProgress: 0
+    property real fullViewProgress: 1
+    function resetSwipeView() {}
+    ColumnLayout {
+        id: column
+        anchors.left: parent.left
+        anchors.right: parent.right
+        spacing: Kirigami.Units.smallSpacing
+        GridLayout {
+            Layout.fillWidth: true
+            columns: 2
+            columnSpacing: Kirigami.Units.smallSpacing
+            rowSpacing: Kirigami.Units.smallSpacing
+            PC3.Button {
+                Layout.fillWidth: true
+                icon.name: MobileShell.ShellUtil.networkReachable()
+                    ? (MobileShell.ShellUtil.networkIsCellular() ? "network-mobile-100" : "network-wireless-signal-excellent")
+                    : "network-disconnect"
+                text: MobileShell.ShellUtil.networkReachable()
+                    ? (MobileShell.ShellUtil.networkIsCellular() ? i18n("Cellular") : i18n("Wi-Fi"))
+                    : i18n("Offline")
+                enabled: false
+            }
+            PC3.Button {
+                Layout.fillWidth: true
+                icon.name: MobileShell.BatteryInfo.icon
+                text: i18n("%1%", MobileShell.BatteryInfo.percent)
+                enabled: false
+            }
+            PC3.Button {
+                Layout.fillWidth: true
+                icon.name: MobileShell.AudioInfo.icon
+                text: i18n("%1%", MobileShell.AudioInfo.volumeValue)
+                onClicked: MobileShell.AudioInfo.muteVolume()
+            }
+            PC3.Button {
+                Layout.fillWidth: true
+                icon.name: "preferences-desktop-wallpaper"
+                text: i18n("Wallpaper")
+                onClicked: root.actionDrawer.wallpaperSettingsRequested()
+            }
+        }
+        BrightnessItem { Layout.fillWidth: true }
+        RowLayout {
+            Layout.fillWidth: true
+            PC3.ToolButton { icon.name: "audio-volume-low"; onClicked: MobileShell.AudioInfo.decreaseVolume() }
+            PC3.ProgressBar {
+                Layout.fillWidth: true
+                from: 0
+                to: MobileShell.AudioInfo.maxVolumePercent
+                value: MobileShell.AudioInfo.volumeValue
+            }
+            PC3.ToolButton { icon.name: "audio-volume-high"; onClicked: MobileShell.AudioInfo.increaseVolume() }
+        }
+    }
+}
+QML
+
+write_block "$mobileshell/QuickSettingsPanel.qml" <<'QML'
+import QtQuick 2.15
+import QtQuick.Layouts 1.15
+import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.private.mobileshell as MobileShell
+
+MobileShell.BaseItem {
+    id: root
+    required property var actionDrawer
+    required property real fullScreenHeight
+    readonly property real contentImplicitHeight: column.implicitHeight
+    padding: Kirigami.Units.smallSpacing * 2
+    contentItem: ColumnLayout {
+        id: column
+        spacing: Kirigami.Units.smallSpacing
+        MobileShell.StatusBar {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Kirigami.Units.gridUnit * 1.5
+            backgroundColor: "transparent"
+            showSecondRow: false
+            showTime: false
+            disableSystemTray: root.actionDrawer.restrictedPermissions
+        }
+        MobileShell.QuickSettings {
+            Layout.fillWidth: true
+            Layout.preferredHeight: fullHeight
+            actionDrawer: root.actionDrawer
+            mode: MobileShell.QuickSettings.ScrollView
+            minimizedViewProgress: 0
+            fullViewProgress: 1
+        }
+    }
+}
+QML
+
+write_block "$mobileshell/WallpaperSelector.qml" <<'QML'
+import QtQuick 2.15
+import QtQuick.Layouts 1.15
+import QtQuick.Controls 2.15 as Controls
+import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.private.mobileshell.wallpaperimageplugin as WallpaperImagePlugin
+
+Controls.Drawer {
+    id: root
+    dragMargin: 0
+    required property bool horizontal
+    signal wallpaperSettingsRequested()
+    readonly property string defaultWallpaper: "/var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+    readonly property string nativeWallpaper: "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
+    width: horizontal ? Kirigami.Units.gridUnit * 14 : parent.width
+    height: horizontal ? parent.height : Kirigami.Units.gridUnit * 10
+    background: Rectangle { color: Kirigami.Theme.backgroundColor }
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Kirigami.Units.gridUnit
+        spacing: Kirigami.Units.smallSpacing
+        Kirigami.Heading { Layout.fillWidth: true; level: 3; text: i18n("Wallpaper") }
+        Controls.Button {
+            Layout.fillWidth: true
+            icon.name: "preferences-desktop-wallpaper"
+            text: i18n("Use iPad Wallpaper")
+            onClicked: WallpaperImagePlugin.WallpaperPlugin.setHomescreenWallpaper(nativeWallpaper)
+        }
+        Controls.Button {
+            Layout.fillWidth: true
+            icon.name: "image-x-generic"
+            text: i18n("Use Xios Default")
+            onClicked: WallpaperImagePlugin.WallpaperPlugin.setHomescreenWallpaper(defaultWallpaper)
+        }
+        Controls.Button {
+            Layout.fillWidth: true
+            icon.name: "configure"
+            text: i18n("More")
+            onClicked: root.wallpaperSettingsRequested()
+        }
+    }
+}
+QML
+
+write_block "$mobileshell/AudioApplet.qml" <<'QML'
+import QtQuick 2.15
+import QtQuick.Layouts 1.15
+import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.components 3.0 as PC3
+import org.kde.plasma.private.mobileshell as MobileShell
+
+ColumnLayout {
+    spacing: Kirigami.Units.smallSpacing
+    PC3.Label { Layout.fillWidth: true; text: i18n("iPad speakers") }
+    PC3.ProgressBar {
+        Layout.fillWidth: true
+        from: 0
+        to: MobileShell.AudioInfo.maxVolumePercent
+        value: MobileShell.AudioInfo.volumeValue
+    }
+}
+QML
+
+write_block "$mobileshell/VolumeOSD.qml" <<'QML'
+import QtQuick 2.15
+import QtQuick.Layouts 1.15
+import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.components 3.0 as PC3
+import org.kde.plasma.private.nanoshell 2.0 as NanoShell
+import org.kde.plasma.private.mobileshell as MobileShell
+
+NanoShell.FullScreenOverlay {
+    id: window
+    visible: false
+    color: "transparent"
+    property bool suppressActiveClose: false
+    property bool showFullApplet: false
+    function showOverlay() {
+        showFullApplet = false
+        showFullScreen()
+        hideTimer.restart()
+    }
+    Timer { id: hideTimer; interval: 2200; onTriggered: window.close() }
+    Rectangle {
+        width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 22)
+        height: Kirigami.Units.gridUnit * 5
+        radius: Kirigami.Units.smallSpacing
+        color: Kirigami.Theme.backgroundColor
+        border.color: Kirigami.Theme.disabledTextColor
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: Kirigami.Units.gridUnit
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.gridUnit
+            Kirigami.Icon { Layout.preferredWidth: Kirigami.Units.iconSizes.medium; Layout.preferredHeight: Layout.preferredWidth; source: MobileShell.AudioInfo.icon }
+            PC3.ProgressBar { Layout.fillWidth: true; from: 0; to: MobileShell.AudioInfo.maxVolumePercent; value: MobileShell.AudioInfo.volumeValue }
+            PC3.Label { text: i18n("%1%", MobileShell.AudioInfo.volumeValue) }
+        }
+    }
+}
+QML
+
+write_block "$mobileshell/VolumeOSDProvider.qml" <<'QML'
+import QtQuick 2.15
+import org.kde.plasma.private.mobileshell as MobileShell
+
+QtObject {
+    id: root
+    function showVolumeOverlay() { osd.showOverlay() }
+    Component.onCompleted: MobileShell.AudioInfo.volumeChanged.connect(showVolumeOverlay)
+    property var osd: VolumeOSD {}
+}
+QML
+
+write_block "$mobileshell/VolumeOSDProviderLoader.qml" <<'QML'
+pragma Singleton
+import QtQuick 2.15
+import org.kde.plasma.private.mobileshell as MobileShell
+
+Loader {
+    id: root
+    active: false
+    sourceComponent: Component { MobileShell.VolumeOSDProvider {} }
+    function load() { active = true }
+}
+QML
+
+write_block "$mobileshell/BatteryInfo.qml" <<'QML'
+pragma Singleton
+import QtQuick 2.15
+
+QtObject {
+    id: root
+    readonly property string sysRoot: "/var/jb/sys"
+    property bool isVisible: true
+    property int percent: 100
+    property bool pluggedIn: false
+    property string status: "unknown"
+    readonly property string icon: iconName()
+    function readText(path, fallbackValue) {
+        var text = ShellUtil.readTextFile(path)
+        return text.length > 0 ? text : fallbackValue
+    }
+    function readInt(path, fallbackValue) {
+        var value = parseInt(readText(path, ""))
+        return isNaN(value) ? fallbackValue : value
+    }
+    function refresh() {
+        var present = readInt(sysRoot + "/class/power_supply/BAT0/present", 1)
+        status = readText(sysRoot + "/class/power_supply/BAT0/status", "Unknown").toLowerCase()
+        isVisible = present !== 0
+        percent = Math.max(0, Math.min(100, readInt(sysRoot + "/class/power_supply/BAT0/capacity", percent)))
+        pluggedIn = readInt(sysRoot + "/class/power_supply/AC0/online", 0) !== 0 || status.indexOf("charging") !== -1
+    }
+    function iconName() {
+        var bucket = percent < 15 ? "caution" : percent < 35 ? "low" : percent < 75 ? "good" : "full"
+        return "battery-" + bucket + (pluggedIn ? "-charging" : "")
+    }
+    Component.onCompleted: refresh()
+    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }
+}
+QML
+
+write_block "$mobileshell/AudioInfo.qml" <<'QML'
+pragma Singleton
+import QtQuick 2.15
+
+QtObject {
+    id: root
+    readonly property bool isVisible: true
+    readonly property string icon: iconName(volumeValue, muted)
+    readonly property int maxVolumePercent: 100
+    readonly property int maxVolumeValue: 100
+    readonly property int volumeStep: 5
+    property int volumeValue: 0
+    property bool muted: false
+    property var paSinkModel: null
+    signal volumeChanged()
+    function pulse(command) {
+        return ShellUtil.runCommand(". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null; xios_pulse_start >/dev/null 2>&1; " + command, 1500)
+    }
+    function refresh() {
+        var volume = pulse("pactl get-sink-volume xios 2>/dev/null | sed -n 's/.*\\/ *\\([0-9][0-9]*\\)%.*/\\1/p' | head -1")
+        var value = parseInt(volume)
+        if (!isNaN(value)) volumeValue = Math.max(0, Math.min(maxVolumePercent, value))
+        muted = pulse("pactl get-sink-mute xios 2>/dev/null | awk '{print $2}'") === "yes"
+    }
+    function increaseVolume() { pulse("pactl set-sink-volume xios +5%"); refresh(); volumeChanged() }
+    function decreaseVolume() { pulse("pactl set-sink-volume xios -5%"); refresh(); volumeChanged() }
+    function muteVolume() { pulse("pactl set-sink-mute xios toggle"); refresh(); volumeChanged() }
+    function setVolumePercent(percent) {
+        var bounded = Math.max(0, Math.min(maxVolumePercent, Math.round(percent)))
+        pulse("pactl set-sink-volume xios " + bounded + "%")
+        refresh()
+        volumeChanged()
+    }
+    function iconName(volume, isMuted, prefix) {
+        var base = prefix || "audio-volume"
+        if (isMuted || volume <= 0) return base + "-muted"
+        if (volume <= 25) return base + "-low"
+        if (volume <= 75) return base + "-medium"
+        return base + "-high"
+    }
+    function volumePercent(volume, max) { return Math.round(volume) }
+    Component.onCompleted: refresh()
+    property Timer refreshTimer: Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }
+}
+QML
+
 folio_settings="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui/settings"
 if [ -d "$folio_settings" ]; then
   if [ -e "$folio_settings/AppletListViewer.qml" ] && [ ! -e "$folio_settings/AppletListViewer.qml.upstream" ]; then
@@ -760,6 +1343,50 @@ fallback = """            // xios-folio-page-fallback: render a usable app tile 
 """
 if needle in text:
     path.write_text(text.replace(needle, fallback, 1))
+PY
+  fi
+  if [ -e "$folio_ui/settings/SettingsWindow.qml" ]; then
+    python3 - "$folio_ui/settings/SettingsWindow.qml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "xios-folio-settings-fallback" not in text:
+    needle = "    property Folio.HomeScreen folio\n"
+    fallback = """    property Folio.HomeScreen folio
+    // xios-folio-settings-fallback: settings can bind before the Folio object is attached.
+    readonly property var xiosFolioSettings: root.folio && root.folio.FolioSettings ? root.folio.FolioSettings : xiosFallbackFolioSettings
+    readonly property var xiosHomeScreenState: root.folio && root.folio.HomeScreenState ? root.folio.HomeScreenState : xiosFallbackHomeScreenState
+
+    QtObject {
+        id: xiosFallbackHomeScreenState
+        property int pageCellHeight: 128
+        property int pageCellWidth: 128
+        property int pageOrientation: Folio.HomeScreenState.RegularPosition
+    }
+
+    QtObject {
+        id: xiosFallbackFolioSettings
+        property int delegateIconSize: 64
+        property int homeScreenRows: 6
+        property int homeScreenColumns: 4
+        property bool showPagesAppLabels: true
+        property bool showFavouritesAppLabels: true
+        property int pageTransitionEffect: Folio.FolioSettings.SlideTransition
+        property bool showFavouritesBarBackground: false
+        property bool showWallpaperBlur: false
+        function saveLayoutToFile(path) { return false }
+        function loadLayoutFromFile(path) { return false }
+    }
+"""
+    if needle in text:
+        text = text.replace(needle, fallback, 1)
+text = text.replace("folio.FolioSettings", "root.xiosFolioSettings")
+text = text.replace("folio.HomeScreenState", "root.xiosHomeScreenState")
+text = text.replace("root.root.xiosFolioSettings", "root.folio.FolioSettings")
+text = text.replace("root.root.xiosHomeScreenState", "root.folio.HomeScreenState")
+path.write_text(text)
 PY
   fi
 fi

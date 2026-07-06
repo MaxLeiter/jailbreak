@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/systemsettings.png",
+  "headerImage": "https://repo.maxleiter.com/banners/kwin.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "KDE System Settings shell for Xios"
+          "markdown": "KWin Wayland compositor for the Xios desktop"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios5"
+          "text": "6.1.5+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "136.8 KiB"
+          "text": "2251.0 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -42,7 +42,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "systemsettings"
+          "text": "kwin"
         }
       ]
     }

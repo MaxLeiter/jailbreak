@@ -302,7 +302,7 @@ TABLE = [
          notes=["REQUIREs Qt6PrintSupport (audited, unconditional): qtbase round 1 built",
                 "printsupport OFF, so the round-2 rebuild (plan Q3) must flip",
                 "FEATURE_printsupport=ON alongside dbus/xkbcommon. cups stays OFF."]),
-    dict(t="kio", kind="kf", deb="kf6-kio",
+    dict(t="kio", kind="kf", deb="kf6-kio", rev="ios2",
          deps=["karchive", "kauth", "kbookmarks", "kcolorscheme", "kcompletion", "kconfig",
                "kconfigwidgets", "kcoreaddons", "kcrash", "kdbusaddons", "kguiaddons", "ki18n",
                "kiconthemes", "kitemviews", "kjobwidgets", "kservice", "solid",

@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**xios-kde** installs the KDE Plasma Mobile desktop for Xios: the Plasma Mobile shell on KWin, rendered on the iPad GPU through the iosc compositor and ANGLE.\n\nThis one package pulls in the Qt 6 runtime, the KDE Frameworks 6 subset Plasma needs, KWin, and the Breeze icons and style.\n\nAfter it installs, open the Xios app and the Plasma session starts. Plasma Mobile is built for touch first, so it is a natural fit for the iPad.\n\nNeeds iOS 16.0 or newer on a rootless jailbreak (/var/jb)."
+          "markdown": "**xios-kde** installs the KDE Plasma Mobile desktop for Xios: the Plasma Mobile shell on KWin, rendered on the iPad GPU through the iosc compositor and ANGLE.\n\nThis one package pulls in the Qt 6 runtime, the KDE Frameworks 6 subset Plasma needs, KWin, and the Breeze icons and style.\n\nAfter it installs, open the Xios app and the Plasma session starts. Plasma Mobile is built for touch first, so it is a natural fit for the iPad.\n\nRequires iOS 16.0+."
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.0"
+          "text": "0.1.1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "876 B"
+          "text": "948 B"
         },
         {
           "class": "DepictionTableTextView",

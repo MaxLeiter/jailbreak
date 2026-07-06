@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS   += libdrm
 LIBDRM_VERSION := 2.4.120
-DEB_LIBDRM_V   ?= $(LIBDRM_VERSION)+ios1
+DEB_LIBDRM_V   ?= $(LIBDRM_VERSION)+ios2
 
 # drm* symbols Mutter references (from `grep -roE 'drm[A-Z][A-Za-z0-9_]*\(' mutter/src`). Stubbed
 # as no-ops so libmutter links; never actually called on iOS (native off, dmabuf path inert).

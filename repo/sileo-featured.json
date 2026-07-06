@@ -169,6 +169,11 @@
       "url": "https://repo.maxleiter.com/banners/gjs.png"
     },
     {
+      "title": "gnome-bluetooth",
+      "package": "gnome-bluetooth",
+      "url": "https://repo.maxleiter.com/banners/gnome-bluetooth.png"
+    },
+    {
       "title": "gnome-calculator",
       "package": "gnome-calculator",
       "url": "https://repo.maxleiter.com/banners/gnome-calculator.png"
@@ -177,6 +182,11 @@
       "title": "gnome-console",
       "package": "gnome-console",
       "url": "https://repo.maxleiter.com/banners/gnome-console.png"
+    },
+    {
+      "title": "gnome-control-center",
+      "package": "gnome-control-center",
+      "url": "https://repo.maxleiter.com/banners/gnome-control-center.png"
     },
     {
       "title": "gnome-font-viewer",
@@ -807,6 +817,11 @@
       "title": "kwayland-dev",
       "package": "kwayland-dev",
       "url": "https://repo.maxleiter.com/banners/kwayland-dev.png"
+    },
+    {
+      "title": "kwin",
+      "package": "kwin",
+      "url": "https://repo.maxleiter.com/banners/kwin.png"
     },
     {
       "title": "kwrite",
@@ -2259,6 +2274,11 @@
       "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
     },
     {
+      "title": "Xios desktop compatibility stub libraries",
+      "package": "xios-desktop-stublibs",
+      "url": "https://repo.maxleiter.com/banners/xios-desktop-stublibs.png"
+    },
+    {
       "title": "Xios desktop theme",
       "package": "xios-desktop-theme",
       "url": "https://repo.maxleiter.com/banners/xios-desktop-theme.png"
@@ -2277,6 +2297,11 @@
       "title": "Xios GNOME desktop typelibs",
       "package": "xios-gnome-typelibs",
       "url": "https://repo.maxleiter.com/banners/xios-gnome-typelibs.png"
+    },
+    {
+      "title": "Xios Desktop (KDE Plasma)",
+      "package": "xios-kde",
+      "url": "https://repo.maxleiter.com/banners/xios-kde.png"
     },
     {
       "title": "Xios Home Screen launcher tools",

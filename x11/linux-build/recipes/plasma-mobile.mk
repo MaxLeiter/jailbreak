@@ -5,13 +5,15 @@ endif
 # plasma-mobile.mk — first-light Plasma Mobile data/shell package for Xios.
 # This wave packages the mobile shell/look-and-feel, containment package data,
 # quicksetting package data, the taskpanel applet plugin, and session launcher
-# files. Hardware settings, KCMs, KWin effects, and the broader C++ mobile shell
-# plugin wave are deferred until their support libraries and iOS service bridges
-# are ready.
+# files. Hardware-facing Mobile providers use the existing Xios iOS bridges for
+# first parity: xios-fhs battery/brightness, PulseAudio/xios-audiod volume,
+# SystemConfiguration reachability, and the Xios wallpaper preference file.
+# KCMs, KWin effects, and the broader C++ mobile shell plugin wave remain
+# deferred until their support libraries are ready.
 
 SUBPROJECTS += plasma-mobile
 PLASMAMOBILE_VERSION = $(PLASMA_VERSION)
-DEB_PLASMAMOBILE_V ?= $(PLASMAMOBILE_VERSION)+ios10
+DEB_PLASMAMOBILE_V ?= $(PLASMAMOBILE_VERSION)+ios11
 
 plasma-mobile-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-mobile))

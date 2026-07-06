@@ -11,6 +11,7 @@ Description: First-light Plasma Mobile shell data for Xios
  shell QML plugin family, containment plugins, quicksetting package data, and
  session entry files for the KDE mobile flavor.
  .
- This iOS bring-up package is intentionally trimmed to the shell path. Hardware
- settings, KCMs, KWin effects, modem/network backends, and device service
- bridges are deferred until their support packages are ready.
+ This iOS bring-up package is intentionally trimmed to the shell path. Its
+ Mobile status and quick-settings providers are backed by Xios/iOS bridges for
+ battery, brightness, audio, network reachability, and wallpaper state; KCMs,
+ KWin effects, and full modem/network management remain deferred.
