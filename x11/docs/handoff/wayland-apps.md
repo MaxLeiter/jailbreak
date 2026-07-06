@@ -158,7 +158,16 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 - **repo/debs is gitignored** — debs deploy from the working tree at publish; only
   depiction `repo/meta/*.json` are committed. Publish (`bin/publish-repo.sh` →
   `make-repo.py` → `vercel --prod`) is **Max-gated**; it does NOT stamp minos, so debs
-  must be pre-stamped (`tools/stamp-minos.py`).
+  must be pre-stamped (`tools/stamp-minos.py`). As of the 2026-07-05 audit,
+  `repo/debs` already has angle `+es3-3`, GTK3 `+ios1`, dunst `+ios2`, hitori
+  `+ios1`, zathura, grim, slurp, wl-clipboard, and recent `iosc` builds. The app-wave
+  candidates still staged only in `linux-build/out` are:
+  `foot_1.27.0+ios3_iphoneos-arm64.deb`,
+  `fuzzel_1.12.0+ios1_iphoneos-arm64.deb`,
+  `imv_5.0.1+ios3_iphoneos-arm64.deb`,
+  `mpv_0.36.0+ios2_iphoneos-arm64.deb`,
+  `libxkbcommon0_1.7.0+ios2_iphoneos-arm64.deb`, and
+  `libxcb-xkb1_1.14_iphoneos-arm64.deb`.
 
 ## Debug tooling (built this round)
 
@@ -178,7 +187,8 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 - [ ] Port/fix imv's native Wayland renderer for iOS (desktop EGL/OpenGL path
   currently aborts; Xwayland fallback works).
-- [ ] Publish (Max-gated): copy the app wave + `angle -3` into repo/debs, run make-repo, deploy.
+- [ ] Publish (Max-gated): copy the missing app-wave candidates listed above into
+  `repo/debs`, run make-repo, audit, and deploy.
 
 ## How to verify on-device
 
