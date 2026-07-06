@@ -15,11 +15,12 @@ endif
 # meson's unstable-wayland module, from the wayland-protocols data staged in build_base.
 #
 # DEPENDS (target): pango(cairo)/glib/cairo, wayland(+egl), egl/gl (mesa), X11/xcb, libxkbcommon,
-# libpng, libjpeg-turbo, libgrapheme (build-only, static). inih is pulled via meson's wrap.
+# libpng, libjpeg-turbo, libgrapheme (build-only, static). inih is shipped inside the imv deb
+# because the current build base has the dylib but no standalone runtime package.
 
 SUBPROJECTS  += imv
 IMV_VERSION  := 5.0.1
-DEB_IMV_V    ?= $(IMV_VERSION)+ios1
+DEB_IMV_V    ?= $(IMV_VERSION)+ios2
 
 imv-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~exec64/imv/archive/v$(IMV_VERSION).tar.gz)
@@ -87,11 +88,14 @@ imv-package: imv-stage
 	if [ -d "$(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share" ]; then \
 		cp -a $(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
 	fi
-	# inih comes from a meson wrap and builds as a private shared lib (@rpath/libinih.0.dylib);
-	# nothing else provides it, so ship it inside imv's own deb (SIGN fakesigns it).
+	# inih is linked as @rpath/libinih.0.dylib, but this build base has no
+	# standalone libinih runtime package. Ship the dylib inside imv's own deb.
 	if ls $(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libinih*.dylib >/dev/null 2>&1; then \
 		mkdir -p $(BUILD_DIST)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
 		cp -a $(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libinih*.dylib $(BUILD_DIST)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
+	elif ls $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libinih*.dylib >/dev/null 2>&1; then \
+		mkdir -p $(BUILD_DIST)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
+		cp -a $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libinih*.dylib $(BUILD_DIST)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
 	fi
 
 	$(call SIGN,imv,iosc-gpu-client-ent.xml,,,nogeneral)
