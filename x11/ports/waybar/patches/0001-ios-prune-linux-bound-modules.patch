@@ -4,16 +4,13 @@ Keep the initial iOS Waybar build focused on clock and custom modules, and
 avoid compiling compositor integrations or Linux service modules that require
 runtime infrastructure not yet available in Xios.
 
-diff -ruN -U3 a/meson.build b/meson.build
+diff -ruN -U0 a/meson.build b/meson.build
 --- a/meson.build	2026-02-06 12:15:03
-+++ b/meson.build	2026-07-06 14:21:43
-@@ -161,16 +161,7 @@
-     'src/factory.cpp',
-     'src/AModule.cpp',
-     'src/ALabel.cpp',
++++ b/meson.build	2026-07-06 15:44:53
+@@ -164,2 +163,0 @@
 -    'src/AIconLabel.cpp',
 -    'src/AAppIconLabel.cpp',
-     'src/modules/custom.cpp',
+@@ -167,7 +164,0 @@
 -    'src/modules/disk.cpp',
 -    'src/modules/idle_inhibitor.cpp',
 -    'src/modules/image.cpp',
@@ -21,13 +18,7 @@ diff -ruN -U3 a/meson.build b/meson.build
 -    'src/modules/temperature.cpp',
 -    'src/modules/user.cpp',
 -    'src/ASlider.cpp',
-     'src/main.cpp',
-     'src/bar.cpp',
-     'src/client.cpp',
-@@ -251,86 +242,11 @@
-     endif
- endif
- 
+@@ -254,19 +244,0 @@
 -if true
 -    add_project_arguments('-DHAVE_SWAY', language: 'cpp')
 -    src_files += files(
@@ -47,13 +38,13 @@ diff -ruN -U3 a/meson.build b/meson.build
 -        'man/waybar-sway-workspaces.5.scd',
 -    )
 -endif
- 
+@@ -274,5 +245,0 @@
 -if true
 -    add_project_arguments('-DHAVE_WLR_TASKBAR', language: 'cpp')
 -    src_files += files('src/modules/wlr/taskbar.cpp')
 -    man_files += files('man/waybar-wlr-taskbar.5.scd')
 -endif
- 
+@@ -280,10 +246,0 @@
 -if wayland_protos.version().version_compare('>=1.39')
 -    add_project_arguments('-DHAVE_EXT_WORKSPACES', language: 'cpp')
 -    src_files += files(
@@ -64,7 +55,7 @@ diff -ruN -U3 a/meson.build b/meson.build
 -        'man/waybar-ext-workspaces.5.scd',
 -    )
 -endif
- 
+@@ -291,15 +247,0 @@
 -if true
 -    add_project_arguments('-DHAVE_RIVER', language: 'cpp')
 -    src_files += files(
@@ -80,7 +71,7 @@ diff -ruN -U3 a/meson.build b/meson.build
 -        'man/waybar-river-window.5.scd',
 -    )
 -endif
- 
+@@ -307,7 +248,0 @@
 -if true
 -    add_project_arguments('-DHAVE_DWL', language: 'cpp')
 -    src_files += files('src/modules/dwl/tags.cpp')
@@ -88,7 +79,7 @@ diff -ruN -U3 a/meson.build b/meson.build
 -    man_files += files('man/waybar-dwl-tags.5.scd')
 -    man_files += files('man/waybar-dwl-window.5.scd')
 -endif
- 
+@@ -315,19 +249,0 @@
 -if true
 -    add_project_arguments('-DHAVE_HYPRLAND', language: 'cpp')
 -    src_files += files(
@@ -108,13 +99,7 @@ diff -ruN -U3 a/meson.build b/meson.build
 -        'man/waybar-hyprland-workspaces.5.scd',
 -    )
 -endif
- 
- if get_option('niri')
-     add_project_arguments('-DHAVE_NIRI', language: 'cpp')
-@@ -347,14 +263,6 @@
-     )
- endif
- 
+@@ -350,8 +265,0 @@
 -if true
 -    add_project_arguments('-DHAVE_WAYFIRE', language: 'cpp')
 -    src_files += files(
@@ -123,51 +108,25 @@ diff -ruN -U3 a/meson.build b/meson.build
 -        'src/modules/wayfire/workspaces.cpp',
 -    )
 -endif
- 
- if get_option('login-proxy')
-     add_project_arguments('-DHAVE_LOGIN_PROXY', language: 'cpp')
-diff -ruN -U3 a/src/factory.cpp b/src/factory.cpp
+diff -ruN -U0 a/src/factory.cpp b/src/factory.cpp
 --- a/src/factory.cpp	2026-02-06 12:15:03
-+++ b/src/factory.cpp	2026-07-06 14:21:43
-@@ -55,11 +55,9 @@
- #include "modules/cpu_usage.hpp"
- #include "modules/load.hpp"
- #endif
++++ b/src/factory.cpp	2026-07-06 15:44:53
+@@ -58 +57,0 @@
 -#include "modules/idle_inhibitor.hpp"
- #if defined(HAVE_MEMORY_LINUX) || defined(HAVE_MEMORY_BSD)
- #include "modules/memory.hpp"
- #endif
+@@ -62 +60,0 @@
 -#include "modules/disk.hpp"
- #ifdef HAVE_DBUSMENU
- #include "modules/sni/tray.hpp"
- #endif
-@@ -114,12 +112,7 @@
- #ifdef HAVE_LIBGPS
- #include "modules/gps.hpp"
- #endif
+@@ -117,2 +114,0 @@
 -#include "modules/cava/cava_frontend.hpp"
 -#include "modules/cffi.hpp"
- #include "modules/custom.hpp"
+@@ -120,3 +115,0 @@
 -#include "modules/image.hpp"
 -#include "modules/temperature.hpp"
 -#include "modules/user.hpp"
- 
- waybar::Factory::Factory(const Bar& bar, const Json::Value& config) : bar_(bar), config_(config) {}
- 
-@@ -239,9 +232,6 @@
-       return new waybar::modules::wayfire::Workspaces(id, bar_, config_[name]);
-     }
- #endif
+@@ -242,3 +234,0 @@
 -    if (ref == "idle_inhibitor") {
 -      return new waybar::modules::IdleInhibitor(id, bar_, config_[name]);
 -    }
- #if defined(HAVE_MEMORY_LINUX) || defined(HAVE_MEMORY_BSD)
-     if (ref == "memory") {
-       return new waybar::modules::Memory(id, config_[name]);
-@@ -266,15 +256,6 @@
-     if (ref == "clock") {
-       return new waybar::modules::Clock(id, config_[name]);
-     }
+@@ -269,9 +258,0 @@
 -    if (ref == "user") {
 -      return new waybar::modules::User(id, config_[name]);
 -    }
@@ -177,31 +136,15 @@ diff -ruN -U3 a/src/factory.cpp b/src/factory.cpp
 -    if (ref == "image") {
 -      return new waybar::modules::Image(id, config_[name]);
 -    }
- #ifdef HAVE_DBUSMENU
-     if (ref == "tray") {
-       return new waybar::modules::SNI::Tray(id, bar_, config_[name]);
-@@ -339,9 +320,6 @@
-       return new waybar::modules::Wireplumber(id, config_[name]);
-     }
- #endif
+@@ -342,3 +322,0 @@
 -    if (ref == "cava") {
 -      return waybar::modules::cava::getModule(id, config_[name]);
 -    }
- #ifdef HAVE_SYSTEMD_MONITOR
-     if (ref == "systemd-failed-units") {
-       return new waybar::modules::SystemdFailedUnits(id, config_[name]);
-@@ -352,14 +330,8 @@
-       return new waybar::modules::Gps(id, config_[name]);
-     }
- #endif
+@@ -355,3 +332,0 @@
 -    if (ref == "temperature") {
 -      return new waybar::modules::Temperature(id, config_[name]);
 -    }
-     if (ref.compare(0, 7, "custom/") == 0 && ref.size() > 7) {
-       return new waybar::modules::Custom(ref.substr(7), id, config_[name], bar_.output->name);
+@@ -360,3 +334,0 @@
 -    }
 -    if (ref.compare(0, 5, "cffi/") == 0 && ref.size() > 5) {
 -      return new waybar::modules::CFFI(ref.substr(5), id, config_[name]);
-     }
-   } catch (const std::exception& e) {
-     auto err = fmt::format("Disabling module \"{}\", {}", name, e.what());
