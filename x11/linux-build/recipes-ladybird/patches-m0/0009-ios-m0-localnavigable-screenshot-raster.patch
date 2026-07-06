@@ -1,0 +1,58 @@
+Subject: [PATCH] ios-m0: raster screenshots in WebContent
+
+The M0 headless build does not launch a Compositor helper, so forwarding
+render_screenshot to the compositor path returns a blank bitmap. On iOS, record
+the display list locally and CPU-raster it into the requested painting surface.
+--- a/Libraries/LibWeb/HTML/LocalNavigable.cpp
++++ b/Libraries/LibWeb/HTML/LocalNavigable.cpp
+@@ -64,6 +64,7 @@
+ #include <LibWeb/Painting/Paintable.h>
+ #include <LibWeb/Painting/PaintableBox.h>
+ #include <LibWeb/Painting/ViewportPaintable.h>
++#include <LibWeb/Painting/DisplayListPlayerSkia.h>
+ #include <LibWeb/Platform/EventLoopPlugin.h>
+ #include <LibWeb/Selection/Selection.h>
+ #include <LibWeb/UIEvents/InputTypes.h>
+@@ -4234,6 +4235,34 @@ void LocalNavigable::paint_next_frame()
+ 
+ void LocalNavigable::render_screenshot(Gfx::PaintingSurface& painting_surface, PaintConfig paint_config, Function<void()>&& callback)
+ {
++#if defined(AK_OS_IOS)
++    // iOS M0: no Compositor process is launched (GPU/ANGLE deferred). Forwarding to a non-existent
++    // compositor yields a blank bitmap, so record the display list locally and CPU-raster it straight
++    // into the target surface with a backend-less (raster) Skia player -- the in-process equivalent of
++    // Compositor ContextState::paint_screenshot under --force-cpu-painting.
++    auto document = active_document();
++    if (!document) {
++        callback();
++        return;
++    }
++    document->update_paint_and_hit_testing_properties_if_needed();
++    auto display_list = document->record_display_list(paint_config, m_display_list_resource_storage);
++    if (!display_list) {
++        callback();
++        return;
++    }
++    auto document_paintable = document->paintable();
++    VERIFY(document_paintable);
++    document_paintable->refresh_scroll_state();
++    Painting::ScrollStateSnapshot scroll_state_snapshot { document_paintable->scroll_state_snapshot() };
++    Painting::DisplayListPlayerSkia player; // WebContent has no GPU backend -> CPU raster
++    player.execute(*display_list, document_paintable->visual_context_tree(),
++        m_display_list_resource_storage, scroll_state_snapshot,
++        painting_surface, nullptr, nullptr);
++    player.flush(painting_surface);
++    callback();
++    return;
++#else
+     if (!has_compositor_context()) {
+         callback();
+         return;
+@@ -4244,6 +4273,7 @@ void LocalNavigable::render_screenshot(Gfx::PaintingSurface& painting_surface, P
+         return;
+     }
+     compositor_context().request_screenshot(painting_surface, move(callback));
++#endif
+ }
+ 
+ GC::Ref<WebIDL::Promise> LocalNavigable::scroll_viewport_by_delta(CSSPixelPoint delta)

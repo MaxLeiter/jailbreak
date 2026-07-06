@@ -140,7 +140,8 @@ Remaining non-Qt procedural source edits:
   lets the LibJS AsmInterpreter codegen use host-built tools when provided by
   the build driver. The same stack also gates default WebView compositor
   launch/connect calls, adds the `headless-shot` M0 driver, and routes Skia
-  font-manager setup through CoreText on iOS.
+  font-manager setup through CoreText on iOS. For headless screenshots, it
+  CPU-rasters the display list inside WebContent when no Compositor is launched.
 - `recipes-ladybird/ladybird-m0-patches.sh` still carries the remaining
   environment-sensitive Ladybird engine bring-up edits. Convert it in small
   patches, keeping app-only behavior behind `LB_APP_BUILD`.
