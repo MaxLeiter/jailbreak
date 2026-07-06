@@ -724,6 +724,9 @@ static void set_wayland_client_env(const struct mode_cfg *mode, const char *busd
 {
     setenv("XDG_RUNTIME_DIR", busdir, 1);                 /* private, dbus-friendly */
     setenv("WAYLAND_DISPLAY", mode->wayland_sock, 1);     /* absolute path */
+    setenv("XIOS_CAPABILITY_PROFILE",
+           strcmp(mode->name, "native") == 0 ? "native-host" : "iosc-client-gpu",
+           1);
     setenv("GDK_BACKEND", "wayland", 1);
     setenv("GSK_RENDERER", "ngl", 1);
     setenv("ANGLE_REAL_LIBEGL", g_angle_real_libegl, 1);

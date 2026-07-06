@@ -113,6 +113,7 @@ xios_profile_env_pairs() {
     local root_home="${XS_VAR:-/var/jb/var}/root"
     case "$profile" in
         iosc-client-gpu)
+            xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair GDK_BACKEND wayland
             xios_profile_pair GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
             xios_profile_pair QT_QPA_PLATFORM "${QT_QPA_PLATFORM:-wayland}"
@@ -122,10 +123,12 @@ xios_profile_env_pairs() {
             xios_profile_pair LC_CTYPE "${LC_CTYPE:-UTF-8}"
             ;;
         iosc-platform-gl)
+            xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-/var/jb/tmp}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             ;;
         kde-kwin)
+            xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair DYLD_LIBRARY_PATH "$prefix/lib:$jb/lib/angle"
             xios_profile_pair XDG_DATA_DIRS "$prefix/share"
             xios_profile_pair XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
@@ -140,6 +143,7 @@ xios_profile_env_pairs() {
             xios_profile_pair QSG_RHI_BACKEND "${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-software}}"
             ;;
         plasma-egl)
+            xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair DYLD_LIBRARY_PATH "$prefix/lib:$jb/lib/angle"
             xios_profile_pair XDG_DATA_DIRS "$prefix/share"
             xios_profile_pair XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
@@ -157,17 +161,20 @@ xios_profile_env_pairs() {
             xios_profile_pair QT_QUICK_CONTROLS_STYLE "${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
             ;;
         gtk-wayland)
+            xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair GDK_BACKEND wayland
             xios_profile_pair GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             xios_profile_pair GSETTINGS_BACKEND memory
             ;;
         xwayland-glamor)
+            xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair XWAYLAND_GLAMOR "${XWAYLAND_GLAMOR:-1}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             xios_profile_pair XLIB_NO_SHM "${XLIB_NO_SHM:-1}"
             ;;
         native-host)
+            xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair XIOS_NATIVE_HOST "${XIOS_NATIVE_HOST:-1}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             ;;
