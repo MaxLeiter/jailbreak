@@ -1,0 +1,11 @@
+--- a/Services/WebContent/ConnectionFromClient.h
++++ b/Services/WebContent/ConnectionFromClient.h
+@@ -47,6 +47,8 @@
+ class ConnectionFromClient final
+     : public IPC::ConnectionFromClient<WebContentClientEndpoint, WebContentServerEndpoint> {
+     C_OBJECT(ConnectionFromClient);
++    friend class PageClient;
++
+ 
+ public:
+     ~ConnectionFromClient() override;

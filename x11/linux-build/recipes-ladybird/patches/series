@@ -1,3 +1,5 @@
 iosurface-mach-ipc.patch
+ios-app-input-caret-after-events.patch
+ios-app-input-caret-pageclient-access.patch
 ios-app-real-angle-pkgconfig.patch
 ios-app-angle-compat.patch

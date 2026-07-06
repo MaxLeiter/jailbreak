@@ -1,0 +1,12 @@
+--- a/Services/WebContent/PageClient.cpp
++++ b/Services/WebContent/PageClient.cpp
+@@ -345,6 +345,9 @@
+ 
+ void PageClient::report_finished_handling_input_event(u64 page_id, Web::EventResult event_was_handled)
+ {
++    // iOS software keyboard handoff needs a fresh editable-caret signal after taps focus
++    // or unfocus form controls. This is a no-op/empty update when no editable target is focused.
++    client().update_input_method_caret_rect(page_id);
+     client().async_did_finish_handling_input_event(page_id, event_was_handled);
+ }
+ 
