@@ -107,3 +107,11 @@ Begin the Xios.app host split by moving Swift-owned shell overlay chrome out of
 status, dismiss, and top-edge reveal behavior intact while reducing
 `XScreen.swift` toward display connection, input routing, and Metal
 presentation responsibilities.
+
+## Current Sixth Slice
+
+Continue the Xios.app host split by extracting shared runtime path resolution
+and small display/session/app model structs out of `XScreen.swift`. The view
+still owns behavior, but path lookup is now available independently to app
+services like accessibility, and the picker/session data shapes no longer live
+inside the rendering view class.
