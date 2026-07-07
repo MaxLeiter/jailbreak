@@ -186,11 +186,11 @@ text = path.read_text()
 old = '    desktopsArray[j].wallpaperPlugin = "org.kde.image";\n'
 new = '''    desktopsArray[j].wallpaperPlugin = "org.kde.image";
     desktopsArray[j].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
-    desktopsArray[j].writeConfig("Image", "file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg");
-    desktopsArray[j].writeConfig("PreviewImage", "file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg");
+    desktopsArray[j].writeConfig("Image", "file:///var/jb/usr/share/backgrounds/xios/xios-default.png");
+    desktopsArray[j].writeConfig("PreviewImage", "file:///var/jb/usr/share/backgrounds/xios/xios-default.png");
     desktopsArray[j].writeConfig("FillMode", 2);
 '''
-if old in text and "xios-default.jpg" not in text:
+if old in text and "xios-default.png" not in text:
     text = text.replace(old, new, 1)
 path.write_text(text)
 PY
@@ -598,6 +598,209 @@ def patch_folio_app_drawer() -> None:
     if old in text and "xios-folio-drawer-grid-visible" not in text:
         path.write_text(text.replace(old, new, 1))
 
+def patch_mobile_taskpanel_home_close() -> None:
+    path = src / "containments/taskpanel/package/contents/ui/NavigationPanelComponent.qml"
+    if not path.exists():
+        return
+    text = path.read_text()
+    for old, new in [
+        ("        filterByVirtualDesktop: true\n", "        filterByVirtualDesktop: false\n"),
+        ("        filterByActivity: true\n", "        filterByActivity: false\n"),
+        ("        filterByScreen: true\n", "        filterByScreen: false\n"),
+    ]:
+        text = text.replace(old, new, 1)
+    for old in [
+        """    function xiosMinimizeVisibleTasks() {
+        // xios-mobile-home-minimize: use the real task manager path; WindowUtil.minimizeAll() does not hide iOS KWin tasks reliably.
+        for (let i = 0; i < tasksModel.count; i++) {
+            const idx = tasksModel.makeModelIndex(i);
+            if (!tasksModel.data(idx, TaskManager.AbstractTasksModel.IsHidden)) {
+                tasksModel.requestToggleMinimized(idx);
+            }
+        }
+    }
+
+""",
+        """    function xiosMinimizeVisibleTasks() {
+        for (let i = 0; i < tasksModel.count; i++) {
+            const idx = tasksModel.makeModelIndex(i);
+            if (!tasksModel.data(idx, TaskManager.AbstractTasksModel.IsHidden)) {
+                tasksModel.requestToggleMinimized(idx);
+            }
+        }
+    }
+
+""",
+    ]:
+        text = text.replace(old, "")
+    if "xios-mobile-home-close" not in text:
+        needle = """    // ~~~~
+    // navigation panel actions
+"""
+        helper = """    readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= | tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= | awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null || true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null || true; done"
+
+    function xiosCloseOpenApps() {
+        // xios-mobile-home-close: iPad-style home closes the foreground KDE app so Folio is visible.
+        if (WindowPlugin.WindowUtil.hasCloseableActiveWindow) {
+            WindowPlugin.WindowUtil.closeActiveWindow();
+        }
+        MobileShell.ShellUtil.runCommand(root.xiosCloseOpenAppsCommand, 1200);
+        WindowPlugin.WindowUtil.forgetActiveWindow();
+        MobileShellState.ShellDBusClient.closeAppLaunchAnimation();
+    }
+
+    // ~~~~
+    // navigation panel actions
+"""
+        if needle in text:
+            text = text.replace(needle, helper, 1)
+    text = text.replace(
+        "        // xios-mobile-home-minimize: use the real task manager path; WindowUtil.minimizeAll() does not hide iOS KWin tasks reliably.\n",
+        "",
+        1,
+    )
+    old = """        onTriggered: {
+            MobileShellState.ShellDBusClient.openHomeScreen();
+        }
+"""
+    new = """        onTriggered: {
+            root.xiosCloseOpenApps();
+            MobileShellState.ShellDBusClient.openHomeScreen();
+        }
+"""
+    if old in text:
+        text = text.replace(old, new, 1)
+    old = """        onTriggered: {
+            root.xiosMinimizeVisibleTasks();
+            MobileShellState.ShellDBusClient.openHomeScreen();
+        }
+"""
+    if old in text:
+        text = text.replace(old, new, 1)
+    text = text.replace(
+        """            } else if (WindowPlugin.WindowUtil.hasCloseableActiveWindow) {
+                // if task switcher is closed, but there is an active window
+                if (tasksModel.activeTask !== 0) {
+                    tasksModel.requestClose(tasksModel.activeTask);
+                }
+                MobileShellState.ShellDBusClient.closeAppLaunchAnimation();
+            }
+""",
+        """            } else if (WindowPlugin.WindowUtil.hasCloseableActiveWindow) {
+                root.xiosCloseOpenApps();
+            }
+""",
+        1,
+    )
+    path.write_text(text)
+
+def patch_folio_home_close() -> None:
+    path = src / "containments/homescreens/folio/package/contents/ui/main.qml"
+    if not path.exists():
+        return
+    text = path.read_text()
+    if "import org.kde.taskmanager as TaskManager" not in text:
+        anchor = "import org.kde.plasma.private.mobileshell.state as MobileShellState\n"
+        text = text.replace(anchor, anchor + "import org.kde.taskmanager as TaskManager\n", 1)
+    for old in [
+        """    TaskManager.TasksModel {
+        id: xiosTasksModel
+        sortMode: TaskManager.TasksModel.SortDisabled
+        groupMode: TaskManager.TasksModel.GroupDisabled
+    }
+
+    function xiosHasVisibleTasks() {
+        for (let i = 0; i < xiosTasksModel.count; i++) {
+            const idx = xiosTasksModel.makeModelIndex(i);
+            if (!xiosTasksModel.data(idx, TaskManager.AbstractTasksModel.IsHidden)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function xiosMinimizeVisibleTasks() {
+        // xios-mobile-home-minimize: keep home navigation tied to KWin's real task model on iOS.
+        for (let i = 0; i < xiosTasksModel.count; i++) {
+            const idx = xiosTasksModel.makeModelIndex(i);
+            if (!xiosTasksModel.data(idx, TaskManager.AbstractTasksModel.IsHidden)) {
+                xiosTasksModel.requestToggleMinimized(idx);
+            }
+        }
+    }
+
+""",
+        """    TaskManager.TasksModel {
+        id: xiosTasksModel
+        sortMode: TaskManager.TasksModel.SortDisabled
+        groupMode: TaskManager.GroupDisabled
+    }
+
+""",
+    ]:
+        text = text.replace(old, "")
+    text = text.replace(
+        """    function xiosMinimizeVisibleTasks() {
+        for (let i = 0; i < xiosTasksModel.count; i++) {
+            const idx = xiosTasksModel.makeModelIndex(i);
+            if (!xiosTasksModel.data(idx, TaskManager.AbstractTasksModel.IsHidden)) {
+                xiosTasksModel.requestToggleMinimized(idx);
+            }
+        }
+    }
+
+""",
+        "",
+    )
+    if "xios-mobile-home-close" not in text:
+        needle = "    property Folio.HomeScreen folio: root.plasmoid\n"
+        helper = """    property Folio.HomeScreen folio: root.plasmoid
+
+    TaskManager.TasksModel {
+        id: xiosTasksModel
+        sortMode: TaskManager.TasksModel.SortDisabled
+        groupMode: TaskManager.TasksModel.GroupDisabled
+    }
+
+    function xiosHasVisibleTasks() {
+        for (let i = 0; i < xiosTasksModel.count; i++) {
+            const idx = xiosTasksModel.makeModelIndex(i);
+            if (!xiosTasksModel.data(idx, TaskManager.AbstractTasksModel.IsHidden)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= | tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= | awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null || true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null || true; done"
+
+    function xiosCloseOpenApps() {
+        // xios-mobile-home-close: iPad-style home closes the foreground KDE app so Folio is visible.
+        if (WindowPlugin.WindowUtil.hasCloseableActiveWindow) {
+            WindowPlugin.WindowUtil.closeActiveWindow();
+        }
+        MobileShell.ShellUtil.runCommand(root.xiosCloseOpenAppsCommand, 1200);
+        WindowPlugin.WindowUtil.forgetActiveWindow();
+        MobileShellState.ShellDBusClient.closeAppLaunchAnimation();
+    }
+
+"""
+        if needle in text:
+            text = text.replace(needle, helper, 1)
+    text = text.replace(
+        "        const isInWindow = (!WindowPlugin.WindowUtil.isShowingDesktop && WindowPlugin.WindowMaximizedTracker.showingWindow);\n",
+        "        const isInWindow = WindowPlugin.WindowUtil.hasCloseableActiveWindow || root.xiosHasVisibleTasks() || (!WindowPlugin.WindowUtil.isShowingDesktop && WindowPlugin.WindowMaximizedTracker.showingWindow);\n",
+        1,
+    )
+    text = text.replace(
+        "        const isInWindow = root.xiosHasVisibleTasks() || (!WindowPlugin.WindowUtil.isShowingDesktop && WindowPlugin.WindowMaximizedTracker.showingWindow);\n",
+        "        const isInWindow = WindowPlugin.WindowUtil.hasCloseableActiveWindow || root.xiosHasVisibleTasks() || (!WindowPlugin.WindowUtil.isShowingDesktop && WindowPlugin.WindowMaximizedTracker.showingWindow);\n",
+        1,
+    )
+    text = text.replace("                WindowPlugin.WindowUtil.minimizeAll();", "                root.xiosCloseOpenApps();", 1)
+    text = text.replace("                root.xiosMinimizeVisibleTasks();", "                root.xiosCloseOpenApps();", 1)
+    path.write_text(text)
+
 grid_view_qml = """import QtQuick 2.15 as QtQuick
 
 QtQuick.GridView {
@@ -889,7 +1092,7 @@ Controls.Drawer {
     dragMargin: 0
     required property bool horizontal
     signal wallpaperSettingsRequested()
-    readonly property string defaultWallpaper: "/var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+    readonly property string defaultWallpaper: "/var/jb/usr/share/backgrounds/xios/xios-default.png"
     readonly property string nativeWallpaper: "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
     width: horizontal ? Kirigami.Units.gridUnit * 14 : parent.width
     height: horizontal ? parent.height : Kirigami.Units.gridUnit * 10
@@ -1188,6 +1391,8 @@ if panel.exists():
 restore_upstream("containments/homescreens/folio/package/contents/ui/settings/AppletListViewer.qml")
 restore_upstream("containments/homescreens/folio/package/contents/ui/main.qml")
 restore_upstream("containments/homescreens/halcyon/package/contents/ui/main.qml")
+patch_mobile_taskpanel_home_close()
+patch_folio_home_close()
 patch_folio_app_delegate()
 patch_folio_home_screen_page()
 patch_folio_settings_window()
