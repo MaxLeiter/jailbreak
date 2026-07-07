@@ -446,14 +446,23 @@ xs_record_session_pgid() {
 
 xs_reap_recorded_session_pgroups() {
     [ -f "$XS_SESSION_PGIDS" ] || return 0
-    local pgid preset slot at current
+    local tmp="$XS_SESSION_PGIDS.$$" pgid preset slot at current
     current="$(xs_current_pgid)"
+    : >"$tmp" 2>/dev/null || true
     while IFS=$'\t' read -r pgid preset slot at; do
         case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
+        if [ -n "$slot" ]; then
+            printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$tmp" 2>/dev/null || true
+            continue
+        fi
         [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
         xs_reap_pgid "$pgid" "previous ${preset:-session}"
     done <"$XS_SESSION_PGIDS"
-    rm -f "$XS_SESSION_PGIDS" 2>/dev/null || true
+    if [ -s "$tmp" ]; then
+        mv "$tmp" "$XS_SESSION_PGIDS" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+    else
+        rm -f "$XS_SESSION_PGIDS" "$tmp" 2>/dev/null || true
+    fi
 }
 
 xs_reap_slot_session_pgroups() {
@@ -491,6 +500,23 @@ xs_reap_slot_named_processes() {
             kill -KILL "$pid" 2>/dev/null || true
         done
     done
+}
+
+xs_pgid_has_slot() {
+    local want="$1" pgid preset slot at
+    case "$want" in ""|*[!0-9]*|0|1) return 1 ;; esac
+    [ -f "$XS_SESSION_PGIDS" ] || return 1
+    while IFS=$'\t' read -r pgid preset slot at; do
+        [ "$pgid" = "$want" ] && [ -n "$slot" ] && return 0
+    done <"$XS_SESSION_PGIDS"
+    return 1
+}
+
+xs_pid_belongs_to_slot() {
+    local pid="$1" pgid
+    case "$pid" in ""|*[!0-9]*|0|1) return 1 ;; esac
+    pgid="$(ps -p "$pid" -o pgid= 2>/dev/null | tr -d '[:space:]')"
+    xs_pgid_has_slot "$pgid"
 }
 
 xs_first_readable() {
@@ -543,6 +569,7 @@ xios_session_teardown() {
                 [ -z "$pid" ] && continue
                 [ "$pid" = "$self" ] && continue
                 [ "$pid" = "$parent" ] && continue
+                xs_pid_belongs_to_slot "$pid" && continue
                 printf '%s\n' "$pid"
             done
     )"
@@ -558,20 +585,22 @@ xios_session_teardown() {
         [ -z "$pid" ] && continue
         [ "$pid" = "$self" ] && continue
         [ "$pid" = "$parent" ] && continue
+        xs_pid_belongs_to_slot "$pid" && continue
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
     done
     # rm every stale rendezvous/socket file (gotcha a). Globs cover iosc-ddx,
     # mutter-ddx, xios-ddx and every *-input.sock; explicit names cover the rest.
     rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
-          "$XS_TMP/xios.json" \
+          "$XS_CONFIG_JSON" \
           "$XS_TMP/xios-a11y.sock" \
-          "$XS_TMP"/*-ddx.sock \
-          "$XS_TMP"/*-input.sock \
+          "$XS_IOSC_DDX_SOCK" "$XS_IOSC_INPUT_SOCK" \
+          "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
+          "$XS_MUTTER_DDX_SOCK" "$XS_MUTTER_INPUT_SOCK" \
           "$XS_TMP/kwin-ios-test" "$XS_TMP/kwin-ios-test.lock" \
           "$XS_TMP/kde-session-bus" \
           "$XS_TMP/iosc-wm.sock" \
           "$XS_TMP/iosc-native.sock" 2>/dev/null || true
-    rm -rf "$XS_TMP/xios-kde-runtime" "$XS_TMP"/xios-kde-runtime-* 2>/dev/null || true
+    rm -rf "$XS_TMP/xios-kde-runtime" 2>/dev/null || true
     rm -rf "$XS_TMP/xios-session-bus" 2>/dev/null || true
     xs_log "teardown done"
 }
@@ -1036,6 +1065,7 @@ xios_session_stop() {
               "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
               "$XS_MUTTER_DDX_SOCK" "$XS_MUTTER_INPUT_SOCK" \
               "$XS_TMP/$XS_KWIN_SOCKET" "$XS_TMP/$XS_KWIN_SOCKET.lock" 2>/dev/null || true
+        rm -rf "$(xs_kde_runtime_dir)" 2>/dev/null || true
         rm -f "$XS_SLOT_REGISTRY" 2>/dev/null || true
         xs_log "slot $XS_SLOT stopped"
         xs_write_status stop stopped "slot stopped: $XS_SLOT"
