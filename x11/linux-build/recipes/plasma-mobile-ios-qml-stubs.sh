@@ -1344,26 +1344,6 @@ if [ -d "$lockscreen" ]; then
   restore_upstream_file "$lockscreen/PasswordBar.qml"
 fi
 
-mpris="$qml/org/kde/plasma/private/mpris"
-mkdir -p "$mpris"
-write_file "$mpris/qmldir" \
-  "module org.kde.plasma.private.mpris" \
-  "Mpris2Model 1.0 Mpris2Model.qml" \
-  "singleton PlaybackStatus 1.0 PlaybackStatus.qml"
-write_file "$mpris/Mpris2Model.qml" \
-  "import QtQuick 2.15" \
-  "ListModel {" \
-  "    property int currentIndex: 0" \
-  "    property var currentPlayer: ({ canControl: false, canGoPrevious: false, canGoNext: false, canPause: false, canPlay: false, canStop: false, playbackStatus: 2, track: \"\", artist: \"\", Previous: function(){}, Next: function(){}, Play: function(){}, Pause: function(){}, PlayPause: function(){}, Stop: function(){} })" \
-  "    function playerForLauncherUrl(launcherUrl, pid) { return null }" \
-  "}"
-write_file "$mpris/PlaybackStatus.qml" \
-  "pragma Singleton" \
-  "import QtQuick 2.15" \
-  "QtObject {" \
-  "    enum State { Playing, Paused, Stopped }" \
-  "}"
-
 milou="$qml/org/kde/milou"
 mkdir -p "$milou"
 write_file "$milou/qmldir" \

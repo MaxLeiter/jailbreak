@@ -2,14 +2,13 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-workspace.mk — first-light plasmashell/workspace package for rootless iOS.
-# This is deliberately not the full Linux desktop session. The source-fix script
-# keeps the core shell path and trims KScreenLocker, KSysGuard, Phonon/Canberra,
-# UDev, KCMs, applets, data engines, and session management for the first pass.
+# plasma-workspace.mk — plasmashell/workspace package for rootless iOS.
+# The source-fix script keeps the nested Wayland shell path while restoring real
+# Workspace support modules as their dependencies are packaged.
 
 SUBPROJECTS += plasma-workspace
 PLASMAWORKSPACE_VERSION = $(PLASMA_VERSION)
-DEB_PLASMAWORKSPACE_V ?= $(PLASMAWORKSPACE_VERSION)+ios10
+DEB_PLASMAWORKSPACE_V ?= $(PLASMAWORKSPACE_VERSION)+ios11
 
 plasma-workspace-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-workspace))

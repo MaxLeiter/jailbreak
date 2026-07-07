@@ -45,6 +45,7 @@ keep = {
     "libnotificationmanager",
     "libkworkspace",
     "libdbusmenuqt",
+    "libkmpris",
     "libtaskmanager",
     "menu",
     "components",

@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-mobile.mk — first-light Plasma Mobile data/shell package for Xios.
+# plasma-mobile.mk — Plasma Mobile data/shell package for Xios.
 # This wave packages the mobile shell/look-and-feel, containment package data,
 # quicksetting package data, the taskpanel applet plugin, and session launcher
 # files. Hardware-facing Mobile providers use the existing Xios iOS bridges for
@@ -13,7 +13,7 @@ endif
 
 SUBPROJECTS += plasma-mobile
 PLASMAMOBILE_VERSION = $(PLASMA_VERSION)
-DEB_PLASMAMOBILE_V ?= $(PLASMAMOBILE_VERSION)+ios20
+DEB_PLASMAMOBILE_V ?= $(PLASMAMOBILE_VERSION)+ios21
 
 plasma-mobile-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-mobile))
