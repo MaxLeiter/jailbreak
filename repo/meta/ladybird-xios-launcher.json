@@ -1,0 +1,13 @@
+{
+  "tagline": "Desktop entry for Ladybird in Xios",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "description": "**Ladybird Xios Launcher** installs a freedesktop `.desktop` entry for the standalone Ladybird browser.\n\nIt lets iosc, GNOME, KDE, and Xios launcher tooling list Ladybird alongside desktop apps. Launching it foregrounds the installed `com.max.ladybird` UIKit app through `uiopen`; it is a launcher bridge, not a Wayland embed of the browser window.",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "date": "2026-07-06",
+      "notes": "- Initial release\n- Installs `com.max.ladybird.desktop`\n- Ships the Ladybird hicolor icon for desktop/app launchers"
+    }
+  ]
+}

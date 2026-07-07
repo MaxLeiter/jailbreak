@@ -1,0 +1,16 @@
+Package: ladybird-xios-launcher
+Name: Ladybird Xios Launcher
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: ladybird-app (>= 0.1.22+ios1), uikittools
+Section: X11/Wayland Apps
+Priority: optional
+Description: Xios desktop launcher for the standalone Ladybird browser
+ Installs a freedesktop .desktop entry and hicolor icon for Ladybird so iosc,
+ GNOME, KDE, and the Xios launcher tooling can show the standalone UIKit browser
+ alongside compositor desktop apps.
+ .
+ The launcher foregrounds the already-installed Ladybird iPadOS app with uiopen;
+ it does not embed Ladybird as a Wayland client.
