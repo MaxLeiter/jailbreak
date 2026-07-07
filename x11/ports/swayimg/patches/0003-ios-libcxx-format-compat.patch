@@ -1,0 +1,231 @@
+Subject: [PATCH] swayimg: add iOS libc++ format compatibility
+
+The iPhoneOS SDK libc++ headers available in the Procursus cross image provide
+the basic C++20 headers but not std::format, nor std::hash for
+std::filesystem::path. Upstream swayimg uses <format> throughout the core
+sources and uses filesystem paths as unordered-map keys, so add source-root
+headers named "format" and "filesystem" that the existing -I.. include path
+resolves before SDK headers.
+
+The same compiler rejects a few newer C++20 conveniences used upstream:
+parenthesized aggregate initialization, reference capture of structured-binding
+names, and aggregate emplace construction. Keep the source changes narrow so
+the patch can be dropped when the cross toolchain catches up.
+
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/filesystem b/filesystem
+--- a/filesystem	1970-01-01 00:00:00.000000000 +0000
++++ b/filesystem	2026-07-07 00:18:36.422371013 +0000
+@@ -0,0 +1,16 @@
++#pragma once
++
++#include_next <filesystem>
++
++#include <functional>
++#include <string>
++
++namespace std {
++template <>
++struct hash<std::filesystem::path> {
++    size_t operator()(const std::filesystem::path& path) const noexcept
++    {
++        return std::hash<std::string> {}(path.string());
++    }
++};
++} // namespace std
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/format b/format
+--- a/format	1970-01-01 00:00:00.000000000 +0000
++++ b/format	2026-07-07 00:18:36.422371013 +0000
+@@ -0,0 +1,37 @@
++#pragma once
++
++#ifndef FMT_HEADER_ONLY
++#define FMT_HEADER_ONLY 1
++#endif
++#include <fmt/format.h>
++
++#include <string>
++#include <utility>
++
++namespace std {
++template <typename... Args>
++using format_string = const char*;
++
++template <typename... Args>
++auto make_format_args(Args&&... args)
++{
++    return fmt::make_format_args(std::forward<Args>(args)...);
++}
++
++inline std::string vformat(const char* fmt_str, fmt::format_args args)
++{
++    return fmt::vformat(fmt_str, args);
++}
++
++template <typename... Args>
++std::string format(const char* fmt_str, Args&&... args)
++{
++    return fmt::format(fmt_str, std::forward<Args>(args)...);
++}
++
++template <typename... Args>
++std::string format(const std::string& fmt_str, Args&&... args)
++{
++    return fmt::format(fmt_str, std::forward<Args>(args)...);
++}
++} // namespace std
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/src/geometry.hpp b/src/geometry.hpp
+--- a/src/geometry.hpp	2026-07-07 00:18:36.413371013 +0000
++++ b/src/geometry.hpp	2026-07-07 00:18:36.426371013 +0000
+@@ -14,6 +14,13 @@
+     ssize_t x = npos;
+     ssize_t y = npos;
+
++    Point() = default;
++    constexpr Point(ssize_t x_pos, ssize_t y_pos)
++        : x(x_pos)
++        , y(y_pos)
++    {
++    }
++
+     /**
+      * Check if coordinates is valid.
+      * @return true if coordinates is valid, false otherwise
+@@ -39,6 +46,13 @@
+     size_t width = 0;
+     size_t height = 0;
+
++    Size() = default;
++    constexpr Size(size_t w, size_t h)
++        : width(w)
++        , height(h)
++    {
++    }
++
+     /**
+      * Check if size is valid.
+      * @return true if size is valid, false otherwise
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/src/input.hpp b/src/input.hpp
+--- a/src/input.hpp	2026-06-21 05:41:12.000000000 +0000
++++ b/src/input.hpp	2026-07-07 00:18:36.427371013 +0000
+@@ -77,6 +77,12 @@
+ };
+
+ struct InputSignal {
++    InputSignal() = default;
++    constexpr InputSignal(int value)
++        : signal(value)
++    {
++    }
++
+     /**
+      * Construct signal state from text description.
+      * @param expression text key description
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/src/log.hpp b/src/log.hpp
+--- a/src/log.hpp	2026-07-07 00:18:36.413371013 +0000
++++ b/src/log.hpp	2026-07-07 00:18:36.423371013 +0000
+@@ -21,7 +21,7 @@
+     {
+         if (verbose_enable()) {
+             const std::string msg = sanitize(
+-                std::vformat(fmt.get(), std::make_format_args(args...)));
++                std::vformat(fmt, std::make_format_args(args...)));
+             std::cout << msg << '\n';
+         }
+     }
+@@ -35,7 +35,7 @@
+     static void info(const std::format_string<Args...> fmt, Args&&... args)
+     {
+         const std::string msg =
+-            sanitize(std::vformat(fmt.get(), std::make_format_args(args...)));
++            sanitize(std::vformat(fmt, std::make_format_args(args...)));
+         std::cout << msg << '\n';
+     }
+
+@@ -48,7 +48,7 @@
+     static void warning(const std::format_string<Args...> fmt, Args&&... args)
+     {
+         const std::string msg = "WARNING: " +
+-            sanitize(std::vformat(fmt.get(), std::make_format_args(args...)));
++            sanitize(std::vformat(fmt, std::make_format_args(args...)));
+         std::cerr << msg << '\n';
+     }
+
+@@ -61,7 +61,7 @@
+     static void error(const std::format_string<Args...> fmt, Args&&... args)
+     {
+         const std::string msg = "ERROR: " +
+-            sanitize(std::vformat(fmt.get(), std::make_format_args(args...)));
++            sanitize(std::vformat(fmt, std::make_format_args(args...)));
+         std::cerr << msg << '\n';
+     }
+
+@@ -76,7 +76,7 @@
+                       Args&&... args)
+     {
+         std::string msg = "ERROR: " +
+-            sanitize(std::vformat(fmt.get(), std::make_format_args(args...)));
++            sanitize(std::vformat(fmt, std::make_format_args(args...)));
+         if (code) {
+             msg +=
+                 std::format(", error code [{}] {}", code, std::strerror(code));
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/src/luaengine.hpp b/src/luaengine.hpp
+--- a/src/luaengine.hpp	2026-07-07 00:18:36.413371013 +0000
++++ b/src/luaengine.hpp	2026-07-07 00:18:36.424371013 +0000
+@@ -84,7 +84,7 @@
+                      Args&&... args) const
+     {
+         const std::string message =
+-            std::vformat(fmt.get(), std::make_format_args(args...));
++            std::vformat(fmt, std::make_format_args(args...));
+         const std::string status =
+             message.substr(0, message.find_first_of('\n'));
+         Log::error("{}", message);
+@@ -102,7 +102,7 @@
+                      Args&&... args) const
+     {
+         const std::string message =
+-            std::vformat(fmt.get(), std::make_format_args(args...));
++            std::vformat(fmt, std::make_format_args(args...));
+         throw luabridge::raise_lua_error(lua_state, "%s", message.c_str());
+     }
+
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/src/render.cpp b/src/render.cpp
+--- a/src/render.cpp	2026-07-07 00:18:36.413371013 +0000
++++ b/src/render.cpp	2026-07-07 00:18:36.430371013 +0000
+@@ -813,7 +813,11 @@
+                           const argb_t& color)
+ {
+     const Rectangle full { 0, 0, pm.width(), pm.height() };
+-    const auto [top, bottom, left, right] = full.cutout(rect);
++    const auto fill_parts = full.cutout(rect);
++    const Rectangle top = std::get<0>(fill_parts);
++    const Rectangle bottom = std::get<1>(fill_parts);
++    const Rectangle left = std::get<2>(fill_parts);
++    const Rectangle right = std::get<3>(fill_parts);
+
+     std::vector<size_t> tids;
+     tids.reserve(4); // one per each side
+diff -ruN -x build -x '*.done' -x .xios_patch_series.sha256 a/src/text.hpp b/src/text.hpp
+--- a/src/text.hpp	2026-07-07 00:18:36.413371013 +0000
++++ b/src/text.hpp	2026-07-07 00:18:36.429371013 +0000
+@@ -12,6 +12,7 @@
+ #include <list>
+ #include <map>
+ #include <string>
++#include <utility>
+ #include <vector>
+
+ /** Text overlay. */
+@@ -211,6 +212,12 @@
+
+     /** Key/value. */
+     struct KeyVal {
++        KeyVal(Line&& key_line, Line&& value_line)
++            : key(std::move(key_line))
++            , value(std::move(value_line))
++        {
++        }
++
+         Line key;
+         Line value;
+     };

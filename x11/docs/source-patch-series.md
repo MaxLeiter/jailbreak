@@ -119,6 +119,9 @@ Current converted non-Qt stacks:
 - `ports/imv/patches`: makes the `librt` Meson lookup optional, uses the
   portable `st_mtime` stat field, and makes the launcher prefer the verified
   Xwayland fallback on iOS while keeping an opt-in native Wayland path.
+- `ports/swayimg/patches`: carries Darwin eventfd/timerfd/stat portability,
+  Meson 1.0 option-file compatibility, and libc++ compatibility shims for
+  `std::format`, filesystem hashing, and newer C++20 construction patterns.
 - `ports/waybar/patches`: trims the initial iOS build surface to clock/custom
   modules by dropping Linux-only service modules and compositor integrations
   from Waybar's source list and factory.

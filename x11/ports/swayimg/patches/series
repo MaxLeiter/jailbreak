@@ -1,1 +1,4 @@
 0001-ios-darwin-portability.patch
+0002-ios-meson-1-0-compat.patch
+0003-ios-libcxx-format-compat.patch
+0004-ios-pipe2-compat.patch

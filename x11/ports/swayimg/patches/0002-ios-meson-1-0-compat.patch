@@ -1,0 +1,179 @@
+Subject: [PATCH] swayimg: accept Meson 1.0 option-file naming
+
+The current iOS build container ships Meson 1.0.1. swayimg 5.4 does not use
+Meson 1.1-only constructs for the reduced iOS feature set, but upstream stores
+project options in the Meson 1.1 `meson.options` filename. Keep that file for
+new Meson and add the older `meson_options.txt` name so Meson 1.0 sees the
+same options instead of rejecting every `-D...` argument as unknown.
+
+diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
+--- a/meson.build	2026-06-20 22:41:12
++++ b/meson.build	2026-07-06 00:00:00
+@@ -14 +14 @@
+-    meson_version: '>=1.1',
++    meson_version: '>=1.0',
+diff -ruN -U0 --exclude=*.bak a/meson_options.txt b/meson_options.txt
+--- a/meson_options.txt	1970-01-01 00:00:00
++++ b/meson_options.txt	2026-07-06 00:00:00
+@@ -0,0 +1,161 @@
++# format support
++option(
++    'exr',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable EXR format support',
++)
++option(
++    'gif',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable GIF format support',
++)
++option(
++    'heif',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable HEIF and AVIF format support',
++)
++option(
++    'avif',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable AVIF and AVIFS format support',
++)
++option(
++    'jpeg',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable JPEG format support',
++)
++option(
++    'jp2',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable JPEG 2000 format support',
++)
++option(
++    'jxl',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable JPEG XL format support',
++)
++option(
++    'png',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable PNG format support',
++)
++option(
++    'svg',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable SVG format support',
++)
++option(
++    'tiff',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable TIFF format support',
++)
++option(
++    'sixel',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable Sixel format support',
++)
++option(
++    'raw',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable raw format support',
++)
++option(
++    'webp',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable WebP format support',
++)
++
++# EXIF support
++option(
++    'exif',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable EXIF reader support',
++)
++
++# Integration with Wayland compositors
++option(
++    'compositor',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable integration with wayland compositors',
++)
++
++# Wayland UI
++option(
++    'wayland',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable Wayland support',
++)
++
++# DRM UI
++option(
++    'drm',
++    type: 'feature',
++    value: 'auto',
++    description: 'Enable DRM (Direct Rendering Manager) support',
++)
++
++# extra files to install
++option(
++    'bash',
++    type: 'feature',
++    value: 'auto',
++    description: 'Install bash completion',
++)
++option(
++    'zsh',
++    type: 'feature',
++    value: 'auto',
++    description: 'Install zsh completion',
++)
++option(
++    'desktop',
++    type: 'boolean',
++    value: true,
++    description: 'Install desktop file with icon',
++)
++option(
++    'license',
++    type: 'boolean',
++    value: true,
++    description: 'Install license file',
++)
++option(
++    'doc',
++    type: 'boolean',
++    value: true,
++    description: 'Install documentation in markdown format',
++)
++option(
++    'luameta',
++    type: 'boolean',
++    value: true,
++    description: 'Install Lua meta file with example config',
++)
++option('man', type: 'boolean', value: true, description: 'Install man page')
++
++# project version
++option('version', type: 'string', value: '0.0.0', description: 'Project version')
++
++# unit tests
++option(
++    'tests',
++    type: 'feature',
++    value: 'disabled',
++    description: 'Build unit tests',
++)

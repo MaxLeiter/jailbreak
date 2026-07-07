@@ -36,7 +36,8 @@ swayimg-setup: setup
 	[built-in options]\n \
 	prefix ='$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)'\n \
 	c_args = ['-Wno-error']\n \
-	cpp_args = ['-Wno-error']\n \
+	cpp_args = ['-Wno-error', '-stdlib=libc++', '-isysroot', '$(TARGET_SYSROOT)', '$(PLATFORM_VERSION_MIN)', '-arch', '$(MEMO_ARCH)', '-isystem$(TARGET_SYSROOT)/usr/include/c++/v1', '-isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/c++/v1', '-isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include']\n \
+	cpp_link_args = ['-stdlib=libc++', '-isysroot', '$(TARGET_SYSROOT)', '$(PLATFORM_VERSION_MIN)', '-arch', '$(MEMO_ARCH)', '-L$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib', '-Wl,-not_for_dyld_shared_cache', '-liosexec']\n \
 	[binaries]\n \
 	c = '$(CC)'\n \
 	cpp = '$(CXX)'\n \
@@ -46,7 +47,7 @@ ifneq ($(wildcard $(BUILD_WORK)/swayimg/.build_complete),)
 swayimg:
 	@echo "Using previously built swayimg."
 else
-swayimg: swayimg-setup wayland wayland-protocols libxkbcommon fontconfig freetype luajit libpng16 libjpeg-turbo
+swayimg: swayimg-setup wayland wayland-protocols libxkbcommon fontconfig freetype luajit libfmt libpng16 libjpeg-turbo
 	cd $(BUILD_WORK)/swayimg/build && \
 		printf "[binaries]\npkgconfig = 'pkg-config'\n[built-in options]\npkg_config_path = ['$(WAYLAND_NATIVE_ROOT)/lib/pkgconfig']\n" > native.txt && \
 		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \
