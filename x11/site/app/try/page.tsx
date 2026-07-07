@@ -78,6 +78,20 @@ export default function Try() {
         </Callout>
       </Section>
 
+      <Section num="07.5" title="Send feedback">
+        <div className="prose">
+          <p>
+            If you try it, file bugs, install notes, screenshots, and device
+            details on{" "}
+            <Ext href="https://github.com/MaxLeiter/jailbreak/issues">
+              GitHub Issues
+            </Ext>{" "}
+            for <code>maxleiter/jailbreak</code>. Include the device, iOS version,
+            jailbreak, package flavor, and what happened.
+          </p>
+        </div>
+      </Section>
+
       <NextLinks path="/try" />
     </>
   );
