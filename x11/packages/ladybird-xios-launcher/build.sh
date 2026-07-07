@@ -15,12 +15,7 @@ STAGE="$STAGEROOT/ladybird-xios-launcher"
 
 rm -rf "$STAGEROOT"
 mkdir -p "$STAGE"
-cp -a "$PKGDIR/DEBIAN" "$PKGDIR/var" "$STAGE/"
-
-ICON_SRC="$X11DIR/packages/ladybird-app/Resources/AppIcon.png"
-ICON_DIR="$STAGE/var/jb/usr/share/icons/hicolor/256x256/apps"
-mkdir -p "$ICON_DIR"
-install -m 0644 "$ICON_SRC" "$ICON_DIR/ladybird.png"
+cp -a "$PKGDIR/DEBIAN" "$STAGE/"
 
 find "$STAGE" -type d -exec chmod 0755 {} +
 find "$STAGE" -type f -exec chmod 0644 {} +

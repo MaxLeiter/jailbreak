@@ -1,0 +1,25 @@
+Subject: [PATCH] ios: support GTK 4.14 memory texture API
+
+Ladybird's GTK frontend uses GdkMemoryTextureBuilder, which is available in
+newer GTK 4 releases. The Xios GTK4 package is currently 4.14.5, where the
+older gdk_memory_texture_new API is the supported path.
+--- a/UI/Gtk/WebContentView.cpp
++++ b/UI/Gtk/WebContentView.cpp
+@@ -185,6 +185,7 @@ void WebContentView::paint(GtkSnapshot* snapshot)
+         // to reuse GPU resources and only re-upload changed regions.
+         if (bitmap != m_cached_bitmap || bitmap_size != m_cached_painted_size || !m_cached_texture.ptr()) {
+             auto* bytes = g_bytes_new_static(bitmap->scanline_u8(0), bitmap->pitch() * painted_height);
++#if GTK_CHECK_VERSION(4, 16, 0)
+             GObjectPtr builder { gdk_memory_texture_builder_new() };
+             gdk_memory_texture_builder_set_bytes(GDK_MEMORY_TEXTURE_BUILDER(builder.ptr()), bytes);
+             gdk_memory_texture_builder_set_stride(GDK_MEMORY_TEXTURE_BUILDER(builder.ptr()), bitmap->pitch());
+@@ -201,6 +202,9 @@ void WebContentView::paint(GtkSnapshot* snapshot)
+             }
+ 
+             m_cached_texture = GObjectPtr<GdkTexture> { gdk_memory_texture_builder_build(GDK_MEMORY_TEXTURE_BUILDER(builder.ptr())) };
++#else
++            m_cached_texture = GObjectPtr<GdkTexture> { gdk_memory_texture_new(painted_width, painted_height, GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes, bitmap->pitch()) };
++#endif
+             g_bytes_unref(bytes);
+ 
+             m_cached_bitmap = bitmap;

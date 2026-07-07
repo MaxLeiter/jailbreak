@@ -3,6 +3,8 @@ Version: @DEB_LIBWEBP_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
 Depends: libsharpyuv0
+Replaces: libwebpmux3 (<< 1.6.0+ios1)
+Breaks: libwebpmux3 (<< 1.6.0+ios1)
 Section: Libraries
 Priority: optional
 Homepage: https://developers.google.com/speed/webp

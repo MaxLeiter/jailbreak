@@ -1,0 +1,53 @@
+Subject: [PATCH] ios: enable Mach helper bootstrap for desktop frontend
+
+The iOS GTK/Wayland frontend still launches Ladybird helper services, and the
+iOS helper entry points use the Mach bootstrap transport. Start the same
+bootstrap listener on iOS desktop builds that the UIKit frontend needs, so
+helpers receive a non-empty --mach-server-name.
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -43,7 +43,7 @@
+ #include <LibWebView/Utilities.h>
+ #include <LibWebView/WebContentClient.h>
+ 
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibIPC/MachBootstrapListener.h>
+ #    include <LibIPC/Transport.h>
+ #    include <LibIPC/TransportBootstrapMach.h>
+@@ -145,12 +145,16 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
+         warnln("Unable to increase open file limit: {}", result.error());
+ #endif
+ 
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     m_mach_port_server = make<IPC::MachBootstrapListener>(mach_server_name_for_process("Ladybird"sv, Core::System::getpid()));
+     set_mach_server_name(m_mach_port_server->server_port_name());
+ 
+     m_mach_port_server->on_bootstrap_request = [this](IPC::MachBootstrapListener::BootstrapRequest request) {
++#if defined(AK_OS_IOS)
++        (void)request.task_port;
++#else
+         set_process_mach_port(request.pid, move(request.task_port));
++#endif
+         auto result = MUST(m_transport_bootstrap_server.handle_bootstrap_request(request.pid, move(request.reply_port)));
+         result.visit(
+             [](IPC::TransportBootstrapMachServer::ChildTransportHandled) {
+@@ -262,7 +266,7 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
+             return true;
+         } });
+     args_parser.add_option(profile_process, "Enable callgrind profiling of the given process name (WebContent, RequestServer, etc.)", "profile-process", 0, "process-name");
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+     args_parser.add_option(webdriver_endpoint, "Mach server name for WebDriver IPC", "webdriver-mach-server-name", 0, "name", Core::ArgsParser::OptionHideMode::CommandLineAndMarkdown);
+ #else
+     args_parser.add_option(webdriver_endpoint, "Path to WebDriver IPC for WebContent", "webdriver-content-path", 0, "path", Core::ArgsParser::OptionHideMode::CommandLineAndMarkdown);
+@@ -1155,7 +1159,7 @@ void Application::set_process_mach_port(pid_t pid, Core::MachPort&& port)
+ }
+ #endif
+ 
+-#if defined(AK_OS_MACOS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ void Application::set_browser_process_transport_handler(Function<void(NonnullOwnPtr<IPC::Transport>)> handler)
+ {
+     m_on_browser_process_transport = move(handler);

@@ -8,3 +8,5 @@ ios-app-angle-compat.patch
 ios-app-webgl-ios-enable.patch
 ios-app-webgl-release-cleanup.patch
 ios-wayland-gtk-frontend.patch
+ios-gtk-4-14-memory-texture.patch
+ios-desktop-mach-bootstrap.patch

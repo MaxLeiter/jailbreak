@@ -1,13 +1,18 @@
 {
-  "tagline": "Desktop entry for Ladybird in Xios",
+  "tagline": "Transitional package for Ladybird (Wayland)",
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
-  "description": "**Ladybird Xios Launcher** installs a freedesktop `.desktop` entry for the standalone Ladybird browser.\n\nIt lets iosc, GNOME, KDE, and Xios launcher tooling list Ladybird alongside desktop apps. Launching it foregrounds the installed `com.max.ladybird` UIKit app through `uiopen`; it is a launcher bridge, not a Wayland embed of the browser window.",
+  "description": "**Ladybird Xios Launcher** is now a transitional package that installs `ladybird-wayland`.\n\nThe real desktop entry lives in the Ladybird (Wayland) package and launches the GTK/libadwaita Ladybird browser as a Wayland client inside the running Xios compositor session.",
   "changelog": [
+    {
+      "version": "0.1.1",
+      "date": "2026-07-07",
+      "notes": "- Transitional package for `ladybird-wayland`\n- Removes the old UIKit foregrounding desktop entry from the published package"
+    },
     {
       "version": "0.1.0",
       "date": "2026-07-06",
-      "notes": "- Initial release\n- Installs `com.max.ladybird.desktop`\n- Ships the Ladybird hicolor icon for desktop/app launchers"
+      "notes": "- Initial launcher bridge release"
     }
   ]
 }

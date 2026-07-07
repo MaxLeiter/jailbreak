@@ -24,6 +24,7 @@ version for any agent.
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
 | gnome-calculator 46.2 | in repo/debs | installed | (GTK4, works) | — |
 | wl-clipboard 2.2.1 | out/ ✓ | installed | **YES (CLI)** | round-trip verified with package-installed `iosc 0.9.10` |
+| Ladybird 0.1.0+wl1 | repo/debs ✓ | install attempted | **PUBLISHED, FINAL SMOKE BLOCKED** | real GTK/libadwaita Wayland client package; `.desktop` launches `ladybird-wayland`, not the standalone UIKit app; current blocker is device SSH resetting during key exchange |
 
 ## The launch-in-iosc fixes
 
@@ -128,6 +129,20 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `dpkg-query -W iosc` reports `0.9.10`, `/var/jb/usr/local/bin/iosc` sha256 is
   `3e06159e628c6aad442f6e91f50a6e6b487fc37dd0c65f56ae9c1e3e73cc7850`, and
   `wl-copy --foreground` -> `wl-paste` returned `xios clipboard foreground 0.9.10`.
+- **Ladybird Wayland — PACKAGED + PUBLISHED, final device smoke pending.**
+  `ladybird-wayland 0.1.0+wl1` installs the upstream GTK/libadwaita Ladybird
+  browser, helper processes, real Ladybird icon, D-Bus service, and
+  `org.ladybird.Ladybird.desktop` with `Exec=ladybird-wayland --force-new-process %U`.
+  The old `ladybird-xios-launcher` package is now a transitional package that
+  depends on `ladybird-wayland`; it no longer ships the removed UIKit
+  foregrounding desktop entry. The package is in the public Apps section at
+  `repo.maxleiter.com` with tightened Depends pins for the newer Ladybird leaf
+  libraries. Host packaging verifies the Compositor loads real ANGLE
+  `/var/jb/lib/angle/libEGL.angle.dylib` and `/var/jb/lib/angle/libGLESv2.dylib`.
+  On-device work progressed through helper Mach bootstrap and WebP/OpenSSL/ICU
+  dependency fixes; the last observed runtime skew was old HarfBuzz, now covered
+  by the package dependency. Final install/launch/screenshot is blocked until
+  device SSH stops resetting at key exchange.
 - **dunst — WORKS.** Use dunst, not mako. `dunst 1.13.2+ios2` runs as a Wayland
   layer-shell client under `dbus-run-session`, accepts
   `org.freedesktop.Notifications.Notify` through GDBus, and visibly renders the
@@ -204,6 +219,9 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   works.
 - [x] Publish (Max-gated): app-wave candidates are in production `repo.maxleiter.com`;
   iPad-side isolated apt policy shows the expected production candidates.
+- [ ] Ladybird Wayland final device smoke: once SSH recovers, install/upgrade
+  `ladybird-wayland`, start classic `iosc`, launch from the `.desktop`, and capture
+  a compositor screenshot plus helper process/log status.
 
 ## How to verify on-device
 

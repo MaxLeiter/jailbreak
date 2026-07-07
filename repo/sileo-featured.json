@@ -844,6 +844,11 @@
       "url": "https://repo.maxleiter.com/banners/ladybird-app.png"
     },
     {
+      "title": "Ladybird (Wayland)",
+      "package": "ladybird-wayland",
+      "url": "https://repo.maxleiter.com/banners/ladybird-wayland.png"
+    },
+    {
       "title": "Ladybird Xios Launcher",
       "package": "ladybird-xios-launcher",
       "url": "https://repo.maxleiter.com/banners/ladybird-xios-launcher.png"
@@ -939,6 +944,11 @@
       "url": "https://repo.maxleiter.com/banners/libavcodec59.png"
     },
     {
+      "title": "libavcodec61",
+      "package": "libavcodec61",
+      "url": "https://repo.maxleiter.com/banners/libavcodec61.png"
+    },
+    {
       "title": "libavdevice-dev",
       "package": "libavdevice-dev",
       "url": "https://repo.maxleiter.com/banners/libavdevice-dev.png"
@@ -969,6 +979,11 @@
       "url": "https://repo.maxleiter.com/banners/libavformat59.png"
     },
     {
+      "title": "libavformat61",
+      "package": "libavformat61",
+      "url": "https://repo.maxleiter.com/banners/libavformat61.png"
+    },
+    {
       "title": "libavutil-dev",
       "package": "libavutil-dev",
       "url": "https://repo.maxleiter.com/banners/libavutil-dev.png"
@@ -977,6 +992,16 @@
       "title": "libavutil57",
       "package": "libavutil57",
       "url": "https://repo.maxleiter.com/banners/libavutil57.png"
+    },
+    {
+      "title": "libavutil59",
+      "package": "libavutil59",
+      "url": "https://repo.maxleiter.com/banners/libavutil59.png"
+    },
+    {
+      "title": "libbrotli1",
+      "package": "libbrotli1",
+      "url": "https://repo.maxleiter.com/banners/libbrotli1.png"
     },
     {
       "title": "libcairo-gobject2",
@@ -1107,6 +1132,11 @@
       "title": "libfcft4",
       "package": "libfcft4",
       "url": "https://repo.maxleiter.com/banners/libfcft4.png"
+    },
+    {
+      "title": "libfmt12",
+      "package": "libfmt12",
+      "url": "https://repo.maxleiter.com/banners/libfmt12.png"
     },
     {
       "title": "libfontconfig-dev",
@@ -1439,6 +1469,11 @@
       "url": "https://repo.maxleiter.com/banners/libicu74.png"
     },
     {
+      "title": "libicu78",
+      "package": "libicu78",
+      "url": "https://repo.maxleiter.com/banners/libicu78.png"
+    },
+    {
       "title": "libjpeg-turbo-progs",
       "package": "libjpeg-turbo-progs",
       "url": "https://repo.maxleiter.com/banners/libjpeg-turbo-progs.png"
@@ -1494,6 +1529,11 @@
       "url": "https://repo.maxleiter.com/banners/libltdl7.png"
     },
     {
+      "title": "libmimalloc",
+      "package": "libmimalloc",
+      "url": "https://repo.maxleiter.com/banners/libmimalloc.png"
+    },
+    {
       "title": "libmozjs-115-0",
       "package": "libmozjs-115-0",
       "url": "https://repo.maxleiter.com/banners/libmozjs-115-0.png"
@@ -1542,6 +1582,11 @@
       "title": "libmutter-14-dev",
       "package": "libmutter-14-dev",
       "url": "https://repo.maxleiter.com/banners/libmutter-14-dev.png"
+    },
+    {
+      "title": "libnghttp2-14",
+      "package": "libnghttp2-14",
+      "url": "https://repo.maxleiter.com/banners/libnghttp2-14.png"
     },
     {
       "title": "libnotify-dev",
@@ -1689,6 +1734,21 @@
       "url": "https://repo.maxleiter.com/banners/libsecret-dev.png"
     },
     {
+      "title": "libsharpyuv0",
+      "package": "libsharpyuv0",
+      "url": "https://repo.maxleiter.com/banners/libsharpyuv0.png"
+    },
+    {
+      "title": "libsimdjson",
+      "package": "libsimdjson",
+      "url": "https://repo.maxleiter.com/banners/libsimdjson.png"
+    },
+    {
+      "title": "libsimdutf",
+      "package": "libsimdutf",
+      "url": "https://repo.maxleiter.com/banners/libsimdutf.png"
+    },
+    {
       "title": "libsoup-3.0-0",
       "package": "libsoup-3.0-0",
       "url": "https://repo.maxleiter.com/banners/libsoup-3.0-0.png"
@@ -1697,6 +1757,16 @@
       "title": "libsoup-3.0-dev",
       "package": "libsoup-3.0-dev",
       "url": "https://repo.maxleiter.com/banners/libsoup-3.0-dev.png"
+    },
+    {
+      "title": "libsqlite3-1",
+      "package": "libsqlite3-1",
+      "url": "https://repo.maxleiter.com/banners/libsqlite3-1.png"
+    },
+    {
+      "title": "libssl3",
+      "package": "libssl3",
+      "url": "https://repo.maxleiter.com/banners/libssl3.png"
     },
     {
       "title": "libstartup-notification-dev",
@@ -1719,6 +1789,11 @@
       "url": "https://repo.maxleiter.com/banners/libswresample4.png"
     },
     {
+      "title": "libswresample5",
+      "package": "libswresample5",
+      "url": "https://repo.maxleiter.com/banners/libswresample5.png"
+    },
+    {
       "title": "libswscale-dev",
       "package": "libswscale-dev",
       "url": "https://repo.maxleiter.com/banners/libswscale-dev.png"
@@ -1732,6 +1807,11 @@
       "title": "libtllist-dev",
       "package": "libtllist-dev",
       "url": "https://repo.maxleiter.com/banners/libtllist-dev.png"
+    },
+    {
+      "title": "libtommath1",
+      "package": "libtommath1",
+      "url": "https://repo.maxleiter.com/banners/libtommath1.png"
     },
     {
       "title": "libtracker-sparql-3.0-0",
@@ -1802,6 +1882,26 @@
       "title": "libwayland0",
       "package": "libwayland0",
       "url": "https://repo.maxleiter.com/banners/libwayland0.png"
+    },
+    {
+      "title": "libwebp7",
+      "package": "libwebp7",
+      "url": "https://repo.maxleiter.com/banners/libwebp7.png"
+    },
+    {
+      "title": "libwebpdemux2",
+      "package": "libwebpdemux2",
+      "url": "https://repo.maxleiter.com/banners/libwebpdemux2.png"
+    },
+    {
+      "title": "libwebpmux3",
+      "package": "libwebpmux3",
+      "url": "https://repo.maxleiter.com/banners/libwebpmux3.png"
+    },
+    {
+      "title": "libwoff2-1",
+      "package": "libwoff2-1",
+      "url": "https://repo.maxleiter.com/banners/libwoff2-1.png"
     },
     {
       "title": "libx11-6",
@@ -1992,6 +2092,11 @@
       "title": "libyaml-0-2",
       "package": "libyaml-0-2",
       "url": "https://repo.maxleiter.com/banners/libyaml-0-2.png"
+    },
+    {
+      "title": "libz1",
+      "package": "libz1",
+      "url": "https://repo.maxleiter.com/banners/libz1.png"
     },
     {
       "title": "Mesa GL demo utilities",

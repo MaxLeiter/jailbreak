@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "generic font configuration library - runtime"
+          "markdown": "generic font configuration library - runtime (Ladybird pin 2.17.1)"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "2.14.0+ios1"
+          "text": "2.17.1+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "155.0 KiB"
+          "text": "162.3 KiB"
         },
         {
           "class": "DepictionTableTextView",

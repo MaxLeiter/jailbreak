@@ -18,6 +18,13 @@ patch_semantically_applied() {
   local patch_name="$1"
 
   case "$patch_name" in
+    0001-ios-m0-sandbox-and-libedit-gates.patch)
+      grep -q 'NOT WIN32 AND NOT ANDROID AND NOT IOS' Meta/CMake/check_for_dependencies.cmake &&
+        grep -q 'APPLE AND NOT IOS' Services/ImageDecoder/CMakeLists.txt &&
+        grep -q 'APPLE AND NOT IOS' Services/RequestServer/CMakeLists.txt &&
+        grep -q 'APPLE AND NOT IOS' Services/WebContent/CMakeLists.txt &&
+        grep -q 'APPLE AND NOT IOS' Services/WebWorker/CMakeLists.txt
+      ;;
     0002-ios-m0-drop-avif-jpegxl-decoders.patch)
       # Old cached build trees can have this patch's code changes plus later
       # dependency-patch context drift, making both forward and reverse dry-runs
@@ -97,6 +104,15 @@ patch_semantically_applied() {
         grep -q 'NOT APPLE OR IOS' UI/cmake/InstallRules.cmake &&
         grep -q 'APPLE AND NOT IOS' UI/cmake/ResourceFiles.cmake
       ;;
+    ios-gtk-4-14-memory-texture.patch)
+      grep -q 'GTK_CHECK_VERSION(4, 16, 0)' UI/Gtk/WebContentView.cpp &&
+        grep -q 'gdk_memory_texture_new(painted_width' UI/Gtk/WebContentView.cpp
+      ;;
+    ios-desktop-mach-bootstrap.patch)
+      grep -q 'defined(AK_OS_MACOS) || defined(AK_OS_IOS)' Libraries/LibWebView/Application.cpp &&
+        grep -q '(void)request.task_port' Libraries/LibWebView/Application.cpp &&
+        grep -q 'set_browser_process_transport_handler' Libraries/LibWebView/Application.cpp
+      ;;
     *)
       return 1
       ;;
@@ -108,33 +124,72 @@ apply_quilt_series() {
   local series="$patch_dir/series"
   [ -f "$series" ] || return 0
 
-  if command -v quilt >/dev/null 2>&1; then
+  series_semantically_applied() {
+    local patch_name patch_file
+    while IFS= read -r patch_name; do
+      patch_name="${patch_name%%#*}"
+      patch_name="${patch_name## }"
+      patch_name="${patch_name%% }"
+      [ -n "$patch_name" ] || continue
+      patch_file="$patch_dir/$patch_name"
+      [ -f "$patch_file" ] || return 1
+      patch_semantically_applied "$patch_name" || return 1
+    done < "$series"
+  }
+
+  series_has_semantic_marker() {
+    local patch_name
+    while IFS= read -r patch_name; do
+      patch_name="${patch_name%%#*}"
+      patch_name="${patch_name## }"
+      patch_name="${patch_name%% }"
+      [ -n "$patch_name" ] || continue
+      patch_semantically_applied "$patch_name" && return 0
+    done < "$series"
+    return 1
+  }
+
+  apply_with_patch() {
+    local patch_name patch_file
+    while IFS= read -r patch_name; do
+      patch_name="${patch_name%%#*}"
+      patch_name="${patch_name## }"
+      patch_name="${patch_name%% }"
+      [ -n "$patch_name" ] || continue
+      patch_file="$patch_dir/$patch_name"
+      if patch_semantically_applied "$patch_name"; then
+        say "quilt fallback: $patch_name already applied (semantic marker)"
+      elif patch -p1 --dry-run -f < "$patch_file" >/dev/null 2>&1; then
+        patch -p1 < "$patch_file"
+        say "quilt fallback: applied $patch_name"
+      elif patch -p1 -R --dry-run -f < "$patch_file" >/dev/null 2>&1; then
+        say "quilt fallback: $patch_name already applied"
+      else
+        echo "failed to apply $patch_file" >&2
+        return 1
+      fi
+    done < "$series"
+  }
+
+  if series_semantically_applied; then
+    say "quilt: $patch_dir already applied (semantic markers)"
+    return 0
+  fi
+
+  if command -v quilt >/dev/null 2>&1 && ! series_has_semantic_marker; then
     QUILT_PATCHES="$patch_dir" quilt push -a || {
       # Idempotent reruns can land here when every patch in the series is already applied.
       QUILT_PATCHES="$patch_dir" quilt applied >/dev/null 2>&1 && return 0
+      series_semantically_applied && {
+        say "quilt: $patch_dir already applied (semantic markers)"
+        return 0
+      }
       return 1
     }
     return 0
   fi
 
-  while IFS= read -r patch_name; do
-    patch_name="${patch_name%%#*}"
-    patch_name="${patch_name## }"
-    patch_name="${patch_name%% }"
-    [ -n "$patch_name" ] || continue
-    local patch_file="$patch_dir/$patch_name"
-    if patch_semantically_applied "$patch_name"; then
-      say "quilt fallback: $patch_name already applied (semantic marker)"
-    elif patch -p1 --dry-run -f < "$patch_file" >/dev/null 2>&1; then
-      patch -p1 < "$patch_file"
-      say "quilt fallback: applied $patch_name"
-    elif patch -p1 -R --dry-run -f < "$patch_file" >/dev/null 2>&1; then
-      say "quilt fallback: $patch_name already applied"
-    else
-      echo "failed to apply $patch_file" >&2
-      return 1
-    fi
-  done < "$series"
+  apply_with_patch
 }
 
 # Common M0 source patches that are needed by both headless and app builds.

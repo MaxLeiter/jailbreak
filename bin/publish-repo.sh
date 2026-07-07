@@ -21,6 +21,8 @@ esac
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCKDIR="${TMPDIR:-/tmp}/maxleiter-repo-publish.lock"
 SCOPE="${VERCEL_SCOPE:-maxleiters-team}"
+PROD_DOMAIN="${PROD_REPO_DOMAIN:-repo.maxleiter.com}"
+PROD_PROJECT="${PROD_REPO_PROJECT:-repo}"
 # Staging keeps the historical dev.repo.maxleiter.com domain and repo-dev project.
 STAGING_DOMAIN="${STAGING_REPO_DOMAIN:-dev.repo.maxleiter.com}"
 STAGING_PROJECT="${STAGING_REPO_PROJECT:-repo-dev}"
@@ -58,6 +60,22 @@ finalize_x11_graphics_debs() {
     --ldid "$ldid_bin" \
     --gpu-ent "$gpu_ent" \
     --gl-ent "$gl_ent"
+}
+
+deploy_static_repo() {
+  local project="$1" config_name="$2" domain="$3"
+  local deploy_root
+  deploy_root="$(mktemp -d "${TMPDIR:-/tmp}/maxleiter-repo-deploy.XXXXXX")"
+  cleanup_deploy_root() { rm -rf "$deploy_root"; }
+  trap cleanup_deploy_root RETURN
+
+  mkdir -p "$deploy_root/repo"
+  rsync -a --delete --exclude 'debs/' --exclude '.vercel/' \
+    "$REPO_ROOT/repo/" "$deploy_root/repo/"
+
+  vercel deploy "$deploy_root" --prod --yes --scope "$SCOPE" --project "$project" \
+    --local-config "$deploy_root/repo/$config_name" --no-color
+  echo "==> Live at https://$domain"
 }
 
 finalize_x11_graphics_debs
@@ -108,11 +126,8 @@ fi
 cd "$REPO_ROOT/repo"
 if [ "$TARGET" = staging ]; then
   echo "==> Deploying staging repo to Vercel ($SCOPE/$STAGING_PROJECT -> $STAGING_DOMAIN)"
-  vercel deploy --prod --yes --scope "$SCOPE" --project "$STAGING_PROJECT" \
-    --local-config "$REPO_ROOT/repo/vercel.staging.json" --no-color
-  echo "==> Staging live at https://$STAGING_DOMAIN"
+  deploy_static_repo "$STAGING_PROJECT" "vercel.staging.json" "$STAGING_DOMAIN"
 else
-  echo "==> Deploying to Vercel ($SCOPE -> repo.maxleiter.com)"
-  vercel deploy --prod --yes --scope "$SCOPE" --local-config "$REPO_ROOT/repo/vercel.prod.json"
-  echo "==> Live at https://repo.maxleiter.com"
+  echo "==> Deploying to Vercel ($SCOPE/$PROD_PROJECT -> $PROD_DOMAIN)"
+  deploy_static_repo "$PROD_PROJECT" "vercel.prod.json" "$PROD_DOMAIN"
 fi
