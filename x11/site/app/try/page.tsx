@@ -11,7 +11,7 @@ export default function Try() {
         tag="Try it yourself"
         index="07"
         title="Run it on your device"
-        lede="Everything here ships as ordinary packages. If you have a jailbroken device, a desktop is a few minutes away."
+        lede="Everything here ships as ordinary packages. Bring a compatible jailbreak and expect some rough edges."
       />
 
       <Section num="07.1" title="What you need">
@@ -19,8 +19,9 @@ export default function Try() {
           <div className="row">
             <dt>A jailbroken device</dt>
             <dd>
-              Proven on an iPad 7 (A10, iPadOS 17.6.1). It should work on
-              jailbroken iOS more broadly, rootful or rootless.
+              Proven on a rootless iPad 7 (A10, iPadOS 17.6.1). Other
+              jailbreakable iOS 16+ devices may work, but this is the tested
+              target.
             </dd>
           </div>
           <div className="row">
@@ -55,8 +56,8 @@ export default function Try() {
         </div>
         <Panel label="Install" fig="apt">
           <div className="cmd">
-            <span className="p">$</span> apt install xios-gnome{"  "}
-            <span className="comment"># or xios-kde, xios-native, xios-x11</span>
+            <span className="p">$</span> apt install xios-kde{"  "}
+            <span className="comment"># or xios-gnome, xios-native, xios-x11</span>
           </div>
         </Panel>
       </Section>

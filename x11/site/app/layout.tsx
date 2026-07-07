@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     template: "%s / xiOS",
   },
   description:
-    "How a real X11 server, a GPU-accelerated Wayland compositor, and GNOME apps run as native arm64 binaries on a jailbroken iOS device, rendered through Metal.",
+    "How X11, Wayland, GNOME, KDE, GTK, and Qt apps run as native arm64 binaries on a jailbroken iOS device, rendered through Metal.",
 };
 
 export default function RootLayout({

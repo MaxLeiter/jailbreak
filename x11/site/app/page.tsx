@@ -10,7 +10,7 @@ export default function Overview() {
           <span className="tag">Overview</span>
         </div>
         <h1 className="page-title">X11 and Wayland on iOS</h1>
-        <p className="lede">Porting an unreasonable amount of software.</p>
+        <p className="lede">Desktop Linux apps, rebuilt for a jailbroken iPad.</p>
       </header>
 
       <Section num="00.1" title="Where this came from">
@@ -32,9 +32,10 @@ export default function Overview() {
             <Ext href="https://wayland.freedesktop.org">Wayland</Ext>{" "}compositor
             now run as native arm64 code and draw straight to the display through{" "}
             <Ext href="https://developer.apple.com/metal/">Metal</Ext>. And to be
-            clear, there is no Linux here: no VM or emulator. The apps are GNOME,
-            GTK, and X11 programs from the Linux desktop world, but every one of
-            them is a native iOS binary. Their windows reach the screen as{" "}
+            clear, there is no Linux kernel here: no VM or emulator. The apps are
+            GNOME, KDE, GTK, Qt, Wayland, and X11 programs from the Linux desktop
+            world, but every one of them is a native iOS binary. Their windows
+            reach the screen as{" "}
             <Ext href="https://developer.apple.com/documentation/iosurface">
               IOSurfaces
             </Ext>
@@ -50,8 +51,8 @@ export default function Overview() {
             have since made one.
           </p>
           <p>
-            It should run on most jailbreakable devices. If this sentence read
-            like gibberish to you, see the next section.
+            The reference target is a rootless iPad 7 on iPadOS 17.6.1. Other
+            jailbreakable devices may work, but that is the path I test.
           </p>
         </div>
         <div className="shot-grid" style={{ marginTop: 30 }}>
@@ -81,10 +82,9 @@ export default function Overview() {
 
       <Section num="00.2" title="What this is">
         <PlainTerms>
-          This runs real Linux desktop apps on an iPhone or iPad. Not in a
-          window, not streamed from somewhere else, not a Linux virtual machine.
-          The apps themselves were rebuilt to run straight on iOS, and they show
-          up like any other app.
+          This runs Linux desktop apps on an iPhone or iPad. Not streamed from
+          somewhere else, not a Linux virtual machine. The apps are rebuilt as
+          iOS binaries and can show up like ordinary apps.
         </PlainTerms>
         <div className="prose">
           <p>
@@ -103,12 +103,10 @@ export default function Overview() {
             file managers, media players.
           </p>
           <p>
-            An iPad is a powerful machine with a Unix-like OS. Under the touch
-            layer, iOS shares its lineage with macOS, the same family of system
-            that runs all of that software in the first place, and the chip is a
-            fast arm64 processor with a real GPU. There is no real reason it
-            can&apos;t run a full desktop. Apple just doesn&apos;t let you. I
-            don&apos;t love that, so here we are.
+            An iPad has a Unix-like OS, an arm64 CPU, and a real GPU. Under the
+            touch layer, iOS is close enough to macOS that a lot of desktop
+            software can be rebuilt for it. Apple does not expose that path, so
+            this project builds the missing pieces.
           </p>
         </div>
       </Section>

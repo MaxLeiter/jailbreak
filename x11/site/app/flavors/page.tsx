@@ -16,7 +16,7 @@ const MODES: Mode[] = [
     name: "Native mode",
     tag: "Per-window",
     state: "wip",
-    body: "X11/Wayland apps show up on your homescreen and launch like normal apps. They rotate, resize, honor dark mode, and use the same accessibility bridge. There is no desktop shell at all.",
+    body: "Linux desktop apps can show up on your Home Screen and launch into their own iPadOS windows. The backend exists; the per-window UI path is still being validated.",
   },
   {
     name: "iosc desktop",
@@ -28,7 +28,7 @@ const MODES: Mode[] = [
     name: "Bring your own desktop",
     tag: "Upstream",
     state: "wip",
-    body: "Run a full upstream desktop environment more or less unchanged. GNOME Shell 46 and KDE Plasma both target the same compositor and GPU foundation. It is the heaviest option and the closest to a real Linux desktop.",
+    body: "Run a full upstream desktop environment. GNOME Shell 46 and KDE Plasma both use the same IOSurface and GPU foundation. This is the heavy path, and the closest to a normal Linux desktop.",
   },
 ];
 
@@ -69,8 +69,8 @@ export default function Flavors() {
       <Section num="04.2" title="Bring your own desktop environment">
         <div className="prose">
           <p>
-            For people who want the real thing, two full upstream environments are
-            being brought up on the same compositor and GPU stack.
+            For people who want a normal desktop environment, GNOME Shell and KDE
+            Plasma are running on the same IOSurface and GPU stack.
           </p>
         </div>
         <div className="grid-2" style={{ marginTop: 8 }}>
@@ -84,16 +84,20 @@ export default function Flavors() {
               a new iOS backend, MetaBackendIOS, that renders to{" "}
               <Ext href="https://developer.apple.com/documentation/iosurface">IOSurfaces</Ext>{" "}
               and reuses iosc&apos;s GPU glue instead of nesting two compositors.
-              It boots, paints, and runs.
+              It boots through the packaged <code>gnome-session</code> path and
+              runs on the device. The remaining work is polish and service
+              coverage, not first paint.
             </p>
           </div>
           <div className="card">
             <span className="card-tag">KWin and KF6</span>
             <h3>KDE Plasma</h3>
             <p>
-              <Ext href="https://kde.org/plasma-desktop/">Plasma</Ext>{" "}Mobile on
-              KWin, built on a cross-compiled Qt6 module ladder and a subset of
-              KDE Frameworks 6. The Qt6 Wayland platform plugin targets iosc.
+              <Ext href="https://kde.org/plasma-desktop/">Plasma</Ext>{" "}Desktop
+              and Mobile on KWin, built on cross-compiled Qt6 and KDE Frameworks
+              6. The current desktop package includes System Settings, KScreen,
+              Breeze styling, and the first KDE app batch: Ark, Gwenview, and
+              KWrite.
             </p>
           </div>
         </div>
@@ -105,12 +109,11 @@ export default function Flavors() {
         </Callout>
       </Section>
 
-      <Section num="04.3" title="GNOME apps, without the desktop">
+      <Section num="04.3" title="Apps, without a full desktop">
         <div className="prose">
           <p>
-            You do not need the GNOME desktop to run GNOME apps. GTK4 and GNOME
-            programs run as windows under iosc whichever flavor you pick, and
-            GNOME Console runs a live shell you can tap and type into.
+            You do not need GNOME Shell or Plasma to run desktop apps. iosc can
+            launch GTK, Qt/KF6, X11, and plain Wayland clients as windows.
           </p>
         </div>
         <dl className="deflist" style={{ marginTop: 8 }}>
@@ -125,12 +128,17 @@ export default function Flavors() {
           <div className="row">
             <dt>foot, imv, mpv</dt>
             <dd>
-              A wave of Wayland apps; mpv does audio and VideoToolbox decode.
+              A Wayland app wave. foot has a working PTY, imv uses Xwayland for
+              now, and mpv renders through the ANGLE/Metal path.
             </dd>
           </div>
           <div className="row">
-            <dt>Files, text editor</dt>
-            <dd>The GNOME file manager and text editor.</dd>
+            <dt>fuzzel, dunst, zathura, hitori</dt>
+            <dd>Launcher, notifications, a PDF viewer, and a GTK puzzle app.</dd>
+          </div>
+          <div className="row">
+            <dt>Ark, Gwenview, KWrite</dt>
+            <dd>The first published Qt/KF6 app batch.</dd>
           </div>
         </dl>
       </Section>

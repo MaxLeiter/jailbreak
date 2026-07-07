@@ -47,8 +47,8 @@ export function Diagram() {
             <div className="dg-d">Composites clients and routes input through wl_seat.</div>
           </div>
           <div className="dg-layer">
-            <div className="dg-t">GTK4 and GNOME apps</div>
-            <div className="dg-d">Console, Files, Calculator. cairo on the CPU or GLES on the GPU.</div>
+            <div className="dg-t">GTK, Qt, and GNOME apps</div>
+            <div className="dg-d">Console, KWrite, Calculator. cairo on the CPU or GLES on the GPU.</div>
           </div>
           <div className="dg-layer dg-gpu">
             <div className="dg-t">ANGLE, then Metal, then the A10 GPU</div>

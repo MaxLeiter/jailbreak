@@ -9,7 +9,7 @@ export default function Build() {
       <PageHeader
         tag="Build & packaging"
         title="Cross-compiled on a Mac, installed with apt"
-        lede="Everything is built on a Mac in Docker against the Procursus toolchain, patched reproducibly, and shipped as Debian packages to a Sileo repo. Nothing is compiled on the device."
+        lede="Most packages are built on a Mac in Docker against the Procursus toolchain, patched reproducibly, and shipped as Debian packages to a Sileo repo."
       />
 
       <Section num="05.1" title="Standing on Procursus">
@@ -59,9 +59,9 @@ export default function Build() {
           <div className="row">
             <dt>Introspection</dt>
             <dd>
-              GObject-introspection typelibs are scanned <b>on the device</b> with
-              the native Procursus toolchain, which sidesteps a cross-scan that
-              does not work under emulation.
+              The GNOME Shell boot typelibs were generated on the device with the
+              native Procursus toolchain, then packaged as{" "}
+              <code>xios-gnome-typelibs</code>.
             </dd>
           </div>
           <div className="row">
@@ -84,7 +84,8 @@ export default function Build() {
             <dt>Qt6 and KF6</dt>
             <dd>
               A six-module <Ext href="https://www.qt.io">Qt6</Ext>{" "}ladder plus a
-              subset of KDE Frameworks 6, built for the KDE desktop.
+              KDE Frameworks 6 subset, KWin, Plasma Desktop/Mobile, and the first
+              KDE app batch.
             </dd>
           </div>
         </dl>

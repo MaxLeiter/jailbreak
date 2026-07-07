@@ -83,7 +83,7 @@ export default function Architecture() {
         </dl>
       </Section>
 
-      <Section num="01.4" title="A frame's journey on the Wayland path">
+      <Section num="01.4" title="A Wayland frame">
         <div className="prose">
           <ol style={{ color: "var(--ink-2)", paddingLeft: 20, lineHeight: 1.7 }}>
             <li>
