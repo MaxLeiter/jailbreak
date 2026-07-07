@@ -23,6 +23,28 @@ mkdir -p build_patch/xios
 cp -f "$PATCHES"/xios/InitOutput.c "$PATCHES"/xios/Makefile.am \
       "$PATCHES"/xios/xios_surface.c "$PATCHES"/xios/xios_surface.h build_patch/xios/
 
+stage_port_patch_stack() {
+  local pkg="$1"
+  local patch_dir="/work/ports/$pkg/patches"
+  local dest="build_patch/$pkg"
+  local patch_file
+  [ -f "$patch_dir/series" ] || {
+    echo "ERROR: missing $patch_dir/series; mount x11/ports at /work/ports" >&2
+    exit 1
+  }
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  cp -v "$patch_dir/series" "$dest/"
+  while IFS= read -r patch_file || [ -n "$patch_file" ]; do
+    patch_file="${patch_file%%#*}"
+    set -- $patch_file
+    [ "$#" -gt 0 ] || continue
+    cp -v "$patch_dir/$1" "$dest/"
+  done < "$patch_dir/series"
+}
+
+stage_port_patch_stack mesa
+
 python3 - <<'PY'
 import io, re, pathlib
 
@@ -69,10 +91,20 @@ def control(s):
                      ", tigervnc-common")
 edit("build_info/tigervnc-standalone-server.control", control)
 
-# 3) Fix the stale mesa download URL (freedesktop archive 404s for old versions).
+# 3) Fix the stale mesa download URL (freedesktop archive 404s for old versions)
+#    and move Procursus's source sed edits into the x11/ports patch stack.
 def mesa(s):
-    return s.replace("https://mesa.freedesktop.org/archive/mesa-$(MESA_VERSION).tar.xz",
-                     "https://archive.mesa3d.org/older-versions/21.x/mesa-$(MESA_VERSION).tar.xz")
+    s = s.replace("https://mesa.freedesktop.org/archive/mesa-$(MESA_VERSION).tar.xz",
+                  "https://archive.mesa3d.org/older-versions/21.x/mesa-$(MESA_VERSION).tar.xz")
+    if "$(call DO_PATCH,mesa,mesa,-p1)" in s:
+        return s
+    sed_block = """\tsed -i -e "s/with_dri_platform = 'apple'/with_dri_platform = 'none'/" \\
+\t\t-e "/dep_xcb_shm = dependency('xcb-shm')/a dep_xxf86vm = dependency('xxf86vm')" $(BUILD_WORK)/mesa/meson.build
+\tsed -i "s|OpenGL/gl.h|GL/gl.h|" $(BUILD_WORK)/mesa/src/mesa/main/texcompress_s3tc_tmp.h
+"""
+    if sed_block not in s:
+        raise SystemExit("ERROR: mesa.mk source-sed block not found; Procursus layout changed")
+    return s.replace(sed_block, "\t$(call DO_PATCH,mesa,mesa,-p1)\n", 1)
 edit("makefiles/mesa.mk", mesa)
 
 # 4) Skip libpng's APNG add-on patch (no longer applies; APNG not needed for X).
@@ -114,20 +146,6 @@ edit("Makefile", lambda s: s.replace(
 edit("makefiles/mesa.mk", lambda s: s.replace(
     "-Dgles1=disabled \\\n",
     "-Dgles1=disabled \\\n\t\t-Dshader-cache=disabled \\\n", 1))
-
-# 9b) mesa's disk_cache.h uses dladdr (dlfcn.h), stat (sys/stat.h), and fprintf/stderr
-#     (stdio.h) under HAVE_DLADDR but #includes none of them (relies on transitive glibc
-#     includes). Add them in mesa only (a global force-include breaks other C/C++ deps).
-def mesa_diskcache(s):
-    new = ("sed -i '/#define DISK_CACHE_H/a #include <dlfcn.h>\\n#include <stdio.h>\\n"
-           "#include <sys/stat.h>' $(BUILD_WORK)/mesa/src/util/disk_cache.h")
-    if "#include <sys/stat.h>" in s: return s
-    old = "sed -i '/#define DISK_CACHE_H/a #include <dlfcn.h>' $(BUILD_WORK)/mesa/src/util/disk_cache.h"
-    if old in s: return s.replace(old, new)
-    return s.replace(
-        'sed -i "s|OpenGL/gl.h|GL/gl.h|" $(BUILD_WORK)/mesa/src/mesa/main/texcompress_s3tc_tmp.h',
-        'sed -i "s|OpenGL/gl.h|GL/gl.h|" $(BUILD_WORK)/mesa/src/mesa/main/texcompress_s3tc_tmp.h\n\t' + new, 1)
-edit("makefiles/mesa.mk", mesa_diskcache)
 
 # 10) dladdr/Dl_info are gated behind `!_POSIX_C_SOURCE || _DARWIN_C_SOURCE` (dlfcn.h:39);
 #     define _DARWIN_C_SOURCE globally so dlfcn.h (incl. mesa's added include) exposes

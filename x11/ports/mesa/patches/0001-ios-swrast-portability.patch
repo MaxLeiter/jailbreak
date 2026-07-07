@@ -1,0 +1,52 @@
+Subject: [PATCH] mesa: keep the iOS swrast build source edits in a patch stack
+
+Carry the source changes that the old TigerVNC/Procursus driver used to inject
+with sed: disable Mesa's Darwin Apple DRI platform selection for this X11 swrast
+build, add the xxf86vm dependency needed by gallium-xlib, use the portable GL
+include path, and include the headers needed by disk_cache.h when Darwin exposes
+dladdr() without also setting Mesa's HAVE_DLFCN_H guard.
+
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -311,7 +311,7 @@ with_any_vk = _vulkan_drivers.length() != 0
+ with_spirv_to_dxil = get_option('spirv-to-dxil')
+ 
+ if host_machine.system() == 'darwin'
+-  with_dri_platform = 'apple'
++  with_dri_platform = 'none'
+   pre_args += '-DBUILDING_MESA'
+ elif ['windows', 'cygwin'].contains(host_machine.system())
+   with_dri_platform = 'windows'
+@@ -1816,6 +1816,7 @@ if with_platform_x11
+     dep_xfixes = dependency('xfixes', version : '>= 2.0')
+     dep_xcb_glx = dependency('xcb-glx', version : '>= 1.8.1')
+     dep_xcb_shm = dependency('xcb-shm')
++    dep_xxf86vm = dependency('xxf86vm')
+   endif
+   if (with_any_vk or with_glx == 'dri' or with_egl or
+        (with_gallium_vdpau or with_gallium_xvmc or with_gallium_va or
+diff --git a/src/mesa/main/texcompress_s3tc_tmp.h b/src/mesa/main/texcompress_s3tc_tmp.h
+--- a/src/mesa/main/texcompress_s3tc_tmp.h
++++ b/src/mesa/main/texcompress_s3tc_tmp.h
+@@ -26,7 +26,7 @@
+ #define TEXCOMPRESS_S3TC_TMP_H
+ 
+ #ifdef __APPLE__
+-#include <OpenGL/gl.h>
++#include <GL/gl.h>
+ #else
+ #include <GL/gl.h>
+ #endif
+diff --git a/src/util/disk_cache.h b/src/util/disk_cache.h
+--- a/src/util/disk_cache.h
++++ b/src/util/disk_cache.h
+@@ -23,6 +23,8 @@
+ 
+ #ifndef DISK_CACHE_H
+ #define DISK_CACHE_H
++#include <dlfcn.h>
++#include <stdio.h>
+ 
+ #ifdef HAVE_DLFCN_H
+ #include <dlfcn.h>

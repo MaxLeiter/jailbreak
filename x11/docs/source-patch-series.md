@@ -55,6 +55,9 @@ Current converted non-Qt stacks:
   OpenGL include spelling fix, iOS `__sincos`, and the wider es2gears default
   window. The generated `xdg-shell` protocol C/header files stay procedural via
   `mesa-demos-generate-xdg-shell.sh`.
+- `ports/mesa/patches`: carries the old TigerVNC/Procursus Mesa source edits
+  for Darwin swrast: no Apple DRI platform, the xxf86vm Meson dependency,
+  portable GL include spelling, and the disk-cache headers needed by ld64.
 - `ports/wayland/patches`: carries the base libwayland Darwin/iOS portability
   patch, including epoll-shim selection, credentials, cloexec, and timerfd
   fallbacks.

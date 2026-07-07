@@ -50,6 +50,7 @@ docker run --rm --platform linux/arm64 \
   -v "$VOLUME:/work/Procursus" \
   -v "$PWD/build.sh:/work/build.sh:ro" \
   -v "$PWD/patches:/work/patches:ro" \
+  -v "$HERE/../ports:/work/ports:ro" \
   -v "$PWD/out:/out" \
   "$IMAGE" /work/build.sh
 
