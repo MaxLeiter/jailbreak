@@ -598,8 +598,23 @@ xs_foreground_xios() {
         xs_log "slot $XS_SLOT: leaving Xios foreground unchanged"
         return 0
     fi
-    "$XS_UIOPEN" -b "$XS_XIOS_BUNDLE" 2>/dev/null \
-        || "$XS_UIOPEN" "$XS_XIOS_BUNDLE" 2>/dev/null || true
+    (
+        "$XS_UIOPEN" -b "$XS_XIOS_BUNDLE" 2>/dev/null \
+            || "$XS_UIOPEN" "$XS_XIOS_BUNDLE" 2>/dev/null || true
+    ) &
+    local pid=$! i=0
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "${XIOS_UIOPEN_WAIT_TICKS:-20}" ]; do
+        sleep 0.25
+        i=$((i + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        xs_log "WARN: uiopen did not return promptly; leaving foreground request best-effort"
+        kill -TERM "$pid" 2>/dev/null || true
+        sleep 0.2
+        kill -KILL "$pid" 2>/dev/null || true
+    else
+        wait "$pid" 2>/dev/null || true
+    fi
 }
 
 xs_wait_socket() {  # xs_wait_socket <path> <tries>

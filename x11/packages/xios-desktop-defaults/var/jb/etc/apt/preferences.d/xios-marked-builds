@@ -1,0 +1,10 @@
+# Xios: prefer our repo over the Procursus origin pin. Procursus pins its repo
+# at 1001; priority 1002 prevents apt/Sileo from treating same-upstream Xios
+# rebuilds as downgrades to the stock packages.
+Package: *
+Pin: origin "dev.repo.maxleiter.com"
+Pin-Priority: 1002
+
+Package: *
+Pin: origin "repo.maxleiter.com"
+Pin-Priority: 1002

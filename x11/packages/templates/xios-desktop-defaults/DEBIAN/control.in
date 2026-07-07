@@ -1,6 +1,6 @@
 Package: xios-desktop-defaults
 Name: Xios desktop defaults
-Version: 1.1.7
+Version: 1.1.10
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -17,5 +17,5 @@ Description: Retina, XDG, GTK, font and session defaults for Xios
  terminals (VTE/Console) follow the native San Francisco stack. The profile is
  sourced by launchers when present.
  .
- An APT pin keeps the ICU 74 family (system ICU) preferred over the Procursus
- 69.1 downgrade so held ICU packages resolve cleanly.
+ APT pins keep the ICU 74 family and Xios repo packages preferred over
+ Procursus downgrade candidates.
