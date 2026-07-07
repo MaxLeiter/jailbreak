@@ -98,13 +98,20 @@ def mesa(s):
                   "https://archive.mesa3d.org/older-versions/21.x/mesa-$(MESA_VERSION).tar.xz")
     if "$(call DO_PATCH,mesa,mesa,-p1)" in s:
         return s
-    sed_block = """\tsed -i -e "s/with_dri_platform = 'apple'/with_dri_platform = 'none'/" \\
-\t\t-e "/dep_xcb_shm = dependency('xcb-shm')/a dep_xxf86vm = dependency('xxf86vm')" $(BUILD_WORK)/mesa/meson.build
-\tsed -i "s|OpenGL/gl.h|GL/gl.h|" $(BUILD_WORK)/mesa/src/mesa/main/texcompress_s3tc_tmp.h
-"""
-    if sed_block not in s:
-        raise SystemExit("ERROR: mesa.mk source-sed block not found; Procursus layout changed")
-    return s.replace(sed_block, "\t$(call DO_PATCH,mesa,mesa,-p1)\n", 1)
+    extract = "\t$(call EXTRACT_TAR,mesa-$(MESA_VERSION).tar.xz,mesa-$(MESA_VERSION),mesa)\n"
+    mkdir = "\tmkdir -p $(BUILD_WORK)/mesa/build\n"
+    start = s.find(extract)
+    if start < 0:
+        raise SystemExit("ERROR: mesa.mk extract anchor not found; Procursus layout changed")
+    start += len(extract)
+    end = s.find(mkdir, start)
+    if end < 0:
+        raise SystemExit("ERROR: mesa.mk build-dir anchor not found; Procursus layout changed")
+    old_block = s[start:end]
+    for marker in ("with_dri_platform = 'apple'", "dep_xcb_shm = dependency('xcb-shm')", "OpenGL/gl.h"):
+        if marker not in old_block:
+            raise SystemExit("ERROR: mesa.mk source-edit block not found; Procursus layout changed")
+    return s[:start] + "\t$(call DO_PATCH,mesa,mesa,-p1)\n" + s[end:]
 edit("makefiles/mesa.mk", mesa)
 
 # 4) Skip libpng's APNG add-on patch (no longer applies; APNG not needed for X).
