@@ -1,0 +1,45 @@
+Subject: [PATCH] swayimg: replace pipe2 on Darwin
+
+Darwin/iOS does not expose Linux pipe2. Use pipe plus FD_CLOEXEC for the
+Wayland data-offer transfer pipe.
+
+diff -ruN -U3 a/src/ui_wayland.cpp b/src/ui_wayland.cpp
+--- a/src/ui_wayland.cpp	2026-06-20 22:41:12
++++ b/src/ui_wayland.cpp	2026-07-07 00:00:00
+@@ -17,6 +17,27 @@
+ #include <cstring>
+ #include <format>
+
++#ifdef __APPLE__
++static int xios_pipe_cloexec(int fds[2])
++{
++    if (pipe(fds) == -1) {
++        return -1;
++    }
++    if (fcntl(fds[0], F_SETFD, FD_CLOEXEC) == -1 ||
++        fcntl(fds[1], F_SETFD, FD_CLOEXEC) == -1) {
++        close(fds[0]);
++        close(fds[1]);
++        return -1;
++    }
++    return 0;
++}
++#else
++static int xios_pipe_cloexec(int fds[2])
++{
++    return pipe2(fds, O_CLOEXEC);
++}
++#endif
++
+ // MIME type for drag-and-drop of raw path
+ static const char* MIME_TEXT_PLAIN = "text/plain";
+
+@@ -409,7 +430,7 @@
+
+         // receive the data from the offer
+         int fds[2];
+-        if (pipe2(fds, O_CLOEXEC) == -1) {
++        if (xios_pipe_cloexec(fds) == -1) {
+             Log::error(errno, "Failed to create piep");
+             ui->wl.dataoffer.free();
+             return;
