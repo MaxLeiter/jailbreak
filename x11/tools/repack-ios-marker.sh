@@ -6,7 +6,7 @@ DEBS=/debs
 MODE="${MODE:-plan}"
 
 # Our own originals (never marked). xios-* / com.max.* matched broadly.
-skip_name_re='^(iosc|iosc-shell|xios-[a-z0-9-]+|com\.max\..*|libgtkintl|bun-preflight|x11-fonts-sf|qt-wayland-gl-smoke)$'
+skip_name_re='^(iosc|iosc-shell|xios-[a-z0-9-]+|com\.max\..*|libgtkintl|bun-preflight|x11-fonts-sf|qt-wayland-gl-smoke|ladybird-xios-launcher)$'
 # Already-marked upstream ports (our build tag already present).
 marker_re='[+~](ios|wl|angle|rootless|es3|xios)'
 

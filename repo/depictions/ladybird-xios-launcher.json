@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/xios-session.png",
+  "headerImage": "https://repo.maxleiter.com/banners/ladybird-xios-launcher.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "pick-a-desktop session launcher for the Xios stack"
+          "markdown": "**Ladybird Xios Launcher** installs a freedesktop `.desktop` entry for the standalone Ladybird browser.\n\nIt lets iosc, GNOME, KDE, and Xios launcher tooling list Ladybird alongside desktop apps. Launching it foregrounds the installed `com.max.ladybird` UIKit app through `uiopen`; it is a launcher bridge, not a Wayland embed of the browser window."
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "1.0.49"
+          "text": "0.1.0"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "31.0 KiB"
+          "text": "24.0 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,22 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "X11"
+          "text": "X11/Wayland Apps"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "xios-session"
+          "text": "ladybird-xios-launcher"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 0.1.0  \u00b7  2026-07-06\n- Initial release\n- Installs `com.max.ladybird.desktop`\n- Ships the Ladybird hicolor icon for desktop/app launchers"
         }
       ]
     }

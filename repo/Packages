@@ -4050,6 +4050,49 @@ SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-app.json
 Native Depiction: https://repo.maxleiter.com/depictions/ladybird-app.json
 Homepage: https://ladybird.org
 
+Package: ladybird-app
+Name: Ladybird
+Version: 0.1.22+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1
+Section: Apps
+Priority: optional
+Description: Ladybird — a standalone native web browser for jailbroken iPad
+Installed-Size: 205576
+Filename: debs/ladybird-app_0.1.22+ios1_iphoneos-arm64.deb
+Size: 68966264
+MD5sum: 198665d945c74868ab2859414b4e11b9
+SHA1: 4b020f5516ff5cbaf6f6491751ebe7c7997100cf
+SHA256: 92fb97a8658348a14aee95dddca7656bbd0389f3e9a0237ea31b96876ce670f1
+Icon: https://repo.maxleiter.com/icons/ladybird-app.png
+Depiction: https://repo.maxleiter.com/depictions/ladybird-app.html
+SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-app.json
+Native Depiction: https://repo.maxleiter.com/depictions/ladybird-app.json
+Homepage: https://ladybird.org
+
+Package: ladybird-xios-launcher
+Name: Ladybird Xios Launcher
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: ladybird-app (>= 0.1.22+ios1), uikittools
+Section: X11/Wayland Apps
+Priority: optional
+Description: Xios desktop launcher for the standalone Ladybird browser
+Filename: debs/ladybird-xios-launcher_0.1.0_iphoneos-arm64.deb
+Size: 24566
+MD5sum: 1a9f3a265153d1c57080c7ff4e4d10f3
+SHA1: b3e737bd3125ff69fb33a0f663807e5f27db3f65
+SHA256: 6e3353aeb1244a41194ddf545e3fa258a01af9c8f8555293b021d24d645b0e8d
+Icon: https://repo.maxleiter.com/icons/ladybird-xios-launcher.png
+Depiction: https://repo.maxleiter.com/depictions/ladybird-xios-launcher.html
+SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-xios-launcher.json
+Native Depiction: https://repo.maxleiter.com/depictions/ladybird-xios-launcher.json
+Homepage: https://repo.maxleiter.com
+
 Package: layer-shell-qt
 Version: 6.1.5+ios1
 Architecture: iphoneos-arm64
@@ -9024,7 +9067,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxcb-render0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxcb-xkb1
-Version: 1.14
+Version: 1.14+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -9034,11 +9077,11 @@ Priority: optional
 Description: X C Binding, XKEYBOARD extension
 Installed-Size: 184
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxcb-xkb1_1.14_iphoneos-arm64.deb
-Size: 37918
-MD5sum: c6fc1e1aa2c3b429ee4abc9042ff32bb
-SHA1: 99733ed8d61070736b007c27039e049f78ae5e5f
-SHA256: 56b9572e5c6c45bc02425551c7c8b81b7ccf60de0025493a06cad68332268797
+Filename: debs/libxcb-xkb1_1.14+ios1_iphoneos-arm64.deb
+Size: 38302
+MD5sum: c29cd20420e51c5b885b17a3e4d41b29
+SHA1: 36f2adf064d7d49cc0985416bbdd167cee887c33
+SHA256: f8058d4b70da92e1f164876a9ecf3d5f8b866c35ea4d151b278849bff52b69ac
 Icon: https://repo.maxleiter.com/icons/libxcb-xkb1.png
 Depiction: https://repo.maxleiter.com/depictions/libxcb-xkb1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxcb-xkb1.json
@@ -13902,6 +13945,31 @@ Size: 31398
 MD5sum: 3cfe453506145482da097a20d0aea9d3
 SHA1: 3878fa98ee5eed590d4296dd5b8790bc70007cff
 SHA256: 86af3059cbd3506e22b941f4bdaa5ca31b7f4f150ada75c84a67164af7f1a80d
+Icon: https://repo.maxleiter.com/icons/xios-session.png
+Depiction: https://repo.maxleiter.com/depictions/xios-session.html
+SileoDepiction: https://repo.maxleiter.com/depictions/xios-session.json
+Native Depiction: https://repo.maxleiter.com/depictions/xios-session.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-session
+Name: Xios session launcher
+Version: 1.0.49
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: iosc (>= 0.9.0)
+Recommends: iosc-shell, xios
+Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
+Replaces: iosc-shell (<= 0.9.9)
+Section: X11
+Priority: optional
+Installed-Size: 124
+Description: pick-a-desktop session launcher for the Xios stack
+Filename: debs/xios-session_1.0.49_iphoneos-arm64.deb
+Size: 31736
+MD5sum: e26b2b56ca84b6f4c2de9ff63c621daa
+SHA1: bfe9f2b6c68455bd7c2e097ce225acb5743d84dc
+SHA256: 02512f6da5e15ac63cb0bed0297b849c82398fd5b029c0d41a4d461b60806dd4
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-session.json

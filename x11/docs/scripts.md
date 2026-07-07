@@ -123,7 +123,7 @@ deb version — the house style is `+ios1` (older tracks used `+wl1`, `+angle1`,
 unambiguously *our* build and sorts it above a same-named upstream deb
 (`2.52.0+ios1` > `2.52.0` and > `2.52.0-3` upstream revision). Our own originals
 (`iosc`, `iosc-shell`, `xios-*`, `com.max.*`, `libgtkintl`, `bun-preflight`,
-`x11-fonts-sf`, `qt-wayland-gl-smoke`) keep their own versions and are **not**
+`x11-fonts-sf`, `qt-wayland-gl-smoke`, `ladybird-xios-launcher`) keep their own versions and are **not**
 marked.
 
 Where it lives:
