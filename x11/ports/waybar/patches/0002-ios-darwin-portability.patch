@@ -1,0 +1,302 @@
+Subject: [PATCH] waybar: add iOS/Darwin portability fixes
+
+The first iOS Waybar package intentionally builds only the minimal bar surface
+plus clock/custom modules. Darwin/iOS still needs a few source fixes for that
+reduced set:
+
+- use glob instead of unavailable iOS wordexp;
+- provide a pipe+FD_CLOEXEC fallback for pipe2;
+- avoid Linux real-time signal APIs when SIGRTMIN/SIGRTMAX are absent;
+- make Darwin's WEXITSTATUS macro operate on an lvalue;
+- avoid a Linux-only inotify header include;
+- avoid pulling pruned Hyprland/icon-loader code through enum instantiations;
+- provide the iOS timezone symbol expected by the Meson date fallback;
+- tolerate missing session D-Bus/portal services for the minimal bar;
+- skip the icon-loader helper whose only remaining users are pruned modules.
+---
+ include/util/command.hpp       | 30 +++++++++++++++++++++++++++---
+ meson.build                    |  2 +-
+ src/client.cpp                 | 15 ++++++++++++---
+ src/config.cpp                 |  6 +++---
+ src/main.cpp                   |  4 ++++
+ src/modules/custom.cpp         |  8 ++++++--
+ src/util/css_reload_helper.cpp |  6 +++---
+ src/util/date_ios_fallback.cpp | 25 +++++++++++++++++++++++++
+ src/util/enum.cpp              |  4 +---
+ 9 files changed, 82 insertions(+), 18 deletions(-)
+
+diff --git a/include/util/command.hpp b/include/util/command.hpp
+index 1d24e50..bb22ef4 100644
+--- a/include/util/command.hpp
++++ b/include/util/command.hpp
+@@ -18,6 +18,31 @@ extern std::list<pid_t> reap;
+ 
+ namespace waybar::util::command {
+ 
++inline int pipe_cloexec(int fd[2]) {
++#if defined(__APPLE__)
++  if (pipe(fd) != 0) {
++    return -1;
++  }
++  for (int i = 0; i < 2; ++i) {
++    int flags = fcntl(fd[i], F_GETFD);
++    if (flags == -1 || fcntl(fd[i], F_SETFD, flags | FD_CLOEXEC) == -1) {
++      int saved_errno = errno;
++      ::close(fd[0]);
++      ::close(fd[1]);
++      errno = saved_errno;
++      return -1;
++    }
++  }
++  return 0;
++#else
++  return pipe2(fd, O_CLOEXEC);
++#endif
++}
++
++inline int exit_status(int stat) {
++  return WIFEXITED(stat) ? WEXITSTATUS(stat) : -1;
++}
++
+ struct res {
+   int exit_code;
+   std::string out;
+@@ -73,7 +97,7 @@ inline FILE* open(const std::string& cmd, int& pid, const std::string& output_na
+   // Open the pipe with the close-on-exec flag set, so it will not be inherited
+   // by any other subprocesses launched by other threads (which could result in
+   // the pipe staying open after this child dies, causing us to hang when trying
+   // to read from it)
+-  if (pipe2(fd, O_CLOEXEC) != 0) {
++  if (pipe_cloexec(fd) != 0) {
+     spdlog::error("Unable to pipe fd");
+     return nullptr;
+   }
+@@ -125,14 +149,14 @@ inline struct res exec(const std::string& cmd, const std::string& output_name) {
+   if (!fp) return {-1, ""};
+   auto output = command::read(fp);
+   auto stat = command::close(fp, pid);
+-  return {WEXITSTATUS(stat), output};
++  return {exit_status(stat), output};
+ }
+ 
+ inline struct res execNoRead(const std::string& cmd) {
+   int pid;
+   auto fp = command::open(cmd, pid, "");
+   if (!fp) return {-1, ""};
+   auto stat = command::close(fp, pid);
+-  return {WEXITSTATUS(stat), ""};
++  return {exit_status(stat), ""};
+ }
+ 
+ inline int32_t forkExec(const std::string& cmd, const std::string& output_name) {
+diff --git a/meson.build b/meson.build
+index 62ebd89..5df1629 100644
+--- a/meson.build
++++ b/meson.build
+@@ -174,7 +174,7 @@ src_files = files(
+     'src/util/sanitize_str.cpp',
+     'src/util/rewrite_string.cpp',
+     'src/util/gtk_icon.cpp',
+-    'src/util/icon_loader.cpp',
++    'src/util/date_ios_fallback.cpp',
+     'src/util/regex_collection.cpp',
+     'src/util/css_reload_helper.cpp'
+ )
+diff --git a/src/client.cpp b/src/client.cpp
+index aa771c0..b94d948 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -154,8 +154,10 @@ const std::string waybar::Client::getStyle(const std::string& style,
+   std::optional<std::string> css_file;
+ 
+   if (style.empty()) {
++    auto current_appearance =
++        appearance.value_or(portal ? portal->getAppearance() : Appearance::UNKNOWN);
+     std::vector<std::string> search_files;
+-    switch (appearance.value_or(portal->getAppearance())) {
++    switch (current_appearance) {
+       case waybar::Appearance::LIGHT:
+         search_files.emplace_back("style-light.css");
+         gtk_settings->property_gtk_application_prefer_dark_theme() = false;
+@@ -285,15 +285,23 @@ int waybar::Client::main(int argc, char* argv[]) {
+   wl_display = gdk_wayland_display_get_wl_display(gdk_display->gobj());
+   config.load(config_opt);
+   if (!portal) {
+-    portal = std::make_unique<waybar::Portal>();
++    try {
++      portal = std::make_unique<waybar::Portal>();
++    } catch (const Glib::Error& e) {
++      spdlog::info("Portal unavailable: {}", std::string(e.what()));
++    } catch (const std::exception& e) {
++      spdlog::info("Portal unavailable: {}", std::string(e.what()));
++    }
+   }
+   m_cssFile = getStyle(style_opt);
+   setupCss(m_cssFile);
+   m_cssReloadHelper = std::make_unique<CssReloadHelper>(m_cssFile, [&]() { setupCss(m_cssFile); });
+-  portal->signal_appearance_changed().connect([&](waybar::Appearance appearance) {
+-    auto css_file = getStyle(style_opt, appearance);
+-    setupCss(css_file);
+-  });
++  if (portal) {
++    portal->signal_appearance_changed().connect([&](waybar::Appearance appearance) {
++      auto css_file = getStyle(style_opt, appearance);
++      setupCss(css_file);
++    });
++  }
+ 
+   auto m_config = config.getConfig();
+   if (m_config.isObject() && m_config["reload_style_on_change"].asBool()) {
+diff --git a/src/config.cpp b/src/config.cpp
+index c949ad3..ac71068 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -2,10 +2,10 @@
+ 
+ #include <spdlog/spdlog.h>
+ #include <unistd.h>
+-#ifndef __OpenBSD__
+-#include <wordexp.h>
+-#else
++#if defined(__APPLE__) || defined(__OpenBSD__)
+ #include <glob.h>
++#else
++#include <wordexp.h>
+ #endif
+ 
+ #include <filesystem>
+@@ -38,7 +38,7 @@ std::vector<std::string> Config::tryExpandPath(const std::string& base,
+   spdlog::debug("Try expanding: {}", path.string());
+ 
+   std::vector<std::string> results;
+-#ifndef __OpenBSD__
++#if !defined(__APPLE__) && !defined(__OpenBSD__)
+   wordexp_t p;
+   if (wordexp(path.c_str(), &p, 0) == 0) {
+     for (size_t i = 0; i < p.we_wordc; i++) {
+diff --git a/src/main.cpp b/src/main.cpp
+index 8420e23..4c80eca 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -52,9 +52,11 @@ static void catchSignals(waybar::SafeSignal<int>& signal_handler) {
+   std::signal(SIGINT, writeSignalToPipe);
+   std::signal(SIGCHLD, writeSignalToPipe);
+ 
++#if defined(SIGRTMIN) && defined(SIGRTMAX)
+   for (int sig = SIGRTMIN + 1; sig <= SIGRTMAX; ++sig) {
+     std::signal(sig, writeSignalToPipe);
+   }
++#endif
+ 
+   while (true) {
+     int signum;
+@@ -116,11 +118,13 @@ void handleUserSignal(int signal, bool& reload) {
+ // `true` or `false`, respectively, into `reload`.
+ static void handleSignalMainThread(int signum, bool& reload) {
++#if defined(SIGRTMIN) && defined(SIGRTMAX)
+   if (signum >= SIGRTMIN + 1 && signum <= SIGRTMAX) {
+     for (auto& bar : waybar::Client::inst()->bars) {
+       bar->handleSignal(signum);
+     }
+     return;
+   }
++#endif
+ 
+   switch (signum) {
+     case SIGUSR1:
+diff --git a/src/modules/custom.cpp b/src/modules/custom.cpp
+index 9b53b4c..c6b1f8f 100644
+--- a/src/modules/custom.cpp
++++ b/src/modules/custom.cpp
+@@ -81,6 +81,7 @@ void waybar::modules::Custom::continuousWorker() {
+       int exit_code = 1;
+       if (fp_) {
+-        exit_code = WEXITSTATUS(util::command::close(fp_, pid_));
++        int status = util::command::close(fp_, pid_);
++        exit_code = util::command::exit_status(status);
+         fp_ = nullptr;
+       }
+       if (exit_code != 0) {
+@@ -136,9 +137,12 @@ void waybar::modules::Custom::waitingWorker() {
+ }
+ 
+ void waybar::modules::Custom::refresh(int sig) {
++#if defined(SIGRTMIN)
+   if (config_["signal"].isInt() && sig == SIGRTMIN + config_["signal"].asInt()) {
+     thread_.wake_up();
+   }
++#endif
++  (void)sig;
+ }
+ 
+ void waybar::modules::Custom::handleEvent() {
+diff --git a/src/util/css_reload_helper.cpp b/src/util/css_reload_helper.cpp
+index 0c1ef66..e6259b0 100644
+--- a/src/util/css_reload_helper.cpp
++++ b/src/util/css_reload_helper.cpp
+@@ -2,10 +2,10 @@
+ 
+ #include <poll.h>
+ #include <spdlog/spdlog.h>
+-#ifndef __OpenBSD__
++#if defined(__linux__)
+ #include <sys/inotify.h>
+-#else
++#elif defined(__OpenBSD__)
+ #include <sys/event.h>
+ #include <sys/time.h>
+ #include <sys/types.h>
+ #endif
+diff --git a/src/util/date_ios_fallback.cpp b/src/util/date_ios_fallback.cpp
+new file mode 100644
+index 0000000..378d5e3
+--- /dev/null
++++ b/src/util/date_ios_fallback.cpp
+@@ -0,0 +1,25 @@
++#include <cstdlib>
++#include <string>
++
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#if TARGET_OS_IPHONE
++
++namespace date::iOSUtils {
++
++std::string get_current_timezone() {
++  const char* tz = std::getenv("TZ");
++  if (tz != nullptr && *tz != '\0') {
++    return std::string(tz);
++  }
++  return "UTC";
++}
++
++std::string get_tzdata_path() {
++  return {};
++}
++
++}  // namespace date::iOSUtils
++
++#endif
++#endif
+diff --git a/src/util/enum.cpp b/src/util/enum.cpp
+index 2351bd0..70e4d74 100644
+--- a/src/util/enum.cpp
++++ b/src/util/enum.cpp
+@@ -7,7 +7,7 @@
+ #include <stdexcept>
+ #include <string>
+ 
+-#include "modules/hyprland/workspaces.hpp"
++#include "util/kill_signal.hpp"
+ #include "util/string.hpp"
+ 
+ namespace waybar::util {
+@@ -33,8 +33,6 @@ EnumType EnumParser<EnumType>::parseStringToEnum(const std::string& str,
+ 
+ // Explicit instantiations for specific EnumType types you intend to use
+ // Add explicit instantiations for all relevant EnumType types
+-template struct EnumParser<modules::hyprland::Workspaces::SortMethod>;
+-template struct EnumParser<modules::hyprland::Workspaces::ActiveWindowPosition>;
+ template struct EnumParser<util::KillSignalAction>;
+ 
+ }  // namespace waybar::util

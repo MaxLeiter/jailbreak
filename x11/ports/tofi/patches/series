@@ -1,1 +1,3 @@
 0001-ios-cross-build-portability.patch
+0002-ios-clamp-wl-seat-version.patch
+0003-ios-keymap-cleanup-once.patch

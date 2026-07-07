@@ -88,9 +88,9 @@ cat > "$src/src/helpers/CMakeLists.txt" <<'EOF'
 add_subdirectory(wayland_wrapper)
 EOF
 
-# The first-light KWin package is built with KWIN_BUILD_DECORATIONS=OFF, so do
-# not try to load the default aurorae decoration plugin at runtime.
-perl -0pi -e 's/return kwinApp\(\)->config\(\)->group\(s_pluginName\)\.readEntry\("NoPlugin", false\);/return kwinApp()->config()->group(s_pluginName).readEntry("NoPlugin", !KWIN_BUILD_DECORATIONS);/g' "$src/src/decorations/decorationbridge.cpp"
+# Decorations are part of the supported KDE Desktop path now. Keep upstream's
+# runtime default so KWin loads the configured decoration plugin unless the user
+# explicitly sets NoPlugin=true.
 
 # Upstream's native qtwaylandscanner_kde helper guesses KF6_HOST_TOOLING as the complete
 # host prefix. Our host Qt lives beside it, so let the recipe pass NATIVE_PREFIX explicitly.

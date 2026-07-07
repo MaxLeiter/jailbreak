@@ -31,6 +31,8 @@ docker run --rm -v "$OUTDIR":/work -w /work "$IMAGE" bash -euo pipefail -c '
   mkdir -p "$TREE/var/jb/usr/share/backgrounds/xios"
   python3 "$TREE/tools/make-wallpaper.py" \
     "$TREE/var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+  python3 "$TREE/tools/make-wallpaper.py" \
+    "$TREE/var/jb/usr/share/backgrounds/xios/xios-default.png"
 
   # Copy the committed tree (DEBIAN + var) into the staging root.
   cp -a "$TREE/DEBIAN" "$STAGE/"

@@ -5,7 +5,7 @@ endif
 SUBPROJECTS    += gtk+3.0
 GTK_MAJOR_V    := 3.24
 GTK_VERSION    := $(GTK_MAJOR_V).38
-DEB_LIBGTK_V   ?= $(GTK_VERSION)+ios1
+DEB_LIBGTK_V   ?= $(GTK_VERSION)+ios2
 # libgtkintl: the proxy-libintl symbol shim (see gtkintl_shim.c). Built during the
 # gtk+3.0 step and shipped as its own deb; both GTK3 and GTK4 relink onto it.
 DEB_LIBGTKINTL_V ?= 1.0

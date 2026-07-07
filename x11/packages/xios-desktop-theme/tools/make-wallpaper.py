@@ -6,7 +6,7 @@ blue-grey down to near-black, with a soft, wide glow toward the top-centre for
 a little depth. Rendered at full resolution with a touch of dither so the dark
 gradient stays band-free through JPEG. Deterministic: every build is identical.
 
-Usage: make-wallpaper.py OUTPUT.jpg [WIDTH HEIGHT]
+Usage: make-wallpaper.py OUTPUT.{jpg,png} [WIDTH HEIGHT]
 """
 import sys
 import numpy as np
@@ -44,5 +44,8 @@ noise = np.random.default_rng(7).normal(0.0, 1.4, size=base.shape)
 img = np.clip(base + noise, 0, 255).astype(np.uint8)
 
 out = sys.argv[1]
-Image.fromarray(img, "RGB").save(out, quality=92, subsampling=0, optimize=True)
+if out.lower().endswith((".png", ".apng")):
+    Image.fromarray(img, "RGB").save(out, optimize=True)
+else:
+    Image.fromarray(img, "RGB").save(out, quality=92, subsampling=0, optimize=True)
 print("wrote", out, "%dx%d" % (W, H))

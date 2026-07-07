@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libatk1.0-0, libcairo2, libcairo-gobject2, libepoxy0, libfribidi0, libfontconfig1, libharfbuzz0b, libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libwayland0, libxkbcommon0, libgtkintl
+Depends: libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libatk1.0-0, libcairo2, libcairo-gobject2, libepoxy0, libfribidi0, libfontconfig1, libharfbuzz0b, libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libxcomposite1, libwayland0, libxkbcommon0, libgtkintl
 Description: GTK graphical user interface library
  GTK is a multi-platform toolkit for creating graphical user interfaces.
  Offering a complete set of widgets, GTK is suitable for projects ranging from

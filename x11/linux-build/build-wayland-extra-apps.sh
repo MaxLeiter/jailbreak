@@ -29,6 +29,10 @@ target_requests() {
   [[ " $TARGETS " == *" $1"* ]]
 }
 
+target_needs_gtk3_wayland() {
+  target_requests gtk+3.0 || target_requests gtk-layer-shell || target_requests waybar
+}
+
 stage_port_patch_stack() {
   local pkg="$1"
   [ -d "/work/ports/$pkg/patches" ] || return 0
@@ -60,6 +64,7 @@ fi
 for pkg in swaybg tofi swayimg waybar yad nwg-look geary webkitgtk gnumeric transmission; do
   target_requests "$pkg" && stage_port_patch_stack "$pkg"
 done
+target_needs_gtk3_wayland && stage_port_patch_stack gtk+3.0
 
 echo "==> installing -Wno-unused-command-line-argument clang wrappers"
 cat > build_tools/cc-nounused <<'EOF'
@@ -180,15 +185,53 @@ record_patch_fingerprint() {
   find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}' > "$work/.xios_patch_series.sha256"
 }
 
-for pkg in swaybg tofi swayimg transmission; do
+ensure_gtk3_wayland_build() {
+  target_needs_gtk3_wayland || return 0
+
+  local hdr="$BB/usr/include/gtk-3.0/gdk/gdkwayland.h"
+  local pc="$BB/usr/lib/pkgconfig/gdk-wayland-3.0.pc"
+  if [ -f "$hdr" ] && [ -f "$pc" ]; then
+    return 0
+  fi
+
+  echo "==> stale gtk+3.0 cache lacks Wayland backend; rebuilding gtk+3.0"
+  echo "    missing: $hdr or $pc"
+  rm -rf \
+    build_work/iphoneos-arm64-rootless/1900/gtk+3.0 \
+    build_stage/iphoneos-arm64-rootless/1900/gtk+3.0 \
+    build_dist/iphoneos-arm64-rootless/1900/libgtk-3-0 \
+    build_dist/iphoneos-arm64-rootless/1900/libgtk-3-dev \
+    build_dist/iphoneos-arm64-rootless/1900/gtk-3-bin
+}
+
+scrub_waybar_fallback_deps() {
+  target_requests waybar || return 0
+
+  echo "==> scrubbing stale waybar fallback deps from build_base"
+  rm -f \
+    "$BB/usr/lib/pkgconfig/fmt.pc" \
+    "$BB/usr/lib/pkgconfig/spdlog.pc" \
+    "$BB/usr/lib/pkgconfig/jsoncpp.pc" \
+    "$BB/usr/lib/libfmt.a" \
+    "$BB/usr/lib/libspdlog.a" \
+    "$BB/usr/lib/libjsoncpp.a"
+  rm -rf \
+    "$BB/usr/include/fmt" \
+    "$BB/usr/include/spdlog" \
+    "$BB/usr/include/json"
+}
+
+for pkg in swaybg tofi swayimg waybar transmission; do
   target_requests "$pkg" && refresh_patch_build_tree "$pkg"
 done
+ensure_gtk3_wayland_build
+scrub_waybar_fallback_deps
 
 for t in $TARGETS; do
   echo "==> make $t"
   make "$t" $COMMON -j"$(nproc)"
 done
-for pkg in swaybg tofi swayimg transmission; do
+for pkg in swaybg tofi swayimg waybar transmission; do
   target_requests "$pkg" && record_patch_fingerprint "$pkg"
 done
 
@@ -217,6 +260,10 @@ for spec in \
   libpangomm:pangomm \
   libatkmm:atkmm \
   libgtkmm:gtkmm3 \
+  libgtk-3-0:gtk+3.0 \
+  libgtk-3-dev:gtk+3.0 \
+  gtk-3-bin:gtk+3.0 \
+  libgtkintl:gtk+3.0 \
   libgtk-layer-shell:gtk-layer-shell \
   libstemmer:libstemmer \
   libytnef:libytnef \

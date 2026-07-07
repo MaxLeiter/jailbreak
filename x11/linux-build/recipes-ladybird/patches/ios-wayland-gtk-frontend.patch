@@ -1,0 +1,134 @@
+Subject: [PATCH] ios-wayland: allow GTK desktop frontend on iOS target
+
+The standalone iOS app uses UI/iOS, but the Xios compositor needs a real
+Wayland client. Add an opt-in CMake mode that keeps the iOS target/toolchain
+while building upstream UI/Gtk, and route iOS desktop resources/helpers through
+the freedesktop layout instead of macOS bundle handling.
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -139,12 +139,18 @@
+     endif()
+ endif()
+ 
++option(LADYBIRD_IOS_DESKTOP_FRONTEND "Build an upstream desktop UI frontend for iOS/Xios instead of UI/iOS" OFF)
++
+ if (ENABLE_GUI_TARGETS)
+     add_subdirectory(Services)
+-    if (NOT IOS)  # iOS: skip AppKit/Qt UI
+-        add_subdirectory(UI)
+-    else()          # iOS app build: UIKit frontend
++    if (IOS AND NOT LADYBIRD_IOS_DESKTOP_FRONTEND)
++        # Standalone home-screen app build: use the UIKit frontend.
+         add_subdirectory(UI/iOS)
++    else()
++        # Desktop/Xios build: allow the upstream GTK frontend to be selected on
++        # the iOS target. The C++ target still compiles with AK_OS_IOS; only the
++        # chrome/windowing layer comes from UI/Gtk.
++        add_subdirectory(UI)
+     endif()
+ endif()
+ 
+--- a/UI/CMakeLists.txt
++++ b/UI/CMakeLists.txt
+@@ -1,7 +1,8 @@
+ include(cmake/ResourceFiles.cmake)
+ 
+ function(create_ladybird_bundle target_name)
+-    set_target_properties(${target_name} PROPERTIES
++    if (APPLE AND NOT IOS)
++        set_target_properties(${target_name} PROPERTIES
+         OUTPUT_NAME "Ladybird"
+         MACOSX_BUNDLE_GUI_IDENTIFIER org.ladybird.Ladybird
+         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+@@ -12,7 +13,6 @@
+         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.ladybird.Ladybird
+     )
+ 
+-    if (APPLE)
+         set(bundle_dir "$<TARGET_BUNDLE_DIR:${target_name}>")
+         add_custom_command(TARGET ${target_name} POST_BUILD
+             COMMAND "${CMAKE_COMMAND}" -E make_directory "${bundle_dir}/Contents/Resources"
+@@ -37,7 +37,7 @@
+         endif()
+     endif()
+ 
+-    if (APPLE)
++    if (APPLE AND NOT IOS)
+         set(resource_base_dir "$<TARGET_BUNDLE_DIR:${target_name}>/Contents/Resources")
+     else()
+         set(resource_base_dir "${CMAKE_BINARY_DIR}/${IN_BUILD_PREFIX}${CMAKE_INSTALL_DATADIR}/Lagom")
+@@ -73,7 +73,7 @@
+ 
+ function(set_helper_process_properties)
+     set(targets ${ARGV})
+-    if (APPLE OR WIN32)
++    if ((APPLE AND NOT IOS) OR WIN32)
+         # Store helper processes in the same bundle directory as the main application
+         set_target_properties(${targets} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:ladybird>")
+     else()
+@@ -87,7 +87,7 @@
+     VERBATIM
+ )
+ 
+-if (APPLE)
++if (APPLE AND NOT IOS)
+     add_custom_target(debug-ladybird
+         COMMAND "${CMAKE_COMMAND}" -E env "LADYBIRD_SOURCE_DIR=${LADYBIRD_SOURCE_DIR}" lldb "$<TARGET_BUNDLE_DIR:ladybird>"
+         USES_TERMINAL
+@@ -101,12 +101,12 @@
+ 
+ add_dependencies(ladybird ${ladybird_helper_processes})
+ # FIXME: Increase support for building targets on Windows
+-if (NOT WIN32)
++if (TARGET WebDriver AND NOT WIN32)
+     add_dependencies(WebDriver ladybird)
+ endif()
+ 
+ set_helper_process_properties(${ladybird_helper_processes})
+-if (APPLE)
++if (APPLE AND NOT IOS AND TARGET WebDriver)
+     set_helper_process_properties(WebDriver)
+ endif()
+ 
+--- a/UI/cmake/InstallRules.cmake
++++ b/UI/cmake/InstallRules.cmake
+@@ -43,7 +43,7 @@
+ # Remove ladybird shlib if it exists
+ list(REMOVE_ITEM all_required_lagom_libraries ladybird)
+ 
+-if (APPLE)
++if (APPLE AND NOT IOS)
+     # Fixup the app bundle and copy:
+     #   - Libraries from lib/ to Ladybird.app/Contents/lib
+     # Remove the symlink we created at build time for the lib directory first
+@@ -105,7 +105,7 @@
+     COMPONENT ladybird_Development
+ )
+ 
+-if (NOT APPLE)
++if (NOT APPLE OR IOS)
+     # On macOS the resources are handled via the MACOSX_PACKAGE_LOCATION property on each resource file
+     install_ladybird_resources("${CMAKE_INSTALL_DATADIR}/Lagom" ladybird_Runtime)
+ endif()
+--- a/UI/Gtk/CMakeLists.txt
++++ b/UI/Gtk/CMakeLists.txt
+@@ -5,7 +5,7 @@
+ 
+ add_executable(ladybird main.cpp)
+ 
+-find_program(GLIB_COMPILE_RESOURCES NAMES glib-compile-resources REQUIRED)
++find_program(GLIB_COMPILE_RESOURCES NAMES glib-compile-resources REQUIRED NO_CMAKE_FIND_ROOT_PATH)
+ 
+ set(GTK_UI_RESOURCES
+     "${CMAKE_CURRENT_SOURCE_DIR}/Resources/browser-window.ui"
+--- a/UI/cmake/ResourceFiles.cmake
++++ b/UI/cmake/ResourceFiles.cmake
+@@ -98,7 +98,7 @@
+     cmake_parse_arguments(PARSE_ARGV 1 "COPY" "" "TARGET;DESTINATION" "RESOURCES")
+     set(inputs ${COPY_RESOURCES})
+ 
+-    if (APPLE)
++    if (APPLE AND NOT IOS)
+         target_sources(${COPY_TARGET} PRIVATE ${inputs})
+         set_source_files_properties(${inputs} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${subdir}")
+     else()

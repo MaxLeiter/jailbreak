@@ -124,6 +124,52 @@ record_result() {
     fi
 }
 
+collect_diagnostics() {
+    local label="${1:-failure}" safe_label diag_log rc
+    safe_label="$(printf '%s' "$label" | tr -c 'A-Za-z0-9_.-' '-' | sed 's/^-*//; s/-*$//; s/--*/-/g')"
+    [ -n "$safe_label" ] || safe_label="failure"
+    diag_log="$OUT/diagnostics-$safe_label.log"
+
+    echo "==> collect diagnostics: $label" | tee -a "$LOG"
+    "$XIOS_DEVICE" exec '
+        echo "== captured_at"
+        date
+        echo
+        echo "== active session"
+        cat /var/jb/tmp/xios-active-session 2>/dev/null || echo "(missing /var/jb/tmp/xios-active-session)"
+        echo
+        echo "== xios.json"
+        cat /var/jb/tmp/xios.json 2>/dev/null || echo "(missing /var/jb/tmp/xios.json)"
+        echo
+        echo "== wayland socket"
+        ls -l /var/jb/tmp/wayland-0 /var/jb/tmp/wayland-0.lock 2>/dev/null || echo "(missing /var/jb/tmp/wayland-0)"
+        echo
+        for f in /var/jb/tmp/iosc.log /var/jb/tmp/ioscd.log /var/jb/tmp/xios-session.log; do
+            echo "== $f"
+            if [ -r "$f" ]; then
+                tail -n 180 "$f"
+            else
+                echo "(missing $f)"
+            fi
+            echo
+        done
+        echo "== process snapshot"
+        if ps auxww >/dev/null 2>&1; then
+            snapshot="$(ps auxww 2>/dev/null | grep -E "Xios\.app/Xios|ioscd|xios-session|/usr/local/bin/iosc|wayland-0|swaybg|tofi|swayimg|yad|gnumeric|transmission|grim" | grep -v grep | head -n 80 || true)"
+        else
+            snapshot="$(ps ax 2>/dev/null | grep -E "Xios\.app/Xios|ioscd|xios-session|/usr/local/bin/iosc|wayland-0|swaybg|tofi|swayimg|yad|gnumeric|transmission|grim" | grep -v grep | head -n 80 || true)"
+        fi
+        [ -n "$snapshot" ] && printf "%s\n" "$snapshot" || echo "(no matching processes)"
+    ' >"$diag_log" 2>&1
+    rc=$?
+    sed -n '1,260p' "$diag_log" >>"$LOG"
+    echo >>"$LOG"
+    if [ "$rc" -ne 0 ]; then
+        echo "diagnostics collection failed rc=$rc (see $diag_log)" | tee -a "$LOG" >&2
+    fi
+    return 0
+}
+
 run_step() {
     local id="$1"
     shift
@@ -155,11 +201,16 @@ run_wayland_step() {
     guard_classic_iosc "$id"
     guard_rc=$?
     if [ "$guard_rc" -ne 0 ]; then
+        collect_diagnostics "guard-$id"
         record_result "$id" "$guard_rc"
         return 0
     fi
     run_logged "$id" "$@"
-    record_result "$id" "$?"
+    local rc=$?
+    if [ "$rc" -ne 0 ]; then
+        collect_diagnostics "wayland-$id"
+    fi
+    record_result "$id" "$rc"
 }
 
 run_capture() {
@@ -169,6 +220,7 @@ run_capture() {
     guard_classic_iosc "$id"
     guard_rc=$?
     if [ "$guard_rc" -ne 0 ]; then
+        collect_diagnostics "capture-$id-guard"
         record_result "$id" "$guard_rc"
         return 0
     fi
@@ -178,6 +230,9 @@ run_capture() {
     local rc=$?
     sed -n '1,260p' "$OUT/capture-$id.stdout" >>"$LOG"
     echo >>"$LOG"
+    if [ "$rc" -ne 0 ]; then
+        collect_diagnostics "capture-$id"
+    fi
     record_result "$id" "$rc"
 }
 
@@ -352,6 +407,7 @@ Key files:
 - install.log / install-stage.log when --install is used
 - package-state is packages.log
 - capture-*.stdout plus cap-*.png/cap-*.log
+- diagnostics-*.log when a capture/Wayland guard/final shot step fails
 - compositor.png/device.png if final shot succeeded
 EOF
 

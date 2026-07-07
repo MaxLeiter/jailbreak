@@ -5,10 +5,10 @@ Maintainer: @DEB_MAINTAINER@
 Section: KDE
 Priority: optional
 Homepage: https://kde.org/
-Depends: qt6-base, qt6-declarative, kf6-breeze-icons, kf6-coreaddons, kf6-colorscheme, kf6-config, kf6-configwidgets, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kcmutils, kf6-kirigami, kf6-windowsystem
+Depends: qt6-base, qt6-declarative, kdecoration, kf6-breeze-icons, kf6-coreaddons, kf6-colorscheme, kf6-config, kf6-configwidgets, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kcmutils, kf6-kirigami, kf6-windowsystem
 Description: Breeze visual style for Xios KDE
  Breeze provides the Qt 6 widget style, color schemes, cursors, and style
  configuration helpers used by Plasma and KDE applications.
  .
- This iOS build keeps the Qt/Wayland visual style path and defers KWin window
- decorations until the compositor decoration path is enabled.
+ This iOS build keeps the Qt/Wayland visual style path and ships the Breeze
+ KWin decoration plugin for Plasma Desktop window controls.

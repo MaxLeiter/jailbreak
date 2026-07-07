@@ -1,0 +1,25 @@
+Subject: [PATCH] tofi: clean up keyboard keymap mapping once
+
+The non-late keyboard path unmapped and closed the keymap fd before updating
+the xkb state, then fell through to the shared cleanup and did the same work a
+second time. Darwin/iOS terminates the process with EXC_GUARD DEALLOC_GAP on
+that second munmap.
+
+Keep the common cleanup at the end of the callback and let both paths share it.
+---
+ src/main.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/src/main.c b/src/main.c
+index 3c2bc4d..a23b24c 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -154,8 +154,6 @@ static void wl_keyboard_keymap(
+ 				map_shm,
+ 				XKB_KEYMAP_FORMAT_TEXT_V1,
+ 				XKB_KEYMAP_COMPILE_NO_FLAGS);
+-		munmap(map_shm, size);
+-		close(fd);
+ 
+ 		struct xkb_state *xkb_state = xkb_state_new(xkb_keymap);
+ 		xkb_keymap_unref(tofi->xkb_keymap);

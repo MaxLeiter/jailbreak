@@ -6,12 +6,13 @@ endif
 
 SUBPROJECTS += breeze
 BREEZE_VERSION = $(PLASMA_VERSION)
-DEB_BREEZE_V ?= $(BREEZE_VERSION)+ios1
+DEB_BREEZE_V ?= $(BREEZE_VERSION)+ios2
 
 breeze-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,breeze))
 	$(call EXTRACT_TAR,breeze-$(PLASMA_VERSION).tar.xz,breeze-$(PLASMA_VERSION),breeze)
 	sed -i '/^[[:space:]]*ki18n_install[[:space:]]*(po)/s/^/# ios-style-no-linguist: /' $(BUILD_WORK)/breeze/CMakeLists.txt
+	sed -i 's/if(UNIX AND NOT APPLE AND NOT ANDROID)/if(UNIX AND NOT ANDROID)/' $(BUILD_WORK)/breeze/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 
@@ -28,7 +29,7 @@ breeze: breeze-setup
 		-DBUILD_QT5=OFF \
 		-DBUILD_QT6=ON \
 		-DBUILD_TESTING=OFF \
-		-DWITH_DECORATIONS=OFF \
+		-DWITH_DECORATIONS=ON \
 		-DWITH_WALLPAPERS=OFF \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE
 	+ninja -C $(BUILD_WORK)/breeze/build

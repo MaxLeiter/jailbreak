@@ -9,7 +9,7 @@ endif
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)+ios1
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios2
 # First-light keeps KWin's effects/QuickView GL paths disabled even when the
 # staged QtGui is ANGLE-capable: Qt's iOS OpenGLES headers and libepoxy's gl*
 # macro layer collide in KWin core. The private QPA plugin is still built.
@@ -55,7 +55,7 @@ kwin: kwin-setup
 		-DKWIN_BUILD_NOTIFICATIONS=OFF \
 		-DKWIN_BUILD_TABBOX=OFF \
 		-DKWIN_BUILD_ACTIVITIES=OFF \
-		-DKWIN_BUILD_DECORATIONS=OFF \
+		-DKWIN_BUILD_DECORATIONS=ON \
 		-DKWIN_BUILD_GLOBALSHORTCUTS=ON \
 		-DQTWAYLANDSCANNER_KDE_EXECUTABLE=$(BUILD_WORK)/kwin/host-tools-build/qtwaylandscanner_kde \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KPipeWire=TRUE \

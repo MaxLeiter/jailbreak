@@ -76,6 +76,14 @@ waybar: waybar-setup wayland wayland-protocols libxkbcommon gtk+3.0 gtkmm3 gtk-l
 		..
 	+ninja -C $(BUILD_WORK)/waybar/build
 	+DESTDIR="$(BUILD_STAGE)/waybar" ninja -C $(BUILD_WORK)/waybar/build install
+	rm -rf $(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/{fmt,spdlog,json}
+	rm -f \
+		$(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libfmt.a \
+		$(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libspdlog.a \
+		$(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libjsoncpp.a \
+		$(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/fmt.pc \
+		$(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/spdlog.pc \
+		$(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/jsoncpp.pc
 	# Replace upstream's Linux desktop sample with an iOS-first minimal config.
 	mkdir -p $(BUILD_STAGE)/waybar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/etc/xdg/waybar
 	printf '%s\n' \

@@ -230,12 +230,12 @@ kde_process_running() {
 
 if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
   echo "==> stop prior iosc/KDE session pieces"
-  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
+  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
     | awk '{print $1}' | while read -r pid; do
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
     done
   sleep 1
-  ps ax | grep -v grep | grep -E "kwin_wayland|plasmashell|plasmawindowed|kded6" \
+  ps ax | grep -v grep | grep -E "ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kded6" \
     | awk '{print $1}' | while read -r pid; do
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
     done
@@ -427,11 +427,18 @@ EOF
 
 kde_seed_mobile_wallpaper_config() {
   [ "$KDE_PLASMA_FLAVOR" = mobile ] || return 0
-  local file id seen=0 wallpaper="file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+  local file id tmp seen=0 wallpaper="file:///var/jb/usr/share/backgrounds/xios/xios-default.png"
+  local old_wallpaper="file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg"
   for file in \
     "$XS_VAR/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc" \
     "/var/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc"; do
     [ -f "$file" ] || continue
+    if grep -q "$old_wallpaper" "$file" 2>/dev/null; then
+      tmp="$file.xios-wallpaper.$$"
+      sed "s|$old_wallpaper|$wallpaper|g" "$file" >"$tmp" && mv "$tmp" "$file"
+      rm -f "$tmp" 2>/dev/null || true
+      echo "   migrated Mobile wallpaper config to PNG: $file"
+    fi
     while IFS= read -r id; do
       [ -n "$id" ] || continue
       seen=1

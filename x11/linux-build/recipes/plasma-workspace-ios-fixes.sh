@@ -382,8 +382,8 @@ text = re.sub(
     r"desktopsArray\[j\]\.wallpaperPlugin = 'org\.kde\.(?:image|color)';",
     """desktopsArray[j].wallpaperPlugin = 'org.kde.image';
     desktopsArray[j].currentConfigGroup = Array('Wallpaper', 'org.kde.image', 'General');
-    desktopsArray[j].writeConfig('Image', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');
-    desktopsArray[j].writeConfig('PreviewImage', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');
+    desktopsArray[j].writeConfig('Image', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.png');
+    desktopsArray[j].writeConfig('PreviewImage', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.png');
     desktopsArray[j].writeConfig('FillMode', 2);""",
     text,
 )

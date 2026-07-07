@@ -355,14 +355,37 @@ cmd_shot() {
     outdir="$(make_outdir "$outarg")" || exit 1
     echo "artifact dir: $outdir"
 
-    local wayland="/var/jb/tmp/wayland-0"
-    [ -n "$slot" ] && wayland="/var/jb/tmp/wayland-$slot"
+    local wayland="wayland-0"
+    local runtime="/var/jb/tmp"
+    if [ -n "$slot" ]; then
+        wayland="wayland-$slot"
+        runtime="/var/jb/tmp"
+    fi
+    local q_slot q_wayland q_runtime
+    q_slot="$(printf '%q' "$slot")"
+    q_wayland="$(printf '%q' "$wayland")"
+    q_runtime="$(printf '%q' "$runtime")"
     remote "
         export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:\$PATH
-        export XDG_RUNTIME_DIR=/var/jb/tmp
-        export WAYLAND_DISPLAY=$wayland
+        slot=$q_slot
+        runtime=$q_runtime
+        wayland=$q_wayland
+        if [ -n \"\$slot\" ]; then
+            if [ -d \"/var/jb/tmp/xios-kde-runtime-\$slot\" ]; then
+                runtime=\"/var/jb/tmp/xios-kde-runtime-\$slot\"
+            fi
+        else
+            active=\"\$(cat /var/jb/tmp/xios-active-session 2>/dev/null || true)\"
+            case \"\$active\" in
+                kde|kde-desktop|kde-nano|kde-mobile|plasma|plasma-desktop|plasma-nano|plasma-mobile)
+                    runtime=/var/jb/tmp/xios-kde-runtime ;;
+            esac
+        fi
+        export XDG_RUNTIME_DIR=\$runtime
+        export WAYLAND_DISPLAY=\$wayland
         rm -f /var/jb/tmp/xios-shot.png /var/jb/tmp/xios-shot.log
         : > /var/jb/tmp/xios-shot.log
+        printf 'shot runtime=%s wayland=%s\n' \"\$XDG_RUNTIME_DIR\" \"\$WAYLAND_DISPLAY\" >> /var/jb/tmp/xios-shot.log
         if command -v grim >/dev/null 2>&1; then
             grim /var/jb/tmp/xios-shot.png >> /var/jb/tmp/xios-shot.log 2>&1 || true
         fi

@@ -84,12 +84,10 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-for name in ["trash", "taskmanager", "pager", "showActivityManager", "kimpanel"]:
+for name in ["trash", "pager", "showActivityManager", "kimpanel"]:
     text = re.sub(rf"^[ \t]*add_subdirectory\({re.escape(name)}\)", f"# xios-ios-skip: add_subdirectory({name})", text, flags=re.M)
 text = text.replace("plasma_install_package(activitypager org.kde.plasma.activitypager)",
                     "# xios-ios-skip: plasma_install_package(activitypager org.kde.plasma.activitypager)")
-text = text.replace("plasma_install_package(icontasks org.kde.plasma.icontasks)",
-                    "# xios-ios-skip: plasma_install_package(icontasks org.kde.plasma.icontasks)")
 text = text.replace("plasma_install_package(keyboardlayout org.kde.plasma.keyboardlayout)",
                     "# xios-ios-skip: plasma_install_package(keyboardlayout org.kde.plasma.keyboardlayout)")
 path.write_text(text)
@@ -113,9 +111,103 @@ if kicker_block not in text:
     else:
         raise SystemExit("default panel launcher widget not found")
 text = text.replace('panel.addWidget("org.kde.plasma.pager")', '// xios-ios-skip: panel.addWidget("org.kde.plasma.pager")')
-text = text.replace('panel.addWidget("org.kde.plasma.icontasks")', 'panel.addWidget("org.kde.plasma.windowlist")')
 text = text.replace('panel.addWidget("org.kde.plasma.systemtray")', '// xios-ios-skip: panel.addWidget("org.kde.plasma.systemtray")')
 panel.write_text(text)
+PY
+
+python3 - "$src/applets/taskmanager/CMakeLists.txt" "$src/applets/taskmanager/plugin/backend.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+cmake = Path(sys.argv[1])
+backend = Path(sys.argv[2])
+header = backend.with_name("backend.h")
+
+text = cmake.read_text()
+text = text.replace(
+    "                      KSysGuard::ProcessCore\n",
+    "                      $<$<TARGET_EXISTS:KSysGuard::ProcessCore>:KSysGuard::ProcessCore>\n",
+)
+cmake.write_text(text)
+
+text = header.read_text()
+text = text.replace("#include <netwm.h>\n", "")
+header.write_text(text)
+
+text = backend.read_text()
+text = text.replace(
+    "#include <processcore/process.h>\n#include <processcore/processes.h>\n",
+    "#if __has_include(<processcore/process.h>) && __has_include(<processcore/processes.h>)\n"
+    "#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 1\n"
+    "#include <processcore/process.h>\n"
+    "#include <processcore/processes.h>\n"
+    "#else\n"
+    "#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 0\n"
+    "#endif\n",
+)
+old = """qint64 Backend::parentPid(qint64 pid) const
+{
+    KSysGuard::Processes procs;
+    procs.updateOrAddProcess(pid);
+
+    KSysGuard::Process *proc = procs.getProcess(pid);
+    if (!proc) {
+        return -1;
+    }
+
+    int parentPid = proc->parentPid();
+    if (parentPid != -1) {
+        procs.updateOrAddProcess(parentPid);
+
+        KSysGuard::Process *parentProc = procs.getProcess(parentPid);
+        if (!parentProc) {
+            return -1;
+        }
+
+        if (!proc->cGroup().isEmpty() && parentProc->cGroup() == proc->cGroup()) {
+            return parentProc->pid();
+        }
+    }
+
+    return -1;
+}
+"""
+new = """qint64 Backend::parentPid(qint64 pid) const
+{
+#if XIOS_HAVE_KSYSGUARD_PROCESSCORE
+    KSysGuard::Processes procs;
+    procs.updateOrAddProcess(pid);
+
+    KSysGuard::Process *proc = procs.getProcess(pid);
+    if (!proc) {
+        return -1;
+    }
+
+    int parentPid = proc->parentPid();
+    if (parentPid != -1) {
+        procs.updateOrAddProcess(parentPid);
+
+        KSysGuard::Process *parentProc = procs.getProcess(parentPid);
+        if (!parentProc) {
+            return -1;
+        }
+
+        if (!proc->cGroup().isEmpty() && parentProc->cGroup() == proc->cGroup()) {
+            return parentProc->pid();
+        }
+    }
+#else
+    Q_UNUSED(pid);
+#endif
+
+    return -1;
+}
+"""
+if old not in text and "XIOS_HAVE_KSYSGUARD_PROCESSCORE" not in text:
+    raise SystemExit("taskmanager parentPid block not found")
+if old in text:
+    text = text.replace(old, new)
+backend.write_text(text)
 PY
 
 python3 - "$src/applets/window-list/contents/ui/main.qml" <<'PY'

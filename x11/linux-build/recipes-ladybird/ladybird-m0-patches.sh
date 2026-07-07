@@ -89,6 +89,14 @@ patch_semantically_applied() {
         grep -q 'ladybird-webgl-trace' Services/Compositor/CanvasHost.cpp &&
         grep -q 'leaving WebGL context without a drawing buffer' Services/Compositor/OpenGLContext.cpp
       ;;
+    ios-wayland-gtk-frontend.patch)
+      grep -q 'LADYBIRD_IOS_DESKTOP_FRONTEND' CMakeLists.txt &&
+        grep -q 'APPLE AND NOT IOS' UI/CMakeLists.txt &&
+        grep -q 'TARGET WebDriver AND NOT WIN32' UI/CMakeLists.txt &&
+        grep -q 'NO_CMAKE_FIND_ROOT_PATH' UI/Gtk/CMakeLists.txt &&
+        grep -q 'NOT APPLE OR IOS' UI/cmake/InstallRules.cmake &&
+        grep -q 'APPLE AND NOT IOS' UI/cmake/ResourceFiles.cmake
+      ;;
     *)
       return 1
       ;;
