@@ -143,11 +143,23 @@ Remaining non-Qt procedural source edits:
   state (`makefiles/libxcursor.mk`, `makefiles/libxkbcommon.mk`, and staged
   Khronos headers). These are per-volume Procursus integration tweaks, not
   upstream dependency source patches.
+- `build.sh`, `build-wayland.sh`, `build-xwayland.sh`, and
+  `build-procursus-target.sh` still edit the checked-out Procursus build
+  harness (`Makefile`, target recipes, wrappers, or one-off recipe line
+  continuations). Keep these as driver overlays; `build.sh` now stages
+  `ports/mesa/patches` for the Mesa source edits it used to inject.
 - `recipes/ffmpeg.mk`, `recipes/gobject-introspection.mk`, `build-shell.sh`,
   and `build-skia.sh` still rewrite generated build/install/package artifacts
   such as `config.mak`, installed script shebangs, control metadata, and staged
   public headers. Keep those procedural unless the owning build system grows a
   stable pre-configure source seam.
+- `audio/build-audio.sh`, `repack-icon-themes.sh`, `tools/weaken-deb.sh`,
+  `recipes/relink-gtkintl.sh`, and package build scripts edit assembled
+  `DEBIAN/control`, desktop, service, or installed-size metadata. These are
+  package artifacts, not dependency source.
+- On-device GIR helpers may apply an already-owned patch stack directly and
+  rewrite extracted shebangs to `/var/jb/bin/sh`; that is runtime bootstrap
+  glue for device-local builds rather than a missing source patch series.
 - `recipes-ladybird/libjpeg-turbo.mk` uses upstream `-DWITH_JPEG8=ON` instead
   of patching generated `jconfig.h`, so it intentionally has no patch stack.
 - `recipes-ladybird/patches-m0`: common Ladybird M0 engine-tree patches shared
