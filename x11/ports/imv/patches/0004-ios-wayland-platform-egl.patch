@@ -1,0 +1,58 @@
+Subject: [PATCH] imv: use platform EGL entrypoints on iOS Wayland
+
+The Xios EGL shim can translate Wayland platform EGL calls into ANGLE/Metal
+IOSurface-backed pbuffers, but the core eglCreateWindowSurface ABI is unsafe on
+this iOS build because EGLNativeWindowType is not a pointer-sized Wayland window
+handle. Use the platform display/surface EXT entrypoints on Apple targets so the
+shim receives the wl_display and wl_egl_window pointers intact.
+
+--- a/src/wl_window.c
++++ b/src/wl_window.c
+@@ -19,0 +20 @@
++#include <EGL/eglext.h>
+@@ -821,0 +823,19 @@
++
++#ifdef __APPLE__
++#ifndef EGL_PLATFORM_WAYLAND_EXT
++#define EGL_PLATFORM_WAYLAND_EXT 0x31D8
++#endif
++
++static EGLDisplay imv_egl_get_wayland_display(struct wl_display *wl_display)
++{
++  typedef EGLDisplay (*get_platform_display_ext_func)(EGLenum, void *, const EGLint *);
++  get_platform_display_ext_func get_platform_display =
++      (get_platform_display_ext_func)eglGetProcAddress("eglGetPlatformDisplayEXT");
++  if (get_platform_display) {
++    EGLDisplay display = get_platform_display(EGL_PLATFORM_WAYLAND_EXT, wl_display, NULL);
++    if (display != EGL_NO_DISPLAY) {
++      return display;
++    }
++  }
++  return eglGetDisplay(wl_display);
++}
+@@ -822,0 +843,13 @@
++static EGLSurface imv_egl_create_wayland_surface(EGLDisplay display, EGLConfig config,
++    struct wl_egl_window *window)
++{
++  typedef EGLSurface (*create_platform_window_surface_ext_func)(EGLDisplay, EGLConfig, void *, const EGLint *);
++  create_platform_window_surface_ext_func create_platform_window_surface =
++      (create_platform_window_surface_ext_func)eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT");
++  if (create_platform_window_surface) {
++    return create_platform_window_surface(display, config, window, NULL);
++  }
++  return eglCreateWindowSurface(display, config, window, NULL);
++}
++#endif
++
+@@ -843,0 +877,3 @@
++#ifdef __APPLE__
++  window->egl_display = imv_egl_get_wayland_display(window->wl_display);
++#else
+@@ -844,0 +881 @@
++#endif
+@@ -904,0 +942,3 @@
++#ifdef __APPLE__
++  window->egl_surface = imv_egl_create_wayland_surface(window->egl_display, config, window->egl_window);
++#else
+@@ -905,0 +946 @@
++#endif

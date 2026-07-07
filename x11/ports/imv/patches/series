@@ -1,3 +1,4 @@
 0001-ios-meson-and-stat-portability.patch
 0002-ios-xwayland-wrapper.patch
 0003-ios-wayland-gles-context.patch
+0004-ios-wayland-platform-egl.patch
