@@ -1,0 +1,11 @@
+Package: luajit-dev
+Version: @DEB_LUAJIT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://luajit.org/
+Depends: luajit (= @DEB_LUAJIT_V@)
+Description: Development files for LuaJIT
+ Headers, pkg-config metadata, and the linker dylib symlink needed to build
+ software against LuaJIT's Lua 5.1-compatible C API.

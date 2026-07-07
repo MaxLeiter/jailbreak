@@ -83,6 +83,34 @@ target_requests fuzzel && stage_port_patch_stack fuzzel
 target_requests grim && stage_port_patch_stack grim
 target_requests basu && stage_port_patch_stack basu
 
+# The build container keeps cctools under /root/cctools/bin, but the Procursus makefile resets
+# PATH before Meson probes. Make the Darwin toolchain visible from /usr/local/bin, matching the
+# core build-procursus-target.sh setup, so clang can find aarch64-apple-darwin-ld instead of
+# falling through to the host GNU linker.
+echo "==> installing cctools driver shims"
+rm -f /usr/local/bin/aarch64-apple-darwin-clang /usr/local/bin/aarch64-apple-darwin-clang++
+find /root/cctools/bin -maxdepth 1 -type f -name "aarch64-apple-darwin-*" \
+  ! -name "aarch64-apple-darwin-clang" \
+  -exec ln -sf {} /usr/local/bin/ \;
+cat > /usr/local/bin/aarch64-apple-darwin-clang <<'EOF'
+#!/usr/bin/env bash
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    -Werror=unused-command-line-argument|-Werror=ignored-optimization-argument)
+      ;;
+    *)
+      args+=("$arg")
+      ;;
+  esac
+done
+exec /root/cctools/bin/aarch64-apple-darwin-clang "${args[@]}"
+EOF
+chmod +x /usr/local/bin/aarch64-apple-darwin-clang
+ln -sf /usr/local/bin/aarch64-apple-darwin-clang /usr/local/bin/aarch64-apple-darwin-clang++
+ln -sf /root/cctools/bin/ldid /usr/local/bin/ldid 2>/dev/null || true
+ln -sf /root/cctools/bin/lipo /usr/local/bin/lipo 2>/dev/null || true
+
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's compile-only
 # probes add -Werror=unused-command-line-argument, so every cc.sizeof()/cc.has_header() fails
 # ("'linker' input unused") and meson aborts. Route the compiler through a thin wrapper that
@@ -90,11 +118,11 @@ target_requests basu && stage_port_patch_stack basu
 echo "==> installing -Wno-unused-command-line-argument clang wrappers"
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
+exec /usr/local/bin/aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
 EOF
 cat > build_tools/cxx-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
+exec /usr/local/bin/aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 

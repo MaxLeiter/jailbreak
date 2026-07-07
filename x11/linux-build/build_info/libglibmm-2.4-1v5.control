@@ -1,0 +1,12 @@
+Package: libglibmm-2.4-1v5
+Version: @DEB_LIBGLIBMM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.gtkmm.org/
+Depends: libglib2.0-0, libsigc++-2.0-0v5
+Description: C++ wrappers for GLib and GIO
+ glibmm provides C++ bindings for the GLib and GIO libraries.
+ .
+ This package contains the shared libraries.

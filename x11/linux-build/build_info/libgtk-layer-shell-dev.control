@@ -1,0 +1,12 @@
+Package: libgtk-layer-shell-dev
+Version: @DEB_GTK-LAYER-SHELL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/wmww/gtk-layer-shell
+Depends: libgtk-layer-shell0 (= @DEB_GTK-LAYER-SHELL_V@), libgtk-3-dev, libwayland-dev
+Description: development files for gtk-layer-shell
+ gtk-layer-shell lets GTK3 applications use the zwlr_layer_shell_v1 protocol.
+ .
+ This package contains headers, symlinks and pkg-config files.

@@ -1,0 +1,9 @@
+Package: libstemmer0d
+Version: @DEB_LIBSTEMMER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://snowballstem.org/
+Description: Snowball stemming library - runtime
+ libstemmer provides stemming algorithms for natural-language search.

@@ -2,7 +2,8 @@
 
 Status as of 2026-07-06: no Geary or WebKitGTK recipe has been added. A first
 Geary package is not credible until the WebKitGTK 4.1 stack and several mail app
-deps exist. This note is the handoff for that dependency lane.
+deps exist. Some cheap leaf deps are now packaged: `gmime`, `libstemmer`, and
+`libytnef`. This note is the handoff for that dependency lane.
 
 ## Decision
 
@@ -32,15 +33,26 @@ Already present or partially present in this tree:
   introspection/vapi.
 - libsecret, libgee, libical, iso-codes, enchant, appstream, json-glib, libxml2,
   libpsl exist locally.
+- GMime, libstemmer, and libytnef: recipes/controls were added and these debs
+  were built into `linux-build/out/`:
+  `libgmime-3.0-0_3.2.7+ios1_iphoneos-arm64.deb`,
+  `libgmime-3.0-dev_3.2.7+ios1_iphoneos-arm64.deb`,
+  `libstemmer0d_2.2.0+ios1_iphoneos-arm64.deb`,
+  `libstemmer-dev_2.2.0+ios1_iphoneos-arm64.deb`,
+  `libytnef0_2.1.2+ios1_iphoneos-arm64.deb`, and
+  `libytnef-dev_2.1.2+ios1_iphoneos-arm64.deb`.
+- gspell and libpeas: recipe/control skeletons exist, but no validated debs have
+  been produced yet.
 
 Missing for Geary/WebKitGTK:
 
 - `webkitgtk` / `webkit2gtk-4.1` runtime, dev files, JavaScriptCoreGTK, and the
   web-extension development `.pc`/headers.
-- Geary app deps: `gmime-3.0`, `folks`, `gnome-online-accounts`, `gspell-1`,
-  `gsound`, `libpeas` (1.0 for Geary 46.0, 2.x on current main), `libstemmer`,
-  `libytnef` if TNEF stays enabled, `sound-theme-freedesktop`, and probably
-  `appstream-glib` if targeting the 46.0 tag.
+- Geary app deps still lacking validated packages: `folks`,
+  `gnome-online-accounts`, `gspell-1`, `gsound`, `libpeas` (1.0 for Geary
+  46.0, 2.x on current main), `sound-theme-freedesktop`, and probably
+  `appstream-glib` if targeting the 46.0 tag. GNOME 46 also needs the
+  gcr-3/gck-1 family rather than only the current gcr-4 package.
 - Vala binding coverage. Geary only vendors `icu-uc.vapi` and `libstemmer.vapi`;
   the rest of the `.vapi` surface must come from packages or the local vendored
   `linux-build/vapi` mechanism.
@@ -133,9 +145,10 @@ Likely porting blockers:
 
 ## Staged path
 
-1. Add leaf/app deps before WebKitGTK where cheap: `gmime`, `libstemmer`,
-   `libytnef`, `gspell`, `gsound`, `folks`, `gnome-online-accounts`, and
-   `libpeas` in the version family chosen for Geary.
+1. Add leaf/app deps before WebKitGTK where cheap. Done:
+   `gmime`, `libstemmer`, `libytnef`. Next: validate/package `gspell` and
+   `libpeas`, then add `gsound`, `folks`, `gnome-online-accounts`, and the
+   gcr-3/gck-1 family for the Geary 46 lane.
 2. Add `webkitgtk.mk` only as a configure-only first milestone. Target
    WebKitGTK 2.52.x, API 4.1, docs/tests/media-heavy features off. Split runtime
    packages from the start: `libjavascriptcoregtk-4.1-0`,
@@ -159,6 +172,21 @@ Useful short inventory/probe commands before writing recipes:
 rg --files linux-build/recipes linux-build/build_info | rg '(webkit|geary|gmime|folks|goa|gspell|gsound|libpeas|stemmer|ytnef)'
 curl -LfsS https://gitlab.gnome.org/GNOME/geary/-/raw/46.0/meson.build | rg "dependency\\(|target_"
 curl -LfsS https://raw.githubusercontent.com/WebKit/WebKit/webkitgtk-2.52.4/Source/cmake/OptionsGTK.cmake | rg "find_package\\(|WEBKIT_OPTION_DEFAULT_PORT_VALUE|USE_GTK4|WEBKITGTK_API_VERSION"
+```
+
+Validated leaf-dep build/collection command from 2026-07-06:
+
+```sh
+docker run --rm --platform linux/arm64 --cpus=2 \
+  -v procursus-vol-gtk:/work/Procursus \
+  -v "$PWD/linux-build/build-gnome.sh:/work/build-gnome.sh:ro" \
+  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
+  -v "$PWD/ports:/work/ports:ro" \
+  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
+  -v "$PWD/linux-build/vapi:/work/vapi:ro" \
+  -v "$PWD/linux-build/out:/out" \
+  -e TARGETS="libstemmer-package libytnef-package gmime-package" \
+  procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
 ```
 
 After a `webkitgtk.mk` recipe exists, the first build command should be a

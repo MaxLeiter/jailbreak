@@ -1,0 +1,11 @@
+Package: libpeas-1.0-0
+Version: @DEB_LIBPEAS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/Libpeas
+Depends: libglib2.0-0, libgirepository-1.0-1
+Description: GObject plugin engine - runtime
+ libpeas is a GObject-based plugin engine. This iOS build ships the core C
+ loader only, without Python/Lua loaders or GTK widgetry.

@@ -166,7 +166,7 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `imv_5.0.1+ios3_iphoneos-arm64.deb`,
   `mpv_0.36.0+ios2_iphoneos-arm64.deb`,
   `libxkbcommon0_1.7.0+ios2_iphoneos-arm64.deb`, and
-  `libxcb-xkb1_1.14_iphoneos-arm64.deb`.
+  `libxcb-xkb1_1.14+ios1_iphoneos-arm64.deb`.
 
 ## Debug tooling (built this round)
 

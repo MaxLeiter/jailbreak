@@ -1,0 +1,11 @@
+Package: libytnef-dev
+Version: @DEB_LIBYTNEF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/Yeraze/ytnef
+Depends: libytnef0 (= @DEB_LIBYTNEF_V@)
+Description: Development files for libytnef
+ Headers, pkg-config file and unversioned library link for building against
+ libytnef.

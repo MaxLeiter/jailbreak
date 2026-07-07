@@ -1,0 +1,11 @@
+Package: libgspell-1-dev
+Version: @DEB_GSPELL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gspell
+Depends: libgspell-1-2 (= @DEB_GSPELL_V@), libgtk-3-dev, libenchant-2-dev, libicu-dev
+Description: Development files for gspell
+ Headers, pkg-config file and unversioned library link for building against
+ gspell-1. Vala bindings are not generated in this cross-build pass.

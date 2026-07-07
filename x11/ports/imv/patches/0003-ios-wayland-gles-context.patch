@@ -1,0 +1,56 @@
+Subject: [PATCH] imv: use a GLES EGL context on iOS Wayland
+
+Xios exposes ANGLE/Metal through the EGL shim, which supports OpenGL ES but
+does not create desktop OpenGL contexts. The native Wayland backend currently
+binds EGL_OPENGL_API unconditionally, so eglCreateContext returns NULL and imv
+aborts before mapping a window. Request an ES2-compatible window config and
+context on Apple targets; the remaining canvas code still decides whether the
+fixed-function renderer is viable on top of that context.
+
+diff -ruN -U6 --exclude=*.bak a/src/wl_window.c b/src/wl_window.c
+--- a/src/wl_window.c	2025-11-27 12:03:44
++++ b/src/wl_window.c	2026-07-06 17:44:00
+@@ -847,23 +847,43 @@
+   return true;
+ }
+
+ static void create_window(struct imv_window *window, int width, int height,
+     const char *title, const char *app_id)
+ {
++#ifdef __APPLE__
++  eglBindAPI(EGL_OPENGL_ES_API);
++  EGLint attributes[] = {
++    EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
++    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
++    EGL_RED_SIZE,   8,
++    EGL_GREEN_SIZE, 8,
++    EGL_BLUE_SIZE,  8,
++    EGL_ALPHA_SIZE, 8,
++    EGL_NONE
++  };
++  EGLint context_attributes[] = {
++    EGL_CONTEXT_CLIENT_VERSION, 2,
++    EGL_NONE
++  };
++#else
+   eglBindAPI(EGL_OPENGL_API);
+   EGLint attributes[] = {
+     EGL_RED_SIZE,   8,
+     EGL_GREEN_SIZE, 8,
+     EGL_BLUE_SIZE,  8,
+     EGL_NONE
+   };
++  EGLint context_attributes[] = {
++    EGL_NONE
++  };
++#endif
+   EGLConfig config;
+   EGLint num_config;
+   eglChooseConfig(window->egl_display, attributes, &config, 1, &num_config);
+-  window->egl_context = eglCreateContext(window->egl_display, config, EGL_NO_CONTEXT, NULL);
++  window->egl_context = eglCreateContext(window->egl_display, config, EGL_NO_CONTEXT, context_attributes);
+   assert(window->egl_context);
+
+   window->wl_surface = wl_compositor_create_surface(window->wl_compositor);
+   assert(window->wl_surface);
+   wl_surface_add_listener(window->wl_surface, &surface_listener, window);

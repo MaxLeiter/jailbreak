@@ -1,0 +1,12 @@
+Package: libsigc++-2.0-dev
+Version: @DEB_LIBSIGCPLUSPLUS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://libsigcplusplus.github.io/libsigcplusplus/
+Depends: libsigc++-2.0-0v5 (= @DEB_LIBSIGCPLUSPLUS_V@)
+Description: development files for libsigc++
+ libsigc++ implements a typesafe callback system for standard C++.
+ .
+ This package contains headers, symlinks and pkg-config files.

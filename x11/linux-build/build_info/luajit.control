@@ -1,0 +1,11 @@
+Package: luajit
+Version: @DEB_LUAJIT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Interpreters
+Priority: optional
+Homepage: https://luajit.org/
+Description: LuaJIT runtime and command-line interpreter
+ LuaJIT is a tracing Just-In-Time compiler for Lua 5.1. This iOS build uses
+ upstream's iPhoneOS/aarch64 target path and installs the runtime dylib, CLI,
+ and standard JIT support modules under the rootless prefix.

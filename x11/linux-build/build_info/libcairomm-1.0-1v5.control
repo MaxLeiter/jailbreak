@@ -1,0 +1,12 @@
+Package: libcairomm-1.0-1v5
+Version: @DEB_LIBCAIROMM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.cairographics.org/cairomm/
+Depends: libcairo2, libsigc++-2.0-0v5
+Description: C++ wrappers for Cairo
+ cairomm provides C++ bindings for the Cairo graphics library.
+ .
+ This package contains the shared library.

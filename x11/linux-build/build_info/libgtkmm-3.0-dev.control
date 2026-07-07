@@ -1,0 +1,12 @@
+Package: libgtkmm-3.0-dev
+Version: @DEB_LIBGTKMM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.gtkmm.org/
+Depends: libgtkmm-3.0-1v5 (= @DEB_LIBGTKMM_V@), libgtk-3-dev, libcairomm-1.0-dev, libpangomm-1.4-dev, libatkmm-1.6-dev, libglibmm-2.4-dev
+Description: development files for gtkmm 3
+ gtkmm provides C++ bindings for the GTK 3 widget toolkit.
+ .
+ This package contains headers, symlinks and pkg-config files.

@@ -1,0 +1,13 @@
+Package: libgtk-layer-shell0
+Version: @DEB_GTK-LAYER-SHELL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/wmww/gtk-layer-shell
+Depends: libgtk-3-0, libwayland0
+Description: GTK3 library for the Wayland layer-shell protocol
+ gtk-layer-shell lets GTK3 applications use the zwlr_layer_shell_v1 protocol
+ for panels, overlays and background surfaces.
+ .
+ This package contains the shared library.

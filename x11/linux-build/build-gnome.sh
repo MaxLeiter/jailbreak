@@ -255,6 +255,7 @@ for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
            libvte libgtksourceview libenchant \
            libpsl libsoup libgee \
            libgnome-autoar libportal iso-codes libtracker libgnome-desktop \
+           libstemmer libytnef libgmime libgspell libpeas \
            gnome-console gnome-text-editor gnome-font-viewer nautilus gnome-calculator \
            baobab file-roller hitori; do
   find "$DIST_ROOT" -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true

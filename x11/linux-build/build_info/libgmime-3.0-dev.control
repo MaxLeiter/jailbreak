@@ -1,0 +1,11 @@
+Package: libgmime-3.0-dev
+Version: @DEB_GMIME_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/jstedfast/gmime
+Depends: libgmime-3.0-0 (= @DEB_GMIME_V@), libglib2.0-dev
+Description: Development files for GMime 3.0
+ Headers, pkg-config file and unversioned library link for building against
+ gmime-3.0. Vala bindings are not generated in this cross-build pass.

@@ -1,0 +1,9 @@
+Package: libytnef0
+Version: @DEB_LIBYTNEF_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/Yeraze/ytnef
+Description: TNEF parser library - runtime
+ libytnef parses Microsoft TNEF/winmail.dat attachments.

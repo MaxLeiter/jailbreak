@@ -1,0 +1,11 @@
+Package: libpeas-1.0-dev
+Version: @DEB_LIBPEAS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/Libpeas
+Depends: libpeas-1.0-0 (= @DEB_LIBPEAS_V@), libglib2.0-dev, libgirepository-1.0-dev
+Description: Development files for libpeas 1.0
+ Headers, pkg-config file and unversioned library link for building against
+ libpeas-1.0. Vala bindings are not generated in this cross-build pass.

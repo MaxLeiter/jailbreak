@@ -209,7 +209,20 @@ for spec in \
   transmission:transmission \
   libgsf:libgsf \
   libxslt:libxslt \
-  libgoffice:goffice; do
+  libgoffice:goffice \
+  luajit:luajit \
+  libsigc++:libsigcplusplus \
+  libglibmm:glibmm \
+  libcairomm:cairomm \
+  libpangomm:pangomm \
+  libatkmm:atkmm \
+  libgtkmm:gtkmm3 \
+  libgtk-layer-shell:gtk-layer-shell \
+  libstemmer:libstemmer \
+  libytnef:libytnef \
+  libgmime:gmime \
+  libgspell:gspell \
+  libpeas:libpeas; do
   pat="${spec%%:*}"
   req="${spec#*:}"
   target_requests "$req" || continue

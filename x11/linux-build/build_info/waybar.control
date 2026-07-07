@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://github.com/Alexays/Waybar
-Depends: libgtk-3-0, libwayland0, libxkbcommon0, libglib2.0-0, libgtkmm-3.0-1v5
+Depends: libgtk-3-0, libwayland0, libxkbcommon0, libglib2.0-0, libgtkmm-3.0-1v5, libgtk-layer-shell0
 Description: GTK Wayland status bar
  Waybar is a customizable GTK/gtkmm status bar for wlroots-style Wayland
  compositors. This rootless iOS build starts with a minimal module set for the

@@ -27,9 +27,9 @@ usage() {
     cat <<'EOF'
 usage: bin/iosc-extra-apps-smoke [options]
 
-Runs a repeatable classic-iosc smoke for the second app wave: swaybg, tofi, yad,
-Gnumeric, and Transmission. The helper can stage/install the local debs first,
-then records stdout/logs/screenshots in one artifact directory.
+Runs a repeatable classic-iosc smoke for the second app wave: swaybg, tofi,
+swayimg, yad, Gnumeric, and Transmission. The helper can stage/install the local
+debs first, then records stdout/logs/screenshots in one artifact directory.
 
 Options:
   --install         scp local linux-build/out debs to the device and dpkg -i them
@@ -42,7 +42,7 @@ Options:
   -h, --help        Show this help
 
 Smoke ids:
-  install, packages, transmission, swaybg, tofi, yad, gnumeric, shot
+  install, packages, transmission, swaybg, tofi, swayimg, yad, gnumeric, shot
 
 Examples:
   bin/iosc-extra-apps-smoke --install
@@ -186,8 +186,10 @@ resolve_debs() {
         "$X11_ROOT/linux-build/out/libxslt1.1_"*"_"iphoneos-arm64.deb
         "$X11_ROOT/linux-build/out/libgsf-1-114_"*"_"iphoneos-arm64.deb
         "$X11_ROOT/linux-build/out/libgoffice-0.10-10_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/luajit_"*"_"iphoneos-arm64.deb
         "$X11_ROOT/linux-build/out/swaybg_"*"_"iphoneos-arm64.deb
         "$X11_ROOT/linux-build/out/tofi_"*"_"iphoneos-arm64.deb
+        "$X11_ROOT/linux-build/out/swayimg_"*"_"iphoneos-arm64.deb
         "$X11_ROOT/linux-build/out/yad_"*"_"iphoneos-arm64.deb
         "$X11_ROOT/linux-build/out/transmission_"*"_"iphoneos-arm64.deb
         "$X11_ROOT/linux-build/out/gnumeric_"*"_"iphoneos-arm64.deb
@@ -227,6 +229,7 @@ install_local_debs() {
 
 needs_fixtures() {
     should_run swaybg && return 0
+    should_run swayimg && return 0
     should_run gnumeric && return 0
     return 1
 }
@@ -319,7 +322,7 @@ if needs_fixtures; then
 fi
 
 run_step packages "$XIOS_DEVICE" exec \
-    "dpkg-query -W swaybg tofi yad transmission gnumeric libgsf-1-114 libxslt1.1 libgoffice-0.10-10"
+    "dpkg-query -W swaybg tofi swayimg yad transmission gnumeric luajit libgsf-1-114 libxslt1.1 libgoffice-0.10-10"
 
 run_step transmission "$XIOS_DEVICE" exec '
     export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/bin:$PATH
@@ -331,6 +334,7 @@ run_step transmission "$XIOS_DEVICE" exec '
 run_capture swaybg sh -lc \
     'swaybg -i /var/jb/tmp/xios-extra-wallpaper.png -m fill >/var/jb/tmp/xios-extra-swaybg.log 2>&1 & sleep 30'
 run_capture tofi tofi-run --prompt-text 'Xios '
+run_capture swayimg swayimg /var/jb/tmp/xios-extra-wallpaper.png
 run_capture yad yad --text 'Xios YAD smoke' --button=OK:0 --width=360 --height=160
 run_capture gnumeric gnumeric /var/jb/tmp/xios-extra-sheet.csv
 

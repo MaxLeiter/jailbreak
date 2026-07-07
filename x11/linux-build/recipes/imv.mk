@@ -20,7 +20,7 @@ endif
 
 SUBPROJECTS  += imv
 IMV_VERSION  := 5.0.1
-DEB_IMV_V    ?= $(IMV_VERSION)+ios3
+DEB_IMV_V    ?= $(IMV_VERSION)+ios4
 
 imv-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~exec64/imv/archive/v$(IMV_VERSION).tar.gz)

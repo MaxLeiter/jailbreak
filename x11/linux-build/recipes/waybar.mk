@@ -10,10 +10,10 @@ endif
 # custom modules, and disable Linux-only/daemon/audio/tray features through Meson options:
 # systemd/logind/libinput/libevdev/libudev/JACK/pipewire/wireplumber/cava/mpris/bluetooth/tray.
 #
-# Still required by Waybar's core: gtkmm-3.0, gtk-layer-shell-0, wayland-client/cursor,
-# wayland-protocols, libxkbcommon's xkbregistry, gio-unix-2.0, sigc++-2.0, fmt, spdlog, jsoncpp.
-# fmt/spdlog/jsoncpp/gtk-layer-shell have upstream Meson wraps in the 0.15.0 tarball; gtkmm does
-# not, so the Procursus volume needs a gtkmm3 stack before a real configure can complete.
+# Still required by Waybar's core: gtkmm-3.0, gtk-layer-shell-0,
+# wayland-client/cursor, wayland-protocols, libxkbcommon's xkbregistry,
+# gio-unix-2.0, sigc++-2.0, fmt, spdlog, jsoncpp. Keep Linux service modules
+# disabled; do not add service stubs just to satisfy configure.
 
 SUBPROJECTS    += waybar
 WAYBAR_VERSION := 0.15.0
@@ -34,7 +34,8 @@ waybar-setup: setup
 	needs_exe_wrapper = true\n \
 	[built-in options]\n \
 	prefix ='$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)'\n \
-	cpp_args = ['-D_DARWIN_C_SOURCE', '-Wno-error']\n \
+	cpp_args = ['-D_DARWIN_C_SOURCE', '-Wno-error', '-stdlib=libc++', '-isysroot', '$(TARGET_SYSROOT)', '$(PLATFORM_VERSION_MIN)', '-arch', '$(MEMO_ARCH)', '-isystem$(TARGET_SYSROOT)/usr/include/c++/v1', '-isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/c++/v1', '-isystem$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include']\n \
+	cpp_link_args = ['-stdlib=libc++', '-isysroot', '$(TARGET_SYSROOT)', '$(PLATFORM_VERSION_MIN)', '-arch', '$(MEMO_ARCH)', '-L$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib', '-Wl,-not_for_dyld_shared_cache', '-liosexec']\n \
 	[binaries]\n \
 	c = '$(CC)'\n \
 	cpp = '$(CXX)'\n \
@@ -44,7 +45,7 @@ ifneq ($(wildcard $(BUILD_WORK)/waybar/.build_complete),)
 waybar:
 	@echo "Using previously built waybar."
 else
-waybar: waybar-setup wayland wayland-protocols libxkbcommon gtk+3.0
+waybar: waybar-setup wayland wayland-protocols libxkbcommon gtk+3.0 gtkmm3 gtk-layer-shell
 	cd $(BUILD_WORK)/waybar/build && meson \
 		--cross-file cross.txt \
 		--buildtype=release \
