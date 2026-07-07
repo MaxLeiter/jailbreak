@@ -101,11 +101,10 @@ Current converted non-Qt stacks:
 - `ports/ibus/patches`: lets the disabled-XIM Compose locale check fall through
   while cross-building instead of aborting configure.
 - `ports/mutter/patches`: makes remote-desktop-only input-emulation deps
-  optional and guards systemd-only X11 policy code when libsystemd is off. The
-  no-`/work/x11` fallback backend body remains procedural because that path is
-  conditional in the cross recipe. `ports/mutter/patches-gir` carries the same
-  no-native-backend fallback for the standalone on-device GIR builder, which
-  now reuses the main Mutter patch series first.
+  optional and guards systemd-only X11 policy code when libsystemd is off.
+  `ports/mutter/patches-gir` carries the no-native-backend fallback for the
+  standalone on-device GIR builder and the no-`/work/x11` cross-build fallback;
+  the real MetaBackendIOS integration path deliberately does not apply it.
 - `ports/evolution-data-server/patches`: carries the EDS SMIME-off,
   ld64-linker, host-generator, GLib include, and Camel no-NSS/NSPR source
   edits for the calendar/addressbook build.

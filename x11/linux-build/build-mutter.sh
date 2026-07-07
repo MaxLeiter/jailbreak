@@ -74,10 +74,35 @@ stage_required_patch_stack() {
   bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
 }
 
+stage_patch_subdir() {
+  local pkg="$1"
+  local subdir="$2"
+  local dest="$3"
+  local patch_dir="/work/ports/$pkg/$subdir"
+  local patch_file
+  if [ ! -f "$patch_dir/series" ]; then
+    echo "ERROR: missing $patch_dir/series; mount ports with -v \\$PWD/../ports:/work/ports:ro" >&2
+    exit 1
+  fi
+  echo "==> staging $pkg $subdir source patches"
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  cp -v "$patch_dir/series" "$dest/"
+  while IFS= read -r patch_file || [ -n "$patch_file" ]; do
+    patch_file="${patch_file%%#*}"
+    set -- $patch_file
+    [ "$#" -gt 0 ] || continue
+    cp -v "$patch_dir/$1" "$dest/"
+  done < "$patch_dir/series"
+}
+
 if target_requests colord || target_requests mutter; then
   stage_required_patch_stack colord
 fi
-target_requests mutter && stage_required_patch_stack mutter
+if target_requests mutter; then
+  stage_required_patch_stack mutter
+  stage_patch_subdir mutter patches-gir build_patch/mutter-gir
+fi
 
 # --- MUTTER_CLEAN: wipe the mutter work tree for a from-pristine integrate + full build ---
 # Route A needs the real MetaBackendIOS staged into a PRISTINE mutter tree (integrate applies

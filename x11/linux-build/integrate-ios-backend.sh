@@ -9,9 +9,9 @@
 #   4. applies the 4 integration patches (buffer type, context-main backend branch, wayland
 #      iosurface-init, meson wiring)
 #
-# IMPORTANT: mutter.mk's perl -0pi patch of meta-context-main.c (the g_assert_not_reached
-# insertion for the wayland+no-native case) MUST BE REMOVED — meta-context-main-ios-backend.patch
-# supersedes it (it provides the real MetaBackendIOS branch for that same spot).
+# IMPORTANT: the no-/work/x11 fallback patch for meta-context-main.c must stay out of the
+# real backend path — meta-context-main-ios-backend.patch supersedes that fallback by
+# providing the real MetaBackendIOS branch for the same spot.
 #
 #   integrate-ios-backend.sh <mutter-src-root> [repo-x11-dir]
 set -euo pipefail
@@ -68,4 +68,4 @@ for p in meta-wayland-buffer-iosurface \
 done
 
 echo "==> MetaBackendIOS integrated into $MUTTER_ROOT"
-echo "    reminder: remove mutter.mk's perl meta-context-main g_assert patch (superseded)."
+echo "    reminder: do not apply the mutter-gir fallback patch on the real backend path."

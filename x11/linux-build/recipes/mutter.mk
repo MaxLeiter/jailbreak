@@ -41,10 +41,14 @@ mutter-setup: setup
 		bash /work/x11/linux-build/integrate-ios-backend.sh $(BUILD_WORK)/mutter /work/x11; \
 	else \
 		echo "==> WARN: /work/x11 not mounted — STOCK typelib-only mutter (NO iOS backend)"; \
-		perl -0pi -e 's{return create_native_backend \(context, error\);\n#endif /\* HAVE_NATIVE_BACKEND \*/}{return create_native_backend (context, error);\n#else\n      g_assert_not_reached ();\n      return NULL;\n#endif /* HAVE_NATIVE_BACKEND */}' $(BUILD_WORK)/mutter/src/core/meta-context-main.c; \
+		test -f $(BUILD_ROOT)/build_patch/mutter-gir/series || { echo "ERROR: missing staged mutter-gir patch series"; exit 1; }; \
+		for patch_file in $$(awk 'NF && $$1 !~ /^#/ { print $$1 }' $(BUILD_ROOT)/build_patch/mutter-gir/series); do \
+			echo "   mutter-gir patch: $$patch_file"; \
+			patch -p1 -d $(BUILD_WORK)/mutter < $(BUILD_ROOT)/build_patch/mutter-gir/$$patch_file; \
+		done; \
 	fi
-	# Keep the unconditional iOS portability edits in the port patch stack. The
-	# no-/work/x11 fallback above remains procedural because it is conditional.
+	# Keep unconditional iOS portability edits in the main port patch stack. The
+	# no-/work/x11 fallback branch above applies the GIR-only conditional stack.
 	$(call DO_PATCH,mutter,mutter,-p1)
 	rm -rf $(BUILD_WORK)/mutter/build && mkdir -p $(BUILD_WORK)/mutter/build
 	echo -e "[host_machine]\n \
