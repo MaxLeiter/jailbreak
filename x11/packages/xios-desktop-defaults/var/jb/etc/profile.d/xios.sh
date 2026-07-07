@@ -12,8 +12,10 @@ export PATH
 : "${LOGNAME:=$USER}"
 : "${SHELL:=/var/jb/bin/sh}"
 : "${TERM:=xterm-256color}"
-: "${LANG:=en_US.UTF-8}"
+: "${LANG:=C}"
 : "${LC_CTYPE:=UTF-8}"
+: "${FC_LANG:=en}"
+: "${XCOMPOSEFILE:=/var/jb/usr/share/X11/locale/en_US.UTF-8/Compose}"
 : "${NO_AT_BRIDGE:=1}"
 : "${XDG_DATA_DIRS:=/var/jb/usr/share:/var/jb/usr/local/share}"
 : "${XDG_CONFIG_DIRS:=/var/jb/etc/xdg}"
@@ -24,7 +26,7 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
   XDG_RUNTIME_DIR="/var/jb/var/run/user/$xios_uid"
   unset xios_uid
 fi
-export HOME USER LOGNAME SHELL TERM LANG LC_CTYPE NO_AT_BRIDGE
+export HOME USER LOGNAME SHELL TERM LANG LC_CTYPE FC_LANG XCOMPOSEFILE NO_AT_BRIDGE
 export XDG_DATA_DIRS XDG_CONFIG_DIRS XDG_CONFIG_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR
 
 # Native iPad 7 profile by default. Override with:

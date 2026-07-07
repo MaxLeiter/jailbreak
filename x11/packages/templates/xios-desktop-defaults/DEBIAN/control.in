@@ -1,6 +1,6 @@
 Package: xios-desktop-defaults
 Name: Xios desktop defaults
-Version: 1.1.10
+Version: 1.1.13
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>

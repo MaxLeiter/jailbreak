@@ -36,6 +36,11 @@ jb_path() {
 }
 
 export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
+case "${LANG:-}" in ""|UTF-8|*.UTF-8|*.utf8|C.UTF-8) LANG=C ;; esac
+case "${LC_CTYPE:-}" in ""|C|POSIX|*.UTF-8|*.utf8|C.UTF-8) LC_CTYPE=UTF-8 ;; esac
+export LANG LC_CTYPE
+export FC_LANG="${FC_LANG:-en}"
+export XCOMPOSEFILE="${XCOMPOSEFILE:-$XS_PREFIX/share/X11/locale/en_US.UTF-8/Compose}"
 XIOS_KDE_RUNTIME_SUFFIX="${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP/xios-kde-runtime$XIOS_KDE_RUNTIME_SUFFIX}"
 mkdir -p "$XDG_RUNTIME_DIR"

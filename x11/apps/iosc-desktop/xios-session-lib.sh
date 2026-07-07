@@ -1001,7 +1001,10 @@ xios_session_app() {
             QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
             ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL"
             GSETTINGS_BACKEND=memory
+            LANG="${LANG:-C}"
             LC_CTYPE="${LC_CTYPE:-UTF-8}"
+            FC_LANG="${FC_LANG:-en}"
+            XCOMPOSEFILE="${XCOMPOSEFILE:-$XS_PREFIX/share/X11/locale/en_US.UTF-8/Compose}"
         )
     fi
     xs_log "app: launching '$exec' as a wayland client of the running compositor"

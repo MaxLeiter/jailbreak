@@ -111,6 +111,10 @@ xios_profile_env_pairs() {
     local prefix="${XS_PREFIX:-/var/jb/usr}"
     local jb="${XS_JB:-/var/jb}"
     local root_home="${XS_VAR:-/var/jb/var}/root"
+    local lang="${LANG:-C}" lc_ctype="${LC_CTYPE:-UTF-8}" xcomposefile
+    case "$lang" in ""|UTF-8|*.UTF-8|*.utf8|C.UTF-8) lang=C ;; esac
+    case "$lc_ctype" in ""|C|POSIX|*.UTF-8|*.utf8|C.UTF-8) lc_ctype=UTF-8 ;; esac
+    xcomposefile="${XCOMPOSEFILE:-$prefix/share/X11/locale/en_US.UTF-8/Compose}"
     case "$profile" in
         iosc-client-gpu)
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
@@ -120,7 +124,10 @@ xios_profile_env_pairs() {
             xios_profile_pair QT_WAYLAND_DISABLE_WINDOWDECORATION "${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             xios_profile_pair GSETTINGS_BACKEND memory
-            xios_profile_pair LC_CTYPE "${LC_CTYPE:-UTF-8}"
+            xios_profile_pair LANG "$lang"
+            xios_profile_pair LC_CTYPE "$lc_ctype"
+            xios_profile_pair FC_LANG "${FC_LANG:-en}"
+            xios_profile_pair XCOMPOSEFILE "$xcomposefile"
             ;;
         iosc-platform-gl)
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
@@ -133,6 +140,10 @@ xios_profile_env_pairs() {
             xios_profile_pair XDG_DATA_DIRS "$prefix/share"
             xios_profile_pair XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
             xios_profile_pair XDG_CONFIG_DIRS "$jb/etc/xdg:$prefix/etc/xdg"
+            xios_profile_pair LANG "$lang"
+            xios_profile_pair LC_CTYPE "$lc_ctype"
+            xios_profile_pair FC_LANG "${FC_LANG:-en}"
+            xios_profile_pair XCOMPOSEFILE "$xcomposefile"
             xios_profile_pair KDE_FULL_SESSION true
             xios_profile_pair KDE_SESSION_VERSION 6
             xios_profile_pair XDG_CURRENT_DESKTOP KDE
@@ -149,6 +160,10 @@ xios_profile_env_pairs() {
             xios_profile_pair XDG_CONFIG_HOME "${XDG_CONFIG_HOME:-$root_home/.config}"
             xios_profile_pair XDG_CONFIG_DIRS "$jb/etc/xdg:$prefix/etc/xdg"
             xios_profile_pair GSETTINGS_SCHEMA_DIR "$prefix/share/glib-2.0/schemas"
+            xios_profile_pair LANG "$lang"
+            xios_profile_pair LC_CTYPE "$lc_ctype"
+            xios_profile_pair FC_LANG "${FC_LANG:-en}"
+            xios_profile_pair XCOMPOSEFILE "$xcomposefile"
             xios_profile_pair KDE_FULL_SESSION true
             xios_profile_pair KDE_SESSION_VERSION 6
             xios_profile_pair XDG_CURRENT_DESKTOP KDE
