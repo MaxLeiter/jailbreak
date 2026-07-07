@@ -1,12 +1,12 @@
 Package: xios-kde
 Name: Xios Desktop (KDE Plasma)
-Version: 0.1.2
+Version: 0.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), xios-core, iosc (>= 0.9.15), xios-session (>= 1.0.46), xios-desktop-theme, kwin, plasma-workspace (>= 6.1.5+ios10), plasma-desktop (>= 6.1.5+ios5), plasma-mobile (>= 6.1.5+ios13), plasma-nano (>= 6.1.5+ios3), systemsettings (>= 6.1.5+ios5), kscreen (>= 6.1.5+ios1), qt6-wayland, kf6-breeze-icons, ark, gwenview, kwrite (>= 24.08.0+ios2)
+Depends: firmware (>= 16.0), xios-core, iosc (>= 0.9.15), xios-session (>= 1.0.47), xios-desktop-theme, kwin, plasma-workspace (>= 6.1.5+ios10), plasma-desktop (>= 6.1.5+ios5), plasma-mobile (>= 6.1.5+ios14), plasma-nano (>= 6.1.5+ios3), systemsettings (>= 6.1.5+ios5), kscreen (>= 6.1.5+ios1), kf6-kded (>= 6.3.0+ios2), qt6-wayland, kf6-breeze-icons, ark, gwenview, kwrite (>= 24.08.0+ios2)
 MinimumOSVersion: 16.0.0
 Description: KDE Plasma desktop and mobile flavors for Xios
  KDE Plasma on KWin, rendered on the iPad GPU through the iosc compositor

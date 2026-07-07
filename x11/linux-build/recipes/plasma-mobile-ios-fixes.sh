@@ -195,6 +195,23 @@ if old in text and "xios-default.jpg" not in text:
 path.write_text(text)
 PY
 
+# Mobile defines a desktop toolbox but no panel toolbox in its shell defaults.
+# Plasma then falls back to the unshipped org.kde.desktoptoolbox for panel
+# containments and logs an invalid toolbox warning. Use the real panel toolbox
+# package from plasma-desktop when panel containments ask for one.
+python3 - "$src/shell/contents/defaults" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "[Panel]" not in text:
+    text = text.rstrip() + "\n\n[Panel]\nToolBox=org.kde.paneltoolbox\n"
+elif "[Panel]\nToolBox=" not in text:
+    text = text.replace("[Panel]\n", "[Panel]\nToolBox=org.kde.paneltoolbox\n", 1)
+path.write_text(text)
+PY
+
 for dir in flashlight nightcolor powermenu screenshot screenrotation; do
   cmake="$src/quicksettings/$dir/CMakeLists.txt"
   [ -f "$cmake" ] || continue
