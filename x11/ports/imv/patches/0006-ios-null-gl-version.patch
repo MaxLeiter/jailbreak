@@ -1,0 +1,24 @@
+Subject: [PATCH] imv: tolerate missing GL_VERSION on iOS
+
+ANGLE can transiently return NULL for GL_VERSION on the iOS Wayland path even
+after EGL context creation succeeds. The native backend only uses that probe to
+decide whether to load glGenerateMipmap, so treat a missing string as GL2
+instead of crashing in atoi(NULL).
+
+--- a/src/wl_window.c
++++ b/src/wl_window.c
+@@ -1021,7 +1021,13 @@
+ extern PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap;
+ 
+ static void load_gl_functions(void) {
+-  if (atoi((const char*)glGetString(GL_VERSION)) >= 3) {
++  const char *version = (const char*)glGetString(GL_VERSION);
++  if (!version) {
++    imv_log(IMV_WARNING, "GL_VERSION unavailable; assuming OpenGL ES 2\n");
++    return;
++  }
++
++  if (atoi(version) >= 3) {
+     imv_glGenerateMipmap = (PFNGLGENERATEMIPMAPPROC)eglGetProcAddress("glGenerateMipmap");
+   }
+ }

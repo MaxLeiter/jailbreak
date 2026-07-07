@@ -20,7 +20,7 @@ endif
 
 SUBPROJECTS  += imv
 IMV_VERSION  := 5.0.1
-DEB_IMV_V    ?= $(IMV_VERSION)+ios5
+DEB_IMV_V    ?= $(IMV_VERSION)+ios12
 
 imv-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~exec64/imv/archive/v$(IMV_VERSION).tar.gz)
@@ -78,6 +78,16 @@ imv: imv-setup pango wayland wayland-protocols libxkbcommon libx11 libxcb libpng
 		..
 	+PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" ninja -C $(BUILD_WORK)/imv/build
 	+DESTDIR="$(BUILD_STAGE)/imv" ninja -C $(BUILD_WORK)/imv/build install
+	# Native Wayland uses EGL/GLES through ANGLE. Keep imv-x11 on Mesa libGL for the
+	# Xwayland fallback, but repoint imv-wayland's GL entrypoints to ANGLE GLESv2.
+	$(I_N_T) -change /var/jb/usr/lib/libGL.1.dylib /var/jb/lib/angle/libGLESv2.dylib \
+		$(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/imv-wayland 2>/dev/null || true
+	$(I_N_T) -change @rpath/libGL.1.dylib /var/jb/lib/angle/libGLESv2.dylib \
+		$(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/imv-wayland 2>/dev/null || true
+	$(I_N_T) -change /var/jb/usr/lib/libGL.dylib /var/jb/lib/angle/libGLESv2.dylib \
+		$(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/imv-wayland 2>/dev/null || true
+	$(I_N_T) -change @rpath/libGL.dylib /var/jb/lib/angle/libGLESv2.dylib \
+		$(BUILD_STAGE)/imv/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/imv-wayland 2>/dev/null || true
 	$(call AFTER_BUILD,copy)
 endif
 

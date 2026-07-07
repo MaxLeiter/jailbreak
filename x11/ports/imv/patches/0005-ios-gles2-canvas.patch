@@ -1,0 +1,307 @@
+Subject: [PATCH] imv: add an iOS GLES2 canvas renderer
+
+The native Wayland backend runs on ANGLE/OpenGL ES, so the desktop fixed-function
+canvas renderer crashes once EGL setup succeeds. Keep the existing desktop GL path
+for non-Apple builds and add an Apple-only shader quad renderer for checkers,
+bitmap tiles, and the Cairo overlay texture.
+
+--- a/src/canvas.c
++++ b/src/canvas.c
+@@ -6 +6,20 @@
+-#include <GL/gl.h>
++#ifdef __APPLE__
++#define GL_GLEXT_PROTOTYPES 1
++#endif
++#include <GL/gl.h>
++#ifdef __APPLE__
++#ifndef GL_BGRA_EXT
++#define GL_BGRA_EXT 0x80E1
++#endif
++#define glPushMatrix() ((void)0)
++#define glPopMatrix() ((void)0)
++#define glOrtho(...) ((void)0)
++#define glBegin(...) ((void)0)
++#define glEnd() ((void)0)
++#define glTexCoord2i(...) ((void)0)
++#define glTexCoord2f(...) ((void)0)
++#define glVertex2i(...) ((void)0)
++#define glTranslated(...) ((void)0)
++#define glScaled(...) ((void)0)
++#define glRotated(...) ((void)0)
++#endif
+@@ -40,0 +57,8 @@
++#ifdef __APPLE__
++  GLuint gles_program;
++  GLuint gles_vbo;
++  GLint gles_pos_attr;
++  GLint gles_tex_attr;
++  GLint gles_viewport_uniform;
++  GLint gles_sampler_uniform;
++#endif
+@@ -41,0 +66,139 @@
++
++
++#ifdef __APPLE__
++static GLuint imv_gles_compile_shader(GLenum type, const char *source)
++{
++  GLuint shader = glCreateShader(type);
++  glShaderSource(shader, 1, &source, NULL);
++  glCompileShader(shader);
++
++  GLint ok = GL_FALSE;
++  glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
++  if (!ok) {
++    char log[1024];
++    glGetShaderInfoLog(shader, sizeof log, NULL, log);
++    imv_log(IMV_ERROR, "GLES shader compile failed: %s\n", log);
++    abort();
++  }
++  return shader;
++}
++
++static void imv_gles_init(struct imv_canvas *canvas)
++{
++  if (canvas->gles_program) {
++    return;
++  }
++
++  const char *vertex_shader =
++      "attribute vec2 a_pos;\n"
++      "attribute vec2 a_tex;\n"
++      "uniform vec2 u_viewport;\n"
++      "varying vec2 v_tex;\n"
++      "void main() {\n"
++      "  vec2 ndc = vec2((a_pos.x / u_viewport.x) * 2.0 - 1.0, "
++      "                  1.0 - (a_pos.y / u_viewport.y) * 2.0);\n"
++      "  gl_Position = vec4(ndc, 0.0, 1.0);\n"
++      "  v_tex = a_tex;\n"
++      "}\n";
++  const char *fragment_shader =
++      "precision mediump float;\n"
++      "varying vec2 v_tex;\n"
++      "uniform sampler2D u_tex;\n"
++      "void main() {\n"
++      "  gl_FragColor = texture2D(u_tex, v_tex);\n"
++      "}\n";
++
++  GLuint vs = imv_gles_compile_shader(GL_VERTEX_SHADER, vertex_shader);
++  GLuint fs = imv_gles_compile_shader(GL_FRAGMENT_SHADER, fragment_shader);
++  canvas->gles_program = glCreateProgram();
++  glAttachShader(canvas->gles_program, vs);
++  glAttachShader(canvas->gles_program, fs);
++  glLinkProgram(canvas->gles_program);
++  glDeleteShader(vs);
++  glDeleteShader(fs);
++
++  GLint ok = GL_FALSE;
++  glGetProgramiv(canvas->gles_program, GL_LINK_STATUS, &ok);
++  if (!ok) {
++    char log[1024];
++    glGetProgramInfoLog(canvas->gles_program, sizeof log, NULL, log);
++    imv_log(IMV_ERROR, "GLES shader link failed: %s\n", log);
++    abort();
++  }
++
++  canvas->gles_pos_attr = glGetAttribLocation(canvas->gles_program, "a_pos");
++  canvas->gles_tex_attr = glGetAttribLocation(canvas->gles_program, "a_tex");
++  canvas->gles_viewport_uniform = glGetUniformLocation(canvas->gles_program, "u_viewport");
++  canvas->gles_sampler_uniform = glGetUniformLocation(canvas->gles_program, "u_tex");
++  if (canvas->gles_pos_attr < 0 || canvas->gles_tex_attr < 0 ||
++      canvas->gles_viewport_uniform < 0 || canvas->gles_sampler_uniform < 0) {
++    imv_log(IMV_ERROR, "GLES shader locations missing: pos=%d tex=%d viewport=%d sampler=%d\n",
++            canvas->gles_pos_attr, canvas->gles_tex_attr,
++            canvas->gles_viewport_uniform, canvas->gles_sampler_uniform);
++    abort();
++  }
++  glGenBuffers(1, &canvas->gles_vbo);
++}
++
++static void imv_gles_transform_point(float *x, float *y, double cx, double cy,
++                                     double rotation, bool mirrored)
++{
++  double dx = *x - cx;
++  double dy = *y - cy;
++  if (mirrored) {
++    dx = -dx;
++  }
++  const double r = rotation * M_PI / 180.0;
++  const double s = sin(r);
++  const double c = cos(r);
++  *x = cx + dx * c - dy * s;
++  *y = cy + dx * s + dy * c;
++}
++
++static void imv_gles_draw_quad(struct imv_canvas *canvas, GLuint texture,
++                               float left, float top, float right, float bottom,
++                               float s0, float t0, float s1, float t1,
++                               double cx, double cy, double rotation,
++                               bool mirrored)
++{
++  imv_gles_init(canvas);
++
++  float x0 = left,  y0 = top;
++  float x1 = right, y1 = top;
++  float x2 = right, y2 = bottom;
++  float x3 = left,  y3 = bottom;
++  if (rotation != 0.0 || mirrored) {
++    imv_gles_transform_point(&x0, &y0, cx, cy, rotation, mirrored);
++    imv_gles_transform_point(&x1, &y1, cx, cy, rotation, mirrored);
++    imv_gles_transform_point(&x2, &y2, cx, cy, rotation, mirrored);
++    imv_gles_transform_point(&x3, &y3, cx, cy, rotation, mirrored);
++  }
++
++  const GLfloat vertices[] = {
++    x0, y0, s0, t0,
++    x1, y1, s1, t0,
++    x2, y2, s1, t1,
++    x3, y3, s0, t1,
++  };
++
++  const GLint viewport[4] = { 0, 0, canvas->width, canvas->height };
++  glViewport(0, 0, canvas->width, canvas->height);
++  glUseProgram(canvas->gles_program);
++  glUniform2f(canvas->gles_viewport_uniform, viewport[2], viewport[3]);
++  glUniform1i(canvas->gles_sampler_uniform, 0);
++  glActiveTexture(GL_TEXTURE0);
++  glBindTexture(GL_TEXTURE_2D, texture);
++  glBindBuffer(GL_ARRAY_BUFFER, canvas->gles_vbo);
++  glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STREAM_DRAW);
++  glEnableVertexAttribArray(canvas->gles_pos_attr);
++  glEnableVertexAttribArray(canvas->gles_tex_attr);
++  glVertexAttribPointer(canvas->gles_pos_attr, 2, GL_FLOAT, GL_FALSE,
++                        4 * sizeof(GLfloat), (const GLvoid *)0);
++  glVertexAttribPointer(canvas->gles_tex_attr, 2, GL_FLOAT, GL_FALSE,
++                        4 * sizeof(GLfloat), (const GLvoid *)(2 * sizeof(GLfloat)));
++  glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
++  glDisableVertexAttribArray(canvas->gles_tex_attr);
++  glDisableVertexAttribArray(canvas->gles_pos_attr);
++  glBindBuffer(GL_ARRAY_BUFFER, 0);
++}
++#endif
+@@ -65,0 +230,13 @@
++#ifdef __APPLE__
++  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
++  glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
++  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 16, 16, 0, GL_RGBA,
++               GL_UNSIGNED_BYTE, checkers_data);
++
++  glBindTexture(GL_TEXTURE_2D, canvas->texture);
++  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++  imv_gles_init(canvas);
++#else
+@@ -70,0 +248 @@
++#endif
+@@ -96,0 +275,8 @@
++#ifdef __APPLE__
++  if (canvas->gles_vbo) {
++    glDeleteBuffers(1, &canvas->gles_vbo);
++  }
++  if (canvas->gles_program) {
++    glDeleteProgram(canvas->gles_program);
++  }
++#endif
+@@ -144,0 +331,20 @@
++#ifdef __APPLE__
++  {
++    const int left = bx;
++    const int top = by;
++    const int right = left + imv_image_width(image) * scale;
++    const int bottom = top + imv_image_height(image) * scale;
++    const int center_x = left + imv_image_width(image) * scale / 2;
++    const int center_y = top + imv_image_height(image) * scale / 2;
++    const float s = (right - left) / 16.0;
++    const float t = s * imv_image_height(image) / imv_image_width(image);
++
++    glBindTexture(GL_TEXTURE_2D, canvas->checkers_texture);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
++    imv_gles_draw_quad(canvas, canvas->checkers_texture, left, top, right, bottom,
++                       0.0f, 0.0f, s, t, center_x, center_y, rotation, mirrored);
++    glBindTexture(GL_TEXTURE_2D, 0);
++    return;
++  }
++#endif
+@@ -226,0 +433,28 @@
++#ifdef __APPLE__
++  {
++    GLint viewport[4];
++    glGetIntegerv(GL_VIEWPORT, viewport);
++    void *data = cairo_image_surface_get_data(canvas->surface);
++    const int stride = cairo_image_surface_get_stride(canvas->surface) / 4;
++
++    glBindTexture(GL_TEXTURE_2D, canvas->texture);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
++    glPixelStorei(GL_UNPACK_ROW_LENGTH, stride);
++    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
++    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
++    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, canvas->width, canvas->height,
++                 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, data);
++
++    glEnable(GL_BLEND);
++    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
++    imv_gles_draw_quad(canvas, canvas->texture, 0, 0, viewport[2], viewport[3],
++                       0.0f, 0.0f, 1.0f, 1.0f, 0, 0, 0, false);
++    glDisable(GL_BLEND);
++    glBindTexture(GL_TEXTURE_2D, 0);
++    return;
++  }
++#endif
+@@ -322,0 +557,9 @@
++#ifdef __APPLE__
++      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
++      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
++                   min(bitmap->width - j * max_tex_size, max_tex_size),
++                   min(bitmap->height - i * max_tex_size, max_tex_size),
++                   0, GL_RGBA, GL_UNSIGNED_BYTE, bitmap->data);
++#else
+@@ -326,0 +570 @@
++#endif
+@@ -339,0 +584,39 @@
++#ifdef __APPLE__
++  {
++    if (canvas->cache.bitmap != bitmap) {
++      prepare_cache(canvas, bitmap, upscaling_method);
++      canvas->cache.bitmap = bitmap;
++    }
++    if (canvas->cache.upscaling_method != upscaling_method) {
++      update_upscaling_method(canvas, upscaling_method);
++    }
++
++    glEnable(GL_BLEND);
++    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
++
++    const GLint max_tex_size = get_gl_max_texture_size();
++    const int tex_count_w = ((bitmap->width + max_tex_size - 1) / max_tex_size);
++    const int tex_count_h = ((bitmap->height + max_tex_size - 1) / max_tex_size);
++    const int center_x = bx + bitmap->width * scale / 2;
++    const int center_y = by + bitmap->height * scale / 2;
++
++    for (int i = 0; i < tex_count_h; i++) {
++      for (int j = 0; j < tex_count_w; j++) {
++        const int tex_w = min(bitmap->width - j * max_tex_size, max_tex_size);
++        const int tex_h = min(bitmap->height - i * max_tex_size, max_tex_size);
++        const int left = bx + j * floor(max_tex_size * scale);
++        const int top = by + i * floor(max_tex_size * scale);
++        const int right = left + floor(tex_w * scale);
++        const int bottom = top + floor(tex_h * scale);
++
++        imv_gles_draw_quad(canvas, canvas->cache.textures[i * tex_count_w + j],
++                           left, top, right, bottom, 0.0f, 0.0f, 1.0f, 1.0f,
++                           center_x, center_y, rotation, mirrored);
++      }
++    }
++
++    glDisable(GL_BLEND);
++    glBindTexture(GL_TEXTURE_2D, 0);
++    return;
++  }
++#endif

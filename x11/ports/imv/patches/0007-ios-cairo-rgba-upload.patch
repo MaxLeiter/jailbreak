@@ -1,0 +1,90 @@
+Subject: [PATCH] imv: convert Cairo ARGB32 uploads for iOS GLES
+
+Cairo's ARGB32 image surface is stored as native-endian premultiplied pixels,
+which is BGRA byte order on little-endian iOS. The ANGLE/GLES path should not
+depend on GL_BGRA_EXT accepting client uploads, so convert the Cairo overlay and
+solid-background surface to RGBA bytes before uploading it as a GL_TEXTURE_2D.
+Bitmap image backends already provide RGBA data and keep using the direct path.
+
+--- a/src/canvas.c
++++ b/src/canvas.c
+@@ -59,6 +59,8 @@ struct imv_canvas {
+   GLint gles_tex_attr;
+   GLint gles_viewport_uniform;
+   GLint gles_sampler_uniform;
++  unsigned char *gles_cairo_rgba;
++  size_t gles_cairo_rgba_len;
+ #endif
+ };
+ 
+@@ -128,6 +130,35 @@ static void imv_gles_transform_point(float *x, float *y, double cx, double cy,
+   *y = cy + dx * s + dy * c;
+ }
+ 
++static unsigned char *imv_gles_cairo_to_rgba(struct imv_canvas *canvas,
++                                             const unsigned char *bgra,
++                                             int stride)
++{
++  const size_t need = (size_t)canvas->width * (size_t)canvas->height * 4;
++  if (canvas->gles_cairo_rgba_len < need) {
++    unsigned char *new_data = realloc(canvas->gles_cairo_rgba, need);
++    if (!new_data) {
++      imv_log(IMV_ERROR, "Couldn't allocate GLES Cairo upload buffer\n");
++      abort();
++    }
++    canvas->gles_cairo_rgba = new_data;
++    canvas->gles_cairo_rgba_len = need;
++  }
++
++  for (int y = 0; y < canvas->height; ++y) {
++    const unsigned char *src = bgra + (size_t)y * (size_t)stride;
++    unsigned char *dst = canvas->gles_cairo_rgba +
++                         (size_t)y * (size_t)canvas->width * 4;
++    for (int x = 0; x < canvas->width; ++x) {
++      dst[x * 4 + 0] = src[x * 4 + 2];
++      dst[x * 4 + 1] = src[x * 4 + 1];
++      dst[x * 4 + 2] = src[x * 4 + 0];
++      dst[x * 4 + 3] = src[x * 4 + 3];
++    }
++  }
++  return canvas->gles_cairo_rgba;
++}
++
+ static void imv_gles_draw_quad(struct imv_canvas *canvas, GLuint texture,
+                                float left, float top, float right, float bottom,
+                                float s0, float t0, float s1, float t1,
+@@ -279,6 +306,8 @@ void imv_canvas_free(struct imv_canvas *canvas)
+   if (canvas->gles_program) {
+     glDeleteProgram(canvas->gles_program);
+   }
++  free(canvas->gles_cairo_rgba);
++  canvas->gles_cairo_rgba = NULL;
+ #endif
+   free(canvas);
+ }
+@@ -434,7 +463,8 @@ void imv_canvas_draw(struct imv_canvas *canvas)
+   {
+     GLint viewport[4];
+     glGetIntegerv(GL_VIEWPORT, viewport);
+-    void *data = cairo_image_surface_get_data(canvas->surface);
++    cairo_surface_flush(canvas->surface);
++    const unsigned char *bgra = cairo_image_surface_get_data(canvas->surface);
++    unsigned char *data = imv_gles_cairo_to_rgba(canvas, bgra, cairo_image_surface_get_stride(canvas->surface));
+-    const int stride = cairo_image_surface_get_stride(canvas->surface) / 4;
+ 
+     glBindTexture(GL_TEXTURE_2D, canvas->texture);
+@@ -443,11 +473,11 @@ void imv_canvas_draw(struct imv_canvas *canvas)
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+-    glPixelStorei(GL_UNPACK_ROW_LENGTH, stride);
++    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
++    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, canvas->width, canvas->height,
+-                 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, data);
++                 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+ 
+     glEnable(GL_BLEND);
+     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);

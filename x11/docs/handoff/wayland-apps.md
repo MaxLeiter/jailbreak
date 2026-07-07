@@ -18,7 +18,7 @@ version for any agent.
 | fuzzel 1.12.0+ios1 | repo/debs ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
 | dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
 | foot 1.27.0+ios3 | repo/debs ✓ | installed | **YES** | PTY + locale + render-worker path verified |
-| imv 5.0.1+ios5 | out/ ✓ | installed | **YES (Xwayland)** | `imv` wrapper still defaults to rootful Xwayland; native Wayland now reaches IOSurface window creation, then crashes in the desktop-GL canvas path |
+| imv 5.0.1+ios12 | out/ ✓ | installed | **YES (native + Xwayland)** | native Wayland ANGLE/GLES renderer verified; wrapper Xwayland fallback still works |
 | mpv 0.36.0+ios2 | repo/debs ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
 | zathura 0.5.12 | out/ ✓ | installed | **YES** | GTK3 Wayland + PDF/poppler content render verified |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
@@ -96,29 +96,22 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `artifacts/device-runs/20260705-imv-slurp-fuzzel-clean/cap-slurp.png`.
   A driven `slurp -d` smoke also returned rc 0 and stdout geometry
   `100,100 226x161` after `bin/xios-device input drag 200 200 650 520`.
-- **imv — WORKS via Xwayland; native Wayland progressed locally as
-  `imv 5.0.1+ios5`.** The published `+ios3` package is still the practical
-  fallback: `imv` builds both Wayland and X11 backends, `libxkbcommon0
-  1.7.0+ios2` ships `libxkbcommon-x11`, `libxcb-xkb1` is installed, and
-  `imv_5.0.1+ios3` carries the private `libinih.0.dylib` it links. The packaged
-  `imv` wrapper now defaults to rootful `Xwayland :1` + `imv-x11` inside Xios
-  Wayland sessions; set `XIOS_IMV_NATIVE_WAYLAND=1` to force the native Wayland
-  backend for renderer work. Local `+ios5` patches make the native Wayland backend
-  use a GLES context plus platform EGL display/window-surface entrypoints. After
-  host DER re-signing and install, native imv now reaches
-  `iosc_egl: bound iosc_iosurface` and `iosc_egl: window surface 1280x720 (3
-  IOSurface buffers)`, then segfaults before drawing. The remaining native blocker
-  is imv's desktop fixed-function renderer in `canvas.c` (`glPushMatrix`,
-  `glBegin`, `GL_TEXTURE_RECTANGLE`) running on ANGLE/GLES; it needs a GLES2
-  shader/texture path or a different native image viewer. On-device classic `iosc`
-  capture kept plain
-  `imv /var/jb/tmp/xios-imv-smoke.png` alive with empty stderr and a visible
-  rendered PNG. The local compositor capture may appear rotated in portrait
-  because it is a raw capture path; the on-device presentation was confirmed
-  visually upright. Evidence:
-  `artifacts/device-runs/20260705-imv-wrapper-ios3/cap-imv-wrapper.png`;
-  native progress/crash evidence:
-  `artifacts/device-runs/imv-native-platform-egl-20260706/cap-imv-native-platform-egl.log`.
+- **imv — WORKS via native Wayland and via the Xwayland fallback as
+  `imv 5.0.1+ios12`.** The packaged `imv` wrapper still defaults to rootful
+  `Xwayland :1` + `imv-x11` inside Xios Wayland sessions, and
+  `XIOS_IMV_NATIVE_WAYLAND=1` forces the native Wayland backend. The native path
+  now uses a GLES2 shader canvas, platform EGL display/window-surface entrypoints,
+  ANGLE `libGLESv2`, and explicit Cairo ARGB32 -> RGBA upload for the solid
+  background/overlay surface. The shader source is valid under both GLES and
+  Mesa desktop GL so the Xwayland fallback does not regress. Host DER re-signed
+  `imv_5.0.1+ios12_iphoneos-arm64.deb` was installed on-device; native Wayland
+  JPEG proof mapped through `iosc_egl: bound iosc_iosurface` / `window surface
+  1280x720 (3 IOSurface buffers)` with no failure signature, and plain wrapper
+  `imv /var/jb/tmp/xios-imv-smoke.png` also stayed alive with visible content.
+  Evidence:
+  `artifacts/device-runs/imv-native-gles2-ios12-jpeg-20260706/cap-imv-native-gles2-ios12-jpeg.png`
+  and
+  `artifacts/device-runs/imv-wrapper-ios12-regression-20260706/cap-imv-wrapper-ios12-regression.png`.
 - **wl-clipboard — FIX PACKAGED + VERIFIED with `iosc 0.9.10`.**
   `wl-copy` reached `zwlr_data_control_device_v1.set_selection`, but the compositor's
   pipe reader returned on `WL_EVENT_HANGUP|ERROR` before draining bytes already queued
@@ -201,8 +194,8 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 
 ## Open items / TODO
 
-- [ ] Port/fix imv's native Wayland renderer for iOS (desktop EGL/OpenGL path
-  currently aborts; Xwayland fallback works).
+- [x] Port/fix imv's native Wayland renderer for iOS; Xwayland fallback still
+  works.
 - [x] Publish (Max-gated): app-wave candidates are in production `repo.maxleiter.com`;
   iPad-side isolated apt policy shows the expected production candidates.
 
@@ -224,9 +217,17 @@ x11/bin/iosc-capture-remote.sh slurp   slurp
 ```
 Each prints alive/exited + the failure signature and pulls back a screenshot + log.
 
-For the current imv fallback, start classic `iosc`, then run plain `imv`; the
-packaged wrapper starts/reuses rootful Xwayland and forces the X11 backend:
+For imv fallback regression checks, start classic `iosc`, then run plain `imv`;
+the packaged wrapper starts/reuses rootful Xwayland and forces the X11 backend:
 ```
 x11/bin/xios-device session iosc
 IOSC_CAP_WAIT=6 x11/bin/iosc-capture-remote.sh imv-wrapper imv /var/jb/tmp/xios-imv-smoke.png
+```
+
+For native imv Wayland checks:
+```
+x11/bin/xios-device session iosc
+IOSC_CAP_WAIT=4 x11/bin/iosc-capture-remote.sh imv-native \
+  env IOSC_EGL_DEBUG=1 ANGLE_REAL_LIBEGL=/var/jb/lib/angle/libEGL.angle.dylib \
+  XIOS_IMV_NATIVE_WAYLAND=1 imv /var/jb/tmp/xios-imv-native-proof.jpg
 ```

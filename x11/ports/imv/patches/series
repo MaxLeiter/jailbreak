@@ -2,3 +2,7 @@
 0002-ios-xwayland-wrapper.patch
 0003-ios-wayland-gles-context.patch
 0004-ios-wayland-platform-egl.patch
+0005-ios-gles2-canvas.patch
+0006-ios-null-gl-version.patch
+0007-ios-cairo-rgba-upload.patch
+0008-ios-cross-gl-shader.patch

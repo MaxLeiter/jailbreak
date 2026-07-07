@@ -1,0 +1,20 @@
+Subject: [PATCH] imv: make the iOS shader compile on desktop GL too
+
+The Apple canvas path is shared by imv-wayland and imv-x11. Native Wayland runs
+on ANGLE/OpenGL ES, but the Xwayland fallback still runs against Mesa desktop
+GL. Keep the shader renderer common to both by guarding the GLES-only precision
+qualifier with GL_ES.
+
+--- a/src/canvas.c
++++ b/src/canvas.c
+@@ -100,7 +100,9 @@ static void imv_gles_init(struct imv_canvas *canvas)
+       "  v_tex = a_tex;\n"
+       "}\n";
+   const char *fragment_shader =
+-      "precision mediump float;\n"
++      "#ifdef GL_ES\n"
++      "precision mediump float;\n"
++      "#endif\n"
+       "varying vec2 v_tex;\n"
+       "uniform sampler2D u_tex;\n"
+       "void main() {\n"

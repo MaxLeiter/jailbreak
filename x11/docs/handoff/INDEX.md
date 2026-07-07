@@ -47,8 +47,9 @@ One file per domain. Each is a self-contained charter for an independent agent: 
   `iosc`. The package repo output is very dirty; coordinate before publishing.
   See **wayland-apps.md** for per-app status, the launch-in-iosc fixes (foot PTY,
   GTK3 wayland backend, mpv EGL shim, hitori schema, fuzzel worker defaults,
-  imv Xwayland wrapper), and the `bin/iosc-capture*` debug tooling. Remaining
-  app-wave work is native imv Wayland rendering and Max-gated publish.
+  imv native GLES renderer + Xwayland wrapper), and the `bin/iosc-capture*`
+  debug tooling. Remaining app-wave work is Max-gated publish/rollout of newer
+  local candidates.
 
 ## Key cross-cutting gotchas (all domains touching the app/device)
 - **Deploy Xios.app**: `scp -r` DROPS the exec bit AND the bundle `_CodeSignature`. After scp: `chmod +x Xios.app/Xios`, then re-sign `ldid -e Xios.app/Xios > ents; ldid -S<ents> Xios.app/Xios` (keeps GPU entitlements). `scp -r` into an existing bundle NESTS → `rm -rf` the dest first. `uicache -p` after. Bundle id `com.max.xios`.
