@@ -3,7 +3,7 @@ export function Diagram() {
     <div
       className="diagram"
       role="img"
-      aria-label="Layered architecture. The device screen at the top presents an output IOSurface through Metal. Below it, Xios.app is the app iOS sees. Under that sit two interchangeable display servers: Xios for X11 and iosc for Wayland. Each has its own client apps. ANGLE feeds the A10 GPU under the Wayland column."
+      aria-label="Layered architecture. The device screen at the top presents an output IOSurface through Metal. Below it, xiOS.app is the app iOS sees. Under that sit two interchangeable display servers: xiOS for X11 and iosc for Wayland. Each has its own client apps. ANGLE feeds the A10 GPU under the Wayland column."
     >
       <div className="dg-layer dg-screen">
         <div className="dg-t">Device screen, drawn by Metal</div>
@@ -15,7 +15,7 @@ export function Diagram() {
       </div>
 
       <div className="dg-layer dg-app">
-        <div className="dg-t">Xios.app</div>
+        <div className="dg-t">xiOS.app</div>
         <div className="dg-d">
           The app iOS sees. It adopts an IOSurface over a mach port and draws it
           as a Metal texture, then forwards UIKit touch and keyboard back to the
@@ -31,7 +31,7 @@ export function Diagram() {
         <div className="dg-col dg-x11">
           <div className="dg-colhead">X11 track, software</div>
           <div className="dg-layer">
-            <div className="dg-t">Xios (X11 server)</div>
+            <div className="dg-t">xiOS (X11 server)</div>
             <div className="dg-d">Xvfb-derived, draws into an IOSurface, XTEST input.</div>
           </div>
           <div className="dg-layer">

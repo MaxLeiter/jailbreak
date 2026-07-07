@@ -9,8 +9,8 @@ export default function Graphics() {
     <>
       <PageHeader
         tag="Graphics"
-        title="Reaching the A10 without OpenGL"
-        lede="iOS ships no OpenGL and no DRM. The GPU is still there, behind Metal. The trick is to translate OpenGL ES into Metal, which lets GLES clients and the compositor itself run on the A10 and render straight into shared surfaces."
+        title="Reaching the A10 without desktop OpenGL"
+        lede="iOS gives this stack no DRM/KMS path, and desktop OpenGL is not available. The GPU is still there, behind Metal. ANGLE translates OpenGL ES into Metal, which lets GLES clients and the compositor itself run on the A10 and render straight into shared surfaces."
       />
 
       <Section num="03.1" title="Looking from the right ANGLE">
@@ -68,7 +68,7 @@ export default function Graphics() {
       <Section num="03.4" title="Where X11 still uses the CPU">
         <div className="prose">
           <p>
-            The classic Xios server has no hardware{" "}
+            The classic xiOS server has no hardware{" "}
             <abbr title="the X11 extension that gives X apps OpenGL">GLX</abbr>{" "}or{" "}
             <abbr title="Direct Rendering Infrastructure, X11's path to direct GPU access">
               DRI

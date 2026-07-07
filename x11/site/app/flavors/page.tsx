@@ -128,8 +128,9 @@ export default function Flavors() {
           <div className="row">
             <dt>foot, imv, mpv</dt>
             <dd>
-              A Wayland app wave. foot has a working PTY, imv uses Xwayland for
-              now, and mpv renders through the ANGLE/Metal path.
+              A Wayland app wave. foot has a working PTY, imv works through its
+              native Wayland path and an Xwayland fallback, and mpv renders
+              through ANGLE/Metal.
             </dd>
           </div>
           <div className="row">

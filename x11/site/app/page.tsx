@@ -119,7 +119,7 @@ export default function Overview() {
         </Panel>
         <div className="prose" style={{ marginTop: 22 }}>
           <p>
-            iOS only ever talks to Xios.app. Whether an X server or the Wayland
+            iOS only ever talks to xiOS.app. Whether an X server or the Wayland
             compositor is producing frames underneath is invisible to it, because
             both hand the app the same kind of output surface.
           </p>

@@ -1,5 +1,5 @@
 /* ============================================================
-   Component styles — panels, sidebar, badges, cards, schematic
+   Component styles - panels, sidebar, badges, cards, schematic
    ============================================================ */
 
 /* ---------- Sidebar rail ---------- */
@@ -146,7 +146,6 @@
     font-weight: 800;
     font-size: 1.15rem;
     letter-spacing: -0.03em;
-    text-transform: uppercase;
     flex: none;
   }
   .rt-brand b {

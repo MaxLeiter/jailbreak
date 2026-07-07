@@ -40,7 +40,7 @@ export function Sidebar() {
         >
           <span className="brand-mark">Project wiki</span>
           <span className="brand-name">
-            x<b>iOS</b>
+            xi<b>OS</b>
           </span>
           <span className="brand-sub">
             X11 and Wayland, running native on jailbroken iOS.
@@ -79,7 +79,8 @@ export function Sidebar() {
             Made by{" "}
             <a href="https://maxleiter.com" target="_blank" rel="noreferrer">
               Max Leiter
-            </a>
+            </a>{" "}
+            and language models
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 
@@ -115,11 +115,37 @@ export function Clip({
   caption?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [autoPlayVideo, setAutoPlayVideo] = useState(false);
+  const inlineVideoRef = useRef<HTMLVideoElement>(null);
+  const lightboxVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px) and (hover: hover)");
+    const sync = () => setAutoPlayVideo(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const videos = [inlineVideoRef.current, lightboxVideoRef.current].filter(
+      Boolean,
+    ) as HTMLVideoElement[];
+    for (const video of videos) {
+      if (autoPlayVideo) {
+        void video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+    }
+  }, [autoPlayVideo, open]);
+
   return (
     <figure className="shot shot--clip">
       <div className="clip-wrap">
         <video
-          autoPlay
+          ref={inlineVideoRef}
+          autoPlay={autoPlayVideo}
           muted
           loop
           playsInline
@@ -143,7 +169,8 @@ export function Clip({
       {caption && <figcaption>{caption}</figcaption>}
       <Lightbox open={open} onClose={() => setOpen(false)} label={label}>
         <video
-          autoPlay
+          ref={lightboxVideoRef}
+          autoPlay={autoPlayVideo}
           muted
           loop
           playsInline
@@ -164,7 +191,7 @@ const FLOW = [
   { n: "GTK4 app", s: "GskNgl render" },
   { n: "ANGLE", s: "GLES to Metal, on the A10" },
   { n: "iosc", s: "composite, on the A10" },
-  { n: "Xios.app", s: "Metal present" },
+  { n: "xiOS.app", s: "Metal present" },
   { n: "screen", s: "scanned out", end: true },
 ];
 
@@ -174,7 +201,7 @@ export function CopyFlow() {
       <div
         className="flow"
         role="img"
-        aria-label="A GTK4 app renders with GskNgl, ANGLE turns GLES into Metal on the A10, iosc composites on the A10, Xios.app presents with Metal, and the screen scans it out. No CPU copy anywhere along the path."
+        aria-label="A GTK4 app renders with GskNgl, ANGLE turns GLES into Metal on the A10, iosc composites on the A10, xiOS.app presents with Metal, and the screen scans it out. No CPU copy anywhere along the path."
       >
         {FLOW.map((node, i) => (
           <div key={node.n} style={{ display: "contents" }}>
@@ -260,7 +287,7 @@ const HOST_BRIDGES: Bridge[] = [
     state: "live",
     body: (
       <>
-        Volume, dark mode, rotation, and haptic requests reach{" "}
+        Volume, dark mode, rotation, and haptic requests flow through{" "}
         <b>pactl, gsettings, and the compositor</b>.
       </>
     ),
@@ -279,8 +306,8 @@ const HOST_BRIDGES: Bridge[] = [
     state: "wip",
     body: (
       <>
-        iOS Bluetooth, via the private <b>BluetoothManager</b> framework,
-        republished as <b>org.bluez</b> for GNOME&apos;s Bluetooth panel.
+        iOS Bluetooth, via the private <b>BluetoothManager</b> framework, is
+        being exposed as <b>org.bluez</b> for GNOME&apos;s Bluetooth panel.
       </>
     ),
   },
@@ -331,8 +358,7 @@ const SESSION_SERVICES: Bridge[] = [
     state: "wip",
     body: (
       <>
-        The desktop <b>accessibility tree</b> is mirrored into VoiceOver; physical
-        gesture QA remains.
+        AT-SPI plumbing reaches the VoiceOver bridge; physical gesture QA remains.
       </>
     ),
   },

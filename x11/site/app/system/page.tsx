@@ -73,9 +73,9 @@ export default function System() {
             GNOME&apos;s Bluetooth panel and quick toggle expect BlueZ on D-Bus,
             which iOS does not have. <code>xios-bluez-stub</code>{" "}owns{" "}
             <code>org.bluez</code>{" "}and answers the slice gnome-bluetooth actually
-            uses, adapters and devices, power and scan state, connect and
-            disconnect, backed by iOS&apos;s private <code>BluetoothManager</code>{" "}
-            framework.
+            uses, adapters and devices, power and scan state. Connect and
+            disconnect support is still being brought up against iOS&apos;s private{" "}
+            <code>BluetoothManager</code> framework.
           </p>
         </div>
       </Section>
@@ -102,11 +102,12 @@ export default function System() {
             feeds a SensorProxy-compatible shim, and{" "}
             <code>xios-sysintd</code>{" "}wires the hardware volume buttons to{" "}
             <code>pactl</code>, the system light and dark setting to the GNOME
-            color scheme, device rotation to a live iosc resize, and taps to{" "}
+            color scheme, and device rotation to a live iosc resize. It also
+            carries haptic requests toward{" "}
             <Ext href="https://developer.apple.com/documentation/uikit/uifeedbackgenerator">
               <code>UIFeedbackGenerator</code>
             </Ext>{" "}
-            haptics.
+            while the physical feel is still being tuned.
           </p>
           <p>
             The iosc shell&apos;s own top bar skips D-Bus entirely and reads the

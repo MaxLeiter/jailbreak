@@ -73,8 +73,8 @@ export default function Try() {
           </p>
         </div>
         <Callout>
-          Native mode is the exception to the desktop flow: its apps land on the
-          Home Screen and launch like any other app, no session to pick.
+          Native mode uses Home Screen launchers instead of the session picker.
+          The core path exists, but host-window polish is still in progress.
         </Callout>
       </Section>
 

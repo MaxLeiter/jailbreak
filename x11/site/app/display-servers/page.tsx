@@ -8,14 +8,14 @@ export default function DisplayServers() {
     <>
       <PageHeader
         tag="Display servers"
-        title="Xios and iosc"
+        title="xiOS and iosc"
         lede="Two servers draw the desktop. One speaks X11 and renders in software; the other speaks Wayland and composites on the GPU. They are separate programs that happen to share an output format."
       />
 
-      <Section num="02.1" title="Xios, the X11 server">
+      <Section num="02.1" title="xiOS, the X11 server">
         <div className="prose">
           <p>
-            Xios is derived from Xvfb, the virtual framebuffer X server, with a
+            xiOS is derived from Xvfb, the virtual framebuffer X server, with a
             device layer that draws into an{" "}
             <Ext href="https://developer.apple.com/documentation/iosurface">IOSurface</Ext>{" "}
             instead of a memory buffer.
@@ -24,8 +24,8 @@ export default function DisplayServers() {
             none the wiser about where their pixels end up.
           </p>
           <p>
-            X11 clients render on the CPU. iOS ships no DRM and no OpenGL, and X11
-            has no route to the Metal-backed GPU path on this platform, so the X
+            X11 clients render on the CPU. iOS gives this X11 path no DRM/KMS or
+            desktop OpenGL route, so the X
             track stays software. It is the compatible, reliable option, and it is
             where the project started.
           </p>

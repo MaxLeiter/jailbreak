@@ -12,7 +12,7 @@ export default function Architecture() {
       <PageHeader
         tag="Architecture"
         title="One app, two servers, one screen"
-        lede="A jailbroken iOS device gives you no display server, no OpenGL, and no way to run a background process that owns the screen. The design works around all three by funneling everything through a single ordinary app."
+        lede="A jailbroken iOS device gives this stack no display server, no DRM/KMS path, and no background service that can own the screen. The design works around that by funneling desktop sessions through one ordinary app."
       />
 
       <Section num="01.1" title="The full path">
@@ -27,7 +27,7 @@ export default function Architecture() {
         <div className="prose">
           <p>
             For the X11 and Wayland desktops, one app carries the whole thing:
-            Xios.app, which shows on the Home Screen as X11. It owns a{" "}
+            xiOS.app, which shows on the Home Screen as X11. It owns a{" "}
             <code>CAMetalLayer</code>{" "}and the UIKit input surface, and it renders
             none of its own content. At startup a display server creates an
             output{" "}
@@ -63,7 +63,7 @@ export default function Architecture() {
         </div>
         <dl className="deflist" style={{ marginTop: 8 }}>
           <div className="row">
-            <dt>Xios</dt>
+            <dt>xiOS</dt>
             <dd>
               An Xvfb-derived X server whose device layer draws into an
               IOSurface. X11 clients connect over the ordinary protocol and render
@@ -100,7 +100,7 @@ export default function Architecture() {
               other window into the output IOSurface, on the GPU.
             </li>
             <li>
-              Xios.app presents that output IOSurface as a Metal texture on the
+              xiOS.app presents that output IOSurface as a Metal texture on the
               screen.
             </li>
           </ol>
