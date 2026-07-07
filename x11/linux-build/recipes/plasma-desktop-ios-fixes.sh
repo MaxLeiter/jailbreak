@@ -84,7 +84,8 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-for name in ["trash", "pager", "showActivityManager", "kimpanel"]:
+text = re.sub(r"^[ \t]*# xios-ios-skip: add_subdirectory\(pager\)", "add_subdirectory(pager)", text, flags=re.M)
+for name in ["trash", "showActivityManager", "kimpanel"]:
     text = re.sub(rf"^[ \t]*add_subdirectory\({re.escape(name)}\)", f"# xios-ios-skip: add_subdirectory({name})", text, flags=re.M)
 text = text.replace("plasma_install_package(activitypager org.kde.plasma.activitypager)",
                     "# xios-ios-skip: plasma_install_package(activitypager org.kde.plasma.activitypager)")
@@ -94,11 +95,16 @@ path.write_text(text)
 PY
 
 python3 - "$src/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js" <<'PY'
+import re
 import sys
 from pathlib import Path
 
 panel = Path(sys.argv[1])
 text = panel.read_text()
+text = re.sub(r'^.*panel\.addWidget\("org\.kde\.plasma\.pager"\).*$',
+              'panel.addWidget("org.kde.plasma.pager")', text, flags=re.M)
+text = re.sub(r'^.*panel\.addWidget\("org\.kde\.plasma\.systemtray"\).*$',
+              'panel.addWidget("org.kde.plasma.systemtray")', text, flags=re.M)
 kicker_block = """var kicker = panel.addWidget("org.kde.plasma.kicker")
 kicker.currentConfigGroup = ["General"]
 kicker.writeConfig("favoriteApps", "org.kde.kwrite.desktop,org.kde.gwenview.desktop,org.kde.ark.desktop")
@@ -110,8 +116,6 @@ if kicker_block not in text:
         text = text.replace('panel.addWidget("org.kde.plasma.kicker")', kicker_block)
     else:
         raise SystemExit("default panel launcher widget not found")
-text = text.replace('panel.addWidget("org.kde.plasma.pager")', '// xios-ios-skip: panel.addWidget("org.kde.plasma.pager")')
-text = text.replace('panel.addWidget("org.kde.plasma.systemtray")', '// xios-ios-skip: panel.addWidget("org.kde.plasma.systemtray")')
 panel.write_text(text)
 PY
 
@@ -128,23 +132,35 @@ text = text.replace(
     "                      KSysGuard::ProcessCore\n",
     "                      $<$<TARGET_EXISTS:KSysGuard::ProcessCore>:KSysGuard::ProcessCore>\n",
 )
+if "OUTPUT_NAME plasma_private_taskmanagerplugin" not in text:
+    text = text.replace(
+        "add_library(taskmanagerplugin SHARED ${taskmanagerplugin_SRCS})\n",
+        "add_library(taskmanagerplugin SHARED ${taskmanagerplugin_SRCS})\n"
+        "set_target_properties(taskmanagerplugin PROPERTIES OUTPUT_NAME plasma_private_taskmanagerplugin)\n",
+    )
 cmake.write_text(text)
+
+qmldir = header.with_name("qmldir")
+text = qmldir.read_text()
+text = text.replace("plugin taskmanagerplugin\n", "plugin plasma_private_taskmanagerplugin\n")
+qmldir.write_text(text)
 
 text = header.read_text()
 text = text.replace("#include <netwm.h>\n", "")
 header.write_text(text)
 
 text = backend.read_text()
-text = text.replace(
-    "#include <processcore/process.h>\n#include <processcore/processes.h>\n",
-    "#if __has_include(<processcore/process.h>) && __has_include(<processcore/processes.h>)\n"
-    "#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 1\n"
-    "#include <processcore/process.h>\n"
-    "#include <processcore/processes.h>\n"
-    "#else\n"
-    "#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 0\n"
-    "#endif\n",
-)
+if "XIOS_HAVE_KSYSGUARD_PROCESSCORE" not in text:
+    text = text.replace(
+        "#include <processcore/process.h>\n#include <processcore/processes.h>\n",
+        "#if __has_include(<processcore/process.h>) && __has_include(<processcore/processes.h>)\n"
+        "#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 1\n"
+        "#include <processcore/process.h>\n"
+        "#include <processcore/processes.h>\n"
+        "#else\n"
+        "#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 0\n"
+        "#endif\n",
+    )
 old = """qint64 Backend::parentPid(qint64 pid) const
 {
     KSysGuard::Processes procs;
@@ -208,6 +224,90 @@ if old not in text and "XIOS_HAVE_KSYSGUARD_PROCESSCORE" not in text:
 if old in text:
     text = text.replace(old, new)
 backend.write_text(text)
+PY
+
+python3 - "$src/applets/pager/plugin/pagermodel.cpp" "$src/applets/pager/plugin/windowmodel.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+pagermodel = Path(sys.argv[1])
+windowmodel = Path(sys.argv[2])
+
+text = pagermodel.read_text()
+text = text.replace("#include <xwindowtasksmodel.h>\n", "#if HAVE_X11\n#include <xwindowtasksmodel.h>\n#endif\n")
+old = """    if (KWindowSystem::isPlatformX11()) {
+        indices = findWindows(TaskManager::XWindowTasksModel::winIdsFromMimeData(mimeData, &ok));
+    } else if (KWindowSystem::isPlatformWayland()) {
+        indices = findWindows(TaskManager::WaylandTasksModel::winIdsFromMimeData(mimeData, &ok));
+    }
+"""
+new = """#if HAVE_X11
+    if (KWindowSystem::isPlatformX11()) {
+        indices = findWindows(TaskManager::XWindowTasksModel::winIdsFromMimeData(mimeData, &ok));
+    } else
+#endif
+    if (KWindowSystem::isPlatformWayland()) {
+        indices = findWindows(TaskManager::WaylandTasksModel::winIdsFromMimeData(mimeData, &ok));
+    }
+"""
+if old in text:
+    text = text.replace(old, new)
+elif "XWindowTasksModel::winIdsFromMimeData" in text and "#if HAVE_X11\n    if (KWindowSystem::isPlatformX11())" not in text:
+    raise SystemExit("pager drop X11 branch not found")
+pagermodel.write_text(text)
+
+text = windowmodel.read_text()
+text = text.replace("#include <KX11Extras>\n", "#if HAVE_X11\n#include <KX11Extras>\n#endif\n")
+old = """        if (KWindowSystem::isPlatformX11() && KX11Extras::mapViewport()) {
+            int x = windowGeo.center().x() % clampingRect.width();
+            int y = windowGeo.center().y() % clampingRect.height();
+
+            if (x < 0) {
+                x = x + clampingRect.width();
+            }
+
+            if (y < 0) {
+                y = y + clampingRect.height();
+            }
+
+            const QRect mappedGeo(x - windowGeo.width() / 2, y - windowGeo.height() / 2, windowGeo.width(), windowGeo.height());
+
+            if (filterByScreen() && screenGeometry().isValid()) {
+                const QPoint &screenOffset = screenGeometry().topLeft();
+
+                windowGeo = mappedGeo.translated(0 - screenOffset.x(), 0 - screenOffset.y());
+            }
+        } else if (filterByScreen() && screenGeometry().isValid()) {
+"""
+new = """#if HAVE_X11
+        if (KWindowSystem::isPlatformX11() && KX11Extras::mapViewport()) {
+            int x = windowGeo.center().x() % clampingRect.width();
+            int y = windowGeo.center().y() % clampingRect.height();
+
+            if (x < 0) {
+                x = x + clampingRect.width();
+            }
+
+            if (y < 0) {
+                y = y + clampingRect.height();
+            }
+
+            const QRect mappedGeo(x - windowGeo.width() / 2, y - windowGeo.height() / 2, windowGeo.width(), windowGeo.height());
+
+            if (filterByScreen() && screenGeometry().isValid()) {
+                const QPoint &screenOffset = screenGeometry().topLeft();
+
+                windowGeo = mappedGeo.translated(0 - screenOffset.x(), 0 - screenOffset.y());
+            }
+        } else
+#endif
+        if (filterByScreen() && screenGeometry().isValid()) {
+"""
+if old in text:
+    text = text.replace(old, new)
+elif "KX11Extras::mapViewport()" in text and "#if HAVE_X11\n        if (KWindowSystem::isPlatformX11()" not in text:
+    raise SystemExit("pager X11 viewport branch not found")
+windowmodel.write_text(text)
 PY
 
 python3 - "$src/applets/window-list/contents/ui/main.qml" <<'PY'
