@@ -444,6 +444,26 @@ xs_record_session_pgid() {
     printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "${XS_SLOT:-}" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
 }
 
+xs_record_pgid_once() {
+    local pgid="$1" preset="${2:-session}" slot="${3:-${XS_SLOT:-}}" at
+    case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
+    if [ -f "$XS_SESSION_PGIDS" ] && awk -v pgid="$pgid" -v slot="$slot" 'BEGIN{found=1} $1==pgid && $3==slot {found=0} END{exit found}' "$XS_SESSION_PGIDS" 2>/dev/null; then
+        return 0
+    fi
+    at="$(date '+%Y-%m-%dT%H:%M:%S')"
+    printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
+}
+
+xs_record_slot_process_pgroups() {
+    local preset="${1:-session}" pid pgid
+    [ -n "${XS_SLOT:-}" ] || return 0
+    ps axww 2>/dev/null | grep -v grep | grep -E "wayland-$XS_SLOT|iosc-$XS_SLOT|kwin-$XS_SLOT" | awk '{print $1}' | while read -r pid; do
+        case "$pid" in ""|*[!0-9]*|0|1) continue ;; esac
+        pgid="$(ps -p "$pid" -o pgid= 2>/dev/null | tr -d '[:space:]')"
+        xs_record_pgid_once "$pgid" "$preset" "$XS_SLOT"
+    done
+}
+
 xs_reap_recorded_session_pgroups() {
     [ -f "$XS_SESSION_PGIDS" ] || return 0
     local tmp="$XS_SESSION_PGIDS.$$" pgid preset slot at current
@@ -722,6 +742,7 @@ xios_session_iosc() {
     [ -n "$XS_SLOT" ] && export IOSC_IGNORE_ACTIVE_SESSION=1
     [ -n "${IOSC_PANEL_OPACITY:-}" ] && export IOSC_PANEL_OPACITY
     sh "$script" || true
+    xs_record_slot_process_pgroups iosc
     xs_write_status iosc waiting "waiting for compositor surface"
     if ! xs_wait_socket "$XS_WAYLAND_SOCK" 50; then
         xs_log "ERROR: iosc did not create wayland-0"; xs_write_status iosc error "wayland-0 never appeared"; return 1
@@ -889,6 +910,7 @@ xios_session_kde() {
     XIOS_SESSION_SLOT="$XS_SLOT" \
     PLASMA_SHELL_PLUGIN="${plasma_shell_plugin:-${PLASMA_SHELL_PLUGIN-}}" \
     KDE_PLASMA_FLAVOR="$flavor" bash "$script" || true
+    xs_record_slot_process_pgroups "$preset"
     xs_ensure_xios "$preset"
     xs_write_status "$preset" waiting "waiting for $label"
     local i=0 kde_failed=0 kde_ready=0
