@@ -2,7 +2,7 @@
   "tagline": "Standalone Ladybird browser for iPad",
   "developer": "Ladybird Browser Initiative / Max",
   "homepage": "https://ladybird.org",
-  "description": "**Ladybird** is a standalone browser app for jailbroken iPad, built from Ladybird's LibWeb and LibJS engine rather than WebKit.\n\nTap the home-screen icon and it launches directly as a UIKit app. It bundles the browser executable, helper processes, resources, fonts, and dylib closure inside `Ladybird.app`, so it does not need an Xios desktop session.\n\n- Real upstream Ladybird icon\n- Multiprocess Ladybird engine with bundled helpers\n- Address bar, back/forward/reload, page taps, software keyboard input, and focused text fields\n- IOSurface-backed front-buffer presentation through Metal\n- ANGLE/Metal WebGL context creation verified on-device\n\nRequires iPadOS/iOS 16+ on a rootless jailbreak.",
+  "description": "**Ladybird** is a standalone browser app for jailbroken iPad, built from Ladybird's LibWeb and LibJS engine rather than WebKit.\n\nTap the home-screen icon and it launches directly as a UIKit app. It bundles the browser executable, helper processes, resources, fonts, and dylib closure inside `Ladybird.app`, so it does not need an Xios desktop session.\n\n- Multiprocess Ladybird engine with bundled helpers\n- Address bar, back/forward/reload, page taps, software keyboard input, and focused text fields\n- IOSurface-backed front-buffer presentation through Metal\n- ANGLE/Metal WebGL context creation verified on-device\n\nRequires iPadOS/iOS 16+ on a rootless jailbreak.",
   "changelog": [
     {
       "version": "0.1.22+ios1",
