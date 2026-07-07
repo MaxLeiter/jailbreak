@@ -61,7 +61,7 @@ if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 fi
 
-for pkg in swaybg tofi swayimg waybar yad nwg-look geary webkitgtk gnumeric transmission; do
+for pkg in swaybg tofi swayimg waybar yad nwg-look geary webkitgtk gnumeric transmission libsigcplusplus; do
   target_requests "$pkg" && stage_port_patch_stack "$pkg"
 done
 target_needs_gtk3_wayland && stage_port_patch_stack gtk+3.0
@@ -221,7 +221,7 @@ scrub_waybar_fallback_deps() {
     "$BB/usr/include/json"
 }
 
-for pkg in swaybg tofi swayimg waybar transmission; do
+for pkg in swaybg tofi swayimg waybar transmission libsigcplusplus; do
   target_requests "$pkg" && refresh_patch_build_tree "$pkg"
 done
 ensure_gtk3_wayland_build
@@ -231,7 +231,7 @@ for t in $TARGETS; do
   echo "==> make $t"
   make "$t" $COMMON -j"$(nproc)"
 done
-for pkg in swaybg tofi swayimg waybar transmission; do
+for pkg in swaybg tofi swayimg waybar transmission libsigcplusplus; do
   target_requests "$pkg" && record_patch_fingerprint "$pkg"
 done
 

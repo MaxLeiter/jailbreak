@@ -13,14 +13,14 @@ DEB_LIBSIGCPLUSPLUS_V   ?= $(LIBSIGCPLUSPLUS_VERSION)+ios1
 libsigcplusplus-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libsigc++/2.10/libsigc++-$(LIBSIGCPLUSPLUS_VERSION).tar.xz)
 	$(call EXTRACT_TAR,libsigc++-$(LIBSIGCPLUSPLUS_VERSION).tar.xz,libsigc++-$(LIBSIGCPLUSPLUS_VERSION),libsigcplusplus)
-	sed -i 's/-keep_private_externs -nostdlib/-keep_private_externs $(PLATFORM_VERSION_MIN) -arch $(MEMO_ARCH) -nostdlib/g' $(BUILD_WORK)/libsigcplusplus/configure
+	$(call DO_PATCH,libsigcplusplus,libsigcplusplus,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/libsigcplusplus/.build_complete),)
 libsigcplusplus:
 	@echo "Using previously built libsigcplusplus."
 else
 libsigcplusplus: libsigcplusplus-setup
-	cd $(BUILD_WORK)/libsigcplusplus && ./configure -C \
+	cd $(BUILD_WORK)/libsigcplusplus && PLATFORM_VERSION_MIN='$(PLATFORM_VERSION_MIN)' MEMO_ARCH='$(MEMO_ARCH)' ./configure -C \
 		$(DEFAULT_CONFIGURE_FLAGS) \
 		--disable-dependency-tracking \
 		--disable-static \

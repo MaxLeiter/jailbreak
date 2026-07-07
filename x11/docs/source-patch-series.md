@@ -128,6 +128,9 @@ Current converted non-Qt stacks:
 - `ports/slurp/patches`: makes the `librt` Meson lookup optional for iOS.
 - `ports/mako/patches`: makes the `librt` Meson lookup optional; mako remains
   blocked by the Linux-bound sd-bus provider path.
+- `ports/libsigcplusplus/patches`: keeps the Darwin libtool partial-link target
+  flags in the source patch stack while the recipe passes the active
+  min-version and architecture values into `configure`.
 
 Remaining non-Qt procedural source edits:
 
