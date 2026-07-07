@@ -55,10 +55,12 @@ IOSC_BIN="${IOSC_BIN:-$XS_PREFIX/local/bin/iosc}"
 KWIN_BIN="${KWIN_BIN:-$(jb_path /Applications/KDE/kwin_wayland.app/kwin_wayland)}"
 PLASMA_BIN="${PLASMA_BIN:-$(jb_path /Applications/KDE/plasmashell.app/plasmashell)}"
 KAMD_BIN="${KAMD_BIN:-$XS_PREFIX/libexec/kactivitymanagerd}"
+KDED_BIN="${KDED_BIN:-$XS_PREFIX/bin/kded6}"
 LIBEXEC="${LIBEXEC:-$XS_PREFIX/libexec}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
 KDE_SESSION_BUS_FILE="$TMP/kde-session-bus${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
+KDED_LOG="${KDED_LOG:-$TMP/kded6.log}"
 IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
 XIOS_JSON_PATH="${XIOS_JSON_PATH:-$TMP/xios.json}"
 IOSC_DDX_SOCK="${IOSC_DDX_SOCK:-$TMP/iosc-ddx.sock}"
@@ -92,18 +94,7 @@ size_w() { printf '%s' "$1" | sed -n 's/^\([0-9][0-9]*\)x[0-9][0-9]*$/\1/p'; }
 size_h() { printf '%s' "$1" | sed -n 's/^[0-9][0-9]*x\([0-9][0-9]*\)$/\1/p'; }
 
 mobile_kwin_size_from_logical() {
-  local w h
-  w="$(size_w "$IOSC_LOGICAL")"
-  h="$(size_h "$IOSC_LOGICAL")"
-  if [ -n "$w" ] && [ -n "$h" ]; then
-    if [ "$w" -gt "$h" ]; then
-      printf '%sx%s\n' "$h" "$w"
-    else
-      printf '%sx%s\n' "$w" "$h"
-    fi
-    return 0
-  fi
-  printf '%s\n' "1080x1440"
+  kwin_size_from_logical_orientation 0 "1080x1440"
 }
 
 xios_json_dim() {
@@ -231,12 +222,12 @@ kde_process_running() {
 
 if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
   echo "==> stop prior iosc/KDE session pieces"
-  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|dbus-daemon.*--session|dbus-run-session" \
+  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
     | awk '{print $1}' | while read -r pid; do
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
     done
   sleep 1
-  ps ax | grep -v grep | grep -E "kwin_wayland|plasmashell|plasmawindowed" \
+  ps ax | grep -v grep | grep -E "kwin_wayland|plasmashell|plasmawindowed|kded6" \
     | awk '{print $1}' | while read -r pid; do
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
     done
@@ -245,7 +236,7 @@ fi
 rm -f "$WSOCK" "$WSOCK.lock" "$KWIN_SOCK_PATH" "$KWIN_SOCK_PATH.lock" \
       "$IOSC_DDX_SOCK" "$IOSC_INPUT_SOCK" "$IOSC_CLIPBOARD_SOCK" \
       "$IOSC_WM_SOCK" "$XIOS_JSON_PATH" "$KDE_SESSION_BUS_FILE" \
-      "$IOSC_LOG" "$KDE_LOG" 2>/dev/null || true
+      "$IOSC_LOG" "$KDE_LOG" "$KDED_LOG" 2>/dev/null || true
 
 echo "==> ANGLE Linux so-name symlinks"
 ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so.2" 2>/dev/null
@@ -699,6 +690,8 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
   KWIN_BIN="$KWIN_BIN" \
   PLASMA_BIN="$PLASMA_BIN" \
   KAMD_BIN="$KAMD_BIN" \
+  KDED_BIN="$KDED_BIN" \
+  KDED_LOG="$KDED_LOG" \
   LIBEXEC="$LIBEXEC" \
   KWIN_SOCKET="$KWIN_SOCKET" \
   KWIN_W="$KWIN_W" \
@@ -753,6 +746,17 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
 	    xios_start_session_helper "$LIBEXEC/xios-hwbridged" "$XDG_RUNTIME_DIR/xios-hwbridged.log"
 	    xios_start_session_helper "$LIBEXEC/xios-sensord" "$XDG_RUNTIME_DIR/xios-sensord.log"
 	    xios_start_session_helper "$LIBEXEC/xios-sysintd" "$XDG_RUNTIME_DIR/xios-sysintd.log"
+    kded_pid=
+    if [ -x "$KDED_BIN" ] && [ "${XIOS_KDE_START_KDED:-1}" != 0 ]; then
+      echo "launch kded: $KDED_BIN --replace"
+      (
+        export QT_QPA_PLATFORM="${KDED_QT_QPA_PLATFORM:-offscreen}"
+        unset WAYLAND_DISPLAY
+        "$KDED_BIN" --replace >"$KDED_LOG" 2>&1
+      ) &
+      kded_pid=$!
+      sleep "${KDED_STARTUP_GRACE:-0.5}"
+    fi
     xios_export_or_unset QT_QUICK_BACKEND "$KWIN_QT_QUICK_BACKEND"
     xios_export_or_unset QSG_RHI_BACKEND "$KWIN_QSG_RHI_BACKEND"
     xios_export_or_unset QMLSCENE_DEVICE "$KWIN_QMLSCENE_DEVICE"
@@ -771,6 +775,7 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
     if [ ! -S "$XDG_RUNTIME_DIR/$KWIN_SOCKET" ]; then
       echo "kwin socket did not appear: $XDG_RUNTIME_DIR/$KWIN_SOCKET"
       wait "$kwin_pid"
+      [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
       exit 1
     fi
     kamd_pid=
@@ -813,6 +818,7 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
         kill "$kwin_pid" 2>/dev/null || true
         wait "$kwin_pid"
         [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
+        [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
         exit "$plasma_rc"
       fi
     fi
@@ -825,6 +831,7 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
         kill "$kwin_pid" 2>/dev/null || true
         wait "$kwin_pid"
         [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
+        [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
         exit "$plasma_rc"
       fi
       sleep 1
@@ -834,6 +841,7 @@ echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
     echo "kwin exited (rc=$kwin_rc); stopping plasmashell"
     kill "$plasma_pid" 2>/dev/null || true
     [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
+    [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
     exit "$kwin_rc"
   ' >"$KDE_LOG" 2>&1 </dev/null &
 KDEPID=$!

@@ -42,7 +42,7 @@ fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.46"
+VER="1.0.48"
 ARCH="$XIOS_DEB_ARCH"
 DEB="xios-session_${VER}_${ARCH}.deb"
 

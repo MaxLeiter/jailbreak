@@ -216,6 +216,54 @@ path.write_text(text)
 PY
 fi
 
+folio_app_drawer_grid="$qml/../../../share/plasma/plasmoids/org.kde.plasma.mobile.homescreen.folio/contents/ui/AppDrawerGrid.qml"
+if [ -f "$folio_app_drawer_grid" ]; then
+  python3 - "$folio_app_drawer_grid" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old = """    readonly property int reservedSpaceForLabel: folio.HomeScreenState.pageDelegateLabelHeight
+    readonly property real effectiveContentWidth: width - leftMargin - rightMargin
+    readonly property real horizontalMargin: Math.round(width * 0.05)
+
+    leftMargin: horizontalMargin
+    rightMargin: horizontalMargin
+
+    cellWidth: effectiveContentWidth / Math.min(Math.floor(effectiveContentWidth / (folio.FolioSettings.delegateIconSize + Kirigami.Units.largeSpacing * 3.5)), 8)
+    cellHeight: cellWidth + reservedSpaceForLabel
+"""
+new = """    readonly property int reservedSpaceForLabel: folio.HomeScreenState.pageDelegateLabelHeight
+    readonly property bool xiosTabletLayout: width >= Kirigami.Units.gridUnit * 40
+    readonly property int xiosMaxColumns: width >= height ? 7 : 5
+    readonly property real xiosMinCellWidth: Math.max(folio.FolioSettings.delegateIconSize + Kirigami.Units.largeSpacing * 4, Kirigami.Units.gridUnit * 8)
+    readonly property real xiosBaseMargin: Math.round(width * 0.05)
+    readonly property int xiosUpstreamColumns: Math.max(1, Math.min(Math.floor(Math.max(1, width - xiosBaseMargin * 2) / (folio.FolioSettings.delegateIconSize + Kirigami.Units.largeSpacing * 3.5)), 8))
+    readonly property int xiosTabletColumns: Math.max(1, Math.min(xiosMaxColumns, Math.floor(Math.max(1, width - Kirigami.Units.gridUnit * 2) / xiosMinCellWidth)))
+    readonly property int xiosActiveColumns: xiosTabletLayout ? xiosTabletColumns : xiosUpstreamColumns
+    readonly property real xiosContentWidth: xiosTabletLayout ? xiosActiveColumns * xiosMinCellWidth : width - xiosBaseMargin * 2
+    readonly property real effectiveContentWidth: width - leftMargin - rightMargin
+    readonly property real horizontalMargin: Math.round(xiosTabletLayout ? Math.max(xiosBaseMargin, (width - xiosContentWidth) / 2) : xiosBaseMargin)
+
+    leftMargin: horizontalMargin
+    rightMargin: horizontalMargin
+
+    cellWidth: effectiveContentWidth / xiosActiveColumns
+    cellHeight: cellWidth + reservedSpaceForLabel
+"""
+if old in text and "xiosTabletLayout" not in text:
+    text = text.replace(old, new, 1)
+if "xiosTabletLayout" in text:
+    text = text.replace(
+        "    readonly property int columns: Math.floor(effectiveContentWidth / cellWidth)\n",
+        "    readonly property int columns: xiosActiveColumns\n",
+        1,
+    )
+path.write_text(text)
+PY
+fi
+
 mobileshell="$qml/org/kde/plasma/private/mobileshell"
 mkdir -p "$mobileshell"
 if [ -e "$mobileshell/GridView.qml" ] && [ ! -e "$mobileshell/GridView.qml.upstream" ]; then

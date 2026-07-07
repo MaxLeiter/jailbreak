@@ -103,8 +103,11 @@ copy_remote_if_exists() {
     local remote_path="$1" outdir="$2" name="${3:-}"
     [ -n "$name" ] || name="$(basename "$remote_path")"
     if ssh_ test -r "$remote_path" 2>/dev/null; then
-        scp_ "root@$IP:$remote_path" "$outdir/$name" >/dev/null 2>&1 \
-            && printf 'copied %s\n' "$outdir/$name"
+        if scp_ "root@$IP:$remote_path" "$outdir/$name" >/dev/null 2>&1; then
+            printf 'copied %s\n' "$outdir/$name"
+        elif ssh_ cat "$remote_path" > "$outdir/$name" 2>/dev/null; then
+            printf 'copied %s\n' "$outdir/$name"
+        fi
     fi
 }
 
