@@ -266,47 +266,36 @@ fi
 
 mobileshell="$qml/org/kde/plasma/private/mobileshell"
 mkdir -p "$mobileshell"
-if [ -e "$mobileshell/GridView.qml" ] && [ ! -e "$mobileshell/GridView.qml.upstream" ]; then
-  cp "$mobileshell/GridView.qml" "$mobileshell/GridView.qml.upstream"
-fi
-write_file "$mobileshell/GridView.qml" \
-  "import QtQuick 2.15 as QtQuick" \
-  "" \
-  "QtQuick.GridView {" \
-  "    id: root" \
-  "    // xios-mobile-real-gridview: real drawer delegates, with iOS edge-hook placeholders." \
-  "    property var topEdgeCallback: null" \
-  "    property var bottomEdgeCallback: null" \
-  "    property var leftEdgeCallback: null" \
-  "    property var rightEdgeCallback: null" \
-  "}"
+python3 - "$mobileshell" <<'PY'
+import re
+import sys
+from pathlib import Path
 
-for qml_name in ListView Flickable; do
-  if [ -e "$mobileshell/$qml_name.qml" ] && [ ! -e "$mobileshell/$qml_name.qml.upstream" ]; then
-    cp "$mobileshell/$qml_name.qml" "$mobileshell/$qml_name.qml.upstream"
-  fi
-done
-write_file "$mobileshell/ListView.qml" \
-  "import QtQuick 2.15 as QtQuick" \
-  "" \
-  "QtQuick.ListView {" \
-  "    id: root" \
-  "    // xios-mobile-real-listview: the Qt Quick iOS Flickable root fix is in qtdeclarative." \
-  "    flickDeceleration: 1500" \
-  "    maximumFlickVelocity: 5000" \
-  "    property int currentIndex: -1" \
-  "    onActiveFocusChanged: if (!activeFocus) currentIndex = -1" \
-  "    onDraggingChanged: if (dragging) currentIndex = -1" \
-  "}"
-write_file "$mobileshell/Flickable.qml" \
-  "import QtQuick 2.15 as QtQuick" \
-  "" \
-  "QtQuick.Flickable {" \
-  "    id: root" \
-  "    // xios-mobile-real-flickable: keep upstream behavior with deterministic iOS physics." \
-  "    flickDeceleration: 1500" \
-  "    maximumFlickVelocity: 5000" \
-  "}"
+root = Path(sys.argv[1])
+
+def qualify(name: str) -> None:
+    path = root / f"{name}.qml"
+    if not path.exists():
+        return
+    upstream = path.with_suffix(path.suffix + ".upstream")
+    if upstream.exists():
+        path.write_text(upstream.read_text())
+    text = path.read_text()
+    text = re.sub(
+        r"^import QtQuick(?:\s+[0-9.]+)?(?:\s+as\s+\w+)?\s*$",
+        "import QtQuick 2.15 as QtQuick",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    text = re.sub(rf"^{name}\s*\{{", f"QtQuick.{name} {{", text, count=1, flags=re.M)
+    text = re.sub(r"^(\s*)Component\s*\{", r"\1QtQuick.Component {", text, count=1, flags=re.M)
+    text = re.sub(r"^(\s*)Keys\.", r"\1QtQuick.Keys.", text, flags=re.M)
+    path.write_text(text)
+
+for qml_name in ("GridView", "ListView", "Flickable"):
+    qualify(qml_name)
+PY
 
 write_file "$mobileshell/ClockText.qml" \
   "import QtQuick 2.15" \
@@ -1365,7 +1354,8 @@ write_file "$mpris/Mpris2Model.qml" \
   "import QtQuick 2.15" \
   "ListModel {" \
   "    property int currentIndex: 0" \
-  "    property var currentPlayer: ({ Previous: function(){}, Next: function(){}, PlayPause: function(){} })" \
+  "    property var currentPlayer: ({ canControl: false, canGoPrevious: false, canGoNext: false, canPause: false, canPlay: false, canStop: false, playbackStatus: 2, track: \"\", artist: \"\", Previous: function(){}, Next: function(){}, Play: function(){}, Pause: function(){}, PlayPause: function(){}, Stop: function(){} })" \
+  "    function playerForLauncherUrl(launcherUrl, pid) { return null }" \
   "}"
 write_file "$mpris/PlaybackStatus.qml" \
   "pragma Singleton" \

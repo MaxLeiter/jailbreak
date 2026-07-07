@@ -426,9 +426,10 @@ PY
 
 # Several MobileShell QML files are embedded into the private plugin resource
 # system, so package-time QML replacements do not affect the qrc:/ load path.
-# Keep the plugin importable for first light, but replace Flickable-derived
-# startup views and heavy widgets before CMake snapshots them into resources.
+# Keep the plugin importable for first light, patch self-resolving QtQuick
+# wrapper roots, and replace heavy widgets before CMake snapshots resources.
 python3 - "$src" <<'PY'
+import re
 import sys
 from pathlib import Path
 
@@ -801,44 +802,27 @@ def patch_folio_home_close() -> None:
     text = text.replace("                root.xiosMinimizeVisibleTasks();", "                root.xiosCloseOpenApps();", 1)
     path.write_text(text)
 
-grid_view_qml = """import QtQuick 2.15 as QtQuick
+def qualify_qtquick_component(rel: str, type_name: str) -> None:
+    restore_upstream(rel)
+    path = src / rel
+    if not path.exists():
+        return
+    text = path.read_text()
+    text = re.sub(
+        r"^import QtQuick(?:\s+[0-9.]+)?(?:\s+as\s+\w+)?\s*$",
+        "import QtQuick 2.15 as QtQuick",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    text = re.sub(rf"^{type_name}\s*\{{", f"QtQuick.{type_name} {{", text, count=1, flags=re.M)
+    text = re.sub(r"^(\s*)Component\s*\{", r"\1QtQuick.Component {", text, count=1, flags=re.M)
+    text = re.sub(r"^(\s*)Keys\.", r"\1QtQuick.Keys.", text, flags=re.M)
+    path.write_text(text)
 
-QtQuick.GridView {
-    id: root
-    // xios-mobile-real-gridview: real drawer delegates, with iOS edge-hook placeholders.
-    property var topEdgeCallback: null
-    property var bottomEdgeCallback: null
-    property var leftEdgeCallback: null
-    property var rightEdgeCallback: null
-}
-"""
-
-list_view_qml = """import QtQuick 2.15 as QtQuick
-
-QtQuick.ListView {
-    id: root
-    // xios-mobile-real-listview: the Qt Quick iOS Flickable root fix is in qtdeclarative.
-    flickDeceleration: 1500
-    maximumFlickVelocity: 5000
-    property int currentIndex: -1
-    onActiveFocusChanged: if (!activeFocus) currentIndex = -1
-    onDraggingChanged: if (dragging) currentIndex = -1
-}
-"""
-
-flickable_qml = """import QtQuick 2.15 as QtQuick
-
-QtQuick.Flickable {
-    id: root
-    // xios-mobile-real-flickable: keep upstream behavior with deterministic iOS physics.
-    flickDeceleration: 1500
-    maximumFlickVelocity: 5000
-}
-"""
-
-write("components/mobileshell/qml/components/GridView.qml", grid_view_qml)
-write("components/mobileshell/qml/components/ListView.qml", list_view_qml)
-write("components/mobileshell/qml/components/Flickable.qml", flickable_qml)
+qualify_qtquick_component("components/mobileshell/qml/components/GridView.qml", "GridView")
+qualify_qtquick_component("components/mobileshell/qml/components/ListView.qml", "ListView")
+qualify_qtquick_component("components/mobileshell/qml/components/Flickable.qml", "Flickable")
 
 write("components/mobileshell/qml/statusbar/StatusBar.qml", """import QtQuick 2.15
 import QtQuick.Layouts 1.15
