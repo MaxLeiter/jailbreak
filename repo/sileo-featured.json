@@ -39,6 +39,11 @@
       "url": "https://repo.maxleiter.com/banners/breeze.png"
     },
     {
+      "title": "breeze-dev",
+      "package": "breeze-dev",
+      "url": "https://repo.maxleiter.com/banners/breeze-dev.png"
+    },
+    {
       "title": "Bun",
       "package": "bun",
       "url": "https://repo.maxleiter.com/banners/bun.png"
@@ -822,6 +827,11 @@
       "title": "kwin",
       "package": "kwin",
       "url": "https://repo.maxleiter.com/banners/kwin.png"
+    },
+    {
+      "title": "kwin-dev",
+      "package": "kwin-dev",
+      "url": "https://repo.maxleiter.com/banners/kwin-dev.png"
     },
     {
       "title": "kwrite",

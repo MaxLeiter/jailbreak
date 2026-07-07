@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/kwin.png",
+  "headerImage": "https://repo.maxleiter.com/banners/breeze-dev.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "KWin Wayland compositor for the Xios desktop"
+          "markdown": "Development files for Breeze"
         },
         {
           "class": "DepictionSeparatorView"
@@ -27,7 +27,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "2251.4 KiB"
+          "text": "2.5 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "KDE"
+          "text": "Development"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "kwin"
+          "text": "breeze-dev"
         }
       ]
     }
