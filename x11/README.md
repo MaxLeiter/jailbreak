@@ -1,8 +1,9 @@
 # X11 and Wayland on iOS
 
 A native Linux desktop running on a jailbroken iPad: a real X11 server, a
-GPU-accelerated Wayland compositor, and GTK4 / GNOME apps, all cross-compiled for
-rootless iOS (`/var/jb`) and drawn on the A10 GPU through Metal.
+GPU-accelerated Wayland compositor, GNOME Shell, KDE Plasma, and GTK/Qt apps, all
+cross-compiled for rootless iOS (`/var/jb`) and drawn on the A10 GPU through
+Metal.
 
 Full write-up, diagrams, and status: **https://xios.maxleiter.com**
 
@@ -65,23 +66,25 @@ scans the result out. No CPU copy happens anywhere along that path.
 
 Install one flavor package; each pulls in the shared `xios-core` base.
 
-- **Native mode** (`xios-native`) — X11/Wayland apps show up on the Home Screen
-  and launch like normal apps. They rotate, resize, honor dark mode, and talk to
-  VoiceOver. No desktop shell at all.
-- **iosc desktop** (`xios-x11` / built in) — the compositor's own tablet-first
+- **Native mode** (`xios-native`) - X11/Wayland apps can show up on the Home
+  Screen and launch as per-window iPadOS apps. The core path exists; host-window
+  validation and polish are still in progress.
+- **iosc desktop** (`xios-x11` / built in) - the compositor's own tablet-first
   shell: a panel with launchers, a dock, an overview, and a wallpaper. Runs
   interactively on device today.
-- **Bring your own DE** — a full upstream environment: GNOME Shell 46 (Mutter
-  with a new `MetaBackendIOS` backend, `xios-gnome`) or KDE Plasma (KWin + KF6,
-  `xios-kde`).
+- **Bring your own DE** - full upstream environments. GNOME Shell 46 works on
+  device through the packaged `xios-gnome` session. KDE Plasma Desktop and
+  Plasma Mobile work through KWin/KF6 in `xios-kde`; the remaining work is polish
+  and productization, not first paint.
 
 ## The GPU path
 
-iOS ships no OpenGL and no DRM, but the A10 is still there behind Metal. ANGLE
-translates OpenGL ES to Metal and renders into `IOSurface`s, so GLES clients and
-iosc itself run on the GPU. GTK4's `GskNglRenderer` realizes on an ES3
-ANGLE-to-Metal context and draws into `IOSurface`s, validated on device. X11 has
-no route to this on iOS, so the X track stays software.
+iOS gives this stack no DRM/KMS device and no desktop OpenGL path, but the A10 is
+still there behind Metal. ANGLE translates OpenGL ES to Metal and renders into
+`IOSurface`s, so GLES clients and iosc itself run on the GPU. GTK4's
+`GskNglRenderer` realizes on an ES3 ANGLE-to-Metal context and draws into
+`IOSurface`s, validated on device. X11 has no route to this on iOS, so the X
+track stays software.
 
 ## Hardware and POSIX bridges
 
@@ -90,14 +93,14 @@ user. None of that exists in the Linux sense on iOS, so small daemons read the
 real iOS API and republish it as the D-Bus service, Wayland protocol, or sysfs
 file the desktop wants.
 
-- **Working:** `xios-input` (touch/Pencil/keys/scroll to `wl_seat`), `xios-osk`
-  (iOS keyboard to `text-input-v3`), `xios-audiod` (RemoteIO to a PulseAudio
-  sink), `xios-session-identity`, the login1/polkit/Accounts stubs, `xios-fhs`,
-  and the fonts/theme defaults.
-- **In progress:** `xios-hwbridged` (IOKit battery + BackBoard brightness to
-  UPower), `xios-sysintd` (volume/dark-mode/rotation/haptics), `xios-sensord`
-  (CoreMotion), and the clipboard bridge.
-- **Planned:** the AT-SPI to VoiceOver accessibility bridge.
+- **Live:** `xios-input` (touch/Pencil/keys/scroll to `wl_seat`), `xios-osk`
+  (iOS keyboard to `text-input-v3`), `xios-audiod` (RemoteIO to PulseAudio),
+  `xios-hwbridged` (battery/backlight), `xios-sysintd`
+  (volume/dark-mode/rotation), `xios-sensord` (CoreMotion), session identity,
+  login1/polkit/Accounts stubs, `xios-fhs`, and the fonts/theme defaults.
+- **In progress:** Bluetooth/BlueZ coverage, true UIKit pasteboard round trips,
+  physical haptic feel, real VoiceOver gesture validation, and GNOME-facing
+  camera/media portal work.
 
 ## Build and packaging
 
@@ -115,10 +118,18 @@ not the limit; packages target rootless jailbroken iOS more broadly.
 
 - Native X11 server running apps, displayed through Metal
 - GPU Wayland compositor: zero-copy IOSurface compositing, multi-window stacking
-- Multi-backend GTK4 on both X11 and Wayland
-- GNOME Console with a live shell, running through iosc (tap and type on device)
+- iosc desktop shell running interactively on device
+- GTK3/GTK4, Qt/KF6, X11, and Wayland app waves running under iosc
 - GTK4 rendering on the A10 GPU through ANGLE-to-Metal
-- GNOME Shell 46 reaching first light: it boots, paints, and runs
+- GNOME Shell 46 working through the packaged `xios-session gnome` path
+- KDE Plasma Desktop working through `xios-session kde` / `kde-desktop`, with
+  Kicker app launch, System Settings/KScreen, Breeze styling, and the first KDE
+  app batch verified
+- Plasma Mobile mostly working: full-frame orientation-correct sessions, live
+  iOS-backed status providers, drawer/home/app-launch proof, and remaining polish
+  around log noise and product fit
+- Native per-window iPadOS mode implemented and runtime-gated; host-window polish
+  remains
 
 ## Where things live
 

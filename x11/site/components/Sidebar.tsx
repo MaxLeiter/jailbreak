@@ -42,9 +42,6 @@ export function Sidebar() {
           <span className="brand-name">
             xi<b>OS</b>
           </span>
-          <span className="brand-sub">
-            X11 and Wayland, running native on jailbroken iOS.
-          </span>
         </Link>
 
         <nav className="nav" aria-label="Sections">
