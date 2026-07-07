@@ -571,6 +571,7 @@ xios_session_teardown() {
           "$XS_TMP/kde-session-bus" \
           "$XS_TMP/iosc-wm.sock" \
           "$XS_TMP/iosc-native.sock" 2>/dev/null || true
+    rm -rf "$XS_TMP/xios-kde-runtime" "$XS_TMP"/xios-kde-runtime-* 2>/dev/null || true
     rm -rf "$XS_TMP/xios-session-bus" 2>/dev/null || true
     xs_log "teardown done"
 }
@@ -777,7 +778,40 @@ xios_session_gnome() {
 # proven KWin nested smoke instead of treating KWin as a native Xios display
 # server.
 xios_session_process_running() {
-    ps ax | grep -v grep | grep -E "$1" >/dev/null 2>&1
+    ps axww | grep -v grep | grep -E "$1" >/dev/null 2>&1
+}
+
+xs_kde_runtime_dir() {
+    if [ -n "${XS_SLOT:-}" ]; then
+        printf '%s/xios-kde-runtime-%s\n' "$XS_TMP" "$XS_SLOT"
+    else
+        printf '%s/xios-kde-runtime\n' "$XS_TMP"
+    fi
+}
+
+xs_prepare_kde_runtime_dir() {
+    local dir
+    dir="$(xs_kde_runtime_dir)"
+    rm -rf "$dir" 2>/dev/null || true
+    mkdir -p "$dir" || return 1
+    chmod 0700 "$dir" 2>/dev/null || true
+    printf '%s\n' "$dir"
+}
+
+xios_session_kde_kwin_running() {
+    if [ -n "${XS_SLOT:-}" ]; then
+        ps axww | grep -v grep | grep -F "kwin_wayland" | grep -F -- "--socket $XS_KWIN_SOCKET" >/dev/null 2>&1
+    else
+        xios_session_process_running "kwin_wayland"
+    fi
+}
+
+xios_session_kde_shell_running() {
+    if [ -n "${XS_SLOT:-}" ]; then
+        [ -S "$(xs_kde_runtime_dir)/$XS_KWIN_SOCKET" ] && ! grep -qE "plasmashell exited|kwin exited|KWin did not create|kwin socket did not appear" "$XS_KDE_LOG" 2>/dev/null
+    else
+        xios_session_process_running "plasmashell"
+    fi
 }
 
 xios_session_kde() {
@@ -793,7 +827,12 @@ xios_session_kde() {
     xs_write_status "$preset" starting "starting $label (experimental)"
     local script; script="$(xs_find_bringup run-kde-plasma.sh)" || {
         xs_log "ERROR: run-kde-plasma.sh not found"; xs_write_status "$preset" error "run-kde-plasma.sh missing"; return 1; }
+    local kde_runtime
+    kde_runtime="$(xs_prepare_kde_runtime_dir)" || {
+        xs_log "ERROR: could not create KDE runtime dir"; xs_write_status "$preset" error "KDE runtime dir failed"; return 1; }
     xs_log "$preset (experimental): $script"
+    xs_log "$preset runtime: $kde_runtime"
+    XDG_RUNTIME_DIR="$kde_runtime" \
     WAYLAND_DISPLAY="$XS_WAYLAND_NAME" \
     XIOS_JSON_PATH="$XS_CONFIG_JSON" \
     IOSC_DDX_SOCK="$XS_IOSC_DDX_SOCK" \
@@ -814,7 +853,7 @@ xios_session_kde() {
             kde_failed=1
             break
         fi
-        if xios_session_process_running "kwin_wayland" && xios_session_process_running "plasmashell"; then
+        if xios_session_kde_kwin_running && xios_session_kde_shell_running; then
             kde_ready=1
             break
         fi
@@ -823,7 +862,7 @@ xios_session_kde() {
     done
     if [ "$kde_ready" = 1 ]; then
         sleep 0.5
-        if ! xios_session_process_running "kwin_wayland" || ! xios_session_process_running "plasmashell"; then
+        if ! xios_session_kde_kwin_running || ! xios_session_kde_shell_running; then
             kde_ready=0
         fi
     fi
@@ -833,18 +872,18 @@ xios_session_kde() {
         fi
     fi
     if [ "$kde_failed" = 1 ]; then
-        xs_log "$preset FAILED: shell/compositor exited; see $XS_TMP/kde-plasma.log"
+        xs_log "$preset FAILED: shell/compositor exited; see $XS_KDE_LOG"
         tail -40 "$XS_KDE_LOG" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
         xs_write_status "$preset" error "$label exited; see kde-plasma.log"
         return 1
     elif [ "$kde_ready" = 1 ]; then
-        xs_log "$preset up (kwin-ios-test + plasmashell running)."
+        xs_log "$preset up ($XS_KWIN_SOCKET + plasmashell running)."
         xs_write_status "$preset" up "$label running"
-    elif xios_session_process_running "kwin_wayland" || [ -S "$XS_TMP/$XS_KWIN_SOCKET" ]; then
-        xs_log "$preset compositor up, but plasmashell is not running; see $XS_TMP/kde-plasma.log"
+    elif xios_session_kde_kwin_running || [ -S "$kde_runtime/$XS_KWIN_SOCKET" ]; then
+        xs_log "$preset compositor up, but plasmashell is not running; see $XS_KDE_LOG"
         xs_write_status "$preset" compositor-only "KWin running; plasmashell not confirmed"
     else
-        xs_log "ERROR: KWin is not running; see $XS_TMP/kde-plasma.log"
+        xs_log "ERROR: KWin is not running; see $XS_KDE_LOG"
         xs_write_status "$preset" error "KWin failed; see kde-plasma.log"
         return 1
     fi
@@ -857,8 +896,15 @@ xios_session_kde() {
 xios_session_app() {
     local name="$1"
     [ -n "$name" ] || { xs_log "ERROR: 'app' needs a name"; xs_write_status app error "no app name"; return 1; }
-    if [ ! -S "$XS_WAYLAND_SOCK" ]; then
-        xs_log "ERROR: no compositor running (no $XS_WAYLAND_SOCK). Pick iosc/mutter/gnome first."
+    local owner
+    owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
+    local compositor_sock="$XS_WAYLAND_SOCK"
+    case "$owner" in
+        kde|kde-desktop|kde-nano|kde-mobile|plasma|plasma-desktop|plasma-nano|plasma-mobile)
+            compositor_sock="$(xs_kde_runtime_dir)/$XS_KWIN_SOCKET" ;;
+    esac
+    if [ ! -S "$compositor_sock" ]; then
+        xs_log "ERROR: no compositor running (no $compositor_sock). Pick iosc/mutter/gnome first."
         xs_write_status app error "no compositor; start a session first"; return 1
     fi
     xs_write_status "app:$name" starting "launching $name"
@@ -874,7 +920,7 @@ xios_session_app() {
         *)                                  exec="$name" ;;   # run as given
     esac
 
-    local owner busdir="$XS_TMP/xios-session-bus" addr
+    local busdir="$XS_TMP/xios-session-bus" addr
     local app_runtime="$busdir" app_wayland="$XS_WAYLAND_SOCK"
     local app_env=() client_env=() kv
     if command -v xios_profile_env_pairs >/dev/null 2>&1; then
@@ -898,12 +944,11 @@ xios_session_app() {
     local gtk_a11y_env=()
     xs_a11y_enabled || gtk_a11y_env=(GTK_A11Y=none)
     local dbus_addr=()
-    owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
     case "$owner" in
         kde|kde-desktop|kde-nano|kde-mobile|plasma|plasma-desktop|plasma-nano|plasma-mobile)
-            if [ -S "$XS_TMP/$XS_KWIN_SOCKET" ]; then
-                app_runtime="$XS_TMP"
-                app_wayland="$XS_TMP/$XS_KWIN_SOCKET"
+            if [ -S "$compositor_sock" ]; then
+                app_runtime="$(xs_kde_runtime_dir)"
+                app_wayland="$XS_KWIN_SOCKET"
                 if command -v xios_profile_env_pairs >/dev/null 2>&1; then
                     while IFS= read -r kv; do
                         [ -n "$kv" ] && app_env+=("$kv")
@@ -933,7 +978,7 @@ xios_session_app() {
                 if ls "$XS_PREFIX"/lib/qt6/plugins/styles/breeze6.* >/dev/null 2>&1; then
                     app_env+=(QT_STYLE_OVERRIDE="${QT_STYLE_OVERRIDE:-Breeze}")
                 fi
-                local kde_bus_file="$XS_TMP/kde-session-bus${XS_SLOT:+-$XS_SLOT}"
+                local kde_bus_file="$app_runtime/kde-session-bus${XS_SLOT:+-$XS_SLOT}"
                 if [ -s "$kde_bus_file" ]; then
                     addr="$(cat "$kde_bus_file" 2>/dev/null || true)"
                     [ -n "$addr" ] && dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr" DBUS_SYSTEM_BUS_ADDRESS="$addr")

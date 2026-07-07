@@ -36,9 +36,10 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 - **Native-feel bridges are mostly live:** volume/dark-mode helpers, battery/backlight/sysfs, SensorProxy/CoreMotion, haptic broadcast plumbing, and PulseAudio sink+mic source are deployed/validated in pieces. Physical haptic feel, true UIKit pasteboard round trip, real VoiceOver gestures, and GNOME-facing camera portal/GStreamer remain follow-ups; see `polish.md`.
 - **GNOME Shell 46 is up on-device with `gnome-shell 46.0+ios3`**: `xios-session gnome` and
   `xios-session -d gnome` now route through the packaged full-session `launch-gnome-session.sh`
-  and both reached `gnome/up` with `xios-session 1.0.22` + `xios-session-stubs 0.2.3`. Gvc/volume
-  no longer blocks first paint, and Quick Settings no longer hits the `get_accessible`/`_output`
-  JS errors. Later stop/KDE requests can still supersede GNOME by design.
+  and the latest daemon smoke reached `gnome/up` with `xios-session 1.0.46` +
+  `xios-session-stubs 0.2.4`; the old direct Shell runner is no longer shipped or present on-device.
+  Gvc/volume no longer blocks first paint, and Quick Settings no longer hits the
+  `get_accessible`/`_output` JS errors. Later stop/KDE requests can still supersede GNOME by design.
 - **KDE/KF6 has KWin first-light, QtWayland/ANGLE IOSurface smoke, `xios-session kde`/`kde-desktop` launching the real upstream Plasma Desktop shell, a live KIO `desktop:` worker, real KScreen/System Settings/KCM packages, Breeze/plasma-integration styling, real Xios/iOS-backed Plasma Mobile status/quick-settings providers, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** Next gate is exercising `systemsettings`/`kcm_kscreen` and app launches, then replacing remaining Nano/edge Mobile gaps with real package or service work.
 - **Wayland app ecosystem is now broad enough for daily smoke testing**:
   wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim/dunst/GTK3 apps and the rootless

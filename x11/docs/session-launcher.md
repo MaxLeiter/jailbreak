@@ -105,12 +105,14 @@ The CLI calls the shared library directly. Add `-d`/`--via-daemon` to exercise
 the same `/var/jb/tmp/ioscd.sock` SESSION path used by the app; if ioscd is not
 running or does not acknowledge the request, the command fails.
 
-Current GNOME status (2026-07-04 23:15 PDT): the preset routes through
+Current GNOME status (2026-07-06 12:59 PDT): the preset routes through
 `launch-gnome-session.sh` so `gnome-session --builtin --session=xios` owns
-`org.gnome.Shell`. With `xios-session 1.0.22`, `xios-session-stubs 0.2.3`, and
-`gnome-shell 46.0+ios3`, both `xios-session gnome` and `xios-session -d gnome`
-reached `state=up`. If GNOME is replaced after that, treat it as a later explicit
-requester winning and check `/var/jb/tmp/ioscd.log` plus `xios-session.log`.
+`org.gnome.Shell`. With `xios-session 1.0.46`, `xios-session-stubs 0.2.4`, and
+`gnome-shell 46.0+ios3`, daemon `xios-session -d gnome` reached `state=up` after
+reaping a stale KDE app-launch lock. The old direct Shell runner is no longer shipped
+by `xios-session` and was absent on-device. If GNOME is replaced after that, treat it
+as a later explicit requester winning and check `/var/jb/tmp/ioscd.log` plus
+`xios-session.log`.
 
 ### Path 2 — in-app picker (ioscd socket)
 

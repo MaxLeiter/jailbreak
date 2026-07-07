@@ -23,9 +23,6 @@ run_stub() {
 make_dir "$TMP/libplasma/var/jb/usr/lib/qt6/qml/org/kde/plasma/components"
 run_stub libplasma "$ROOT/linux-build/recipes/libplasma-ios-qml-stubs.sh" "$TMP/libplasma"
 
-make_dir "$TMP/qqc2/var/jb/usr/lib/qt6/qml/org/kde/desktop"
-run_stub qqc2-desktop-style "$ROOT/linux-build/recipes/qqc2-desktop-style-ios-qml-stubs.sh" "$TMP/qqc2"
-
 workspace_layout="$TMP/workspace/var/jb/usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/layouts"
 make_dir "$workspace_layout"
 cat >"$workspace_layout/org.kde.plasma.desktop-layout.js" <<'EOF'

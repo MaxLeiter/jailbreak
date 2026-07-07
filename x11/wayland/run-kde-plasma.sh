@@ -36,7 +36,10 @@ jb_path() {
 }
 
 export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+XIOS_KDE_RUNTIME_SUFFIX="${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP/xios-kde-runtime$XIOS_KDE_RUNTIME_SUFFIX}"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 
 XIOS_KDE_NOFILE="${XIOS_KDE_NOFILE:-4096}"
@@ -620,7 +623,7 @@ PYEOF
 fi
 
 echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
-"$SETSID" env \
+nohup "$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   IOSC_FRAME_PULSE="${IOSC_FRAME_PULSE:-1}" \
   IOSC_IGNORE_ACTIVE_SESSION=1 \
@@ -684,7 +687,7 @@ KWIN_H="${KDE_KWIN_SIZE#*x}"
 echo "==> launch KWin + plasmashell ($KDE_PLASMA_LABEL) in one session bus -> $KDE_LOG"
 echo "   KWin logical size: ${KWIN_W}x${KWIN_H}"
 echo "   nofile soft limit: $(ulimit -Sn 2>/dev/null || echo unknown)"
-"$SETSID" env \
+nohup "$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
   KWIN_BIN="$KWIN_BIN" \

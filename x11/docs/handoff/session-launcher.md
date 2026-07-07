@@ -25,6 +25,13 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
   screenshot attempt at `artifacts/device-runs/20260704-231559/` only logged `failed to create
   display`, expected for the non-iosc capture path). A later explicit `stop` and KDE launch replaced
   GNOME; that is newest-request-wins behavior, not a GNOME launch failure.
+- 2026-07-06 12:59 PDT GNOME direct-runner removal validation: installed state is
+  `xios-session 1.0.46` plus `xios-session-stubs 0.2.4`; the device has no
+  `run-gnome-shell.sh*` under `/var/jb/libexec/xios-session`, `/var/jb/usr/bin`, or
+  `/var/jb/usr/local/bin`. Daemon `xios-session -d gnome` reaped a stale KDE app-launch lock,
+  switched from `kde-desktop`, and reached `{"preset":"gnome","state":"up","message":"GNOME Shell started"}`.
+  Xios adopted the `2160x1620` Mutter IOSurface with mutter input connected. Evidence bundle:
+  `artifacts/device-runs/20260706-125913/`.
 - 2026-07-04 native-helper bridge: `xios-session app` and `ioscd` app launches now start `xios-hwbridged`, `xios-sensord`, and `xios-sysintd` on the shared app bus, and app client env sets both `DBUS_SESSION_BUS_ADDRESS` and `DBUS_SYSTEM_BUS_ADDRESS` to that bus. `run-kde-plasma.sh` starts the same helpers inside KDE's session bus. Package contents verified in `xios-session_1.0.22`; device smoke saw the helpers start, battery/backlight/sensor sysfs mirrors populate, and `xios-sysintd` apply dark appearance plus desktop-volume-to-device.
 - 2026-07-04 slot audit: `xios-session --slot audit-iosc --via-daemon iosc` reached slot
   `state=up` while the global `kde` session stayed active. It created
@@ -56,8 +63,8 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 - `xios-session-lib.sh` records the owner in `/var/jb/tmp/xios-active-session` when launching `iosc`, `mutter`, or `gnome`, and clears it on `stop`.
 - `ioscd` and the classic `iosc` binary respect that owner: direct/classic iosc is refused while the active owner is another session, with `IOSC_IGNORE_ACTIVE_SESSION=1` as an explicit diagnostic override. Native iosc remains allowed.
 - Verified with Mutter active: `/var/jb/usr/local/bin/iosc` exited 2, logged `iosc: refusing classic output because active session is mutter`, and left Mutter's `xios.json` unchanged.
-- Installed on-device during the GNOME full-session smoke: `dpkg-query` reported
-  `xios-session 1.0.22` and `xios-session-stubs 0.2.3`. Direct CLI and daemon-triggered
+- Installed on-device during the latest GNOME full-session smoke: `dpkg-query` reported
+  `xios-session 1.0.46` and `xios-session-stubs 0.2.4`. Direct CLI and daemon-triggered
   session picks start Mutter/GNOME with active ownership. Newer switch requests still win by design;
   if a later request replaces GNOME, use ioscd's peer/payload request log to identify the requester.
 

@@ -134,8 +134,9 @@ Capture order:
 
 1. Try on-device `grim` against the active Wayland display and copy
    `compositor.png`.
-2. Otherwise run `iosc-screenshot-test` and copy `compositor-shot.log`, which
-   contains the screencopy probe map.
+2. If `grim` is missing or does not create a PNG, run `iosc-screenshot-test`;
+   copy `compositor.png` when it emits one and always copy
+   `compositor-shot.log`, which contains the screencopy probe map.
 3. If a USB or network-paired device is visible through `idevice_id`, try
    `idevicescreenshot` and save `device.png`.
 

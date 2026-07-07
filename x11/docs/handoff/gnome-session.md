@@ -73,10 +73,20 @@ poller. Evidence: `artifacts/device-runs/20260704-231534/`; screenshot attempt
 non-iosc capture path. A later explicit `stop` and KDE launch replaced GNOME; that is
 newest-request-wins behavior, not a GNOME launch failure.
 
+**UPDATE 2026-07-06 12:59 PDT:** the legacy direct Shell runner is removed from the shipped
+session package and from the live device. Current device has `xios-session 1.0.46` and
+`xios-session-stubs 0.2.4`; `/var/jb/libexec/xios-session`, `/var/jb/usr/bin`, and
+`/var/jb/usr/local/bin` have no `run-gnome-shell.sh*` files. Daemon validation
+(`xios-session -d gnome` through ioscd) reaped a stale KDE `app plasmawindowed` lock, switched
+from `kde-desktop` to GNOME, and reached
+`{"preset":"gnome","state":"up","message":"GNOME Shell started"}` with Xios presenting the
+`2160x1620` Mutter IOSurface and `input-connected mutter(wayland)`. Evidence:
+`artifacts/device-runs/20260706-125913/`.
+
 REMAINING (polish, not blockers):
 1. **Launch path — full-session preset verified.** Use **`xios-session gnome`** from
    an SSH shell/on-device terminal or **`xios-session -d gnome`** for the ioscd/app-picker path.
-   With `xios-session 1.0.22`, `xios-session-stubs 0.2.3`, and `gnome-shell 46.0+ios3`, both paths
+   With `xios-session 1.0.46`, `xios-session-stubs 0.2.4`, and `gnome-shell 46.0+ios3`, the daemon path
    reached `state=up` through `gnome-session`. Keep using ioscd's peer/payload log if a later
    requester replaces GNOME. Promoted on-device gir scripts: gir-build-lib-ondevice.sh, gir-build-gdm-ondevice.sh,
    gir-rescan-st-shell-ondevice.sh (for regen if a typelib is ever missing).
@@ -93,8 +103,8 @@ REMAINING (polish, not blockers):
    `meta-barrier` runtime-check warnings remain because pointer barriers are unimplemented in
    MetaBackendIOS. "Error registering session with GDM" is harmless because there is no GDM on iOS.
 
-## Current state — checked 2026-07-04 23:15 PDT
-- `gnome-shell 46.0+ios3`, `xios-session 1.0.22`, `xios-session-stubs 0.2.3`, gnome-session,
+## Current state — checked 2026-07-06 12:59 PDT
+- `gnome-shell 46.0+ios3`, `xios-session 1.0.46`, `xios-session-stubs 0.2.4`, gnome-session,
   gnome-settings-daemon, libmutter-14-0/dev, libgjs0, gobject-introspection, and
   xios-session-stubs are installed (`dpkg-query` = `ii`).
 - GTK4 typelibs are present and importable: `Gtk-4.0` imports under gjs.
