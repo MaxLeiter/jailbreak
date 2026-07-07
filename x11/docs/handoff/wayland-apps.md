@@ -3,7 +3,7 @@
 Owner scope: the ported desktop apps (terminal / viewers / media / utilities), why
 some don't yet open a window in `iosc`, the fixes, and the on-device debug tooling.
 Living doc — update the STATUS table and OPEN ITEMS as things land. Last touched
-2026-07-06.
+2026-07-07.
 
 Related memory-of-record: the session narrative lives in the assistant memory files
 `x11-desktop-apps-wave` and `x11-iosc-app-launch-fixes`; this file is the in-repo
@@ -18,7 +18,7 @@ version for any agent.
 | fuzzel 1.12.0+ios1 | repo/debs ✓ | installed | **YES** | launcher; iOS worker/lock/focus defaults; pinned <1.13 (pixman 0.40) |
 | dunst 1.13.2+ios2 | out/ ✓ | installed | **YES** | notification popup verified through GDBus |
 | foot 1.27.0+ios3 | repo/debs ✓ | installed | **YES** | PTY + locale + render-worker path verified |
-| imv 5.0.1+ios12 | out/ ✓ | installed | **YES (native + Xwayland)** | native Wayland ANGLE/GLES renderer verified; wrapper Xwayland fallback still works |
+| imv 5.0.1+ios13 | out/ ✓ | installed | **YES (native + Xwayland)** | native Wayland ANGLE/GLES renderer hardened/verified; wrapper Xwayland fallback still works |
 | mpv 0.36.0+ios2 | repo/debs ✓ | installed | **YES** | ANGLE/Metal + iosc_iosurface verified via `mpv-iosc` |
 | zathura 0.5.12 | out/ ✓ | installed | **YES** | GTK3 Wayland + PDF/poppler content render verified |
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
@@ -97,21 +97,27 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   A driven `slurp -d` smoke also returned rc 0 and stdout geometry
   `100,100 226x161` after `bin/xios-device input drag 200 200 650 520`.
 - **imv — WORKS via native Wayland and via the Xwayland fallback as
-  `imv 5.0.1+ios12`.** The packaged `imv` wrapper still defaults to rootful
+  `imv 5.0.1+ios13`.** The packaged `imv` wrapper still defaults to rootful
   `Xwayland :1` + `imv-x11` inside Xios Wayland sessions, and
   `XIOS_IMV_NATIVE_WAYLAND=1` forces the native Wayland backend. The native path
   now uses a GLES2 shader canvas, platform EGL display/window-surface entrypoints,
   ANGLE `libGLESv2`, and explicit Cairo ARGB32 -> RGBA upload for the solid
-  background/overlay surface. The shader source is valid under both GLES and
-  Mesa desktop GL so the Xwayland fallback does not regress. Host DER re-signed
-  `imv_5.0.1+ios12_iphoneos-arm64.deb` was installed on-device; native Wayland
-  JPEG proof mapped through `iosc_egl: bound iosc_iosurface` / `window surface
-  1280x720 (3 IOSurface buffers)` with no failure signature, and plain wrapper
-  `imv /var/jb/tmp/xios-imv-smoke.png` also stayed alive with visible content.
-  Evidence:
-  `artifacts/device-runs/imv-native-gles2-ios12-jpeg-20260706/cap-imv-native-gles2-ios12-jpeg.png`
+  background/overlay surface. The post-audit `+ios13` patch set deliberately
+  removes the ABI-unsafe legacy `eglGetDisplay(wl_display)` /
+  `eglCreateWindowSurface(...)` fallback from the Apple path, so missing platform
+  EGL entrypoints fail early instead of silently taking the wrong ABI. It also
+  copies large-image texture tiles into a contiguous RGBA scratch buffer and no
+  longer compiles Apple through fixed-function/no-op GL macros; desktop GL stays
+  under the non-Apple branch. Host DER re-signed
+  `imv_5.0.1+ios13_iphoneos-arm64.deb` was installed on-device; native Wayland
+  JPEG and large tiled PNG proofs mapped through `iosc_egl: bound iosc_iosurface`
+  / `window surface 1280x720 (3 IOSurface buffers)` with no failure signature,
+  and plain wrapper `imv /var/jb/tmp/xios-imv-smoke.png` also stayed alive with
+  visible content. Evidence:
+  `artifacts/device-runs/imv-native-gles2-ios13-jpeg-20260707/cap-imv-native-gles2-ios13-jpeg.png`,
+  `artifacts/device-runs/imv-native-gles2-ios13-large-20260707/cap-imv-native-gles2-ios13-large.png`,
   and
-  `artifacts/device-runs/imv-wrapper-ios12-regression-20260706/cap-imv-wrapper-ios12-regression.png`.
+  `artifacts/device-runs/imv-wrapper-ios13-regression-20260707/cap-imv-wrapper-ios13-regression.png`.
 - **wl-clipboard — FIX PACKAGED + VERIFIED with `iosc 0.9.10`.**
   `wl-copy` reached `zwlr_data_control_device_v1.set_selection`, but the compositor's
   pipe reader returned on `WL_EVENT_HANGUP|ERROR` before draining bytes already queued

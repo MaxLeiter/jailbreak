@@ -1,0 +1,100 @@
+Subject: [PATCH] imv: avoid GLES unpack-row fallbacks for bitmap tiles
+
+OpenGL ES 2 does not guarantee GL_UNPACK_ROW_LENGTH or GL_UNPACK_SKIP_* support.
+The single-tile smoke images do not need those states, but large images split
+across texture tiles would. Copy each Apple/GLES tile into a contiguous RGBA
+scratch buffer instead and upload with the default unpack state.
+
+--- a/src/canvas.c
++++ b/src/canvas.c
+@@ -28,6 +28,7 @@
+ #include <stdbool.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <math.h>
+ 
+ #ifdef IMV_BACKEND_LIBRSVG
+@@ -64,6 +65,8 @@ struct imv_canvas {
+   GLint gles_sampler_uniform;
+   unsigned char *gles_cairo_rgba;
+   size_t gles_cairo_rgba_len;
++  unsigned char *gles_tile_rgba;
++  size_t gles_tile_rgba_len;
+ #endif
+ };
+ 
+@@ -161,6 +164,31 @@ static unsigned char *imv_gles_cairo_to_rgba(struct imv_canvas *canvas,
+   return canvas->gles_cairo_rgba;
+ }
+ 
++static unsigned char *imv_gles_bitmap_tile(struct imv_canvas *canvas,
++                                           const struct imv_bitmap *bitmap,
++                                           int x0, int y0,
++                                           int width, int height)
++{
++  const size_t need = (size_t)width * (size_t)height * 4;
++  if (canvas->gles_tile_rgba_len < need) {
++    unsigned char *new_data = realloc(canvas->gles_tile_rgba, need);
++    if (!new_data) {
++      imv_log(IMV_ERROR, "Couldn't allocate GLES bitmap tile buffer\n");
++      abort();
++    }
++    canvas->gles_tile_rgba = new_data;
++    canvas->gles_tile_rgba_len = need;
++  }
++
++  for (int y = 0; y < height; ++y) {
++    const unsigned char *src = bitmap->data +
++                               ((size_t)(y0 + y) * (size_t)bitmap->width + (size_t)x0) * 4;
++    unsigned char *dst = canvas->gles_tile_rgba + (size_t)y * (size_t)width * 4;
++    memcpy(dst, src, (size_t)width * 4);
++  }
++  return canvas->gles_tile_rgba;
++}
++
+ static void imv_gles_draw_quad(struct imv_canvas *canvas, GLuint texture,
+                                float left, float top, float right, float bottom,
+                                float s0, float t0, float s1, float t1,
+@@ -312,6 +343,8 @@ void imv_canvas_free(struct imv_canvas *canvas)
+   }
+   free(canvas->gles_cairo_rgba);
+   canvas->gles_cairo_rgba = NULL;
++  free(canvas->gles_tile_rgba);
++  canvas->gles_tile_rgba = NULL;
+ #endif
+   free(canvas);
+ }
+@@ -591,22 +624,22 @@ static void prepare_cache(struct imv_canvas *canvas,
+       glBindTexture(GL_TEXTURE_2D,
+                     canvas->cache.textures[i * tex_count_w + j]);
+ 
+-      glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
+-      glPixelStorei(GL_UNPACK_SKIP_ROWS, i * max_tex_size);
+-      glPixelStorei(GL_UNPACK_SKIP_PIXELS, j * max_tex_size);
++      const int tex_w = min(bitmap->width - j * max_tex_size, max_tex_size);
++      const int tex_h = min(bitmap->height - i * max_tex_size, max_tex_size);
+ #ifdef __APPLE__
++      unsigned char *tile = imv_gles_bitmap_tile(canvas, bitmap,
++          j * max_tex_size, i * max_tex_size, tex_w, tex_h);
+       glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+-                   min(bitmap->width - j * max_tex_size, max_tex_size),
+-                   min(bitmap->height - i * max_tex_size, max_tex_size),
+-                   0, GL_RGBA, GL_UNSIGNED_BYTE, bitmap->data);
++      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h,
++                   0, GL_RGBA, GL_UNSIGNED_BYTE, tile);
+ #else
+-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
+-                   min(bitmap->width - j * max_tex_size, max_tex_size),
+-                   min(bitmap->height - i * max_tex_size, max_tex_size),
++      glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
++      glPixelStorei(GL_UNPACK_SKIP_ROWS, i * max_tex_size);
++      glPixelStorei(GL_UNPACK_SKIP_PIXELS, j * max_tex_size);
++      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex_w, tex_h,
+                    0, GL_RGBA, GL_UNSIGNED_BYTE, bitmap->data);
+ #endif
+       if (imv_glGenerateMipmap) {
+         imv_glGenerateMipmap(GL_TEXTURE_2D);

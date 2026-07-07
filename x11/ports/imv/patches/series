@@ -6,3 +6,6 @@
 0006-ios-null-gl-version.patch
 0007-ios-cairo-rgba-upload.patch
 0008-ios-cross-gl-shader.patch
+0009-ios-require-platform-egl.patch
+0010-ios-contiguous-bitmap-tiles.patch
+0011-ios-remove-gles-dead-fallbacks.patch

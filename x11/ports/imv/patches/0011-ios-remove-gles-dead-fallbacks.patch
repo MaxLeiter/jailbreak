@@ -1,0 +1,102 @@
+Subject: [PATCH] imv: remove dead fallbacks from the iOS GLES path
+
+The Apple renderer now owns the checkers, bitmap, and Cairo overlay draw paths.
+Do not keep desktop fixed-function calls compiling through no-op macros; compile
+those blocks only for non-Apple builds so accidental fallthrough remains visible.
+Also avoid touching optional GLES unpack-row/skip state after converting the
+Apple uploads to contiguous RGBA buffers.
+
+--- a/src/canvas.c
++++ b/src/canvas.c
+@@ -7,22 +7,6 @@
+ #define GL_GLEXT_PROTOTYPES 1
+ #endif
+ #include <GL/gl.h>
+-#ifdef __APPLE__
+-#ifndef GL_BGRA_EXT
+-#define GL_BGRA_EXT 0x80E1
+-#endif
+-#define glPushMatrix() ((void)0)
+-#define glPopMatrix() ((void)0)
+-#define glOrtho(...) ((void)0)
+-#define glBegin(...) ((void)0)
+-#define glEnd() ((void)0)
+-#define glTexCoord2i(...) ((void)0)
+-#define glTexCoord2f(...) ((void)0)
+-#define glVertex2i(...) ((void)0)
+-#define glTranslated(...) ((void)0)
+-#define glScaled(...) ((void)0)
+-#define glRotated(...) ((void)0)
+-#endif
+ #include <assert.h>
+ #include <cairo.h>
+ #include <pango/pangocairo.h>
+@@ -292,7 +278,6 @@ struct imv_canvas *imv_canvas_create(int width, int height)
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+ #ifdef __APPLE__
+   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+-  glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 16, 16, 0, GL_RGBA,
+                GL_UNSIGNED_BYTE, checkers_data);
+ 
+@@ -415,7 +400,7 @@ void imv_canvas_fill_checkers(struct imv_canvas *canvas, struct imv_image *image
+     glBindTexture(GL_TEXTURE_2D, 0);
+     return;
+   }
+-#endif
++#else
+   GLint viewport[4];
+   glGetIntegerv(GL_VIEWPORT, viewport);
+ 
+@@ -453,6 +438,7 @@ void imv_canvas_fill_checkers(struct imv_canvas *canvas, struct imv_image *image
+   glBindTexture(GL_TEXTURE_2D, 0);
+   glDisable(GL_TEXTURE_2D);
+   glPopMatrix();
++#endif
+ }
+ 
+ void imv_canvas_font(struct imv_canvas *canvas, const char *name, int size)
+@@ -512,9 +498,6 @@ void imv_canvas_draw(struct imv_canvas *canvas)
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+-    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+-    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, canvas->width, canvas->height,
+                  0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+ 
+@@ -527,7 +510,7 @@ void imv_canvas_draw(struct imv_canvas *canvas)
+     glBindTexture(GL_TEXTURE_2D, 0);
+     return;
+   }
+-#endif
++#else
+   GLint viewport[4];
+   glGetIntegerv(GL_VIEWPORT, viewport);
+   glPushMatrix();
+@@ -558,6 +541,7 @@ void imv_canvas_draw(struct imv_canvas *canvas)
+   glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+   glDisable(GL_TEXTURE_RECTANGLE);
+   glPopMatrix();
++#endif
+ }
+ 
+ static GLint convert_upscaling_method(enum upscaling_method upscaling_method) {
+@@ -692,7 +673,7 @@ static void draw_bitmap(struct imv_canvas *canvas,
+     glBindTexture(GL_TEXTURE_2D, 0);
+     return;
+   }
+-#endif
++#else
+   GLint viewport[4];
+   glGetIntegerv(GL_VIEWPORT, viewport);
+ 
+@@ -751,6 +732,7 @@ static void draw_bitmap(struct imv_canvas *canvas,
+   glBindTexture(GL_TEXTURE_2D, 0);
+   glDisable(GL_TEXTURE_2D);
+   glPopMatrix();
++#endif
+ }
+ 
+ void imv_canvas_draw_image(struct imv_canvas *canvas, struct imv_image *image,

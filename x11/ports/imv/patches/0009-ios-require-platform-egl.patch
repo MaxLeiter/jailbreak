@@ -1,0 +1,60 @@
+Subject: [PATCH] imv: require platform EGL on iOS Wayland
+
+The legacy Wayland EGL surface path is ABI-unsafe on this iOS build because
+EGLNativeWindowType is not pointer-sized. Do not silently fall back to it after
+choosing the Apple/native path; fail early instead. Also assert the EGL
+initialize/config/make-current calls so a bad EGL setup cannot masquerade as a
+mapped-but-black renderer issue.
+
+--- a/src/wl_window.c
++++ b/src/wl_window.c
+@@ -837,7 +837,8 @@ static EGLDisplay imv_egl_get_wayland_display(struct wl_display *wl_display)
+       return display;
+     }
+   }
+-  return eglGetDisplay(wl_display);
++  imv_log(IMV_ERROR, "Wayland platform EGL display entrypoint unavailable\n");
++  return EGL_NO_DISPLAY;
+ }
+ 
+ static EGLSurface imv_egl_create_wayland_surface(EGLDisplay display, EGLConfig config,
+@@ -850,7 +851,8 @@ static EGLSurface imv_egl_create_wayland_surface(EGLDisplay display, EGLConfig c
+   if (create_platform_window_surface) {
+     return create_platform_window_surface(display, config, window, NULL);
+   }
+-  return eglCreateWindowSurface(display, config, window, NULL);
++  imv_log(IMV_ERROR, "Wayland platform EGL window-surface entrypoint unavailable\n");
++  return EGL_NO_SURFACE;
+ }
+ #endif
+ 
+@@ -879,7 +881,8 @@ static bool connect_to_wayland(struct imv_window *window)
+ #else
+   window->egl_display = eglGetDisplay(window->wl_display);
+ #endif
+-  eglInitialize(window->egl_display, NULL, NULL);
++  assert(window->egl_display != EGL_NO_DISPLAY);
++  assert(eglInitialize(window->egl_display, NULL, NULL));
+ 
+   return true;
+ }
+@@ -920,7 +923,8 @@ static void create_window(struct imv_window *window, int width, int height,
+ #endif
+   EGLConfig config;
+   EGLint num_config;
+-  eglChooseConfig(window->egl_display, attributes, &config, 1, &num_config);
++  EGLBoolean chose_config = eglChooseConfig(window->egl_display, attributes, &config, 1, &num_config);
++  assert(chose_config && num_config > 0);
+   window->egl_context = eglCreateContext(window->egl_display, config, EGL_NO_CONTEXT, context_attributes);
+   assert(window->egl_context);
+ 
+@@ -947,7 +951,8 @@ static void create_window(struct imv_window *window, int width, int height,
+ #else
+   window->egl_surface = eglCreateWindowSurface(window->egl_display, config, window->egl_window, NULL);
+ #endif
+-  eglMakeCurrent(window->egl_display, window->egl_surface, window->egl_surface, window->egl_context);
++  assert(window->egl_surface != EGL_NO_SURFACE);
++  assert(eglMakeCurrent(window->egl_display, window->egl_surface, window->egl_surface, window->egl_context));
+ 
+   window->width = width;
+   window->height = height;
