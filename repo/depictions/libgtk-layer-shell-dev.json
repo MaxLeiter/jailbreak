@@ -1,0 +1,50 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/libgtk-layer-shell-dev.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "development files for gtk-layer-shell"
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "0.9.2+ios1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "5.4 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Development"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "libgtk-layer-shell-dev"
+        }
+      ]
+    }
+  ]
+}

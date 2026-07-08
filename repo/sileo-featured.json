@@ -44,6 +44,11 @@
       "url": "https://repo.maxleiter.com/banners/breeze-dev.png"
     },
     {
+      "title": "brotli",
+      "package": "brotli",
+      "url": "https://repo.maxleiter.com/banners/brotli.png"
+    },
+    {
       "title": "Bun",
       "package": "bun",
       "url": "https://repo.maxleiter.com/banners/bun.png"
@@ -127,6 +132,11 @@
       "title": "extra-cmake-modules",
       "package": "extra-cmake-modules",
       "url": "https://repo.maxleiter.com/banners/extra-cmake-modules.png"
+    },
+    {
+      "title": "fast-float-dev",
+      "package": "fast-float-dev",
+      "url": "https://repo.maxleiter.com/banners/fast-float-dev.png"
     },
     {
       "title": "file-roller",
@@ -217,6 +227,11 @@
       "title": "gnome-text-editor",
       "package": "gnome-text-editor",
       "url": "https://repo.maxleiter.com/banners/gnome-text-editor.png"
+    },
+    {
+      "title": "gnumeric",
+      "package": "gnumeric",
+      "url": "https://repo.maxleiter.com/banners/gnumeric.png"
     },
     {
       "title": "gobject-introspection",
@@ -342,6 +357,11 @@
       "title": "kf6-bluezqt",
       "package": "kf6-bluezqt",
       "url": "https://repo.maxleiter.com/banners/kf6-bluezqt.png"
+    },
+    {
+      "title": "kf6-bluezqt-dev",
+      "package": "kf6-bluezqt-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-bluezqt-dev.png"
     },
     {
       "title": "kf6-bookmarks",
@@ -644,6 +664,11 @@
       "url": "https://repo.maxleiter.com/banners/kf6-pulseaudio-qt.png"
     },
     {
+      "title": "kf6-pulseaudio-qt-dev",
+      "package": "kf6-pulseaudio-qt-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-pulseaudio-qt-dev.png"
+    },
+    {
       "title": "kf6-qqc2-desktop-style",
       "package": "kf6-qqc2-desktop-style",
       "url": "https://repo.maxleiter.com/banners/kf6-qqc2-desktop-style.png"
@@ -719,9 +744,19 @@
       "url": "https://repo.maxleiter.com/banners/kf6-syntax-highlighting.png"
     },
     {
+      "title": "kf6-syntax-highlighting-dev",
+      "package": "kf6-syntax-highlighting-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-syntax-highlighting-dev.png"
+    },
+    {
       "title": "kf6-texteditor",
       "package": "kf6-texteditor",
       "url": "https://repo.maxleiter.com/banners/kf6-texteditor.png"
+    },
+    {
+      "title": "kf6-texteditor-dev",
+      "package": "kf6-texteditor-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-texteditor-dev.png"
     },
     {
       "title": "kf6-textwidgets",
@@ -929,6 +964,16 @@
       "url": "https://repo.maxleiter.com/banners/libatk1.0-dev.png"
     },
     {
+      "title": "libatkmm-1.6-1v5",
+      "package": "libatkmm-1.6-1v5",
+      "url": "https://repo.maxleiter.com/banners/libatkmm-1.6-1v5.png"
+    },
+    {
+      "title": "libatkmm-1.6-dev",
+      "package": "libatkmm-1.6-dev",
+      "url": "https://repo.maxleiter.com/banners/libatkmm-1.6-dev.png"
+    },
+    {
       "title": "libatspi2.0-0",
       "package": "libatspi2.0-0",
       "url": "https://repo.maxleiter.com/banners/libatspi2.0-0.png"
@@ -999,6 +1044,11 @@
       "url": "https://repo.maxleiter.com/banners/libavutil59.png"
     },
     {
+      "title": "libbrotli-dev",
+      "package": "libbrotli-dev",
+      "url": "https://repo.maxleiter.com/banners/libbrotli-dev.png"
+    },
+    {
       "title": "libbrotli1",
       "package": "libbrotli1",
       "url": "https://repo.maxleiter.com/banners/libbrotli1.png"
@@ -1022,6 +1072,16 @@
       "title": "libcairo2-dev",
       "package": "libcairo2-dev",
       "url": "https://repo.maxleiter.com/banners/libcairo2-dev.png"
+    },
+    {
+      "title": "libcairomm-1.0-1v5",
+      "package": "libcairomm-1.0-1v5",
+      "url": "https://repo.maxleiter.com/banners/libcairomm-1.0-1v5.png"
+    },
+    {
+      "title": "libcairomm-1.0-dev",
+      "package": "libcairomm-1.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libcairomm-1.0-dev.png"
     },
     {
       "title": "libcolord-dev",
@@ -1124,6 +1184,11 @@
       "url": "https://repo.maxleiter.com/banners/libexiv2-28.png"
     },
     {
+      "title": "libexiv2-dev",
+      "package": "libexiv2-dev",
+      "url": "https://repo.maxleiter.com/banners/libexiv2-dev.png"
+    },
+    {
       "title": "libfcft-dev",
       "package": "libfcft-dev",
       "url": "https://repo.maxleiter.com/banners/libfcft-dev.png"
@@ -1132,6 +1197,11 @@
       "title": "libfcft4",
       "package": "libfcft4",
       "url": "https://repo.maxleiter.com/banners/libfcft4.png"
+    },
+    {
+      "title": "libfmt-dev",
+      "package": "libfmt-dev",
+      "url": "https://repo.maxleiter.com/banners/libfmt-dev.png"
     },
     {
       "title": "libfmt12",
@@ -1309,9 +1379,29 @@
       "url": "https://repo.maxleiter.com/banners/libglib2.0-dev-bin.png"
     },
     {
+      "title": "libglibmm-2.4-1v5",
+      "package": "libglibmm-2.4-1v5",
+      "url": "https://repo.maxleiter.com/banners/libglibmm-2.4-1v5.png"
+    },
+    {
+      "title": "libglibmm-2.4-dev",
+      "package": "libglibmm-2.4-dev",
+      "url": "https://repo.maxleiter.com/banners/libglibmm-2.4-dev.png"
+    },
+    {
       "title": "libglu1-mesa",
       "package": "libglu1-mesa",
       "url": "https://repo.maxleiter.com/banners/libglu1-mesa.png"
+    },
+    {
+      "title": "libgmime-3.0-0",
+      "package": "libgmime-3.0-0",
+      "url": "https://repo.maxleiter.com/banners/libgmime-3.0-0.png"
+    },
+    {
+      "title": "libgmime-3.0-dev",
+      "package": "libgmime-3.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libgmime-3.0-dev.png"
     },
     {
       "title": "libgnome-autoar-0-0",
@@ -1332,6 +1422,16 @@
       "title": "libgnome-desktop-dev",
       "package": "libgnome-desktop-dev",
       "url": "https://repo.maxleiter.com/banners/libgnome-desktop-dev.png"
+    },
+    {
+      "title": "libgoffice-0.10-10",
+      "package": "libgoffice-0.10-10",
+      "url": "https://repo.maxleiter.com/banners/libgoffice-0.10-10.png"
+    },
+    {
+      "title": "libgoffice-0.10-dev",
+      "package": "libgoffice-0.10-dev",
+      "url": "https://repo.maxleiter.com/banners/libgoffice-0.10-dev.png"
     },
     {
       "title": "libgrapheme-dev",
@@ -1364,6 +1464,16 @@
       "url": "https://repo.maxleiter.com/banners/libgraphite2-utils.png"
     },
     {
+      "title": "libgsf-1-114",
+      "package": "libgsf-1-114",
+      "url": "https://repo.maxleiter.com/banners/libgsf-1-114.png"
+    },
+    {
+      "title": "libgsf-1-dev",
+      "package": "libgsf-1-dev",
+      "url": "https://repo.maxleiter.com/banners/libgsf-1-dev.png"
+    },
+    {
       "title": "libgtk-3-0",
       "package": "libgtk-3-0",
       "url": "https://repo.maxleiter.com/banners/libgtk-3-0.png"
@@ -1384,9 +1494,29 @@
       "url": "https://repo.maxleiter.com/banners/libgtk-4-dev.png"
     },
     {
+      "title": "libgtk-layer-shell-dev",
+      "package": "libgtk-layer-shell-dev",
+      "url": "https://repo.maxleiter.com/banners/libgtk-layer-shell-dev.png"
+    },
+    {
+      "title": "libgtk-layer-shell0",
+      "package": "libgtk-layer-shell0",
+      "url": "https://repo.maxleiter.com/banners/libgtk-layer-shell0.png"
+    },
+    {
       "title": "libgtkintl",
       "package": "libgtkintl",
       "url": "https://repo.maxleiter.com/banners/libgtkintl.png"
+    },
+    {
+      "title": "libgtkmm-3.0-1v5",
+      "package": "libgtkmm-3.0-1v5",
+      "url": "https://repo.maxleiter.com/banners/libgtkmm-3.0-1v5.png"
+    },
+    {
+      "title": "libgtkmm-3.0-dev",
+      "package": "libgtkmm-3.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libgtkmm-3.0-dev.png"
     },
     {
       "title": "libgtksourceview-5-0",
@@ -1427,6 +1557,11 @@
       "title": "libharfbuzz-gobject0",
       "package": "libharfbuzz-gobject0",
       "url": "https://repo.maxleiter.com/banners/libharfbuzz-gobject0.png"
+    },
+    {
+      "title": "libharfbuzz-icu0",
+      "package": "libharfbuzz-icu0",
+      "url": "https://repo.maxleiter.com/banners/libharfbuzz-icu0.png"
     },
     {
       "title": "libharfbuzz-subset0",
@@ -1534,6 +1669,11 @@
       "url": "https://repo.maxleiter.com/banners/libmimalloc.png"
     },
     {
+      "title": "libmimalloc-dev",
+      "package": "libmimalloc-dev",
+      "url": "https://repo.maxleiter.com/banners/libmimalloc-dev.png"
+    },
+    {
       "title": "libmozjs-115-0",
       "package": "libmozjs-115-0",
       "url": "https://repo.maxleiter.com/banners/libmozjs-115-0.png"
@@ -1589,6 +1729,11 @@
       "url": "https://repo.maxleiter.com/banners/libnghttp2-14.png"
     },
     {
+      "title": "libnghttp2-dev",
+      "package": "libnghttp2-dev",
+      "url": "https://repo.maxleiter.com/banners/libnghttp2-dev.png"
+    },
+    {
       "title": "libnotify-dev",
       "package": "libnotify-dev",
       "url": "https://repo.maxleiter.com/banners/libnotify-dev.png"
@@ -1607,6 +1752,16 @@
       "title": "libpango1.0-dev",
       "package": "libpango1.0-dev",
       "url": "https://repo.maxleiter.com/banners/libpango1.0-dev.png"
+    },
+    {
+      "title": "libpangomm-1.4-1v5",
+      "package": "libpangomm-1.4-1v5",
+      "url": "https://repo.maxleiter.com/banners/libpangomm-1.4-1v5.png"
+    },
+    {
+      "title": "libpangomm-1.4-dev",
+      "package": "libpangomm-1.4-dev",
+      "url": "https://repo.maxleiter.com/banners/libpangomm-1.4-dev.png"
     },
     {
       "title": "libpixman-1-0",
@@ -1632,6 +1787,16 @@
       "title": "libpng16-16",
       "package": "libpng16-16",
       "url": "https://repo.maxleiter.com/banners/libpng16-16.png"
+    },
+    {
+      "title": "libpng16-dev",
+      "package": "libpng16-dev",
+      "url": "https://repo.maxleiter.com/banners/libpng16-dev.png"
+    },
+    {
+      "title": "libpng16-tools",
+      "package": "libpng16-tools",
+      "url": "https://repo.maxleiter.com/banners/libpng16-tools.png"
     },
     {
       "title": "libpolkit-agent-1-0",
@@ -1739,14 +1904,34 @@
       "url": "https://repo.maxleiter.com/banners/libsharpyuv0.png"
     },
     {
+      "title": "libsigc++-2.0-0v5",
+      "package": "libsigc++-2.0-0v5",
+      "url": "https://repo.maxleiter.com/banners/libsigc++-2.0-0v5.png"
+    },
+    {
+      "title": "libsigc++-2.0-dev",
+      "package": "libsigc++-2.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libsigc++-2.0-dev.png"
+    },
+    {
       "title": "libsimdjson",
       "package": "libsimdjson",
       "url": "https://repo.maxleiter.com/banners/libsimdjson.png"
     },
     {
+      "title": "libsimdjson-dev",
+      "package": "libsimdjson-dev",
+      "url": "https://repo.maxleiter.com/banners/libsimdjson-dev.png"
+    },
+    {
       "title": "libsimdutf",
       "package": "libsimdutf",
       "url": "https://repo.maxleiter.com/banners/libsimdutf.png"
+    },
+    {
+      "title": "libsimdutf-dev",
+      "package": "libsimdutf-dev",
+      "url": "https://repo.maxleiter.com/banners/libsimdutf-dev.png"
     },
     {
       "title": "libsoup-3.0-0",
@@ -1764,6 +1949,16 @@
       "url": "https://repo.maxleiter.com/banners/libsqlite3-1.png"
     },
     {
+      "title": "libsqlite3-dev",
+      "package": "libsqlite3-dev",
+      "url": "https://repo.maxleiter.com/banners/libsqlite3-dev.png"
+    },
+    {
+      "title": "libssl-dev",
+      "package": "libssl-dev",
+      "url": "https://repo.maxleiter.com/banners/libssl-dev.png"
+    },
+    {
       "title": "libssl3",
       "package": "libssl3",
       "url": "https://repo.maxleiter.com/banners/libssl3.png"
@@ -1777,6 +1972,16 @@
       "title": "libstartup-notification0",
       "package": "libstartup-notification0",
       "url": "https://repo.maxleiter.com/banners/libstartup-notification0.png"
+    },
+    {
+      "title": "libstemmer-dev",
+      "package": "libstemmer-dev",
+      "url": "https://repo.maxleiter.com/banners/libstemmer-dev.png"
+    },
+    {
+      "title": "libstemmer0d",
+      "package": "libstemmer0d",
+      "url": "https://repo.maxleiter.com/banners/libstemmer0d.png"
     },
     {
       "title": "libswresample-dev",
@@ -1807,6 +2012,11 @@
       "title": "libtllist-dev",
       "package": "libtllist-dev",
       "url": "https://repo.maxleiter.com/banners/libtllist-dev.png"
+    },
+    {
+      "title": "libtommath-dev",
+      "package": "libtommath-dev",
+      "url": "https://repo.maxleiter.com/banners/libtommath-dev.png"
     },
     {
       "title": "libtommath1",
@@ -1884,6 +2094,11 @@
       "url": "https://repo.maxleiter.com/banners/libwayland0.png"
     },
     {
+      "title": "libwebp-dev",
+      "package": "libwebp-dev",
+      "url": "https://repo.maxleiter.com/banners/libwebp-dev.png"
+    },
+    {
       "title": "libwebp7",
       "package": "libwebp7",
       "url": "https://repo.maxleiter.com/banners/libwebp7.png"
@@ -1902,6 +2117,11 @@
       "title": "libwoff2-1",
       "package": "libwoff2-1",
       "url": "https://repo.maxleiter.com/banners/libwoff2-1.png"
+    },
+    {
+      "title": "libwoff2-dev",
+      "package": "libwoff2-dev",
+      "url": "https://repo.maxleiter.com/banners/libwoff2-dev.png"
     },
     {
       "title": "libx11-6",
@@ -2064,6 +2284,11 @@
       "url": "https://repo.maxleiter.com/banners/libxml2-dev.png"
     },
     {
+      "title": "libxml2-utils",
+      "package": "libxml2-utils",
+      "url": "https://repo.maxleiter.com/banners/libxml2-utils.png"
+    },
+    {
       "title": "libxmlb-dev",
       "package": "libxmlb-dev",
       "url": "https://repo.maxleiter.com/banners/libxmlb-dev.png"
@@ -2089,14 +2314,44 @@
       "url": "https://repo.maxleiter.com/banners/libxshmfence1.png"
     },
     {
+      "title": "libxslt1-dev",
+      "package": "libxslt1-dev",
+      "url": "https://repo.maxleiter.com/banners/libxslt1-dev.png"
+    },
+    {
+      "title": "libxslt1.1",
+      "package": "libxslt1.1",
+      "url": "https://repo.maxleiter.com/banners/libxslt1.1.png"
+    },
+    {
       "title": "libyaml-0-2",
       "package": "libyaml-0-2",
       "url": "https://repo.maxleiter.com/banners/libyaml-0-2.png"
     },
     {
+      "title": "libytnef-dev",
+      "package": "libytnef-dev",
+      "url": "https://repo.maxleiter.com/banners/libytnef-dev.png"
+    },
+    {
+      "title": "libytnef0",
+      "package": "libytnef0",
+      "url": "https://repo.maxleiter.com/banners/libytnef0.png"
+    },
+    {
       "title": "libz1",
       "package": "libz1",
       "url": "https://repo.maxleiter.com/banners/libz1.png"
+    },
+    {
+      "title": "luajit",
+      "package": "luajit",
+      "url": "https://repo.maxleiter.com/banners/luajit.png"
+    },
+    {
+      "title": "luajit-dev",
+      "package": "luajit-dev",
+      "url": "https://repo.maxleiter.com/banners/luajit-dev.png"
     },
     {
       "title": "Mesa GL demo utilities",
@@ -2124,9 +2379,19 @@
       "url": "https://repo.maxleiter.com/banners/opencode.png"
     },
     {
+      "title": "openssl",
+      "package": "openssl",
+      "url": "https://repo.maxleiter.com/banners/openssl.png"
+    },
+    {
       "title": "phonon4qt6",
       "package": "phonon4qt6",
       "url": "https://repo.maxleiter.com/banners/phonon4qt6.png"
+    },
+    {
+      "title": "phonon4qt6-dev",
+      "package": "phonon4qt6-dev",
+      "url": "https://repo.maxleiter.com/banners/phonon4qt6-dev.png"
     },
     {
       "title": "plasma-activities",
@@ -2187,6 +2452,11 @@
       "title": "plasma-pa",
       "package": "plasma-pa",
       "url": "https://repo.maxleiter.com/banners/plasma-pa.png"
+    },
+    {
+      "title": "plasma-pa-dev",
+      "package": "plasma-pa-dev",
+      "url": "https://repo.maxleiter.com/banners/plasma-pa-dev.png"
     },
     {
       "title": "plasma-wayland-protocols",
@@ -2329,9 +2599,29 @@
       "url": "https://repo.maxleiter.com/banners/qt6-wayland-dev.png"
     },
     {
+      "title": "shared-mime-info",
+      "package": "shared-mime-info",
+      "url": "https://repo.maxleiter.com/banners/shared-mime-info.png"
+    },
+    {
       "title": "slurp",
       "package": "slurp",
       "url": "https://repo.maxleiter.com/banners/slurp.png"
+    },
+    {
+      "title": "sqlite3",
+      "package": "sqlite3",
+      "url": "https://repo.maxleiter.com/banners/sqlite3.png"
+    },
+    {
+      "title": "swaybg",
+      "package": "swaybg",
+      "url": "https://repo.maxleiter.com/banners/swaybg.png"
+    },
+    {
+      "title": "swayimg",
+      "package": "swayimg",
+      "url": "https://repo.maxleiter.com/banners/swayimg.png"
     },
     {
       "title": "systemsettings",
@@ -2359,6 +2649,21 @@
       "url": "https://repo.maxleiter.com/banners/tigervnc-standalone-server.png"
     },
     {
+      "title": "tofi",
+      "package": "tofi",
+      "url": "https://repo.maxleiter.com/banners/tofi.png"
+    },
+    {
+      "title": "transmission",
+      "package": "transmission",
+      "url": "https://repo.maxleiter.com/banners/transmission.png"
+    },
+    {
+      "title": "waybar",
+      "package": "waybar",
+      "url": "https://repo.maxleiter.com/banners/waybar.png"
+    },
+    {
       "title": "wayland-protocols",
       "package": "wayland-protocols",
       "url": "https://repo.maxleiter.com/banners/wayland-protocols.png"
@@ -2367,6 +2672,16 @@
       "title": "wl-clipboard",
       "package": "wl-clipboard",
       "url": "https://repo.maxleiter.com/banners/wl-clipboard.png"
+    },
+    {
+      "title": "woff2",
+      "package": "woff2",
+      "url": "https://repo.maxleiter.com/banners/woff2.png"
+    },
+    {
+      "title": "wuffs-dev",
+      "package": "wuffs-dev",
+      "url": "https://repo.maxleiter.com/banners/wuffs-dev.png"
     },
     {
       "title": "San Francisco fonts for X11",
@@ -2484,6 +2799,11 @@
       "url": "https://repo.maxleiter.com/banners/xwayland.png"
     },
     {
+      "title": "yad",
+      "package": "yad",
+      "url": "https://repo.maxleiter.com/banners/yad.png"
+    },
+    {
       "title": "zathura",
       "package": "zathura",
       "url": "https://repo.maxleiter.com/banners/zathura.png"
@@ -2492,6 +2812,11 @@
       "title": "zathura-pdf-poppler",
       "package": "zathura-pdf-poppler",
       "url": "https://repo.maxleiter.com/banners/zathura-pdf-poppler.png"
+    },
+    {
+      "title": "zlib-dev",
+      "package": "zlib-dev",
+      "url": "https://repo.maxleiter.com/banners/zlib-dev.png"
     }
   ]
 }

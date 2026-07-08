@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "FFmpeg portable utility library - development"
+          "markdown": "FFmpeg utility library - development"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "5.1.2+ios2"
+          "text": "7.1.1+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "379.4 KiB"
+          "text": "516.4 KiB"
         },
         {
           "class": "DepictionTableTextView",
