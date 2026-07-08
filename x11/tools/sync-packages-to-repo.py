@@ -6,11 +6,90 @@ Usage:
     x11/tools/sync-packages-to-repo.py             # do it
 """
 
+import functools
 import os
 import re
 import shutil
 import sys
 from collections import defaultdict
+
+try:
+    import apt_pkg as _apt_pkg
+    _apt_pkg.init_system()
+except Exception:
+    _apt_pkg = None
+
+
+def _order_char(ch):
+    if not ch:
+        return 0
+    if ch == "~":
+        return -1
+    if ch.isalpha():
+        return ord(ch)
+    return ord(ch) + 256
+
+
+def _verrevcmp(a, b):
+    ia = ib = 0
+    la, lb = len(a), len(b)
+    while ia < la or ib < lb:
+        while (ia < la and not a[ia].isdigit()) or (ib < lb and not b[ib].isdigit()):
+            ca = a[ia] if ia < la and not a[ia].isdigit() else ""
+            cb = b[ib] if ib < lb and not b[ib].isdigit() else ""
+            oa, ob = _order_char(ca), _order_char(cb)
+            if oa != ob:
+                return -1 if oa < ob else 1
+            ia += 1 if ca else 0
+            ib += 1 if cb else 0
+        while ia < la and a[ia] == "0":
+            ia += 1
+        while ib < lb and b[ib] == "0":
+            ib += 1
+        enda = ia
+        while enda < la and a[enda].isdigit():
+            enda += 1
+        endb = ib
+        while endb < lb and b[endb].isdigit():
+            endb += 1
+        lena, lenb = enda - ia, endb - ib
+        if lena != lenb:
+            return -1 if lena < lenb else 1
+        if a[ia:enda] != b[ib:endb]:
+            return -1 if a[ia:enda] < b[ib:endb] else 1
+        ia, ib = enda, endb
+    return 0
+
+
+def version_compare(a, b):
+    """dpkg version-comparison semantics. Returns <0 / 0 / >0.
+
+    Prefers apt_pkg's libapt implementation when importable; otherwise uses the
+    vendored dpkg algorithm above. A naive lexicographic string sort is wrong
+    here — e.g. "+ios9" sorts *after* "+ios10", and "-3+ios1" vs "-4+ios1" can
+    tie-break wrong — which is what made the newest version selection pick a
+    stale deb once versions crossed a single->double digit boundary.
+    """
+    if _apt_pkg is not None:
+        return _apt_pkg.version_compare(a, b)
+
+    def split(v):
+        epoch, rest = v.split(":", 1) if ":" in v else ("0", v)
+        upstream, revision = rest.rsplit("-", 1) if "-" in rest else (rest, "0")
+        try:
+            epoch_i = int(epoch)
+        except ValueError:
+            epoch_i = 0
+        return epoch_i, upstream, revision
+
+    ea, ua, ra = split(a)
+    eb, ub, rb = split(b)
+    if ea != eb:
+        return -1 if ea < eb else 1
+    c = _verrevcmp(ua, ub)
+    if c:
+        return c
+    return _verrevcmp(ra, rb)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT_DIR = os.path.join(REPO_ROOT, "x11", "linux-build", "out")
@@ -76,7 +155,7 @@ def main():
             if version not in entries:
                 entries[version] = (path, "repo")
 
-        versions = sorted(entries.keys(), key=lambda v: v)
+        versions = sorted(entries.keys(), key=functools.cmp_to_key(version_compare))
         latest_version = versions[-1]
         latest_path, latest_src = entries[latest_version]
 

@@ -156,7 +156,19 @@ def _deb_verrevcmp(a, b):
         ia, ib = enda, endb
     return 0
 
+try:
+    import apt_pkg as _apt_pkg
+    _apt_pkg.init_system()
+except Exception:
+    _apt_pkg = None
+
 def compare_deb_versions(a, b):
+    # dpkg version-comparison semantics. Prefer apt_pkg when available (exact
+    # libapt implementation); otherwise fall back to the vendored algorithm
+    # below. Naive string sort is wrong here (e.g. "+ios9" vs "+ios10").
+    if _apt_pkg is not None:
+        return _apt_pkg.version_compare(a, b)
+
     def split(v):
         if ":" in v:
             epoch, rest = v.split(":", 1)
@@ -1068,6 +1080,22 @@ def main():
         stanzas.append("\n".join(lines))
         featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
                                 "url": f"{BASE_URL}/banners/{pid}.png"}
+
+    # The deb pool is additive and retains every superseded version file; index
+    # only the newest version of each package id, not every .deb present. Uses
+    # dpkg version-comparison semantics (compare_deb_versions), keyed on the
+    # control Package field (what apt resolves against), so stale duplicate
+    # stanzas never reach the generated Packages index.
+    latest_idx = {}
+    for i, p in enumerate(pkgs):
+        pid = p["ctrl"]["Package"]
+        if (pid not in latest_idx
+                or compare_deb_versions(p["ctrl"].get("Version", ""),
+                                        pkgs[latest_idx[pid]]["ctrl"].get("Version", "")) > 0):
+            latest_idx[pid] = i
+    keep = set(latest_idx.values())
+    pkgs = [p for i, p in enumerate(pkgs) if i in keep]
+    stanzas = [s for i, s in enumerate(stanzas) if i in keep]
 
     packages = "\n\n".join(stanzas) + "\n"
     open(os.path.join(REPO, "Packages"), "w").write(packages)
