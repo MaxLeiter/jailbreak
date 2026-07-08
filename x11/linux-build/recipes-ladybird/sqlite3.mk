@@ -7,14 +7,21 @@ endif
 # lemon/sqldiff; 3.52.0 is not in Debian. We use the official sqlite.org amalgamation tarball,
 # but its ./configure switched to autosetup at 3.49 (rejects autoconf's -C and our
 # DEFAULT_CONFIGURE_FLAGS), so we COMPILE THE AMALGAMATION DIRECTLY (sqlite3.c -> dylib), which
-# is simpler and fully under our control. Ladybird only needs libsqlite3 + headers. Soname
-# libsqlite3.0.dylib; AFTER_BUILD rewrites the install-id to @rpath. +ios1 deb marker.
+# is simpler and fully under our control. Ladybird only needs libsqlite3 + headers.
+#
+# SONAME MUST BE libsqlite3.1.dylib (Procursus soname patch), NOT the upstream-default
+# libsqlite3.0.dylib. The +ios1 deb shipped .0 and, because the package name libsqlite3-1
+# shadows the Procursus package at a higher version, apt upgraded devices onto it and DELETED
+# /var/jb/usr/lib/libsqlite3.1.dylib — killing every consumer (tracker/nautilus/GNOME, Qt6
+# sqlite driver/KDE) on 2026-07-08. We keep a libsqlite3.0.dylib -> .1 symlink for anything
+# linked against the .0 name in the +ios1 window (ladybird). Compat/current 9.0.0/9.6.0
+# match Procursus. AFTER_BUILD rewrites the install-id to @rpath. +ios2 deb marker.
 
 SUBPROJECTS         += sqlite3
 SQLITE3_VERSION     := 3.52.0
 SQLITE3_AUTOCONF_V  := 3520000
 SQLITE3_DL_YEAR     := 2026
-DEB_SQLITE3_V       ?= $(SQLITE3_VERSION)+ios1
+DEB_SQLITE3_V       ?= $(SQLITE3_VERSION)+ios2
 SQLITE3_DEFINES     := -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_MAX_VARIABLE_NUMBER=250000 \
 	-DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS=1 \
 	-DSQLITE_ENABLE_FTS5=1 -DSQLITE_ENABLE_JSON1=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
@@ -38,12 +45,14 @@ sqlite3:
 else
 sqlite3: sqlite3-setup
 	mkdir -p $(SQLITE3_STAGE_PREFIX)/lib/pkgconfig $(SQLITE3_STAGE_PREFIX)/include $(SQLITE3_STAGE_PREFIX)/bin
-	# shared library (libsqlite3.0.dylib) straight from the amalgamation
+	# shared library (libsqlite3.1.dylib, Procursus soname) straight from the amalgamation
 	cd $(BUILD_WORK)/sqlite3 && $(CC) $(CFLAGS) $(CPPFLAGS) $(SQLITE3_DEFINES) \
-		-dynamiclib -install_name $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libsqlite3.0.dylib \
-		-compatibility_version 9.6.0 -current_version 9.6.0 \
-		-o $(SQLITE3_STAGE_PREFIX)/lib/libsqlite3.0.dylib sqlite3.c $(LDFLAGS)
-	$(LN_S) libsqlite3.0.dylib $(SQLITE3_STAGE_PREFIX)/lib/libsqlite3.dylib
+		-dynamiclib -install_name $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libsqlite3.1.dylib \
+		-compatibility_version 9.0.0 -current_version 9.6.0 \
+		-o $(SQLITE3_STAGE_PREFIX)/lib/libsqlite3.1.dylib sqlite3.c $(LDFLAGS)
+	$(LN_S) libsqlite3.1.dylib $(SQLITE3_STAGE_PREFIX)/lib/libsqlite3.dylib
+	# ladybird linked against the .0 name while +ios1 was current; keep it resolvable
+	$(LN_S) libsqlite3.1.dylib $(SQLITE3_STAGE_PREFIX)/lib/libsqlite3.0.dylib
 	# static library
 	cd $(BUILD_WORK)/sqlite3 && $(CC) $(CFLAGS) $(CPPFLAGS) $(SQLITE3_DEFINES) -c sqlite3.c -o sqlite3.o
 	$(AR) rcs $(SQLITE3_STAGE_PREFIX)/lib/libsqlite3.a $(BUILD_WORK)/sqlite3/sqlite3.o
