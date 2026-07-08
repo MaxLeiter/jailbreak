@@ -212,20 +212,200 @@ elif "[Panel]\nToolBox=" not in text:
 path.write_text(text)
 PY
 
-for dir in flashlight nightcolor powermenu screenshot screenrotation; do
-  cmake="$src/quicksettings/$dir/CMakeLists.txt"
-  [ -f "$cmake" ] || continue
-  python3 - "$cmake" <<'PY'
-import re
+# quicksettings tiles audit (2026-07-08): five tiles had their C++ backend
+# CMakeLists blocks stripped down to a bare plasma_install_package() call,
+# leaving package data installed with no plugin behind it (silently dead
+# tiles). Policy: wire the ones with real capability, cleanly exclude the
+# rest instead of shipping a broken import.
+#
+#  - powermenu: WIRE. Its only call is SessionManagement::requestShutdown(),
+#    served by libkworkspace's XiosSessionBackend (same plasma-workspace
+#    build; see plasma-workspace-ios-fixes.sh), which shells out to
+#    xios-session. Leave its CMakeLists.txt exactly as upstream shipped it.
+#    NOTE for the plasma-workspace owner: XiosSessionBackend::shutdown()/
+#    reboot() already call runXiosSession(), but canShutdown()/canReboot()
+#    are hardcoded to return false, and SessionManagement::requestShutdown()
+#    early-returns when canShutdown() is false — so until those two flip to
+#    true (reboot() also just re-runs the same "stop" action as shutdown(),
+#    so canReboot() truthfully can stay false until reboot is distinguished),
+#    this tile compiles and links but the shutdown action stays a no-op.
+#  - screenshot: WIRE, but swap its backend. Upstream calls KWin's
+#    org.kde.KWin.ScreenShot2 D-Bus service, which this project's kwin does
+#    not implement. iosc does implement wlr-screencopy and grim is packaged
+#    as a thin CLI over it, so screenshotutil.cpp is rewritten below to shell
+#    out to grim instead of talking to KWin over D-Bus.
+#  - flashlight: HIDE. Needs real torch/udev hardware access; no backend
+#    exists on iOS. Unblock: an iOS torch bridge (e.g. AVCaptureDevice torch)
+#    exposed the way xios-fhs exposes battery/brightness.
+#  - nightcolor: HIDE. Needs KWin's night color GL/color pipeline, which is
+#    disabled on this iOS KWin build. Unblock: a working KWin color pipeline
+#    on iOS.
+#  - screenrotation: HIDE. Needs Qt::Sensors' QOrientationSensor (no iOS
+#    sensor plugin built here) plus KScreen's per-output auto-rotate policy
+#    (no KScreen daemon wired for iOS). This is unrelated to the project's
+#    device-orientation "native-feel" rotation wire (that resizes/reconnects
+#    the compositor surface on rotation; it doesn't expose an auto-rotate
+#    lock API a QML tile could bind to). Unblock: both of the above.
+#
+# Hidden tiles are excluded at add_subdirectory (never built/installed) and
+# dropped from the default quicksettings list, so the shell never tries to
+# instantiate a package with no plugin behind it.
+python3 - "$src/quicksettings/CMakeLists.txt" <<'PY'
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-text = re.sub(r"(?ms)^.*?plasma_install_package\(", "plasma_install_package(", text, count=1)
+for name in ("flashlight", "nightcolor", "screenrotation"):
+    old = f"add_subdirectory({name})\n"
+    new = f"# xios-quicksettings-hide ({name}): no iOS backend, see plasma-mobile-ios-fixes.sh\n# add_subdirectory({name})\n"
+    if old in text and new not in text:
+        text = text.replace(old, new, 1)
 path.write_text(text)
 PY
-done
+
+# screenshot: drop the KWin ScreenShot2 D-Bus interface generation now that
+# screenshotutil.cpp (rewritten below) shells out to grim instead.
+python3 - "$src/quicksettings/screenshot/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("qt_add_dbus_interfaces(DBUS_SRCS dbus/org.kde.KWin.ScreenShot2.xml)\n\n", "")
+text = text.replace("    screenshotutil.cpp\n    ${DBUS_SRCS}\n", "    screenshotutil.cpp\n")
+text = text.replace("    Qt::DBus\n", "")
+path.write_text(text)
+PY
+
+# screenshot: talk to grim (packaged, backed by iosc's wlr-screencopy
+# implementation) instead of KWin's unimplemented org.kde.KWin.ScreenShot2.
+python3 - "$src/quicksettings/screenshot/screenshotutil.h" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.write_text("""/*
+ * SPDX-FileCopyrightText: 2015 Marco Martin <mart@kde.org>
+ * SPDX-FileCopyrightText: 2018 Bhushan Shah <bshah@kde.org>
+ * SPDX-FileCopyrightText: 2022 by Devin Lin <devin@kde.org>
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#pragma once
+
+#include <QObject>
+
+// xios-screenshot-grim: shell out to grim (wlr-screencopy) instead of KWin's
+// org.kde.KWin.ScreenShot2 D-Bus service, which this project's kwin does not
+// implement. See plasma-mobile-ios-fixes.sh for the rationale.
+class ScreenShotUtil : public QObject
+{
+    Q_OBJECT
+
+public:
+    ScreenShotUtil(QObject *parent = nullptr);
+
+    Q_INVOKABLE void takeScreenShot();
+};
+""")
+PY
+
+python3 - "$src/quicksettings/screenshot/screenshotutil.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.write_text("""/*
+ * SPDX-FileCopyrightText: 2015 Marco Martin <mart@kde.org>
+ * SPDX-FileCopyrightText: 2018 Bhushan Shah <bshah@kde.org>
+ * SPDX-FileCopyrightText: 2022 by Devin Lin <devin@kde.org>
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#include "screenshotutil.h"
+
+#include <KLocalizedString>
+#include <KNotification>
+
+#include <QDateTime>
+#include <QDebug>
+#include <QDir>
+#include <QFile>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QTimer>
+#include <QUrl>
+
+constexpr int SCREENSHOT_DELAY = 200;
+
+ScreenShotUtil::ScreenShotUtil(QObject *parent)
+    : QObject{parent}
+{
+}
+
+void ScreenShotUtil::takeScreenShot()
+{
+    // wait ~200 ms for the rest of the closing animation
+    QTimer::singleShot(SCREENSHOT_DELAY, [=]() {
+        const QString picturesLocation = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+        if (picturesLocation.isEmpty()) {
+            qWarning() << "Couldn't find a writable location for the screenshot!";
+            return;
+        }
+
+        QDir picturesDir(picturesLocation);
+        if (!picturesDir.mkpath(QStringLiteral("Screenshots"))) {
+            qWarning() << "Couldn't create folder at" << picturesDir.path() + QStringLiteral("/Screenshots") << "to take screenshot.";
+            return;
+        }
+
+        const QString filePath = picturesDir.path()
+            + QStringLiteral("/Screenshots/Screenshot_%1.png").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss")));
+
+        // xios-screenshot-grim: grim captures via iosc's wlr-screencopy implementation.
+        auto *grim = new QProcess();
+        QObject::connect(grim, &QProcess::errorOccurred, grim, [grim](QProcess::ProcessError) {
+            qWarning() << "Screenshot failed: could not start grim:" << grim->errorString();
+            grim->deleteLater();
+        });
+        QObject::connect(grim, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), grim, [grim, filePath](int exitCode, QProcess::ExitStatus status) {
+            grim->deleteLater();
+            if (status != QProcess::NormalExit || exitCode != 0 || !QFile::exists(filePath)) {
+                qWarning() << "Screenshot failed (grim exit code" << exitCode << ")";
+                return;
+            }
+
+            KNotification *notif = new KNotification(QStringLiteral("captured"));
+            notif->setComponentName(QStringLiteral("plasma_mobile_quicksetting_screenshot"));
+            notif->setTitle(i18n("New Screenshot"));
+            notif->setUrls({QUrl::fromLocalFile(filePath)});
+            notif->setText(i18n("New screenshot saved to %1", filePath));
+            notif->sendEvent();
+        });
+        grim->start(QStringLiteral("grim"), {filePath});
+    });
+}
+""")
+PY
+
+# Clean config exclusion for the hidden tiles: don't offer them in the
+# default quicksettings list either, so nothing tries to load a package that
+# is no longer built. See the capability audit comment above.
+python3 - "$src/components/quicksettingsplugin/quicksettingsconfig.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+for name in ("flashlight", "nightcolor", "screenrotation"):
+    old = f'                                          QStringLiteral("org.kde.plasma.quicksetting.{name}"),\n'
+    if old in text:
+        text = text.replace(old, "", 1)
+path.write_text(text)
+PY
 
 # Give the QML providers a tiny shared bridge to existing Xios services instead
 # of inventing KDE-specific daemons. Battery/brightness use xios-fhs files;
@@ -1306,6 +1486,14 @@ QtObject {
     property bool muted: false
     property var paSinkModel: null
     signal volumeChanged()
+    // Preferred path: plasma-mobile already Depends: plasma-pa, which ships the
+    // native org.kde.plasma.private.volume QML binding (libplasma-volume-declarative,
+    // PulseObjectFilterModel) over kf6-pulseaudio-qt instead of shelling out to pactl.
+    // Not switched here: plasma-pa's declarative binding is under active iteration
+    // in this build (see libplasma/plasma-pa stub work) and this file's public API
+    // (volumeValue/muted/increase/decrease/muteVolume) has ~15 call sites across the
+    // mobile shell QML that would need to move onto a sink-filtered model together.
+    // Revisit once that binding stabilizes; bounded pactl probes work in the meantime.
     function pulse(command) {
         return ShellUtil.runCommand(". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null; xios_pulse_start >/dev/null 2>&1; " + command, 1500)
     }

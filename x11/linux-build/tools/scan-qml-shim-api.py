@@ -16,23 +16,25 @@ from pathlib import Path
 
 
 STUBBED_COMPONENTS = {
-    "ActionDrawer",
-    "ActionDrawerOpenSurface",
-    "PortraitContentContainer",
     "QuickSettings",
     "WallpaperSelector",
-    "LandscapeContentContainer",
     "QuickSettingsPanel",
     "StatusBar",
     "AudioApplet",
     "VolumeOSD",
-    "KRunnerScreen",
-    "KRunnerWidget",
-    "MediaControlsWidget",
-    "NotificationsWidget",
-    "PasswordBar",
-    "AppletListViewer",
 }
+# Pruned 2026-07-08: ActionDrawer, ActionDrawerOpenSurface,
+# PortraitContentContainer, LandscapeContentContainer, KRunnerScreen,
+# KRunnerWidget, MediaControlsWidget, NotificationsWidget, PasswordBar and
+# AppletListViewer were removed - each was already reverted to upstream QML
+# (recipes/plasma-mobile-ios-qml-stubs.sh's restore_upstream_file calls for
+# PasswordBar/AppletListViewer/folio+halcyon main.qml; the others are gone
+# from that script entirely) so they no longer correspond to any generated
+# stub. libplasma's Menu/ComboBox/DialogButtonBox/TabBar/SwipeView and
+# plasma-pa's volume applet main.qml were never listed here (they were only
+# ever stubbed in recipes/libplasma-ios-qml-stubs.sh and
+# recipes/plasma-pa-ios-qml-stubs.sh, both now reverted to no-ops - see those
+# files), so there is nothing to remove for them.
 
 VIEW_COMPONENTS = {"GridView", "ListView", "Flickable"}
 

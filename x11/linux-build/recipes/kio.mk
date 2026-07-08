@@ -15,6 +15,21 @@ endif
 # QtDBus branch instead of upstream's broad APPLE exclusion.
 # Enabling that branch exposes kiod; keep kiod6 but drop the macOS AppKit
 # LSUIElement agent/link path because the iPhoneOS SDK has no AppKit.
+# ios3: the old fix collapsed BOTH src/kiod/CMakeLists.txt if(APPLE) guards
+# to if(FALSE) via one blanket sed. That silenced the AppKit agent as intended
+# but ALSO skipped the second guard's ecm_mark_nongui_executable(kiod6) call,
+# so kiod6 built as a MACOSX_BUNDLE (kiod6.app/kiod6) while every kiod6 D-Bus
+# service file (org.kde.kiod6/kssld6/kpasswdserver6/kioexecd6, all four - kssld,
+# kpasswdserver and kioexecd are kiod PLUGINS loaded by the kiod6 host, not
+# separate binaries, so upstream correctly points all four Execs at kiod6) still
+# pointed Exec= at the plain path, so D-Bus activation silently failed on device.
+# Two targeted deletions replace the blanket guard-kill: drop the kiod_agent.mm
+# source line (first guard, harmless no-op target_sources once empty) and the
+# AppKit/CoreFoundation target_link_libraries line (second guard), leaving both
+# if(APPLE) blocks intact so ecm_mark_nongui_executable(kiod6) still runs (APPLE
+# is TRUE for the iOS cross-compile target too) and kiod6 installs as a plain
+# binary at libexec/kf6/kiod6, matching every service file - same mechanism kded6
+# already uses unconditionally (see kded.mk/kded's CMakeLists.txt).
 # KIOGui's file-manager DBus strategy has a Linux/FreeBSD declaration guard
 # but source-level WITH_QTDBUS use, so include Q_OS_IOS in that guard.
 # The file worker's NTFS hidden-attribute helper already has Darwin getxattr()
@@ -26,13 +41,14 @@ endif
 
 SUBPROJECTS += kio
 KIO_VERSION = $(KF6_VERSION)
-DEB_KIO_V ?= $(KIO_VERSION)+ios2
+DEB_KIO_V ?= $(KIO_VERSION)+ios3
 
 kio-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kio))
 	$(call EXTRACT_TAR,kio-$(KF6_VERSION).tar.xz,kio-$(KF6_VERSION),kio)
 	sed -i 's/if(UNIX AND NOT APPLE AND NOT ANDROID)/if(UNIX AND NOT ANDROID)/' $(BUILD_WORK)/kio/CMakeLists.txt
-	sed -i 's/^if (APPLE)$$/if (FALSE) # iOS: no AppKit kiod agent/' $(BUILD_WORK)/kio/src/kiod/CMakeLists.txt
+	sed -i '/kiod_agent\.mm/d' $(BUILD_WORK)/kio/src/kiod/CMakeLists.txt
+	sed -i '/-framework AppKit -framework CoreFoundation/d' $(BUILD_WORK)/kio/src/kiod/CMakeLists.txt
 	sed -i 's/defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)/defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD) || defined(Q_OS_IOS)/' $(BUILD_WORK)/kio/src/gui/openfilemanagerwindowjob_p.h
 	sed -i 's/ Widgets Network Concurrent Xml Test)/ Widgets Network Concurrent Xml)/' $(BUILD_WORK)/kio/CMakeLists.txt
 	sed -i 's/#ifdef Q_OS_MACOS/#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)/' $(BUILD_WORK)/kio/src/kioworkers/file/file_unix.cpp

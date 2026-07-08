@@ -1,43 +1,16 @@
 #!/usr/bin/env bash
-# Install first-light QML shims for Plasma PA applet views whose real UI uses
-# Flickable/ListView paths that currently crash Qt Quick on iOS shell startup.
+# Historically blanked org.kde.plasma.volume's contents/ui/main.qml down to a
+# 1x1 Item to dodge a QQuickFlickablePrivate SIGBUS at shell startup (the real
+# applet UI uses ListView/Flickable-derived views).
+#
+# That crash's root cause is fixed properly in
+# recipes/qtdeclarative-ios-fixes.sh (the Q_OS_IOS deceleration/maxVelocity
+# defaults for QQuickFlickablePrivate). With the fix in place the upstream
+# volume applet UI builds and runs without the SIGBUS, so the stand-in is
+# reverted: this script is now a no-op and the real upstream main.qml ships
+# unmodified. Kept (rather than deleted) so plasma-pa.mk's call site does not
+# need editing and so this history is visible if the Flickable fix is ever
+# reverted.
 set -euo pipefail
 
 root=${1:?usage: plasma-pa-ios-qml-stubs.sh <package-root>}
-
-write_file() {
-  local path="$1"
-  shift
-  mkdir -p "$(dirname "$path")"
-  printf '%s\n' "$@" > "$path"
-}
-
-volume_ui="$root/var/jb/usr/share/plasma/plasmoids/org.kde.plasma.volume/contents/ui"
-if [ -d "$volume_ui" ]; then
-  if [ -e "$volume_ui/main.qml" ] && [ ! -e "$volume_ui/main.qml.upstream" ]; then
-    cp "$volume_ui/main.qml" "$volume_ui/main.qml.upstream"
-  fi
-
-  write_file "$volume_ui/main.qml" \
-    "// First-light iOS shim: keep the volume applet package importable while avoiding ListView/Flickable startup crashes." \
-    "import QtQuick 2.15" \
-    "import QtQuick.Layouts 1.15" \
-    "import org.kde.plasma.core as PlasmaCore" \
-    "import org.kde.plasma.plasmoid 2.0" \
-    "" \
-    "PlasmoidItem {" \
-    "    id: root" \
-    "    property bool volumeFeedback: false" \
-    "    property bool globalMute: false" \
-    "    property string displayName: \"Audio Volume\"" \
-    "    property QtObject draggedStream: null" \
-    "    Layout.minimumWidth: 1" \
-    "    Layout.minimumHeight: 1" \
-    "    switchWidth: 1" \
-    "    switchHeight: 1" \
-    "    Plasmoid.icon: \"audio-volume-muted\"" \
-    "    Plasmoid.status: PlasmaCore.Types.PassiveStatus" \
-    "    compactRepresentation: Item { implicitWidth: 1; implicitHeight: 1 }" \
-    "    fullRepresentation: Item { implicitWidth: 1; implicitHeight: 1 }" \
-    "}"
-fi

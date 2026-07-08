@@ -12,8 +12,27 @@ endif
 #   - FEATURE_framework=OFF: Qt on Apple defaults to .framework bundles; we need plain .dylib in
 #     /var/jb/usr/lib (same reason ANGLE ships dylibs not frameworks). MUST be off.
 #   - The cocoa platform plugin needs AppKit (absent on iOS) -> not built; default QPA = offscreen.
-#   - ICU/OpenSSL remain OFF for now. GL/EGL is ON in round 3 via ANGLE/Metal; the
-#     default QPA stays offscreen so non-Wayland tools do not accidentally require a compositor.
+#   - ICU: ON as of round 5. History: Qt only requires ICU >= 50.1 (qtbase's
+#     qt_find_package(ICU 50.1 COMPONENTS i18n uc data) -> CMake's builtin FindICU), so the
+#     published 74.2 build was always version-compatible — what kept the feature OFF through
+#     round 4 was a PACKAGING GAP: the original libicu-dev_74.2 deb shipped icu-*.pc + the
+#     unversioned .dylib symlinks but ZERO usr/include/unicode/*.h. Fixed by the
+#     libicu-dev_74.2+ios1 repackage (headers added from the existing icu4c install tree —
+#     NOT an ICU rebuild/version bump; the runtime libicu74_74.2 deb is untouched).
+#     build-qt.sh now stages libicu74 + libicu-dev(+ios1) into build_base before make (the
+#     ANGLE staging pattern; BOTH debs — the -dev only has unversioned symlinks, the real
+#     dylibs are in libicu74), and the -DICU_ROOT=$(QT_SYSROOT) hint below points CMake's
+#     FindICU at it (version parsed from unicode/uvernum.h — no pkg-config needed; Qt's
+#     pkg_config feature is OFF cross). qt6-base's Depends gains libicu74
+#     (build_info/qt6-base.control, plain-name style like its other Depends).
+#     DO NOT switch this to the also-published ICU 78.3: ICU bakes U_ICU_VERSION_MAJOR_NUM
+#     into every exported symbol at header-compile-time (ucol_open_78 vs the 74 runtime's
+#     ucol_open_74), so 78-headers-over-74-runtime builds clean and fails to resolve on
+#     device — and swapping the runtime dep instead is the exact "unrequested ICU bump"
+#     that broke apt on device once already.
+#     OpenSSL stays OFF — separate, untouched track (FEATURE_openssl not in scope here).
+#     GL/EGL is ON in round 3 via ANGLE/Metal; the default QPA stays offscreen so non-Wayland
+#     tools do not accidentally require a compositor.
 # HOST tools: cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the IDENTICAL version
 # via QT_HOST_PATH. Target is 6.6.3 (Plasma 6.0/6.1 era), which no Debian release ships, so
 # build-qt.sh bootstraps a native host qtbase 6.6.3 from the same tarball into build_tools/ (one-time,
@@ -22,6 +41,9 @@ endif
 SUBPROJECTS    += qtbase
 QTBASE_VERSION := 6.6.3
 QT_MINOR       := 6.6
+# Round 5 (-5): ICU flipped ON (FEATURE_icu; QtCore links icuuc/icui18n/icudata 74.2) now
+# that the libicu-dev_74.2+ios1 repackage ships the unicode/ headers — full ICU collation/
+# locale/codecs in QtCore. Depends gains libicu74 (control template).
 # Round 4 (-4): QtSql + SQLite flipped ON for PlasmaActivitiesStats, which
 # plasma-workspace hard-requires before plasmashell.
 # Round 3 (-3): ANGLE/OpenGL ES + EGL flipped ON for QtQuick/QtWayland GPU clients.
@@ -37,7 +59,7 @@ QT_MINOR       := 6.6
 # widget deps are present) but links dead (vtable, no impl), so force printdialog +
 # printpreviewdialog OFF. kxmlgui wants the module for QPrinter, not the picker UI; nobody prints
 # from the iPad desktop. If a KF6 unit references QPrintDialog, patch it out KF6-side (plan Q3).
-DEB_QTBASE_V   ?= $(QTBASE_VERSION)-4+ios1
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)-5+ios1
 QTBASE_NINJA_JOBS ?= 4
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
@@ -206,6 +228,22 @@ else
 # -stdlib=libc++ ('type_traits' not found).
 # No `rm -rf build`: iterating on this recipe relies on incremental cmake/ninja reruns. Wipe the
 # build dir manually when the toolchain or cache-poisoning flags change.
+# Rationale for the remaining OFF flags below that don't already have inline prose (shim-audit
+# round; one line each, can't comment inline inside the backslash-continued cmake arg list):
+#   - FEATURE_rpath=OFF: LC_RPATH would bake this Docker build's DESTDIR/BUILD_STAGE path (a
+#     throwaway container path, not /var/jb) into every dylib/exe; the shipped layout resolves
+#     libs via plain install names in /var/jb/usr/lib instead — same reasoning as
+#     FEATURE_framework=OFF above (fixed absolute paths, no bundle/rpath relocation machinery).
+#   - FEATURE_glib=OFF: keeps this KDE/Qt track's event loop independent of glib so Plasma can
+#     build and run without hard-linking to the parallel GNOME/GTK track (the whole premise of
+#     the switchable-flavor "distribution chooser" design); GTK's own glib dependency lives
+#     entirely on its side.
+#   - FEATURE_zstd=OFF: no libzstd is built anywhere in this repo (checked recipes/*.mk and
+#     out/) — turning this on would add a find_package the cross build can't satisfy.
+#   - FEATURE_brotli=OFF: libbrotli1 IS built (out/libbrotli1_1.1.0+ios1...), but only on the
+#     separate procursus-vol-ladybird volume for Ladybird's own use — it is not staged into
+#     this qtbase build's sysroot, so enabling the feature here would still fail to find it
+#     without duplicating that staging step for a codec nothing in this stack currently needs.
 qtbase: qtbase-setup
 	mkdir -p $(BUILD_WORK)/qtbase/build
 	cd $(BUILD_WORK)/qtbase/build && cmake .. \
@@ -252,7 +290,8 @@ qtbase: qtbase-setup
 		-DGLESv2_INCLUDE_DIR=$(QT_ANGLE_INC) \
 		-DGLESv2_LIBRARY=$(QT_ANGLE_LIB)/libGLESv2.dylib \
 		-DFEATURE_vulkan=OFF \
-		-DFEATURE_icu=OFF \
+		-DFEATURE_icu=ON \
+		-DICU_ROOT=$(QT_SYSROOT) \
 		-DFEATURE_openssl=OFF \
 		-DINPUT_openssl=no \
 		-DFEATURE_dbus=ON \

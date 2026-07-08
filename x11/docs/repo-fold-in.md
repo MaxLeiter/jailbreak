@@ -20,7 +20,7 @@ Sileo copy comes from `repo/meta/xios-*.json` (already written).
 |---|---|---|---|
 | `xios-core` | iosc, angle, dbus, xios-desktop-defaults, xios-audio-server | **16.0.0** | published |
 | `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme | **16.5.0** | published; CLI GNOME first-light works, daemon/app concurrency cleanup remains |
-| `xios-kde` | xios-core + iosc >= 0.9.15, xios-session >= 1.0.46, kwin, plasma-workspace >= 6.1.5+ios10, plasma-desktop >= 6.1.5+ios5, plasma-mobile >= 6.1.5+ios13, plasma-nano >= 6.1.5+ios3, systemsettings, kscreen, qt6-wayland, kf6-breeze-icons, Ark, Gwenview, KWrite | 16.0.0 | built locally as 0.1.2; repo metadata not published yet |
+| `xios-kde` | xios-core + iosc >= 0.9.15, xios-session >= 1.0.46, kwin, plasma-workspace >= 6.1.5+ios10, plasma-desktop >= 6.1.5+ios5, plasma-mobile >= 6.1.5+ios13, plasma-nano >= 6.1.5+ios3, systemsettings, kscreen, qt6-wayland, kf6-breeze-icons, Ark, Gwenview, KWrite | 16.5.0 (was 16.0.0 pre-kwin-DRM-deps) | built locally as 0.1.2; repo metadata not published yet |
 | `xios-native` | xios-core + ioscd, xios-native-host | 16.0.0 | built locally; not published as a meta yet |
 | `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | published; Xwayland glamor IOSurface smoke passed |
 
@@ -52,6 +52,10 @@ Three layers, no custom logic:
    so a meta's stamp IS its flavor floor. Verified today (dry run):
    core 16.0.0, gnome 16.5.0, kde 16.0.0, native 16.0.0, x11 16.5.0,
    matching an independent closure computation over out/ + repo/debs.
+   (2026-07-08 recompute: kde is now 16.5.0 — kwin picked up
+   libdrm2/libgbm1/libdisplay-info1 Depends after this dry run, and those
+   carry the SDK-drift 16.5 floors described below. The xios-kde control
+   was bumped to match; a pinned libdrm2/libgbm1 rebuild would lower it.)
 2. **`Depends: firmware (>= X)`** on each meta (the standard Procursus
    idiom). This makes apt/dpkg themselves refuse on older iOS, covering
    managers that ignore MinimumOSVersion. The firmware floor is written by

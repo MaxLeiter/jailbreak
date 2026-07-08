@@ -104,6 +104,36 @@ else
   echo "WARN: no angle deb in /out; qtbase GL/EGL configure will fail until angle is staged"
 fi
 
+# Qt round 5 links QtCore against ICU (FEATURE_icu=ON, qtbase.mk). Stage the PUBLISHED 74.2
+# ICU debs into the sysroot, same pattern as ANGLE above. TWO debs on purpose:
+#   - libicu-dev_74.2+ios1: unicode/ headers + icu-*.pc + the UNVERSIONED .dylib symlinks.
+#     MUST be the +ios1 repackage — the original libicu-dev_74.2 (no +ios1) shipped ZERO
+#     headers (the gap that kept FEATURE_icu OFF through round 4; see qtbase.mk's ICU block).
+#   - libicu74_74.2: the real versioned dylibs the -dev symlinks point at; without it the
+#     symlinks dangle and the qtbase link step fails.
+# Glob is pinned to 74.2 — out/ ALSO carries libicu78/libicu-dev_78.3 (Ladybird's EXACT pin),
+# and compiling against 78 headers over the 74 runtime misses symbols at load time (ICU bakes
+# U_ICU_VERSION_MAJOR_NUM into every export: ucol_open_78 vs ucol_open_74). Do NOT "upgrade"
+# this glob to 78 without also switching qt6-base's Depends and re-validating apt on device.
+ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+if [ -n "$ICU_RUNTIME_DEB" ] && [ -n "$ICU_DEV_DEB" ]; then
+  echo "==> staging ICU 74.2 for Qt FEATURE_icu: ${ICU_RUNTIME_DEB} + ${ICU_DEV_DEB}"
+  rm -rf /tmp/icu-qt && mkdir -p /tmp/icu-qt
+  dpkg-deb -x "$ICU_RUNTIME_DEB" /tmp/icu-qt
+  dpkg-deb -x "$ICU_DEV_DEB" /tmp/icu-qt
+  mkdir -p "$BB"
+  cp -a /tmp/icu-qt/var/jb/* "$BB"/
+  if [ ! -f "$BB/usr/include/unicode/uvernum.h" ]; then
+    echo "ERROR: ICU staged but unicode/uvernum.h missing — headerless -dev deb? qtbase configure will fail." >&2
+    exit 1
+  fi
+else
+  echo "ERROR: ICU 74.2 debs not found in /out (need libicu74_74.2* AND libicu-dev_74.2+ios1*)." >&2
+  echo "       qtbase round 5 has FEATURE_icu=ON and cannot configure without them." >&2
+  exit 1
+fi
+
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 

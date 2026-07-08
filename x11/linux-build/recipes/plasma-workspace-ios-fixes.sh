@@ -796,13 +796,17 @@ public:
     {
     }
 
+    // Shutdown/reboot both map to "xios-session stop" (end the Plasma
+    // session); iOS owns actual device power. These gate the power-menu UI
+    // paths (SessionManagement::requestShutdown early-returns when false),
+    // so they must be true for the wired Mobile powermenu tile to act.
     bool canShutdown() const override
     {
-        return false;
+        return true;
     }
     bool canReboot() const override
     {
-        return false;
+        return true;
     }
     bool canSuspend() const override
     {

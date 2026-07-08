@@ -109,6 +109,16 @@ The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built L
 - Final repo SHA256s after the corrected publish/sign/upload path: `ark` `ab11d9782285a663baae3ee692781f363c926b235ff485f15acfce1b24b2ec2c`, `gwenview` `b1b9ffe605e2a3b7345747187c13ee2b4ed8bae7023bb95700c75fdf82a94ddf`, `kwrite` `821bacbac17dbb15652c19a886f3da41cfddc11673f643b8cf3d57cb937d87cd`, `libexiv2-28` `222ca4c73adb206aed712964047020863b680385a2553552b94f7907bd0a5b47`, `phonon4qt6` `8ac5df37331b47d650970be91c7920fcd7c77e4254de4984fb5097effd153b0f`, `kf6-syntax-highlighting` `bb032ce063972f6e010fce50ac3057edbc494a0858f8ccf8d7acff267fa46d00`, `kf6-texteditor` `edae449e4342a3eda19c197886c358047594a06eccc9dd9bcae5f455aa93da16`, and `qcoro6` `b6c18f442ab559a3fb12916248482100a527b051c4104153ddfd93a56dab6349`. `kwrite_24.08.0+ios2` also had to be uploaded through `bin/upload-debs-to-blob.sh` after the signed repo deploy, because `/debs/*` is redirected to Vercel Blob and `repo/debs` is ignored from static deploys.
 - On-device install/smoke completed on 2026-07-03 using direct production debs plus a local scp of the final `kwrite_24.08.0+ios2` deb after Blob upload. Installed state: `ark 24.08.0+ios1`, `gwenview 24.08.0+ios1`, `kwrite 24.08.0+ios2`, `libexiv2-28 0.28.3+ios2`, `phonon4qt6 4.12.0+ios1`, `kf6-syntax-highlighting 6.3.0+ios1`, `kf6-texteditor 6.3.0+ios1`, and `qcoro6 0.10.0+ios1`; all are `ii`, `apt-get check` exits 0, `/var/jb/usr/lib/libexiv2.0.28.3.dylib` exists, and `QT_QPA_PLATFORM=offscreen ark --version`, `gwenview --version`, and `kwrite --version` all print 24.08.0. The device's apt update path is still noisy because unrelated third-party sources have signature errors, so direct deb install was used for this smoke.
 
+## Manual debug runs over SSH
+- Nothing on the device sets `XDG_RUNTIME_DIR` outside the session machinery
+  (`xios-session-lib.sh` / `run-kde-plasma.sh` both set and 0700 it). Running a
+  KDE/Qt binary by hand over SSH therefore finds no Wayland socket (or worse,
+  inherits a stale value from a previous session). Before manual runs, mirror
+  the session fallback:
+  `export XDG_RUNTIME_DIR=/var/jb/tmp/xios-kde-runtime` (append `-<slot>` for
+  slot sessions). `bin/xios-kde-smoke` is unaffected — it goes through
+  `xios-session`, which sets this itself.
+
 ## Known KF6 walls pre-staged
 - host qtwaylandscanner via QT_HOST_PATH; kguiaddons/kidletime need `-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner` in KF6_CMAKE_FLAGS (same trap qt-modules hit, adopted). if(APPLE) whack-a-mole pre-staged as audited TABLE seds for 5 risky units (3ccd62a). Downward gates already closed: qtbase round-2 printsupport (kxmlgui), qt5compat (KIO).
 

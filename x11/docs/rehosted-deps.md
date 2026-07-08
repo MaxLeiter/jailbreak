@@ -40,6 +40,19 @@ Our published packages and their roots into this closure:
 Notably `fontconfig`'s alternative dep `firmware (>= 14.0) | libexpat1` is
 satisfied by the base `firmware` package, so `libexpat1` is not needed.
 
+**Not rehosted for a different reason — a real Procursus package, resolved
+live**: `qt6-base`'s `Depends: libpcre2-16-0` is outside the X11/font closure
+this doc tracks, but it's not a gap either. `libpcre2-16-0` is a genuine
+Procursus binary (built by their `pcre2.mk`, `--enable-pcre2-16
+--enable-pcre2-32`, one of five sibling packages alongside
+`libpcre2-{8,32}-0`/`libpcre2-posix3`/`libpcre2-dev`/`pcre2-utils`), confirmed
+present on the live index as of 2026-07-08:
+`apt.procurs.us` dist `1900/main iphoneos-arm64`, `libpcre2-16-0` v10.43,
+`Filename: pool/main/iphoneos-arm64-rootless/1900/pcre2/libpcre2-16-0_10.43_iphoneos-arm64.deb`,
+`Depends: libiosexec1 (>= 1.3.1)` only (already in the apt-closure list above).
+Any rootless-1900 device with the standard Procursus source configured
+resolves it there; no repo action needed.
+
 ## Rehosted packages (26)
 
 All `iphoneos-arm64` except `libx11-data` and `xkeyboard-config` which are

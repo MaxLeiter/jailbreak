@@ -929,6 +929,14 @@ QtObject {
     property bool muted: false
     property var paSinkModel: null
     signal volumeChanged()
+    // Preferred path: plasma-mobile already Depends: plasma-pa, which ships the
+    // native org.kde.plasma.private.volume QML binding (libplasma-volume-declarative,
+    // PulseObjectFilterModel) over kf6-pulseaudio-qt instead of shelling out to pactl.
+    // Not switched here: plasma-pa's declarative binding is under active iteration
+    // in this build (see libplasma/plasma-pa stub work) and this file's public API
+    // (volumeValue/muted/increase/decrease/muteVolume) has ~15 call sites across the
+    // mobile shell QML that would need to move onto a sink-filtered model together.
+    // Revisit once that binding stabilizes; bounded pactl probes work in the meantime.
     function pulse(command) {
         return ShellUtil.runCommand(". /var/jb/etc/profile.d/xios-pulse.sh 2>/dev/null; xios_pulse_start >/dev/null 2>&1; " + command, 1500)
     }
@@ -1344,6 +1352,34 @@ if [ -d "$lockscreen" ]; then
   restore_upstream_file "$lockscreen/PasswordBar.qml"
 fi
 
+# KRunnerScreen search audit (2026-07-08): this Item is NOT a crash workaround
+# (it predates the QQuickFlickablePrivate SIGBUS fix in
+# qtdeclarative-ios-fixes.sh by several commits — git blame puts it in the
+# very first rootless/rootful groundwork commit) and it does NOT follow the
+# restore_upstream_file pattern used elsewhere in this script, because there
+# is no upstream file to restore: org.kde.milou is not part of plasma-mobile
+# at all. Upstream, it is its own KDE Plasma release tarball ("milou", same
+# release train/version as plasma-mobile) shipping a C++ QML plugin
+# (ResultsModel wrapping KRunner::RunnerManager, backed by kf6-runner) plus
+# this ResultsListView.qml as its QML frontend. This project never builds
+# that package, so KRunnerScreen/KRunnerWidget (which `import org.kde.milou
+# as Milou` and bind a real result model) get this inert fallback instead.
+#
+# Kicker's search (applets/kicker/plugin, in plasma-workspace) is NOT a
+# substitute: it is its own self-contained C++ QML plugin
+# (org.kde.plasma.private.kicker, libkickerplugin.dylib) that links
+# KF6::Runner directly and is not exposed as a public/reusable QML type
+# outside that private import.
+#
+# Real fix: add a new recipes/milou.mk (+ milou-ios-fixes.sh) that downloads
+# the milou tarball via the same PLASMA_URL macro plasma-mobile.mk uses,
+# builds it against the already-built kf6-runner, and wires it into whatever
+# drives the plasma-mobile build wave (this project's TABLE in
+# tools/gen-kf6-recipes.py does not cover plasma-mobile/krunner/milou-tier
+# packages, so this is a new top-level package + build-order entry, not a
+# TABLE edit). Out of scope here: plasma-mobile-ios-qml-stubs.sh is not
+# allowed to author new sibling packages, so this stub stays in place as a
+# safe no-op until milou is built.
 milou="$qml/org/kde/milou"
 mkdir -p "$milou"
 write_file "$milou/qmldir" \

@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://kde.org/
-Depends: qt6-declarative, qt6-shadertools, kf6-config, kf6-guiaddons, kf6-i18n, kf6-widgetsaddons
+Depends: qt6-declarative, qt6-shadertools, kf6-config, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-widgetsaddons
 Description: KDeclarative for the Xios desktop
  Integration helpers for using KDE frameworks from QtQuick.
  .

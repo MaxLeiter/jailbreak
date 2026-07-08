@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 # plasma-pa-ios-fixes.sh — first-light cuts for Plasma Mobile volume support.
+#
+# NOTE: src/kcm (kcm_pulseaudio) and src/kded (audioshortcutsservice, global
+# volume-key shortcuts) were previously deferred here ("defer KCM package" /
+# "defer kded shortcuts service") for schedule reasons, not a technical wall.
+# Both subdirectories only need libs the top-level CMakeLists.txt already
+# find_package()s unconditionally for the whole build (KCMUtils/KCMUtilsQuick,
+# GlobalAccel, CoreAddons, I18n, ConfigCore/Gui, DBusAddons, PulseAudioQt), all
+# already staged and already in plasma-pa's control Depends (build_info/
+# plasma-pa.control). The real PulseAudio 17 daemon and kglobalacceld both
+# exist in this stack now, so both subdirectories are re-enabled below.
 set -euo pipefail
 
 src=${1:?usage: plasma-pa-ios-fixes.sh <plasma-pa-source-dir>}
@@ -27,8 +37,6 @@ p = pathlib.Path(sys.argv[1])
 s = p.read_text()
 s = s.replace("    canberracontext.cpp\n", "")
 s = s.replace("    Canberra::Canberra\n", "")
-s = s.replace("add_subdirectory(kcm)\n", "# ios: defer KCM package\n")
-s = s.replace("add_subdirectory(kded)\n", "# ios: defer kded shortcuts service\n")
 p.write_text(s)
 PY
 

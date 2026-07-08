@@ -24,7 +24,9 @@ endif
 
 SUBPROJECTS           += qtdeclarative
 QTDECLARATIVE_VERSION := 6.6.3
-DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios2
+# +ios3: qml_profiler/qml_preview flipped ON (shim-audit round) — qt6-declarative-dev now
+# ships qmlprofiler/qmlpreview, a real content change over +ios2, so bump the deb revision.
+DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios3
 
 qtdeclarative-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtdeclarative))
@@ -42,19 +44,22 @@ else
 # No `rm -rf build` (incremental iteration, qtbase.mk).
 qtdeclarative: qtdeclarative-setup
 	mkdir -p $(BUILD_WORK)/qtdeclarative/build
-# qml_profiler/qml_preview OFF: their tools/ subdirs pass the `NOT IOS` gate (we
-# masquerade as Darwin for the MACOS-sed approach), and a cross build hard-requires
-# every gated tool to exist in the HOST Qt6QmlTools package — but the host build
-# (default features) never produced qmlprofiler/qmlpreview. Cost: no on-device QML
-# profiler/preview *services*; re-enable both features host+cross together if wanted.
+# qml_profiler/qml_preview RE-ENABLED (shim-audit round, host+cross together as the prior
+# comment prescribed): their tools/ subdirs pass the `NOT IOS` gate (we masquerade as Darwin
+# for the MACOS-sed approach), and a cross build hard-requires every gated tool to exist in
+# the HOST Qt6QmlTools package. build-qt-modules.sh's `host_module qtdeclarative` call now
+# also passes -DFEATURE_qml_profiler=ON -DFEATURE_qml_preview=ON (keyed off a bin/qmlprofiler
+# marker instead of libexec/qmlcachegen, so a host tree built before this change is detected
+# as stale and rebuilt rather than silently reused), so the host Qt6QmlTools package carries
+# qmlprofiler/qmlpreview and this cross build's tools/ gate is satisfied on both sides.
 # qmltestrunner has the same gate shape but Qt6Test is absent from build_base, so
-# QuickTest (its TARGET condition) never appears.
+# QuickTest (its TARGET condition) never appears — left off, out of scope here.
 	cd $(BUILD_WORK)/qtdeclarative/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \
 		-DFEATURE_qml_jit=OFF \
-		-DFEATURE_qml_profiler=OFF \
-		-DFEATURE_qml_preview=OFF
+		-DFEATURE_qml_profiler=ON \
+		-DFEATURE_qml_preview=ON
 # OOM guard (7.7GiB Docker VM, 16-way default ninja): qmldom TUs are the memory
 # hogs; full-speed pass keeps its survivors, -j2 retry finishes the stragglers.
 	+ninja -C $(BUILD_WORK)/qtdeclarative/build || ninja -C $(BUILD_WORK)/qtdeclarative/build -j2

@@ -79,6 +79,9 @@ text = re.sub(
     r"QPlatformMenuBar \*KdePlatformTheme::createPlatformMenuBar\(\) const\n\{.*?\n\}\n\n// Force QtQuickControls",
     """QPlatformMenuBar *KdePlatformTheme::createPlatformMenuBar() const
 {
+    // iosc/Wayland has no global menu-bar convention (no top-level menu bar
+    // surface like macOS or a DBusMenu host like Plasma X11); returning
+    // nullptr keeps Qt Widgets apps rendering their menus in-window instead.
     return nullptr;
 }
 

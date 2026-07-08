@@ -90,7 +90,12 @@ host_module() { # <module> <marker-relative-to-HOSTQT> [extra cmake flags...]
 }
 
 host_module qtshadertools bin/qsb
-host_module qtdeclarative libexec/qmlcachegen -DFEATURE_qml_jit=OFF
+# Marker is bin/qmlprofiler, not libexec/qmlcachegen: qmlprofiler only gets installed when
+# FEATURE_qml_profiler=ON, so a host tree built before this flag was added (marker missing)
+# is correctly detected as stale and rebuilt with the new flags, instead of the qmlcachegen-only
+# marker matching and silently skipping a host Qt6QmlTools that lacks qmlprofiler/qmlpreview
+# (see recipes/qtdeclarative.mk's cross-build comment for why the cross build needs both).
+host_module qtdeclarative bin/qmlprofiler -DFEATURE_qml_jit=OFF -DFEATURE_qml_profiler=ON -DFEATURE_qml_preview=ON
 # host qtwayland needs host wayland headers + the plain wayland-scanner; the CROSS qtwayland
 # also find_program()s wayland-scanner on the host (Wayland::Scanner), so install both here
 # even if the host qtwayland is already built.
