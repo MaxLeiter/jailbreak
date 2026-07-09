@@ -69,6 +69,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 
@@ -649,7 +650,9 @@ static pid_t peer_pid_for_fd(int fd)
 
 /* Capture identity at accept time, BEFORE the request is read: strays that
  * fire one line and exit are gone by the time the line is parsed, which is
- * how the 2026-07-08 session-stomp loop stayed anonymous. */
+ * how the 2026-07-08 session-stomp loop stayed anonymous. When proc_pidpath
+ * is refused (proc_info is entitlement-gated on iOS) fall back to the
+ * kinfo_proc comm name via sysctl, which TaskManager proved reachable. */
 static void capture_peer(int fd, struct peer_info *p)
 {
     memset(p, 0, sizeof(*p));
@@ -664,6 +667,14 @@ static void capture_peer(int fd, struct peer_info *p)
     if (p->pid > 0)
         (void)proc_pidpath((int)p->pid, p->path, (uint32_t)sizeof(p->path));
 #endif
+    if (p->pid > 0 && !p->path[0]) {
+        struct kinfo_proc kp;
+        size_t len = sizeof(kp);
+        int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)p->pid };
+        if (sysctl(mib, 4, &kp, &len, NULL, 0) == 0 && len > 0 &&
+            kp.kp_proc.p_comm[0])
+            snprintf(p->path, sizeof(p->path), "comm:%.16s", kp.kp_proc.p_comm);
+    }
 }
 
 static void format_peer(const struct peer_info *p, char *dst, size_t dst_len)
@@ -688,12 +699,15 @@ static void format_peer(const struct peer_info *p, char *dst, size_t dst_len)
 }
 
 /* The Xios display app (the in-app session picker) runs as mobile but speaks
- * for the user; recognize it by its resolved binary path. */
+ * for the user; recognize it by its resolved binary path, or by its comm name
+ * when only the sysctl fallback was available. */
 static int peer_is_xios_app(const struct peer_info *p)
 {
     static const char suffix[] = "/Xios.app/Xios";
     size_t len = strlen(p->path), slen = sizeof(suffix) - 1;
-    return len >= slen && strcmp(p->path + len - slen, suffix) == 0;
+    if (len >= slen && strcmp(p->path + len - slen, suffix) == 0)
+        return 1;
+    return strcmp(p->path, "comm:Xios") == 0;
 }
 
 static int session_state_transitional(const char *state)
@@ -702,12 +716,55 @@ static int session_state_transitional(const char *state)
            strcmp(state, "relaunching") == 0 || strcmp(state, "stopping") == 0;
 }
 
+/* Any live compositor rendezvous, wherever the flavor puts it: wayland-0
+ * (iosc/mutter/gnome), wayland-native-0 (per-app hosts), or KWin's sockets
+ * inside the private KDE runtime dir (the KDE preset creates NO
+ * /var/jb/tmp/wayland-0 — probing only that path is how the first cut of
+ * this guard failed open). */
+static int compositor_socket_live(void)
+{
+    char p[PATH_MAX];
+    if (wayland_sock_live(mode_cfg(0)->wayland_sock)) return 1;
+    if (wayland_sock_live(mode_cfg(1)->wayland_sock)) return 1;
+    tmp_path(p, sizeof(p), "xios-kde-runtime/kwin-ios-test");
+    if (wayland_sock_live(p)) return 1;
+    tmp_path(p, sizeof(p), "xios-kde-runtime/wayland-0");
+    if (wayland_sock_live(p)) return 1;
+    return 0;
+}
+
+/* Is any compositor/shell process alive (the things a session teardown would
+ * kill)? sysctl KERN_PROC_ALL + p_comm match: no exec, no PATH assumptions,
+ * proven reachable on-device by TaskManager. 1 = yes, 0 = no, -1 = unknown. */
+static int compositor_process_alive(void)
+{
+    static const char *comms[] = {
+        "iosc", "kwin_wayland", "plasmashell",
+        "gnome-shell", "gnome-session", "mutter", NULL
+    };
+    int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
+    size_t len = 0;
+    if (sysctl(mib, 3, NULL, &len, NULL, 0) != 0 || len == 0) return -1;
+    len += len / 4;                     /* headroom: procs appear between calls */
+    struct kinfo_proc *procs = malloc(len);
+    if (!procs) return -1;
+    if (sysctl(mib, 3, procs, &len, NULL, 0) != 0) { free(procs); return -1; }
+    int n = (int)(len / sizeof(struct kinfo_proc));
+    int alive = 0;
+    for (int i = 0; i < n && !alive; i++)
+        for (int j = 0; comms[j]; j++)
+            if (strcmp(procs[i].kp_proc.p_comm, comms[j]) == 0) { alive = 1; break; }
+    free(procs);
+    return alive;
+}
+
 /* Is a desktop session running well enough that a stray request must not tear
- * it down? Writes the active session's name into <active>. A live wayland
- * listener is the ground truth — a stale status file or marker left by a
- * crashed session never blocks recovery — with one grace: while xios-session
- * reports a switch in flight (transitional state + active marker) the socket
- * is legitimately absent, and the bring-up still deserves protection. */
+ * it down? Writes the active session's name into <active>. Live compositor
+ * evidence (rendezvous socket or process) is the ground truth — a stale
+ * status file or marker left by a crashed session never blocks recovery —
+ * with one grace: while xios-session reports a switch in flight (transitional
+ * state + active marker) the sockets are legitimately absent, and the
+ * bring-up still deserves protection. */
 static int active_session_healthy(char *active, size_t active_len)
 {
     char sp[64], st[64];
@@ -717,16 +774,9 @@ static int active_session_healthy(char *active, size_t active_len)
     read_session_status(sp, sizeof(sp), st, sizeof(st));
     if (have_marker && st[0] && session_state_transitional(st))
         return 1;
-    if (wayland_sock_live(mode_cfg(0)->wayland_sock)) {
+    if (compositor_socket_live() || compositor_process_alive() == 1) {
         if (!have_marker)
             snprintf(active, active_len, "unknown");
-        return 1;
-    }
-    /* No classic session: a live native compositor still counts — the
-     * teardown a session start runs would kill the native hosts just the
-     * same. */
-    if (wayland_sock_live(mode_cfg(1)->wayland_sock)) {
-        snprintf(active, active_len, "native");
         return 1;
     }
     return 0;

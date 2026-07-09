@@ -194,8 +194,23 @@ sandbox permits the `connect()` to the daemon socket). That's all it needs.
 
 `ioscd` listens on `/var/jb/tmp/ioscd.sock` (mode 0666 so `mobile` launchers can
 connect). It accepts app launches (`LAUNCH[_NATIVE|_CLASSIC]\t<app_id>\t<exec>`)
-and session switches (`SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>`). For each
-launch:
+and session requests (`SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\t<slot>`, plus
+`SESSION_ENSURE` with the same payload).
+
+Session requests are **policy-gated** (added 2026-07-08 after stray uid-501
+`SESSION gnome` requests repeatedly tore down a healthy KDE desktop): explicit
+switches are honored only from root (the `xios-session` CLI) or the Xios in-app
+picker (peer identified at accept time via `LOCAL_PEERPID` + comm/path lookup).
+Every other peer — and `SESSION_ENSURE` from anyone — gets *ensure* semantics:
+`SESSION_ACTIVE` no-op when the requested preset is already the healthy active
+session, `ERR` when a different session is healthy, and an actual start only
+when no compositor is alive (socket probes across wayland-0/native/KDE-runtime
+plus a `KERN_PROC_ALL` comm scan). Presets that fail cool down (2/10/30 min
+escalating) and non-root starts are debounced 20s, so a broken preset cannot be
+retried into a desktop-killing loop. The additive `app` preset and slotted
+sessions bypass the policy — they never tear the desktop down.
+
+For each launch:
 
 1. **Ensure iosc is up.** If the compositor pid is dead or `wayland-0` is gone,
    it clears the stale socket and starts `iosc` exactly like `run-iosc.sh`
@@ -247,8 +262,9 @@ per-app tweaking for well-behaved GNOME apps.
 
 - `ioscd.sock` is world-connectable on a single-user device; its verbs map to
   things a local rootless desktop process can already request through the CLI or
-  launcher apps (`LAUNCH`, `SESSION`). Acceptable; can be tightened to a
-  `mobile`-group socket later.
+  launcher apps (`LAUNCH`, `SESSION`). Destructive `SESSION` verbs are gated by
+  the policy in §6 (2026-07-08), so a stray mobile process can no longer tear
+  down a healthy desktop or retry a failing preset in a loop.
 - `ioscd` runs as root but only ever `exec`s fixed binaries (`iosc`, `uiopen`,
   `dbus-run-session`/`bash -lc <exec>`). `<exec>` comes from an installed
   `.desktop` the user chose to make a launcher for — same trust level as running
