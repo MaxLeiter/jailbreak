@@ -210,3 +210,29 @@ text = text.replace(
 text = text.replace("ecm_install_po_files_as_qm(poqm)", "# ios-bringup-no-linguist: ecm_install_po_files_as_qm(poqm)")
 path.write_text(text)
 PY
+
+# The iOS cmake toolchain defaults CMAKE_MACOSX_BUNDLE=ON, so both CLI executables
+# built here turn into .app bundles. That routes kscreen-doctor to ECM's BUNDLE
+# DESTINATION (/Applications/KDE), which KF6_COPY_RUNTIME never packages (the +ios1
+# deb shipped the zsh completion but no binary), and it buries kscreen_backend_launcher
+# inside an .app so the Exec path in org.kde.kscreen.service points at nothing.
+# Keep both as plain binaries (kiod6 precedent, kio.mk +ios3): doctor lands in usr/bin,
+# launcher in libexec/kf6 where the D-Bus service file expects it.
+python3 - "$src/src/doctor/CMakeLists.txt" "$src/src/backendlauncher/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+for arg, target, anchor in [
+    (sys.argv[1], "kscreen-doctor", "add_executable(kscreen-doctor main.cpp doctor.cpp)"),
+    (sys.argv[2], "kscreen_backend_launcher", "add_executable(kscreen_backend_launcher ${backendlauncher_SRCS})"),
+]:
+    path = Path(arg)
+    text = path.read_text()
+    fix = f"set_target_properties({target} PROPERTIES MACOSX_BUNDLE FALSE)"
+    if fix in text:
+        continue
+    if anchor not in text:
+        raise SystemExit(f"{target} add_executable line not found")
+    text = text.replace(anchor, f"{anchor}\n{fix}")
+    path.write_text(text)
+PY

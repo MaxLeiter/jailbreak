@@ -6,7 +6,7 @@ endif
 
 SUBPROJECTS += libkscreen
 LIBKSCREEN_VERSION = $(PLASMA_VERSION)
-DEB_LIBKSCREEN_V ?= $(LIBKSCREEN_VERSION)+ios1
+DEB_LIBKSCREEN_V ?= $(LIBKSCREEN_VERSION)+ios2
 
 libkscreen-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,libkscreen))
