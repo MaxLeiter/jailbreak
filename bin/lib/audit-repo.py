@@ -9,8 +9,17 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import os
 import sys
+
+
+def _load_make_repo():
+    path = os.path.join(os.path.dirname(__file__), "make-repo.py")
+    spec = importlib.util.spec_from_file_location("make_repo", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 HASH_FIELDS = {
@@ -95,14 +104,33 @@ def main() -> int:
             if stanza.get(field) != actual:
                 errors.append(f"{ident}: {field} mismatch for {filename}")
 
-    deb_files = set()
-    deb_dir = os.path.join(args.repo, "debs")
-    for name in os.listdir(deb_dir):
-        if name.endswith(".deb"):
-            deb_files.add(f"debs/{name}")
+    # The deb pool is additive (make-repo indexes only the newest version per
+    # package), so a superseded on-disk deb is expected. Real drift is a deb
+    # whose package is absent from the index, or one NEWER than its indexed
+    # stanza (index is stale).
+    make_repo = _load_make_repo()
+    indexed_version: dict[str, str] = {}
+    for stanza in parse_stanzas(packages):
+        pkg, ver = stanza.get("Package"), stanza.get("Version")
+        if pkg and ver:
+            indexed_version[pkg] = ver
 
-    for filename in sorted(deb_files - seen):
-        errors.append(f"unindexed deb: {filename}")
+    deb_dir = os.path.join(args.repo, "debs")
+    for name in sorted(os.listdir(deb_dir)):
+        if not name.endswith(".deb") or f"debs/{name}" in seen:
+            continue
+        parts = name[:-4].split("_")
+        if len(parts) < 2:
+            errors.append(f"unindexed deb (unparseable name): debs/{name}")
+            continue
+        pkg, ver = parts[0], parts[1]
+        if pkg not in indexed_version:
+            errors.append(f"unindexed deb (package not in index): debs/{name}")
+        elif make_repo.compare_deb_versions(ver, indexed_version[pkg]) > 0:
+            errors.append(
+                f"stale index: debs/{name} is newer than indexed "
+                f"{pkg} {indexed_version[pkg]}"
+            )
 
     if errors:
         print("Repo audit failed:", file=sys.stderr)
