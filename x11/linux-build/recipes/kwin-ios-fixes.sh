@@ -95,11 +95,14 @@ EOF
 # Upstream's native qtwaylandscanner_kde helper guesses KF6_HOST_TOOLING as the complete
 # host prefix. Our host Qt lives beside it, so let the recipe pass NATIVE_PREFIX explicitly.
 
-# Keep Qt's iOS OpenGLES headers out of libkwin's epoxy-using translation units.
-# The private QPA plugin still needs the real Qt OpenGL/QPA classes, so do this
-# on the kwin library target instead of through the global compiler flags.
-if ! grep -q 'ios-bringup-target-no-qt-opengl' "$src/src/CMakeLists.txt"; then
-    perl -0pi -e 's/add_library\(kwin SHARED\)/add_library(kwin SHARED)\ntarget_compile_definitions(kwin PRIVATE QT_NO_OPENGL=1) # ios-bringup-target-no-qt-opengl/g' "$src/src/CMakeLists.txt"
+# GL-enabled build: libkwin now compiles WITH Qt OpenGL. The former
+# target_compile_definitions(kwin PRIVATE QT_NO_OPENGL=1) blunt disable is gone; the
+# epoxy<->QtGui-GLES header collision is resolved by the ios-bringup-gl-coexist shim in
+# kwin-ios-compat.h, ENABLED only on the kwin library target so CMake's GLESv2 probes
+# stay clean. Strip any stale QT_NO_OPENGL from an older tree, then scope-enable the shim.
+perl -0pi -e 's/^target_compile_definitions\(kwin PRIVATE QT_NO_OPENGL=1\).*# ios-bringup-target-no-qt-opengl\n//mg' "$src/src/CMakeLists.txt"
+if ! grep -q 'ios-bringup-gl-coexist-target' "$src/src/CMakeLists.txt"; then
+    perl -0pi -e 's/add_library\(kwin SHARED\)/add_library(kwin SHARED)\ntarget_compile_definitions(kwin PRIVATE KWIN_IOS_GL_COEXIST=1) # ios-bringup-gl-coexist-target/g' "$src/src/CMakeLists.txt"
 fi
 
 # iOS/ANGLE clients use the local iosc_iosurface protocol instead of dma-buf.
@@ -670,6 +673,46 @@ cat > "$src/src/kwin-ios-compat.h" <<'EOF'
 #if defined(QT_FEATURE_opengl) && QT_FEATURE_opengl < 0
 #define KWIN_IOS_QT_NO_OPENGL 1
 #endif
+// ios-bringup-gl-coexist: when KWin builds with Qt OpenGL ENABLED, epoxy must be the
+// SOLE GL provider in every TU. Qt's <QtGui/qopengl.h> (this build is -opengl es2) takes
+// the iOS OpenGLES.framework branch (<OpenGLES/ES{2,3}/gl.h>), whose real gl* prototypes
+// collide with epoxy's dispatch macros (#define glClear epoxy_glClear) ->
+// "redefinition of 'epoxy_glClear' as different kind of symbol". Mirror the Linux
+// mechanism (epoxy's __gl_h_ makes Qt's later <GL/gl.h> a no-op): include epoxy FIRST,
+// then pre-define the framework include guards so qopengl.h skips those headers and
+// takes epoxy's ABI-identical Khronos typedefs (GLsync == struct __GLsync* in both).
+// This header is force-included (-include, after the iosexec fixup) so it runs before
+// any Qt include in the TU. Validated: 0 errors vs 20 baseline against the full KWin
+// Qt-GL surface (QOpenGLContext/FramebufferObject, QQuick{RenderControl,RenderTarget,
+// GraphicsDevice,OpenGLUtils}, QSG{ImageNode,TextureProvider}). No Qt rebuild needed.
+// Scope gate KWIN_IOS_GL_COEXIST: this compat header is force-included in EVERY C++ TU
+// via CMAKE_CXX_FLAGS, which INCLUDES CMake's check_cxx_source_compiles probes. KWin's
+// HAVE_GLESv2 probe (and Qt6GuiConfig's find_dependency(GLESv2)) links -framework
+// OpenGLES and has /var/jb/usr/include on its -isystem path, so epoxy is reachable
+// there too; if the shim activated in that probe, epoxy's gl* dispatch macros would
+// turn the probe's GL calls into unlinked epoxy_* symbols -> probe link fails -> Qt6Gui
+// cascades to NOT-FOUND and configure dies. So gate on a macro set ONLY on KWin's real
+// library target (target_compile_definitions(kwin PRIVATE KWIN_IOS_GL_COEXIST=1), the
+// exact scope the old QT_NO_OPENGL=1 used). Probes lack it -> shim inert -> GLESv2
+// probe passes against the real OpenGLES framework. __has_include stays as a guard.
+#if defined(__APPLE__) && defined(KWIN_IOS_GL_COEXIST) && !defined(KWIN_IOS_QT_NO_OPENGL) && __has_include(<epoxy/gl.h>)
+#include <epoxy/gl.h>
+#ifndef __gltypes_h_
+#define __gltypes_h_ 1
+#endif
+#ifndef __gl_es20_h_
+#define __gl_es20_h_ 1
+#endif
+#ifndef __gl_es20ext_h_
+#define __gl_es20ext_h_ 1
+#endif
+#ifndef __gl_es30_h_
+#define __gl_es30_h_ 1
+#endif
+#ifndef __gl_es30ext_h_
+#define __gl_es30ext_h_ 1
+#endif
+#endif // ios-bringup-gl-coexist
 #if defined(__APPLE__)
 #define KWIN_IOS_NO_LIBINPUT 1
 #endif
@@ -774,3 +817,133 @@ static inline int kwin_ios_accept4(int socketDescriptor, struct sockaddr *addres
 #define accept4 kwin_ios_accept4
 #endif
 EOF
+
+# --- Fractional output-scale inbound-coordinate correction (nested Wayland backend) ---
+# kwin_wayland runs nested as a Wayland client of iosc. With a fractional output scale s
+# (e.g. 1.5 from Plasma's Displays KCM) the EGL backend tags the host surface with
+# wl_surface.set_buffer_scale(std::ceil(s)) (wayland_egl_backend.cpp:135), but the nested
+# backend interprets inbound surface-local pointer/touch coordinates 1:1 as its own
+# kwin-logical coordinates. Per the Wayland protocol, surface-local coordinates are in
+# buffer/buffer_scale space (= pixelSize/ceil(s)), whereas kwin's logical output space is
+# pixelSize/s (core/output.cpp: geometry() = QRect(pos, pixelSize()/scale())). The two
+# agree only at integer scale; at s=1.5 every event lands at s/ceil(s)=0.75 of the true
+# position. Rescale inbound surface-local coordinates by ceil(s)/s. The factor is exactly
+# 1.0 at integer scales, so 100%/200% behaviour is unchanged; only 125/150/175% is fixed.
+python3 - "$src/src/backends/wayland/wayland_backend.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+
+# Idempotent: a fresh extract is expected each build (cache invalidation removes
+# build_work/.../kwin), but stay safe if the fixes script is re-run on the same tree.
+if "ios-bringup-fractional-scale" in text:
+    print("wayland_backend.cpp: ios-bringup-fractional-scale already applied")
+    sys.exit(0)
+
+def sub(old, new):
+    global text
+    n = text.count(old)
+    if n != 1:
+        raise SystemExit(
+            "wayland_backend.cpp: expected exactly one match, found %d for:\n%s" % (n, old)
+        )
+    text = text.replace(old, new)
+
+# 1) include <cmath> for std::ceil
+sub(
+    "#include <drm_fourcc.h>\n#include <fcntl.h>\n",
+    "#include <cmath> // ios-bringup-fractional-scale\n#include <drm_fourcc.h>\n#include <fcntl.h>\n",
+)
+
+# 2) helper: surface-local -> kwin-logical rescale factor = ceil(scale)/scale
+sub(
+    "inline static QPointF sizeToPoint(const QSizeF &size)\n"
+    "{\n"
+    "    return QPointF(size.width(), size.height());\n"
+    "}\n",
+    "inline static QPointF sizeToPoint(const QSizeF &size)\n"
+    "{\n"
+    "    return QPointF(size.width(), size.height());\n"
+    "}\n"
+    "\n"
+    "// ios-bringup-fractional-scale: the host tags kwin's nested surface with\n"
+    "// wl_surface.set_buffer_scale(ceil(outputScale)), so inbound surface-local\n"
+    "// coordinates arrive in pixelSize/ceil(scale) space while kwin's logical output\n"
+    "// space is pixelSize/scale. Rescale surface-local coordinates by ceil(scale)/scale.\n"
+    "// Exactly 1.0 at integer scales (no behaviour change there).\n"
+    "static inline qreal xiosSurfaceToLogicalFactor(const WaylandOutput *output)\n"
+    "{\n"
+    "    const qreal scale = output ? output->scale() : 1.0;\n"
+    "    if (scale <= 0.0) {\n"
+    "        return 1.0;\n"
+    "    }\n"
+    "    return std::ceil(scale) / scale;\n"
+    "}\n",
+)
+
+# 3) pointer motion: absolute surface-local position
+sub(
+    "        const QPointF absolutePos = output->geometry().topLeft() + relativeToSurface;\n",
+    "        const QPointF absolutePos = output->geometry().topLeft() + relativeToSurface * xiosSurfaceToLogicalFactor(output); // ios-bringup-fractional-scale\n",
+)
+
+# 4) pinch gesture: surface-local delta vector (same space, same factor)
+sub(
+    "        connect(m_pinchGesture.get(), &PointerPinchGesture::updated, this, [this](const QSizeF &delta, qreal scale, qreal rotation, quint32 time) {\n"
+    "            Q_EMIT pinchGestureUpdate(scale, rotation, sizeToPoint(delta), std::chrono::milliseconds(time), this);\n"
+    "        });\n",
+    "        connect(m_pinchGesture.get(), &PointerPinchGesture::updated, this, [this](const QSizeF &delta, qreal scale, qreal rotation, quint32 time) {\n"
+    "            const qreal f = xiosSurfaceToLogicalFactor(m_seat->backend()->findOutput(m_pointer->enteredSurface())); // ios-bringup-fractional-scale\n"
+    "            Q_EMIT pinchGestureUpdate(scale, rotation, sizeToPoint(delta) * f, std::chrono::milliseconds(time), this);\n"
+    "        });\n",
+)
+
+# 5) swipe gesture: surface-local delta vector (same space, same factor)
+sub(
+    "        connect(m_swipeGesture.get(), &PointerSwipeGesture::updated, this, [this](const QSizeF &delta, quint32 time) {\n"
+    "            Q_EMIT swipeGestureUpdate(sizeToPoint(delta), std::chrono::milliseconds(time), this);\n"
+    "        });\n",
+    "        connect(m_swipeGesture.get(), &PointerSwipeGesture::updated, this, [this](const QSizeF &delta, quint32 time) {\n"
+    "            const qreal f = xiosSurfaceToLogicalFactor(m_seat->backend()->findOutput(m_pointer->enteredSurface())); // ios-bringup-fractional-scale\n"
+    "            Q_EMIT swipeGestureUpdate(sizeToPoint(delta) * f, std::chrono::milliseconds(time), this);\n"
+    "        });\n",
+)
+
+# 6) touch down (sequenceStarted + pointAdded) and touch motion (pointMoved):
+#    tp->position() is emitted with NO transform and NO output-origin offset. Rescale by
+#    the same factor AND add the output-origin offset the pointer path already has
+#    (findOutput(surface) — latent multi-output fix, a no-op for the single output at 0,0).
+sub(
+    "    connect(touch, &Touch::sequenceStarted, this, [this](TouchPoint *tp) {\n"
+    "        Q_EMIT touchDown(tp->id(), tp->position(), std::chrono::milliseconds(tp->time()), this);\n"
+    "    });\n"
+    "    connect(touch, &Touch::pointAdded, this, [this](TouchPoint *tp) {\n"
+    "        Q_EMIT touchDown(tp->id(), tp->position(), std::chrono::milliseconds(tp->time()), this);\n"
+    "    });\n",
+    "    connect(touch, &Touch::sequenceStarted, this, [this](TouchPoint *tp) {\n"
+    "        WaylandOutput *output = m_seat->backend()->findOutput(tp->surface()); // ios-bringup-fractional-scale\n"
+    "        const QPointF pos = (output ? QPointF(output->geometry().topLeft()) : QPointF(0, 0)) + tp->position() * xiosSurfaceToLogicalFactor(output);\n"
+    "        Q_EMIT touchDown(tp->id(), pos, std::chrono::milliseconds(tp->time()), this);\n"
+    "    });\n"
+    "    connect(touch, &Touch::pointAdded, this, [this](TouchPoint *tp) {\n"
+    "        WaylandOutput *output = m_seat->backend()->findOutput(tp->surface()); // ios-bringup-fractional-scale\n"
+    "        const QPointF pos = (output ? QPointF(output->geometry().topLeft()) : QPointF(0, 0)) + tp->position() * xiosSurfaceToLogicalFactor(output);\n"
+    "        Q_EMIT touchDown(tp->id(), pos, std::chrono::milliseconds(tp->time()), this);\n"
+    "    });\n",
+)
+sub(
+    "    connect(touch, &Touch::pointMoved, this, [this](TouchPoint *tp) {\n"
+    "        Q_EMIT touchMotion(tp->id(), tp->position(), std::chrono::milliseconds(tp->time()), this);\n"
+    "    });\n",
+    "    connect(touch, &Touch::pointMoved, this, [this](TouchPoint *tp) {\n"
+    "        WaylandOutput *output = m_seat->backend()->findOutput(tp->surface()); // ios-bringup-fractional-scale\n"
+    "        const QPointF pos = (output ? QPointF(output->geometry().topLeft()) : QPointF(0, 0)) + tp->position() * xiosSurfaceToLogicalFactor(output);\n"
+    "        Q_EMIT touchMotion(tp->id(), pos, std::chrono::milliseconds(tp->time()), this);\n"
+    "    });\n",
+)
+
+path.write_text(text)
+print("wayland_backend.cpp: applied ios-bringup-fractional-scale inbound-coordinate correction")
+PY

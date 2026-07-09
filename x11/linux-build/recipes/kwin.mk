@@ -9,11 +9,13 @@ endif
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)+ios2
-# First-light keeps KWin's effects/QuickView GL paths disabled even when the
-# staged QtGui is ANGLE-capable: Qt's iOS OpenGLES headers and libepoxy's gl*
-# macro layer collide in KWin core. The private QPA plugin is still built.
-KWIN_IOS_COMPAT_DEFS := -DKWIN_IOS_QT_NO_OPENGL=1
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios3
+# GL-enabled: KWin's effects/QuickView GL paths now build against real Qt OpenGL. The
+# epoxy<->QtGui-iOS-GLES header collision that previously forced
+# -DKWIN_IOS_QT_NO_OPENGL=1 is resolved by the ios-bringup-gl-coexist shim in
+# kwin-ios-compat.h (epoxy included first + OpenGLES.framework guards pre-defined so
+# Qt's qopengl.h defers to epoxy's Khronos definitions). See kwin-ios-fixes.sh.
+KWIN_IOS_COMPAT_DEFS :=
 
 kwin-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kwin))
