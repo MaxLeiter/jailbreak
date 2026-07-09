@@ -6,7 +6,7 @@ Geary/WebKitGTK, Gnumeric, and Transmission. Keep this separate from
 `wayland-apps.md`, which owns the already-smoked foot/imv/mpv/fuzzel/dunst/grim
 batch and its runtime fixes.
 
-Last touched: 2026-07-07.
+Last touched: 2026-07-08.
 
 ## Build Driver
 
@@ -39,11 +39,11 @@ docker run --rm --platform linux/arm64 --cpus=4 \
 | tofi | native Wayland launcher/menu | recipe/control/patch stack added; `tofi_0.9.1+ios1_iphoneos-arm64.deb` built; focused on-device `iosc` slot capture passed after clamping `wl_seat` binds to v5 and fixing iOS keymap cleanup |
 | waybar | layer-shell status bar | recipe/control/patch stack added; GTK3 Wayland `+ios2`, gtkmm3, and `gtk-layer-shell` built; `waybar_0.15.0+ios1_iphoneos-arm64.deb` installed and focused on-device `iosc` slot capture passed with the minimal clock/custom config |
 | swayimg | native Wayland image viewer | recipe/control/patch stack added; `swayimg_5.4+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed |
-| yad | GTK dialog utility | recipe/control added; `yad_15.0+ios1_iphoneos-arm64.deb` built; on-device smoke exits with GTK Broken pipe before capture |
+| yad | GTK dialog utility | recipe/control added; `yad_15.0+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed (2026-07-08) after a clean re-run with no competing session switch — the earlier "Broken pipe" was a concurrent `xios-session` switch nuking `wayland-0`, not a yad bug |
 | nwg-look | GTK settings UI | explicit blocker target; needs shared Go+cgo iPhoneOS path for gotk3; `xcur2png` is optional/deferrable |
 | Geary | GNOME mail client | no recipe; blocked on WebKitGTK and mail-app dependency lane; `gmime`, `libstemmer`, and `libytnef` leaf deps are now built |
 | WebKitGTK | browser/webview platform | separate research/build lane; see `geary-webkitgtk.md` |
-| Gnumeric | GTK spreadsheet | recipe/control added with `libgsf`, `libxslt`, and `goffice`; `gnumeric_1.12.61+ios1_iphoneos-arm64.deb` built and installed; capture was invalidated after the smoke session lost `wayland-0` |
+| Gnumeric | GTK spreadsheet | recipe/control added with `libgsf`, `libxslt`, and `goffice`; `gnumeric_1.12.61+ios1_iphoneos-arm64.deb` built and installed; on-device classic `iosc` capture passed (2026-07-08) — full spreadsheet UI renders with the CSV loaded; the earlier invalidation was a session switch losing `wayland-0`, now confirmed clean |
 | Transmission | CLI/daemon BitTorrent client | recipe/control/patch stack added; `transmission_4.1.3+ios1_iphoneos-arm64.deb` built; CLI tools passed on-device; GTK UI deferred until gtkmm |
 
 ## Added Files
@@ -159,16 +159,21 @@ Host/container builds completed on 2026-07-06 and 2026-07-07 and copied these de
   not yet reached validated debs.
 - On-device classic `iosc` smoke installed the local extra-app debs and passed
   package state, Transmission CLI, `swaybg`, and `swayimg`. Focused follow-up
-  slot smokes now also pass for `tofi` and `waybar`. `yad` still exits after a
-  GTK Broken pipe and the subsequent `gnumeric`/shot steps in the broad helper
-  run were invalidated when `wayland-0` disappeared and the active session
-  became `kde-mobile`.
+  slot smokes now also pass for `tofi` and `waybar`. `yad` and `gnumeric` were
+  re-run on 2026-07-08 on a clean `iosc` session with no competing
+  `xios-session` switch and both captured green (see
+  `artifacts/device-runs/extra-apps-smoke-20260708-193938/`): the earlier `yad`
+  "Broken pipe" and `gnumeric` invalidation were both the same failure mode — a
+  concurrent session switch nuking `wayland-0` mid-run — not app bugs.
 
 ## Blocked / Opt-In Targets
 
-- `yad`/`gnumeric` runtime smoke: `yad` reaches GTK startup and then reports
-  `Error reading events from display: Broken pipe`; after that `wayland-0` was
-  gone and `gnumeric`/final shot did not run against classic `iosc`.
+- `yad`/`gnumeric` runtime smoke: RESOLVED 2026-07-08. Both captured green on a
+  clean classic `iosc` session with no competing `xios-session` switch
+  (`artifacts/device-runs/extra-apps-smoke-20260708-193938/`). The prior `yad`
+  `Error reading events from display: Broken pipe` and `gnumeric` invalidation
+  were both caused by a concurrent session switch tearing down `wayland-0`
+  mid-run, not by the apps.
 - `waybar` broader feature surface: the current package intentionally ships the
   minimal bar surface. Sway/River/DWL/Hyprland/Wayfire/taskbar, tray, audio,
   Bluetooth, and other Linux/session-manager integrations remain disabled until
@@ -344,11 +349,15 @@ a Wayland guard, capture, or final screenshot step fails, the helper writes a
 `diagnostics-*.log` with active-session state, geometry, compositor/session
 logs, sockets, and a focused process snapshot.
 
-Device verification is partial, not publish-clean. On 2026-07-06 PDT,
+Device verification is now green for the graphical batch. On 2026-07-06 PDT,
 `bin/iosc-extra-apps-smoke --install` wrote artifacts to
 `artifacts/device-runs/extra-apps-smoke-20260706-173431/`: install,
 `apt-get check`, package queries, Transmission CLI, `swaybg`, and `swayimg`
-passed. The original broad run's `tofi`, `yad`, `gnumeric`, and final shot did
-not pass, but `tofi` has since passed in the focused slot smoke after the
-client patches above. Do not publish the full batch until the remaining
-`yad`/`gnumeric` runtime failures are fixed or explicitly scoped out.
+passed. `tofi` and `waybar` passed in focused slot smokes after the client
+patches above. `yad` and `gnumeric` — the last two published-but-unverified
+apps — passed on 2026-07-08 PDT via
+`bin/iosc-extra-apps-smoke --only packages,yad,gnumeric,shot` on a clean
+classic `iosc` session with no competing `xios-session` switch; artifacts are in
+`artifacts/device-runs/extra-apps-smoke-20260708-193938/` (`cap-yad.png`,
+`cap-gnumeric.png`, `results.txt` = all PASS, no `diagnostics-*.log`). The whole
+second-wave graphical batch now has at least one green on-device capture.
