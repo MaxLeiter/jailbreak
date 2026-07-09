@@ -88,6 +88,10 @@ PY="$REPO_ROOT/.repo-venv/bin/python"
 "$PY" "$REPO_ROOT/bin/lib/make-repo.py"
 "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
 "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$REPO_ROOT/repo"
+# Drop-in-superset gate for debs shadowing Procursus package names (soname/file
+# parity + upstream-version pinning + -dev runtime-dylib lint). Waivers with
+# reasons in bin/lib/shadow-waivers.json. Born from the 2026-07-08 device brick.
+"$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
 
 AFTER_INDEX="$(snapshot_debs)"
 if [ "$BEFORE" != "$AFTER_INDEX" ]; then

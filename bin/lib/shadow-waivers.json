@@ -1,0 +1,63 @@
+{
+  "_comment": "Waivers for check-procursus-shadow.py. Format: {package: {rule: reason}}. Every entry is an ACCEPTED divergence from the Procursus package of the same name — new divergence must earn its own entry with a reason. Seeded 2026-07-08 after the sqlite/openssl/harfbuzz device brick.",
+
+  "fontconfig": {"version": "2.17.1 bump predates the gate; soname kept; device-validated weeks on-device"},
+  "fontconfig-config": {"version": "companion of fontconfig 2.17.1"},
+  "libfontconfig-dev": {"version": "companion of fontconfig 2.17.1"},
+  "libfontconfig1": {"version": "2.17.1 bump predates the gate; soname libfontconfig.1 kept; device-validated"},
+  "libfreetype6": {"version": "2.13.3 bump predates the gate; soname libfreetype.6 kept; device-validated"},
+  "libfreetype-dev": {"version": "companion of libfreetype6 2.13.3"},
+  "libfribidi0": {"version": "1.0.13 bump predates the gate; soname kept"},
+  "libfribidi-dev": {"version": "companion of libfribidi0 1.0.13"},
+  "libpixman-1-0": {
+    "version": "0.42.2 bump predates the gate; soname libpixman-1.0 kept",
+    "parity": "Procursus also ships fully-versioned libpixman-1.0.40.0.dylib; consumers link @rpath/libpixman-1.0.dylib (verified Procursus LC_ID 2026-07-08)"
+  },
+  "libpixman-1-dev": {
+    "version": "companion of libpixman-1-0 0.42.2",
+    "parity": "unversioned .dylib dev symlink ships in our runtime deb; split predates the gate"
+  },
+  "libpng16-16": {"version": "1.6.50 bump predates the gate; soname libpng16.16 kept"},
+  "libpng16-dev": {"version": "companion of libpng16-16 1.6.50"},
+  "libpng16-tools": {"version": "companion of libpng16-16 1.6.50"},
+  "libjpeg62-turbo": {
+    "version": "3.1.1 bump predates the gate; jpeg62 ABI + short install-name kept",
+    "parity": "Procursus also ships libjpeg.62.3.0.dylib; consumers link @rpath/libjpeg.62.dylib (verified Procursus LC_ID 2026-07-08)"
+  },
+  "libjpeg62-turbo-dev": {"version": "companion of libjpeg62-turbo 3.1.1"},
+  "libjpeg-turbo-progs": {"version": "companion of libjpeg62-turbo 3.1.1"},
+  "libturbojpeg0": {
+    "version": "companion of libjpeg62-turbo 3.1.1",
+    "parity": "Procursus also ships libturbojpeg.0.2.0.dylib; consumers link @rpath/libturbojpeg.0.dylib (verified Procursus LC_ID 2026-07-08)"
+  },
+  "libturbojpeg0-dev": {"version": "companion of libjpeg62-turbo 3.1.1"},
+  "libwebp7": {"version": "1.6.0 bump predates the gate; libwebp.7 soname kept"},
+  "libwebp-dev": {"version": "companion of libwebp7 1.6.0"},
+  "libwebpdemux2": {"version": "companion of libwebp7 1.6.0"},
+  "libwebpmux3": {
+    "version": "companion of libwebp7 1.6.0",
+    "parity": "libwebpmux.3.dylib symlink ships in our libwebp7 deb (hard co-install); split predates the gate"
+  },
+  "libxfixes3": {"version": "6.0.1 bump (X11/Wayland stack needs xfixes 6); soname kept"},
+  "libxfixes-dev": {"version": "companion of libxfixes3 6.0.1"},
+  "libxml2": {"version": "2.13.8 bump (ladybird needs modern libxml2); soname libxml2.2 kept; device-validated"},
+  "libxml2-dev": {"version": "companion of libxml2 2.13.8"},
+  "libxml2-utils": {"version": "companion of libxml2 2.13.8"},
+  "libsqlite3-1": {"version": "3.52.0 with the PROCURSUS soname libsqlite3.1.dylib restored in +ios2 — this is the 2026-07-08 incident fix itself"},
+  "libsqlite3-dev": {"version": "companion of libsqlite3-1 3.52.0+ios2"},
+  "sqlite3": {"version": "companion of libsqlite3-1 3.52.0+ios2 (CLI)"},
+  "icu-devtools": {"version": "ICU 78 tooling; the RUNTIME ships as new package libicu78 (no shadow), only dev tools shadow"},
+  "libicu-dev": {"version": "ICU 78 headers; runtime = new libicu78 package, no runtime shadow"},
+  "libfmt-dev": {"version": "fmt 12 headers (KF6/ladybird); runtime = new libfmt12 package, no runtime shadow"},
+  "libavcodec-dev": {"version": "ffmpeg 7 headers for ladybird; runtime = new libav*61 packages. NOTE dev/runtime mismatch vs libavcodec59 — rebuild pending"},
+  "libavformat-dev": {"version": "see libavcodec-dev"},
+  "libavutil-dev": {"version": "see libavcodec-dev"},
+  "libswresample-dev": {"version": "see libavcodec-dev"},
+  "libharfbuzz-dev": {"parity": "libharfbuzz-icu dev symlink lives in the libharfbuzz-icu0 split package"},
+  "luajit": {"version": "mpv wants rolling LuaJIT 2.1; Procursus still ships 2.1.0~beta3"},
+  "transmission": {"version": "leaf app package, no library consumers"},
+
+  "libgnome-desktop-dev": {"devlib": "KNOWN BUG — libgnome-bg/rr runtime dylibs must move into libgnome-desktop-4-2 (removing this -dev broke GNOME Shell 2026-07-08); task open, REMOVE this waiver when 44.1+ios2 lands"},
+  "libepoll-shim-dev": {"devlib": "libepoll-shim-interpose is a preload/interpose helper; revisit whether it belongs in the runtime deb"},
+  "libglibmm-2.4-dev": {"devlib": "generate_extra_defs is a codegen helper library, dev-only by design"}
+}
