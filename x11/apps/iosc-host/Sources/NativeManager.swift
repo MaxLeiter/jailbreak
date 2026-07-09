@@ -93,10 +93,17 @@ final class NativeManager: NSObject {
 
     private func readerLoop() {
         // Connect, retrying while iosc comes up (it may launch after us via ioscd).
+        // Bounded backoff: a leftover host whose compositor never comes back must
+        // not poll at 2Hz forever (see the 2026-07-08 stale-wrapper incident —
+        // leftover GNOME hosts hammering the desktop stack from the background).
+        var retryDelay = 0.5
         while running && client == nil {
             let (w, h, scale) = sceneSizePx()
             client = appID.withCString { iosc_native_connect(nil, $0, Int32(w), Int32(h), Int32(scale)) }
-            if client == nil { Thread.sleep(forTimeInterval: 0.5) }
+            if client == nil {
+                Thread.sleep(forTimeInterval: retryDelay)
+                retryDelay = min(retryDelay * 2, 8.0)
+            }
         }
         guard let c = client else { return }
 

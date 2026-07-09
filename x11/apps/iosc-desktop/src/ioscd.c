@@ -12,7 +12,9 @@
  *     LAUNCH\t<app_id>\t<exec>\n          -> LAUNCHED\n | RAISED\n | ERR <msg>\n
  *     LAUNCH_NATIVE\t<app_id>\t<exec>\n   -> same, on the native iPadOS path
  *     LAUNCH_CLASSIC\t<app_id>\t<exec>\n  -> same, on the classic Xios path
- *     SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\n -> SESSION_STARTED\n | ERR <msg>\n
+ *     SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\t<slot>\n
+ *                                         -> SESSION_STARTED\n | SESSION_ACTIVE\n | ERR <msg>\n
+ *     SESSION_ENSURE\t...same payload...  -> same replies, ensure semantics for all peers
  *     APPS_LIST\n                         -> TSV app list + APPS_END\t<status>\n
  *     APPS_SYNC\t<native|classic>\t<dry>\n -> sync log + APPS_END\t<status>\n
  *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
@@ -30,6 +32,25 @@
  * Existing-window raises are sent to iosc over /var/jb/tmp/iosc-wm.sock. If the
  * compositor is from an older build or the socket is gone, ioscd degrades to
  * foregrounding the shared display and avoids duplicating a known-live client.
+ *
+ * SESSION policy (2026-07-08: stray uid-501 "SESSION gnome" requests repeatedly
+ * tore down a healthy KDE desktop, then retried the failing gnome preset in a
+ * loop — see x11-ioscd-session-stomp). Destructive session requests (anything
+ * except the additive "app" preset and slotted sessions) are gated:
+ *   - root + plain SESSION: always honored (the xios-session CLI contract).
+ *   - the Xios display app (peer path *\/Xios.app/Xios) + plain SESSION:
+ *     honored — the in-app picker is the user speaking — subject to the
+ *     cooldown/debounce below.
+ *   - everyone else, and SESSION_ENSURE from anyone: ENSURE semantics. If the
+ *     active session is healthy: same preset -> SESSION_ACTIVE no-op, different
+ *     preset -> ERR (a mere app host never tears down a working desktop). Only
+ *     when nothing healthy is running may the request start a session.
+ *   - failed presets cool down (2/10/30 min as consecutive failures mount) and
+ *     session starts are debounced 20s for every non-root peer, so a broken
+ *     preset can't be retried into a desktop-killing loop.
+ * "Healthy" = active-session marker set + status state live (up/compositor-only
+ * verified against a live wayland-0 listener; starting/waiting/relaunching
+ * trusted as-is while a bring-up is in flight).
  *
  * Standalone: depends on nothing else in this repo. Build with build-stub.sh.
  */
@@ -51,11 +72,22 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 
+#include <stdint.h>
+
 #if defined(__has_include)
 #  if __has_include(<libproc.h>)
 #    include <libproc.h>
 #    define XIOS_HAVE_LIBPROC 1
 #  endif
+#endif
+#ifndef XIOS_HAVE_LIBPROC
+/* The iOS SDK ships no libproc.h, so the __has_include probe above silently
+ * compiled peer-path attribution out of every device build — the 2026-07-08
+ * session-stomp log had uid=501 lines with no path, which is why the sender
+ * was never identified. The syscall wrapper is in libSystem regardless
+ * (device-proven by TaskManager); redeclare the one prototype we need. */
+extern int proc_pidpath(int pid, void *buffer, uint32_t buffersize);
+#define XIOS_HAVE_LIBPROC 1
 #endif
 
 #ifndef SOL_LOCAL
@@ -108,6 +140,7 @@ static char g_xios_hwbridged[PATH_MAX];
 static char g_xios_sensord[PATH_MAX];
 static char g_xios_sysintd[PATH_MAX];
 static char g_native_flag[PATH_MAX];
+static char g_session_status[PATH_MAX];
 static char g_a11y_enabled[PATH_MAX];
 static char g_a11y_force[PATH_MAX];
 static char g_path[PATH_MAX * 2];
@@ -184,6 +217,7 @@ static void init_paths(void)
     tmp_path(g_ioscd_client_log, sizeof(g_ioscd_client_log), "ioscd-client.log");
     tmp_path(g_ioscd_session_log, sizeof(g_ioscd_session_log), "ioscd-session.log");
     tmp_path(g_native_flag, sizeof(g_native_flag), "iosc.native");
+    tmp_path(g_session_status, sizeof(g_session_status), "xios-session-status.json");
     tmp_path(g_a11y_enabled, sizeof(g_a11y_enabled), "xios-a11y-enabled");
     tmp_path(g_a11y_force, sizeof(g_a11y_force), "xios-a11y-force");
 
@@ -367,6 +401,146 @@ static int classic_iosc_allowed(char *owner, size_t owner_len)
     return strcmp(owner, "iosc") == 0 || strcmp(owner, "stop") == 0;
 }
 
+/* --- session request policy state -------------------------------------------
+ * Consecutive-failure tracking per preset (the 2026-07-08 loop retried a gnome
+ * preset that had failed 4x in a row, killing the healthy KDE desktop each
+ * time) plus the forked xios-session children whose exits feed it. In-memory
+ * only: an ioscd restart forgives every preset, which is also the natural
+ * "I fixed it, let me try again now" override. */
+
+/* Extract a top-level "key":"value" string from a small JSON file (the shapes
+ * xs_write_status emits; no nesting, no escaped quotes in the fields we read). */
+static void json_str_field(const char *buf, const char *key,
+                           char *dst, size_t dst_len)
+{
+    char pat[80];
+    const char *p, *q;
+    if (!dst || dst_len == 0) return;
+    dst[0] = 0;
+    snprintf(pat, sizeof(pat), "\"%s\":\"", key);
+    p = strstr(buf, pat);
+    if (!p) return;
+    p += strlen(pat);
+    q = strchr(p, '"');
+    if (!q || (size_t)(q - p) >= dst_len) return;
+    memcpy(dst, p, (size_t)(q - p));
+    dst[q - p] = 0;
+}
+
+/* preset + state out of xios-session-status.json (empty strings if absent). */
+static void read_session_status(char *preset, size_t plen,
+                                char *state, size_t slen)
+{
+    char buf[2048];
+    ssize_t n;
+    preset[0] = state[0] = 0;
+    int fd = open(g_session_status, O_RDONLY);
+    if (fd < 0) return;
+    n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0) return;
+    buf[n] = 0;
+    json_str_field(buf, "preset", preset, plen);
+    json_str_field(buf, "state", state, slen);
+}
+
+#define MAX_PRESET_HEALTH 16
+struct preset_health { char preset[64]; int fails; uint64_t last_fail_ms; };
+static struct preset_health g_preset_health[MAX_PRESET_HEALTH];
+static int g_npreset_health = 0;
+
+#define MAX_SESSION_CHILDREN 8
+struct session_child { pid_t pid; char preset[64]; };
+static struct session_child g_session_children[MAX_SESSION_CHILDREN];
+static uint64_t g_last_session_fork_ms = 0;
+#define SESSION_DEBOUNCE_MS 20000
+
+static struct preset_health *preset_health(const char *preset, int create)
+{
+    for (int i = 0; i < g_npreset_health; i++)
+        if (strcmp(g_preset_health[i].preset, preset) == 0)
+            return &g_preset_health[i];
+    if (!create || g_npreset_health >= MAX_PRESET_HEALTH)
+        return NULL;
+    struct preset_health *h = &g_preset_health[g_npreset_health++];
+    strncpy(h->preset, preset, sizeof(h->preset) - 1);
+    h->preset[sizeof(h->preset) - 1] = 0;
+    h->fails = 0;
+    h->last_fail_ms = 0;
+    return h;
+}
+
+static uint64_t preset_cooldown_ms(int fails)
+{
+    if (fails <= 0) return 0;
+    if (fails == 1) return 2 * 60 * 1000;
+    if (fails == 2) return 10 * 60 * 1000;
+    return 30 * 60 * 1000;
+}
+
+/* ms until non-root requests for <preset> are honored again; 0 = no cooldown */
+static uint64_t preset_cooldown_remaining_ms(const char *preset)
+{
+    struct preset_health *h = preset_health(preset, 0);
+    if (!h || h->fails <= 0) return 0;
+    uint64_t cool = preset_cooldown_ms(h->fails);
+    uint64_t since = now_ms() - h->last_fail_ms;
+    return since >= cool ? 0 : cool - since;
+}
+
+static void record_session_outcome(const char *preset, int failed)
+{
+    struct preset_health *h = preset_health(preset, failed);
+    if (!h) return;
+    if (failed) {
+        h->fails++;
+        h->last_fail_ms = now_ms();
+    } else {
+        h->fails = 0;
+    }
+}
+
+static void track_session_child(pid_t pid, const char *preset)
+{
+    for (int i = 0; i < MAX_SESSION_CHILDREN; i++) {
+        if (g_session_children[i].pid != 0) continue;
+        g_session_children[i].pid = pid;
+        strncpy(g_session_children[i].preset, preset,
+                sizeof(g_session_children[i].preset) - 1);
+        g_session_children[i].preset[sizeof(g_session_children[i].preset) - 1] = 0;
+        return;
+    }
+}
+
+/* Called from the reaper for every exited child; true if it was a session
+ * child we track. Failure = nonzero exit (75 excepted: that is xios-session's
+ * "another operation is running" busy code, not a preset defect), plus a
+ * status-file backstop for bring-up paths that swallow the exit code. */
+static int note_session_child_exit(pid_t pid, int status)
+{
+    for (int i = 0; i < MAX_SESSION_CHILDREN; i++) {
+        if (g_session_children[i].pid != pid) continue;
+        const char *preset = g_session_children[i].preset;
+        int rc = WIFEXITED(status) ? WEXITSTATUS(status) : 128;
+        int failed;
+        if (rc == 75) {
+            failed = 0;
+        } else if (rc != 0) {
+            failed = 1;
+        } else {
+            char sp[64], st[64];
+            read_session_status(sp, sizeof(sp), st, sizeof(st));
+            failed = strcmp(sp, preset) == 0 && strcmp(st, "error") == 0;
+        }
+        record_session_outcome(preset, failed);
+        fprintf(stderr, "ioscd: session child preset=%s pid=%d rc=%d -> %s\n",
+                preset, (int)pid, rc, failed ? "FAILED (cooldown armed)" : "ok");
+        g_session_children[i].pid = 0;
+        return 1;
+    }
+    return 0;
+}
+
 /* Reap exited children and drop them from the table so the next tap relaunches. */
 static void reap_children(void)
 {
@@ -374,6 +548,7 @@ static void reap_children(void)
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         if (pid == g_iosc_pid[0]) { g_iosc_pid[0] = 0; continue; }
         if (pid == g_iosc_pid[1]) { g_iosc_pid[1] = 0; continue; }
+        if (note_session_child_exit(pid, status)) continue;
         int known = 0;
         for (int i = 0; i < g_napps; i++) {
             if (g_apps[i].pid == pid) {
@@ -449,6 +624,112 @@ static int wayland_sock_live(const char *path)
     int live = connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0;
     close(fd);
     return live;
+}
+
+/* --- session request peers + health ---------------------------------------- */
+
+struct peer_info {
+    pid_t pid;
+    uid_t uid;
+    gid_t gid;
+    int have_eid;
+    char path[256];
+};
+
+static pid_t peer_pid_for_fd(int fd)
+{
+    pid_t pid = -1;
+#ifdef LOCAL_PEERPID
+    socklen_t len = sizeof(pid);
+    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0 && pid > 0)
+        return pid;
+#endif
+    return -1;
+}
+
+/* Capture identity at accept time, BEFORE the request is read: strays that
+ * fire one line and exit are gone by the time the line is parsed, which is
+ * how the 2026-07-08 session-stomp loop stayed anonymous. */
+static void capture_peer(int fd, struct peer_info *p)
+{
+    memset(p, 0, sizeof(*p));
+    p->pid = peer_pid_for_fd(fd);
+    p->uid = (uid_t)-1;
+    p->gid = (gid_t)-1;
+#if defined(__APPLE__)
+    if (getpeereid(fd, &p->uid, &p->gid) == 0)
+        p->have_eid = 1;
+#endif
+#if XIOS_HAVE_LIBPROC
+    if (p->pid > 0)
+        (void)proc_pidpath((int)p->pid, p->path, (uint32_t)sizeof(p->path));
+#endif
+}
+
+static void format_peer(const struct peer_info *p, char *dst, size_t dst_len)
+{
+    if (p->pid > 0 && p->path[0]) {
+        if (p->have_eid)
+            snprintf(dst, dst_len, "pid=%d uid=%ld gid=%ld path=%s",
+                     (int)p->pid, (long)p->uid, (long)p->gid, p->path);
+        else
+            snprintf(dst, dst_len, "pid=%d path=%s", (int)p->pid, p->path);
+    } else if (p->pid > 0) {
+        if (p->have_eid)
+            snprintf(dst, dst_len, "pid=%d uid=%ld gid=%ld",
+                     (int)p->pid, (long)p->uid, (long)p->gid);
+        else
+            snprintf(dst, dst_len, "pid=%d", (int)p->pid);
+    } else if (p->have_eid) {
+        snprintf(dst, dst_len, "uid=%ld gid=%ld", (long)p->uid, (long)p->gid);
+    } else {
+        snprintf(dst, dst_len, "peer=unknown");
+    }
+}
+
+/* The Xios display app (the in-app session picker) runs as mobile but speaks
+ * for the user; recognize it by its resolved binary path. */
+static int peer_is_xios_app(const struct peer_info *p)
+{
+    static const char suffix[] = "/Xios.app/Xios";
+    size_t len = strlen(p->path), slen = sizeof(suffix) - 1;
+    return len >= slen && strcmp(p->path + len - slen, suffix) == 0;
+}
+
+static int session_state_transitional(const char *state)
+{
+    return strcmp(state, "starting") == 0 || strcmp(state, "waiting") == 0 ||
+           strcmp(state, "relaunching") == 0 || strcmp(state, "stopping") == 0;
+}
+
+/* Is a desktop session running well enough that a stray request must not tear
+ * it down? Writes the active session's name into <active>. A live wayland
+ * listener is the ground truth — a stale status file or marker left by a
+ * crashed session never blocks recovery — with one grace: while xios-session
+ * reports a switch in flight (transitional state + active marker) the socket
+ * is legitimately absent, and the bring-up still deserves protection. */
+static int active_session_healthy(char *active, size_t active_len)
+{
+    char sp[64], st[64];
+    int have_marker = read_active_session(active, active_len) &&
+                      strcmp(active, "stop") != 0;
+
+    read_session_status(sp, sizeof(sp), st, sizeof(st));
+    if (have_marker && st[0] && session_state_transitional(st))
+        return 1;
+    if (wayland_sock_live(mode_cfg(0)->wayland_sock)) {
+        if (!have_marker)
+            snprintf(active, active_len, "unknown");
+        return 1;
+    }
+    /* No classic session: a live native compositor still counts — the
+     * teardown a session start runs would kill the native hosts just the
+     * same. */
+    if (wayland_sock_live(mode_cfg(1)->wayland_sock)) {
+        snprintf(active, active_len, "native");
+        return 1;
+    }
+    return 0;
 }
 
 /* Bring up the desktop audio stack (xios-audiod + PulseAudio) via the pulse
@@ -881,7 +1162,8 @@ static void log_session_started(const char *preset, const char *app,
     fputc('\n', stderr);
 }
 
-static void handle_session_request(int fd, char *payload)
+static void handle_session_request(int fd, char *payload, int ensure,
+                                   const struct peer_info *peer)
 {
     char *rest = payload;
     char *preset = take_tab_field(&rest);
@@ -896,10 +1178,67 @@ static void handle_session_request(int fd, char *payload)
         return;
     }
 
+    /* Additive requests (client launch into the running compositor, slotted
+     * side displays) never tear the desktop down: no policy. */
+    int destructive = strcmp(preset, "app") != 0 && !*slot;
+    int is_root = peer->have_eid && peer->uid == 0;
+
+    if (destructive) {
+        /* Explicit switches stay with the actors that speak for the user:
+         * root (the xios-session CLI) and the Xios in-app picker. Every
+         * other peer gets ensure semantics, as does SESSION_ENSURE from
+         * anyone. */
+        int ensure_mode = ensure || (!is_root && !peer_is_xios_app(peer));
+        if (ensure_mode) {
+            char active[64] = "";
+            if (active_session_healthy(active, sizeof(active))) {
+                if (strcmp(active, preset) == 0) {
+                    fprintf(stderr,
+                            "ioscd: session request no-op: %.48s already active\n",
+                            preset);
+                    reply(fd, "SESSION_ACTIVE\n");
+                    return;
+                }
+                fprintf(stderr,
+                        "ioscd: session request REFUSED: %.48s is healthy, %.256s wants %.48s (switching needs the Xios picker or root)\n",
+                        active, peer->path[0] ? peer->path : "unidentified peer",
+                        preset);
+                reply(fd, "ERR active session is healthy; switching needs the Xios picker or root xios-session\n");
+                return;
+            }
+        }
+        if (!is_root) {
+            uint64_t wait = preset_cooldown_remaining_ms(preset);
+            if (wait) {
+                char msg[192];
+                fprintf(stderr,
+                        "ioscd: session request REFUSED: preset %.48s cooling down %llus after repeated failures\n",
+                        preset, (unsigned long long)(wait / 1000 + 1));
+                snprintf(msg, sizeof(msg),
+                         "ERR preset %.48s failed recently; retry in %llus or run xios-session as root\n",
+                         preset, (unsigned long long)(wait / 1000 + 1));
+                reply(fd, msg);
+                return;
+            }
+            if (g_last_session_fork_ms &&
+                now_ms() - g_last_session_fork_ms < SESSION_DEBOUNCE_MS) {
+                fprintf(stderr,
+                        "ioscd: session request REFUSED: debounce (last session start <%ds ago)\n",
+                        SESSION_DEBOUNCE_MS / 1000);
+                reply(fd, "ERR a session change just ran; retry in a few seconds\n");
+                return;
+            }
+        }
+    }
+
     pid_t pid = launch_session_request(preset, app, width, height, dpi, slot);
     if (pid <= 0) {
         reply(fd, "ERR session start failed\n");
         return;
+    }
+    if (destructive) {
+        track_session_child(pid, preset);
+        g_last_session_fork_ms = now_ms();
     }
 
     log_session_started(preset, app, width, height, dpi, slot, pid);
@@ -1098,53 +1437,6 @@ static void handle_launch_request(int fd, const char *verb, char *payload)
     reply(fd, "LAUNCHED\n");
 }
 
-static pid_t peer_pid_for_fd(int fd)
-{
-    pid_t pid = -1;
-#ifdef LOCAL_PEERPID
-    socklen_t len = sizeof(pid);
-    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0 && pid > 0)
-        return pid;
-#endif
-    return -1;
-}
-
-static void describe_peer(int fd, char *dst, size_t dst_len)
-{
-    pid_t pid = peer_pid_for_fd(fd);
-    uid_t uid = (uid_t)-1;
-    gid_t gid = (gid_t)-1;
-    int have_eid = 0;
-    char path[256] = "";
-
-#if defined(__APPLE__)
-    if (getpeereid(fd, &uid, &gid) == 0)
-        have_eid = 1;
-#endif
-#if XIOS_HAVE_LIBPROC
-    if (pid > 0)
-        (void)proc_pidpath(pid, path, (uint32_t)sizeof(path));
-#endif
-
-    if (pid > 0 && path[0]) {
-        if (have_eid)
-            snprintf(dst, dst_len, "pid=%d uid=%ld gid=%ld path=%s",
-                     (int)pid, (long)uid, (long)gid, path);
-        else
-            snprintf(dst, dst_len, "pid=%d path=%s", (int)pid, path);
-    } else if (pid > 0) {
-        if (have_eid)
-            snprintf(dst, dst_len, "pid=%d uid=%ld gid=%ld",
-                     (int)pid, (long)uid, (long)gid);
-        else
-            snprintf(dst, dst_len, "pid=%d", (int)pid);
-    } else if (have_eid) {
-        snprintf(dst, dst_len, "uid=%ld gid=%ld", (long)uid, (long)gid);
-    } else {
-        snprintf(dst, dst_len, "peer=unknown");
-    }
-}
-
 static void sanitized_copy(char *dst, size_t dst_len, const char *src)
 {
     size_t i;
@@ -1157,20 +1449,27 @@ static void sanitized_copy(char *dst, size_t dst_len, const char *src)
     dst[i] = 0;
 }
 
-static void log_session_request_peer(int fd, const char *payload)
+static void log_session_request_peer(const struct peer_info *peer,
+                                     const char *verb, const char *payload)
 {
-    char peer[384];
+    char who[384];
     char clean[1024];
-    describe_peer(fd, peer, sizeof(peer));
+    format_peer(peer, who, sizeof(who));
     sanitized_copy(clean, sizeof(clean), payload);
-    fprintf(stderr, "ioscd: session request %s payload=\"SESSION %s\"\n", peer, clean);
+    fprintf(stderr, "ioscd: session request %s payload=\"%s %s\"\n",
+            who, verb, clean);
 }
 
 /* Handle one client connection: read a line, dispatch LAUNCH/SESSION. */
 static void handle_conn(int fd)
 {
+    struct peer_info peer;
     char buf[8192];
     size_t len = 0;
+
+    /* Identify the peer before reading: a one-shot sender may already be gone
+     * by the time its line is parsed (see capture_peer). */
+    capture_peer(fd, &peer);
     /* Read up to a newline, bounded by a deadline: this loop runs in the single
      * accept thread, so a connected-but-silent client must not park the whole
      * daemon in read() forever (SA_RESTART means signals won't break it out
@@ -1205,9 +1504,10 @@ static void handle_conn(int fd)
     }
     *t1 = 0;
 
-    if (strcmp(verb, "SESSION") == 0) {
-        log_session_request_peer(fd, t1 + 1);
-        handle_session_request(fd, t1 + 1);
+    if (strcmp(verb, "SESSION") == 0 || strcmp(verb, "SESSION_ENSURE") == 0) {
+        log_session_request_peer(&peer, verb, t1 + 1);
+        handle_session_request(fd, t1 + 1,
+                               strcmp(verb, "SESSION_ENSURE") == 0, &peer);
         return;
     }
     if (strcmp(verb, "APPS_LIST") == 0) {
@@ -1254,6 +1554,7 @@ int main(void)
     g_default_native = detect_native();
     fprintf(stderr, "ioscd: default launch mode=%s; explicit LAUNCH_NATIVE/LAUNCH_CLASSIC supported\n",
             mode_name(g_default_native));
+    fprintf(stderr, "ioscd: session policy active (ensure/switch guard, failure cooldown, peer attribution)\n");
 
     signal(SIGPIPE, SIG_IGN);
     if (pipe(g_chld_pipe) == 0) {
