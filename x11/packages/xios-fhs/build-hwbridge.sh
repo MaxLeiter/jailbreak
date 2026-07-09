@@ -69,8 +69,9 @@ CFLAGS=(
 # LC_RPATH pointing at where those libs live on device. Set at link
 # time so it survives the later install_name_tool + ldid fixups.
 LDRPATH="-Wl,-rpath,$TARGET_INSTALL_PREFIX/lib"
-# CoreFoundation for the IOPS dictionaries; IOKit/BackBoardServices come via dlopen.
-DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreFoundation $LDRPATH"
+# CoreFoundation for the IOPS dictionaries; IOKit/BackBoardServices/AVFoundation come via
+# dlopen. -lobjc for the objc_msgSend torch calls (AVCaptureDevice).
+DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreFoundation -lobjc $LDRPATH"
 SENSOR_DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreMotion -lobjc $LDRPATH"
 echo "   target=$MEMO_TARGET/$MEMO_CFVER prefix=${TARGET_PREFIX:-/} sys=$TARGET_SYS_ROOT"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"

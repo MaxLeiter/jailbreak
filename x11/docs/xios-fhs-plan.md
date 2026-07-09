@@ -180,6 +180,31 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
   DIRECTORIES must be writable by the session uid — the xios-fhs postinst chowns the tree
   to 501 and marks the leaf dirs 0775 for exactly this.
 
+### Torch: synthetic leds node + file-watch + AVCaptureDevice
+
+Same shape as brightness, one class down. The Plasma Mobile flashlight quicksetting
+(`quicksettings/flashlight`) normally finds a real torch LED via **libudev**
+(`/sys/class/leds/*:torch`, match on `color == white`) and toggles the `brightness` sysattr.
+There is no libudev or hardware LED node on iOS, so:
+
+- `xios-hwbridged` exposes a synthetic Linux `leds` node at `<sys>/class/leds/xios:torch`
+  (`color`, `function`, `max_brightness`, `brightness`), watches the directory, and on a
+  `brightness` write drives the camera torch through **AVCaptureDevice**
+  (`defaultDeviceWithMediaType:` → `lockForConfiguration:` → `setTorchMode:` → unlock).
+  AVFoundation is `dlopen`'d like IOKit/BackBoardServices (only `AVMediaTypeVideo` is needed
+  as a symbol); `-lobjc` is linked for the `objc_msgSend` calls. Signed with the added
+  `kTCCServiceCamera` entitlement; no capture session is ever started.
+- **Truthful availability**: the daemon publishes `max_brightness=1` only when
+  `[device hasTorch]`, else `0`. The flashlight backend (rewritten in
+  `plasma-mobile-ios-fixes.sh` to drop libudev and read/write this node) reports
+  `available` from `max_brightness > 0`. **Most iPads have no rear torch LED**, so on that
+  hardware the tile is correctly unavailable/hidden; it only lights up on a device with a
+  camera flash. `brightness` is world-writable and never rewritten by the daemon, so the
+  unprivileged shell can toggle it in place regardless of daemon uid.
+- Startup ordering: the daemon (session launcher, before plasmashell) seeds the node before
+  the tile's `available` (CONSTANT) is read. postinst also seeds it with `max_brightness=0`
+  so file-based readers see something pre-daemon.
+
 ### Risks / open validation
 
 - `BKSDisplayBrightnessSet` from a fakesigned standalone daemon is the standard jailbreak
@@ -188,6 +213,12 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
   refuses: IOMobileFramebuffer brightness, or a SpringBoard-side helper via notify tokens.
 - IOPS on iOS reports percent granularity only (no energy/rate); `TimeToEmpty` is often -1
   early after state changes — clients handle 0 (unknown) fine.
+- Torch: `AVCaptureDevice` torch control from a headless fakesigned session daemon is
+  unverified on 17.6.1 from OUR daemon (well-established for CLI torch tools generally). The
+  test iPad (7th gen) has **no torch LED**, so end-to-end validation needs torch-capable
+  hardware; on the test device the correct result is `hasTorch == false` → tile hidden. If
+  backboardd/TCC refuses torch access despite `kTCCServiceCamera`, `probe_torch()` returns
+  false and the daemon runs battery/brightness unaffected.
 - upowerd upgrade path if we ever want history/statistics: keep `-Dos_backend=dummy`, stop
   dropping `src/` in `ports/upower/patches`, overlay `src/dummy/up-backend.c` with an IOKit
   implementation, link `-framework IOKit`. The shim's D-Bus surface is a strict subset, so
@@ -230,4 +261,8 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
 - [x] Shell brightness slider via the daemon's org.gnome.SettingsDaemon.Power.Screen shim
       (no gsd-power needed)
 - [x] xios.session: xios-hwbridged added to the session launch (gnome-session, task #14)
+- [x] Torch bridge: synthetic `class/leds/xios:torch` node + AVCaptureDevice torch in
+      xios-hwbridged; Plasma Mobile flashlight tile backend swapped off libudev onto it
+      (plasma-mobile-ios-fixes.sh). SOURCE ONLY — needs daemon rebuild + plasma-mobile deb
+      rebuild + validation on torch-capable hardware.
 - [ ] Flavor-K follow-up: powerdevil backlight patch against the same tree

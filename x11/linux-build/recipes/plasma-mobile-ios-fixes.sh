@@ -222,21 +222,23 @@ PY
 #    served by libkworkspace's XiosSessionBackend (same plasma-workspace
 #    build; see plasma-workspace-ios-fixes.sh), which shells out to
 #    xios-session. Leave its CMakeLists.txt exactly as upstream shipped it.
-#    NOTE for the plasma-workspace owner: XiosSessionBackend::shutdown()/
-#    reboot() already call runXiosSession(), but canShutdown()/canReboot()
-#    are hardcoded to return false, and SessionManagement::requestShutdown()
-#    early-returns when canShutdown() is false — so until those two flip to
-#    true (reboot() also just re-runs the same "stop" action as shutdown(),
-#    so canReboot() truthfully can stay false until reboot is distinguished),
-#    this tile compiles and links but the shutdown action stays a no-op.
+#    XiosSessionBackend::shutdown()/reboot() call runXiosSession({"stop"}) and
+#    canShutdown()/canReboot() now return true (both map to ending the Plasma
+#    session; iOS owns real device power), so SessionManagement::requestShutdown()
+#    no longer early-returns and the tile actually ends the session.
 #  - screenshot: WIRE, but swap its backend. Upstream calls KWin's
 #    org.kde.KWin.ScreenShot2 D-Bus service, which this project's kwin does
 #    not implement. iosc does implement wlr-screencopy and grim is packaged
 #    as a thin CLI over it, so screenshotutil.cpp is rewritten below to shell
 #    out to grim instead of talking to KWin over D-Bus.
-#  - flashlight: HIDE. Needs real torch/udev hardware access; no backend
-#    exists on iOS. Unblock: an iOS torch bridge (e.g. AVCaptureDevice torch)
-#    exposed the way xios-fhs exposes battery/brightness.
+#  - flashlight: WIRE, but swap its backend. Upstream FlashlightUtil finds a
+#    real torch LED via libudev (/sys/class/leds/*:torch) — there is no libudev
+#    or hardware LED node on iOS. xios-fhs' xios-hwbridged now exposes a
+#    synthetic leds node (<sys>/class/leds/xios:torch) it drives through
+#    AVCaptureDevice setTorchMode, the same shape it uses for battery/brightness.
+#    flashlightutil is rewritten below to read/write that node (no libudev); the
+#    daemon publishes max_brightness=1 only on devices that actually have a torch
+#    LED, so the tile's `available` stays truthful (most iPads have none).
 #  - nightcolor: HIDE. Needs KWin's night color GL/color pipeline, which is
 #    disabled on this iOS KWin build. Unblock: a working KWin color pipeline
 #    on iOS.
@@ -256,7 +258,9 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-for name in ("flashlight", "nightcolor", "screenrotation"):
+# flashlight is WIRED (torch backend swapped to the xios-fhs leds bridge below), so it
+# stays built. nightcolor/screenrotation remain hidden pending their unblock work.
+for name in ("nightcolor", "screenrotation"):
     old = f"add_subdirectory({name})\n"
     new = f"# xios-quicksettings-hide ({name}): no iOS backend, see plasma-mobile-ios-fixes.sh\n# add_subdirectory({name})\n"
     if old in text and new not in text:
@@ -391,16 +395,184 @@ void ScreenShotUtil::takeScreenShot()
 """)
 PY
 
+# flashlight: drop the libudev link (no libudev on iOS) — the rewritten
+# flashlightutil.cpp below talks to the synthetic leds node instead. Qt::DBus is
+# no longer used by this tile either.
+python3 - "$src/quicksettings/flashlight/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("    Qt::DBus\n", "")
+text = text.replace("    udev\n", "")
+path.write_text(text)
+PY
+
+# flashlight: talk to the xios-fhs torch bridge instead of libudev. Upstream
+# FlashlightUtil enumerates /sys/class/leds/*:torch via libudev and toggles the
+# `brightness` sysattr; on iOS xios-hwbridged exposes a synthetic leds node at
+# <XIOS_SYS>/class/leds/xios:torch and drives AVCaptureDevice on writes. The
+# class surface (properties, signals, Q_INVOKABLE) is kept identical so the QML
+# plugin registration and main.qml bindings are unchanged.
+python3 - "$src/quicksettings/flashlight/flashlightutil.h" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.write_text("""/*
+ * SPDX-FileCopyrightText: 2022 by Devin Lin <devin@kde.org>
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#pragma once
+
+#include <QObject>
+#include <QString>
+
+// xios-torch-bridge: read/write the synthetic Linux leds node that xios-hwbridged
+// (package xios-fhs) drives through AVCaptureDevice, instead of libudev + a real
+// /sys/class/leds torch device. See plasma-mobile-ios-fixes.sh for the rationale.
+class FlashlightUtil : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool torchEnabled READ torchEnabled NOTIFY torchChanged);
+    Q_PROPERTY(bool available READ isAvailable CONSTANT);
+
+public:
+    FlashlightUtil(QObject *parent = nullptr);
+
+    Q_INVOKABLE void toggleTorch();
+    bool torchEnabled() const;
+    bool isAvailable() const;
+
+Q_SIGNALS:
+    void torchChanged(bool value);
+
+private:
+    QString m_brightnessPath;
+    QString m_onValue{QStringLiteral("1")};
+    bool m_isAvailable{false};
+    bool m_torchEnabled{false};
+
+    void findTorchDevice();
+};
+""")
+PY
+
+python3 - "$src/quicksettings/flashlight/flashlightutil.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.write_text("""/*
+ * SPDX-FileCopyrightText: 2020 Han Young <hanyoung@protonmail.com>
+ * SPDX-FileCopyrightText: 2022 by Devin Lin <devin@kde.org>
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#include "flashlightutil.h"
+
+#include <QByteArray>
+#include <QDebug>
+#include <QFile>
+#include <QFileInfo>
+
+// xios-torch-bridge: the synthetic Linux `leds` node xios-hwbridged exposes and drives
+// through AVCaptureDevice. The daemon sets max_brightness=1 only when the device actually
+// has a torch LED, so availability here is truthful (most iPads have none).
+static QString xiosTorchDir()
+{
+    const QByteArray env = qgetenv("XIOS_SYS");
+    const QString root = env.isEmpty() ? QStringLiteral("/var/jb/sys") : QString::fromLocal8Bit(env);
+    return root + QStringLiteral("/class/leds/xios:torch");
+}
+
+static QString xiosReadNode(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    return QString::fromUtf8(file.readAll()).trimmed();
+}
+
+FlashlightUtil::FlashlightUtil(QObject *parent)
+    : QObject{parent}
+{
+    findTorchDevice();
+}
+
+void FlashlightUtil::findTorchDevice()
+{
+    const QString dir = xiosTorchDir();
+    m_brightnessPath = dir + QStringLiteral("/brightness");
+    m_isAvailable = false;
+    m_torchEnabled = false;
+
+    bool ok = false;
+    const int maxBrightness = xiosReadNode(dir + QStringLiteral("/max_brightness")).toInt(&ok);
+    if (!ok || maxBrightness <= 0 || !QFileInfo::exists(m_brightnessPath)) {
+        qInfo() << "xios: no usable torch LED node at" << dir;
+        return;
+    }
+
+    m_onValue = QString::number(maxBrightness);
+    m_isAvailable = true;
+    m_torchEnabled = xiosReadNode(m_brightnessPath).toInt() != 0;
+    qInfo() << "xios: torch bridge available, max_brightness" << m_onValue;
+}
+
+void FlashlightUtil::toggleTorch()
+{
+    if (!m_isAvailable) {
+        qWarning() << "Flashlight not available";
+        return;
+    }
+
+    // brightness is world-writable; open in place so we do not need write permission on the
+    // (daemon-owned) directory. xios-hwbridged watches this file and drives the torch.
+    QFile file(m_brightnessPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        qWarning() << "Flashlight can't be toggled:" << file.errorString();
+        return;
+    }
+    const QString value = m_torchEnabled ? QStringLiteral("0") : m_onValue;
+    if (file.write(value.toUtf8() + '\\n') < 0 || !file.flush()) {
+        qWarning() << "Flashlight write failed:" << file.errorString();
+        return;
+    }
+    file.close();
+
+    m_torchEnabled = !m_torchEnabled;
+    Q_EMIT torchChanged(m_torchEnabled);
+}
+
+bool FlashlightUtil::torchEnabled() const
+{
+    return m_torchEnabled;
+}
+
+bool FlashlightUtil::isAvailable() const
+{
+    return m_isAvailable;
+}
+""")
+PY
+
 # Clean config exclusion for the hidden tiles: don't offer them in the
 # default quicksettings list either, so nothing tries to load a package that
-# is no longer built. See the capability audit comment above.
+# is no longer built. See the capability audit comment above. flashlight is
+# kept in the default list — it is WIRED to the xios-fhs torch bridge.
 python3 - "$src/components/quicksettingsplugin/quicksettingsconfig.cpp" <<'PY'
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-for name in ("flashlight", "nightcolor", "screenrotation"):
+for name in ("nightcolor", "screenrotation"):
     old = f'                                          QStringLiteral("org.kde.plasma.quicksetting.{name}"),\n'
     if old in text:
         text = text.replace(old, "", 1)

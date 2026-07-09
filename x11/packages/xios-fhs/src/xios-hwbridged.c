@@ -23,13 +23,21 @@
 
 #include <gio/gio.h>
 #include <glib-unix.h>
+#include <glib/gstdio.h>
 
 #include <dlfcn.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <objc/message.h>
+#include <objc/runtime.h>
+
 #include <CoreFoundation/CoreFoundation.h>
+
+/* libobjc autorelease pool (no ObjC syntax in this .c translation unit). */
+extern void *objc_autoreleasePoolPush (void);
+extern void  objc_autoreleasePoolPop (void *);
 
 #define UPOWER_NAME       "org.freedesktop.UPower"
 #define UPOWER_PATH       "/org/freedesktop/UPower"
@@ -127,6 +135,30 @@ load_backboard (void)
   return TRUE;
 }
 
+/* AVFoundation is dlopen'd (like IOKit/BackBoardServices) so the cross build needs no
+ * private tbds; we only need AVMediaTypeVideo resolved and the classes registered. */
+static id av_media_video;   /* AVMediaTypeVideo (NSString *) */
+
+static gboolean
+load_avfoundation (void)
+{
+  void *h = dlopen ("/System/Library/Frameworks/AVFoundation.framework/AVFoundation",
+                    RTLD_LAZY);
+  if (!h)
+    {
+      g_warning ("hwbridge: dlopen AVFoundation failed: %s", dlerror ());
+      return FALSE;
+    }
+  id *sym = (id *) dlsym (h, "AVMediaTypeVideo");
+  av_media_video = sym ? *sym : NULL;
+  if (!av_media_video || !objc_getClass ("AVCaptureDevice"))
+    {
+      g_warning ("hwbridge: AVFoundation torch symbols missing");
+      return FALSE;
+    }
+  return TRUE;
+}
+
 /* ---- battery state -------------------------------------------------------------------- */
 
 typedef struct
@@ -149,8 +181,10 @@ static char *sys_root;              /* $XIOS_SYS or /var/jb/sys */
 static char *backlight_dir;         /* <sys>/class/backlight/xios_backlight */
 static char *bat_dir;               /* <sys>/class/power_supply/BAT0 */
 static char *ac_dir;                /* <sys>/class/power_supply/AC0 */
+static char *leds_dir;              /* <sys>/class/leds/xios:torch */
 
 static int   last_applied_brightness = -1;  /* 0..MAX_BRIGHTNESS, -1 = never */
+static int   last_applied_torch = -1;        /* 0/1, -1 = never */
 
 static gboolean
 dict_get_int (CFDictionaryRef d, const char *key, long *out)
@@ -414,6 +448,121 @@ brightness_sync_tick (gpointer user_data)
       emit_screen_brightness_changed ();
     }
   return G_SOURCE_CONTINUE;
+}
+
+/* ---- torch / flashlight ---------------------------------------------------------------
+ *
+ * Same shape as the backlight bridge: a synthetic Linux `leds` node lives at
+ * <sys>/class/leds/xios:torch. Anything may write `brightness` (0 = off, max_brightness =
+ * on); we watch the directory and drive the camera torch through AVCaptureDevice. The
+ * Plasma Mobile flashlight quicksetting normally reaches a real LED via libudev; on iOS its
+ * backend (patched in plasma-mobile-ios-fixes.sh) reads/writes this node instead.
+ *
+ * max_brightness is 1 only when the device actually exposes an AVCaptureDevice torch, so
+ * the tile's `available` stays truthful — most iPads have no torch LED. */
+
+static id
+torch_device (void)
+{
+  Class cls = objc_getClass ("AVCaptureDevice");
+  if (!cls || !av_media_video)
+    return NULL;
+  return ((id (*) (id, SEL, id)) objc_msgSend)
+           ((id) cls, sel_registerName ("defaultDeviceWithMediaType:"), av_media_video);
+}
+
+static gboolean
+device_has_torch (id dev)
+{
+  if (!dev)
+    return FALSE;
+  return ((BOOL (*) (id, SEL)) objc_msgSend) (dev, sel_registerName ("hasTorch")) ? TRUE : FALSE;
+}
+
+/* Probe once at startup without starting a capture session (enumeration + hasTorch do not
+ * require camera authorization; only lockForConfiguration/setTorchMode does). */
+static gboolean
+probe_torch (void)
+{
+  void *pool = objc_autoreleasePoolPush ();
+  gboolean has = device_has_torch (torch_device ());
+  objc_autoreleasePoolPop (pool);
+  return has;
+}
+
+static void
+apply_torch (int on)
+{
+  on = on ? 1 : 0;
+  if (on == last_applied_torch)
+    return;
+
+  void *pool = objc_autoreleasePoolPush ();
+  id dev = torch_device ();
+  if (device_has_torch (dev))
+    {
+      id err = NULL;
+      BOOL locked = ((BOOL (*) (id, SEL, id *)) objc_msgSend)
+                      (dev, sel_registerName ("lockForConfiguration:"), &err);
+      if (locked)
+        {
+          /* AVCaptureTorchModeOff = 0, AVCaptureTorchModeOn = 1 */
+          ((void (*) (id, SEL, long)) objc_msgSend)
+            (dev, sel_registerName ("setTorchMode:"), (long) on);
+          ((void (*) (id, SEL)) objc_msgSend) (dev, sel_registerName ("unlockForConfiguration"));
+          last_applied_torch = on;
+        }
+      else
+        g_warning ("hwbridge: torch lockForConfiguration failed");
+    }
+  objc_autoreleasePoolPop (pool);
+}
+
+static void
+on_leds_dir_event (GFileMonitor *monitor, GFile *file, GFile *other,
+                   GFileMonitorEvent event, gpointer user_data)
+{
+  (void) monitor; (void) other; (void) user_data;
+
+  if (event != G_FILE_MONITOR_EVENT_CHANGED &&
+      event != G_FILE_MONITOR_EVENT_CREATED &&
+      event != G_FILE_MONITOR_EVENT_MOVED_IN &&
+      event != G_FILE_MONITOR_EVENT_RENAMED)
+    return;
+
+  g_autofree char *base = g_file_get_basename (file);
+  if (g_strcmp0 (base, "brightness") != 0)
+    return;
+
+  g_autofree char *path = g_build_filename (leds_dir, "brightness", NULL);
+  g_autofree char *contents = NULL;
+  if (!g_file_get_contents (path, &contents, NULL, NULL))
+    return;
+  apply_torch ((int) g_ascii_strtoll (contents, NULL, 10) != 0);
+}
+
+/* Seed the synthetic LED node. `present` reflects real torch capability and is published as
+ * max_brightness (1 = usable, 0 = no torch on this device). `brightness` is left world
+ * writable so the unprivileged shell can toggle it in place, and is never rewritten by the
+ * daemon (the writer owns it; we only read it on directory events). */
+static void
+ensure_leds_tree (gboolean present)
+{
+  if (g_mkdir_with_parents (leds_dir, 0775) != 0)
+    g_warning ("hwbridge: mkdir %s failed", leds_dir);
+
+  write_sys_file (leds_dir, "color", "white");
+  write_sys_file (leds_dir, "function", "torch");
+  write_sys_file (leds_dir, "max_brightness", present ? "1" : "0");
+
+  g_autofree char *bpath = g_build_filename (leds_dir, "brightness", NULL);
+  if (!g_file_test (bpath, G_FILE_TEST_EXISTS))
+    {
+      g_autoptr (GError) error = NULL;
+      if (!g_file_set_contents (bpath, "0\n", -1, &error))
+        g_warning ("hwbridge: seed %s: %s", bpath, error->message);
+    }
+  g_chmod (bpath, 0666);
 }
 
 /* ---- org.gnome.SettingsDaemon.Power (Screen) -------------------------------------------
@@ -925,12 +1074,19 @@ main (int argc, char **argv)
   backlight_dir = g_build_filename (sys_root, "class/backlight/xios_backlight", NULL);
   bat_dir = g_build_filename (sys_root, "class/power_supply/BAT0", NULL);
   ac_dir = g_build_filename (sys_root, "class/power_supply/AC0", NULL);
+  leds_dir = g_build_filename (sys_root, "class/leds/xios:torch", NULL);
 
   seed_sysfs_skeleton ();
 
   gboolean have_battery = load_iokit ();
   gboolean have_backlight = load_backboard ();
-  if (!have_battery && !have_backlight)
+  /* Torch is optional and non-fatal: publish the node's capability either way so the
+   * flashlight tile can read a truthful `available`, but only watch it when usable. */
+  gboolean have_torch = load_avfoundation () && probe_torch ();
+  ensure_leds_tree (have_torch);
+  if (have_torch)
+    last_applied_torch = 0;
+  if (!have_battery && !have_backlight && !have_torch)
     {
       g_warning ("hwbridge: no hardware backends available, nothing to do");
       return 1;
@@ -985,9 +1141,23 @@ main (int argc, char **argv)
       g_timeout_add_seconds (10, brightness_sync_tick, NULL);
     }
 
-  g_message ("hwbridge: up (battery=%s backlight=%s sys=%s)",
+  GFileMonitor *leds_monitor = NULL;
+  if (have_torch)
+    {
+      /* Watch the directory, not the file: writers replace `brightness` by rename. */
+      g_autoptr (GFile) dir = g_file_new_for_path (leds_dir);
+      g_autoptr (GError) error = NULL;
+      leds_monitor = g_file_monitor_directory (dir, G_FILE_MONITOR_WATCH_MOVES, NULL, &error);
+      if (leds_monitor)
+        g_signal_connect (leds_monitor, "changed", G_CALLBACK (on_leds_dir_event), NULL);
+      else
+        g_warning ("hwbridge: torch monitor failed: %s", error->message);
+    }
+
+  g_message ("hwbridge: up (battery=%s backlight=%s torch=%s sys=%s)",
              have_battery ? "iokit" : "none",
-             have_backlight ? "backboardd" : "none", sys_root);
+             have_backlight ? "backboardd" : "none",
+             have_torch ? "avcapture" : "none", sys_root);
   g_main_loop_run (loop);
 
   if (owner_id)
@@ -995,6 +1165,7 @@ main (int argc, char **argv)
   if (gsd_owner_id)
     g_bus_unown_name (gsd_owner_id);
   g_clear_object (&monitor);
+  g_clear_object (&leds_monitor);
   g_main_loop_unref (loop);
   return 0;
 }

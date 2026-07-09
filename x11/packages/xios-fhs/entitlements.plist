@@ -21,6 +21,14 @@
         <string>AppleSmartBatteryUserClient</string>
     </array>
 
+    <!-- Drive the camera torch (AVCaptureDevice lockForConfiguration/setTorchMode) for the
+         flashlight quicksetting. Scoped to the camera TCC service; no capture session is
+         ever started. Only effective on devices that actually have a torch LED. -->
+    <key>com.apple.private.tcc.allow</key>
+    <array>
+        <string>kTCCServiceCamera</string>
+    </array>
+
     <!-- The synthetic sysfs tree lives here; the daemon writes it every tick. -->
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
