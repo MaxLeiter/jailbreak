@@ -445,6 +445,47 @@ static void read_session_status(char *preset, size_t plen,
     json_str_field(buf, "state", state, slen);
 }
 
+/* --- xios-session-status.json upkeep ----------------------------------------
+ * xios-session (the shell launcher) owns this file, but sessions also come up
+ * and die through ioscd (the native IOSCHost path, or a classic iosc we spawn
+ * for a LAUNCH). Without these writers the Xios picker keeps showing whatever
+ * the launcher last wrote — a "kde up" from hours ago while only the native
+ * session was alive (observed 2026-07-08). Same minimal JSON shape as
+ * xs_write_status: {"preset","state","message","at"}. */
+static void write_session_status(const char *preset, const char *state,
+                                 const char *msg)
+{
+    char at[32] = "";
+    char tmp[PATH_MAX + 8];
+    time_t t = time(NULL);
+    struct tm tmv;
+    if (localtime_r(&t, &tmv))
+        strftime(at, sizeof(at), "%Y-%m-%dT%H:%M:%S", &tmv);
+    snprintf(tmp, sizeof(tmp), "%s.ioscd", g_session_status);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return;
+    fprintf(f, "{\"preset\":\"%s\",\"state\":\"%s\",\"message\":\"%s\",\"at\":\"%s\"}\n",
+            preset, state, msg, at);
+    fclose(f);
+    if (rename(tmp, g_session_status) != 0) { unlink(tmp); return; }
+    chmod(g_session_status, 0644);   /* the mobile-owned Xios app polls it */
+    fprintf(stderr, "ioscd: session status -> %s %s (%s)\n", preset, state, msg);
+}
+
+/* A compositor WE spawned died: mark the session down, but only if the status
+ * file still describes the preset we wrote for it — anything else means a
+ * launcher owns the file now. */
+static void note_iosc_died(int native)
+{
+    char preset[64], state[64];
+    const char *own = native ? "native" : "iosc";
+    read_session_status(preset, sizeof(preset), state, sizeof(state));
+    if (strcmp(preset, own) != 0) return;
+    if (strcmp(state, "up") != 0 && strcmp(state, "compositor-only") != 0) return;
+    write_session_status(own, "down",
+                         native ? "native session exited" : "iosc compositor exited");
+}
+
 #define MAX_PRESET_HEALTH 16
 struct preset_health { char preset[64]; int fails; uint64_t last_fail_ms; };
 static struct preset_health g_preset_health[MAX_PRESET_HEALTH];
@@ -547,8 +588,8 @@ static void reap_children(void)
 {
     int status; pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        if (pid == g_iosc_pid[0]) { g_iosc_pid[0] = 0; continue; }
-        if (pid == g_iosc_pid[1]) { g_iosc_pid[1] = 0; continue; }
+        if (pid == g_iosc_pid[0]) { g_iosc_pid[0] = 0; note_iosc_died(0); continue; }
+        if (pid == g_iosc_pid[1]) { g_iosc_pid[1] = 0; note_iosc_died(1); continue; }
         if (note_session_child_exit(pid, status)) continue;
         int known = 0;
         for (int i = 0; i < g_napps; i++) {
@@ -716,21 +757,25 @@ static int session_state_transitional(const char *state)
            strcmp(state, "relaunching") == 0 || strcmp(state, "stopping") == 0;
 }
 
-/* Any live compositor rendezvous, wherever the flavor puts it: wayland-0
- * (iosc/mutter/gnome), wayland-native-0 (per-app hosts), or KWin's sockets
- * inside the private KDE runtime dir (the KDE preset creates NO
- * /var/jb/tmp/wayland-0 — probing only that path is how the first cut of
- * this guard failed open). */
-static int compositor_socket_live(void)
+/* Any live classic-desktop rendezvous, wherever the flavor puts it: wayland-0
+ * (iosc/mutter/gnome) or KWin's sockets inside the private KDE runtime dir
+ * (the KDE preset creates NO /var/jb/tmp/wayland-0 — probing only that path
+ * is how the first cut of the session guard failed open). */
+static int classic_compositor_socket_live(void)
 {
     char p[PATH_MAX];
     if (wayland_sock_live(mode_cfg(0)->wayland_sock)) return 1;
-    if (wayland_sock_live(mode_cfg(1)->wayland_sock)) return 1;
     tmp_path(p, sizeof(p), "xios-kde-runtime/kwin-ios-test");
     if (wayland_sock_live(p)) return 1;
     tmp_path(p, sizeof(p), "xios-kde-runtime/wayland-0");
     if (wayland_sock_live(p)) return 1;
     return 0;
+}
+
+static int compositor_socket_live(void)
+{
+    if (classic_compositor_socket_live()) return 1;
+    return wayland_sock_live(mode_cfg(1)->wayland_sock);   /* per-app hosts */
 }
 
 /* Is any compositor/shell process alive (the things a session teardown would
@@ -782,6 +827,34 @@ static int active_session_healthy(char *active, size_t active_len)
     return 0;
 }
 
+/* Keep the status file honest when a session comes up through ioscd rather
+ * than xios-session. Only a steady claim ("up"/"compositor-only", or no file)
+ * is ever replaced: a transient state means a live xios-session is mid-switch
+ * and owns the file. Native mode additionally requires the claimed classic
+ * session to be dead — the native compositor coexists with a live classic
+ * desktop, and a working KDE/GNOME/iosc session must keep the file. */
+static void refresh_session_status(int native, int forked)
+{
+    char preset[64], state[64];
+    read_session_status(preset, sizeof(preset), state, sizeof(state));
+    if (state[0] && strcmp(state, "up") != 0 && strcmp(state, "compositor-only") != 0)
+        return;
+    if (native) {
+        /* KDE keeps its sockets in the private runtime dir, so probe every
+         * classic rendezvous — a bare wayland-0 check would clobber a live
+         * "kde up" claim on the first native app launch. */
+        if (state[0] && classic_compositor_socket_live())
+            return;                    /* the claimed classic session is really up */
+        if (state[0] && strcmp(preset, "native") == 0)
+            return;                    /* already says native; keep the original stamp */
+        write_session_status("native", "up", "native session running (iosc-host)");
+    } else {
+        if (!forked)
+            return;                    /* only speak for a compositor we started */
+        write_session_status("iosc", "up", "iosc compositor running (started by ioscd)");
+    }
+}
+
 /* Bring up the desktop audio stack (xios-audiod + PulseAudio) via the pulse
  * profile helper, the same way the run-*.sh launchers do. We shell out because
  * xios_pulse_start lives in profile.d and ioscd links nothing audio-related.
@@ -823,7 +896,7 @@ static int ensure_iosc(int native)
         return -2;
     }
 
-    if (iosc_alive(native)) return 0;
+    if (iosc_alive(native)) { refresh_session_status(native, 0); return 0; }
 
     /* A compositor we did not spawn may own the socket. Adopt it instead of
      * clobbering its rendezvous files out from under its clients (per
@@ -832,6 +905,7 @@ static int ensure_iosc(int native)
      * we don't own it, and a re-probe next LAUNCH re-adopts or restarts. */
     if (wayland_sock_live(mode->wayland_sock)) {
         fix_ddx_perms(native);
+        refresh_session_status(native, 0);
         return 0;
     }
 
@@ -879,6 +953,7 @@ static int ensure_iosc(int native)
     }
     if (!path_exists(mode->wayland_sock) || !path_exists(mode->json)) return -1;
     fix_ddx_perms(native);
+    refresh_session_status(native, 1);
     return 0;
 }
 
