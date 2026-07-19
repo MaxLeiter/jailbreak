@@ -149,7 +149,7 @@ replace(
 replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.h",
     "        DmaBuf,\n    };\n\n    BufferType m_bufferType = BufferType::None;",
-    "        DmaBuf,\n        Iosc, // ios-gpu-client-texture-type\n    };\n\n    BufferType m_bufferType = BufferType::None;\n    EGLSurface m_iosurfacePbuffer = EGL_NO_SURFACE;\n    IoscClientBuffer *m_iosurfaceBuffer = nullptr;",
+    "        DmaBuf,\n        Iosc, // ios-gpu-client-texture-type\n    };\n\n    BufferType m_bufferType = BufferType::None;\n    EGLConfig m_iosurfaceConfig = EGL_NO_CONFIG_KHR;\n    EGLSurface m_iosurfacePbuffer = EGL_NO_SURFACE;\n    IoscClientBuffer *m_iosurfaceBuffer = nullptr;",
     "ios-gpu-client-texture-type",
 )
 replace(
@@ -162,7 +162,7 @@ replace(
 replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
     '#include "core/graphicsbufferview.h"\n',
-    '#include "core/graphicsbufferview.h"\n#include "wayland/ioscclientbuffer.h" // ios-gpu-client-texture-include\n#include "opengl/egldisplay.h"\n',
+    '#include "core/graphicsbufferview.h"\n#include "wayland/ioscclientbuffer.h" // ios-gpu-client-texture-include\n#include "opengl/egldisplay.h"\n#include "backends/wayland/iosc_egl_helpers.h"\n',
     "ios-gpu-client-texture-include",
 )
 replace(
@@ -192,36 +192,14 @@ if "ios-gpu-client-texture-load" not in text:
         raise SystemExit(f"{p}: missing IOSurface texture insertion anchor")
     implementation = r'''bool BasicEGLSurfaceTextureWayland::loadIoscTexture(IoscClientBuffer *buffer) // ios-gpu-client-texture-load
 {
-    const EGLint configAttributes[] = {
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-        EGL_BIND_TO_TEXTURE_RGBA, EGL_TRUE,
-        EGL_NONE,
-    };
-    EGLConfig config = EGL_NO_CONFIG_KHR;
-    EGLint count = 0;
     EGLDisplay display = backend()->eglDisplayObject()->handle();
-    if (!eglChooseConfig(display, configAttributes, &config, 1, &count) || count != 1) {
+    if (m_iosurfaceConfig == EGL_NO_CONFIG_KHR) {
+        m_iosurfaceConfig = chooseIoscEglConfig(display);
+    }
+    if (m_iosurfaceConfig == EGL_NO_CONFIG_KHR) {
         return false;
     }
-#ifndef EGL_IOSURFACE_ANGLE
-#define EGL_IOSURFACE_ANGLE 0x3454
-#define EGL_IOSURFACE_PLANE_ANGLE 0x345A
-#define EGL_TEXTURE_INTERNAL_FORMAT_ANGLE 0x345D
-#define EGL_TEXTURE_TYPE_ANGLE 0x345E
-#endif
-    const EGLint pbufferAttributes[] = {
-        EGL_WIDTH, buffer->size().width(), EGL_HEIGHT, buffer->size().height(),
-        EGL_IOSURFACE_PLANE_ANGLE, 0,
-        EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
-        EGL_TEXTURE_INTERNAL_FORMAT_ANGLE, GL_BGRA_EXT,
-        EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
-        EGL_TEXTURE_TYPE_ANGLE, GL_UNSIGNED_BYTE,
-        EGL_NONE,
-    };
-    m_iosurfacePbuffer = eglCreatePbufferFromClientBuffer(display, EGL_IOSURFACE_ANGLE,
-        reinterpret_cast<EGLClientBuffer>(buffer->iosurface()), config, pbufferAttributes);
+    m_iosurfacePbuffer = createIoscEglPbuffer(display, m_iosurfaceConfig, buffer->iosurface(), buffer->size());
     if (m_iosurfacePbuffer == EGL_NO_SURFACE) {
         return false;
     }
@@ -441,6 +419,7 @@ PY
 
 install -m 0644 "$assets/wayland_egl_backend.h" "$backend/wayland_egl_backend.h"
 install -m 0644 "$assets/wayland_egl_backend.cpp" "$backend/wayland_egl_backend.cpp"
+install -m 0644 "$assets/iosc_egl_helpers.h" "$backend/iosc_egl_helpers.h"
 install -m 0644 "$assets/eglplatformcontext.h" "$src/src/plugins/qpa/eglplatformcontext.h"
 install -m 0644 "$assets/eglplatformcontext.cpp" "$src/src/plugins/qpa/eglplatformcontext.cpp"
 

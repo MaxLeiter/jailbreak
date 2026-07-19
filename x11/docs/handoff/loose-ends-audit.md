@@ -45,10 +45,11 @@ API whose kernel or service does not exist here.
 - `xios-desktop-stublibs 0.1.1` now includes configurable password-policy parsing, scoring,
   bad-word/repeat/class/sequence checks, and generation instead of fixed pwquality answers.
 - KWin's `+ios3` compile-only OpenGL milestone is now a complete nested GPU path.
-  `kwin 6.1.5+ios4` enables the ANGLE/Metal compositor, IOSurface output swapchains,
+  `kwin 6.1.5+ios5` enables the ANGLE/Metal compositor, IOSurface output swapchains,
   direct IOSurface client textures, and EGL-backed QPA contexts; the old QPA `nullptr`
-  and CPU-copy runtime seams are gone. The clean build also closes the QPA EGL include-order,
-  source-list, dylib-visibility, and parallel-autogen failures found during packaging.
+  and CPU-copy runtime seams are gone. The final clean 806-step build includes the simplified
+  owned backend/QPA sources, shared IOSurface EGL setup, cached config selection, accumulated
+  damage, and the QPA QObject lifetime fix. `+ios5` preserves `+ios4` as an immutable rollback.
 
 ## Verification completed
 
@@ -57,9 +58,9 @@ API whose kernel or service does not exist here.
   `apps/iosc-shell/build-panel.sh`: host builds passed.
 - `wayland/build-xios-glue.sh`: static and dynamic glue libraries built with the full exported
   Xios API.
-- `linux-build/build-backend-check.sh`: the four changed Mutter input/monitor sources passed
-  Mutter 46's strict compile flags before the final resize/startup additions. Rerun it for the
-  final tree when the shared Docker build clears.
+- A `MUTTER_CLEAN=1`, `TARGETS="mutter mutter-package"` run rebuilt all 666 units from a wiped
+  work tree. Both `libmutter-14-0/-dev 46.0+ios3` were produced, and the runtime dylib contains
+  the `MetaBackendIOS` implementation.
 - Shell syntax, package-control required fields, patch-series coverage, Plasma generated-provider
   audit, and `git diff --check` passed.
 - Strict host compiles passed for libgtop, AccountsService, BlueZ, and pwquality. libgtop's host
@@ -67,8 +68,11 @@ API whose kernel or service does not exist here.
   Mach-O bridge/library payloads and the shim-closure candidates listed below. KWin also completed
   a clean 806-step source build plus an incremental link/package pass; its payload links ANGLE
   EGL, Metal, IOSurface, and libepoxy and has the compositor entitlement set.
-- Static repo: 561 debs indexed and hash-matched; all Depends/Pre-Depends were solvable.
+- Static repo: 561 packages indexed and hash-matched; all Depends/Pre-Depends were solvable.
 - Procursus shadow gate: 128 shadowing packages checked, 55 documented waivers, no violations.
+- Staging deployment `dpl_6swDZDECN57B4bpBKmdqKaat3SwY` is READY at
+  `https://dev.repo.maxleiter.com`; live `Packages`, `InRelease`, and new immutable Blob payloads
+  were fetched independently after deployment.
 
 ## Package queue
 
@@ -76,20 +80,20 @@ These versions intentionally do not reuse published filenames:
 
 | Package | Version | State |
 | --- | --- | --- |
-| `iosc` | 0.9.18 | Built, copied to `repo/debs`, indexed, host-audited |
-| `xios-launcher-tools` | 0.1.1 | Host payload built and staged; `xmkdeb` blocked on Docker API |
-| `xios-session` | 1.0.55 | Script verified; deb assembly pending |
-| `iosc-shell` | 0.9.11 | Final stamp rebuild and deb assembly pending |
-| `xios-a11y-tools` | 0.2.15 | Source syntax-checked; cross-build/deb pending |
-| `libmutter-14-0/-dev` | 46.0+ios3 | Final backend compile, full Mutter build, and debs pending |
-| `xios-kde` | 0.1.8 | Control now requires iosc >=0.9.18 and session >=1.0.55; rebuild the stale local candidate before copying it to the repo |
+| `iosc` | 0.9.18 | Built, audited, and live in staging |
+| `xios-launcher-tools` | 0.1.1 | Built, audited, and live in staging |
+| `xios-session` | 1.0.55 | Built, audited, and live in staging |
+| `iosc-shell` | 0.9.11 | Built, audited, and live in staging |
+| `xios-a11y-tools` | 0.2.15 | Cross-built, audited, and live in staging |
+| `libmutter-14-0/-dev` | 46.0+ios3 | Clean-built, audited, and live in staging; device smoke pending |
+| `xios-kde` | 0.1.9 | Built with the final iosc/session/KWin/Workspace/Mobile/KScreen floors and live in staging |
 | `ladybird-app` | 0.1.23+ios1 | iOS event-loop TODO/ID-wrap cleanup landed; full engine/app rebuild, host re-sign, and device smoke pending |
 | `libgtop-2.0-11` | 2.41.3+ios2 | Built; real Darwin process backend; device smoke pending |
 | `xios-session-stubs` | 0.2.5 | Built; persistent AccountsService + stateful BlueZ bridge; device smoke pending |
 | `xios-desktop-stublibs` | 0.1.1 | Built; expanded pwquality behavior; device smoke pending |
 | `milou` | 6.1.5+ios1 | Built from upstream source with real arm64 QML plugin; device smoke pending |
 | `plasma-mobile` | 6.1.5+ios21 | Fully rebuilt; depends on real Milou and contains no Milou fallback; device smoke pending |
-| `kwin` / `kwin-dev` | 6.1.5+ios4 | Built; real ANGLE/IOSurface renderer and EGL QPA, arm64/linkage/entitlements verified; device smoke pending |
+| `kwin` / `kwin-dev` | 6.1.5+ios5 | Clean-built and DER-finalized; real ANGLE/IOSurface renderer and EGL QPA; staging-live, device smoke pending |
 
 An unrelated GNOME Docker build was active during the earlier audit and was left untouched. It
 was no longer running at final validation; its outcome was not assessed as part of this shim sweep.
@@ -143,9 +147,10 @@ evidence alone:
 7. Smoke XFCE only after the entire package chain and launcher exist.
 8. Verify GNOME user-name/icon/language persistence, BlueZ discovery/alias/trust/agent behavior,
    GNOME Console process awareness, pwquality UI policy feedback, and Plasma Mobile Milou search.
-9. Launch `kwin +ios4` first in an isolated KDE slot; verify OpenGL compositor selection,
+9. Launch `kwin +ios5` first in an isolated KDE slot; verify OpenGL compositor selection,
    QtQuick internal windows, client IOSurface import, blur/transparency, rotation, and input
    alignment before making it the shared-session or published baseline.
 
-Production publication is intentionally not part of this offline sweep. Regenerate/audit the
-repo again after the queued debs are copied, then publish staging before production.
+Production publication is intentionally not part of this offline sweep. Staging is regenerated,
+audited, signed, published, and independently fetched; device proof remains the gate before any
+production promotion.

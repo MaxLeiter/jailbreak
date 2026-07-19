@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)+ios4
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios5
 # GL-enabled: KWin's effects/QuickView GL paths now build against real Qt OpenGL. The
 # epoxy<->QtGui-iOS-GLES header collision that previously forced
 # -DKWIN_IOS_QT_NO_OPENGL=1 is resolved by the ios-bringup-gl-coexist shim in

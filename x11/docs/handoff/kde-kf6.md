@@ -86,6 +86,20 @@ The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built L
   selection, QtQuick internal windows, direct client import, blur/transparency, rotation/input
   alignment, frame pacing, and clean teardown. Keep installed `+ios2` as rollback and do not
   publish `+ios4` until that smoke passes.
+- The 2026-07-19 simplification/optimization pass moved the owned backend and QPA sources into
+  `linux-build/recipes/kwin-ios-gpu/`, reduced the source-rewrite driver to targeted glue edits,
+  centralized ANGLE IOSurface EGL setup, cached client-texture EGL config selection and the QPA
+  format table, and replaced unconditional full-output repaint/damage with per-buffer accumulated
+  damage. It deliberately retains `glFinish()` at the three cross-process presentation seams until
+  an explicit native-fence path is proven on-device. Clean-source recipe application and isolated
+  iOS compiler checks pass for the output backend, IOSurface client texture, and QPA EGL context;
+  the latter check also caught and fixed the QPA context's missing QObject receiver lifetime.
+  Because the earlier container remained unkillable, the cache was cloned read-only into
+  `procursus-vol-kf6-closure-20260719`; an invalidated full 806-step build there produced
+  `kwin/kwin-dev 6.1.5+ios5`. The staging finalizer DER-signed two runtime binaries. Final SHA256:
+  `kwin` `75095a7cd19d1c2d8628c31e5134224048e32aae7bdea18317c71eb3dd127f0b`;
+  `kwin-dev` `c0331be9dcaa7271ed0863651424d09f4e25a86092e8603a21d5da841acfaa31`.
+  `xios-kde 0.1.9` requires this immutable revision; all three are live in staging.
 
 ## Plasma Desktop packaging — WIP
 - Desktop/mobile audit as of 2026-07-06: `kwin`, Qt6, KF6, `kwayland`, `kdecoration`, `layer-shell-qt`, `plasma-activities`, `plasma-wayland-protocols`, KGlobalAccelD, `libplasma`, the workspace support wave, `plasma-workspace`, `plasma-desktop`, `plasma-nano`, `plasma-mobile`, `libkscreen`, `kscreen`, `systemsettings`, `breeze`, and `plasma-integration` are built. `kscreenlocker` plus the broader Desktop/Mobile KCM/plugin/service wave still need deliberate packaging/port work.

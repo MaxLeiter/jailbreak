@@ -1,6 +1,7 @@
 /* KWin QPA EGL context backed by ANGLE IOSurface pbuffers on Xios. */
 #pragma once
 
+#include <QObject>
 #include <epoxy/egl.h>
 #include <qpa/qplatformopenglcontext.h>
 #include <memory>
@@ -26,7 +27,7 @@ public:
     EGLSurface surface;
 };
 
-class EGLPlatformContext : public QPlatformOpenGLContext
+class EGLPlatformContext : public QObject, public QPlatformOpenGLContext
 {
 public:
     EGLPlatformContext(QOpenGLContext *context, EglDisplay *display);
