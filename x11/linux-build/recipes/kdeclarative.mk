@@ -19,7 +19,7 @@ endif
 
 SUBPROJECTS += kdeclarative
 KDECLARATIVE_VERSION = $(KF6_VERSION)
-DEB_KDECLARATIVE_V ?= $(KDECLARATIVE_VERSION)+ios1
+DEB_KDECLARATIVE_V ?= $(KDECLARATIVE_VERSION)+ios2
 
 kdeclarative-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kdeclarative))

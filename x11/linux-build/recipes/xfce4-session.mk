@@ -4,7 +4,8 @@ endif
 
 # xfce4-session — XFCE session manager (xfce4-session + xfce4-session-logout etc).
 # Uses libSM/libICE (in Procursus). logind/ConsoleKit/polkit/upower are absent (we launch
-# components directly, not via a seat) and auto-disable. BLOCKED on the GTK3 stack.
+# components directly, not via a seat) and auto-disable. GTK3 is available;
+# this recipe is not yet build-validated.
 SUBPROJECTS          += xfce4-session
 XFCE4SESSION_MAJOR_V := 4.16
 XFCE4SESSION_VERSION := $(XFCE4SESSION_MAJOR_V).0

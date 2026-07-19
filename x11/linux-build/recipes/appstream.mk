@@ -7,7 +7,7 @@ endif
 # are prebuilt in Procursus; libxmlb is our recipe). GTK-independent. See docs/gnome-apps.md.
 # Build runs glib-compile-resources + msgfmt on the HOST (provided by libglib2.0-bin / gettext).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style. Soname 5 matches the
+# BUILT/PUBLISHED — libappstream5 1.0.3+ios1. Soname 5 matches the
 # Debian sid libappstream5 (AppStream 1.0.x).
 
 SUBPROJECTS       += appstream

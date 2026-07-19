@@ -41,6 +41,16 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private weak var keyboardRevealPan: UIPanGestureRecognizer?
     private var keyboardSwipeTriggered = false
 
+    // Two-finger / trackpad scroll -> AXIS (wire type 9). Mirrors XScreen.swift's
+    // handleTwoFingerPan/sendScroll; single-finger pointer emulation above is
+    // untouched, this is additive.
+    private enum TwoFingerMode { case undecided, scroll }
+    private var twoFingerMode = TwoFingerMode.undecided
+    private var twoFingerActive = 0            // live two-finger/wheel recognizers (0..2)
+    private var panLastTranslation = CGPoint.zero
+    private var axisRemainder = CGPoint.zero
+    private var axisActive = false
+
     // UITextInputTraits — literal keyboard (one tap one char).
     @objc var autocorrectionType: UITextAutocorrectionType = .no
     @objc var autocapitalizationType: UITextAutocapitalizationType = .none
@@ -169,6 +179,22 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         keyboardPan.delegate = self
         addGestureRecognizer(keyboardPan)
         keyboardRevealPan = keyboardPan
+
+        let twoFingerPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        twoFingerPan.minimumNumberOfTouches = 2
+        twoFingerPan.maximumNumberOfTouches = 2
+        twoFingerPan.delegate = self
+        addGestureRecognizer(twoFingerPan)
+
+        // Trackpad / Magic-Keyboard two-finger scrolling arrives as scroll events
+        // (no touches), which the two-touch pan above never sees; a dedicated
+        // recognizer feeds the same handler (mirrors XScreen.swift's wheelPan).
+        let wheelPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        wheelPan.allowedScrollTypesMask = .continuous
+        wheelPan.allowedTouchTypes = []
+        wheelPan.maximumNumberOfTouches = 0
+        wheelPan.delegate = self
+        addGestureRecognizer(wheelPan)
     }
 
     @objc private func handleKeyboardRevealPan(_ g: UIPanGestureRecognizer) {
@@ -190,6 +216,78 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         default:
             break
         }
+    }
+
+    /// Two-finger touch pan or trackpad/wheel scroll -> AXIS records. Mirrors
+    /// XScreen.swift's handleTwoFingerPan: park the pointer under the fingers
+    /// once (MOTION) when the gesture is recognized as a scroll, then forward
+    /// view-point deltas as AXIS. The single-finger pointer-emulation path in
+    /// touchesBegan/Moved/Ended above is untouched; UIKit's default
+    /// cancelsTouchesInView on this recognizer cancels any in-flight single
+    /// touch the same way it already does for keyboardRevealPan.
+    @objc private func handleTwoFingerPan(_ g: UIPanGestureRecognizer) {
+        let isWheel = g.numberOfTouches == 0   // trackpad/wheel scroll events
+        switch g.state {
+        case .began:
+            twoFingerBegan()
+            panLastTranslation = .zero
+            axisRemainder = .zero
+        case .changed:
+            let t = g.translation(in: self)
+            if twoFingerMode == .undecided, isWheel || abs(t.x) + abs(t.y) > 12 {
+                twoFingerMode = .scroll
+                if let (x, y) = canvasPoint(from: g.location(in: self)), let h = input {
+                    lastPt = (x, y)
+                    iosc_input_motion(h, x, y)   // focus the surface under the fingers
+                }
+            }
+            if twoFingerMode == .scroll {
+                sendScroll(dx: t.x - panLastTranslation.x, dy: t.y - panLastTranslation.y)
+            }
+            panLastTranslation = t
+        default:
+            sendScrollStop()
+            panLastTranslation = .zero
+            twoFingerEnded()
+        }
+    }
+
+    private func twoFingerBegan() {
+        twoFingerActive += 1
+        if twoFingerActive == 1 { twoFingerMode = .undecided }
+    }
+
+    private func twoFingerEnded() {
+        twoFingerActive = max(0, twoFingerActive - 1)
+        if twoFingerActive == 0 { twoFingerMode = .undecided }
+    }
+
+    /// dx/dy are view-point finger deltas. iosc gets AXIS records in 1/256
+    /// canvas-pixel fixed point with wl_pointer's sign (natural scroll:
+    /// fingers up = content scrolls down the page = positive).
+    private func sendScroll(dx: CGFloat, dy: CGFloat) {
+        guard let h = input, iosc_input_is_open(h) else { return }
+        let rect = canvasRectInView()
+        guard rect.width > 0, canvasW > 0 else { return }
+        let ptToCanvas = 256 * CGFloat(canvasW) / rect.width
+        axisRemainder.x -= dx * ptToCanvas
+        axisRemainder.y -= dy * ptToCanvas
+        let sx = axisRemainder.x.rounded(.towardZero)
+        let sy = axisRemainder.y.rounded(.towardZero)
+        if sx != 0 || sy != 0 {
+            axisRemainder.x -= sx
+            axisRemainder.y -= sy
+            iosc_input_axis(h, Int32(sx), Int32(sy), 0, 0, false)
+            axisActive = true
+        }
+    }
+
+    /// Fingers left the glass: end the axis gesture so clients kinetic-fling.
+    private func sendScrollStop() {
+        axisRemainder = .zero
+        guard axisActive, let h = input else { return }
+        axisActive = false
+        iosc_input_axis(h, 0, 0, 0, 0, true)
     }
 
     private func refreshAutoKeyboardFromTraits() {

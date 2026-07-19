@@ -668,6 +668,27 @@ static int scroll_node(struct client *c, unsigned id, const char *dir)
     return ok;
 }
 
+/* VoiceOver cursor moved to `id` (browsing, not activation). Browsing must
+ * NOT GrabFocus (a11y-plan.md "Focus and VoiceOver cursor sync": a swipe may
+ * never steal keyboard focus from a text field mid-edit) — scroll-into-view
+ * only, via the same Component.ScrollTo that scroll_node() uses, so a cursor
+ * move onto an offscreen node inside a scrollable view brings the rendered
+ * content along. Unknown id is a silent no-op, same as the other verbs. */
+static int vo_focus_node(struct client *c, unsigned id)
+{
+    struct node_ref *ref = client_find_node(c, id);
+    if (!ref || !ref->obj) return 0;
+
+    AtspiComponent *component = atspi_accessible_get_component(ref->obj);
+    if (!component) return 0;
+
+    GError *error = NULL;
+    int ok = atspi_component_scroll_to(component, ATSPI_SCROLL_ANYWHERE, &error) ? 1 : 0;
+    if (error) g_clear_error(&error);
+    g_object_unref(component);
+    return ok;
+}
+
 static int make_listener(void)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -764,6 +785,11 @@ static void process_client_line(struct client *c, const char *line)
         if (json_get_uint(line, "id", &id) && json_get_string(line, "dir", dir, sizeof(dir))) {
             scroll_node(c, id, dir);
         }
+    } else if (strcmp(type, "vo-focus") == 0) {
+        /* vo-focus: browsing must NOT GrabFocus (a11y-plan.md browsing rule)
+         * — scroll-into-view only. */
+        unsigned id = 0;
+        if (json_get_uint(line, "id", &id)) vo_focus_node(c, id);
     }
 }
 

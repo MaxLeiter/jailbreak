@@ -2,14 +2,13 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kwin.mk — KWin first-light for rootless iOS (nested Wayland/QPainter bias).
-# This recipe intentionally disables the Linux DRM/libinput/native-shell surface and most
-# effect plugins. The first goal is a linkable kwin_wayland on top of the KF6 + QtWayland
-# stack; native IOSurface/Plasma Mobile polish comes after this binary exists.
+# kwin.mk — KWin for rootless iOS (nested Wayland + ANGLE/IOSurface).
+# Linux DRM/libinput/native backends remain disabled; the nested backend renders through
+# ANGLE/Metal into IOSurfaces and imports IOSurface client buffers without a CPU copy.
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)+ios3
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios4
 # GL-enabled: KWin's effects/QuickView GL paths now build against real Qt OpenGL. The
 # epoxy<->QtGui-iOS-GLES header collision that previously forced
 # -DKWIN_IOS_QT_NO_OPENGL=1 is resolved by the ios-bringup-gl-coexist shim in
@@ -62,6 +61,8 @@ kwin: kwin-setup
 		-DQTWAYLANDSCANNER_KDE_EXECUTABLE=$(BUILD_WORK)/kwin/host-tools-build/qtwaylandscanner_kde \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KPipeWire=TRUE \
 		-DCMAKE_DISABLE_FIND_PACKAGE_QAccessibilityClient6=TRUE
+	# CMake's parallel autogen can start moc before creating this include leaf.
+	mkdir -p $(BUILD_WORK)/kwin/build/src/kwin_autogen/include
 	+ninja -C $(BUILD_WORK)/kwin/build
 	+DESTDIR="$(BUILD_STAGE)/kwin" ninja -C $(BUILD_WORK)/kwin/build install
 	$(call AFTER_BUILD,copy)

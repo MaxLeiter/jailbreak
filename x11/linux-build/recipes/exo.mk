@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 # exo — XFCE application/extension helper library (libexo-2 + exo-* utilities).
-# BLOCKED on the GTK3 stack.
+# GTK3 is available; this recipe is not yet build-validated.
 SUBPROJECTS += exo
 EXO_MAJOR_V := 4.16
 EXO_VERSION := $(EXO_MAJOR_V).4

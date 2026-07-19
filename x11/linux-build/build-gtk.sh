@@ -54,7 +54,7 @@ for x in /work/build_info/iosc-*.xml /work/recipes/build_info/iosc-*.xml; do
   [ -f "$x" ] && cp -v "$x" build_misc/entitlements/ || true
 done
 
-TARGETS="${TARGETS:-fribidi-package pango-package gdk-pixbuf-package atk-package gtk+3.0-package}"
+TARGETS="${TARGETS:-fribidi-package pango-package gdk-pixbuf-package atk gtk+3.0-package}"
 
 target_requests() {
   [[ " $TARGETS " == *" $1"* ]]

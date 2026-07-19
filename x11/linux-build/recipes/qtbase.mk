@@ -135,13 +135,24 @@ qtbase-setup: setup
 	#    (qfilesystemwatcher.cpp's Darwin engine chooser calls it; the fsevents alternative is
 	#    genuinely macOS-only). The frameworks the dropped MACOS LIBRARIES block carried
 	#    (CoreServices for UTType*, Security) plus UIKit (qcore_mac.mm's Q_OS_IOS path references
-	#    UIApplication) are injected globally via *_LINKER_FLAGS below. The trailing sed corrects
-	#    a tree that already carries the earlier macx-flavored append (idempotent otherwise).
+	#    UIApplication) are injected globally via *_LINKER_FLAGS below.
+	#    ROUND 5 (ICU ON): the posix collator MUST be gated CONDITION NOT QT_FEATURE_icu.
+	#    Upstream's own icu block compiles qcollator_icu.cpp when the feature is on, and
+	#    qcollator_p.h switches CollatorKeyType to QByteArray at the same time — an
+	#    unconditionally re-added qcollator_posix.cpp then fails to compile against the ICU
+	#    key type (QList<wchar_t> vs QByteArray; hit in the first round-5 run). The kqueue
+	#    watcher re-add stays unconditional. The trailing sed corrects a tree that already
+	#    carries the earlier macx-flavored append (idempotent otherwise); trees carrying the
+	#    old UNGATED posix append are invalidated by the recipe fingerprint, not patched.
 	if ! grep -q "xios iOS re-adds" $(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt; then \
 		printf '%s\n' \
 			'# xios iOS re-adds (see qtbase.mk patch 5)' \
 			'qt_internal_extend_target(Core' \
-			'    SOURCES text/qcollator_posix.cpp io/qfilesystemwatcher_kqueue.cpp io/qfilesystemwatcher_kqueue_p.h' \
+			'    CONDITION NOT QT_FEATURE_icu' \
+			'    SOURCES text/qcollator_posix.cpp' \
+			')' \
+			'qt_internal_extend_target(Core' \
+			'    SOURCES io/qfilesystemwatcher_kqueue.cpp io/qfilesystemwatcher_kqueue_p.h' \
 			')' >> $(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt ; \
 	fi
 	sed -i 's|SOURCES text/qcollator_macx.cpp io/qfilesystemwatcher_kqueue|SOURCES text/qcollator_posix.cpp io/qfilesystemwatcher_kqueue|' \

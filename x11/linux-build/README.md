@@ -162,7 +162,7 @@ docker run --rm --platform linux/arm64 \
   -v "$PWD/recipes:/work/recipes:ro" \
   -v "$PWD/../ports:/work/ports:ro" \
   -v "$PWD/out:/out" \
-  -e TARGETS="fribidi-package pango-package gdk-pixbuf-package atk-package gtk+3.0-package" \
+  -e TARGETS="fribidi-package pango-package gdk-pixbuf-package atk gtk+3.0-package" \
   procursus-xbuild:bookworm-arm64 /work/build-gtk.sh
 ```
 
@@ -178,8 +178,8 @@ linux-build/
   build.sh          # in-container: clone Procursus, patch, build tigervnc/Xvfb/Xios
   build-gtk.sh      # in-container: install recipes/*.mk, build the GTK3 stack
   patches/
-    0001-xserver-popen-shell-rootless.patch   # /bin/sh → /var/jb/bin/sh (mirror of ../ports/)
     xios/{InitOutput.c,Makefile.am,xios_surface.c,xios_surface.h}  # IOSurface DDX
+  ../ports/tigervnc/patches/                   # Xserver source patch + series manifest
   recipes/*.mk      # new Procursus package makefiles (fribidi.mk, …)
   sdk/              # staged iPhoneOS.sdk + MacOSX.sdk        (gitignored)
   out/              # built debs + signed Xvfb/Xios          (gitignored)

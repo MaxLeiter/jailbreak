@@ -1312,7 +1312,10 @@ Item {
     readonly property real fullHeight: column.implicitHeight
     property real minimizedViewProgress: 0
     property real fullViewProgress: 1
-    function resetSwipeView() {}
+    function resetSwipeView() {
+        minimizedViewProgress = 0
+        fullViewProgress = 1
+    }
 
     ColumnLayout {
         id: column
@@ -1777,14 +1780,15 @@ QtObject {
     property bool simEmpty: true
     property bool mobileDataSupported: false
     property bool mobileDataEnabled: false
+    readonly property bool profileManagementSupported: false
     property bool needsAPNAdded: false
     property var profiles: []
     property string activeConnectionUni: ""
-    function refreshProfiles() {}
-    function activateProfile(connectionUni) {}
-    function addProfile(name, apn, username, password, networkType) {}
-    function removeProfile(connectionUni) {}
-    function updateProfile(connectionUni, name, apn, username, password, networkType) {}
+    function refreshProfiles() { return profiles }
+    function activateProfile(connectionUni) { return false }
+    function addProfile(name, apn, username, password, networkType) { return false }
+    function removeProfile(connectionUni) { return false }
+    function updateProfile(connectionUni, name, apn, username, password, networkType) { return false }
 }
 ]=])
 install(DIRECTORY "${IOS_PLASMA_MM_STUB_DIR}/" DESTINATION ${KDE_INSTALL_QMLDIR}/org/kde/plasma/mm)

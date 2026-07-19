@@ -17,3 +17,11 @@
 G_DECLARE_FINAL_TYPE (MetaSeatIOS, meta_seat_ios, META, SEAT_IOS, ClutterSeat)
 
 ClutterSeat *meta_seat_ios_new (void);
+
+/* The synthetic touchscreen core device (CLUTTER_INPUT_CAPABILITY_TOUCH, PHYSICAL mode),
+ * registered on the seat's device list alongside the pointer/keyboard so
+ * meta-wayland-seat.c's lookup_device_capabilities() advertises WL_SEAT_CAPABILITY_TOUCH to
+ * clients. ClutterSeatClass has no get_touch vfunc (unlike get_pointer/get_keyboard), so this
+ * is a MetaSeatIOS-specific accessor for meta-virtual-input-device-ios.c's touch events to use
+ * as their source device. */
+ClutterInputDevice *meta_seat_ios_get_touch (MetaSeatIOS *seat);

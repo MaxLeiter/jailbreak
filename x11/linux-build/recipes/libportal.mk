@@ -9,7 +9,7 @@ endif
 #
 # DEPENDS (target): glib + gtk4 (gtk-builder; for the -gtk4 backend).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libportal1/libportal-gtk4-1 0.7.1+ios1.
 
 SUBPROJECTS        += libportal
 LIBPORTAL_VERSION  := 0.7.1

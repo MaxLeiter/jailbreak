@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build the Xios GNOME-session D-Bus stub daemons for rootless iOS:
+# Build the Xios GNOME-session D-Bus compatibility daemons for rootless iOS:
 #   xios-login1-stub    org.freedesktop.login1  (session/seat/inhibitor)
 #   xios-polkit-stub    org.freedesktop.PolicyKit1.Authority (auto-allow, single-user root)
 #   xios-accounts-stub  org.freedesktop.Accounts (one user, so the shell shows a name)
 #
-# All three are pure GLib/GIO (no Mutter/Wayland/ANGLE). They stand in for the freedesktop
+# The C services are pure GLib/GIO (no Mutter/Wayland/ANGLE). They provide the freedesktop
 # services gnome-shell/gsd/libaccountsservice talk to but that have no daemon on iOS.
 #
 # Runs INSIDE the Procursus cross-build image against the same warm volume that built glib
@@ -66,6 +66,7 @@ CFLAGS=(
   -Wextra
   -Wno-unused-parameter
   "-DXIOS_LOGIN1_RUNTIME_DIR=\"$TARGET_RUNTIME_TMP/xios-run\""
+  "-DXIOS_ACCOUNTS_STATE_PATH=\"$TARGET_PREFIX/var/lib/xios/account.ini\""
 )
 # -liosexec: the Procursus SDK redirects sandbox-sensitive libc calls (getpwuid -> ie_getpwuid)
 # into libiosexec, so anything using <pwd.h> must link it (the shared identity helper and the
@@ -74,8 +75,8 @@ DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -lio
 echo "   target=$MEMO_TARGET/$MEMO_CFVER prefix=${TARGET_PREFIX:-/} runtime=$TARGET_RUNTIME_TMP"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
 
-# All three stubs share xios-stub-dbus.c (register-object + own-name main loop). The login1
-# + accounts stubs additionally share xios-session-identity.c, which resolves the real user
+# All C services share xios-stub-dbus.c (register-object + own-name main loop). The login1
+# + accounts bridges additionally share xios-session-identity.c, which resolves the real user
 # once. It reads MobileGestalt for the device name via CoreFoundation, so those two stubs also
 # link -framework CoreFoundation. polkit does not need the identity.
 STUB_DBUS_SRC="$SRC/xios-stub-dbus.c"

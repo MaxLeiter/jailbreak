@@ -2,7 +2,8 @@
 # run-mutter.sh — first-pixels smoke for Mutter 46 + MetaBackendIOS on-device (ROOT).
 #
 # Mutter is its OWN compositor and a drop-in for iosc here: MetaBackendIOS::constructed creates
-# one fullscreen 2160x1620 output IOSurface, starts the Xios rendezvous server on
+# one fullscreen output IOSurface (2160x1620 by default, or IOSC_LOGICAL WxH at
+# the backend's display scale), starts the Xios rendezvous server on
 # /var/jb/tmp/mutter-ddx.sock, and writes /var/jb/tmp/xios.json so the Xios app adopts + Metal-
 # presents that surface (exactly what iosc does). We stop the iosc demo first (mutter replaces it),
 # start mutter --wayland, then relaunch the Xios app to show mutter's output. Route A: the stage

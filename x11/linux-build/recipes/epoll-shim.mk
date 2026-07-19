@@ -7,7 +7,7 @@ endif
 # against <sys/epoll.h>) build for Darwin/iOS, which has no epoll. Upstream is the
 # same shim the BSDs and MacPorts use to build Wayland; it has a maintained macOS port.
 #
-# DRAFT — Wayland track W0. Not built yet (Docker gated by coordinator). Drop-in:
+# BUILT/PUBLISHED — libepoll-shim0 0.0.20240608+ios1. Recipe integration:
 #   recipe        -> Procursus/makefiles/epoll-shim.mk
 #   control files -> Procursus/build_info/libepoll-shim{0,-dev}.control
 # (the wayland build driver copies recipes/ + recipes/build_info/ into the clone).

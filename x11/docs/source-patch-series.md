@@ -7,6 +7,12 @@ by `linux-build/recipes/stage-port-patches.sh` and applied from the recipe with
 
 Current converted non-Qt stacks:
 
+- `ports/angle/patches`: Metal ES3 capability and jailbreak dylib dispatch
+  changes. ANGLE is built natively on macOS rather than through Procursus, so
+  `ports/angle/build-angle.sh` consumes `series` directly with `git apply`.
+- `ports/tigervnc/patches`: rootless Xserver shell-path fix. TigerVNC embeds an
+  Xserver source tree, so `linux-build/build.sh` stages the series and applies
+  it inside that nested tree after TigerVNC's own Xserver patch.
 - `ports/xwayland/patches`: rootless shell path and IOSurface glamor backend
   hooks. The backend `.c` and protocol XML remain local build inputs in
   `linux-build/recipes/build_info/`.

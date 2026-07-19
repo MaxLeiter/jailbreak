@@ -6,7 +6,7 @@ endif
 # libadwaita 1.4 needs. Pure C + glib; liblzma (xz-utils) and zstd are already prebuilt in
 # Procursus, so meson finds them via pkg-config. GTK-independent. See docs/gnome-apps.md.
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libxmlb2 0.3.14+ios1.
 
 SUBPROJECTS    += libxmlb
 LIBXMLB_VERSION := 0.3.14

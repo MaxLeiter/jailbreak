@@ -22,7 +22,7 @@
 #include <sys/event.h>
 #include <pwd.h>
 
-#define XIOS_MAX_INPUT_CLIENTS 4
+#define XIOS_MAX_INPUT_CLIENTS 16
 #define XIOS_IN_TEXT_MAX       4096u
 
 struct xios_in_client {

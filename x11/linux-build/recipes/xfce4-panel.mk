@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 # xfce4-panel — the XFCE panel (+ libxfce4panel-2.0 used by plugins). libwnck3 powers the
-# tasklist/pager/windowmenu plugins. BLOCKED on the GTK3 stack.
+# tasklist/pager/windowmenu plugins. GTK3 is available; this recipe is not yet build-validated.
 SUBPROJECTS        += xfce4-panel
 XFCE4PANEL_MAJOR_V := 4.16
 XFCE4PANEL_VERSION := $(XFCE4PANEL_MAJOR_V).6

@@ -24,8 +24,9 @@ struct _MetaSeatIOS
 
   ClutterInputDevice *core_pointer;
   ClutterInputDevice *core_keyboard;
+  ClutterInputDevice *core_touch;   /* TOUCH capability, so wl_seat advertises touch */
   ClutterKeymap      *keymap;
-  GList              *devices;      /* both core devices, for peek_devices */
+  GList              *devices;      /* all three core devices, for peek_devices */
 
   graphene_point_t    pointer_pos;
   ClutterModifierType modifiers;
@@ -153,7 +154,8 @@ static ClutterVirtualDeviceType
 meta_seat_ios_get_supported_virtual_device_types (ClutterSeat *seat)
 {
   return CLUTTER_VIRTUAL_DEVICE_TYPE_POINTER |
-         CLUTTER_VIRTUAL_DEVICE_TYPE_KEYBOARD;
+         CLUTTER_VIRTUAL_DEVICE_TYPE_KEYBOARD |
+         CLUTTER_VIRTUAL_DEVICE_TYPE_TOUCHSCREEN;
 }
 
 static void
@@ -169,8 +171,12 @@ meta_seat_ios_constructed (GObject *object)
   self->core_keyboard = create_core_device (self, CLUTTER_KEYBOARD_DEVICE,
                                             "Virtual core keyboard",
                                             CLUTTER_INPUT_CAPABILITY_KEYBOARD);
+  self->core_touch = create_core_device (self, CLUTTER_TOUCHSCREEN_DEVICE,
+                                         "Virtual core touchscreen",
+                                         CLUTTER_INPUT_CAPABILITY_TOUCH);
   self->devices = g_list_append (self->devices, self->core_pointer);
   self->devices = g_list_append (self->devices, self->core_keyboard);
+  self->devices = g_list_append (self->devices, self->core_touch);
 
   self->keymap = g_object_new (META_TYPE_KEYMAP_IOS, NULL);
 
@@ -189,6 +195,7 @@ meta_seat_ios_finalize (GObject *object)
   g_clear_list (&self->devices, NULL);
   g_clear_object (&self->core_pointer);
   g_clear_object (&self->core_keyboard);
+  g_clear_object (&self->core_touch);
   g_clear_object (&self->keymap);
 
   G_OBJECT_CLASS (meta_seat_ios_parent_class)->finalize (object);
@@ -230,4 +237,12 @@ ClutterSeat *
 meta_seat_ios_new (void)
 {
   return g_object_new (META_TYPE_SEAT_IOS, NULL);
+}
+
+ClutterInputDevice *
+meta_seat_ios_get_touch (MetaSeatIOS *seat)
+{
+  g_return_val_if_fail (META_IS_SEAT_IOS (seat), NULL);
+
+  return seat->core_touch;
 }

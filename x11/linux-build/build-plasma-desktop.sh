@@ -32,6 +32,7 @@ SUPPORT_RECIPE_TARGETS=(
   plasma5support
   pulseaudio-qt
   plasma-pa
+  milou
   libkscreen
   kscreen
   systemsettings
@@ -76,6 +77,7 @@ COLLECT_DEBS=(
   plasma5support
   kf6-pulseaudio-qt
   plasma-pa
+  milou
   libkscreen
   kscreen
   systemsettings
@@ -230,7 +232,7 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 echo "==> installing Plasma Desktop recipes into makefiles/"
 mkdir -p build_info build_misc/entitlements
-for r in qt6-common.mk kf6-common.mk shared-mime-info.mk libplasma.mk plasma-activities-stats.mk plasma-workspace.mk plasma-desktop.mk plasma-nano.mk plasma-mobile.mk; do
+for r in qt6-common.mk kf6-common.mk shared-mime-info.mk libplasma.mk plasma-activities-stats.mk plasma-workspace.mk plasma-desktop.mk plasma-nano.mk plasma-mobile.mk milou.mk; do
   cp -v /work/recipes/$r makefiles/
 done
 for t in "${SUPPORT_RECIPE_TARGETS[@]}"; do
@@ -240,6 +242,9 @@ for h in "${SUPPORT_RECIPE_HELPERS[@]}"; do
   cp -v "/work/recipes/${h}" makefiles/ 2>/dev/null || true
 done
 cp -v /work/build_info/shared-mime-info*.control /work/build_info/shared-mime-info*.postinst /work/build_info/libplasma*.control /work/build_info/plasma-activities-stats*.control /work/build_info/kactivitymanagerd*.control /work/build_info/plasma-workspace*.control /work/build_info/plasma-desktop*.control /work/build_info/plasma-nano*.control /work/build_info/plasma-mobile*.control build_info/
+# Milou has no installed public headers or CMake metadata. Purge the obsolete empty dev split
+# from warm volumes before PACK scans build_info control files.
+rm -f build_info/milou-dev.control
 for deb in "${COLLECT_DEBS[@]}"; do
   cp -v /work/build_info/${deb}*.control build_info/ 2>/dev/null || true
 done
@@ -259,6 +264,11 @@ for t in $TARGETS; do
   make ${t} $COMMON -j"${XIOS_BUILD_JOBS:-$(nproc)}"
   xios_cache_record_target "$t"
 done
+
+# PACK output debs live outside the transient package tree that milou.mk clears. Remove any
+# obsolete empty dev deb left by an older warm-volume recipe so collection cannot resurrect it.
+find build_dist/iphoneos-arm64-rootless/1900/milou -maxdepth 1 -type f \
+  -name 'milou-dev_*_iphoneos-arm64.deb' -delete 2>/dev/null || true
 
 echo "==> collect Plasma Desktop debs -> /out"
 mkdir -p /out

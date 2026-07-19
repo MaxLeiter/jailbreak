@@ -50,7 +50,7 @@
 namespace LadybirdIOS {
 
 // The single main-loop event source (signalled by did_post_event to drain the ThreadEventQueue)
-// and the run loop it lives on. Consistent with the "main loop only" FIXME in the header; when
+// and the run loop it lives on. Consistent with the UIKit main-loop scope in the header; when
 // multiple loops are supported these become per-loop and did_post_event uses the owner thread.
 static CFRunLoopSourceRef s_main_event_source = nullptr;
 static CFRunLoopRef s_main_run_loop = nullptr;
@@ -179,7 +179,7 @@ SignalHandlers::~SignalHandlers()
 
 struct SignalHandlersInfo {
     HashMap<int, NonnullRefPtr<SignalHandlers>> signal_handlers;
-    int next_signal_id { 0 };
+    IDAllocator signal_id_allocator;
 };
 
 static Singleton<SignalHandlersInfo> s_signals;
@@ -209,7 +209,7 @@ void SignalHandlers::dispatch()
 
 int SignalHandlers::add(Function<void(int)>&& handler)
 {
-    int id = ++signals_info()->next_signal_id; // TODO: worry about wrapping and duplicates?
+    int id = signals_info()->signal_id_allocator.allocate();
     if (m_calling_handlers)
         m_handlers_pending.set(id, move(handler));
     else
@@ -389,8 +389,7 @@ void EventLoopManagerIOS::register_notifier(Core::Notifier& notifier)
         notification_type = kCFSocketWriteCallBack;
         break;
     default:
-        TODO();
-        break;
+        VERIFY_NOT_REACHED();
     }
 
     auto callback_context = adopt_ref(*new SocketNotifierCallbackContext);
@@ -472,6 +471,7 @@ void EventLoopManagerIOS::unregister_signal(int handler_id)
     for (auto& h : info.signal_handlers) {
         auto& handlers = *h.value;
         if (handlers.remove(handler_id)) {
+            info.signal_id_allocator.deallocate(handler_id);
             if (handlers.is_empty())
                 remove_signal_number = handlers.m_signal_number;
             break;

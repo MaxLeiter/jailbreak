@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# build-kwin.sh — cross-build the first KWin Wayland compositor layer on top of
-# the completed Qt/KF6 volume. This pass is intentionally narrow: nested Wayland +
-# QPainter/OpenGL plumbing, with Linux DRM/libinput/native backends trimmed until a
-# real iOS/IOSurface KWin backend exists.
+# build-kwin.sh — cross-build nested KWin Wayland with the Xios ANGLE/Metal and
+# IOSurface backend on top of the completed Qt/KF6 volume. Linux DRM/libinput and
+# native backends remain deliberately trimmed on iOS.
 set -euo pipefail
 
 QTVER=6.6.3
@@ -54,6 +53,9 @@ cp -v /work/recipes/build_info/gbm-shim.* build_info/
 cp -v /work/recipes/build_info/libdisplay-info-*-shim.h build_info/
 cp -v /work/recipes/build_info/libdisplay-info-shim.c build_info/
 cp -v /work/recipes/kwin-ios-fixes.sh build_info/
+cp -v /work/recipes/kwin-ios-gpu-backend.sh build_info/
+rm -rf build_info/kwin-ios-gpu
+cp -Rv /work/recipes/kwin-ios-gpu build_info/
 cp -v /work/build_info/iosc-gl-ent.xml build_misc/entitlements/
 
 echo "==> staging already-built support debs into the KF6 sysroot"

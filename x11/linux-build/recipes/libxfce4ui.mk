@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 # libxfce4ui — XFCE GTK3 widget library (also libxfce4kbd-private + xfce4-ui utils).
-# First GTK-linked XFCE brick: BLOCKED on the GTK3 stack (libgtk-3-0).
+# First GTK-linked XFCE brick. GTK3 is available; this recipe is not yet build-validated.
 SUBPROJECTS        += libxfce4ui
 LIBXFCE4UI_MAJOR_V := 4.16
 LIBXFCE4UI_VERSION := $(LIBXFCE4UI_MAJOR_V).0

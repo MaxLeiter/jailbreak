@@ -9,10 +9,7 @@ endif
 # build tracker(-sparql) and skip the miners for first-light.
 #
 # DEPENDS (target): glib + sqlite3 (prebuilt) + json-glib + libunistring (+ dbus at runtime).
-# VERIFY before build: soname (libtracker-sparql-3.0.0.dylib) and that cross meson doesn't try
-# to run target tooling for the ontology resources.
-#
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libtracker-sparql-3.0-0 3.7.3-2+ios1.
 
 SUBPROJECTS      += tracker
 TRACKER_MAJOR_V  := 3.7

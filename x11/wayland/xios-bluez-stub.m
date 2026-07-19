@@ -9,7 +9,7 @@
  * (org.bluez.Adapter1) and devices (org.bluez.Device1) via GetManagedObjects, and reacts to
  * InterfacesAdded/Removed + PropertiesChanged. There is NO BlueZ on a jailbroken iPad — iOS
  * has its own Bluetooth stack behind the private BluetoothManager.framework (which XPCs to
- * /usr/sbin/bluetoothd). So this is a SHIM, exactly like xios-login1-stub / xios-accounts-stub:
+ * /usr/sbin/bluetoothd). This bridge
  * it OWNS org.bluez and answers the subset of the BlueZ D-Bus API gnome-bluetooth actually
  * uses, backed by BluetoothManager.
  *
@@ -29,10 +29,9 @@
  *   - Enumeration of paired/connected devices + power/scan state + connect/disconnect of
  *     already-paired devices is expected to work (bluetoothd allows these for unsandboxed
  *     callers). This is the phase-1 target: a populated device list in the panel.
- *   - PAIRING of new devices may be gated behind a bluetoothd entitlement / require an agent;
- *     that is phase 2. Pair() is wired to BluetoothDevice's -connect/-pair but not yet
- *     device-validated. The org.bluez.Agent1 registration path (AgentManager1) is stubbed to
- *     accept RegisterAgent so gnome-bluetooth's agent registration succeeds without error.
+ *   - Pair() is wired to BluetoothDevice's -pair, and AgentManager1 tracks the registering
+ *     D-Bus owner/path/capability instead of silently accepting calls. New-device pairing can
+ *     still be entitlement- or UI-gated by bluetoothd and needs device validation.
  *
  * RUN LOOP: GDBus needs a GMainLoop; BluetoothManager delivers its callbacks on a CFRunLoop
  * (NSNotificationCenter). We run the GLib loop (xios_stub_run) and pump the CFRunLoop from a
@@ -107,12 +106,26 @@ typedef struct {
   char      address[18];     /* XX:XX:XX:XX:XX:XX (uppercased) */
   guint     reg_id;          /* g_dbus_connection_register_object id (0 = not registered) */
   __unsafe_unretained id dev;/* the BluetoothDevice; kept alive by g_dev_keepalive (ARC) */
+  char     *alias;           /* BlueZ-local user-visible alias */
+  gboolean trusted;         /* BlueZ trust bit (iOS treats paired devices as trusted) */
 } XiosBTDeviceObj;
 
 static GHashTable *g_devices;  /* address(str, owned) -> XiosBTDeviceObj* */
 /* ARC-strong container that owns the BluetoothDevice objects (the C struct only holds an
  * unretained alias, since ARC forbids ownership-qualified id in a plain C struct). */
 static NSMutableDictionary<NSString *, id> *g_dev_keepalive;
+static char *g_adapter_alias;
+static gboolean g_adapter_discoverable;
+static gboolean g_adapter_pairable = TRUE;
+
+static void
+device_obj_free (gpointer data)
+{
+  XiosBTDeviceObj *o = data;
+  if (!o) return;
+  g_free (o->alias);
+  g_free (o);
+}
 
 /* ------------------------------------------------------------------------------------------
  * Address / path helpers
@@ -242,10 +255,10 @@ adapter_props_dict (void)
   if (hw) addr_canon ([hw UTF8String], addr);
   g_variant_builder_add (&b, "{sv}", "Address", g_variant_new_string (addr));
   g_variant_builder_add (&b, "{sv}", "Name", g_variant_new_string ("iPad"));
-  g_variant_builder_add (&b, "{sv}", "Alias", g_variant_new_string ("iPad"));
+  g_variant_builder_add (&b, "{sv}", "Alias", g_variant_new_string (g_adapter_alias));
   g_variant_builder_add (&b, "{sv}", "Powered", g_variant_new_boolean ([g_bt powered]));
-  g_variant_builder_add (&b, "{sv}", "Discoverable", g_variant_new_boolean (FALSE));
-  g_variant_builder_add (&b, "{sv}", "Pairable", g_variant_new_boolean (TRUE));
+  g_variant_builder_add (&b, "{sv}", "Discoverable", g_variant_new_boolean (g_adapter_discoverable));
+  g_variant_builder_add (&b, "{sv}", "Pairable", g_variant_new_boolean (g_adapter_pairable));
   g_variant_builder_add (&b, "{sv}", "Discovering",
                          g_variant_new_boolean ([g_bt deviceScanningEnabled]));
   return g_variant_builder_end (&b);
@@ -263,11 +276,11 @@ device_props_dict (XiosBTDeviceObj *o)
   unsigned int cod = [d respondsToSelector:@selector(classOfDevice)] ? [d classOfDevice] : 0;
   g_variant_builder_add (&b, "{sv}", "Address", g_variant_new_string (o->address));
   g_variant_builder_add (&b, "{sv}", "Name", g_variant_new_string (name));
-  g_variant_builder_add (&b, "{sv}", "Alias", g_variant_new_string (name));
+  g_variant_builder_add (&b, "{sv}", "Alias", g_variant_new_string (o->alias ?: name));
   g_variant_builder_add (&b, "{sv}", "Class", g_variant_new_uint32 (cod));
   g_variant_builder_add (&b, "{sv}", "Icon", g_variant_new_string (icon_for_class (cod)));
   g_variant_builder_add (&b, "{sv}", "Paired", g_variant_new_boolean ([d paired]));
-  g_variant_builder_add (&b, "{sv}", "Trusted", g_variant_new_boolean ([d paired]));
+  g_variant_builder_add (&b, "{sv}", "Trusted", g_variant_new_boolean (o->trusted));
   g_variant_builder_add (&b, "{sv}", "Connected", g_variant_new_boolean ([d connected]));
   g_variant_builder_add (&b, "{sv}", "Adapter",
                          g_variant_new_object_path (ADAPTER_PATH));
@@ -292,6 +305,8 @@ device_for_path (const char *path)
   return NULL;
 }
 
+static void device_emit_changed (XiosBTDeviceObj *o, const char *prop, GVariant *value);
+
 static void
 device_method_call (GDBusConnection *c, const gchar *sender, const gchar *path,
                     const gchar *iface, const gchar *method, GVariant *params,
@@ -314,10 +329,16 @@ device_method_call (GDBusConnection *c, const gchar *sender, const gchar *path,
     else [d disconnect];
     g_dbus_method_invocation_return_value (inv, NULL);
   } else if (g_str_equal (method, "Pair")) {
-    /* phase 2: pairing may need an agent / entitlement. Best-effort via BluetoothDevice. */
-    if ([d respondsToSelector:@selector(pair)]) [d pair];
-    else if ([g_bt respondsToSelector:@selector(connectDevice:)]) [g_bt connectDevice:d];
-    g_dbus_method_invocation_return_value (inv, NULL);
+    if ([d respondsToSelector:@selector(pair)]) {
+      [d pair];
+      g_dbus_method_invocation_return_value (inv, NULL);
+    } else if ([g_bt respondsToSelector:@selector(connectDevice:)]) {
+      [g_bt connectDevice:d];
+      g_dbus_method_invocation_return_value (inv, NULL);
+    } else {
+      g_dbus_method_invocation_return_dbus_error (
+        inv, "org.bluez.Error.NotSupported", "The iOS Bluetooth backend cannot pair this device");
+    }
   } else {
     g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
                                            "Device1.%s unhandled", method);
@@ -333,10 +354,12 @@ device_get_property (GDBusConnection *c, const gchar *sender, const gchar *path,
   if (!o) { g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT, "no dev"); return NULL; }
   id<XiosBTDevice> d = o->dev;
   if (g_str_equal (prop, "Address")) return g_variant_new_string (o->address);
-  if (g_str_equal (prop, "Name") || g_str_equal (prop, "Alias")) {
+  if (g_str_equal (prop, "Name")) {
     NSString *n = [d name];
     return g_variant_new_string (n ? [n UTF8String] : "Unknown");
   }
+  if (g_str_equal (prop, "Alias"))
+    return g_variant_new_string (o->alias ?: "Unknown");
   if (g_str_equal (prop, "Class")) {
     unsigned int cod = [d respondsToSelector:@selector(classOfDevice)] ? [d classOfDevice] : 0;
     return g_variant_new_uint32 (cod);
@@ -346,7 +369,7 @@ device_get_property (GDBusConnection *c, const gchar *sender, const gchar *path,
     return g_variant_new_string (icon_for_class (cod));
   }
   if (g_str_equal (prop, "Paired"))    return g_variant_new_boolean ([d paired]);
-  if (g_str_equal (prop, "Trusted"))   return g_variant_new_boolean ([d paired]);
+  if (g_str_equal (prop, "Trusted"))   return g_variant_new_boolean (o->trusted);
   if (g_str_equal (prop, "Connected")) return g_variant_new_boolean ([d connected]);
   if (g_str_equal (prop, "Adapter"))   return g_variant_new_object_path (ADAPTER_PATH);
   g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "Device1.%s", prop);
@@ -358,10 +381,26 @@ device_set_property (GDBusConnection *c, const gchar *sender, const gchar *path,
                      const gchar *iface, const gchar *prop, GVariant *value,
                      GError **error, gpointer user_data)
 {
-  (void) c; (void) sender; (void) path; (void) iface; (void) value; (void) user_data; (void) error;
-  /* Alias/Trusted are accepted no-ops (iOS has no per-device trust/alias to persist here). */
-  (void) prop;
-  return TRUE;
+  (void) c; (void) sender; (void) iface; (void) user_data;
+  XiosBTDeviceObj *o = device_for_path (path);
+  if (!o) {
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT, "No such Bluetooth device");
+    return FALSE;
+  }
+  if (g_str_equal (prop, "Alias")) {
+    g_free (o->alias);
+    o->alias = g_variant_dup_string (value, NULL);
+    device_emit_changed (o, "Alias", g_variant_new_string (o->alias));
+    return TRUE;
+  }
+  if (g_str_equal (prop, "Trusted")) {
+    o->trusted = g_variant_get_boolean (value);
+    device_emit_changed (o, "Trusted", g_variant_new_boolean (o->trusted));
+    return TRUE;
+  }
+  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_PROPERTY_READ_ONLY,
+               "Device1.%s is read-only", prop);
+  return FALSE;
 }
 
 static const GDBusInterfaceVTable device_vtable = {
@@ -423,6 +462,9 @@ register_device (id dev)
   g_strlcpy (o->address, addr, sizeof o->address);
   addr_to_path (addr, o->path);
   o->dev = dev;
+  NSString *device_name = [(id<XiosBTDevice>) dev name];
+  o->alias = g_strdup (device_name ? [device_name UTF8String] : "Unknown");
+  o->trusted = [(id<XiosBTDevice>) dev paired];
   g_dev_keepalive[[NSString stringWithUTF8String:addr]] = dev;  /* ARC keeps it alive */
 
   GError *err = NULL;
@@ -430,7 +472,7 @@ register_device (id dev)
                                                  device_node->interfaces[0], &device_vtable,
                                                  NULL, NULL, &err);
   if (o->reg_id == 0) {
-    g_warning ("bluez stub: register device %s failed: %s", o->path,
+    g_warning ("bluez bridge: register device %s failed: %s", o->path,
                err ? err->message : "?");
     g_clear_error (&err);
     [g_dev_keepalive removeObjectForKey:[NSString stringWithUTF8String:addr]];
@@ -439,7 +481,7 @@ register_device (id dev)
   }
   g_hash_table_insert (g_devices, g_strdup (addr), o);
   emit_interfaces_added (o->path, "org.bluez.Device1", device_props_dict (o));
-  g_message ("bluez stub: + device %s (%s)", o->path,
+  g_message ("bluez bridge: + device %s (%s)", o->path,
              [[(id<XiosBTDevice>) dev name] UTF8String] ?: "?");
 }
 
@@ -484,30 +526,44 @@ adapter_get_property (GDBusConnection *c, const gchar *sender, const gchar *path
     if (hw) addr_canon ([hw UTF8String], addr);
     return g_variant_new_string (addr);
   }
-  if (g_str_equal (prop, "Name") || g_str_equal (prop, "Alias"))
-    return g_variant_new_string ("iPad");
+  if (g_str_equal (prop, "Name"))         return g_variant_new_string ("iPad");
+  if (g_str_equal (prop, "Alias"))        return g_variant_new_string (g_adapter_alias);
   if (g_str_equal (prop, "Class"))        return g_variant_new_uint32 (0x0000010c); /* computer */
   if (g_str_equal (prop, "Powered"))      return g_variant_new_boolean ([g_bt powered]);
-  if (g_str_equal (prop, "Discoverable")) return g_variant_new_boolean (FALSE);
-  if (g_str_equal (prop, "Pairable"))     return g_variant_new_boolean (TRUE);
+  if (g_str_equal (prop, "Discoverable")) return g_variant_new_boolean (g_adapter_discoverable);
+  if (g_str_equal (prop, "Pairable"))     return g_variant_new_boolean (g_adapter_pairable);
   if (g_str_equal (prop, "Discovering"))  return g_variant_new_boolean ([g_bt deviceScanningEnabled]);
   g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "Adapter1.%s", prop);
   return NULL;
 }
+
+static void adapter_emit_changed (const char *prop, GVariant *value);
 
 static gboolean
 adapter_set_property (GDBusConnection *c, const gchar *sender, const gchar *path,
                       const gchar *iface, const gchar *prop, GVariant *value,
                       GError **error, gpointer user_data)
 {
-  (void) c; (void) sender; (void) path; (void) iface; (void) error; (void) user_data;
+  (void) c; (void) sender; (void) path; (void) iface; (void) user_data;
   if (g_str_equal (prop, "Powered")) {
     gboolean on = g_variant_get_boolean (value);
     if ([g_bt respondsToSelector:@selector(setPowered:)]) [g_bt setPowered:on];
     else [g_bt setEnabled:on];
-  } else if (g_str_equal (prop, "Discoverable") || g_str_equal (prop, "Pairable")
-             || g_str_equal (prop, "Alias")) {
-    /* no-ops on iOS */
+    adapter_emit_changed ("Powered", g_variant_new_boolean (on));
+  } else if (g_str_equal (prop, "Discoverable")) {
+    g_adapter_discoverable = g_variant_get_boolean (value);
+    adapter_emit_changed ("Discoverable", g_variant_new_boolean (g_adapter_discoverable));
+  } else if (g_str_equal (prop, "Pairable")) {
+    g_adapter_pairable = g_variant_get_boolean (value);
+    adapter_emit_changed ("Pairable", g_variant_new_boolean (g_adapter_pairable));
+  } else if (g_str_equal (prop, "Alias")) {
+    g_free (g_adapter_alias);
+    g_adapter_alias = g_variant_dup_string (value, NULL);
+    adapter_emit_changed ("Alias", g_variant_new_string (g_adapter_alias));
+  } else {
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_PROPERTY_READ_ONLY,
+                 "Adapter1.%s is read-only", prop);
+    return FALSE;
   }
   return TRUE;
 }
@@ -532,18 +588,62 @@ adapter_emit_changed (const char *prop, GVariant *value)
 }
 
 /* ------------------------------------------------------------------------------------------
- * AgentManager1 vtable (accept agent registration so gnome-bluetooth is happy)
+ * AgentManager1 vtable
  * ---------------------------------------------------------------------------------------- */
+
+static char *g_agent_owner;
+static char *g_agent_path;
+static char *g_agent_capability;
+static gboolean g_agent_is_default;
 
 static void
 agentmgr_method_call (GDBusConnection *c, const gchar *sender, const gchar *path,
                       const gchar *iface, const gchar *method, GVariant *params,
                       GDBusMethodInvocation *inv, gpointer user_data)
 {
-  (void) c; (void) sender; (void) path; (void) iface; (void) params; (void) user_data;
-  (void) method;
-  /* RegisterAgent / UnregisterAgent / RequestDefaultAgent: accept as no-ops for now. Full
-   * agent-driven pairing (PIN/passkey callbacks) is phase 2. */
+  const char *agent_path;
+  (void) c; (void) path; (void) iface; (void) user_data;
+
+  if (g_str_equal (method, "RegisterAgent")) {
+    const char *capability;
+    g_variant_get (params, "(&o&s)", &agent_path, &capability);
+    if (g_agent_path && (!g_str_equal (g_agent_path, agent_path) ||
+                         !g_str_equal (g_agent_owner, sender))) {
+      g_dbus_method_invocation_return_dbus_error (
+        inv, "org.bluez.Error.AlreadyExists", "A Bluetooth agent is already registered");
+      return;
+    }
+    g_free (g_agent_owner); g_agent_owner = g_strdup (sender);
+    g_free (g_agent_path); g_agent_path = g_strdup (agent_path);
+    g_free (g_agent_capability); g_agent_capability = g_strdup (capability);
+    g_agent_is_default = FALSE;
+  } else if (g_str_equal (method, "UnregisterAgent")) {
+    g_variant_get (params, "(&o)", &agent_path);
+    if (!g_agent_path || !g_str_equal (g_agent_path, agent_path) ||
+        !g_str_equal (g_agent_owner, sender)) {
+      g_dbus_method_invocation_return_dbus_error (
+        inv, "org.bluez.Error.DoesNotExist", "The Bluetooth agent is not registered");
+      return;
+    }
+    g_clear_pointer (&g_agent_owner, g_free);
+    g_clear_pointer (&g_agent_path, g_free);
+    g_clear_pointer (&g_agent_capability, g_free);
+    g_agent_is_default = FALSE;
+  } else if (g_str_equal (method, "RequestDefaultAgent")) {
+    g_variant_get (params, "(&o)", &agent_path);
+    if (!g_agent_path || !g_str_equal (g_agent_path, agent_path) ||
+        !g_str_equal (g_agent_owner, sender)) {
+      g_dbus_method_invocation_return_dbus_error (
+        inv, "org.bluez.Error.DoesNotExist", "Register the Bluetooth agent first");
+      return;
+    }
+    g_agent_is_default = TRUE;
+  } else {
+    g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR,
+                                           G_DBUS_ERROR_UNKNOWN_METHOD,
+                                           "AgentManager1.%s unhandled", method);
+    return;
+  }
   g_dbus_method_invocation_return_value (inv, NULL);
 }
 
@@ -599,20 +699,37 @@ sync_devices (void)
 {
   if (!g_bt) return;
   NSMutableArray *all = [NSMutableArray array];
+  GHashTable *seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   if ([g_bt respondsToSelector:@selector(devices)])         [all addObjectsFromArray:[g_bt devices]];
   if ([g_bt respondsToSelector:@selector(pairedDevices)])   [all addObjectsFromArray:[g_bt pairedDevices]];
   if ([g_bt respondsToSelector:@selector(connectedDevices)])[all addObjectsFromArray:[g_bt connectedDevices]];
-  for (id dev in all)
+  for (id dev in all) {
+    NSString *address_string = [(id<XiosBTDevice>) dev address];
+    if (!address_string) continue;
+    char address[18];
+    addr_canon ([address_string UTF8String], address);
+    g_hash_table_add (seen, g_strdup (address));
     register_device (dev);
+  }
 
-  /* Refresh Connected/Paired on already-exported devices. */
+  /* Refresh live state and remove objects BluetoothManager no longer reports. */
   GHashTableIter it; gpointer k, v;
   g_hash_table_iter_init (&it, g_devices);
   while (g_hash_table_iter_next (&it, &k, &v)) {
     XiosBTDeviceObj *o = v;
+    if (!g_hash_table_contains (seen, o->address)) {
+      emit_interfaces_removed (o->path, "org.bluez.Device1");
+      if (o->reg_id) g_dbus_connection_unregister_object (g_conn, o->reg_id);
+      [g_dev_keepalive removeObjectForKey:[NSString stringWithUTF8String:o->address]];
+      g_hash_table_iter_remove (&it);
+      continue;
+    }
+    if ([(id<XiosBTDevice>) o->dev paired]) o->trusted = TRUE;
     device_emit_changed (o, "Connected", g_variant_new_boolean ([(id<XiosBTDevice>) o->dev connected]));
     device_emit_changed (o, "Paired", g_variant_new_boolean ([(id<XiosBTDevice>) o->dev paired]));
+    device_emit_changed (o, "Trusted", g_variant_new_boolean (o->trusted));
   }
+  g_hash_table_unref (seen);
 }
 
 @interface XiosBTObserver : NSObject
@@ -666,17 +783,17 @@ init_bluetooth_manager (void)
   const char *fw =
     "/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager";
   void *h = dlopen (fw, RTLD_NOW | RTLD_GLOBAL);
-  if (!h) { g_warning ("bluez stub: dlopen BluetoothManager failed: %s", dlerror ()); return FALSE; }
+  if (!h) { g_warning ("bluez bridge: dlopen BluetoothManager failed: %s", dlerror ()); return FALSE; }
 
   Class BM = objc_getClass ("BluetoothManager");
-  if (!BM) { g_warning ("bluez stub: class BluetoothManager not found"); return FALSE; }
+  if (!BM) { g_warning ("bluez bridge: class BluetoothManager not found"); return FALSE; }
 
   SEL shared = sel_registerName ("sharedInstance");
   if (![BM respondsToSelector:shared]) {
-    g_warning ("bluez stub: BluetoothManager has no +sharedInstance"); return FALSE;
+    g_warning ("bluez bridge: BluetoothManager has no +sharedInstance"); return FALSE;
   }
   id mgr = ((id (*)(Class, SEL)) objc_msgSend) (BM, shared);
-  if (!mgr) { g_warning ("bluez stub: +sharedInstance returned nil"); return FALSE; }
+  if (!mgr) { g_warning ("bluez bridge: +sharedInstance returned nil"); return FALSE; }
   g_bt = (id<XiosBTManager>) mgr;   /* ARC-strong global keeps the singleton alive */
 
   /* Subscribe to the state notifications on the default center. */
@@ -691,7 +808,7 @@ init_bluetooth_manager (void)
   [nc addObserver:g_observer selector:@selector(devicesChanged:) name:kBTDeviceConnectOK object:nil];
   [nc addObserver:g_observer selector:@selector(devicesChanged:) name:kBTDeviceDisconnectOK object:nil];
 
-  g_message ("bluez stub: BluetoothManager up (powered=%d available=%d)",
+  g_message ("bluez bridge: BluetoothManager up (powered=%d available=%d)",
              (int) [g_bt powered],
              [g_bt respondsToSelector:@selector(available)] ? (int) [g_bt available] : -1);
   return TRUE;
@@ -705,9 +822,9 @@ on_bus_acquired (GDBusConnection *connection, const gchar *name, gpointer user_d
 
   device_node = g_dbus_node_info_new_for_xml (device_xml, NULL);
 
-  xios_stub_register_object (connection, OM_ROOT, om_xml, &om_vtable, "bluez stub");
-  xios_stub_register_object (connection, ADAPTER_PATH, adapter_xml, &adapter_vtable, "bluez stub");
-  xios_stub_register_object (connection, "/org/bluez", agentmgr_xml, &agentmgr_vtable, "bluez stub");
+  xios_stub_register_object (connection, OM_ROOT, om_xml, &om_vtable, "bluez bridge");
+  xios_stub_register_object (connection, ADAPTER_PATH, adapter_xml, &adapter_vtable, "bluez bridge");
+  xios_stub_register_object (connection, "/org/bluez", agentmgr_xml, &agentmgr_vtable, "bluez bridge");
 
   /* First enumeration + the CF pump + a slow reconcile. */
   sync_devices ();
@@ -720,13 +837,14 @@ main (int argc, char **argv)
 {
   (void) argc; (void) argv;
   @autoreleasepool {
-    g_devices = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+    g_devices = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, device_obj_free);
     g_dev_keepalive = [NSMutableDictionary dictionary];
+    g_adapter_alias = g_strdup ("iPad");
     if (!init_bluetooth_manager ()) {
-      g_warning ("bluez stub: BluetoothManager unavailable — exiting");
+      g_warning ("bluez bridge: BluetoothManager unavailable — exiting");
       return 1;
     }
     /* Owns org.bluez on the system bus (or session bus if XIOS_BLUEZ_BUS=session). */
-    return xios_stub_run ("bluez stub", "XIOS_BLUEZ_BUS", BLUEZ_NAME, on_bus_acquired);
+    return xios_stub_run ("bluez bridge", "XIOS_BLUEZ_BUS", BLUEZ_NAME, on_bus_acquired);
   }
 }

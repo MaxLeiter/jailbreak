@@ -30,11 +30,9 @@ STUBBED_COMPONENTS = {
 # (recipes/plasma-mobile-ios-qml-stubs.sh's restore_upstream_file calls for
 # PasswordBar/AppletListViewer/folio+halcyon main.qml; the others are gone
 # from that script entirely) so they no longer correspond to any generated
-# stub. libplasma's Menu/ComboBox/DialogButtonBox/TabBar/SwipeView and
-# plasma-pa's volume applet main.qml were never listed here (they were only
-# ever stubbed in recipes/libplasma-ios-qml-stubs.sh and
-# recipes/plasma-pa-ios-qml-stubs.sh, both now reverted to no-ops - see those
-# files), so there is nothing to remove for them.
+# compatibility provider. The obsolete no-op libplasma and plasma-pa stub
+# installers were deleted after their QtQuick fixes moved into the real source
+# patches, so there is nothing to scan for those packages.
 
 VIEW_COMPONENTS = {"GridView", "ListView", "Flickable"}
 

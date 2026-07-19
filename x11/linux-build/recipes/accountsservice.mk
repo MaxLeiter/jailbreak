@@ -10,7 +10,8 @@ endif
 # satisfied by a single-session shim compiled straight in by ports/accountsservice/patches.
 # Introspection is off here; the AccountsService-1.0 typelib is generated ON-DEVICE (the
 # St/Shell/Mutter pattern), so the built lib + headers must ship. Runtime org.freedesktop.Accounts
-# data comes from a stub daemon (or the shell degrades to an empty user name, still boots).
+# data comes from the persistent single-user Xios D-Bus bridge (or the shell degrades to an
+# empty user name, still boots).
 
 SUBPROJECTS      += accountsservice
 ACCOUNTSSERVICE_VERSION := 23.13.9

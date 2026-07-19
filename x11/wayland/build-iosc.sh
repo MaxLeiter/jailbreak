@@ -117,6 +117,10 @@ CURSOR_SHAPE_XML="$PREFIX/share/wayland-protocols/staging/cursor-shape/cursor-sh
 TABLET_XML="$PREFIX/share/wayland-protocols/stable/tablet/tablet-v2.xml"
 SESSION_LOCK_XML="$PREFIX/share/wayland-protocols/staging/ext-session-lock/ext-session-lock-v1.xml"
 XWLSHELL_XML="$X11/wayland/protocols/xwayland-shell-v1.xml"
+KDE_OUTPUT_DEVICE_XML="$X11/wayland/protocols/kde-output-device-v2.xml"
+KDE_OUTPUT_MGMT_XML="$X11/wayland/protocols/kde-output-management-v2.xml"
+KDE_PRIMARY_OUTPUT_XML="$X11/wayland/protocols/kde-primary-output-v1.xml"
+KDE_OUTPUT_ORDER_XML="$X11/wayland/protocols/kde-output-order-v1.xml"
 [ -f "$XDG_XML" ] || { echo "!! xdg-shell.xml not found at $XDG_XML"; exit 1; }
 [ -f "$DECORATION_XML" ] || { echo "!! xdg-decoration-unstable-v1.xml not found at $DECORATION_XML"; exit 1; }
 [ -f "$ACTIVATION_XML" ] || { echo "!! xdg-activation-v1.xml not found at $ACTIVATION_XML"; exit 1; }
@@ -141,6 +145,10 @@ XWLSHELL_XML="$X11/wayland/protocols/xwayland-shell-v1.xml"
 [ -f "$TABLET_XML" ] || { echo "!! tablet-v2.xml not found at $TABLET_XML"; exit 1; }
 [ -f "$SESSION_LOCK_XML" ] || { echo "!! ext-session-lock-v1.xml not found at $SESSION_LOCK_XML"; exit 1; }
 [ -f "$XWLSHELL_XML" ] || { echo "!! xwayland-shell-v1.xml not found at $XWLSHELL_XML"; exit 1; }
+[ -f "$KDE_OUTPUT_DEVICE_XML" ] || { echo "!! kde-output-device-v2.xml not found at $KDE_OUTPUT_DEVICE_XML"; exit 1; }
+[ -f "$KDE_OUTPUT_MGMT_XML" ] || { echo "!! kde-output-management-v2.xml not found at $KDE_OUTPUT_MGMT_XML"; exit 1; }
+[ -f "$KDE_PRIMARY_OUTPUT_XML" ] || { echo "!! kde-primary-output-v1.xml not found at $KDE_PRIMARY_OUTPUT_XML"; exit 1; }
+[ -f "$KDE_OUTPUT_ORDER_XML" ] || { echo "!! kde-output-order-v1.xml not found at $KDE_OUTPUT_ORDER_XML"; exit 1; }
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
@@ -214,6 +222,17 @@ wayland-scanner private-code  "$SESSION_LOCK_XML" "$GEN/ext-session-lock-v1-prot
 # xwayland-shell-v1: the surface<->X-window association global (rootless XWM).
 wayland-scanner server-header "$XWLSHELL_XML" "$GEN/xwayland-shell-v1-server-protocol.h"
 wayland-scanner private-code  "$XWLSHELL_XML" "$GEN/xwayland-shell-v1-protocol.c"
+# KDE output-management family (kscreen-doctor/libkscreen/plasma reconfigure our output).
+# device-v2 defines both kde_output_device_v2 and kde_output_device_mode_v2; the
+# management/primary/order .c files reference those interfaces externally.
+wayland-scanner server-header "$KDE_OUTPUT_DEVICE_XML" "$GEN/kde-output-device-v2-server-protocol.h"
+wayland-scanner private-code  "$KDE_OUTPUT_DEVICE_XML" "$GEN/kde-output-device-v2-protocol.c"
+wayland-scanner server-header "$KDE_OUTPUT_MGMT_XML" "$GEN/kde-output-management-v2-server-protocol.h"
+wayland-scanner private-code  "$KDE_OUTPUT_MGMT_XML" "$GEN/kde-output-management-v2-protocol.c"
+wayland-scanner server-header "$KDE_PRIMARY_OUTPUT_XML" "$GEN/kde-primary-output-v1-server-protocol.h"
+wayland-scanner private-code  "$KDE_PRIMARY_OUTPUT_XML" "$GEN/kde-primary-output-v1-protocol.c"
+wayland-scanner server-header "$KDE_OUTPUT_ORDER_XML" "$GEN/kde-output-order-v1-server-protocol.h"
+wayland-scanner private-code  "$KDE_OUTPUT_ORDER_XML" "$GEN/kde-output-order-v1-protocol.c"
 ISO_XML="$X11/wayland/iosc-iosurface.xml"
 wayland-scanner server-header "$ISO_XML" "$GEN/iosc-iosurface-server-protocol.h"
 wayland-scanner client-header "$ISO_XML" "$GEN/iosc-iosurface-client-protocol.h"
@@ -285,6 +304,10 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$GEN/wlr-data-control-unstable-v1-protocol.c" \
     "$GEN/ext-session-lock-v1-protocol.c" \
     "$GEN/xwayland-shell-v1-protocol.c" \
+    "$GEN/kde-output-device-v2-protocol.c" \
+    "$GEN/kde-output-management-v2-protocol.c" \
+    "$GEN/kde-primary-output-v1-protocol.c" \
+    "$GEN/kde-output-order-v1-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon "${XWM_LIBS[@]}" \

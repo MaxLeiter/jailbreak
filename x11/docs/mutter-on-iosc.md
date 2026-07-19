@@ -1,5 +1,8 @@
 # Mutter on iosc — getting gnome-shell onto the iOS Wayland substrate
 
+> Historical design/bring-up record. For current implementation, package, and verification
+> status use `docs/handoff/mutter.md`; several early blockers described below are now closed.
+
 Status: **Mutter 46 cross-builds + links to iOS arm64, and is now packaged as debs.** The 5 libs
 (libmutter-14, -cogl-14, -cogl-pango-14, -clutter-14, -mtk-14) + deps are built off-device and
 staged in `x11/linux-build/out` (see "Typelib generation" below for the deb list). The

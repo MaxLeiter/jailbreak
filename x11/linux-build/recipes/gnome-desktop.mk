@@ -10,10 +10,7 @@ endif
 #   libxkbcommon (MUST be built with -Denable-xkbregistry=true — the Wayland track's
 #   libxkbcommon.mk currently disables it; coordinate to flip that on, it only adds a
 #   libxml2 dep which is already prebuilt).
-# VERIFY before build: soname (libgnome-desktop-4.2.dylib?) and meson option names
-#   (-Dudev=disabled for darwin, -Dbuild_gtk4=true, -Dintrospection=false).
-#
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libgnome-desktop-4-2 44.1+ios1.
 
 SUBPROJECTS           += gnome-desktop
 GNOME-DESKTOP_MAJOR_V := 44

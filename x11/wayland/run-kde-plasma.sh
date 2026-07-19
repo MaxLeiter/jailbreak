@@ -712,6 +712,8 @@ nohup "$SETSID" env \
   KWIN_W="$KWIN_W" \
   KWIN_H="$KWIN_H" \
   KDE_SESSION_BUS_FILE="$KDE_SESSION_BUS_FILE" \
+  XIOS_SESSION_STATUS_FILE="${XIOS_SESSION_STATUS_FILE:-}" \
+  XIOS_SESSION_STATUS_PRESET="${XIOS_SESSION_STATUS_PRESET:-}" \
   PLASMA_SHELL_PLUGIN="${PLASMA_SHELL_PLUGIN:-}" \
   PLASMA_NO_RESPAWN="${PLASMA_NO_RESPAWN:-1}" \
   DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$ANGLE" \
@@ -756,6 +758,22 @@ nohup "$SETSID" env \
 	      [ -x "$b" ] || return 0
 	      ps ax 2>/dev/null | grep -v grep | grep -q "$name" && return 0
 	      "$b" >"$log" 2>&1 &
+	    }
+	    # xios-session hands us the status file it owns so a session that dies
+	    # AFTER bring-up rewrites it (state "down") instead of leaving a stale
+	    # "up" for the Xios picker (observed 2026-07-08). No-op when run by hand
+	    # (env unset). Only a steady state for OUR preset is overwritten; any
+	    # other preset/state means a newer launcher owns the file now.
+	    mark_session_down() {
+	      why="$1"
+	      f="${XIOS_SESSION_STATUS_FILE:-}"; p="${XIOS_SESSION_STATUS_PRESET:-}"
+	      [ -n "$f" ] && [ -n "$p" ] && [ -f "$f" ] || return 0
+	      cur_preset="$(sed -n "s/.*\"preset\":\"\([^\"]*\)\".*/\1/p" "$f" 2>/dev/null)"
+	      cur_state="$(sed -n "s/.*\"state\":\"\([^\"]*\)\".*/\1/p" "$f" 2>/dev/null)"
+	      [ "$cur_preset" = "$p" ] || return 0
+	      case "$cur_state" in up|compositor-only|waiting) ;; *) return 0 ;; esac
+	      printf "{\"preset\":\"%s\",\"state\":\"down\",\"message\":\"%s\",\"at\":\"%s\"}\n" \
+	        "$p" "$why" "$(date "+%Y-%m-%dT%H:%M:%S")" >"$f" 2>/dev/null || true
 	    }
 	    export XIOS_HWBRIDGE_BUS="${XIOS_HWBRIDGE_BUS:-session}"
 	    xios_start_session_helper "$LIBEXEC/xios-hwbridged" "$XDG_RUNTIME_DIR/xios-hwbridged.log"
@@ -834,6 +852,7 @@ nohup "$SETSID" env \
         wait "$kwin_pid"
         [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
         [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
+        mark_session_down "plasmashell exited (rc=$plasma_rc)"
         exit "$plasma_rc"
       fi
     fi
@@ -847,6 +866,7 @@ nohup "$SETSID" env \
         wait "$kwin_pid"
         [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
         [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
+        mark_session_down "plasmashell exited (rc=$plasma_rc)"
         exit "$plasma_rc"
       fi
       sleep 1
@@ -857,6 +877,7 @@ nohup "$SETSID" env \
     kill "$plasma_pid" 2>/dev/null || true
     [ -z "$kamd_pid" ] || kill "$kamd_pid" 2>/dev/null || true
     [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
+    mark_session_down "kwin exited (rc=$kwin_rc)"
     exit "$kwin_rc"
   ' >"$KDE_LOG" 2>&1 </dev/null &
 KDEPID=$!

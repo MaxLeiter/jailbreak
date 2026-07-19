@@ -2,10 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# mozjs.mk — SpiderMonkey 115 (ESR), JIT-less, for gjs 1.78. DRAFT / UNBUILT.
+# mozjs.mk — SpiderMonkey 115 (ESR), JIT-less, for gjs 1.78.
 # The single hardest cross in the tree (Linux->iOS Mach-O of mach/moz.configure + Rust).
-# Heavy build is GATED on coordinator go. See docs/gjs-plan.md Blocker #1 and
-# build_info/mozjs115.mozconfig. This recipe is committed as a draft for review, NOT to run.
+# BUILT/PUBLISHED — libmozjs-115-0 115.12.0+ios1. See docs/gjs-plan.md and
+# build_info/mozjs115.mozconfig for the cross-build constraints.
 
 SUBPROJECTS   += mozjs
 MOZJS_VERSION := 115.12.0

@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 # gjs.mk — GNOME JavaScript bindings (gjs 1.78, pairs with glib 2.78 / mozjs115).
-# DRAFT / UNBUILT — gated on mozjs (recipes/mozjs.mk) landing first. See docs/gjs-plan.md.
+# BUILT/PUBLISHED — gjs/libgjs0 1.78.0+ios1, on mozjs115 115.12.0+ios1.
 # gjs is the JS engine layer under gnome-shell and gjs-based apps. It links mozjs115 and
 # loads GI typelibs at runtime (generate those on-device via gir-ondevice.sh).
 

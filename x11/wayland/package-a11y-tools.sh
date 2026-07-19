@@ -17,7 +17,7 @@ OUTDIR="$REPO_ROOT/x11/linux-build/out"
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT=/private/tmp/xios-a11y-tools-deb
 STAGE="$STAGEROOT/xios-a11y-tools"
-VER="0.2.14"
+VER="0.2.15"
 ARCH="iphoneos-arm64"
 DEB="xios-a11y-tools_${VER}_${ARCH}.deb"
 

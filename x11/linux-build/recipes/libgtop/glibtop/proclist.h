@@ -1,6 +1,5 @@
 #pragma once
-/* Minimal libgtop shim header — only the surface GNOME Console's kgx-process.c uses.
-   See libgtop.mk for why this is a stub rather than the real libgtop. */
+/* Focused libgtop header — the process-list surface GNOME Console uses. */
 #include <sys/types.h>
 
 #define GLIBTOP_KERN_PROC_ALL 0

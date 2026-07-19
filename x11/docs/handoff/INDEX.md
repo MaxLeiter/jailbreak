@@ -19,7 +19,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 3. **iosc-compositor.md** — the iosc Wayland compositor (iosc.c) + the wire protocol (input/present/clipboard/native/XWM/etc).
 4. **mutter.md** — MetaBackendIOS (Mutter on iOS, = GNOME Shell's compositor).
 5. **gnome-session.md** — GNOME session layer + the shell boot. First light achieved; current work is packaging/persistence/polish.
-6. **gtk4-typelibs.md** — on-device GObject-Introspection typelibs. The boot-critical scan work is no longer the main GNOME gate; packaging the regenerated typelibs remains.
+6. **gtk4-typelibs.md** — on-device GObject-Introspection typelibs. The boot-critical scan work is packaged as `xios-gnome-typelibs 0.2.0`; ATK/AT-SPI version alignment remains.
 7. **kde-kf6.md** — Qt6 modules + KF6 + KWin first-light package work.
 8. **native-ipados.md** — the native per-window iPad flavor. Runtime-coexists with classic Xios.
 9. **session-launcher.md** — the flavor switcher (CLI + daemon + in-app picker).
@@ -27,6 +27,8 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
 12. **wayland-apps.md** — the ported desktop app wave (terminal/viewers/media/utilities), why some don't yet map a window in iosc + the fixes (foot PTY, GTK3 wayland backend, mpv EGL shim, hitori schema), the on-device capture/debug tooling, and the app TODO.
 13. **wayland-extra-apps.md** — the next requested standalone app wave: swaybg, tofi, waybar, swayimg, yad, nwg-look, Geary/WebKitGTK, Gnumeric, and Transmission.
+14. **xfce.md** — the previously stranded XFCE 4.16 recipe chain, its new reproducible build lane, and the gates before it can become a supported session flavor.
+15. **loose-ends-audit.md** — repository-wide 2026-07-18 closure ledger: completed host work, immutable package queue, intentional shims, real port blockers, and deferred device proof.
 
 ## Current headline status
 - **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.
@@ -39,8 +41,10 @@ One file per domain. Each is a self-contained charter for an independent agent: 
   and the latest daemon smoke reached `gnome/up` with `xios-session 1.0.46` +
   `xios-session-stubs 0.2.4`; the old direct Shell runner is no longer shipped or present on-device.
   Gvc/volume no longer blocks first paint, and Quick Settings no longer hits the
-  `get_accessible`/`_output` JS errors. Later stop/KDE requests can still supersede GNOME by design.
-- **KDE/KF6 has KWin first-light, QtWayland/ANGLE IOSurface smoke, `xios-session kde`/`kde-desktop` launching the real upstream Plasma Desktop shell, a live KIO `desktop:` worker, real KScreen/System Settings/KCM packages, Breeze/plasma-integration styling, real Xios/iOS-backed Plasma Mobile status/quick-settings providers, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** Next gate is exercising `systemsettings`/`kcm_kscreen` and app launches, then replacing remaining Nano/edge Mobile gaps with real package or service work.
+  `get_accessible`/`_output` JS errors. Offline candidates `xios-session-stubs 0.2.5`,
+  `libgtop-2.0-11 2.41.3+ios2`, and `xios-desktop-stublibs 0.1.1` close the remaining behavioral
+  shim gaps but still need device smoke. Later stop/KDE requests can supersede GNOME by design.
+- **KDE/KF6 has a host-built real KWin ANGLE/Metal + IOSurface backend (`kwin +ios4`), QtWayland/ANGLE IOSurface smoke, `xios-session kde`/`kde-desktop` launching the real upstream Plasma Desktop shell, a live KIO `desktop:` worker, real KScreen/System Settings/KCM packages, Breeze/plasma-integration styling, real Milou search, Xios/iOS-backed Plasma Mobile providers, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** The installed device baseline is still `kwin +ios2`; next gate is an isolated `+ios4` GPU/effects smoke once the device returns, then System Settings/KScreen and app-launch checks.
 - **Wayland app ecosystem is now broad enough for daily smoke testing**:
   wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim/dunst/GTK3 apps and the rootless
   Xwayland XWM work are on local commits and have on-device evidence in classic
@@ -54,5 +58,5 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 ## Key cross-cutting gotchas (all domains touching the app/device)
 - **Deploy Xios.app**: `scp -r` DROPS the exec bit AND the bundle `_CodeSignature`. After scp: `chmod +x Xios.app/Xios`, then re-sign `ldid -e Xios.app/Xios > ents; ldid -S<ents> Xios.app/Xios` (keeps GPU entitlements). `scp -r` into an existing bundle NESTS → `rm -rf` the dest first. `uicache -p` after. Bundle id `com.max.xios`.
 - **FrontBoard relaunch throttle**: rapidly killing+relaunching the app trips it (0 procs, empty status, no crash log). `sbreload` clears it. The app needs the screen AWAKE + foreground to launch (nil Metal when backgrounded). A home-screen icon TAP is far more reliable than SSH `uiopen -b`.
-- **Zombie surfaces**: fixed since `iosc 0.9.4` by cleaning compositor surfaces on client disconnect; latest packaged compositor is `iosc 0.9.9`. If stale panels reappear, first verify the installed package/hash and inspect `/var/jb/tmp/iosc.log`; restarting iosc still clears any residual state during diagnosis.
-- **Per-compositor geometry**: iosc's output IOSurface is variable (logical×2, e.g. 3200×2400); Mutter's is HARDCODED 2160×1620. Anything mapping fb↔screen must read the size from `/var/jb/tmp/xios.json`, never a constant.
+- **Zombie surfaces**: fixed since `iosc 0.9.4` by cleaning compositor surfaces on client disconnect; the current host-built/indexed candidate is `iosc 0.9.18` (device smoke deferred). If stale panels reappear, first verify the installed package/hash and inspect `/var/jb/tmp/iosc.log`; restarting iosc still clears any residual state during diagnosis.
+- **Per-compositor geometry**: iosc's output IOSurface is variable (logical×scale); the next Mutter `+ios3` build also honors requested startup geometry and replaces its IOSurface on rotation. Anything mapping fb↔screen must still read `/var/jb/tmp/xios.json`, never a fallback constant.

@@ -7,7 +7,8 @@
  * code (src/backends/meta-remote-desktop-session.c, meta-eis-client.c), it creates
  * virtual pointer + keyboard devices on the default seat and pushes events into them.
  * The events come from the Xios app's AF_UNIX input protocol, framed by libxios_glue
- * (here the xios-glue-stub API), attached to the backend main context with a GLib source.
+ * (declared through the flat xios-glue-stub compile contract), attached to the backend main
+ * context with a GLib source.
  *
  * GPL-2.0+, matching the mutter files this is modeled on.
  */
@@ -18,6 +19,8 @@
 
 #include <glib-unix.h>
 
+#include "backends/ios/meta-monitor-manager-ios.h"
+#include "backends/ios/meta-virtual-input-device-ios.h"
 #include "backends/ios/xios-glue-stub.h"
 #include "backends/meta-backend-private.h"
 #include "clutter/clutter.h"
@@ -215,6 +218,104 @@ on_input_msg (const struct xios_in_msg *m,
                                                       CLUTTER_CURRENT_TIME,
                                                       0xffe3 /* XK_Control_L */,
                                                       CLUTTER_KEY_STATE_RELEASED);
+        break;
+      }
+
+    case XIOS_IN_TOUCH:
+      {
+        /* Real multitouch. code = touch id (wire slot 0..9, per xios_input_socket.h); the
+         * wire's id range already fits inside Clutter's 0..31 virtual-touch slot space, so it
+         * is used directly as the slot with no separate id->slot table. state = phase (0 up /
+         * 1 down / 2 motion / 3 cancel), matching iosc.c's handle_touch. Position uses the
+         * SAME output_to_stage_ratio() conversion as MOTION so touch and mouse coordinates
+         * never drift apart across rotation/scale changes. */
+        double rx, ry, x, y;
+        int slot = (int) m->code;
+
+        if (slot < 0 || slot >= CLUTTER_VIRTUAL_INPUT_DEVICE_MAX_TOUCH_SLOTS)
+          {
+            g_warning ("MetaInputIOS: touch id %d out of range, dropping", slot);
+            break;
+          }
+
+        output_to_stage_ratio (input, &rx, &ry);
+        x = m->x * rx;
+        y = m->y * ry;
+
+        switch (m->state)
+          {
+          case 1: /* down */
+            clutter_virtual_input_device_notify_touch_down (input->pointer, CLUTTER_CURRENT_TIME,
+                                                             slot, x, y);
+            break;
+          case 2: /* motion */
+            clutter_virtual_input_device_notify_touch_motion (input->pointer, CLUTTER_CURRENT_TIME,
+                                                               slot, x, y);
+            break;
+          case 0: /* up */
+            clutter_virtual_input_device_notify_touch_up (input->pointer, CLUTTER_CURRENT_TIME, slot);
+            break;
+          case 3: /* cancel */
+          default:
+            meta_virtual_input_device_ios_notify_touch_cancel (input->pointer, CLUTTER_CURRENT_TIME, slot);
+            break;
+          }
+        break;
+      }
+
+    case XIOS_IN_TABLET:
+      {
+        /* Minimal viable Apple Pencil: map straight onto the pointer path — the SAME
+         * output_to_stage_ratio() conversion and virtual device MOTION/BUTTON already use —
+         * so the Pencil at least works under GNOME. Pressure (code) and tilt (mods) are
+         * dropped; a real ClutterInputDeviceTool tablet-tool implementation (zwp_tablet-v2
+         * axes via a dedicated tool, proximity events) is a future upgrade — see iosc.c's
+         * handle_pencil for the fuller proximity_in/down/motion/up/proximity_out model this
+         * leaves on the table. state phases match XIOS_IN_TOUCH: 0 up, 1 down, 2 motion,
+         * 3 cancel (iosc.c's IOSC_PEN_* constants). */
+        double rx, ry, x, y;
+
+        output_to_stage_ratio (input, &rx, &ry);
+        x = m->x * rx;
+        y = m->y * ry;
+
+        clutter_virtual_input_device_notify_absolute_motion (input->pointer, CLUTTER_CURRENT_TIME, x, y);
+        input->cursor_x = m->x;
+        input->cursor_y = m->y;
+        xios_notify_cursor (input->cursor_x, input->cursor_y, 1, 1);
+
+        switch (m->state)
+          {
+          case 1: /* down: press where the tip landed */
+            clutter_virtual_input_device_notify_button (input->pointer, CLUTTER_CURRENT_TIME,
+                                                        IOS_BTN_LEFT, CLUTTER_BUTTON_STATE_PRESSED);
+            break;
+          case 0: /* up */
+          case 3: /* cancel: release rather than leave the button stuck down */
+            clutter_virtual_input_device_notify_button (input->pointer, CLUTTER_CURRENT_TIME,
+                                                        IOS_BTN_LEFT, CLUTTER_BUTTON_STATE_RELEASED);
+            break;
+          case 2: /* motion: the absolute_motion above already placed the pointer */
+          default:
+            break;
+          }
+        break;
+      }
+
+    case XIOS_IN_OUTPUT:
+      {
+        /* Device rotation / logical resize. x,y = requested LOGICAL WxH (0,0 = derive from
+         * the launch size + transform); code = wl_output transform (0/1/2/3). The monitor
+         * manager replaces the backing IOSurface first; reload then rebuilds Mutter's logical
+         * monitor and renderer view against the replacement surface. */
+        MetaMonitorManager *monitor_manager = meta_backend_get_monitor_manager (input->backend);
+
+        if (monitor_manager)
+          {
+            if (meta_monitor_manager_ios_set_output_size (META_MONITOR_MANAGER_IOS (monitor_manager),
+                                                          (int) m->code, m->x, m->y))
+              meta_monitor_manager_reload (monitor_manager);
+          }
         break;
       }
 

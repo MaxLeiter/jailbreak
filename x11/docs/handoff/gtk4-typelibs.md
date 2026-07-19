@@ -23,7 +23,12 @@ Producing the GIR typelibs GNOME Shell + gjs need, by running g-ir-scanner ON TH
 - `ports/gnome-shell/patches` disables the ATK bridge link on iOS because the current `libatk-bridge2.0-0 2.52.0` expects ATK 2.52 document symbols and the installed standalone ATK is 2.38.
 
 ## Open items
-1. Package the regenerated typelibs/source-build outputs so users do not need this one-device hand-fix path. See `gnome-session.md` for the current list: Atk/Atspi/Gck/Gcr/GnomeDesktop/GWeather/St/Shell/Gdm plus associated data such as `Locations.bin` and login-screen schema.
+1. **Packaging is complete:** `xios-gnome-typelibs 0.2.0` is published and is
+   a dependency of `xios-gnome`. Its payload contains 43 regenerated typelibs,
+   including Atk/Atspi/Gck/Gcr/GnomeDesktop/GWeather/St/Shell/Gdm. Associated
+   runtime data such as `Locations.bin` and login-screen schemas remain owned by
+   their source packages rather than being duplicated here. Keep future typelib
+   rebuilds reproducible and bump this package when the captured set changes.
 2. Longer-term packaging cleanup: align ATK/at-spi versions or package an ATK 2.52-compatible runtime before re-enabling `atk-bridge-2.0`.
 
 ## Prior gotchas (from the introspection track)

@@ -5,9 +5,9 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/libgtop
-Depends: libiosexec1
-Description: libgtop-2.0 stub (system monitoring) for GNOME on iOS
- Minimal libgtop-2.0 shim providing the process-enumeration entry points GNOME
- Console links against. Process listing is a no-op under the iOS sandbox
- (the real libgtop darwin backend uses restricted sysctl/libproc paths); the
- terminal works normally, only its running-process styling is degraded.
+Description: libgtop-2.0 process monitoring backend for GNOME on iOS
+ Focused libgtop-2.0 implementation providing the process-list, parent/effective
+ uid, and argv entry points GNOME Console uses. It reads the jailbroken iOS
+ process tree through Darwin kern.proc and kern.procargs2 sysctls, restoring
+ child-process styling and running-command close warnings without requiring the
+ Linux libgtop backend.

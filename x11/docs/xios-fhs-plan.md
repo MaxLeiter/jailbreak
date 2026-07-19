@@ -253,8 +253,10 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
 - [x] Package skeleton: control/postinst, daemon source, build script
 - [x] Sensor bridge added: `xios-sensord` serves `net.hadess.SensorProxy` and synthetic IIO
       accel/gyro/magnetometer nodes from CoreMotion
-- [ ] Build daemon in Procursus image, pack deb
-- [ ] Device validation: BKS brightness write, IOPS values, shell indicator + slider
+- [x] Build daemons in the Procursus image and package them (`xios-fhs 1.0.2`)
+- [x] Device validation: IOPS battery state, BKS-backed brightness mirror, live
+      CoreMotion/IIO values, and shell helper startup. See `docs/handoff/polish.md`
+      for the captured 2026-07-04 values and remaining physical-gesture polish.
 - [x] Darwin gsd-backlight backend patch (patches/gnome-settings-daemon/0001-...) — DORMANT:
       the gsd-power port is on hold (gnome-rr + GTK-skeleton walls); patch plugs into step 3
       of that port unchanged if the lead green-lights it
@@ -263,6 +265,7 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
 - [x] xios.session: xios-hwbridged added to the session launch (gnome-session, task #14)
 - [x] Torch bridge: synthetic `class/leds/xios:torch` node + AVCaptureDevice torch in
       xios-hwbridged; Plasma Mobile flashlight tile backend swapped off libudev onto it
-      (plasma-mobile-ios-fixes.sh). SOURCE ONLY — needs daemon rebuild + plasma-mobile deb
-      rebuild + validation on torch-capable hardware.
+      (plasma-mobile-ios-fixes.sh). The daemon and Plasma packages were rebuilt;
+      physical torch validation remains hardware-gated because the target iPad
+      does not expose a rear torch LED.
 - [ ] Flavor-K follow-up: powerdevil backlight patch against the same tree

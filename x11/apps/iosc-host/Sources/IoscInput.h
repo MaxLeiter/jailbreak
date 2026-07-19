@@ -31,6 +31,14 @@ void iosc_input_text(iosc_input_t *h, const char *utf8);
 void iosc_input_touch(iosc_input_t *h, int slot, int phase, int x, int y);
 void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressure16,
                        int tilt_x_deg, int tilt_y_deg);
+/* Two-finger / wheel scroll (wire type 9, xios_input_socket.h XIOS_IN_AXIS).
+ * dx256/dy256 = deltas in 1/256 canvas-pixel fixed point, wl_pointer sign
+ * (positive = content scrolls down/right). source: 0 finger, 1 wheel. mods:
+ * 1 shift, 2 ctrl, 4 alt. stop ends the gesture (dx=dy=0) so clients can fling
+ * kinetically. Mirrors apps/Xios/Sources/IoscInput.{c,h} iosc_input_axis(),
+ * made handle-based like the rest of this file. */
+void iosc_input_axis(iosc_input_t *h, int dx256, int dy256, unsigned source,
+                     unsigned mods, bool stop);
 /* Drain the server->app stream. Returns 1 with ONE TRAITS record's fields filled
  * (call again for more; every enable/disable transition is delivered, nothing
  * coalesces), 0 when no complete record is pending, -1 on disconnect. */

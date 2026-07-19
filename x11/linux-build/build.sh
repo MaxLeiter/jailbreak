@@ -16,7 +16,6 @@ fi
 cd Procursus
 
 echo "==> [2/4] apply our patches (idempotent, no absolute paths)"
-cp -f "$PATCHES/0001-xserver-popen-shell-rootless.patch" build_patch/0001-xserver-popen-shell-rootless.patch
 # IOSurface DDX ("Xios"): drop-in hw/vfb sources copied into the xserver tree by the
 # tigervnc recipe (see the tigervnc_xios edit below).
 mkdir -p build_patch/xios
@@ -43,6 +42,7 @@ stage_port_patch_stack() {
   done < "$patch_dir/series"
 }
 
+stage_port_patch_stack tigervnc
 stage_port_patch_stack mesa
 
 python3 - <<'PY'
@@ -58,7 +58,7 @@ def edit(path, fn):
 def tigervnc(s):
     anchor = "patch -p1 < $(BUILD_WORK)/tigervnc/unix/xserver$(XORG_VERSION).patch && \\\n"
     inject = ('\t{ [ "$(MEMO_PREFIX)" != "/var/jb" ] || patch -p1 < '
-              '$(BUILD_ROOT)/build_patch/0001-xserver-popen-shell-rootless.patch; } && \\\n')
+              '$(BUILD_ROOT)/build_patch/tigervnc/0001-xserver-popen-shell-rootless.patch; } && \\\n')
     if "0001-xserver-popen-shell-rootless.patch" in s:
         return s
     return s.replace(anchor, anchor + inject, 1)
@@ -71,7 +71,7 @@ def tigervnc_xios(s):
     if "build_patch/xios/InitOutput.c" in s:
         return s
     anchor = ('\t{ [ "$(MEMO_PREFIX)" != "/var/jb" ] || patch -p1 < '
-              '$(BUILD_ROOT)/build_patch/0001-xserver-popen-shell-rootless.patch; } && \\\n')
+              '$(BUILD_ROOT)/build_patch/tigervnc/0001-xserver-popen-shell-rootless.patch; } && \\\n')
     # Fail loud rather than silently shipping a plain Xvfb if the Procursus recipe
     # layout drifts (the anchor is the line the rootless edit above injects).
     if anchor not in s:

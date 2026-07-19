@@ -3,7 +3,8 @@ $(error Use the main Makefile)
 endif
 
 # xfdesktop — desktop background, right-click menu and desktop icons. libwnck3 (workspace
-# awareness) and thunarx (file icons) are used; thunarx is optional here. BLOCKED on GTK3.
+# awareness) and thunarx (file icons) are used; thunarx is optional here. GTK3
+# is available; this recipe is not yet build-validated.
 SUBPROJECTS       += xfdesktop
 XFDESKTOP_MAJOR_V := 4.16
 XFDESKTOP_VERSION := $(XFDESKTOP_MAJOR_V).1

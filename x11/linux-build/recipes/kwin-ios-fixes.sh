@@ -947,3 +947,8 @@ sub(
 path.write_text(text)
 print("wayland_backend.cpp: applied ios-bringup-fractional-scale inbound-coordinate correction")
 PY
+
+# Keep the accelerated ANGLE/IOSurface phase separate from the first-light
+# compatibility edits above. This makes the stable QPainter bring-up easy to
+# audit while the GPU path can evolve as one recipe-owned patch stage.
+bash "$(dirname "$0")/kwin-ios-gpu-backend.sh" "$src"

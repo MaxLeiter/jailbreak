@@ -10,7 +10,7 @@ endif
 # VAPI: built `-Dvapi=false` (vapi gen would need GIR/g-ir-scanner on-target). The Vala apps that
 # use libsoup get `libsoup-3.0.vapi` from the vendored vapidir (see linux-build/vapi/README.md).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libsoup-3.0-0 3.4.4+ios1.
 
 SUBPROJECTS      += libsoup3
 LIBSOUP3_MAJOR_V := 3.4

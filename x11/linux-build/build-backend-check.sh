@@ -29,6 +29,9 @@ REF_SRC='../src/backends/meta-monitor-manager-dummy.c'
 # include paths ("backends/ios/...") resolve against them.
 rm -rf /tmp/ios-check && mkdir -p "$STAGE"
 cp "$SRCDIR"/*.h "$STAGE"/ 2>/dev/null || true
+if [ -f "$SRCDIR/out/xios-glue-include/xios_surface.h" ]; then
+  cp "$SRCDIR/out/xios-glue-include/xios_surface.h" "$STAGE/"
+fi
 
 # The MetaBackendIOS files intentionally compile against xios-glue-stub.h, while
 # libxios_glue ships canonical headers. Catch contract drift before compiling so a
@@ -42,6 +45,7 @@ stage = pathlib.Path(sys.argv[1])
 stub_path = stage / "xios-glue-stub.h"
 input_path = stage / "xios_input_socket.h"
 egl_path = stage / "xios_egl.h"
+surface_path = stage / "xios_surface.h"
 
 if not stub_path.exists():
     raise SystemExit("FAIL: xios-glue-stub.h was not staged")
@@ -128,6 +132,19 @@ if egl_text:
     if missing:
         errors.append("xios-glue-stub.h is missing canonical xios_egl.h prototypes: " + ", ".join(missing))
 
+surface_text = read_optional(surface_path)
+if surface_text:
+    names = [
+        "xios_surface_create",
+        "xios_surface_resize",
+        "xios_server_start",
+        "xios_server_stop",
+        "xios_get_output_iosurface",
+    ]
+    missing = sorted(set(prototype_map(surface_text, names)) - set(prototype_map(stub, names)))
+    if missing:
+        errors.append("xios-glue-stub.h is missing canonical xios_surface.h prototypes: " + ", ".join(missing))
+
 if errors:
     print("FAIL: xios glue contract drift detected", file=sys.stderr)
     for e in errors:
@@ -162,8 +179,13 @@ for src in "$@"; do
   obj="/tmp/ios-check/${src%.c}.o"
   cmd=$(printf '%s' "$BASECMD" \
         | sed "s#$REF_OBJ#$obj#g; s#$REF_SRC#$STAGE/$src#g")
-  # prepend the stage dir so backends/ios/*.h resolve; keep all real -I flags after it.
+  # Prepend the stage dir so backends/ios/*.h resolve; keep all real -I flags
+  # after it. The copied Apple SDK headers are incomplete from Clang's
+  # nullability/Swift-importer perspective and otherwise emit hundreds of
+  # warnings per source, hiding useful backend diagnostics. Suppress only that
+  # inherited SDK noise; Mutter's own strict warning/error flags remain intact.
   cmd=${cmd/ / -I/tmp/ios-check }
+  cmd="$cmd -Wno-nullability-completeness -Wno-undef -Wno-expansion-to-defined"
   echo "==> compile-check: $src"
   if eval "$cmd" && [ -f "$obj" ]; then
     echo "    OK  -> $(basename "$obj") ($(wc -c < "$obj") bytes)"

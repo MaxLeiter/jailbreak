@@ -165,7 +165,7 @@ classified as rootless-only.
 - `linux-build/build-qt-wayland-gl-smoke.sh:70` `/var/jb`: -Wl,-rpath,/var/jb/lib/angle
 - `linux-build/build-qt-wayland-gl-smoke.sh:93` `/var/jb`: "$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.2.dylib /var/jb/lib/angle/libGLESv2.dylib \
 - `linux-build/build-qt-wayland-gl-smoke.sh:95` `/var/jb`: "$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.dylib /var/jb/lib/angle/libGLESv2.dylib \
-- `linux-build/check-plasma-qml-stubs.sh:23` `/var/jb`: make_dir "$TMP/libplasma/var/jb/usr/lib/qt6/qml/org/kde/plasma/components"
+- `linux-build/check-plasma-ios-providers.sh:19` `/var/jb`: workspace_layout="$TMP/workspace/var/jb/usr/share/plasma/look-and-feel/org.kde.breeze.desktop/contents/layouts"
 - ... 224 more
 
 ### other
@@ -227,7 +227,8 @@ classified as rootless-only.
 - `linux-build/recipes/evolution-data-server.mk:30` `/var/jb`: #  - find_program resolves into the iOS sysroot (build_base/.../var/jb/usr/bin) ahead of the
 - `linux-build/recipes/evolution-data-server.mk:45` `/var/jb`: #    /var/jb; the desktop's model is one on-device glib-compile-schemas pass post-install.
 - `linux-build/recipes/evolution-data-server.mk:175` `/var/jb`: # prefix (copying $(MEMO_PREFIX) itself would drop the leading var/ from /var/jb).
-- `linux-build/recipes/plasma-pa-ios-qml-stubs.sh:15` `/var/jb`: volume_ui="$root/var/jb/usr/share/plasma/plasmoids/org.kde.plasma.volume/contents/ui"
+- The former plasma-pa package-time stub-generator entry was removed on 2026-07-18; the real
+  plasma-pa package owns that QML now.
 - `ports/gnome-shell/patches/0001-ios-source-port.patch:11` `/var/jb`: serviceconf.set('gjs', '/var/jb/usr/bin/gjs')
 - `linux-build/recipes/plasma-workspace-ios-package-fixes.sh:23` `/var/jb`: desktopsArray[j].writeConfig('Image', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');
 - `linux-build/recipes/plasma-workspace-ios-package-fixes.sh:24` `/var/jb`: desktopsArray[j].writeConfig('PreviewImage', 'file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg');

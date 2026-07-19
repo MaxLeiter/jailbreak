@@ -21,6 +21,7 @@
 #define XIOS_IN_TABLET 7u
 /* Scope this connection to one window (code = window id). */
 #define XIOS_IN_BIND   8u
+#define XIOS_IN_AXIS   9u   // x,y = dx,dy 1/256 px; code = source; state bit0 = stop; mods latched
 
 struct xios_in_msg {
     uint32_t type;
@@ -134,6 +135,14 @@ void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressu
                              .state = (uint32_t)phase,
                              .mods = (uint32_t)(tilt_x_deg + 90) |
                                      ((uint32_t)(tilt_y_deg + 90) << 8) };
+    send_msg(h, &m);
+}
+
+void iosc_input_axis(iosc_input_t *h, int dx256, int dy256, unsigned source,
+                     unsigned mods, bool stop)
+{
+    struct xios_in_msg m = { .type = XIOS_IN_AXIS, .x = dx256, .y = dy256,
+                             .code = source, .state = stop ? 1u : 0u, .mods = mods };
     send_msg(h, &m);
 }
 

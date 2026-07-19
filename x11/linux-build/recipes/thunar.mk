@@ -4,7 +4,8 @@ endif
 
 # Thunar — XFCE file manager (+ libthunarx-3 plugin lib). gudev (udev) and libnotify are
 # Linux-only/absent and auto-disable -> local browsing only, no removable-media mounting.
-# BLOCKED on the GTK3 stack. NOTE: verify tarball case ('thunar' vs 'Thunar') at build.
+# GTK3 is available; this recipe is not yet build-validated. NOTE: verify
+# tarball case (`thunar` vs `Thunar`) at build.
 SUBPROJECTS    += thunar
 THUNAR_MAJOR_V := 4.16
 THUNAR_VERSION := $(THUNAR_MAJOR_V).11

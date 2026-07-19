@@ -7,7 +7,9 @@ endif
 # no compiled code, no target-binary execution at build → fully tractable to cross "build".
 # Independent of GTK/dbus/introspection. See docs/gnome-plan.md, Stage A.
 #
-# DRAFT — authored Phase 1 (research), NOT yet built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — `gsettings-desktop-schemas 46.1+ios1` is in the package
+# repo; its package target was also revalidated in the Procursus volume on
+# 2026-07-18.
 
 SUBPROJECTS  += gsettings-desktop-schemas
 GSDS_MAJOR_V := 46

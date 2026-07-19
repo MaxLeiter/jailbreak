@@ -7,7 +7,7 @@ endif
 # clients run wayland-scanner over these XMLs at *their* build time, so nothing here is
 # compiled or cross-built. No cross file needed (the meson project declares no language).
 #
-# DRAFT — Wayland track W0. NOT built yet (Docker gated). Drop-in:
+# BUILT/PUBLISHED — wayland-protocols 1.44+ios1. Recipe integration:
 #   recipe        -> Procursus/makefiles/wayland-protocols.mk
 #   control file  -> Procursus/build_info/wayland-protocols.control
 

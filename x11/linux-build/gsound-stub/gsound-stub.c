@@ -161,8 +161,8 @@ gsound_context_play_simplev (GSoundContext *c, GHashTable *a, GCancellable *ca, 
 gboolean gsound_context_cache (GSoundContext *c, GError **e, ...) { (void) c; (void) e; return TRUE; }
 gboolean gsound_context_cachev (GSoundContext *c, GHashTable *a, GError **e) { (void) c; (void) a; (void) e; return TRUE; }
 
-/* Async play: complete immediately via a GTask so the caller's callback fires and its
- * play_full_finish() succeeds. Plays no sound. */
+/* Async play: dispatch the system sound above, then complete via a GTask so the caller's
+ * callback fires and play_full_finish() reports the operation correctly. */
 static void
 play_full_common (GSoundContext *c, GCancellable *ca, GAsyncReadyCallback cb, gpointer ud)
 {

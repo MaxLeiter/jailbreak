@@ -4,7 +4,8 @@ endif
 
 # libwnck 3.x — window-navigator construction kit (EWMH client-window list / WM hints).
 # Hard dep of xfwm4; used by xfce4-panel (tasklist/pager), xfce4-session, xfdesktop.
-# Not in Procursus. GTK3-era libwnck (3.x) builds with meson. Blocked on the GTK3 stack.
+# Not in Procursus. GTK3 is now available; this recipe is unvalidated and is the
+# first window-management dependency to probe in the remaining XFCE chain.
 SUBPROJECTS     += libwnck3
 LIBWNCK3_MAJOR_V := 3.36
 LIBWNCK3_VERSION := $(LIBWNCK3_MAJOR_V).0

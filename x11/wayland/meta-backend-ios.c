@@ -13,7 +13,7 @@
  * post_init starts the Xios input pump (meta-input-ios.c), which drives a
  * MetaVirtualInputDeviceIOS on the seat. get_keymap returns a real compiled "us" xkb_keymap
  * (same idiom as the native backend); layout is single-group, single monitor, no pointer
- * constraints. The stage-update vfunc is still a TODO device-iteration fill. GPL-2.0+.
+ * constraints. GPL-2.0+.
  */
 
 #include "config.h"
@@ -68,6 +68,47 @@ ios_json_path (void)
   const char *path = g_getenv ("XIOS_JSON_PATH");
 
   return path ? path : XIOS_JSON_PATH_DEFAULT;
+}
+
+static void
+ios_initial_output_geometry (int *width,
+                             int *height)
+{
+  const char *spec = g_getenv ("IOSC_LOGICAL");
+  char *width_end = NULL;
+  char *height_end = NULL;
+  gint64 logical_width;
+  gint64 logical_height;
+  double physical_width;
+  double physical_height;
+  float scale = xios_output_scale ();
+
+  /* Native iPad fallback. A session-picker resize sets IOSC_LOGICAL=WxH through
+   * xios-session; honor that same established knob for Mutter/GNOME rather than
+   * baking one framebuffer size into the backend forever. */
+  *width = 2160;
+  *height = 1620;
+  if (!spec || !*spec)
+    return;
+
+  logical_width = g_ascii_strtoll (spec, &width_end, 10);
+  if (width_end == spec || (*width_end != 'x' && *width_end != 'X'))
+    goto invalid;
+
+  logical_height = g_ascii_strtoll (width_end + 1, &height_end, 10);
+  physical_width = (double) logical_width * (double) scale;
+  physical_height = (double) logical_height * (double) scale;
+  if (height_end == width_end + 1 || *height_end != '\0' ||
+      logical_width < 1 || logical_height < 1 ||
+      physical_width > G_MAXINT || physical_height > G_MAXINT)
+    goto invalid;
+
+  *width = MAX (1, (int) (physical_width + 0.5));
+  *height = MAX (1, (int) (physical_height + 0.5));
+  return;
+
+invalid:
+  g_warning ("MetaBackendIOS: ignoring invalid IOSC_LOGICAL=%s", spec);
 }
 
 struct _MetaBackendIOS
@@ -197,8 +238,8 @@ meta_backend_ios_create_renderer (MetaBackend  *backend,
 static MetaInputSettings *
 meta_backend_ios_get_input_settings (MetaBackend *backend)
 {
-  /* No physical input devices to configure (all input is synthetic). TODO: a stub
-   * MetaInputSettings if gsd/mutter turns out to require a non-NULL one at runtime. */
+  /* Deliberately absent: every input device is synthetic and there are no libinput
+   * acceleration, tap, calibration, or tablet settings to apply on iOS. */
   return NULL;
 }
 
@@ -378,10 +419,12 @@ meta_backend_ios_constructed (GObject *object)
   /* Create the output IOSurface + start the Xios-app rendezvous BEFORE the renderer imports it
    * (create_view) or the monitor manager reads its geometry. xios_server_start writes
    * /var/jb/tmp/xios.json so the Xios app finds + displays the surface — exactly iosc.c main()'s
-   * bring-up. Geometry is the iPad's native 2160x1620 (xios_output_geometry only returns it AFTER
-   * creation, so it can't be queried here — MetaMonitorManagerIOS reads it back post-creation). */
+   * bring-up. Default geometry is the iPad's native 2160x1620; a session-picker
+   * IOSC_LOGICAL=WxH request is converted through the output scale before creation. */
   {
-    int width = 2160, height = 1620, stride = 0, alloc = 0;
+    int width, height, stride = 0, alloc = 0;
+
+    ios_initial_output_geometry (&width, &height);
 
     if (!xios_surface_create (width, height, &stride, &alloc))
       g_warning ("MetaBackendIOS: xios_surface_create failed (IOSurface entitlement?) — "

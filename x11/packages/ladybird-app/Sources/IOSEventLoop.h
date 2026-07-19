@@ -49,10 +49,9 @@ public:
 
 class EventLoopImplementationIOS final : public Core::EventLoopImplementation {
 public:
-    // FIXME (inherited from the macOS port): this currently only manages the main run loop
-    // (UIApplicationMain's CFRunLoop), as that is all we interact with. Supporting multiple
-    // event loops, or an event loop that isn't the main one, will require creating our own
-    // CFRunLoop rather than adopting CFRunLoopGetCurrent().
+    // UIKit frontend scope: this manages UIApplicationMain's CFRunLoop, which is the only
+    // platform loop the iOS app owns. If the frontend later creates worker-thread event loops,
+    // those will need their own CFRunLoop rather than adopting CFRunLoopGetCurrent().
     static NonnullOwnPtr<EventLoopImplementationIOS> create();
 
     virtual int exec() override;

@@ -9,7 +9,9 @@ endif
 # RUNTIME (provided by the `dbus` package from the XFCE track). GTK-independent.
 # See docs/gnome-plan.md, Stage A.
 #
-# DRAFT — authored Phase 1 (research), NOT yet built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — `dconf 0.40.0+ios1` is in the package repo. A fresh
+# 2026-07-18 cross probe also configured cleanly and entered compilation before
+# Docker became unresponsive; use the published artifact as current package truth.
 # Simplified single runtime package; Debian splits into dconf-gsettings-backend /
 # dconf-service / dconf-cli / libdconf1 — split later if a finer dependency graph is wanted.
 

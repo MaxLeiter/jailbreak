@@ -16,3 +16,10 @@
 #define META_TYPE_VIRTUAL_INPUT_DEVICE_IOS (meta_virtual_input_device_ios_get_type ())
 G_DECLARE_FINAL_TYPE (MetaVirtualInputDeviceIOS, meta_virtual_input_device_ios,
                       META, VIRTUAL_INPUT_DEVICE_IOS, ClutterVirtualInputDevice)
+
+/* Touch-cancel (XIOS_IN_TOUCH state=3): not part of ClutterVirtualInputDeviceClass (which
+ * only defines notify_touch_down/motion/up), so it is exposed here directly instead of
+ * through clutter_virtual_input_device_notify_*(). Called from meta-input-ios.c. */
+void meta_virtual_input_device_ios_notify_touch_cancel (ClutterVirtualInputDevice *virtual_device,
+                                                        uint64_t                   time_us,
+                                                        int                        slot);

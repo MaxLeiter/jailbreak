@@ -83,9 +83,9 @@ $CC $CFLAGS -dynamiclib -install_name "$INSTALL_NAME" \
     -Wl,-rpath,/var/jb/lib/angle -o /out/libxios_glue.dylib
 rm -rf /out/xios-glue-include; mkdir -p /out/xios-glue-include
 # Ship ONLY the 3 canonical headers as the interface. The off-device compile
-# placeholder xios-glue-stub.h is deliberately NOT bundled — it can drift from the
-# real API (it once declared xios_egl_get_display vs the lib's xios_egl_display);
-# consumers link against these authoritative headers instead.
+# The backend's flat compile-contract xios-glue-stub.h is deliberately NOT bundled;
+# consumers link against these authoritative headers. build-backend-check.sh checks the
+# contract against this exported input/EGL/surface surface before compiling Mutter files.
 cp "$X11/linux-build/patches/xios/xios_surface.h" "$X11/wayland/xios_egl.h" \
    "$X11/wayland/xios_input_socket.h" \
    /out/xios-glue-include/

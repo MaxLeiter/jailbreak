@@ -51,6 +51,9 @@
 #
 # Status "state" vocabulary (xios-session-status.json):
 #   stopping | starting | waiting | relaunching | up | error | stopped | compositor-only
+#   | down (a previously-up session died or was torn down; written by teardown,
+#     the run-kde-plasma.sh monitor, and ioscd so the Xios picker never shows a
+#     stale "up" hours after the session went away)
 
 # ---------------------------------------------------------------------------
 # paths + small helpers
@@ -622,6 +625,19 @@ xios_session_teardown() {
           "$XS_TMP/iosc-native.sock" 2>/dev/null || true
     rm -rf "$XS_TMP/xios-kde-runtime" 2>/dev/null || true
     rm -rf "$XS_TMP/xios-session-bus" 2>/dev/null || true
+    # Never leave a dead session advertised as running: if the status file still
+    # claims a live state after everything was killed, rewrite it as down. In the
+    # normal preset flow this never fires (xs_prepare_display_session/stop write
+    # "stopping" first); it catches teardowns arriving outside that flow, which
+    # otherwise leave a stale "up" in the Xios picker for hours (2026-07-08).
+    local st_state st_preset
+    st_state="$(xs_json_get_file "$XS_STATUS" state)"
+    case "$st_state" in
+        up|compositor-only|waiting|starting|relaunching)
+            st_preset="$(xs_json_get_file "$XS_STATUS" preset)"
+            xs_write_status "${st_preset:-session}" down "session torn down ($why)"
+            ;;
+    esac
     xs_log "teardown done"
 }
 
@@ -908,6 +924,8 @@ xios_session_kde() {
     KWIN_SOCKET="$XS_KWIN_SOCKET" \
     KDE_LOG="$XS_KDE_LOG" \
     XIOS_SESSION_SLOT="$XS_SLOT" \
+    XIOS_SESSION_STATUS_FILE="$XS_STATUS" \
+    XIOS_SESSION_STATUS_PRESET="$preset" \
     PLASMA_SHELL_PLUGIN="${plasma_shell_plugin:-${PLASMA_SHELL_PLUGIN-}}" \
     KDE_PLASMA_FLAVOR="$flavor" bash "$script" || true
     xs_record_slot_process_pgroups "$preset"

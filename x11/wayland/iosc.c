@@ -44,6 +44,10 @@
 #include "wlr-data-control-unstable-v1-server-protocol.h"
 #include "ext-session-lock-v1-server-protocol.h"
 #include "tablet-v2-server-protocol.h"
+#include "kde-output-device-v2-server-protocol.h"
+#include "kde-output-management-v2-server-protocol.h"
+#include "kde-primary-output-v1-server-protocol.h"
+#include "kde-output-order-v1-server-protocol.h"
 #include "iosc-iosurface-server-protocol.h"
 
 #include "xios_surface.h"
@@ -112,6 +116,17 @@ static void surface_unmap(struct iosc_surface *s);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 static void output_send_state(struct wl_resource *r);
+
+/* Stable identifier for our single output. Reported identically via wl_output v4
+ * name, zxdg_output_v1 name, kde_output_device_v2 name+uuid, kde_output_order_v1
+ * and kde_primary_output_v1 so KDE tooling can cross-reference the one output. */
+#define IOSC_OUTPUT_NAME "IOSC-1"
+
+/* Broadcast helpers used by the runtime reconfigure path; defined with the
+ * fractional-scale / KDE output-management code further down. */
+static void fractional_scale_broadcast(void);   /* re-notify wp_fractional_scale_v1 clients */
+static void kde_output_broadcast(void);          /* kde device bursts + order + primary */
+static void broadcast_output_all(void);          /* wl_output + xdg_output + the two above */
 
 static uint32_t now_ms(void)
 {
@@ -187,6 +202,12 @@ struct iosc_subsurface {
     struct iosc_surface *surface;
     struct iosc_surface *parent;
     int x, y;
+    int sync;             /* wl_subsurface default is synchronized (spec) */
+    int cache_pending;    /* committed while sync: the surface's existing
+                           * pending_buffer/buffer_attached/gl-dirty state is left
+                           * un-applied (it IS the single-level cache) until the
+                           * parent's own state next applies; see
+                           * surface_apply_sync_children(). */
 };
 
 struct iosc_presentation_feedback {
@@ -252,6 +273,23 @@ struct iosc_surface {
     int                 configured;      /* sent the initial xdg configure */
     struct wl_list      frame_callbacks; /* pending wl_callback resources */
     struct wl_list      presentation_feedbacks;
+    /* xdg_surface.set_window_geometry: double-buffered like the rest of the
+     * surface state, latched on commit. geo_set=0 falls back to the whole
+     * display-sized buffer (spec default when unset). Coordinates are
+     * surface-local (same space as opaque/input regions), i.e. already
+     * comparable to surface_display_size()'s w/h. */
+    int                 pending_geo_set;
+    int                 pending_geo_x, pending_geo_y, pending_geo_w, pending_geo_h;
+    int                 geo_set;
+    int                 geo_x, geo_y, geo_w, geo_h;
+    /* xdg_surface.get_popup positioner snapshot. A layer-shell popup's xdg_surface
+     * parent is NULL per protocol (zwlr_layer_surface_v1.get_popup supplies the
+     * real parent afterward, before the client's first commit); keep the
+     * positioner's VALUE (not a pointer -- the client may destroy the positioner
+     * object right after xdg_surface.get_popup) so the deferred placement in
+     * layer_surface_get_popup() has something to place with. */
+    struct iosc_positioner popup_positioner;
+    int                 popup_positioner_set;
 };
 
 /* a queued frame-callback resource */
@@ -527,7 +565,7 @@ static struct iosc_surface *topmost_focusable(void)
 {
     for (int i = g_nmapped - 1; i >= 0; i--) {
         struct iosc_surface *s = g_mapped[i];
-        if (s->role == IOSC_ROLE_TOPLEVEL) return s;
+        if (s->role == IOSC_ROLE_TOPLEVEL && !s->toplevel_minimized) return s;
         if (s->role == IOSC_ROLE_LAYER && s->layer &&
             s->layer->kbd_interactivity != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
             return s;
@@ -580,6 +618,50 @@ static void surface_display_size(struct iosc_surface *s, int *w, int *h)
         *w = buffer_to_logical(s->sw, scale);
         *h = buffer_to_logical(s->sh, scale);
     }
+}
+
+/* Effective xdg_surface.set_window_geometry rect: the client's declared rect if
+ * committed (geo_set), else the whole display-sized buffer (spec default when
+ * unset). Both the offset (gx,gy) and size (gw,gh) are in the same surface-local
+ * units as surface_display_size()'s w/h. Used to keep a maximized/fullscreen
+ * window's CONTENT filling its target rect even when the buffer itself carries a
+ * CSD shadow margin, and to convert a parent's xdg_positioner-relative popup
+ * placement into screen space. */
+static void surface_geometry(struct iosc_surface *s, int *gx, int *gy, int *gw, int *gh)
+{
+    if (s->geo_set && s->geo_w > 0 && s->geo_h > 0) {
+        *gx = s->geo_x; *gy = s->geo_y; *gw = s->geo_w; *gh = s->geo_h;
+        return;
+    }
+    *gx = 0; *gy = 0;
+    surface_display_size(s, gw, gh);
+}
+
+/* True when this surface is presented stretched to fill the whole output. Only
+ * fullscreen xdg toplevels in the shared-output (non-native) composite path do
+ * this: a nested compositor such as kwin tags its host buffer with
+ * set_buffer_scale(ceil(uiScale)) and sends no viewporter, so its display size
+ * comes out at output/scale and it would otherwise shrink to a fraction of the
+ * screen. Native mode composites each toplevel into its own per-window canvas, so
+ * it is deliberately excluded (see native_composite_toplevel). */
+static int surface_fills_output(struct iosc_surface *s)
+{
+    return s && !g_native_mode &&
+           s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_fullscreen;
+}
+
+/* The logical size a surface actually occupies on the output: its own display
+ * size normally, or the whole logical output for a stretched fullscreen toplevel.
+ * Used for hit-testing, damage, and pointer confinement so those agree with what
+ * composite_surface_at() actually draws. */
+static void surface_output_size(struct iosc_surface *s, int *w, int *h)
+{
+    if (surface_fills_output(s)) {
+        *w = output_logical_width();
+        *h = output_logical_height();
+        return;
+    }
+    surface_display_size(s, w, h);
 }
 
 static void surface_source_rect(struct iosc_surface *s, int *x, int *y, int *w, int *h)
@@ -739,6 +821,70 @@ static void cpu_blit_shm(struct iosc_surface *s)
     wl_shm_buffer_end_access(shm);
 }
 
+/* CPU-fallback blit of an IOSurface-backed client buffer, scaled like
+ * cpu_blit_shm() above. There is no direct pixel accessor for a client
+ * IOSurface exposed to iosc.c (only iosc_iosurface_buffer_blit_to_output(),
+ * which does a fixed unscaled top-left copy straight into the OUTPUT
+ * IOSurface -- see xios_blit_client_iosurface() in xios_surface.c). We reuse
+ * that as the "read pixels" step: snapshot the output's top-left corner
+ * (g_fb IS the output IOSurface's CPU mapping), let the helper write the
+ * client's raw pixels there, copy those bytes out for ourselves, restore the
+ * snapshot so we haven't left a visible artifact, then nearest-neighbor
+ * scale-blit from our copy into the real destination rect exactly like
+ * cpu_blit_shm. Nothing here is presented until the caller's later
+ * xios_notify_dirty(), so the scratch write is never shown. */
+static void cpu_blit_iosurface(struct iosc_surface *s)
+{
+    struct wl_resource *buffer = s->current_buffer;
+    int sw = s->sw, sh = s->sh;
+    if (sw <= 0 || sh <= 0) return;
+    if (sw > g_width) sw = g_width;
+    if (sh > g_height) sh = g_height;
+
+    int dw = 0, dh = 0, sx = 0, sy = 0, src_w = 0, src_h = 0;
+    surface_display_size(s, &dw, &dh);
+    surface_source_rect(s, &sx, &sy, &src_w, &src_h);
+    int os = output_scale();
+    int dxp = s->dx * os, dyp = s->dy * os, dwp = dw * os, dhp = dh * os;
+    if (dwp <= 0 || dhp <= 0 || src_w <= 0 || src_h <= 0) return;
+
+    size_t row_bytes = (size_t)sw * 4u;
+    uint8_t *prior = malloc(row_bytes * (size_t)sh);
+    uint8_t *client_px = malloc(row_bytes * (size_t)sh);
+    if (!prior || !client_px) { free(prior); free(client_px); return; }
+
+    /* Snapshot what's currently at the scratch corner so it can be put back. */
+    for (int y = 0; y < sh; y++)
+        memcpy(prior + (size_t)y * row_bytes, g_fb + (size_t)y * g_stride, row_bytes);
+
+    if (!iosc_iosurface_buffer_blit_to_output(buffer)) {
+        /* Not actually an IOSurface buffer (shouldn't happen -- the caller only
+         * reaches here when wl_shm_buffer_get() failed on it -- but bail clean). */
+        free(prior); free(client_px);
+        return;
+    }
+    for (int y = 0; y < sh; y++)
+        memcpy(client_px + (size_t)y * row_bytes, g_fb + (size_t)y * g_stride, row_bytes);
+    for (int y = 0; y < sh; y++)
+        memcpy(g_fb + (size_t)y * g_stride, prior + (size_t)y * row_bytes, row_bytes);
+    free(prior);
+
+    int max_y = dyp + dhp; if (max_y > g_height) max_y = g_height;
+    int max_x = dxp + dwp; if (max_x > g_width) max_x = g_width;
+    for (int y = dyp; y < max_y; y++) {
+        int src_y = sy + (int)((long long)(y - dyp) * src_h / dhp);
+        if (src_y < 0 || src_y >= sh) continue;
+        uint32_t *dst = (uint32_t *)(g_fb + (size_t)y * g_stride);
+        const uint32_t *row = (const uint32_t *)(client_px + (size_t)src_y * row_bytes);
+        for (int x = dxp; x < max_x; x++) {
+            int src_x = sx + (int)((long long)(x - dxp) * src_w / dwp);
+            if (src_x < 0 || src_x >= sw) continue;
+            dst[x] = row[src_x];
+        }
+    }
+    free(client_px);
+}
+
 /* ---- single-pixel-buffer-v1: 1x1 solid-colour wl_buffer ------------------- */
 
 /* A wp_single_pixel_buffer is a 1x1 wl_buffer holding a premultiplied RGBA colour
@@ -806,6 +952,14 @@ static void composite_surface_at(struct iosc_surface *s, int lx, int ly)
     if (dw <= 0 || dh <= 0 || src_w <= 0 || src_h <= 0) return;
     int os = output_scale();
     int dxp = lx * os, dyp = ly * os, dwp = dw * os, dhp = dh * os;
+    /* Fullscreen toplevels fill the whole output regardless of their buffer size or
+     * buffer_scale. The source rect stays the full buffer (any viewport source is
+     * already honored above), so a client that ignores its fullscreen configure
+     * (e.g. nested kwin) is stretched to the output instead of drawn at a quarter. */
+    if (surface_fills_output(s)) {
+        dxp = 0; dyp = 0;
+        dwp = g_width; dhp = g_height;
+    }
     struct wl_shm_buffer *shm = wl_shm_buffer_get(buf);
     if (shm) {
         /* Cache one GL texture per surface (keyed by `s`), re-uploaded only when
@@ -883,7 +1037,7 @@ static int surface_rect(struct iosc_surface *s, int *x0, int *y0, int *x1, int *
 {
     if (!s || !s->current_buffer) return 0;
     int w = 0, h = 0;
-    surface_display_size(s, &w, &h);
+    surface_output_size(s, &w, &h);   /* fullscreen toplevels occupy the whole output */
     if (w <= 0 || h <= 0) return 0;
     *x0 = s->dx;
     *y0 = s->dy;
@@ -1056,7 +1210,8 @@ static int surface_output_rect_px(struct iosc_surface *s, struct iosc_rect *out)
 
 static int surface_opaque_output_rect_px(struct iosc_surface *s, struct iosc_rect *out)
 {
-    if (!s || surface_blends(s))
+    if (!s || surface_blends(s) ||
+        (s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_minimized))
         return 0;
     return surface_output_rect_px(s, out);
 }
@@ -1175,6 +1330,51 @@ static int output_damage_add_surface_dirty_rects(struct iosc_surface *s)
         return 0;
     if (s->viewport && (s->viewport->has_src || s->viewport->has_dst))
         return 0;   /* transformed buffer damage needs a proper mapper */
+    if (surface_fills_output(s)) {
+        /* Stretched to fill the whole physical output: composite_surface_at() maps the
+         * buffer source rect onto dxp=0,dyp=0,dwp=g_width,dhp=g_height. Map each
+         * buffer-px dirty rect through that SAME stretch so a drag damages only the
+         * region it touches instead of repainting the entire output every commit (the
+         * Xios presenter samples the shared IOSurface asynchronously, so a full-frame
+         * redraw mid-composite shows as flicker/tearing). No viewport is possible here
+         * -- the has_src/has_dst early-bail above already returned -- so the source is
+         * the whole attached buffer, and the mapped damage is emitted directly in
+         * output-physical px (the frame output_damage_add_px expects; no dx/dy offset
+         * and no *output_scale, since the stretch dest already spans 0..g_width). */
+        int sx = 0, sy = 0, src_w = 0, src_h = 0;
+        surface_source_rect(s, &sx, &sy, &src_w, &src_h);
+        if (src_w <= 0 || src_h <= 0) {
+            output_damage_add_surface(s);   /* degenerate source: fall back to full */
+            return 1;
+        }
+        /* factor_{x,y} = g_{width,height} / src_{w,h}. Outward integer rounding (floor
+         * origin, ceil extent) matches the scale path below and needs no libm.
+         * ceil(max(fx,fy)) == max(ceil(fx),ceil(fy)); +1 covers GL_LINEAR (bilinear)
+         * bleed where a dirty texel influences ~1 extra source texel. */
+        int pad_x = (g_width  + src_w - 1) / src_w;   /* ceil(factor_x) */
+        int pad_y = (g_height + src_h - 1) / src_h;   /* ceil(factor_y) */
+        int pad   = (pad_x > pad_y ? pad_x : pad_y) + 1;
+        for (int i = 0; i < s->gl_dirty_rect_count; i++) {
+            const int *r = s->gl_dirty_rects + i * 4;
+            long long rx0 = (long long)r[0] - sx, ry0 = (long long)r[1] - sy;
+            long long rx1 = (long long)r[0] + r[2] - sx;
+            long long ry1 = (long long)r[1] + r[3] - sy;
+            if (rx0 < 0) rx0 = 0;
+            if (ry0 < 0) ry0 = 0;
+            if (rx1 > src_w) rx1 = src_w;
+            if (ry1 > src_h) ry1 = src_h;
+            if (rx1 <= rx0 || ry1 <= ry0) continue;
+            int ox0 = (int)(rx0 * g_width  / src_w) - pad;                    /* floor - pad */
+            int oy0 = (int)(ry0 * g_height / src_h) - pad;
+            int ox1 = (int)((rx1 * g_width  + src_w - 1) / src_w) + pad;      /* ceil  + pad */
+            int oy1 = (int)((ry1 * g_height + src_h - 1) / src_h) + pad;
+            if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
+                fprintf(stderr, "iosc: damage-add-stretch role=%d mapped=%d rect=%d,%d %dx%d\n",
+                        s->role, s->mapped, ox0, oy0, ox1 - ox0, oy1 - oy0);
+            output_damage_add_px(ox0, oy0, ox1 - ox0, oy1 - oy0);   /* clamps to output bounds */
+        }
+        return 1;
+    }
     int scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
     for (int i = 0; i < s->gl_dirty_rect_count; i++) {
         const int *r = s->gl_dirty_rects + i * 4;
@@ -1195,6 +1395,28 @@ static void surface_gl_dirty_full(struct iosc_surface *s)
     if (!s) return;
     s->gl_dirty = 1;
     s->gl_dirty_rect_count = 0;
+}
+
+/* Unify minimize: xdg_toplevel.set_minimized and the foreign-toplevel handle's
+ * set_minimized/unset_minimized both land here, so recompositing, hit-testing
+ * (surface_at()), and taskbar state always agree regardless of which protocol
+ * asked. xdg_toplevel has no "unset_minimized" request of its own -- restoring
+ * happens through the foreign-toplevel activate / wm-socket raise paths, which
+ * call this with minimized=0. */
+static void surface_set_minimized(struct iosc_surface *s, int minimized)
+{
+    if (!s || s->role != IOSC_ROLE_TOPLEVEL) return;
+    minimized = !!minimized;
+    if (s->toplevel_minimized == minimized) return;
+    if (s->mapped) output_damage_add_surface(s);
+    s->toplevel_minimized = minimized;
+    if (minimized && g_kbd_focus == s)
+        keyboard_set_focus(topmost_focusable());   /* hand focus to the next visible toplevel */
+    ftl_broadcast_state(s);
+    if (s->mapped) {
+        output_damage_add_surface(s);
+        if (g_output_damage_valid) recomposite_all();
+    }
 }
 
 static void surface_gl_dirty_buffer_rect(struct iosc_surface *s, int x, int y, int w, int h)
@@ -1294,7 +1516,7 @@ static int native_ensure_canvas(struct iosc_surface *s, int w, int h, int send_g
 
 static void native_composite_toplevel(struct iosc_surface *s)
 {
-    if (!s || s->role != IOSC_ROLE_TOPLEVEL || !s->mapped)
+    if (!s || s->role != IOSC_ROLE_TOPLEVEL || !s->mapped || s->toplevel_minimized)
         return;
     int cw = 0, ch = 0;
     if (native_canvas_size_for_surface(s, &cw, &ch) != 0)
@@ -1852,6 +2074,8 @@ static void recomposite_now(void)
             struct iosc_rect *d = &plan.damage[di];
             iosc_gl_begin_damage(d->x0, d->y0, d->x1 - d->x0, d->y1 - d->y0);
             for (int i = 0; i < g_nmapped; i++) {
+                if (g_mapped[i]->role == IOSC_ROLE_TOPLEVEL && g_mapped[i]->toplevel_minimized)
+                    continue;   /* iconified: not drawn, not occluding, not hit-tested */
                 struct iosc_rect surface_px, unclipped;
                 struct iosc_rect visible[IOSC_MAX_VISIBLE_RECTS];
                 int visible_count = surface_visible_damage_rects(i, d, visible,
@@ -1941,8 +2165,7 @@ static void recomposite_now(void)
     struct iosc_surface *s = g_mapped[g_nmapped - 1];
     if (!s->current_buffer) return;
     if (wl_shm_buffer_get(s->current_buffer)) cpu_blit_shm(s);
-    else if (output_scale() == 1)
-        iosc_iosurface_buffer_blit_to_output(s->current_buffer);
+    else cpu_blit_iosurface(s);
     xios_notify_dirty();
     frame_callbacks_after_present();
 }
@@ -2191,6 +2414,105 @@ static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
     }
 }
 
+/* ---- xdg_popup.grab --------------------------------------------------------
+ * A minimal but spec-following explicit-grab stack. Only the topmost grabbing
+ * popup may hold the grab; extending the chain requires the new popup's parent
+ * to be the current topmost grabbing popup (or, for a fresh chain, a toplevel /
+ * layer surface). Keyboard focus is pinned to the topmost grabbing popup for
+ * the duration (enforced inside keyboard_set_focus()); a pointer/touch press
+ * outside the whole chain dismisses it top-down and restores prior focus. */
+#define IOSC_MAX_POPUP_GRAB 16
+static struct iosc_surface *g_popup_grab_stack[IOSC_MAX_POPUP_GRAB];
+static int g_popup_grab_count;
+static struct iosc_surface *g_popup_grab_prev_focus;   /* restored when the chain fully ends */
+
+/* xdg_popup.grab (spec): the parent of a grabbing popup must be either a
+ * toplevel-ish root (starting a fresh chain -- no grab may already be active)
+ * or the current topmost grabbing popup (extending the chain, becoming the new
+ * topmost). We also accept a layer surface as a root, for FIX 7's panel popups. */
+static int popup_grab_parent_ok(struct iosc_surface *s)
+{
+    struct iosc_surface *p = s ? s->parent : NULL;
+    if (!p) return 0;
+    if (p->role == IOSC_ROLE_TOPLEVEL || p->role == IOSC_ROLE_LAYER)
+        return g_popup_grab_count == 0;
+    if (p->role == IOSC_ROLE_POPUP)
+        return g_popup_grab_count > 0 && g_popup_grab_stack[g_popup_grab_count - 1] == p;
+    return 0;
+}
+
+/* True if `hit` is the topmost grabbing popup or a descendant of ANY popup
+ * currently in the grab stack (walks ->parent up from hit). Also true when no
+ * grab is active (nothing to be "outside" of). */
+static int popup_hit_is_within_grab(struct iosc_surface *hit)
+{
+    if (g_popup_grab_count == 0) return 1;
+    if (!hit) return 0;
+    for (struct iosc_surface *s = hit; s; s = s->parent)
+        for (int i = 0; i < g_popup_grab_count; i++)
+            if (g_popup_grab_stack[i] == s) return 1;
+    return 0;
+}
+
+/* Dismiss every popup in the active grab stack, topmost first: popup_done,
+ * unmap, then end the grab and restore the pre-grab keyboard focus. */
+static void popup_grab_dismiss_all(void)
+{
+    if (g_popup_grab_count == 0) return;
+    struct iosc_surface *prev_focus = g_popup_grab_prev_focus;
+    for (int i = g_popup_grab_count - 1; i >= 0; i--) {
+        struct iosc_surface *p = g_popup_grab_stack[i];
+        g_popup_grab_stack[i] = NULL;   /* cleared before unmap: makes the generic
+                                          * popup_grab_on_surface_gone() hook a
+                                          * no-op for this popup, avoiding
+                                          * re-entrant double-processing */
+        if (p && p->xdg_popup) {
+            xdg_popup_send_popup_done(p->xdg_popup);
+            surface_unmap(p);
+        }
+    }
+    g_popup_grab_count = 0;
+    g_popup_grab_prev_focus = NULL;
+    if (g_kbd_focus != prev_focus)
+        keyboard_set_focus(prev_focus);
+    if (g_output_damage_valid) recomposite_all();
+}
+
+/* A grabbing popup `s` is going away (destroyed, or unmapped some other way,
+ * e.g. its buffer died) without a deliberate dismiss-all. If it's topmost, just
+ * pop it and hand the grab to the new topmost (or end the grab if that empties
+ * the stack). If it's a PARENT of still-live grabbing popups above it, those
+ * are about to be orphaned mid-chain -- dismiss them first (topmost-first),
+ * then drop this one too. No-op if `s` isn't part of an active grab. */
+static void popup_grab_on_surface_gone(struct iosc_surface *s)
+{
+    int idx = -1;
+    for (int i = 0; i < g_popup_grab_count; i++)
+        if (g_popup_grab_stack[i] == s) { idx = i; break; }
+    if (idx < 0) return;
+
+    for (int i = g_popup_grab_count - 1; i > idx; i--) {
+        struct iosc_surface *p = g_popup_grab_stack[i];
+        g_popup_grab_stack[i] = NULL;
+        g_popup_grab_count--;
+        if (p && p->xdg_popup) {
+            xdg_popup_send_popup_done(p->xdg_popup);
+            surface_unmap(p);
+        }
+    }
+    g_popup_grab_stack[idx] = NULL;
+    g_popup_grab_count--;   /* == idx now */
+
+    if (g_popup_grab_count == 0) {
+        struct iosc_surface *prev = g_popup_grab_prev_focus;
+        g_popup_grab_prev_focus = NULL;
+        if (g_kbd_focus != prev) keyboard_set_focus(prev);
+    } else {
+        struct iosc_surface *new_top = g_popup_grab_stack[g_popup_grab_count - 1];
+        if (g_kbd_focus != new_top) keyboard_set_focus(new_top);
+    }
+}
+
 /* Add/remove a surface from the z-order list. Placement: layer surfaces are
  * anchored, children track their parent, toplevels cascade inside the work area.
  * The list stays sorted by z-band so panels/overlays stack above toplevels. */
@@ -2203,14 +2525,21 @@ static void surface_map(struct iosc_surface *s)
         s->dx = cx;
         s->dy = cy;
     } else if (s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_fullscreen) {
-        s->dx = 0;
-        s->dy = 0;
+        /* dx/dy stay the BUFFER origin; shift it by the window-geometry offset so
+         * the geometry rect (not a CSD shadow margin) is what actually fills the
+         * target -- here the whole output. */
+        int gx = 0, gy = 0, gw = 0, gh = 0;
+        surface_geometry(s, &gx, &gy, &gw, &gh);
+        s->dx = -gx;
+        s->dy = -gy;
         toplevel_send_configure(s, output_logical_width(), output_logical_height());
     } else if (s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_maximized) {
         int wx, wy, ww, wh;
         work_area(&wx, &wy, &ww, &wh);
-        s->dx = wx;
-        s->dy = wy;
+        int gx = 0, gy = 0, gw = 0, gh = 0;
+        surface_geometry(s, &gx, &gy, &gw, &gh);
+        s->dx = wx - gx;
+        s->dy = wy - gy;
         toplevel_send_configure(s, ww, wh);
     } else if (s->role == IOSC_ROLE_TOPLEVEL && s->parent && s->parent->mapped) {
         /* Transient/modal dialog: center over its parent (clamped to the work
@@ -2297,6 +2626,8 @@ static void surface_unmap(struct iosc_surface *s)
     }
     if (!s->mapped) return;
     output_damage_add_surface(s);
+    if (s->role == IOSC_ROLE_POPUP)
+        popup_grab_on_surface_gone(s);   /* pop/cascade-dismiss if it held a grab */
     if (s->role == IOSC_ROLE_TOPLEVEL) {
         if (g_native_mode && s->native_canvas_live) {
             xios_canvas_gone(s->window_id);
@@ -2365,7 +2696,9 @@ void iosc_xwm_configure_surface(struct wl_resource *res, int x, int y, int w, in
     if (!s || !s->is_xwayland) return;
     if (s->mapped) output_damage_add_surface(s);
     if (s->role == IOSC_ROLE_POPUP) { s->dx = x; s->dy = y; }
-    (void)w; (void)h;   /* Xwayland is authoritative over buffer size; resize = TODO(polish) */
+    /* Xwayland applies width/height to the X window and commits the resulting buffer; iosc
+     * consumes that buffer's real size. Only popup placement is compositor-owned here. */
+    (void)w; (void)h;
     if (s->mapped) {
         output_damage_add_surface(s);
         recomposite_all();
@@ -2444,13 +2777,29 @@ static void surface_set_input_region(struct wl_client *c, struct wl_resource *r,
                                      struct wl_resource *region)
 { (void)c; (void)r; (void)region; }
 
-static void surface_commit(struct wl_client *c, struct wl_resource *r)
+static void surface_apply_sync_children(struct iosc_surface *s);   /* fwd: called at the tail below */
+
+/* Apply a surface's own committed (double-buffered) state: everything a plain
+ * wl_surface.commit does. Split out from the wl_surface.commit REQUEST handler
+ * (surface_commit(), below) so a synchronized subsurface can defer this call --
+ * its own commit request just marks the state cached, and this function runs
+ * later, cascaded from its parent's own apply (see
+ * surface_apply_sync_children()). A desync subsurface, or any non-subsurface,
+ * still calls this directly from its own commit, unchanged from before. */
+static void surface_commit_apply(struct iosc_surface *s)
 {
-    (void)c;
-    struct iosc_surface *s = wl_resource_get_user_data(r);
     int need_recomposite = 0;
 
-    iosc_xwm_surface_commit(r);   /* apply pending Xwayland association (no-op otherwise) */
+    iosc_xwm_surface_commit(s->resource);   /* apply pending Xwayland association (no-op otherwise) */
+
+    /* xdg_surface.set_window_geometry is double-buffered like everything else;
+     * latch it before surface_map() below so a first map already sees it. */
+    if (s->pending_geo_set) {
+        s->geo_x = s->pending_geo_x; s->geo_y = s->pending_geo_y;
+        s->geo_w = s->pending_geo_w; s->geo_h = s->pending_geo_h;
+        s->geo_set = 1;
+        s->pending_geo_set = 0;
+    }
 
     if (s->pending_scale_dirty) {
         if (s->mapped) output_damage_add_surface(s);
@@ -2531,6 +2880,45 @@ static void surface_commit(struct wl_client *c, struct wl_resource *r)
      * time, so throttled clients don't draw ahead of the compositor. */
     if (!need_recomposite && !wl_list_empty(&s->frame_callbacks))
         surface_send_frame_callbacks(s, now_ms());
+
+    surface_apply_sync_children(s);
+}
+
+/* wl_subsurface.set_sync children of `s` that committed since their own state was
+ * last applied are cached (see surface_commit(), below) -- their own commit
+ * request left pending_buffer/buffer_attached/gl_dirty untouched instead of
+ * consuming them. Now that s's own state has applied, push those children's
+ * state through too. Recurses: applying a child may itself have sync children. */
+static void surface_apply_sync_children(struct iosc_surface *s)
+{
+    struct iosc_surface *c;
+    wl_list_for_each(c, &g_surfaces, surface_link) {
+        if (c->role != IOSC_ROLE_SUBSURFACE || c->parent != s || !c->subsurface)
+            continue;
+        if (!c->subsurface->sync || !c->subsurface->cache_pending)
+            continue;
+        c->subsurface->cache_pending = 0;
+        surface_commit_apply(c);
+    }
+}
+
+/* wl_surface.commit request handler. A subsurface in synchronized mode (the
+ * spec default) does not apply its pending state here -- attach()/damage() have
+ * already left it sitting in pending_buffer/buffer_attached/gl_dirty on `s`
+ * (the existing double-buffering), so simply not calling surface_commit_apply()
+ * IS the cache. It applies later, cascaded from the parent's own commit via
+ * surface_apply_sync_children(). Desync subsurfaces, and everything else
+ * (toplevels, popups, layer surfaces), apply immediately as before. */
+static void surface_commit(struct wl_client *c, struct wl_resource *r)
+{
+    (void)c;
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    if (s->role == IOSC_ROLE_SUBSURFACE && s->subsurface && s->subsurface->sync) {
+        s->subsurface->cache_pending = 1;
+        return;
+    }
+    surface_commit_apply(s);
 }
 static void surface_set_buffer_transform(struct wl_client *c, struct wl_resource *r,
                                          int32_t transform)
@@ -2625,10 +3013,23 @@ static void surface_resource_destroy(struct wl_resource *r)
         g_cursor_surface = NULL;
         g_cursor_visible = 0;
     }
-    /* A transient/modal child may hold s as its parent (xdg_toplevel.set_parent);
-     * clear those links so a later map/raise/place doesn't deref freed memory. */
-    for (int i = 0; i < g_nmapped; i++)
-        if (g_mapped[i]->parent == s) g_mapped[i]->parent = NULL;
+    /* A child may hold s as its parent (xdg_toplevel.set_parent transient/modal,
+     * xdg_popup, or wl_subsurface) regardless of whether that child is currently
+     * mapped -- get_popup/get_subsurface/set_parent all set ->parent on creation,
+     * long before (or even without) the child ever mapping. g_mapped[] only holds
+     * mapped surfaces, so scanning it here misses unmapped children and leaves a
+     * dangling ->parent pointing at this freed surface. Scan the FULL surface
+     * list instead; g_mapped[]'s own bookkeeping (removal from the z-order array)
+     * is untouched, handled separately by surface_unmap() above. */
+    struct iosc_surface *other;
+    wl_list_for_each(other, &g_surfaces, surface_link)
+        if (other->parent == s) other->parent = NULL;
+    /* Popup-grab bookkeeping may still reference s: grab is requested BEFORE
+     * first map, so the surface_unmap() hook above misses a never-mapped
+     * grabbing popup, and the pre-grab focus pointer has no other clearer.
+     * Neither may outlive s. */
+    popup_grab_on_surface_gone(s);
+    if (g_popup_grab_prev_focus == s) g_popup_grab_prev_focus = NULL;
     s->current_buffer = NULL;
     presentation_discard_surface(s);
     struct iosc_frame *f, *tmp;
@@ -2729,6 +3130,11 @@ static void compositor_bind(struct wl_client *client, void *data,
 
 /* ---- wp_viewporter + wp_fractional_scale --------------------------------- */
 
+/* Live wp_fractional_scale_v1 objects, so a runtime output-scale change can
+ * re-send preferred_scale to every fractional-scale-aware client. */
+#define IOSC_MAX_FRAC_RES 64
+static struct wl_resource *g_frac_res[IOSC_MAX_FRAC_RES]; static int g_nfrac_res;
+
 static void viewport_resource_destroy(struct wl_resource *r)
 {
     struct iosc_viewport *vp = wl_resource_get_user_data(r);
@@ -2816,6 +3222,18 @@ static void fractional_scale_destroy(struct wl_client *c, struct wl_resource *r)
 static const struct wp_fractional_scale_v1_interface fractional_scale_impl = {
     .destroy = fractional_scale_destroy,
 };
+static void fractional_scale_resource_destroy(struct wl_resource *r)
+{
+    for (int i = 0; i < g_nfrac_res; i++)
+        if (g_frac_res[i] == r) { g_frac_res[i] = g_frac_res[--g_nfrac_res]; break; }
+}
+/* Re-notify every live fractional-scale client after a runtime output-scale change. */
+static void fractional_scale_broadcast(void)
+{
+    uint32_t pref = (uint32_t)(output_scale() * 120);
+    for (int i = 0; i < g_nfrac_res; i++)
+        wp_fractional_scale_v1_send_preferred_scale(g_frac_res[i], pref);
+}
 static void fractional_manager_destroy(struct wl_client *c, struct wl_resource *r)
 { (void)c; wl_resource_destroy(r); }
 static void fractional_manager_get(struct wl_client *c, struct wl_resource *r,
@@ -2825,7 +3243,10 @@ static void fractional_manager_get(struct wl_client *c, struct wl_resource *r,
     struct wl_resource *sr = wl_resource_create(c, &wp_fractional_scale_v1_interface,
                                                 wl_resource_get_version(r), id);
     if (!sr) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(sr, &fractional_scale_impl, NULL, NULL);
+    wl_resource_set_implementation(sr, &fractional_scale_impl, NULL,
+                                   fractional_scale_resource_destroy);
+    if (g_nfrac_res < IOSC_MAX_FRAC_RES)
+        g_frac_res[g_nfrac_res++] = sr;
     wp_fractional_scale_v1_send_preferred_scale(sr, (uint32_t)(output_scale() * 120));
 }
 static const struct wp_fractional_scale_manager_v1_interface fractional_manager_impl = {
@@ -3168,10 +3589,16 @@ static int popup_fits(int x, int y, int w, int h)
 
 static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
 {
+    /* xdg_positioner anchor rects are relative to the PARENT's window geometry,
+     * not its buffer origin (spec) -- add the parent's geometry offset before
+     * placing. pgx/pgy is 0 for a parent with no geometry set (or a layer
+     * surface, which has none), so this is a no-op there. */
+    int pgx = 0, pgy = 0, pgw = 0, pgh = 0;
+    surface_geometry(s->parent, &pgx, &pgy, &pgw, &pgh);
     int x = 0, y = 0;
     popup_calc_position(p, p->anchor, p->gravity, &x, &y);
-    int abs_x = s->parent->dx + x;
-    int abs_y = s->parent->dy + y;
+    int abs_x = s->parent->dx + pgx + x;
+    int abs_y = s->parent->dy + pgy + y;
     if (!popup_fits(abs_x, abs_y, p->size_w, p->size_h) &&
         (p->constraint & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X)) {
         uint32_t anchor = flip_x_edges(p->anchor, XDG_POSITIONER_ANCHOR_LEFT,
@@ -3180,11 +3607,11 @@ static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
                                         XDG_POSITIONER_GRAVITY_RIGHT);
         int fx = 0, fy = 0;
         popup_calc_position(p, anchor, gravity, &fx, &fy);
-        if (popup_fits(s->parent->dx + fx, s->parent->dy + fy, p->size_w, p->size_h)) {
+        if (popup_fits(s->parent->dx + pgx + fx, s->parent->dy + pgy + fy, p->size_w, p->size_h)) {
             x = fx;
             y = fy;
-            abs_x = s->parent->dx + x;
-            abs_y = s->parent->dy + y;
+            abs_x = s->parent->dx + pgx + x;
+            abs_y = s->parent->dy + pgy + y;
         }
     }
     if (!popup_fits(abs_x, abs_y, p->size_w, p->size_h) &&
@@ -3195,11 +3622,11 @@ static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
                                         XDG_POSITIONER_GRAVITY_BOTTOM);
         int fx = 0, fy = 0;
         popup_calc_position(p, anchor, gravity, &fx, &fy);
-        if (popup_fits(s->parent->dx + fx, s->parent->dy + fy, p->size_w, p->size_h)) {
+        if (popup_fits(s->parent->dx + pgx + fx, s->parent->dy + pgy + fy, p->size_w, p->size_h)) {
             x = fx;
             y = fy;
-            abs_x = s->parent->dx + x;
-            abs_y = s->parent->dy + y;
+            abs_x = s->parent->dx + pgx + x;
+            abs_y = s->parent->dy + pgy + y;
         }
     }
 
@@ -3211,6 +3638,10 @@ static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
         abs_x = clampi(abs_x, 0, max_x);
     if (p->constraint & XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y)
         abs_y = clampi(abs_y, 0, max_y);
+    /* rel_x/rel_y stay relative to the parent's BUFFER origin (matching
+     * surface_place_child()'s formula, and wl_subsurface's own semantics which
+     * share this field); the wire xdg_popup.configure x,y sent in
+     * popup_send_configure() below re-derives the geometry-relative value. */
     s->rel_x = abs_x - s->parent->dx;
     s->rel_y = abs_y - s->parent->dy;
     surface_place_child(s);
@@ -3222,8 +3653,12 @@ static void popup_send_configure(struct iosc_surface *s, int token)
     surface_display_size(s, &w, &h);
     if (w <= 0) w = 1;
     if (h <= 0) h = 1;
+    /* The wire x,y are relative to the parent's WINDOW GEOMETRY (spec), whereas
+     * rel_x/rel_y is relative to its buffer origin (see popup_place()) -- convert. */
+    int pgx = 0, pgy = 0, pgw = 0, pgh = 0;
+    if (s->parent) surface_geometry(s->parent, &pgx, &pgy, &pgw, &pgh);
     if (token) xdg_popup_send_repositioned(s->xdg_popup, (uint32_t)token);
-    xdg_popup_send_configure(s->xdg_popup, s->rel_x, s->rel_y, w, h);
+    xdg_popup_send_configure(s->xdg_popup, s->rel_x - pgx, s->rel_y - pgy, w, h);
     xdg_surface_send_configure(s->xdg_surface, wl_display_next_serial(g_display));
 }
 
@@ -3267,6 +3702,9 @@ static void popup_resource_destroy(struct wl_resource *r)
     struct iosc_surface *s = wl_resource_get_user_data(r);
     if (!s) return;
     surface_unmap(s);
+    /* Not covered by surface_unmap(): a grabbing popup destroyed before it
+     * ever mapped (grab comes before the first commit) early-outs there. */
+    popup_grab_on_surface_gone(s);
     s->xdg_popup = NULL;
     s->role = IOSC_ROLE_NONE;
     recomposite_all();
@@ -3276,7 +3714,24 @@ static void popup_destroy(struct wl_client *c, struct wl_resource *r)
 { (void)c; wl_resource_destroy(r); }
 static void popup_grab(struct wl_client *c, struct wl_resource *r,
                        struct wl_resource *seat, uint32_t serial)
-{ (void)c; (void)r; (void)seat; (void)serial; }
+{
+    (void)c; (void)seat; (void)serial;
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s || s->role != IOSC_ROLE_POPUP) return;
+    if (!popup_grab_parent_ok(s)) {
+        wl_resource_post_error(r, XDG_POPUP_ERROR_INVALID_GRAB,
+                               "grab requires the parent to be a toplevel/layer "
+                               "surface (fresh chain) or the current topmost "
+                               "grabbing popup (nested chain)");
+        return;
+    }
+    if (g_popup_grab_count >= IOSC_MAX_POPUP_GRAB) return;   /* absurd nesting depth; ignore */
+    if (g_popup_grab_count == 0)
+        g_popup_grab_prev_focus = g_kbd_focus;   /* restore this when the whole chain ends */
+    g_popup_grab_stack[g_popup_grab_count++] = s;
+    keyboard_set_focus(s);
+    if (g_output_damage_valid) recomposite_all();
+}
 static void popup_reposition(struct wl_client *c, struct wl_resource *r,
                              struct wl_resource *positioner, uint32_t token)
 {
@@ -3355,17 +3810,21 @@ static void send_initial_configure(struct iosc_surface *s)
 static void toplevel_reconfigure_state(struct iosc_surface *s)
 {
     if (s->mapped) output_damage_add_surface(s);
+    int gx = 0, gy = 0, gw = 0, gh = 0;
+    surface_geometry(s, &gx, &gy, &gw, &gh);
     if (s->toplevel_fullscreen) {
-        /* Fullscreen covers the whole output, ignoring reserved panel edges. */
-        s->dx = 0;
-        s->dy = 0;
+        /* Fullscreen covers the whole output, ignoring reserved panel edges.
+         * dx/dy is the BUFFER origin; offsetting by the geometry rect keeps the
+         * geometry (not a CSD shadow margin) filling the target exactly. */
+        s->dx = -gx;
+        s->dy = -gy;
         toplevel_send_configure(s, output_logical_width(), output_logical_height());
     } else if (s->toplevel_maximized) {
         /* Maximize fills the work area so it doesn't draw under the panel. */
         int wx, wy, ww, wh;
         work_area(&wx, &wy, &ww, &wh);
-        s->dx = wx;
-        s->dy = wy;
+        s->dx = wx - gx;
+        s->dy = wy - gy;
         toplevel_send_configure(s, ww, wh);
     } else {
         toplevel_send_configure(s, default_window_w(), default_window_h());
@@ -3375,51 +3834,70 @@ static void toplevel_reconfigure_state(struct iosc_surface *s)
     if (s->mapped) recomposite_all();
 }
 
-/* Reconfigure the output for a device rotation (XIOS_IN_OUTPUT): reallocate the
- * IOSurface, rebind the GPU target, re-advertise wl_output/xdg_output, and ask
- * mapped clients to fit the new logical shape. The app clients are dropped by
- * xios_surface_resize(), then reconnect through the existing adopt path. */
-static void output_reconfigure(int lw, int lh, int transform)
+/* Reconfigure the output for a device rotation (XIOS_IN_OUTPUT) or a KDE
+ * output-management scale/transform change: reallocate the IOSurface if the
+ * physical size changed, rebind the GPU target, re-advertise every output global
+ * (wl_output/xdg_output/fractional-scale/kde), and ask mapped clients to fit the
+ * new logical shape. The app clients are dropped by xios_surface_resize(), then
+ * reconnect through the existing adopt path.
+ *
+ * The core takes PHYSICAL dims so a scale-only change can hold the IOSurface size
+ * exactly fixed even when it is not divisible by the new scale (never round-trip
+ * physical through logical: the ceil would grow it and force a realloc). A
+ * scale-only change therefore keeps the physical size and lets logical become
+ * ceil(physical/scale) (bigger scale = bigger UI); the IOSurface/GPU realloc is
+ * skipped so the Xios app connection is not dropped.
+ * Returns 0 when a change was applied (output state re-broadcast inside),
+ * 1 when everything already matched (no-op; nothing was sent), or -1 if a
+ * required IOSurface resize failed and the previous state was kept. */
+static int output_reconfigure_px(int pw, int ph, int transform, int scale)
 {
-    if (lw <= 0 || lh <= 0)
-        return;
-    if (lw == output_logical_width() && lh == output_logical_height() &&
+    if (pw <= 0 || ph <= 0)
+        return -1;
+    if (scale < 1) scale = 1;
+    int old_scale = output_scale();
+    if (scale == old_scale && pw == g_width && ph == g_height &&
         transform == g_output_transform)
-        return;
+        return 1;
 
-    int pw = lw * output_scale();
-    int ph = lh * output_scale();
-    int stride = 0;
-    void *fb = xios_surface_resize(pw, ph, &stride, NULL);
-    if (!fb) {
-        fprintf(stderr, "iosc: output resize %dx%d failed; keeping %dx%d\n",
-                pw, ph, g_width, g_height);
-        return;
+    /* Apply the new scale first so the logical helpers below see it. */
+    g_output_scale = scale;
+    int physical_changed = (pw != g_width || ph != g_height);
+
+    if (physical_changed) {
+        int stride = 0;
+        void *fb = xios_surface_resize(pw, ph, &stride, NULL);
+        if (!fb) {
+            fprintf(stderr, "iosc: output resize %dx%d failed; keeping %dx%d\n",
+                    pw, ph, g_width, g_height);
+            g_output_scale = old_scale;   /* roll back the scale we speculatively set */
+            return -1;
+        }
+        g_fb = fb;
+        g_stride = stride;
+        g_width = pw;
+        g_height = ph;
+        g_output_damage_valid = 0;
+        g_output_damage_rect_count = 0;
+        if (iosc_gl_ok() && iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0)
+            fprintf(stderr, "iosc: GPU output rebind failed; CPU fallback remains\n");
     }
-
-    g_fb = fb;
-    g_stride = stride;
-    g_width = pw;
-    g_height = ph;
     g_output_transform = transform;
-    g_output_damage_valid = 0;
-    g_output_damage_rect_count = 0;
 
-    if (iosc_gl_ok() && iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0)
-        fprintf(stderr, "iosc: GPU output rebind failed; CPU fallback remains\n");
+    /* Keep the natural-orientation (transform 0) logical dims in sync with the
+     * current physical size + scale, so a later rotation (XIOS_IN_OUTPUT x=y=0)
+     * derives its dims from the post-change scale instead of reverting. */
+    {
+        int nat_pw = (g_output_transform & 1) ? g_height : g_width;
+        int nat_ph = (g_output_transform & 1) ? g_width  : g_height;
+        g_natural_lw = (nat_pw + scale - 1) / scale;
+        g_natural_lh = (nat_ph + scale - 1) / scale;
+    }
 
     g_cursor_x = clampi(g_cursor_x, 0, output_logical_width() - 1);
     g_cursor_y = clampi(g_cursor_y, 0, output_logical_height() - 1);
 
-    for (int i = 0; i < g_nxdg_output_res; i++) {
-        zxdg_output_v1_send_logical_position(g_xdg_output_res[i], 0, 0);
-        zxdg_output_v1_send_logical_size(g_xdg_output_res[i],
-                                         output_logical_width(), output_logical_height());
-        if (wl_resource_get_version(g_xdg_output_res[i]) < 3)
-            zxdg_output_v1_send_done(g_xdg_output_res[i]);
-    }
-    for (int i = 0; i < g_noutput_res; i++)
-        output_send_state(g_output_res[i]);
+    broadcast_output_all();
 
     for (int i = 0; i < g_nmapped; i++) {
         struct iosc_surface *s = g_mapped[i];
@@ -3444,8 +3922,18 @@ static void output_reconfigure(int lw, int lh, int transform)
     }
     recomposite_all();
     wl_display_flush_clients(g_display);
-    fprintf(stderr, "iosc: output now %dx%d logical transform=%d (%dx%d px)\n",
-            output_logical_width(), output_logical_height(), transform, pw, ph);
+    fprintf(stderr, "iosc: output now %dx%d logical scale=%d transform=%d (%dx%d px)\n",
+            output_logical_width(), output_logical_height(), scale, transform, pw, ph);
+    return 0;
+}
+
+/* Rotation / logical-resize entry point (XIOS_IN_OUTPUT): logical dims at the
+ * current scale. */
+static void output_reconfigure(int lw, int lh, int transform)
+{
+    if (lw <= 0 || lh <= 0) return;
+    int s = output_scale();
+    (void)output_reconfigure_px(lw * s, lh * s, transform, s);
 }
 
 static int resize_has_left(uint32_t edges)
@@ -3479,8 +3967,11 @@ static int resize_has_bottom(uint32_t edges)
 static void interactive_begin(struct iosc_surface *s, enum iosc_interactive_op op, uint32_t edges)
 {
     if (!s || !s->xdg_toplevel) return;
-    int w = 0, h = 0;
-    surface_display_size(s, &w, &h);
+    /* Base the resize on the GEOMETRY size (spec: configure dims are geometry
+     * dims), not the full padded-with-shadow buffer size; unused here for MOVE. */
+    int gx = 0, gy = 0, w = 0, h = 0;
+    surface_geometry(s, &gx, &gy, &w, &h);
+    (void)gx; (void)gy;
     g_interactive_op = op;
     g_interactive_surface = s;
     g_interactive_edges = edges;
@@ -3504,30 +3995,35 @@ static void interactive_update(int x, int y)
     int dy = y - g_interactive_py;
     int wx, wy, ww, wh;
     work_area(&wx, &wy, &ww, &wh);   /* keep windows out from under the panel */
+    int gx = 0, gy = 0, gw = 0, gh = 0;
+    surface_geometry(s, &gx, &gy, &gw, &gh);
     if (g_interactive_op == IOSC_INTERACTIVE_MOVE) {
-        int w = 0, h = 0;
-        surface_display_size(s, &w, &h);
-        int max_x = wx + ww - (w > 0 ? w : 1);
-        int max_y = wy + wh - (h > 0 ? h : 1);
-        if (max_x < wx) max_x = wx;
-        if (max_y < wy) max_y = wy;
+        /* dx/dy is the buffer origin; the GEOMETRY (content) sits at dx+gx,dy+gy,
+         * so clamp so THAT stays in the work area, letting a shadow overhang. */
+        int min_x = wx - gx, min_y = wy - gy;
+        int max_x = wx + ww - gw - gx;
+        int max_y = wy + wh - gh - gy;
+        if (max_x < min_x) max_x = min_x;
+        if (max_y < min_y) max_y = min_y;
         output_damage_add_surface(s);
-        s->dx = clampi(g_interactive_dx + dx, wx, max_x);
-        s->dy = clampi(g_interactive_dy + dy, wy, max_y);
+        s->dx = clampi(g_interactive_dx + dx, min_x, max_x);
+        s->dy = clampi(g_interactive_dy + dy, min_y, max_y);
         output_damage_add_surface(s);
         recomposite_all();
         return;
     }
     int nx = g_interactive_dx, ny = g_interactive_dy;
-    int nw = g_interactive_w, nh = g_interactive_h;
+    int nw = g_interactive_w, nh = g_interactive_h;   /* geometry dims (seeded in interactive_begin) */
     if (resize_has_left(g_interactive_edges)) { nx = g_interactive_dx + dx; nw = g_interactive_w - dx; }
     if (resize_has_right(g_interactive_edges)) nw = g_interactive_w + dx;
     if (resize_has_top(g_interactive_edges)) { ny = g_interactive_dy + dy; nh = g_interactive_h - dy; }
     if (resize_has_bottom(g_interactive_edges)) nh = g_interactive_h + dy;
     nw = clampi(nw, 80, ww);
     nh = clampi(nh, 60, wh);
-    nx = clampi(nx, wx, wx + ww - nw);
-    ny = clampi(ny, wy, wy + wh - nh);
+    /* nx/ny track the buffer origin; clamp so the geometry (nx+gx .. nx+gx+nw)
+     * stays inside the work area, not the (possibly larger, shadow-padded) buffer. */
+    nx = clampi(nx, wx - gx, wx + ww - nw - gx);
+    ny = clampi(ny, wy - gy, wy + wh - nh - gy);
     output_damage_add_surface(s);
     s->dx = nx;
     s->dy = ny;
@@ -3540,8 +4036,9 @@ static void interactive_end(void)
 {
     if (g_interactive_surface && g_interactive_op == IOSC_INTERACTIVE_RESIZE) {
         struct iosc_surface *s = g_interactive_surface;
-        int w = 0, h = 0;
-        surface_display_size(s, &w, &h);
+        int gx = 0, gy = 0, w = 0, h = 0;
+        surface_geometry(s, &gx, &gy, &w, &h);   /* configure dims are geometry dims (spec) */
+        (void)gx; (void)gy;
         s->toplevel_resizing = 0;
         toplevel_send_configure(s, w > 1 ? w : 1, h > 1 ? h : 1);
     }
@@ -3601,7 +4098,8 @@ static void xt_set_fullscreen(struct wl_client *c, struct wl_resource *r, struct
 static void xt_unset_fullscreen(struct wl_client *c, struct wl_resource *r)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s) { s->toplevel_fullscreen = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
-static void xt_set_minimized(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
+static void xt_set_minimized(struct wl_client *c, struct wl_resource *r)
+{ (void)c; surface_set_minimized(wl_resource_get_user_data(r), 1); }
 static const struct xdg_toplevel_interface xdg_toplevel_impl = {
     .destroy = xt_destroy, .set_parent = xt_set_parent, .set_title = xt_set_title,
     .set_app_id = xt_set_app_id, .show_window_menu = xt_show_window_menu,
@@ -3645,7 +4143,11 @@ static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id
                          struct wl_resource *parent, struct wl_resource *positioner)
 {
     struct iosc_surface *s = wl_resource_get_user_data(r);
-    struct iosc_surface *ps = wl_resource_get_user_data(parent);
+    /* parent is allowed to be NULL per protocol: a layer-shell popup is created
+     * with parent=NULL here and linked afterward via
+     * zwlr_layer_surface_v1.get_popup (layer_surface_get_popup(), below), which
+     * must run before the client's first commit. */
+    struct iosc_surface *ps = parent ? wl_resource_get_user_data(parent) : NULL;
     struct iosc_positioner *pos = wl_resource_get_user_data(positioner);
     struct wl_resource *p = wl_resource_create(c, &xdg_popup_interface,
                                                wl_resource_get_version(r), id);
@@ -3655,14 +4157,35 @@ static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id
     s->role = IOSC_ROLE_POPUP;
     s->parent = ps;
     s->xdg_popup = p;
-    popup_place(s, pos);
-    popup_send_configure(s, 0);
-    fprintf(stderr, "iosc: xdg_popup configured at parent-relative (%d,%d)\n",
-            s->rel_x, s->rel_y);
+    /* Snapshot the positioner's VALUE (not the resource pointer -- a client may
+     * destroy the positioner object right after this call) so a deferred
+     * layer-shell link can still place the popup once its real parent is known. */
+    if (pos) { s->popup_positioner = *pos; s->popup_positioner_set = 1; }
+    if (ps) {
+        popup_place(s, pos);
+        popup_send_configure(s, 0);
+        fprintf(stderr, "iosc: xdg_popup configured at parent-relative (%d,%d)\n",
+                s->rel_x, s->rel_y);
+    }
+    /* else: layer-shell popup: placement is deferred to layer_surface_get_popup(). */
 }
 static void xs_set_window_geometry(struct wl_client *c, struct wl_resource *r,
                                    int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c;(void)r;(void)x;(void)y;(void)w;(void)h; }
+{
+    (void)c;
+    struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (!s) return;
+    if (w <= 0 || h <= 0) {
+        wl_resource_post_error(r, XDG_SURFACE_ERROR_INVALID_SIZE,
+                               "invalid window geometry %dx%d", w, h);
+        return;
+    }
+    /* Double-buffered like the rest of the surface's pending state; latched at
+     * the next wl_surface.commit (surface_commit_apply). */
+    s->pending_geo_x = x; s->pending_geo_y = y;
+    s->pending_geo_w = w; s->pending_geo_h = h;
+    s->pending_geo_set = 1;
+}
 static void xs_ack_configure(struct wl_client *c, struct wl_resource *r, uint32_t serial)
 { (void)c;(void)r;(void)serial; }
 static const struct xdg_surface_interface xdg_surface_impl = {
@@ -3777,7 +4300,7 @@ static void output_send_state(struct wl_resource *r)
     if (version >= WL_OUTPUT_SCALE_SINCE_VERSION)
         wl_output_send_scale(r, output_scale());
     if (version >= WL_OUTPUT_NAME_SINCE_VERSION)
-        wl_output_send_name(r, "IOSC-1");
+        wl_output_send_name(r, IOSC_OUTPUT_NAME);
     if (version >= WL_OUTPUT_DESCRIPTION_SINCE_VERSION)
         wl_output_send_description(r, "iosc native IOSurface output");
     output_send_done(r);
@@ -3815,7 +4338,7 @@ static void xdg_output_manager_get(struct wl_client *c, struct wl_resource *r,
     zxdg_output_v1_send_logical_position(xo, 0, 0);
     zxdg_output_v1_send_logical_size(xo, output_logical_width(), output_logical_height());
     if (wl_resource_get_version(xo) >= ZXDG_OUTPUT_V1_NAME_SINCE_VERSION)
-        zxdg_output_v1_send_name(xo, "IOSC-1");
+        zxdg_output_v1_send_name(xo, IOSC_OUTPUT_NAME);
     if (wl_resource_get_version(xo) >= ZXDG_OUTPUT_V1_DESCRIPTION_SINCE_VERSION)
         zxdg_output_v1_send_description(xo, "iosc native IOSurface output");
     if (wl_resource_get_version(xo) < 3)
@@ -3836,6 +4359,427 @@ static void xdg_output_manager_bind(struct wl_client *client, void *data,
                                                version, id);
     if (!r) { wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(r, &xdg_output_manager_impl, NULL, NULL);
+}
+
+/* ---- KDE output-management family ---------------------------------------- *
+ * kde_output_device_v2 / kde_output_management_v2 / kde_primary_output_v1 /
+ * kde_output_order_v1. These let kscreen-doctor, libkscreen and plasma enumerate
+ * and reconfigure our single output directly (notably a runtime scale change).
+ * We advertise exactly one output and one mode (the current physical mode). All
+ * geometry values mirror the wl_output/xdg_output ones so the two views agree. */
+
+/* A stable, persistent identifier for the output. We report it as both the device
+ * name and the device uuid so kde_primary_output_v1 resolves regardless of whether
+ * the consumer keys on name or uuid (the XML comment says uuid; modern plasma
+ * matches by name). */
+#define IOSC_OUTPUT_UUID IOSC_OUTPUT_NAME
+
+#define IOSC_MAX_KDE_RES 32
+static struct wl_resource *g_kde_device_res[IOSC_MAX_KDE_RES];  static int g_nkde_device_res;
+static struct wl_resource *g_kde_primary_res[IOSC_MAX_KDE_RES]; static int g_nkde_primary_res;
+static struct wl_resource *g_kde_order_res[IOSC_MAX_KDE_RES];   static int g_nkde_order_res;
+
+struct iosc_kde_device {
+    struct wl_resource *resource;   /* kde_output_device_v2 (this client) */
+    struct wl_resource *mode;       /* the single kde_output_device_mode_v2, or NULL */
+    int mode_w, mode_h;             /* physical hardware units of that mode */
+    uint32_t mode_generation;       /* bumped per mode resource created (live modes are >= 1);
+                                     * defeats pointer reuse in config mode validation */
+};
+
+static void kde_mode_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_kde_device *dev = wl_resource_get_user_data(r);
+    if (dev && dev->mode == r) dev->mode = NULL;   /* clear back-pointer: no UAF */
+}
+
+/* Send the full property burst for one device resource, ending with `done`. The
+ * single mode object is created lazily and recreated only when its size changes
+ * (i.e. on rotation), so a scale-only change keeps the client's mode reference. */
+static void kde_device_send_state(struct iosc_kde_device *dev)
+{
+    struct wl_resource *r = dev->resource;
+    struct wl_client *c = wl_resource_get_client(r);
+    uint32_t ver = wl_resource_get_version(r);
+
+    int mode_w = g_width, mode_h = g_height;
+    int32_t tr = KDE_OUTPUT_DEVICE_V2_TRANSFORM_NORMAL;
+    if (g_advertise_transform) {
+        tr = g_output_transform;
+        if (g_output_transform & 1) { mode_w = g_height; mode_h = g_width; }
+    }
+
+    kde_output_device_v2_send_geometry(r, 0, 0,
+        output_px_to_mm(mode_w), output_px_to_mm(mode_h),
+        KDE_OUTPUT_DEVICE_V2_SUBPIXEL_UNKNOWN, "iosc", "IOSurface", tr);
+
+    /* (Re)advertise the single mode when absent or its size changed. */
+    if (dev->mode && (dev->mode_w != mode_w || dev->mode_h != mode_h)) {
+        kde_output_device_mode_v2_send_removed(dev->mode);
+        wl_resource_destroy(dev->mode);   /* destroy hook clears dev->mode */
+    }
+    if (!dev->mode) {
+        dev->mode = wl_resource_create(c, &kde_output_device_mode_v2_interface, 1, 0);
+        if (dev->mode) {
+            dev->mode_generation++;   /* stale config mode refs stop validating */
+            wl_resource_set_implementation(dev->mode, NULL, dev, kde_mode_resource_destroy);
+            kde_output_device_v2_send_mode(r, dev->mode);
+            kde_output_device_mode_v2_send_size(dev->mode, mode_w, mode_h);
+            kde_output_device_mode_v2_send_refresh(dev->mode, 60000);
+            kde_output_device_mode_v2_send_preferred(dev->mode);
+            dev->mode_w = mode_w;
+            dev->mode_h = mode_h;
+        }
+    }
+    if (dev->mode)
+        kde_output_device_v2_send_current_mode(r, dev->mode);
+
+    kde_output_device_v2_send_scale(r, wl_fixed_from_int(output_scale()));
+    kde_output_device_v2_send_edid(r, "");
+    kde_output_device_v2_send_enabled(r, 1);
+    kde_output_device_v2_send_uuid(r, IOSC_OUTPUT_UUID);
+    kde_output_device_v2_send_serial_number(r, "");
+    kde_output_device_v2_send_eisa_id(r, "");
+    kde_output_device_v2_send_capabilities(r, 0);   /* no overscan/vrr/rgb-range/HDR */
+    kde_output_device_v2_send_overscan(r, 0);
+    kde_output_device_v2_send_vrr_policy(r, KDE_OUTPUT_DEVICE_V2_VRR_POLICY_NEVER);
+    kde_output_device_v2_send_rgb_range(r, KDE_OUTPUT_DEVICE_V2_RGB_RANGE_AUTOMATIC);
+    if (ver >= KDE_OUTPUT_DEVICE_V2_NAME_SINCE_VERSION)
+        kde_output_device_v2_send_name(r, IOSC_OUTPUT_NAME);
+    kde_output_device_v2_send_done(r);
+}
+
+static void kde_device_resource_destroy(struct wl_resource *r)
+{
+    struct iosc_kde_device *dev = wl_resource_get_user_data(r);
+    output_res_remove(g_kde_device_res, &g_nkde_device_res, r);
+    if (dev) {
+        if (dev->mode) {
+            wl_resource_set_user_data(dev->mode, NULL);   /* sever back-pointer first */
+            wl_resource_destroy(dev->mode);
+        }
+        free(dev);
+    }
+}
+
+static void kde_output_device_bind(struct wl_client *client, void *data,
+                                   uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *r = wl_resource_create(client, &kde_output_device_v2_interface,
+                                               version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    struct iosc_kde_device *dev = calloc(1, sizeof(*dev));
+    if (!dev) { wl_resource_destroy(r); wl_client_post_no_memory(client); return; }
+    dev->resource = r;
+    wl_resource_set_implementation(r, NULL, dev, kde_device_resource_destroy);
+    if (g_nkde_device_res < IOSC_MAX_KDE_RES)
+        g_kde_device_res[g_nkde_device_res++] = r;
+    kde_device_send_state(dev);
+}
+
+/* Broadcast the KDE view of the output to every bound device/order/primary
+ * resource (device property bursts + order list + primary name). */
+static void kde_output_broadcast(void)
+{
+    for (int i = 0; i < g_nkde_device_res; i++) {
+        struct iosc_kde_device *dev = wl_resource_get_user_data(g_kde_device_res[i]);
+        if (dev) kde_device_send_state(dev);
+    }
+    for (int i = 0; i < g_nkde_order_res; i++) {
+        kde_output_order_v1_send_output(g_kde_order_res[i], IOSC_OUTPUT_NAME);
+        kde_output_order_v1_send_done(g_kde_order_res[i]);
+    }
+    for (int i = 0; i < g_nkde_primary_res; i++)
+        kde_primary_output_v1_send_primary_output(g_kde_primary_res[i], IOSC_OUTPUT_NAME);
+}
+
+/* Re-advertise all output globals after a change: wl_output, xdg_output,
+ * fractional-scale, and the KDE family. Called by the reconfigure core on every
+ * applied change, and by the KDE configuration apply path only for a no-op apply
+ * (so a real change broadcasts exactly once). */
+static void broadcast_output_all(void)
+{
+    for (int i = 0; i < g_nxdg_output_res; i++) {
+        zxdg_output_v1_send_logical_position(g_xdg_output_res[i], 0, 0);
+        zxdg_output_v1_send_logical_size(g_xdg_output_res[i],
+                                         output_logical_width(), output_logical_height());
+        if (wl_resource_get_version(g_xdg_output_res[i]) < 3)
+            zxdg_output_v1_send_done(g_xdg_output_res[i]);
+    }
+    for (int i = 0; i < g_noutput_res; i++)
+        output_send_state(g_output_res[i]);
+    fractional_scale_broadcast();
+    kde_output_broadcast();
+}
+
+/* -- kde_output_management_v2 / kde_output_configuration_v2 ----------------- */
+
+struct iosc_kde_config {
+    struct wl_resource *resource;
+    int applied;                    /* apply() called once already */
+    int has_enable; int enable;
+    int has_mode;   struct wl_resource *mode;
+    uint32_t mode_gen;              /* owning device's mode_generation at mode() time;
+                                     * 0 = never matched a live mode */
+    int has_transform; int transform;
+    int has_scale;  wl_fixed_t scale;
+};
+
+static void kde_config_res_destroy(struct wl_resource *r)
+{
+    free(wl_resource_get_user_data(r));
+}
+
+static void kde_config_enable(struct wl_client *c, struct wl_resource *r,
+                              struct wl_resource *outputdevice, int32_t enable)
+{
+    (void)c; (void)outputdevice;
+    struct iosc_kde_config *cfg = wl_resource_get_user_data(r);
+    if (cfg) { cfg->has_enable = 1; cfg->enable = enable; }
+}
+static void kde_config_mode(struct wl_client *c, struct wl_resource *r,
+                            struct wl_resource *outputdevice, struct wl_resource *mode)
+{
+    (void)c; (void)outputdevice;
+    struct iosc_kde_config *cfg = wl_resource_get_user_data(r);
+    if (!cfg) return;
+    cfg->has_mode = 1;
+    cfg->mode = mode;
+    /* Stamp the owning device's mode generation so apply can reject a mode that
+     * was destroyed+recreated in between (pointer reuse would otherwise pass). */
+    cfg->mode_gen = 0;
+    for (int i = 0; i < g_nkde_device_res; i++) {
+        struct iosc_kde_device *d = wl_resource_get_user_data(g_kde_device_res[i]);
+        if (d && d->mode && d->mode == mode) { cfg->mode_gen = d->mode_generation; break; }
+    }
+}
+static void kde_config_transform(struct wl_client *c, struct wl_resource *r,
+                                 struct wl_resource *outputdevice, int32_t transform)
+{
+    (void)c; (void)outputdevice;
+    struct iosc_kde_config *cfg = wl_resource_get_user_data(r);
+    if (!cfg) return;
+    if (transform < 0 || transform > 7) {
+        fprintf(stderr, "iosc: kde-output-config: ignoring out-of-range transform %d\n", transform);
+        return;
+    }
+    cfg->has_transform = 1; cfg->transform = transform;
+}
+static void kde_config_position(struct wl_client *c, struct wl_resource *r,
+                                struct wl_resource *outputdevice, int32_t x, int32_t y)
+{
+    (void)c; (void)r; (void)outputdevice; (void)x; (void)y;   /* single output: ignore */
+}
+static void kde_config_scale(struct wl_client *c, struct wl_resource *r,
+                             struct wl_resource *outputdevice, wl_fixed_t scale)
+{
+    (void)c; (void)outputdevice;
+    struct iosc_kde_config *cfg = wl_resource_get_user_data(r);
+    if (cfg) { cfg->has_scale = 1; cfg->scale = scale; }
+}
+static void kde_config_apply(struct wl_client *c, struct wl_resource *r)
+{
+    (void)c;
+    struct iosc_kde_config *cfg = wl_resource_get_user_data(r);
+    if (!cfg) return;
+    if (cfg->applied) {
+        wl_resource_post_error(r, KDE_OUTPUT_CONFIGURATION_V2_ERROR_ALREADY_APPLIED,
+                               "kde_output_configuration_v2 already applied");
+        return;
+    }
+    cfg->applied = 1;   /* once, regardless of success (XML: apply only once) */
+
+    /* Disabling the only output is not allowed. */
+    if (cfg->has_enable && cfg->enable == 0) {
+        fprintf(stderr, "iosc: kde-output-config: refusing to disable the only output\n");
+        kde_output_configuration_v2_send_failed(r);
+        return;
+    }
+    /* Only the advertised mode object, at the generation recorded when mode() was
+     * called, is acceptable. Pointer identity alone would wrongly validate a stale
+     * reference if the mode was recreated (rotation) and the allocator reused the
+     * address. */
+    if (cfg->has_mode) {
+        int ok = 0;
+        for (int i = 0; i < g_nkde_device_res; i++) {
+            struct iosc_kde_device *d = wl_resource_get_user_data(g_kde_device_res[i]);
+            if (d && d->mode && d->mode == cfg->mode &&
+                cfg->mode_gen && d->mode_generation == cfg->mode_gen) { ok = 1; break; }
+        }
+        if (!ok) {
+            fprintf(stderr, "iosc: kde-output-config: unknown or stale mode object -> failed\n");
+            kde_output_configuration_v2_send_failed(r);
+            return;
+        }
+    }
+
+    int new_scale = output_scale();
+    if (cfg->has_scale) {
+        double sd = wl_fixed_to_double(cfg->scale);
+        int rs = (int)(sd + 0.5);       /* round to nearest integer */
+        if (rs < 1) rs = 1;
+        if (rs > 4) rs = 4;             /* clamp [1,4]; a fractional request rounds */
+        new_scale = rs;
+    }
+    int new_transform = cfg->has_transform ? cfg->transform : g_output_transform;
+
+    /* Target PHYSICAL dims: held exactly fixed for a scale-only change (never
+     * re-derived from logical, so a non-divisible size cannot grow through the
+     * ceil and repeated scale changes cannot drift the IOSurface); swapped for a
+     * quarter-turn transform change (same pixels rotated; that path reallocates
+     * anyway). */
+    int cur_tr = g_output_transform;
+    int quarter_turn = (new_transform ^ cur_tr) & 1;
+    int new_pw = quarter_turn ? g_height : g_width;
+    int new_ph = quarter_turn ? g_width  : g_height;
+
+    fprintf(stderr, "iosc: kde-output-config apply: scale %d->%d transform %d->%d\n",
+            output_scale(), new_scale, cur_tr, new_transform);
+
+    int rc = output_reconfigure_px(new_pw, new_ph, new_transform, new_scale);
+    if (rc < 0) {
+        kde_output_configuration_v2_send_failed(r);
+        return;
+    }
+    if (rc > 0)   /* no-op: the core sent nothing; still hand the applying client a
+                   * fresh snapshot before `applied` (a change broadcasts inside). */
+        broadcast_output_all();
+    kde_output_configuration_v2_send_applied(r);
+}
+static void kde_config_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static void kde_config_overscan(struct wl_client *c, struct wl_resource *r,
+                                struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring overscan\n"); }
+static void kde_config_set_vrr_policy(struct wl_client *c, struct wl_resource *r,
+                                      struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_vrr_policy\n"); }
+static void kde_config_set_rgb_range(struct wl_client *c, struct wl_resource *r,
+                                     struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_rgb_range\n"); }
+static void kde_config_set_primary_output(struct wl_client *c, struct wl_resource *r,
+                                          struct wl_resource *o)
+{ (void)c; (void)r; (void)o; fprintf(stderr, "iosc: kde-output-config: ignoring set_primary_output (single output)\n"); }
+static void kde_config_set_priority(struct wl_client *c, struct wl_resource *r,
+                                    struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_priority\n"); }
+static void kde_config_set_hdr(struct wl_client *c, struct wl_resource *r,
+                               struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_high_dynamic_range\n"); }
+static void kde_config_set_sdr_brightness(struct wl_client *c, struct wl_resource *r,
+                                          struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_sdr_brightness\n"); }
+static void kde_config_set_wcg(struct wl_client *c, struct wl_resource *r,
+                               struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_wide_color_gamut\n"); }
+static void kde_config_set_auto_rotate(struct wl_client *c, struct wl_resource *r,
+                                       struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_auto_rotate_policy\n"); }
+static void kde_config_set_icc(struct wl_client *c, struct wl_resource *r,
+                               struct wl_resource *o, const char *v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_icc_profile_path\n"); }
+static void kde_config_set_brightness_overrides(struct wl_client *c, struct wl_resource *r,
+                                                struct wl_resource *o, int32_t a, int32_t b, int32_t d)
+{ (void)c; (void)r; (void)o; (void)a; (void)b; (void)d; fprintf(stderr, "iosc: kde-output-config: ignoring set_brightness_overrides\n"); }
+static void kde_config_set_sdr_gamut_wideness(struct wl_client *c, struct wl_resource *r,
+                                              struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_sdr_gamut_wideness\n"); }
+static void kde_config_set_color_profile_source(struct wl_client *c, struct wl_resource *r,
+                                                struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_color_profile_source\n"); }
+static void kde_config_set_brightness(struct wl_client *c, struct wl_resource *r,
+                                      struct wl_resource *o, uint32_t v)
+{ (void)c; (void)r; (void)o; (void)v; fprintf(stderr, "iosc: kde-output-config: ignoring set_brightness\n"); }
+
+static const struct kde_output_configuration_v2_interface kde_config_impl = {
+    .enable = kde_config_enable,
+    .mode = kde_config_mode,
+    .transform = kde_config_transform,
+    .position = kde_config_position,
+    .scale = kde_config_scale,
+    .apply = kde_config_apply,
+    .destroy = kde_config_destroy,
+    .overscan = kde_config_overscan,
+    .set_vrr_policy = kde_config_set_vrr_policy,
+    .set_rgb_range = kde_config_set_rgb_range,
+    .set_primary_output = kde_config_set_primary_output,
+    .set_priority = kde_config_set_priority,
+    .set_high_dynamic_range = kde_config_set_hdr,
+    .set_sdr_brightness = kde_config_set_sdr_brightness,
+    .set_wide_color_gamut = kde_config_set_wcg,
+    .set_auto_rotate_policy = kde_config_set_auto_rotate,
+    .set_icc_profile_path = kde_config_set_icc,
+    .set_brightness_overrides = kde_config_set_brightness_overrides,
+    .set_sdr_gamut_wideness = kde_config_set_sdr_gamut_wideness,
+    .set_color_profile_source = kde_config_set_color_profile_source,
+    .set_brightness = kde_config_set_brightness,
+};
+
+static void kde_management_create_configuration(struct wl_client *c, struct wl_resource *r,
+                                                uint32_t id)
+{
+    struct iosc_kde_config *cfg = calloc(1, sizeof(*cfg));
+    if (!cfg) { wl_client_post_no_memory(c); return; }
+    struct wl_resource *cr = wl_resource_create(c, &kde_output_configuration_v2_interface,
+                                                wl_resource_get_version(r), id);
+    if (!cr) { free(cfg); wl_client_post_no_memory(c); return; }
+    cfg->resource = cr;
+    wl_resource_set_implementation(cr, &kde_config_impl, cfg, kde_config_res_destroy);
+}
+static const struct kde_output_management_v2_interface kde_management_impl = {
+    .create_configuration = kde_management_create_configuration,
+};
+static void kde_management_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *r = wl_resource_create(client, &kde_output_management_v2_interface,
+                                               version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &kde_management_impl, NULL, NULL);
+}
+
+/* -- kde_primary_output_v1 -------------------------------------------------- */
+
+static void kde_primary_resource_destroy(struct wl_resource *r)
+{ output_res_remove(g_kde_primary_res, &g_nkde_primary_res, r); }
+static void kde_primary_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct kde_primary_output_v1_interface kde_primary_impl = {
+    .destroy = kde_primary_destroy,
+};
+static void kde_primary_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *r = wl_resource_create(client, &kde_primary_output_v1_interface,
+                                               version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &kde_primary_impl, NULL, kde_primary_resource_destroy);
+    if (g_nkde_primary_res < IOSC_MAX_KDE_RES)
+        g_kde_primary_res[g_nkde_primary_res++] = r;
+    kde_primary_output_v1_send_primary_output(r, IOSC_OUTPUT_NAME);
+}
+
+/* -- kde_output_order_v1 ---------------------------------------------------- */
+
+static void kde_order_resource_destroy(struct wl_resource *r)
+{ output_res_remove(g_kde_order_res, &g_nkde_order_res, r); }
+static void kde_order_destroy(struct wl_client *c, struct wl_resource *r)
+{ (void)c; wl_resource_destroy(r); }
+static const struct kde_output_order_v1_interface kde_order_impl = {
+    .destroy = kde_order_destroy,
+};
+static void kde_order_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{
+    (void)data;
+    struct wl_resource *r = wl_resource_create(client, &kde_output_order_v1_interface,
+                                               version, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &kde_order_impl, NULL, kde_order_resource_destroy);
+    if (g_nkde_order_res < IOSC_MAX_KDE_RES)
+        g_kde_order_res[g_nkde_order_res++] = r;
+    kde_output_order_v1_send_output(r, IOSC_OUTPUT_NAME);
+    kde_output_order_v1_send_done(r);
 }
 
 /* ---- seat input: pointer + keyboard (real) -------------------------------- *
@@ -3873,12 +4817,35 @@ static struct iosc_surface *surface_at(int x, int y)
         return (g_slock.surface && g_slock.surface->current_buffer) ? g_slock.surface : NULL;
     for (int i = g_nmapped - 1; i >= 0; i--) {
         struct iosc_surface *s = g_mapped[i];
+        if (s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_minimized)
+            continue;   /* minimized: invisible, so it must not eat input either */
         int w = 0, h = 0;
-        surface_display_size(s, &w, &h);
+        surface_output_size(s, &w, &h);   /* fullscreen toplevels cover the whole output */
         if (x >= s->dx && x < s->dx + w && y >= s->dy && y < s->dy + h)
             return s;
     }
     return NULL;
+}
+
+/* Convert an output-logical coordinate to surface-local coordinates. For normal
+ * surfaces this is a translate by the surface origin (bit-for-bit identical to the
+ * old wl_fixed_from_int(x - s->dx) form for integer inputs). A fullscreen toplevel
+ * is stretched to the whole output (see composite_surface_at), so its surface-local
+ * space is scaled by surface_logical/output_logical. All pointer/touch/tablet/dnd
+ * paths route through this so input lands where the client actually drew. */
+static void surface_local_coords(struct iosc_surface *s, int x, int y,
+                                 wl_fixed_t *sx, wl_fixed_t *sy)
+{
+    double lx = (double)(x - s->dx), ly = (double)(y - s->dy);
+    if (surface_fills_output(s)) {
+        int ow = output_logical_width(), oh = output_logical_height();
+        int sw = 0, sh = 0;
+        surface_display_size(s, &sw, &sh);
+        if (ow > 0 && sw > 0) lx = (double)(x - s->dx) * sw / ow;
+        if (oh > 0 && sh > 0) ly = (double)(y - s->dy) * sh / oh;
+    }
+    *sx = wl_fixed_from_double(lx);
+    *sy = wl_fixed_from_double(ly);
 }
 
 /* ---- text input ----------------------------------------------------------- */
@@ -4450,8 +5417,18 @@ static void keyboard_set_focus(struct iosc_surface *s)
 {
     /* Session locked: all keyboard focus belongs to the lock surface (or nothing
      * until it maps); windows mapping/unmapping underneath can't steal it. */
-    if (g_slock.locked && s != g_slock.surface)
+    if (g_slock.locked && s != g_slock.surface) {
         s = g_slock.surface;
+    } else if (g_popup_grab_count > 0) {
+        /* An active xdg_popup grab pins focus to the topmost grabbing popup
+         * (spec) regardless of who else tries to steal it. Our own grab
+         * management (popup_grab/popup_grab_dismiss_all/
+         * popup_grab_on_surface_gone) always updates the stack BEFORE calling
+         * us, so their own target already equals `top` here and this is a
+         * no-op for them. */
+        struct iosc_surface *top = g_popup_grab_stack[g_popup_grab_count - 1];
+        if (s != top) s = top;
+    }
     if (g_kbd_focus == s) return;
     struct iosc_surface *old = g_kbd_focus;
     kbd_send_leave(old);
@@ -4620,7 +5597,7 @@ static void handle_motion(int x, int y)
         constraints_update_focus(hit);
         if (hit) {
             struct wl_client *nc = wl_resource_get_client(hit->resource);
-            wl_fixed_t sx = wl_fixed_from_int(x - hit->dx), sy = wl_fixed_from_int(y - hit->dy);
+            wl_fixed_t sx, sy; surface_local_coords(hit, x, y, &sx, &sy);
             for (int i = 0; i < g_nptr; i++)
                 if (wl_resource_get_client(g_ptr[i]) == nc)
                     wl_pointer_send_enter(g_ptr[i], serial, hit->resource, sx, sy);
@@ -4629,8 +5606,7 @@ static void handle_motion(int x, int y)
     }
     if (g_ptr_focus) {
         struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
-        wl_fixed_t sx = wl_fixed_from_int(x - g_ptr_focus->dx);
-        wl_fixed_t sy = wl_fixed_from_int(y - g_ptr_focus->dy);
+        wl_fixed_t sx, sy; surface_local_coords(g_ptr_focus, x, y, &sx, &sy);
         for (int i = 0; i < g_nptr; i++)
             if (wl_resource_get_client(g_ptr[i]) == fc)
                 wl_pointer_send_motion(g_ptr[i], t, sx, sy);
@@ -4664,6 +5640,26 @@ static void surface_raise_one(struct iosc_surface *s)
     output_damage_add_surface(s);
     for (int i = idx; i < top; i++) g_mapped[i] = g_mapped[i + 1];
     g_mapped[top] = s;
+}
+
+/* Lower a surface to the bottom of ITS z-band (mirrors surface_raise_one). Used
+ * by wl_subsurface.place_below, which -- like our place_above -- moves the whole
+ * band rather than resolving position relative to the referenced sibling. */
+static void surface_lower_one(struct iosc_surface *s)
+{
+    int idx = -1;
+    for (int i = 0; i < g_nmapped; i++) if (g_mapped[i] == s) { idx = i; break; }
+    if (idx < 0) return;
+    int band = surface_band(s);
+    int bottom = idx;                      /* lowest index still in this band */
+    for (int i = idx - 1; i >= 0; i--) {
+        if (surface_band(g_mapped[i]) < band) break;
+        bottom = i;
+    }
+    if (bottom == idx) return;
+    output_damage_add_surface(s);
+    for (int i = idx; i > bottom; i--) g_mapped[i] = g_mapped[i - 1];
+    g_mapped[bottom] = s;
 }
 
 /* Raise a surface, then pull its transient/modal toplevel children above it —
@@ -4728,6 +5724,11 @@ static void handle_button(int btn, int down)
         interactive_end();
         return;
     }
+    /* A press outside the whole active popup grab dismisses it first (xdg_popup
+     * spec); the press itself still delivers normally to whatever it hit,
+     * below, unaffected by the dismissal. */
+    if (down && g_popup_grab_count > 0 && !popup_hit_is_within_grab(g_ptr_focus))
+        popup_grab_dismiss_all();
     if (down && g_ptr_focus && g_ptr_focus->role == IOSC_ROLE_LAYER)
         input_clients_send_haptic(0);
     if (down && g_ptr_focus)
@@ -4870,6 +5871,10 @@ static void handle_touch(int id, int phase, int x, int y)
     }
     if (phase == IOSC_TOUCH_DOWN) {
         struct iosc_surface *hit = surface_at(x, y);   /* honors session lock */
+        /* Same click-outside dismissal as handle_button(); checked even when hit
+         * is NULL (a tap on bare desktop is "outside" too). */
+        if (g_popup_grab_count > 0 && !popup_hit_is_within_grab(hit))
+            popup_grab_dismiss_all();
         if (!hit) return;
         if (hit->role == IOSC_ROLE_LAYER)
             input_clients_send_haptic(0);
@@ -4885,11 +5890,10 @@ static void handle_touch(int id, int phase, int x, int y)
         struct wl_client *cl = wl_resource_get_client(hit->resource);
         uint32_t serial = wl_display_next_serial(g_display);
         uint32_t t = now_ms();
+        wl_fixed_t tsx, tsy; surface_local_coords(hit, x, y, &tsx, &tsy);
         for (int i = 0; i < g_ntch; i++)
             if (wl_resource_get_client(g_tch[i]) == cl)
-                wl_touch_send_down(g_tch[i], serial, t, hit->resource, id,
-                                   wl_fixed_from_int(x - hit->dx),
-                                   wl_fixed_from_int(y - hit->dy));
+                wl_touch_send_down(g_tch[i], serial, t, hit->resource, id, tsx, tsy);
         touch_frame_client(cl);
         return;
     }
@@ -4899,11 +5903,10 @@ static void handle_touch(int id, int phase, int x, int y)
     struct wl_client *cl = wl_resource_get_client(p->surface->resource);
     uint32_t t = now_ms();
     if (phase == IOSC_TOUCH_MOTION) {
+        wl_fixed_t tsx, tsy; surface_local_coords(p->surface, x, y, &tsx, &tsy);
         for (int i = 0; i < g_ntch; i++)
             if (wl_resource_get_client(g_tch[i]) == cl)
-                wl_touch_send_motion(g_tch[i], t, id,
-                                     wl_fixed_from_int(x - p->surface->dx),
-                                     wl_fixed_from_int(y - p->surface->dy));
+                wl_touch_send_motion(g_tch[i], t, id, tsx, tsy);
         touch_frame_client(cl);
     } else if (phase == IOSC_TOUCH_UP) {
         uint32_t serial = wl_display_next_serial(g_display);
@@ -4972,8 +5975,8 @@ static void pen_surface_gone(struct iosc_surface *s)
 static void pen_send_axes(struct iosc_tablet_seat *ts, struct iosc_surface *s,
                           int x, int y, uint32_t pressure, int tiltx, int tilty)
 {
-    zwp_tablet_tool_v2_send_motion(ts->tool, wl_fixed_from_int(x - s->dx),
-                                   wl_fixed_from_int(y - s->dy));
+    wl_fixed_t px, py; surface_local_coords(s, x, y, &px, &py);
+    zwp_tablet_tool_v2_send_motion(ts->tool, px, py);
     zwp_tablet_tool_v2_send_pressure(ts->tool, pressure > 65535u ? 65535u : pressure);
     zwp_tablet_tool_v2_send_tilt(ts->tool, wl_fixed_from_int(tiltx),
                                  wl_fixed_from_int(tilty));
@@ -5224,9 +6227,22 @@ static void subsurface_place_above(struct wl_client *c, struct wl_resource *r, s
 { (void)c; (void)s; struct iosc_subsurface *ss = wl_resource_get_user_data(r);
   if (ss && ss->surface) { surface_raise(ss->surface); if (g_output_damage_valid) recomposite_all(); } }
 static void subsurface_place_below(struct wl_client *c, struct wl_resource *r, struct wl_resource *s)
-{ (void)c; (void)r; (void)s; }
-static void subsurface_set_sync(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
-static void subsurface_set_desync(struct wl_client *c, struct wl_resource *r){ (void)c;(void)r; }
+{ (void)c; (void)s; struct iosc_subsurface *ss = wl_resource_get_user_data(r);
+  if (ss && ss->surface) { surface_lower_one(ss->surface); if (g_output_damage_valid) recomposite_all(); } }
+static void subsurface_set_sync(struct wl_client *c, struct wl_resource *r)
+{ (void)c; struct iosc_subsurface *ss = wl_resource_get_user_data(r);
+  if (ss) ss->sync = 1; }
+static void subsurface_set_desync(struct wl_client *c, struct wl_resource *r)
+{ (void)c; struct iosc_subsurface *ss = wl_resource_get_user_data(r);
+  if (!ss) return;
+  ss->sync = 0;
+  /* Switching sync->desync applies any state cached from an earlier synchronized
+   * commit right away, as if the parent had just committed (spec). */
+  if (ss->cache_pending && ss->surface) {
+      ss->cache_pending = 0;
+      surface_commit_apply(ss->surface);
+  }
+}
 static const struct wl_subsurface_interface subsurface_impl = {
     .destroy = subsurface_destroy, .set_position = subsurface_set_position,
     .place_above = subsurface_place_above, .place_below = subsurface_place_below,
@@ -5242,6 +6258,7 @@ static void subcompositor_get_subsurface(struct wl_client *c, struct wl_resource
   struct wl_resource *ss = wl_resource_create(c, &wl_subsurface_interface, wl_resource_get_version(r), id);
   if (!ss) { free(sub); wl_client_post_no_memory(c); return; }
   sub->resource = ss; sub->surface = s; sub->parent = p;
+  sub->sync = 1;   /* wl_subsurface default is synchronized (spec) */
   s->role = IOSC_ROLE_SUBSURFACE;
   s->parent = p;
   s->subsurface = sub;
@@ -5804,9 +6821,8 @@ static void dnd_focus_enter(struct iosc_surface *hit, int x, int y)
     }
     g_dnd.offer = offer;
     uint32_t serial = wl_display_next_serial(g_display);
-    wl_data_device_send_enter(d->resource, serial, hit->resource,
-                              wl_fixed_from_int(x - hit->dx),
-                              wl_fixed_from_int(y - hit->dy), offer);
+    wl_fixed_t dsx, dsy; surface_local_coords(hit, x, y, &dsx, &dsy);
+    wl_data_device_send_enter(d->resource, serial, hit->resource, dsx, dsy, offer);
     if (offer && wl_resource_get_version(offer) >= WL_DATA_OFFER_SOURCE_ACTIONS_SINCE_VERSION)
         wl_data_offer_send_source_actions(offer, dnd_source_actions_of(g_dnd.source));
     fprintf(stderr, "iosc: dnd enter surface=%p offer=%p\n", (void *)hit, (void *)offer);
@@ -5828,9 +6844,8 @@ static void dnd_update_motion(int x, int y, uint32_t t)
     if (hit) {
         struct iosc_data_device *d =
             data_device_for_client(wl_resource_get_client(hit->resource));
-        if (d) wl_data_device_send_motion(d->resource, t,
-                                          wl_fixed_from_int(x - hit->dx),
-                                          wl_fixed_from_int(y - hit->dy));
+        wl_fixed_t dsx, dsy; surface_local_coords(hit, x, y, &dsx, &dsy);
+        if (d) wl_data_device_send_motion(d->resource, t, dsx, dsy);
     }
 }
 
@@ -6354,14 +7369,13 @@ static void ftlh_unset_maximized(struct wl_client *c, struct wl_resource *h)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
   if (s) { s->toplevel_maximized = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
 static void ftlh_set_minimized(struct wl_client *c, struct wl_resource *h)
-{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { s->toplevel_minimized = 1; ftl_broadcast_state(s); } }   /* flag only; no hide yet */
+{ (void)c; surface_set_minimized(wl_resource_get_user_data(h), 1); }
 static void ftlh_unset_minimized(struct wl_client *c, struct wl_resource *h)
-{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { s->toplevel_minimized = 0; ftl_broadcast_state(s); } }
+{ (void)c; surface_set_minimized(wl_resource_get_user_data(h), 0); }
 static void ftlh_activate(struct wl_client *c, struct wl_resource *h, struct wl_resource *seat)
 { (void)c; (void)seat; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { surface_raise(s); keyboard_set_focus(s); if (g_output_damage_valid) recomposite_all(); } }
+  if (s) { surface_set_minimized(s, 0); surface_raise(s); keyboard_set_focus(s);
+           if (g_output_damage_valid) recomposite_all(); } }
 static void ftlh_close(struct wl_client *c, struct wl_resource *h)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
   if (s && s->is_xwayland) iosc_xwm_request_close(s->resource);
@@ -6447,9 +7461,29 @@ static void layer_surface_set_kbd(struct wl_client *c, struct wl_resource *r, ui
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
   if (s && s->layer) s->layer->kbd_interactivity = ki; }
 
+/* Assigns an xdg_popup's parent to this layer_surface (spec): the popup was
+ * created via xdg_surface.get_popup with parent=NULL (xs_get_popup(), which
+ * snapshotted its positioner since parent was unknown then), and this request
+ * supplies the real parent before the client's first commit on the popup. This
+ * reuses the exact same parent/placement/dismissal machinery a toplevel-parented
+ * popup gets (FIX 2's grab stack walks ->parent; popup_place()/
+ * popup_send_configure() already handle a layer-surface parent's geometry
+ * offset, which is always 0 since layer surfaces have no xdg geometry). */
 static void layer_surface_get_popup(struct wl_client *c, struct wl_resource *r,
                                     struct wl_resource *popup)
-{ (void)c; (void)r; (void)popup; /* xdg_popup already maps standalone; no link needed for the panel */ }
+{
+    (void)c;
+    struct iosc_surface *layer = wl_resource_get_user_data(r);
+    struct iosc_surface *pop = popup ? wl_resource_get_user_data(popup) : NULL;
+    if (!layer || !pop || pop->role != IOSC_ROLE_POPUP) return;
+    pop->parent = layer;
+    if (pop->popup_positioner_set) {
+        popup_place(pop, &pop->popup_positioner);
+        popup_send_configure(pop, 0);
+        fprintf(stderr, "iosc: layer-shell popup parented to panel, placed at (%d,%d)\n",
+                pop->rel_x, pop->rel_y);
+    }
+}
 
 static void layer_surface_ack_configure(struct wl_client *c, struct wl_resource *r, uint32_t serial)
 { (void)c; (void)serial; struct iosc_surface *s = wl_resource_get_user_data(r);
@@ -6582,6 +7616,7 @@ static int wm_raise_app(const char *app_id)
 {
     struct iosc_surface *s = wm_find_toplevel_by_app_id(app_id);
     if (!s) return 0;
+    surface_set_minimized(s, 0);
     surface_raise(s);
     keyboard_set_focus(s);
     if (g_output_damage_valid) recomposite_all();
@@ -6778,7 +7813,7 @@ static int confine_point(struct iosc_surface *s, int *x, int *y)
     if (!(g_active_constraint && g_active_constraint->active &&
           g_active_constraint->type == 1 && g_active_constraint->surface == s))
         return 0;
-    int w = 0, h = 0; surface_display_size(s, &w, &h);
+    int w = 0, h = 0; surface_output_size(s, &w, &h);
     if (w > 0) *x = clampi(*x, s->dx, s->dx + w - 1);
     if (h > 0) *y = clampi(*y, s->dy, s->dy + h - 1);
     return 1;
@@ -7527,6 +8562,12 @@ static void register_wayland_globals(void)
     create_global(&zwlr_data_control_manager_v1_interface, 2, data_control_mgr_bind);
     create_global(&ext_session_lock_manager_v1_interface, 1, slock_mgr_bind);
     create_global(&zwp_tablet_manager_v2_interface, 1, tablet_mgr_bind);
+    /* KDE output-management: enumerate + reconfigure our output (kscreen/libkscreen
+     * /plasma), including runtime scale changes. Advertise exactly v8/v9/v2/v1. */
+    create_global(&kde_output_device_v2_interface, 8, kde_output_device_bind);
+    create_global(&kde_output_management_v2_interface, 9, kde_management_bind);
+    create_global(&kde_primary_output_v1_interface, 2, kde_primary_bind);
+    create_global(&kde_output_order_v1_interface, 1, kde_order_bind);
 }
 
 int main(int argc, char **argv)
@@ -7658,7 +8699,10 @@ int main(int argc, char **argv)
                     "zwp_primary_selection_device_manager_v1 v1, "
                     "ext_idle_notifier_v1 v1, zwp_idle_inhibit_manager_v1 v1, "
                     "wp_single_pixel_buffer_manager_v1 v1, wp_cursor_shape_manager_v1 v1, "
-                    "zwlr_screencopy_manager_v1 v3, zwlr_data_control_manager_v1 v2\n",
+                    "zwlr_screencopy_manager_v1 v3, zwlr_data_control_manager_v1 v2, "
+                    "ext_session_lock_manager_v1 v1, zwp_tablet_manager_v2 v1, "
+                    "kde_output_device_v2 v8, kde_output_management_v2 v9, "
+                    "kde_primary_output_v1 v2, kde_output_order_v1 v1\n",
             IOSC_IOSURFACE_VERSION);
 
     /* 2c) Rootless Xwayland XWM (opt-in): spawns Xwayland, owns WM_S0, advertises

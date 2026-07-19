@@ -209,8 +209,7 @@ The full kit + a reproducible runbook lives in **[`linux-build/`](linux-build/RE
 
 ```
 ports/<pkg>/patches/{series,0001-*.patch}   # quilt series — source of truth, authoring UX
-linux-build/patches/                        # mirror copied into the build context
-  0001-xserver-popen-shell-rootless.patch   #   the /bin/sh → /var/jb/bin/sh fix
+linux-build/patches/                        # local source injections, not upstream patches
   xios/{InitOutput.c,Makefile.am,xios_surface.c,xios_surface.h}  # IOSurface DDX sources
 linux-build/recipes/*.mk                    # NEW Procursus package makefiles (e.g. fribidi.mk)
 ```

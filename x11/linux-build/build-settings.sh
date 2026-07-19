@@ -10,7 +10,9 @@
 #        - gudev-1.0 STUB    (REQUIRED: panels/common + system link it; iOS has no udev)
 #        - libpwquality      (REQUIRED: password-strength meter in system>users)
 #        - gnome-bluetooth   (ONLY for GCC_WITH_BLUETOOTH=1 — Max's Bluetooth panel)
-#      These are TODO recipes; without them `meson setup` will fail on the missing deps.
+#      These are implemented by the published `xios-desktop-stublibs` package/sysroot
+#      producers plus the gnome-bluetooth recipe. Build/stage them first on a fresh volume;
+#      without them `meson setup` fails on the missing deps.
 #
 #   docker run --rm --platform linux/arm64 --cpus=4 \
 #     -v procursus-vol-shell:/work/Procursus \
@@ -119,7 +121,7 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-for stem in gnome-control-center gnome-bluetooth; do
+for stem in gnome-control-center gnome-bluetooth libgtop-2.0-11; do
   find . -name "${stem}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

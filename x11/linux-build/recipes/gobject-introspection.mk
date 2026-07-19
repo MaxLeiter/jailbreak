@@ -20,8 +20,9 @@ endif
 # (Design B alternative — keep it all in Docker via gi_cross_binary_wrapper=ssh-to-device —
 # is noted in docs/gjs-plan.md for later.)
 #
-# STATUS: the cross half is drafted but NOT yet validated in the Docker pipeline (the
-# on-device build IS validated). Treat like mozjs.mk until a build confirms it.
+# STATUS: the cross half is built and published as `gobject-introspection`,
+# `libgirepository-1.0-1`, and `libgirepository-1.0-dev` 1.78.0+ios1. The
+# on-device typelib generation/capture remains a separate step by design.
 
 SUBPROJECTS                   += gobject-introspection
 GOBJECT-INTROSPECTION_VERSION := 1.78.0

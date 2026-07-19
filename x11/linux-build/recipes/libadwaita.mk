@@ -10,10 +10,7 @@ endif
 # BUILD-HOST TOOL: sassc — libadwaita compiles its SCSS stylesheet at build time. sassc runs
 #   on the LINUX BUILD HOST, so it is NOT a cross/target dep: add `sassc` to the Dockerfile
 #   apt line (build-essential layer) rather than a recipe.
-# NOTE: the `gtk4` make-target name + the libgtk-4-* deb names below must match gtk-builder's
-#   actual GTK4 recipe/package names — reconcile before building.
-#
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libadwaita-1-0 1.5.0+ios1 against the GTK4 package set.
 
 SUBPROJECTS        += libadwaita
 LIBADWAITA_MAJOR_V := 1.5

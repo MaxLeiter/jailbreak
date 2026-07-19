@@ -8,7 +8,7 @@
  * placement/flip conventions, the draw loop) and calls into here for the EGL bits.
  *
  * Nothing in here is iosc- or Mutter-specific: it is pure ANGLE-Metal + IOSurface.
- * The symbols marked "(stub)" match x11/wayland/xios-glue-stub.h exactly — that
+ * The symbols marked "MetaBackendIOS contract" match x11/wayland/xios-glue-stub.h — that
  * header is the contract MetaBackendIOS compiles against off-device.
  */
 #ifndef XIOS_EGL_H
@@ -50,7 +50,7 @@ unsigned   xios_egl_bind_pbuffer_texture(EGLSurface pb);
  * xios_egl_create_iosurface_pbuffer. The caller owns any GL texture it made. */
 void       xios_egl_destroy_pbuffer(EGLSurface pb);
 
-/* ---- (stub) IOSurface -> EGLImage for the Cogl/Wayland buffer type --------
+/* ---- MetaBackendIOS contract: IOSurface -> EGLImage -----------------------
  * MetaWaylandBuffer wants an EGLImageKHR to feed cogl_egl_texture_2d_new_from_image
  * (the same path mutter uses for EGL_IMAGE / dma-buf). ANGLE-Metal exposes no
  * direct IOSurface->EGLImage, so this bridges via the proven route:
@@ -63,7 +63,7 @@ void       xios_egl_destroy_pbuffer(EGLSurface pb);
 EGLImageKHR xios_egl_image_from_iosurface(void *iosurface, int width, int height);
 void        xios_egl_destroy_image(EGLImageKHR image);
 
-/* ---- (stub) output geometry / scale for MetaMonitorManagerIOS ------------
+/* ---- MetaBackendIOS contract: output geometry / scale ---------------------
  * Geometry is the created output IOSurface's size (from xios_surface). Scale is a
  * glue-held value (default 2.0; set with xios_output_set_scale — iosc uses its own
  * output_scale(), the mutter backend sets this). Signatures match xios-glue-stub.h. */

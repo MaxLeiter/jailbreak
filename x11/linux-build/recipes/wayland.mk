@@ -4,7 +4,7 @@ endif
 
 # wayland — libwayland-client/server/cursor/egl + protocol data, for iOS/Darwin.
 #
-# DRAFT — Wayland track W0. NOT built yet (Docker gated). Drop-in:
+# BUILT/PUBLISHED — libwayland0 1.23.1+ios1. Recipe integration:
 #   recipe        -> Procursus/makefiles/wayland.mk
 #   control files -> Procursus/build_info/libwayland0.control, libwayland-dev.control
 #

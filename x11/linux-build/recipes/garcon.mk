@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 # garcon — freedesktop.org menu (.menu) library for XFCE (libgarcon-1 + libgarcon-gtk3).
-# BLOCKED on the GTK3 stack.
+# GTK3 is available; this recipe is not yet build-validated.
 SUBPROJECTS    += garcon
 GARCON_MAJOR_V := 4.16
 GARCON_VERSION := $(GARCON_MAJOR_V).1

@@ -3,11 +3,22 @@
 ## Ownership
 Getting GNOME Shell to boot on-device: the session layer (gnome-session, dconf, gsd, stubs), the ordered install, and the packaged launcher. GNOME Shell IS Mutter (see mutter.md) + gjs UI on top.
 
+**Offline build update 2026-07-18:** `xios-session-stubs 0.2.5` is built in
+`linux-build/out`. AccountsService now persists the single-user name/icon/language profile and
+emits the expected property/user notifications. The iOS-backed BlueZ service now tracks adapter,
+device, and agent state and reports unsupported pairing honestly. `libgtop-2.0-11
+2.41.3+ios2` replaces the empty process shim with Darwin process/argv enumeration, and
+`xios-desktop-stublibs 0.1.1` expands pwquality into a configurable local policy engine. Host and
+arm64 cross-build checks passed; the iPad was offline, so installed state below remains the last
+device-verified baseline rather than a claim about these candidates.
+
 ## Key files
 - `x11/linux-build/install-gnome-boot.sh` — the ordered 66-deb install; now does a ONE-PASS external closure fetch (`apt-cache depends --recurse` over the frontier → `apt-get download` the missing → `dpkg -i` with the set). Hard-gated on libsndfile1.
 - `x11/packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh` — the packaged full-session launcher: re-sign gnome-shell, start the session stubs/bridges on one bus, then run `gnome-session --builtin --session=xios`.
 - `x11/wayland/run-mutter.sh` — the bare-mutter smoke (first-pixels).
-- Stubs: xios-session-stubs deb (login1/polkit/accounts/logind stubs sharing xios-session-identity; libaccountsservice + libgdm client libs). Plan: `x11/docs/gnome-session-plan.md`.
+- Bridges: xios-session-stubs deb (login1/polkit/accounts/BlueZ services sharing the session
+  identity where applicable; libaccountsservice + libgdm client libs). Plan:
+  `x11/docs/gnome-session-plan.md`.
 
 ## ★★ FIRST LIGHT ACHIEVED 2026-07-02 ~11:15 PDT ★★
 GNOME Shell 46 BOOTS, PAINTS, and RUNS on the iPad (A10, palera1n rootless). Verified: log shows
@@ -176,7 +187,7 @@ gnome-shell + redeploy to pick it up (same pipeline as the 4b/6 rebuild above).
 **DONE 2026-07-02:** rebuilt (deb mtime 00:38, GDM-GUARD-PRESENT verified), installed, relaunched.
 Boot now clears the GDM wall and reaches `main.js start()` → `LayoutManager`.
 
-## Blocker #4 (2026-07-02): four closure typelibs are empty STUBS
+## Historical blocker #4 (closed): four closure typelibs were empty stubs
 With #1/#2/#3 fixed, the shell reaches `LayoutManager` → `backgroundMenu.js` → `popupMenu.js:95`
 and dies: `TypeError: (intermediate value).Role is undefined` — i.e. `Atk.Role` is undefined.
 Cause: the on-device **Atk-1.0.typelib is a 200-byte STUB** (empty `<namespace>`; `Atk.Role`,
@@ -194,7 +205,7 @@ g-ir-scanner/compiler) and all dev headers + p11-kit-1.pc ARE present, but:
 - Scanning the full `atk/*.h` glob → clang preprocess FAILS: `atk-autocleanups.h: error: "Only
   <atk/atk.h> can be included directly."` (the sub-headers `#error` on direct inclusion).
 
-**Recommended fix (not yet done):** stop header-scanning these four; build each from its source
+**Implemented fix:** stop header-scanning these four; build each from its source
 tarball with `-Dintrospection=enabled` and let its OWN meson/autotools drive g-ir-scanner over
 the SOURCES — the exact proven pattern that produced the REAL St-14/Gvc/GTK4/mutter typelibs
 (gir-build-gnome-shell-ondevice.sh / the "each lib's own meson build" route, memory
@@ -202,7 +213,7 @@ x11-gtk4-typelibs-ondevice). Order by Shell-14's include deps: Atk (also a mutte
 Atspi → Gck → Gcr(+GcrUi) → Polkit → PolkitAgent. This is a distinct workstream from the shell
 patches above; it's the long-standing "gir batch incomplete / gtk4-gpu gir pending" prereq.
 
-### Blocker #4 — IN PROGRESS 2026-07-02: source-build introspection route WORKS
+### Blocker #4 closure work (2026-07-02): source-build introspection route works
 The header-scan route is broken (umbrella→empty, all-headers→`#error only <x.h>`); the fix is to
 build each lib from source with introspection ON so its own meson drives g-ir-scanner over the
 `.c` sources (correct annotations + no header-guard problem). Driver: a generic on-device
@@ -360,10 +371,10 @@ Also fold in: the GNOME launcher should start the PA daemon (with the module DYL
 shell, and the PA module rpath bug + `.so`/`.dylib` module naming should be fixed in the pulseaudio
 package. The whole audio stack was ad-hoc unsigned on device — sign it in packaging.
 
-This is the session-daemon integration layer (accounts/gsd/settings), the same area as the
-gnome-session stubs — a DIFFERENT workstream from the typelib walls, now cleared. Next:
-make the accounts stub complete enough for ActUserManager to load, and provide the `Settings`
-component (gsd-or-shim). Also GOTCHA seen: something reverted the deployed gnome-shell to the
+Historical follow-up from this milestone: this was the session-daemon integration layer
+(accounts/gsd/settings), not the typelib wall. The packaged launcher later supplied the Settings
+component, and `xios-session-stubs 0.2.5` now provides a persistent AccountsService bridge; those
+are no longer open actions. A separate GOTCHA seen here was that something reverted gnome-shell to the
 pre-4b binary + reverted the libatk-bridge weak-import band-aid mid-session; had to reinstall the
 deb + re-run `tools/macho-chained-weaken.py` on libatk-bridge. Durable fix for the atk-bridge skew
 (affects ALL GTK apps, not just the shell): ship atk 2.52 OR bake the 3-symbol weak-import into the

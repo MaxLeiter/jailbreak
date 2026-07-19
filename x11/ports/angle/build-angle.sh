@@ -51,10 +51,15 @@ gclient sync -r "$ANGLE_REV"
 #    - metal-es3-apple3: DisplayMtl getMaxSupportedESVersion admits Apple GPU
 #      Family 3 (A10) to ES3 so GDK 4.14's GL renderer gets an ES3 config.
 git checkout -- BUILD.gn src/common src/libANGLE 2>/dev/null || true
-for p in "$PORTDIR"/patches/*.patch; do
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%%#*}"
+  set -- $line
+  [ "$#" -gt 0 ] || continue
+  p="$PORTDIR/patches/$1"
+  [ -f "$p" ] || { echo "ERROR: ANGLE series entry is missing: $p" >&2; exit 1; }
   echo "== applying $(basename "$p")"
   git apply "$p"
-done
+done < "$PORTDIR/patches/series"
 
 # 5. gn args — byte-for-byte what built the shipped deb. GOTCHAS baked in:
 #    is_component_build=false (BUILDCONFIG.gn hard-asserts on iOS),

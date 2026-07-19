@@ -14,7 +14,7 @@ endif
 # Required (unconditional) deps remain: gnome-autoar, gnome-desktop-4, libportal(+gtk4),
 # tracker-sparql-3.0, gtk4, libadwaita, libxml2.
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — nautilus 46.4+ios1.
 
 SUBPROJECTS       += nautilus
 NAUTILUS_MAJOR_V  := 46

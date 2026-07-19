@@ -14,7 +14,7 @@ endif
 # Host build-dep: bison (libxkbcommon generates its keymap parser at build time). Ensure
 # the build container has it (apt-get install -y bison) — documented, not auto-installed.
 #
-# DRAFT — Wayland track W0. NOT built yet (Docker gated). Drop-in:
+# BUILT/PUBLISHED — libxkbcommon0 1.7.0+ios2. Recipe integration:
 #   recipe        -> Procursus/makefiles/libxkbcommon.mk
 #   control files -> Procursus/build_info/libxkbcommon0.control, libxkbcommon-dev.control
 

@@ -183,10 +183,15 @@ static int ensure_shm_cache_slot(void)
 
 static GLuint cache_get(void *surf, int w, int h)
 {
-    if (ensure_iosurf_cache_slot() != 0)
-        return 0;
+    /* Scan for an existing hit FIRST. ensure_iosurf_cache_slot() can legitimately
+     * return -1 once the cache is at its configured cap -- calling it before the
+     * hit scan meant an already-cached, still-live surface read as a miss at
+     * saturation and got silently skipped (not drawn) instead of reusing its
+     * existing texture. Only grow/allocate on an actual miss. */
     for (int i = 0; i < s_cache_cap; i++)
         if (s_cache[i].surf == surf) return s_cache[i].tex;
+    if (ensure_iosurf_cache_slot() != 0)
+        return 0;
     for (int i = 0; i < s_cache_cap; i++) {
         if (s_cache[i].surf == NULL) {
             EGLSurface pb; GLuint tex;
@@ -437,9 +442,8 @@ void iosc_gl_draw_iosurface(void *client_iosurface, int sw, int sh,
  * its storage must be (re)allocated at sw x sh. Returns 0 if the cache is full. */
 static GLuint shm_cache_bind(void *key, int sw, int sh, int *need_alloc)
 {
-    if (ensure_shm_cache_slot() != 0)
-        return 0;
-    int free_slot = -1;
+    /* Same ordering fix as cache_get(): scan for the key BEFORE possibly growing
+     * the cache, so a hit at saturation isn't misreported as a miss. */
     for (int i = 0; i < s_shm_cache_cap; i++) {
         if (s_shm_cache[i].key == key) {
             *need_alloc = (s_shm_cache[i].w != sw || s_shm_cache[i].h != sh);
@@ -447,8 +451,12 @@ static GLuint shm_cache_bind(void *key, int sw, int sh, int *need_alloc)
             glBindTexture(GL_TEXTURE_2D, s_shm_cache[i].tex);
             return s_shm_cache[i].tex;
         }
-        if (free_slot < 0 && s_shm_cache[i].key == NULL) free_slot = i;
     }
+    if (ensure_shm_cache_slot() != 0)
+        return 0;
+    int free_slot = -1;
+    for (int i = 0; i < s_shm_cache_cap; i++)
+        if (s_shm_cache[i].key == NULL) { free_slot = i; break; }
     if (free_slot < 0) return 0;   /* cache full: caller falls back to s_shm_tex */
     GLuint tex = 0;
     glGenTextures(1, &tex);

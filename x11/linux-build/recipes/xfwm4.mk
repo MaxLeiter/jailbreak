@@ -4,7 +4,7 @@ endif
 
 # xfwm4 — the XFCE window manager. libwnck3 is a HARD dep. Compositor is DISABLED for
 # first bring-up (our DDX has no X Composite/GLX yet — SCOPE Stage 3); re-enable later.
-# BLOCKED on the GTK3 stack.
+# GTK3 is available; this recipe is not yet build-validated.
 SUBPROJECTS   += xfwm4
 XFWM4_MAJOR_V := 4.16
 XFWM4_VERSION := $(XFWM4_MAJOR_V).1

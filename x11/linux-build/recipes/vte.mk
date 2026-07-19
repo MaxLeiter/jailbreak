@@ -13,7 +13,8 @@ endif
 # DEPENDS (target): gtk4 (gtk-builder) + libxml2 + pcre2 + gnutls + icu4c
 #   (+ pango/fribidi/glib in stack).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libvte-2.91-gtk4-0 0.76.6+ios1. The GTK3 flavor needed by
+# gnome-terminal remains a separate unbuilt follow-up.
 
 SUBPROJECTS  += vte
 VTE_MAJOR_V  := 0.76

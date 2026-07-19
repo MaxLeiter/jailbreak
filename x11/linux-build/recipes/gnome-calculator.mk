@@ -18,7 +18,7 @@ endif
 # DEPENDS (target): gtk4 + libadwaita + gtksourceview5 + libsoup3 + libgee
 #   (+ mpfr/mpc/libxml2 — all prebuilt in Procursus).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — gnome-calculator 46.2+ios1.
 
 SUBPROJECTS               += gnome-calculator
 GNOME-CALCULATOR_MAJOR_V  := 46

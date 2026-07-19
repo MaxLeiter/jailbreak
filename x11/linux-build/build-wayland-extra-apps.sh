@@ -4,8 +4,8 @@
 # This driver is intentionally opt-in and separate from build-wayland-apps.sh:
 # the first app wave owns foot/imv/mpv and their runtime fixes, while this
 # script is for smaller shell utilities and user apps such as swaybg, tofi,
-# yad, gnumeric, and transmission. Heavier or blocked targets such as waybar,
-# swayimg, nwg-look, and Geary/WebKitGTK are opt-in only.
+# yad, gnumeric, and transmission. Built but heavier targets such as waybar and
+# swayimg remain opt-in; nwg-look and Geary/WebKitGTK are explicitly blocked.
 #
 # Typical use:
 #   docker run --rm --platform linux/arm64 --cpus=4 \

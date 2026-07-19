@@ -33,7 +33,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 X11="$(cd "$HERE/../.." && pwd)"
 . "$X11/lib/xlib.sh"
 
-VER="${LADYBIRD_APP_VERSION:-0.1.0+ios1}"
+VER="${LADYBIRD_APP_VERSION:-0.1.23+ios1}"
 ARCH="iphoneos-arm64"
 ENGINE_STAGE="${LADYBIRD_ENGINE_STAGE:-}"     # dir with WebContent/RequestServer/... + share/Lagom
 UI_BIN="${LADYBIRD_UI_BIN:-}"                 # the built UIKit `Ladybird` Mach-O (step 1 output)

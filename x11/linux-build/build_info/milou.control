@@ -1,0 +1,12 @@
+Package: milou
+Version: @DEB_MILOU_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/milou
+Depends: qt6-base, qt6-declarative, kf6-config, kf6-i18n, kf6-runner, kf6-svg, libplasma
+Description: KRunner-backed Plasma search interface for Xios
+ Milou provides the real org.kde.milou QML plugin, ResultsModel, and result
+ views used by Plasma Mobile search. This replaces the earlier inert QML
+ compatibility fallback, so search results can be queried and activated.

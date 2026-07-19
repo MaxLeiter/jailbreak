@@ -5,9 +5,9 @@
  *
  * Derived from src/backends/meta-monitor-manager-dummy.c (GPL-2.0+, the same license).
  * Where the dummy synthesizes 1..N env-var-configurable monitors, this exposes exactly
- * ONE fixed output: the Xios app's fullscreen output IOSurface, at its native pixel size
- * (2160x1620 today) and iosc's display scale (2). No EDID, no XRandR, no KMS/DRM probe —
- * the geometry is a constant handed over by libxios_glue (here the xios-glue-stub API).
+ * ONE virtual output: the Xios app's fullscreen output IOSurface, initially at the requested
+ * session size (2160x1620 fallback) and the glue's display scale. Rotation/resize replaces the
+ * IOSurface and reloads the monitor/view. There is no EDID, XRandR, or KMS/DRM probe.
  *
  * This is the "virtual MonitorManager" of docs/mutter-on-iosc.md Option (b), Step 3. Like
  * the dummy it drives a MetaGpu (read_current), a MetaCrtc (no gamma), and a MetaOutput
@@ -30,6 +30,16 @@
 struct _MetaMonitorManagerIOS
 {
   MetaMonitorManager parent_instance;
+
+  /* XIOS_IN_OUTPUT (meta_monitor_manager_ios_set_output_size()): when has_size_override is
+   * set, read_current() reports override_width/height. launch_width/height cache the very
+   * first PHYSICAL geometry (the transform-0 natural size) so a later (0,0) derive record
+   * can swap it on a quarter turn without using the previous orientation as its base. */
+  gboolean has_size_override;
+  int      override_width;
+  int      override_height;
+  int      launch_width;
+  int      launch_height;
 };
 
 struct _MetaOutputIOS
@@ -132,6 +142,7 @@ append_output (MetaMonitorManager  *manager,
 static void
 meta_monitor_manager_ios_read_current (MetaMonitorManager *manager)
 {
+  MetaMonitorManagerIOS *manager_ios = META_MONITOR_MANAGER_IOS (manager);
   MetaGpu *gpu = get_gpu (manager);
   GList *modes = NULL;
   GList *crtcs = NULL;
@@ -140,15 +151,107 @@ meta_monitor_manager_ios_read_current (MetaMonitorManager *manager)
   int height = 1620;
   float scale;
 
-  /* The one fixed output: Xios' fullscreen IOSurface geometry + iosc's scale. */
+  /* The one fixed output: Xios' fullscreen IOSurface geometry + scale. A successful
+   * XIOS_IN_OUTPUT update has already replaced the IOSurface; the override keeps this read
+   * coherent with that request while Mutter rebuilds its logical monitor and renderer view. */
   xios_output_geometry (&width, &height);
   scale = xios_output_scale ();
+
+  if (!manager_ios->launch_width)
+    {
+      manager_ios->launch_width = width;
+      manager_ios->launch_height = height;
+    }
+
+  if (manager_ios->has_size_override)
+    {
+      width = manager_ios->override_width;
+      height = manager_ios->override_height;
+    }
 
   append_output (manager, &modes, &crtcs, &outputs, width, height, scale);
 
   meta_gpu_take_modes (gpu, modes);
   meta_gpu_take_crtcs (gpu, crtcs);
   meta_gpu_take_outputs (gpu, outputs);
+}
+
+gboolean
+meta_monitor_manager_ios_set_output_size (MetaMonitorManagerIOS *manager_ios,
+                                          int                    transform,
+                                          int                    logical_width,
+                                          int                    logical_height)
+{
+  int width;
+  int height;
+  int current_width = 0;
+  int current_height = 0;
+  float scale;
+
+  g_return_val_if_fail (META_IS_MONITOR_MANAGER_IOS (manager_ios), FALSE);
+
+  if (transform < 0 || transform > 3)
+    {
+      g_warning ("MetaMonitorManagerIOS: ignoring invalid output transform %d", transform);
+      return FALSE;
+    }
+
+  xios_output_geometry (&current_width, &current_height);
+  scale = xios_output_scale ();
+
+  if (logical_width <= 0 || logical_height <= 0)
+    {
+      /* Derive from the transform-0 PHYSICAL size. Before the first read_current() that
+       * natural size is unknown, so reject the request rather than guess. */
+      if (!manager_ios->launch_width)
+        return FALSE;
+
+      if (transform & 1)   /* 90 or 270: quarter turn, swap w/h */
+        {
+          width = manager_ios->launch_height;
+          height = manager_ios->launch_width;
+        }
+      else
+        {
+          width = manager_ios->launch_width;
+          height = manager_ios->launch_height;
+        }
+    }
+  else
+    {
+      double physical_width = (double) logical_width * (double) scale;
+      double physical_height = (double) logical_height * (double) scale;
+
+      /* The wire carries logical dimensions; the IOSurface and Mutter mode are physical. */
+      if (physical_width > G_MAXINT || physical_height > G_MAXINT)
+        {
+          g_warning ("MetaMonitorManagerIOS: requested logical size %dx%d is too large",
+                     logical_width, logical_height);
+          return FALSE;
+        }
+      width = MAX (1, (int) (physical_width + 0.5));
+      height = MAX (1, (int) (physical_height + 0.5));
+    }
+
+  if ((width != current_width || height != current_height) &&
+      !xios_surface_resize (width, height, NULL, NULL))
+    {
+      g_warning ("MetaMonitorManagerIOS: IOSurface resize to %dx%d failed", width, height);
+      return FALSE;
+    }
+
+  if (logical_width > 0 && logical_height > 0)
+    {
+      /* An explicit resize becomes the new natural-orientation base, matching iosc's
+       * output_reconfigure_px(). A later (0,0) rotation must not jump back to launch size. */
+      manager_ios->launch_width = (transform & 1) ? height : width;
+      manager_ios->launch_height = (transform & 1) ? width : height;
+    }
+
+  manager_ios->has_size_override = TRUE;
+  manager_ios->override_width = width;
+  manager_ios->override_height = height;
+  return TRUE;
 }
 
 static void

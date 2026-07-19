@@ -3,7 +3,8 @@ $(error Use the main Makefile)
 endif
 
 # xfce4-appfinder — lightweight application launcher / finder. Cheap, very useful as the
-# primary way to launch apps with the iOS keyboard. BLOCKED on the GTK3 stack.
+# primary way to launch apps with the iOS keyboard. GTK3 is available; this
+# recipe is not yet build-validated.
 SUBPROJECTS            += xfce4-appfinder
 XFCE4APPFINDER_MAJOR_V := 4.16
 XFCE4APPFINDER_VERSION := $(XFCE4APPFINDER_MAJOR_V).0

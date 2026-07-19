@@ -8,7 +8,7 @@ endif
 # DEPENDS (target): glib + libarchive (prebuilt) + gtk4 (gtk-builder; for the optional
 #   gnome-autoar-gtk widget nautilus uses).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libgnome-autoar-0-0 0.4.5+ios1.
 
 SUBPROJECTS           += gnome-autoar
 GNOME-AUTOAR_MAJOR_V  := 0.4

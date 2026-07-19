@@ -18,7 +18,7 @@ MUTTER_MAJOR_V := 46
 # release number — the cogl/clutter/mtk dylibs + plugins install to lib/mutter-14/.
 MUTTER_API_V   := 14
 MUTTER_VERSION := $(MUTTER_MAJOR_V).0
-DEB_MUTTER_V   ?= $(MUTTER_VERSION)+ios2
+DEB_MUTTER_V   ?= $(MUTTER_VERSION)+ios3
 
 # The dead X11/xcb closure to weak-link in mutter-package (see the mutter-package weaken step).
 # EVERYTHING X11/xcb that libmutter/cogl/mtk pull in — EXCEPT libxkbcommon.0, which the Wayland

@@ -9,7 +9,7 @@ endif
 # so we autoreconf first (needs autoconf/automake/gettext on the build host). If a release
 # dist tarball (with ./configure) is mirrored, drop the autoreconf line and adjust the URL.
 #
-# DRAFT — Phase 1, NOT built/verified.
+# BUILT/PUBLISHED — iso-codes 4.15.0+ios1.
 
 SUBPROJECTS        += iso-codes
 ISO-CODES_VERSION  := 4.15.0

@@ -5,7 +5,7 @@ endif
 # json-glib.mk — JSON parser/generator built on GLib types. Needed by tracker (and broadly
 # useful across GNOME). glib only; trivial. GTK-independent.
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libjson-glib-1.0-0 1.8.0+ios1.
 
 SUBPROJECTS       += json-glib
 JSON-GLIB_MAJOR_V := 1.8

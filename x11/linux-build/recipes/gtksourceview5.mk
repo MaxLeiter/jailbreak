@@ -8,7 +8,7 @@ endif
 #
 # DEPENDS (target): gtk4 (gtk-builder) + libxml2 + pcre2 (+ pango/fribidi/glib in stack).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libgtksourceview-5-0 5.12.1+ios1.
 
 SUBPROJECTS         += gtksourceview5
 GTKSOURCEVIEW5_MAJOR_V := 5.12

@@ -4,7 +4,7 @@ endif
 
 # xfce4-settings — settings manager + xfsettingsd daemon (theme/dpi/keyboard/display).
 # Uses libX11/Xi/Xrandr/Xcursor (all in Procursus). libnotify/libxklavier/upower are
-# optional and auto-disable when absent. BLOCKED on the GTK3 stack.
+# optional and auto-disable when absent. GTK3 is available; this recipe is not yet build-validated.
 SUBPROJECTS           += xfce4-settings
 XFCE4SETTINGS_MAJOR_V := 4.16
 XFCE4SETTINGS_VERSION := $(XFCE4SETTINGS_MAJOR_V).5

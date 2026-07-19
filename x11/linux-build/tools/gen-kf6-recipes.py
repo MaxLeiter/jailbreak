@@ -388,6 +388,7 @@ TABLE = [
     dict(t="kdeclarative", kind="kf", deb="kf6-declarative",
          deps=["kconfig", "kglobalaccel", "kguiaddons", "ki18n", "kwidgetsaddons"],
          qt_deps=["qt6-declarative", "qt6-shadertools"],
+         rev="ios2",
          seds=["sed -i 's/if(NOT WIN32 AND NOT APPLE AND NOT ANDROID)/if(NOT WIN32 AND NOT ANDROID)/' $(BUILD_WORK)/kdeclarative/CMakeLists.txt"],
          desc="Integration helpers for using KDE frameworks from QtQuick.",
          notes=["Plasma Workspace REQUIREs KF6::Declarative. Upstream skips the KGlobalAccel",

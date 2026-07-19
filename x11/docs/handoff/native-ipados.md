@@ -13,6 +13,7 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 ## Current state
 - HostApp prototype builds + is protocol-conformant (engine verified earlier; awaiting a visual on-device confirm).
 - The native host now replays the latest Wayland text-input TRAITS on scene activation/key-window activation and on tap, so the iPad keyboard can rise after the per-window host becomes the active UIKit scene.
+- The native host now sends two-finger touch and continuous trackpad scrolling through the shared AXIS wire protocol, including an axis-stop frame for kinetic scrolling. The Release iPhoneOS host build passed on 2026-07-18; physical gesture validation is deferred while the device is offline.
 - `xios_canvas.c` is implemented on the non-frozen side and retains enough window metadata to replay `WINDOW_NEW` + canvas ports when a host binds after a window already exists (jetsam/relaunch path).
 - `iosc_gl_bind_target()` is factored out of `iosc_gl_resize()`; the compositor build includes `xios_canvas.c` so it stays compile-checked.
 - `iosc.c` native mode now starts `iosc-native.sock`, creates/destroys per-window canvases on toplevel map/unmap, composites each toplevel into its own IOSurface, and handles host resize/activate/close requests on the Wayland event loop.
@@ -32,9 +33,10 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Dev installer: `x11/apps/iosc-desktop/install-launcher-tools.sh`. It installs
   `/var/jb/usr/local/bin/xios-icon-render`, `/var/jb/usr/local/bin/xios-launcher-sync`,
   and shared payloads/entitlements under `/var/jb/usr/libexec/xios-launchers`.
-- Package path: `x11/apps/iosc-desktop/package-launcher-tools.sh` builds
-  `xios-launcher-tools_0.1.0_iphoneos-arm64.deb` into `x11/linux-build/out/`
-  and the top-level `repo/debs/`. The package ships `ioscd`,
+- Package path: `x11/apps/iosc-desktop/package-launcher-tools.sh` reserves
+  `xios-launcher-tools_0.1.1_iphoneos-arm64.deb` for the updated native host; 0.1.0
+  remains published. The 0.1.1 payload built and staged on 2026-07-18, but final
+  `xmkdeb` assembly is pending Docker recovery. The package ships `ioscd`,
   `xios-icon-render`, `xios-launcher-sync`, `IOSCLaunch`, `IOSCHost`,
   `default.metallib`, the entitlements, and
   `/var/jb/Library/LaunchDaemons/com.max.ioscd.plist`. Postinst re-signs the

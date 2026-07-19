@@ -41,14 +41,15 @@ write_file "$mm/SignalIndicator.qml" \
   "    property bool simEmpty: true" \
   "    property bool mobileDataSupported: false" \
   "    property bool mobileDataEnabled: false" \
+  "    readonly property bool profileManagementSupported: false" \
   "    property bool needsAPNAdded: false" \
   "    property var profiles: []" \
   "    property string activeConnectionUni: \"\"" \
-  "    function refreshProfiles() {}" \
-  "    function activateProfile(connectionUni) {}" \
-  "    function addProfile(name, apn, username, password, networkType) {}" \
-  "    function removeProfile(connectionUni) {}" \
-  "    function updateProfile(connectionUni, name, apn, username, password, networkType) {}" \
+  "    function refreshProfiles() { return profiles }" \
+  "    function activateProfile(connectionUni) { return false }" \
+  "    function addProfile(name, apn, username, password, networkType) { return false }" \
+  "    function removeProfile(connectionUni) { return false }" \
+  "    function updateProfile(connectionUni, name, apn, username, password, networkType) { return false }" \
   "}"
 
 nm="$qml/org/kde/plasma/networkmanagement"
@@ -65,7 +66,10 @@ write_file "$nm/qmldir" \
 write_file "$nm/Configuration.qml" \
   "pragma Singleton" \
   "import QtQuick 2.15" \
-  "QtObject { property bool airplaneModeEnabled: false }"
+  "QtObject {" \
+  "    readonly property bool airplaneModeEnabled: false" \
+  "    readonly property bool airplaneModeControlAvailable: false" \
+  "}"
 write_file "$nm/NetworkStatus.qml" \
   "import QtQuick 2.15" \
   "import org.kde.plasma.private.mobileshell as MobileShell" \
@@ -81,14 +85,44 @@ write_file "$nm/NetworkStatus.qml" \
   "}"
 write_file "$nm/NetworkModel.qml" \
   "import QtQuick 2.15" \
-  "ListModel {}"
+  "import org.kde.plasma.private.mobileshell as MobileShell" \
+  "ListModel {" \
+  "    id: root" \
+  "    property bool reachable: false" \
+  "    property bool cellular: false" \
+  "    function refresh() {" \
+  "        reachable = MobileShell.ShellUtil.networkReachable()" \
+  "        cellular = MobileShell.ShellUtil.networkIsCellular()" \
+  "        clear()" \
+  "        if (reachable) append({" \
+  "            itemUniqueName: \"xios-default-route\"," \
+  "            connectionName: cellular ? \"Cellular\" : \"Wi-Fi\"," \
+  "            name: cellular ? \"Cellular\" : \"Wi-Fi\"," \
+  "            connectionState: \"Activated\"," \
+  "            connectionIcon: cellular ? \"network-mobile-100\" : \"network-wireless-signal-excellent\"," \
+  "            signal: 100," \
+  "            deviceName: \"iPad\"," \
+  "            uuid: \"xios-default-route\"" \
+  "        })" \
+  "    }" \
+  "    Component.onCompleted: refresh()" \
+  "    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "}"
 write_file "$nm/Handler.qml" \
   "import QtQuick 2.15" \
   "QtObject {" \
-  "    function enableAirplaneMode(enabled) {}" \
-  "    function enableWireless(enabled) {}" \
-  "    function createHotspot() {}" \
-  "    function stopHotspot() {}" \
+  "    readonly property bool airplaneModeControlAvailable: false" \
+  "    readonly property bool wirelessControlAvailable: false" \
+  "    readonly property bool hotspotControlAvailable: false" \
+  "    signal operationRejected(string operation, string reason)" \
+  "    function reject(operation) {" \
+  "        operationRejected(operation, \"iOS owns this radio policy\")" \
+  "        return false" \
+  "    }" \
+  "    function enableAirplaneMode(enabled) { return reject(\"airplane-mode\") }" \
+  "    function enableWireless(enabled) { return reject(\"wireless\") }" \
+  "    function createHotspot() { return reject(\"hotspot-create\") }" \
+  "    function stopHotspot() { return reject(\"hotspot-stop\") }" \
   "}"
 write_file "$nm/WirelessStatus.qml" \
   "import QtQuick 2.15" \
@@ -112,7 +146,15 @@ write_file "$nm/ConnectionIcon.qml" \
   "}"
 write_file "$nm/EnabledConnections.qml" \
   "import QtQuick 2.15" \
-  "QtObject { property bool wirelessEnabled: true }"
+  "import org.kde.plasma.private.mobileshell as MobileShell" \
+  "QtObject {" \
+  "    id: root" \
+  "    property bool wirelessEnabled: false" \
+  "    readonly property bool wirelessControlAvailable: false" \
+  "    function refresh() { wirelessEnabled = MobileShell.ShellUtil.networkReachable() && !MobileShell.ShellUtil.networkIsCellular() }" \
+  "    Component.onCompleted: refresh()" \
+  "    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
+  "}"
 
 brightness="$qml/org/kde/plasma/private/brightnesscontrolplugin"
 mkdir -p "$brightness"
@@ -396,14 +438,15 @@ QtObject {
     property bool simEmpty: true
     property bool mobileDataSupported: false
     property bool mobileDataEnabled: false
+    readonly property bool profileManagementSupported: false
     property bool needsAPNAdded: false
     property var profiles: []
     property string activeConnectionUni: ""
-    function refreshProfiles() {}
-    function activateProfile(connectionUni) {}
-    function addProfile(name, apn, username, password, networkType) {}
-    function removeProfile(connectionUni) {}
-    function updateProfile(connectionUni, name, apn, username, password, networkType) {}
+    function refreshProfiles() { return profiles }
+    function activateProfile(connectionUni) { return false }
+    function addProfile(name, apn, username, password, networkType) { return false }
+    function removeProfile(connectionUni) { return false }
+    function updateProfile(connectionUni, name, apn, username, password, networkType) { return false }
 }
 QML
 
@@ -644,7 +687,10 @@ Item {
     readonly property real fullHeight: column.implicitHeight
     property real minimizedViewProgress: 0
     property real fullViewProgress: 1
-    function resetSwipeView() {}
+    function resetSwipeView() {
+        minimizedViewProgress = 0
+        fullViewProgress = 1
+    }
     ColumnLayout {
         id: column
         anchors.left: parent.left
@@ -1352,53 +1398,9 @@ if [ -d "$lockscreen" ]; then
   restore_upstream_file "$lockscreen/PasswordBar.qml"
 fi
 
-# KRunnerScreen search audit (2026-07-08): this Item is NOT a crash workaround
-# (it predates the QQuickFlickablePrivate SIGBUS fix in
-# qtdeclarative-ios-fixes.sh by several commits — git blame puts it in the
-# very first rootless/rootful groundwork commit) and it does NOT follow the
-# restore_upstream_file pattern used elsewhere in this script, because there
-# is no upstream file to restore: org.kde.milou is not part of plasma-mobile
-# at all. Upstream, it is its own KDE Plasma release tarball ("milou", same
-# release train/version as plasma-mobile) shipping a C++ QML plugin
-# (ResultsModel wrapping KRunner::RunnerManager, backed by kf6-runner) plus
-# this ResultsListView.qml as its QML frontend. This project never builds
-# that package, so KRunnerScreen/KRunnerWidget (which `import org.kde.milou
-# as Milou` and bind a real result model) get this inert fallback instead.
-#
-# Kicker's search (applets/kicker/plugin, in plasma-workspace) is NOT a
-# substitute: it is its own self-contained C++ QML plugin
-# (org.kde.plasma.private.kicker, libkickerplugin.dylib) that links
-# KF6::Runner directly and is not exposed as a public/reusable QML type
-# outside that private import.
-#
-# Real fix: add a new recipes/milou.mk (+ milou-ios-fixes.sh) that downloads
-# the milou tarball via the same PLASMA_URL macro plasma-mobile.mk uses,
-# builds it against the already-built kf6-runner, and wires it into whatever
-# drives the plasma-mobile build wave (this project's TABLE in
-# tools/gen-kf6-recipes.py does not cover plasma-mobile/krunner/milou-tier
-# packages, so this is a new top-level package + build-order entry, not a
-# TABLE edit). Out of scope here: plasma-mobile-ios-qml-stubs.sh is not
-# allowed to author new sibling packages, so this stub stays in place as a
-# safe no-op until milou is built.
-milou="$qml/org/kde/milou"
-mkdir -p "$milou"
-write_file "$milou/qmldir" \
-  "module org.kde.milou" \
-  "ResultsListView 1.0 ResultsListView.qml"
-write_file "$milou/ResultsListView.qml" \
-  "import QtQuick 2.15" \
-  "Item {" \
-  "    property string queryString: \"\"" \
-  "    property var model: null" \
-  "    property Component delegate: null" \
-  "    property Component highlight: null" \
-  "    property real contentHeight: 0" \
-  "    property int currentIndex: -1" \
-  "    signal activated()" \
-  "    signal updateQueryString(string text, int cursorPosition)" \
-  "    function runCurrentIndex() {}" \
-  "    function runAction(index) {}" \
-  "}"
+# org.kde.milou is shipped by the real milou package. Do not install a
+# package-local fallback in that namespace: the upstream ResultsModel is what
+# makes Plasma Mobile search query and activate KRunner results.
 
 # org.kde.kirigamiaddons.* is provided by the real kf6-kirigami-addons package.
 # Keep Plasma Mobile from owning fallback files in that namespace so dpkg can

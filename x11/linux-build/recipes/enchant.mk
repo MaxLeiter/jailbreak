@@ -7,7 +7,7 @@ endif
 # backend (hunspell/aspell/nuspell) — spell-checking is then a no-op, which is acceptable for
 # first-light; add a backend later. glib only otherwise.
 #
-# DRAFT — Phase 1, NOT built/verified.
+# BUILT/PUBLISHED — libenchant-2-2 2.6.1+ios1.
 
 SUBPROJECTS     += enchant
 ENCHANT_VERSION := 2.6.1

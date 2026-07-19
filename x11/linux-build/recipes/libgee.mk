@@ -10,7 +10,7 @@ endif
 #
 # BUILD-HOST TOOL: valac (Ubuntu/Debian `valac` apt package) — add to the Dockerfile, like sassc.
 #
-# DRAFT — Phase 1, NOT built/verified. Autotools + Vala (like recipes/enchant.mk's configure).
+# BUILT/PUBLISHED — libgee-0.8-2 0.20.8+ios1; the cross-Vala path is proven.
 
 SUBPROJECTS    += libgee
 LIBGEE_MAJOR_V := 0.20

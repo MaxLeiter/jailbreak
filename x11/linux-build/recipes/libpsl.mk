@@ -6,7 +6,7 @@ endif
 # Built with the BUILTIN list and no IDNA runtime to avoid pulling libidn2 + libunistring.
 # Pure C. GTK-independent.
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — libpsl5 0.21.5+ios1.
 
 SUBPROJECTS    += libpsl
 LIBPSL_VERSION := 0.21.5

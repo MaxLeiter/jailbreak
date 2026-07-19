@@ -6,9 +6,9 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
 ## Key files
 - `x11/wayland/meta-input-ios.c` — the input pump (kqueue drain of the app's input socket → ClutterVirtualInputDevice → notify_absolute_motion/notify_button/etc).
 - MetaBackendIOS backend pieces (winsys/monitor-mgr/IOSurface-buffer/login1-stub) — compile against Mutter 46 ABI off-device; build check `build-backend-check.sh`. Backend selected by `gnome-shell --wayland` (compositor-TYPE branch → create_ios_backend, no argv check).
-- `x11/linux-build/out/libmutter-14-0_46.0_*.deb` = **build10** (all fixes below). `mutter` thin exe is separate; the fixes are in libmutter.
+- `x11/linux-build/out/libmutter-14-0_46.0+ios*.deb`; `+ios3` is the next immutable build for the output-resize/input work below. `mutter` thin exe is separate; the fixes are in libmutter.
 - Run: `x11/wayland/run-mutter.sh` (smoke); GNOME boots through the packaged `launch-gnome-session.sh` via `xios-session gnome`.
-- Output IOSurface is HARDCODED 2160×1620 (`xios_surface_create(2160,1620)`); input ratio-map divides by `xios_output_geometry()` = same 2160×1620.
+- Output IOSurface defaults to 2160×1620, honors session-picker `IOSC_LOGICAL=WxH` at startup, and is replaced on `XIOS_IN_OUTPUT` rotation/resize. Input always ratio-maps through live `xios_output_geometry()`.
 
 ## build10 fixes (all landed)
 - Route-A MetaRendererIOS (IOSurface FBO 0 via ANGLE, not pbuffer).
@@ -23,6 +23,7 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
 - **Dispatch machinery VERIFIED SOUND**: `_clutter_event_push` → `clutter_stage_pick_and_update_device` repicks the actor at the event coords + updates pointer focus → dispatches to the Wayland client, PROVIDED the window actor is mapped and coords are in-bounds.
 - **Mutter-side click dispatch fix identified and patched**: the first xdg-shell buffer commit must call `meta_window_update_visibility(window)` before setting `first_buffer_attached`, or the window actor remains unmapped and unpickable.
 - App-side coord offset was also real and is fixed in xios-app (a7da822 + follow-up geometry sync). Keep using `/var/jb/tmp/xios.json` as the authority for fb size.
+- **2026-07-18 host closure:** touch/tablet/output input cases compile-checked against Mutter 46 before Docker failed. The output handler now calls `xios_surface_resize()` before monitor reload, so the rebuilt renderer view binds the replacement IOSurface instead of only changing logical monitor metadata. Initial `IOSC_LOGICAL` sizing and the canonical glue-contract check were added afterward; rebuild/package as `libmutter 46.0+ios3` once Docker recovers, then run the rotation smoke on-device.
 
 ## 2026-07-01 follow-up
 - Codex installed the staged `/var/jb/tmp/libmutter-b10.deb` on device; `/var/jb/usr/lib/libmutter-14.dylib` now contains the expected `MetaInputIOS: motion out(...) -> stage(...)` mapping diagnostic.
@@ -31,7 +32,7 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
   `motion out(1080,810)/2160x1620 -> stage(1080.0,810.0) in 2160x1620`.
   This proves the app-bypass socket path and Mutter ratio mapping are correct/identity for the center click.
 - A quick `kgx` keyboard marker and `iosc-dnd-test --no-drag` pointer probe did not produce a positive client-dispatch marker before the session switched back to iosc; don't over-interpret that as a regression. The strong verified result is coordinate mapping + transport. If client dispatch still matters, restart Mutter with a purpose-built pointer logger and inspect pick/focus after `_clutter_event_push`.
-- Device is currently back on iosc (`/var/jb/usr/local/bin/iosc -logical 1440x1080`, panel/bg running, Xios adopted `2880x2160`), not standalone Mutter.
+- At the end of that historical 2026-07-01 pass the device was switched back to iosc; do not treat that sentence as current device state.
 
 ## 2026-07-01 evening validation
 - Rebuilt and installed a libmutter package with `meta_window_update_visibility()` triggered on the first xdg-shell buffer commit (`linux-build/patches/mutter/meta-wayland-xdg-first-buffer-showing.patch`).
@@ -104,9 +105,9 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
      s.send(struct.pack('<IiiIII',2,0,0,0,1,0)); time.sleep(.05); s.send(struct.pack('<IiiIII',2,0,0,0,0,0))"
    ```
    `iosc-input-test` now auto-detects `/var/jb/tmp/mutter-input.sock` (Mutter), then the legacy `/var/jb/tmp/xios-input.sock`, before `/var/jb/tmp/iosc-input.sock` (iosc), and also accepts `--mutter`, `--iosc`, or `--socket PATH` for explicit routing.
-   Then read `/var/jb/tmp/mutter.log` for `MetaInputIOS: motion out(X,Y)/WxH -> stage(x,y) in WxH`. EXPECT W×H = 2160×1620 and stage == out (identity, since mutter's fb == screen). For the purpose-built probe, expect `/var/jb/tmp/mutter-pointer-hit` plus `ENTER/MOTION/BUTTON` in `/var/jb/tmp/mutter-pointer-test.log`.
+   Then read `/var/jb/tmp/mutter.log` for `MetaInputIOS: motion out(X,Y)/WxH -> stage(x,y) in WxH`. Expect W×H to equal the live `xios.json` geometry and stage == out in the default physical-layout mode. For the purpose-built probe, expect `/var/jb/tmp/mutter-pointer-hit` plus `ENTER/MOTION/BUTTON` in `/var/jb/tmp/mutter-pointer-test.log`.
    NOTE the input socket path should be `mutter-input.sock` (mutter), not `iosc-input.sock` (iosc). If an old local build is still installed it may advertise the legacy `xios-input.sock`; use the tester's printed `connected to ...` line to confirm it.
-2. **App-coord fix keys off xios.json per-compositor size** (guardrail): mutter advertises 2160×1620 → app fit scale = 1.0 (identity), so coords line straight through. The xios-app fix must use xios.json's advertised fb, never a constant (it does). Confirmed aligned with xios-app + team-lead.
+2. **App-coord fix keys off xios.json per-compositor size** (guardrail): the app must use the advertised live framebuffer, never the 2160×1620 fallback constant. Confirmed aligned with xios-app; revalidate after the new Mutter rotation path is packaged.
 3. Xwayland rootful works as a manual smoke. Next packaging pass should reinstall the rebuilt `libxshmfence1` deb wherever the old broken one was published, and `run-xwayland.sh` now omits the invalid `-rootful` flag.
 4. Session coexistence is partially handled by active ownership now: distinct sockets plus `/var/jb/tmp/xios-active-session` prevent direct classic iosc from stealing the app view while Mutter owns the session. Longer term, `/var/jb/tmp/xios.json` should become an explicit active-display selection/registry so multiple compositors can be alive and switchable instead of last-writer-wins.
 

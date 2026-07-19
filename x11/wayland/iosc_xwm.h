@@ -168,10 +168,10 @@ extern int  iosc_xwm_adopt_surface(struct wl_resource *surface_res,
 extern void iosc_xwm_unadopt_surface(struct wl_resource *surface_res);
 
 /* ConfigureRequest / geometry change from the X client. iosc.c should update the
- * adopted surface's size/position (logical px). For MVP iosc.c may honor only
- * position for override_redirect popups and ignore size (Xwayland is authoritative
- * over the buffer size); a fuller resize path is TODO(polish). No-op if not
- * adopted. */
+ * adopted surface's position (logical px) for override-redirect popups. Xwayland
+ * applies width/height to the X window and commits the resulting buffer, whose real
+ * size iosc consumes directly; no duplicate compositor-side resize is needed. No-op
+ * if not adopted. */
 extern void iosc_xwm_configure_surface(struct wl_resource *surface_res,
                                        int x, int y, int width, int height);
 

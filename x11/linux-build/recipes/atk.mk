@@ -12,7 +12,7 @@ DEB_LIBATK_V ?= $(ATK_VERSION)+ios1
 # (with atk_document_get_text_selections — the symbol the 2.52 atk-bridge needs) and PACKs
 # libatk1.0-0/libatk1.0-dev at DEB_ATSPI2_V. Shipping the standalone 2.38 here caused the
 # atk/atk-bridge ABI skew (2.38 lib vs 2.52 bridge -> dyld abort). This recipe now builds atk
-# only as a transitional build-dep; its -package target below is a no-op (see PACK guard).
+# only as a transitional build-dep (no -package target); at-spi2-core.mk owns the debs.
 
 atk-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/atk/$(ATK_MAJOR_V)/atk-$(ATK_VERSION).tar.xz)
@@ -48,11 +48,4 @@ atk: atk-setup glib2.0
 	$(call AFTER_BUILD,copy)
 endif
 
-atk-package: atk-stage
-	# DISABLED: libatk1.0-0/libatk1.0-dev now ship from at-spi2-core.mk at 2.52 (ABI-consistent
-	# with the 2.52 atk-bridge). Emitting the standalone 2.38 debs here reintroduced the atk skew
-	# (missing atk_document_get_text_selections -> atk-bridge dyld abort). Kept as a no-op so the
-	# target still resolves; re-enabling requires reverting the at-spi2-core.mk carve-out.
-	@echo "atk-package: no-op — libatk1.0-0/libatk1.0-dev are produced by at-spi2-core.mk (2.52)."
-
-.PHONY: atk atk-package
+.PHONY: atk

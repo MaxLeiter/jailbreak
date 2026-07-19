@@ -1,16 +1,16 @@
 /*
- * xios-glue-stub.h — LOCAL declarations of the planned libxios_glue API (the shared
+ * xios-glue-stub.h — LOCAL compile contract for the libxios_glue API (the shared
  * iOS/GPU glue both iosc and MetaBackendIOS link; see docs/iosc-shared-glue.md).
  *
  * The MetaBackendIOS pieces (monitor manager, input, the Wayland IOSurface buffer type)
  * are developed and compile-checked OFF-DEVICE against the mutter source tree before they
- * go into src/backends/ios/. To let each piece compile independently of the (still-being-
- * factored) real libxios_glue, they target THIS header — the exact API surface the shared
- * lib will export. In the real backend these symbols come from libxios_glue; here the
+ * go into src/backends/ios/. To let each piece compile independently of canonical headers
+ * staged beside the static library, they target THIS header — the API surface the shared
+ * library exports. In the real backend these symbols come from libxios_glue; here the
  * compile check needs only the declarations (each piece is built with -c, so the externs
  * resolve at link time against the lib). No iosc.c is touched by any of this.
  *
- * Keep this in lock-step with iosc-shared-glue.md's API table. Grows as the backend does.
+ * build-backend-check.sh compares this contract with the canonical input/EGL/surface headers.
  */
 #ifndef XIOS_GLUE_STUB_H
 #define XIOS_GLUE_STUB_H
@@ -156,6 +156,7 @@ EGLSurface xios_egl_create_iosurface_pbuffer (void *iosurface, int w, int h);
  * imports it in create_view — exactly what iosc.c main() does. Real impl in xios_surface.c;
  * signatures match linux-build/patches/xios/xios_surface.h. */
 void *xios_surface_create (int width, int height, int *stride, int *alloc_size);
+void *xios_surface_resize (int width, int height, int *stride, int *alloc_size);
 int   xios_server_start (const char *sock_path, const char *json_path,
                          int width, int height, int stride);
 void  xios_server_stop (void);

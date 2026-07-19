@@ -16,6 +16,7 @@
 
 #include "backends/ios/meta-virtual-input-device-ios.h"
 
+#include "backends/ios/meta-seat-ios.h"
 #include "clutter/clutter.h"
 #include "clutter/clutter-mutter.h"
 
@@ -34,6 +35,13 @@ struct _MetaVirtualInputDeviceIOS
    * stale spot (where the pointer was on the previous tap). Track the position we ourselves
    * commanded and place buttons/scroll there, matching the app's synchronous send model. */
   graphene_point_t last_coords;
+
+  /* Per-slot last-known touch position. clutter_virtual_input_device_notify_touch_up()
+   * (and our own notify_touch_cancel, below) do not carry x/y — but CLUTTER_TOUCH_END still
+   * needs coords in its ClutterEvent — so remember where each slot's last down/motion put it.
+   * Sized to CLUTTER_VIRTUAL_INPUT_DEVICE_MAX_TOUCH_SLOTS, the same range the base class
+   * asserts `slot` against. */
+  graphene_point_t touch_coords[CLUTTER_VIRTUAL_INPUT_DEVICE_MAX_TOUCH_SLOTS];
 };
 
 G_DEFINE_TYPE (MetaVirtualInputDeviceIOS, meta_virtual_input_device_ios,
@@ -66,6 +74,18 @@ get_core_device (ClutterVirtualInputDevice *virtual_device,
     return clutter_seat_get_keyboard (seat);
   else
     return clutter_seat_get_pointer (seat);
+}
+
+/* The seat's synthetic touchscreen core device (meta-seat-ios.c), used as the source device
+ * for touch ClutterEvents so meta-wayland-seat.c's capability lookup (which requires a
+ * PHYSICAL-mode device carrying CLUTTER_INPUT_CAPABILITY_TOUCH) advertises wl_touch to
+ * clients — the core pointer used for mouse events lacks that capability bit. */
+static ClutterInputDevice *
+get_touch_device (ClutterVirtualInputDevice *virtual_device)
+{
+  ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
+
+  return meta_seat_ios_get_touch (META_SEAT_IOS (seat));
 }
 
 static ClutterModifierType
@@ -256,6 +276,104 @@ meta_virtual_input_device_ios_notify_scroll_continuous (ClutterVirtualInputDevic
   push_synthetic_event (event);
 }
 
+/* touch-down/motion/up mirror mutter's own reference (meta-seat-impl.c's
+ * meta_seat_impl_notify_touch_event_in_impl): sequence = GINT_TO_POINTER(slot + 1) (a "NULL"
+ * sequence is special-cased inside Clutter, so slots are offset by one), and CLUTTER_BUTTON1_
+ * MASK is latched into modifiers for BEGIN/UPDATE only, matching how a touch implicitly holds
+ * "button 1" down for gesture/grab purposes. */
+
+static void
+meta_virtual_input_device_ios_notify_touch_down (ClutterVirtualInputDevice *virtual_device,
+                                                 uint64_t                   time_us,
+                                                 int                        slot,
+                                                 double                     x,
+                                                 double                     y)
+{
+  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
+  ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
+  ClutterInputDevice *touch = get_touch_device (virtual_device);
+  ClutterEventSequence *sequence = GINT_TO_POINTER (slot + 1);
+  graphene_point_t coords = GRAPHENE_POINT_INIT ((float) x, (float) y);
+  ClutterModifierType modifiers = 0;
+  ClutterEvent *event;
+
+  clutter_seat_query_state (seat, touch, NULL, NULL, &modifiers);
+  self->touch_coords[slot] = coords;
+
+  event = clutter_event_touch_new (CLUTTER_TOUCH_BEGIN, CLUTTER_EVENT_NONE,
+                                   resolve_time (time_us), touch, sequence,
+                                   modifiers | CLUTTER_BUTTON1_MASK, coords);
+  push_synthetic_event (event);
+}
+
+static void
+meta_virtual_input_device_ios_notify_touch_motion (ClutterVirtualInputDevice *virtual_device,
+                                                   uint64_t                   time_us,
+                                                   int                        slot,
+                                                   double                     x,
+                                                   double                     y)
+{
+  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
+  ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
+  ClutterInputDevice *touch = get_touch_device (virtual_device);
+  ClutterEventSequence *sequence = GINT_TO_POINTER (slot + 1);
+  graphene_point_t coords = GRAPHENE_POINT_INIT ((float) x, (float) y);
+  ClutterModifierType modifiers = 0;
+  ClutterEvent *event;
+
+  clutter_seat_query_state (seat, touch, NULL, NULL, &modifiers);
+  self->touch_coords[slot] = coords;
+
+  event = clutter_event_touch_new (CLUTTER_TOUCH_UPDATE, CLUTTER_EVENT_NONE,
+                                   resolve_time (time_us), touch, sequence,
+                                   modifiers | CLUTTER_BUTTON1_MASK, coords);
+  push_synthetic_event (event);
+}
+
+static void
+meta_virtual_input_device_ios_notify_touch_up (ClutterVirtualInputDevice *virtual_device,
+                                               uint64_t                   time_us,
+                                               int                        slot)
+{
+  MetaVirtualInputDeviceIOS *self = META_VIRTUAL_INPUT_DEVICE_IOS (virtual_device);
+  ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
+  ClutterInputDevice *touch = get_touch_device (virtual_device);
+  ClutterEventSequence *sequence = GINT_TO_POINTER (slot + 1);
+  graphene_point_t coords = self->touch_coords[slot];   /* notify_touch_up carries no x/y */
+  ClutterModifierType modifiers = 0;
+  ClutterEvent *event;
+
+  clutter_seat_query_state (seat, touch, NULL, NULL, &modifiers);
+
+  event = clutter_event_touch_new (CLUTTER_TOUCH_END, CLUTTER_EVENT_NONE,
+                                   resolve_time (time_us), touch, sequence,
+                                   modifiers, coords);
+  push_synthetic_event (event);
+}
+
+/* Not a ClutterVirtualInputDeviceClass vfunc — the base class exposes touch_down/motion/up
+ * but no notify_touch_cancel (clutter_event_touch_cancel_new() exists, but only mutter's own
+ * seat-impl code builds it directly; see meta-seat-impl.c). XIOS_IN_TOUCH's cancel phase
+ * (state=3, e.g. the OS yanking the gesture for a system swipe) needs somewhere to go, so this
+ * is a bespoke public entry point on top of the same event-push path, called directly from
+ * meta-input-ios.c instead of through clutter_virtual_input_device_notify_*(). */
+void
+meta_virtual_input_device_ios_notify_touch_cancel (ClutterVirtualInputDevice *virtual_device,
+                                                   uint64_t                   time_us,
+                                                   int                        slot)
+{
+  ClutterInputDevice *touch = get_touch_device (virtual_device);
+  ClutterEventSequence *sequence = GINT_TO_POINTER (slot + 1);
+  ClutterEvent *event;
+
+  g_return_if_fail (CLUTTER_IS_VIRTUAL_INPUT_DEVICE (virtual_device));
+  g_return_if_fail (slot >= 0 && slot < CLUTTER_VIRTUAL_INPUT_DEVICE_MAX_TOUCH_SLOTS);
+
+  event = clutter_event_touch_cancel_new (CLUTTER_EVENT_NONE, resolve_time (time_us),
+                                          touch, sequence);
+  push_synthetic_event (event);
+}
+
 static void
 meta_virtual_input_device_ios_init (MetaVirtualInputDeviceIOS *self)
 {
@@ -279,6 +397,12 @@ meta_virtual_input_device_ios_class_init (MetaVirtualInputDeviceIOSClass *klass)
     meta_virtual_input_device_ios_notify_keyval;
   virtual_input_device_class->notify_scroll_continuous =
     meta_virtual_input_device_ios_notify_scroll_continuous;
-  /* touch notify_* are left unset: the Xios input pump maps multitouch to pointer
-   * motion/buttons/scroll, not to per-slot ClutterVirtualInputDevice touch. */
+  virtual_input_device_class->notify_touch_down =
+    meta_virtual_input_device_ios_notify_touch_down;
+  virtual_input_device_class->notify_touch_motion =
+    meta_virtual_input_device_ios_notify_touch_motion;
+  virtual_input_device_class->notify_touch_up =
+    meta_virtual_input_device_ios_notify_touch_up;
+  /* notify_touch_cancel has no base-class vfunc slot; see the bespoke
+   * meta_virtual_input_device_ios_notify_touch_cancel() above, called directly. */
 }

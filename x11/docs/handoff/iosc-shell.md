@@ -37,13 +37,20 @@ Four surfaces, each one job:
 Plus a window model (fullscreen→split→float, Stage-Manager style) and a gesture grammar (swipe up=home, down=control) with pointer/keyboard equivalents (touch-first, never touch-only).
 
 ## Open items
-1. **On-device validate the full 0.9.9 shell interactions**: deploy/install `ioscbar`, `ioscdock`, `ioscoverview`, `ioscbg`; start via `run-shell.sh`; confirm:
+1. **Finish and validate the full 0.9.11 shell interactions**: the four binaries
+   cross-built and host-signed before the final internal-version stamp correction;
+   the final rebuild stalled behind the shared Docker state and must be rerun. Once
+   rebuilt and the device is available, deploy/install `ioscbar`, `ioscdock`, `ioscoverview`, `ioscbg`;
+   start via `run-shell.sh`; confirm:
    - `ioscbar` maps at top, opens Control Center from the status cluster.
    - `ioscdock` maps at bottom, apps button opens overview.
    - running-window icons activate via foreign-toplevel.
    - focused-app window menu opens from the app name and its minimize/maximize/close actions hit the right window.
    - launchers still fire (`sd_launch`: fork -> shared `iosc-shell-bus` -> sh -lc <Exec>).
-2. **Package/deploy 0.9.9** after full shell interaction smoke: `package-shell.sh` assembles `iosc-shell_0.9.9_iphoneos-arm64.deb`, and that deb was installed during the a11y shared-bus pass. Dock/panel tap behavior still needs a focused launcher-action smoke.
+2. **Package/deploy 0.9.11** after Docker and the device recover. The currently
+   published package remains 0.9.10; the version bump reserves a new immutable
+   filename for the corrected internal build stamp. Dock/panel tap behavior still
+   needs a focused launcher-action smoke.
 3. **Launcher-action verify**: taps resolve (`hit_at`→launcher idx) but confirm the launch actually fires with a real app/window. If it resolves but doesn't launch, chase the exec env / launched app stderr.
 4. Server-side decorations (SSD) path for GTK CSD windows (was noted as the decor path; lead-sequenced).
 

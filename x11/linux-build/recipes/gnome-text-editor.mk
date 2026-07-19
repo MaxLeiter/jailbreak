@@ -10,7 +10,7 @@ endif
 #   with no dict backend — spell is then a no-op, fine for first-light).
 # BUILD-HOST TOOLS: desktop-file-utils + appstream (glib-compile-resources is in glib2.0-bin).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — gnome-text-editor 46.3+ios1.
 
 SUBPROJECTS               += gnome-text-editor
 GNOME-TEXT-EDITOR_MAJOR_V := 46

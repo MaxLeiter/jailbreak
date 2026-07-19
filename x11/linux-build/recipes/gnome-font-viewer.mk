@@ -16,7 +16,7 @@ endif
 # DEPENDS (target): gtk4 (gtk-builder) + libadwaita + gnome-desktop (+ harfbuzz/fontconfig/
 #   freetype/fribidi/glib, all prebuilt).
 #
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# BUILT/PUBLISHED — gnome-font-viewer 46.0+ios1.
 
 SUBPROJECTS                += gnome-font-viewer
 GNOME-FONT-VIEWER_MAJOR_V  := 46
