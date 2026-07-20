@@ -9,6 +9,8 @@
 # Inputs (built by build-iosc.sh; sign happens here, not in build-iosc.sh):
 #   x11/wayland/out/iosc          the compositor (signed with the GPU set below)
 #   x11/wayland/out/iosc-client   wl_shm self-test client (ad-hoc signed)
+#   x11/wayland/out/iosc-input-test diagnostic input injector (ad-hoc signed)
+#   x11/wayland/out/ios-inputd    external-compositor input bridge (ad-hoc signed)
 #   x11/wayland/{run-iosc.sh,run-kgx.sh,iosc-gl-ent.xml}
 # Output: iosc_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
 set -euo pipefail
@@ -22,7 +24,7 @@ OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.18"
+VER="0.9.20"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -47,6 +49,14 @@ xsign "$BIN/iosc" "$WAYLAND/iosc-gl-ent.xml" \
 cp "$WAYLAND/out/iosc-client" "$BIN/iosc-client"
 chmod 0755 "$BIN/iosc-client"
 xsign "$BIN/iosc-client"
+
+# 2b. Input diagnostics and the compatibility bridge for compositors that consume
+#     virtual-keyboard/input-method protocols instead of linking libxios_glue.
+for helper in iosc-input-test ios-inputd; do
+  cp "$WAYLAND/out/$helper" "$BIN/$helper"
+  chmod 0755 "$BIN/$helper"
+  xsign "$BIN/$helper"
+done
 
 # 3. orchestration scripts (run on-device as root; reference $BIN/iosc by abs path)
 cp "$WAYLAND/run-iosc.sh" "$BIN/run-iosc.sh"
@@ -106,6 +116,10 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  Since 0.9 it also provides the shell-side protocols (wlr layer-shell,
  foreign-toplevel management and screencopy) that the iosc-shell desktop
  package builds on.
+ .
+ The package also ships iosc-input-test for direct input-path diagnostics and
+ ios-inputd for external Wayland compositors that use standard virtual-keyboard
+ and input-method protocols instead of the in-process Xios input backend.
  .
  Needs the Xios app installed (the on-screen display front end) and at least one
  Wayland client to be useful. Install the gnome-console package and run run-kgx.sh

@@ -28,5 +28,8 @@ int iosc_input_lookup(uint32_t keysym, uint32_t *evdev_keycode, int *needs_shift
 uint32_t iosc_input_mod_shift(void);
 uint32_t iosc_input_mod_ctrl(void);
 uint32_t iosc_input_mod_alt(void);
+uint32_t iosc_input_mod_super(void);
+uint32_t iosc_input_mod_caps(void);
+uint32_t iosc_input_mod_num(void);
 
 #endif /* IOSC_INPUT_H */

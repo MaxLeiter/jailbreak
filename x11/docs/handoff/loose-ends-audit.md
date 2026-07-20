@@ -8,6 +8,14 @@ API whose kernel or service does not exist here.
 
 ## Closed in this sweep
 
+- Full physical desktop input is host-complete as of 2026-07-19. Classic Xios and the native host
+  share a raw HID keyboard bridge with true press/release, chords, repeat, Super/Caps/Num, and a
+  broad desktop keymap; both handle hover, five-button mice, button chords, discrete wheels, and
+  continuous two-axis trackpads. iosc and Mutter consume stateful key/modifier records; iosc also
+  implements pointer lock/confinement and arbitrary client cursor surfaces. `iosc 0.9.20` ships
+  the repaired `ios-inputd` and `iosc-input-test` shims. Host tests/builds are green; physical proof
+  is deliberately left below because the device is offline.
+
 - `iosc 0.9.18` builds and signs from a clean host invocation. Its four KDE output-management
   XML families generate, the package is present in `linux-build/out` and `repo/debs`, and the
   generated repo indexes 0.9.18.
@@ -53,6 +61,13 @@ API whose kernel or service does not exist here.
 
 ## Verification completed
 
+- 2026-07-19 full-input closure: the classic Xios and native-host Release-iphoneos builds passed;
+  the pure HID keymap test passed; `iosc 0.9.20` cross-built and packaged with `ios-inputd` plus
+  `iosc-input-test`; Mutter completed a clean `46.0+ios4` rebuild; and
+  `xios-launcher-tools 0.1.2` was rebuilt from the signed native-host payload.
+- Final staging deployment `dpl_AuXy7y4z8AnHKhseUobK5SyPT5FA` is READY. Independently fetched
+  live `Packages`/`InRelease` expose `iosc 0.9.20`, `libmutter-14-0 46.0+ios4`, and
+  `xios-launcher-tools 0.1.2` with the locally audited sizes and SHA256 values.
 - `bash wayland/build-iosc.sh`: arm64 compositor and clients generated, linked, and signed.
 - `apps/iosc-host/build-host.sh`, `apps/iosc-desktop/build-stub.sh`, and the pre-stamp-adjustment
   `apps/iosc-shell/build-panel.sh`: host builds passed.
@@ -80,12 +95,12 @@ These versions intentionally do not reuse published filenames:
 
 | Package | Version | State |
 | --- | --- | --- |
-| `iosc` | 0.9.18 | Built, audited, and live in staging |
-| `xios-launcher-tools` | 0.1.1 | Built, audited, and live in staging |
+| `iosc` | 0.9.20 | Built, audited, and live in staging; corrected immutable input candidate (`0.9.19` is superseded) |
+| `xios-launcher-tools` | 0.1.2 | Rebuilt with native-host hardware keyboard/mouse parity and live in staging |
 | `xios-session` | 1.0.55 | Built, audited, and live in staging |
 | `iosc-shell` | 0.9.11 | Built, audited, and live in staging |
 | `xios-a11y-tools` | 0.2.15 | Cross-built, audited, and live in staging |
-| `libmutter-14-0/-dev` | 46.0+ios3 | Clean-built, audited, and live in staging; device smoke pending |
+| `libmutter-14-0/-dev` | 46.0+ios4 | Clean-built and live in staging with stateful hardware-key input; device smoke pending |
 | `xios-kde` | 0.1.9 | Built with the final iosc/session/KWin/Workspace/Mobile/KScreen floors and live in staging |
 | `ladybird-app` | 0.1.23+ios1 | iOS event-loop TODO/ID-wrap cleanup landed; full engine/app rebuild, host re-sign, and device smoke pending |
 | `libgtop-2.0-11` | 2.41.3+ios2 | Built; real Darwin process backend; device smoke pending |
@@ -150,6 +165,10 @@ evidence alone:
 9. Launch `kwin +ios5` first in an isolated KDE slot; verify OpenGL compositor selection,
    QtQuick internal windows, client IOSurface import, blur/transparency, rotation, and input
    alignment before making it the shared-session or published baseline.
+10. Run the full physical input matrix from `xios-app.md` in direct iosc, nested KDE,
+    Mutter/GNOME, and the native host. Include held/repeated keys, desktop shortcuts, Caps/Num,
+    five-button mouse chords, discrete wheel, continuous trackpad scroll/stop, click-drag,
+    pointer lock/confinement, and named/custom cursor hotspot behavior.
 
 Production publication is intentionally not part of this offline sweep. Staging is regenerated,
 audited, signed, published, and independently fetched; device proof remains the gate before any

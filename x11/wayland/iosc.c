@@ -329,6 +329,9 @@ static struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
 static struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
 static struct iosc_surface *g_cursor_surface;
 static int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
+/* Last absolute sample from UIKit. Kept separate from the visible cursor so a
+ * locked pointer can produce incremental deltas while the cursor stays frozen. */
+static int g_motion_input_valid, g_motion_input_x, g_motion_input_y;
 
 enum native_cmd_type { NATIVE_CMD_RESIZE = 1, NATIVE_CMD_ACTIVATE, NATIVE_CMD_CLOSED };
 struct native_cmd {
@@ -357,6 +360,7 @@ struct iosc_dnd {
     struct wl_resource  *offer;          /* wl_data_offer handed to focus's client */
     int                  target_accepted;/* dest called accept(mime != NULL) */
     uint32_t             action;         /* negotiated dnd action */
+    uint32_t             button;         /* button whose release completes drag */
 };
 static struct iosc_dnd g_dnd;
 static void dnd_update_motion(int x, int y, uint32_t t);
@@ -364,6 +368,7 @@ static void dnd_drop(void);
 static void dnd_end(void);
 /* start_drag is only honored against the serial of a still-held button press. */
 static uint32_t g_button_serial;
+static uint32_t g_button_serial_code;
 static int g_button_down;
 static void touch_surface_gone(struct iosc_surface *s);   /* drop touch grabs on unmap */
 static void touch_cancel_all(void);
@@ -406,7 +411,7 @@ static int g_last_present_damage_x1, g_last_present_damage_y1;
 static const char *g_recompose_reason;
 static int g_recompose_reason_line;
 static void keyboard_set_focus(struct iosc_surface *s);
-static void keyboard_send_mods(uint32_t mask);
+static void keyboard_send_mods(uint32_t depressed, uint32_t locked);
 static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state);
 static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surface *next);
 static void input_method_update_active(void);
@@ -1997,7 +2002,9 @@ static int active_session_allows_classic_iosc(void)
  * position + shape over the app socket (xios_notify_cursor), so a plain cursor
  * MOVE costs one 32-byte socket write and ZERO recomposite instead of a full-screen
  * GPU repaint. Default auto: use the overlay once an app client is connected.
- * Set IOSC_APP_CURSOR=0/1 to force either path. */
+ * Set IOSC_APP_CURSOR=0/1 to force either path. Client-supplied cursor
+ * surfaces deliberately fall back to compositor rendering so their real
+ * bitmap/hotspot is preserved; named cursors retain the zero-repaint overlay. */
 static int iosc_app_cursor(void)
 {
     static int v = -2;   /* -2 unparsed, -1 auto, 0/1 forced */
@@ -2011,13 +2018,14 @@ static int iosc_app_cursor(void)
             v = 1;
         }
     }
-    return v >= 0 ? v : xios_have_app_client();
+    int enabled = v >= 0 ? v : xios_have_app_client();
+    return enabled && g_cursor_surface == NULL;
 }
 
 /* Signal the current pointer position + shape to the app's cursor overlay. The
- * shape is the wp_cursor_shape id for a named cursor; a client-supplied cursor
- * surface maps to the default arrow for now (bitmap streaming is a v2 — see the
- * XIOS_MSG_CURSOR payload). shape 0 = hidden. Coordinates are sent in PHYSICAL
+ * shape is the wp_cursor_shape id for a named cursor. Client-supplied cursor
+ * surfaces are rendered into the compositor output instead. shape 0 = hidden.
+ * Coordinates are sent in PHYSICAL
  * output pixels (g_cursor_x/y are logical): the app's overlay maps against the
  * IOSurface, which is the physical framebuffer, so it needs no scale knowledge. */
 static void app_cursor_notify(void)
@@ -4800,7 +4808,8 @@ static struct wl_resource *g_tch[IOSC_MAX_SEATRES]; static int g_ntch;
 
 static int g_keymap_fd = -1;               /* xkb keymap, sent to each wl_keyboard */
 static int g_have_keyboard = 0;            /* keymap loaded => advertise KEYBOARD cap */
-static uint32_t g_kbd_mods = 0;            /* last modifiers mask sent to focus     */
+static uint32_t g_kbd_mods_depressed = 0;  /* last depressed mask sent to focus     */
+static uint32_t g_kbd_mods_locked = 0;     /* Caps/Num lock mask sent to focus      */
 static struct wl_event_source *g_refocus_timer;  /* deferred focus re-assert (see below) */
 
 static void reslist_remove(struct wl_resource **arr, int *n, struct wl_resource *r)
@@ -5219,7 +5228,7 @@ static void virtual_keyboard_modifiers(struct wl_client *c, struct wl_resource *
                                "virtual keyboard modifiers before keymap");
         return;
     }
-    keyboard_send_mods(depressed | latched | locked);
+    keyboard_send_mods(depressed | latched, locked);
 }
 
 static void virtual_keyboard_destroy(struct wl_client *c, struct wl_resource *r)
@@ -5434,7 +5443,8 @@ static void keyboard_set_focus(struct iosc_surface *s)
     kbd_send_leave(old);
     text_input_focus_surface(old, s);
     g_kbd_focus = s;
-    g_kbd_mods = 0;
+    g_kbd_mods_depressed = 0;
+    g_kbd_mods_locked = 0;
     iosc_xwm_notify_focus(s ? s->resource : NULL);   /* mirror focus to X (no-op if not XWM) */
     ftl_broadcast_state(old);          /* focus moved: update ACTIVATED on the taskbar */
     ftl_broadcast_state(s);
@@ -5465,15 +5475,17 @@ static int refocus_cb(void *data)
 }
 
 /* Send one modifiers mask to the focused client's keyboards (only on change). */
-static void keyboard_send_mods(uint32_t mask)
+static void keyboard_send_mods(uint32_t depressed, uint32_t locked)
 {
-    if (!g_kbd_focus || mask == g_kbd_mods) return;
-    g_kbd_mods = mask;
+    if (!g_kbd_focus ||
+        (depressed == g_kbd_mods_depressed && locked == g_kbd_mods_locked)) return;
+    g_kbd_mods_depressed = depressed;
+    g_kbd_mods_locked = locked;
     struct wl_client *fc = wl_resource_get_client(g_kbd_focus->resource);
     uint32_t serial = wl_display_next_serial(g_display);
     for (int i = 0; i < g_nkbd; i++)
         if (wl_resource_get_client(g_kbd[i]) == fc)
-            wl_keyboard_send_modifiers(g_kbd[i], serial, mask, 0, 0, 0);
+            wl_keyboard_send_modifiers(g_kbd[i], serial, depressed, 0, locked, 0);
 }
 
 static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state)
@@ -5486,20 +5498,32 @@ static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state)
             wl_keyboard_send_key(g_kbd[i], serial, time, key, state);
 }
 
-static int input_method_forward_grab_key(uint32_t time, uint32_t key, uint32_t state, uint32_t mods)
+static int input_method_forward_grab_key(uint32_t time, uint32_t key, uint32_t state,
+                                         uint32_t depressed, uint32_t locked)
 {
     if (!g_input_method || !g_input_method->active || !g_input_method->keyboard_grab) return 0;
     struct wl_resource *grab = g_input_method->keyboard_grab;
     uint32_t serial = wl_display_next_serial(g_display);
-    zwp_input_method_keyboard_grab_v2_send_modifiers(grab, serial, mods, 0, 0, 0);
+    zwp_input_method_keyboard_grab_v2_send_modifiers(grab, serial, depressed, 0, locked, 0);
     zwp_input_method_keyboard_grab_v2_send_key(grab, serial, time, key, state);
     return 1;
 }
 
-/* A key "tap": one X keysym + the app's armed ctrl/alt/shift. Resolve to an evdev
- * keycode (+ whether Shift is needed for the symbol) and bracket the key with the
- * right modifier mask, then press + release. */
-static void handle_key(uint32_t keysym, uint32_t appmods)
+static void keyboard_masks_from_app(uint32_t appmods, int needs_shift,
+                                    uint32_t *depressed, uint32_t *locked)
+{
+    *depressed = ((needs_shift || (appmods & 1)) ? iosc_input_mod_shift() : 0)
+               | ((appmods & 2) ? iosc_input_mod_ctrl() : 0)
+               | ((appmods & 4) ? iosc_input_mod_alt() : 0)
+               | ((appmods & 8) ? iosc_input_mod_super() : 0);
+    *locked = ((appmods & 16) ? iosc_input_mod_caps() : 0)
+            | ((appmods & 32) ? iosc_input_mod_num() : 0);
+}
+
+/* One real key transition. Hardware keyboard records preserve down/up and the
+ * complete modifier snapshot; on-screen/accessory keys use the same function
+ * twice (down with armed modifiers, up with zero) to retain tap semantics. */
+static void handle_key(uint32_t keysym, uint32_t state, uint32_t appmods)
 {
     idle_note_activity();
     if (!g_kbd_focus) return;
@@ -5508,26 +5532,29 @@ static void handle_key(uint32_t keysym, uint32_t appmods)
         fprintf(stderr, "iosc: key keysym 0x%x not in keymap\n", keysym);
         return;
     }
-    int want_shift = needs_shift || (appmods & 1);
-    uint32_t mask = (want_shift ? iosc_input_mod_shift() : 0)
-                  | ((appmods & 2) ? iosc_input_mod_ctrl() : 0)
-                  | ((appmods & 4) ? iosc_input_mod_alt()  : 0);
+    uint32_t depressed = 0, locked = 0;
+    /* A shifted keysym needs a synthetic Shift only for its press. The release
+     * carries the caller's real modifier snapshot; retaining needs_shift here
+     * would latch Shift after an OSK/text-fallback tap. */
+    keyboard_masks_from_app(appmods, state && needs_shift, &depressed, &locked);
+    uint32_t wl_state = state ? WL_KEYBOARD_KEY_STATE_PRESSED
+                              : WL_KEYBOARD_KEY_STATE_RELEASED;
 
     struct wl_client *fc = wl_resource_get_client(g_kbd_focus->resource);
     if (iosc_debug()) {
         int nk = 0;
         for (int i = 0; i < g_nkbd; i++) if (wl_resource_get_client(g_kbd[i]) == fc) nk++;
-        fprintf(stderr, "iosc: key keysym=0x%x -> evdev=%u shift=%d mask=0x%x to %d kbd(s)\n",
-                keysym, evdev, want_shift, mask, nk);
+        fprintf(stderr, "iosc: key keysym=0x%x -> evdev=%u state=%u mods=0x%x/0x%x to %d kbd(s)\n",
+                keysym, evdev, wl_state, depressed, locked, nk);
     }
     uint32_t t = now_ms();
-    if (input_method_forward_grab_key(t, evdev, WL_KEYBOARD_KEY_STATE_PRESSED, mask) &&
-        input_method_forward_grab_key(t, evdev, WL_KEYBOARD_KEY_STATE_RELEASED, 0))
+    if (g_input_method && g_input_method->active && g_input_method->keyboard_grab) {
+        input_method_forward_grab_key(t, evdev, wl_state, depressed, locked);
         return;
-    keyboard_send_mods(mask);
-    keyboard_send_raw_key(t, evdev, WL_KEYBOARD_KEY_STATE_PRESSED);
-    keyboard_send_raw_key(t, evdev, WL_KEYBOARD_KEY_STATE_RELEASED);
-    keyboard_send_mods(0);
+    }
+    if (state) keyboard_send_mods(depressed, locked);
+    keyboard_send_raw_key(t, evdev, wl_state);
+    if (!state) keyboard_send_mods(depressed, locked);
 }
 
 /* ---- pointer -------------------------------------------------------------- */
@@ -5550,10 +5577,16 @@ static void handle_motion(int x, int y)
      * gnome-shell mouse-look). Suppress all absolute pointer events + the cursor
      * move; only report the relative delta. */
     if (pointer_locked_for(g_ptr_focus)) {
-        double rdx = (double)(x - prev_x), rdy = (double)(y - prev_y);
+        double rdx = 0.0, rdy = 0.0;
+        if (g_motion_input_valid) {
+            rdx = (double)(x - g_motion_input_x);
+            rdy = (double)(y - g_motion_input_y);
+        }
+        g_motion_input_x = x; g_motion_input_y = y; g_motion_input_valid = 1;
         if (rdx != 0.0 || rdy != 0.0) relptr_send(now_ms(), rdx, rdy);
         return;
     }
+    g_motion_input_x = x; g_motion_input_y = y; g_motion_input_valid = 1;
     /* A CONFINED pointer is clamped to its surface's rectangle. */
     if (g_ptr_focus) confine_point(g_ptr_focus, &x, &y);
 
@@ -5713,11 +5746,14 @@ static void handle_button(int btn, int down)
                   : btn == 3 ? BTN_RIGHT
                   : btn >= BTN_LEFT ? (uint32_t)btn : BTN_LEFT;
     idle_note_activity();
-    g_button_down = down;
+    if (down)
+        g_button_down++;
+    else if (g_button_down > 0)
+        g_button_down--;
     /* During a drag the button is owned by the grab: releasing it performs the
      * drop (or cancels); a press is swallowed. */
     if (g_dnd.active) {
-        if (!down) dnd_drop();
+        if (!down && code == g_dnd.button) dnd_drop();
         return;
     }
     if (!down && g_interactive_op != IOSC_INTERACTIVE_NONE) {
@@ -5737,7 +5773,10 @@ static void handle_button(int btn, int down)
     struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
     uint32_t serial = wl_display_next_serial(g_display);
     uint32_t t = now_ms();
-    if (down) g_button_serial = serial;
+    if (down) {
+        g_button_serial = serial;
+        g_button_serial_code = code;
+    }
     for (int i = 0; i < g_nptr; i++)
         if (wl_resource_get_client(g_ptr[i]) == fc)
             wl_pointer_send_button(g_ptr[i], serial, t, code,
@@ -5764,8 +5803,10 @@ static void handle_axis(int32_t dx256, int32_t dy256, uint32_t source,
     if (!stop && dx == 0 && dy == 0) return;
     uint32_t mask = ((appmods & 1) ? iosc_input_mod_shift() : 0)
                   | ((appmods & 2) ? iosc_input_mod_ctrl()  : 0)
-                  | ((appmods & 4) ? iosc_input_mod_alt()   : 0);
-    if (mask) keyboard_send_mods(mask);
+                  | ((appmods & 4) ? iosc_input_mod_alt()   : 0)
+                  | ((appmods & 8) ? iosc_input_mod_super() : 0);
+    uint32_t previous = g_kbd_mods_depressed;
+    if (mask) keyboard_send_mods(previous | mask, g_kbd_mods_locked);
     struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
     uint32_t t = now_ms();
     uint32_t wsrc = source == 1 ? WL_POINTER_AXIS_SOURCE_WHEEL
@@ -5786,7 +5827,7 @@ static void handle_axis(int32_t dx256, int32_t dy256, uint32_t source,
         }
     }
     pointer_frame_client(fc);
-    if (mask) keyboard_send_mods(0);
+    if (mask) keyboard_send_mods(previous, g_kbd_mods_locked);
 }
 
 /* ---- touch (wl_touch; fed by IOSC_IN_TOUCH from the app or the injector) --- *
@@ -6126,8 +6167,15 @@ static void pointer_set_cursor(struct wl_client *c, struct wl_resource *r, uint3
     g_cursor_hot_y = hy;
     g_cursor_visible = g_cursor_surface != NULL;
     output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
-    if (iosc_app_cursor()) app_cursor_notify();   /* overlay: push shape/visibility, no repaint */
-    else recomposite_all();
+    if (iosc_app_cursor()) {
+        app_cursor_notify();   /* overlay: push shape/visibility, no repaint */
+    } else {
+        /* Hide any prior named overlay before compositing the client's actual
+         * cursor surface into the IOSurface. */
+        if (xios_have_app_client())
+            xios_notify_cursor(g_cursor_x * output_scale(), g_cursor_y * output_scale(), 0, 0);
+        recomposite_all();
+    }
 }
 static const struct wl_pointer_interface pointer_impl = { .set_cursor = pointer_set_cursor, .release = input_release };
 static const struct wl_keyboard_interface keyboard_impl = { .release = input_release };
@@ -6925,6 +6973,7 @@ static void data_device_start_drag(struct wl_client *c, struct wl_resource *r, s
     g_dnd.origin = origin;
     g_dnd.origin_client = c;
     g_dnd.icon = ic;
+    g_dnd.button = g_button_serial_code;
     if (src) {
         g_dnd.source_destroy.notify = dnd_source_destroyed;
         wl_resource_add_destroy_listener(src, &g_dnd.source_destroy);
@@ -7106,8 +7155,10 @@ static void in_dispatch_text(const char *text, size_t len)
     if (r == 0) {
         for (size_t i = 0; i < len; i++) {
             unsigned char c = (unsigned char)text[i];
-            if (c < 0x80)
-                handle_key(c == '\n' ? 0xff0d : (uint32_t)c, 0);
+            if (c < 0x80) {
+                handle_key(c == '\n' ? 0xff0d : (uint32_t)c, 1, 0);
+                handle_key(c == '\n' ? 0xff0d : (uint32_t)c, 0, 0);
+            }
         }
     }
 }
@@ -7134,7 +7185,7 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
         case XIOS_IN_MOTION: handle_motion(x, y); break;
         case XIOS_IN_BUTTON: handle_motion(x, y);
                              handle_button((int)m->code, (int)m->state); break;
-        case XIOS_IN_KEY:    handle_key(m->code, m->mods); break;
+        case XIOS_IN_KEY:    handle_key(m->code, m->state, m->mods); break;
         case XIOS_IN_TOUCH:  handle_touch((int)m->code, (int)m->state, x, y); break;
         case XIOS_IN_TABLET: handle_pencil((int)m->state, x, y, m->code,
                                            (int)(m->mods & 0xffu) - 90,
@@ -7752,9 +7803,10 @@ static void relptr_mgr_bind(struct wl_client *c, void *data, uint32_t version, u
  * A constraint targets a surface. It becomes ACTIVE when that surface holds
  * pointer focus (constraints_update_focus, called on focus change + on create).
  *   - locked:  the cursor freezes; handle_motion() reports only relative deltas.
- *   - confined: the cursor is clamped to the surface rectangle.
- * region is ignored (whole-surface constraint). oneshot lifetime constraints are
- * marked dead after their first deactivation and never re-activate.
+ *   - confined: the cursor is clamped to the requested surface-local region
+ *     (or the whole surface when no region was supplied).
+ * Lock cursor-position hints are applied when the lock deactivates. Oneshot
+ * lifetime constraints are marked dead after their first deactivation.
  * =========================================================================== */
 
 #define IOSC_MAX_CONSTRAINTS 16
@@ -7765,6 +7817,10 @@ struct iosc_constraint {
     uint32_t lifetime;   /* ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_* */
     int active;
     int dead;            /* oneshot consumed */
+    int region_has;
+    int region_x0, region_y0, region_x1, region_y1; /* surface-local bbox */
+    int hint_has;
+    int hint_x, hint_y;   /* surface-local logical coordinates */
 };
 static struct iosc_constraint *g_constraints[IOSC_MAX_CONSTRAINTS]; static int g_nconstraints;
 static struct iosc_constraint *g_active_constraint;
@@ -7781,7 +7837,21 @@ static void constraint_deactivate(struct iosc_constraint *cc)
 {
     if (!cc || !cc->active) return;
     cc->active = 0;
-    if (cc->type == 0) zwp_locked_pointer_v1_send_unlocked(cc->resource);
+    g_motion_input_valid = 0;
+    if (cc->type == 0) {
+        zwp_locked_pointer_v1_send_unlocked(cc->resource);
+        if (cc->hint_has && cc->surface) {
+            int w = 0, h = 0;
+            surface_output_size(cc->surface, &w, &h);
+            int nx = cc->surface->dx + (w > 0 ? clampi(cc->hint_x, 0, w - 1) : 0);
+            int ny = cc->surface->dy + (h > 0 ? clampi(cc->hint_y, 0, h - 1) : 0);
+            output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+            g_cursor_x = nx; g_cursor_y = ny;
+            output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+            if (iosc_app_cursor()) app_cursor_notify();
+            else if (g_cursor_visible) recomposite_all();
+        }
+    }
     else               zwp_confined_pointer_v1_send_unconfined(cc->resource);
     if (cc->lifetime == ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT) cc->dead = 1;
     if (g_active_constraint == cc) g_active_constraint = NULL;
@@ -7790,6 +7860,7 @@ static void constraint_activate(struct iosc_constraint *cc)
 {
     if (!cc || cc->active) return;
     cc->active = 1;
+    g_motion_input_valid = 0;
     g_active_constraint = cc;
     if (cc->type == 0) zwp_locked_pointer_v1_send_locked(cc->resource);
     else               zwp_confined_pointer_v1_send_confined(cc->resource);
@@ -7814,8 +7885,15 @@ static int confine_point(struct iosc_surface *s, int *x, int *y)
           g_active_constraint->type == 1 && g_active_constraint->surface == s))
         return 0;
     int w = 0, h = 0; surface_output_size(s, &w, &h);
-    if (w > 0) *x = clampi(*x, s->dx, s->dx + w - 1);
-    if (h > 0) *y = clampi(*y, s->dy, s->dy + h - 1);
+    int x0 = 0, y0 = 0, x1 = w, y1 = h;
+    if (g_active_constraint->region_has) {
+        x0 = clampi(g_active_constraint->region_x0, 0, w);
+        y0 = clampi(g_active_constraint->region_y0, 0, h);
+        x1 = clampi(g_active_constraint->region_x1, x0, w);
+        y1 = clampi(g_active_constraint->region_y1, y0, h);
+    }
+    if (x1 > x0) *x = clampi(*x, s->dx + x0, s->dx + x1 - 1);
+    if (y1 > y0) *y = clampi(*y, s->dy + y0, s->dy + y1 - 1);
     return 1;
 }
 static void constraints_surface_gone(struct iosc_surface *s)
@@ -7838,9 +7916,28 @@ static void constraint_res_destroy(struct wl_resource *r)
 }
 static void constraint_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static void locked_ptr_set_hint(struct wl_client *c, struct wl_resource *r, wl_fixed_t x, wl_fixed_t y)
-{ (void)c; (void)r; (void)x; (void)y; }
+{ (void)c;
+    struct iosc_constraint *cc = wl_resource_get_user_data(r);
+    if (!cc) return;
+    cc->hint_has = 1;
+    cc->hint_x = wl_fixed_to_int(x);
+    cc->hint_y = wl_fixed_to_int(y);
+}
+
+static void constraint_copy_region(struct iosc_constraint *cc, struct wl_resource *region)
+{
+    struct iosc_region *reg = region ? wl_resource_get_user_data(region) : NULL;
+    cc->region_has = reg && reg->has;
+    if (cc->region_has) {
+        cc->region_x0 = reg->x0; cc->region_y0 = reg->y0;
+        cc->region_x1 = reg->x1; cc->region_y1 = reg->y1;
+    }
+}
 static void constraint_set_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region)
-{ (void)c; (void)r; (void)region; }   /* whole-surface constraint; region ignored */
+{ (void)c;
+    struct iosc_constraint *cc = wl_resource_get_user_data(r);
+    if (cc) constraint_copy_region(cc, region);
+}
 
 static const struct zwp_locked_pointer_v1_interface locked_ptr_impl = {
     .destroy = constraint_destroy_req,
@@ -7853,7 +7950,8 @@ static const struct zwp_confined_pointer_v1_interface confined_ptr_impl = {
 };
 
 static void constraint_new(struct wl_client *c, struct wl_resource *r, uint32_t id,
-        struct wl_resource *surface, uint32_t lifetime, int type,
+        struct wl_resource *surface, struct wl_resource *region,
+        uint32_t lifetime, int type,
         const struct wl_interface *iface, const void *impl)
 {
     if (g_nconstraints >= IOSC_MAX_CONSTRAINTS) { wl_client_post_no_memory(c); return; }
@@ -7864,6 +7962,7 @@ static void constraint_new(struct wl_client *c, struct wl_resource *r, uint32_t 
     cc->surface  = surface ? wl_resource_get_user_data(surface) : NULL;
     cc->type     = type;
     cc->lifetime = lifetime;
+    constraint_copy_region(cc, region);
     wl_resource_set_implementation(cc->resource, impl, cc, constraint_res_destroy);
     g_constraints[g_nconstraints++] = cc;
     /* Activate right away if the target already owns the pointer. */
@@ -7873,14 +7972,16 @@ static void constraint_new(struct wl_client *c, struct wl_resource *r, uint32_t 
 static void constraints_lock_pointer(struct wl_client *c, struct wl_resource *r, uint32_t id,
         struct wl_resource *surface, struct wl_resource *pointer,
         struct wl_resource *region, uint32_t lifetime)
-{ (void)pointer; (void)region;
-    constraint_new(c, r, id, surface, lifetime, 0, &zwp_locked_pointer_v1_interface, &locked_ptr_impl);
+{ (void)pointer;
+    constraint_new(c, r, id, surface, region, lifetime, 0,
+                   &zwp_locked_pointer_v1_interface, &locked_ptr_impl);
 }
 static void constraints_confine_pointer(struct wl_client *c, struct wl_resource *r, uint32_t id,
         struct wl_resource *surface, struct wl_resource *pointer,
         struct wl_resource *region, uint32_t lifetime)
-{ (void)pointer; (void)region;
-    constraint_new(c, r, id, surface, lifetime, 1, &zwp_confined_pointer_v1_interface, &confined_ptr_impl);
+{ (void)pointer;
+    constraint_new(c, r, id, surface, region, lifetime, 1,
+                   &zwp_confined_pointer_v1_interface, &confined_ptr_impl);
 }
 static void constraints_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
 static const struct zwp_pointer_constraints_v1_interface constraints_impl = {

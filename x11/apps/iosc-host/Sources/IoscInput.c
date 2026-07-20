@@ -101,9 +101,10 @@ void iosc_input_button(iosc_input_t *h, int button, bool down, int x, int y)
     send_msg(h, &m);
 }
 
-void iosc_input_key(iosc_input_t *h, unsigned keysym, unsigned mods)
+void iosc_input_key(iosc_input_t *h, unsigned keysym, bool down, unsigned mods)
 {
-    struct xios_in_msg m = { .type = XIOS_IN_KEY, .code = keysym, .state = 1, .mods = mods };
+    struct xios_in_msg m = { .type = XIOS_IN_KEY, .code = keysym,
+                             .state = down ? 1u : 0u, .mods = mods };
     send_msg(h, &m);
 }
 

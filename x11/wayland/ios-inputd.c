@@ -56,6 +56,8 @@ struct app_state {
     struct iosc_in_msg msg;
     char *payload;
     uint32_t payload_have;
+    uint32_t key_mods_depressed;
+    uint32_t key_mods_locked;
 };
 
 static void set_nonblock(int fd)
@@ -103,7 +105,19 @@ static void app_client_drop(struct app_state *s)
     fprintf(stderr, "ios-inputd: app input client disconnected\n");
 }
 
-static void send_virtual_key(struct app_state *s, uint32_t keysym, uint32_t appmods)
+static void app_modifier_masks(uint32_t appmods, int needs_shift,
+                               uint32_t *depressed, uint32_t *locked)
+{
+    *depressed = (needs_shift || (appmods & 1) ? iosc_input_mod_shift() : 0)
+               | ((appmods & 2) ? iosc_input_mod_ctrl() : 0)
+               | ((appmods & 4) ? iosc_input_mod_alt() : 0)
+               | ((appmods & 8) ? iosc_input_mod_super() : 0);
+    *locked = ((appmods & 16) ? iosc_input_mod_caps() : 0)
+            | ((appmods & 32) ? iosc_input_mod_num() : 0);
+}
+
+static void send_virtual_key(struct app_state *s, uint32_t keysym,
+                             uint32_t state, uint32_t appmods)
 {
     if (!s->vk) return;
     uint32_t evdev = 0;
@@ -112,14 +126,26 @@ static void send_virtual_key(struct app_state *s, uint32_t keysym, uint32_t appm
         fprintf(stderr, "ios-inputd: keysym 0x%x not in keymap\n", keysym);
         return;
     }
-    uint32_t mods = (needs_shift || (appmods & 1) ? iosc_input_mod_shift() : 0)
-                  | ((appmods & 2) ? iosc_input_mod_ctrl() : 0)
-                  | ((appmods & 4) ? iosc_input_mod_alt() : 0);
+    uint32_t depressed = 0, locked = 0;
+    /* Synthetic level selection is press-only. On release, use only the real
+     * wire snapshot or an uppercase tap would leave Shift latched. */
+    app_modifier_masks(appmods, state && needs_shift, &depressed, &locked);
     uint32_t t = now_ms();
-    zwp_virtual_keyboard_v1_modifiers(s->vk, mods, 0, 0, 0);
-    zwp_virtual_keyboard_v1_key(s->vk, t, evdev, WL_KEYBOARD_KEY_STATE_PRESSED);
-    zwp_virtual_keyboard_v1_key(s->vk, t, evdev, WL_KEYBOARD_KEY_STATE_RELEASED);
-    zwp_virtual_keyboard_v1_modifiers(s->vk, 0, 0, 0, 0);
+    if (state)
+        zwp_virtual_keyboard_v1_modifiers(s->vk, depressed, 0, locked, 0);
+    zwp_virtual_keyboard_v1_key(s->vk, t, evdev,
+                                state ? WL_KEYBOARD_KEY_STATE_PRESSED
+                                      : WL_KEYBOARD_KEY_STATE_RELEASED);
+    if (!state)
+        zwp_virtual_keyboard_v1_modifiers(s->vk, depressed, 0, locked, 0);
+    s->key_mods_depressed = depressed;
+    s->key_mods_locked = locked;
+}
+
+static void send_virtual_key_tap(struct app_state *s, uint32_t keysym, uint32_t appmods)
+{
+    send_virtual_key(s, keysym, 1, appmods);
+    send_virtual_key(s, keysym, 0, 0);
 }
 
 static void send_text(struct app_state *s, const char *text, size_t len)
@@ -136,7 +162,7 @@ static void send_text(struct app_state *s, const char *text, size_t len)
     }
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)text[i];
-        if (c < 0x80) send_virtual_key(s, c == '\n' ? 0xff0d : (uint32_t)c, 0);
+        if (c < 0x80) send_virtual_key_tap(s, c == '\n' ? 0xff0d : (uint32_t)c, 0);
     }
 }
 
@@ -144,7 +170,7 @@ static void dispatch_msg(struct app_state *s, const struct iosc_in_msg *m)
 {
     switch (m->type) {
     case IOSC_IN_KEY:
-        send_virtual_key(s, m->code, m->mods);
+        send_virtual_key(s, m->code, m->state, m->mods);
         break;
     case IOSC_IN_MOTION:
     case IOSC_IN_BUTTON:

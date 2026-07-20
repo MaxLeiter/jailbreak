@@ -50,6 +50,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var panLastTranslation = CGPoint.zero
     private var axisRemainder = CGPoint.zero
     private var axisActive = false
+    private var axisSource: UInt32 = 0
+    private weak var discreteScrollPan: UIPanGestureRecognizer?
+    private var hardwareButtonMask = 0
+    private let hardwareKeyboard = XiosHardwareKeyboard()
 
     // UITextInputTraits — literal keyboard (one tap one char).
     @objc var autocorrectionType: UITextAutocorrectionType = .no
@@ -94,6 +98,9 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         makePlaceholder()
         openInput()
         installLifecycleObservers()
+        hardwareKeyboard.start { [weak self] keysym, down, modifiers in
+            self?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
+        }
         let dl = CADisplayLink(target: self, selector: #selector(tick))
         dl.add(to: .main, forMode: .common)
         displayLink = dl
@@ -195,6 +202,21 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         wheelPan.maximumNumberOfTouches = 0
         wheelPan.delegate = self
         addGestureRecognizer(wheelPan)
+
+        let discreteWheelPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        discreteWheelPan.allowedScrollTypesMask = .discrete
+        discreteWheelPan.allowedTouchTypes = []
+        discreteWheelPan.maximumNumberOfTouches = 0
+        discreteWheelPan.delegate = self
+        addGestureRecognizer(discreteWheelPan)
+        discreteScrollPan = discreteWheelPan
+
+        if #available(iOS 13.4, *) {
+            let hover = UIHoverGestureRecognizer(target: self, action: #selector(handlePointerHover(_:)))
+            hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+            hover.delegate = self
+            addGestureRecognizer(hover)
+        }
     }
 
     @objc private func handleKeyboardRevealPan(_ g: UIPanGestureRecognizer) {
@@ -226,7 +248,8 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     /// cancelsTouchesInView on this recognizer cancels any in-flight single
     /// touch the same way it already does for keyboardRevealPan.
     @objc private func handleTwoFingerPan(_ g: UIPanGestureRecognizer) {
-        let isWheel = g.numberOfTouches == 0   // trackpad/wheel scroll events
+        let isIndirectScroll = g.numberOfTouches == 0
+        let source: UInt32 = (g === discreteScrollPan) ? 1 : 0
         switch g.state {
         case .began:
             twoFingerBegan()
@@ -234,7 +257,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             axisRemainder = .zero
         case .changed:
             let t = g.translation(in: self)
-            if twoFingerMode == .undecided, isWheel || abs(t.x) + abs(t.y) > 12 {
+            if twoFingerMode == .undecided, isIndirectScroll || abs(t.x) + abs(t.y) > 12 {
                 twoFingerMode = .scroll
                 if let (x, y) = canvasPoint(from: g.location(in: self)), let h = input {
                     lastPt = (x, y)
@@ -242,7 +265,9 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
                 }
             }
             if twoFingerMode == .scroll {
-                sendScroll(dx: t.x - panLastTranslation.x, dy: t.y - panLastTranslation.y)
+                sendScroll(dx: t.x - panLastTranslation.x,
+                           dy: t.y - panLastTranslation.y,
+                           source: source)
             }
             panLastTranslation = t
         default:
@@ -265,7 +290,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     /// dx/dy are view-point finger deltas. iosc gets AXIS records in 1/256
     /// canvas-pixel fixed point with wl_pointer's sign (natural scroll:
     /// fingers up = content scrolls down the page = positive).
-    private func sendScroll(dx: CGFloat, dy: CGFloat) {
+    private func sendScroll(dx: CGFloat, dy: CGFloat, source: UInt32) {
         guard let h = input, iosc_input_is_open(h) else { return }
         let rect = canvasRectInView()
         guard rect.width > 0, canvasW > 0 else { return }
@@ -277,7 +302,8 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         if sx != 0 || sy != 0 {
             axisRemainder.x -= sx
             axisRemainder.y -= sy
-            iosc_input_axis(h, Int32(sx), Int32(sy), 0, 0, false)
+            axisSource = source
+            iosc_input_axis(h, Int32(sx), Int32(sy), source, 0, false)
             axisActive = true
         }
     }
@@ -287,7 +313,8 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         axisRemainder = .zero
         guard axisActive, let h = input else { return }
         axisActive = false
-        iosc_input_axis(h, 0, 0, 0, 0, true)
+        iosc_input_axis(h, 0, 0, axisSource, 0, true)
+        axisSource = 0
     }
 
     private func refreshAutoKeyboardFromTraits() {
@@ -368,7 +395,11 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     private func openInput() {
         if let h = input, iosc_input_is_open(h) { return }
-        if input != nil { iosc_input_close(input); input = nil }
+        if input != nil {
+            hardwareKeyboard.releasePressedKeys()
+            releaseHardwarePointerButtons()
+            iosc_input_close(input); input = nil
+        }
         // serviceTraits() retries from the 60 Hz display link while the
         // compositor is away; throttle the socket()+connect() attempts the
         // same way HostSystemAppearance.ensureConnected does.
@@ -503,6 +534,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     // additive policy as the Xios app.
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         refreshAutoKeyboardFromTraits()
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
         for t in touches { forward(t, phase: 1, event: event) }
         if (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
            let (x, y) = canvasPoint(from: t.location(in: self)), let h = input {
@@ -511,6 +543,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
         for t in touches { forward(t, phase: 2, event: event) }
         if (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
            let (x, y) = canvasPoint(from: t.location(in: self)), let h = input {
@@ -518,10 +551,15 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         }
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
         for t in touches { forward(t, phase: 0, event: event) }
         releasePointerIfNeeded(touches)
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) {
+            releaseHardwarePointerButtons()
+            return
+        }
         for t in touches { forward(t, phase: 3, event: event) }
         releasePointerIfNeeded(touches)
     }
@@ -538,6 +576,41 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         pointerTouch = nil
         guard let h = input, let p = lastPt else { return }
         iosc_input_button(h, 1, false, p.0, p.1)
+    }
+
+    @available(iOS 13.4, *)
+    @objc private func handlePointerHover(_ g: UIHoverGestureRecognizer) {
+        guard let point = canvasPoint(from: g.location(in: self)), let h = input else { return }
+        lastPt = point
+        iosc_input_motion(h, point.0, point.1)
+    }
+
+    @available(iOS 13.4, *)
+    private func handleHardwarePointer(_ touches: Set<UITouch>, event: UIEvent?) -> Bool {
+        guard let touch = touches.first(where: { $0.type == .indirectPointer }) else { return false }
+        if let point = canvasPoint(from: touch.location(in: self)), let h = input {
+            lastPt = point
+            iosc_input_motion(h, point.0, point.1)
+        }
+        updateHardwarePointerButtons(event?.buttonMask.rawValue ?? 0)
+        return true
+    }
+
+    private func updateHardwarePointerButtons(_ nextMask: Int) {
+        let changed = hardwareButtonMask ^ nextMask
+        guard changed != 0, let h = input else { hardwareButtonMask = nextMask; return }
+        let buttons: [Int32] = [1, 3, 2, 0x113, 0x114]
+        let point = lastPt ?? (0, 0)
+        for index in 0..<buttons.count where changed & (1 << index) != 0 {
+            iosc_input_button(h, buttons[index], nextMask & (1 << index) != 0,
+                              point.0, point.1)
+        }
+        hardwareButtonMask = nextMask
+    }
+
+    private func releaseHardwarePointerButtons() {
+        guard hardwareButtonMask != 0 else { return }
+        updateHardwarePointerButtons(0)
     }
 
     // MARK: keyboard
@@ -607,7 +680,13 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         guard let h = input else { return }
         var mods: UInt32 = 0
         if shift { mods |= 1 }; if ctrl { mods |= 2 }; if alt { mods |= 4 }
-        iosc_input_key(h, UInt32(ks), mods)
+        iosc_input_key(h, UInt32(ks), true, mods)
+        iosc_input_key(h, UInt32(ks), false, 0)
+    }
+
+    private func sendHardwareKey(_ keysym: UInt32, down: Bool, modifiers: UInt32) {
+        guard let h = input, iosc_input_is_open(h) else { return }
+        iosc_input_key(h, keysym, down, modifiers)
     }
 
     fileprivate func sendText(_ text: String) {
@@ -664,6 +743,8 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     }
 
     func teardown() {
+        hardwareKeyboard.stop()
+        releaseHardwarePointerButtons()
         displayLink?.invalidate(); displayLink = nil
         for obs in lifecycleObservers { NotificationCenter.default.removeObserver(obs) }
         lifecycleObservers.removeAll()
@@ -687,6 +768,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 extension HostScreenView: UIKeyInput {
     var hasText: Bool { true }
     func insertText(_ text: String) {
+        if hardwareKeyboard.isLikelyUIKitEcho() { return }
         if !modCtrl && !modAlt && !modShift { sendText(text); return }
         for ch in text where keysym(for: ch) != nil {
             sendKeysym(keysym(for: ch)!, ctrl: modCtrl, alt: modAlt, shift: modShift)
@@ -694,6 +776,7 @@ extension HostScreenView: UIKeyInput {
         clearStickyMods()
     }
     func deleteBackward() {
+        if hardwareKeyboard.isLikelyUIKitEcho() { return }
         sendKeysym(0xff08, ctrl: modCtrl, alt: modAlt, shift: modShift)
         clearStickyMods()
     }

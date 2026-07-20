@@ -21,6 +21,17 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 - Scroll/touch/tablet/clipboard app-side code has landed; clipboard is now compositor-wired too. Treat clipboard/scroll as app+iosc co-deploy work, not an app-only next wave.
 
 ## Current state
+- 2026-07-19 desktop-input closure (host-verified, device proof pending): the classic app and
+  native host share `apps/shared/XiosHardwareKeyboard.swift` and a pure HID-to-X keysym map.
+  `GCKeyboard` now supplies real press/release transitions outside the UIKit text-input lifecycle,
+  including simultaneous chords, key repeat, arrows/navigation, F1-F24, keypad/media keys,
+  Command-as-Super, Caps Lock, and Num Lock. Disconnect/background/reconnect paths release held
+  keys so modifiers cannot stick. UIKit text/OSK input remains a synthetic tap fallback and is
+  de-duplicated from the raw hardware event.
+- The same pass adds indirect-pointer hover, primary/secondary/middle/back/forward buttons,
+  simultaneous button state, discrete mouse-wheel frames, and continuous two-axis Magic Keyboard
+  trackpad frames with axis-stop. Both Release-iphoneos targets build successfully; the pure Swift
+  HID mapping test passes. No physical-device claim is made while the iPad is offline.
 - Deployed on iPad: local Release-iphoneos build from 2026-07-01 19:53 with `syncSurfaceGeometry(conn)` plus the gesture-only chrome cleanup (Xios binary 480848 bytes after ldid signing). Desktop displays, launches apps, keyboard+typing work. SSH `uiopen` is throttle-flaky; SpringBoard registered `com.max.xios`, so tap the icon to foreground after deploy.
 - The unified scale bug: the app was presenting the current fb at a STALE effective scale (0.75 instead of 0.675) → desktop overflowed right ~10% off-glass AND touches offset. `a7da822` resets zoom unconditionally on adopt (the stale factor was `zoomScale≈1.11` surviving because the earlier reset only fired on a size delta and the adopt saw none). The touch diagnostic confirmed zoom=1.0 + correct fb mapping after the fix on iosc.
 - Confirmed clean on-device: Max tapped on iosc after deploy and reported that scale/taps are working well. Fresh diagnostics showed current iosc framebuffer geometry, zoom=1.0, and no stale Mutter/old-scale transform.
@@ -36,7 +47,11 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 - 2026-07-05 app overlay auto-hide: the Swift-owned overlay showing the active desktop/session plus iOS time/battery now auto-hides after 5s, has a long-press menu action to dismiss immediately, and can be revealed temporarily by a one-finger pull down from the top edge. This is app-side only (`XScreen.swift`), no compositor protocol change. Release-iphoneos build passes and the rebuilt app was deployed to `/var/jb/Applications/Xios.app` with matching local/on-device binary SHA256 `b7d46a60fa2bbde2fdd0616f78b54b2353142402b00c49a3b4a48a4837c17d96`; Xios stayed foregrounded on `kde-desktop` with `iosurface-zerocopy 2880x2160 [metal]`. Evidence: `artifacts/device-runs/xios-overlay-autohide-20260705-1859/`. Physical top-edge/long-press gesture validation is still pending because the harness only captured a compositor screenshot, not a physical device screenshot.
 
 ## Open items (priority order)
-1. **KDE follow-up input polish**: direct finger tap verification is done on Plasma Desktop and no longer double-activates. Still sanity-check trackpad, Pencil, and tool-panel pointer actions against the KDE-only direct-touch policy.
+1. **Physical desktop-input matrix**: on the next device window, verify held/repeated keys and
+   Ctrl/Alt/Shift/Super chords; navigation/F-keys/Caps/Num; hover; all five mouse buttons and
+   button chords; discrete wheel; continuous two-axis trackpad scroll/stop; click-drag; pointer
+   lock; confinement; and named/custom cursor hotspot behavior. Run it in direct iosc, nested KDE,
+   Mutter/GNOME, and the native host. Also sanity-check Pencil and the KDE direct-touch policy.
 2. **Portrait/full-height polish**: the app/compositor rotation path now resizes a default `1440x1080` iosc session into `1080x1440` logical (`2160x2880` framebuffer) when the iPad is portrait. Keep tuning shell layout/quick presets at this aspect; access is four-finger tap, not visible chrome, and three-finger tap is reserved for switching existing X/Wayland displays.
 3. **DONE locally — bug-sweep Finding 1 (deeper root cause / robustness)**: the real staleness vector is `fbWidth`/`fbHeight` themselves (snapshotted only in `adoptIOSurface()` and `loadConfig()`, never refreshed while presenting). Implemented `syncSurfaceGeometry(conn)` in `XScreen.swift`; `adoptIOSurface()` and `tick()` now both use it, and texture-refresh failure tears down/reconnects.
 4. **DONE locally — bug-sweep Finding 2 (simplification)**: `render()` and input now share one `FitTransform` in `XScreen.swift`. The transform owns the fit rect, framebuffer inverse mapping, and Metal clip-space vertices; scroll/pixel-perfect zoom also consume it.

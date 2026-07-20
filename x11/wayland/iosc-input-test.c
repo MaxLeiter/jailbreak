@@ -11,7 +11,7 @@
  *   iosc-input-test -s 680 400 0 -240    # smooth scroll -240px vertical (axis + stop)
  *   iosc-input-test -t 500 400           # two-finger touch gesture (wl_touch)
  *   iosc-input-test -p 300 300 900 500   # pencil stroke w/ pressure ramp (tablet-v2)
- *   iosc-input-test -k 0x6e 3            # one keysym w/ mods (bit0 shift, 1 ctrl, 2 alt)
+ *   iosc-input-test -k 0x6e 3            # one keysym tap w/ modifiers
  *
  *   iosc-input-test --socket /var/jb/tmp/mutter-input.sock -c 1080 810
  *
@@ -43,7 +43,7 @@ struct iosc_in_msg {
     int32_t  x, y;
     uint32_t code;     /* button 1/2/3 ; key: X keysym */
     uint32_t state;    /* button 1=down 0=up */
-    uint32_t mods;     /* bit0 shift, bit1 ctrl, bit2 alt */
+    uint32_t mods;     /* shift,ctrl,alt,super,caps,num = bits 0..5 */
 };
 
 static int connect_path(const char *path, int quiet)
@@ -103,7 +103,7 @@ static void usage(const char *argv0)
             "  -s x y dx dy       smooth scroll dx,dy px at x,y (axis + stop)\n"
             "  -t x y             two-finger touch gesture (wl_touch)\n"
             "  -p x0 y0 x1 y1     pencil stroke w/ pressure ramp (tablet-v2)\n"
-            "  -k keysym [mods]   one key; mods bit0 shift, bit1 ctrl, bit2 alt\n"
+            "  -k keysym [mods]   one key tap; mods bits: shift,ctrl,alt,super,caps,num\n"
             "  text...            type each arg as a line (auto <Enter>)\n"
             "       %s --mutter -c 1080 810\n"
             "       %s --iosc \"echo hi\"\n",
@@ -118,6 +118,8 @@ static void send_msg(int fd, struct iosc_in_msg *m)
 static void key_tap(int fd, uint32_t keysym)
 {
     struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = keysym, .state = 1 };
+    send_msg(fd, &m);
+    m.state = 0;
     send_msg(fd, &m);
     usleep(25000);   /* let the client process each keypress */
 }
@@ -155,6 +157,8 @@ int main(int argc, char **argv)
         uint32_t ks = (uint32_t)strtoul(argv[argi + 1], NULL, 0);
         uint32_t mods = (argc - argi >= 3) ? (uint32_t)strtoul(argv[argi + 2], NULL, 0) : 0;
         struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = ks, .state = 1, .mods = mods };
+        send_msg(fd, &m);
+        m.state = 0; m.mods = 0;
         send_msg(fd, &m);
         fprintf(stderr, "sent key 0x%x mods %u\n", ks, mods);
         usleep(150000); close(fd); return 0;

@@ -26,7 +26,7 @@ bool iosc_input_is_open(iosc_input_t *h);
 
 void iosc_input_motion(iosc_input_t *h, int x, int y);
 void iosc_input_button(iosc_input_t *h, int button, bool down, int x, int y);
-void iosc_input_key(iosc_input_t *h, unsigned keysym, unsigned mods);
+void iosc_input_key(iosc_input_t *h, unsigned keysym, bool down, unsigned mods);
 void iosc_input_text(iosc_input_t *h, const char *utf8);
 void iosc_input_touch(iosc_input_t *h, int slot, int phase, int x, int y);
 void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressure16,

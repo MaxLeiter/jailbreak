@@ -14,7 +14,7 @@
 static char    *s_keymap_str;
 static uint32_t s_keymap_size;
 
-static uint32_t s_mod_shift, s_mod_ctrl, s_mod_alt;
+static uint32_t s_mod_shift, s_mod_ctrl, s_mod_alt, s_mod_super, s_mod_caps, s_mod_num;
 
 /* keysym -> (evdev keycode, needs_shift). Small (a few hundred entries); linear
  * scan on key events is fine. First (lowest-keycode, lowest-level) wins. */
@@ -73,6 +73,9 @@ int iosc_input_init(void)
     s_mod_shift = mod_mask(km, XKB_MOD_NAME_SHIFT);
     s_mod_ctrl  = mod_mask(km, XKB_MOD_NAME_CTRL);
     s_mod_alt   = mod_mask(km, XKB_MOD_NAME_ALT);
+    s_mod_super = mod_mask(km, XKB_MOD_NAME_LOGO);
+    s_mod_caps  = mod_mask(km, XKB_MOD_NAME_CAPS);
+    s_mod_num   = mod_mask(km, XKB_MOD_NAME_NUM);
 
     /* Build the keysym -> (evdev, shift) reverse table. Walk layout 0, levels 0
      * (unshifted) and 1 (shifted) for every key; xkb keycode − 8 = evdev keycode. */
@@ -93,8 +96,9 @@ int iosc_input_init(void)
         }
     }
     fprintf(stderr, "iosc_input: us keymap ready (%u bytes, %d keysyms, "
-                    "mods shift=0x%x ctrl=0x%x alt=0x%x)\n",
-            s_keymap_size, s_nrev, s_mod_shift, s_mod_ctrl, s_mod_alt);
+                    "mods shift=0x%x ctrl=0x%x alt=0x%x super=0x%x caps=0x%x num=0x%x)\n",
+            s_keymap_size, s_nrev, s_mod_shift, s_mod_ctrl, s_mod_alt,
+            s_mod_super, s_mod_caps, s_mod_num);
 
     /* The keymap string + reverse table are retained; drop the compile objects. */
     xkb_keymap_unref(km);
@@ -107,6 +111,9 @@ uint32_t    iosc_input_keymap_size(void)   { return s_keymap_size; }
 uint32_t    iosc_input_mod_shift(void)     { return s_mod_shift; }
 uint32_t    iosc_input_mod_ctrl(void)      { return s_mod_ctrl; }
 uint32_t    iosc_input_mod_alt(void)       { return s_mod_alt; }
+uint32_t    iosc_input_mod_super(void)     { return s_mod_super; }
+uint32_t    iosc_input_mod_caps(void)      { return s_mod_caps; }
+uint32_t    iosc_input_mod_num(void)       { return s_mod_num; }
 
 int iosc_input_lookup(uint32_t keysym, uint32_t *evdev_keycode, int *needs_shift)
 {

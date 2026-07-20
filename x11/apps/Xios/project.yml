@@ -43,6 +43,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "2"          # iPad
     sources:
       - path: Sources
+      - path: ../shared/XiosHardwareKeyboard.swift
+      - path: ../shared/XiosHardwareKeymap.swift
       - path: Resources/Assets.xcassets
     info:
       path: Resources/Info.generated.plist

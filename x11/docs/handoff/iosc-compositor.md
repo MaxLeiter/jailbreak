@@ -14,6 +14,13 @@
 - Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
 
 ## Current state
+- 2026-07-19 input closure is staged as `iosc 0.9.20`: KEY records now carry actual down/up
+  state plus depressed/locked Shift/Ctrl/Alt/Super/Caps/Num masks; TEXT remains an explicit
+  down/up fallback. Multi-button state supports chording, pointer-lock deltas are incremental,
+  confinement regions and lock-position hints are honored, and arbitrary client cursor surfaces
+  (including hotspot) are compositor-rendered while named cursors retain the app-overlay fast path.
+  `iosc-input-test` now emits valid key taps, and both it and the stateful `ios-inputd` external-
+  compositor bridge ship in the package. Cross-build/package checks pass; device proof is pending.
 - iosc composites at logical N×M with 2× supersample → output IOSurface = 2N×2M (e.g. `-logical 1600x1200` → 3200×2400). Default in run-shell.sh is 1440×1080.
 - Input path PROVEN correct on-device: `surface_at()` pick is role-agnostic (delivers wl_pointer + wl_touch to layer surfaces too, not just toplevels); `handle_motion`/`handle_button`/`handle_touch` route to the hit surface's client; `iosc_input_record` divides output-px by `output_scale` ONCE (`iosc.c:4922-4923`) — no double-divide. Injected known-coord taps land dead-on.
 - Layer-surface translucency (alpha blend) needs iosc ≥ 0.9.1 (commit e11aa52); deployed iosc has it.
@@ -39,7 +46,9 @@
 3. Native mode still needs device validation around resize/focus/keyboard/jetsam replay, and a decision on whether to retain the classic output IOSurface while native hosts are active.
 
 ## Open items
-1. Keep soaking the packaged `iosc 0.9.15` path under normal iosc-shell/KDE usage; watch for clients that repaint continuously, stale surfaces after disconnect, unexpected full-output damage outside startup/geometry changes, or clients that mishandle live `wl_output` size changes after rotation/fullscreen nested-compositor reconfigure.
+1. Install and exercise `iosc 0.9.20` with the matching Xios app using the physical input matrix
+   in `xios-app.md`; specifically include pointer lock, non-rectangular confinement expectations,
+   custom cursor surfaces/hotspots, five-button chording, and wheel-versus-finger axis source.
 2. Damage optimization: static layer caching for wallpaper/panel/dock, then per-surface damage telemetry dashboards to catch chatty clients.
 3. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with classic Xios, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
 4. Rotation follow-up: basic iosc portrait resize is clean-packaged and device-validated. Remaining work is shell layout polish at `1080x1440`, wider app/client soak after live `wl_output` reconfigure, and physical orientation-change QA. See polish.md #21.

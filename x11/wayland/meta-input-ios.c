@@ -44,6 +44,7 @@ struct _MetaInputIOS
   int                        msg_log_budget;     /* log the first few decoded records */
   int                        cursor_x;
   int                        cursor_y;
+  uint32_t                   wire_mods;         /* Xios modifier snapshot, bits 0..5 */
 };
 
 static int
@@ -118,6 +119,46 @@ notify_keyval_click (MetaInputIOS *input,
                                               CLUTTER_KEY_STATE_RELEASED);
 }
 
+static uint32_t
+modifier_bit_for_keyval (uint32_t keyval)
+{
+  switch (keyval)
+    {
+    case 0xffe1: case 0xffe2: return 1u << 0; /* Shift L/R */
+    case 0xffe3: case 0xffe4: return 1u << 1; /* Control L/R */
+    case 0xffe9: case 0xffea: return 1u << 2; /* Alt L/R */
+    case 0xffeb: case 0xffec: return 1u << 3; /* Super L/R */
+    case 0xffe5: return 1u << 4;              /* Caps Lock */
+    case 0xff7f: return 1u << 5;              /* Num Lock */
+    default: return 0;
+    }
+}
+
+static void
+sync_wire_modifiers (MetaInputIOS *input,
+                     uint32_t      next)
+{
+  static const struct { uint32_t bit, keyval; } depressed[] = {
+    { 1u << 0, 0xffe1 }, /* Shift_L */
+    { 1u << 1, 0xffe3 }, /* Control_L */
+    { 1u << 2, 0xffe9 }, /* Alt_L */
+    { 1u << 3, 0xffeb }, /* Super_L */
+  };
+  uint32_t changed = input->wire_mods ^ next;
+
+  for (size_t i = 0; i < G_N_ELEMENTS (depressed); i++)
+    if (changed & depressed[i].bit)
+      clutter_virtual_input_device_notify_keyval (
+        input->keyboard, CLUTTER_CURRENT_TIME, depressed[i].keyval,
+        (next & depressed[i].bit) ? CLUTTER_KEY_STATE_PRESSED
+                                  : CLUTTER_KEY_STATE_RELEASED);
+
+  /* Lock modifiers toggle on a complete click, rather than staying depressed. */
+  if (changed & (1u << 4)) notify_keyval_click (input, 0xffe5); /* Caps_Lock */
+  if (changed & (1u << 5)) notify_keyval_click (input, 0xff7f); /* Num_Lock */
+  input->wire_mods = next;
+}
+
 static void
 on_input_msg (const struct xios_in_msg *m,
               const char               *text,
@@ -177,13 +218,24 @@ on_input_msg (const struct xios_in_msg *m,
       break;
 
     case XIOS_IN_KEY:
-      /* code is an X keysym; notify_keyval lets Clutter's keymap pick the keycode and
-       * latch the required level modifiers, so we do not reimplement iosc_input_lookup. */
+      /* Preserve true hardware down/up and synchronize the complete modifier
+       * snapshot. Modifier key records are represented by sync_wire_modifiers()
+       * itself; ordinary releases happen before the snapshot changes so a
+       * Ctrl-key chord remains active for the released key. */
+      if (modifier_bit_for_keyval (m->code))
+        {
+          sync_wire_modifiers (input, m->mods);
+          break;
+        }
+      if (m->state)
+        sync_wire_modifiers (input, m->mods);
       clutter_virtual_input_device_notify_keyval (input->keyboard,
-                                                  CLUTTER_CURRENT_TIME,
-                                                  m->code,
-                                                  m->state ? CLUTTER_KEY_STATE_PRESSED
-                                                           : CLUTTER_KEY_STATE_RELEASED);
+                                                   CLUTTER_CURRENT_TIME,
+                                                   m->code,
+                                                   m->state ? CLUTTER_KEY_STATE_PRESSED
+                                                            : CLUTTER_KEY_STATE_RELEASED);
+      if (!m->state)
+        sync_wire_modifiers (input, m->mods);
       break;
 
     case XIOS_IN_AXIS:
@@ -358,6 +410,8 @@ on_poll_tick (gpointer user_data)
       g_message ("MetaInputIOS: input client count %d -> %d (app %s)",
                  input->last_client_count, clients,
                  clients > input->last_client_count ? "connected" : "disconnected");
+      if (clients == 0)
+        sync_wire_modifiers (input, 0);
       input->last_client_count = clients;
     }
 
@@ -408,6 +462,7 @@ meta_input_ios_free (MetaInputIOS *input)
 {
   if (!input)
     return;
+  sync_wire_modifiers (input, 0);
 
   if (input->source_id)
     g_source_remove (input->source_id);

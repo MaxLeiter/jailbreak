@@ -112,6 +112,9 @@ final class XScreenView: UIView {
     private var axisRemainder = CGPoint.zero
     /// True once this two-finger pan has emitted AXIS records (needs a stop).
     private var axisActive = false
+    private var axisSource: UInt32 = 0
+    private weak var continuousScrollPan: UIPanGestureRecognizer?
+    private weak var discreteScrollPan: UIPanGestureRecognizer?
     /// Two-finger arbitration: the first gesture to cross its threshold claims
     /// the finger pair (scroll vs pinch app-zoom) for the rest of the session.
     private enum TwoFingerMode { case undecided, scroll, zoom }
@@ -150,6 +153,8 @@ final class XScreenView: UIView {
     private var lastCursorSeq: UInt32 = 0
     private var cursorIsText = false
     private var hardwarePointerActive = false
+    private var hardwareButtonMask = 0
+    private let hardwareKeyboard = XiosHardwareKeyboard()
     private var iosurfaceCompositorID = ""
 
     private var displayLink: CADisplayLink?
@@ -295,6 +300,9 @@ final class XScreenView: UIView {
 
         installChrome()
         installShellOverlay()
+        hardwareKeyboard.start { [weak self] keysym, down, modifiers in
+            self?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
+        }
         // start() already loaded the display in xios.json (the default). If other
         // displays are also open, offer the picker so the user can choose.
         let displays = discoverDisplays()
@@ -1026,6 +1034,8 @@ final class XScreenView: UIView {
 
     /// Tear down whichever input backend is connected (XTEST or iosc).
     private func closeInput() {
+        hardwareKeyboard.releasePressedKeys()
+        releaseHardwarePointerButtons()
         xinput_close()
         iosc_input_close()
         iosc_clipboard_close()
@@ -1499,9 +1509,25 @@ final class XScreenView: UIView {
         if usingIosc {
             var mods: UInt32 = 0
             if shift { mods |= 1 }; if ctrl { mods |= 2 }; if alt { mods |= 4 }
-            iosc_input_key(UInt32(ks), mods)   // iosc resolves the keysym + auto-Shift
+            // Accessory/OSK keys are taps. Hardware uses sendHardwareKey() below
+            // and preserves independent down/up transitions.
+            iosc_input_key(UInt32(ks), true, mods)
+            iosc_input_key(UInt32(ks), false, 0)
         } else {
             _ = xinput_type_keysym_mods(ks, ctrl, alt, shift, false)
+        }
+    }
+
+    private func sendHardwareKey(_ keysym: UInt32, down: Bool, modifiers: UInt32) {
+        guard inputConnected else { return }
+        if usingIosc {
+            iosc_input_key(keysym, down, modifiers)
+        } else {
+            let keycode = xinput_keycode_for_keysym(UInt(keysym))
+            if keycode != 0 {
+                xinput_key(keycode, down)
+                xinput_flush()
+            }
         }
     }
 
@@ -1638,7 +1664,7 @@ final class XScreenView: UIView {
     /// framebuffer-pixel fixed point with wl_pointer's sign (natural scroll:
     /// fingers up = content scrolls down the page = positive); XTEST keeps
     /// wheel-click emulation for plain X11 input.
-    private func sendScroll(dx: CGFloat, dy: CGFloat) {
+    private func sendScroll(dx: CGFloat, dy: CGFloat, source: UInt32) {
         guard inputConnected else { return }
         if usingIosc {
             guard let fit = fitTransform(), fit.scale > 0 else { return }
@@ -1650,7 +1676,8 @@ final class XScreenView: UIView {
             if sx != 0 || sy != 0 {
                 axisRemainder.x -= sx
                 axisRemainder.y -= sy
-                iosc_input_axis(Int32(sx), Int32(sy), 0, 0, false)
+                axisSource = source
+                iosc_input_axis(Int32(sx), Int32(sy), source, 0, false)
                 axisActive = true
             }
             return
@@ -1681,7 +1708,8 @@ final class XScreenView: UIView {
         axisRemainder = .zero
         guard axisActive else { return }
         axisActive = false
-        if inputConnected && usingIosc { iosc_input_axis(0, 0, 0, 0, true) }
+        if inputConnected && usingIosc { iosc_input_axis(0, 0, axisSource, 0, true) }
+        axisSource = 0
     }
 
     private func suppressCursorOverlayForTouch() {
@@ -1710,6 +1738,35 @@ final class XScreenView: UIView {
         sendMotion(x, y)
     }
 
+    @available(iOS 13.4, *)
+    private func handleHardwarePointer(_ touches: Set<UITouch>, event: UIEvent?) -> Bool {
+        guard let touch = touches.first(where: { $0.type == .indirectPointer }) else { return false }
+        activateCursorOverlayForHardwarePointer()
+        if inputConnected, let point = framebufferPoint(from: touch.location(in: self)) {
+            lastTouchPt = point
+            sendMotion(point.0, point.1)
+        }
+        updateHardwarePointerButtons(event?.buttonMask.rawValue ?? 0)
+        return true
+    }
+
+    private func updateHardwarePointerButtons(_ nextMask: Int) {
+        let changed = hardwareButtonMask ^ nextMask
+        guard changed != 0 else { return }
+        let ioscButtons: [Int32] = [1, 3, 2, 0x113, 0x114]
+        let xButtons: [Int32] = [1, 3, 2, 8, 9]
+        for index in 0..<ioscButtons.count where changed & (1 << index) != 0 {
+            let down = nextMask & (1 << index) != 0
+            sendButton(usingIosc ? ioscButtons[index] : xButtons[index], down, at: lastTouchPt)
+        }
+        hardwareButtonMask = nextMask
+    }
+
+    private func releaseHardwarePointerButtons() {
+        guard hardwareButtonMask != 0 else { return }
+        updateHardwarePointerButtons(0)
+    }
+
     @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
         switch g.state {
         case .began:
@@ -1735,7 +1792,8 @@ final class XScreenView: UIView {
     }
 
     @objc private func handleTwoFingerPan(_ g: UIPanGestureRecognizer) {
-        let isWheel = g.numberOfTouches == 0   // trackpad/wheel scroll events
+        let isIndirectScroll = g.numberOfTouches == 0
+        let source: UInt32 = (g === discreteScrollPan) ? 1 : 0
         switch g.state {
         case .began:
             twoFingerBegan()
@@ -1751,7 +1809,7 @@ final class XScreenView: UIView {
                     zoom: zoomScale)
                 needsPresent = true
             } else {
-                if twoFingerMode == .undecided, isWheel || abs(t.x) + abs(t.y) > 12 {
+                if twoFingerMode == .undecided, isIndirectScroll || abs(t.x) + abs(t.y) > 12 {
                     twoFingerMode = .scroll
                     if let (x, y) = framebufferPoint(from: g.location(in: self)) {
                         lastTouchPt = (x, y)
@@ -1760,7 +1818,8 @@ final class XScreenView: UIView {
                 }
                 if twoFingerMode == .scroll {
                     sendScroll(dx: t.x - panLastTranslation.x,
-                               dy: t.y - panLastTranslation.y)
+                               dy: t.y - panLastTranslation.y,
+                               source: source)
                 }
             }
             panLastTranslation = t
@@ -1923,6 +1982,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
         if (event?.allTouches?.count ?? touches.count) >= 3 {
@@ -1960,6 +2020,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
         if forwardIoscAll(touches, phase: 2, event: event) && activeTouchReplacesPointer { return }
@@ -1978,6 +2039,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression {
             if allTouchesEndedOrCancelled(event) { appGestureTouchSuppression = false }
@@ -1995,6 +2057,10 @@ final class XScreenView: UIView {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) {
+            releaseHardwarePointerButtons()
+            return
+        }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression {
             if allTouchesEndedOrCancelled(event) {
@@ -2363,6 +2429,17 @@ final class XScreenView: UIView {
         wheelPan.maximumNumberOfTouches = 0
         wheelPan.delegate = self
         addGestureRecognizer(wheelPan)
+        continuousScrollPan = wheelPan
+
+        // A physical mouse wheel is discrete input. Keep it distinct from a
+        // Magic Keyboard trackpad so Wayland clients receive the right source.
+        let discreteWheelPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        discreteWheelPan.allowedScrollTypesMask = .discrete
+        discreteWheelPan.allowedTouchTypes = []
+        discreteWheelPan.maximumNumberOfTouches = 0
+        discreteWheelPan.delegate = self
+        addGestureRecognizer(discreteWheelPan)
+        discreteScrollPan = discreteWheelPan
 
         let twoFingerTap = UITapGestureRecognizer(target: self, action: #selector(handleTwoFingerTap(_:)))
         twoFingerTap.numberOfTouchesRequired = 2
@@ -3861,6 +3938,7 @@ extension XScreenView: UIKeyInput {
 
     func insertText(_ text: String) {
         guard inputConnected else { return }
+        if hardwareKeyboard.isLikelyUIKitEcho() { return }
         if usingIosc && !modCtrl && !modAlt && !modShift {
             sendText(text)
             return
@@ -3878,6 +3956,7 @@ extension XScreenView: UIKeyInput {
 
     func deleteBackward() {
         guard inputConnected else { return }
+        if hardwareKeyboard.isLikelyUIKitEcho() { return }
         sendKeysym(0xff08, ctrl: modCtrl, alt: modAlt, shift: modShift)   // XK_BackSpace
         clearStickyMods()
     }

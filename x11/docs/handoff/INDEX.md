@@ -31,6 +31,13 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 15. **loose-ends-audit.md** — repository-wide 2026-07-18 closure ledger: completed host work, immutable package queue, intentional shims, real port blockers, and deferred device proof.
 
 ## Current headline status
+- **Full desktop input is implemented locally (2026-07-19):** both the classic Xios app and
+  native per-window host now consume raw Game Controller HID keyboard transitions, preserve
+  held keys/chords, map Command to Super, forward Caps/Num lock, support hover plus five mouse
+  buttons, and distinguish continuous trackpad scrolling from discrete wheel scrolling. iosc
+  also honors pointer lock/confinement and client cursor surfaces; Mutter's iOS backend consumes
+  the same stateful key/modifier wire. Release iPhoneOS builds and host keymap tests pass. The iPad
+  is offline, so physical Magic Keyboard/mouse/trackpad proof remains the release gate.
 - **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.
 - **The prior stale-scale/tap-offset bug is fixed on the app path:** Xios now re-adopts/re-syncs IOSurface geometry, resets zoom on adopt, and maps input through the current fit transform. Keep checking `/var/jb/tmp/xios-touch.log` when changing present/input code.
 - **Portrait/rotation path exists now:** the in-app Desktop Session picker can still launch portrait-sized sessions, and the clean packaged compositor now includes the native-feel OUTPUT resize path. Verified default `1440x1080` logical iosc -> OUTPUT transform 1 -> `1080x1440` logical / `2160x2880` framebuffer on-device with `iosc 0.9.9` and the rebuilt Xios app. Latest Xios build removes visible debug chrome: three-finger tap switches existing displays, four-finger tap opens the session/dimension picker, pinch app-zooms in/out to fit, lower-screen one-finger swipe opens the keyboard.

@@ -45,8 +45,8 @@
                              * = content scrolls down/right); code = source
                              * (0 finger, 1 wheel); state bit0 = axis_stop (end of
                              * gesture, deltas 0 — lets clients fling kinetically);
-                             * mods = modifier mask (1 shift, 2 ctrl, 4 alt) held
-                             * for the frame — pinch-zoom sends ctrl+scroll        */
+                             * mods = wire modifier mask held for the frame;
+                             * see XIOS_MOD_* below                                */
 /* Native-feel system integration (rotation / volume / appearance / haptics).
  * OUTPUT + HAPTIC ride the compositor input socket; VOLUME + APPEARANCE go to
  * the separate xios-sysintd session daemon (same 24-byte framing, its own
@@ -77,7 +77,7 @@ struct xios_in_msg {
     int32_t  x, y;      /* pointer position (output pixels), MOTION/BUTTON    */
     uint32_t code;      /* button / keysym / text length by type             */
     uint32_t state;     /* 0 released, 1 pressed (BUTTON/KEY)                 */
-    uint32_t mods;      /* app modifier bitmask: 1 shift, 2 ctrl, 4 alt      */
+    uint32_t mods;      /* 1 shift, 2 ctrl, 4 alt, 8 super, 16 caps, 32 num */
 };
 #endif
 

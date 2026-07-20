@@ -22,7 +22,7 @@ void iosc_input_close(void);
 bool iosc_input_is_open(void);
 void iosc_input_motion(int x, int y);                       // absolute, output px
 void iosc_input_button(int button, bool down, int x, int y);// 1=left 2=mid 3=right
-void iosc_input_key(unsigned keysym, unsigned mods);        // X keysym + mod bitmask
+void iosc_input_key(unsigned keysym, bool down, unsigned mods); // true key down/up + mod snapshot
 void iosc_input_text(const char *utf8);                     // committed UTF-8 text
 // Real multitouch + Apple Pencil (wire spec: x11/wayland/xios_input_socket.h).
 // phase: 0 up, 1 down, 2 motion, 3 cancel. slot = stable per-touch id 0..9.

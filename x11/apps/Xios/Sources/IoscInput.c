@@ -85,8 +85,9 @@ void iosc_input_button(int button, bool down, int x, int y) {
     send_msg(&m);
 }
 
-void iosc_input_key(unsigned keysym, unsigned mods) {
-    struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = keysym, .state = 1, .mods = mods };
+void iosc_input_key(unsigned keysym, bool down, unsigned mods) {
+    struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = keysym,
+                             .state = down ? 1u : 0u, .mods = mods };
     send_msg(&m);
 }
 
