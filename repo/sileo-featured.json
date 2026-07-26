@@ -879,6 +879,11 @@
       "url": "https://repo.maxleiter.com/banners/ladybird-app.png"
     },
     {
+      "title": "Ladybird private OpenSSL 3.5",
+      "package": "ladybird-tls",
+      "url": "https://repo.maxleiter.com/banners/ladybird-tls.png"
+    },
+    {
       "title": "Ladybird (Wayland)",
       "package": "ladybird-wayland",
       "url": "https://repo.maxleiter.com/banners/ladybird-wayland.png"
@@ -1954,16 +1959,6 @@
       "url": "https://repo.maxleiter.com/banners/libsqlite3-dev.png"
     },
     {
-      "title": "libssl-dev",
-      "package": "libssl-dev",
-      "url": "https://repo.maxleiter.com/banners/libssl-dev.png"
-    },
-    {
-      "title": "libssl3",
-      "package": "libssl3",
-      "url": "https://repo.maxleiter.com/banners/libssl3.png"
-    },
-    {
       "title": "libstartup-notification-dev",
       "package": "libstartup-notification-dev",
       "url": "https://repo.maxleiter.com/banners/libstartup-notification-dev.png"
@@ -2377,11 +2372,6 @@
       "title": "OpenCode",
       "package": "opencode",
       "url": "https://repo.maxleiter.com/banners/opencode.png"
-    },
-    {
-      "title": "openssl",
-      "package": "openssl",
-      "url": "https://repo.maxleiter.com/banners/openssl.png"
     },
     {
       "title": "phonon4qt6",

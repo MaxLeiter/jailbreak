@@ -22,7 +22,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.7"
+          "text": "0.1.9"
         },
         {
           "class": "DepictionTableTextView",

@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "KWin Wayland compositor for the Xios desktop"
+          "markdown": "KWin Wayland compositor with Xios ANGLE/IOSurface acceleration"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios2"
+          "text": "6.1.5+ios5"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "2248.8 KiB"
+          "text": "2258.4 KiB"
         },
         {
           "class": "DepictionTableTextView",

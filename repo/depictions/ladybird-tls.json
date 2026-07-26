@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/openssl.png",
+  "headerImage": "https://repo.maxleiter.com/banners/ladybird-tls.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Secure Sockets Layer toolkit - cryptographic utility"
+          "markdown": "Private OpenSSL 3.5 runtime for Ladybird"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "3.5.3+ios1"
+          "text": "3.5.3+wl1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "363.4 KiB"
+          "text": "2035.1 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Security"
+          "text": "Libraries"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "openssl"
+          "text": "ladybird-tls"
         }
       ]
     }
