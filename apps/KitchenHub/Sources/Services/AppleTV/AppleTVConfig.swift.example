@@ -1,0 +1,29 @@
+import Foundation
+
+/// Apple TV connection details. Holds the Companion pairing credentials, so the
+/// real `AppleTVConfig.swift` is git-ignored.
+///
+/// Setup:
+///   1. Copy this file to `AppleTVConfig.swift` (same directory).
+///   2. Pair with your Apple TV once to obtain the credentials (PIN shown on the
+///      TV). The easiest route is pyatv:
+///        `pip install atvremote && atvremote --id <ATV_ID> --protocol companion pair`
+///   3. Fill in the values below. `credentials` is pyatv's
+///      `ltpk:ltsk:atv_id:client_id` hex string.
+///
+/// `AppleTVConfig.swift` is listed in the repo `.gitignore` — never commit your
+/// real credentials.
+enum AppleTVConfig {
+    /// Display name for the device (any label you like).
+    static let name = "Living Room"
+
+    /// The Apple TV's IP address on your LAN. A static DHCP lease is recommended
+    /// until in-app Bonjour discovery lands.
+    static let host = "192.168.0.2"
+
+    /// Companion protocol port (usually 49152–49155; pyatv reports the exact one).
+    static let port: UInt16 = 49153
+
+    /// pyatv Companion credentials string: `ltpk:ltsk:atv_id:client_id` (hex).
+    static let credentials = "REPLACE_WITH_YOUR_COMPANION_CREDENTIALS"
+}
