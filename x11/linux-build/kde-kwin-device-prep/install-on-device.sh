@@ -13,9 +13,14 @@ fi
 
 cd "$BASE"
 
-if ls "$DEBS"/xios-kde_*.deb >/dev/null 2>&1; then
+if ls "$DEBS"/xios-kde_*.deb >/dev/null 2>&1 && [ ! -f "$BASE/ALLOW-XIOS-KDE" ]; then
   echo "refusing to install the unfinished full KDE meta set from this prep script" >&2
   exit 1
+fi
+
+if [ -f "$BASE/SHA256SUMS" ] && command -v sha256sum >/dev/null 2>&1; then
+  echo "==> verifying staged package checksums"
+  (cd "$BASE" && sha256sum -c SHA256SUMS)
 fi
 
 echo "==> KDE/KF6/KWin prep: installing package set only; nothing will be launched"
@@ -44,7 +49,8 @@ has_local_pkg() {
 }
 
 dep_names_from_deb() {
-  dpkg-deb -f "$1" Pre-Depends Depends 2>/dev/null \
+  { dpkg-deb -f "$1" Pre-Depends 2>/dev/null || true; \
+    dpkg-deb -f "$1" Depends 2>/dev/null || true; } \
     | tr ',' '\n' \
     | sed 's/|.*//' \
     | sed 's/(.*)//' \

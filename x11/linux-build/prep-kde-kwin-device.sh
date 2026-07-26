@@ -12,6 +12,7 @@ STAGE="${STAGE:-$HERE/kde-kwin-device-prep}"
 REMOTE="${REMOTE:-/var/jb/tmp/kde-kwin-prep}"
 VOLUME="${VOLUME:-procursus-vol-kf6}"
 IMAGE="${IMAGE:-procursus-xbuild:bookworm-arm64}"
+REPO_DEBS="${REPO_DEBS:-$X11_ROOT/../repo/debs}"
 
 source "$X11_ROOT/apps/iosc-desktop/deploy-env.sh"
 
@@ -21,7 +22,7 @@ docker_linux() {
 
 usage() {
   cat <<'EOF'
-usage: linux-build/prep-kde-kwin-device.sh [--stage-only] [--install]
+usage: linux-build/prep-kde-kwin-device.sh [--stage-only] [--install] [--include-meta] [--use-existing]
 
 Stages the latest runtime Qt6/KF6/KWin/Plasma debs from procursus-vol-kf6,
 overlays the fresh local Qt/KWin/Plasma/session debs from linux-build/out,
@@ -31,17 +32,23 @@ or Plasma.
 Options:
   --stage-only   build the local staging directory, but do not contact device
   --install      also run the on-device installer after pushing (default)
+  --include-meta include the current finalized xios-kde release candidate and
+                 its repo-local direct dependencies
+  --use-existing push/install the already assembled STAGE without rebuilding it
 
 Environment:
   STAGE=/path     local staging directory (default: linux-build/kde-kwin-device-prep)
   REMOTE=/path    device staging directory (default: /var/jb/tmp/kde-kwin-prep)
   VOLUME=name     Procursus Docker volume (default: procursus-vol-kf6)
   IMAGE=name      Docker image (default: procursus-xbuild:bookworm-arm64)
+  REPO_DEBS=/path finalized package directory (default: top-level repo/debs)
 EOF
 }
 
 DO_PUSH=1
 DO_INSTALL=1
+INCLUDE_META=0
+USE_EXISTING=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --stage-only)
@@ -50,6 +57,12 @@ while [ "$#" -gt 0 ]; do
       ;;
     --install)
       DO_INSTALL=1
+      ;;
+    --include-meta)
+      INCLUDE_META=1
+      ;;
+    --use-existing)
+      USE_EXISTING=1
       ;;
     -h|--help)
       usage
@@ -64,6 +77,12 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+if [ "$USE_EXISTING" -eq 1 ]; then
+  [ -d "$STAGE/debs" ] || { echo "ERROR: existing stage has no debs/: $STAGE" >&2; exit 1; }
+  [ -f "$STAGE/SHA256SUMS" ] || { echo "ERROR: existing stage has no SHA256SUMS: $STAGE" >&2; exit 1; }
+  echo "==> verifying frozen host bundle: $STAGE"
+  (cd "$STAGE" && shasum -a 256 -c SHA256SUMS)
+else
 rm -rf "$STAGE"
 mkdir -p "$STAGE/debs"
 
@@ -157,6 +176,97 @@ overlay_out \
   xios-media-server_*_iphoneos-arm64.deb \
   xios-session_*_iphoneos-arm64.deb
 
+if [ "$INCLUDE_META" -eq 1 ]; then
+  echo "==> including finalized xios-kde release candidate and direct repo dependencies"
+  for pattern in \
+    xios-kde_*_iphoneos-arm64.deb \
+    xios-core_*_iphoneos-arm64.deb \
+    iosc_*_iphoneos-arm64.deb \
+    xios-session_*_iphoneos-arm64.deb \
+    xios-desktop-theme_*_iphoneos-arm64.deb \
+    libjpeg62-turbo_*_iphoneos-arm64.deb \
+    kwin_*_iphoneos-arm64.deb \
+    breeze_*_iphoneos-arm64.deb \
+    plasma-workspace_*_iphoneos-arm64.deb \
+    plasma-desktop_*_iphoneos-arm64.deb \
+    plasma-mobile_*_iphoneos-arm64.deb \
+    plasma-nano_*_iphoneos-arm64.deb \
+    systemsettings_*_iphoneos-arm64.deb \
+    kscreen_*_iphoneos-arm64.deb \
+    kf6-kded_*_iphoneos-arm64.deb \
+    qt6-wayland_*_iphoneos-arm64.deb \
+    kf6-breeze-icons_*_iphoneos-arm64.deb \
+    ark_*_iphoneos-arm64.deb \
+    gwenview_*_iphoneos-arm64.deb \
+    kwrite_*_iphoneos-arm64.deb; do
+    for deb in "$REPO_DEBS"/$pattern; do
+      [ -f "$deb" ] || continue
+      case "$(basename "$deb")" in *-dev_*) continue ;; esac
+      cp -v "$deb" "$STAGE/debs/"
+    done
+  done
+
+  echo "==> folding repo-local runtime dependency closure into the bundle"
+  docker_linux \
+    -v "$REPO_DEBS:/repo:ro" \
+    -v "$STAGE/debs:/debs" \
+    "$IMAGE" \
+    -c '
+set -eu
+best=/tmp/repo-best
+rm -rf "$best"
+mkdir -p "$best"
+for deb in /repo/*.deb; do
+  [ -f "$deb" ] || continue
+  pkg=$(dpkg-deb -f "$deb" Package 2>/dev/null || true)
+  ver=$(dpkg-deb -f "$deb" Version 2>/dev/null || true)
+  [ -n "$pkg" ] && [ -n "$ver" ] || continue
+  if [ ! -f "$best/$pkg.path" ] || dpkg --compare-versions "$ver" gt "$(cat "$best/$pkg.version")"; then
+    printf "%s\n" "$deb" > "$best/$pkg.path"
+    printf "%s\n" "$ver" > "$best/$pkg.version"
+  fi
+done
+
+changed=1
+while [ "$changed" -eq 1 ]; do
+  changed=0
+  for deb in /debs/*.deb; do
+    [ -f "$deb" ] || continue
+    dependencies=$({
+      dpkg-deb -f "$deb" Pre-Depends 2>/dev/null || true
+      dpkg-deb -f "$deb" Depends 2>/dev/null || true
+    } | tr "," "\n")
+    while IFS= read -r clause; do
+      [ -n "$clause" ] || continue
+      normalized=$(printf "%s\n" "$clause" | tr "|" "\n" \
+        | sed "s/(.*)//; s/\[[^]]*\]//g; s/:any//g; s/^[[:space:]]*//; s/[[:space:]]*$//" \
+        | sed "/^$/d")
+      satisfied=0
+      candidate=""
+      while IFS= read -r alternative; do
+        [ -n "$alternative" ] || continue
+        if find /debs -maxdepth 1 -type f -name "${alternative}_*.deb" -print -quit | grep -q .; then
+          satisfied=1
+          break
+        fi
+        if [ -z "$candidate" ] && [ -f "$best/$alternative.path" ]; then
+          candidate=$(cat "$best/$alternative.path")
+        fi
+      done <<EOF
+$normalized
+EOF
+      [ "$satisfied" -eq 0 ] || continue
+      [ -n "$candidate" ] || continue
+      cp -v "$candidate" /debs/
+      changed=1
+    done <<EOF
+$dependencies
+EOF
+  done
+done
+'
+fi
+
 echo "==> keeping only the newest staged deb for each package"
 docker_linux \
   -v "$STAGE/debs:/debs" \
@@ -186,6 +296,18 @@ done
 rm -f /debs/*.deb
 cp "$TMP"/*.deb /debs/
 '
+
+# A filename in repo/debs is immutable and publish-finalized. If the same
+# package/version was also collected from a build volume or linux-build/out,
+# the repo byte is authoritative (notably for host-generated DER entitlements).
+echo "==> selecting finalized repo bytes for exact staged filenames"
+for staged in "$STAGE/debs"/*.deb; do
+  canonical="$REPO_DEBS/$(basename "$staged")"
+  [ -f "$canonical" ] || continue
+  if ! cmp -s "$canonical" "$staged"; then
+    cp -v "$canonical" "$staged"
+  fi
+done
 
 echo "==> normalizing KWin app wrappers to the rootless app path"
 docker_linux \
@@ -220,6 +342,21 @@ python3 "$HERE/resign-graphics-packages.py" "$STAGE/debs" \
   --gpu-ent "$HERE/build_info/iosc-gpu-client-ent.xml" \
   --gl-ent "$HERE/build_info/iosc-gl-ent.xml"
 
+echo "==> verifying staged bytes against same-version finalized repo artifacts"
+for staged in "$STAGE/debs"/*.deb; do
+  canonical="$REPO_DEBS/$(basename "$staged")"
+  [ -f "$canonical" ] || continue
+  if ! cmp -s "$canonical" "$staged"; then
+    echo "ERROR: staged artifact diverged from finalized repo byte: $(basename "$staged")" >&2
+    exit 1
+  fi
+done
+
+(cd "$STAGE" && shasum -a 256 debs/*.deb | LC_ALL=C sort > SHA256SUMS)
+if [ "$INCLUDE_META" -eq 1 ]; then
+  : > "$STAGE/ALLOW-XIOS-KDE"
+fi
+
 cat > "$STAGE/install-on-device.sh" <<'EOF'
 #!/bin/sh
 set -eu
@@ -236,9 +373,14 @@ fi
 
 cd "$BASE"
 
-if ls "$DEBS"/xios-kde_*.deb >/dev/null 2>&1; then
+if ls "$DEBS"/xios-kde_*.deb >/dev/null 2>&1 && [ ! -f "$BASE/ALLOW-XIOS-KDE" ]; then
   echo "refusing to install the unfinished full KDE meta set from this prep script" >&2
   exit 1
+fi
+
+if [ -f "$BASE/SHA256SUMS" ] && command -v sha256sum >/dev/null 2>&1; then
+  echo "==> verifying staged package checksums"
+  (cd "$BASE" && sha256sum -c SHA256SUMS)
 fi
 
 echo "==> KDE/KF6/KWin prep: installing package set only; nothing will be launched"
@@ -267,7 +409,8 @@ has_local_pkg() {
 }
 
 dep_names_from_deb() {
-  dpkg-deb -f "$1" Pre-Depends Depends 2>/dev/null \
+  { dpkg-deb -f "$1" Pre-Depends 2>/dev/null || true; \
+    dpkg-deb -f "$1" Depends 2>/dev/null || true; } \
     | tr ',' '\n' \
     | sed 's/|.*//' \
     | sed 's/(.*)//' \
@@ -316,6 +459,12 @@ echo "==> ready at $BASE; no compositor was launched"
 EOF
 chmod +x "$STAGE/install-on-device.sh"
 
+if [ "$INCLUDE_META" -eq 1 ]; then
+  META_NOTE="This bundle includes the finalized xios-kde release candidate and its recursive repo-local runtime dependency closure."
+else
+  META_NOTE="This bundle deliberately excludes xios-kde."
+fi
+
 cat > "$STAGE/README.txt" <<EOF
 KDE/KF6/KWin/Plasma first-light device prep bundle.
 
@@ -326,11 +475,36 @@ Contents:
 - debs/: runtime Qt6, KF6, KWayland/KWin, Plasma Workspace/Nano/Mobile, xios-session, and shim packages
 - install-on-device.sh: installs the package set and writes RUN-LATER.txt
 
-This bundle deliberately excludes xios-kde.
+$META_NOTE
 It does not launch any compositor or session process.
 EOF
 
+cat > "$STAGE/DEVICE-READY-CHECKLIST.txt" <<EOF
+KWin +ios5 / xios-kde 0.1.9 device gate
+
+The bundle is already assembled and checksum-pinned at:
+  $STAGE
+
+When the iPad is available, run from the x11 directory:
+
+  bin/xios-device doctor
+  STAGE="$STAGE" linux-build/prep-kde-kwin-device.sh --use-existing --install
+  bin/xios-device exec 'dpkg-query -W kwin xios-kde plasma-workspace plasma-mobile kscreen xios-session; apt-get check'
+  bin/xios-kde-smoke desktop --slot kwin-ios5-desktop --warmup 12 --pointer-probe
+  bin/xios-kde-smoke desktop --slot kwin-ios5-settings --warmup 12 --app systemsettings
+  bin/xios-kde-smoke mobile --slot kwin-ios5-mobile --warmup 12 --drawer
+
+Only after those isolated-slot checks pass, profile an active Desktop session:
+
+  bin/xios-profile-session --duration 30 --shot kde-desktop
+
+Do not publish +ios5 to production until the collected logs prove OpenGL
+compositing, IOSurface client imports, clean frame pacing, input alignment,
+rotation, and teardown without EGL/QRhi/protocol errors.
+EOF
+
 printf "==> staged %s debs in %s\n" "$(find "$STAGE/debs" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d ' ')" "$STAGE"
+fi
 
 if [ "$DO_PUSH" -eq 0 ]; then
   echo "==> stage-only requested; not contacting device"
@@ -342,7 +516,9 @@ ssh_ "true"
 
 echo "==> pushing prep bundle to $REMOTE"
 ssh_ "rm -rf '$REMOTE' && mkdir -p '$REMOTE/debs'"
-scp_ "$STAGE/install-on-device.sh" "$STAGE/README.txt" "root@$IP:$REMOTE/"
+bundle_files=("$STAGE/install-on-device.sh" "$STAGE/README.txt" "$STAGE/DEVICE-READY-CHECKLIST.txt" "$STAGE/SHA256SUMS")
+[ ! -f "$STAGE/ALLOW-XIOS-KDE" ] || bundle_files+=("$STAGE/ALLOW-XIOS-KDE")
+scp_ "${bundle_files[@]}" "root@$IP:$REMOTE/"
 scp_ "$STAGE/debs/"*.deb "root@$IP:$REMOTE/debs/"
 
 if [ "$DO_INSTALL" -eq 0 ]; then

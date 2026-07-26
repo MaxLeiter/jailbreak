@@ -100,6 +100,21 @@ The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built L
   `kwin` `75095a7cd19d1c2d8628c31e5134224048e32aae7bdea18317c71eb3dd127f0b`;
   `kwin-dev` `c0331be9dcaa7271ed0863651424d09f4e25a86092e8603a21d5da841acfaa31`.
   `xios-kde 0.1.9` requires this immutable revision; all three are live in staging.
+- The finalized `repo/debs` `kwin +ios5` byte is now canonical in `linux-build/out`
+  and the device-prep bundle (SHA256
+  `75095a7cd19d1c2d8628c31e5134224048e32aae7bdea18317c71eb3dd127f0b`).
+  Raw Mach-O inspection proves both packaged runtime binaries carry DER entitlement slot `0x7`;
+  `resign-graphics-packages.py` now skips already-finalized binaries, rejects a host re-sign that
+  still lacks that slot, and the prep script selects and then byte-compares exact-version repo
+  artifacts so a build-output copy cannot silently replace the finalized package.
+- Host-only device preparation is frozen at `linux-build/kde-kwin-device-prep`: 142 checksum-pinned
+  runtime debs including `xios-kde 0.1.9`, the recursive repo-local dependency closure, an
+  opt-in meta-package marker, an on-device installer, and `DEVICE-READY-CHECKLIST.txt`. The closure
+  audit has zero unstaged repo-local dependencies; its remaining 15 dependencies are external
+  Procursus/system packages. `--use-existing --stage-only` revalidates the frozen bundle without
+  contacting the device. When the iPad is available, run the checklist's `--use-existing --install`
+  path and isolated Desktop/System Settings/Mobile smoke slots. No device proof exists for `+ios5`
+  yet, so the publication gate above remains in force.
 
 ## Plasma Desktop packaging — WIP
 - Desktop/mobile audit as of 2026-07-06: `kwin`, Qt6, KF6, `kwayland`, `kdecoration`, `layer-shell-qt`, `plasma-activities`, `plasma-wayland-protocols`, KGlobalAccelD, `libplasma`, the workspace support wave, `plasma-workspace`, `plasma-desktop`, `plasma-nano`, `plasma-mobile`, `libkscreen`, `kscreen`, `systemsettings`, `breeze`, and `plasma-integration` are built. `kscreenlocker` plus the broader Desktop/Mobile KCM/plugin/service wave still need deliberate packaging/port work.

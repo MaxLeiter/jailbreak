@@ -7,5 +7,5 @@ Contents:
 - debs/: runtime Qt6, KF6, KWayland/KWin, Plasma Workspace/Nano/Mobile, xios-session, and shim packages
 - install-on-device.sh: installs the package set and writes RUN-LATER.txt
 
-This bundle deliberately excludes xios-kde.
+This bundle includes the finalized xios-kde release candidate and its recursive repo-local runtime dependency closure.
 It does not launch any compositor or session process.
