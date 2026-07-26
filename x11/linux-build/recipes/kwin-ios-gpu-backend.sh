@@ -124,6 +124,22 @@ replace(
     "ios-gpu-factory-bind",
 )
 
+# linux-drm-syncobj-v1 is a DRM-only protocol. On iOS the render backend has no
+# DrmDevice, so the unconditional deref here segfaulted the moment OpenGL
+# compositing was actually attempted:
+#   KWin::DrmDevice::supportsSyncObjTimelines() const   <- KERN_INVALID_ADDRESS 0x30
+#   KWin::WaylandServer::setRenderBackend
+#   KWin::AbstractEglBackend::initWayland
+#   KWin::WaylandCompositor::attemptOpenGLCompositing
+# Guarding the pointer lets the existing else-branch tear down any stale
+# interface, which is the correct behaviour for a backend with no DRM device.
+replace(
+    "src/wayland_server.cpp",
+    "    if (backend->drmDevice()->supportsSyncObjTimelines()) {",
+    "    if (backend->drmDevice() && backend->drmDevice()->supportsSyncObjTimelines()) { // ios-gpu-no-drm-syncobj",
+    "ios-gpu-no-drm-syncobj",
+)
+
 replace(
     "src/backends/wayland/wayland_backend.cpp",
     "    if (m_display->linuxDmabuf() && m_drmDevice) {\n        ret.append(OpenGLCompositing);\n    }",
