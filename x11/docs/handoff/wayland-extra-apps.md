@@ -6,7 +6,7 @@ Geary/WebKitGTK, Gnumeric, and Transmission. Keep this separate from
 `wayland-apps.md`, which owns the already-smoked foot/imv/mpv/fuzzel/dunst/grim
 batch and its runtime fixes.
 
-Last touched: 2026-07-08.
+Last touched: 2026-07-19.
 
 ## Build Driver
 
@@ -41,7 +41,7 @@ docker run --rm --platform linux/arm64 --cpus=4 \
 | swayimg | native Wayland image viewer | recipe/control/patch stack added; `swayimg_5.4+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed |
 | yad | GTK dialog utility | recipe/control added; `yad_15.0+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed (2026-07-08) after a clean re-run with no competing session switch — the earlier "Broken pipe" was a concurrent `xios-session` switch nuking `wayland-0`, not a yad bug |
 | nwg-look | GTK settings UI | explicit blocker target; needs shared Go+cgo iPhoneOS path for gotk3; `xcur2png` is optional/deferrable |
-| Geary | GNOME mail client | no recipe; blocked on WebKitGTK and mail-app dependency lane; `gmime`, `libstemmer`, and `libytnef` leaf deps are now built |
+| Geary | GNOME mail client | no recipe; blocked on WebKitGTK and the remaining mail-app dependency lane; `gmime`, `libstemmer`, `libytnef`, `gspell`, and `libpeas` leaf deps are now host-built; the last two still need device smoke before publication |
 | WebKitGTK | browser/webview platform | separate research/build lane; see `geary-webkitgtk.md` |
 | Gnumeric | GTK spreadsheet | recipe/control added with `libgsf`, `libxslt`, and `goffice`; `gnumeric_1.12.61+ios1_iphoneos-arm64.deb` built and installed; on-device classic `iosc` capture passed (2026-07-08) — full spreadsheet UI renders with the CSV loaded; the earlier invalidation was a session switch losing `wayland-0`, now confirmed clean |
 | Transmission | CLI/daemon BitTorrent client | recipe/control/patch stack added; `transmission_4.1.3+ios1_iphoneos-arm64.deb` built; CLI tools passed on-device; GTK UI deferred until gtkmm |
@@ -122,6 +122,21 @@ Host/container builds completed on 2026-07-06 and 2026-07-07 and copied these de
 - `libgmime-3.0-0_3.2.7+ios1_iphoneos-arm64.deb`
 - `libgmime-3.0-dev_3.2.7+ios1_iphoneos-arm64.deb`
 
+The Geary leaf lane was extended on 2026-07-19 with fresh packages in
+`linux-build/out/`:
+
+- `libgspell-1-2_1.12.2+ios1_iphoneos-arm64.deb`
+- `libgspell-1-dev_1.12.2+ios1_iphoneos-arm64.deb`
+- `libpeas-1.0-0_1.36.0+ios1_iphoneos-arm64.deb`
+- `libpeas-1.0-dev_1.36.0+ios1_iphoneos-arm64.deb`
+
+The runtime dylibs are signed arm64 Mach-O payloads. `libgspell-1.2.dylib`
+links ICU 78.3 and `libgtkintl`; `libpeas-1.0.0.dylib` links the published
+libgirepository 1.78 runtime and `libgtkintl`. Adding the four package stanzas
+to the current local package universe passed the repo solvability check across
+564 packages. Device smoke and publication remain pending because the iPad SSH
+endpoint timed out on 2026-07-19.
+
 ## Port Notes
 
 - Transmission 4.1.3 builds the daemon, CLI, utilities, and web UI with the GTK
@@ -154,9 +169,12 @@ Host/container builds completed on 2026-07-06 and 2026-07-07 and copied these de
 - tofi maps under `iosc` after clamping its `wl_seat` bind to the compositor's
   advertised v5 support. The iOS keymap crash was a real double-cleanup path in
   `wl_keyboard_keymap`; the patch keeps a single shared `munmap`/`close`.
-- The Geary leaf-dependency lane has packaged `gmime`, `libstemmer`, and
-  `libytnef`. `gspell` and `libpeas` recipe/control skeletons exist but have
-  not yet reached validated debs.
+- The Geary leaf-dependency lane has packaged `gmime`, `libstemmer`, `libytnef`,
+  `gspell`, and `libpeas`. For libpeas, the extra-app driver stages the already
+  published `libgirepository-1.0-1` and `-dev` debs instead of rebuilding the
+  full gobject-introspection/target-Python toolchain. The gspell runtime control
+  now tracks the current ICU 78 soname. The gspell/libpeas debs are host-validated
+  only until the next device smoke.
 - On-device classic `iosc` smoke installed the local extra-app debs and passed
   package state, Transmission CLI, `swaybg`, and `swayimg`. Focused follow-up
   slot smokes now also pass for `tofi` and `waybar`. `yad` and `gnumeric` were
@@ -186,9 +204,9 @@ Host/container builds completed on 2026-07-06 and 2026-07-07 and copied these de
   preview helper upstream and can be skipped or packaged later; it is not the
   main blocker.
 - `geary-package`: do not add until WebKitGTK 4.1 and the remaining mail
-  dependency lane are available. `gmime`, `libstemmer`, and `libytnef` are now
-  packaged; `gspell`, `libpeas`, `folks`, `gnome-online-accounts`, `gsound`,
-  gcr-3/gck-1, and WebKitGTK remain.
+  dependency lane are available. `gmime`, `libstemmer`, `libytnef`, `gspell`,
+  and `libpeas` are now packaged; the latter two still need device smoke.
+  `folks`, `gnome-online-accounts`, `gsound`, gcr-3/gck-1, and WebKitGTK remain.
 
 ## Policy
 
@@ -264,6 +282,21 @@ docker run --rm --platform linux/arm64 --cpus=2 \
   -v "$PWD/linux-build/out:/out" \
   -e TARGETS="libstemmer-package libytnef-package gmime-package" \
   procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
+```
+
+The 2026-07-19 gspell/libpeas refresh used:
+
+```sh
+cp ../repo/debs/libgirepository-1.0-{1,dev}_1.78.0+ios1_iphoneos-arm64.deb linux-build/out/
+docker run --rm --platform linux/arm64 --cpus=4 \
+  -v procursus-vol-gtk-calc:/work/Procursus \
+  -v "$PWD/linux-build/build-wayland-extra-apps.sh:/work/build-wayland-extra-apps.sh:ro" \
+  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
+  -v "$PWD/ports:/work/ports:ro" \
+  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
+  -v "$PWD/linux-build/out:/out" \
+  -e TARGETS="gspell-package libpeas-package" \
+  procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
 ```
 
 `swayimg_5.4+ios1_iphoneos-arm64.deb` metadata and payload were checked with

@@ -5,6 +5,6 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/gspell
-Depends: libglib2.0-0, libgtk-3-0, libenchant-2-2, libicu74
+Depends: libglib2.0-0, libgtk-3-0, libenchant-2-2, libicu78
 Description: Spell-checking library for GTK3
  gspell provides spell-checking widgets and helpers for GTK3 applications.

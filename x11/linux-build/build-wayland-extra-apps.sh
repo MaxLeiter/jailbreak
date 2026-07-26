@@ -221,11 +221,32 @@ scrub_waybar_fallback_deps() {
     "$BB/usr/include/json"
 }
 
+# libpeas' core library links libgirepository, but this lane deliberately does not
+# rebuild the gobject-introspection tool suite (which would also rebuild target Python).
+# Stage the published runtime/dev packages that own the dylib, headers, and pkg-config
+# metadata, matching the prebuilt-dependency pattern used by the other app drivers.
+stage_libpeas_girepository() {
+  target_requests libpeas || return 0
+
+  echo "==> staging libgirepository for libpeas"
+  local pkg deb
+  for pkg in libgirepository-1.0-1 libgirepository-1.0-dev; do
+    deb="$(find /out -maxdepth 1 -type f -name "${pkg}_*_iphoneos-arm64.deb" -print 2>/dev/null | sort -V | tail -1)"
+    if [ -z "$deb" ]; then
+      echo "ERROR: no $pkg deb in /out; build or copy the published package first" >&2
+      exit 1
+    fi
+    echo "    staging $deb"
+    dpkg-deb -x "$deb" /work/Procursus/build_base/iphoneos-arm64-rootless/1900
+  done
+}
+
 for pkg in swaybg tofi swayimg waybar transmission libsigcplusplus; do
   target_requests "$pkg" && refresh_patch_build_tree "$pkg"
 done
 ensure_gtk3_wayland_build
 scrub_waybar_fallback_deps
+stage_libpeas_girepository
 
 for t in $TARGETS; do
   echo "==> make $t"

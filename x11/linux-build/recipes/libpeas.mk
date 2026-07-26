@@ -4,8 +4,9 @@ endif
 
 # libpeas.mk — libpeas 1.x plugin engine for the Geary 46 lane. Build the core C loader
 # only: no Python/Lua loaders, no GTK widgetry, no demos/docs, no generated GIR/VAPI.
-# Upstream 1.x still links libgirepository into the core library, so this depends on the
-# existing gobject-introspection target/package set.
+# Upstream 1.x still links libgirepository into the core library. The extra-app driver
+# stages the already-published runtime/dev packages into build_base; rebuilding the
+# gobject-introspection tools here would unnecessarily pull target Python into this lane.
 
 SUBPROJECTS     += libpeas
 LIBPEAS_MAJOR_V := 1.36
@@ -35,7 +36,7 @@ ifneq ($(wildcard $(BUILD_WORK)/libpeas/.build_complete),)
 libpeas:
 	@echo "Using previously built libpeas."
 else
-libpeas: libpeas-setup glib2.0 gobject-introspection
+libpeas: libpeas-setup glib2.0
 	cd $(BUILD_WORK)/libpeas/build && meson \
 		--cross-file cross.txt \
 		-Dintrospection=false \
