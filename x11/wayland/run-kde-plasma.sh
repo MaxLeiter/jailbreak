@@ -81,9 +81,16 @@ KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
 KDE_LOG="${KDE_LOG:-$TMP/kde-plasma.log}"
 IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
-KWIN_QT_QUICK_BACKEND="${KWIN_QT_QUICK_BACKEND:-${QT_QUICK_BACKEND:-software}}"
-KWIN_QSG_RHI_BACKEND="${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-software}}"
-KWIN_QMLSCENE_DEVICE="${KWIN_QMLSCENE_DEVICE:-${QMLSCENE_DEVICE:-softwarecontext}}"
+# KWin's internal QtQuick windows render through Qt OpenGL on ANGLE/Metal as of
+# kwin 6.1.5+ios5. Before that the iOS QPA plugin returned nullptr from
+# createPlatformOpenGLContext and forced ShmGraphicsBufferAllocator, so software
+# was mandatory rather than defensive; those seams are gone. Note QT_QUICK_BACKEND
+# is the master switch -- while it is "software" Qt ignores QSG_RHI_BACKEND
+# entirely, so all three must move together. Use the ${VAR-} form (not ${VAR:-})
+# so an empty value means "unset and let Qt auto-detect", matching the Plasma side.
+KWIN_QT_QUICK_BACKEND="${KWIN_QT_QUICK_BACKEND-${QT_QUICK_BACKEND-}}"
+KWIN_QSG_RHI_BACKEND="${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
+KWIN_QMLSCENE_DEVICE="${KWIN_QMLSCENE_DEVICE-${QMLSCENE_DEVICE-}}"
 PLASMA_QT_QUICK_BACKEND="${PLASMA_QT_QUICK_BACKEND-${QT_QUICK_BACKEND-}}"
 PLASMA_QSG_RHI_BACKEND="${PLASMA_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
 PLASMA_QMLSCENE_DEVICE="${PLASMA_QMLSCENE_DEVICE-${QMLSCENE_DEVICE-}}"

@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += milou
 MILOU_VERSION = $(PLASMA_VERSION)
-DEB_MILOU_V ?= $(MILOU_VERSION)+ios1
+DEB_MILOU_V ?= $(MILOU_VERSION)+ios2
 
 milou-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,milou))

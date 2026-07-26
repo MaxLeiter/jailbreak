@@ -151,7 +151,7 @@ xios_profile_env_pairs() {
             xios_profile_pair QT_PLUGIN_PATH "$prefix/lib/qt6/plugins"
             xios_profile_pair QML2_IMPORT_PATH "$prefix/lib/qt6/qml"
             xios_profile_pair QML_IMPORT_PATH "$prefix/lib/qt6/qml"
-            xios_profile_pair QSG_RHI_BACKEND "${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-software}}"
+            xios_profile_pair QSG_RHI_BACKEND "${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
             ;;
         plasma-egl)
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
