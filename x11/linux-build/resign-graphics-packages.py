@@ -68,6 +68,25 @@ MACHO_MAGICS = {
     0xCAFEBABF, 0xBFBAFECA,          # fat64
 }
 
+LC_CODE_SIGNATURE = 0x1D
+CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0
+CSSLOT_DER_ENTITLEMENTS = 0x7
+
+# Raw file magic -> (byte order, Mach-O header size). Load commands start after
+# the 28-byte 32-bit or 32-byte 64-bit header.
+THIN_MACHO_LAYOUTS = {
+    b"\xce\xfa\xed\xfe": ("<", 28),
+    b"\xfe\xed\xfa\xce": (">", 28),
+    b"\xcf\xfa\xed\xfe": ("<", 32),
+    b"\xfe\xed\xfa\xcf": (">", 32),
+}
+FAT_MACHO_LAYOUTS = {
+    b"\xca\xfe\xba\xbe": (">", False),
+    b"\xbe\xba\xfe\xca": ("<", False),
+    b"\xca\xfe\xba\xbf": (">", True),
+    b"\xbf\xba\xfe\xca": ("<", True),
+}
+
 # A binary is only a graphics binary if it carries one of the GPU/IOSurface
 # IOKit user-client markers. This is the gate that keeps the pass off ordinary
 # Procursus daemons: those are platformized with com.apple.private.* +
@@ -124,6 +143,82 @@ def is_macho(path: str) -> bool:
     if len(head) < 4:
         return False
     return struct.unpack(">I", head)[0] in MACHO_MAGICS
+
+
+def macho_slices(blob: bytes, path: str) -> list[tuple[int, int]]:
+    """Return (offset, size) for every thin Mach-O slice in *blob*."""
+    layout = THIN_MACHO_LAYOUTS.get(blob[:4])
+    if layout:
+        return [(0, len(blob))]
+
+    fat = FAT_MACHO_LAYOUTS.get(blob[:4])
+    if not fat or len(blob) < 8:
+        raise SystemExit(f"ERROR: unsupported Mach-O layout: {path}")
+    endian, is_64 = fat
+    count = struct.unpack_from(endian + "I", blob, 4)[0]
+    arch_format = endian + ("IIQQII" if is_64 else "IIIII")
+    arch_size = struct.calcsize(arch_format)
+    cursor = 8
+    slices = []
+    for _ in range(count):
+        if cursor + arch_size > len(blob):
+            raise SystemExit(f"ERROR: truncated fat Mach-O header: {path}")
+        arch = struct.unpack_from(arch_format, blob, cursor)
+        offset, size = arch[2], arch[3]
+        if offset + size > len(blob):
+            raise SystemExit(f"ERROR: invalid fat Mach-O slice bounds: {path}")
+        slices.append((offset, size))
+        cursor += arch_size
+    return slices
+
+
+def signature_slots(path: str) -> list[set[int]]:
+    """Return the embedded code-signature slot types for each Mach-O slice."""
+    with open(path, "rb") as fh:
+        blob = fh.read()
+    result = []
+    for base, slice_size in macho_slices(blob, path):
+        layout = THIN_MACHO_LAYOUTS.get(blob[base:base + 4])
+        if not layout:
+            raise SystemExit(f"ERROR: fat archive contains a non-Mach-O slice: {path}")
+        endian, header_size = layout
+        if base + header_size > len(blob):
+            raise SystemExit(f"ERROR: truncated Mach-O header: {path}")
+        command_count = struct.unpack_from(endian + "I", blob, base + 16)[0]
+        cursor = base + header_size
+        signature = None
+        for _ in range(command_count):
+            if cursor + 8 > base + slice_size:
+                raise SystemExit(f"ERROR: truncated Mach-O load commands: {path}")
+            command, command_size = struct.unpack_from(endian + "II", blob, cursor)
+            if command_size < 8 or cursor + command_size > base + slice_size:
+                raise SystemExit(f"ERROR: invalid Mach-O load command: {path}")
+            if command == LC_CODE_SIGNATURE:
+                signature = struct.unpack_from(endian + "II", blob, cursor + 8)
+            cursor += command_size
+        if signature is None:
+            result.append(set())
+            continue
+        data_offset, data_size = signature
+        start = base + data_offset
+        end = start + data_size
+        if end > base + slice_size or start + 12 > len(blob):
+            raise SystemExit(f"ERROR: invalid Mach-O code-signature bounds: {path}")
+        magic, length, count = struct.unpack_from(">III", blob, start)
+        if magic != CSMAGIC_EMBEDDED_SIGNATURE or length > data_size:
+            raise SystemExit(f"ERROR: invalid embedded code signature: {path}")
+        if 12 + count * 8 > length:
+            raise SystemExit(f"ERROR: truncated embedded code-signature index: {path}")
+        result.append({
+            struct.unpack_from(">II", blob, start + 12 + index * 8)[0]
+            for index in range(count)
+        })
+    return result
+
+
+def has_der_entitlements(path: str) -> bool:
+    slots = signature_slots(path)
+    return bool(slots) and all(CSSLOT_DER_ENTITLEMENTS in item for item in slots)
 
 
 def sha256(path: str) -> str:
@@ -303,6 +398,9 @@ class DebResigner:
         if not any(m in entitlements(self.ldid, path) for m in GPU_MARKERS):
             raise SystemExit(
                 f"ERROR: {path} lost its GPU entitlement markers after re-signing")
+        if not has_der_entitlements(path):
+            raise SystemExit(
+                f"ERROR: {path} still lacks DER entitlements after host re-signing")
 
     def process_deb(self, deb: str) -> None:
         work = tempfile.mkdtemp(prefix="resign-deb-")
@@ -347,6 +445,10 @@ class DebResigner:
                 if kind is None:
                     continue
                 rel = os.path.relpath(fp, root)
+                if has_der_entitlements(fp):
+                    if self.verbose:
+                        log(f"    already-signed [{kind}] {rel}")
+                    continue
                 before = sha256(fp)
                 if self.dry_run:
                     log(f"    would re-sign [{kind}] {rel}")
