@@ -1,20 +1,25 @@
 # Geary / WebKitGTK feasibility
 
-Status as of 2026-07-06: no Geary or WebKitGTK recipe has been added. A first
-Geary package is not credible until the WebKitGTK 4.1 stack and several mail app
-deps exist. Some cheap leaf deps are now packaged: `gmime`, `libstemmer`, and
-`libytnef`. This note is the handoff for that dependency lane.
+Status as of 2026-07-19: the first WebKitGTK 4.1 cross-build milestone is real.
+WebKitGTK 2.44.4 configures for rootless iOS with GTK3, X11 + Wayland, and a
+no-JIT C-loop JavaScriptCore. The `WTF` and full `JavaScriptCore` Ninja targets
+both compile and link; the result is an arm64 Mach-O dylib with no undefined
+`__muloti4`. There is still no WebCore/WebKit compile, install/package target,
+Geary recipe, device smoke, or publication. Cheap Geary leaf deps also
+host-package successfully: `gmime`, `libstemmer`, `libytnef`, `gspell`, and
+`libpeas`; the last two still need device smoke before publication.
 
 ## Decision
 
-Do not add a Geary recipe skeleton yet.
+Continue WebKitGTK before adding a Geary recipe.
 
 Geary is not blocked by a small missing app dependency. It hard-requires
 WebKitGTK's GTK3/libsoup3 API (`webkit2gtk-4.1`, `javascriptcoregtk-4.1`, and
 the `webkit2gtk-web-extension-4.1` development interface) and builds a WebKit
-web-process extension. The current repo has no `webkitgtk` recipe/build_info
-and no matching runtime/dev packages, so a Geary recipe would fail at Meson
-configure before exercising any useful Geary-specific code.
+web-process extension. The repo now has a configure/engine recipe, but no
+installed WebKitGTK runtime, development packages, `.pc` files, or Vala API. A
+Geary recipe would still fail at Meson configure before exercising useful
+Geary-specific code.
 
 ## Local dependency inventory
 
@@ -41,18 +46,22 @@ Already present or partially present in this tree:
   `libstemmer-dev_2.2.0+ios1_iphoneos-arm64.deb`,
   `libytnef0_2.1.2+ios1_iphoneos-arm64.deb`, and
   `libytnef-dev_2.1.2+ios1_iphoneos-arm64.deb`.
-- gspell and libpeas: recipe/control skeletons exist, but no validated debs have
-  been produced yet.
+- gspell and libpeas: fresh runtime/dev debs were produced on 2026-07-19.
+  Their arm64 dylibs, signatures, pkg-config versions, load commands, and repo
+  dependency closure passed host validation. `gspell` now links ICU 78.3;
+  `libpeas` stages the published libgirepository 1.78 packages rather than
+  rebuilding the unrelated target-Python/GI toolchain. Device smoke is pending.
 
 Missing for Geary/WebKitGTK:
 
-- `webkitgtk` / `webkit2gtk-4.1` runtime, dev files, JavaScriptCoreGTK, and the
-  web-extension development `.pc`/headers.
+- WebCore and WebKit compilation, then `webkit2gtk-4.1` runtime/dev files and
+  the web-extension development `.pc`/headers. JavaScriptCoreGTK now links in
+  the build tree but is not installed or packaged.
 - Geary app deps still lacking validated packages: `folks`,
-  `gnome-online-accounts`, `gspell-1`, `gsound`, `libpeas` (1.0 for Geary
-  46.0, 2.x on current main), `sound-theme-freedesktop`, and probably
+  `gnome-online-accounts`, `gsound`, `sound-theme-freedesktop`, and probably
   `appstream-glib` if targeting the 46.0 tag. GNOME 46 also needs the
-  gcr-3/gck-1 family rather than only the current gcr-4 package.
+  gcr-3/gck-1 family rather than only the current gcr-4 package. The local
+  gspell-1 and libpeas-1.0 packages are host-valid but not yet device-smoked.
 - Vala binding coverage. Geary only vendors `icu-uc.vapi` and `libstemmer.vapi`;
   the rest of the `.vapi` surface must come from packages or the local vendored
   `linux-build/vapi` mechanism.
@@ -91,10 +100,19 @@ the already-started gcr-4 direction.
 
 ## WebKitGTK requirements and blockers
 
-Primary upstream reference:
+Primary upstream references:
 
-- WebKitGTK 2.52.4 GTK port CMake options:
+- Selected WebKitGTK 2.44.4 GTK port CMake options:
+  <https://raw.githubusercontent.com/WebKit/WebKit/webkitgtk-2.44.4/Source/cmake/OptionsGTK.cmake>
+- Newer WebKitGTK 2.52.4 options used for the initial dependency/configure
+  audit:
   <https://raw.githubusercontent.com/WebKit/WebKit/webkitgtk-2.52.4/Source/cmake/OptionsGTK.cmake>
+
+The first probe used 2.52.4 and reached a clean CMake configure, but compilation
+failed immediately on C++23 constructs that the current iOS cctools Clang 14
+misparses. WebKitGTK 2.46 and newer require C++23. Geary 46 only requires API
+4.1 >= 2.30, so this lane pins 2.44.4, the newest C++20 release line. A newer
+WebKit must wait for a separate compiler/toolchain upgrade.
 
 For Geary, build WebKitGTK with GTK3 API 4.1, not GTK4 API 6.0:
 
@@ -105,10 +123,13 @@ For Geary, build WebKitGTK with GTK3 API 4.1, not GTK4 API 6.0:
 - Set `-DENABLE_QUARTZ_TARGET=OFF`; Xios uses GTK's X11/Wayland backends, not
   native Quartz.
 
-Minimum hard deps from upstream 2.52.4 include GLib 2.70, Cairo 1.16, libgcrypt,
-libsoup3, libtasn1, HarfBuzz with ICU, ICU 70.1, JPEG, libepoxy, libxml2, PNG,
-SQLite, zlib, WebP demux, and AT-SPI. Many are already available in the base
-stack, but package/control coverage needs auditing before a recipe lands.
+The recipe stages the required runtime and development debs explicitly from
+`linux-build/out/` and the top-level repo. This includes GLib/GTK3, Cairo,
+libgcrypt, libsoup3, libtasn1, HarfBuzz + ICU, ICU, JPEG, libepoxy, libxml2,
+PNG, SQLite, zlib, WebP, AT-SPI, Fontconfig/FreeType, libxslt, libsecret, and
+Wayland. It normalizes the bootstrap `expat.pc` rootless prefix and supplies a
+compatibility definition for the newer staged XPC header when the SDK lacks
+`OS_OBJECT_DECL_SENDABLE_CLASS`.
 
 Default WebKitGTK features would drag in a much larger graph: GStreamer media,
 libmanette, libsecret, gobject-introspection/gi-docgen docs, libdrm/GBM,
@@ -126,13 +147,25 @@ actually needs them:
   independently of Geary's own `gspell`; libsecret is useful for credentials;
   JavaScriptCore and web extensions are non-negotiable.
 
-Likely porting blockers:
+Porting results and remaining blockers:
 
-- WebKit is a very large C++/CMake build with code generators and cross-probes;
-  expect target executables that upstream assumes it can run unless preseeded or
-  replaced with host tools.
-- JavaScriptCore on iOS needs a deliberate no-JIT/interpreter configuration and
-  signing review. Do not assume desktop JIT behavior works under rootless iOS.
+- WebKit's GTK release tarball prunes Apple-port sources that a real Darwin
+  target still selects. `hydrate-webkit-apple-sources.sh` restores the narrow
+  WTF/bmalloc set from immutable commit
+  `e4715b88387c15a3ff8b7cc7a2efbde89c484710` before CMake.
+- The quilt stack adds Darwin `ProcessCheck.mm`, exports
+  `AbortWithReasonSPI.h` for the GTK WTF header tree, and supplies the missing
+  compiler-rt `__muloti4` operation. These patches apply cleanly to a fresh
+  2.44.4 source extraction.
+- Host Ruby headers and `unifdef` are required by WebKit's generators. The
+  driver installs both. The LLInt settings/offset extractors compile and link
+  successfully in this cross configuration.
+- JavaScriptCore deliberately uses `ENABLE_JIT=OFF`, all higher JIT tiers off,
+  WebAssembly off, and `ENABLE_C_LOOP=ON`. The full target completed, but the
+  library has not been installed, signed through the package path, or executed
+  on iOS.
+- Building WebCore/WebKit is the next compile swing and may expose additional
+  Cocoa SPI, process-launch, graphics, or network seams.
 - WebKitGTK's process model will need on-device validation for `fork`/`exec`,
   subprocess paths under `/var/jb`, sandbox-off behavior, DBus/GIO expectations,
   and entitlements.
@@ -145,39 +178,30 @@ Likely porting blockers:
 
 ## Staged path
 
-1. Add leaf/app deps before WebKitGTK where cheap. Done:
-   `gmime`, `libstemmer`, `libytnef`. Next: validate/package `gspell` and
-   `libpeas`, then add `gsound`, `folks`, `gnome-online-accounts`, and the
+1. Leaf/app deps host-packaged:
+   `gmime`, `libstemmer`, `libytnef`, `gspell`, and `libpeas`. Next: device-smoke
+   gspell/libpeas, then add `gsound`, `folks`, `gnome-online-accounts`, and the
    gcr-3/gck-1 family for the Geary 46 lane.
-2. Add `webkitgtk.mk` only as a configure-only first milestone. Target
-   WebKitGTK 2.52.x, API 4.1, docs/tests/media-heavy features off. Split runtime
-   packages from the start: `libjavascriptcoregtk-4.1-0`,
-   `libwebkit2gtk-4.1-0`, and matching `-dev` packages that expose the
-   `webkit2gtk-web-extension-4.1` build interface.
-3. Get JavaScriptCore/WebKitGTK to configure and compile off-device. Do not move
-   to Geary until the installed `.pc` files and VAPIs exist.
+2. Completed: add the WebKitGTK 2.44.4 API 4.1 configure milestone and compile
+   `WTF` plus `JavaScriptCore` off-device.
+3. Next: add an explicit WebCore/WebKit compile target and fix only concrete
+   failures. Then add install/staging and split packages:
+   `libjavascriptcoregtk-4.1-0`, `libwebkit2gtk-4.1-0`, and matching `-dev`
+   packages exposing `webkit2gtk-web-extension-4.1`. Do not move to Geary until
+   installed `.pc` files and VAPIs exist.
 4. Revisit EDS/GOA for mail-account setup and OAuth. Decide whether to widen the
    current EDS recipe or create a documented second-stage EDS rebuild.
 5. Add `geary.mk` only after WebKitGTK 4.1 and the missing mail deps can satisfy
    Meson configure. Start with `-Dprofile=release`, `-Dtnef=false` if libytnef is
    not ready, and tests/docs off.
 
-## Next commands
+## Build commands
 
-No long build should be run from this handoff.
-
-Useful short inventory/probe commands before writing recipes:
+Validated WebKit configure/engine command from the repository root:
 
 ```sh
-rg --files linux-build/recipes linux-build/build_info | rg '(webkit|geary|gmime|folks|goa|gspell|gsound|libpeas|stemmer|ytnef)'
-curl -LfsS https://gitlab.gnome.org/GNOME/geary/-/raw/46.0/meson.build | rg "dependency\\(|target_"
-curl -LfsS https://raw.githubusercontent.com/WebKit/WebKit/webkitgtk-2.52.4/Source/cmake/OptionsGTK.cmake | rg "find_package\\(|WEBKIT_OPTION_DEFAULT_PORT_VALUE|USE_GTK4|WEBKITGTK_API_VERSION"
-```
-
-Validated leaf-dep build/collection command from 2026-07-06:
-
-```sh
-docker run --rm --platform linux/arm64 --cpus=2 \
+cd /Users/max/Documents/jailbreak/x11
+docker run --rm --platform linux/arm64 --cpus=4 \
   -v procursus-vol-gtk:/work/Procursus \
   -v "$PWD/linux-build/build-gnome.sh:/work/build-gnome.sh:ro" \
   -v "$PWD/linux-build/recipes:/work/recipes:ro" \
@@ -185,42 +209,13 @@ docker run --rm --platform linux/arm64 --cpus=2 \
   -v "$PWD/linux-build/build_info:/work/build_info:ro" \
   -v "$PWD/linux-build/vapi:/work/vapi:ro" \
   -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="libstemmer-package libytnef-package gmime-package" \
+  -v "$PWD/../repo/debs:/repo-debs:ro" \
+  -e TARGETS="webkitgtk-jsc" \
   procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
 ```
 
-After a `webkitgtk.mk` recipe exists, the first build command should be a
-configure/setup target, not a package build:
-
-```sh
-cd /Users/max/Documents/jailbreak/x11/linux-build
-docker run --rm --platform linux/arm64 --cpus=2 \
-  -v procursus-vol-gtk:/work/Procursus \
-  -v "$PWD/build-gnome.sh:/work/build-gnome.sh:ro" \
-  -v "$PWD/recipes:/work/recipes:ro" \
-  -v "$PWD/../ports:/work/ports:ro" \
-  -v "$PWD/build_info:/work/build_info:ro" \
-  -v "$PWD/vapi:/work/vapi:ro" \
-  -v "$PWD/out:/out" \
-  -e TARGETS="webkitgtk-setup" \
-  procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
-```
-
-Only after `webkitgtk-setup` configures cleanly should a WebKit owner try:
-
-```sh
-cd /Users/max/Documents/jailbreak/x11/linux-build
-docker run --rm --platform linux/arm64 --cpus=2 \
-  -v procursus-vol-gtk:/work/Procursus \
-  -v "$PWD/build-gnome.sh:/work/build-gnome.sh:ro" \
-  -v "$PWD/recipes:/work/recipes:ro" \
-  -v "$PWD/../ports:/work/ports:ro" \
-  -v "$PWD/build_info:/work/build_info:ro" \
-  -v "$PWD/vapi:/work/vapi:ro" \
-  -v "$PWD/out:/out" \
-  -e TARGETS="webkitgtk-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
-```
-
-There is no Geary build command yet because no useful Geary recipe exists without
-the WebKitGTK 4.1 package set.
+Use `TARGETS="webkitgtk-configure"` for configure only or
+`TARGETS="webkitgtk-wtf"` for the smaller core compile proof. Compile-only
+targets now skip deb collection/relinking. There is intentionally no
+`webkitgtk-package` target yet and no useful Geary build command until the
+WebKitGTK 4.1 package set exists.

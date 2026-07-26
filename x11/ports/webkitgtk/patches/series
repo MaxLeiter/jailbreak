@@ -1,0 +1,3 @@
+0001-build-darwin-process-check-for-gtk.patch
+0002-build-export-abort-with-reason-header-on-darwin.patch
+0003-jsc-supply-muloti4-on-darwin.patch

@@ -1,0 +1,17 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Build the Darwin process checks for the GTK port
+
+The WebKitGTK release tarball omits Apple-port build fragments, but a real
+Darwin target still enables the Cocoa/iOS bmalloc declarations. Add the shared
+implementation directly on Darwin so GTK cross-builds do not leave those
+symbols undefined.
+
+--- a/Source/bmalloc/CMakeLists.txt
++++ b/Source/bmalloc/CMakeLists.txt
+@@ -664,6 +664,7 @@ set(bmalloc_PUBLIC_HEADERS
+ if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+     list(APPEND bmalloc_SOURCES
++        bmalloc/ProcessCheck.mm
+         bmalloc/Zone.cpp
+     )
+ endif ()

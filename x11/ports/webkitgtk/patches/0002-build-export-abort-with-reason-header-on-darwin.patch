@@ -1,0 +1,18 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Export AbortWithReasonSPI for GTK builds on Darwin
+
+Assertions.h includes AbortWithReasonSPI.h whenever the target is Darwin, but
+the GTK port's Darwin header list does not copy it into the generated WTF
+include tree. Export it alongside the other Darwin SPI headers so
+JavaScriptCore's build-time tools can compile against that tree.
+
+--- a/Source/WTF/wtf/PlatformGTK.cmake
++++ b/Source/WTF/wtf/PlatformGTK.cmake
+@@ -26,6 +26,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+     )
+ elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+     list(APPEND WTF_PUBLIC_HEADERS
++        spi/darwin/AbortWithReasonSPI.h
+         spi/darwin/OSVariantSPI.h
+         spi/darwin/ProcessMemoryFootprint.h
+     )

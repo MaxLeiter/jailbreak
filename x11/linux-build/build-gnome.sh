@@ -24,14 +24,16 @@ cd /work/Procursus
 # desktop-file-utils (app translations/validation) are ours.
 if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>&1 \
    || ! command -v valac >/dev/null 2>&1 || ! command -v gdk-pixbuf-pixdata >/dev/null 2>&1 \
-   || ! command -v appstreamcli >/dev/null 2>&1; then
+   || ! command -v appstreamcli >/dev/null 2>&1 || ! command -v unifdef >/dev/null 2>&1 \
+   || [ ! -f /usr/include/ruby-3.1.0/ruby.h ]; then
   echo "==> installing host build tools (glib/gdk-pixbuf codegen + sassc + valac + itstool + appstreamcli)"
   apt-get update >/dev/null 2>&1 || true
   # appstream (host appstreamcli) is the native tool AppStream's own cross-build invokes for
   # news-to-metainfo; the recipe patches out its >= version gate so the bookworm 0.16 cli works.
   apt-get install -y --no-install-recommends \
       gtk-doc-tools libglib2.0-dev-bin libglib2.0-bin libgdk-pixbuf2.0-bin \
-      sassc valac itstool desktop-file-utils appstream gtk-update-icon-cache tcl >/dev/null 2>&1 \
+      sassc valac itstool desktop-file-utils appstream gtk-update-icon-cache \
+      ruby ruby-dev tcl unifdef >/dev/null 2>&1 \
     || { echo "ERROR: could not install host build tools"; exit 1; }
 fi
 
@@ -88,6 +90,7 @@ if target_requests gnome-desktop || target_requests nautilus || target_requests 
 fi
 target_requests gnome-text-editor && stage_required_patch_stack gnome-text-editor
 target_requests nautilus && stage_required_patch_stack nautilus
+target_requests webkitgtk && stage_required_patch_stack webkitgtk
 
 # Same clang wrapper build-gtk.sh uses: the Procursus wrapper injects -Wl,-adhoc_codesign, and
 # meson's compile-only probes add -Werror=unused-command-line-argument, so every cc.sizeof()
@@ -244,6 +247,22 @@ if [ -d "$APPSTREAM_W" ] && [ -n "${APPSTREAM_FP:-}" ]; then
 fi
 if [ -d "$TRACKER_W" ] && [ -n "${TRACKER_FP:-}" ]; then
   printf '%s\n' "$TRACKER_FP" > "$TRACKER_F"
+fi
+
+# Configure and compile milestones do not produce debs. Avoid sweeping and
+# rewriting every pre-existing artifact in /out when TARGETS contains no
+# package target (for example webkitgtk-configure or webkitgtk-jsc).
+HAS_PACKAGE_TARGET=0
+for t in $TARGETS; do
+  if [[ "$t" == *-package ]]; then
+    HAS_PACKAGE_TARGET=1
+    break
+  fi
+done
+if [ "$HAS_PACKAGE_TARGET" -eq 0 ]; then
+  echo "==> no package targets requested; skipping deb collection and relink pass"
+  echo "==> done"
+  exit 0
 fi
 
 echo "==> collect debs -> /out"
