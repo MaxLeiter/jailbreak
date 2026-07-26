@@ -53,7 +53,16 @@
   "libavformat-dev": {"version": "see libavcodec-dev"},
   "libavutil-dev": {"version": "see libavcodec-dev"},
   "libswresample-dev": {"version": "see libavcodec-dev"},
-  "libharfbuzz-dev": {"parity": "libharfbuzz-icu dev symlink lives in the libharfbuzz-icu0 split package"},
+  "libharfbuzz0b": {"version": "10.2.0 for Ladybird text shaping; soname libharfbuzz.0 kept + hb-glib built in (verified 2026-07-08, the exact feature whose absence bricked mutter); drop-in superset over Procursus 2.8.1"},
+  "libharfbuzz-subset0": {"version": "companion of libharfbuzz0b 10.2.0; soname libharfbuzz-subset.0 kept"},
+  "libharfbuzz-icu0": {"version": "companion of libharfbuzz0b 10.2.0; soname libharfbuzz-icu.0 kept"},
+  "libharfbuzz-dev": {
+    "parity": "libharfbuzz-icu dev symlink lives in the libharfbuzz-icu0 split package",
+    "version": "companion of libharfbuzz0b 10.2.0"
+  },
+  "curl": {"version": "8.20.0 for Ladybird; CLI companion of libcurl4, ABI-stable curl 8.x"},
+  "libcurl4": {"version": "8.20.0 for Ladybird networking; soname libcurl.4 kept (verified 2026-07-08); ABI-stable across curl 8.x; drop-in superset over Procursus 8.7.1"},
+  "libcurl4-openssl-dev": {"version": "companion of libcurl4 8.20.0"},
   "luajit": {"version": "mpv wants rolling LuaJIT 2.1; Procursus still ships 2.1.0~beta3"},
   "transmission": {"version": "leaf app package, no library consumers"},
 
