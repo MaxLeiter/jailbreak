@@ -4,8 +4,11 @@ Status as of 2026-07-03: close, but not ready to make public without cleanup.
 
 ## Current Blockers
 
-1. Choose and commit a `LICENSE`. Without it, people can read the code but should not treat it as open source.
-2. Purge copied proprietary assets and private exported transcripts from history before making an existing private repository public. The tracked `x11/apps/iosc-shell/design/.sf/SFNS.ttf` file and `x11/docs/x11-coordination-postmortem.zip` have been removed from the index in the public-prep pass, but if the repository history is preserved, remove them with `git filter-repo` or publish from a clean new history.
+1. ~~Choose and commit a `LICENSE`.~~ **DONE (2026-07-08):** MIT `LICENSE` added at repo root, copyright Max Leiter.
+2. Purge copied proprietary assets, private exported transcripts, and vendored source tarballs from history before making an existing private repository public. The following are already removed from the index but, if history is preserved, must be stripped with `git filter-repo` (or publish from a clean new history):
+   - `x11/apps/iosc-shell/design/.sf/SFNS.ttf` — Apple's proprietary San Francisco font (redistribution violates Apple's license).
+   - `x11/docs/x11-coordination-postmortem.zip` — private exported transcript.
+   - `x11/linux-build/src-tarballs/*.tar`, `*.tar.xz`, `*.tar.gz` — vendored upstream tarballs (~84 MB working tree, more in history). Untracked + git-ignored 2026-07-08; the build recipes re-fetch them from upstream, so a history purge reclaims the pack weight with no source loss. Curated header subdirs (`dbus-headers/`, `libei-1.3.0/src/`) stay tracked as build inputs — do **not** purge those paths.
 3. Decide the long-term artifact policy. Source, recipes, patches, package skeletons, and docs belong in Git. Final `.deb`s and generated build outputs should not; the current index removes `repo/debs/` package payloads and `x11/wayland/out/` generated binaries.
 
 ## Package Hosting Recommendation
@@ -138,7 +141,7 @@ Maintainers still need to perform:
 ## Cleanup Backlog
 
 - Decide whether generated repo depictions/icons/banners stay committed or are rebuilt only during publish.
-- Decide whether vendored source tarballs under `x11/linux-build/src-tarballs/` stay committed or move to documented fetch steps.
+- ~~Decide whether vendored source tarballs under `x11/linux-build/src-tarballs/` stay committed or move to documented fetch steps.~~ **DONE (2026-07-08):** untracked + git-ignored; recipes already fetch from upstream (`DOWNLOAD_FILES`/`EXTRACT_TAR`). Fold their paths into the Blocker 2 history purge.
 - Decide whether binary package skeleton payloads such as `x11/packages/x11-xvfb/var/jb/usr/bin/Xvfb` and `x11/packages/xios-server/var/jb/usr/bin/Xios` stay as bootstrap artifacts.
 - Add a lockfile for `x11/site` if reproducible site builds matter for CI.
 - Run a history scan before public launch: `gitleaks`, `git filter-repo --analyze`, or an equivalent secret/artifact audit.

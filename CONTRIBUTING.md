@@ -58,4 +58,6 @@ Production package publishing is maintainer-controlled. PRs should not deploy to
 
 ## License
 
-A repository license still needs to be chosen before this can be treated as a normal open-source project. Until a `LICENSE` file exists, do not assume reuse rights beyond GitHub's default terms.
+This project is MIT licensed; see [`LICENSE`](LICENSE). Contributions are accepted under the same terms.
+
+Note that this applies to the code in this repository only. Vendored upstream sources and patches carry their own upstream licenses, and no Apple-proprietary asset may be committed (see `docs/PUBLIC-READINESS.md`).
