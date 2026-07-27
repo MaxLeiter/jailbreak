@@ -34,6 +34,12 @@ struct IoscEglBuffer
     EGLSurface pbuffer = EGL_NO_SURFACE;
     wl_buffer *buffer = nullptr;
     std::unique_ptr<GLFramebuffer> framebuffer;
+    // EGL_ANGLE_iosurface_client_buffer reaches the IOSurface ONLY through
+    // eglBindTexImage; the pbuffer's default framebuffer is not backed by it.
+    // Built lazily on first use, when a context is guaranteed current.
+    GLuint texture = 0;
+    GLuint fbo = 0;
+    bool ensureRenderTarget();
     QRegion repaint;
     bool busy = false;
 };

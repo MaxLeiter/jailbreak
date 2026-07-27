@@ -87,12 +87,74 @@ IoscEglBuffer::IoscEglBuffer(WaylandEglBackend *backend, const QSize &size)
     buffer = iosc_iosurface_create_buffer(backend->backend()->display()->iosurface(), uint32_t(port),
         size.width(), size.height(), IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
     wl_buffer_add_listener(buffer, &bufferListener, this);
-    framebuffer = std::make_unique<GLFramebuffer>(0, size);
+    // The GL texture + FBO cannot be built here: no context is current during
+    // swapchain construction. ensureRenderTarget() does it on first beginFrame.
+}
+
+// Bind the IOSurface-backed pbuffer as a GL texture and wrap it in a real FBO.
+//
+// This is the load-bearing detail of EGL_ANGLE_iosurface_client_buffer: rendering
+// into the pbuffer's DEFAULT framebuffer (FBO 0) does not touch the IOSurface, so
+// every frame landed somewhere invisible -- the compositor reported success, iosc
+// imported the buffers, and the screen stayed black. The IOSurface is reachable
+// only via eglBindTexImage + glFramebufferTexture2D, which is exactly what iosc's
+// own proven output path does (iosc_gl.c: bind_pbuffer_texture -> FBO).
+//
+// Caller must have made the context current on `pbuffer` first.
+bool IoscEglBuffer::ensureRenderTarget()
+{
+    if (fbo) {
+        return true;
+    }
+    if (pbuffer == EGL_NO_SURFACE) {
+        return false;
+    }
+    if (!eglBindTexImage(display, pbuffer, EGL_BACK_BUFFER)) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: eglBindTexImage failed" << Qt::hex << eglGetError();
+        return false;
+    }
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // eglBindTexImage targets whatever texture is bound to GL_TEXTURE_2D, so the
+    // bind above must happen before the image is associated. Re-issue now that the
+    // texture object exists.
+    eglBindTexImage(display, pbuffer, EGL_BACK_BUFFER);
+
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: IOSurface FBO incomplete" << Qt::hex << status;
+        glDeleteFramebuffers(1, &fbo);
+        fbo = 0;
+        glDeleteTextures(1, &texture);
+        texture = 0;
+        return false;
+    }
+    framebuffer = std::make_unique<GLFramebuffer>(fbo, size);
+    return true;
 }
 
 IoscEglBuffer::~IoscEglBuffer()
 {
     framebuffer.reset();
+    // Release the IOSurface texture binding before the pbuffer goes away, and drop
+    // the GL objects. Leaking these would strand an IOSurface + mach port per
+    // swapchain resize.
+    if (fbo) {
+        glDeleteFramebuffers(1, &fbo);
+        fbo = 0;
+    }
+    if (texture) {
+        eglReleaseTexImage(display, pbuffer, EGL_BACK_BUFFER);
+        glDeleteTextures(1, &texture);
+        texture = 0;
+    }
     if (buffer) {
         wl_buffer_destroy(buffer);
     }
@@ -163,7 +225,10 @@ std::optional<OutputLayerBeginFrameInfo> WaylandEglPrimaryLayer::doBeginFrame()
         qCWarning(KWIN_WAYLAND_BACKEND) << "No free Xios IOSurface render target";
         return std::nullopt;
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (!m_buffer->ensureRenderTarget()) {
+        return std::nullopt;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, m_buffer->fbo);
     return OutputLayerBeginFrameInfo{.renderTarget = RenderTarget(m_buffer->framebuffer.get()), .repaint = m_buffer->repaint};
 }
 
@@ -222,7 +287,10 @@ std::optional<OutputLayerBeginFrameInfo> WaylandEglCursorLayer::doBeginFrame()
     if (!m_buffer || !m_backend->openglContext()->makeCurrent(m_buffer->pbuffer)) {
         return std::nullopt;
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (!m_buffer->ensureRenderTarget()) {
+        return std::nullopt;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, m_buffer->fbo);
     return OutputLayerBeginFrameInfo{.renderTarget = RenderTarget(m_buffer->framebuffer.get()), .repaint = infiniteRegion()};
 }
 
