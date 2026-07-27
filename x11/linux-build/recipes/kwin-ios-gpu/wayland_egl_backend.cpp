@@ -60,11 +60,27 @@ IoscEglBuffer::IoscEglBuffer(WaylandEglBackend *backend, const QSize &size)
     , repaint(QRect(QPoint(0, 0), size))
 {
     if (!surface) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: IOSurfaceCreate failed for" << size;
         return;
     }
     pbuffer = createIoscEglPbuffer(display, backend->config(), surface, size);
     if (pbuffer == EGL_NO_SURFACE) {
-        qCWarning(KWIN_WAYLAND_BACKEND) << "ANGLE IOSurface pbuffer creation failed" << Qt::hex << eglGetError();
+        const EGLint err = eglGetError();
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ANGLE IOSurface pbuffer creation failed" << Qt::hex << err;
+        // ios-gpu-pbuffer-diag: EGL_BAD_ATTRIBUTE here means ANGLE rejected the
+        // (display, config, surface geometry) triple. Dump all three plus the real
+        // IOSurface geometry so the mismatch is identifiable without a second build.
+        qCWarning(KWIN_WAYLAND_BACKEND).nospace()
+            << "ios-gpu-diag: requested=" << size.width() << "x" << size.height()
+            << " display=" << (void *)display
+            << " backendDisplay=" << (void *)(backend->eglDisplayObject() ? backend->eglDisplayObject()->handle() : EGL_NO_DISPLAY)
+            << " config=" << (void *)backend->config()
+            << " iosurface=" << (void *)surface
+            << " ioW=" << (int)IOSurfaceGetWidth(surface)
+            << " ioH=" << (int)IOSurfaceGetHeight(surface)
+            << " ioBPR=" << (int)IOSurfaceGetBytesPerRow(surface)
+            << " ioBPE=" << (int)IOSurfaceGetBytesPerElement(surface)
+            << " ioFmt=" << Qt::hex << (unsigned)IOSurfaceGetPixelFormat(surface);
         return;
     }
     port = IOSurfaceCreateMachPort(surface);
