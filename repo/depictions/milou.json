@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/libgtop-2.0-11.png",
+  "headerImage": "https://repo.maxleiter.com/banners/milou.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "libgtop-2.0 process monitoring backend for GNOME on iOS"
+          "markdown": "KRunner-backed Plasma search interface for Xios"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "2.41.3+ios2"
+          "text": "6.1.5+ios2"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "3.4 KiB"
+          "text": "62.8 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Libraries"
+          "text": "KDE"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "libgtop-2.0-11"
+          "text": "milou"
         }
       ]
     }

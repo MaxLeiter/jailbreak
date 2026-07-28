@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "freedesktop D-Bus stub daemons for the Xios GNOME session"
+          "markdown": "iOS-backed freedesktop D-Bus services for the Xios GNOME session"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.2.4"
+          "text": "0.2.5"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "31.5 KiB"
+          "text": "34.3 KiB"
         },
         {
           "class": "DepictionTableTextView",

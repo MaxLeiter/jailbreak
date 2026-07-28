@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "iOS stub libraries for the GNOME desktop stack (udev/gudev/pwquality/gsound)"
+          "markdown": "iOS compatibility libraries for the GNOME desktop stack"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.0"
+          "text": "0.1.1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "8.3 KiB"
+          "text": "13.2 KiB"
         },
         {
           "class": "DepictionTableTextView",

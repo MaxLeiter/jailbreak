@@ -2354,6 +2354,11 @@
       "url": "https://repo.maxleiter.com/banners/mesa-demos.png"
     },
     {
+      "title": "milou",
+      "package": "milou",
+      "url": "https://repo.maxleiter.com/banners/milou.png"
+    },
+    {
       "title": "mpv",
       "package": "mpv",
       "url": "https://repo.maxleiter.com/banners/mpv.png"
@@ -2709,7 +2714,7 @@
       "url": "https://repo.maxleiter.com/banners/xios-desktop-defaults.png"
     },
     {
-      "title": "Xios desktop compatibility stub libraries",
+      "title": "Xios desktop compatibility libraries",
       "package": "xios-desktop-stublibs",
       "url": "https://repo.maxleiter.com/banners/xios-desktop-stublibs.png"
     },
@@ -2764,7 +2769,7 @@
       "url": "https://repo.maxleiter.com/banners/xios-session.png"
     },
     {
-      "title": "Xios GNOME session D-Bus stubs",
+      "title": "Xios GNOME session bridges",
       "package": "xios-session-stubs",
       "url": "https://repo.maxleiter.com/banners/xios-session-stubs.png"
     },
