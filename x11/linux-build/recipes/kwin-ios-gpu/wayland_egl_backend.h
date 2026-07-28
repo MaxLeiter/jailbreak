@@ -73,6 +73,9 @@ private:
     IoscEglBuffer *m_buffer = nullptr;
     WaylandEglBackend *m_backend;
     QRegion m_damage;
+    // Size the opaque region was last declared for; re-declared only on change so
+    // present() does not create/destroy a wl_region every frame.
+    QSize m_opaqueSize;
 };
 
 class WaylandEglCursorLayer : public OutputLayer

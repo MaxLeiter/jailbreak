@@ -12,6 +12,8 @@
 #include "wayland_logging.h"
 #include "wayland_output.h"
 
+#include <KWayland/Client/compositor.h>
+#include <KWayland/Client/region.h>
 #include <KWayland/Client/surface.h>
 #include <drm_fourcc.h>
 #include <mach/mach.h>
@@ -141,6 +143,45 @@ bool IoscEglBuffer::ensureRenderTarget()
         return false;
     }
     framebuffer = std::make_unique<GLFramebuffer>(fbo, size);
+
+    // KWIN_IOS_GL_CLEARTEST=1: paint a known colour straight into the IOSurface,
+    // bypassing KWin's scene entirely. This splits "the FBO -> IOSurface path is
+    // broken" from "the path works but the scene paints nothing" -- two failures
+    // that are indistinguishable from the compositor side, since both arrive at
+    // iosc as an opaque black surface with no GL errors anywhere.
+    // Magenta because it cannot be confused with a cleared/zeroed buffer.
+    if (qEnvironmentVariableIsSet("KWIN_IOS_GL_CLEARTEST")) {
+        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glFinish();
+        // NOTE ON SCOPE: this clear happens at FBO creation, so KWin's scene
+        // renders over it before the buffer is ever committed. It therefore proves
+        // only that the FBO -> IOSurface transport works; it says NOTHING about
+        // what the compositor eventually samples. Do not read a magenta result
+        // here as "the pixels reach the screen".
+        //
+        // Read the SAME pixel two ways to locate where the magenta is lost:
+        //   gl=   what GL says is in the framebuffer we just cleared
+        //   cpu=  what the IOSurface's own memory holds, which is what iosc
+        //         imports by mach port and samples
+        // gl magenta + cpu black  -> GL writes never reach IOSurface memory
+        //                            (the ANGLE bind/render path is wrong)
+        // gl magenta + cpu magenta -> transport is fine; iosc's import or
+        //                            sampling of this surface is at fault
+        GLubyte gl[4] = {0, 0, 0, 0};
+        glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gl);
+        uint32_t cpu = 0xdeadbeef;
+        if (IOSurfaceLock(surface, 0x1 /* kIOSurfaceLockReadOnly */, nullptr) == 0) {
+            if (const uint32_t *base = static_cast<const uint32_t *>(IOSurfaceGetBaseAddress(surface))) {
+                cpu = base[0];
+            }
+            IOSurfaceUnlock(surface, 0x1, nullptr);
+        }
+        qCWarning(KWIN_WAYLAND_BACKEND).nospace()
+            << "ios-gpu: CLEARTEST " << size.width() << "x" << size.height()
+            << " gl=" << gl[0] << "," << gl[1] << "," << gl[2] << "," << gl[3]
+            << " iosurface_cpu=0x" << Qt::hex << cpu;
+    }
     return true;
 }
 
@@ -250,13 +291,43 @@ void WaylandEglPrimaryLayer::present()
         return;
     }
     auto *output = static_cast<WaylandOutput *>(m_output);
+
+    // Declare the output surface fully opaque.
+    //
+    // These IOSurfaces are BGRA, so the compositor sees a real alpha channel and
+    // -- absent an opaque region -- must treat the surface as translucent and
+    // blend it (iosc.c:surface_blends()). KWin's OpenGL renderer clears the output
+    // background to (0,0,0,0), so a blended output composites to nothing and the
+    // screen is black no matter how correct the rendering was. The old QPainter
+    // backend was unaffected because it presented XRGB buffers, whose alpha is
+    // undefined and which iosc therefore keeps on the opaque fast path.
+    //
+    // An output surface is opaque by definition -- it is the whole screen -- so
+    // this is a statement of fact, not a workaround, and it also puts the frame
+    // back on the compositor's cheaper non-blending path.
+    if (m_opaqueSize != m_buffer->size) {
+        if (auto *compositor = m_backend->backend()->display()->compositor()) {
+            // Region is copied by setOpaqueRegion, so it can die immediately after.
+            const auto opaque = compositor->createRegion(QRegion(QRect(QPoint(0, 0), m_buffer->size)));
+            output->surface()->setOpaqueRegion(opaque.get());
+            m_opaqueSize = m_buffer->size;
+        }
+    }
+
     output->surface()->attachBuffer(m_buffer->buffer);
     for (const QRect &rect : m_damage) {
         output->surface()->damageBuffer(rect);
     }
     output->surface()->setScale(std::ceil(output->scale()));
     m_buffer->busy = true;
-    output->surface()->commit(KWayland::Client::Surface::CommitFlag::None);
+    // MUST request a frame callback. WaylandOutput drives the whole render loop
+    // off Surface::frameRendered, which is emitted only from the wl_callback
+    // installed here; with CommitFlag::None no callback is installed, the pending
+    // OutputFrame is never presented, and KWin renders exactly ONE frame and then
+    // waits forever. That is why this backend showed a black screen while the
+    // QPainter one did not: it commits via the default argument, which is
+    // CommitFlag::FrameCallback.
+    output->surface()->commit(KWayland::Client::Surface::CommitFlag::FrameCallback);
     m_buffer = nullptr;
 }
 

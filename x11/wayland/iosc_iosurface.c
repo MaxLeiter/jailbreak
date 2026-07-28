@@ -55,16 +55,25 @@ static void iosurface_buffer_resource_destroy(struct wl_resource *r)
     free(ib);
 }
 
-/* IOSC_CLIENT_PROBE=1 dumps what each client IOSurface actually contains just
- * before we draw it. Every read is a synchronous GPU->CPU stall, so it is
- * throttled to one frame in 60 and off unless asked for. */
+/* IOSC_CLIENT_PROBE=N dumps what each client IOSurface actually contains just
+ * before we draw it, once every N draws (N defaults to 60; unset = off). Every
+ * read is a synchronous GPU->CPU stall, so keep N large for a long run.
+ *
+ * Make N small when the question is "what is on screen NOW": at a coarse
+ * interval the surviving samples cluster at the start of the run, which is
+ * exactly when a compositor is still resizing and swapping buffers, so a stale
+ * first-draw sample reads as if nothing ever changed. */
 static void maybe_probe_client_buffer(struct iosc_iosurface_buffer *ib)
 {
-    static int enabled = -1;
+    static long interval = -1;
     static unsigned long n;
-    if (enabled < 0)
-        enabled = getenv("IOSC_CLIENT_PROBE") ? 1 : 0;
-    if (!enabled || (n++ % 60) != 0)
+    if (interval < 0) {
+        const char *v = getenv("IOSC_CLIENT_PROBE");
+        interval = v ? strtol(v, NULL, 10) : 0;
+        if (v && interval <= 0)
+            interval = 60;
+    }
+    if (interval <= 0 || (n++ % (unsigned long) interval) != 0)
         return;
     char tag[32];
     snprintf(tag, sizeof tag, "client %dx%d", ib->w, ib->h);

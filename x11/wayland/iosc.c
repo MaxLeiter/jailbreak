@@ -2410,6 +2410,14 @@ static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
             s->buffer_listener_active = 0;
         }
         if (send_release_on_old) wl_buffer_send_release(s->current_buffer);
+        if (iosc_env_truthy(getenv("IOSC_BUFFER_TRACE")))
+            fprintf(stderr, "iosc: buffer window_id=%u attach=%p release_old=%p%s\n",
+                    s->window_id, (void *) buf, (void *) s->current_buffer,
+                    send_release_on_old ? "" : " (SUPPRESSED)");
+    } else if (iosc_env_truthy(getenv("IOSC_BUFFER_TRACE"))) {
+        fprintf(stderr, "iosc: buffer window_id=%u attach=%p (no release: %s)\n",
+                s->window_id, (void *) buf,
+                !s->current_buffer ? "first buffer" : "same buffer re-attached");
     }
     s->current_buffer = buf;
     s->sw = sw; s->sh = sh;
