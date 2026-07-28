@@ -2095,6 +2095,8 @@ final class XScreenView: UIView {
         let preset: String?
         let state: String?
         let wayland: String?
+        /// The xios-displays.d entry this row came from, for removing a dead one.
+        let registryPath: String?
         var displayStr: String { ":\(number)" }
         var renderable: Bool { config != nil }
     }
@@ -2126,7 +2128,8 @@ final class XScreenView: UIView {
                 slot: obj["slot"] as? String,
                 preset: obj["preset"] as? String,
                 state: obj["state"] as? String,
-                wayland: obj["wayland"] as? String)
+                wayland: obj["wayland"] as? String,
+                registryPath: registryPath)
         }
     }
 
@@ -2150,7 +2153,8 @@ final class XScreenView: UIView {
         var rows = numbers.sorted().map {
             XDisplayInfo(number: $0, config: $0 == cfgNumber ? cfg : nil,
                          configPath: $0 == cfgNumber ? configPath : nil,
-                         slot: nil, preset: nil, state: nil, wayland: nil)
+                         slot: nil, preset: nil, state: nil, wayland: nil,
+                         registryPath: nil)
         }
         let seenPaths = Set(rows.compactMap { $0.configPath })
         rows.append(contentsOf: discoverDisplaySlots().filter { row in
@@ -2352,6 +2356,57 @@ final class XScreenView: UIView {
         }
         connectInput()
         writeStatus()
+    }
+
+    /// Is anything actually serving this row? A slot's registry entry outlives its
+    /// processes (the launcher only deletes it on a clean stop), so "live" means the
+    /// Wayland socket is still there, or we can still read its display config.
+    private func displayIsLive(_ d: XDisplayInfo) -> Bool {
+        if let wayland = d.wayland,
+           FileManager.default.fileExists(atPath: XiosRuntimePaths.tmp(wayland)) {
+            return true
+        }
+        if d.config != nil { return true }
+        return !(d.state == "stopped" || d.state == "error" || d.state == nil)
+    }
+
+    /// Stop one display. A slot stops on its own — `xios-session` reaps that slot's
+    /// process groups, its sockets and its registry entry, and ioscd treats slotted
+    /// requests as non-destructive so it always honors them. A row with no slot is
+    /// the shared session, so stopping it stops everything.
+    private func stopDisplay(_ d: XDisplayInfo) {
+        if let slot = d.slot {
+            writeSessionRequest("stop", slot: slot)
+        } else {
+            writeSessionRequest("stop")
+        }
+        unpinIfShowing(d)
+        presentAdvanced()
+    }
+
+    /// Drop a dead slot's `xios-displays.d` entry so it stops appearing. Only offered
+    /// for slots nothing is serving — a live one has to be stopped first, or its
+    /// processes would keep running with no way back to them.
+    private func removeDisplayFromList(_ d: XDisplayInfo) {
+        guard let path = d.registryPath else { return }
+        let name = d.slot ?? pathBasename(path)
+        do {
+            try FileManager.default.removeItem(atPath: path)
+            lastToolMessage = "Removed \(name) from the list"
+        } catch {
+            lastToolMessage = "Could not remove \(name): \(error.localizedDescription)"
+        }
+        unpinIfShowing(d)
+        presentAdvanced()
+    }
+
+    /// If we were pinned to the display that just went away, stop following it and
+    /// fall back to whatever xios.json points at.
+    private func unpinIfShowing(_ d: XDisplayInfo) {
+        guard d.configPath != nil, d.configPath == selectedConfigPath else { return }
+        userPinned = false
+        selectedConfigPath = nil
+        reloadRuntimeConfig()
     }
 
     // MARK: picker chrome
@@ -2931,6 +2986,8 @@ final class XScreenView: UIView {
         if displays.isEmpty {
             stack.addArrangedSubview(emptyPanel("No displays or slots were found."))
         } else {
+            stack.addArrangedSubview(panelLabel("Tap to switch. Touch and hold to stop one, or to clear out an entry nothing is serving.",
+                                                size: 11, color: UIColor(white: 0.62, alpha: 1)))
             for d in displays {
                 stack.addArrangedSubview(makeRow(d))
             }
@@ -3443,11 +3500,43 @@ final class XScreenView: UIView {
         stylePanelSurface(b, fill: active ? UIColor.systemBlue.withAlphaComponent(0.38)
                                           : UIColor(white: 0.20, alpha: 0.84))
         b.contentEdgeInsets = UIEdgeInsets(top: 11, left: 12, bottom: 11, right: 12)
+        b.menu = displayRowMenu(d, active: active)
+        b.showsMenuAsPrimaryAction = false
         b.addAction(UIAction { [weak self] _ in
             self?.dismissPicker()
             self?.load(d)
         }, for: .touchUpInside)
         return b
+    }
+
+    /// Touch and hold a display row: switch to it, stop it, or — once nothing is
+    /// serving it — drop its leftover entry from the list.
+    private func displayRowMenu(_ d: XDisplayInfo, active: Bool) -> UIMenu {
+        var actions: [UIMenuElement] = []
+        if !active {
+            actions.append(UIAction(title: "Switch to This Display",
+                                    image: UIImage(systemName: "arrow.right.circle")) {
+                [weak self] _ in
+                self?.dismissPicker()
+                self?.load(d)
+            })
+        }
+        let live = displayIsLive(d)
+        if live {
+            let title = d.slot != nil ? "Stop This Display" : "Stop the Desktop"
+            actions.append(UIAction(title: title, image: UIImage(systemName: "stop.circle"),
+                                    attributes: [.destructive]) { [weak self] _ in
+                self?.stopDisplay(d)
+            })
+        }
+        if d.registryPath != nil, !live {
+            actions.append(UIAction(title: "Remove from List",
+                                    image: UIImage(systemName: "trash"),
+                                    attributes: [.destructive]) { [weak self] _ in
+                self?.removeDisplayFromList(d)
+            })
+        }
+        return UIMenu(title: displayName(d, active: false), children: actions)
     }
 
     private func displayRowTitle(_ d: XDisplayInfo, active: Bool) -> NSAttributedString {
