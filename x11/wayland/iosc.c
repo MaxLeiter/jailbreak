@@ -2780,6 +2780,12 @@ static void surface_set_opaque_region(struct wl_client *c, struct wl_resource *r
     } else {
         s->opaque_set = 0;
     }
+    /* Rare (clients re-declare only on resize) and decisive when a window
+     * composites to nothing, so this is logged unconditionally. */
+    fprintf(stderr, "iosc: set_opaque_region window_id=%u -> %s [%d,%d %d,%d]%s\n",
+            s->window_id, s->opaque_set ? "set" : "none",
+            s->opaque_x0, s->opaque_y0, s->opaque_x1, s->opaque_y1,
+            reg && reg->complex ? " (complex: has holes, treated as none)" : "");
 }
 static void surface_set_input_region(struct wl_client *c, struct wl_resource *r,
                                      struct wl_resource *region)

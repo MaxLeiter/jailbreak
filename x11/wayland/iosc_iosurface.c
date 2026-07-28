@@ -55,6 +55,22 @@ static void iosurface_buffer_resource_destroy(struct wl_resource *r)
     free(ib);
 }
 
+/* IOSC_CLIENT_PROBE=1 dumps what each client IOSurface actually contains just
+ * before we draw it. Every read is a synchronous GPU->CPU stall, so it is
+ * throttled to one frame in 60 and off unless asked for. */
+static void maybe_probe_client_buffer(struct iosc_iosurface_buffer *ib)
+{
+    static int enabled = -1;
+    static unsigned long n;
+    if (enabled < 0)
+        enabled = getenv("IOSC_CLIENT_PROBE") ? 1 : 0;
+    if (!enabled || (n++ % 60) != 0)
+        return;
+    char tag[32];
+    snprintf(tag, sizeof tag, "client %dx%d", ib->w, ib->h);
+    xios_probe_client_iosurface(ib->surface, tag);
+}
+
 int iosc_iosurface_buffer_draw(struct wl_resource *buf,
                                int sx, int sy, int src_w, int src_h,
                                int dx, int dy, int dw, int dh)
@@ -62,6 +78,7 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
     struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buf);
     if (!ib)
         return 0;
+    maybe_probe_client_buffer(ib);
     if (ib->surface)
         iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
                                dx, dy, dw, dh, ib->flip_v);

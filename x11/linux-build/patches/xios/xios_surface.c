@@ -796,6 +796,49 @@ void xios_release_client_iosurface(void *client_surface)
     if (client_surface) CFRelease((IOSurfaceRef) client_surface);
 }
 
+void xios_probe_client_iosurface(void *client_surface, const char *tag)
+{
+    if (!tag) tag = "?";
+    IOSurfaceRef s = (IOSurfaceRef) client_surface;
+    if (!s) {
+        fprintf(stderr, "xios-probe[%s]: NULL surface\n", tag);
+        return;
+    }
+    if (IOSurfaceLock(s, XIOS_LOCK_READONLY, NULL) != KERN_SUCCESS) {
+        fprintf(stderr, "xios-probe[%s]: IOSurfaceLock failed\n", tag);
+        return;
+    }
+    const uint8_t *base = (const uint8_t *) IOSurfaceGetBaseAddress(s);
+    if (!base) {
+        IOSurfaceUnlock(s, XIOS_LOCK_READONLY, NULL);
+        fprintf(stderr, "xios-probe[%s]: no base address\n", tag);
+        return;
+    }
+    size_t stride = IOSurfaceGetBytesPerRow(s);
+    int w = (int) IOSurfaceGetWidth(s);
+    int h = (int) IOSurfaceGetHeight(s);
+
+    /* BGRA8: [0]=B [1]=G [2]=R [3]=A. Colour and alpha are counted separately
+     * on purpose — see the header. */
+    unsigned long colour_px = 0, alpha_px = 0, opaque_px = 0, total = 0;
+    for (int y = 0; y < h; y++) {
+        const uint8_t *row = base + (size_t) y * stride;
+        for (int x = 0; x < w; x++) {
+            const uint8_t *p = row + (size_t) x * 4;
+            if (p[0] | p[1] | p[2]) colour_px++;
+            if (p[3]) alpha_px++;
+            if (p[3] == 0xff) opaque_px++;
+            total++;
+        }
+    }
+    const uint8_t *c = base + (size_t)(h / 2) * stride + (size_t)(w / 2) * 4;
+    fprintf(stderr, "xios-probe[%s]: %dx%d stride=%zu colour=%lu/%lu alpha=%lu "
+                    "opaque=%lu centre=B%02x G%02x R%02x A%02x\n",
+            tag, w, h, stride, colour_px, total, alpha_px, opaque_px,
+            c[0], c[1], c[2], c[3]);
+    IOSurfaceUnlock(s, XIOS_LOCK_READONLY, NULL);
+}
+
 void xios_surface_geometry(int *width, int *height)
 {
     if (width)  *width  = s_width;

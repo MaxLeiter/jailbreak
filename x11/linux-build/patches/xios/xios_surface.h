@@ -166,6 +166,16 @@ void xios_blit_client_iosurface(void *client_surface);
 /* Release a surface returned by xios_import_client_iosurface(). */
 void xios_release_client_iosurface(void *client_surface);
 
+/* Debug: report what a client actually committed into its IOSurface.
+ * Counts pixels with any non-zero colour separately from pixels with non-zero
+ * alpha, which is what distinguishes the three ways a client can end up
+ * invisible: it drew nothing (colour == 0), it drew content but left alpha at
+ * zero so compositing erases it (colour > 0, alpha == 0), or it drew a correct
+ * opaque frame and the fault is downstream in the compositor. Locks read-only,
+ * so it is a synchronous GPU->CPU stall: call it from a debug path only.
+ * `tag` labels the log line. Safe to call with NULL. */
+void xios_probe_client_iosurface(void *client_surface, const char *tag);
+
 /* The output IOSurface (opaque IOSurfaceRef) the Xios app displays — so a GPU
  * compositor can bind it as an ANGLE render target. NULL before xios_surface_create(). */
 void *xios_get_output_iosurface(void);
