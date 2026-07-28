@@ -395,20 +395,64 @@ cmd_shot() {
         if [ ! -s /var/jb/tmp/xios-shot.png ] && [ ! -s /var/jb/tmp/xios-shot.log ]; then
             printf '%s\n' 'no grim or iosc-screenshot-test on device' > /var/jb/tmp/xios-shot.log
         fi
+        # Independent second opinion from the compositor itself. A grim PNG cannot
+        # distinguish 'the output really is black' from 'the capture is broken';
+        # IOSC_PROBE makes the compositor print its own app-space pixel map, which
+        # can. Run it ALWAYS, not just when the PNG is missing -- an all-black run
+        # produces a perfectly valid non-empty PNG and would otherwise skip this.
+        if command -v iosc-screenshot-test >/dev/null 2>&1; then
+            printf -- '--- iosc-screenshot-test probe ---\n' >> /var/jb/tmp/xios-shot.log
+            IOSC_PROBE=1 iosc-screenshot-test >> /var/jb/tmp/xios-shot.log 2>&1 || true
+        fi
         ls -l /var/jb/tmp/xios-shot.png /var/jb/tmp/xios-shot.log 2>/dev/null || true
     "
 
     copy_remote_if_exists "$TMP_REMOTE/xios-shot.png" "$outdir" "compositor.png"
     copy_remote_if_exists "$TMP_REMOTE/xios-shot.log" "$outdir" "compositor-shot.log"
 
+    # Report whether the captured frame actually has pixels. "Black" must be a
+    # stated measurement, not something inferred from a file size -- an all-zero
+    # 2880x2160 PNG is a valid, correctly-formed 18240-byte file, so size alone
+    # looks indistinguishable from a healthy capture.
+    if [ -s "$outdir/compositor.png" ] && command -v python3 >/dev/null 2>&1; then
+        python3 - "$outdir/compositor.png" <<'PYEOF' | tee -a "$outdir/compositor-shot.log"
+import sys, zlib, struct
+p = sys.argv[1]
+d = open(p, 'rb').read()
+idat, pos, w, h = b'', 8, 0, 0
+while pos < len(d):
+    ln = struct.unpack('>I', d[pos:pos+4])[0]
+    typ = d[pos+4:pos+8]
+    if typ == b'IHDR':
+        w, h = struct.unpack('>II', d[pos+8:pos+16])
+    elif typ == b'IDAT':
+        idat += d[pos+8:pos+8+ln]
+    pos += 12 + ln
+raw = zlib.decompress(idat)
+nz = sum(1 for b in raw if b)
+print(f"capture: {w}x{h} decoded={len(raw)}B non-zero={nz} "
+      f"({'BLANK - output really is black' if nz == 0 else 'has content'})")
+PYEOF
+    fi
+
+    # Physical-screen cross-check. This is the only evidence that does not come
+    # through the compositor, so a failure to run must be visible: it was silently
+    # skipped via `|| true` for weeks, which is why an all-black compositor output
+    # went unconfirmed against the real display.
     if command -v idevicescreenshot >/dev/null 2>&1 && command -v idevice_id >/dev/null 2>&1; then
         if [ -n "$(idevice_id -l 2>/dev/null)" ]; then
             idevicescreenshot "$outdir/device.png" >/dev/null 2>&1 \
-                && echo "copied $outdir/device.png" || true
+                && echo "copied $outdir/device.png" \
+                || echo "WARN: idevicescreenshot failed (USB device present) - no physical cross-check"
         elif [ -n "$(idevice_id -n -l 2>/dev/null)" ]; then
             idevicescreenshot -n "$outdir/device.png" >/dev/null 2>&1 \
-                && echo "copied $outdir/device.png" || true
+                && echo "copied $outdir/device.png" \
+                || echo "WARN: idevicescreenshot -n failed (network device) - no physical cross-check"
+        else
+            echo "WARN: no paired device for idevicescreenshot - no physical cross-check"
         fi
+    else
+        echo "WARN: idevicescreenshot/idevice_id not installed - no physical cross-check"
     fi
 
     collect_files "$outdir" "$slot" >/dev/null
