@@ -1,0 +1,177 @@
+diff --git a/x11/apps/Xios/Sources/XScreen.swift b/x11/apps/Xios/Sources/XScreen.swift
+index a20f1ed..234541d 100644
+--- a/x11/apps/Xios/Sources/XScreen.swift
++++ b/x11/apps/Xios/Sources/XScreen.swift
+@@ -118,6 +118,10 @@ final class XScreenView: UIView {
+     // IOSurface (zero-copy) path
+     private var ddxIsIOSurface = false
+     private var ddxSockPath = "/var/jb/tmp/xios-ddx.sock"
++    // Relocation root advertised by xios.json ("root"); "/var/jb" when absent, so
++    // existing (field-less) json keeps today's behavior. Forward-compat plumbing
++    // for a future sandbox target — not yet consumed at runtime.
++    private var ddxRoot = "/var/jb"
+     private var xconn: OpaquePointer?            // XSurfaceConn*
+     private var iosTexture: MTLTexture?
+     private var usingIOSurface = false
+@@ -569,12 +573,15 @@ final class XScreenView: UIView {
+         let socket: String?
+         let width: Int?
+         let height: Int?
++        let root: String?
+         init(_ obj: [String: Any]) {
+             // Presence of "ddx":"iosurface" selects the zero-copy IOSurface path.
+             isIOSurface = (obj["ddx"] as? String) == "iosurface"
+             socket = (obj["socket"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+             width = (obj["width"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+             height = (obj["height"] as? Int).flatMap { $0 > 0 ? $0 : nil }
++            // Optional relocation root; nil when the field is absent (default "/var/jb").
++            root = (obj["root"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+         }
+     }
+ 
+@@ -597,6 +604,8 @@ final class XScreenView: UIView {
+         if let h = ddx.height { fbHeight = h }
+         ddxIsIOSurface = ddx.isIOSurface
+         if let s = ddx.socket { ddxSockPath = s }
++        // Forward-compat: adopt the advertised relocation root, else keep "/var/jb".
++        ddxRoot = ddx.root ?? "/var/jb"
+         // Honor the display the server actually started on (set via $DISP), instead
+         // of pinning XTEST input to :3.
+         if let d = obj["display"] as? String, !d.isEmpty { xDisplay = d }
+diff --git a/x11/apps/iosc-desktop/src/ioscd.c b/x11/apps/iosc-desktop/src/ioscd.c
+index c99d33d..ae7611c 100644
+--- a/x11/apps/iosc-desktop/src/ioscd.c
++++ b/x11/apps/iosc-desktop/src/ioscd.c
+@@ -47,7 +47,11 @@
+ #include <sys/wait.h>
+ #include <sys/types.h>
+ 
+-#define TMP            "/var/jb/tmp"
++/* Single compile-time prefix knob. ioscd is jailbreak-only, so this stays a
++ * literal (no runtime resolver); every path below is composed from it so a
++ * relocation is a one-line change. JB value "/var/jb" keeps all paths identical. */
++#define XIOS_ROOT      "/var/jb"
++#define TMP            XIOS_ROOT "/tmp"
+ #define CTL_SOCK       TMP "/ioscd.sock"
+ #define WAYLAND_SOCK_CLASSIC TMP "/wayland-0"
+ #define WAYLAND_SOCK_NATIVE  TMP "/wayland-native-0"
+@@ -61,11 +65,11 @@
+ #define IOSC_INPUT_NATIVE     TMP "/iosc-native-input.sock"
+ #define IOSC_WM_SOCK   TMP "/iosc-wm.sock"
+ #define XIOS_ACTIVE_SESSION TMP "/xios-active-session"
+-#define IOSC_BIN       "/var/jb/usr/local/bin/iosc"
+-#define XIOS_SESSION_BIN "/var/jb/usr/local/bin/xios-session"
+-#define UIOPEN_BIN     "/var/jb/usr/bin/uiopen"
+-#define BASH_BIN       "/var/jb/usr/bin/bash"
+-#define DBUS_RUN       "/var/jb/usr/bin/dbus-run-session"
++#define IOSC_BIN       XIOS_ROOT "/usr/local/bin/iosc"
++#define XIOS_SESSION_BIN XIOS_ROOT "/usr/local/bin/xios-session"
++#define UIOPEN_BIN     XIOS_ROOT "/usr/bin/uiopen"
++#define BASH_BIN       XIOS_ROOT "/usr/bin/bash"
++#define DBUS_RUN       XIOS_ROOT "/usr/bin/dbus-run-session"
+ #define XIOS_BUNDLE    "com.max.xios"
+ #define IOSC_LOG       TMP "/iosc.log"
+ 
+diff --git a/x11/linux-build/patches/xios/xios_surface.c b/x11/linux-build/patches/xios/xios_surface.c
+index 51413da..53ae48f 100644
+--- a/x11/linux-build/patches/xios/xios_surface.c
++++ b/x11/linux-build/patches/xios/xios_surface.c
+@@ -28,6 +28,17 @@
+  * than pulled from a dix header so this file stays free of X server includes. */
+ extern char *display;
+ 
++/* Relocation root for the on-disk prefix. Deliberate local twin of xios_root()
++ * in x11/wayland/xios_paths.h: this file is ALSO copied verbatim into the Xorg
++ * hw/vfb/ tree by linux-build/build.sh, whose build container does not mount
++ * wayland/ and cannot see that header — so the seam can't be shared here. Same
++ * contract: XIOS_ROOT env override, else "/var/jb" (JB behavior unchanged). */
++static const char *xios_root_local(void)
++{
++    const char *r = getenv("XIOS_ROOT");
++    return (r && *r) ? r : "/var/jb";
++}
++
+ /* ---- wire protocol (native LE; server + app are both arm64) ---------------- */
+ 
+ #define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
+@@ -530,6 +541,9 @@ int xios_server_start(const char *sock_path, const char *json_path,
+                 "\"format\":\"BGRA\",\"ddx\":\"iosurface\",\"socket\":\"%s\","
+                 "\"display\":\":%s\"",
+                 width, height, stride, sock_path, display ? display : "0");
++        /* Relocation root the app resolves other prefixes against. Forward-compat
++         * for a sandbox target; the JB build emits "/var/jb" as before. */
++        fprintf(jf, ",\"root\":\"%s\"", xios_root_local());
+         /* Where the app should send keyboard/pointer. The app auto-infers this only
+          * for an "iosc"-named ddx socket; any other compositor (mutter) must set it
+          * or it gets no input. Omitted when unset so iosc keeps the app's inference. */
+diff --git a/x11/wayland/iosc.c b/x11/wayland/iosc.c
+index c0a93dc..ccd9cd2 100644
+--- a/x11/wayland/iosc.c
++++ b/x11/wayland/iosc.c
+@@ -50,6 +50,7 @@
+ #include "iosc_gl.h"
+ #include "iosc_input.h"
+ #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
++#include "xios_paths.h"          /* xios_root()/xios_tmp(): the /var/jb relocation seam */
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -1400,7 +1401,8 @@ static int env_truthy(const char *env)
+ 
+ static int active_session_allows_classic_iosc(void)
+ {
+-    const char *path = "/var/jb/tmp/xios-active-session";
++    char path_buf[256];
++    const char *path = xios_tmp("xios-active-session", path_buf, sizeof path_buf);
+     char buf[64];
+     int fd;
+     ssize_t n;
+@@ -5629,7 +5631,8 @@ static int make_keymap_fd(void)
+     const char *str = iosc_input_keymap_string();
+     uint32_t size = iosc_input_keymap_size();
+     if (!str || size == 0) return -1;
+-    const char *dir = getenv("XDG_RUNTIME_DIR"); if (!dir) dir = "/var/jb/tmp";
++    const char *dir = getenv("XDG_RUNTIME_DIR");
++    char dir_buf[256]; if (!dir) dir = xios_path("tmp", dir_buf, sizeof dir_buf);
+     char tmpl[256]; snprintf(tmpl, sizeof(tmpl), "%s/iosc-keymap-XXXXXX", dir);
+     int fd = mkstemp(tmpl);
+     if (fd < 0) return -1;
+@@ -6650,9 +6653,10 @@ static void slock_mgr_bind(struct wl_client *c, void *data, uint32_t version, ui
+ int main(int argc, char **argv)
+ {
+     const char *sock_name = "wayland-0";
+-    const char *ddx_sock  = "/var/jb/tmp/iosc-ddx.sock";
+-    const char *json_path = "/var/jb/tmp/xios.json";   /* the Xios app reads this */
+-    const char *input_sock = "/var/jb/tmp/iosc-input.sock";
++    char ddx_buf[256], json_buf[256], input_buf[256];
++    const char *ddx_sock  = xios_tmp("iosc-ddx.sock", ddx_buf, sizeof ddx_buf);
++    const char *json_path = xios_tmp("xios.json", json_buf, sizeof json_buf);   /* the Xios app reads this */
++    const char *input_sock = xios_tmp("iosc-input.sock", input_buf, sizeof input_buf);
+     int logical_w = 0, logical_h = 0;   /* -logical WxH: target logical desktop */
+     int native_arg = -1;
+     for (int i = 1; i < argc; i++) {
+@@ -6815,16 +6819,20 @@ int main(int argc, char **argv)
+         fprintf(stderr, "iosc: input socket failed -> no app input\n");
+     else
+         fprintf(stderr, "iosc: input socket up at %s\n", input_sock);
++    char clip_buf[256];
++    const char *clip_sock = xios_tmp("iosc-clipboard.sock", clip_buf, sizeof clip_buf);
+     if (clipboard_socket_start(wl_display_get_event_loop(g_display),
+-                               "/var/jb/tmp/iosc-clipboard.sock") != 0)
++                               clip_sock) != 0)
+         fprintf(stderr, "iosc: clipboard socket failed -> no UIPasteboard bridge\n");
+     else
+-        fprintf(stderr, "iosc: clipboard socket up at /var/jb/tmp/iosc-clipboard.sock\n");
++        fprintf(stderr, "iosc: clipboard socket up at %s\n", clip_sock);
++    char wm_buf[256];
++    const char *wm_sock = xios_tmp("iosc-wm.sock", wm_buf, sizeof wm_buf);
+     if (wm_socket_start(wl_display_get_event_loop(g_display),
+-                        "/var/jb/tmp/iosc-wm.sock") != 0)
++                        wm_sock) != 0)
+         fprintf(stderr, "iosc: wm control socket failed -> no raise-by-app_id\n");
+     else
+-        fprintf(stderr, "iosc: wm control socket up at /var/jb/tmp/iosc-wm.sock\n");
++        fprintf(stderr, "iosc: wm control socket up at %s\n", wm_sock);
+ 
+     fprintf(stderr, "iosc: listening on WAYLAND_DISPLAY=%s (XDG_RUNTIME_DIR=%s)\n",
+             sock_name, getenv("XDG_RUNTIME_DIR") ? getenv("XDG_RUNTIME_DIR") : "(unset)");

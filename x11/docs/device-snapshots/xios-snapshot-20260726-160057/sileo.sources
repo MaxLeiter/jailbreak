@@ -1,0 +1,15 @@
+Types: deb
+URIs: https://aminerostane.com/repo/
+Suites: ./
+Components:
+
+Types: deb
+URIs: https://0xkuj.yourepo.com/
+Suites: ./
+Components:
+
+Types: deb
+URIs: https://dev.repo.maxleiter.com/
+Suites: ./
+Components:
+

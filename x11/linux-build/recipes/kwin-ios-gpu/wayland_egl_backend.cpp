@@ -109,20 +109,24 @@ bool IoscEglBuffer::ensureRenderTarget()
     if (pbuffer == EGL_NO_SURFACE) {
         return false;
     }
-    if (!eglBindTexImage(display, pbuffer, EGL_BACK_BUFFER)) {
-        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: eglBindTexImage failed" << Qt::hex << eglGetError();
-        return false;
-    }
+    // Order matters and is not symmetric: eglBindTexImage associates the pbuffer
+    // with whatever texture is currently bound to GL_TEXTURE_2D, so the texture
+    // must exist and be bound FIRST. Calling it twice returns EGL_BAD_ACCESS
+    // (0x3002) because the surface is already bound, and leaves the FBO's
+    // attachment imageless -> GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT (0x8CD6).
+    // Same sequence as wayland/xios_egl.c:xios_egl_bind_pbuffer_texture().
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    // eglBindTexImage targets whatever texture is bound to GL_TEXTURE_2D, so the
-    // bind above must happen before the image is associated. Re-issue now that the
-    // texture object exists.
-    eglBindTexImage(display, pbuffer, EGL_BACK_BUFFER);
+    if (!eglBindTexImage(display, pbuffer, EGL_BACK_BUFFER)) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: eglBindTexImage failed" << Qt::hex << eglGetError();
+        glDeleteTextures(1, &texture);
+        texture = 0;
+        return false;
+    }
 
     glGenFramebuffers(1, &fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);

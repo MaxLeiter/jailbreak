@@ -80,11 +80,11 @@ replace(
     "src/backends/wayland/wayland_display.cpp",
     '#include "iosc-iosurface-client-protocol.h" // ios-gpu-factory-include\n',
     '#include "iosc-iosurface-client-protocol.h" // ios-gpu-factory-include\n'
-    "\nnamespace KWin\n{\n"
+    "\nnamespace KWin\n{\nnamespace Wayland\n{\n"
     "static void iosc_iosurface_handle_capabilities(void *data, struct iosc_iosurface *, uint32_t capabilities); // ios-gpu-caps-handler\n"
     "\nstatic const struct iosc_iosurface_listener s_ioscIosurfaceListener = {\n"
     "    iosc_iosurface_handle_capabilities,\n};\n"
-    "} // namespace KWin\n",
+    "}\n} // namespace KWin::Wayland\n",
     "ios-gpu-caps-handler",
 )
 replace(

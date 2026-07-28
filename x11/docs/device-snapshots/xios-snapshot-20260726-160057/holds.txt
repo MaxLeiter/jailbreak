@@ -1,0 +1,8 @@
+icu-devtools
+libicu-dev
+libjpeg62-turbo
+libjpeg62-turbo-dev
+preferenceloader
+shell-cmds
+tigervnc-common
+xwayland
