@@ -240,6 +240,17 @@ replace(
     "bool BasicEGLSurfaceTextureWayland::create()\n{\n    if (auto *buffer = dynamic_cast<IoscClientBuffer *>(m_pixmap->buffer())) { // ios-gpu-client-texture-create\n        return loadIoscTexture(buffer);\n    } else if (m_pixmap->buffer()->dmabufAttributes()) {",
     "ios-gpu-client-texture-create",
 )
+# KWIN_IOS_TEXTURE_DIAG=1 reports every client-buffer texture load: which branch
+# ran, whether it succeeded, and the GL error. Silence from this means create() is
+# never called at all, which is a different bug from a failing texture upload --
+# and the two are indistinguishable from a black screen.
+replace(
+    "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
+    "        return loadShmTexture(m_pixmap->buffer());\n    } else {\n        return false;\n    }\n}",
+    "        const bool ok = loadShmTexture(m_pixmap->buffer());\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n        }\n        return ok;\n    } else {\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: UNKNOWN buffer type -- no texture\";\n        }\n        return false;\n    }\n}",
+    "ios-gpu-client-texture-diag",
+)
+
 replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
     "void BasicEGLSurfaceTextureWayland::destroy()\n{\n    m_texture.reset();\n    m_bufferType = BufferType::None;\n}",
