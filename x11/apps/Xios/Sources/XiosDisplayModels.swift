@@ -60,9 +60,3 @@ struct DesktopPreset {
     let detail: String
     let iconName: String
 }
-
-struct QuickLaunchApp {
-    let title: String
-    let exec: String
-    let iconName: String
-}

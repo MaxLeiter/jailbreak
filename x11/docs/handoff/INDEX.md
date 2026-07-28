@@ -11,7 +11,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
   `docs/device-testing.md`.
 
 ## The product
-"Install one `xios` meta-package → pick your desktop flavor": iosc (lightweight Wayland shell, WORKS today) · GNOME Shell/Mutter · KDE Plasma · native-iPadOS per-window. Chooser = Sileo + the in-app Desktop Session picker (four-finger tap in Xios); three-finger tap switches already-running X/Wayland displays.
+"Install one `xios` meta-package → pick your desktop flavor": iosc (lightweight Wayland shell, WORKS today) · GNOME Shell/Mutter · KDE Plasma · native-iPadOS per-window. Chooser = Sileo + the in-app Xios panel (three-finger tap, or the status bar button); switching between already-running X/Wayland displays lives under Advanced in that panel.
 
 ## Domains (files here)
 1. **xios-app.md** — the Xios iOS app (Metal present + touch/keyboard input + IOSurface adopt). Scale/tap/sized-session path is verified; rotation/polish remain.
@@ -40,7 +40,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
   is offline, so physical Magic Keyboard/mouse/trackpad proof remains the release gate.
 - **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.
 - **The prior stale-scale/tap-offset bug is fixed on the app path:** Xios now re-adopts/re-syncs IOSurface geometry, resets zoom on adopt, and maps input through the current fit transform. Keep checking `/var/jb/tmp/xios-touch.log` when changing present/input code.
-- **Portrait/rotation path exists now:** the in-app Desktop Session picker can still launch portrait-sized sessions, and the clean packaged compositor now includes the native-feel OUTPUT resize path. Verified default `1440x1080` logical iosc -> OUTPUT transform 1 -> `1080x1440` logical / `2160x2880` framebuffer on-device with `iosc 0.9.9` and the rebuilt Xios app. Latest Xios build removes visible debug chrome: three-finger tap switches existing displays, four-finger tap opens the session/dimension picker, pinch app-zooms in/out to fit, lower-screen one-finger swipe opens the keyboard.
+- **Portrait/rotation path exists now:** the in-app Desktop Session picker can still launch portrait-sized sessions, and the clean packaged compositor now includes the native-feel OUTPUT resize path. Verified default `1440x1080` logical iosc -> OUTPUT transform 1 -> `1080x1440` logical / `2160x2880` framebuffer on-device with `iosc 0.9.9` and the rebuilt Xios app. Latest Xios build removes visible debug chrome: three-finger tap opens the one Xios panel (desktop, size, apps; displays and diagnostics under Advanced), pinch app-zooms in/out to fit, lower-screen one-finger swipe opens the keyboard.
 - **Native iPadOS per-window mode is implemented and runtime-gated, not build-time-gated.** Classic and native can coexist: ioscd accepts explicit `LAUNCH_CLASSIC`/`LAUNCH_NATIVE`; native uses `wayland-native-0`, `iosc-native-input.sock`, and `xios-native.json`.
 - **Native-feel bridges are mostly live:** volume/dark-mode helpers, battery/backlight/sysfs, SensorProxy/CoreMotion, haptic broadcast plumbing, and PulseAudio sink+mic source are deployed/validated in pieces. Physical haptic feel, true UIKit pasteboard round trip, real VoiceOver gestures, and GNOME-facing camera portal/GStreamer remain follow-ups; see `polish.md`.
 - **GNOME Shell 46 is up on-device with `gnome-shell 46.0+ios3`**: `xios-session gnome` and

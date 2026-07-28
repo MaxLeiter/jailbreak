@@ -304,9 +304,11 @@ final class XScreenView: UIView {
             self?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
         }
         // start() already loaded the display in xios.json (the default). If other
-        // displays are also open, offer the picker so the user can choose.
-        let displays = discoverDisplays()
-        if displays.count > 1 { presentDisplayControl(initial: .displays) }
+        // displays are also open, say so rather than opening a modal over the
+        // desktop at launch — Advanced lists them and switches.
+        if discoverDisplays().count > 1 {
+            lastToolMessage = "More than one display is open — pick one in Advanced"
+        }
     }
 
     /// If Metal wasn't available at launch (app started in the background), re-run
@@ -911,19 +913,11 @@ final class XScreenView: UIView {
         ]
     }
 
-    private var quickLaunchApps: [QuickLaunchApp] {
-        [
-            QuickLaunchApp(title: "Console", exec: "kgx", iconName: "terminal"),
-            QuickLaunchApp(title: "Text Editor", exec: "gnome-text-editor", iconName: "doc.text"),
-            QuickLaunchApp(title: "Calculator", exec: "gnome-calculator", iconName: "plus.forwardslash.minus"),
-        ]
-    }
-
     private func sessionDisplaySummary() -> String {
         if let p = pendingSessionDisplay {
-            return "\(p.name): \(p.detail)" + (p.dpi > 0 ? " @ \(p.dpi) DPI" : "")
+            return "\(p.name): \(p.detail)" + (p.dpi > 0 ? " at \(p.dpi) DPI" : "")
         }
-        return "Keep current/default size"
+        return "Each desktop uses its own default size"
     }
 
     private func writeDisplayRequest(_ profile: DisplayProfile) {
@@ -1148,14 +1142,11 @@ final class XScreenView: UIView {
         let pasteAttrs: UIMenuElement.Attributes = canPaste ? [] : [.disabled]
 
         var children: [UIMenuElement] = [
-            UIAction(title: "Displays & Sessions", image: UIImage(systemName: "rectangle.3.group")) {
-                [weak self] _ in self?.presentDisplayControl(initial: .sessions)
+            UIAction(title: "Open Xios", image: UIImage(systemName: "rectangle.3.group")) {
+                [weak self] _ in self?.presentDisplayControl()
             },
-            UIAction(title: "Launch App...", image: UIImage(systemName: "square.grid.2x2")) {
+            UIAction(title: "Open an App...", image: UIImage(systemName: "square.grid.2x2")) {
                 [weak self] _ in self?.presentAppLauncher()
-            },
-            UIAction(title: "Home Screen Apps", image: UIImage(systemName: "app.badge")) {
-                [weak self] _ in self?.presentHomeScreenApps()
             },
             UIAction(title: "Show Keyboard", image: UIImage(systemName: "keyboard")) { [weak self] _ in
                 _ = self?.becomeFirstResponder()
@@ -1163,6 +1154,12 @@ final class XScreenView: UIView {
             UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard"),
                      attributes: pasteAttrs) { [weak self] _ in
                 self?.sendText(pasteString ?? "")
+            },
+            UIAction(title: "Fit to Screen",
+                     image: UIImage(systemName: "arrow.up.left.and.arrow.down.right")) { [weak self] _ in
+                self?.resetZoom()
+                self?.lastToolMessage = "Fit current display"
+                self?.refreshShellOverlay()
             },
         ]
 
@@ -1177,41 +1174,17 @@ final class XScreenView: UIView {
             ]))
         }
 
-        children.append(UIMenu(title: "Display", image: UIImage(systemName: "display"), children: [
-            UIAction(title: "Fit Display", image: UIImage(systemName: "arrow.up.left.and.arrow.down.right")) {
-                [weak self] _ in
-                self?.resetZoom()
-                self?.lastToolMessage = "Fit current display"
-                self?.refreshShellOverlay()
-            },
-            UIAction(title: "Reload Display", image: UIImage(systemName: "arrow.clockwise")) {
-                [weak self] _ in
-                self?.reloadRuntimeConfig()
-                self?.lastToolMessage = "Reloaded xios.json"
-                self?.refreshShellOverlay()
-            },
-            UIAction(title: "Reconnect Input",
-                     image: UIImage(systemName: "point.topleft.down.curvedto.point.bottomright.up")) {
-                [weak self] _ in
-                guard let self else { return }
-                self.reconnectInput()
-                self.lastToolMessage = "Reconnected \(self.inputBackendName())"
-                self.refreshShellOverlay()
-            },
-        ]))
+        children.append(UIAction(title: "Advanced...",
+                                 image: UIImage(systemName: "slider.horizontal.3")) {
+            [weak self] _ in self?.presentAdvanced()
+        })
 
-        children.append(UIMenu(title: "Maintenance", image: UIImage(systemName: "wrench.and.screwdriver"), children: [
-            UIAction(title: "Copy Debug", image: UIImage(systemName: "doc.on.doc")) {
-                [weak self] _ in self?.copyDebugSnapshot()
-            },
-            UIAction(title: "Tools", image: UIImage(systemName: "slider.horizontal.3")) {
-                [weak self] _ in self?.presentTools()
-            },
-            UIAction(title: "Stop Session", image: UIImage(systemName: "stop.circle"),
-                     attributes: [.destructive]) { [weak self] _ in
+        if activeDesktopPreset() != nil {
+            children.append(UIAction(title: "Stop Desktop", image: UIImage(systemName: "stop.circle"),
+                                     attributes: [.destructive]) { [weak self] _ in
                 self?.writeSessionRequest("stop")
-            },
-        ]))
+            })
+        }
 
         return UIMenu(title: "", children: children)
     }
@@ -2389,11 +2362,6 @@ final class XScreenView: UIView {
         displayTap.delegate = self
         addGestureRecognizer(displayTap)
 
-        let sessionTap = UITapGestureRecognizer(target: self, action: #selector(openSessionPicker))
-        sessionTap.numberOfTouchesRequired = 4
-        sessionTap.delegate = self
-        addGestureRecognizer(sessionTap)
-
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         pinch.delegate = self
         addGestureRecognizer(pinch)
@@ -2460,26 +2428,13 @@ final class XScreenView: UIView {
         if shellOverlay != nil { return }
         let overlay = XiosShellOverlay()
         overlay.translatesAutoresizingMaskIntoConstraints = false
-        overlay.openSessions = { [weak self] in self?.presentDisplayControl(initial: .sessions) }
+        overlay.openPanel = { [weak self] in self?.presentDisplayControl() }
         overlay.fitDisplay = { [weak self] in
             guard let self else { return }
             self.resetZoom()
             self.lastToolMessage = "Fit current display"
             self.refreshShellOverlay()
         }
-        overlay.reloadDisplay = { [weak self] in
-            guard let self else { return }
-            self.reloadRuntimeConfig()
-            self.lastToolMessage = "Reloaded xios.json"
-            self.refreshShellOverlay()
-        }
-        overlay.reconnectInput = { [weak self] in
-            guard let self else { return }
-            self.reconnectInput()
-            self.lastToolMessage = "Reconnected \(self.inputBackendName())"
-            self.refreshShellOverlay()
-        }
-        overlay.openTools = { [weak self] in self?.presentTools() }
         overlay.dismissOverlay = { [weak self] in self?.hideShellOverlay(animated: true) }
         addSubview(overlay)
         NSLayoutConstraint.activate([
@@ -2529,11 +2484,7 @@ final class XScreenView: UIView {
         scheduleShellOverlayAutoHide()
     }
 
-    private enum DisplayControlFocus { case displays, sessions }
-
-    @objc private func openPicker() { presentDisplayControl(initial: .displays) }
-
-    @objc private func openSessionPicker() { presentDisplayControl(initial: .sessions) }
+    @objc private func openPicker() { presentDisplayControl() }
 
     private func fetchLauncherApps() -> (apps: [LauncherApp], error: String?) {
         guard let lines = ioscdResponseLines("APPS_LIST\n") else {
@@ -2584,14 +2535,6 @@ final class XScreenView: UIView {
     /// relaunching → up (or error / compositor-only).
     private func sessionStatus() -> SessionStatus? {
         SessionStatus.load(from: sessionStatusPath)
-    }
-
-    /// One-line "preset: state — message" for the picker card.
-    private func sessionStatusText() -> String {
-        guard let s = sessionStatus() else { return "No session started yet" }
-        let geom = (s.width != nil && s.height != nil) ? "  \(s.width!)x\(s.height!)" : ""
-        let display = s.display.map { "  \($0)" } ?? ""
-        return "\(s.preset): \(s.state)\(geom)\(display)" + (s.message.isEmpty ? "" : " — \(s.message)")
     }
 
     /// The human message for the full-screen banner: the daemon's message verbatim when
@@ -2656,7 +2599,7 @@ final class XScreenView: UIView {
 
     private func updateSessionIndicator() {
         let state = sessionStatus()?.state ?? ""
-        sessionStatusLabel?.text = sessionStatusText()          // picker card, if open
+        sessionStatusLabel?.text = runningDesktopDetail()       // status card, if open
         // Don't treat a stale "up" (from before the pick landed) as settled — only stop
         // after we've actually seen the switch move (a transient state or a surface loss).
         if awaitingCompositor || (!state.isEmpty && state != "up") {
@@ -2762,23 +2705,45 @@ final class XScreenView: UIView {
         desktopPresets.first { $0.preset == preset }?.title ?? preset
     }
 
-    private func displayControlTabs(selected: DisplayControlFocus) -> UISegmentedControl {
-        let tabs = UISegmentedControl(items: ["Displays", "Sessions"])
-        tabs.selectedSegmentIndex = selected == .displays ? 0 : 1
-        tabs.selectedSegmentTintColor = UIColor.systemBlue.withAlphaComponent(0.86)
-        tabs.backgroundColor = UIColor(white: 0.18, alpha: 0.82)
-        tabs.setTitleTextAttributes([.foregroundColor: UIColor(white: 0.78, alpha: 1),
-                                     .font: UIFont.systemFont(ofSize: 13, weight: .semibold)],
-                                    for: .normal)
-        tabs.setTitleTextAttributes([.foregroundColor: UIColor.white,
-                                     .font: UIFont.systemFont(ofSize: 13, weight: .bold)],
-                                    for: .selected)
-        tabs.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        tabs.addAction(UIAction { [weak self, weak tabs] _ in
-            guard let self, let tabs else { return }
-            self.presentDisplayControl(initial: tabs.selectedSegmentIndex == 0 ? .displays : .sessions)
-        }, for: .valueChanged)
-        return tabs
+    /// Plain-English one-liner for the state names the session launcher writes.
+    private func friendlyState(_ state: String) -> String {
+        switch state {
+        case "up":              return "Running"
+        case "starting":        return "Starting…"
+        case "stopping":        return "Stopping…"
+        case "waiting":         return "Waiting for the desktop…"
+        case "relaunching":     return "Reconnecting…"
+        case "compositor-only": return "Running, reconnecting the display…"
+        case "stopped":         return "Stopped"
+        case "error":           return "Error"
+        default:                return state
+        }
+    }
+
+    /// What the status card calls the thing on screen right now.
+    private func runningDesktopTitle() -> String {
+        if let preset = activeDesktopPreset() { return desktopLabel(preset) }
+        if let preset = sessionStatus()?.preset, !preset.isEmpty, preset != "stop" {
+            return desktopLabel(preset)
+        }
+        return usingIOSurface ? "Desktop" : "No desktop running"
+    }
+
+    /// State, size and whether input is wired up — no backend jargon; the technical
+    /// view of the same thing lives in Advanced and in the debug snapshot.
+    private func runningDesktopDetail() -> String {
+        var parts: [String] = []
+        if let s = sessionStatus() {
+            parts.append(friendlyState(s.state))
+            if !s.message.isEmpty, s.state != "up" { parts.append(s.message) }
+        } else if usingIOSurface {
+            parts.append("Running")
+        } else {
+            parts.append("Nothing to show yet")
+        }
+        parts.append("\(fbWidth)×\(fbHeight)")
+        parts.append(inputConnected ? "touch and keyboard ready" : "input offline")
+        return parts.joined(separator: " · ")
     }
 
     private func infoPanel(title: String, detail: String, iconName: String,
@@ -2815,41 +2780,35 @@ final class XScreenView: UIView {
         return (panel, detailLabel)
     }
 
-    private func addDisplayControlHeader(to stack: UIStackView,
-                                         selected: DisplayControlFocus) -> UILabel {
+    /// Title row + close button. Every sheet in the app opens with this.
+    private func addPanelHeader(_ title: String, to stack: UIStackView) {
         let titleRow = UIStackView()
         titleRow.axis = .horizontal
         titleRow.alignment = .center
         titleRow.spacing = 10
 
-        let title = panelLabel("Displays & Sessions", size: 20, weight: .bold)
-        title.numberOfLines = 1
-        titleRow.addArrangedSubview(title)
+        let label = panelLabel(title, size: 20, weight: .bold)
+        label.numberOfLines = 1
+        titleRow.addArrangedSubview(label)
         titleRow.addArrangedSubview(UIView())
         titleRow.addArrangedSubview(iconPanelButton("xmark", label: "Close") { [weak self] in
             self?.dismissPicker()
         })
         stack.addArrangedSubview(titleRow)
-        stack.addArrangedSubview(displayControlTabs(selected: selected))
+    }
 
-        let statusRow = UIStackView()
-        statusRow.axis = .horizontal
-        statusRow.spacing = 8
-        statusRow.distribution = .fillEqually
-
-        let displayAccent = usingIOSurface && inputConnected ? UIColor.systemGreen : UIColor.systemOrange
-        statusRow.addArrangedSubview(infoPanel(title: currentDisplayTitle(),
-                                               detail: currentDisplaySummary(),
-                                               iconName: "display",
-                                               accent: displayAccent).view)
-
-        let session = infoPanel(title: "Session Status",
-                                detail: sessionStatusText(),
-                                iconName: "rectangle.3.group",
-                                accent: UIColor.systemBlue)
-        sessionStatusLabel = session.detailLabel
-        statusRow.addArrangedSubview(session.view)
-        stack.addArrangedSubview(statusRow)
+    /// One status card — what's running, how big, is input alive — plus the line
+    /// that echoes the last thing the user did. Returns that line so callers can
+    /// update it in place instead of rebuilding the sheet.
+    @discardableResult
+    private func addStatusCard(to stack: UIStackView) -> UILabel {
+        let healthy = usingIOSurface && inputConnected
+        let card = infoPanel(title: runningDesktopTitle(),
+                             detail: runningDesktopDetail(),
+                             iconName: "display",
+                             accent: healthy ? UIColor.systemGreen : UIColor.systemOrange)
+        sessionStatusLabel = card.detailLabel
+        stack.addArrangedSubview(card.view)
         startSessionIndicator()
 
         let message = panelLabel(lastToolMessage, size: 12,
@@ -2858,8 +2817,116 @@ final class XScreenView: UIView {
         return message
     }
 
-    private func addDisplayPanelContent(to stack: UIStackView, message: UILabel) {
-        addSection("Open Displays", to: stack)
+    /// Size is one control with one meaning: pick a size and it takes effect. If a
+    /// desktop is already up it resizes now; otherwise it's what the next one starts
+    /// at. (The old panel had three separate places to set this.)
+    private func addScreenSizeControls(to stack: UIStackView) {
+        let apply: (DisplayProfile?) -> Void = { [weak self] profile in
+            guard let self else { return }
+            self.pendingSessionDisplay = profile
+            if let profile, self.activeDesktopPreset() != nil {
+                self.writeSessionRequest("resize", display: profile)
+            } else {
+                self.lastToolMessage = profile.map { "New desktops start at \($0.detail)" }
+                    ?? "New desktops use their default size"
+            }
+            self.presentDisplayControl()
+        }
+
+        let names = ["Landscape", "Portrait", "Compact"]
+        var chips = [sizeButton("Default", selected: pendingSessionDisplay == nil) { apply(nil) }]
+        for (index, name) in names.enumerated() {
+            let profile = sessionDisplayProfiles[index]
+            chips.append(sizeButton(name, selected: pendingSessionDisplay?.name == name) {
+                apply(profile)
+            })
+        }
+        stack.addArrangedSubview(buttonRow(chips))
+        stack.addArrangedSubview(panelButton("Custom Size") { [weak self] in
+            self?.presentCustomSize()
+        })
+        stack.addArrangedSubview(panelLabel(sessionDisplaySummary(), size: 11,
+                                            color: UIColor(white: 0.62, alpha: 1)))
+    }
+
+    private func sizeButton(_ title: String, selected: Bool,
+                            action: @escaping () -> Void) -> UIButton {
+        let button = panelButton(title, action)
+        stylePanelToggle(button, on: selected)
+        return button
+    }
+
+    /// A desktop to run. The one that's already up is highlighted and says so;
+    /// tapping it restarts it.
+    private func desktopRow(_ preset: DesktopPreset, current: String?,
+                            message: UILabel) -> UIButton {
+        let active = preset.preset == current
+        return detailPanelButton(
+            title: active ? "\(preset.title) — running" : preset.title,
+            detail: active ? "Tap to restart it" : preset.detail,
+            iconName: preset.iconName,
+            fill: active ? UIColor.systemBlue.withAlphaComponent(0.34)
+                         : UIColor(white: 0.20, alpha: 0.84)
+        ) { [weak self, weak message] in
+            guard let self else { return }
+            self.writeSessionRequest(preset.preset, display: self.pendingSessionDisplay)
+            message?.text = self.lastToolMessage
+        }
+    }
+
+    /// The screen the app opens to. Four questions, in the order they get asked:
+    /// what's running, which desktop do I want, how big should it be, and open an
+    /// app. Display slots, input plumbing and diagnostics live behind Advanced so
+    /// they aren't in the way of the common path.
+    private func presentDisplayControl() {
+        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 620)
+        addPanelHeader("Xios", to: stack)
+        let message = addStatusCard(to: stack)
+
+        let current = activeDesktopPreset()
+
+        addSection("Desktop", to: stack)
+        for preset in desktopPresets {
+            stack.addArrangedSubview(desktopRow(preset, current: current, message: message))
+        }
+
+        addSection("Screen Size", to: stack)
+        addScreenSizeControls(to: stack)
+
+        addSection("Apps", to: stack)
+        stack.addArrangedSubview(detailPanelButton(
+            title: "Open an App",
+            detail: "Everything installed on the desktop",
+            iconName: "square.grid.2x2") { [weak self] in
+                self?.presentAppLauncher()
+            })
+
+        var footer: [UIButton] = []
+        if current != nil {
+            let stop = panelButton("Stop Desktop") { [weak self, weak message] in
+                self?.writeSessionRequest("stop")
+                message?.text = self?.lastToolMessage
+            }
+            stop.backgroundColor = UIColor.systemRed.withAlphaComponent(0.44)
+            footer.append(stop)
+        }
+        footer.append(panelButton("Advanced") { [weak self] in self?.presentAdvanced() })
+        stack.addArrangedSubview(buttonRow(footer))
+    }
+
+    /// Everything the main panel deliberately doesn't show: which display we're
+    /// rendering, extra display slots, home-screen launcher sync, the key/click pad,
+    /// and the debug snapshot.
+    private func presentAdvanced() {
+        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 620)
+        addPanelHeader("Advanced", to: stack)
+        let message = addStatusCard(to: stack)
+
+        addSection("Display", to: stack)
+        stack.addArrangedSubview(infoPanel(title: currentDisplayTitle(),
+                                           detail: currentDisplaySummary(),
+                                           iconName: "rectangle.on.rectangle",
+                                           accent: UIColor.systemTeal).view)
         let displays = discoverDisplays()
         if displays.isEmpty {
             stack.addArrangedSubview(emptyPanel("No displays or slots were found."))
@@ -2869,62 +2936,37 @@ final class XScreenView: UIView {
             }
         }
         stack.addArrangedSubview(buttonRow([
-            panelButton("Rescan") { [weak self] in self?.presentDisplayControl(initial: .displays) },
+            panelButton("Rescan") { [weak self] in self?.presentAdvanced() },
             panelButton(userPinned ? "Follow Current" : "Following Current") { [weak self] in
                 guard let self else { return }
                 self.userPinned = false
                 self.selectedConfigPath = nil
                 self.reloadRuntimeConfig()
                 self.lastToolMessage = "Following xios.json"
-                self.presentDisplayControl(initial: .displays)
+                self.presentAdvanced()
             },
         ]))
-
-        addSection("Display Controls", to: stack)
         stack.addArrangedSubview(buttonRow([
-            panelButton("Fit") { [weak self] in
+            panelButton("Fit") { [weak self, weak message] in
                 self?.resetZoom()
                 self?.lastToolMessage = "Fit current display"
-                message.text = self?.lastToolMessage
+                message?.text = self?.lastToolMessage
             },
             panelButton("Reload") { [weak self] in
                 guard let self else { return }
                 self.reloadRuntimeConfig()
                 self.lastToolMessage = "Reloaded xios.json"
-                self.presentDisplayControl(initial: .displays)
+                self.presentAdvanced()
             },
             panelButton("Reconnect Input") { [weak self] in
                 guard let self else { return }
                 self.reconnectInput()
                 self.lastToolMessage = "Reconnected \(self.inputBackendName())"
-                self.presentDisplayControl(initial: .displays)
+                self.presentAdvanced()
             },
         ]))
 
-        addMaintenanceActions(to: stack, message: message, includeStop: false)
-    }
-
-    private func addSessionPanelContent(to stack: UIStackView, message: UILabel) {
-        let pick: (String, String?) -> Void = { [weak self, weak message] preset, app in
-            guard let self else { return }
-            self.writeSessionRequest(preset, app: app, display: self.pendingSessionDisplay)
-            message?.text = self.lastToolMessage
-        }
-
-        addSessionSizeControls(to: stack)
-
-        addSection("Desktop Sessions", to: stack)
-        let currentPreset = activeDesktopPreset()
-        let applyPreset = currentPreset ?? "iosc"
-        stack.addArrangedSubview(detailPanelButton(
-            title: "Apply Size to \(desktopLabel(applyPreset))",
-            detail: sessionDisplaySummary(),
-            iconName: "aspectratio") { pick("resize", nil) })
-        for preset in desktopPresets {
-            stack.addArrangedSubview(sessionPresetButton(preset, currentPreset: currentPreset, pick: pick))
-        }
-
-        addSection("New Display Slot", to: stack)
+        addSection("Extra Display Slot", to: stack)
         let spawn: (String) -> Void = { [weak self, weak message] preset in
             guard let self else { return }
             let slot = self.newSessionSlot(for: preset)
@@ -2937,125 +2979,78 @@ final class XScreenView: UIView {
             panelButton("New GNOME") { spawn("gnome") },
         ]))
 
-        addSection("Launch App", to: stack)
-        stack.addArrangedSubview(buttonRow(quickLaunchApps.map { app in
-            detailPanelButton(title: app.title, detail: app.exec, iconName: app.iconName) {
-                pick("app", app.exec)
-            }
-        }))
+        addSection("Home Screen Apps", to: stack)
         stack.addArrangedSubview(detailPanelButton(
-            title: "All Apps",
-            detail: "Browse installed launchers",
-            iconName: "square.grid.2x2") { [weak self] in
-                self?.presentAppLauncher()
+            title: "Manage Home Screen Apps",
+            detail: "Choose which desktop apps get an iOS icon",
+            iconName: "square.grid.3x3") { [weak self] in
+                self?.presentHomeScreenApps()
             })
 
-        addSection("Home Screen Apps", to: stack)
+        addSection("Keyboard & Mouse", to: stack)
+        stack.addArrangedSubview(detailPanelButton(
+            title: "Key & Click Pad",
+            detail: "Esc, Tab, arrows, clicks and scroll",
+            iconName: "keyboard") { [weak self] in
+                self?.presentInputPad()
+            })
+
+        addSection("Diagnostics", to: stack)
+        let debugView = UITextView()
+        debugView.translatesAutoresizingMaskIntoConstraints = false
+        debugView.isEditable = false
+        debugView.isScrollEnabled = true
+        debugView.backgroundColor = UIColor(white: 0.08, alpha: 1)
+        debugView.textColor = UIColor(white: 0.86, alpha: 1)
+        debugView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        debugView.layer.cornerRadius = 8
+        debugView.text = debugSnapshot()
+        stack.addArrangedSubview(debugView)
+        debugView.heightAnchor.constraint(equalToConstant: 180).isActive = true
         stack.addArrangedSubview(buttonRow([
-            panelButton("Manage Apps") { [weak self] in self?.presentHomeScreenApps() },
-            panelButton("Dry Run Native") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: true) else { return }
-                self.presentLauncherSyncReport(title: "Native Dry Run", lines: lines)
-            },
-        ]))
-
-        addMaintenanceActions(to: stack, message: message, includeStop: true)
-    }
-
-    private func addSessionSizeControls(to stack: UIStackView) {
-        addSection("Size For Next Session", to: stack)
-        stack.addArrangedSubview(infoPanel(title: "Selected Size",
-                                           detail: sessionDisplaySummary(),
-                                           iconName: "aspectratio",
-                                           accent: UIColor.systemTeal).view)
-
-        let defaults = sizeButton("Default", selected: pendingSessionDisplay == nil) { [weak self] in
-            guard let self else { return }
-            self.pendingSessionDisplay = nil
-            self.presentDisplayControl(initial: .sessions)
-        }
-        let landscape = sizeButton("Landscape", selected: pendingSessionDisplay?.name == "Landscape") { [weak self] in
-            guard let self else { return }
-            self.pendingSessionDisplay = self.sessionDisplayProfiles[0]
-            self.presentDisplayControl(initial: .sessions)
-        }
-        let portrait = sizeButton("Portrait", selected: pendingSessionDisplay?.name == "Portrait") { [weak self] in
-            guard let self else { return }
-            self.pendingSessionDisplay = self.sessionDisplayProfiles[1]
-            self.presentDisplayControl(initial: .sessions)
-        }
-        let compact = sizeButton("Compact", selected: pendingSessionDisplay?.name == "Compact") { [weak self] in
-            guard let self else { return }
-            self.pendingSessionDisplay = self.sessionDisplayProfiles[2]
-            self.presentDisplayControl(initial: .sessions)
-        }
-        stack.addArrangedSubview(buttonRow([defaults, landscape, portrait, compact]))
-        stack.addArrangedSubview(panelButton("Custom Size") { [weak self] in
-            self?.presentDisplayAdvancedPicker()
-        })
-    }
-
-    private func sizeButton(_ title: String, selected: Bool,
-                            action: @escaping () -> Void) -> UIButton {
-        let button = panelButton(title, action)
-        stylePanelToggle(button, on: selected)
-        return button
-    }
-
-    private func sessionPresetButton(_ preset: DesktopPreset, currentPreset: String?,
-                                     pick: @escaping (String, String?) -> Void) -> UIButton {
-        let active = preset.preset == currentPreset
-        let verb = active ? "Restart" : "Start"
-        return detailPanelButton(title: "\(verb) \(preset.title)",
-                                 detail: preset.detail,
-                                 iconName: preset.iconName,
-                                 fill: active ? UIColor.systemBlue.withAlphaComponent(0.34)
-                                              : UIColor(white: 0.20, alpha: 0.84)) {
-            pick(preset.preset, nil)
-        }
-    }
-
-    private func addMaintenanceActions(to stack: UIStackView, message: UILabel,
-                                       includeStop: Bool) {
-        addSection("Maintenance", to: stack)
-        stack.addArrangedSubview(buttonRow([
-            panelButton("Copy Debug") { [weak self, weak message] in
+            panelButton("Copy Debug") { [weak self, weak debugView, weak message] in
                 self?.copyDebugSnapshot()
+                debugView?.text = self?.debugSnapshot()
                 message?.text = self?.lastToolMessage
             },
-            panelButton("Tools") { [weak self] in self?.presentTools() },
+            panelButton("Save Debug File") { [weak self, weak debugView, weak message] in
+                self?.writeDebugSnapshot()
+                self?.lastToolMessage = "Wrote xios-debug.txt"
+                debugView?.text = self?.debugSnapshot()
+                message?.text = self?.lastToolMessage
+            },
+            panelButton("X Server Size") { [weak self] in self?.presentLegacyDisplayProfiles() },
         ]))
-        if includeStop {
-            let stop = panelButton("Stop Session") { [weak self] in
-                self?.writeSessionRequest("stop")
-                message.text = self?.lastToolMessage
-            }
-            stop.backgroundColor = UIColor.systemRed.withAlphaComponent(0.44)
-            stack.addArrangedSubview(buttonRow([
-                stop,
-                panelButton("Close") { [weak self] in self?.dismissPicker() },
-            ]))
-        } else {
-            stack.addArrangedSubview(panelButton("Close") { [weak self] in self?.dismissPicker() })
-        }
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Back") { [weak self] in self?.presentDisplayControl() },
+            panelButton("Close") { [weak self] in self?.dismissPicker() },
+        ]))
     }
 
-    /// One scrollable control surface for the app chrome. It covers the things a
-    /// launcher screen needs to do in practice: inspect/switch the current display,
-    /// choose the logical size for the next compositor, start/switch desktop flavors,
-    /// and launch clients onto a running desktop.
-    private func presentDisplayControl(initial: DisplayControlFocus) {
-        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 720)
-        let message = addDisplayControlHeader(to: stack, selected: initial)
-        switch initial {
-        case .displays:
-            addDisplayPanelContent(to: stack, message: message)
-        case .sessions:
-            addSessionPanelContent(to: stack, message: message)
+    /// Legacy path: writes xios-request.json, which only the standalone X server
+    /// script reads at start-up. Kept out of the main panel because it does nothing
+    /// to a running Wayland desktop — use Screen Size for that.
+    private func presentLegacyDisplayProfiles() {
+        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 520)
+        addPanelHeader("X Server Size", to: stack)
+        let message = panelLabel("Applies the next time the standalone X server starts.",
+                                 size: 12, color: UIColor(white: 0.72, alpha: 1))
+        stack.addArrangedSubview(message)
+        for profile in displayProfiles {
+            stack.addArrangedSubview(panelButton("\(profile.name)  \(profile.detail)") {
+                [weak self, weak message] in
+                self?.writeDisplayRequest(profile)
+                message?.text = self?.lastToolMessage
+            })
         }
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Back") { [weak self] in self?.presentAdvanced() },
+            panelButton("Close") { [weak self] in self?.dismissPicker() },
+        ]))
     }
 
-    private func presentDisplayAdvancedPicker() {
+    private func presentCustomSize() {
         let (overlay, card) = presentModalCard()
 
         let stack = UIStackView()
@@ -3064,9 +3059,9 @@ final class XScreenView: UIView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(stack)
 
-        stack.addArrangedSubview(panelLabel("Display Size", size: 18, weight: .bold))
-        stack.addArrangedSubview(panelLabel("Logical desktop size for the next session", size: 12,
-                                            color: UIColor(white: 0.72, alpha: 1)))
+        stack.addArrangedSubview(panelLabel("Custom Size", size: 18, weight: .bold))
+        stack.addArrangedSubview(panelLabel("How big the desktop should be, in points. DPI is optional.",
+                                            size: 12, color: UIColor(white: 0.72, alpha: 1)))
 
         let source = pendingSessionDisplay
         let widthField = panelTextField("Width")
@@ -3097,16 +3092,21 @@ final class XScreenView: UIView {
                     message?.text = "Use DPI from 72 to 360."
                     return
                 }
-                self.pendingSessionDisplay = DisplayProfile(
-                    name: "Custom", width: w, height: h, dpi: dpi,
-                    detail: "\(w)x\(h) logical")
-                self.presentDisplayControl(initial: .sessions)
+                let profile = DisplayProfile(name: "Custom", width: w, height: h, dpi: dpi,
+                                             detail: "\(w)×\(h)")
+                self.pendingSessionDisplay = profile
+                if self.activeDesktopPreset() != nil {
+                    self.writeSessionRequest("resize", display: profile)
+                } else {
+                    self.lastToolMessage = "New desktops start at \(profile.detail)"
+                }
+                self.presentDisplayControl()
             },
             panelButton("Clear") { [weak self] in
                 self?.pendingSessionDisplay = nil
-                self?.presentDisplayControl(initial: .sessions)
+                self?.presentDisplayControl()
             },
-            panelButton("Back") { [weak self] in self?.presentDisplayControl(initial: .sessions) },
+            panelButton("Back") { [weak self] in self?.presentDisplayControl() },
         ]))
 
         NSLayoutConstraint.activate([
@@ -3186,7 +3186,7 @@ final class XScreenView: UIView {
 
         stack.addArrangedSubview(buttonRow([
             panelButton("Rescan") { [weak self] in self?.presentAppLauncher() },
-            panelButton("Back") { [weak self] in self?.presentDisplayControl(initial: .sessions) },
+            panelButton("Back") { [weak self] in self?.presentDisplayControl() },
         ]))
         stack.addArrangedSubview(panelButton("Close") { [weak self] in self?.dismissPicker() })
     }
@@ -3309,7 +3309,7 @@ final class XScreenView: UIView {
             panelButton("Refresh") { [weak self, weak search] in
                 self?.presentHomeScreenApps(query: search?.text ?? "")
             },
-            panelButton("Back") { [weak self] in self?.presentDisplayControl(initial: .sessions) },
+            panelButton("Back") { [weak self] in self?.presentAdvanced() },
             panelButton("Close") { [weak self] in self?.dismissPicker() },
         ]))
     }
@@ -3581,64 +3581,13 @@ final class XScreenView: UIView {
         pickerOverlay = nil
     }
 
-    @objc private func openTools() {
-        presentTools()
-    }
-
-    private func presentTools() {
+    /// Keys and clicks the touchscreen can't send: Esc/Tab/arrows, modifier
+    /// combinations, raw keysyms, middle/right click and wheel.
+    private func presentInputPad() {
         let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 560)
-        let title = panelLabel("Tools", size: 18, weight: .bold)
-        stack.addArrangedSubview(title)
+        addPanelHeader("Key & Click Pad", to: stack)
 
-        let message = panelLabel(lastToolMessage, size: 12, color: UIColor(white: 0.72, alpha: 1))
-        stack.addArrangedSubview(message)
-
-        addSection("Display Profiles", to: stack)
-        for profile in displayProfiles {
-            stack.addArrangedSubview(panelButton("\(profile.name)  \(profile.detail)") { [weak self, weak message] in
-                self?.writeDisplayRequest(profile)
-                message?.text = self?.lastToolMessage
-            })
-        }
-
-        addSection("Debug", to: stack)
-        let debugView = UITextView()
-        debugView.translatesAutoresizingMaskIntoConstraints = false
-        debugView.isEditable = false
-        debugView.isScrollEnabled = true
-        debugView.backgroundColor = UIColor(white: 0.08, alpha: 1)
-        debugView.textColor = UIColor(white: 0.86, alpha: 1)
-        debugView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        debugView.layer.cornerRadius = 8
-        debugView.text = debugSnapshot()
-        stack.addArrangedSubview(debugView)
-        debugView.heightAnchor.constraint(equalToConstant: 180).isActive = true
-
-        stack.addArrangedSubview(buttonRow([
-            panelButton("Copy Debug") { [weak self, weak debugView, weak message] in
-                self?.copyDebugSnapshot()
-                debugView?.text = self?.debugSnapshot()
-                message?.text = self?.lastToolMessage
-            },
-            panelButton("Write Debug") { [weak self, weak debugView, weak message] in
-                self?.writeDebugSnapshot()
-                self?.lastToolMessage = "Wrote xios-debug.txt"
-                debugView?.text = self?.debugSnapshot()
-                message?.text = self?.lastToolMessage
-            },
-        ]))
-        stack.addArrangedSubview(buttonRow([
-            panelButton("Reload Config") { [weak self, weak debugView] in
-                self?.reloadRuntimeConfig()
-                debugView?.text = self?.debugSnapshot()
-            },
-            panelButton("Reconnect Input") { [weak self, weak debugView] in
-                self?.reconnectInput()
-                debugView?.text = self?.debugSnapshot()
-            },
-        ]))
-
-        addSection("Custom Input", to: stack)
+        addSection("Send Text", to: stack)
         let textField = panelTextField("Text")
         stack.addArrangedSubview(textField)
         stack.addArrangedSubview(buttonRow([
@@ -3651,6 +3600,9 @@ final class XScreenView: UIView {
             },
         ]))
 
+        addSection("Keys", to: stack)
+        stack.addArrangedSubview(panelLabel("Modifiers stay armed until you tap them again.",
+                                            size: 11, color: UIColor(white: 0.62, alpha: 1)))
         var customCtrl = false
         var customAlt = false
         var customShift = false
@@ -3671,16 +3623,6 @@ final class XScreenView: UIView {
         }
         stack.addArrangedSubview(buttonRow([ctrlButton, altButton, shiftButton]))
 
-        let keysymField = panelTextField("Keysym hex, e.g. ff1b")
-        stack.addArrangedSubview(keysymField)
-        stack.addArrangedSubview(panelButton("Send KeySym") { [weak self, weak keysymField] in
-            let raw = (keysymField?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let cleaned = raw.lowercased().hasPrefix("0x") ? String(raw.dropFirst(2)) : raw
-            if let value = UInt(cleaned, radix: 16) {
-                self?.sendKeysym(value, ctrl: customCtrl, alt: customAlt, shift: customShift)
-            }
-        })
-
         stack.addArrangedSubview(buttonRow([
             keyButton("Esc", 0xff1b, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
             keyButton("Tab", 0xff09, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
@@ -3700,6 +3642,7 @@ final class XScreenView: UIView {
             keyButton("PgDn", 0xff56, ctrl: { customCtrl }, alt: { customAlt }, shift: { customShift }),
         ]))
 
+        addSection("Mouse", to: stack)
         stack.addArrangedSubview(buttonRow([
             panelButton("Left Click") { [weak self] in self?.sendClick(1) },
             panelButton("Middle") { [weak self] in self?.sendClick(2) },
@@ -3712,7 +3655,21 @@ final class XScreenView: UIView {
             panelButton("Wheel Right") { [weak self] in self?.sendWheel(7) },
         ]))
 
-        stack.addArrangedSubview(panelButton("Close") { [weak self] in self?.dismissPicker() })
+        addSection("Raw Keysym", to: stack)
+        let keysymField = panelTextField("Hex, e.g. ff1b")
+        stack.addArrangedSubview(keysymField)
+        stack.addArrangedSubview(panelButton("Send Keysym") { [weak self, weak keysymField] in
+            let raw = (keysymField?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = raw.lowercased().hasPrefix("0x") ? String(raw.dropFirst(2)) : raw
+            if let value = UInt(cleaned, radix: 16) {
+                self?.sendKeysym(value, ctrl: customCtrl, alt: customAlt, shift: customShift)
+            }
+        })
+
+        stack.addArrangedSubview(buttonRow([
+            panelButton("Back") { [weak self] in self?.presentAdvanced() },
+            panelButton("Close") { [weak self] in self?.dismissPicker() },
+        ]))
     }
 
     private func addSection(_ title: String, to stack: UIStackView) {

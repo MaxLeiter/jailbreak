@@ -116,8 +116,9 @@ as a later explicit requester winning and check `/var/jb/tmp/ioscd.log` plus
 
 ### Path 2 — in-app picker (ioscd socket)
 
-The Xios app's Tools card gets a "Desktop Session" section. Tapping a preset
-connects to `/var/jb/tmp/ioscd.sock` and writes:
+The Xios app's main panel (three-finger tap, or the status bar button) lists the
+desktops under "Desktop". Tapping one connects to `/var/jb/tmp/ioscd.sock` and
+writes:
 
 ```text
 SESSION<TAB>iosc<TAB><TAB>1080<TAB>1440<TAB>176

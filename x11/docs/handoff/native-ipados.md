@@ -47,11 +47,11 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   `APPS_LIST`, `APPS_SYNC\t<native|classic>\t<dry>`,
   `APP_ENABLE\t<app_id>`, and `APP_DISABLE\t<app_id>`. Responses are streamed
   and end with `APPS_END\t<status>`.
-- Xios.app now exposes those verbs from the in-app Displays & Sessions sheet:
+- Xios.app now exposes those verbs from the in-app panel under Advanced:
   **Home Screen Apps** lists launcher candidates from `APPS_LIST`, searches by
   name/exec/id, toggles enable/disable with `APP_ENABLE`/`APP_DISABLE`, and runs
   dry/apply sync for native or classic bundles with a streamed report. It is also
-  reachable from the desktop context menu.
+  reachable from the desktop context menu via Advanced.
 - Settings.app pane: `x11/../tweaks/XiosPrefs` builds
   `com.max.xiosprefs_0.1.0_iphoneos-arm64.deb`. It installs
   `/var/jb/Library/PreferenceBundles/XiosPrefs.bundle` plus

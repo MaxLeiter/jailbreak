@@ -167,11 +167,8 @@ final class XiosShellOverlay: UIView {
     private let systemStatusView = XiosSystemStatusView()
     private var chromeVisible = true
 
-    var openSessions: (() -> Void)?
+    var openPanel: (() -> Void)?
     var fitDisplay: (() -> Void)?
-    var reloadDisplay: (() -> Void)?
-    var reconnectInput: (() -> Void)?
-    var openTools: (() -> Void)?
     var dismissOverlay: (() -> Void)?
 
     var isChromeVisible: Bool { chromeVisible }
@@ -208,7 +205,7 @@ final class XiosShellOverlay: UIView {
         statusButton.layer.shadowOpacity = 0.30
         statusButton.layer.shadowRadius = 18
         statusButton.layer.shadowOffset = CGSize(width: 0, height: 10)
-        statusButton.addAction(UIAction { [weak self] _ in self?.openSessions?() }, for: .touchUpInside)
+        statusButton.addAction(UIAction { [weak self] _ in self?.openPanel?() }, for: .touchUpInside)
         addSubview(statusButton)
         systemStatusView.translatesAutoresizingMaskIntoConstraints = false
         systemStatusView.isUserInteractionEnabled = false
@@ -230,12 +227,9 @@ final class XiosShellOverlay: UIView {
 
         if #available(iOS 14.0, *) {
             statusButton.menu = UIMenu(children: [
-                UIAction(title: "Displays & Sessions") { [weak self] _ in self?.openSessions?() },
-                UIAction(title: "Fit Display") { [weak self] _ in self?.fitDisplay?() },
-                UIAction(title: "Reload Display") { [weak self] _ in self?.reloadDisplay?() },
-                UIAction(title: "Reconnect Input") { [weak self] _ in self?.reconnectInput?() },
-                UIAction(title: "Tools") { [weak self] _ in self?.openTools?() },
-                UIAction(title: "Dismiss Overlay", image: UIImage(systemName: "eye.slash")) {
+                UIAction(title: "Open Xios") { [weak self] _ in self?.openPanel?() },
+                UIAction(title: "Fit to Screen") { [weak self] _ in self?.fitDisplay?() },
+                UIAction(title: "Hide This Bar", image: UIImage(systemName: "eye.slash")) {
                     [weak self] _ in self?.dismissOverlay?()
                 },
             ])
