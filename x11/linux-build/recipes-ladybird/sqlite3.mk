@@ -11,11 +11,21 @@ SUBPROJECTS         += sqlite3
 SQLITE3_VERSION     := 3.52.0
 SQLITE3_AUTOCONF_V  := 3520000
 SQLITE3_DL_YEAR     := 2026
-DEB_SQLITE3_V       ?= $(SQLITE3_VERSION)+ios2
+DEB_SQLITE3_V       ?= $(SQLITE3_VERSION)+ios3
+# This package name shadows Procursus's libsqlite3-1, so the build must export at least
+# what theirs does or consumers linked against theirs lose symbols at dyld. PREUPDATE_HOOK
+# and SESSION are the two that matter: without them we drop the whole sqlite3_preupdate_*
+# and sqlite3session_*/sqlite3changeset_*/sqlite3changegroup_* surface (49 symbols) that
+# the Procursus deb exports. Procursus's current recipe no longer sets them, but their
+# PUBLISHED deb does, and the published deb is what a device already has installed.
+# Not matched on purpose: sqlite3_fts3_may_be_corrupt, sqlite3_fts5_may_be_corrupt and
+# sqlite3_unsupported_selecttrace only exist under SQLITE_DEBUG/SQLITE_TEST, which carry
+# assert() and tracing costs no shipping build should take.
 SQLITE3_DEFINES     := -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_MAX_VARIABLE_NUMBER=250000 \
 	-DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS=1 \
 	-DSQLITE_ENABLE_FTS5=1 -DSQLITE_ENABLE_JSON1=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
-	-DSQLITE_THREADSAFE=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1
+	-DSQLITE_THREADSAFE=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
+	-DSQLITE_ENABLE_PREUPDATE_HOOK=1 -DSQLITE_ENABLE_SESSION=1
 SQLITE3_STAGE_PREFIX = $(BUILD_STAGE)/sqlite3$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
 sqlite3-setup: setup

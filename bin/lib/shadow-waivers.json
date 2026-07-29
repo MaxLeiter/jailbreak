@@ -6,13 +6,13 @@
   "libfontconfig-dev": {"version": "companion of fontconfig 2.17.1"},
   "libfontconfig1": {
     "version": "2.17.1 bump predates the gate; soname libfontconfig.1 kept; device-validated",
-    "symbols": "4 internal/removed entry points (_FcConfigPathFini, _FcDefaultFini, _FcFreeTypeIsExclusiveLang, _FcFreeTypeLangSet) not in 2.17's public API. Full-repo + Procursus-consumer import scan 2026-07-29: zero importers"
+    "symbols": "4 entry points Procursus's 2.14.0 exports and 2.17.1 cannot: checked against the 2.17.1 source 2026-07-29, _FcDefaultFini / _FcFreeTypeIsExclusiveLang / _FcFreeTypeLangSet are gone from the tree entirely and _FcConfigPathFini survives only in the internal src/fcint.h. Upstream removals, not build flags. Full-repo + Procursus-consumer import scan: zero importers"
   },
   "libfreetype6": {"version": "2.13.3 bump predates the gate; soname libfreetype.6 kept; device-validated"},
   "libfreetype-dev": {"version": "companion of libfreetype6 2.13.3"},
   "libfribidi0": {
     "version": "1.0.13 bump predates the gate; soname kept",
-    "symbols": "13 legacy charset-conversion + CapRTL entry points dropped when fribidi 1.x moved them behind --with-charsets. Full-repo + Procursus-consumer import scan 2026-07-29: zero importers"
+    "symbols": "13 charset-conversion + CapRTL helpers that were never public ABI. Checked against the 1.0.13 source 2026-07-29: the char-sets .c files ARE compiled, but the functions carry no FRIBIDI_ENTRY export macro and lib/meson.build sets gnu_symbol_visibility: 'hidden', so they are hidden and dead-stripped. Procursus's 1.0.10 is an autotools build that simply leaked every internal. The only way to match it is -fvisibility=default, which would export all internals -- worse than the gap. Full-repo + Procursus-consumer import scan: zero importers"
   },
   "libfribidi-dev": {"version": "companion of libfribidi0 1.0.13"},
   "libpixman-1-0": {
@@ -54,7 +54,7 @@
   "libxml2-utils": {"version": "companion of libxml2 2.13.8"},
   "libsqlite3-1": {
     "version": "3.52.0 with the PROCURSUS soname libsqlite3.1.dylib restored in +ios2 — this is the 2026-07-08 incident fix itself",
-    "symbols": "52 optional-feature entry points (preupdate hook, session/changegroup, fts corruption flags) that Procursus compiles in via SQLITE_ENABLE_PREUPDATE_HOOK/SESSION and we do not. Full-repo + Procursus-consumer import scan 2026-07-29: zero importers. Turning those defines on at the next rebuild would close this properly"
+    "symbols": "FIXED in 3.52.0+ios3 by adding SQLITE_ENABLE_PREUPDATE_HOOK + SQLITE_ENABLE_SESSION: 52 missing -> 3, and we now export 343 symbols against Procursus's 317. The 3 left (_sqlite3_fts3_may_be_corrupt, _sqlite3_fts5_may_be_corrupt, _sqlite3_unsupported_selecttrace) only exist under SQLITE_DEBUG/SQLITE_TEST, which bring assert() and query tracing that no shipping build should carry. Zero importers"
   },
   "libsqlite3-dev": {"version": "companion of libsqlite3-1 3.52.0+ios2"},
   "sqlite3": {"version": "companion of libsqlite3-1 3.52.0+ios2 (CLI)"},

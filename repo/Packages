@@ -1270,7 +1270,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.22
+Version: 0.9.23
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1278,13 +1278,13 @@ Depends: angle, libwayland0, libxkbcommon0
 Recommends: gnome-console
 Section: X11
 Priority: optional
-Installed-Size: 556
+Installed-Size: 560
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.22_iphoneos-arm64.deb
-Size: 132328
-MD5sum: d660e7a2ae8d035cf06d33d9118a38b7
-SHA1: dbdcabbd07f8911ff91dca6c23a98353b0edca44
-SHA256: b3ca24f5983018b599f1f75f81789d1d1c319d500f82fc34b8015642c946a915
+Filename: debs/iosc_0.9.23_iphoneos-arm64.deb
+Size: 133160
+MD5sum: c4aaebe145b780a182ba8fc2d9b7c32f
+SHA1: 0e619ed593c03d56d0a5c33f40c0271af3883c39
+SHA256: a9f17e92309fa46f65b11a126a604a94812ab6c603f61c653d5cf28920089507
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -8447,20 +8447,19 @@ Native Depiction: https://repo.maxleiter.com/depictions/libsoup-3.0-dev.json
 Package: libsqlite3-1
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
-Version: 3.52.0+ios2
+Version: 3.52.0+ios3
 Section: Libraries
 Priority: standard
 Description: SQLite 3 shared library
 Homepage: https://www.sqlite.org/
 Depends: libiosexec1 (>= 1.3.1)
-Installed-Size: 1064
+Installed-Size: 1128
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libsqlite3-1_3.52.0+ios2_iphoneos-arm64.deb
-Size: 593724
-MD5sum: 3b74747bf8e97dab6606e8ebd64305d8
-SHA1: 0d292ec581ef66e3c7809b7da03c81ee0dae0618
-SHA256: c97267e88251d74dd488392c233fd9182e076d5838547dc190b88aa05b250d41
+Filename: debs/libsqlite3-1_3.52.0+ios3_iphoneos-arm64.deb
+Size: 636398
+MD5sum: f9871a9554c9b75a370ecd070e5c6e4a
+SHA1: 3011e4efa371a1b41bfdffb52cf9e219052c50a0
+SHA256: a4b09ad1b6eebc0560d9735ec81424c4c60967e493a7ef52b09418209f6628cc
 Icon: https://repo.maxleiter.com/icons/libsqlite3-1.png
 Depiction: https://repo.maxleiter.com/depictions/libsqlite3-1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libsqlite3-1.json
@@ -8469,20 +8468,19 @@ Native Depiction: https://repo.maxleiter.com/depictions/libsqlite3-1.json
 Package: libsqlite3-dev
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
-Version: 3.52.0+ios1
-Depends: libsqlite3-1 (= 3.52.0+ios1)
+Version: 3.52.0+ios3
+Depends: libsqlite3-1 (= 3.52.0+ios3)
 Section: Development
 Priority: standard
 Description: SQLite 3 development files
 Homepage: https://www.sqlite.org/
-Installed-Size: 2228
+Installed-Size: 2296
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libsqlite3-dev_3.52.0+ios1_iphoneos-arm64.deb
-Size: 908496
-MD5sum: fcf0cff4d498cff92d430b86214b5288
-SHA1: 1ba9b1548078594dc2dc983c159b9b66b140592a
-SHA256: 4ebb0de20a7534906df35d0e1b00ac59f5bd40f525237218421124ee979656d7
+Filename: debs/libsqlite3-dev_3.52.0+ios3_iphoneos-arm64.deb
+Size: 936336
+MD5sum: c8a28111235faeecb728036fed5ac982
+SHA1: 2f00e737a15a72099c6fa675b0ee2615d4dace55
+SHA256: 277614079e63141d2dbd4089c562669f459b44afb2f15bc536f280ebb6130cc6
 Icon: https://repo.maxleiter.com/icons/libsqlite3-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libsqlite3-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libsqlite3-dev.json
@@ -11268,20 +11266,19 @@ Native Depiction: https://repo.maxleiter.com/depictions/slurp.json
 Package: sqlite3
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
-Version: 3.52.0+ios1
-Depends: libiosexec1 (>= 1.3.1), libsqlite3-1 (= 3.52.0+ios1), libreadline8, libncursesw6
+Version: 3.52.0+ios3
+Depends: libiosexec1 (>= 1.3.1), libsqlite3-1 (= 3.52.0+ios3), libreadline8, libncursesw6
 Section: Data_Storage
 Priority: standard
 Description: Command line interface for SQLite 3
 Homepage: https://www.sqlite.org/
-Installed-Size: 344
+Installed-Size: 360
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/sqlite3_3.52.0+ios1_iphoneos-arm64.deb
-Size: 148018
-MD5sum: 4bb854f22e1cdc37712f3e7e7d747517
-SHA1: 63b7c01db72ef140eff1df1921e31be2e460e07c
-SHA256: 12f605ffa01c2855fd0b8239ccc7e60450c86540a82391fcffe05af78dde112d
+Filename: debs/sqlite3_3.52.0+ios3_iphoneos-arm64.deb
+Size: 150400
+MD5sum: 4d1a3136629b1df376ff52e508ac5079
+SHA1: 673abbf447f5a8429cd0846a27c7c12171b37c02
+SHA256: c70529ff300dab598d53c3a4adfb3811d7d1b7f82bc0aa1d9407e2fe34a7e1d3
 Icon: https://repo.maxleiter.com/icons/sqlite3.png
 Depiction: https://repo.maxleiter.com/depictions/sqlite3.html
 SileoDepiction: https://repo.maxleiter.com/depictions/sqlite3.json
@@ -12021,21 +12018,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-x11
 Name: Xios Desktop (X11)
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core, xwayland, xios-server, xauth
-Recommends: x11-xvfb, tigervnc-standalone-server
+Depends: firmware (>= 16.5), xios-core, xwayland, xauth
 MinimumOSVersion: 16.5.0
 Description: the X11 flavor for Xios
-Filename: debs/xios-x11_0.1.0_iphoneos-arm64.deb
-Size: 900
-MD5sum: f12703216ae6be239aab81559d53ed85
-SHA1: b82e0a06b323c6d1fbec265046114c13a3137ea7
-SHA256: fc46f628358b617bbf761ae8950cbaa50bd3828a05a76989241d5b965dbcc0c5
+Filename: debs/xios-x11_0.1.1_iphoneos-arm64.deb
+Size: 904
+MD5sum: 2e73c052a7b1235a235bf6926da82fd4
+SHA1: 103d7f054983b5a8bb376f893ac5d489a5522c98
+SHA256: 269092b7e0368a4f4a1e63b74db633fa922d09c45c36bfd2bbd087ec1ec40dee
 Icon: https://repo.maxleiter.com/icons/xios-x11.png
 Depiction: https://repo.maxleiter.com/depictions/xios-x11.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-x11.json
