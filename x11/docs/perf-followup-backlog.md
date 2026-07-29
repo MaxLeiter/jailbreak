@@ -76,8 +76,12 @@ P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/j
   `libgtop-2.0-11 2.41.3+ios2` package is built; only device UI smoke remains.
 - libei/libeis links-only shim (recipes/libei.mk:5-12): input capture / remote-desktop input NON-FUNCTIONAL by design, inert feature. Same pattern as stubbed libdrm.
 - xios-login1-stub (wayland/xios-login1-stub.c): answers the logind calls gnome-session/gsd make; no real session/power management — intended.
-- CPU fallback composite mode (iosc.c:984-994, activated at 5622 "GPU compositor unavailable"): top surface only, no stacking — fine as a fallback, never the product path.
-- X11 flavor stays software for now (Xvfb/llvmpipe outside the app display path) — explicitly lowest priority per the distribution-chooser; ANGLE-accel (glamor or Xwayland-on-iosc) possible later.
+- The incomplete top-surface-only CPU compositor remains solely behind
+  `IOSC_ALLOW_CPU_DIAGNOSTIC=1`; production initialization and runtime GPU loss
+  fail closed.
+- The X11 flavor uses rootless Xwayland on GPU-accelerated iosc. The legacy
+  bare Xios server, Xvfb, and VNC remain separately installable diagnostics and
+  are no longer dependencies or recommendations of the flavor meta.
 - split-shell cairo/pango CPU renderer — adequate for bar/dock chrome; renderer may be reused for native-mode window chrome.
 - gedit skipped in favor of gnome-text-editor (libpeas-2 typelib chain, gnome-apps.md:175-182).
 - gnome-shell JS is interpreter-only (JIT-less mozjs) — animations may be sluggish on the A10; compositing stays GPU (mutter-on-iosc.md risk #5). Inherent, not fixable by us.

@@ -24,25 +24,38 @@ OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.22"
+VER="0.9.27"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
 BIN="$STAGE/var/jb/usr/local/bin"
 SHARE="$STAGE/var/jb/usr/local/share/iosc"
 LIB="$STAGE/var/jb/usr/local/lib"
+LIBEXEC="$STAGE/var/jb/usr/local/libexec"
+LAUNCHD="$STAGE/var/jb/Library/LaunchDaemons"
 
 rm -rf "$STAGEROOT"
-mkdir -p "$BIN" "$SHARE" "$LIB" "$STAGE/DEBIAN"
+mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$STAGE/DEBIAN"
 
 # 1. compositor binary -> /var/jb/usr/local/bin, signed with the GPU entitlement
 #    set (AGX/IOGPU/IOSurface IOKit + task_for_pid, NO no-container). Without these
-#    iosc cannot reach the GPU and falls back to the CPU compositor; see iosc-gl-ent.xml.
+#    iosc cannot reach the GPU and fails closed; see iosc-gl-ent.xml. The incomplete
+#    CPU compositor is available only with IOSC_ALLOW_CPU_DIAGNOSTIC=1.
 cp "$WAYLAND/out/iosc" "$BIN/iosc"
 chmod 0755 "$BIN/iosc"
 xsign "$BIN/iosc" "$WAYLAND/iosc-gl-ent.xml" \
   platform-application com.apple.private.skip-library-validation task_for_pid-allow \
   AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient
+
+# One-time MTLSharedEventHandle transport. launchd owns the named Mach service;
+# frame values continue on the Wayland/app wires, so this helper is not in the
+# per-frame data path.
+cp "$WAYLAND/out/xios-metal-event-broker" "$LIBEXEC/xios-metal-event-broker"
+chmod 0755 "$LIBEXEC/xios-metal-event-broker"
+xsign "$LIBEXEC/xios-metal-event-broker"
+cp "$WAYLAND/com.max.xios.metal-event-broker.plist" \
+   "$LAUNCHD/com.max.xios.metal-event-broker.plist"
+chmod 0644 "$LAUNCHD/com.max.xios.metal-event-broker.plist"
 
 # 2. wl_shm self-test client (pure software; ad-hoc sign, no entitlements needed).
 #    Lets run-iosc.sh paint a test window with no GNOME app installed.
@@ -96,7 +109,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: angle, libwayland0, libxkbcommon0
+Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-10), libwayland0, libxkbcommon0
 Recommends: gnome-console
 Section: X11
 Priority: optional
@@ -105,9 +118,8 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  iosc is a small clean-room Wayland compositor (libwayland-server) for the Xios
  desktop on rootless iOS. It composites Wayland clients on the Apple GPU through
  ANGLE and Metal and hands the finished frame to the Xios app to display, with no
- per-frame copying. It is the GPU counterpart to the Xios X11 server: where Xios
- draws X clients in software, iosc runs Wayland clients such as GTK4 and GNOME apps
- on the A10 GPU.
+ per-frame copying. GPU completion crosses both process boundaries as Metal shared-event
+ fences, so the release path does not serialize every frame through a CPU wait.
  .
  It advertises the protocols modern toolkits expect (xdg-shell windows and popups,
  subsurfaces, viewporter, fractional-scale, and clipboard via wl_data_device),
@@ -127,6 +139,32 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  The compositor is signed with the GPU entitlement set (a copy is kept under
  /var/jb/usr/local/share/iosc). Built for iPadOS/iOS rootless (palera1n/Dopamine).
 EOF
+
+cat > "$STAGE/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+plist=/var/jb/Library/LaunchDaemons/com.max.xios.metal-event-broker.plist
+chmod 0755 /var/jb/usr/local/libexec/xios-metal-event-broker 2>/dev/null || true
+chmod 0644 "$plist" 2>/dev/null || true
+chown root:wheel "$plist" 2>/dev/null || true
+if command -v launchctl >/dev/null 2>&1; then
+  launchctl bootout system "$plist" 2>/dev/null || true
+  launchctl bootstrap system "$plist"
+fi
+exit 0
+EOF
+
+cat > "$STAGE/DEBIAN/prerm" <<'EOF'
+#!/bin/sh
+set -e
+plist=/var/jb/Library/LaunchDaemons/com.max.xios.metal-event-broker.plist
+if command -v launchctl >/dev/null 2>&1; then
+  launchctl bootout system "$plist" 2>/dev/null || true
+fi
+exit 0
+EOF
+chmod 0755 "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/prerm"
 
 echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort

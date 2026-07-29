@@ -14,7 +14,7 @@ device-verified baseline rather than a claim about these candidates.
 
 ## Key files
 - `x11/linux-build/install-gnome-boot.sh` — the ordered 66-deb install; now does a ONE-PASS external closure fetch (`apt-cache depends --recurse` over the frontier → `apt-get download` the missing → `dpkg -i` with the set). Hard-gated on libsndfile1.
-- `x11/packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh` — the packaged full-session launcher: re-sign gnome-shell, start the session stubs/bridges on one bus, then run `gnome-session --builtin --session=xios`.
+- `x11/packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh` — the packaged full-session launcher: verify the package-time gnome-shell GPU signature and package-owned runtime artifacts, start the session bridges on one bus, then run `gnome-session --builtin --session=xios`.
 - `x11/wayland/run-mutter.sh` — the bare-mutter smoke (first-pixels).
 - Bridges: xios-session-stubs deb (login1/polkit/accounts/BlueZ services sharing the session
   identity where applicable; libaccountsservice + libgdm client libs). Plan:
@@ -30,6 +30,14 @@ stub/partial typelibs from source with introspection (Atk/Atspi/Gck/Gcr/GnomeDes
 St-14/Shell-14 re-scan + Gdm-1.0) → ship Locations.bin + login-screen schema → **patch (8): volume
 ectomy** (the final first-paint blocker — `Gvc.MixerControl` ctor hangs → blocks compositor →
 watchdog SIGKILL; skipping it lets the shell paint).
+
+**UPDATE 2026-07-29:** installed `libmutter-14-0 46.0+ios5` and
+`xios-session-stubs 0.2.7`, then launched the packaged GNOME preset on-device.
+The launcher no longer edits installed binaries, plugin directories, schemas, or executable
+helpers: it verifies the host-finalized Shell GPU entitlements, package-owned ANGLE/Mutter
+aliases, static session descriptors, and a package-owned `xios-setsid`, using a private `0700`
+runtime directory. Mutter packaging now refuses payloads without both `MetaBackendIOS` and linked
+`xios_glue`. The session reached `GNOME session painted (GNOME Shell started)`.
 
 **UPDATE 2026-07-03 04:25 PDT:** PulseAudio/media packaging fixed the old Gvc hang. Installed
 `gnome-shell 46.0+ios2` boots with Gvc enabled, `new Gvc.MixerControl()` returns on-device
@@ -106,8 +114,7 @@ REMAINING (polish, not blockers):
    the slider/menu/event path. Fresh `+ios3` logs clear the Quick Settings setup failure and the
    follow-on `_output is undefined` volume error. Remaining audio polish is functional UI testing
    of the slider itself plus fixing the harmless Gvc device lookup noise for xios network streams.
-3. Nonfatal service polish from the full-session smoke: `dbus-run-session` warns because
-   `XDG_RUNTIME_DIR=/var/jb/tmp` is world-writable; IBus warns about missing
+3. Nonfatal service polish from the full-session smoke: IBus warns about missing
    `/var/lib/dbus/machine-id` and `ibus-daemon`; GnomeDesktop looks for `iso-codes` under the build
    root instead of `/var/jb/usr/share/xml/iso-codes`; `org.gnome.Shell.Screencast` still logs missing
    `Gst-1.0.typelib`; CalendarServer, GeoClue, colord, and the polkit auth agent are absent; and

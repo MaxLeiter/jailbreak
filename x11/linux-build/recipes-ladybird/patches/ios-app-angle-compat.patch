@@ -4,8 +4,8 @@
  target_link_libraries(Compositor PRIVATE compositorservice LibCore LibMain LibSandbox LibWebView)
  target_link_libraries(compositorservice PRIVATE LibCore LibGfx LibIPC LibMedia LibSync LibWeb ${ANGLE_TARGETS})
  
-+if (APPLE AND IOS AND DEFINED ENV{LB_APP_GPU} AND "$ENV{LB_APP_GPU}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$")
-+    # iOS GPU probe: Mesa GLESv2 exports ES3 core names, while Ladybird calls ANGLE/OES aliases.
++if (APPLE AND IOS AND NOT (DEFINED ENV{LB_APP_CPU_DIAGNOSTIC} AND "$ENV{LB_APP_CPU_DIAGNOSTIC}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$"))
++    # iOS release GPU build: provide narrow ES3 compatibility aliases Ladybird calls.
 +    target_sources(compositorservice PRIVATE AngleCompatIOS.cpp)
 +endif()
 +
@@ -16,10 +16,10 @@
 +++ b/Services/Compositor/AngleCompatIOS.cpp
 @@ -0,0 +1,211 @@
 +/*
-+ * iOS app GPU probe: Ladybird's generated WebGL dispatcher references ANGLE/OES/EXT
++ * iOS app GPU build: Ladybird's generated WebGL dispatcher references ANGLE/OES/EXT
 + * entry point names, but the staged GLES dylib exports the equivalent ES3 core names.
 + * Keep this as a narrow adapter layer so the Compositor links against real EGL/GLES
-+ * instead of the CPU fallback's trap stubs.
++ * instead of the diagnostic CPU build's trap stubs.
 + */
 +
 +#define GL_GLEXT_PROTOTYPES 1

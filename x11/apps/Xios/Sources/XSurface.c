@@ -36,11 +36,16 @@ typedef struct { uint32_t magic, width, height, stride, format, status; } xios_r
 
 #define XIOS_HELLO_TYPED 0x54595031u  /* 'TYP1' in hello.reserved => typed stream */
 #define XIOS_MSG_MAGIC   0x584D5331u  /* 'XMS1' per-record frame sync */
+#define XIOS_SHARED_EVENT_TOKEN_SIZE 32u
 enum {
     XIOS_MSG_HELLO = 0x01,
     XIOS_MSG_DIRTY = 0x02,
     XIOS_MSG_CURSOR = 0x03,
     XIOS_MSG_PRESENTED = 0x05
+};
+enum {
+    XIOS_DIRTY_FENCE_NONE = 0,
+    XIOS_DIRTY_FENCE_BROKER_TOKEN = 1,
 };
 typedef struct {
     uint32_t magic, type, window_id, length;
@@ -63,6 +68,14 @@ struct XSurfaceConn {
     unsigned char rxbuf[sizeof(xios_msg)];
     int rxlen;                 /* header bytes buffered so far */
     int skip;                  /* payload bytes still to discard after a header */
+    uint32_t fence_rx_expected;
+    uint32_t fence_rx_got;
+    uint64_t fence_rx_dirty_seq;
+    uint64_t fence_rx_value;
+    unsigned char fence_token[XIOS_SHARED_EVENT_TOKEN_SIZE];
+    uint32_t fence_token_size;
+    uint64_t fence_dirty_seq;
+    uint64_t fence_value;
     /* latest cursor state (from CURSOR records) */
     int cur_x, cur_y, cur_vis, cur_shape;
     uint32_t cur_seq;          /* bumped per CURSOR record; 0 = none seen */
@@ -238,6 +251,29 @@ int xsurface_drain(XSurfaceConn *c)
     if (!c) return -1;
     int dirty = 0;
     for (;;) {
+        if (c->fence_rx_expected > 0) {
+            ssize_t r = recv(c->fd,
+                             c->fence_token + c->fence_rx_got,
+                             c->fence_rx_expected - c->fence_rx_got,
+                             MSG_DONTWAIT);
+            if (r > 0) {
+                c->fence_rx_got += (uint32_t)r;
+                if (c->fence_rx_got < c->fence_rx_expected)
+                    continue;
+                c->fence_token_size = c->fence_rx_expected;
+                c->fence_dirty_seq = c->fence_rx_dirty_seq;
+                c->fence_value = c->fence_rx_value;
+                c->dirty_seq = c->fence_rx_dirty_seq;
+                c->fence_rx_expected = 0;
+                c->fence_rx_got = 0;
+                dirty = 1;
+                continue;
+            }
+            if (r == 0) return -1;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            if (errno == EINTR) continue;
+            return -1;
+        }
         if (c->skip > 0) {                     /* discard a record's payload */
             unsigned char scratch[64];
             int want = c->skip < (int) sizeof scratch ? c->skip : (int) sizeof scratch;
@@ -259,9 +295,36 @@ int xsurface_drain(XSurfaceConn *c)
             if (m.magic != XIOS_MSG_MAGIC) { xlog("typed desync magic=0x%x", m.magic); return -1; }
             switch (m.type) {
             case XIOS_MSG_DIRTY:
-                dirty = 1;
-                c->dirty_seq = ((uint64_t)(uint32_t)m.b << 32) | (uint32_t)m.a;
+            {
+                uint64_t seq = ((uint64_t)(uint32_t)m.b << 32) | (uint32_t)m.a;
+                if (m.length > 0) {
+                    uint64_t event_value =
+                        ((uint64_t)(uint32_t)m.d << 32) | (uint32_t)m.c;
+                    if (m.window_id != XIOS_DIRTY_FENCE_BROKER_TOKEN ||
+                        m.length != XIOS_SHARED_EVENT_TOKEN_SIZE ||
+                        event_value == 0) {
+                        xlog("invalid broker fence kind=%u length=%u value=%llu",
+                             m.window_id, m.length,
+                             (unsigned long long)event_value);
+                        return -1;
+                    }
+                    c->fence_rx_expected = m.length;
+                    c->fence_rx_got = 0;
+                    c->fence_rx_dirty_seq = seq;
+                    c->fence_rx_value = event_value;
+                } else {
+                    if (m.window_id != XIOS_DIRTY_FENCE_NONE) {
+                        xlog("invalid unfenced DIRTY kind=%u", m.window_id);
+                        return -1;
+                    }
+                    c->dirty_seq = seq;
+                    c->fence_token_size = 0;
+                    c->fence_dirty_seq = seq;
+                    c->fence_value = 0;
+                    dirty = 1;
+                }
                 break;
+            }
             case XIOS_MSG_CURSOR:
                 c->cur_x = m.a; c->cur_y = m.b;
                 c->cur_shape = m.c; c->cur_vis = (m.d & 1);
@@ -284,7 +347,8 @@ int xsurface_drain(XSurfaceConn *c)
                 xlog("typed unknown record type=0x%x; reconnect", m.type);
                 return -1;
             }
-            if (m.length > 0) c->skip = (int) m.length;
+            if (m.length > 0 && m.type != XIOS_MSG_DIRTY)
+                c->skip = (int) m.length;
             continue;
         }
         if (r == 0) return -1;
@@ -298,6 +362,22 @@ int xsurface_drain(XSurfaceConn *c)
 uint64_t xsurface_dirty_sequence(XSurfaceConn *c)
 {
     return c ? c->dirty_seq : 0;
+}
+
+int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
+                             size_t *token_size, uint64_t *value)
+{
+    if (token) *token = NULL;
+    if (token_size) *token_size = 0;
+    if (value) *value = 0;
+    if (!c || c->fence_token_size != XIOS_SHARED_EVENT_TOKEN_SIZE ||
+        c->fence_value == 0 ||
+        c->fence_dirty_seq != c->dirty_seq)
+        return 0;
+    if (token) *token = c->fence_token;
+    if (token_size) *token_size = c->fence_token_size;
+    if (value) *value = c->fence_value;
+    return 1;
 }
 
 int xsurface_presented(XSurfaceConn *c, uint64_t seq)

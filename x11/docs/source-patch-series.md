@@ -180,12 +180,13 @@ Remaining non-Qt procedural source edits:
   CPU-rasters the display list inside WebContent when no Compositor is launched.
 - `recipes-ladybird/patches`: app-only Ladybird engine patches applied under
   `LB_APP_BUILD=1`, including Compositor/UI build-graph restoration,
-  CPU fallback hooks, IOSurface/Mach transport, input caret updates, and
+  explicit diagnostic CPU hooks, IOSurface/Mach transport, input caret updates, and
   ANGLE/GPU compatibility.
 - `recipes-ladybird/ladybird-m0-patches.sh` still carries the remaining
   environment-sensitive Ladybird app bring-up cleanup for traces from reused
-  trees. The app build driver still fills generated ANGLE trap-stub symbols
-  after the first CPU-fallback link because that list is link-output-derived.
+  trees. Only `LB_APP_CPU_DIAGNOSTIC=1` fills generated ANGLE trap-stub symbols
+  after the first diagnostic link because that list is link-output-derived;
+  normal and release builds link real ANGLE and never generate those stubs.
 - Ladybird wave/app-engine/bundle scripts are likewise out of scope for this
   dependency pass; treat them as a separate browser-engine packaging cleanup.
 

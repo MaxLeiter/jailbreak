@@ -21,7 +21,7 @@ settings:
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     SWIFT_OBJC_BRIDGING_HEADER: Sources/Host-Bridging-Header.h
     # Presentation is GPU IOSurface -> Metal (like Xios); no X11 link.
-    OTHER_LDFLAGS: -framework IOSurface
+    OTHER_LDFLAGS: -framework IOSurface -framework Foundation -framework Metal
 
 targets:
   IOSCHost:
@@ -34,6 +34,9 @@ targets:
       - path: Sources
       - path: ../shared/XiosHardwareKeyboard.swift
       - path: ../shared/XiosHardwareKeymap.swift
+      - path: ../shared/XiosMetalEventBroker.m
+        compilerFlags:
+          - -fno-objc-arc
       - path: Resources/Assets.xcassets
     info:
       path: Resources/Info.generated.plist

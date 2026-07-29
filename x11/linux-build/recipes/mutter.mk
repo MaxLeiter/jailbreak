@@ -13,7 +13,7 @@ MUTTER_MAJOR_V := 46
 # release number — the cogl/clutter/mtk dylibs + plugins install to lib/mutter-14/.
 MUTTER_API_V   := 14
 MUTTER_VERSION := $(MUTTER_MAJOR_V).0
-DEB_MUTTER_V   ?= $(MUTTER_VERSION)+ios4
+DEB_MUTTER_V   ?= $(MUTTER_VERSION)+ios5
 
 # The dead X11/xcb closure to weak-link in mutter-package (see the mutter-package weaken step).
 # EVERYTHING X11/xcb that libmutter/cogl/mtk pull in — EXCEPT libxkbcommon.0, which the Wayland
@@ -129,6 +129,18 @@ mutter-package: mutter-stage
 	if [ -d "$(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/mutter-$(MUTTER_API_V)" ]; then \
 		cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/mutter-$(MUTTER_API_V) $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
 	fi
+	# Runtime packages must contain the real iOS backend. The GIR-only setup fallback is useful
+	# for tooling, but it must never silently become the compositor library shipped to a device.
+	@ios_runtime="$(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmutter-$(MUTTER_API_V).0.dylib"; \
+		test -f "$$ios_runtime" || { echo "ERROR: Mutter runtime dylib missing: $$ios_runtime"; exit 1; }; \
+		grep -aq 'MetaBackendIOS' "$$ios_runtime" || { echo "ERROR: refusing to package Mutter without MetaBackendIOS"; exit 1; }; \
+		grep -aq 'xios_surface_create' "$$ios_runtime" || { echo "ERROR: refusing to package Mutter without linked xios_glue"; exit 1; }
+	# The plugin loader asks for .so names; package those aliases with libmutter instead of
+	# mutating the installed library tree from launch-gnome-session.sh.
+	for f in $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/mutter-$(MUTTER_API_V)/plugins/*.dylib; do \
+		[ -e "$$f" ] || continue; \
+		ln -sf "$$(basename "$$f")" "$${f%.dylib}.so"; \
+	done
 
 	# mutter installs share/ (org.gnome.mutter{,.wayland} GSettings schemas — without which
 	# mutter aborts "Settings schema 'org.gnome.mutter' is not installed" — plus GConf/

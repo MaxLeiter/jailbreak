@@ -30,12 +30,12 @@ if [ -z "${ANGLE+x}" ]; then
 fi
 
 export PATH="$PREFIX/local/bin:$PREFIX/bin:$PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$XS_TMP}"
+slot_suffix="${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
+export XDG_RUNTIME_DIR="${XIOS_GNOME_RUNTIME_DIR:-$XS_TMP/xios-run$slot_suffix}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export HOME="${HOME:-$XS_VAR/root}"
 unset DISPLAY
 
-slot_suffix="${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
 if [ -n "${XIOS_SESSION_SLOT:-}" ]; then
   XIOS_JSON_PATH="${XIOS_JSON_PATH:-$XS_TMP/xios-$XIOS_SESSION_SLOT.json}"
   XIOS_DDX_SOCKET="${XIOS_DDX_SOCKET:-$XS_TMP/mutter-$XIOS_SESSION_SLOT-ddx.sock}"
@@ -50,117 +50,81 @@ GNOME_SESSION_BUS_FILE="${GNOME_SESSION_BUS_FILE:-$XS_TMP/gnome-session-bus$slot
 WSOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 
 [ -x "$SHELL_BIN" ] || { echo "!! $SHELL_BIN missing — install the gnome-shell deb"; exit 1; }
-mkdir -p "$XDG_RUNTIME_DIR" "$HOME" 2>/dev/null || true
-
-echo "==> re-sign gnome-shell with the iosc-gl GPU union entitlement"
-ENT="$XS_TMP/iosc-gl-ent.xml"
-if [ -n "${XS_JB:-}" ]; then
-  ENT_PATHS="<string>$XS_JB/</string><string>/tmp/</string><string>/var/</string><string>/private/var/</string>"
-else
-  ENT_PATHS="<string>/usr/</string><string>/tmp/</string><string>/var/</string><string>/private/var/</string>"
-fi
-cat > "$ENT" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>platform-application</key><true/>
-    <key>com.apple.private.amfi.can-allow-non-platform</key><true/>
-    <key>com.apple.private.skip-library-validation</key><true/>
-    <key>dynamic-codesigning</key><true/>
-    <key>task_for_pid-allow</key><true/>
-    <key>com.apple.system-task-ports</key><true/>
-    <key>com.apple.security.iokit-user-client-class</key>
-    <array>
-        <string>AGXDeviceUserClient</string>
-        <string>IOGPUDeviceUserClient</string>
-        <string>IOSurfaceRootUserClient</string>
-        <string>IOSurfaceSendRight</string>
-        <string>IOSurfaceAcceleratorClient</string>
-    </array>
-    <key>com.apple.security.exception.files.absolute-path.read-write</key>
-    <array>$ENT_PATHS</array>
-</dict>
-</plist>
-PLIST
-ldid -S"$ENT" "$SHELL_BIN" && echo "   signed: $SHELL_BIN"
-ldid -e "$SHELL_BIN" 2>/dev/null | grep -q AGXDeviceUserClient || {
-  echo "!! entitlements did not stick — abort"
+umask 077
+mkdir -p "$XDG_RUNTIME_DIR" "$HOME" 2>/dev/null || {
+  echo "!! could not create private GNOME runtime dir: $XDG_RUNTIME_DIR"
   exit 1
 }
+chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || {
+  echo "!! could not secure GNOME runtime dir: $XDG_RUNTIME_DIR"
+  exit 1
+}
+
+echo "==> verify package-time gnome-shell GPU entitlement"
+command -v ldid >/dev/null 2>&1 || {
+  echo "!! ldid is required to verify the packaged gnome-shell signature"
+  exit 1
+}
+SHELL_ENTITLEMENTS="$(ldid -e "$SHELL_BIN" 2>/dev/null)" || {
+  echo "!! could not read entitlements from $SHELL_BIN — reinstall gnome-shell"
+  exit 1
+}
+for marker in AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient; do
+  printf '%s' "$SHELL_ENTITLEMENTS" | grep -q "$marker" || {
+    echo "!! $SHELL_BIN lacks $marker — reinstall the host-finalized gnome-shell package"
+    exit 1
+  }
+done
 
 rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
       "$XIOS_INPUT_SOCKET" "$XS_TMP/xios-input.sock" "$GNOME_SHELL_LOG" \
       "$GNOME_SESSION_BUS_FILE" 2>/dev/null
 
-echo "==> ANGLE + mutter-plugin so-name symlinks"
-if [ -d "$ANGLE" ]; then
-  ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so.2" 2>/dev/null
-  ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so" 2>/dev/null
-  ln -sf libEGL.dylib "$ANGLE/libEGL.so.1" 2>/dev/null
-  ln -sf libEGL.dylib "$ANGLE/libEGL.so" 2>/dev/null
-fi
+echo "==> verify package-owned ANGLE + Mutter compatibility links"
+for lib in libGLESv2.so.2 libGLESv2.so libEGL.so.1 libEGL.so; do
+  [ -e "$ANGLE/$lib" ] || {
+    echo "!! $ANGLE/$lib missing — reinstall the angle package"
+    exit 1
+  }
+done
 for f in "$PLUGINS"/*.dylib; do
-  [ -e "$f" ] && ln -sf "$(basename "$f")" "${f%.dylib}.so" 2>/dev/null
+  [ -e "$f" ] || continue
+  [ -e "${f%.dylib}.so" ] || {
+    echo "!! ${f%.dylib}.so missing — reinstall the iOS-backed libmutter package"
+    exit 1
+  }
 done
 
-echo "==> ensure GSettings schemas compiled"
-[ -d "$PREFIX/share/glib-2.0/schemas" ] && \
-  glib-compile-schemas "$PREFIX/share/glib-2.0/schemas" 2>/dev/null || true
-
+SESSION_ROOT="$PREFIX/share/xios"
+SESSION_FILE="$SESSION_ROOT/gnome-session/sessions/xios.session"
+SHELL_DESKTOP="$SESSION_ROOT/applications/org.gnome.Shell.desktop"
+[ -r "$SESSION_FILE" ] && [ -r "$SHELL_DESKTOP" ] || {
+  echo "!! packaged GNOME session descriptors are missing — reinstall xios-session-stubs"
+  exit 1
+}
 CFG="$XDG_RUNTIME_DIR/xios-gnome-session$slot_suffix"
 rm -rf "$CFG" 2>/dev/null || true
-mkdir -p "$CFG/config/gnome-session/sessions" "$CFG/data/applications" "$CFG/bin"
-SHELL_WRAPPER="$CFG/bin/xios-gnome-shell-session"
-cat > "$SHELL_WRAPPER" <<EOF
-#!/bin/sh
-exec "$SHELL_BIN" --wayland --wayland-display "\${WAYLAND_DISPLAY:-wayland-0}"
-EOF
-chmod 0755 "$SHELL_WRAPPER"
-cat > "$CFG/data/applications/org.gnome.Shell.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=GNOME Shell
-Exec=$SHELL_WRAPPER
-NoDisplay=true
-X-GNOME-Autostart-Phase=WindowManager
-EOF
-cat > "$CFG/config/gnome-session/sessions/xios.session" <<EOF
-[GNOME Session]
-Name=Xios GNOME
-RequiredComponents=org.gnome.Shell;
-EOF
+mkdir -p "$CFG/config-home" "$CFG/data-home"
 
-SETSID="$(command -v setsid || true)"
-if [ -z "$SETSID" ]; then
-  SETSID="$XS_TMP/xsetsid"
-  cat > "$SETSID" <<PYEOF
-#!$PREFIX/bin/python3
-import os, sys
-try:
-    os.setsid()
-except OSError:
-    if os.fork() > 0:
-        os._exit(0)
-    os.setsid()
-os.execvp(sys.argv[1], sys.argv[1:])
-PYEOF
-  chmod +x "$SETSID"
-fi
+SETSID="$LIBEXEC/xios-setsid"
+[ -x "$SETSID" ] || {
+  echo "!! packaged $SETSID is missing — reinstall xios-session-stubs"
+  exit 1
+}
 
-[ -e "$PREFIX/share/zoneinfo" ] || ln -sf /var/db/timezone/zoneinfo "$PREFIX/share/zoneinfo" 2>/dev/null
 XIOS_TZ="$(readlink /var/db/timezone/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
 [ -n "$XIOS_TZ" ] && echo "==> timezone: $XIOS_TZ"
 
 echo "==> start GNOME session -> $GNOME_SHELL_LOG"
 "$SETSID" env \
   ${XIOS_TZ:+TZ="$XIOS_TZ"} \
+  TZDIR="$PREFIX/share/zoneinfo" \
   PATH="$PATH" HOME="$HOME" \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   XDG_CONFIG_HOME="$CFG/config-home" \
-  XDG_CONFIG_DIRS="$CFG/config:$SYSTEM_XDG_CONFIG" \
-  XDG_DATA_HOME="$CFG/data" \
-  XDG_DATA_DIRS="$PREFIX/share:$PREFIX/local/share" \
+  XDG_CONFIG_DIRS="$SESSION_ROOT:$SYSTEM_XDG_CONFIG" \
+  XDG_DATA_HOME="$CFG/data-home" \
+  XDG_DATA_DIRS="$SESSION_ROOT:$PREFIX/share:$PREFIX/local/share" \
   GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas" \
   WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
   XIOS_DDX_SOCKET="$XIOS_DDX_SOCKET" \

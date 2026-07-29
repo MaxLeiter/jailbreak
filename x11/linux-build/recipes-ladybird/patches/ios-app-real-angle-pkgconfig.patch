@@ -7,9 +7,9 @@
 -find_package(unofficial-angle CONFIG)
 -if(unofficial-angle_FOUND)
 -    set(ANGLE_TARGETS unofficial::angle::libEGL unofficial::angle::libGLESv2)
-+if(IOS AND DEFINED ENV{LB_APP_GPU} AND "$ENV{LB_APP_GPU}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$")
-+    # The iOS app GPU probe uses the Procursus-staged ANGLE/Metal EGL plus GLESv2 dylibs.
-+    # angle.pc is intentionally headers-only for the CPU fallback, so ask for the real
++if(IOS AND NOT (DEFINED ENV{LB_APP_CPU_DIAGNOSTIC} AND "$ENV{LB_APP_CPU_DIAGNOSTIC}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$"))
++    # The iOS app release build uses Procursus-staged ANGLE/Metal EGL plus GLESv2 dylibs.
++    # angle.pc is intentionally headers-only for diagnostic CPU builds, so ask for the real
 +    # pkg-config modules here instead of letting ANGLE_TARGETS become include-only.
 +    pkg_check_modules(EGL REQUIRED IMPORTED_TARGET egl)
 +    pkg_check_modules(GLESv2 REQUIRED IMPORTED_TARGET glesv2)

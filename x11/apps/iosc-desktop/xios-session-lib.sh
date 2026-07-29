@@ -822,10 +822,10 @@ xios_session_mutter() {
     fi
 }
 
-# gnome: teardown, then launch-gnome-session.sh from xios-session-stubs. That
-# launcher re-signs gnome-shell, starts the freedesktop/iOS bridge shims on one
-# private session bus, then runs gnome-session --builtin --session=xios so
-# gnome-session owns org.gnome.Shell.
+# gnome: teardown, then launch-gnome-session.sh from xios-session-stubs. The
+# launcher verifies the package-time gnome-shell GPU entitlement set, starts the
+# freedesktop/iOS bridge services on one private session bus, then runs
+# gnome-session --builtin --session=xios so gnome-session owns org.gnome.Shell.
 xios_session_gnome() {
     xs_prepare_display_session gnome || return $?
     xs_write_status gnome starting "starting GNOME session"

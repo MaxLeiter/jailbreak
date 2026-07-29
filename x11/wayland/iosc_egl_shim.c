@@ -27,15 +27,18 @@
 #include <wayland-client.h>
 #include <wayland-egl-backend.h>     /* struct wl_egl_window layout */
 #include "iosc-iosurface-client-protocol.h"
+#include "xios_metal_sync.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOSurface/IOSurfaceRef.h>
 #include <mach/mach.h>
 
 #include <dlfcn.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #ifndef EGL_PLATFORM_ANGLE_ANGLE
@@ -59,7 +62,6 @@
 #endif
 
 #define IOSC_NBUF 3
-#define IOSC_MAX_WINS 32       /* live wl_egl_window wrappers tracked at once */
 #define WIN_MAGIC 0x494f5357u  /* 'IOSW' */
 
 /* ---- real ANGLE libEGL ---------------------------------------------------- */
@@ -107,39 +109,80 @@ __attribute__((constructor)) static void iosc_egl_ctor(void)
         fprintf(stderr, "iosc_egl: shim loaded (pid=%d)\n", (int)getpid());
 }
 
-/* ---- wayland iosc_iosurface binding (private queue) ----------------------- */
+/* ---- wayland iosc_iosurface binding (one private queue per wl_display) ----- */
 
-static struct wl_display      *g_wl;
-static struct wl_event_queue  *g_queue;
-static struct iosc_iosurface  *g_factory;
+struct iosc_wl_state {
+    struct wl_display     *display;
+    struct wl_event_queue *queue;
+    struct iosc_iosurface *factory;
+    struct iosc_wl_state  *next;
+};
+
+static pthread_mutex_t s_state_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct iosc_wl_state *s_states;
+static _Thread_local EGLint s_shim_error = EGL_SUCCESS;
+/* EGLDisplay is the process-wide ANGLE Metal display, so it cannot identify
+ * which Wayland connection a later window belongs to. Preserve the connection
+ * selected by eglGet*Display on the calling thread, matching EGL's thread-bound
+ * initialization/current-context model. */
+static _Thread_local struct wl_display *s_thread_wl;
 
 static void reg_global(void *d, struct wl_registry *r, uint32_t name,
                        const char *iface, uint32_t ver)
 {
-    (void)d; (void)ver;
+    struct iosc_wl_state *state = d;
     if (!strcmp(iface, "iosc_iosurface")) {
-        g_factory = wl_registry_bind(r, name, &iosc_iosurface_interface, 1);
-        wl_proxy_set_queue((struct wl_proxy *)g_factory, g_queue);
+        uint32_t bind_version = ver < 4 ? ver : 4;
+        state->factory = wl_registry_bind(r, name, &iosc_iosurface_interface,
+                                          bind_version);
+        wl_proxy_set_queue((struct wl_proxy *)state->factory, state->queue);
     }
 }
 static void reg_remove(void *d, struct wl_registry *r, uint32_t n){ (void)d;(void)r;(void)n; }
 static const struct wl_registry_listener reg_listener = { reg_global, reg_remove };
 
-static int ensure_factory(struct wl_display *wl)
+static struct iosc_wl_state *ensure_factory(struct wl_display *wl)
 {
-    if (g_factory) return 0;
-    g_wl = wl;
-    g_queue = wl_display_create_queue(wl);
-    struct wl_registry *reg = wl_display_get_registry(wl);
-    wl_proxy_set_queue((struct wl_proxy *)reg, g_queue);
-    wl_registry_add_listener(reg, &reg_listener, NULL);
-    wl_display_roundtrip_queue(wl, g_queue);
-    if (!g_factory) {
-        fprintf(stderr, "iosc_egl: compositor has no iosc_iosurface global\n");
-        return -1;
+    if (!wl)
+        return NULL;
+
+    pthread_mutex_lock(&s_state_lock);
+    for (struct iosc_wl_state *it = s_states; it; it = it->next) {
+        if (it->display == wl) {
+            pthread_mutex_unlock(&s_state_lock);
+            return it->factory ? it : NULL;
+        }
     }
-    fprintf(stderr, "iosc_egl: bound iosc_iosurface\n");
-    return 0;
+
+    struct iosc_wl_state *state = calloc(1, sizeof(*state));
+    if (!state) {
+        pthread_mutex_unlock(&s_state_lock);
+        return NULL;
+    }
+    state->display = wl;
+    state->queue = wl_display_create_queue(wl);
+    if (!state->queue) {
+        free(state);
+        pthread_mutex_unlock(&s_state_lock);
+        return NULL;
+    }
+    struct wl_registry *reg = wl_display_get_registry(wl);
+    wl_proxy_set_queue((struct wl_proxy *)reg, state->queue);
+    wl_registry_add_listener(reg, &reg_listener, state);
+    if (wl_display_roundtrip_queue(wl, state->queue) < 0 || !state->factory) {
+        fprintf(stderr, "iosc_egl: compositor has no iosc_iosurface global\n");
+        wl_registry_destroy(reg);
+        wl_event_queue_destroy(state->queue);
+        free(state);
+        pthread_mutex_unlock(&s_state_lock);
+        return NULL;
+    }
+    wl_registry_destroy(reg);
+    state->next = s_states;
+    s_states = state;
+    pthread_mutex_unlock(&s_state_lock);
+    fprintf(stderr, "iosc_egl: bound iosc_iosurface on wl_display=%p\n", (void *)wl);
+    return state;
 }
 
 /* ---- window surface (the IOSurface swapchain) ----------------------------- */
@@ -166,22 +209,48 @@ struct iosc_egl_win {
     struct wl_surface    *surface;
     EGLDisplay            dpy;
     EGLConfig             cfg;
+    struct iosc_wl_state *wl;
     int                   w, h;
     int                   cur;
     struct iosc_egl_buf  *bufs[IOSC_NBUF];
     struct iosc_egl_buf  *retired; /* busy buffers whose slot was replaced */
+    struct iosc_egl_win  *registry_next;
 };
-/* registry of live wrappers so we can tell our handles from real EGLSurfaces. */
-static struct iosc_egl_win *s_wins[IOSC_MAX_WINS];
+/* Dynamic registry of live wrappers so window 33 cannot silently escape shim
+ * ownership and later be forwarded to ANGLE as a fake native EGLSurface. */
+static pthread_mutex_t s_win_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct iosc_egl_win *s_wins;
 static struct iosc_egl_win *as_win(EGLSurface s)
 {
-    for (int i = 0; i < IOSC_MAX_WINS; i++) if (s_wins[i] == (struct iosc_egl_win *)s) return s_wins[i];
-    return NULL;
+    struct iosc_egl_win *found = NULL;
+    pthread_mutex_lock(&s_win_lock);
+    for (struct iosc_egl_win *it = s_wins; it; it = it->registry_next) {
+        if (it == (struct iosc_egl_win *)s) {
+            found = it;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_win_lock);
+    return found;
 }
 static void win_register(struct iosc_egl_win *w)
-{ for (int i = 0; i < IOSC_MAX_WINS; i++) if (!s_wins[i]) { s_wins[i] = w; return; } }
+{
+    pthread_mutex_lock(&s_win_lock);
+    w->registry_next = s_wins;
+    s_wins = w;
+    pthread_mutex_unlock(&s_win_lock);
+}
 static void win_unregister(struct iosc_egl_win *w)
-{ for (int i = 0; i < IOSC_MAX_WINS; i++) if (s_wins[i] == w) { s_wins[i] = NULL; return; } }
+{
+    pthread_mutex_lock(&s_win_lock);
+    for (struct iosc_egl_win **p = &s_wins; *p; p = &(*p)->registry_next) {
+        if (*p == w) {
+            *p = w->registry_next;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_win_lock);
+}
 
 static void cfnum(CFMutableDictionaryRef d, CFStringRef k, int32_t v)
 { CFNumberRef n = CFNumberCreate(0, kCFNumberSInt32Type, &v); CFDictionarySetValue(d, k, n); CFRelease(n); }
@@ -221,37 +290,71 @@ static void buf_release(void *data, struct wl_buffer *b)
 }
 static const struct wl_buffer_listener buf_listener = { buf_release };
 
-/* (Re)build the IOSurface swapchain at w->w x w->h into w->bufs[]. */
-static void win_alloc_bufs(struct iosc_egl_win *w)
+/* Build a complete replacement swapchain before publishing any slot into the
+ * window. Allocation is transactional: a failed resize keeps the old buffers
+ * usable instead of leaving NULL entries that crash the next swap. */
+static int win_alloc_bufs(struct iosc_egl_win *w, int width, int height,
+                          struct iosc_egl_buf *out[IOSC_NBUF])
 {
     const EGLint pa[] = {
-        EGL_WIDTH, w->w, EGL_HEIGHT, w->h, EGL_IOSURFACE_PLANE_ANGLE, 0,
+        EGL_WIDTH, width, EGL_HEIGHT, height, EGL_IOSURFACE_PLANE_ANGLE, 0,
         EGL_TEXTURE_TARGET, EGL_TEXTURE_2D, EGL_TEXTURE_INTERNAL_FORMAT_ANGLE, GL_BGRA_EXT,
         EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA, EGL_TEXTURE_TYPE_ANGLE, GL_UNSIGNED_BYTE, EGL_NONE };
-    mach_port_t ports[IOSC_NBUF];
+    mach_port_t ports[IOSC_NBUF] = { MACH_PORT_NULL, MACH_PORT_NULL, MACH_PORT_NULL };
+    memset(out, 0, sizeof(*out) * IOSC_NBUF);
     for (int i = 0; i < IOSC_NBUF; i++) {
         struct iosc_egl_buf *bb = calloc(1, sizeof(*bb));
+        if (!bb)
+            goto fail;
         bb->win = w;
-        bb->ios = make_ios(w->w, w->h);
+        bb->ios = make_ios(width, height);
+        if (!bb->ios) {
+            free(bb);
+            goto fail;
+        }
         bb->pbuf = REAL(eglCreatePbufferFromClientBuffer)(w->dpy, EGL_IOSURFACE_ANGLE,
                         (EGLClientBuffer)bb->ios, w->cfg, pa);
-        ports[i] = IOSurfaceCreateMachPort(bb->ios);
-        bb->buf = iosc_iosurface_create_buffer(g_factory, (uint32_t)ports[i], w->w, w->h,
-                                               IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
-        wl_proxy_set_queue((struct wl_proxy *)bb->buf, g_queue);
-        wl_buffer_add_listener(bb->buf, &buf_listener, bb);
-        if (bb->pbuf == EGL_NO_SURFACE)
+        if (bb->pbuf == EGL_NO_SURFACE) {
             fprintf(stderr, "iosc_egl: pbuffer %d failed 0x%x\n", i, REAL(eglGetError)());
-        w->bufs[i] = bb;
+            buf_destroy(bb);
+            goto fail;
+        }
+        ports[i] = IOSurfaceCreateMachPort(bb->ios);
+        if (ports[i] == MACH_PORT_NULL) {
+            buf_destroy(bb);
+            goto fail;
+        }
+        bb->buf = iosc_iosurface_create_buffer(w->wl->factory, (uint32_t)ports[i], width, height,
+                                               IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
+        if (!bb->buf) {
+            buf_destroy(bb);
+            goto fail;
+        }
+        wl_proxy_set_queue((struct wl_proxy *)bb->buf, w->wl->queue);
+        wl_buffer_add_listener(bb->buf, &buf_listener, bb);
+        out[i] = bb;
     }
     /* The port is a one-shot handoff token: iosc extracts its own COPY_SEND right
      * while processing create_buffer. Roundtrip so that's done, then drop our send
      * right — otherwise each port pins its IOSurface in the kernel forever and every
      * destroyed window surface leaks IOSC_NBUF full-window IOSurfaces + port names. */
-    wl_display_roundtrip_queue(g_wl, g_queue);
+    if (wl_display_roundtrip_queue(w->wl->display, w->wl->queue) < 0)
+        goto fail;
     for (int i = 0; i < IOSC_NBUF; i++)
         if (ports[i] != MACH_PORT_NULL)
             mach_port_deallocate(mach_task_self(), ports[i]);
+    return 0;
+
+fail:
+    for (int i = 0; i < IOSC_NBUF; i++) {
+        if (ports[i] != MACH_PORT_NULL)
+            mach_port_deallocate(mach_task_self(), ports[i]);
+        if (out[i]) {
+            buf_destroy(out[i]);
+            out[i] = NULL;
+        }
+    }
+    return -1;
 }
 
 /* Resize contract (Mesa wayland-egl semantics): wl_egl_window_resize only
@@ -264,6 +367,13 @@ static int win_sync_size(struct iosc_egl_win *w)
     int nw = w->ewin->width, nh = w->ewin->height;
     if (nw <= 0) nw = 1; if (nh <= 0) nh = 1;
     if (nw == w->w && nh == w->h) return 0;
+    struct iosc_egl_buf *replacement[IOSC_NBUF];
+    if (win_alloc_bufs(w, nw, nh, replacement) != 0) {
+        s_shim_error = EGL_BAD_ALLOC;
+        fprintf(stderr, "iosc_egl: keeping %dx%d swapchain; resize to %dx%d failed\n",
+                w->w, w->h, nw, nh);
+        return -1;
+    }
     for (int i = 0; i < IOSC_NBUF; i++) {
         struct iosc_egl_buf *bb = w->bufs[i];
         if (bb->busy) {
@@ -273,10 +383,9 @@ static int win_sync_size(struct iosc_egl_win *w)
         } else {
             buf_destroy(bb);
         }
-        w->bufs[i] = NULL;
+        w->bufs[i] = replacement[i];
     }
     w->w = nw; w->h = nh; w->cur = 0;
-    win_alloc_bufs(w);
     if (egl_debug())
         fprintf(stderr, "iosc_egl: window surface resized to %dx%d\n", w->w, w->h);
     return 1;
@@ -296,7 +405,7 @@ static int win_next_buffer(struct iosc_egl_win *w, int start)
 {
     int idx;
 
-    wl_display_dispatch_queue_pending(g_wl, g_queue);
+    wl_display_dispatch_queue_pending(w->wl->display, w->wl->queue);
     idx = win_find_free_buffer(w, start);
     if (idx >= 0)
         return idx;
@@ -304,7 +413,7 @@ static int win_next_buffer(struct iosc_egl_win *w, int start)
     /* All buffers are still attached. Block only for real swapchain backpressure,
      * not because the arbitrary next slot is busy while another slot is free. */
     do {
-        if (wl_display_roundtrip_queue(g_wl, g_queue) < 0)
+        if (wl_display_roundtrip_queue(w->wl->display, w->wl->queue) < 0)
             return -1;
         idx = win_find_free_buffer(w, start);
     } while (idx < 0);
@@ -319,7 +428,7 @@ static int win_next_buffer(struct iosc_egl_win *w, int start)
  * ANGLE-type attribs + EGL_DEFAULT_DISPLAY. NB: ANGLE's CORE eglGetPlatformDisplay
  * (EGL 1.5, dlsym'd) returns NO_DISPLAY with err=SUCCESS for the ANGLE platform on
  * this build — only the EXT variant actually constructs the Metal display. The
- * client's wl_display is recorded separately (g_wl) for later wl_egl_window
+ * client's wl_display is recorded separately per thread for later wl_egl_window
  * binding; it is NEVER passed to ANGLE as the native display. */
 static EGLDisplay angle_metal_display(void)
 {
@@ -360,7 +469,7 @@ static EGLDisplay angle_metal_display(void)
 EGLDisplay eglGetPlatformDisplay(EGLenum platform, void *native_display, const EGLAttrib *attrs)
 {
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
-        g_wl = (struct wl_display *)native_display;   /* remember the client's wl_display */
+        s_thread_wl = (struct wl_display *)native_display;
         if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplay(WAYLAND)\n");
         return angle_metal_display();
     }
@@ -369,7 +478,7 @@ EGLDisplay eglGetPlatformDisplay(EGLenum platform, void *native_display, const E
 EGLDisplay eglGetPlatformDisplayEXT(EGLenum platform, void *native_display, const EGLint *attrs)
 {
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
-        g_wl = (struct wl_display *)native_display;
+        s_thread_wl = (struct wl_display *)native_display;
         if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplayEXT(WAYLAND)\n");
         return angle_metal_display();
     }
@@ -377,39 +486,63 @@ EGLDisplay eglGetPlatformDisplayEXT(EGLenum platform, void *native_display, cons
 }
 EGLDisplay eglGetDisplay(EGLNativeDisplayType native)
 {
-    /* GDK may use eglGetDisplay(wl_display). Treat a non-default arg as wayland. */
+    /* This ANGLE header also defines EGLNativeDisplayType as int. A Wayland
+     * pointer cannot safely reach this legacy entry point on arm64. */
     if (native != EGL_DEFAULT_DISPLAY) {
-        g_wl = (struct wl_display *)native;
-        if (egl_debug()) fprintf(stderr, "iosc_egl: GetDisplay(non-default)\n");
-        return angle_metal_display();
+        s_shim_error = EGL_BAD_PARAMETER;
+        fprintf(stderr, "iosc_egl: eglGetDisplay cannot carry a Wayland pointer; "
+                        "use eglGetPlatformDisplay*\n");
+        return EGL_NO_DISPLAY;
     }
     return REAL(eglGetDisplay)(native);
 }
 
 static EGLSurface make_window(EGLDisplay dpy, EGLConfig cfg, struct wl_egl_window *ewin)
 {
-    if (!g_wl || ensure_factory(g_wl) != 0) return EGL_NO_SURFACE;
+    if (!ewin) {
+        s_shim_error = EGL_BAD_NATIVE_WINDOW;
+        return EGL_NO_SURFACE;
+    }
+    struct iosc_wl_state *wl = ensure_factory(s_thread_wl);
+    if (!wl) {
+        s_shim_error = EGL_BAD_DISPLAY;
+        return EGL_NO_SURFACE;
+    }
     struct iosc_egl_win *w = calloc(1, sizeof(*w));
-    if (!w) return EGL_NO_SURFACE;
+    if (!w) {
+        s_shim_error = EGL_BAD_ALLOC;
+        return EGL_NO_SURFACE;
+    }
     w->magic = WIN_MAGIC;
     w->ewin = ewin;
     w->surface = ewin->surface;       /* the wl_surface (last member of wl_egl_window) */
     w->dpy = dpy;
     w->cfg = cfg;
+    w->wl = wl;
     w->w = ewin->width; w->h = ewin->height;
     if (w->w <= 0) w->w = 1; if (w->h <= 0) w->h = 1;
 
-    win_alloc_bufs(w);
+    if (win_alloc_bufs(w, w->w, w->h, w->bufs) != 0) {
+        s_shim_error = EGL_BAD_ALLOC;
+        free(w);
+        return EGL_NO_SURFACE;
+    }
     win_register(w);
     fprintf(stderr, "iosc_egl: window surface %dx%d (%d IOSurface buffers)\n", w->w, w->h, IOSC_NBUF);
     return (EGLSurface)w;
 }
-/* NB on this ANGLE EGLNativeWindowType is `int` (headless EGL default), so the
- * pointer-truncating eglCreateWindowSurface path is unusable — GDK uses the
- * platform variants (void* native_window). For EGL_PLATFORM_WAYLAND the native
- * window IS the struct wl_egl_window* (Mesa convention), passed directly. */
+/* ANGLE's headless EGLNativeWindowType is `int`, so a wl_egl_window pointer
+ * cannot be represented by this core entry point on arm64. Do not reinterpret a
+ * truncated integer as a pointer: callers must use the pointer-sized EGL 1.5 or
+ * EXT platform entry point. */
 EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig cfg, EGLNativeWindowType win, const EGLint *attrs)
-{ (void)attrs; return make_window(dpy, cfg, (struct wl_egl_window *)(uintptr_t)win); }
+{
+    (void)dpy; (void)cfg; (void)win; (void)attrs;
+    s_shim_error = EGL_BAD_NATIVE_WINDOW;
+    fprintf(stderr, "iosc_egl: eglCreateWindowSurface cannot carry a Wayland pointer; "
+                    "use eglCreatePlatformWindowSurface*\n");
+    return EGL_NO_SURFACE;
+}
 EGLSurface eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig cfg, void *win, const EGLAttrib *attrs)
 { (void)attrs; return make_window(dpy, cfg, (struct wl_egl_window *)win); }
 EGLSurface eglCreatePlatformWindowSurfaceEXT(EGLDisplay dpy, EGLConfig cfg, void *win, const EGLint *attrs)
@@ -419,7 +552,8 @@ EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLC
 {
     struct iosc_egl_win *w = as_win(draw);
     if (w) {
-        win_sync_size(w);
+        if (win_sync_size(w) < 0)
+            return EGL_FALSE;
         struct iosc_egl_buf *bb = w->bufs[w->cur];
         EGLSurface pb = bb ? bb->pbuf : EGL_NO_SURFACE;
         return REAL(eglMakeCurrent)(dpy, pb, pb, ctx);
@@ -441,25 +575,68 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
     struct iosc_egl_win *w = as_win(surf);
     if (!w) return REAL(eglSwapBuffers)(dpy, surf);
 
-    /* Barrier: the GPU render into ios[cur] must complete before iosc (a separate
-     * process) samples that IOSurface. A per-frame fence blocks on just this
-     * frame's work; glFinish drains the whole device. Fall back to glFinish if
-     * EGL fence sync doesn't resolve. */
-    EGLSync (*mk)(EGLDisplay, EGLenum, const EGLAttrib *) = REAL(eglCreateSync);
-    EGLint (*fwait)(EGLDisplay, EGLSync, EGLint, EGLTime) = REAL(eglClientWaitSync);
-    EGLBoolean (*del)(EGLDisplay, EGLSync)               = REAL(eglDestroySync);
-    EGLSync fence = (mk && fwait && del) ? mk(dpy, EGL_SYNC_FENCE, NULL) : EGL_NO_SYNC;
-    if (fence != EGL_NO_SYNC) {
-        glFlush();
-        fwait(dpy, fence, EGL_SYNC_FLUSH_COMMANDS_BIT, EGL_FOREVER);
-        del(dpy, fence);
-    } else {
-        glFinish();                          /* GPU render into ios[cur] complete */
-    }
     int i = w->cur;
     struct iosc_egl_buf *bb = w->bufs[i];
     if (!bb || !bb->buf)
         return EGL_FALSE;
+
+    /* Production path: pass an MTLSharedEvent acquire fence with this buffer and
+     * let iosc enqueue a GPU wait before sampling. A CPU-side completion barrier
+     * exists only behind IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC for narrow bring-up. */
+    int asynchronous = 0;
+    if (wl_proxy_get_version((struct wl_proxy *)w->wl->factory) >= 4) {
+        const void *token = NULL;
+        size_t token_size = 0;
+        uint64_t event_value = 0;
+        if (xios_metal_sync_signal(dpy, &token, &token_size, &event_value)) {
+            struct wl_array handle;
+            handle.size = token_size;
+            handle.alloc = token_size;
+            handle.data = (void *)token;
+            iosc_iosurface_set_acquire_fence_token(
+                w->wl->factory, bb->buf, &handle,
+                (uint32_t)(event_value & 0xffffffffu),
+                (uint32_t)(event_value >> 32));
+            asynchronous = 1;
+        }
+    }
+    if (!asynchronous) {
+        const char *diagnostic = getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC");
+        int allow_cpu_sync = diagnostic && *diagnostic &&
+                             strcmp(diagnostic, "0") != 0 &&
+                             strcasecmp(diagnostic, "false") != 0 &&
+                             strcasecmp(diagnostic, "no") != 0;
+        if (!allow_cpu_sync) {
+            static int reported;
+            if (!reported) {
+                reported = 1;
+                fprintf(stderr,
+                        "iosc_egl: cross-process GPU acquire fence unavailable; "
+                        "refusing an unfenced swap\n");
+            }
+            return EGL_FALSE;
+        }
+        static int warned;
+        if (!warned) {
+            warned = 1;
+            fprintf(stderr,
+                    "iosc_egl: IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC=1; "
+                    "using a CPU-side completion barrier\n");
+        }
+        EGLSync (*mk)(EGLDisplay, EGLenum, const EGLAttrib *) = REAL(eglCreateSync);
+        EGLint (*fwait)(EGLDisplay, EGLSync, EGLint, EGLTime) =
+            REAL(eglClientWaitSync);
+        EGLBoolean (*del)(EGLDisplay, EGLSync) = REAL(eglDestroySync);
+        EGLSync fence =
+            (mk && fwait && del) ? mk(dpy, EGL_SYNC_FENCE, NULL) : EGL_NO_SYNC;
+        if (fence != EGL_NO_SYNC) {
+            glFlush();
+            fwait(dpy, fence, EGL_SYNC_FLUSH_COMMANDS_BIT, EGL_FOREVER);
+            del(dpy, fence);
+        } else {
+            glFinish();
+        }
+    }
     /* IOSC_EGL_DEBUG: sample the IOSurface right after the fence, i.e. at the exact
      * moment the client claims the frame is done. All-black here means the client's
      * GL never reached this IOSurface, which separates a client that drew nothing
@@ -512,7 +689,7 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
     }
     wl_surface_commit(w->surface);
     bb->busy = 1;
-    wl_display_flush(g_wl);
+    wl_display_flush(w->wl->display);
 
     /* Rotate to any released buffer. The old path waited on exactly cur+1, which
      * could stall even when another swapchain buffer had already been released. */
@@ -613,7 +790,15 @@ EGLBoolean eglInitialize(EGLDisplay d, EGLint *a, EGLint *b)
     return r;
 }
 EGLBoolean eglTerminate(EGLDisplay d){ return REAL(eglTerminate)(d); }
-EGLint     eglGetError(void){ return REAL(eglGetError)(); }
+EGLint eglGetError(void)
+{
+    if (s_shim_error != EGL_SUCCESS) {
+        EGLint error = s_shim_error;
+        s_shim_error = EGL_SUCCESS;
+        return error;
+    }
+    return REAL(eglGetError)();
+}
 
 /* GDK-wayland decides whether it may use eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND)
  * by first checking the EGL CLIENT extension string (eglQueryString(EGL_NO_DISPLAY,

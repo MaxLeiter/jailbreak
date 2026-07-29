@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.1.1"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -31,8 +31,8 @@ settings:
     # Procursus dylibs use @rpath install names; add rootless and rootful library
     # roots so dyld finds libX11/libXtst at runtime. IOSurface backs the zero-copy
     # framebuffer (XSurface.c does the mach-port hand-off + IOSurfaceLookupFromMachPort).
-    OTHER_LDFLAGS: -framework IOSurface
-    OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/usr/lib -framework IOSurface
+    OTHER_LDFLAGS: -framework IOSurface -framework Foundation -framework Metal
+    OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/usr/lib -framework IOSurface -framework Foundation -framework Metal
 
 targets:
   Xios:
@@ -45,12 +45,15 @@ targets:
       - path: Sources
       - path: ../shared/XiosHardwareKeyboard.swift
       - path: ../shared/XiosHardwareKeymap.swift
+      - path: ../shared/XiosMetalEventBroker.m
+        compilerFlags:
+          - -fno-objc-arc
       - path: Resources/Assets.xcassets
     info:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: X11
-        CFBundleShortVersionString: "0.1.0"
+        CFBundleShortVersionString: "0.1.1"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true

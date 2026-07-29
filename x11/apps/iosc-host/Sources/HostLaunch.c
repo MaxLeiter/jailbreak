@@ -21,7 +21,7 @@ int ioscd_send_launch(const char *app_id, const char *exec)
     char line[8192];
     int n = snprintf(line, sizeof(line), "LAUNCH_NATIVE\t%s\t%s\n",
                      app_id ? app_id : "", exec ? exec : "");
-    if (n < 0) { close(fd); return -1; }
+    if (n < 0 || (size_t)n >= sizeof(line)) { close(fd); return -1; }
     size_t left = (size_t)n; const char *p = line;
     while (left > 0) {
         ssize_t w = write(fd, p, left);
@@ -30,7 +30,19 @@ int ioscd_send_launch(const char *app_id, const char *exec)
         close(fd); return -1;
     }
     char buf[64];
-    (void)read(fd, buf, sizeof(buf));   /* short ack (LAUNCHED/RAISED/ERR); ignored */
+    size_t have = 0;
+    while (have + 1 < sizeof(buf)) {
+        ssize_t r = read(fd, buf + have, sizeof(buf) - have - 1);
+        if (r > 0) {
+            have += (size_t)r;
+            if (memchr(buf, '\n', have)) break;
+            continue;
+        }
+        if (r < 0 && errno == EINTR) continue;
+        break;
+    }
+    buf[have] = 0;
     close(fd);
-    return 0;
+    return strcmp(buf, "LAUNCHED\n") == 0 || strcmp(buf, "RAISED\n") == 0
+        ? 0 : -1;
 }

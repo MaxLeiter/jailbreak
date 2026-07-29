@@ -22,7 +22,7 @@ Sileo copy comes from `repo/meta/xios-*.json` (already written).
 | `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme | **16.5.0** | published 0.1.1; CLI GNOME first-light works, daemon/app concurrency cleanup remains |
 | `xios-kde` | xios-core + iosc >= 0.9.18, xios-session >= 1.0.55, kwin, plasma-workspace, plasma-desktop, plasma-mobile, plasma-nano, systemsettings, kscreen, kf6-kded, qt6-wayland, kf6-breeze-icons, Ark, Gwenview, KWrite | **16.5.0** | published 0.1.9. Pins lag the validated builds (kwin >= +ios5 while prod ships +ios11 and staging +ios27), and konsole / dolphin / kate / kcalc / okular / powerdevil are pulled by nothing |
 | `xios-native` | xios-core + xios-launcher-tools, com.max.xiosprefs | **16.0.0** | published 0.1.0 |
-| `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | published 0.1.0; Xwayland glamor IOSurface smoke passed |
+| `xios-x11` | xios-core + xwayland, xauth | **16.5.0** | 0.1.1 source ready; legacy software xios-server removed from the flavor; Xwayland glamor IOSurface smoke passed |
 
 As of 2026-07-29 all five metas are live on prod and staging at the same
 versions, and every meta's full Depends closure resolves inside `repo/Packages`

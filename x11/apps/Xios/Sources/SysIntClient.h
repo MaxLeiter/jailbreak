@@ -6,11 +6,11 @@
 // bundle lands without touching the input bridge that the gesture track is
 // actively editing.
 //
-//  - volume + appearance  ->  xios-sysintd  (/var/jb/tmp/xios-sysint.sock);
+//  - volume + appearance  ->  xios-sysintd;
 //    the session daemon applies app-originated volume via pactl and can send
 //    desktop-originated volume requests back for the app to apply to iOS.
-//  - output (rotation)    ->  the iosc input socket (a SECOND connection —
-//    iosc's reader multiplexes clients), record type XIOS_IN_OUTPUT.
+//  - output (rotation)    ->  the config-advertised iosc input socket (a SECOND
+//    connection — iosc's reader multiplexes clients), record type XIOS_IN_OUTPUT.
 //  - haptics              <-  iosc broadcasts XIOS_IN_HAPTIC to every input
 //    client; we read them off our aux connection so IoscInput.c's traits
 //    parser never has to know about them.
@@ -18,6 +18,12 @@
 // All sends are fire-and-forget with lazy (re)connect, and the last output /
 // volume / appearance values are replayed automatically after a reconnect, so a
 // compositor or daemon restart converges to the iPad's real state.
+
+// Set the endpoints before installing SystemIntegration. A NULL/empty iosc path
+// disables the aux Wayland link; it is intentionally never guessed from a
+// process-global default because each display/session can have its own socket.
+void sysint_set_iosc_socket(const char *path);
+void sysint_set_sysint_socket(const char *path);
 
 // Volume 0..65535 (absolute; sysintd maps to sink 0..100%).
 void sysint_send_volume(unsigned v16);

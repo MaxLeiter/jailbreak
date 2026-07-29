@@ -247,16 +247,14 @@ rm -f "$WSOCK" "$WSOCK.lock" "$KWIN_SOCK_PATH" "$KWIN_SOCK_PATH.lock" \
       "$IOSC_WM_SOCK" "$XIOS_JSON_PATH" "$KDE_SESSION_BUS_FILE" \
       "$IOSC_LOG" "$KDE_LOG" "$KDED_LOG" 2>/dev/null || true
 
-echo "==> ANGLE Linux so-name symlinks"
-ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so.2" 2>/dev/null
-ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so"   2>/dev/null
-ln -sf libEGL.dylib    "$ANGLE/libEGL.so.1"    2>/dev/null
-ln -sf libEGL.dylib    "$ANGLE/libEGL.so"      2>/dev/null
-
-echo "==> ensure GSettings schemas are compiled"
-if [ ! -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
-  glib-compile-schemas "$XS_PREFIX/share/glib-2.0/schemas" 2>/dev/null || true
-fi
+echo "==> validate package-owned ANGLE aliases and GSettings schemas"
+for f in libGLESv2.so.2 libGLESv2.so libEGL.so.1 libEGL.so; do
+  [ -e "$ANGLE/$f" ] || { echo "!! missing $ANGLE/$f — reinstall the angle package"; exit 1; }
+done
+[ -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ] || {
+  echo "!! compiled GSettings schema cache missing — reinstall the owning package"
+  exit 1
+}
 
 kde_app_support_link() {
   local name="$1"

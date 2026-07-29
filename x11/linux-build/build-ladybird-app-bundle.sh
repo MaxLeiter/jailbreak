@@ -23,11 +23,12 @@ PROC=/work/Procursus
 BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
 LIBDIR=$BB/usr/lib
 ANGLE_LIBDIR=$BB/lib/angle
+GETTEXT_LIBDIR=$PROC/build_stage/iphoneos-arm64-rootless/1900/gettext/var/jb/usr/lib
 OTOOL=/root/cctools/bin/aarch64-apple-darwin-otool
 INT=/root/cctools/bin/aarch64-apple-darwin-install_name_tool
 LDID=/root/cctools/bin/ldid
 STAGE=/out/app-stage
-VER="${LADYBIRD_APP_VERSION:-0.1.23+ios1}"
+VER="${LADYBIRD_APP_VERSION:-0.1.24+ios1}"
 APPROOT=/tmp/lbapp
 APP=$APPROOT/var/jb/Applications/Ladybird.app
 BINS="Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor"
@@ -85,6 +86,17 @@ resolve() { # basename -> real file in build_base libdir
       ;;
     libGLESv2.2.dylib)
       if [ -f "$ANGLE_LIBDIR/libGLESv2.dylib" ]; then echo "$ANGLE_LIBDIR/libGLESv2.dylib"; return 0; fi
+      ;;
+    libintl.8.dylib)
+      # GLib's package build leaves its bundled proxy-libintl under this name in
+      # build_base. That proxy exports only g_libintl_* and cannot satisfy normal
+      # libintl_* imports. The real gettext runtime remains in build_stage.
+      if [ -f "$GETTEXT_LIBDIR/libintl.8.dylib" ]; then
+        echo "$GETTEXT_LIBDIR/libintl.8.dylib"
+        return 0
+      fi
+      echo "!! real gettext libintl.8.dylib missing at $GETTEXT_LIBDIR" >&2
+      return 1
       ;;
   esac
   if [ -f "$LIBDIR/$base" ]; then echo "$LIBDIR/$base"; return 0; fi

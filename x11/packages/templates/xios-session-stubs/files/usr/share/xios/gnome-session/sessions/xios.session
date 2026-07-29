@@ -1,0 +1,3 @@
+[GNOME Session]
+Name=Xios GNOME
+RequiredComponents=org.gnome.Shell;

@@ -11,6 +11,14 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Wire: XIOS_IN_BIND=8 (scope a connection's input to one window id) — already reserved in xios_input_socket.h; IoscInput.c had 8 on-wire before the header did.
 
 ## Current state
+- 2026-07-29 native presentation protocol v3 is host-build complete. BIND now
+  requires an exact HELLO/version negotiation; production frames use
+  `XIOS_MSG_NATIVE_FRAME` with a package-broker token and 64-bit
+  `MTLSharedEvent` value, while legacy unfenced DIRTY is rejected. The host
+  imports the event and encodes the wait before sampling. Per-canvas generations
+  and ordered last-fence replay prevent a resize or host reconnect from pairing
+  a fence with the wrong IOSurface. `apps/iosc-host/build-host.sh` and
+  `wayland/build-iosc.sh` passed; physical native-window proof remains open.
 - HostApp prototype builds + is protocol-conformant (engine verified earlier; awaiting a visual on-device confirm).
 - The native host now replays the latest Wayland text-input TRAITS on scene activation/key-window activation and on tap, so the iPad keyboard can rise after the per-window host becomes the active UIKit scene.
 - The native host now sends two-finger touch and continuous trackpad scrolling through the shared AXIS wire protocol, including an axis-stop frame for kinetic scrolling. The Release iPhoneOS host build passed on 2026-07-18; physical gesture validation is deferred while the device is offline.
@@ -126,7 +134,7 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 3. **Touch coordinate transform per-window**: verify the host unprojects touches against the canvas's own fb size for every scene.
 4. Validate jetsam/relaunch replay: open a native-hosted app, kill/relaunch the host, confirm `WINDOW_NEW` + the live canvas port are replayed from `xios_canvas.c`.
 5. Confirm the keyboard hint path on device: focus a GTK/Qt text field inside a native-hosted window and verify the OSK appears when that scene is key.
-6. Decide whether native mode should keep the classic output IOSurface for tooling/fallback or skip it later to save memory.
+6. Decide whether native mode should keep the single-output IOSurface for tooling or skip it later to save memory.
 7. Visually validate the new Settings.app Xios pane on-device: open Settings,
    confirm the Xios entry appears, toggle one app off/on, run dry native/classic,
    then perform one controlled apply sync after confirming the visible candidate

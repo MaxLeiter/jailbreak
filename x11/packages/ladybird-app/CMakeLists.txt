@@ -6,11 +6,10 @@
 # targets directly; on iOS those are STATIC (top CMakeLists forces BUILD_SHARED_LIBS OFF
 # for `if (ANDROID OR IOS)`), so the engine links into this binary.
 #
-# The live paint path is the normal compositor cycle: the CPU Compositor helper (built for
-# iOS by patch #18, launched --force-cpu-painting) rasters the page into an IOSurface-backed
-# shared buffer and ships its IOSurface as a Mach send right to the UI. LadybirdWebView wraps
-# that front buffer as an MTLTexture for zero-copy presentation, with a CGImage CPU-layer
-# fallback.
+# The release paint path is the normal GPU compositor cycle: the Compositor helper links
+# real ANGLE/EGL/GLES over Metal and shares IOSurface-backed frames with the UI.
+# LadybirdWebView wraps the front buffer as an MTLTexture for zero-copy presentation.
+# CPU painting/trap stubs require the explicitly non-release LB_APP_CPU_DIAGNOSTIC build.
 
 cmake_minimum_required(VERSION 3.25)
 
@@ -24,6 +23,12 @@ set(LADYBIRD_IOS_SOURCES
 )
 
 add_executable(Ladybird ${LADYBIRD_IOS_SOURCES})
+
+if (DEFINED ENV{LB_APP_CPU_DIAGNOSTIC} AND "$ENV{LB_APP_CPU_DIAGNOSTIC}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$")
+    target_compile_definitions(Ladybird PRIVATE LADYBIRD_IOS_CPU_DIAGNOSTIC)
+else()
+    target_compile_definitions(Ladybird PRIVATE LADYBIRD_IOS_APP_GPU)
+endif()
 
 set_source_files_properties(
     Sources/LadybirdWebView.mm Sources/Event.mm Sources/BrowserViewController.mm Sources/IOSApplication.mm Sources/IOSEventLoop.mm

@@ -3,4 +3,8 @@
 ../../xios-session-stubs/var/jb/usr/libexec/xios-login1-stub	usr/libexec/xios-login1-stub	0755
 ../../xios-session-stubs/var/jb/usr/libexec/xios-polkit-stub	usr/libexec/xios-polkit-stub	0755
 ../../xios-session-stubs/var/jb/usr/libexec/xios-sysintd	usr/libexec/xios-sysintd	0755
+../../xios-session-stubs/var/jb/usr/libexec/xios-setsid	usr/libexec/xios-setsid	0755
 files/usr/bin/launch-gnome-session.sh.in	usr/bin/launch-gnome-session.sh	0755
+files/usr/libexec/xios-gnome-shell-session.in	usr/libexec/xios-gnome-shell-session	0755
+files/usr/share/xios/applications/org.gnome.Shell.desktop.in	usr/share/xios/applications/org.gnome.Shell.desktop	0644
+files/usr/share/xios/gnome-session/sessions/xios.session	usr/share/xios/gnome-session/sessions/xios.session	0644

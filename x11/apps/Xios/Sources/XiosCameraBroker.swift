@@ -6,7 +6,6 @@ import Foundation
 
 private let xiosMediaMagic: UInt32 = 0x4d4f4958
 private let xiosMediaVersion: UInt32 = 1
-private let xiosMediaVideoSocket = "/var/jb/tmp/xios-media-video.sock"
 private let xiosMediaMsgVideoFrame: UInt32 = 1
 private let xiosMediaVideoFmtBGRA32: UInt32 = 1
 
@@ -40,15 +39,24 @@ final class XiosCameraBroker: NSObject, AVCaptureVideoDataOutputSampleBufferDele
     private var captureRunning = false
     private var frameIndex: UInt32 = 0
     private var started = false
+    private var videoSocket: String { XiosRuntimePaths.tmp("xios-media-video.sock") }
 
-    func start() {
+    func startIfDiagnosticEnabled() {
         if started { return }
+        // This raw BGRA transport is a diagnostic bridge, not the production
+        // desktop media contract. Keep it inert unless a diagnostic launch or a
+        // deliberately configured bundle opts in.
+        let infoEnabled =
+            Bundle.main.object(forInfoDictionaryKey: "XIOSCameraBrokerEnabled") as? Bool == true
+        let environmentEnabled =
+            ProcessInfo.processInfo.environment["XIOS_CAMERA_BROKER"] == "1"
+        guard infoEnabled || environmentEnabled else { return }
         started = true
         startSocket()
     }
 
     private func startSocket() {
-        unlink(xiosMediaVideoSocket)
+        unlink(videoSocket)
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else {
             log("socket failed: \(errno)")
@@ -57,7 +65,7 @@ final class XiosCameraBroker: NSObject, AVCaptureVideoDataOutputSampleBufferDele
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let pathBytes = Array(xiosMediaVideoSocket.utf8) + [0]
+        let pathBytes = Array(videoSocket.utf8) + [0]
         let sunPathCapacity = MemoryLayout.size(ofValue: addr.sun_path)
         if pathBytes.count > sunPathCapacity {
             close(fd)
@@ -78,20 +86,25 @@ final class XiosCameraBroker: NSObject, AVCaptureVideoDataOutputSampleBufferDele
             }
         }
         guard bindResult == 0 else {
-            log("bind \(xiosMediaVideoSocket) failed: \(errno)")
+            log("bind \(videoSocket) failed: \(errno)")
             close(fd)
             return
         }
-        chmod(xiosMediaVideoSocket, 0o666)
+        guard chmod(videoSocket, 0o600) == 0 else {
+            log("chmod \(videoSocket) failed: \(errno)")
+            close(fd)
+            unlink(videoSocket)
+            return
+        }
 
         guard listen(fd, 16) == 0 else {
             log("listen failed: \(errno)")
             close(fd)
-            unlink(xiosMediaVideoSocket)
+            unlink(videoSocket)
             return
         }
         listener = fd
-        log("video socket listening at \(xiosMediaVideoSocket)")
+        log("diagnostic video socket listening at \(videoSocket)")
 
         acceptQueue.async { [weak self] in
             self?.acceptLoop(fd: fd)

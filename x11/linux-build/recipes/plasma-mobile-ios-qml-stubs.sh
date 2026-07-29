@@ -128,7 +128,7 @@ write_file "$nm/WirelessStatus.qml" \
   "import QtQuick 2.15" \
   "QtObject {" \
   "    property string hotspotSSID: \"\"" \
-  "    property string wifiSSID: \"iPad\"" \
+  "    property string wifiSSID: \"\"" \
   "}"
 write_file "$nm/ConnectionIcon.qml" \
   "import QtQuick 2.15" \
@@ -492,7 +492,10 @@ import org.kde.plasma.private.mobileshell as MobileShell
 
 QtObject {
     property string hotspotSSID: ""
-    property string wifiSSID: MobileShell.ShellUtil.networkReachable() && !MobileShell.ShellUtil.networkIsCellular() ? "Wi-Fi" : ""
+    // Reachability can identify Wi-Fi versus cellular, but iOS does not expose
+    // the SSID through this bridge. Keep unknown state honest instead of
+    // presenting the transport name as though it were the network's SSID.
+    property string wifiSSID: ""
 }
 QML
 

@@ -23,14 +23,18 @@
         <string>kTCCServiceCamera</string>
         <string>kTCCServiceMicrophone</string>
     </array>
-    <key>com.apple.security.iokit-user-client-class</key>
+	<key>com.apple.security.iokit-user-client-class</key>
     <array>
         <string>AGXDeviceUserClient</string>
         <string>IOGPUDeviceUserClient</string>
         <string>IOSurfaceRootUserClient</string>
         <string>IOSurfaceSendRight</string>
         <string>IOSurfaceAcceleratorClient</string>
-    </array>
+	</array>
+	<key>com.apple.security.exception.mach-lookup.global-name</key>
+	<array>
+		<string>com.max.xios.metal-event-broker</string>
+	</array>
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
         <string>/var/jb/tmp/</string>

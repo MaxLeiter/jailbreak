@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=GNOME Shell
+Exec=@INSTALL_PREFIX@/libexec/xios-gnome-shell-session
+NoDisplay=true
+X-GNOME-Autostart-Phase=WindowManager

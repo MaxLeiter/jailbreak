@@ -18,8 +18,9 @@
 #ifndef XIOS_SURFACE_H
 #define XIOS_SURFACE_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 /* Create the shared BGRA8 IOSurface for a `width`x`height` screen.
  * Returns the framebuffer base address (the X server draws directly here), or
@@ -50,6 +51,17 @@ int xios_server_start(const char *sock_path, const char *json_path,
  * command-buffer completion. */
 void xios_notify_dirty(void);
 
+/* GPU-asynchronous variant of xios_notify_dirty. `shared_event_token` is the
+ * fixed 32-byte capability under which the producer published its persistent
+ * MTLSharedEventHandle to the package broker. `event_value` is the value the
+ * Xios Metal command buffer must wait for before sampling the output IOSurface.
+ * DIRTY marks window_id as XIOS_DIRTY_FENCE_BROKER_TOKEN, carries the token as
+ * payload, and carries the value in c/d. Returns 0 when queued to live clients
+ * and -1 for invalid input. */
+int xios_notify_dirty_with_fence(const void *shared_event_token,
+                                 size_t token_size,
+                                 uint64_t event_value);
+
 uint64_t xios_dirty_generation(void);
 uint64_t xios_presented_generation(void);
 
@@ -62,11 +74,15 @@ uint64_t xios_presented_generation(void);
 #define XIOS_MSG_MAGIC   0x584D5331u   /* 'XMS1' per-record frame sync */
 enum {
     XIOS_MSG_HELLO  = 0x01,  /* compositor->app: a=w b=h c=stride d=format; payload=compositor-id */
-    XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b = present seq lo/hi; c,d reserved */
+    XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b=present seq; optional fence in c,d+payload */
     XIOS_MSG_CURSOR = 0x03,  /* compositor->app: a=x b=y c=shape_id d=flags(bit0 visible) */
     XIOS_MSG_CLIPBOARD = 0x04,  /* BOTH directions, on the CLIPBOARD socket only (see below) */
     XIOS_MSG_PRESENTED = 0x05,  /* app->compositor: a,b = displayed DIRTY seq lo/hi */
     /* 0x06-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
+};
+enum {
+    XIOS_DIRTY_FENCE_NONE = 0,
+    XIOS_DIRTY_FENCE_BROKER_TOKEN = 1,
 };
 typedef struct {
     uint32_t magic;      /* XIOS_MSG_MAGIC */
@@ -136,6 +152,10 @@ void xios_set_compositor_id(const char *id);
  * on mutter-ddx.sock) MUST set this or it gets no input. Call before
  * xios_server_start; if unset the field is omitted (app keeps its inference). */
 void xios_set_input_socket(const char *path);
+
+/* Advertise the dedicated clipboard endpoint in xios.json. Compositors that do
+ * not provide an iOS pasteboard bridge leave it unset. */
+void xios_set_clipboard_socket(const char *path);
 
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);

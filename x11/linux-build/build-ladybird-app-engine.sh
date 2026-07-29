@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds the iOS Ladybird UIKit frontend + Compositor helper on procursus-vol-ladybird
-# (continues wave4c state). LB_APP_GPU=1 builds Compositor against real ANGLE/GPU; default
-# is the CPU fallback. Stages the resulting binaries into /out/app-stage for the .app deb driver.
+# (continues wave4c state). Release builds are always real ANGLE/GPU. Set
+# LB_APP_CPU_DIAGNOSTIC=1 for the intentionally non-production CPU/trap-stub build.
+# Stages the resulting binaries into /out/app-stage for the .app deb driver.
 #
 #   docker run --rm --platform linux/arm64 \
 #     -v procursus-vol-ladybird:/work/Procursus \
@@ -22,10 +23,20 @@ export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
 export PATH=$CARGO_HOME/bin:$PATH
 export LB_APP_BUILD=1
-export LB_APP_GPU="${LB_APP_GPU:-0}"
-case "$LB_APP_GPU" in
-  1|yes|true|on|YES|TRUE|ON) APP_GPU_ENABLED=1 ;;
-  *) APP_GPU_ENABLED=0 ;;
+case "${LB_APP_CPU_DIAGNOSTIC:-0}" in
+  1|yes|true|on|YES|TRUE|ON)
+    APP_GPU_ENABLED=0
+    export LB_APP_CPU_DIAGNOSTIC=1
+    # Compatibility for already-patched persistent Ladybird worktrees. Fresh
+    # source patches key directly on LB_APP_CPU_DIAGNOSTIC.
+    export LB_APP_GPU=0
+    echo "!! LADYBIRD DIAGNOSTIC CPU BUILD: generated ANGLE trap stubs enabled; not releasable" >&2
+    ;;
+  *)
+    APP_GPU_ENABLED=1
+    export LB_APP_CPU_DIAGNOSTIC=0
+    export LB_APP_GPU=1
+    ;;
 esac
 step() { echo; echo "########## $* ##########"; }
 cd "$PROC"
@@ -122,7 +133,7 @@ fi
 
 # ---- complete ANGLE gl2ext_angle.h (Compositor WebGL replayer) -----------------------------
 # Staged gl2ext_angle.h is missing GL_ANGLE_robust_client_memory prototypes that generated
-# WebGL/GLFunctions.cpp references (needed at compile time even for CPU-fallback builds).
+# WebGL/GLFunctions.cpp references (needed at compile time even for diagnostic CPU builds).
 # Swap in the complete header from the ANGLE checkout.
 BB_ANGLE=$BB/usr/include/GLES2/gl2ext_angle.h
 if [ -f "$BB_ANGLE" ] && ! grep -q glCompressedTexImage2DRobustANGLE "$BB_ANGLE"; then
@@ -147,7 +158,7 @@ if [ "$APP_GPU_ENABLED" -eq 1 ]; then
   if [ ! -f "$ANGLE_DIR/libGLESv2.dylib" ] || [ ! -f "$ANGLE_DIR/libEGL.angle.dylib" ]; then
     ANGLE_DEB=$(ls -1 /out/angle_*_iphoneos-arm64.deb 2>/dev/null | sort | tail -1 || true)
     if [ -z "$ANGLE_DEB" ]; then
-      echo "!! LB_APP_GPU=1 needs /out/angle_*_iphoneos-arm64.deb to stage real ANGLE GLES" >&2
+      echo "!! release Ladybird builds need /out/angle_*_iphoneos-arm64.deb to stage real ANGLE GLES" >&2
       exit 2
     fi
     TMPANGLE=$(mktemp -d)
@@ -215,7 +226,7 @@ cd "$BUILD"
 if [ "$APP_GPU_ENABLED" -eq 1 ]; then
   step "Compositor: build service lib with real EGL/GLES"
 else
-  step "Compositor: build service lib + fill egl/gl stubs"
+  step "Compositor: DIAGNOSTIC CPU build + generated egl/gl trap stubs"
 fi
 ninja -k 0 -j"$(nproc)" compositorservice 2>&1 | tail -8
 CS=$(find "$BUILD" -name libcompositorservice.a | head -1)

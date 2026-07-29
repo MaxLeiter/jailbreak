@@ -20,6 +20,6 @@ Description: Ladybird — a standalone native web browser for jailbroken iOS
  closure, resources, and fonts inside Ladybird.app. The helpers are spawned from the app
  bundle and use Ladybird's Mach bootstrap IPC on iOS.
  .
- Painting presents IOSurface-backed front buffers through Metal when available. Internal
- GPU builds can link the real ANGLE/EGL/GLES path; non-GPU builds still force CPU painting
- and keep trap stubs for the inactive GL entry points.
+ Painting requires IOSurface-backed front buffers presented through Metal, and the
+ release Compositor links real ANGLE/EGL/GLES. The build fails closed instead of
+ silently shipping a software or trap-stub rendering path.

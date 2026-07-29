@@ -16,7 +16,6 @@ final class HostA11yClient {
     /// Fixed path, one listener for desktop and native clients. Never derive
     /// from $XDG_RUNTIME_DIR — ioscd points that at per-app private bus dirs.
     private let sockPath = "/var/jb/tmp/xios-a11y.sock"
-    private let forcePath = "/var/jb/tmp/xios-a11y-force"
     private let logPath = "/var/jb/tmp/iosc-a11y-host.log"
 
     private var appID = ""
@@ -44,12 +43,11 @@ final class HostA11yClient {
     }
 
     @objc private func syncVoiceOver() {
-        let forced = FileManager.default.fileExists(atPath: forcePath)
-        if UIAccessibility.isVoiceOverRunning || forced {
-            log("enable gate voiceover=\(UIAccessibility.isVoiceOverRunning) forced=\(forced)")
+        if UIAccessibility.isVoiceOverRunning {
+            log("enable gate voiceover=true")
             start()
         } else {
-            log("disable gate voiceover=false forced=false")
+            log("disable gate voiceover=false")
             stop()
         }
     }

@@ -1519,6 +1519,35 @@ static int native_ensure_canvas(struct iosc_surface *s, int w, int h, int send_g
     return 0;
 }
 
+static int notify_native_gpu_frame(uint32_t window_id)
+{
+    const void *token = NULL;
+    size_t token_size = 0;
+    uint64_t event_value = 0;
+    if (!iosc_gl_present_fence(&token, &token_size, &event_value)) {
+        if (iosc_env_truthy(getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC")) &&
+            xios_canvas_notify_frame(window_id, NULL, 0, 0) == 0)
+            return 0;
+        fprintf(stderr,
+                "iosc: FATAL: native window %u has no cross-process GPU "
+                "presentation fence; refusing the frame\n",
+                window_id);
+        if (g_display)
+            wl_display_terminate(g_display);
+        return -1;
+    }
+    if (xios_canvas_notify_frame(window_id, token, token_size, event_value) == 0)
+        return 0;
+
+    fprintf(stderr,
+            "iosc: FATAL: invalid native GPU fence for window %u; "
+            "refusing the frame\n",
+            window_id);
+    if (g_display)
+        wl_display_terminate(g_display);
+    return -1;
+}
+
 static void native_composite_toplevel(struct iosc_surface *s)
 {
     if (!s || s->role != IOSC_ROLE_TOPLEVEL || !s->mapped || s->toplevel_minimized)
@@ -1542,7 +1571,7 @@ static void native_composite_toplevel(struct iosc_surface *s)
             composite_surface_at_blended(c, c->dx - s->dx, c->dy - s->dy);
     }
     iosc_gl_end();
-    xios_canvas_notify_dirty(s->window_id, 0, 0, 0, 0);
+    (void)notify_native_gpu_frame(s->window_id);
 }
 
 static void native_recomposite_now(void)
@@ -1967,6 +1996,14 @@ static int iosc_debug(void)
     return v;
 }
 
+/* The software compositor is deliberately incomplete and must never become an
+ * accidental production mode. Keep it available only for narrow bring-up and
+ * entitlement diagnostics, behind an explicitly diagnostic environment name. */
+static int iosc_allow_cpu_diagnostic(void)
+{
+    return iosc_env_truthy(getenv("IOSC_ALLOW_CPU_DIAGNOSTIC"));
+}
+
 static int active_session_allows_classic_iosc(void)
 {
     const char *path = "/var/jb/tmp/xios-active-session";
@@ -2037,6 +2074,36 @@ static void app_cursor_notify(void)
     xios_notify_cursor(g_cursor_x * os, g_cursor_y * os, g_cursor_visible, shape);
 }
 
+static int notify_gpu_frame(void)
+{
+    const void *token = NULL;
+    size_t token_size = 0;
+    uint64_t event_value = 0;
+    if (!iosc_gl_present_fence(&token, &token_size, &event_value)) {
+        if (iosc_env_truthy(getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC"))) {
+            /* iosc_gl_end performed the explicitly requested diagnostic
+             * compatibility barrier. */
+            xios_notify_dirty();
+            return 0;
+        }
+        fprintf(stderr,
+                "iosc: FATAL: cross-process GPU presentation fence unavailable; "
+                "refusing an unfenced frame\n");
+        if (g_display)
+            wl_display_terminate(g_display);
+        return -1;
+    }
+    if (xios_notify_dirty_with_fence(token, token_size, event_value) == 0)
+        return 0;
+
+    fprintf(stderr,
+            "iosc: FATAL: refusing to publish an asynchronously rendered frame "
+            "without its cross-process GPU fence\n");
+    if (g_display)
+        wl_display_terminate(g_display);
+    return -1;
+}
+
 static void recomposite_reason_clear(void)
 {
     g_recompose_reason = NULL;
@@ -2071,7 +2138,8 @@ static void recomposite_now(void)
                 composite_cursor();
             }
             iosc_gl_end();
-            xios_notify_dirty();
+            if (notify_gpu_frame() != 0)
+                return;
             frame_callbacks_after_present();
             if (iosc_debug())
                 fprintf(stderr, "iosc: recomposited (session locked; lock surface %s)\n",
@@ -2117,7 +2185,8 @@ static void recomposite_now(void)
             composite_cursor();
         }
         iosc_gl_end();
-        xios_notify_dirty();
+        if (notify_gpu_frame() != 0)
+            return;
         frame_callbacks_after_present();
         /* Validation (IOSC_DEBUG only — each readback is a synchronous GPU->CPU
          * stall): read every window's EXPOSED top-left corner (a lower window's
@@ -2156,17 +2225,30 @@ static void recomposite_now(void)
         recomposite_reason_clear();
         return;
     }
-    /* CPU fallback: only the top surface, top-left (no multi-surface on CPU). */
+    if (!iosc_allow_cpu_diagnostic()) {
+        static int gpu_loss_reported;
+        if (!gpu_loss_reported) {
+            gpu_loss_reported = 1;
+            fprintf(stderr,
+                    "iosc: FATAL: GPU compositor became unavailable; terminating "
+                    "(IOSC_ALLOW_CPU_DIAGNOSTIC=1 enables the incomplete diagnostic path)\n");
+        }
+        if (g_display)
+            wl_display_terminate(g_display);
+        return;
+    }
+
+    /* Explicit diagnostic CPU mode: only the top surface, top-left. */
     static int cpu_fallback_warned;
     if (!cpu_fallback_warned) {
         cpu_fallback_warned = 1;
         fprintf(stderr,
                 "\n"
                 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-                "!! IOSC CPU COMPOSITOR FALLBACK ACTIVE\n"
+                "!! IOSC DIAGNOSTIC CPU COMPOSITOR ACTIVE\n"
                 "!! GPU compositor is unavailable. This path is degraded:\n"
                 "!! only the top surface is drawn and window composition is incomplete.\n"
-                "!! Treat this as a release-blocking environment/configuration issue.\n"
+                "!! IOSC_ALLOW_CPU_DIAGNOSTIC=1 explicitly enabled this mode.\n"
                 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
     }
     if (g_nmapped == 0) return;
@@ -3901,8 +3983,18 @@ static int output_reconfigure_px(int pw, int ph, int transform, int scale)
         g_height = ph;
         g_output_damage_valid = 0;
         g_output_damage_rect_count = 0;
-        if (iosc_gl_ok() && iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0)
-            fprintf(stderr, "iosc: GPU output rebind failed; CPU fallback remains\n");
+        if (iosc_gl_ok() && iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0) {
+            if (!iosc_allow_cpu_diagnostic()) {
+                fprintf(stderr,
+                        "iosc: FATAL: GPU output rebind failed; terminating instead of "
+                        "silently degrading to software composition\n");
+                if (g_display)
+                    wl_display_terminate(g_display);
+                return -1;
+            }
+            fprintf(stderr,
+                    "iosc: GPU output rebind failed; explicit diagnostic CPU mode remains\n");
+        }
     }
     g_output_transform = transform;
 
@@ -8755,6 +8847,7 @@ int main(int argc, char **argv)
     }
     xios_set_compositor_id("iosc");   /* app clients learn the flavor via the in-band HELLO */
     xios_set_input_socket(opts.input_sock);
+    xios_set_clipboard_socket(opts.clipboard_sock);
     if (xios_server_start(opts.ddx_sock, opts.json_path, g_width, g_height, g_stride) != 0) {
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;
@@ -8766,16 +8859,23 @@ int main(int argc, char **argv)
 
     /* 1b) GPU compositor: an ANGLE context whose render target is the output
      *     IOSurface, so commits are composited on the GPU (client IOSurfaces
-     *     sampled zero-copy). If GL init fails, keep running for diagnostics but
-     *     make the degraded CPU path unmistakable in logs. */
+     *     sampled zero-copy). Production startup fails closed. The deliberately
+     *     incomplete CPU path requires IOSC_ALLOW_CPU_DIAGNOSTIC=1. */
     if (iosc_gl_init(xios_get_output_iosurface(), g_width, g_height) != 0) {
+        if (!iosc_allow_cpu_diagnostic()) {
+            fprintf(stderr,
+                    "iosc: FATAL: GPU compositor initialization failed; refusing "
+                    "software fallback (set IOSC_ALLOW_CPU_DIAGNOSTIC=1 only for diagnostics)\n");
+            xios_server_stop();
+            return 1;
+        }
         fprintf(stderr,
                 "\n"
                 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
                 "!! IOSC GPU COMPOSITOR FAILED TO START\n"
-                "!! Continuing with CPU fallback for diagnostics only.\n"
+                "!! IOSC_ALLOW_CPU_DIAGNOSTIC=1: continuing diagnostically on CPU.\n"
                 "!! Expect broken/incomplete composition until ANGLE/IOSurface works.\n"
-                "!! This is intentionally non-fatal but must be fixed before release.\n"
+                "!! Never use this mode as a production or release configuration.\n"
                 "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
     }
 

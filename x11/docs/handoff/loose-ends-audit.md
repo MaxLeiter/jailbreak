@@ -95,16 +95,16 @@ These versions intentionally do not reuse published filenames:
 
 | Package | Version | State |
 | --- | --- | --- |
-| `iosc` | 0.9.20 | Built, audited, and live in staging; corrected immutable input candidate (`0.9.19` is superseded) |
+| `iosc` | 0.9.27 | Built, locally indexed/audited, and installed with ANGLE `+es3-10`; A10 Metal renderer, Wayland v4, and client-to-compositor broker fence passed on-device; awake-screen Xios present proof remains |
 | `xios-launcher-tools` | 0.1.2 | Rebuilt with native-host hardware keyboard/mouse parity and live in staging |
 | `xios-session` | 1.0.55 | Built, audited, and live in staging |
 | `iosc-shell` | 0.9.11 | Built, audited, and live in staging |
 | `xios-a11y-tools` | 0.2.15 | Cross-built, audited, and live in staging |
-| `libmutter-14-0/-dev` | 46.0+ios4 | Clean-built and live in staging with stateful hardware-key input; device smoke pending |
+| `libmutter-14-0/-dev` | 46.0+ios5 | Package-only rebuild owns plugin `.so` aliases and refuses a runtime without `MetaBackendIOS` plus linked `xios_glue`; runtime package installed and GNOME startup passed on-device |
 | `xios-kde` | 0.1.9 | Built with the final iosc/session/KWin/Workspace/Mobile/KScreen floors and live in staging |
-| `ladybird-app` | 0.1.23+ios1 | iOS event-loop TODO/ID-wrap cleanup landed; full engine/app rebuild, host re-sign, and device smoke pending |
+| `ladybird-app` | 0.1.24+ios1 | GPU/Metal is the default fail-closed release path; full engine/bundle build and host DER re-sign passed; installed package passed direct startup and helper dyld smoke, while FrontBoard Metal-frame proof still needs an awake screen |
 | `libgtop-2.0-11` | 2.41.3+ios2 | Built; real Darwin process backend; device smoke pending |
-| `xios-session-stubs` | 0.2.5 | Built; persistent AccountsService + stateful BlueZ bridge; device smoke pending |
+| `xios-session-stubs` | 0.2.7 | Installed and device-smoked with package-owned GNOME descriptors/`xios-setsid`, a private runtime dir, package-time Shell entitlement verification, and honest unsupported process/power operations |
 | `xios-desktop-stublibs` | 0.1.1 | Built; expanded pwquality behavior; device smoke pending |
 | `milou` | 6.1.5+ios1 | Built from upstream source with real arm64 QML plugin; device smoke pending |
 | `plasma-mobile` | 6.1.5+ios21 | Fully rebuilt; depends on real Milou and contains no Milou fallback; device smoke pending |
@@ -127,9 +127,10 @@ was no longer running at final validation; its outcome was not assessed as part 
 6. **Geary/WebKitGTK:** this is still a large browser-engine/toolchain port, not a leaf app fix.
 7. **Xwayland WM polish:** `WM_NORMAL_HINTS`, client-requested `_NET_WM_STATE`/activation, and
    fuller resize semantics remain TODOs. Basic mapping/input works; these affect desktop polish.
-8. **Ladybird:** host/app engine work is substantially built. The iOS event loop no longer has
-   a crash-style notifier TODO or unchecked signal-ID increment; rebuild the reserved 0.1.23+ios1
-   app and perform the final package/runtime smoke on-device.
+8. **Ladybird:** `0.1.24+ios1` is fully built, bundled, host DER-signed, and installed.
+   Direct mobile-user startup reaches `main`, and every helper passes a dyld smoke after fixing
+   the bundle resolver to select gettext's real `libintl.8` instead of the GLib proxy. The
+   remaining gate is a normal FrontBoard launch with an awake screen and an actual Metal frame.
 
 ## Intentional shims, not loose ends
 

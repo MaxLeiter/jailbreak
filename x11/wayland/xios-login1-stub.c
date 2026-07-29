@@ -257,8 +257,10 @@ manager_method_call (GDBusConnection       *connection,
            g_str_equal (method_name, "Reboot") ||
            g_str_equal (method_name, "Suspend"))
     {
-      /* Accept and ignore — we do not drive the hardware. */
-      g_dbus_method_invocation_return_value (invocation, NULL);
+      g_dbus_method_invocation_return_dbus_error (
+        invocation,
+        "org.freedesktop.DBus.Error.NotSupported",
+        "iOS owns device power management");
     }
   else
     {
@@ -330,8 +332,14 @@ session_method_call (GDBusConnection       *connection,
                                      method_name, NULL, NULL);
       g_dbus_method_invocation_return_value (invocation, NULL);
     }
+  else if (g_str_equal (method_name, "Terminate"))
+    {
+      g_dbus_method_invocation_return_dbus_error (
+        invocation,
+        "org.freedesktop.DBus.Error.NotSupported",
+        "xios-login1 does not terminate session processes");
+    }
   else if (g_str_equal (method_name, "Activate") ||
-           g_str_equal (method_name, "Terminate") ||
            g_str_equal (method_name, "TakeControl") ||
            g_str_equal (method_name, "ReleaseControl"))
     {
@@ -454,11 +462,14 @@ user_method_call (GDBusConnection       *connection,
                   GDBusMethodInvocation *invocation,
                   gpointer               user_data)
 {
-  /* Terminate / Kill: accepted as no-ops (we do not manage the user's processes). */
+  /* Never claim process-management operations succeeded when ioscd owns supervision. */
   if (g_str_equal (method_name, "Terminate") ||
       g_str_equal (method_name, "Kill"))
     {
-      g_dbus_method_invocation_return_value (invocation, NULL);
+      g_dbus_method_invocation_return_dbus_error (
+        invocation,
+        "org.freedesktop.DBus.Error.NotSupported",
+        "xios-login1 does not manage user processes");
     }
   else
     {

@@ -162,9 +162,11 @@ Screen icons by itself: pick which apps you want in the Xios pane in Settings, o
 `xios-launcher-sync` to list, enable, dry-run, and apply. Tap an icon and that Linux app
 opens in its own iPadOS window, with Split View and Slide Over as the window manager.
 
-**X11.** `xios-server.sh` starts the IOSurface X server for classic X11 clients; Xwayland
-runs X11 clients inside the GPU-accelerated compositor instead. See
-[Appendix A](#appendix-a-x-over-vnc) for the older VNC route, which still works.
+**X11.** The X11 flavor runs clients through rootless Xwayland inside the
+GPU-accelerated `iosc` compositor. The legacy software-rendered `xios-server`
+package is no longer installed by the flavor; it remains separately available
+for bring-up and diagnostics. See [Appendix A](#appendix-a-x-over-vnc) for the
+older VNC route, which still works.
 
 ---
 

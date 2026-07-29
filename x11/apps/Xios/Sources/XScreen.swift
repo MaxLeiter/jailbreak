@@ -143,6 +143,9 @@ final class XScreenView: UIView {
     private var usingIOSurface = false
     private var iosConnectStarted = false
     private var needsPresent = false
+    private var presentFenceToken: Data?
+    private var presentFenceEvent: MTLSharedEvent?
+    private var presentFenceDecodeFailed = false
 
     // Present-side cursor overlay. When iosc runs with IOSC_APP_CURSOR it stops
     // compositing the pointer and streams position+shape over the typed socket
@@ -174,6 +177,8 @@ final class XScreenView: UIView {
     // nil = not iosc mode (use the XTEST path). Resolved in loadConfig() from xios.json.
     private var ioscInputSock: String?
     private var ioscClipboardSock: String?
+    private var inputConfigurationError: String?
+    private var clipboardConfigurationError: String?
     private var pasteboardChangeCount = UIPasteboard.general.changeCount
     private let kClipText: UInt32 = 1, kClipURI: UInt32 = 2,
                 kClipPNG: UInt32 = 3, kClipHTML: UInt32 = 4
@@ -271,7 +276,7 @@ final class XScreenView: UIView {
     func start() {
         loadConfig()
         SystemIntegration.shared.install(on: self)
-        XiosCameraBroker.shared.start()
+        XiosCameraBroker.shared.startIfDiagnosticEnabled()
         isMultipleTouchEnabled = true
         // MTLCreateSystemDefaultDevice() returns nil for a backgrounded app (a
         // SpringBoard relaunch, or uicache registration launching us off-screen), so a
@@ -623,6 +628,8 @@ final class XScreenView: UIView {
         let oldSocket = ddxSockPath
         let oldIoscSock = ioscInputSock
         let oldIoscClipSock = ioscClipboardSock
+        let oldInputConfigurationError = inputConfigurationError
+        let oldClipboardConfigurationError = clipboardConfigurationError
 
         resetConfigDefaults(resetDisplay: true)
         configuredTouchReplacesPointer = Self.parseTouchPointerPolicy(obj)
@@ -635,26 +642,35 @@ final class XScreenView: UIView {
         if let d = obj["display"] as? String, !d.isEmpty { xDisplay = d }
         // Cookie file locking the display (server uses xauth instead of -ac).
         if let a = obj["xauth"] as? String, !a.isEmpty { xAuthPath = a }
-        // iosc advertises a Wayland input socket; route touch+keyboard there instead of
-        // XTEST. Prefer an explicit "input_socket" field; otherwise infer it from an
-        // iosc ddx socket (the compositor's rendezvous is /var/jb/tmp/iosc-ddx.sock).
+        // Wayland compositors advertise their exact input endpoint. Never infer a
+        // process-global socket from the DDX filename: slots can run concurrently,
+        // and sending to the wrong compositor is worse than reporting a stale config.
         if ddxIsIOSurface {
             if let s = obj["input_socket"] as? String, !s.isEmpty {
                 ioscInputSock = s
             } else if ddxSockPath.contains("iosc") {
-                ioscInputSock = XiosRuntimePaths.tmp("iosc-input.sock")
+                inputConfigurationError =
+                    "iosc config is missing input_socket; restart/update the compositor"
             }
             if let s = obj["clipboard_socket"] as? String, !s.isEmpty {
                 ioscClipboardSock = s
             } else if ddxSockPath.contains("iosc") {
-                ioscClipboardSock = XiosRuntimePaths.tmp("iosc-clipboard.sock")
+                clipboardConfigurationError =
+                    "iosc config is missing clipboard_socket; restart/update the compositor"
             }
+        }
+        if let sock = ioscInputSock {
+            sock.withCString { sysint_set_iosc_socket($0) }
+        } else {
+            sysint_set_iosc_socket(nil)
         }
 
         let renderStateChanged = oldWidth != fbWidth || oldHeight != fbHeight ||
             oldIsIOSurface != ddxIsIOSurface || oldSocket != ddxSockPath
         let inputStateChanged = oldDisplay != xDisplay || oldAuth != xAuthPath ||
-            oldIoscSock != ioscInputSock || oldIoscClipSock != ioscClipboardSock
+            oldIoscSock != ioscInputSock || oldIoscClipSock != ioscClipboardSock ||
+            oldInputConfigurationError != inputConfigurationError ||
+            oldClipboardConfigurationError != clipboardConfigurationError
         if renderStateChanged || inputStateChanged {
             loadGeneration += 1
             iosConnectStarted = false
@@ -694,6 +710,8 @@ final class XScreenView: UIView {
         if let c = xconn { xsurface_close(c); xconn = nil }
         iosurfaceCompositorID = ""
         iosTexture = nil
+        presentFenceToken = nil
+        presentFenceEvent = nil
         usingIOSurface = false
         removeCursorOverlay()
         if !userPinned { _ = loadConfig() }
@@ -753,7 +771,19 @@ final class XScreenView: UIView {
             guard let tex = iosTexture else { return }
             if needsPresent {
                 let seq = xsurface_dirty_sequence(conn)
-                if render(tex, presentedSeq: seq, conn: conn) { needsPresent = false }
+                let fence = gpuFence(for: conn)
+                if presentFenceDecodeFailed {
+                    dbg("gpu-fence-decode-failed")
+                    teardownIOSurface(lost: true)
+                    return
+                }
+                if render(tex,
+                          presentedSeq: seq,
+                          conn: conn,
+                          waitEvent: fence?.0,
+                          waitValue: fence?.1 ?? 0) {
+                    needsPresent = false
+                }
             }
             return
         }
@@ -806,14 +836,55 @@ final class XScreenView: UIView {
     }
 
     /// Draw the texture using the current fit/zoom/pan transform.
+    private func gpuFence(for conn: OpaquePointer) -> (MTLSharedEvent, UInt64)? {
+        presentFenceDecodeFailed = false
+        var bytes: UnsafeRawPointer?
+        var length = 0
+        var value: UInt64 = 0
+        guard xsurface_gpu_fence_token(conn, &bytes, &length, &value) != 0 else {
+            if usingIosc {
+                dbg("gpu-fence-missing-for-iosc-frame")
+                presentFenceDecodeFailed = true
+            }
+            return nil
+        }
+        guard let bytes, length > 0, value > 0 else {
+            presentFenceDecodeFailed = true
+            return nil
+        }
+
+        let token = Data(bytes: bytes, count: length)
+        if token != presentFenceToken {
+            guard let event = xios_metal_event_broker_copy_event(
+                device, bytes, length
+            ) else {
+                dbg("gpu-fence-broker-import-failed")
+                presentFenceDecodeFailed = true
+                return nil
+            }
+            presentFenceToken = token
+            presentFenceEvent = event
+        }
+        guard let event = presentFenceEvent else {
+            presentFenceDecodeFailed = true
+            return nil
+        }
+        return (event, value)
+    }
+
     @discardableResult
     private func render(_ tex: MTLTexture,
                         presentedSeq: UInt64 = 0,
-                        conn: OpaquePointer? = nil) -> Bool {
+                        conn: OpaquePointer? = nil,
+                        waitEvent: MTLSharedEvent? = nil,
+                        waitValue: UInt64 = 0) -> Bool {
         guard let drawable = metalLayer.nextDrawable(),
               let cmd = queue.makeCommandBuffer(),
               let fit = fitTransform(),
               var verts = fit.clipVertices() else { return false }
+        if let waitEvent, waitValue > 0 {
+            cmd.encodeWaitForEvent(waitEvent, value: waitValue)
+        }
         // triangle strip: TL, BL, TR, BR  (pos.xy, uv.xy); uv origin top-left
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = drawable.texture
@@ -863,7 +934,17 @@ final class XScreenView: UIView {
         } else {
             inp = "input-connected \(xDisplay)"
         }
-        try? "\(fb)\n\(inp)\n".write(toFile: XiosRuntimePaths.tmp("xios-status.txt"), atomically: true, encoding: .utf8)
+        var lines = [fb, inp]
+        if let error = inputConfigurationError {
+            lines.append("configuration-error \(error)")
+        }
+        if let error = clipboardConfigurationError {
+            lines.append("configuration-error \(error)")
+        }
+        try? (lines.joined(separator: "\n") + "\n").write(
+            toFile: XiosRuntimePaths.tmp("xios-status.txt"),
+            atomically: true,
+            encoding: .utf8)
         refreshShellOverlay()
     }
 
@@ -1043,7 +1124,8 @@ final class XScreenView: UIView {
     }
 
     private func inputBackendName() -> String {
-        usingIosc ? "iosc" : "XTEST"
+        if inputConfigurationError != nil { return "misconfigured" }
+        return usingIosc ? "iosc" : "XTEST"
     }
 
     private static func parseTouchPointerPolicy(_ obj: [String: Any]) -> Bool? {
@@ -1209,6 +1291,8 @@ final class XScreenView: UIView {
             "ddx_socket=\(ddxSockPath)",
             "iosc_input=\(ioscInputSock ?? "(none)")",
             "iosc_clipboard=\(ioscClipboardSock ?? "(none)")",
+            "input_configuration_error=\(inputConfigurationError ?? "(none)")",
+            "clipboard_configuration_error=\(clipboardConfigurationError ?? "(none)")",
             "test_pattern=\(usingTestPattern)",
             "last_message=\(lastToolMessage)",
             "xios_json=\(cfg)",
@@ -1230,6 +1314,10 @@ final class XScreenView: UIView {
     // MARK: input (XTEST)
 
     private func connectInput() {
+        guard inputConfigurationError == nil else {
+            inputConnected = false
+            return
+        }
         if let sock = ioscInputSock {
             // Wayland (iosc): one persistent Unix socket, no display/auth handshake.
             if inputConnected && iosc_input_is_open() { return }
@@ -2317,6 +2405,12 @@ final class XScreenView: UIView {
         xAuthPath = nil
         ioscInputSock = nil
         ioscClipboardSock = nil
+        inputConfigurationError = nil
+        clipboardConfigurationError = nil
+        sysint_set_iosc_socket(nil)
+        XiosRuntimePaths.tmp("xios-sysint.sock").withCString {
+            sysint_set_sysint_socket($0)
+        }
         if resetDisplay { xDisplay = ":3" }
     }
 
@@ -2325,7 +2419,10 @@ final class XScreenView: UIView {
         closeInput()
         if let c = xconn { xsurface_close(c); xconn = nil }
         removeCursorOverlay()
-        iosTexture = nil; usingIOSurface = false; iosConnectStarted = false; needsPresent = false
+        iosTexture = nil
+        presentFenceToken = nil
+        presentFenceEvent = nil
+        usingIOSurface = false; iosConnectStarted = false; needsPresent = false
         testBuf?.deallocate(); testBuf = nil
         usingTestPattern = false
         resetZoom()

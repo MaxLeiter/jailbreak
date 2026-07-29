@@ -77,6 +77,7 @@ static uint64_t s_dirty_seq = 0;
 static uint64_t s_presented_seq = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
 static char s_input_socket[108] = "";          /* app input socket; emitted in xios.json when set */
+static char s_clipboard_socket[108] = "";      /* app clipboard socket; emitted when set */
 static unsigned s_generation = 0;              /* bumped by resize; stale handshakes close */
 static char s_sock_path_kept[256] = "";        /* for resize-time xios.json rewrite */
 static char s_json_path_kept[256] = "";
@@ -89,6 +90,11 @@ void xios_set_compositor_id(const char *id)
 void xios_set_input_socket(const char *path)
 {
     snprintf(s_input_socket, sizeof(s_input_socket), "%s", path ? path : "");
+}
+
+void xios_set_clipboard_socket(const char *path)
+{
+    snprintf(s_clipboard_socket, sizeof(s_clipboard_socket), "%s", path ? path : "");
 }
 
 /* ---- helpers -------------------------------------------------------------- */
@@ -150,13 +156,15 @@ static void write_json(const char *json_path, int width, int height, int stride,
     fprintf(jf,
             "{\"width\":%d,\"height\":%d,\"stride\":%d,"
             "\"format\":\"BGRA\",\"ddx\":\"iosurface\",\"socket\":\"%s\","
-            "\"display\":\":%s\"",
+            "\"display\":\":%s\",\"protocol_version\":2",
             width, height, stride, sock_path, display ? display : "0");
     /* Where the app should send keyboard/pointer. The app auto-infers this only
      * for an "iosc"-named ddx socket; any other compositor (mutter) must set it
      * or it gets no input. Omitted when unset so iosc keeps the app's inference. */
     if (s_input_socket[0])
         fprintf(jf, ",\"input_socket\":\"%s\"", s_input_socket);
+    if (s_clipboard_socket[0])
+        fprintf(jf, ",\"clipboard_socket\":\"%s\"", s_clipboard_socket);
     fprintf(jf, "}\n");
     fclose(jf);
     /* The app runs as mobile; make the handshake file world-readable so it can
@@ -654,22 +662,53 @@ static int send_record(int fd, const void *buf, size_t len)
     return -1;   /* error or partial (desync) */
 }
 
-void xios_notify_dirty(void)
+#define XIOS_SHARED_EVENT_TOKEN_SIZE 32u
+
+static int notify_dirty_internal(const void *shared_event_token,
+                                 size_t token_size,
+                                 uint64_t event_value)
 {
+    if ((token_size > 0 && !shared_event_token) ||
+        (token_size > 0 && token_size != XIOS_SHARED_EVENT_TOKEN_SIZE) ||
+        (token_size > 0 && event_value == 0))
+        return -1;
+
     uint64_t seq;
+    unsigned char wire[sizeof(xios_msg) + XIOS_SHARED_EVENT_TOKEN_SIZE];
 
     pthread_mutex_lock(&s_lock);
     seq = ++s_dirty_seq;
-    xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY, 0, 0,
+    xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY,
+                     token_size ? XIOS_DIRTY_FENCE_BROKER_TOKEN
+                                : XIOS_DIRTY_FENCE_NONE,
+                     (uint32_t)token_size,
                      (int32_t)(uint32_t)(seq & 0xffffffffu),
-                     (int32_t)(uint32_t)(seq >> 32), 0, 0 };
+                     (int32_t)(uint32_t)(seq >> 32),
+                     (int32_t)(uint32_t)(event_value & 0xffffffffu),
+                     (int32_t)(uint32_t)(event_value >> 32) };
+    memcpy(wire, &rec, sizeof(rec));
+    if (token_size)
+        memcpy(wire + sizeof(rec), shared_event_token, token_size);
     int i = 0;
     while (i < s_nclients) {
-        int ok = send_record(s_clients[i].fd, &rec, sizeof(rec));
+        int ok = send_record(s_clients[i].fd, wire, sizeof(rec) + token_size);
         if (ok >= 0) { i++; continue; }
         drop_client_locked(i);
     }
     pthread_mutex_unlock(&s_lock);
+    return 0;
+}
+
+void xios_notify_dirty(void)
+{
+    (void)notify_dirty_internal(NULL, 0, 0);
+}
+
+int xios_notify_dirty_with_fence(const void *shared_event_token,
+                                 size_t token_size,
+                                 uint64_t event_value)
+{
+    return notify_dirty_internal(shared_event_token, token_size, event_value);
 }
 
 uint64_t xios_dirty_generation(void)

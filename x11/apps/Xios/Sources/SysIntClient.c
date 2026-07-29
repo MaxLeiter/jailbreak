@@ -1,6 +1,7 @@
 #include "SysIntClient.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -24,23 +25,45 @@ struct si_msg {
     uint32_t mods;
 };
 
-#define SYSINT_SOCK  "/var/jb/tmp/xios-sysint.sock"
-#define IOSC_IN_SOCK "/var/jb/tmp/iosc-input.sock"
-
 // Two independent links; each reconnects lazily, at most once per second, so a
 // missing daemon costs one connect() a second, not one per send.
 struct si_link {
-    const char *path;
+    char        path[sizeof(((struct sockaddr_un *)0)->sun_path)];
     int         fd;
     time_t      last_try;
 };
-static struct si_link s_sysint = { SYSINT_SOCK, -1, 0 };
-static struct si_link s_iosc   = { IOSC_IN_SOCK, -1, 0 };
+static struct si_link s_sysint = { "", -1, 0 };
+static struct si_link s_iosc   = { "", -1, 0 };
 
 // Last state per record type, replayed on reconnect (compositor/daemon restart
 // must converge to the iPad's actual orientation/volume/appearance).
 static struct si_msg s_last_output, s_last_volume, s_last_appearance;
 static int s_have_output, s_have_volume, s_have_appearance;
+static uint8_t s_iosc_rx[sizeof(struct si_msg)];
+static int s_iosc_rx_have;
+static uint8_t s_sysint_rx[sizeof(struct si_msg)];
+static int s_sysint_rx_have;
+
+static void link_set_path(struct si_link *l, const char *path, int *rx_have)
+{
+    const char *next = path ? path : "";
+    if (strncmp(l->path, next, sizeof(l->path)) == 0) return;
+    if (l->fd >= 0) close(l->fd);
+    l->fd = -1;
+    l->last_try = 0;
+    if (rx_have) *rx_have = 0;
+    snprintf(l->path, sizeof(l->path), "%s", next);
+}
+
+void sysint_set_iosc_socket(const char *path)
+{
+    link_set_path(&s_iosc, path, &s_iosc_rx_have);
+}
+
+void sysint_set_sysint_socket(const char *path)
+{
+    link_set_path(&s_sysint, path, &s_sysint_rx_have);
+}
 
 static int link_send_raw(struct si_link *l, const struct si_msg *m)
 {
@@ -71,6 +94,7 @@ static void link_replay(struct si_link *l)
 static int link_ensure(struct si_link *l)
 {
     if (l->fd >= 0) return 0;
+    if (!l->path[0]) return -1;
     time_t now = time(NULL);
     if (now == l->last_try) return -1;   // throttle: one attempt per second
     l->last_try = now;
@@ -128,11 +152,6 @@ void sysint_send_output(int transform, int logical_w, int logical_h)
 // Aux-link reader: iosc broadcasts fixed 24-byte records to every input client
 // (TRAITS for the keyboard bridge, HAPTIC for us). Only HAPTIC is surfaced;
 // everything else is discarded — IoscInput.c's own connection handles traits.
-static uint8_t s_iosc_rx[sizeof(struct si_msg)];
-static int s_iosc_rx_have;
-static uint8_t s_sysint_rx[sizeof(struct si_msg)];
-static int s_sysint_rx_have;
-
 static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
                          struct si_msg *out)
 {

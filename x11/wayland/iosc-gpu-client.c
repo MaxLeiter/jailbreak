@@ -19,6 +19,7 @@
 #include <wayland-client.h>
 #include "xdg-shell-client-protocol.h"
 #include "iosc-iosurface-client-protocol.h"
+#include "xios_metal_sync.h"
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -59,6 +60,7 @@
 #endif
 
 static const int W = 1280, H = 960;
+static EGLDisplay gpu_egl_display = EGL_NO_DISPLAY;
 
 /* ---- IOSurface (BGRA8 render target) ------------------------------------- */
 
@@ -195,7 +197,11 @@ static int gpu_render(IOSurfaceRef surface)
     glEnableVertexAttribArray(0);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    glFinish();   /* ensure the GPU is done before the compositor reads the surface */
+    /* Submission happens now; protocol v3 transfers an MTLSharedEvent acquire
+     * fence later. A v1/v2 compositor receives the compatibility glFinish in
+     * main after registry negotiation. */
+    glFlush();
+    gpu_egl_display = dpy;
     eglReleaseTexImage(dpy, pb, EGL_BACK_BUFFER);
     fprintf(stderr, "client: GPU render complete (GL error 0x%x)\n", glGetError());
     return 0;
@@ -233,7 +239,7 @@ static void reg_global(void *data, struct wl_registry *reg, uint32_t name,
         wm_base = wl_registry_bind(reg, name, &xdg_wm_base_interface, 1);
         xdg_wm_base_add_listener(wm_base, &wm_base_listener, NULL);
     } else if (!strcmp(iface, "iosc_iosurface")) {
-        uint32_t bind_version = version < 2 ? version : 2;
+        uint32_t bind_version = version < 4 ? version : 4;
         iosurface_factory = wl_registry_bind(reg, name, &iosc_iosurface_interface,
                                              bind_version);
         if (bind_version >= 2)
@@ -290,6 +296,8 @@ int main(void)
         uint32_t required = IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
                             IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
                             IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT;
+        if (wl_proxy_get_version((struct wl_proxy *)iosurface_factory) >= 4)
+            required |= IOSC_IOSURFACE_CAPABILITY_METAL_SHARED_EVENT_BROKER;
         if ((iosurface_capability_bits & required) != required) {
             fprintf(stderr, "client: iosc_iosurface missing required capabilities "
                     "(got=0x%x required=0x%x)\n",
@@ -300,6 +308,26 @@ int main(void)
 
     gpu_buffer = iosc_iosurface_create_buffer(iosurface_factory, (uint32_t)port, W, H,
                                               IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
+    if (wl_proxy_get_version((struct wl_proxy *)iosurface_factory) >= 4) {
+        const void *token = NULL;
+        size_t token_size = 0;
+        uint64_t value = 0;
+        if (!xios_metal_sync_signal(gpu_egl_display, &token, &token_size, &value)) {
+            fprintf(stderr, "client: shared-event fence unavailable\n");
+            return 1;
+        }
+        struct wl_array handle = {
+            .size = token_size,
+            .alloc = token_size,
+            .data = (void *)token,
+        };
+        iosc_iosurface_set_acquire_fence_token(
+            iosurface_factory, gpu_buffer, &handle,
+            (uint32_t)(value & 0xffffffffu),
+            (uint32_t)(value >> 32));
+    } else {
+        glFinish();
+    }
 
     surface = wl_compositor_create_surface(compositor);
     struct xdg_surface *xs = xdg_wm_base_get_xdg_surface(wm_base, surface);

@@ -1,5 +1,5 @@
 /*
- * NativeClient.c — client half of iosc-native.sock v2 (see NativeClient.h +
+ * NativeClient.c — client half of iosc-native.sock v3 (see NativeClient.h +
  * iosc_native_proto.h). Modeled on apps/Xios/Sources/XSurface.c's mach-port
  * rendezvous, generalized from one surface to per-window canvases.
  *
@@ -138,12 +138,32 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
      * app_id is the UTF-8 payload. */
     size_t idlen = app_id ? strlen(app_id) : 0;
     if (idlen > 200) idlen = 200;
-    if (send_hdr(fd, XIOS_MSG_BIND, 0,
+    if (send_hdr(fd, XIOS_MSG_BIND, IOSC_NATIVE_PROTOCOL_VERSION,
                  (int32_t)scene_w, (int32_t)scene_h, (int32_t)scale,
                  (int32_t)rx, (uint32_t)idlen) != 0 ||
         (idlen && write_full(fd, app_id, idlen) != 0)) {
         destroy_receive_port(rx);
         close(fd); return NULL;
+    }
+
+    /* v3 is deliberately not wire-compatible with the old unfenced native
+     * DIRTY stream. Require the server's version confirmation before returning
+     * a live client so neither side can silently run the wrong contract. */
+    struct pollfd hello_poll = { .fd = fd, .events = POLLIN };
+    xios_msg hello;
+    if (poll(&hello_poll, 1, 3000) <= 0 ||
+        read_full(fd, &hello, sizeof(hello)) != 0 ||
+        hello.magic != XIOS_MSG_MAGIC ||
+        hello.type != XIOS_MSG_HELLO ||
+        hello.window_id != 0 ||
+        hello.length != 0 ||
+        (uint32_t)hello.a != IOSC_NATIVE_PROTOCOL_VERSION) {
+        fprintf(stderr,
+                "iosc-native: protocol v%u HELLO missing/mismatched\n",
+                IOSC_NATIVE_PROTOCOL_VERSION);
+        destroy_receive_port(rx);
+        close(fd);
+        return NULL;
     }
 
     iosc_native_client *c = calloc(1, sizeof(*c));
@@ -213,7 +233,37 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
         }
         return 1;
     }
-    case XIOS_MSG_DIRTY:       ev->type = IOSC_NEV_DIRTY;       return 1;
+    case XIOS_MSG_NATIVE_FRAME: {
+        uint64_t value =
+            ((uint64_t)(uint32_t)h.b << 32) | (uint32_t)h.a;
+        if ((uint32_t)h.c != IOSC_NATIVE_PROTOCOL_VERSION) {
+            fprintf(stderr,
+                    "iosc-native: frame protocol mismatch record=%u host=%u\n",
+                    (uint32_t)h.c, IOSC_NATIVE_PROTOCOL_VERSION);
+            goto dead;
+        }
+        if ((uint32_t)h.d == IOSC_NATIVE_FENCE_BROKER_TOKEN) {
+            if (h.length != IOSC_NATIVE_FENCE_TOKEN_SIZE || value == 0)
+                goto dead;
+            ev->fence_kind = IOSC_NATIVE_FENCE_BROKER_TOKEN;
+            ev->fence_token_size = h.length;
+            ev->fence_value = value;
+            memcpy(ev->fence_token, payload, h.length);
+        } else if ((uint32_t)h.d == IOSC_NATIVE_FENCE_NONE) {
+            if (h.length != 0 || value != 0)
+                goto dead;
+            ev->fence_kind = IOSC_NATIVE_FENCE_NONE;
+        } else {
+            goto dead;
+        }
+        ev->type = IOSC_NEV_DIRTY;
+        return 1;
+    }
+    case XIOS_MSG_DIRTY:
+        fprintf(stderr,
+                "iosc-native: legacy unfenced DIRTY rejected by protocol v%u\n",
+                IOSC_NATIVE_PROTOCOL_VERSION);
+        goto dead;
     case XIOS_MSG_WINDOW_GONE: ev->type = IOSC_NEV_WINDOW_GONE; return 1;
     case XIOS_MSG_WINDOW_TITLE:
         ev->type = IOSC_NEV_TITLE;
@@ -226,9 +276,8 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
         ev->cursor_id = (uint32_t)h.c;
         return 1;
     case XIOS_MSG_HELLO:
-        /* Informational on the native socket; geometry rides on WINDOW_NEW. */
-        ev->type = IOSC_NEV_NONE;
-        return 0;
+        fprintf(stderr, "iosc-native: duplicate HELLO; disconnecting\n");
+        goto dead;
     default:
         fprintf(stderr, "iosc-native: unknown compositor record type=0x%x; disconnecting\n",
                 h.type);

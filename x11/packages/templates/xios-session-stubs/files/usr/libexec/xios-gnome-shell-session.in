@@ -1,0 +1,2 @@
+#!/bin/sh
+exec @INSTALL_PREFIX@/bin/gnome-shell --wayland --wayland-display "${WAYLAND_DISPLAY:-wayland-0}"

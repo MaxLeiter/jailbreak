@@ -123,6 +123,16 @@ for stub in login1 polkit accounts; do
   file "$o" | sed 's/^/   /'
 done
 
+# Package-owned session leader. Runtime launchers must not generate executable
+# Python helpers into the session directory.
+echo "==> build xios-setsid"
+o="$OUT/xios-setsid"
+$CC "${CFLAGS[@]}" "$SRC/xios-setsid.c" -o "$o"
+if [ -n "$LDID" ]; then
+  "$LDID" -S "$o"
+fi
+file "$o" | sed 's/^/   /'
+
 # --- xios-bluez-stub (ObjC): org.bluez bridge backed by BluetoothManager.framework ----------
 # Unlike the three C stubs this is Objective-C (Foundation/CoreFoundation) and reaches the
 # private BluetoothManager.framework at RUNTIME via dlopen()+ObjC-runtime, so it needs no

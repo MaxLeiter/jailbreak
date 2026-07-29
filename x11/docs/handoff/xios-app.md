@@ -21,6 +21,13 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 - Scroll/touch/tablet/clipboard app-side code has landed; clipboard is now compositor-wired too. Treat clipboard/scroll as app+iosc co-deploy work, not an app-only next wave.
 
 ## Current state
+- 2026-07-29 release-policy cleanup: Xios now requires explicit compositor-advertised
+  input/clipboard sockets instead of inferring global paths, keeps the camera broker disabled
+  unless a diagnostic Info.plist/environment opt-in is present, and imports iosc's output
+  `MTLSharedEvent` through the package-owned XPC broker before Metal samples an IOSurface.
+  A missing/invalid broker fence on an iosc frame tears down the surface instead of presenting
+  unsynchronized pixels. The Release-iphoneos build and host signature checks pass; the matched
+  app is installed, but normal FrontBoard foreground proof was blocked by screen state.
 - 2026-07-19 desktop-input closure (host-verified, device proof pending): the classic app and
   native host share `apps/shared/XiosHardwareKeyboard.swift` and a pure HID-to-X keysym map.
   `GCKeyboard` now supplies real press/release transitions outside the UIKit text-input lifecycle,

@@ -3,22 +3,10 @@ import AVFoundation
 import MediaPlayer
 
 // Native-feel bundle: rotation, hardware volume, light/dark match, haptics.
-// Self-contained by design — everything here observes iOS state and forwards it
-// over SysIntClient.c's own sockets, so the ONLY integration point is one line:
+// Everything here observes iOS state and forwards it over SysIntClient.c's
+// config-bound sockets, so the view-side integration point is one line:
 //
 //     SystemIntegration.shared.install(on: self)      // in XScreenView.start()
-//
-// The C entry points are declared via @_silgen_name instead of the bridging
-// header so this file lands without editing any shared file; fold them into
-// Xios-Bridging-Header.h whenever convenient.
-@_silgen_name("sysint_send_volume") private func c_send_volume(_ v16: UInt32)
-@_silgen_name("sysint_send_appearance") private func c_send_appearance(_ dark: Int32)
-@_silgen_name("sysint_send_output")
-private func c_send_output(_ transform: Int32, _ lw: Int32, _ lh: Int32)
-@_silgen_name("sysint_poll_haptic")
-private func c_poll_haptic(_ style: UnsafeMutablePointer<UInt32>?) -> Int32
-@_silgen_name("sysint_poll_volume_set")
-private func c_poll_volume_set(_ v16: UnsafeMutablePointer<UInt32>?) -> Int32
 
 final class SystemIntegration {
     static let shared = SystemIntegration()
@@ -74,7 +62,7 @@ final class SystemIntegration {
         volumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume, options: [.initial, .new]
         ) { session, _ in
-            c_send_volume(UInt32((session.outputVolume * 65535).rounded()))
+            sysint_send_volume(UInt32((session.outputVolume * 65535).rounded()))
         }
 
         // Rotation: UIKit rotates the scene, we mirror the new interface
@@ -126,7 +114,7 @@ final class SystemIntegration {
     private func syncOrientation(force: Bool = false) {
         guard let t = currentTransform(), force || t != lastTransform else { return }
         lastTransform = t
-        c_send_output(t, 0, 0)   // 0,0 = iosc derives the size by swapping
+        sysint_send_output(t, 0, 0)   // 0,0 = iosc derives the size by swapping
     }
 
     @objc private func becameActive() {
@@ -185,7 +173,7 @@ final class SystemIntegration {
         let dark: Int32 = style == .dark ? 1 : 0
         if dark != lastDark {
             lastDark = dark
-            c_send_appearance(dark)
+            sysint_send_appearance(dark)
         }
     }
 
@@ -202,8 +190,8 @@ final class SystemIntegration {
     }
 
     private func tick() {
-        drainNativeEvents(poll: c_poll_haptic) { fire(style: $0) }
-        drainNativeEvents(poll: c_poll_volume_set) { setDeviceVolume($0) }
+        drainNativeEvents(poll: sysint_poll_haptic) { fire(style: $0) }
+        drainNativeEvents(poll: sysint_poll_volume_set) { setDeviceVolume($0) }
         pumpTicks += 1
         if pumpTicks % 20 == 0 { syncOrientation() }   // 1 Hz safety net
     }

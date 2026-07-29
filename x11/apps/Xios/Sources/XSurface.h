@@ -1,6 +1,7 @@
 #ifndef XIOS_XSURFACE_H
 #define XIOS_XSURFACE_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <IOSurface/IOSurfaceRef.h>
 
@@ -36,6 +37,13 @@ int xsurface_drain(XSurfaceConn *c);
  * the Metal command buffer that presents that frame completes. */
 uint64_t xsurface_dirty_sequence(XSurfaceConn *c);
 int xsurface_presented(XSurfaceConn *c, uint64_t seq);
+
+/* Cross-process GPU fence attached to the most recently drained DIRTY record.
+ * Returns 1 and borrows the fixed 32-byte broker capability token when the
+ * producer submitted asynchronously, or 0 when it already used a CPU-side
+ * completion barrier. The pointer remains valid until xsurface_close(). */
+int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
+                             size_t *token_size, uint64_t *value);
 
 /* Latest pointer state from the typed CURSOR stream. iosc's present-side cursor
  * overlay (IOSC_APP_CURSOR) stops compositing the cursor into the framebuffer and

@@ -26,21 +26,22 @@ The bridge implements the **three mandatory `ViewImplementation` overrides** —
 `initialize_client()`, identical to the AppKit bridge. It is pure C++ so it is portable
 verbatim.
 
-### Present path (mirrors AppKit's two paths)
-Driven by `on_ready_to_paint`. The CPU Compositor helper rasters into a double-buffered
+### Present path
+Driven by `on_ready_to_paint`. The release Compositor links real ANGLE/EGL/GLES
+over Metal and paints into a double-buffered
 `Gfx::SharedImageBuffer` (BGRA8-premultiplied, device-pixel sized), front/back swapped on
 each `server_did_paint`.
 
-- **Preferred (zero-copy):** the front `Gfx::SharedImageBuffer` is **IOSurface-backed**; we
+- **Release path (zero-copy):** the front `Gfx::SharedImageBuffer` is **IOSurface-backed**; we
   carry its IOSurface as a Mach send right, wrap it as an `MTLTexture`
   (`newTextureWithDescriptor:iosurface:`), and blit it into a `CAMetalLayer` drawable.
   Identical to AppKit's `presentMetalFrame`, and identical to how every other app in this
-  repo presents (Xios). Needs the GPU/IOSurface IOKit entitlements.
-- **Fallback (CPU):** `CGImageCreate` over the bitmap's pixels → `CALayer.contents`
-  (`kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst`). Used when
-  `MTLCreateSystemDefaultDevice()` returns nil. Note the project-memory CGContext-dangle
-  gotcha does NOT bite here: we build a `CGImage` from an existing shared buffer (via a
-  `CGDataProvider`), we never hand CoreGraphics a Swift-owned pointer.
+  repo presents (Xios). Needs the GPU/IOSurface IOKit entitlements. Missing Metal,
+  IOSurface, or texture creation is fatal in release builds instead of silently
+  changing rendering architecture.
+- **Diagnostic CPU mode:** only `LB_APP_CPU_DIAGNOSTIC=1` compiles the
+  `CGImageCreate`/`CALayer.contents` path and generated ANGLE trap stubs. It is a
+  bring-up aid, not a package or release configuration.
 
 ### Input
 - **Touch:** `UITouch` → `Web::MouseEvent` (down/move/up); tap = primary click, one-finger
@@ -114,8 +115,8 @@ possible later but buys nothing for M0.
 
 The current production path is:
 1. `linux-build/build-ladybird-app-engine.sh` builds the patched engine/UI targets into
-   `linux-build/out/app-stage`. Set `LB_APP_GPU=1` to link the real ANGLE/EGL/GLES path;
-   leave it unset for the CPU-painting fallback.
+   `linux-build/out/app-stage`. The default and only release path links real ANGLE/EGL/GLES.
+   `LB_APP_CPU_DIAGNOSTIC=1` explicitly selects the non-release CPU/trap-stub build.
 2. `linux-build/build-ladybird-app-bundle.sh` assembles the self-contained `.app` deb inside
    the Linux container. This package is only preliminarily signed.
 3. `packages/ladybird-app/resign-ladybird-app-deb.sh <deb> <out-dir>` must run on macOS before
@@ -139,7 +140,7 @@ expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBI
 **User flow:** install one deb in Sileo → Ladybird icon on the home screen → tap → browse.
 
 ## Still deferred
-- Public-release polish for the GPU path. `LB_APP_GPU=1` now links real ANGLE EGL/GLES, removes
+- Public-release polish for the GPU path. The default build links real ANGLE EGL/GLES, removes
   the CPU `--force-cpu-painting` flag, and has on-device WebGL smoke evidence under
   `artifacts/device-runs/ladybird-webgl-screenshot-20260706-125805/`. The remaining work is
   broader page coverage, not first-light GPU enablement.

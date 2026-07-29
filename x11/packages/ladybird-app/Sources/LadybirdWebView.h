@@ -3,9 +3,10 @@
  * UI/AppKit/Interface/LadybirdWebView (an NSView). Objective-C++ (.mm) so it can
  * #include the LibWebView C++ headers and #import UIKit in one translation unit.
  *
- * Owns a LadybirdIOS::WebViewBridge (the ViewImplementation). Presents WebContent's
- * painted bitmap via CAMetalLayer + IOSurface (zero-copy, preferred) or a CGImage on
- * a plain CALayer (CPU fallback). Forwards UITouch/UIKey/gestures into the bridge.
+ * Owns a LadybirdIOS::WebViewBridge (the ViewImplementation). Release builds present
+ * WebContent's IOSurface through CAMetalLayer/Metal and fail closed if that path is
+ * unavailable. The CGImage layer exists only in explicit diagnostic CPU builds.
+ * Forwards UITouch/UIKey/gestures into the bridge.
  */
 #import <UIKit/UIKit.h>
 

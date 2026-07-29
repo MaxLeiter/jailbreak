@@ -58,19 +58,21 @@ fi
 rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
       "$XIOS_INPUT_SOCKET" "$TMP/xios-input.sock" "$MUTTER_LOG" 2>/dev/null
 
-echo "==> ANGLE Linux so-name symlinks (cogl's GLES driver dlopens libGLESv2.so.2 / libEGL.so.1)"
-ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so.2" 2>/dev/null
-ln -sf libGLESv2.dylib "$ANGLE/libGLESv2.so"   2>/dev/null
-ln -sf libEGL.dylib    "$ANGLE/libEGL.so.1"    2>/dev/null
-ln -sf libEGL.dylib    "$ANGLE/libEGL.so"      2>/dev/null
-
-echo "==> mutter plugin so-name symlink (the loader appends .so to the plugin name)"
-for f in "$PLUGINS"/*.dylib; do [ -e "$f" ] && ln -sf "$(basename "$f")" "${f%.dylib}.so" 2>/dev/null; done
-
-echo "==> ensure the GSettings schemas are compiled (postinst normally does this)"
-if [ ! -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
-  glib-compile-schemas "$XS_PREFIX/share/glib-2.0/schemas" 2>/dev/null || true
-fi
+echo "==> validate package-owned ANGLE aliases, Mutter plugins, and schemas"
+for f in libGLESv2.so.2 libGLESv2.so libEGL.so.1 libEGL.so; do
+  [ -e "$ANGLE/$f" ] || { echo "!! missing $ANGLE/$f — reinstall the angle package"; exit 1; }
+done
+for f in "$PLUGINS"/*.dylib; do
+  [ -e "$f" ] || continue
+  [ -e "${f%.dylib}.so" ] || {
+    echo "!! missing packaged Mutter plugin alias ${f%.dylib}.so — reinstall libmutter"
+    exit 1
+  }
+done
+[ -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ] || {
+  echo "!! compiled GSettings schema cache missing — reinstall the owning package"
+  exit 1
+}
 
 # Start audio before the compositor so clients under mutter find a live PA
 # socket; the export is inherited by dbus-run-session below. Idempotent.

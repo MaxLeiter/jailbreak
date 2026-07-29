@@ -2,9 +2,9 @@
  * LadybirdWebView.mm — see LadybirdWebView.h. Ported method-for-method from
  * UI/AppKit/Interface/LadybirdWebView.mm.
  *
- * Present:  on_ready_to_paint -> presentMetalFrame (IOSurface->MTLTexture blit) when a
- *           Metal device and IOSurface-backed front buffer exist; otherwise a CPU layer
- *           displays the same bitmap through CGImage.
+ * Present:  on_ready_to_paint -> presentMetalFrame (IOSurface->MTLTexture blit).
+ *           Release builds require Metal/IOSurface. A CGImage layer is compiled only
+ *           for the explicit LADYBIRD_IOS_CPU_DIAGNOSTIC build.
  * Input:    UITouch -> Web::MouseEvent (tap=click, pan=MouseMove/drag), UIPanGesture ->
  *           MouseWheel scroll, UILongPress -> Secondary click/context menu, UIPinch ->
  *           Web::PinchEvent, UIKey (hardware) + UIKeyInput (software) -> Web::KeyEvent.
@@ -24,6 +24,7 @@
 // umbrella <IOSurface/IOSurface.h>. Include the concrete header directly.
 #import <IOSurface/IOSurfaceRef.h>
 
+#include <stdlib.h>
 #include <LibGfx/Bitmap.h>
 #include <LibGfx/SharedImageBuffer.h>
 #include <LibURL/URL.h>
@@ -35,11 +36,12 @@
 #include <LibWebView/SearchEngine.h>
 #include <LibWebView/URL.h>
 
-// Custom CALayer subclass for the CPU path: its -display forwards to the view so we
-// can push a CGImage. (AppKit uses LadybirdWebViewContentLayer the same way.)
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
+// Diagnostic-only CPU layer. Release builds do not compile this fallback.
 @interface LadybirdContentLayer : CALayer
 @property (nonatomic, weak) LadybirdWebView* owner;
 @end
+#endif
 
 @interface LadybirdWebView ()
 - (void)syncKeyboardWithFocusedInputSoon;
@@ -102,13 +104,15 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 @implementation LadybirdWebView {
     OwnPtr<LadybirdIOS::WebViewBridge> _bridge;
 
-    // Metal present path (preferred, zero-copy)
+    // Required release present path (zero-copy IOSurface -> Metal).
     id<MTLDevice> _metalDevice;
     id<MTLCommandQueue> _metalQueue;
     CAMetalLayer* _metalLayer;
 
-    // CPU present path (fallback)
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
+    // Explicit diagnostic build only.
     LadybirdContentLayer* _cpuLayer;
+#endif
 
     BOOL _usingMetal;
     NSUInteger _keyboardSyncGeneration;
@@ -161,6 +165,10 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     if (_metalDevice) {
         _usingMetal = YES;
         _metalQueue = [_metalDevice newCommandQueue];
+        if (!_metalQueue) {
+            lb_trace("FATAL: Metal command queue creation failed");
+            abort();
+        }
         _metalLayer = [CAMetalLayer layer];
         _metalLayer.device = _metalDevice;
         _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
@@ -169,16 +177,22 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
         _metalLayer.contentsGravity = kCAGravityTopLeft;
         [self.layer addSublayer:_metalLayer];
     } else {
-        // Fakesigned app without the GPU entitlement, or Metal unavailable: CPU-only path.
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
         _usingMetal = NO;
+#else
+        lb_trace("FATAL: Metal device unavailable; refusing CPU presentation fallback");
+        abort();
+#endif
     }
 
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
     _cpuLayer = [LadybirdContentLayer layer];
     _cpuLayer.owner = self;
     _cpuLayer.contentsGravity = kCAGravityTopLeft;
     _cpuLayer.contentsScale = scale;
     _cpuLayer.hidden = _usingMetal;
     [self.layer addSublayer:_cpuLayer];
+#endif
 }
 
 #pragma mark - Bridge callbacks
@@ -193,10 +207,14 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
             lb_trace("on_ready_to_paint fired (#%d)", s_paint_count);
         LadybirdWebView* strongSelf = weakSelf;
         if (!strongSelf) return;
-        if (strongSelf->_usingMetal)
+        if (strongSelf->_usingMetal) {
             [strongSelf presentMetalFrame];
-        else
+        }
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
+        else {
             [strongSelf->_cpuLayer setNeedsDisplay];
+        }
+#endif
     };
 
     _bridge->on_title_change = [weakSelf](Utf16String const& title) {
@@ -230,13 +248,9 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 
     // The shared bitmap is IOSurface-backed; wrap it as an MTLTexture and blit into the drawable.
     IOSurfaceRef surface = (IOSurfaceRef)_bridge->front_iosurface();
-    if (!surface) { // no IOSurface handle -> fall back to CPU CGImage this frame
-        static int s_cpu_fallback_count = 0;
-        if (s_cpu_fallback_count++ < 3)
-            lb_trace("present: no IOSurface; CPU layer fallback");
-        _cpuLayer.hidden = NO;
-        [_cpuLayer setNeedsDisplay];
-        return;
+    if (!surface) {
+        lb_trace("FATAL: painted frame has no IOSurface; refusing CPU presentation fallback");
+        abort();
     }
 
     CGSize dpx = CGSizeMake(paintable.size.width(), paintable.size.height());
@@ -250,25 +264,20 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     desc.usage = MTLTextureUsageShaderRead;
     id<MTLTexture> src = [_metalDevice newTextureWithDescriptor:desc iosurface:surface plane:0];
     if (!src) {
-        lb_trace("present: newTextureWithDescriptor:iosurface failed; CPU layer fallback");
-        _cpuLayer.hidden = NO;
-        [_cpuLayer setNeedsDisplay];
-        return;
+        lb_trace("FATAL: IOSurface-to-Metal texture creation failed");
+        abort();
     }
 
     id<CAMetalDrawable> drawable = [_metalLayer nextDrawable];
     if (!drawable) {
-        lb_trace("present: nextDrawable failed; CPU layer fallback");
-        _cpuLayer.hidden = NO;
-        [_cpuLayer setNeedsDisplay];
+        // This can be transient while the app is backgrounded or the layer is resizing.
+        lb_trace("present: nextDrawable unavailable; dropping frame");
         return;
     }
 
     static int s_metal_present_count = 0;
     if (s_metal_present_count++ < 3)
         lb_trace("present: IOSurface Metal blit %.0fx%.0f", dpx.width, dpx.height);
-    _cpuLayer.hidden = YES;
-
     id<MTLCommandBuffer> cb = [_metalQueue commandBuffer];
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
     MTLSize copySize = MTLSizeMake(MIN(src.width, drawable.texture.width),
@@ -281,7 +290,8 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     [cb commit];
 }
 
-#pragma mark - CPU present (CGImage -> layer.contents)
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
+#pragma mark - Diagnostic CPU present (CGImage -> layer.contents)
 
 - (void)displayContentLayer:(CALayer*)layer
 {
@@ -302,6 +312,7 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     CGDataProviderRelease(provider);
     CGColorSpaceRelease(cs);
 }
+#endif
 
 #pragma mark - Layout / DPI
 
@@ -309,7 +320,9 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 {
     [super layoutSubviews];
     _metalLayer.frame = self.bounds;
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
     _cpuLayer.frame = self.bounds;
+#endif
     _bridge->set_viewport_rect(Gfx::IntRect { 0, 0, (int)self.bounds.size.width, (int)self.bounds.size.height });
 }
 
@@ -320,7 +333,9 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
     if (scale > 0) {
         _bridge->set_device_pixel_ratio((float)scale);
         _metalLayer.contentsScale = scale;
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
         _cpuLayer.contentsScale = scale;
+#endif
     }
     // Keep the page's visibility state in sync with on-screen occlusion (mirrors AppKit's
     // handleVisibility:). Hidden pages are skipped by EventLoop::update_the_rendering, so a view
@@ -536,6 +551,8 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 
 @end
 
+#if defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
 @implementation LadybirdContentLayer
 - (void)display { [self.owner displayContentLayer:self]; }
 @end
+#endif

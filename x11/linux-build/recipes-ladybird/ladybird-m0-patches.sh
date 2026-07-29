@@ -65,7 +65,8 @@ patch_semantically_applied() {
         grep -q 'duplicate create_context is a no-op' Services/Compositor/CompositorState.cpp
       ;;
     ios-app-cpu-fallback.patch)
-      grep -q 'LADYBIRD_IOS_APP_GPU' Libraries/LibWebView/Application.cpp &&
+      (grep -q 'LADYBIRD_IOS_CPU_DIAGNOSTIC' Libraries/LibWebView/Application.cpp ||
+        grep -q 'LADYBIRD_IOS_APP_GPU' Libraries/LibWebView/Application.cpp) &&
         [ -f Services/Compositor/AngleStubIOS.cpp ]
       ;;
     iosurface-mach-ipc.patch)
@@ -79,7 +80,8 @@ patch_semantically_applied() {
       grep -q 'friend class PageClient' Services/WebContent/ConnectionFromClient.h
       ;;
     ios-app-real-angle-pkgconfig.patch)
-      grep -q 'The iOS app GPU probe uses the Procursus-staged ANGLE' Meta/CMake/check_for_dependencies.cmake
+      grep -Eq 'The iOS app (GPU probe|release build) uses (the )?Procursus-staged ANGLE' \
+        Meta/CMake/check_for_dependencies.cmake
       ;;
     ios-app-angle-compat.patch)
       [ -f Services/Compositor/AngleCompatIOS.cpp ] &&
@@ -199,16 +201,15 @@ apply_quilt_series "$SCRIPT_DIR/patches-m0"
 # APP-BUILD MODE (LB_APP_BUILD=1 only). The interactive UIKit .app uses the NORMAL compositor
 #     paint cycle, NOT the headless render_screenshot path. At 92b0257 the frontend's
 #     m_client_state.front_bitmap is filled ONLY by CompositorClient (IPC callbacks from a live
-#     Compositor process): WebContent records a display list -> Compositor CPU-rasters into a
+#     Compositor process): WebContent records a display list -> Compositor paints into an
 #     ShareableBitmap backing store -> ships it to the UI -> server_did_paint -> on_ready_to_paint.
 #     With no Compositor process the window is blank. So for the app we re-enable the Compositor as
-#     a 5th CPU helper (upstream-shaped; the iOS non-MACOS shared-image transport is ShareableBitmap/
-#     AnonymousBuffer over SCM_RIGHTS fds, already portable; NO IOSurface/GPU). This applies the
+#     a 5th helper and carry its IOSurface-backed image over Mach IPC. This applies the
 #     app-only patch stack to reverse headless Compositor gates for iOS and wire UI/iOS in.
 #     Guarded by LB_APP_BUILD so the headless deb build only applies patches-m0.
 # =============================================================================================
 if [ "${LB_APP_BUILD:-0}" = "1" ]; then
-  say "APP-BUILD MODE: re-enabling CPU Compositor + wiring UI/iOS"
+  say "APP-BUILD MODE: re-enabling Compositor + wiring UI/iOS"
 
   # Cached trees from early WebGL bring-up can contain an older partial version of the
   # iOS WebGL patch. Reset only the files owned by that patch so the final quilt patch

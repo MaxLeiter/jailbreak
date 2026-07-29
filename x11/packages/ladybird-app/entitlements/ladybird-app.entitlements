@@ -13,10 +13,10 @@
     <key>get-task-allow</key>
     <true/>
 
-    <!-- Zero-copy present: CAMetalLayer + IOSurface-backed MTLTexture. Fakesigned apps
-         do not get GPU sandbox access by default, so grant the GPU/IOSurface user clients
-         explicitly (same set as Xios.app). If Metal is unavailable the CPU CGImage path is
-         used and these are inert. -->
+    <!-- Required zero-copy present: CAMetalLayer + IOSurface-backed MTLTexture. Fakesigned
+         apps do not get GPU sandbox access by default, so grant the GPU/IOSurface user
+         clients explicitly (same set as Xios.app). Release builds fail closed if Metal
+         is unavailable. -->
     <key>com.apple.security.iokit-user-client-class</key>
     <array>
         <string>AGXDeviceUserClient</string>

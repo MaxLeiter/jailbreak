@@ -3,9 +3,12 @@
 #include "iosc-iosurface-server-protocol.h"
 #include "iosc_gl.h"
 #include "xios_surface.h"
+#include "xios_metal_sync.h"
+#include "../apps/shared/XiosMetalEventBroker.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <wayland-server-protocol.h>
 
@@ -15,7 +18,8 @@ enum {
     IOSC_IOSURFACE_SUPPORTED_CAPABILITIES =
         IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
         IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
-        IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT,
+        IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT |
+        IOSC_IOSURFACE_CAPABILITY_METAL_SHARED_EVENT_BROKER,
 };
 
 /* A wl_buffer backed by a client IOSurface imported over the iosc_iosurface
@@ -25,6 +29,10 @@ struct iosc_iosurface_buffer {
     void *surface;   /* imported IOSurfaceRef (from xios_import_client_iosurface) */
     int   w, h;
     int   flip_v;    /* 1 = GL-origin client IOSurface; 0 = already top-left */
+    void *acquire_event;       /* retained id<MTLSharedEvent>, opaque to C */
+    uint64_t acquire_value;    /* next producer value the compositor must wait for */
+    unsigned char acquire_token[XIOS_METAL_EVENT_TOKEN_SIZE];
+    size_t acquire_token_size;
 };
 
 static void iosurface_buffer_destroy(struct wl_client *c, struct wl_resource *r)
@@ -52,6 +60,8 @@ static void iosurface_buffer_resource_destroy(struct wl_resource *r)
         iosc_gl_forget_iosurface(ib->surface);   /* drop the cached GL texture/pbuffer */
         xios_release_client_iosurface(ib->surface);
     }
+    if (ib->acquire_event)
+        xios_metal_sync_release_event(ib->acquire_event);
     free(ib);
 }
 
@@ -88,9 +98,19 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
     if (!ib)
         return 0;
     maybe_probe_client_buffer(ib);
-    if (ib->surface)
+    if (ib->surface) {
+        if (ib->acquire_value != 0) {
+            if (!ib->acquire_event ||
+                !iosc_gl_wait_shared_event(ib->acquire_event, ib->acquire_value)) {
+                fprintf(stderr,
+                        "iosc: refusing to sample IOSurface without a valid GPU acquire wait\n");
+                return 1;
+            }
+            ib->acquire_value = 0;
+        }
         iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
                                dx, dy, dw, dh, ib->flip_v);
+    }
     return 1;
 }
 
@@ -162,9 +182,58 @@ static void iosurface_factory_destroy(struct wl_client *c, struct wl_resource *r
     wl_resource_destroy(r);
 }
 
+static void iosurface_factory_set_acquire_fence(struct wl_client *client,
+        struct wl_resource *res, struct wl_resource *buffer,
+        struct wl_array *shared_event_handle,
+        uint32_t value_lo, uint32_t value_hi)
+{
+    (void)client;
+    (void)buffer;
+    (void)shared_event_handle;
+    (void)value_lo;
+    (void)value_hi;
+    wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_INVALID_FENCE,
+                           "legacy MTLSharedEvent archives are unsupported; "
+                           "use iosc_iosurface v4 broker tokens");
+}
+
+static void iosurface_factory_set_acquire_fence_token(
+        struct wl_client *client, struct wl_resource *res,
+        struct wl_resource *buffer, struct wl_array *token,
+        uint32_t value_lo, uint32_t value_hi)
+{
+    (void)client;
+    struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buffer);
+    uint64_t value = ((uint64_t)value_hi << 32) | value_lo;
+    if (!ib || !token || token->size != XIOS_METAL_EVENT_TOKEN_SIZE ||
+        value == 0) {
+        wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_INVALID_FENCE,
+                               "invalid IOSurface acquire-fence token");
+        return;
+    }
+
+    if (ib->acquire_token_size != token->size ||
+        memcmp(ib->acquire_token, token->data, token->size) != 0) {
+        void *event = xios_metal_sync_import_event(token->data, token->size);
+        if (!event) {
+            wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_INVALID_FENCE,
+                                   "brokered MTLSharedEvent import failed");
+            return;
+        }
+        if (ib->acquire_event)
+            xios_metal_sync_release_event(ib->acquire_event);
+        ib->acquire_event = event;
+        memcpy(ib->acquire_token, token->data, token->size);
+        ib->acquire_token_size = token->size;
+    }
+    ib->acquire_value = value;
+}
+
 static const struct iosc_iosurface_interface iosurface_factory_impl = {
     .destroy = iosurface_factory_destroy,
     .create_buffer = iosurface_factory_create_buffer,
+    .set_acquire_fence = iosurface_factory_set_acquire_fence,
+    .set_acquire_fence_token = iosurface_factory_set_acquire_fence_token,
 };
 
 void iosc_iosurface_bind(struct wl_client *client, void *data,

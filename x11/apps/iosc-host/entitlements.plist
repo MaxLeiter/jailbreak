@@ -13,6 +13,10 @@
     <true/>
     <key>get-task-allow</key>
     <true/>
+    <key>com.apple.security.exception.mach-lookup.global-name</key>
+    <array>
+        <string>com.max.xios.metal-event-broker</string>
+    </array>
     <key>com.apple.security.iokit-user-client-class</key>
     <array>
         <string>AGXDeviceUserClient</string>

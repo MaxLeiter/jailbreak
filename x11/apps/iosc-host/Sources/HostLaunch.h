@@ -8,8 +8,8 @@
  * host then presents its windows via iosc-native.sock.
  *
  * Sends "LAUNCH_NATIVE\t<app_id>\t<exec>\n" to /var/jb/tmp/ioscd.sock. Returns
- * 0 on a delivered request, -1 if ioscd is unreachable (not installed / not
- * running).
+ * 0 only when ioscd acknowledges LAUNCHED or RAISED. Returns -1 for transport
+ * failures and daemon ERR replies.
  */
 int ioscd_send_launch(const char *app_id, const char *exec);
 

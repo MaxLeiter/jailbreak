@@ -27,6 +27,11 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var placeholderTexture: MTLTexture!
     private var metalReady = false
     private var needsPresent = false
+    private var canvasFrameReady = false
+    private var presentFenceToken: Data?
+    private var presentFenceEvent: MTLSharedEvent?
+    private var presentFenceValue: UInt64 = 0
+    private var fenceFailureLogged = false
     private var displayLink: CADisplayLink?
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
     override class var layerClass: AnyClass { CAMetalLayer.self }
@@ -121,10 +126,64 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         td.usage = .shaderRead
         td.storageMode = .shared
         canvasTexture = device.makeTexture(descriptor: td, iosurface: surface, plane: 0)
+        // The port hand-off only identifies the storage. Do not sample it until
+        // the matching v3 NATIVE_FRAME arrives with a producer completion fence.
+        canvasFrameReady = false
+        presentFenceValue = 0
+        needsPresent = false
+    }
+
+    /// Repaint only the placeholder. A disconnected compositor leaves the last
+    /// completed drawable frozen; re-sampling its single-buffer canvas without a
+    /// fresh producer fence would race a restart.
+    func markDirty() {
+        if canvasTexture == nil { needsPresent = true }
+    }
+
+    /// Adopt one protocol-v3 producer completion. A nil token is valid only for
+    /// the server's explicit diagnostic CPU-barrier record.
+    func markDirty(fenceToken token: Data?, value: UInt64) {
+        guard metalReady, canvasTexture != nil else { return }
+        if let token {
+            guard token.count == Int(IOSC_NATIVE_FENCE_TOKEN_SIZE), value > 0 else {
+                logFenceFailure("invalid broker token/value")
+                return
+            }
+            if token != presentFenceToken {
+                let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
+                    guard let base = raw.baseAddress else { return nil }
+                    return xios_metal_event_broker_copy_event(device, base, raw.count)
+                }
+                guard let event else {
+                    logFenceFailure("broker token import failed")
+                    return
+                }
+                presentFenceToken = token
+                presentFenceEvent = event
+            }
+            guard presentFenceEvent != nil else {
+                logFenceFailure("broker event unavailable")
+                return
+            }
+            presentFenceValue = value
+        } else {
+            guard value == 0 else {
+                logFenceFailure("unfenced frame carried a non-zero value")
+                return
+            }
+            presentFenceValue = 0
+        }
+        fenceFailureLogged = false
+        canvasFrameReady = true
         needsPresent = true
     }
 
-    func markDirty() { needsPresent = true }
+    private func logFenceFailure(_ reason: String) {
+        guard !fenceFailureLogged else { return }
+        fenceFailureLogged = true
+        NSLog("IOSCHost: refusing unfenced native frame window=%u: %@",
+              window_id, reason)
+    }
 
     // MARK: Metal
 
@@ -174,8 +233,17 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     @objc private func tick() {
         serviceTraits()
-        guard needsPresent else { return }
-        if render() { needsPresent = false }
+        guard needsPresent, canvasTexture == nil || canvasFrameReady else { return }
+        if render() {
+            needsPresent = false
+            if canvasTexture != nil {
+                // One producer completion authorizes one sampling submission.
+                // Layout waits for the next compositor frame instead of reusing
+                // an old value while the single-buffer canvas may be rewritten.
+                canvasFrameReady = false
+                presentFenceValue = 0
+            }
+        }
     }
 
     private func installGestures() {
@@ -356,8 +424,19 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     @discardableResult
     private func render() -> Bool {
-        guard metalReady, let drawable = metalLayer.nextDrawable(),
+        guard metalReady else { return false }
+        if canvasTexture != nil {
+            guard canvasFrameReady else { return false }
+        }
+        guard let drawable = metalLayer.nextDrawable(),
               let cmd = queue.makeCommandBuffer() else { return false }
+        if canvasTexture != nil, presentFenceValue > 0 {
+            guard let event = presentFenceEvent else {
+                logFenceFailure("missing imported broker event")
+                return false
+            }
+            cmd.encodeWaitForEvent(event, value: presentFenceValue)
+        }
         let tex = canvasTexture ?? placeholderTexture!
         let tw = canvasTexture != nil ? canvasW : 2
         let th = canvasTexture != nil ? canvasH : 2
@@ -751,6 +830,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         oskHideTimer?.invalidate(); oskHideTimer = nil
         if input != nil { iosc_input_close(input); input = nil }
         canvasTexture = nil
+        canvasFrameReady = false
+        presentFenceToken = nil
+        presentFenceEvent = nil
+        presentFenceValue = 0
         accessibilityElements = nil
     }
 

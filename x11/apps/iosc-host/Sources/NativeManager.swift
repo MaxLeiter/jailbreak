@@ -66,12 +66,21 @@ final class NativeManager: NSObject {
         appName = (info["IOSCName"]  as? String) ?? (info["CFBundleDisplayName"] as? String) ?? "app"
 
         // Ask ioscd to spawn the Linux client (root, outside our sandbox).
-        DispatchQueue.global(qos: .userInitiated).async { [exec, appID] in
-            _ = exec.withCString { e in appID.withCString { a in ioscd_send_launch(a, e) } }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, exec, appID] in
+            let result = exec.withCString { e in
+                appID.withCString { a in ioscd_send_launch(a, e) }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard result == 0 else {
+                    NSLog("IOSCHost: ioscd rejected or failed LAUNCH_NATIVE for %@", appID)
+                    return
+                }
+                self.startReader()
+                // VoiceOver bridge (inert until xios-a11yd ships; gated on VoiceOver).
+                HostA11yClient.shared.startup(appID: appID, exec: exec)
+            }
         }
-        startReader()
-        // VoiceOver bridge (inert until xios-a11yd ships; gated on VoiceOver).
-        HostA11yClient.shared.startup(appID: appID, exec: exec)
     }
 
     /// Connect (retrying) and pump events on a background thread.
@@ -136,7 +145,15 @@ final class NativeManager: NSObject {
             }
             views[e.window]?.adoptCanvas(surf, width: Int(e.width), height: Int(e.height))
         case IOSC_NEV_DIRTY:
-            views[e.window]?.markDirty()
+            let token: Data?
+            if e.fence_token_size > 0 {
+                token = withUnsafeBytes(of: e.fence_token) { raw in
+                    Data(raw.prefix(Int(e.fence_token_size)))
+                }
+            } else {
+                token = nil
+            }
+            views[e.window]?.markDirty(fenceToken: token, value: e.fence_value)
         case IOSC_NEV_TITLE:
             let title = withUnsafeBytes(of: e.title) { raw -> String in
                 String(cString: raw.bindMemory(to: CChar.self).baseAddress!)

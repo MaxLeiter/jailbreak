@@ -15,10 +15,11 @@ Scope note: this protocol is now implemented by `wayland/xios_canvas.c`,
 `wayland/iosc.c`, and `apps/iosc-host/Sources/NativeClient.c`; remaining work is
 device validation and polish. FRAMING IS AGREED (2026-07-01, iosc-protocols):
 the shared 32-byte `xios_msg` record ('XMS1'), core codes 0x01-0x0f owned by
-iosc-protocols (HELLO/DIRTY/CURSOR), range 0x40-0x5f reserved for native. This
-spec and the reference client are written against that header; native reuses
-core DIRTY and CURSOR with `window_id` set instead of defining per-window
-duplicates (see §10).
+iosc-protocols (HELLO/DIRTY/CURSOR), range 0x40-0x5f reserved for native.
+Protocol v3 uses native `XIOS_MSG_NATIVE_FRAME` rather than core DIRTY because
+each production frame must carry a broker fence token/value. Legacy unfenced
+DIRTY is rejected. This spec and the reference client are written against the
+shared header.
 
 ---
 
@@ -44,7 +45,7 @@ run it per-window:
 |---|---|
 | `xios_surface_create()` makes one output IOSurface | allocate one canvas IOSurface per toplevel |
 | `deliver_surface_port()` hands the output port to the Xios app | hand each canvas port to the owning host (§5) |
-| `xios_notify_dirty()` streams a DIRTY byte | send core `XIOS_MSG_DIRTY` with `window_id` (§6) |
+| `xios_notify_dirty()` streams a DIRTY record | send v3 `XIOS_MSG_NATIVE_FRAME` with `window_id` and a broker fence (§6) |
 | `iosc_gl_init(output, w, h)` + `recomposite_all()` paint the whole stack into the output | paint ONE toplevel (+ its popups/subsurfaces) into ITS canvas (§4) |
 | input hit-tests a shared coordinate space | a bound connection is pre-scoped to one window (§7) |
 
@@ -119,7 +120,10 @@ The composited content per canvas = the toplevel's own buffer (GPU IOSurface via
 this toplevel, drawn at their offsets. No cross-window stacking: each canvas holds
 exactly one toplevel's tree. Occlusion / z-order between apps is iPadOS's job.
 
-After painting a canvas, send `XIOS_MSG_DIRTY` for that window (§6). Orientation:
+After painting a canvas, publish the producer `MTLSharedEvent` through the
+package-owned broker and send `XIOS_MSG_NATIVE_FRAME` for that window (§6).
+Production must not publish an unfenced frame; the CPU barrier is an explicit
+diagnostic-only mode. Orientation:
 reuse the M7 conventions (`flip_v=1` for ANGLE-rendered client IOSurfaces,
 `flip_v=0` for wl_shm) exactly as the output path does; the host samples the
 canvas the same way the Xios app samples the output, so the same placement/content
@@ -154,7 +158,9 @@ Ordering contract the client relies on: write the `XIOS_MSG_WINDOW_NEW` /
 Current code queues the delivery from the compositor thread and performs the
 potentially blocking `task_for_pid`/timed `mach_msg` work on the native
 reader/delivery path. One canvas per NEW/GEOM record; keep them one-to-one so
-arrival order correlates.
+arrival order correlates. A monotonically changing canvas generation binds the
+latest frame fence to the storage it authorizes; after a reconnect, the latest
+valid fence is replayed only after the matching canvas port has been delivered.
 
 ---
 

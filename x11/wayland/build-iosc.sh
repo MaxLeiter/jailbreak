@@ -248,7 +248,7 @@ done
 SDK="$(dirname "$(command -v "$CC")")/../SDK/iPhoneOS.sdk"
 echo "   CC=$CC  SDK=$SDK"
 
-CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
+CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter -fblocks"
 INCS="-I$PREFIX/include -I$GEN -I$X11/linux-build/patches/xios"
 RPATH="-Wl,-rpath,/var/jb/usr/lib"
 XWM_CFLAGS=()
@@ -277,6 +277,8 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "${XWM_SRCS[@]}" \
     "$X11/wayland/iosc_gl.c" \
     "$X11/wayland/xios_egl.c" \
+    "$X11/wayland/xios_metal_sync.m" \
+    "$X11/apps/shared/XiosMetalEventBroker.m" \
     "$X11/wayland/xios_canvas.c" \
     "$X11/wayland/iosc_input.c" \
     "$X11/wayland/xios_input_socket.c" \
@@ -312,9 +314,17 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/linux-build/patches/xios/xios_surface.c" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon "${XWM_LIBS[@]}" \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
-    -framework IOSurface -framework CoreFoundation \
+    -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
     $RPATH -Wl,-rpath,/var/jb/lib/angle -o /out/iosc
 echo "   built /out/iosc"
+
+# Package-owned Mach-service broker. MTLSharedEventHandle is transported by
+# NSXPC exactly once; high-frequency frame values remain on the existing wires.
+$CC $CFLAGS \
+    "$X11/wayland/xios-metal-event-broker.m" \
+    -framework Foundation -framework Metal \
+    -o /out/xios-metal-event-broker
+echo "   built /out/xios-metal-event-broker"
 
 # Input injector: a tiny client that writes the iosc input-socket protocol (no
 # Wayland) so keyboard/pointer dispatch can be tested without the Xios app.
@@ -427,11 +437,13 @@ echo "   built /out/iosc-screenshot-test"
 # GPU test client: renders GLES->IOSurface via ANGLE, hands it over iosc_iosurface.
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc-gpu-client.c" \
+    "$X11/wayland/xios_metal_sync.m" \
+    "$X11/apps/shared/XiosMetalEventBroker.m" \
     "$GEN/xdg-shell-protocol.c" \
     "$GEN/iosc-iosurface-protocol.c" \
     -L"$PREFIX/lib" -lwayland-client \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
-    -framework IOSurface -framework CoreFoundation \
+    -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
     -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/iosc-gpu-client
 echo "   built /out/iosc-gpu-client"
 
@@ -441,10 +453,12 @@ echo "   built /out/iosc-gpu-client"
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -dynamiclib -install_name /var/jb/usr/local/lib/libiosc_egl.dylib \
     "$X11/wayland/iosc_egl_shim.c" \
+    "$X11/wayland/xios_metal_sync.m" \
+    "$X11/apps/shared/XiosMetalEventBroker.m" \
     "$GEN/iosc-iosurface-protocol.c" \
     -L"$PREFIX/lib" -lwayland-client \
     -L"$ANGLE_LIB" -lGLESv2 \
-    -framework IOSurface -framework CoreFoundation \
+    -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
     -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/libiosc_egl.dylib
 echo "   built /out/libiosc_egl.dylib"
 

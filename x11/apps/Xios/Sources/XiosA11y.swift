@@ -10,7 +10,6 @@ final class XiosA11yClient {
 
     private var sockPath: String { XiosRuntimePaths.firstExisting("xios-a11y.sock") }
     private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
-    private var forcePath: String { XiosRuntimePaths.firstExisting("xios-a11y-force") }
     private var logPath: String { XiosRuntimePaths.tmp("xios-a11y-app.log") }
 
     private weak var view: XScreenView?
@@ -39,14 +38,13 @@ final class XiosA11yClient {
     }
 
     @objc private func syncVoiceOver() {
-        let forced = FileManager.default.fileExists(atPath: forcePath)
         let voiceOver = UIAccessibility.isVoiceOverRunning
         sendVoiceOverState(voiceOver)
-        if voiceOver || forced {
-            log("enable gate voiceover=\(voiceOver) forced=\(forced)")
+        if voiceOver {
+            log("enable gate voiceover=true")
             start()
         } else {
-            log("disable gate voiceover=false forced=false")
+            log("disable gate voiceover=false")
             stop()
         }
     }

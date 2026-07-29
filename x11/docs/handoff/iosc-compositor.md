@@ -14,6 +14,37 @@
 - Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
 
 ## Current state
+- 2026-07-29 matched release/device validation: `iosc 0.9.27` and
+  `angle 2.1.0+git20260630.a32d31d+es3-10` are installed on the A10 iPad.
+  `iosc` reports `ANGLE Metal Renderer: Apple A10 GPU`, advertises
+  `iosc_iosurface v4`, and a mapped GTK client enabled the 32-byte broker-token
+  cross-process GPU fence. The launchd broker was running and had never exited;
+  no CPU-side completion diagnostic or fatal fence line appeared. The matched
+  rebuilt Xios app is installed, but the screen/FrontBoard gate prevented
+  foregrounding it, so the final `iosc -> Xios` wait/present half still needs
+  one awake-screen physical confirmation. Evidence:
+  `artifacts/device-runs/gpu-fence-final-20260729-1600/`.
+- 2026-07-29 GPU-fence transport: ordinary
+  `NSKeyedArchiver` transport of `MTLSharedEventHandle` has been removed from
+  `client -> iosc`, `iosc -> Xios`, and native per-window paths. `iosc 0.9.27`
+  ships the
+  launchd-owned `com.max.xios.metal-event-broker` NSXPC service; producers
+  publish a persistent handle once under an opaque 32-byte token, consumers
+  recreate the event through XPC, and only monotonic values stay on the existing
+  Wayland/app wires. Tokens remain available for Xios reconnects and are
+  revoked when the publishing XPC connection dies. Wayland protocol v4
+  advertises the broker capability and rejects the legacy v3 archive request.
+  Native protocol v3 rejects legacy unfenced DIRTY records, requires a broker
+  token/value on every production frame, and pairs each fence with a canvas
+  generation so resize/reconnect delivery cannot authorize stale storage.
+  `iosc_0.9.27_iphoneos-arm64.deb` SHA256:
+  `4a986650be20e77b60c7b32e6e5162bd3bc2f7584d842cbd6d4db503253e609a`.
+- 2026-07-29 release-policy update: `iosc` fails closed when
+  ANGLE/IOSurface initialization or a live output-target rebind fails. The
+  deliberately incomplete top-surface-only CPU compositor now requires the
+  explicit `IOSC_ALLOW_CPU_DIAGNOSTIC=1` opt-in. CPU-side frame completion also
+  requires `IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC=1`; production never publishes an
+  unfenced frame.
 - 2026-07-19 input closure is staged as `iosc 0.9.20`: KEY records now carry actual down/up
   state plus depressed/locked Shift/Ctrl/Alt/Super/Caps/Num masks; TEXT remains an explicit
   down/up fallback. Multi-button state supports chording, pointer-lock deltas are incremental,
@@ -26,7 +57,7 @@
 - Layer-surface translucency (alpha blend) needs iosc ≥ 0.9.1 (commit e11aa52); deployed iosc has it.
 - Cursor overlay + typed HELLO/DIRTY/CURSOR framing landed. AXIS scroll wire + touch (type 6) + tablet/Pencil (type 7) wire decode landed (3ebf085). The Xios app halves also landed (`sendScroll`/`iosc_input_touch`/`iosc_input_tablet`, 9470335) — both sides are in, not pending.
 - Clipboard is no longer split between app and compositor work: `XIOS_MSG_CLIPBOARD` 0x04 is wired into `iosc.c` and should be treated as deploy-coupled with a matching Xios app.
-- Native iPadOS mode is implemented in the same binary and selected at runtime by ioscd/request mode (`LAUNCH_NATIVE`) or `iosc -native`/env. Native gets its own namespace (`wayland-native-0`, `iosc-native-input.sock`, `xios-native.json`) and per-window canvas delivery via `iosc-native.sock`; classic Xios remains available simultaneously.
+- Native iPadOS mode is implemented in the same binary and selected at runtime by ioscd/request mode (`LAUNCH_NATIVE`) or `iosc -native`/env. Native gets its own namespace (`wayland-native-0`, `iosc-native-input.sock`, `xios-native.json`) and per-window canvas delivery via `iosc-native.sock`; the single-output Xios presenter remains available simultaneously. The legacy software X server is no longer part of the default `xios-x11` flavor.
 - Rootless Xwayland XWM integration landed locally: `iosc_xwm` plus `xwayland-shell-v1.xml`, `build-iosc.sh` glue, and `run-xwayland.sh` MIT-SHM disable for iOS/mesa clients such as `glxgears`. The XWM module is now an explicit build opt-in (`IOSC_BUILD_XWM=1`) so the default iosc binary keeps the known-good non-XCB link profile.
 - Local compositor upload path now tracks `damage_buffer` dirty rectangles for cached wl_shm textures, so repaint pulses and cursor movement do not force whole-window re-uploads. The nested-compositor frame pulse is deployed in the iosc launch paths with `IOSC_FRAME_PULSE=1` by default.
 - 2026-07-03: `iosc` now cleans up compositor surfaces on client disconnect, accumulates real output damage, and scissors redraws to the damaged output rects instead of recompositing the full output for small surface updates. Debug tracing is behind `IOSC_DAMAGE_STATS=1` and `IOSC_DAMAGE_REASON=1`. Packaged/deployed on-device as `iosc 0.9.4`; installed `/var/jb/usr/local/bin/iosc` sha256 is `82b08437245ff678af0cb9fee66458cb860cd14f1c147c8a0b771b1f2da371c4`.
@@ -43,10 +74,10 @@
 ## Known compositor-side issues
 1. **Nested-compositor frame callbacks**: first-light KWin-on-iosc is now verified. `wayland/iosc.c` queues a coalesced repaint pulse when a mapped surface requests `wl_surface.frame` after the commit that made it visible, and `IOSC_FRAME_PULSE=1` is defaulted by `run-iosc.sh`, `run-shell.sh`, `xios-session`, and `ioscd`. Evidence: `x11/artifacts/device-runs/kde-kwin-framepulse-20260702-234309/` shows KWin importing QtWayland IOSurfaces and the Qt client no longer logging the frame-callback timeout loop. Keep soaking for clients that repaint continuously.
 2. `iosc.c` remains a monolith. Clipboard/native/XWM hooks landed because they were product-critical, but further broad behavior changes should still prefer small modules or a deliberate refactor pass.
-3. Native mode still needs device validation around resize/focus/keyboard/jetsam replay, and a decision on whether to retain the classic output IOSurface while native hosts are active.
+3. Native mode still needs device validation around fenced presentation, resize/focus/keyboard/jetsam replay, and a decision on whether to retain the single-output IOSurface while native hosts are active.
 
 ## Open items
-1. Install and exercise `iosc 0.9.20` with the matching Xios app using the physical input matrix
+1. Exercise the installed `iosc 0.9.27` with the matching Xios app using the physical input matrix
    in `xios-app.md`; specifically include pointer lock, non-rectangular confinement expectations,
    custom cursor surfaces/hotspots, five-button chording, and wheel-versus-finger axis source.
 2. Damage optimization: static layer caching for wallpaper/panel/dock, then per-surface damage telemetry dashboards to catch chatty clients.

@@ -67,6 +67,12 @@ struct canvas_entry {
     uint32_t     window_id;               /* 0 = free slot */
     IOSurfaceRef surface;
     int          w, h, stride;
+    uint64_t     canvas_generation;       /* changes whenever storage is replaced */
+    uint64_t     frame_generation;        /* canvas generation fenced below */
+    uint64_t     frame_event_value;
+    size_t       frame_token_size;
+    uint8_t      frame_token[IOSC_NATIVE_FENCE_TOKEN_SIZE];
+    int          frame_valid;
     char         app_id[256];
     char         title[256];
     uint32_t     flags;
@@ -257,6 +263,27 @@ static xios_msg make_msg(uint32_t type, uint32_t window_id)
     return m;
 }
 
+/* Send only a completion that belongs to this exact IOSurface allocation.
+ * Keeping the latest value allows reconnect replay, while the generation check
+ * prevents a resize hand-off from pairing an old canvas with a new fence. */
+static int send_latest_frame_locked(struct canvas_entry *e,
+                                    struct canvas_client *c)
+{
+    if (!e || !c || !e->frame_valid ||
+        e->frame_generation != e->canvas_generation)
+        return 1;
+    xios_msg rec = make_msg(XIOS_MSG_NATIVE_FRAME, e->window_id);
+    rec.length = (uint32_t)e->frame_token_size;
+    rec.a = (int32_t)(uint32_t)(e->frame_event_value & 0xffffffffu);
+    rec.b = (int32_t)(uint32_t)(e->frame_event_value >> 32);
+    rec.c = IOSC_NATIVE_PROTOCOL_VERSION;
+    rec.d = e->frame_token_size ? IOSC_NATIVE_FENCE_BROKER_TOKEN
+                                : IOSC_NATIVE_FENCE_NONE;
+    return send_msg_locked(c, &rec,
+                           e->frame_token_size ? e->frame_token : NULL,
+                           e->frame_token_size);
+}
+
 static void chmod_mobile_socket(const char *path, const char *warn_suffix)
 {
     struct passwd *pw = getpwnam("mobile");
@@ -375,6 +402,12 @@ void *xios_canvas_create(uint32_t window_id, int w, int h, int *stride)
         return NULL;
     }
     e->surface = s; e->w = w; e->h = h; e->stride = st;
+    if (++e->canvas_generation == 0)
+        ++e->canvas_generation;
+    e->frame_valid = 0;
+    e->frame_generation = 0;
+    e->frame_event_value = 0;
+    e->frame_token_size = 0;
     if (stride) *stride = st;
     pthread_mutex_unlock(&s_lock);
     return s;   /* opaque IOSurfaceRef; iosc owns the registry ref */
@@ -438,18 +471,41 @@ void xios_canvas_geom(uint32_t window_id)
     pthread_mutex_unlock(&s_lock);
 }
 
-void xios_canvas_notify_dirty(uint32_t window_id, int x, int y, int w, int h)
+int xios_canvas_notify_frame(uint32_t window_id,
+                             const void *shared_event_token,
+                             size_t token_size,
+                             uint64_t event_value)
 {
+    if ((token_size == 0 &&
+         (shared_event_token != NULL || event_value != 0)) ||
+        (token_size > 0 &&
+         (!shared_event_token ||
+          token_size != IOSC_NATIVE_FENCE_TOKEN_SIZE ||
+          event_value == 0)))
+        return -1;
+
     pthread_mutex_lock(&s_lock);
     struct canvas_entry *e = window_find(window_id);
-    if (!e || !e->announced) { pthread_mutex_unlock(&s_lock); return; }
-    struct canvas_client *c = client_for_app(e->app_id);
-    if (c) {
-        xios_msg rec = make_msg(XIOS_MSG_DIRTY, window_id);
-        rec.a = x; rec.b = y; rec.c = w; rec.d = h;
-        (void)send_msg_locked(c, &rec, NULL, 0);   /* drop-on-backpressure */
+    if (!e || !e->surface) { pthread_mutex_unlock(&s_lock); return 0; }
+    e->frame_generation = e->canvas_generation;
+    e->frame_event_value = event_value;
+    e->frame_token_size = token_size;
+    if (token_size)
+        memcpy(e->frame_token, shared_event_token, token_size);
+    e->frame_valid = 1;
+
+    /* WINDOW_NEW/GEOM and its Mach port are delivered on the reader thread.
+     * Defer this record until that exact canvas is in the host, so the fence can
+     * never overtake a resize or reconnect hand-off. */
+    if (!e->announced || e->deliver_pending != CANVAS_DELIVER_NONE) {
+        pthread_mutex_unlock(&s_lock);
+        return 0;
     }
+    struct canvas_client *c = client_for_app(e->app_id);
+    if (c)
+        (void)send_latest_frame_locked(e, c);
     pthread_mutex_unlock(&s_lock);
+    return 0;
 }
 
 void xios_canvas_title(uint32_t window_id, const char *title)
@@ -510,6 +566,14 @@ static int handle_bind(int fd)
         close(fd);
         return -1;
     }
+    if (h.window_id != IOSC_NATIVE_PROTOCOL_VERSION) {
+        fprintf(stderr,
+                "xios-canvas: native protocol mismatch host=%u server=%u; "
+                "rejecting fd=%d\n",
+                h.window_id, IOSC_NATIVE_PROTOCOL_VERSION, fd);
+        close(fd);
+        return -1;
+    }
     char app_id[256];
     uint32_t idlen = h.length;
     if (idlen > sizeof(app_id) - 1) idlen = sizeof(app_id) - 1;
@@ -521,6 +585,21 @@ static int handle_bind(int fd)
         uint32_t chunk = left > sizeof(scratch) ? (uint32_t)sizeof(scratch) : left;
         if (read_full(fd, scratch, chunk) != 0) { close(fd); return -1; }
         left -= chunk;
+    }
+    if (!app_id[0] || (uint32_t)h.d == MACH_PORT_NULL) {
+        fprintf(stderr, "xios-canvas: invalid v%u BIND identity/port on fd=%d\n",
+                IOSC_NATIVE_PROTOCOL_VERSION, fd);
+        close(fd);
+        return -1;
+    }
+
+    /* Confirm the exact wire version before any replayed WINDOW_* records. An
+     * old host/server pair cannot accidentally interpret unfenced DIRTY as v3. */
+    xios_msg hello = make_msg(XIOS_MSG_HELLO, 0);
+    hello.a = IOSC_NATIVE_PROTOCOL_VERSION;
+    if (send_record(fd, &hello, sizeof(hello)) != 1) {
+        close(fd);
+        return -1;
     }
 
     /* Trust the kernel peer pid, not the client claim (same as xios_surface.c). */
@@ -655,6 +734,7 @@ static void process_pending_deliveries(void)
         int kind = e->deliver_pending;
         e->deliver_pending = CANVAS_DELIVER_NONE;
         uint32_t window_id = e->window_id;
+        uint64_t canvas_generation = e->canvas_generation;
         int fd = c->fd;
         pid_t pid = c->pid;
         mach_port_name_t reply_port = c->reply_port;
@@ -679,8 +759,20 @@ static void process_pending_deliveries(void)
 
         pthread_mutex_lock(&s_lock);
         e = window_find(window_id);       /* may have been torn down meanwhile */
-        if (e && kind == CANVAS_DELIVER_NEW)
-            e->announced = (wrote && dr == 0);
+        if (e && e->canvas_generation == canvas_generation) {
+            if (kind == CANVAS_DELIVER_NEW)
+                e->announced = (wrote && dr == 0);
+            if (wrote && dr == 0) {
+                struct canvas_client *current = NULL;
+                for (int ci = 0; ci < s_nclients; ci++)
+                    if (s_clients[ci].fd == fd) {
+                        current = &s_clients[ci];
+                        break;
+                    }
+                if (current)
+                    (void)send_latest_frame_locked(e, current);
+            }
+        }
         if (!wrote)
             drop_client_fd_locked(fd);    /* partial/error/backpressure: host can re-BIND */
         pthread_mutex_unlock(&s_lock);

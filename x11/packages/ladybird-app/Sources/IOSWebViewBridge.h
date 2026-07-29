@@ -58,8 +58,8 @@ public:
     Paintable paintable() const;
 
     // The front backing store's IOSurface (as an opaque CF pointer, cast to IOSurfaceRef
-    // by the host) for the zero-copy Metal present path. Null if the current buffer has no
-    // IOSurface handle (fall back to the CPU CGImage path that frame).
+    // by the host) for the required zero-copy Metal present path. A null handle is fatal
+    // in release builds; only the explicit diagnostic CPU build has a CGImage path.
     void* front_iosurface() const;
 
     // Fired by us after we adjust zoom so the host can update chrome.
