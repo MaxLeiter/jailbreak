@@ -859,6 +859,11 @@
       "url": "https://repo.maxleiter.com/banners/kglobalacceld-dev.png"
     },
     {
+      "title": "konsole",
+      "package": "konsole",
+      "url": "https://repo.maxleiter.com/banners/konsole.png"
+    },
+    {
       "title": "kscreen",
       "package": "kscreen",
       "url": "https://repo.maxleiter.com/banners/kscreen.png"

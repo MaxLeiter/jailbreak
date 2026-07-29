@@ -3603,6 +3603,27 @@ Depiction: https://repo.maxleiter.com/depictions/kglobalacceld-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kglobalacceld-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kglobalacceld-dev.json
 
+Package: konsole
+Version: 24.08.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/konsole/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-5compat, kf6-pty, kf6-bookmarks, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-newstuff, kf6-notifications, kf6-notifyconfig, kf6-parts, kf6-service, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, libicu74, bash
+Description: Konsole terminal emulator (Qt6/KF6)
+Installed-Size: 11140
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/konsole_24.08.0+ios1_iphoneos-arm64.deb
+Size: 1402964
+MD5sum: 8f3f05a996fb1eb29b7f73de2aa90998
+SHA1: 263b9de9b842e8c026e27fcaf3dbdfbab066faee
+SHA256: 9f91805a01cf5be5a152362b3ad3e41f0022c337291d64659e006a1339431884
+Icon: https://repo.maxleiter.com/icons/konsole.png
+Depiction: https://repo.maxleiter.com/depictions/konsole.html
+SileoDepiction: https://repo.maxleiter.com/depictions/konsole.json
+Native Depiction: https://repo.maxleiter.com/depictions/konsole.json
+
 Package: kscreen
 Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
