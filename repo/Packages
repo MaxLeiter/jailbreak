@@ -3817,7 +3817,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/kwrite.json
 
 Package: ladybird-app
 Name: Ladybird
-Version: 0.1.23+ios1
+Version: 0.1.24+ios1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -3826,11 +3826,12 @@ Section: Apps
 Priority: optional
 MinimumOSVersion: 16.0
 Description: Ladybird — a standalone native web browser for jailbroken iOS
-Filename: debs/ladybird-app_0.1.23+ios1_iphoneos-arm64.deb
-Size: 68968884
-MD5sum: 7cd7c903fa2110503131ad1e19a5c236
-SHA1: fbdac9da7c8706cbf54f12d13805e86f41d803e9
-SHA256: 5380209d5e14099e59fce8e2a6a8e9f4bed62872c62597819954bf90998c152b
+Installed-Size: 207896
+Filename: debs/ladybird-app_0.1.24+ios1_iphoneos-arm64.deb
+Size: 69902498
+MD5sum: 336906aac95df978a6d716af2cc5528a
+SHA1: a6d9f17775bb1ce0bae63becbd8eed27918c2104
+SHA256: 9f5ec29122b0c2d07689565c10c0c7fb795d81615d2a5aba326a39d235bcbf96
 Icon: https://repo.maxleiter.com/icons/ladybird-app.png
 Depiction: https://repo.maxleiter.com/depictions/ladybird-app.html
 SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-app.json
