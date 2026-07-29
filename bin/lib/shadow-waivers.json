@@ -48,7 +48,7 @@
   "libxfixes-dev": {"version": "companion of libxfixes3 6.0.1"},
   "libxml2": {
     "version": "2.13.8 bump (ladybird needs modern libxml2); soname libxml2.2 kept; device-validated",
-    "symbols": "KNOWN BREAKAGE, tracked — 194 symbols upstream DELETED (DocBook SAX at 2.12, NanoHTTP/NanoFTP at 2.13, plus __-prefixed internals); no build flag restores them. Import scan 2026-07-29 finds two real importers: our libgsf-1-114 1.14.58 (_xmlNanoHTTP*, was linked against an older libxml2 and then shadowed — needs a rebuild against 2.13, which also breaks gnumeric/libgoffice) and Procursus python3-libxml2 (~14 symbols, not rebuildable by us). Neither is in any xios-* flavor closure. REMOVE this waiver once libgsf is rebuilt"
+    "symbols": "2.13.8+ios2 rebuilds with every optional module on (--with-legacy/http/ftp/lzma/sax1/output, all default-OFF in 2.13), taking the gap from 194 symbols to 72 and restoring _xmlNanoHTTP* — which fixed our libgsf-1-114, and with it gnumeric/libgoffice. The 72 left are upstream-hidden internals (_xmlBuf*, _xmlCharEnc*, ___xmlRaiseError) and the DocBook SAX API deleted at 2.12; no flag brings those back. Import scan 2026-07-29 finds exactly one importer left: Procursus python3-libxml2 needs _docbDefaultSAXHandlerInit + _xmlXPtrEvalRangePredicate. It is not in any xios-* flavor closure, its only reverse-dep is the build-time tool itstool, and it is not installed on the reference device. Closing it properly means shipping our own python3-libxml2 built from 2.13.8's bindings (needs a staged target python3)"
   },
   "libxml2-dev": {"version": "companion of libxml2 2.13.8"},
   "libxml2-utils": {"version": "companion of libxml2 2.13.8"},
