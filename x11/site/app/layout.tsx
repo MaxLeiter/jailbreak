@@ -31,8 +31,8 @@ const DESCRIPTION = NAV[0].description;
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
   title: {
-    default: SITE_TITLE,
-    template: `%s / ${SITE.name}`,
+    default: SITE.name,
+    template: `${SITE.name} | %s`,
   },
   description: DESCRIPTION,
   applicationName: SITE.name,
@@ -61,12 +61,12 @@ export const metadata: Metadata = {
     siteName: SITE.name,
     locale: "en_US",
     url: "/",
-    title: SITE_TITLE,
+    title: SITE.name,
     description: DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: SITE_TITLE,
+    title: SITE.name,
     description: DESCRIPTION,
   },
   robots: {
