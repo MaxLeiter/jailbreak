@@ -110,7 +110,12 @@ export function siblings(href: string) {
 export function pageMetadata(href: string): Metadata {
   const item = NAV.find((n) => n.href === href);
   if (!item) return {};
-  const title = href === "/" ? undefined : item.label;
+  // The home page must set an absolute title: the layout's `%s / xiOS`
+  // template would otherwise double the brand, and returning `title:
+  // undefined` makes Next drop the <title> element entirely rather than fall
+  // back to the layout default.
+  const title: Metadata["title"] =
+    href === "/" ? { absolute: SITE_TITLE } : item.label;
   const ogTitle = href === "/" ? SITE_TITLE : `${item.label} / ${SITE.name}`;
   return {
     title,
