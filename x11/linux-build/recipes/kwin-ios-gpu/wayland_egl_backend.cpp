@@ -102,7 +102,9 @@ IoscEglBuffer::IoscEglBuffer(WaylandEglBackend *backend, const QSize &size)
 // only via eglBindTexImage + glFramebufferTexture2D, which is exactly what iosc's
 // own proven output path does (iosc_gl.c: bind_pbuffer_texture -> FBO).
 //
-// Caller must have made the context current on `pbuffer` first.
+// Caller must have made the context current SURFACELESS first -- NOT on `pbuffer`.
+// Once eglBindTexImage binds a pbuffer to a texture, eglMakeCurrent on that same
+// pbuffer fails with EGL_BAD_ACCESS, which silently starved the render loop.
 bool IoscEglBuffer::ensureRenderTarget()
 {
     if (fbo) {
@@ -261,16 +263,39 @@ WaylandEglPrimaryLayer::WaylandEglPrimaryLayer(WaylandOutput *output, WaylandEgl
 
 std::optional<OutputLayerBeginFrameInfo> WaylandEglPrimaryLayer::doBeginFrame()
 {
+    // Counting primary-layer frames against WorkspaceScene::paint() calls: if the
+    // layer renders far more often than the workspace scene paints, whatever is
+    // filling those frames is not the window scene.
+    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE")) {
+        static unsigned long n = 0;
+        qWarning() << "ios-layer: primary doBeginFrame" << ++n;
+    }
     const QSize size = m_output->modeSize();
     if (!m_swapchain || m_swapchain->size() != size) {
         m_swapchain = std::make_unique<IoscEglSwapchain>(m_backend, size);
     }
     m_buffer = m_swapchain->acquire();
-    if (!m_buffer || !m_backend->openglContext()->makeCurrent(m_buffer->pbuffer)) {
+    if (!m_buffer) {
         qCWarning(KWIN_WAYLAND_BACKEND) << "No free Xios IOSurface render target";
         return std::nullopt;
     }
+    // Make the context current SURFACELESS, never on m_buffer->pbuffer.
+    //
+    // eglMakeCurrent fails with EGL_BAD_ACCESS on a pbuffer that is bound to a
+    // texture, and ensureRenderTarget() binds every buffer permanently via
+    // eglBindTexImage. So making the pbuffer current worked only until each
+    // buffer had been used once; after that every frame failed here, the paint
+    // pass was skipped -- and present() still shipped the un-rendered buffer,
+    // so the compositor kept re-presenting a blank frame with no GL error
+    // anywhere. Nothing needs the pbuffer to be current: we render into the FBO
+    // that wraps its IOSurface texture, so the draw surface is irrelevant.
+    if (!m_backend->openglContext()->makeCurrent()) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: surfaceless makeCurrent failed" << Qt::hex << eglGetError();
+        m_buffer = nullptr; // do not let present() attach a buffer we never rendered
+        return std::nullopt;
+    }
     if (!m_buffer->ensureRenderTarget()) {
+        m_buffer = nullptr;
         return std::nullopt;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, m_buffer->fbo);
@@ -354,15 +379,26 @@ WaylandEglCursorLayer::WaylandEglCursorLayer(WaylandOutput *output, WaylandEglBa
 
 std::optional<OutputLayerBeginFrameInfo> WaylandEglCursorLayer::doBeginFrame()
 {
+    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE")) {
+        static unsigned long n = 0;
+        qWarning() << "ios-layer: cursor doBeginFrame" << ++n;
+    }
     const QSize target = targetRect().size().expandedTo(QSize(64, 64));
     if (!m_swapchain || m_swapchain->size() != target) {
         m_swapchain = std::make_unique<IoscEglSwapchain>(m_backend, target);
     }
     m_buffer = m_swapchain->acquire();
-    if (!m_buffer || !m_backend->openglContext()->makeCurrent(m_buffer->pbuffer)) {
+    if (!m_buffer) {
+        return std::nullopt;
+    }
+    // Surfaceless for the same reason as the primary layer: a pbuffer bound to a
+    // texture cannot be made current.
+    if (!m_backend->openglContext()->makeCurrent()) {
+        m_buffer = nullptr;
         return std::nullopt;
     }
     if (!m_buffer->ensureRenderTarget()) {
+        m_buffer = nullptr;
         return std::nullopt;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, m_buffer->fbo);

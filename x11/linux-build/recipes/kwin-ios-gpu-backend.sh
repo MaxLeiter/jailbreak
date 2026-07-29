@@ -274,9 +274,54 @@ replace(
 replace(
     "src/scene/workspacescene.cpp",
     "void WorkspaceScene::paintWindow(const RenderTarget &renderTarget, const RenderViewport &viewport, WindowItem *item, int mask, const QRegion &region)\n{\n    if (region.isEmpty()) { // completely clipped\n        return;\n    }\n",
-    "void WorkspaceScene::paintWindow(const RenderTarget &renderTarget, const RenderViewport &viewport, WindowItem *item, int mask, const QRegion &region)\n{\n    static unsigned long iosPaintN = 0; // ios-gpu-paint-trace\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_PAINT_TRACE\") && (iosPaintN++ % 120) < 3) {\n        qWarning() << \"ios-paint:\" << item->window()->resourceClass() << \"clip=\" << region.boundingRect() << (region.isEmpty() ? \"(CLIPPED OUT)\" : \"\");\n    }\n    if (region.isEmpty()) { // completely clipped\n        return;\n    }\n",
+    "void WorkspaceScene::paintWindow(const RenderTarget &renderTarget, const RenderViewport &viewport, WindowItem *item, int mask, const QRegion &region)\n{\n    static unsigned long iosPaintN = 0; // ios-gpu-paint-trace\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_PAINT_TRACE\") && (iosPaintN++ % 10) == 0) {\n        qWarning() << \"ios-paint:\" << item->window()->resourceClass() << \"clip=\" << region.boundingRect() << (region.isEmpty() ? \"(CLIPPED OUT)\" : \"\");\n    }\n    if (region.isEmpty()) { // completely clipped\n        return;\n    }\n",
     "ios-gpu-paint-trace",
 )
+# KWIN_IOS_PAINT_TRACE also reports the scene's per-frame stacking order. If
+# paintWindow never runs while the compositor is presenting frames, the question
+# is whether the scene has any window items at all -- childItems vs how many pass
+# isVisible() -- and that is invisible from every other vantage point.
+replace(
+    "src/scene/workspacescene.cpp",
+    """void WorkspaceScene::createStackingOrder()
+{
+    QList<Item *> items = m_containerItem->sortedChildItems();
+    for (Item *item : std::as_const(items)) {
+        WindowItem *windowItem = static_cast<WindowItem *>(item);
+        if (windowItem->isVisible()) {
+            stacking_order.append(windowItem);
+        }
+    }
+}""",
+    """void WorkspaceScene::createStackingOrder()
+{
+    QList<Item *> items = m_containerItem->sortedChildItems();
+    for (Item *item : std::as_const(items)) {
+        WindowItem *windowItem = static_cast<WindowItem *>(item);
+        if (windowItem->isVisible()) {
+            stacking_order.append(windowItem);
+        }
+    }
+    static unsigned long iosStackN = 0; // ios-stack
+    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE") && (iosStackN++ % 5) == 0) {
+        qWarning() << "ios-stack: frame" << iosStackN << "childItems" << items.count()
+                   << "visible" << stacking_order.count();
+    }
+}""",
+    "ios-stack",
+)
+replace(
+    "src/scene/workspacescene.cpp",
+    """    m_renderer->beginFrame(renderTarget, viewport);""",
+    """    static unsigned long iosPaintFrameN = 0; // ios-scene-paint
+    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE") && (iosPaintFrameN++ % 5) == 0) {
+        qWarning() << "ios-scene: paint() frame" << iosPaintFrameN << "region" << region.boundingRect()
+                   << "phase2" << m_paintContext.phase2Data.count() << "mask" << m_paintContext.mask;
+    }
+    m_renderer->beginFrame(renderTarget, viewport);""",
+    "ios-scene-paint",
+)
+
 replace(
     "src/scene/windowitem.cpp",
     "void WindowItem::updateVisibility()\n{\n    const bool visible = computeVisibility();\n",
