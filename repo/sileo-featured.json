@@ -2764,6 +2764,11 @@
       "url": "https://repo.maxleiter.com/banners/xios-fhs.png"
     },
     {
+      "title": "Noto Sans fonts",
+      "package": "xios-fonts-noto",
+      "url": "https://repo.maxleiter.com/banners/xios-fonts-noto.png"
+    },
+    {
       "title": "Xios Desktop (GNOME)",
       "package": "xios-gnome",
       "url": "https://repo.maxleiter.com/banners/xios-gnome.png"
