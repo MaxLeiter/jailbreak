@@ -84,6 +84,11 @@
       "url": "https://repo.maxleiter.com/banners/com.max.taskmanager.png"
     },
     {
+      "title": "Xios",
+      "package": "com.max.xios",
+      "url": "https://repo.maxleiter.com/banners/com.max.xios.png"
+    },
+    {
       "title": "Xios (Settings)",
       "package": "com.max.xiosprefs",
       "url": "https://repo.maxleiter.com/banners/com.max.xiosprefs.png"

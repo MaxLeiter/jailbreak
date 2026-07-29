@@ -331,6 +331,28 @@ SileoDepiction: https://repo.maxleiter.com/depictions/com.max.taskmanager.json
 Native Depiction: https://repo.maxleiter.com/depictions/com.max.taskmanager.json
 Homepage: https://repo.maxleiter.com
 
+Package: com.max.xios
+Name: Xios
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.0), libx11-6, libxtst6
+MinimumOSVersion: 16.0.0
+Description: the display app for the Xios desktop
+Filename: debs/com.max.xios_0.1.0_iphoneos-arm64.deb
+Size: 739940
+MD5sum: 0137c88712b976b3f8581974cf9e8097
+SHA1: b0d06759eed62981ba68ff5fcda5e0bf6ce00839
+SHA256: 35d44847898ca2464b37c0210234aecf139719b07cc88fa2d1d878c4cb356f57
+Icon: https://repo.maxleiter.com/icons/com.max.xios.png
+Depiction: https://repo.maxleiter.com/depictions/com.max.xios.html
+SileoDepiction: https://repo.maxleiter.com/depictions/com.max.xios.json
+Native Depiction: https://repo.maxleiter.com/depictions/com.max.xios.json
+Homepage: https://xios.maxleiter.com
+
 Package: com.max.xiosprefs
 Name: Xios (Settings)
 Description: Native Settings pane for Xios Home Screen app sync.
@@ -1248,7 +1270,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.21
+Version: 0.9.22
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1258,11 +1280,11 @@ Section: X11
 Priority: optional
 Installed-Size: 556
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.21_iphoneos-arm64.deb
-Size: 132192
-MD5sum: 24bff68f76785bb49334d2cbd0ceb1f2
-SHA1: 524b613c48ea2a7ccf21c564731c65746be092db
-SHA256: 338e333b651686f846cd343bcf3a54c01407db97a463000bcec21114e164ed38
+Filename: debs/iosc_0.9.22_iphoneos-arm64.deb
+Size: 132328
+MD5sum: d660e7a2ae8d035cf06d33d9118a38b7
+SHA1: dbdcabbd07f8911ff91dca6c23a98353b0edca44
+SHA256: b3ca24f5983018b599f1f75f81789d1d1c319d500f82fc34b8015642c946a915
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -6696,7 +6718,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libgweather-4-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgweather-4-dev.json
 
 Package: libharfbuzz-bin
-Version: 2.8.1+ios1
+Version: 10.2.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b, libgraphite2-3, libintl8, libfreetype6, libcairo2, libharfbuzz-subset0
@@ -6704,13 +6726,13 @@ Section: Utilities
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine (utility)
-Installed-Size: 532
+Installed-Size: 608
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-bin_2.8.1+ios1_iphoneos-arm64.deb
-Size: 70284
-MD5sum: 790cf69309a12cdcd6fee84d4741dcab
-SHA1: 0f13302a6bea4d70005745bf7ee404601e59dd79
-SHA256: 6094c885048aca0bfd0186909f7da4d1945603993c345682005efea100eac1aa
+Filename: debs/libharfbuzz-bin_10.2.0+ios2_iphoneos-arm64.deb
+Size: 105538
+MD5sum: 9d6459c275321452029c3b19ef5b342a
+SHA1: 6d382412a66f88968767d1661c587f9da2c59940
+SHA256: e863acbc0d7e5911ef897277a4fc919c7243653298f741608c01d1d242905da9
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-bin.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.json
@@ -6718,22 +6740,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-dev
-Version: 10.2.0+ios1
+Version: 10.2.0+ios2
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libharfbuzz0b (= 10.2.0+ios1), libharfbuzz-icu0 (= 10.2.0+ios1), libharfbuzz-subset0 (= 10.2.0+ios1), libfreetype-dev, libicu-dev
+Depends: libharfbuzz0b (= 10.2.0+ios2), libharfbuzz-icu0 (= 10.2.0+ios2), libharfbuzz-subset0 (= 10.2.0+ios2), libfreetype-dev, libicu-dev
 Section: Development
 Priority: standard
 Multi-Arch: foreign
 Description: Development files for OpenType text shaping engine - Ladybird pin 10.2.0
-Installed-Size: 552
+Installed-Size: 588
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-dev_10.2.0+ios1_iphoneos-arm64.deb
-Size: 98516
-MD5sum: 2005722be97ac9b80fc46b5be7e48bdb
-SHA1: 7c92b2f8be7da166f6ae99690ac1917a74091d88
-SHA256: 71a9ac352627eb44201d5b7021e17a443b9f9b2bb2baddb050842b3c7759e377
+Filename: debs/libharfbuzz-dev_10.2.0+ios2_iphoneos-arm64.deb
+Size: 101004
+MD5sum: f3b781e7106f656717b87138ecbb2b9c
+SHA1: b0c1e317dd0ac96fea521bc87a0f65d4b9030d5f
+SHA256: b4e1a487b8138d9a95f6ff8f1f60f5421a4fc25bc79ac2b7edc149723ed918dd
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.json
@@ -6741,7 +6762,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-gobject0
-Version: 2.8.1+ios1
+Version: 10.2.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b, libgraphite2-3, libintl8, libfreetype6, libglib2.0-0
@@ -6749,13 +6770,13 @@ Section: Libraries
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine ICU backend (GObject library)
-Installed-Size: 180
+Installed-Size: 196
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-gobject0_2.8.1+ios1_iphoneos-arm64.deb
-Size: 45432
-MD5sum: c05a275d22e87657986aae66b496bf14
-SHA1: 43e039a51db4e674e38ed209957b12bd96be1efb
-SHA256: 5a8a151aed9558582b3c4b6d5026b16c03c32452bd8aebe78da9ff22484703e6
+Filename: debs/libharfbuzz-gobject0_10.2.0+ios2_iphoneos-arm64.deb
+Size: 58370
+MD5sum: da91f2c4e316db685397c3bd18fa2d3e
+SHA1: c49c82485ba099656b2c950f861c4494f0615c9e
+SHA256: afe83151c04940d2f8015b379a77149ebd792bdaae997230a8b30c09f608fb4b
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-gobject0.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.json
@@ -6763,22 +6784,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.jso
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-icu0
-Version: 10.2.0+ios1
+Version: 10.2.0+ios2
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 10.2.0+ios1), libfreetype6, libicu78
+Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 10.2.0+ios2), libfreetype6, libicu78
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine, ICU backend - Ladybird pin 10.2.0
 Installed-Size: 144
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-icu0_10.2.0+ios1_iphoneos-arm64.deb
-Size: 38732
-MD5sum: 0b4b93ddb5042f258b31a0c624d13269
-SHA1: 7ecfd0509154bac08f118539b8d800edad890f77
-SHA256: 0ba860b38b1c4bcfc804b5f05f6eb456e88b837e73c268bdd44ab12f57955af9
+Filename: debs/libharfbuzz-icu0_10.2.0+ios2_iphoneos-arm64.deb
+Size: 38740
+MD5sum: 7336c892dc656bdf7f7e8c55b49edfb0
+SHA1: 5cab0cc59527425228db2ad0e4383079a305db1a
+SHA256: 10de8397ef41340f0fb5577033699480d49319f05a05bf004b1489e589a247b0
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-icu0.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-icu0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-icu0.json
@@ -6786,22 +6806,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-icu0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-subset0
-Version: 10.2.0+ios1
+Version: 10.2.0+ios2
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 10.2.0+ios1)
+Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 10.2.0+ios2)
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine, subset backend - Ladybird pin 10.2.0
 Installed-Size: 976
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-subset0_10.2.0+ios1_iphoneos-arm64.deb
-Size: 357560
-MD5sum: c9a6ea9ddbe2a82d38c0bb82c9cf3e1b
-SHA1: bd5c255eeef2d07027529ac200cf251c857df2cc
-SHA256: 736483cbd099446511adc2a0cd1ad0478770564bebbd96d1e03e2a3c8b561bf0
+Filename: debs/libharfbuzz-subset0_10.2.0+ios2_iphoneos-arm64.deb
+Size: 357558
+MD5sum: 6496c27e3625eb61e99f0fc8a6906cdf
+SHA1: d1dd87ff495f9280926c4c16cad3fedde4995baf
+SHA256: 90103845dd4cdf413f634037fc115d7883b2662246b0252f6b9a74f8f104d881
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-subset0.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.json
@@ -6809,22 +6828,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz0b
-Version: 10.2.0+ios1
+Version: 10.2.0+ios2
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libfreetype6
+Depends: libiosexec1 (>= 1.3.1), libfreetype6, libglib2.0-0, libgraphite2-3
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
-Description: OpenType text shaping engine (shared library) - Ladybird pin 10.2.0
-Installed-Size: 944
+Description: OpenType text shaping engine (shared library)
+Installed-Size: 1016
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz0b_10.2.0+ios1_iphoneos-arm64.deb
-Size: 366074
-MD5sum: 6fcf2fdf9e3c62ddfc07bc62f27c66d6
-SHA1: 2f26b10cea3bbd6a9d079301efcfdd3b7a12bd61
-SHA256: dc5e59fc835db9ccd490811326dfda3c67d6ed5228b6559e40916eb2aec8958d
+Filename: debs/libharfbuzz0b_10.2.0+ios2_iphoneos-arm64.deb
+Size: 378640
+MD5sum: 9b2142544f11e9702dc9068a3457e7b0
+SHA1: a4af5e0833537cf354e42a08dac364aaef7934f2
+SHA256: 038719e77d4862ad92b8f9a377cb773694e5c55c1bb15d1185d31807d2f9d3e1
 Icon: https://repo.maxleiter.com/icons/libharfbuzz0b.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz0b.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz0b.json
@@ -11675,21 +11693,21 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-core
 Name: Xios Desktop Core
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), iosc (>= 0.8.0), angle, dbus, xios-desktop-defaults, xios-audio-server
+Depends: firmware (>= 16.0), com.max.xios (>= 0.1.0), iosc (>= 0.8.0), iosc-shell (>= 0.9.11), angle, dbus, xios-desktop-defaults, xios-audio-server, xios-session (>= 1.0.55), xios-launcher-tools (>= 0.1.2)
 Recommends: pulseaudio, xios-desktop-theme
 MinimumOSVersion: 16.0.0
 Description: shared base for every Xios desktop flavor
-Filename: debs/xios-core_0.1.0_iphoneos-arm64.deb
-Size: 996
-MD5sum: d0b83b527bb778d5ead93a8fc3f4206d
-SHA1: 5531dcb42ff4b4bd6bb394014a0147df59180cc6
-SHA256: f4bcd2212c93038d2dc916c9d544b52ff7006a730481bb04f25cce7fb9d1bba0
+Filename: debs/xios-core_0.1.1_iphoneos-arm64.deb
+Size: 1176
+MD5sum: e06b0d197f371e3de35488a82c31a801
+SHA1: 145fd6cfaf14a10fcf496d8c22502c300f1142bd
+SHA256: cf906c17c295ff5b77ffce8fadd070f54c4e8c1ae8a6a21226209ee7b01f0c55
 Icon: https://repo.maxleiter.com/icons/xios-core.png
 Depiction: https://repo.maxleiter.com/depictions/xios-core.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-core.json

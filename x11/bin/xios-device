@@ -42,10 +42,17 @@ Commands:
   foreground
       Ask FrontBoard to foreground com.max.xios and print adoption status.
 
-  input [--mutter|--iosc|--socket PATH] MODE ARGS...
+  input [--mutter|--iosc|--socket PATH] [--logical] MODE ARGS...
       Inject deterministic input through iosc-input-test.
       Modes map directly to iosc-input-test: click, drag, scroll, touch, pencil,
       key, type.
+
+      COORDINATES ARE PHYSICAL OUTPUT PIXELS by default, because that is what the
+      iosc input protocol carries. Window geometry from KWin, kwin scripting and
+      `workspace.windowList()` is LOGICAL, so on a scale-2 output a click aimed at
+      a logical coordinate lands at half the intended position -- silently, since
+      the click still succeeds somewhere. Pass --logical to give logical
+      coordinates and have them scaled by the output ratio from xios.json.
 
   shot [--slot NAME] [OUTDIR]
       Capture visual evidence. Tries Wayland grim first, then iosc-screenshot-test
@@ -305,12 +312,46 @@ cmd_foreground() {
     '
 }
 
+# Physical/logical ratio of the live output: xios.json's physical width against
+# the logical width iosc logged. Prints NOTHING when it cannot be determined, so
+# the caller can tell "could not read" apart from "the scale really is 1".
+output_scale() {
+    local dims phys logical
+    # One round trip, not two.
+    # Each value is printed on a labelled line. Without labels a missing first
+    # value collapses the output to one line and line 1 would silently be the
+    # OTHER number -- which would produce a plausible-looking wrong scale.
+    dims="$(remote '
+        printf "phys=%s\n" "$(sed -n "s/.*\"width\":[[:space:]]*\([0-9][0-9]*\).*/\1/p" /var/jb/tmp/xios.json 2>/dev/null | head -1)"
+        printf "logical=%s\n" "$(sed -n "s/.*logical=\([0-9][0-9]*\)x[0-9][0-9]*.*/\1/p" /var/jb/tmp/iosc.log 2>/dev/null | tail -1)"
+    ')" || return 1
+    phys="$(printf '%s\n' "$dims" | sed -n 's/^phys=//p')"
+    logical="$(printf '%s\n' "$dims" | sed -n 's/^logical=//p')"
+    case "${phys:-x}" in *[!0-9]*) return 1 ;; esac
+    case "${logical:-x}" in *[!0-9]*) return 1 ;; esac
+    [ "$logical" -gt 0 ] || return 1
+    printf '%s\n' $(( phys / logical ))
+}
+
+# How many LEADING arguments of each input mode are coordinates. The rest must be
+# left alone: scroll's trailing dx/dy are wheel deltas in scroll units, not
+# pixels, so scaling them would silently change how far the wheel turned.
+input_coord_count() {
+    case "$1" in
+        click|touch)  printf '2\n' ;;
+        drag|pencil)  printf '4\n' ;;
+        scroll)       printf '2\n' ;;   # X Y are pixels; DX DY are deltas
+        *)            printf '0\n' ;;
+    esac
+}
+
 cmd_input() {
-    local socket_args=()
+    local socket_args=() logical=0
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --mutter|--iosc) socket_args+=("$1"); shift ;;
             --socket) socket_args+=("$1" "${2:-}"); [ -n "${2:-}" ] || die "--socket needs a path"; shift 2 ;;
+            --logical) logical=1; shift ;;
             --help|-h) usage; exit 0 ;;
             *) break ;;
         esac
@@ -318,6 +359,33 @@ cmd_input() {
     local mode="${1:-}"
     [ -n "$mode" ] || die "input mode required"
     shift
+
+    # --logical: convert logical coordinates to the physical pixels the iosc input
+    # protocol carries. Only the LEADING coordinate arguments of each mode are
+    # scaled (see input_coord_count) -- never trailing deltas.
+    if [ "$logical" = 1 ]; then
+        local ncoord scale
+        ncoord="$(input_coord_count "$mode")"
+        if [ "$ncoord" = 0 ]; then
+            echo "xios-device: --logical has no effect for mode '$mode' (no coordinates)" >&2
+        elif ! scale="$(output_scale)"; then
+            die "--logical: could not determine output scale (need xios.json + iosc.log on device); re-run without --logical and pass physical pixels"
+        elif [ "$scale" = 1 ]; then
+            : # output is 1:1, logical == physical, nothing to do
+        else
+            local scaled=() i=0 a
+            for a in "$@"; do
+                i=$((i + 1))
+                if [ "$i" -le "$ncoord" ] && [ -z "${a//[0-9]/}" ] && [ -n "$a" ]; then
+                    scaled+=("$(( a * scale ))")
+                else
+                    scaled+=("$a")
+                fi
+            done
+            set -- "${scaled[@]}"
+            echo "xios-device: --logical x$scale -> $mode $*" >&2
+        fi
+    fi
 
     local test_bin=/var/jb/usr/local/bin/iosc-input-test
     local args=("${socket_args[@]}")

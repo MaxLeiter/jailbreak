@@ -5523,6 +5523,9 @@ static int input_method_forward_grab_key(uint32_t time, uint32_t key, uint32_t s
     return 1;
 }
 
+/* evdev KEY_LEFTSHIFT; xkb keycode 50 - 8. */
+#define EVDEV_LEFTSHIFT 42
+
 static void keyboard_masks_from_app(uint32_t appmods, int needs_shift,
                                     uint32_t *depressed, uint32_t *locked)
 {
@@ -5566,9 +5569,32 @@ static void handle_key(uint32_t keysym, uint32_t state, uint32_t appmods)
         input_method_forward_grab_key(t, evdev, wl_state, depressed, locked);
         return;
     }
-    if (state) keyboard_send_mods(depressed, locked);
+
+    /* A shifted keysym needs a REAL Shift key transition, not just the
+     * wl_keyboard.modifiers event, because not every client trusts that event.
+     * An ordinary Qt/GTK app does honour it, but a NESTED COMPOSITOR does not:
+     * kwin_wayland feeds the key events it receives into its own xkb state
+     * machine and derives the shift level itself, so a bare "minus pressed" with
+     * a Shift modifier mask still resolves to '-'. Observed exactly that:
+     * `touch /var/jb/tmp/input_works` typed into Konsole under KWin created
+     * input-works, with a hyphen. Bracketing the key with KEY_LEFTSHIFT is what
+     * a physical keyboard does, so every client -- app or compositor -- agrees.
+     * Modifiers are still sent alongside; clients that use them stay correct. */
+    if (state && needs_shift) {
+        keyboard_send_mods(depressed, locked);
+        keyboard_send_raw_key(t, EVDEV_LEFTSHIFT, WL_KEYBOARD_KEY_STATE_PRESSED);
+    } else if (state) {
+        keyboard_send_mods(depressed, locked);
+    }
+
     keyboard_send_raw_key(t, evdev, wl_state);
-    if (!state) keyboard_send_mods(depressed, locked);
+
+    if (!state && needs_shift) {
+        keyboard_send_raw_key(t, EVDEV_LEFTSHIFT, WL_KEYBOARD_KEY_STATE_RELEASED);
+        keyboard_send_mods(depressed, locked);
+    } else if (!state) {
+        keyboard_send_mods(depressed, locked);
+    }
 }
 
 /* ---- pointer -------------------------------------------------------------- */

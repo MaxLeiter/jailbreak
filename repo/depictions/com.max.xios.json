@@ -1,0 +1,60 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/com.max.xios.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**Xios** is the one app iOS sees. It appears on the Home Screen as **X11**, owns a Metal layer and the UIKit input surface, and renders nothing of its own: a display server hands it an output IOSurface over a mach port, the app draws that as a Metal texture every frame, and your touches and keystrokes go back to the server. Nothing is streamed and nothing is copied.\n\nEvery desktop flavor needs it, so you normally do not install it directly \u2014 **xios-gnome**, **xios-kde**, **xios-native**, and **xios-x11** all pull it in through **xios-core**.\n\nOpen it and pick a session, or start one from the shell with `xios-session gnome` (or `kde`, `iosc`). Once a desktop is up:\n\n- **three-finger tap** switches between running displays\n- **four-finger tap** opens the session and dimension picker\n- **pinch** zooms to fit\n- **swipe up from the lower edge** raises the iOS keyboard\n\nThe app is unsigned, so it needs **AppSync Unified** (from the https://cydia.akemi.ai/ repo) to launch. Rootless jailbreaks only (/var/jb), iOS/iPadOS 16 or newer, iPad."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "0.1.0"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "722.6 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "Desktop"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "com.max.xios"
+        }
+      ]
+    },
+    {
+      "class": "DepictionStackView",
+      "tabname": "Changelog",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "## 0.1.0  \u00b7  2026-07-29\n- First packaged release: the display app now installs from the repo instead of being sideloaded\n- Zero-copy IOSurface presentation through Metal, session and dimension picker, multi-display switching\n- Touch, Pencil, hardware keyboard, and on-screen keyboard routed back to the display server"
+        }
+      ]
+    }
+  ]
+}
