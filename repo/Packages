@@ -20,7 +20,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: angle
 Name: ANGLE (GLES via Metal)
-Version: 2.1.0+git20260630.a32d31d+es3-3
+Version: 2.1.0+git20260630.a32d31d+es3-6
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
@@ -29,11 +29,11 @@ Installed-Size: 13488
 Depends: firmware (>= 15.0)
 Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/AGX).
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-3_iphoneos-arm64.deb
-Size: 3937734
-MD5sum: 1d1d22e069984bee13b361c725d06a3a
-SHA1: eb7d377cd71e005862af241523f4be70a78aa3ec
-SHA256: 2622afd52c1bf56dcba77a5655149347d50efe62e68e369bfb6460a321de7d8e
+Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-6_iphoneos-arm64.deb
+Size: 3938504
+MD5sum: f71acedc64f8b7c32950edc55b34a737
+SHA1: a35cc749f0d18cf8f220b3d47467a3737a16eac8
+SHA256: 9d79f56d89e81da1b5f9f799bc0e08ca3d61b006ba994ce353c74a579047bede
 Icon: https://repo.maxleiter.com/icons/angle.png
 Depiction: https://repo.maxleiter.com/depictions/angle.html
 SileoDepiction: https://repo.maxleiter.com/depictions/angle.json
@@ -1226,7 +1226,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.20
+Version: 0.9.21
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1236,11 +1236,11 @@ Section: X11
 Priority: optional
 Installed-Size: 556
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.20_iphoneos-arm64.deb
-Size: 130426
-MD5sum: 142a49fb9e460d4fdab020f96673b13e
-SHA1: f6c0391b194525cf32af1a570f75f2600cb05126
-SHA256: 10891f65ba295c2628737b2f1d0481923c697eb4b6206ad419a5863663769cf6
+Filename: debs/iosc_0.9.21_iphoneos-arm64.deb
+Size: 132192
+MD5sum: 24bff68f76785bb49334d2cbd0ceb1f2
+SHA1: 524b613c48ea2a7ccf21c564731c65746be092db
+SHA256: 338e333b651686f846cd343bcf3a54c01407db97a463000bcec21114e164ed38
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -3604,7 +3604,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 
 Package: kwin
-Version: 6.1.5+ios11
+Version: 6.1.5+ios26
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -3612,34 +3612,34 @@ Priority: optional
 Homepage: https://kde.org/plasma-desktop/
 Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-tools, qt6-sensors, qt6-5compat, kf6-auth, kf6-colorscheme, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-idletime, kf6-package, kf6-service, kf6-svg, kf6-widgetsaddons, kf6-windowsystem, kdecoration, kwayland, kglobalacceld, libwayland0, libxkbcommon0, libdrm2, libgbm1, libdisplay-info1, libepoll-shim0, angle
 Description: KWin Wayland compositor with Xios ANGLE/IOSurface acceleration
-Installed-Size: 16244
+Installed-Size: 21784
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin_6.1.5+ios11_iphoneos-arm64.deb
-Size: 2312822
-MD5sum: d2778293479e4b20cd8fb157dabc52cf
-SHA1: 7a0eee73d8b2da9db77efbaa187f8f09a7dd275f
-SHA256: 7c102e3956d47fd9ee68cbf6a62817f94c384c600ecd72ba2f2620d72d4c541f
+Filename: debs/kwin_6.1.5+ios26_iphoneos-arm64.deb
+Size: 2879226
+MD5sum: e08e475f318cc44be25e93bd88524dc6
+SHA1: 6d4c27fa4408d243d4a003c0f6b61ef2d54c275a
+SHA256: 7ee3fd0039cf104c763e3e99bda45636ccdaa4d4266560d5ccda83b122cb24cd
 Icon: https://repo.maxleiter.com/icons/kwin.png
 Depiction: https://repo.maxleiter.com/depictions/kwin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwin.json
 
 Package: kwin-dev
-Version: 6.1.5+ios11
+Version: 6.1.5+ios26
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: kwin (= 6.1.5+ios11), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
+Depends: kwin (= 6.1.5+ios26), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
 Description: Development files for KWin
 Installed-Size: 1912
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin-dev_6.1.5+ios11_iphoneos-arm64.deb
-Size: 268250
-MD5sum: 8e105010e496d006f2e4bb560dc43217
-SHA1: 71d2a0f3300e1d149b41aea9743949a402c20a87
-SHA256: 730ea4602f4ec4a7804be1c36259a206dbcf37c69491efca475a375507904708
+Filename: debs/kwin-dev_6.1.5+ios26_iphoneos-arm64.deb
+Size: 268270
+MD5sum: 1cc8e8280f970f35f712f33060a5bbbf
+SHA1: 79dc00ee223538518602dec374de54e1bb212c6a
+SHA256: 7259656dce7ecb7b71018f37c74217ac83aba49a947ff150727463c0310abcda
 Icon: https://repo.maxleiter.com/icons/kwin-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kwin-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin-dev.json
@@ -3668,20 +3668,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/kwrite.json
 
 Package: ladybird-app
 Name: Ladybird
-Version: 0.1.22+ios1
+Version: 0.1.23+ios1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1
 Section: Apps
 Priority: optional
-Description: Ladybird — a standalone native web browser for jailbroken iPad
-Installed-Size: 205576
-Filename: debs/ladybird-app_0.1.22+ios1_iphoneos-arm64.deb
-Size: 68966264
-MD5sum: 198665d945c74868ab2859414b4e11b9
-SHA1: 4b020f5516ff5cbaf6f6491751ebe7c7997100cf
-SHA256: 92fb97a8658348a14aee95dddca7656bbd0389f3e9a0237ea31b96876ce670f1
+MinimumOSVersion: 16.0
+Description: Ladybird — a standalone native web browser for jailbroken iOS
+Filename: debs/ladybird-app_0.1.23+ios1_iphoneos-arm64.deb
+Size: 68968884
+MD5sum: 7cd7c903fa2110503131ad1e19a5c236
+SHA1: fbdac9da7c8706cbf54f12d13805e86f41d803e9
+SHA256: 5380209d5e14099e59fce8e2a6a8e9f4bed62872c62597819954bf90998c152b
 Icon: https://repo.maxleiter.com/icons/ladybird-app.png
 Depiction: https://repo.maxleiter.com/depictions/ladybird-app.html
 SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-app.json
@@ -10743,43 +10743,42 @@ SileoDepiction: https://repo.maxleiter.com/depictions/qt6-5compat-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-5compat-dev.json
 
 Package: qt6-base
-Version: 6.6.3-4+ios1
+Version: 6.6.3-5+ios1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: libiosexec1 (>= 1.3.1), libfontconfig1, libfreetype6, libharfbuzz0b, libpng16-16, libjpeg62-turbo, libpcre2-16-0, libxkbcommon0, libsqlite3-1, dbus, angle
+Depends: libiosexec1 (>= 1.3.1), libfontconfig1, libfreetype6, libharfbuzz0b, libpng16-16, libjpeg62-turbo, libpcre2-16-0, libxkbcommon0, libsqlite3-1, libicu74, dbus, angle
 Description: Qt 6 core libraries for the Xios desktop
-Installed-Size: 23500
+Installed-Size: 23516
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-base_6.6.3-4+ios1_iphoneos-arm64.deb
-Size: 8143620
-MD5sum: 57de5c651e3593c2b7fac38e03629c2f
-SHA1: 053d63eddf930701aada2c5263aee2988b1e4e06
-SHA256: 55d30e39635aa5f16aab05291d43a5f381fa290874676cc0a797fa98015edacf
+Filename: debs/qt6-base_6.6.3-5+ios1_iphoneos-arm64.deb
+Size: 8144694
+MD5sum: f6087413bac2ddc57baca9d10cfa2412
+SHA1: 76c17fc2266b91d7642bd9ba146fd966d8963974
+SHA256: c9229d8a1e9d145809d71b4bf84949c98babf8f1d6c5935b7cfe083d2b06779b
 Icon: https://repo.maxleiter.com/icons/qt6-base.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-base.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-base.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-base.json
 
 Package: qt6-base-dev
-Version: 6.6.3-4+ios1
+Version: 6.6.3-5+ios1
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-base (= 6.6.3-4+ios1)
+Depends: qt6-base (= 6.6.3-5+ios1)
 Description: Development files for Qt 6 base
 Installed-Size: 23080
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-base-dev_6.6.3-4+ios1_iphoneos-arm64.deb
-Size: 2481244
-MD5sum: a7bd4d771119c50eb96ab8ba3fa57ccb
-SHA1: 1fa5bd4538501ab482ba3e0fa7a348f6f8794c66
-SHA256: 5d274d9e303199bbc6948e38c5d595d631cc502c4d62bf41835f8c566e0eb4f5
+Filename: debs/qt6-base-dev_6.6.3-5+ios1_iphoneos-arm64.deb
+Size: 2489798
+MD5sum: 74d0f2a45202dca68a6490837d01310c
+SHA1: fe708f63b3222d872ceff4971d3ae5aed4e28e2a
+SHA256: 9035898afe435753e5ad3bda797b3fa02200abe186fee335727edc03c512e9a2
 Icon: https://repo.maxleiter.com/icons/qt6-base-dev.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-base-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-base-dev.json
