@@ -425,12 +425,51 @@ while pos < len(d):
     typ = d[pos+4:pos+8]
     if typ == b'IHDR':
         w, h = struct.unpack('>II', d[pos+8:pos+16])
+        ct = d[pos+17]
     elif typ == b'IDAT':
         idat += d[pos+8:pos+8+ln]
     pos += 12 + ln
 raw = zlib.decompress(idat)
-nz = sum(1 for b in raw if b)
-print(f"capture: {w}x{h} decoded={len(raw)}B non-zero={nz} "
+# Count non-black PIXELS, which means undoing the PNG line filters first.
+# Counting non-zero BYTES of the raw (still filtered) stream looks like it
+# measures content but does not: filters emit zeros for smooth runs, so a
+# uniform window-filled desktop scores LOWER than a noisy wallpaper. Only the
+# all-zero case was ever trustworthy.
+bpp = {0: 1, 2: 3, 4: 2, 6: 4}.get(ct, 3)
+stride = w * bpp
+prev = bytearray(stride)
+nz = 0
+o = 0
+for _ in range(h):
+    if o >= len(raw):
+        break
+    ft = raw[o]; o += 1
+    line = bytearray(raw[o:o + stride]); o += stride
+    if ft == 1:
+        for i in range(bpp, stride):
+            line[i] = (line[i] + line[i - bpp]) & 255
+    elif ft == 2:
+        for i in range(stride):
+            line[i] = (line[i] + prev[i]) & 255
+    elif ft == 3:
+        for i in range(stride):
+            line[i] = (line[i] + ((line[i - bpp] if i >= bpp else 0) + prev[i]) // 2) & 255
+    elif ft == 4:
+        for i in range(stride):
+            a = line[i - bpp] if i >= bpp else 0
+            b = prev[i]
+            c = prev[i - bpp] if i >= bpp else 0
+            pp = a + b - c
+            pa, pb, pc = abs(pp - a), abs(pp - b), abs(pp - c)
+            pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+            line[i] = (line[i] + pr) & 255
+    for x in range(0, stride, bpp):
+        if line[x] or (bpp > 2 and (line[x + 1] or line[x + 2])):
+            nz += 1
+    prev = line
+total = w * h
+pct = (100.0 * nz / total) if total else 0.0
+print(f"capture: {w}x{h} non-black-pixels={nz}/{total} ({pct:.1f}%) "
       f"({'BLANK - output really is black' if nz == 0 else 'has content'})")
 PYEOF
     fi
