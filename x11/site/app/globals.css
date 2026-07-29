@@ -8,6 +8,10 @@
    ============================================================ */
 
 :root {
+  /* Dark-only by intent. This also tells iOS Safari to render the rubber-band
+     overscroll, scrollbars and form controls dark instead of white. */
+  color-scheme: dark;
+
   /* grounds + neutrals (blue-biased slate, chosen not defaulted) */
   --bg: #090c11;
   --bg-2: #0c1017;
@@ -52,6 +56,8 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 96px;
   -webkit-text-size-adjust: 100%;
+  /* Also on <html> so the iOS overscroll gutter matches the page, not white. */
+  background-color: var(--bg);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -83,6 +89,7 @@ body {
   letter-spacing: 0.005em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: rgba(52, 210, 230, 0.16);
 }
 
 ::selection {
@@ -230,7 +237,10 @@ p {
 }
 .main {
   min-width: 0;
-  padding: clamp(28px, 5vw, 72px) var(--pad) 120px;
+  /* Landscape notch and the home indicator both eat into this column. */
+  padding: clamp(28px, 5vw, 72px) max(var(--pad), env(safe-area-inset-right))
+    calc(120px + env(safe-area-inset-bottom))
+    max(var(--pad), env(safe-area-inset-left));
   border-left: 1px solid var(--line);
   position: relative;
 }

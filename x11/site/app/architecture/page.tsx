@@ -3,8 +3,9 @@ import Link from "next/link";
 import { Diagram } from "@/components/Diagram";
 import { Zoom } from "@/components/Figures";
 import { Callout, Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "Architecture" };
+export const metadata: Metadata = pageMetadata("/architecture");
 
 export default function Architecture() {
   return (

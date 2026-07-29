@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "Display servers" };
+export const metadata: Metadata = pageMetadata("/display-servers");
 
 export default function DisplayServers() {
   return (

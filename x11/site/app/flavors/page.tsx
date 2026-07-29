@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Clip, Shot } from "@/components/Figures";
 import { Callout, Ext, NextLinks, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "Desktop flavors" };
+export const metadata: Metadata = pageMetadata("/flavors");
 
 type Mode = {
   name: string;
@@ -56,6 +57,7 @@ export default function Flavors() {
             src="/shots/iosc-launcher.jpg"
             alt="The app launcher showing installed apps: Fonts, D-Spy, mpv Media Player, Foot Server, Foot Client, Zathura, Files, Console, Disk Usage Analyzer, File Roller, Foot, Calculator and Hitori."
             caption="The app launcher"
+            sizes="(max-width: 900px) 100vw, 900px"
           />
         </div>
         <div style={{ marginTop: 18 }}>
