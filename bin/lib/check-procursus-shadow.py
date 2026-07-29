@@ -13,7 +13,16 @@ Procursus package it replaces:
                                                       [caught by the VERSION rule]
   3. libharfbuzz0b 10.2.0+ios1 was built without hb-glib -> mutter-clutter dyld
      abort on _hb_glib_script_to_script (file present, feature missing).
-                                                      [caught by the VERSION rule]
+                                                      [caught by the SYMBOLS rule]
+
+Landmine 3 recurred on 2026-07-29 and is why the SYMBOLS rule exists. It had been
+left to the VERSION rule, but VERSION is only a proxy: it fires on *any* upstream
+bump, so shipping 10.2 at all required a waiver -- and the waiver that was written
+("hb-glib built in, verified") asserted a property nothing checked, which was false.
+Waiving the proxy silently waived the real guarantee, and every GTK app on the
+device died at dyld again. A waiver must never be able to assert an unverified
+property, so the superset claim is now machine-checked and has its own rule name:
+waiving a deliberate VERSION bump no longer waives "and it kept every symbol".
 
 Rules, applied to the NEWEST version of each package in repo/debs whose name also
 exists in the Procursus index:
@@ -23,6 +32,9 @@ exists in the Procursus index:
             sshd broke; it needs a waiver with a written justification.
   parity:   every *.dylib path inside the Procursus deb must exist in ours. Catches
             soname drops and same-version repacks that lose files.
+  symbols:  for every *.dylib shipped by BOTH, our exported symbols must be a
+            superset of Procursus's. This is the real drop-in test that `version`
+            and `parity` only approximate: same soname, same files, missing feature.
   devlib:   (all our -dev debs, shadowing or not) versioned runtime dylibs
             (libfoo.N.dylib as a regular file, not a symlink) do not belong in -dev
             packages -- removing the -dev must never break a runtime consumer
@@ -107,6 +119,42 @@ def deb_entries(path: str) -> list[tuple[str, bool]]:
             out.append((line.split(" -> ")[0].split()[-1], True))
         else:
             out.append((parts[-1], False))
+    return out
+
+
+def deb_extract(path: str, dest: str) -> None:
+    """Unpack a deb's data tar into dest."""
+    subprocess.run(["ar", "x", path], cwd=dest, check=True, capture_output=True)
+    data = next(n for n in os.listdir(dest) if n.startswith("data.tar"))
+    data_path = os.path.join(dest, data)
+    proc = subprocess.run(
+        ["tar", "xf", data_path, "-C", dest], capture_output=True, text=True,
+    )
+    if proc.returncode != 0 and data.endswith(".zst"):
+        # same bsdtar zstd-frame quirk deb_entries works around
+        proc = subprocess.run(
+            f"zstd -dc {data_path!r} | tar x -C {dest!r}",
+            shell=True, capture_output=True, text=True,
+        )
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, "tar", proc.stderr)
+
+
+def dylib_exports(path: str) -> set[str] | None:
+    """Externally-visible defined symbols of a Mach-O dylib, or None if unreadable.
+
+    `nm -g` = external only, `-U` = defined only (Apple/llvm nm; NOT GNU's
+    "undefined only"), so together they are exactly the export list.
+    """
+    proc = subprocess.run(["nm", "-gU", path], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None
+    out: set[str] = set()
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        # "<addr> T _symbol"; skip fat-arch headers ("path (for architecture x):")
+        if len(parts) >= 3 and len(parts[1]) == 1 and parts[-1].startswith("_"):
+            out.add(parts[-1])
     return out
 
 
@@ -217,6 +265,42 @@ def main() -> int:
                           + (" ..." if len(missing) > 4 else ""))
         except (subprocess.CalledProcessError, OSError, StopIteration) as e:
             print(f"shadow-check: WARNING could not parity-check {pkg}: {e}")
+
+        # symbols: our exports must be a superset of theirs, per shared dylib.
+        try:
+            skey = f"sym:{key}"
+            if skey in verdicts:
+                dropped = json.loads(verdicts[skey])
+            else:
+                dropped = {}
+                with tempfile.TemporaryDirectory() as td:
+                    ours_root = os.path.join(td, "ours")
+                    theirs_root = os.path.join(td, "theirs")
+                    os.makedirs(ours_root)
+                    os.makedirs(theirs_root)
+                    deb_extract(path, ours_root)
+                    deb_extract(fetch_procursus_deb(fields), theirs_root)
+                    for rel, is_link in deb_entries(path):
+                        if is_link or not rel.endswith(".dylib"):
+                            continue
+                        ours_f = os.path.join(ours_root, rel.lstrip("./"))
+                        theirs_f = os.path.join(theirs_root, rel.lstrip("./"))
+                        if not (os.path.isfile(ours_f) and os.path.isfile(theirs_f)):
+                            continue
+                        ours_syms = dylib_exports(ours_f)
+                        theirs_syms = dylib_exports(theirs_f)
+                        if ours_syms is None or theirs_syms is None:
+                            continue
+                        gone = sorted(theirs_syms - ours_syms)
+                        if gone:
+                            dropped[os.path.basename(rel)] = gone
+                verdicts[skey] = json.dumps(dropped)
+            for lib, gone in sorted(dropped.items()):
+                violation(pkg, "symbols",
+                          f"{lib} drops {len(gone)} symbol(s) Procursus exports: "
+                          + ", ".join(gone[:4]) + (" ..." if len(gone) > 4 else ""))
+        except (subprocess.CalledProcessError, OSError, StopIteration) as e:
+            print(f"shadow-check: WARNING could not symbol-check {pkg}: {e}")
 
     json.dump(verdicts, open(verdicts_path, "w"))
 
