@@ -1,0 +1,22 @@
+Package: xios-fonts-noto
+Name: Noto Sans fonts
+Version: 1.0.1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Google / Noto project
+Depends: fontconfig
+Section: X11
+Priority: optional
+Description: Noto Sans, the font KDE actually asks for
+ KDE Plasma's built-in default UI font is "Noto Sans" (and "Noto Sans Mono" for
+ fixed width). iOS ships ~120 Noto faces under /System/Library/Fonts, but they
+ are script-specific Unicode-support faces (Noto Sans Newa, Noto Sans Sora
+ Sompeng, ...) -- there is no plain "Noto Sans" family. So every KDE app asked
+ fontconfig for a family that did not exist and got Verdana back, which is why
+ text rendered wrong across the desktop.
+ .
+ This ships the real Noto Sans, Noto Sans Italic and Noto Sans Mono variable
+ fonts (SIL Open Font License 1.1, see /var/jb/usr/share/doc/xios-fonts-noto).
+ It does not change any fontconfig defaults: x11-fonts-sf still maps the generic
+ sans-serif/monospace aliases to San Francisco. This only makes the explicit
+ "Noto Sans" family resolve to Noto Sans.

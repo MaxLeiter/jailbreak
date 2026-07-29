@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# qtwayland-ios-fixes.sh — Wayland client ordering fixes for iOS/Xios.
 set -euo pipefail
 
 src=${1:?usage: qtwayland-ios-fixes.sh <qtwayland-source-dir>}

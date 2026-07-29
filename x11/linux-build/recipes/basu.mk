@@ -2,31 +2,12 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# basu.mk — basu, the standalone sd-bus library (git.sr.ht/~emersion/basu), extracted from
-# systemd so non-systemd systems can provide the sd-bus API. mako links it as its sd-bus provider.
-#
-# STATUS: BLOCKED on iOS/Darwin (mako's sd-bus provider — kept as documentation of the attempt).
-# The meson-level GNU-isms below ARE fixed by this recipe and meson now configures cleanly:
-#   * `link_args : ['-shared', '-Wl,--version-script=...']` — both GNU-ld-only; ld64 rejects them.
-#     Collapsed to `[]` (meson emits -dynamiclib itself; the symbol version script is dropped).
-#   * `cc.find_library('rt')` — no librt on iOS (made non-required).
-#   * audit + libcap optional features disabled (absent on the image).
-# But the sd-bus C SOURCE is architecturally Linux-bound. Concrete walls hit at compile time
-# (first 7 of 94 objects, all structural — not one-line shims):
-#   1. bus-gvariant.c / bus-protocol.h: glibc <endian.h> le16toh/htole16/... (Darwin has none;
-#      would need an OSByteOrder-backed endian.h shim — the tractable one).
-#   2. bus-error.c / bus-common-errors.c: BUS_ERROR_MAP_ELF_REGISTER =
-#      __attribute__((section("BUS_ERROR_MAP"))). Mach-O needs "__SEG,__sect" and, worse, the
-#      runtime WALKS that ELF section (__start_/__stop_ symbols) to assemble the sd_bus_error_map
-#      table. Mach-O has no __start_/__stop_ section symbols; this registration mechanism must be
-#      rewritten with getsectiondata()/__DATA sections.
-#   3. bus-internal.h: `struct ucred` (Linux SO_PEERCRED / SCM_CREDENTIALS peer-credential model).
-#      Darwin has no struct ucred; LOCAL_PEERCRED yields a different struct xucred and there is no
-#      SCM_CREDENTIALS ancillary-credential passing — sd-bus's whole creds path is Linux-only.
-# Still unbuilt beyond that: bus-kernel.c (Linux kdbus), bus-socket.c (accept4/memfd_create/
-# MSG_CMSG_CLOEXEC), socket-util.c, capability-util.c (Linux capabilities), sd-id128 (/proc,
-# /etc/machine-id), process-util (/proc/self). This is a multi-file architectural port, not a
-# portability-shim cascade, so per the build brief mako is stopped here rather than spun on.
+# BLOCKED on iOS/Darwin (mako's sd-bus provider). The meson-level GNU-isms (GNU-ld
+# version-script link args, librt) are patched around, but the sd-bus C source itself is
+# structurally Linux-bound: error-map registration walks an ELF section via __start_/__stop_
+# symbols Mach-O doesn't have, and the creds path needs Linux struct ucred/SO_PEERCRED
+# (Darwin's LOCAL_PEERCRED/struct xucred aren't equivalent). kdbus, socket, capability, and
+# /proc-based code are untouched. Architectural port, not a shim cascade — left here unbuilt.
 
 SUBPROJECTS  += basu
 BASU_VERSION := 0.2.1
@@ -35,8 +16,7 @@ DEB_BASU_V   ?= $(BASU_VERSION)+ios1
 basu-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~emersion/basu/archive/v$(BASU_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(BASU_VERSION).tar.gz,basu-v$(BASU_VERSION),basu)
-	# iOS has no librt, and Apple ld64 does not support basu's GNU ld link_args.
-	# Keep those source edits in the port patch stack.
+	# iOS has no librt, and ld64 rejects basu's GNU-ld link_args; fixed via patch.
 	$(call DO_PATCH,basu,basu,-p1)
 	rm -rf $(BUILD_WORK)/basu/build && mkdir -p $(BUILD_WORK)/basu/build
 	echo -e "[host_machine]\n \

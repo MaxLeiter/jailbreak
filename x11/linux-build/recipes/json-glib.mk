@@ -2,11 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# json-glib.mk — JSON parser/generator built on GLib types. Needed by tracker (and broadly
-# useful across GNOME). glib only; trivial. GTK-independent.
-#
-# BUILT/PUBLISHED — libjson-glib-1.0-0 1.8.0+ios1.
-
 SUBPROJECTS       += json-glib
 JSON-GLIB_MAJOR_V := 1.8
 JSON-GLIB_VERSION := $(JSON-GLIB_MAJOR_V).0

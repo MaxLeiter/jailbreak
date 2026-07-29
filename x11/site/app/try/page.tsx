@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { T } from "@/components/Term";
 import { Callout, Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
-import { SITE } from "@/content/site";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "Try it yourself" };
+export const metadata: Metadata = pageMetadata("/try");
 
 export default function Try() {
   return (
@@ -13,45 +12,43 @@ export default function Try() {
         tag="Try it yourself"
         index="08"
         title="Run it on your device"
-        lede="Everything here ships as ordinary packages, the display app included. Bring a compatible jailbreak and expect some rough edges: this is a hand-assembled system that has been proven on exactly one iPad."
+        lede="Everything here ships as ordinary packages. Install one flavor, open one app, and you have a desktop. Bring a compatible jailbreak and expect some rough edges."
       />
 
       <Section num="08.1" title="What you need">
         <dl className="deflist">
           <div className="row">
-            <dt>A jailbroken iPad</dt>
+            <dt>A jailbroken device</dt>
             <dd>
-              Proven on an iPad 7 (A10, iPadOS 17.6.1) jailbroken with{" "}
-              <Ext href="https://ellekit.space/dopamine/">Dopamine</Ext>. It must
-              be a <T k="rootless" />{" "}jailbreak: every binary bakes{" "}
-              <code>/var/jb</code>, so a <T k="rootful" />{" "}setup cannot install
-              a working set no matter what the metadata says. RootHide resolves
-              its own <code>/var/jb</code>{" "}symlink and works as-is.
-            </dd>
-          </div>
-          <div className="row">
-            <dt>iOS 16.5 or newer</dt>
-            <dd>
-              The GNOME, KDE and X11 flavors declare a 16.5 floor; the core and
-              native flavors go back to 16.0. Older devices will simply not be
-              offered the package.
+              Proven on an iPad 7 (A10, iPadOS 17.6.1) on{" "}
+              <Ext href="https://ellekit.space/dopamine/">Dopamine</Ext>. Other
+              jailbroken iOS 16+ devices may work, but this is the tested target.
+              Rootless only: every binary bakes in <code>/var/jb</code>, so a
+              rooted jailbreak cannot run this. RootHide resolves its own{" "}
+              <code>/var/jb</code> symlink and works as-is.
             </dd>
           </div>
           <div className="row">
             <dt>A package manager</dt>
             <dd>
-              <T k="sileo">
-                <Ext href="https://getsileo.app">Sileo</Ext>
-              </T>
-              , Zebra, or plain <code>apt</code>{" "}on the device.
+              <Ext href="https://getsileo.app">Sileo</Ext>, Zebra, or plain{" "}
+              <code>apt</code> on the device.
             </dd>
           </div>
           <div className="row">
-            <dt>Nothing else</dt>
+            <dt>AppSync Unified</dt>
             <dd>
-              The display app installs from the repo like everything else, as{" "}
-              <code>com.max.xios</code>. No Mac, no sideloading, no developer
-              account.
+              Required, and easy to forget. The display app is unsigned, and
+              without AppSync it will not launch. Add{" "}
+              <code>https://cydia.akemi.ai/</code> as a source and install it
+              before you install a flavor.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Some free space</dt>
+            <dd>
+              About 190 MB installed for GNOME and 550 MB for KDE. The native and
+              X11 flavors are around 55 MB.
             </dd>
           </div>
         </dl>
@@ -60,87 +57,181 @@ export default function Try() {
       <Section num="08.2" title="Add the repo">
         <div className="prose">
           <p>
-            Add <b>repo.maxleiter.com</b>{" "}as a source in your package manager.
-            In Sileo, open Sources, tap the add button, and paste the URL.
+            Add <b>repo.maxleiter.com</b> as a source in your package manager. In
+            Sileo, open Sources, tap the add button, and paste the URL.
           </p>
         </div>
         <Panel label="Repo" fig="apt source">
-          <div className="cmd">{SITE.repo}</div>
+          <div className="cmd">https://repo.maxleiter.com</div>
         </Panel>
-        <Callout>
-          Production is promoted by hand, not on every build, so a
-          package described elsewhere on this site may not have been pushed there
-          yet. If apt cannot find something, that is the usual reason.
-        </Callout>
+        <div className="prose" style={{ marginTop: 14 }}>
+          <p>
+            From a shell instead, as root. It is a flat repo, so the suite is{" "}
+            <code>./</code>.
+          </p>
+        </div>
+        <Panel label="Shell" fig="sources.list.d">
+          <div className="cmd">
+            <span className="p">#</span> echo &apos;deb [trusted=yes]
+            https://repo.maxleiter.com ./&apos; &gt;
+            /var/jb/etc/apt/sources.list.d/maxleiter.list
+          </div>
+          <div className="cmd">
+            <span className="p">#</span> apt update
+          </div>
+        </Panel>
       </Section>
 
       <Section num="08.3" title="Pick a flavor">
         <div className="prose">
           <p>
-            There is no single <code>xios</code>{" "}package. You install one
-            flavor, and each pulls in the shared <code>xios-core</code>{" "}base.
-            See <Link href="/flavors">Desktop flavors</Link>{" "}for what each one
-            is.
+            There is no single <code>xios</code> package. You install one flavor,
+            and each pulls in the shared <code>xios-core</code> base. See{" "}
+            <Link href="/flavors">Desktop flavors</Link> for what each one is.
           </p>
         </div>
+        <dl className="deflist" style={{ marginTop: 8 }}>
+          <div className="row">
+            <dt>
+              <code>xios-gnome</code>
+            </dt>
+            <dd>
+              GNOME Shell 46 on Mutter with the full session layer. Needs iOS
+              16.5.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>
+              <code>xios-kde</code>
+            </dt>
+            <dd>
+              KWin with Plasma Desktop, Plasma Mobile, and Plasma Nano, plus
+              System Settings and Breeze. Newer and rougher than GNOME. Needs iOS
+              16.5.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>
+              <code>xios-native</code>
+            </dt>
+            <dd>
+              No Linux shell: apps get Home Screen icons and their own iPadOS
+              windows. Needs iOS 16.0.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>
+              <code>xios-x11</code>
+            </dt>
+            <dd>
+              The Xios X server for classic X11 clients, plus Xwayland. Needs iOS
+              16.5.
+            </dd>
+          </div>
+        </dl>
         <Panel label="Install" fig="apt">
           <div className="cmd">
-            <span className="p">$</span> apt install com.max.xios xios-kde
-            xios-launcher-tools{"  "}
-            <span className="comment"># or xios-gnome, xios-native, xios-x11</span>
+            <span className="p">#</span> apt install xios-gnome{"  "}
+            <span className="comment"># or xios-kde, xios-native, xios-x11</span>
           </div>
         </Panel>
-        <Callout k="Install the launcher tools too">
-          The in-app picker starts desktops by asking <T k="ioscd" />, and only
-          the native flavor pulls that daemon in today. Adding{" "}
-          <code>xios-launcher-tools</code>{" "}and <code>xios-session</code>{" "}
-          explicitly saves you a picker that cannot start anything. For the iosc
-          desktop itself, add <code>iosc-shell</code>.
-        </Callout>
+        <div className="prose" style={{ marginTop: 14 }}>
+          <p>
+            Whichever you pick, the install brings the display app{" "}
+            <code>com.max.xios</code>, the iosc compositor and its desktop shell,
+            ANGLE for the GPU path, the session launcher, and the font and locale
+            defaults. Every flavor therefore also has the iosc desktop, which is
+            the most reliable session and a good first thing to try.
+          </p>
+        </div>
       </Section>
 
       <Section num="08.4" title="Launch it">
         <div className="prose">
           <p>
-            Unlock the iPad and open the app; it shows on the Home Screen as X11.
-            A three-finger tap opens the control panel, which is where you start a
-            desktop, resize a running one, choose which apps get Home Screen
-            icons, and reach Advanced for switching between{" "}
-            <T k="displaySlot">display slots</T>. Pull down from the top edge for
-            the status overlay, pinch to zoom to fit, and swipe up from the lower
-            edge to raise the keyboard.
+            Open the app (it shows on the Home Screen as <b>X11</b>) and pick a
+            session. From there, gestures drive it: a three-finger tap opens the
+            control panel, where you start a desktop, resize a running one, choose
+            which apps get Home Screen icons, and reach Advanced for switching
+            between running displays. A pull-down from the top edge reveals the
+            status overlay, a pinch zooms to fit, and a swipe up from the lower
+            edge raises the keyboard.
           </p>
-          <p>
-            There is a command-line equivalent if you would rather drive it over
-            SSH: <code>xios-session</code>{" "}takes <code>iosc</code>,{" "}
-            <code>mutter</code>, <code>gnome</code>, <code>kde</code>,{" "}
-            <code>kde-nano</code>{" "}or <code>kde-mobile</code>, plus{" "}
-            <code>status</code>{" "}and <code>stop</code>.
-          </p>
+          <p>The same thing from a shell, on the device or over SSH, as root:</p>
         </div>
-        <Panel label="Launch" fig="over ssh">
+        <Panel label="Sessions" fig="xios-session">
           <div className="cmd">
-            <span className="p">$</span> xios-session kde
+            <span className="p">#</span> xios-session iosc{"  "}
+            <span className="comment"># the iosc desktop shell</span>
+          </div>
+          <div className="cmd">
+            <span className="p">#</span> xios-session gnome{"  "}
+            <span className="comment"># GNOME session and Shell</span>
+          </div>
+          <div className="cmd">
+            <span className="p">#</span> xios-session kde-mobile{"  "}
+            <span className="comment"># or kde, kde-nano</span>
+          </div>
+          <div className="cmd">
+            <span className="p">#</span> xios-session status
+          </div>
+          <div className="cmd">
+            <span className="p">#</span> xios-session stop{"  "}
+            <span className="comment"># back to SpringBoard</span>
           </div>
         </Panel>
-        <Callout k="The screen has to be awake">
-          Metal hands back no device while the app is backgrounded, so a session
-          started against a locked or sleeping iPad will not come up. Unlock
-          first, then launch.
+        <Callout k="Keep the screen awake">
+          A locked or sleeping iPad gets the Metal app suspended by FrontBoard, so
+          a session that starts behind a locked screen presents a black frame.
+          Unlock first.
+        </Callout>
+        <Callout>
+          Native mode uses Home Screen launchers instead of the session picker.
+          Installing the flavor does not create icons by itself: choose apps in
+          the Xios pane in Settings, or run <code>xios-launcher-sync</code>.
         </Callout>
       </Section>
 
-      <Section num="08.5" title="What to expect">
-        <div className="prose">
-          <p>
-            All three KDE presets are marked experimental in the launcher itself,
-            and GNOME&apos;s first light works while daemon and app concurrency
-            cleanup continues. The X11 flavor has no entry in the session picker:
-            the classic server is started by its own <code>xios-server</code>{" "}
-            command, and its VNC route is still the practical way to use it.
-            Native mode uses Home Screen launchers instead of the picker.
-          </p>
-        </div>
+      <Section num="08.5" title="When it does not come up">
+        <dl className="deflist">
+          <div className="row">
+            <dt>The X11 icon does nothing</dt>
+            <dd>
+              AppSync Unified is missing, or the app lost its signature. Reinstall
+              AppSync, then <code>apt install --reinstall com.max.xios</code>.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Black screen with the app open</dt>
+            <dd>
+              Either the device was locked while the session started, or no
+              display server is running. Unlock, then check{" "}
+              <code>xios-session status</code>.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Status says compositor-only</dt>
+            <dd>
+              The compositor came up but the shell never painted. The log for the
+              flavor you picked has the reason.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Logs</dt>
+            <dd>
+              All under <code>/var/jb/tmp/</code>: <code>xios-session.log</code>,{" "}
+              <code>xios-session-status.json</code>,{" "}
+              <code>gnome-shell.log</code>, <code>kde-plasma.log</code>.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Something was left behind</dt>
+            <dd>
+              <code>xios-session stop</code> tears down compositors and sockets
+              completely. It is safe to run at any time.
+            </dd>
+          </div>
+        </dl>
       </Section>
 
       <Section num="08.6" title="Send feedback">
@@ -151,10 +242,8 @@ export default function Try() {
             <Ext href="https://github.com/MaxLeiter/jailbreak/issues">
               GitHub Issues
             </Ext>{" "}
-            for <code>maxleiter/jailbreak</code>. Include the device, iOS
-            version, jailbreak, package flavor, and what happened.{" "}
-            <Link href="/contributing">Contributing</Link>{" "}covers how to
-            collect the evidence that makes a report actionable.
+            for <code>maxleiter/jailbreak</code>. Include the device, iOS version,
+            jailbreak, package flavor, and what happened.
           </p>
         </div>
       </Section>

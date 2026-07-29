@@ -1,7 +1,11 @@
+import type { Metadata } from "next";
 import { Diagram } from "@/components/Diagram";
 import { Clip, Shot, Zoom } from "@/components/Figures";
 import { T } from "@/components/Term";
 import { Ext, NextLinks, Panel, PlainTerms, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
+
+export const metadata: Metadata = pageMetadata("/");
 
 export default function Overview() {
   return (
@@ -11,7 +15,7 @@ export default function Overview() {
           <span className="tag">Overview</span>
         </div>
         <h1 className="page-title">X11 and Wayland on iOS</h1>
-        <p className="lede">Desktop Linux apps, rebuilt for a jailbroken iPad.</p>
+        <p className="lede">Desktop Linux apps on a jailbroken iPad</p>
       </header>
 
       <Section num="00.1" title="Where this came from">
@@ -20,43 +24,16 @@ export default function Overview() {
             I <Ext href="https://knightos.org">enjoy</Ext>{" "}
             <Ext href="https://maxleiter.com/blog/MSHW0184">running</Ext>{" "}
             <Ext href="https://maxleiter.com/blog/sandcastle">software</Ext>{" "}
-            on machines that shouldn&apos;t run it. I own the machine, after all.
+            on machines that shouldn&apos;t run it. I own the machine and should be able to run what I want.
             And I&apos;ve always thought it weird you can&apos;t run a{" "}
-            &quot;real desktop&quot; on an iPad. A few years ago, I painstakingly{" "}
+            &quot;real desktop&quot; on an iPad. (well, I know the reasons, but I'm not a fan.) A few years ago, I painstakingly{" "}
             <Ext href="https://maxleiter.com/x11">ported X11 to iOS</Ext>. The
             server ran on-device, but you had to connect with a VNC client, and
-            everything was rendered in software with no GPU support. This time
-            the display path is direct.
+            everything was rendered in software with no GPU support. This time its different. 
           </p>
           <p>
-            An X11 server and a GPU-accelerated{" "}
-            <Ext href="https://wayland.freedesktop.org">Wayland</Ext>{" "}compositor
-            now run as native arm64 code and draw straight to the display through{" "}
-            <Ext href="https://developer.apple.com/metal/">Metal</Ext>. And to be
-            clear, there is no Linux kernel here: no VM or emulator. The apps are
-            GNOME, KDE, GTK, Qt, Wayland, and X11 programs from the Linux desktop
-            world, but every one of them is a native iOS binary. Their windows
-            reach the screen as{" "}
-            <Ext href="https://developer.apple.com/documentation/iosurface">
-              IOSurfaces
-            </Ext>
-            , and your touches reach them as X11 and Wayland input.
-          </p>
-          <p>
-            When I first did the X11 work, I compiled everything by hand, on the
-            device. When I inevitably revisited it, the right move was a proper
-            build system. Thankfully the{" "}
-            <Ext href="https://github.com/ProcursusTeam/Procursus">
-              Procursus folks
-            </Ext>{" "}
-            have since made one.
-          </p>
-          <p>
-            The reference target is an iPad 7 on iPadOS 17.6.1, jailbroken with{" "}
-            <Ext href="https://ellekit.space/dopamine/">Dopamine</Ext>. Everything
-            is built for the <T k="rootless">rootless</T>{" "}layout, so it installs
-            under <code>/var/jb</code>. Other jailbroken iPads may work, but that
-            is the path I test.
+            From here on, everything on this site has been written by LLMs with only brief
+            oversight from me.
           </p>
         </div>
         <div className="shot-grid" style={{ marginTop: 30 }}>
@@ -64,6 +41,7 @@ export default function Overview() {
             src="/shots/native-home.jpg"
             alt="The iPad Home Screen with Linux desktop apps (Calculator, Console, Files, Fonts, Disk Usage Analyzer, Hitori and more) shown as native iOS icons."
             caption="Native mode: Linux apps as Home Screen icons"
+            priority
           />
           <Shot
             src="/shots/iosc-desktop.jpg"

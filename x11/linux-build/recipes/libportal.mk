@@ -2,14 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libportal.mk — GIO-style wrappers around the XDG Desktop Portal D-Bus APIs. Required by
-# nautilus (libportal + libportal-gtk4). One build emits the core lib + the gtk4 backend.
-# NOTE: on iOS there is no xdg-desktop-portal *service*, so portal calls are inert at runtime
-# (file chooser etc. fall back to GTK's own dialogs) — fine; nautilus only needs to LINK it.
-#
-# DEPENDS (target): glib + gtk4 (gtk-builder; for the -gtk4 backend).
-#
-# BUILT/PUBLISHED — libportal1/libportal-gtk4-1 0.7.1+ios1.
+# GIO-style wrappers around the XDG Desktop Portal D-Bus APIs. Required by nautilus
+# (libportal + libportal-gtk4); one build emits the core lib + the gtk4 backend.
+# There's no xdg-desktop-portal service on iOS, so portal calls are inert at runtime
+# (file chooser etc. fall back to GTK's own dialogs) -- nautilus only needs to link it.
 
 SUBPROJECTS        += libportal
 LIBPORTAL_VERSION  := 0.7.1

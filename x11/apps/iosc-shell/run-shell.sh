@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# run-shell.sh — start the iosc desktop shell ON DEVICE.
+# Starts the iosc desktop shell ON DEVICE.
 #
 # Brings up the full lightweight desktop: the iosc compositor, then the shell
 # layer-shell clients (wallpaper, status bar, dock). The overview is spawned on
@@ -49,10 +49,10 @@ IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
 export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
 # Logical desktop the shell designs its elements for. iosc renders a 2x-oversized
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
-# the 2160x1620 panel = ~1.5 effective scale (Max-approved). Override to retune.
+# the 2160x1620 panel = ~1.5 effective scale. Override to retune.
 export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
-# Input tracing to $XDG_RUNTIME_DIR/{ioscbar,ioscdock}.log — default ON while the shell-tap
-# bug is being hunted (Max: panel dead to taps, 2026-07-01). Flip to 0 after.
+# Input tracing to $XDG_RUNTIME_DIR/{ioscbar,ioscdock}.log — default ON while
+# hunting the shell-tap bug (panel dead to taps). Flip to 0 once fixed.
 export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-1}"
 
 SOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"

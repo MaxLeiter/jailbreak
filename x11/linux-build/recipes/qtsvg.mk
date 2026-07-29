@@ -2,11 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qtsvg.mk — SVG rendering for rootless iOS: libQt6Svg/libQt6SvgWidgets + the qsvg image
-# format plugin + the qsvgicon icon engine. Plasma/KF6 theming is SVG-everywhere (Breeze
-# icons, plasma themes via KSvg), so this is a hard KDE-flavor dependency despite being a
-# small module. Deps: qtbase only (zlib from build_base). Shared Apple/Darwin flags +
-# MACOS-condition fix: qt6-common.mk (rationale in qtbase.mk).
+# Plasma/KF6 theming is SVG-everywhere (Breeze icons, plasma themes via KSvg), so this is
+# a hard KDE-flavor dependency despite being a small module.
 
 SUBPROJECTS   += qtsvg
 QTSVG_VERSION := 6.6.3
@@ -23,8 +20,6 @@ ifneq ($(wildcard $(BUILD_WORK)/qtsvg/.build_complete),)
 qtsvg:
 	@echo "Using previously built qtsvg."
 else
-# No prereq on qtbase (staged in build_base already; mutter.mk precedent).
-# No `rm -rf build` (incremental iteration, qtbase.mk).
 qtsvg: qtsvg-setup
 	mkdir -p $(BUILD_WORK)/qtsvg/build
 	cd $(BUILD_WORK)/qtsvg/build && cmake .. \

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# build-gjs.sh — build the gjs JS layer (mozjs115 + gjs) for rootless iOS.
+# Builds the gjs JS layer (mozjs115 + gjs) for rootless iOS.
 # Companion to build-gtk.sh / build-gnome.sh; does NOT edit them. New recipes only.
 #
-# IMPORTANT: this drives the single heaviest cross in the tree (mozjs115). It is GATED —
-# do not run without coordinator go (Docker is shared). Drafted per docs/gjs-plan.md.
+# IMPORTANT: this drives the single heaviest cross in the tree (mozjs115). It is
+# GATED — do not run without coordinator go (Docker is shared).
 #
-# The introspection typelibs gjs needs at RUNTIME are NOT produced here: they are generated
-# ON THE DEVICE by ../gir-ondevice.sh (the GI cross wall — gnome-plan Blocker #2 — is
-# escaped by running g-ir-scanner natively on the iPad, proven working). This script only
-# builds the engine + bindings.
+# The introspection typelibs gjs needs at RUNTIME are NOT produced here: they are
+# generated ON THE DEVICE by ../gir-ondevice.sh (g-ir-scanner runs natively on the
+# iPad to dodge the GI cross-compile wall). This script only builds the engine +
+# bindings.
 #
 # Run in the container with procursus-vol mounted at /work/Procursus, recipes at /work/recipes,
 # and the ports tree (for the mozjs patch series) at /work/ports:

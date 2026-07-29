@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-# build-cogl-smoke.sh — cross-build x11/wayland/iosc-cogl-smoke.c (the Cogl-on-ANGLE-ES3
-# de-risk) into a device-ready iOS arm64 binary, OFF-DEVICE, against the mutter source tree
-# + the already-built libmutter-cogl-14 in the procursus-vol-gtk volume.
-#
-# Why off-device works: the smoke test needs cogl's PRIVATE winsys headers (only in the
-# mutter source tree, not in libmutter-14-dev) and links the private winsys symbols
-# (_cogl_winsys_egl_get_vtable / _renderer_connect_common / _make_current), which ARE
-# exported from libmutter-cogl (mutter's own libmutter links them cross-dylib). The result
-# is retargeted onto the INSTALLED device dylib paths, so it runs against the libmutter-14-0
-# deb + ANGLE WITHOUT an on-device mutter build — decoupling the Cogl de-risk from the heavy
-# typelib build.
+# Cross-builds x11/wayland/iosc-cogl-smoke.c (Cogl-on-ANGLE-ES3 de-risk) OFF-DEVICE: it needs
+# cogl's PRIVATE winsys headers, only present in the mutter source tree (though the symbols are
+# exported from libmutter-cogl), then gets retargeted onto installed device dylib paths.
 #
 #   docker run --rm --platform linux/arm64 -v procursus-vol-gtk:/work/Procursus \
 #     -v "$PWD/../wayland:/src:ro" -v "$PWD/out:/out" \

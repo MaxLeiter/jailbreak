@@ -2,15 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libadwaita.mk — GNOME's GTK4 platform library (Adwaita widgets/styling). The keystone for
-# every modern GNOME app's look. GNOME 46 generation = libadwaita 1.5.0.
-#
-# DEPENDS (target): gtk4 (gtk-builder owns it) + appstream (our recipe; libadwaita 1.4
-#   src/meson.build requires it) + fribidi/glib (in stack).
-# BUILD-HOST TOOL: sassc — libadwaita compiles its SCSS stylesheet at build time. sassc runs
-#   on the LINUX BUILD HOST, so it is NOT a cross/target dep: add `sassc` to the Dockerfile
-#   apt line (build-essential layer) rather than a recipe.
-# BUILT/PUBLISHED — libadwaita-1-0 1.5.0+ios1 against the GTK4 package set.
+# Depends on gtk4 + appstream (libadwaita 1.4 meson.build requires it) + fribidi/glib.
+# sassc compiles the SCSS stylesheet at build time and runs on the Linux build host,
+# not the target -- add it to the Dockerfile apt line, not as a recipe dep.
 
 SUBPROJECTS        += libadwaita
 LIBADWAITA_MAJOR_V := 1.5
@@ -20,15 +14,10 @@ DEB_LIBADWAITA_V   ?= $(LIBADWAITA_VERSION)+ios1
 libadwaita-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libadwaita/$(LIBADWAITA_MAJOR_V)/libadwaita-$(LIBADWAITA_VERSION).tar.xz)
 	$(call EXTRACT_TAR,libadwaita-$(LIBADWAITA_VERSION).tar.xz,libadwaita-$(LIBADWAITA_VERSION),libadwaita)
-	# Our cross file declares system='darwin' (it IS Darwin/iOS), so libadwaita's settings code
-	# takes its macOS branch: dependency('appleframeworks', modules:[AppKit,Foundation]) +
-	# adw-settings-impl-macos.c. AppKit does not exist on iOS. Force the condition false so the
-	# build falls through to the `else` branch (adw-settings-impl-portal.c — the standard Linux
-	# xdg-desktop-portal backend, correct for our X11/GTK-on-iOS environment).
-	# The C sources gate the same macOS backend on #ifdef __APPLE__ (independently of meson):
-	# adw-settings-impl-private.h declares AdwSettingsImplMacOS (not ...Portal) and adw-settings.c
-	# calls adw_settings_impl_macos_new(). Force both off __APPLE__ so the #else (portal) branch
-	# is taken, matching the meson source selection above. Each file has exactly one such gate.
+	# Cross file declares system='darwin' (true, it's iOS), so both meson and the C sources'
+	# #ifdef __APPLE__ gates would otherwise select the macOS AppKit settings backend, which
+	# doesn't exist here. The patch forces those conditions off so the xdg-desktop-portal
+	# backend (adw-settings-impl-portal.c) is used instead.
 	$(call DO_PATCH,libadwaita,libadwaita,-p1)
 	mkdir -p $(BUILD_WORK)/libadwaita/build
 	echo -e "[host_machine]\n \

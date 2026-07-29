@@ -1,9 +1,6 @@
 #!/bin/sh
-# launch-gnome-session.sh — bring up GNOME through gnome-session on Xios.
-#
-# This is the packaged GNOME path used by xios-session. It prepares the
-# Shell/Mutter iOS environment and lets gnome-session own org.gnome.Shell
-# instead of execing gnome-shell directly.
+# Packaged GNOME path used by xios-session: lets gnome-session own
+# org.gnome.Shell instead of execing gnome-shell directly.
 set -u
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)

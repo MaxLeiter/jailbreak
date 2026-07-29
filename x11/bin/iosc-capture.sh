@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# iosc-capture.sh — launch a Wayland client in the iosc compositor, screenshot it
-# with grim, capture its stderr, and diagnose why it did (or did not) map a window.
+# Launches a Wayland client in the iosc compositor, screenshots it with grim,
+# captures its stderr, and diagnoses why it did (or did not) map a window.
 #
 # Runs ON-DEVICE, inside the jailbreak /var/jb environment. A mac-side debug skill
 # scp's this over, runs it via ssh, then pulls back the PNG + log. It is also fine
@@ -97,7 +97,6 @@ else
 fi
 
 # ---- signature match (root-cause the stderr) -------------------------------
-# Patterns + fixes distilled from the 2026-07 iosc app-launch diagnosis.
 say "--- log tail ($LOG) ---"
 tail -n 20 "$LOG" 2>/dev/null
 say "--- diagnosis ---"

@@ -2,13 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qtshadertools.mk — Qt Shader Baker (qsb) + libQt6ShaderTools, cross-built for rootless
-# iOS. First rung of the Qt module ladder (docs/kde-plasma-plan.md): qtdeclarative's
-# QtQuick needs the HOST qsb at build time (resolved via QT_HOST_PATH; built by
-# build-qt-modules.sh stage 1) and the TARGET Qt6ShaderTools cmake package at configure
-# time — this recipe provides the target half. glslang + SPIRV-Cross are BUNDLED by Qt,
-# so no new external deps. Shared Apple/Darwin flags + the MACOS-condition fix live in
-# qt6-common.mk (full rationale in qtbase.mk).
+# First rung of the Qt module ladder: qtdeclarative's QtQuick needs the HOST qsb at build
+# time (via QT_HOST_PATH) and the TARGET Qt6ShaderTools cmake package at configure time —
+# this recipe provides the target half. glslang + SPIRV-Cross are bundled by Qt.
 
 SUBPROJECTS           += qtshadertools
 QTSHADERTOOLS_VERSION := 6.6.3
@@ -25,9 +21,8 @@ ifneq ($(wildcard $(BUILD_WORK)/qtshadertools/.build_complete),)
 qtshadertools:
 	@echo "Using previously built qtshadertools."
 else
-# NOT a prereq on qtbase: the cross qtbase is already staged in build_base by qtbase.mk's
-# AFTER_BUILD copy — listing it would re-trigger that build (mutter.mk precedent).
-# No `rm -rf build`: incremental cmake/ninja reruns are the iteration model (qtbase.mk).
+# NOT a prereq on qtbase: it's already staged in build_base by qtbase.mk's AFTER_BUILD
+# copy — listing it would re-trigger that build.
 qtshadertools: qtshadertools-setup
 	mkdir -p $(BUILD_WORK)/qtshadertools/build
 	cd $(BUILD_WORK)/qtshadertools/build && cmake .. \

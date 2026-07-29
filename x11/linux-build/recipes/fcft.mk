@@ -2,15 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# fcft.mk — foot's font loading + glyph rasterization library (codeberg.org/dnkl/fcft). Wraps
-# FreeType/fontconfig, rasterizes into pixman images, and (optionally) shapes runs with HarfBuzz
-# + segments graphemes with utf8proc. SVG glyphs use the BUNDLED nanosvg (svg-backend=nanosvg),
-# so no librsvg/Rust dep. Ships runtime libfcft4 (SONAME major = 4) + a -dev deb.
-#
-# DEPENDS (target, all prebuilt/cascade): freetype, fontconfig, pixman, harfbuzz (run-shaping),
-# utf8proc (grapheme-shaping). tllist supplies build-only headers via cross-pkg-config.
-# The bundled Unicode data (unicode/UnicodeData.txt, emoji-data.txt) is code-genned at build
-# time by host env/sh/python3 — no target execution, so needs_exe_wrapper is unaffected.
+# SVG glyphs use the bundled nanosvg (svg-backend=nanosvg) — no librsvg/Rust dependency.
+# Bundled Unicode data is code-genned at build time by host env/sh/python3; no target
+# execution involved, so needs_exe_wrapper is unaffected.
 
 SUBPROJECTS   += fcft
 FCFT_MAJOR_V  := 4
@@ -20,8 +14,7 @@ DEB_FCFT_V    ?= $(FCFT_VERSION)+ios1
 fcft-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/fcft/releases/download/$(FCFT_VERSION)/fcft-$(FCFT_VERSION).tar.gz)
 	$(call EXTRACT_TAR,fcft-$(FCFT_VERSION).tar.gz,fcft-$(FCFT_VERSION),fcft)
-	# iOS exposes locale_t/newlocale through <xlocale.h>; carry that source port as a
-	# quilt-style patch instead of mutating the extracted tree here.
+	# iOS exposes locale_t/newlocale through <xlocale.h>.
 	$(call DO_PATCH,fcft,fcft,-p1)
 	mkdir -p $(BUILD_WORK)/fcft/build
 	echo -e "[host_machine]\n \
@@ -64,11 +57,9 @@ fcft-package: fcft-stage
 	mkdir -p $(BUILD_DIST)/libfcft4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libfcft-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# runtime: libfcft.N.dylib
 	cp -a $(BUILD_STAGE)/fcft/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libfcft.*.dylib \
 		$(BUILD_DIST)/libfcft4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# -dev: headers, unversioned symlink, .pc
 	cp -a $(BUILD_STAGE)/fcft/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libfcft-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/fcft/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libfcft.*.dylib) \

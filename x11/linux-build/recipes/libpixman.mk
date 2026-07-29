@@ -2,10 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libpixman.mk — pixman bumped to 0.42.2 (meson) for mutter 46, which needs pixman-1 >= 0.42.
-# Procursus mainline ships 0.40.0 (autotools, too old). 0.42+ is meson-only; ABI-compatible
-# soname (libpixman-1.0), so already-built consumers (cairo/gtk4) keep working. Overrides the
-# mainline recipe build-locally for the mutter build (build-mutter.sh copies this in).
+# pixman bumped to 0.42.2 (meson) for mutter 46, which needs pixman-1 >= 0.42. Procursus
+# mainline ships 0.40.0 (autotools, too old) and 0.42+ is meson-only. Soname stays
+# ABI-compatible (libpixman-1.0), so already-built consumers (cairo/gtk4) keep working.
 
 SUBPROJECTS       += libpixman
 LIBPIXMAN_VERSION := 0.42.2

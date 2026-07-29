@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
-# build-backend-check.sh — OFF-DEVICE compile check for the MetaBackendIOS pieces
-# (src/backends/ios/*.c: monitor manager, input, the Wayland IOSurface buffer type).
-#
-# These are new mutter backend files. Rather than wire them into meson yet, we compile
-# each against the mutter 46 source tree with the EXACT strict flags + include set mutter
-# uses for its own backend objects — harvested from ninja's compile command for
-# backends/meta-monitor-manager-dummy.c.o (so the check tracks the real build). A clean
-# .o proves the vtable overrides + struct usage match the 46.0 ABI. Same philosophy as
-# build-cogl-smoke.sh (which is compile+link, because its winsys symbols are exported).
+# OFF-DEVICE compile check for the MetaBackendIOS pieces (src/backends/ios/*.c). Not wired into
+# meson yet; flags/includes are harvested from ninja's real compile command for
+# meta-monitor-manager-dummy.c.o so a clean .o actually proves ABI compatibility.
 #
 #   docker run --rm --platform linux/arm64 -v procursus-vol-gtk:/work/Procursus \
 #     -v "$PWD/../wayland:/src:ro" procursus-xbuild:bookworm-arm64 \

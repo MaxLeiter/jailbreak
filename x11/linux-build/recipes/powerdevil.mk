@@ -2,39 +2,15 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# powerdevil.mk — Plasma's power-management daemon (org_kde_powerdevil), its bundled
-# action plugins, the power-profile OSD, and kcm_powerdevilprofilesconfig, for rootless
-# iOS.
+# The Linux hardware layer (UDev/UdevQt, XCB, KF6 DocTools) is cut by
+# powerdevil-ios-fixes.sh, not cmake flags — upstream hard-REQUIREs all three with no
+# option to disable. See that script for the per-item rationale. Libcap and DDCUtil are
+# genuinely optional upstream and turned off via cmake below.
 #
-# Staged prerequisites (all already published, see repo/Packages): qt6-base,
-# qt6-declarative, plasma-activities, plasma-workspace (PW::KWorkspace comes from
-# plasma-workspace-dev's LibKWorkspace cmake package), libkscreen (KF6::Screen and
-# KF6::ScreenDpms), layer-shell-qt, and the KF6 set listed in build_info/powerdevil.control.
-#
-# The Linux hardware layer is cut by powerdevil-ios-fixes.sh, not by cmake flags —
-# upstream hard-REQUIREs all three of these with no option to turn them off:
-#   * UDev + the vendored UdevQt client (daemon/controllers/udevqt*.cpp). The repo's
-#     libudev stub (linux-build/udev-stub) only implements the 8 hwdb entry points
-#     gnome-bluetooth needs; UdevQt calls ~40 device/enumerate/monitor symbols, so this
-#     cannot link. UdevQt exists only to feed BacklightDetector, so both are dropped.
-#     The remaining KWinDisplayDetector (daemon/controllers/kwinbrightness.cpp) is a
-#     plain DBus client of KWin's brightness interface and is the correct screen
-#     brightness path for this stack anyway.
-#   * XCB (XCB/RANDR/DPMS). Its only consumer is the KWin/KScreen fade helper effect,
-#     which is already `#if HAVE_XCB`-guarded internally; only its unconditional
-#     <private/qtx11extras_p.h> include needs the same guard. Same X11-off policy as
-#     kglobalacceld/kscreen/plasma-workspace.
-#   * KF6 DocTools (a REQUIRED find_package COMPONENT, so KF6_CMAKE_FLAGS's
-#     CMAKE_DISABLE_FIND_PACKAGE_KF6DocTools cannot help — it turns the component
-#     NOT_FOUND and fails the whole find_package). No docbook toolchain here.
-# Libcap and DDCUtil are genuinely optional upstream and are turned off via cmake.
-#
-# RUNTIME REALITY: suspend/hibernate/lid handling go through org.freedesktop.login1 on
-# the system bus (daemon/controllers/suspendcontroller.cpp) and the charge-threshold /
-# backlight KAuth helpers read /sys. Those are pure QtDBus/QFile paths, so they compile
-# and degrade to "unsupported" at runtime — they are not build walls. Battery state comes
-# from org.freedesktop.UPower, which xios-fhs's xios-hwbridged owns on-device (the same
-# shim solid.mk's upower device backend already relies on).
+# Suspend/hibernate/lid go through org.freedesktop.login1 on the system bus, and the
+# charge-threshold/backlight KAuth helpers read /sys — pure QtDBus/QFile paths that
+# compile and degrade to "unsupported" at runtime, not build walls. Battery state comes
+# from org.freedesktop.UPower, owned on-device by xios-fhs's xios-hwbridged.
 
 SUBPROJECTS += powerdevil
 POWERDEVIL_VERSION = $(PLASMA_VERSION)
@@ -71,10 +47,9 @@ powerdevil-package: powerdevil-stage
 	rm -rf $(BUILD_DIST)/powerdevil
 	$(call KF6_COPY_RUNTIME,powerdevil,powerdevil)
 	# KDE_INSTALL_AUTOSTARTDIR is <sysconfdir>/xdg/autostart, which KF6_COPY_RUNTIME
-	# does not walk. Without powerdevil.desktop there the daemon never autostarts.
-	# Both prefixes are checked because KDEInstallDirs' sysconfdir placement differs
-	# between the rootless /var/jb and /var/jb/usr roots (plasma-workspace.mk hits the
-	# same thing).
+	# doesn't walk; without powerdevil.desktop there the daemon never autostarts. Both
+	# prefixes are checked because sysconfdir placement differs between the rootless
+	# /var/jb and /var/jb/usr roots.
 	if [ -e "$(BUILD_STAGE)/powerdevil$(MEMO_PREFIX)/etc" ]; then \
 		mkdir -p $(BUILD_DIST)/powerdevil$(MEMO_PREFIX); \
 		cp -a $(BUILD_STAGE)/powerdevil$(MEMO_PREFIX)/etc $(BUILD_DIST)/powerdevil$(MEMO_PREFIX)/; \

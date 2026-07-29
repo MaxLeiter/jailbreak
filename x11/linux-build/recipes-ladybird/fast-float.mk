@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# fast-float.mk — NEW recipe for the Ladybird leaf closure (pin fast_float 8.1.0). HEADER-ONLY
-# (INTERFACE library): no dylib, only installs headers + CMake config + pkgconfig. Ships a
-# single -dev deb. +ios1 marker.
+# Header-only (INTERFACE library): no dylib, just headers + CMake config + pkgconfig.
+# Ships a single -dev deb.
 
 SUBPROJECTS         += fast-float
 FASTFLOAT_VERSION   := 8.1.0
@@ -29,19 +28,16 @@ fast-float: fast-float-setup
 endif
 
 fast-float-package: fast-float-stage
-	# fast-float.mk Package Structure (headers only)
 	rm -rf $(BUILD_DIST)/fast-float-dev
 	mkdir -p $(BUILD_DIST)/fast-float-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	# fast-float.mk Prep fast-float-dev
 	cp -a $(BUILD_STAGE)/fast-float/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/fast-float-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	-cp -a $(BUILD_STAGE)/fast-float/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib $(BUILD_DIST)/fast-float-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	-cp -a $(BUILD_STAGE)/fast-float/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/fast-float-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	# fast-float.mk Make .deb (no binaries -> no SIGN)
+	# no binaries produced -> no SIGN call needed
 	$(call PACK,fast-float-dev,DEB_FASTFLOAT_V)
 
-	# fast-float.mk Build cleanup
 	rm -rf $(BUILD_DIST)/fast-float-dev
 
 .PHONY: fast-float fast-float-package

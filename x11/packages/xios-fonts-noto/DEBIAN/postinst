@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+[ "$1" = configure ] || exit 0
+# fontconfig only sees new files after its cache is rebuilt.
+if command -v fc-cache >/dev/null 2>&1; then
+    fc-cache -f /var/jb/usr/share/fonts/truetype/noto >/dev/null 2>&1 || fc-cache -f >/dev/null 2>&1 || true
+fi
+exit 0

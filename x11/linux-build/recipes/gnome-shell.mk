@@ -2,30 +2,24 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-shell.mk — cross-build GNOME Shell 46 (C parts + JS/theme gresources) for rootless
-# iOS. Pairs with the libmutter-14 build (mutter.mk). Three iOS realities shape this
-# (handled by the default ports/gnome-shell/patches stack, which patches the
-# source so the SAME tarball also serves the on-device native gir build):
-#   1. EDS is patched OUT (no ICU yet) — no calendar-server, empty calendar UI.
-#   2. girs (St/Shell/Shew/Gvc) are cross-gated — generated ON-DEVICE afterwards
-#      (gir-build-mutter-ondevice.sh pattern; St/Shell build INSIDE this tree).
-#   3. The D-Bus services' Exec=gjs path is baked to the device path, not a host gjs.
-# gjs/mozjs/gobject-introspection are NOT make prereqs — they were built on their own
-# track and reconstructed into build_base from the out/ debs (listing them here would
-# trigger a multi-hour rebuild).
-# meson: networkmanager/camera_monitor(pipewire)/systemd OFF per the bring-up decision.
+# Three iOS accommodations (ports/gnome-shell/patches; the same tarball also serves the
+# on-device native gir build):
+#   1. EDS patched out (no ICU yet) -- no calendar-server, empty calendar UI.
+#   2. St/Shell/Shew/Gvc girs are cross-gated, generated on-device afterwards
+#      (gir-build-mutter-ondevice.sh pattern; St/Shell build inside this tree).
+#   3. D-Bus services' Exec=gjs path is baked to the device path, not a host gjs.
+# gjs/mozjs/gobject-introspection are NOT make prereqs -- they were built on their own
+# track and reconstructed into build_base from the out/ debs; listing them here would
+# trigger a multi-hour rebuild.
 
 SUBPROJECTS          += gnome-shell
 GNOME-SHELL_MAJOR_V  := 46
 GNOME-SHELL_VERSION  := $(GNOME-SHELL_MAJOR_V).0
 DEB_GNOME-SHELL_V    ?= $(GNOME-SHELL_VERSION)+ios3
 
-# GNOME_SHELL_WITH_EDS=1 flips reality #1 below: keep EDS + calendar-server (ICU and
-# evolution-data-server are built now — recipes/evolution-data-server.mk). STAGED but not
-# the default: the EDS-out shell is mid-bring-up on device, so the lead sequences the flip.
-# Use via build-shell.sh WITH_EDS=1, which stages ports/gnome-shell/patches-eds.
-# A rebuild MUST re-extract pristine source when switching flavors, which that
-# driver path handles.
+# GNOME_SHELL_WITH_EDS=1 keeps EDS + calendar-server (accommodation #1 above); use via
+# build-shell.sh WITH_EDS=1, which stages ports/gnome-shell/patches-eds. Switching flavors
+# requires re-extracting pristine source -- build-shell.sh handles that.
 GNOME_SHELL_WITH_EDS ?= 0
 ifeq ($(GNOME_SHELL_WITH_EDS),1)
 DEB_GNOME-SHELL_V    := $(GNOME-SHELL_VERSION)-2+ios1
@@ -87,10 +81,8 @@ gnome-shell-package: gnome-shell-stage
 	rm -rf $(BUILD_DIST)/gnome-shell
 	mkdir -p $(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)
 
-	# single deb: bin/gnome-shell + lib/gnome-shell/ (libshell-14, libst-14, libshew-0,
-	# libgvc) + share/gnome-shell gresources/theme + schemas + D-Bus services + desktops.
-	# Copy the CONTENTS of the staged prefix into the same prefix under BUILD_DIST (copying
-	# $(MEMO_PREFIX) itself would drop the leading `var/` from /var/jb -> installs to /jb).
+	# Copy the CONTENTS of the staged prefix, not $(MEMO_PREFIX) itself -- that would drop
+	# the leading `var/` from /var/jb, installing to /jb instead.
 	cp -a $(BUILD_STAGE)/gnome-shell$(MEMO_PREFIX)/. $(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)/
 	rm -rf $(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man \
 		$(BUILD_DIST)/gnome-shell$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/doc

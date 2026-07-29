@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# run-kde-plasma.sh — KDE Plasma session on iOS (ROOT).
+# KDE Plasma session (ROOT). iosc owns the output IOSurface Xios presents;
+# kwin_wayland runs nested inside iosc as a QtWayland/ANGLE client and exposes
+# its own socket for Plasma clients:
+#   iosc compositor -> kwin_wayland --socket kwin-ios-test -> plasmashell
 #
-# KWin's current backend is nested Wayland: iosc owns the output
-# IOSurface that Xios presents, then kwin_wayland runs as a QtWayland/ANGLE client
-# inside iosc and exposes its own socket for Plasma clients. This script starts:
-#
-#   iosc output compositor -> kwin_wayland --socket kwin-ios-test -> plasmashell
-#
-# It is intended to be called by xios-session's KDE presets, but can be run by
-# hand on-device for diagnosis. Set KDE_PLASMA_FLAVOR=desktop|nano|mobile, or
-# pass the flavor as the first argument.
+# Called by xios-session's KDE presets, or run by hand for diagnosis.
+# Set KDE_PLASMA_FLAVOR=desktop|nano|mobile (or pass as $1).
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
@@ -82,13 +78,10 @@ KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
 KDE_LOG="${KDE_LOG:-$TMP/kde-plasma.log}"
 IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
-# KWin's internal QtQuick windows render through Qt OpenGL on ANGLE/Metal as of
-# kwin 6.1.5+ios5. Before that the iOS QPA plugin returned nullptr from
-# createPlatformOpenGLContext and forced ShmGraphicsBufferAllocator, so software
-# was mandatory rather than defensive; those seams are gone. Note QT_QUICK_BACKEND
-# is the master switch -- while it is "software" Qt ignores QSG_RHI_BACKEND
-# entirely, so all three must move together. Use the ${VAR-} form (not ${VAR:-})
-# so an empty value means "unset and let Qt auto-detect", matching the Plasma side.
+# QT_QUICK_BACKEND is the master switch: while it is "software", Qt ignores
+# QSG_RHI_BACKEND entirely, so all three vars below must move together. Use
+# ${VAR-} (not ${VAR:-}) so an empty value means "unset, let Qt auto-detect",
+# matching the Plasma side.
 KWIN_QT_QUICK_BACKEND="${KWIN_QT_QUICK_BACKEND-${QT_QUICK_BACKEND-}}"
 KWIN_QSG_RHI_BACKEND="${KWIN_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
 KWIN_QMLSCENE_DEVICE="${KWIN_QMLSCENE_DEVICE-${QMLSCENE_DEVICE-}}"
@@ -323,12 +316,9 @@ kde_ini_set_if_missing() {
   } >>"$file"
 }
 
-# [QtQuickRendererSettings] SceneGraphBackend=software pins every Plasma QtQuick
-# scene to the software renderer, which is how plasmashell ended up drawing the
-# desktop through Qt's shm backingstore instead of ANGLE. That path commits one
-# frame and then stops, so the screen stays black no matter how correct the
-# compositor is. Software was mandatory only while the QPA returned nullptr from
-# createPlatformOpenGLContext; that seam is gone, so drop a stale pin. Set
+# A stale [QtQuickRendererSettings] SceneGraphBackend=software pin makes
+# plasmashell draw through Qt's shm backingstore instead of ANGLE, which
+# commits one frame and then stops -- black screen. Drop it here; set
 # XIOS_KDE_FORCE_SOFTWARE_QTQUICK=1 to keep it (useful to isolate a GL fault).
 kde_unpin_software_qtquick() {
   [ "${XIOS_KDE_FORCE_SOFTWARE_QTQUICK:-0}" = 0 ] || return 0
@@ -349,12 +339,9 @@ kde_unpin_software_qtquick() {
   done
 }
 
-# Window decorations take their colours from the [WM] group in kdeglobals, and
-# widgets from [Colors:*]. Those groups are written by APPLYING a colour scheme --
-# setting [General] ColorScheme to its name does nothing on its own. A kdeglobals
-# carrying the light Breeze [WM] block therefore renders light titlebars around a
-# fully dark desktop. Copy the scheme's colour groups in; leave every other key
-# alone, since [General]/[KDE] also hold unrelated settings.
+# Setting [General] ColorScheme=<name> in kdeglobals does nothing by itself --
+# titlebar/widget colours come from the [WM]/[Colors:*] groups, which must be
+# copied in from the scheme file directly. Leave other keys alone.
 kde_apply_color_scheme() {
   local scheme="$1" file="$2" src want have tmp
   src="$XS_PREFIX/share/color-schemes/$scheme.colors"
@@ -820,11 +807,10 @@ nohup "$SETSID" env \
 	      ps ax 2>/dev/null | grep -v grep | grep -q "$name" && return 0
 	      "$b" >"$log" 2>&1 &
 	    }
-	    # xios-session hands us the status file it owns so a session that dies
-	    # AFTER bring-up rewrites it (state "down") instead of leaving a stale
-	    # "up" for the Xios picker (observed 2026-07-08). No-op when run by hand
-	    # (env unset). Only a steady state for OUR preset is overwritten; any
-	    # other preset/state means a newer launcher owns the file now.
+	    # Rewrites the status file to "down" if the session dies after bring-up,
+	    # so a stale "up" does not linger for the Xios picker. No-op when run by
+	    # hand (env unset). Only overwrites a steady state for OUR preset --
+	    # a different preset/state means a newer launcher owns the file.
 	    mark_session_down() {
 	      why="$1"
 	      f="${XIOS_SESSION_STATUS_FILE:-}"; p="${XIOS_SESSION_STATUS_PRESET:-}"
@@ -878,12 +864,11 @@ nohup "$SETSID" env \
       kamd_pid=$!
       sleep 0.5
     fi
-    # PowerDevil is a standalone daemon, not a kded module, so installing the
-    # package alone starts nothing. Battery and AC state reach it over DBus from
-    # the UPower interface that xios-hwbridged owns; brightness goes through the
-    # KWin DBus interface. Suspend and hibernate stay unavailable (no logind).
-    # Set XIOS_KDE_START_POWERDEVIL=0 to leave it out.
-    # NB: no apostrophes in this block -- it is inside a single-quoted bash -lc.
+    # PowerDevil is a standalone daemon (not a kded module) -- must be started
+    # explicitly. Battery/AC comes over DBus from the xios-hwbridged UPower
+    # interface; brightness via the KWin DBus interface. No suspend/hibernate
+    # (no logind). Set XIOS_KDE_START_POWERDEVIL=0 to skip.
+    # NB: no apostrophes here -- this block is inside a single-quoted bash -lc.
     powerdevil_pid=
     if [ -x "$POWERDEVIL_BIN" ] && [ "${XIOS_KDE_START_POWERDEVIL:-1}" != 0 ]; then
       "$POWERDEVIL_BIN" >>"$KDE_LOG" 2>&1 &

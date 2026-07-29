@@ -2,30 +2,14 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qtdeclarative.mk — QML + QtQuick for rootless iOS; the big one (Plasma Mobile is
-# QML-heavy: plasmashell, kirigami, most of KF6's UI). Cross-build shape:
-#   - HOST tools via QT_HOST_PATH: qmlcachegen/qmlimportscanner (from the HOST qtdeclarative,
-#     build-qt-modules.sh stage 1), qsb (host qtshadertools), qmltyperegistrar (in qtbase
-#     since 6.3). The module compiles its own QML (QtQuick.Controls etc.) at build time
-#     with these — this is why there is NO introspection/on-device-scan wall here, unlike
-#     the gjs/GNOME track.
-#   - TARGET dep: Qt6ShaderTools cmake package from build_base (qtshadertools.mk must have
-#     built+staged first; driver runs targets in ladder order, no make-level prereq).
-#   - JIT: FEATURE_qml_jit=OFF, hard. QV4 executes bytecode through its interpreter; the
-#     JIT would need per-process W^X juggling we don't want in fakesigned processes, and
-#     Q_OS_IOS disables it at runtime anyway. Turning the feature off also drops the
-#     assembler from the build. NO SpiderMonkey-style wall — this is the reason the KDE
-#     track is structurally easier than GNOME (x11-distribution-chooser memory).
-#   - Rendering: the SOFTWARE scenegraph adaptation (QT_QUICK_BACKEND=software, QPainter
-#     raster) remains the first-light fallback over wayland-shm. With qtbase round 3,
-#     QtQuick's OpenGL path resolves EGL/GLES through ANGLE/Metal for accelerated
-#     Wayland clients.
-# Shared Apple/Darwin flags + MACOS-condition fix: qt6-common.mk (rationale in qtbase.mk).
+# FEATURE_qml_jit=OFF, hard: QV4 runs bytecode through its interpreter. The JIT would need
+# per-process W^X juggling we don't want in fakesigned processes, and Q_OS_IOS disables it
+# at runtime anyway. Software scenegraph (QT_QUICK_BACKEND=software, QPainter raster) is the
+# first-light fallback over wayland-shm; QtQuick's OpenGL path also resolves EGL/GLES through
+# ANGLE/Metal for accelerated Wayland clients.
 
 SUBPROJECTS           += qtdeclarative
 QTDECLARATIVE_VERSION := 6.6.3
-# +ios3: qml_profiler/qml_preview flipped ON (shim-audit round) — qt6-declarative-dev now
-# ships qmlprofiler/qmlpreview, a real content change over +ios2, so bump the deb revision.
 DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios3
 
 qtdeclarative-setup: setup
@@ -40,20 +24,14 @@ ifneq ($(wildcard $(BUILD_WORK)/qtdeclarative/.build_complete),)
 qtdeclarative:
 	@echo "Using previously built qtdeclarative."
 else
-# No prereqs on qtbase/qtshadertools (staged in build_base already; mutter.mk precedent).
-# No `rm -rf build` (incremental iteration, qtbase.mk).
 qtdeclarative: qtdeclarative-setup
 	mkdir -p $(BUILD_WORK)/qtdeclarative/build
-# qml_profiler/qml_preview RE-ENABLED (shim-audit round, host+cross together as the prior
-# comment prescribed): their tools/ subdirs pass the `NOT IOS` gate (we masquerade as Darwin
-# for the MACOS-sed approach), and a cross build hard-requires every gated tool to exist in
-# the HOST Qt6QmlTools package. build-qt-modules.sh's `host_module qtdeclarative` call now
-# also passes -DFEATURE_qml_profiler=ON -DFEATURE_qml_preview=ON (keyed off a bin/qmlprofiler
-# marker instead of libexec/qmlcachegen, so a host tree built before this change is detected
-# as stale and rebuilt rather than silently reused), so the host Qt6QmlTools package carries
-# qmlprofiler/qmlpreview and this cross build's tools/ gate is satisfied on both sides.
+# qml_profiler/qml_preview's tools/ subdirs pass the `NOT IOS` gate (we masquerade as
+# Darwin), but a cross build hard-requires every gated tool to also exist in the HOST
+# Qt6QmlTools package — build-qt-modules.sh's host_module build passes the matching
+# -DFEATURE_qml_profiler/preview=ON so both sides agree.
 # qmltestrunner has the same gate shape but Qt6Test is absent from build_base, so
-# QuickTest (its TARGET condition) never appears — left off, out of scope here.
+# QuickTest never appears — left off.
 	cd $(BUILD_WORK)/qtdeclarative/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \

@@ -2,19 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# mimalloc.mk — NEW recipe for the Ladybird leaf closure (pin mimalloc 2.2.7). CMake allocator.
-# MI_INSTALL_TOPLEVEL=ON so libs/headers land in lib/ + include/ (not lib/mimalloc-2.2/). Tests
-# and the object build are off; static + shared on. +ios1 marker.
-#
-# A10-SAFE ATOMICS (device fix, 2026-07-03): mimalloc's MI_OPT_ARCH adds -march=armv8.1-a which
-# lowers its C11 atomics to LSE instructions (casal/cas/ldadd/swp...). The A10 (Apple Fusion,
-# iPad7,x) does NOT implement FEAT_LSE -> `casal` traps as EXC_ARM_UNDEFINED / SIGILL at
-# mi_process_init, killing every Ladybird process on launch. FIX = MI_OPT_ARCH=OFF (drop mimalloc's
-# -march) AND explicitly disable the lse target feature (`-Xclang -target-feature -Xclang -lse`) so
-# clang emits LL/SC (ldaxr/stlxr) atomics. NOTE: -mcpu=apple-a10 does NOT work — LLVM's apple-a10
-# CPU model still enables +lse (233 LSE ops survived), so the feature must be disabled by name.
-# VERIFY: `llvm-objdump -d --mattr=+lse` (needed to DECODE cas/ldadd/swp — plain objdump prints them
-# as `.long`) then grep for LSE mnemonics == 0. This replaces the on-device libmimalloc.shim.dylib.
+# MI_INSTALL_TOPLEVEL=ON installs into lib/+include/, not lib/mimalloc-2.2/.
+# A10 lacks FEAT_LSE: mimalloc's default -march lowers atomics to LSE instructions, which
+# SIGILL at mi_process_init — fixed via MI_OPT_ARCH=OFF + explicit -lse disable (verify
+# with llvm-objdump, not plain objdump, which hides LSE ops as `.long`).
 
 SUBPROJECTS        += mimalloc
 MIMALLOC_VERSION   := 2.2.7

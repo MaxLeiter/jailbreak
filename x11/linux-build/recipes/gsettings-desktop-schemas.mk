@@ -2,15 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gsettings-desktop-schemas.mk — the shared GSettings schemas the GNOME stack reads
-# (org.gnome.desktop.*, org.gnome.system.*). Data-only: .gschema.xml files + translations,
-# no compiled code, no target-binary execution at build → fully tractable to cross "build".
-# Independent of GTK/dbus/introspection. See docs/gnome-plan.md, Stage A.
-#
-# BUILT/PUBLISHED — `gsettings-desktop-schemas 46.1+ios1` is in the package
-# repo; its package target was also revalidated in the Procursus volume on
-# 2026-07-18.
-
 SUBPROJECTS  += gsettings-desktop-schemas
 GSDS_MAJOR_V := 46
 GSDS_VERSION := $(GSDS_MAJOR_V).1
@@ -50,14 +41,13 @@ gsettings-desktop-schemas: gsettings-desktop-schemas-setup glib2.0
 endif
 
 gsettings-desktop-schemas-package: gsettings-desktop-schemas-stage
-	# gsettings-desktop-schemas.mk Package Structure — data-only (schemas + locale)
 	rm -rf $(BUILD_DIST)/gsettings-desktop-schemas
 	mkdir -p $(BUILD_DIST)/gsettings-desktop-schemas/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/gsettings-desktop-schemas/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/gsettings-desktop-schemas/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	# NOTE: installs $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/glib-2.0/schemas/*.gschema.xml.
-	# A postinst (or dpkg trigger from libglib2.0-bin) must run `glib-compile-schemas` on that
-	# dir on-device to produce gschemas.compiled. Wire a build_info/*.postinst when shipping.
+	# Installs .../share/glib-2.0/schemas/*.gschema.xml. A postinst (or dpkg trigger from
+	# libglib2.0-bin) must run glib-compile-schemas on that dir on-device to produce
+	# gschemas.compiled. Wire a build_info/*.postinst when shipping.
 
 	$(call SIGN,gsettings-desktop-schemas,general.xml)
 	$(call PACK,gsettings-desktop-schemas,DEB_GSDS_V)

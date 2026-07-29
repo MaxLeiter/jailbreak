@@ -4,10 +4,9 @@
 # and letting its own meson build drive g-ir-scanner. St/Shell build INSIDE the
 # gnome-shell tree, so this is the whole shell-side gir surface.
 #
-# This is gir-build-mutter-ondevice.sh applied to gnome-shell. The SAME default patch
-# stack as the cross build applies (ports/gnome-shell/patches): EDS stays patched out,
-# and the gir blocks are gated on
-# `not meson.is_cross_build()` — a native build takes the gir path automatically.
+# Same pattern as gir-build-mutter-ondevice.sh applied to gnome-shell. Same default patch
+# stack as the cross build (ports/gnome-shell/patches, EDS patched out); the gir blocks are
+# gated on `not meson.is_cross_build()`, so a native build takes the gir path automatically.
 #
 # BOOT SIBLINGS: gnome-shell's boot statically imports (via js/misc/dependencies.js, loaded at
 # boot from environment.js, plus panel/status modules) several typelibs from standalone libs
@@ -20,10 +19,10 @@
 #     Gdm-1.0              -> gir-build-session-libs-ondevice.sh (libgdm CLIENT-only)
 #     Gcr-4/PolkitAgent-1.0/Atk-1.0/etc. -> gir-build-shell-closure-ondevice.sh (run FIRST,
 #                             see prerequisite 3; full run order in docs/handoff/gtk4-typelibs.md)
-# (Rsvg is the ONLY patch-out — it's a Rust lib + the padOsd/wacom user is dead on iOS; see
-# ports/gnome-shell/patches. Gdm was NOT patched out: lead confirmed gnome-session builds
-# libgdm client-only, so Gdm-1.0 joins the on-device scan batch above.) dependencies.js is the
-# authoritative boot-typelib list: every gi://X?version pin there must resolve on-device.
+# Rsvg is the only patch-out (Rust lib; padOsd/wacom user is dead on iOS). Gdm was not patched
+# out — gnome-session builds libgdm client-only, so Gdm-1.0 joins the on-device scan batch above.
+# dependencies.js is the authoritative boot-typelib list: every gi://X?version pin there must
+# resolve on-device.
 #
 # PREREQUISITES on the device (install via main's device window first):
 #   1. The gnome-shell chain runtime+dev debs: libmutter-14-0/-dev, gjs/libgjs0/-dev,

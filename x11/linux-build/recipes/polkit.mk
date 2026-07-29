@@ -2,12 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# polkit.mk — ONLY the two client libraries gnome-shell links: libpolkit-gobject-1 and
-# libpolkit-agent-1. -Dlibs-only=true skips polkitd/polkitbackend AND zeroes the JS engine
-# (no duktape/mozjs needed), but upstream also gates polkitagent out with it — a setup patch
-# moves polkitagent back in. The setuid auth helper (PAM/shadow) is stripped: iOS has no
-# PAM and the shell only needs the agent LIBRARY to link; real authentication flows are a
-# later problem. Source is the gitlab archive (freedesktop stopped tarball releases at 0.120).
+# -Dlibs-only=true also disables polkitagent upstream; the port patch re-enables
+# it since gnome-shell needs the agent library to link (not the setuid auth
+# helper — iOS has no PAM/shadow). Source is the gitlab archive since
+# freedesktop stopped tarball releases at 0.120.
 
 SUBPROJECTS    += polkit
 POLKIT_VERSION := 124

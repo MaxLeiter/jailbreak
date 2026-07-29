@@ -7,7 +7,9 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  padding: 26px 22px 30px;
+  height: 100dvh;
+  padding: max(26px, env(safe-area-inset-top)) 22px
+    calc(30px + env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -121,7 +123,11 @@
     align-items: center;
     gap: 12px;
     width: 100%;
-    padding: 14px 18px;
+    /* In standalone mode the status bar overlays the top of the page, so the
+       bar has to pay the inset itself, not just sit at top: 0. */
+    padding: max(14px, env(safe-area-inset-top))
+      max(18px, env(safe-area-inset-right)) 14px
+      max(18px, env(safe-area-inset-left));
     border: none;
     border-bottom: 1px solid var(--line);
     background: var(--bg-2);
@@ -165,7 +171,8 @@
     color: var(--cyan);
   }
   .rail-body {
-    padding: 18px 18px 26px;
+    padding: 18px max(18px, env(safe-area-inset-right)) 26px
+      max(18px, env(safe-area-inset-left));
     border-bottom: 1px solid var(--line);
   }
   .rail[data-open="false"] .rail-body {
@@ -900,7 +907,10 @@ table.ref td.desc {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(14px, 4vw, 48px);
+  padding: max(clamp(14px, 4vw, 48px), env(safe-area-inset-top))
+    max(clamp(14px, 4vw, 48px), env(safe-area-inset-right))
+    max(clamp(14px, 4vw, 48px), env(safe-area-inset-bottom))
+    max(clamp(14px, 4vw, 48px), env(safe-area-inset-left));
   background: rgba(4, 7, 11, 0.9);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
@@ -940,8 +950,8 @@ table.ref td.desc {
 }
 .lightbox-close {
   position: fixed;
-  top: 14px;
-  right: 16px;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(16px + env(safe-area-inset-right));
   z-index: 301;
   font-family: var(--font-mono);
   font-size: 12px;

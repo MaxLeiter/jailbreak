@@ -11782,6 +11782,27 @@ SileoDepiction: https://repo.maxleiter.com/depictions/xios-fhs.json
 Native Depiction: https://repo.maxleiter.com/depictions/xios-fhs.json
 Homepage: https://repo.maxleiter.com
 
+Package: xios-fonts-noto
+Name: Noto Sans fonts
+Version: 1.0.1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: fontconfig
+Section: X11
+Priority: optional
+Description: Noto Sans, the font KDE actually asks for
+Filename: debs/xios-fonts-noto_1.0.1_iphoneos-arm64.deb
+Size: 3417910
+MD5sum: 3e0d67c1796aff0192cb75d72a615398
+SHA1: 5e6aa9cb3b6eb6693f29caf3703956adc79e7d8f
+SHA256: 65cd7ece396df5b2fe32dcb8b4886ed30015aa7aa90548effb343a9927b51288
+Icon: https://repo.maxleiter.com/icons/xios-fonts-noto.png
+Depiction: https://repo.maxleiter.com/depictions/xios-fonts-noto.html
+SileoDepiction: https://repo.maxleiter.com/depictions/xios-fonts-noto.json
+Native Depiction: https://repo.maxleiter.com/depictions/xios-fonts-noto.json
+Homepage: https://repo.maxleiter.com
+
 Package: xios-gnome
 Name: Xios Desktop (GNOME)
 Version: 0.1.1

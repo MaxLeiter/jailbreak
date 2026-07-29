@@ -2,10 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kactivitymanagerd.mk — Plasma activity manager daemon for rootless iOS.
-# Plasma 6 ships the daemon as a sibling tarball to plasma-activities. Keep it
-# packageable separately so plasmashell can use the real DBus activity service
-# instead of relying on a first-light bypass.
+# Plasma 6 ships this daemon as a sibling tarball to plasma-activities. Packaged
+# separately so plasmashell can use the real DBus activity service instead of a
+# first-light bypass.
 
 SUBPROJECTS += kactivitymanagerd
 KACTIVITYMANAGERD_VERSION = $(PLASMA_VERSION)

@@ -1,11 +1,11 @@
 #!/bin/sh
-# repack-icon-themes.sh — repackage Ubuntu's adwaita-icon-theme + hicolor-icon-theme as
-# rootless iOS (/var/jb) debs for the X11/GNOME-on-iOS repo. These are PURE DATA packages
-# (SVG/PNG + index.theme; no compile), arch-neutral upstream, so we just relocate the prefix
-# /usr -> /var/jb/usr, rewrite the control to the Procursus rootless convention, and add a
-# postinst that rebuilds the GTK icon cache. Every GTK3/GTK4/libadwaita app hard-needs Adwaita
-# for its symbolic (open-menu-symbolic etc.) + colour icons; without it GTK draws the
-# broken-image placeholder. Adwaita Inherits=hicolor, so hicolor-icon-theme ships too.
+# Repackages Ubuntu's adwaita-icon-theme + hicolor-icon-theme as rootless
+# iOS (/var/jb) debs. Pure data (SVG/PNG + index.theme, arch-neutral), so
+# this just relocates /usr -> /var/jb/usr, rewrites control to the
+# Procursus rootless convention, and adds a postinst that rebuilds the GTK
+# icon cache. Every GTK3/GTK4/libadwaita app hard-needs Adwaita for its
+# symbolic + colour icons (otherwise GTK draws the broken-image
+# placeholder); Adwaita Inherits=hicolor, so hicolor ships too.
 #
 # Run INSIDE the procursus-xbuild image (has dpkg-deb + wget/curl), writing to /out:
 #   docker run --rm -v "$PWD/out:/out" -v "$PWD/repack-icon-themes.sh:/r.sh:ro" \
@@ -14,7 +14,7 @@ set -e
 OUT=/out
 WORK=/tmp/icons; rm -rf "$WORK"; mkdir -p "$WORK"; cd "$WORK"
 
-# Ubuntu 24.04 (noble) versions — match our GNOME 46 stack; the payload is arch-neutral data.
+# Ubuntu 24.04 (noble) versions, matching our GNOME 46 stack; payload is arch-neutral data.
 ADW_URL=http://archive.ubuntu.com/ubuntu/pool/main/a/adwaita-icon-theme/adwaita-icon-theme_46.0-1_all.deb
 HIC_URL=http://archive.ubuntu.com/ubuntu/pool/main/h/hicolor-icon-theme/hicolor-icon-theme_0.17-2_all.deb
 

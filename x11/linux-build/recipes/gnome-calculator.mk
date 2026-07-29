@@ -2,23 +2,14 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-calculator.mk — GNOME Calculator (45.0). Written in Vala — the VALIDATION target for the
-# whole vendored-.vapi cross-Vala flow. valac is a build-HOST transpiler (Vala→C); our cross CC
-# builds the C. No target binary runs during the build. See docs/gnome-apps.md "Vala route".
+# Validation target for the vendored-.vapi cross-Vala build flow: valac transpiles Vala->C
+# on the build HOST (add valac to the Dockerfile apt list), then the cross CC compiles the C.
+# No target binary runs during the build.
 #
-# cross.txt carries a `vala = 'valac'` [binaries] entry (host valac). Add `valac` to the
-# Dockerfile apt (build-host tool, like sassc).
-#
-# VAPI PRECONDITION: the version-matched dependency .vapi must be on valac's search path. We
-# stage the vendored gtk4/gdk4/gsk4/libadwaita-1/gtksourceview-5/libsoup-3.0 vapi (+ .deps) from
-# Ubuntu 24.04 (gtk4 4.14.5 — exact match) into the HOST valac vapidir; gee-0.8.vapi comes from
-# our libgee build. Provisioning: linux-build/vapi/README.md. (glib/gio/cairo/pango vapi ship
-# with valac.)
-#
-# DEPENDS (target): gtk4 + libadwaita + gtksourceview5 + libsoup3 + libgee
-#   (+ mpfr/mpc/libxml2 — all prebuilt in Procursus).
-#
-# BUILT/PUBLISHED — gnome-calculator 46.2+ios1.
+# VAPI precondition: version-matched dependency .vapi files must be on valac's search path.
+# We vendor gtk4/gdk4/gsk4/libadwaita-1/gtksourceview-5/libsoup-3.0 vapi from Ubuntu 24.04
+# (gtk4 4.14.5, exact version match) into the host valac vapidir; gee-0.8.vapi comes from our
+# libgee build. See linux-build/vapi/README.md for provisioning.
 
 SUBPROJECTS               += gnome-calculator
 GNOME-CALCULATOR_MAJOR_V  := 46

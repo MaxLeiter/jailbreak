@@ -2,10 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qttools.mk — minimal Qt Tools slice for rootless iOS. KWin's W-layer configure wants
-# Qt6UiTools, but the rest of qttools is mostly target desktop apps and host-ish tooling
-# (Designer, Linguist, QDoc, Assistant). Build only UiPlugin/UiTools plus CMake metadata.
-# Shared Apple/Darwin flags + MACOS-condition fix: qt6-common.mk.
+# KWin's W-layer configure wants Qt6UiTools; the rest of qttools is desktop apps and
+# host-ish tooling (Designer, Linguist, QDoc, Assistant), so only UiPlugin/UiTools plus
+# CMake metadata are built.
 
 SUBPROJECTS      += qttools
 QTTOOLS_VERSION  := 6.6.3

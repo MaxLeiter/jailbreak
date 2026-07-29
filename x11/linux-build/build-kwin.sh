@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-kwin.sh — cross-build nested KWin Wayland with the Xios ANGLE/Metal and
+# Cross-builds nested KWin Wayland with the Xios ANGLE/Metal and
 # IOSurface backend on top of the completed Qt/KF6 volume. Linux DRM/libinput and
 # native backends remain deliberately trimmed on iOS.
 set -euo pipefail

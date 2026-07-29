@@ -2,12 +2,12 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# upower.mk — the libupower-glib CLIENT library only, for rootless iOS. gnome-shell statically
-# imports gi://UPowerGlib in status/system.js at panel boot, so the shell will not start without
-# the UPowerGlib typelib + dylib. The daemon (udev/systemd/sysfs) is dropped by ports/upower/patches;
-# the client library is a GDBus proxy on glib/gio. Introspection off; UPowerGlib-1.0 typelib is
-# generated ON-DEVICE. The udev/systemd install-dir probes are satisfied with explicit paths so
-# the top-level meson does not dependency('udev'/'systemd') (both absent).
+# libupower-glib CLIENT only. gnome-shell statically imports gi://UPowerGlib
+# in status/system.js at panel boot, so the shell won't start without the
+# typelib + dylib. The daemon (udev/systemd/sysfs) is dropped by
+# ports/upower/patches; introspection is off and the UPowerGlib-1.0 typelib
+# is generated on-device. udev/systemd install-dir probes are satisfied with
+# explicit paths so meson doesn't dependency('udev'/'systemd') (both absent).
 
 SUBPROJECTS      += upower
 UPOWER_VERSION   := 1.90.2

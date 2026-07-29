@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# plasma-mobile-ios-fixes.sh — Xios/iOS fixes for Plasma Mobile.
 set -euo pipefail
 
 src=${1:?usage: plasma-mobile-ios-fixes.sh <plasma-mobile-source-dir>}
@@ -195,10 +194,9 @@ if old in text and "xios-default.png" not in text:
 path.write_text(text)
 PY
 
-# Mobile defines a desktop toolbox but no panel toolbox in its shell defaults.
-# Plasma then falls back to the unshipped org.kde.desktoptoolbox for panel
-# containments and logs an invalid toolbox warning. Use the real panel toolbox
-# package from plasma-desktop when panel containments ask for one.
+# Mobile ships a desktop toolbox but no panel toolbox; Plasma falls back to
+# the unshipped org.kde.desktoptoolbox for panel containments (invalid toolbox
+# warning). Use plasma-desktop's real panel toolbox package instead.
 python3 - "$src/shell/contents/defaults" <<'PY'
 import sys
 from pathlib import Path
@@ -212,46 +210,11 @@ elif "[Panel]\nToolBox=" not in text:
 path.write_text(text)
 PY
 
-# quicksettings tiles audit (2026-07-08): five tiles had their C++ backend
-# CMakeLists blocks stripped down to a bare plasma_install_package() call,
-# leaving package data installed with no plugin behind it (silently dead
-# tiles). Policy: wire the ones with real capability, cleanly exclude the
-# rest instead of shipping a broken import.
-#
-#  - powermenu: WIRE. Its only call is SessionManagement::requestShutdown(),
-#    served by libkworkspace's XiosSessionBackend (same plasma-workspace
-#    build; see plasma-workspace-ios-fixes.sh), which shells out to
-#    xios-session. Leave its CMakeLists.txt exactly as upstream shipped it.
-#    XiosSessionBackend::shutdown()/reboot() call runXiosSession({"stop"}) and
-#    canShutdown()/canReboot() now return true (both map to ending the Plasma
-#    session; iOS owns real device power), so SessionManagement::requestShutdown()
-#    no longer early-returns and the tile actually ends the session.
-#  - screenshot: WIRE, but swap its backend. Upstream calls KWin's
-#    org.kde.KWin.ScreenShot2 D-Bus service, which this project's kwin does
-#    not implement. iosc does implement wlr-screencopy and grim is packaged
-#    as a thin CLI over it, so screenshotutil.cpp is rewritten below to shell
-#    out to grim instead of talking to KWin over D-Bus.
-#  - flashlight: WIRE, but swap its backend. Upstream FlashlightUtil finds a
-#    real torch LED via libudev (/sys/class/leds/*:torch) — there is no libudev
-#    or hardware LED node on iOS. xios-fhs' xios-hwbridged now exposes a
-#    synthetic leds node (<sys>/class/leds/xios:torch) it drives through
-#    AVCaptureDevice setTorchMode, the same shape it uses for battery/brightness.
-#    flashlightutil is rewritten below to read/write that node (no libudev); the
-#    daemon publishes max_brightness=1 only on devices that actually have a torch
-#    LED, so the tile's `available` stays truthful (most iPads have none).
-#  - nightcolor: HIDE. Needs KWin's night color GL/color pipeline, which is
-#    disabled on this iOS KWin build. Unblock: a working KWin color pipeline
-#    on iOS.
-#  - screenrotation: HIDE. Needs Qt::Sensors' QOrientationSensor (no iOS
-#    sensor plugin built here) plus KScreen's per-output auto-rotate policy
-#    (no KScreen daemon wired for iOS). This is unrelated to the project's
-#    device-orientation "native-feel" rotation wire (that resizes/reconnects
-#    the compositor surface on rotation; it doesn't expose an auto-rotate
-#    lock API a QML tile could bind to). Unblock: both of the above.
-#
-# Hidden tiles are excluded at add_subdirectory (never built/installed) and
-# dropped from the default quicksettings list, so the shell never tries to
-# instantiate a package with no plugin behind it.
+# quicksettings tile policy: wire tiles with a real iOS backend, hide the rest (excluded at
+# add_subdirectory and dropped from the default list) instead of shipping a dead plugin.
+#  - powermenu: xios-session via XiosSessionBackend. screenshot: grim (no KWin ScreenShot2 here).
+#  - flashlight: xios-hwbridged's synthetic leds node via AVCaptureDevice.
+#  - nightcolor/screenrotation: hidden — no KWin night-color pipeline / no KScreen+orientation sensor.
 python3 - "$src/quicksettings/CMakeLists.txt" <<'PY'
 import sys
 from pathlib import Path
@@ -410,11 +373,9 @@ path.write_text(text)
 PY
 
 # flashlight: talk to the xios-fhs torch bridge instead of libudev. Upstream
-# FlashlightUtil enumerates /sys/class/leds/*:torch via libudev and toggles the
-# `brightness` sysattr; on iOS xios-hwbridged exposes a synthetic leds node at
-# <XIOS_SYS>/class/leds/xios:torch and drives AVCaptureDevice on writes. The
-# class surface (properties, signals, Q_INVOKABLE) is kept identical so the QML
-# plugin registration and main.qml bindings are unchanged.
+# enumerates /sys/class/leds/*:torch via libudev; xios-hwbridged instead
+# exposes a synthetic node at <XIOS_SYS>/class/leds/xios:torch and drives
+# AVCaptureDevice on writes. Class surface kept identical so QML is unchanged.
 python3 - "$src/quicksettings/flashlight/flashlightutil.h" <<'PY'
 import sys
 from pathlib import Path
@@ -776,10 +737,9 @@ elif "CoreFoundation" not in text:
 path.write_text(text)
 PY
 
-# Several MobileShell QML files are embedded into the private plugin resource
-# system, so package-time QML replacements do not affect the qrc:/ load path.
-# Keep the plugin importable for first light, patch self-resolving QtQuick
-# wrapper roots, and replace heavy widgets before CMake snapshots resources.
+# MobileShell QML files are embedded in the private plugin's Qt resource
+# system, so package-time QML replacements don't reach the qrc:/ load path —
+# patches here run before CMake snapshots resources instead.
 python3 - "$src" <<'PY'
 import re
 import sys

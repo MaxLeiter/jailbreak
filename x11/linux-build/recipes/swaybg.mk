@@ -2,16 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# swaybg.mk — swaybg, the small wlroots-compatible wallpaper client
-# (github.com/swaywm/swaybg). It maps a wlr-layer-shell background surface and
-# draws image buffers with cairo; gdk-pixbuf is left off so this initial iOS
-# build only depends on cairo's PNG path instead of the larger loader stack.
-#
-# PORTABILITY: upstream only needs one iOS source edit: make the Meson librt
-# lookup optional, because Darwin has clock_gettime() in libc and no separate
-# librt. The wl_shm pool is backed by shm_open(), which is available on iOS.
-#
-# DEPENDS (target): wayland, wayland-protocols(build/data), cairo.
+# iOS has no librt (clock_gettime lives in libc); the meson librt lookup is
+# made non-required in the DO_PATCH step below.
 
 SUBPROJECTS    += swaybg
 SWAYBG_VERSION := 1.2.2

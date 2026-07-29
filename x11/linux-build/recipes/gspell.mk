@@ -2,8 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gspell.mk — GTK3 spell-checking widgets for Geary. GIR/VAPI generation is disabled for
-# the cross pass; Vala consumers will need vendored bindings or an on-device GI/VAPI pass.
+# GTK3 spell-checking widgets for Geary. GIR/VAPI generation disabled for the cross pass;
+# Vala consumers need vendored bindings or an on-device GI/VAPI pass.
 
 SUBPROJECTS     += gspell
 GSPELL_MAJOR_V  := 1.12

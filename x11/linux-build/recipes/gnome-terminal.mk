@@ -2,16 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-terminal.mk — the classic GTK3 terminal (still GTK3 in the GNOME 45 era). Reachable
-# SOONER than the GTK4 apps because it only needs GTK3 + vte(gtk3) + our Stage-A dconf/
-# gsettings-desktop-schemas. Ships a gnome-terminal-server (D-Bus activated) + GSettings
-# schema (→ glib-compile-schemas in postinst).
-#
-# DEPENDS (target): gtk+3.0 (gtk-builder) + vte (gtk3 flavour) + pcre2 +
-#   gsettings-desktop-schemas + dconf (our Stage-A recipes).
-# BUILD-HOST TOOLS: itstool + desktop-file-utils (desktop-file-validate) on the build host.
-#
-# DRAFT — Phase 1, NOT built/verified. Mirrors recipes/pango.mk style.
+# Ships a gnome-terminal-server (D-Bus activated) + GSettings schema (needs
+# glib-compile-schemas in postinst).
+# Build-host tools required: itstool + desktop-file-utils (desktop-file-validate).
 
 SUBPROJECTS             += gnome-terminal
 GNOME-TERMINAL_MAJOR_V  := 3.50

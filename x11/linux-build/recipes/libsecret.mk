@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libsecret.mk — the Secret Service client library. gnome-shell itself only needs it when
-# NetworkManager is on (off here), but gcr/gnome-keyring want it later and it is a cheap
-# leaf (glib + libgcrypt, both already in build_base). Mirrors recipes/gnome-desktop.mk.
+# gnome-shell only needs this when NetworkManager is on (off here); building anyway
+# since gcr/gnome-keyring need it later and it's a cheap leaf on glib + libgcrypt.
 
 SUBPROJECTS       += libsecret
 LIBSECRET_MAJOR_V := 0.21

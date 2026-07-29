@@ -1,50 +1,24 @@
 #!/usr/bin/env bash
-# powerdevil-ios-fixes.sh — PowerDevil source trims for the Xios (rootless iOS) cross build.
+# Cuts four upstream hard-requirements that have no cmake switch to disable:
+#   1. KF6 DocTools is a REQUIRED find_package COMPONENT; CMAKE_DISABLE_FIND_PACKAGE_KF6DocTools
+#      just makes it NOT_FOUND and fails the whole call, so the component, doc/, and
+#      kdoctools_install(po) are dropped instead.
+#   2. find_package(UDev REQUIRED) + vendored UdevQt: our udev-stub only covers the 8 hwdb
+#      entries gnome-bluetooth needs, but UdevQt calls ~40 udev_device_*/enumerate_*/monitor_*
+#      symbols, so powerdevilcore fails to link. UdevQt's only consumer is BacklightDetector
+#      (/sys/class/backlight, meaningless on iOS); both are dropped. KWinDisplayDetector
+#      (plain DBus client of KWin's brightness interface) remains the real brightness path.
+#   3. find_package(XCB REQUIRED COMPONENTS XCB RANDR DPMS): X11-off policy, libxcb-randr/dpms
+#      not packaged, and XCB is REQUIRED so CMAKE_DISABLE_FIND_PACKAGE_XCB would hard-error.
+#      Dropping the call leaves XCB_FOUND false, which already gates every `if(XCB_FOUND)`
+#      block; only kwinkscreenhelpereffect.cpp's unconditional qtx11extras_p.h include needs
+#      the same guard added.
+#   4. XCB::DPMS / ${UDEV_LIBS} are linked unconditionally in daemon/CMakeLists.txt outside
+#      the XCB_FOUND guards, so those lines go with the find_package calls above.
 #
-# Audited against Plasma 6.1.5's powerdevil tarball. Four independent upstream
-# hard-requirements have no cmake switch, so they are cut here:
-#
-#   1. KF6 DocTools is a REQUIRED find_package COMPONENT of the top-level
-#      find_package(KF6 ...). KF6_CMAKE_FLAGS already sets
-#      CMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE, which makes the component
-#      NOT_FOUND and therefore fails the whole REQUIRED call. Drop the component,
-#      the doc/ subdir (doc/kcm calls kdoctools_create_handbook), and
-#      kdoctools_install(po).
-#
-#   2. find_package(UDev REQUIRED) + the vendored UdevQt client. ECM's FindUDev
-#      would actually succeed against linux-build/udev-stub (it installs
-#      libudev.pc/libudev.h/libudev.1.dylib into the sysroot), but that stub only
-#      implements the 8 hwdb entry points gnome-bluetooth needs. UdevQt calls ~40
-#      udev_device_*/udev_enumerate_*/udev_monitor_* symbols, so powerdevilcore
-#      would fail to link. UdevQt's only consumer is BacklightDetector
-#      (daemon/controllers/backlightbrightness.cpp -> /sys/class/backlight), which
-#      is meaningless on iOS. Both are dropped; ScreenBrightnessController keeps
-#      KWinDisplayDetector (a plain DBus client of KWin's brightness interface),
-#      which is the correct brightness path for this stack.
-#
-#   3. find_package(XCB REQUIRED COMPONENTS XCB RANDR DPMS). Same X11-off policy as
-#      kglobalacceld/kscreen/plasma-workspace, and libxcb-randr/libxcb-dpms are not
-#      packaged. XCB is REQUIRED, so CMAKE_DISABLE_FIND_PACKAGE_XCB would hard-error
-#      instead of disabling it. Dropping the call leaves XCB_FOUND false, which
-#      already gates every `if (XCB_FOUND)` block and sets HAVE_XCB=0 in
-#      config-powerdevil.h. The single leftover is kwinkscreenhelpereffect.cpp's
-#      unconditional <private/qtx11extras_p.h> include (the rest of that file is
-#      already #if HAVE_XCB-guarded), so that include gets the same guard. The class
-#      itself is kept so daemon/actions/bundled/{dpms,suspendsession}.cpp compile
-#      unchanged; with HAVE_XCB=0 it is a correct no-op.
-#
-#   4. XCB::DPMS and ${UDEV_LIBS} are referenced unconditionally in
-#      daemon/CMakeLists.txt's target_link_libraries, outside the `if (XCB_FOUND)`
-#      guards, so those lines have to go with the find_package calls.
-#
-# Plus the usual cross-build hygiene shared with kscreen/milou: no git hooks, no
-# target-side linguist install, no tests.
-#
-# NOT touched (deliberate): the login1/ConsoleKit2 suspend path, the /sys-reading
-# KAuth helpers (backlighthelper_linux.cpp, chargethresholdhelper.cpp) and the
-# systemd user-unit install. All are pure QtDBus/QFile/data-file paths that compile
-# fine and degrade to "unsupported" at runtime; cutting them would be a behavior
-# decision, not a build fix.
+# NOT touched (deliberate): login1/ConsoleKit2 suspend, the /sys-reading KAuth helpers, and
+# the systemd user-unit install — all pure QtDBus/QFile paths that compile fine and degrade
+# to "unsupported" at runtime; cutting them would be a behavior decision, not a build fix.
 set -euo pipefail
 
 src=${1:?usage: powerdevil-ios-fixes.sh <powerdevil-source-dir>}
@@ -211,10 +185,9 @@ if MARKER not in text:
     path.write_text(text)
 PY
 
-# osd/osd.cpp reaches for KX11Extras, which the X11-off kf6-windowsystem build
-# does not install at all. Its two call sites are both inside the non-Wayland
-# else-branch of an isPlatformWayland() test, i.e. dead code on this stack, so
-# guard the include and the branch body rather than stubbing the class.
+# KX11Extras isn't installed by the X11-off kf6-windowsystem build. Both call sites
+# are in the non-Wayland else-branch of an isPlatformWayland() test (dead code here),
+# so guard the include and branch body rather than stub the class.
 python3 - "$src/osd/osd.cpp" <<'PY'
 import sys
 from pathlib import Path
@@ -243,12 +216,10 @@ if MARKER not in text:
     path.write_text(text)
 PY
 
-# daemon/actions/bundled/dpms.cpp has its own unguarded qtx11extras_p.h include
-# (the sibling guard covers kwinkscreenhelpereffect.cpp only). Its single use is
-# an isPlatformX11() test choosing an X11 fade effect; upstream's own comment
-# says "On Wayland, KWin takes care of performing the effect properly", so the
-# else-branch is already the correct path on this Wayland-only stack. Make the
-# test compile-time false and drop the include rather than stub QX11Info.
+# dpms.cpp has its own unguarded qtx11extras_p.h include (separate from
+# kwinkscreenhelpereffect.cpp's). Its only use picks an X11 fade effect; upstream's
+# own comment says KWin already handles the fade on Wayland, so make the
+# isPlatformX11() test compile-time false and drop the include rather than stub QX11Info.
 python3 - "$src/daemon/actions/bundled/dpms.cpp" <<'PY'
 import sys
 from pathlib import Path

@@ -2,63 +2,34 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qtbase.mk — cross-build Qt 6 qtbase for rootless iOS, OFF-DEVICE (the KDE Plasma Mobile track's
-# foundation; parallels build-mutter.sh for GNOME). This is deliberately Qt's DARWIN (macOS-style)
-# platform, NOT the iOS/UIKit platform:
-#   - Qt's official iOS port is STATIC + UIKit (QIOSIntegration). We want DYLIBS + a headless/Wayland
-#     QPA so Plasma clients render through iosc/KWin, so we build the macx-clang platform (shared libs
-#     OK, no forced UIKit) against the iPhoneOS SDK via the Procursus cctools toolchain — exactly the
-#     Procursus premise (build "macOS-ish" software for the iOS ABI).
-#   - FEATURE_framework=OFF: Qt on Apple defaults to .framework bundles; we need plain .dylib in
-#     /var/jb/usr/lib (same reason ANGLE ships dylibs not frameworks). MUST be off.
-#   - The cocoa platform plugin needs AppKit (absent on iOS) -> not built; default QPA = offscreen.
-#   - ICU: ON as of round 5. History: Qt only requires ICU >= 50.1 (qtbase's
-#     qt_find_package(ICU 50.1 COMPONENTS i18n uc data) -> CMake's builtin FindICU), so the
-#     published 74.2 build was always version-compatible — what kept the feature OFF through
-#     round 4 was a PACKAGING GAP: the original libicu-dev_74.2 deb shipped icu-*.pc + the
-#     unversioned .dylib symlinks but ZERO usr/include/unicode/*.h. Fixed by the
-#     libicu-dev_74.2+ios1 repackage (headers added from the existing icu4c install tree —
-#     NOT an ICU rebuild/version bump; the runtime libicu74_74.2 deb is untouched).
-#     build-qt.sh now stages libicu74 + libicu-dev(+ios1) into build_base before make (the
-#     ANGLE staging pattern; BOTH debs — the -dev only has unversioned symlinks, the real
-#     dylibs are in libicu74), and the -DICU_ROOT=$(QT_SYSROOT) hint below points CMake's
-#     FindICU at it (version parsed from unicode/uvernum.h — no pkg-config needed; Qt's
-#     pkg_config feature is OFF cross). qt6-base's Depends gains libicu74
-#     (build_info/qt6-base.control, plain-name style like its other Depends).
-#     DO NOT switch this to the also-published ICU 78.3: ICU bakes U_ICU_VERSION_MAJOR_NUM
-#     into every exported symbol at header-compile-time (ucol_open_78 vs the 74 runtime's
-#     ucol_open_74), so 78-headers-over-74-runtime builds clean and fails to resolve on
-#     device — and swapping the runtime dep instead is the exact "unrequested ICU bump"
-#     that broke apt on device once already.
-#     OpenSSL stays OFF — separate, untouched track (FEATURE_openssl not in scope here).
-#     GL/EGL is ON in round 3 via ANGLE/Metal; the default QPA stays offscreen so non-Wayland
-#     tools do not accidentally require a compositor.
-# HOST tools: cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the IDENTICAL version
-# via QT_HOST_PATH. Target is 6.6.3 (Plasma 6.0/6.1 era), which no Debian release ships, so
-# build-qt.sh bootstraps a native host qtbase 6.6.3 from the same tarball into build_tools/ (one-time,
-# persisted in the volume).
+# Deliberately builds Qt's DARWIN (macOS-style) platform, not iOS/UIKit: Qt's official iOS
+# port is static + UIKit (QIOSIntegration), but we want dylibs + a headless/Wayland QPA so
+# Plasma clients render through iosc/KWin. So this builds the macx-clang platform (shared
+# libs OK, no forced UIKit) against the iPhoneOS SDK via the Procursus cctools toolchain.
+#   - FEATURE_framework=OFF: Qt on Apple defaults to .framework bundles; we need plain
+#     .dylib in /var/jb/usr/lib. Must stay off.
+#   - cocoa platform plugin needs AppKit (absent on iOS) -> not built; default QPA = offscreen.
+#   - ICU is ON: the libicu-dev_74.2+ios1 repackage adds the missing unicode/*.h headers
+#     (original deb had only .pc + symlinks). Do NOT bump to the also-published ICU 78.3 —
+#     ICU bakes U_ICU_VERSION_MAJOR_NUM into exported symbols at header-compile-time, so
+#     78-headers-over-74-runtime builds clean and fails to resolve on device.
+#   - OpenSSL stays OFF (separate, untouched track). GL/EGL is ON via ANGLE/Metal; default
+#     QPA stays offscreen so non-Wayland tools don't accidentally require a compositor.
+#
+# Cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the IDENTICAL version via
+# QT_HOST_PATH. Target is 6.6.3, which no Debian release ships, so build-qt.sh bootstraps a
+# native host qtbase 6.6.3 into build_tools/ once, persisted in the volume.
 
 SUBPROJECTS    += qtbase
 QTBASE_VERSION := 6.6.3
 QT_MINOR       := 6.6
-# Round 5 (-5): ICU flipped ON (FEATURE_icu; QtCore links icuuc/icui18n/icudata 74.2) now
-# that the libicu-dev_74.2+ios1 repackage ships the unicode/ headers — full ICU collation/
-# locale/codecs in QtCore. Depends gains libicu74 (control template).
-# Round 4 (-4): QtSql + SQLite flipped ON for PlasmaActivitiesStats, which
-# plasma-workspace hard-requires before plasmashell.
-# Round 3 (-3): ANGLE/OpenGL ES + EGL flipped ON for QtQuick/QtWayland GPU clients.
-# Round 2 (-2): dbus + printsupport + xkbcommon + atspi bridge flipped ON (KF6/a11y need
-# them). See the FEATURE_* block below and docs/kde-plasma-plan.md Q3. Round 1 was 6.6.3.
-# dbus is RUNTIME (dlopen) not linked: Qt's QtDBus loader uses QLibrary("dbus-1",3) which on a
-# Darwin target resolves libdbus-1.dylib/libdbus-1.3.dylib (both shipped) — deterministic on iOS,
-# so the finicky WrapDBus1/DBus1Config linked path isn't needed. xkbcommon needs an X11-off
-# un-gate (setup patch 7).
-# printsupport is ON but its DIALOGS are OFF: the printer/QPrinter/PDF backend builds, but
-# QPrintDialog/QPageSetupDialog have NO iOS impl — qprintdialog_unix.cpp hard-needs CUPS
-# (QCUPSSupport, cups=OFF) and qprintdialog_mac.mm needs AppKit. The feature turns ON (all the
-# widget deps are present) but links dead (vtable, no impl), so force printdialog +
-# printpreviewdialog OFF. kxmlgui wants the module for QPrinter, not the picker UI; nobody prints
-# from the iPad desktop. If a KF6 unit references QPrintDialog, patch it out KF6-side (plan Q3).
+# dbus is RUNTIME (dlopen), not linked: QtDBus's loader uses QLibrary("dbus-1",3), which on
+# a Darwin target deterministically resolves libdbus-1.dylib — the finicky
+# WrapDBus1/DBus1Config linked path isn't needed.
+# printsupport is ON but its DIALOGS are OFF: QPrintDialog/QPageSetupDialog have no iOS impl
+# (qprintdialog_unix.cpp needs CUPS, qprintdialog_mac.mm needs AppKit), so the feature turns
+# on but links dead — force printdialog + printpreviewdialog OFF. kxmlgui only wants the
+# module for QPrinter, not the picker UI.
 DEB_QTBASE_V   ?= $(QTBASE_VERSION)-5+ios1
 QTBASE_NINJA_JOBS ?= 4
 
@@ -66,8 +37,8 @@ QTBASE_NINJA_JOBS ?= 4
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
 QT_HOST_CMAKE_DIR := $(QT_HOST_PATH)/lib/cmake
 
-# Staged sysroot prefix (build_base/.../var/jb/usr) — round-2 cache seeds + FindATSPI2 synth
-# point here for the libs pkg-config would have located (pkg_config feature is OFF cross).
+# Staged sysroot prefix — FindATSPI2 synth and other cache seeds point here for the libs
+# pkg-config would have located (pkg_config feature is OFF cross).
 QT_SYSROOT := $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 QT_ANGLE_PREFIX := $(BUILD_BASE)$(MEMO_PREFIX)
 QT_ANGLE_INC    := $(QT_ANGLE_PREFIX)/include
@@ -82,32 +53,25 @@ QTBASE_IOS_FRAMEWORKS := -framework UIKit -framework CoreServices -framework Mob
 qtbase-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.qt.io/archive/qt/$(QT_MINOR)/$(QTBASE_VERSION)/submodules/qtbase-everywhere-src-$(QTBASE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,qtbase-everywhere-src-$(QTBASE_VERSION).tar.xz,qtbase-everywhere-src-$(QTBASE_VERSION),qtbase)
-	# --- iOS/Darwin portability patches (accreting; the "why" documented above) ---
-	# 1) Don't add the cocoa platform plugin (needs AppKit, absent on iOS). Guard the add_subdirectory.
+	# --- iOS/Darwin portability patches (accreting) ---
+	# 1) cocoa platform plugin needs AppKit (absent on iOS) — guard it out.
 	if grep -q "add_subdirectory(cocoa)" $(BUILD_WORK)/qtbase/src/plugins/platforms/CMakeLists.txt; then \
 		sed -i 's/add_subdirectory(cocoa)/# add_subdirectory(cocoa)  # iOS: no AppKit/' \
 			$(BUILD_WORK)/qtbase/src/plugins/platforms/CMakeLists.txt ; \
 	fi
-	# 2) THE core Darwin-vs-iOS fix. CMAKE_SYSTEM_NAME=Darwin makes Qt's cmake set MACOS=1 (see
-	#    cmake/QtPlatformSupport.cmake: MACOS = APPLE AND NOT UIKIT; UIKIT needs CMAKE_SYSTEM_NAME
-	#    =="iOS", which Procursus can't use — its toolchain is osxcross-style Darwin). So Qt tries to
-	#    LINK the macOS-only frameworks (AppKit/Carbon/DiskArbitration/ApplicationServices) + compile
-	#    macOS-desktop-only sources (qcocoanativeinterface, qmacgesturerecognizer). But the COMPILER
-	#    already defines TARGET_OS_IPHONE (iPhoneOS sysroot + -miphoneos-version-min) so every .cpp/.mm
-	#    compiles its Q_OS_IOS path. The mismatch is ONLY in the `CONDITION MACOS` cmake blocks. Disable
-	#    them across ALL of src/ (their CONDITION APPLE siblings — CoreFoundation/CoreGraphics/CoreText/
-	#    Foundation, all on iOS — stay, which is exactly the iOS framework set). `MACOS([^X])` keeps
-	#    `CONDITION NOT MACOS`/`CONDITION APPLE`/`CONDITION UIKIT` untouched. Left-to-right cmake
-	#    condition evaluation makes `MACOS AND FALSE OR X` == X, so mixed conditions stay correct.
+	# 2) CMAKE_SYSTEM_NAME=Darwin makes Qt's cmake set MACOS=1 (UIKIT would need
+	#    CMAKE_SYSTEM_NAME=="iOS", which the osxcross-style Procursus toolchain can't use), so Qt
+	#    tries to link macOS-only frameworks and compile macOS-desktop-only sources even though the
+	#    compiler already targets iPhoneOS. Disable exactly the `CONDITION MACOS` blocks across src/
+	#    — their CONDITION APPLE siblings (CoreFoundation/CoreGraphics/CoreText/Foundation) stay,
+	#    which is the correct iOS framework set. `MACOS([^X])` spares MACOSX/NOT MACOS/UIKIT.
 	find $(BUILD_WORK)/qtbase/src -name CMakeLists.txt -exec \
 		sed -i -E 's/CONDITION MACOS([^X])/CONDITION MACOS AND FALSE\1/g; s/CONDITION MACOS$$/CONDITION MACOS AND FALSE/' {} +
-	# 3) libiosexec macro vs C++ members. build_base's staged stdlib.h/unistd.h force-include
-	#    libiosexec.h, whose `#define system ie_system` mangles C++ members named system()
-	#    (QRandomGenerator64::system, QLocale::system, ...). Force-include this fixup in every
-	#    C++/ObjC++ TU (see the extra CMAKE_(OBJ)CXX_FLAGS below): C TUs keep the full interposition
-	#    (exec*/posix_spawn/system -> ie_*, -liosexec still links); C++ TUs keep the exec* reroute
-	#    (QProcess wants it) but drop the `system` macro. A C++ call to ::system() would then hit the
-	#    __IOS_PROHIBITED libc declaration and fail loudly at compile time — none in these modules.
+	# 3) build_base's staged stdlib.h/unistd.h force-include libiosexec.h, whose `#define system
+	#    ie_system` mangles C++ members named system() (QRandomGenerator64::system, QLocale::system).
+	#    Force-include this fixup in every C++/ObjC++ TU (see CMAKE_(OBJ)CXX_FLAGS below): C TUs keep
+	#    the full interposition, C++ TUs keep the exec* reroute (QProcess needs it) but drop the
+	#    `system` macro.
 	printf '%s\n' \
 		'#include <stdlib.h>' \
 		'#include <unistd.h>' \
@@ -118,32 +82,20 @@ qtbase-setup: setup
 		'#endif' \
 		'#undef system' \
 		'#endif' > $(BUILD_WORK)/qtbase/qt-ios-iosexec-fixup.h
-	# 4) drop the SDK-shadowing Apple system headers. Procursus `setup` (our prerequisite) RE-STAGES
-	#    private copies into build_base on every run; the -isystem build_base include path puts them
-	#    BEFORE the 16.4 SDK's:
-	#      - xpc/: iOS-17-era (xpc_session API) — any Foundation.h include (-> NSXPCConnection.h ->
-	#        <xpc/xpc.h>) dies on OS_OBJECT_DECL_SENDABLE_CLASS.
-	#      - os/log.h: a trimmed private copy with NO os_log_type_enabled — qcore_mac.mm dies.
-	#    Must happen HERE (after `setup`), not in build-qt.sh — a driver-level parking gets undone by
-	#    the next make. Nothing in the Qt stack needs the staged copies.
+	# 4) drop SDK-shadowing Apple system headers: Procursus `setup` re-stages private copies into
+	#    build_base on every run, and the -isystem build_base path puts them before the 16.4 SDK's.
+	#    xpc/ is the iOS-17-era xpc_session API — any Foundation.h include dies on
+	#    OS_OBJECT_DECL_SENDABLE_CLASS. os/log.h is a trimmed private copy missing
+	#    os_log_type_enabled — qcore_mac.mm dies. Must run here (after `setup`), not in
+	#    build-qt.sh: a driver-level cleanup gets undone by the next make.
 	rm -rf $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/xpc
 	rm -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/os/log.h
-	# 5) re-add the Darwin-GENERIC pieces the MACOS-block disable (patch 2) also dropped:
-	#    a QCollator backend — NOT qcollator_macx.cpp (Carbon UCCollate, truly macOS-only; learned
-	#    in attempt 7) but qcollator_posix.cpp (strcoll; upstream gates it "UNIX AND NOT MACOS AND
-	#    NOT ICU", false here because MACOS=1) — and the kqueue filesystem watcher
-	#    (qfilesystemwatcher.cpp's Darwin engine chooser calls it; the fsevents alternative is
-	#    genuinely macOS-only). The frameworks the dropped MACOS LIBRARIES block carried
-	#    (CoreServices for UTType*, Security) plus UIKit (qcore_mac.mm's Q_OS_IOS path references
-	#    UIApplication) are injected globally via *_LINKER_FLAGS below.
-	#    ROUND 5 (ICU ON): the posix collator MUST be gated CONDITION NOT QT_FEATURE_icu.
-	#    Upstream's own icu block compiles qcollator_icu.cpp when the feature is on, and
-	#    qcollator_p.h switches CollatorKeyType to QByteArray at the same time — an
-	#    unconditionally re-added qcollator_posix.cpp then fails to compile against the ICU
-	#    key type (QList<wchar_t> vs QByteArray; hit in the first round-5 run). The kqueue
-	#    watcher re-add stays unconditional. The trailing sed corrects a tree that already
-	#    carries the earlier macx-flavored append (idempotent otherwise); trees carrying the
-	#    old UNGATED posix append are invalidated by the recipe fingerprint, not patched.
+	# 5) re-add what the patch-2 MACOS-block disable also dropped: qcollator_posix.cpp (not
+	#    qcollator_macx.cpp — that's Carbon UCCollate, truly macOS-only) and the kqueue filesystem
+	#    watcher (the fsevents alternative is genuinely macOS-only). With ICU on, the posix collator
+	#    must be gated CONDITION NOT QT_FEATURE_icu — upstream's icu block already compiles
+	#    qcollator_icu.cpp and switches CollatorKeyType to QByteArray, so an unconditional re-add
+	#    fails to compile against the ICU key type.
 	if ! grep -q "xios iOS re-adds" $(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt; then \
 		printf '%s\n' \
 			'# xios iOS re-adds (see qtbase.mk patch 5)' \
@@ -157,26 +109,20 @@ qtbase-setup: setup
 	fi
 	sed -i 's|SOURCES text/qcollator_macx.cpp io/qfilesystemwatcher_kqueue|SOURCES text/qcollator_posix.cpp io/qfilesystemwatcher_kqueue|' \
 		$(BUILD_WORK)/qtbase/src/corelib/CMakeLists.txt
-	# 6) fontconfig implementation on Darwin. FEATURE_fontconfig=ON resolves (sysroot ships
-	#    fontconfig, and the KDE flavor wants it: desktop fonts live in fontconfig paths, and
-	#    qtwayland's QGenericUnixFontDatabase = QFontconfigDatabase when the feature is on). But
-	#    src/gui gates the implementation — qfontconfigdatabase.cpp + the qgenericunixfontdatabase_p.h
-	#    header sync — behind UNIX AND NOT APPLE, so the feature is advertised with nothing behind it
-	#    and the minimal QPA plugin dies including the unsynced header (attempt 8). Un-gate both
-	#    blocks; they are the only two extend_target uses of the condition in gui, and the freetype
-	#    engine they need already builds (QT_FEATURE_freetype=1).
+	# 6) FEATURE_fontconfig resolves, but src/gui gates the actual implementation
+	#    (qfontconfigdatabase.cpp + the qgenericunixfontdatabase_p.h header sync) behind
+	#    UNIX AND NOT APPLE, so the feature is advertised with nothing behind it and the minimal
+	#    QPA plugin dies including the unsynced header. Un-gate both blocks (the only two
+	#    extend_target uses of that condition in gui).
 	sed -i -e 's/CONDITION UNIX AND NOT APPLE$$/CONDITION UNIX/' \
 		-e 's/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX AND NOT APPLE$$/CONDITION QT_FEATURE_fontconfig AND QT_FEATURE_freetype AND UNIX/' \
 		$(BUILD_WORK)/qtbase/src/gui/CMakeLists.txt
-	# 7) xkbcommon on a headless (X11-off) build. Two problems: (a) Qt gates qt_find_package(XKB)
-	#    behind `if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)` — X11_SUPPORTED is false here
-	#    (no xcb), so XKB is never searched; (b) the stock FindXKB is pkg-config-driven, but Qt's
-	#    pkg_config feature is OFF in this cross build (everything else uses find_library), so even
-	#    un-gated it gets an empty XKB_VERSION and the `XKB 0.5.0` version check fails. Fix both:
-	#    un-gate ONLY the plain-xkbcommon find (XKB::XKB), and replace FindXKB with a synth target
-	#    from the staged libxkbcommon (mirrors patch 8's FindATSPI2). Leave the xcb/xkbcommon-x11
-	#    blocks gated (we don't want X11). NOTE the make-escaped $$1 — a bare $1 is eaten by make
-	#    and would delete the captured qt_find_package line.
+	# 7) xkbcommon on a headless (X11-off) build hits two problems: Qt gates
+	#    qt_find_package(XKB) behind `X11_SUPPORTED`, which is false here (no xcb); and the stock
+	#    FindXKB is pkg-config-only, but Qt's pkg_config feature is OFF cross, so even un-gated it
+	#    gets an empty XKB_VERSION and fails the version check. Un-gate only the plain-xkbcommon
+	#    find and replace FindXKB with a synth target from the staged libxkbcommon; leave the
+	#    xcb/xkbcommon-x11 blocks gated. NOTE the make-escaped $$1 — a bare $1 is eaten by make.
 	perl -0pi -e 's{if\(\(X11_SUPPORTED\) OR QT_FIND_ALL_PACKAGES_ALWAYS\)\n(\s*qt_find_package\(XKB 0\.5\.0 PROVIDED_TARGETS XKB::XKB[^\n]*\n)\s*endif\(\)}{if(TRUE)  # xios: xkbcommon without X11\n$$1endif()}g' \
 		$(BUILD_WORK)/qtbase/src/gui/configure.cmake
 	printf '%s\n' \
@@ -191,12 +137,10 @@ qtbase-setup: setup
 		'include(FindPackageHandleStandardArgs)' \
 		'find_package_handle_standard_args(XKB REQUIRED_VARS XKB_LIBRARY XKB_INCLUDE_DIR VERSION_VAR XKB_VERSION)' \
 		> $(BUILD_WORK)/qtbase/cmake/3rdparty/kwin/FindXKB.cmake
-	# 8) ATSPI2 for the accessibility bridge. FindATSPI2.cmake is pkg-config-ONLY
-	#    (pkg_check_modules atspi-2, no find_library fallback), but Qt's pkg_config feature is OFF
-	#    in this cross build (everything else uses find_library), so ATSPI2_FOUND is always 0 and
-	#    FEATURE_accessibility_atspi_bridge can't enable. Replace the module with a synthesized
-	#    INTERFACE target built from the staged at-spi2-core-dev headers — the Qt AT-SPI bridge is a
-	#    pure QtDBus adaptor (Gui pulls PkgConfig::ATSPI2 include dirs only, never links libatspi).
+	# 8) FindATSPI2.cmake is pkg-config-only (no find_library fallback), but Qt's pkg_config
+	#    feature is OFF cross, so ATSPI2_FOUND is always 0 and the a11y bridge can't enable.
+	#    Replace it with a synthesized INTERFACE target from the staged at-spi2-core-dev headers —
+	#    the Qt AT-SPI bridge is a pure QtDBus adaptor and never links libatspi.
 	printf '%s\n' \
 		'if(NOT TARGET PkgConfig::ATSPI2)' \
 		'  add_library(PkgConfig::ATSPI2 INTERFACE IMPORTED)' \
@@ -216,45 +160,31 @@ ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:
 	@echo "Using previously built qtbase."
 else
-# NOTE: base libs (zlib/libpng/freetype/fontconfig/harfbuzz/pcre2) are already staged in build_base
-# (warm volume) — do NOT list them as prereqs (would trigger unpatched rebuilds, per mutter.mk).
-# cmake finds them via CMAKE_FIND_ROOT_PATH=build_base. double-conversion/md4c/b2 are bundled by Qt.
-# ROUND-2 PREREQ (dbus/xkbcommon/atspi features below): libdbus-1 + libxkbcommon are already in
-# build_base; ATSPI2 is NOT staged by any earlier track, so the round-2 rebuild needs the
-# at-spi2-core-dev + libatspi2.0-0 debs (from out/, GNOME track) unpacked into build_base first:
+# Base libs (zlib/libpng/freetype/fontconfig/harfbuzz/pcre2) are already staged in build_base
+# — do NOT list them as prereqs (triggers unpatched rebuilds). ATSPI2 is not staged by any
+# earlier track, so a fresh build_base needs at-spi2-core-dev + libatspi2.0-0 unpacked first:
 #   for d in libatspi2.0-0 at-spi2-core-dev; do dpkg-deb -x out/$${d}_*.deb tmp && \
 #     cp -a tmp/var/jb/usr/* $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/; done
-# Only atspi-2.pc + headers are consumed (FindATSPI2 = pkg_check_modules; the bridge is a pure
-# QtDBus adaptor, so libatspi is not linked — staging the runtime dylib is belt-and-suspenders).
-# INSTALL_* dirs follow Debian's layout (plugins/qml/mkspecs under lib/qt6, data under share/qt6) so
-# packaging and later Qt/KF6 modules have one canonical archdatadir.
-# CMAKE_OSX_DEPLOYMENT_TARGET is defined-but-EMPTY on purpose: Qt would otherwise default it to its
-# macOS minimum and cmake would emit -mmacosx-version-min, which clang rejects next to the
-# -miphoneos-version-min already in $(CFLAGS). Defined-empty skips both.
-# QT_NO_APPLE_SDK_AND_XCODE_CHECK + the two QT_INTERNAL_*_VERSION cache seeds keep Qt's Apple SDK
-# probing from exec'ing the hardcoded /usr/bin/xcrun (absent on the Linux host; the sysroot is
-# iPhoneOS 16.4, so seed that).
-# CMAKE_OBJC(XX)_FLAGS: qtbase enables the OBJC/OBJCXX languages on Apple and DEFAULT_CMAKE_FLAGS
-# only covers C/CXX — without these the .mm/PCH compiles miss the libc++ -isystem paths and
-# -stdlib=libc++ ('type_traits' not found).
-# No `rm -rf build`: iterating on this recipe relies on incremental cmake/ninja reruns. Wipe the
-# build dir manually when the toolchain or cache-poisoning flags change.
-# Rationale for the remaining OFF flags below that don't already have inline prose (shim-audit
-# round; one line each, can't comment inline inside the backslash-continued cmake arg list):
-#   - FEATURE_rpath=OFF: LC_RPATH would bake this Docker build's DESTDIR/BUILD_STAGE path (a
-#     throwaway container path, not /var/jb) into every dylib/exe; the shipped layout resolves
-#     libs via plain install names in /var/jb/usr/lib instead — same reasoning as
-#     FEATURE_framework=OFF above (fixed absolute paths, no bundle/rpath relocation machinery).
-#   - FEATURE_glib=OFF: keeps this KDE/Qt track's event loop independent of glib so Plasma can
-#     build and run without hard-linking to the parallel GNOME/GTK track (the whole premise of
-#     the switchable-flavor "distribution chooser" design); GTK's own glib dependency lives
-#     entirely on its side.
-#   - FEATURE_zstd=OFF: no libzstd is built anywhere in this repo (checked recipes/*.mk and
-#     out/) — turning this on would add a find_package the cross build can't satisfy.
-#   - FEATURE_brotli=OFF: libbrotli1 IS built (out/libbrotli1_1.1.0+ios1...), but only on the
-#     separate procursus-vol-ladybird volume for Ladybird's own use — it is not staged into
-#     this qtbase build's sysroot, so enabling the feature here would still fail to find it
-#     without duplicating that staging step for a codec nothing in this stack currently needs.
+# (only atspi-2.pc + headers are consumed; the bridge is a pure QtDBus adaptor).
+#
+# CMAKE_OSX_DEPLOYMENT_TARGET is defined-but-EMPTY on purpose: Qt would otherwise default it
+# to its macOS minimum and cmake would emit -mmacosx-version-min, which clang rejects next to
+# the -miphoneos-version-min already in $(CFLAGS).
+# QT_NO_APPLE_SDK_AND_XCODE_CHECK + the two QT_INTERNAL_*_VERSION seeds keep Qt's Apple SDK
+# probing from exec'ing the hardcoded /usr/bin/xcrun, absent on the Linux host.
+# CMAKE_OBJC(XX)_FLAGS: qtbase enables OBJC/OBJCXX on Apple and DEFAULT_CMAKE_FLAGS only covers
+# C/CXX — without these the .mm/PCH compiles miss the libc++ -isystem paths.
+# No `rm -rf build`: iteration relies on incremental cmake/ninja reruns; wipe manually when the
+# toolchain or cache-poisoning flags change.
+#
+# Remaining OFF flags without inline prose (can't comment inside the backslash-continued args):
+#   - FEATURE_rpath=OFF: LC_RPATH would bake this Docker build's throwaway DESTDIR path into
+#     every dylib/exe; the shipped layout resolves libs via plain install names instead.
+#   - FEATURE_glib=OFF: keeps this KDE/Qt track's event loop independent of the parallel
+#     GNOME/GTK track (the switchable-flavor "distribution chooser" premise).
+#   - FEATURE_zstd=OFF: no libzstd is built anywhere in this repo.
+#   - FEATURE_brotli=OFF: libbrotli1 is built only on the separate Ladybird volume, not staged
+#     into this build's sysroot.
 qtbase: qtbase-setup
 	mkdir -p $(BUILD_WORK)/qtbase/build
 	cd $(BUILD_WORK)/qtbase/build && cmake .. \

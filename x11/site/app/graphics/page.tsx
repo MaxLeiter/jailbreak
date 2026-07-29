@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { CopyFlow, Zoom } from "@/components/Figures";
 import { T } from "@/components/Term";
 import { Callout, Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "The GPU path" };
+export const metadata: Metadata = pageMetadata("/graphics");
 
 export default function Graphics() {
   return (

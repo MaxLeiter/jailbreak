@@ -2,15 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libsoup3.mk — HTTP client/server library (libsoup-3.0). Needed by gnome-calculator (currency
-# rate fetch) and many GNOME apps. Pure C. nghttp2 + sqlite3 + libxml2 are prebuilt in Procursus;
-# libpsl is our recipe. glib-networking (a runtime GIO TLS module) is a RUNTIME-optional dep —
-# without it the lib loads but HTTPS fails; the app still launches.
-#
-# VAPI: built `-Dvapi=false` (vapi gen would need GIR/g-ir-scanner on-target). The Vala apps that
-# use libsoup get `libsoup-3.0.vapi` from the vendored vapidir (see linux-build/vapi/README.md).
-#
-# BUILT/PUBLISHED — libsoup-3.0-0 3.4.4+ios1.
+# glib-networking (GIO TLS module) is a runtime-optional dep: without it the lib loads
+# but HTTPS fails, the app still launches.
+# -Dvapi=false: vapi generation needs GIR/g-ir-scanner on-target, unavailable here. Vala
+# apps get libsoup-3.0.vapi from the vendored vapidir instead (linux-build/vapi/README.md).
 
 SUBPROJECTS      += libsoup3
 LIBSOUP3_MAJOR_V := 3.4

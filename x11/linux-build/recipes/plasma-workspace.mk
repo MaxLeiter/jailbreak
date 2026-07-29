@@ -2,7 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-workspace.mk — plasmashell/workspace package for rootless iOS.
 # The source-fix script keeps the nested Wayland shell path while restoring real
 # Workspace support modules as their dependencies are packaged.
 

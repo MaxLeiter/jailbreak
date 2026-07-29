@@ -1,26 +1,9 @@
 #!/usr/bin/env bash
-# restore-gnome.sh — bring GNOME Shell back up after a device reboot, PERSISTENTLY.
+# Run from the Mac: bash x11/wayland/restore-gnome.sh
 #
-# Run from the Mac:  bash x11/wayland/restore-gnome.sh
-#
-# Most of the working state persists across a reboot because it lives under /var/jb (the
-# jailbreak root), NOT /var/jb/tmp: the 9 regenerated typelibs, the patched gnome-shell deb,
-# Locations.bin, the login-screen gschema, the ad-hoc audio-lib signatures, and the
-# libatk-bridge weak-import edit. Only RUNTIME bits are lost on reboot (the PulseAudio daemon,
-# the GPU entitlement file, and of course all processes) — the packaged GNOME launcher recreates those.
-#
-# This script (1) VERIFIES the persistent artifacts, (2) re-applies the one persistent edit worth
-# re-checking (libatk-bridge weak import), then (3) launches GNOME the PERSISTENT way: through
-# ioscd's SESSION socket (`xios-session -d gnome`), whose daemon is owned by launchd — so
-# gnome-shell is NOT a child of this ssh session and survives it closing. The deleted
-# early manual launch made gnome-shell an sshd child that died when the connection
-# dropped; the session preset is now the only supported GNOME launch path.
-#
-# If the VERIFY step finds typelibs missing (unexpected — they persist), regenerate them with the
-# on-device gir scripts + the per-lib flag table documented in docs/handoff/gnome-session.md:
-#   linux-build/gir-build-lib-ondevice.sh (Atk/Atspi/Gcr/GnomeDesktop/GWeather),
-#   linux-build/gir-build-gdm-ondevice.sh (Gdm-1.0),
-#   linux-build/gir-rescan-st-shell-ondevice.sh (St-14/Shell-14).
+# Uses `xios-session -d gnome` (launchd-owned) so gnome-shell survives this ssh session
+# closing — a direct manual launch would die as an sshd child when the connection drops.
+# Missing typelibs? regen scripts + flag table are in docs/handoff/gnome-session.md.
 set -u
 DEV="${DEVICE:-root@MaxsiPad.local}"
 KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"

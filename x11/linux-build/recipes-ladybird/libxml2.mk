@@ -2,11 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libxml2.mk — Ladybird leaf closure. BUMP 2.9.12 -> 2.13.8 (Ladybird pin). Distinct from the
-# GNOME-track override (which stays at 2.9.12 on its own volume): different source host
-# (download.gnome.org, .tar.xz), no legacy soname patch, python bindings dropped, lzma dropped.
-# Needs zlib staged in BUILD_BASE. Soname stays libxml2.2.dylib. +ios1 deb marker.
-
 SUBPROJECTS      += libxml2
 LIBXML2_VERSION  := 2.13.8
 LIBXML2_MAJMIN   := 2.13

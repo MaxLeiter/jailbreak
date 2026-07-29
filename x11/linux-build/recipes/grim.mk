@@ -2,26 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# grim.mk — grim, a Wayland screenshot tool (git.sr.ht/~emersion/grim). Grabs pixels via the
-# wlr-screencopy-unstable-v1 protocol into a wl_shm buffer and writes PNG (optionally JPEG/PPM).
-# Pure C, tiny; the only deps are libpng, pixman, wayland-client (+ optional libjpeg).
-#
-# PORTABILITY: grim is essentially POSIX-clean. Its shm backing file uses named shm_open +
-# immediate shm_unlink (buffer.c), which works on Darwin/iOS as-is (only the fd is passed to the
-# compositor over the Wayland socket; the name is irrelevant). The one Linux-ism is a hard
-# `cc.find_library('rt')` — iOS has no librt (clock_gettime lives in libc) — so make it
-# non-required (same fix as imv). No compat header is needed. warning_level=3 + werror is relaxed
-# with -Wno-error via c_args.
-#
-# BUILD-HOST TOOLS (from build-wayland-apps.sh): wayland-scanner (protocol codegen, native).
-# Protocols: wlr-screencopy-unstable-v1 (vendored in protocol/) + xdg-output-unstable-v1 from
-# wayland-protocols. man-pages/completions are off (avoid the scdoc host dep).
-#
-# DEPENDS (target): wayland, pixman, libpng, libjpeg(-turbo). wayland-protocols is build-only.
-#
-# iosc NOTE: grim only produces pixels if the compositor actually implements
-# zwlr_screencopy_manager_v1 frame copy (advertising the global is not enough — it must service
-# .copy / .copy_with_damage and deliver a wl_buffer-ready + flags/ready sequence).
+# grim (git.sr.ht/~emersion/grim) grabs pixels via wlr-screencopy-unstable-v1 into a wl_shm
+# buffer. It only produces pixels if the compositor actually implements screencopy frame
+# copy: advertising the global is not enough, it must service .copy / .copy_with_damage
+# and deliver a wl_buffer-ready + flags/ready sequence.
 
 SUBPROJECTS  += grim
 GRIM_VERSION := 1.4.1
@@ -30,8 +14,7 @@ DEB_GRIM_V   ?= $(GRIM_VERSION)+ios1
 grim-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://git.sr.ht/~emersion/grim/archive/v$(GRIM_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(GRIM_VERSION).tar.gz,grim-v$(GRIM_VERSION),grim)
-	# iOS has no librt (clock_gettime is in libc); carry the Meson source edit in
-	# the port patch stack.
+	# iOS has no librt (clock_gettime is in libc); patch drops the meson find_library('rt') requirement.
 	$(call DO_PATCH,grim,grim,-p1)
 	# wordexp()/wordfree() are unavailable on iOS; force-include a minimal replacement.
 	cp $(BUILD_INFO)/grim-compat.h $(BUILD_WORK)/grim/grim-compat.h

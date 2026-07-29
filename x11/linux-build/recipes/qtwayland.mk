@@ -2,31 +2,20 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qtwayland.mk — the Wayland CLIENT QPA (platform plugin) for rootless iOS: how every Qt
-# app (and eventually KWin-nested + Plasma Mobile) gets a window on iosc.
+# The Wayland CLIENT QPA (platform plugin): how every Qt app gets a window on iosc.
 #
-# SCOPE, round 3: wl_shm remains the safe fallback, but qtbase now exposes EGL/OpenGL ES
-# through the ANGLE package. QtWayland's stock `wayland-egl` client buffer integration is
-# built and resolves EGL calls to /var/jb/lib/angle/libEGL.dylib, which is the iosc shim:
-# it advertises EGL_PLATFORM_WAYLAND, remaps the display to ANGLE Metal, renders window
-# surfaces into IOSurface pbuffers, and hands those buffers to iosc zero-copy.
+# wl_shm remains the safe fallback; qtwayland's stock `wayland-egl` client buffer
+# integration resolves EGL calls to /var/jb/lib/angle/libEGL.dylib, the iosc shim that
+# advertises EGL_PLATFORM_WAYLAND, remaps the display to ANGLE Metal, renders window
+# surfaces into IOSurface pbuffers, and hands those to iosc zero-copy. If stock QtWayland
+# rejects that shim during device validation, the fallback is the private-ABI plugin in
+# docs/qtwayland-angle-iosurface.md (a Qt `wayland-graphics-integration-client` plugin
+# named `iosurface`) — only build that if validation proves the generic shim insufficient.
 #
-# If stock QtWayland rejects that shim during device validation, the fallback is the
-# private-ABI plugin described in docs/qtwayland-angle-iosurface.md: move the same
-# swapchain logic into a Qt `wayland-graphics-integration-client` plugin named
-# `iosurface`. Do that only if validation proves the generic shim is insufficient.
-#
-# Build deps:
-#   - TARGET: wayland-client (W0 debs, staged in build_base — the driver verifies
-#     wayland-client.pc before building this module). Protocol XML is bundled by qtwayland.
-#   - HOST: qtwaylandscanner via QT_HOST_PATH (host qtwayland, build-qt-modules.sh stage 1)
-#     AND the plain wayland-scanner binary (Wayland::Scanner; container needs Debian's
-#     libwayland-bin/libwayland-dev — the driver apt-installs them).
-#   - keyboards: proper keymap handling follows QtGui's xkbcommon feature, which is OFF in
-#     qtbase round 1 (falls back to raw keysyms). Fixed by qtbase round 2 (+xkbcommon).
+# HOST build needs both qtwaylandscanner (via QT_HOST_PATH) AND the plain wayland-scanner
+# binary (Wayland::Scanner; from Debian's libwayland-bin, apt-installed by the driver).
 # FEATURE_wayland_server=OFF: QtWaylandCompositor is dead weight — KWin speaks
 # libwayland-server directly, and iosc is our own compositor.
-# Shared Apple/Darwin flags + MACOS-condition fix: qt6-common.mk (rationale in qtbase.mk).
 
 SUBPROJECTS       += qtwayland
 QTWAYLAND_VERSION := 6.6.3
@@ -42,11 +31,9 @@ qtwayland-setup: setup
 	bash /work/recipes/qtwayland-ios-fixes.sh $(BUILD_WORK)/qtwayland
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
-	# qgenericunixthemes never built in our qtbase (gated UNIX AND NOT MACOS; MACOS
-	# stays set under the masquerade — the seds only disable `CONDITION MACOS` forms),
-	# so its private header isn't staged. The sibling unix fontdb/eventdispatcher/
-	# services headers ARE staged (verified), so only the theme hookup goes: nullptr
-	# theme = Qt default; the Plasma flavor later gets real theming from
+	# qgenericunixthemes never built in our qtbase (gated UNIX AND NOT MACOS, and MACOS
+	# stays set under the masquerade), so its private header isn't staged — drop only the
+	# theme hookup (nullptr = Qt default). Plasma later gets real theming from
 	# plasma-integration's own platformtheme plugin, which replaces the generic one.
 	sed -i '/#include <QtGui\/private\/qgenericunixthemes_p.h>/d' \
 		$(BUILD_WORK)/qtwayland/src/client/qwaylandintegration.cpp
@@ -59,15 +46,11 @@ ifneq ($(wildcard $(BUILD_WORK)/qtwayland/.build_complete),)
 qtwayland:
 	@echo "Using previously built qtwayland."
 else
-# No prereqs on qtbase/wayland (staged in build_base already; mutter.mk precedent).
-# No `rm -rf build` (incremental iteration, qtbase.mk).
 qtwayland: qtwayland-setup
 	mkdir -p $(BUILD_WORK)/qtwayland/build
-# WaylandScanner_EXECUTABLE pinned to the HOST binary: the W0 wayland deb stages an
-# arm64-iOS wayland-scanner into build_base/usr/bin, and the cross find-root searches
-# the sysroot first -> "Exec format error" at codegen. The ECM find module
-# (find_program(WaylandScanner_EXECUTABLE ...)) honors a -D pre-set. /usr/bin copy
-# exists because the driver apt-installs libwayland-bin every run.
+# WaylandScanner_EXECUTABLE pinned to the HOST binary: build_base/usr/bin has an
+# arm64-iOS wayland-scanner, and the cross find-root searches the sysroot first ->
+# "Exec format error" at codegen. find_program honors a -D pre-set.
 	cd $(BUILD_WORK)/qtwayland/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \
@@ -95,8 +78,7 @@ qtwayland-package: qtwayland-stage
 		$(BUILD_DIST)/qt6-wayland-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
 	# runtime: WaylandClient dylibs + every plugin dir (platforms/libqwayland-generic,
-	# wayland-shell-integration, wayland-decoration-client, and — once round 2 lands —
-	# wayland-graphics-integration-client).
+	# wayland-shell-integration, wayland-decoration-client, wayland-graphics-integration-client).
 	cp -a $(BUILD_STAGE)/qtwayland/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libQt6*.dylib \
 		$(BUILD_DIST)/qt6-wayland/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib 2>/dev/null || true
 	if [ -d "$(BUILD_STAGE)/qtwayland/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/qt6/plugins" ]; then \

@@ -2,10 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qtsensors.mk — Qt Sensors for rootless iOS. KWin probes Qt6Sensors in its W-layer
-# configure. Build the library, generic plugin, and QML plugin when qtdeclarative is
-# staged; native sensor backends can be refined later after first compositor bring-up.
-# Shared Apple/Darwin flags + MACOS-condition fix: qt6-common.mk.
+# KWin probes Qt6Sensors in its W-layer configure. Native sensor backends can be
+# refined later after first compositor bring-up.
 
 SUBPROJECTS       += qtsensors
 QTSENSORS_VERSION := 6.6.3

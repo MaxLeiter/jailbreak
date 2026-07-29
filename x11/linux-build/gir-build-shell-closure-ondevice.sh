@@ -1,59 +1,19 @@
 #!/usr/bin/env bash
-# gir-build-shell-closure-ondevice.sh — generate the REMAINING gnome-shell boot typelibs ON the
-# iPad: the toolkit/framework namespaces dependencies.js hard-imports that no other batch script
-# produces and the device does not have. Closure audit (patched dependencies.js diffed against
-# the device typelib inventory + the other 4 gir scripts' outputs) found exactly these missing:
+# gir-build-shell-closure-ondevice.sh — generate the remaining gnome-shell boot typelibs ON the
+# iPad: GDesktopEnums-3.0, Atk-1.0, Atspi-2.0, Gck-2, Gcr-4, Polkit-1.0, PolkitAgent-1.0, IBus-1.0,
+# GnomeDesktop-4.0, GnomeBG-4.0 — the dependencies.js imports no other gir script produces.
 #
-#   GDesktopEnums-3.0  (gsettings-desktop-schemas 46.1 — header-only gir, no library; the deb
-#                       ships NO header either, so this one is MESON-ROUTED from the tarball)
-#   Atk-1.0            (atk 2.38.0 — standalone, NOT the merged at-spi2-core copy)
-#   Atspi-2.0          (at-spi2-core 2.52.0)
-#   Gck-2 + Gcr-4      (gcr 4.2.1; Gck-2 is not in dependencies.js but Gcr-4's gir includes it)
-#   Polkit-1.0 + PolkitAgent-1.0  (polkit 124)
-#   IBus-1.0           (ibus 1.5.29)
-#   GnomeDesktop-4.0 + GnomeBG-4.0  (gnome-desktop 44.1; GnomeRR-4.0 exists but is NOT imported
-#                                    by the shell and nothing here includes it — skipped)
+# RUN THIS FIRST, before gir-build-mutter-ondevice.sh and gir-build-gnome-shell-ondevice.sh: both
+# scan --include Atk-1.0/GDesktopEnums-3.0/Gcr-4/PolkitAgent-1.0, which are only produced here.
 #
-# RUN THIS FIRST — before BOTH gir-build-mutter-ondevice.sh and gir-build-gnome-shell-ondevice.sh:
-#   - the mutter scans --include Atk-1.0 and GDesktopEnums-3.0 (see that script's prereq #3),
-#     both produced HERE — they were never on the device (not part of the GTK4 pass);
-#   - Shell-14's gir --includes Gcr-4 and PolkitAgent-1.0, also produced here.
-# Nothing in this script depends on mutter/shell girs, so closure-first is safe.
+# Route: standalone g-ir-scanner against installed -dev debs (see gir-build-session-libs-ondevice.sh
+# for rationale). GDesktopEnums has no header on device (the deb ships none), so it's meson-routed
+# from a tarball passed as $1 — skipped if omitted and no -dev deb has landed the header yet.
 #
-# Route: standalone g-ir-scanner against the installed -dev debs (see
-# gir-build-session-libs-ondevice.sh for the route rationale + annotation tradeoff). All params
-# below were mined from each project's own generate_gir() block in the EXACT source trees the
-# cross build used (tarballs on procursus-vol-shell:/vol/build_source). Notable per-lib facts:
-#   - GDesktopEnums: upstream scans with --header-only against a noinst dummy lib (pure-enum
-#     namespace, no dumper). Our deb carries only the schemas + .pc — no gdesktop-enums.h — so
-#     there is nothing to scan against: meson-route the 46.1 tarball (pass as $1; boolean
-#     -Dintrospection=true; only build dep is glib-mkenums). If a header IS present on device
-#     (future -dev deb), the standalone --header-only scan runs instead.
-#   - Gck/Gcr headers hard-#error without GCK_/GCR_API_SUBJECT_TO_CHANGE (+ *_COMPILATION).
-#   - polkit compiles everything with -D_POLKIT_COMPILATION; PolkitAgent's gir includes Polkit.
-#   - ibus is autotools: params from src/Makefile.am (IBus_1_0_gir_*), -DIBUS_COMPILATION.
-#   - gnome-desktop 4 headers need -DGNOME_DESKTOP_USE_UNSTABLE_API; GnomeBG's gir includes
-#     GnomeDesktop-4.0 + Gdk-4.0 (Gdk/GdkPixbuf girs are already on device from the GTK4 pass).
-#   - atk 2.38's single-include #error is gated on ATK_DISABLE_SINGLE_INCLUDES: no define needed.
-#   - atspi headers self-include flat, so -I both at-spi-2.0/ and at-spi-2.0/atspi/.
+# Prerequisites: the -dev debs in install-gnome-boot.sh's GIR_DEV_DEBS, plus p11-kit-1-dev (Gck/Gcr
+# .pc files Require it) and the GTK4-era girs already on device.
 #
-# Scan ORDER within this script is dependency order: GDesktopEnums -> Atk -> Atspi -> Gck ->
-# Gcr -> Polkit -> PolkitAgent -> IBus -> GnomeDesktop -> GnomeBG.
-#
-# PREREQUISITES on device — exact deb names per gnome-session (9 of the 10 namespaces come
-# from 6 -dev debs; two pairs share a deb), all in install-gnome-boot.sh's GIR_DEV_DEBS:
-#   libatk1.0-dev_2.38.0 (Atk) · at-spi2-core-dev_2.52.0 (Atspi) · gcr4-dev_4.2.1 (Gck AND Gcr)
-#   polkit-dev_124 (Polkit AND PolkitAgent) · libibus-dev_1.5.29 (IBus)
-#   libgnome-desktop-dev_44.1 (GnomeDesktop AND GnomeBG)
-#   + p11-kit-1-dev: gck-2.pc/gcr-4.pc `Requires: p11-kit-1`, so without its .pc the Gck/Gcr
-#     scans die in pkg-config (install-gnome-boot.sh apt-get downloads it best-effort).
-# Plus the GI toolchain (gir-ondevice.sh bootstrap) and the GTK4-era girs already in
-# /var/jb/usr/share/gir-1.0 (Gdk-4.0, GdkPixbuf-2.0, DBus-1.0, GLib/GObject/Gio).
-#
-# Usage: DEVICE=root@MaxsiPad.local ./gir-build-shell-closure-ondevice.sh \
-#            /path/to/gsettings-desktop-schemas-46.1.tar
-# (tar = the GDesktopEnums meson route; optional, but without it GDesktopEnums is skipped
-#  unless a header is already on device. Decompress the .tar.xz locally — device has no xz.)
+# Usage: DEVICE=root@MaxsiPad.local ./gir-build-shell-closure-ondevice.sh /path/to/gsettings-desktop-schemas-46.1.tar
 set -euo pipefail
 DEVICE="${DEVICE:-root@MaxsiPad.local}"
 SSHKEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"

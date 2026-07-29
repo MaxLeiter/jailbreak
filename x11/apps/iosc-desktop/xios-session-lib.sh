@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# xios-session-lib.sh — the session-launcher core (sourced, never run directly).
+# The session-launcher core (sourced, never run directly).
 #
 # One place that knows how to (1) tear down whatever desktop session is currently
 # on the iPad and (2) bring up a chosen one, then relaunch the Xios display app.
@@ -528,14 +528,9 @@ xs_reap_slot_named_processes() {
     done
 }
 
-# A slot's xios-displays.d entry is only deleted on a clean stop (see
-# xios_session_stop), so a slot that goes away any other way — crash, jetsam, a
-# killed bring-up, a reboot that left /tmp behind — leaves its entry sitting
-# there and the Xios app keeps listing a display nothing can reach. Sweep the
-# ones with nothing behind them at all: no Wayland socket, no display config,
-# and no processes named for the slot. Anything still serving is left alone, as
-# is the slot this invocation is bringing up. Runs under the session lock, so it
-# cannot race another xios-session writing an entry.
+# A slot's registry entry is only deleted on clean stop; crashes/jetsam/reboots
+# leave stale entries the Xios app keeps listing. Sweep entries with no socket,
+# config, or process left. Runs under the session lock to avoid racing a write.
 xs_sweep_stale_slot_registry() {
     case "${XIOS_SESSION_SWEEP_SLOTS:-1}" in 0|no|off|false) return 0 ;; esac
     [ -d "$XS_SLOT_REGISTRY_DIR" ] || return 0
@@ -662,10 +657,9 @@ xios_session_teardown() {
     rm -rf "$XS_TMP/xios-kde-runtime" 2>/dev/null || true
     rm -rf "$XS_TMP/xios-session-bus" 2>/dev/null || true
     # Never leave a dead session advertised as running: if the status file still
-    # claims a live state after everything was killed, rewrite it as down. In the
-    # normal preset flow this never fires (xs_prepare_display_session/stop write
-    # "stopping" first); it catches teardowns arriving outside that flow, which
-    # otherwise leave a stale "up" in the Xios picker for hours (2026-07-08).
+    # claims a live state after everything was killed, rewrite it as down. Catches
+    # teardowns arriving outside the normal preset flow (which already writes
+    # "stopping" first).
     local st_state st_preset
     st_state="$(xs_json_get_file "$XS_STATUS" state)"
     case "$st_state" in
@@ -778,11 +772,8 @@ xios_session_iosc() {
     local script; script="$(xs_find_bringup run-shell.sh)" || {
         xs_log "ERROR: run-shell.sh not found (install iosc-shell)"; xs_write_status iosc error "run-shell.sh missing"; return 1; }
     xs_log "iosc: $script"
-    # run-shell.sh starts the compositor because teardown removed the socket. Pass
-    # through the tunables it honours: IOSC_LOGICAL (desktop size) and, since
-    # iosc-shell 0.9.3, IOSC_PANEL_OPACITY (0-100; the panel is 85% translucent by
-    # default). Only export opacity when the caller set it, so an unset value never
-    # overrides the panel's own default.
+    # Only export IOSC_PANEL_OPACITY when the caller set it, so an unset value
+    # never overrides the panel's own 85% default.
     export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
     export WAYLAND_DISPLAY="$XS_WAYLAND_NAME"
     export XIOS_JSON_PATH="$XS_CONFIG_JSON"
@@ -853,12 +844,10 @@ xios_session_gnome() {
     bash "$script" || true
     xs_ensure_xios gnome    # relaunch the display if it got jetsammed during bring-up
     xs_write_status gnome waiting "waiting for GNOME Shell to paint"
-    # Do NOT gate "gnome up" on xios.json: Mutter writes it BEFORE the gjs shell
-    # loads, so it only proves the compositor came up (identical to bare mutter).
-    # The real success marker (per gnome-session) is "GNOME Shell started at" in
-    # gnome-shell.log, printed only after the JS UI + stage load. Poll for that, a
-    # hard failure, or process exit for ~15s; a compositor that never paints the
-    # shell is reported distinctly (not as a win).
+    # Do NOT gate "gnome up" on xios.json: Mutter writes it before the gjs shell
+    # loads, so it only proves the compositor came up. The real marker is "GNOME
+    # Shell started at" in gnome-shell.log, printed after the JS UI loads. Poll
+    # for that, a hard failure, or process exit (~15s); report each distinctly.
     local log="$XS_TMP/gnome-shell${XS_SLOT:+-$XS_SLOT}.log" i=0 outcome=timeout
     local fail_re='Failed to load module|couldn.t be found|JS ERROR|Execution of main\.js threw exception|MTLCreateSystemDefaultDevice'
     while [ "$i" -lt 30 ]; do

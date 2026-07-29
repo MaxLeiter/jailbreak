@@ -2,23 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# file-roller.mk — File Roller, GNOME's archive manager. As of 44.x it is a clean C **GTK4**
-# /libadwaita app (the GTK3 days are over). The archive engine is libarchive; Procursus ships a
-# native libarchive recipe (3.7.2 -> libarchive13), built from lz4/lzo2/zstd/xz/nettle which we
-# already have — so the only "new" sub-dep is that one stock lib.
-#
-# Optional-feature trims (verified against file-roller 44.7 meson_options.txt) to keep the dep
-# tree minimal and iOS-clean:
-#   -Dpackagekit=false       -> no PackageKit "install missing utility" path (no PK on iOS)
-#   -Dnautilus-actions=disabled -> drops libnautilus-extension-4 (we don't build nautilus here)
-#   -Dnotification=disabled  -> drops libnotify
-#   -Dintrospection=disabled -> typelibs can't be cross-generated for Mach-O (gnome-plan.md #2)
-#   -Duse_native_appchooser=false (default) -> no libportal/libportal-gtk4 dep
-# libarchive stays auto -> it links our libarchive build. json-glib is auto/required:false and we
-# have it, so it links too. file-roller still shells out to CLI archivers (tar/gzip/xz/zip/7z)
-# for formats libarchive doesn't cover; those are Recommends, not hard deps.
-#
-# DEPENDS (target): gtk4 + libadwaita + libarchive + json-glib (+ glib, prebuilt).
+# The archive engine is libarchive, already built by Procursus (3.7.2 -> libarchive13) — the
+# only "new" sub-dep this needs. file-roller still shells out to CLI archivers (tar/gzip/xz/
+# zip/7z) for formats libarchive doesn't cover; those are Recommends, not hard deps.
 
 SUBPROJECTS         += file-roller
 FILE-ROLLER_MAJOR_V := 44
@@ -28,11 +14,10 @@ DEB_FILE-ROLLER_V   ?= $(FILE-ROLLER_VERSION)+ios1
 file-roller-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/file-roller/$(FILE-ROLLER_MAJOR_V)/file-roller-$(FILE-ROLLER_VERSION).tar.xz)
 	$(call EXTRACT_TAR,file-roller-$(FILE-ROLLER_VERSION).tar.xz,file-roller-$(FILE-ROLLER_VERSION),file-roller)
-	# Procursus' libarchive.pc carries `Requires.private: iconv`, but on iOS libiconv lives in
-	# libSystem so no separate lib (and no iconv.pc) is staged. Without iconv.pc, pkg-config
-	# errors resolving `--libs libarchive` -> meson reports libarchive "not found" and file-roller
-	# silently loses its archive engine (links json-glib/gtk only). Stage a minimal iconv.pc
-	# (idempotent) so the dependency resolves. The SDK's libiconv satisfies any -liconv.
+	# Procursus' libarchive.pc requires iconv via pkg-config, but iOS has no separate libiconv
+	# (it's in libSystem) so no iconv.pc is staged. Without it, meson silently reports
+	# libarchive "not found" and file-roller builds without its archive engine. Stage a
+	# minimal iconv.pc stub so the dependency resolves.
 	mkdir -p $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
 	if [ ! -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/iconv.pc ]; then \
 		printf 'prefix=%s\nexec_prefix=$${prefix}\nlibdir=$${exec_prefix}/lib\nincludedir=$${prefix}/include\n\nName: iconv\nDescription: iOS SDK libiconv (pc stub for Requires.private resolution)\nVersion: 1.17\nLibs: -liconv\nCflags:\n' '$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)' > $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/iconv.pc; \
@@ -74,7 +59,6 @@ endif
 file-roller-package: file-roller-stage
 	rm -rf $(BUILD_DIST)/file-roller
 	mkdir -p $(BUILD_DIST)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
-	# app: bin/file-roller + libexec (if any) + share (desktop, icons, gschemas, gresource, ui)
 	cp -a $(BUILD_STAGE)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	if [ -d "$(BUILD_STAGE)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec" ]; then \
 		cp -a $(BUILD_STAGE)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec $(BUILD_DIST)/file-roller/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \

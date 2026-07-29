@@ -2,9 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# simdutf.mk — NEW recipe for the Ladybird leaf closure (pin simdutf 7.4.0). Single-header-ish
-# SIMD unicode lib, CMake. Tests/tools/benchmarks/iconv off. Ships libsimdutf dylib (library
-# soversion tracks its own ABI counter, not the release tag). +ios1 marker.
+# libsimdutf's soversion tracks its own ABI counter, not the release version.
 
 SUBPROJECTS      += simdutf
 SIMDUTF_VERSION  := 7.4.0

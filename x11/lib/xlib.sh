@@ -1,4 +1,4 @@
-# xlib.sh — shared helpers for the x11-on-iOS build/sign/package scripts.
+# Shared helpers for the x11-on-iOS build/sign/package scripts.
 # NOT executable: source it. The one-line idiom that works from any depth is:
 #
 #   _x="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -2,11 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libpng16.mk — Ladybird leaf closure. BUMP 1.6.37 -> 1.6.50 (Ladybird pin). autotools configure
-# retained at 1.6.50; needs zlib (Wave 1, staged). Distinct from any gtk-era libpng16: this volume
-# was cloned from the gtk track, so a stale 1.6.37 tree/lib may be shadowed — the setup guard wipes
-# a mismatched build_work tree, and the driver wipes the staged shadow before build. +ios1 marker.
-
 SUBPROJECTS      += libpng16
 LIBPNG16_VERSION := 1.6.50
 DEB_LIBPNG16_V   ?= $(LIBPNG16_VERSION)+ios1
@@ -20,9 +15,8 @@ libpng16-setup: setup
 		rm -rf $(BUILD_WORK)/libpng16 $(BUILD_STAGE)/libpng16; \
 	fi
 	$(call EXTRACT_TAR,libpng-$(LIBPNG16_VERSION).tar.xz,libpng-$(LIBPNG16_VERSION),libpng16)
-	# APNG support is REQUIRED by Ladybird (LibImageDecoders FATAL_ERRORs without it; PNGLoader.cpp
-	# calls png_get_acTL/png_get_next_frame_fcTL). Stock libpng ships no APNG; apply the
-	# libpng-apng patch. Idempotent via .apng_applied marker.
+	# Ladybird's LibImageDecoders FATAL_ERRORs without APNG support (png_get_acTL/
+	# png_get_next_frame_fcTL); stock libpng doesn't have it, so apply the libpng-apng patch.
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://downloads.sourceforge.net/project/libpng-apng/libpng16/$(LIBPNG16_VERSION)/libpng-$(LIBPNG16_VERSION)-apng.patch.gz)
 	if [ ! -f $(BUILD_WORK)/libpng16/.apng_applied ]; then \
 		gunzip -c $(BUILD_SOURCE)/libpng-$(LIBPNG16_VERSION)-apng.patch.gz | patch -d $(BUILD_WORK)/libpng16 -p1 && \

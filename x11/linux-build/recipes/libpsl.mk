@@ -2,11 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libpsl.mk — Public Suffix List library; required by libsoup3 (cookie domain checks).
-# Built with the BUILTIN list and no IDNA runtime to avoid pulling libidn2 + libunistring.
-# Pure C. GTK-independent.
-#
-# BUILT/PUBLISHED — libpsl5 0.21.5+ios1.
+# Public Suffix List library; required by libsoup3 (cookie domain checks). Built with
+# the builtin list and no IDNA runtime, to avoid pulling in libidn2 + libunistring.
+# Pure C, GTK-independent.
 
 SUBPROJECTS    += libpsl
 LIBPSL_VERSION := 0.21.5

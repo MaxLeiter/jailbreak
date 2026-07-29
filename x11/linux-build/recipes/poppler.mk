@@ -2,23 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# poppler.mk — Poppler, the PDF rendering library (poppler.freedesktop.org), built with the
-# glib bindings ONLY (libpoppler-glib). This is the one genuinely new dependency the Papers
-# GTK4 document viewer pulls in. Plain CMake project; every external dep it needs at this
-# feature level is already in our tree (freetype, fontconfig, cairo, glib, libjpeg-turbo,
-# libpng — all in the GTK4 base), so it adds ZERO new sub-deps.
-#
-# Configured MINIMAL to avoid dep sprawl (see the -D flags): only the glib frontend is built,
-# the qt5/qt6/cpp frontends + all utils/tests are off, and every optional codec/feature that
-# would drag in a NEW library (nss, gpgme, libcurl, lcms, openjpeg, libtiff, boost) is off.
-# DCT (JPEG) uses the already-present libjpeg-turbo. GObject-Introspection is OFF (the girs are
-# an on-device g-ir pass, like the rest of the stack); Papers links poppler-glib directly, not
-# via typelib, so this costs nothing for the viewer.
-#
-# 24.08.0 is a stable point release; its core C++ library SONAME is libpoppler.so.140
-# (-> libpoppler140) and the glib binding is the long-stable libpoppler-glib.so.8
-# (-> libpoppler-glib8). Package split mirrors libgee: runtime libpoppler140 +
-# libpoppler-glib8 + a combined -dev (headers/.pc/bare symlinks).
+# glib bindings only (libpoppler-glib) for Papers; qt5/qt6/cpp frontends, utils, tests,
+# and every optional codec that would pull a new lib (nss/gpgme/libcurl/lcms/openjpeg/
+# libtiff/boost) are off. GObject-Introspection is OFF — Papers links poppler-glib
+# directly, not via typelib.
 
 SUBPROJECTS      += poppler
 POPPLER_VERSION  := 24.08.0
@@ -33,8 +20,7 @@ ifneq ($(wildcard $(BUILD_WORK)/poppler/.build_complete),)
 poppler:
 	@echo "Using previously built poppler."
 else
-# Deps (freetype/fontconfig/cairo/glib/libjpeg/libpng) are pre-staged in build_base; no
-# make-level prereqs (mutter/kcoreaddons precedent — the GTK4 volume is fully warmed).
+# Deps are pre-staged in build_base; no make-level prereqs needed.
 poppler: poppler-setup
 	# Wipe the build dir so a prior crashed configure can't leave a poisoned CMake cache.
 	rm -rf $(BUILD_WORK)/poppler/build
@@ -78,7 +64,6 @@ poppler-package: poppler-stage
 	cp -a $(BUILD_STAGE)/poppler/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpoppler.*.dylib \
 		$(BUILD_DIST)/libpoppler$(POPPLER_SOV)/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# libpoppler-glib8: the glib binding dylib (real file + soname symlink).
 	cp -a $(BUILD_STAGE)/poppler/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libpoppler-glib.*.dylib \
 		$(BUILD_DIST)/libpoppler-glib8/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 

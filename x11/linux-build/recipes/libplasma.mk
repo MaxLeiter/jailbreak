@@ -2,11 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libplasma.mk — libplasma for rootless iOS (Plasma Desktop shell-layer P0).
-# This is the first missing package above the completed KF6/KWin tier. It builds
-# Plasma's shared C++ libraries, QML imports, and desktop theme data, but it does
-# not build plasmashell, plasma-workspace, plasma-desktop, plasma-mobile, or
-# plasma-nano. X11 support is disabled; nested Wayland is the first-light path.
+# First missing package above the completed KF6/KWin tier. Builds Plasma's shared C++
+# libraries, QML imports, and desktop theme data, but not plasmashell, plasma-workspace,
+# plasma-desktop, plasma-mobile, or plasma-nano. X11 support is disabled; nested
+# Wayland is the first-light path.
 
 SUBPROJECTS += libplasma
 LIBPLASMA_VERSION = $(PLASMA_VERSION)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# xfce-up.sh — bring up an XFCE 4.16 *session* on an X server that is ALREADY running.
+# Brings up an XFCE 4.16 *session* on an X server that is ALREADY running.
 # Runs ON THE DEVICE:
 #   ssh root@ipad 'bash -s' < bin/xfce-up.sh        (or scp + run)
 #
@@ -46,8 +46,7 @@ chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null
 command -v xios_prepare_runtime_dirs >/dev/null 2>&1 && xios_prepare_runtime_dirs
 command -v xios_load_xresources >/dev/null 2>&1 && xios_load_xresources
 # Desktop audio: the pulse profile helper starts xios-audiod AND PulseAudio and
-# exports PULSE_SERVER at the PA native socket, so we call it instead of the old
-# xios_audio_start (which only started the XIOA daemon). Idempotent.
+# exports PULSE_SERVER at the PA native socket. Idempotent.
 [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
 
 # --- kill the previous XFCE session WE started (scoped to this display) -------

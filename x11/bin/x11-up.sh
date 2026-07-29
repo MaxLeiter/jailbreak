@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# x11-up.sh — bring up the Phase-0 X-over-VNC session on a rootless Procursus device.
-# Captures the working recipe proven in the 2026-06-28 spike (see ../SCOPE.md).
+# Brings up the Phase-0 X-over-VNC session on a rootless Procursus device.
+# See ../SCOPE.md for the working recipe this follows.
 #
 # Run ON THE DEVICE, e.g.:
 #   ssh root@ipad 'bash -s' < bin/x11-up.sh

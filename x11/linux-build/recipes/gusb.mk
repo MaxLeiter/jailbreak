@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gusb.mk — GObject wrapper over libusb. colord 1.4.7 requires it even for the client lib
-# (meson.build:120). USB access never works in the iOS sandbox, but gusb/libusb only need to
-# LINK for colord -> mutter -> the introspection scan; runtime USB is irrelevant here.
+# GObject wrapper over libusb; colord requires it even for the client lib. USB never works in
+# the iOS sandbox, but gusb/libusb only need to LINK for colord -> mutter -> introspection scan.
 
 SUBPROJECTS  += gusb
 GUSB_VERSION := 0.4.8

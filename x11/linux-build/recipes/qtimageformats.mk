@@ -2,13 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qtimageformats.mk — extra QImage format plugins (tiff, webp, tga, icns, wbmp) for
-# rootless iOS. Icon/wallpaper loading coverage for Plasma theming; single runtime deb,
-# no public headers. tiff + webp use Qt's BUNDLED 3rdparty copies (system_* OFF) so the
-# package is self-contained — the alternative would grow our repo a libtiff/libwebp deb
-# family for one plugin each, and hand-written control deps have bitten before
-# (x11-procursus-libsqlite3-naming). mng/jasper have no bundled copy: OFF.
-# Shared Apple/Darwin flags + MACOS-condition fix: qt6-common.mk (rationale in qtbase.mk).
+# tiff + webp use Qt's bundled 3rdparty copies (system_* OFF) to avoid growing a
+# libtiff/libwebp deb family for one plugin each. mng/jasper have no bundled copy: OFF.
 
 SUBPROJECTS            += qtimageformats
 QTIMAGEFORMATS_VERSION := 6.6.3
@@ -25,8 +20,6 @@ ifneq ($(wildcard $(BUILD_WORK)/qtimageformats/.build_complete),)
 qtimageformats:
 	@echo "Using previously built qtimageformats."
 else
-# No prereq on qtbase (staged in build_base already; mutter.mk precedent).
-# No `rm -rf build` (incremental iteration, qtbase.mk).
 qtimageformats: qtimageformats-setup
 	mkdir -p $(BUILD_WORK)/qtimageformats/build
 	cd $(BUILD_WORK)/qtimageformats/build && cmake .. \

@@ -2,32 +2,16 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# polkit-kde-agent-1.mk — Plasma's PolicyKit authentication agent
-# (libexec/polkit-kde-authentication-agent-1) for rootless iOS.
+# BLOCKED: upstream requires PolkitQt6-1 (find_package REQUIRED 0.103.0), which
+# nothing in repo/Packages provides — the published polkit build is
+# -Dlibs-only=true (see polkit.mk) and ships only the C libraries. polkit-qt-1
+# (the Qt binding, built with -DQT_MAJOR_VERSION=6) has no recipe yet and must
+# land first; until then this recipe won't configure.
 #
-# BLOCKED ON A MISSING DEPENDENCY. Upstream does
-# `find_package(PolkitQt6-1 REQUIRED 0.103.0)` and links PolkitQt6-1::Agent. Nothing in
-# repo/Packages provides PolkitQt6-1: the published `polkit 124+ios1` build is
-# `-Dlibs-only=true` (see polkit.mk) and ships only the C libraries
-# libpolkit-gobject-1 / libpolkit-agent-1 plus polkit-dev's headers and .pc files.
-# polkit-qt-1 (the Qt binding, current release 0.200.0, built with
-# -DQT_MAJOR_VERSION=6 to get the PolkitQt6-1 cmake package) has no recipe here and
-# must be built first. This recipe is written and left ready; it will not configure
-# until that package exists.
-#
-# RUNTIME REALITY, stated up front so nobody mistakes this for a working auth path:
-# the agent is a client of org.freedesktop.PolicyKit1.Authority on the DBus SYSTEM
-# bus, which is owned by polkitd. polkit.mk deliberately does not build polkitd (no
-# PAM, no shadow, no setuid auth helper on iOS), and main.cpp's
-# PolkitQt1::UnixSessionSubject(getpid()) resolves through
-# polkit_unix_session_new_for_process_sync(), i.e. a logind/ConsoleKit session that
-# does not exist here. registerListener() will therefore fail and main() calls
-# exit(1). Building this package makes the dialog available to a future authority
-# implementation; it does not by itself make polkit authentication work.
-#
-# Staged prerequisites beyond PolkitQt6-1 (all published): qt6-base, qt6-declarative,
-# kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-i18n, kf6-kirigami, kf6-windowsystem.
-# No DocTools dependency, so nothing to cut there.
+# Even once it builds: polkitd isn't built either (no PAM/shadow on iOS), so
+# PolkitQt1::UnixSessionSubject in main.cpp can't resolve a logind session and
+# registerListener() exits(1) at runtime. This package makes the dialog
+# available to a future authority implementation, not working auth.
 
 SUBPROJECTS += polkit-kde-agent-1
 POLKITKDEAGENT1_VERSION = $(PLASMA_VERSION)

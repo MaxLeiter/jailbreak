@@ -2,11 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libxmlb.mk — binary-XML index library. Only here because AppStream needs it, which
-# libadwaita 1.4 needs. Pure C + glib; liblzma (xz-utils) and zstd are already prebuilt in
-# Procursus, so meson finds them via pkg-config. GTK-independent. See docs/gnome-apps.md.
-#
-# BUILT/PUBLISHED — libxmlb2 0.3.14+ios1.
+# Only here because AppStream needs it, which libadwaita 1.4 needs.
 
 SUBPROJECTS    += libxmlb
 LIBXMLB_VERSION := 0.3.14

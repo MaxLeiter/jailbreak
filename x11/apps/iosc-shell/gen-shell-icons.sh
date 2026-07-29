@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# gen-shell-icons.sh — collect app icons for the iosc panel.
+# Collects app icons for the iosc panel.
 #
 # The shell loads icons through GdkPixbuf. SVG is preferred when available
 # (via librsvg2-common); PNG remains supported for apps that only ship rasters.

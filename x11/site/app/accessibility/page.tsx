@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { T } from "@/components/Term";
 import { Callout, Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "Accessibility" };
+export const metadata: Metadata = pageMetadata("/accessibility");
 
 export default function Accessibility() {
   return (

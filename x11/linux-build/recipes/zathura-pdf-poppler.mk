@@ -2,16 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# zathura-pdf-poppler.mk — the PDF backend plugin for zathura, using Poppler's GLib bindings
-# (git.pwmt.org/pwmt/zathura-pdf-poppler). A single shared_module (libpdf-poppler.dylib) that
-# zathura dlopens at runtime. Deps: zathura (headers + plugindir from zathura.pc), girara,
-# glib, poppler-glib — all already staged on the volume. ZERO new sub-deps.
-#
-# Install path: the plugin reads `plugindir` from zathura.pc, which is ${libdir}/zathura, i.e.
-# $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/zathura — exactly the ZATHURA_PLUGINDIR the zathura
-# executable was compiled with. meson links the module with -undefined dynamic_lookup (macOS
-# default for shared_module), so the plugin's undefined zathura_* symbols resolve against the
-# export_dynamic zathura executable at dlopen time.
+# A shared_module that zathura dlopens at runtime. meson links it with
+# -undefined dynamic_lookup (macOS default for shared_module), so its
+# zathura_* symbols resolve against the export_dynamic zathura executable
+# at dlopen time.
 
 SUBPROJECTS       += zathura-pdf-poppler
 ZPP_VERSION       := 0.3.3

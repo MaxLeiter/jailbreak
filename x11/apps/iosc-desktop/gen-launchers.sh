@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# gen-launchers.sh — turn freedesktop .desktop entries into iOS Home Screen apps
-# that launch their Linux app inside the iosc Wayland desktop.
+# Turns freedesktop .desktop entries into iOS Home Screen apps that launch
+# their Linux app inside the iosc Wayland desktop.
 #
-# For each .desktop it emits a thin per-app .app bundle: a unique bundle id, the
-# .desktop's Name as the Home Screen label, its Icon rendered to the iOS sizes,
-# and the SHARED prebuilt IOSCLaunch binary (the launch target is carried in the
-# bundle's own Info.plist, so the same signed Mach-O drives every app). Tapping the
-# icon asks the ioscd daemon to run the app as an iosc client + show the display.
+# Each bundle shares one prebuilt IOSCLaunch binary; the launch target lives
+# in the bundle's own Info.plist, so the same signed Mach-O drives every app.
 #
 # HOST-SIDE ONLY. No device contact unless you pass --deploy (off by default).
 # See x11/docs/iosc-desktop-env.md for the full design + the device test plan.
@@ -55,9 +52,8 @@ PB=/usr/libexec/PlistBuddy
 
 # Build the shared prebuilt binaries if they aren't here yet.
 if [ "$NATIVE" = "1" ]; then
-  # Native flavor: each bundle IS the per-app host (Metal-presents the app's own
-  # windows in its own UIWindowScene). The shared payload is the host binary + its
-  # compiled shader (see x11/apps/iosc-host/build-host.sh).
+  # Native flavor: each bundle IS the per-app host, Metal-presenting its own
+  # windows in its own UIWindowScene (built by build-host.sh).
   if [ ! -x "$HOST_DIR/out/IOSCHost" ] || [ ! -f "$HOST_DIR/out/default.metallib" ]; then
     echo "==> iosc-host prebuilt missing; building it first"
     bash "$HOST_DIR/build-host.sh"
@@ -128,10 +124,9 @@ for DESKTOP in "${DESKTOPS[@]}"; do
     chmod 0755 "$BDIR/IOSCLaunch"
   fi
 
-  # Static Info.plist (dynamic string values get set via PlistBuddy below so any
-  # &, quotes, etc. in Name/Exec are escaped correctly). The classic bundle runs
-  # ONE fullscreen landscape Xios window; the native bundle is a multi-scene host
-  # that follows device rotation.
+  # Placeholder values below get set via PlistBuddy so &, quotes, etc. in
+  # Name/Exec are escaped correctly. Classic bundle = one fullscreen landscape
+  # Xios window; native bundle = multi-scene host that follows device rotation.
   if [ "$NATIVE" = "1" ]; then
     cat > "$BDIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -235,9 +230,8 @@ PLIST
   "$PY" "$HERE/gen-icons.py" --icon "$ICON" --name "$NAME" \
         --icons-root "$ICONS_ROOT" --out "$BDIR"
 
-  # Pseudo-sign the bundle's copy of the binary. Native hosts need the GPU/IOSurface
-  # entitlements (Metal present + task_for_pid canvas rendezvous); the classic stub
-  # needs only the minimal launcher set.
+  # Native hosts need GPU/IOSurface entitlements (Metal present + task_for_pid
+  # canvas rendezvous); the classic stub needs only the minimal launcher set.
   if [ "$NATIVE" = "1" ]; then
     xsign "$BDIR/IOSCHost" "$HOST_DIR/entitlements.plist" \
       AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient
@@ -263,11 +257,9 @@ if [ "$DEPLOY" = "1" ]; then
   else
     EXE_NAME=IOSCLaunch; ENT_SRC="$HERE/launcher-ent.xml"
   fi
-  # Stage the entitlements on-device once so we can re-sign each bundle's actual
-  # on-device copy. Signing host-side is not enough: SpringBoard launches a tapped
-  # bundle through AMFI, which rejects a bundle whose on-disk cdhash it doesn't
-  # trust (the "launch error 3" the native-ipados plan §6 warned about). Re-signing
-  # in place with ldid + registering the cdhash is what makes the first tap work.
+  # Signing host-side isn't enough: SpringBoard launches a tapped bundle through
+  # AMFI, which rejects a bundle whose on-disk cdhash it doesn't trust. Re-sign
+  # in place with ldid + register the cdhash to make the first tap work.
   DEV_ENT="/var/jb/tmp/iosc-deploy-ent.plist"
   scp_ "$ENT_SRC" "root@$IP:$DEV_ENT"
 
@@ -277,10 +269,8 @@ if [ "$DEPLOY" = "1" ]; then
     echo "   -> $IP:$dest"
     ssh_ "rm -rf '$dest'"
     scp_ -r "$b" "root@$IP:/var/jb/Applications/"
-    # exec bit + re-sign the on-device binary, then register its cdhash in the
-    # trust cache if the jailbreak provides a CLI (palera1n/ellekit accept the
-    # ldid ad-hoc signature directly, so this is best-effort and non-fatal), then
-    # uicache so SpringBoard shows the icon.
+    # Trust-cache add is best-effort: palera1n/ellekit accept the ldid ad-hoc
+    # signature directly even without it.
     ssh_ "set -e
       chmod -R 0755 '$dest'
       if command -v ldid >/dev/null 2>&1; then ldid -S'$DEV_ENT' '$exe'; fi

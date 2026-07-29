@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# relink-gtkintl.sh — shared post-package pass that makes every GTK/GNOME .deb immune to
-# the bundled proxy-libintl (g_libintl_*) dyld-abort, so no recipe has to reinvent it.
+# Shared post-package pass that makes every GTK/GNOME .deb immune to the bundled
+# proxy-libintl (g_libintl_*) dyld-abort, so no recipe has to reinvent it.
 #
 # For each .deb in the given dir(s):
 #   * relink any mach-o that IMPORTS g_libintl_* (the renamed proxy-libintl symbols) onto

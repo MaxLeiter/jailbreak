@@ -2,27 +2,14 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gobject-introspection.mk — ENABLED override of Procursus's disabled recipe.
-# Pinned to 1.78 (pairs with glib 2.78 / gjs 1.78), up from Procursus's stale 1.68.
+# Overrides Procursus's disabled recipe, pinned to 1.78 (pairs with glib 2.78 / gjs 1.78).
 #
-# The introspection wall (gnome-plan Blocker #2) splits cleanly into two halves:
-#   * CROSS-COMPILABLE half (this recipe): libgirepository (the runtime loader) +
-#     g-ir-scanner / g-ir-compiler / g-ir-generate (the tools). All plain C + a python
-#     C-extension. Built here with -Dbuild_introspection_data=false so the build does NOT
-#     try to scan glib (that scan compiles+RUNS an iOS probe, which a Linux cross host
-#     can't do — the qemu/Mach-O wall).
-#   * INHERENTLY-ON-DEVICE half (../gir-ondevice.sh): the actual typelib DATA
-#     (gir1.2-glib-2.0 etc.). g-ir-scanner runs ON the iPad (Procursus native toolchain)
-#     and emits real typelibs — PROVEN 2026-06-30, see docs/gjs-plan.md. That is the one
-#     step that cannot be a pure cross-repro, by nature.
-#
-# So: cross-build the loader+tools into debs here; generate+package the typelibs on-device.
-# (Design B alternative — keep it all in Docker via gi_cross_binary_wrapper=ssh-to-device —
-# is noted in docs/gjs-plan.md for later.)
-#
-# STATUS: the cross half is built and published as `gobject-introspection`,
-# `libgirepository-1.0-1`, and `libgirepository-1.0-dev` 1.78.0+ios1. The
-# on-device typelib generation/capture remains a separate step by design.
+# This recipe cross-builds only libgirepository (the runtime loader) + g-ir-scanner/
+# g-ir-compiler/g-ir-generate (the tools), with -Dbuild_introspection_data=false so it
+# doesn't try to scan glib itself (that scan compiles+runs an iOS probe binary, which a
+# Linux cross host can't do). The actual typelib data (gir1.2-glib-2.0 etc.) is generated
+# on-device instead (../gir-ondevice.sh), since g-ir-scanner has to run natively to
+# produce real typelibs.
 
 SUBPROJECTS                   += gobject-introspection
 GOBJECT-INTROSPECTION_VERSION := 1.78.0

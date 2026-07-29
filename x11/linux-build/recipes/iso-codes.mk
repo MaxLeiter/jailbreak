@@ -2,14 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# iso-codes.mk — ISO country/language/currency code lists + translations. Data-only (no
-# compiled code); a hard dependency of gnome-desktop-4 (GnomeLanguages). GTK-independent.
-#
-# NOTE: iso-codes lives on Debian salsa; the archive tarball has no pre-generated configure,
-# so we autoreconf first (needs autoconf/automake/gettext on the build host). If a release
-# dist tarball (with ./configure) is mirrored, drop the autoreconf line and adjust the URL.
-#
-# BUILT/PUBLISHED — iso-codes 4.15.0+ios1.
+# Hard dependency of gnome-desktop-4 (GnomeLanguages). The salsa archive tarball has no
+# pre-generated configure, so autoreconf runs first (needs autoconf/automake/gettext on
+# the build host). If a dist tarball with ./configure gets mirrored instead, drop the
+# autoreconf step.
 
 SUBPROJECTS        += iso-codes
 ISO-CODES_VERSION  := 4.15.0

@@ -2,16 +2,11 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# mozjs-jit.mk — SpiderMonkey 115 (ESR), JIT-ENABLED variant, for gjs 1.78. #46.
-# Sibling of mozjs.mk (the shipping JIT-less build). This builds into its OWN work tree
-# (build_work/mozjs-jit) and objdir and packages as libmozjs-115-jit-0, so it never touches
-# the JIT-less mozjs recipe, its .build_complete marker, or the libmozjs-115-0 debs.
-#
-# Shares the SAME patch series as mozjs (build_patch/mozjs, staged by build-gjs.sh). NB: no extra
-# W^X patch is needed — SpiderMonkey 115's POSIX/Darwin executable-memory path is already pure
-# mprotect (no MAP_JIT / pthread_jit fast-WX; that machinery post-dates 115), and the mprotect
-# flip is validated on the A10 (ports/mozjs/tools/wxprobe.c). See docs/mozjs-jit-plan.md.
-# Heavy build; coordinator-gated.
+# JIT-enabled sibling of mozjs.mk (the shipping build is JIT-less). Builds in its own work
+# tree (mozjs-jit) so it never touches the JIT-less recipe's .build_complete marker or debs.
+# No extra W^X patch needed: SpiderMonkey 115's Darwin executable-memory path is already
+# pure mprotect (MAP_JIT/pthread_jit fast-WX postdates 115); validated on the A10 via
+# ports/mozjs/tools/wxprobe.c. Heavy build — coordinator-gated.
 
 SUBPROJECTS   += mozjs-jit
 MOZJSJIT_VERSION := 115.12.0
@@ -20,20 +15,17 @@ MOZJSJIT_WORK  := $(BUILD_WORK)/mozjs-jit
 
 mozjs-jit-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.mozilla.org/pub/firefox/releases/$(MOZJSJIT_VERSION)esr/source/firefox-$(MOZJSJIT_VERSION)esr.source.tar.xz)
-	# NB: the ESR source tarball unpacks to firefox-<ver>/ (NO 'esr' suffix), so that is
-	# EXTRACT_TAR's 2nd arg (the dir it copies into mozjs-jit). Getting this wrong leaves an
-	# empty tree (EXTRACT_TAR's leading '-' swallows the failed copy). mozjs.mk has the same
-	# latent typo but was only ever run by hand (its header says "draft, NOT to run").
+	# ESR tarball unpacks to firefox-<ver>/ (no 'esr' suffix) — that's EXTRACT_TAR's target
+	# dir arg; getting it wrong silently leaves an empty tree.
 	$(call EXTRACT_TAR,firefox-$(MOZJSJIT_VERSION)esr.source.tar.xz,firefox-$(MOZJSJIT_VERSION),mozjs-jit)
 	# config.sub copies in the tree don't know 'ios' — replace with the host's modern one.
 	find $(MOZJSJIT_WORK) -name config.sub  -exec cp -f /usr/share/misc/config.sub  {} \; || true
 	find $(MOZJSJIT_WORK) -name config.guess -exec cp -f /usr/share/misc/config.guess {} \; || true
-	# Apply the shared iOS portability series from build_patch/mozjs (0001-0004) + the JIT W^X
-	# patch (0005). DO_PATCH's .done tracking means re-running after 0005 is added applies only 0005.
+	# Shared iOS portability series (0001-0004) + the JIT W^X patch (0005). DO_PATCH's .done
+	# tracking means re-running after 0005 is added applies only 0005.
 	$(call DO_PATCH,mozjs,mozjs-jit,-p1)
 	# moz's ld64 probe hardcodes -fuse-ld=ld: give clang an `ld` next to the cross toolchain.
 	ln -sf $(GNU_HOST_TRIPLE)-ld $(dir $(shell command -v $(GNU_HOST_TRIPLE)-ld))ld || true
-	# Render the JIT cross mozconfig into the JIT work tree.
 	mkdir -p $(MOZJSJIT_WORK)/build
 	sed -e 's|@TARGET_SYSROOT@|$(TARGET_SYSROOT)|g' \
 	    -e 's|@CROSS_PREFIX@|$(GNU_HOST_TRIPLE)|g' \
@@ -46,12 +38,10 @@ mozjs-jit:
 	@echo "Using previously built mozjs-jit."
 else
 mozjs-jit: mozjs-jit-setup
-	# NB: no readline/zlib prereqs — zlib is the SDK's system libz (--with-system-zlib) and
-	# readline is only for the interactive js shell, which patch 0002 removes. (Those recipe
-	# targets aren't even loaded in the gjs build container's makefiles set.)
-	# Same host toolchain as the JIT-less build (rustup + aarch64-apple-ios target + cbindgen +
-	# nasm, set up by build-gjs.sh). fake `xcrun` so the Rust cc-crate finds the iOS SDK on Linux;
-	# CRATE_CC_NO_DEFAULTS=1 stops cc auto-adding -fembed-bitcode (conflicts with -ffunction-sections).
+	# No readline/zlib prereqs: zlib is the SDK's system libz (--with-system-zlib), and
+	# readline is only for the interactive js shell, which patch 0002 removes.
+	# Fake `xcrun` so the Rust cc-crate finds the iOS SDK on Linux; CRATE_CC_NO_DEFAULTS=1
+	# stops cc auto-adding -fembed-bitcode (conflicts with -ffunction-sections).
 	printf '#!/bin/sh\nfor a in "$$@"; do case "$$a" in --show-sdk-path*) echo $(TARGET_SYSROOT); exit 0;; esac; done\nif [ "$$1" = --find ]; then command -v "$(GNU_HOST_TRIPLE)-$$2" || command -v "$$2" || true; exit 0; fi\necho $(TARGET_SYSROOT)\n' > $(BUILD_TOOLS)/xcrun
 	chmod +x $(BUILD_TOOLS)/xcrun
 	cd $(MOZJSJIT_WORK); \

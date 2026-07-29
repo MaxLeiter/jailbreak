@@ -2,20 +2,16 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# tracker.mk — Tracker SPARQL (libtracker-sparql-3.0), the local RDF/SQLite store. Required
-# by nautilus (its search engine links tracker-sparql-3.0, no build-time opt-out). NOTE: this
-# is only the CLIENT/STORE library; the indexer daemon is `localsearch`/tracker-miners, which
-# is runtime-OPTIONAL — without it, nautilus runs but full-text search returns nothing. So we
-# build tracker(-sparql) and skip the miners for first-light.
-#
-# DEPENDS (target): glib + sqlite3 (prebuilt) + json-glib + libunistring (+ dbus at runtime).
-# BUILT/PUBLISHED — libtracker-sparql-3.0-0 3.7.3-2+ios1.
+# Tracker SPARQL client/store library only (libtracker-sparql-3.0). Required
+# by nautilus's search engine, which links it with no build-time opt-out.
+# The indexer daemon (localsearch/tracker-miners) is runtime-optional:
+# without it nautilus runs but full-text search returns nothing.
 
 SUBPROJECTS      += tracker
 TRACKER_MAJOR_V  := 3.7
 TRACKER_VERSION  := $(TRACKER_MAJOR_V).3
-# -2: rebuilt with -Dunicode_support=icu (was unistring) once icu4c.mk landed — real
-# ICU collation/tokenization for FTS. Same upstream version, so bump the deb revision.
+# -2: bumped after switching -Dunicode_support to icu (was unistring); same
+# upstream version, different deb revision.
 DEB_TRACKER_V    ?= $(TRACKER_VERSION)-2+ios1
 
 tracker-setup: setup
@@ -45,10 +41,9 @@ tracker:
 	@echo "Using previously built tracker."
 else
 tracker: tracker-setup glib2.0 sqlite3 json-glib icu4c
-	# unicode_support: `icu`. The first build forced unistring because ICU "couldn't cross-
-	# build here" — that wall was a MAKEFLAGS CC/CXX leak into ICU's native host tools, fixed
-	# in recipes/icu4c.mk (native-then-cross). With libicu74 in BUILD_BASE, tracker-fts gets
-	# real ICU locale collation + tokenization (the one cost the unistring build accepted).
+	# unicode_support=icu now that icu4c.mk fixes the cross-build (it was blocked by a
+	# MAKEFLAGS CC/CXX leak into ICU's native host tools). Gives tracker-fts real ICU
+	# collation/tokenization instead of unistring's fallback.
 	cd $(BUILD_WORK)/tracker/build && meson \
 		--cross-file cross.txt \
 		-Ddocs=false \

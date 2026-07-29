@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { T, TermList } from "@/components/Term";
 import { Callout, Ext, NextLinks, Panel, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "Contributing" };
+export const metadata: Metadata = pageMetadata("/contributing");
 
 export default function Contributing() {
   return (
