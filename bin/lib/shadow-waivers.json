@@ -4,10 +4,16 @@
   "fontconfig": {"version": "2.17.1 bump predates the gate; soname kept; device-validated weeks on-device"},
   "fontconfig-config": {"version": "companion of fontconfig 2.17.1"},
   "libfontconfig-dev": {"version": "companion of fontconfig 2.17.1"},
-  "libfontconfig1": {"version": "2.17.1 bump predates the gate; soname libfontconfig.1 kept; device-validated"},
+  "libfontconfig1": {
+    "version": "2.17.1 bump predates the gate; soname libfontconfig.1 kept; device-validated",
+    "symbols": "4 internal/removed entry points (_FcConfigPathFini, _FcDefaultFini, _FcFreeTypeIsExclusiveLang, _FcFreeTypeLangSet) not in 2.17's public API. Full-repo + Procursus-consumer import scan 2026-07-29: zero importers"
+  },
   "libfreetype6": {"version": "2.13.3 bump predates the gate; soname libfreetype.6 kept; device-validated"},
   "libfreetype-dev": {"version": "companion of libfreetype6 2.13.3"},
-  "libfribidi0": {"version": "1.0.13 bump predates the gate; soname kept"},
+  "libfribidi0": {
+    "version": "1.0.13 bump predates the gate; soname kept",
+    "symbols": "13 legacy charset-conversion + CapRTL entry points dropped when fribidi 1.x moved them behind --with-charsets. Full-repo + Procursus-consumer import scan 2026-07-29: zero importers"
+  },
   "libfribidi-dev": {"version": "companion of libfribidi0 1.0.13"},
   "libpixman-1-0": {
     "version": "0.42.2 bump predates the gate; soname libpixman-1.0 kept",
@@ -40,10 +46,16 @@
   },
   "libxfixes3": {"version": "6.0.1 bump (X11/Wayland stack needs xfixes 6); soname kept"},
   "libxfixes-dev": {"version": "companion of libxfixes3 6.0.1"},
-  "libxml2": {"version": "2.13.8 bump (ladybird needs modern libxml2); soname libxml2.2 kept; device-validated"},
+  "libxml2": {
+    "version": "2.13.8 bump (ladybird needs modern libxml2); soname libxml2.2 kept; device-validated",
+    "symbols": "KNOWN BREAKAGE, tracked — 194 symbols upstream DELETED (DocBook SAX at 2.12, NanoHTTP/NanoFTP at 2.13, plus __-prefixed internals); no build flag restores them. Import scan 2026-07-29 finds two real importers: our libgsf-1-114 1.14.58 (_xmlNanoHTTP*, was linked against an older libxml2 and then shadowed — needs a rebuild against 2.13, which also breaks gnumeric/libgoffice) and Procursus python3-libxml2 (~14 symbols, not rebuildable by us). Neither is in any xios-* flavor closure. REMOVE this waiver once libgsf is rebuilt"
+  },
   "libxml2-dev": {"version": "companion of libxml2 2.13.8"},
   "libxml2-utils": {"version": "companion of libxml2 2.13.8"},
-  "libsqlite3-1": {"version": "3.52.0 with the PROCURSUS soname libsqlite3.1.dylib restored in +ios2 — this is the 2026-07-08 incident fix itself"},
+  "libsqlite3-1": {
+    "version": "3.52.0 with the PROCURSUS soname libsqlite3.1.dylib restored in +ios2 — this is the 2026-07-08 incident fix itself",
+    "symbols": "52 optional-feature entry points (preupdate hook, session/changegroup, fts corruption flags) that Procursus compiles in via SQLITE_ENABLE_PREUPDATE_HOOK/SESSION and we do not. Full-repo + Procursus-consumer import scan 2026-07-29: zero importers. Turning those defines on at the next rebuild would close this properly"
+  },
   "libsqlite3-dev": {"version": "companion of libsqlite3-1 3.52.0+ios2"},
   "sqlite3": {"version": "companion of libsqlite3-1 3.52.0+ios2 (CLI)"},
   "icu-devtools": {"version": "ICU 78 tooling; the RUNTIME ships as new package libicu78 (no shadow), only dev tools shadow"},
@@ -53,8 +65,13 @@
   "libavformat-dev": {"version": "see libavcodec-dev"},
   "libavutil-dev": {"version": "see libavcodec-dev"},
   "libswresample-dev": {"version": "see libavcodec-dev"},
-  "libharfbuzz0b": {"version": "10.2.0 for Ladybird text shaping; soname libharfbuzz.0 kept + hb-glib built in (verified 2026-07-08, the exact feature whose absence bricked mutter); drop-in superset over Procursus 2.8.1"},
-  "libharfbuzz-subset0": {"version": "companion of libharfbuzz0b 10.2.0; soname libharfbuzz-subset.0 kept"},
+  "libharfbuzz0b": {"version": "10.2.0 for Ladybird text shaping; soname libharfbuzz.0 kept. +ios2 rebuilds with EVERY backend on (glib, gobject, coretext, graphite2, icu, freetype): verified 2026-07-29 as a true superset, 516 exports vs Procursus 2.8.1's 399, nothing missing. +ios1 had them disabled, dropped _hb_glib_* and killed every GTK4 app on device -- do not disable a backend to shorten a build"},
+  "libharfbuzz-subset0": {
+    "version": "companion of libharfbuzz0b 10.2.0; soname libharfbuzz-subset.0 kept",
+    "symbols": "12 legacy subset entry points (_hb_subset, _hb_subset_input_{get,set}_*) were DELETED upstream at harfbuzz 3.0; no build flag restores them. Sole importer was the stale 2.8.1 hb-subset in libharfbuzz-bin, replaced by the 10.2.0+ios2 family rebuild -- full-repo import scan 2026-07-29 finds zero importers left"
+  },
+  "libharfbuzz-gobject0": {"version": "companion of libharfbuzz0b 10.2.0+ios2; was stranded at 2.8.1 while the rest of the family moved to 10.2, now rebuilt with it"},
+  "libharfbuzz-bin": {"version": "companion of libharfbuzz0b 10.2.0+ios2; the 2.8.1 hb-subset imported _hb_subset, deleted at harfbuzz 3.0, so the CLI had to move with the libs"},
   "libharfbuzz-icu0": {"version": "companion of libharfbuzz0b 10.2.0; soname libharfbuzz-icu.0 kept"},
   "libharfbuzz-dev": {
     "parity": "libharfbuzz-icu dev symlink lives in the libharfbuzz-icu0 split package",

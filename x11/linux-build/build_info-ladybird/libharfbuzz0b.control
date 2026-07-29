@@ -2,13 +2,19 @@ Package: libharfbuzz0b
 Version: @DEB_HARFBUZZ_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
-Depends: libfreetype6
+Depends: libfreetype6, libglib2.0-0, libgraphite2-3
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
-Description: OpenType text shaping engine (shared library) - Ladybird pin 10.2.0
- HarfBuzz is an implementation of the OpenType Layout engine. This build (for
- the Ladybird leaf closure) is meson-built WITH freetype and ICU and WITHOUT
- glib/gobject/cairo/graphite2.
+Description: OpenType text shaping engine (shared library)
+ HarfBuzz is an implementation of the OpenType Layout engine. This build is
+ meson-built with every backend enabled: freetype, ICU, glib, gobject,
+ graphite2 and CoreText.
+ .
+ The package name shadows Procursus harfbuzz 2.8.1, so it is deliberately a
+ strict superset of that library's exports. Disabling a backend here breaks
+ consumers linked against the Procursus build: libgtk-4.1.dylib binds
+ _hb_glib_script_to_script out of libharfbuzz.0.dylib, and the glib-less
+ 10.2.0+ios1 build took down every GTK4 app on device.
  .
  This package contains the core shared library (libharfbuzz.0.dylib).
