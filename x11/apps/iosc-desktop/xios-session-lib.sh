@@ -39,6 +39,9 @@
 #                       (default 180)
 #   XIOS_SESSION_REQUEST_WAIT seconds to wait for the request-sequence marker
 #                       while marking a session switch request (default 5)
+#   XIOS_SESSION_SWEEP_SLOTS  set to 0 to keep display-slot registry entries whose
+#                       socket, config and processes are all gone (default 1:
+#                       sweep them, see xs_sweep_stale_slot_registry)
 #
 # JETSAM NOTE (why the settle exists): switching flavors kills the old compositor
 # (which holds a large GPU IOSurface + Metal/ANGLE context, ~30MB) and starts a new
@@ -523,6 +526,39 @@ xs_reap_slot_named_processes() {
             kill -KILL "$pid" 2>/dev/null || true
         done
     done
+}
+
+# A slot's xios-displays.d entry is only deleted on a clean stop (see
+# xios_session_stop), so a slot that goes away any other way — crash, jetsam, a
+# killed bring-up, a reboot that left /tmp behind — leaves its entry sitting
+# there and the Xios app keeps listing a display nothing can reach. Sweep the
+# ones with nothing behind them at all: no Wayland socket, no display config,
+# and no processes named for the slot. Anything still serving is left alone, as
+# is the slot this invocation is bringing up. Runs under the session lock, so it
+# cannot race another xios-session writing an entry.
+xs_sweep_stale_slot_registry() {
+    case "${XIOS_SESSION_SWEEP_SLOTS:-1}" in 0|no|off|false) return 0 ;; esac
+    [ -d "$XS_SLOT_REGISTRY_DIR" ] || return 0
+    local entry slot wayland config swept=0
+    for entry in "$XS_SLOT_REGISTRY_DIR"/*.json; do
+        [ -f "$entry" ] || continue
+        slot="$(basename "$entry" .json)"
+        [ -n "${XS_SLOT:-}" ] && [ "$slot" = "$XS_SLOT" ] && continue
+        wayland="$(xs_json_get_file "$entry" wayland)"
+        [ -n "$wayland" ] || wayland="wayland-$slot"
+        [ -e "$XS_TMP/$wayland" ] && continue
+        config="$(xs_json_get_file "$entry" json)"
+        [ -n "$config" ] || config="$XS_TMP/xios-$slot.json"
+        [ -e "$config" ] && continue
+        if ps axww 2>/dev/null | grep -v grep | grep -qE "wayland-$slot|iosc-$slot-|kwin-$slot"; then
+            continue
+        fi
+        rm -f "$entry" 2>/dev/null || true
+        rm -f "$XS_TMP/xios-session-$slot.json" 2>/dev/null || true
+        swept=$((swept + 1))
+        xs_log "swept stale display slot '$slot' (no socket, config or processes)"
+    done
+    return 0
 }
 
 xs_pgid_has_slot() {
@@ -1192,6 +1228,7 @@ xios_session_run() {
     fi
     xs_acquire_session_lock "$preset" || return $?
     trap 'xs_release_session_lock' EXIT HUP INT TERM
+    xs_sweep_stale_slot_registry
     xios_session_run_unlocked "$@"
     rc=$?
     xs_release_session_lock
