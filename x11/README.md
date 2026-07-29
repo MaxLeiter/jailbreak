@@ -69,13 +69,28 @@ Install one flavor package; each pulls in the shared `xios-core` base.
 - **Native mode** (`xios-native`) - X11/Wayland apps can show up on the Home
   Screen and launch as per-window iPadOS apps. The core path exists; host-window
   validation and polish are still in progress.
-- **iosc desktop** (`xios-x11` / built in) - the compositor's own tablet-first
-  shell: a panel with launchers, a dock, an overview, and a wallpaper. Runs
-  interactively on device today.
+- **iosc desktop** (in every flavor, via `xios-core`) - the compositor's own
+  tablet-first shell: a panel with launchers, a dock, an overview, and a
+  wallpaper. Runs interactively on device today.
 - **Bring your own DE** - full upstream environments. GNOME Shell 46 works on
   device through the packaged `xios-gnome` session. KDE Plasma Desktop and
   Plasma Mobile work through KWin/KF6 in `xios-kde`; the remaining work is polish
   and productization, not first paint.
+
+## Installing it
+
+Add `https://repo.maxleiter.com` in Sileo, install AppSync Unified (the display
+app is unsigned), then install one flavor:
+
+```
+apt install xios-gnome      # or xios-kde, xios-native, xios-x11
+```
+
+That pulls in the display app (Home Screen icon "X11"), the compositor, the GPU
+stack, and the session launcher. Open the app and pick a session, or run
+`xios-session gnome` from a shell. Full instructions, including troubleshooting:
+[`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) and
+[xios.maxleiter.com/try](https://xios.maxleiter.com/try).
 
 ## The GPU path
 

@@ -1,30 +1,35 @@
-# X11 on a jailbroken iPad — user guide
+# Xios user guide: a desktop on a jailbroken iPad
 
-Get a real X11 session running on a rootless (palera1n/Dopamine, `/var/jb`) iPad. There are
-two ways in:
+Install one package, open one app, get a desktop. This guide covers the four desktop
+flavors, how to start and stop a session, and what to do when something does not come up.
 
-- **Path A — X over VNC.** Works today. A real X server (`Xvnc`) renders to a virtual
-  framebuffer; you view it with any VNC client. This is the recommended way to actually use
-  X11 right now.
-- **Path B — the native Xios app.** In progress. A native iOS app that renders the X
-  framebuffer directly to the screen via Metal (retina) with touch as the pointer. Sideload
-  only today — not yet a published package.
-
-> Tested on iPadOS 17.6.1, iPad 7th gen, palera1n rootless, Procursus bootstrap. Background
-> and architecture: see [`../SCOPE.md`](../SCOPE.md).
+> Tested on iPadOS 17.6.1, iPad 7th gen, palera1n rootless, Procursus bootstrap. Other
+> rootless jailbreaks (Dopamine, RootHide) should work; rooted jailbreaks will not, because
+> every binary here bakes in `/var/jb`. Architecture and background: [`../SCOPE.md`](../SCOPE.md).
 
 ---
 
-## 1. Add the repo
+## 1. What you need
 
-The fixed `tigervnc` and the font package come from **`repo.maxleiter.com`**.
+| | |
+|---|---|
+| **Device** | A jailbroken iPad on iOS/iPadOS 16 or newer, rootless (`/var/jb`). GNOME, KDE, and X11 need 16.5; the native flavor needs 16.0. |
+| **Package manager** | Sileo, Zebra, or `apt` on the device. |
+| **AppSync Unified** | Required. The Xios display app is unsigned, and without AppSync it will not launch. Add `https://cydia.akemi.ai/` as a source and install it first. |
+| **Free space** | Installed size is about 190 MB for GNOME and 550 MB for KDE; the native and X11 flavors are around 55 MB. Procursus dependencies add a little on top. |
 
-**In Sileo:** Sources → add `https://repo.maxleiter.com`.
+Nothing here needs a Mac, a VM, or a network hop. Everything is a native arm64 iOS binary
+installed from an apt repo.
 
-**Or from the shell** (rootless paths), drop a source file and update:
+---
+
+## 2. Add the repo
+
+**In Sileo:** Sources, add `https://repo.maxleiter.com`.
+
+**Or from a shell on the device, as root:**
 
 ```bash
-# on the iPad, as root
 cat > /var/jb/etc/apt/sources.list.d/maxleiter.sources <<'EOF'
 Types: deb
 URIs: https://repo.maxleiter.com
@@ -35,135 +40,208 @@ EOF
 apt update
 ```
 
-(One-line equivalent: `deb [trusted=yes] https://repo.maxleiter.com ./`.) It's a flat,
-unsigned repo, hence `Trusted: yes`.
+One-line equivalent: `deb [trusted=yes] https://repo.maxleiter.com ./`. It is a flat repo,
+so the suite is `./`. The metadata is GPG-signed; if you would rather verify it than trust
+it blindly, drop the repo key in place of `Trusted: yes`:
 
-> Why a custom repo? Procursus ships `tigervnc-standalone-server`, but that build is
-> uninstallable on rootless (a bogus dependency) and crashes on startup (it spawns
-> `/bin/sh`, which doesn't exist under `/var/jb`). The repo's build fixes both — details in
-> [`procursus-pr-tigervnc.md`](procursus-pr-tigervnc.md). Its version is higher, so `apt`
-> prefers it over the Procursus one.
+```bash
+curl -fsSL https://repo.maxleiter.com/maxleiter-repo.gpg \
+  -o /var/jb/etc/apt/trusted.gpg.d/maxleiter-repo.gpg
+```
+
+Some packages resolve against Procursus (`apt.procurs.us`), which any rootless bootstrap
+already has configured.
 
 ---
 
-## 2. Path A — X over VNC (works now)
+## 3. Pick a flavor
 
-### Install
+There is no single `xios` package. Install one flavor and it pulls in everything else,
+including the shared `xios-core` base and the display app.
+
+| Flavor | What you get | Needs | State |
+|---|---|---|---|
+| `xios-gnome` | GNOME Shell 46 on Mutter, full session layer, Adwaita theme | iOS 16.5 | Boots and paints on an A10. Daemon and app concurrency still has rough edges. |
+| `xios-kde` | KWin plus Plasma Desktop, Plasma Mobile, and Plasma Nano, System Settings, Breeze | iOS 16.5 | Experimental. Newer than the GNOME path and less polished. |
+| `xios-native` | No Linux shell at all: each app gets a Home Screen icon and its own iPadOS window | iOS 16.0 | Core path works. Host-window polish in progress. |
+| `xios-x11` | The Xios X server for plain X11 apps, plus Xwayland inside the compositor | iOS 16.5 | Works. Software rendering only, by design. |
+
+Every flavor also gets the **iosc desktop**: the compositor's own tablet-first shell with a
+panel, dock, overview, and wallpaper. It is the most reliable session and a good first
+thing to try.
+
+---
+
+## 4. Install
+
+In Sileo, search for the flavor and install it. Or from a shell, as root:
 
 ```bash
-# on the iPad, as root
-apt update
-apt install tigervnc-standalone-server x11-fonts-sf xios-desktop-defaults fluxbox xterm x11-apps
+apt install xios-gnome
 ```
 
-- `tigervnc-standalone-server` — the fixed `Xvnc` (from `repo.maxleiter.com`).
-- `x11-fonts-sf` — makes San Francisco the default font (see §4).
-- `xios-desktop-defaults` — retina/Xft/GTK/XDG/session defaults for the Xios distro layer.
-- `fluxbox` — a lightweight window manager. `xterm` + `x11-apps` (xeyes/xclock) come from
-  Procursus and give you something to look at.
+Substitute `xios-kde`, `xios-native`, or `xios-x11`. The install brings in, among other
+things:
 
-### Start the server
+- **`com.max.xios`**, the display app. It appears on the Home Screen as **X11**.
+- **`iosc`** and **`iosc-shell`**, the Wayland compositor and its desktop shell.
+- **`angle`**, OpenGL ES translated to Metal, which is how anything reaches the GPU.
+- **`xios-session`** and **`xios-launcher-tools`**, the session launcher plus the `ioscd`
+  daemon that the in-app session picker talks to.
+- **`xios-desktop-defaults`**, fonts, locale, XDG paths, and the retina display profile.
+
+Sileo will not auto-install the *recommended* extras. For GNOME those are worth adding by
+hand:
+
+```bash
+apt install gnome-console nautilus gnome-text-editor gnome-calculator
+```
+
+---
+
+## 5. Start a desktop
+
+Two ways in. Both call the same code.
+
+### From the iPad
+
+Open **X11** on the Home Screen and pick a session from the picker. Once a desktop is up:
+
+| Gesture | Does |
+|---|---|
+| Three-finger tap | Switch between running displays |
+| Four-finger tap | Open the session and dimension picker |
+| Pinch | Zoom to fit |
+| Swipe up from the lower edge | Raise the iOS keyboard |
+
+### From a shell (on device or over SSH), as root
+
+```bash
+xios-session iosc            # the iosc desktop shell
+xios-session gnome           # GNOME session and Shell
+xios-session kde             # KWin plus Plasma Desktop (experimental)
+xios-session kde-mobile      # KWin plus Plasma Mobile (experimental)
+xios-session kde-nano        # KWin plus Plasma Nano (experimental)
+xios-session status          # what the last session did
+xios-session stop            # tear it all down, back to SpringBoard
+```
+
+Launch a single app against whatever compositor is already running, without restarting the
+session:
+
+```bash
+xios-session app kgx                  # GNOME Console
+xios-session app gnome-text-editor
+```
+
+Pick a resolution with environment variables, then re-run or `resize`:
+
+```bash
+XIOS_SESSION_WIDTH=1080 XIOS_SESSION_HEIGHT=1440 XIOS_SESSION_DPI=176 xios-session resize
+```
+
+> **Keep the screen awake and unlocked while a session starts.** A locked or asleep iPad
+> gets the Metal app suspended by FrontBoard, and you will see a black frame instead of a
+> desktop.
+
+---
+
+## 6. Flavor notes
+
+**GNOME.** `xios-session gnome` starts the real session manager, then the Shell. The
+launcher polls the log and reports honestly: `up` only once the Shell's JS UI has loaded,
+`compositor-only` if Mutter came up but the Shell never painted, `error` with the last 40
+log lines otherwise.
+
+**KDE.** The Plasma presets nest KWin on top of iosc. Plasma Desktop is the pointer-and-panel
+layout; Plasma Mobile is touch-first and the better fit for an iPad. This flavor is the
+newest and the least settled, so expect to hit things.
+
+**Native.** There is no desktop environment. Installing the flavor does not create Home
+Screen icons by itself: pick which apps you want in the Xios pane in Settings, or run
+`xios-launcher-sync` to list, enable, dry-run, and apply. Tap an icon and that Linux app
+opens in its own iPadOS window, with Split View and Slide Over as the window manager.
+
+**X11.** `xios-server.sh` starts the IOSurface X server for classic X11 clients; Xwayland
+runs X11 clients inside the GPU-accelerated compositor instead. See
+[Appendix A](#appendix-a-x-over-vnc) for the older VNC route, which still works.
+
+---
+
+## 7. Troubleshooting
+
+**The X11 icon does nothing, or the app closes immediately.** AppSync Unified is missing or
+the app lost its signature. Reinstall AppSync, then `apt install --reinstall com.max.xios`.
+
+**Black screen with the app open.** The iPad was locked or asleep while the session came
+up, or no display server is running. Unlock, then `xios-session status`. If no session is
+up, start one.
+
+**Nothing on screen and `status` says `compositor-only`.** The compositor is up but the
+shell never painted. Check the log for the flavor you picked.
+
+**Logs.** All under `/var/jb/tmp/`:
+
+| File | What |
+|---|---|
+| `xios-session.log` | Session bring-up and teardown |
+| `xios-session-status.json` | Machine-readable state of the last session |
+| `gnome-shell.log` | GNOME Shell output |
+| `kde-plasma.log` | KWin and Plasma output |
+
+**A session left something behind.** `xios-session stop` does a full teardown, including
+stale compositors and sockets. It is safe to run at any time.
+
+**apt refuses to install a flavor.** Check the iOS floor in the table above. The packages
+carry both `MinimumOSVersion` and a `firmware (>= X)` dependency, so an older device is
+refused on purpose rather than left to fail at runtime.
+
+---
+
+## Appendix A: X over VNC
+
+The original path, from before the display app existed. Still useful for headless work or
+for viewing a session from a laptop.
 
 ```bash
 # on the iPad, as root
+apt install tigervnc-standalone-server x11-fonts-sf xios-desktop-defaults fluxbox xterm x11-apps
+
 export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 export HOME=/var/root
 mkdir -p /var/jb/var/lib/xkb          # where xkbcomp writes the compiled keymap
 
-# xios-desktop-defaults provides profiles: native=2160x1620@264dpi,
-# comfy=1440x1080@176dpi, debug=1024x768@96dpi.
 Xvnc :1 -geometry 1440x1080 -depth 24 -rfbport 5901 \
      -SecurityTypes None -localhost -AlwaysShared -desktop "iPad X11" &
 
 export DISPLAY=:1
 fluxbox &
-xterm &                                # and/or: xeyes & xclock &
+xterm &
 ```
 
-`-localhost` means only on-device clients can connect — nothing is exposed to the network.
+`-localhost` keeps it on the device. View it with any iPad VNC client at `127.0.0.1:5901`,
+or tunnel from a Mac with `ssh -L 5901:127.0.0.1:5901 root@<ipad>` and open
+`vnc://127.0.0.1:5901`. Stop it with `pkill -f 'Xvnc :1'`.
 
-### View it
-
-- **On-device:** any iPad VNC client app, pointed at `127.0.0.1:5901` (no password —
-  `-SecurityTypes None`).
-- **From a Mac (debug):** tunnel it over SSH, then open `vnc://127.0.0.1:5901`:
-  ```bash
-  ssh -L 5901:127.0.0.1:5901 root@<ipad>     # on the Mac
-  ```
-
-### Stop it
-
-```bash
-pkill -f 'Xvnc :1'
-```
-
-### Rootless notes
-
-- Everything lives under `/var/jb`; `/` and `/bin` are read-only. Keep `/var/jb/usr/bin` on
-  your `PATH`.
-- If `xios-desktop-defaults` is installed, the launchers source
-  `/var/jb/etc/profile.d/xios.sh` and honor `XIOS_DISPLAY_PROFILE=native|comfy|debug`.
-- If the keyboard fails to initialize, make sure `/var/jb/var/lib/xkb` exists (the `mkdir`
-  above). The old on-device `/bin/sh`→`/var/sh` byte-patch is **obsolete** — the packaged
-  `Xvnc` execs `/var/jb/bin/sh` directly.
+Procursus ships its own `tigervnc-standalone-server`, but that build is uninstallable on
+rootless and crashes on startup. The repo's build fixes both; details in
+[`procursus-pr-tigervnc.md`](procursus-pr-tigervnc.md).
 
 ---
 
-## 3. Path B — the native Xios app (in progress)
+## Appendix B: fonts
 
-**Xios** is a native iOS app that hosts the X server's framebuffer itself: it draws the X
-screen to a `CAMetalLayer` at **retina resolution (2160×1620)** and feeds **touches back in
-as the X pointer** (via XTEST) — no VNC, no separate viewer. It's the endgame display path;
-the VNC route above is the interim.
+`x11-fonts-sf` makes Apple's San Francisco the default: `.SF UI` for sans, serif, and
+system-ui, `.SF UI Mono` for terminals and code. It ships no font files, it points
+fontconfig at `/System/Library/Fonts`, so it tracks the OS and picks up emoji and CJK for
+free. It runs `fc-cache` on install; check with `fc-list | head`.
 
-**Status:** functional and verified on-device, but **not yet packaged as a `.deb`**. Today
-you build and sideload it from the Mac:
-
-```bash
-# from the repo root, with the iPad reachable over SSH (device.env or THEOS_DEVICE_IP set)
-bin/install-app.sh x11/apps/Xios
-```
-
-This builds the app (xcodegen + xcodebuild), pseudo-signs it with `ldid` using
-`x11/apps/Xios/entitlements.plist`, installs it to `/var/jb/Applications/Xios.app`, and
-registers it with `uicache`. Then launch **Xios** from the Home Screen.
-
-Requirements:
-- **Mac:** Xcode, `xcodegen`, `ldid`.
-- **iPad:** rootless jailbreak + **AppSync Unified** (to run the pseudo-signed app) +
-  `uicache` (standard on palera1n).
-
-> Why the special entitlements: a fakesigned app doesn't get GPU access by default, so the
-> app explicitly requests the GPU/IOSurface IOKit user clients (without them
-> `MTLCreateSystemDefaultDevice()` returns nil → black screen), and reaches `/var/jb` via a
-> sandbox path-exception rather than `no-container` (which would also kill GPU access). Full
-> rationale and the IOSurface zero-copy design are in [`../SCOPE.md`](../SCOPE.md).
+Without it, Procursus gives you font engines but no fonts, and apps that need core fonts
+(`xterm`, for one) will not start. Every flavor pulls it in through `xios-desktop-defaults`.
 
 ---
 
-## 4. Fonts — San Francisco by default
+## Reporting problems
 
-`x11-fonts-sf` (installed in §2) makes Apple's **San Francisco** the default X11 font:
-`.SF UI` for sans-serif/serif/system-ui and `.SF UI Mono` for monospace (terminals, code).
-
-It copies **no font files** — it points fontconfig straight at `/System/Library/Fonts`, so
-it always tracks the OS and picks up emoji + CJK for free. After install it runs `fc-cache`
-automatically; verify with `fc-list | head`.
-
-Without it, Procursus ships the font *engines* but no font files, and apps that need core
-fonts (like `xterm`) won't start.
-
----
-
-## 5. What's coming
-
-The native app is the foundation for a real iOS-integrated desktop. On the roadmap (see
-[`../SCOPE.md`](../SCOPE.md) for detail and status):
-
-- **GTK apps** — a GTK3 stack is being cross-compiled for iOS so GTK/GNOME apps can run.
-- **Per-window compositing** — promoting from one fullscreen framebuffer to one surface per
-  X window (X Composite → per-window IOSurfaces), so X windows behave like iOS windows.
-- **An iOS-native desktop** — hosting X windows in real iOS scenes with the on-screen
-  keyboard wired to X, the iOS compositor acting as the desktop shell.
-
-For now, Path A is the way to use X11 on the iPad today; Path B is where it's going.
+Device, iOS version, jailbreak, flavor, what you did, what happened, and the relevant log
+from `/var/jb/tmp/`. Issues: https://github.com/MaxLeiter/jailbreak/issues

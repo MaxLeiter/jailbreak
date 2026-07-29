@@ -18,11 +18,42 @@ Sileo copy comes from `repo/meta/xios-*.json` (already written).
 
 | Package | Pulls in (Depends) | Floor today | Publishable? |
 |---|---|---|---|
-| `xios-core` | iosc, angle, dbus, xios-desktop-defaults, xios-audio-server | **16.0.0** | published |
-| `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme | **16.5.0** | published; CLI GNOME first-light works, daemon/app concurrency cleanup remains |
-| `xios-kde` | xios-core + iosc >= 0.9.15, xios-session >= 1.0.46, kwin, plasma-workspace >= 6.1.5+ios10, plasma-desktop >= 6.1.5+ios5, plasma-mobile >= 6.1.5+ios13, plasma-nano >= 6.1.5+ios3, systemsettings, kscreen, qt6-wayland, kf6-breeze-icons, Ark, Gwenview, KWrite | 16.5.0 (was 16.0.0 pre-kwin-DRM-deps) | built locally as 0.1.2; repo metadata not published yet |
-| `xios-native` | xios-core + ioscd, xios-native-host | 16.0.0 | built locally; not published as a meta yet |
-| `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | published; Xwayland glamor IOSurface smoke passed |
+| `xios-core` | com.max.xios, iosc, iosc-shell, angle, dbus, xios-desktop-defaults, xios-audio-server, xios-session, xios-launcher-tools | **16.0.0** | published (0.1.0); **0.1.1 staged, unpublished** |
+| `xios-gnome` | xios-core + gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme | **16.5.0** | published 0.1.1; CLI GNOME first-light works, daemon/app concurrency cleanup remains |
+| `xios-kde` | xios-core + iosc >= 0.9.18, xios-session >= 1.0.55, kwin, plasma-workspace, plasma-desktop, plasma-mobile, plasma-nano, systemsettings, kscreen, kf6-kded, qt6-wayland, kf6-breeze-icons, Ark, Gwenview, KWrite | **16.5.0** | published 0.1.9. Pins lag the validated builds (kwin >= +ios5 while prod ships +ios11 and staging +ios27), and konsole / dolphin / kate / kcalc / okular / powerdevil are pulled by nothing |
+| `xios-native` | xios-core + xios-launcher-tools, com.max.xiosprefs | **16.0.0** | published 0.1.0 |
+| `xios-x11` | xios-core + xwayland, xios-server, xauth | **16.5.0** | published 0.1.0; Xwayland glamor IOSurface smoke passed |
+
+As of 2026-07-29 all five metas are live on prod and staging at the same
+versions, and every meta's full Depends closure resolves inside `repo/Packages`
+plus the Procursus index with no unsatisfied version constraint. The `xios-core`
+0.1.1 bump above is the one staged change.
+
+### The display app is now a package
+
+`com.max.xios` (the Xios display app, Home Screen icon "X11") ships from this
+repo instead of being sideloaded with `bin/install-app.sh`. It is built like the
+other SwiftUI apps:
+
+```
+bin/package-app.sh x11/apps/Xios      # -> repo/debs/com.max.xios_<ver>_iphoneos-arm64.deb
+```
+
+Control source: `x11/apps/Xios/packaging/control` (version comes from
+`project.yml`'s `MARKETING_VERSION`). The build needs Xcode, xcodegen, ldid, and
+Docker, plus the staged `x11/apps/Xios/xlib/` headers and dylibs; `ldid` signs
+the binary with `entitlements.plist` before staging, so the GPU/IOSurface IOKit
+entitlements survive into the deb (verify with `ldid -e` after building). The app
+is unsigned, so AppSync Unified is a hard runtime requirement; that is stated in
+the control description and the depiction rather than expressed as a dependency,
+since AppSync lives on another repo.
+
+`xios-core` 0.1.1 depends on it, so every flavor now installs a display. It also
+gained `xios-session` (the preset launcher, previously only reachable from the
+KDE and native flavors) and `xios-launcher-tools`, which ships the `ioscd`
+daemon the in-app session picker talks to. Without those two, a fresh
+`xios-gnome` install had no way to start a session except hand-run scripts over
+SSH. Adding them does not move any floor: core stays 16.0.0.
 
 Redundant deps are trimmed: gnome-shell already pulls dconf, gjs, libmutter,
 gsettings-desktop-schemas and the GTK stacks; xios-server already pulls
@@ -38,9 +69,9 @@ choice in sync with `packages/meta/xios-gnome/DEBIAN/control`.
 
 Names that settled since the original fold-in note: `xios-session-stubs` ships
 the login1/polkit/accounts stub daemons, and `xios-gnome-typelibs` ships the
-aggregated on-device-scanned typelibs GNOME Shell imports at boot. `ioscd` and
-`xios-native-host` remain the native flavor package names in the meta control;
-verify they are indexed before publishing `xios-native`.
+aggregated on-device-scanned typelibs GNOME Shell imports at boot. `ioscd` is not
+its own package: it ships inside `xios-launcher-tools`, which is what
+`xios-native` and (since 0.1.1) `xios-core` depend on.
 
 ## How the store does the gating
 
@@ -189,11 +220,11 @@ Steps 1 through 8 are prep. Step 9 is the Max gate.
    `firmware (>= X)` floor in its control; bump the control and rebuild the
    meta if the closure drifted upward.
 7. **Stage per flavor** into repo/debs, replacing superseded versions per
-   the variant table above. Completed publish waves include xios-core,
-   xios-x11, xios-gnome, xios-session-stubs, and xios-gnome-typelibs. Remaining
-   meta waves are xios-native and xios-kde once their complete closures are
-   indexed. A meta never ships before its closure: apt on device would fail the
-   install, and Sileo shows a broken package.
+   the variant table above. All five metas have shipped; the open wave is
+   `com.max.xios` 0.1.0 plus `xios-core` 0.1.1, which must go out together (core
+   0.1.1 depends on the app, so publishing core alone breaks every flavor).
+   A meta never ships before its closure: apt on device would fail the install,
+   and Sileo shows a broken package.
 8. **Regenerate and check locally**: run `bin/lib/make-repo.py` via the
    .repo-venv, then sanity-check: every Depends of every staged deb
    resolves inside repo/debs + the live Procursus index (the externals we
