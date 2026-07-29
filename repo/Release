@@ -7,10 +7,10 @@ Codename: ios
 Architectures: iphoneos-arm64
 Components: main
 Description: Jailbreak packages by Max
-Date: Wed, 29 Jul 2026 20:43:21 GMT
+Date: Wed, 29 Jul 2026 21:22:27 GMT
 MD5Sum:
- e421816f93a5ec14cfee1ca21ca95b36 534449 Packages
- 63a95110ceae3ffd6cb565d524e7fef9 99862 Packages.gz
+ 51539a78074cee8435a61889efc60769 534374 Packages
+ aebe2fb657a2eba9d09460d2c2952469 99868 Packages.gz
 SHA256:
- 8995fa10dcba82ccd3e9286aab715881839eb8621281151375127c2888c3d99e 534449 Packages
- 4a91e9cb077fab0b4983b67c248990c8b66a123238016f9140a00008119eebb2 99862 Packages.gz
+ 2cd36c6b02cc8e28350674aa3c4b19301b9179488db0f139534615ac604c63a4 534374 Packages
+ b3691a4a74684c7e4ec10fd1caae35b5ab86159a2505d40769fefeb38313ee78 99868 Packages.gz

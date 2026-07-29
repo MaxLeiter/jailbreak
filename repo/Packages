@@ -9823,21 +9823,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxkbfile1.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxml2
-Version: 2.13.8+ios1
+Version: 2.13.8+ios2
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1 (>= 1.3.1), liblzma5
 Section: Libraries
 Priority: optional
 Description: GNOME XML library
-Installed-Size: 1104
+Installed-Size: 1160
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxml2_2.13.8+ios1_iphoneos-arm64.deb
-Size: 527516
-MD5sum: 8fb416d6e57210069d3574b69e1e7c57
-SHA1: 27009abb225b30d8cda90c18a9e27d1c3155cadb
-SHA256: 72c3273a6462dda61435cc7ffc8d4266b10b51035ba29afcc2f01122518aa0c7
+Filename: debs/libxml2_2.13.8+ios2_iphoneos-arm64.deb
+Size: 544650
+MD5sum: 1a8b682ae170bc1bc936404991832498
+SHA1: 963b5c24bec0680ae3d9f4446664d0784e537e23
+SHA256: 0a503a2b5b33c55afcd597eb0f6741849a059c97e22d5957023df8702bedc757
 Icon: https://repo.maxleiter.com/icons/libxml2.png
 Depiction: https://repo.maxleiter.com/depictions/libxml2.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxml2.json
@@ -9845,21 +9844,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxml2.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxml2-dev
-Version: 2.13.8+ios1
+Version: 2.13.8+ios2
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libxml2 (= 2.13.8+ios1), liblzma-dev
+Depends: libxml2 (= 2.13.8+ios2), liblzma-dev
 Section: Development
 Priority: optional
 Description: Development files for the GNOME XML library
-Installed-Size: 2236
+Installed-Size: 2316
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxml2-dev_2.13.8+ios1_iphoneos-arm64.deb
-Size: 786898
-MD5sum: a701711eade93040b15af76d2e446392
-SHA1: cab9ecbc99d42e3be1a17772ae092f1957efa70d
-SHA256: e86c8847da3dbb4666e4b1bf5126b0c3ac086be806b89db91d641148c3213072
+Filename: debs/libxml2-dev_2.13.8+ios2_iphoneos-arm64.deb
+Size: 818706
+MD5sum: 64e4d5c686ec9238f041849b3a597fbb
+SHA1: eeb174a251eb77bac6cd9de8d022460e1cabdcb7
+SHA256: 657a21e479dac908482e9371bbb76e2d5adfaab1437d70772bbdc67bded51167
 Icon: https://repo.maxleiter.com/icons/libxml2-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libxml2-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxml2-dev.json
@@ -9867,21 +9865,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxml2-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxml2-utils
-Version: 2.13.8+ios1
+Version: 2.13.8+ios2
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libxml2 (= 2.13.8+ios1), libncursesw6, libreadline8, liblzma5
+Depends: libiosexec1 (>= 1.3.1), libxml2 (= 2.13.8+ios2), libncursesw6, libreadline8, liblzma5
 Section: Utilities
 Priority: optional
 Description: XML utilities
 Installed-Size: 312
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxml2-utils_2.13.8+ios1_iphoneos-arm64.deb
-Size: 105410
-MD5sum: 1437e36ebf9e42aee32496354946c6f0
-SHA1: 8b5bc464101315a2dfc394200319eda1fa7a14f1
-SHA256: 039fb93ff8898f39bfab9d08557eb6d0a842054516aea7d1915f8e718b9fff7a
+Filename: debs/libxml2-utils_2.13.8+ios2_iphoneos-arm64.deb
+Size: 105432
+MD5sum: 6c156216c7530a90b484fa8e866d3b52
+SHA1: 0960a955112d7c9dc0820e1f73122c37498222d2
+SHA256: 423363d9213c635809e7264779cb289e8e4942d06080ea852bf25a2caf7a5f38
 Icon: https://repo.maxleiter.com/icons/libxml2-utils.png
 Depiction: https://repo.maxleiter.com/depictions/libxml2-utils.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxml2-utils.json
