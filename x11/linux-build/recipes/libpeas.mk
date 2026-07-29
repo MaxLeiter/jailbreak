@@ -2,11 +2,11 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libpeas.mk — libpeas 1.x plugin engine for the Geary 46 lane. Build the core C loader
-# only: no Python/Lua loaders, no GTK widgetry, no demos/docs, no generated GIR/VAPI.
-# Upstream 1.x still links libgirepository into the core library. The extra-app driver
-# stages the already-published runtime/dev packages into build_base; rebuilding the
-# gobject-introspection tools here would unnecessarily pull target Python into this lane.
+# libpeas 1.x plugin engine for the Geary 46 lane. Builds the core C loader only: no
+# Python/Lua loaders, GTK widgetry, demos/docs, or generated GIR/VAPI. Upstream 1.x still
+# links libgirepository into the core library; the extra-app driver stages the already-
+# published gobject-introspection runtime/dev packages into build_base instead of
+# rebuilding those tools here, which would pull target Python into this lane.
 
 SUBPROJECTS     += libpeas
 LIBPEAS_MAJOR_V := 1.36

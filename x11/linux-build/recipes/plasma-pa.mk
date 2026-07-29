@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-pa.mk — Plasma volume applet and org.kde.plasma.private.volume QML import.
+# Plasma volume applet and org.kde.plasma.private.volume QML import.
 
 SUBPROJECTS += plasma-pa
 PLASMAPA_VERSION = $(PLASMA_VERSION)

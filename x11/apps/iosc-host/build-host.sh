@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# build-host.sh — build the per-app host app (host-side, Mac). Produces the shared
-# prebuilt payload that gen-launchers.sh --native copies into every per-app bundle:
+# Builds the per-app host app (host-side, Mac). Produces the shared prebuilt
+# payload gen-launchers.sh --native copies into every per-app bundle:
+# out/IOSCHost + out/default.metallib.
 #
-#   out/IOSCHost         the host Mach-O (Metal present + input + native rendezvous)
-#   out/default.metallib the compiled shader (makeDefaultLibrary loads it from the bundle)
-#
-# Like apps/Xios, codesigning is off; the device install pseudo-signs with
+# Codesigning is off (like apps/Xios); device install pseudo-signs with
 # `ldid -S entitlements.plist`. No device contact.
-#
-#   x11/apps/iosc-host/build-host.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

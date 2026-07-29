@@ -2,15 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libgdm.mk — the gdm CLIENT library only, for rootless iOS. gnome-shell statically imports
-# gi://Gdm at boot in 5 files (dependencies.js, systemActions.js, unlockDialog.js,
-# gdm/loginDialog.js, gdm/util.js), so the shell will NOT boot without the Gdm-1.0 typelib +
-# libgdm dylib. The gdm daemon is Linux-only (PAM/udev/utmp/VT) and is dropped by
-# ports/libgdm/patches, which replaces the top-level meson.build with a client-only
-# one and compiles a single-session sd-login shim into libgdmcommon (the accountsservice
-# pattern). The Gdm-1.0 typelib is generated ON-DEVICE, so the -dev package must ship.
-# At runtime there is no display-manager daemon; Gdm.Client simply fails to connect and the
-# shell's lock/login paths degrade, which is correct for a jailbreak session.
+# Client library only — gdm daemon is Linux-only (PAM/udev/utmp/VT) and stubbed out. gnome-shell
+# statically imports gi://Gdm at boot and won't start without the Gdm-1.0 typelib+dylib, even
+# though nothing serves it: Gdm.Client just fails to connect and lock/login degrade gracefully.
 
 SUBPROJECTS   += libgdm
 LIBGDM_VERSION := 46.0

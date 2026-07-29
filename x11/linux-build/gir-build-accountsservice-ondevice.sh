@@ -3,18 +3,16 @@
 # iPad, by building libaccountsservice 23.13.9 natively with -Dintrospection=true and letting
 # its own meson build drive g-ir-scanner.
 #
-# WHY this is boot-critical: gnome-shell's panel.js -> status/system.js -> js/misc/
-# systemActions.js does a STATIC top-level `import AccountsService from 'gi://AccountsService'`.
-# panel.js loads at boot, so gjs throws at module-load if the AccountsService-1.0 typelib is
-# missing and the shell crashes building the top panel. accountsservice is NOT a gnome-shell
-# build dep (runtime gi:// import only), so this typelib must be generated ALONGSIDE St/Shell
-# (see gir-build-gnome-shell-ondevice.sh) before the shell will boot. (Reported by gnome-session.)
+# Boot-critical: gnome-shell's panel.js -> status/system.js -> systemActions.js does a static
+# top-level `import AccountsService from 'gi://AccountsService'`, loaded at boot, so gjs throws
+# and the shell crashes building the top panel if the AccountsService-1.0 typelib is missing.
+# accountsservice is not a gnome-shell build dep (runtime gi:// import only), so this typelib
+# must be generated alongside St/Shell (see gir-build-gnome-shell-ondevice.sh) before boot.
 #
-# This is the Design-A (gir-build-mutter-ondevice.sh) pattern applied to a standalone lib:
-# cross can't run the gir dumper on a Mach-O binary, so the scan happens on the device. We
-# build the lib's own meson with introspection ON and let it emit the exact scanner command.
-# The accountsservice.mk cross build was -Dintrospection=false for exactly this reason; the
-# runtime dylib + headers ship in the libaccountsservice0 / -dev debs.
+# Same pattern as gir-build-mutter-ondevice.sh applied to a standalone lib: cross can't run the
+# gir dumper on a Mach-O binary, so the scan happens on-device via the lib's own meson build
+# with introspection ON. accountsservice.mk cross-builds with -Dintrospection=false for exactly
+# this reason.
 #
 # PREREQUISITES on the device (install via main's device window first). The libaccountsservice0
 # + libaccountsservice-dev debs (gnome-session) lay down exactly:
@@ -31,11 +29,9 @@
 #   5. polkit-dev on device (accountsservice's meson dependency()s polkit-gobject-1 for the
 #      library even with the daemon dropped).
 #
-# The source-port fixes are gnome-session's `ports/accountsservice/patches` stack; this
-# script scp's that series and applies it exactly like the cross build, then flips
-# introspection ON. This "build the
-# lib's own meson" path is preferred because it scans the real act-user.c/act-user-manager.c
-# sources the way upstream generate_gir() does, so the typelib matches upstream exactly.
+# Applies gnome-session's `ports/accountsservice/patches` stack exactly like the cross build,
+# then flips introspection ON — this scans the real act-user.c/act-user-manager.c sources the
+# way upstream generate_gir() does, so the typelib matches upstream exactly.
 #
 # FALLBACK — if you can't put the source tree on-device, a standalone g-ir-scanner call against
 # the installed -dev deb works too (params straight from accountsservice's generate_gir(), via

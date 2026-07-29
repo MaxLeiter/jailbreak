@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# build-qt.sh — cross-build Qt 6 (qtbase first) for rootless iOS, OFF-DEVICE. The KDE Plasma Mobile
-# track's foundation; companion to build-gnome.sh / build-mutter.sh (shares their host-tool preamble
-# + cc-nounused clang wrappers). Runs on a DEDICATED volume (procursus-vol-qt, a clone of the warm
-# GTK volume) so it never races the active GNOME agents on procursus-vol-gtk.
+# Cross-builds Qt 6 (qtbase first) for rootless iOS, OFF-DEVICE — foundation of the KDE Plasma
+# Mobile track. Companion to build-gnome.sh/build-mutter.sh (shares their host-tool preamble +
+# cc-nounused wrappers). Runs on a DEDICATED volume (procursus-vol-qt) so it never races the
+# active GNOME agents on procursus-vol-gtk.
 #
 #   docker run --rm --platform linux/arm64 --cpus=8 \
 #     -v procursus-vol-qt:/work/Procursus \
@@ -11,10 +11,10 @@
 #     -e TARGETS="qtbase" \
 #     procursus-xbuild:bookworm-arm64 -c 'bash /work/build-qt.sh' 2>&1 | tee qt-build.log
 #
-# TWO-STAGE BUILD. Cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the IDENTICAL
-# version (QT_HOST_PATH). Target is 6.6.3 (Plasma 6.0/6.1 era) which no Debian ships, so stage 1
-# builds a native host qtbase 6.6.3 from the same tarball into build_tools/host-qt-6.6.3 (one-time;
-# persisted in the volume, ~25 min). Stage 2 is the Procursus cross build via recipes/qtbase.mk.
+# Two-stage build: cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the identical
+# version (QT_HOST_PATH). No Debian ships 6.6.3, so stage 1 builds a native host qtbase into
+# build_tools/host-qt-6.6.3 (one-time, ~25 min, persisted in the volume). Stage 2 is the
+# Procursus cross build via recipes/qtbase.mk.
 set -euo pipefail
 
 QTVER=6.6.3
@@ -36,9 +36,9 @@ if [ ! -f build_source/${TARBALL} ]; then
 fi
 
 # --- stage 1: HOST Qt (QT_HOST_PATH bootstrap; one-time, persisted in the volume) ---
-# Native arm64-Linux build with Qt's bundled third-party libs (no host -dev packages except libdbus:
-# QtDBus needs dbus/dbus.h even in dlopen-at-runtime mode, and Qt6DBusTools is wanted for later
-# KF6/Plasma cross builds). gui+widgets ON so Qt6GuiTools/Qt6WidgetsTools (uic etc.) exist.
+# Native arm64-Linux build with Qt's bundled third-party libs. libdbus-dev is the one host -dev
+# package needed: QtDBus needs dbus/dbus.h even in dlopen-at-runtime mode, and Qt6DBusTools is
+# wanted for later KF6/Plasma cross builds. gui+widgets ON so Qt6GuiTools/Qt6WidgetsTools exist.
 if [ ! -x "${HOSTQT}/libexec/moc" ]; then
   echo "==> building HOST Qt ${QTVER} into ${HOSTQT} (one-time)"
   apt-get update >/dev/null 2>&1 || true
@@ -66,9 +66,9 @@ else
   echo "==> host Qt ${QTVER} already present: $(${HOSTQT}/libexec/moc --version)"
 fi
 
-# NOTE: the SDK-shadowing xpc/ headers in build_base are removed by qtbase.mk's setup step, NOT
-# here — Procursus `setup` re-stages them on every make run, so a driver-level parking gets undone
-# by the next build (learned the hard way: attempt 4 hit the xpc wall again after attempt 3 parked).
+# The SDK-shadowing xpc/ headers in build_base are removed by qtbase.mk's setup step, not here:
+# Procursus `setup` re-stages them on every make run, so a driver-level parking gets undone by
+# the next build.
 
 # --- cc-nounused wrappers (same as build-mutter.sh: neutralise meson/cmake probe -Werror) ---
 cat > build_tools/cc-nounused <<'EOF'
@@ -104,17 +104,16 @@ else
   echo "WARN: no angle deb in /out; qtbase GL/EGL configure will fail until angle is staged"
 fi
 
-# Qt round 5 links QtCore against ICU (FEATURE_icu=ON, qtbase.mk). Stage the PUBLISHED 74.2
-# ICU debs into the sysroot, same pattern as ANGLE above. TWO debs on purpose:
-#   - libicu-dev_74.2+ios1: unicode/ headers + icu-*.pc + the UNVERSIONED .dylib symlinks.
-#     MUST be the +ios1 repackage — the original libicu-dev_74.2 (no +ios1) shipped ZERO
-#     headers (the gap that kept FEATURE_icu OFF through round 4; see qtbase.mk's ICU block).
-#   - libicu74_74.2: the real versioned dylibs the -dev symlinks point at; without it the
-#     symlinks dangle and the qtbase link step fails.
-# Glob is pinned to 74.2 — out/ ALSO carries libicu78/libicu-dev_78.3 (Ladybird's EXACT pin),
-# and compiling against 78 headers over the 74 runtime misses symbols at load time (ICU bakes
-# U_ICU_VERSION_MAJOR_NUM into every export: ucol_open_78 vs ucol_open_74). Do NOT "upgrade"
-# this glob to 78 without also switching qt6-base's Depends and re-validating apt on device.
+# Qt round 5 links QtCore against ICU (FEATURE_icu=ON). Stage the published 74.2 ICU debs into
+# the sysroot, same pattern as ANGLE. Needs both: libicu-dev_74.2+ios1 for headers/pc files (must
+# be the +ios1 repackage — the plain 74.2 -dev deb shipped zero headers, which is why
+# FEATURE_icu was OFF through round 4) and libicu74_74.2 for the versioned dylibs the -dev
+# symlinks point at.
+#
+# Pinned to 74.2 on purpose: out/ also carries libicu78 (Ladybird's exact pin), and ICU bakes
+# its major version into every export (ucol_open_78 vs ucol_open_74), so compiling against 78
+# headers over the 74 runtime would miss symbols at load time. Don't bump this glob without also
+# switching qt6-base's Depends and re-validating apt on device.
 ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
 ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
 if [ -n "$ICU_RUNTIME_DEB" ] && [ -n "$ICU_DEV_DEB" ]; then

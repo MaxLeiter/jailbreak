@@ -2,22 +2,13 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# wl-clipboard.mk — wl-clipboard, the command-line clipboard for Wayland
-# (github.com/bugaevc/wl-clipboard). Ships wl-copy and wl-paste. Pure C, meson.
-# It talks the zwlr_data_control_manager_v1 protocol (wlr-data-control), which the
-# iosc compositor now serves, so it reads/writes the selection WITHOUT holding
-# keyboard focus — the whole reason it exists over plain wl_data_device. Copies
-# from wl-copy land in the same selection GTK apps see (and ride the iOS clipboard
-# bridge), and wl-paste reads whatever the last app copied.
+# wl-clipboard talks zwlr_data_control_manager_v1 (wlr-data-control), which
+# lets it read/write the selection without holding keyboard focus, unlike
+# plain wl_data_device. Copies land in the same selection GTK apps see (and
+# ride the iOS clipboard bridge).
 #
-# BUILD-HOST TOOLS (installed by build-wayland-apps.sh): wayland-scanner (protocol
-# codegen, native). wl-clipboard VENDORS its own protocol XMLs in protocol/, so no
-# extra XML is fetched; wayland-scanner turns them into C at build time.
-#
-# DEPENDS (target): wayland (libwayland-client), wayland-protocols (build-time, for
-# the primary-selection XML wl-clipboard pulls from the shared protocol dir). No
-# toolkit, no GPU, no X11. Man pages are only built if scdoc is present, so they are
-# skipped here without a knob.
+# Vendors its own protocol XML in protocol/, so the native wayland-scanner
+# can turn it into C at build time with no extra XML fetch.
 
 SUBPROJECTS       += wl-clipboard
 WL_CLIPBOARD_VERSION := 2.2.1

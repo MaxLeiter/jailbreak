@@ -2,10 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gmime.mk — MIME parser/mail utility library for Geary. Keep PGP/S/MIME and IDN off for
-# the first iOS pass: those add GpgME/libidn chains that are not needed to unblock the basic
-# gmime-3.0 pkg-config/header surface. GIR/VAPI generation stays off like libsoup3; Geary's
-# Vala binding coverage needs a separate vendored/on-device GI follow-up.
+# PGP/S/MIME and IDN disabled: those pull in GpgME/libidn dependency chains not needed
+# for the pkg-config/header surface Geary requires.
 
 SUBPROJECTS   += gmime
 GMIME_MAJOR_V := 3.2

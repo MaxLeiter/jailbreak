@@ -2,17 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-settings-daemon.mk — a MINIMAL gnome-settings-daemon 46 for the Xios GNOME session.
-# gsd is a set of D-Bus-activated helper daemons (gsd-<plugin>) that gnome-shell + GNOME apps
-# rely on for desktop policy. Most gsd plugins target hardware/services absent on iOS; this
-# build keeps only the ones that make sense on a Wayland tablet and needs no new heavy deps
-# beyond libnotify (see ports/gnome-settings-daemon/patches for the plugin audit):
-#   KEEP: a11y-settings, housekeeping, keyboard, screensaver-proxy
-#   DROP: power/color/datetime/media-keys/sound/xsettings/sharing (+ the option-gated
-#         cups/smartcard/wacom/rfkill/wwan/usb-protection/network_manager/colord/alsa/gudev).
-# The dropped plugins are the only consumers of geocode-glib/gweather4/libcanberra/libgeoclue/
-# upower, so those become required:false. systemd is off (no user units; the daemons are
-# D-Bus/child-launched by gnome-session's classic path).
+# Minimal build: only a11y-settings, housekeeping, keyboard, screensaver-proxy plugins are
+# kept (see ports/gnome-settings-daemon/patches for the full audit). The dropped plugins
+# were the only consumers of geocode-glib/gweather4/libcanberra/libgeoclue/upower, so those
+# become required:false. systemd is off: daemons are D-Bus/child-launched by gnome-session.
 
 SUBPROJECTS      += gnome-settings-daemon
 GSD_MAJOR_V      := 46

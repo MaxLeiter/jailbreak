@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# build-ladybird-app-engine.sh — Phase A+B of the standalone iOS Ladybird .app.
-# Builds, on procursus-vol-ladybird (continues wave4c state):
-#   * the UIKit frontend `Ladybird` (UI/iOS, first real compile of the .mm/.cpp)
-#   * the `Compositor` 5th helper (CPU fallback by default; real ANGLE/GPU when LB_APP_GPU=1)
-#   * relinks WebContent/RequestServer/ImageDecoder/WebWorker under app-mode patches
-# then stages all 6 binaries + share/Lagom into /out/app-stage for the .app deb driver.
+# Builds the iOS Ladybird UIKit frontend + Compositor helper on procursus-vol-ladybird
+# (continues wave4c state). LB_APP_GPU=1 builds Compositor against real ANGLE/GPU; default
+# is the CPU fallback. Stages the resulting binaries into /out/app-stage for the .app deb driver.
 #
 #   docker run --rm --platform linux/arm64 \
 #     -v procursus-vol-ladybird:/work/Procursus \
@@ -19,8 +16,7 @@ SDK="/root/cctools/SDK/iPhoneOS16.5.sdk"
 BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
 SHIM=/work/shim
 WORK=$PROC/ladybird-src
-BUILD=$PROC/ladybird-build            # REUSE the headless build dir (incremental: only app-mode
-                                      # deltas recompile — Application.cpp, Compositor, UI/iOS)
+BUILD=$PROC/ladybird-build            # reuse the headless build dir; app-mode deltas recompile incrementally
 HOST=$PROC/ladybird-hosttools
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
@@ -44,8 +40,8 @@ for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesi
   [ -e /root/cctools/bin/aarch64-apple-darwin-$t ] && ln -sf /root/cctools/bin/aarch64-apple-darwin-$t "$SHIM/$t"
 done
 # ar wrapper: expand @response-files, then call llvm-ar in Darwin/Mach-O format.
-# (The image's cctools aarch64-apple-darwin-ar was clobbered into a self-exec loop;
-#  llvm-ar-19 --format=darwin emits a Mach-O archive that cctools ld64/ranlib accept.)
+# The image's cctools aarch64-apple-darwin-ar is clobbered into a self-exec loop;
+# llvm-ar-19 --format=darwin produces a Mach-O archive cctools ld64/ranlib accept.
 cat > "$SHIM/ar" <<'EOF'
 #!/bin/sh
 n=$#; i=0
@@ -85,12 +81,10 @@ chmod +x "$SHIM/xcrun" "$SHIM/sw_vers"
 ln -sf "$SHIM/xcrun" /usr/local/bin/xcrun
 ln -sf "$SHIM/sw_vers" /usr/local/bin/sw_vers
 
-# ---- iOS SDK os/object.h fix (unblocks UIKit/Foundation ObjC++ .mm compiles) ----------------
-# The 16.5 SDK os/object.h predates OS_OBJECT_DECL_SENDABLE_* but its newer xpc/session.h (pulled
-# transitively by any UIKit->Foundation include in the frontend .mm files) requires them; without
-# them clang cascades "unknown type OS_OBJECT_DECL_SENDABLE_CLASS" -> xpc_session_t undeclared.
-# Backport the 3 macros as aliases to their non-sendable forms (identical C/ObjC path). Idempotent;
-# patches only this container's SDK copy. Same fix as build-wayland-apps.sh.
+# The 16.5 SDK os/object.h predates OS_OBJECT_DECL_SENDABLE_*, but xpc/session.h (pulled in
+# transitively by any UIKit->Foundation include in the frontend .mm files) needs them, so ObjC++
+# compiles fail. Backport the 3 macros as aliases to their non-sendable forms. Same fix as
+# build-wayland-apps.sh.
 OSOBJ="$SDK/usr/include/os/object.h"
 if [ -f "$OSOBJ" ] && ! grep -q OS_OBJECT_DECL_SENDABLE_CLASS "$OSOBJ"; then
   echo "==> backporting OS_OBJECT_DECL_SENDABLE_* into $OSOBJ"
@@ -127,11 +121,9 @@ if [ -f "$SKIA_PC" ] && grep -q -- '-framework CoreFoundation -framework' "$SKIA
 fi
 
 # ---- complete ANGLE gl2ext_angle.h (Compositor WebGL replayer) -----------------------------
-# The staged build_base gl2ext_angle.h is an older ANGLE revision missing 19
-# GL_ANGLE_robust_client_memory prototypes (incl. glCompressedTex{,Sub}Image{2,3}DRobustANGLE)
-# that the GENERATED Libraries/LibWeb/WebGL/GLFunctions.cpp references. The CPU fallback never
-# calls them, but both CPU and GPU builds still need declarations at compile time. Swap in the
-# complete upstream header from the ANGLE checkout (strict superset, same include guards).
+# Staged gl2ext_angle.h is missing GL_ANGLE_robust_client_memory prototypes that generated
+# WebGL/GLFunctions.cpp references (needed at compile time even for CPU-fallback builds).
+# Swap in the complete header from the ANGLE checkout.
 BB_ANGLE=$BB/usr/include/GLES2/gl2ext_angle.h
 if [ -f "$BB_ANGLE" ] && ! grep -q glCompressedTexImage2DRobustANGLE "$BB_ANGLE"; then
   FULL_ANGLE=$(find "$PROC/build_work" -path "*angle/checkout/include/GLES2/gl2ext_angle.h" 2>/dev/null | head -1)
@@ -144,10 +136,9 @@ if [ -f "$BB_ANGLE" ] && ! grep -q glCompressedTexImage2DRobustANGLE "$BB_ANGLE"
 fi
 
 # ---- ANGLE runtime for the app GPU build ----------------------------------------------------
-# The build_base also contains Mesa's libGLESv2.2.dylib for other ports. Ladybird's EGL path must
-# pair ANGLE EGL with ANGLE GLES; mixing ANGLE libEGL with Mesa GLES gives a "current" context whose
-# direct gl* entry points return null/zero objects. Pull the real ANGLE payload from the local angle
-# deb and put a higher-priority pkg-config overlay in front of the generic build_base .pc files.
+# Mixing ANGLE libEGL with Mesa GLES (also present in build_base) gives a "current" context whose
+# gl* entry points return null/zero objects, so ANGLE EGL must pair with ANGLE GLES. Stage the
+# real ANGLE payload and put a higher-priority pkg-config overlay in front of build_base's .pc files.
 ANGLE_PC_DIR=$PROC/ladybird-angle-pkgconfig
 if [ "$APP_GPU_ENABLED" -eq 1 ]; then
   step "stage ANGLE EGL/GLES runtime for GPU build"

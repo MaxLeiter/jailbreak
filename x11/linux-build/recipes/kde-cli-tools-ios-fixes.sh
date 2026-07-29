@@ -1,25 +1,15 @@
 #!/usr/bin/env bash
-# kde-cli-tools-ios-fixes.sh — source trims for kde-cli-tools on Xios/iOS.
+# 1. DocTools: -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE alone is a hard
+#    configure error here (DocTools is in the REQUIRED component list), so
+#    drop the component along with doc/, kdoctools_install(po), and
+#    ki18n_install(po) (no Linguist target in this bring-up stack).
 #
-# Two classes of fix, nothing else:
-#
-#   1. DocTools. kde-cli-tools lists KF6DocTools in its REQUIRED find_package
-#      component list, so -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE alone
-#      turns into a hard configure error instead of a graceful skip. Drop the
-#      component, the doc/ subdirectory, and kdoctools_install(po). ki18n_install(po)
-#      goes with them: no target Linguist in this bring-up stack (milou.mk:16,
-#      plasma-desktop-ios-fixes.sh:472 precedent).
-#
-#   2. MACOSX_BUNDLE. The iOS cmake toolchain defaults CMAKE_MACOSX_BUNDLE=ON, so
-#      every un-marked executable becomes <name>.app/<name> and ECM routes it to the
-#      BUNDLE DESTINATION (/Applications/KDE), which KF6_COPY_RUNTIME never packages
-#      — the binary silently vanishes from the deb. Same landmine as kiod6 (kio.mk:21)
-#      and kscreen-doctor (libkscreen-ios-fixes.sh:214-238). Upstream already calls
-#      ecm_mark_nongui_executable() on kdemv, kdecp, kmimetypefinder and ksvgtopng
-#      (that helper sets MACOSX_BUNDLE FALSE); the GUI-capable ones are not marked,
-#      because on a real desktop a bundle is the right answer. Here it is not, and
-#      install_compat_symlink() would also point its <name>5 symlink at a path that
-#      no longer holds a binary. Force them all to plain binaries in usr/bin.
+# 2. MACOSX_BUNDLE: the iOS cmake toolchain defaults CMAKE_MACOSX_BUNDLE=ON,
+#    so unmarked executables become <name>.app/<name> and ECM routes them to
+#    the BUNDLE destination, which KF6_COPY_RUNTIME never packages, so the
+#    binary silently vanishes from the deb. Upstream already marks kdemv,
+#    kdecp, kmimetypefinder, and ksvgtopng nongui; force the rest to plain
+#    usr/bin binaries too.
 set -euo pipefail
 
 src=${1:?usage: kde-cli-tools-ios-fixes.sh <kde-cli-tools-source-dir>}

@@ -2,10 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gbm.mk — links-only GBM shim for KWin first-light on iOS.
-# KWin's nested Wayland backend still compiles its GBM/DRM allocator path. iOS has no
-# Mesa GBM device, so this package supplies the small public ABI surface needed to
-# configure, compile, and link. All allocation/device entry points return failure.
+# KWin's nested Wayland backend compiles a GBM/DRM allocator path even though iOS
+# has no Mesa GBM device. This shim supplies just enough ABI surface to link;
+# all allocation/device entry points return failure.
 
 SUBPROJECTS += gbm
 GBM_VERSION := 21.0.0

@@ -2,13 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# appstream.mk — AppStream metadata library. Mandatory dependency of libadwaita 1.4
-# (src/meson.build declares it required). Pulls libxmlb + libyaml + libxml2 (libyaml/libxml2
-# are prebuilt in Procursus; libxmlb is our recipe). GTK-independent. See docs/gnome-apps.md.
-# Build runs glib-compile-resources + msgfmt on the HOST (provided by libglib2.0-bin / gettext).
-#
-# BUILT/PUBLISHED — libappstream5 1.0.3+ios1. Soname 5 matches the
-# Debian sid libappstream5 (AppStream 1.0.x).
+# Mandatory dependency of libadwaita 1.4 (src/meson.build requires it).
+# Build runs glib-compile-resources + msgfmt on the HOST during the cross build.
 
 SUBPROJECTS       += appstream
 APPSTREAM_VERSION := 1.0.3

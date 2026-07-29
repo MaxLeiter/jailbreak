@@ -2,19 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# nautilus.mk — GNOME Files, the GTK4/libadwaita file manager. GNOME 45 = 45.0.
-#
-# Optional-feature trims (verified against nautilus 45.0 meson.build) to keep the dep tree
-# minimal:
-#   -Dextensions=false   → drops gexiv2 + gstreamer-tag/pbutils + explicit gdk-pixbuf
-#   -Dcloudproviders=false → drops libcloudproviders
-#   -Dpackagekit=false   → drops the PackageKit handler-install path
-#   -Dintrospection=false → typelibs can't be cross-generated for Mach-O (see gnome-plan.md #2)
-#   -Dtests=none
-# Required (unconditional) deps remain: gnome-autoar, gnome-desktop-4, libportal(+gtk4),
-# tracker-sparql-3.0, gtk4, libadwaita, libxml2.
-#
-# BUILT/PUBLISHED — nautilus 46.4+ios1.
+# -Dintrospection=false: typelibs can't be cross-generated for Mach-O (see gnome-plan.md #2).
 
 SUBPROJECTS       += nautilus
 NAUTILUS_MAJOR_V  := 46

@@ -2,10 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libnotify.mk — desktop notifications client library (libnotify4). GLib + GdkPixbuf only
-# (libnotify 0.8 dropped its GTK dependency; the notify-send tool is the only GTK user and
-# we skip it). Needed by gnome-settings-daemon's housekeeping plugin and useful to GNOME
-# apps generally. Introspection off (typelib not needed for the C link).
+# Desktop notifications client library. GLib + GdkPixbuf only (libnotify 0.8 dropped the
+# GTK dependency; notify-send is the only GTK user, and we skip it). Needed by
+# gnome-settings-daemon's housekeeping plugin. Introspection off since the typelib isn't
+# needed for the C link.
 
 SUBPROJECTS      += libnotify
 LIBNOTIFY_VERSION := 0.8.3

@@ -2,15 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libgee.mk — GObject collection library (libgee-0.8). Itself written in Vala, so it is the
-# FIRST proof of the cross-Vala flow: `VALAC=valac` (host) transpiles Vala→C, and our cross CC
-# compiles the C. valac never runs target code. The build emits `gee-0.8.vapi` (into
-# share/vala/vapi), which gnome-calculator then consumes — so libgee supplies its own vapi
-# (no vendoring needed for gee). Only needs glib's vapi, which ships WITH valac.
-#
-# BUILD-HOST TOOL: valac (Ubuntu/Debian `valac` apt package) — add to the Dockerfile, like sassc.
-#
-# BUILT/PUBLISHED — libgee-0.8-2 0.20.8+ios1; the cross-Vala path is proven.
+# First proof of the cross-Vala flow: VALAC=valac runs on the host to transpile Vala->C,
+# then our cross CC compiles the C; valac never runs target code. Emits gee-0.8.vapi
+# (share/vala/vapi), which gnome-calculator consumes directly; only needs glib's vapi,
+# which ships with valac. valac is a build-host apt package -- add to the Dockerfile, like sassc.
 
 SUBPROJECTS    += libgee
 LIBGEE_MAJOR_V := 0.20

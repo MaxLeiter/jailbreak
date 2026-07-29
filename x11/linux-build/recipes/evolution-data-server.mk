@@ -2,49 +2,37 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# evolution-data-server.mk — EDS 3.52 (libedataserver/libecal/libebook + the D-Bus factories),
-# the GNOME calendar/contacts backend. This is THE package ICU was built to unblock: gnome-shell
-# 46's calendar-server needs libecal-2.0/libedataserver-1.2 (both >= 3.33.1; see
-# ports/gnome-shell/patches and patches-eds, whose EDS split this build makes reversible), and EDS
-# requires ICU unconditionally (pkg_check_modules icu-i18n; e-alphabet-index is ICU C++).
-# 3.52.4 = last 3.52 point release, the Ubuntu 24.04 / ICU 74.2 / GNOME 46 pairing.
+# EDS 3.52 is the GNOME calendar/contacts backend gnome-shell's calendar-server needs
+# (libecal-2.0/libedataserver-1.2 >= 3.33.1). Requires ICU unconditionally (e-alphabet-index is
+# ICU C++). 3.52.4 matches the Ubuntu 24.04 / ICU 74.2 / GNOME 46 pairing.
 #
 # Feature surface is cut to what the shell's calendar needs (client libs + source registry +
-# calendar/addressbook factories over D-Bus). Everything OFF has a missing-on-iOS dep chain:
-# GTK/GTK4+canberra (UI/alarm-notify), WebKitGTK OAuth2 prompts, GOA, gweather4 (weather
-# calendars; re-enable later if task #29's gweather4 lands), NSS/NSPR (SMIME), krb5, OpenLDAP,
-# Berkeley DB (ancient addressbook migration). Introspection OFF = on-device g-ir pass later.
+# calendar/addressbook factories over D-Bus). Everything else disabled has a missing-on-iOS dep
+# chain: GTK/GTK4+canberra, WebKitGTK OAuth2, GOA, gweather4, NSS/NSPR (SMIME), krb5, OpenLDAP,
+# Berkeley DB. Introspection off (on-device g-ir pass later).
 #
-# CROSS NOTES (all verified against the 3.52.4 tree before this recipe was written):
-#  - Three CHECK_C_SOURCE_RUNS need their result vars pre-seeded (try_run can't execute the
-#    cross-built iOS binaries): _correct_iconv, HAVE_LKSTRFTIME (Darwin strftime supports
-#    %l/%k), and _decoded (data/CMakeLists.txt decodes the obfuscated Google OAuth client id;
-#    can't be configured away — the top-level CMakeLists force-defaults the id whenever it's
-#    ""). The iconv and _decoded probes' real job is a side-effect FILE the configure then
-#    file(READ)s, so both get pre-dropped into the build dir: iconv-detect.h with values from
-#    running iconv-detect.c against Darwin libiconv on a macOS host ("iso-%d-%d" /
-#    "iso-%d-%s" / "UCS-4BE" — all three names also valid in GNU libiconv 1.17, what the
-#    target actually links, which is case-insensitive), and an EMPTY oauth2-google-client-id
-#    (empty scheme -> the x-scheme-handler registration self-skips; there is no xdg URI
-#    dispatch on iOS to register with anyway).
-#  - find_program resolves into the iOS sysroot (build_base/.../var/jb/usr/bin) ahead of the
-#    host. The python/perl codegen scripts found there (gdbus-codegen/mkenums/genmarshal)
-#    run fine on the Linux host, but the NATIVE tools are Mach-O -> "Exec format error"
-#    (126) at build time, so those five get their cache vars pinned to the host copies
-#    (glib-compile-schemas/-resources from libglib2.0-{bin,dev-bin}, xgettext/msgfmt/
-#    msgmerge from gettext — all installed by build-eds.sh). gperf resolves host already.
-#  - camel hard-requires NSS/NSPR regardless of ENABLE_SMIME; no iOS port exists, so the
-#    setup rule applies an NSS-ectomy patch (see the patch note below at the setup rule).
-#  - Two in-tree code generators (camel-gen-tables, gen-western-table) are add_executable'd
-#    for the TARGET and then EXECUTED by custom commands — impossible cross (Linux can't
-#    run Mach-O). -setup points the custom commands at *-host copies, which get compiled
-#    with host gcc + host glib right after configure (they need the cmake-generated
-#    evolution-data-server-config.h). Their output (ASCII/mime + western-name tables) is
-#    platform-independent, which is why upstream can generate it at build time at all.
-#  - ENABLE_SCHEMAS_COMPILE=OFF: the install hook would compile schemas into the BUILDER's
-#    /var/jb; the desktop's model is one on-device glib-compile-schemas pass post-install.
-#  - malloc_trim/_NL_ADDRESS_COUNTRY_AB2/elf-backtrace probes all fail cleanly on Darwin
-#    (guarded fallbacks); the vendored-strptime locale_t code is behind #ifdef _LIBC (inert).
+# Cross-build notes:
+#  - Three CHECK_C_SOURCE_RUNS can't try_run cross-built iOS binaries, so their result vars are
+#    pre-seeded: _correct_iconv, HAVE_LKSTRFTIME (Darwin strftime supports %l/%k), and _decoded
+#    (data/CMakeLists.txt decodes an obfuscated Google OAuth client id and force-defaults it
+#    when empty). Their real job is a side-effect file configure then file(READ)s, so those are
+#    pre-dropped too: iconv-detect.h (from running iconv-detect.c against Darwin libiconv; the
+#    values are also valid under the GNU libiconv 1.17 the target actually links) and an empty
+#    oauth2-google-client-id (empty scheme -> the xdg URI registration self-skips, which is fine
+#    since there's no xdg dispatch on iOS anyway).
+#  - find_program resolves into the iOS sysroot ahead of the host, but the codegen scripts found
+#    there (gdbus-codegen/mkenums/genmarshal) are Mach-O and can't run on the Linux build host
+#    ("Exec format error"). Their cache vars are pinned to host copies instead
+#    (glib-compile-schemas/-resources, xgettext/msgfmt/msgmerge — installed by build-eds.sh).
+#  - camel hard-requires NSS/NSPR regardless of ENABLE_SMIME; no iOS port exists, so setup
+#    applies an NSS-ectomy patch.
+#  - Two in-tree code generators (camel-gen-tables, gen-western-table) are built for TARGET and
+#    then executed by custom commands, which can't run cross (Linux can't exec Mach-O). setup
+#    points the custom commands at *-host copies, compiled with the host toolchain right after
+#    configure (they need the generated evolution-data-server-config.h). Their output is
+#    platform-independent tables, which is why upstream generates them at build time at all.
+#  - ENABLE_SCHEMAS_COMPILE=OFF: that install hook would compile schemas into the builder's
+#    /var/jb; the desktop does one on-device glib-compile-schemas pass post-install instead.
 
 SUBPROJECTS   += evolution-data-server
 EDS_MAJOR_V   := 3.52
@@ -54,7 +42,6 @@ DEB_EDS_V     ?= $(EDS_VERSION)+ios2
 evolution-data-server-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/evolution-data-server/$(EDS_MAJOR_V)/evolution-data-server-$(EDS_VERSION).tar.xz)
 	$(call EXTRACT_TAR,evolution-data-server-$(EDS_VERSION).tar.xz,evolution-data-server-$(EDS_VERSION),evolution-data-server)
-	# Keep EDS cross-build and no-NSS source edits in the port patch stack.
 	$(call DO_PATCH,evolution-data-server,evolution-data-server,-p1)
 	grep -q 'if(NOT ENABLE_SMIME)' $(BUILD_WORK)/evolution-data-server/cmake/modules/FindSMIME.cmake
 	! grep -q -- '--no-undefined' $(BUILD_WORK)/evolution-data-server/cmake/modules/SetupBuildFlags.cmake
@@ -106,9 +93,8 @@ evolution-data-server: evolution-data-server-setup glib2.0 sqlite3 libxml2 json-
 		-DENABLE_DOT_LOCKING=OFF \
 		-DENABLE_SCHEMAS_COMPILE=OFF \
 		-DWITH_SYSTEMDUSERUNITDIR=no
-	# Host copies of the two in-tree generators (see CROSS NOTES). After configure (they
-	# include the generated config header), before make (custom commands invoke them).
-	# env -u: Procursus exports the darwin flags; host gcc/pkg-config must not see them.
+	# env -u: Procursus exports the darwin flags into the environment; host gcc/pkg-config
+	# must not see them or the host-copy compile breaks.
 	cd $(BUILD_WORK)/evolution-data-server && \
 		env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
 			-u PKG_CONFIG_PATH -u PKG_CONFIG_LIBDIR -u PKG_CONFIG_SYSROOT_DIR \
@@ -126,20 +112,18 @@ evolution-data-server: evolution-data-server-setup glib2.0 sqlite3 libxml2 json-
 endif
 
 evolution-data-server-package: evolution-data-server-stage
-	# evolution-data-server.mk Package Structure — one runtime deb (Debian's 15-way split
-	# buys nothing here: gnome-shell is the only consumer) + one -dev deb.
+	# One runtime + one -dev deb; Debian's 15-way split buys nothing since gnome-shell is
+	# the only consumer.
 	rm -rf $(BUILD_DIST)/evolution-data-server{,-dev}
 	mkdir -p $(BUILD_DIST)/evolution-data-server$(MEMO_PREFIX) \
 		$(BUILD_DIST)/evolution-data-server-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# evolution-data-server.mk Prep evolution-data-server (dylibs+symlinks, module dirs,
-	# libexec factories, D-Bus services, GSettings schemas). Copy the CONTENTS of the staged
-	# prefix (copying $(MEMO_PREFIX) itself would drop the leading var/ from /var/jb).
+	# Copy the CONTENTS of the staged prefix — copying $(MEMO_PREFIX) itself would drop the
+	# leading var/ from /var/jb.
 	cp -a $(BUILD_STAGE)/evolution-data-server$(MEMO_PREFIX)/. \
 		$(BUILD_DIST)/evolution-data-server$(MEMO_PREFIX)/
 
-	# evolution-data-server.mk Prep evolution-data-server-dev (headers + pkgconfig; leave
-	# every dylib symlink in the runtime deb so its lib/ dirs stay self-consistent)
+	# Leave every dylib symlink in the runtime deb so its lib/ dirs stay self-consistent.
 	mv $(BUILD_DIST)/evolution-data-server/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/evolution-data-server-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	mv $(BUILD_DIST)/evolution-data-server/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \
@@ -147,14 +131,11 @@ evolution-data-server-package: evolution-data-server-stage
 	rm -rf $(BUILD_DIST)/evolution-data-server/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man \
 		$(BUILD_DIST)/evolution-data-server/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/doc
 
-	# evolution-data-server.mk Sign
 	$(call SIGN,evolution-data-server,general.xml)
 
-	# evolution-data-server.mk Make .debs
 	$(call PACK,evolution-data-server,DEB_EDS_V)
 	$(call PACK,evolution-data-server-dev,DEB_EDS_V)
 
-	# evolution-data-server.mk Build cleanup
 	rm -rf $(BUILD_DIST)/evolution-data-server{,-dev}
 
 .PHONY: evolution-data-server evolution-data-server-package

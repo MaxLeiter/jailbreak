@@ -2,9 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kirigami-addons.mk — real Kirigami Addons QML modules for Plasma Desktop/Mobile.
-# Plasma Desktop's Kickoff and several Mobile settings views import these modules;
-# package them separately instead of letting shell packages own local stubs.
+# Plasma Desktop's Kickoff and several Mobile settings views import these
+# QML modules; package them separately instead of letting shell packages own
+# local stubs.
 
 SUBPROJECTS += kirigami-addons
 KIRIGAMIADDONS_VERSION = 1.3.0

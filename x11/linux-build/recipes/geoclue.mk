@@ -2,12 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# geoclue.mk — libgeoclue (the CLIENT library) only, for rootless iOS. gnome-shell imports
-# gi://Geoclue (2.0) via misc/weather.js <- dateMenu.js at panel boot, so the Geoclue-2.0
-# typelib + dylib are boot-critical. The geoclue DAEMON (src/, with its ModemManager/WiFi/
-# GPS/compass backends) is dropped (-Denable-backend=false); the client library is a GDBus
-# proxy. Location is inert without the daemon, but the typelib must exist for the static import.
-# Introspection off (Geoclue-2.0 typelib generated on-device).
+# Client library only: -Denable-backend=false drops the geoclue daemon and its
+# ModemManager/WiFi/GPS/compass backends. gnome-shell still imports gi://Geoclue at panel
+# boot (weather.js), so the typelib must exist even though location is inert without the
+# daemon. Introspection is generated on-device instead of here.
 
 SUBPROJECTS      += geoclue
 GEOCLUE_VERSION  := 2.7.1

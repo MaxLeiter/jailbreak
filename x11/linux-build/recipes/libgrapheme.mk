@@ -2,18 +2,14 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libgrapheme.mk — suckless Unicode grapheme/word/line segmentation library, imv's lightweight
-# alternative to ICU for its `unicode` backend (imv is built with -Dunicode=grapheme). Plain
-# POSIX Makefile (no meson/autotools).
+# imv's lightweight alternative to ICU for its unicode backend (-Dunicode=grapheme).
+# Plain POSIX Makefile, no meson/autotools.
 #
-# CROSS MECHANISM: libgrapheme code-gens its Unicode lookup tables at build time by compiling
-# gen/*.c and RUNNING them on the build host. The Makefile already separates BUILD_CC (host,
-# for the gen tools) from CC (target, for the library), so we set BUILD_CC=cc and CC=<cross>:
-# the gen tools stay host-native (needs_exe_wrapper safe) and only the library is cross-built.
-# The gen tools read data/*.txt (Unicode 15.0.0), which the Makefile fetches with wget at build
-# (the driver installs wget). We build ONLY the static archive (libgrapheme.a) and ship it in a
-# -dev deb: imv links it statically via cc.find_library('grapheme'), so we avoid porting the
-# Makefile's GNU-ld shared-object flags (-Wl,--soname/-nostdlib) to Darwin ld64 entirely.
+# The Makefile code-gens its Unicode lookup tables at build time by compiling gen/*.c and
+# running them on the build host; it already separates BUILD_CC (host) from CC (target), so
+# we just set BUILD_CC=cc and CC=<cross>. We ship only the static archive (libgrapheme.a):
+# imv links it statically via find_library('grapheme'), so the Makefile's GNU-ld shared-object
+# flags (-Wl,--soname/-nostdlib) never need porting to Darwin ld64.
 
 SUBPROJECTS       += libgrapheme
 LIBGRAPHEME_VERSION := 2.0.2
@@ -28,9 +24,8 @@ libgrapheme:
 	@echo "Using previously built libgrapheme."
 else
 libgrapheme: libgrapheme-setup
-	# Static archive only: gen tools with host BUILD_CC (run on host), library with cross CC.
-	# The cross clang wrapper injects -arch/-isysroot/-miphoneos-version-min, so CC alone is
-	# enough for the target flags; keep libgrapheme's own -Os/-fPIC (SHFLAGS) for the .a objects.
+	# Cross clang wrapper already injects -arch/-isysroot/-miphoneos-version-min, so CC alone
+	# carries the target flags; keep libgrapheme's own -Os/-fPIC (SHFLAGS) for the .a objects.
 	+$(MAKE) -C $(BUILD_WORK)/libgrapheme libgrapheme.a \
 		BUILD_CC=cc \
 		CC="$(CC)" AR="$(AR)" RANLIB="$(RANLIB)"

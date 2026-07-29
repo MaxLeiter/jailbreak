@@ -2,11 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# at-spi2-core.mk — the AT-SPI accessibility stack: libatspi + the a11y bus (launcher +
-# registryd) + the ATK bridge (at-spi2-atk was merged into this tree at 2.46, so ONE build
-# yields both atspi-2 and atk-bridge-2.0). gnome-shell links atk-bridge-2.0 unconditionally.
-# X11 support OFF — the shell target is the Wayland/iosc session, and this avoids the
-# XTst/XEvIE keygrab surface. Mirrors recipes/gnome-desktop.mk (meson cross).
+# at-spi2-atk was merged into this tree at 2.46, so one build yields both atspi-2 and
+# atk-bridge-2.0. X11 support is disabled to avoid the XTst/XEvIE keygrab surface
+# (session target is Wayland/iosc only).
 
 SUBPROJECTS    += at-spi2-core
 ATSPI2_MAJOR_V := 2.52
@@ -63,25 +61,20 @@ at-spi2-core-package: at-spi2-core-stage
 		$(BUILD_DIST)/libatk1.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# libatspi2.0-0 — the AT-SPI client library (versioned dylib only)
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libatspi.*.dylib \
 		$(BUILD_DIST)/libatspi2.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# libatk-bridge2.0-0 — the ATK->AT-SPI bridge gnome-shell/GTK3 load
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libatk-bridge-2.0.*.dylib \
 		$(BUILD_DIST)/libatk-bridge2.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# libatk1.0-0 — ATK was merged INTO at-spi2-core at 2.51/2.52, so this tree builds
-	# libatk-1.0 2.52 (with atk_document_get_text_selections, the symbol the 2.52 bridge
-	# needs). Ship it FROM HERE so ATK and the bridge are always ABI-consistent (the old
-	# standalone atk.mk 2.38 deb lacked that symbol -> atk-bridge dyld-abort skew). The
-	# 2.52.0+ios2 version supersedes the 2.38 standalone deb on upgrade.
+	# Ship libatk-1.0 from this tree (2.52, has atk_document_get_text_selections) rather than
+	# the old standalone atk.mk 2.38 deb, which lacked that symbol and caused an atk-bridge
+	# dyld abort. Version 2.52.0+ios2 supersedes the 2.38 deb on upgrade.
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libatk-1.0.0.dylib \
 		$(BUILD_DIST)/libatk1.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# libatk1.0-dev — ATK headers + atk.pc + unversioned symlink (needed by the on-device
-	# g-ir-scanner Atk-1.0 regen and GTK app builds). Owns atk-1.0/ headers + atk.pc so they
-	# do NOT overlap at-spi2-core-dev (which strips them below; Breaks/Replaces in the control).
+	# libatk1.0-dev owns atk-1.0/ headers + atk.pc so they don't overlap at-spi2-core-dev
+	# (which strips them below; Breaks/Replaces in the control).
 	mkdir -p $(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/atk-1.0 \
 		$(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
@@ -91,7 +84,6 @@ at-spi2-core-package: at-spi2-core-stage
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/atk.pc \
 		$(BUILD_DIST)/libatk1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
 
-	# at-spi2-core — the a11y bus: launcher + registryd + D-Bus/session data + schemas
 	if [ -d "$(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec" ]; then \
 		cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec $(BUILD_DIST)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
 	fi
@@ -103,16 +95,13 @@ at-spi2-core-package: at-spi2-core-stage
 	fi
 	rm -rf $(BUILD_DIST)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/doc
 
-	# at-spi2-core-dev — headers + .pc + unversioned symlinks (needed by the on-device
-	# gnome-shell introspection build)
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/at-spi2-core-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig $(BUILD_DIST)/at-spi2-core-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libatspi.dylib \
 		$(BUILD_STAGE)/at-spi2-core/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libatk-bridge-2.0.dylib \
 		$(BUILD_DIST)/at-spi2-core-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# at-spi2-core-dev no longer owns the ATK headers/atk.pc — those moved to libatk1.0-dev
-	# (which it Depends on). Strip them from the -dev copy to avoid the dpkg file-overlap.
+	# ATK headers/atk.pc moved to libatk1.0-dev; strip here to avoid dpkg file-overlap.
 	rm -rf $(BUILD_DIST)/at-spi2-core-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/atk-1.0 \
 		$(BUILD_DIST)/at-spi2-core-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/atk.pc
 

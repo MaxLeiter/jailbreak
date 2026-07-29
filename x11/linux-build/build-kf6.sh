@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-kf6.sh — cross-build the KDE Frameworks 6 layer (plus the Plasma-released
+# Cross-builds the KDE Frameworks 6 layer (plus the Plasma-released
 # libraries kwayland/kdecoration/kglobalacceld/plasma-activities/layer-shell-qt) on top
 # of the Qt 6 debs, OFF-DEVICE. Layer K of x11/docs/kde-plasma-plan.md; the recipe set
 # and the build order both come from the K0 audit (tools/gen-kf6-recipes.py prints the

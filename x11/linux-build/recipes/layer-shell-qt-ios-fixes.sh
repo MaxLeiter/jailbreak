@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# layer-shell-qt-ios-fixes.sh — Wayland popup fixes for QtWayland on iOS.
+# Wayland popup fixes for QtWayland on iOS.
 set -euo pipefail
 
 src=${1:?usage: layer-shell-qt-ios-fixes.sh <layer-shell-qt-source-dir>}

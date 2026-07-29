@@ -2,10 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# wuffs.mk — NEW recipe for the Ladybird leaf closure (pin wuffs 0.3.4). Header-only image
-# codecs: the whole library is the single-file amalgamation release/c/wuffs-v0.3.c, which acts
-# as a header unless WUFFS_IMPLEMENTATION is defined in exactly one TU (Ladybird does that).
-# No compile step; we just drop the amalgamation into the prefix include dir. +ios1 marker.
+# wuffs-v0.3.c is a single-file amalgamation that acts as a header unless
+# WUFFS_IMPLEMENTATION is defined in exactly one TU (Ladybird does that) — no compile
+# step needed here, just drop the file into the include dir.
 
 SUBPROJECTS     += wuffs
 WUFFS_VERSION   := 0.3.4

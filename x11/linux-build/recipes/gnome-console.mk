@@ -2,13 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-console.mk — GNOME Console ("kgx"), the modern GTK4 terminal. Cleanest first GTK4
-# app: its deps are covered by the published libadwaita + vte GTK4 stack.
-# Binary is `kgx`. Installs a GSettings schema → needs glib-compile-schemas in postinst.
-#
-# DEPENDS (target): gtk4 (gtk-builder) + libadwaita + vte (gtk4 flavour) + pcre2.
-#
-# BUILT/PUBLISHED — gnome-console 46.0+ios1.
+# Binary is `kgx`. Installs a GSettings schema -- needs glib-compile-schemas in postinst.
 
 SUBPROJECTS            += gnome-console
 GNOME-CONSOLE_MAJOR_V  := 46

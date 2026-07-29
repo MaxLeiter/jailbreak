@@ -2,10 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# zlib.mk — NEW recipe for the Ladybird leaf closure (pin zlib 1.3.1). Procursus upstream only
-# ships zlib-ng; Ladybird pins classic zlib 1.3.1 (do NOT substitute zlib-ng). Root of the leaf
-# tree (libpng/libwebp/freetype/curl/libxml2 all pull it). CMake build -> dylib deb
-# (libz.1.dylib + headers + zlib.pc) staged into BUILD_BASE. +ios1 per AGENTS convention.
+# Ladybird requires classic zlib, not Procursus's zlib-ng — do not substitute.
 
 SUBPROJECTS   += zlib
 ZLIB_VERSION  := 1.3.1

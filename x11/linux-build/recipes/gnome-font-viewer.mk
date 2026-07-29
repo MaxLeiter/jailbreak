@@ -2,22 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-font-viewer.mk — GNOME Fonts, a small GTK4/libadwaita app to browse/preview installed
-# fonts. Chosen as a clean second GTK4 "simple win": it is PURE C (no Vala, no introspection),
-# and every dependency is already in our tree or prebuilt — so it adds zero new sub-deps.
-# (It pairs nicely with the x11-fonts-sf work: previews the live iOS system fonts.)
-#
-# Picked as the LIGHTEST simple win (zero new sub-deps). NOTE: gnome-calculator is also viable
-# but heavier — it's Vala, but valac is a host transpiler (Vala->C, never runs target code), so
-# it only needs vendored gtk4/libadwaita .vapi at build time, plus the C deps libsoup3/libgee/
-# mpfr/mpc/gtksourceview5. (Only gjs/JS apps + the shell hit the runtime-typelib wall, not Vala.)
-# See docs/gnome-apps.md "Language note".
-#
-# DEPENDS (target): gtk4 (gtk-builder) + libadwaita + gnome-desktop (+ harfbuzz/fontconfig/
-#   freetype/fribidi/glib, all prebuilt).
-#
-# BUILT/PUBLISHED — gnome-font-viewer 46.0+ios1.
-
 SUBPROJECTS                += gnome-font-viewer
 GNOME-FONT-VIEWER_MAJOR_V  := 46
 GNOME-FONT-VIEWER_VERSION  := $(GNOME-FONT-VIEWER_MAJOR_V).0

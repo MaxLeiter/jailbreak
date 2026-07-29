@@ -115,10 +115,8 @@ stage_latest_deb_from_out() {
   dpkg-deb -x "$best" /work/Procursus/build_base/iphoneos-arm64-rootless/1900
 }
 
-# Plasma Mobile's volume applet needs PulseAudioQt, which in turn consumes the
-# PulseAudio client pc files from the local audio package wave. Keep this
-# self-contained so a fresh KF6 volume can build plasma-pa without a manual
-# build_base surgery step.
+# plasma-pa needs PulseAudioQt, which needs the PulseAudio client pc files from the
+# local audio package wave — stage them so a fresh KF6 volume doesn't need manual surgery.
 for pkg in "${LOCAL_STAGE_DEBS[@]}"; do
   stage_latest_deb_from_out "$pkg"
 done
@@ -166,11 +164,9 @@ for f in \
   fi
 done
 
-# Current KF6 volumes may predate the KCMUtils cross-tooling path fix. The
-# installed config already carries the tooling targets beside itself, but its
-# cross-compile find_file() searches for KF6KCMUtils/... below the current
-# directory instead of below the parent cmake directory. Repair the staged copy
-# idempotently so libplasma can configure without forcing a full KF6 rebuild.
+# KF6KCMUtilsConfig.cmake's cross-compile find_file() searches for KF6KCMUtils/... below the
+# current directory instead of the parent cmake directory, even though the tooling targets are
+# staged right beside it. Patch the staged copy in place rather than forcing a full KF6 rebuild.
 KCMUTILS_CONFIG="${BB}/usr/lib/cmake/KF6KCMUtils/KF6KCMUtilsConfig.cmake"
 if [ -f "$KCMUTILS_CONFIG" ]; then
   sed -i 's|PATHS ${KF6_HOST_TOOLING} ${CMAKE_CURRENT_LIST_DIR}|PATHS ${KF6_HOST_TOOLING} ${CMAKE_CURRENT_LIST_DIR}/.. ${CMAKE_CURRENT_LIST_DIR}|' "$KCMUTILS_CONFIG"

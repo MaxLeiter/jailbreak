@@ -2,23 +2,19 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libdrm.mk — *** LINKS-ONLY SHIM for iOS. *** libdrm is a Linux kernel DRM/KMS interface; it
-# CANNOT exist on iOS (no DRM device). Mutter's Wayland backend links libdrm for the Linux dmabuf
-# buffer path (DRM fourcc/modifiers). This shim provides libdrm's REAL, portable public headers
-# (drm_fourcc.h/drm.h/xf86drm*.h — they support non-Linux by design) plus a links-only stub of the
-# drm* symbols Mutter references, so libmutter/cogl/clutter COMPILE and LINK for typelib generation.
-#
-#   *** THE dmabuf BUFFER PATH IS NON-FUNCTIONAL ON iOS. *** It is replaced by IOSurface in the
-#   *** MetaBackendIOS compositor backend (coordinated with the iosc track). These stubs return 0/
-#   *** NULL; with native_backend=false the KMS paths are not compiled, and the Wayland dmabuf path
-#   *** is inert. DO NOT mistake this for a working buffer path.
+# Links-only shim: libdrm has no iOS equivalent (no DRM device), but Mutter's Wayland
+# backend links it for the dmabuf buffer path. Ships libdrm's real portable headers
+# (drm_fourcc.h/drm.h/xf86drm*.h) plus no-op stubs of the referenced drm* symbols so
+# libmutter/cogl/clutter link for typelib generation.
+# dmabuf itself is inert on iOS; it's replaced by IOSurface in MetaBackendIOS. Stubs
+# return 0/NULL and native_backend=false keeps the KMS paths from compiling at all.
 
 SUBPROJECTS   += libdrm
 LIBDRM_VERSION := 2.4.120
 DEB_LIBDRM_V   ?= $(LIBDRM_VERSION)+ios2
 
-# drm* symbols Mutter references (from `grep -roE 'drm[A-Z][A-Za-z0-9_]*\(' mutter/src`). Stubbed
-# as no-ops so libmutter links; never actually called on iOS (native off, dmabuf path inert).
+# Symbols Mutter references (grep -roE 'drm[A-Z][A-Za-z0-9_]*\(' mutter/src); never
+# actually called on iOS since native_backend is off.
 DRM_SYMS := drmFreeVersion drmGetCap drmGetRenderDeviceNameFromFd drmGetVersion drmHandleEvent \
   drmIoctl drmModeAddFB drmModeAddFB2 drmModeAddFB2WithModifiers drmModeAtomicAddProperty \
   drmModeAtomicAlloc drmModeAtomicCommit drmModeAtomicFree drmModeCloseFB drmModeCreatePropertyBlob \
@@ -68,10 +64,6 @@ libdrm: libdrm-setup
 endif
 
 libdrm-package: libdrm-stage
-	# libdrm.mk Package Structure — ship the links-only shim so consumers that link
-	# @rpath/libdrm.dylib (Xwayland, mutter) resolve it on-device. Runtime deb
-	# (libdrm2) + a -dev deb (header shims + libdrm.pc). Still INERT (dmabuf path
-	# replaced by IOSurface); this only satisfies the dyld/link reference.
 	rm -rf $(BUILD_DIST)/libdrm{2,-dev}
 	mkdir -p $(BUILD_DIST)/libdrm2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libdrm-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib

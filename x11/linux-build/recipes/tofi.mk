@@ -2,17 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# tofi.mk — tofi, a tiny Wayland dmenu/rofi-style launcher
-# (github.com/philj56/tofi). It draws with cairo/pangocairo or harfbuzz into
-# wl_shm and maps through wlr-layer-shell.
-#
-# PORTABILITY: upstream already makes librt/libm optional. The iOS patch drops
-# the test subdir from cross builds and makes wayland-protocols a target/data
-# dependency instead of a native dependency so the staged iOS protocol XML path
-# is used while wayland-scanner itself remains native.
-#
-# DEPENDS (target): wayland, libxkbcommon, cairo, pango/pangocairo, harfbuzz,
-# freetype, glib/gio-unix. wayland-protocols is build/data only.
+# The iOS patch drops the test subdir and makes wayland-protocols a
+# target/data dependency instead of native, so wayland-scanner stays native
+# while the protocol XML resolves from the staged iOS path.
 
 SUBPROJECTS  += tofi
 TOFI_VERSION := 0.9.1

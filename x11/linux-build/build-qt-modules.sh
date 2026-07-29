@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# build-qt-modules.sh — cross-build the Qt 6 MODULE layer on top of qtbase for rootless iOS,
-# OFF-DEVICE: qtshadertools -> qtdeclarative -> qt5compat -> qtwayland -> qtsvg -> qtimageformats (ladder
-# order matters: declarative needs shadertools' target cmake package from build_base).
-# Companion to build-qt.sh (qtbase); a SEPARATE script on purpose so it can be developed and
-# mounted without touching build-qt.sh while the qtbase build is in flight. Same volume rules:
-# runs on procursus-vol-qt (or a clone) and must NEVER run concurrently with build-qt.sh on
+# Cross-builds the Qt 6 module layer on top of qtbase for rootless iOS, OFF-DEVICE. Build order
+# matters: qtdeclarative needs qtshadertools' cmake package already staged in build_base.
+#
+# Companion to build-qt.sh (qtbase) — a separate script so it can be edited without touching
+# build-qt.sh while that build is in flight. Must never run concurrently with build-qt.sh on
 # the same volume.
 #
 #   docker run --rm --platform linux/arm64 --cpus=8 \
@@ -14,14 +13,10 @@
 #     -e TARGETS="qtshadertools qtdeclarative qt5compat qtwayland qtsvg qtimageformats" \
 #     procursus-xbuild:bookworm-arm64 -c 'bash /work/build-qt-modules.sh' 2>&1 | tee qt-modules-build.log
 #
-# TWO-STAGE, like build-qt.sh. Stage 1 EXTENDS the host Qt (built by build-qt.sh stage 1)
-# with the per-module HOST tools a cross module build resolves via QT_HOST_PATH:
-#   - qtshadertools -> qsb            (bakes QtQuick shaders; needed by host+cross declarative)
-#   - qtdeclarative -> qmlcachegen, qmlimportscanner (compile the modules' own QML at build time)
-#   - qtwayland     -> qtwaylandscanner (generates Qt wayland protocol bindings)
-# qmltyperegistrar already ships with the host qtbase (in qtbase since 6.3). This is the
-# whole reason the Qt track has no introspection wall: ALL codegen is host-side.
-# Stage 2 is the Procursus cross build via recipes/qt*.mk.
+# Two-stage like build-qt.sh. Stage 1 extends the host Qt with per-module host tools a cross
+# module build resolves via QT_HOST_PATH (qsb, qmlcachegen, qtwaylandscanner); qmltyperegistrar
+# already ships with host qtbase since 6.3. All codegen being host-side is why this track has
+# no separate introspection step. Stage 2 is the Procursus cross build via recipes/qt*.mk.
 set -euo pipefail
 
 QTVER=6.6.3
@@ -79,9 +74,8 @@ host_module() { # <module> <marker-relative-to-HOSTQT> [extra cmake flags...]
     -DCMAKE_PREFIX_PATH="${HOSTQT}" \
     -DQT_BUILD_EXAMPLES=OFF -DQT_BUILD_TESTS=OFF -DQT_BUILD_BENCHMARKS=OFF \
     "$@"
-  # Full-speed first, then -j2 retry: the Docker VM is 16 CPUs but ~7.7GiB RAM, and
-  # ninja's default (nproc+2) OOM-kills gcc on qtdeclarative's 2-3GiB qmldom TUs
-  # ("c++: fatal error: Killed signal terminated program cc1plus"). Survivor objects
+  # Full-speed first, then -j2 retry: the Docker VM's 16 CPUs but ~7.7GiB RAM means ninja's
+  # default parallelism OOM-kills gcc on qtdeclarative's 2-3GiB qmldom TUs. Survivor objects
   # are kept, so the retry only rebuilds the heavy stragglers.
   ninja -C "${builddir}" || ninja -C "${builddir}" -j2
   ninja -C "${builddir}" install
@@ -90,11 +84,10 @@ host_module() { # <module> <marker-relative-to-HOSTQT> [extra cmake flags...]
 }
 
 host_module qtshadertools bin/qsb
-# Marker is bin/qmlprofiler, not libexec/qmlcachegen: qmlprofiler only gets installed when
-# FEATURE_qml_profiler=ON, so a host tree built before this flag was added (marker missing)
-# is correctly detected as stale and rebuilt with the new flags, instead of the qmlcachegen-only
-# marker matching and silently skipping a host Qt6QmlTools that lacks qmlprofiler/qmlpreview
-# (see recipes/qtdeclarative.mk's cross-build comment for why the cross build needs both).
+# Marker is bin/qmlprofiler, not libexec/qmlcachegen: qmlprofiler only installs when
+# FEATURE_qml_profiler=ON, so a host tree built before that flag existed is correctly detected
+# as stale and rebuilt, rather than matching the qmlcachegen marker and silently skipping a
+# host Qt6QmlTools that the cross build needs (see recipes/qtdeclarative.mk).
 host_module qtdeclarative bin/qmlprofiler -DFEATURE_qml_jit=OFF -DFEATURE_qml_profiler=ON -DFEATURE_qml_preview=ON
 # host qtwayland needs host wayland headers + the plain wayland-scanner; the CROSS qtwayland
 # also find_program()s wayland-scanner on the host (Wayland::Scanner), so install both here

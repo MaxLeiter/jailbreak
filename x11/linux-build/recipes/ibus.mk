@@ -2,11 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# ibus.mk — the input-method bus. gnome-shell links libibus-1.0 unconditionally (its
-# keyboard/IM plumbing); the daemon comes along for later CJK input. Everything UI-ish is
-# OFF: no GTK panels/IM modules, no XIM server, no Wayland frontend, no engines, no
-# emoji/unicode dictionaries (those want UCD/CLDR data), no dconf, no python. libibus is
-# pure GLib/GDBus. Classic autotools like recipes/startup-notification.mk.
+# gnome-shell links libibus-1.0 unconditionally for its keyboard/IM plumbing; the daemon
+# comes along for later CJK input support.
 
 SUBPROJECTS  += ibus
 IBUS_VERSION := 1.5.29
@@ -49,15 +46,9 @@ ibus: ibus-setup glib2.0
 		--disable-systemd-services \
 		--disable-schemas-compile \
 		--disable-gtk-doc
-	# gen-internal-compose-table is a BUILD-host tool (it runs during the build to emit the
-	# compose/sequences-*-endian data bundled into libibus). ibus's CROSS_COMPILING makefile
-	# tries to compile it with CC_FOR_BUILD but its target-specific CFLAGS override doesn't
-	# reach the per-object rule, so it inherits the global cross -arch arm64 and emits a
-	# Mach-O the host linker rejects. Fully generate the sequences data here with the host
-	# toolchain forced on the make command line (command-line assignments beat target-specific
-	# vars). rm the stale cross objects first (the build dir is not re-extracted between
-	# retries). After this the sequences are newest, so the main cross build never re-touches
-	# the tool — it just consumes the data into libibus's gresource.
+	# gen-internal-compose-table must run on the host, but ibus's makefile leaks the cross
+	# -arch arm64 into it, producing a Mach-O the host linker rejects. Force host CC/CCLD
+	# on the command line (beats target-specific vars) and rm stale cross objects first.
 	rm -f $(BUILD_WORK)/ibus/src/gen_internal_compose_table-*.o \
 		$(BUILD_WORK)/ibus/src/gen-internal-compose-table
 	+$(MAKE) -C $(BUILD_WORK)/ibus/src CC="/usr/bin/cc" CCLD="/usr/bin/cc" \

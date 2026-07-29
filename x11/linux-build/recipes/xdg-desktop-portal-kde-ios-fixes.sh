@@ -1,33 +1,19 @@
 #!/usr/bin/env bash
-# xdg-desktop-portal-kde-ios-fixes.sh — source trims for the Xios (rootless iOS)
-# cross build.
+# Drops Qt6's unconditional required Test component (qtbase ships no
+# Qt6Test package/dylib here, same cut kf6-kio and kf6-kcmutils take) and
+# the autotests subdir (it reaches Qt::Test via ecm_add_test(s), which has
+# no BUILD_TESTING guard of its own). Also strips git hooks and target-side
+# linguist install for the cross build.
 #
-# Audited against Plasma 6.1.5's xdg-desktop-portal-kde tarball.
-#
-#   1. Qt6 `Test` is an unconditional REQUIRED COMPONENT of the top-level
-#      find_package. qtbase 6.6.3-4+ios1 ships no Qt6Test cmake package and no
-#      libQt6Test dylib (verified against the published debs), so this fails at
-#      configure time. Drop the component — exactly the cut kf6-kio and
-#      kf6-kcmutils already carry (kde-kf6.md, "KIO drops unconditional Qt6Test;
-#      KCMUtils drops unconditional Qt6Test").
-#
-#   2. add_subdirectory(autotests) reaches Qt::Test through ecm_add_test/
-#      ecm_add_tests, which have no BUILD_TESTING guard of their own, so
-#      -DBUILD_TESTING=OFF alone does not save us. Drop the subdir.
-#
-# Everything else is cross-build hygiene shared with kscreen.mk / milou.mk: no git
-# hooks, no target-side linguist install.
-#
-# NOT touched (deliberate):
-#   * src/waylandintegration.cpp's <linux/input-event-codes.h> include. That header
-#     is staged into the volume sysroot by build-kwin.sh, not patched out of sources
-#     anywhere in this tree (build-wayland-apps.sh / build-gtk.sh / build-xwayland.sh
-#     all do the same staging). Keeping that convention here.
-#   * find_package(KIOFuse) and the two ecm_find_qmlmodule calls: both resolve to
-#     TYPE RUNTIME in the feature summary, so a miss is a warning, not an error.
-#   * The screencast / remote-desktop / input-capture portal sources. They are pure
-#     Wayland-protocol + QtDBus code with no PipeWire or libei link, so they compile;
-#     whether they do anything depends on the compositor, which is a runtime matter.
+# Deliberately NOT touched:
+#   * waylandintegration.cpp's <linux/input-event-codes.h> include: staged
+#     into the volume sysroot by build-kwin.sh, not patched out, same as
+#     elsewhere in this tree.
+#   * find_package(KIOFuse) and the two ecm_find_qmlmodule calls: both
+#     resolve to TYPE RUNTIME, so a miss is a warning, not a configure error.
+#   * The screencast/remote-desktop/input-capture portal sources: pure
+#     Wayland-protocol + QtDBus code, so they compile regardless of what
+#     the compositor implements at runtime.
 set -euo pipefail
 
 src=${1:?usage: xdg-desktop-portal-kde-ios-fixes.sh <xdg-desktop-portal-kde-source-dir>}

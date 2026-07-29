@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libytnef.mk — TNEF/winmail.dat parser library used by Geary when TNEF support is on.
-# GitHub tag tarballs do not ship a generated configure script, so autoreconf is part of
-# the build like iso-codes.
+# TNEF/winmail.dat parser used by Geary when TNEF support is on. GitHub tag tarballs
+# don't ship a generated configure script, so autoreconf is part of the build.
 
 SUBPROJECTS      += libytnef
 LIBYTNEF_VERSION := 2.1.2

@@ -2,13 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gtksourceview5.mk — GTK4 source-code editing widget (syntax highlighting, etc.). Needed by
-# gnome-text-editor and other GTK4 editors. GNOME 45 generation = gtksourceview 5.10.0.
-# (gtksourceview4 is the separate GTK3-flavoured library for gedit — a distinct recipe.)
-#
-# DEPENDS (target): gtk4 (gtk-builder) + libxml2 + pcre2 (+ pango/fribidi/glib in stack).
-#
-# BUILT/PUBLISHED — libgtksourceview-5-0 5.12.1+ios1.
+# gtksourceview4 is the separate GTK3-flavored library for gedit; that's a distinct recipe.
 
 SUBPROJECTS         += gtksourceview5
 GTKSOURCEVIEW5_MAJOR_V := 5.12

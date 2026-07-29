@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# build-gjs-manual.sh — stage gjs 1.78's deps into procursus-vol-gjs and cross-build gjs against
-# the working libmozjs-115 (the deps are prebuilt/staged, not recipe-built, so we drive meson
-# directly). Run in the container:
+# Stages gjs 1.78's deps into procursus-vol-gjs and cross-builds gjs against
+# the working libmozjs-115 (the deps are prebuilt/staged, not recipe-built, so
+# meson is driven directly). Run in the container:
 #   docker run --rm --platform linux/arm64 --cpus=3 --entrypoint /usr/bin/bash \
 #     -v procursus-vol-gjs:/work/Procursus -v procursus-vol-gtk:/from:ro -v "$PWD/out:/out:ro" \
 #     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/build-gjs-manual.sh:/work/b.sh:ro" procursus-xbuild:bookworm-arm64 /work/b.sh
 #
-# State as of handoff (2026-06-30): configure was reached with ALL deps resolving incl mozjs-115;
-# the two dep gaps below are FIXED here (verified): (1) cairo's X-proto .pc live in
-# build_base/share/pkgconfig — must be on PKG_CONFIG_LIBDIR; (2) gjs's readline find_library link
-# probe needs -stdlib=libc++ (iOS). The previous detached "gjs-build" container FAILED before
-# these fixes — relaunch from THIS script.
+# Two dep gaps fixed here: (1) cairo's X-proto .pc live in build_base/share/pkgconfig
+# — must be on PKG_CONFIG_LIBDIR; (2) gjs's readline find_library link probe needs
+# -stdlib=libc++ (iOS).
 set -euo pipefail
 export PATH="/root/cctools/bin:$PATH"
 TS=/work/Procursus/build_base/iphoneos-arm64-rootless/1900
@@ -34,8 +32,8 @@ if [ ! -f "$B/lib/libgirepository-1.0.1.dylib" ] && [ -d /out ]; then
     d=$(ls /out/${pat}_*.deb 2>/dev/null | head -1); [ -n "$d" ] && dpkg-deb -x "$d" "$TS"
   done
 fi
-# mozjs ships js.pc; gjs wants mozjs-115.pc. Rewrite this every run: the first
-# manual pass injected js/RequiredDefines.h, which is not shipped by mozjs115.
+# mozjs ships js.pc; gjs wants mozjs-115.pc. Rewrite every run — a stale copy
+# can reference js/RequiredDefines.h, which mozjs115 doesn't ship.
 cat > "$B/lib/pkgconfig/mozjs-115.pc" <<EOF
 prefix=/var/jb/usr
 includedir=\${prefix}/include

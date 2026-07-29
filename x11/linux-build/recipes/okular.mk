@@ -2,8 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# okular.mk — KDE Okular desktop app, first-pass PDF-focused build for Xios.
-
 SUBPROJECTS    += okular
 OKULAR_VERSION := 24.08.0
 DEB_OKULAR_V   ?= $(OKULAR_VERSION)+ios3

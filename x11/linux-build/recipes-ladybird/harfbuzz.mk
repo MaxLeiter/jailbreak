@@ -2,14 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# harfbuzz.mk — Ladybird leaf closure. NEW meson recipe at 10.2.0 (the old autotools --without-icu
-# recipe is dead: harfbuzz dropped autotools at 8.0, and Ladybird REQUIRES -Dicu=enabled). Builds
-# WITH freetype + ICU 78.3 (both staged), everything else off (glib/gobject/cairo/graphite2/chafa/
-# utilities/tests/docs/introspection disabled) to keep the closure tight. Meson cross build mirrors
-# graphene.mk's cross.txt; CC/CXX route through the cc-nounused wrappers so meson's link probe
-# survives the Procursus wrapper's -Wl,-adhoc_codesign injection. Produces libharfbuzz.0,
-# libharfbuzz-subset.0, libharfbuzz-icu.0. The driver wipes the staged gtk-era 2.8.1 shadow first.
-# +ios1 marker.
+# Meson-only build (harfbuzz dropped autotools at 8.0); Ladybird requires -Dicu=enabled.
+# CC/CXX go through cc-nounused wrappers so meson's link probe survives Procursus's
+# -Wl,-adhoc_codesign injection.
 
 SUBPROJECTS      += harfbuzz
 HARFBUZZ_VERSION := 10.2.0
@@ -44,8 +39,8 @@ ifneq ($(wildcard $(BUILD_WORK)/harfbuzz/.build_complete),)
 harfbuzz:
 	@echo "Using previously built harfbuzz."
 else
-# NOTE: ICU 78.3 is pre-staged in BUILD_BASE (icu4c is DONE, do not rebuild) — depend only on
-# freetype (built this wave); harfbuzz finds icu-uc/icu-i18n via cross-pkg-config.
+# ICU is pre-staged in BUILD_BASE already; only depend on freetype here (icu-uc/icu-i18n
+# resolve via cross-pkg-config).
 harfbuzz: harfbuzz-setup freetype
 	cd $(BUILD_WORK)/harfbuzz/build && meson \
 		--cross-file cross.txt \

@@ -2,10 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libdisplay-info.mk — minimal EDID parser shim for KWin on iOS.
-# KWin hard-requires libdisplay-info for monitor metadata. For first-light iOS
-# bring-up we only need the ABI to compile/link; the parser returns unsupported
-# metadata until a real libdisplay-info port lands.
+# Links-only shim: KWin hard-requires libdisplay-info for monitor metadata; this ships the ABI
+# only, returning unsupported metadata until a real EDID parser port lands.
 
 SUBPROJECTS += libdisplay-info
 LIBDISPLAYINFO_VERSION := 0.1.1

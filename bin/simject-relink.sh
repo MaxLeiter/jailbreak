@@ -1,18 +1,8 @@
 #!/bin/bash
-# simject-relink.sh — restore simject's substrate symlinks in the iOS Simulator
-# runtimes after a reboot.
-#
-# WHY: the symlinks (CydiaSubstrate.framework + MobileSubstrate/DynamicLibraries)
-# live on a RAM-backed tmpfs overlay that installsubstrate.sh mounts over each
-# sealed, read-only runtime's Library. tmpfs is wiped on every macOS reboot, so
-# the simulator loses substrate and tweaks stop loading. This re-runs
-# `installsubstrate.sh link` to recreate them.
-#
-# Run by a LaunchDaemon as ROOT (link mounts tmpfs + writes into system paths).
-# See bin/launchd/com.max.simject-relink.plist for install instructions.
-#
-# Idempotent + cheap: remount.sh skips the overlay if it's already mounted, and
-# the symlink step is just rm -rf + ln -s. Safe to fire on every volume mount.
+# The substrate symlinks live on a RAM-backed tmpfs overlay that's wiped on every
+# macOS reboot, so tweaks stop loading until this re-links them. Runs as root via
+# LaunchDaemon (see bin/launchd/com.max.simject-relink.plist); idempotent, safe
+# to fire on every volume mount.
 set -u
 
 LOG="/Users/max/Library/Logs/simject-relink.log"

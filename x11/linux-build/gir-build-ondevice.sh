@@ -4,11 +4,9 @@
 #
 # Why this and not gir-ondevice.sh's `scan`: the GTK stack's g-ir-scanner invocations are
 # enormous (per-namespace header filelists, identifier/symbol prefixes, --include chains,
-# generated enum headers). Hand-writing them is brittle. Instead we let each library's OWN
-# meson build drive g-ir-scanner. Because the build runs natively on the device, the dumper
-# meson compiles is native arm64 Mach-O and runs natively against the real installed ABI —
-# the most-native path (no cross, no qemu, no ssh dumper-shuttle). Validated on graphene
-# 2026-06-30: `imports.gi.Graphene` loads in gjs on the A10.
+# generated enum headers) and brittle to hand-write. Instead each library's own meson build
+# drives g-ir-scanner natively on the device, so the dumper meson compiles is native arm64
+# Mach-O running against the real installed ABI — no cross, no qemu, no ssh dumper-shuttle.
 #
 # The library's runtime deb must already be installed on-device (we link/scan the build-tree
 # copy, but its deps resolve from the installed prefix), plus its -dev headers and every

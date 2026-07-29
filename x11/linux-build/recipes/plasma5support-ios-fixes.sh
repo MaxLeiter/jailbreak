@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# plasma5support-ios-fixes.sh — first-light Plasma5Support cuts for iOS.
 set -euo pipefail
 
 src=${1:?usage: plasma5support-ios-fixes.sh <plasma5support-source-dir>}

@@ -2,12 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# tllist.mk — foot's author's typesafe, intrusive linked-list library (codeberg.org/dnkl/tllist).
-# Header-only: the whole library is a single tllist.h. `meson install` just drops the header and
-# a tllist.pc (whose Version = 1.1.0 satisfies foot's `dependency('tllist', version:'>=1.1.0')`).
-# Nothing is compiled, so there is no runtime dylib — this ships a single -dev deb (headers + .pc).
-#
-# DEPENDS (build-only, consumed by fcft/foot at configure via cross-pkg-config): none.
+# Header-only (single tllist.h). Nothing is compiled, so there's no runtime
+# dylib, just the -dev deb below.
 
 SUBPROJECTS   += tllist
 TLLIST_VERSION := 1.1.0

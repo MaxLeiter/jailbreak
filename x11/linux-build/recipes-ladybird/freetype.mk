@@ -2,11 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# freetype.mk — Ladybird leaf closure. BUMP 2.12.1 -> 2.13.3 (Ladybird pin). autotools configure,
-# built --without-harfbuzz to break the freetype<->harfbuzz cycle (harfbuzz is built AFTER, WITH
-# freetype). Needs zlib + brotli (WOFF2 tables) + libpng16 (embedded PNG), all Wave 1/2 staged.
-# PGP verify dropped (NO_PGP pipeline). The driver wipes the staged gtk-era 2.12.1 shadow first.
-# +ios1 marker.
+# --without-harfbuzz breaks the freetype<->harfbuzz circular dependency; harfbuzz is
+# built afterward, with freetype enabled.
 
 SUBPROJECTS      += freetype
 FREETYPE_VERSION := 2.13.3

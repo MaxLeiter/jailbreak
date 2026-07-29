@@ -2,10 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# mozjs.mk — SpiderMonkey 115 (ESR), JIT-less, for gjs 1.78.
-# The single hardest cross in the tree (Linux->iOS Mach-O of mach/moz.configure + Rust).
-# BUILT/PUBLISHED — libmozjs-115-0 115.12.0+ios1. See docs/gjs-plan.md and
-# build_info/mozjs115.mozconfig for the cross-build constraints.
+# SpiderMonkey 115 (ESR), JIT-less, for gjs 1.78 — the hardest cross in the tree
+# (Linux->iOS Mach-O of mach/moz.configure + Rust). See build_info/mozjs115.mozconfig
+# for the cross-build constraints.
 
 SUBPROJECTS   += mozjs
 MOZJS_VERSION := 115.12.0
@@ -16,21 +15,16 @@ MOZJS_SRC     := mozjs-$(MOZJS_VERSION)
 mozjs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.mozilla.org/pub/firefox/releases/$(MOZJS_VERSION)esr/source/firefox-$(MOZJS_VERSION)esr.source.tar.xz)
 	$(call EXTRACT_TAR,firefox-$(MOZJS_VERSION)esr.source.tar.xz,firefox-$(MOZJS_VERSION)esr,mozjs)
-	# SETUP FIX 1: mozjs-115's bundled config.sub copies (5 of them) don't know 'ios'.
-	# Replace with the host's modern one (Debian autotools-dev).
+	# mozjs-115's bundled config.sub copies don't know 'ios' — replace with the host's modern one.
 	find $(BUILD_WORK)/mozjs -name config.sub  -exec cp -f /usr/share/misc/config.sub  {} \; || true
 	find $(BUILD_WORK)/mozjs -name config.guess -exec cp -f /usr/share/misc/config.guess {} \; || true
-	# The iOS portability series. patches/0001 = the moz.configure iOS-target patch (VALIDATED:
-	# configure is clean with it); 0002 drops the js shell; 0003 fixes old-configure darwin cases;
-	# 0004 page-aligns the helper-thread stack size (Darwin pthread_attr_setstacksize rejects the
-	# 4 KiB-aligned 2 MiB-8 KiB default with EINVAL on iOS's 16 KiB pages, which MOZ_CRASH turned
-	# into the JS_NewContext SIGSEGV — VALIDATED on-device: JS_NewContext + eval now succeed).
-	# Later entries get appended as the build shakes out.
+	# iOS portability series: 0001 is the moz.configure iOS-target patch; 0002 drops the js
+	# shell; 0003 fixes old-configure darwin cases; 0004 page-aligns the helper-thread stack
+	# size (Darwin pthread_attr_setstacksize rejects the unaligned default with EINVAL on
+	# iOS's 16 KiB pages, which MOZ_CRASH turned into a JS_NewContext SIGSEGV).
 	$(call DO_PATCH,mozjs,mozjs,-p1)
-	# SETUP FIX 2: moz's ld64 probe hardcodes `-fuse-ld=ld`, so clang must resolve `ld` to the
-	# cctools ld64. Symlink it next to the cross toolchain (CC carries -B@CCTOOLS_BIN@).
+	# moz's ld64 probe hardcodes `-fuse-ld=ld`, so clang must resolve `ld` to the cctools ld64.
 	ln -sf $(GNU_HOST_TRIPLE)-ld $(dir $(shell command -v $(GNU_HOST_TRIPLE)-ld))ld || true
-	# Render the cross mozconfig with our paths.
 	mkdir -p $(BUILD_WORK)/mozjs/build
 	sed -e 's|@TARGET_SYSROOT@|$(TARGET_SYSROOT)|g' \
 	    -e 's|@CROSS_PREFIX@|$(GNU_HOST_TRIPLE)|g' \
@@ -44,14 +38,12 @@ mozjs:
 else
 mozjs: mozjs-setup readline zlib
 	# Host needs: rustup toolchain with `rustup target add aarch64-apple-ios`, cbindgen,
-	# python3, yasm/nasm. These are build-host tools (Dockerfile/build-gjs.sh), not recipes.
-	# VALIDATED end-to-end (2026-06-30): libmozjs-115.dylib built for iOS arm64 (platform=iOS).
-	# The fixes (besides patches 0001-0003 + the config.sub/ld setup above):
-	#  * fake `xcrun` so the Rust cc-crate can locate the iOS SDK on a Linux host
-	#  * CRATE_CC_NO_DEFAULTS=1 — the cc-crate auto-adds -fembed-bitcode for iOS (conflicts
-	#    with mozbuild's -ffunction-sections); with it, cc uses only moz's full CXXFLAGS.
-	# NOTE: mozconfig currently pins --without-intl-api (first validated pass). gjs needs Intl —
-	# flip to bundled in-tree ICU (--enable-intl-api) once that pass is validated.
+	# python3, yasm/nasm — build-host tools (Dockerfile/build-gjs.sh), not recipes.
+	# Fake `xcrun` so the Rust cc-crate can locate the iOS SDK on a Linux host.
+	# CRATE_CC_NO_DEFAULTS=1: the cc-crate auto-adds -fembed-bitcode for iOS, which conflicts
+	# with mozbuild's -ffunction-sections.
+	# mozconfig currently pins --without-intl-api. gjs needs Intl — flip to bundled in-tree
+	# ICU (--enable-intl-api) once that pass is validated.
 	printf '#!/bin/sh\nfor a in "$$@"; do case "$$a" in --show-sdk-path*) echo $(TARGET_SYSROOT); exit 0;; esac; done\nif [ "$$1" = --find ]; then command -v "$(GNU_HOST_TRIPLE)-$$2" || command -v "$$2" || true; exit 0; fi\necho $(TARGET_SYSROOT)\n' > $(BUILD_TOOLS)/xcrun
 	chmod +x $(BUILD_TOOLS)/xcrun
 	cd $(BUILD_WORK)/mozjs; \
@@ -67,14 +59,13 @@ mozjs: mozjs-setup readline zlib
 	mkdir -p $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib,include,bin,lib/pkgconfig}
 	cp -a $(BUILD_WORK)/mozjs/obj/dist/bin/libmozjs-115*.dylib $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
 	# obj/dist/include is a tree of SYMLINKS into obj/ + the source tree; -aL DEREFERENCES
-	# them to real files so the -dev deb is self-contained (plain -a captured symlinks that
-	# dangle the moment build_work is cleaned — the on-device gir build then can't compile
-	# against gjs). The link targets exist now (fresh build tree), so this needs no extra vol.
+	# them to real files so the -dev deb is self-contained (plain -a captures dangling
+	# symlinks once build_work is cleaned, and the on-device gir build can't compile against them).
 	cp -aL $(BUILD_WORK)/mozjs/obj/dist/include/. $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
 	-cp -a $(BUILD_WORK)/mozjs/obj/dist/bin/js-config $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/ 2>/dev/null
-	# SpiderMonkey emits the pkg-config file as obj/js/src/build/js.pc (NOT mozjs-115.pc, which
-	# is why the old `find -name mozjs-115.pc` silently produced nothing). Rename it and retarget
-	# its prefix (js.pc ships prefix=/usr/local) so gjs-1.0.pc's Requires.private resolves.
+	# SpiderMonkey emits the pkg-config file as obj/js/src/build/js.pc, not mozjs-115.pc.
+	# Rename it and retarget its prefix (js.pc ships prefix=/usr/local) so gjs-1.0.pc's
+	# Requires.private resolves.
 	sed 's|^prefix=.*|prefix=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)|' \
 		$(BUILD_WORK)/mozjs/obj/js/src/build/js.pc \
 		> $(BUILD_STAGE)/mozjs$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/mozjs-115.pc

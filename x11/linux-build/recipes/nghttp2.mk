@@ -2,12 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# nghttp2.mk — OVERRIDE for the GNOME track. libsoup3 needs libnghttp2 (HTTP/2). Upstream's
-# recipe builds nghttp2's APP tools (nghttpx/nghttpd/nghttp) too, which deps nghttp3 + ngtcp2
-# (HTTP/3) — and nghttp3 fails to cross-compile (std::invoke_result_t / C++17). libsoup only
-# links libnghttp2, so build it `--enable-lib-only`: just the library, no apps, no nghttp3/ngtcp2
-# (and none of the app-only deps libev/jansson/jemalloc/libevent/c-ares). Mirrors the lean
-# approach in our curl.mk override.
+# Override for the GNOME track: upstream's recipe also builds nghttp2's app tools, which
+# pull in nghttp3 + ngtcp2 (HTTP/3), and nghttp3 fails to cross-compile (std::invoke_result_t
+# needs C++17). libsoup only links libnghttp2, so this builds `--enable-lib-only` instead.
 
 SUBPROJECTS     += nghttp2
 NGHTTP2_VERSION := 1.61.0
@@ -38,14 +35,11 @@ nghttp2: nghttp2-setup
 endif
 
 nghttp2-package: nghttp2-stage
-	# nghttp2.mk Package Structure (lib-only: no nghttp2-{proxy,server,client} app debs)
 	rm -rf $(BUILD_DIST)/libnghttp2-{14,dev}
 	mkdir -p $(BUILD_DIST)/libnghttp2-{14,dev}/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# nghttp2.mk Prep libnghttp2-14
 	cp -a $(BUILD_STAGE)/nghttp2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libnghttp2.14.dylib $(BUILD_DIST)/libnghttp2-14/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# nghttp2.mk Prep libnghttp2-dev
 	cp -a $(BUILD_STAGE)/nghttp2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libnghttp2.14.dylib) $(BUILD_DIST)/libnghttp2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/nghttp2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libnghttp2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 

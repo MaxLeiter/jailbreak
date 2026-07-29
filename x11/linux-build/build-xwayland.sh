@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# build-xwayland.sh — cross-build Xwayland 23.2 (GPU-accelerated on ANGLE-Metal,
-# glamor pixmaps -> IOSurface -> iosc_iosurface) + its one new dep libxcvt, for
-# rootless iOS. See recipes/xwayland.mk, recipes/libxcvt.mk, recipes/
-# ports/xwayland/patches, recipes/build_info/xwayland-glamor-iosurface.c.
-#
-# PREP/HOLD status: this is the build DRIVER; the build is gated on a free volume
-# slot (do NOT collide with the running ICU/gnome-shell/Qt builds). When cleared,
-# fire host-side on a volume that already has the wayland stack + libepoxy+angle
-# (warmest: procursus-vol-gtk or procursus-vol-wayland), e.g.:
+# Cross-builds Xwayland 23.2 (GPU-accelerated via ANGLE-Metal glamor -> IOSurface ->
+# iosc_iosurface) + its new dep libxcvt, for rootless iOS. See recipes/xwayland.mk,
+# recipes/libxcvt.mk, recipes/ports/xwayland/patches, recipes/build_info/xwayland-glamor-iosurface.c.
+# Run on a volume that already has the wayland stack + libepoxy+angle (procursus-vol-gtk or
+# procursus-vol-wayland).
 #
 #   docker run --rm --platform linux/arm64 --cpus=3 \
 #     -v procursus-vol-wayland:/work/Procursus \
@@ -17,15 +13,10 @@
 #     -v "$PWD/out:/out" \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-xwayland.sh
 #
-# NOTE: --entrypoint bash (NOT sh): the image's sh is dash, which rejects this
-# script's `set -o pipefail`. The image ships bash (its default entrypoint).
+# --entrypoint bash, not sh: the image's sh is dash, which rejects this script's `set -o pipefail`.
 #
-# X0 (software wl_shm, first-light / bisect) vs X1 (default, GPU glamor):
+# X0 (software wl_shm, first-light/bisect) vs X1 (default, GPU glamor):
 #   docker run ... -e XWAYLAND_GLAMOR=false ...   # X0
-#
-# On a warm volume this is small (only libxcvt + Xwayland compile from source;
-# every other dep is cached). On a fresh volume it also does `setup` + the whole
-# X/Wayland cascade — slow but self-contained.
 set -euo pipefail
 umask 022
 cd /work
@@ -89,23 +80,19 @@ edit("Makefile", lambda s: s.replace(
 PY
 
 echo "==> [4/6] install recipes + build_info assets into the clone"
-# xwayland.mk + libxcvt.mk + libxshmfence.mk + the ANGLE-repointed libepoxy.mk +
-# the libdrm shim + the bumped xorgproto.mk (2024.1, for presentproto 1.3). The
-# xorgproto.mk OVERWRITES the stock 2021.5 recipe in makefiles/.
+# xorgproto.mk overwrites the stock 2021.5 recipe in makefiles/ (bumped to 2024.1, for presentproto 1.3).
 for r in xwayland.mk libxcvt.mk libxshmfence.mk xorgproto.mk libepoxy.mk libdrm.mk; do
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
-# xorgproto was built at 2021.5 on the base volume; force a rebuild at 2024.1 by
-# dropping its work dir + marker (the .build_complete marker short-circuits
-# otherwise). Gate on the INSTALLED presentproto.pc: 2021.5 = 1.2, 2024.1 = 1.4.
+# Force xorgproto rebuild at 2024.1 (base volume has 2021.5 with the .build_complete marker
+# short-circuiting a rebuild). Gate on installed presentproto.pc: 2021.5 = 1.2, 2024.1 = 1.4.
 PPC=build_base/iphoneos-arm64-rootless/1900/var/jb/usr/share/pkgconfig/presentproto.pc
 if ! grep -qE '^Version:\s*1\.[3-9]' "$PPC" 2>/dev/null; then
   echo "   presentproto < 1.3 installed -> forcing xorgproto rebuild at 2024.1"
   rm -rf build_work/*/*/xorgproto 2>/dev/null || true
 fi
-# control templates + the backend .c + iosc protocol XML all live in
-# recipes/build_info/ and land in the clone's build_info/ (== BUILD_INFO,
-# where xwayland.mk reads the backend / XML).
+# control templates + backend .c + iosc protocol XML land in build_info/ (== BUILD_INFO,
+# where xwayland.mk reads them).
 mkdir -p build_info build_misc/entitlements
 cp -v /work/recipes/build_info/*.control build_info/ 2>/dev/null || true
 cp -v /work/recipes/build_info/xwayland-glamor-iosurface.c build_info/
@@ -116,21 +103,18 @@ cp -v /work/recipes/build_info/xwayland-ent.xml build_misc/entitlements/
 echo "==> staging xwayland patch series"
 bash /work/recipes/stage-port-patches.sh xwayland /work/ports build_patch
 
-# Stage a <linux/input.h> + <linux/input-event-codes.h> shim into the cross
-# sysroot: xwayland-input.c includes <linux/input.h> for the evdev codes (BTN_*,
-# KEY_*) the Wayland input protocol uses. iOS has no linux/ uapi headers. The
-# vendored input-event-codes.h is the canonical kernel header (exact evdev values
-# — they must match what the compositor sends). Same pattern as build-mutter.sh's
-# linux/dma-buf.h stub.
+# xwayland-input.c includes <linux/input.h> for the evdev codes (BTN_*, KEY_*) the Wayland
+# input protocol uses; iOS has no linux/ uapi headers. The vendored input-event-codes.h is the
+# canonical kernel header — its evdev values must match what the compositor sends. Same pattern
+# as build-mutter.sh's linux/dma-buf.h stub.
 LINUX_INC=build_base/iphoneos-arm64-rootless/1900/var/jb/usr/include/linux
 mkdir -p "$LINUX_INC"
 cp -v /work/recipes/build_info/linux-input-event-codes.h "$LINUX_INC/input-event-codes.h"
 cp -v /work/recipes/build_info/linux-input.h "$LINUX_INC/input.h"
 
 echo "==> [5/6] stage ANGLE egl.pc + libEGL into the cross sysroot (fresh-volume safety)"
-# The X server links libepoxy (repointed at ANGLE), which dlopens ANGLE at runtime; but
-# glamor's meson also probes epoxy/egl. On a warm mutter volume egl.pc is already staged;
-# stage it here too so a fresh volume links. Harmless if it already exists.
+# libepoxy dlopens ANGLE at runtime, but glamor's meson also probes epoxy/egl at configure
+# time, so stage egl.pc here too (harmless if already staged by a warm mutter volume).
 SYSROOT=build_base/iphoneos-arm64-rootless/1900/var/jb/usr
 if [ ! -e "$SYSROOT/lib/pkgconfig/egl.pc" ]; then
   ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep -v "+es3" | head -1)
@@ -163,9 +147,7 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   XWAYLAND_GLAMOR=${XWAYLAND_GLAMOR:-true} \
   DEB_LIBIOSEXEC_V=1.3.1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
-# Package the runtime deps Xwayland links that aren't already Procursus debs:
-# libxcvt0, libxshmfence1, libdrm2 (the shim) — plus xwayland itself. All except
-# xwayland are quick (libs already built as deps; -package just wraps the deb).
+# Package the runtime deps Xwayland links that aren't already Procursus debs, plus xwayland itself.
 XW=build_work/iphoneos-arm64-rootless/1900/xwayland
 XS=build_stage/iphoneos-arm64-rootless/1900/xwayland
 XF="$XW/.xios_patch_series.sha256"

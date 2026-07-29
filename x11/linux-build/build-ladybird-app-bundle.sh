@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-ladybird-app-bundle.sh — Phase C: assemble a SELF-CONTAINED Ladybird.app + deb.
+# Phase C: assemble a SELF-CONTAINED Ladybird.app + deb.
 # Runs INSIDE the container (needs cctools otool/install_name_tool + ldid + the build_base
 # leaf dylibs the engine linked against). Consumes /out/app-stage (6 binaries + share/Lagom
 # from build-ladybird-app-engine.sh) and the frontend's Info.plist/entitlements/icon mounted

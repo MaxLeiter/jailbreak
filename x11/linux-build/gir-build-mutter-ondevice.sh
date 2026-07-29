@@ -3,11 +3,10 @@
 # Clutter-14, Cogl-14, CoglPango-14, Mtk-14, Cally-14) ON the iPad, by building mutter 46.0
 # natively with -Dintrospection=enabled and letting its own meson build drive g-ir-scanner.
 #
-# This is the Design-A (gir-build-ondevice.sh) pattern applied to mutter: cross can't run the
-# gir dumper (an iOS Mach-O qemu can't exec — gnome-plan Blocker #2), so the scan must happen on
-# the device. We let meson generate the (enormous) per-namespace scanner invocations rather than
-# hand-writing them — see x11/linux-build/out/mutter-gir-commands.txt for the exact commands an
-# off-device introspection *config* emits (proof the config resolves; harvested 2026-06-30).
+# Same pattern as gir-build-ondevice.sh applied to mutter: cross can't run the gir dumper (an
+# iOS Mach-O qemu can't exec), so the scan happens on the device. Meson generates the per-namespace
+# scanner invocations rather than hand-writing them — see out/mutter-gir-commands.txt for the
+# exact commands an off-device introspection config emits.
 #
 # PREREQUISITES on the device (install via main's device window first):
 #   1. The mutter-track runtime+dev debs installed (see install order in the message to main /
@@ -92,9 +91,8 @@ if [ ! -f $PREFIX/lib/pkgconfig/zlib.pc ]; then
   printf 'prefix=%s\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: zlib\nDescription: zlib\nVersion: 1.2.12\nLibs: -L${libdir} -lz\nCflags:\n' "$PREFIX" > $PREFIX/lib/pkgconfig/zlib.pc
 fi
 
-# --- stub headers mutter compiles against (inert on iOS) — the canonical copies from
-#     recipes/build_info/ scp'd next to the tarball, the SAME files build-mutter.sh stages
-#     into the cross sysroot. Unconditional cp so a stale on-device stub never wins. ---
+# --- stub headers mutter compiles against (inert on iOS); unconditional cp so a stale
+#     on-device stub never wins ---
 mkdir -p $PREFIX/include/linux $PREFIX/include/systemd
 cp $WORK/linux-dma-buf.h $PREFIX/include/linux/dma-buf.h
 cp $WORK/linux-input.h $PREFIX/include/linux/input.h

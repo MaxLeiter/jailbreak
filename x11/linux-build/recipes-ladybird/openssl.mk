@@ -2,14 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# openssl.mk — Ladybird leaf closure. BUMP 3.2.1 -> 3.5.3 (Ladybird pin). Distinct from the
-# upstream Procursus recipe: bumped version, +ios1 deb marker, GitHub release tarball (openssl.org
-# now 301-redirects there), PGP + armv7 atomic patch dropped (we only build arm64, and this volume
-# has no patches/openssl tree). For arm64 the recipe still uses OpenSSL's STOCK `darwin64-arm64`
-# Configure target (perlasm ios64) — the hand-injected 15-openssl.conf only adds the watchOS
-# armv7*/arm64_32 targets, which we never hit here. Provides libssl/libcrypto + openssl.pc.
-# Feeds curl. Needs zlib is NOT required (no-comp default). +ios1 marker on the deb seam only.
-
 SUBPROJECTS     += openssl
 OPENSSL_VERSION := 3.5.3
 DEB_OPENSSL_V   ?= $(OPENSSL_VERSION)+ios1
@@ -32,6 +24,8 @@ openssl:
 else
 openssl: openssl-setup
 	touch $(BUILD_WORK)/openssl/Configurations/15-openssl.conf
+	# These targets (armv7k/armv7/arm64_32) are unused on arm64 — Configure below resolves
+	# to OpenSSL's stock darwin64-arm64 target instead.
 	@echo -e "my %targets = (\n\
 		\"darwin64-armv7k\" => {\n\
 			inherit_from     => [ \"darwin-common\" ],\n\

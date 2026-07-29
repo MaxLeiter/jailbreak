@@ -1,25 +1,12 @@
 #!/usr/bin/env bash
-# polkit-kde-agent-1-ios-fixes.sh — source trims for the Xios (rootless iOS) cross build.
+# kf6-windowsystem ships X11-off with no KX11Extras header, so
+# policykitlistener.cpp's KX11Extras include/call site must be guarded behind
+# HAVE_X11 (same treatment as libplasma/kscreen).
 #
-# Audited against Plasma 6.1.5's polkit-kde-agent-1 tarball. The project is small and
-# almost entirely portable; only one real iOS wall exists:
-#
-#   * policykitlistener.cpp includes <KX11Extras> and calls
-#     KX11Extras::forceActiveWindow() in the non-Wayland branch. The published
-#     kf6-windowsystem 6.3.0+ios1 is built X11-off and ships no KX11Extras header
-#     (verified against the -dev deb), so the include alone breaks the build. Same
-#     treatment libplasma/kscreen already got: guard the include and the call site
-#     behind HAVE_X11 so the Wayland branch is the only live path.
-#
-# Everything else is cross-build hygiene shared with kscreen.mk / milou.mk: no git
-# hooks, no target-side linguist install.
-#
-# NOT touched (deliberate): the sys/prctl.h / sys/procctl.h ptrace-disable probes are
-# already check_include_file/check_symbol_exists driven, so on iOS they simply come
-# back false and config.h gets HAVE_PR_SET_DUMPABLE=0. The plasma-polkit-agent.service
-# systemd unit is just an installed data file. PolkitQt1::UnixSessionSubject in
-# main.cpp is a RUNTIME problem (no logind session, no polkitd), not a build problem,
-# and stubbing it would be a behavior decision — see polkit-kde-agent-1.mk.
+# Left untouched deliberately: the prctl ptrace-disable probes just resolve
+# false on iOS; the systemd unit is inert data; PolkitQt1::UnixSessionSubject
+# is a runtime problem (no logind/polkitd), not a build one — see
+# polkit-kde-agent-1.mk.
 set -euo pipefail
 
 src=${1:?usage: polkit-kde-agent-1-ios-fixes.sh <polkit-kde-agent-1-source-dir>}

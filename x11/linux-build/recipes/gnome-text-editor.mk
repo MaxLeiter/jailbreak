@@ -2,15 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-text-editor.mk — GNOME's default GTK4 text editor (replaced gedit). Clean modern
-# GTK4/libadwaita app. GNOME 45 = 45.0. Ships a GSettings schema (→ glib-compile-schemas in
-# postinst).
-#
-# DEPENDS (target): gtk4 (gtk-builder) + libadwaita + gtksourceview5 + enchant (spell; builds
-#   with no dict backend — spell is then a no-op, fine for first-light).
-# BUILD-HOST TOOLS: desktop-file-utils + appstream (glib-compile-resources is in glib2.0-bin).
-#
-# BUILT/PUBLISHED — gnome-text-editor 46.3+ios1.
+# Ships a GSettings schema (needs glib-compile-schemas in postinst).
+# enchant builds with no dict backend, so spell-check is a silent no-op -- fine for first-light.
+# Build-host tools required: desktop-file-utils + appstream.
 
 SUBPROJECTS               += gnome-text-editor
 GNOME-TEXT-EDITOR_MAJOR_V := 46

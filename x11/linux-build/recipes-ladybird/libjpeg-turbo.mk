@@ -2,11 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libjpeg-turbo.mk — Ladybird leaf closure. BUMP 2.0.6 -> 3.1.1 (Ladybird pin). Major 2->3 jump.
-# CMake build; arm64 SIMD via NEON intrinsics (no nasm). Release tarball moved to GitHub releases.
-# jconfig.h JPEG_LIB_VERSION is forced to 80 (Debian libjpeg62-turbo convention: v6.2 soname,
-# reports API v8). Distinct from any gtk-era 2.0.6 — the driver wipes the staged shadow first.
-# +ios1 marker.
+# WITH_JPEG8=ON matches Debian's libjpeg62-turbo convention (v6.2 soname, API v8) —
+# consumers linking against libjpeg62-turbo expect the v8 API.
 
 SUBPROJECTS           += libjpeg-turbo
 LIBJPEG_TURBO_VERSION := 3.1.1

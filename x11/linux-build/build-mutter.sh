@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# build-mutter.sh — cross-build mutter 46 + its missing deps for rootless iOS, OFF-DEVICE.
-# Companion to build-gnome.sh (shares its host-tool preamble + cc-nounused wrappers). Produces
-# libmutter/libcogl/libclutter (+ deps) so the Meta/Clutter/Cogl typelibs can be scanned on-device
-# in a brief separate step. Mutter is built introspection=OFF here (cross can't run the dumper);
-# the typelib scan is Design A on-device against the installed libs.
+# Cross-builds mutter 46 + its missing deps for rootless iOS, OFF-DEVICE. Companion to
+# build-gnome.sh (shares its host-tool preamble + cc-nounused wrappers). Built with
+# introspection=OFF (cross can't run the dumper); the Meta/Clutter/Cogl typelib scan happens
+# on-device against the installed libs in a separate step.
 #
 #   docker run --rm --platform linux/arm64 --cpus=3 \
 #     -v procursus-vol-gtk:/work/Procursus \
@@ -14,13 +13,13 @@
 #     -e TARGETS="mutter mutter-package" -e MUTTER_CLEAN=1 \
 #     procursus-xbuild:bookworm-arm64 /work/build-mutter.sh
 #
-# The tools/ mount is REQUIRED for the mutter-package X11/xcb weaken step (macho-weaken.py); the
-# mutter recipe hard-errors if the tool is not staged into build_tools/.
-# The x11 mount (/work/x11) is REQUIRED to build the REAL MetaBackendIOS: mutter-setup runs
-# /work/x11/linux-build/integrate-ios-backend.sh (stages src/backends/ios/* + the 5 integration
-# patches). Without it the recipe builds a STOCK typelib-only mutter (no iOS backend).
-# MUTTER_CLEAN=1 wipes the mutter work tree first so the integrate runs from a pristine extract
-# (an incremental relink drops the meson-staged ios objects and regresses the stage/present path).
+# tools/ mount is required for the mutter-package X11/xcb weaken step (macho-weaken.py); the
+# mutter recipe hard-errors without it staged into build_tools/.
+# x11/ mount is required to build the real MetaBackendIOS: mutter-setup runs
+# integrate-ios-backend.sh (stages src/backends/ios/* + the integration patches). Without it
+# the recipe builds a stock typelib-only mutter with no iOS backend.
+# MUTTER_CLEAN=1 wipes the mutter work tree first: an incremental relink drops the meson-staged
+# ios objects and regresses the stage/present path, so the integrate must run from a pristine extract.
 set -euo pipefail
 cd /work/Procursus
 
@@ -104,11 +103,6 @@ if target_requests mutter; then
   stage_patch_subdir mutter patches-gir build_patch/mutter-gir
 fi
 
-# --- MUTTER_CLEAN: wipe the mutter work tree for a from-pristine integrate + full build ---
-# Route A needs the real MetaBackendIOS staged into a PRISTINE mutter tree (integrate applies
-# patches that expect unmodified sources) and a full ninja build (an incremental relink drops
-# the meson-staged ios objects — meta-stage-ios/meta-onscreen-ios — and regresses). Wiping the
-# work dir forces mutter-setup to re-extract + re-run integrate-ios-backend.sh.
 if [ "${MUTTER_CLEAN:-0}" = "1" ]; then
   echo "==> MUTTER_CLEAN=1: wiping mutter work tree (from-scratch integrate + build)"
   rm -rf build_work/*/*/mutter 2>/dev/null || true

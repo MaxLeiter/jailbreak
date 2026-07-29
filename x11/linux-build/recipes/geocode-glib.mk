@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# geocode-glib.mk — geocoding/reverse-geocoding client library. A build dep of libgweather-4
-# (which gnome-shell imports at boot). GDBus/HTTP client on glib + json-glib + libsoup3.
-# Introspection off (GeocodeGlib typelib generated on-device with the rest).
+# Build dep of libgweather-4, which gnome-shell imports at boot.
+# Introspection is generated on-device rather than here.
 
 SUBPROJECTS         += geocode-glib
 GEOCODE-GLIB_VERSION := 3.26.4

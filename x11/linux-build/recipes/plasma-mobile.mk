@@ -2,15 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-mobile.mk — Plasma Mobile data/shell package for Xios.
-# This wave packages the mobile shell/look-and-feel, containment package data,
-# quicksetting package data, the taskpanel applet plugin, and session launcher
-# files. Hardware-facing Mobile providers use the existing Xios iOS bridges for
-# first parity: xios-fhs battery/brightness, PulseAudio/xios-audiod volume,
-# SystemConfiguration reachability, and the Xios wallpaper preference file.
-# KCMs, KWin effects, and the broader C++ mobile shell plugin wave remain
-# deferred until their support libraries are ready.
-
 SUBPROJECTS += plasma-mobile
 PLASMAMOBILE_VERSION = $(PLASMA_VERSION)
 DEB_PLASMAMOBILE_V ?= $(PLASMAMOBILE_VERSION)+ios22

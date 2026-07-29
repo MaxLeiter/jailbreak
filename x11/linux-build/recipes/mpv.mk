@@ -2,32 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# mpv.mk — mpv, the Wayland-native GPU media player, for the iosc desktop (github.com/mpv-player/mpv).
-# Pinned to 0.36.0 ON PURPOSE: mpv 0.37+ makes libplacebo (>=6.338) a HARD dependency (for the
-# vo=gpu-next default), and libplacebo is not built on procursus-vol-wayland. In 0.36 libplacebo is
-# optional (meson `auto`), so we disable it and use the classic OpenGL renderer, --vo=gpu, over the
-# desktop's EGL/GLES (the `angle`/mesa stack imv also links) on a wl_surface via wayland-egl. That
-# is the zero-copy GPU video path — the point of shipping mpv here.
-#
-# VIDEO: gl + egl + egl-wayland + wayland. All X11/DRM/GBM/VAAPI/VDPAU/Vulkan and every macOS/iOS
-# ObjC path (cocoa, gl-cocoa, videotoolbox-gl, ios-gl, audiounit, swift) are DISABLED — the ObjC
-# framework sources transitively pull Foundation -> the jailbreak's broken xpc/session.h (same wall
-# ffmpeg's videotoolbox probe hit), and we don't need them for the wayland-egl renderer.
-# AUDIO: PulseAudio (-Dpulse=enabled) AND the native iOS audiounit AO (-Daudiounit=enabled, the
-# RemoteIO/AVAudioSession path). `coreaudio` stays disabled — that AO is macOS-only (AudioHardware
-# default-device APIs absent on iOS). audiounit's AVAudioSession probe used to fail on the broken
-# xpc/session.h; build-wayland-apps.sh's os/object.h sendable-macro backport unblocks it. So mpv
-# has BOTH a self-contained native AO (audiounit) and the PA `pulse` AO for the desktop's PA 17
-# daemon (module-xios-sink). The libpulse CLIENT lib (libpulse.dylib + pulse/*.h + libpulse.pc,
-# built on procursus-vol-shell as the libpulse0/-dev debs) is staged into build_base from /out by
-# build-wayland-apps.sh before the make loop — libpulse is NOT a Procursus subproject on this volume,
-# so it is staged as a prebuilt deb rather than listed as a make prerequisite. Runtime Depends:
-# libpulse0. FFmpeg here is our lean decode-first build (software decoders, no external codecs).
-#
-# BUILD-HOST TOOLS (via build-wayland-apps.sh): native wayland-scanner (mpv codegens its wayland
-# protocol glue), python3 (mpv's build scripts). DEPENDS (target): ffmpeg(libav*/libsw*), libass,
-# freetype, fontconfig, harfbuzz, libfribidi, wayland, wayland-protocols, libxkbcommon, mesa(EGL/GL),
-# libjpeg-turbo (screenshots), zlib.
+# Pinned to 0.36.0: 0.37+ hard-requires libplacebo (not built here), so this uses the classic
+# vo=gpu OpenGL/EGL renderer instead. ObjC paths (cocoa/videotoolbox-gl/ios-gl) are disabled —
+# Foundation pulls in the jailbreak's broken xpc/session.h (same wall ffmpeg's videotoolbox probe hit).
 
 SUBPROJECTS  += mpv
 MPV_VERSION  := 0.36.0

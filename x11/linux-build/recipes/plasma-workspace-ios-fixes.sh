@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# plasma-workspace-ios-fixes.sh — first-light source trims for plasmashell on iOS.
 set -euo pipefail
 
 src=${1:?usage: plasma-workspace-ios-fixes.sh <plasma-workspace-source-dir>}

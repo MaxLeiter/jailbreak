@@ -2,12 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# nghttp2.mk — Ladybird leaf closure. REUSE of the lean lib-only build (1.61.0, curl's HTTP/2
-# dep). Identical to the GNOME-track override: `--enable-lib-only` so we get just libnghttp2 (no
-# nghttpx/nghttpd/nghttp apps and therefore no nghttp3/ngtcp2/libev/jansson pull-in). On the
-# ladybird volume this tree is already built + staged (build_work/nghttp2/.build_complete), so the
-# `.build_complete` guard makes -package just repackage the existing dylib. Not a Ladybird pin;
-# curl links it for http2. +ios1 deb marker.
+# --enable-lib-only: ship just libnghttp2, skip the nghttpx/nghttpd/nghttp CLI apps
+# (avoids pulling in nghttp3/ngtcp2/libev/jansson).
 
 SUBPROJECTS     += nghttp2
 NGHTTP2_VERSION := 1.61.0
