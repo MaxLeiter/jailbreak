@@ -7,10 +7,14 @@ Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libicu78 (>= 78.3), libiosexec1 (>= 1.3.1)
 Section: Apps
 Priority: optional
-Description: Ladybird — a standalone native web browser for jailbroken iPad
+MinimumOSVersion: 16.0
+Description: Ladybird — a standalone native web browser for jailbroken iOS
  A real home-screen browser app: tap the icon, it launches standalone (no iosc /
  Wayland / desktop stack) and renders the modern web with the from-scratch Ladybird
  engine (LibWeb + LibJS, no WebKit, no JIT).
+ .
+ Built and validated on iPad. The bundle also declares iPhone (UIDeviceFamily 1) and
+ the frontend is resolution- and safe-area-independent, but no iPhone has been tested.
  .
  This M0 package bundles the Ladybird UI executable, helper processes, runtime dylib
  closure, resources, and fonts inside Ladybird.app. The helpers are spawned from the app

@@ -11,17 +11,27 @@
     <key>CFBundleVersion</key>             <string>1</string>
     <key>CFBundleInfoDictionaryVersion</key> <string>6.0</string>
     <key>MinimumOSVersion</key>            <string>16.0</string>
-    <key>UIDeviceFamily</key>              <array><integer>2</integer></array>
+    <key>UIDeviceFamily</key>              <array><integer>1</integer><integer>2</integer></array>
     <key>LSRequiresIPhoneOS</key>          <true/>
     <key>UILaunchScreen</key>              <dict/>
     <key>UIStatusBarHidden</key>           <false/>
     <key>UIApplicationSupportsIndirectInputEvents</key> <true/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
     <key>UISupportedInterfaceOrientations~ipad</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    <key>CFBundleIcons</key>
+    <dict><key>CFBundlePrimaryIcon</key><dict>
+        <key>CFBundleIconFiles</key><array><string>AppIcon</string></array>
+    </dict></dict>
     <key>CFBundleIcons~ipad</key>
     <dict><key>CFBundlePrimaryIcon</key><dict>
         <key>CFBundleIconFiles</key><array><string>AppIcon</string></array>
