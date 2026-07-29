@@ -322,9 +322,36 @@ kde_ini_set_if_missing() {
   } >>"$file"
 }
 
+# [QtQuickRendererSettings] SceneGraphBackend=software pins every Plasma QtQuick
+# scene to the software renderer, which is how plasmashell ended up drawing the
+# desktop through Qt's shm backingstore instead of ANGLE. That path commits one
+# frame and then stops, so the screen stays black no matter how correct the
+# compositor is. Software was mandatory only while the QPA returned nullptr from
+# createPlatformOpenGLContext; that seam is gone, so drop a stale pin. Set
+# XIOS_KDE_FORCE_SOFTWARE_QTQUICK=1 to keep it (useful to isolate a GL fault).
+kde_unpin_software_qtquick() {
+  [ "${XIOS_KDE_FORCE_SOFTWARE_QTQUICK:-0}" = 0 ] || return 0
+  local file
+  for file in \
+    "$XS_VAR/root/Library/Preferences/kdeglobals" \
+    "/var/root/Library/Preferences/kdeglobals"; do
+    [ -f "$file" ] || continue
+    kde_ini_has_key "$file" QtQuickRendererSettings SceneGraphBackend || continue
+    cp -p "$file" "$file.before-xios-qtquick-unpin" 2>/dev/null || true
+    awk '
+      $0 == "[QtQuickRendererSettings]" { in_group = 1; next }
+      /^\[/ { in_group = 0 }
+      in_group && index($0, "SceneGraphBackend=") == 1 { next }
+      { print }
+    ' "$file" >"$file.xios-tmp" && mv "$file.xios-tmp" "$file"
+    echo "kde: dropped SceneGraphBackend=software pin from $file (QtQuick -> ANGLE)"
+  done
+}
+
 kde_seed_desktop_style_config() {
   [ "$KDE_PLASMA_FLAVOR" = desktop ] || return 0
   local file
+  kde_unpin_software_qtquick
   for file in \
     "$XS_VAR/root/Library/Preferences/kdeglobals" \
     "/var/root/Library/Preferences/kdeglobals"; do

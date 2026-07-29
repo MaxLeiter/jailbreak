@@ -231,7 +231,7 @@ replace(
 replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
     '#include "core/graphicsbufferview.h"\n',
-    '#include "core/graphicsbufferview.h"\n#include "wayland/ioscclientbuffer.h" // ios-gpu-client-texture-include\n#include "opengl/egldisplay.h"\n#include "backends/wayland/iosc_egl_helpers.h"\n',
+    '#include "core/graphicsbufferview.h"\n#include "wayland/ioscclientbuffer.h" // ios-gpu-client-texture-include\n#include "opengl/egldisplay.h"\n#include "backends/wayland/iosc_egl_helpers.h"\n#include <IOSurface/IOSurfaceRef.h>\n',
     "ios-gpu-client-texture-include",
 )
 replace(
@@ -249,6 +249,39 @@ replace(
     "        return loadShmTexture(m_pixmap->buffer());\n    } else {\n        return false;\n    }\n}",
     "        const bool ok = loadShmTexture(m_pixmap->buffer());\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n        }\n        return ok;\n    } else {\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: UNKNOWN buffer type -- no texture\";\n        }\n        return false;\n    }\n}",
     "ios-gpu-client-texture-diag",
+)
+# Content stats for shm uploads (still under KWIN_IOS_TEXTURE_DIAG): a texture that
+# loads ok but carries all-black pixels means the CLIENT drew black, which no
+# amount of compositor debugging will fix. Samples a 16px grid, so it is cheap
+# enough to run on every create and (throttled) on updates.
+replace(
+    "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
+    "            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n",
+    "            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n            { // ios-gpu-shm-content-diag\n                const GraphicsBufferView v(m_pixmap->buffer());\n                if (!v.isNull() && v.image()->depth() == 32) {\n                    const QImage *im = v.image();\n                    int nonblack = 0, sampled = 0;\n                    for (int y = 0; y < im->height(); y += 16) {\n                        const QRgb *row = reinterpret_cast<const QRgb *>(im->constScanLine(y));\n                        for (int x = 0; x < im->width(); x += 16) {\n                            if (qRed(row[x]) | qGreen(row[x]) | qBlue(row[x])) { nonblack++; }\n                            sampled++;\n                        }\n                    }\n                    qCWarning(KWIN_OPENGL) << \"ios-tex: shm content nonblack\" << nonblack << \"/\" << sampled << \"centre=\" << Qt::hex << im->pixel(im->width() / 2, im->height() / 2);\n                }\n            }\n",
+    "ios-gpu-shm-content-diag",
+)
+replace(
+    "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
+    "void BasicEGLSurfaceTextureWayland::updateShmTexture(GraphicsBuffer *buffer, const QRegion &region)\n{\n",
+    "void BasicEGLSurfaceTextureWayland::updateShmTexture(GraphicsBuffer *buffer, const QRegion &region)\n{\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) { // ios-gpu-shm-update-diag\n        static unsigned long iosUpdN = 0;\n        if ((iosUpdN++ % 60) == 0) {\n            const GraphicsBufferView v(buffer);\n            if (!v.isNull() && v.image()->depth() == 32) {\n                const QImage *im = v.image();\n                int nonblack = 0, sampled = 0;\n                for (int y = 0; y < im->height(); y += 16) {\n                    const QRgb *row = reinterpret_cast<const QRgb *>(im->constScanLine(y));\n                    for (int x = 0; x < im->width(); x += 16) {\n                        if (qRed(row[x]) | qGreen(row[x]) | qBlue(row[x])) { nonblack++; }\n                        sampled++;\n                    }\n                }\n                qCWarning(KWIN_OPENGL) << \"ios-tex: shm UPDATE nonblack\" << nonblack << \"/\" << sampled << \"size=\" << im->size() << \"region=\" << region.boundingRect();\n            }\n        }\n    }\n",
+    "ios-gpu-shm-update-diag",
+)
+
+# KWIN_IOS_PAINT_TRACE=1: which windows the scene actually paints, with what clip
+# region, and every WindowItem visibility flip. paintWindow returning early on an
+# empty region is invisible in every other diagnostic, yet it is the exact spot
+# where a window silently fails to appear.
+replace(
+    "src/scene/workspacescene.cpp",
+    "void WorkspaceScene::paintWindow(const RenderTarget &renderTarget, const RenderViewport &viewport, WindowItem *item, int mask, const QRegion &region)\n{\n    if (region.isEmpty()) { // completely clipped\n        return;\n    }\n",
+    "void WorkspaceScene::paintWindow(const RenderTarget &renderTarget, const RenderViewport &viewport, WindowItem *item, int mask, const QRegion &region)\n{\n    static unsigned long iosPaintN = 0; // ios-gpu-paint-trace\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_PAINT_TRACE\") && (iosPaintN++ % 120) < 3) {\n        qWarning() << \"ios-paint:\" << item->window()->resourceClass() << \"clip=\" << region.boundingRect() << (region.isEmpty() ? \"(CLIPPED OUT)\" : \"\");\n    }\n    if (region.isEmpty()) { // completely clipped\n        return;\n    }\n",
+    "ios-gpu-paint-trace",
+)
+replace(
+    "src/scene/windowitem.cpp",
+    "void WindowItem::updateVisibility()\n{\n    const bool visible = computeVisibility();\n",
+    "void WindowItem::updateVisibility()\n{\n    const bool visible = computeVisibility();\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_PAINT_TRACE\")) { // ios-gpu-visibility-trace\n        qWarning() << \"ios-vis:\" << m_window->resourceClass() << \"visible=\" << visible << \"ready=\" << m_window->readyForPainting();\n    }\n",
+    "ios-gpu-visibility-trace",
 )
 
 replace(
@@ -277,15 +310,18 @@ if "ios-gpu-client-texture-load" not in text:
         m_iosurfaceConfig = chooseIoscEglConfig(display);
     }
     if (m_iosurfaceConfig == EGL_NO_CONFIG_KHR) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex diag: no EGLConfig for IOSurface, egl=" << Qt::hex << eglGetError();
         return false;
     }
     m_iosurfacePbuffer = createIoscEglPbuffer(display, m_iosurfaceConfig, buffer->iosurface(), buffer->size());
     if (m_iosurfacePbuffer == EGL_NO_SURFACE) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex diag: pbuffer failed size=" << buffer->size() << "egl=" << Qt::hex << eglGetError();
         return false;
     }
     auto texture = std::make_shared<GLTexture>(GL_TEXTURE_2D);
     texture->setSize(buffer->size());
     if (!texture->create()) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex diag: GLTexture::create failed size=" << buffer->size() << "gl=" << Qt::hex << glGetError();
         eglDestroySurface(display, m_iosurfacePbuffer);
         m_iosurfacePbuffer = EGL_NO_SURFACE;
         return false;
@@ -294,6 +330,7 @@ if "ios-gpu-client-texture-load" not in text:
     texture->setFilter(GL_LINEAR);
     texture->bind();
     if (!eglBindTexImage(display, m_iosurfacePbuffer, EGL_BACK_BUFFER)) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex diag: eglBindTexImage failed egl=" << Qt::hex << eglGetError();
         texture->unbind();
         eglDestroySurface(display, m_iosurfacePbuffer);
         m_iosurfacePbuffer = EGL_NO_SURFACE;
@@ -306,12 +343,49 @@ if "ios-gpu-client-texture-load" not in text:
     m_texture = {{texture}};
     m_iosurfaceBuffer = buffer;
     m_bufferType = BufferType::Iosc;
+    if (qEnvironmentVariableIsSet("KWIN_IOS_TEXTURE_DIAG")) {
+        // Read the client's IOSurface on the CPU. A texture that binds cleanly but
+        // carries an all-black surface means the CLIENT never rendered into it --
+        // the EGL_ANGLE_iosurface_client_buffer trap where drawing lands in the
+        // pbuffer's default framebuffer, which is NOT backed by the IOSurface.
+        int nonblack = 0, sampled = 0;
+        unsigned centre = 0;
+        if (IOSurfaceRef s = static_cast<IOSurfaceRef>(buffer->iosurface())) {
+            if (IOSurfaceLock(s, 0x1 /* kIOSurfaceLockReadOnly */, nullptr) == 0) {
+                const uint8_t *base = static_cast<const uint8_t *>(IOSurfaceGetBaseAddress(s));
+                const size_t stride = IOSurfaceGetBytesPerRow(s);
+                const int w = int(IOSurfaceGetWidth(s)), h = int(IOSurfaceGetHeight(s));
+                if (base) {
+                    for (int y = 0; y < h; y += 16) {
+                        const uint8_t *row = base + size_t(y) * stride;
+                        for (int x = 0; x < w; x += 16) {
+                            const uint8_t *px = row + size_t(x) * 4;
+                            if (px[0] | px[1] | px[2]) { nonblack++; }
+                            sampled++;
+                        }
+                    }
+                    centre = *reinterpret_cast<const uint32_t *>(base + size_t(h / 2) * stride + size_t(w / 2) * 4);
+                }
+                IOSurfaceUnlock(s, 0x1, nullptr);
+            }
+        }
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex diag: OK size=" << buffer->size() << "topLeft=" << buffer->isTopLeft()
+                               << "iosc content nonblack" << nonblack << "/" << sampled << "centre=" << Qt::hex << centre;
+    }
     return true;
 }
 
 void BasicEGLSurfaceTextureWayland::updateIoscTexture(IoscClientBuffer *buffer)
 {
-    if (m_bufferType != BufferType::Iosc || m_iosurfaceBuffer != buffer) {
+    const bool changed = (m_bufferType != BufferType::Iosc || m_iosurfaceBuffer != buffer);
+    if (qEnvironmentVariableIsSet("KWIN_IOS_TEXTURE_DIAG")) {
+        static unsigned long updN = 0;
+        if ((updN++ % 30) == 0) {
+            qCWarning(KWIN_OPENGL) << "ios-iosc-upd: update() call" << updN << "buffer=" << (void *)buffer
+                                   << "prev=" << (void *)m_iosurfaceBuffer << "changed=" << changed;
+        }
+    }
+    if (changed) {
         destroy();
         loadIoscTexture(buffer);
     }

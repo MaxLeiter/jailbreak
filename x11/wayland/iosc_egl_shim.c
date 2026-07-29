@@ -406,6 +406,15 @@ EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLC
     return REAL(eglMakeCurrent)(dpy, draw, read, ctx);
 }
 
+/* Which framebuffer the client had bound when it swapped. Non-zero means the
+ * client rendered into its own FBO, so nothing reached the pbuffer's IOSurface. */
+static GLint cur_draw_fbo(void)
+{
+    GLint fbo = -1;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+    return fbo;
+}
+
 EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
 {
     struct iosc_egl_win *w = as_win(surf);
@@ -430,8 +439,56 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
     struct iosc_egl_buf *bb = w->bufs[i];
     if (!bb || !bb->buf)
         return EGL_FALSE;
+    /* IOSC_EGL_DEBUG: sample the IOSurface right after the fence, i.e. at the exact
+     * moment the client claims the frame is done. All-black here means the client's
+     * GL never reached this IOSurface, which separates a client that drew nothing
+     * from a compositor that lost the frame. */
+    if (egl_debug()) {
+        static unsigned long swapN;
+        int nonblack = 0, sampled = 0;
+        unsigned centre = 0;
+        if (IOSurfaceLock(bb->ios, 0x1 /* kIOSurfaceLockReadOnly */, NULL) == 0) {
+            const uint8_t *base = (const uint8_t *)IOSurfaceGetBaseAddress(bb->ios);
+            size_t stride = IOSurfaceGetBytesPerRow(bb->ios);
+            if (base) {
+                for (int y = 0; y < w->h; y += 16) {
+                    const uint8_t *row = base + (size_t)y * stride;
+                    for (int x = 0; x < w->w; x += 16) {
+                        const uint8_t *px = row + (size_t)x * 4;
+                        if (px[0] | px[1] | px[2]) nonblack++;
+                        sampled++;
+                    }
+                }
+                centre = *(const uint32_t *)(base + (size_t)(w->h / 2) * stride + (size_t)(w->w / 2) * 4);
+            }
+            IOSurfaceUnlock(bb->ios, 0x1, NULL);
+        }
+        fprintf(stderr, "iosc_egl: swap #%lu buf=%d %dx%d nonblack=%d/%d centre=0x%08x fbo=%d\n",
+                swapN++, i, w->w, w->h, nonblack, sampled, centre, (int)cur_draw_fbo());
+    }
     wl_surface_attach(w->surface, bb->buf, 0, 0);
-    wl_surface_damage(w->surface, 0, 0, w->w, w->h);
+    /* Damage in BUFFER coordinates when the compositor supports it (wl_surface v4+).
+     * wl_surface.damage is in surface-local coordinates, so the compositor has to
+     * map it through buffer_scale and any wp_viewport the toolkit set. Qt sets a
+     * viewport on these surfaces, and a damage rect expressed in buffer pixels is
+     * not the same rectangle in surface coordinates -- getting that conversion
+     * wrong yields empty damage, which reads downstream as "the client committed
+     * nothing" even though a full frame was rendered. damage_buffer says exactly
+     * what we mean: the whole buffer changed. */
+    {
+        const uint32_t sv = wl_proxy_get_version((struct wl_proxy *)w->surface);
+        static int logged;
+        if (sv >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION) {
+            wl_surface_damage_buffer(w->surface, 0, 0, w->w, w->h);
+        } else {
+            wl_surface_damage(w->surface, 0, 0, w->w, w->h);
+        }
+        if (egl_debug() && !logged) {
+            logged = 1;
+            fprintf(stderr, "iosc_egl: damage path=%s (wl_surface v%u)\n",
+                    sv >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION ? "damage_buffer" : "damage", sv);
+        }
+    }
     wl_surface_commit(w->surface);
     bb->busy = 1;
     wl_display_flush(g_wl);
