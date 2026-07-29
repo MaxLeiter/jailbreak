@@ -348,6 +348,29 @@ kde_unpin_software_qtquick() {
   done
 }
 
+# Window decorations take their colours from the [WM] group in kdeglobals, and
+# widgets from [Colors:*]. Those groups are written by APPLYING a colour scheme --
+# setting [General] ColorScheme to its name does nothing on its own. A kdeglobals
+# carrying the light Breeze [WM] block therefore renders light titlebars around a
+# fully dark desktop. Copy the scheme's colour groups in; leave every other key
+# alone, since [General]/[KDE] also hold unrelated settings.
+kde_apply_color_scheme() {
+  local scheme="$1" file="$2" src want have tmp
+  src="$XS_PREFIX/share/color-schemes/$scheme.colors"
+  [ -f "$src" ] || return 0
+  mkdir -p "$(dirname "$file")"
+  [ -e "$file" ] || : >"$file"
+  # Idempotent: the scheme's own [WM] background is the fingerprint.
+  want="$(awk '/^\[WM\]/{f=1;next} /^\[/{f=0} f && /^activeBackground=/{print; exit}' "$src")"
+  have="$(awk '/^\[WM\]/{f=1;next} /^\[/{f=0} f && /^activeBackground=/{print; exit}' "$file")"
+  [ -n "$want" ] && [ "$want" = "$have" ] && return 0
+  tmp="$file.xios-colors-tmp"
+  awk '/^\[/ { drop = ($0 ~ /^\[(WM\]|Colors:|ColorEffects:)/) } !drop { print }' "$file" >"$tmp" || return 0
+  awk '/^\[/ { keep = ($0 ~ /^\[(WM\]|Colors:|ColorEffects:)/) } keep { print }' "$src" >>"$tmp" || return 0
+  mv "$tmp" "$file"
+  echo "kde: applied $scheme colour groups to $(basename "$file") (titlebars follow the scheme)"
+}
+
 kde_seed_desktop_style_config() {
   [ "$KDE_PLASMA_FLAVOR" = desktop ] || return 0
   local file
@@ -360,6 +383,7 @@ kde_seed_desktop_style_config() {
     if [ -f "$XS_PREFIX/share/color-schemes/BreezeDark.colors" ]; then
       kde_ini_set_if_missing "$file" General ColorScheme BreezeDark
       kde_ini_set_if_missing "$file" General Name "Breeze Dark"
+      kde_apply_color_scheme BreezeDark "$file"
     fi
     if ls "$XS_PREFIX"/lib/qt6/plugins/styles/breeze6.* >/dev/null 2>&1; then
       kde_ini_set_if_missing "$file" KDE widgetStyle Breeze

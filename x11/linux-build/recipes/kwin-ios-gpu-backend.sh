@@ -254,81 +254,14 @@ replace(
 # loads ok but carries all-black pixels means the CLIENT drew black, which no
 # amount of compositor debugging will fix. Samples a 16px grid, so it is cheap
 # enough to run on every create and (throttled) on updates.
-replace(
-    "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
-    "            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n",
-    "            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n            { // ios-gpu-shm-content-diag\n                const GraphicsBufferView v(m_pixmap->buffer());\n                if (!v.isNull() && v.image()->depth() == 32) {\n                    const QImage *im = v.image();\n                    int nonblack = 0, sampled = 0;\n                    for (int y = 0; y < im->height(); y += 16) {\n                        const QRgb *row = reinterpret_cast<const QRgb *>(im->constScanLine(y));\n                        for (int x = 0; x < im->width(); x += 16) {\n                            if (qRed(row[x]) | qGreen(row[x]) | qBlue(row[x])) { nonblack++; }\n                            sampled++;\n                        }\n                    }\n                    qCWarning(KWIN_OPENGL) << \"ios-tex: shm content nonblack\" << nonblack << \"/\" << sampled << \"centre=\" << Qt::hex << im->pixel(im->width() / 2, im->height() / 2);\n                }\n            }\n",
-    "ios-gpu-shm-content-diag",
-)
-replace(
-    "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
-    "void BasicEGLSurfaceTextureWayland::updateShmTexture(GraphicsBuffer *buffer, const QRegion &region)\n{\n",
-    "void BasicEGLSurfaceTextureWayland::updateShmTexture(GraphicsBuffer *buffer, const QRegion &region)\n{\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) { // ios-gpu-shm-update-diag\n        static unsigned long iosUpdN = 0;\n        if ((iosUpdN++ % 60) == 0) {\n            const GraphicsBufferView v(buffer);\n            if (!v.isNull() && v.image()->depth() == 32) {\n                const QImage *im = v.image();\n                int nonblack = 0, sampled = 0;\n                for (int y = 0; y < im->height(); y += 16) {\n                    const QRgb *row = reinterpret_cast<const QRgb *>(im->constScanLine(y));\n                    for (int x = 0; x < im->width(); x += 16) {\n                        if (qRed(row[x]) | qGreen(row[x]) | qBlue(row[x])) { nonblack++; }\n                        sampled++;\n                    }\n                }\n                qCWarning(KWIN_OPENGL) << \"ios-tex: shm UPDATE nonblack\" << nonblack << \"/\" << sampled << \"size=\" << im->size() << \"region=\" << region.boundingRect();\n            }\n        }\n    }\n",
-    "ios-gpu-shm-update-diag",
-)
-
 # KWIN_IOS_PAINT_TRACE=1: which windows the scene actually paints, with what clip
 # region, and every WindowItem visibility flip. paintWindow returning early on an
 # empty region is invisible in every other diagnostic, yet it is the exact spot
 # where a window silently fails to appear.
-replace(
-    "src/scene/workspacescene.cpp",
-    "void WorkspaceScene::paintWindow(const RenderTarget &renderTarget, const RenderViewport &viewport, WindowItem *item, int mask, const QRegion &region)\n{\n    if (region.isEmpty()) { // completely clipped\n        return;\n    }\n",
-    "void WorkspaceScene::paintWindow(const RenderTarget &renderTarget, const RenderViewport &viewport, WindowItem *item, int mask, const QRegion &region)\n{\n    static unsigned long iosPaintN = 0; // ios-gpu-paint-trace\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_PAINT_TRACE\") && (iosPaintN++ % 10) == 0) {\n        qWarning() << \"ios-paint:\" << item->window()->resourceClass() << \"clip=\" << region.boundingRect() << (region.isEmpty() ? \"(CLIPPED OUT)\" : \"\");\n    }\n    if (region.isEmpty()) { // completely clipped\n        return;\n    }\n",
-    "ios-gpu-paint-trace",
-)
 # KWIN_IOS_PAINT_TRACE also reports the scene's per-frame stacking order. If
 # paintWindow never runs while the compositor is presenting frames, the question
 # is whether the scene has any window items at all -- childItems vs how many pass
 # isVisible() -- and that is invisible from every other vantage point.
-replace(
-    "src/scene/workspacescene.cpp",
-    """void WorkspaceScene::createStackingOrder()
-{
-    QList<Item *> items = m_containerItem->sortedChildItems();
-    for (Item *item : std::as_const(items)) {
-        WindowItem *windowItem = static_cast<WindowItem *>(item);
-        if (windowItem->isVisible()) {
-            stacking_order.append(windowItem);
-        }
-    }
-}""",
-    """void WorkspaceScene::createStackingOrder()
-{
-    QList<Item *> items = m_containerItem->sortedChildItems();
-    for (Item *item : std::as_const(items)) {
-        WindowItem *windowItem = static_cast<WindowItem *>(item);
-        if (windowItem->isVisible()) {
-            stacking_order.append(windowItem);
-        }
-    }
-    static unsigned long iosStackN = 0; // ios-stack
-    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE") && (iosStackN++ % 5) == 0) {
-        qWarning() << "ios-stack: frame" << iosStackN << "childItems" << items.count()
-                   << "visible" << stacking_order.count();
-    }
-}""",
-    "ios-stack",
-)
-replace(
-    "src/scene/workspacescene.cpp",
-    """    m_renderer->beginFrame(renderTarget, viewport);""",
-    """    static unsigned long iosPaintFrameN = 0; // ios-scene-paint
-    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE") && (iosPaintFrameN++ % 5) == 0) {
-        qWarning() << "ios-scene: paint() frame" << iosPaintFrameN << "region" << region.boundingRect()
-                   << "phase2" << m_paintContext.phase2Data.count() << "mask" << m_paintContext.mask;
-    }
-    m_renderer->beginFrame(renderTarget, viewport);""",
-    "ios-scene-paint",
-)
-
-replace(
-    "src/scene/windowitem.cpp",
-    "void WindowItem::updateVisibility()\n{\n    const bool visible = computeVisibility();\n",
-    "void WindowItem::updateVisibility()\n{\n    const bool visible = computeVisibility();\n    if (qEnvironmentVariableIsSet(\"KWIN_IOS_PAINT_TRACE\")) { // ios-gpu-visibility-trace\n        qWarning() << \"ios-vis:\" << m_window->resourceClass() << \"visible=\" << visible << \"ready=\" << m_window->readyForPainting();\n    }\n",
-    "ios-gpu-visibility-trace",
-)
-
 replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
     "void BasicEGLSurfaceTextureWayland::destroy()\n{\n    m_texture.reset();\n    m_bufferType = BufferType::None;\n}",
@@ -422,15 +355,7 @@ if "ios-gpu-client-texture-load" not in text:
 
 void BasicEGLSurfaceTextureWayland::updateIoscTexture(IoscClientBuffer *buffer)
 {
-    const bool changed = (m_bufferType != BufferType::Iosc || m_iosurfaceBuffer != buffer);
-    if (qEnvironmentVariableIsSet("KWIN_IOS_TEXTURE_DIAG")) {
-        static unsigned long updN = 0;
-        if ((updN++ % 30) == 0) {
-            qCWarning(KWIN_OPENGL) << "ios-iosc-upd: update() call" << updN << "buffer=" << (void *)buffer
-                                   << "prev=" << (void *)m_iosurfaceBuffer << "changed=" << changed;
-        }
-    }
-    if (changed) {
+    if (m_bufferType != BufferType::Iosc || m_iosurfaceBuffer != buffer) {
         destroy();
         loadIoscTexture(buffer);
     }

@@ -263,13 +263,6 @@ WaylandEglPrimaryLayer::WaylandEglPrimaryLayer(WaylandOutput *output, WaylandEgl
 
 std::optional<OutputLayerBeginFrameInfo> WaylandEglPrimaryLayer::doBeginFrame()
 {
-    // Counting primary-layer frames against WorkspaceScene::paint() calls: if the
-    // layer renders far more often than the workspace scene paints, whatever is
-    // filling those frames is not the window scene.
-    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE")) {
-        static unsigned long n = 0;
-        qWarning() << "ios-layer: primary doBeginFrame" << ++n;
-    }
     const QSize size = m_output->modeSize();
     if (!m_swapchain || m_swapchain->size() != size) {
         m_swapchain = std::make_unique<IoscEglSwapchain>(m_backend, size);
@@ -379,10 +372,6 @@ WaylandEglCursorLayer::WaylandEglCursorLayer(WaylandOutput *output, WaylandEglBa
 
 std::optional<OutputLayerBeginFrameInfo> WaylandEglCursorLayer::doBeginFrame()
 {
-    if (qEnvironmentVariableIsSet("KWIN_IOS_PAINT_TRACE")) {
-        static unsigned long n = 0;
-        qWarning() << "ios-layer: cursor doBeginFrame" << ++n;
-    }
     const QSize target = targetRect().size().expandedTo(QSize(64, 64));
     if (!m_swapchain || m_swapchain->size() != target) {
         m_swapchain = std::make_unique<IoscEglSwapchain>(m_backend, target);
