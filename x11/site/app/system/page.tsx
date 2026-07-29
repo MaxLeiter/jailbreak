@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Bridges } from "@/components/Figures";
 import { Ext, NextLinks, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "System integration" };
+export const metadata: Metadata = pageMetadata("/system");
 
 export default function System() {
   return (

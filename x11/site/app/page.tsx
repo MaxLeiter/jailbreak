@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import { Diagram } from "@/components/Diagram";
 import { Clip, Shot, Zoom } from "@/components/Figures";
 import { Ext, NextLinks, Panel, PlainTerms, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
+
+export const metadata: Metadata = pageMetadata("/");
 
 export default function Overview() {
   return (
@@ -60,6 +64,7 @@ export default function Overview() {
             src="/shots/native-home.jpg"
             alt="The iPad Home Screen with Linux desktop apps (Calculator, Console, Files, Fonts, Disk Usage Analyzer, Hitori and more) shown as native iOS icons."
             caption="Native mode: Linux apps as Home Screen icons"
+            priority
           />
           <Shot
             src="/shots/iosc-desktop.jpg"

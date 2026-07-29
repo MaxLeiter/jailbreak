@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Callout, Ext, NextLinks, PageHeader, Section } from "@/components/ui";
+import { pageMetadata } from "@/content/site";
 
-export const metadata: Metadata = { title: "Build & packaging" };
+export const metadata: Metadata = pageMetadata("/build");
 
 export default function Build() {
   return (

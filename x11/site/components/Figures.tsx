@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
+import { CLIP, SHOTS } from "@/content/shots";
 
 /* ---- Lightbox overlay ---- */
 function Lightbox({
@@ -80,12 +82,20 @@ export function Shot({
   src,
   alt,
   caption,
+  priority,
+  sizes = "(max-width: 900px) 100vw, 300px",
 }: {
   src: string;
   alt: string;
   caption?: string;
+  /** Set on the first shot above the fold so it is not lazy-loaded. */
+  priority?: boolean;
+  sizes?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const img = SHOTS[src];
+  if (!img) throw new Error(`Shot: unknown image "${src}" (add it to content/shots.ts)`);
+
   return (
     <figure className="shot">
       <button
@@ -94,13 +104,22 @@ export function Shot({
         onClick={() => setOpen(true)}
         aria-label={`Expand image: ${caption ?? alt}`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt} loading="lazy" />
+        <Image
+          src={img}
+          alt={alt}
+          sizes={sizes}
+          priority={priority}
+          placeholder="blur"
+        />
       </button>
       {caption && <figcaption>{caption}</figcaption>}
       <Lightbox open={open} onClose={() => setOpen(false)} label={caption ?? alt}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt} className="lightbox-media" />
+        <Image
+          src={img}
+          alt={alt}
+          className="lightbox-media"
+          sizes="(max-width: 1100px) 100vw, 1100px"
+        />
       </Lightbox>
     </figure>
   );
@@ -151,11 +170,13 @@ export function Clip({
           playsInline
           controls
           preload="metadata"
-          poster="/shots/native-switch-poster.jpg"
+          poster={CLIP.poster}
+          width={CLIP.width}
+          height={CLIP.height}
           aria-label={label}
         >
-          <source src="/shots/native-switch.webm" type="video/webm" />
-          <source src="/shots/native-switch.mp4" type="video/mp4" />
+          <source src={CLIP.webm} type="video/webm" />
+          <source src={CLIP.mp4} type="video/mp4" />
         </video>
         <button
           type="button"
@@ -176,10 +197,13 @@ export function Clip({
           playsInline
           controls
           className="lightbox-media"
+          poster={CLIP.poster}
+          width={CLIP.width}
+          height={CLIP.height}
           aria-label={label}
         >
-          <source src="/shots/native-switch.webm" type="video/webm" />
-          <source src="/shots/native-switch.mp4" type="video/mp4" />
+          <source src={CLIP.webm} type="video/webm" />
+          <source src={CLIP.mp4} type="video/mp4" />
         </video>
       </Lightbox>
     </figure>
