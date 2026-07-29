@@ -2,9 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libgtop.mk — focused libgtop-2.0 Darwin backend for the GNOME track (iOS). GNOME Console
-# hard-links libgtop for terminal child-process monitoring. Rather than carrying all of upstream
-# libgtop, this builds the three calls Console consumes using kern.proc/kern.procargs2 sysctls.
+# Focused libgtop-2.0 Darwin backend. GNOME Console hard-links libgtop for terminal
+# child-process monitoring; rather than porting all of upstream libgtop, this implements
+# just the three calls Console uses, via kern.proc/kern.procargs2 sysctls.
 # Sources: /work/recipes/libgtop_ios.c + /work/recipes/libgtop/glibtop/*.h.
 
 SUBPROJECTS     += libgtop
@@ -14,9 +14,8 @@ DEB_LIBGTOP_V   ?= $(LIBGTOP_VERSION)+ios2
 libgtop-setup: setup
 	mkdir -p $(BUILD_WORK)/libgtop
 
-# This focused backend compiles in a fraction of a second. Always rebuild it so a warm
-# Procursus volume cannot silently repackage an older compatibility implementation after
-# libgtop_ios.c changes.
+# Always rebuild (compiles instantly) so a warm Procursus volume can't silently
+# repackage a stale libgtop_ios.c.
 libgtop: libgtop-setup
 	rm -rf $(BUILD_STAGE)/libgtop
 	mkdir -p $(BUILD_STAGE)/libgtop$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \
@@ -33,8 +32,8 @@ libgtop: libgtop-setup
 	$(call AFTER_BUILD,copy)
 
 libgtop-package: libgtop-stage
-	# Ship the focused runtime dylib as a proper deb so the dependency graph closes for apt
-	# (gnome-console links @rpath/libgtop-2.0.11.dylib and Depends: libgtop-2.0-11).
+	# Ships as a proper deb so the apt dependency graph closes: gnome-console links
+	# @rpath/libgtop-2.0.11.dylib and Depends: libgtop-2.0-11.
 	rm -rf $(BUILD_DIST)/libgtop-2.0-11
 	mkdir -p $(BUILD_DIST)/libgtop-2.0-11$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/libgtop$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgtop-2.0.11.dylib $(BUILD_DIST)/libgtop-2.0-11$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib

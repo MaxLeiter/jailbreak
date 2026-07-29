@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# qtdeclarative-ios-fixes.sh — QtQuick runtime fixes for the Darwin/iOS target.
 set -euo pipefail
 
 src=${1:?usage: qtdeclarative-ios-fixes.sh <qtdeclarative-source-dir>}

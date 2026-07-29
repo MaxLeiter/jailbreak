@@ -2,35 +2,19 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# fuzzel.mk — fuzzel, a Wayland application launcher / dmenu replacement (codeberg.org/dnkl/fuzzel).
-# Same author (dnkl) and build idioms as foot: pure C, no toolkit — it rasterises glyphs itself via
-# fcft into pixman buffers and presents through wl_shm on a wlr-layer-shell overlay surface. SVG
-# icons use the bundled nanosvg (no librsvg/cairo); PNG icons use libpng. Cairo is disabled.
+# Pinned to 1.12.0: >=1.13 hard-requires pixman >=0.46.0, which would force a churny pixman
+# bump shared with foot/imv. 1.12.0's unversioned pixman-1 dependency is satisfied by our 0.40.0.
 #
-# VERSION: pinned to 1.12.0 — the newest fuzzel that builds against the volume's pixman 0.40.0.
-# fuzzel >=1.13 hard-requires pixman >=0.46.0 (dependency('pixman-1', version:'>=0.46.0')), which
-# would force a churny pixman bump shared with foot/imv; 1.12.0's `dependency('pixman-1')` (no
-# version) is satisfied by 0.40.0. fcft 3.3.3 and tllist 1.1.0 (already staged) satisfy its pins.
-#
-# PORTABILITY (all in fuzzel-compat.h, force-included, + a few seds):
-#   - reallocarray / pipe2 / mkostemp / struct itimerspec  -> fuzzel-compat.h wrappers.
-#   - char32.c's `#error "wchar_t does not use UTF-32"` guard excludes only __FreeBSD__; Darwin's
-#     wchar_t IS 32-bit UTF-32 too, so add __APPLE__ to the exclusion (sed).
-#   - match.c/render.c call the 2-arg glibc pthread_setname_np; Apple's takes 1 arg (sets the
-#     calling thread) -> add an __APPLE__ branch mapping to the 1-arg form (blue-paint stops the
-#     macro self-recursing), same as foot's render.c fix.
-#   - shm.c self-guards MAP_UNINITIALIZED/MFD_* and picks the mkostemp(/tmp) path when memfd_create
-#     is absent (Darwin). <threads.h>/<uchar.h>/<linux/input-event-codes.h> shims come from
-#     build-wayland-apps.sh (staged into build_base).
-#   - subdir('doc') hard-requires scdoc (no meson toggle); man pages aren't needed on iOS -> drop it.
-#
-# BUILD-HOST TOOLS (from build-wayland-apps.sh): wayland-scanner (protocol codegen, native),
-# python3 (srgb.py), env. Protocols: wlr-layer-shell (vendored in external/) + xdg-shell/xdg-output/
-# xdg-activation/cursor-shape/tablet-v2/viewporter/fractional-scale/primary-selection from
-# wayland-protocols 1.44. All served by the iosc compositor.
-#
-# DEPENDS (target): wayland(+cursor), wayland-protocols, libxkbcommon, fcft, tllist(build/static),
-# pixman, fontconfig, utf8proc, epoll-shim, libpng.
+# Portability (fuzzel-compat.h force-included, plus a few seds):
+#  - reallocarray/pipe2/mkostemp/struct itimerspec -> compat.h wrappers.
+#  - char32.c's wchar_t-is-32-bit guard excludes only __FreeBSD__; Darwin's wchar_t is also
+#    32-bit UTF-32, so __APPLE__ is added to the exclusion.
+#  - match.c/render.c call the 2-arg glibc pthread_setname_np; Apple's takes 1 arg (names the
+#    calling thread) — added an __APPLE__ branch, same fix as foot's render.c.
+#  - shm.c already self-guards MAP_UNINITIALIZED/MFD_* and falls back to the mkostemp(/tmp)
+#    path when memfd_create is absent.
+#  - subdir('doc') hard-requires scdoc with no meson toggle; dropped since man pages aren't
+#    needed on iOS.
 
 SUBPROJECTS   += fuzzel
 FUZZEL_VERSION := 1.12.0
@@ -39,10 +23,7 @@ DEB_FUZZEL_V   ?= $(FUZZEL_VERSION)+ios1
 fuzzel-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/fuzzel/releases/download/$(FUZZEL_VERSION)/fuzzel-$(FUZZEL_VERSION).tar.gz)
 	$(call EXTRACT_TAR,fuzzel-$(FUZZEL_VERSION).tar.gz,fuzzel-$(FUZZEL_VERSION),fuzzel)
-	# Darwin wchar_t/thread-name fixes and the doc/ skip live in the port patch
-	# stack. The local libc shim below is still copied as a build input.
 	$(call DO_PATCH,fuzzel,fuzzel,-p1)
-	# Darwin/iOS libc portability shim, force-included into every fuzzel TU via c_args below.
 	cp $(BUILD_INFO)/fuzzel-compat.h $(BUILD_WORK)/fuzzel/fuzzel-compat.h
 	rm -rf $(BUILD_WORK)/fuzzel/build && mkdir -p $(BUILD_WORK)/fuzzel/build
 	echo -e "[host_machine]\n \
@@ -66,9 +47,8 @@ fuzzel:
 	@echo "Using previously built fuzzel."
 else
 fuzzel: fuzzel-setup wayland wayland-protocols libxkbcommon fcft tllist libpixman fontconfig libutf8proc epoll-shim libpng16
-	# fuzzel resolves `dependency('wayland-scanner', native:true)` via pkg-config; point a native
-	# file at the version-matched native scanner the wayland build left in WAYLAND_NATIVE_ROOT
-	# (same trick as foot), and put its bin on PATH for find_program().
+	# Point a native file at the version-matched wayland-scanner in WAYLAND_NATIVE_ROOT (same
+	# trick as foot), and put its bin on PATH for find_program().
 	cd $(BUILD_WORK)/fuzzel/build && \
 		printf "[binaries]\npkgconfig = 'pkg-config'\n[built-in options]\npkg_config_path = ['$(WAYLAND_NATIVE_ROOT)/lib/pkgconfig']\n" > native.txt && \
 		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \

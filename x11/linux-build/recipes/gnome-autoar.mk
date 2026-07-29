@@ -2,13 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-autoar.mk — automatic archive (de)compression on top of libarchive. Required by
-# nautilus (extract/compress). libarchive is already prebuilt in Procursus (libarchive13).
-#
-# DEPENDS (target): glib + libarchive (prebuilt) + gtk4 (gtk-builder; for the optional
-#   gnome-autoar-gtk widget nautilus uses).
-#
-# BUILT/PUBLISHED — libgnome-autoar-0-0 0.4.5+ios1.
+# Required by nautilus (extract/compress); libarchive comes prebuilt from Procursus.
 
 SUBPROJECTS           += gnome-autoar
 GNOME-AUTOAR_MAJOR_V  := 0.4
@@ -18,12 +12,9 @@ DEB_GNOME-AUTOAR_V    ?= $(GNOME-AUTOAR_VERSION)+ios1
 gnome-autoar-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-autoar/$(GNOME-AUTOAR_MAJOR_V)/gnome-autoar-$(GNOME-AUTOAR_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnome-autoar-$(GNOME-AUTOAR_VERSION).tar.xz,gnome-autoar-$(GNOME-AUTOAR_VERSION),gnome-autoar)
-	# Procursus' libarchive.pc carries `Requires.private: iconv`, but on iOS libiconv lives in
-	# libSystem so no iconv.pc is staged. Without it, pkg-config can't generate cargs for
-	# libarchive -> gnome-autoar's meson reports libarchive "not found (tried framework)" and
-	# the build fails. file-roller.mk stages the same stub, but the nautilus chain must be
-	# self-sufficient (gnome-autoar is its first libarchive consumer, built with or without
-	# file-roller). Stage a minimal iconv.pc (idempotent); the SDK's libiconv satisfies -liconv.
+	# Procursus' libarchive.pc requires iconv.pc, but iOS libiconv lives in libSystem with no
+	# iconv.pc staged; without it pkg-config can't resolve libarchive and meson reports it
+	# "not found". Stage a minimal stub here (idempotent); the SDK's libiconv satisfies -liconv.
 	mkdir -p $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
 	if [ ! -f $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/iconv.pc ]; then \
 		printf 'prefix=%s\nexec_prefix=$${prefix}\nlibdir=$${exec_prefix}/lib\nincludedir=$${prefix}/include\n\nName: iconv\nDescription: iOS SDK libiconv (pc stub for Requires.private resolution)\nVersion: 1.17\nLibs: -liconv\nCflags:\n' '$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)' > $(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/iconv.pc; \

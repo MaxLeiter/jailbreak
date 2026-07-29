@@ -2,14 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# fontconfig.mk — Ladybird leaf closure. BUMP 2.14.0 -> 2.17.1 (Ladybird pin). 2.17.1 STILL ships a
-# pregenerated autotools configure (the gitlab release tarball), so we stay on configure — lower
-# risk than the meson path and avoids the new Rust `fc-fontations` backend (meson-only). Needs
-# freetype (Wave 2) + host gperf + SYSTEM expat (CFVER>=1700 ships libexpat; configure auto-detects
-# -lexpat from the SDK sysroot, so we do NOT build expat). Drops the uuid dep (fontconfig no longer
-# uses libuuid). Ships the runtime /var/jb/etc/fonts config data (fonts.conf + conf.d) in
-# fontconfig-config so text renders with a real font path on-device. The driver wipes the staged
-# gtk-era 2.14.0 shadow first. +ios1 marker.
+# Configure (not meson) stays: 2.17.1 still ships a pregenerated autotools configure, and
+# meson would pull in the new Rust fc-fontations backend. SYSTEM expat only — CFVER>=1700
+# ships libexpat and configure auto-detects -lexpat, so we don't build expat ourselves.
 
 SUBPROJECTS        += fontconfig
 FONTCONFIG_VERSION := 2.17.1

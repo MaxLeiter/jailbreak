@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# bluezqt.mk — KF6 BluezQt library/QML import used by Plasma Mobile.
+# KF6 BluezQt library/QML import used by Plasma Mobile.
 
 SUBPROJECTS += bluezqt
 BLUEZQT_VERSION = $(KF6_VERSION)

@@ -2,16 +2,11 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# accountsservice.mk — the libaccountsservice CLIENT library only, for rootless iOS.
-# gnome-shell statically imports gi://AccountsService in its panel boot path
-# (js/misc/systemActions.js -> status/system.js -> panel.js), so the shell will NOT boot
-# without the AccountsService typelib + libaccountsservice dylib. The accounts-daemon is
-# Linux-only (utmp/crypt/shadow) and is dropped; the library's systemd sd-login use is
-# satisfied by a single-session shim compiled straight in by ports/accountsservice/patches.
-# Introspection is off here; the AccountsService-1.0 typelib is generated ON-DEVICE (the
-# St/Shell/Mutter pattern), so the built lib + headers must ship. Runtime org.freedesktop.Accounts
-# data comes from the persistent single-user Xios D-Bus bridge (or the shell degrades to an
-# empty user name, still boots).
+# Client library only: accounts-daemon is Linux-only (utmp/crypt/shadow) and dropped; its
+# sd-login use is satisfied by a single-session shim compiled in via ports/accountsservice/patches.
+# gnome-shell hard-imports gi://AccountsService during boot (js/misc/systemActions.js), so the
+# shell won't start without this lib + typelib. Introspection is off; the typelib is generated
+# on-device.
 
 SUBPROJECTS      += accountsservice
 ACCOUNTSSERVICE_VERSION := 23.13.9

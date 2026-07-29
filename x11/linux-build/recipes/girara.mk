@@ -2,19 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# girara.mk — girara, the minimalistic GTK3 user-interface library that backs zathura's
-# input-command-line-first UI (git.pwmt.org/pwmt/girara). Pure C, meson. Every dep it needs is
-# already in our tree (glib, gtk+-3.0, pango, and — for the JSON config dump — json-glib, all
-# staged on the GTK3 volume), so it adds ZERO new sub-deps.
-#
-# so_major is hard-coded to '4' in girara's meson.build (0.4.5), so the versioned dylib is
-# libgirara-gtk3.4.dylib and the Debian binary package is libgirara-gtk3-4 (the GETTEXT_PACKAGE
-# is literally "libgirara-gtk3-4"). Split like libgee: runtime libgirara-gtk3-4 (versioned dylib
-# + translations) + libgirara-gtk3-dev (headers, bare symlink, .pc).
-#
-# Options: -Ddocs=disabled (doxygen), -Dtests=disabled (needs the `check` unit-test lib),
-# -Djson=enabled (json-glib is present; zathura requires json-glib unconditionally anyway, so
-# this costs no new runtime dep). There is NO libnotify option in girara 0.4.5.
+# so_major is hard-coded to '4' in girara's own meson.build, hence the libgirara-gtk3-4
+# naming below (GIRARA_SOV). -Dtests=disabled: the `check` unit-test lib isn't staged.
+# No libnotify option exists in girara 0.4.5.
 
 SUBPROJECTS     += girara
 GIRARA_VERSION  := 0.4.5

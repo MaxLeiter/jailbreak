@@ -2,10 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libtommath.mk — Ladybird leaf closure. BUMP upstream 1.2.0 -> 1.3.0 (tiny bignum for
-# LibCrypto). Mechanically identical to the upstream Procursus recipe (libtool bootstrap +
-# makefile.shared) apart from the version and the +ios1 deb marker.
-
 SUBPPROJECTS       += libtommath
 LIBTOMMATH_VERSION := 1.3.0
 DEB_LIBTOMMATH_V   ?= $(LIBTOMMATH_VERSION)+ios1
@@ -13,10 +9,9 @@ DEB_LIBTOMMATH_V   ?= $(LIBTOMMATH_VERSION)+ios1
 libtommath-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/libtom/libtommath/releases/download/v$(LIBTOMMATH_VERSION)/ltm-$(LIBTOMMATH_VERSION).tar.xz)
 	$(call EXTRACT_TAR,ltm-$(LIBTOMMATH_VERSION).tar.xz,libtommath-$(LIBTOMMATH_VERSION),libtommath)
-	# mp_set_double.c is wrapped in `#ifdef __STDC_IEC_559__`, which iOS clang does NOT define (even
-	# though the ABI is IEEE-754) -> mp_set_double() compiles to nothing -> undefined symbol when
-	# LibCrypto links. Force the guard true for that one TU so the dylib exports mp_set_double. This
-	# folds the on-device libladybird_gapfill.a mp_set_double workaround into the tommath recipe.
+	# mp_set_double.c gates on __STDC_IEC_559__, which iOS clang doesn't define (even though
+	# the ABI is IEEE-754) -> mp_set_double() compiles to nothing -> undefined symbol when
+	# LibCrypto links. Force the guard true for this one TU so the dylib exports mp_set_double.
 	if [ -f $(BUILD_WORK)/libtommath/mp_set_double.c ] && ! grep -q XIOS_FORCE_IEC559 $(BUILD_WORK)/libtommath/mp_set_double.c; then \
 		printf '#ifndef __STDC_IEC_559__\n#define __STDC_IEC_559__ 1 /* XIOS_FORCE_IEC559 */\n#endif\n' > /tmp/ltm_iec.h; \
 		cat /tmp/ltm_iec.h $(BUILD_WORK)/libtommath/mp_set_double.c > /tmp/ltm_mpsd.c; \

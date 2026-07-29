@@ -2,30 +2,12 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# papers.mk — Papers, the GTK4/libadwaita GNOME document viewer (the GTK4 successor to Evince).
 # Pinned to 46.2: the newest release whose gtk4 requirement (>= 4.13.8) is satisfied by our
-# gtk4 4.14.5. 47.x bumped the floor to gtk4 4.15.2 and 48.x to 4.17.1 — both newer than our
-# base — so 46.2 is the ceiling. (libadwaita >= 1.5.0 and poppler-glib >= 22.05.0 are both met
-# by our libadwaita 1.5.0 and the poppler 24.08.0 built by poppler.mk.)
+# gtk4 4.14.5. 47.x bumped the floor to gtk4 4.15.2, 48.x to 4.17.1 — both newer than our base.
 #
-# ############################################################################################
-# ## BLOCKED: Papers 46.x cannot build in the current image. Every GTK4 Papers release, from  #
-# ## 46.0 onward, builds its shell as a Rust crate (subdir('shell-rs'), gated only by the     #
-# ## always-true `viewer` option). shell-rs pulls the gtk-rs / gtk4-rs / libadwaita-rs stack  #
-# ## from git master and must be cross-compiled to aarch64-apple-ios. The procursus-xbuild    #
-# ## image ships NO Rust toolchain (no rustc/cargo, no iOS target), and there is no pure-C     #
-# ## GTK4 Papers to fall back to (pre-46 is GTK3 Evince). Building Papers therefore requires   #
-# ## a separate Rust->iOS cross toolchain effort (rustup + aarch64-apple-ios target + cargo    #
-# ## ld64/pkg-config wiring + the gtk-rs -sys crates resolving our iOS gtk4/glib/adwaita .pc). #
-# ## This recipe encodes the correct meson feature surface so it is ready the moment a Rust    #
-# ## cross toolchain + a `rust` entry in cross.txt exist; UNTESTED until then.                 #
-# ############################################################################################
-#
-# Feature surface (minimal, PDF-only): pdf backend on (poppler-glib); ps/tiff/djvu/xps/comics
-# off; introspection/tests/gtk_doc/user_doc off (on-device/host-exec avoidance); thumbnailer
-# and nautilus extension off (host-exec / libnautilus-extension-4 we don't ship); keyring off
-# (no libsecret) and gtk_unix_print off (no CUPS print stack). exempi is UNCONDITIONAL and is
-# supplied by exempi.mk (libexempi8).
+# BLOCKED: every Papers release from 46.0+ builds its shell as a Rust crate (gtk-rs/gtk4-rs/
+# libadwaita-rs from git master), and this build image has no Rust->iOS cross toolchain.
+# Feature surface here is ready for when one exists; untested until then.
 
 SUBPROJECTS      += papers
 PAPERS_MAJOR_V   := 46

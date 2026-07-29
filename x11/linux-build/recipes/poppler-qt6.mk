@@ -2,9 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# poppler-qt6.mk — Qt6 frontend split for Okular. This builds Poppler from the
-# same upstream version as poppler.mk but packages only the Qt6 binding and its
-# development files. The core libpoppler140 package remains owned by poppler.mk.
+# Qt6 binding split from poppler.mk's core libpoppler140 (same upstream version).
 
 SUBPROJECTS           += poppler-qt6
 POPPLER_QT6_VERSION   := 24.08.0

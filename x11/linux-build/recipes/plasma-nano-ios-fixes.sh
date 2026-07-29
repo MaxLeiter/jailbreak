@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# plasma-nano-ios-fixes.sh — source trims for first-light Plasma Nano on iOS.
 set -euo pipefail
 
 src=${1:?usage: plasma-nano-ios-fixes.sh <plasma-nano-source-dir>}

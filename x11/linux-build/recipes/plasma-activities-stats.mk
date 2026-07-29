@@ -2,10 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-activities-stats.mk — PlasmaActivitiesStats for rootless iOS.
-# This is the first Plasma-workspace support package above the existing
-# plasma-activities client library. It is small, but it requires QtSql, so it
-# depends on the Qtbase round-4 feature bump.
+# Requires QtSql (Qtbase round-4 feature bump).
 
 SUBPROJECTS += plasma-activities-stats
 PLASMAACTIVITIESSTATS_VERSION = $(PLASMA_VERSION)

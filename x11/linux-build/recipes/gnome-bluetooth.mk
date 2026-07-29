@@ -2,25 +2,11 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-bluetooth.mk — gnome-bluetooth 46 for the Xios GNOME session (rootless iOS).
-#
-# Builds libgnome-bluetooth-3.0 (BlueZ client) + libgnome-bluetooth-ui-3.0 (the widgets the
-# gnome-control-center Bluetooth panel links, and the backend of gnome-shell's Bluetooth quick
-# toggle). Its runtime backend is org.bluez — provided on iOS by xios-bluez-stub
-# (wayland/xios-bluez-stub.m), which bridges BlueZ's D-Bus API to the private BluetoothManager
-# framework (validated on device: enumerates the real paired devices).
-#
-# iOS accommodations:
-#  - introspection=false (cross can't run g-ir-scanner; the GnomeBluetooth typelib for the shell
-#    toggle is generated on-device afterwards, like the other typelibs).
-#  - sendto=false (bluetooth-sendto app; needs OBEX/GTK file bits we don't want).
-#  - libudev + gsound are STUBS installed into the sysroot (build-udev-stub.sh / build-gsound-
-#    stub.sh): gnome-bluetooth uses libudev only for the pin.c hwdb name lookup (returns empty;
-#    the device's own BT-reported name is used) and gsound only for the pairing chime.
-#  - The `-Wl,--version-script` (GNU ld) link arg is auto-dropped by
-#    cc.get_supported_link_arguments() on the Darwin linker — no patch needed.
-# No source patch has been required; if one becomes necessary, add recipes/gnome-bluetooth-
-# ios-fixes.sh and invoke it in -setup (mirrors gnome-settings-daemon.mk).
+# Runtime backend is org.bluez, bridged on iOS by xios-bluez-stub (wayland/xios-bluez-stub.m)
+# to the private BluetoothManager framework (device-validated: enumerates paired devices).
+# libudev + gsound are stubs: gnome-bluetooth only needs libudev for a pin.c hwdb name lookup
+# (returns empty; falls back to the BT-reported name) and gsound for the pairing chime.
+# The -Wl,--version-script link arg is auto-dropped by meson on the Darwin linker; no patch needed.
 
 SUBPROJECTS      += gnome-bluetooth
 GNOME-BLUETOOTH_MAJOR_V := 46

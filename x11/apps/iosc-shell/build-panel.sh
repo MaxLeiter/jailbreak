@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build-panel.sh — cross-compile the iosc shell clients for iOS arm64.
+# Cross-compiles the iosc shell clients for iOS arm64.
 #
 #   ioscbar       — the slim tablet status bar + Control Center.
 #   ioscdock      — the floating tablet dock (favorites + running apps).

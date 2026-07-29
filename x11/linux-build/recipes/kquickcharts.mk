@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kquickcharts.mk — org.kde.quickcharts QML module for Plasma notification UI.
+# org.kde.quickcharts QML module for Plasma notification UI.
 
 SUBPROJECTS += kquickcharts
 KQUICKCHARTS_VERSION = $(KF6_VERSION)

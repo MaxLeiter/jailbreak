@@ -2,12 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# librsvg.mk — SVG renderer + GdkPixbuf SVG loader.
-#
-# This is intentionally a dedicated Rust/autotools recipe, not folded into GTK:
-# GTK loads SVG support through GdkPixbuf's module system at runtime. The visible
-# symptom without this package is Adwaita symbolic SVGs failing with
-# "Unrecognized image file format".
+# Dedicated Rust/autotools recipe, not folded into GTK: GdkPixbuf loads SVG support
+# through its module system at runtime. Without this package, Adwaita symbolic SVGs
+# fail with "Unrecognized image file format".
 
 SUBPROJECTS       += librsvg
 LIBRSVG_MAJOR_V   := 2.56

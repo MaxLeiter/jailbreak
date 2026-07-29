@@ -2,12 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# curl.mk — OVERRIDE of upstream Procursus curl for the GNOME (build-gnome.sh) track.
-# Only here because AppStream 1.0 hard-requires libcurl. AppStream only needs basic HTTP(S)
-# downloads, so this strips the heavy/blocking backends: libssh2, librtmp, c-ares, and HTTP/3
-# tooling. Keep HTTP/2 via our lib-only nghttp2 recipe plus openssl (TLS) and
-# zstd/brotli/libidn2 (already built in the volume → free). Result: a lean libcurl.4 that
-# satisfies appstream's pkg-config probe without the HTTP/2+3 dependency tree.
+# Overrides upstream Procursus curl for the GNOME track only, because AppStream 1.0
+# hard-requires libcurl but only needs basic HTTP(S). Strips libssh2/librtmp/c-ares/HTTP-3
+# and keeps HTTP/2 via our lib-only nghttp2 recipe, to satisfy appstream's pkg-config probe
+# without pulling in the full dependency tree.
 
 SUBPROJECTS  += curl
 CURL_VERSION := 8.7.1
@@ -45,38 +43,31 @@ curl: curl-setup gettext openssl libidn2 brotli zstd nghttp2
 endif
 
 curl-package: curl-stage
-	# curl.mk Package Structure
 	rm -rf $(BUILD_DIST)/curl \
 		$(BUILD_DIST)/libcurl4{,-openssl-dev}
 	mkdir -p $(BUILD_DIST)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{bin,share/man/man1} \
 		$(BUILD_DIST)/libcurl4-openssl-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{bin,lib,share/man/man1} \
 		$(BUILD_DIST)/libcurl4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# curl.mk Prep curl
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/curl $(BUILD_DIST)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man/man1/curl.1$(MEMO_MANPAGE_SUFFIX) $(BUILD_DIST)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man/man1
 
-	# curl.mk Prep libcurl4
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libcurl.4.dylib $(BUILD_DIST)/libcurl4/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# curl.mk Prep libcurl4-openssl-dev
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/{pkgconfig,libcurl.{dylib,a}} $(BUILD_DIST)/libcurl4-openssl-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man/man1/curl-config.1$(MEMO_MANPAGE_SUFFIX) $(BUILD_DIST)/libcurl4-openssl-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man/man1
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man/man3 $(BUILD_DIST)/libcurl4-openssl-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/curl-config $(BUILD_DIST)/libcurl4-openssl-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin
 	cp -a $(BUILD_STAGE)/curl/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libcurl4-openssl-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	# curl.mk Sign
 	$(call SIGN,curl,general.xml)
 	$(call SIGN,libcurl4,general.xml)
 	$(call SIGN,libcurl4-openssl-dev,general.xml)
 
-	# curl.mk Make .debs
 	$(call PACK,curl,DEB_CURL_V)
 	$(call PACK,libcurl4,DEB_CURL_V)
 	$(call PACK,libcurl4-openssl-dev,DEB_CURL_V)
 
-	# curl.mk Build cleanup
 	rm -rf $(BUILD_DIST)/curl \
 		$(BUILD_DIST)/libcurl4{,-openssl-dev}
 

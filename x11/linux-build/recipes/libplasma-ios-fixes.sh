@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# libplasma-ios-fixes.sh — source trims for libplasma on rootless iOS.
-#
 # Plasma's top-level WITHOUT_X11 option skips finding/linking X11, but a few
 # source files still include KX11Extras or call it behind runtime
 # KWindowSystem::isPlatformX11() checks. On iOS that platform can never be X11,

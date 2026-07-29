@@ -2,21 +2,19 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# ffmpeg.mk — Ladybird leaf closure. NEW minimal FFmpeg 7.1.1 (M0-configure-REQUIRED).
-# Ladybird's Meta/CMake/check_for_dependencies.cmake does an unconditional (non-Android)
-# `pkg_check_modules(... REQUIRED IMPORTED_TARGET ...)` for exactly FOUR libs:
-#     libavcodec  libavformat  libavutil  libswresample
-# (verified against master 2026-07-03 — NO swscale/avfilter/avdevice check). So Ladybird configure
-# FAILS without an ffmpeg 7.1.x present, even though playback is an M2 concern. This builds the
-# SMALLEST ffmpeg 7.1.1 that provides those four .pc files at version 7.1.x: --disable-everything
-# (no codecs/muxers/parsers — those come in M2), --disable-autodetect (no zlib/lzma/iconv/framework
-# pull-in), and the three unneeded libs disabled (avdevice/avfilter/swscale/postproc). No external
-# -lXXX deps, no ObjC framework probe (videotoolbox/audiotoolbox OFF), so the dylibs depend only on
-# each other + libSystem. This deliberately REPLACES both the stock Procursus recipe and our own
-# ffmpeg-5.1.2 override (which is the ffmpeg-5 API; Ladybird uses the ffmpeg-7 API — no reuse).
+# Minimal ffmpeg, required even though playback itself is an M2 concern: Ladybird's
+# Meta/CMake/check_for_dependencies.cmake unconditionally pkg_check_modules(REQUIRED) for
+# exactly libavcodec, libavformat, libavutil, libswresample (no swscale/avfilter/avdevice
+# check), so configure fails without an ffmpeg 7.1.x present.
 #
-# FFmpeg 7.1 SONAMEs:  libavutil.59  libavcodec.61  libavformat.61  libswresample.5
-# No ffmpeg/ffplay/ffprobe CLI (--disable-programs). +ios1 deb marker.
+# Builds the smallest ffmpeg providing those four .pc files: --disable-everything (no codecs/
+# muxers/parsers, those come in M2), --disable-autodetect (no zlib/lzma/iconv/framework
+# pull-in), and avdevice/avfilter/swscale/postproc disabled. No external -lXXX deps or ObjC
+# framework probes (videotoolbox/audiotoolbox off), so the dylibs depend only on each other +
+# libSystem. Replaces both the stock Procursus recipe and the ffmpeg-5.1.2 override (ffmpeg-5
+# API; Ladybird needs the ffmpeg-7 API, so no reuse).
+#
+# SONAMEs: libavutil.59 libavcodec.61 libavformat.61 libswresample.5. No CLI tools (--disable-programs).
 
 SUBPROJECTS    += ffmpeg
 FFMPEG_VERSION := 7.1.1
@@ -83,7 +81,6 @@ ffmpeg: ffmpeg-setup
 endif
 
 ffmpeg-package: ffmpeg-stage
-	# ffmpeg.mk Package Structure (minimal: avutil/avcodec/avformat/swresample only)
 	rm -rf \
 		$(BUILD_DIST)/libavcodec{61,-dev} \
 		$(BUILD_DIST)/libavformat{61,-dev} \
@@ -119,13 +116,11 @@ ffmpeg-package: ffmpeg-stage
 	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libswresample       $(BUILD_DIST)/libswresample-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
 	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libswresample.pc $(BUILD_DIST)/libswresample-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
 
-	# ffmpeg.mk Sign
 	$(call SIGN,libavcodec61,general.xml)
 	$(call SIGN,libavformat61,general.xml)
 	$(call SIGN,libavutil59,general.xml)
 	$(call SIGN,libswresample5,general.xml)
 
-	# ffmpeg.mk Make .debs
 	$(call PACK,libavcodec61,DEB_FFMPEG_V)
 	$(call PACK,libavcodec-dev,DEB_FFMPEG_V)
 	$(call PACK,libavformat61,DEB_FFMPEG_V)
@@ -135,7 +130,6 @@ ffmpeg-package: ffmpeg-stage
 	$(call PACK,libswresample5,DEB_FFMPEG_V)
 	$(call PACK,libswresample-dev,DEB_FFMPEG_V)
 
-	# ffmpeg.mk Build cleanup
 	rm -rf \
 		$(BUILD_DIST)/libavcodec{61,-dev} \
 		$(BUILD_DIST)/libavformat{61,-dev} \

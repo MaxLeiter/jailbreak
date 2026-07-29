@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma5support.mk — Plasma 5 compatibility library/QML import for Plasma Mobile.
-# First-light builds the shared library and org.kde.plasma.plasma5support import;
-# legacy data engines are deferred because devicenotifications drags KSysGuard.
+# Data engines are deferred (dataengines/ skipped in the fixes script) because
+# devicenotifications there pulls in KSysGuard.
 
 SUBPROJECTS += plasma5support
 PLASMA5SUPPORT_VERSION = $(PLASMA_VERSION)

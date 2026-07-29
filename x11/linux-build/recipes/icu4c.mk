@@ -2,25 +2,11 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# icu4c.mk — OVERRIDE of upstream Procursus icu4c (69.1 -> 78.3) for the Linux-Docker cross
-# pipeline (build-icu.sh). ICU is built TWICE per its official cross pattern (icu4c/source
-# README "How To Cross Compile ICU"): a NATIVE host build provides the data-generation tools
-# (genrb/icupkg/pkgdata) that the iOS cross build reuses via --with-cross-build. Upstream's
-# recipe already does that, but two leaks broke the native step on a Linux build host:
-#   (1) our drivers pass CC/CXX=<darwin cross wrappers> on the make COMMAND LINE, and GNU
-#       make forwards command-line overrides into every sub-make via MAKEFLAGS — so the host
-#       tools compiled with the iOS clang++ ("'memory' file not found": no host libc++).
-#       Explicit assignments on the sub-make invocation beat MAKEFLAGS-inherited ones, so the
-#       host $(MAKE) below re-pins the *_FOR_BUILD toolchain.
-#   (2) the parent Makefile exports the darwin AR/RANLIB into the environment and
-#       BUILD_CONFIGURE_FLAGS does not cover them — pin host ones for the host build.
-# Data packaging: default "library" (icudt embedded in libicudata.dylib, same as Debian) —
-# loads through plain dyld, no ICU_DATA path lookup to break on-device.
-# ICU 78.3 = the EXACT pin Ladybird demands (find_package(ICU 78.3 EXACT REQUIRED)); the
-# icu-uc.pc "Version:" is fed from configure PACKAGE_VERSION=78.3 so the EXACT match passes.
-# NOTE: upstream's release asset naming changed after ICU 74: the tag is now dotted
-# (release-78.3, not release-74-2) and the tarball is icu4c-78.3-sources.tgz (not
-# icu4c-74_2-src.tgz). The URL/EXTRACT below use the dotted $(ICU_VERSION) directly.
+# ICU is built twice (native host build for genrb/icupkg/pkgdata, then iOS cross via
+# --with-cross-build); CC/CXX/AR/RANLIB are pinned explicitly on each sub-make because
+# MAKEFLAGS/the parent Makefile otherwise leak the iOS cross toolchain into the host build.
+# 78.3 is EXACT-required by Ladybird's find_package(ICU); post-74 tarball naming uses dotted
+# tags (icu4c-<ver>-sources.tgz).
 
 SUBPROJECTS += icu4c
 ICU_VERSION := 78.3
@@ -89,41 +75,35 @@ endif
 
 icu4c-package: .SHELLFLAGS=-O extglob -c
 icu4c-package: icu4c-stage
-	# icu4c.mk Package Structure
 	rm -rf $(BUILD_DIST)/libicu{$(ICU_API_V),-dev} \
 		$(BUILD_DIST)/icu-devtools
 	mkdir -p $(BUILD_DIST)/libicu{$(ICU_API_V),-dev}/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libicu-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share \
 		$(BUILD_DIST)/icu-devtools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	# icu4c.mk Prep libicu$(ICU_API_V)
 	cp -a $(BUILD_STAGE)/icu4c/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libicu*.$(ICU_API_V)*.dylib $(BUILD_DIST)/libicu$(ICU_API_V)/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# icu4c.mk Prep libicu-dev (libicutest only exists when tests are enabled; tolerate absence)
+	# libicutest only exists when tests are enabled; tolerate absence.
 	cp -a $(BUILD_STAGE)/icu4c/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libicu{data,i18n,io,tu,uc}.dylib $(BUILD_DIST)/libicu-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	-cp -a $(BUILD_STAGE)/icu4c/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libicutest.dylib $(BUILD_DIST)/libicu-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/icu4c/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/{pkgconfig,icu} $(BUILD_DIST)/libicu-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/icu4c/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/icu $(BUILD_DIST)/libicu-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share
-	# upstream's recipe forgot the headers — a -dev package without include/unicode is unusable
-	# for on-device builds (the g-ir-scanner/introspection route compiles on the iPad)
+	# Upstream's recipe forgot the headers; a -dev package without include/unicode is
+	# unusable for the on-device g-ir-scanner/introspection compile route.
 	cp -a $(BUILD_STAGE)/icu4c/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libicu-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
-	# icu4c.mk Prep icu-devtools
 	cp -a $(BUILD_STAGE)/icu4c/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{sbin,bin,share} $(BUILD_DIST)/icu-devtools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	rm -f $(BUILD_DIST)/icu-devtools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/icu-config
 	rm -f $(BUILD_DIST)/icu-devtools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man/man1/icu-config.1$(MEMO_MANPAGE_SUFFIX)
 	rm -rf $(BUILD_DIST)/icu-devtools/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/icu
 
-	# icu4c.mk Sign
 	$(call SIGN,libicu$(ICU_API_V),general.xml)
 	$(call SIGN,icu-devtools,general.xml)
 
-	# icu4c.mk Make .debs
 	$(call PACK,libicu$(ICU_API_V),DEB_ICU_V)
 	$(call PACK,libicu-dev,DEB_ICU_V)
 	$(call PACK,icu-devtools,DEB_ICU_V)
 
-	# icu4c.mk Build cleanup
 	rm -rf $(BUILD_DIST)/libicu{$(ICU_API_V),-dev} \
 		$(BUILD_DIST)/icu-devtools
 

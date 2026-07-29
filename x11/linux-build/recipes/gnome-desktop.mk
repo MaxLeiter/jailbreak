@@ -2,15 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-desktop.mk — libgnome-desktop-4 (shared desktop utilities: thumbnails, GnomeBG,
-# GnomeXkbInfo, GnomeLanguages). Required by nautilus. The heaviest leaf of the Files tree:
-# it drags iso-codes (GnomeLanguages) and libxkbregistry (GnomeXkbInfo).
-#
-# DEPENDS (target): gtk4 (gtk-builder) + gsettings-desktop-schemas + iso-codes +
-#   libxkbcommon (MUST be built with -Denable-xkbregistry=true — the Wayland track's
-#   libxkbcommon.mk currently disables it; coordinate to flip that on, it only adds a
-#   libxml2 dep which is already prebuilt).
-# BUILT/PUBLISHED — libgnome-desktop-4-2 44.1+ios1.
+# Requires libxkbcommon built with -Denable-xkbregistry=true (for GnomeXkbInfo); the
+# Wayland track's libxkbcommon.mk currently disables it, so that needs flipping on first.
 
 SUBPROJECTS           += gnome-desktop
 GNOME-DESKTOP_MAJOR_V := 44

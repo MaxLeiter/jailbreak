@@ -2,12 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libwebp.mk — Ladybird leaf closure. BUMP 1.2.2 -> 1.6.0 (Ladybird pin). Rewritten to the official
-# GitHub release + CMake (the old chromium-googlesource autotools hack is dead weight and dragged in
-# libgif/libtiff we do not build). All CLI tools OFF, mux library OFF (Ladybird only decodes); builds
-# libwebp + libwebpdemux + libsharpyuv (new split lib in 1.x). Optional libpng/libjpeg-turbo are
-# staged (Wave 2) and auto-detected for the encoder path but no CLI tool needs them. +ios1 marker.
-
 SUBPROJECTS     += libwebp
 LIBWEBP_VERSION := 1.6.0
 DEB_LIBWEBP_V   ?= $(LIBWEBP_VERSION)+ios1
@@ -59,13 +53,9 @@ libwebp-package: libwebp-stage
 
 	# libwebp.mk Prep libwebp7 (runtime versioned dylib)
 	cp -a $(BUILD_STAGE)/libwebp/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libwebp.[0-9]*.dylib $(BUILD_DIST)/libwebp7/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	# libwebpmux (Ladybird LibImageDecoders links WebP::libwebpmux unconditionally); bundle its
-	# runtime .dylib alongside libwebp7 (dev symlink+header ride the libwebp-dev glob below).
+	# LibImageDecoders links WebP::libwebpmux unconditionally; bundle its dylib into libwebp7.
 	cp -a $(BUILD_STAGE)/libwebp/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libwebpmux.[0-9]*.dylib $(BUILD_DIST)/libwebp7/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	# libwebpdecoder (decode-only lib; Ladybird links libwebpdecoder.3 explicitly). libwebp's CMake
-	# always builds+installs the `webpdecoder` target but the old package step dropped it -> the
-	# engine's runtime closure referenced a libwebpdecoder.3 that no deb shipped. Bundle it into
-	# libwebp7 (same version, same dir). Folds the on-device libwebpdecoder.3 -> libwebp.7 symlink hack.
+	# Ladybird links libwebpdecoder.3 explicitly; bundle it into libwebp7 alongside the main lib.
 	cp -a $(BUILD_STAGE)/libwebp/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libwebpdecoder.[0-9]*.dylib $(BUILD_DIST)/libwebp7/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# libwebp.mk Prep libwebpdemux2

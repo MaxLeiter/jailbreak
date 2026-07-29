@@ -2,11 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gweather4.mk — libgweather-4, weather/location library. gnome-shell imports gi://GWeather
-# (version 4.0) in dateMenu.js at panel boot, so the GWeather-4.0 typelib + dylib are
-# boot-critical. glib + libxml2 + geocode-glib + libsoup3 (all present/built). Introspection
-# off (GWeather-4.0 typelib generated on-device); vala/tests/docs off. Weather is inert without
-# a geoclue location daemon, but the typelib must exist for the static import.
+# gnome-shell imports gi://GWeather (4.0) in dateMenu.js at panel boot, so the GWeather-4.0
+# typelib + dylib are boot-critical even though weather itself is inert without a geoclue
+# location daemon. Introspection is off here; the typelib gets generated on-device.
 
 SUBPROJECTS       += gweather4
 GWEATHER4_VERSION := 4.4.2

@@ -2,12 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# enchant.mk — spell-checking abstraction library. Leaf dependency of gnome-text-editor.
-# Autotools (not meson), like the XFCE track's dbus.mk. Builds fine with NO dictionary
-# backend (hunspell/aspell/nuspell) — spell-checking is then a no-op, which is acceptable for
-# first-light; add a backend later. glib only otherwise.
-#
-# BUILT/PUBLISHED — libenchant-2-2 2.6.1+ios1.
+# Builds with no dictionary backend (hunspell/aspell/nuspell) — spell-checking is then a
+# no-op, acceptable for first-light; add a backend later.
 
 SUBPROJECTS     += enchant
 ENCHANT_VERSION := 2.6.1
@@ -36,7 +32,6 @@ enchant-package: enchant-stage
 	mkdir -p $(BUILD_DIST)/libenchant-2-2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libenchant-2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	# libenchant-2-2 (runtime dylib + provider modules + enchant-2 tool)
 	cp -a $(BUILD_STAGE)/enchant/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libenchant-2.2.dylib $(BUILD_DIST)/libenchant-2-2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	if [ -d "$(BUILD_STAGE)/enchant/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/enchant-2" ]; then \
 		cp -a $(BUILD_STAGE)/enchant/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/enchant-2 $(BUILD_DIST)/libenchant-2-2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
@@ -45,7 +40,6 @@ enchant-package: enchant-stage
 		cp -a $(BUILD_STAGE)/enchant/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/libenchant-2-2/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
 	fi
 
-	# libenchant-2-dev (headers, symlink, .pc)
 	cp -a $(BUILD_STAGE)/enchant/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libenchant-2.2.dylib|enchant-2) $(BUILD_DIST)/libenchant-2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/enchant/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libenchant-2-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 

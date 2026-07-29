@@ -2,21 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# foot.mk — foot, a fast, lightweight Wayland terminal emulator (codeberg.org/dnkl/foot).
-# Pure C, no toolkit: renders glyphs itself via fcft into pixman buffers and presents through
-# wl_shm. The protocols it drives (xdg-shell, xdg-decoration, primary-selection,
-# presentation-time, cursor-shape, ...) are all served by the iosc compositor.
-#
-# PORTABILITY: foot's event loop is epoll-based; on non-Linux it uses epoll-shim (already built,
-# `dependency('epoll-shim')`), which also supplies timerfd/eventfd. The only Linux header it needs
-# is <linux/input-event-codes.h> (BTN_*/KEY_* codes) — the driver drops the same lightweight shim
-# used for the GTK4 Wayland backend. utmp logging is disabled (iOS has no utmp).
-#
-# BUILD-HOST TOOLS (installed by build-wayland-apps.sh): wayland-scanner (protocol codegen, native),
-# tic (terminfo compiler, from ncurses-bin), python3, env. PGO/tests are OFF (target can't run here).
-#
-# DEPENDS (target): wayland, wayland-protocols(>=1.41), libxkbcommon, fcft, tllist(build), pixman,
-# fontconfig, utf8proc, epoll-shim.
+# Event loop is epoll-based; epoll-shim supplies epoll/timerfd/eventfd on non-Linux. The only
+# Linux header still needed is <linux/input-event-codes.h> (BTN_*/KEY_* codes) — same shim used
+# by the GTK4 Wayland backend. utmp logging is disabled (no utmp on iOS).
 
 SUBPROJECTS  += foot
 FOOT_VERSION := 1.27.0
@@ -26,9 +14,9 @@ foot-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://codeberg.org/dnkl/foot/releases/download/$(FOOT_VERSION)/foot-$(FOOT_VERSION).tar.gz)
 	$(call EXTRACT_TAR,foot-$(FOOT_VERSION).tar.gz,foot-$(FOOT_VERSION),foot)
 	rm -rf $(BUILD_WORK)/foot/build && mkdir -p $(BUILD_WORK)/foot/build
-	# Darwin/iOS libc portability shim, force-included into every foot TU via c_args below:
-	# declares reallocarray, defines struct itimerspec + SOCK_CLOEXEC/NONBLOCK, and wraps the
-	# glibc atomic-flag pipe2/accept4/mkostemp over their flagless POSIX variants.
+	# Compat shim (force-included via c_args below): declares reallocarray, defines struct
+	# itimerspec + SOCK_CLOEXEC/NONBLOCK, wraps glibc pipe2/accept4/mkostemp over their
+	# flagless POSIX variants.
 	cp $(BUILD_INFO)/foot-compat.h $(BUILD_WORK)/foot/foot-compat.h
 	$(call DO_PATCH,foot,foot,-p1)
 	echo -e "[host_machine]\n \
@@ -52,9 +40,9 @@ foot:
 	@echo "Using previously built foot."
 else
 foot: foot-setup wayland wayland-protocols libxkbcommon fcft tllist libpixman fontconfig libutf8proc epoll-shim
-	# foot resolves `dependency('wayland-scanner', native:true)` via pkg-config; Debian's
-	# libwayland-bin ships no wayland-scanner.pc, so point a native file at the version-matched
-	# native scanner the wayland build left in WAYLAND_NATIVE_ROOT (same trick as wayland-protocols).
+	# foot resolves `dependency('wayland-scanner', native:true)` via pkg-config, but there's no
+	# wayland-scanner.pc shipped; point a native file at the version-matched scanner the wayland
+	# build left in WAYLAND_NATIVE_ROOT.
 	cd $(BUILD_WORK)/foot/build && \
 		printf "[binaries]\npkgconfig = 'pkg-config'\n[built-in options]\npkg_config_path = ['$(WAYLAND_NATIVE_ROOT)/lib/pkgconfig']\n" > native.txt && \
 		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \
@@ -77,7 +65,6 @@ endif
 foot-package: foot-stage
 	rm -rf $(BUILD_DIST)/foot
 	mkdir -p $(BUILD_DIST)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
-	# app: bin/{foot,footclient} + share (terminfo, themes, desktop, icons)
 	cp -a $(BUILD_STAGE)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin $(BUILD_DIST)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 	if [ -d "$(BUILD_STAGE)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share" ]; then \
 		cp -a $(BUILD_STAGE)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share $(BUILD_DIST)/foot/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \

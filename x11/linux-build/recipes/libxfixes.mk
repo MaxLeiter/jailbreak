@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libxfixes.mk — bumped to 6.0.1 for mutter 46 (needs xfixes >= 6; mainline ships 5.0.3).
-# Autotools X lib (no meson/asm issues). ABI-compatible soname; existing consumers keep working.
-# Overrides the mainline recipe build-locally for the mutter build.
+# Bumped to 6.0.1 for mutter 46, which needs xfixes >= 6 (mainline ships 5.0.3).
+# ABI-compatible soname, so existing consumers keep working.
 
 SUBPROJECTS       += libxfixes
 LIBXFIXES_VERSION := 6.0.1

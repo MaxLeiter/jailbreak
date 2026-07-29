@@ -2,11 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# plasma-nano.mk — first-light Plasma Nano shell package for Xios.
-# Plasma Nano is the lightest mobile/convergent shell layer above libplasma and
-# KWayland. It installs shell/package data plus one QML plugin; no compositor or
-# device-facing launcher is built here.
-
 SUBPROJECTS += plasma-nano
 PLASMANANO_VERSION = $(PLASMA_VERSION)
 DEB_PLASMANANO_V ?= $(PLASMANANO_VERSION)+ios3

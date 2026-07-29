@@ -2,14 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libei.mk — *** LINKS-ONLY SHIM for iOS. *** libei/libeis (the EIS input-emulation protocol libs)
-# are Linux-only (evdev/uinput/eventfd) and have no iOS equivalent. Mutter compiles its
-# input-capture backend (meta-input-capture*.c) UNCONDITIONALLY and links libeis (it's in
-# mutter_pkg_private_deps). This shim provides libei's REAL public headers plus a links-only stub of
-# the eis_* symbols Mutter references, so libmutter COMPILES + LINKS for typelib generation.
-#
-#   *** INPUT CAPTURE / REMOTE-DESKTOP INPUT IS NON-FUNCTIONAL ON iOS. *** These stubs return 0;
-#   the feature is remote-desktop-only (off) and inert here. Like libdrm — do not mistake for real.
+# Links-only shim: libei/libeis are Linux-only (evdev/uinput/eventfd), but Mutter compiles
+# its input-capture backend unconditionally and links libeis regardless of that. Ships
+# libei's real headers plus no-op stubs of the referenced eis_* symbols so libmutter links.
+# Input capture / remote-desktop input is non-functional here; same pattern as the libdrm shim.
 
 SUBPROJECTS  += libei
 LIBEI_VERSION := 1.3.0

@@ -2,30 +2,16 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-control-center.mk — GNOME Settings 46 for the Xios GNOME session (rootless iOS).
+# Panels with no iOS backend are removed by ports/gnome-control-center/patches: the wwan
+# configure landmine, plus goa (online-accounts) and cups (printers). network/bluetooth/wacom
+# are already dropped off Linux by upstream.
 #
-# A per-panel GTK4/libadwaita app. This builds the tractable CONFIG panels; panels whose
-# backends have no iOS implementation are ectomied by ports/gnome-control-center/patches
-# (see its header for the exact list). network/bluetooth/wacom are ALREADY auto-dropped off
-# Linux by upstream; the patch stack removes the wwan configure-landmine + the goa
-# (online-accounts) and cups (printers) panels/deps.
-#
-# KEPT panels: applications background display keyboard mouse multitasking notifications
-#              power privacy search sharing sound universal-access
-#              [+ bluetooth when GCC_WITH_BLUETOOTH=1]
-#
-# COMPANION PREREQS that must be built on the volume FIRST (not upstream-portable as-is):
-#   * gudev-1.0 STUB — REQUIRED dep, consumed by panels/common (gsd-device-manager.c, linked by
-#     keyboard/mouse). iOS has no udev, so the stub returns empty enumerations.
-#   * libgsound/pwquality STUBS — REQUIRED by sound/system-adjacent code paths and optional
-#     Bluetooth/settings work. They provide best-effort behavior without pulling Linux-only stacks.
-#   * gnome-bluetooth (libgnome-bluetooth-ui-3.0) — ONLY when GCC_WITH_BLUETOOTH=1, for Max's
-#     Bluetooth panel. Needs its own udev/gsound ectomy. Its org.bluez backend is already
-#     provided at runtime by xios-bluez-stub (wayland/xios-bluez-stub.m, validated on device).
-#
-# Everything else (gtk4, libadwaita, gnome-desktop, gsettings-desktop-schemas, colord,
-# accountsservice, polkit, gcr, pulseaudio, upower, gnome-settings-daemon headers, libX11/libXi,
-# libepoxy) is already built on procursus-vol-shell.
+# Companion stubs required before this builds:
+#   * gudev-1.0 -- panels/common (gsd-device-manager.c, linked by keyboard/mouse) needs it;
+#     iOS has no udev, so the stub returns empty enumerations.
+#   * libgsound/pwquality -- best-effort stubs for sound/system-adjacent code paths.
+#   * gnome-bluetooth -- only when GCC_WITH_BLUETOOTH=1; its org.bluez backend is provided
+#     at runtime by xios-bluez-stub (wayland/xios-bluez-stub.m).
 
 SUBPROJECTS      += gnome-control-center
 GCC_MAJOR_V      := 46

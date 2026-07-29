@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# iosc-capture-remote.sh — mac-side driver for bin/iosc-capture.sh.
+# Mac-side driver for bin/iosc-capture.sh.
 # Ships the on-device capture helper to the iPad, runs it in the iosc session,
 # and pulls back the screenshot + stderr log + printed diagnosis.
 #

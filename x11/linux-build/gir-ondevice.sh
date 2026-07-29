@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # gir-ondevice.sh — generate GObject-Introspection typelibs ON the iPad.
 #
-# Why this exists: g-ir-scanner produces typelibs by compiling and RUNNING a probe
-# linked against the target library. Cross-compiling, that probe is an iOS Mach-O
-# binary qemu can't execute — the classic GI cross wall (gnome-plan.md Blocker #2).
-# The escape is that the device is a full arm64 Darwin machine: Procursus apt ships
-# clang/ld64/python3.9/meson/ninja/bison, so g-ir-scanner runs NATIVELY on-device and
-# the probe is just a normal native binary. Proven 2026-06-30 (see docs/gjs-plan.md):
-# built gobject-introspection 1.78 on-device and runtime-loaded GLib/GObject/Gio typelibs.
+# Why this exists: g-ir-scanner produces typelibs by compiling and RUNNING a probe linked
+# against the target library. Cross-compiling, that probe is an iOS Mach-O binary qemu can't
+# execute. The escape is that the device is a full arm64 Darwin machine: Procursus apt ships
+# clang/ld64/python3.9/meson/ninja/bison, so g-ir-scanner runs natively on-device and the
+# probe is just a normal native binary.
 #
 # Two subcommands:
 #   bootstrap  — install the toolchain + build & install gobject-introspection on-device

@@ -2,9 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# milou.mk — Plasma's real KRunner-backed search model and QML result views.
-# Plasma Mobile imports org.kde.milou from KRunnerScreen; this package replaces
-# the old inert ResultsListView fallback with the upstream C++ model/plugin.
+# Plasma's real KRunner-backed search model and QML result views. Plasma Mobile
+# imports org.kde.milou from KRunnerScreen; this replaces the old inert
+# ResultsListView fallback with the upstream C++ model/plugin.
 
 SUBPROJECTS += milou
 MILOU_VERSION = $(PLASMA_VERSION)

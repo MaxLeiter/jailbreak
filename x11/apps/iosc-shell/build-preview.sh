@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build-preview.sh — render the REAL shell draw code to PNGs, off-device.
+# Renders the REAL shell draw code to PNGs, off-device.
 #
 # This is the fast visual-iteration loop for the shell-polish work: it compiles
 # preview-host.c (which calls the same panel-layout.h / overview-layout.h /

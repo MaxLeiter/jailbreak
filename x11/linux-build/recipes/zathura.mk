@@ -2,30 +2,18 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# zathura.mk — zathura, the keyboard-driven, plugin-based document viewer
-# (git.pwmt.org/pwmt/zathura). Pure C, meson, GTK3 via girara. This is the pragmatic PDF app for
-# the Xios desktop (GNOME Papers is Rust-blocked). The zathura executable is the shell; the
-# actual rendering is a dlopen'd backend plugin (zathura-pdf-poppler, built separately).
+# The zathura executable is the shell; rendering is a dlopen'd backend
+# plugin (zathura-pdf-poppler, built separately).
 #
-# iOS PORTING PATCHES (ports/zathura/patches, applied at setup):
-#   1. Darwin-ectomy: zathura 0.5.12's meson.build has `if host_machine.system() == 'darwin'`
-#      blocks that (a) require gtk-mac-integration-gtk3 and (b) define -DGTKOSXAPPLICATION, which
-#      drags in <gtkosxapplication.h> + AppKit/Quartz code in main.c. Our cross.txt sets
-#      system='darwin' (Mach-O), but this is an X11 GTK3 build with no GtkOSX. The fix neutralises
-#      both darwin conditionals so neither path is taken.
-#   2. Magic-ectomy: 0.5.12 removed the old -Dmagic option and made `dependency('libmagic')`
-#      unconditional. libmagic (the `file` lib + its .mgc database) is not in our tree and would
-#      add a runtime dep, so the patch drops it from meson.build and swaps zathura/content-type.c
-#      for a libmagic-free version. zathura already carries a full GLib content-type fallback
-#      (g_content_type_guess), which is more than enough to route .pdf -> the poppler plugin.
-#
-# DISABLED at configure: -Dseccomp (Linux sandbox, will not compile on iOS), -Dlandlock (Linux
-# LSM), -Dsynctex (TeX source sync, needs libsynctex), -Dmanpages (needs sphinx), -Dtests,
-# -Dconvert-icon (rsvg-convert host tool). ENABLED implicitly (hard deps, all present on the
-# volume): sqlite3 (bookmark/history DB -> libsqlite3-1) and json-glib (config).
-#
-# App deb `zathura`: ships bin/ + share/ only (the static libzathura is linked into the exe;
-# headers + zathura.pc are consumed from build_base by the plugin build, not shipped in the app).
+# ports/zathura/patches:
+#   1. Darwin-ectomy: meson.build's `if system() == 'darwin'` blocks pull in
+#      gtk-mac-integration-gtk3 and AppKit/Quartz code. Neutralized: this is
+#      an X11 GTK3 build, not GtkOSX, even though cross.txt sets
+#      system='darwin' for Mach-O.
+#   2. Magic-ectomy: 0.5.12 made `dependency('libmagic')` unconditional.
+#      libmagic isn't in the tree, so the patch drops it from meson.build
+#      and swaps content-type.c for a libmagic-free version using GLib's
+#      g_content_type_guess.
 
 SUBPROJECTS      += zathura
 ZATHURA_VERSION  := 0.5.12

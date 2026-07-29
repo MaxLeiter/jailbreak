@@ -2,11 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gcr.mk — gcr 4 (gcr-4 + gck-2): crypto UI/prompt plumbing. gnome-shell links gcr-4
-# unconditionally (ShellKeyringPrompt / GcrPrompt). GTK4 viewer bits and the ssh-agent are
-# OFF (ssh_agent would drag libsecret + host ssh probes); p11-kit + libgcrypt come from
-# build_base (Procursus prebuilt). gpg_path is set so configure doesn't probe the HOST for
-# gpg — it's only a compiled-in default path. Mirrors recipes/gnome-desktop.mk.
+# gnome-shell links gcr-4 unconditionally (ShellKeyringPrompt/GcrPrompt), so it's required.
+# ssh_agent is disabled: it would drag in libsecret + host ssh probes.
+# gpg_path is set explicitly so configure doesn't probe the host for a gpg binary.
 
 SUBPROJECTS  += gcr
 GCR_MAJOR_V  := 4.2

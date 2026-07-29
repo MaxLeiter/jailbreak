@@ -2,21 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# imv.mk — imv, a Wayland/X11 image viewer (git.sr.ht/~exec64/imv). We build both window
-# backends: Wayland is the native target, while X11 gives iOS a practical fallback through
-# Xwayland/glamor because imv's renderer is fixed-function desktop OpenGL. libpng +
-# libjpeg-turbo image backends are enabled (the heavier optional
-# ones — tiff/rsvg/heif/jxl/webp/nsgif/nsbmp — are left off). Text overlay is rendered with
-# pangocairo; the Unicode segmentation backend is libgrapheme (statically linked) instead of ICU.
-#
-# PORTABILITY: imv is clean on Darwin except for `cc.find_library('rt')` (no librt on iOS —
-# clock_gettime lives in libc); the -setup sed makes that lookup non-required. Protocol code
-# (xdg-shell, pointer-gestures-v1) is generated at build time by the host wayland-scanner via
-# meson's unstable-wayland module, from the wayland-protocols data staged in build_base.
-#
-# DEPENDS (target): pango(cairo)/glib/cairo, wayland(+egl), egl/gl (mesa), X11/xcb, libxkbcommon,
-# libpng, libjpeg-turbo, libgrapheme (build-only, static). inih is shipped inside the imv deb
-# because the current build base has the dylib but no standalone runtime package.
+# imv (git.sr.ht/~exec64/imv) builds both window backends: Wayland is the native target,
+# while X11 is kept as a fallback through Xwayland/glamor since imv's renderer is
+# fixed-function desktop OpenGL.
 
 SUBPROJECTS  += imv
 IMV_VERSION  := 5.0.1

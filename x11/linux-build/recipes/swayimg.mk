@@ -2,19 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# swayimg.mk — swayimg, a lightweight Wayland image viewer
-# (github.com/artemsen/swayimg). This initial iOS build keeps the native
-# Wayland UI, Lua config engine, built-in formats, PNG, and JPEG; heavier
-# optional image stacks (EXR/HEIF/AVIF/JP2/JXL/SVG/TIFF/SIXEL/RAW/WebP/GIF)
-# and Linux DRM/compositor integration are disabled.
-#
-# PORTABILITY: the patch stack replaces Linux eventfd/timerfd with pollable
+# The iOS patch stack replaces Linux eventfd/timerfd with pollable
 # pipe-backed shims on Apple targets and maps st_mtim to Darwin st_mtime.
-# inotify is already optional upstream and compiles out when the header is
-# absent.
-#
-# DEPENDS (target): wayland, libxkbcommon, fontconfig, freetype, luajit,
-# libpng, libjpeg-turbo. wayland-protocols is build/data only.
+# inotify is already optional upstream and compiles out when absent.
 
 SUBPROJECTS    += swayimg
 SWAYIMG_VERSION := 5.4

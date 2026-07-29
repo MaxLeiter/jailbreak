@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plasma-desktop-ios-qml-fixes.sh — package-time QML compatibility fixes.
+# Package-time QML compatibility fixes.
 set -euo pipefail
 
 root=${1:?usage: plasma-desktop-ios-qml-fixes.sh <package-root>}

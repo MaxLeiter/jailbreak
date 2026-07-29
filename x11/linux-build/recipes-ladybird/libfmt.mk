@@ -2,10 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# libfmt.mk — Ladybird leaf closure. BUMP upstream 7.1.3 -> 12.1.0 (Ladybird pin). Pure CMake +
-# headers. Runtime package renamed libfmt7 -> libfmt12 to track the new soname. Dylib names are
-# globbed so the recipe is version-agnostic. +ios1 deb marker.
-
 SUBPROJECTS     += libfmt
 LIBFMT_VERSION  := 12.1.0
 DEB_LIBFMT_V    ?= $(LIBFMT_VERSION)+ios1

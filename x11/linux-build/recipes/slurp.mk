@@ -2,24 +2,12 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# slurp.mk — slurp, a Wayland region selector (github.com/emersion/slurp). You drag a box and
-# it prints the geometry; paired with grim it's the standard "screenshot a region" tool. Pure C,
-# no toolkit: it draws the selection overlay with cairo into wl_shm buffers and maps itself as a
-# zwlr_layer_surface_v1 (overlay layer, all-outputs) so the box floats over everything.
+# slurp needs wlr-layer-shell-unstable-v1 (bundled in its own tree, not part
+# of wayland-protocols) to map the overlay, plus xdg-output-unstable-v1 to
+# learn each output's logical geometry.
 #
-# PROTOCOLS (served by the iosc compositor): wlr-layer-shell-unstable-v1 (bundled in slurp's own
-# tree — it is a wlroots protocol, not part of wayland-protocols) to map the overlay surface;
-# plus xdg-shell, cursor-shape-v1, tablet-unstable-v2 and xdg-output-unstable-v1 from
-# wayland-protocols (>=1.32; the gtk-calc volume ships 1.38). slurp needs layer-shell to actually
-# put a surface on screen and xdg-output to learn each output's logical geometry.
-#
-# PORTABILITY: slurp is clean on Darwin except `cc.find_library('rt')` (no librt on iOS —
-# clock_gettime lives in libc; make it non-required) and main.c's <linux/input-event-codes.h>
-# for BTN_* codes (the driver ships the same lightweight shim foot/imv use). The wl_shm pool is
-# backed by shm_open (portable), not memfd. Protocol code is generated at build time by the host
-# wayland-scanner (native, via WAYLAND_NATIVE_ROOT) over the wayland-protocols XML in build_base.
-#
-# DEPENDS (target): cairo, wayland(-client/-cursor), libxkbcommon, wayland-protocols(build/data).
+# main.c's <linux/input-event-codes.h> BTN_* codes use the same lightweight
+# shim foot/imv ship.
 
 SUBPROJECTS   += slurp
 SLURP_VERSION := 1.5.0
@@ -53,10 +41,8 @@ slurp:
 	@echo "Using previously built slurp."
 else
 slurp: slurp-setup wayland wayland-protocols libxkbcommon cairo
-	# protocol/meson.build resolves `dependency('wayland-scanner', native:true)` via pkg-config then
-	# runs it; Debian's libwayland-bin ships no wayland-scanner.pc, so point a native file at the
-	# version-matched native scanner the wayland build left in WAYLAND_NATIVE_ROOT (same trick as
-	# foot/imv). PATH also carries that native scanner so find_program() resolves it.
+	# Debian's libwayland-bin ships no wayland-scanner.pc, so point a native file at the
+	# version-matched scanner WAYLAND_NATIVE_ROOT left behind (same trick as foot/imv).
 	cd $(BUILD_WORK)/slurp/build && \
 		printf "[binaries]\npkgconfig = 'pkg-config'\n[built-in options]\npkg_config_path = ['$(WAYLAND_NATIVE_ROOT)/lib/pkgconfig']\n" > native.txt && \
 		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \

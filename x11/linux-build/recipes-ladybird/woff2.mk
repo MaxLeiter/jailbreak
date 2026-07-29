@@ -2,10 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# woff2.mk — NEW recipe for the Ladybird leaf closure (pin woff2 1.0.2). CMake. Finds brotli
-# (dec+enc) through pkg-config (libbrotlidec.pc / libbrotlienc.pc), so brotli MUST already be
-# staged into BUILD_BASE (build brotli first). Ships woff2common/dec/enc dylibs. +ios1 marker.
-
 SUBPROJECTS    += woff2
 WOFF2_VERSION  := 1.0.2
 DEB_WOFF2_V    ?= $(WOFF2_VERSION)+ios1

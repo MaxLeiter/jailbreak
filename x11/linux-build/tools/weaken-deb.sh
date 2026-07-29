@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# weaken-deb.sh — weak-link a set of (absent-on-iOS) dylib references inside every Mach-O in a
-# Procursus .deb, re-sign the modified dylibs, and repack the deb in place. HOST (macOS) tool.
+# Weak-links a set of (absent-on-iOS) dylib references inside every Mach-O
+# in a Procursus .deb, re-signs the modified dylibs, and repacks the deb in
+# place. HOST (macOS) tool.
 #
-# Why: mutter 46 can't be built without X11 (have_x11 is hardcoded; see docs/mutter-on-iosc.md
-# "build5"), so libmutter AND several runtime-closure dylibs strong-link X11/xcb extension libs
-# that don't exist on the iPad (libxcb-randr.0, libxcb-res.0, libxcb-xkb.1, …). A STRONG load
-# command to an absent lib makes dyld hard-fail at load. This flips those specific references to
-# LC_LOAD_WEAK_DYLIB (tools/macho-weaken.py) so dyld tolerates their absence; the X11 code is dead
-# on our Wayland-only MetaBackendIOS, so the null-bound symbols are never called. Keep genuinely
-# PRESENT libs strong (e.g. libxkbcommon.0, libxcb.1) — only weaken the absent ones.
+# mutter 46 can't build without X11 (have_x11 is hardcoded; see
+# docs/mutter-on-iosc.md "build5"), so libmutter and its runtime closure
+# strong-link X11/xcb extension libs absent on the iPad (libxcb-randr.0,
+# libxcb-res.0, libxcb-xkb.1, ...). A strong load command to a missing lib
+# makes dyld hard-fail; this flips those references to LC_LOAD_WEAK_DYLIB
+# (tools/macho-weaken.py) since the X11 code is dead on our Wayland-only
+# MetaBackendIOS, so the null-bound symbols are never called. Genuinely
+# present libs (libxkbcommon.0, libxcb.1) are left strong.
 #
-# It is the host counterpart to mutter.mk's in-container weaken (which covers only libmutter): use
-# this for the dep-closure debs libmutter pulls that are built by other recipes — currently
-# libxkbcommon-dev (libxkbcommon-x11.0.dylib -> libxcb-xkb.1). Idempotent: an already-weak command
-# is skipped, so re-running is safe.
+# Host counterpart to mutter.mk's in-container weaken, which only covers
+# libmutter itself; use this for dep-closure debs built by other recipes
+# (currently libxkbcommon-dev: libxkbcommon-x11.0.dylib -> libxcb-xkb.1).
+# Idempotent: an already-weak command is skipped.
 #
 # Usage:
 #   weaken-deb.sh <deb> <lib-substr> [<lib-substr> ...]
@@ -71,9 +73,9 @@ if grep -q '^Installed-Size:' ctl/control; then
 fi
 
 # repack root:root, ./-prefixed, and reassemble in the original member order. --no-xattrs is
-# CRITICAL: files that passed through a Docker bind mount carry LIBARCHIVE.xattr.
-# com.docker.grpcfuse.ownership pax headers, and the device's (older) dpkg tar aborts on them
-# ("paste subprocess killed by signal (Broken pipe: 13)"). Strip macOS metadata for the same reason.
+# CRITICAL: files that passed through a Docker bind mount carry
+# LIBARCHIVE.xattr.com.docker.grpcfuse.ownership pax headers, which abort the device's (older)
+# dpkg tar ("paste subprocess killed by signal (Broken pipe: 13)"). Strip macOS metadata too.
 export COPYFILE_DISABLE=1
 tar --no-xattrs --no-mac-metadata --uid 0 --gid 0 --uname root --gname root -cf control.tar -C ctl .
 zstd -q -19 -f control.tar -o control.tar.zst

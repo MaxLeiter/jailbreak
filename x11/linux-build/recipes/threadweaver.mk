@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# threadweaver.mk — KF6 ThreadWeaver, needed by Okular.
+# KF6 ThreadWeaver, needed by Okular.
 
 SUBPROJECTS += threadweaver
 THREADWEAVER_VERSION = $(KF6_VERSION)

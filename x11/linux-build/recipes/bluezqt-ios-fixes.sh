@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# bluezqt-ios-fixes.sh — first-light KF6 BluezQt cuts for Xios.
 set -euo pipefail
 
 src=${1:?usage: bluezqt-ios-fixes.sh <bluezqt-source-dir>}

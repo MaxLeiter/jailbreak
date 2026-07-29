@@ -2,20 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gtk4-layer-shell.mk — the Layer Shell Wayland protocol for GTK4 apps. Lets a GTK4
-# window become a zwlr_layer_surface_v1 (anchored panel / overview / background),
-# which the iosc desktop shell uses for its richer (toolkit) chrome. See
-# x11/docs/iosc-shell.md §4 and x11/apps/iosc-shell/.
-#
-# v1.3.0 is shim-based (src/libwayland-shim.c + xdg-surface-server.c): it intercepts
-# libwayland-client and translates xdg-shell -> layer-shell, so — unlike the old
-# gtk-priv approach — it needs NO private GTK/GDK headers and is not pinned to an exact
-# GTK micro version. Deps are just gtk4 + wayland-client (both already built here).
-#
-# Build knobs: introspection/vapi OFF (the gnome module's g-ir-scanner is the on-device
-# scan path, not needed for the C API the overview uses); examples/tests/docs OFF;
-# smoke-tests OFF (they RUN example binaries — impossible when cross-compiling for iOS).
-# Mirrors recipes/json-glib.mk / gtk4.mk style.
+# Shim-based (intercepts libwayland-client, translates xdg-shell -> layer-shell) rather than
+# the old gtk-priv approach, so it needs no private GTK/GDK headers and isn't version-pinned.
+# smoke-tests off: cross-compiling for iOS can't run the example binaries they need.
 
 SUBPROJECTS         += gtk4-layer-shell
 GTK4-LAYER-SHELL_VERSION := 1.3.0

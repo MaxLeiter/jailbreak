@@ -2,15 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# mutter.mk — cross-build mutter 46 for rootless iOS (the GNOME-Shell compositor; bundles
-# Cogl/Clutter/Mtk). Built as a WAYLAND compositor (per the GPU/iosc direction — X11-WM
-# compositing can't be GPU-accelerated on a software Xios; see docs/gjs-plan.md). native
-# (KMS/DRM/GBM/logind) backend OFF; GL via ANGLE EGL/GLES2 (egl staged into build_base by
-# build-mutter.sh). introspection is OFF here — cross can't run the gir dumper; the
-# Meta/Clutter/Cogl typelibs are scanned ON-DEVICE afterwards (Design A, gir-build-ondevice.sh).
-#
-# NOTE: mutter has never been ported to Darwin/iOS — expect portability patches accreting in
-# the sed/patch block below as the build surfaces them.
+# Built as a Wayland compositor — X11-WM compositing can't be GPU-accelerated on a software
+# Xios. Native (KMS/DRM/GBM/logind) backend off; GL via ANGLE EGL/GLES2. Introspection is off
+# here because cross can't run the gir dumper; the Meta/Clutter/Cogl typelibs are scanned
+# on-device afterward (gir-build-ondevice.sh).
 
 SUBPROJECTS    += mutter
 MUTTER_MAJOR_V := 46
@@ -135,11 +130,10 @@ mutter-package: mutter-stage
 		cp -a $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/mutter-$(MUTTER_API_V) $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib; \
 	fi
 
-	# runtime DATA: mutter installs share/ (the org.gnome.mutter{,.wayland} GSettings schemas —
-	# WITHOUT which mutter aborts "Settings schema 'org.gnome.mutter' is not installed" — plus the
-	# GConf convert file, gnome-control-center keybinding lists, and translations). The earlier
-	# packaging dropped this whole tree. Ship it (skip man/ — the minos stamper double-zsts it).
-	# build_info/libmutter-14-0.postinst runs glib-compile-schemas on-device (like the gtk4 deb).
+	# mutter installs share/ (org.gnome.mutter{,.wayland} GSettings schemas — without which
+	# mutter aborts "Settings schema 'org.gnome.mutter' is not installed" — plus GConf/
+	# gnome-control-center/locale data). Skip man/ (the minos stamper double-zsts it).
+	# build_info/libmutter-14-0.postinst runs glib-compile-schemas on-device.
 	mkdir -p $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share
 	for d in glib-2.0 GConf gnome-control-center locale; do \
 		if [ -d "$(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/$$d" ]; then \
@@ -160,18 +154,9 @@ mutter-package: mutter-stage
 		$(I_N_T) -add_rpath /var/jb/lib/angle $$f 2>/dev/null || true; \
 	done
 
-	# --- weak-link the DEAD X11/xcb closure so libmutter loads on an X11-free iPad -------------
-	# mutter 46 cannot be built without X11 ("For now always require X11 support" — meson.build
-	# hardcodes have_x11=true; there is no x11 meson option, only xwayland). core/frame.c and
-	# core/keybindings.c are in the ALWAYS-compiled source list and use X11 unconditionally, so
-	# libmutter/cogl/mtk link the whole X11/xcb closure even though it is dead on iOS (we run
-	# Wayland + MetaBackendIOS, never MetaBackendX11). Those libs (libxcb-randr.0, libxcb-res.0,
-	# libX11-xcb.1, libX11.6, ...) do not exist on the device, so dyld hard-fails at load before
-	# the backend runs. Flip their LC_LOAD_DYLIB -> LC_LOAD_WEAK_DYLIB: dyld then tolerates the
-	# libs being absent and binds their (never-called) symbols to 0. libxkbcommon.0 stays STRONG
-	# (Wayland keymap — live code). Byte-length-preserving; SIGN below re-covers the edit. Fully
-	# dropping X11 = backporting GNOME 47/48's x11-optional work (out of scope). See build5 +
-	# tools/macho-weaken.py.
+	# Weak-link the dead X11/xcb closure: mutter 46 hardcodes have_x11=true and links symbols
+	# that don't exist on-device (Wayland-only backend, never called) — flipping to
+	# LC_LOAD_WEAK_DYLIB lets dyld tolerate their absence. libxkbcommon.0 stays strong (real Wayland keymap code).
 	@test -f $(BUILD_TOOLS)/macho-weaken.py || { echo "ERROR: $(BUILD_TOOLS)/macho-weaken.py missing — mount tools/ into the build (see build-mutter.sh header) so the X11/xcb weaken can run"; exit 1; }
 	for f in $$(find $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -type f -name '*.dylib'); do \
 		python3 $(BUILD_TOOLS)/macho-weaken.py $$f $(MUTTER_X11_WEAK); \

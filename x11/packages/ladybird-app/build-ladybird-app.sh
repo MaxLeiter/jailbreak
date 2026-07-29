@@ -1,32 +1,8 @@
 #!/usr/bin/env bash
-# build-ladybird-app.sh — assemble the Ladybird.app deb (home-screen browser).
-#
-# This is the MECHANICAL packaging driver that runs once the engine agent's build on
-# procursus-vol-ladybird finishes. It does NOT build the engine; it consumes the engine's
-# artifacts (the five helper executables + the built Lagom static libs + share/Lagom
-# resources) and produces a signed, Sileo-installable .app deb.
-#
-# Pipeline:
-#   1. Cross-compile the UIKit frontend against the engine tree.
-#      Copy Sources/ into <ladybird-src>/UI/iOS + this CMakeLists, add_subdirectory it,
-#      build the `Ladybird` target with the SAME Docker cross toolchain the engine used
-#      (clang-19 + cctools ld64 + iPhoneOS16.5.sdk + -D__IOS__), producing the UI Mach-O.
-#   2. Assemble Ladybird.app (bundle root layout below).
-#   3. ldid-sign (host Mac ldid, DER entitlements) the UI exe + each helper.
-#   4. xmkdeb -> ladybird-app_<ver>_iphoneos-arm64.deb.
-#
-# Bundle layout (self-contained; see IOSApplication.mm header for why):
-#   Ladybird.app/
-#     Ladybird            UI executable (statically links the engine)
-#     WebContent          helper  (found via same-dir candidate app_dir/WebContent)
-#     RequestServer       helper
-#     ImageDecoder        helper
-#     WebWorker           helper
-#     Compositor          helper (--force-cpu-painting)
-#     share/Lagom/...     engine resources (resource root overridden to here at boot)
-#     Info.plist
-#     AppIcon*.png
-#
+# Assembles Ladybird.app from an already-built engine (LADYBIRD_ENGINE_STAGE) and
+# UI binary (LADYBIRD_UI_BIN), signs it, and packages the deb. Does not build the
+# engine itself. The UI binary must be cross-compiled with the same Docker toolchain
+# used for the engine build, or the helpers won't link/run against it.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

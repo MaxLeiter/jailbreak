@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
-# run-mutter.sh — first-pixels smoke for Mutter 46 + MetaBackendIOS on-device (ROOT).
-#
-# Mutter is its OWN compositor and a drop-in for iosc here: MetaBackendIOS::constructed creates
-# one fullscreen output IOSurface (2160x1620 by default, or IOSC_LOGICAL WxH at
-# the backend's display scale), starts the Xios rendezvous server on
-# /var/jb/tmp/mutter-ddx.sock, and writes /var/jb/tmp/xios.json so the Xios app adopts + Metal-
-# presents that surface (exactly what iosc does). We stop the iosc demo first (mutter replaces it),
-# start mutter --wayland, then relaunch the Xios app to show mutter's output. Route A: the stage
-# renders into the output IOSurface as FBO 0 via a CoglOnscreen pbuffer (no EGLImage) and presents
-# with finish + xios_notify_dirty.
+# First-pixels smoke test for Mutter 46 + MetaBackendIOS (ROOT): a drop-in for iosc — Route A
+# renders the clutter stage into the output IOSurface as FBO 0 (CoglOnscreen pbuffer, no
+# EGLImage) and presents through the same xios.json/rendezvous handshake as iosc.
 #
 #   ssh root@ipad 'bash -s' < run-mutter.sh
 #
-# PREREQS on device: libmutter-14-0 deb installed (schemas compiled by its postinst); the `angle`
-# deb installed; gsettings-desktop-schemas installed; the Xios app (com.max.xios) present; and the
-# route-A mutter binary at $MUTTER (scp x11/linux-build/out/mutter -> /var/jb/usr/bin/mutter; it is
-# already ldid-signed with the iosc-gl union entitlement: task_for_pid + system-task-ports for the
-# Xios mach handshake + AGX/IOGPU/IOSurface user clients for ANGLE-Metal, no-container OFF).
+# PREREQS: libmutter-14-0, angle deb, gsettings-desktop-schemas, Xios app, and a route-A mutter
+# binary at $MUTTER, ldid-signed with the iosc-gl union entitlement (task_for_pid/system-task-ports
+# + AGX/IOGPU/IOSurface clients).
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 if [ "${XS_JB+x}" != x ]; then
@@ -81,16 +72,15 @@ if [ ! -e "$XS_PREFIX/share/glib-2.0/schemas/gschemas.compiled" ]; then
   glib-compile-schemas "$XS_PREFIX/share/glib-2.0/schemas" 2>/dev/null || true
 fi
 
-# Desktop audio (xios-audiod + PulseAudio, PULSE_SERVER export) before the
-# compositor so clients launched under mutter find a live PA socket; the export
-# is inherited by the dbus-run-session child below. Idempotent.
+# Start audio before the compositor so clients under mutter find a live PA
+# socket; the export is inherited by dbus-run-session below. Idempotent.
 PULSE_PROFILE="$(jb_path /etc/profile.d/xios-pulse.sh)"
 [ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start
 
 echo "==> start mutter --wayland (MetaBackendIOS) -> $MUTTER_LOG"
-# DYLD_LIBRARY_PATH resolves @rpath leaf names: libmutter-14.dylib (usr/lib), the cogl/clutter/mtk
-# sub-dylibs (usr/lib/mutter-14), and libGLESv2/libEGL (lib/angle). Mutter acquires org.gnome.Mutter*
-# names -> needs a session bus (dbus-run-session). No DISPLAY/WAYLAND_DISPLAY (it CREATES wayland-0).
+# DYLD_LIBRARY_PATH resolves @rpath leaf names for libmutter/cogl/clutter/mtk
+# and libGLESv2/libEGL (ANGLE). dbus-run-session is required because mutter
+# acquires org.gnome.Mutter* names. No WAYLAND_DISPLAY export -- mutter creates it.
 nohup env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   XIOS_DDX_SOCKET="$XIOS_DDX_SOCKET" \

@@ -2,22 +2,14 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# gnome-session.mk — cross-build GNOME Session 46 (the session manager: gnome-session-binary
-# + gnome-session-inhibit/-quit + the .session/.desktop/autostart data + the
-# org.gnome.SessionManager D-Bus service and gschema) for rootless iOS. It owns
-# org.gnome.SessionManager on the session bus and starts gnome-shell (and any other
-# RequiredComponents) as child processes — the classic, non-systemd startup path.
-#
-# Three iOS realities, all handled by ports/gnome-session/patches:
-#   1. systemd is made OPTIONAL (upstream 46 hard-requires it). Built -Dsystemd=false
-#      -Dsystemd_session=disable, main() falls to the built-in gsm_manager_start path
-#      (RequiredComponents from the .session file, spawned as children).
-#   2. gnome-desktop-3.0 -> gnome-desktop-4 (we ship only the GTK4/base library; it exports
-#      the two symbols gnome-session uses: gnome_idle_monitor_new + gnome_start_systemd_scope).
-#   3. The gnome-session-check-accelerated* helpers are dropped (need desktop GL/GLX/xcomposite;
-#      dead code when DISPLAY is unset, i.e. a Wayland session).
-# The GTK3 dependency is only the (X11) gnome-session-failed fail-whale helper; the main
-# daemon (main.c) never calls gtk_init, so a Wayland boot never touches our X11-only GTK3.
+# Three iOS accommodations, handled by ports/gnome-session/patches:
+#   1. systemd made optional (-Dsystemd=false -Dsystemd_session=disable); falls back to the
+#      built-in gsm_manager_start path (RequiredComponents from .session, spawned as children).
+#   2. gnome-desktop-3.0 -> gnome-desktop-4 (exports the two symbols gnome-session needs:
+#      gnome_idle_monitor_new + gnome_start_systemd_scope).
+#   3. gnome-session-check-accelerated* helpers dropped (need GL/GLX/xcomposite; dead code
+#      when DISPLAY is unset).
+# GTK3 is only pulled in for the X11 fail-whale helper; main.c never calls gtk_init.
 
 SUBPROJECTS           += gnome-session
 GNOME-SESSION_MAJOR_V := 46
@@ -74,11 +66,8 @@ gnome-session-package: gnome-session-stage
 	rm -rf $(BUILD_DIST)/gnome-session
 	mkdir -p $(BUILD_DIST)/gnome-session$(MEMO_PREFIX)
 
-	# Single deb: the whole prefix — bin/{gnome-session,gnome-session-inhibit,gnome-session-quit},
-	# libexec/{gnome-session-binary,gnome-session-failed}, share/gnome-session/sessions/*.session,
-	# share/{xsessions,wayland-sessions}/*.desktop, share/applications autostart, the
-	# org.gnome.SessionManager gschema + D-Bus .service. Copy the CONTENTS of the staged prefix
-	# (copying $(MEMO_PREFIX) itself would drop the leading var/ from /var/jb).
+	# Copy the CONTENTS of the staged prefix, not $(MEMO_PREFIX) itself -- that would drop
+	# the leading var/ from /var/jb.
 	cp -a $(BUILD_STAGE)/gnome-session$(MEMO_PREFIX)/. $(BUILD_DIST)/gnome-session$(MEMO_PREFIX)/
 	rm -rf $(BUILD_DIST)/gnome-session$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man \
 		$(BUILD_DIST)/gnome-session$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/doc

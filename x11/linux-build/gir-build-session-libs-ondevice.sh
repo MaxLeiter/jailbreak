@@ -26,8 +26,8 @@
 #                 GeocodeGlib-2.0, library geocode-glib-2, pc geocode-glib-2.0, and the gir
 #                 --includes Json-1.0 + Soup-3.0 (those girs must be on device; row is gated
 #                 and skipped if they aren't — it is not boot-critical, scan for completeness).
-#   Gdm         — libgdm CLIENT-only deb built by gnome-session (lead decision: build it,
-#                 don't patch the shell). Params CONFIRMED against the shipped deb: gdm.pc,
+#   Gdm         — libgdm CLIENT-only deb built by gnome-session (built rather than patching the
+#                 shell). Params CONFIRMED against the shipped deb: gdm.pc,
 #                 headers include/gdm/{gdm-client,gdm-sessions,gdm-user-switching,
 #                 gdm-client-glue}.h, libgdm.1.dylib (NOUNDEFS) + unversioned libgdm.dylib
 #                 symlink in -dev, gir includes GLib-2.0/GObject-2.0/Gio-2.0. Only the CLIENT

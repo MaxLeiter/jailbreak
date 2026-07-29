@@ -2,20 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# sqlite3.mk — Ladybird leaf closure. BUMP upstream 3.34.1 -> 3.52.0 (Ladybird pin). The
-# upstream Procursus recipe pulls the Debian orig tarball + a soname patch + readline/ncurses +
-# lemon/sqldiff; 3.52.0 is not in Debian. We use the official sqlite.org amalgamation tarball,
-# but its ./configure switched to autosetup at 3.49 (rejects autoconf's -C and our
-# DEFAULT_CONFIGURE_FLAGS), so we COMPILE THE AMALGAMATION DIRECTLY (sqlite3.c -> dylib), which
-# is simpler and fully under our control. Ladybird only needs libsqlite3 + headers.
-#
-# SONAME MUST BE libsqlite3.1.dylib (Procursus soname patch), NOT the upstream-default
-# libsqlite3.0.dylib. The +ios1 deb shipped .0 and, because the package name libsqlite3-1
-# shadows the Procursus package at a higher version, apt upgraded devices onto it and DELETED
-# /var/jb/usr/lib/libsqlite3.1.dylib — killing every consumer (tracker/nautilus/GNOME, Qt6
-# sqlite driver/KDE) on 2026-07-08. We keep a libsqlite3.0.dylib -> .1 symlink for anything
-# linked against the .0 name in the +ios1 window (ladybird). Compat/current 9.0.0/9.6.0
-# match Procursus. AFTER_BUILD rewrites the install-id to @rpath. +ios2 deb marker.
+# Compiles the amalgamation directly (sqlite.org's ./configure needs autosetup since 3.49,
+# incompatible with our flags). SONAME MUST be libsqlite3.1.dylib, not upstream's .0 — shipping
+# .0 previously let apt upgrade devices onto libsqlite3-1 and delete the .1 dylib, bricking
+# every consumer (tracker/nautilus/GNOME, Qt6/KDE).
 
 SUBPROJECTS         += sqlite3
 SQLITE3_VERSION     := 3.52.0

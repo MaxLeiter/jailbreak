@@ -2,18 +2,16 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kwin.mk — KWin for rootless iOS (nested Wayland + ANGLE/IOSurface).
-# Linux DRM/libinput/native backends remain disabled; the nested backend renders through
+# Linux DRM/libinput/native backends stay disabled; the nested backend renders through
 # ANGLE/Metal into IOSurfaces and imports IOSurface client buffers without a CPU copy.
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
 DEB_KWIN_V ?= $(KWIN_VERSION)+ios27
-# GL-enabled: KWin's effects/QuickView GL paths now build against real Qt OpenGL. The
-# epoxy<->QtGui-iOS-GLES header collision that previously forced
-# -DKWIN_IOS_QT_NO_OPENGL=1 is resolved by the ios-bringup-gl-coexist shim in
-# kwin-ios-compat.h (epoxy included first + OpenGLES.framework guards pre-defined so
-# Qt's qopengl.h defers to epoxy's Khronos definitions). See kwin-ios-fixes.sh.
+# epoxy vs QtGui-iOS-GLES header collision previously forced -DKWIN_IOS_QT_NO_OPENGL=1;
+# fixed by the gl-coexist shim in kwin-ios-compat.h (epoxy included first, then
+# OpenGLES.framework guards pre-defined so Qt's qopengl.h defers to epoxy's Khronos
+# definitions). See kwin-ios-fixes.sh.
 KWIN_IOS_COMPAT_DEFS :=
 
 kwin-setup: setup

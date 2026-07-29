@@ -2,26 +2,9 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# mako.mk — mako, a lightweight Wayland notification daemon (github.com/emersion/mako) that
-# implements org.freedesktop.Notifications and draws notifications with pangocairo into wl_shm
-# buffers mapped as zwlr_layer_surface_v1 (top/overlay layer). Pairs with the iosc compositor.
-#
-# STATUS: BLOCKED — mako's meson hard-requires an sd-bus provider (libsystemd | libelogind |
-# basu). None exists on iOS, and basu (the standalone sd-bus fork) does NOT cross-compile to
-# Darwin: its sd-bus source is architecturally Linux-bound (glibc <endian.h>, ELF-section error-
-# map registration via __start_/__stop_ symbols, struct ucred / SCM_CREDENTIALS peer creds, kdbus,
-# accept4/memfd_create, Linux capabilities, /proc). See recipes/basu.mk for the full, tested
-# blocker catalogue. This recipe is kept as the intended integration for a future attempt (e.g. an
-# elogind port, or a Mach-O rewrite of basu's error-map + a Darwin creds/endian/socket shim layer).
-#
-# Everything ELSE mako needs is already satisfied on procursus-vol-gtk-calc:
-#   * cairo / pango / pangocairo / glib-2.0 / gobject-2.0 / gdk-pixbuf-2.0 (GTK4 stack)
-#   * wayland(-client/-cursor) + wayland-protocols (1.38; mako needs >=1.32) for xdg-shell,
-#     cursor-shape-v1, xdg-activation-v1, tablet-unstable-v2, and its bundled wlr-layer-shell.
-#   * epoll-shim (iOS lacks timerfd_create/signalfd, so mako's meson pulls dependency('epoll-shim');
-#     the shim ships the timerfd/signalfd/eventfd headers mako's event loop uses).
-#   * `cc.find_library('rt')` — no librt on iOS (the -setup sed makes it non-required).
-# The only missing piece is the sd-bus provider, hence the BLOCKED status.
+# STATUS: BLOCKED — mako hard-requires an sd-bus provider (libsystemd/libelogind/basu); basu's
+# sd-bus source is architecturally Linux-bound (see recipes/basu.mk for the blocker catalogue)
+# and won't cross-compile to Darwin. Everything else (epoll-shim timerfd/signalfd, no librt) is satisfied.
 
 SUBPROJECTS  += mako
 MAKO_VERSION := 1.9.0
@@ -55,8 +38,7 @@ mako:
 else
 mako: mako-setup wayland wayland-protocols cairo pango gdk-pixbuf epoll-shim basu
 	# protocol/meson.build resolves the native wayland-scanner via pkg-config (WAYLAND_NATIVE_ROOT),
-	# same trick as slurp/foot/imv. sd-bus provider is pinned to basu; icons on (gdk-pixbuf present);
-	# man pages off (no scdoc host tool); shell completions off.
+	# same trick as slurp/foot/imv.
 	cd $(BUILD_WORK)/mako/build && \
 		printf "[binaries]\npkgconfig = 'pkg-config'\n[built-in options]\npkg_config_path = ['$(WAYLAND_NATIVE_ROOT)/lib/pkgconfig']\n" > native.txt && \
 		PATH="$(WAYLAND_NATIVE_ROOT)/bin:$$PATH" meson \

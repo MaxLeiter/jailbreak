@@ -2,34 +2,19 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kde-cli-tools.mk — Plasma's small command-line/helper tools for Xios.
+# kcmshell6 (the standalone KCM launcher) does NOT live here; it moved into
+# KCMUtils for KF6, and kf6-kcmutils already ships /var/jb/usr/bin/kcmshell6
+# as a plain Mach-O binary. This package is not on the critical path for
+# System Settings pages.
 #
-# WHAT THIS IS NOT: `kcmshell6`, the standalone KCM launcher, does NOT live here.
-# In Plasma 5 it was kde-cli-tools/kcmshell; for KF6 it moved into KCMUtils
-# (kcmutils/src/CMakeLists.txt:126 -> src/kcmshell), and the published
-# kf6-kcmutils 6.3.0+ios1 deb already ships /var/jb/usr/bin/kcmshell6 as a plain
-# Mach-O binary (upstream calls ecm_mark_nongui_executable() on it, so it dodged
-# the MACOSX_BUNDLE landmine). This package is therefore NOT on the critical path
-# for restoring System Settings pages.
+# Cuts: WITH_X11=OFF (kstart's only X11 use is Qt::GuiPrivate for startup-id);
+# KF6Su is unpublished so kdesu is skipped by upstream's own KF6Su_FOUND guard;
+# DocTools/doc/po are dropped by kde-cli-tools-ios-fixes.sh.
 #
-# What it does add, in rough order of usefulness on this port:
-#   kcm_filetypes            "File Associations" KCM (keditfiletype/) — a real
-#                            System Settings page with no Linux-only dependency.
-#   plasma-open-settings     resolves systemsettings:// URLs, i.e. the "Configure…"
-#                            entries that Plasma UI hands to the desktop portal.
-#   kde-open / kioclient6    the URL/file opener Plasma invokes for "Open With".
-#   keditfiletype            standalone editor for the same MIME data.
-#   kde-inhibit, kbroadcastnotification, kstart, kmimetypefinder, ksvgtopng,
-#   kdemv, kdecp, kdeeject, kinfo.
-#
-# Cuts: WITH_X11=OFF (kstart's only X11 use is Qt::GuiPrivate for startup-id),
-# KF6Su is not published so kdesu is left out by upstream's own KF6Su_FOUND
-# guard, and DocTools/doc/po are dropped by kde-cli-tools-ios-fixes.sh.
-#
-# BUILD NOTE: kcm_filetypes calls kcmutils_generate_desktop_file(), which runs
-# KF6::kcmdesktopfilegenerator. The cross build stages that as an iOS binary, so
-# this unit must be built on a volume where build-plasma-desktop.sh has installed
-# its host Python replacement into KCMUtilsMacros (build-plasma-desktop.sh:180-249).
+# kcm_filetypes calls kcmutils_generate_desktop_file() (KF6::kcmdesktopfilegenerator),
+# which the cross build stages as an iOS binary. Build on a volume where
+# build-plasma-desktop.sh has already installed its host Python replacement
+# into KCMUtilsMacros.
 
 SUBPROJECTS += kde-cli-tools
 KDECLITOOLS_VERSION = $(PLASMA_VERSION)
@@ -61,10 +46,9 @@ kde-cli-tools: kde-cli-tools-setup
 	$(call AFTER_BUILD,copy)
 endif
 
-# No installed headers or CMake metadata here, so there is no -dev split (milou.mk
-# precedent). The GUI-capable tools (keditfiletype, kioclient's dialogs) are Qt
-# Wayland clients under iosc, so they take the same GPU-client entitlement tier as
-# kscreen's KCM/OSD rather than plain general.xml.
+# No installed headers/CMake metadata, so no -dev split. GUI-capable tools
+# (keditfiletype, kioclient dialogs) are Qt Wayland clients under iosc, so
+# they need the GPU-client entitlement tier, not plain general.xml.
 kde-cli-tools-package: kde-cli-tools-stage
 	rm -rf $(BUILD_DIST)/kde-cli-tools
 	$(call KF6_COPY_RUNTIME,kde-cli-tools,kde-cli-tools)

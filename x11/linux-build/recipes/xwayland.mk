@@ -2,28 +2,20 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# xwayland.mk — Xwayland (the X server that runs X11 apps as clients of a
-# Wayland compositor) for rootless iOS, GPU-accelerated on ANGLE-Metal.
+# Xwayland (X11-on-Wayland) for rootless iOS, GPU-accelerated via ANGLE-Metal.
 #
-# Version pin is LOAD-BEARING: xwayland 23.2.x is the last series with the
-# pluggable `struct xwl_egl_backend` vtable (24.1 hard-wired gbm/dma-buf and
-# removed the struct). We add an IOSurface EGL backend (no gbm, no dma-buf)
-# via that vtable — see ports/xwayland/patches/ plus
-# recipes/build_info/xwayland-glamor-iosurface.c. Buffers are handed to the
-# compositor with the iosc_iosurface protocol (x11/wayland/iosc-iosurface.xml),
-# the same mach-port handoff iosc already implements.
+# Version pin is LOAD-BEARING: 23.2.x is the last series with the pluggable
+# `struct xwl_egl_backend` vtable (24.1 hard-wired gbm/dma-buf and dropped
+# it). An IOSurface EGL backend hooks into that vtable (ports/xwayland/patches/,
+# recipes/build_info/xwayland-glamor-iosurface.c); buffers reach the
+# compositor over the iosc_iosurface protocol.
 #
-# Two build flavors from ONE recipe (env XWAYLAND_GLAMOR, default true):
+# Two build flavors from one recipe (env XWAYLAND_GLAMOR, default true):
 #   X1 (default) glamor ON  -> GPU: window pixmaps are IOSurface/ANGLE textures.
-#   X0           glamor OFF -> pure wl_shm software (first-light / bisect aid):
-#                              XWAYLAND_GLAMOR=false make xwayland
+#   X0           glamor OFF -> pure wl_shm software (XWAYLAND_GLAMOR=false).
 #
-# Deps already cross-built in Procursus: pixman, xorgproto, xtrans, libxkbfile,
-# libxfont2, libfontenc, font-util, libepoxy(+angle repoint), libxkbcommon,
-# wayland, wayland-protocols. NEW: libxcvt (recipes/libxcvt.mk), libdrm (the
-# links-only shim, recipes/libdrm.mk — glamor's meson requires libdrm.pc even
-# though no DRM path runs). GLX-on-EGL is built but desktop-GL apps stay on
-# llvmpipe/SHM (no client DRI on iOS); glamor accelerates the 2D X path.
+# GLX-on-EGL builds but desktop-GL apps stay on llvmpipe/SHM (no client DRI
+# on iOS); glamor only accelerates the 2D X path.
 
 SUBPROJECTS      += xwayland
 XWAYLAND_VERSION := 23.2.7
@@ -74,18 +66,13 @@ xwayland:
 else
 xwayland: xwayland-setup libpixman xorgproto xtrans libxkbfile libxfont2 libfontenc \
           font-util libxkbcommon libxcvt libxshmfence libdrm wayland wayland-protocols $(XWAYLAND_GL_DEPS)
-	# The native (host) wayland-scanner for `dependency('wayland-scanner',
-	# native:true)` comes from the build machine's pkg-config (build-xwayland.sh
-	# installs libwayland-bin). No version pin on the scanner in xwayland.
+	# Native wayland-scanner comes from the build machine's pkg-config
+	# (build-xwayland.sh installs libwayland-bin); no version pin here.
 	#
-	# glamor requires libdrm.pc + epoxy.pc unconditionally (top meson.build);
-	# both are present (libdrm = the links-only shim). dri3/xshmfence OFF (no
-	# client GPU on iOS). Objective-C is enabled for the IOSurface/CoreFoundation
-	# calls in the backend (compiled by clang as .c but pulls ObjC frameworks).
-	# Only options that actually exist in this tree's meson_options.txt (validated
-	# off-device — int10/systemd_logind/os_vendor are NOT xwayland options and
-	# would abort meson). The three -D...=false below each prevent a HARD meson
-	# error on iOS (validated against every error() gate in meson.build/os):
+	# glamor needs libdrm.pc + epoxy.pc unconditionally (libdrm is the
+	# links-only shim). dri3/xshmfence off (no client GPU on iOS). ObjC is
+	# enabled for the IOSurface/CoreFoundation calls in the backend. The
+	# three -D...=false flags below each avoid a hard meson error() on iOS:
 	#   xdmcp     -> dependency('xdmcp') is required; we don't build libXdmcp, and
 	#                Xwayland never needs XDMCP (its connection comes from Wayland).
 	#                Disabling it also auto-disables xdm-auth-1.
@@ -124,8 +111,8 @@ xwayland: xwayland-setup libpixman xorgproto xtrans libxkbfile libxfont2 libfont
 endif
 
 xwayland-package: xwayland-stage
-	# xwayland.mk Package Structure — one deb: the Xwayland server binary
-	# (+ Xwayland.desktop / man). No -dev split (nothing links against it).
+	# One deb: the Xwayland server binary (+ Xwayland.desktop / man). No
+	# -dev split (nothing links against it).
 	rm -rf $(BUILD_DIST)/xwayland
 	mkdir -p $(BUILD_DIST)/xwayland/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin
 
@@ -136,15 +123,11 @@ xwayland-package: xwayland-stage
 			$(BUILD_DIST)/xwayland/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
 	fi
 
-	# Sign with the GPU entitlement set (Metal via ANGLE + IOSurface IOKit +
-	# task_for_pid so the compositor can import our surfaces) — same set the
-	# iosc GPU client uses. The 5th arg `nogeneral` is LOAD-BEARING: it skips the
-	# default general.xml merge, which sets com.apple.private.security.no-container
-	# = true and would kill Metal (MTLCreateSystemDefaultDevice -> nil). Our
-	# xwayland-ent.xml is self-sufficient (skip-library-validation +
-	# can-allow-non-platform + IOKit + file exceptions), like iosc-gpu-client-ent.
-	# The ent lives in build_misc/entitlements/ (where SIGN looks), staged there
-	# by build-xwayland.sh. See [[fakesigned-metal-gpu-entitlement]].
+	# `nogeneral` is LOAD-BEARING: it skips the default general.xml merge,
+	# which sets com.apple.private.security.no-container=true and would kill
+	# Metal (MTLCreateSystemDefaultDevice -> nil). xwayland-ent.xml already
+	# carries skip-library-validation + can-allow-non-platform + IOKit +
+	# file exceptions on its own. See [[fakesigned-metal-gpu-entitlement]].
 	$(call SIGN,xwayland,xwayland-ent.xml,,,nogeneral)
 	$(call PACK,xwayland,DEB_XWAYLAND_V)
 

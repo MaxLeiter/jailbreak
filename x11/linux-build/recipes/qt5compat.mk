@@ -2,19 +2,11 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# qt5compat.mk — Qt6Core5Compat (QTextCodec, QRegExp, the big codec set) + the
-# Qt5Compat.GraphicalEffects QML module, cross-built for rootless iOS. Added on the KF6
-# K0 audit finding: KIO 6.3 hard-REQUIREs Qt6Core5Compat (QTextCodec), and KIO is
-# unavoidable in the KWin-enabling KF6 subset (libplasma + kglobalacceld pull it). The
-# QML half is a bonus that matters: Qt5Compat.GraphicalEffects is used all over Plasma
-# and Kirigami themes.
-#
-# LADDER POSITION: after qtdeclarative, NOT qtbase-only — the Core5Compat library itself
-# needs only qtbase, but the GraphicalEffects QML module needs the target Qt6Qml/Quick
-# cmake packages (build_base) + host qmlcachegen/qsb (QT_HOST_PATH). Building here gets
-# both halves in one deb. kf6-frameworks' build-kf6.sh gates kio on
-# Qt6Core5CompatConfig.cmake, which our AFTER_BUILD copy stages into build_base.
-# Shared Apple/Darwin flags + MACOS-condition fix: qt6-common.mk (rationale in qtbase.mk).
+# KIO 6.3 hard-requires Qt6Core5Compat (QTextCodec), and KIO is unavoidable in the
+# KWin-enabling KF6 subset. Built after qtdeclarative (not qtbase-only): the Core5Compat
+# library itself only needs qtbase, but the Qt5Compat.GraphicalEffects QML module needs
+# the target Qt6Qml/Quick cmake packages plus host qmlcachegen/qsb — building here gets
+# both halves in one deb.
 
 SUBPROJECTS       += qt5compat
 QT5COMPAT_VERSION := 6.6.3
@@ -31,8 +23,6 @@ ifneq ($(wildcard $(BUILD_WORK)/qt5compat/.build_complete),)
 qt5compat:
 	@echo "Using previously built qt5compat."
 else
-# No prereqs on qtbase/qtdeclarative (staged in build_base already; mutter.mk precedent).
-# No `rm -rf build` (incremental iteration, qtbase.mk).
 qt5compat: qt5compat-setup
 	mkdir -p $(BUILD_WORK)/qt5compat/build
 	cd $(BUILD_WORK)/qt5compat/build && cmake .. \

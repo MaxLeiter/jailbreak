@@ -2,19 +2,14 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# vte.mk — GNOME's virtual terminal emulator widget (NOT Procursus's libvterm). Used by
-# gnome-console/kgx (GTK4). GNOME 45 generation = vte 0.74.2.
+# GNOME's vte terminal widget (NOT Procursus's libvterm). Used by
+# gnome-console/kgx (GTK4).
 #
-# GTK4-ONLY by default: the desktop track is GTK4-first and GTK3 is deferred, so building the
-# GTK3 widget (which would hard-depend on gtk+3.0) is off by default. To also emit the GTK3
-# widget (libvte-2.91) for gnome-terminal once GTK3 lands: flip `-Dgtk3=true`, add `gtk+3.0`
-# to the deps line, and re-add the libvte-2.91-0 packaging block (kept below, commented).
-#
-# DEPENDS (target): gtk4 (gtk-builder) + libxml2 + pcre2 + gnutls + icu4c
-#   (+ pango/fribidi/glib in stack).
-#
-# BUILT/PUBLISHED — libvte-2.91-gtk4-0 0.76.6+ios1. The GTK3 flavor needed by
-# gnome-terminal remains a separate unbuilt follow-up.
+# GTK4-only by default: the desktop track is GTK4-first and GTK3 is
+# deferred, so the GTK3 widget (which would hard-depend on gtk+3.0) is off.
+# To also emit libvte-2.91 for gnome-terminal once GTK3 lands: flip
+# -Dgtk3=true, add gtk+3.0 to the deps line, and re-add the libvte-2.91-0
+# packaging block below (kept commented).
 
 SUBPROJECTS  += vte
 VTE_MAJOR_V  := 0.76
@@ -73,7 +68,7 @@ vte-package: vte-stage
 		cp -a $(BUILD_STAGE)/vte/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec $(BUILD_DIST)/libvte-2.91-gtk4-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX); \
 	fi
 
-	# libvte-2.91-dev (headers, symlinks, .pc) — GTK4 flavour only by default
+	# libvte-2.91-dev (headers, symlinks, .pc); GTK4 flavor only by default
 	cp -a $(BUILD_STAGE)/vte/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libvte-2.91-gtk4.0.dylib) $(BUILD_DIST)/libvte-2.91-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/vte/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libvte-2.91-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 

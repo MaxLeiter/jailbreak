@@ -2,9 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# simdjson.mk — NEW recipe for the Ladybird leaf closure (pin simdjson 4.2.4). Single-file
-# amalgamation, CMake. Developer mode off (no tests). Ships libsimdjson dylib. +ios1 marker.
-
 SUBPROJECTS       += simdjson
 SIMDJSON_VERSION  := 4.2.4
 DEB_SIMDJSON_V    ?= $(SIMDJSON_VERSION)+ios1
