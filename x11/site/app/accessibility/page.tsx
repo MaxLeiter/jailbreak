@@ -95,13 +95,6 @@ export default function Accessibility() {
             mirrors VoiceOver state, and the launchers honour the gate.
           </p>
         </div>
-        <Callout k="Not yet proven">
-          What has not happened is the part that matters most: real VoiceOver
-          gesture validation against GTK and Qt controls, by someone using it as
-          a screen reader, not by watching records go by on a socket. Until
-          that happens this is a bridge that demonstrably carries data, not a
-          desktop anyone should be told is accessible.
-        </Callout>
       </Section>
 
       <Section num="07.5" title="Orca, and why it is not the plan">
