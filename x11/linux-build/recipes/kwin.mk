@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)+ios26
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios27
 # GL-enabled: KWin's effects/QuickView GL paths now build against real Qt OpenGL. The
 # epoxy<->QtGui-iOS-GLES header collision that previously forced
 # -DKWIN_IOS_QT_NO_OPENGL=1 is resolved by the ios-bringup-gl-coexist shim in
@@ -49,7 +49,7 @@ kwin: kwin-setup
 		-DCMAKE_MODULE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -framework IOSurface -framework CoreFoundation -lepoll-shim" \
 		-DCMAKE_EXE_LINKER_FLAGS="$(LDFLAGS) $(QT6_IOS_FRAMEWORKS) -framework IOSurface -framework CoreFoundation -lepoll-shim" \
 		-DKWIN_BUILD_X11=OFF \
-		-DKWIN_BUILD_KCMS=OFF \
+		-DKWIN_BUILD_KCMS=ON \
 		-DKWIN_BUILD_SCREENLOCKER=OFF \
 		-DKWIN_BUILD_RUNNERS=OFF \
 		-DKWIN_BUILD_EIS=OFF \

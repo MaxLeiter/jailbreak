@@ -38,6 +38,7 @@ SUPPORT_RECIPE_TARGETS=(
   systemsettings
   breeze
   plasma-integration
+  powerdevil
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
@@ -50,6 +51,7 @@ SUPPORT_RECIPE_HELPERS=(
   systemsettings-ios-fixes.sh
   systemsettings-prune-actions.py
   plasma-integration-ios-fixes.sh
+  powerdevil-ios-fixes.sh
 )
 COLLECT_DEBS=(
   shared-mime-info
@@ -83,6 +85,7 @@ COLLECT_DEBS=(
   systemsettings
   breeze
   plasma-integration
+  powerdevil
 )
 LOCAL_STAGE_DEBS=(
   libpulse0

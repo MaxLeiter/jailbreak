@@ -1,0 +1,15 @@
+Package: konsole
+Version: @DEB_KONSOLE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/konsole/
+Depends: qt6-base, qt6-5compat, kf6-pty, kf6-bookmarks, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-newstuff, kf6-notifications, kf6-notifyconfig, kf6-parts, kf6-service, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, libicu74, bash
+Description: Konsole terminal emulator (Qt6/KF6)
+ KDE's terminal emulator, running real pseudo-terminals through KPty. This
+ first Xios package drops the vestigial Qt Multimedia link and stubs the print
+ dialog, which this Qt build does not provide; DBus stays off, which is
+ upstream's own default on Apple platforms, so the single-instance and global
+ shortcut paths are not available. The package also ships the konsolepart
+ KParts plugin that Dolphin's terminal panel loads.

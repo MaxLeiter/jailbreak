@@ -1,0 +1,12 @@
+Package: kcalc
+Version: @DEB_KCALC_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/kcalc/
+Depends: qt6-base, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-notifications, kf6-xmlgui, libgmp10, libmpfr6
+Description: KCalc scientific calculator (Qt6/KF6)
+ KDE's calculator, with the GMP/MPFR-backed knumber arithmetic core. Simple,
+ scientific, statistical and numeral-system modes are all built; only the
+ docbook handbook is omitted.

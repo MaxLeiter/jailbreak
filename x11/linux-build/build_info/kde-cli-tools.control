@@ -1,0 +1,15 @@
+Package: kde-cli-tools
+Version: @DEB_KDECLITOOLS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/kde-cli-tools
+Depends: qt6-base, qt6-svg, kf6-config, kf6-coreaddons, kf6-i18n, kf6-iconthemes, kf6-kcmutils, kf6-kio, kf6-parts, kf6-service, kf6-windowsystem, shared-mime-info
+Description: KDE command-line and helper tools for Xios
+ Small Plasma tools used by the desktop shell and System Settings: the File
+ Associations module (kcm_filetypes) and its standalone editor, the
+ systemsettings:// URL handler plasma-open-settings, the KIO command-line
+ clients (kioclient6, kde-open, kdecp, kdemv), kde-inhibit,
+ kbroadcastnotification, kstart, kmimetypefinder and ksvgtopng.
+ Note: kcmshell6 is not part of this package; it ships in kf6-kcmutils.

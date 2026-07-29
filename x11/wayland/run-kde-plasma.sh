@@ -64,6 +64,7 @@ KWIN_BIN="${KWIN_BIN:-$(jb_path /Applications/KDE/kwin_wayland.app/kwin_wayland)
 PLASMA_BIN="${PLASMA_BIN:-$(jb_path /Applications/KDE/plasmashell.app/plasmashell)}"
 KAMD_BIN="${KAMD_BIN:-$XS_PREFIX/libexec/kactivitymanagerd}"
 KDED_BIN="${KDED_BIN:-$XS_PREFIX/bin/kded6}"
+POWERDEVIL_BIN="${POWERDEVIL_BIN:-$XS_PREFIX/libexec/org_kde_powerdevil.app/org_kde_powerdevil}"
 LIBEXEC="${LIBEXEC:-$XS_PREFIX/libexec}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
@@ -764,6 +765,8 @@ nohup "$SETSID" env \
   PLASMA_BIN="$PLASMA_BIN" \
   KAMD_BIN="$KAMD_BIN" \
   KDED_BIN="$KDED_BIN" \
+  POWERDEVIL_BIN="$POWERDEVIL_BIN" \
+  XIOS_KDE_START_POWERDEVIL="${XIOS_KDE_START_POWERDEVIL:-1}" \
   KDED_LOG="$KDED_LOG" \
   LIBEXEC="$LIBEXEC" \
   KWIN_SOCKET="$KWIN_SOCKET" \
@@ -874,6 +877,18 @@ nohup "$SETSID" env \
       "$KAMD_BIN" &
       kamd_pid=$!
       sleep 0.5
+    fi
+    # PowerDevil is a standalone daemon, not a kded module, so installing the
+    # package alone starts nothing. Battery and AC state reach it over DBus from
+    # the UPower interface that xios-hwbridged owns; brightness goes through the
+    # KWin DBus interface. Suspend and hibernate stay unavailable (no logind).
+    # Set XIOS_KDE_START_POWERDEVIL=0 to leave it out.
+    # NB: no apostrophes in this block -- it is inside a single-quoted bash -lc.
+    powerdevil_pid=
+    if [ -x "$POWERDEVIL_BIN" ] && [ "${XIOS_KDE_START_POWERDEVIL:-1}" != 0 ]; then
+      "$POWERDEVIL_BIN" >>"$KDE_LOG" 2>&1 &
+      powerdevil_pid=$!
+      echo "launch powerdevil: $POWERDEVIL_BIN"
     fi
     export WAYLAND_DISPLAY="$KWIN_SOCKET"
     xios_export_or_unset QT_QUICK_BACKEND "$PLASMA_QT_QUICK_BACKEND"

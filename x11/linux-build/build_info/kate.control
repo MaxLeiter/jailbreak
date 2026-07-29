@@ -1,0 +1,14 @@
+Package: kate
+Version: @DEB_KATE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/kate/
+Depends: qt6-base, qt6-declarative, kwrite (>= 24.08.0+ios2), kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-texteditor, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-dbusaddons, libgtkintl
+Description: Kate advanced text editor (Qt6/KF6)
+ KDE's multi-document editor, built from the same kate 24.08.0 tree as KWrite.
+ The shared libkateprivate runtime is owned by the kwrite package, so this
+ package depends on it rather than shipping a second copy. Kate addons (the
+ Project, Search and Replace, LSP client, Git and Terminal plugins) are not
+ built in this first Xios package.

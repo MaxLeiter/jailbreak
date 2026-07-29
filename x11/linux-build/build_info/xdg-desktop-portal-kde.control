@@ -1,0 +1,15 @@
+Package: xdg-desktop-portal-kde
+Version: @DEB_XDGDESKTOPPORTALKDE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/xdg-desktop-portal-kde
+Depends: qt6-base, qt6-declarative, qt6-wayland, kwayland, libwayland0, libxkbcommon0, plasma-workspace, kf6-config, kf6-coreaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-kirigami, kf6-notifications, kf6-service, kf6-statusnotifieritem, kf6-widgetsaddons, kf6-windowsystem
+Description: KDE backend for XDG desktop portals on Xios
+ Provides org.freedesktop.impl.portal.desktop.kde: the KDE implementations of the
+ file chooser, app chooser, screenshot, screencast, notification, print, settings,
+ and global shortcut portal interfaces. This is the backend only. The
+ xdg-desktop-portal frontend, which owns org.freedesktop.portal.Desktop and routes
+ requests here, is not packaged for this platform yet, so nothing calls this service
+ until it is.

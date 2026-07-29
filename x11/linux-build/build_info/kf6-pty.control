@@ -1,0 +1,13 @@
+Package: kf6-pty
+Version: @DEB_KPTY_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://api.kde.org/frameworks/kpty/html/
+Depends: qt6-base, kf6-coreaddons, kf6-i18n
+Description: KPty pseudo-terminal framework (Qt6/KF6)
+ KPty provides primitives for interfacing with pseudo-terminal devices and
+ running child processes on them. This iOS build uses the openpty() path from
+ libSystem and compiles out the utmp/wtmp session-record helpers, which have no
+ header or database on iPhoneOS.

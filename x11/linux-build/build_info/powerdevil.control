@@ -1,0 +1,15 @@
+Package: powerdevil
+Version: @DEB_POWERDEVIL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/powerdevil
+Depends: qt6-base, qt6-declarative, plasma-activities, plasma-workspace, libkscreen, layer-shell-qt, kf6-auth, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-idletime, kf6-itemmodels, kf6-kcmutils, kf6-kio, kf6-kirigami, kf6-notifications, kf6-service, kf6-solid, kf6-windowsystem, kf6-xmlgui
+Description: KDE Plasma power management daemon for Xios
+ PowerDevil provides the org.kde.Solid.PowerManagement service, its bundled action
+ plugins, the power profile OSD, and the power management System Settings module.
+ Battery and AC state come from org.freedesktop.UPower, which xios-hwbridged
+ provides on-device. The Linux udev backlight backend and the XCB/DPMS fade helper
+ are not built; screen brightness goes through KWin's brightness interface. Suspend
+ and hibernate need org.freedesktop.login1 and are inert on this platform.

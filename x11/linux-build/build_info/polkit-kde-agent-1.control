@@ -1,0 +1,13 @@
+Package: polkit-kde-agent-1
+Version: @DEB_POLKITKDEAGENT1_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/polkit-kde-agent-1
+Depends: qt6-base, qt6-declarative, polkit-qt6-1, libpolkit-gobject-1-0, libpolkit-agent-1-0, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-i18n, kf6-kirigami, kf6-windowsystem
+Description: PolicyKit authentication dialog for Xios
+ The KDE PolicyKit authentication agent registers a listener on
+ org.freedesktop.PolicyKit1.AuthenticationAgent and shows the Plasma authentication
+ dialog. It is a client of polkitd on the DBus system bus; this platform ships the
+ polkit client libraries only, so the agent has no authority to register with yet.

@@ -1,0 +1,17 @@
+Package: dolphin
+Version: @DEB_DOLPHIN_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/dolphin/
+Depends: qt6-base, phonon4qt6, kf6-bookmarks, kf6-codecs, kf6-completion, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-i18n, kf6-iconthemes, kf6-kcmutils, kf6-kio, kf6-newstuff, kf6-notifications, kf6-parts, kf6-solid, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem
+Recommends: konsole
+Description: Dolphin file manager (Qt6/KF6)
+ KDE's file manager. This first Xios package builds without Baloo,
+ BalooWidgets and KFileMetaData, so the Search panel falls back to KIO
+ filename search and the Information panel has no tags, ratings or extracted
+ metadata; browsing, previews, file operations, split view, places and version
+ control integration are upstream. Telemetry and the PackageKit service-menu
+ installer are also disabled. The embedded terminal panel needs the konsolepart
+ plugin from the konsole package.

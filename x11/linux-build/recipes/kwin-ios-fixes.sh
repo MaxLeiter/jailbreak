@@ -956,3 +956,47 @@ PY
 # compatibility edits above. This makes the stable QPainter bring-up easy to
 # audit while the GPU path can evolve as one recipe-owned patch stage.
 bash "$(dirname "$0")/kwin-ios-gpu-backend.sh" "$src"
+
+# KWIN_BUILD_KCMS=ON builds kwin-applywindowdecoration, a CLI helper with no
+# ecm_mark_nongui_executable(). Under ECM/KDECMakeSettings on Apple an un-marked
+# executable silently becomes a .app in KDE_INSTALL_BUNDLEDIR and then vanishes
+# from the deb -- the same landmine that ate kscreen-doctor and kiod6.
+python3 - "$src/src/kcms/decoration/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+MARKER = "# ios: keep this a plain CLI binary"
+if MARKER not in text:
+    anchor = "add_executable(kwin-applywindowdecoration"
+    if anchor not in text:
+        raise SystemExit("kwin-ios-fixes.sh: kwin-applywindowdecoration target not found")
+    text += (
+        "\n" + MARKER + "; an un-marked executable becomes a\n"
+        "# .app bundle on Apple and disappears from the package.\n"
+        "set_target_properties(kwin-applywindowdecoration PROPERTIES MACOSX_BUNDLE FALSE)\n"
+    )
+    path.write_text(text)
+PY
+
+# src/kcms/rules compiles kwin core sources (rules.cpp, workspace.h, sm.h,
+# virtualdesktopsdbustypes.cpp) into a STATIC lib OUTSIDE the kwin target, under
+# -DKCMRULES. Those headers include QDBusContext/QDBusArgument, but the kcm_libs
+# list has no Qt::DBus, so the target never gets QtDBus on its include path and
+# the build dies with "'QDBusContext' file not found". Upstream gets away with it
+# because on Linux Qt::Gui pulls DBus in transitively; this Qt does not.
+python3 - "$src/src/kcms/rules/CMakeLists.txt" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+MARKER = "# ios: kwin core sources here need Qt::DBus"
+if MARKER not in text:
+    anchor = "    Qt::Quick\n"
+    if anchor not in text:
+        raise SystemExit("kwin-ios-fixes.sh: kcm_libs Qt::Quick entry not found in kcms/rules")
+    text = text.replace(anchor, anchor + "    " + MARKER + " on the include path.\n    Qt::DBus\n", 1)
+    path.write_text(text)
+PY
