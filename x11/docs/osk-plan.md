@@ -229,15 +229,145 @@ Do not build either until first-pixels UX shows which one the desktop needs.
 
 - iosc shell + native iPadOS flavor: THIS bridge; the iOS keyboard is the
   only OSK. Best tablet UX (autocorrect, emoji, dictation, split/floating).
-- GNOME Shell flavor: the shell's own OSK (`js/ui/keyboard.js`), decision
-  and reasons in gnome-touch-ux.md Phase 3: the shell OSK resizes the stage
-  and scrolls the focused field into view, while the iOS keyboard would
-  overlay the Metal layer with no scroll-into-view; two OSKs fighting is
-  worse than one consistent one. Force-enable it via
-  `org.gnome.desktop.a11y.applications screen-keyboard-enabled=true`.
-  Revisit only after v2 occlusion handling exists.
-- KDE Plasma Mobile flavor: decide when it boots; candidates are maliit
-  (Plasma's own OSK, heavy) or mirroring the TRAITS broadcast from kwin.
+- GNOME Shell flavor: BOTH mechanisms are wired now. The shell's own OSK
+  (`js/ui/keyboard.js`) is force-enabled via
+  `org.gnome.desktop.a11y.applications screen-keyboard-enabled=true`, and
+  mutter also broadcasts TRAITS: patches/mutter/meta-wayland-text-input-osk-ios.patch
+  hooks meta-wayland-text-input.c and is applied unconditionally by
+  integrate-ios-backend.sh. That supersedes gnome-touch-ux.md Phase 3's
+  "recommendation: no"; if the two OSKs do fight on device, drop the
+  gsetting rather than the patch (mutter is the root compositor there and
+  owns the input socket, so the TRAITS half is the cheap one to keep).
+- KDE Plasma flavors: nothing today, and the mutter patch does NOT port.
+  See "KDE flavor" below for why and for the bridge that does work.
+
+## KDE flavor: a zwp_input_method_v1 bridge (landed in source, cross-built)
+
+Investigated 2026-07-29 by reading the kwin 6.1.5 sources (the version
+recipes/kf6-common.mk pins), not from memory. Every claim below has a
+file:line in that tarball. Status: all three pieces are implemented and
+build clean for arm64 (build-iosc.sh, 0 errors); NOT yet device-tested, so
+treat the end-to-end behaviour as unproven. What that test looks like is in
+"Open items".
+
+### Why the mutter patch does not port
+
+- Topology: kwin_wayland runs NESTED as an iosc client (run-kde-plasma.sh
+  header; kwin-ios-fixes.sh only builds the `wayland` + `fakeinput`
+  backends). iosc stays the root compositor and owns the Xios input socket.
+- `input_clients_send_traits()` derives everything from
+  `text_input_for_focus()`, which walks iosc's OWN text-input-v3 clients.
+  iosc's client is kwin_wayland, and KWin's nested backend is not a
+  text-input client (no text-input code in any KWin recipe). So `ti == NULL`
+  forever, the broadcast is a constant {0,0,0}, and the app never auto-pops.
+- Same root cause caps typing: `in_dispatch_text()` falls back to per-byte
+  keysyms below 0x80 when `text_input_commit_text()` returns 0. Plasma apps
+  get ASCII keys and none of the iOS input stack.
+- KDE has no OSK of its own either: no `kwinrc` InputMethod key anywhere in
+  the tree, no ios-inputd in run-kde-plasma.sh or xios-session-lib.sh, and
+  plasma-mobile's virtual-keyboard-toggle dependency was demoted to
+  OPTIONAL. So unlike GNOME there is no two-OSK fight to weigh; the iOS
+  keyboard is the only candidate.
+
+### What KWin 6.1.5 actually implements
+
+| fact | where (kwin-6.1.5) |
+|---|---|
+| `input-method-unstable-v1` + `input-panel-v1`. NO input-method-v2, NO virtual-keyboard-v1 anywhere | src/wayland/CMakeLists.txt protocol list; inputmethod_v1.h:36; wayland_server.cpp:480 |
+| both IM globals are filtered to the IM connection only | wayland_server.cpp:133 + allowInterface() :151 |
+| that connection is a private socketpair passed to a KWin-spawned child as `WAYLAND_SOCKET` | inputmethod.cpp:880 (startInputMethod) |
+| launch hooks: `kwin_wayland --inputmethod <cmd>`, or `kwinrc [Wayland] InputMethod=<desktop>` | main_wayland.cpp:388/636/203; :190 |
+| `VirtualKeyboardEnabled` defaults TRUE, so no config gate | inputmethod.cpp:89 |
+| activate/deactivate follow text-input focus with NO touch-mode gate; `shouldShowOnActive()` only gates showing a panel window | inputmethod.cpp:210 (setActive), :185 |
+| panel-less input methods are an explicitly supported case | inputmethod.cpp:158 (show(), `!m_panel` branch) |
+| content_type + surrounding_text sent on activation and re-sent on change; v1/v2/v3 all fold into one context | inputmethod.cpp:774 (adoptInputMethodContext), :321 |
+| return path complete: commit_string, preedit_string, keysym, key, delete_surrounding_text | inputmethod_v1.cpp:86-144, forwarded at inputmethod.cpp:550/520/745/596 |
+
+Consequences: **ios-inputd as written is dead on KWin.** It binds
+`zwp_input_method_v2` + `zwp_virtual_keyboard_v1`, prints its two
+"compositor has no ..." warnings and does nothing. (gnome-touch-ux.md used
+to call those "wlroots/KWin protocols"; that is wlroots-only, corrected
+there now.) The bridge must speak v1 and must be spawned by KWin. The
+missing virtual-keyboard-v1 costs nothing: `context.keysym` covers
+Backspace/Enter/arrows and `commit_string` covers full Unicode, which is
+strictly better than today's ASCII keysym fallback.
+
+### Shape of the bridge (as built)
+
+1. ios-inputd grew a second mode. It now binds `zwp_input_method_v1` when the
+   compositor advertises it and switches to PROXY mode; the old wlroots
+   ROOT mode (input-method-v2 + virtual-keyboard-v1, listen on the input
+   socket) is untouched and still selected when only v2 is present. KWin
+   launches it (`--inputmethod` in run-kde-plasma.sh, gated on
+   `KDE_AUTO_KEYBOARD=1` and the binary existing) and it inherits
+   `WAYLAND_SOCKET`, which `wl_display_connect(NULL)` already honored.
+   In PROXY mode it takes only TEXT from iosc: pointer/keyboard/touch already
+   reach KWin through iosc's wl_seat, and injecting them again would double
+   every keystroke.
+2. An "IM proxy" role on iosc's input socket (`XIOS_IN_IMPROXY`, type 15 --
+   14 went to XIOS_IN_GESTURE, which shipped first),
+   so traits reach the app without touching the frozen app-side contract.
+   The proxy connects as a client and registers; from then on the reader
+   excludes it from broadcasts, honors ONLY its inbound `XIOS_IN_TRAITS`
+   (a display host cannot spoof the OSK), and iosc routes `XIOS_IN_TEXT` to
+   it via `xios_input_socket_send_improxy()` instead of the local commit,
+   falling back to the old path when no proxy is registered.
+   `input_clients_send_traits()` prefers the latched proxy values.
+   Xios/XScreen.swift and HostScreenView.swift needed ZERO changes.
+   Two failure modes are handled explicitly: the proxy vanishing (KWin exit
+   or crash) clears the latch and pushes one last disable, so a keyboard
+   raised for a field that no longer exists still comes down
+   (`xios_input_socket_has_improxy()`, polled after dispatch); and a wedged
+   proxy is de-registered on write failure so text falls back locally
+   instead of vanishing into a dead socket.
+3. Enum translation in the bridge (`v1_purpose_to_v3` in ios-inputd.c),
+   because KWin converts down to
+   text-input-v1 numbering (inputmethod_v1.cpp sendContentType). Hint bits
+   are numerically identical to v3 (0x1..0x200), except v1's 0x2 is
+   `auto_correction` where v3 calls it `spellcheck`. Purposes agree 0-8 and
+   then shift:
+
+   | value | v1 | v3 (what XScreen.swift expects) |
+   |---|---|---|
+   | 9  | date     | **pin** |
+   | 10 | time     | date |
+   | 11 | datetime | time |
+   | 12 | terminal | datetime |
+   | 13 | -        | **terminal** |
+
+   Map v1 -> v3 before packing TRAITS so the app's table stays frozen.
+   PIN fidelity is lost for good: v1 has no `pin` purpose and KWin's switch
+   has no `Pin` case, so a v3 PIN field arrives as `normal(0)`. The
+   hidden_text/sensitive_data hints still arrive, so secure entry survives,
+   just not the number pad.
+
+Rejected alternatives: patching KWin's text-input path like mutter's (same
+iosc change, one more patch on an already 27-deep stack, no typing fix);
+building maliit or qtvirtualkeyboard as the KDE OSK (no wire work, but two
+new Qt/QML ports and it gives up autocorrect/dictation and the native feel).
+
+### Open items
+
+- DEVICE TEST (the only thing left, and nothing here is proven without it):
+  `xios-session -d kde`, then tap a text field in a Plasma app. Expect the
+  iOS keyboard to rise, typed text (including emoji and dictation) to land in
+  the field, tapping away to lower it. ios-inputd logs to KWin's stderr, so
+  the KDE session log carries "zwp_input_method_v1 present -> proxy mode"
+  and "registered as input-method proxy on ...". If the first line is absent,
+  KWin did not advertise v1 (check with `WAYLAND_DEBUG=1`); if the second is,
+  iosc's socket path did not match `IOSC_INPUT_SOCK`.
+  `KDE_AUTO_KEYBOARD=0` turns the whole thing off for A/B.
+- The iosc deb needs a rebuild+repackage for this to reach the device
+  (package-iosc.sh ships both iosc and ios-inputd).
+- Confirmed source-side that our kwin deb has the globals:
+  src/wayland/CMakeLists.txt:284 lists inputmethod_v1.cpp unconditionally and
+  kwin-ios-fixes.sh only appends to that file. Still worth one
+  `WAYLAND_DEBUG=1` check on device.
+- Occlusion is still the shared v2 gap: the iOS keyboard overlays the Metal
+  layer and nothing pans the focused field, same as every other flavor.
+- Upstream bug worth knowing (not ours to hit): adoptInputMethodContext()
+  inputmethod.cpp:785 pairs `t1->contentHints()` with `t2->contentPurpose()`
+  in the text-input-v1 branch. Qt and GTK use v2/v3, so it stays cold.
 
 ## Landing map
 
@@ -251,3 +381,8 @@ Do not build either until first-pixels UX shows which one the desktop needs.
 | responder policy, native host           | apps/iosc-host/Sources/HostScreenView.swift | landed (key-window gated); builds clean |
 | server contract pinned in code          | wayland/iosc.c input_clients_send_traits  | landed (23d70ef, comment-only) |
 | caret rect / occlusion                  | iosc.c + app                              | deferred (v2) |
+| GNOME TRAITS broadcast                  | linux-build/patches/mutter/meta-wayland-text-input-osk-ios.patch | landed (applied by integrate-ios-backend.sh) |
+| KDE bridge, IM-proxy socket role        | wayland/xios_input_socket.{c,h} (XIOS_IN_IMPROXY, _send_improxy, _has_improxy) + xios-glue-stub.h twin | built clean, not device-tested |
+| KDE bridge, iosc side                   | wayland/iosc.c (proxy traits latch, TEXT routing, disable-on-proxy-loss) | built clean, not device-tested |
+| KDE bridge, input-method-v1 client      | wayland/ios-inputd.c proxy mode + protocols/input-method-unstable-v1.xml + build-iosc.sh | built clean, not device-tested |
+| KDE bridge, launch hook                 | wayland/run-kde-plasma.sh (`--inputmethod`, KDE_AUTO_KEYBOARD) | not device-tested |
