@@ -167,7 +167,7 @@ Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: iosc (>= 0.9.0), xios-session (>= 1.0.17), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
-Recommends: xios, iosc-shell
+Recommends: com.max.xios, iosc-shell
 Section: X11
 Priority: optional
 Installed-Size: ${INSTKB}
