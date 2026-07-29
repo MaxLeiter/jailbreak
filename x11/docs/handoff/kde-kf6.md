@@ -21,16 +21,16 @@ The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built L
   dev `fb163e22352896e1f19a09b2b7edc9cd116ddc1b1f805ce31c561e6dbccf4ee5`.
   A stage-only preparation selected `+ios4` in the 88-package KDE closure. It is not installed,
   device-tested, or published because the iPad was offline.
-- Desktop and Mobile are no longer "first light only". The current installed baseline on the iPad is `xios-kde 0.1.6`, `xios-session 1.0.54`, `kwin 6.1.5+ios2`, `breeze 6.1.5+ios2`, `plasma-workspace 6.1.5+ios10`, `plasma-desktop 6.1.5+ios8`, `plasma-mobile 6.1.5+ios20`, `systemsettings 6.1.5+ios8`, `kscreen 6.1.5+ios1`, and `kf6-kded 6.3.0+ios2`. `apt-get check` passes after direct install of the latest Desktop/meta pair.
+- Desktop and Mobile are no longer "first light only". The current installed baseline on the iPad is `xios-kde 0.1.6`, `xios-session 1.0.54`, `kwin 6.1.5+ios27` (published; see the GPU/effects section — the `+ios2` figure below is historical), `breeze 6.1.5+ios2`, `plasma-workspace 6.1.5+ios10`, `plasma-desktop 6.1.5+ios8`, `plasma-mobile 6.1.5+ios20`, `systemsettings 6.1.5+ios8`, `kscreen 6.1.5+ios1`, and `kf6-kded 6.3.0+ios2`. `apt-get check` passes after direct install of the latest Desktop/meta pair.
 - Real KWin/Breeze decorations are packaged now. `kwin +ios2` builds decorations (`KWIN_BUILD_DECORATIONS=ON`) and `breeze +ios2` ships the KDecoration plugins under `/var/jb/usr/lib/qt6/plugins/org.kde.kdecoration2/`; the older forced `NoPlugin=true`/no-decoration state is historical.
 - Real Desktop task switching is restored. `plasma-desktop +ios7` brought back the upstream taskmanager/icontasks applets by making KSysGuard ProcessCore optional and renaming the private QML plugin to `plasma_private_taskmanagerplugin` to avoid the Darwin install-name collision with Workspace `libtaskmanagerplugin`.
 - `plasma-desktop +ios8` restores the real pager applet and puts the default bottom panel much closer to stock Plasma: Kicker, pager, icons-only task manager, margins separator, system tray, digital clock, and show-desktop. The pager port keeps Wayland paths and guards the remaining X11-only `KX11Extras`/`XWindowTasksModel` code.
 - System Settings is usable again. `systemsettings +ios8` keeps upstream category discovery and adds the rootless generic-data fallback for `/var/jb/usr/share/systemsettings/categories`; the earlier empty sidebar/no KCM list was an app-bundle `QStandardPaths::AppDataLocation` issue, not missing `kcm_kscreen`.
 - Plasma Mobile `+ios20` keeps upstream MobileShell GridView/ListView/Flickable wrappers and only qualifies the QtQuick roots/attached objects needed on iOS. Its MPRIS shim now exposes the API Desktop taskmanager expects and returns a real "no player" result instead of fake media controls.
 - KDE Plasma Desktop's default on Linux is a single bottom panel, not a top bar or side bar. Top/side panels are user configuration, not a missing default.
-- The old QPainter-only/QPA-`nullptr` visual-parity gap is closed in the host-built `kwin +ios4`
-  candidate. The installed `+ios2` device baseline remains the known runtime state until the
-  isolated `+ios4` smoke covers blur/transparency/effects, rotation, and regression safety.
+- The old QPainter-only/QPA-`nullptr` visual-parity gap is CLOSED and shipped. `kwin 6.1.5+ios27`
+  is published in `repo/Packages` and ships the GL/IOSurface compositor plus 37 built-in effects.
+  The `+ios4`-candidate framing below is historical; see the GPU/effects section for verified state.
 - KWin GL BUILD milestone DONE (2026-07-08, `kwin 6.1.5+ios3` in `linux-build/out/`, NOT device-tested/published): the epoxy<->QtGui-iOS-GLES header collision that forced `KWIN_IOS_QT_NO_OPENGL=1` is resolved. KWin now builds with the flag OFF — `offscreenquickview.cpp` (effects renderer), `windowthumbnailitem.cpp`, the `opengl/*` scene, and `platformsupport/scenes/opengl/*` all compile against real Qt OpenGL; `libkwin.6.1.5.dylib` (6.1MB, was ~2.9) links `libepoxy` + ANGLE `libEGL` and carries the QtQuick↔GL effects-bridge symbols (`QSGOpenGLTexture::fromNative`, `QQuickRenderTarget::fromOpenGLTexture`). Fix = force-included `ios-bringup-gl-coexist` shim in `kwin-ios-compat.h`: include `<epoxy/gl.h>` first, then pre-define the iOS `OpenGLES.framework` include guards (`__gltypes_h_`, `__gl_es20_h_`/`ext`, `__gl_es30_h_`/`ext`) so Qt's `qopengl.h` skips them and defers to epoxy's ABI-identical Khronos defs (mirrors how epoxy's `__gl_h_` suppresses `<GL/gl.h>` on Linux). Scoped via `target_compile_definitions(kwin PRIVATE KWIN_IOS_GL_COEXIST=1)` (the exact old `QT_NO_OPENGL` scope) so CMake's `HAVE_GLESv2`/Qt6Gui probes stay clean — putting it in global CMAKE_CXX_FLAGS breaks the GLESv2 probe (epoxy macros unlink the probe's `-framework OpenGLES` symbols → Qt6Gui/Qt6Quick cascade to NOT-FOUND). No Qt rebuild. Recipes: `kwin.mk` (`KWIN_IOS_COMPAT_DEFS` now empty) + `kwin-ios-fixes.sh`. Memory: `x11-kwin-epoxy-qtgl-collision-fix`.
 - KWin GL RUNTIME implementation is host-complete in `+ios4`; only device validation is pending.
   Do not publish or replace the known-good shared `+ios2` session until an isolated slot proves
@@ -68,24 +68,49 @@ The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built L
 - Important signing finding: the in-container KWin recipe entitlements are XML-visible but DER-less. `task_for_pid` failed with `kwin_iosurface: task_for_pid(...) failed: 0x5` until the installed `kwin_wayland` was re-signed on the Mac with `xsign`/`iosc-gl-ent.xml`. Running `linux-build/resign-graphics-packages.py linux-build/out ...` repacked the local `kwin_6.1.5+ios1` deb with DER signatures; use that or the publish-time finalizer before future installs.
 - Frame pacing is now cleared for the first-light path. `iosc` has the coalesced repaint pulse for mapped surfaces that request `wl_surface.frame`, and the iosc launch paths (`run-iosc.sh`, `run-shell.sh`, `xios-session`, `ioscd`) default `IOSC_FRAME_PULSE=1` while keeping the env override for debugging. On-device evidence `x11/artifacts/device-runs/kde-kwin-framepulse-20260702-234309/`: KWin QPainter initialized, imported IOSurface ids 29/36/39 and 43/45/50, the nested Qt window is visible upright, and `client.log` has no `Didn't receive frame callback in time` loop after the 12s smoke.
 
-## KWin GPU/effects port — HOST COMPLETE, DEVICE PROOF PENDING
+## KWin GPU/effects port — SHIPPED (`+ios27` published); one visual check unconfirmed
 
-- `kwin +ios4` implements the planned ANGLE-Metal display, IOSurface output swapchain,
-  `iosc_iosurface` client presentation, direct IOSurface client texture path, and QPA EGL
-  context. `linux-build/recipes/kwin-ios-gpu-backend.sh` owns this delta after the baseline
-  Darwin compatibility pass in `kwin-ios-fixes.sh`.
-- The build fixes discovered during completion are durable: QPA uses libepoxy EGL include
-  ordering, both EGL sources are restored together in CMake, and the static QPA plugin obtains
-  IOSurfaces through the exported `GraphicsBuffer` virtual interface instead of depending on
-  hidden `IoscClientBuffer` RTTI across the `libkwin` dylib boundary. The recipe also creates the
-  automoc include leaf before a parallel build. The runtime package directly depends on `angle`
-  and retains `iosc-gl-ent.xml` without merging the GPU-breaking general entitlement set.
-- Host gate complete: the clean 806-target source build, final executable link, runtime/dev
-  packaging, Mac DER finalization, payload/symbol inspection, and 88-package stage-only closure
-  all pass. Device gate: install in an isolated KDE slot and confirm OpenGL compositor
-  selection, QtQuick internal windows, direct client import, blur/transparency, rotation/input
-  alignment, frame pacing, and clean teardown. Keep installed `+ios2` as rollback and do not
-  publish `+ios4` until that smoke passes.
+Status verified off-device 2026-07-29 from the built deb, the recipes, `repo/Packages`, and the
+device-run bundles. The old "HOST COMPLETE / DEVICE PROOF PENDING at `+ios4`" text was ~23
+revisions stale and is superseded by this section.
+
+- **Published.** `repo/Packages` carries `kwin 6.1.5+ios27` with `Depends: … angle`. The recipe
+  (`kwin.mk`) keeps `KWIN_IOS_COMPAT_DEFS` empty, i.e. `KWIN_IOS_QT_NO_OPENGL` stays OFF — the
+  header-collision fix from `+ios3` held across 24 subsequent revisions.
+- **The GL/IOSurface path is real, not the CPU shim.** `BasicEGLSurfaceTextureWayland::create()`
+  now branches on `IoscClientBuffer` BEFORE dmabuf/SHM and calls `loadIoscTexture()`, with a
+  `BufferType::Iosc`, its own `EGLSurface m_iosurfacePbuffer`, and an
+  `eglReleaseTexImage`/`eglDestroySurface` lifecycle. Orientation is handled by an
+  `IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT` format flag plumbed to `IoscClientBuffer::isTopLeft()`,
+  not by flipping rows on CPU. The legacy `m_flippedData` memcpy survives only as the fallback
+  `map()` path. `linux-build/recipes/kwin-ios-gpu-backend.sh` owns this delta on top of the
+  baseline Darwin pass in `kwin-ios-fixes.sh`.
+- **Link-time proof the coexistence holds.** `libkwin.6.1.5.dylib` (6.1 MB) links BOTH
+  `@rpath/libepoxy.0.dylib` AND `OpenGLES.framework` in one binary, plus
+  `/var/jb/lib/angle/libEGL.dylib` and `IOSurface.framework`. Those two coexisting is exactly what
+  the collision used to prevent.
+- **Effects ship.** 37 files in `usr/share/kwin/builtin-effects/` including `blur.json` and
+  `contrast.json`, with `kwin_blur_config.so`, plus `kcm_kwin_effects.so` / `kcm_kwin_scripts.so`
+  and the KWin decoration/rules/screenedges KCMs. `nightlight.so` +
+  `org.kde.KWin.NightLight.xml` ship, which closes the old hidden-nightcolor-quicksetting gap.
+- **Device evidence (at `+ios11`, 2026-07-28):**
+  `artifacts/device-runs/kwin-ios11-resume/` — `iosc.log` shows `kwin_wayland` (pid 1283, matched
+  in `xios-ps.txt`) binding `iosc_iosurface v2` and presenting THREE 1440x1080 IOSurfaces (a
+  triple-buffered output swapchain) plus three 64x64 (cursor layer). No QPainter, software
+  fallback, `EGL not available`, or QRhi errors anywhere in the bundle. Companion bundles:
+  `kwin-ios9-gl/`, `kwin-ios9-main/`, `kwin-ios11/`.
+- **The one thing still unconfirmed:** blur/transparency has not been visually verified. The
+  effects ship and the GL path is selected, but the newest captured device bundle is `+ios11`;
+  the 16 revisions through `+ios27` (including "ship effects, scripts and decorations" and "stop
+  pinning Plasma QtQuick to software") have no bundle in `artifacts/device-runs/`. A screenshot
+  was not treated as proof of blur specifically. If a visual check matters, run
+  `bin/xios-kde-smoke desktop --slot <name>` and capture a panel with blur enabled.
+- Durable build fixes from the port, worth not re-deriving: QPA uses libepoxy EGL include
+  ordering; both EGL sources are restored together in CMake; the static QPA plugin obtains
+  IOSurfaces through the exported `GraphicsBuffer` virtual interface rather than hidden
+  `IoscClientBuffer` RTTI across the `libkwin` dylib boundary; the recipe creates the automoc
+  include leaf before a parallel build; the runtime package retains `iosc-gl-ent.xml` without
+  merging the GPU-breaking general entitlement set.
 - The 2026-07-19 simplification/optimization pass moved the owned backend and QPA sources into
   `linux-build/recipes/kwin-ios-gpu/`, reduced the source-rewrite driver to targeted glue edits,
   centralized ANGLE IOSurface EGL setup, cached client-texture EGL config selection and the QPA
