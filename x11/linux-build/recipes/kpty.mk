@@ -31,6 +31,7 @@ DEB_KPTY_V ?= $(KPTY_VERSION)+ios1
 kpty-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kpty))
 	$(call EXTRACT_TAR,kpty-$(KF6_VERSION).tar.xz,kpty-$(KF6_VERSION),kpty)
+	bash $(BUILD_INFO)/kpty-ios-fixes.sh $(BUILD_WORK)/kpty
 	perl -0777 -i -pe 's/\n#include <utmp\.h>\n/\n\/\/ ios-bringup-no-utmp: iPhoneOS SDK ships utmpx.h only\n#if !defined(__APPLE__)\n#include <utmp.h>\n#endif\n/s' $(BUILD_WORK)/kpty/src/kpty.cpp
 	perl -0777 -i -pe 's/void KPty::login\(const char \*user, const char \*remotehost\)\n\{\n#ifdef UTEMPTER_PATH\n/void KPty::login(const char *user, const char *remotehost)\n{\n#if defined(__APPLE__) \/\/ ios-bringup-no-utmp\n    (void)user;\n    (void)remotehost;\n#elif defined(UTEMPTER_PATH)\n/s' $(BUILD_WORK)/kpty/src/kpty.cpp
 	perl -0777 -i -pe 's/void KPty::logout\(\)\n\{\n#ifdef UTEMPTER_PATH\n/void KPty::logout()\n{\n#if defined(__APPLE__) \/\/ ios-bringup-no-utmp\n#elif defined(UTEMPTER_PATH)\n/s' $(BUILD_WORK)/kpty/src/kpty.cpp

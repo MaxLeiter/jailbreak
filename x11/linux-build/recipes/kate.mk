@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS += kate
 KATE_VERSION = 24.08.0
-DEB_KATE_V ?= $(KATE_VERSION)+ios1
+DEB_KATE_V ?= $(KATE_VERSION)+ios2
 
 kate-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/kate-$(KATE_VERSION).tar.xz)
@@ -76,6 +76,12 @@ kate-package: kate-stage
 	done
 	# libkateprivate is owned by the kwrite package; see the header comment.
 	rm -f $(BUILD_DIST)/kate/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libkateprivate*.dylib
+	# share/locale is owned by kwrite too, for the same reason: both apps come out
+	# of the same tarball, so kwrite already installs every kate*.mo. 1584 of
+	# kate's 1601 files were duplicates and dpkg refused the install with
+	# "trying to overwrite ... which is also in package kwrite". Kate Depends on
+	# kwrite, so the catalogs are always present.
+	rm -rf $(BUILD_DIST)/kate/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/locale
 	if [ -d "$(BUILD_STAGE)/kate/Applications/KDE/kate.app" ]; then \
 		mkdir -p "$(BUILD_DIST)/kate$(MEMO_PREFIX)/Applications/KDE"; \
 		cp -a "$(BUILD_STAGE)/kate/Applications/KDE/kate.app" "$(BUILD_DIST)/kate$(MEMO_PREFIX)/Applications/KDE/kate.app"; \

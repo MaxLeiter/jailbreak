@@ -5,8 +5,8 @@ set -euo pipefail
 QTVER=6.6.3
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
-TARGETS="${TARGETS:-exiv2-package phonon-package ksyntaxhighlighting-package ktexteditor-package ark-package gwenview-package kwrite-package}"
-COLLECT_DEBS=(libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite)
+TARGETS="${TARGETS:-exiv2-package phonon-package ksyntaxhighlighting-package ktexteditor-package ark-package gwenview-package kwrite-package kate-package kcalc-package kpty-package konsole-package dolphin-package}"
+COLLECT_DEBS=(libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite kate kcalc kf6-pty konsole dolphin)
 
 cd /work/Procursus
 
@@ -37,9 +37,11 @@ mkdir -p build_info build_misc/entitlements
 for r in \
   qt6-common.mk kf6-common.mk \
   exiv2.mk phonon.mk ksyntaxhighlighting.mk ktexteditor.mk \
-  ark.mk gwenview.mk kwrite.mk; do
+  ark.mk gwenview.mk kwrite.mk \
+  kate.mk kcalc.mk kpty.mk konsole.mk dolphin.mk; do
   cp -v /work/recipes/$r makefiles/
 done
+cp -v /work/recipes/kpty-ios-fixes.sh build_info/ 2>/dev/null || true
 cp -v /work/build_info/* build_info/ 2>/dev/null || true
 cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 

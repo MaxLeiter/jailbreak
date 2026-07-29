@@ -314,6 +314,16 @@
       "url": "https://repo.maxleiter.com/banners/kactivitymanagerd.png"
     },
     {
+      "title": "kate",
+      "package": "kate",
+      "url": "https://repo.maxleiter.com/banners/kate.png"
+    },
+    {
+      "title": "kcalc",
+      "package": "kcalc",
+      "url": "https://repo.maxleiter.com/banners/kcalc.png"
+    },
+    {
       "title": "kdecoration",
       "package": "kdecoration",
       "url": "https://repo.maxleiter.com/banners/kdecoration.png"
@@ -657,6 +667,16 @@
       "title": "kf6-parts-dev",
       "package": "kf6-parts-dev",
       "url": "https://repo.maxleiter.com/banners/kf6-parts-dev.png"
+    },
+    {
+      "title": "kf6-pty",
+      "package": "kf6-pty",
+      "url": "https://repo.maxleiter.com/banners/kf6-pty.png"
+    },
+    {
+      "title": "kf6-pty-dev",
+      "package": "kf6-pty-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-pty-dev.png"
     },
     {
       "title": "kf6-pulseaudio-qt",

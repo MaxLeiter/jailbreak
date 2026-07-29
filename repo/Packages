@@ -1311,6 +1311,48 @@ Depiction: https://repo.maxleiter.com/depictions/kactivitymanagerd.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kactivitymanagerd.json
 Native Depiction: https://repo.maxleiter.com/depictions/kactivitymanagerd.json
 
+Package: kate
+Version: 24.08.0+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/kate/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, kwrite (>= 24.08.0+ios2), kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-texteditor, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-dbusaddons, libgtkintl
+Description: Kate advanced text editor (Qt6/KF6)
+Installed-Size: 736
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/kate_24.08.0+ios2_iphoneos-arm64.deb
+Size: 179180
+MD5sum: 72567f9541e619b7a069e6204e5dc7c0
+SHA1: 0fc0b4842828ad4538521998d3a2a765610a6e4c
+SHA256: b20875442398828cf1ebb365ecc15c8e0a82eea424e08fa769118b452b4e8c49
+Icon: https://repo.maxleiter.com/icons/kate.png
+Depiction: https://repo.maxleiter.com/depictions/kate.html
+SileoDepiction: https://repo.maxleiter.com/depictions/kate.json
+Native Depiction: https://repo.maxleiter.com/depictions/kate.json
+
+Package: kcalc
+Version: 24.08.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/kcalc/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, kf6-config, kf6-configwidgets, kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-notifications, kf6-xmlgui, libgmp10, libmpfr6
+Description: KCalc scientific calculator (Qt6/KF6)
+Installed-Size: 2976
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/kcalc_24.08.0+ios1_iphoneos-arm64.deb
+Size: 379742
+MD5sum: 7620476aa3e4ccd6c9afb14e33d0c943
+SHA1: d29c18e7cc3e3b5bdca1ec2d863fef82e371183d
+SHA256: 3506d3f7fdac87ae812af811835bbe386a92e98b05794c529a11f3f2e67fb46e
+Icon: https://repo.maxleiter.com/icons/kcalc.png
+Depiction: https://repo.maxleiter.com/depictions/kcalc.html
+SileoDepiction: https://repo.maxleiter.com/depictions/kcalc.json
+Native Depiction: https://repo.maxleiter.com/depictions/kcalc.json
+
 Package: kdecoration
 Version: 6.1.5+ios1
 Architecture: iphoneos-arm64
@@ -2760,6 +2802,48 @@ Icon: https://repo.maxleiter.com/icons/kf6-parts-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-parts-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-parts-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-parts-dev.json
+
+Package: kf6-pty
+Version: 6.3.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://api.kde.org/frameworks/kpty/html/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, kf6-coreaddons, kf6-i18n
+Description: KPty pseudo-terminal framework (Qt6/KF6)
+Installed-Size: 1408
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/kf6-pty_6.3.0+ios1_iphoneos-arm64.deb
+Size: 42642
+MD5sum: e412652ce92a45c484d2b10541ce8f22
+SHA1: 2793d57a645f4ce2f02dbf33f8121614fa2c70b2
+SHA256: 33d0b7ff1dbe1ee04d5bac11016f10cffc73343df6781affeac50a144e1c0923
+Icon: https://repo.maxleiter.com/icons/kf6-pty.png
+Depiction: https://repo.maxleiter.com/depictions/kf6-pty.html
+SileoDepiction: https://repo.maxleiter.com/depictions/kf6-pty.json
+Native Depiction: https://repo.maxleiter.com/depictions/kf6-pty.json
+
+Package: kf6-pty-dev
+Version: 6.3.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://api.kde.org/frameworks/kpty/html/
+Depends: kf6-pty (= 6.3.0+ios1), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev, kf6-i18n-dev
+Description: KPty pseudo-terminal framework (development files)
+Installed-Size: 96
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/kf6-pty-dev_6.3.0+ios1_iphoneos-arm64.deb
+Size: 9324
+MD5sum: b8833fb27179e6adf13e12039bc7526d
+SHA1: 3b0e488ed8edb26459ba6e9dfc40b1829af29b45
+SHA256: f7c38ace08c23e26ac8945e3192d11f93b9642134635ba67a03e262d62371425
+Icon: https://repo.maxleiter.com/icons/kf6-pty-dev.png
+Depiction: https://repo.maxleiter.com/depictions/kf6-pty-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/kf6-pty-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/kf6-pty-dev.json
 
 Package: kf6-pulseaudio-qt
 Version: 1.5.0+ios1
