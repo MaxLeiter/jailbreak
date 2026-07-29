@@ -323,6 +323,26 @@ static int win_next_buffer(struct iosc_egl_win *w, int start)
  * binding; it is NEVER passed to ANGLE as the native display. */
 static EGLDisplay angle_metal_display(void)
 {
+    /* An EGLDisplay is a singleton per (platform, native_display, attribs), so
+     * caching the successful one is plain EGL semantics and stops every
+     * eglGetDisplay call from re-entering ANGLE's Metal bring-up. Failures are
+     * not cached, so a caller may retry.
+     *
+     * NOTE: this returns EGL_NO_DISPLAY (with err EGL_SUCCESS, so there is
+     * nothing to report) inside a process that ALREADY owns an ANGLE Metal
+     * display created outside this shim -- kwin_wayland is the case in practice:
+     * its compositing backend makes one directly, and the Qt Wayland QPA then
+     * asks us for a second. Qt treats that as "EGL not available" and drops its
+     * QtQuick scenegraph to software for that process. Harmless there (it is
+     * kwin's internal QtQuick, not compositing, and not plasmashell), but it is
+     * why that warning appears in a session log while the desktop still renders
+     * through ANGLE. Verified: plasmashell launched on its own gets a display
+     * and the threaded render loop. */
+    static EGLDisplay cached = EGL_NO_DISPLAY;
+    if (cached != EGL_NO_DISPLAY) {
+        return cached;
+    }
+
     typedef EGLDisplay (*getpd_ext_fn)(EGLenum, void *, const EGLint *);
     getpd_ext_fn get = (getpd_ext_fn)REAL(eglGetProcAddress)("eglGetPlatformDisplayEXT");
     if (!get) {
@@ -333,6 +353,7 @@ static EGLDisplay angle_metal_display(void)
     EGLDisplay dpy = get(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, a);
     if (egl_debug())
         fprintf(stderr, "iosc_egl: ANGLE Metal display = %p (err 0x%x)\n", dpy, REAL(eglGetError)());
+    cached = dpy;
     return dpy;
 }
 
