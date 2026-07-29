@@ -44,16 +44,20 @@ if (EPOLL_SHIM_LIBRARY)
 endif()
 EOF
 
-# Keep the static plugin surface small for the first linkable compositor. KWin
-# unconditionally selects its private QPA platform, so keep that plugin now that
-# the staged QtGui is ANGLE/OpenGL-capable. The KWindowSystem/IdleTime static
-# plugins stay out of the first-light build until the compositor itself runs.
-cat > "$src/src/plugins/CMakeLists.txt" <<'EOF'
-add_subdirectory(qpa)
-if(TARGET K::KGlobalAccelD)
-    add_subdirectory(kglobalaccel)
-endif()
-EOF
+# src/plugins/CMakeLists.txt is left as UPSTREAM ships it.
+#
+# It used to be overwritten with just qpa + kglobalaccel, to keep the static
+# plugin surface small "until the compositor itself runs". The compositor runs
+# now (GL compositing through ANGLE/IOSurface), and that reduction was why the
+# kwin deb contained no effects, no scripts and no decoration plugin at all --
+# every one of the ~70 subdirectories below qpa was simply never configured.
+#
+# Upstream's own file already guards the parts that genuinely cannot build here:
+# screencast behind PipeWire_FOUND (absent), krunner-integration behind
+# KWIN_BUILD_RUNNERS (OFF), eis behind KWIN_BUILD_EIS (OFF), kdecorations behind
+# KWIN_BUILD_DECORATIONS (ON, which is what supplies the decoration plugin). So
+# let cmake's conditionals decide rather than hand-maintaining a subset list;
+# anything that fails to compile on iOS gets pruned individually, with a reason.
 
 # KWin's private QPA plugin must include Qt's real QOpenGL/QPA classes. epoxy's
 # EGL header includes epoxy/gl.h, whose GL macro layer collides with QtGui's iOS
