@@ -1312,7 +1312,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kactivitymanagerd.json
 Native Depiction: https://repo.maxleiter.com/depictions/kactivitymanagerd.json
 
 Package: kate
-Version: 24.08.0+ios2
+Version: 24.08.0+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11/Wayland Apps
@@ -1320,13 +1320,13 @@ Priority: optional
 Homepage: https://apps.kde.org/kate/
 Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, kwrite (>= 24.08.0+ios2), kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-kio, kf6-texteditor, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, kf6-dbusaddons, libgtkintl
 Description: Kate advanced text editor (Qt6/KF6)
-Installed-Size: 736
+Installed-Size: 716
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kate_24.08.0+ios2_iphoneos-arm64.deb
-Size: 179180
-MD5sum: 72567f9541e619b7a069e6204e5dc7c0
-SHA1: 0fc0b4842828ad4538521998d3a2a765610a6e4c
-SHA256: b20875442398828cf1ebb365ecc15c8e0a82eea424e08fa769118b452b4e8c49
+Filename: debs/kate_24.08.0+ios3_iphoneos-arm64.deb
+Size: 175912
+MD5sum: e2802cb7592c58664de35b9ba5e31a32
+SHA1: b0573bf57072fd363e0b8a838972302cbb30bfae
+SHA256: f59947dbbeec5bb91919bd1b0142797490377d64a2465bb1d3e94d3d2d111038
 Icon: https://repo.maxleiter.com/icons/kate.png
 Depiction: https://repo.maxleiter.com/depictions/kate.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kate.json

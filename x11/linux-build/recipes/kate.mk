@@ -34,11 +34,12 @@ endif
 
 SUBPROJECTS += kate
 KATE_VERSION = 24.08.0
-DEB_KATE_V ?= $(KATE_VERSION)+ios2
+DEB_KATE_V ?= $(KATE_VERSION)+ios3
 
 kate-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/kate-$(KATE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,kate-$(KATE_VERSION).tar.xz,kate-$(KATE_VERSION),kate)
+	bash $(BUILD_INFO)/kate-ios-fixes.sh $(BUILD_WORK)/kate
 	sed -i 's/ecm_optional_add_subdirectory(addons)/# ios-bringup-no-addons: ecm_optional_add_subdirectory(addons)/;s/ecm_optional_add_subdirectory(doc)/# ios-bringup-no-doc: ecm_optional_add_subdirectory(doc)/;s/add_subdirectory(appiumtests)/# ios-bringup-no-appiumtests: add_subdirectory(appiumtests)/' $(BUILD_WORK)/kate/CMakeLists.txt
 	sed -i 's/ecm_optional_add_subdirectory(kwrite)/# ios-bringup-kate-only: ecm_optional_add_subdirectory(kwrite)/' $(BUILD_WORK)/kate/apps/CMakeLists.txt
 	grep -q 'QApplication' $(BUILD_WORK)/kate/apps/lib/diff/difflinenumarea.cpp || sed -i '1i #include <QApplication>' $(BUILD_WORK)/kate/apps/lib/diff/difflinenumarea.cpp

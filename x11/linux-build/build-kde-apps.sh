@@ -66,6 +66,7 @@ for r in \
 done
 cp -v /work/recipes/kpty-ios-fixes.sh build_info/ 2>/dev/null || true
 cp -v /work/recipes/konsole-ios-fixes.sh build_info/ 2>/dev/null || true
+cp -v /work/recipes/kate-ios-fixes.sh build_info/ 2>/dev/null || true
 cp -v /work/build_info/* build_info/ 2>/dev/null || true
 cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 
