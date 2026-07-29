@@ -6,11 +6,16 @@ endif
 
 SUBPROJECTS += kwrite
 KWRITE_VERSION = 24.08.0
-DEB_KWRITE_V ?= $(KWRITE_VERSION)+ios2
+DEB_KWRITE_V ?= $(KWRITE_VERSION)+ios3
 
 kwrite-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/kate-$(KWRITE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,kate-$(KWRITE_VERSION).tar.xz,kate-$(KWRITE_VERSION),kwrite)
+	# kwrite ships libkateprivate, which BOTH kwrite and kate link, so the
+	# daemon()/SingleApplication surgery has to be applied here too -- kate's
+	# own package drops the library as a duplicate, and would otherwise load
+	# kwrite's unpatched copy at runtime. Same tarball, same script.
+	bash $(BUILD_INFO)/kate-ios-fixes.sh $(BUILD_WORK)/kwrite
 	sed -i 's/ecm_optional_add_subdirectory(addons)/# ios-bringup-no-addons: ecm_optional_add_subdirectory(addons)/;s/ecm_optional_add_subdirectory(doc)/# ios-bringup-no-doc: ecm_optional_add_subdirectory(doc)/;s/add_subdirectory(appiumtests)/# ios-bringup-no-appiumtests: add_subdirectory(appiumtests)/' $(BUILD_WORK)/kwrite/CMakeLists.txt
 	sed -i 's/ecm_optional_add_subdirectory(kate)/# ios-bringup-kwrite-only: ecm_optional_add_subdirectory(kate)/' $(BUILD_WORK)/kwrite/apps/CMakeLists.txt
 	grep -q 'QApplication' $(BUILD_WORK)/kwrite/apps/lib/diff/difflinenumarea.cpp || sed -i '1i #include <QApplication>' $(BUILD_WORK)/kwrite/apps/lib/diff/difflinenumarea.cpp

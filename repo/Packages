@@ -461,6 +461,28 @@ Depiction: https://repo.maxleiter.com/depictions/dconf-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/dconf-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/dconf-dev.json
 
+Package: dolphin
+Version: 24.08.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.kde.org/dolphin/
+Depends: libiosexec1 (>= 1.3.1), qt6-base, phonon4qt6, kf6-bookmarks, kf6-codecs, kf6-completion, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-i18n, kf6-iconthemes, kf6-kcmutils, kf6-kio, kf6-newstuff, kf6-notifications, kf6-parts, kf6-solid, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem
+Recommends: konsole
+Description: Dolphin file manager (Qt6/KF6)
+Installed-Size: 13868
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/dolphin_24.08.0+ios1_iphoneos-arm64.deb
+Size: 1624106
+MD5sum: 7dfce843241dce48d52c85340ebd373a
+SHA1: 9320433b5e447fbac77efc8f854da18d01974c55
+SHA256: 161b5bbc6190d8f557ba1e8c73bdd5f797986a0804526f0bdcde720edc1f8942
+Icon: https://repo.maxleiter.com/icons/dolphin.png
+Depiction: https://repo.maxleiter.com/depictions/dolphin.html
+SileoDepiction: https://repo.maxleiter.com/depictions/dolphin.json
+Native Depiction: https://repo.maxleiter.com/depictions/dolphin.json
+
 Package: dunst
 Version: 1.13.2+ios2
 Architecture: iphoneos-arm64
@@ -1312,7 +1334,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kactivitymanagerd.json
 Native Depiction: https://repo.maxleiter.com/depictions/kactivitymanagerd.json
 
 Package: kate
-Version: 24.08.0+ios3
+Version: 24.08.0+ios4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11/Wayland Apps
@@ -1322,11 +1344,11 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, kwrite (>= 24.08.0+i
 Description: Kate advanced text editor (Qt6/KF6)
 Installed-Size: 716
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kate_24.08.0+ios3_iphoneos-arm64.deb
-Size: 175912
-MD5sum: e2802cb7592c58664de35b9ba5e31a32
-SHA1: b0573bf57072fd363e0b8a838972302cbb30bfae
-SHA256: f59947dbbeec5bb91919bd1b0142797490377d64a2465bb1d3e94d3d2d111038
+Filename: debs/kate_24.08.0+ios4_iphoneos-arm64.deb
+Size: 175900
+MD5sum: f4a8c9025a94d291f72b0a61ee0edec6
+SHA1: 7175566e504f0333349c345de35ae76479bbfa76
+SHA256: 4832b629cbaf998b4a17cf3e0f904c71ee350d4ca3ee7d272201d7819700797b
 Icon: https://repo.maxleiter.com/icons/kate.png
 Depiction: https://repo.maxleiter.com/depictions/kate.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kate.json
@@ -3751,7 +3773,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwin-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwin-dev.json
 
 Package: kwrite
-Version: 24.08.0+ios2
+Version: 24.08.0+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11/Wayland Apps
@@ -3761,11 +3783,11 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, kf6-coreaddons, kf6-
 Description: KWrite text editor (Qt6/KF6)
 Installed-Size: 14940
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwrite_24.08.0+ios2_iphoneos-arm64.deb
-Size: 1971616
-MD5sum: 324e9f91be6e922af702fbd938cd67d8
-SHA1: 938600fe2c5247358b00d91e9b273acd9d438f94
-SHA256: 821bacbac17dbb15652c19a886f3da41cfddc11673f643b8cf3d57cb937d87cd
+Filename: debs/kwrite_24.08.0+ios3_iphoneos-arm64.deb
+Size: 1971564
+MD5sum: 3495b5fe29be140da91cfd112ad2fa91
+SHA1: 856bec9dccb026785569917e9bbd82e8d9467202
+SHA256: ac68168bd122ec5a8b002ae009c0e098d78eea7d7f2fb260fba17795f6237167
 Icon: https://repo.maxleiter.com/icons/kwrite.png
 Depiction: https://repo.maxleiter.com/depictions/kwrite.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwrite.json
@@ -10383,7 +10405,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-activities-stats-de
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-activities-stats-dev.json
 
 Package: plasma-desktop
-Version: 6.1.5+ios8
+Version: 6.1.5+ios9
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -10391,13 +10413,13 @@ Priority: optional
 Homepage: https://kde.org/plasma-desktop/
 Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-wayland, qt6-5compat, kf6-auth, kf6-attica, kf6-codecs, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-itemmodels, kf6-kcmutils, kf6-kded, kf6-kio, kf6-kirigami-addons, kf6-newstuff, kf6-notifications, kf6-notifyconfig, kf6-package, kf6-runner, kf6-service, kf6-solid, kf6-svg, kf6-widgetsaddons, kf6-windowsystem, kf6-xmlgui, plasma-activities, plasma-activities-stats, plasma-workspace, libplasma, kwin
 Description: Plasma Desktop containment layer for Xios
-Installed-Size: 4588
+Installed-Size: 8716
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-desktop_6.1.5+ios8_iphoneos-arm64.deb
-Size: 507368
-MD5sum: 9533251e40140dba61f26fc919689a64
-SHA1: 61a9c992578fbf7d8de4ad2a2cf4e57566fe7590
-SHA256: e9d97267c09c687dee55b94d577039f136e22f0ed82d91ec90f136e0a4bd63c0
+Filename: debs/plasma-desktop_6.1.5+ios9_iphoneos-arm64.deb
+Size: 904786
+MD5sum: c3da5e04444fe4355ec12b45d51ad12c
+SHA1: ea968a88dc95d9badcc1d4734ff1cc4423dd33c0
+SHA256: 2dad5b08aee61c0be38766ab71686299256699dbadeb41e24ddc60822dca3819
 Icon: https://repo.maxleiter.com/icons/plasma-desktop.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop.json

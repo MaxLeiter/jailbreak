@@ -114,6 +114,11 @@
       "url": "https://repo.maxleiter.com/banners/dconf-dev.png"
     },
     {
+      "title": "dolphin",
+      "package": "dolphin",
+      "url": "https://repo.maxleiter.com/banners/dolphin.png"
+    },
+    {
       "title": "dunst",
       "package": "dunst",
       "url": "https://repo.maxleiter.com/banners/dunst.png"

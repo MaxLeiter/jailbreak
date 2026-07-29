@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS += kate
 KATE_VERSION = 24.08.0
-DEB_KATE_V ?= $(KATE_VERSION)+ios3
+DEB_KATE_V ?= $(KATE_VERSION)+ios4
 
 kate-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/kate-$(KATE_VERSION).tar.xz)

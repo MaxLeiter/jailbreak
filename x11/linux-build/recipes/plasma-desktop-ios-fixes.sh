@@ -61,6 +61,11 @@ keep = {
     "layout-templates",
     "runners",
     "toolboxes",
+    # kcms was skipped wholesale, which is why System Settings had almost no
+    # pages: the entire kcms/ tree was never configured. It is kept now, and
+    # kcms/CMakeLists.txt is rewritten below to the subset that can actually
+    # work on this stack.
+    "kcms",
 }
 
 def subdir_repl(match: re.Match[str]) -> str:
@@ -470,3 +475,36 @@ path.write_text(text)
 PY
 
 sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' "$src/CMakeLists.txt"
+
+# Restrict kcms/ to the modules that can function here. Upstream's own guards
+# already drop several (keyboard needs X11_Xkb+XCB_XKB, mouse/touchpad need the
+# BUILD_KCM_*_X11/KWIN_WAYLAND options, baloo needs KF6Baloo, gamecontroller
+# needs SDL2), but three would configure and then fail or be useless:
+#
+#   libkwindevices, tablet, touchscreen
+#     libkwindevices does qt_add_dbus_interface(${KWIN_INPUTDEVICE_INTERFACE}),
+#     and that XML is generated ONLY by kwin's libinput backend. This stack
+#     builds kwin with just the fakeinput + wayland backends (input arrives from
+#     iosc, not libinput), so kwin ships no org.kde.KWin.InputDevice.xml at all
+#     -- verified: 8 interface XMLs in the kwin deb, none of them InputDevice,
+#     and zero references to it in kwin_wayland. The KCMs cannot build, and even
+#     if they did they would enumerate zero devices.
+#
+#   access, dateandtime, landingpage, ksmserver, runners
+#     X11 helpers / system time daemon / session manager surface that this
+#     session does not have. Left out until someone needs them specifically.
+cat > "$src/kcms/CMakeLists.txt" <<'EOF'
+remove_definitions(-DQT_NO_CAST_FROM_ASCII -DQT_STRICT_ITERATORS -DQT_NO_CAST_FROM_BYTEARRAY -DQT_NO_KEYWORDS)
+
+add_subdirectory( keys )
+add_subdirectory( desktoppaths )
+add_subdirectory( ksplash )
+add_subdirectory(componentchooser)
+add_subdirectory(kded)
+add_subdirectory(spellchecking)
+add_subdirectory(qtquicksettings)
+add_subdirectory(workspaceoptions)
+add_subdirectory(solid_actions)
+add_subdirectory(recentFiles)
+add_subdirectory(activities)
+EOF

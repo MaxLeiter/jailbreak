@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/plasma-desktop.png",
+  "headerImage": "https://repo.maxleiter.com/banners/dolphin.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Plasma Desktop containment layer for Xios"
+          "markdown": "Dolphin file manager (Qt6/KF6)"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios9"
+          "text": "24.08.0+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "883.6 KiB"
+          "text": "1586.0 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "KDE"
+          "text": "X11/Wayland Apps"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "plasma-desktop"
+          "text": "dolphin"
         }
       ]
     }
