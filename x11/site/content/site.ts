@@ -14,7 +14,7 @@ export const NAV: NavItem[] = [
     label: "Overview",
     idx: "00",
     description:
-      "GNOME, KDE, GTK and Qt apps rebuilt as native arm64 iOS binaries on a jailbroken iPad, drawn to the screen through Metal. No Linux kernel, no VM, no emulator.",
+      "GNOME, KDE, GTK and Qt apps rebuilt as native arm64 iOS binaries on a jailbroken iPad, drawn to the screen through Metal.",
   },
   {
     href: "/architecture",
@@ -91,7 +91,7 @@ export const OG_IMAGE = {
   url: "/opengraph-image.jpg",
   width: 1200,
   height: 630,
-  alt: "The xiOS project wiki: X11 and Wayland on iOS. Desktop Linux apps, rebuilt for a jailbroken iPad.",
+  alt: "xiOS: X11 and Wayland on iOS. Desktop Linux apps rebuilt for jailbroken devices.",
 };
 
 export function siblings(href: string) {
