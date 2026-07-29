@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Bridges } from "@/components/Figures";
+import { T } from "@/components/Term";
 import { Ext, NextLinks, PageHeader, Section } from "@/components/ui";
 
 export const metadata: Metadata = { title: "System integration" };
@@ -19,9 +20,9 @@ export default function System() {
             Every integration is a small daemon that owns the interface the
             desktop already expects, a D-Bus service, a Wayland protocol, or a
             file under{" "}
-            <abbr title="the Linux virtual filesystem that exposes hardware as files">
+            <T k="sysfs">
               <code>/sys</code>
-            </abbr>
+            </T>
             , and answers it with the matching iOS
             API. The iOS side is reached with <code>dlopen</code>{" "}and the
             Objective-C runtime, so nothing links a private framework at build
@@ -85,9 +86,9 @@ export default function System() {
           <p>
             The keyboard is the neat one. When a Wayland app focuses a text field
             it enables the{" "}
-            <abbr title="the Wayland protocol for text fields and on-screen keyboards">
+            <T k="textInput">
               <code>text-input-v3</code>
-            </abbr>{" "}
+            </T>{" "}
             protocol; iosc sees that
             enable and treats it as the cue to raise the iOS on-screen keyboard,
             then dismisses it when the field loses focus. The same protocol carries

@@ -23,7 +23,7 @@ verification remain maintainer-controlled.
 | Model | iPad 7th gen (`iPad7,12`, A10 Fusion) |
 | OS | iPadOS **17.6.1** (build 21G93) |
 | Arch | `arm64` (A10 — **not** arm64e) |
-| Jailbreak | **palera1n** (checkm8) — **rootless** |
+| Jailbreak | **Dopamine** — **rootless** |
 | Layout | rootless → everything installs under **`/var/jb`** |
 | Substrate | ElleKit (provides `mobilesubstrate`) |
 | Package manager | Sileo |
@@ -220,6 +220,6 @@ an untrusted network.
 - A10 is `arm64`; the build also emits an `arm64e` slice (harmless — the iPad
   uses the `arm64` one).
 - Run `make clean` when switching package schemes.
-- This is standard palera1n `/var/jb` rootless. A different fork, **roothide**,
+- This is standard Dopamine `/var/jb` rootless. A different fork, **roothide**,
   uses a *relocated* jbroot and needs `roothide/Developer`'s Theos fork instead —
   not applicable here.

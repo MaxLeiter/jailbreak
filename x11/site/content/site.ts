@@ -12,7 +12,9 @@ export const NAV: NavItem[] = [
   { href: "/flavors", label: "Desktop flavors", idx: "04" },
   { href: "/build", label: "Build & packaging", idx: "05" },
   { href: "/system", label: "System integration", idx: "06" },
-  { href: "/try", label: "Try it yourself", idx: "07" },
+  { href: "/accessibility", label: "Accessibility", idx: "07" },
+  { href: "/try", label: "Try it yourself", idx: "08" },
+  { href: "/contributing", label: "Contributing", idx: "09" },
 ];
 
 export const SITE = {

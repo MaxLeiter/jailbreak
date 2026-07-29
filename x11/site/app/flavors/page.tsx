@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Clip, Shot } from "@/components/Figures";
+import { T } from "@/components/Term";
 import { Callout, Ext, NextLinks, PageHeader, Section } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Desktop flavors" };
@@ -7,7 +8,6 @@ export const metadata: Metadata = { title: "Desktop flavors" };
 type Mode = {
   name: string;
   tag: string;
-  state: "live" | "wip" | "planned";
   body: string;
 };
 
@@ -15,20 +15,22 @@ const MODES: Mode[] = [
   {
     name: "Native mode",
     tag: "Per-window",
-    state: "wip",
-    body: "Linux desktop apps can show up on your Home Screen and launch into their own iPadOS windows. The backend exists; the per-window UI path is still being validated.",
+    body: "Linux desktop apps show up on your Home Screen and launch into their own iPadOS windows, each in its own host bundle. A Settings pane picks which apps get icons. What is still being validated is the physical host-window polish, not the launch path.",
   },
   {
     name: "iosc desktop",
     tag: "Our own shell",
-    state: "live",
-    body: "The compositor's own tablet-first desktop: a panel with launchers, a dock, an overview, and a wallpaper.",
+    body: "The compositor's own tablet-first desktop: a panel with launchers, a dock, an overview, and a wallpaper. The lightest thing here, and the one that assumes a touchscreen rather than tolerating one.",
   },
   {
     name: "Bring your own desktop",
     tag: "Upstream",
-    state: "wip",
-    body: "Run a full upstream desktop environment. GNOME Shell 46 and KDE Plasma both use the same IOSurface and GPU foundation. This is the heavy path, and the closest to a normal Linux desktop.",
+    body: "Run a full upstream desktop environment. GNOME Shell 46 and KDE Plasma both sit on the same IOSurface and GPU foundation. This is the heavy path, and the closest to a normal Linux desktop.",
+  },
+  {
+    name: "X11 compatibility",
+    tag: "Legacy",
+    body: "The classic path: Xwayland against iosc for X11 clients, with the standalone X server and a VNC route still available. Useful for old X apps that have no Wayland story.",
   },
 ];
 
@@ -37,11 +39,11 @@ export default function Flavors() {
     <>
       <PageHeader
         tag="Desktop flavors"
-        title="Three ways to run a desktop"
-        lede="The same Linux apps can be presented three different ways."
+        title="Four ways to run a desktop"
+        lede="The same Linux apps can be presented several different ways, and which one you get is decided by which package you install."
       />
 
-      <Section num="04.1" title="The three modes">
+      <Section num="04.1" title="The modes">
         <div className="grid-auto">
           {MODES.map((m) => (
             <div className="card" key={m.name}>
@@ -51,6 +53,14 @@ export default function Flavors() {
             </div>
           ))}
         </div>
+        <Callout k="The package manager is the chooser">
+          Nothing custom ships to pick a flavor. You install{" "}
+          <code>xios-native</code>, <code>xios-gnome</code>,{" "}
+          <code>xios-kde</code>{" "}or <code>xios-x11</code>{" "}from{" "}
+          <T k="sileo" />{" "}and apt resolves the whole desktop; all four pull in
+          the shared <code>xios-core</code>. The metas also carry the iOS floor,
+          so a device too old for a flavor is simply not offered it.
+        </Callout>
         <div style={{ marginTop: 18 }}>
           <Shot
             src="/shots/iosc-launcher.jpg"
@@ -82,22 +92,23 @@ export default function Flavors() {
               driven by{" "}
               <Ext href="https://gitlab.gnome.org/GNOME/mutter">Mutter</Ext>{" "}with
               a new iOS backend, MetaBackendIOS, that renders to{" "}
-              <Ext href="https://developer.apple.com/documentation/iosurface">IOSurfaces</Ext>{" "}
-              and reuses iosc&apos;s GPU glue instead of nesting two compositors.
-              It boots through the packaged <code>gnome-session</code> path and
-              runs on the device. The remaining work is polish and service
-              coverage, not first paint.
+              <T k="iosurface">IOSurfaces</T>{" "}and reuses iosc&apos;s GPU glue
+              instead of nesting two compositors. It boots through the packaged{" "}
+              <code>gnome-session</code>{" "}path and runs on the device. The
+              remaining work is polish and service coverage, not first paint.
             </p>
           </div>
           <div className="card">
             <span className="card-tag">KWin and KF6</span>
             <h3>KDE Plasma</h3>
             <p>
-              <Ext href="https://kde.org/plasma-desktop/">Plasma</Ext>{" "}Desktop
-              and Mobile on KWin, built on cross-compiled Qt6 and KDE Frameworks
-              6. The current desktop package includes System Settings, KScreen,
-              Breeze styling, and the first KDE app batch: Ark, Gwenview, and
-              KWrite.
+              <Ext href="https://kde.org/plasma-desktop/">Plasma</Ext>{" "}on KWin,
+              built on cross-compiled Qt6 and <T k="kf6" />, in three shapes:
+              Desktop, Nano and Mobile. KWin composites on the GPU with its
+              effects, scripts and window decorations shipped, and Plasma&apos;s
+              own shell came off its software fallback with it. System Settings
+              has around twenty <T k="kcm">KCMs</T>, and PowerDevil reads the
+              real battery through the hardware bridge.
             </p>
           </div>
         </div>
@@ -105,7 +116,9 @@ export default function Flavors() {
           Running GNOME Shell means running Mutter, which is itself a compositor.
           Rather than stack Mutter inside iosc, the port gives Mutter a native iOS
           backend that reuses the same IOSurface and Metal plumbing, so there is
-          one compositor on screen instead of two.
+          one compositor on screen instead of two. Plasma made the opposite
+          trade: KWin keeps its own backend and nests, which costs one extra GPU
+          pass and bought a much shorter road to a working desktop.
         </Callout>
       </Section>
 
@@ -118,28 +131,52 @@ export default function Flavors() {
         </div>
         <dl className="deflist" style={{ marginTop: 8 }}>
           <div className="row">
-            <dt>Console (kgx)</dt>
-            <dd>A real GNOME terminal with a working shell.</dd>
+            <dt>Ladybird</dt>
+            <dd>
+              An <Ext href="https://ladybird.org">independent browser engine</Ext>
+              , in two forms: a standalone iOS app bundle, and a Wayland build
+              that runs inside a desktop session.
+            </dd>
           </div>
           <div className="row">
-            <dt>Calculator</dt>
-            <dd>The Vala GNOME app.</dd>
+            <dt>Konsole, Kate, Dolphin, KCalc</dt>
+            <dd>
+              The KDE set. Konsole has a real pty with a shell under it; Dolphin
+              is built without Baloo, so browsing and file operations work but
+              indexed search does not.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Ark, Gwenview, KWrite, Okular</dt>
+            <dd>Archives, images, text and PDFs, from the same Qt/KF6 batch.</dd>
+          </div>
+          <div className="row">
+            <dt>Console (kgx), Text Editor, Files, Calculator</dt>
+            <dd>
+              The GNOME set, including Nautilus and gnome-control-center.
+            </dd>
+          </div>
+          <div className="row">
+            <dt>opencode</dt>
+            <dd>
+              A coding agent running on the cross-compiled Bun, doing full agent
+              turns on the iPad.
+            </dd>
           </div>
           <div className="row">
             <dt>foot, imv, mpv</dt>
             <dd>
               A Wayland app wave. foot has a working PTY, imv works through its
               native Wayland path and an Xwayland fallback, and mpv renders
-              through ANGLE/Metal.
+              through ANGLE with VideoToolbox decode.
             </dd>
           </div>
           <div className="row">
-            <dt>fuzzel, dunst, zathura, hitori</dt>
-            <dd>Launcher, notifications, a PDF viewer, and a GTK puzzle app.</dd>
-          </div>
-          <div className="row">
-            <dt>Ark, Gwenview, KWrite</dt>
-            <dd>The first published Qt/KF6 app batch.</dd>
+            <dt>fuzzel, dunst, zathura, waybar, hitori</dt>
+            <dd>
+              Launcher, notifications, a PDF viewer, a panel, and a GTK puzzle
+              app.
+            </dd>
           </div>
         </dl>
       </Section>

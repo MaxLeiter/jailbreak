@@ -1,5 +1,6 @@
 import { Diagram } from "@/components/Diagram";
 import { Clip, Shot, Zoom } from "@/components/Figures";
+import { T } from "@/components/Term";
 import { Ext, NextLinks, Panel, PlainTerms, Section } from "@/components/ui";
 
 export default function Overview() {
@@ -51,8 +52,11 @@ export default function Overview() {
             have since made one.
           </p>
           <p>
-            The reference target is a rootless iPad 7 on iPadOS 17.6.1. Other
-            jailbreakable devices may work, but that is the path I test.
+            The reference target is an iPad 7 on iPadOS 17.6.1, jailbroken with{" "}
+            <Ext href="https://ellekit.space/dopamine/">Dopamine</Ext>. Everything
+            is built for the <T k="rootless">rootless</T>{" "}layout, so it installs
+            under <code>/var/jb</code>. Other jailbroken iPads may work, but that
+            is the path I test.
           </p>
         </div>
         <div className="shot-grid" style={{ marginTop: 30 }}>
@@ -82,7 +86,7 @@ export default function Overview() {
 
       <Section num="00.2" title="What this is">
         <PlainTerms>
-          This runs Linux desktop apps on an iPhone or iPad. Not streamed from
+          This runs Linux desktop apps on a jailbroken iPad. Not streamed from
           somewhere else, not a Linux virtual machine. The apps are rebuilt as
           iOS binaries and can show up like ordinary apps.
         </PlainTerms>
@@ -108,6 +112,14 @@ export default function Overview() {
             software can be rebuilt for it. Apple does not expose that path, so
             this project builds the missing pieces.
           </p>
+          <p>
+            Both of the big two run here now. GNOME Shell 46 boots on the A10,
+            and KDE Plasma composites on the GPU with its effects turned on,
+            which brings Konsole, Kate, Dolphin and System Settings with it.{" "}
+            <Ext href="https://ladybird.org">Ladybird</Ext>, an independent
+            browser engine, is ported too, so there is a way to open a web page
+            that is not WebKit wearing a different hat.
+          </p>
         </div>
       </Section>
 
@@ -119,9 +131,12 @@ export default function Overview() {
         </Panel>
         <div className="prose" style={{ marginTop: 22 }}>
           <p>
-            iOS only ever talks to xiOS.app. Whether an X server or the Wayland
-            compositor is producing frames underneath is invisible to it, because
-            both hand the app the same kind of output surface.
+            For a full desktop, iOS only ever talks to one app: Xios.app. Whether
+            an X server, <T k="iosc" />, Mutter or KWin is producing frames
+            underneath is invisible to it, because they all hand the app the same
+            kind of output surface. Native mode is the exception, and the point of
+            it: there each Linux app gets its own Home Screen icon and its own
+            host bundle, so iOS sees several ordinary apps instead of one.
           </p>
         </div>
       </Section>
