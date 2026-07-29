@@ -102,6 +102,9 @@ PRESENTATION_XML="$PREFIX/share/wayland-protocols/stable/presentation-time/prese
 XDG_OUTPUT_XML="$PREFIX/share/wayland-protocols/unstable/xdg-output/xdg-output-unstable-v1.xml"
 TEXT_INPUT_XML="$PREFIX/share/wayland-protocols/unstable/text-input/text-input-unstable-v3.xml"
 INPUT_METHOD_XML="$X11/wayland/protocols/input-method-unstable-v2.xml"
+# v1 is what KWin implements; ios-inputd needs it for the KDE proxy mode (client only,
+# iosc itself stays on v2). See x11/docs/osk-plan.md "KDE flavor".
+INPUT_METHOD_V1_XML="$X11/wayland/protocols/input-method-unstable-v1.xml"
 VIRTUAL_KEYBOARD_XML="$X11/wayland/protocols/virtual-keyboard-unstable-v1.xml"
 LAYER_SHELL_XML="$X11/apps/iosc-shell/protocols/wlr-layer-shell-unstable-v1.xml"
 FOREIGN_TOPLEVEL_XML="$X11/apps/iosc-shell/protocols/wlr-foreign-toplevel-management-unstable-v1.xml"
@@ -130,6 +133,7 @@ KDE_OUTPUT_ORDER_XML="$X11/wayland/protocols/kde-output-order-v1.xml"
 [ -f "$XDG_OUTPUT_XML" ] || { echo "!! xdg-output-unstable-v1.xml not found at $XDG_OUTPUT_XML"; exit 1; }
 [ -f "$TEXT_INPUT_XML" ] || { echo "!! text-input-unstable-v3.xml not found at $TEXT_INPUT_XML"; exit 1; }
 [ -f "$INPUT_METHOD_XML" ] || { echo "!! input-method-unstable-v2.xml not found at $INPUT_METHOD_XML"; exit 1; }
+[ -f "$INPUT_METHOD_V1_XML" ] || { echo "!! input-method-unstable-v1.xml not found at $INPUT_METHOD_V1_XML"; exit 1; }
 [ -f "$VIRTUAL_KEYBOARD_XML" ] || { echo "!! virtual-keyboard-unstable-v1.xml not found at $VIRTUAL_KEYBOARD_XML"; exit 1; }
 [ -f "$LAYER_SHELL_XML" ] || { echo "!! wlr-layer-shell-unstable-v1.xml not found at $LAYER_SHELL_XML"; exit 1; }
 [ -f "$FOREIGN_TOPLEVEL_XML" ] || { echo "!! wlr-foreign-toplevel-management-unstable-v1.xml not found at $FOREIGN_TOPLEVEL_XML"; exit 1; }
@@ -181,6 +185,8 @@ wayland-scanner private-code  "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-pro
 wayland-scanner server-header "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-server-protocol.h"
 wayland-scanner client-header "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-client-protocol.h"
 wayland-scanner private-code  "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-protocol.c"
+wayland-scanner client-header "$INPUT_METHOD_V1_XML" "$GEN/input-method-unstable-v1-client-protocol.h"
+wayland-scanner private-code  "$INPUT_METHOD_V1_XML" "$GEN/input-method-unstable-v1-protocol.c"
 wayland-scanner server-header "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-server-protocol.h"
 wayland-scanner client-header "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-client-protocol.h"
 wayland-scanner private-code  "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-protocol.c"
@@ -333,11 +339,14 @@ $CC $CFLAGS \
     $RPATH -o /out/iosc-input-test
 echo "   built /out/iosc-input-test"
 
-# External-compositor input bridge: listens for the same Xios input socket as
-# iosc, then forwards text/keys through input-method-v2 + virtual-keyboard-v1.
+# External-compositor input bridge. Root mode (wlroots): listens for the same Xios
+# input socket as iosc and forwards text/keys through input-method-v2 +
+# virtual-keyboard-v1. Proxy mode (KDE): connects to iosc's socket as the
+# input-method proxy and drives KWin's input-method-v1.
 $CC $CFLAGS $INCS \
     "$X11/wayland/ios-inputd.c" \
     "$X11/wayland/iosc_input.c" \
+    "$GEN/input-method-unstable-v1-protocol.c" \
     "$GEN/input-method-unstable-v2-protocol.c" \
     "$GEN/virtual-keyboard-unstable-v1-protocol.c" \
     -L"$PREFIX/lib" -lwayland-client -lxkbcommon \

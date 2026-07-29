@@ -60,6 +60,12 @@ float xios_output_scale (void);
 #define XIOS_IN_VOLUME 12u  /* sysintd volume bridge; code = 0..65535          */
 #define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
 #define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style            */
+#define XIOS_IN_IMPROXY 14u /* client->server: this connection is the input-method
+                             * proxy for a nested compositor (KDE flavor), not a
+                             * display host. code = 1 register, 0 unregister.
+                             * Consumed by the reader like BIND. Unused by
+                             * MetaBackendIOS (mutter owns its own text-input);
+                             * listed so the type registry stays one namespace. */
 
 /* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */
 struct xios_in_msg
@@ -97,6 +103,12 @@ int xios_input_socket_broadcast (xios_input_socket *s, const void *buf, size_t l
 
 int xios_input_socket_broadcast_bound (xios_input_socket *s, uint32_t bound_window,
                                        const void *buf, size_t len);
+
+/* Send to clients that registered XIOS_IN_IMPROXY; 0 = no proxy, handle locally. */
+int xios_input_socket_send_improxy (xios_input_socket *s, const void *buf, size_t len);
+
+/* 1 while an input-method proxy is registered (poll after dispatch to notice it go). */
+int xios_input_socket_has_improxy (xios_input_socket *s);
 
 /* Number of currently-connected clients (detect a new connection across dispatch). */
 int xios_input_socket_client_count (xios_input_socket *s);

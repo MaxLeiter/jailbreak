@@ -62,6 +62,7 @@ KAMD_BIN="${KAMD_BIN:-$XS_PREFIX/libexec/kactivitymanagerd}"
 KDED_BIN="${KDED_BIN:-$XS_PREFIX/bin/kded6}"
 POWERDEVIL_BIN="${POWERDEVIL_BIN:-$XS_PREFIX/libexec/org_kde_powerdevil.app/org_kde_powerdevil}"
 LIBEXEC="${LIBEXEC:-$XS_PREFIX/libexec}"
+IOS_INPUTD_BIN="${IOS_INPUTD_BIN:-$XS_PREFIX/local/bin/ios-inputd}"
 KWIN_SOCKET="${KWIN_SOCKET:-kwin-ios-test}"
 KWIN_SOCK_PATH="$XDG_RUNTIME_DIR/$KWIN_SOCKET"
 KDE_SESSION_BUS_FILE="$TMP/kde-session-bus${XIOS_SESSION_SLOT:+-$XIOS_SESSION_SLOT}"
@@ -756,6 +757,9 @@ nohup "$SETSID" env \
   KWIN_SOCKET="$KWIN_SOCKET" \
   KWIN_W="$KWIN_W" \
   KWIN_H="$KWIN_H" \
+  IOS_INPUTD_BIN="$IOS_INPUTD_BIN" \
+  IOSC_INPUT_SOCK="$IOSC_INPUT_SOCK" \
+  KDE_AUTO_KEYBOARD="${KDE_AUTO_KEYBOARD:-1}" \
   KDE_SESSION_BUS_FILE="$KDE_SESSION_BUS_FILE" \
   XIOS_SESSION_STATUS_FILE="${XIOS_SESSION_STATUS_FILE:-}" \
   XIOS_SESSION_STATUS_PRESET="${XIOS_SESSION_STATUS_PRESET:-}" \
@@ -843,8 +847,23 @@ nohup "$SETSID" env \
     xios_export_or_unset QT_STYLE_OVERRIDE "$KDE_QT_STYLE_OVERRIDE"
     unset QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
 	    echo "launch kwin: QT_QUICK_BACKEND=${QT_QUICK_BACKEND-<unset>} QSG_RHI_BACKEND=${QSG_RHI_BACKEND-<unset>}"
+	    # Auto keyboard. KWin owns the text-input state (the iosc-side one is always
+	    # empty in the nested case), and it filters zwp_input_method_v1 to the child
+	    # IT launches, so ios-inputd has to come up this way rather than beside us.
+	    # It then registers on the iosc input socket as the input-method proxy:
+	    # traits out to the Xios app, typed text back in. See osk-plan.md.
+	    # NOTE: this whole block lives inside a single-quoted bash -lc string,
+	    # so no apostrophes here.
+	    kwin_im_args=""
+	    if [ -x "$IOS_INPUTD_BIN" ] && [ "${KDE_AUTO_KEYBOARD:-1}" = 1 ]; then
+	      kwin_im_args="--inputmethod"
+	      echo "launch kwin: input method $IOS_INPUTD_BIN -s $IOSC_INPUT_SOCK"
+	    elif [ "${KDE_AUTO_KEYBOARD:-1}" = 1 ]; then
+	      echo "launch kwin: no ios-inputd at $IOS_INPUTD_BIN; iOS keyboard will not auto-pop"
+	    fi
 	    "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
-	      --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts &
+	      --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts \
+	      ${kwin_im_args:+$kwin_im_args "$IOS_INPUTD_BIN -s $IOSC_INPUT_SOCK"} &
     kwin_pid=$!
     for _ in $(seq 1 60); do
       [ -S "$XDG_RUNTIME_DIR/$KWIN_SOCKET" ] && break
