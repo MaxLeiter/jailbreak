@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/kwin-dev.png",
+  "headerImage": "https://repo.maxleiter.com/banners/libgspell-1-2.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for KWin"
+          "markdown": "Spell-checking library for GTK3"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios27"
+          "text": "1.12.2+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "262.0 KiB"
+          "text": "55.6 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Development"
+          "text": "Libraries"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "kwin-dev"
+          "text": "libgspell-1-2"
         }
       ]
     }

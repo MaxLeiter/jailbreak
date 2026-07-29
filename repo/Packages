@@ -3604,7 +3604,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 
 Package: kwin
-Version: 6.1.5+ios26
+Version: 6.1.5+ios27
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -3612,34 +3612,34 @@ Priority: optional
 Homepage: https://kde.org/plasma-desktop/
 Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-tools, qt6-sensors, qt6-5compat, kf6-auth, kf6-colorscheme, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-idletime, kf6-package, kf6-service, kf6-svg, kf6-widgetsaddons, kf6-windowsystem, kdecoration, kwayland, kglobalacceld, libwayland0, libxkbcommon0, libdrm2, libgbm1, libdisplay-info1, libepoll-shim0, angle
 Description: KWin Wayland compositor with Xios ANGLE/IOSurface acceleration
-Installed-Size: 21784
+Installed-Size: 32296
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin_6.1.5+ios26_iphoneos-arm64.deb
-Size: 2879226
-MD5sum: e08e475f318cc44be25e93bd88524dc6
-SHA1: 6d4c27fa4408d243d4a003c0f6b61ef2d54c275a
-SHA256: 7ee3fd0039cf104c763e3e99bda45636ccdaa4d4266560d5ccda83b122cb24cd
+Filename: debs/kwin_6.1.5+ios27_iphoneos-arm64.deb
+Size: 3355154
+MD5sum: 08f50bdc2198161124a7ecbb3d26c69c
+SHA1: b39c396b3b7f6dd3e6eb1fca9b806ca64ff99c58
+SHA256: 702fd6e8a0bf2090932efd9237e473ce4f875678e41788cb1e93652ba1b9bf60
 Icon: https://repo.maxleiter.com/icons/kwin.png
 Depiction: https://repo.maxleiter.com/depictions/kwin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwin.json
 
 Package: kwin-dev
-Version: 6.1.5+ios26
+Version: 6.1.5+ios27
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: kwin (= 6.1.5+ios26), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
+Depends: kwin (= 6.1.5+ios27), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
 Description: Development files for KWin
 Installed-Size: 1912
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin-dev_6.1.5+ios26_iphoneos-arm64.deb
-Size: 268270
-MD5sum: 1cc8e8280f970f35f712f33060a5bbbf
-SHA1: 79dc00ee223538518602dec374de54e1bb212c6a
-SHA256: 7259656dce7ecb7b71018f37c74217ac83aba49a947ff150727463c0310abcda
+Filename: debs/kwin-dev_6.1.5+ios27_iphoneos-arm64.deb
+Size: 268280
+MD5sum: d8269898cd695a793974c09b25dd8c15
+SHA1: 41ed674ce0c007289f6cdcd667c61c25d253b011
+SHA256: 175a5eb9e756466b793649f257b10d762bf22fcbfd66a5cebe38ebf364fa6101
 Icon: https://repo.maxleiter.com/icons/kwin-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kwin-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin-dev.json
@@ -10592,6 +10592,27 @@ Icon: https://repo.maxleiter.com/icons/polkit-dev.png
 Depiction: https://repo.maxleiter.com/depictions/polkit-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/polkit-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/polkit-dev.json
+
+Package: powerdevil
+Version: 6.1.5+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: KDE
+Priority: optional
+Homepage: https://invent.kde.org/plasma/powerdevil
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, plasma-activities, plasma-workspace, libkscreen, layer-shell-qt, kf6-auth, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-idletime, kf6-itemmodels, kf6-kcmutils, kf6-kio, kf6-kirigami, kf6-notifications, kf6-service, kf6-solid, kf6-windowsystem, kf6-xmlgui
+Description: KDE Plasma power management daemon for Xios
+Installed-Size: 4824
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/powerdevil_6.1.5+ios1_iphoneos-arm64.deb
+Size: 297620
+MD5sum: c0aba70a3a63b818248f7a6f7456712c
+SHA1: efa4c417e192caa585364d941ecb10f69ded2b8b
+SHA256: e5d9ae94d5041d0f04f53e09901dde111bd58c2c9d9524127015f600f8f5ae2f
+Icon: https://repo.maxleiter.com/icons/powerdevil.png
+Depiction: https://repo.maxleiter.com/depictions/powerdevil.html
+SileoDepiction: https://repo.maxleiter.com/depictions/powerdevil.json
+Native Depiction: https://repo.maxleiter.com/depictions/powerdevil.json
 
 Package: pulseaudio
 Version: 17.0-7+ios1

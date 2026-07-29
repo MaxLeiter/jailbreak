@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/kwin-dev.png",
+  "headerImage": "https://repo.maxleiter.com/banners/libpeas-1.0-0.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for KWin"
+          "markdown": "GObject plugin engine - runtime"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios27"
+          "text": "1.36.0+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "262.0 KiB"
+          "text": "45.1 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Development"
+          "text": "Libraries"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "kwin-dev"
+          "text": "libpeas-1.0-0"
         }
       ]
     }

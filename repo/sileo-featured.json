@@ -2484,6 +2484,11 @@
       "url": "https://repo.maxleiter.com/banners/polkit-dev.png"
     },
     {
+      "title": "powerdevil",
+      "package": "powerdevil",
+      "url": "https://repo.maxleiter.com/banners/powerdevil.png"
+    },
+    {
       "title": "pulseaudio",
       "package": "pulseaudio",
       "url": "https://repo.maxleiter.com/banners/pulseaudio.png"
