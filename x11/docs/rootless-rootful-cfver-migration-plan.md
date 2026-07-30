@@ -636,6 +636,30 @@ short-circuit to "Using previously built ..." whenever the marker exists. A cold
 rootless build would have hit all three -- the same shape as the wayland
 `epoll_dep` finding.
 
+### The rootful set is not installable on its own
+
+`tools/report-closure.py rootful-1900` resolves Depends within the built set and
+reports what is left: 31 debs providing 34 names, and **50 dependencies that are
+not in the set** -- cairo, freetype, fontconfig, harfbuzz, atk, libepoxy,
+libiosexec1, libintl8 and the rest of the base userland.
+
+That is expected for a package set, but it is the gate nobody had written down:
+those 50 must come from a Procursus base repo built for `iphoneos-arm64`. This
+project has never had one -- `procursus-vol-rootful` builds them as build
+dependencies into `build_base`, which is not the same as a published rootful
+suite a device can install from. So "iosc builds for rootful" and "iosc installs
+on a rootful device" remain quite far apart, and the distance is those 50
+packages plus whatever they pull in.
+
+Phase 6's policy line covers this ("a target is supported only if there is a
+matching Procursus dist/bootstrap and a tested dependency closure"); this is the
+report that makes it concrete. Regenerate with:
+
+```sh
+python3 x11/linux-build/tools/report-closure.py rootful-1900 --markdown \
+  > x11/docs/closure-rootful-1900.md
+```
+
 What is left:
 
 1. Package `iosc` for rootful (`wayland/package-iosc.sh rootful-1900`), which is
