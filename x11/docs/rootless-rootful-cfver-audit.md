@@ -9,30 +9,30 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1710
-- Files with hits: 322
+- Total hits: 1739
+- Files with hits: 328
 
 ### By Category
 
 - `app-runtime`: 19 hits across 11 files
-- `build-target`: 17 hits across 10 files
-- `docs`: 612 hits across 62 files
+- `build-target`: 20 hits across 11 files
+- `docs`: 625 hits across 64 files
 - `entitlements`: 45 hits across 17 files
-- `linker-path`: 94 hits across 49 files
+- `linker-path`: 98 hits across 51 files
 - `other`: 84 hits across 17 files
 - `package-payload`: 229 hits across 48 files
 - `recipe`: 82 hits across 26 files
-- `runtime-path`: 306 hits across 78 files
-- `script-or-source`: 182 hits across 69 files
+- `runtime-path`: 314 hits across 81 files
+- `script-or-source`: 183 hits across 70 files
 - `site-copy`: 10 hits across 6 files
 - `target-infra`: 30 hits across 6 files
 
 ### By Literal
 
-- `/var/jb`: 1668
+- `/var/jb`: 1694
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
-- `iphoneos-arm64-rootless`: 30
+- `iphoneos-arm64-rootless`: 33
 
 ## Category Guidance
 
@@ -55,7 +55,7 @@ classified as rootless-only.
 - `apps/Xios/packaging/control:28` `/var/jb`: run this unsigned app. Rootless (/var/jb) jailbreaks only, iOS/iPadOS 16+.
 - `apps/Xios/Sources/XSurface.c:21` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
 - `apps/Xios/Sources/XSurface.c:21` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
-- `apps/Xios/Sources/XScreen.swift:1999` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
+- `apps/Xios/Sources/XScreen.swift:2055` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
 - `apps/Xios/Sources/XiosRuntimePaths.swift:20` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
 - `apps/Xios/Sources/XiosRuntimePaths.swift:21` `/var/jb`: return "/var/jb/tmp"
 - `apps/Xios/Sources/XiosRuntimePaths.swift:31` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
@@ -72,11 +72,14 @@ classified as rootless-only.
 
 ### build-target
 
+- `linux-build/build-wayland-utils.sh:124` `iphoneos-arm64-rootless`: local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
+- `linux-build/build-wayland-utils.sh:125` `iphoneos-arm64-rootless`: local stage="build_stage/iphoneos-arm64-rootless/1900/$pkg"
+- `linux-build/build-wayland-utils.sh:139` `iphoneos-arm64-rootless`: local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
 - `linux-build/README.md:161` `MEMO_TARGET=iphoneos-arm64-rootless`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
 - `linux-build/README.md:161` `MEMO_CFVER=1900`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
 - `linux-build/build-docs-apps.sh:136` `iphoneos-arm64-rootless`: PW=build_work/iphoneos-arm64-rootless/1900/papers
 - `linux-build/build-docs-apps.sh:137` `iphoneos-arm64-rootless`: PS=build_stage/iphoneos-arm64-rootless/1900/papers
-- `linux-build/build.sh:116` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
+- `linux-build/build.sh:117` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:16` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:20` `iphoneos-arm64-rootless`: elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
 - `linux-build/build-pwquality-stub.sh:16` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
@@ -112,7 +115,7 @@ classified as rootless-only.
 - `docs/gjs-plan.md:277` `/var/jb`: `jstest_fix` (full eval); test dir on-device `/var/jb/tmp/mozjs-test`.
 - `docs/gjs-plan.md:358` `/var/jb`: `/var/jb/usr/lib/gjs/girepository-1.0`. Runtime smoke:
 - `docs/gjs-plan.md:428` `/var/jb`: split → `ldid` sign → `dpkg-deb`). Built + dpkg-installed cleanly into `/var/jb` and re-validated
-- ... 592 more
+- ... 605 more
 
 ### entitlements
 
@@ -133,9 +136,9 @@ classified as rootless-only.
 - `packages/ladybird-app/entitlements/ladybird-app.entitlements:32` `/var/jb`: <string>/var/jb/</string>
 - `packages/ladybird-app/entitlements/ladybird-app.entitlements:33` `/var/jb`: <string>/private/var/jb/</string>
 - `packages/ladybird-app/entitlements/ladybird-helper.entitlements:9` `/var/jb`: <!-- Load fakesigned /var/jb dylibs (each helper statically links the engine but still
-- `packages/ladybird-app/entitlements/ladybird-helper.entitlements:38` `/var/jb`: <!-- FS closure the helpers touch: engine resources (/var/jb/share/Lagom or the in-bundle
-- `packages/ladybird-app/entitlements/ladybird-helper.entitlements:42` `/var/jb`: <string>/var/jb/</string>
-- `packages/ladybird-app/entitlements/ladybird-helper.entitlements:43` `/var/jb`: <string>/private/var/jb/</string>
+- `packages/ladybird-app/entitlements/ladybird-helper.entitlements:53` `/var/jb`: <!-- FS closure the helpers touch: engine resources (/var/jb/share/Lagom or the in-bundle
+- `packages/ladybird-app/entitlements/ladybird-helper.entitlements:57` `/var/jb`: <string>/var/jb/</string>
+- `packages/ladybird-app/entitlements/ladybird-helper.entitlements:58` `/var/jb`: <string>/private/var/jb/</string>
 - ... 25 more
 
 ### linker-path
@@ -160,7 +163,7 @@ classified as rootless-only.
 - `linux-build/gir-build-ondevice.sh:78` `/var/jb`: if [ ! -f /var/jb/usr/lib/pkgconfig/zlib.pc ]; then
 - `linux-build/gir-build-ondevice.sh:79` `/var/jb`: cat > /var/jb/usr/lib/pkgconfig/zlib.pc <<PC
 - `linux-build/gir-build-ondevice.sh:116` `/var/jb`: for t in $TLS;   do cp -v "$t" /var/jb/usr/lib/girepository-1.0/; done
-- ... 74 more
+- ... 78 more
 
 ### other
 
@@ -256,7 +259,7 @@ classified as rootless-only.
 - `linux-build/gir-build-mutter-ondevice.sh:37` `/var/jb`: WORK=/var/jb/tmp/mutter-gir
 - `linux-build/gir-build-mutter-ondevice.sh:38` `/var/jb`: GISPIKE=/var/jb/tmp/gi-spike     # sljit_shim.dylib, clang-ios, ninja2 (gir-ondevice.sh bootstrap)
 - `linux-build/gir-build-mutter-ondevice.sh:72` `/var/jb`: WORK=/var/jb/tmp/mutter-gir
-- ... 286 more
+- ... 294 more
 
 ### script-or-source
 
@@ -280,7 +283,7 @@ classified as rootless-only.
 - `linux-build/build-ladybird-wave4b.sh:323` `/var/jb`: #   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
 - `linux-build/build-ladybird-wave4b.sh:334` `/var/jb`: # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
 - `linux-build/build-ladybird-wave4b.sh:348` `/var/jb`: <string>/var/jb/</string>
-- ... 162 more
+- ... 163 more
 
 ### site-copy
 
@@ -305,17 +308,17 @@ classified as rootless-only.
 - `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
 - `linux-build/tools/check-target-package.py:214` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
-- `linux-build/tools/target-literal-baseline.json:183` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:186` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:196` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:200` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:201` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:202` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:187` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:190` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:200` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:204` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:205` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
 - `linux-build/tools/audit-target-literals.py:25` `MEMO_TARGET=iphoneos-arm64-rootless`: "MEMO_TARGET=iphoneos-arm64-rootless",
 - `linux-build/tools/audit-target-literals.py:26` `MEMO_CFVER=1900`: "MEMO_CFVER=1900",
-- `linux-build/tools/audit-target-literals.py:126` `/var/jb`: if "/tmp" in text or "/var/jb/tmp" in text or "/var/jb/var" in text:
+- `linux-build/tools/audit-target-literals.py:130` `/var/jb`: if "/tmp" in text or "/var/jb/tmp" in text or "/var/jb/var" in text:
 - ... 10 more
 
