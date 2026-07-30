@@ -1,0 +1,66 @@
+diff --git a/lager/constant.hpp b/lager/constant.hpp
+--- a/lager/constant.hpp
++++ b/lager/constant.hpp
+@@ -30 +30 @@
+-    virtual void recompute() final {}
++    void recompute() final override {}
+diff --git a/lager/detail/lens_nodes.hpp b/lager/detail/lens_nodes.hpp
+--- a/lager/detail/lens_nodes.hpp
++++ b/lager/detail/lens_nodes.hpp
+@@ -63 +63 @@
+-    void recompute() final
++    void recompute() final override
+diff --git a/lager/detail/merge_nodes.hpp b/lager/detail/merge_nodes.hpp
+--- a/lager/detail/merge_nodes.hpp
++++ b/lager/detail/merge_nodes.hpp
+@@ -52 +52 @@
+-    void recompute() final { this->push_down(current_from(this->parents())); }
++    void recompute() final override { this->push_down(current_from(this->parents())); }
+diff --git a/lager/detail/nodes.hpp b/lager/detail/nodes.hpp
+--- a/lager/detail/nodes.hpp
++++ b/lager/detail/nodes.hpp
+@@ -263 +263 @@
+-    void refresh() final
++    void refresh() final override
+@@ -305 +305 @@
+-    void refresh() final {}
++    void refresh() final override {}
+diff --git a/lager/detail/xform_nodes.hpp b/lager/detail/xform_nodes.hpp
+--- a/lager/detail/xform_nodes.hpp
++++ b/lager/detail/xform_nodes.hpp
+@@ -98 +98 @@
+-    void recompute() final
++    void recompute() final override
+diff --git a/lager/lenses.hpp b/lager/lenses.hpp
+--- a/lager/lenses.hpp
++++ b/lager/lenses.hpp
+@@ -252 +252 @@
+-        return detail::make_getset_t(LAGER_FWD(f), getter, setter);
++        return ::lager::detail::make_getset_t(LAGER_FWD(f), getter, setter);
+diff --git a/lager/sensor.hpp b/lager/sensor.hpp
+--- a/lager/sensor.hpp
++++ b/lager/sensor.hpp
+@@ -44 +44 @@
+-    void recompute() final { this->push_down(sensor_()); }
++    void recompute() final override { this->push_down(sensor_()); }
+diff --git a/lager/setter.hpp b/lager/setter.hpp
+--- a/lager/setter.hpp
++++ b/lager/setter.hpp
+@@ -43 +43 @@
+-    void recompute() final
++    void recompute() final override
+@@ -51 +51 @@
+-    void refresh() final {}
++    void refresh() final override {}
+diff --git a/lager/state.hpp b/lager/state.hpp
+--- a/lager/state.hpp
++++ b/lager/state.hpp
+@@ -40 +40 @@
+-    virtual void recompute() final {}
++    void recompute() final override {}
+diff --git a/lager/store.hpp b/lager/store.hpp
+--- a/lager/store.hpp
++++ b/lager/store.hpp
+@@ -43 +43 @@
+-    virtual void recompute() final {}
++    void recompute() final override {}

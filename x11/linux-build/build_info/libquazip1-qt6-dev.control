@@ -1,0 +1,10 @@
+Package: libquazip1-qt6-dev
+Version: @DEB_QUAZIP_QT6_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://stachenov.github.io/quazip/
+Depends: libquazip1-qt6 (= @DEB_QUAZIP_QT6_V@), qt6-base-dev, libz-dev
+Description: Development files for QuaZip Qt 6
+ Headers and CMake/pkg-config metadata for building Qt 6 ZIP consumers.

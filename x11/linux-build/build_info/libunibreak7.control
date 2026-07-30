@@ -1,0 +1,10 @@
+Package: libunibreak7
+Version: @DEB_LIBUNIBREAK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/adah1972/libunibreak
+Description: Unicode line and word breaking library
+ Runtime library implementing Unicode line, word, grapheme, and sentence
+ breaking for Krita and other text-rendering applications.

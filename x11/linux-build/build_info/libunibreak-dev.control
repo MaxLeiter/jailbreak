@@ -1,0 +1,10 @@
+Package: libunibreak-dev
+Version: @DEB_LIBUNIBREAK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/adah1972/libunibreak
+Depends: libunibreak7 (= @DEB_LIBUNIBREAK_V@)
+Description: Development files for libunibreak
+ Headers, linker symlink, and pkg-config metadata for Unicode breaking.

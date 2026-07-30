@@ -1,0 +1,10 @@
+Package: eigen3-dev
+Version: @DEB_EIGEN3_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://eigen.tuxfamily.org/
+Description: Eigen C++ linear algebra headers
+ Header-only Eigen 5 development files, packaged independently for Krita and
+ other native C++ applications in the Xios stack.

@@ -1,0 +1,11 @@
+Package: libquazip1-qt6
+Version: @DEB_QUAZIP_QT6_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://stachenov.github.io/quazip/
+Depends: qt6-base, libz1
+Description: Qt 6 ZIP library
+ QuaZip runtime for Qt 6 applications, including Krita's KRA and ORA file
+ readers and writers.
