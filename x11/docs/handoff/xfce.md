@@ -26,6 +26,14 @@ four product flavors advertised by the session picker.
   native Thunar window after `IOSCHost` bound app id `thunar`. The native path
   uses per-window canvases, so global compositor screencopy is not a visual
   cross-check for that mode.
+- Production publication completed on 2026-07-29 after the scoped index passed
+  dependency resolution and repo audit. The exact public bytes were streamed
+  back from `repo.maxleiter.com`, hash-matched to `repo/debs`, and reinstalled
+  on the iPad. Final SHA256s are `4229b960…2c84f` (`libxfce4util7`),
+  `84b82139…eee79` (`xfconf`), `893dcd0f…adc587` (`libxfce4ui-2-0`),
+  `37d6ec28…707e3` (`libexo-2-0`), and `b87bdd19…6c664` (`thunar`).
+  SpringBoard registration is `Thunar` / `com.max.iosc.thunar`; a final launch
+  left both `IOSCHost` and the mobile-owned `thunar` process live.
 - `packages/xfce4` and `bin/xfce-up.sh` predate the current session-launcher
   architecture. Do not advertise XFCE in the picker until the packages build
   and a rootless `xios-session` runner has been added.
