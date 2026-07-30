@@ -33,6 +33,16 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
   REPO_ROOT="$(cd "$X11_DIR/.." && pwd)"                   # repo root
   IMAGE="${IOSC_XBUILD_IMAGE:-procursus-xbuild:bookworm-arm64}"
   command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not found on the host" >&2; exit 1; }
+  command -v cc >/dev/null 2>&1 || { echo "ERROR: cc not found on the host" >&2; exit 1; }
+  IOSC_PLAN_TEST_DIR="$(mktemp -d)"
+  echo "==> testing iosc render-plan damage gate"
+  cc -std=c11 -Wall -Wextra -Werror -I"$HERE" \
+    "$HERE/iosc-render-plan-test.c" \
+    "$HERE/iosc_render_plan.c" \
+    "$HERE/iosc_util.c" \
+    -o "$IOSC_PLAN_TEST_DIR/iosc-render-plan-test"
+  "$IOSC_PLAN_TEST_DIR/iosc-render-plan-test"
+  rm -rf "$IOSC_PLAN_TEST_DIR"
   mkdir -p "$HERE/out"
 
   # Output is per-target: a rootful iosc must not land on top of the rootless one.
