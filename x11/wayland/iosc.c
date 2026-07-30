@@ -35,6 +35,7 @@
 #include "wlr-foreign-toplevel-management-unstable-v1-server-protocol.h"
 #include "pointer-constraints-unstable-v1-server-protocol.h"
 #include "relative-pointer-unstable-v1-server-protocol.h"
+#include "pointer-gestures-unstable-v1-server-protocol.h"
 #include "primary-selection-unstable-v1-server-protocol.h"
 #include "idle-inhibit-unstable-v1-server-protocol.h"
 #include "ext-idle-notify-v1-server-protocol.h"
@@ -271,7 +272,10 @@ struct iosc_surface {
     char                title[256];      /* xdg_toplevel.set_title (foreign-toplevel) */
     char                app_id[256];     /* xdg_toplevel.set_app_id (foreign-toplevel) */
     int                 configured;      /* sent the initial xdg configure */
-    struct wl_list      frame_callbacks; /* pending wl_callback resources */
+    /* wl_surface.frame is double-buffered surface state: requests enter the
+     * pending list and become compositor-visible only with wl_surface.commit. */
+    struct wl_list      pending_frame_callbacks;
+    struct wl_list      frame_callbacks; /* committed wl_callback resources */
     struct wl_list      presentation_feedbacks;
     /* xdg_surface.set_window_geometry: double-buffered like the rest of the
      * surface state, latched on commit. geo_set=0 falls back to the whole
@@ -398,6 +402,8 @@ static uint64_t g_presentation_seq;
 static struct wl_event_source *g_present_ack_timer;
 static uint64_t g_present_wait_seq;
 static uint32_t g_present_wait_started_ms;
+static struct wl_event_source *g_frame_clock_timer;
+static int g_frame_clock_armed;
 static int g_output_damage_valid;
 static int g_output_damage_coarse;
 static int g_output_damage_rect_count;
@@ -426,6 +432,10 @@ static void ftl_broadcast_title(struct iosc_surface *s);
 static void ftl_broadcast_app_id(struct iosc_surface *s);
 /* pointer-constraints (zwp_pointer_constraints_v1) + relative-pointer */
 static void relptr_send(uint32_t time, double dx, double dy);
+/* pointer-gestures (zwp_pointer_gestures_v1) — trackpad pinch/rotate, fed by
+ * XIOS_IN_GESTURE from the wire dispatch above its definition. */
+static void handle_gesture(uint32_t code, int32_t dx256, int32_t dy256,
+                           uint32_t scale256, uint32_t rot256);
 static int  pointer_locked_for(struct iosc_surface *s);
 static void constraints_update_focus(struct iosc_surface *newfocus);
 static int  confine_point(struct iosc_surface *s, int *x, int *y);
@@ -742,8 +752,43 @@ static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
     }
 }
 
+/* A frame request with no corresponding damage still needs compositor pacing:
+ * nested compositors use it to schedule their next render. Retire those
+ * callbacks on a 60 Hz clock without manufacturing damage, a presentation
+ * event, or a redundant GPU composite. Real presents continue to retire them
+ * through frame_callbacks_after_present(). */
+static int frame_clock_timer_cb(void *data)
+{
+    (void)data;
+    g_frame_clock_armed = 0;
+    uint32_t t = now_ms();
+    struct iosc_surface *s, *tmp;
+    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link)
+        surface_send_frame_callbacks(s, t);
+    return 0;
+}
+
+static void frame_clock_arm(void)
+{
+    if (g_frame_clock_armed)
+        return;
+    struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
+    if (!loop)
+        return;
+    if (!g_frame_clock_timer)
+        g_frame_clock_timer = wl_event_loop_add_timer(loop, frame_clock_timer_cb, NULL);
+    if (!g_frame_clock_timer)
+        return;
+    g_frame_clock_armed = 1;
+    wl_event_source_timer_update(g_frame_clock_timer, 16);
+}
+
 static void frame_callbacks_after_repaint(void)
 {
+    if (g_frame_clock_armed && g_frame_clock_timer) {
+        wl_event_source_timer_update(g_frame_clock_timer, 0);
+        g_frame_clock_armed = 0;
+    }
     uint32_t t = now_ms();
     struct iosc_surface *s, *tmp;
     wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
@@ -1525,9 +1570,6 @@ static int notify_native_gpu_frame(uint32_t window_id)
     size_t token_size = 0;
     uint64_t event_value = 0;
     if (!iosc_gl_present_fence(&token, &token_size, &event_value)) {
-        if (iosc_env_truthy(getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC")) &&
-            xios_canvas_notify_frame(window_id, NULL, 0, 0) == 0)
-            return 0;
         fprintf(stderr,
                 "iosc: FATAL: native window %u has no cross-process GPU "
                 "presentation fence; refusing the frame\n",
@@ -2844,15 +2886,7 @@ static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t c
     f->resource = wl_resource_create(c, &wl_callback_interface, 1, cb);
     if (!f->resource) { free(f); wl_client_post_no_memory(c); return; }
     /* No impl/user-data: a callback has no requests; we destroy it after done. */
-    wl_list_insert(&s->frame_callbacks, &f->link);
-
-    /* Opt-in nested-compositor experiment: KWin's Wayland backend can request
-     * a frame callback after the commit that made its output visible. A pulse
-     * can advance that render loop, but doing it globally makes ordinary shell
-     * clients repaint forever, so keep it gated until a real frame clock lands. */
-    if (iosc_env_truthy(getenv("IOSC_FRAME_PULSE")) &&
-        s && s->mapped && s->current_buffer && !g_recompose_scheduled)
-        recomposite_all();
+    wl_list_insert(&s->pending_frame_callbacks, &f->link);
 }
 static void surface_set_opaque_region(struct wl_client *c, struct wl_resource *r,
                                       struct wl_resource *region)
@@ -2895,6 +2929,13 @@ static void surface_commit_apply(struct iosc_surface *s)
     int need_recomposite = 0;
 
     iosc_xwm_surface_commit(s->resource);   /* apply pending Xwayland association (no-op otherwise) */
+
+    /* wl_surface.frame requests take effect atomically with this commit, like
+     * the rest of wl_surface pending state. */
+    if (!wl_list_empty(&s->pending_frame_callbacks)) {
+        wl_list_insert_list(&s->frame_callbacks, &s->pending_frame_callbacks);
+        wl_list_init(&s->pending_frame_callbacks);
+    }
 
     /* xdg_surface.set_window_geometry is double-buffered like everything else;
      * latch it before surface_map() below so a first map already sees it. */
@@ -2980,10 +3021,10 @@ static void surface_commit_apply(struct iosc_surface *s)
 
     if (need_recomposite) recomposite_all();
 
-    /* Frame callbacks are retired after the coalesced repaint, not at commit
-     * time, so throttled clients don't draw ahead of the compositor. */
+    /* A no-damage commit still receives a paced callback. Do not force a GPU
+     * repaint merely to advance a nested compositor's frame clock. */
     if (!need_recomposite && !wl_list_empty(&s->frame_callbacks))
-        surface_send_frame_callbacks(s, now_ms());
+        frame_clock_arm();
 
     surface_apply_sync_children(s);
 }
@@ -3142,6 +3183,11 @@ static void surface_resource_destroy(struct wl_resource *r)
         wl_list_remove(&f->link);
         free(f);
     }
+    wl_list_for_each_safe(f, tmp, &s->pending_frame_callbacks, link) {
+        wl_resource_destroy(f->resource);
+        wl_list_remove(&f->link);
+        free(f);
+    }
     free(s);
     if (was_mapped) recomposite_all();   /* repaint without the closed window */
 }
@@ -3189,6 +3235,7 @@ static void compositor_create_surface(struct wl_client *client,
     struct iosc_surface *s = calloc(1, sizeof(*s));
     if (!s) { wl_client_post_no_memory(client); return; }
     wl_list_init(&s->surface_link);
+    wl_list_init(&s->pending_frame_callbacks);
     wl_list_init(&s->frame_callbacks);
     wl_list_init(&s->presentation_feedbacks);
     wl_list_insert(&g_surfaces, &s->surface_link);
@@ -7328,6 +7375,10 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
         case XIOS_IN_AXIS:   if (bound) g_ptr_focus = bound;
                              handle_axis(m->x, m->y, m->code,
                                          (int)(m->state & 1u), m->mods); break;
+        /* GESTURE x,y are fixed-point translation DELTAS like AXIS, so pass the
+         * raw wire values, not the physical_to_logical'd locals. */
+        case XIOS_IN_GESTURE: if (bound) g_ptr_focus = bound;
+                             handle_gesture(m->code, m->x, m->y, m->state, m->mods); break;
         case XIOS_IN_OUTPUT: {
             int tr = (int)(m->code & 3u);
             int lw = m->x > 0 ? m->x : ((tr & 1) ? g_natural_lh : g_natural_lw);
@@ -7927,6 +7978,132 @@ static void relptr_mgr_bind(struct wl_client *c, void *data, uint32_t version, u
     struct wl_resource *r = wl_resource_create(c, &zwp_relative_pointer_manager_v1_interface, version, id);
     if (!r) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(r, &relptr_mgr_impl, NULL, NULL);
+}
+
+/* ===========================================================================
+ * pointer-gestures (zwp_pointer_gestures_v1)
+ *
+ * A Magic Trackpad's pinch and rotate reach the Xios app as UIKit gesture
+ * recognizers rather than as touches, so they cross the wire as XIOS_IN_GESTURE
+ * and land here. Like axis and relative motion, gestures go to whichever client
+ * holds pointer focus.
+ *
+ * Only pinch has a source today: iPadOS hands an app two-finger pinch and
+ * rotation but keeps three- and four-finger swipes for the app switcher and
+ * Home, so nothing can drive the swipe interface, and there is no iOS gesture
+ * that means "hold". Both are still implemented, because a client that binds
+ * this global may create any of the three and an unimplemented resource is a
+ * protocol error on first use rather than a quiet no-op. KWin's Wayland backend
+ * links the client side of this protocol, which is what makes KDE pinch work
+ * without patching KWin.
+ * =========================================================================== */
+
+#define IOSC_MAX_PTRGEST 32
+static struct wl_resource *g_gswipe[IOSC_MAX_PTRGEST]; static int g_ngswipe;
+static struct wl_resource *g_gpinch[IOSC_MAX_PTRGEST]; static int g_ngpinch;
+static struct wl_resource *g_ghold[IOSC_MAX_PTRGEST];  static int g_nghold;
+
+static void gswipe_res_destroy(struct wl_resource *r){ reslist_remove(g_gswipe, &g_ngswipe, r); }
+static void gpinch_res_destroy(struct wl_resource *r){ reslist_remove(g_gpinch, &g_ngpinch, r); }
+static void ghold_res_destroy(struct wl_resource *r) { reslist_remove(g_ghold,  &g_nghold,  r); }
+static void gesture_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_pointer_gesture_swipe_v1_interface gswipe_impl = { .destroy = gesture_destroy };
+static const struct zwp_pointer_gesture_pinch_v1_interface gpinch_impl = { .destroy = gesture_destroy };
+static const struct zwp_pointer_gesture_hold_v1_interface  ghold_impl  = { .destroy = gesture_destroy };
+
+/* code/x/y/state/mods carry one gesture frame; see XIOS_IN_GESTURE in
+ * xios_input_socket.h for the packing. Translation arrives in the same 1/256
+ * physical-pixel fixed point AXIS uses, so dividing by output_scale() yields a
+ * logical-px wl_fixed directly. Scale and rotation are already wl_fixed by
+ * construction (1/256 units), and rotation is a signed value riding in an
+ * unsigned wire field. */
+static void handle_gesture(uint32_t code, int32_t dx256, int32_t dy256,
+                           uint32_t scale256, uint32_t rot256)
+{
+    idle_note_activity();
+    if (!g_ptr_focus) return;
+    uint32_t kind    = code & 0xffu;
+    uint32_t phase   = (code >> 8) & 0xffu;
+    uint32_t fingers = (code >> 16) & 0xffu;
+    if (!fingers) fingers = 2;
+
+    struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
+    struct wl_resource *focus = g_ptr_focus->resource;
+    uint32_t t = now_ms();
+    uint32_t serial = wl_display_next_serial(g_display);
+    wl_fixed_t dx = (wl_fixed_t)(dx256 / output_scale());
+    wl_fixed_t dy = (wl_fixed_t)(dy256 / output_scale());
+    wl_fixed_t scale = (wl_fixed_t)scale256;
+    wl_fixed_t rot = (wl_fixed_t)(int32_t)rot256;
+    int cancelled = phase == XIOS_GESTURE_CANCEL;
+
+    if (kind == XIOS_GESTURE_PINCH) {
+        for (int i = 0; i < g_ngpinch; i++) {
+            struct wl_resource *g = g_gpinch[i];
+            if (wl_resource_get_client(g) != fc) continue;
+            if (phase == XIOS_GESTURE_BEGIN)
+                zwp_pointer_gesture_pinch_v1_send_begin(g, serial, t, focus, fingers);
+            else if (phase == XIOS_GESTURE_UPDATE)
+                zwp_pointer_gesture_pinch_v1_send_update(g, t, dx, dy, scale, rot);
+            else
+                zwp_pointer_gesture_pinch_v1_send_end(g, serial, t, cancelled);
+        }
+    } else if (kind == XIOS_GESTURE_SWIPE) {
+        for (int i = 0; i < g_ngswipe; i++) {
+            struct wl_resource *g = g_gswipe[i];
+            if (wl_resource_get_client(g) != fc) continue;
+            if (phase == XIOS_GESTURE_BEGIN)
+                zwp_pointer_gesture_swipe_v1_send_begin(g, serial, t, focus, fingers);
+            else if (phase == XIOS_GESTURE_UPDATE)
+                zwp_pointer_gesture_swipe_v1_send_update(g, t, dx, dy);
+            else
+                zwp_pointer_gesture_swipe_v1_send_end(g, serial, t, cancelled);
+        }
+    } else if (kind == XIOS_GESTURE_HOLD) {
+        for (int i = 0; i < g_nghold; i++) {
+            struct wl_resource *g = g_ghold[i];
+            if (wl_resource_get_client(g) != fc) continue;
+            if (phase == XIOS_GESTURE_BEGIN)
+                zwp_pointer_gesture_hold_v1_send_begin(g, serial, t, focus, fingers);
+            else if (phase != XIOS_GESTURE_UPDATE)   /* hold has no update event */
+                zwp_pointer_gesture_hold_v1_send_end(g, serial, t, cancelled);
+        }
+    }
+}
+
+static void ptrgest_get(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                        struct wl_resource *pointer, const struct wl_interface *iface,
+                        const void *impl, wl_resource_destroy_func_t on_destroy,
+                        struct wl_resource **arr, int *n)
+{ (void)pointer;
+    struct wl_resource *g = wl_resource_create(c, iface, wl_resource_get_version(r), id);
+    if (!g) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(g, impl, NULL, on_destroy);
+    if (*n < IOSC_MAX_PTRGEST) arr[(*n)++] = g;
+}
+static void ptrgest_get_swipe(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                              struct wl_resource *p)
+{ ptrgest_get(c, r, id, p, &zwp_pointer_gesture_swipe_v1_interface, &gswipe_impl,
+              gswipe_res_destroy, g_gswipe, &g_ngswipe); }
+static void ptrgest_get_pinch(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                              struct wl_resource *p)
+{ ptrgest_get(c, r, id, p, &zwp_pointer_gesture_pinch_v1_interface, &gpinch_impl,
+              gpinch_res_destroy, g_gpinch, &g_ngpinch); }
+static void ptrgest_get_hold(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                             struct wl_resource *p)
+{ ptrgest_get(c, r, id, p, &zwp_pointer_gesture_hold_v1_interface, &ghold_impl,
+              ghold_res_destroy, g_ghold, &g_nghold); }
+static void ptrgest_release(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_pointer_gestures_v1_interface ptrgest_mgr_impl = {
+    .get_swipe_gesture = ptrgest_get_swipe,
+    .get_pinch_gesture = ptrgest_get_pinch,
+    .release           = ptrgest_release,
+    .get_hold_gesture  = ptrgest_get_hold };
+static void ptrgest_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_pointer_gestures_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &ptrgest_mgr_impl, NULL, NULL);
 }
 
 /* ===========================================================================
@@ -8780,6 +8957,7 @@ static void register_wayland_globals(void)
     /* Pointer lock + relative motion: games, 3D viewports, gnome-shell mouse-look. */
     create_global(&zwp_pointer_constraints_v1_interface, 1, constraints_bind);
     create_global(&zwp_relative_pointer_manager_v1_interface, 1, relptr_mgr_bind);
+    create_global(&zwp_pointer_gestures_v1_interface, 3, ptrgest_mgr_bind);
     /* X11-style middle-click primary selection (separate from the clipboard). */
     create_global(&zwp_primary_selection_device_manager_v1_interface, 1, primary_mgr_bind);
     /* Idle detection + inhibition (screensavers/power; video players stay awake). */

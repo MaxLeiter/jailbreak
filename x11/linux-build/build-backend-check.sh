@@ -26,6 +26,9 @@ cp "$SRCDIR"/*.h "$STAGE"/ 2>/dev/null || true
 if [ -f "$SRCDIR/out/xios-glue-include/xios_surface.h" ]; then
   cp "$SRCDIR/out/xios-glue-include/xios_surface.h" "$STAGE/"
 fi
+if [ -f "$SRCDIR/out/xios-glue-include/xios_metal_sync.h" ]; then
+  cp "$SRCDIR/out/xios-glue-include/xios_metal_sync.h" "$STAGE/"
+fi
 
 # The MetaBackendIOS files intentionally compile against xios-glue-stub.h, while
 # libxios_glue ships canonical headers. Catch contract drift before compiling so a
@@ -40,6 +43,7 @@ stub_path = stage / "xios-glue-stub.h"
 input_path = stage / "xios_input_socket.h"
 egl_path = stage / "xios_egl.h"
 surface_path = stage / "xios_surface.h"
+metal_sync_path = stage / "xios_metal_sync.h"
 
 if not stub_path.exists():
     raise SystemExit("FAIL: xios-glue-stub.h was not staged")
@@ -134,10 +138,23 @@ if surface_text:
         "xios_server_start",
         "xios_server_stop",
         "xios_get_output_iosurface",
+        "xios_notify_dirty_with_fence",
     ]
     missing = sorted(set(prototype_map(surface_text, names)) - set(prototype_map(stub, names)))
     if missing:
         errors.append("xios-glue-stub.h is missing canonical xios_surface.h prototypes: " + ", ".join(missing))
+
+metal_sync_text = read_optional(metal_sync_path)
+if metal_sync_text:
+    names = [
+        "xios_metal_sync_signal",
+        "xios_metal_sync_import_event",
+        "xios_metal_sync_release_event",
+        "xios_metal_sync_wait",
+    ]
+    missing = sorted(set(prototype_map(metal_sync_text, names)) - set(prototype_map(stub, names)))
+    if missing:
+        errors.append("xios-glue-stub.h is missing canonical xios_metal_sync.h prototypes: " + ", ".join(missing))
 
 if errors:
     print("FAIL: xios glue contract drift detected", file=sys.stderr)

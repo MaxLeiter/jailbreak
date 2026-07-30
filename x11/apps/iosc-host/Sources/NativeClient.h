@@ -4,7 +4,7 @@
 #include <IOSurface/IOSurfaceRef.h>
 
 /*
- * Client half of the native per-window rendezvous (iosc-native.sock v3). One
+ * Client half of the native per-window rendezvous (iosc-native.sock v1). One
  * connection per host process = one app_id; it carries every window that app
  * maps. See iosc_native_proto.h for the wire contract and x11/docs/
  * native-ipados-protocol.md for the full spec.
@@ -40,8 +40,6 @@ typedef struct {
     IOSurfaceRef surface;     /* +1 retained on WINDOW_NEW/GEOM; caller releases */
     uint32_t     cursor_id;
     uint32_t     flags;       /* IOSC_NWIN_* on WINDOW_NEW/GEOM               */
-    uint32_t     fence_kind;  /* IOSC_NATIVE_FENCE_* on IOSC_NEV_DIRTY        */
-    uint32_t     fence_token_size;
     uint64_t     fence_value;
     unsigned char fence_token[32];
     char         title[256];  /* NUL-terminated on WINDOW_NEW/TITLE           */

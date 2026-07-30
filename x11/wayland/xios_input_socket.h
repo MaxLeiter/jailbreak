@@ -67,6 +67,27 @@
 #define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
 #define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style,
                              * code = 1 dark, 0 light                           */
+#define XIOS_IN_GESTURE 14u /* trackpad pinch/rotate/swipe -> pointer-gestures.
+                             * code packs the gesture: bits 0-7 kind
+                             * (XIOS_GESTURE_SWIPE/PINCH/HOLD), bits 8-15 phase
+                             * (XIOS_GESTURE_BEGIN/UPDATE/END/CANCEL), bits 16-23
+                             * finger count (2 for every trackpad gesture iPadOS
+                             * reports to an app).
+                             * x,y = translation delta in 1/256 output px, the
+                             * same fixed point AXIS uses. state = pinch scale in
+                             * 1/256 (256 = 1.0), ABSOLUTE since BEGIN rather
+                             * than a per-frame delta, matching wl_pointer.
+                             * mods = rotation in 1/256 DEGREES clockwise, an
+                             * int32 riding in an unsigned field: cast it back
+                             * before use. BEGIN and END/CANCEL carry no deltas;
+                             * CANCEL sets wl_pointer's cancelled flag.         */
+#define XIOS_GESTURE_SWIPE  1u
+#define XIOS_GESTURE_PINCH  2u
+#define XIOS_GESTURE_HOLD   3u
+#define XIOS_GESTURE_BEGIN  0u
+#define XIOS_GESTURE_UPDATE 1u
+#define XIOS_GESTURE_END    2u
+#define XIOS_GESTURE_CANCEL 3u
 #endif
 
 /* Fixed 24-byte record header. Layout matches iosc.c/ios-inputd.c iosc_in_msg. */

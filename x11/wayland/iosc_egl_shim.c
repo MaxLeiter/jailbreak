@@ -38,7 +38,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <unistd.h>
 
 #ifndef EGL_PLATFORM_ANGLE_ANGLE
@@ -126,10 +125,9 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name,
                        const char *iface, uint32_t ver)
 {
     struct iosc_wl_state *state = d;
+    (void)ver;
     if (!strcmp(iface, "iosc_iosurface")) {
-        uint32_t bind_version = ver < 4 ? ver : 4;
-        state->factory = wl_registry_bind(r, name, &iosc_iosurface_interface,
-                                          bind_version);
+        state->factory = wl_registry_bind(r, name, &iosc_iosurface_interface, 1);
         wl_proxy_set_queue((struct wl_proxy *)state->factory, state->queue);
     }
 }
@@ -588,63 +586,28 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surf)
     if (!bb || !bb->buf)
         return EGL_FALSE;
 
-    /* Production path: pass an MTLSharedEvent acquire fence with this buffer and
-     * let iosc enqueue a GPU wait before sampling. A CPU-side completion barrier
-     * exists only behind IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC for narrow bring-up. */
-    int asynchronous = 0;
-    if (wl_proxy_get_version((struct wl_proxy *)w->wl->factory) >= 4) {
-        const void *token = NULL;
-        size_t token_size = 0;
-        uint64_t event_value = 0;
-        if (xios_metal_sync_signal(dpy, &token, &token_size, &event_value)) {
-            struct wl_array handle;
-            handle.size = token_size;
-            handle.alloc = token_size;
-            handle.data = (void *)token;
-            iosc_iosurface_set_acquire_fence_token(
-                w->wl->factory, bb->buf, &handle,
-                (uint32_t)(event_value & 0xffffffffu),
-                (uint32_t)(event_value >> 32));
-            asynchronous = 1;
-        }
-    }
-    if (!asynchronous) {
-        const char *diagnostic = getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC");
-        int allow_cpu_sync = diagnostic && *diagnostic &&
-                             strcmp(diagnostic, "0") != 0 &&
-                             strcasecmp(diagnostic, "false") != 0 &&
-                             strcasecmp(diagnostic, "no") != 0;
-        if (!allow_cpu_sync) {
-            static int reported;
-            if (!reported) {
-                reported = 1;
-                fprintf(stderr,
-                        "iosc_egl: cross-process GPU acquire fence unavailable; "
-                        "refusing an unfenced swap\n");
-            }
-            return EGL_FALSE;
-        }
-        static int warned;
-        if (!warned) {
-            warned = 1;
+    const void *token = NULL;
+    size_t token_size = 0;
+    uint64_t event_value = 0;
+    if (!xios_metal_sync_signal(dpy, &token, &token_size, &event_value)) {
+        static int reported;
+        if (!reported) {
+            reported = 1;
             fprintf(stderr,
-                    "iosc_egl: IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC=1; "
-                    "using a CPU-side completion barrier\n");
+                    "iosc_egl: cross-process GPU acquire fence unavailable; "
+                    "refusing an unfenced swap\n");
         }
-        EGLSync (*mk)(EGLDisplay, EGLenum, const EGLAttrib *) = REAL(eglCreateSync);
-        EGLint (*fwait)(EGLDisplay, EGLSync, EGLint, EGLTime) =
-            REAL(eglClientWaitSync);
-        EGLBoolean (*del)(EGLDisplay, EGLSync) = REAL(eglDestroySync);
-        EGLSync fence =
-            (mk && fwait && del) ? mk(dpy, EGL_SYNC_FENCE, NULL) : EGL_NO_SYNC;
-        if (fence != EGL_NO_SYNC) {
-            glFlush();
-            fwait(dpy, fence, EGL_SYNC_FLUSH_COMMANDS_BIT, EGL_FOREVER);
-            del(dpy, fence);
-        } else {
-            glFinish();
-        }
+        return EGL_FALSE;
     }
+    struct wl_array handle = {
+        .size = token_size,
+        .alloc = token_size,
+        .data = (void *)token,
+    };
+    iosc_iosurface_set_acquire_fence(
+        w->wl->factory, bb->buf, &handle,
+        (uint32_t)(event_value & 0xffffffffu),
+        (uint32_t)(event_value >> 32));
     /* IOSC_EGL_DEBUG: sample the IOSurface right after the fence, i.e. at the exact
      * moment the client claims the frame is done. All-black here means the client's
      * GL never reached this IOSurface, which separates a client that drew nothing
@@ -886,6 +849,11 @@ EGLBoolean eglGetConfigAttrib(EGLDisplay d, EGLConfig c, EGLint a, EGLint *v)
     EGLBoolean r = REAL(eglGetConfigAttrib)(d, c, a, v);
     if (r && a == EGL_RENDERABLE_TYPE) *v |= EGL_ES3_BIT;    /* ANGLE supports ES3 here     */
     if (r && a == EGL_SURFACE_TYPE)    *v |= EGL_WINDOW_BIT; /* shim backs windows w/ pbuffer */
+    /* The shim's swap interval is always zero and its three-buffer IOSurface
+     * queue provides backpressure. Report that actual contract instead of
+     * ANGLE's headless-pbuffer minimum of one; QtWayland otherwise serializes
+     * its render loop and warns that subsurface rendering can freeze. */
+    if (r && a == EGL_MIN_SWAP_INTERVAL) *v = 0;
     return r;
 }
 EGLBoolean eglDestroyContext(EGLDisplay d, EGLContext c){ return REAL(eglDestroyContext)(d,c); }

@@ -47,46 +47,12 @@ replace(
 )
 
 replace(
-    "src/backends/wayland/wayland_display.h",
-    "    iosc_iosurface *iosurface() const; // ios-gpu-factory-accessor\n",
-    "    iosc_iosurface *iosurface() const; // ios-gpu-factory-accessor\n"
-    "    uint32_t iosurfaceCapabilities() const; // ios-gpu-caps-accessor\n"
-    "    void setIosurfaceCapabilities(uint32_t capabilities);\n",
-    "ios-gpu-caps-accessor",
-)
-replace(
-    "src/backends/wayland/wayland_display.h",
-    "    iosc_iosurface *m_iosurface = nullptr; // ios-gpu-factory-member\n",
-    "    iosc_iosurface *m_iosurface = nullptr; // ios-gpu-factory-member\n"
-    "    uint32_t m_iosurfaceCaps = 0; // ios-gpu-caps-member\n",
-    "ios-gpu-caps-member",
-)
-
-replace(
     "src/backends/wayland/wayland_display.cpp",
     '#include "wayland-xdg-shell-client-protocol.h"\n',
     '#include "wayland-xdg-shell-client-protocol.h"\n#include "iosc-iosurface-client-protocol.h" // ios-gpu-factory-include\n',
     "ios-gpu-factory-include",
 )
 
-# The compositor advertises its IOSurface import contract through the version-2
-# capabilities event. Bind at the generated interface version and actually
-# consume the event: with no listener the proxy sees an unknown opcode, which is
-# exactly what produced "interface 'iosc_iosurface' has no event 0" followed by a
-# dropped connection while kwin was still generated from the stale v1 XML.
-# Defined here, immediately after the includes, so the registry global handler
-# below can reference the listener.
-replace(
-    "src/backends/wayland/wayland_display.cpp",
-    '#include "iosc-iosurface-client-protocol.h" // ios-gpu-factory-include\n',
-    '#include "iosc-iosurface-client-protocol.h" // ios-gpu-factory-include\n'
-    "\nnamespace KWin\n{\nnamespace Wayland\n{\n"
-    "static void iosc_iosurface_handle_capabilities(void *data, struct iosc_iosurface *, uint32_t capabilities); // ios-gpu-caps-handler\n"
-    "\nstatic const struct iosc_iosurface_listener s_ioscIosurfaceListener = {\n"
-    "    iosc_iosurface_handle_capabilities,\n};\n"
-    "}\n} // namespace KWin::Wayland\n",
-    "ios-gpu-caps-handler",
-)
 replace(
     "src/backends/wayland/wayland_display.cpp",
     "    m_linuxDmabuf.reset();\n\n    if (m_shm) {",
@@ -100,26 +66,11 @@ replace(
     "ios-gpu-factory-accessor-impl",
 )
 
-# Accessor/setter impls live with the other WaylandDisplay methods.
-replace(
-    "src/backends/wayland/wayland_display.cpp",
-    "iosc_iosurface *WaylandDisplay::iosurface() const // ios-gpu-factory-accessor-impl\n{\n    return m_iosurface;\n}\n",
-    "iosc_iosurface *WaylandDisplay::iosurface() const // ios-gpu-factory-accessor-impl\n{\n    return m_iosurface;\n}\n"
-    "\nuint32_t WaylandDisplay::iosurfaceCapabilities() const // ios-gpu-caps-accessor-impl\n{\n    return m_iosurfaceCaps;\n}\n"
-    "\nvoid WaylandDisplay::setIosurfaceCapabilities(uint32_t capabilities)\n{\n    m_iosurfaceCaps = capabilities;\n}\n"
-    "\nstatic void iosc_iosurface_handle_capabilities(void *data, struct iosc_iosurface *, uint32_t capabilities) // ios-gpu-caps-handler-impl\n{\n"
-    "    static_cast<WaylandDisplay *>(data)->setIosurfaceCapabilities(capabilities);\n}\n",
-    "ios-gpu-caps-accessor-impl",
-)
 replace(
     "src/backends/wayland/wayland_display.cpp",
     "    } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {",
     "    } else if (strcmp(interface, iosc_iosurface_interface.name) == 0) { // ios-gpu-factory-bind\n"
-    "        const uint32_t ioscVersion = std::min(version, uint32_t(iosc_iosurface_interface.version));\n"
-    "        display->m_iosurface = static_cast<struct iosc_iosurface *>(wl_registry_bind(registry, name, &iosc_iosurface_interface, ioscVersion));\n"
-    "        if (ioscVersion >= 2) {\n"
-    "            iosc_iosurface_add_listener(display->m_iosurface, &s_ioscIosurfaceListener, display);\n"
-    "        }\n"
+    "        display->m_iosurface = static_cast<struct iosc_iosurface *>(wl_registry_bind(registry, name, &iosc_iosurface_interface, 1));\n"
     "    } else if (strcmp(interface, zwp_linux_dmabuf_v1_interface.name) == 0) {",
     "ios-gpu-factory-bind",
 )
@@ -248,7 +199,7 @@ replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
     "        return loadShmTexture(m_pixmap->buffer());\n    } else {\n        return false;\n    }\n}",
     "        const bool ok = loadShmTexture(m_pixmap->buffer());\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n        }\n        return ok;\n    } else {\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: UNKNOWN buffer type -- no texture\";\n        }\n        return false;\n    }\n}",
-    "ios-gpu-client-texture-diag",
+    "ios-tex: shm load ok=",
 )
 # Content stats for shm uploads (still under KWIN_IOS_TEXTURE_DIAG): a texture that
 # loads ok but carries all-black pixels means the CLIENT drew black, which no
@@ -284,6 +235,10 @@ if "ios-gpu-client-texture-load" not in text:
     implementation = r'''bool BasicEGLSurfaceTextureWayland::loadIoscTexture(IoscClientBuffer *buffer) // ios-gpu-client-texture-load
 {
     EGLDisplay display = backend()->eglDisplayObject()->handle();
+    if (!buffer->waitAcquireFence(display)) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex: refusing an unfenced client IOSurface";
+        return false;
+    }
     if (m_iosurfaceConfig == EGL_NO_CONFIG_KHR) {
         m_iosurfaceConfig = chooseIoscEglConfig(display);
     }
@@ -358,6 +313,11 @@ void BasicEGLSurfaceTextureWayland::updateIoscTexture(IoscClientBuffer *buffer)
     if (m_bufferType != BufferType::Iosc || m_iosurfaceBuffer != buffer) {
         destroy();
         loadIoscTexture(buffer);
+        return;
+    }
+    EGLDisplay display = backend()->eglDisplayObject()->handle();
+    if (!buffer->waitAcquireFence(display)) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex: refusing an unfenced client IOSurface update";
     }
 }
 
@@ -473,8 +433,15 @@ replace(
 replace(
     "src/plugins/qpa/integration.cpp",
     '#include "backingstore.h"\n',
-    '#include "backingstore.h"\n#include "eglplatformcontext.h" // ios-gpu-qpa-context\n#include "core/outputbackend.h"\n',
+    '#include "backingstore.h"\n#include "eglplatformcontext.h" // ios-gpu-qpa-context\n',
     "ios-gpu-qpa-context",
+)
+replace(
+    "src/plugins/qpa/integration.cpp",
+    '#include "eglplatformcontext.h" // ios-gpu-qpa-context\n',
+    '#include "eglplatformcontext.h" // ios-gpu-qpa-context\n'
+    '#include "core/outputbackend.h" // ios-gpu-qpa-outputbackend\n',
+    "ios-gpu-qpa-outputbackend",
 )
 
 # KWin's EGL wrappers use libepoxy.  Including the platform EGL header first

@@ -7,13 +7,17 @@
 # .so sonames.
 # -3 revision: updates the iosc Wayland-platform shim so toolkit EGL extension probes work
 # before an EGLDisplay exists.
-# -10 revision: ships the protocol-v4 shim with brokered MTLSharedEvent acquire fences,
+# -10 revision: ships the broker-fenced shim with MTLSharedEvent acquire fences,
 # so Wayland clients hand GPU completion directly to iosc without serializing opaque
 # Metal handles or blocking the CPU at every swap.
 # -11 revision: accepts QtWayland's core eglCreateWindowSurface entry point and routes
 # it through the same IOSurface swapchain as the EGL platform entry points.
 # -12 revision: derives the Wayland connection from each wl_egl_window's wl_surface,
 # so Qt's split GUI/render threads cannot lose the connection at surface creation.
+# -13 revision: reports the shim's real non-blocking swap contract to QtWayland,
+# avoiding serialized render loops and broken subsurface scheduling.
+# -14 revision: collapses the private IOSurface wire to its sole supported,
+# mandatory broker-fence contract and removes legacy version negotiation.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,7 +32,7 @@ BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
-VER="2.1.0+git20260630.a32d31d+es3-12"
+VER="2.1.0+git20260630.a32d31d+es3-14"
 DEB="angle_${VER}_iphoneos-arm64.deb"
 
 rm -rf "$STAGEROOT"
@@ -63,7 +67,7 @@ else
 fi
 chmod 0755 "$STAGE/var/jb/lib/angle/"*.dylib
 [ -f "$SHIM" ] || {
-  echo "ERROR: protocol-v4 iosc EGL shim not found at $SHIM; run wayland/build-iosc.sh first" >&2
+  echo "ERROR: current fenced iosc EGL shim not found at $SHIM; run wayland/build-iosc.sh first" >&2
   exit 1
 }
 cp "$SHIM" "$STAGE/var/jb/lib/angle/libEGL.dylib"
@@ -114,8 +118,8 @@ Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/
  EGL_ANGLE_iosurface_client_buffer for zero-copy GLES-into-IOSurface rendering.
  libEGL.dylib is the iosc Wayland-platform shim when built; it forwards non-Wayland
  EGL calls to the real ANGLE library at libEGL.angle.dylib and lets GTK4/GSK create
- wl_egl_window surfaces that render into IOSurfaces zero-copy. Protocol-v4 clients
- export ANGLE Metal shared-event acquire fences through the package-owned XPC broker
+ wl_egl_window surfaces that render into IOSurfaces zero-copy. Clients export
+ ANGLE Metal shared-event acquire fences through the package-owned XPC broker
  for GPU-side synchronization; the frame path carries only an opaque capability token.
  This build admits Apple GPU Family 3 (A10) to the ES3 tier so EGL configs advertise
  EGL_OPENGL_ES3_BIT and ES3 contexts validate (needed for GTK4/GSK GL renderer).

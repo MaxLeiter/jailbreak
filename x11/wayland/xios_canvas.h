@@ -25,9 +25,7 @@
 
 /* Default native rendezvous socket (matches iosc_native_proto.h). */
 #define XIOS_CANVAS_SOCK "/var/jb/tmp/iosc-native.sock"
-#define IOSC_NATIVE_PROTOCOL_VERSION 3u
-#define IOSC_NATIVE_FENCE_NONE 0u
-#define IOSC_NATIVE_FENCE_BROKER_TOKEN 1u
+#define IOSC_NATIVE_PROTOCOL_VERSION 1u
 #define IOSC_NATIVE_FENCE_TOKEN_SIZE 32u
 
 /* ---- native lifecycle codes 0x40-0x5f -------------------------------------
@@ -42,7 +40,7 @@
 #define XIOS_MSG_WINDOW_GEOM  0x51u   /* iosc->host: a=w b=h c=stride; fresh canvas port follows */
 #define XIOS_MSG_WINDOW_TITLE 0x52u   /* iosc->host: payload=utf8 */
 #define XIOS_MSG_WINDOW_GONE  0x53u   /* iosc->host: toplevel unmapped; tear the scene down */
-#define XIOS_MSG_NATIVE_FRAME 0x54u   /* iosc->host v3: per-window broker fence + full-canvas dirty */
+#define XIOS_MSG_NATIVE_FRAME 0x54u   /* iosc->host: broker fence + full-canvas dirty */
 
 /* WINDOW_NEW/GEOM flag bits (msg.d). */
 #define XIOS_NWIN_MAXIMIZED   0x1
@@ -100,12 +98,9 @@ int  xios_canvas_announce(uint32_t window_id, const char *app_id,
  * (a=w b=h c=stride) then redeliver the fresh canvas port. No-op if unbound. */
 void xios_canvas_geom(uint32_t window_id);
 
-/* Publish one complete per-window frame using the native v3 contract. A
- * 32-byte token + non-zero value requires the host to encode a Metal GPU wait.
- * NULL/0/0 is reserved for the compositor's explicit diagnostic CPU-barrier
- * mode. Production callers must not publish an asynchronously rendered frame
- * without the broker token. Non-blocking; 0 means valid/queued-or-coalesced,
- * -1 means invalid fence input. */
+/* Publish one complete per-window frame. The 32-byte token and non-zero value
+ * require the host to encode a Metal GPU wait. Non-blocking; 0 means
+ * valid/queued-or-coalesced, -1 means invalid fence input. */
 int xios_canvas_notify_frame(uint32_t window_id,
                              const void *shared_event_token,
                              size_t token_size,

@@ -34,6 +34,15 @@ void iosc_input_tablet(int phase, int x, int y, unsigned pressure16,
 // 1 wheel. mods: 1 shift, 2 ctrl, 4 alt latched for the frame (pinch-zoom sends ctrl).
 // stop ends the gesture (clients then fling).
 void iosc_input_axis(int dx256, int dy256, unsigned source, unsigned mods, bool stop);
+// Trackpad pinch/rotate -> zwp_pointer_gestures_v1 (wire spec: XIOS_IN_GESTURE in
+// x11/wayland/xios_input_socket.h). kind: 1 swipe, 2 pinch, 3 hold. phase: 0 begin,
+// 1 update, 2 end, 3 cancel. scale256 = scale since begin in 1/256 (256 = 1.0),
+// rot256 = rotation since begin in 1/256 DEGREES clockwise. Both are ABSOLUTE since
+// begin, as wl_pointer wants them, not per-frame deltas. dx256/dy256 = gesture-centre
+// movement in 1/256 framebuffer px. Only pinch has a source on iPadOS; iosc.c explains
+// why swipe and hold are implemented anyway.
+void iosc_input_gesture(unsigned kind, unsigned phase, unsigned fingers,
+                        int dx256, int dy256, unsigned scale256, int rot256);
 // Drain the server->app stream. Returns 1 with ONE TRAITS record's fields filled
 // (call again for more; every enable/disable transition is delivered, nothing
 // coalesces), 0 when no complete record is pending, -1 on disconnect.

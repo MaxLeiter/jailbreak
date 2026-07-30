@@ -197,9 +197,8 @@ static int gpu_render(IOSurfaceRef surface)
     glEnableVertexAttribArray(0);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    /* Submission happens now; protocol v3 transfers an MTLSharedEvent acquire
-     * fence later. A v1/v2 compositor receives the compatibility glFinish in
-     * main after registry negotiation. */
+    /* Submission happens now; the protocol transfers the matching brokered
+     * MTLSharedEvent acquire fence before the buffer commit. */
     glFlush();
     gpu_egl_display = dpy;
     eglReleaseTexImage(dpy, pb, EGL_BACK_BUFFER);
@@ -212,22 +211,10 @@ static int gpu_render(IOSurfaceRef surface)
 static struct wl_compositor *compositor;
 static struct xdg_wm_base   *wm_base;
 static struct iosc_iosurface *iosurface_factory;
-static uint32_t iosurface_capability_bits;
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial)
 { (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping = wm_base_ping };
-
-static void iosurface_capabilities(void *data, struct iosc_iosurface *factory,
-                                   uint32_t capabilities)
-{
-    (void)data; (void)factory;
-    iosurface_capability_bits = capabilities;
-    fprintf(stderr, "client: iosc_iosurface capabilities=0x%x\n", capabilities);
-}
-static const struct iosc_iosurface_listener iosurface_listener = {
-    .capabilities = iosurface_capabilities,
-};
 
 static void reg_global(void *data, struct wl_registry *reg, uint32_t name,
                        const char *iface, uint32_t version)
@@ -239,11 +226,8 @@ static void reg_global(void *data, struct wl_registry *reg, uint32_t name,
         wm_base = wl_registry_bind(reg, name, &xdg_wm_base_interface, 1);
         xdg_wm_base_add_listener(wm_base, &wm_base_listener, NULL);
     } else if (!strcmp(iface, "iosc_iosurface")) {
-        uint32_t bind_version = version < 4 ? version : 4;
-        iosurface_factory = wl_registry_bind(reg, name, &iosc_iosurface_interface,
-                                             bind_version);
-        if (bind_version >= 2)
-            iosc_iosurface_add_listener(iosurface_factory, &iosurface_listener, NULL);
+        iosurface_factory = wl_registry_bind(reg, name,
+                                             &iosc_iosurface_interface, 1);
     }
     fprintf(stderr, "client: global %s v%u\n", iface, version);
 }
@@ -292,42 +276,24 @@ int main(void)
                 (void*)compositor, (void*)wm_base, (void*)iosurface_factory);
         return 1;
     }
-    if (iosurface_capability_bits) {
-        uint32_t required = IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
-                            IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
-                            IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT;
-        if (wl_proxy_get_version((struct wl_proxy *)iosurface_factory) >= 4)
-            required |= IOSC_IOSURFACE_CAPABILITY_METAL_SHARED_EVENT_BROKER;
-        if ((iosurface_capability_bits & required) != required) {
-            fprintf(stderr, "client: iosc_iosurface missing required capabilities "
-                    "(got=0x%x required=0x%x)\n",
-                    iosurface_capability_bits, required);
-            return 1;
-        }
-    }
-
     gpu_buffer = iosc_iosurface_create_buffer(iosurface_factory, (uint32_t)port, W, H,
                                               IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
-    if (wl_proxy_get_version((struct wl_proxy *)iosurface_factory) >= 4) {
-        const void *token = NULL;
-        size_t token_size = 0;
-        uint64_t value = 0;
-        if (!xios_metal_sync_signal(gpu_egl_display, &token, &token_size, &value)) {
-            fprintf(stderr, "client: shared-event fence unavailable\n");
-            return 1;
-        }
-        struct wl_array handle = {
-            .size = token_size,
-            .alloc = token_size,
-            .data = (void *)token,
-        };
-        iosc_iosurface_set_acquire_fence_token(
-            iosurface_factory, gpu_buffer, &handle,
-            (uint32_t)(value & 0xffffffffu),
-            (uint32_t)(value >> 32));
-    } else {
-        glFinish();
+    const void *token = NULL;
+    size_t token_size = 0;
+    uint64_t value = 0;
+    if (!xios_metal_sync_signal(gpu_egl_display, &token, &token_size, &value)) {
+        fprintf(stderr, "client: shared-event fence unavailable\n");
+        return 1;
     }
+    struct wl_array handle = {
+        .size = token_size,
+        .alloc = token_size,
+        .data = (void *)token,
+    };
+    iosc_iosurface_set_acquire_fence(
+        iosurface_factory, gpu_buffer, &handle,
+        (uint32_t)(value & 0xffffffffu),
+        (uint32_t)(value >> 32));
 
     surface = wl_compositor_create_surface(compositor);
     struct xdg_surface *xs = xdg_wm_base_get_xdg_surface(wm_base, surface);

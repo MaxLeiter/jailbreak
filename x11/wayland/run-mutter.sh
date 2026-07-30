@@ -48,8 +48,8 @@ MUTTER_LOG="${MUTTER_LOG:-$TMP/mutter.log}"
 [ -x "$MUTTER" ] || { echo "!! $MUTTER missing/not executable — scp out/mutter there first"; exit 1; }
 
 if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
-  echo "==> stop the iosc demo (iosc + Xios app + shell + any client); mutter replaces the compositor"
-  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter" \
+  echo "==> stop the iosc demo (iosc + shell + clients; keep the Xios display app)"
+  ps ax | grep -v grep | grep -E "bin/iosc|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter" \
     | awk '{print $1}' | while read -r pid; do
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
     done

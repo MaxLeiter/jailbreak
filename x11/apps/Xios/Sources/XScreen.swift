@@ -50,7 +50,13 @@ final class XScreenView: UIView {
     private var displayRegistryDir: String { XiosRuntimePaths.tmp("xios-displays.d") }
     private let wallpaperConfigPath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper"
     private let wallpaperImagePath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
+    // ioscd is deliberately single-threaded. KDE startup or launcher-sync work can
+    // briefly keep it busy, so requests run on this serial worker instead of UIKit.
+    private let ioscdRequestQueue = DispatchQueue(
+        label: "com.max.xios.ioscd-control", qos: .userInitiated)
+    private var sessionRequestInFlight = false
     private weak var sessionStatusLabel: UILabel?
+    private weak var toolMessageLabel: UILabel?
     // Session-switch resilience: when the compositor dies mid-session the ddx surface
     // is lost; the app releases GPU state and holds on the test pattern (awaitingCompositor)
     // rather than jetsamming, while a full-screen banner shows the launcher's live status
@@ -280,13 +286,15 @@ final class XScreenView: UIView {
     private var pipeline: MTLRenderPipelineState!
     private var texture: MTLTexture!
     private var metalReady = false              // setupMetal() succeeded; guards the
-    private var didRegisterActiveRetry = false  // background-launch foreground retry
+    private var didInstallLifecycleObservers = false
+    private var appIsBackgrounded = false
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
     override class var layerClass: AnyClass { CAMetalLayer.self }
 
     func start() {
         loadConfig()
+        installLifecycleObservers()
         SystemIntegration.shared.install(on: self)
         XiosCameraBroker.shared.startIfDiagnosticEnabled()
         isMultipleTouchEnabled = true
@@ -294,9 +302,10 @@ final class XScreenView: UIView {
         // SpringBoard relaunch, or uicache registration launching us off-screen), so a
         // background launch would otherwise leave us permanently black with no recovery.
         // Retry once we become active/foreground, where the GPU is reachable.
-        if !setupMetal() { observeForegroundRetry(); return }
+        if !setupMetal() { return }
         metalReady = true
 
+        awaitingCompositor = true
         startTestPattern()
         if ddxIsIOSurface {
             // Zero-copy path. Connect off the main thread (the handshake does a
@@ -328,20 +337,47 @@ final class XScreenView: UIView {
         }
     }
 
-    /// If Metal wasn't available at launch (app started in the background), re-run
-    /// start() the next time we become active. One-shot registration, guarded by
-    /// metalReady so a successful setup never re-initialises.
-    private func observeForegroundRetry() {
-        if didRegisterActiveRetry { return }
-        didRegisterActiveRetry = true
+    /// Keep UIKit lifecycle work deliberately small: a backgrounded Xios process
+    /// should retain its UI and Metal pipeline, but not pin a compositor IOSurface or
+    /// keep polling sockets. Reconnect from config when the app becomes active again.
+    private func installLifecycleObservers() {
+        if didInstallLifecycleObservers { return }
+        didInstallLifecycleObservers = true
         NotificationCenter.default.addObserver(
-            self, selector: #selector(retryStartIfNeeded),
+            self, selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
-    @objc private func retryStartIfNeeded() {
-        if metalReady { return }   // already up; nothing to do
-        start()                    // setupMetal() should now succeed in the foreground
+    @objc private func appDidEnterBackground() {
+        appIsBackgrounded = true
+        displayLink?.isPaused = true
+        loadGeneration += 1                  // cancel any blocking connect retry
+        if metalReady {
+            teardownConnections(resetTransform: false)
+            texture = nil                    // release even a diagnostic holding frame
+            awaitingCompositor = true
+            writeStatus()
+        }
+    }
+
+    @objc private func appDidBecomeActive() {
+        if !metalReady {
+            appIsBackgrounded = false
+            start()                          // background launch: Metal is available now
+            return
+        }
+        guard appIsBackgrounded else { return }
+        appIsBackgrounded = false
+        _ = loadConfig()
+        awaitingCompositor = true
+        startTestPattern()
+        if ddxIsIOSurface { startIOSurfaceConnect() }
+        connectInput()
+        displayLink?.isPaused = false
+        writeStatus()
     }
 
     /// Show a clean black screen until a real framebuffer is available; only after a
@@ -349,11 +385,13 @@ final class XScreenView: UIView {
     /// no-signal diagnostic, never during normal startup).
     private func startTestPattern() {
         usingTestPattern = true
+        let width = awaitingCompositor ? 1 : fbWidth
+        let height = awaitingCompositor ? 1 : fbHeight
         testBuf?.deallocate()       // safe to call when switching displays
-        testBuf = .allocate(capacity: fbWidth * fbHeight * 4)
-        testBuf?.initialize(repeating: 0, count: fbWidth * fbHeight * 4)   // clean black
+        testBuf = .allocate(capacity: width * height * 4)
+        testBuf?.initialize(repeating: 0, count: width * height * 4)   // clean black
         testPatternStartTick = tickCount
-        makeTexture()
+        makeTexture(width: width, height: height)
         needsPresent = true         // upload + present the initial clean-black frame once
         displayLink?.preferredFramesPerSecond = 20
     }
@@ -363,7 +401,7 @@ final class XScreenView: UIView {
     /// Begin connecting to the IOSurface backend (once). Safe to call from both
     /// start() and the poll path, in either app/server launch order.
     private func startIOSurfaceConnect() {
-        if iosConnectStarted { return }
+        if iosConnectStarted || appIsBackgrounded { return }
         iosConnectStarted = true
         let path = ddxSockPath
         let gen = loadGeneration
@@ -371,10 +409,13 @@ final class XScreenView: UIView {
             // Retry until the X server's socket is up (it may launch after the app),
             // but bail the moment a newer load() superseded this connect.
             for _ in 0..<120 {
-                guard let self, self.loadGeneration == gen else { return }
+                guard let self, self.loadGeneration == gen,
+                      !self.appIsBackgrounded else { return }
                 if let conn = xsurface_connect(path) {
                     DispatchQueue.main.async {
-                        if self.loadGeneration == gen { self.adoptIOSurface(conn) }
+                        if self.loadGeneration == gen, !self.appIsBackgrounded {
+                            self.adoptIOSurface(conn)
+                        }
                         else { xsurface_close(conn) }   // user switched away mid-connect
                     }
                     return
@@ -388,6 +429,11 @@ final class XScreenView: UIView {
     }
 
     private func adoptIOSurface(_ conn: OpaquePointer) {
+        guard !appIsBackgrounded else {
+            xsurface_close(conn)
+            iosConnectStarted = false
+            return
+        }
         xconn = conn
         iosurfaceCompositorID = String(cString: xsurface_compositor_id(conn))
         guard syncSurfaceGeometry(conn) else {
@@ -656,9 +702,9 @@ final class XScreenView: UIView {
         catch { dbg("pipeline-error \(error)"); return false }
     }
 
-    private func makeTexture() {
+    private func makeTexture(width: Int, height: Int) {
         let td = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: fbWidth, height: fbHeight, mipmapped: false)
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
         td.usage = .shaderRead
         texture = device.makeTexture(descriptor: td)
     }
@@ -834,6 +880,7 @@ final class XScreenView: UIView {
     }
 
     @objc private func tick() {
+        guard !appIsBackgrounded else { return }
         tickCount += 1
         serviceIoscClipboard()
         serviceIoscInputTraits()
@@ -871,6 +918,13 @@ final class XScreenView: UIView {
             guard let tex = iosTexture else { return }
             if needsPresent {
                 let seq = xsurface_dirty_sequence(conn)
+                // The IOSurface arrives before the compositor's first DIRTY
+                // record. Never sample that asynchronously rendered surface
+                // until its matching brokered GPU fence has arrived; an empty
+                // sequence here is startup ordering, not a malformed frame.
+                if usingIosc && seq == 0 {
+                    return
+                }
                 let fence = gpuFence(for: conn)
                 if presentFenceDecodeFailed {
                     dbg("gpu-fence-decode-failed")
@@ -892,7 +946,10 @@ final class XScreenView: UIView {
         if tickCount % 30 == 0 {
             if !userPinned { _ = loadConfig() }   // auto mode picks up xios.json; a manual
                                               // pick keeps its own display/backend choice
-            if usingTestPattern, texture?.width != fbWidth || texture?.height != fbHeight {
+            let testWidth = awaitingCompositor ? 1 : fbWidth
+            let testHeight = awaitingCompositor ? 1 : fbHeight
+            if usingTestPattern,
+               texture?.width != testWidth || texture?.height != testHeight {
                 startTestPattern()
             }
             if ddxIsIOSurface {
@@ -901,13 +958,15 @@ final class XScreenView: UIView {
                 awaitingCompositor = true
             }
         }
-        // Keep the test-pattern buffer + texture sized to the CURRENT fb before writing.
-        // fbWidth/fbHeight can grow (compositor resize / re-adopt / session switch) after
-        // testBuf+texture were allocated, and both renderTestPattern (CPU write) and
-        // texture.replace (GPU) below write fbWidth*fbHeight*4 — a stale, smaller buffer
-        // overflows and SIGSEGVs (seen on session-switch teardown). The %30 poll's realloc
-        // isn't enough on its own: the write runs every tick, so re-check it here.
-        if usingTestPattern, texture?.width != fbWidth || texture?.height != fbHeight {
+        // Keep the test buffer aligned with what will actually be uploaded: a 1x1
+        // black texture while a compositor is absent, or a full-size animated
+        // diagnostic only outside that normal launch/switch state. This check still
+        // guards the historical resize overflow, without allocating ~50 MB of CPU+GPU
+        // holding storage beside a new KDE compositor.
+        let testWidth = awaitingCompositor ? 1 : fbWidth
+        let testHeight = awaitingCompositor ? 1 : fbHeight
+        if usingTestPattern,
+           texture?.width != testWidth || texture?.height != testHeight {
             startTestPattern()
         }
         guard let texture = texture else { return }
@@ -930,8 +989,8 @@ final class XScreenView: UIView {
             base = UnsafeRawPointer(b)
         } else { return }
 
-        texture.replace(region: MTLRegionMake2D(0, 0, fbWidth, fbHeight),
-                        mipmapLevel: 0, withBytes: base, bytesPerRow: fbWidth * 4)
+        texture.replace(region: MTLRegionMake2D(0, 0, texture.width, texture.height),
+                        mipmapLevel: 0, withBytes: base, bytesPerRow: texture.width * 4)
         if render(texture) { needsPresent = false }
     }
 
@@ -1123,8 +1182,10 @@ final class XScreenView: UIView {
         writeDebugSnapshot()
     }
 
-    private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20) -> String? {
-        let fd = xiosConnectUnixSocket(ioscdSocketPath)
+    /// Blocking worker primitive. UI actions dispatch this through requestIOSCD.
+    private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20,
+                                  timeout: TimeInterval = 2.0) -> String? {
+        let fd = xiosConnectUnixSocket(ioscdSocketPath, timeout: timeout)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         guard line.data(using: .utf8)?.withUnsafeBytes({ xiosWriteAll(fd, bytes: $0) }) == true
@@ -1141,6 +1202,8 @@ final class XScreenView: UIView {
                 data.append(buf, count: Int(n))
             } else if n < 0 && errno == EINTR {
                 continue
+            } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return nil
             } else {
                 break
             }
@@ -1148,15 +1211,35 @@ final class XScreenView: UIView {
         return String(data: data, encoding: .utf8)
     }
 
-    private func ioscdResponseLines(_ line: String) -> [String]? {
-        sendIOSCDRequest(line)?.split(separator: "\n", omittingEmptySubsequences: false)
+    private func requestIOSCD(_ line: String, maxBytes: Int = 1 << 20,
+                              timeout: TimeInterval = 2.0,
+                              completion: @escaping (String?) -> Void) {
+        ioscdRequestQueue.async { [weak self] in
+            guard let self else { return }
+            let response = self.sendIOSCDRequest(
+                line, maxBytes: maxBytes, timeout: timeout)
+            DispatchQueue.main.async {
+                completion(response)
+            }
+        }
+    }
+
+    private func parseIOSCDResponseLines(_ response: String?) -> [String]? {
+        response?.split(separator: "\n", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .newlines) }
             .filter { !$0.isEmpty }
     }
 
-    private func sendSessionRequestToIOSCD(_ preset: String, app: String?,
-                                           display: DisplayProfile?,
-                                           slot: String? = nil) -> String? {
+    private func requestIOSCDLines(_ line: String, timeout: TimeInterval = 2.0,
+                                   completion: @escaping ([String]?) -> Void) {
+        requestIOSCD(line, timeout: timeout) { [weak self] response in
+            completion(self?.parseIOSCDResponseLines(response))
+        }
+    }
+
+    private func sessionRequestLine(_ preset: String, app: String?,
+                                    display: DisplayProfile?,
+                                    slot: String? = nil) -> String {
         var width = ""
         var height = ""
         var dpi = ""
@@ -1165,27 +1248,50 @@ final class XScreenView: UIView {
             height = String(display.height)
             if display.dpi > 0 { dpi = String(display.dpi) }
         }
-        let line = ["SESSION", preset, app ?? "", width, height, dpi, slot ?? ""]
+        return ["SESSION", preset, app ?? "", width, height, dpi, slot ?? ""]
             .joined(separator: "\t") + "\n"
-        return sendIOSCDRequest(line, maxBytes: 4096)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
                                      display: DisplayProfile? = nil,
                                      slot: String? = nil) {
-        let response = sendSessionRequestToIOSCD(preset, app: app, display: display, slot: slot)
-        if response?.hasPrefix("SESSION_STARTED") == true {
-            lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
-                + (slot.map { " slot=\($0)" } ?? "")
-                + (display.map { " \($0.detail)" } ?? "")
-            // Track the switch from here on (card line + full-screen banner once dismissed),
-            // so it survives the app staying up through a compositor swap.
-            startSessionIndicator()
-        } else {
-            let detail = response?.isEmpty == false ? response! : "ioscd socket unavailable"
-            lastToolMessage = "Session request failed: \(detail)"
+        guard !sessionRequestInFlight else {
+            lastToolMessage = "A desktop request is already being sent"
+            toolMessageLabel?.text = lastToolMessage
+            return
+        }
+        sessionRequestInFlight = true
+        let requestDescription: String
+        switch preset {
+        case "app": requestDescription = "Opening \(app ?? "app")…"
+        case "stop": requestDescription = "Stopping desktop…"
+        case "resize": requestDescription = "Resizing desktop…"
+        default: requestDescription = "Starting \(desktopLabel(preset))…"
+        }
+        lastToolMessage = requestDescription
+        toolMessageLabel?.text = requestDescription
+        startSessionIndicator()
+
+        let line = sessionRequestLine(preset, app: app, display: display, slot: slot)
+        requestIOSCD(line, maxBytes: 4096) { [weak self] rawResponse in
+            guard let self else { return }
+            self.sessionRequestInFlight = false
+            let response = rawResponse?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if response?.hasPrefix("SESSION_STARTED") == true ||
+                response?.hasPrefix("SESSION_ACTIVE") == true {
+                self.lastToolMessage = "Session: \(preset)"
+                    + (app.map { " \($0)" } ?? "")
+                    + (slot.map { " slot=\($0)" } ?? "")
+                    + (display.map { " \($0.detail)" } ?? "")
+                self.startSessionIndicator()
+            } else {
+                let detail = response?.isEmpty == false ? response! : "ioscd timed out"
+                self.lastToolMessage = "Session request failed: \(detail)"
+            }
+            self.toolMessageLabel?.text = self.lastToolMessage
+            self.refreshShellOverlay()
+            self.writeDebugSnapshot()
         }
         writeDebugSnapshot()
     }
@@ -1200,7 +1306,10 @@ final class XScreenView: UIView {
 
     private func reloadRuntimeConfig() {
         _ = loadConfig()
-        if ddxIsIOSurface, !usingIOSurface { startIOSurfaceConnect() }
+        if ddxIsIOSurface, !usingIOSurface {
+            awaitingCompositor = true
+            startIOSurfaceConnect()
+        }
         if !ddxIsIOSurface { awaitingCompositor = true; startTestPattern() }
         connectInput()
         needsPresent = true
@@ -1956,7 +2065,100 @@ final class XScreenView: UIView {
         updateHardwarePointerButtons(0)
     }
 
+    // MARK: trackpad gestures (pinch / rotate -> zwp_pointer_gestures_v1)
+
+    /// wl_pointer wants ONE gesture carrying both scale and rotation, but UIKit reports
+    /// them through two independent recognizers that can run simultaneously. They share
+    /// this state: whichever starts first opens the Wayland gesture, whichever ends last
+    /// closes it.
+    private var trackpadGestureActive = 0
+    private var trackpadPinchScale: CGFloat = 1
+    private var trackpadRotationDegrees: CGFloat = 0
+    private var trackpadGestureCenter: CGPoint?
+
+    /// A pinch or rotate with no touches on the glass came from the trackpad — the same
+    /// test the indirect scroll recognizers use. Finger pinches keep zooming our own
+    /// framebuffer; only indirect ones are the desktop's business, and only on the iosc
+    /// path, since XTEST has no gesture concept.
+    private func isTrackpadGesture(_ g: UIGestureRecognizer) -> Bool {
+        g.numberOfTouches == 0 && usingIosc && inputConnected
+    }
+
+    private func trackpadGestureBegan(at point: CGPoint) {
+        trackpadGestureActive += 1
+        guard trackpadGestureActive == 1 else { return }
+        trackpadPinchScale = 1
+        trackpadRotationDegrees = 0
+        trackpadGestureCenter = point
+        sendTrackpadGesture(phase: XiosGesturePhase.begin)
+    }
+
+    private func trackpadGestureEnded(cancelled: Bool) {
+        guard trackpadGestureActive > 0 else { return }
+        trackpadGestureActive -= 1
+        guard trackpadGestureActive == 0 else { return }
+        sendTrackpadGesture(phase: cancelled ? XiosGesturePhase.cancel : XiosGesturePhase.end)
+        trackpadGestureCenter = nil
+    }
+
+    private enum XiosGesturePhase {
+        static let begin: UInt32 = 0, update: UInt32 = 1, end: UInt32 = 2, cancel: UInt32 = 3
+    }
+
+    /// One gesture frame. Scale and rotation are absolute since begin — UIKit reports
+    /// them that way and so does wl_pointer, so neither needs accumulating. Translation
+    /// is the centre's movement since the previous frame, converted pt->fb px through the
+    /// same fit transform scroll uses.
+    private func sendTrackpadGesture(phase: UInt32, at point: CGPoint? = nil) {
+        guard inputConnected, usingIosc else { return }
+        var dx256: Int32 = 0, dy256: Int32 = 0
+        if let point, let last = trackpadGestureCenter, let fit = fitTransform(), fit.scale > 0 {
+            let ptToFb = 256 / fit.scale
+            dx256 = Int32(clamping: Int(((point.x - last.x) * ptToFb).rounded()))
+            dy256 = Int32(clamping: Int(((point.y - last.y) * ptToFb).rounded()))
+        }
+        if let point { trackpadGestureCenter = point }
+        let scale256 = UInt32(max(0, (trackpadPinchScale * 256).rounded()))
+        let rot256 = Int32(clamping: Int((trackpadRotationDegrees * 256).rounded()))
+        iosc_input_gesture(2 /* pinch */, phase, 2, dx256, dy256, scale256, rot256)
+    }
+
+    /// Rotation reaches us only if iPadOS forwards two-finger trackpad rotation to the
+    /// recognizer. If it does not this simply never fires and pinch still works alone,
+    /// since the scale and rotation fields are independent.
+    @objc private func handleRotation(_ g: UIRotationGestureRecognizer) {
+        guard isTrackpadGesture(g) || (trackpadGestureActive > 0 && g.numberOfTouches == 0) else { return }
+        switch g.state {
+        case .began:
+            trackpadGestureBegan(at: g.location(in: self))
+        case .changed:
+            trackpadRotationDegrees = g.rotation * 180 / .pi
+            sendTrackpadGesture(phase: XiosGesturePhase.update, at: g.location(in: self))
+        case .ended, .cancelled, .failed:
+            trackpadGestureEnded(cancelled: g.state != .ended)
+        default:
+            break
+        }
+    }
+
     @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
+        // Trackpad pinch belongs to the desktop (KDE/GTK zoom); finger pinch stays ours.
+        // The second test keeps a gesture that a rotation opened flowing through the same
+        // path even if this recognizer's touch count is read at an awkward moment.
+        if isTrackpadGesture(g) || (trackpadGestureActive > 0 && g.numberOfTouches == 0) {
+            switch g.state {
+            case .began:
+                trackpadGestureBegan(at: g.location(in: self))
+            case .changed:
+                trackpadPinchScale = g.scale
+                sendTrackpadGesture(phase: XiosGesturePhase.update, at: g.location(in: self))
+            case .ended, .cancelled, .failed:
+                trackpadGestureEnded(cancelled: g.state != .ended)
+            default:
+                break
+            }
+            return
+        }
         switch g.state {
         case .began:
             twoFingerBegan()
@@ -2542,7 +2744,7 @@ final class XScreenView: UIView {
     }
 
     /// Drop every connection tied to the current display so we can load another.
-    private func teardownConnections() {
+    private func teardownConnections(resetTransform: Bool = true) {
         closeInput()
         if let c = xconn { xsurface_close(c); xconn = nil }
         removeCursorOverlay()
@@ -2552,7 +2754,7 @@ final class XScreenView: UIView {
         usingIOSurface = false; iosConnectStarted = false; needsPresent = false
         testBuf?.deallocate(); testBuf = nil
         usingTestPattern = false
-        resetZoom()
+        if resetTransform { resetZoom() }
     }
 
     /// Switch to a display the user picked: tear down the old one, apply the new
@@ -2568,6 +2770,7 @@ final class XScreenView: UIView {
         if disp.renderable {
             _ = loadConfig()             // re-read the configured display's json
             if disp.number >= 0 { xDisplay = disp.displayStr }   // keep picked X display if any
+            awaitingCompositor = true
             if ddxIsIOSurface {
                 startTestPattern()
                 startIOSurfaceConnect()
@@ -2644,6 +2847,12 @@ final class XScreenView: UIView {
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         pinch.delegate = self
         addGestureRecognizer(pinch)
+
+        // Trackpad rotation, forwarded with pinch as one Wayland gesture. Harmless if
+        // iPadOS never delivers indirect rotation: handleRotation just never fires.
+        let rotation = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
+        rotation.delegate = self
+        addGestureRecognizer(rotation)
 
         let keyboardPan = UIPanGestureRecognizer(target: self, action: #selector(handleKeyboardRevealPan(_:)))
         keyboardPan.minimumNumberOfTouches = 1
@@ -2775,10 +2984,19 @@ final class XScreenView: UIView {
 
     @objc private func openPicker() { presentDisplayControl() }
 
-    private func fetchLauncherApps() -> (apps: [LauncherApp], error: String?) {
-        guard let lines = ioscdResponseLines("APPS_LIST\n") else {
-            return ([], "ioscd socket unavailable")
+    private typealias LauncherState = (apps: [LauncherApp], error: String?)
+
+    private func fetchLauncherApps(completion: @escaping (LauncherState) -> Void) {
+        requestIOSCDLines("APPS_LIST\n", timeout: 5.0) { lines in
+            guard let lines else {
+                completion(([], "ioscd timed out"))
+                return
+            }
+            completion(Self.launcherState(from: lines))
         }
+    }
+
+    private static func launcherState(from lines: [String]) -> LauncherState {
         var apps: [LauncherApp] = []
         for line in lines {
             if line.hasPrefix("ERR ") { return (apps, line) }
@@ -2792,31 +3010,60 @@ final class XScreenView: UIView {
         return (apps, nil)
     }
 
-    private func sendLauncherToggle(_ app: LauncherApp, enabled: Bool) -> Bool {
+    private func sendLauncherToggle(_ app: LauncherApp, enabled: Bool,
+                                    completion: @escaping (Bool) -> Void) {
         let verb = enabled ? "APP_ENABLE" : "APP_DISABLE"
-        guard let lines = ioscdResponseLines("\(verb)\t\(app.id)\n"),
-              let last = lines.last else {
-            lastToolMessage = "Launcher update failed: ioscd socket unavailable"
-            return false
+        requestIOSCDLines("\(verb)\t\(app.id)\n", timeout: 5.0) { [weak self] lines in
+            guard let self else { return }
+            guard let lines, let last = lines.last else {
+                self.lastToolMessage = "Launcher update failed: ioscd timed out"
+                completion(false)
+                return
+            }
+            if last == "APPS_END\t0" {
+                self.lastToolMessage = "\(enabled ? "Enabled" : "Disabled") \(app.name)"
+                completion(true)
+                return
+            }
+            self.lastToolMessage = "Launcher update failed: \(lines.first ?? last)"
+            completion(false)
         }
-        if last == "APPS_END\t0" {
-            lastToolMessage = "\(enabled ? "Enabled" : "Disabled") \(app.name)"
-            return true
-        }
-        lastToolMessage = "Launcher update failed: \(lines.first ?? last)"
-        return false
     }
 
-    private func sendLauncherSync(native: Bool, dryRun: Bool) -> [String]? {
+    private func sendLauncherSync(native: Bool, dryRun: Bool,
+                                  completion: @escaping ([String]?) -> Void) {
         let mode = native ? "native" : "classic"
         let dry = dryRun ? "dry" : "apply"
-        guard let lines = ioscdResponseLines("APPS_SYNC\t\(mode)\t\(dry)\n") else {
-            lastToolMessage = "Launcher sync failed: ioscd socket unavailable"
-            return nil
+        requestIOSCDLines("APPS_SYNC\t\(mode)\t\(dry)\n", timeout: 15.0) { [weak self] lines in
+            guard let self else { return }
+            guard let lines else {
+                self.lastToolMessage = "Launcher sync failed: ioscd timed out"
+                completion(nil)
+                return
+            }
+            let ok = lines.last == "APPS_END\t0"
+            self.lastToolMessage =
+                "\(dryRun ? "Dry run" : "Synced") \(mode) launchers\(ok ? "" : " with errors")"
+            completion(lines)
         }
-        let ok = lines.last == "APPS_END\t0"
-        lastToolMessage = "\(dryRun ? "Dry run" : "Synced") \(mode) launchers\(ok ? "" : " with errors")"
-        return lines
+    }
+
+    private func runLauncherSync(native: Bool, dryRun: Bool, title: String,
+                                 message: UILabel) {
+        let originOverlay = pickerOverlay
+        let mode = native ? "native" : "classic"
+        lastToolMessage = "\(dryRun ? "Checking" : "Syncing") \(mode) launchers…"
+        message.text = lastToolMessage
+        sendLauncherSync(native: native, dryRun: dryRun) {
+            [weak self, weak originOverlay, weak message] lines in
+            guard let self, let originOverlay,
+                  self.pickerOverlay === originOverlay else { return }
+            guard let lines else {
+                message?.text = self.lastToolMessage
+                return
+            }
+            self.presentLauncherSyncReport(title: title, lines: lines)
+        }
     }
 
     /// Parse the session launcher's status file (preset / state / human message). nil when the
@@ -3102,6 +3349,7 @@ final class XScreenView: UIView {
 
         let message = panelLabel(lastToolMessage, size: 12,
                                  color: UIColor(white: 0.70, alpha: 1))
+        toolMessageLabel = message
         stack.addArrangedSubview(message)
         return message
     }
@@ -3521,14 +3769,30 @@ final class XScreenView: UIView {
         return b
     }
 
-    private func presentHomeScreenApps(query initialQuery: String = "") {
-        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 720)
+    private func presentHomeScreenApps(query initialQuery: String = "",
+                                       state: LauncherState? = nil) {
+        let (overlay, _, _, stack) = presentScrollableModalCard(maxWidth: 720)
 
         stack.addArrangedSubview(panelLabel("Home Screen Apps", size: 18, weight: .bold))
         let message = panelLabel(lastToolMessage, size: 12, color: UIColor(white: 0.72, alpha: 1))
         stack.addArrangedSubview(message)
 
-        let state = fetchLauncherApps()
+        guard let state else {
+            message.text = "Loading launchers…"
+            stack.addArrangedSubview(panelLabel(
+                "Asking ioscd for the installed launcher set.",
+                size: 13, color: UIColor(white: 0.72, alpha: 1)))
+            stack.addArrangedSubview(buttonRow([
+                panelButton("Back") { [weak self] in self?.presentAdvanced() },
+                panelButton("Close") { [weak self] in self?.dismissPicker() },
+            ]))
+            fetchLauncherApps { [weak self, weak overlay] loaded in
+                guard let self, let overlay, self.pickerOverlay === overlay else { return }
+                self.presentHomeScreenApps(query: initialQuery, state: loaded)
+            }
+            return
+        }
+
         if let error = state.error {
             stack.addArrangedSubview(panelLabel(error, size: 13, color: UIColor.systemRed.withAlphaComponent(0.9)))
         }
@@ -3576,23 +3840,27 @@ final class XScreenView: UIView {
 
         addSection("Sync", to: stack)
         stack.addArrangedSubview(buttonRow([
-            panelButton("Dry Native") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: true) else { return }
-                self.presentLauncherSyncReport(title: "Native Dry Run", lines: lines)
+            panelButton("Dry Native") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: true, dryRun: true,
+                                     title: "Native Dry Run", message: message)
             },
-            panelButton("Dry Classic") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: false, dryRun: true) else { return }
-                self.presentLauncherSyncReport(title: "Classic Dry Run", lines: lines)
+            panelButton("Dry Classic") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: false, dryRun: true,
+                                     title: "Classic Dry Run", message: message)
             },
         ]))
         stack.addArrangedSubview(buttonRow([
-            panelButton("Apply Native") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: false) else { return }
-                self.presentLauncherSyncReport(title: "Native Sync", lines: lines)
+            panelButton("Apply Native") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: true, dryRun: false,
+                                     title: "Native Sync", message: message)
             },
-            panelButton("Apply Classic") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: false, dryRun: false) else { return }
-                self.presentLauncherSyncReport(title: "Classic Sync", lines: lines)
+            panelButton("Apply Classic") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: false, dryRun: false,
+                                     title: "Classic Sync", message: message)
             },
         ]))
 
@@ -3631,11 +3899,21 @@ final class XScreenView: UIView {
         row.addSubview(toggle)
         toggle.addAction(UIAction { [weak self, weak toggle, weak message] _ in
             guard let self, let toggle else { return }
-            if self.sendLauncherToggle(app, enabled: toggle.isOn) {
-                self.presentHomeScreenApps(query: query)
-            } else {
-                toggle.isOn = app.enabled
-                message?.text = self.lastToolMessage
+            let originOverlay = self.pickerOverlay
+            let requestedState = toggle.isOn
+            toggle.isEnabled = false
+            message?.text = "\(requestedState ? "Enabling" : "Disabling") \(app.name)…"
+            self.sendLauncherToggle(app, enabled: requestedState) {
+                [weak self, weak toggle, weak message, weak originOverlay] succeeded in
+                guard let self, let originOverlay,
+                      self.pickerOverlay === originOverlay else { return }
+                if succeeded {
+                    self.presentHomeScreenApps(query: query)
+                } else {
+                    toggle?.isEnabled = true
+                    toggle?.isOn = app.enabled
+                    message?.text = self.lastToolMessage
+                }
             }
         }, for: .valueChanged)
 
@@ -4345,6 +4623,10 @@ extension XScreenView: UIGestureRecognizerDelegate {
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Pinch and rotation must run together: one Wayland gesture carries both, so
+        // letting either win exclusively would drop half of it.
         gestureRecognizer is UIPinchGestureRecognizer || otherGestureRecognizer is UIPinchGestureRecognizer
+            || gestureRecognizer is UIRotationGestureRecognizer
+            || otherGestureRecognizer is UIRotationGestureRecognizer
     }
 }

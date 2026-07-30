@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.1"
+          "text": "0.1.3"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "1.1 KiB"
+          "text": "1.2 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.1.1  \u00b7  2026-07-29\n- Installs the Xios display app (com.max.xios) \u2014 no more sideloading it by hand\n- Every flavor now brings its own display: install one package and open X11 on the Home Screen\n\n## 0.1.0  \u00b7  2026-07-01\n- First release: iosc + ANGLE + D-Bus + audio + desktop defaults as one base package"
+          "markdown": "## 0.1.1  \u00b7  2026-07-29\n- Installs the Xios display app (com.max.xios): no more sideloading it by hand\n- Every flavor now brings its own display: install one package and open X11 on the Home Screen\n\n## 0.1.0  \u00b7  2026-07-01\n- First release: iosc + ANGLE + D-Bus + audio + desktop defaults as one base package"
         }
       ]
     }

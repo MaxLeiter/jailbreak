@@ -1,23 +1,23 @@
 Package: xios-core
 Name: Xios Desktop Core
-Version: 0.1.2
+Version: 0.1.4
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), com.max.xios (>= 0.1.1), iosc (>= 0.9.27), iosc-shell (>= 0.9.11), angle (>= 2.1.0+git20260630.a32d31d+es3-10), dbus, xios-desktop-defaults, xios-audio-server, xios-session (>= 1.0.56), xios-launcher-tools (>= 0.1.3)
+Depends: firmware (>= 16.0), com.max.xios (>= 0.1.2), iosc (>= 0.9.33), iosc-shell (>= 0.9.11), angle (>= 2.1.0+git20260630.a32d31d+es3-14), dbus, xios-desktop-defaults, xios-audio-server, xios-session (>= 1.0.60), xios-launcher-tools (>= 0.1.4)
 Recommends: pulseaudio, xios-desktop-theme
 MinimumOSVersion: 16.0.0
 Description: shared base for every Xios desktop flavor
- The common foundation that every Xios desktop flavor builds on: the iosc
- Wayland compositor, the ANGLE GPU stack (OpenGL ES on Metal), the D-Bus
- message bus, desktop audio, and the ambient distro defaults (fonts, locale,
- XDG paths, retina display profile).
+ The common foundation that every Xios desktop flavor builds on: the Xios
+ display app, the iosc Wayland compositor, the ANGLE GPU stack (OpenGL ES on
+ Metal), the D-Bus message bus, desktop audio, and the ambient distro defaults
+ (fonts, locale, XDG paths, retina display profile). It also installs the
+ session launcher and the iosc desktop shell.
  .
  Install one of the flavor packages instead of this one: xios-gnome,
  xios-kde, xios-native, or xios-x11. Each pulls in xios-core automatically.
  .
- The Xios display app itself is sideloaded and is not part of this repo;
- xios-core provides everything that runs behind it. Target profile:
- @REPO_PROFILE@.
+ The display app needs AppSync Unified to launch. Rootless jailbreaks only
+ (/var/jb). Target profile: @REPO_PROFILE@.

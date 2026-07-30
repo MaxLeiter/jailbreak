@@ -39,6 +39,14 @@ void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressu
  * made handle-based like the rest of this file. */
 void iosc_input_axis(iosc_input_t *h, int dx256, int dy256, unsigned source,
                      unsigned mods, bool stop);
+/* Trackpad pinch/rotate (wire type 14, xios_input_socket.h XIOS_IN_GESTURE) ->
+ * zwp_pointer_gestures_v1. kind: 1 swipe, 2 pinch, 3 hold. phase: 0 begin, 1 update,
+ * 2 end, 3 cancel. scale256 = scale since begin in 1/256 (256 = 1.0), rot256 = rotation
+ * since begin in 1/256 DEGREES clockwise; both ABSOLUTE since begin, as wl_pointer wants
+ * them, not per-frame deltas. dx256/dy256 = gesture-centre movement in 1/256 canvas px.
+ * Mirrors apps/Xios/Sources/IoscInput.{c,h} iosc_input_gesture(), handle-based. */
+void iosc_input_gesture(iosc_input_t *h, unsigned kind, unsigned phase, unsigned fingers,
+                        int dx256, int dy256, unsigned scale256, int rot256);
 /* Drain the server->app stream. Returns 1 with ONE TRAITS record's fields filled
  * (call again for more; every enable/disable transition is delivered, nothing
  * coalesces), 0 when no complete record is pending, -1 on disconnect. */

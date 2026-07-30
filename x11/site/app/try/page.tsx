@@ -47,8 +47,8 @@ export default function Try() {
           <div className="row">
             <dt>Some free space</dt>
             <dd>
-              About 190 MB installed for GNOME and 550 MB for KDE. The native and
-              X11 flavors are around 55 MB.
+              About 190 MB installed for GNOME and 610 MB for KDE, which brings
+              every KDE app we ship. The native and X11 flavors are around 55 MB.
             </dd>
           </div>
         </dl>
@@ -106,8 +106,9 @@ export default function Try() {
             </dt>
             <dd>
               KWin with Plasma Desktop, Plasma Mobile, and Plasma Nano, plus
-              System Settings and Breeze. Newer and rougher than GNOME. Needs iOS
-              16.5.
+              System Settings, PowerDevil, Breeze, and every KDE app we ship:
+              Konsole, Dolphin, Kate, KWrite, KCalc, Okular, Ark, Gwenview.
+              Newer and rougher than GNOME. Needs iOS 16.5.
             </dd>
           </div>
           <div className="row">

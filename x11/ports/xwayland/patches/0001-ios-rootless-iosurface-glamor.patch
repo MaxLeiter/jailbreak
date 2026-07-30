@@ -8,6 +8,15 @@ surface, and use /var/jb/bin/sh for rootless popen helpers.
 The backend source and iosc protocol XML are local build inputs staged by the
 recipe; this patch only carries the upstream source-tree edits.
 
+diff -ruN xwayland-23.2.7/meson.build xwayland-23.2.7.patched/meson.build
+--- xwayland-23.2.7/meson.build	2024-05-14 23:23:35
++++ xwayland-23.2.7.patched/meson.build	2026-07-29 19:25:00
+@@ -1,4 +1,4 @@
+-project('xwayland', 'c',
++project('xwayland', 'c', 'objc',
+         default_options: [
+             'buildtype=debugoptimized',
+             'c_std=gnu99',
 diff -ruN xwayland-23.2.7/glamor/glamor.c xwayland-23.2.7.patched/glamor/glamor.c
 --- xwayland-23.2.7/glamor/glamor.c	2024-05-14 23:23:35
 +++ xwayland-23.2.7.patched/glamor/glamor.c	2026-07-04 22:27:14
@@ -28,17 +37,21 @@ diff -ruN xwayland-23.2.7/glamor/glamor.c xwayland-23.2.7.patched/glamor/glamor.
 diff -ruN xwayland-23.2.7/hw/xwayland/meson.build xwayland-23.2.7.patched/hw/xwayland/meson.build
 --- xwayland-23.2.7/hw/xwayland/meson.build	2024-05-14 23:23:35
 +++ xwayland-23.2.7.patched/hw/xwayland/meson.build	2026-07-04 22:27:14
-@@ -126,6 +126,14 @@
+@@ -126,6 +126,18 @@
  
          srcs += 'xwayland-glamor-eglstream.c'
      endif
 +    if build_iosurface
 +        srcs += 'xwayland-glamor-iosurface.c'
++        srcs += 'xios_metal_sync.m'
++        srcs += 'XiosMetalEventBroker.m'
 +        srcs += client_header.process('iosc-iosurface.xml')
 +        srcs += code.process('iosc-iosurface.xml')
-+        # IOSurface/CoreFoundation C APIs used by the backend.
++        # IOSurface plus the brokered Metal shared-event transport.
 +        xwayland_dep += declare_dependency(link_args: [
-+            '-Wl,-framework,IOSurface', '-Wl,-framework,CoreFoundation'])
++            '-Wl,-framework,IOSurface', '-Wl,-framework,CoreFoundation',
++            '-Wl,-framework,Foundation', '-Wl,-framework,Metal',
++            '-lEGL', '-lGLESv2'])
 +    endif
      if build_xv
          srcs += 'xwayland-glamor-xv.c'

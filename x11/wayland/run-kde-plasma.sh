@@ -230,8 +230,8 @@ kde_process_running() {
 }
 
 if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
-  echo "==> stop prior iosc/KDE session pieces"
-  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
+  echo "==> stop prior iosc/KDE session pieces (keep the Xios display app)"
+  ps ax | grep -v grep | grep -E "(^|[ /])iosc( |$)|ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
     | awk '{print $1}' | while read -r pid; do
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
     done
@@ -681,7 +681,6 @@ fi
 echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
 nohup "$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-  IOSC_FRAME_PULSE="${IOSC_FRAME_PULSE:-1}" \
   IOSC_IGNORE_ACTIVE_SESSION=1 \
   IOSC_FULLSCREEN_TOPLEVELS="$IOSC_FULLSCREEN_TOPLEVELS" \
   IOSC_NO_OUTPUT_TRANSFORM="$IOSC_NO_OUTPUT_TRANSFORM" \
@@ -829,6 +828,8 @@ nohup "$SETSID" env \
       echo "launch kded: $KDED_BIN --replace"
       (
         export QT_QPA_PLATFORM="${KDED_QT_QPA_PLATFORM:-offscreen}"
+        export QT_QUICK_BACKEND=software
+        unset QSG_RHI_BACKEND QMLSCENE_DEVICE
         unset WAYLAND_DISPLAY
         "$KDED_BIN" --replace >"$KDED_LOG" 2>&1
       ) &
@@ -858,7 +859,15 @@ nohup "$SETSID" env \
     fi
     kamd_pid=
     if [ -x "$KAMD_BIN" ] && [ "${XIOS_KDE_START_KAMD:-1}" != 0 ]; then
-      "$KAMD_BIN" &
+      # The activity service has no windows. Keep it off the Wayland/EGL path
+      # instead of allocating a software QtQuick backend it never displays.
+      (
+        export QT_QPA_PLATFORM="${KAMD_QT_QPA_PLATFORM:-offscreen}"
+        export QT_QUICK_BACKEND=software
+        unset QSG_RHI_BACKEND QMLSCENE_DEVICE
+        unset WAYLAND_DISPLAY QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+        "$KAMD_BIN"
+      ) &
       kamd_pid=$!
       sleep 0.5
     fi
@@ -869,7 +878,13 @@ nohup "$SETSID" env \
     # NB: no apostrophes here -- this block is inside a single-quoted bash -lc.
     powerdevil_pid=
     if [ -x "$POWERDEVIL_BIN" ] && [ "${XIOS_KDE_START_POWERDEVIL:-1}" != 0 ]; then
-      "$POWERDEVIL_BIN" >>"$KDE_LOG" 2>&1 &
+      (
+        export QT_QPA_PLATFORM="${POWERDEVIL_QT_QPA_PLATFORM:-offscreen}"
+        export QT_QUICK_BACKEND=software
+        unset QSG_RHI_BACKEND QMLSCENE_DEVICE
+        unset WAYLAND_DISPLAY QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+        "$POWERDEVIL_BIN"
+      ) >>"$KDE_LOG" 2>&1 &
       powerdevil_pid=$!
       echo "launch powerdevil: $POWERDEVIL_BIN"
     fi

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <wayland-server.h>
 
-#define IOSC_IOSURFACE_VERSION 4
+#define IOSC_IOSURFACE_VERSION 1
 
 void iosc_iosurface_bind(struct wl_client *client, void *data,
                          uint32_t version, uint32_t id);
