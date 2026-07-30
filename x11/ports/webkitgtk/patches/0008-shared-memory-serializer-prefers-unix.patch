@@ -1,10 +1,23 @@
 From: Xios Project <xios@localhost>
-Subject: [PATCH] Match shared-memory serializer to Unix handle selection
+Subject: [PATCH] Match IPC serializers to Unix handle selection
 
-Darwin GTK builds enable Unix domain sockets. SharedMemoryHandle therefore
-selects UnixFileDescriptor before considering MachSendRight, but the generated
-serializer emitted both Darwin and Unix fields. Mirror the type-selection
-precedence so the serialized layout and constructor stay consistent.
+Darwin GTK builds enable Unix domain sockets. SharedMemoryHandle and
+ConnectionHandle therefore select UnixFileDescriptor before considering
+MachSendRight, but their generated serializers emitted both Darwin and Unix
+fields. Mirror the type-selection precedence so serialized layouts and
+constructors stay consistent.
+
+--- a/Source/WebKit/Platform/IPC/ConnectionHandle.serialization.in
++++ b/Source/WebKit/Platform/IPC/ConnectionHandle.serialization.in
+@@ -28,7 +28,7 @@
+ #if OS(WINDOWS)
+     Win32Handle m_handle;
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     WTF::MachSendRight m_handle;
+ #endif
+ }
 
 --- a/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
 +++ b/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
