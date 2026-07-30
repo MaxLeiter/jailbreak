@@ -1,0 +1,10 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -116,2 +116,6 @@ if (XIOS_IOS)
+     set(APPLE FALSE)
++    # Qt 6.6 does not reliably expose Q_DISABLE_COPY through the transitive
++    # QtCore includes used by Krita's newer headers.
++    set(CMAKE_CXX_FLAGS
++        "${CMAKE_CXX_FLAGS} -include QtCore/qtclasshelpermacros.h")
+ endif()
