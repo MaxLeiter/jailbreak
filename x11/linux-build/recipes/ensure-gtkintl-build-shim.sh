@@ -39,9 +39,16 @@ mkdir -p "$output_dir"
 mv -f "$output_file.tmp" "$output_file"
 
 # ld64 resolves a re-export while linking the consumer, before its runtime
-# @rpath is meaningful. Keep the real gettext install name beside the bridge,
-# then aim the unversioned development name at the bridge. This gives callers
-# both the ordinary libintl_* exports and GTK's g_libintl_* proxy exports.
+# @rpath is meaningful. Give this build-only bridge an absolute re-export path;
+# shipped libgtkintl is built separately with the correct @rpath dependency.
+int_tool="$(command -v aarch64-apple-darwin-install_name_tool \
+  || command -v install_name_tool \
+  || command -v llvm-install-name-tool)"
+"$int_tool" -change @rpath/libintl.8.dylib "$gettext_runtime" "$output_file"
+
+# Keep the real gettext runtime beside the bridge and aim the unversioned
+# development name at the bridge. Callers then see both ordinary libintl_*
+# exports and GTK's g_libintl_* proxy exports.
 cp -f "$gettext_runtime" "$output_dir/libintl.8.dylib"
 ln -sf libgtkintl.dylib "$output_dir/libintl.dylib"
 echo "==> prepared build-sysroot libgtkintl bridge and gettext runtime"
