@@ -1,0 +1,75 @@
+diff --git a/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp b/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp
+--- a/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp
++++ b/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp
+@@ -211 +211 @@
+-    QStringView elementName;
++    QString elementName;
+@@ -235 +235 @@
+-            if (htmlReader.name() == "br") {
++            if (htmlReader.name().toString() == "br") {
+@@ -247 +247 @@
+-                elementName = htmlReader.name();
++                elementName = htmlReader.name().toString();
+@@ -376 +376 @@
+-            if (htmlReader.name() == "br") break;
++            if (htmlReader.name().toString() == "br") break;
+@@ -879 +879 @@
+-        if (elementAttributes.at(a).name() != "style") {
++        if (elementAttributes.at(a).name().toString() != "style") {
+@@ -1011 +1011 @@
+-                if ((isSameXOffset() || thisBlockAlignment != prevBlockAlignment) && svgReader.name() != "text"
++                if ((isSameXOffset() || thisBlockAlignment != prevBlockAlignment) && svgReader.name().toString() != "text"
+@@ -1019 +1019 @@
+-                    KIS_SAFE_ASSERT_RECOVER_NOOP(formatStack.isEmpty() == (svgReader.name() == "text"));
++                    KIS_SAFE_ASSERT_RECOVER_NOOP(formatStack.isEmpty() == (svgReader.name().toString() == "text"));
+@@ -1065 +1065 @@
+-            if (svgReader.name() != "text") {
++            if (svgReader.name().toString() != "text") {
+diff --git a/libs/flake/text/KoCssTextUtils.cpp b/libs/flake/text/KoCssTextUtils.cpp
+--- a/libs/flake/text/KoCssTextUtils.cpp
++++ b/libs/flake/text/KoCssTextUtils.cpp
+@@ -335,4 +335,4 @@
+-            c == "\u0027" || // Apostrophe
+-            c == "\uFF07" || // Fullwidth Apostrophe
+-            c == "\u0022" || // Quotation Mark
+-            c == "\uFF02") { // Fullwidth Quotation Mark
++            c.unicode() == 0x0027 || // Apostrophe
++            c.unicode() == 0xFF07 || // Fullwidth Apostrophe
++            c.unicode() == 0x0022 || // Quotation Mark
++            c.unicode() == 0xFF02) { // Fullwidth Quotation Mark
+@@ -346,4 +346,4 @@
+-            c == "\u0027" || // Apostrophe
+-            c == "\uFF07" || // Fullwidth Apostrophe
+-            c == "\u0022" || // Quotation Mark
+-            c == "\uFF02") { // Fullwidth Quotation Mark
++            c.unicode() == 0x0027 || // Apostrophe
++            c.unicode() == 0xFF07 || // Fullwidth Apostrophe
++            c.unicode() == 0x0022 || // Quotation Mark
++            c.unicode() == 0xFF02) { // Fullwidth Quotation Mark
+@@ -354,13 +354,13 @@
+-        if (c == "\u002c" || // Comma
+-            c == "\u002e" || // Full Stop
+-            c == "\u060c" || // Arabic Comma
+-            c == "\u06d4" || // Arabic Full Stop
+-            c == "\u3001" || // Ideographic Comma
+-            c == "\u3002" || // Ideographic Full Stop
+-            c == "\uff0c" || // Fullwidth Comma
+-            c == "\uff0e" || // Fullwidth full stop
+-            c == "\ufe50" || // Small comma
+-            c == "\ufe51" || // Small ideographic comma
+-            c == "\ufe52" || // Small full stop
+-            c == "\uff61" || // Halfwidth ideographic full stop
+-            c == "\uff64" // halfwidth ideographic comma
++        if (c.unicode() == 0x002c || // Comma
++            c.unicode() == 0x002e || // Full Stop
++            c.unicode() == 0x060c || // Arabic Comma
++            c.unicode() == 0x06d4 || // Arabic Full Stop
++            c.unicode() == 0x3001 || // Ideographic Comma
++            c.unicode() == 0x3002 || // Ideographic Full Stop
++            c.unicode() == 0xff0c || // Fullwidth Comma
++            c.unicode() == 0xff0e || // Fullwidth full stop
++            c.unicode() == 0xfe50 || // Small comma
++            c.unicode() == 0xfe51 || // Small ideographic comma
++            c.unicode() == 0xfe52 || // Small full stop
++            c.unicode() == 0xff61 || // Halfwidth ideographic full stop
++            c.unicode() == 0xff64 // halfwidth ideographic comma

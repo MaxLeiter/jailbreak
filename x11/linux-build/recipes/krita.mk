@@ -15,7 +15,10 @@ krita-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://invent.kde.org/graphics/krita/-/archive/$(KRITA_COMMIT)/krita-$(KRITA_COMMIT).tar.gz)
 	$(call EXTRACT_TAR,krita-$(KRITA_COMMIT).tar.gz,krita-$(KRITA_COMMIT),krita)
 	$(call DO_PATCH,krita,krita,-p1)
-	for package in libtiff6 libtiff-dev libwebp7 libwebpdemux2 libwebpmux3 libwebp-dev; do \
+	for package in \
+		libtiff6 libtiff-dev \
+		libwebp7 libwebpdemux2 libwebpmux3 libwebp-dev \
+		libharfbuzz0b libharfbuzz-dev; do \
 		deb="$$(find /out -maxdepth 1 -type f -name "$${package}_*_$${XIOS_DEB_ARCH}.deb" \
 			-printf '%f\t%p\n' 2>/dev/null | sort -V | tail -1 | cut -f2-)"; \
 		[ -n "$$deb" ] || { echo "ERROR: Krita needs current $$package in /out" >&2; exit 1; }; \

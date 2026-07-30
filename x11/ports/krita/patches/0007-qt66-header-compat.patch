@@ -1,0 +1,11 @@
+diff --git a/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp b/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp
+--- a/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp
++++ b/libs/flake/text/KoSvgTextShapeMarkupConverter.cpp
+@@ -241 +241 @@
+-                elementName = QStringView(p);
++                elementName = p;
+diff --git a/libs/global/kis_lockless_stack.h b/libs/global/kis_lockless_stack.h
+--- a/libs/global/kis_lockless_stack.h
++++ b/libs/global/kis_lockless_stack.h
+@@ -20,0 +21 @@
++#include <QtCore/qtclasshelpermacros.h>

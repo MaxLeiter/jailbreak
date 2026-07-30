@@ -3,3 +3,5 @@
 0003-qt66-ios-widget-compat.patch
 0004-qt66-colorspace-compat.patch
 0005-qt66-debug-optional-compat.patch
+0006-qt66-string-view-compat.patch
+0007-qt66-header-compat.patch

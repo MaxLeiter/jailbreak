@@ -59,7 +59,8 @@ source /work/recipes/xios-cache-fingerprint.sh
 echo "==> staging current image-codec development packages"
 for package in \
   libtiff6 libtiff-dev \
-  libwebp7 libwebpdemux2 libwebpmux3 libwebp-dev; do
+  libwebp7 libwebpdemux2 libwebpmux3 libwebp-dev \
+  libharfbuzz0b libharfbuzz-dev; do
   deb="$(find /out -maxdepth 1 -type f -name "${package}_*_${XIOS_DEB_ARCH}.deb" \
     -printf '%f\t%p\n' 2>/dev/null | sort -V | tail -1 | cut -f2-)"
   if [ -z "$deb" ]; then
