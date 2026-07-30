@@ -14,6 +14,11 @@
 # (the image's ENTRYPOINT is /bin/bash, so the bare script path runs under bash;
 #  --entrypoint sh would run it under dash and break set -o pipefail)
 set -euo pipefail
+# ICU_VERSION=<x.y> builds a version other than the recipe default. It must go on
+# the make COMMAND LINE: recipes/icu4c.mk assigns ICU_VERSION with :=, which an
+# environment variable cannot override. Qt pins 74.2 because ICU bakes its major
+# version into every symbol name, while Ladybird pins 78 -- so both get built and
+# coexist in out/.
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
 cd /work/Procursus
@@ -42,7 +47,7 @@ COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 echo "==> make icu4c-package"
-make icu4c-package $COMMON -j"$(nproc)"
+make icu4c-package $COMMON ${ICU_VERSION:+ICU_VERSION="$ICU_VERSION"} -j"${JOBS:-$(nproc)}"
 
 echo "==> collect debs -> /out"
 mkdir -p /out

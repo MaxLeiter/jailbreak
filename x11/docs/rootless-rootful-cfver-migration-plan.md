@@ -660,6 +660,33 @@ python3 x11/linux-build/tools/report-closure.py rootful-1900 --markdown \
   > x11/docs/closure-rootful-1900.md
 ```
 
+### Qt for rootful: blocked on the ICU 74.2 pin
+
+Host Qt 6.6.3 builds for the rootful volume (the one-time ~25 min step, now
+cached). `qtbase` then stops at its own guard:
+
+    ERROR: ICU 74.2 debs not found in /out (need libicu74_74.2* AND libicu-dev_74.2+ios1*)
+
+The pin is deliberate -- ICU bakes its major version into every symbol name, so
+Qt (74) and Ladybird (78) cannot share one -- but it is no longer buildable:
+
+* `recipes/icu4c.mk` now pins `ICU_VERSION := 78.3`. `build-icu.sh` gained an
+  `ICU_VERSION=` knob (it has to reach make on the command line, since `:=`
+  beats the environment), and 74.2 then gets as far as packaging before failing
+  on `cp: libicu*.74*.dylib: No such file or directory` -- the stage still holds
+  the 78.3 build -- and on a missing `build_info/libicu74.control`.
+* That control template has never existed in this repo. `git log --all` finds no
+  commit that ever added it. Only `libicu78.control` and `libicu-dev.control`
+  are shipped.
+* Rootless is unaffected because `libicu74 74.2+ios1` is already published for
+  `iphoneos-arm64`, so the warm Qt volume finds it in `/out` and the guard
+  passes. Sixth instance of the warm-volume pattern.
+
+So this is a decision, not a bug to fix blind: either Qt moves to ICU 78 (one
+pin, one ABI, and the comment in build-qt.sh explaining why it cannot goes away),
+or `libicu74.control` is restored and icu4c.mk learns to build both versions
+cleanly. Left for Max.
+
 What is left:
 
 1. Package `iosc` for rootful (`wayland/package-iosc.sh rootful-1900`), which is

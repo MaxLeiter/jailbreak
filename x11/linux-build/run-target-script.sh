@@ -70,7 +70,7 @@ echo "==> out:    $OUT"
 
 cmd=(docker run --rm --platform linux/arm64
   -e XIOS_TARGET_ID -e XIOS_MEMO_TARGET -e XIOS_MEMO_CFVER -e XIOS_PREFIX
-  -e XIOS_SUBPREFIX -e XIOS_DEB_ARCH -e JOBS -e TARGETS
+  -e XIOS_SUBPREFIX -e XIOS_DEB_ARCH -e JOBS -e TARGETS -e ICU_VERSION
   -v "$VOLUME:/work/Procursus"
   -v "$HERE/target-env.sh:/work/target-env.sh:ro"
   -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro"
