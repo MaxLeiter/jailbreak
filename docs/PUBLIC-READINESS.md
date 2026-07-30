@@ -1,19 +1,39 @@
 # Public Readiness
 
-Status as of 2026-07-03: close, but not ready to make public without cleanup.
+Status as of 2026-07-29: one blocker left — a history purge. Everything else on the original
+list is done: MIT `LICENSE` at the root, the artifact policy decided and enforced by
+`.gitignore`, Blob hosting live, and CI running the PR checks below.
 
-## Current Blockers
+## Current Blocker
 
-1. ~~Choose and commit a `LICENSE`.~~ **DONE (2026-07-08):** MIT `LICENSE` added at repo root, copyright Max Leiter.
-2. Purge copied proprietary assets, private exported transcripts, and vendored source tarballs from history before making an existing private repository public. The following are already removed from the index but, if history is preserved, must be stripped with `git filter-repo` (or publish from a clean new history):
-   - `x11/apps/iosc-shell/design/.sf/SFNS.ttf` — Apple's proprietary San Francisco font (redistribution violates Apple's license).
-   - `x11/docs/x11-coordination-postmortem.zip` — private exported transcript.
-   - `x11/linux-build/src-tarballs/*.tar`, `*.tar.xz`, `*.tar.gz` — vendored upstream tarballs (~84 MB working tree, more in history). Untracked + git-ignored 2026-07-08; the build recipes re-fetch them from upstream, so a history purge reclaims the pack weight with no source loss. Curated header subdirs (`dbus-headers/`, `libei-1.3.0/src/`) stay tracked as build inputs — do **not** purge those paths.
-3. Decide the long-term artifact policy. Source, recipes, patches, package skeletons, and docs belong in Git. Final `.deb`s and generated build outputs should not; the current index removes `repo/debs/` package payloads and `x11/wayland/out/` generated binaries.
+**Purge copied proprietary assets and private transcripts from history** before making this
+repository public. These are already out of the index, but if history is preserved they must
+be stripped with `git filter-repo` (or the repo published from clean history):
 
-## Package Hosting Recommendation
+- `x11/apps/iosc-shell/design/.sf/SFNS.ttf` — Apple's proprietary San Francisco font
+  (redistribution violates Apple's license).
+- `x11/docs/x11-coordination-postmortem.zip` — private exported transcript.
+- `x11/linux-build/src-tarballs/*.tar`, `*.tar.xz`, `*.tar.gz` — vendored upstream tarballs
+  (~84 MB working tree, more in history). Untracked and git-ignored since 2026-07-08; the
+  recipes re-fetch them from upstream, so a purge reclaims the pack weight with no source
+  loss. Curated header subdirs (`dbus-headers/`, `libei-1.3.0/src/`) stay tracked as build
+  inputs — do **not** purge those paths.
 
-Use Vercel for the small mutable APT metadata and landing page:
+Run a secret/artifact scan (`gitleaks`, `git filter-repo --analyze`, or equivalent) as part
+of the same pass.
+
+## Settled
+
+- **License** (2026-07-08): MIT `LICENSE` at the repo root, copyright Max Leiter.
+- **Artifact policy**: source, recipes, patches, package skeletons, and docs are tracked.
+  Final `.deb`s and generated build outputs are not — `.gitignore` drops `repo/debs/`
+  payloads, `x11/wayland/out/`, and the vendored tarball blobs.
+- **Site lockfile**: `x11/site/bun.lock` is committed and CI installs with
+  `bun install --frozen-lockfile`.
+
+## Package Hosting (live)
+
+Vercel serves the small mutable APT metadata and landing page:
 
 - `repo/Packages`
 - `repo/Packages.gz`
@@ -32,40 +52,27 @@ Use Vercel Blob for `.deb` payloads. This is live:
 
 Why:
 
-- The local package repo currently has 450 `.deb` payloads in `repo/debs`
-  (about 325 MB), and local, staging, and production metadata all index the same
-  450 package stanzas.
+- The index has grown past 550 package stanzas, and the payloads behind them are far larger
+  than the metadata they are indexed by.
 - Vercel CLI static source uploads are limited by plan, and Vercel's documented limit is 100 MB on Hobby and 1 GB on Pro.
 - Public Blob storage is designed for public assets and large downloads.
 - Vercel recommends treating blobs as immutable, which matches the existing rule that public `.deb` filenames must never be replaced.
 
-Migration runbook:
+How it is wired (done — this is a record, not a runbook):
 
-1. Create a public Blob store for package payloads.
-   ```bash
-   cd repo
-   vercel blob create-store xios-debs --access public
-   vercel env pull
-   ```
-2. Upload every package to stable pathnames such as `debs/<filename>.deb` with `cache-control-max-age=31536000` and no random suffix.
-   ```bash
-   BLOB_DRY_RUN=1 bin/upload-debs-to-blob.sh
-   bin/upload-debs-to-blob.sh
-   ```
-3. Keep `Filename: debs/<filename>.deb` in `Packages`.
-4. Configure `repo.maxleiter.com/debs/*` to redirect to the public Blob URL for the same pathname. Prefer redirects over changing `Filename` to absolute Blob URLs until apt, Sileo, Zebra, and Cydia behavior is verified.
-5. Keep `debs/` in `repo/.vercelignore` so Vercel deploys only metadata and site assets.
-6. Publish through `bin/publish-repo.sh` or `bin/publish-staging.sh`; the scripts now upload local payloads to Blob before deploying signed metadata/site assets.
+1. Public Blob store `xios-debs`, payloads at stable `debs/<filename>.deb` pathnames with
+   `cache-control-max-age=31536000` and no random suffix, uploaded by
+   `bin/upload-debs-to-blob.sh` (set `BLOB_DRY_RUN=1` to preview).
+2. `Packages` keeps `Filename: debs/<filename>.deb`; `repo.maxleiter.com/debs/*` redirects to
+   the Blob URL for the same pathname. Redirects were chosen over absolute Blob URLs in
+   `Filename` so apt, Sileo, Zebra, and Cydia all keep working.
+3. `debs/` stays in `repo/.vercelignore`, so deployments carry only metadata and site assets.
+4. `bin/publish-repo.sh` / `bin/publish-staging.sh` upload new payloads to Blob before
+   deploying signed metadata, and refuse to overwrite a public Blob path whose remote size
+   differs from the local package.
 
-Validation used for the cutover:
-
-- Staging deployment: `dpl_J7wfPdeymzW716aTfzXcq13mAzM7`, aliased to `https://dev.repo.maxleiter.com`.
-- Production deployment: `dpl_oSjTBfNPkBd4KufsNEHDw6Gysv9c`, aliased to `https://repo.maxleiter.com`.
-- Production `Packages.gz` matches local `repo/Packages`, indexes 450 packages, and includes
-  `com.max.kioskmode-app_0.3.2_iphoneos-arm64.deb`,
-  `com.max.taskmanager_0.1.1_iphoneos-arm64.deb`, and
-  `xios-launcher-tools_0.1.0_iphoneos-arm64.deb`.
-- Production package URL sweep: `checked=450 bad=0 not_blob=0`.
+To re-verify that every indexed package actually resolves to Blob (the sweep run at cutover
+reported `bad=0 not_blob=0`):
 
 ```bash
 python3 - <<'PY'
@@ -102,13 +109,13 @@ Do not use a Vercel rewrite/proxy for package downloads unless redirects fail in
 
 ## GitHub Actions Policy
 
-Use Actions for PR validation:
+`.github/workflows/ci.yml` runs on PRs and pushes to `main`, and is the whole of CI:
 
 - local-only file guard
-- Python syntax checks
-- shell syntax checks
-- package dependency metadata checks
-- Xios site build
+- Python syntax checks (`py_compile` over tracked `*.py`)
+- shell syntax checks (`bash -n` over tracked `*.sh`)
+- package dependency metadata check (`bin/lib/check-repo-solvable.py repo/Packages`)
+- Xios site build (`bun install --frozen-lockfile && bun run build`)
 
 Do not deploy production from arbitrary PRs.
 
@@ -141,7 +148,8 @@ Maintainers still need to perform:
 ## Cleanup Backlog
 
 - Decide whether generated repo depictions/icons/banners stay committed or are rebuilt only during publish.
-- ~~Decide whether vendored source tarballs under `x11/linux-build/src-tarballs/` stay committed or move to documented fetch steps.~~ **DONE (2026-07-08):** untracked + git-ignored; recipes already fetch from upstream (`DOWNLOAD_FILES`/`EXTRACT_TAR`). Fold their paths into the Blocker 2 history purge.
 - Decide whether binary package skeleton payloads such as `x11/packages/x11-xvfb/var/jb/usr/bin/Xvfb` and `x11/packages/xios-server/var/jb/usr/bin/Xios` stay as bootstrap artifacts.
-- Add a lockfile for `x11/site` if reproducible site builds matter for CI.
-- Run a history scan before public launch: `gitleaks`, `git filter-repo --analyze`, or an equivalent secret/artifact audit.
+
+The vendored-tarball question is settled (untracked and git-ignored since 2026-07-08; the
+recipes fetch from upstream), and the site lockfile now exists — both fold into the history
+purge above rather than standing as open decisions.

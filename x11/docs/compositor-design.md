@@ -1,7 +1,7 @@
 # Xios compositor — per-window forwarding shell (design)
 
 Status: design only (no code here). Author: compositor-design research pass.
-Targets the device in `SCOPE.md` — iPad7,12, iPadOS 17.6.1, palera1n rootless
+Targets the reference device in the repo root README — iPad7,12, iPadOS 17.6.1, rootless
 (`/var/jb`), Procursus, A10 (arm64, **not** arm64e).
 
 This document specifies how to evolve the current full-screen Xios X server app into a

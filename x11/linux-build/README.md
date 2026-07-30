@@ -12,8 +12,8 @@ errors, `install_name_tool` rpath duplication, …). Procursus's **Linux** path 
 `cctools-port` + an older clang and builds the 2021-era X stack reliably — so we run that in
 a container, keep the Mac clean, and get reproducible artifacts.
 
-> Track-B1 rationale, the on-device gotchas, and where this sits in the roadmap are in
-> [`../SCOPE.md`](../SCOPE.md).
+> Why Procursus-in-a-container instead of a macOS host, and the entitlement gotchas the
+> signing steps below exist for, are in [`../SCOPE.md`](../SCOPE.md).
 
 ## What it produces (`out/`)
 

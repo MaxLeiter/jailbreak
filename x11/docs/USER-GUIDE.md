@@ -3,9 +3,10 @@
 Install one package, open one app, get a desktop. This guide covers the four desktop
 flavors, how to start and stop a session, and what to do when something does not come up.
 
-> Tested on iPadOS 17.6.1, iPad 7th gen, palera1n rootless, Procursus bootstrap. Other
-> rootless jailbreaks (Dopamine, RootHide) should work; rooted jailbreaks will not, because
-> every binary here bakes in `/var/jb`. Architecture and background: [`../SCOPE.md`](../SCOPE.md).
+> Tested on iPadOS 17.6.1, iPad 7th gen, Dopamine rootless, Procursus bootstrap. Other
+> rootless jailbreaks (palera1n) should work; rootful jailbreaks will not, because every
+> binary here bakes in `/var/jb`, and RootHide relocates the jbroot so it needs its own
+> build. Architecture and background: [xios.maxleiter.com](https://xios.maxleiter.com).
 
 ---
 
