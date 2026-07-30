@@ -1,12 +1,12 @@
 Package: xios-gnome
 Name: Xios Desktop (GNOME)
-Version: 0.1.1
+Version: 0.1.2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core, gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, libgdm1 (>= 46.0+ios2), libgeoclue-2-0, libgeocode-glib-2-0, libgweather-4-0 (>= 4.4.2+ios2), libupower-glib3, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme
+Depends: firmware (>= 16.5), xios-core (>= 0.1.2), gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, libgdm1 (>= 46.0+ios2), libgeoclue-2-0, libgeocode-glib-2-0, libgweather-4-0 (>= 4.4.2+ios2), libupower-glib3, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme
 Recommends: gnome-console, nautilus, gnome-text-editor, gnome-calculator
 MinimumOSVersion: 16.5.0
 Description: the GNOME desktop flavor for Xios

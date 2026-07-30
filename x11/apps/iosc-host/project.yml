@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.iosc.host
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.1.1"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -48,7 +48,7 @@ targets:
         IOSCExec: ""
         IOSCName: ""
         CFBundleDisplayName: iosc Host
-        CFBundleShortVersionString: "0.1.0"
+        CFBundleShortVersionString: "0.1.1"
         UILaunchScreen: {}
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: false

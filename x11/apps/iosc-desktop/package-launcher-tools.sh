@@ -19,7 +19,7 @@ REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-launcher-tools-deb"
 STAGE="$STAGEROOT/xios-launcher-tools"
 SYSROOT="$STAGEROOT/sysroot"
-VER="0.1.2"
+VER="0.1.3"
 ARCH="iphoneos-arm64"
 DEB="xios-launcher-tools_${VER}_${ARCH}.deb"
 
@@ -106,12 +106,8 @@ pixbuf_flags() {
 echo "==> build ioscd and launcher stub"
 bash "$HERE/build-stub.sh"
 
-if [ ! -x "$HOST_DIR/out/IOSCHost" ] || [ ! -f "$HOST_DIR/out/default.metallib" ]; then
-  echo "==> build native host payload"
-  bash "$HOST_DIR/build-host.sh"
-else
-  echo "==> native host payload already built"
-fi
+echo "==> build native host payload"
+bash "$HOST_DIR/build-host.sh"
 
 echo "==> prepare gdk-pixbuf cross sysroot"
 prepare_pixbuf_sysroot
@@ -123,7 +119,10 @@ mkdir -p "$HERE/out"
   -o "$HERE/out/xios-launcher-sync" \
   -Wl,-rpath,/var/jb/usr/lib
 
-mapfile -t PIXBUF_FLAGS < <(pixbuf_flags)
+PIXBUF_FLAGS=()
+while IFS= read -r flag; do
+  PIXBUF_FLAGS+=("$flag")
+done < <(pixbuf_flags)
 "$CLANG" "${COMMON[@]}" \
   "$HERE/src/xios-icon-render.c" \
   -o "$HERE/out/xios-icon-render" \
@@ -166,7 +165,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.0), xios-session (>= 1.0.17), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
+Depends: iosc (>= 0.9.27), xios-session (>= 1.0.56), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
 Recommends: com.max.xios, iosc-shell
 Section: X11
 Priority: optional
@@ -196,14 +195,6 @@ chmod 0644 /var/jb/usr/libexec/xios-launchers/default.metallib \
            /var/jb/usr/libexec/xios-launchers/*entitlements.plist \
            /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
 chown root:wheel /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
-
-if command -v ldid >/dev/null 2>&1; then
-  ldid -S/var/jb/usr/libexec/xios-launchers/ioscd-entitlements.plist /var/jb/usr/local/bin/ioscd 2>/dev/null || true
-  ldid -S /var/jb/usr/local/bin/xios-icon-render 2>/dev/null || true
-  ldid -S /var/jb/usr/local/bin/xios-launcher-sync 2>/dev/null || true
-  ldid -S/var/jb/usr/libexec/xios-launchers/launcher-entitlements.plist /var/jb/usr/libexec/xios-launchers/IOSCLaunch 2>/dev/null || true
-  ldid -S/var/jb/usr/libexec/xios-launchers/host-entitlements.plist /var/jb/usr/libexec/xios-launchers/IOSCHost 2>/dev/null || true
-fi
 
 if command -v launchctl >/dev/null 2>&1; then
   launchctl bootout system /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
