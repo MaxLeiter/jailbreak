@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
-    MARKETING_VERSION: "0.1.4"
+    MARKETING_VERSION: "0.1.5"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -53,7 +53,7 @@ targets:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: X11
-        CFBundleShortVersionString: "0.1.4"
+        CFBundleShortVersionString: "0.1.5"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
@@ -62,8 +62,8 @@ targets:
         NSCameraUsageDescription: Xios exposes the iPad camera to desktop media clients.
         NSMicrophoneUsageDescription: Xios exposes the iPad microphone to desktop media clients.
         NSPhotoLibraryUsageDescription: Xios lets you choose a photo as the iosc desktop background.
-        # Runtime-gated in XServerViewController: iosc/native sessions can rotate
-        # and resize their IOSurface; legacy fixed-aspect X paths stay landscape.
+        # Runtime-gated in XServerViewController: compositor sessions can rotate
+        # and resize their IOSurface.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown

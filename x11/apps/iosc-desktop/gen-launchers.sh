@@ -2,8 +2,8 @@
 # Turns freedesktop .desktop entries into iOS Home Screen apps that launch
 # their Linux app inside the iosc Wayland desktop.
 #
-# Each bundle shares one prebuilt IOSCLaunch binary; the launch target lives
-# in the bundle's own Info.plist, so the same signed Mach-O drives every app.
+# Each bundle shares one prebuilt IOSCLaunch binary and identifies its installed
+# desktop entry by app id, so the same signed Mach-O drives every app.
 #
 # HOST-SIDE ONLY. No device contact unless you pass --deploy (off by default).
 # See x11/docs/iosc-desktop-env.md for the full design + the device test plan.
@@ -98,9 +98,6 @@ for DESKTOP in "${DESKTOPS[@]}"; do
   [ -n "$EXEC_RAW" ] || { echo "skip (no Exec): $DESKTOP"; continue; }
   [ -n "$NAME" ] || NAME="$(basename "$DESKTOP" .desktop)"
 
-  # Strip freedesktop field codes (%f %F %u %U %i %c %k %d %v %m) from Exec.
-  EXEC="$(echo "$EXEC_RAW" | sed -E 's/ ?%[fFuUickdvm]//g; s/[[:space:]]+$//')"
-
   # app_id: prefer StartupWMClass (what GTK reports as the Wayland app_id), else
   # the .desktop basename (which for GNOME apps IS the app-id, e.g. org.gnome.Console).
   APPID="$WMCLASS"; [ -n "$APPID" ] || APPID="$(basename "$DESKTOP" .desktop)"
@@ -109,7 +106,7 @@ for DESKTOP in "${DESKTOPS[@]}"; do
   BUNDLE_ID="com.max.iosc.$SAN"
   BDIR="$OUT/$SAN.app"
 
-  echo "==> $NAME  (app_id=$APPID  exec=$EXEC)"
+  echo "==> $NAME  (app_id=$APPID)"
   rm -rf "$BDIR"; mkdir -p "$BDIR"
 
   if [ "$NATIVE" = "1" ]; then
@@ -125,7 +122,7 @@ for DESKTOP in "${DESKTOPS[@]}"; do
   fi
 
   # Placeholder values below get set via PlistBuddy so &, quotes, etc. in
-  # Name/Exec are escaped correctly. Classic bundle = one fullscreen landscape
+  # Names are escaped correctly. Classic bundle = one fullscreen landscape
   # Xios window; native bundle = multi-scene host that follows device rotation.
   if [ "$NATIVE" = "1" ]; then
     cat > "$BDIR/Info.plist" <<'PLIST'
@@ -168,7 +165,6 @@ for DESKTOP in "${DESKTOPS[@]}"; do
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
-  <key>IOSCExec</key><string></string>
   <key>IOSCAppID</key><string></string>
   <key>IOSCName</key><string></string>
   <key>CFBundleIcons</key>
@@ -205,7 +201,6 @@ PLIST
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
-  <key>IOSCExec</key><string></string>
   <key>IOSCAppID</key><string></string>
   <key>IOSCName</key><string></string>
   <key>CFBundleIcons</key>
@@ -222,7 +217,6 @@ PLIST
   "$PB" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BDIR/Info.plist"
   "$PB" -c "Set :CFBundleName $NAME"            "$BDIR/Info.plist"
   "$PB" -c "Set :CFBundleDisplayName $NAME"     "$BDIR/Info.plist"
-  "$PB" -c "Set :IOSCExec $EXEC"                "$BDIR/Info.plist"
   "$PB" -c "Set :IOSCAppID $APPID"              "$BDIR/Info.plist"
   "$PB" -c "Set :IOSCName $NAME"                "$BDIR/Info.plist"
 

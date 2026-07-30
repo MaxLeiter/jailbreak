@@ -19,14 +19,14 @@ REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-launcher-tools-deb"
 STAGE="$STAGEROOT/xios-launcher-tools"
 SYSROOT="$STAGEROOT/sysroot"
-VER="0.1.4"
+VER="0.1.5"
 ARCH="iphoneos-arm64"
 DEB="xios-launcher-tools_${VER}_${ARCH}.deb"
 
 SDK="$(xcrun -sdk iphoneos --show-sdk-path)"
 CLANG="$(xcrun -sdk iphoneos -f clang)"
-TARGET="arm64-apple-ios16.0"
-MIN="-miphoneos-version-min=16.0"
+TARGET="arm64-apple-ios16.5"
+MIN="-miphoneos-version-min=16.5"
 COMMON=(-arch arm64 -target "$TARGET" -isysroot "$SDK" "$MIN" -O2 -Wall)
 
 abs_path() {
@@ -115,7 +115,7 @@ prepare_pixbuf_sysroot
 echo "==> compile launcher sync tools"
 mkdir -p "$HERE/out"
 "$CLANG" "${COMMON[@]}" \
-  "$HERE/src/xios-launcher-sync.c" \
+  "$HERE/src/xios-launcher-sync.c" "$HERE/src/xios-desktop-entry.c" \
   -o "$HERE/out/xios-launcher-sync" \
   -Wl,-rpath,/var/jb/usr/lib
 
@@ -165,10 +165,11 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.33), xios-session (>= 1.0.56), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
-Recommends: com.max.xios, iosc-shell
+Depends: firmware (>= 16.5), iosc (>= 0.9.33), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
+Suggests: com.max.xios, iosc-shell, xios-session
 Section: X11
 Priority: optional
+MinimumOSVersion: 16.5.0
 Installed-Size: ${INSTKB}
 Description: on-device iPad Home Screen app sync for Xios
  xios-launcher-tools lets a jailbroken iPad turn installed freedesktop

@@ -7,7 +7,7 @@ endif
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)+ios29
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios30
 # The epoxy vs QtGui-iOS-GLES header collision once forced -DKWIN_IOS_QT_NO_OPENGL=1 here.
 # The gl-coexist shim in kwin-ios-compat.h fixed the collision (epoxy included first, then
 # OpenGLES.framework guards pre-defined so Qt's qopengl.h defers to epoxy's Khronos

@@ -90,7 +90,7 @@
    in `xios-app.md`; specifically include pointer lock, non-rectangular confinement expectations,
    custom cursor surfaces/hotspots, five-button chording, and wheel-versus-finger axis source.
 2. Damage optimization: static layer caching for wallpaper/panel/dock, then per-surface damage telemetry dashboards to catch chatty clients.
-3. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with classic Xios, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
+3. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with the fullscreen desktop, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
 4. Rotation follow-up: basic iosc portrait resize is clean-packaged and device-validated. Remaining work is shell layout polish at `1080x1440`, wider app/client soak after live `wl_output` reconfigure, and physical orientation-change QA. See polish.md #21.
 5. Refactor plan: continue splitting `iosc.c` after the first options/IOSurface extraction. Next low-risk seams are output/damage bookkeeping, wl_surface lifecycle helpers, then input routing; keep each slice buildable and device-smoked.
 
