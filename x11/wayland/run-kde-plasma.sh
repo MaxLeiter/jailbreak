@@ -861,6 +861,8 @@ nohup "$SETSID" env \
       # instead of allocating a software QtQuick backend it never displays.
       (
         export QT_QPA_PLATFORM="${KAMD_QT_QPA_PLATFORM:-offscreen}"
+        export QT_QUICK_BACKEND=software
+        unset QSG_RHI_BACKEND QMLSCENE_DEVICE
         unset WAYLAND_DISPLAY QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
         "$KAMD_BIN"
       ) &
