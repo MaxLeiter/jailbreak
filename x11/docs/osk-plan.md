@@ -346,24 +346,39 @@ iosc change, one more patch on an already 27-deep stack, no typing fix);
 building maliit or qtvirtualkeyboard as the KDE OSK (no wire work, but two
 new Qt/QML ports and it gives up autocorrect/dictation and the native feel).
 
-### Device run 2026-07-29 (partial)
+### Device run 2026-07-29: BOTH DIRECTIONS VERIFIED
 
-Ran against iosc 0.9.28 on MaxsiPad with the KDE preset. What it proved:
+Ran on MaxsiPad with the KDE preset (hand-run run-kde-plasma.sh with IOSC_BIN
+and IOS_INPUTD_BIN pointed at a staged build in /var/jb/tmp/osk-test, so the
+installed iosc package was never touched -- another session was working the
+same device).
+
+Traits direction:
 
 - KWin really does hand its IM child zwp_input_method_v1: "ios-inputd:
-  zwp_input_method_v1 present -> proxy mode" plus "registered as
-  input-method proxy on /var/jb/tmp/iosc-input.sock".
-- Traits fire on focus: konsole taking text-input focus logged
-  "ios-inputd: traits enable hint=0x0 purpose=0", and the iOS keyboard rose
-  (confirmed visually by Max).
+  zwp_input_method_v1 present -> proxy mode" plus "registered as input-method
+  proxy on .../iosc-input.sock".
+- konsole taking text-input focus logged "ios-inputd: traits enable
+  hint=0x0 purpose=0", iosc logged "TRAITS from improxy ... enabled=0/1", and
+  the iOS keyboard rose (confirmed visually by Max).
 
-What it did NOT prove: the typing direction. The one text-injection run
-landed "hllo-osk-ncode" for "héllo-osk-ünïcode", i.e. iosc's ASCII keysym
-fallback rather than commit_string. That run was invalid: another session had
-meanwhile downgraded the device to iosc 0.9.27 (apt history:
-`apt-get install -y --allow-downgrades iosc=0.9.27`), which has none of the
-IMPROXY routing. Re-run the injection against a build that actually contains
-it before believing anything about that half.
+Typing direction, end to end:
+
+- `iosc: TEXT 55 bytes -> improxy=1 (0 = local fallback)`
+- `ios-inputd: commit_string 55 bytes (serial 2)`
+- the shell in konsole then wrote `héllo-ünïcode-😀` to a file, accents and
+  emoji intact. That is only reachable through commit_string: the keysym
+  fallback drops every byte >= 0x80.
+
+MISDIAGNOSIS WORTH REMEMBERING: two earlier attempts at the typing test came
+back ASCII-only ("hllo-ncode") and looked like the routing was falling back.
+The cause was the test tool. `iosc-input-test`'s bare `text...` mode taps ONE
+KEYSYM PER BYTE and cannot carry anything but ASCII; it never sent an
+XIOS_IN_TEXT record at all, so iosc's routing was never exercised. Fixed by
+adding `-T utf8...` to iosc-input-test, which sends the real record. (A
+concurrent session downgrading the device to iosc 0.9.27 mid-test muddied the
+water further, but it was not the cause.) Use `-T` for anything about text
+input; the ASCII mode is for keyboard dispatch only.
 
 Two bugs the run did find, both fixed:
 
@@ -391,18 +406,16 @@ broken feature.
 
 ### Open items
 
-- DEVICE TEST of the typing direction (see above; the traits direction is
-  done):
-  `xios-session -d kde`, then tap a text field in a Plasma app. Expect the
-  iOS keyboard to rise, typed text (including emoji and dictation) to land in
-  the field, tapping away to lower it. ios-inputd logs to KWin's stderr, so
-  the KDE session log carries "zwp_input_method_v1 present -> proxy mode"
-  and "registered as input-method proxy on ...". If the first line is absent,
-  KWin did not advertise v1 (check with `WAYLAND_DEBUG=1`); if the second is,
-  iosc's socket path did not match `IOSC_INPUT_SOCK`.
-  `KDE_AUTO_KEYBOARD=0` turns the whole thing off for A/B.
-- The iosc deb needs a rebuild+repackage for this to reach the device
-  (package-iosc.sh ships both iosc and ios-inputd).
+- Both directions are verified on device (see above). What is still open:
+  a real user pass with the iOS keyboard itself rather than injected records
+  (autocorrect replacements, dictation, the split/floating keyboard), and a
+  check that the hide path behaves when focus leaves a field. ios-inputd logs
+  to KWin's stderr, so the KDE session log carries "proxy mode" and
+  "registered as input-method proxy"; `KDE_AUTO_KEYBOARD=0` turns the whole
+  thing off for A/B.
+- SHIPPING: iosc 0.9.30 is packaged (rebased on 0.9.29). run-kde-plasma.sh
+  ships in the xios-session package, NOT iosc, so that package needs a bump
+  too or KWin never launches the bridge on an installed system.
 - Confirmed source-side that our kwin deb has the globals:
   src/wayland/CMakeLists.txt:284 lists inputmethod_v1.cpp unconditionally and
   kwin-ios-fixes.sh only appends to that file. Still worth one

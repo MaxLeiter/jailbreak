@@ -30,6 +30,7 @@
 #define IOSC_IN_MOTION 1
 #define IOSC_IN_BUTTON 2
 #define IOSC_IN_KEY    3
+#define IOSC_IN_TEXT   4   /* code = payload byte length; UTF-8 payload follows */
 #define IOSC_IN_TOUCH  6   /* code = touch id; state: 0 up, 1 down, 2 motion, 3 cancel */
 #define IOSC_IN_TABLET 7   /* code = pressure 0..65535; state as touch; mods = tilt+90 packed */
 #define IOSC_IN_AXIS   9   /* x,y = dx,dy 1/256 px; code = source; state bit0 = stop */
@@ -108,7 +109,10 @@ static void usage(const char *argv0)
             "  -t x y             two-finger touch gesture (wl_touch)\n"
             "  -p x0 y0 x1 y1     pencil stroke w/ pressure ramp (tablet-v2)\n"
             "  -k keysym [mods]   one key tap; mods bits: shift,ctrl,alt,super,caps,num\n"
-            "  text...            type each arg as a line (auto <Enter>)\n"
+            "  -T utf8...         send each arg as an XIOS_IN_TEXT record (full UTF-8,\n"
+            "                     the iOS-keyboard path: text-input or the IM proxy)\n"
+            "  text...            type each arg as a line of KEYSYM taps, ASCII only\n"
+            "                     (auto <Enter>); use -T for the real text path\n"
             "       %s --mutter -c 1080 810\n"
             "       %s --iosc \"echo hi\"\n",
             argv0, argv0, argv0);
@@ -165,6 +169,30 @@ int main(int argc, char **argv)
         m.state = 0; m.mods = 0;
         send_msg(fd, &m);
         fprintf(stderr, "sent key 0x%x mods %u\n", ks, mods);
+        usleep(150000); close(fd); return 0;
+    }
+
+    /* -T <utf8>...: send each argument as one XIOS_IN_TEXT record, the way the
+     * Xios app sends what the iOS keyboard produced. This is NOT the same path as
+     * the bare `text...` mode below, which taps one keysym per byte and so can
+     * only ever carry ASCII: TEXT goes to the focused text-input (or, under a
+     * nested compositor, to the registered input-method proxy) and carries full
+     * UTF-8, which is the only way to exercise autocorrect/emoji/dictation input.
+     * Not having this mode made an OSK bridge look broken twice; see
+     * x11/docs/osk-plan.md "Device run 2026-07-29". */
+    if (argc - argi >= 2 && !strcmp(argv[argi], "-T")) {
+        for (int i = argi + 1; i < argc; i++) {
+            size_t len = strlen(argv[i]);
+            if (len == 0 || len > 4096) { fprintf(stderr, "skipping %zu-byte arg\n", len); continue; }
+            struct iosc_in_msg m = { .type = IOSC_IN_TEXT, .code = (uint32_t)len };
+            if (write(fd, &m, sizeof(m)) != (ssize_t)sizeof(m) ||
+                write(fd, argv[i], len) != (ssize_t)len) {
+                perror("write");
+                break;
+            }
+            fprintf(stderr, "sent TEXT %zu bytes: %s\n", len, argv[i]);
+            usleep(50000);
+        }
         usleep(150000); close(fd); return 0;
     }
 

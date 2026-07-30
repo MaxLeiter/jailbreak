@@ -24,7 +24,7 @@ OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.33"
+VER="0.9.34"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -130,8 +130,13 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  package builds on.
  .
  The package also ships iosc-input-test for direct input-path diagnostics and
- ios-inputd for external Wayland compositors that use standard virtual-keyboard
- and input-method protocols instead of the in-process Xios input backend.
+ ios-inputd, the input-method bridge for compositors that consume standard
+ input-method protocols instead of the in-process Xios input backend. Under KDE,
+ where kwin_wayland runs nested and owns the text-input state, KWin launches
+ ios-inputd as its zwp_input_method_v1 and it proxies both directions: tapping a
+ text field in a Plasma app raises the iOS keyboard, and what you type (including
+ emoji and dictation) is committed into the focused field rather than replayed as
+ ASCII keystrokes.
  .
  Needs the Xios app installed (the on-screen display front end) and at least one
  Wayland client to be useful. Install the gnome-console package and run run-kgx.sh
