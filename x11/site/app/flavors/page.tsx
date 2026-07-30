@@ -31,7 +31,7 @@ const MODES: Mode[] = [
   {
     name: "X11 compatibility",
     tag: "Legacy",
-    body: "The classic path: Xwayland against iosc for X11 clients, with the standalone X server and a VNC route still available. Useful for old X apps that have no Wayland story.",
+    body: "Xwayland against iosc for X11 clients, rendering through glamor and ANGLE rather than on the CPU. Useful for old X apps that have no Wayland story.",
   },
 ];
 
@@ -58,9 +58,13 @@ export default function Flavors() {
           Nothing custom ships to pick a flavor. You install{" "}
           <code>xios-native</code>, <code>xios-gnome</code>,{" "}
           <code>xios-kde</code>{" "}or <code>xios-x11</code>{" "}from{" "}
-          <T k="sileo" />{" "}and apt resolves the whole desktop; all four pull in
-          the shared <code>xios-core</code>. The metas also carry the iOS floor,
-          so a device too old for a flavor is simply not offered it.
+          <T k="sileo" />{" "}and apt resolves the whole desktop. All four pull in{" "}
+          <code>xios-runtime</code>, the shell-independent base of compositor, GPU
+          stack, D-Bus, audio and filesystem bridges; the three fullscreen flavors
+          add <code>xios-core</code>{" "}on top for the display app, the iosc shell
+          and the session launcher, which is exactly what native mode leaves out.
+          The metas also carry the iOS floor, so a device too old for a flavor is
+          simply not offered it.
         </Callout>
         <div style={{ marginTop: 18 }}>
           <Shot

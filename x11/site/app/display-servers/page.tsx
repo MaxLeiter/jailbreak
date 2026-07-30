@@ -10,63 +10,23 @@ export default function DisplayServers() {
     <>
       <PageHeader
         tag="Display servers"
-        title="Xios and iosc"
-        lede="Two servers of our own draw the desktop. One speaks X11 and renders in software; the other speaks Wayland and composites on the GPU. Two upstream compositors, Mutter and KWin, also drive the same output, and Xwayland gives X11 clients a GPU route."
+        title="iosc and the compositors"
+        lede="One architecture draws the desktop, and it is Wayland. iosc is ours, written from scratch and compositing on the GPU; Mutter and KWin are upstream compositors driving the same output; and Xwayland gives X11 clients a hardware route in. Every one of them hands the app the same output IOSurface."
       />
 
-      <Section num="02.1" title="Xios, the X11 server">
-        <div className="prose">
-          <p>
-            Xios is derived from Xvfb, the virtual framebuffer X server, with a
-            device layer that draws into an{" "}
-            <T k="iosurface">
-              <Ext href="https://developer.apple.com/documentation/iosurface">
-                IOSurface
-              </Ext>
-            </T>{" "}
-            instead of a memory buffer. X11 clients such as <code>xterm</code>{" "}
-            and the classic <code>x11-apps</code>{" "}connect over the ordinary X
-            protocol and are none the wiser about where their pixels end up.
-          </p>
-          <p>
-            Clients that connect to it render on the CPU. iOS gives this path no{" "}
-            <T k="drmKms" />{" "}or desktop OpenGL route, so the classic X track
-            stays software. It is the compatible, reliable option, and it is where
-            the project started. X11 apps that want the GPU take the Xwayland
-            route instead, described in 02.4.
-          </p>
-        </div>
-        <dl className="deflist" style={{ marginTop: 8 }}>
-          <div className="row">
-            <dt>Basis</dt>
-            <dd>Xvfb with an IOSurface device layer, cross-compiled for iphoneos-arm64.</dd>
-          </div>
-          <div className="row">
-            <dt>Output</dt>
-            <dd>Draws the X screen straight into an IOSurface.</dd>
-          </div>
-          <div className="row">
-            <dt>Input</dt>
-            <dd>
-              UIKit events arrive as <T k="xtest" />.
-            </dd>
-          </div>
-          <div className="row">
-            <dt>Rendering</dt>
-            <dd>Software only. Good for legacy X clients, but not the GPU track.</dd>
-          </div>
-        </dl>
-      </Section>
-
-      <Section num="02.2" title="iosc, the Wayland compositor">
+      <Section num="02.1" title="iosc, the Wayland compositor">
         <div className="prose">
           <p>
             <T k="iosc">iosc</T>{" "}is a compositor written from scratch on{" "}
             <code>libwayland-server</code>, clean-room and MIT-licensed. Rather
             than blitting client buffers on the CPU, it treats each client&apos;s
-            rendered surface as a GPU texture and blends them into the output
-            IOSurface on the A10. This is the path that makes real toolkits feel
-            native.
+            rendered surface as a GPU texture and blends them into the output{" "}
+            <T k="iosurface">
+              <Ext href="https://developer.apple.com/documentation/iosurface">
+                IOSurface
+              </Ext>
+            </T>{" "}
+            on the A10. This is the path that makes real toolkits feel native.
           </p>
           <p>
             It advertises what real toolkits ask for, which by now means GTK and
@@ -97,7 +57,7 @@ export default function DisplayServers() {
         </Panel>
       </Section>
 
-      <Section num="02.3" title="The two upstream compositors">
+      <Section num="02.2" title="The two upstream compositors">
         <div className="prose">
           <p>
             A desktop environment brings its own compositor, and the two big ones
@@ -126,38 +86,45 @@ export default function DisplayServers() {
         </dl>
       </Section>
 
-      <Section num="02.4" title="Xwayland">
+      <Section num="02.3" title="Xwayland, the route for X11 apps">
         <div className="prose">
           <p>
-            X11 clients do not have to use the classic server. Xwayland runs
-            against iosc as an ordinary Wayland client, with{" "}
-            <T k="glamor" />{" "}rendering X pixmaps through ANGLE into IOSurfaces,
-            so an X app can reach the A10 after all. That is the shipped default
-            for the X11 flavor. A rootless window manager that would give each X
-            toplevel its own iosc surface is written and lives in the tree, but it
-            is a build-time option and is not compiled into the published
-            compositor yet.
+            X11 clients get in through Xwayland, which runs against iosc as an
+            ordinary Wayland client with <T k="glamor" />{" "}rendering X pixmaps
+            through ANGLE into IOSurfaces. An X app therefore reaches the A10 like
+            anything else, and this is what the X11 flavor installs: the{" "}
+            <code>xios-x11</code>{" "}meta pulls in <code>xwayland</code>{" "}and{" "}
+            <code>xauth</code>, not a server of our own.
+          </p>
+          <p>
+            A rootless window manager that would give each X toplevel its own iosc
+            surface is written and lives in the tree, but it is a build-time option
+            and is not compiled into the published compositor yet.
           </p>
         </div>
+        <Callout k="The software X server was retired">
+          Until July 2026 this page described a second server of our own: Xios, an
+          Xvfb-derived X server whose device layer drew into an IOSurface and whose
+          clients rendered on the CPU. It was retired on 2026-07-29 along with its{" "}
+          <code>xios-server</code>{" "}package, because Xwayland on glamor reaches the
+          GPU and the software path could not. Xvnc and Xvfb are still built, but
+          only as headless bring-up and debugging tools — neither is a session you
+          would run a desktop on.
+        </Callout>
       </Section>
 
-      <Section num="02.5" title="Switching between them">
+      <Section num="02.4" title="Switching between them">
         <div className="prose">
           <p>
-            Because every server produces an interchangeable output IOSurface, the
-            session launcher can start any of them and the app presents the result
-            the same way. A three-finger tap in the app opens the control panel,
-            which lists the desktop presets: iosc, Mutter, GNOME Shell, Plasma
-            Desktop, Plasma Nano and Plasma Mobile. Switching to a running display
-            slot lives one level down, under Advanced. iosc also resizes live when
-            the iPad rotates.
+            Because every compositor produces an interchangeable output IOSurface,
+            the session launcher can start any of them and the app presents the
+            result the same way. A three-finger tap in the app opens the control
+            panel, which lists the desktop presets: iosc, Mutter, GNOME Shell,
+            Plasma Desktop, Plasma Nano and Plasma Mobile. Switching to a running
+            display slot lives one level down, under Advanced. iosc also resizes
+            live when the iPad rotates.
           </p>
         </div>
-        <Callout k="The X11 server is not a session preset">
-          The presets are all Wayland. The classic X server has its own{" "}
-          <code>xios-server</code>{" "}command and never shows up in the picker, so
-          do not go looking for it there after installing the X11 flavor.
-        </Callout>
       </Section>
 
       <NextLinks path="/display-servers" />

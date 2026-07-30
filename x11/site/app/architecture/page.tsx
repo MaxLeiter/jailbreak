@@ -63,24 +63,16 @@ export default function Architecture() {
         </div>
       </Section>
 
-      <Section num="01.3" title="Four ways to drive the same output">
+      <Section num="01.3" title="Three ways to drive the same output">
         <div className="prose">
           <p>
-            Every server produces the same thing: an output IOSurface the app can
-            present. From the app&apos;s side they are interchangeable, which is
-            what lets you switch desktops without the app knowing much beyond
+            Every compositor produces the same thing: an output IOSurface the app
+            can present. From the app&apos;s side they are interchangeable, which
+            is what lets you switch desktops without the app knowing much beyond
             which one it pinned.
           </p>
         </div>
         <dl className="deflist" style={{ marginTop: 8 }}>
-          <div className="row">
-            <dt>Xios</dt>
-            <dd>
-              An Xvfb-derived X server whose device layer draws into an
-              IOSurface. X11 clients connect over the ordinary protocol and
-              render in software.
-            </dd>
-          </div>
           <div className="row">
             <dt>iosc</dt>
             <dd>
@@ -112,9 +104,11 @@ export default function Architecture() {
         </dl>
         <div className="prose" style={{ marginTop: 14 }}>
           <p>
-            X11 apps have a fifth route that skips the classic server entirely:
-            Xwayland runs against iosc as an ordinary client, with{" "}
-            <T k="glamor" />{" "}rendering X pixmaps through ANGLE into IOSurfaces.
+            X11 apps reach the same output through Xwayland, which runs against
+            iosc as an ordinary client with <T k="glamor" />{" "}rendering X pixmaps
+            through ANGLE into IOSurfaces. There is no separate X server any more:
+            the software, Xvfb-derived one was retired on 2026-07-29, leaving
+            Xvfb and Xvnc as headless bring-up tools only.
           </p>
         </div>
       </Section>
@@ -156,9 +150,8 @@ export default function Architecture() {
         <div className="prose">
           <p>
             A tap or keystroke enters UIKit inside the app and crosses a small
-            socket as a fixed-size record. For an X11 session it becomes{" "}
-            <T k="xtest" />{" "}fed to the X server. For a Wayland session it
-            reaches iosc or Mutter and turns into <code>wl_pointer</code>,{" "}
+            socket as a fixed-size record. It reaches iosc or Mutter and turns
+            into <code>wl_pointer</code>,{" "}
             <code>wl_keyboard</code>, <code>wl_touch</code>{" "}or tablet events for
             the focused window.
           </p>
