@@ -29,9 +29,10 @@ struct xios_in_client {
     int fd;
     uint32_t bound_window;
     int improxy;              /* registered XIOS_IN_IMPROXY: input-method proxy */
-    uint8_t hdr[sizeof(struct xios_in_msg)];
+    int hello_received;
+    uint8_t hdr[sizeof(xios_msg)];
     int hdr_have;
-    struct xios_in_msg msg;
+    xios_msg msg;
     char *payload;
     uint32_t payload_have;
 };
@@ -124,6 +125,39 @@ static void client_reset(struct xios_in_client *c)
     memset(&c->msg, 0, sizeof(c->msg));
 }
 
+static int is_client_message(uint32_t type)
+{
+    switch (type) {
+    case XIOS_IN_MOTION:
+    case XIOS_IN_BUTTON:
+    case XIOS_IN_KEY:
+    case XIOS_IN_TEXT:
+    case XIOS_IN_TOUCH:
+    case XIOS_IN_TABLET:
+    case XIOS_IN_BIND:
+    case XIOS_IN_AXIS:
+    case XIOS_IN_OUTPUT:
+    case XIOS_IN_GESTURE:
+    case XIOS_IN_IMPROXY:
+    case XIOS_IN_VOLUME:
+    case XIOS_IN_APPEARANCE:
+    case XIOS_IN_BRIGHTNESS:
+        return 1;
+    case XIOS_IN_TRAITS:
+        return 1; /* accepted below only from an authenticated improxy */
+    default:
+        return 0;
+    }
+}
+
+static int write_all(int fd, const void *buf, size_t len);
+
+static int send_hello(int fd)
+{
+    xios_msg hello = xios_protocol_hello();
+    return write_all(fd, &hello, sizeof(hello));
+}
+
 /* Drain a readable client, invoking cb for each complete record. Returns the
  * number dispatched; sets *closed if the client hit EOF/error and was dropped. */
 static int client_read(xios_input_socket *s, struct xios_in_client *c,
@@ -137,22 +171,32 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
                 c->hdr_have += (int)r;
                 if (c->hdr_have < (int)sizeof(c->hdr)) continue;
                 memcpy(&c->msg, c->hdr, sizeof(c->msg));
+                if (!c->hello_received) {
+                    if (!xios_protocol_is_exact_hello(&c->msg)) goto drop;
+                    c->hello_received = 1;
+                    client_reset(c);
+                    continue;
+                }
+                if (c->msg.magic != XIOS_MSG_MAGIC ||
+                    c->msg.type == XIOS_MSG_HELLO ||
+                    !is_client_message(c->msg.type))
+                    goto drop;
+                if (c->msg.type != XIOS_IN_TEXT && c->msg.length != 0)
+                    goto drop;
                 if (c->msg.type == XIOS_IN_BIND) {
-                    c->bound_window = c->msg.code;
+                    c->bound_window = XIOS_INPUT_CODE(&c->msg);
                     client_reset(c);
                 } else if (c->msg.type == XIOS_IN_IMPROXY) {
-                    c->improxy = c->msg.code ? 1 : 0;
+                    c->improxy = XIOS_INPUT_CODE(&c->msg) ? 1 : 0;
                     client_reset(c);
                 } else if (c->msg.type == XIOS_IN_TRAITS && !c->improxy) {
-                    /* TRAITS is a server->client record. Inbound it only means
-                     * something from the input-method proxy, which owns the
-                     * text-input state in the nested case; from anyone else it is
-                     * noise (or a display host echoing) and must not be able to
-                     * drive the OSK. */
-                    client_reset(c);
+                    goto drop;
                 } else if (c->msg.type == XIOS_IN_TEXT) {
-                    if (c->msg.code == 0 || c->msg.code > XIOS_IN_TEXT_MAX) goto drop;
-                    c->payload = calloc(1, c->msg.code + 1u);
+                    if (c->msg.length == 0 ||
+                        c->msg.length > XIOS_IN_TEXT_MAX ||
+                        XIOS_INPUT_CODE(&c->msg) != c->msg.length)
+                        goto drop;
+                    c->payload = calloc(1, c->msg.length + 1u);
                     if (!c->payload) goto drop;
                 } else {
                     if (cb) cb(&c->msg, NULL, 0, c->bound_window, user);
@@ -166,8 +210,9 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
             if (errno == EINTR) continue;
             goto drop;
         }
-        while (c->msg.type == XIOS_IN_TEXT && c->payload_have < c->msg.code) {
-            ssize_t r = read(c->fd, c->payload + c->payload_have, c->msg.code - c->payload_have);
+        while (c->msg.type == XIOS_IN_TEXT && c->payload_have < c->msg.length) {
+            ssize_t r = read(c->fd, c->payload + c->payload_have,
+                             c->msg.length - c->payload_have);
             if (r > 0) { c->payload_have += (uint32_t)r; continue; }
             if (r == 0) goto drop;
             if (errno == EAGAIN || errno == EWOULDBLOCK) return n;
@@ -175,7 +220,7 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
             goto drop;
         }
         if (c->msg.type == XIOS_IN_TEXT) {
-            if (cb) cb(&c->msg, c->payload, c->msg.code, c->bound_window, user);
+            if (cb) cb(&c->msg, c->payload, c->msg.length, c->bound_window, user);
             n++;
             client_reset(c);
             continue;
@@ -193,9 +238,10 @@ static void accept_clients(xios_input_socket *s)
     for (;;) {
         int cfd = accept(s->listen_fd, NULL, NULL);
         if (cfd < 0) break;                 /* EAGAIN when no more pending */
-        set_nonblock(cfd);
         int on = 1;                         /* broadcast writes must get EPIPE, not SIGPIPE */
         setsockopt(cfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+        if (send_hello(cfd) != 0) { close(cfd); continue; }
+        set_nonblock(cfd);
         int slot = -1;
         for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++)
             if (!s->clients[i]) { slot = i; break; }
@@ -260,6 +306,7 @@ static int broadcast_to_clients(xios_input_socket *s, uint32_t bound_window,
     for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++) {
         struct xios_in_client *c = s->clients[i];
         if (!c || c->fd < 0) continue;
+        if (!c->hello_received) continue;
         if (c->improxy) continue;           /* not a display host; see XIOS_IN_IMPROXY */
         if (!client_matches_bound(c, bound_window)) continue;
         if (write_all(c->fd, buf, len) == 0) { sent++; continue; }
@@ -291,7 +338,7 @@ int xios_input_socket_send_improxy(xios_input_socket *s, const void *buf, size_t
     int sent = 0;
     for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++) {
         struct xios_in_client *c = s->clients[i];
-        if (!c || c->fd < 0 || !c->improxy) continue;
+        if (!c || c->fd < 0 || !c->hello_received || !c->improxy) continue;
         if (write_all(c->fd, buf, len) == 0) { sent++; continue; }
         /* Same lifetime rule as broadcast_to_clients(): shut down, let the read
          * path do the single free. A wedged proxy must not look alive, or text
@@ -315,7 +362,7 @@ int xios_input_socket_client_count(xios_input_socket *s)
     if (!s) return 0;
     int n = 0;
     for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++)
-        if (s->clients[i]) n++;
+        if (s->clients[i] && s->clients[i]->hello_received) n++;
     return n;
 }
 

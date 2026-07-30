@@ -56,25 +56,6 @@ stub = stub_path.read_text()
 def read_optional(path):
     return path.read_text() if path.exists() else ""
 
-def defines(text):
-    out = {}
-    for m in re.finditer(r"^\s*#define\s+(XIOS_IN_[A-Z0-9_]+)\s+([0-9]+)u?\b", text, re.M):
-        out[m.group(1)] = m.group(2)
-    return out
-
-def msg_fields(text):
-    m = re.search(r"struct\s+xios_in_msg\s*\{(?P<body>.*?)\};", text, re.S)
-    if not m:
-        return []
-    fields = []
-    for raw in m.group("body").splitlines():
-        line = raw.split("/*", 1)[0].strip()
-        if not line:
-            continue
-        line = re.sub(r"\s+", " ", line)
-        fields.append(line)
-    return fields
-
 def prototype_map(text, names):
     collapsed = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
     collapsed = re.sub(r"\s+", " ", collapsed)
@@ -93,20 +74,6 @@ errors = []
 
 if input_path.exists():
     input_text = input_path.read_text()
-    stub_defs = defines(stub)
-    input_defs = defines(input_text)
-    if stub_defs != input_defs:
-        errors.append("XIOS_IN_* registry differs between xios-glue-stub.h and xios_input_socket.h")
-        errors.append(f"  stub:  {stub_defs}")
-        errors.append(f"  input: {input_defs}")
-
-    stub_fields = msg_fields(stub)
-    input_fields = msg_fields(input_text)
-    if stub_fields != input_fields:
-        errors.append("struct xios_in_msg differs between xios-glue-stub.h and xios_input_socket.h")
-        errors.append(f"  stub:  {stub_fields}")
-        errors.append(f"  input: {input_fields}")
-
     names = [
         "xios_input_socket_new",
         "xios_input_socket_fd",

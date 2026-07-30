@@ -15,6 +15,7 @@
 #     -v "$PWD/recipes:/work/recipes:ro" \
 #     -v "$PWD/../ports:/work/ports:ro" \
 #     -v "$PWD/audio:/work/audio:ro" \
+#     -v "$PWD/../apps/shared:/work/shared:ro" \
 #     -v "$PWD/media:/work/media:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-audio-server.sh
@@ -79,6 +80,7 @@ if [ -d "$PW" ] && [ -f "$PW/.build_complete" ]; then
     /work/audio/module-xios-sink.c \
     /work/audio/xios_audio_protocol.h \
     /work/audio/xios_sysint_protocol.h \
+    /work/shared/XiosProtocol.h \
     /work/audio/module-xios-source.c \
     /work/media/xios_media_protocol.h | sha256sum | awk '{print $1}')"
   OLD_FP="$(cat "$PF" 2>/dev/null || true)"
@@ -100,6 +102,7 @@ if [ -d "$PW" ]; then
     /work/audio/module-xios-sink.c \
     /work/audio/xios_audio_protocol.h \
     /work/audio/xios_sysint_protocol.h \
+    /work/shared/XiosProtocol.h \
     /work/audio/module-xios-source.c \
     /work/media/xios_media_protocol.h | sha256sum | awk '{print $1}' > "$PF"
 fi
