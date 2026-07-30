@@ -248,7 +248,7 @@ replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
     "        return loadShmTexture(m_pixmap->buffer());\n    } else {\n        return false;\n    }\n}",
     "        const bool ok = loadShmTexture(m_pixmap->buffer());\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n        }\n        return ok;\n    } else {\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: UNKNOWN buffer type -- no texture\";\n        }\n        return false;\n    }\n}",
-    "ios-gpu-client-texture-diag",
+    "ios-tex: shm load ok=",
 )
 # Content stats for shm uploads (still under KWIN_IOS_TEXTURE_DIAG): a texture that
 # loads ok but carries all-black pixels means the CLIENT drew black, which no
