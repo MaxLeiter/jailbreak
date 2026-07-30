@@ -94,6 +94,44 @@ if target_requests libepoxy || target_requests gtk+3.0 || target_requests gtk4 |
 fi
 target_requests gtk+3.0 && stage_required_patch_stack gtk+3.0
 target_requests gtk4 && stage_required_patch_stack gtk4
+
+# GLib is built against its bundled proxy-libintl, so everything downstream
+# references g_libintl_* rather than libintl_*. gtk+3.0.mk builds libgtkintl to
+# supply those names (it re-exports libintl.8 and adds them), but that shim is
+# applied by RELINKING finished binaries -- which is too late for GTK4, whose
+# link step needs to resolve g_libintl_* against something to produce
+# libgtk-4.1.dylib at all.
+#
+# The warm rootless volume papers over this: its build_base libintl.8.dylib was
+# replaced by hand with a copy carrying the g_libintl_* exports (9 of them, vs 0
+# in a stock gettext build), so -lintl happens to resolve. Nothing in the repo
+# reproduces that, so a cold volume -- of either root -- fails to link GTK4 with
+# "Undefined symbols: _g_libintl_bindtextdomain".
+#
+# Point libintl.dylib at the shim instead. It re-exports libintl.8, so callers
+# wanting the real libintl_* names still get them, and the post-build relink
+# still runs. Same trick papers.mk already uses for its own Rust link.
+stage_gtkintl_for_link() {
+  local libdir="$XIOS_SYSROOT$XIOS_SUBPREFIX/lib"
+  local shim="$libdir/libgtkintl.dylib"
+  if [ ! -f "$shim" ]; then
+    local deb
+    deb=$(ls -t /out/libgtkintl_*.deb 2>/dev/null | head -1) || true
+    [ -n "$deb" ] || return 0
+    echo "==> staging libgtkintl into the sysroot so -lintl resolves g_libintl_*"
+    rm -rf /tmp/gtkintl-x && mkdir -p /tmp/gtkintl-x
+    dpkg-deb -x "$deb" /tmp/gtkintl-x
+    local found
+    found=$(find /tmp/gtkintl-x -name 'libgtkintl.dylib' | head -1)
+    [ -n "$found" ] || return 0
+    cp "$found" "$shim"
+  fi
+  if [ -f "$shim" ]; then
+    ln -sf libgtkintl.dylib "$libdir/libintl.dylib"
+    echo "   libintl.dylib -> libgtkintl.dylib"
+  fi
+}
+target_requests gtk4 && stage_gtkintl_for_link
 target_requests libadwaita && stage_required_patch_stack libadwaita
 
 # The Procursus clang wrapper unconditionally injects -Wl,-adhoc_codesign. meson's
