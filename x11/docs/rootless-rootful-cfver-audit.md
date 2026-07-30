@@ -9,8 +9,8 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1723
-- Files with hits: 319
+- Total hits: 1721
+- Files with hits: 318
 
 ### By Category
 
@@ -20,16 +20,16 @@ classified as rootless-only.
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 121 hits across 51 files
 - `other`: 75 hits across 15 files
-- `package-payload`: 176 hits across 46 files
+- `package-payload`: 175 hits across 45 files
 - `recipe`: 82 hits across 26 files
 - `runtime-path`: 318 hits across 80 files
 - `script-or-source`: 205 hits across 70 files
 - `site-copy`: 10 hits across 6 files
-- `target-infra`: 31 hits across 6 files
+- `target-infra`: 30 hits across 6 files
 
 ### By Literal
 
-- `/var/jb`: 1680
+- `/var/jb`: 1678
 - `MEMO_CFVER=1900`: 7
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 7
 - `iphoneos-arm64-rootless`: 29
@@ -209,7 +209,7 @@ classified as rootless-only.
 - `packages/ladybird-app/Sources/IOSApplication.mm:143` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
 - `packages/ladybird-app/Sources/BrowserViewController.mm:19` `/var/jb`: candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
 - `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log.
-- ... 156 more
+- ... 155 more
 
 ### recipe
 
@@ -307,16 +307,16 @@ classified as rootless-only.
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
 - `linux-build/tools/check-target-package.py:214` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
 - `linux-build/tools/target-literal-baseline.json:180` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:181` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
-- `linux-build/tools/target-literal-baseline.json:184` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:194` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:198` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:199` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:200` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:183` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:193` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:198` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:199` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
 - `linux-build/tools/audit-target-literals.py:25` `MEMO_TARGET=iphoneos-arm64-rootless`: "MEMO_TARGET=iphoneos-arm64-rootless",
 - `linux-build/tools/audit-target-literals.py:26` `MEMO_CFVER=1900`: "MEMO_CFVER=1900",
-- ... 11 more
+- `linux-build/tools/audit-target-literals.py:126` `/var/jb`: if "/tmp" in text or "/var/jb/tmp" in text or "/var/jb/var" in text:
+- ... 10 more
 
