@@ -9,7 +9,7 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1757
+- Total hits: 1739
 - Files with hits: 325
 
 ### By Category
@@ -18,18 +18,18 @@ classified as rootless-only.
 - `build-target`: 16 hits across 10 files
 - `docs`: 619 hits across 62 files
 - `entitlements`: 45 hits across 17 files
-- `linker-path`: 124 hits across 53 files
+- `linker-path`: 123 hits across 52 files
 - `other`: 71 hits across 15 files
 - `package-payload`: 191 hits across 49 files
 - `recipe`: 80 hits across 25 files
-- `runtime-path`: 324 hits across 82 files
-- `script-or-source`: 224 hits across 71 files
+- `runtime-path`: 319 hits across 81 files
+- `script-or-source`: 212 hits across 71 files
 - `site-copy`: 10 hits across 6 files
 - `target-infra`: 28 hits across 4 files
 
 ### By Literal
 
-- `/var/jb`: 1714
+- `/var/jb`: 1696
 - `MEMO_CFVER=1900`: 7
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 7
 - `iphoneos-arm64-rootless`: 29
@@ -161,7 +161,7 @@ classified as rootless-only.
 - `linux-build/gir-build-ondevice.sh:69` `/var/jb`: export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
 - `linux-build/gir-build-ondevice.sh:70` `/var/jb`: export GI_TYPELIB_PATH=/var/jb/usr/lib/girepository-1.0
 - `linux-build/gir-build-ondevice.sh:78` `/var/jb`: if [ ! -f /var/jb/usr/lib/pkgconfig/zlib.pc ]; then
-- ... 104 more
+- ... 103 more
 
 ### other
 
@@ -257,7 +257,7 @@ classified as rootless-only.
 - `linux-build/gir-build-mutter-ondevice.sh:37` `/var/jb`: WORK=/var/jb/tmp/mutter-gir
 - `linux-build/gir-build-mutter-ondevice.sh:38` `/var/jb`: GISPIKE=/var/jb/tmp/gi-spike     # sljit_shim.dylib, clang-ios, ninja2 (gir-ondevice.sh bootstrap)
 - `linux-build/gir-build-mutter-ondevice.sh:72` `/var/jb`: WORK=/var/jb/tmp/mutter-gir
-- ... 304 more
+- ... 299 more
 
 ### script-or-source
 
@@ -281,7 +281,7 @@ classified as rootless-only.
 - `linux-build/build-ladybird-wave4b.sh:323` `/var/jb`: #   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
 - `linux-build/build-ladybird-wave4b.sh:334` `/var/jb`: # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
 - `linux-build/build-ladybird-wave4b.sh:348` `/var/jb`: <string>/var/jb/</string>
-- ... 204 more
+- ... 192 more
 
 ### site-copy
 

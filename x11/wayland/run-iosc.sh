@@ -6,11 +6,23 @@
 #
 #   ssh root@ipad 'bash -s' < run-iosc.sh
 set -u
-export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-export XDG_RUNTIME_DIR=/var/jb/tmp
-TMP=/var/jb/tmp
+# Resolve the jailbreak prefix. Prefer where this script is installed -- the iosc
+# deb stages it under the prefix -- but fall back to probing, because the
+# documented way to run this is `ssh root@ipad 'bash -s' < run-iosc.sh`, where
+# the script has no path on disk at all. Set XS_JB= to force rootful.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+  case "${SCRIPT_DIR:-}/" in
+    /var/jb/*) XS_JB=/var/jb ;;
+    *)         if [ -d /var/jb/usr ]; then XS_JB=/var/jb; else XS_JB=; fi ;;
+  esac
+fi
+XS_TMP="${XS_TMP:-${XS_JB:-/var}/tmp}"
+export PATH=$XS_JB/usr/bin:$XS_JB/usr/sbin:$XS_JB/bin:$XS_JB/sbin:$PATH
+export XDG_RUNTIME_DIR=$XS_TMP
+TMP=$XS_TMP
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
-BIN=/var/jb/usr/local/bin
+BIN=$XS_JB/usr/local/bin
 
 echo "==> stop any Xios X server, app, prior iosc, and test clients"
 # Anchor iosc to binary paths (plain "iosc" matches this script's own path when
@@ -30,7 +42,7 @@ IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
 
 # Bring up the desktop audio stack (xios-audiod + PulseAudio, PULSE_SERVER export)
 # before the compositor so Wayland clients find a live PA socket. Idempotent.
-[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+[ -r $XS_JB/etc/profile.d/xios-pulse.sh ] && . $XS_JB/etc/profile.d/xios-pulse.sh && xios_pulse_start
 
 echo "==> start iosc (compositor, logical $IOSC_LOGICAL) -> $TMP/iosc.log"
 nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
