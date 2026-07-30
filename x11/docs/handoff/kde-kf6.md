@@ -75,8 +75,11 @@ device-run bundles. The old "HOST COMPLETE / DEVICE PROOF PENDING at `+ios4`" te
 revisions stale and is superseded by this section.
 
 - **Published.** `repo/Packages` carries `kwin 6.1.5+ios27` with `Depends: … angle`. The recipe
-  (`kwin.mk`) keeps `KWIN_IOS_COMPAT_DEFS` empty, i.e. `KWIN_IOS_QT_NO_OPENGL` stays OFF — the
-  header-collision fix from `+ios3` held across 24 subsequent revisions.
+  (`kwin.mk`) keeps `KWIN_IOS_COMPAT_DEFS` empty, i.e. nothing sets `KWIN_IOS_QT_NO_OPENGL` by
+  hand — the header-collision fix from `+ios3` held across 24 subsequent revisions. The macro is
+  still live as a capability fallback: `kwin-ios-compat.h` defines it itself when
+  `QT_FEATURE_opengl < 0`, so the `offscreenquickview.cpp` guards in `kwin-ios-fixes.sh` engage
+  automatically against a no-OpenGL Qt and are inert (not dead) against ours.
 - **The GL/IOSurface path is real, not the CPU shim.** `BasicEGLSurfaceTextureWayland::create()`
   now branches on `IoscClientBuffer` BEFORE dmabuf/SHM and calls `loadIoscTexture()`, with a
   `BufferType::Iosc`, its own `EGLSurface m_iosurfacePbuffer`, and an

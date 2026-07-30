@@ -8,10 +8,17 @@ endif
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
 DEB_KWIN_V ?= $(KWIN_VERSION)+ios29
-# epoxy vs QtGui-iOS-GLES header collision previously forced -DKWIN_IOS_QT_NO_OPENGL=1;
-# fixed by the gl-coexist shim in kwin-ios-compat.h (epoxy included first, then
+# The epoxy vs QtGui-iOS-GLES header collision once forced -DKWIN_IOS_QT_NO_OPENGL=1 here.
+# The gl-coexist shim in kwin-ios-compat.h fixed the collision (epoxy included first, then
 # OpenGLES.framework guards pre-defined so Qt's qopengl.h defers to epoxy's Khronos
-# definitions). See kwin-ios-fixes.sh.
+# definitions), so nothing needs to set it by hand any more and this stays empty.
+#
+# KWIN_IOS_QT_NO_OPENGL itself is NOT dead: kwin-ios-compat.h now defines it automatically
+# when it sees `QT_FEATURE_opengl < 0`, i.e. when KWin is built against a Qt that has no
+# OpenGL. The guards it drives (offscreenquickview.cpp et al. in kwin-ios-fixes.sh) are the
+# fallback for that Qt, and they are inert against our Qt because qtbase.mk configures
+# FEATURE_opengl=ON / INPUT_opengl=es2. Do not delete them as "unused" — they cost nothing
+# on this Qt and they are what keeps a no-OpenGL Qt compiling.
 KWIN_IOS_COMPAT_DEFS :=
 KWIN_ANGLE_PREFIX := $(BUILD_BASE)$(MEMO_PREFIX)
 KWIN_ANGLE_LIB := $(KWIN_ANGLE_PREFIX)/lib/angle
