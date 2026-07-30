@@ -29,7 +29,7 @@ Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libgirepository-1.0-1, gobject-introspection
+Depends: libgirepository-1.0-1
 Section: X11
 Priority: optional
 Description: On-device-regenerated introspection typelibs for the Xios GNOME desktop
@@ -40,6 +40,16 @@ Description: On-device-regenerated introspection typelibs for the Xios GNOME des
  g-ir-scanner on the device and captured here so a clean package install
  reproduces a booting GNOME with zero hand-staged files.
 CTRL
+
+# NOTE on Depends: runtime consumers only need libgirepository-1.0-1, the .typelib
+# loader. Do NOT re-add gobject-introspection: that is the GENERATOR (g-ir-scanner /
+# g-ir-compiler), it Depends on clang, and clang drags in the whole ~967 MB llvm-16
+# chain (libllvm16 + llvm-16-dev + libclang-common-16-dev + ld64 + odcctools). Since
+# this package ships the typelibs pre-built, that made every GNOME-flavor install pull
+# ~1 GB of compiler nothing ever execs. The on-device scan is a BUILD step run from
+# gir-build-lib-ondevice.sh, so the toolchain belongs in the build environment, not in
+# a runtime Depends. Verified 2026-07-29: this package ships 43 .typelib files and no
+# scanner invocation happens at session start.
 
 # md5sums
 ( cd "$STAGE" && find var -type f -exec md5sum {} \; > DEBIAN/md5sums )

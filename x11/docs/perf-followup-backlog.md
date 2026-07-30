@@ -2,6 +2,14 @@
 
 AUDIT COMPLETE with follow-up fixes landing incrementally. Prioritized backlog for the X11-on-iOS project, evidence-cited. Repo root /Users/max/Documents/jailbreak.
 
+RE-VERIFIED 2026-07-29 against the tree (device checks limited — the KDE stack was down
+mid-install by another session). Confirmed still DONE by code inspection: P0.2 (per-surface
+shm cache + glTexSubImage2D damage uploads, iosc_gl.c:480-537), P0.3 (glFlush + EGL fence,
+glFinish only as the no-extension fallback, iosc_gl.c:638-649), P0.6 (IOSC_NBUF 3 rotation).
+Confirmed still OPEN: P0.5 (software readback). Updated below: P0.1 (a stale conffile caveat),
+P2.1 (line counts grew), P2.7 (now resolved), P3 (panel renderer re-confirmed as the last
+CPU painter in the desktop).
+
 === P0 — CPU where GPU should be (north-star violations, ranked by per-frame cost) ===
 
 P0.1 ✅ DONE/VALIDATED — GTK4 app (kgx) renders GSK-ngl → ANGLE Metal → rotating IOSurfaces → zero-copy into iosc, and the entitlement/shim packaging defaults have since shipped across the GTK4 app wave. The shim fix chain (extension injection for EGL platform Wayland + proc-address fallback + WINDOW→PBUFFER config rewrite) remains required. GTK GPU clients use the narrow AGX/IOGPU entitlement tier; the ANGLE package stages the iosc EGL shim at `/var/jb/lib/angle/libEGL.dylib` and keeps real ANGLE at `libEGL.angle.dylib`. Original finding:
@@ -9,6 +17,18 @@ GTK4 clients are forced to CPU cairo rendering despite a validated zero-copy GPU
 - x11/apps/iosc-desktop/src/ioscd.c:238 `setenv("GSK_RENDERER","cairo",1)` and x11/wayland/run-kgx.sh:60 — every launched app renders every frame on the CPU into wl_shm, which iosc then re-uploads (see P0.2). Meanwhile iosc_egl_shim.c (built as libiosc_egl.dylib, build-iosc.sh:306-317) already gives any wl_egl_window client (GTK4/GSK, Qt, SDL) ANGLE→Metal rendering straight into IOSurfaces handed to iosc zero-copy, and mutter-on-iosc.md:179 calls it "the client-side GPU path for any wl_egl_window client".
 - Fix: flip launchers to GSK_RENDERER=ngl/gl with the shim preloaded (gdk-wayland EGL on ANGLE — same primitive the chooser memory lists for qtwayland), keep cairo as fallback. This is the single biggest CPU load in the desktop: N apps × full-window CPU paint + upload per frame.
 - Effort: medium (env/link wiring is small; validating GSK-on-ANGLE-wayland on device is the real work). Owner: desktop-env/iosc track.
+- CAVEAT found 2026-07-29 (does NOT reopen P0.1; the session path is genuinely GPU): the
+  session forces ngl via `setenv("GSK_RENDERER","ngl",1)` — overwrite flag 1 — in
+  ioscd.c:1137 and iosc-shell/shell-draw.h:416, plus xios-session-lib.sh:1042 and
+  xios-capability-profiles.sh:122,181. So anything the desktop launches is on GSK-ngl
+  regardless of the environment. BUT the installed `libgtk-4-1 4.14.5+wl1` still ships
+  `/var/jb/etc/profile.d/10-gtk-renderer.sh` = cairo, so a GTK4 app started from an
+  interactive login shell (e.g. over SSH, outside the session) silently CPU-renders.
+  gtk4.mk:101 already prints `ngl`, so a gtk4 rebuild fixes the default — but note dpkg
+  considers that conffile locally modified on Max's device (a `.dpkg-dist` is already
+  parked beside it), so the upgrade will NOT replace it; the file needs reconciling
+  by hand or the device stays on cairo for shell-launched apps and it will look like
+  the rebuild didn't work.
 
 P0.2 ✅ DONE (5aaf0fe; validated on-device 2026-07-01 — per-surface texture cache, two windows composite correct colors on GPU, cursor motion = zero uploads). wl_shm composite path re-uploads EVERY visible shm window on EVERY recomposite — including pure cursor moves.
 - iosc_gl.c:38 a single reused texture `s_shm_tex` for ALL shm surfaces; iosc_gl_draw_shm (iosc_gl.c:207-235) does a full glTexImage2D upload per surface per draw. recomposite_all (iosc.c:924-995) redraws all mapped surfaces on any damage, and cursor motion triggers it too (iosc.c:3224, drag at 3181). Net: moving the mouse re-uploads every shm window's full pixels to the GPU.
@@ -29,6 +49,9 @@ P0.5 wlr-screencopy is a software row-memcpy readback (the known one — confirm
 - iosc.c:997-1004 explicitly "SOFTWARE readback; GPU-blit later", clean seam named: xios_read_output_region()'s body plus a fast-path. Implementation is IOSurfaceLock + per-row memcpy in x11/linux-build/patches/xios/xios_surface.c:497-514.
 - Per-screenshot, not per-frame, so it ranks below P0.1-P0.4 despite being the marquee example. Fix per the seam comment: GPU blit (glReadPixels into a PBO, or blit output→staging IOSurface) inside xios_read_output_region + fast-path in screencopy_copy (iosc.c:1022-1043).
 - Effort: small-medium. Owner: iosc compositor track.
+- STILL OPEN, re-verified 2026-07-29: `xios_read_output_region` has moved to
+  xios_surface.c:904 and still does the per-row `memcpy` (now line 923).
+  Unchanged in substance; only the line anchors drifted.
 
 P0.6 ✅ DONE 2026-07-02 — eglSwapBuffers in the EGL shim now uses an EGL fence/client wait with glFlush and falls back to glFinish only if sync is unavailable; IOSC_NBUF=3 rotates on wl_buffer.release and scans all buffers before blocking so it no longer stalls on an arbitrary `cur+1` buffer while another buffer is free. Original finding: Client-side glFinish per swap in the EGL shim.
 - iosc_egl_shim.c header (line ~16): eglSwapBuffers = "glFinish, hand pbuf[cur]'s IOSurface to iosc". Full client GPU sync every frame for every GPU client. Fix: fence/sync object + buffer-release-driven rotation (IOSC_NBUF is already 3). Effort: small-medium. Matters more once P0.1 makes GPU clients the norm.
@@ -53,7 +76,9 @@ P1.7 ✅ DONE 2026-07-02 — iosc's shared input socket now flushes Wayland clie
 
 === P2 — Deferred followups / cleanups ===
 
-P2.1 iosc.c megafile refactor is QUEUED and the file keeps growing: it's now 7153 lines (plus XScreen.swift 2735); refactor-plan.md is updated to match. Plan's precondition list (panel + input-unification landed, blend fix validated, freeze announced) — input-unification (P1.1) is now done, so the refactor gate is closer. XScreen.swift split is low-contention and can go first per the plan.
+P2.1 iosc.c megafile refactor is QUEUED and the file keeps growing: as of 2026-07-29 it is
+8964 lines (plus XScreen.swift 4350) — up from 7153/2735 at the last pass, so both files grew
+~25-60% while the refactor stayed queued; refactor-plan.md counts are stale again. Plan's precondition list (panel + input-unification landed, blend fix validated, freeze announced) — input-unification (P1.1) is now done, so the refactor gate is closer. XScreen.swift split is low-contention and can go first per the plan.
 
 P2.2 Post-ICU re-enables (ICU build is task #3, in progress): (a) validate the EDS/calendar-server gnome-shell flavor now carried in `ports/gnome-shell/patches-eds`; the default `ports/gnome-shell/patches` stack still degrades JS side to an empty calendar; (b) rebuild tracker with ICU — tracker.mk:52-58 forces unistring ("only cost is no ICU-quality locale collation").
 
@@ -66,6 +91,7 @@ P2.5 Nautilus ecosystem holes: no gvfs (Trash/Network empty), tracker-sparql bui
 P2.6 ✅ DONE 2026-07-02 — iosc-desktop-env.md now documents the landed app_id raise socket and `ngl` GTK default; refactor-plan.md line counts/gates were refreshed. Original finding: iosc-desktop-env.md §7 still says iosc "cannot" raise by app_id and requests the feature — it HAS landed (wm control socket + wm_find_toplevel_by_app_id, iosc.c:4898-4940, socket up at iosc.c:5705). refactor-plan.md line counts stale (P2.1). Worth a doc pass so future agents don't re-implement.
 
 P2.7 Uncommitted WIP in the working tree: apps/iosc-shell (build-panel.sh, iosc-shell.c, shell-draw.h), linux-build/recipes/startup-notification.mk, and rebuilt wayland/out binaries. NOTE (2026-07-02): the "PARKED per the distribution-chooser pivot" framing is now stale — the iosc-shell track has active, committed development (e.g. 1ee9ed9 configurable desktop widgets, b4819cd redraw hot-path optimization, 906f36d dock gestures, 4a99f44 bar/dock surface split), and iosc-shell.c + panel-layout.h are again modified in the working tree. Treat this as an active track, not a parked one; the residual action is still to commit-or-drop the loose working-tree changes so it isn't half-staged.
+  ✅ RESOLVED 2026-07-29 — `git status --porcelain` is clean; the loose changes were committed.
 
 P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/jb/usr/bin/bash -i`; the stale `-e <cmd>` memory note was incorrect for the current scripts. Original finding: kgx quirk: needs `-e <cmd>` to launch (memory note) — root-cause the default-shell spawn rather than carrying the workaround into launcher .desktop files.
 
@@ -83,6 +109,13 @@ P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/j
   bare Xios server, Xvfb, and VNC remain separately installable diagnostics and
   are no longer dependencies or recommendations of the flavor meta.
 - split-shell cairo/pango CPU renderer — adequate for bar/dock chrome; renderer may be reused for native-mode window chrome.
+  RE-CONFIRMED 2026-07-29: still the bar/dock path (iosc-shell/shell-draw.h:244-247 builds a
+  `cairo_image_surface_create_for_data` + `cairo_t` and paints on the CPU). Note the `ngl`
+  setenv at shell-draw.h:416 governs apps the shell LAUNCHES, not the shell's own painting —
+  easy to misread as the panel being on the GPU. With P0.2 landed, a static panel costs ~zero
+  re-uploads, so the cost only shows up when the panel actually animates (clock tick, dock
+  gestures). This is now the last CPU painter in the desktop and the natural next target if
+  the no-CPU-rendering goal is to be taken literally.
 - gedit skipped in favor of gnome-text-editor (libpeas-2 typelib chain, gnome-apps.md:175-182).
 - gnome-shell JS is interpreter-only (JIT-less mozjs) — animations may be sluggish on the A10; compositing stays GPU (mutter-on-iosc.md risk #5). Inherent, not fixable by us.
 - ios-inputd degrades gracefully when input-method-v2/virtual-keyboard-v1 absent (ios-inputd.c:293-305) — both protocols are advertised by iosc, so messages are belt-and-braces.
