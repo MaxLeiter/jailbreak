@@ -236,6 +236,22 @@ deploy_static_repo() {
     "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$deploy_root/repo/Packages"
     echo "==> Re-signing the scoped index"
     sign_index "$deploy_root/repo"
+
+    # make-repo.py prunes depictions/icons/banners for packages that left the
+    # tree's index. A scoped deploy serves the LIVE index, which can still name a
+    # package this branch retired -- so the scoped index is the one place where a
+    # stanza can outlive its assets. Cosmetic (a 404 depiction, apt is unaffected)
+    # so it warns rather than blocks, but silently shipping a broken Sileo page is
+    # worth a line of output.
+    local dangling
+    dangling="$(comm -23 \
+      <(awk '/^Package: /{print $2}' "$deploy_root/repo/Packages" | sort -u) \
+      <(ls "$deploy_root/repo/depictions" 2>/dev/null | sed -n 's/\.html$//p' | sort -u))"
+    if [ -n "$dangling" ]; then
+      echo "   WARNING: the scoped index names $(echo "$dangling" | wc -l | tr -d ' ') package(s) with no depiction in this upload:" >&2
+      echo "$dangling" | sed 's/^/     /' >&2
+      echo "     (retired on this branch but still live on $domain; a full publish clears it)" >&2
+    fi
   fi
 
   # Everything apt reads must exist in the upload. Checked here, on the staged

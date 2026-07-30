@@ -74,7 +74,8 @@ jobs:
           # --from-index never rewrites Packages, so a diff here means a tracked
           # derived artifact (a depiction, the landing page) drifted from the index
           # it is generated from -- someone edited output instead of input, or
-          # committed a stale regeneration.
+          # committed a stale regeneration. Deletions mean a retired package left
+          # its depiction/icon/banner behind and the prune collected them.
           if ! git diff --quiet -- repo/; then
             echo "Regenerating from repo/Packages changed tracked files:"
             git diff --stat -- repo/
