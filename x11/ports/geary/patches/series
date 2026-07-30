@@ -1,2 +1,4 @@
 0001-ios-optional-build-only-integrations.patch
 0002-meson-avoid-cross-type-dependency-comparison.patch
+0003-use-host-vala-metadata-when-cross-compiling.patch
+0004-use-compatible-webkit-javascript-api.patch

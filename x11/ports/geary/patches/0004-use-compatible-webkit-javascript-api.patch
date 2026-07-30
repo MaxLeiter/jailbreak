@@ -1,0 +1,18 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Use the compatible WebKit JavaScript API
+
+The Vala metadata available to the cross compiler exposes WebKitGTK's retained
+run_javascript async API. WebKitGTK 2.44 still implements it, so use that entry
+point instead of the newer Vala binding name.
+
+--- a/src/client/conversation-viewer/conversation-message.vala
++++ b/src/client/conversation-viewer/conversation-message.vala
+@@ -675,7 +675,7 @@ public class ConversationMessage : Gtk.Grid, Geary.BaseInterface {
+     public async void evaluate_javascript(string script, Cancellable? cancellable) throws Error {
+         if (this.web_view == null)
+             initialize_web_view();
+-        yield web_view.evaluate_javascript(script, -1, null, null, cancellable);
++        yield web_view.run_javascript(script, cancellable);
+     }
+ 
+     public void zoom_in() {
