@@ -350,7 +350,7 @@ fi
 
 for t in $TARGETS; do
   echo "==> make $t"
-  make $t $COMMON -j"$(nproc)"
+  make $t $COMMON -j"${JOBS:-$(nproc)}"
 done
 if [ -d "$GTE_W" ] && [ -n "${GTE_FP:-}" ]; then
   printf '%s\n' "$GTE_FP" > "$GTE_F"
