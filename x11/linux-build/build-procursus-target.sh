@@ -119,9 +119,19 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e LD_LIBRARY_PATH="/root/cctools/lib" \
   -v "$VOLUME:/work/Procursus" \
   -v "$HERE/target-env.sh:/work/target-env.sh:ro" \
+  -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$HERE/out:/out" \
   --entrypoint bash "$IMAGE" -lc '
 set -euo pipefail
+
+# A cold volume has no Procursus tree at all. Clone it, apply the toolchain fixes
+# every target needs, and run setup -- the steps build.sh does on the way to the X
+# server, which a Wayland-only target has no reason to go through.
+if [ ! -d /work/Procursus/.git ]; then
+  echo "==> cold volume: cloning Procursus"
+  git clone --depth 1 https://github.com/ProcursusTeam/Procursus.git /work/Procursus
+  BOOTSTRAP=1
+fi
 cd /work/Procursus
 rm -f /usr/local/bin/aarch64-apple-darwin-clang /usr/local/bin/aarch64-apple-darwin-clang++
 find /root/cctools/bin -maxdepth 1 -type f -name "aarch64-apple-darwin-*" \
@@ -158,6 +168,14 @@ for i, line in enumerate(lines):
         print("patched makefiles/pcre2.mk")
         break
 PY
+echo "==> common Procursus toolchain edits"
+python3 /work/procursus-common-edits.py
+
+if [ "${BOOTSTRAP:-0}" = 1 ]; then
+  echo "==> cold volume: make setup (stages the SDK headers into build_base)"
+  make setup MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1
+fi
+
 make "$@" MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 -j"$(nproc)"
 dest="/out/targets/$XIOS_TARGET_ID"
 mkdir -p "$dest"
