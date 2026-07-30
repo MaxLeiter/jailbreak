@@ -133,6 +133,19 @@ if [ -n "$LDID" ]; then
 fi
 file "$o" | sed 's/^/   /'
 
+# Native D-Bus session client for the no-X11 GNOME Shell build. Upstream
+# Mutter's XSMP client is X11-only, so this adapter registers the supervised
+# Shell with gnome-session and handles its normal shutdown handshake.
+echo "==> build xios-gnome-session-client"
+o="$OUT/xios-gnome-session-client"
+# shellcheck disable=SC2086
+$CC "${CFLAGS[@]}" "$SRC/xios-gnome-session-client.c" $DEPFLAGS -o "$o"
+fix_libintl "$o"
+if [ -n "$LDID" ]; then
+  "$LDID" -S "$o"
+fi
+file "$o" | sed 's/^/   /'
+
 # --- xios-bluez-stub (ObjC): org.bluez bridge backed by BluetoothManager.framework ----------
 # Unlike the three C stubs this is Objective-C (Foundation/CoreFoundation) and reaches the
 # private BluetoothManager.framework at RUNTIME via dlopen()+ObjC-runtime, so it needs no

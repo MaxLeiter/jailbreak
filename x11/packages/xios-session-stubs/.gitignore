@@ -4,5 +4,6 @@
 /var/jb/usr/libexec/xios-polkit-stub
 /var/jb/usr/libexec/xios-accounts-stub
 /var/jb/usr/libexec/xios-sysintd
+/var/jb/usr/libexec/xios-gnome-session-client
 # Local build artifact (also gitignored globally under out/).
 *.deb
