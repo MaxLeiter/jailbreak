@@ -1,0 +1,107 @@
+Subject: [PATCH] papers: cross the Rust shell to aarch64-apple-ios
+
+Meson already cross-builds the C libraries, but its Cargo custom target
+implicitly uses the build host. Select Rust's iOS target when the Meson host
+machine is Darwin and copy the executable from Cargo's target-specific output
+directory.
+
+diff -ruN a/shell-rs/src/meson.build b/shell-rs/src/meson.build
+--- a/shell-rs/src/meson.build	2024-06-17 03:49:52
++++ b/shell-rs/src/meson.build	2026-07-29 17:57:32
+@@ -1,90 +1,96 @@
+ config = configure_file(
+   input: 'config.rs.in',
+   output: 'config.rs',
+   configuration: config_h,
+ )
+ 
+ build_root = meson.project_build_root()
+ source_root = meson.current_source_dir()
+ 
+ cargo = find_program('cargo', required: true)
+ 
+ cargo_options = [ '--manifest-path', shell_rs_root / 'Cargo.toml' ]
+ cargo_options += [ '--target-dir', meson.current_build_dir() ]
+ 
+ if get_option('profile') == 'devel'
+   rust_target = 'debug'
+ else
+   cargo_options += [ '--release' ]
+   rust_target = 'release'
+ endif
+ 
++rust_output_dir = meson.current_build_dir() / rust_target
++if host_machine.system() == 'darwin'
++  cargo_options += [ '--target', 'aarch64-apple-ios' ]
++  rust_output_dir = meson.current_build_dir() / 'aarch64-apple-ios' / rust_target
++endif
++
+ if enable_keyring
+   cargo_options += [ '--features', 'with-keyring' ]
+ endif
+ 
+ cargo_env = environment()
+ # it seems that flatpak can't access network during install stage.
+ cargo_env.set('CARGO_HOME', build_root / 'cargo-home')
+ cargo_env.set('CODEGEN_BUILD_DIR', meson.current_build_dir())
+ # override library lookup, we should not use the system library.
+ cargo_env.set('SYSTEM_DEPS_PAPERS_SHELL_4_0_NO_PKG_CONFIG', '1')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_SHELL_4_0_SEARCH_NATIVE', build_root / 'shell')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_SHELL_4_0_LIB', 'ppsshell-4.0')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_VIEW_4_0_NO_PKG_CONFIG', '1')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_VIEW_4_0_SEARCH_NATIVE', build_root / 'libview')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_VIEW_4_0_LIB', 'ppsview-4.0')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_DOCUMENT_4_0_NO_PKG_CONFIG', '1')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_DOCUMENT_4_0_SEARCH_NATIVE', build_root / 'libdocument')
+ cargo_env.set('SYSTEM_DEPS_PAPERS_DOCUMENT_4_0_LIB', 'ppsdocument-4.0')
+ 
+ cargo_build = custom_target(
+   'cargo-build',
+   build_by_default: true,
+   build_always_stale: true,
+   output: 'src',
+   console: true,
+   depends: [libppsshell],
+   env: cargo_env,
+   command: [
+     cargo, 'build',
+     cargo_options,
+   ]
+ )
+ 
+ copy_binary = custom_target(
+   'cp-binary',
+   depends: cargo_build,
+   build_by_default: true,
+   build_always_stale: true,
+   install: true,
+   install_dir: get_option('bindir'),
+   output: meson.project_name(),
+   command: [
+     'cp',
+-    meson.current_build_dir() / rust_target / meson.project_name(),
++    rust_output_dir / meson.project_name(),
+     '@OUTPUT@',
+   ],
+ )
+ 
+ cargo_doc = custom_target(
+   'cargo-doc',
+   build_by_default: false,
+   build_always_stale: true,
+   output: 'doc',
+   console: true,
+   command: [
+     cargo, 'doc',
+     cargo_options + ['--document-private-items', '--all-features', '--workspace'],
+   ],
+ )
+ 
+ pps_library_path = '@0@/libview:@0@/libdocument:@0@/shell'.format(build_root)
+ test_env = cargo_env
+ test_env.set('DYLD_LIBRARY_PATH', pps_library_path)
+ test_env.set('LD_LIBRARY_PATH', pps_library_path)
+ 
+ cargo_clippy = find_program('cargo-clippy', required: false)
+ if cargo_clippy.found()
+   run_target(

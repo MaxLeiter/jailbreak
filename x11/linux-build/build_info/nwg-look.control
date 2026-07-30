@@ -7,6 +7,5 @@ Priority: optional
 Homepage: https://github.com/nwg-piotr/nwg-look
 Depends: libglib2.0-0, libgtk-3-0, gsettings-desktop-schemas, dconf
 Description: GTK settings editor for Wayland desktops
- nwg-look edits GTK theme, icon, cursor and font settings. This control skeleton
- is staged with the blocker recipe; the package is not buildable until the repo
- has a Go+cgo iPhoneOS cross-build path for gotk3 and a decision on xcur2png.
+ nwg-look edits GTK theme, icon, cursor and font settings. Cursor previews are
+ shown when the optional xcur2png helper is installed.

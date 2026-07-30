@@ -1,1 +1,2 @@
 0001-ios-make-librt-optional.patch
+0002-darwin-itimerspec.patch

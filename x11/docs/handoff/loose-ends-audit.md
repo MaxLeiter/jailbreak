@@ -119,12 +119,23 @@ was no longer running at final validation; its outcome was not assessed as part 
    build the full chain, then add a package-owned rootless `xios-session` runner.
 2. **GNOME Terminal:** build/package the GTK3 VTE flavor first; GNOME Console is already the
    functional published terminal.
-3. **mako/basu:** upstream requires an sd-bus provider. This needs a deliberate sd-bus strategy,
-   not another compile flag.
-4. **nwg-look:** Go/cgo-to-iOS tooling is unresolved. The recipe is intentionally a blocker
-   record, not a pretend build.
-5. **Papers:** the Rust-to-iOS toolchain remains the blocker.
-6. **Geary/WebKitGTK:** this is still a large browser-engine/toolchain port, not a leaf app fix.
+3. **mako/basu:** RESOLVED on-device 2026-07-29. The basu sd-bus sources have
+   a Darwin patch stack; `basu 0.2.1+ios1` and `mako 1.9.0+ios1` package as
+   arm64 Mach-O; and a real GDBus `Notify` call returned notification id 1 and
+   rendered through mako. Evidence:
+   `artifacts/device-runs/mako-basu-ios1-20260729/`.
+4. **nwg-look:** RESOLVED on-device 2026-07-29 with a pinned Go 1.25
+   `ios/arm64` cgo lane and rootless data lookup. The packaged settings UI maps
+   fully under iosc. Evidence:
+   `artifacts/device-runs/nwg-look-ios1-rootless2-20260729/`.
+5. **Papers:** RESOLVED on-device 2026-07-29 with pinned Rust 1.80.1,
+   `aarch64-apple-ios`, the widened `libgtkintl 1.1` ABI bridge, and
+   package-time schema compilation. Its Open a Document window maps under iosc
+   after the expected EGL-to-software fallback. Evidence:
+   `artifacts/device-runs/papers-ios1-schema-20260729/`.
+6. **Geary/WebKitGTK:** active browser-engine/toolchain port. WebCore completed
+   and the full WebKit target is now the immediate gate before install/split
+   packages and the remaining Geary dependency lane.
 7. **Xwayland WM polish:** `WM_NORMAL_HINTS`, client-requested `_NET_WM_STATE`/activation, and
    fuller resize semantics remain TODOs. Basic mapping/input works; these affect desktop polish.
 8. **Ladybird:** `0.1.24+ios1` is fully built, bundled, host DER-signed, and installed.

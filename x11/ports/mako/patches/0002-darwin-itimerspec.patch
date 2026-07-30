@@ -1,0 +1,27 @@
+Subject: [PATCH] mako: provide Darwin itimerspec for epoll-shim
+
+iOS exposes struct timespec but not the POSIX timer pair used by timerfd.
+libepoll-shim deliberately leaves the structure to the platform headers, so
+define the standard layout before including its timerfd API.
+
+diff -ruN a/event-loop.c b/event-loop.c
+--- a/event-loop.c	2024-05-12 03:21:40
++++ b/event-loop.c	2026-07-29 18:41:00
+@@ -1,10 +1,16 @@
+ #include <errno.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <time.h>
++#if defined(__APPLE__)
++struct itimerspec {
++	struct timespec it_interval;
++	struct timespec it_value;
++};
++#endif
+ #include <sys/timerfd.h>
+ #include <signal.h>
+ #include <sys/signalfd.h>
+-#include <time.h>
+ #include <unistd.h>
+ 
+ #include "event-loop.h"

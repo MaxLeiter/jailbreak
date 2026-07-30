@@ -46,17 +46,17 @@ needs_gpu_entitlement() {
   local f="$1"
   is_process_macho "$f" || return 1
   "$OTOOL" -L "$f" 2>/dev/null \
-    | grep -qE 'libgtk-4|libadwaita|libEGL|libGLESv2|QtGui|QtWayland|libmutter|libepoxy|libGL\.1'
+    | grep -E 'libgtk-3|libgtk-4|libadwaita|libEGL|libGLESv2|QtGui|QtWayland|libmutter|libepoxy|libGL\.1' >/dev/null
 }
 
 needs_compositor_entitlement() {
   local f="$1"
   is_process_macho "$f" || return 1
-  "$OTOOL" -L "$f" 2>/dev/null | grep -q 'libmutter'
+  "$OTOOL" -L "$f" 2>/dev/null | grep 'libmutter' >/dev/null
 }
 
 has_gpu_entitlement() {
-  "$LDID" -e "$1" 2>/dev/null | grep -qE 'AGXDeviceUserClient|IOGPUDeviceUserClient'
+  "$LDID" -e "$1" 2>/dev/null | grep -E 'AGXDeviceUserClient|IOGPUDeviceUserClient' >/dev/null
 }
 
 sign_macho() {
@@ -78,10 +78,10 @@ fix_deb() {
 
   while IFS= read -r f; do
     file "$f" 2>/dev/null | grep -q 'Mach-O' || continue
-    "$NM" -u "$f" 2>/dev/null | grep -q '_g_libintl_' || continue
+    "$NM" -u "$f" 2>/dev/null | grep '_g_libintl_' >/dev/null || continue
     needdep=1
     # Only relink if it still points at the unshippable proxy (keeps re-runs no-op).
-    if "$OTOOL" -L "$f" 2>/dev/null | grep -qE '@rpath/libintl(\.8)?\.dylib'; then
+    if "$OTOOL" -L "$f" 2>/dev/null | grep -E '@rpath/libintl(\.8)?\.dylib' >/dev/null; then
       "$INT" -change @rpath/libintl.dylib   "@rpath/$SHIM.dylib" "$f" 2>/dev/null || true
       "$INT" -change @rpath/libintl.8.dylib "@rpath/$SHIM.dylib" "$f" 2>/dev/null || true
       sign_macho "$f"

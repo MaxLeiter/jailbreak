@@ -8,8 +8,9 @@
  * dyld aborts ("Symbol not found: _g_libintl_gettext"). This shim bridges the gap.
  *
  * It REEXPORTS libintl.8 (so any real libintl_* still resolve) and adds the
- * g_libintl_* wrappers. The libgtk dylibs import 4 of these; the gtk-*-bin tools
- * also need gettext/textdomain, so we provide the full proxy-libintl surface.
+ * g_libintl_* wrappers. It also exposes the unprefixed GNU API for foreign
+ * bindings such as gettext-rs, which declare gettext() directly instead of
+ * following libintl.h's preprocessor aliases to libintl_gettext().
  *
  * Build (on device, or any env with libintl):
  *   clang -dynamiclib -fno-common -install_name @rpath/libgtkintl.dylib \
@@ -35,3 +36,13 @@ char *g_libintl_dcngettext(const char *d, const char *s, const char *p, unsigned
 char *g_libintl_textdomain(const char *d) { return libintl_textdomain(d); }
 char *g_libintl_bindtextdomain(const char *d, const char *dir) { return libintl_bindtextdomain(d, dir); }
 char *g_libintl_bind_textdomain_codeset(const char *d, const char *c) { return libintl_bind_textdomain_codeset(d, c); }
+
+char *gettext(const char *m) { return libintl_gettext(m); }
+char *dgettext(const char *d, const char *m) { return libintl_dgettext(d, m); }
+char *dcgettext(const char *d, const char *m, int c) { return libintl_dcgettext(d, m, c); }
+char *ngettext(const char *s, const char *p, unsigned long n) { return libintl_ngettext(s, p, n); }
+char *dngettext(const char *d, const char *s, const char *p, unsigned long n) { return libintl_dngettext(d, s, p, n); }
+char *dcngettext(const char *d, const char *s, const char *p, unsigned long n, int c) { return libintl_dcngettext(d, s, p, n, c); }
+char *textdomain(const char *d) { return libintl_textdomain(d); }
+char *bindtextdomain(const char *d, const char *dir) { return libintl_bindtextdomain(d, dir); }
+char *bind_textdomain_codeset(const char *d, const char *c) { return libintl_bind_textdomain_codeset(d, c); }

@@ -8,7 +8,7 @@ GTK_VERSION    := $(GTK_MAJOR_V).38
 DEB_LIBGTK_V   ?= $(GTK_VERSION)+ios2
 # libgtkintl: the proxy-libintl symbol shim (see gtkintl_shim.c). Built during the
 # gtk+3.0 step and shipped as its own deb; both GTK3 and GTK4 relink onto it.
-DEB_LIBGTKINTL_V ?= 1.0
+DEB_LIBGTKINTL_V ?= 1.1
 
 gtk+3.0-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gtk+/$(GTK_MAJOR_V)/gtk+-$(GTK_VERSION).tar.xz)
