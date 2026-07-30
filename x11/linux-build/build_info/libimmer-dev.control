@@ -1,0 +1,9 @@
+Package: libimmer-dev
+Version: @DEB_IMMER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/arximboldi/immer
+Description: Immutable persistent data structures for C++
+ Header-only Immer development files used by Krita's state-management layer.

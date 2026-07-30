@@ -1,0 +1,10 @@
+Package: liblager-dev
+Version: @DEB_LAGER_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/arximboldi/lager
+Depends: libimmer-dev, libzug-dev
+Description: C++ functional reactive state library
+ Header-only Lager development files used by Krita's state-management layer.

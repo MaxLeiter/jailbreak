@@ -1,0 +1,9 @@
+Package: libzug-dev
+Version: @DEB_ZUG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/arximboldi/zug
+Description: C++ transducer library
+ Header-only Zug development files used by Lager and Krita.
