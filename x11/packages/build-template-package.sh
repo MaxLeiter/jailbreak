@@ -149,6 +149,12 @@ for maint in postinst preinst prerm postrm; do
 done
 
 echo "==> staged $PKG for $XIOS_TARGET_ID at $STAGE"
+
+# Gate every staged tree, not just rootful ones: on rootless it catches a
+# template that forgot to go through the payload root, and on rootful it is the
+# check that keeps /var/jb out of a package that must not contain it.
+python3 "$X11DIR/linux-build/tools/check-target-package.py" "$STAGE" "$XIOS_TARGET_ID"
+
 if [ "$STAGE_ONLY" = 1 ]; then
   find "$STAGE" -type f | sed "s#$STAGE/##" | sort
   exit 0
