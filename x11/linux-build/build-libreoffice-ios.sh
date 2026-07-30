@@ -14,6 +14,7 @@ BUILD="${LIBREOFFICE_BUILD:-$WORK/build}"
 TAG="${LIBREOFFICE_TAG:-libreoffice-25.8.7.3}"
 REPOSITORY="${LIBREOFFICE_REPOSITORY:-https://git.libreoffice.org/core}"
 JOBS="${JOBS:-4}"
+PORT_DIR="$HERE/../ports/libreoffice"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -79,6 +80,12 @@ fi
 git -C "$SOURCE" fetch --quiet --tags origin "$TAG"
 git -C "$SOURCE" checkout --quiet --detach "$TAG"
 git -C "$SOURCE" reset --quiet --hard "$TAG"
+git -C "$SOURCE" clean -fd >/dev/null
+for patch in "$PORT_DIR"/patches/*.patch; do
+  [ -e "$patch" ] || continue
+  git -C "$SOURCE" apply "$patch"
+done
+cp "$PORT_DIR/files/nss-ios-static-builtins.patch.0" "$SOURCE/external/nss/"
 
 rm -rf "$BUILD"
 mkdir -p "$BUILD"

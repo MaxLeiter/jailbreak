@@ -1,0 +1,18 @@
+--- a/a/nss/lib/pk11wrap/pk11load.c
++++ b/a/nss/lib/pk11wrap/pk11load.c
+@@ -59,6 +59,8 @@
+ #include "pk11priv.h"
+ #include "secmodi.h"
+
++extern CK_RV NSSCKBI_C_GetFunctionList(void);
++
+ /*
+  * This is the raw internal function to load a PKCS #11 module.
+  * The module spec is in the format:
+@@ -663,8 +665,6 @@ fail:
+  * load a new module into our address space and initialize it.
+  */
+-extern CK_RV NSSCKBI_C_GetFunctionList();
+-
+ SECStatus
+ secmod_LoadPKCS11Module(SECMODModule *mod, SECMODModule **oldModule)

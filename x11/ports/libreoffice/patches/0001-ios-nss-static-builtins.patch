@@ -1,0 +1,9 @@
+--- a/external/nss/UnpackedTarball_nss.mk
++++ b/external/nss/UnpackedTarball_nss.mk
+@@ -36,4 +36,5 @@ $(eval $(call gb_UnpackedTarball_add_patches,nss,\
+     $(if $(filter iOS,$(OS)), \
+-        external/nss/nss-ios.patch) \
++        external/nss/nss-ios.patch \
++        external/nss/nss-ios-static-builtins.patch.0) \
+     $(if $(filter ANDROID,$(OS)), \
+         external/nss/nss-android.patch.1) \
