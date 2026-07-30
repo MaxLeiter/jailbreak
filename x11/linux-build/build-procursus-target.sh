@@ -106,9 +106,12 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_TARGET_ID \
   -e XIOS_MEMO_TARGET \
   -e XIOS_MEMO_CFVER \
+  -e XIOS_PREFIX \
+  -e XIOS_SUBPREFIX \
   -e PATH="/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   -e LD_LIBRARY_PATH="/root/cctools/lib" \
   -v "$VOLUME:/work/Procursus" \
+  -v "$HERE/target-env.sh:/work/target-env.sh:ro" \
   -v "$HERE/out:/out" \
   --entrypoint bash "$IMAGE" -lc '
 set -euo pipefail

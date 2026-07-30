@@ -91,7 +91,9 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_TARGET \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
+  -e XIOS_SUBPREFIX \
   -v "$VOLUME:/work/Procursus" \
+  -v "$HERE/target-env.sh:/work/target-env.sh:ro" \
   -v "$HERE/build.sh:/work/build.sh:ro" \
   -v "$HERE/patches:/work/patches:ro" \
   -v "$TARGET_OUT:/out" \

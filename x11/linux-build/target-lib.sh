@@ -92,6 +92,12 @@ xios_load_target() {
     export XIOS_PATH_DIRS="$subprefix/bin:$subprefix/sbin:/bin:/sbin"
     export XIOS_SHELL_PATH="/bin/sh"
   fi
+
+  # Derived build-tree paths and the shared helpers, so host-side packaging
+  # scripts and container-side build scripts speak the same vocabulary. The
+  # values it computes for /work/Procursus are simply unused host-side.
+  # shellcheck disable=SC1091
+  [ -r "$_xios_target_lib_dir/target-env.sh" ] && . "$_xios_target_lib_dir/target-env.sh"
 }
 
 xios_print_target() {
