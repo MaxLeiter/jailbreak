@@ -1,0 +1,7 @@
+diff --git a/plugins/color/lcms2engine/colorprofiles/IccColorProfile.cpp b/plugins/color/lcms2engine/colorprofiles/IccColorProfile.cpp
+--- a/plugins/color/lcms2engine/colorprofiles/IccColorProfile.cpp
++++ b/plugins/color/lcms2engine/colorprofiles/IccColorProfile.cpp
+@@ -193,0 +194 @@ IccColorProfile::IccColorProfile(const ColorPrimariesTransferCharacteristics &qu
++#if LCMS_VERSION >= 2170
+@@ -202,0 +204 @@ IccColorProfile::IccColorProfile(const ColorPrimariesTransferCharacteristics &qu
++#endif

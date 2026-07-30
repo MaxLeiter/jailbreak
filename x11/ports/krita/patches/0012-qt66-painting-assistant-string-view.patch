@@ -1,0 +1,18 @@
+diff --git a/libs/ui/kis_painting_assistant.cc b/libs/ui/kis_painting_assistant.cc
+--- a/libs/ui/kis_painting_assistant.cc
++++ b/libs/ui/kis_painting_assistant.cc
+@@ -644 +644 @@ void KisPaintingAssistant::loadXml(KoStore* store, QMap<int, KisPaintingAssistan
+-            if (xml.name() == "assistant") {
++            if (xml.name().toString() == "assistant") {
+@@ -647 +647 @@ void KisPaintingAssistant::loadXml(KoStore* store, QMap<int, KisPaintingAssistan
+-                setSnappingActive( (active != "0")  );
++                setSnappingActive( (active.toString() != "0")  );
+@@ -674 +674 @@ void KisPaintingAssistant::loadXml(KoStore* store, QMap<int, KisPaintingAssistan
+-                    setLocked(locked == "1");
++                    setLocked(locked.toString() == "1");
+@@ -681 +681 @@ void KisPaintingAssistant::loadXml(KoStore* store, QMap<int, KisPaintingAssistan
+-            if (xml.name() == "handle") {
++            if (xml.name().toString() == "handle") {
+@@ -694 +694 @@ void KisPaintingAssistant::loadXml(KoStore* store, QMap<int, KisPaintingAssistan
+-            } else if (xml.name() == "sidehandle") {
++            } else if (xml.name().toString() == "sidehandle") {
