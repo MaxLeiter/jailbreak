@@ -107,6 +107,7 @@ if surface_text:
         "xios_surface_resize",
         "xios_server_start",
         "xios_server_stop",
+        "xios_set_clipboard_socket",
         "xios_get_output_iosurface",
         "xios_notify_dirty_with_fence",
     ]

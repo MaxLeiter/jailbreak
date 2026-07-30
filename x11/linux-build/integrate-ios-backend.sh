@@ -31,6 +31,8 @@ cp "$WL"/meta-monitor-manager-ios.[ch] \
    "$WL"/meta-keymap-ios.[ch] \
    "$WL"/meta-virtual-input-device-ios.[ch] \
    "$WL"/meta-input-ios.[ch] \
+   "$WL"/meta-clipboard-ios.[ch] \
+   "$WL"/iosc-clipboard-bridge.[ch] \
    "$WL"/meta-backend-ios.[ch] \
    "$WL"/meta-wayland-iosurface.[ch] \
    "$MUTTER_ROOT/src/backends/ios/"

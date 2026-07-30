@@ -138,11 +138,11 @@ int   xios_server_start (const char *sock_path, const char *json_path,
 void  xios_server_stop (void);
 
 /* Call BEFORE xios_server_start. xios_set_compositor_id names the flavor ("mutter-ios") in the
- * typed in-band HELLO so the app enables the cursor overlay. xios_set_input_socket makes the
- * json writer emit "input_socket":<path> in xios.json, so the app routes keyboard/pointer/scroll
- * to mutter's AF_UNIX input socket instead of falling through to a dead XTEST path. Real impls in
- * xios_surface.c (libxios_glue, commit 0027261); prototypes match xios_surface.h. */
+ * typed in-band HELLO so the app enables the cursor overlay. The two endpoint setters advertise
+ * the exact input and clipboard sockets in xios.json. Real implementations live in
+ * xios_surface.c; prototypes match xios_surface.h. */
 void  xios_set_compositor_id (const char *id);
 void  xios_set_input_socket (const char *path);
+void  xios_set_clipboard_socket (const char *path);
 
 #endif /* XIOS_GLUE_STUB_H */

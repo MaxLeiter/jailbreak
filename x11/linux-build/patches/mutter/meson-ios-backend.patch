@@ -2,9 +2,9 @@
 # IOSurface wl_buffer type into libmutter (mutter 46, wayland=true / native_backend=false).
 #
 # Adds, in the UNCONDITIONAL (always-compiled) source list unless noted:
-#   1. the 8 backends/ios/*.c backend units (MetaBackendIOS + clutter-backend, monitor
-#      manager, renderer, seat, keymap, virtual-input-device, input) — base mutter_sources
-#      list (NOT under `if have_native_backend`, which is off here).
+#   1. the backends/ios/*.c backend units (MetaBackendIOS, rendering/input, and the
+#      MetaSelection clipboard adapter plus shared transport) — base mutter_sources list
+#      (NOT under `if have_native_backend`, which is off here).
 #   2. backends/ios/meta-wayland-iosurface.c — the IOSurface wl_buffer type — added inside
 #      the existing `if have_wayland` mutter_sources block (it needs wl_resource + the
 #      generated iosc_iosurface protocol; wayland IS on in this build).
@@ -20,9 +20,10 @@
 # RECIPE-LEVEL PREREQUISITES (mutter.mk must stage these BEFORE `meson setup`; the patch
 # only references them):
 #   * mkdir  $M/src/backends/ios/
-#   * copy the 8 host meta-*-ios.{c,h} (meta-backend-ios, meta-clutter-backend-ios,
+#   * copy the host meta-*-ios.{c,h} (meta-backend-ios, meta-clutter-backend-ios,
 #     meta-monitor-manager-ios, meta-renderer-ios, meta-seat-ios, meta-keymap-ios,
-#     meta-virtual-input-device-ios, meta-input-ios) into $M/src/backends/ios/
+#     meta-virtual-input-device-ios, meta-input-ios, meta-clipboard-ios) and the shared
+#     iosc-clipboard-bridge.{c,h} into $M/src/backends/ios/
 #   * copy meta-wayland-iosurface.{c,h} into $M/src/backends/ios/   <-- NOTE: backends/ios,
 #     NOT src/wayland/. The provided .c does `#include "backends/ios/meta-wayland-iosurface.h"`
 #     and `#include "backends/ios/xios-glue-stub.h"`, so both live under backends/ios/.
@@ -80,7 +81,7 @@ diff --git a/src/meson.build b/src/meson.build
  mutter_pkg_deps = [
    cairo_dep,
    gio_unix_dep,
-@@ -190,6 +205,29 @@ mutter_sources = [
+@@ -190,6 +205,33 @@ mutter_sources = [
    'backends/edid.h',
    'backends/edid-parse.c',
    'backends/gsm-inhibitor-flag.h',
@@ -107,10 +108,14 @@ diff --git a/src/meson.build b/src/meson.build
 +  'backends/ios/meta-virtual-input-device-ios.h',
 +  'backends/ios/meta-input-ios.c',
 +  'backends/ios/meta-input-ios.h',
++  'backends/ios/meta-clipboard-ios.c',
++  'backends/ios/meta-clipboard-ios.h',
++  'backends/ios/iosc-clipboard-bridge.c',
++  'backends/ios/iosc-clipboard-bridge.h',
    'backends/meta-backend.c',
    'backends/meta-backend-private.h',
    'backends/meta-barrier.c',
-@@ -610,6 +646,11 @@ if have_wayland
+@@ -610,6 +650,11 @@ if have_wayland
      'wayland/meta-wayland-data-source-primary.h',
      'wayland/meta-wayland-dma-buf.c',
      'wayland/meta-wayland-dma-buf.h',
@@ -122,7 +127,7 @@ diff --git a/src/meson.build b/src/meson.build
      'wayland/meta-wayland-dnd-surface.c',
      'wayland/meta-wayland-dnd-surface.h',
      'wayland/meta-wayland-filter-manager.c',
-@@ -1059,6 +1100,7 @@ if have_wayland
+@@ -1059,6 +1104,7 @@ if have_wayland
    wayland_protocols = [
      ['fractional-scale', 'staging', 'v1', ],
      ['gtk-shell', 'private', ],
