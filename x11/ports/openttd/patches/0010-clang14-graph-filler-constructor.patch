@@ -1,0 +1,6 @@
+--- a/src/graph_gui.cpp
++++ b/src/graph_gui.cpp
+@@ -257,0 +258,3 @@
++		Filler(BaseFiller base, Tprojection proj) :
++			BaseFiller(base), proj(proj) {}
++
