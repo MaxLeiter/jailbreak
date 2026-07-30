@@ -1,0 +1,26 @@
+diff --git a/libs/ui/KisSurfaceColorSpaceWrapper.h b/libs/ui/KisSurfaceColorSpaceWrapper.h
+--- a/libs/ui/KisSurfaceColorSpaceWrapper.h
++++ b/libs/ui/KisSurfaceColorSpaceWrapper.h
+@@ -64,8 +64,10 @@ public:
+             return { sRGBColorSpace };
+         } else if (colorSpace == QColorSpace::SRgbLinear) {
+             return { scRGBColorSpace };
++#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+         } else if (colorSpace == QColorSpace::Bt2100Pq) {
+             return { bt2020PQColorSpace };
++#endif
+         } else {
+             qWarning() << "WARNING: KisSurfaceColorSpaceWrapper: unsupported surface color space" << colorSpace;
+             return { DefaultColorSpace };
+@@ -117,6 +119,11 @@ public:
+             return QColorSpace::SRgb;
+         case scRGBColorSpace:
+             return QColorSpace::SRgbLinear;
++#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+         case bt2020PQColorSpace:
+             return QColorSpace::Bt2100Pq;
++#else
++        case bt2020PQColorSpace:
++            return QColorSpace();
++#endif
+         }
