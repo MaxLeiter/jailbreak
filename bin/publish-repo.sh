@@ -381,11 +381,17 @@ if [ -n "$DRIFT_REF" ]; then
   echo "==> Checking the index against what $TARGET already publishes"
   # With --only, being behind the target is the normal case -- scope-index.py
   # reconciles against the live index on the deploy copy -- so regressions are
-  # informational there. Collisions stay fatal either way: a version already
-  # published with different bytes cannot be uploaded at all.
+  # informational there. Collisions stay fatal for the packages actually being
+  # shipped, since those bytes cannot be uploaded at all; for everything else a
+  # scoped publish neither uploads nor reindexes them, so they are out of scope.
   if [ -n "$ONLY" ]; then
+    # Also scope WHICH packages are checked, not just how regressions are treated.
+    # A scoped publish uploads nothing but these packages and reuses every other
+    # stanza from the target verbatim, so another package colliding cannot affect
+    # what ships here -- and used to fail the run anyway, which meant one session's
+    # un-bumped package blocked every other session's unrelated hotfix.
     "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" \
-      --against "$DRIFT_REF" --warn-regressions
+      --against "$DRIFT_REF" --only "$ONLY" --warn-regressions
   else
     "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" --against "$DRIFT_REF"
   fi
