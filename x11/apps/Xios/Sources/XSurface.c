@@ -27,13 +27,8 @@ static void xlog(const char *fmt, ...)
     fputc('\n', f); fclose(f);
 }
 
-/* wire protocol — must match the server (linux-build/patches/xios/xios_surface.c).
- * After the IOSurface mach-port hand-off, every app connection receives a typed
- * 32-byte record stream: HELLO first, then DIRTY + CURSOR interleaved. */
-#define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
-
-typedef struct { uint32_t magic, pid, portname, reserved; } xios_hello;
-typedef struct { uint32_t magic, width, height, stride, format, status; } xios_reply;
+/* Wire protocol is the canonical xios_msg stream from XiosProtocol.h. Both
+ * directions start with an exact-version HELLO; there is no legacy preamble. */
 
 typedef struct {
     mach_msg_header_t header;
@@ -132,11 +127,13 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
         destroy_reply_port(self, r); close(fd); return NULL;
     }
 
-    xios_hello hello;
-    hello.magic = XIOS_MAGIC;
-    hello.pid = (uint32_t) getpid();
-    hello.portname = (uint32_t) r;
-    hello.reserved = XIOS_PROTOCOL_VERSION;
+    xios_msg hello;
+    memset(&hello, 0, sizeof(hello));
+    hello.magic = XIOS_MSG_MAGIC;
+    hello.type = XIOS_MSG_HELLO;
+    hello.window_id = XIOS_PROTOCOL_VERSION;
+    hello.a = (int32_t) getpid();       /* diagnostic only; server trusts peer pid */
+    hello.b = (int32_t) r;
     if (write_full(fd, &hello, sizeof(hello)) != 0) {
         destroy_reply_port(self, r); close(fd); return NULL;
     }
@@ -167,51 +164,34 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
         close(fd); return NULL;
     }
 
-    /* Drain the geometry reply so the socket stream is aligned for damage msgs. */
-    xios_reply reply;
-    if (read_full(fd, &reply, sizeof(reply)) != 0 || reply.magic != XIOS_MAGIC ||
-        reply.status != 0) {
-        xlog("reply read failed magic=0x%x status=%u", reply.magic, reply.status);
-        CFRelease(surface); close(fd); return NULL;
-    }
-
-    XSurfaceConn *c = calloc(1, sizeof(*c));
-    if (!c) { CFRelease(surface); close(fd); return NULL; }
-    c->fd = fd;
-    c->surface = surface;
-    /* Trust the surface itself for geometry (single source of truth). */
-    c->width = (int) IOSurfaceGetWidth(surface);
-    c->height = (int) IOSurfaceGetHeight(surface);
-    c->stride = (int) IOSurfaceGetBytesPerRow(surface);
-
-    /* The server sends an in-band HELLO record (magic XMS1, type HELLO) as the
-     * first bytes after the reply, still blocking here (the server sends it before
-     * flipping the socket to non-blocking). If it is absent or malformed, app and
-     * server are out of sync; fail and reconnect instead of falling back to an old
-     * byte stream. */
+    /* The server's HELLO is the first socket reply. The IOSurface itself remains
+     * the geometry source of truth; HELLO must describe that exact allocation. */
     xios_msg h;
     memset(&h, 0, sizeof(h));
     if (read_full(fd, &h, sizeof(h)) != 0 || h.magic != XIOS_MSG_MAGIC ||
         h.type != XIOS_MSG_HELLO ||
-        h.window_id != XIOS_PROTOCOL_VERSION) {
+        h.window_id != XIOS_PROTOCOL_VERSION ||
+        h.length >= sizeof(((XSurfaceConn *)0)->comp_id)) {
         xlog("v%u HELLO missing/malformed (magic=0x%x type=%u version=%u)",
              XIOS_PROTOCOL_VERSION, h.magic, h.type, h.window_id);
+        CFRelease(surface); close(fd); return NULL;
+    }
+    XSurfaceConn *c = calloc(1, sizeof(*c));
+    if (!c) { CFRelease(surface); close(fd); return NULL; }
+    c->fd = fd;
+    c->surface = surface;
+    c->width = (int) IOSurfaceGetWidth(surface);
+    c->height = (int) IOSurfaceGetHeight(surface);
+    c->stride = (int) IOSurfaceGetBytesPerRow(surface);
+    if (h.a != c->width || h.b != c->height || h.c != c->stride ||
+        (uint32_t)h.d != 0x42475241u) {
+        xlog("HELLO geometry mismatch surface=%dx%d/%d wire=%dx%d/%d",
+             c->width, c->height, c->stride, h.a, h.b, h.c);
         CFRelease(surface); free(c); close(fd); return NULL;
     }
-    uint32_t full_idlen = h.length;
-    uint32_t idlen = full_idlen;
-    if (idlen > sizeof(c->comp_id) - 1) idlen = sizeof(c->comp_id) - 1;
+    uint32_t idlen = h.length;
     if (idlen && read_full(fd, c->comp_id, idlen) != 0) {
         CFRelease(surface); free(c); close(fd); return NULL;
-    }
-    while (full_idlen > idlen) {
-        unsigned char discard[64];
-        uint32_t chunk = full_idlen - idlen;
-        if (chunk > sizeof(discard)) chunk = (uint32_t) sizeof(discard);
-        if (read_full(fd, discard, chunk) != 0) {
-            CFRelease(surface); free(c); close(fd); return NULL;
-        }
-        full_idlen -= chunk;
     }
     c->comp_id[idlen] = '\0';
     xlog("typed stream connected (compositor=%s)", c->comp_id);
@@ -302,24 +282,9 @@ int xsurface_drain(XSurfaceConn *c)
                 c->cur_shape = m.c; c->cur_vis = (m.d & 1);
                 c->cur_seq++;
                 break;
-            case XIOS_MSG_HELLO:               /* compositor identity / geometry reminder */
-                if (m.window_id != XIOS_PROTOCOL_VERSION) {
-                    xlog("display protocol changed to v%u; v%u required",
-                         m.window_id, XIOS_PROTOCOL_VERSION);
-                    return -1;
-                }
-                /* The IOSurface backing this connection is immutable. If a later
-                 * HELLO advertises different dimensions, the server has moved to a
-                 * new surface and this connection must be re-adopted from scratch
-                 * (new mach port + new Metal texture), not patched in place. */
-                if ((m.a > 0 && m.a != c->width) ||
-                    (m.b > 0 && m.b != c->height) ||
-                    (m.c > 0 && m.c != c->stride)) {
-                    xlog("typed HELLO geometry changed %dx%d/%d -> %dx%d/%d; reconnect",
-                         c->width, c->height, c->stride, m.a, m.b, m.c);
-                    return -1;
-                }
-                break;
+            case XIOS_MSG_HELLO:
+                xlog("duplicate HELLO; reconnect");
+                return -1;
             default:
                 xlog("typed unknown record type=0x%x; reconnect", m.type);
                 return -1;

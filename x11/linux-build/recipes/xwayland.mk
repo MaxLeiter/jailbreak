@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS      += xwayland
 XWAYLAND_VERSION := 23.2.7
-DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios4
+DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios5
 
 # libdrm is a links-only build shim: xwayland-window.h
 # includes <xf86drm.h> unconditionally (the xwl_window / xwl_egl_backend structs
@@ -33,6 +33,7 @@ xwayland-setup: setup
 	cp -v /work/x11/wayland/iosc-iosurface.xml $(BUILD_WORK)/xwayland/hw/xwayland/
 	cp -v /work/x11/wayland/xios_metal_sync.{m,h} $(BUILD_WORK)/xwayland/hw/xwayland/
 	cp -v /work/x11/apps/shared/XiosMetalEventBroker.{m,h} $(BUILD_WORK)/xwayland/hw/xwayland/
+	cp -v /work/x11/apps/shared/XiosProtocol.h $(BUILD_WORK)/xwayland/hw/xwayland/
 	mkdir -p $(BUILD_WORK)/xwayland/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

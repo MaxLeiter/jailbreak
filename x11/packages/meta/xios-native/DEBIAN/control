@@ -1,12 +1,12 @@
 Package: xios-native
 Name: Xios Desktop (Native iPadOS)
-Version: 0.1.3
+Version: 0.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-runtime (>= 0.1.0), xios-launcher-tools (>= 0.1.5), com.max.xiosprefs
+Depends: firmware (>= 16.5), xios-runtime (>= 0.1.1), xios-launcher-tools (>= 0.1.6), com.max.xiosprefs
 MinimumOSVersion: 16.5.0
 Description: the native iPadOS flavor for Xios
  Linux desktop apps as first-class iPadOS windows. This flavor installs no

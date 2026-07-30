@@ -1,25 +1,30 @@
 # Geary / WebKitGTK feasibility
 
-Status as of 2026-07-19: the first WebKitGTK 4.1 cross-build milestone is real.
-WebKitGTK 2.44.4 configures for rootless iOS with GTK3, X11 + Wayland, and a
-no-JIT C-loop JavaScriptCore. The `WTF` and full `JavaScriptCore` Ninja targets
-both compile and link; the result is an arm64 Mach-O dylib with no undefined
-`__muloti4`. There is still no WebCore/WebKit compile, install/package target,
-Geary recipe, device smoke, or publication. Cheap Geary leaf deps also
-host-package successfully: `gmime`, `libstemmer`, `libytnef`, `gspell`, and
-`libpeas`; the last two still need device smoke before publication.
+Status as of 2026-07-29: WebKitGTK 2.44.4 configures for rootless iOS with
+GTK3, X11 + Wayland, and a no-JIT C-loop JavaScriptCore. `WTF`,
+`JavaScriptCore`, and WebCore compile/link as arm64 Mach-O. The full WebKit
+target is rebuilding after the GTK/Darwin port was corrected to use Unix file
+descriptor IPC attachments rather than Cocoa `MachSendRight` attachments.
+Install and four-way runtime/dev split-package targets now exist.
+
+The Geary 46.0 recipe/control/patch stack also exists. `gmime`, `libstemmer`,
+`libytnef`, `gspell`, `libpeas`, Folks, gcr-3/gck-1, and the GOA client API
+all build/package; their new runtime packages load on the iPad. The credible
+iOS account path is manual IMAP/SMTP. The Linux GOA provider daemon and
+browser-backed OAuth setup are deliberately not claimed. The remaining closure
+gate is a successful full WebKit install/package followed by a mapped Geary
+window using the real WebKit message renderer.
 
 ## Decision
 
-Continue WebKitGTK before adding a Geary recipe.
+Finish and device-smoke the existing WebKitGTK/Geary lane before widening
+account integrations or media/browser features.
 
-Geary is not blocked by a small missing app dependency. It hard-requires
-WebKitGTK's GTK3/libsoup3 API (`webkit2gtk-4.1`, `javascriptcoregtk-4.1`, and
-the `webkit2gtk-web-extension-4.1` development interface) and builds a WebKit
-web-process extension. The repo now has a configure/engine recipe, but no
-installed WebKitGTK runtime, development packages, `.pc` files, or Vala API. A
-Geary recipe would still fail at Meson configure before exercising useful
-Geary-specific code.
+Geary hard-requires WebKitGTK's GTK3/libsoup3 API (`webkit2gtk-4.1`,
+`javascriptcoregtk-4.1`, and `webkit2gtk-web-extension-4.1`) and builds a
+WebKit web-process extension. Those installed headers, `.pc` files, libraries,
+and helper processes—not another leaf dependency—are now the sole app build
+gate.
 
 ## Local dependency inventory
 

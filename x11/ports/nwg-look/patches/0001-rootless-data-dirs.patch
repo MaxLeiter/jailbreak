@@ -1,0 +1,20 @@
+--- a/tools.go
++++ b/tools.go
+@@ -1201,7 +1201,7 @@ func getDataDirs() []string {
+ 	if os.Getenv("XDG_DATA_DIRS") != "" {
+ 		xdgDataDirs = os.Getenv("XDG_DATA_DIRS")
+ 	} else {
+-		xdgDataDirs = "/usr/local/share/:/usr/share/"
++		xdgDataDirs = "/var/jb/usr/local/share/:/var/jb/usr/share/:/usr/local/share/:/usr/share/"
+ 	}
+ 
+ 	for _, d := range strings.Split(xdgDataDirs, ":") {
+--- a/stylepak/helpers.go
++++ b/stylepak/helpers.go
+@@ -47,6 +47,7 @@ func findThemePath(theme, dataHome, home string) (string, error) {
+ 	paths := []string{
+ 		filepath.Join(dataHome, "themes"),
+ 		filepath.Join(home, ".themes"),
++		"/var/jb/usr/share/themes",
+ 		"/usr/share/themes",
+ 	}

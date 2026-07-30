@@ -1,0 +1,10 @@
+Package: libgck-1-0
+Version: @DEB_GCR3_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libglib2.0-0, libgcrypt20, p11-kit
+Description: GCK PKCS11 client runtime
+ GCK 1.x library from gcr 3 for rootless iOS.

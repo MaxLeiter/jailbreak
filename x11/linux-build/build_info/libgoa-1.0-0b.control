@@ -1,0 +1,10 @@
+Package: libgoa-1.0-0b
+Version: @DEB_GNOME_ONLINE_ACCOUNTS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-online-accounts
+Depends: libglib2.0-0
+Description: GNOME Online Accounts client runtime
+ D-Bus client API used by Geary, without the Linux account provider daemon.

@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/papers
-Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libpoppler-glib8, libexempi8, libgdk-pixbuf-2.0-0, libcairo2, gsettings-desktop-schemas, dbus
+Depends: libgtkintl (>= 1.1), libintl8, libglib2.0-0, libgtk-4-1, libadwaita-1-0, libpoppler-glib8, libexempi8, libgdk-pixbuf-2.0-0, libcairo2, gsettings-desktop-schemas, dbus
 Description: Papers, the GTK4 GNOME document (PDF) viewer
  Papers is the GTK4/libadwaita successor to Evince. Built PDF-only against
  poppler-glib. Runs as a plain X11/Wayland client under any window manager.

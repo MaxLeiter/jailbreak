@@ -50,11 +50,15 @@ fi
 # sendability spelling; this is a source-compatibility attribute, not an ABI change.
 xpc_base="$prefix/include/xpc/base.h"
 if [ -f "$xpc_base" ] && ! grep -q 'XIOS_XPC_SENDABLE_COMPAT' "$xpc_base"; then
-  sed -i '/#define XPC_SWIFT_SENDABLE/a\
+  sed -i '/__END_DECLS/i\
 /* XIOS_XPC_SENDABLE_COMPAT */\
 #ifndef OS_OBJECT_DECL_SENDABLE_CLASS\
 #define OS_OBJECT_DECL_SENDABLE_CLASS(name) OS_OBJECT_DECL_CLASS(name)\
 #endif' "$xpc_base"
+fi
+if [ -f "$xpc_base" ] && ! grep -q 'XIOS_XPC_SENDABLE_COMPAT' "$xpc_base"; then
+  echo "ERROR: failed to install the XPC sendability compatibility declaration" >&2
+  exit 1
 fi
 
 for required in include/gcrypt.h include/libtasn1.h lib/libgcrypt.dylib lib/libtasn1.dylib; do

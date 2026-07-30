@@ -1,12 +1,12 @@
 Package: xios-core
 Name: Xios Desktop Core
-Version: 0.1.6
+Version: 0.1.7
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-runtime (>= 0.1.0), com.max.xios (>= 0.1.5), iosc (>= 0.9.36), iosc-shell (>= 0.9.11), xios-session (>= 1.0.72)
+Depends: firmware (>= 16.5), xios-runtime (>= 0.1.1), com.max.xios (>= 0.1.6), iosc (>= 0.9.37), iosc-shell (>= 0.9.11), xios-session (>= 1.0.72)
 MinimumOSVersion: 16.5.0
 Description: shared base for Xios fullscreen desktop flavors
  The common presentation layer used by the fullscreen Xios desktop flavors:

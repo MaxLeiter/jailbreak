@@ -1,0 +1,485 @@
+Subject: [PATCH] basu: port the sd-bus compatibility seams to Darwin
+
+Darwin exposes the BSD local-socket credential APIs used by basu's
+FreeBSD path. Use those paths on Apple targets and map endian operations
+to libkern's OSByteOrder API. Darwin has no ELF start/stop section symbols,
+so retain and search the built-in error table directly.
+
+diff -ruN a/meson.build b/meson.build
+--- a/meson.build	2022-12-16 02:13:02
++++ b/meson.build	2026-07-29 18:36:00
+@@ -265,7 +265,9 @@
+ subdir('src/basic')
+ subdir('src/libsystemd')
+ subdir('src/systemd')
++if host_machine.system() != 'darwin'
+ subdir('src/test')
++endif
+ 
+ foreach tuple : tests
+         sources = tuple[0]
+diff -ruN a/src/basic/alloc-util.h b/src/basic/alloc-util.h
+--- a/src/basic/alloc-util.h	2022-12-16 02:13:02
++++ b/src/basic/alloc-util.h	2026-07-29 17:45:20
+@@ -38,7 +38,7 @@
+                 0;                              \
+         })
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+ #define mempcpy __builtin_mempcpy
+ #endif
+ 
+diff -ruN a/src/basic/macro.h b/src/basic/macro.h
+--- a/src/basic/macro.h	2022-12-16 02:13:02
++++ b/src/basic/macro.h	2026-07-29 17:45:20
+@@ -70,7 +70,7 @@
+ #define ALIGN4(l) (((l) + 3) & ~3)
+ #define ALIGN8(l) (((l) + 7) & ~7)
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+ #undef ALIGN
+ #endif
+ 
+diff -ruN a/src/basic/memfd-util.c b/src/basic/memfd-util.c
+--- a/src/basic/memfd-util.c	2022-12-16 02:13:02
++++ b/src/basic/memfd-util.c	2026-07-29 17:45:20
+@@ -9,7 +9,7 @@
+ #include "memfd-util.h"
+ 
+ int memfd_set_sealed(int fd) {
+-#if defined(__FreeBSD__) && __FreeBSD__ < 13
++#if (defined(__FreeBSD__) && __FreeBSD__ < 13) || defined(__APPLE__)
+         return 0;
+ #else
+         int r;
+diff -ruN a/src/basic/missing.h b/src/basic/missing.h
+--- a/src/basic/missing.h	2022-12-16 02:13:02
++++ b/src/basic/missing.h	2026-07-29 17:52:49
+@@ -70,10 +70,44 @@
+ #define TASK_COMM_LEN 16
+ #endif
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
++#ifndef ENOMEDIUM
+ #define ENOMEDIUM       (INT_MAX - 1)
++#endif
++#ifndef ENOPKG
+ #define ENOPKG          (INT_MAX - 2)
++#endif
++#ifndef EUNATCH
+ #define EUNATCH         (INT_MAX - 3)
++#endif
++#ifndef ENODATA
+ #define ENODATA         (INT_MAX - 4)
++#endif
++#ifndef ELNRNG
+ #define ELNRNG          (INT_MAX - 5)
++#endif
+ #endif
++
++#if defined(__APPLE__)
++#ifndef MSG_CMSG_CLOEXEC
++#define MSG_CMSG_CLOEXEC 0
++#endif
++#ifndef SOCK_CLOEXEC
++#define SOCK_CLOEXEC 0
++#endif
++#ifndef SOCK_NONBLOCK
++#define SOCK_NONBLOCK 0
++#endif
++
++static inline void *memrchr(const void *s, int c, size_t n) {
++        const unsigned char *p = s;
++
++        while (n > 0) {
++                n--;
++                if (p[n] == (unsigned char) c)
++                        return (void *) (p + n);
++        }
++
++        return NULL;
++}
++#endif
+diff -ruN a/src/basic/parse-util.c b/src/basic/parse-util.c
+--- a/src/basic/parse-util.c	2022-12-16 02:13:02
++++ b/src/basic/parse-util.c	2026-07-29 17:45:20
+@@ -7,7 +7,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+ #include <xlocale.h>
+ #endif
+ 
+diff -ruN a/src/basic/socket-util.c b/src/basic/socket-util.c
+--- a/src/basic/socket-util.c	2022-12-16 02:13:02
++++ b/src/basic/socket-util.c	2026-07-29 17:45:20
+@@ -5,7 +5,7 @@
+ #include "socket-util.h"
+ #include "strv.h"
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+ #include <sys/ucred.h>
+ #include <sys/un.h>
+ #endif
+@@ -33,7 +33,7 @@
+ }
+ 
+ int getpeercred(int fd, struct ucred *ucred) {
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+         struct xucred cred;
+         socklen_t len = sizeof cred;
+         if (getsockopt(fd, 0, LOCAL_PEERCRED, &cred, &len) == -1) {
+@@ -75,7 +75,7 @@
+ }
+ 
+ int getpeersec(int fd, char **ret) {
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+         return -EOPNOTSUPP;
+ #else
+         _cleanup_free_ char *s = NULL;
+diff -ruN a/src/basic/socket-util.h b/src/basic/socket-util.h
+--- a/src/basic/socket-util.h	2022-12-16 02:13:02
++++ b/src/basic/socket-util.h	2026-07-29 17:45:20
+@@ -23,7 +23,7 @@
+         struct sockaddr_un un;
+ };
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+ struct ucred {
+         uint32_t pid;
+         uint32_t uid;
+diff -ruN a/src/basic/string-util.h b/src/basic/string-util.h
+--- a/src/basic/string-util.h	2022-12-16 02:13:02
++++ b/src/basic/string-util.h	2026-07-29 18:24:00
+@@ -10,6 +10,14 @@
+ #include <string.h>
+ 
+ #include "macro.h"
++
++#if defined(__APPLE__)
++static inline char *strchrnul(const char *s, int c) {
++        while (*s && *s != (char) c)
++                s++;
++        return (char *) s;
++}
++#endif
+ 
+ /* What is interpreted as whitespace? */
+ #define WHITESPACE        " \t\n\r"
+diff -ruN a/src/basic/unaligned.h b/src/basic/unaligned.h
+--- a/src/basic/unaligned.h	2022-12-16 02:13:02
++++ b/src/basic/unaligned.h	2026-07-29 17:52:49
+@@ -1,7 +1,10 @@
+ /* SPDX-License-Identifier: LGPL-2.1+ */
+ #pragma once
+ 
+-#ifdef __FreeBSD__
++#if defined(__APPLE__)
++#include <libkern/OSByteOrder.h>
++#define le64toh(x) OSSwapLittleToHostInt64(x)
++#elif defined(__FreeBSD__)
+ #include <sys/endian.h>
+ #else
+ #include <endian.h>
+diff -ruN a/src/libsystemd/sd-bus/bus-error.c b/src/libsystemd/sd-bus/bus-error.c
+--- a/src/libsystemd/sd-bus/bus-error.c	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-bus/bus-error.c	2026-07-29 17:45:20
+@@ -70,9 +70,11 @@
+         SD_BUS_ERROR_MAP_END
+ };
+ 
+-/* GCC maps this magically to the beginning and end of the BUS_ERROR_MAP section */
++/* GCC maps this magically to the beginning and end of the BUS_ERROR_MAP section. */
++#if !defined(__APPLE__)
+ extern const sd_bus_error_map __start_BUS_ERROR_MAP[];
+ extern const sd_bus_error_map __stop_BUS_ERROR_MAP[];
++#endif
+ 
+ /* Additional maps registered with sd_bus_error_add_map() are in this
+  * NULL terminated array */
+@@ -106,6 +108,14 @@
+                                         return m->code;
+                         }
+ 
++#if defined(__APPLE__)
++        m = bus_standard_errors;
++        while (m->code != BUS_ERROR_MAP_END_MARKER) {
++                if (streq(m->name, name))
++                        return m->code;
++                m++;
++        }
++#else
+         m = __start_BUS_ERROR_MAP;
+ #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+         while (m < __stop_BUS_ERROR_MAP) {
+@@ -125,6 +135,7 @@
+ 
+                 m++;
+         }
++#endif
+ #endif
+ 
+         return EIO;
+diff -ruN a/src/libsystemd/sd-bus/bus-error.h b/src/libsystemd/sd-bus/bus-error.h
+--- a/src/libsystemd/sd-bus/bus-error.h	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-bus/bus-error.h	2026-07-29 17:45:20
+@@ -34,12 +34,18 @@
+  * warn for the unknown attribute, so just disable -Wattributes.
+  */
+ 
++#if defined(__APPLE__)
+ #define BUS_ERROR_MAP_ELF_REGISTER                                      \
++        __attribute__ ((__used__))                                      \
++        __attribute__ ((aligned(8)))
++#else
++#define BUS_ERROR_MAP_ELF_REGISTER                                      \
+         _Pragma("GCC diagnostic ignored \"-Wattributes\"")              \
+         __attribute__ ((__section__("BUS_ERROR_MAP")))                  \
+         __attribute__ ((__used__))                                      \
+         __attribute__ ((retain))                                        \
+         __attribute__ ((aligned(8)))
++#endif
+ 
+ #define BUS_ERROR_MAP_ELF_USE(errors)                                   \
+         extern const sd_bus_error_map errors[];                         \
+diff -ruN a/src/libsystemd/sd-bus/bus-gvariant.c b/src/libsystemd/sd-bus/bus-gvariant.c
+--- a/src/libsystemd/sd-bus/bus-gvariant.c	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-bus/bus-gvariant.c	2026-07-29 17:52:49
+@@ -1,6 +1,14 @@
+ /* SPDX-License-Identifier: LGPL-2.1+ */
+ 
+-#ifdef __FreeBSD__
++#if defined(__APPLE__)
++#include <libkern/OSByteOrder.h>
++#define htole16(x) OSSwapHostToLittleInt16(x)
++#define htole32(x) OSSwapHostToLittleInt32(x)
++#define htole64(x) OSSwapHostToLittleInt64(x)
++#define le16toh(x) OSSwapLittleToHostInt16(x)
++#define le32toh(x) OSSwapLittleToHostInt32(x)
++#define le64toh(x) OSSwapLittleToHostInt64(x)
++#elif defined(__FreeBSD__)
+ #include <sys/endian.h>
+ #endif
+ 
+diff -ruN a/src/basic/locale-util.h b/src/basic/locale-util.h
+--- a/src/basic/locale-util.h	2022-12-16 02:13:02
++++ b/src/basic/locale-util.h	2026-07-29 18:05:00
+@@ -1,6 +1,10 @@
+ /* SPDX-License-Identifier: LGPL-2.1+ */
+ #pragma once
+ 
++#if defined(__APPLE__)
++#include <xlocale.h>
++#endif
++
+ #include <stdbool.h>
+ 
+ #include "macro.h"
+diff -ruN a/src/basic/io-util.c b/src/basic/io-util.c
+--- a/src/basic/io-util.c	2022-12-16 02:13:02
++++ b/src/basic/io-util.c	2026-07-29 18:17:00
+@@ -73,9 +73,22 @@
+         };
+ 
+         struct timespec ts;
++#if defined(__APPLE__)
++        int timeout;
++#endif
+         int r;
+ 
++#if defined(__APPLE__)
++        if (t == USEC_INFINITY)
++                timeout = -1;
++        else if (t / USEC_PER_MSEC >= INT_MAX)
++                timeout = INT_MAX;
++        else
++                timeout = (int) (t / USEC_PER_MSEC + !!(t % USEC_PER_MSEC));
++        r = poll(&pollfd, 1, timeout);
++#else
+         r = ppoll(&pollfd, 1, t == USEC_INFINITY ? NULL : timespec_store(&ts, t), NULL);
++#endif
+         if (r < 0)
+                 return -errno;
+         if (r == 0)
+diff -ruN a/src/basic/json.c b/src/basic/json.c
+--- a/src/basic/json.c	2022-12-16 02:13:02
++++ b/src/basic/json.c	2026-07-29 18:22:00
+@@ -6,6 +6,10 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#if defined(__APPLE__)
++#include <xlocale.h>
++#endif
++
+ #include "alloc-util.h"
+ #include "float.h"
+ #include "json-internal.h"
+diff -ruN a/src/libsystemd/sd-bus/bus-message.h b/src/libsystemd/sd-bus/bus-message.h
+--- a/src/libsystemd/sd-bus/bus-message.h	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-bus/bus-message.h	2026-07-29 17:52:49
+@@ -1,7 +1,15 @@
+ /* SPDX-License-Identifier: LGPL-2.1+ */
+ #pragma once
+ 
+-#ifdef __FreeBSD__
++#if defined(__APPLE__)
++#include <libkern/OSByteOrder.h>
++#define le16toh OSSwapLittleToHostInt16
++#define le32toh OSSwapLittleToHostInt32
++#define le64toh OSSwapLittleToHostInt64
++#define be16toh OSSwapBigToHostInt16
++#define be32toh OSSwapBigToHostInt32
++#define be64toh OSSwapBigToHostInt64
++#elif defined(__FreeBSD__)
+ #include <sys/endian.h>
+ #else
+ #include <byteswap.h>
+@@ -129,7 +131,11 @@
+         return m->header->endian != BUS_NATIVE_ENDIAN;
+ }
+ 
+-#ifdef __FreeBSD__
++#if defined(__APPLE__)
++#define bswap_16 OSSwapInt16
++#define bswap_32 OSSwapInt32
++#define bswap_64 OSSwapInt64
++#elif defined(__FreeBSD__)
+ #define bswap_16 bswap16
+ #define bswap_32 bswap32
+ #define bswap_64 bswap64
+diff -ruN a/src/libsystemd/sd-bus/bus-protocol.h b/src/libsystemd/sd-bus/bus-protocol.h
+--- a/src/libsystemd/sd-bus/bus-protocol.h	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-bus/bus-protocol.h	2026-07-29 17:52:49
+@@ -1,7 +1,7 @@
+ /* SPDX-License-Identifier: LGPL-2.1+ */
+ #pragma once
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+ #include <machine/endian.h>
+ #else
+ #include <endian.h>
+@@ -46,7 +46,7 @@
+         _BUS_INVALID_ENDIAN = 0,
+         BUS_LITTLE_ENDIAN   = 'l',
+         BUS_BIG_ENDIAN      = 'B',
+-#if (defined(__FreeBSD__) && _BYTE_ORDER == _BIG_ENDIAN) || (defined(__linux__) && __BYTE_ORDER == __BIG_ENDIAN)
++#if (defined(__FreeBSD__) && _BYTE_ORDER == _BIG_ENDIAN) || (defined(__APPLE__) && __DARWIN_BYTE_ORDER == __DARWIN_BIG_ENDIAN) || (defined(__linux__) && __BYTE_ORDER == __BIG_ENDIAN)
+         BUS_NATIVE_ENDIAN   = BUS_BIG_ENDIAN,
+         BUS_REVERSE_ENDIAN  = BUS_LITTLE_ENDIAN
+ #else
+diff -ruN a/src/libsystemd/sd-bus/bus-socket.c b/src/libsystemd/sd-bus/bus-socket.c
+--- a/src/libsystemd/sd-bus/bus-socket.c	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-bus/bus-socket.c	2026-07-29 17:45:20
+@@ -119,6 +119,13 @@
+ }
+ 
+ static int bus_socket_write_null_byte(sd_bus *b) {
++#if defined(__APPLE__)
++        int k = send(b->output_fd, "\0", 1, MSG_DONTWAIT|MSG_NOSIGNAL);
++        if (k < 0)
++                return errno == EAGAIN ? 0 : -errno;
++        b->send_null_byte = false;
++        return 1;
++#else
+ #if defined(__linux__)
+ #define SOCKET_CRED_OPTION SCM_CREDENTIALS
+         struct ucred creds;
+@@ -126,7 +133,7 @@
+         creds.uid = getuid();
+         creds.gid = getgid();
+ 
+-#elif defined(__FreeBSD__)
++#elif defined(__FreeBSD__)
+ #define SOCKET_CRED_OPTION SCM_CREDS
+         struct cmsgcred creds = { 0 };
+ #else
+@@ -159,6 +166,7 @@
+                 return errno == EAGAIN ? 0 : -errno;
+         b->send_null_byte = false;
+         return 1;
++#endif
+ }
+ 
+ static int bus_socket_write_auth(sd_bus *b) {
+@@ -524,7 +532,7 @@
+         memcpy(&b->ucred, CMSG_DATA(cmsg), sizeof(struct ucred));
+         b->ucred_valid = true;
+         return 0;
+-#elif defined(__FreeBSD__)
++#elif defined(__FreeBSD__)
+         if (cmsg->cmsg_level != SOL_SOCKET ||
+             cmsg->cmsg_type != SCM_CREDS) {
+                 return -ENOSYS;
+@@ -554,7 +562,7 @@
+                 uint8_t buf[CMSG_SPACE(sizeof(int) * BUS_FDS_MAX)];
+ #if defined(__linux__)
+                 char creds[CMSG_SPACE(sizeof(struct ucred))];
+-#elif defined(__FreeBSD__)
++#elif defined(__FreeBSD__)
+                 char creds[CMSG_SPACE(sizeof(struct cmsgcred))];
+ #endif
+         } control;
+diff -ruN a/src/libsystemd/sd-bus/sd-bus.c b/src/libsystemd/sd-bus/sd-bus.c
+--- a/src/libsystemd/sd-bus/sd-bus.c	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-bus/sd-bus.c	2026-07-29 18:31:00
+@@ -1,5 +1,6 @@
+ /* SPDX-License-Identifier: LGPL-2.1+ */
+ 
++#include <limits.h>
+ #include <netdb.h>
+ #include <poll.h>
+ #include <pthread.h>
+@@ -2578,7 +2578,18 @@
+         if (timeout_usec != (uint64_t) -1 && (m == USEC_INFINITY || timeout_usec < m))
+                 m = timeout_usec;
+ 
++#if defined(__APPLE__)
++        int timeout;
++        if (m == USEC_INFINITY)
++                timeout = -1;
++        else if (m / USEC_PER_MSEC >= INT_MAX)
++                timeout = INT_MAX;
++        else
++                timeout = (int) (m / USEC_PER_MSEC + !!(m % USEC_PER_MSEC));
++        r = poll(p, n, timeout);
++#else
+         r = ppoll(p, n, m == USEC_INFINITY ? NULL : timespec_store(&ts, m), NULL);
++#endif
+         if (r < 0)
+                 return -errno;
+ 
+diff -ruN a/src/libsystemd/sd-daemon/sd-daemon.c b/src/libsystemd/sd-daemon/sd-daemon.c
+--- a/src/libsystemd/sd-daemon/sd-daemon.c	2022-12-16 02:13:02
++++ b/src/libsystemd/sd-daemon/sd-daemon.c	2026-07-29 18:34:00
+@@ -1,7 +1,9 @@
+ /* SPDX-License-Identifier: LGPL-2.1+ */
+ 
+ #include <errno.h>
++#if !defined(__APPLE__)
+ #include <mqueue.h>
++#endif
+ #include <netinet/in.h>
+ #include <sys/stat.h>
+ #include <sys/un.h>
+diff -ruN a/src/test/tests.c b/src/test/tests.c
+--- a/src/test/tests.c	2022-12-16 02:13:02
++++ b/src/test/tests.c	2026-07-29 17:45:20
+@@ -6,7 +6,7 @@
+ #include "env-util.h"
+ #include "tests.h"
+ 
+-#ifdef __FreeBSD__
++#if defined(__FreeBSD__) || defined(__APPLE__)
+ #define program_invocation_short_name getprogname()
+ #endif
