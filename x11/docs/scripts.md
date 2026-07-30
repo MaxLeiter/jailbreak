@@ -31,6 +31,24 @@ container, else shells out to the cross-build image for the `chown 0:0` +
 `--minos` (the catalog otherwise stamps in one final `tools/stamp-minos.py` sweep,
 done last because concurrent builds churn `out/`).
 
+### `xstage_lagom_fonts <share/Lagom/fonts dir> [cache dir]`
+Stages the Liberation text family (Sans/Serif/Mono × 4 styles) into a Ladybird
+resource font directory, then fails if the directory still has no monospace face.
+Ladybird's WebContent loads fonts **only** from `resource://fonts` — that exact
+directory — and the iOS build has no fontconfig, so system fonts under
+`$XIOS_PREFIX/usr/share/fonts` are invisible to it. Upstream `Base/res/fonts` (all
+that `cmake --install --component ladybird_Runtime` ships) is NotoEmoji +
+SerenitySans-Regular, neither monospace, which aborts WebContent on
+`VERIFY(m_default_fixed_width_font)` in `LibWeb/Platform/FontPlugin.cpp`. Liberation
+works without an engine patch because its family names are already in the engine's
+generic-family fallback lists. Downloads once into
+`linux-build/out/.font-cache` (override with `LADYBIRD_FONT_CACHE`) and verifies
+the archive against a pinned SHA256, since this is network content baked into a
+shipped deb; set
+`LADYBIRD_LIBERATION_TTF_DIR` to stage from a local copy offline. The `.app` flavor
+does the same thing in-container in `linux-build/build-ladybird-app-bundle.sh`
+("bundle text fonts (Liberation)").
+
 ### `xdeb_extract <sysroot> "<deb-dir-list>" <pkg-stem>...`  /  `xdeb_find`
 Extracts each dev deb (first dir in the space-separated list that has it wins)
 into `<sysroot>`, failing loud and naming where it looked. This is the

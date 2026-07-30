@@ -12,6 +12,7 @@
 # Provides:
 #   xsign   <bin> [ents] [required-marker...]   ldid-sign + verify entitlements
 #   xmkdeb  <staging_dir> <out_dir> [--no-minos]  build a .deb (+ minos stamp)
+#   xstage_lagom_fonts <fonts_dir> [cache_dir]    stage Ladybird's text fonts
 #   xdeb_find    <stem> <dir>...                  newest matching iphoneos deb path
 #   xdeb_extract <sysroot> <deb-dir-list> <pkg>... extract dev debs into a sysroot
 
@@ -129,6 +130,84 @@ xmkdeb() {
           echo "xmkdeb: WARNING minos stamp failed for $deb (continuing)" >&2
     fi
     echo "$deb"
+}
+
+# ---- Ladybird resource fonts ----------------------------------------------
+# xstage_lagom_fonts <share/Lagom/fonts dir> [cache dir]
+#   Stages the Liberation text family (Sans/Serif/Mono x Regular/Bold/Italic/
+#   BoldItalic) into a Ladybird resource font directory, then fails if the result
+#   still has no monospace face.
+#
+#   WebContent loads fonts ONLY from resource://fonts -- that is, exactly this
+#   directory. It never walks Gfx::FontDatabase::font_directories(), and the iOS
+#   build has no fontconfig (USE_FONTCONFIG is gated `if (NOT APPLE)`), so nothing
+#   under $XIOS_PREFIX/usr/share/fonts is visible to it. Upstream Base/res/fonts --
+#   all that `cmake --install --component ladybird_Runtime` ships -- is NotoEmoji +
+#   SerenitySans-Regular, neither of them monospace, so
+#   Web::Platform::FontPlugin's VERIFY(m_default_fixed_width_font) aborts
+#   WebContent on every launch. Liberation is the fix because its family names
+#   ("Liberation Sans/Serif/Mono") are already in the engine's generic-family
+#   fallback lists, so no engine patch is needed.
+#
+#   Same font set, URL and cache filename as the "bundle text fonts (Liberation)"
+#   step in linux-build/build-ladybird-app-bundle.sh, which does this for the .app
+#   flavor (that one runs inside the build container and caches in the Procursus
+#   volume; this one runs on the host).
+#
+#   Set LADYBIRD_LIBERATION_TTF_DIR=<dir containing Liberation*.ttf> to stage from
+#   a local copy instead of downloading.
+xstage_lagom_fonts() {
+    local fonts_dir="$1"; shift || true
+    local cache="${1:-${LADYBIRD_FONT_CACHE:-$XLIB_ROOT/linux-build/out/.font-cache}}"
+
+    [ -n "$fonts_dir" ] || {
+        echo "xstage_lagom_fonts: ERROR missing fonts directory argument" >&2; return 1; }
+    mkdir -p "$fonts_dir" || return 1
+
+    if [ -n "${LADYBIRD_LIBERATION_TTF_DIR:-}" ]; then
+        [ -d "$LADYBIRD_LIBERATION_TTF_DIR" ] || {
+            echo "xstage_lagom_fonts: ERROR LADYBIRD_LIBERATION_TTF_DIR is not a directory: $LADYBIRD_LIBERATION_TTF_DIR" >&2
+            return 1; }
+        find "$LADYBIRD_LIBERATION_TTF_DIR" -name 'Liberation*.ttf' -exec cp -f {} "$fonts_dir/" \; || return 1
+    else
+        local url="https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz"
+        local sha256="7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0"
+        local tarball="$cache/liberation-fonts-ttf-2.1.5.tar.gz"
+        mkdir -p "$cache" || return 1
+        if [ ! -s "$tarball" ]; then
+            echo "xstage_lagom_fonts: downloading Liberation fonts -> $tarball" >&2
+            curl -sL --connect-timeout 20 --retry 3 -o "$tarball" "$url" || {
+                rm -f "$tarball"
+                echo "xstage_lagom_fonts: ERROR download failed: $url" >&2
+                echo "xstage_lagom_fonts:   set LADYBIRD_LIBERATION_TTF_DIR to stage offline" >&2
+                return 1; }
+        fi
+        # Pin the archive: this is fetched over the network into a shipped deb, and a
+        # silently-changed upstream file would be baked into every build from then on.
+        local have_sha
+        have_sha="$(shasum -a 256 "$tarball" | awk '{print $1}')" || return 1
+        [ "$have_sha" = "$sha256" ] || {
+            echo "xstage_lagom_fonts: ERROR checksum mismatch for $tarball" >&2
+            echo "xstage_lagom_fonts:   want $sha256" >&2
+            echo "xstage_lagom_fonts:   got  $have_sha  (delete the file to re-fetch)" >&2
+            return 1; }
+        local tmp
+        tmp="$(mktemp -d)" || return 1
+        tar xzf "$tarball" -C "$tmp" || {
+            rm -rf "$tmp"
+            echo "xstage_lagom_fonts: ERROR could not unpack $tarball (delete it and retry)" >&2
+            return 1; }
+        find "$tmp" -name 'Liberation*.ttf' -exec cp -f {} "$fonts_dir/" \;
+        rm -rf "$tmp"
+    fi
+
+    # Gate on the monospace face specifically: that is the one FontPlugin VERIFYs,
+    # so "some fonts were copied" is not the property worth asserting here.
+    ls "$fonts_dir"/*Mono*.ttf >/dev/null 2>&1 || {
+        echo "xstage_lagom_fonts: ERROR no monospace font in $fonts_dir -- WebContent would abort" >&2
+        return 1; }
+    chmod 0644 "$fonts_dir"/*.ttf || return 1
+    echo "xstage_lagom_fonts: staged $(ls "$fonts_dir" | wc -l | tr -d ' ') fonts in $fonts_dir" >&2
 }
 
 # ---- deb extraction into a cross sysroot ----------------------------------

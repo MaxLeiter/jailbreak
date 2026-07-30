@@ -56,6 +56,12 @@ patch_semantically_applied() {
     0008-ios-m0-typeface-skia-coretext.patch)
       grep -q 'iOS: CoreText SkFontMgr' Libraries/LibGfx/Font/TypefaceSkia.cpp
       ;;
+    0010-ios-m0-reject-force-fontconfig.patch)
+      grep -q 'install it unconditionally' Libraries/LibGfx/Font/TypefaceSkia.cpp &&
+        grep -q 'not supported on iOS' Libraries/LibWebView/Application.cpp &&
+        grep -q 'not supported on iOS' Services/WebContent/main.cpp &&
+        grep -q 'not supported on iOS' Services/Compositor/main.cpp
+      ;;
     0009-ios-m0-localnavigable-screenshot-raster.patch)
       grep -q 'DisplayListPlayerSkia' Libraries/LibWeb/HTML/LocalNavigable.cpp &&
         grep -q 'iOS M0: no Compositor process is launched' Libraries/LibWeb/HTML/LocalNavigable.cpp

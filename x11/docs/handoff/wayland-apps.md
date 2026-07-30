@@ -152,6 +152,24 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   classic `iosc` proof kept two WebContent helpers alive, logged
   `iosc_egl: bound iosc_iosurface`, and captured visible browser chrome at
   `.artifacts/ladybird-classic-wl3/compositor.png`.
+  The Liberation staging now lives in `xstage_lagom_fonts` (`lib/xlib.sh`) rather
+  than inline, so the `.app` packaging path can adopt it — `build-ladybird-app.sh`
+  copies `$ENGINE_STAGE/share/Lagom` straight through and has the same gap, while
+  the shipped `.app` avoids it only because `build-ladybird-app-bundle.sh` stages
+  Liberation separately. Two facts worth not rediscovering: WebContent reads fonts
+  only from `resource://fonts` and never walks
+  `Gfx::FontDatabase::font_directories()` (only Compositor does), so system fonts
+  can never substitute; and upstream `Base/res/fonts` has no monospace face at all,
+  so no `cmake --install` option would have fixed this.
+- **`--force-fontconfig` on iOS — now rejected, was an abort.** `USE_FONTCONFIG` is
+  gated `if (NOT APPLE ...)` and the Apple Skia build has no fontconfig `SkFontMgr`,
+  so the flag only renamed the `PathFontProvider` to `"FontConfig"` — which made
+  patch 0008 skip installing the CoreText font manager, leaving it null and tripping
+  `VERIFY(font_manager)` at `TypefaceSkia.cpp:105`.
+  `patches-m0/0010-ios-m0-reject-force-fontconfig.patch` installs CoreText
+  unconditionally on iOS and rejects the flag in the UI process and in the
+  WebContent/Compositor services. On-device it now prints the reason and exits with
+  `Runtime error: --force-fontconfig is not supported on iOS`.
 - **dunst — WORKS.** `dunst 1.13.2+ios2` runs as a Wayland
   layer-shell client under `dbus-run-session`, accepts
   `org.freedesktop.Notifications.Notify` through GDBus, and visibly renders the

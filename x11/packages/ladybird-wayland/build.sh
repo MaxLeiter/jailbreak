@@ -19,9 +19,6 @@ INSTALL_ROOT="${LADYBIRD_WAYLAND_INSTALL_ROOT:-$OUT/ladybird-wayland-install}"
 APP_ENTS="$X11DIR/linux-build/build_info/iosc-gpu-client-ent.xml"
 HELPER_ENTS="$X11DIR/packages/ladybird-app/entitlements/ladybird-helper.entitlements"
 ICON_SRC="$X11DIR/packages/ladybird-app/Resources/AppIcon.png"
-LIBERATION_VERSION="2.1.5"
-LIBERATION_SHA256="7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0"
-LIBERATION_TARBALL="${LADYBIRD_LIBERATION_TARBALL:-$OUT/ladybird-font-cache/liberation-fonts-ttf-$LIBERATION_VERSION.tar.gz}"
 
 die() { echo "ladybird-wayland build: $*" >&2; exit 1; }
 
@@ -95,23 +92,11 @@ cp -a "$INSTALL_ROOT/var" "$STAGE/"
 # The iOS Ladybird engine uses its path font provider instead of fontconfig.
 # Upstream's installed resource set has no monospace face, so WebContent aborts
 # at FontPlugin's fixed-width-font invariant unless we supply the same
-# Liberation fallback family used by the standalone Ladybird app.
-if [ ! -s "$LIBERATION_TARBALL" ]; then
-  mkdir -p "$(dirname "$LIBERATION_TARBALL")"
-  curl -L --fail --retry 3 \
-    -o "$LIBERATION_TARBALL" \
-    "https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-$LIBERATION_VERSION.tar.gz"
-fi
-actual_liberation_sha="$(shasum -a 256 "$LIBERATION_TARBALL" | awk '{print $1}')"
-[ "$actual_liberation_sha" = "$LIBERATION_SHA256" ] ||
-  die "Liberation font archive checksum mismatch: $actual_liberation_sha"
-font_extract="$STAGEROOT/liberation-fonts"
-mkdir -p "$font_extract"
-tar -xzf "$LIBERATION_TARBALL" -C "$font_extract"
-font_dir="$STAGE$XIOS_PREFIX/usr/share/Lagom/fonts"
-mkdir -p "$font_dir"
-find "$font_extract" -type f -name 'Liberation*.ttf' -exec cp -f {} "$font_dir/" \;
-[ -f "$font_dir/LiberationMono-Regular.ttf" ] || die "Liberation Mono was not staged"
+# Liberation fallback family used by the standalone Ladybird app. xstage_lagom_fonts
+# keeps the checksum pin and the mono-face gate, and shares this staging with the
+# .app packaging path, which has the same gap.
+echo "==> staging Ladybird text fonts"
+xstage_lagom_fonts "$STAGE$XIOS_PREFIX/usr/share/Lagom/fonts" || die "font staging failed"
 
 mkdir -p "$STAGE$XIOS_PREFIX/usr/bin"
 cat > "$STAGE$XIOS_PREFIX/usr/bin/ladybird-wayland" <<'EOF'
