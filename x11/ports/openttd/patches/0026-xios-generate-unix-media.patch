@@ -1,0 +1,11 @@
+--- a/media/CMakeLists.txt
++++ b/media/CMakeLists.txt
+@@ -5,7 +5,7 @@
+ )
+ add_library(openttd::media ALIAS media)
+ 
+-if(NOT UNIX OR APPLE)
++if(NOT UNIX OR (APPLE AND NOT OPENTTD_XIOS))
+     return()
+ endif()
+ 

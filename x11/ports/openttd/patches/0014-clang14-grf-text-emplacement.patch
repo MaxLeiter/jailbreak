@@ -1,0 +1,11 @@
+--- a/src/newgrf_text.cpp
++++ b/src/newgrf_text.cpp
+@@ -486,7 +486,7 @@ static void AddGRFTextToList(GRFTextList &list, uint8_t langid, std::string_view
+ 	}
+ 
+ 	/* If a string wasn't replaced, then we must append the new string */
+-	list.emplace_back(langid, std::string{text_to_add});
++	list.push_back(GRFText{langid, std::string{text_to_add}});
+ }
+ 
+ /**

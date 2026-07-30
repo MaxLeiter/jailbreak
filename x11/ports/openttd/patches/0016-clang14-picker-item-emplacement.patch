@@ -1,0 +1,11 @@
+--- a/src/picker_gui.h
++++ b/src/picker_gui.h
+@@ -136,7 +136,7 @@ protected:
+ 		for (const auto &item : src) {
+ 			const auto *spec = Tcls::GetSpec(item.class_index, item.index);
+ 			if (spec == nullptr) {
+-				dst.emplace(item.grfid, item.local_id, -1, -1);
++				dst.insert(PickerItem{item.grfid, item.local_id, -1, -1});
+ 			} else {
+ 				dst.emplace(GetPickerItem(spec));
+ 			}

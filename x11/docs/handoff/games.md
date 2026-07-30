@@ -33,16 +33,23 @@ Xios app, iosc, SDL, and audio layers.
 
 ### OpenTTD
 
-- Recipe, package metadata, Unix-SDL-on-Darwin target patch, native host tools,
-  and Clang 14 compatibility patches exist.
-- The authoritative 11-patch series applies in order to a pristine official
-  15.3 source tree with no rejects. The compatibility work covers dependent
-  template types, `source_location`, aggregate emplacement, explicit stream
-  headers, graph filler deduction, and badge configuration construction.
-- A clean `15.3+ios1` cross-build remains the active gate. Earlier attempts
-  reached `newgrf_badge_config.cpp`; an overlapping-container extraction was
-  discarded and must not be treated as build evidence.
-- After packaging, host DER re-sign the package before device installation:
+- `openttd 15.3+ios1` now cross-builds, links, installs, packages, host-DER
+  signs, and installs on the physical iPad.
+- The authoritative compatibility series applies in order to a pristine
+  official 15.3 source tree with no rejects. It covers the Unix-SDL-on-Darwin
+  target, Clang 14 aggregate/template compatibility, the Xios Unix locale and
+  desktop-media paths, and `SDL_SetMainReady()` for OpenTTD's non-`SDL_main`
+  iOS entry point.
+- On-device launch reaches SDL2 Wayland and maps a live 1360x1000 window:
+  `Successfully loaded video driver 'sdl'`. The visible bootstrap correctly
+  reports that no base graphics set is installed and offers to download
+  OpenGFX. Evidence:
+  `game-openttd-20260730-1108/compositor.png`.
+- The game process remained alive behind the bootstrap. Full-playability proof
+  is gated on installing/downloading OpenGFX. The isolated compositor input
+  socket refused the attempted injected tap, so this run does not claim menu
+  interaction or gameplay.
+- The final package must still be host-DER re-signed after every repack:
 
   ```bash
   python3 linux-build/resign-graphics-packages.py linux-build/out \
@@ -120,5 +127,8 @@ game-specific startup log or visible main menu.
   incremental retry.
 - The in-container `ldid` does not emit the DER entitlement slot needed by GPU
   clients. Always run `resign-graphics-packages.py` on the host before install.
-- The main selected KDE session is currently down. Do not replace it for game
-  smoke; use `codex-games`.
+- Do not replace the selected global desktop for game smoke; use
+  `codex-games`. If another session switch leaves stale slot status/socket
+  files, stop and restart only `codex-games` before drawing runtime conclusions.
+- OpenTTD currently stops at its expected first-run OpenGFX bootstrap. The
+  compositor capture is valid render proof, but not yet playable-game proof.

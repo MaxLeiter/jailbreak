@@ -1,0 +1,14 @@
+--- a/src/video/sdl2_v.cpp
++++ b/src/video/sdl2_v.cpp
+@@ -529,6 +529,11 @@
+ 
+ static std::optional<std::string_view> InitializeSDL()
+ {
++#ifdef OPENTTD_XIOS
++	/* Xios uses OpenTTD's Unix entry point instead of SDL_main on iOS. */
++	SDL_SetMainReady();
++#endif
++
+ 	/* Check if the video-driver is already initialized. */
+ 	if (SDL_WasInit(SDL_INIT_VIDEO) != 0) return std::nullopt;
+ 

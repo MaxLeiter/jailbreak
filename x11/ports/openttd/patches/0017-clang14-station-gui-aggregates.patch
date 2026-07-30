@@ -1,0 +1,20 @@
+--- a/src/station_gui.cpp
++++ b/src/station_gui.cpp
+@@ -1820,7 +1820,7 @@ public:
+ 				int y = r.top - pos * this->line_height;
+ 				if (this->groupings[column] == GR_CARGO) {
+ 					str = STR_STATION_VIEW_WAITING_CARGO;
+-					this->DrawCargoIcons(cd.GetCargo(), cd.GetCount(), Rect(r.left + this->expand_shrink_width, y, r.right - this->expand_shrink_width, y + this->line_height - 1));
++					this->DrawCargoIcons(cd.GetCargo(), cd.GetCount(), Rect{r.left + this->expand_shrink_width, y, r.right - this->expand_shrink_width, y + this->line_height - 1});
+ 				} else {
+ 					if (!auto_distributed) grouping = GR_SOURCE;
+ 					station = cd.GetStation();
+@@ -2244,7 +2244,7 @@ void ShowSelectStationIfNeeded(CommandContainer cmd, TileArea ta)
+ 		if (T::IsValidBaseStation(st) && !st->IsInUse() && st->owner == _local_company) {
+ 			/* Include only within station spread (yes, it is strictly less than) */
+ 			if (std::max(DistanceMax(ta.tile, st->xy), DistanceMax(TileAddXY(ta.tile, ta.w - 1, ta.h - 1), st->xy)) < _settings_game.station.station_spread) {
+-				_deleted_stations_nearby.emplace_back(st->xy, st->index);
++				_deleted_stations_nearby.push_back(TileAndStation{st->xy, st->index});
+ 
+ 				/* Add the station when it's within where we're going to build */
+ 				if (IsInsideBS(TileX(st->xy), TileX(ctx.tile), ctx.w) &&

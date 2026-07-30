@@ -1,0 +1,24 @@
+--- a/src/town_gui.cpp
++++ b/src/town_gui.cpp
+@@ -1592,7 +1592,7 @@
+ 				const HouseSpec *hs = HouseSpec::Get(item.local_id);
+ 				if (hs == nullptr) continue;
+ 				int class_index = GetClassIdFromHouseZone(hs->building_availability);
+-				dst.emplace(item.grfid, item.local_id, class_index, item.local_id);
++				dst.insert(PickerItem{item.grfid, item.local_id, class_index, item.local_id});
+ 			} else {
+ 				/* Search for spec by grfid and local index. */
+ 				auto it = std::ranges::find_if(specs, [&item](const HouseSpec &spec) { return spec.grf_prop.grfid == item.grfid && spec.grf_prop.local_id == item.local_id; });
+@@ -1598,10 +1598,10 @@
+ 				auto it = std::ranges::find_if(specs, [&item](const HouseSpec &spec) { return spec.grf_prop.grfid == item.grfid && spec.grf_prop.local_id == item.local_id; });
+ 				if (it == specs.end()) {
+ 					/* Not preset, hide from UI. */
+-					dst.emplace(item.grfid, item.local_id, -1, -1);
++					dst.insert(PickerItem{item.grfid, item.local_id, -1, -1});
+ 				} else {
+ 					int class_index = GetClassIdFromHouseZone(it->building_availability);
+-					dst.emplace(item.grfid, item.local_id, class_index, it->Index());
++					dst.insert(PickerItem{item.grfid, item.local_id, class_index, it->Index()});
+ 				}
+ 			}
+ 		}

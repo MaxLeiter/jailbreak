@@ -1,0 +1,11 @@
+--- a/src/object_cmd.cpp
++++ b/src/object_cmd.cpp
+@@ -611,7 +611,7 @@ static CommandCost ClearTile_Object(TileIndex tile, DoCommandFlags flags)
+ 			break;
+ 	}
+ 
+-	_cleared_object_areas.emplace_back(tile, ta);
++	_cleared_object_areas.push_back(ClearedObjectArea{tile, ta});
+ 
+ 	if (flags.Test(DoCommandFlag::Execute)) ReallyClearObjectTile(o);
+ 

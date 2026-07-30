@@ -1,0 +1,11 @@
+--- a/src/station_gui.cpp
++++ b/src/station_gui.cpp
+@@ -1820,7 +1820,7 @@ public:
+ 				int y = r.top - pos * this->line_height;
+ 				if (this->groupings[column] == GR_CARGO) {
+ 					str = STR_STATION_VIEW_WAITING_CARGO;
+-					this->DrawCargoIcons(cd.GetCargo(), cd.GetCount(), Rect{r.left + this->expand_shrink_width, y, r.right - this->expand_shrink_width, y + this->line_height - 1});
++					this->DrawCargoIcons(cd.GetCargo(), cd.GetCount(), Rect{static_cast<int>(r.left + this->expand_shrink_width), y, static_cast<int>(r.right - this->expand_shrink_width), y + this->line_height - 1});
+ 				} else {
+ 					if (!auto_distributed) grouping = GR_SOURCE;
+ 					station = cd.GetStation();

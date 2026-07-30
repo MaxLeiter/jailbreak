@@ -1,0 +1,16 @@
+--- a/src/newgrf_badge_gui.h
++++ b/src/newgrf_badge_gui.h
+@@ -25,6 +25,13 @@ public:
+ 		uint sort_order; ///< Order of element.
+ 		Dimension size; ///< Maximal size of this element.
+ 		std::string_view label; ///< Class label (string owned by the class badge)
++
++		Element(BadgeClassID class_index, uint8_t column_group, bool visible,
++				uint sort_order, Dimension size, std::string_view label) :
++			class_index(class_index), column_group(column_group), visible(visible),
++			sort_order(sort_order), size(size), label(label)
++		{
++		}
+ 	};
+ 
+ 	GUIBadgeClasses() = default;
