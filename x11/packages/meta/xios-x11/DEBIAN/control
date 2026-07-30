@@ -1,12 +1,12 @@
 Package: xios-x11
 Name: Xios Desktop (X11)
-Version: 0.1.6
+Version: 0.1.7
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core (>= 0.1.7), xwayland (>= 23.2.7+ios5), xauth
+Depends: firmware (>= 16.5), xios-core (>= 0.1.8), xwayland (>= 23.2.7+ios5), xauth
 MinimumOSVersion: 16.5.0
 Description: the X11 flavor for Xios
  GPU-accelerated X11 compatibility through rootless Xwayland inside the iosc
