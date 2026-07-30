@@ -531,17 +531,26 @@ static EGLSurface make_window(EGLDisplay dpy, EGLConfig cfg, struct wl_egl_windo
     fprintf(stderr, "iosc_egl: window surface %dx%d (%d IOSurface buffers)\n", w->w, w->h, IOSC_NBUF);
     return (EGLSurface)w;
 }
-/* ANGLE's headless EGLNativeWindowType is `int`, so a wl_egl_window pointer
- * cannot be represented by this core entry point on arm64. Do not reinterpret a
- * truncated integer as a pointer: callers must use the pointer-sized EGL 1.5 or
- * EXT platform entry point. */
-EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig cfg, EGLNativeWindowType win, const EGLint *attrs)
+/* QtWayland uses the core entry point rather than the platform variants. ANGLE's
+ * Apple/iOS eglplatform.h defines EGLNativeWindowType as void *, so the published
+ * ABI carries the wl_egl_window pointer at full width and can use the same
+ * IOSurface swapchain path. Keep a defensive low-address check for a client built
+ * against an incompatible header where EGLNativeWindowType was a 32-bit integer;
+ * that pointer is already irrecoverably truncated and must not be dereferenced. */
+EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig cfg,
+                                  EGLNativeWindowType win, const EGLint *attrs)
 {
-    (void)dpy; (void)cfg; (void)win; (void)attrs;
-    s_shim_error = EGL_BAD_NATIVE_WINDOW;
-    fprintf(stderr, "iosc_egl: eglCreateWindowSurface cannot carry a Wayland pointer; "
-                    "use eglCreatePlatformWindowSurface*\n");
-    return EGL_NO_SURFACE;
+    (void)attrs;
+    const uintptr_t v = (uintptr_t)win;
+    if (v <= 0xffffffffu) {
+        s_shim_error = EGL_BAD_NATIVE_WINDOW;
+        fprintf(stderr, "iosc_egl: eglCreateWindowSurface got 0x%llx, too small to be a "
+                        "wl_egl_window pointer (truncated EGLNativeWindowType?); "
+                        "use eglCreatePlatformWindowSurface*\n",
+                (unsigned long long)v);
+        return EGL_NO_SURFACE;
+    }
+    return make_window(dpy, cfg, (struct wl_egl_window *)win);
 }
 EGLSurface eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig cfg, void *win, const EGLAttrib *attrs)
 { (void)attrs; return make_window(dpy, cfg, (struct wl_egl_window *)win); }
