@@ -286,13 +286,15 @@ final class XScreenView: UIView {
     private var pipeline: MTLRenderPipelineState!
     private var texture: MTLTexture!
     private var metalReady = false              // setupMetal() succeeded; guards the
-    private var didRegisterActiveRetry = false  // background-launch foreground retry
+    private var didInstallLifecycleObservers = false
+    private var appIsBackgrounded = false
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
     override class var layerClass: AnyClass { CAMetalLayer.self }
 
     func start() {
         loadConfig()
+        installLifecycleObservers()
         SystemIntegration.shared.install(on: self)
         XiosCameraBroker.shared.startIfDiagnosticEnabled()
         isMultipleTouchEnabled = true
@@ -300,7 +302,7 @@ final class XScreenView: UIView {
         // SpringBoard relaunch, or uicache registration launching us off-screen), so a
         // background launch would otherwise leave us permanently black with no recovery.
         // Retry once we become active/foreground, where the GPU is reachable.
-        if !setupMetal() { observeForegroundRetry(); return }
+        if !setupMetal() { return }
         metalReady = true
 
         awaitingCompositor = true
@@ -335,20 +337,47 @@ final class XScreenView: UIView {
         }
     }
 
-    /// If Metal wasn't available at launch (app started in the background), re-run
-    /// start() the next time we become active. One-shot registration, guarded by
-    /// metalReady so a successful setup never re-initialises.
-    private func observeForegroundRetry() {
-        if didRegisterActiveRetry { return }
-        didRegisterActiveRetry = true
+    /// Keep UIKit lifecycle work deliberately small: a backgrounded Xios process
+    /// should retain its UI and Metal pipeline, but not pin a compositor IOSurface or
+    /// keep polling sockets. Reconnect from config when the app becomes active again.
+    private func installLifecycleObservers() {
+        if didInstallLifecycleObservers { return }
+        didInstallLifecycleObservers = true
         NotificationCenter.default.addObserver(
-            self, selector: #selector(retryStartIfNeeded),
+            self, selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
-    @objc private func retryStartIfNeeded() {
-        if metalReady { return }   // already up; nothing to do
-        start()                    // setupMetal() should now succeed in the foreground
+    @objc private func appDidEnterBackground() {
+        appIsBackgrounded = true
+        displayLink?.isPaused = true
+        loadGeneration += 1                  // cancel any blocking connect retry
+        if metalReady {
+            teardownConnections(resetTransform: false)
+            texture = nil                    // release even a diagnostic holding frame
+            awaitingCompositor = true
+            writeStatus()
+        }
+    }
+
+    @objc private func appDidBecomeActive() {
+        if !metalReady {
+            appIsBackgrounded = false
+            start()                          // background launch: Metal is available now
+            return
+        }
+        guard appIsBackgrounded else { return }
+        appIsBackgrounded = false
+        _ = loadConfig()
+        awaitingCompositor = true
+        startTestPattern()
+        if ddxIsIOSurface { startIOSurfaceConnect() }
+        connectInput()
+        displayLink?.isPaused = false
+        writeStatus()
     }
 
     /// Show a clean black screen until a real framebuffer is available; only after a
@@ -372,7 +401,7 @@ final class XScreenView: UIView {
     /// Begin connecting to the IOSurface backend (once). Safe to call from both
     /// start() and the poll path, in either app/server launch order.
     private func startIOSurfaceConnect() {
-        if iosConnectStarted { return }
+        if iosConnectStarted || appIsBackgrounded { return }
         iosConnectStarted = true
         let path = ddxSockPath
         let gen = loadGeneration
@@ -380,10 +409,13 @@ final class XScreenView: UIView {
             // Retry until the X server's socket is up (it may launch after the app),
             // but bail the moment a newer load() superseded this connect.
             for _ in 0..<120 {
-                guard let self, self.loadGeneration == gen else { return }
+                guard let self, self.loadGeneration == gen,
+                      !self.appIsBackgrounded else { return }
                 if let conn = xsurface_connect(path) {
                     DispatchQueue.main.async {
-                        if self.loadGeneration == gen { self.adoptIOSurface(conn) }
+                        if self.loadGeneration == gen, !self.appIsBackgrounded {
+                            self.adoptIOSurface(conn)
+                        }
                         else { xsurface_close(conn) }   // user switched away mid-connect
                     }
                     return
@@ -397,6 +429,11 @@ final class XScreenView: UIView {
     }
 
     private func adoptIOSurface(_ conn: OpaquePointer) {
+        guard !appIsBackgrounded else {
+            xsurface_close(conn)
+            iosConnectStarted = false
+            return
+        }
         xconn = conn
         iosurfaceCompositorID = String(cString: xsurface_compositor_id(conn))
         guard syncSurfaceGeometry(conn) else {
@@ -843,6 +880,7 @@ final class XScreenView: UIView {
     }
 
     @objc private func tick() {
+        guard !appIsBackgrounded else { return }
         tickCount += 1
         serviceIoscClipboard()
         serviceIoscInputTraits()
@@ -2706,7 +2744,7 @@ final class XScreenView: UIView {
     }
 
     /// Drop every connection tied to the current display so we can load another.
-    private func teardownConnections() {
+    private func teardownConnections(resetTransform: Bool = true) {
         closeInput()
         if let c = xconn { xsurface_close(c); xconn = nil }
         removeCursorOverlay()
@@ -2716,7 +2754,7 @@ final class XScreenView: UIView {
         usingIOSurface = false; iosConnectStarted = false; needsPresent = false
         testBuf?.deallocate(); testBuf = nil
         usingTestPattern = false
-        resetZoom()
+        if resetTransform { resetZoom() }
     }
 
     /// Switch to a display the user picked: tear down the old one, apply the new
