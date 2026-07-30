@@ -1,0 +1,7 @@
+diff --git a/libs/global/KisBezierUtils.cpp b/libs/global/KisBezierUtils.cpp
+--- a/libs/global/KisBezierUtils.cpp
++++ b/libs/global/KisBezierUtils.cpp
+@@ -724,0 +725 @@
++#ifdef HAVE_GSL
+@@ -776,0 +778 @@
++#endif
