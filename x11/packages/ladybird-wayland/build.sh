@@ -17,7 +17,6 @@ OUT="${OUT:-$X11DIR/linux-build/out}"
 VER="${LADYBIRD_WAYLAND_VERSION:-0.1.0+wl3}"
 INSTALL_ROOT="${LADYBIRD_WAYLAND_INSTALL_ROOT:-$OUT/ladybird-wayland-install}"
 APP_ENTS="$X11DIR/linux-build/build_info/iosc-gpu-client-ent.xml"
-HELPER_ENTS="$X11DIR/packages/ladybird-app/entitlements/ladybird-helper.entitlements"
 ICON_SRC="$X11DIR/packages/ladybird-app/Resources/AppIcon.png"
 
 die() { echo "ladybird-wayland build: $*" >&2; exit 1; }
@@ -78,7 +77,6 @@ rewrite_angle_loads() {
 
 [ -d "$INSTALL_ROOT$XIOS_PREFIX/usr" ] || die "missing install root: $INSTALL_ROOT$XIOS_PREFIX/usr"
 [ -f "$APP_ENTS" ] || die "missing app entitlements: $APP_ENTS"
-[ -f "$HELPER_ENTS" ] || die "missing helper entitlements: $HELPER_ENTS"
 [ -f "$ICON_SRC" ] || die "missing Ladybird icon: $ICON_SRC"
 
 STAGEROOT="$(mktemp -d /private/tmp/ladybird-wayland-stage.XXXXXX)"
@@ -180,11 +178,11 @@ echo "==> signing Ladybird Wayland executables"
 sign_payload "$STAGE$XIOS_PREFIX/usr/bin/ladybird" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
 for helper in WebContent RequestServer ImageDecoder WebWorker Compositor; do
   if [ -f "$STAGE$XIOS_PREFIX/usr/libexec/$helper" ]; then
-    if [ "$helper" = "Compositor" ]; then
-      sign_payload "$STAGE$XIOS_PREFIX/usr/libexec/$helper" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
-    else
-      sign_payload "$STAGE$XIOS_PREFIX/usr/libexec/$helper" "$HELPER_ENTS" com.apple.private.amfi.can-allow-non-platform
-    fi
+    # This package runs as an ordinary Wayland client. Keep every helper on the
+    # non-platform GPU-client profile: mixing platform-application with the GPU
+    # classes creates an incoherent platform-GL signature and is unnecessary
+    # outside the standalone UIKit .app flavor.
+    sign_payload "$STAGE$XIOS_PREFIX/usr/libexec/$helper" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
   fi
 done
 while IFS= read -r f; do
