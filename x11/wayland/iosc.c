@@ -7348,7 +7348,11 @@ static void in_dispatch_text(const char *text, size_t len)
         char buf[sizeof(hdr) + 4096u];
         memcpy(buf, &hdr, sizeof(hdr));
         memcpy(buf + sizeof(hdr), text, len);
-        if (xios_input_socket_send_improxy(g_input_sock, buf, sizeof(hdr) + len) > 0)
+        int sent = xios_input_socket_send_improxy(g_input_sock, buf, sizeof(hdr) + len);
+        if (iosc_debug())
+            fprintf(stderr, "iosc: TEXT %zu bytes -> improxy=%d (0 = local fallback)\n",
+                    len, sent);
+        if (sent > 0)
             return;
     }
     int r = text_input_commit_text(text, len);
@@ -7378,6 +7382,9 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
      * reader drops them from anyone else). Latch and rebroadcast verbatim: the
      * hosts' frozen contract wants one record per proxy push, no dedupe. */
     if (m->type == XIOS_IN_TRAITS) {
+        if (iosc_debug())
+            fprintf(stderr, "iosc: TRAITS from improxy hint=0x%x purpose=%u enabled=%u\n",
+                    m->code, m->state, m->mods);
         g_improxy_traits_valid = 1;
         g_improxy_hint = m->code;
         g_improxy_purpose = m->state;

@@ -345,9 +345,53 @@ iosc change, one more patch on an already 27-deep stack, no typing fix);
 building maliit or qtvirtualkeyboard as the KDE OSK (no wire work, but two
 new Qt/QML ports and it gives up autocorrect/dictation and the native feel).
 
+### Device run 2026-07-29 (partial)
+
+Ran against iosc 0.9.28 on MaxsiPad with the KDE preset. What it proved:
+
+- KWin really does hand its IM child zwp_input_method_v1: "ios-inputd:
+  zwp_input_method_v1 present -> proxy mode" plus "registered as
+  input-method proxy on /var/jb/tmp/iosc-input.sock".
+- Traits fire on focus: konsole taking text-input focus logged
+  "ios-inputd: traits enable hint=0x0 purpose=0", and the iOS keyboard rose
+  (confirmed visually by Max).
+
+What it did NOT prove: the typing direction. The one text-injection run
+landed "hllo-osk-ncode" for "héllo-osk-ünïcode", i.e. iosc's ASCII keysym
+fallback rather than commit_string. That run was invalid: another session had
+meanwhile downgraded the device to iosc 0.9.27 (apt history:
+`apt-get install -y --allow-downgrades iosc=0.9.27`), which has none of the
+IMPROXY routing. Re-run the injection against a build that actually contains
+it before believing anything about that half.
+
+Two bugs the run did find, both fixed:
+
+- ios-inputd's ROOT mode unlinked and rebound the socket path it was given.
+  Under KDE that path is iosc's own input socket, so a mode misdetection
+  silently stole every pointer and keystroke in the session (the Xios app
+  reconnects to the bridge instead of the compositor). Now: --proxy (implied
+  by WAYLAND_SOCKET, i.e. by being launched as somebody's input method)
+  refuses to fall back, and ROOT mode probes the path first and refuses to
+  take over a live socket.
+- KWin's kwinrc watcher calls setInputMethodCommand with whatever
+  [Wayland] InputMethod holds; empty means STOP the input method and destroy
+  the connection that is allowed to bind zwp_input_method_v1, which races the
+  child KWin just launched and disables the auto keyboard for that session.
+  run-kde-plasma.sh now publishes the identical command in kwinrc (plus a
+  .desktop for it), so that callback is a no-op.
+
+Host-side regression check for the socket role (registration, TRAITS honoured
+only from the proxy, TEXT routing, broadcast exclusion, proxy-loss): compiles
+and passes on macOS against xios_input_socket.c directly. NOTE for whoever
+writes the next one: the reader registers a client on its kqueue during
+accept, so that client's first records only arrive on a LATER dispatch call.
+A single dispatch after connecting reads nothing, which reads exactly like a
+broken feature.
+
 ### Open items
 
-- DEVICE TEST (the only thing left, and nothing here is proven without it):
+- DEVICE TEST of the typing direction (see above; the traits direction is
+  done):
   `xios-session -d kde`, then tap a text field in a Plasma app. Expect the
   iOS keyboard to rise, typed text (including emoji and dictation) to land in
   the field, tapping away to lower it. ios-inputd logs to KWin's stderr, so
