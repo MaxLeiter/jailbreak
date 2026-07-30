@@ -1,0 +1,33 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Make the GLib process launcher build off Linux
+
+GTK's GLib launcher is also used by the Darwin target. Keep Linux-only
+Valgrind and peer-credential socket arguments behind their existing platform
+condition so the direct GLib spawn path builds and receives the right argv.
+
+--- a/Source/WebKit/UIProcess/Launcher/glib/ProcessLauncherGLib.cpp
++++ b/Source/WebKit/UIProcess/Launcher/glib/ProcessLauncherGLib.cpp
+@@ -93,5 +93,5 @@ static bool isSandboxEnabled(const ProcessLauncher::LaunchOptions& launchOptions
+ {
+-#if !USE(SYSTEM_MALLOC)
++#if !USE(SYSTEM_MALLOC) && OS(LINUX)
+     if (RUNNING_ON_VALGRIND)
+         return false;
+ #endif
+@@ -178,2 +178,5 @@
+     realExecutablePath = FileSystem::fileSystemRepresentation(executablePath);
+-    unsigned nargs = 5; // size of the argv array for g_spawn_async()
++    unsigned nargs = 4; // executable, identifier, WebKit socket, and terminator.
++#if OS(LINUX)
++    nargs++; // Peer-credential socket.
++#endif
+@@ -201,7 +204,9 @@
+     argv[i++] = const_cast<char*>(realExecutablePath.data());
+     argv[i++] = processIdentifier.get();
+     argv[i++] = webkitSocket.get();
++#if OS(LINUX)
+     argv[i++] = pidSocket.get();
++#endif
+ #if ENABLE(DEVELOPER_MODE)
+     if (configureJSCForTesting)
+         argv[i++] = const_cast<char*>("--configure-jsc-for-testing");
