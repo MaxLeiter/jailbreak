@@ -10,7 +10,7 @@
  * app (apps/Xios) maps that IOSurface into a CAMetalLayer and shows it. We reuse
  * Xios's server-side rendezvous verbatim (linux-build/patches/xios/xios_surface.c):
  *
- *      wl_shm client buffer ── commit ──► copy into IOSurface ──► xios_notify_dirty()
+ *      wl_shm client buffer ── commit ──► GPU composite ──► fenced IOSurface frame
  *                                              ▲
  *                                  xios_surface_create() + xios_server_start()
  *                                  hands the surface's mach port to the Xios app
@@ -85,7 +85,6 @@ char *display = "9";
 /* ---- output -------------------------------------------------------------- */
 
 static struct wl_display *g_display;
-static uint8_t          *g_fb;        /* IOSurface base address (BGRA8) */
 /* Default is the supersampled ~1.5 effective-scale desktop (Max-approved on the
  * iPad 7's 2160x1620 panel): the output IOSurface is 2880x2160 at scale 2, so the
  * logical desktop is 1440x1080 and HiDPI apps render crisply at 2x (2880x2160
@@ -839,100 +838,6 @@ static void frame_callbacks_after_present(void)
         return;
     }
     wl_event_source_timer_update(g_present_ack_timer, 1);
-}
-
-/* CPU-fallback blit of the top wl_shm surface. Kept simple; the ANGLE/GPU path is
- * the native path and handles IOSurface clients. */
-static void cpu_blit_shm(struct iosc_surface *s)
-{
-    struct wl_resource *buffer = s->current_buffer;
-    struct wl_shm_buffer *shm = wl_shm_buffer_get(buffer);
-    if (!shm) return;
-    int dw = 0, dh = 0, sx = 0, sy = 0, src_w = 0, src_h = 0;
-    surface_display_size(s, &dw, &dh);
-    surface_source_rect(s, &sx, &sy, &src_w, &src_h);
-    int os = output_scale();
-    int dxp = s->dx * os, dyp = s->dy * os, dwp = dw * os, dhp = dh * os;
-    if (dwp <= 0 || dhp <= 0 || src_w <= 0 || src_h <= 0) return;
-    wl_shm_buffer_begin_access(shm);
-    const uint8_t *src = wl_shm_buffer_get_data(shm);
-    int src_stride = wl_shm_buffer_get_stride(shm);
-    int max_y = dyp + dhp; if (max_y > g_height) max_y = g_height;
-    int max_x = dxp + dwp; if (max_x > g_width) max_x = g_width;
-    for (int y = dyp; y < max_y; y++) {
-        int src_y = sy + (int)((long long)(y - dyp) * src_h / dhp);
-        uint32_t *dst = (uint32_t *)(g_fb + (size_t)y * g_stride);
-        const uint32_t *row = (const uint32_t *)(src + (size_t)src_y * src_stride);
-        for (int x = dxp; x < max_x; x++) {
-            int src_x = sx + (int)((long long)(x - dxp) * src_w / dwp);
-            dst[x] = row[src_x];
-        }
-    }
-    wl_shm_buffer_end_access(shm);
-}
-
-/* CPU-fallback blit of an IOSurface-backed client buffer, scaled like
- * cpu_blit_shm() above. There is no direct pixel accessor for a client
- * IOSurface exposed to iosc.c (only iosc_iosurface_buffer_blit_to_output(),
- * which does a fixed unscaled top-left copy straight into the OUTPUT
- * IOSurface -- see xios_blit_client_iosurface() in xios_surface.c). We reuse
- * that as the "read pixels" step: snapshot the output's top-left corner
- * (g_fb IS the output IOSurface's CPU mapping), let the helper write the
- * client's raw pixels there, copy those bytes out for ourselves, restore the
- * snapshot so we haven't left a visible artifact, then nearest-neighbor
- * scale-blit from our copy into the real destination rect exactly like
- * cpu_blit_shm. Nothing here is presented until the caller's later
- * xios_notify_dirty(), so the scratch write is never shown. */
-static void cpu_blit_iosurface(struct iosc_surface *s)
-{
-    struct wl_resource *buffer = s->current_buffer;
-    int sw = s->sw, sh = s->sh;
-    if (sw <= 0 || sh <= 0) return;
-    if (sw > g_width) sw = g_width;
-    if (sh > g_height) sh = g_height;
-
-    int dw = 0, dh = 0, sx = 0, sy = 0, src_w = 0, src_h = 0;
-    surface_display_size(s, &dw, &dh);
-    surface_source_rect(s, &sx, &sy, &src_w, &src_h);
-    int os = output_scale();
-    int dxp = s->dx * os, dyp = s->dy * os, dwp = dw * os, dhp = dh * os;
-    if (dwp <= 0 || dhp <= 0 || src_w <= 0 || src_h <= 0) return;
-
-    size_t row_bytes = (size_t)sw * 4u;
-    uint8_t *prior = malloc(row_bytes * (size_t)sh);
-    uint8_t *client_px = malloc(row_bytes * (size_t)sh);
-    if (!prior || !client_px) { free(prior); free(client_px); return; }
-
-    /* Snapshot what's currently at the scratch corner so it can be put back. */
-    for (int y = 0; y < sh; y++)
-        memcpy(prior + (size_t)y * row_bytes, g_fb + (size_t)y * g_stride, row_bytes);
-
-    if (!iosc_iosurface_buffer_blit_to_output(buffer)) {
-        /* Not actually an IOSurface buffer (shouldn't happen -- the caller only
-         * reaches here when wl_shm_buffer_get() failed on it -- but bail clean). */
-        free(prior); free(client_px);
-        return;
-    }
-    for (int y = 0; y < sh; y++)
-        memcpy(client_px + (size_t)y * row_bytes, g_fb + (size_t)y * g_stride, row_bytes);
-    for (int y = 0; y < sh; y++)
-        memcpy(g_fb + (size_t)y * g_stride, prior + (size_t)y * row_bytes, row_bytes);
-    free(prior);
-
-    int max_y = dyp + dhp; if (max_y > g_height) max_y = g_height;
-    int max_x = dxp + dwp; if (max_x > g_width) max_x = g_width;
-    for (int y = dyp; y < max_y; y++) {
-        int src_y = sy + (int)((long long)(y - dyp) * src_h / dhp);
-        if (src_y < 0 || src_y >= sh) continue;
-        uint32_t *dst = (uint32_t *)(g_fb + (size_t)y * g_stride);
-        const uint32_t *row = (const uint32_t *)(client_px + (size_t)src_y * row_bytes);
-        for (int x = dxp; x < max_x; x++) {
-            int src_x = sx + (int)((long long)(x - dxp) * src_w / dwp);
-            if (src_x < 0 || src_x >= sw) continue;
-            dst[x] = row[src_x];
-        }
-    }
-    free(client_px);
 }
 
 /* ---- single-pixel-buffer-v1: 1x1 solid-colour wl_buffer ------------------- */
@@ -1749,7 +1654,7 @@ static int native_start(struct wl_event_loop *loop)
         native_close_cmd_pipe();
         return -1;
     }
-    fprintf(stderr, "iosc: native iPadOS window mode enabled at %s\n", XIOS_CANVAS_SOCK);
+    fprintf(stderr, "iosc: native iPadOS window mode enabled at %s\n", IOSC_NATIVE_SOCK);
     return 0;
 }
 
@@ -2038,14 +1943,6 @@ static int iosc_debug(void)
     return v;
 }
 
-/* The software compositor is deliberately incomplete and must never become an
- * accidental production mode. Keep it available only for narrow bring-up and
- * entitlement diagnostics, behind an explicitly diagnostic environment name. */
-static int iosc_allow_cpu_diagnostic(void)
-{
-    return iosc_env_truthy(getenv("IOSC_ALLOW_CPU_DIAGNOSTIC"));
-}
-
 static int active_session_allows_classic_iosc(void)
 {
     const char *path = "/var/jb/tmp/xios-active-session";
@@ -2122,12 +2019,6 @@ static int notify_gpu_frame(void)
     size_t token_size = 0;
     uint64_t event_value = 0;
     if (!iosc_gl_present_fence(&token, &token_size, &event_value)) {
-        if (iosc_env_truthy(getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC"))) {
-            /* iosc_gl_end performed the explicitly requested diagnostic
-             * compatibility barrier. */
-            xios_notify_dirty();
-            return 0;
-        }
         fprintf(stderr,
                 "iosc: FATAL: cross-process GPU presentation fence unavailable; "
                 "refusing an unfenced frame\n");
@@ -2267,39 +2158,14 @@ static void recomposite_now(void)
         recomposite_reason_clear();
         return;
     }
-    if (!iosc_allow_cpu_diagnostic()) {
-        static int gpu_loss_reported;
-        if (!gpu_loss_reported) {
-            gpu_loss_reported = 1;
-            fprintf(stderr,
-                    "iosc: FATAL: GPU compositor became unavailable; terminating "
-                    "(IOSC_ALLOW_CPU_DIAGNOSTIC=1 enables the incomplete diagnostic path)\n");
-        }
-        if (g_display)
-            wl_display_terminate(g_display);
-        return;
-    }
-
-    /* Explicit diagnostic CPU mode: only the top surface, top-left. */
-    static int cpu_fallback_warned;
-    if (!cpu_fallback_warned) {
-        cpu_fallback_warned = 1;
+    static int gpu_loss_reported;
+    if (!gpu_loss_reported) {
+        gpu_loss_reported = 1;
         fprintf(stderr,
-                "\n"
-                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-                "!! IOSC DIAGNOSTIC CPU COMPOSITOR ACTIVE\n"
-                "!! GPU compositor is unavailable. This path is degraded:\n"
-                "!! only the top surface is drawn and window composition is incomplete.\n"
-                "!! IOSC_ALLOW_CPU_DIAGNOSTIC=1 explicitly enabled this mode.\n"
-                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
+                "iosc: FATAL: GPU compositor became unavailable; terminating\n");
     }
-    if (g_nmapped == 0) return;
-    struct iosc_surface *s = g_mapped[g_nmapped - 1];
-    if (!s->current_buffer) return;
-    if (wl_shm_buffer_get(s->current_buffer)) cpu_blit_shm(s);
-    else cpu_blit_iosurface(s);
-    xios_notify_dirty();
-    frame_callbacks_after_present();
+    if (g_display)
+        wl_display_terminate(g_display);
 }
 
 /* Coalesce repaints: a burst of commits, input events, or state changes in one
@@ -4024,23 +3890,16 @@ static int output_reconfigure_px(int pw, int ph, int transform, int scale)
             g_output_scale = old_scale;   /* roll back the scale we speculatively set */
             return -1;
         }
-        g_fb = fb;
         g_stride = stride;
         g_width = pw;
         g_height = ph;
         g_output_damage_valid = 0;
         g_output_damage_rect_count = 0;
-        if (iosc_gl_ok() && iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0) {
-            if (!iosc_allow_cpu_diagnostic()) {
-                fprintf(stderr,
-                        "iosc: FATAL: GPU output rebind failed; terminating instead of "
-                        "silently degrading to software composition\n");
-                if (g_display)
-                    wl_display_terminate(g_display);
-                return -1;
-            }
-            fprintf(stderr,
-                    "iosc: GPU output rebind failed; explicit diagnostic CPU mode remains\n");
+        if (iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0) {
+            fprintf(stderr, "iosc: FATAL: GPU output rebind failed; terminating\n");
+            if (g_display)
+                wl_display_terminate(g_display);
+            return -1;
         }
     }
     g_output_transform = transform;
@@ -6501,7 +6360,6 @@ static void subcompositor_bind(struct wl_client *client, void *data, uint32_t ve
 
 /* ---- clipboard / wl_data_device ------------------------------------------ */
 
-#define IOSC_CLIP_MAX (16u * 1024u * 1024u)   /* per-item cap; matches XIOS_CLIP_ITEM_MAX (PNG-safe) */
 #define IOSC_MAX_DATA_DEVICES 32
 #define IOSC_MAX_CLIP_MIMES 16   /* DnD sources offer many type variants */
 
@@ -6646,7 +6504,7 @@ static struct iosc_mime_data *clip_find_item(const char *mime)
 static int clip_item_set(const char *mime, const char *data, size_t len)
 {
     if (!is_clip_mime(mime)) return -1;
-    if (len > IOSC_CLIP_MAX) len = IOSC_CLIP_MAX;
+    if (len > XIOS_CLIP_ITEM_MAX) len = XIOS_CLIP_ITEM_MAX;
     struct iosc_mime_data *m = clip_find_exact_item(mime);
     int added = 0;
     if (!m) {
@@ -6744,7 +6602,7 @@ static void clipboard_selection_broadcast(void)
 
 static void clip_set_text(const char *text, size_t len, int send_to_app)
 {
-    if (len > IOSC_CLIP_MAX) len = IOSC_CLIP_MAX;
+    if (len > XIOS_CLIP_ITEM_MAX) len = XIOS_CLIP_ITEM_MAX;
     data_control_cancel_clip_source();   /* a fresh clipboard supersedes any data-control owner */
     clip_clear_items();
     if (clip_item_set("text/plain;charset=utf-8", text ? text : "", len) != 0) return;
@@ -6870,7 +6728,7 @@ static int source_readable(int fd, uint32_t mask, void *data)
         char tmp[4096];
         ssize_t r = read(fd, tmp, sizeof(tmp));
         if (r > 0) {
-            if (rd->len + (size_t)r > IOSC_CLIP_MAX) { source_read_done(rd, 0); return 0; }
+            if (rd->len + (size_t)r > XIOS_CLIP_ITEM_MAX) { source_read_done(rd, 0); return 0; }
             if (rd->len + (size_t)r + 1 > rd->cap) {
                 size_t ncap = rd->cap ? rd->cap * 2 : 4096;
                 while (ncap < rd->len + (size_t)r + 1) ncap *= 2;
@@ -9018,8 +8876,7 @@ int main(int argc, char **argv)
     /* 1) Output: one fullscreen BGRA IOSurface + the rendezvous the Xios app
      *    already speaks. xios_server_start writes xios.json so the app finds us. */
     int alloc = 0;
-    g_fb = xios_surface_create(g_width, g_height, &g_stride, &alloc);
-    if (!g_fb) {
+    if (!xios_surface_create(g_width, g_height, &g_stride, &alloc)) {
         fprintf(stderr, "iosc: xios_surface_create failed (IOSurface entitlement?)\n");
         return 1;
     }
@@ -9037,24 +8894,11 @@ int main(int argc, char **argv)
 
     /* 1b) GPU compositor: an ANGLE context whose render target is the output
      *     IOSurface, so commits are composited on the GPU (client IOSurfaces
-     *     sampled zero-copy). Production startup fails closed. The deliberately
-     *     incomplete CPU path requires IOSC_ALLOW_CPU_DIAGNOSTIC=1. */
+     *     sampled zero-copy). Startup fails closed. */
     if (iosc_gl_init(xios_get_output_iosurface(), g_width, g_height) != 0) {
-        if (!iosc_allow_cpu_diagnostic()) {
-            fprintf(stderr,
-                    "iosc: FATAL: GPU compositor initialization failed; refusing "
-                    "software fallback (set IOSC_ALLOW_CPU_DIAGNOSTIC=1 only for diagnostics)\n");
-            xios_server_stop();
-            return 1;
-        }
-        fprintf(stderr,
-                "\n"
-                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-                "!! IOSC GPU COMPOSITOR FAILED TO START\n"
-                "!! IOSC_ALLOW_CPU_DIAGNOSTIC=1: continuing diagnostically on CPU.\n"
-                "!! Expect broken/incomplete composition until ANGLE/IOSurface works.\n"
-                "!! Never use this mode as a production or release configuration.\n"
-                "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
+        fprintf(stderr, "iosc: FATAL: GPU compositor initialization failed\n");
+        xios_server_stop();
+        return 1;
     }
 
     /* 2) Wayland display + globals. */

@@ -24,7 +24,7 @@ OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.33"
+VER="0.9.34"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -39,8 +39,7 @@ mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$STAGE/DEBIAN"
 
 # 1. compositor binary -> /var/jb/usr/local/bin, signed with the GPU entitlement
 #    set (AGX/IOGPU/IOSurface IOKit + task_for_pid, NO no-container). Without these
-#    iosc cannot reach the GPU and fails closed; see iosc-gl-ent.xml. The incomplete
-#    CPU compositor is available only with IOSC_ALLOW_CPU_DIAGNOSTIC=1.
+#    iosc cannot reach the GPU and fails closed; see iosc-gl-ent.xml.
 cp "$WAYLAND/out/iosc" "$BIN/iosc"
 chmod 0755 "$BIN/iosc"
 xsign "$BIN/iosc" "$WAYLAND/iosc-gl-ent.xml" \

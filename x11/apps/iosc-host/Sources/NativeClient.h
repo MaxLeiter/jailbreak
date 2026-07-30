@@ -2,6 +2,7 @@
 #define IOSC_HOST_NATIVECLIENT_H
 
 #include <IOSurface/IOSurfaceRef.h>
+#include "iosc_native_proto.h"
 
 /*
  * Client half of the native per-window rendezvous (iosc-native.sock v1). One
@@ -39,9 +40,9 @@ typedef struct {
     int          width, height;
     IOSurfaceRef surface;     /* +1 retained on WINDOW_NEW/GEOM; caller releases */
     uint32_t     cursor_id;
-    uint32_t     flags;       /* IOSC_NWIN_* on WINDOW_NEW/GEOM               */
+    uint32_t     flags;       /* XIOS_NWIN_* on WINDOW_NEW/GEOM                */
     uint64_t     fence_value;
-    unsigned char fence_token[32];
+    unsigned char fence_token[XIOS_GPU_FENCE_TOKEN_SIZE];
     char         title[256];  /* NUL-terminated on WINDOW_NEW/TITLE           */
 } iosc_native_event;
 
