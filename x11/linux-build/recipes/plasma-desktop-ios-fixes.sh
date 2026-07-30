@@ -103,6 +103,15 @@ from pathlib import Path
 
 panel = Path(sys.argv[1])
 text = panel.read_text()
+text, count = re.subn(
+    r"^panel\.height\s*=.*$",
+    "panel.height = Math.max(48, 2 * Math.floor(gridUnit * 2.5 / 2))",
+    text,
+    count=1,
+    flags=re.M,
+)
+if count != 1:
+    raise SystemExit("default panel height assignment not found")
 text = re.sub(r'^.*panel\.addWidget\("org\.kde\.plasma\.pager"\).*$',
               'panel.addWidget("org.kde.plasma.pager")', text, flags=re.M)
 text = re.sub(r'^.*panel\.addWidget\("org\.kde\.plasma\.systemtray"\).*$',

@@ -130,6 +130,10 @@ final class XScreenView: UIView {
     private var appGestureTouchSuppression = false
     private var configuredTouchReplacesPointer: Bool?
     private var activeTouchReplacesPointer = false
+    /// A single direct finger on a desktop shell uses mouse semantics. Keep
+    /// that sequence off wl_touch as well, otherwise Plasma sees both a touch
+    /// activation and the emulated pointer click.
+    private var activeDirectTouchUsesPointer = false
     private static let longPressSeconds: TimeInterval = 0.55
     private static let longPressSlopPt: CGFloat = 12
 
@@ -138,12 +142,18 @@ final class XScreenView: UIView {
     private var ddxSockPath = XiosRuntimePaths.tmp("xios-ddx.sock")
     private var xconn: OpaquePointer?            // XSurfaceConn*
     private var iosTexture: MTLTexture?
+    private var iosSurfaceID: UInt32 = 0
+    private var iosSurfaceFlags: UInt32 = 0
     private var usingIOSurface = false
     private var iosConnectStarted = false
     private var needsPresent = false
     private var presentFenceToken: Data?
     private var presentFenceEvent: MTLSharedEvent?
     private var presentFenceDecodeFailed = false
+    private var releaseFenceToken: Data?
+    private var releaseFenceEvent: MTLSharedEvent?
+    private var pendingStreamFrame = false
+    private var heldStreamFrame: (surfaceID: UInt32, seq: UInt64)?
 
     // Present-side cursor overlay. When iosc runs with IOSC_APP_CURSOR it stops
     // compositing the pointer and streams position+shape over the typed socket
@@ -495,9 +505,14 @@ final class XScreenView: UIView {
         }
         xconn = conn
         iosurfaceCompositorID = String(cString: xsurface_compositor_id(conn))
-        guard syncSurfaceGeometry(conn) else {
+        guard syncSurfaceGeometry(conn), importReleaseFence(conn) else {
             dbg("iosurface-texture-fail"); xsurface_close(conn); xconn = nil
             iosurfaceCompositorID = ""
+            iosTexture = nil
+            iosSurfaceID = 0
+            iosSurfaceFlags = 0
+            releaseFenceToken = nil
+            releaseFenceEvent = nil
             iosConnectStarted = false   // let the %30 poll retry the connect
             return
         }
@@ -522,16 +537,24 @@ final class XScreenView: UIView {
     private func syncSurfaceGeometry(_ conn: OpaquePointer) -> Bool {
         let newWidth = Int(xsurface_width(conn))
         let newHeight = Int(xsurface_height(conn))
-        guard newWidth > 0, newHeight > 0 else { return false }
+        let sourceWidth = Int(xsurface_surface_width(conn))
+        let sourceHeight = Int(xsurface_surface_height(conn))
+        let surfaceID = xsurface_surface_id(conn)
+        let surfaceFlags = xsurface_surface_flags(conn)
+        guard newWidth > 0, newHeight > 0,
+              sourceWidth > 0, sourceHeight > 0,
+              surfaceID != 0 else { return false }
 
         let geometryChanged = newWidth != fbWidth || newHeight != fbHeight
-        let textureChanged = iosTexture?.width != newWidth || iosTexture?.height != newHeight
+        let textureChanged = iosSurfaceID != surfaceID ||
+            iosTexture?.width != sourceWidth || iosTexture?.height != sourceHeight
         guard geometryChanged || textureChanged else { return true }
 
         // C owns the IOSurface ref (released in xsurface_close); borrow it here.
         let surface = xsurface_get(conn).takeUnretainedValue()
         let td = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: newWidth, height: newHeight, mipmapped: false)
+            pixelFormat: .bgra8Unorm,
+            width: sourceWidth, height: sourceHeight, mipmapped: false)
         td.usage = .shaderRead
         td.storageMode = .shared
         // Metal reads the surface's own (possibly padded) bytesPerRow; zero-copy.
@@ -542,12 +565,63 @@ final class XScreenView: UIView {
         fbWidth = newWidth
         fbHeight = newHeight
         iosTexture = tex
+        iosSurfaceID = surfaceID
+        iosSurfaceFlags = surfaceFlags
         // Always snap to fit on adopt/resize (zoom 1, pan 0) — one source of truth for
         // present scale. A stale zoom over-scales the current fb and makes the inverse
         // touch mapping land offset.
-        resetZoom()
-        dumpGeom()
+        if geometryChanged {
+            resetZoom()
+            dumpGeom()
+        }
         if usingIOSurface { writeStatus() }
+        return true
+    }
+
+    private func importReleaseFence(_ conn: OpaquePointer) -> Bool {
+        var bytes: UnsafeRawPointer?
+        var length = 0
+        guard xsurface_release_fence_token(conn, &bytes, &length) != 0 else {
+            /* Fixed one-surface producers (currently Mutter/Xorg) retain their
+             * legacy contract. They never rotate an allocation, so no consumer
+             * release timeline is required. */
+            releaseFenceToken = nil
+            releaseFenceEvent = nil
+            return true
+        }
+        guard let bytes, length > 0 else { return false }
+        let token = Data(bytes: bytes, count: length)
+        if token == releaseFenceToken, releaseFenceEvent != nil {
+            return true
+        }
+        guard let event = xios_metal_event_broker_copy_event(
+            device, bytes, length
+        ) else {
+            dbg("release-fence-broker-import-failed")
+            return false
+        }
+        releaseFenceToken = token
+        releaseFenceEvent = event
+        return true
+    }
+
+    private func submitHeldStreamRelease(_ conn: OpaquePointer) -> Bool {
+        guard let held = heldStreamFrame else { return true }
+        guard let event = releaseFenceEvent else {
+            heldStreamFrame = nil       // legacy fixed-output connection
+            return true
+        }
+        guard let commandBuffer = queue.makeCommandBuffer() else {
+            return false
+        }
+        commandBuffer.label = "Xios IOSurface consumer release"
+        commandBuffer.encodeSignalEvent(event, value: held.seq)
+        commandBuffer.commit()
+        guard xsurface_released(conn, held.surfaceID, held.seq) == 0 else {
+            dbg("release-fence-submit-send-failed")
+            return false
+        }
+        heldStreamFrame = nil
         return true
     }
 
@@ -1015,11 +1089,21 @@ final class XScreenView: UIView {
     /// so the compositor's death frees nothing until we let go) and lets it stay up
     /// through the switch instead of getting jetsammed.
     private func teardownIOSurface(lost: Bool = false) {
-        if let c = xconn { xsurface_close(c); xconn = nil }
+        if let c = xconn {
+            _ = submitHeldStreamRelease(c)
+            xsurface_close(c)
+            xconn = nil
+        }
         iosurfaceCompositorID = ""
         iosTexture = nil
+        iosSurfaceID = 0
+        iosSurfaceFlags = 0
         presentFenceToken = nil
         presentFenceEvent = nil
+        releaseFenceToken = nil
+        releaseFenceEvent = nil
+        pendingStreamFrame = false
+        heldStreamFrame = nil
         usingIOSurface = false
         removeCursorOverlay()
         if !userPinned { _ = loadConfig() }
@@ -1071,10 +1155,24 @@ final class XScreenView: UIView {
                 return
             }
             guard let conn = xconn else { return }
-            let r = xsurface_drain(conn)
-            if r < 0 { teardownIOSurface(lost: true); return }
+            var r: Int32 = 0
+            if !pendingStreamFrame {
+                r = xsurface_drain(conn)
+                if r < 0 { teardownIOSurface(lost: true); return }
+                if r > 0 {
+                    /* The newly acquired frame replaces the one we retained for
+                     * idle redraws. Submit the previous consumer-release fence
+                     * now; the empty command buffer is ordered after every Metal
+                     * sample of that IOSurface on `queue`. */
+                    if !submitHeldStreamRelease(conn) {
+                        teardownIOSurface(lost: true)
+                        return
+                    }
+                    pendingStreamFrame = true
+                    needsPresent = true
+                }
+            }
             if !syncSurfaceGeometry(conn) { teardownIOSurface(); return }
-            if r > 0 { needsPresent = true }
             // Reposition the cursor overlay independently of surface damage: a pure
             // pointer move updates the CALayer without re-presenting the framebuffer.
             updateCursorOverlay(conn)
@@ -1098,8 +1196,13 @@ final class XScreenView: UIView {
                           presentedSeq: seq,
                           conn: conn,
                           waitEvent: fence?.0,
-                          waitValue: fence?.1 ?? 0) {
+                          waitValue: fence?.1 ?? 0,
+                          flipY: (iosSurfaceFlags & UInt32(XIOS_SURFACE_FLAG_FLIP_Y)) != 0) {
                     needsPresent = false
+                    if pendingStreamFrame {
+                        heldStreamFrame = (iosSurfaceID, seq)
+                        pendingStreamFrame = false
+                    }
                 }
             }
             return
@@ -1227,7 +1330,8 @@ final class XScreenView: UIView {
                         presentedSeq: UInt64 = 0,
                         conn: OpaquePointer? = nil,
                         waitEvent: MTLSharedEvent? = nil,
-                        waitValue: UInt64 = 0) -> Bool {
+                        waitValue: UInt64 = 0,
+                        flipY: Bool = false) -> Bool {
         let presentInterval = signposter.beginInterval("present")
         defer { signposter.endInterval("present", presentInterval) }
         guard let drawable = metalLayer.nextDrawable(),
@@ -1236,6 +1340,13 @@ final class XScreenView: UIView {
               var verts = fit.clipVertices() else { return false }
         if let waitEvent, waitValue > 0 {
             cmd.encodeWaitForEvent(waitEvent, value: waitValue)
+        }
+        if flipY {
+            /* clipVertices is TL,BL,TR,BR with pos.xy/uv.xy. Client GL
+             * IOSurfaces have bottom-left content; swap only each V component. */
+            for index in stride(from: 3, to: verts.count, by: 4) {
+                verts[index] = 1 - verts[index]
+            }
         }
         // Optional MetalFX stage: composite into a smaller intermediate and let the
         // spatial scaler blow it up to the drawable. The fit transform needs no
@@ -1451,10 +1562,12 @@ final class XScreenView: UIView {
     /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
                                      display: DisplayProfile? = nil,
-                                     slot: String? = nil) {
+                                     slot: String? = nil,
+                                     completion: ((Bool) -> Void)? = nil) {
         guard !sessionRequestInFlight else {
             lastToolMessage = "A desktop request is already being sent"
             toolMessageLabel?.text = lastToolMessage
+            completion?(false)
             return
         }
         sessionRequestInFlight = true
@@ -1467,7 +1580,9 @@ final class XScreenView: UIView {
         }
         lastToolMessage = requestDescription
         toolMessageLabel?.text = requestDescription
-        startSessionIndicator()
+        if preset != "app" {
+            startSessionIndicator()
+        }
 
         let line = sessionRequestLine(preset, app: app, display: display, slot: slot)
         requestIOSCD(line, maxBytes: 4096) { [weak self] rawResponse in
@@ -1476,14 +1591,19 @@ final class XScreenView: UIView {
             let response = rawResponse?.trimmingCharacters(in: .whitespacesAndNewlines)
             if response?.hasPrefix("SESSION_STARTED") == true ||
                 response?.hasPrefix("SESSION_ACTIVE") == true {
-                self.lastToolMessage = "Session: \(preset)"
-                    + (app.map { " \($0)" } ?? "")
-                    + (slot.map { " slot=\($0)" } ?? "")
-                    + (display.map { " \($0.detail)" } ?? "")
-                self.startSessionIndicator()
+                if preset == "app" {
+                    self.lastToolMessage = "Launch requested: \(app ?? "app")"
+                } else {
+                    self.lastToolMessage = "Session: \(preset)"
+                        + (slot.map { " slot=\($0)" } ?? "")
+                        + (display.map { " \($0.detail)" } ?? "")
+                    self.startSessionIndicator()
+                }
+                completion?(true)
             } else {
                 let detail = response?.isEmpty == false ? response! : "ioscd timed out"
                 self.lastToolMessage = "Session request failed: \(detail)"
+                completion?(false)
             }
             self.toolMessageLabel?.text = self.lastToolMessage
             self.refreshShellOverlay()
@@ -1547,7 +1667,11 @@ final class XScreenView: UIView {
 
     private func sessionWantsTouchToReplacePointer() -> Bool {
         guard let preset = sessionStatus()?.preset.lowercased() else { return false }
-        return preset == "kde" || preset.hasPrefix("kde-")
+        // Plasma Desktop is still a mouse-first shell on this stack. Sending a
+        // real wl_touch sequence there made taps depend on KWin/Qt touch
+        // activation while the proven pointer lane sat idle. Mobile is the
+        // touch-native flavor and keeps the direct wl_touch path.
+        return preset == "kde-mobile"
     }
 
     private func shouldTouchReplacePointer(for touches: Set<UITouch>) -> Bool {
@@ -2514,12 +2638,16 @@ final class XScreenView: UIView {
             beginAppGestureSuppression(event: event)
             return
         }
+        let touchCount = event?.allTouches?.count ?? touches.count
         let touchConsumesPointer = shouldTouchReplacePointer(for: touches)
-        if forwardIoscAll(touches, phase: 1, event: event) {
+        let directPointerOnly = touchCount == 1 && !touchConsumesPointer
+            && touches.allSatisfy { $0.type == .direct }
+        activeDirectTouchUsesPointer = directPointerOnly
+        if !directPointerOnly && forwardIoscAll(touches, phase: 1, event: event) {
             activeTouchReplacesPointer = touchConsumesPointer
             if touchConsumesPointer { return }
         }
-        guard (event?.allTouches?.count ?? touches.count) == 1 else {
+        guard touchCount == 1 else {
             cancelPendingPress()   // a second finger means gesture, not click
             return
         }
@@ -2548,7 +2676,9 @@ final class XScreenView: UIView {
         if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .move) { return }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
-        if forwardIoscAll(touches, phase: 2, event: event) && activeTouchReplacesPointer { return }
+        if !activeDirectTouchUsesPointer,
+           forwardIoscAll(touches, phase: 2, event: event),
+           activeTouchReplacesPointer { return }
         guard (event?.allTouches?.count ?? touches.count) == 1,
               inputConnected, let t = touches.first,
               let (x, y) = framebufferPoint(from: t.location(in: self)) else { return }
@@ -2570,7 +2700,9 @@ final class XScreenView: UIView {
             if allTouchesEndedOrCancelled(event) { appGestureTouchSuppression = false }
             return
         }
-        if forwardIoscAll(touches, phase: 0, event: event) && activeTouchReplacesPointer {
+        if !activeDirectTouchUsesPointer,
+           forwardIoscAll(touches, phase: 0, event: event),
+           activeTouchReplacesPointer {
             if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
             return
         }
@@ -2578,7 +2710,10 @@ final class XScreenView: UIView {
         if longPressFired { longPressFired = false; return }
         if pendingPress != nil { flushPendingPress() }   // stationary tap = click
         releaseLeftPress()
-        if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
+        if allTouchesEndedOrCancelled(event) {
+            activeTouchReplacesPointer = false
+            activeDirectTouchUsesPointer = false
+        }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -2591,15 +2726,21 @@ final class XScreenView: UIView {
                 appGestureTouchSuppression = false
                 touchSlots.removeAll()
                 activeTouchReplacesPointer = false
+                activeDirectTouchUsesPointer = false
             }
             return
         }
-        if forwardIoscAll(touches, phase: 3, event: event) && activeTouchReplacesPointer {
+        if !activeDirectTouchUsesPointer,
+           forwardIoscAll(touches, phase: 3, event: event),
+           activeTouchReplacesPointer {
             if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
             return
         }
         cancelPointerInteraction()
-        if allTouchesEndedOrCancelled(event) { activeTouchReplacesPointer = false }
+        if allTouchesEndedOrCancelled(event) {
+            activeTouchReplacesPointer = false
+            activeDirectTouchUsesPointer = false
+        }
     }
 
     // MARK: deferred press helpers
@@ -2868,11 +3009,21 @@ final class XScreenView: UIView {
     /// Drop every connection tied to the current display so we can load another.
     private func teardownConnections(resetTransform: Bool = true) {
         closeInput()
-        if let c = xconn { xsurface_close(c); xconn = nil }
+        if let c = xconn {
+            _ = submitHeldStreamRelease(c)
+            xsurface_close(c)
+            xconn = nil
+        }
         removeCursorOverlay()
         iosTexture = nil
+        iosSurfaceID = 0
+        iosSurfaceFlags = 0
         presentFenceToken = nil
         presentFenceEvent = nil
+        releaseFenceToken = nil
+        releaseFenceEvent = nil
+        pendingStreamFrame = false
+        heldStreamFrame = nil
         usingIOSurface = false; iosConnectStarted = false; needsPresent = false
         testBuf?.deallocate(); testBuf = nil
         usingTestPattern = false
@@ -3813,18 +3964,26 @@ final class XScreenView: UIView {
     /// A scrollable sheet listing every installed GUI app (from the .desktop files
     /// under the applications dirs). Tapping a row launches it as a Wayland client of
     /// the running compositor — the same `app` preset path the quick buttons use, so
-    /// it rides all the existing ioscd-socket / status plumbing — then dismisses so the
-    /// desktop is visible while the window maps.
+    /// it rides all the existing ioscd-socket / status plumbing.
     private func presentAppLauncher() {
         let (_, _, _, stack) = presentScrollableModalCard()
 
         stack.addArrangedSubview(panelLabel("Launch App", size: 18, weight: .bold))
-        let hasCompositor = FileManager.default.fileExists(atPath: XiosRuntimePaths.tmp("wayland-0"))
-        stack.addArrangedSubview(panelLabel(
+        let compositorPaths = [
+            XiosRuntimePaths.tmp("wayland-0"),
+            XiosRuntimePaths.tmp("xios-kde-runtime/kwin-ios-test"),
+            XiosRuntimePaths.tmp("xios-kde-runtime/wayland-0"),
+        ]
+        let hasCompositor = compositorPaths.contains {
+            FileManager.default.fileExists(atPath: $0)
+        }
+        let message = panelLabel(
             hasCompositor
                 ? "Opens into the running desktop."
                 : "No desktop is running — start iosc or GNOME first.",
-            size: 12, color: UIColor(white: 0.72, alpha: 1)))
+            size: 12, color: UIColor(white: 0.72, alpha: 1))
+        toolMessageLabel = message
+        stack.addArrangedSubview(message)
 
         let apps = discoverDesktopApps()
         let search = panelSearchField("Search apps")
@@ -3880,8 +4039,8 @@ final class XScreenView: UIView {
         stack.addArrangedSubview(panelButton("Close") { [weak self] in self?.dismissPicker() })
     }
 
-    /// One left-aligned row: app name on top, the command it runs beneath. Tapping
-    /// launches it and closes the panel.
+    /// One left-aligned row: app name on top, the command it runs beneath. Keep
+    /// the panel open on a rejected request so the daemon's error remains visible.
     private func appLaunchRow(_ app: DesktopApp) -> UIButton {
         let b = UIButton(type: .system)
         b.contentHorizontalAlignment = .left
@@ -3901,8 +4060,10 @@ final class XScreenView: UIView {
         b.menu = UIMenu(children: [
             UIAction(title: "Open") { [weak self] _ in
                 guard let self else { return }
-                self.writeSessionRequest("app", app: app.exec, display: nil)
-                self.dismissPicker()
+                self.writeSessionRequest("app", app: app.exec, display: nil) {
+                    [weak self] accepted in
+                    if accepted { self?.dismissPicker() }
+                }
             },
             UIAction(title: "Pin to Desktop") { [weak self] _ in
                 guard let self else { return }
@@ -3913,8 +4074,10 @@ final class XScreenView: UIView {
         b.showsMenuAsPrimaryAction = false
         b.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            self.writeSessionRequest("app", app: app.exec, display: nil)
-            self.dismissPicker()
+            self.writeSessionRequest("app", app: app.exec, display: nil) {
+                [weak self] accepted in
+                if accepted { self?.dismissPicker() }
+            }
         }, for: .touchUpInside)
         return b
     }

@@ -388,7 +388,13 @@ cmd_input() {
     fi
 
     local test_bin=/var/jb/usr/local/bin/iosc-input-test
-    local args=("${socket_args[@]}")
+    # Bash 3.2 + set -u treats expansion of an empty array as an unbound
+    # variable. Build this after a length check so the default auto-detected
+    # input socket works on the macOS host.
+    local args=()
+    if [ "${#socket_args[@]}" -gt 0 ]; then
+        args=("${socket_args[@]}")
+    fi
     case "$mode" in
         click)  [ "$#" -eq 2 ] || die "click needs X Y"; args+=("-c" "$1" "$2") ;;
         drag)   [ "$#" -eq 4 ] || die "drag needs X0 Y0 X1 Y1"; args+=("-D" "$1" "$2" "$3" "$4") ;;

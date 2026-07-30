@@ -162,3 +162,32 @@ Verified host-side (bash -n, simulated the transition sequence). **DEPLOY:** `ba
 
 ## Note
 The `app <preset>` (launch app onto the running compositor) does NOT teardown → it's safe + works. Only the SESSION-SWITCH presets jetsam. The session-switch crash (renderTestPattern buffer overflow) was separately fixed in xios-app 923e92f; the remaining issue is the memory-peak jetsam + the missing progress UI.
+
+## 2026-07-30 additive-launch/status repair — PRODUCTION + DEVICE VERIFIED
+- The observed dead-KDE state had three contradictory records: no
+  `kwin_wayland`/`plasmashell`, `xios-active-session=kde`, and global status
+  `preset=app,state=error`. Root cause: `xios-session app` used the display
+  lifecycle file for additive client progress. Once overwritten, KDE's exit
+  monitor correctly refused to replace a status owned by another preset, so the
+  dead display stayed advertised.
+- `xios-session 1.0.78` keeps app submission state in
+  `xios-app-launch-status.json`, preserves the desktop lifecycle record on both
+  accepted and rejected launches, passes the active-owner path to KDE, and
+  clears that marker when the owning KWin/Plasma session exits. Its installed
+  capability-profile helper now infers `/var/jb` instead of trying to source the
+  unshipped `//linux-build/target-lib.sh`. Empty environment arrays use the
+  Bash-3-safe expansion form.
+- `xios-launcher-tools 0.1.8` makes ioscd reject an app request immediately when
+  no classic compositor socket is live, repairs stale active markers during
+  health checks, and marks the matching steady session down. Host regression
+  `apps/iosc-desktop/test-session-state.sh`, shell syntax, desktop-entry tests,
+  signed ioscd build, and both package builds pass.
+- Production now serves `xios-session 1.0.78`, `xios-launcher-tools 0.1.8`,
+  and `com.max.xios 0.1.9`; live payload fetch-back matched the indexed SHA256
+  values. The same versions are installed on the iPad. Starting KWrite through
+  the additive path preserved the global `kde/up` lifecycle record and wrote
+  `kwrite/submitted` only to `xios-app-launch-status.json`. Terminating the exact
+  KWin PID then produced `kde/down`, removed the active marker, and stopped the
+  KDE process set. A subsequent KDE launch succeeded. Physical UIKit tap-through
+  is still not claimed because Xios foreground adoption remained at
+  `holding-frame` / `input-not-connected` during this verification.

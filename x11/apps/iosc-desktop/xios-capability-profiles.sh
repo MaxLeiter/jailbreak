@@ -8,8 +8,27 @@
 set -u
 _xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
-. "$_xt/linux-build/target-lib.sh"
-xios_load_target "${XIOS_TARGET:-rootless-1900}"
+if [ -f "$_xt/linux-build/target-lib.sh" ]; then
+    . "$_xt/linux-build/target-lib.sh"
+    xios_load_target "${XIOS_TARGET:-rootless-1900}"
+else
+    # Installed packages intentionally do not ship the build-only target matrix.
+    # Infer the jailbreak prefix from our stable installed location instead of
+    # walking to / and trying to source //linux-build/target-lib.sh.
+    _xcp_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    case "$_xcp_here" in
+        */libexec/xios-session)
+            _xcp_prefix="${_xcp_here%/libexec/xios-session}"
+            ;;
+        *)
+            _xcp_prefix=/var/jb
+            ;;
+    esac
+    if [ "${XIOS_PREFIX+x}" != x ]; then
+        XIOS_PREFIX="$_xcp_prefix"
+        export XIOS_PREFIX
+    fi
+fi
 
 xios_profile_names() {
     printf '%s\n' \

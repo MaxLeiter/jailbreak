@@ -81,6 +81,7 @@ XS_BIN="${XS_BIN:-$XS_PREFIX/local/bin}"
 XS_LIBEXEC_DIR="${XS_LIBEXEC_DIR:-$XS_JB/libexec/xios-session}"
 XS_LOG="${XS_LOG:-$XS_TMP/xios-session.log}"
 XS_STATUS="${XS_STATUS:-$XS_TMP/xios-session-status.json}"
+XS_APP_STATUS="${XS_APP_STATUS:-$XS_TMP/xios-app-launch-status.json}"
 XS_ACTIVE="${XS_ACTIVE:-$XS_TMP/xios-active-session}"
 XS_LOCK_DIR="${XS_LOCK_DIR:-$XS_TMP/xios-session.lock}"
 XS_SESSION_PGIDS="${XS_SESSION_PGIDS:-$XS_TMP/xios-session.pgids}"
@@ -109,6 +110,9 @@ if [ -n "$XS_SLOT" ]; then
     export XIOS_SESSION_SLOT="$XS_SLOT"
     if [ "$XS_STATUS" = "$XS_TMP/xios-session-status.json" ]; then
         XS_STATUS="$XS_TMP/xios-session-$XS_SLOT.json"
+    fi
+    if [ "$XS_APP_STATUS" = "$XS_TMP/xios-app-launch-status.json" ]; then
+        XS_APP_STATUS="$XS_TMP/xios-app-launch-$XS_SLOT.json"
     fi
     XS_SLOT_REGISTRY="$XS_SLOT_REGISTRY_DIR/$XS_SLOT.json"
     XS_WAYLAND_NAME="${XS_WAYLAND_NAME:-wayland-$XS_SLOT}"
@@ -447,6 +451,25 @@ xs_write_status() {
             "$(xs_json_escape "$XS_WAYLAND_NAME")" "$(xs_json_escape "$XS_CONFIG_JSON")" \
             "$(xs_json_escape "$XS_STATUS")" "$extra" >"$XS_SLOT_REGISTRY" 2>/dev/null || true
     fi
+}
+
+# Additive client launches must never replace the display owner's status. The
+# Xios picker and ioscd use XS_STATUS as the single desktop lifecycle record;
+# writing app:* there made an eventual compositor exit unable to mark itself
+# down. Keep app submission diagnostics in their own file.
+xs_write_app_status() {  # xs_write_app_status <app> <state> <message> [pid]
+    local app="$1" state="$2" msg="$3" pid="${4:-}" owner at extra=""
+    owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
+    at="$(date '+%Y-%m-%dT%H:%M:%S')"
+    [ -n "$owner" ] && extra="$extra,\"owner\":\"$(xs_json_escape "$owner")\""
+    [ -n "$XS_SLOT" ] && extra="$extra,\"slot\":\"$(xs_json_escape "$XS_SLOT")\""
+    case "$pid" in
+        ""|*[!0-9]*) ;;
+        *) extra="$extra,\"pid\":$pid" ;;
+    esac
+    printf '{"app":"%s","state":"%s","message":"%s","at":"%s"%s}\n' \
+        "$(xs_json_escape "$app")" "$(xs_json_escape "$state")" \
+        "$(xs_json_escape "$msg")" "$at" "$extra" >"$XS_APP_STATUS" 2>/dev/null || true
 }
 
 # The active-display owner. /var/jb/tmp/xios.json is a single pointer to the
@@ -997,6 +1020,7 @@ xios_session_kde() {
     XIOS_SESSION_SLOT="$XS_SLOT" \
     XIOS_SESSION_STATUS_FILE="$XS_STATUS" \
     XIOS_SESSION_STATUS_PRESET="$preset" \
+    XIOS_SESSION_ACTIVE_FILE="$XS_ACTIVE" \
     PLASMA_SHELL_PLUGIN="${plasma_shell_plugin:-${PLASMA_SHELL_PLUGIN-}}" \
     KDE_PLASMA_FLAVOR="$flavor" bash "$script" || true
     xs_record_slot_process_pgroups "$preset"
@@ -1050,7 +1074,11 @@ xios_session_kde() {
 # GTK ngl on ANGLE/IOSurface, memory gsettings, writable HOME).
 xios_session_app() {
     local name="$1"
-    [ -n "$name" ] || { xs_log "ERROR: 'app' needs a name"; xs_write_status app error "no app name"; return 1; }
+    [ -n "$name" ] || {
+        xs_log "ERROR: 'app' needs a name"
+        xs_write_app_status "" error "no app name"
+        return 1
+    }
     local owner
     owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
     local compositor_sock="$XS_WAYLAND_SOCK"
@@ -1062,9 +1090,10 @@ xios_session_app() {
     esac
     if [ ! -S "$compositor_sock" ]; then
         xs_log "ERROR: no compositor running (no $compositor_sock). Pick iosc/mutter/gnome first."
-        xs_write_status app error "no compositor; start a session first"; return 1
+        xs_write_app_status "$name" error "no compositor; start a session first"
+        return 1
     fi
-    xs_write_status "app:$name" starting "launching $name"
+    xs_write_app_status "$name" starting "submitting $name"
 
     # name -> exec. kgx is special: a bare `kgx` registers as the GApplication
     # primary and returns WITHOUT mapping a window in this bus-only environment, so
@@ -1168,22 +1197,23 @@ xios_session_app() {
     fi
     local launcher=("$XS_BASH" -lc "${a11y_prefix}exec $exec")
     if [ ${#dbus_addr[@]} -eq 0 ]; then
-        launcher=("$XS_DBUS_RUN" -- "${launcher[@]}")
+        launcher=("$XS_DBUS_RUN" -- ${launcher[@]+"${launcher[@]}"})
     fi
     nohup env \
         XDG_RUNTIME_DIR="$app_runtime" \
         WAYLAND_DISPLAY="$app_wayland" \
-        "${client_env[@]}" \
-        "${app_env[@]}" \
-        "${gtk_a11y_env[@]}" \
-        "${dbus_addr[@]}" \
+        ${client_env[@]+"${client_env[@]}"} \
+        ${app_env[@]+"${app_env[@]}"} \
+        ${gtk_a11y_env[@]+"${gtk_a11y_env[@]}"} \
+        ${dbus_addr[@]+"${dbus_addr[@]}"} \
         HOME="$XS_VAR/root" \
-        "${launcher[@]}" \
+        ${launcher[@]+"${launcher[@]}"} \
         >>"$XS_TMP/xios-session-client.log" 2>&1 </dev/null &
+    local app_pid=$!
     # bring the shared Xios display forward so the new window is visible
     xs_foreground_xios
-    xs_log "app '$name' launched (pid $!). Window maps into the current compositor."
-    xs_write_status "app:$name" up "$name launched"
+    xs_log "app '$name' submitted (pid $app_pid). Window maps into the current compositor."
+    xs_write_app_status "$name" submitted "$name launch submitted" "$app_pid"
 }
 
 # stop: tear everything down and return to SpringBoard.

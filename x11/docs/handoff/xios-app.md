@@ -93,6 +93,23 @@ declined" and "this GPU has no spatial scaler" are both visible in the UI.
 - Scroll/touch/tablet/clipboard app-side code has landed; clipboard is now compositor-wired too. Treat clipboard/scroll as app+iosc co-deploy work, not an app-only next wave.
 
 ## Current state
+- 2026-07-30 stream-v2 consumer (development deploy, physical launch pending):
+  XSurface negotiates up to three fixed output IOSurfaces plus dynamically
+  exported direct-present surfaces, with legacy reconnect fallback. DIRTY now
+  identifies the exact allocation and is consumed one frame at a time rather
+  than coalesced because every ownership transfer needs a matching release.
+  XScreen retains the currently displayed allocation for idle redraw/zoom,
+  then, when it accepts the next DIRTY, submits an empty command buffer on the
+  same Metal queue to signal the old sequence after all earlier samples and
+  immediately sends RELEASED. The compositor can enqueue its wait without a CPU
+  stall. Direct client surfaces can carry independent dimensions and a vertical
+  flip flag while framebuffer/input geometry remains the compositor output.
+  Release-iphoneos and the canonical `bin/install-app.sh x11/apps/Xios` flow
+  passed; the installed binary SHA256 is
+  `fa85c3be663919159b21e002d5ef76076a540f8c069aca2ec0d8ea7424212f29`.
+  FrontBoard `uiopen` returned success but started no Xios process, so the
+  matched app/compositor runtime proof is gated on physically tapping the Home
+  Screen `X11` icon.
 - 2026-07-29 device proof: `com.max.xios 0.1.4` and `xios-session 1.0.67`
   are installed. Xios PID `77756` survived repeated iosc → KDE → iosc → KDE
   transitions and concurrent client-launch pressure. Final state was
@@ -129,7 +146,20 @@ declined" and "this GPU has no spatial scaler" are both visible in the UI.
 - 2026-07-03 a11y app-side smoke: Xios now includes `XiosA11yClient`, an unbound VoiceOver publisher for the desktop helper stream. Deployed the rebuilt Release-iphoneos app, re-signed with `apps/Xios/entitlements.plist`, created `/var/jb/tmp/xios-a11y-force`, launched `xios-session app kgx`, and foregrounded Xios on iosc. `/var/jb/tmp/xios-a11y-app.log` showed the app connecting to `/var/jb/tmp/xios-a11y.sock`, receiving `hello`/`reset`, and publishing 12 accessibility elements for one window. Evidence: `artifacts/device-runs/20260703-123824/xios-a11y-app.log`.
 - 2026-07-03 VoiceOver state bridge: `XiosA11yClient` now sends `A11Y_STATE\t1|0` to `/var/jb/tmp/ioscd.sock` when `UIAccessibility.isVoiceOverRunning` changes. On-device foreground smoke with VoiceOver off logged `ioscd a11y state sent enabled=false`. The positive path was verified by sending `A11Y_STATE 1` to ioscd directly, which created `/var/jb/tmp/xios-a11y-enabled`; with no force file present, the next `xios-session app kgx` launch started `xios-a11yd` and the AT-SPI stack. Real physical VoiceOver gesture validation remains open.
 - 2026-07-04 rotation/native-feel bridge: Xios.app is no longer landscape-locked for iosc. `XServerViewController` returns `.all` while `XScreenView` is using iosc, `SystemIntegration` sends OUTPUT on orientation changes, and the app now force-resends the current OUTPUT state after IOSurface adoption/layout so a compositor restart in the same portrait orientation still converges. Rebuilt/deployed Release `iphoneos`; final device state was clean `xios-session iosc`, Xios foregrounded, `/var/jb/tmp/xios-status.txt` `iosurface-zerocopy 2160x2880 [metal]`, input connected, and `/var/jb/tmp/xios-geom.txt` `bounds=810x1080 drawable=1620x2160 fb=2160x2880 orient=1`.
-- 2026-07-05 KDE direct-touch policy: Plasma/Qt Quick was observed to treat one physical finger tap as two activations because Xios forwarded both `wl_touch` and the pointer-emulated button click. `XScreen.swift` now keeps the existing additive pointer fallback for non-KDE sessions and non-direct input, but consumes pointer emulation for direct finger touches when the active `xios-session` preset is `kde`/`kde-*` or `xios.json` explicitly sets `touch_replaces_pointer`/`touch_pointer_policy`. Host Release-iphoneos build passes; the current app was deployed with the KDE package wave, `kde-desktop` reports input connected, and the user physically confirmed Plasma Desktop clicking no longer double-activates.
+- 2026-07-30 KDE desktop tap policy: the earlier direct-touch policy prevented
+  duplicate activations, but it also made Plasma Desktop depend entirely on
+  single-finger `wl_touch` activation; the live scaled Desktop stopped acting
+  on those taps even though deterministic iosc pointer and multitouch probes
+  proved the compositor was not frozen. `com.max.xios 0.1.8` now routes one
+  direct finger in the `kde` Desktop preset through the proven pointer lane and
+  suppresses the parallel raw-touch record, so a tap remains exactly one
+  activation. `kde-mobile` keeps native `wl_touch`, as do explicit future
+  `touch_replaces_pointer` configurations; Pencil and indirect pointer paths
+  are unchanged. Release-iphoneos build/package and device install passed;
+  Xios is foregrounded with `iosurface-zerocopy 2880x2160 [metal]` and
+  `input-connected iosc(wayland)`. Physical post-install tap confirmation is
+  still required. Package SHA256:
+  `d7ea2c108aa7101baa62394a424c6b97a8db9373ed24b61091b94fda3e153a7c`.
 - 2026-07-05 app overlay auto-hide: the Swift-owned overlay showing the active desktop/session plus iOS time/battery now auto-hides after 5s, has a long-press menu action to dismiss immediately, and can be revealed temporarily by a one-finger pull down from the top edge. This is app-side only (`XScreen.swift`), no compositor protocol change. Release-iphoneos build passes and the rebuilt app was deployed to `/var/jb/Applications/Xios.app` with matching local/on-device binary SHA256 `b7d46a60fa2bbde2fdd0616f78b54b2353142402b00c49a3b4a48a4837c17d96`; Xios stayed foregrounded on `kde-desktop` with `iosurface-zerocopy 2880x2160 [metal]`. Evidence: `artifacts/device-runs/xios-overlay-autohide-20260705-1859/`. Physical top-edge/long-press gesture validation is still pending because the harness only captured a compositor screenshot, not a physical device screenshot.
 - 2026-07-28 settings/display UI redo: the tabbed "Displays & Sessions" sheet + separate "Tools" sheet were replaced by one panel and one Advanced drawer. Panel = status card (plain English: `KDE Plasma / Running · 1440×1080 · touch and keyboard ready`), Desktop list (running one is highlighted, tap restarts), Screen Size (Default/Landscape/Portrait/Compact/Custom — resizes now if a desktop is up, otherwise applies to the next start), Open an App, then Stop Desktop / Advanced. Advanced = display list + Fit/Reload/Reconnect Input, extra display slots, Home Screen Apps, the Key & Click Pad, and the debug snapshot. Removed: the Displays/Sessions tabs, the duplicate "Apply Size to X" button, the three separate places that set display size, the "Maintenance" rows repeated on both tabs, the quick-launch app buttons (search covers them), and the auto-opening picker at launch when several displays are open (it now just sets the status message). The four-finger tap gesture is gone; three-finger tap opens the panel. `x11/apps/Xios/Sources/XScreen.swift` + `XiosShellOverlay.swift`; the legacy `xios-request.json` display-profile write survives as Advanced → X Server Size. Simulator build passes and all three sheets were rendered/checked in the Simulator; on-device validation is still open.
 
@@ -170,3 +200,21 @@ GPU/IOSurface entitlements and correct perms — none of the bare-scp landmines 
 For a fast local iteration loop `bin/install-app.sh x11/apps/Xios` still sideloads the same
 bundle straight to `/var/jb/Applications`, and there the scp gotchas in INDEX.md do apply.
 Anything Max is meant to install, or that a flavor depends on, goes out as the package.
+
+## 2026-07-30 app-launch feedback repair — PRODUCTION, BACKEND DEVICE VERIFIED
+- The in-app launcher treated only `/var/jb/tmp/wayland-0` as a live desktop,
+  falsely labeling nested KDE as stopped even when
+  `xios-kde-runtime/kwin-ios-test` was accepting clients.
+- `com.max.xios 0.1.9` recognizes the KDE runtime sockets, does not start the
+  desktop-transition status timer for additive app launches, and waits for the
+  ioscd acknowledgment before dismissing the launcher. A rejection now stays
+  visible in the sheet instead of disappearing behind the desktop.
+- Release `iphoneos` compile, ldid signing, and package generation pass. The
+  package SHA256 recorded during the host build is
+  `0af7db533e17481b005c735c986b00db214dfcc0d0ac8819f9ed7a12ad670fc5`.
+- `com.max.xios 0.1.9` is live in production and installed on the iPad; live
+  payload fetch-back matched that SHA256. The KDE-private-socket launch path was
+  exercised on-device by submitting KWrite: desktop status remained `kde/up`
+  while the separate app record became `kwrite/submitted`. Physical UIKit
+  tap-through remains open because the app foreground attempt stayed at
+  `holding-frame awaiting iosurface` / `input-not-connected`.

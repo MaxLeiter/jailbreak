@@ -427,6 +427,15 @@ static int read_active_session(char *buf, size_t buflen)
     return buf[0] != 0;
 }
 
+static void clear_active_session_if(const char *owner)
+{
+    char active[64];
+    if (!owner || !*owner || !read_active_session(active, sizeof(active)))
+        return;
+    if (strcmp(active, owner) == 0)
+        (void)unlink(g_active_session);
+}
+
 static int classic_iosc_allowed(char *owner, size_t owner_len)
 {
     if (!read_active_session(owner, owner_len))
@@ -516,6 +525,7 @@ static void note_iosc_died(int native)
     if (strcmp(state, "up") != 0 && strcmp(state, "compositor-only") != 0) return;
     write_session_status(own, "down",
                          native ? "native session exited" : "iosc compositor exited");
+    clear_active_session_if(own);
 }
 
 #define MAX_PRESET_HEALTH 16
@@ -851,12 +861,19 @@ static int active_session_healthy(char *active, size_t active_len)
                       strcmp(active, "stop") != 0;
 
     read_session_status(sp, sizeof(sp), st, sizeof(st));
-    if (have_marker && st[0] && session_state_transitional(st))
+    if (have_marker && sp[0] && strcmp(sp, active) == 0 &&
+        session_state_transitional(st))
         return 1;
     if (compositor_socket_live() || compositor_process_alive() == 1) {
         if (!have_marker)
             snprintf(active, active_len, "unknown");
         return 1;
+    }
+    if (have_marker) {
+        if (sp[0] && strcmp(sp, active) == 0 &&
+            (strcmp(st, "up") == 0 || strcmp(st, "compositor-only") == 0))
+            write_session_status(active, "down", "active session is no longer running");
+        clear_active_session_if(active);
     }
     return 0;
 }
@@ -1391,6 +1408,17 @@ static void handle_session_request(int fd, char *payload, int ensure,
      * side displays) never tear the desktop down: no policy. */
     int destructive = strcmp(preset, "app") != 0 && !*slot;
     int is_root = peer->have_eid && peer->uid == 0;
+
+    if (strcmp(preset, "app") == 0) {
+        if (!*app) {
+            reply(fd, "ERR empty app\n");
+            return;
+        }
+        if (!*slot && !classic_compositor_socket_live()) {
+            reply(fd, "ERR no active desktop compositor\n");
+            return;
+        }
+    }
 
     if (destructive) {
         /* Explicit switches stay with the actors that speak for the user:

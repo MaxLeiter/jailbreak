@@ -76,6 +76,12 @@ IOSC_WM_SOCK="${IOSC_WM_SOCK:-$TMP/iosc-wm.sock}"
 KDE_KWIN_SIZE_WAS_SET="${KDE_KWIN_SIZE:+x}"
 KDE_KWIN_SIZE="${KDE_KWIN_SIZE:-}"
 KDE_PLASMA_FLAVOR="${KDE_PLASMA_FLAVOR:-${1:-desktop}}"
+KWIN_XIOS_HOST_OUTPUT_SCALE="${KWIN_XIOS_HOST_OUTPUT_SCALE:-${XIOS_KDE_OUTPUT_SCALE:-2}}"
+# Keep the nested surface at the iosc host scale, but give Plasma an
+# iPad-friendly logical density.  KWin's Xios output contract keeps the mode at
+# the fixed host buffer size, so this changes UI size without supersampling the
+# IOSurface again.
+KDE_KWIN_OUTPUT_SCALE="${KDE_KWIN_OUTPUT_SCALE:-${XIOS_KDE_DEFAULT_SCALE:-2.75}}"
 ANGLE="${ANGLE:-$(jb_path /lib/angle)}"
 KDE_LOG="${KDE_LOG:-$TMP/kde-plasma.log}"
 IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
@@ -378,6 +384,103 @@ kde_seed_desktop_style_config() {
   done
 }
 
+kde_seed_ipad_desktop_sizing() {
+  [ "$KDE_PLASMA_FLAVOR" = desktop ] || return 0
+  [ "${XIOS_KDE_IPAD_SIZING_DEFAULTS:-1}" != 0 ] || return 0
+
+  local prefs marker
+  local python="$XS_PREFIX/bin/python3"
+  [ -x "$python" ] || return 0
+  # Qt's Darwin KConfig backend can resolve HOME-relative config through either
+  # the rootless mirror or the platform-native /var/root path.  Seed both, just
+  # like the other KDE config bridges above; only the path with legacy config
+  # will be changed.
+  for prefs in \
+    "$XS_VAR/root/Library/Preferences" \
+    "/var/root/Library/Preferences"; do
+    marker="$prefs/.xios-kde-ipad-sizing-v1"
+    [ ! -e "$marker" ] || continue
+    mkdir -p "$prefs"
+
+    "$python" - "$prefs" "$KDE_KWIN_OUTPUT_SCALE" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+prefs = Path(sys.argv[1])
+target_scale = float(sys.argv[2])
+changed = []
+
+# Upgrade only the scale values emitted by older Xios desktop defaults.  Other
+# values are user choices and must survive the migration.
+outputs = prefs / "kwinoutputconfig.json"
+if outputs.exists():
+    try:
+        doc = json.loads(outputs.read_text())
+        output_changed = False
+        for group in doc:
+            if group.get("name") != "outputs":
+                continue
+            for output in group.get("data", []):
+                scale = output.get("scale")
+                if isinstance(scale, (int, float)) and 1.0 <= float(scale) <= 2.25:
+                    output["scale"] = target_scale
+                    output_changed = True
+        if output_changed:
+            outputs.write_text(json.dumps(doc, indent=4) + "\n")
+            changed.append(f"output scale -> {target_scale:g}")
+    except (OSError, ValueError, TypeError):
+        pass
+
+# Plasma stores panel containment identity and panel thickness in separate
+# files.  Raise only active desktop panels that still have an old compact Xios
+# value; stale panels and already customized large panels are left untouched.
+applets = prefs / "plasma-org.kde.plasma.desktop-appletsrc"
+shell = prefs / "plasmashellrc"
+panel_ids = set()
+if applets.exists():
+    current = None
+    for line in applets.read_text(errors="replace").splitlines():
+        match = re.fullmatch(r"\[Containments\]\[(\d+)\]", line)
+        if match:
+            current = match.group(1)
+        elif line.startswith("["):
+            current = None
+        elif current and line == "plugin=org.kde.panel":
+            panel_ids.add(current)
+
+if panel_ids and shell.exists():
+    lines = shell.read_text(errors="replace").splitlines(keepends=True)
+    current_panel = None
+    shell_changed = False
+    for index, line in enumerate(lines):
+        match = re.fullmatch(
+            r"\[PlasmaViews\]\[Panel (\d+)\]\[Defaults\]\r?\n?", line
+        )
+        if match:
+            current_panel = match.group(1)
+            continue
+        if line.startswith("["):
+            current_panel = None
+            continue
+        if current_panel in panel_ids:
+            thickness = re.fullmatch(r"thickness=(\d+)\r?\n?", line)
+            if thickness and int(thickness.group(1)) <= 40:
+                newline = "\r\n" if line.endswith("\r\n") else "\n"
+                lines[index] = f"thickness=48{newline}"
+                shell_changed = True
+    if shell_changed:
+        shell.write_text("".join(lines))
+        changed.append("active panel height -> 48")
+
+if changed:
+    print("kde: applied iPad desktop sizing: " + ", ".join(changed))
+PY
+    : >"$marker"
+  done
+}
+
 kde_desktop_favorites_value() {
   local id path ids="" sep=""
   for id in org.kde.kwrite.desktop org.kde.gwenview.desktop org.kde.ark.desktop systemsettings.desktop; do
@@ -648,6 +751,7 @@ kde_seed_mobile_wallpaper_config
 kde_seed_mobile_folio_config
 kde_seed_desktop_style_config
 kde_migrate_desktop_user_config
+kde_seed_ipad_desktop_sizing
 
 if [ -n "${XIOS_KDE_NO_KAMD+x}" ]; then
   case "$XIOS_KDE_NO_KAMD" in
@@ -758,6 +862,8 @@ nohup "$SETSID" env \
   KWIN_SOCKET="$KWIN_SOCKET" \
   KWIN_W="$KWIN_W" \
   KWIN_H="$KWIN_H" \
+  KWIN_XIOS_HOST_OUTPUT_SCALE="$KWIN_XIOS_HOST_OUTPUT_SCALE" \
+  KDE_KWIN_OUTPUT_SCALE="$KDE_KWIN_OUTPUT_SCALE" \
   IOS_INPUTD_BIN="$IOS_INPUTD_BIN" \
   IOSC_INPUT_SOCK="$IOSC_INPUT_SOCK" \
   KDE_AUTO_KEYBOARD="${KDE_AUTO_KEYBOARD:-1}" \
@@ -823,6 +929,11 @@ nohup "$SETSID" env \
 	      case "$cur_state" in up|compositor-only|waiting) ;; *) return 0 ;; esac
 	      printf "{\"preset\":\"%s\",\"state\":\"down\",\"message\":\"%s\",\"at\":\"%s\"}\n" \
 	        "$p" "$why" "$(date "+%Y-%m-%dT%H:%M:%S")" >"$f" 2>/dev/null || true
+	      active_file="${XIOS_SESSION_ACTIVE_FILE:-}"
+	      if [ -n "$active_file" ] && [ -f "$active_file" ] &&
+	         [ "$(cat "$active_file" 2>/dev/null)" = "$p" ]; then
+	        rm -f "$active_file" 2>/dev/null || true
+	      fi
 	    }
 	    export XIOS_HWBRIDGE_BUS="${XIOS_HWBRIDGE_BUS:-session}"
 	    xios_start_session_helper "$LIBEXEC/xios-hwbridged" "$XDG_RUNTIME_DIR/xios-hwbridged.log"
@@ -918,7 +1029,8 @@ nohup "$SETSID" env \
 	      echo "launch kwin: no ios-inputd at $IOS_INPUTD_BIN; iOS keyboard will not auto-pop"
 	    fi
 	    "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
-	      --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts \
+	      --width "$KWIN_W" --height "$KWIN_H" --scale "$KDE_KWIN_OUTPUT_SCALE" \
+	      --no-global-shortcuts \
 	      ${kwin_im_args:+$kwin_im_args "$kwin_im_cmd"} &
     kwin_pid=$!
     for _ in $(seq 1 60); do

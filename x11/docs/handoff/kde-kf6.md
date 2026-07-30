@@ -3,7 +3,54 @@
 ## Ownership
 The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built Linux→iOS in Docker/Procursus. Background priority (iosc + GNOME are the active demos), but a long-running build track.
 
-## Current snapshot — 2026-07-06
+## Current snapshot — 2026-07-29
+- Production publish completed 2026-07-30: `kwin 6.1.5+ios33` and
+  `plasma-desktop 6.1.5+ios10` are live at `repo.maxleiter.com`. Fetch-back
+  matched SHA256
+  `2d3895e2dcac1b2a2273da2ea328ffa9d3d173b7a88ad83587e57f90e3c40c92`
+  and
+  `81bef833744a9ecf06d6fa1dadb0ebac83264f45db3a6f5c91288d3f4545259d`.
+  The same versions are installed on the iPad; a fresh KDE launch left KWin
+  running with `--scale 2.75`, Plasma running, the 2880x2160 GPU output
+  producing non-black frames, and the input-method proxy registered.
+- The iPad desktop sizing follow-up is installed and visible (2026-07-30).
+  `xios-session 1.0.77` separates the fixed nested-host scale (`2`) from
+  Plasma's default logical scale (`2.75`) and performs a one-time migration of
+  the old Xios scale values (`<=2.25`) plus active compact panels (`<=40`) in
+  KDE's actual Darwin preferences path. The active device state is scale
+  `2.75`, panel thickness `48`, a fixed `2880x2160` IOSurface, and
+  `iosurface-zerocopy` with iosc input connected. `plasma-desktop
+  6.1.5+ios10` also bakes a minimum 48px height into the upstream default-panel
+  layout, so clean profiles do not depend on the upgrade migration. The
+  compositor capture in `.artifacts/kde-ipad-defaults-v2-20260730/` shows the
+  resulting roughly 50-point bottom panel; pointer injection opens the enlarged
+  Kicker and a wl_touch probe dismisses it. Installed package SHA256:
+  `xios-session` `c8dee100f53f035487f54c25c18714b4bec50235c9caea099397536382f8ba35`;
+  `plasma-desktop`
+  `81bef833744a9ecf06d6fa1dadb0ebac83264f45db3a6f5c91288d3f4545259d`.
+- KDE display scaling now has correct fixed-IOSurface semantics on-device
+  (2026-07-29). The integration bug was in nested KWin's upstream Wayland
+  configure path: it resized the output buffer to `host logical size * saved
+  KWin scale`. At a saved scale of 2.25 that produced `3240x2430`, which iosc
+  then fit back into its fixed `2880x2160` IOSurface. The fit cancelled the UI
+  enlargement, leaving a `1440x1080` logical workspace even though System
+  Settings reported 2.25. `kwin 6.1.5+ios33` adds an Xios-only
+  `KWIN_XIOS_HOST_OUTPUT_SCALE` contract: the nested buffer stays matched to the
+  host's fixed physical mode while KWin's saved scale controls logical geometry.
+  `xios-session 1.0.73` launches KWin with the host scale baseline (`--scale 2`)
+  and passes that contract through; ordinary nested KWin behavior is unchanged
+  when the variable is absent. Fresh isolated-slot proof reports mode
+  `2880x2160@60`, geometry `1280x960`, and scale `2.25`, exactly
+  `2880x2160 / 2.25`. Both packages are installed on the iPad. Final host-DER
+  package SHA256: KWin
+  `2d3895e2dcac1b2a2273da2ea328ffa9d3d173b7a88ad83587e57f90e3c40c92`;
+  session
+  `680b8b63e6345c70a875841975fe631505d489fff4e2df17f1fd5c592c9480cd`.
+  Evidence is in `.artifacts/kde-scale-contract-20260729/`; its compositor
+  capture is `2880x2160` and non-black, though the network-only
+  `idevicescreenshot` physical cross-check was unavailable. The device-wide
+  `apt-get check` still flags the pre-existing unrelated
+  `libmutter-14-dev +ios7` versus `libmutter-14-0 +ios10` mismatch.
 - Touch/tablet advertisement is now closed on-device (2026-07-29). The nested
   Wayland backend already bound `wl_touch`, but KWin's automatic tablet heuristic
   stayed false because iosc correctly advertises both touch and a synthetic
@@ -252,3 +299,14 @@ revisions stale and is superseded by this section.
 
 ## Docker gotchas
 - Volume-prune KILLS active builds (transient containers look unmounted between packages) — use builder-prune. VM: 16 CPU / 7.7GiB → default ninja -j18 OOMs big TUs (qmldom) → full-speed pass then -j2 retry.
+
+## KDE session-death ownership follow-up (2026-07-30)
+- `run-kde-plasma.sh` now receives both the lifecycle status path and active-owner
+  marker from `xios-session`. When the monitored KWin/Plasma session exits, it
+  marks only its own steady status down and removes the marker only if that
+  marker still names the same preset.
+- This is packaged in `xios-session 1.0.78` with the additive app-status repair.
+  Host syntax/regression/package checks pass. Physical proof completed
+  2026-07-30: terminating the exact KWin PID changed the lifecycle record to
+  `kde/down`, removed the active marker, and stopped the KDE process set; KDE
+  subsequently relaunched successfully.

@@ -1028,6 +1028,64 @@ path.write_text(text)
 print("wayland_backend.cpp: applied ios-bringup-fractional-scale inbound-coordinate correction")
 PY
 
+# --- Fixed host-pixel-size semantics for the Xios nested Wayland output -------
+# Upstream nested KWin treats its --width/--height as the host window's logical
+# size and resizes its render buffer to hostConfigureSize * KWinOutputScale.
+# That is useful for a normal resizable development window, but it makes
+# System Settings display scaling a pure supersampling control in Xios:
+#
+#   KWin scale 2.25 -> buffer 3240x2430 -> iosc stretches it back to 1440x1080
+#
+# The KWin logical workspace therefore remains 1440x1080 and Plasma controls do
+# not get any larger. Xios has a fixed physical IOSurface mode, so keep KWin's
+# render mode fixed to hostConfigureSize * the host output scale instead. Then
+# KWin's own output scale correctly changes geometry() (2880 / 2.25 = 1280)
+# while the buffer stays matched to the 2880-wide IOSurface. The existing
+# ceil(scale)/scale inbound-coordinate correction above maps input into that
+# reduced logical geometry.
+#
+# This is opt-in through KWIN_XIOS_HOST_OUTPUT_SCALE; ordinary nested KWin keeps
+# the upstream behavior.
+python3 - "$src/src/backends/wayland/wayland_output.cpp" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+marker = "ios-bringup-fixed-host-pixel-size"
+if marker in text:
+    print(f"wayland_output.cpp: {marker} already applied")
+    sys.exit(0)
+
+old = """void WaylandOutput::applyConfigure(const QSize &size, quint32 serial)
+{
+    m_xdgShellSurface->ackConfigure(serial);
+    if (!size.isEmpty()) {
+        resize(size * scale());
+    }
+}
+"""
+new = """void WaylandOutput::applyConfigure(const QSize &size, quint32 serial)
+{
+    m_xdgShellSurface->ackConfigure(serial);
+    if (!size.isEmpty()) {
+        // ios-bringup-fixed-host-pixel-size: iosc presents a fixed physical
+        // IOSurface. Keep this nested output mode matched to that host mode so
+        // changing KWin scale reduces logical geometry instead of only growing
+        // a buffer that iosc immediately fits back into the same rectangle.
+        bool hostScaleOk = false;
+        const qreal hostScale =
+            qEnvironmentVariable("KWIN_XIOS_HOST_OUTPUT_SCALE").toDouble(&hostScaleOk);
+        resize(size * ((hostScaleOk && hostScale > 0.0) ? hostScale : scale()));
+    }
+}
+"""
+if text.count(old) != 1:
+    raise SystemExit("wayland_output.cpp: applyConfigure scale block not found exactly once")
+path.write_text(text.replace(old, new))
+print(f"wayland_output.cpp: applied {marker}")
+PY
+
 # Keep the accelerated ANGLE/IOSurface phase separate from the first-light
 # compatibility edits above. This makes the stable QPainter bring-up easy to
 # audit while the GPU path can evolve as one recipe-owned patch stage.
