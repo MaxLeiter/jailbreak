@@ -271,7 +271,10 @@ struct iosc_surface {
     char                title[256];      /* xdg_toplevel.set_title (foreign-toplevel) */
     char                app_id[256];     /* xdg_toplevel.set_app_id (foreign-toplevel) */
     int                 configured;      /* sent the initial xdg configure */
-    struct wl_list      frame_callbacks; /* pending wl_callback resources */
+    /* wl_surface.frame is double-buffered surface state: requests enter the
+     * pending list and become compositor-visible only with wl_surface.commit. */
+    struct wl_list      pending_frame_callbacks;
+    struct wl_list      frame_callbacks; /* committed wl_callback resources */
     struct wl_list      presentation_feedbacks;
     /* xdg_surface.set_window_geometry: double-buffered like the rest of the
      * surface state, latched on commit. geo_set=0 falls back to the whole
@@ -398,6 +401,8 @@ static uint64_t g_presentation_seq;
 static struct wl_event_source *g_present_ack_timer;
 static uint64_t g_present_wait_seq;
 static uint32_t g_present_wait_started_ms;
+static struct wl_event_source *g_frame_clock_timer;
+static int g_frame_clock_armed;
 static int g_output_damage_valid;
 static int g_output_damage_coarse;
 static int g_output_damage_rect_count;
@@ -742,8 +747,43 @@ static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
     }
 }
 
+/* A frame request with no corresponding damage still needs compositor pacing:
+ * nested compositors use it to schedule their next render. Retire those
+ * callbacks on a 60 Hz clock without manufacturing damage, a presentation
+ * event, or a redundant GPU composite. Real presents continue to retire them
+ * through frame_callbacks_after_present(). */
+static int frame_clock_timer_cb(void *data)
+{
+    (void)data;
+    g_frame_clock_armed = 0;
+    uint32_t t = now_ms();
+    struct iosc_surface *s, *tmp;
+    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link)
+        surface_send_frame_callbacks(s, t);
+    return 0;
+}
+
+static void frame_clock_arm(void)
+{
+    if (g_frame_clock_armed)
+        return;
+    struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
+    if (!loop)
+        return;
+    if (!g_frame_clock_timer)
+        g_frame_clock_timer = wl_event_loop_add_timer(loop, frame_clock_timer_cb, NULL);
+    if (!g_frame_clock_timer)
+        return;
+    g_frame_clock_armed = 1;
+    wl_event_source_timer_update(g_frame_clock_timer, 16);
+}
+
 static void frame_callbacks_after_repaint(void)
 {
+    if (g_frame_clock_armed && g_frame_clock_timer) {
+        wl_event_source_timer_update(g_frame_clock_timer, 0);
+        g_frame_clock_armed = 0;
+    }
     uint32_t t = now_ms();
     struct iosc_surface *s, *tmp;
     wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
@@ -2844,15 +2884,7 @@ static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t c
     f->resource = wl_resource_create(c, &wl_callback_interface, 1, cb);
     if (!f->resource) { free(f); wl_client_post_no_memory(c); return; }
     /* No impl/user-data: a callback has no requests; we destroy it after done. */
-    wl_list_insert(&s->frame_callbacks, &f->link);
-
-    /* Opt-in nested-compositor experiment: KWin's Wayland backend can request
-     * a frame callback after the commit that made its output visible. A pulse
-     * can advance that render loop, but doing it globally makes ordinary shell
-     * clients repaint forever, so keep it gated until a real frame clock lands. */
-    if (iosc_env_truthy(getenv("IOSC_FRAME_PULSE")) &&
-        s && s->mapped && s->current_buffer && !g_recompose_scheduled)
-        recomposite_all();
+    wl_list_insert(&s->pending_frame_callbacks, &f->link);
 }
 static void surface_set_opaque_region(struct wl_client *c, struct wl_resource *r,
                                       struct wl_resource *region)
@@ -2895,6 +2927,13 @@ static void surface_commit_apply(struct iosc_surface *s)
     int need_recomposite = 0;
 
     iosc_xwm_surface_commit(s->resource);   /* apply pending Xwayland association (no-op otherwise) */
+
+    /* wl_surface.frame requests take effect atomically with this commit, like
+     * the rest of wl_surface pending state. */
+    if (!wl_list_empty(&s->pending_frame_callbacks)) {
+        wl_list_insert_list(&s->frame_callbacks, &s->pending_frame_callbacks);
+        wl_list_init(&s->pending_frame_callbacks);
+    }
 
     /* xdg_surface.set_window_geometry is double-buffered like everything else;
      * latch it before surface_map() below so a first map already sees it. */
@@ -2980,10 +3019,10 @@ static void surface_commit_apply(struct iosc_surface *s)
 
     if (need_recomposite) recomposite_all();
 
-    /* Frame callbacks are retired after the coalesced repaint, not at commit
-     * time, so throttled clients don't draw ahead of the compositor. */
+    /* A no-damage commit still receives a paced callback. Do not force a GPU
+     * repaint merely to advance a nested compositor's frame clock. */
     if (!need_recomposite && !wl_list_empty(&s->frame_callbacks))
-        surface_send_frame_callbacks(s, now_ms());
+        frame_clock_arm();
 
     surface_apply_sync_children(s);
 }
@@ -3142,6 +3181,11 @@ static void surface_resource_destroy(struct wl_resource *r)
         wl_list_remove(&f->link);
         free(f);
     }
+    wl_list_for_each_safe(f, tmp, &s->pending_frame_callbacks, link) {
+        wl_resource_destroy(f->resource);
+        wl_list_remove(&f->link);
+        free(f);
+    }
     free(s);
     if (was_mapped) recomposite_all();   /* repaint without the closed window */
 }
@@ -3189,6 +3233,7 @@ static void compositor_create_surface(struct wl_client *client,
     struct iosc_surface *s = calloc(1, sizeof(*s));
     if (!s) { wl_client_post_no_memory(client); return; }
     wl_list_init(&s->surface_link);
+    wl_list_init(&s->pending_frame_callbacks);
     wl_list_init(&s->frame_callbacks);
     wl_list_init(&s->presentation_feedbacks);
     wl_list_insert(&g_surfaces, &s->surface_link);

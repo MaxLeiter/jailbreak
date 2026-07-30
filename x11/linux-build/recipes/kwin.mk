@@ -7,12 +7,14 @@ endif
 
 SUBPROJECTS += kwin
 KWIN_VERSION = $(PLASMA_VERSION)
-DEB_KWIN_V ?= $(KWIN_VERSION)+ios27
+DEB_KWIN_V ?= $(KWIN_VERSION)+ios28
 # epoxy vs QtGui-iOS-GLES header collision previously forced -DKWIN_IOS_QT_NO_OPENGL=1;
 # fixed by the gl-coexist shim in kwin-ios-compat.h (epoxy included first, then
 # OpenGLES.framework guards pre-defined so Qt's qopengl.h defers to epoxy's Khronos
 # definitions). See kwin-ios-fixes.sh.
 KWIN_IOS_COMPAT_DEFS :=
+KWIN_ANGLE_PREFIX := $(BUILD_BASE)$(MEMO_PREFIX)
+KWIN_ANGLE_LIB := $(KWIN_ANGLE_PREFIX)/lib/angle
 
 kwin-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kwin))
@@ -56,6 +58,7 @@ kwin: kwin-setup
 		-DKWIN_BUILD_ACTIVITIES=OFF \
 		-DKWIN_BUILD_DECORATIONS=ON \
 		-DKWIN_BUILD_GLOBALSHORTCUTS=ON \
+		-DEGL_LIBRARY=$(KWIN_ANGLE_LIB)/libEGL.dylib \
 		-DQTWAYLANDSCANNER_KDE_EXECUTABLE=$(BUILD_WORK)/kwin/host-tools-build/qtwaylandscanner_kde \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KPipeWire=TRUE \
 		-DCMAKE_DISABLE_FIND_PACKAGE_QAccessibilityClient6=TRUE

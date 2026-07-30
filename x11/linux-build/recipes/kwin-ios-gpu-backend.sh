@@ -248,7 +248,7 @@ replace(
     "src/platformsupport/scenes/opengl/basiceglsurfacetexture_wayland.cpp",
     "        return loadShmTexture(m_pixmap->buffer());\n    } else {\n        return false;\n    }\n}",
     "        const bool ok = loadShmTexture(m_pixmap->buffer());\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: shm load ok=\" << ok << \"size=\" << m_pixmap->buffer()->size() << \"glerr=\" << Qt::hex << glGetError();\n        }\n        return ok;\n    } else {\n        if (qEnvironmentVariableIsSet(\"KWIN_IOS_TEXTURE_DIAG\")) {\n            qCWarning(KWIN_OPENGL) << \"ios-tex: UNKNOWN buffer type -- no texture\";\n        }\n        return false;\n    }\n}",
-    "ios-gpu-client-texture-diag",
+    "ios-tex: shm load ok=",
 )
 # Content stats for shm uploads (still under KWIN_IOS_TEXTURE_DIAG): a texture that
 # loads ok but carries all-black pixels means the CLIENT drew black, which no
@@ -284,6 +284,10 @@ if "ios-gpu-client-texture-load" not in text:
     implementation = r'''bool BasicEGLSurfaceTextureWayland::loadIoscTexture(IoscClientBuffer *buffer) // ios-gpu-client-texture-load
 {
     EGLDisplay display = backend()->eglDisplayObject()->handle();
+    if (!buffer->waitAcquireFence(display)) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex: refusing an unfenced client IOSurface";
+        return false;
+    }
     if (m_iosurfaceConfig == EGL_NO_CONFIG_KHR) {
         m_iosurfaceConfig = chooseIoscEglConfig(display);
     }
@@ -358,6 +362,11 @@ void BasicEGLSurfaceTextureWayland::updateIoscTexture(IoscClientBuffer *buffer)
     if (m_bufferType != BufferType::Iosc || m_iosurfaceBuffer != buffer) {
         destroy();
         loadIoscTexture(buffer);
+        return;
+    }
+    EGLDisplay display = backend()->eglDisplayObject()->handle();
+    if (!buffer->waitAcquireFence(display)) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex: refusing an unfenced client IOSurface update";
     }
 }
 
@@ -473,8 +482,15 @@ replace(
 replace(
     "src/plugins/qpa/integration.cpp",
     '#include "backingstore.h"\n',
-    '#include "backingstore.h"\n#include "eglplatformcontext.h" // ios-gpu-qpa-context\n#include "core/outputbackend.h"\n',
+    '#include "backingstore.h"\n#include "eglplatformcontext.h" // ios-gpu-qpa-context\n',
     "ios-gpu-qpa-context",
+)
+replace(
+    "src/plugins/qpa/integration.cpp",
+    '#include "eglplatformcontext.h" // ios-gpu-qpa-context\n',
+    '#include "eglplatformcontext.h" // ios-gpu-qpa-context\n'
+    '#include "core/outputbackend.h" // ios-gpu-qpa-outputbackend\n',
+    "ios-gpu-qpa-outputbackend",
 )
 
 # KWin's EGL wrappers use libepoxy.  Including the platform EGL header first

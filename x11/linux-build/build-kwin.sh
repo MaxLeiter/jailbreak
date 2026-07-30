@@ -73,6 +73,22 @@ stage_deb /out/libepoll-shim-dev_0.0.20240608_iphoneos-arm64.deb
 stage_deb /out/libxcvt0_0.1.2_iphoneos-arm64.deb
 stage_deb /out/libxcvt-dev_0.1.2_iphoneos-arm64.deb
 
+# KWin's nested IOSurface consumer uses the GPU-fence ABI exported by the
+# matched ANGLE libEGL. Do not silently link against whichever older ANGLE
+# happens to be cached in the long-lived KF6 sysroot.
+angle_debs=(/out/angle_*_iphoneos-arm64.deb)
+if [ "${#angle_debs[@]}" -eq 0 ]; then
+  echo "ERROR: no ANGLE package in /out; build ANGLE before KWin." >&2
+  exit 1
+fi
+angle_deb="$(printf '%s\n' "${angle_debs[@]}" | sort -V | tail -n 1)"
+stage_deb "$angle_deb"
+if ! aarch64-apple-darwin-nm -g "${BB}/lib/angle/libEGL.dylib" |
+    grep ' _xios_metal_sync_wait$' >/dev/null; then
+  echo "ERROR: $(basename "$angle_deb") lacks the Xios Metal fence ABI." >&2
+  exit 1
+fi
+
 mkdir -p "${BB}/usr/include/sys" "${BB}/usr/include/linux"
 if [ -f "${BB}/usr/include/libepoll-shim/sys/eventfd.h" ]; then
   cp -v "${BB}/usr/include/libepoll-shim/sys/eventfd.h" "${BB}/usr/include/sys/eventfd.h"
