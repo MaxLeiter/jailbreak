@@ -15,7 +15,7 @@ endif
 
 SUBPROJECTS      += xwayland
 XWAYLAND_VERSION := 23.2.7
-DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios4
+DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios5
 
 # libdrm is a links-only build shim: xwayland-window.h
 # includes <xf86drm.h> unconditionally (the xwl_window / xwl_egl_backend structs

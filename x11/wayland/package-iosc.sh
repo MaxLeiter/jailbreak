@@ -24,7 +24,7 @@ OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.36"
+VER="0.9.37"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
