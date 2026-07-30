@@ -1,0 +1,20 @@
+# System-wide KDE input defaults for the Xios desktop. KConfig reads this through
+# XDG_CONFIG_DIRS (run-kde-plasma.sh puts /var/jb/etc/xdg on that path), so a user's
+# own ~/.config/kcminputrc still wins over everything here.
+#
+# cursorSize is in LOGICAL pixels and KWin multiplies it by the output scale. The KDE
+# flavor runs at scale 2 by default (XIOS_KDE_OUTPUT_SCALE in run-kde-plasma.sh), so
+# KDE's stock 24 became 48 physical px on the iPad's panel, which reads as an
+# oversized pointer next to everything else. 16 lands at 32 physical px, close to the
+# iPadOS pointer it sits beside.
+#
+# Qt/Plasma clients read this same file, so KWin's chrome and Qt apps agree. GTK
+# clients do NOT: gtk-3.0/gtk-4.0 settings.ini in this package still ask for 48, and on
+# Wayland each client supplies its own cursor surface, so a GTK window under KDE draws
+# a larger pointer than the desktop around it. Align both numbers if that jump is worse
+# than the size itself — the reason they are not aligned yet is that 48 is deliberate
+# for the iosc/GNOME flavors, which composite at physical resolution with no scale
+# multiplier, and nobody has complained about the pointer size there.
+[Mouse]
+cursorTheme=breeze_cursors
+cursorSize=16
