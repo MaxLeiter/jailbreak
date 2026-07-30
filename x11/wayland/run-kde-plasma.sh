@@ -828,6 +828,8 @@ nohup "$SETSID" env \
       echo "launch kded: $KDED_BIN --replace"
       (
         export QT_QPA_PLATFORM="${KDED_QT_QPA_PLATFORM:-offscreen}"
+        export QT_QUICK_BACKEND=software
+        unset QSG_RHI_BACKEND QMLSCENE_DEVICE
         unset WAYLAND_DISPLAY
         "$KDED_BIN" --replace >"$KDED_LOG" 2>&1
       ) &
