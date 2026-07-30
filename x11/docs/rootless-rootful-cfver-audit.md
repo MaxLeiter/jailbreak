@@ -9,8 +9,8 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1656
-- Files with hits: 319
+- Total hits: 1710
+- Files with hits: 322
 
 ### By Category
 
@@ -18,18 +18,18 @@ classified as rootless-only.
 - `build-target`: 17 hits across 10 files
 - `docs`: 612 hits across 62 files
 - `entitlements`: 45 hits across 17 files
-- `linker-path`: 93 hits across 48 files
+- `linker-path`: 94 hits across 49 files
 - `other`: 84 hits across 17 files
-- `package-payload`: 177 hits across 47 files
+- `package-payload`: 229 hits across 48 files
 - `recipe`: 82 hits across 26 files
 - `runtime-path`: 306 hits across 78 files
-- `script-or-source`: 181 hits across 68 files
+- `script-or-source`: 182 hits across 69 files
 - `site-copy`: 10 hits across 6 files
 - `target-infra`: 30 hits across 6 files
 
 ### By Literal
 
-- `/var/jb`: 1614
+- `/var/jb`: 1668
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
 - `iphoneos-arm64-rootless`: 30
@@ -160,7 +160,7 @@ classified as rootless-only.
 - `linux-build/gir-build-ondevice.sh:78` `/var/jb`: if [ ! -f /var/jb/usr/lib/pkgconfig/zlib.pc ]; then
 - `linux-build/gir-build-ondevice.sh:79` `/var/jb`: cat > /var/jb/usr/lib/pkgconfig/zlib.pc <<PC
 - `linux-build/gir-build-ondevice.sh:116` `/var/jb`: for t in $TLS;   do cp -v "$t" /var/jb/usr/lib/girepository-1.0/; done
-- ... 73 more
+- ... 74 more
 
 ### other
 
@@ -208,7 +208,7 @@ classified as rootless-only.
 - `packages/ladybird-app/Sources/IOSApplication.mm:143` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
 - `packages/ladybird-app/Sources/BrowserViewController.mm:19` `/var/jb`: candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
 - `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log.
-- ... 157 more
+- ... 209 more
 
 ### recipe
 
@@ -280,7 +280,7 @@ classified as rootless-only.
 - `linux-build/build-ladybird-wave4b.sh:323` `/var/jb`: #   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
 - `linux-build/build-ladybird-wave4b.sh:334` `/var/jb`: # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
 - `linux-build/build-ladybird-wave4b.sh:348` `/var/jb`: <string>/var/jb/</string>
-- ... 161 more
+- ... 162 more
 
 ### site-copy
 
@@ -305,12 +305,12 @@ classified as rootless-only.
 - `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
 - `linux-build/tools/check-target-package.py:214` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
-- `linux-build/tools/target-literal-baseline.json:180` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:183` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:193` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:198` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:199` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:183` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:186` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:196` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:200` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:201` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:202` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",

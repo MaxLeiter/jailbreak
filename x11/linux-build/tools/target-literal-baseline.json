@@ -1,5 +1,5 @@
 {
-  "total": 1004,
+  "total": 1058,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 1,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -86,6 +86,8 @@
     "linux-build/build_info/qt6-wayland.control": 1,
     "linux-build/check-plasma-ios-providers.sh": 4,
     "linux-build/gi-package.sh": 1,
+    "linux-build/gimp/build.sh": 1,
+    "linux-build/gimp/ios-toolchain.cmake": 1,
     "linux-build/gir-build-accountsservice-ondevice.sh": 14,
     "linux-build/gir-build-gdm-ondevice.sh": 8,
     "linux-build/gir-build-gnome-shell-ondevice.sh": 14,
@@ -147,6 +149,7 @@
     "linux-build/tools/opencode-ios-bundle.ts": 3,
     "linux-build/tools/stamp-minos.py": 1,
     "packages/build-template-package.sh": 1,
+    "packages/gimp-stack/package.sh": 52,
     "packages/ladybird-app/DEBIAN/postinst": 1,
     "packages/ladybird-app/README.md": 8,
     "packages/ladybird-app/Sources/BrowserViewController.mm": 1,

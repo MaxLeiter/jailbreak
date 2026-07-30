@@ -653,3 +653,7 @@ Still rootless-only, in rough priority order:
 - The legacy committed payload trees under `packages/*/var/jb/`, superseded by
   `packages/templates/` but not yet deleted.
 - Entitlement XML files, which need a rootful review before rootful signing.
+  (`xsign` now renders them per target, so this is about auditing the exception
+  sets themselves rather than the mechanism.)
+- `packages/gimp-stack/` and `linux-build/gimp/`, landed on main 2026-07-29 with
+  ~54 rootless literals. Recorded in the baseline, not yet converted.
