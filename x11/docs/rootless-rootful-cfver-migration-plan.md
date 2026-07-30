@@ -558,9 +558,12 @@ and the Wayland base built for `MEMO_TARGET=iphoneos-arm64`:
 | epoll-shim | `libepoll-shim0`, `libepoll-shim-dev` `0.0.20240608+ios1` |
 | wayland | `libwayland0`, `libwayland-dev` `1.23.1+ios1` |
 | wayland-protocols | `wayland-protocols` `1.44+ios1` |
+| libxkbcommon | `libxkbcommon0`, `libxkbcommon-dev` `1.7.0+ios2` |
 
-`libwayland0` ships all four dylibs at `./usr/lib/` and passes
-`tools/check-target-package.py`. Run it with:
+Nine debs, all passing `tools/check-target-package.py` against `rootful-1900`,
+and all correctly *rejected* against `rootless-1900` (wrong payload prefix,
+wrong architecture) -- so the check is discriminating, not just permissive.
+`libwayland0` ships all four dylibs at `./usr/lib/`. Run it with:
 
 ```sh
 JOBS=4 bash x11/linux-build/run-target-script.sh rootful-1900 build-wayland.sh
