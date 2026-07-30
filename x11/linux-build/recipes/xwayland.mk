@@ -10,29 +10,16 @@ endif
 # recipes/build_info/xwayland-glamor-iosurface.c); buffers reach the
 # compositor over the iosc_iosurface protocol.
 #
-# Two build flavors from one recipe (env XWAYLAND_GLAMOR, default true):
-#   X1 (default) glamor ON  -> GPU: window pixmaps are IOSurface/ANGLE textures.
-#   X0           glamor OFF -> pure wl_shm software (XWAYLAND_GLAMOR=false).
-#
 # GLX-on-EGL builds but desktop-GL apps stay on llvmpipe/SHM (no client DRI
 # on iOS); glamor only accelerates the 2D X path.
 
 SUBPROJECTS      += xwayland
 XWAYLAND_VERSION := 23.2.7
-DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios3
+DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios4
 
-XWAYLAND_GLAMOR  ?= true
-
-# libdrm is the links-only SHIM and is a BASE dep even for X0: xwayland-window.h
+# libdrm is a links-only build shim: xwayland-window.h
 # includes <xf86drm.h> unconditionally (the xwl_window / xwl_egl_backend structs
-# carry drmDevice* fields), so the header is needed regardless of glamor; the DRM
-# code path stays inert on iOS. Only libepoxy (glamor's GL loader, repointed at
-# ANGLE) is glamor-specific -> X1 only.
-ifeq ($(XWAYLAND_GLAMOR),true)
-XWAYLAND_GL_DEPS := libepoxy
-else
-XWAYLAND_GL_DEPS :=
-endif
+# carry drmDevice* fields), but the DRM code path stays inert on iOS.
 
 xwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/xserver/xwayland-$(XWAYLAND_VERSION).tar.xz)
@@ -43,7 +30,7 @@ xwayland-setup: setup
 	# Local backend implementation and private iosc protocol XML are build
 	# inputs, not upstream source patches.
 	cp -v $(BUILD_INFO)/xwayland-glamor-iosurface.c $(BUILD_WORK)/xwayland/hw/xwayland/
-	cp -v $(BUILD_INFO)/iosc-iosurface.xml $(BUILD_WORK)/xwayland/hw/xwayland/
+	cp -v /work/x11/wayland/iosc-iosurface.xml $(BUILD_WORK)/xwayland/hw/xwayland/
 	cp -v /work/x11/wayland/xios_metal_sync.{m,h} $(BUILD_WORK)/xwayland/hw/xwayland/
 	cp -v /work/x11/apps/shared/XiosMetalEventBroker.{m,h} $(BUILD_WORK)/xwayland/hw/xwayland/
 	mkdir -p $(BUILD_WORK)/xwayland/build
@@ -67,7 +54,7 @@ xwayland:
 	@echo "Using previously built xwayland."
 else
 xwayland: xwayland-setup libpixman xorgproto xtrans libxkbfile libxfont2 libfontenc \
-          font-util libxkbcommon libxcvt libxshmfence libdrm wayland wayland-protocols $(XWAYLAND_GL_DEPS)
+          font-util libxkbcommon libxcvt libxshmfence libdrm libepoxy wayland wayland-protocols
 	# Native wayland-scanner comes from the build machine's pkg-config
 	# (build-xwayland.sh installs libwayland-bin); no version pin here.
 	#
@@ -91,7 +78,7 @@ xwayland: xwayland-setup libpixman xorgproto xtrans libxkbfile libxfont2 libfont
 	cd $(BUILD_WORK)/xwayland/build && \
 		OBJC="$(CC)" meson \
 		--cross-file cross.txt \
-		-Dglamor=$(XWAYLAND_GLAMOR) \
+		-Dglamor=true \
 		-Dxwayland_eglstream=false \
 		-Ddri3=false \
 		-Dxvfb=false \

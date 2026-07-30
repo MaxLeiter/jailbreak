@@ -1,4 +1,5 @@
 #include "XSurface.h"
+#include "../../shared/XiosProtocol.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,24 +35,6 @@ static void xlog(const char *fmt, ...)
 typedef struct { uint32_t magic, pid, portname, reserved; } xios_hello;
 typedef struct { uint32_t magic, width, height, stride, format, status; } xios_reply;
 
-#define XIOS_HELLO_TYPED 0x54595031u  /* 'TYP1' in hello.reserved => typed stream */
-#define XIOS_MSG_MAGIC   0x584D5331u  /* 'XMS1' per-record frame sync */
-#define XIOS_SHARED_EVENT_TOKEN_SIZE 32u
-enum {
-    XIOS_MSG_HELLO = 0x01,
-    XIOS_MSG_DIRTY = 0x02,
-    XIOS_MSG_CURSOR = 0x03,
-    XIOS_MSG_PRESENTED = 0x05
-};
-enum {
-    XIOS_DIRTY_FENCE_NONE = 0,
-    XIOS_DIRTY_FENCE_BROKER_TOKEN = 1,
-};
-typedef struct {
-    uint32_t magic, type, window_id, length;
-    int32_t  a, b, c, d;
-} xios_msg;                            /* 32 bytes, LE; optional length-byte payload */
-
 typedef struct {
     mach_msg_header_t header;
     mach_msg_body_t body;
@@ -72,7 +55,7 @@ struct XSurfaceConn {
     uint32_t fence_rx_got;
     uint64_t fence_rx_dirty_seq;
     uint64_t fence_rx_value;
-    unsigned char fence_token[XIOS_SHARED_EVENT_TOKEN_SIZE];
+    unsigned char fence_token[XIOS_GPU_FENCE_TOKEN_SIZE];
     uint32_t fence_token_size;
     uint64_t fence_dirty_seq;
     uint64_t fence_value;
@@ -153,7 +136,7 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
     hello.magic = XIOS_MAGIC;
     hello.pid = (uint32_t) getpid();
     hello.portname = (uint32_t) r;
-    hello.reserved = XIOS_HELLO_TYPED;   /* required typed stream marker */
+    hello.reserved = XIOS_PROTOCOL_VERSION;
     if (write_full(fd, &hello, sizeof(hello)) != 0) {
         destroy_reply_port(self, r); close(fd); return NULL;
     }
@@ -209,9 +192,10 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
     xios_msg h;
     memset(&h, 0, sizeof(h));
     if (read_full(fd, &h, sizeof(h)) != 0 || h.magic != XIOS_MSG_MAGIC ||
-        h.type != XIOS_MSG_HELLO) {
-        xlog("typed HELLO missing/malformed (magic=0x%x type=%u)",
-             h.magic, h.type);
+        h.type != XIOS_MSG_HELLO ||
+        h.window_id != XIOS_PROTOCOL_VERSION) {
+        xlog("v%u HELLO missing/malformed (magic=0x%x type=%u version=%u)",
+             XIOS_PROTOCOL_VERSION, h.magic, h.type, h.window_id);
         CFRelease(surface); free(c); close(fd); return NULL;
     }
     uint32_t full_idlen = h.length;
@@ -297,32 +281,20 @@ int xsurface_drain(XSurfaceConn *c)
             case XIOS_MSG_DIRTY:
             {
                 uint64_t seq = ((uint64_t)(uint32_t)m.b << 32) | (uint32_t)m.a;
-                if (m.length > 0) {
-                    uint64_t event_value =
-                        ((uint64_t)(uint32_t)m.d << 32) | (uint32_t)m.c;
-                    if (m.window_id != XIOS_DIRTY_FENCE_BROKER_TOKEN ||
-                        m.length != XIOS_SHARED_EVENT_TOKEN_SIZE ||
-                        event_value == 0) {
-                        xlog("invalid broker fence kind=%u length=%u value=%llu",
-                             m.window_id, m.length,
-                             (unsigned long long)event_value);
-                        return -1;
-                    }
-                    c->fence_rx_expected = m.length;
-                    c->fence_rx_got = 0;
-                    c->fence_rx_dirty_seq = seq;
-                    c->fence_rx_value = event_value;
-                } else {
-                    if (m.window_id != XIOS_DIRTY_FENCE_NONE) {
-                        xlog("invalid unfenced DIRTY kind=%u", m.window_id);
-                        return -1;
-                    }
-                    c->dirty_seq = seq;
-                    c->fence_token_size = 0;
-                    c->fence_dirty_seq = seq;
-                    c->fence_value = 0;
-                    dirty = 1;
+                uint64_t event_value =
+                    ((uint64_t)(uint32_t)m.d << 32) | (uint32_t)m.c;
+                if (m.window_id != XIOS_DIRTY_FENCE_BROKER_TOKEN ||
+                    m.length != XIOS_GPU_FENCE_TOKEN_SIZE ||
+                    event_value == 0) {
+                    xlog("invalid broker fence kind=%u length=%u value=%llu",
+                         m.window_id, m.length,
+                         (unsigned long long)event_value);
+                    return -1;
                 }
+                c->fence_rx_expected = m.length;
+                c->fence_rx_got = 0;
+                c->fence_rx_dirty_seq = seq;
+                c->fence_rx_value = event_value;
                 break;
             }
             case XIOS_MSG_CURSOR:
@@ -331,6 +303,11 @@ int xsurface_drain(XSurfaceConn *c)
                 c->cur_seq++;
                 break;
             case XIOS_MSG_HELLO:               /* compositor identity / geometry reminder */
+                if (m.window_id != XIOS_PROTOCOL_VERSION) {
+                    xlog("display protocol changed to v%u; v%u required",
+                         m.window_id, XIOS_PROTOCOL_VERSION);
+                    return -1;
+                }
                 /* The IOSurface backing this connection is immutable. If a later
                  * HELLO advertises different dimensions, the server has moved to a
                  * new surface and this connection must be re-adopted from scratch
@@ -370,7 +347,7 @@ int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
     if (token) *token = NULL;
     if (token_size) *token_size = 0;
     if (value) *value = 0;
-    if (!c || c->fence_token_size != XIOS_SHARED_EVENT_TOKEN_SIZE ||
+    if (!c || c->fence_token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
         c->fence_value == 0 ||
         c->fence_dirty_seq != c->dirty_seq)
         return 0;

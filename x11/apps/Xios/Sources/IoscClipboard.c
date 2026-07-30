@@ -8,14 +8,6 @@
 #include <sys/time.h>
 #include <sys/un.h>
 
-// Wire envelope — must match linux-build/patches/xios/xios_surface.h.
-#define XIOS_MSG_MAGIC     0x584D5331u  // 'XMS1'
-#define XIOS_MSG_CLIPBOARD 0x04u
-typedef struct {
-    uint32_t magic, type, window_id, length;
-    int32_t  a, b, c, d;
-} xios_msg;  // 32 bytes, LE; length payload bytes follow
-
 static int s_fd = -1;
 static uint32_t s_tx_gen = 0;   // bumped per iOS copy event (never 0 once used)
 // rx: one record at a time; partial reads span poll calls
@@ -75,7 +67,7 @@ static bool write_all(const void *buf, size_t len) {
 }
 
 static bool send_record(uint32_t kind, const void *data, size_t len) {
-    if (s_fd < 0 || len > IOSC_CLIP_ITEM_MAX) return false;
+    if (s_fd < 0 || len > XIOS_CLIP_ITEM_MAX) return false;
     xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_CLIPBOARD, 0, (uint32_t)len,
                    (int32_t)kind, (int32_t)s_tx_gen, 0, 0 };
     if (!write_all(&h, sizeof(h)) || (len > 0 && !write_all(data, len))) {
@@ -91,14 +83,14 @@ void iosc_clipboard_send_begin(void) {
 }
 
 bool iosc_clipboard_send_item(uint32_t kind, const void *data, size_t len) {
-    if (kind == IOSC_CLIP_KIND_NONE || kind > IOSC_CLIP_KIND_HTML) return false;
+    if (kind == XIOS_CLIP_KIND_NONE || kind > XIOS_CLIP_KIND_HTML) return false;
     if (s_tx_gen == 0) iosc_clipboard_send_begin();
     return send_record(kind, data, len);
 }
 
 bool iosc_clipboard_send_clear(void) {
     iosc_clipboard_send_begin();
-    return send_record(IOSC_CLIP_KIND_NONE, NULL, 0);
+    return send_record(XIOS_CLIP_KIND_NONE, NULL, 0);
 }
 
 int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
@@ -118,7 +110,7 @@ int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
                 memcpy(&s_msg, s_hdr, sizeof(s_msg));
                 if (s_msg.magic != XIOS_MSG_MAGIC ||
                     s_msg.type != XIOS_MSG_CLIPBOARD ||
-                    s_msg.length > IOSC_CLIP_ITEM_MAX) {
+                    s_msg.length > XIOS_CLIP_ITEM_MAX) {
                     iosc_clipboard_close();   // desync: reconnect from scratch
                     return -1;
                 }

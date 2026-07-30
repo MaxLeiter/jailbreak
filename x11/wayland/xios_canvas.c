@@ -71,7 +71,7 @@ struct canvas_entry {
     uint64_t     frame_generation;        /* canvas generation fenced below */
     uint64_t     frame_event_value;
     size_t       frame_token_size;
-    uint8_t      frame_token[IOSC_NATIVE_FENCE_TOKEN_SIZE];
+    uint8_t      frame_token[XIOS_GPU_FENCE_TOKEN_SIZE];
     int          frame_valid;
     char         app_id[256];
     char         title[256];
@@ -472,7 +472,7 @@ int xios_canvas_notify_frame(uint32_t window_id,
                              uint64_t event_value)
 {
     if (!shared_event_token ||
-        token_size != IOSC_NATIVE_FENCE_TOKEN_SIZE ||
+        token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
         event_value == 0)
         return -1;
 
@@ -557,11 +557,11 @@ static int handle_bind(int fd)
         close(fd);
         return -1;
     }
-    if (h.window_id != IOSC_NATIVE_PROTOCOL_VERSION) {
+    if (h.window_id != XIOS_PROTOCOL_VERSION) {
         fprintf(stderr,
                 "xios-canvas: native protocol mismatch host=%u server=%u; "
                 "rejecting fd=%d\n",
-                h.window_id, IOSC_NATIVE_PROTOCOL_VERSION, fd);
+                h.window_id, XIOS_PROTOCOL_VERSION, fd);
         close(fd);
         return -1;
     }
@@ -579,14 +579,14 @@ static int handle_bind(int fd)
     }
     if (!app_id[0] || (uint32_t)h.d == MACH_PORT_NULL) {
         fprintf(stderr, "xios-canvas: invalid v%u BIND identity/port on fd=%d\n",
-                IOSC_NATIVE_PROTOCOL_VERSION, fd);
+                XIOS_PROTOCOL_VERSION, fd);
         close(fd);
         return -1;
     }
 
     /* Confirm the exact wire version before any replayed WINDOW_* records. */
     xios_msg hello = make_msg(XIOS_MSG_HELLO, 0);
-    hello.a = IOSC_NATIVE_PROTOCOL_VERSION;
+    hello.a = XIOS_PROTOCOL_VERSION;
     if (send_record(fd, &hello, sizeof(hello)) != 1) {
         close(fd);
         return -1;
@@ -837,7 +837,7 @@ void xios_canvas_set_handlers(const struct xios_canvas_handlers *h)
 int xios_canvas_server_start(const char *sock_path)
 {
     if (s_listen_fd >= 0) return 0;   /* already serving */
-    const char *path = (sock_path && *sock_path) ? sock_path : XIOS_CANVAS_SOCK;
+    const char *path = (sock_path && *sock_path) ? sock_path : IOSC_NATIVE_SOCK;
 
     if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
         fprintf(stderr, "xios-canvas: socket path too long: %s\n", path);

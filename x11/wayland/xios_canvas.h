@@ -21,30 +21,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "xios_surface.h"   /* xios_msg, XIOS_MSG_MAGIC, core codes 0x01-0x0f */
-
-/* Default native rendezvous socket (matches iosc_native_proto.h). */
-#define XIOS_CANVAS_SOCK "/var/jb/tmp/iosc-native.sock"
-#define IOSC_NATIVE_PROTOCOL_VERSION 1u
-#define IOSC_NATIVE_FENCE_TOKEN_SIZE 32u
-
-/* ---- native lifecycle codes 0x40-0x5f -------------------------------------
- * Mirror of iosc_native_proto.h; kept here so this TU needs only xios_surface.h.
- * MUST stay in sync with the host client. (0x01-0x0f core codes live in
- * xios_surface.h; native REUSES core DIRTY/CURSOR, window_id-targeted.) */
-#define XIOS_MSG_BIND         0x40u   /* host->iosc: a=scene_w b=scene_h c=scale d=reply-port; payload=app_id */
-#define XIOS_MSG_RESIZE       0x41u   /* host->iosc: a=w b=h; window_id */
-#define XIOS_MSG_ACTIVATE     0x42u   /* host->iosc: a=1 key / a=0 resign; window_id */
-#define XIOS_MSG_CLOSED       0x43u   /* host->iosc: user dismissed the scene; window_id */
-#define XIOS_MSG_WINDOW_NEW   0x50u   /* iosc->host: a=w b=h c=stride d=flags; payload=title; canvas port follows */
-#define XIOS_MSG_WINDOW_GEOM  0x51u   /* iosc->host: a=w b=h c=stride; fresh canvas port follows */
-#define XIOS_MSG_WINDOW_TITLE 0x52u   /* iosc->host: payload=utf8 */
-#define XIOS_MSG_WINDOW_GONE  0x53u   /* iosc->host: toplevel unmapped; tear the scene down */
-#define XIOS_MSG_NATIVE_FRAME 0x54u   /* iosc->host: broker fence + full-canvas dirty */
-
-/* WINDOW_NEW/GEOM flag bits (msg.d). */
-#define XIOS_NWIN_MAXIMIZED   0x1
-#define XIOS_NWIN_FULLSCREEN  0x2
+#include "XiosProtocol.h"
 
 /* Host->iosc control messages, delivered on the reader thread. iosc.c must
  * marshal these onto its wl event loop (they arrive off-thread). `window` is the
@@ -63,7 +40,7 @@ void xios_canvas_set_handlers(const struct xios_canvas_handlers *h);
 
 /* Start the iosc-native.sock BIND listener (one background thread: accept +
  * per-connection BIND handshake + reads host control records). Idempotent. NULL
- * path uses XIOS_CANVAS_SOCK. 0 on success. */
+ * path uses IOSC_NATIVE_SOCK. 0 on success. */
 int  xios_canvas_server_start(const char *sock_path);
 
 /* Tear down the listener + all host connections + all canvases (server exit). */
