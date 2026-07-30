@@ -9,27 +9,27 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1751
-- Files with hits: 327
+- Total hits: 1723
+- Files with hits: 319
 
 ### By Category
 
-- `app-runtime`: 25 hits across 14 files
+- `app-runtime`: 21 hits across 12 files
 - `build-target`: 16 hits across 10 files
-- `docs`: 622 hits across 62 files
+- `docs`: 623 hits across 62 files
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 121 hits across 51 files
 - `other`: 75 hits across 15 files
-- `package-payload`: 193 hits across 51 files
+- `package-payload`: 176 hits across 46 files
 - `recipe`: 82 hits across 26 files
-- `runtime-path`: 320 hits across 81 files
-- `script-or-source`: 210 hits across 70 files
+- `runtime-path`: 318 hits across 80 files
+- `script-or-source`: 205 hits across 70 files
 - `site-copy`: 10 hits across 6 files
-- `target-infra`: 32 hits across 6 files
+- `target-infra`: 31 hits across 6 files
 
 ### By Literal
 
-- `/var/jb`: 1708
+- `/var/jb`: 1680
 - `MEMO_CFVER=1900`: 7
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 7
 - `iphoneos-arm64-rootless`: 29
@@ -53,14 +53,11 @@ classified as rootless-only.
 - `apps/Xios/project.yml:35` `/var/jb`: OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/usr/lib -framework IOSurface -framework Foundation -framework Metal
 - `apps/Xios/x11-server.sh:14` `/var/jb`: if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
 - `apps/Xios/x11-server.sh:14` `/var/jb`: if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
-- `apps/Xios/xios-server.sh:8` `/var/jb`: # /var/jb/tmp/xios.json ({..."ddx":"iosurface"...}) which tells the app to use the
-- `apps/Xios/xios-server.sh:18` `/var/jb`: if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
-- `apps/Xios/xios-server.sh:18` `/var/jb`: if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
 - `apps/Xios/packaging/control:27` `/var/jb`: run this unsigned app. Rootless (/var/jb) jailbreaks only, iOS/iPadOS 16+.
-- `apps/Xios/Sources/XSurface.c:20` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
-- `apps/Xios/Sources/XSurface.c:20` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
+- `apps/Xios/Sources/XSurface.c:21` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
+- `apps/Xios/Sources/XSurface.c:21` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
 - `apps/Xios/Sources/XScreen.swift:40` `/var/jb`: ["/tmp/.X11-unix", XiosRuntimePaths.tmp(".X11-unix"), "/var/jb/tmp/.X11-unix", "/var/tmp/.X11-unix"]
-- `apps/Xios/Sources/XScreen.swift:1892` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
+- `apps/Xios/Sources/XScreen.swift:1890` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
 - `apps/Xios/Sources/XiosRuntimePaths.swift:20` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
 - `apps/Xios/Sources/XiosRuntimePaths.swift:21` `/var/jb`: return "/var/jb/tmp"
 - `apps/Xios/Sources/XiosRuntimePaths.swift:31` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
@@ -70,13 +67,16 @@ classified as rootless-only.
 - `apps/Xios/Sources/XiosCameraBroker.swift:335` `/var/jb`: try? line.write(toFile: "/var/jb/tmp/xios-camera-broker.log",
 - `apps/iosc-host/Sources/HostLaunch.h:10` `/var/jb`: * Sends "LAUNCH_NATIVE\t<app_id>\t<exec>\n" to /var/jb/tmp/ioscd.sock. Returns
 - `apps/iosc-host/Sources/HostScreenView.swift:40` `/var/jb`: private let inputSock = "/var/jb/tmp/iosc-native-input.sock"
-- ... 5 more
+- `apps/iosc-host/Sources/HostSystemAppearance.swift:5` `/var/jb`: private let xiosSysintSocket = "/var/jb/tmp/xios-sysint.sock"
+- `apps/iosc-host/Sources/HostLaunch.c:9` `/var/jb`: #define IOSCD_SOCK "/var/jb/tmp/ioscd.sock"
+- `apps/iosc-host/Sources/HostA11y.swift:18` `/var/jb`: private let sockPath = "/var/jb/tmp/xios-a11y.sock"
+- ... 1 more
 
 ### build-target
 
-- `linux-build/README.md:142` `MEMO_TARGET=iphoneos-arm64-rootless`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
-- `linux-build/README.md:142` `MEMO_CFVER=1900`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
-- `linux-build/build.sh:143` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
+- `linux-build/README.md:128` `MEMO_TARGET=iphoneos-arm64-rootless`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
+- `linux-build/README.md:128` `MEMO_CFVER=1900`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
+- `linux-build/build.sh:116` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:16` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:20` `iphoneos-arm64-rootless`: elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
 - `linux-build/build-pwquality-stub.sh:16` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
@@ -112,8 +112,8 @@ classified as rootless-only.
 - `README.md:5` `/var/jb`: cross-compiled for rootless iOS (`/var/jb`) and drawn on the A10 GPU through
 - `AGENTS.md:25` `/var/jb`: - The target install prefix is rootless `/var/jb`; packages and scripts should not assume rootful `/`.
 - `AGENTS.md:27` `/var/jb`: - Geometry is not globally constant. Read compositor/app-reported dimensions such as `/var/jb/tmp/xios.json` instead of hardcoding framebuffer sizes.
-- `docs/native-ipados-plan.md:116` `/var/jb`: (`/var/jb/tmp/iosc-native.sock`) with a message protocol; the old socket and
-- ... 602 more
+- `docs/native-ipados-plan.md:114` `/var/jb`: Native mode uses `/var/jb/tmp/iosc-native.sock` and the same canonical v1 record
+- ... 603 more
 
 ### entitlements
 
@@ -165,19 +165,19 @@ classified as rootless-only.
 
 ### other
 
-- `bin/xfce-up.sh:16` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-- `bin/xfce-up.sh:16` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-- `bin/xfce-up.sh:16` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-- `bin/xfce-up.sh:16` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-- `bin/xfce-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
-- `bin/xfce-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
-- `bin/xfce-up.sh:19` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
-- `bin/xfce-up.sh:19` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
-- `bin/xfce-up.sh:38` `/var/jb`: : "${XDG_DATA_DIRS:=/var/jb/usr/share:/var/jb/usr/local/share}"
-- `bin/xfce-up.sh:38` `/var/jb`: : "${XDG_DATA_DIRS:=/var/jb/usr/share:/var/jb/usr/local/share}"
-- `bin/xfce-up.sh:39` `/var/jb`: : "${XDG_CONFIG_DIRS:=/var/jb/etc/xdg}"
-- `bin/xfce-up.sh:50` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
-- `bin/xfce-up.sh:50` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+- `bin/xfce-up.sh:15` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+- `bin/xfce-up.sh:15` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+- `bin/xfce-up.sh:15` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+- `bin/xfce-up.sh:15` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
+- `bin/xfce-up.sh:17` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
+- `bin/xfce-up.sh:17` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
+- `bin/xfce-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
+- `bin/xfce-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
+- `bin/xfce-up.sh:36` `/var/jb`: : "${XDG_DATA_DIRS:=/var/jb/usr/share:/var/jb/usr/local/share}"
+- `bin/xfce-up.sh:36` `/var/jb`: : "${XDG_DATA_DIRS:=/var/jb/usr/share:/var/jb/usr/local/share}"
+- `bin/xfce-up.sh:37` `/var/jb`: : "${XDG_CONFIG_DIRS:=/var/jb/etc/xdg}"
+- `bin/xfce-up.sh:48` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+- `bin/xfce-up.sh:48` `/var/jb`: [ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
 - `bin/x11-up.sh:10` `/var/jb`: #     Xvnc that spawns its xkbcomp helper via /var/jb/bin/sh — no on-device hacks)
 - `bin/x11-up.sh:14` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 - `bin/x11-up.sh:14` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
@@ -209,7 +209,7 @@ classified as rootless-only.
 - `packages/ladybird-app/Sources/IOSApplication.mm:143` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
 - `packages/ladybird-app/Sources/BrowserViewController.mm:19` `/var/jb`: candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
 - `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log.
-- ... 173 more
+- ... 156 more
 
 ### recipe
 
@@ -257,7 +257,7 @@ classified as rootless-only.
 - `linux-build/gir-build-mutter-ondevice.sh:37` `/var/jb`: WORK=/var/jb/tmp/mutter-gir
 - `linux-build/gir-build-mutter-ondevice.sh:38` `/var/jb`: GISPIKE=/var/jb/tmp/gi-spike     # sljit_shim.dylib, clang-ios, ninja2 (gir-ondevice.sh bootstrap)
 - `linux-build/gir-build-mutter-ondevice.sh:72` `/var/jb`: WORK=/var/jb/tmp/mutter-gir
-- ... 300 more
+- ... 298 more
 
 ### script-or-source
 
@@ -281,7 +281,7 @@ classified as rootless-only.
 - `linux-build/build-ladybird-wave4b.sh:323` `/var/jb`: #   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
 - `linux-build/build-ladybird-wave4b.sh:334` `/var/jb`: # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
 - `linux-build/build-ladybird-wave4b.sh:348` `/var/jb`: <string>/var/jb/</string>
-- ... 190 more
+- ... 185 more
 
 ### site-copy
 
@@ -306,17 +306,17 @@ classified as rootless-only.
 - `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
 - `linux-build/tools/check-target-package.py:214` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
-- `linux-build/tools/target-literal-baseline.json:183` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:184` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
-- `linux-build/tools/target-literal-baseline.json:187` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:201` `/var/jb`: "packages/xios-server/var/jb/usr/bin/xios-server.sh": 12,
-- `linux-build/tools/target-literal-baseline.json:205` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:180` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:181` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
+- `linux-build/tools/target-literal-baseline.json:184` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:194` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:198` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:199` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:200` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
 - `linux-build/tools/audit-target-literals.py:25` `MEMO_TARGET=iphoneos-arm64-rootless`: "MEMO_TARGET=iphoneos-arm64-rootless",
-- ... 12 more
+- `linux-build/tools/audit-target-literals.py:26` `MEMO_CFVER=1900`: "MEMO_CFVER=1900",
+- ... 11 more
 
