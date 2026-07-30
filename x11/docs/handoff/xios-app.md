@@ -12,7 +12,9 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 - Build → `x11/apps/Xios/build/Build/Products/Release-iphoneos/Xios.app`.
 - Ships as a package, not a sideloaded app: `bin/package-app.sh x11/apps/Xios` wraps that
   bundle as `com.max.xios` (control at `x11/apps/Xios/packaging/control`, version from
-  `project.yml`'s `MARKETING_VERSION`). `xios-core` depends on it, so every flavor pulls it in.
+  `project.yml`'s `MARKETING_VERSION`). `xios-core` depends on it, so the GNOME,
+  KDE, and X11 fullscreen flavors pull it in. Native mode depends on
+  `xios-runtime` and does not install this app.
 
 ## Recent commits / status notes
 - 2026-07-29 responsiveness release (`com.max.xios 0.1.4`, installed and device-tested):

@@ -40,7 +40,7 @@ fi
 mkdir -p "$OUTDIR"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.34"
+VER="0.9.36"
 ARCH="$XIOS_DEB_ARCH"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -49,6 +49,7 @@ SHARE="$STAGE$XIOS_PREFIX/usr/local/share/iosc"
 LIB="$STAGE$XIOS_PREFIX/usr/local/lib"
 LIBEXEC="$STAGE$XIOS_PREFIX/usr/local/libexec"
 LAUNCHD="$STAGE$XIOS_PREFIX/Library/LaunchDaemons"
+APPS="$STAGE$XIOS_PREFIX/usr/share/applications"
 
 # The plist and the entitlement file are committed with rootless paths. Render
 # them for the target rather than copying: the plist's ProgramArguments and log
@@ -61,7 +62,7 @@ render_target_file() {
 }
 
 rm -rf "$STAGEROOT"
-mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$STAGE/DEBIAN"
+mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$APPS" "$STAGE/DEBIAN"
 
 # 1. compositor binary -> /var/jb/usr/local/bin, signed with the GPU entitlement
 #    set (AGX/IOGPU/IOSurface IOKit + task_for_pid, NO no-container). Without these
@@ -98,6 +99,19 @@ for helper in iosc-input-test ios-inputd; do
   chmod 0755 "$BIN/$helper"
   xsign "$BIN/$helper"
 done
+
+# 2c. KWin launches its input method from the desktop entry named by kwinrc.
+# Keep that entry in the package that owns ios-inputd so the setting cannot
+# silently depend on a particular xios-session package revision.
+cat > "$APPS/ios-inputd.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Xios iOS keyboard bridge
+Exec=$XIOS_PREFIX/usr/local/bin/ios-inputd --proxy -s $XIOS_RUNTIME_TMP/iosc-input.sock
+NoDisplay=true
+X-KDE-Wayland-VirtualKeyboard=true
+EOF
+chmod 0644 "$APPS/ios-inputd.desktop"
 
 # 3. orchestration scripts (run on-device as root; reference $BIN/iosc by abs path)
 cp "$WAYLAND/run-iosc.sh" "$BIN/run-iosc.sh"

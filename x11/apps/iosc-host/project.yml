@@ -41,11 +41,10 @@ targets:
     info:
       path: Resources/Info.generated.plist
       properties:
-        # These three are the launch target. The plain build carries empty values;
-        # gen-launchers.sh --native overwrites them per app (IOSCAppID/Exec/Name),
+        # These identify the launch target. The plain build carries empty values;
+        # gen-launchers.sh --native overwrites them per app (IOSCAppID/Name),
         # exactly like the IOSCLaunch bundles.
         IOSCAppID: ""
-        IOSCExec: ""
         IOSCName: ""
         CFBundleDisplayName: iosc Host
         CFBundleShortVersionString: "0.1.1"

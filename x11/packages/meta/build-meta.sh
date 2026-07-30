@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the five Xios flavor meta-packages (control-only .debs).
+# Build the Xios runtime and flavor meta-packages (control-only .debs).
 #
-# xios-core, xios-gnome, xios-kde, xios-native, xios-x11 carry no files; they
+# These packages carry no files; they
 # exist so `sileo install xios-<flavor>` pulls a complete desktop flavor via
 # Depends, and so the store can gate flavors by MinimumOSVersion / firmware.
 #
@@ -23,7 +23,8 @@ OUT="$X11DIR/linux-build/out"
 # Each flavor meta is control-only: stage its DEBIAN dir host-side, set the perms,
 # then let xmkdeb chown root:root + build the zstd .deb (in the cross-build
 # container on a macOS host).
-for pkgdir in xios-core xios-gnome xios-kde xios-native xios-x11; do
+packages=(xios-runtime xios-core xios-gnome xios-kde xios-native xios-x11)
+for pkgdir in "${packages[@]}"; do
   stageroot="/private/tmp/xios-meta-stage/$pkgdir"
   stage="$stageroot/$pkgdir"
   rm -rf "$stageroot"; mkdir -p "$stage"
@@ -35,4 +36,4 @@ for pkgdir in xios-core xios-gnome xios-kde xios-native xios-x11; do
   cp -v "$built" "$METADIR/"
 done
 
-echo "==> built $(ls "$METADIR"/xios-*_*_$XIOS_DEB_ARCH.deb | wc -l | tr -d ' ') meta debs (copied to linux-build/out/)"
+echo "==> built ${#packages[@]} meta debs (copied to linux-build/out/)"

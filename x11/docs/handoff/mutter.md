@@ -67,11 +67,12 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
 - Fixed `linux-build/recipes/libxshmfence.mk`: the runtime package must ship both `libxshmfence.1.dylib` and its real target `libxshmfence.1.0.0.dylib`; previously it installed a dangling symlink and Xwayland failed dyld load.
 - Started rootful Xwayland manually under Mutter:
   ```
-  XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0 XWAYLAND_NO_GLAMOR=1 \
+  XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0 \
     Xwayland :1 -geometry 1080x810 -retro -noreset
   ```
   `-rootful` is not a valid flag in this build; rootful is the default.
-- `/tmp/.X11-unix/X1` appeared, then `DISPLAY=:1 fluxbox` and `DISPLAY=:1 xterm ...` stayed alive. Mutter mapped the Xwayland root window through the same first-buffer visibility path (`W1 mapped=1 visible_to_compositor=1`).
+- That 2026-07-01 smoke predated the hardware-only Xwayland port. Current builds
+  require ANGLE/IOSurface glamor and brokered fences.
 
 ## 2026-07-01 late socket/cursor validation
 - Mutter now defaults its app-input socket to `/var/jb/tmp/mutter-input.sock` instead of the old generic `/var/jb/tmp/xios-input.sock`; the env override remains `XIOS_INPUT_SOCKET`.

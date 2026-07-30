@@ -21,7 +21,8 @@ HOST_DIR="$(cd "$HERE/../iosc-host" && pwd)"
 
 echo "==> stage sources"
 scp_ "$HERE/src/xios-icon-render.c" "root@$IP:/var/jb/tmp/xios-icon-render.c"
-scp_ "$HERE/src/xios-launcher-sync.c" "root@$IP:/var/jb/tmp/xios-launcher-sync.c"
+scp_ "$HERE/src/xios-launcher-sync.c" "$HERE/src/xios-desktop-entry.c" \
+     "$HERE/src/xios-desktop-entry.h" "root@$IP:/var/jb/tmp/"
 
 echo "==> install shared payloads"
 ssh_ "mkdir -p /var/jb/usr/libexec/xios-launchers"
@@ -36,7 +37,8 @@ echo "==> compile on device"
 ssh_ "set -e
   cc /var/jb/tmp/xios-icon-render.c -o /var/jb/usr/local/bin/xios-icon-render \
     \$(pkg-config --cflags --libs gdk-pixbuf-2.0) -Wl,-rpath,/var/jb/usr/lib -lm
-  cc /var/jb/tmp/xios-launcher-sync.c -o /var/jb/usr/local/bin/xios-launcher-sync \
+  cc /var/jb/tmp/xios-launcher-sync.c /var/jb/tmp/xios-desktop-entry.c \
+    -o /var/jb/usr/local/bin/xios-launcher-sync \
     -Wl,-rpath,/var/jb/usr/lib
   ldid -S /var/jb/usr/local/bin/xios-icon-render || true
   ldid -S /var/jb/usr/local/bin/xios-launcher-sync || true

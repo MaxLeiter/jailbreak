@@ -4,8 +4,9 @@ Rootless iOS jailbreak projects: Theos tweaks, small companion apps, static APT
 repo tooling, and the Xios X11/Wayland-on-iOS desktop stack.
 
 > **Want to see more about the X11/Wayland work?** See **[`x11/`](x11/)** — a
-> native Linux desktop (a real X11 server, a GPU Wayland compositor, and
-> GNOME/KDE apps) running on a jailbroken iPad. Full write-up at
+> native Linux desktop (a GPU Wayland compositor, hardware Xwayland, and
+> GNOME/KDE apps) running on a jailbroken iPad. Write-up:
+> **[maxleiter.com/blog/xios](https://maxleiter.com/blog/xios)**. Wiki:
 > **[xios.maxleiter.com](https://xios.maxleiter.com)**.
 
 ## Public development
@@ -45,20 +46,47 @@ Because this is a **rootless** jailbreak, every tweak builds with
 
 ```
 jailbreak/
-├── apps/                 # companion iOS apps
+├── apps/                 # companion iOS apps (SwiftUI, built unsigned)
 ├── bin/
 │   ├── build.sh          # build a tweak's .deb
-│   ├── install.sh        # build + install to iPad over SSH, then respring
-│   ├── sim.sh            # build for the iOS Simulator + load via simject (device-free)
+│   ├── install.sh        # build + install a tweak to the iPad over SSH, then respring
+│   ├── uninstall.sh      # recovery: remove a tweak by package id + respring
+│   ├── install-app.sh    # build + push an apps/<Name> bundle over SSH + uicache
+│   ├── package-app.sh    # build an apps/<Name> bundle into an installable .deb
+│   ├── sim.sh            # build a tweak for the iOS Simulator + load via simject
+│   ├── sim-app.sh        # build + launch an app in the Simulator + screenshot it
 │   ├── logs.sh           # live device console over USB (idevicesyslog)
-│   ├── publish-repo.sh   # upload debs to Blob + deploy the APT repo (--staging for dev.repo)
-│   └── lib/              # repo-pipeline internals (make-repo, solvability check, audit)
+│   ├── publish-repo.sh   # deploy the APT repo (--staging for dev.repo, --only to scope)
+│   ├── publish-staging.sh # same as publish-repo.sh --staging
+│   ├── upload-debs-to-blob.sh # push package payloads to Vercel Blob
+│   └── lib/              # repo-pipeline internals (make-repo, index scoping, solvability, audit)
 ├── docs/                 # public-readiness and process notes
-├── jarvis/               # on-device assistant prototype
+├── jarvis/               # on-device AI assistant harness
 ├── repo/                 # generated static APT repo site and metadata
 ├── tweaks/               # Theos tweak projects
 └── x11/                  # Xios: X11/Wayland desktop stack for iOS
 ```
+
+`AGENTS.md` holds the working conventions for this tree (including for coding
+agents); each subproject has its own README and, where it matters, its own
+`AGENTS.md`.
+
+### What's in here
+
+| Tweak | What it does |
+|---|---|
+| [`tweaks/PullToRespring2`](tweaks/PullToRespring2) | Pull down at the top of Settings to respring. Rootless refresh of NoahSaso's PullToRespring. |
+| [`tweaks/KioskMode`](tweaks/KioskMode) | Keeps one chosen app frontmost; volume-button escape. Paired with `apps/KioskMode`. |
+| [`tweaks/AutoLockPicker`](tweaks/AutoLockPicker) | Replaces the Auto-Lock preset list with a real time picker. |
+| [`tweaks/XiosPrefs`](tweaks/XiosPrefs) | Settings pane for Xios Home Screen app sync. |
+| [`tweaks/JarvisPrefs`](tweaks/JarvisPrefs) | Settings pane for Jarvis scheduling and permissions. |
+| [`tweaks/JarvisScreenshotBridge`](tweaks/JarvisScreenshotBridge) | SpringBoard-side screenshot, speech, and audio bridge for Jarvis. |
+
+| App | What it is |
+|---|---|
+| [`apps/KitchenHub`](apps/KitchenHub) | Wall-mounted kitchen dashboard: timers, weather, recipes, Sonos, Apple TV remote. |
+| [`apps/TaskManager`](apps/TaskManager) | Activity-Monitor-style process monitor with kill actions. |
+| [`apps/KioskMode`](apps/KioskMode) | Onboarding + dashboard that configures the KioskMode tweak. |
 
 ## Workflow
 
@@ -91,7 +119,15 @@ bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
 bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
 bin/publish-repo.sh                          # upload payloads + deploy prod metadata/site
+bin/publish-repo.sh --only <pkg>[,<pkg>]     # ship just these, leaving other stanzas as published
 ```
+
+`repo/debs/` is a *staging* tree that accumulates everything anyone has built, so
+a bare production publish ships every pending delta. Use `--only` to swap just
+the packages you mean into the index the target already serves; it rewrites the
+index in the throwaway deploy copy (never in `repo/`) and re-checks dependency
+solvability against that scoped index, which is what catches shipping half of a
+package pair.
 
 Add it in Sileo: `sileo://source/https://repo.maxleiter.com/` (the landing page
 also has Sileo / Zebra / Cydia buttons and the copyable URL).

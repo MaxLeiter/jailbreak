@@ -46,8 +46,8 @@ For the Xios site:
 
 ```bash
 cd x11/site
-npm install
-npm run build
+bun install --frozen-lockfile
+bun run build
 ```
 
 If a change affects device runtime behavior, include the device smoke test you ran. If you could not test on-device, say so clearly in the PR.
