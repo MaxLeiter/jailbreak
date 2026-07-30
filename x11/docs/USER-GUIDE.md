@@ -16,7 +16,7 @@ flavors, how to start and stop a session, and what to do when something does not
 | **Device** | A jailbroken iPad on iOS/iPadOS 16 or newer, rootless (`/var/jb`). GNOME, KDE, and X11 need 16.5; the native flavor needs 16.0. |
 | **Package manager** | Sileo, Zebra, or `apt` on the device. |
 | **AppSync Unified** | Required. The Xios display app is unsigned, and without AppSync it will not launch. Add `https://cydia.akemi.ai/` as a source and install it first. |
-| **Free space** | Installed size is about 190 MB for GNOME and 550 MB for KDE; the native and X11 flavors are around 55 MB. Procursus dependencies add a little on top. |
+| **Free space** | Installed size is about 190 MB for GNOME and 610 MB for KDE (which brings every KDE app we ship); the native and X11 flavors are around 55 MB. Procursus dependencies add a little on top. |
 
 Nothing here needs a Mac, a VM, or a network hop. Everything is a native arm64 iOS binary
 installed from an apt repo.
@@ -62,7 +62,7 @@ including the shared `xios-core` base and the display app.
 | Flavor | What you get | Needs | State |
 |---|---|---|---|
 | `xios-gnome` | GNOME Shell 46 on Mutter, full session layer, Adwaita theme | iOS 16.5 | Boots and paints on an A10. Daemon and app concurrency still has rough edges. |
-| `xios-kde` | KWin plus Plasma Desktop, Plasma Mobile, and Plasma Nano, System Settings, Breeze | iOS 16.5 | Experimental. Newer than the GNOME path and less polished. |
+| `xios-kde` | KWin plus Plasma Desktop, Plasma Mobile, and Plasma Nano, System Settings, PowerDevil, Breeze, and every KDE app we ship (Konsole, Dolphin, Kate, KWrite, KCalc, Okular, Ark, Gwenview) | iOS 16.5 | Experimental. Newer than the GNOME path and less polished. |
 | `xios-native` | No Linux shell at all: each app gets a Home Screen icon and its own iPadOS window | iOS 16.0 | Core path works. Host-window polish in progress. |
 | `xios-x11` | The Xios X server for plain X11 apps, plus Xwayland inside the compositor | iOS 16.5 | Works. Software rendering only, by design. |
 
