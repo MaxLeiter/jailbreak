@@ -210,17 +210,26 @@ deploy_static_repo() {
   trap cleanup_deploy_root RETURN
 
   mkdir -p "$deploy_root/repo"
-  # Excluding .gitignore is load-bearing, not tidiness: the Vercel CLI honors a
-  # .gitignore found in the directory it uploads. repo/.gitignore lists the
-  # derived index files (Release, InRelease, Release.gpg, Packages.gz, .pv,
-  # .sha) because they must not be tracked -- and copying it here silently
-  # dropped every one of them from the upload. Prod then served Packages but
-  # 404'd Release/InRelease, which is precisely the "does not have a Release
-  # file" failure apt reports, on every device. The deploy copy is not a git
-  # repo and has no business carrying git's ignore rules; .vercelignore is the
-  # one that belongs here.
-  rsync -a --delete --exclude 'debs/' --exclude '.vercel/' --exclude '.gitignore' \
+  # The Vercel CLI applies a .gitignore found in the directory it uploads, so
+  # repo/.gitignore doubles as an upload filter -- see the comment in that file.
+  # It is copied deliberately: it is what keeps .env.local (BLOB_READ_WRITE_TOKEN)
+  # out of the public repo. The excludes below do not depend on it.
+  rsync -a --delete \
+    --exclude 'debs/' \
+    --exclude '.vercel/' \
+    --exclude '.env' --exclude '.env.*' \
     "$REPO_ROOT/repo/" "$deploy_root/repo/"
+
+  # Never ship a credential. Belt to the .gitignore/.vercelignore braces, because
+  # this one is unrecoverable: a token served once from a public URL is burned.
+  local leaked
+  leaked="$(find "$deploy_root/repo" \( -name '.env' -o -name '.env.*' -o -name '*.pem' \
+            -o -name 'id_rsa*' -o -name '.netrc' \) -print 2>/dev/null | head -5)"
+  if [ -n "$leaked" ]; then
+    echo "ERROR: refusing to deploy, the staged copy contains credential files:" >&2
+    printf '       %s\n' $leaked >&2
+    exit 1
+  fi
 
   # --only: serve the target's current index with just the named packages swapped
   # in. Done here, on the throwaway copy, so repo/ keeps its full (staging) index.
