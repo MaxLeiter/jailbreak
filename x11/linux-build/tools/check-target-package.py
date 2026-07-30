@@ -114,33 +114,69 @@ def is_macho(path: Path) -> bool:
         return False
 
 
-def macho_foreign_paths(path: Path, foreign: list[str]) -> list[str]:
-    """Find another target's prefix embedded in a Mach-O.
+def macho_load_paths(path: Path) -> list[str]:
+    """Absolute paths a Mach-O will actually resolve at load time.
 
-    Load commands carry absolute paths: LC_ID_DYLIB, LC_LOAD_DYLIB and LC_RPATH
-    all hold install names. A rootful package whose dylib IDs still say
-    /var/jb installs fine and then fails to load, which is exactly the class of
-    breakage that only shows up on device. Scanning the raw bytes catches those
-    plus any other embedded path, and needs no otool -- this has to run on Linux
-    build hosts as well as macOS.
+    Parses the load commands rather than scanning raw bytes. That distinction
+    matters: install_name_tool rewrites names in place and leaves the tail of a
+    longer previous string behind, so a correctly retargeted dylib still has the
+    old prefix sitting in its string table as dead bytes. Grepping flags those
+    and blocks a package that is in fact fine.
+
+    Reads LC_ID_DYLIB, LC_LOAD_DYLIB (+ weak/reexport/upward) and LC_RPATH,
+    across every slice of a fat binary.
     """
+    LC_ID_DYLIB, LC_LOAD_DYLIB, LC_LOAD_WEAK, LC_REEXPORT = 0xD, 0xC, 0x18, 0x1F
+    LC_RPATH, LC_LOAD_UPWARD = 0x8000001C, 0x80000023
+    WANTED = {LC_ID_DYLIB, LC_LOAD_DYLIB, LC_LOAD_WEAK, LC_REEXPORT, LC_RPATH, LC_LOAD_UPWARD}
+
     try:
         blob = path.read_bytes()
     except OSError:
         return []
-    hits = []
-    for bad in foreign:
-        needle = bad.encode()
-        start = 0
-        while True:
-            i = blob.find(needle, start)
-            if i < 0:
+
+    def u32(off, little):
+        return int.from_bytes(blob[off:off + 4], "little" if little else "big")
+
+    slices = []
+    magic = blob[:4]
+    if magic in (b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"):
+        little = magic == b"\xbe\xba\xfe\xca"
+        count = u32(4, little)
+        for i in range(count):
+            slices.append(u32(8 + i * 20 + 8, little))   # fat_arch.offset
+    else:
+        slices.append(0)
+
+    out = []
+    for base in slices:
+        m = blob[base:base + 4]
+        if m in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe"):
+            little, wide = True, m == b"\xcf\xfa\xed\xfe"
+        elif m in (b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce"):
+            little, wide = False, m == b"\xfe\xed\xfa\xcf"
+        else:
+            continue
+        ncmds = u32(base + 16, little)
+        off = base + (32 if wide else 28)
+        for _ in range(ncmds):
+            if off + 8 > len(blob):
                 break
-            end = i
-            while end < len(blob) and 0x20 <= blob[end] < 0x7F:
-                end += 1
-            hits.append(blob[i:end].decode("ascii", "replace"))
-            start = i + 1
+            cmd, size = u32(off, little), u32(off + 4, little)
+            if size < 8:
+                break
+            if cmd in WANTED:
+                str_off = u32(off + 8 if cmd == LC_RPATH else off + 8, little)
+                s = blob[off + str_off:off + size]
+                out.append(s.split(b"\0", 1)[0].decode("utf-8", "replace"))
+            off += size
+    return out
+
+
+def macho_foreign_paths(path: Path, foreign: list[str]) -> list[str]:
+    """Load-command paths that live under another target's prefix."""
+    hits = [p for p in macho_load_paths(path)
+            if any(p == bad or p.startswith(bad + "/") for bad in foreign)]
     return sorted(set(hits))
 
 

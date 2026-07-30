@@ -86,16 +86,25 @@ else
   exit 1
 fi
 chmod 0755 "$STAGE$XIOS_PREFIX/lib/angle/"*.dylib
-[ -f "$SHIM" ] || {
+[ "${ANGLE_NO_SHIM:-0}" = 1 ] || [ -f "$SHIM" ] || {
   echo "ERROR: current fenced iosc EGL shim not found at $SHIM; run wayland/build-iosc.sh first" >&2
+  echo "       For a NEW target this is a bootstrap cycle: the shim links against ANGLE," >&2
+  echo "       and ANGLE ships the shim. Break it with ANGLE_NO_SHIM=1 to emit a" >&2
+  echo "       link-only package, build the shim against that, then re-run without it." >&2
   exit 1
 }
-cp "$SHIM" "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
-chmod 0755 "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+if [ "${ANGLE_NO_SHIM:-0}" = 1 ]; then
+  echo "NOTE: ANGLE_NO_SHIM=1 -- emitting a bootstrap package with no iosc EGL shim."
+  echo "      Link-only, for building the shim for a new target. Do NOT publish it:"
+  echo "      libEGL.dylib is the shim, and GPU clients dlopen that name."
+else
+  cp "$SHIM" "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+  chmod 0755 "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+fi
 
 # 2. absolute install names
 install_name_tool -id $XIOS_PREFIX/lib/angle/libEGL.angle.dylib "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
-install_name_tool -id $XIOS_PREFIX/lib/angle/libEGL.dylib       "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+[ -f "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib" ] && install_name_tool -id $XIOS_PREFIX/lib/angle/libEGL.dylib       "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
 install_name_tool -id $XIOS_PREFIX/lib/angle/libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
 
 # 2b. ...and the references BETWEEN them. -id only rewrites a library's own name;
@@ -107,6 +116,7 @@ install_name_tool -id $XIOS_PREFIX/lib/angle/libGLESv2.dylib  "$STAGE$XIOS_PREFI
 # exactly this.
 for lib in libEGL.angle.dylib libEGL.dylib libGLESv2.dylib; do
   target="$STAGE$XIOS_PREFIX/lib/angle/$lib"
+  [ -f "$target" ] || continue
   while read -r ref; do
     case "$ref" in
       */lib/angle/*)
@@ -136,9 +146,16 @@ done
 # that installs and then cannot resolve its own libraries.
 for lib in libEGL.dylib libEGL.angle.dylib libGLESv2.dylib; do
   f="$STAGE$XIOS_PREFIX/lib/angle/$lib"
+  [ -f "$f" ] || continue
   for other in /var/jb; do
     [ "$other" = "$XIOS_PREFIX" ] && continue
-    if LC_ALL=C grep -qa -- "$other/" "$f" 2>/dev/null; then
+    # Load commands only. install_name_tool rewrites names in place and leaves
+    # the tail of a longer old string in the binary, so grepping raw bytes flags
+    # dylibs that were in fact retargeted correctly.
+    if otool -l "$f" 2>/dev/null |
+         awk '/LC_ID_DYLIB|LC_LOAD_DYLIB|LC_LOAD_WEAK_DYLIB|LC_REEXPORT_DYLIB|LC_RPATH/{c=1}
+              c && / (name|path) /{print $2; c=0}' |
+         grep -q "^$other/"; then
       echo "ERROR: $lib still embeds $other on target $XIOS_TARGET_ID." >&2
       echo "       Its shim/binaries were built for a different prefix. Rebuild them for" >&2
       echo "       this target (wayland/build-iosc.sh, ports/angle/build-angle.sh) instead" >&2
@@ -151,13 +168,15 @@ done
 # 3. ad-hoc sign (the libs carry no entitlements; the GPU-using *process* is the
 #    one that must be ldid-signed with the AGX/IOSurface set, see control below)
 xsign "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
-xsign "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+[ -f "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib" ] && xsign "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
 xsign "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
 
 # 3b. compat symlinks (Debian soname + .so aliases consumers link/dlopen)
+if [ -f "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib" ]; then
 ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.2.dylib"
 ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.so"
 ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.so.1"
+fi
 ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.2.dylib"
 ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.so"
 ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.so.2"
