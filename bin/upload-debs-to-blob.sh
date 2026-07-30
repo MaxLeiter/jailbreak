@@ -164,13 +164,34 @@ LIST="$(mktemp)"
 trap 'rm -f "$RESULTS" "$LIST"' EXIT
 
 if [ -n "$ONLY" ]; then
-  while IFS= read -r deb; do
-    name="$(basename "$deb")"
-    package="${name%%_*}"
-    case ",$ONLY," in
-      *",$package,"*) printf '%s\n' "$deb" ;;
-    esac
-  done < <(find "$DEBS_DIR" -type f -name '*.deb' -print | sort) > "$LIST"
+  INDEX="${BLOB_INDEX:-$VERCEL_CWD/Packages}"
+  [ -f "$INDEX" ] || {
+    echo "ERROR: scoped Blob upload needs the generated index at $INDEX" >&2
+    exit 1
+  }
+  awk -v only=",$ONLY," '
+    /^Package: /  { package = $2 }
+    /^Filename: / {
+      if (index(only, "," package ",") != 0)
+        print $2
+    }
+  ' "$INDEX" | while IFS= read -r filename; do
+    deb="$VERCEL_CWD/$filename"
+    [ -f "$deb" ] || {
+      echo "ERROR: indexed payload missing for scoped upload: $filename" >&2
+      exit 1
+    }
+    printf '%s\n' "$deb"
+  done > "$LIST"
+  expected="$(awk -F, '{ print NF }' <<EOF
+$ONLY
+EOF
+)"
+  selected="$(wc -l < "$LIST" | tr -d '[:space:]')"
+  [ "$selected" = "$expected" ] || {
+    echo "ERROR: scoped Blob upload selected $selected payload(s), expected $expected: $ONLY" >&2
+    exit 1
+  }
   echo "==> scoped Blob upload: $ONLY"
 else
   find "$DEBS_DIR" -type f -name '*.deb' -print | sort > "$LIST"
