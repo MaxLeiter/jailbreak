@@ -10,11 +10,7 @@
   },
   "libfreetype6": {"version": "2.13.3 bump predates the gate; soname libfreetype.6 kept; device-validated"},
   "libfreetype-dev": {"version": "companion of libfreetype6 2.13.3"},
-  "libfribidi0": {
-    "version": "1.0.13 bump predates the gate; soname kept",
-    "symbols": "13 charset-conversion + CapRTL helpers that were never public ABI. Checked against the 1.0.13 source 2026-07-29: the char-sets .c files ARE compiled, but the functions carry no FRIBIDI_ENTRY export macro and lib/meson.build sets gnu_symbol_visibility: 'hidden', so they are hidden and dead-stripped. Procursus's 1.0.10 is an autotools build that simply leaked every internal. The only way to match it is -fvisibility=default, which would export all internals -- worse than the gap. Full-repo + Procursus-consumer import scan: zero importers"
-  },
-  "libfribidi-dev": {"version": "companion of libfribidi0 1.0.13"},
+  "_comment_fribidi": "libfribidi0/libfribidi-dev waivers REMOVED 2026-07-29: we stopped shipping fribidi entirely rather than waive it. Our 1.0.13 exported 36 symbols against Procursus 1.0.10's 49 -- a strict SUBSET, shadowing a superset. No package in the repo imported a single symbol only 1.0.13 had, and on device the same bidi text rendered pixel-identically (md5 f19b96216146) under both. A shadow that adds nothing and removes 13 symbols is not something to waive; it is something to delete. If fribidi is ever rebuilt, note that lib/meson.build sets gnu_symbol_visibility: 'hidden' and the char-set helpers carry no FRIBIDI_ENTRY, so a meson build can never match Procursus's autotools build that leaked them.",
   "libpixman-1-0": {
     "version": "0.42.2 bump predates the gate; soname libpixman-1.0 kept",
     "parity": "Procursus also ships fully-versioned libpixman-1.0.40.0.dylib; consumers link @rpath/libpixman-1.0.dylib (verified Procursus LC_ID 2026-07-08)"
