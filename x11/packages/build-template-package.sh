@@ -126,6 +126,14 @@ if [ -f "$TMPL/files.manifest" ]; then
       ""|\#*) continue ;;
     esac
     [ -n "$rel" ] || { echo "$TMPL/files.manifest: missing destination for $src" >&2; exit 2; }
+    # The source side takes the same tokens as the destination: a package whose
+    # payload is produced per target stages its binaries under that target's
+    # prefix, so the manifest cannot name one root.
+    src="$(printf '%s' "$src" | XIOS_PACKAGE_PATH_PREFIX="$XIOS_PACKAGE_PATH_PREFIX" \
+      XIOS_TARGET_ID="$XIOS_TARGET_ID" XIOS_PREFIX="$XIOS_PREFIX" \
+      perl -pe 's/\@PACKAGE_PATH_PREFIX\@/$ENV{XIOS_PACKAGE_PATH_PREFIX}/g;
+                s/\@TARGET_ID\@/$ENV{XIOS_TARGET_ID}/g;
+                s/\@PREFIX\@/$ENV{XIOS_PREFIX}/g;')"
     case "$src" in
       /*) src_path="$src" ;;
       *) src_path="$TMPL/$src" ;;
