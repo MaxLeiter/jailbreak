@@ -1,0 +1,69 @@
+--- a/gegl/gegl-init.c
++++ b/gegl/gegl-init.c
+@@ -64,7 +64,11 @@
+ 
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && \
++    !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++#define GEGL_OSX_BUNDLE 1
++#endif
++#ifdef GEGL_OSX_BUNDLE
+ #import <Foundation/Foundation.h>
+ #include <dlfcn.h>
+ #include <libgen.h>
+@@ -104,7 +108,7 @@
+                                                 gpointer        data,
+                                                 GError        **error);
+ static const gchar * gegl_find_relocatable_exe (void);
+-#if defined(ENABLE_RELOCATABLE) && !defined(G_OS_WIN32) && !defined(__APPLE__)
++#if defined(ENABLE_RELOCATABLE) && !defined(G_OS_WIN32) && !defined(GEGL_OSX_BUNDLE)
+ static gchar       * gegl_guess_libdir         (void);
+ #endif
+ 
+@@ -181,7 +185,7 @@
+ 
+   prefix = g_win32_get_package_installation_directory_of_module (this_module ());
+ 
+-#elif defined (__APPLE__)
++#elif defined (GEGL_OSX_BUNDLE)
+ 
+   NSAutoreleasePool *pool;
+   NSString          *resource_path;
+@@ -708,7 +712,7 @@
+   gchar  *module_path = NULL;
+ #if defined(G_OS_WIN32)
+   gchar  *prefix;
+-#elif defined(ENABLE_RELOCATABLE) && !defined(__APPLE__)
++#elif defined(ENABLE_RELOCATABLE) && !defined(GEGL_OSX_BUNDLE)
+   gchar  *prefix;
+   gchar  *libdir;
+ #endif
+@@ -722,7 +726,7 @@
+     }
+ 
+   /* System library dir */
+-#if defined (__APPLE__)
++#if defined (GEGL_OSX_BUNDLE)
+   Dl_info info;
+   /* The checked symbol must be exported in the libgegl*.dylib */
+   if (dladdr((const void *)gegl_get_default_module_paths, &info) && info.dli_fname)
+@@ -924,7 +928,7 @@
+ static const gchar *
+ gegl_find_relocatable_exe (void)
+ {
+-#if ! defined(ENABLE_RELOCATABLE) || defined(_WIN32) || defined(__APPLE__)
++#if ! defined(ENABLE_RELOCATABLE) || defined(_WIN32) || defined(GEGL_OSX_BUNDLE)
+   return NULL;
+ #else
+   static gchar *path           = NULL;
+@@ -1009,7 +1013,7 @@
+ #endif
+ }
+ 
+-#if defined(ENABLE_RELOCATABLE) && !defined(G_OS_WIN32) && !defined(__APPLE__)
++#if defined(ENABLE_RELOCATABLE) && !defined(G_OS_WIN32) && !defined(GEGL_OSX_BUNDLE)
+ /* Returns the relative libdir, which may be lib/ or lib64/ or again
+  * some subdirectory with multiarch.
+  */

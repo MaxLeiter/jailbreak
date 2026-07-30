@@ -123,15 +123,37 @@ static pid_t peer_pid_for_fd(int fd)
 {
     pid_t pid = 0;
     socklen_t len = sizeof(pid);
-    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0 && pid > 0)
+    int peerpid_rc = getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len);
+    int peerpid_errno = peerpid_rc == 0 ? 0 : errno;
+    if (peerpid_rc == 0 && pid > 0)
         return pid;
+#ifdef LOCAL_PEEREPID
+    pid = 0;
+    len = sizeof(pid);
+    int peerepid_rc = getsockopt(fd, SOL_LOCAL, LOCAL_PEEREPID, &pid, &len);
+    int peerepid_errno = peerepid_rc == 0 ? 0 : errno;
+    if (peerepid_rc == 0 && pid > 0)
+        return pid;
+#else
+    int peerepid_rc = -1, peerepid_errno = ENOPROTOOPT;
+#endif
 #ifdef LOCAL_PEERTOKEN
     audit_token_t token = {0};
     len = sizeof(token);
-    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &len) == 0 &&
+    int peertoken_rc = getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &len);
+    int peertoken_errno = peertoken_rc == 0 ? 0 : errno;
+    if (peertoken_rc == 0 &&
         len >= sizeof(token) && token.val[5] > 0)
         return (pid_t)token.val[5];
+#else
+    int peertoken_rc = -1, peertoken_errno = ENOPROTOOPT;
+    audit_token_t token = {0};
 #endif
+    fprintf(stderr,
+            "xios-canvas: no peer pid fd=%d peerpid(rc=%d errno=%d) "
+            "peerepid(rc=%d errno=%d) peertoken(rc=%d errno=%d pid=%u len=%u)\n",
+            fd, peerpid_rc, peerpid_errno, peerepid_rc, peerepid_errno,
+            peertoken_rc, peertoken_errno, token.val[5], (unsigned)len);
     return 0;
 }
 
@@ -569,6 +591,11 @@ static int handle_bind(int fd)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
+    /* Capture this while the accepted socket is unquestionably connected.
+     * A version-mismatched host may close as soon as it reads HELLO, after
+     * which Darwin reports ENOTCONN for every LOCAL_PEER* query. */
+    pid_t peer_pid = peer_pid_for_fd(fd);
+
     xios_msg h;
     if (read_full(fd, &h, sizeof(h)) != 0 ||
         h.magic != XIOS_MSG_MAGIC || h.type != XIOS_MSG_BIND) {
@@ -607,9 +634,6 @@ static int handle_bind(int fd)
         close(fd);
         return -1;
     }
-
-    /* Trust the kernel peer pid, not the client claim (same as xios_surface.c). */
-    pid_t peer_pid = peer_pid_for_fd(fd);
 
     pthread_mutex_lock(&s_lock);
     if (s_nclients >= XIOS_CANVAS_MAX_CLIENTS) {
