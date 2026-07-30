@@ -108,6 +108,7 @@ target_requests gcr3 && stage_required_patch_stack gcr3
 target_requests geary && stage_required_patch_stack geary
 if target_requests libdazzle || target_requests epiphany; then
   stage_required_patch_stack libdazzle
+  bash /work/recipes/ensure-gtkintl-build-shim.sh
 fi
 if [[ " $TARGETS " == *" webkitgtk"* ]]; then
   stage_required_patch_stack webkitgtk

@@ -17,13 +17,14 @@ gettext_stage="$procursus_root/build_stage/$XIOS_MEMO_TARGET/$XIOS_MEMO_CFVER/ge
 source_file="$procursus_root/build_tools/gtkintl_shim.c"
 output_dir="$build_base$prefix/lib"
 output_file="$output_dir/libgtkintl.dylib"
+gettext_runtime="$gettext_stage$prefix/lib/libintl.8.dylib"
 cc="${CC:-$procursus_root/build_tools/cc-nounused}"
 
 [ -f "$source_file" ] || {
   echo "ensure-gtkintl-build-shim: missing $source_file" >&2
   exit 1
 }
-[ -f "$gettext_stage$prefix/lib/libintl.dylib" ] || {
+[ -f "$gettext_runtime" ] || {
   echo "ensure-gtkintl-build-shim: gettext stage is missing for $XIOS_MEMO_TARGET" >&2
   exit 1
 }
@@ -36,4 +37,11 @@ mkdir -p "$output_dir"
   -Wl,-reexport-lintl \
   -o "$output_file.tmp"
 mv -f "$output_file.tmp" "$output_file"
-echo "==> prepared build-sysroot libgtkintl bridge"
+
+# ld64 resolves a re-export while linking the consumer, before its runtime
+# @rpath is meaningful. Keep the real gettext install name beside the bridge,
+# then aim the unversioned development name at the bridge. This gives callers
+# both the ordinary libintl_* exports and GTK's g_libintl_* proxy exports.
+cp -f "$gettext_runtime" "$output_dir/libintl.8.dylib"
+ln -sf libgtkintl.dylib "$output_dir/libintl.dylib"
+echo "==> prepared build-sysroot libgtkintl bridge and gettext runtime"
