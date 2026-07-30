@@ -10,3 +10,4 @@
 0010-wkbundle-viewport-api-feature-guard.patch
 0011-ios-allow-gigacage-allocation-failure.patch
 0012-ios-load-rootless-angle-egl.patch
+0013-angle-select-ios-platform-sources.patch
