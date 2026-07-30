@@ -1,30 +1,33 @@
 # Geary / WebKitGTK feasibility
 
-Status as of 2026-07-29: WebKitGTK 2.44.4 configures for rootless iOS with
-GTK3, X11 + Wayland, and a no-JIT C-loop JavaScriptCore. `WTF`,
-`JavaScriptCore`, and WebCore compile/link as arm64 Mach-O. The full WebKit
-target is rebuilding after the GTK/Darwin port was corrected to use Unix file
-descriptor IPC attachments rather than Cocoa `MachSendRight` attachments.
-Install and four-way runtime/dev split-package targets now exist.
+Status as of 2026-07-30: WebKitGTK 2.44.4 builds, installs, and splits into
+rootless iOS JavaScriptCoreGTK/WebKitGTK runtime and development packages.
+JavaScriptCore executes on the iPad with the no-JIT C-loop interpreter. The
+iOS Gigacage fallback permits the large virtual reservation to fail instead of
+aborting. The GTK3 backend is configured for both X11 and Wayland; an earlier
+staging bug selected an unmarked X11-only GTK development package and was fixed
+by preferring Xios-marked dependency revisions.
 
-The Geary 46.0 recipe/control/patch stack also exists. `gmime`, `libstemmer`,
-`libytnef`, `gspell`, `libpeas`, Folks, gcr-3/gck-1, and the GOA client API
-all build/package; their new runtime packages load on the iPad. The credible
-iOS account path is manual IMAP/SMTP. The Linux GOA provider daemon and
-browser-backed OAuth setup are deliberately not claimed. The remaining closure
-gate is a successful full WebKit install/package followed by a mapped Geary
-window using the real WebKit message renderer.
+Geary 46.0 and its dependency closure also build and package. The new gspell,
+libpeas, Folks, gcr-3/gck-1, GOA client, WebKitGTK, JavaScriptCoreGTK, and
+gnome-keyring runtimes load on the iPad. In an isolated GNOME slot, the
+Secret Service owns `org.freedesktop.secrets`; Geary stays alive, owns
+`org.gnome.Geary`, and exports its GTK window. The credible iOS account path is
+manual IMAP/SMTP. The Linux GOA provider daemon and browser-backed OAuth setup
+are deliberately not claimed.
+
+The final gate before publication is the rebuilt Wayland-capable WebKit package
+and the small `linux-build/tests/webkitgtk-smoke.c` multiprocess load test.
 
 ## Decision
 
-Finish and device-smoke the existing WebKitGTK/Geary lane before widening
-account integrations or media/browser features.
+Finish the Wayland WebKit process smoke and publish this Geary-focused lane
+before widening account integrations or browser/media/GPU features.
 
 Geary hard-requires WebKitGTK's GTK3/libsoup3 API (`webkit2gtk-4.1`,
 `javascriptcoregtk-4.1`, and `webkit2gtk-web-extension-4.1`) and builds a
-WebKit web-process extension. Those installed headers, `.pc` files, libraries,
-and helper processes—not another leaf dependency—are now the sole app build
-gate.
+WebKit web-process extension. Those headers, `.pc` files, libraries, helper
+processes, and the Geary web extension are now packaged.
 
 ## Local dependency inventory
 
@@ -55,21 +58,20 @@ Already present or partially present in this tree:
   Their arm64 dylibs, signatures, pkg-config versions, load commands, and repo
   dependency closure passed host validation. `gspell` now links ICU 78.3;
   `libpeas` stages the published libgirepository 1.78 packages rather than
-  rebuilding the unrelated target-Python/GI toolchain. Device smoke is pending.
+  rebuilding the unrelated target-Python/GI toolchain. Both runtimes load on
+  the iPad.
 
-Missing for Geary/WebKitGTK:
+Completed for Geary/WebKitGTK:
 
-- WebCore and WebKit compilation, then `webkit2gtk-4.1` runtime/dev files and
-  the web-extension development `.pc`/headers. JavaScriptCoreGTK now links in
-  the build tree but is not installed or packaged.
-- Geary app deps still lacking validated packages: `folks`,
-  `gnome-online-accounts`, `gsound`, `sound-theme-freedesktop`, and probably
-  `appstream-glib` if targeting the 46.0 tag. GNOME 46 also needs the
-  gcr-3/gck-1 family rather than only the current gcr-4 package. The local
-  gspell-1 and libpeas-1.0 packages are host-valid but not yet device-smoked.
-- Vala binding coverage. Geary only vendors `icu-uc.vapi` and `libstemmer.vapi`;
-  the rest of the `.vapi` surface must come from packages or the local vendored
-  `linux-build/vapi` mechanism.
+- WebCore and WebKit compile and install; `webkit2gtk-4.1`,
+  `javascriptcoregtk-4.1`, and `webkit2gtk-web-extension-4.1` runtime/dev
+  payloads are present in the split packages.
+- Folks 0.15.9, gcr-3/gck-1 3.41.1, and the GOA 3.46 client API are packaged
+  and device-loaded. The Geary recipe supplies the Vala binding surface needed
+  for this cross build.
+- `gnome-keyring 46.2+ios1` supplies the Secret Service runtime Geary requires.
+  PAM, SSH agent, systemd, Linux capabilities, and SELinux integrations are
+  disabled for the single-user iOS session.
 
 ## Upstream Geary requirements
 
@@ -152,6 +154,12 @@ actually needs them:
   independently of Geary's own `gspell`; libsecret is useful for credentials;
   JavaScriptCore and web extensions are non-negotiable.
 
+WebGL is intentionally off in this package revision. Enabling it credibly on
+iOS requires a separate ANGLE/graphics-context and WebKit GPU-process port,
+entitlement review, accelerated compositing validation, and physical rendering
+tests. It is not required by Geary's HTML message renderer. Ordinary HTML, CSS,
+DOM, and JavaScript remain enabled.
+
 Porting results and remaining blockers:
 
 - WebKit's GTK release tarball prunes Apple-port sources that a real Darwin
@@ -166,39 +174,33 @@ Porting results and remaining blockers:
   driver installs both. The LLInt settings/offset extractors compile and link
   successfully in this cross configuration.
 - JavaScriptCore deliberately uses `ENABLE_JIT=OFF`, all higher JIT tiers off,
-  WebAssembly off, and `ENABLE_C_LOOP=ON`. The full target completed, but the
-  library has not been installed, signed through the package path, or executed
-  on iOS.
-- Building WebCore/WebKit is the next compile swing and may expose additional
-  Cocoa SPI, process-launch, graphics, or network seams.
-- WebKitGTK's process model will need on-device validation for `fork`/`exec`,
-  subprocess paths under `/var/jb`, sandbox-off behavior, DBus/GIO expectations,
-  and entitlements.
-- If introspection is disabled, Geary still needs Vala bindings for the WebKitGTK
-  API. If introspection is enabled to generate them, that reopens the GI
-  cross-build/on-device scan problem.
-- The repo's EDS build is intentionally minimal. Geary wants a mail-account
-  ecosystem: GOA, EDS Vala bindings/introspection, and WebKitGTK-backed OAuth
-  prompts may need a second EDS flavor or a carefully widened EDS package.
+  WebAssembly off, and `ENABLE_C_LOOP=ON`. The packaged `jsc` shell executes
+  `print(6 * 7)` as `42` on the iPad without a runtime override.
+- iOS cannot reserve WebKit's normal multi-gigabyte Gigacage address space. The
+  patch stack detects the iPhoneOS compiler environment directly and keeps both
+  allocation and assertion state consistent when the reservation fails.
+- The first multiprocess smoke exposed an X11-only GTK staging error:
+  `PlatformDisplayX11` dereferenced a missing X display in a Wayland GNOME
+  session. The configure dependency selector now prefers marked Xios revisions,
+  and the final CMake summary enables both Wayland and X11.
+- Geary carries the required WebKit extension and its private libraries now use
+  rootless runtime paths. A real Secret Service is provided by gnome-keyring.
+- The repo's EDS build remains intentionally minimal. OAuth/provider integration
+  would require a separate widening of EDS/GOA and is not part of the manual
+  IMAP/SMTP package lane.
 
 ## Staged path
 
-1. Leaf/app deps host-packaged:
-   `gmime`, `libstemmer`, `libytnef`, `gspell`, and `libpeas`. Next: device-smoke
-   gspell/libpeas, then add `gsound`, `folks`, `gnome-online-accounts`, and the
-   gcr-3/gck-1 family for the Geary 46 lane.
-2. Completed: add the WebKitGTK 2.44.4 API 4.1 configure milestone and compile
-   `WTF` plus `JavaScriptCore` off-device.
-3. Next: add an explicit WebCore/WebKit compile target and fix only concrete
-   failures. Then add install/staging and split packages:
-   `libjavascriptcoregtk-4.1-0`, `libwebkit2gtk-4.1-0`, and matching `-dev`
-   packages exposing `webkit2gtk-web-extension-4.1`. Do not move to Geary until
-   installed `.pc` files and VAPIs exist.
-4. Revisit EDS/GOA for mail-account setup and OAuth. Decide whether to widen the
-   current EDS recipe or create a documented second-stage EDS rebuild.
-5. Add `geary.mk` only after WebKitGTK 4.1 and the missing mail deps can satisfy
-   Meson configure. Start with `-Dprofile=release`, `-Dtnef=false` if libytnef is
-   not ready, and tests/docs off.
+1. Completed: build/package/device-load the leaf mail dependencies, including
+   gspell/libpeas, Folks, gcr-3/gck-1, and the GOA client API.
+2. Completed: build/install/package WebKitGTK 2.44.4 API 4.1 and execute
+   JavaScriptCore on-device.
+3. Completed: build/package Geary 46.0 and gnome-keyring; verify the Secret
+   Service and mapped Geary window in an isolated GNOME slot.
+4. Current: finish the Wayland-capable WebKit rebuild, repackage, and pass the
+   multiprocess HTML/JavaScript smoke under GNOME.
+5. Next: publish the exact tested debs. Treat OAuth/provider support and WebGL
+   as separate revisions with their own runtime proof.
 
 ## Build commands
 
@@ -208,6 +210,7 @@ Validated WebKit configure/engine command from the repository root:
 cd /Users/max/Documents/jailbreak/x11
 docker run --rm --platform linux/arm64 --cpus=4 \
   -v procursus-vol-gtk:/work/Procursus \
+  -v "$PWD/linux-build/target-env.sh:/work/target-env.sh:ro" \
   -v "$PWD/linux-build/build-gnome.sh:/work/build-gnome.sh:ro" \
   -v "$PWD/linux-build/recipes:/work/recipes:ro" \
   -v "$PWD/ports:/work/ports:ro" \
@@ -219,8 +222,8 @@ docker run --rm --platform linux/arm64 --cpus=4 \
   procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
 ```
 
-Use `TARGETS="webkitgtk-configure"` for configure only or
-`TARGETS="webkitgtk-wtf"` for the smaller core compile proof. Compile-only
-targets now skip deb collection/relinking. There is intentionally no
-`webkitgtk-package` target yet and no useful Geary build command until the
-WebKitGTK 4.1 package set exists.
+Use `TARGETS="webkitgtk-configure"` for configure only,
+`TARGETS="webkitgtk-wtf"` for the smaller core compile proof, or
+`TARGETS="webkitgtk-package geary-package"` after a completed engine install.
+Compile-only targets skip deb collection/relinking. The build driver also
+supports `gnome-keyring-package` for Geary's Secret Service runtime.
