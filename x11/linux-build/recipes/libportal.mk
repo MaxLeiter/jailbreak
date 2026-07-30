@@ -70,7 +70,7 @@ libportal-package: libportal-stage
 	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libportal-gtk4.1.dylib $(BUILD_DIST)/libportal-gtk4-1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# libportal-dev (headers, symlinks, .pc for both)
-	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libportal.1.dylib|libportal-gtk4.1.dylib) $(BUILD_DIST)/libportal-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libportal.1.dylib|libportal-gtk3.1.dylib|libportal-gtk4.1.dylib) $(BUILD_DIST)/libportal-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libportal-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
 	$(call SIGN,libportal1,general.xml)
