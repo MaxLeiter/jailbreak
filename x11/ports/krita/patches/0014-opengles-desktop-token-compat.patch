@@ -1,0 +1,29 @@
+diff --git a/libs/ui/opengl/kis_texture_tile.h b/libs/ui/opengl/kis_texture_tile.h
+--- a/libs/ui/opengl/kis_texture_tile.h
++++ b/libs/ui/opengl/kis_texture_tile.h
+@@ -12,0 +13,25 @@
++/*
++ * Apple's OpenGLES headers omit desktop extension spellings. These branches
++ * are compiled into a shared source file but are never selected by an ES
++ * context, so provide their standard token values without changing runtime
++ * format selection.
++ */
++#ifndef GL_RGBA16
++#define GL_RGBA16 0x805B
++#endif
++#ifndef GL_RGBA16F_ARB
++#define GL_RGBA16F_ARB 0x881A
++#endif
++#ifndef GL_HALF_FLOAT_ARB
++#define GL_HALF_FLOAT_ARB 0x140B
++#endif
++#ifndef GL_RGBA_FLOAT16_ATI
++#define GL_RGBA_FLOAT16_ATI 0x881A
++#endif
++#ifndef GL_RGBA32F_ARB
++#define GL_RGBA32F_ARB 0x8814
++#endif
++#ifndef GL_RGBA_FLOAT32_ATI
++#define GL_RGBA_FLOAT32_ATI 0x8814
++#endif
++
