@@ -1,0 +1,8 @@
+# Xios runs on an iPad whose built-in touchscreen remains present when a mouse,
+# trackpad, or keyboard is attached. KWin's automatic heuristic otherwise sees
+# the synthetic Wayland pointer and leaves tablet mode disabled.
+#
+# This is a system default through XDG_CONFIG_DIRS. A user's ~/.config/kwinrc
+# can still explicitly select auto or off.
+[Input]
+TabletMode=on

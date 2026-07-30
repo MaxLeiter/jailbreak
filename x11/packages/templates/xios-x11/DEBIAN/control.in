@@ -1,21 +1,17 @@
 Package: xios-x11
 Name: Xios Desktop (X11)
-Version: 0.1.3
+Version: 0.1.5
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core (>= 0.1.4), xwayland (>= 23.2.7+ios3), xauth
+Depends: firmware (>= 16.5), xios-core (>= 0.1.6), xwayland (>= 23.2.7+ios4), xauth
 MinimumOSVersion: 16.5.0
 Description: the X11 flavor for Xios
  GPU-accelerated X11 compatibility through rootless Xwayland inside the iosc
- compositor. This is the compatibility flavor for software that predates
- Wayland without making the legacy software-rendered bare Xios server part of
- the default desktop.
- .
- The original xios-server package remains separately installable for legacy
- bring-up and diagnostics.
+ compositor. This is the sole interactive X11 path; the old software-rendered
+ bare Xios server has been retired.
  .
  Xvfb and TigerVNC remain separately installable for explicitly headless or
  remote-display setups.

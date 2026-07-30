@@ -24,7 +24,7 @@ echo "==> stop any Xios X server, app, prior iosc, stray kgx + session bus"
 # Anchor kgx/iosc to their binary paths (not "kgx" anywhere, which matches this
 # script's own path when run as `bash /path/run-kgx.sh`) and never kill our own
 # shell ($$) or parent ($PPID) — that self-kill aborted the run before iosc started.
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|bin/iosc|bin/kgx|dbus-daemon.*--session" \
+ps ax | grep -v grep | grep -E "/Xios\.app/Xios|bin/iosc|bin/kgx|dbus-daemon.*--session" \
   | awk '{print $1}' | while read -r pid; do
       [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
   done

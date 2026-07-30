@@ -4,7 +4,7 @@ Rootless iOS jailbreak projects: Theos tweaks, small companion apps, static APT
 repo tooling, and the Xios X11/Wayland-on-iOS desktop stack.
 
 > **Want to see more about the X11/Wayland work?** See **[`x11/`](x11/)** — a
-> native Linux desktop (a real X11 server, a GPU Wayland compositor, and
+> native Linux desktop (a GPU Wayland compositor, hardware Xwayland, and
 > GNOME/KDE apps) running on a jailbroken iPad. Write-up:
 > **[maxleiter.com/blog/xios](https://maxleiter.com/blog/xios)**. Wiki:
 > **[xios.maxleiter.com](https://xios.maxleiter.com)**.

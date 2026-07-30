@@ -7,9 +7,12 @@ rootless jailbroken iOS. It is kept for the decisions and the hard-won gotchas, 
 subsystem, in [`docs/handoff/INDEX.md`](docs/handoff/INDEX.md).
 
 The staged plan this file used to track (X-over-VNC → native X server → IOSurface DDX →
-per-window compositing → iOS-scene hosting) is finished or superseded: the display path is a
-native app fed by an `IOSurface`, and the primary desktop path is now the Wayland compositor
-(`iosc`) rather than X. VNC survives only as a remote/debug route.
+per-window compositing → iOS-scene hosting) is finished or superseded. The display path is a
+native app fed by an `IOSurface`, and the desktop path is a Wayland compositor rather than X:
+the software Xvfb-derived `Xios` server that stages 1 and 2 built was **retired on
+2026-07-29**, X11 apps now run through hardware Xwayland inside the compositor, and Xvnc and
+Xvfb remain only for headless bring-up and debugging. The entitlement and prefix lessons
+below outlived the server they were learned on, which is why this file is still here.
 
 ## What changed versus the 2019/2020 build
 
@@ -67,7 +70,7 @@ These two cost days each and are still load-bearing for anything new that presen
    Sileo uses). `com.apple.private.security.no-container` also strips the entitlement path
    that reaches the GPU IOKit user client, so the GPU dies along with the sandbox.
 
-Related: the server-side surface share needs `IOSurfaceRootUserClient` **and**
+Related: the compositor-side surface share needs `IOSurfaceRootUserClient` **and**
 `task_for_pid-allow`, because iOS 17 removed global `IOSurfaceLookup(id)` — the surface's mach
 port is handed to the app over a rendezvous socket instead. The broad container-manager set
 must stay off; it sandboxes the process away from IOKit and `IOSurfaceCreate` returns NULL.
@@ -84,8 +87,8 @@ ports/<pkg>/
 Pristine source is never committed; Procursus or a `fetch.sh` reproduces it, and only
 `patches/` plus build scripts are version-controlled. Procursus applies a flat patch
 directory, which a quilt `series` maps onto 1:1, so quilt stays the authoring UX. Local
-source *injections* that aren't upstream patches (the IOSurface DDX sources) live separately
-under `linux-build/patches/`.
+source *injections* that aren't upstream patches (the compositor/app IOSurface glue) live
+separately under `linux-build/patches/`.
 
 `clone + fetch + quilt push -a + build` reproducing every artifact on any host is the
 explicit fix for the original's "patched in place, on device" problem.

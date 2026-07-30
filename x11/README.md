@@ -1,9 +1,9 @@
 # Xios — X11 and Wayland on iOS
 
-A native Linux desktop running on a jailbroken iPad: a real X11 server, a
-GPU-accelerated Wayland compositor, GNOME Shell, KDE Plasma, and GTK/Qt apps, all
-cross-compiled for rootless iOS (`/var/jb`) and drawn on the A10 GPU through
-Metal.
+A native Linux desktop running on a jailbroken iPad: a GPU-accelerated Wayland
+compositor, GNOME Shell, KDE Plasma, hardware Xwayland for X11 apps, and GTK/Qt
+apps, all cross-compiled for rootless iOS (`/var/jb`) and drawn on the A10 GPU
+through Metal.
 
 - **Write-up:** [maxleiter.com/blog/xios](https://maxleiter.com/blog/xios) — the
   story, what works, screenshots.
@@ -23,12 +23,19 @@ touches reach them as X11 or Wayland input.
 
 One app bridges to iOS. `Xios.app` (Home Screen icon "X11") owns a
 `CAMetalLayer` and the UIKit input surface and renders nothing of its own. A
-display server hands it an output `IOSurface` over a mach port; the app draws
-that as a Metal texture every frame and forwards UIKit touch and keyboard back.
-Two servers produce that same surface, so they are interchangeable: **Xios**, an
-Xvfb-derived X server whose clients render in software, and **iosc**, a
-clean-room `libwayland-server` compositor that blends client surfaces on the GPU
-through ANGLE-to-Metal with no CPU copy anywhere on the path.
+Wayland compositor — **iosc**, a clean-room `libwayland-server` compositor, or a
+nested Mutter or KWin — hands it an output `IOSurface` over a mach port; the app
+draws that as a Metal texture every frame and forwards UIKit touch and keyboard
+back.
+
+There is one rendering architecture, and it is hardware-only. GTK4 and Xwayland
+clients render GLES through ANGLE into their own `IOSurface`s, iosc adopts those
+as Metal textures and composites them, and the app scans the result out after
+waiting on the producer's brokered GPU fence — no CPU copy and no software
+synchronization fallback anywhere on that path. X11 apps reach it through
+Xwayland on glamor, not a separate X server: the old software-rendered,
+Xvfb-derived `Xios` server was retired on 2026-07-29, and Xvfb survives only as a
+headless bring-up and debug utility.
 
 Full diagrams: [xios.maxleiter.com/architecture](https://xios.maxleiter.com/architecture).
 
@@ -41,11 +48,13 @@ app is unsigned), then install one flavor:
 apt install xios-gnome      # or xios-kde, xios-native, xios-x11
 ```
 
-A flavor pulls in the shared base packages it needs — the compositor, the GPU
-stack, the session launcher, and (for the fullscreen flavors) the display app.
-Open the app and pick a session, or run `xios-session gnome` from a shell. Which
-base packages each flavor gets, and how to troubleshoot a session that will not
-come up, are in [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md).
+Every flavor pulls in the shell-independent `xios-runtime` base; the fullscreen
+ones (`xios-gnome`, `xios-kde`, `xios-x11`) add `xios-core`, the display app, and
+the session launcher, while `xios-native` gives each app its own iPadOS window
+instead of a fullscreen shell. Open the app and pick a session, or run
+`xios-session gnome` from a shell. What each flavor contains:
+[xios.maxleiter.com/flavors](https://xios.maxleiter.com/flavors). Troubleshooting
+a session that will not come up: [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md).
 
 ## Where things live
 

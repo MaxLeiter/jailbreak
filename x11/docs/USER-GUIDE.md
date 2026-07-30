@@ -57,19 +57,20 @@ already has configured.
 
 ## 3. Pick a flavor
 
-There is no single `xios` package. Install one flavor and it pulls in everything else,
-including the shared `xios-core` base and the display app.
+There is no single `xios` package. Install one flavor and it pulls in everything
+else. All flavors share `xios-runtime`; the fullscreen flavors also use
+`xios-core` and the display app.
 
 | Flavor | What you get | Needs | State |
 |---|---|---|---|
 | `xios-gnome` | GNOME Shell 46 on Mutter, full session layer, Adwaita theme | iOS 16.5 | Boots and paints on an A10. Daemon and app concurrency still has rough edges. |
 | `xios-kde` | KWin plus Plasma Desktop, Plasma Mobile, and Plasma Nano, System Settings, PowerDevil, Breeze, and every KDE app we ship (Konsole, Dolphin, Kate, KWrite, KCalc, Okular, Ark, Gwenview) | iOS 16.5 | Experimental. Newer than the GNOME path and less polished. |
-| `xios-native` | No Linux shell at all: each app gets a Home Screen icon and its own iPadOS window | iOS 16.0 | Core path works. Host-window polish in progress. |
-| `xios-x11` | The Xios X server for plain X11 apps, plus Xwayland inside the compositor | iOS 16.5 | Works. Software rendering only, by design. |
+| `xios-native` | No Linux shell at all: each app gets a Home Screen icon and its own iPadOS window | iOS 16.5 | Core path works. Host-window polish in progress. |
+| `xios-x11` | Plain X11 apps through hardware Xwayland inside the compositor | iOS 16.5 | Hardware-only path; the retired bare X server is not installed. |
 
-Every flavor also gets the **iosc desktop**: the compositor's own tablet-first shell with a
-panel, dock, overview, and wallpaper. It is the most reliable session and a good first
-thing to try.
+GNOME, KDE, and X11 also get the **iosc desktop**: the compositor's own
+tablet-first shell with a panel, dock, overview, and wallpaper. Native mode
+deliberately does not install that fullscreen shell.
 
 ---
 
@@ -81,15 +82,17 @@ In Sileo, search for the flavor and install it. Or from a shell, as root:
 apt install xios-gnome
 ```
 
-Substitute `xios-kde`, `xios-native`, or `xios-x11`. The install brings in, among other
-things:
+Substitute `xios-kde`, `xios-native`, or `xios-x11`. Every flavor brings in:
 
-- **`com.max.xios`**, the display app. It appears on the Home Screen as **X11**.
-- **`iosc`** and **`iosc-shell`**, the Wayland compositor and its desktop shell.
+- **`xios-runtime`**, the compositor, GPU, D-Bus, audio, filesystem, and hardware bridge base.
+- **`iosc`**, the Wayland compositor.
 - **`angle`**, OpenGL ES translated to Metal, which is how anything reaches the GPU.
-- **`xios-session`** and **`xios-launcher-tools`**, the session launcher plus the `ioscd`
-  daemon that the in-app session picker talks to.
 - **`xios-desktop-defaults`**, fonts, locale, XDG paths, and the retina display profile.
+
+GNOME, KDE, and X11 additionally install **`xios-core`**, **`com.max.xios`**
+(the **X11** display app), **`iosc-shell`**, and **`xios-session`**. Native
+instead installs **`xios-launcher-tools`**, the per-app host payload, and its
+app-ID-only `ioscd` service.
 
 Sileo will not auto-install the *recommended* extras. For GNOME those are worth adding by
 hand:
@@ -164,10 +167,9 @@ Screen icons by itself: pick which apps you want in the Xios pane in Settings, o
 opens in its own iPadOS window, with Split View and Slide Over as the window manager.
 
 **X11.** The X11 flavor runs clients through rootless Xwayland inside the
-GPU-accelerated `iosc` compositor. The legacy software-rendered `xios-server`
-package is no longer installed by the flavor; it remains separately available
-for bring-up and diagnostics. See [Appendix A](#appendix-a-x-over-vnc) for the
-older VNC route, which still works.
+GPU-accelerated `iosc` compositor. The old software-rendered `xios-server` path
+has been removed. See [Appendix A](#appendix-a-x-over-vnc) for the separate
+headless/remote VNC route.
 
 ---
 

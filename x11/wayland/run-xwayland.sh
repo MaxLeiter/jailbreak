@@ -31,7 +31,7 @@ command -v "$XWL" >/dev/null 2>&1 || { echo "!! $XWL not installed (dpkg -i the 
 
 echo "==> stop any Xios X server, app, prior iosc, stray Xwayland/WM/clients"
 ps ax | grep -v grep \
-  | grep -E "Xios :| Xios$|/Xios\.app/Xios|iosc|Xwayland|fluxbox|twm| xterm|hitori" \
+  | grep -E "/Xios\.app/Xios|iosc|Xwayland|fluxbox|twm| xterm|hitori" \
   | awk '{print $1}' | while read -r pid; do kill -9 "$pid" 2>/dev/null; done
 sleep 1
 rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/xios.json" \

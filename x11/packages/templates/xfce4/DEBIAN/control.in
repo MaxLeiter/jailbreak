@@ -1,10 +1,10 @@
 Package: xfce4
 Name: Xfce 4 lightweight desktop environment
-Version: 4.16.0
+Version: 4.16.1
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: xfwm4, xfce4-panel, xfce4-settings, xfce4-session, xfdesktop4, xfce4-appfinder, thunar, libxfce4ui-2-0, libgarcon-1-0, libexo-2-0, libxfce4util7, xfconf, libwnck-3-0, libstartup-notification0, dbus
+Depends: xfwm4, xfce4-panel, xfce4-settings, xfce4-session, xfdesktop4, xfce4-appfinder, thunar, libxfce4ui-2-0, libgarcon-1-0, libexo-2-0, libxfce4util7, xfconf, libwnck-3-0, libstartup-notification0, dbus, iosc (>= 0.9.34), xwayland (>= 23.2.7+ios4)
 Recommends: x11-fonts-sf
 Section: X11
 Priority: optional
@@ -15,8 +15,7 @@ Description: Xfce 4.16 desktop environment for iOS (metapackage)
  the application finder, plus the Xfce libraries and their new dependencies
  (xfconf/D-Bus, libwnck-3, startup-notification).
  .
- This is a metapackage: it pulls in the components and the GTK3 runtime
- transitively, but ships no files of its own. It does NOT pull an X server;
- start one separately (the native Xios server, or x11-xvfb) and bring the
- session up with bin/xfce-up.sh on DISPLAY :3. Target profile:
+ This is a metapackage: it pulls in the components, GTK3 runtime, and the
+ hardware Xwayland path. Start Xwayland under iosc, then bring the session up
+ with bin/xfce-up.sh on DISPLAY :1. Target profile:
  @REPO_PROFILE@.

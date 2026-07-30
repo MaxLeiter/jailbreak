@@ -11,8 +11,8 @@
  *                      (libadwaita/GTK4) plus a gtk-theme flip for GTK3 apps.
  *
  * Deliberately NOT part of iosc: the compositor stays out of audio and theme
- * policy. This daemon is autostarted inside the desktop session (xios-server.sh /
- * xios.session), so it inherits the env that makes the appliers work:
+ * policy. This daemon is autostarted inside the desktop session, so it inherits
+ * the environment that makes the appliers work:
  * PULSE_SERVER for pactl, DBUS_SESSION_BUS_ADDRESS + XDG_* for gsettings/dconf.
  *
  * Transport: the same fixed 24-byte records as the compositor input socket (ONE
