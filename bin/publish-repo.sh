@@ -9,14 +9,49 @@
 #   bin/build.sh tweaks/<Name>
 #   cp tweaks/<Name>/packages/*.deb repo/debs/
 #   bin/publish-repo.sh          # uploads payloads to Blob, signs metadata, deploys metadata
+#
+# ONE PACKAGE AT A TIME:
+#   bin/publish-repo.sh --only iosc,xios-session
+#
+# The tree is the STAGING state -- repo/debs accumulates everything anyone has
+# built -- so a bare publish to prod ships every pending delta, not just yours.
+# --only takes the index the target is ALREADY serving and swaps in just the named
+# packages, leaving every other stanza exactly as published. It rewrites the index
+# in the throwaway deploy copy, never in repo/, so nothing has to be moved out of
+# repo/debs and back (the old workaround, which raced concurrent publishes) and an
+# interrupted run cannot leave the tree misindexed. Dependency solvability is
+# re-checked against the SCOPED index, which is what catches shipping half of a
+# package pair.
+#
+# To preview without deploying, run the scoper alone against a copy:
+#   cp -r repo /tmp/preview && bin/lib/scope-index.py --repo /tmp/preview \
+#     --live https://repo.maxleiter.com/Packages --only iosc
+# It prints the exact version transitions and refuses a no-op (which is how you
+# find out the deb in repo/debs is stale).
+#
+# SCOPE OF --only, precisely: Packages, Packages.gz, Release, InRelease and
+# Release.gpg -- everything apt reads, so what users can install is exactly the
+# live set plus your packages. It does NOT scope the static site that deploys
+# alongside it (index.html, depictions/, banners/, icons/, sileo-featured.json):
+# those are regenerated from every deb in repo/debs, so a depiction page for a
+# package that is not in the scoped index can still be reachable by URL. Cosmetic,
+# not installable, but it means a scoped prod publish still carries whatever site
+# assets the tree currently has.
 set -euo pipefail
 
 TARGET=prod
-case "${1:-}" in
-  --staging|staging) TARGET=staging ;;
-  "") ;;
-  *) echo "usage: bin/publish-repo.sh [--staging]" >&2; exit 2 ;;
-esac
+ONLY=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --staging|staging) TARGET=staging ;;
+    --only) ONLY="${2:-}"; shift ;;
+    --only=*) ONLY="${1#--only=}" ;;
+    "") ;;
+    *) echo "usage: bin/publish-repo.sh [--staging] [--only pkg[,pkg...]]" >&2; exit 2 ;;
+  esac
+  shift
+done
+[ -z "$ONLY" ] || echo "==> scoped publish: only $ONLY"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCKDIR="${TMPDIR:-/tmp}/maxleiter-repo-publish.lock"
@@ -62,6 +97,25 @@ finalize_x11_graphics_debs() {
     --gl-ent "$gl_ent"
 }
 
+REPO_KEY="repo@maxleiter.com"
+
+# Sign whichever copy of the index we are about to serve. Called for the tree, and
+# again for the deploy copy when --only rewrote it (the hashes changed, so the
+# tree's signature would not verify against the scoped Release).
+sign_index() {
+  local dir="$1"
+  if gpg --list-secret-keys "$REPO_KEY" >/dev/null 2>&1; then
+    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
+        --clearsign -o "$dir/InRelease" "$dir/Release"
+    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
+        -abs -o "$dir/Release.gpg" "$dir/Release"
+    gpg --export "$REPO_KEY" > "$dir/maxleiter-repo.gpg"
+    echo "   signed with $REPO_KEY (public key at maxleiter-repo.gpg)"
+  else
+    echo "   WARNING: no signing key ($REPO_KEY) — publishing UNSIGNED (device apt will reject the repo)"
+  fi
+}
+
 deploy_static_repo() {
   local project="$1" config_name="$2" domain="$3"
   local deploy_root
@@ -72,6 +126,22 @@ deploy_static_repo() {
   mkdir -p "$deploy_root/repo"
   rsync -a --delete --exclude 'debs/' --exclude '.vercel/' \
     "$REPO_ROOT/repo/" "$deploy_root/repo/"
+
+  # --only: serve the target's current index with just the named packages swapped
+  # in. Done here, on the throwaway copy, so repo/ keeps its full (staging) index.
+  if [ -n "$ONLY" ]; then
+    echo "==> Scoping the index to: $ONLY (against https://$domain/Packages)"
+    "$PY" "$REPO_ROOT/bin/lib/scope-index.py" \
+      --repo "$deploy_root/repo" \
+      --live "https://$domain/Packages" \
+      --only "$ONLY"
+    # Re-check solvability on what we are ACTUALLY publishing. The full-tree check
+    # earlier passed because the tree has everything; prod may not. This is the
+    # gate that catches publishing one half of a package pair.
+    "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$deploy_root/repo/Packages"
+    echo "==> Re-signing the scoped index"
+    sign_index "$deploy_root/repo"
+  fi
 
   vercel deploy "$deploy_root" --prod --yes --scope "$SCOPE" --project "$project" \
     --local-config "$deploy_root/repo/$config_name" --no-color
@@ -100,17 +170,7 @@ if [ "$BEFORE" != "$AFTER_INDEX" ]; then
 fi
 
 echo "==> Signing the index (InRelease + Release.gpg)"
-REPO_KEY="repo@maxleiter.com"
-if gpg --list-secret-keys "$REPO_KEY" >/dev/null 2>&1; then
-  gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
-      --clearsign -o "$REPO_ROOT/repo/InRelease" "$REPO_ROOT/repo/Release"
-  gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
-      -abs -o "$REPO_ROOT/repo/Release.gpg" "$REPO_ROOT/repo/Release"
-  gpg --export "$REPO_KEY" > "$REPO_ROOT/repo/maxleiter-repo.gpg"
-  echo "   signed with $REPO_KEY (public key at repo/maxleiter-repo.gpg)"
-else
-  echo "   WARNING: no signing key ($REPO_KEY) — publishing UNSIGNED (device apt will reject the repo)"
-fi
+sign_index "$REPO_ROOT/repo"
 
 AFTER_SIGN="$(snapshot_debs)"
 if [ "$BEFORE" != "$AFTER_SIGN" ]; then
