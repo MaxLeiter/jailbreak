@@ -41,8 +41,8 @@ docker run --rm --platform linux/arm64 --cpus=4 \
 | swayimg | native Wayland image viewer | recipe/control/patch stack added; `swayimg_5.4+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed |
 | yad | GTK dialog utility | recipe/control added; `yad_15.0+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed (2026-07-08) after a clean re-run with no competing session switch — the earlier "Broken pipe" was a concurrent `xios-session` switch nuking `wayland-0`, not a yad bug |
 | nwg-look | GTK settings UI | pinned Go 1.25 `ios/arm64` cgo path added; rootless data lookup fixed; `nwg-look_1.1.1+ios1_iphoneos-arm64.deb` host-built and its full settings UI mapped on-device |
-| Geary | GNOME mail client | recipe/control/patch stack added; Folks, GOA client, and gcr-3/gck-1 are packaged and device-loaded; the WebKitGTK package/runtime remains the final build gate |
-| WebKitGTK | browser/webview platform | separate research/build lane; see `geary-webkitgtk.md` |
+| Geary | GNOME mail client | Geary 46 and its dependency closure package; the iPad runtime owns `org.gnome.Geary` and exports a mapped GTK window with gnome-keyring providing Secret Service |
+| WebKitGTK | browser/webview platform | 2.44.4 API 4.1 builds/splits for rootless iOS; JavaScriptCore executes on-device; final Wayland multiprocess smoke is in progress; WebGL is deferred |
 | Gnumeric | GTK spreadsheet | recipe/control added with `libgsf`, `libxslt`, and `goffice`; `gnumeric_1.12.61+ios1_iphoneos-arm64.deb` built and installed; on-device classic `iosc` capture passed (2026-07-08) — full spreadsheet UI renders with the CSV loaded; the earlier invalidation was a session switch losing `wayland-0`, now confirmed clean |
 | Transmission | CLI/daemon BitTorrent client | recipe/control/patch stack added; `transmission_4.1.3+ios1_iphoneos-arm64.deb` built; CLI tools passed on-device; GTK UI deferred until gtkmm |
 
@@ -213,10 +213,10 @@ GPU-client entitlement profile. `xcur2png` remains optional.
   GTK3/rootless linkage, signing, package assembly, rootless language-data
   lookup, and full settings-window mapping all pass. Evidence:
   `artifacts/device-runs/nwg-look-ios1-rootless2-20260729/`.
-- `geary-package`: active. The recipe and all non-WebKit dependencies now
-  configure/build/package, and their runtimes load on-device. WebKitGTK 4.1
-  build/install/split packages and a mapped Geary window remain the closure
-  gate.
+- `geary-package`: built and device-launched. Geary remains alive, owns its
+  application bus name, and exports a mapped window in an isolated GNOME slot.
+  gnome-keyring provides the real Secret Service. The final closure gate is the
+  rebuilt Wayland-capable WebKit multiprocess smoke and exact-deb publication.
 
 ## Policy
 

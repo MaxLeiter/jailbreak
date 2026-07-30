@@ -133,9 +133,12 @@ was no longer running at final validation; its outcome was not assessed as part 
    package-time schema compilation. Its Open a Document window maps under iosc
    after the expected EGL-to-software fallback. Evidence:
    `artifacts/device-runs/papers-ios1-schema-20260729/`.
-6. **Geary/WebKitGTK:** active browser-engine/toolchain port. WebCore completed
-   and the full WebKit target is now the immediate gate before install/split
-   packages and the remaining Geary dependency lane.
+6. **Geary/WebKitGTK:** Geary 46, WebKitGTK 2.44.4, JavaScriptCoreGTK, the mail
+   dependency closure, and gnome-keyring now build/package; JavaScriptCore
+   executes on-device and Geary maps in an isolated GNOME slot with a live
+   Secret Service. The final gate is the rebuilt Wayland WebKit multiprocess
+   smoke followed by exact-package publication. WebGL/GPU acceleration is a
+   separate deferred revision.
 7. **Xwayland WM polish:** `WM_NORMAL_HINTS`, client-requested `_NET_WM_STATE`/activation, and
    fuller resize semantics remain TODOs. Basic mapping/input works; these affect desktop polish.
 8. **Ladybird:** `0.1.24+ios1` is fully built, bundled, host DER-signed, and installed.
