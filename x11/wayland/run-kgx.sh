@@ -15,8 +15,8 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 if [ "${XS_JB+x}" != x ]; then
   case "${SCRIPT_DIR:-}/" in
-    /var/jb/*) XS_JB=/var/jb ;;
-    *)         if [ -d /var/jb/usr ]; then XS_JB=/var/jb; else XS_JB=; fi ;;
+    /var/jb/*) XS_JB=/var/jb ;;  # target-lint: allow-foreign-prefix
+    *)         if [ -d /var/jb/usr ]; then XS_JB=/var/jb; else XS_JB=; fi ;;  # target-lint: allow-foreign-prefix
   esac
 fi
 XS_TMP="${XS_TMP:-${XS_JB:-/var}/tmp}"
@@ -84,9 +84,9 @@ echo "==> run kgx under a session bus (GDK wayland, GSK renderer, a11y ${XIOS_EN
 # NOTE: kgx MUST be launched with an explicit COMMAND (a bare `kgx` registers as the
 # GApplication primary, runs startup, then returns 0 WITHOUT mapping a window in this
 # headless/bus-only environment). Use the `-- <cmd> [args]` form, NOT `-e <cmd>`:
-# `-e /var/jb/usr/bin/bash` makes VTE spawn a shell that exits immediately (no live
+# `-e $XS_JB/usr/bin/bash` makes VTE spawn a shell that exits immediately (no live
 # child — a dead terminal), so typed keys reach kgx's wl_keyboard but go nowhere.
-# `-- /var/jb/usr/bin/bash -i` spawns a real interactive bash that stays alive, maps an
+# `-- $XS_JB/usr/bin/bash -i` spawns a real interactive bash that stays alive, maps an
 # xdg_toplevel through iosc, and receives keystrokes via iosc's wl_keyboard → PTY.
 rm -f "$TMP/kgx.exit"
 mkdir -p "$BUS_DIR"; chmod 700 "$BUS_DIR"

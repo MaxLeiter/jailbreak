@@ -1,5 +1,5 @@
 {
-  "total": 1086,
+  "total": 1087,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 2,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -241,11 +241,11 @@
     "wayland/meta-backend-ios.c": 4,
     "wayland/mutter-pointer-test.c": 4,
     "wayland/package-a11y-tools.sh": 2,
-    "wayland/package-iosc.sh": 2,
+    "wayland/package-iosc.sh": 6,
     "wayland/restore-gnome.sh": 18,
-    "wayland/run-iosc.sh": 5,
+    "wayland/run-iosc.sh": 4,
     "wayland/run-kde-plasma.sh": 4,
-    "wayland/run-kgx.sh": 6,
+    "wayland/run-kgx.sh": 4,
     "wayland/run-mutter.sh": 2,
     "wayland/run-xwayland.sh": 15,
     "wayland/xios-a11yd.c": 1,

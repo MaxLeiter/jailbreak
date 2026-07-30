@@ -32,6 +32,9 @@ TARGETS = ROOT / "targets"
 # must not mention any of the others.
 KNOWN_PREFIXES = ("/var/jb",)
 
+# Opt-out marker for lines that must name a foreign prefix (runtime probes).
+ALLOW_MARKER = "target-lint: allow-foreign-prefix"
+
 TEXT_SUFFIXES = {
     "", ".sh", ".conf", ".desktop", ".service", ".txt", ".md", ".xml", ".plist",
     ".json", ".ini", ".cfg", ".pc", ".rules", ".policy", ".gschema", ".control",
@@ -219,6 +222,12 @@ def check(root: Path, target: dict[str, str]) -> list[str]:
         rel = str(path.relative_to(root))
         for bad in foreign:
             for num, line in enumerate(text.splitlines(), 1):
+                # A shipped script that PROBES for another root is correct on
+                # both -- that is how the launchers resolve their prefix at
+                # runtime. Such a line opts out explicitly, so the exemption is
+                # greppable rather than a silent heuristic.
+                if ALLOW_MARKER in line:
+                    continue
                 if bad in line:
                     problems.append(f"{rel}:{num}: {bad} literal on target {target['target_id']}: {line.strip()[:90]}")
 

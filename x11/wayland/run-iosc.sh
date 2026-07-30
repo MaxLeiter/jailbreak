@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the iosc Wayland compositor on-device and point the Xios app at it. Runs ON
 # THE DEVICE (root). The compositor stands in for the Xios X server: it creates one
-# fullscreen IOSurface, writes /var/jb/tmp/xios.json so the app adopts it, and serves
+# fullscreen IOSurface, writes $XS_TMP/xios.json so the app adopts it, and serves
 # Wayland on wayland-0. Then we relaunch the app and a wl_shm client to paint it.
 #
 #   ssh root@ipad 'bash -s' < run-iosc.sh
@@ -13,8 +13,8 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 if [ "${XS_JB+x}" != x ]; then
   case "${SCRIPT_DIR:-}/" in
-    /var/jb/*) XS_JB=/var/jb ;;
-    *)         if [ -d /var/jb/usr ]; then XS_JB=/var/jb; else XS_JB=; fi ;;
+    /var/jb/*) XS_JB=/var/jb ;;  # target-lint: allow-foreign-prefix
+    *)         if [ -d /var/jb/usr ]; then XS_JB=/var/jb; else XS_JB=; fi ;;  # target-lint: allow-foreign-prefix
   esac
 fi
 XS_TMP="${XS_TMP:-${XS_JB:-/var}/tmp}"
