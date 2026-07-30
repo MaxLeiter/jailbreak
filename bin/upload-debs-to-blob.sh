@@ -7,6 +7,7 @@
 #
 # Optional:
 #   BLOB_DEB_PREFIX=debs
+#   BLOB_ONLY=pkg1,pkg2
 #   BLOB_CACHE_CONTROL_MAX_AGE=31536000
 #   BLOB_DRY_RUN=1
 #   BLOB_SKIP_EXISTING=0
@@ -21,6 +22,7 @@ VERCEL_CWD="${VERCEL_CWD:-$REPO_ROOT/repo}"
 PREFIX="${BLOB_DEB_PREFIX:-debs}"
 CACHE_CONTROL_MAX_AGE="${BLOB_CACHE_CONTROL_MAX_AGE:-31536000}"
 PUBLIC_BASE_URL="${BLOB_PUBLIC_BASE_URL:-https://j7lqamqsi8q1vmg4.public.blob.vercel-storage.com}"
+ONLY="${BLOB_ONLY:-}"
 SKIP_EXISTING="${BLOB_SKIP_EXISTING:-1}"
 HEAD_TIMEOUT="${BLOB_HEAD_TIMEOUT:-20}"
 JOBS="${BLOB_JOBS:-8}"
@@ -162,6 +164,18 @@ LIST="$(mktemp)"
 trap 'rm -f "$RESULTS" "$LIST"' EXIT
 
 find "$DEBS_DIR" -type f -name '*.deb' -print | sort > "$LIST"
+if [ -n "$ONLY" ]; then
+  SCOPED_LIST="$(mktemp)"
+  while IFS= read -r deb; do
+    name="$(basename "$deb")"
+    package="${name%%_*}"
+    case ",$ONLY," in
+      *",$package,"*) printf '%s\n' "$deb" ;;
+    esac
+  done < "$LIST" > "$SCOPED_LIST"
+  mv "$SCOPED_LIST" "$LIST"
+  echo "==> scoped Blob payloads to: $ONLY"
+fi
 count="$(wc -l < "$LIST" | tr -d '[:space:]')"
 
 export VERCEL_CWD PREFIX CACHE_CONTROL_MAX_AGE PUBLIC_BASE_URL SKIP_EXISTING

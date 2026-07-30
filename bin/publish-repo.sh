@@ -436,7 +436,7 @@ if [ "$SOURCE" = debs ]; then
   fi
 
   echo "==> Uploading package payloads to Vercel Blob"
-  "$REPO_ROOT/bin/upload-debs-to-blob.sh"
+  BLOB_ONLY="$ONLY" "$REPO_ROOT/bin/upload-debs-to-blob.sh"
 
   AFTER_UPLOAD="$(snapshot_debs)"
   if [ "$BEFORE" != "$AFTER_UPLOAD" ]; then
