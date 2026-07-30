@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/imv.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**imv** is a fast command-line image viewer for the iosc Wayland compositor.\n\nimv handles large image collections with quick navigation and keyboard control.\n\n- Native Wayland client, no X11 required\n- Handles common formats including PNG and JPEG\n- Pan, zoom, and slideshow with keyboard shortcuts\n- Scriptable through its command interface\n\nLaunch it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**imv** is a fast command-line image viewer for the iosc Wayland compositor.\n\nimv handles large image collections with quick navigation and keyboard control.\n\n- Native Wayland client, no X11 required\n- Handles common formats including PNG and JPEG\n- Pan, zoom, and slideshow with keyboard shortcuts\n- Scriptable through its command interface\n\nLaunch it inside an Xios desktop session running the iosc compositor.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/imv)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/imv/01-imv.jpg",
+              "accessibilityText": "imv displaying a test image in a xiOS Wayland desktop on a jailbroken iPad."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"

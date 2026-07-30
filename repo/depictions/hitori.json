@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/hitori.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Hitori (GNOME logic puzzle)"
+          "markdown": "Hitori (GNOME logic puzzle)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/hitori)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/hitori/01-hitori.jpg",
+              "accessibilityText": "The Hitori logic puzzle running in a xiOS desktop window on a jailbroken iPad."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"

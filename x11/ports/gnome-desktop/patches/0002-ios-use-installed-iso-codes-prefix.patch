@@ -1,0 +1,18 @@
+Subject: [PATCH] gnome-desktop: use the installed iso-codes prefix
+
+The cross pkg-config wrapper correctly points compilers into the sysroot, but
+that makes dependency.get_variable('prefix') a build-machine path. Embedding it
+in libgnome-desktop makes language and country data unavailable at runtime.
+iso-codes is installed beside gnome-desktop, so use the target Meson prefix.
+
+--- a/meson.build
++++ b/meson.build
+@@ -81,7 +81,7 @@ endif
+ 
+ fontconfig_cache_path = fontconfig_dep.get_variable(pkgconfig: 'cachedir')
+ xkb_base = xkb_config_dep.get_variable(pkgconfig: 'xkb_base')
+-iso_codes_prefix = iso_codes_dep.get_variable(pkgconfig: 'prefix')
++iso_codes_prefix = get_option('prefix')
+ 
+ cc = meson.get_compiler('c')
+ 

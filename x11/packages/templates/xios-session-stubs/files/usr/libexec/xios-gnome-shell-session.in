@@ -1,2 +1,4 @@
 #!/bin/sh
-exec @INSTALL_PREFIX@/bin/gnome-shell --wayland --wayland-display "${WAYLAND_DISPLAY:-wayland-0}"
+exec @INSTALL_PREFIX@/libexec/xios-gnome-session-client \
+  @INSTALL_PREFIX@/bin/gnome-shell --wayland \
+  --wayland-display "${WAYLAND_DISPLAY:-wayland-0}"

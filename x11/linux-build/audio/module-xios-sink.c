@@ -131,9 +131,21 @@ static int write_sysint_record(int fd, const void *buf, size_t len) {
     return 0;
 }
 
+static int read_sysint_record(int fd, void *buf, size_t len) {
+    uint8_t *p = buf;
+    size_t done = 0;
+    while (done < len) {
+        ssize_t n = pa_read(fd, p + done, len - done, NULL);
+        if (n > 0) { done += (size_t)n; continue; }
+        if (n < 0 && errno == EINTR) continue;
+        return -1;
+    }
+    return 0;
+}
+
 static void send_sysint_volume(struct userdata *u, uint32_t v16) {
     struct sockaddr_un sa;
-    struct xios_in_msg msg;
+    xios_msg hello, peer, msg;
     int fd;
 
     if (!u->hw_volume || !u->sysint_socket_path || !*u->sysint_socket_path)
@@ -160,12 +172,15 @@ static void send_sysint_volume(struct userdata *u, uint32_t v16) {
         return;
     }
 
-    memset(&msg, 0, sizeof(msg));
-    msg.type = XIOS_IN_VOLUME;
-    msg.code = v16 > 65535u ? 65535u : v16;
-    msg.state = XIOS_VOLUME_STATE_TO_DEVICE;
+    hello = xios_protocol_hello();
+    msg = xios_input_message(XIOS_IN_VOLUME, 0, 0,
+                             v16 > 65535u ? 65535u : v16,
+                             XIOS_VOLUME_STATE_TO_DEVICE, 0);
 
-    if (write_sysint_record(fd, &msg, sizeof(msg)) < 0) {
+    if (write_sysint_record(fd, &hello, sizeof(hello)) < 0 ||
+        read_sysint_record(fd, &peer, sizeof(peer)) < 0 ||
+        !xios_protocol_is_exact_hello(&peer) ||
+        write_sysint_record(fd, &msg, sizeof(msg)) < 0) {
         if (!u->sysint_warned) {
             pa_log_warn("failed to send volume to xios-sysintd at %s (%s)",
                         u->sysint_socket_path, pa_cstrerror(errno));

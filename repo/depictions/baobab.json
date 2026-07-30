@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "GNOME Disk Usage Analyzer (Baobab, GTK4)"
+          "markdown": "GNOME Disk Usage Analyzer (Baobab, GTK4)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/baobab)"
         },
         {
           "class": "DepictionSeparatorView"

@@ -66,4 +66,5 @@ grep -q "_NSGetExecutablePath" "$TREE/src/pulse/util.c" || {
 echo "==> pulseaudio-ios-fixes: injecting Xios PulseAudio modules"
 mkdir -p "$TREE/src/modules/xios"
 cp -v "$AUDIO/module-xios-sink.c" "$AUDIO/xios_audio_protocol.h" "$AUDIO/xios_sysint_protocol.h" "$TREE/src/modules/xios/"
+cp -v /work/shared/XiosProtocol.h "$TREE/src/modules/xios/"
 cp -v "$AUDIO/module-xios-source.c" "$MEDIA/xios_media_protocol.h" "$TREE/src/modules/xios/"

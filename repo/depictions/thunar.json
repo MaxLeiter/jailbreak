@@ -1,0 +1,61 @@
+{
+  "minVersion": "0.4",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/thunar.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "**Thunar** is the Xfce desktop file manager, rebuilt for arm64 iOS and running through xiOS.\n\n- Icon and list views with normal desktop file operations\n- Path navigation and access to the mobile home directory\n- Runs inside a xiOS desktop or an individual iPadOS host window\n\nA compatible rootless jailbreak is required.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/thunar)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/thunar/01-thunar.jpg",
+              "accessibilityText": "Thunar running in an individual xiOS host window on a jailbroken iPad, showing the mobile home directory above the iPad dock."
+            }
+          ]
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "4.16.11+ios1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "1349.3 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "The Xfce Project"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11/Wayland Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "thunar"
+        }
+      ]
+    }
+  ]
+}

@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Konsole terminal emulator (Qt6/KF6)"
+          "markdown": "Konsole terminal emulator (Qt6/KF6)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/konsole)"
         },
         {
           "class": "DepictionSeparatorView"

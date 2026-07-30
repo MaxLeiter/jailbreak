@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "D-Spy (GTK4 D-Bus explorer)"
+          "markdown": "D-Spy (GTK4 D-Bus explorer)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/d-spy)"
         },
         {
           "class": "DepictionSeparatorView"

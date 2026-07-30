@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**wl-clipboard** provides command-line copy and paste for the iosc Wayland compositor.\n\nIt ships two small tools, `wl-copy` and `wl-paste`, that read and write the compositor clipboard so you can move text and data between terminal programs and graphical apps.\n\n- `wl-copy` sends standard input to the clipboard\n- `wl-paste` writes the clipboard to standard output\n- Works with any format the compositor advertises\n- Native Wayland, no X11 required\n\nUse it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**wl-clipboard** provides command-line copy and paste for the iosc Wayland compositor.\n\nIt ships two small tools, `wl-copy` and `wl-paste`, that read and write the compositor clipboard so you can move text and data between terminal programs and graphical apps.\n\n- `wl-copy` sends standard input to the clipboard\n- `wl-paste` writes the clipboard to standard output\n- Works with any format the compositor advertises\n- Native Wayland, no X11 required\n\nUse it inside an Xios desktop session running the iosc compositor.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/wl-clipboard)"
         },
         {
           "class": "DepictionSeparatorView"

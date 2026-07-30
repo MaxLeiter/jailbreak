@@ -34,6 +34,11 @@
       "url": "https://repo.maxleiter.com/banners/baobab.png"
     },
     {
+      "title": "basu",
+      "package": "basu",
+      "url": "https://repo.maxleiter.com/banners/basu.png"
+    },
+    {
       "title": "breeze",
       "package": "breeze",
       "url": "https://repo.maxleiter.com/banners/breeze.png"
@@ -179,6 +184,11 @@
       "url": "https://repo.maxleiter.com/banners/gcr4-dev.png"
     },
     {
+      "title": "geary",
+      "package": "geary",
+      "url": "https://repo.maxleiter.com/banners/geary.png"
+    },
+    {
       "title": "gegl",
       "package": "gegl",
       "url": "https://repo.maxleiter.com/banners/gegl.png"
@@ -232,6 +242,11 @@
       "title": "gnome-font-viewer",
       "package": "gnome-font-viewer",
       "url": "https://repo.maxleiter.com/banners/gnome-font-viewer.png"
+    },
+    {
+      "title": "gnome-keyring",
+      "package": "gnome-keyring",
+      "url": "https://repo.maxleiter.com/banners/gnome-keyring.png"
     },
     {
       "title": "gnome-session",
@@ -1259,6 +1274,11 @@
       "url": "https://repo.maxleiter.com/banners/libexiv2-dev.png"
     },
     {
+      "title": "libexo-2-0",
+      "package": "libexo-2-0",
+      "url": "https://repo.maxleiter.com/banners/libexo-2-0.png"
+    },
+    {
       "title": "libfcft-dev",
       "package": "libfcft-dev",
       "url": "https://repo.maxleiter.com/banners/libfcft-dev.png"
@@ -1277,6 +1297,16 @@
       "title": "libfmt12",
       "package": "libfmt12",
       "url": "https://repo.maxleiter.com/banners/libfmt12.png"
+    },
+    {
+      "title": "libfolks-dev",
+      "package": "libfolks-dev",
+      "url": "https://repo.maxleiter.com/banners/libfolks-dev.png"
+    },
+    {
+      "title": "libfolks26",
+      "package": "libfolks26",
+      "url": "https://repo.maxleiter.com/banners/libfolks26.png"
     },
     {
       "title": "libfontconfig-dev",
@@ -1312,6 +1342,21 @@
       "title": "libgbm1",
       "package": "libgbm1",
       "url": "https://repo.maxleiter.com/banners/libgbm1.png"
+    },
+    {
+      "title": "libgck-1-0",
+      "package": "libgck-1-0",
+      "url": "https://repo.maxleiter.com/banners/libgck-1-0.png"
+    },
+    {
+      "title": "libgcr-3-1",
+      "package": "libgcr-3-1",
+      "url": "https://repo.maxleiter.com/banners/libgcr-3-1.png"
+    },
+    {
+      "title": "libgcr-3-dev",
+      "package": "libgcr-3-dev",
+      "url": "https://repo.maxleiter.com/banners/libgcr-3-dev.png"
     },
     {
       "title": "libgcr-4-4",
@@ -1504,6 +1549,16 @@
       "url": "https://repo.maxleiter.com/banners/libgnome-desktop-dev.png"
     },
     {
+      "title": "libgoa-1.0-0b",
+      "package": "libgoa-1.0-0b",
+      "url": "https://repo.maxleiter.com/banners/libgoa-1.0-0b.png"
+    },
+    {
+      "title": "libgoa-1.0-dev",
+      "package": "libgoa-1.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libgoa-1.0-dev.png"
+    },
+    {
       "title": "libgoffice-0.10-10",
       "package": "libgoffice-0.10-10",
       "url": "https://repo.maxleiter.com/banners/libgoffice-0.10-10.png"
@@ -1552,6 +1607,16 @@
       "title": "libgsf-1-dev",
       "package": "libgsf-1-dev",
       "url": "https://repo.maxleiter.com/banners/libgsf-1-dev.png"
+    },
+    {
+      "title": "libgspell-1-2",
+      "package": "libgspell-1-2",
+      "url": "https://repo.maxleiter.com/banners/libgspell-1-2.png"
+    },
+    {
+      "title": "libgspell-1-dev",
+      "package": "libgspell-1-dev",
+      "url": "https://repo.maxleiter.com/banners/libgspell-1-dev.png"
     },
     {
       "title": "libgtk-3-0",
@@ -1687,6 +1752,16 @@
       "title": "libicu78",
       "package": "libicu78",
       "url": "https://repo.maxleiter.com/banners/libicu78.png"
+    },
+    {
+      "title": "libjavascriptcoregtk-4.1-0",
+      "package": "libjavascriptcoregtk-4.1-0",
+      "url": "https://repo.maxleiter.com/banners/libjavascriptcoregtk-4.1-0.png"
+    },
+    {
+      "title": "libjavascriptcoregtk-4.1-dev",
+      "package": "libjavascriptcoregtk-4.1-dev",
+      "url": "https://repo.maxleiter.com/banners/libjavascriptcoregtk-4.1-dev.png"
     },
     {
       "title": "libjpeg-turbo-progs",
@@ -1862,6 +1937,16 @@
       "title": "libpangomm-1.4-dev",
       "package": "libpangomm-1.4-dev",
       "url": "https://repo.maxleiter.com/banners/libpangomm-1.4-dev.png"
+    },
+    {
+      "title": "libpeas-1.0-0",
+      "package": "libpeas-1.0-0",
+      "url": "https://repo.maxleiter.com/banners/libpeas-1.0-0.png"
+    },
+    {
+      "title": "libpeas-1.0-dev",
+      "package": "libpeas-1.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libpeas-1.0-dev.png"
     },
     {
       "title": "libpixman-1-0",
@@ -2189,6 +2274,16 @@
       "url": "https://repo.maxleiter.com/banners/libwayland0.png"
     },
     {
+      "title": "libwebkit2gtk-4.1-0",
+      "package": "libwebkit2gtk-4.1-0",
+      "url": "https://repo.maxleiter.com/banners/libwebkit2gtk-4.1-0.png"
+    },
+    {
+      "title": "libwebkit2gtk-4.1-dev",
+      "package": "libwebkit2gtk-4.1-dev",
+      "url": "https://repo.maxleiter.com/banners/libwebkit2gtk-4.1-dev.png"
+    },
+    {
       "title": "libwebp-dev",
       "package": "libwebp-dev",
       "url": "https://repo.maxleiter.com/banners/libwebp-dev.png"
@@ -2324,6 +2419,16 @@
       "url": "https://repo.maxleiter.com/banners/libxext6.png"
     },
     {
+      "title": "libxfce4ui-2-0",
+      "package": "libxfce4ui-2-0",
+      "url": "https://repo.maxleiter.com/banners/libxfce4ui-2-0.png"
+    },
+    {
+      "title": "libxfce4util7",
+      "package": "libxfce4util7",
+      "url": "https://repo.maxleiter.com/banners/libxfce4util7.png"
+    },
+    {
       "title": "libxfixes-dev",
       "package": "libxfixes-dev",
       "url": "https://repo.maxleiter.com/banners/libxfixes-dev.png"
@@ -2449,6 +2554,11 @@
       "url": "https://repo.maxleiter.com/banners/luajit-dev.png"
     },
     {
+      "title": "mako",
+      "package": "mako",
+      "url": "https://repo.maxleiter.com/banners/mako.png"
+    },
+    {
       "title": "Mesa GL demo utilities",
       "package": "mesa-demos",
       "url": "https://repo.maxleiter.com/banners/mesa-demos.png"
@@ -2474,6 +2584,11 @@
       "url": "https://repo.maxleiter.com/banners/nautilus.png"
     },
     {
+      "title": "nwg-look",
+      "package": "nwg-look",
+      "url": "https://repo.maxleiter.com/banners/nwg-look.png"
+    },
+    {
       "title": "okular",
       "package": "okular",
       "url": "https://repo.maxleiter.com/banners/okular.png"
@@ -2482,6 +2597,21 @@
       "title": "OpenCode",
       "package": "opencode",
       "url": "https://repo.maxleiter.com/banners/opencode.png"
+    },
+    {
+      "title": "OpenJDK 21 Headless Development Kit",
+      "package": "openjdk-21-jdk-headless",
+      "url": "https://repo.maxleiter.com/banners/openjdk-21-jdk-headless.png"
+    },
+    {
+      "title": "OpenJDK 21 Headless Runtime",
+      "package": "openjdk-21-jre-headless",
+      "url": "https://repo.maxleiter.com/banners/openjdk-21-jre-headless.png"
+    },
+    {
+      "title": "papers",
+      "package": "papers",
+      "url": "https://repo.maxleiter.com/banners/papers.png"
     },
     {
       "title": "phonon4qt6",
@@ -2739,6 +2869,11 @@
       "url": "https://repo.maxleiter.com/banners/systemsettings-dev.png"
     },
     {
+      "title": "thunar",
+      "package": "thunar",
+      "url": "https://repo.maxleiter.com/banners/thunar.png"
+    },
+    {
       "title": "tigervnc-common",
       "package": "tigervnc-common",
       "url": "https://repo.maxleiter.com/banners/tigervnc-common.png"
@@ -2802,6 +2937,11 @@
       "title": "xauth",
       "package": "xauth",
       "url": "https://repo.maxleiter.com/banners/xauth.png"
+    },
+    {
+      "title": "xfconf",
+      "package": "xfconf",
+      "url": "https://repo.maxleiter.com/banners/xfconf.png"
     },
     {
       "title": "Xios accessibility tools",

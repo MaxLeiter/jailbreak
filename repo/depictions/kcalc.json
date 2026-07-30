@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "KCalc scientific calculator (Qt6/KF6)"
+          "markdown": "KCalc scientific calculator (Qt6/KF6)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/kcalc)"
         },
         {
           "class": "DepictionSeparatorView"

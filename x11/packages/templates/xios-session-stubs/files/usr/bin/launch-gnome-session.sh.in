@@ -27,10 +27,12 @@ if [ -n "${XIOS_SESSION_SLOT:-}" ]; then
   XIOS_JSON_PATH="${XIOS_JSON_PATH:-$XS_TMP/xios-$XIOS_SESSION_SLOT.json}"
   XIOS_DDX_SOCKET="${XIOS_DDX_SOCKET:-$XS_TMP/mutter-$XIOS_SESSION_SLOT-ddx.sock}"
   XIOS_INPUT_SOCKET="${XIOS_INPUT_SOCKET:-$XS_TMP/mutter-$XIOS_SESSION_SLOT-input.sock}"
+  XIOS_CLIPBOARD_SOCKET="${XIOS_CLIPBOARD_SOCKET:-$XS_TMP/mutter-$XIOS_SESSION_SLOT-clipboard.sock}"
 else
   XIOS_JSON_PATH="${XIOS_JSON_PATH:-$XS_TMP/xios.json}"
   XIOS_DDX_SOCKET="${XIOS_DDX_SOCKET:-$XS_TMP/mutter-ddx.sock}"
   XIOS_INPUT_SOCKET="${XIOS_INPUT_SOCKET:-$XS_TMP/mutter-input.sock}"
+  XIOS_CLIPBOARD_SOCKET="${XIOS_CLIPBOARD_SOCKET:-$XS_TMP/mutter-clipboard.sock}"
 fi
 GNOME_SHELL_LOG="${GNOME_SHELL_LOG:-$XS_TMP/gnome-shell$slot_suffix.log}"
 GNOME_SESSION_BUS_FILE="${GNOME_SESSION_BUS_FILE:-$XS_TMP/gnome-session-bus$slot_suffix}"
@@ -64,7 +66,7 @@ for marker in AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient;
 done
 
 rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
-      "$XIOS_INPUT_SOCKET" "$XS_TMP/xios-input.sock" "$GNOME_SHELL_LOG" \
+      "$XIOS_INPUT_SOCKET" "$XIOS_CLIPBOARD_SOCKET" "$GNOME_SHELL_LOG" \
       "$GNOME_SESSION_BUS_FILE" 2>/dev/null
 
 echo "==> verify package-owned ANGLE + Mutter compatibility links"
@@ -117,6 +119,7 @@ echo "==> start GNOME session -> $GNOME_SHELL_LOG"
   XIOS_DDX_SOCKET="$XIOS_DDX_SOCKET" \
   XIOS_JSON_PATH="$XIOS_JSON_PATH" \
   XIOS_INPUT_SOCKET="$XIOS_INPUT_SOCKET" \
+  XIOS_CLIPBOARD_SOCKET="$XIOS_CLIPBOARD_SOCKET" \
   DYLD_LIBRARY_PATH="$PREFIX/lib:$SHELL_LIB:$PREFIX/lib/mutter-14:$ANGLE" \
   XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_CLASS=user \
   GDK_BACKEND=wayland CLUTTER_BACKEND=wayland \

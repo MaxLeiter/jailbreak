@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/yad.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "GTK3 dialog utility for Xios scripts"
+          "markdown": "GTK3 dialog utility for Xios scripts\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/yad)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/yad/01-yad.jpg",
+              "accessibilityText": "A YAD GTK dialog running in a xiOS desktop session on a jailbroken iPad."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"

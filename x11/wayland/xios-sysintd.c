@@ -106,14 +106,13 @@ static void apply_volume(int v16)
 
 static void broadcast_device_volume(xios_input_socket *srv, int v16)
 {
-    struct xios_in_msg out = {
-        .type = XIOS_IN_VOLUME,
-        .code = (uint32_t)(v16 < 0 ? 0 : (v16 > 65535 ? 65535 : v16)),
-        .state = XIOS_VOLUME_STATE_TO_DEVICE,
-    };
+    xios_msg out = xios_input_message(
+        XIOS_IN_VOLUME, 0, 0,
+        (uint32_t)(v16 < 0 ? 0 : (v16 > 65535 ? 65535 : v16)),
+        XIOS_VOLUME_STATE_TO_DEVICE, 0);
     int n = xios_input_socket_broadcast(srv, &out, sizeof(out));
     fprintf(stderr, "xios-sysintd: desktop volume -> device %u/65535 (%d client%s)\n",
-            out.code, n, n == 1 ? "" : "s");
+            XIOS_INPUT_CODE(&out), n, n == 1 ? "" : "s");
 }
 
 static void apply_appearance(int dark)
@@ -130,14 +129,15 @@ static void apply_appearance(int dark)
     fprintf(stderr, "xios-sysintd: appearance -> %s\n", dark ? "dark" : "light");
 }
 
-static void on_record(const struct xios_in_msg *m, const char *text,
+static void on_record(const xios_msg *m, const char *text,
                       size_t text_len, uint32_t bound_window, void *user)
 {
     (void)text; (void)text_len; (void)bound_window; (void)user;
     switch (m->type) {
     case XIOS_IN_VOLUME: {
-        int v = (int)(m->code > 65535u ? 65535u : m->code);
-        if (m->state & XIOS_VOLUME_STATE_TO_DEVICE) {
+        uint32_t code = XIOS_INPUT_CODE(m);
+        int v = (int)(code > 65535u ? 65535u : code);
+        if (XIOS_INPUT_STATE(m) & XIOS_VOLUME_STATE_TO_DEVICE) {
             broadcast_device_volume((xios_input_socket *)user, v);
             break;
         }
@@ -155,20 +155,19 @@ static void on_record(const struct xios_in_msg *m, const char *text,
         /* Pure relay: only the app can move the panel (UIScreen.brightness), so
          * there is no daemon-side applier to coalesce against the way volume has
          * pactl. hwbridged already rate-limits to its own 2 Hz tick. */
-        if (!(m->state & XIOS_BRIGHTNESS_STATE_TO_DEVICE))
+        if (!(XIOS_INPUT_STATE(m) & XIOS_BRIGHTNESS_STATE_TO_DEVICE))
             break;
-        struct xios_in_msg out = {
-            .type = XIOS_IN_BRIGHTNESS,
-            .code = m->code > 65535u ? 65535u : m->code,
-            .state = XIOS_BRIGHTNESS_STATE_TO_DEVICE,
-        };
+        uint32_t code = XIOS_INPUT_CODE(m);
+        xios_msg out = xios_input_message(
+            XIOS_IN_BRIGHTNESS, 0, 0, code > 65535u ? 65535u : code,
+            XIOS_BRIGHTNESS_STATE_TO_DEVICE, 0);
         int n = xios_input_socket_broadcast((xios_input_socket *)user, &out, sizeof(out));
         fprintf(stderr, "xios-sysintd: desktop brightness -> device %u/65535 (%d client%s)\n",
-                out.code, n, n == 1 ? "" : "s");
+                XIOS_INPUT_CODE(&out), n, n == 1 ? "" : "s");
         break;
     }
     case XIOS_IN_APPEARANCE: {
-        int dark = m->code ? 1 : 0;
+        int dark = XIOS_INPUT_CODE(m) ? 1 : 0;
         if (dark != s_applied_appearance) {
             s_applied_appearance = dark;
             apply_appearance(dark);

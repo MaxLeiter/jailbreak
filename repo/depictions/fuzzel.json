@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/fuzzel.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**fuzzel** is a fast application launcher for the iosc Wayland compositor.\n\nUsing the wlr layer-shell protocol, fuzzel appears as an overlay, filters your applications as you type, and launches the one you pick.\n\n- Native Wayland launcher via the wlr layer-shell protocol\n- Fuzzy matching with instant filtering\n- Reads desktop entries and shows their icons\n- fcft text rendering for crisp labels\n\nLaunch it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**fuzzel** is a fast application launcher for the iosc Wayland compositor.\n\nUsing the wlr layer-shell protocol, fuzzel appears as an overlay, filters your applications as you type, and launches the one you pick.\n\n- Native Wayland launcher via the wlr layer-shell protocol\n- Fuzzy matching with instant filtering\n- Reads desktop entries and shows their icons\n- fcft text rendering for crisp labels\n\nLaunch it inside an Xios desktop session running the iosc compositor.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/fuzzel)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/fuzzel/01-fuzzel.jpg",
+              "accessibilityText": "Fuzzel application launcher open in a xiOS desktop session on a jailbroken iPad."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"

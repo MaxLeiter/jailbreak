@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "File Roller (GNOME archive manager, GTK4)"
+          "markdown": "File Roller (GNOME archive manager, GTK4)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/file-roller)"
         },
         {
           "class": "DepictionSeparatorView"

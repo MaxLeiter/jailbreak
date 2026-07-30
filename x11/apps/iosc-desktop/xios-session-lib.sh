@@ -123,6 +123,7 @@ if [ -n "$XS_SLOT" ]; then
     XS_IOSC_WM_SOCK="${XS_IOSC_WM_SOCK:-$XS_TMP/iosc-$XS_SLOT-wm.sock}"
     XS_MUTTER_DDX_SOCK="${XS_MUTTER_DDX_SOCK:-$XS_TMP/mutter-$XS_SLOT-ddx.sock}"
     XS_MUTTER_INPUT_SOCK="${XS_MUTTER_INPUT_SOCK:-$XS_TMP/mutter-$XS_SLOT-input.sock}"
+    XS_MUTTER_CLIPBOARD_SOCK="${XS_MUTTER_CLIPBOARD_SOCK:-$XS_TMP/mutter-$XS_SLOT-clipboard.sock}"
     XS_KWIN_SOCKET="${XS_KWIN_SOCKET:-kwin-$XS_SLOT}"
     XS_IOSC_LOG="${XS_IOSC_LOG:-$XS_TMP/iosc-$XS_SLOT.log}"
     XS_KDE_LOG="${XS_KDE_LOG:-$XS_TMP/kde-plasma-$XS_SLOT.log}"
@@ -136,6 +137,7 @@ else
     XS_IOSC_WM_SOCK="${XS_IOSC_WM_SOCK:-$XS_TMP/iosc-wm.sock}"
     XS_MUTTER_DDX_SOCK="${XS_MUTTER_DDX_SOCK:-$XS_TMP/mutter-ddx.sock}"
     XS_MUTTER_INPUT_SOCK="${XS_MUTTER_INPUT_SOCK:-$XS_TMP/mutter-input.sock}"
+    XS_MUTTER_CLIPBOARD_SOCK="${XS_MUTTER_CLIPBOARD_SOCK:-$XS_TMP/mutter-clipboard.sock}"
     XS_KWIN_SOCKET="${XS_KWIN_SOCKET:-kwin-ios-test}"
     XS_IOSC_LOG="${XS_IOSC_LOG:-$XS_TMP/iosc.log}"
     XS_KDE_LOG="${XS_KDE_LOG:-$XS_TMP/kde-plasma.log}"
@@ -712,6 +714,7 @@ xios_session_teardown() {
           "$XS_IOSC_DDX_SOCK" "$XS_IOSC_INPUT_SOCK" \
           "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
           "$XS_MUTTER_DDX_SOCK" "$XS_MUTTER_INPUT_SOCK" \
+          "$XS_MUTTER_CLIPBOARD_SOCK" \
           "$XS_TMP/kwin-ios-test" "$XS_TMP/kwin-ios-test.lock" \
           "$XS_TMP/kde-session-bus" \
           "$XS_TMP/iosc-wm.sock" \
@@ -1122,7 +1125,7 @@ xios_session_app() {
         client_env=(
             GDK_BACKEND=wayland
             GSK_RENDERER=ngl
-            QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
+            QT_QPA_PLATFORM="${IOSC_QT_QPA_PLATFORM:-wayland-egl}"
             QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
             ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL"
             GSETTINGS_BACKEND=memory
@@ -1173,6 +1176,7 @@ xios_session_app() {
                         QML2_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
                         QML_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
                         QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-opengl}"
+                        QT_QPA_PLATFORM="${PLASMA_QT_QPA_PLATFORM:-wayland-egl}"
                         QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}"
                         QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
                     )

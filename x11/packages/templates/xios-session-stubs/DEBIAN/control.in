@@ -1,6 +1,6 @@
 Package: xios-session-stubs
 Name: Xios GNOME session bridges
-Version: 0.2.7
+Version: 0.2.10
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -26,9 +26,12 @@ Description: iOS-backed freedesktop D-Bus services for the Xios GNOME session
  agent ownership, aliases, trust state, and device removal are tracked by the bridge, with final
  new-device validation pending on hardware.
  .
- The package also owns the minimal xios-setsid session launcher and all GNOME
- session descriptors. Launching a session validates these artifacts instead of
- generating executable helpers or mutating library/schema trees at runtime.
+ The package also owns the minimal xios-setsid session launcher, the native
+ xios-gnome-session-client adapter, and all GNOME session descriptors. The
+ adapter registers the no-X11 native Shell through gnome-session's D-Bus client
+ protocol and participates in its shutdown handshake. Launching a session
+ validates these artifacts instead of generating executable helpers or mutating
+ library/schema trees at runtime.
  .
  They implement the Manager/Session/Seat/User calls gnome-session,
  gnome-settings-daemon, Mutter, libpolkit and libaccountsservice actually make, and

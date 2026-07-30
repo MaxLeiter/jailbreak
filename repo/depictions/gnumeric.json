@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/gnumeric.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Gnumeric spreadsheet for Xios"
+          "markdown": "**Gnumeric** is a full desktop spreadsheet running locally on a jailbroken iPad through xiOS.\n\n- Worksheets, formulas, formatting, and charts\n- Common workbook import and export support\n- GTK3 desktop interface with touch, pointer, and keyboard input\n\nA compatible rootless jailbreak and xiOS desktop session are required.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/gnumeric)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/gnumeric/01-gnumeric.jpg",
+              "accessibilityText": "Gnumeric running in a xiOS desktop session on a jailbroken iPad, showing a worksheet with test data and the desktop dock."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"
@@ -32,7 +43,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Developer",
-          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+          "text": "The GNOME Project"
         },
         {
           "class": "DepictionTableTextView",

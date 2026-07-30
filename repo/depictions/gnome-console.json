@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**GNOME Console** (`kgx`) is a simple modern terminal for the Xios desktop, built on GTK4, libadwaita, and VTE.\n\nIt renders into the Xios display server and uses San Francisco by default when the `x11-fonts-sf` package is installed.\n\n- VTE terminal widget with truecolor, themes, and tabs\n- GTK4/libadwaita interface that adapts to light and dark\n- Works well as the default terminal for GNOME sessions\n\nOpen it from an X session started by `x11-server.sh` or `xios-server.sh`."
+          "markdown": "**GNOME Console** (`kgx`) is a simple modern terminal for the Xios desktop, built on GTK4, libadwaita, and VTE.\n\nIt renders into the Xios display server and uses San Francisco by default when the `x11-fonts-sf` package is installed.\n\n- VTE terminal widget with truecolor, themes, and tabs\n- GTK4/libadwaita interface that adapts to light and dark\n- Works well as the default terminal for GNOME sessions\n\nOpen it from an X session started by `x11-server.sh` or `xios-server.sh`.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/gnome-console)"
         },
         {
           "class": "DepictionSeparatorView"

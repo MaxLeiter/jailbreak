@@ -56,7 +56,7 @@ if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
   sleep 1
 fi
 rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
-      "$XIOS_INPUT_SOCKET" "$TMP/xios-input.sock" "$MUTTER_LOG" 2>/dev/null
+      "$XIOS_INPUT_SOCKET" "$MUTTER_LOG" 2>/dev/null
 
 echo "==> validate package-owned ANGLE aliases, Mutter plugins, and schemas"
 for f in libGLESv2.so.2 libGLESv2.so libEGL.so.1 libEGL.so; do

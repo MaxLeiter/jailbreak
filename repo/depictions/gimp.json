@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/gimp.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,22 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "GIMP 3.2 image editor for Xios Wayland desktops"
+          "markdown": "**GIMP 3.2 for iOS** is the full desktop image editor rebuilt for arm64 iOS and running locally through xiOS. It is not a remote desktop, web wrapper, or App Store impersonator.\n\n- Standard GIMP toolbox, docks, layers, filters, and color tools\n- Bundled brushes, plug-ins, and image-format support\n- GTK3 desktop interface rendered through Wayland and Metal\n- Touch, pointer, and hardware-keyboard input through xiOS\n\nA compatible rootless jailbreak and a xiOS desktop flavor are required. Install `gimp-native` as well if you want a Home Screen launcher and individual iPadOS host window.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/gimp)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/gimp/01-gimp-desktop.jpg",
+              "accessibilityText": "GIMP 3.2.4 running in a xiOS desktop on a jailbroken iPad, with the welcome screen, toolbox, brushes, and layers dock visible."
+            },
+            {
+              "url": "https://repo.maxleiter.com/screenshots/gimp/02-gimp-painting.jpg",
+              "accessibilityText": "GIMP running locally on a jailbroken iPad with a drawing open and the standard toolbox, brushes, and layers panels."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"
@@ -32,7 +47,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Developer",
-          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+          "text": "The GIMP team"
         },
         {
           "class": "DepictionTableTextView",

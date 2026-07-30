@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "PDF backend plugin for zathura (Poppler)"
+          "markdown": "PDF backend plugin for zathura (Poppler)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/zathura)"
         },
         {
           "class": "DepictionSeparatorView"

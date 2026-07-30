@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Wallpaper tool for Wayland compositors"
+          "markdown": "Wallpaper tool for Wayland compositors\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/swaybg)"
         },
         {
           "class": "DepictionSeparatorView"

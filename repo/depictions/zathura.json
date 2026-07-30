@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/zathura.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**zathura** is a highly customizable, keyboard-driven document viewer for Xios.\n\nBuilt on GTK3 and the girara interface library, it opens PDF files through the bundled poppler plugin and drives them entirely from the keyboard.\n\n- Keyboard-first navigation in the vi tradition\n- PDF rendering through the poppler plugin\n- Search, links, bookmarks, and a fit-to-page view\n- Light and dark recoloring for comfortable reading\n\nInstall `zathura-pdf-poppler` for PDF support, which this repo also ships."
+          "markdown": "**zathura** is a highly customizable, keyboard-driven document viewer for Xios.\n\nBuilt on GTK3 and the girara interface library, it opens PDF files through the bundled poppler plugin and drives them entirely from the keyboard.\n\n- Keyboard-first navigation in the vi tradition\n- PDF rendering through the poppler plugin\n- Search, links, bookmarks, and a fit-to-page view\n- Light and dark recoloring for comfortable reading\n\nInstall `zathura-pdf-poppler` for PDF support, which this repo also ships.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/zathura)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/zathura/01-zathura.jpg",
+              "accessibilityText": "Zathura displaying a PDF test document in a xiOS Wayland desktop on a jailbroken iPad."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"

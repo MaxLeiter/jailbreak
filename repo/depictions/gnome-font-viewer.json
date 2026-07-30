@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**GNOME Fonts** (font-viewer) lets you browse the fonts available to Xios apps and preview each face at any size.\n\nIt pairs naturally with the `x11-fonts-sf` package, which exposes the iOS system fonts (San Francisco, SF Mono, emoji, CJK) to X11.\n\n- Preview any installed face at custom sizes\n- Inspect family, style, and metadata\n- GTK4 + libadwaita"
+          "markdown": "**GNOME Fonts** (font-viewer) lets you browse the fonts available to Xios apps and preview each face at any size.\n\nIt pairs naturally with the `x11-fonts-sf` package, which exposes the iOS system fonts (San Francisco, SF Mono, emoji, CJK) to X11.\n\n- Preview any installed face at custom sizes\n- Inspect family, style, and metadata\n- GTK4 + libadwaita\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/gnome-font-viewer)"
         },
         {
           "class": "DepictionSeparatorView"

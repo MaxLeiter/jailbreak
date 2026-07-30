@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Dolphin file manager (Qt6/KF6)"
+          "markdown": "Dolphin file manager (Qt6/KF6)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/dolphin)"
         },
         {
           "class": "DepictionSeparatorView"

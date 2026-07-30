@@ -1,2 +1,4 @@
 #!/bin/sh
-exec /var/jb/usr/bin/gnome-shell --wayland --wayland-display "${WAYLAND_DISPLAY:-wayland-0}"
+exec /var/jb/usr/libexec/xios-gnome-session-client \
+  /var/jb/usr/bin/gnome-shell --wayland \
+  --wayland-display "${WAYLAND_DISPLAY:-wayland-0}"

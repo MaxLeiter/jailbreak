@@ -26,28 +26,24 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include "../apps/shared/XiosProtocol.h"
 
-#define IOSC_IN_MOTION 1
-#define IOSC_IN_BUTTON 2
-#define IOSC_IN_KEY    3
-#define IOSC_IN_TEXT   4   /* code = payload byte length; UTF-8 payload follows */
-#define IOSC_IN_TOUCH  6   /* code = touch id; state: 0 up, 1 down, 2 motion, 3 cancel */
-#define IOSC_IN_TABLET 7   /* code = pressure 0..65535; state as touch; mods = tilt+90 packed */
-#define IOSC_IN_AXIS   9   /* x,y = dx,dy 1/256 px; code = source; state bit0 = stop */
-#define IOSC_IN_GESTURE 14 /* code = kind|phase<<8|fingers<<16; state = scale 1/256;
-                            * mods = rotation 1/256 deg — see xios_input_socket.h */
+#define MUTTER_IN_SOCK "/var/jb/tmp/mutter-input.sock"
+#define IOSC_IN_SOCK   "/var/jb/tmp/iosc-input.sock"
 
-#define MUTTER_IN_SOCK        "/var/jb/tmp/mutter-input.sock"
-#define MUTTER_LEGACY_IN_SOCK "/var/jb/tmp/xios-input.sock"
-#define IOSC_IN_SOCK          "/var/jb/tmp/iosc-input.sock"
-
-struct iosc_in_msg {
-    uint32_t type;
-    int32_t  x, y;
-    uint32_t code;     /* button 1/2/3 ; key: X keysym */
-    uint32_t state;    /* button 1=down 0=up */
-    uint32_t mods;     /* shift,ctrl,alt,super,caps,num = bits 0..5 */
-};
+static int transfer_full(int fd, void *buf, size_t len, int writing)
+{
+    char *p = buf;
+    size_t done = 0;
+    while (done < len) {
+        ssize_t n = writing ? write(fd, p + done, len - done)
+                            : read(fd, p + done, len - done);
+        if (n > 0) { done += (size_t)n; continue; }
+        if (n < 0 && errno == EINTR) continue;
+        return -1;
+    }
+    return 0;
+}
 
 static int connect_path(const char *path, int quiet)
 {
@@ -64,6 +60,15 @@ static int connect_path(const char *path, int quiet)
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) {
         if (!quiet)
             fprintf(stderr, "connect %s: %s\n", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    xios_msg hello = xios_protocol_hello();
+    xios_msg peer;
+    if (transfer_full(fd, &hello, sizeof(hello), 1) != 0 ||
+        transfer_full(fd, &peer, sizeof(peer), 0) != 0 ||
+        !xios_protocol_is_exact_hello(&peer)) {
+        if (!quiet) fprintf(stderr, "strict-v1 HELLO failed on %s\n", path);
         close(fd);
         return -1;
     }
@@ -85,15 +90,12 @@ static int connect_sock(const char *path)
     int fd = connect_path(MUTTER_IN_SOCK, 1);
     if (fd >= 0)
         return fd;
-    fd = connect_path(MUTTER_LEGACY_IN_SOCK, 1);
-    if (fd >= 0)
-        return fd;
     fd = connect_path(IOSC_IN_SOCK, 1);
     if (fd >= 0)
         return fd;
 
-    fprintf(stderr, "connect: no input socket up (tried %s, %s, %s)\n",
-            MUTTER_IN_SOCK, MUTTER_LEGACY_IN_SOCK, IOSC_IN_SOCK);
+    fprintf(stderr, "connect: no input socket up (tried %s, %s)\n",
+            MUTTER_IN_SOCK, IOSC_IN_SOCK);
     return -1;
 }
 
@@ -118,14 +120,17 @@ static void usage(const char *argv0)
             argv0, argv0, argv0);
 }
 
-static void send_msg(int fd, struct iosc_in_msg *m)
+static void send_msg(int fd, xios_msg *m)
 {
+    m->magic = XIOS_MSG_MAGIC;
+    if (m->type == XIOS_IN_TEXT)
+        m->length = m->code;
     if (write(fd, m, sizeof(*m)) != (ssize_t)sizeof(*m)) perror("write");
 }
 
 static void key_tap(int fd, uint32_t keysym)
 {
-    struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = keysym, .state = 1 };
+    xios_msg m = { .type = XIOS_IN_KEY, .code = keysym, .state = 1 };
     send_msg(fd, &m);
     m.state = 0;
     send_msg(fd, &m);
@@ -164,7 +169,7 @@ int main(int argc, char **argv)
     if (argc - argi >= 2 && !strcmp(argv[argi], "-k")) {
         uint32_t ks = (uint32_t)strtoul(argv[argi + 1], NULL, 0);
         uint32_t mods = (argc - argi >= 3) ? (uint32_t)strtoul(argv[argi + 2], NULL, 0) : 0;
-        struct iosc_in_msg m = { .type = IOSC_IN_KEY, .code = ks, .state = 1, .mods = mods };
+        xios_msg m = { .type = XIOS_IN_KEY, .code = ks, .state = 1, .mods = mods };
         send_msg(fd, &m);
         m.state = 0; m.mods = 0;
         send_msg(fd, &m);
@@ -184,7 +189,7 @@ int main(int argc, char **argv)
         for (int i = argi + 1; i < argc; i++) {
             size_t len = strlen(argv[i]);
             if (len == 0 || len > 4096) { fprintf(stderr, "skipping %zu-byte arg\n", len); continue; }
-            struct iosc_in_msg m = { .type = IOSC_IN_TEXT, .code = (uint32_t)len };
+            xios_msg m = { .type = XIOS_IN_TEXT, .code = (uint32_t)len };
             if (write(fd, &m, sizeof(m)) != (ssize_t)sizeof(m) ||
                 write(fd, argv[i], len) != (ssize_t)len) {
                 perror("write");
@@ -201,17 +206,17 @@ int main(int argc, char **argv)
     if (argc - argi >= 5 && !strcmp(argv[argi], "-D")) {
         int x0 = atoi(argv[argi + 1]), y0 = atoi(argv[argi + 2]);
         int x1 = atoi(argv[argi + 3]), y1 = atoi(argv[argi + 4]);
-        struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x0, .y = y0 };
+        xios_msg mv = { .type = XIOS_IN_MOTION, .x = x0, .y = y0 };
         send_msg(fd, &mv); usleep(50000);
-        struct iosc_in_msg bd = { .type = IOSC_IN_BUTTON, .x = x0, .y = y0, .code = 1, .state = 1 };
+        xios_msg bd = { .type = XIOS_IN_BUTTON, .x = x0, .y = y0, .code = 1, .state = 1 };
         send_msg(fd, &bd); usleep(200000);
         for (int i = 1; i <= 10; i++) {
-            struct iosc_in_msg st = { .type = IOSC_IN_MOTION,
+            xios_msg st = { .type = XIOS_IN_MOTION,
                 .x = x0 + (x1 - x0) * i / 10, .y = y0 + (y1 - y0) * i / 10 };
             send_msg(fd, &st); usleep(40000);
         }
         usleep(200000);
-        struct iosc_in_msg bu = { .type = IOSC_IN_BUTTON, .x = x1, .y = y1, .code = 1, .state = 0 };
+        xios_msg bu = { .type = XIOS_IN_BUTTON, .x = x1, .y = y1, .code = 1, .state = 0 };
         send_msg(fd, &bu);
         fprintf(stderr, "dragged %d,%d -> %d,%d\n", x0, y0, x1, y1);
         usleep(100000); close(fd); return 0;
@@ -221,16 +226,16 @@ int main(int argc, char **argv)
      * 80px downward together, then lift. Exercises independent wl_touch ids. */
     if (argc - argi >= 3 && !strcmp(argv[argi], "-t")) {
         int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
-        struct iosc_in_msg d0 = { .type = IOSC_IN_TOUCH, .x = x,       .y = y, .code = 0, .state = 1 };
-        struct iosc_in_msg d1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y, .code = 1, .state = 1 };
+        xios_msg d0 = { .type = XIOS_IN_TOUCH, .x = x,       .y = y, .code = 0, .state = 1 };
+        xios_msg d1 = { .type = XIOS_IN_TOUCH, .x = x + 120, .y = y, .code = 1, .state = 1 };
         send_msg(fd, &d0); send_msg(fd, &d1); usleep(80000);
         for (int i = 1; i <= 8; i++) {
-            struct iosc_in_msg m0 = { .type = IOSC_IN_TOUCH, .x = x,       .y = y + i * 10, .code = 0, .state = 2 };
-            struct iosc_in_msg m1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y + i * 10, .code = 1, .state = 2 };
+            xios_msg m0 = { .type = XIOS_IN_TOUCH, .x = x,       .y = y + i * 10, .code = 0, .state = 2 };
+            xios_msg m1 = { .type = XIOS_IN_TOUCH, .x = x + 120, .y = y + i * 10, .code = 1, .state = 2 };
             send_msg(fd, &m0); send_msg(fd, &m1); usleep(30000);
         }
-        struct iosc_in_msg u0 = { .type = IOSC_IN_TOUCH, .x = x,       .y = y + 80, .code = 0, .state = 0 };
-        struct iosc_in_msg u1 = { .type = IOSC_IN_TOUCH, .x = x + 120, .y = y + 80, .code = 1, .state = 0 };
+        xios_msg u0 = { .type = XIOS_IN_TOUCH, .x = x,       .y = y + 80, .code = 0, .state = 0 };
+        xios_msg u1 = { .type = XIOS_IN_TOUCH, .x = x + 120, .y = y + 80, .code = 1, .state = 0 };
         send_msg(fd, &u0); send_msg(fd, &u1);
         fprintf(stderr, "two-finger gesture at %d,%d\n", x, y);
         usleep(100000); close(fd); return 0;
@@ -242,17 +247,17 @@ int main(int argc, char **argv)
         int x0 = atoi(argv[argi + 1]), y0 = atoi(argv[argi + 2]);
         int x1 = atoi(argv[argi + 3]), y1 = atoi(argv[argi + 4]);
         uint32_t tilt = (uint32_t)(30 + 90) | ((uint32_t)(-15 + 90) << 8);
-        struct iosc_in_msg dn = { .type = IOSC_IN_TABLET, .x = x0, .y = y0,
+        xios_msg dn = { .type = XIOS_IN_TABLET, .x = x0, .y = y0,
                                   .code = 65535 / 5, .state = 1, .mods = tilt };
         send_msg(fd, &dn); usleep(50000);
         for (int i = 1; i <= 12; i++) {
-            struct iosc_in_msg mv2 = { .type = IOSC_IN_TABLET,
+            xios_msg mv2 = { .type = XIOS_IN_TABLET,
                 .x = x0 + (x1 - x0) * i / 12, .y = y0 + (y1 - y0) * i / 12,
                 .code = (uint32_t)(65535 * (20 + 80 * i / 12) / 100),
                 .state = 2, .mods = tilt };
             send_msg(fd, &mv2); usleep(30000);
         }
-        struct iosc_in_msg up = { .type = IOSC_IN_TABLET, .x = x1, .y = y1,
+        xios_msg up = { .type = XIOS_IN_TABLET, .x = x1, .y = y1,
                                   .code = 0, .state = 0, .mods = tilt };
         send_msg(fd, &up);
         fprintf(stderr, "pencil stroke %d,%d -> %d,%d\n", x0, y0, x1, y1);
@@ -265,14 +270,14 @@ int main(int argc, char **argv)
     if (argc - argi >= 5 && !strcmp(argv[argi], "-s")) {
         int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
         int dx = atoi(argv[argi + 3]), dy = atoi(argv[argi + 4]);
-        struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x, .y = y };
+        xios_msg mv = { .type = XIOS_IN_MOTION, .x = x, .y = y };
         send_msg(fd, &mv); usleep(50000);
         for (int i = 0; i < 24; i++) {
-            struct iosc_in_msg ax = { .type = IOSC_IN_AXIS,
+            xios_msg ax = { .type = XIOS_IN_AXIS,
                 .x = dx * 256 / 24, .y = dy * 256 / 24 };
             send_msg(fd, &ax); usleep(8000);
         }
-        struct iosc_in_msg stop = { .type = IOSC_IN_AXIS, .state = 1 };
+        xios_msg stop = { .type = XIOS_IN_AXIS, .state = 1 };
         send_msg(fd, &stop);
         fprintf(stderr, "scrolled (%d,%d) at %d,%d\n", dx, dy, x, y);
         usleep(100000); close(fd); return 0;
@@ -286,22 +291,22 @@ int main(int argc, char **argv)
         int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
         int scale_pct = atoi(argv[argi + 3]);
         int deg = (argc - argi >= 5) ? atoi(argv[argi + 4]) : 0;
-        struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x, .y = y };
+        xios_msg mv = { .type = XIOS_IN_MOTION, .x = x, .y = y };
         send_msg(fd, &mv); usleep(50000);
         /* kind 2 = pinch, phase 0 = begin, 2 fingers. Scale starts at 1.0 (256). */
-        struct iosc_in_msg begin = { .type = IOSC_IN_GESTURE,
+        xios_msg begin = { .type = XIOS_IN_GESTURE,
             .code = 2u | (0u << 8) | (2u << 16), .state = 256 };
         send_msg(fd, &begin); usleep(16000);
         for (int i = 1; i <= 24; i++) {
             double t = (double)i / 24.0;
             double scale = 1.0 + ((double)scale_pct / 100.0 - 1.0) * t;
-            struct iosc_in_msg up = { .type = IOSC_IN_GESTURE,
+            xios_msg up = { .type = XIOS_IN_GESTURE,
                 .code = 2u | (1u << 8) | (2u << 16),
                 .state = (unsigned)(scale * 256.0),
                 .mods = (unsigned)(int)(deg * t * 256.0) };
             send_msg(fd, &up); usleep(8000);
         }
-        struct iosc_in_msg end = { .type = IOSC_IN_GESTURE,
+        xios_msg end = { .type = XIOS_IN_GESTURE,
             .code = 2u | (2u << 8) | (2u << 16), .state = (unsigned)(scale_pct * 256 / 100) };
         send_msg(fd, &end);
         fprintf(stderr, "pinched to %d%% (rot %ddeg) at %d,%d\n", scale_pct, deg, x, y);
@@ -310,11 +315,11 @@ int main(int argc, char **argv)
 
     if (argc - argi >= 3 && !strcmp(argv[argi], "-c")) {
         int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
-        struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x, .y = y };
+        xios_msg mv = { .type = XIOS_IN_MOTION, .x = x, .y = y };
         send_msg(fd, &mv); usleep(30000);
-        struct iosc_in_msg bd = { .type = IOSC_IN_BUTTON, .x = x, .y = y, .code = 1, .state = 1 };
+        xios_msg bd = { .type = XIOS_IN_BUTTON, .x = x, .y = y, .code = 1, .state = 1 };
         send_msg(fd, &bd); usleep(60000);
-        struct iosc_in_msg bu = { .type = IOSC_IN_BUTTON, .x = x, .y = y, .code = 1, .state = 0 };
+        xios_msg bu = { .type = XIOS_IN_BUTTON, .x = x, .y = y, .code = 1, .state = 0 };
         send_msg(fd, &bu);
         fprintf(stderr, "clicked at %d,%d\n", x, y);
         usleep(100000); close(fd); return 0;

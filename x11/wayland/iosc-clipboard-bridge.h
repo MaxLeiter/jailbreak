@@ -44,6 +44,10 @@ typedef void (*ioscclip_recv_fn)(uint32_t kind, const void *data, size_t len,
 int ioscclip_start(struct wl_event_loop *loop, const char *path,
                    ioscclip_recv_fn on_recv, void *user_data);
 
+/* Remove the listener and every connected host, unlink the socket, and forget
+ * the cached selection. Safe to call when the bridge is not running. */
+void ioscclip_stop(void);
+
 /* A new Linux-side selection is starting (wl_data_device.set_selection):
  * bumps the outbound generation and forgets the previous set's items. Follow
  * with one ioscclip_publish() per snapshotted mime as each pipe read lands. */

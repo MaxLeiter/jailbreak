@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**dunst** is a lightweight, customizable notification daemon for the iosc Wayland compositor.\n\nIt implements the freedesktop notification specification over D-Bus, so apps that post notifications get clean on-screen popups rendered through Pango and Cairo.\n\n- freedesktop notifications over D-Bus\n- Native Wayland via the wlr layer-shell protocol\n- Pango and Cairo rendering with full styling control\n- Rules to filter, group, and route notifications\n\nRun it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**dunst** is a lightweight, customizable notification daemon for the iosc Wayland compositor.\n\nIt implements the freedesktop notification specification over D-Bus, so apps that post notifications get clean on-screen popups rendered through Pango and Cairo.\n\n- freedesktop notifications over D-Bus\n- Native Wayland via the wlr layer-shell protocol\n- Pango and Cairo rendering with full styling control\n- Rules to filter, group, and route notifications\n\nRun it inside an Xios desktop session running the iosc compositor.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/dunst)"
         },
         {
           "class": "DepictionSeparatorView"

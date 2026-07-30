@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**foot** is a fast, lightweight terminal emulator for the iosc Wayland compositor.\n\nfoot talks Wayland directly and renders glyphs with its own fcft text shaping stack, so it stays quick and low on memory.\n\n- Native Wayland client, no X11 required\n- Sixel graphics, truecolor, and a scrollback search\n- Server and daemon mode with the bundled `footclient`\n- Configurable fonts, colors, and key bindings\n\nLaunch it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**foot** is a fast, lightweight terminal emulator for the iosc Wayland compositor.\n\nfoot talks Wayland directly and renders glyphs with its own fcft text shaping stack, so it stays quick and low on memory.\n\n- Native Wayland client, no X11 required\n- Sixel graphics, truecolor, and a scrollback search\n- Server and daemon mode with the bundled `footclient`\n- Configurable fonts, colors, and key bindings\n\nLaunch it inside an Xios desktop session running the iosc compositor.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/foot)"
         },
         {
           "class": "DepictionSeparatorView"

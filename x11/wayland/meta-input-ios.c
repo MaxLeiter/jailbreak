@@ -160,7 +160,7 @@ sync_wire_modifiers (MetaInputIOS *input,
 }
 
 static void
-on_input_msg (const struct xios_in_msg *m,
+on_input_msg (const xios_msg           *m,
               const char               *text,
               size_t                    text_len,
               uint32_t                  bound_window,
@@ -175,7 +175,7 @@ on_input_msg (const struct xios_in_msg *m,
   if (log_record)
     {
       g_message ("MetaInputIOS: recv type=%u x=%d y=%d code=%u state=%u mods=%u",
-                 m->type, m->x, m->y, m->code, m->state, m->mods);
+                 m->type, XIOS_INPUT_X(m), XIOS_INPUT_Y(m), XIOS_INPUT_CODE(m), XIOS_INPUT_STATE(m), XIOS_INPUT_MODS(m));
       input->msg_log_budget--;
     }
 
@@ -191,20 +191,20 @@ on_input_msg (const struct xios_in_msg *m,
         double rx, ry, x, y;
 
         output_to_stage_ratio (input, &rx, &ry);
-        x = m->x * rx;
-        y = m->y * ry;
+        x = XIOS_INPUT_X(m) * rx;
+        y = XIOS_INPUT_Y(m) * ry;
 
         /* Diagnostic: the exact coords handed to Clutter + the mapping ratio, so an inject test
          * confirms the pointer lands where expected (in-bounds of the stage screen size). */
         if (log_record)
           g_message ("MetaInputIOS: motion out(%d,%d) *(%.3f,%.3f) -> stage(%.1f,%.1f)",
-                     m->x, m->y, rx, ry, x, y);
+                     XIOS_INPUT_X(m), XIOS_INPUT_Y(m), rx, ry, x, y);
 
         clutter_virtual_input_device_notify_absolute_motion (input->pointer,
                                                              CLUTTER_CURRENT_TIME, x, y);
 
-        input->cursor_x = m->x;
-        input->cursor_y = m->y;
+        input->cursor_x = XIOS_INPUT_X(m);
+        input->cursor_y = XIOS_INPUT_Y(m);
         xios_notify_cursor (input->cursor_x, input->cursor_y, 1, 1);
         break;
       }
@@ -212,8 +212,8 @@ on_input_msg (const struct xios_in_msg *m,
     case XIOS_IN_BUTTON:
       clutter_virtual_input_device_notify_button (input->pointer,
                                                   CLUTTER_CURRENT_TIME,
-                                                  map_button (m->code),
-                                                  m->state ? CLUTTER_BUTTON_STATE_PRESSED
+                                                  map_button (XIOS_INPUT_CODE(m)),
+                                                  XIOS_INPUT_STATE(m) ? CLUTTER_BUTTON_STATE_PRESSED
                                                            : CLUTTER_BUTTON_STATE_RELEASED);
       break;
 
@@ -222,20 +222,20 @@ on_input_msg (const struct xios_in_msg *m,
        * snapshot. Modifier key records are represented by sync_wire_modifiers()
        * itself; ordinary releases happen before the snapshot changes so a
        * Ctrl-key chord remains active for the released key. */
-      if (modifier_bit_for_keyval (m->code))
+      if (modifier_bit_for_keyval (XIOS_INPUT_CODE(m)))
         {
-          sync_wire_modifiers (input, m->mods);
+          sync_wire_modifiers (input, XIOS_INPUT_MODS(m));
           break;
         }
-      if (m->state)
-        sync_wire_modifiers (input, m->mods);
+      if (XIOS_INPUT_STATE(m))
+        sync_wire_modifiers (input, XIOS_INPUT_MODS(m));
       clutter_virtual_input_device_notify_keyval (input->keyboard,
                                                    CLUTTER_CURRENT_TIME,
-                                                   m->code,
-                                                   m->state ? CLUTTER_KEY_STATE_PRESSED
+                                                   XIOS_INPUT_CODE(m),
+                                                   XIOS_INPUT_STATE(m) ? CLUTTER_KEY_STATE_PRESSED
                                                             : CLUTTER_KEY_STATE_RELEASED);
-      if (!m->state)
-        sync_wire_modifiers (input, m->mods);
+      if (!XIOS_INPUT_STATE(m))
+        sync_wire_modifiers (input, XIOS_INPUT_MODS(m));
       break;
 
     case XIOS_IN_AXIS:
@@ -247,25 +247,25 @@ on_input_msg (const struct xios_in_msg *m,
          * flings. mods bit1 = latch Ctrl around the frame (the app's pinch-to-zoom =
          * ctrl+scroll). code 1 = wheel notch, else continuous finger scroll. */
         double rx, ry;
-        ClutterScrollFinishFlags finish = (m->state & 1)
+        ClutterScrollFinishFlags finish = (XIOS_INPUT_STATE(m) & 1)
           ? (CLUTTER_SCROLL_FINISHED_HORIZONTAL | CLUTTER_SCROLL_FINISHED_VERTICAL)
           : CLUTTER_SCROLL_FINISHED_NONE;
 
         output_to_stage_ratio (input, &rx, &ry);
-        if (m->mods & 2)
+        if (XIOS_INPUT_MODS(m) & 2)
           clutter_virtual_input_device_notify_keyval (input->keyboard,
                                                       CLUTTER_CURRENT_TIME,
                                                       0xffe3 /* XK_Control_L */,
                                                       CLUTTER_KEY_STATE_PRESSED);
         clutter_virtual_input_device_notify_scroll_continuous (input->pointer,
                                                                CLUTTER_CURRENT_TIME,
-                                                               m->x / 256.0 * rx,
-                                                               m->y / 256.0 * ry,
-                                                               m->code == 1
+                                                               XIOS_INPUT_X(m) / 256.0 * rx,
+                                                               XIOS_INPUT_Y(m) / 256.0 * ry,
+                                                               XIOS_INPUT_CODE(m) == 1
                                                                  ? CLUTTER_SCROLL_SOURCE_WHEEL
                                                                  : CLUTTER_SCROLL_SOURCE_FINGER,
                                                                finish);
-        if (m->mods & 2)
+        if (XIOS_INPUT_MODS(m) & 2)
           clutter_virtual_input_device_notify_keyval (input->keyboard,
                                                       CLUTTER_CURRENT_TIME,
                                                       0xffe3 /* XK_Control_L */,
@@ -282,7 +282,7 @@ on_input_msg (const struct xios_in_msg *m,
          * SAME output_to_stage_ratio() conversion as MOTION so touch and mouse coordinates
          * never drift apart across rotation/scale changes. */
         double rx, ry, x, y;
-        int slot = (int) m->code;
+        int slot = (int) XIOS_INPUT_CODE(m);
 
         if (slot < 0 || slot >= CLUTTER_VIRTUAL_INPUT_DEVICE_MAX_TOUCH_SLOTS)
           {
@@ -291,10 +291,10 @@ on_input_msg (const struct xios_in_msg *m,
           }
 
         output_to_stage_ratio (input, &rx, &ry);
-        x = m->x * rx;
-        y = m->y * ry;
+        x = XIOS_INPUT_X(m) * rx;
+        y = XIOS_INPUT_Y(m) * ry;
 
-        switch (m->state)
+        switch (XIOS_INPUT_STATE(m))
           {
           case 1: /* down */
             clutter_virtual_input_device_notify_touch_down (input->pointer, CLUTTER_CURRENT_TIME,
@@ -328,15 +328,15 @@ on_input_msg (const struct xios_in_msg *m,
         double rx, ry, x, y;
 
         output_to_stage_ratio (input, &rx, &ry);
-        x = m->x * rx;
-        y = m->y * ry;
+        x = XIOS_INPUT_X(m) * rx;
+        y = XIOS_INPUT_Y(m) * ry;
 
         clutter_virtual_input_device_notify_absolute_motion (input->pointer, CLUTTER_CURRENT_TIME, x, y);
-        input->cursor_x = m->x;
-        input->cursor_y = m->y;
+        input->cursor_x = XIOS_INPUT_X(m);
+        input->cursor_y = XIOS_INPUT_Y(m);
         xios_notify_cursor (input->cursor_x, input->cursor_y, 1, 1);
 
-        switch (m->state)
+        switch (XIOS_INPUT_STATE(m))
           {
           case 1: /* down: press where the tip landed */
             clutter_virtual_input_device_notify_button (input->pointer, CLUTTER_CURRENT_TIME,
@@ -365,7 +365,7 @@ on_input_msg (const struct xios_in_msg *m,
         if (monitor_manager)
           {
             if (meta_monitor_manager_ios_set_output_size (META_MONITOR_MANAGER_IOS (monitor_manager),
-                                                          (int) m->code, m->x, m->y))
+                                                          (int) XIOS_INPUT_CODE(m), XIOS_INPUT_X(m), XIOS_INPUT_Y(m)))
               meta_monitor_manager_reload (monitor_manager);
           }
         break;
@@ -481,12 +481,8 @@ meta_input_ios_send_osk_traits (MetaInputIOS *input,
   /* Byte-identical to iosc's input_clients_send_traits(): code=hint, state=purpose,
    * mods=enabled. The Xios app maps purpose->UIKeyboardType and raises/lowers the
    * iOS keyboard on the enabled flag. Broadcast to every connected app client. */
-  struct xios_in_msg msg = {
-    .type  = XIOS_IN_TRAITS,
-    .code  = hint,
-    .state = purpose,
-    .mods  = enabled ? 1u : 0u,
-  };
+  xios_msg msg = xios_input_message (XIOS_IN_TRAITS, 0, 0, hint, purpose,
+                                     enabled ? 1u : 0u);
 
   if (input && input->socket)
     xios_input_socket_broadcast (input->socket, &msg, sizeof msg);

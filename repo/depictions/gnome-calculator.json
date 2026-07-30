@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**GNOME Calculator** brings GNOME's calculator to the Xios desktop: basic, scientific, financial, and programming modes with GTK4/libadwaita styling.\n\n- Basic, advanced, financial, and programming modes\n- Unit and currency conversion\n- Precise arithmetic (mpfr/mpc)"
+          "markdown": "**GNOME Calculator** brings GNOME's calculator to the Xios desktop: basic, scientific, financial, and programming modes with GTK4/libadwaita styling.\n\n- Basic, advanced, financial, and programming modes\n- Unit and currency conversion\n- Precise arithmetic (mpfr/mpc)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/gnome-calculator)"
         },
         {
           "class": "DepictionSeparatorView"

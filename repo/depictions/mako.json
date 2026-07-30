@@ -1,0 +1,50 @@
+{
+  "minVersion": "0.1",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/mako.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "Lightweight Wayland notification daemon\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/mako)"
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "1.9.0+ios1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "36.6 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11/Wayland Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "mako"
+        }
+      ]
+    }
+  ]
+}

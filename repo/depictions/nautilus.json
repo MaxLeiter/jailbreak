@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**GNOME Files** (Nautilus) is the standard GNOME file manager for the Xios desktop. Browse, search, and manage files with a GTK4/libadwaita interface.\n\nIt can browse your home directory and the jailbreak filesystem.\n\n- Icon and list views, search, and tabs\n- Bookmarks and a path bar\n- libadwaita styling with light and dark"
+          "markdown": "**GNOME Files** (Nautilus) is the standard GNOME file manager for the Xios desktop. Browse, search, and manage files with a GTK4/libadwaita interface.\n\nIt can browse your home directory and the jailbreak filesystem.\n\n- Icon and list views, search, and tabs\n- Bookmarks and a path bar\n- libadwaita styling with light and dark\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/nautilus)"
         },
         {
           "class": "DepictionSeparatorView"

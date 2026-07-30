@@ -16,9 +16,12 @@
 typedef struct {
     uint32_t magic;
     uint32_t type;
-    uint32_t window_id;
+    union { uint32_t window_id, state; };
     uint32_t length;
-    int32_t a, b, c, d;
+    union { int32_t a, x; };
+    union { int32_t b, y; };
+    union { int32_t c; uint32_t code; };
+    union { int32_t d; uint32_t mods; };
 } xios_msg;
 
 #ifdef __cplusplus
@@ -79,6 +82,84 @@ enum {
  */
 #define XIOS_DIRTY_FENCE_BROKER_TOKEN 1u
 #define IOSC_NATIVE_SOCK "/var/jb/tmp/iosc-native.sock"
+
+/*
+ * Input and system-integration messages share this envelope and one registry.
+ * For XIOS_IN_* records:
+ *   a=x, b=y, c=code, window_id=state, d=mods, length=payload bytes.
+ * Only XIOS_IN_TEXT has a payload; its c and length both contain the byte count.
+ * XIOS_IN_BIND carries the bound native window in c.
+ */
+enum {
+    XIOS_IN_MOTION     = 0x100,
+    XIOS_IN_BUTTON     = 0x101,
+    XIOS_IN_KEY        = 0x102,
+    XIOS_IN_TEXT       = 0x103,
+    XIOS_IN_TRAITS     = 0x104,
+    XIOS_IN_TOUCH      = 0x105,
+    XIOS_IN_TABLET     = 0x106,
+    XIOS_IN_BIND       = 0x107,
+    XIOS_IN_AXIS       = 0x108,
+    XIOS_IN_OUTPUT     = 0x109,
+    XIOS_IN_HAPTIC     = 0x10a,
+    XIOS_IN_VOLUME     = 0x10b,
+    XIOS_IN_APPEARANCE = 0x10c,
+    XIOS_IN_GESTURE    = 0x10d,
+    XIOS_IN_BRIGHTNESS = 0x10e,
+    XIOS_IN_IMPROXY    = 0x10f,
+};
+
+#define XIOS_VOLUME_STATE_TO_DEVICE 1u
+#define XIOS_BRIGHTNESS_STATE_TO_DEVICE 1u
+#define XIOS_GESTURE_SWIPE  1u
+#define XIOS_GESTURE_PINCH  2u
+#define XIOS_GESTURE_HOLD   3u
+#define XIOS_GESTURE_BEGIN  0u
+#define XIOS_GESTURE_UPDATE 1u
+#define XIOS_GESTURE_END    2u
+#define XIOS_GESTURE_CANCEL 3u
+
+static inline xios_msg
+xios_protocol_hello(void)
+{
+    xios_msg m = {0};
+    m.magic = XIOS_MSG_MAGIC;
+    m.type = XIOS_MSG_HELLO;
+    m.window_id = XIOS_PROTOCOL_VERSION;
+    return m;
+}
+
+static inline int
+xios_protocol_is_exact_hello(const xios_msg *m)
+{
+    return m &&
+           m->magic == XIOS_MSG_MAGIC &&
+           m->type == XIOS_MSG_HELLO &&
+           m->window_id == XIOS_PROTOCOL_VERSION &&
+           m->length == 0 &&
+           m->a == 0 && m->b == 0 && m->c == 0 && m->d == 0;
+}
+
+static inline xios_msg
+xios_input_message(uint32_t type, int32_t x, int32_t y, uint32_t code,
+                   uint32_t state, uint32_t mods)
+{
+    xios_msg m = {0};
+    m.magic = XIOS_MSG_MAGIC;
+    m.type = type;
+    m.window_id = state;
+    m.a = x;
+    m.b = y;
+    m.c = (int32_t)code;
+    m.d = (int32_t)mods;
+    return m;
+}
+
+#define XIOS_INPUT_X(m)     ((m)->a)
+#define XIOS_INPUT_Y(m)     ((m)->b)
+#define XIOS_INPUT_CODE(m)  ((uint32_t)(m)->c)
+#define XIOS_INPUT_STATE(m) ((m)->window_id)
+#define XIOS_INPUT_MODS(m)  ((uint32_t)(m)->d)
 
 typedef struct {
     uint32_t w, h;

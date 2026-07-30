@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Gwenview image viewer (Qt6/KF6)"
+          "markdown": "Gwenview image viewer (Qt6/KF6)\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/gwenview)"
         },
         {
           "class": "DepictionSeparatorView"

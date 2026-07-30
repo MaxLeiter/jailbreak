@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/gimp-native.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "native iPadOS multi-window host app for GIMP"
+          "markdown": "**GIMP Native** adds an iPad Home Screen launcher and individual xiOS host window for the full `gimp` package.\n\nGIMP still runs locally as the same arm64 GTK3 build; this package supplies the iPadOS-facing launcher and host integration. It requires a compatible rootless jailbreak and installs the main GIMP package as a dependency.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/gimp)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/gimp-native/01-gimp-native.jpg",
+              "accessibilityText": "GIMP running locally on a jailbroken iPad with a drawing open and its standard desktop editing interface."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"
@@ -32,7 +43,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Developer",
-          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+          "text": "The GIMP team"
         },
         {
           "class": "DepictionTableTextView",

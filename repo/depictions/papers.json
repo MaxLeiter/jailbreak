@@ -1,0 +1,61 @@
+{
+  "minVersion": "0.4",
+  "class": "DepictionTabView",
+  "headerImage": "https://repo.maxleiter.com/banners/papers.png",
+  "tintColor": "#55aaff",
+  "tabs": [
+    {
+      "class": "DepictionStackView",
+      "tabname": "Details",
+      "views": [
+        {
+          "class": "DepictionMarkdownView",
+          "markdown": "Papers, the GTK4 GNOME document (PDF) viewer\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/papers)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/papers/01-papers.jpg",
+              "accessibilityText": "Papers document viewer open in a xiOS GNOME desktop session on a jailbroken iPad."
+            }
+          ]
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionHeaderView",
+          "title": "Information"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Version",
+          "text": "46.2+ios1"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Size",
+          "text": "1456.2 KiB"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Developer",
+          "text": "Max Leiter <maxwell.leiter@gmail.com>"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Section",
+          "text": "X11/Wayland Apps"
+        },
+        {
+          "class": "DepictionTableTextView",
+          "title": "Identifier",
+          "text": "papers"
+        }
+      ]
+    }
+  ]
+}

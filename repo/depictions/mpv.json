@@ -1,5 +1,5 @@
 {
-  "minVersion": "0.1",
+  "minVersion": "0.4",
   "class": "DepictionTabView",
   "headerImage": "https://repo.maxleiter.com/banners/mpv.png",
   "tintColor": "#55aaff",
@@ -10,7 +10,18 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**mpv** is a flexible media player for the iosc Wayland compositor.\n\nIt plays video and audio through its bundled FFmpeg libraries and uses hardware paths where available.\n\n- VideoToolbox hardware video decode on Apple silicon\n- Audio output through the CoreAudio and PulseAudio path\n- Native Wayland output on the iosc compositor\n- Wide format support via FFmpeg and libass subtitles\n\nLaunch it inside an Xios desktop session running the iosc compositor."
+          "markdown": "**mpv** is a flexible media player for the iosc Wayland compositor.\n\nIt plays video and audio through its bundled FFmpeg libraries and uses hardware paths where available.\n\n- VideoToolbox hardware video decode on Apple silicon\n- Audio output through the CoreAudio and PulseAudio path\n- Native Wayland output on the iosc compositor\n- Wide format support via FFmpeg and libass subtitles\n\nLaunch it inside an Xios desktop session running the iosc compositor.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/mpv)"
+        },
+        {
+          "class": "DepictionScreenshotsView",
+          "itemCornerRadius": 8,
+          "itemSize": "{220, 320}",
+          "screenshots": [
+            {
+              "url": "https://repo.maxleiter.com/screenshots/mpv/01-mpv.jpg",
+              "accessibilityText": "mpv rendering a test frame in a xiOS Wayland desktop on a jailbroken iPad."
+            }
+          ]
         },
         {
           "class": "DepictionSeparatorView"

@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "[Ladybird](https://ladybird.org) is a new web browser with its own engine, written from scratch rather than built on WebKit or Chromium. This is Ladybird ported to jailbroken iPhones and iPads.\n\nIt installs as a normal home-screen app. Tap the icon and the browser opens.\n\nWorks on both root and rootless jailbreaks, iOS 16 or later.\n\niPad is the tested setup. The app installs and runs on iPhone too, but I have not tested it there: the toolbar is tight, and the keyboard can cover the bottom of the page. Bug reports from iPhone are welcome."
+          "markdown": "[Ladybird](https://ladybird.org) is a new web browser with its own engine, written from scratch rather than built on WebKit or Chromium. This is Ladybird ported to jailbroken iPhones and iPads.\n\nIt installs as a normal home-screen app. Tap the icon and the browser opens.\n\nWorks on both root and rootless jailbreaks, iOS 16 or later.\n\niPad is the tested setup. The app installs and runs on iPhone too, but I have not tested it there: the toolbar is tight, and the keyboard can cover the bottom of the page. Bug reports from iPhone are welcome.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/ladybird)"
         },
         {
           "class": "DepictionSeparatorView"

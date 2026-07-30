@@ -1,4 +1,5 @@
 #include "SysIntClient.h"
+#include "../../shared/XiosProtocol.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -10,40 +11,24 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-// Wire registry twin: x11/wayland/xios_input_socket.h (keep identical).
-#define SI_OUTPUT     10u
-#define SI_HAPTIC     11u
-#define SI_VOLUME     12u
-#define SI_APPEARANCE 13u
-#define SI_BRIGHTNESS 15u
-#define SI_VOLUME_TO_DEVICE 1u
-#define SI_BRIGHTNESS_TO_DEVICE 1u
-
-struct si_msg {
-    uint32_t type;
-    int32_t  x, y;
-    uint32_t code;
-    uint32_t state;
-    uint32_t mods;
-};
-
 // Two independent links; each reconnects lazily, at most once per second, so a
 // missing daemon costs one connect() a second, not one per send.
 struct si_link {
     char        path[sizeof(((struct sockaddr_un *)0)->sun_path)];
     int         fd;
+    int         hello_received;
     time_t      last_try;
 };
-static struct si_link s_sysint = { "", -1, 0 };
-static struct si_link s_iosc   = { "", -1, 0 };
+static struct si_link s_sysint = { .path = "", .fd = -1 };
+static struct si_link s_iosc   = { .path = "", .fd = -1 };
 
 // Last state per record type, replayed on reconnect (compositor/daemon restart
 // must converge to the iPad's actual orientation/volume/appearance).
-static struct si_msg s_last_output, s_last_volume, s_last_appearance;
+static xios_msg s_last_output, s_last_volume, s_last_appearance;
 static int s_have_output, s_have_volume, s_have_appearance;
-static uint8_t s_iosc_rx[sizeof(struct si_msg)];
+static uint8_t s_iosc_rx[sizeof(xios_msg)];
 static int s_iosc_rx_have;
-static uint8_t s_sysint_rx[sizeof(struct si_msg)];
+static uint8_t s_sysint_rx[sizeof(xios_msg)];
 static int s_sysint_rx_have;
 
 static void link_set_path(struct si_link *l, const char *path, int *rx_have)
@@ -52,6 +37,7 @@ static void link_set_path(struct si_link *l, const char *path, int *rx_have)
     if (strncmp(l->path, next, sizeof(l->path)) == 0) return;
     if (l->fd >= 0) close(l->fd);
     l->fd = -1;
+    l->hello_received = 0;
     l->last_try = 0;
     if (rx_have) *rx_have = 0;
     snprintf(l->path, sizeof(l->path), "%s", next);
@@ -67,7 +53,7 @@ void sysint_set_sysint_socket(const char *path)
     link_set_path(&s_sysint, path, &s_sysint_rx_have);
 }
 
-static int link_send_raw(struct si_link *l, const struct si_msg *m)
+static int link_send_raw(struct si_link *l, const xios_msg *m)
 {
     if (l->fd < 0) return -1;
     const char *p = (const char *)m;
@@ -113,14 +99,25 @@ static int link_ensure(struct si_link *l)
         close(fd);
         return -1;
     }
+    xios_msg hello = xios_protocol_hello();
+    const char *hp = (const char *)&hello;
+    size_t left = sizeof(hello);
+    while (left) {
+        ssize_t w = write(fd, hp, left);
+        if (w > 0) { hp += w; left -= (size_t)w; continue; }
+        if (w < 0 && errno == EINTR) continue;
+        close(fd);
+        return -1;
+    }
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     l->fd = fd;
+    l->hello_received = 0;
     link_replay(l);
     return 0;
 }
 
-static void link_send(struct si_link *l, const struct si_msg *m,
-                      struct si_msg *last, int *have)
+static void link_send(struct si_link *l, const xios_msg *m,
+                      xios_msg *last, int *have)
 {
     *last = *m;
     *have = 1;
@@ -134,20 +131,22 @@ static void link_send(struct si_link *l, const struct si_msg *m,
 
 void sysint_send_volume(unsigned v16)
 {
-    struct si_msg m = { .type = SI_VOLUME, .code = v16 > 65535u ? 65535u : v16 };
+    xios_msg m = xios_input_message(XIOS_IN_VOLUME, 0, 0,
+                                    v16 > 65535u ? 65535u : v16, 0, 0);
     link_send(&s_sysint, &m, &s_last_volume, &s_have_volume);
 }
 
 void sysint_send_appearance(int dark)
 {
-    struct si_msg m = { .type = SI_APPEARANCE, .code = dark ? 1u : 0u };
+    xios_msg m = xios_input_message(XIOS_IN_APPEARANCE, 0, 0,
+                                    dark ? 1u : 0u, 0, 0);
     link_send(&s_sysint, &m, &s_last_appearance, &s_have_appearance);
 }
 
 void sysint_send_output(int transform, int logical_w, int logical_h)
 {
-    struct si_msg m = { .type = SI_OUTPUT, .x = logical_w, .y = logical_h,
-                        .code = (uint32_t)(transform & 3) };
+    xios_msg m = xios_input_message(XIOS_IN_OUTPUT, logical_w, logical_h,
+                                    (uint32_t)(transform & 3), 0, 0);
     link_send(&s_iosc, &m, &s_last_output, &s_have_output);
 }
 
@@ -155,16 +154,28 @@ void sysint_send_output(int transform, int logical_w, int logical_h)
 // (TRAITS for the keyboard bridge, HAPTIC for us). Only HAPTIC is surfaced;
 // everything else is discarded — IoscInput.c's own connection handles traits.
 static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
-                         struct si_msg *out)
+                         xios_msg *out)
 {
     if (link_ensure(l) != 0) return 0;
     for (;;) {
-        ssize_t r = read(l->fd, rx + *rx_have, sizeof(struct si_msg) - (size_t)*rx_have);
+        ssize_t r = read(l->fd, rx + *rx_have, sizeof(xios_msg) - (size_t)*rx_have);
         if (r > 0) {
             *rx_have += (int)r;
-            if (*rx_have < (int)sizeof(struct si_msg)) continue;
+            if (*rx_have < (int)sizeof(xios_msg)) continue;
             memcpy(out, rx, sizeof(*out));
             *rx_have = 0;
+            if (!l->hello_received) {
+                if (!xios_protocol_is_exact_hello(out)) break;
+                l->hello_received = 1;
+                continue;
+            }
+            if (out->magic != XIOS_MSG_MAGIC || out->type == XIOS_MSG_HELLO ||
+                out->length != 0 ||
+                (l == &s_iosc
+                    ? (out->type != XIOS_IN_HAPTIC && out->type != XIOS_IN_TRAITS)
+                    : (out->type != XIOS_IN_VOLUME &&
+                       out->type != XIOS_IN_BRIGHTNESS)))
+                break;
             return 1;
         }
         if (r == 0) break;               // server closed
@@ -174,17 +185,18 @@ static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
     }
     close(l->fd);
     l->fd = -1;
+    l->hello_received = 0;
     *rx_have = 0;
     return 0;
 }
 
 int sysint_poll_haptic(unsigned *style)
 {
-    struct si_msg m;
+    xios_msg m;
     if (link_ensure(&s_iosc) != 0) return 0;
     while (link_poll_msg(&s_iosc, s_iosc_rx, &s_iosc_rx_have, &m) == 1) {
-        if (m.type == SI_HAPTIC) {
-            if (style) *style = m.code;
+        if (m.type == XIOS_IN_HAPTIC) {
+            if (style) *style = XIOS_INPUT_CODE(&m);
             return 1;                    // one per call; caller loops to drain
         }
     }
@@ -206,15 +218,19 @@ int sysint_poll_brightness_set(unsigned *v16)
         if (v16) *v16 = s_pending_brightness;
         return 1;
     }
-    struct si_msg m;
+    xios_msg m;
     if (link_ensure(&s_sysint) != 0) return 0;
     while (link_poll_msg(&s_sysint, s_sysint_rx, &s_sysint_rx_have, &m) == 1) {
-        if (m.type == SI_BRIGHTNESS && (m.state & SI_BRIGHTNESS_TO_DEVICE)) {
-            if (v16) *v16 = m.code > 65535u ? 65535u : m.code;
+        if (m.type == XIOS_IN_BRIGHTNESS &&
+            (XIOS_INPUT_STATE(&m) & XIOS_BRIGHTNESS_STATE_TO_DEVICE)) {
+            uint32_t code = XIOS_INPUT_CODE(&m);
+            if (v16) *v16 = code > 65535u ? 65535u : code;
             return 1;
         }
-        if (m.type == SI_VOLUME && (m.state & SI_VOLUME_TO_DEVICE)) {
-            s_pending_volume_set = m.code > 65535u ? 65535u : m.code;
+        if (m.type == XIOS_IN_VOLUME &&
+            (XIOS_INPUT_STATE(&m) & XIOS_VOLUME_STATE_TO_DEVICE)) {
+            uint32_t code = XIOS_INPUT_CODE(&m);
+            s_pending_volume_set = code > 65535u ? 65535u : code;
             s_have_pending_volume_set = 1;
         }
     }
@@ -228,15 +244,19 @@ int sysint_poll_volume_set(unsigned *v16)
         if (v16) *v16 = s_pending_volume_set;
         return 1;
     }
-    struct si_msg m;
+    xios_msg m;
     if (link_ensure(&s_sysint) != 0) return 0;
     while (link_poll_msg(&s_sysint, s_sysint_rx, &s_sysint_rx_have, &m) == 1) {
-        if (m.type == SI_VOLUME && (m.state & SI_VOLUME_TO_DEVICE)) {
-            if (v16) *v16 = m.code > 65535u ? 65535u : m.code;
+        if (m.type == XIOS_IN_VOLUME &&
+            (XIOS_INPUT_STATE(&m) & XIOS_VOLUME_STATE_TO_DEVICE)) {
+            uint32_t code = XIOS_INPUT_CODE(&m);
+            if (v16) *v16 = code > 65535u ? 65535u : code;
             return 1;
         }
-        if (m.type == SI_BRIGHTNESS && (m.state & SI_BRIGHTNESS_TO_DEVICE)) {
-            s_pending_brightness = m.code > 65535u ? 65535u : m.code;
+        if (m.type == XIOS_IN_BRIGHTNESS &&
+            (XIOS_INPUT_STATE(&m) & XIOS_BRIGHTNESS_STATE_TO_DEVICE)) {
+            uint32_t code = XIOS_INPUT_CODE(&m);
+            s_pending_brightness = code > 65535u ? 65535u : code;
             s_have_pending_brightness = 1;
         }
     }
