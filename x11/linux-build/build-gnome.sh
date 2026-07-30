@@ -37,6 +37,7 @@ if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>
   apt-get install -y --no-install-recommends \
       gtk-doc-tools libglib2.0-dev-bin libglib2.0-bin libgdk-pixbuf2.0-bin \
       sassc valac itstool desktop-file-utils appstream gtk-update-icon-cache \
+      gettext \
       gobject-introspection gir1.2-glib-2.0 libgirepository1.0-dev \
       libgcr-3-dev libgoa-1.0-dev \
       ruby ruby-dev tcl unifdef >/dev/null 2>&1 \
