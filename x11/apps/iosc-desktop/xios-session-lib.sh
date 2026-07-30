@@ -226,12 +226,31 @@ xs_switch_request_superseded() {
     [ -n "$current" ] && [ "$current" != "$XS_REQUEST_ID" ]
 }
 
+xs_pgid_has_live_session_process() {  # xs_pgid_has_live_session_process <pgid>
+    local want="$1"
+    case "$want" in ""|*[!0-9]*|0|1) return 1 ;; esac
+    ps axww -o pgid=,command= 2>/dev/null | awk -v want="$want" '
+        $1 == want {
+            $1 = ""
+            if ($0 ~ /\/bin\/iosc( |$)|\/bin\/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|\/usr\/bin\/mutter|\/usr\/bin\/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|\/Applications\/KDE\/[^ ]+\.app\/[^ ]+|\/bin\/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session/) {
+                found = 1
+            }
+        }
+        END { exit(found ? 0 : 1) }
+    '
+}
+
 xs_reap_pgid() {
     local pgid="$1" label="${2:-recorded session}"
     local current
     current="$(xs_current_pgid)"
     case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
     [ -n "$current" ] && [ "$pgid" = "$current" ] && return 0
+    # PGIDs are recycled. A stale registry entry must never be enough to signal
+    # an arbitrary process group; require a live, recognizable Xios session
+    # process in that group before sending TERM/KILL.
+    kill -0 "-$pgid" 2>/dev/null || return 0
+    xs_pgid_has_live_session_process "$pgid" || return 0
     xs_log "reaper: killing $label process group $pgid"
     kill -TERM "-$pgid" 2>/dev/null || true
     sleep 0.3
