@@ -55,9 +55,9 @@ libdazzle-package: libdazzle-stage
 	mkdir -p $(BUILD_DIST)/libdazzle-1.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libdazzle-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
-	cp -a $(BUILD_STAGE)/libdazzle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libdazzle-1.0.dylib \
+	cp -a $(BUILD_STAGE)/libdazzle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libdazzle-1.0.0.dylib \
 		$(BUILD_DIST)/libdazzle-1.0-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/libdazzle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libdazzle-1.0.dylib) \
+	cp -a $(BUILD_STAGE)/libdazzle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/!(libdazzle-1.0.0.dylib) \
 		$(BUILD_DIST)/libdazzle-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	cp -a $(BUILD_STAGE)/libdazzle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libdazzle-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
