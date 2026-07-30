@@ -60,7 +60,7 @@ TARGETS="${TARGETS:-\
   gsettings-desktop-schemas-package dconf-package \
   json-glib-package libxmlb-package appstream-package libadwaita-package \
   vte-package gtksourceview5-package enchant-package \
-  libpsl-package libsoup3-package libgee-package \
+  libpsl-package libsoup3-package glib-networking-package libgee-package \
   gnome-autoar-package libportal-package iso-codes-package tracker-package gnome-desktop-package \
   gnome-console-package gnome-text-editor-package gnome-font-viewer-package nautilus-package \
   gnome-calculator-package baobab-package file-roller-package hitori-package}"

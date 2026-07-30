@@ -1,0 +1,21 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Avoid WebKit X11 accessibility lookup on iOS Wayland
+
+The GTK WebKit port is built with both X11 and Wayland support. On iOS it can
+construct PlatformDisplayX11 without an X display while Epiphany is a native
+Wayland client, then dereference the null display while looking up AT_SPI_BUS.
+Supply a non-empty fallback address before WebKit starts. Preserve any real
+AT-SPI address installed by the Xios accessibility bridge.
+
+--- a/src/ephy-main.c
++++ b/src/ephy-main.c
+@@ -180,0 +181,9 @@
++#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
++  /*
++   * WebKitGTK 2.44's dual X11/Wayland build consults the X root-window
++   * AT_SPI_BUS property even when no X display exists. A real bridge address,
++   * when present, always wins over this disabled-bus fallback.
++   */
++  g_setenv ("AT_SPI_BUS_ADDRESS", "unix:path=/var/jb/tmp/xios-no-atspi", FALSE);
++#endif
++

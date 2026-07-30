@@ -9,7 +9,7 @@ endif
 SUBPROJECTS       += epiphany
 EPIPHANY_MAJOR_V  := 43
 EPIPHANY_VERSION  := $(EPIPHANY_MAJOR_V).1
-DEB_EPIPHANY_V    ?= $(EPIPHANY_VERSION)+ios2
+DEB_EPIPHANY_V    ?= $(EPIPHANY_VERSION)+ios3
 
 epiphany-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/epiphany/$(EPIPHANY_MAJOR_V)/epiphany-$(EPIPHANY_VERSION).tar.xz)

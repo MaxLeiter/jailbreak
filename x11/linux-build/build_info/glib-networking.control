@@ -1,0 +1,12 @@
+Package: glib-networking
+Version: @DEB_GLIB_NETWORKING_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/glib-networking
+Depends: libglib2.0-0, libgnutls30, ca-certificates
+Description: TLS support for GLib networking on Xios
+ glib-networking provides the GIO TLS backend used by libsoup and WebKitGTK.
+ This build uses GnuTLS and the environment proxy resolver, giving GTK apps
+ HTTPS without depending on a separate desktop proxy service.

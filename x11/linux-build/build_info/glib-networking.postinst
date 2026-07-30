@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+if command -v gio-querymodules >/dev/null 2>&1; then
+  gio-querymodules /var/jb/usr/lib/gio/modules 2>/dev/null || true
+fi
+exit 0
