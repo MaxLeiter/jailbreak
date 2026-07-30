@@ -163,7 +163,7 @@ mutter-package: mutter-stage
 	# every mutter dylib. BEFORE the weaken (macho-weaken is byte-preserving and transparent to an
 	# extra LC_RPATH) and BEFORE SIGN (install_name_tool invalidates the signature; SIGN re-covers).
 	for f in $$(find $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -type f -name '*.dylib'); do \
-		$(I_N_T) -add_rpath /var/jb/lib/angle $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath $(MEMO_PREFIX)/lib/angle $$f 2>/dev/null || true; \
 	done
 
 	# Weak-link the dead X11/xcb closure: mutter 46 hardcodes have_x11=true and links symbols

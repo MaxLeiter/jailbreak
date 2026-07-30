@@ -9,8 +9,8 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1662
-- Files with hits: 317
+- Total hits: 1651
+- Files with hits: 316
 
 ### By Category
 
@@ -18,18 +18,18 @@ classified as rootless-only.
 - `build-target`: 17 hits across 10 files
 - `docs`: 612 hits across 62 files
 - `entitlements`: 45 hits across 17 files
-- `linker-path`: 110 hits across 50 files
-- `other`: 78 hits across 16 files
+- `linker-path`: 93 hits across 48 files
+- `other`: 84 hits across 17 files
 - `package-payload`: 177 hits across 47 files
 - `recipe`: 82 hits across 26 files
-- `runtime-path`: 303 hits across 75 files
+- `runtime-path`: 303 hits across 76 files
 - `script-or-source`: 179 hits across 67 files
 - `site-copy`: 10 hits across 6 files
 - `target-infra`: 30 hits across 6 files
 
 ### By Literal
 
-- `/var/jb`: 1620
+- `/var/jb`: 1609
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
 - `iphoneos-arm64-rootless`: 30
@@ -160,7 +160,7 @@ classified as rootless-only.
 - `linux-build/gir-build-ondevice.sh:78` `/var/jb`: if [ ! -f /var/jb/usr/lib/pkgconfig/zlib.pc ]; then
 - `linux-build/gir-build-ondevice.sh:79` `/var/jb`: cat > /var/jb/usr/lib/pkgconfig/zlib.pc <<PC
 - `linux-build/gir-build-ondevice.sh:116` `/var/jb`: for t in $TLS;   do cp -v "$t" /var/jb/usr/lib/girepository-1.0/; done
-- ... 90 more
+- ... 73 more
 
 ### other
 
@@ -184,7 +184,7 @@ classified as rootless-only.
 - `bin/x11-up.sh:15` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 - `bin/x11-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
 - `bin/x11-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
-- ... 58 more
+- ... 64 more
 
 ### package-payload
 
@@ -305,12 +305,12 @@ classified as rootless-only.
 - `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
 - `linux-build/tools/check-target-package.py:214` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
-- `linux-build/tools/target-literal-baseline.json:178` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:181` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:191` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:195` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:196` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:177` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:180` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:190` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:194` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:195` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:196` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
