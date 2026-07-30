@@ -124,7 +124,7 @@ done
 echo "==> collect debs -> /out"
 mkdir -p /out
 for stem in gnome-control-center gnome-bluetooth libgtop-2.0-11; do
-  find . -name "${stem}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${stem}_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo "==> shared libgtkintl relink pass"

@@ -129,7 +129,7 @@ build_one ffmpeg
 echo ""
 echo "==> collect debs -> /out (EXACT name_pin_ so gtk-era old versions don't leak)"
 collect() { # name  pin
-  find . -name "${1}_${2}_iphoneos-arm64.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${1}_${2}_$XIOS_DEB_ARCH.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 }
 for n in libssl3 libssl-dev libssl-doc openssl;                     do collect "$n" '3.5.3+ios1'; done
 for n in libnghttp2-14 libnghttp2-dev;                              do collect "$n" '1.61.0+ios1'; done

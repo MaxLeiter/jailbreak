@@ -324,7 +324,7 @@ step "STAGE package: iphoneos-arm64 deb (bin/headless-shot + libexec helpers + s
 #   (LADYBIRD_LIBEXECDIR is only set on !APPLE; our cross is APPLE), so helpers -> $prefix/libexec.
 LDID=/root/cctools/bin/ldid
 VER="0.1.0+ios1"
-DEB=/out/ladybird-headless_${VER}_iphoneos-arm64.deb
+DEB=/out/ladybird-headless_${VER}_$XIOS_DEB_ARCH.deb
 if run_stage package; then
   HS=$(find "$BUILD" -maxdepth 4 -type f -name headless-shot 2>/dev/null | head -1)
   if [ -z "$HS" ]; then echo "!! headless-shot not built; skipping package"; else

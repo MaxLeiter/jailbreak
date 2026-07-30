@@ -44,7 +44,7 @@ CTRL
 # md5sums
 ( cd "$STAGE" && find var -type f -exec md5sum {} \; > DEBIAN/md5sums )
 
-OUT=/var/jb/tmp/xios-gnome-typelibs_${VER}_iphoneos-arm64.deb
+OUT=/var/jb/tmp/xios-gnome-typelibs_${VER}_$XIOS_DEB_ARCH.deb
 dpkg-deb -Zgzip -b "$STAGE" "$OUT" >/dev/null
 echo "built $OUT"
 dpkg-deb -I "$OUT" | grep -E "Package|Version|Installed-Size" || true

@@ -58,7 +58,7 @@ Author: max
 Section: Development
 Priority: optional
 EOF
-  dpkg-deb -Zxz -b "$WORK/pkg" "$OUT/bun-preflight_0.0.1_iphoneos-arm64.deb"
+  dpkg-deb -Zxz -b "$WORK/pkg" "$OUT/bun-preflight_0.0.1_$XIOS_DEB_ARCH.deb"
 }
 
 probe_official_bun() {

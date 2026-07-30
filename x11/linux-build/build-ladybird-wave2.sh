@@ -139,7 +139,7 @@ for pat in libpng16 libjpeg62-turbo libturbojpeg0 libjpeg-turbo-progs \
            libfreetype6 libfreetype-dev \
            libharfbuzz0b libharfbuzz-icu0 libharfbuzz-subset0 libharfbuzz-dev \
            fontconfig libfontconfig1 libfontconfig-dev fontconfig-config; do
-  find . -name "${pat}_*_iphoneos-arm64.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}_*_$XIOS_DEB_ARCH.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo ""

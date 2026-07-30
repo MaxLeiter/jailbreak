@@ -279,7 +279,7 @@ for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
            libstemmer libytnef libgmime libgspell libpeas \
            gnome-console gnome-text-editor gnome-font-viewer nautilus gnome-calculator \
            baobab file-roller hitori; do
-  find "$DIST_ROOT" -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find "$DIST_ROOT" -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass: GNOME app libs/binaries link GTK's bundled proxy-libintl and

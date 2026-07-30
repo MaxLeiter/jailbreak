@@ -67,7 +67,7 @@ for package in \
   dbus libxfce4util7 xfconf libwnck-3-0 libxfce4ui-2-0 libexo-2-0 \
   libgarcon-1-0 thunar xfwm4 xfdesktop4 xfce4-panel xfce4-session \
   xfce4-settings xfce4-appfinder; do
-  find . -name "${package}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${package}_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo "==> shared libgtkintl relink pass"

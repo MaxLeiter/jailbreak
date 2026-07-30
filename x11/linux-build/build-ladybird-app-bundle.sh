@@ -196,7 +196,7 @@ sed -e "s/@VER@/$VER/" /work/ladybird-app/DEBIAN/control > "$APPROOT/DEBIAN/cont
 sed -i 's/^Depends:.*/Depends: libiosexec1/' "$APPROOT/DEBIAN/control"
 grep -q '^Installed-Size' "$APPROOT/DEBIAN/control" || echo "Installed-Size: $INSTALLED_KB" >> "$APPROOT/DEBIAN/control"
 cp /work/ladybird-app/DEBIAN/postinst "$APPROOT/DEBIAN/postinst"; chmod 0755 "$APPROOT/DEBIAN/postinst"
-DEB=/out/ladybird-app_${VER}_iphoneos-arm64.deb
+DEB=/out/ladybird-app_${VER}_$XIOS_DEB_ARCH.deb
 dpkg-deb -Zxz -b "$APPROOT" "$DEB" && echo "== packaged $DEB ==" && ls -la "$DEB"
 echo "app tree:"; find "$APP" -maxdepth 1 | sed 's/^/  /'
 echo

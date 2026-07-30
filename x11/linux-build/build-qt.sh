@@ -94,9 +94,9 @@ source /work/recipes/xios-cache-fingerprint.sh
 # Qt round 3 links QtGui/EGL support against the ANGLE deb. ANGLE deliberately lives
 # outside /var/jb/usr at /var/jb/lib/angle plus /var/jb/include, so stage it into the
 # sysroot here instead of relying on CMAKE_FIND_ROOT_PATH.
-if ls /out/angle_*_iphoneos-arm64.deb >/dev/null 2>&1; then
-  ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep '+es3' | head -1 || true)
-  [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | head -1)
+if ls /out/angle_*_$XIOS_DEB_ARCH.deb >/dev/null 2>&1; then
+  ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep '+es3' | head -1 || true)
+  [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | head -1)
   echo "==> staging ANGLE for Qt GL/EGL: ${ANGLE_DEB}"
   rm -rf /tmp/angle-qt && mkdir -p /tmp/angle-qt
   dpkg-deb -x "$ANGLE_DEB" /tmp/angle-qt
@@ -116,8 +116,8 @@ fi
 # its major version into every export (ucol_open_78 vs ucol_open_74), so compiling against 78
 # headers over the 74 runtime would miss symbols at load time. Don't bump this glob without also
 # switching qt6-base's Depends and re-validating apt on device.
-ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
-ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
 if [ -n "$ICU_RUNTIME_DEB" ] && [ -n "$ICU_DEV_DEB" ]; then
   echo "==> staging ICU 74.2 for Qt FEATURE_icu: ${ICU_RUNTIME_DEB} + ${ICU_DEV_DEB}"
   rm -rf /tmp/icu-qt && mkdir -p /tmp/icu-qt
@@ -149,6 +149,6 @@ done
 # collect any debs produced
 mkdir -p /out
 for pat in qt6-base; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 echo "==> done"

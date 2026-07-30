@@ -53,7 +53,7 @@ fi
 chmod 0755 "$PKGDIR$XIOS_PREFIX/usr/bin/launch-gnome-session.sh"
 
 VER="$(awk -F': ' '/^Version:/{print $2}' "$PKGDIR/DEBIAN/control")"
-DEB="xios-session-stubs_${VER}_iphoneos-arm64.deb"
+DEB="xios-session-stubs_${VER}_$XIOS_DEB_ARCH.deb"
 
 echo "==> dpkg-deb build $DEB"
 # Stage DEBIAN + var host-side (only these ship), set the perms, then let xmkdeb

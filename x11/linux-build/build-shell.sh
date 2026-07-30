@@ -225,7 +225,7 @@ mkdir -p /out
 for pat in libstartup-notification libatspi libatk-bridge libatk1.0 at-spi2-core \
            libsecret libgcr gcr4-dev libpolkit polkit-dev libibus ibus \
            libpulse gnome-shell; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass: anything here that linked GTK's bundled proxy-libintl gets

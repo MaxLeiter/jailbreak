@@ -37,7 +37,7 @@ STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
 VER="2.1.0+git20260630.a32d31d+es3-14"
-DEB="angle_${VER}_iphoneos-arm64.deb"
+DEB="angle_${VER}_$XIOS_DEB_ARCH.deb"
 
 rm -rf "$STAGEROOT"
 mkdir -p "$STAGE$XIOS_PREFIX/lib/angle" "$STAGE$XIOS_PREFIX/include" "$STAGE/DEBIAN"

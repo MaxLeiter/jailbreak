@@ -159,7 +159,7 @@ for pat in libfribidi libpango libgdk-pixbuf gdk-pixbuf libatk libgtk gtk \
            libglib2.0 libcairo libharfbuzz libfontconfig libfreetype \
            libgraphite2 libicu libepoxy libpixman libpng libjpeg libtiff \
            libxcursor libxinerama libgraphene; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass — relink any deb importing g_libintl_* onto the shim + add the

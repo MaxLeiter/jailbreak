@@ -56,6 +56,6 @@ make gtk4-layer-shell-package $COMMON -j"$(nproc)"
 
 echo "==> collect deb -> /out"
 mkdir -p /out
-find . -name "gtk4-layer-shell_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+find . -name "gtk4-layer-shell_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 echo "==> done"
 ls -l /out/gtk4-layer-shell_*.deb 2>/dev/null || echo "NOTE: no deb produced — check the build log above"

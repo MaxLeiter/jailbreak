@@ -35,4 +35,4 @@ for pkgdir in xios-core xios-gnome xios-kde xios-native xios-x11; do
   cp -v "$built" "$METADIR/"
 done
 
-echo "==> built $(ls "$METADIR"/xios-*_*_iphoneos-arm64.deb | wc -l | tr -d ' ') meta debs (copied to linux-build/out/)"
+echo "==> built $(ls "$METADIR"/xios-*_*_$XIOS_DEB_ARCH.deb | wc -l | tr -d ' ') meta debs (copied to linux-build/out/)"

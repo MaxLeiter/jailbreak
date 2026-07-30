@@ -64,7 +64,7 @@ fi
 echo ""
 echo "==> collect debs -> /out"
 for pat in libxml2 libxml2-dev libxml2-utils; do
-  find . -name "${pat}_*_iphoneos-arm64.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}_*_$XIOS_DEB_ARCH.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo ""

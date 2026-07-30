@@ -181,7 +181,7 @@ echo "==> staging stub <systemd/sd-login.h> (session tracking inert on iOS; logi
 mkdir -p "$SYSROOT/include/systemd"
 cp /work/recipes/build_info/systemd-sd-login.h "$SYSROOT/include/systemd/sd-login.h"
 if [ ! -e "$SYSROOT/lib/pkgconfig/egl.pc" ]; then
-  ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep -v "+es3" | head -1)
+  ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep -v "+es3" | head -1)
   if [ -n "$ANGLE_DEB" ]; then
     echo "==> staging ANGLE libEGL + egl.pc into cross sysroot from $(basename "$ANGLE_DEB")"
     rm -rf /tmp/angle-x && mkdir -p /tmp/angle-x && dpkg-deb -x "$ANGLE_DEB" /tmp/angle-x
@@ -263,6 +263,6 @@ fi
 # collect any debs produced (package targets only)
 mkdir -p /out
 for pat in liblcms2 libxcomposite libcolord libmutter mutter; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 echo "==> done"

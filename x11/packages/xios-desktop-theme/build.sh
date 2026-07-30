@@ -19,7 +19,7 @@ xios_load_target "${XIOS_TARGET:-rootless-1900}"
 PKGDIR="$(cd "$(dirname "$0")" && pwd)"
 OUTDIR="$(cd "$PKGDIR/.." && pwd)"          # x11/packages
 VERSION="$(awk -F': ' '/^Version:/{print $2}' "$PKGDIR/DEBIAN/control")"
-DEB="xios-desktop-theme_${VERSION}_iphoneos-arm64.deb"
+DEB="xios-desktop-theme_${VERSION}_$XIOS_DEB_ARCH.deb"
 IMAGE="debian:bookworm-slim"
 
 docker run --rm -v "$OUTDIR":/work -w /work "$IMAGE" bash -euo pipefail -c '

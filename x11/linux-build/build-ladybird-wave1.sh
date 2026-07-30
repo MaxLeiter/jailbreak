@@ -69,7 +69,7 @@ echo ""
 echo "==> collect debs -> /out"
 for pat in libz zlib brotli libbrotli libtommath libfmt sqlite3 libsqlite3 lemon \
            simdutf simdjson fast-float mimalloc libmimalloc wuffs libxml2 woff2 libwoff2; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -newermt "-6 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -newermt "-6 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo ""

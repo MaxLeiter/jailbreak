@@ -45,6 +45,21 @@ XIOS_USR="$XIOS_SYSROOT$XIOS_SUBPREFIX"
 # The two make arguments every recipe invocation needs.
 XIOS_MEMO_ARGS="MEMO_TARGET=$XIOS_MEMO_TARGET MEMO_CFVER=$XIOS_MEMO_CFVER"
 
+# Debian architecture, i.e. the _<arch>.deb suffix Procursus writes. NOT the
+# same string as MEMO_TARGET, and not derivable by chopping "-rootless" off it:
+# Procursus gives the rootless target iphoneos-arm64 and the rootful one
+# iphoneos-arm. Scripts that glob for built debs need this, not a literal.
+# The host loader exports it from the descriptor; this is the in-container
+# fallback for a bare docker run.
+if [ -z "${XIOS_DEB_ARCH:-}" ]; then
+  case "$XIOS_MEMO_TARGET" in
+    *-rootless) XIOS_DEB_ARCH=iphoneos-arm64 ;;
+    iphoneos-arm64|iphoneos-arm64-ramdisk) XIOS_DEB_ARCH=iphoneos-arm ;;
+    *e-rootless|*e) XIOS_DEB_ARCH=iphoneos-arm64e ;;
+    *) XIOS_DEB_ARCH=iphoneos-arm64 ;;
+  esac
+fi
+
 # On-device paths. Rootless has no /bin/sh (/ and /bin are read-only), which is
 # why the X server / Xwayland popen patches exist; rootful uses the real one.
 if [ -n "$XIOS_PREFIX" ]; then
@@ -61,7 +76,7 @@ fi
 
 export XIOS_MEMO_TARGET XIOS_MEMO_CFVER XIOS_PREFIX XIOS_SUBPREFIX XIOS_PROC \
        XIOS_TRIPLE XIOS_BUILD_BASE XIOS_BUILD_WORK XIOS_BUILD_STAGE \
-       XIOS_BUILD_DIST XIOS_SYSROOT XIOS_USR XIOS_MEMO_ARGS XIOS_SHELL_PATH \
+       XIOS_BUILD_DIST XIOS_SYSROOT XIOS_USR XIOS_MEMO_ARGS XIOS_DEB_ARCH XIOS_SHELL_PATH \
        XIOS_RUNTIME_TMP XIOS_RUNTIME_VAR XIOS_PATH_DIRS
 
 xios_target_banner() {

@@ -117,7 +117,7 @@ xdeb_find() {
     local d f
     for d in "$@"; do
         [ -d "$d" ] || continue
-        f="$(ls -t "$d/${stem}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)"
+        f="$(ls -t "$d/${stem}_"*_$XIOS_DEB_ARCH.deb 2>/dev/null | head -1 || true)"
         [ -n "$f" ] && { echo "$f"; return 0; }
     done
     return 1

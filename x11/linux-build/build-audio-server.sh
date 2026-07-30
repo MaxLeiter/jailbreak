@@ -109,7 +109,7 @@ fi
 echo "==> collect debs -> /out"
 mkdir -p /out
 for pat in libltdl7 libpulse0 libpulse-dev pulseaudio pulseaudio-utils; do
-  find . -name "${pat}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Anything that linked GTK's bundled proxy-libintl gets relinked onto the

@@ -249,7 +249,7 @@ fi
 # (same dpkg-deb -x pattern build-gtk.sh uses for the Wayland libs). No PA DAEMON is rebuilt here.
 echo "==> staging libpulse client (libpulse0 + libpulse-dev) into build_base for mpv's pulse AO"
 for d in libpulse0 libpulse-dev; do
-  f=$(ls -1 /out/${d}_*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1) || true
+  f=$(ls -1 /out/${d}_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1) || true
   if [ -n "${f:-}" ]; then
     echo "    staging $f"
     dpkg-deb -x "$f" $XIOS_BUILD_BASE 2>/dev/null || true
@@ -322,7 +322,7 @@ for pat in libtllist libfcft foot imv fuzzel grim libgrapheme wayland-protocols 
            libavdevice libswscale libswresample libpostproc ffmpeg libass libplacebo \
            libharfbuzz libutf8proc libfontconfig libfreetype libpixman \
            libcairo libpango libfribidi libglib2.0 libpng libjpeg libturbojpeg; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 for target in $TARGETS; do
   pkg="${target%-package}"

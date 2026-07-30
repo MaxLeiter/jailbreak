@@ -99,6 +99,7 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
   -e XIOS_SUBPREFIX \
+  -e XIOS_DEB_ARCH \
   -v "$VOLUME:/work/Procursus" \
   -v "$HERE/target-env.sh:/work/target-env.sh:ro" \
   -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \

@@ -74,6 +74,6 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-find . -name "librsvg2*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+find . -name "librsvg2*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 
 echo "==> done"

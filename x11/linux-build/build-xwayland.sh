@@ -183,7 +183,7 @@ found=0
 DIST_ROOT=build_dist/$XIOS_TRIPLE
 for dir in libxcvt libxshmfence libdrm xwayland; do
   [ -d "$DIST_ROOT/$dir" ] || continue
-  for d in "$DIST_ROOT/$dir"/*_*_iphoneos-arm64.deb; do
+  for d in "$DIST_ROOT/$dir"/*_*_$XIOS_DEB_ARCH.deb; do
     [ -e "$d" ] || continue
     cp -v "$d" /out/; found=1
   done

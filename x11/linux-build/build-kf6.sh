@@ -187,12 +187,12 @@ done
 
 # collect any debs produced
 mkdir -p /out
-find . \( -name "kf6-*_*_iphoneos-arm64.deb" \
-       -o -name "extra-cmake-modules_*_iphoneos-arm64.deb" \
-       -o -name "plasma-*_*_iphoneos-arm64.deb" \
-       -o -name "kwayland*_*_iphoneos-arm64.deb" \
-       -o -name "kdecoration*_*_iphoneos-arm64.deb" \
-       -o -name "kglobalacceld*_*_iphoneos-arm64.deb" \
-       -o -name "layer-shell-qt*_*_iphoneos-arm64.deb" \) \
+find . \( -name "kf6-*_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "extra-cmake-modules_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "plasma-*_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "kwayland*_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "kdecoration*_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "kglobalacceld*_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "layer-shell-qt*_*_$XIOS_DEB_ARCH.deb" \) \
   -exec cp -v {} /out/ \; 2>/dev/null || true
 echo "==> done"

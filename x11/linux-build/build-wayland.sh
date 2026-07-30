@@ -149,7 +149,7 @@ echo "==> collect debs -> /out"
 mkdir -p /out
 found=0
 for pat in libepoll-shim libwayland wayland-protocols libxkbcommon; do
-  for d in $(find . -name "${pat}*_*_iphoneos-arm64.deb" 2>/dev/null); do
+  for d in $(find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" 2>/dev/null); do
     cp -v "$d" /out/; found=1
   done
 done

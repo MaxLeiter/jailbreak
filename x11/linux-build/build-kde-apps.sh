@@ -28,8 +28,8 @@ cd /work/Procursus
 # over the 74 runtime misses symbols at load time, because ICU bakes
 # U_ICU_VERSION_MAJOR_NUM into every export (ucol_open_78 vs ucol_open_74).
 # Do NOT point this at 78 without also moving qt6-base's Depends.
-ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
-ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
 if [ -n "$ICU_RUNTIME_DEB" ] && [ -n "$ICU_DEV_DEB" ]; then
   if [ ! -f "${BB}/usr/include/unicode/uvernum.h" ]; then
     echo "==> staging ICU 74.2: ${ICU_RUNTIME_DEB} + ${ICU_DEV_DEB}"

@@ -111,7 +111,7 @@ if run_stage deps; then
   rm -rf $BB/usr/lib/libxml2.* $BB/usr/include/libxml2 $BB/usr/lib/pkgconfig/libxml-2.0.pc \
          $BB/usr/lib/cmake/libxml2*
   rm -rf /tmp/xmlstage; mkdir -p /tmp/xmlstage
-  for d in /out/libxml2_2.13.8*_iphoneos-arm64.deb /out/libxml2-dev_2.13.8*_iphoneos-arm64.deb; do
+  for d in /out/libxml2_2.13.8*_$XIOS_DEB_ARCH.deb /out/libxml2-dev_2.13.8*_$XIOS_DEB_ARCH.deb; do
     [ -f "$d" ] && { echo "  extracting $(basename "$d")"; dpkg-deb -x "$d" /tmp/xmlstage; }
   done
   # deb layout is ./var/jb/... -> copy the var/jb subtree into build_base's var/jb

@@ -136,7 +136,7 @@ fi
 echo "==> collect debs -> /out"
 mkdir -p /out
 for pat in libicu icu-devtools libical evolution-data-server libtracker; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass: libical-glib/EDS/tracker link glib and would import the renamed

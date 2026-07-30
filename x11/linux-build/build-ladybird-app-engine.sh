@@ -163,9 +163,9 @@ if [ "$APP_GPU_ENABLED" -eq 1 ]; then
   ANGLE_DIR=$BB/lib/angle
   mkdir -p "$ANGLE_DIR"
   if [ ! -f "$ANGLE_DIR/libGLESv2.dylib" ] || [ ! -f "$ANGLE_DIR/libEGL.angle.dylib" ]; then
-    ANGLE_DEB=$(ls -1 /out/angle_*_iphoneos-arm64.deb 2>/dev/null | sort | tail -1 || true)
+    ANGLE_DEB=$(ls -1 /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort | tail -1 || true)
     if [ -z "$ANGLE_DEB" ]; then
-      echo "!! release Ladybird builds need /out/angle_*_iphoneos-arm64.deb to stage real ANGLE GLES" >&2
+      echo "!! release Ladybird builds need /out/angle_*_$XIOS_DEB_ARCH.deb to stage real ANGLE GLES" >&2
       exit 2
     fi
     TMPANGLE=$(mktemp -d)

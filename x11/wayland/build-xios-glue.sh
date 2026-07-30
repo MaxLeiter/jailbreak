@@ -39,7 +39,7 @@ rm -rf "$WORK"; mkdir -p "$SYS" /out
 
 echo "==> [1/4] extract dev debs into a sysroot (angle EGL/GLES)"
 for pat in angle; do
-  f=$(find "$DEBS" -maxdepth 1 -type f -name "${pat}_*_iphoneos-arm64.deb" \
+  f=$(find "$DEBS" -maxdepth 1 -type f -name "${pat}_*_$XIOS_DEB_ARCH.deb" \
         | sort -V | tail -1)
   [ -n "$f" ] || { echo "!! missing deb: $pat"; exit 1; }
   dpkg-deb -x "$f" "$SYS"

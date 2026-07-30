@@ -233,7 +233,7 @@ stage_libpeas_girepository() {
   echo "==> staging libgirepository for libpeas"
   local pkg deb
   for pkg in libgirepository-1.0-1 libgirepository-1.0-dev; do
-    deb="$(find /out -maxdepth 1 -type f -name "${pkg}_*_iphoneos-arm64.deb" -print 2>/dev/null | sort -V | tail -1)"
+    deb="$(find /out -maxdepth 1 -type f -name "${pkg}_*_$XIOS_DEB_ARCH.deb" -print 2>/dev/null | sort -V | tail -1)"
     if [ -z "$deb" ]; then
       echo "ERROR: no $pkg deb in /out; build or copy the published package first" >&2
       exit 1
@@ -296,7 +296,7 @@ for spec in \
   pat="${spec%%:*}"
   req="${spec#*:}"
   target_requests "$req" || continue
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} "$OUT_STAGING"/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} "$OUT_STAGING"/ \; 2>/dev/null || true
 done
 
 if [ -f /work/recipes/relink-gtkintl.sh ]; then

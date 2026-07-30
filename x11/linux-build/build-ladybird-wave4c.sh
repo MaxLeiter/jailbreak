@@ -57,7 +57,7 @@ EOF
   else
     echo "!! mimalloc-package FAILED"; fi
   # collect
-  find . -name "libmimalloc_*_iphoneos-arm64.deb" -newermt "-30 min" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "libmimalloc_*_$XIOS_DEB_ARCH.deb" -newermt "-30 min" -exec cp -v {} /out/ \; 2>/dev/null || true
   # LSE disassembly scan on the freshly staged/dist dylib
   MDYL=$(find build_stage/mimalloc build_dist -name "libmimalloc.*.dylib" 2>/dev/null | head -1)
   echo "== LSE scan on $MDYL =="
@@ -181,7 +181,7 @@ step "STAGE package: ladybird-headless deb @ 0.1.1+ios1"
 # ================================================================================================
 LDID=/root/cctools/bin/ldid
 VER="0.1.1+ios1"
-DEB=/out/ladybird-headless_${VER}_iphoneos-arm64.deb
+DEB=/out/ladybird-headless_${VER}_$XIOS_DEB_ARCH.deb
 if run_stage package; then
   HS=$(find "$BUILD" -maxdepth 4 -type f -name headless-shot 2>/dev/null | head -1)
   if [ -z "$HS" ]; then echo "!! headless-shot not built; skipping package"; else

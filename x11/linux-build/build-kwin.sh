@@ -68,15 +68,15 @@ stage_deb() {
     dpkg-deb -x "$deb" build_base/$XIOS_TRIPLE
   fi
 }
-stage_deb /out/libepoll-shim0_0.0.20240608_iphoneos-arm64.deb
-stage_deb /out/libepoll-shim-dev_0.0.20240608_iphoneos-arm64.deb
-stage_deb /out/libxcvt0_0.1.2_iphoneos-arm64.deb
-stage_deb /out/libxcvt-dev_0.1.2_iphoneos-arm64.deb
+stage_deb /out/libepoll-shim0_0.0.20240608_$XIOS_DEB_ARCH.deb
+stage_deb /out/libepoll-shim-dev_0.0.20240608_$XIOS_DEB_ARCH.deb
+stage_deb /out/libxcvt0_0.1.2_$XIOS_DEB_ARCH.deb
+stage_deb /out/libxcvt-dev_0.1.2_$XIOS_DEB_ARCH.deb
 
 # KWin's nested IOSurface consumer uses the GPU-fence ABI exported by the
 # matched ANGLE libEGL. Do not silently link against whichever older ANGLE
 # happens to be cached in the long-lived KF6 sysroot.
-angle_debs=(/out/angle_*_iphoneos-arm64.deb)
+angle_debs=(/out/angle_*_$XIOS_DEB_ARCH.deb)
 if [ "${#angle_debs[@]}" -eq 0 ]; then
   echo "ERROR: no ANGLE package in /out; build ANGLE before KWin." >&2
   exit 1

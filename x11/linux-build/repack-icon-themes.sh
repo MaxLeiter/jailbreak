@@ -59,7 +59,7 @@ EOF
   chmod 0755 t/DEBIAN/postinst
   rm -f t/DEBIAN/preinst t/DEBIAN/prerm t/DEBIAN/postrm t/DEBIAN/triggers t/DEBIAN/conffiles
   ( cd t && find var -type f -exec md5sum {} \; > DEBIAN/md5sums ) 2>/dev/null || true
-  deb="$OUT/${pkg}_${ver}_iphoneos-arm64.deb"
+  deb="$OUT/${pkg}_${ver}_$XIOS_DEB_ARCH.deb"
   dpkg-deb -b t "$deb" >/dev/null
   echo "   -> $(basename "$deb")"; dpkg-deb -f "$deb" Package Version Architecture Depends | sed 's/^/      /'
 }
@@ -70,6 +70,6 @@ repack adwaita.deb adwaita-icon-theme 46.0 "hicolor-icon-theme" Adwaita \
   "Adwaita icon theme - GNOME default symbolic + colour icons for GTK3/GTK4/libadwaita apps"
 
 echo "==> verify Adwaita ships the symbolic icons the header bars need"
-dpkg-deb -c "$OUT/adwaita-icon-theme_46.0_iphoneos-arm64.deb" \
+dpkg-deb -c "$OUT/adwaita-icon-theme_46.0_$XIOS_DEB_ARCH.deb" \
   | grep -E "open-menu-symbolic|view-more-symbolic|index.theme" | head
 echo "==> done"

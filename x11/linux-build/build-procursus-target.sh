@@ -119,6 +119,7 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
   -e XIOS_SUBPREFIX \
+  -e XIOS_DEB_ARCH \
   -e JOBS \
   -e PATH="/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   -e LD_LIBRARY_PATH="/root/cctools/lib" \
