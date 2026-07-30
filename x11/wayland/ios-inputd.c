@@ -95,6 +95,7 @@ struct app_state {
     uint32_t im_done_count;
     /* PROXY mode (zwp_input_method_v1, KDE) */
     int proxy;                                    /* 1 = proxy mode, 0 = root mode */
+    int proxy_required;                           /* never fall back to root mode   */
     struct zwp_input_method_v1 *im1;
     struct zwp_input_method_context_v1 *ctx1;
     uint32_t ctx_serial;                          /* newest commit_state serial     */
@@ -207,12 +208,16 @@ static void send_text(struct app_state *s, const char *text, size_t len)
          * away between the app's keystroke and this record. Dropping it is right:
          * there is nothing to commit into, and iosc has already skipped its own
          * fallback on our behalf. */
-        if (!s->ctx1) return;
+        if (!s->ctx1) {
+            fprintf(stderr, "ios-inputd: %zu bytes of text with no focused field; dropped\n", len);
+            return;
+        }
         char *copy = malloc(len + 1);
         if (!copy) return;
         memcpy(copy, text, len);
         copy[len] = 0;
         zwp_input_method_context_v1_commit_string(s->ctx1, s->ctx_serial, copy);
+        fprintf(stderr, "ios-inputd: commit_string %zu bytes (serial %u)\n", len, s->ctx_serial);
         free(copy);
         return;
     }
@@ -270,6 +275,13 @@ static void proxy_send_traits(struct app_state *s)
 static void proxy_set_traits(struct app_state *s, uint32_t hint, uint32_t purpose,
                             uint32_t enabled)
 {
+    /* Log TRANSITIONS only. The repeat pushes are the frequent ones (every caret
+     * move commits) and they carry no news; a changed field, on the other hand, is
+     * the whole signal and is otherwise invisible on device, since the keyboard
+     * that reacts to it lives in another process. */
+    if (hint != s->tr_hint || purpose != s->tr_purpose || enabled != s->tr_enabled)
+        fprintf(stderr, "ios-inputd: traits %s hint=0x%x purpose=%u\n",
+                enabled ? "enable" : "disable", hint, purpose);
     s->tr_hint = hint;
     s->tr_purpose = purpose;
     s->tr_enabled = enabled;
@@ -454,8 +466,31 @@ static void service_app_client(struct app_state *s)
     }
 }
 
+/* Is something already listening on `path`? ROOT mode unlinks and rebinds the
+ * socket it is given, which is fine when it stands in for iosc and catastrophic
+ * when iosc is actually running: the node is replaced, the Xios app reconnects to
+ * us instead of the compositor, and the whole session loses input. Probe first. */
+static int socket_is_live(const char *path)
+{
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return 0;
+    struct sockaddr_un a;
+    memset(&a, 0, sizeof(a));
+    a.sun_family = AF_UNIX;
+    strncpy(a.sun_path, path, sizeof(a.sun_path) - 1);
+    int live = connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0;
+    close(fd);
+    return live;
+}
+
 static int start_socket(const char *path)
 {
+    if (socket_is_live(path)) {
+        fprintf(stderr, "ios-inputd: refusing to take over %s: something is already "
+                        "listening there (a running iosc?). Pass a different -s path, "
+                        "or --proxy if this compositor nests inside iosc.\n", path);
+        return -1;
+    }
     unlink(path);
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
@@ -555,6 +590,17 @@ static int init_wayland(struct app_state *s)
         fprintf(stderr, "ios-inputd: compositor has no wl_seat\n");
         return -1;
     }
+    /* KWin only exposes zwp_input_method_v1 to the connection it hands its own IM
+     * child, and it can drop that status again (its kwinrc watcher calls
+     * setInputMethodCommand, which stops the IM and destroys the connection). When
+     * that races our bind we see no v1 at all, so wait a moment before concluding
+     * this is not a KWin. Cheap: only the failure path pays, and it beats
+     * misdetecting the mode. */
+    for (int i = 0; !s->im1 && s->proxy_required && i < 30; i++) {
+        struct timespec ts = { 0, 100 * 1000 * 1000 };   /* 100 ms */
+        nanosleep(&ts, NULL);
+        if (wl_display_roundtrip(s->display) < 0) break;
+    }
     /* input-method-v1 means a nested KWin: proxy mode, and none of the root-mode
      * machinery below applies (no virtual keyboard, no listen socket). */
     if (s->im1) {
@@ -588,9 +634,18 @@ static int init_wayland(struct app_state *s)
 int main(int argc, char **argv)
 {
     const char *socket_path = "/var/jb/tmp/iosc-input.sock";
+    /* A compositor that launches us as its input method passes the connection in
+     * WAYLAND_SOCKET. That is also exactly the case where -s names a socket the
+     * ROOT-mode path must not touch, because it belongs to the compositor iosc
+     * underneath. Treat it as proxy-required, and let --proxy say so explicitly. */
+    int proxy_required = getenv("WAYLAND_SOCKET") != NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-s") && i + 1 < argc)
             socket_path = argv[++i];
+        else if (!strcmp(argv[i], "--proxy"))
+            proxy_required = 1;
+        else if (!strcmp(argv[i], "--root"))
+            proxy_required = 0;
     }
 
     /* The keymap only feeds the root-mode virtual keyboard. Proxy mode commits
@@ -602,8 +657,19 @@ int main(int argc, char **argv)
     memset(&s, 0, sizeof(s));
     s.listen_fd = -1;
     s.client_fd = -1;
+    s.proxy_required = proxy_required;
     snprintf(s.sock_path, sizeof(s.sock_path), "%s", socket_path);
     if (init_wayland(&s) != 0) return 1;
+    if (!s.proxy && s.proxy_required) {
+        /* Falling back to ROOT mode here would unlink and rebind the compositor's
+         * own input socket. Better to be a dead input method than to break every
+         * pointer and key in the session. */
+        fprintf(stderr, "ios-inputd: proxy mode required but this compositor never "
+                        "offered zwp_input_method_v1; refusing to fall back to root "
+                        "mode on %s. The auto keyboard is off for this session.\n",
+                socket_path);
+        return 1;
+    }
     if (!s.proxy && !have_keymap) {
         fprintf(stderr, "ios-inputd: xkb keymap init failed\n");
         return 1;

@@ -683,6 +683,7 @@ echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
 nohup "$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
   IOSC_IGNORE_ACTIVE_SESSION=1 \
+  IOSC_DEBUG="${IOSC_DEBUG-}" \
   IOSC_FULLSCREEN_TOPLEVELS="$IOSC_FULLSCREEN_TOPLEVELS" \
   IOSC_NO_OUTPUT_TRANSFORM="$IOSC_NO_OUTPUT_TRANSFORM" \
   "$IOSC_BIN" -logical "$IOSC_LOGICAL" -s "$WAYLAND_DISPLAY" \
@@ -855,15 +856,32 @@ nohup "$SETSID" env \
 	    # NOTE: this whole block lives inside a single-quoted bash -lc string,
 	    # so no apostrophes here.
 	    kwin_im_args=""
+	    kwin_im_cmd="$IOS_INPUTD_BIN --proxy -s $IOSC_INPUT_SOCK"
 	    if [ -x "$IOS_INPUTD_BIN" ] && [ "${KDE_AUTO_KEYBOARD:-1}" = 1 ]; then
 	      kwin_im_args="--inputmethod"
-	      echo "launch kwin: input method $IOS_INPUTD_BIN -s $IOSC_INPUT_SOCK"
+	      # KWin watches kwinrc [Wayland] InputMethod and calls setInputMethodCommand
+	      # with whatever it finds. An empty value there STOPS the input method and
+	      # destroys the connection that is allowed to bind zwp_input_method_v1,
+	      # which races the child we just launched and silently disables the auto
+	      # keyboard. Publishing the identical command in kwinrc makes that callback
+	      # a no-op (setInputMethodCommand returns early on an unchanged command).
+	      im_desktop="$XDG_DATA_DIRS/applications/ios-inputd.desktop"
+	      mkdir -p "$(dirname "$im_desktop")" 2>/dev/null || true
+	      # Double quotes, not single: this block is inside a single-quoted bash -lc
+	      # string, so a nested single quote closes it and the \n stops being an
+	      # escape. bash -n does not catch that; the file just comes out on one line.
+	      printf "%s\n" "[Desktop Entry]" "Type=Application" "Name=Xios iOS keyboard bridge" \
+	        "Exec=$kwin_im_cmd" "NoDisplay=true" "X-KDE-Wayland-VirtualKeyboard=true" \
+	        > "$im_desktop" 2>/dev/null || true
+	      kwriteconfig6 --file kwinrc --group Wayland --key InputMethod "$im_desktop" 2>/dev/null || true
+	      kwriteconfig6 --file kwinrc --group Wayland --key VirtualKeyboardEnabled true 2>/dev/null || true
+	      echo "launch kwin: input method $kwin_im_cmd"
 	    elif [ "${KDE_AUTO_KEYBOARD:-1}" = 1 ]; then
 	      echo "launch kwin: no ios-inputd at $IOS_INPUTD_BIN; iOS keyboard will not auto-pop"
 	    fi
 	    "$KWIN_BIN" --wayland-display "$WAYLAND_DISPLAY" --socket "$KWIN_SOCKET" \
 	      --width "$KWIN_W" --height "$KWIN_H" --no-global-shortcuts \
-	      ${kwin_im_args:+$kwin_im_args "$IOS_INPUTD_BIN -s $IOSC_INPUT_SOCK"} &
+	      ${kwin_im_args:+$kwin_im_args "$kwin_im_cmd"} &
     kwin_pid=$!
     for _ in $(seq 1 60); do
       [ -S "$XDG_RUNTIME_DIR/$KWIN_SOCKET" ] && break
