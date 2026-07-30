@@ -11,6 +11,22 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Wire: XIOS_IN_BIND=8 (scope a connection's input to one window id) — already reserved in xios_input_socket.h; IoscInput.c had 8 on-wire before the header did.
 
 ## Current state
+- 2026-07-29 launch-boundary and package-boundary closure:
+  `xios-launcher-tools 0.1.5` is installed and device-tested. Launcher bundles
+  contain only `IOSCAppID`/`IOSCName`; the daemon accepts only
+  `LAUNCH[_NATIVE|_CLASSIC]\t<app_id>`, authorizes root/mobile peers, resolves a
+  non-writable root-owned desktop entry, converts its `Exec` value to argv
+  without inserting a shell, and drops the application plus its session bus to
+  `mobile`. The device rejected an extra command field as `ERR malformed`,
+  rejected `../bin/sh`, rejected a mode-0666 test desktop entry, and launched
+  `org.gnome.dspy` as UID 501. Its D-Bus and Wayland sockets were
+  `mobile:mobile` mode `0660`; the existing GNOME session and Xios PID remained
+  active. Evidence: `artifacts/device-runs/ioscd-appid-mobile-20260729/`.
+  Package metadata now separates `xios-runtime 0.1.0` from fullscreen
+  `xios-core 0.1.6`; `xios-native 0.1.3` depends on runtime, launcher tools, and
+  Settings only, while runtime installs `xios-fhs >= 1.0.3`. Mach-O closure
+  auditing sets the launcher, native, and fullscreen package floor to iOS 16.5;
+  the shell-independent runtime itself remains at iOS 16.0.
 - 2026-07-29 native presentation protocol v1 is host-build complete. BIND
   requires an exact HELLO/version match; every `XIOS_MSG_NATIVE_FRAME` carries
   one package-broker token and a non-zero 64-bit `MTLSharedEvent` value. There
@@ -26,13 +42,17 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - `iosc_gl_bind_target()` is factored out of `iosc_gl_resize()`; the compositor build includes `xios_canvas.c` so it stays compile-checked.
 - `iosc.c` native mode now starts `iosc-native.sock`, creates/destroys per-window canvases on toplevel map/unmap, composites each toplevel into its own IOSurface, and handles host resize/activate/close requests on the Wayland event loop.
 - `XIOS_IN_BIND` is honored by the shared input reader + iosc's bound-aware dispatch path: host scene input connections can now be scoped to a compositor window id, including native-mode keyboard TRAITS broadcasts for the focused window.
-- Native launch is now explicit per request: iosc-host sends `LAUNCH_NATIVE`, and ioscd starts a native compositor namespace on `wayland-native-0` + `iosc-native-input.sock` + `xios-native.json`. Classic launchers keep `wayland-0` + `iosc-input.sock`, so native wrapped apps and the classic Xios desktop can coexist on the same device.
-- Basic native launch has been reported working on-device. 2026-07-04 backend coexistence smoke through `ioscd` returned `LAUNCHED` for `LAUNCH_NATIVE\torg.gnome.Calculator\tgnome-calculator` while classic `wayland-0` stayed up. Device state showed `wayland-native-0`, `/var/jb/tmp/xios-native.json`, `iosc-native-input.sock`, `iosc-native.sock`, `iosc -native`, and `gnome-calculator` alive. Treat the remaining items below as physical host-window validation/polish, not as "core protocol missing" work.
+- Native launch is explicit per request: iosc-host sends only
+  `LAUNCH_NATIVE\t<app_id>`. ioscd accepts no executable text, resolves the id
+  from a trusted root-owned desktop entry, parses its `Exec` field without a
+  command shell, and launches the application as `mobile`. Native uses
+  `wayland-native-0` + `iosc-native-input.sock` + `xios-native.json`; classic
+  uses `wayland-0` + `iosc-input.sock`, so both can coexist.
 - Build the compositor with just `x11/wayland/build-iosc.sh` (no docker flags): on the Mac it re-execs inside the cross-build image with the mounts wired, reads dev debs from `linux-build/out` then `repo/debs` as a fallback, and host-signs `wayland/out/iosc` (GPU/IOSurface/task_for_pid DER entitlements) so it is device-ready. `IOSC_NO_SIGN=1` skips signing; `IOSC_XBUILD_IMAGE=` overrides the image.
 
 ## On-device Home Screen app sync
-- The old Mac-side `gen-launchers.sh --native` path remains useful for dev/test,
-  but the device now has the pieces for on-device `.desktop` -> `.app` sync:
+- The Mac-side `gen-launchers.sh --native` path is useful for dev/test, and the
+  device has the pieces for on-device `.desktop` -> `.app` sync:
   `xios-icon-render` renders PNG/SVG theme icons through gdk-pixbuf into the iPad
   SpringBoard icon sizes, and `xios-launcher-sync` scans
   `/var/jb/usr/share/applications`, writes per-app `Info.plist` files, copies the
@@ -41,10 +61,8 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Dev installer: `x11/apps/iosc-desktop/install-launcher-tools.sh`. It installs
   `/var/jb/usr/local/bin/xios-icon-render`, `/var/jb/usr/local/bin/xios-launcher-sync`,
   and shared payloads/entitlements under `/var/jb/usr/libexec/xios-launchers`.
-- Package path: `x11/apps/iosc-desktop/package-launcher-tools.sh` reserves
-  `xios-launcher-tools_0.1.1_iphoneos-arm64.deb` for the updated native host; 0.1.0
-  remains published. The 0.1.1 payload built and staged on 2026-07-18, but final
-  `xmkdeb` assembly is pending Docker recovery. The package ships `ioscd`,
+- Package path: `x11/apps/iosc-desktop/package-launcher-tools.sh` builds
+  `xios-launcher-tools 0.1.5`. The package ships `ioscd`,
   `xios-icon-render`, `xios-launcher-sync`, `IOSCLaunch`, `IOSCHost`,
   `default.metallib`, the entitlements, and
   `/var/jb/Library/LaunchDaemons/com.max.ioscd.plist`. Postinst re-signs the
@@ -130,7 +148,7 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 
 ## Open items
 1. Record the on-device demo result in this file: `gen-launchers.sh --native`, tap a generated app, confirm it opens as its own iPad window, resizes, focuses, accepts text, and closes cleanly.
-2. Physical coexistence smoke: keep a classic Xios desktop up, tap a native generated app, and confirm both compositor sockets/configs stay live (`wayland-0`/`xios.json` and `wayland-native-0`/`xios-native.json`) while the UIKit host window is visible. Backend-only coexistence via `ioscd LAUNCH_NATIVE` passed on 2026-07-04.
+2. Physical coexistence smoke: keep the fullscreen Xios desktop up, tap a native generated app, and confirm both compositor sockets/configs stay live (`wayland-0`/`xios.json` and `wayland-native-0`/`xios-native.json`) while the UIKit host window is visible.
 3. **Touch coordinate transform per-window**: verify the host unprojects touches against the canvas's own fb size for every scene.
 4. Validate jetsam/relaunch replay: open a native-hosted app, kill/relaunch the host, confirm `WINDOW_NEW` + the live canvas port are replayed from `xios_canvas.c`.
 5. Confirm the keyboard hint path on device: focus a GTK/Qt text field inside a native-hosted window and verify the OSK appears when that scene is key.
