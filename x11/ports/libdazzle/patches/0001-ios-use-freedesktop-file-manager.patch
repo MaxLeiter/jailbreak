@@ -1,0 +1,16 @@
+--- a/src/util/dzl-file-manager.c
++++ b/src/util/dzl-file-manager.c
+@@ -23,0 +24,4 @@
++#if defined(PLATFORM_OSX) && !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++# define DZL_PLATFORM_OSX 1
++#endif
++
+@@ -37 +41 @@
+-#ifdef PLATFORM_OSX
++#ifdef DZL_PLATFORM_OSX
+@@ -43 +47 @@
+-#if !(defined(G_OS_WIN32) || defined(PLATFORM_OSX))
++#if !(defined(G_OS_WIN32) || defined(DZL_PLATFORM_OSX))
+@@ -133 +137 @@
+-#elif defined(PLATFORM_OSX)
++#elif defined(DZL_PLATFORM_OSX)

@@ -12,6 +12,7 @@ DEB_LIBDAZZLE_V    ?= $(LIBDAZZLE_VERSION)+ios1
 libdazzle-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libdazzle/$(LIBDAZZLE_MAJOR_V)/libdazzle-$(LIBDAZZLE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,libdazzle-$(LIBDAZZLE_VERSION).tar.xz,libdazzle-$(LIBDAZZLE_VERSION),libdazzle)
+	$(call DO_PATCH,libdazzle,libdazzle,-p1)
 	rm -rf $(BUILD_WORK)/libdazzle/build
 	mkdir -p $(BUILD_WORK)/libdazzle/build
 	echo -e "[host_machine]\n \
