@@ -5,10 +5,10 @@
     <!-- Fakesigned apps here don't get the default GPU sandbox access, so grant the
          GPU/IOSurface IOKit user clients explicitly (needed for MTLCreateSystemDefaultDevice
          + IOSurface). FS access to rootless/rootful runtime tmp sockets via a
-         path exception. can-allow-non-platform loads the fakesigned libX11/libXtst. -->
+         path exception. -->
     <key>com.apple.private.amfi.can-allow-non-platform</key>
     <true/>
-    <!-- Let the Xios X server task_for_pid() us so it can hand over the IOSurface's
+    <!-- Let the compositor task_for_pid() us so it can hand over the IOSurface's
          mach port (zero-copy framebuffer rendezvous; see XSurface.c). -->
     <key>get-task-allow</key>
     <true/>
