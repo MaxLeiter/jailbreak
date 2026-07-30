@@ -28,8 +28,9 @@ need shasum
 
 GNU_MAKE="${GNU_MAKE:-/opt/homebrew/opt/make/libexec/gnubin/make}"
 GPERF_DIR="${GPERF_DIR:-/opt/homebrew/opt/gperf/bin}"
-PYTHON="${PYTHON:-/opt/homebrew/bin/python3}"
-MESON="${MESON:-/opt/homebrew/bin/meson}"
+PYTHON="${PYTHON:-/opt/homebrew/bin/python3.13}"
+MESON_SITE="${MESON_SITE:-/opt/homebrew/lib/python3.14/site-packages}"
+HOST_TOOLS="$WORK/host-tools"
 
 [ -x "$GNU_MAKE" ] || {
   echo "ERROR: GNU Make 4 is required; install it with: brew install make" >&2
@@ -43,16 +44,34 @@ MESON="${MESON:-/opt/homebrew/bin/meson}"
   echo "ERROR: Homebrew Python is required: $PYTHON" >&2
   exit 1
 }
-[ -x "$MESON" ] || {
+[ -d "$MESON_SITE/mesonbuild" ] || {
   echo "ERROR: Meson is required; install it with: brew install meson" >&2
   exit 1
 }
-"$PYTHON" -c 'import mesonbuild' >/dev/null || {
-  echo "ERROR: $PYTHON cannot import mesonbuild" >&2
+"$PYTHON" -c 'import xml.parsers.expat' >/dev/null || {
+  echo "ERROR: $PYTHON has a broken expat module; use a working Python 3.13 build" >&2
   exit 1
 }
 
 mkdir -p "$WORK" "$OUT"
+mkdir -p "$HOST_TOOLS"
+cat > "$HOST_TOOLS/python3" <<EOF
+#!/bin/sh
+PYTHONPATH="$MESON_SITE\${PYTHONPATH:+:\$PYTHONPATH}" exec "$PYTHON" "\$@"
+EOF
+cat > "$HOST_TOOLS/meson" <<EOF
+#!/bin/sh
+PYTHONPATH="$MESON_SITE\${PYTHONPATH:+:\$PYTHONPATH}" exec "$PYTHON" -m mesonbuild.mesonmain "\$@"
+EOF
+chmod +x "$HOST_TOOLS/python3" "$HOST_TOOLS/meson"
+MESON="$HOST_TOOLS/meson"
+PYTHONPATH="$MESON_SITE${PYTHONPATH:+:$PYTHONPATH}"
+export MESON PYTHONPATH
+"$HOST_TOOLS/python3" -c 'import mesonbuild, xml.parsers.expat' >/dev/null || {
+  echo "ERROR: the selected Python cannot load Meson and expat" >&2
+  exit 1
+}
+
 if [ ! -d "$SOURCE/.git" ]; then
   git clone --filter=blob:none "$REPOSITORY" "$SOURCE"
 fi
@@ -66,9 +85,8 @@ mkdir -p "$BUILD"
 # Homebrew's pkgconf is valid here, but LibreOffice deliberately requires an
 # explicit acknowledgement for unrecognized pkg-config builds. The nested
 # build-platform configure needs the acknowledgement separately.
-export PATH="$GPERF_DIR:$(dirname "$GNU_MAKE"):$(dirname "$PYTHON"):$PATH"
+export PATH="$HOST_TOOLS:$GPERF_DIR:$(dirname "$GNU_MAKE"):$(dirname "$PYTHON"):$PATH"
 export PYTHON
-export MESON
 (
   cd "$BUILD"
   "$SOURCE/autogen.sh" \
