@@ -51,6 +51,29 @@ enum XiosUpscaleMode: Equatable {
     }
 
     var isOff: Bool { self == .off }
+
+    /// Round-trips through `parse`. Used to persist the in-app choice and to label it.
+    var spec: String {
+        switch self {
+        case .off: return "off"
+        case .auto: return "auto"
+        case .factor(let f): return String(format: "%g", f)
+        }
+    }
+
+    /// Short label for the settings chips.
+    var title: String {
+        switch self {
+        case .off: return "Off"
+        case .auto: return "Auto"
+        case .factor(let f): return String(format: "%g×", f)
+        }
+    }
+
+    /// The choices offered in the UI. `auto` only engages when the compositor is
+    /// already rendering below the panel, so it is the safe middle option; the
+    /// explicit factors always engage.
+    static let selectable: [XiosUpscaleMode] = [.off, .auto, .factor(1.25), .factor(1.5), .factor(2)]
 }
 
 /// Owns the intermediate render target and the scaler, and rebuilds both when the

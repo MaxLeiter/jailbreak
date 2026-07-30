@@ -227,3 +227,47 @@ Use named subcommands when possible; reserve `exec` for one-off inspection.
 Do not treat host syntax checks as on-device validation. UIKit, FrontBoard,
 IOSurface, Metal, launchd, and package-manager behavior still require device
 evidence.
+
+## Landmine: a host-signed `iosc` can be SIGKILLed on launch
+
+Observed 2026-07-29 on iPad7,12 / iPadOS 17.6.1 / Dopamine. A freshly
+cross-built `iosc`, signed on the Mac by `sign-iosc.sh` (which reports success and
+whose entitlements read back correctly with `ldid -e`), was killed instantly by
+the kernel every launch:
+
+```
+$ iosc -logical 1440x1080 ...
+exit=137          # 128 + SIGKILL
+                  # ZERO bytes of output — not one fprintf reached stderr
+```
+
+**Zero output plus exit 137 means AMFI rejected the signature, not that the code
+is broken.** Nothing in the program ran, so there is no crash log and no clue in
+any `/var/jb/tmp` log. It looks exactly like a compositor that dies during
+bring-up, and `xios-session` reports only the downstream symptom
+(`iosc did not create wayland-0`).
+
+Isolate it in one step — run the previous, package-installed binary with the same
+arguments. If that one starts and prints its `output IOSurface ...` banner, the
+device is fine and the new binary's signature is the problem.
+
+Fix: re-sign **on the device**, which has its own `ldid`:
+
+```bash
+scp x11/wayland/iosc-gl-ent.xml root@$IP:/var/jb/tmp/
+ssh root@$IP 'ldid -S/var/jb/tmp/iosc-gl-ent.xml /var/jb/usr/local/bin/iosc'
+```
+
+Notes:
+- The scp is not at fault. Verify with `shasum -a 256` on both ends: the bytes are
+  identical, so the host's signature itself is what AMFI refuses.
+- Only `iosc` was affected. `Xios.app`, signed by the same host `ldid` through
+  `bin/lib/build-app.sh`, launched fine — so this is specific to the entitlement
+  set in `iosc-gl-ent.xml` (`platform-application`,
+  `com.apple.private.amfi.can-allow-non-platform`, the IOKit user-client array)
+  rather than to the host toolchain in general.
+- `sign-iosc.sh`'s header comment claims the Homebrew `ldid` "emits those
+  correctly". On this host, at this version, it does not. Treat host signing as
+  best-effort and re-sign on device whenever a fresh `iosc` exits 137.
+- `.deb`-installed compositors are signed at package build time and are unaffected;
+  this only bites the scp-a-dev-build loop.
