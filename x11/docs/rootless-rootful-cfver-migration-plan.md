@@ -563,8 +563,9 @@ and the Wayland base built for `MEMO_TARGET=iphoneos-arm64`:
 | ANGLE | `angle` `2.1.0+git20260630.a32d31d+es3-14` |
 | iosc | `iosc` `0.9.37` |
 | xios-fhs | `xios-fhs` `1.0.1` |
+| GTK 3 stack | fribidi, pango, gdk-pixbuf, atk, `libgtk-3-0`/`-dev`, `gtk-3-bin`, `libgtkintl` |
 
-Sixteen debs, all passing `tools/check-target-package.py` against `rootful-1900`,
+Twenty-six debs, all passing `tools/check-target-package.py` against `rootful-1900`,
 and all correctly *rejected* against `rootless-1900` (wrong payload prefix,
 wrong architecture) -- so the check is discriminating, not just permissive.
 `libwayland0` ships all four dylibs at `./usr/lib/`. Run it with:
@@ -602,25 +603,29 @@ IOSC_EGL_SHIM=x11/wayland/out/targets/rootful-1900/libiosc_egl.dylib \
 XIOS_TARGET=rootful-1900 bash wayland/build-iosc.sh
 ```
 
-### GTK for rootful: blocked, and probably not on the target matrix
+### GTK for rootful: built, after four unrelated defects
 
-`run-target-script.sh rootful-1900 build-gtk.sh` gets through fribidi and pango
-and then fails twice, neither failure looking prefix-related:
+GTK 3 builds for rootful now. Getting there needed four fixes, and only the last
+is about the target matrix at all:
 
-- `libx11`: `../src/util/makekeys: cannot execute binary file: Exec format
-  error`. makekeys is a build-time generator, so it has to be a host binary.
-  Procursus does handle this -- `makefiles/libx11.mk` passes
-  `CC_FOR_BUILD="$(CC_FOR_BUILD)"`, and the log shows it resolving correctly to
-  `/usr/bin/cc -O2 -pipe` -- and it still came out arm64-iOS. So libx11's own
-  build system is not honouring it, which is a version/upstream question rather
-  than a target one.
-- `uuid`: `libtool: compile: unable to infer tagged configuration`.
+1. `build-gtk.sh` passed `CC=<wrapper>` to make on the **command line**, which
+   beats every assignment in every makefile it reaches -- clobbering libx11's
+   deliberate `CC = @CC_FOR_BUILD@` for the makekeys generator, and desyncing
+   uuid's libtool tag inference from what configure recorded. The compilers are
+   now shimmed through PATH under their own names. (Both obvious alternatives
+   are wrong: dropping the wrapper breaks uuid's configure, and renaming the
+   real binary breaks cctools clang, which reads its target triple from argv[0].)
+2. mesa's freedesktop archive URL 404s for old versions; the correction lived
+   only in `build.sh`, so the GTK path downloaded an error page.
+3. `build-gtk.sh` never called `procursus-common-edits.py`.
+4. `run-target-script.sh` did not mount `build_info/`, so our control templates
+   were missing and pango emitted a `DEBIAN/control` with no `Package` field.
 
-Worth checking before assuming this is a rootful problem: the warm rootless GTK
-volume has `.build_complete` for libx11, so that step has not re-run there in a
-long time. Same shape as the wayland `epoll_dep` finding -- a cold rootless
-build may well hit both of these too. Confirming that needs a cold rootless
-run, which has not been done.
+1-3 are not rootful problems. They were hidden because the warm rootless GTK
+volume carries `.build_complete` for libx11 and mesa, and those recipes
+short-circuit to "Using previously built ..." whenever the marker exists. A cold
+rootless build would have hit all three -- the same shape as the wayland
+`epoll_dep` finding.
 
 What is left:
 
