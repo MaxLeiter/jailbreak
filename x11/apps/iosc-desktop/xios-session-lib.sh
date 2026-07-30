@@ -1218,6 +1218,14 @@ xios_session_run() {
         ""|help|-h|--help)
             xios_session_run_unlocked "$@"
             return $? ;;
+        app)
+            # A client launch must never serialize compositor switches. Some GUI
+            # launchers keep their invoking shell alive even after nohup, which used
+            # to pin the global lock and make every in-app desktop request wait up to
+            # 45 seconds. A concurrent switch may make this one client fail to map;
+            # that is preferable to freezing the desktop control plane.
+            xios_session_run_unlocked "$@"
+            return $? ;;
     esac
     xs_apply_requested_logical
     if xs_switch_request_preset "$preset"; then
