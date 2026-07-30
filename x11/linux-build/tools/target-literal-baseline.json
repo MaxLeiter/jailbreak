@@ -1,5 +1,5 @@
 {
-  "total": 1084,
+  "total": 1086,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 2,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -140,6 +140,7 @@
     "linux-build/recipes/plasma-workspace-ios-fixes.sh": 4,
     "linux-build/recipes/plasma-workspace-ios-package-fixes.sh": 11,
     "linux-build/recipes/polkit-kde-agent-1.mk": 2,
+    "linux-build/recipes/powerdevil-xiosbacklight.cpp": 2,
     "linux-build/recipes/powerdevil.mk": 2,
     "linux-build/recipes/pulseaudio.mk": 7,
     "linux-build/recipes/qtbase.mk": 3,
