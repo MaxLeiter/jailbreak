@@ -24,7 +24,7 @@ version for any agent.
 | hitori 44.0+ios1 | out/ ✓ | installed | **YES** | schema + GTK3 Wayland verified |
 | gnome-calculator 46.2 | in repo/debs | installed | (GTK4, works) | — |
 | wl-clipboard 2.2.1 | out/ ✓ | installed | **YES (CLI)** | round-trip verified with package-installed `iosc 0.9.10` |
-| Ladybird 0.1.0+wl1 | repo/debs ✓ | install attempted | **PUBLISHED, FINAL SMOKE BLOCKED** | real GTK/libadwaita Wayland client package; `.desktop` launches `ladybird-wayland`, not the standalone UIKit app; current blocker is device SSH resetting during key exchange |
+| Ladybird 0.1.0+wl3 | repo/debs ✓ | installed | **YES (classic)** | real GTK/libadwaita Wayland client package; device proof includes live WebContent helpers, ANGLE/IOSurface mapping, and a non-black compositor capture |
 
 ## The launch-in-iosc fixes
 
@@ -129,8 +129,8 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `dpkg-query -W iosc` reports `0.9.10`, `/var/jb/usr/local/bin/iosc` sha256 is
   `3e06159e628c6aad442f6e91f50a6e6b487fc37dd0c65f56ae9c1e3e73cc7850`, and
   `wl-copy --foreground` -> `wl-paste` returned `xios clipboard foreground 0.9.10`.
-- **Ladybird Wayland — PACKAGED + PUBLISHED, final device smoke pending.**
-  `ladybird-wayland 0.1.0+wl1` installs the upstream GTK/libadwaita Ladybird
+- **Ladybird Wayland — PACKAGED + DEVICE-VERIFIED as `0.1.0+wl3`.**
+  `ladybird-wayland 0.1.0+wl3` installs the upstream GTK/libadwaita Ladybird
   browser, helper processes, real Ladybird icon, D-Bus service, and
   `org.ladybird.Ladybird.desktop` with `Exec=ladybird-wayland --force-new-process %U`.
   The old `ladybird-xios-launcher` package was briefly a transitional depending on
@@ -143,10 +143,15 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `repo.maxleiter.com` with tightened Depends pins for the newer Ladybird leaf
   libraries. Host packaging verifies the Compositor loads real ANGLE
   `/var/jb/lib/angle/libEGL.angle.dylib` and `/var/jb/lib/angle/libGLESv2.dylib`.
-  On-device work progressed through helper Mach bootstrap and WebP/OpenSSL/ICU
-  dependency fixes; the last observed runtime skew was old HarfBuzz, now covered
-  by the package dependency. Final install/launch/screenshot is blocked until
-  device SSH stops resetting at key exchange.
+  On-device launch exposed two additional package-local runtime gaps: helper
+  processes first resolved the shared OpenSSL 3.2 instead of Ladybird's private
+  OpenSSL 3.5, and the installed resource set had no fixed-width font, causing
+  WebContent's font invariant to abort. The wrapper now prepends
+  `/var/jb/usr/lib/ladybird-tls`, and the package ships the checksum-pinned
+  Liberation Sans/Serif/Mono family also used by the standalone app. Fresh
+  classic `iosc` proof kept two WebContent helpers alive, logged
+  `iosc_egl: bound iosc_iosurface`, and captured visible browser chrome at
+  `.artifacts/ladybird-classic-wl3/compositor.png`.
 - **dunst — WORKS.** `dunst 1.13.2+ios2` runs as a Wayland
   layer-shell client under `dbus-run-session`, accepts
   `org.freedesktop.Notifications.Notify` through GDBus, and visibly renders the
@@ -227,9 +232,9 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   works.
 - [x] Publish (Max-gated): app-wave candidates are in production `repo.maxleiter.com`;
   iPad-side isolated apt policy shows the expected production candidates.
-- [ ] Ladybird Wayland final device smoke: once SSH recovers, install/upgrade
-  `ladybird-wayland`, start classic `iosc`, launch from the `.desktop`, and capture
-  a compositor screenshot plus helper process/log status.
+- [x] Ladybird Wayland final device smoke: installed `0.1.0+wl3`, launched the
+  trusted desktop entry payload against classic `iosc`, verified live helpers
+  and ANGLE/IOSurface mapping, and captured the compositor output.
 
 ## How to verify on-device
 

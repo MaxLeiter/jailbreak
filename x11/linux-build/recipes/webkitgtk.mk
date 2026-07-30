@@ -156,6 +156,17 @@ webkitgtk-package: webkitgtk-stage
 			$(BUILD_DIST)/libwebkit2gtk-4.1-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share; \
 	fi
 
+	# Procursus links target Mach-O files through libiosexec using @rpath, but
+	# WebKit's install step strips its build-tree rpaths. Give the JSC shell,
+	# helper processes, and runtime libraries a stable rootless lookup path
+	# before SIGN; otherwise the helpers abort before JavaScript/WebKit starts.
+	for root in \
+		$(BUILD_DIST)/libjavascriptcoregtk-4.1-0 \
+		$(BUILD_DIST)/libwebkit2gtk-4.1-0; do \
+		find $$root -type f -exec sh -c 'file "$$1" | grep -q "Mach-O" && \
+			$(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib "$$1" 2>/dev/null || true' sh {} \;; \
+	done
+
 	# WebKitGTK and web-extension development surfaces.
 	mkdir -p $(BUILD_DIST)/libwebkit2gtk-4.1-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/webkitgtk-4.1
 	cp -a $(BUILD_STAGE)/webkitgtk/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/webkitgtk-4.1/webkit \

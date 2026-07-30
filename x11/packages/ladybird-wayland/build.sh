@@ -14,11 +14,14 @@ done
 
 X11DIR="$(cd "$PKGDIR/../.." && pwd)"
 OUT="${OUT:-$X11DIR/linux-build/out}"
-VER="${LADYBIRD_WAYLAND_VERSION:-0.1.0+wl1}"
+VER="${LADYBIRD_WAYLAND_VERSION:-0.1.0+wl3}"
 INSTALL_ROOT="${LADYBIRD_WAYLAND_INSTALL_ROOT:-$OUT/ladybird-wayland-install}"
 APP_ENTS="$X11DIR/linux-build/build_info/iosc-gpu-client-ent.xml"
 HELPER_ENTS="$X11DIR/packages/ladybird-app/entitlements/ladybird-helper.entitlements"
 ICON_SRC="$X11DIR/packages/ladybird-app/Resources/AppIcon.png"
+LIBERATION_VERSION="2.1.5"
+LIBERATION_SHA256="7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0"
+LIBERATION_TARBALL="${LADYBIRD_LIBERATION_TARBALL:-$OUT/ladybird-font-cache/liberation-fonts-ttf-$LIBERATION_VERSION.tar.gz}"
 
 die() { echo "ladybird-wayland build: $*" >&2; exit 1; }
 
@@ -89,6 +92,27 @@ cp -a "$INSTALL_ROOT/var" "$STAGE/"
 
 [ -x "$STAGE$XIOS_PREFIX/usr/bin/ladybird" ] || die "installed Ladybird binary missing"
 
+# The iOS Ladybird engine uses its path font provider instead of fontconfig.
+# Upstream's installed resource set has no monospace face, so WebContent aborts
+# at FontPlugin's fixed-width-font invariant unless we supply the same
+# Liberation fallback family used by the standalone Ladybird app.
+if [ ! -s "$LIBERATION_TARBALL" ]; then
+  mkdir -p "$(dirname "$LIBERATION_TARBALL")"
+  curl -L --fail --retry 3 \
+    -o "$LIBERATION_TARBALL" \
+    "https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-$LIBERATION_VERSION.tar.gz"
+fi
+actual_liberation_sha="$(shasum -a 256 "$LIBERATION_TARBALL" | awk '{print $1}')"
+[ "$actual_liberation_sha" = "$LIBERATION_SHA256" ] ||
+  die "Liberation font archive checksum mismatch: $actual_liberation_sha"
+font_extract="$STAGEROOT/liberation-fonts"
+mkdir -p "$font_extract"
+tar -xzf "$LIBERATION_TARBALL" -C "$font_extract"
+font_dir="$STAGE$XIOS_PREFIX/usr/share/Lagom/fonts"
+mkdir -p "$font_dir"
+find "$font_extract" -type f -name 'Liberation*.ttf' -exec cp -f {} "$font_dir/" \;
+[ -f "$font_dir/LiberationMono-Regular.ttf" ] || die "Liberation Mono was not staged"
+
 mkdir -p "$STAGE$XIOS_PREFIX/usr/bin"
 cat > "$STAGE$XIOS_PREFIX/usr/bin/ladybird-wayland" <<'EOF'
 #!/bin/sh
@@ -100,7 +124,10 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/var/jb/tmp}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-/var/jb/tmp/wayland-0}"
 export GDK_BACKEND="${GDK_BACKEND:-wayland}"
 export GSK_RENDERER="${GSK_RENDERER:-${IOSC_GSK_RENDERER:-ngl}}"
-export DYLD_LIBRARY_PATH="/var/jb/usr/lib:/var/jb/lib/angle${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+# Ladybird is built against OpenSSL 3.5, while the shared Procursus runtime may
+# also provide an older libssl3. Keep the package's private ABI first for every
+# helper spawned by the browser.
+export DYLD_LIBRARY_PATH="/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:/var/jb/lib/angle${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 export GSETTINGS_BACKEND="${GSETTINGS_BACKEND:-memory}"
 export LC_CTYPE="${LC_CTYPE:-UTF-8}"
 export FC_LANG="${FC_LANG:-en}"
