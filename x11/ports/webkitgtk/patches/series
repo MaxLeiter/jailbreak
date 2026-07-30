@@ -8,3 +8,4 @@
 0008-shared-memory-serializer-prefers-unix.patch
 0009-glib-process-launcher-darwin.patch
 0010-wkbundle-viewport-api-feature-guard.patch
+0011-ios-allow-gigacage-allocation-failure.patch

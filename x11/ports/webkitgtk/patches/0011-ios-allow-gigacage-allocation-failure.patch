@@ -1,0 +1,14 @@
+--- a/Source/bmalloc/bmalloc/Gigacage.h
++++ b/Source/bmalloc/bmalloc/Gigacage.h
+@@ -76,6 +76,9 @@ constexpr size_t maximumCageSizeReductionForSlide = hasCapacityToUseLargeGigacag
+ // In Linux, if `vm.overcommit_memory = 2` is specified, mmap with large size can fail if it exceeds the size of RAM.
+-// So we specify GIGACAGE_ALLOCATION_CAN_FAIL = 1.
+-#if BOS(LINUX)
++// A rootless iOS process can likewise be denied WebKit's large virtual-address
++// reservation even though stock app processes support it. Permit the normal
++// uncaged fallback instead of aborting before JavaScript starts.
++// So we specify GIGACAGE_ALLOCATION_CAN_FAIL = 1 on those platforms.
++#if BOS(LINUX) || BPLATFORM(IOS)
+ #define GIGACAGE_ALLOCATION_CAN_FAIL 1
+ #else
+ #define GIGACAGE_ALLOCATION_CAN_FAIL 0
