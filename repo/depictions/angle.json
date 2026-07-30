@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "2.1.0+git20260630.a32d31d+es3-10"
+          "text": "2.1.0+git20260630.a32d31d+es3-12"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "3854.3 KiB"
+          "text": "3854.4 KiB"
         },
         {
           "class": "DepictionTableTextView",

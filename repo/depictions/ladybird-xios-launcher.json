@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**Ladybird Xios Launcher** is now a transitional package that installs `ladybird-wayland`.\n\nThe real desktop entry lives in the Ladybird (Wayland) package and launches the GTK/libadwaita Ladybird browser as a Wayland client inside the running Xios compositor session."
+          "markdown": "Transitional package for the Ladybird Wayland browser"
         },
         {
           "class": "DepictionSeparatorView"
@@ -43,16 +43,6 @@
           "class": "DepictionTableTextView",
           "title": "Identifier",
           "text": "ladybird-xios-launcher"
-        }
-      ]
-    },
-    {
-      "class": "DepictionStackView",
-      "tabname": "Changelog",
-      "views": [
-        {
-          "class": "DepictionMarkdownView",
-          "markdown": "## 0.1.1  \u00b7  2026-07-07\n- Transitional package for `ladybird-wayland`\n- Removes the old UIKit foregrounding desktop entry from the published package\n\n## 0.1.0  \u00b7  2026-07-06\n- Initial launcher bridge release"
         }
       ]
     }

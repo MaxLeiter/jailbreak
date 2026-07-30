@@ -924,11 +924,6 @@
       "url": "https://repo.maxleiter.com/banners/ladybird-wayland.png"
     },
     {
-      "title": "Ladybird Xios Launcher",
-      "package": "ladybird-xios-launcher",
-      "url": "https://repo.maxleiter.com/banners/ladybird-xios-launcher.png"
-    },
-    {
       "title": "layer-shell-qt",
       "package": "layer-shell-qt",
       "url": "https://repo.maxleiter.com/banners/layer-shell-qt.png"
