@@ -548,23 +548,38 @@ Additional CFVER targets can publish when:
 ## Immediate Next Patch After This Plan
 
 Phase 1's skeleton, the container-side loader, the script conversion, the local
-half of Phase 8, and the Phase 5 generator split are done. What is left needs a
-build to actually run:
+half of Phase 8, and the Phase 5 generator split are done. Phase 4 is no longer
+theoretical either -- `procursus-vol-rootful` was cold-bootstrapped from nothing
+and the Wayland base built for `MEMO_TARGET=iphoneos-arm64`:
 
-1. Bootstrap a rootful Procursus tree on its own volume
-   (`procursus-vol-rootful`, which the target wrappers now select automatically)
-   and build the Wayland base for it:
+| package | rootful deb |
+|---|---|
+| libffi | `libffi8`, `libffi-dev` `3.4.6` |
+| epoll-shim | `libepoll-shim0`, `libepoll-shim-dev` `0.0.20240608+ios1` |
+| wayland | `libwayland0`, `libwayland-dev` `1.23.1+ios1` |
+| wayland-protocols | `wayland-protocols` `1.44+ios1` |
 
-   ```sh
-   bash x11/linux-build/build-procursus-target.sh rootful-1900 \
-     epoll-shim-package wayland-package wayland-protocols-package libxkbcommon-package
-   ```
+`libwayland0` ships all four dylibs at `./usr/lib/` and passes
+`tools/check-target-package.py`. Run it with:
 
-   This is a cold-volume build and will take hours. Nothing else can be judged
-   until it exists, because every rootful claim so far is static analysis.
-2. Build and package `iosc` for it, then run
-   `tools/check-target-package.py <deb> rootful-1900` on the result. That answers
-   "does a rootful package come out clean" without any rootful hardware.
+```sh
+JOBS=4 bash x11/linux-build/run-target-script.sh rootful-1900 build-wayland.sh
+```
+
+Two things that bootstrap disproved are recorded above (the `deb_arch` value and
+the repo-split rationale). A third was not a rootful problem at all: the wayland
+port patch was missing the `epoll_dep` hunk, and the rootless build only worked
+because that warm volume carries a hand edit nobody had captured. Any cold
+rebuild would have hit it. Fixed in `ports/wayland/patches/`.
+
+What is left:
+
+1. `iosc` itself for rootful. It needs ANGLE staged into the rootful sysroot
+   first, and ANGLE is built Mac-side rather than in Procursus, so
+   `ports/angle/` has to learn the target before `build-iosc.sh` can run for
+   rootful. This is the real next blocker.
+2. The GTK/Qt/KDE/GNOME stacks, in the Phase 7 order. Expect more findings of
+   the wayland kind -- warm volumes hiding edits that no patch file carries.
 3. Only then does the device gate matter: a real rootful bootstrap to install on.
 
 Running the local gate:
