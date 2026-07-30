@@ -1,13 +1,13 @@
 {
-  "tagline": "Standalone Ladybird browser for iPad and iPhone",
+  "tagline": "The Ladybird browser for iPhone and iPad",
   "developer": "Ladybird Browser Initiative / Max",
   "homepage": "https://ladybird.org",
-  "description": "**Ladybird** is a standalone browser app for jailbroken iOS, built from Ladybird's LibWeb and LibJS engine rather than WebKit.\n\nTap the home-screen icon and it launches directly as a UIKit app. It bundles the browser executable, helper processes, resources, fonts, and dylib closure inside `Ladybird.app`, so it does not need an Xios desktop session.\n\n- Multiprocess Ladybird engine with bundled helpers\n- Address bar, back/forward/reload, page taps, software keyboard input, and focused text fields\n- IOSurface-backed front-buffer presentation through Metal\n- ANGLE/Metal WebGL context creation verified on-device\n\n**Requires iOS/iPadOS 16.0+ on a rootless jailbreak** (`/var/jb`). Rootful is not supported.\n\n**iPad is the tested configuration.** As of 0.1.23 the app also installs on iPhone, but no iPhone has been tested: expect a cramped toolbar, and note that the software keyboard can cover the lower half of a page because the view does not yet inset for it. Bug reports from iPhone are welcome.",
+  "description": "[Ladybird](https://ladybird.org) is a new web browser with its own engine, written from scratch rather than built on WebKit or Chromium. This is Ladybird ported to jailbroken iPhones and iPads.\n\nIt installs as a normal home-screen app. Tap the icon and the browser opens.\n\nWorks on both root and rootless jailbreaks, iOS 16 or later.\n\niPad is the tested setup. The app installs and runs on iPhone too, but I have not tested it there: the toolbar is tight, and the keyboard can cover the bottom of the page. Bug reports from iPhone are welcome.",
   "changelog": [
     {
       "version": "0.1.23+ios1",
       "date": "2026-07-28",
-      "notes": "- Declares iPhone alongside iPad (`UIDeviceFamily` 1 and 2) so the app installs and shows a home-screen icon on iPhone. **Untested on iPhone** — the layout is safe-area and DPI independent, but the toolbar is tight on small screens and there is no keyboard inset yet\n- Adds the generic `CFBundleIcons` and orientation keys that were previously iPad-only\n- Stamps `MinimumOSVersion: 16.0` in the package control, so Sileo no longer offers the package to iOS 15 devices where it cannot launch\n- No engine or frontend code changes: all six binaries are byte-identical to 0.1.22+ios1"
+      "notes": "- Declares iPhone alongside iPad (`UIDeviceFamily` 1 and 2) so the app installs and shows a home-screen icon on iPhone. **Untested on iPhone**: the layout is safe-area and DPI independent, but the toolbar is tight on small screens and there is no keyboard inset yet\n- Adds the generic `CFBundleIcons` and orientation keys that were previously iPad-only\n- Stamps `MinimumOSVersion: 16.0` in the package control, so Sileo no longer offers the package to iOS 15 devices where it cannot launch\n- No engine or frontend code changes: all six binaries are byte-identical to 0.1.22+ios1"
     },
     {
       "version": "0.1.22+ios1",

@@ -12,7 +12,7 @@ Description: Native IOSurface X server for the Xios iOS app
  Xios is an X11 server built on xorg-server 1.20.11 (the same patched tree as
  Xvfb) with a custom IOSurface DDX: instead of a software framebuffer, it renders
  straight into a shared IOSurface that the native Xios iOS app maps into a Metal
- texture via a mach-port hand-off — a zero-copy display path (no per-frame upload).
+ texture via a mach-port hand-off, a zero-copy display path (no per-frame upload).
  .
  Xios writes /var/jb/tmp/xios.json describing the surface and the rendezvous socket
  so the app picks the zero-copy path automatically; touch/keyboard come back in via

@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**SpiderMonkey** (mozjs 115 ESR) is Mozilla's JavaScript engine for the GNOME stack. **gjs** and GNOME Shell build on it, so it is the foundation for GNOME's JavaScript applications.\n\nThis package uses an interpreter-only build because iOS does not permit runtime-writable executable memory.\n\n- `libmozjs-115-0`: the runtime engine\n- `libmozjs-115-dev`: headers + static library, for building gjs and other embedders\n\nA build and runtime dependency for the GNOME JavaScript stack."
+          "markdown": "**SpiderMonkey** (mozjs 115 ESR) is Mozilla's JavaScript engine for the GNOME stack. **gjs** and GNOME Shell build on it, so it is the foundation for GNOME's JavaScript applications.\n\nThis package is the interpreter-only build, which runs anywhere. There is also a JIT build, which is much faster but needs the dynamic-codesigning entitlement on whatever embeds it.\n\n- `libmozjs-115-0`: the runtime engine\n- `libmozjs-115-dev`: headers and static library, for building gjs and other embedders\n- `libmozjs-115-jit-0`: the JIT build, a drop-in replacement for the runtime engine\n\nA build and runtime dependency for the GNOME JavaScript stack."
         },
         {
           "class": "DepictionSeparatorView"

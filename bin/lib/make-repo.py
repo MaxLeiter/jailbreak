@@ -219,6 +219,10 @@ def md_to_html(md):
         line = html.escape(raw).strip()
         line = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", line)
         line = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<em>\1</em>", line)
+        line = re.sub(r"`([^`]+)`", r"<code>\1</code>", line)
+        # Sileo renders markdown links natively; the web depiction needs the anchor.
+        line = re.sub(r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
+                      r'<a href="\2" rel="noopener">\1</a>', line)
         if line.startswith("- "):
             if not in_ul: out.append("<ul>"); in_ul = True
             out.append(f"<li>{line[2:]}</li>")
@@ -669,6 +673,9 @@ SITE_CSS = f"""
   .prose p{{margin:.6em 0;color:var(--fg-dim)}}
   .prose strong{{color:var(--fg);font-weight:600}} .prose em{{color:var(--fg)}}
   .prose ul{{margin:.5em 0;padding-left:1.15em}} .prose li{{margin:.25em 0;color:var(--fg-dim)}}
+  .prose a{{border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}}
+  .prose code{{font-family:var(--mono);font-size:.9em;color:var(--fg);
+    background:var(--bg-hover);border:1px solid var(--line);border-radius:4px;padding:1px 4px}}
   .shots{{display:flex;gap:14px;overflow-x:auto;margin-top:8px;padding:4px 2px 10px;
     scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}}
   .shot{{flex:0 0 min(260px,72vw);margin:0;border:1px solid var(--line);

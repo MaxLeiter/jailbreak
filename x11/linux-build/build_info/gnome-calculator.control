@@ -7,6 +7,6 @@ Priority: optional
 Homepage: https://apps.gnome.org/Calculator/
 Depends: libglib2.0-0, libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0, libsoup-3.0-0, libgee-0.8-2, libmpfr6, libmpc3, dbus
 Description: GNOME Calculator (GTK4, Vala)
- GNOME Calculator is the GTK4/libadwaita calculator. Written in Vala — the first
+ GNOME Calculator is the GTK4/libadwaita calculator. Written in Vala, the first
  proof of the vendored-.vapi cross-Vala build flow. Runs as a plain X11 client
  under any window manager. (Online currency rates additionally need glib-networking.)

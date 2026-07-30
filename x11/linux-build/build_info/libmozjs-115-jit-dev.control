@@ -9,6 +9,6 @@ Conflicts: libmozjs-115-dev
 Replaces: libmozjs-115-dev
 Section: Development
 Homepage: https://spidermonkey.dev/
-Description: JavaScript engine (SpiderMonkey 115, JIT) — development files
+Description: JavaScript engine (SpiderMonkey 115, JIT), development files
  JIT-enabled SpiderMonkey 115 (ESR) for iOS. Headers, mozjs-115.pc, js-config.
  Pairs with gjs 1.78.

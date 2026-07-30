@@ -10,6 +10,6 @@ Description: Lightweight notification daemon (Wayland)
  dunst implements org.freedesktop.Notifications and renders notifications with
  pangocairo into wl_shm buffers mapped as a zwlr_layer_surface_v1 overlay. It
  speaks D-Bus via GDBus (gio/GLib) rather than sd-bus, so unlike mako it needs
- no libsystemd/basu — only a running session bus (dbus). Built Wayland-only (the
+ no libsystemd/basu, only a running session bus (dbus). Built Wayland-only (the
  X11 backend is disabled). Runs as a native Wayland client under the iosc
  compositor, which must serve wlr-layer-shell (top/overlay) and xdg-shell.

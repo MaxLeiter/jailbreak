@@ -10,5 +10,5 @@ Description: Lightweight Wayland notification daemon
  mako implements org.freedesktop.Notifications and renders notifications with
  pangocairo into wl_shm buffers mapped as zwlr_layer_surface_v1. Runs as a
  native Wayland client under the iosc compositor. NOTE: this package is not yet
- built for iOS — its sd-bus provider (basu) does not cross-compile to Darwin;
+ built for iOS: its sd-bus provider (basu) does not cross-compile to Darwin;
  see recipes/basu.mk for the blocker catalogue.

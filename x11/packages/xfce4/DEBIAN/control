@@ -16,6 +16,6 @@ Description: Xfce 4.16 desktop environment for rootless iOS (metapackage)
  (xfconf/D-Bus, libwnck-3, startup-notification).
  .
  This is a metapackage: it pulls in the components and the GTK3 runtime
- transitively, but ships no files of its own. It does NOT pull an X server —
- start one separately (the native Xios server, or x11-xvfb) and bring the
+ transitively, but ships no files of its own. It does NOT pull an X server.
+ Start one separately (the native Xios server, or x11-xvfb) and bring the
  session up with bin/xfce-up.sh on DISPLAY :3.

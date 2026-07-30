@@ -1,0 +1,6 @@
+{
+  "tagline": "The Ladybird browser for Xios desktop sessions",
+  "developer": "Ladybird Browser Initiative / Max",
+  "homepage": "https://ladybird.org",
+  "description": "[Ladybird](https://ladybird.org) is a new web browser with its own engine, written from scratch rather than built on WebKit or Chromium. This is the desktop build, which runs as a window inside a Xios desktop session.\n\nIt adds a normal application entry and opens through whichever desktop you are running.\n\nIf you want a home-screen browser icon instead, install **Ladybird** (`ladybird-app`)."
+}

@@ -6,5 +6,5 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libmozjs-115-0 (= 115.12.0)
 Section: Development
 Homepage: https://spidermonkey.dev/
-Description: JavaScript engine (SpiderMonkey 115) — development files
+Description: JavaScript engine (SpiderMonkey 115), development files
  JIT-less SpiderMonkey 115 (ESR), cross-compiled for iOS. Pairs with gjs 1.78.
