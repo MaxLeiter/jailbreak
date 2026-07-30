@@ -1,0 +1,19 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Guard X11 accessibility lookup without a display
+
+A GTK build can include both X11 and Wayland. PlatformDisplayX11 may exist
+without an opened X display when a client is running natively on Wayland, so
+the AT-SPI root-window property fallback must not call Xlib with nullptr.
+
+--- a/Source/WebCore/platform/graphics/x11/PlatformDisplayX11.cpp
++++ b/Source/WebCore/platform/graphics/x11/PlatformDisplayX11.cpp
+@@ -193,6 +193,9 @@ cmsHPROFILE PlatformDisplayX11::colorProfile() const
+ #if USE(ATSPI)
+ String PlatformDisplayX11::platformAccessibilityBusAddress() const
+ {
++    if (!m_display)
++        return { };
++
+     Atom atspiBusAtom = XInternAtom(m_display, "AT_SPI_BUS", False);
+     Atom type;
+     int format;
