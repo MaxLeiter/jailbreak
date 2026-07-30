@@ -412,9 +412,12 @@ broken feature.
   to KWin's stderr, so the KDE session log carries "proxy mode" and
   "registered as input-method proxy"; `KDE_AUTO_KEYBOARD=0` turns the whole
   thing off for A/B.
-- SHIPPING: iosc 0.9.30 is packaged (rebased on 0.9.29). run-kde-plasma.sh
-  ships in the xios-session package, NOT iosc, so that package needs a bump
-  too or KWin never launches the bridge on an installed system.
+- SHIPPING: the change is TWO packages and they must ship together, because
+  run-kde-plasma.sh lives in xios-session while ios-inputd lives in iosc.
+  Both are packaged: iosc 0.9.32 and xios-session 1.0.61, the latter with
+  Depends: iosc (>= 0.9.32) so the pairing is enforced rather than remembered.
+  Neither is published yet (the shared checkout was mid-publish for unrelated
+  work: GIMP ports, KDE metas, repo metadata).
 - Confirmed source-side that our kwin deb has the globals:
   src/wayland/CMakeLists.txt:284 lists inputmethod_v1.cpp unconditionally and
   kwin-ios-fixes.sh only appends to that file. Still worth one
