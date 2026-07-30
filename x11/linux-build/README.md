@@ -1,7 +1,8 @@
-# `linux-build/` — cross-compiling the X stack for rootless iOS
+# `linux-build/` — cross-compiling the Xios stack for rootless iOS
 
-This directory cross-compiles the patched X11 components for the jailbroken iPad
-(`iphoneos-arm64`, **rootless** `/var/jb`, Procursus CFVER **1900** / iOS 16) inside a
+This directory cross-compiles everything Xios ships — the X server first, then the Wayland
+compositor's deps, GTK, Qt/KF6, GNOME, KDE, and the language runtimes — for the jailbroken
+iPad (`iphoneos-arm64`, **rootless** `/var/jb`, Procursus CFVER **1900** / iOS 16) inside a
 Debian container, then ad-hoc-signs them for the device. One command on the Mac produces
 installable `.deb`s and signed server binaries.
 
@@ -61,8 +62,40 @@ What `run.sh` (Mac side) does:
    iOS RemoteIO output, and `xios-audio-play` is the on-device smoke test. Real PulseAudio
    clients use the PulseAudio package and its native socket.
 
-The tigervnc/Xvnc build is what `run.sh` drives by default. The GTK3 stack is a separate
-container invocation (see below).
+The tigervnc/Xvnc build is what `run.sh` drives by default. Every other part of the stack
+has its own `build-*.sh` that reuses the same image and volume (see below); the GTK3 one is
+documented at the end as the worked example.
+
+## The other lanes
+
+`run.sh`/`build.sh` are only the X-server lane. Each subsystem has a script that drops its
+recipes into the Procursus clone and builds them in the same container; run them directly.
+
+| Lane | Scripts |
+|---|---|
+| Toolkits | `build-gtk.sh`, `build-gtk4-layer-shell.sh`, `build-qt.sh`, `build-qt-modules.sh`, `build-kf6.sh` |
+| Compositor / Wayland | `build-wayland.sh`, `build-wayland-apps.sh`, `build-wayland-extra-apps.sh`, `build-wayland-utils.sh`, `build-xwayland.sh` |
+| GNOME | `build-gnome.sh`, `build-mutter.sh`, `build-shell.sh`, `build-shell-libs.sh`, `build-session.sh`, `build-gjs.sh`, `build-eds.sh` |
+| KDE | `build-kwin.sh`, `build-plasma-desktop.sh`, `build-kde-apps.sh`, `build-settings.sh` |
+| Graphics / core deps | `build-icu.sh`, `build-skia.sh`, `build-librsvg.sh`, `build-harfbuzz-full.sh`, `build-libxml2-full.sh` |
+| Runtimes | `build-bun.sh`, `build-bun-ios.sh`, `build-opencode.sh`, `build-opentui-ios.sh`, `build-fff-ios.sh` |
+| Ladybird | `build-ladybird-wave*.sh`, `build-ladybird-app-*.sh`, `build-ladybird-wayland.sh` |
+| Media / audio | `build-audio-server.sh`, `build-media-server.sh` |
+| Stubs | `build-stublibs.sh` and the per-stub `build-*-stub.sh` |
+| Introspection (on device) | `gir-*-ondevice.sh` — typelibs are scanned on the iPad, not under qemu |
+
+Anything not covered by a named lane goes through `build-procursus-target.sh <target-id>
+<make-target>…`, which builds arbitrary Procursus make targets under a target descriptor.
+`docs/handoff/INDEX.md` says which lanes are currently active.
+
+## Target descriptors
+
+`targets/rootless-1900.env` and `targets/rootful-1900.env` hold the prefix, `MEMO_TARGET`,
+`MEMO_CFVER`, package payload root, and minimum iOS version for each layout;
+`target-lib.sh` loads them and the target-aware scripts below take a target id as their
+first argument. `bash print-target.sh rootless-1900` prints the resolved values. Rootless
+is the default and the shipped layout; the rootful descriptor exists so a rootless binary
+can't be silently packaged as a rootful one.
 
 ## Target-Aware Stub Libraries
 
@@ -176,17 +209,29 @@ linux-build/
   Dockerfile        # Debian + cctools-port (aarch64-apple-darwin) + ldid, native arm64
   run.sh            # Mac: stage SDK, docker build, docker run build.sh, re-sign Xios
   build.sh          # in-container: clone Procursus, patch, build tigervnc/Xvfb/Xios
-  build-gtk.sh      # in-container: install recipes/*.mk, build the GTK3 stack
+  build-*.sh        # one lane per subsystem (see "The other lanes" above)
+  gir-*-ondevice.sh # GObject-Introspection typelib scans, run on the iPad
+  build-deb.py      # assemble a .deb from a staged tree on macOS (no dpkg needed)
+  targets/*.env     # target descriptors (rootless-1900, rootful-1900)
+  target-lib.sh     # loads a descriptor; print-target.sh prints the resolved values
   patches/
     xios/{InitOutput.c,Makefile.am,xios_surface.c,xios_surface.h}  # IOSurface DDX
-  ../ports/tigervnc/patches/                   # Xserver source patch + series manifest
+  ../ports/<pkg>/patches/                      # quilt series per upstream source
   recipes/*.mk      # new Procursus package makefiles (fribidi.mk, …)
+  recipes-ladybird/ # the Ladybird lane's recipes, kept separate
+  audio/, media/    # sources for the CoreAudio and media daemons
+  tools/            # helpers: minos stamping, Mach-O weakening, KF6 recipe gen, audits
+  vapi/             # hand-written Vala bindings for libs Procursus doesn't ship vapi for
+  src-tarballs/     # curated header inputs tracked; upstream archive blobs gitignored
   sdk/              # staged iPhoneOS.sdk + MacOSX.sdk        (gitignored)
   out/              # built debs + signed Xvfb/Xios          (gitignored)
   Procursus/, procursus-work/, *.log                          (gitignored)
 ```
 
 ## Install on the iPad
+
+Normal installs come from the apt repo — `apt install xios-gnome` and friends, see
+[`../README.md`](../README.md). What follows is the by-hand path for a deb you just built.
 
 ```bash
 scp out/tigervnc-standalone-server_*_iphoneos-arm64.deb root@<ipad>:/var/jb/tmp/

@@ -38,6 +38,9 @@ Built **unsigned** and run on the jailbroken iPad via AppSync Unified after an
 ```bash
 # from repo root — builds, pseudo-signs, pushes over SSH, registers with uicache
 bin/install-app.sh apps/TaskManager
+
+# ...or stage it as an installable .deb (com.max.taskmanager) for the apt repo
+bin/package-app.sh apps/TaskManager
 ```
 
 Prereqs: `brew install xcodegen ldid`, Xcode, and **AppSync Unified** on the iPad.
