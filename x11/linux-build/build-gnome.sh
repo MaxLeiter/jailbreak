@@ -134,7 +134,7 @@ COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
 stage_geary_deps() {
   target_requests geary || return 0
 
-  local build_base=/work/Procursus/build_base/iphoneos-arm64-rootless/1900
+  local build_base=$XIOS_BUILD_BASE
   local pkg deb
   echo "==> staging packaged Geary/WebKitGTK development dependencies"
   for pkg in \
@@ -158,7 +158,7 @@ stage_geary_deps() {
     dpkg-deb -x "$deb" "$build_base"
   done
 
-  local pc_root="$build_base/var/jb/usr/lib/pkgconfig"
+  local pc_root="$build_base$XIOS_PREFIX/usr/lib/pkgconfig"
   for pc in gmime-3.0 libstemmer gspell-1 libpeas-1.0 folks gck-1 gcr-3 \
     goa-1.0 javascriptcoregtk-4.1 webkit2gtk-4.1; do
     if [ ! -f "$pc_root/$pc.pc" ]; then

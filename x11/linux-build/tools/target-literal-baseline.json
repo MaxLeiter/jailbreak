@@ -1,13 +1,12 @@
 {
-  "total": 1012,
+  "total": 1010,
   "files": {
-    "apps/Xios/Sources/XScreen.swift": 2,
+    "apps/Xios/Sources/XScreen.swift": 1,
     "apps/Xios/Sources/XSurface.c": 2,
     "apps/Xios/Sources/XiosCameraBroker.swift": 2,
     "apps/Xios/Sources/XiosRuntimePaths.swift": 5,
     "apps/Xios/entitlements.plist": 2,
     "apps/Xios/packaging/control": 1,
-    "apps/Xios/project.yml": 1,
     "apps/Xios/x11-server.sh": 2,
     "apps/iosc-desktop/com.max.ioscd.plist": 10,
     "apps/iosc-desktop/gen-icons.py": 1,

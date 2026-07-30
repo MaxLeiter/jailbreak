@@ -9,12 +9,12 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1664
-- Files with hits: 318
+- Total hits: 1662
+- Files with hits: 317
 
 ### By Category
 
-- `app-runtime`: 21 hits across 12 files
+- `app-runtime`: 19 hits across 11 files
 - `build-target`: 17 hits across 10 files
 - `docs`: 612 hits across 62 files
 - `entitlements`: 45 hits across 17 files
@@ -29,7 +29,7 @@ classified as rootless-only.
 
 ### By Literal
 
-- `/var/jb`: 1622
+- `/var/jb`: 1620
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
 - `iphoneos-arm64-rootless`: 30
@@ -50,14 +50,12 @@ classified as rootless-only.
 
 ### app-runtime
 
-- `apps/Xios/project.yml:35` `/var/jb`: OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/usr/lib -framework IOSurface -framework Foundation -framework Metal
 - `apps/Xios/x11-server.sh:14` `/var/jb`: if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
 - `apps/Xios/x11-server.sh:14` `/var/jb`: if [ -d /var/jb/usr ]; then printf '%s\n' /var/jb; return; fi
 - `apps/Xios/packaging/control:28` `/var/jb`: run this unsigned app. Rootless (/var/jb) jailbreaks only, iOS/iPadOS 16+.
 - `apps/Xios/Sources/XSurface.c:21` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
 - `apps/Xios/Sources/XSurface.c:21` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
-- `apps/Xios/Sources/XScreen.swift:40` `/var/jb`: ["/tmp/.X11-unix", XiosRuntimePaths.tmp(".X11-unix"), "/var/jb/tmp/.X11-unix", "/var/tmp/.X11-unix"]
-- `apps/Xios/Sources/XScreen.swift:1890` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
+- `apps/Xios/Sources/XScreen.swift:1802` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
 - `apps/Xios/Sources/XiosRuntimePaths.swift:20` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
 - `apps/Xios/Sources/XiosRuntimePaths.swift:21` `/var/jb`: return "/var/jb/tmp"
 - `apps/Xios/Sources/XiosRuntimePaths.swift:31` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
@@ -70,7 +68,7 @@ classified as rootless-only.
 - `apps/iosc-host/Sources/HostSystemAppearance.swift:5` `/var/jb`: private let xiosSysintSocket = "/var/jb/tmp/xios-sysint.sock"
 - `apps/iosc-host/Sources/HostLaunch.c:9` `/var/jb`: #define IOSCD_SOCK "/var/jb/tmp/ioscd.sock"
 - `apps/iosc-host/Sources/HostA11y.swift:18` `/var/jb`: private let sockPath = "/var/jb/tmp/xios-a11y.sock"
-- ... 1 more
+- `apps/iosc-host/Sources/HostA11y.swift:19` `/var/jb`: private let logPath = "/var/jb/tmp/iosc-a11y-host.log"
 
 ### build-target
 
@@ -307,12 +305,12 @@ classified as rootless-only.
 - `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
 - `linux-build/tools/check-target-package.py:214` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
-- `linux-build/tools/target-literal-baseline.json:179` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:182` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:192` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:196` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:198` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:178` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:181` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:191` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:195` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:196` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
