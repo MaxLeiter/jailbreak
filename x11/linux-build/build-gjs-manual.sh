@@ -11,9 +11,11 @@
 # — must be on PKG_CONFIG_LIBDIR; (2) gjs's readline find_library link probe needs
 # -stdlib=libc++ (iOS).
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 export PATH="/root/cctools/bin:$PATH"
-TS=/work/Procursus/build_base/iphoneos-arm64-rootless/1900
-B=$TS/var/jb/usr
+TS=$XIOS_BUILD_BASE
+B=$TS$XIOS_PREFIX/usr
 
 if ! command -v glib-compile-schemas >/dev/null 2>&1 || ! command -v glib-compile-resources >/dev/null 2>&1; then
   echo "==> installing host GLib codegen tools"
@@ -24,7 +26,7 @@ fi
 # --- 1. stage deps (idempotent) -------------------------------------------------------------
 if [ ! -f "$B/lib/pkgconfig/glib-2.0.pc" ] && [ -d /from ]; then
   echo "==> staging glib/cairo + transitive deps from procursus-vol-gtk"
-  cp -a /from/build_base/iphoneos-arm64-rootless/1900/var/jb/usr/. "$B/"
+  cp -a /from/build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr/. "$B/"
 fi
 if [ ! -f "$B/lib/libgirepository-1.0.1.dylib" ] && [ -d /out ]; then
   echo "==> dpkg-extract gir + mozjs debs into build_base"
@@ -35,7 +37,7 @@ fi
 # mozjs ships js.pc; gjs wants mozjs-115.pc. Rewrite every run — a stale copy
 # can reference js/RequiredDefines.h, which mozjs115 doesn't ship.
 cat > "$B/lib/pkgconfig/mozjs-115.pc" <<EOF
-prefix=/var/jb/usr
+prefix=$XIOS_PREFIX/usr
 includedir=\${prefix}/include
 libdir=\${prefix}/lib
 Name: SpiderMonkey 115
@@ -110,7 +112,7 @@ OUT=${OUT:-/out}
 V=1.78.0
 ARCH=iphoneos-arm64
 MAINT="Max Leiter <maxwell.leiter@gmail.com>"
-P=/var/jb/usr
+P=$XIOS_PREFIX/usr
 
 rm -rf "$STAGE" "$DEBROOT"
 mkdir -p "$STAGE" "$DEBROOT" "$OUT"

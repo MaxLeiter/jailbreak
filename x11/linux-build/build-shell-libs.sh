@@ -17,6 +17,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-shell-libs.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 if ! command -v glib-mkenums >/dev/null 2>&1 || ! pkg-config --exists glib-2.0 2>/dev/null \
@@ -60,11 +62,11 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-UPOW_W=build_work/iphoneos-arm64-rootless/1900/upower
-UPOW_S=build_stage/iphoneos-arm64-rootless/1900/upower
+UPOW_W=build_work/$XIOS_TRIPLE/upower
+UPOW_S=build_stage/$XIOS_TRIPLE/upower
 UPOW_F="$UPOW_W/.xios_patch_series.sha256"
 if [[ " $TARGETS " == *" upower"* ]]; then
   UPOW_FP="$(sha256sum \
@@ -88,7 +90,7 @@ fi
 echo "==> collect debs -> /out"
 mkdir -p /out
 for pat in libupower-glib libgeocode-glib libgweather-4 libgeoclue libgdm; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo "==> done"

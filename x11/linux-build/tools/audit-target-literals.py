@@ -8,8 +8,10 @@ deliberately as package templating and rootful support land.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -98,9 +100,17 @@ def iter_files(root: Path):
 def categorize(rel: str, text: str, literal: str) -> str:
     if rel in {
         "linux-build/target-lib.sh",
+        "linux-build/target-env.sh",
         "linux-build/print-target.sh",
         "linux-build/targets/rootless-1900.env",
         "linux-build/targets/rootful-1900.env",
+        # The baseline records the literals it is measuring; counting its own
+        # contents would make every update look like a regression.
+        "linux-build/tools/target-literal-baseline.json",
+        "linux-build/tools/audit-target-literals.py",
+        # These two exist to detect a foreign prefix, so they must name one.
+        "linux-build/tools/check-target-package.py",
+        "linux-build/tools/lint-targets.sh",
     }:
         return "target-infra"
     if rel.startswith("docs/") or rel in {"README.md", "SCOPE.md", "AGENTS.md"}:
@@ -217,14 +227,89 @@ def render_markdown(hits: list[Hit], limit_per_category: int) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+DEFAULT_BASELINE = ROOT / "linux-build" / "tools" / "target-literal-baseline.json"
+
+
+def per_file_counts(hits: list[Hit]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for hit in hits:
+        if hit.category in {"docs", "site-copy", "target-infra"}:
+            continue
+        counts[hit.path] += 1
+    return dict(sorted(counts.items()))
+
+
+def check_baseline(hits: list[Hit], baseline_path: Path) -> int:
+    """Fail when a file gains rootless literals relative to the recorded baseline.
+
+    Prose is excluded: docs describing the rootless layout are not debt. The
+    point is to stop new build/packaging code from being written against
+    /var/jb while the matrix migration is still in progress -- the drift that
+    put this audit 400 hits underwater between July 3 and July 29.
+    """
+    if not baseline_path.exists():
+        print(f"baseline not found: {baseline_path}", file=sys.stderr)
+        print("record one with --update-baseline", file=sys.stderr)
+        return 2
+
+    baseline = json.loads(baseline_path.read_text())["files"]
+    current = per_file_counts(hits)
+
+    regressions = []
+    for path, count in current.items():
+        was = baseline.get(path, 0)
+        if count > was:
+            regressions.append((path, was, count))
+
+    if not regressions:
+        total = sum(current.values())
+        recorded = sum(baseline.values())
+        print(f"OK: {total} classified literals, baseline {recorded}, no file regressed.")
+        return 0
+
+    print("New rootless literals since the recorded baseline:\n", file=sys.stderr)
+    for path, was, count in regressions:
+        print(f"  {path}: {was} -> {count}", file=sys.stderr)
+    print(
+        "\nMake these target-aware (source linux-build/target-lib.sh host-side or"
+        "\n/work/target-env.sh in-container, then use $XIOS_PREFIX / $XIOS_TRIPLE),"
+        "\nor record the new state with --update-baseline if they are deliberate.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=str(ROOT), help="repo root to scan")
     parser.add_argument("--limit-per-category", type=int, default=20)
     parser.add_argument("--fail-on-hits", action="store_true")
+    parser.add_argument("--baseline", default=str(DEFAULT_BASELINE))
+    parser.add_argument(
+        "--fail-on-new",
+        action="store_true",
+        help="fail if any file gained literals vs the baseline (prose excluded)",
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="rewrite the baseline from the current tree",
+    )
     args = parser.parse_args()
 
     hits = scan(Path(args.root).resolve(), DEFAULT_LITERALS)
+
+    if args.update_baseline:
+        counts = per_file_counts(hits)
+        Path(args.baseline).write_text(
+            json.dumps({"total": sum(counts.values()), "files": counts}, indent=2) + "\n"
+        )
+        print(f"baseline written: {args.baseline} ({sum(counts.values())} literals)")
+        return 0
+
+    if args.fail_on_new:
+        return check_baseline(hits, Path(args.baseline))
+
     print(render_markdown(hits, args.limit_per_category))
     return 1 if args.fail_on_hits and hits else 0
 

@@ -1,0 +1,12 @@
+--- a/libgimp/meson.build
++++ b/libgimp/meson.build
+@@ -638,7 +638,8 @@ if not platform_windows
+   endif
+ endif
+ 
+-if not platform_osx and host_cpu_family != 'x86'
++# defcheck.py expects ELF .so files and GNU nm flags, not Mach-O dylibs.
++if host_machine.system() != 'darwin' and not platform_osx and host_cpu_family != 'x86'
+   nm = find_program('nm', required: false)
+ 
+   # Verify .def files for Windows linking.

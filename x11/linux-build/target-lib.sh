@@ -92,6 +92,28 @@ xios_load_target() {
     export XIOS_PATH_DIRS="$subprefix/bin:$subprefix/sbin:/bin:/sbin"
     export XIOS_SHELL_PATH="/bin/sh"
   fi
+
+  # Derived build-tree paths and the shared helpers, so host-side packaging
+  # scripts and container-side build scripts speak the same vocabulary. The
+  # values it computes for /work/Procursus are simply unused host-side.
+  # shellcheck disable=SC1091
+  [ -r "$_xios_target_lib_dir/target-env.sh" ] && . "$_xios_target_lib_dir/target-env.sh"
+}
+
+# Resolve a target from an optional first positional argument, falling back to
+# $XIOS_TARGET and then rootless-1900. An argument that is not a descriptor is an
+# error: `script rootful-1900` silently building rootless is the failure mode
+# this exists to prevent.
+xios_load_target_arg() {
+  if [ "$#" -gt 0 ] && [ -n "$1" ]; then
+    if [ -f "$XIOS_TARGETS_DIR/$1.env" ]; then
+      xios_load_target "$1"
+      return
+    fi
+    echo "unknown target: $1 (expected one of: $(cd "$XIOS_TARGETS_DIR" && ls *.env | sed 's/\.env$//' | tr '\n' ' '))" >&2
+    return 2
+  fi
+  xios_load_target "${XIOS_TARGET:-rootless-1900}"
 }
 
 xios_print_target() {

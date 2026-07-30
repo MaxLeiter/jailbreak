@@ -16,12 +16,14 @@
 #
 # Stages (LB_STAGE, default "all"): prep | deps | fetch | configure | build | all
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 LADYBIRD_REF="${LADYBIRD_REF:-92b0257e71bb7a80a3106f2365bacdfa09f6c0f7}"   # main @ 2026-07-02 (recon tree)
 LB_STAGE="${LB_STAGE:-all}"
 SDK=/root/cctools/SDK/iPhoneOS16.5.sdk
 PROC=/work/Procursus
-BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim
 WORK=$PROC/ladybird-src
 BUILD=$PROC/ladybird-build
@@ -39,12 +41,17 @@ step() { echo; echo "########## $* ##########"; }
 run_stage() { case "$LB_STAGE" in all) return 0;; "$1") return 0;; *) return 1;; esac; }
 
 # ================================================================================================
-step "STAGE prep: /var/jb symlink, shim toolchain, fake xcrun, rustup"
+step "STAGE prep: $XIOS_PREFIX symlink, shim toolchain, fake xcrun, rustup"
 # ================================================================================================
 # Expose the staged Procursus tree at its device-absolute path so .pc / CMake-config / -I/var/jb
 # resolve on the host.
-if [ ! -e /var/jb ]; then ln -s "$BB" /var/jb; fi
-ls -ld /var/jb; echo "/var/jb -> $(readlink -f /var/jb)"
+# The staged Procursus tree is exposed at its device-absolute path so .pc files,
+# CMake configs and -I flags resolve the same way they will on device. Rootful
+# would have to stage /usr, which is the container's own Debian userland, so it
+# needs a --sysroot pass rather than this symlink.
+xios_require_rootless "the engine build stages the device prefix as a container symlink"
+if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
+ls -ld "$XIOS_PREFIX"; echo "$XIOS_PREFIX -> $(readlink -f "$XIOS_PREFIX")"
 
 mkdir -p "$SHIM"
 # unprefixed cctools mach-o tools
@@ -96,7 +103,7 @@ fi
 run_stage prep && [ "$LB_STAGE" = prep ] && { echo "prep done"; exit 0; }
 
 # ================================================================================================
-step "STAGE deps: reconcile libxml2 shadow; stage Skia + ANGLE headers + SDL3 stub into /var/jb"
+step "STAGE deps: reconcile libxml2 shadow; stage Skia + ANGLE headers + SDL3 stub into $XIOS_PREFIX"
 # ================================================================================================
 if run_stage deps; then
   # --- libxml2 2.9.12 shadow -> 2.13.8 (the known gap) ---
@@ -104,11 +111,11 @@ if run_stage deps; then
   rm -rf $BB/usr/lib/libxml2.* $BB/usr/include/libxml2 $BB/usr/lib/pkgconfig/libxml-2.0.pc \
          $BB/usr/lib/cmake/libxml2*
   rm -rf /tmp/xmlstage; mkdir -p /tmp/xmlstage
-  for d in /out/libxml2_2.13.8*_iphoneos-arm64.deb /out/libxml2-dev_2.13.8*_iphoneos-arm64.deb; do
+  for d in /out/libxml2_2.13.8*_$XIOS_DEB_ARCH.deb /out/libxml2-dev_2.13.8*_$XIOS_DEB_ARCH.deb; do
     [ -f "$d" ] && { echo "  extracting $(basename "$d")"; dpkg-deb -x "$d" /tmp/xmlstage; }
   done
   # deb layout is ./var/jb/... -> copy the var/jb subtree into build_base's var/jb
-  [ -d /tmp/xmlstage/var/jb ] && cp -a /tmp/xmlstage/var/jb/. "$BB/"
+  [ -d /tmp/xmlstage$XIOS_PREFIX ] && cp -a /tmp/xmlstage$XIOS_PREFIX/. "$BB/"
   rm -rf /tmp/xmlstage
   echo "  libxml-2.0.pc version now: $(grep -h ^Version $BB/usr/lib/pkgconfig/libxml-2.0.pc 2>/dev/null)"
 
@@ -156,7 +163,7 @@ if run_stage deps; then
     fi
   fi
   cat > $BB/usr/lib/pkgconfig/angle.pc <<'EOF'
-prefix=/var/jb
+prefix=$XIOS_PREFIX
 includedir=${prefix}/usr/include
 Name: angle
 Description: ANGLE GLES/EGL headers (M0 headers-only; GL entry points live in Compositor)
@@ -240,9 +247,9 @@ fi
 step "STAGE configure: cmake with the iOS toolchain (no vcpkg)"
 # ================================================================================================
 export LB_SHIM="$SHIM"
-export LB_STAGED_PREFIX=/var/jb
-export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
-export PKG_CONFIG_LIBDIR=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
+export LB_STAGED_PREFIX=$XIOS_PREFIX
+export PKG_CONFIG_PATH=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
+export PKG_CONFIG_LIBDIR=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 if run_stage configure; then
   rm -rf "$BUILD"; mkdir -p "$BUILD"
   cd "$WORK"
@@ -256,7 +263,7 @@ if run_stage configure; then
     -DENABLE_CLANG_PLUGINS=OFF \
     -DENABLE_CRANELIFT_JIT=OFF \
     -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
-    -DLADYBIRD_CACHE_DIR=/var/jb/lib/ladybird \
+    -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" \
     -DVCPKG_ROOT= \
     2>&1 | tee /out/wave4-configure.log
   echo "configure exit: ${PIPESTATUS[0]}"

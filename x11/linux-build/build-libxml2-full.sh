@@ -18,6 +18,8 @@
 #
 # The DocBook SAX entry points (docb*) cannot come back: deleted upstream at 2.12.
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 echo "==> installing the full-module libxml2 recipe into makefiles/"
@@ -34,12 +36,12 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
-BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BW=$XIOS_BUILD_WORK
+BS=$XIOS_BUILD_STAGE
+BB=$XIOS_SYSROOT
 mkdir -p /out
 
 # The recipe caches on .build_complete and configure -C caches on config.cache, so a
@@ -62,7 +64,7 @@ fi
 echo ""
 echo "==> collect debs -> /out"
 for pat in libxml2 libxml2-dev libxml2-utils; do
-  find . -name "${pat}_*_iphoneos-arm64.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}_*_$XIOS_DEB_ARCH.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo ""

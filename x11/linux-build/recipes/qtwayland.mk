@@ -69,7 +69,7 @@ qtwayland: qtwayland-setup
 	+ninja -C $(BUILD_WORK)/qtwayland/build
 	+DESTDIR="$(BUILD_STAGE)/qtwayland" ninja -C $(BUILD_WORK)/qtwayland/build install
 	test -f "$(BUILD_STAGE)/qtwayland/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/qt6/plugins/wayland-graphics-integration-client/libqt-plugin-wayland-egl.dylib"
-	$(call AFTER_BUILD,copy,qtwayland,/var/jb/lib/angle)
+	$(call AFTER_BUILD,copy,qtwayland,$(MEMO_PREFIX)/lib/angle)
 endif
 
 qtwayland-package: qtwayland-stage

@@ -11,6 +11,8 @@
 #     -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-librsvg.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 if ! command -v gdk-pixbuf-query-loaders >/dev/null 2>&1 || ! command -v rst2man >/dev/null 2>&1; then
@@ -57,7 +59,7 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 TARGETS="${TARGETS:-librsvg-package}"
@@ -72,6 +74,6 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-find . -name "librsvg2*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+find . -name "librsvg2*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 
 echo "==> done"

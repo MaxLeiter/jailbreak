@@ -15,6 +15,8 @@
 #          (Tier 0) then libxml2 (needs zlib) woff2 (needs brotli) (Tier 1).
 # expat is a system lib on CFVER>=1700 (our target 1900) so it is intentionally NOT built.
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 echo "==> installing wave-1 recipes into makefiles/ (bumps override upstream)"
@@ -34,7 +36,7 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 mkdir -p /out
@@ -67,7 +69,7 @@ echo ""
 echo "==> collect debs -> /out"
 for pat in libz zlib brotli libbrotli libtommath libfmt sqlite3 libsqlite3 lemon \
            simdutf simdjson fast-float mimalloc libmimalloc wuffs libxml2 woff2 libwoff2; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -newermt "-6 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -newermt "-6 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo ""

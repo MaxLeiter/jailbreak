@@ -1,0 +1,7 @@
+0001-ios-use-wayland-platform.patch
+0002-ios-skip-pango-runtime-probe.patch
+0003-ios-cross-generate-splash-with-rsvg.patch
+0004-ios-replace-unavailable-system.patch
+0005-ios-disable-elf-defcheck.patch
+0006-ios-skip-cocoa-activation.patch
+0007-ios-avoid-corefoundation-theme-probe.patch

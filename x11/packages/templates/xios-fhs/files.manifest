@@ -1,2 +1,2 @@
-../../xios-fhs/var/jb/usr/libexec/xios-hwbridged	usr/libexec/xios-hwbridged	0755
-../../xios-fhs/var/jb/usr/libexec/xios-sensord	usr/libexec/xios-sensord	0755
+../../xios-fhs@PACKAGE_PATH_PREFIX@/usr/libexec/xios-hwbridged	usr/libexec/xios-hwbridged	0755
+../../xios-fhs@PACKAGE_PATH_PREFIX@/usr/libexec/xios-sensord	usr/libexec/xios-sensord	0755

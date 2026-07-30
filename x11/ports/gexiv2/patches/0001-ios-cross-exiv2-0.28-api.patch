@@ -1,0 +1,19 @@
+--- a/meson.build
++++ b/meson.build
+@@ -84,6 +84,17 @@
+ }'''
+ exifdatum_has_to_long = cpp.compiles(exifdatum_has_to_long_test, name: 'Exifdatum has toLong() in exiv2', dependencies : [exiv2])
+ 
++# The iOS cctools driver injects a link-only ad-hoc-signing argument even for
++# compile-only probes. Meson's probe Werror then rejects every Exiv2 API check.
++# Xios ships Exiv2 0.28, whose DataBuf storage is private and whose legacy
++# AnyError/toLong APIs are gone.
++if host_machine.system() == 'darwin' and meson.is_cross_build()
++  private_pdata = true
++  has_any_error = false
++  xmpdatum_has_to_long = false
++  exifdatum_has_to_long = false
++endif
++ build_config = configuration_data ()
+ build_config.set('EXIV2_DATABUF_HAS_PRIVATE_PDATA', private_pdata)
+ build_config.set('EXIV2_HAS_ANY_ERROR', has_any_error)

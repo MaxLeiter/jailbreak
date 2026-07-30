@@ -9,8 +9,10 @@
 #
 # Args: one or more source basenames (in /src). Headers in /src are staged alongside.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
-M=/work/Procursus/build_work/iphoneos-arm64-rootless/1900/mutter
+M=$XIOS_BUILD_WORK/mutter
 B=$M/build
 SRCDIR=${SRCDIR:-/src}
 STAGE=/tmp/ios-check/backends/ios
@@ -171,7 +173,7 @@ PY
 # Generate wayland server-protocol headers from any real protocol .xml in /src (skip the
 # codesign entitlement plists that share the .xml extension). Uses the native (Linux) scanner
 # the W0 wayland track built into the volume.
-NATIVE_SCANNER=/work/Procursus/build_work/iphoneos-arm64-rootless/1900/wayland/native-root/bin/wayland-scanner
+NATIVE_SCANNER=$XIOS_BUILD_WORK/wayland/native-root/bin/wayland-scanner
 for xml in "$SRCDIR"/*.xml; do
   [ -f "$xml" ] || continue
   grep -q "<protocol" "$xml" || continue

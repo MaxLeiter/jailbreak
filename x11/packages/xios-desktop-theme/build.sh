@@ -11,11 +11,15 @@
 # postinst, the default cursor-theme redirect, the gschema override, the
 # wallpaper, and this script).
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 PKGDIR="$(cd "$(dirname "$0")" && pwd)"
 OUTDIR="$(cd "$PKGDIR/.." && pwd)"          # x11/packages
 VERSION="$(awk -F': ' '/^Version:/{print $2}' "$PKGDIR/DEBIAN/control")"
-DEB="xios-desktop-theme_${VERSION}_iphoneos-arm64.deb"
+DEB="xios-desktop-theme_${VERSION}_$XIOS_DEB_ARCH.deb"
 IMAGE="debian:bookworm-slim"
 
 docker run --rm -v "$OUTDIR":/work -w /work "$IMAGE" bash -euo pipefail -c '
@@ -28,11 +32,11 @@ docker run --rm -v "$OUTDIR":/work -w /work "$IMAGE" bash -euo pipefail -c '
   rm -rf "$STAGE"; mkdir -p "$STAGE"
 
   # Wallpaper first, into the committed tree, so it persists on the host.
-  mkdir -p "$TREE/var/jb/usr/share/backgrounds/xios"
+  mkdir -p "$TREE$XIOS_PREFIX/usr/share/backgrounds/xios"
   python3 "$TREE/tools/make-wallpaper.py" \
-    "$TREE/var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+    "$TREE$XIOS_PREFIX/usr/share/backgrounds/xios/xios-default.jpg"
   python3 "$TREE/tools/make-wallpaper.py" \
-    "$TREE/var/jb/usr/share/backgrounds/xios/xios-default.png"
+    "$TREE$XIOS_PREFIX/usr/share/backgrounds/xios/xios-default.png"
 
   # Copy the committed tree (DEBIAN + var) into the staging root.
   cp -a "$TREE/DEBIAN" "$STAGE/"

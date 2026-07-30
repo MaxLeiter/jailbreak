@@ -18,6 +18,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-shell.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host build tools missing from the image — the build-gnome.sh set (glib codegen etc.);
@@ -122,11 +124,11 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 # build tree). gjs 1.78's public headers are a clean C API that never include <jsapi.h>, so
 # gnome-shell needs only the dylib (present) + a resolvable .pc. Synthesize a minimal, correct
 # one (standalone SpiderMonkey: no NSPR). Idempotent.
-SYSROOT=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb/usr
+SYSROOT=$XIOS_SYSROOT/usr
 if [ ! -f "$SYSROOT/lib/pkgconfig/mozjs-115.pc" ] && [ -f "$SYSROOT/lib/libmozjs-115.dylib" ]; then
   echo "==> synthesizing missing mozjs-115.pc into the sysroot"
   cat > "$SYSROOT/lib/pkgconfig/mozjs-115.pc" <<'PC'
-prefix=/var/jb/usr
+prefix=$XIOS_PREFIX/usr
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
@@ -138,7 +140,7 @@ Cflags: -I${includedir}/mozjs-115
 PC
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 # WITH_EDS=1 — the STAGED calendar re-enable (lead-sequenced: run only after the EDS-out
@@ -149,8 +151,8 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # (c) stages the EDS-enabled patch flavor, then passes GNOME_SHELL_WITH_EDS=1
 # through to gnome-shell.mk, adding the make prereq and bumping the deb to 46.0-2.
 if [ "$WITH_EDS" = 1 ]; then
-  BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
-  BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
+  BW=$XIOS_BUILD_WORK
+  BS=$XIOS_BUILD_STAGE
   echo "==> WITH_EDS=1: wiping gnome-shell build tree for a pristine re-extract"
   rm -rf "$BW/gnome-shell" "$BS/gnome-shell"
   grep -q 'evolution-data-server' build_info/gnome-shell.control || \
@@ -162,8 +164,8 @@ fi
 
 # Dependency order per docs: the shell's C-link closure first, gnome-shell last.
 
-POLKIT_W=build_work/iphoneos-arm64-rootless/1900/polkit
-POLKIT_S=build_stage/iphoneos-arm64-rootless/1900/polkit
+POLKIT_W=build_work/$XIOS_TRIPLE/polkit
+POLKIT_S=build_stage/$XIOS_TRIPLE/polkit
 POLKIT_F="$POLKIT_W/.xios_patch_series.sha256"
 if target_requests polkit || target_requests gnome-shell; then
   POLKIT_FP="$(sha256sum \
@@ -176,8 +178,8 @@ if target_requests polkit || target_requests gnome-shell; then
   fi
 fi
 
-IBUS_W=build_work/iphoneos-arm64-rootless/1900/ibus
-IBUS_S=build_stage/iphoneos-arm64-rootless/1900/ibus
+IBUS_W=build_work/$XIOS_TRIPLE/ibus
+IBUS_S=build_stage/$XIOS_TRIPLE/ibus
 IBUS_F="$IBUS_W/.xios_patch_series.sha256"
 if target_requests ibus || target_requests gnome-shell; then
   IBUS_FP="$(sha256sum \
@@ -190,8 +192,8 @@ if target_requests ibus || target_requests gnome-shell; then
   fi
 fi
 
-GSHELL_W=build_work/iphoneos-arm64-rootless/1900/gnome-shell
-GSHELL_S=build_stage/iphoneos-arm64-rootless/1900/gnome-shell
+GSHELL_W=build_work/$XIOS_TRIPLE/gnome-shell
+GSHELL_S=build_stage/$XIOS_TRIPLE/gnome-shell
 GSHELL_F="$GSHELL_W/.xios_patch_series.sha256"
 if target_requests gnome-shell; then
   GSHELL_FP="$(sha256sum \
@@ -223,7 +225,7 @@ mkdir -p /out
 for pat in libstartup-notification libatspi libatk-bridge libatk1.0 at-spi2-core \
            libsecret libgcr gcr4-dev libpolkit polkit-dev libibus ibus \
            libpulse gnome-shell; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass: anything here that linked GTK's bundled proxy-libintl gets

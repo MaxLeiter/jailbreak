@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Build Xios camera/microphone support inside the Procursus/cctools container.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 SRC=/work/media
 OUT=/out
 BUILD=/tmp/xios-media-build
-PREFIX=/var/jb/usr
+PREFIX=$XIOS_PREFIX/usr
 ARCH=iphoneos-arm64
 VERSION=0.1.0
 
@@ -57,12 +59,12 @@ EOF
 echo "==> package xios-media-server"
 pkg_root server
 write_control server xios-media-server "Camera and microphone bridge daemon for Xios desktop sessions"
-mkdir -p "$BUILD/server$PREFIX/bin" "$BUILD/server$PREFIX/share/xios" "$BUILD/server/var/jb/etc/profile.d"
+mkdir -p "$BUILD/server$PREFIX/bin" "$BUILD/server$PREFIX/share/xios" "$BUILD/server$XIOS_PREFIX/etc/profile.d"
 install -m0755 "$BUILD/xios-mediad" "$BUILD/server$PREFIX/bin/xios-mediad"
 install -m0755 "$BUILD/xios-camera-dump" "$BUILD/server$PREFIX/bin/xios-camera-dump"
 install -m0755 "$BUILD/xios-mic-dump" "$BUILD/server$PREFIX/bin/xios-mic-dump"
 install -m0644 "$SRC/xios_media_protocol.h" "$BUILD/server$PREFIX/share/xios/xios_media_protocol.h"
-install -m0755 "$SRC/xios-media-session.sh" "$BUILD/server/var/jb/etc/profile.d/xios-media.sh"
+install -m0755 "$SRC/xios-media-session.sh" "$BUILD/server$XIOS_PREFIX/etc/profile.d/xios-media.sh"
 dpkg-deb --root-owner-group -b "$BUILD/server" "$OUT/xios-media-server_${VERSION}_${ARCH}.deb"
 
 echo "==> media artifacts:"

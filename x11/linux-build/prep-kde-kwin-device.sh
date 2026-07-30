@@ -5,11 +5,15 @@
 # a small "run later" note, and does not start iosc, kwin_wayland, Plasma, or any
 # session daemon.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 X11_ROOT="$(cd "$HERE/.." && pwd)"
 STAGE="${STAGE:-$HERE/kde-kwin-device-prep}"
-REMOTE="${REMOTE:-/var/jb/tmp/kde-kwin-prep}"
+REMOTE="${REMOTE:-$XIOS_PREFIX/tmp/kde-kwin-prep}"
 VOLUME="${VOLUME:-procursus-vol-kf6}"
 IMAGE="${IMAGE:-procursus-xbuild:bookworm-arm64}"
 REPO_DEBS="${REPO_DEBS:-$X11_ROOT/../repo/debs}"
@@ -93,7 +97,7 @@ docker_linux \
   "$IMAGE" \
   -c '
 set -eu
-SRC=/work/Procursus/build_dist/iphoneos-arm64-rootless/1900
+SRC=/work/Procursus/build_dist/$XIOS_TRIPLE
 TMP=/tmp/kde-kwin-runtime
 rm -rf "$TMP"
 mkdir -p "$TMP"
@@ -137,68 +141,68 @@ overlay_out() {
 }
 
 overlay_out \
-  qt6-*_*_iphoneos-arm64.deb \
-  kwin_*_iphoneos-arm64.deb \
-  libdrm2_*_iphoneos-arm64.deb \
-  libgbm1_*_iphoneos-arm64.deb \
-  libdisplay-info1_*_iphoneos-arm64.deb \
-  libkscreen_*_iphoneos-arm64.deb \
-  kscreen_*_iphoneos-arm64.deb \
-  systemsettings_*_iphoneos-arm64.deb \
-  breeze_*_iphoneos-arm64.deb \
-  plasma-integration_*_iphoneos-arm64.deb \
-  libplasma_*_iphoneos-arm64.deb \
-  plasma-activities-stats_*_iphoneos-arm64.deb \
-  kactivitymanagerd_*_iphoneos-arm64.deb \
-  plasma-workspace_*_iphoneos-arm64.deb \
-  plasma-desktop_*_iphoneos-arm64.deb \
-  plasma-nano_*_iphoneos-arm64.deb \
-  plasma-mobile_*_iphoneos-arm64.deb \
-  plasma5support_*_iphoneos-arm64.deb \
-  plasma-pa_*_iphoneos-arm64.deb \
-  kf6-bluezqt_*_iphoneos-arm64.deb \
-  kf6-kirigami-addons_*_iphoneos-arm64.deb \
-  kf6-kquickcharts_*_iphoneos-arm64.deb \
-  kf6-pulseaudio-qt_*_iphoneos-arm64.deb \
-  libpulse0_*_iphoneos-arm64.deb \
-  qcoro6_*_iphoneos-arm64.deb \
-  kf6-attica_*_iphoneos-arm64.deb \
-  kf6-declarative_*_iphoneos-arm64.deb \
-  kf6-runner_*_iphoneos-arm64.deb \
-  kf6-kded_*_iphoneos-arm64.deb \
-  kf6-statusnotifieritem_*_iphoneos-arm64.deb \
-  kf6-unitconversion_*_iphoneos-arm64.deb \
-  kf6-parts_*_iphoneos-arm64.deb \
-  kf6-newstuff_*_iphoneos-arm64.deb \
-  kf6-wallet_*_iphoneos-arm64.deb \
-  kf6-notifyconfig_*_iphoneos-arm64.deb \
-  kf6-qqc2-desktop-style_*_iphoneos-arm64.deb \
-  xios-media-server_*_iphoneos-arm64.deb \
-  xios-session_*_iphoneos-arm64.deb
+  qt6-*_*_$XIOS_DEB_ARCH.deb \
+  kwin_*_$XIOS_DEB_ARCH.deb \
+  libdrm2_*_$XIOS_DEB_ARCH.deb \
+  libgbm1_*_$XIOS_DEB_ARCH.deb \
+  libdisplay-info1_*_$XIOS_DEB_ARCH.deb \
+  libkscreen_*_$XIOS_DEB_ARCH.deb \
+  kscreen_*_$XIOS_DEB_ARCH.deb \
+  systemsettings_*_$XIOS_DEB_ARCH.deb \
+  breeze_*_$XIOS_DEB_ARCH.deb \
+  plasma-integration_*_$XIOS_DEB_ARCH.deb \
+  libplasma_*_$XIOS_DEB_ARCH.deb \
+  plasma-activities-stats_*_$XIOS_DEB_ARCH.deb \
+  kactivitymanagerd_*_$XIOS_DEB_ARCH.deb \
+  plasma-workspace_*_$XIOS_DEB_ARCH.deb \
+  plasma-desktop_*_$XIOS_DEB_ARCH.deb \
+  plasma-nano_*_$XIOS_DEB_ARCH.deb \
+  plasma-mobile_*_$XIOS_DEB_ARCH.deb \
+  plasma5support_*_$XIOS_DEB_ARCH.deb \
+  plasma-pa_*_$XIOS_DEB_ARCH.deb \
+  kf6-bluezqt_*_$XIOS_DEB_ARCH.deb \
+  kf6-kirigami-addons_*_$XIOS_DEB_ARCH.deb \
+  kf6-kquickcharts_*_$XIOS_DEB_ARCH.deb \
+  kf6-pulseaudio-qt_*_$XIOS_DEB_ARCH.deb \
+  libpulse0_*_$XIOS_DEB_ARCH.deb \
+  qcoro6_*_$XIOS_DEB_ARCH.deb \
+  kf6-attica_*_$XIOS_DEB_ARCH.deb \
+  kf6-declarative_*_$XIOS_DEB_ARCH.deb \
+  kf6-runner_*_$XIOS_DEB_ARCH.deb \
+  kf6-kded_*_$XIOS_DEB_ARCH.deb \
+  kf6-statusnotifieritem_*_$XIOS_DEB_ARCH.deb \
+  kf6-unitconversion_*_$XIOS_DEB_ARCH.deb \
+  kf6-parts_*_$XIOS_DEB_ARCH.deb \
+  kf6-newstuff_*_$XIOS_DEB_ARCH.deb \
+  kf6-wallet_*_$XIOS_DEB_ARCH.deb \
+  kf6-notifyconfig_*_$XIOS_DEB_ARCH.deb \
+  kf6-qqc2-desktop-style_*_$XIOS_DEB_ARCH.deb \
+  xios-media-server_*_$XIOS_DEB_ARCH.deb \
+  xios-session_*_$XIOS_DEB_ARCH.deb
 
 if [ "$INCLUDE_META" -eq 1 ]; then
   echo "==> including finalized xios-kde release candidate and direct repo dependencies"
   for pattern in \
-    xios-kde_*_iphoneos-arm64.deb \
-    xios-core_*_iphoneos-arm64.deb \
-    iosc_*_iphoneos-arm64.deb \
-    xios-session_*_iphoneos-arm64.deb \
-    xios-desktop-theme_*_iphoneos-arm64.deb \
-    libjpeg62-turbo_*_iphoneos-arm64.deb \
-    kwin_*_iphoneos-arm64.deb \
-    breeze_*_iphoneos-arm64.deb \
-    plasma-workspace_*_iphoneos-arm64.deb \
-    plasma-desktop_*_iphoneos-arm64.deb \
-    plasma-mobile_*_iphoneos-arm64.deb \
-    plasma-nano_*_iphoneos-arm64.deb \
-    systemsettings_*_iphoneos-arm64.deb \
-    kscreen_*_iphoneos-arm64.deb \
-    kf6-kded_*_iphoneos-arm64.deb \
-    qt6-wayland_*_iphoneos-arm64.deb \
-    kf6-breeze-icons_*_iphoneos-arm64.deb \
-    ark_*_iphoneos-arm64.deb \
-    gwenview_*_iphoneos-arm64.deb \
-    kwrite_*_iphoneos-arm64.deb; do
+    xios-kde_*_$XIOS_DEB_ARCH.deb \
+    xios-core_*_$XIOS_DEB_ARCH.deb \
+    iosc_*_$XIOS_DEB_ARCH.deb \
+    xios-session_*_$XIOS_DEB_ARCH.deb \
+    xios-desktop-theme_*_$XIOS_DEB_ARCH.deb \
+    libjpeg62-turbo_*_$XIOS_DEB_ARCH.deb \
+    kwin_*_$XIOS_DEB_ARCH.deb \
+    breeze_*_$XIOS_DEB_ARCH.deb \
+    plasma-workspace_*_$XIOS_DEB_ARCH.deb \
+    plasma-desktop_*_$XIOS_DEB_ARCH.deb \
+    plasma-mobile_*_$XIOS_DEB_ARCH.deb \
+    plasma-nano_*_$XIOS_DEB_ARCH.deb \
+    systemsettings_*_$XIOS_DEB_ARCH.deb \
+    kscreen_*_$XIOS_DEB_ARCH.deb \
+    kf6-kded_*_$XIOS_DEB_ARCH.deb \
+    qt6-wayland_*_$XIOS_DEB_ARCH.deb \
+    kf6-breeze-icons_*_$XIOS_DEB_ARCH.deb \
+    ark_*_$XIOS_DEB_ARCH.deb \
+    gwenview_*_$XIOS_DEB_ARCH.deb \
+    kwrite_*_$XIOS_DEB_ARCH.deb; do
     for deb in "$REPO_DEBS"/$pattern; do
       [ -f "$deb" ] || continue
       case "$(basename "$deb")" in *-dev_*) continue ;; esac
@@ -315,17 +319,17 @@ docker_linux \
   "$IMAGE" \
   -c '
 set -eu
-deb=$(find /debs -maxdepth 1 -type f -name "kwin_*_iphoneos-arm64.deb" -print -quit)
+deb=$(find /debs -maxdepth 1 -type f -name "kwin_*_$XIOS_DEB_ARCH.deb" -print -quit)
 [ -n "$deb" ] || exit 0
 work=$(mktemp -d)
 dpkg-deb -R "$deb" "$work/pkg"
 if [ -d "$work/pkg/Applications" ]; then
-  mkdir -p "$work/pkg/var/jb"
-  rm -rf "$work/pkg/var/jb/Applications"
-  mv "$work/pkg/Applications" "$work/pkg/var/jb/Applications"
+  mkdir -p "$work/pkg$XIOS_PREFIX"
+  rm -rf "$work/pkg$XIOS_PREFIX/Applications"
+  mv "$work/pkg/Applications" "$work/pkg$XIOS_PREFIX/Applications"
   dpkg-deb -Zzstd -b "$work/pkg" "$work/kwin-rootless.deb" >/dev/null
   mv "$work/kwin-rootless.deb" "$deb"
-  echo "   repacked $(basename "$deb") with /var/jb/Applications"
+  echo "   repacked $(basename "$deb") with $XIOS_PREFIX/Applications"
 else
   echo "   $(basename "$deb") already uses a rootless app path"
 fi

@@ -16,6 +16,8 @@
 # build_tools/host-qt-6.6.3 (one-time, ~25 min, persisted in the volume). Stage 2 is the
 # Procursus cross build via recipes/qtbase.mk.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
 QTMINOR=6.6
@@ -23,7 +25,7 @@ TARBALL=qtbase-everywhere-src-${QTVER}.tar.xz
 SRCURL=https://download.qt.io/archive/qt/${QTMINOR}/${QTVER}/submodules/${TARBALL}
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 HOSTQT_BUILD=/work/Procursus/build_tools/host-qt-build   # in-volume so a failed run can resume
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 
 cd /work/Procursus
 
@@ -92,14 +94,14 @@ source /work/recipes/xios-cache-fingerprint.sh
 # Qt round 3 links QtGui/EGL support against the ANGLE deb. ANGLE deliberately lives
 # outside /var/jb/usr at /var/jb/lib/angle plus /var/jb/include, so stage it into the
 # sysroot here instead of relying on CMAKE_FIND_ROOT_PATH.
-if ls /out/angle_*_iphoneos-arm64.deb >/dev/null 2>&1; then
-  ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep '+es3' | head -1 || true)
-  [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | head -1)
+if ls /out/angle_*_$XIOS_DEB_ARCH.deb >/dev/null 2>&1; then
+  ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep '+es3' | head -1 || true)
+  [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | head -1)
   echo "==> staging ANGLE for Qt GL/EGL: ${ANGLE_DEB}"
   rm -rf /tmp/angle-qt && mkdir -p /tmp/angle-qt
   dpkg-deb -x "$ANGLE_DEB" /tmp/angle-qt
   mkdir -p "$BB"
-  cp -a /tmp/angle-qt/var/jb/* "$BB"/
+  cp -a /tmp/angle-qt$XIOS_PREFIX/* "$BB"/
 else
   echo "WARN: no angle deb in /out; qtbase GL/EGL configure will fail until angle is staged"
 fi
@@ -114,15 +116,15 @@ fi
 # its major version into every export (ucol_open_78 vs ucol_open_74), so compiling against 78
 # headers over the 74 runtime would miss symbols at load time. Don't bump this glob without also
 # switching qt6-base's Depends and re-validating apt on device.
-ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
-ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
 if [ -n "$ICU_RUNTIME_DEB" ] && [ -n "$ICU_DEV_DEB" ]; then
   echo "==> staging ICU 74.2 for Qt FEATURE_icu: ${ICU_RUNTIME_DEB} + ${ICU_DEV_DEB}"
   rm -rf /tmp/icu-qt && mkdir -p /tmp/icu-qt
   dpkg-deb -x "$ICU_RUNTIME_DEB" /tmp/icu-qt
   dpkg-deb -x "$ICU_DEV_DEB" /tmp/icu-qt
   mkdir -p "$BB"
-  cp -a /tmp/icu-qt/var/jb/* "$BB"/
+  cp -a /tmp/icu-qt$XIOS_PREFIX/* "$BB"/
   if [ ! -f "$BB/usr/include/unicode/uvernum.h" ]; then
     echo "ERROR: ICU staged but unicode/uvernum.h missing — headerless -dev deb? qtbase configure will fail." >&2
     exit 1
@@ -133,7 +135,7 @@ else
   exit 1
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 TARGETS="${TARGETS:-qtbase}"
@@ -147,6 +149,6 @@ done
 # collect any debs produced
 mkdir -p /out
 for pat in qt6-base; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 echo "==> done"

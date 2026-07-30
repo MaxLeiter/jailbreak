@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # build-kde-apps.sh - cross-build the next KDE Qt6 app batch.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 TARGETS="${TARGETS:-exiv2-package phonon-package ksyntaxhighlighting-package ktexteditor-package ark-package gwenview-package kwrite-package kate-package kcalc-package kpty-package konsole-package dolphin-package}"
 COLLECT_DEBS=(libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite kate kcalc kf6-pty konsole dolphin)
 
@@ -26,15 +28,15 @@ cd /work/Procursus
 # over the 74 runtime misses symbols at load time, because ICU bakes
 # U_ICU_VERSION_MAJOR_NUM into every export (ucol_open_78 vs ucol_open_74).
 # Do NOT point this at 78 without also moving qt6-base's Depends.
-ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
-ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_RUNTIME_DEB=$(ls /out/libicu74_74.2*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+ICU_DEV_DEB=$(ls /out/libicu-dev_74.2+ios1*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
 if [ -n "$ICU_RUNTIME_DEB" ] && [ -n "$ICU_DEV_DEB" ]; then
   if [ ! -f "${BB}/usr/include/unicode/uvernum.h" ]; then
     echo "==> staging ICU 74.2: ${ICU_RUNTIME_DEB} + ${ICU_DEV_DEB}"
     rm -rf /tmp/icu-apps && mkdir -p /tmp/icu-apps
     dpkg-deb -x "$ICU_RUNTIME_DEB" /tmp/icu-apps
     dpkg-deb -x "$ICU_DEV_DEB" /tmp/icu-apps
-    cp -a /tmp/icu-apps/var/jb/* "${BB}"/
+    cp -a /tmp/icu-apps$XIOS_PREFIX/* "${BB}"/
     [ -f "${BB}/usr/include/unicode/uvernum.h" ] || { echo "ERROR: ICU staged but unicode/uvernum.h missing." >&2; exit 1; }
   fi
 else
@@ -70,7 +72,7 @@ cp -v /work/recipes/kate-ios-fixes.sh build_info/ 2>/dev/null || true
 cp -v /work/build_info/* build_info/ 2>/dev/null || true
 cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"
@@ -88,7 +90,7 @@ mkdir -p /out
 for pkg in "${COLLECT_DEBS[@]}"; do
   while IFS= read -r deb; do
     [ -e "$deb" ] && cp -v "$deb" /out/
-  done < <(find build_dist/iphoneos-arm64-rootless/1900 -maxdepth 2 -type f \( \
+  done < <(find build_dist/$XIOS_TRIPLE -maxdepth 2 -type f \( \
     -name "${pkg}_*.deb" -o \
     -name "${pkg}-28_*.deb" -o \
     -name "${pkg}-dev_*.deb" \

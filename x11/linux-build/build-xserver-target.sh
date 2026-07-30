@@ -35,7 +35,14 @@ done
 xios_load_target "$TARGET"
 
 IMAGE="${XIOS_PROC_IMAGE:-procursus-xbuild:bookworm-arm64}"
-VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+# Keep the rootless volume exactly where it was; give any other profile its own,
+# so a rootful bootstrap does not double the disk on the volume that holds the
+# working rootless tree (and its ~50 .build_complete markers).
+if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
+  VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+else
+  VOLUME="${PROCURSUS_VOL:-procursus-vol-$XIOS_REPO_PROFILE}"
+fi
 SDK_SRC="${SDK_SRC:-$HOME/theos/sdks/iPhoneOS16.5.sdk}"
 MACOS_SDK_SRC="${MACOS_SDK_SRC:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
 TARGET_OUT="$HERE/out/targets/$XIOS_TARGET_ID"
@@ -88,7 +95,11 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_TARGET \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
+  -e XIOS_SUBPREFIX \
+  -e XIOS_DEB_ARCH \
   -v "$VOLUME:/work/Procursus" \
+  -v "$HERE/target-env.sh:/work/target-env.sh:ro" \
+  -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$HERE/build.sh:/work/build.sh:ro" \
   -v "$HERE/patches:/work/patches:ro" \
   -v "$TARGET_OUT:/out" \

@@ -4,73 +4,73 @@
 # Run on-device: scp x11/linux-build/out/*.deb to the box first, then sh install-gnome-boot.sh.
 set -e
 DEBS="\
-  hicolor-icon-theme_0.17_iphoneos-arm64.deb \
-  adwaita-icon-theme_46.0_iphoneos-arm64.deb \
-  angle_2.1.0+git20260630.a32d31d_iphoneos-arm64.deb \
-  dbus_1.14.10_iphoneos-arm64.deb \
-  libglib2.0-0_2.78.0_iphoneos-arm64.deb \
-  dconf_0.40.0_iphoneos-arm64.deb \
-  libgirepository-1.0-1_1.78.0_iphoneos-arm64.deb \
-  gir1.2-freedesktop_1.78.0_iphoneos-arm64.deb \
-  gir1.2-glib-2.0_1.78.0_iphoneos-arm64.deb \
-  libgtkintl_1.0_iphoneos-arm64.deb \
-  libmozjs-115-0_115.12.0_iphoneos-arm64.deb \
-  libfontconfig1_2.14.0_iphoneos-arm64.deb \
-  libpixman-1-0_0.42.2_iphoneos-arm64.deb \
-  libxcb-render0_1.14_iphoneos-arm64.deb \
-  libcairo2_1.16.0-3_iphoneos-arm64.deb \
-  libcairo-gobject2_1.16.0-3_iphoneos-arm64.deb \
-  libgjs0_1.78.0_iphoneos-arm64.deb \
-  gjs_1.78.0_iphoneos-arm64.deb \
-  libglib2.0-bin_2.78.0_iphoneos-arm64.deb \
-  libgdk-pixbuf-2.0-0_2.42.12_iphoneos-arm64.deb \
-  libgraphite2-3_1.3.14_iphoneos-arm64.deb \
-  libharfbuzz0b_2.8.1_iphoneos-arm64.deb \
-  libfribidi0_1.0.13_iphoneos-arm64.deb \
-  libpango-1.0-0_1.50.14_iphoneos-arm64.deb \
-  libatk1.0-0_2.38.0_iphoneos-arm64.deb \
-  libepoxy0_1.5.7_iphoneos-arm64.deb \
-  libxfixes3_6.0.1_iphoneos-arm64.deb \
-  libxcursor1_1.2.0_iphoneos-arm64.deb \
-  libxinerama1_1.1.4_iphoneos-arm64.deb \
-  libgtk-3-0_3.24.38_iphoneos-arm64.deb \
-  libgraphene-1.0-0_1.10.8_iphoneos-arm64.deb \
-  libxml2_2.9.12_iphoneos-arm64.deb \
-  libxkbcommon0_1.7.0_iphoneos-arm64.deb \
-  libepoll-shim0_0.0.20240608_iphoneos-arm64.deb \
-  libwayland0_1.23.1_iphoneos-arm64.deb \
-  libcairo-script-interpreter2_1.16.0-3_iphoneos-arm64.deb \
-  libgtk-4-1_4.14.5_iphoneos-arm64.deb \
-  gsettings-desktop-schemas_46.1_iphoneos-arm64.deb \
-  iso-codes_4.15.0_iphoneos-arm64.deb \
-  libgnome-desktop-4-2_44.1_iphoneos-arm64.deb \
-  libjson-glib-1.0-0_1.8.0_iphoneos-arm64.deb \
-  gnome-session_46.0_iphoneos-arm64.deb \
-  libnotify4_0.8.3_iphoneos-arm64.deb \
-  libpolkit-gobject-1-0_124_iphoneos-arm64.deb \
-  libpulse0_17.0-1_iphoneos-arm64.deb \
-  gnome-settings-daemon_46.0_iphoneos-arm64.deb \
-  liblcms2-2_2.12_iphoneos-arm64.deb \
-  libcolord2_1.4.7_iphoneos-arm64.deb \
-  libei1_1.2.1_iphoneos-arm64.deb \
-  libmutter-14-0_46.0_iphoneos-arm64.deb \
-  libatspi2.0-0_2.52.0_iphoneos-arm64.deb \
-  libatk-bridge2.0-0_2.52.0_iphoneos-arm64.deb \
-  libgcr-4-4_4.2.1_iphoneos-arm64.deb \
-  libpolkit-agent-1-0_124_iphoneos-arm64.deb \
-  libibus-1.0-5_1.5.29_iphoneos-arm64.deb \
-  libxcb-util1_*_iphoneos-arm64.deb \
-  libstartup-notification0_0.12_iphoneos-arm64.deb \
-  gnome-shell_46.0_iphoneos-arm64.deb \
-  libaccountsservice0_23.13.9_iphoneos-arm64.deb \
-  libgdm1_46.0_iphoneos-arm64.deb \
-  libgeoclue-2-0_2.7.1_iphoneos-arm64.deb \
-  libpsl5_0.21.5_iphoneos-arm64.deb \
-  libsoup-3.0-0_3.4.4_iphoneos-arm64.deb \
-  libgeocode-glib-2-0_3.26.4_iphoneos-arm64.deb \
-  libgweather-4-0_4.4.2_iphoneos-arm64.deb \
-  libupower-glib3_1.90.2_iphoneos-arm64.deb \
-  xios-session-stubs_0.1.2_iphoneos-arm64.deb \
+  hicolor-icon-theme_0.17_$XIOS_DEB_ARCH.deb \
+  adwaita-icon-theme_46.0_$XIOS_DEB_ARCH.deb \
+  angle_2.1.0+git20260630.a32d31d_$XIOS_DEB_ARCH.deb \
+  dbus_1.14.10_$XIOS_DEB_ARCH.deb \
+  libglib2.0-0_2.78.0_$XIOS_DEB_ARCH.deb \
+  dconf_0.40.0_$XIOS_DEB_ARCH.deb \
+  libgirepository-1.0-1_1.78.0_$XIOS_DEB_ARCH.deb \
+  gir1.2-freedesktop_1.78.0_$XIOS_DEB_ARCH.deb \
+  gir1.2-glib-2.0_1.78.0_$XIOS_DEB_ARCH.deb \
+  libgtkintl_1.0_$XIOS_DEB_ARCH.deb \
+  libmozjs-115-0_115.12.0_$XIOS_DEB_ARCH.deb \
+  libfontconfig1_2.14.0_$XIOS_DEB_ARCH.deb \
+  libpixman-1-0_0.42.2_$XIOS_DEB_ARCH.deb \
+  libxcb-render0_1.14_$XIOS_DEB_ARCH.deb \
+  libcairo2_1.16.0-3_$XIOS_DEB_ARCH.deb \
+  libcairo-gobject2_1.16.0-3_$XIOS_DEB_ARCH.deb \
+  libgjs0_1.78.0_$XIOS_DEB_ARCH.deb \
+  gjs_1.78.0_$XIOS_DEB_ARCH.deb \
+  libglib2.0-bin_2.78.0_$XIOS_DEB_ARCH.deb \
+  libgdk-pixbuf-2.0-0_2.42.12_$XIOS_DEB_ARCH.deb \
+  libgraphite2-3_1.3.14_$XIOS_DEB_ARCH.deb \
+  libharfbuzz0b_2.8.1_$XIOS_DEB_ARCH.deb \
+  libfribidi0_1.0.13_$XIOS_DEB_ARCH.deb \
+  libpango-1.0-0_1.50.14_$XIOS_DEB_ARCH.deb \
+  libatk1.0-0_2.38.0_$XIOS_DEB_ARCH.deb \
+  libepoxy0_1.5.7_$XIOS_DEB_ARCH.deb \
+  libxfixes3_6.0.1_$XIOS_DEB_ARCH.deb \
+  libxcursor1_1.2.0_$XIOS_DEB_ARCH.deb \
+  libxinerama1_1.1.4_$XIOS_DEB_ARCH.deb \
+  libgtk-3-0_3.24.38_$XIOS_DEB_ARCH.deb \
+  libgraphene-1.0-0_1.10.8_$XIOS_DEB_ARCH.deb \
+  libxml2_2.9.12_$XIOS_DEB_ARCH.deb \
+  libxkbcommon0_1.7.0_$XIOS_DEB_ARCH.deb \
+  libepoll-shim0_0.0.20240608_$XIOS_DEB_ARCH.deb \
+  libwayland0_1.23.1_$XIOS_DEB_ARCH.deb \
+  libcairo-script-interpreter2_1.16.0-3_$XIOS_DEB_ARCH.deb \
+  libgtk-4-1_4.14.5_$XIOS_DEB_ARCH.deb \
+  gsettings-desktop-schemas_46.1_$XIOS_DEB_ARCH.deb \
+  iso-codes_4.15.0_$XIOS_DEB_ARCH.deb \
+  libgnome-desktop-4-2_44.1_$XIOS_DEB_ARCH.deb \
+  libjson-glib-1.0-0_1.8.0_$XIOS_DEB_ARCH.deb \
+  gnome-session_46.0_$XIOS_DEB_ARCH.deb \
+  libnotify4_0.8.3_$XIOS_DEB_ARCH.deb \
+  libpolkit-gobject-1-0_124_$XIOS_DEB_ARCH.deb \
+  libpulse0_17.0-1_$XIOS_DEB_ARCH.deb \
+  gnome-settings-daemon_46.0_$XIOS_DEB_ARCH.deb \
+  liblcms2-2_2.12_$XIOS_DEB_ARCH.deb \
+  libcolord2_1.4.7_$XIOS_DEB_ARCH.deb \
+  libei1_1.2.1_$XIOS_DEB_ARCH.deb \
+  libmutter-14-0_46.0_$XIOS_DEB_ARCH.deb \
+  libatspi2.0-0_2.52.0_$XIOS_DEB_ARCH.deb \
+  libatk-bridge2.0-0_2.52.0_$XIOS_DEB_ARCH.deb \
+  libgcr-4-4_4.2.1_$XIOS_DEB_ARCH.deb \
+  libpolkit-agent-1-0_124_$XIOS_DEB_ARCH.deb \
+  libibus-1.0-5_1.5.29_$XIOS_DEB_ARCH.deb \
+  libxcb-util1_*_$XIOS_DEB_ARCH.deb \
+  libstartup-notification0_0.12_$XIOS_DEB_ARCH.deb \
+  gnome-shell_46.0_$XIOS_DEB_ARCH.deb \
+  libaccountsservice0_23.13.9_$XIOS_DEB_ARCH.deb \
+  libgdm1_46.0_$XIOS_DEB_ARCH.deb \
+  libgeoclue-2-0_2.7.1_$XIOS_DEB_ARCH.deb \
+  libpsl5_0.21.5_$XIOS_DEB_ARCH.deb \
+  libsoup-3.0-0_3.4.4_$XIOS_DEB_ARCH.deb \
+  libgeocode-glib-2-0_3.26.4_$XIOS_DEB_ARCH.deb \
+  libgweather-4-0_4.4.2_$XIOS_DEB_ARCH.deb \
+  libupower-glib3_1.90.2_$XIOS_DEB_ARCH.deb \
+  xios-session-stubs_0.1.2_$XIOS_DEB_ARCH.deb \
 "
 
 # The -dev debs below are needed ONLY for gtk4-gpu's on-device gir/typelib scan (headers +
@@ -81,21 +81,21 @@ DEBS="\
 # gir → gtk4-gpu meson-routes it) and p11-kit-1-dev (gck-2.pc/gcr-4.pc Require it for cflags →
 # apt-get download'd below, like libxcb-util1).
 GIR_DEV_DEBS="\
-  libmutter-14-dev_46.0_iphoneos-arm64.deb \
-  libgjs-dev_1.78.0_iphoneos-arm64.deb \
-  libaccountsservice-dev_23.13.9_iphoneos-arm64.deb \
-  libgdm-dev_46.0_iphoneos-arm64.deb \
-  libupower-glib-dev_1.90.2_iphoneos-arm64.deb \
-  libgeocode-glib-2-dev_3.26.4_iphoneos-arm64.deb \
-  libgweather-4-dev_4.4.2_iphoneos-arm64.deb \
-  libgeoclue-dev_2.7.1_iphoneos-arm64.deb \
-  libatk1.0-dev_2.38.0_iphoneos-arm64.deb \
-  at-spi2-core-dev_2.52.0_iphoneos-arm64.deb \
-  gcr4-dev_4.2.1_iphoneos-arm64.deb \
-  polkit-dev_124_iphoneos-arm64.deb \
-  libibus-dev_1.5.29_iphoneos-arm64.deb \
-  libgnome-desktop-dev_44.1_iphoneos-arm64.deb \
-  p11-kit-1-dev_*_iphoneos-arm64.deb \
+  libmutter-14-dev_46.0_$XIOS_DEB_ARCH.deb \
+  libgjs-dev_1.78.0_$XIOS_DEB_ARCH.deb \
+  libaccountsservice-dev_23.13.9_$XIOS_DEB_ARCH.deb \
+  libgdm-dev_46.0_$XIOS_DEB_ARCH.deb \
+  libupower-glib-dev_1.90.2_$XIOS_DEB_ARCH.deb \
+  libgeocode-glib-2-dev_3.26.4_$XIOS_DEB_ARCH.deb \
+  libgweather-4-dev_4.4.2_$XIOS_DEB_ARCH.deb \
+  libgeoclue-dev_2.7.1_$XIOS_DEB_ARCH.deb \
+  libatk1.0-dev_2.38.0_$XIOS_DEB_ARCH.deb \
+  at-spi2-core-dev_2.52.0_$XIOS_DEB_ARCH.deb \
+  gcr4-dev_4.2.1_$XIOS_DEB_ARCH.deb \
+  polkit-dev_124_$XIOS_DEB_ARCH.deb \
+  libibus-dev_1.5.29_$XIOS_DEB_ARCH.deb \
+  libgnome-desktop-dev_44.1_$XIOS_DEB_ARCH.deb \
+  p11-kit-1-dev_*_$XIOS_DEB_ARCH.deb \
 "
 
 # ---- fetch the ENTIRE external dependency closure from Procursus in ONE pass ----------------
@@ -120,11 +120,11 @@ CLOSURE=$(for p in $EXT_FRONTIER; do
 for p in $EXT_FRONTIER $CLOSURE; do
   case "$p" in ""|"<"*) continue;; esac
   dpkg -s "$p" >/dev/null 2>&1 && continue           # already installed on device
-  ls "${p}_"*_iphoneos-arm64.deb >/dev/null 2>&1 && continue   # already in our local set / fetched
+  ls "${p}_"*_$XIOS_DEB_ARCH.deb >/dev/null 2>&1 && continue   # already in our local set / fetched
   apt-get download "$p" 2>/dev/null && echo "   + fetched $p" || true
 done
 # Hard gate: libsndfile1 (libpulse0's new blocker) MUST be present now.
-if ! ls libsndfile1_*_iphoneos-arm64.deb >/dev/null 2>&1 && ! dpkg -s libsndfile1 >/dev/null 2>&1; then
+if ! ls libsndfile1_*_$XIOS_DEB_ARCH.deb >/dev/null 2>&1 && ! dpkg -s libsndfile1 >/dev/null 2>&1; then
   echo "!! libsndfile1 still missing after the closure fetch — 'apt-get download libsndfile1' by hand, then re-run"; exit 1
 fi
 
@@ -150,7 +150,7 @@ fi
 # debs are deliberately NOT included here — they are the Phase-2 pass.
 EXT_DEBS=""
 for p in $EXT_FRONTIER $CLOSURE; do
-  for f in ${p}_*_iphoneos-arm64.deb; do [ -f "$f" ] && EXT_DEBS="$EXT_DEBS $f"; done
+  for f in ${p}_*_$XIOS_DEB_ARCH.deb; do [ -f "$f" ] && EXT_DEBS="$EXT_DEBS $f"; done
 done
 
 echo "==> installing the boot set + fetched external closure (--force-overwrite for the icon-theme"

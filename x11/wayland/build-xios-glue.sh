@@ -24,6 +24,8 @@
 #     -v "$PWD/out:/out" procursus-xbuild:bookworm-arm64 \
 #     -c "bash /work/x11/wayland/build-xios-glue.sh"
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 umask 022
 
 X11=/work/x11
@@ -32,20 +34,20 @@ WORK=/tmp/xios-glue-build
 SYS="$WORK/sysroot"
 # On-device runtime path recorded in the dylib (mutter's binary resolves this at
 # load time). Override with INSTALL_NAME=... if the device layout differs.
-INSTALL_NAME="${INSTALL_NAME:-/var/jb/usr/lib/libxios_glue.dylib}"
+INSTALL_NAME="${INSTALL_NAME:-$XIOS_PREFIX/usr/lib/libxios_glue.dylib}"
 rm -rf "$WORK"; mkdir -p "$SYS" /out
 
 echo "==> [1/4] extract dev debs into a sysroot (angle EGL/GLES)"
 for pat in angle; do
-  f=$(find "$DEBS" -maxdepth 1 -type f -name "${pat}_*_iphoneos-arm64.deb" \
+  f=$(find "$DEBS" -maxdepth 1 -type f -name "${pat}_*_$XIOS_DEB_ARCH.deb" \
         | sort -V | tail -1)
   [ -n "$f" ] || { echo "!! missing deb: $pat"; exit 1; }
   dpkg-deb -x "$f" "$SYS"
   echo "   + $(basename "$f")"
 done
-PREFIX="$SYS/var/jb/usr"
-ANGLE_INC="$SYS/var/jb/include"
-ANGLE_LIB="$SYS/var/jb/lib/angle"
+PREFIX="$SYS$XIOS_PREFIX/usr"
+ANGLE_INC="$SYS$XIOS_PREFIX/include"
+ANGLE_LIB="$SYS$XIOS_PREFIX/lib/angle"
 [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
 
 echo "==> [2/4] locate the cctools cross clang"
@@ -84,7 +86,7 @@ $CC $CFLAGS -dynamiclib -install_name "$INSTALL_NAME" \
     "$OBJ"/*.o \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
-    -Wl,-rpath,/var/jb/lib/angle -o /out/libxios_glue.dylib
+    -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/libxios_glue.dylib
 rm -rf /out/xios-glue-include; mkdir -p /out/xios-glue-include
 # Ship only the canonical headers as the interface. The backend's flat
 # compile-contract xios-glue-stub.h is deliberately NOT bundled;

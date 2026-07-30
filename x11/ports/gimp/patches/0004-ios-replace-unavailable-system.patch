@@ -1,0 +1,25 @@
+--- a/tools/gimptool.c
++++ b/tools/gimptool.c
+@@ -481,9 +481,18 @@ maybe_run (gchar *cmd)
+   if (!silent)
+     g_print ("%s\n", cmd);
+ 
+-  /* system() declared with attribute warn_unused_result.
+-   * Trick to get rid of the compilation warning without using the result.
+-   */
+-  if (dry_run || system (cmd))
+-    ;
++  if (! dry_run)
++    {
++      GError *error = NULL;
++      gint    wait_status = 0;
+++      if (! g_spawn_command_line_sync (cmd, NULL, NULL, &wait_status, &error) ||
++          ! g_spawn_check_wait_status (wait_status, &error))
++        {
++          if (! silent)
++            g_printerr ("%s\n", error != NULL ? error->message :
++                        "command failed");
++          g_clear_error (&error);
++        }
++    }
+ }

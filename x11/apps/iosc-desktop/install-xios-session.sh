@@ -8,6 +8,10 @@
 #
 # device.env (repo root, gitignored) provides THEOS_DEVICE_IP / THEOS_DEVICE_PORT.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/deploy-env.sh"       # IP/PORT/SSH_OPTS + ssh_/scp_ (loads device.env)
@@ -15,18 +19,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
                               # with package-session.sh so deb and scp can't diverge
 
 echo "==> mkdir on-device dirs"
-DEST_DIRS="$(session_manifest | awk -F'\t' '{ sub("/[^/]*$", "", $2); print "/var/jb/" $2 }' | sort -u | tr '\n' ' ')"
+DEST_DIRS="$(session_manifest | awk -F'\t' '{ sub("/[^/]*$", "", $2); print "$XIOS_PREFIX/" $2 }' | sort -u | tr '\n' ' ')"
 ssh_ "mkdir -p $DEST_DIRS"
 
 echo "==> copy the ship manifest (CLI + lib + bring-up scripts)"
 while IFS=$'\t' read -r src dst mode; do
-  scp_ "$src" "root@$IP:/var/jb/$dst"
+  scp_ "$src" "root@$IP:$XIOS_PREFIX/$dst"
 done < <(session_manifest)
 
 echo "==> perms"
-CHMODS="$(session_manifest | awk -F'\t' '{ printf "chmod %s /var/jb/%s; ", $3, $2 }')"
+CHMODS="$(session_manifest | awk -F'\t' '{ printf "chmod %s $XIOS_PREFIX/%s; ", $3, $2 }')"
 ssh_ "$CHMODS"
 
 echo "==> installed. From an SSH shell or the terminal on-device:"
 echo "      xios-session iosc | mutter | gnome | app kgx | stop | status"
-echo "    In-app picker requires /var/jb/tmp/ioscd.sock SESSION."
+echo "    In-app picker requires $XIOS_PREFIX/tmp/ioscd.sock SESSION."

@@ -18,9 +18,28 @@ Re-run after adding/removing .debs. No network needed.
 import functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
+REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
+
+# Repo profile (see x11/docs/rootless-rootful-cfver-migration-plan.md Phase 5).
+# "rootless" is the historical flat layout and stays exactly where it was, so the
+# existing publish flow is untouched. Any other profile generates a completely
+# separate tree under repo/profiles/<name>/ -- separate debs input, separate
+# Packages/Release.
+#
+# They are separated because the two builds are different dependency universes
+# with the same package names and versions, installed at incompatible prefixes.
+# Not because their Debian architectures collide: Procursus gives rootful
+# iphoneos-arm and rootless iphoneos-arm64, so APT would in fact filter them.
+# Relying on that would be relying on a Procursus naming detail to keep two
+# incompatible trees apart, which is not a guarantee worth taking.
+PROFILE = os.environ.get("XIOS_REPO_PROFILE", "rootless")
+if PROFILE == "rootless":
+    REPO = REPO_ROOT
+else:
+    REPO = os.path.join(REPO_ROOT, "profiles", PROFILE)
+
 DEBS = os.path.join(REPO, "debs")
-META = os.path.join(REPO, "meta")
+META = os.path.join(REPO_ROOT, "meta")
 LOGO_SOURCES = os.path.join(HERE, "logo-sources")
 
 APP_SECTION = "X11/Wayland Apps"
@@ -97,6 +116,40 @@ def control_dict(deb_bytes):
             k, v = ln.split(": ", 1); d[k] = v; order.append(k)
     d["__order__"] = order
     return d
+
+def deb_payload_profile(deb_bytes):
+    """Infer which repo profile a .deb belongs to from its payload paths.
+
+    Rootless packages install under /var/jb; rootful ones own the filesystem
+    root. Reading it off the payload rather than trusting the filename is the
+    point -- the two builds share a name, version and architecture, so the
+    filename cannot tell them apart.
+
+    Returns "rootless", "rootful", or None when the payload says nothing either
+    way (a metapackage with no files).
+    """
+    m = ar_members(deb_bytes)
+    dn = next((n for n in m if n.startswith("data.tar")), None)
+    if dn is None:
+        return None
+    data = m[dn]
+    mode = {"data.tar.gz": "r:gz", "data.tar.xz": "r:xz", "data.tar": "r:"}.get(dn, "r:*")
+    if dn == "data.tar.zst":
+        zstd = shutil.which("zstd")
+        if not zstd:
+            # Returning None here would silently disable the profile guard for
+            # every Procursus deb, since they are all -Zzstd. Fail instead.
+            raise RuntimeError(
+                "data.tar.zst requires zstd in PATH to verify the repo profile"
+            )
+        data = subprocess.check_output([zstd, "-qdc"], input=data)
+        mode = "r:"
+    with tarfile.open(fileobj=io.BytesIO(data), mode=mode) as tf:
+        names = [x.name.lstrip(".").lstrip("/") for x in tf.getmembers() if x.isfile()]
+    if not names:
+        return None
+    return "rootless" if any(n.startswith("var/jb/") for n in names) else "rootful"
+
 
 def normalize_section(ctrl):
     sec = (ctrl.get("Section") or "").strip()
@@ -1029,7 +1082,32 @@ def write_index(pkgs):
     open(os.path.join(REPO, "index.html"), "w").write(page)
 
 # ── main ─────────────────────────────────────────────────────────────────────
+def check_not_shrinking():
+    """Refuse to regenerate from a partial repo/debs/.
+
+    debs/ holds only recently-staged payloads; everything else lives in Blob and
+    exists solely as a stanza in the committed Packages index. Regenerating from
+    a partial debs/ therefore deletes most of the repo, and it does it quietly --
+    the generator has no idea the other payloads ever existed. This runs before
+    anything is written, because the assets are rewritten well before Packages is.
+    """
+    existing = os.path.join(REPO, "Packages")
+    if not os.path.exists(existing) or os.environ.get("XIOS_REPO_ALLOW_SHRINK") == "1":
+        return
+    indexed = sum(1 for ln in open(existing) if ln.startswith("Package: "))
+    staged = len([f for f in os.listdir(DEBS) if f.endswith(".deb")]) if os.path.isdir(DEBS) else 0
+    if indexed > staged:
+        raise SystemExit(
+            f"ERROR: refusing to shrink {existing} from {indexed} to at most {staged} packages.\n"
+            f"       repo/debs/ has {staged} payload(s); the rest of this repo lives in Blob and\n"
+            f"       exists only in the committed index. Restore the missing debs (hash-match\n"
+            f"       against HEAD:repo/Packages) before regenerating, or set\n"
+            f"       XIOS_REPO_ALLOW_SHRINK=1 if you really do mean to drop them."
+        )
+
+
 def main():
+    check_not_shrinking()
     for d in ("icons", "banners", "depictions"):
         os.makedirs(os.path.join(REPO, d), exist_ok=True)
 
@@ -1050,6 +1128,20 @@ def main():
             continue
         blob = open(os.path.join(DEBS, fn), "rb").read()
         ctrl = control_dict(blob); pid = ctrl["Package"]
+
+        # Refuse to index a package built for a different root layout. Without
+        # this a rootful deb dropped into the flat (rootless) debs/ would be
+        # published to rootless devices, where none of its paths exist.
+        payload_profile = deb_payload_profile(blob)
+        if payload_profile is not None and payload_profile != PROFILE:
+            raise SystemExit(
+                f"ERROR: {fn} has {payload_profile} payload paths but this is the "
+                f"{PROFILE} profile.\n"
+                f"       The two builds share package names and versions but install at "
+                f"incompatible prefixes, so they must never share an index.\n"
+                f"       Put it in repo/profiles/{payload_profile}/debs/ and "
+                f"generate with XIOS_REPO_PROFILE={payload_profile}."
+            )
         normalize_section(ctrl)
         normalize_publisher(ctrl)
         meta = load_meta(pid)
@@ -1105,6 +1197,7 @@ def main():
     stanzas = [s for i, s in enumerate(stanzas) if i in keep]
 
     packages = "\n\n".join(stanzas) + "\n"
+
     open(os.path.join(REPO, "Packages"), "w").write(packages)
     with open(os.path.join(REPO, "Packages.gz"), "wb") as f:
         f.write(gzip.compress(packages.encode(), 9, mtime=0))
@@ -1130,7 +1223,7 @@ def main():
     open(os.path.join(REPO, "Release"), "w").write("\n".join(rel) + "\n")
 
     write_index(pkgs)
-    print(f"Generated repo ({len(pkgs)} package(s)), PIL={HAVE_PIL}")
+    print(f"Generated {PROFILE} repo at {REPO} ({len(pkgs)} package(s)), PIL={HAVE_PIL}")
 
 if __name__ == "__main__":
     main()

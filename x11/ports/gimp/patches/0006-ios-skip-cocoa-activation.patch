@@ -1,0 +1,26 @@
+--- a/app/plug-in/gimppluginmanager-call.c
++++ b/app/plug-in/gimppluginmanager-call.c
+@@ -26,10 +26,13 @@
+ #endif
+ 
+ #ifdef __APPLE__
++#include <TargetConditionals.h>
+ /* Not include gtk/gtk.h and depend on gtk just for GDK_WINDOWING_QUARTZ macro.
+- * __APPLE__ suffices, we only build for MacOS (vs iOS) and Quartz (vs X11)
++ * Cocoa activation is only available for a native macOS application.
+  */
++#if TARGET_OS_OSX
+ #import <Cocoa/Cocoa.h>
++#endif
+ #endif
+ 
+ #include "libgimpbase/gimpbase.h"
+@@ -393,7 +395,7 @@
+ 
+       gimp_plug_in_main_loop (plug_in);
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && TARGET_OS_OSX
+       /* The plugin temporary procedure returned, from separate, active process.
+       * Ensure gimp app active.
+       * Usually extension-script-fu was active, except when the temporary procedure

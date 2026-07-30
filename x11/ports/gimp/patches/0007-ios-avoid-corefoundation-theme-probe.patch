@@ -1,0 +1,36 @@
+From: Xios <xios@localhost>
+Subject: [PATCH] iOS: avoid the macOS CoreFoundation theme probe
+
+GIMP uses CFPreferences to mirror the macOS system appearance whenever
+__APPLE__ is defined.  iOS builds also define __APPLE__, but Xios supplies
+the desktop theme through GTK and should not pull CoreFoundation into the
+GIMP executable just for this optional preference.
+
+--- a/app/gui/themes.c
++++ b/app/gui/themes.c
+@@ -25,6 +25,7 @@
+ #include <windows.h>
+ #endif
+-#ifdef __APPLE__
++#if defined(__APPLE__) && \
++    !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+ #include <CoreFoundation/CoreFoundation.h>
+ #endif
+ 
+@@ -873,6 +874,9 @@
+ static gboolean
+ themes_macos_is_dark_mode_active (void)
+ {
++#if defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++  return FALSE;
++#else
+   gboolean    is_dark = FALSE;
+   CFStringRef style;
+ 
+@@ -883,5 +887,6 @@
+     }
+ 
+     return is_dark;
++#endif
+ }
+ #endif /* __APPLE__ */

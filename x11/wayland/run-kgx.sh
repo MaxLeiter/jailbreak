@@ -8,13 +8,25 @@
 #
 #   ssh root@ipad 'bash -s' < run-kgx.sh
 set -u
-export PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
-export XDG_RUNTIME_DIR=/var/jb/tmp
-TMP=/var/jb/tmp
-[ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
+# Resolve the jailbreak prefix. Prefer where this script is installed -- the iosc
+# deb stages it under the prefix -- but fall back to probing, because the
+# documented way to run this is `ssh root@ipad 'bash -s' < run-iosc.sh`, where
+# the script has no path on disk at all. Set XS_JB= to force rootful.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+if [ "${XS_JB+x}" != x ]; then
+  case "${SCRIPT_DIR:-}/" in
+    /var/jb/*) XS_JB=/var/jb ;;  # target-lint: allow-foreign-prefix
+    *)         if [ -d /var/jb/usr ]; then XS_JB=/var/jb; else XS_JB=; fi ;;  # target-lint: allow-foreign-prefix
+  esac
+fi
+XS_TMP="${XS_TMP:-${XS_JB:-/var}/tmp}"
+export PATH=$XS_JB/usr/local/bin:$XS_JB/usr/bin:$XS_JB/usr/sbin:$XS_JB/bin:$XS_JB/sbin:$PATH
+export XDG_RUNTIME_DIR=$XS_TMP
+TMP=$XS_TMP
+[ -r $XS_JB/etc/profile.d/xios.sh ] && . $XS_JB/etc/profile.d/xios.sh
 WSOCK="$XDG_RUNTIME_DIR/wayland-0"
-BIN=/var/jb/usr/local/bin
-SHELL_BIN=/var/jb/usr/bin/bash
+BIN=$XS_JB/usr/local/bin
+SHELL_BIN=$XS_JB/usr/bin/bash
 # dbus-daemon refuses a world-writable (1777) XDG_RUNTIME_DIR for its service
 # directory, so give the session bus a private mode-0700 dir of its own and point
 # kgx at the wayland socket by absolute path (WAYLAND_DISPLAY may be a full path).
@@ -34,7 +46,7 @@ rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/xios.json" \
 
 # Desktop audio (xios-audiod + PulseAudio, PULSE_SERVER export) before the
 # compositor so kgx and any GTK client find a live PA socket. Idempotent.
-[ -r /var/jb/etc/profile.d/xios-pulse.sh ] && . /var/jb/etc/profile.d/xios-pulse.sh && xios_pulse_start
+[ -r $XS_JB/etc/profile.d/xios-pulse.sh ] && . $XS_JB/etc/profile.d/xios-pulse.sh && xios_pulse_start
 
 echo "==> start iosc (compositor) -> $TMP/iosc.log"
 nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" >"$TMP/iosc.log" 2>&1 </dev/null &
@@ -72,15 +84,15 @@ echo "==> run kgx under a session bus (GDK wayland, GSK renderer, a11y ${XIOS_EN
 # NOTE: kgx MUST be launched with an explicit COMMAND (a bare `kgx` registers as the
 # GApplication primary, runs startup, then returns 0 WITHOUT mapping a window in this
 # headless/bus-only environment). Use the `-- <cmd> [args]` form, NOT `-e <cmd>`:
-# `-e /var/jb/usr/bin/bash` makes VTE spawn a shell that exits immediately (no live
+# `-e $XS_JB/usr/bin/bash` makes VTE spawn a shell that exits immediately (no live
 # child — a dead terminal), so typed keys reach kgx's wl_keyboard but go nowhere.
-# `-- /var/jb/usr/bin/bash -i` spawns a real interactive bash that stays alive, maps an
+# `-- $XS_JB/usr/bin/bash -i` spawns a real interactive bash that stays alive, maps an
 # xdg_toplevel through iosc, and receives keystrokes via iosc's wl_keyboard → PTY.
 rm -f "$TMP/kgx.exit"
 mkdir -p "$BUS_DIR"; chmod 700 "$BUS_DIR"
 # GTK renders through the wl_egl_window shim (ANGLE Metal -> IOSurface).
 GSK_SEL="ngl"
-SHIM_ENV="ANGLE_REAL_LIBEGL=/var/jb/lib/angle/libEGL.angle.dylib"
+SHIM_ENV="ANGLE_REAL_LIBEGL=$XS_JB/lib/angle/libEGL.angle.dylib"
 A11Y_PREFIX=""
 GTK_A11Y_ENV="GTK_A11Y=none"
 case "${XIOS_ENABLE_A11Y:-}" in
@@ -92,8 +104,8 @@ esac
 nohup bash -c "
   env XDG_RUNTIME_DIR=$BUS_DIR WAYLAND_DISPLAY=$WSOCK \
     GDK_BACKEND=wayland GSK_RENDERER=$GSK_SEL $SHIM_ENV GSETTINGS_BACKEND=memory \
-    $GTK_A11Y_ENV HOME=/var/jb/var/root \
-    dbus-run-session -- /var/jb/usr/bin/bash -lc '$A11Y_PREFIX exec /var/jb/usr/bin/kgx -T iosc-kgx -- $SHELL_BIN -i'
+    $GTK_A11Y_ENV HOME=$XS_JB/var/root \
+    dbus-run-session -- $XS_JB/usr/bin/bash -lc '$A11Y_PREFIX exec $XS_JB/usr/bin/kgx -T iosc-kgx -- $SHELL_BIN -i'
   echo \$? >$TMP/kgx.exit
 " >"$TMP/kgx.log" 2>&1 </dev/null &
 KGXPID=$!
