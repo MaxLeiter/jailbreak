@@ -12,3 +12,4 @@
 0012-qt66-painting-assistant-string-view.patch
 0013-lcms212-generated-cicp-compat.patch
 0014-opengles-desktop-token-compat.patch
+0015-ios-exclude-macos-touch-workaround.patch

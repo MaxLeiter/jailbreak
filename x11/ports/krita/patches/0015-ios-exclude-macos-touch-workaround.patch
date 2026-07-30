@@ -1,0 +1,5 @@
+--- a/libs/ui/input/kis_input_manager.cpp
++++ b/libs/ui/input/kis_input_manager.cpp
+@@ -769 +769 @@
+-#ifdef Q_OS_MAC
++#ifdef Q_OS_MACOS
