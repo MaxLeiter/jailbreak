@@ -13007,3 +13007,49 @@ Icon: https://repo.maxleiter.com/icons/libwebkit2gtk-4.1-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.json
+
+Package: openjdk-21-jre-headless
+Name: OpenJDK 21 Headless Runtime
+Version: 21.0.12+ios1
+Architecture: iphoneos-arm64
+Depends: libiosexec1 (>= 1.3.1)
+Provides: java-runtime, java-runtime-headless
+Description: OpenJDK 21 headless runtime for rootless iOS.
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+MinimumOSVersion: 16.0
+Filename: debs/openjdk-21-jre-headless_21.0.12+ios1_iphoneos-arm64.deb
+Size: 54290592
+MD5sum: 2f83603faa42881eaf4bbb210a3479d0
+SHA1: f157d8362ba35726426fdd419d5b8128addb524b
+SHA256: 4f8ec7930c35cd52567a7536f6fc8cce89e215a2853b8af70e6ba3e814c61894
+Icon: https://repo.maxleiter.com/icons/openjdk-21-jre-headless.png
+Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jre-headless.html
+SileoDepiction: https://repo.maxleiter.com/depictions/openjdk-21-jre-headless.json
+Native Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jre-headless.json
+Homepage: https://repo.maxleiter.com
+
+Package: openjdk-21-jdk-headless
+Name: OpenJDK 21 Headless Development Kit
+Version: 21.0.12+ios1
+Architecture: iphoneos-arm64
+Depends: openjdk-21-jre-headless (= 21.0.12+ios1)
+Provides: java-compiler, java-sdk, java-sdk-headless
+Description: OpenJDK 21 development tools for rootless iOS.
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+MinimumOSVersion: 16.0
+Filename: debs/openjdk-21-jdk-headless_21.0.12+ios1_iphoneos-arm64.deb
+Size: 126170144
+MD5sum: 99d5e9bb4fb3a7116ea571f99c7d608d
+SHA1: b1680e942c52389ca102589db836d33b9519f4ea
+SHA256: 65cc88210b184f27291e700413c6be09e70cc7e08f697d0a3ad9087e5143c9f0
+Icon: https://repo.maxleiter.com/icons/openjdk-21-jdk-headless.png
+Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jdk-headless.html
+SileoDepiction: https://repo.maxleiter.com/depictions/openjdk-21-jdk-headless.json
+Native Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jdk-headless.json
+Homepage: https://repo.maxleiter.com
