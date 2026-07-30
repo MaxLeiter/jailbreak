@@ -42,6 +42,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var lastInputConnectAttempt = Date.distantPast
     private var lastPt: (Int32, Int32)?
     private var touchSlots: [UITouch: Int32] = [:]
+    private var lastReportedSceneSize: (width: Int, height: Int)?
     private var pointerTouch: UITouch?         // owns the emulated wl_pointer press
     private weak var keyboardRevealPan: UIPanGestureRecognizer?
     private var keyboardSwipeTriggered = false
@@ -233,8 +234,13 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         needsPresent = true
         // The scene's pixel size is authoritative; tell the compositor to reflow the
         // app to it (it re-lays-out and hands back a WINDOW_GEOM canvas).
-        manager?.sceneResized(window_id,
-                              w: Int(bounds.width * s), h: Int(bounds.height * s))
+        let width = Int((bounds.width * s).rounded())
+        let height = Int((bounds.height * s).rounded())
+        if width > 0, height > 0,
+           lastReportedSceneSize?.width != width || lastReportedSceneSize?.height != height {
+            lastReportedSceneSize = (width, height)
+            manager?.sceneResized(window_id, w: width, h: height)
+        }
     }
 
     @objc private func tick() {
@@ -957,6 +963,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         presentFenceToken = nil
         presentFenceEvent = nil
         presentFenceValue = 0
+        lastReportedSceneSize = nil
         accessibilityElements = nil
     }
 

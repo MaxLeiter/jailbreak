@@ -1,0 +1,20 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Supply the newer XPC sendability declaration for old SDKs
+
+Procursus can stage XPC session headers newer than the cctools iPhoneOS SDK's
+os/object.h. Keep ProcessCheck buildable when those headers use the newer
+sendability spelling; this declaration attribute does not change the object ABI.
+
+--- a/Source/bmalloc/bmalloc/ProcessCheck.mm
++++ b/Source/bmalloc/bmalloc/ProcessCheck.mm
+@@ -25,6 +25,10 @@
+ 
+ #import "ProcessCheck.h"
+ 
++#ifndef OS_OBJECT_DECL_SENDABLE_CLASS
++#define OS_OBJECT_DECL_SENDABLE_CLASS(name) OS_OBJECT_DECL_CLASS(name)
++#endif
++
+ #import <Foundation/Foundation.h>
+ #import <cstdlib>
+ #import <mutex>
