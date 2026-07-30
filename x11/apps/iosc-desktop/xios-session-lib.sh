@@ -737,7 +737,10 @@ xs_settle() {
 # relaunch it and mark the status "relaunching display".
 xs_ensure_xios() {  # xs_ensure_xios <preset>
     local preset="${1:-session}"
-    if pgrep -f "Xios.app/Xios" >/dev/null 2>&1; then
+    # procps/pgrep is not a base dependency on the iPad. Use the same portable
+    # process-table probe as the rest of this launcher so a live Xios process is
+    # not falsely reported as missing on every switch.
+    if ps axww 2>/dev/null | grep -v grep | grep -E '/Xios\.app/Xios( |$)' >/dev/null 2>&1; then
         xs_foreground_xios
         return 0
     fi
