@@ -22,30 +22,22 @@ final class XServerViewController: UIViewController {
     }
 }
 
-/// Displays an X11 framebuffer on a CAMetalLayer at native retina resolution and
-/// injects touch as X pointer events via XTEST/iosc input. The public display path
-/// is IOSurface: `xios.json` must advertise `"ddx":"iosurface"`, then the app maps
-/// that IOSurface into a Metal texture and re-presents only on damage.
+/// Displays a compositor IOSurface on a CAMetalLayer at native retina resolution
+/// and forwards UIKit input over the compositor's input socket. `xios.json` must
+/// advertise `"ddx":"iosurface"` and the exact runtime endpoints.
 final class XScreenView: UIView {
     private var fbWidth = 1024
     private var fbHeight = 768
     private var selectedConfigPath: String?
     private var configPath: String { selectedConfigPath ?? XiosRuntimePaths.firstExisting("xios.json") }
-    // Which X display to drive (XTEST input). The server advertises this in
-    // xios.json so the app and the launch scripts can't disagree; `:3` is only the
-    // holding default before config arrives. Not pinned: the
-    // picker can switch it to any open display (see discoverDisplays()/load()).
+    // Session display label advertised in xios.json. Xwayland may use the same
+    // number, but UIKit input always enters through the compositor.
     private var xDisplay = ":3"
-    private var xAuthPath: String?              // MIT-MAGIC-COOKIE-1 file from xios.json
-    private var xunixDirs: [String] {
-        ["/tmp/.X11-unix", XiosRuntimePaths.tmp(".X11-unix"), "/var/jb/tmp/.X11-unix", "/var/tmp/.X11-unix"]
-    }
     // Bumped on every load(); the async IOSurface connect captures it and bails if a
     // newer load() superseded it, so switching displays can't adopt a stale surface.
     private var loadGeneration = 0
     private var userPinned = false              // user picked a display → stop auto-reloading xios.json
     private weak var pickerOverlay: UIView?
-    private var requestPath: String { XiosRuntimePaths.tmp("xios-request.json") }
     private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
     private var sessionStatusPath: String { XiosRuntimePaths.firstExisting("xios-session-status.json") }
     private var displayRegistryDir: String { XiosRuntimePaths.tmp("xios-displays.d") }
@@ -112,7 +104,6 @@ final class XScreenView: UIView {
     private var pinchAnchorFramebuffer: CGPoint?
     private var panStartOffset = CGPoint.zero
     private var panLastTranslation = CGPoint.zero
-    private var scrollRemainder = CGPoint.zero
 
     // MARK: scroll + long-press gesture state
     /// Sub-1/256-px scroll remainder for the iosc AXIS path (wl_fixed units).
@@ -224,10 +215,8 @@ final class XScreenView: UIView {
     private var inputConnected = false
     private var tickCount = 0
 
-    // iosc (Wayland compositor) input path. When the app displays iosc's output rather
-    // than an X server, single-finger touch + the keyboard are forwarded over this Unix
-    // socket as Wayland pointer/keyboard events (see IoscInput.h) instead of via XTEST.
-    // nil = not iosc mode (use the XTEST path). Resolved in loadConfig() from xios.json.
+    // The compositor advertises its per-slot input and clipboard endpoints in
+    // xios.json. Missing endpoints are configuration errors.
     private var ioscInputSock: String?
     private var ioscClipboardSock: String?
     private var inputConfigurationError: String?
@@ -887,7 +876,6 @@ final class XScreenView: UIView {
         let oldWidth = fbWidth
         let oldHeight = fbHeight
         let oldDisplay = xDisplay
-        let oldAuth = xAuthPath
         let oldIsIOSurface = ddxIsIOSurface
         let oldSocket = ddxSockPath
         let oldIoscSock = ioscInputSock
@@ -901,26 +889,23 @@ final class XScreenView: UIView {
         if let h = ddx.height { fbHeight = h }
         ddxIsIOSurface = ddx.isIOSurface
         if let s = ddx.socket { ddxSockPath = s }
-        // Honor the display the server actually started on (set via $DISP), instead
-        // of pinning XTEST input to :3.
+        // Keep the session's display label for diagnostics and display selection.
         if let d = obj["display"] as? String, !d.isEmpty { xDisplay = d }
-        // Cookie file locking the display (server uses xauth instead of -ac).
-        if let a = obj["xauth"] as? String, !a.isEmpty { xAuthPath = a }
         // Wayland compositors advertise their exact input endpoint. Never infer a
         // process-global socket from the DDX filename: slots can run concurrently,
         // and sending to the wrong compositor is worse than reporting a stale config.
         if ddxIsIOSurface {
             if let s = obj["input_socket"] as? String, !s.isEmpty {
                 ioscInputSock = s
-            } else if ddxSockPath.contains("iosc") {
+            } else {
                 inputConfigurationError =
-                    "iosc config is missing input_socket; restart/update the compositor"
+                    "config is missing input_socket; restart/update the compositor"
             }
             if let s = obj["clipboard_socket"] as? String, !s.isEmpty {
                 ioscClipboardSock = s
-            } else if ddxSockPath.contains("iosc") {
+            } else {
                 clipboardConfigurationError =
-                    "iosc config is missing clipboard_socket; restart/update the compositor"
+                    "config is missing clipboard_socket; restart/update the compositor"
             }
         }
         if let sock = ioscInputSock {
@@ -931,7 +916,7 @@ final class XScreenView: UIView {
 
         let renderStateChanged = oldWidth != fbWidth || oldHeight != fbHeight ||
             oldIsIOSurface != ddxIsIOSurface || oldSocket != ddxSockPath
-        let inputStateChanged = oldDisplay != xDisplay || oldAuth != xAuthPath ||
+        let inputStateChanged = oldDisplay != xDisplay ||
             oldIoscSock != ioscInputSock || oldIoscClipSock != ioscClipboardSock ||
             oldInputConfigurationError != inputConfigurationError ||
             oldClipboardConfigurationError != clipboardConfigurationError
@@ -1006,7 +991,7 @@ final class XScreenView: UIView {
         sendPacing(link)
         serviceIoscClipboard()
         serviceIoscInputTraits()
-        if inputConnected && !(usingIosc ? iosc_input_is_open() : xinput_is_open()) {
+        if inputConnected && !iosc_input_is_open() {
             inputConnected = false
             writeStatus()
         }
@@ -1286,7 +1271,7 @@ final class XScreenView: UIView {
                 inp = "input-connected \(iosurfaceCompositorID)(wayland)"
             }
         } else {
-            inp = "input-connected \(xDisplay)"
+            inp = "input-configuration-missing"
         }
         var lines = [fb, inp]
         if let error = inputConfigurationError {
@@ -1300,24 +1285,6 @@ final class XScreenView: UIView {
             atomically: true,
             encoding: .utf8)
         refreshShellOverlay()
-    }
-
-    private var displayProfiles: [DisplayProfile] {
-        let nb = UIScreen.main.nativeBounds
-        let nativeW = max(Int(nb.width), Int(nb.height))
-        let nativeH = min(Int(nb.width), Int(nb.height))
-        return [
-            DisplayProfile(name: "Performance", width: 1024, height: 768, dpi: 96,
-                           detail: "1024x768 @ 96 DPI"),
-            DisplayProfile(name: "Balanced", width: 1366, height: 1024, dpi: 132,
-                           detail: "1366x1024 @ 132 DPI"),
-            DisplayProfile(name: "Native", width: nativeW, height: nativeH, dpi: 264,
-                           detail: "\(nativeW)x\(nativeH) @ 264 DPI"),
-            DisplayProfile(name: "Retina Text", width: nativeW, height: nativeH, dpi: 220,
-                           detail: "\(nativeW)x\(nativeH) @ 220 DPI"),
-            DisplayProfile(name: "Current", width: fbWidth, height: fbHeight, dpi: 0,
-                           detail: "\(fbWidth)x\(fbHeight), keep DPI"),
-        ]
     }
 
     private var sessionDisplayProfiles: [DisplayProfile] {
@@ -1353,28 +1320,6 @@ final class XScreenView: UIView {
             return "\(p.name): \(p.detail)" + (p.dpi > 0 ? " at \(p.dpi) DPI" : "")
         }
         return "Each desktop uses its own default size"
-    }
-
-    private func writeDisplayRequest(_ profile: DisplayProfile) {
-        var obj: [String: Any] = [
-            "action": "display-profile",
-            "profile": profile.name,
-            "width": profile.width,
-            "height": profile.height,
-            "display": xDisplay,
-            "backend": "iosurface",
-            "created_by": "Xios.app",
-            "created_at": ISO8601DateFormatter().string(from: Date()),
-        ]
-        if profile.dpi > 0 { obj["dpi"] = profile.dpi }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
-            try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
-            lastToolMessage = "Wrote \(profile.detail)"
-        } catch {
-            lastToolMessage = "Request failed: \(error.localizedDescription)"
-        }
-        writeDebugSnapshot()
     }
 
     /// Blocking worker primitive. UI actions dispatch this through requestIOSCD.
@@ -1511,11 +1456,10 @@ final class XScreenView: UIView {
         writeStatus()
     }
 
-    /// Tear down whichever input backend is connected (XTEST or iosc).
+    /// Tear down connections tied to the compositor input endpoint.
     private func closeInput() {
         hardwareKeyboard.releasePressedKeys()
         releaseHardwarePointerButtons()
-        xinput_close()
         iosc_input_close()
         iosc_clipboard_close()
         inputConnected = false
@@ -1529,7 +1473,7 @@ final class XScreenView: UIView {
 
     private func inputBackendName() -> String {
         if inputConfigurationError != nil { return "misconfigured" }
-        return usingIosc ? "iosc" : "XTEST"
+        return usingIosc ? "iosc" : "not-configured"
     }
 
     private static func parseTouchPointerPolicy(_ obj: [String: Any]) -> Bool? {
@@ -1680,8 +1624,6 @@ final class XScreenView: UIView {
         let nb = UIScreen.main.nativeBounds
         let cfg = (try? String(contentsOfFile: configPath, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "(missing)"
-        let req = (try? String(contentsOfFile: requestPath, encoding: .utf8))?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "(missing)"
         return [
             "Xios Debug",
             "display=\(xDisplay)",
@@ -1691,7 +1633,6 @@ final class XScreenView: UIView {
             "view=\(Int(bounds.width))x\(Int(bounds.height)) drawable=\(Int(ds.width))x\(Int(ds.height)) scale=\(metalLayer.contentsScale)",
             "native=\(Int(nb.width))x\(Int(nb.height)) zoom=\(Int((zoomScale * 100).rounded())) pan=\(Int(panOffset.x)),\(Int(panOffset.y))",
             "input=\(inputConnected ? "connected" : "not-connected") backend=\(inputBackendName())",
-            "xauth=\(xAuthPath ?? "(none)")",
             "ddx_socket=\(ddxSockPath)",
             "iosc_input=\(ioscInputSock ?? "(none)")",
             "iosc_clipboard=\(ioscClipboardSock ?? "(none)")",
@@ -1700,7 +1641,6 @@ final class XScreenView: UIView {
             "test_pattern=\(usingTestPattern)",
             "last_message=\(lastToolMessage)",
             "xios_json=\(cfg)",
-            "xios_request=\(req)",
         ].joined(separator: "\n") + "\n"
     }
 
@@ -1715,25 +1655,15 @@ final class XScreenView: UIView {
         lastToolMessage = "Copied debug"
     }
 
-    // MARK: input (XTEST)
+    // MARK: compositor input
 
     private func connectInput() {
-        guard inputConfigurationError == nil else {
+        guard inputConfigurationError == nil, let sock = ioscInputSock else {
             inputConnected = false
             return
         }
-        if let sock = ioscInputSock {
-            // Wayland (iosc): one persistent Unix socket, no display/auth handshake.
-            if inputConnected && iosc_input_is_open() { return }
-            inputConnected = iosc_input_open(sock)
-            return
-        }
-        if inputConnected && xinput_is_open() { return }
-        if inputConnected { inputConnected = false }
-        // Authenticate the XTEST connection with the per-display cookie the server
-        // wrote (it locks the display with xauth instead of -ac). Harmless if absent.
-        if let a = xAuthPath { setenv("XAUTHORITY", a, 1) }
-        inputConnected = xinput_open(xDisplay)
+        if inputConnected && iosc_input_is_open() { return }
+        inputConnected = iosc_input_open(sock)
     }
 
     private func serviceIoscInputTraits() {
@@ -1958,55 +1888,30 @@ final class XScreenView: UIView {
         clipSuppressText = text; clipSuppressPNG = png
     }
 
-    // Route one pointer/key event to the active backend: iosc (Wayland) or XTEST.
     private func sendMotion(_ x: Int32, _ y: Int32) {
-        if usingIosc { iosc_input_motion(x, y) } else { xinput_motion(x, y) }
+        iosc_input_motion(x, y)
     }
     private func sendButton(_ button: Int32, _ down: Bool, at p: (Int32, Int32)?) {
-        if usingIosc {
-            let q = p ?? lastTouchPt ?? (Int32(0), Int32(0))
-            iosc_input_button(button, down, q.0, q.1)
-        } else {
-            xinput_button(button, down)
-        }
+        let q = p ?? lastTouchPt ?? (Int32(0), Int32(0))
+        iosc_input_button(button, down, q.0, q.1)
     }
     private func sendKeysym(_ ks: UInt, ctrl: Bool, alt: Bool, shift: Bool) {
-        if usingIosc {
-            var mods: UInt32 = 0
-            if shift { mods |= 1 }; if ctrl { mods |= 2 }; if alt { mods |= 4 }
-            // Accessory/OSK keys are taps. Hardware uses sendHardwareKey() below
-            // and preserves independent down/up transitions.
-            iosc_input_key(UInt32(ks), true, mods)
-            iosc_input_key(UInt32(ks), false, 0)
-        } else {
-            _ = xinput_type_keysym_mods(ks, ctrl, alt, shift, false)
-        }
+        var mods: UInt32 = 0
+        if shift { mods |= 1 }; if ctrl { mods |= 2 }; if alt { mods |= 4 }
+        // Accessory/OSK keys are taps. Hardware uses sendHardwareKey() below
+        // and preserves independent down/up transitions.
+        iosc_input_key(UInt32(ks), true, mods)
+        iosc_input_key(UInt32(ks), false, 0)
     }
 
     private func sendHardwareKey(_ keysym: UInt32, down: Bool, modifiers: UInt32) {
         guard inputConnected else { return }
-        if usingIosc {
-            iosc_input_key(keysym, down, modifiers)
-        } else {
-            let keycode = xinput_keycode_for_keysym(UInt(keysym))
-            if keycode != 0 {
-                xinput_key(keycode, down)
-                xinput_flush()
-            }
-        }
+        iosc_input_key(keysym, down, modifiers)
     }
 
     private func sendText(_ text: String) {
         guard inputConnected else { return }
-        if usingIosc {
-            text.withCString { iosc_input_text($0) }
-            return
-        }
-        for ch in text {
-            if let ks = keysym(for: ch) {
-                sendKeysym(ks, ctrl: false, alt: false, shift: false)
-            }
-        }
+        text.withCString { iosc_input_text($0) }
     }
 
     private func sendClick(_ button: Int32) {
@@ -2047,9 +1952,16 @@ final class XScreenView: UIView {
     }
 
     private func sendWheel(_ button: Int32) {
-        guard inputConnected, !usingIosc else { return }
-        xinput_button(button, true)
-        xinput_button(button, false)
+        guard inputConnected else { return }
+        let step: Int32 = 36 * 256
+        switch button {
+        case 4: iosc_input_axis(0, -step, 1, 0, false)
+        case 5: iosc_input_axis(0, step, 1, 0, false)
+        case 6: iosc_input_axis(-step, 0, 1, 0, false)
+        case 7: iosc_input_axis(step, 0, 1, 0, false)
+        default: return
+        }
+        iosc_input_axis(0, 0, 1, 0, true)
     }
 
     private func fitTransform(zoom: CGFloat? = nil, pan: CGPoint? = nil) -> FitTransform? {
@@ -2121,50 +2033,25 @@ final class XScreenView: UIView {
     private func resetZoom() {
         zoomScale = minZoomScale
         panOffset = .zero
-        scrollRemainder = .zero
         needsPresent = true
     }
 
-    /// dx/dy are view-point finger deltas. iosc gets AXIS records in 1/256
-    /// framebuffer-pixel fixed point with wl_pointer's sign (natural scroll:
-    /// fingers up = content scrolls down the page = positive); XTEST keeps
-    /// wheel-click emulation for plain X11 input.
+    /// dx/dy are view-point finger deltas. AXIS records use 1/256 framebuffer
+    /// pixels with wl_pointer's sign (fingers up means content scrolls down).
     private func sendScroll(dx: CGFloat, dy: CGFloat, source: UInt32) {
         guard inputConnected else { return }
-        if usingIosc {
-            guard let fit = fitTransform(), fit.scale > 0 else { return }
-            let ptToFb = 256 / fit.scale
-            axisRemainder.x -= dx * ptToFb
-            axisRemainder.y -= dy * ptToFb
-            let sx = axisRemainder.x.rounded(.towardZero)
-            let sy = axisRemainder.y.rounded(.towardZero)
-            if sx != 0 || sy != 0 {
-                axisRemainder.x -= sx
-                axisRemainder.y -= sy
-                axisSource = source
-                iosc_input_axis(Int32(sx), Int32(sy), source, 0, false)
-                axisActive = true
-            }
-            return
-        }
-        scrollRemainder.x -= dx
-        scrollRemainder.y -= dy
-        let step: CGFloat = 36
-        while scrollRemainder.y <= -step {
-            xinput_button(4, true); xinput_button(4, false)
-            scrollRemainder.y += step
-        }
-        while scrollRemainder.y >= step {
-            xinput_button(5, true); xinput_button(5, false)
-            scrollRemainder.y -= step
-        }
-        while scrollRemainder.x <= -step {
-            xinput_button(6, true); xinput_button(6, false)
-            scrollRemainder.x += step
-        }
-        while scrollRemainder.x >= step {
-            xinput_button(7, true); xinput_button(7, false)
-            scrollRemainder.x -= step
+        guard let fit = fitTransform(), fit.scale > 0 else { return }
+        let ptToFb = 256 / fit.scale
+        axisRemainder.x -= dx * ptToFb
+        axisRemainder.y -= dy * ptToFb
+        let sx = axisRemainder.x.rounded(.towardZero)
+        let sy = axisRemainder.y.rounded(.towardZero)
+        if sx != 0 || sy != 0 {
+            axisRemainder.x -= sx
+            axisRemainder.y -= sy
+            axisSource = source
+            iosc_input_axis(Int32(sx), Int32(sy), source, 0, false)
+            axisActive = true
         }
     }
 
@@ -2246,10 +2133,9 @@ final class XScreenView: UIView {
         let changed = hardwareButtonMask ^ nextMask
         guard changed != 0 else { return }
         let ioscButtons: [Int32] = [1, 3, 2, 0x113, 0x114]
-        let xButtons: [Int32] = [1, 3, 2, 8, 9]
         for index in 0..<ioscButtons.count where changed & (1 << index) != 0 {
             let down = nextMask & (1 << index) != 0
-            sendButton(usingIosc ? ioscButtons[index] : xButtons[index], down, at: lastTouchPt)
+            sendButton(ioscButtons[index], down, at: lastTouchPt)
         }
         hardwareButtonMask = nextMask
     }
@@ -2273,8 +2159,7 @@ final class XScreenView: UIView {
 
     /// A pinch or rotate with no touches on the glass came from the trackpad — the same
     /// test the indirect scroll recognizers use. Finger pinches keep zooming our own
-    /// framebuffer; only indirect ones are the desktop's business, and only on the iosc
-    /// path, since XTEST has no gesture concept.
+    /// framebuffer; only indirect ones are the compositor's business.
     private func isTrackpadGesture(_ g: UIGestureRecognizer) -> Bool {
         g.numberOfTouches == 0 && usingIosc && inputConnected
     }
@@ -2385,7 +2270,6 @@ final class XScreenView: UIView {
             twoFingerBegan()
             panStartOffset = panOffset
             panLastTranslation = .zero
-            scrollRemainder = .zero
             axisRemainder = .zero
         case .changed:
             let t = g.translation(in: self)
@@ -2412,7 +2296,6 @@ final class XScreenView: UIView {
         default:
             sendScrollStop()
             panLastTranslation = .zero
-            scrollRemainder = .zero
             twoFingerEnded()
         }
     }
@@ -2697,8 +2580,7 @@ final class XScreenView: UIView {
 
     // MARK: display discovery + picker
 
-    /// One visible desktop target. Legacy X displays come from X<n> sockets; slot
-    /// displays come from xios-displays.d and carry their own xios-<slot>.json.
+    /// One visible compositor target from xios-displays.d or the active xios.json.
     private struct XDisplayInfo {
         let number: Int
         let config: [String: Any]?
@@ -2745,29 +2627,19 @@ final class XScreenView: UIView {
         }
     }
 
-    /// Every open display = an `X<n>` socket under either `.X11-unix` dir, unioned
-    /// with the display xios.json advertises (the one we can actually render).
+    /// Discover only compositor outputs with renderable xios.json state. Raw X
+    /// sockets belong to nested Xwayland and are never standalone display targets.
     private func discoverDisplays() -> [XDisplayInfo] {
-        var numbers = Set<Int>()
-        let fm = FileManager.default
-        for dir in xunixDirs {
-            guard let entries = try? fm.contentsOfDirectory(atPath: dir) else { continue }
-            for e in entries where e.hasPrefix("X") {
-                if let n = Int(e.dropFirst()) { numbers.insert(n) }
-            }
-        }
         let cfg = readConfig()
-        var cfgNumber: Int?
-        if let d = cfg?["display"] as? String, d.hasPrefix(":"), let n = Int(d.dropFirst()) {
-            cfgNumber = n
-            numbers.insert(n)   // include the configured display even if its socket dir wasn't scanned
-        }
-        var rows = numbers.sorted().map {
-            XDisplayInfo(number: $0, config: $0 == cfgNumber ? cfg : nil,
-                         configPath: $0 == cfgNumber ? configPath : nil,
-                         slot: nil, preset: nil, state: nil, wayland: nil,
-                         registryPath: nil)
-        }
+        let cfgDisplay = cfg?["display"] as? String
+        let cfgNumber = cfgDisplay.flatMap { value in
+            value.hasPrefix(":") ? Int(value.dropFirst()) : nil
+        } ?? -1
+        var rows: [XDisplayInfo] = cfg.map {
+            [XDisplayInfo(number: cfgNumber, config: $0, configPath: configPath,
+                          slot: nil, preset: nil, state: nil, wayland: nil,
+                          registryPath: nil)]
+        } ?? []
         let seenPaths = Set(rows.compactMap { $0.configPath })
         rows.append(contentsOf: discoverDisplaySlots().filter { row in
             guard let path = row.configPath else { return true }
@@ -2926,7 +2798,6 @@ final class XScreenView: UIView {
         fbWidth = 1024; fbHeight = 768
         ddxIsIOSurface = false
         ddxSockPath = XiosRuntimePaths.tmp("xios-ddx.sock")
-        xAuthPath = nil
         ioscInputSock = nil
         ioscClipboardSock = nil
         inputConfigurationError = nil
@@ -2952,8 +2823,7 @@ final class XScreenView: UIView {
         if resetTransform { resetZoom() }
     }
 
-    /// Switch to a display the user picked: tear down the old one, apply the new
-    /// config (or none, for input-only), and start its framebuffer + input path.
+    /// Switch to a compositor output the user picked.
     private func load(_ disp: XDisplayInfo) {
         userPinned = true
         selectedConfigPath = disp.configPath
@@ -2973,9 +2843,7 @@ final class XScreenView: UIView {
                 awaitingCompositor = true
                 startTestPattern()
             }
-        } else {
-            startTestPattern()           // input-only: no framebuffer for this display
-        }
+        } else { startTestPattern() }
         connectInput()
         writeStatus()
     }
@@ -3753,33 +3621,10 @@ final class XScreenView: UIView {
                 debugView?.text = self?.debugSnapshot()
                 message?.text = self?.lastToolMessage
             },
-            panelButton("X Server Size") { [weak self] in self?.presentLegacyDisplayProfiles() },
         ]))
 
         stack.addArrangedSubview(buttonRow([
             panelButton("Back") { [weak self] in self?.presentDisplayControl() },
-            panelButton("Close") { [weak self] in self?.dismissPicker() },
-        ]))
-    }
-
-    /// Legacy path: writes xios-request.json, which only the standalone X server
-    /// script reads at start-up. Kept out of the main panel because it does nothing
-    /// to a running Wayland desktop — use Screen Size for that.
-    private func presentLegacyDisplayProfiles() {
-        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 520)
-        addPanelHeader("X Server Size", to: stack)
-        let message = panelLabel("Applies the next time the standalone X server starts.",
-                                 size: 12, color: UIColor(white: 0.72, alpha: 1))
-        stack.addArrangedSubview(message)
-        for profile in displayProfiles {
-            stack.addArrangedSubview(panelButton("\(profile.name)  \(profile.detail)") {
-                [weak self, weak message] in
-                self?.writeDisplayRequest(profile)
-                message?.text = self?.lastToolMessage
-            })
-        }
-        stack.addArrangedSubview(buttonRow([
-            panelButton("Back") { [weak self] in self?.presentAdvanced() },
             panelButton("Close") { [weak self] in self?.dismissPicker() },
         ]))
     }
@@ -4550,7 +4395,7 @@ final class XScreenView: UIView {
         }
     }
 
-    // MARK: keyboard (iOS keyboard -> XTEST)
+    // MARK: keyboard (iOS keyboard -> compositor input)
 
     override var canBecomeFirstResponder: Bool { true }
 
@@ -4684,8 +4529,8 @@ final class XScreenView: UIView {
     }
 }
 
-// The X screen view itself is the keyboard responder: the iOS keyboard's text
-// becomes XTEST key events on the current display. Backspace stays live via hasText.
+// The screen view itself is the keyboard responder and forwards text/key events to
+// the active compositor. Backspace stays live via hasText.
 extension XScreenView: UIKeyInput {
     var hasText: Bool { true }
 

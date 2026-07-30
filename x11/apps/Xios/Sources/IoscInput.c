@@ -7,9 +7,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-// One persistent AF_UNIX stream to iosc. A failed write (the compositor went away)
-// marks the connection dead so the app's poll loop reconnects, mirroring how XInput.c
-// recovers from a dropped X server.
+// One persistent AF_UNIX stream to the compositor. A failed write marks the
+// connection dead so the app's poll loop reconnects.
 static int s_fd = -1;
 
 #define IOSC_IN_MOTION 1
