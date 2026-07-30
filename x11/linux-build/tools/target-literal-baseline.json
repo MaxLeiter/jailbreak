@@ -1,5 +1,5 @@
 {
-  "total": 999,
+  "total": 1004,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 1,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -21,6 +21,7 @@
     "apps/iosc-desktop/xios-session": 2,
     "apps/iosc-desktop/xios-session-lib.sh": 3,
     "apps/iosc-desktop/xios-start-a11y": 2,
+    "apps/iosc-desktop/xios-status": 2,
     "apps/iosc-host/Sources/HostA11y.swift": 2,
     "apps/iosc-host/Sources/HostLaunch.c": 1,
     "apps/iosc-host/Sources/HostLaunch.h": 1,
@@ -35,6 +36,8 @@
     "apps/iosc-shell/run-shell.sh": 2,
     "apps/iosc-shell/shell-draw.h": 4,
     "apps/shared/XiosProtocol.h": 1,
+    "apps/shared/iosc_status.c": 2,
+    "apps/shared/iosc_status.h": 1,
     "bin/iosc-appwave-smoke": 27,
     "bin/iosc-capture-remote.sh": 5,
     "bin/iosc-capture.sh": 9,
