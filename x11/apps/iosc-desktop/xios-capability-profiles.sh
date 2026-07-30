@@ -6,10 +6,26 @@
 # small inspection/self-test CLI.
 
 set -u
-_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
-. "$_xt/linux-build/target-lib.sh"
-xios_load_target "${XIOS_TARGET:-rootless-1900}"
+
+# The installed copy is sourced after xios-session-lib has already resolved
+# XS_JB/XS_PREFIX. Only load a build target when this file is run directly from
+# the source tree; target-lib.sh is intentionally not part of the runtime
+# package.
+if [ -z "${XS_PREFIX:-}" ]; then
+    _xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do
+        _xt="$(dirname "$_xt")"
+    done
+    if [ -f "$_xt/linux-build/target-lib.sh" ]; then
+        . "$_xt/linux-build/target-lib.sh"
+        xios_load_target "${XIOS_TARGET:-rootless-1900}"
+    else
+        case "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/" in
+            /var/jb/*) XIOS_PREFIX=/var/jb ;;
+            *) echo "xios-capability-profiles: cannot resolve install prefix" >&2; return 1 2>/dev/null || exit 1 ;;
+        esac
+    fi
+fi
 
 xios_profile_names() {
     printf '%s\n' \
@@ -111,10 +127,18 @@ xios_profile_pair() {
 
 xios_profile_env_pairs() {
     local profile="${1:-}"
-    local angle="${XS_ANGLE_LIBEGL:-$XIOS_PREFIX/lib/angle/libEGL.angle.dylib}"
-    local prefix="${XS_PREFIX:-$XIOS_PREFIX/usr}"
-    local jb="${XS_JB:-$XIOS_PREFIX}"
-    local root_home="${XS_VAR:-$XIOS_PREFIX/var}/root"
+    local angle prefix jb root_home
+    if [ -n "${XS_PREFIX:-}" ]; then
+        prefix="$XS_PREFIX"
+        jb="${XS_JB:-}"
+        root_home="${XS_VAR:-${XS_JB:-}/var}/root"
+        angle="${XS_ANGLE_LIBEGL:-${XS_JB:-}/lib/angle/libEGL.angle.dylib}"
+    else
+        prefix="$XIOS_PREFIX/usr"
+        jb="$XIOS_PREFIX"
+        root_home="$XIOS_PREFIX/var/root"
+        angle="${XS_ANGLE_LIBEGL:-$XIOS_PREFIX/lib/angle/libEGL.angle.dylib}"
+    fi
     local lang="${LANG:-C}" lc_ctype="${LC_CTYPE:-UTF-8}" xcomposefile
     case "$lang" in ""|UTF-8|*.UTF-8|*.utf8|C.UTF-8) lang=C ;; esac
     case "$lc_ctype" in ""|C|POSIX|*.UTF-8|*.utf8|C.UTF-8) lc_ctype=UTF-8 ;; esac
