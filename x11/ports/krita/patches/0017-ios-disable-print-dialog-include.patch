@@ -1,0 +1,12 @@
+--- a/libs/ui/KisView.cpp
++++ b/libs/ui/KisView.cpp
+@@ -30,7 +30,9 @@
+ #include <QDragEnterEvent>
+ #include <QDropEvent>
+ #include <QList>
++#ifndef Q_OS_IOS
+ #include <QPrintDialog>
++#endif
+ #include <QToolBar>
+ #include <QStatusBar>
+ #include <QMoveEvent>
