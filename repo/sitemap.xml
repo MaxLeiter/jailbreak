@@ -22,6 +22,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/dbus.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/dconf.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/dconf-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/epiphany.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/epiphany-native.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/evolution-data-server.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/evolution-data-server-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/extra-cmake-modules.html</loc></url>
@@ -33,6 +35,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/gir1.2-freedesktop.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gir1.2-glib-2.0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gjs.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/glib-networking.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gnome-bluetooth.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gnome-control-center.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gnome-keyring.html</loc></url>
@@ -212,6 +215,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/libcolord2.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libcurl4.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libcurl4-openssl-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libdazzle-1.0-0.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libdazzle-1.0-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libdisplay-info-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libdisplay-info1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libdrm-dev.html</loc></url>
@@ -312,6 +317,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/libgtop-2.0-11.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgweather-4-0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgweather-4-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libhandy-1-0.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libhandy-1-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libharfbuzz-bin.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libharfbuzz-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.html</loc></url>
@@ -379,6 +386,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/libpoppler-qt6-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpoppler140.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libportal-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libportal-gtk3-1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libportal-gtk4-1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libportal1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpsl-dev.html</loc></url>

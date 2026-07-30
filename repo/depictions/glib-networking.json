@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/libportal-dev.png",
+  "headerImage": "https://repo.maxleiter.com/banners/glib-networking.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for libportal"
+          "markdown": "TLS support for GLib networking on Xios"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.7.1+ios2"
+          "text": "2.80.0+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "14.4 KiB"
+          "text": "174.7 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Development"
+          "text": "Libraries"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "libportal-dev"
+          "text": "glib-networking"
         }
       ]
     }

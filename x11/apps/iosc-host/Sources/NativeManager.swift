@@ -1,3 +1,4 @@
+import Darwin
 import UIKit
 import IOSurface
 
@@ -22,6 +23,8 @@ final class NativeManager: NSObject {
     private var reader: Thread?
     private var running = false
     private var launchAccepted = false
+    private var idleExitWork: DispatchWorkItem?
+    private var launchWatchdogWork: DispatchWorkItem?
 
     // BIND seeds the first xdg configure, so it must use the connected
     // UIWindowScene's Split View/Stage Manager geometry rather than the full
@@ -78,10 +81,13 @@ final class NativeManager: NSObject {
                 guard let self else { return }
                 guard result == 0 else {
                     NSLog("IOSCHost: ioscd rejected or failed LAUNCH_NATIVE for %@", appID)
+                    self.scheduleLaunchWatchdog(
+                        after: 1.0, reason: "ioscd rejected native launch")
                     return
                 }
                 DispatchQueue.main.async {
                     self.launchAccepted = true
+                    self.scheduleLaunchWatchdog()
                     self.startReaderIfSceneConnected()
                 }
                 // VoiceOver bridge (inert until xios-a11yd ships; gated on VoiceOver).
@@ -187,6 +193,9 @@ final class NativeManager: NSObject {
     }
 
     private func windowNew(_ id: UInt32, surface: IOSurfaceRef, w: Int, h: Int, title: String) {
+        cancelLaunchWatchdog()
+        cancelIdleExit()
+
         // Already bound (replayed WINDOW_NEW after a reconnect, or a restarted
         // compositor reusing the id): re-adopt the new canvas into the existing
         // scene instead of spawning a duplicate.
@@ -221,6 +230,9 @@ final class NativeManager: NSObject {
     }
 
     private func windowGone(_ id: UInt32) {
+        let wasKnown = pending[id] != nil || bound[id] != nil ||
+                       views[id] != nil || scenes[id] != nil ||
+                       sessionWindows.values.contains(id)
         // Compositor-initiated close: drop the session mapping so the discard that
         // follows the scene destruction below doesn't echo a CLOSED back for a
         // window that is already gone (whose id iosc may later reuse).
@@ -231,6 +243,75 @@ final class NativeManager: NSObject {
             UIApplication.shared.requestSceneSessionDestruction(scene.session, options: opts, errorHandler: nil)
         }
         forgetWindow(id)
+        if wasKnown {
+            // Applications such as GIMP replace a startup/splash toplevel with
+            // their main windows after a visible gap. Keep the wrapper around
+            // long enough for that queued replacement WINDOW_NEW to cancel us.
+            scheduleIdleExit(after: 30.0, reason: "final native window stayed closed")
+        }
+    }
+
+    /// A generated native bundle exists only to host this app's Linux toplevels.
+    /// UIKit keeps a multi-scene process alive after its final scene is destroyed,
+    /// so explicitly retire the wrapper once its final known window is gone.
+    ///
+    /// The grace period lets an application replace its last toplevel (or deliver
+    /// an already-queued WINDOW_NEW) without bouncing the host. A normal
+    /// scene disconnect is deliberately excluded: jetsam/background reclamation
+    /// parks that window in `pending`, preserving the reconnect/replay path.
+    private func scheduleIdleExit(after delay: TimeInterval, reason: String) {
+        cancelIdleExit()
+        guard launchAccepted,
+              pending.isEmpty, bound.isEmpty,
+              views.isEmpty, scenes.isEmpty,
+              sessionWindows.isEmpty else { return }
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.idleExitWork = nil
+            guard self.pending.isEmpty, self.bound.isEmpty,
+                  self.views.isEmpty, self.scenes.isEmpty,
+                  self.sessionWindows.isEmpty else { return }
+            self.exitWrapper(reason: reason)
+        }
+        idleExitWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func cancelIdleExit() {
+        idleExitWork?.cancel()
+        idleExitWork = nil
+    }
+
+    /// A failed or immediately-exiting Linux client may never create a toplevel,
+    /// which means there will be no WINDOW_GONE event to retire its blank host
+    /// scene. Give slow starters ample time, then remove that otherwise-permanent
+    /// wrapper if the compositor still has not announced a single window.
+    private func scheduleLaunchWatchdog(
+        after delay: TimeInterval = 30.0,
+        reason: String = "launch produced no native window"
+    ) {
+        cancelLaunchWatchdog()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.launchWatchdogWork = nil
+            guard self.pending.isEmpty, self.bound.isEmpty,
+                  self.views.isEmpty, self.scenes.isEmpty,
+                  self.sessionWindows.isEmpty else { return }
+            self.exitWrapper(reason: reason)
+        }
+        launchWatchdogWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func cancelLaunchWatchdog() {
+        launchWatchdogWork?.cancel()
+        launchWatchdogWork = nil
+    }
+
+    private func exitWrapper(reason: String) -> Never {
+        NSLog("IOSCHost: %@; exiting wrapper for %@", reason, appID)
+        exit(EXIT_SUCCESS)
     }
 
     private func handleDisconnect() {
@@ -331,10 +412,17 @@ final class NativeManager: NSObject {
     /// the one signal that really means "close". Tell iosc to close the toplevels
     /// those sessions displayed (their scenes already disconnected above).
     func sessionsDiscarded(_ sessions: Set<UISceneSession>) {
+        var closedKnownWindow = false
         for session in sessions {
             guard let id = sessionWindows.removeValue(forKey: session.persistentIdentifier) else { continue }
+            closedKnownWindow = true
             if let c = client { iosc_native_closed(c, id) }
             forgetWindow(id)
+        }
+        if closedKnownWindow {
+            // A discarded UIKit session is an explicit user close, not a
+            // transient Linux toplevel replacement.
+            scheduleIdleExit(after: 1.0, reason: "final native scene discarded")
         }
     }
 

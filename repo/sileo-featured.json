@@ -134,6 +134,16 @@
       "url": "https://repo.maxleiter.com/banners/dunst.png"
     },
     {
+      "title": "epiphany",
+      "package": "epiphany",
+      "url": "https://repo.maxleiter.com/banners/epiphany.png"
+    },
+    {
+      "title": "epiphany-native",
+      "package": "epiphany-native",
+      "url": "https://repo.maxleiter.com/banners/epiphany-native.png"
+    },
+    {
       "title": "evolution-data-server",
       "package": "evolution-data-server",
       "url": "https://repo.maxleiter.com/banners/evolution-data-server.png"
@@ -217,6 +227,11 @@
       "title": "gjs",
       "package": "gjs",
       "url": "https://repo.maxleiter.com/banners/gjs.png"
+    },
+    {
+      "title": "glib-networking",
+      "package": "glib-networking",
+      "url": "https://repo.maxleiter.com/banners/glib-networking.png"
     },
     {
       "title": "gnome-bluetooth",
@@ -1189,6 +1204,16 @@
       "url": "https://repo.maxleiter.com/banners/libcurl4-openssl-dev.png"
     },
     {
+      "title": "libdazzle-1.0-0",
+      "package": "libdazzle-1.0-0",
+      "url": "https://repo.maxleiter.com/banners/libdazzle-1.0-0.png"
+    },
+    {
+      "title": "libdazzle-1.0-dev",
+      "package": "libdazzle-1.0-dev",
+      "url": "https://repo.maxleiter.com/banners/libdazzle-1.0-dev.png"
+    },
+    {
       "title": "libdisplay-info-dev",
       "package": "libdisplay-info-dev",
       "url": "https://repo.maxleiter.com/banners/libdisplay-info-dev.png"
@@ -1689,6 +1714,16 @@
       "url": "https://repo.maxleiter.com/banners/libgweather-4-dev.png"
     },
     {
+      "title": "libhandy-1-0",
+      "package": "libhandy-1-0",
+      "url": "https://repo.maxleiter.com/banners/libhandy-1-0.png"
+    },
+    {
+      "title": "libhandy-1-dev",
+      "package": "libhandy-1-dev",
+      "url": "https://repo.maxleiter.com/banners/libhandy-1-dev.png"
+    },
+    {
       "title": "libharfbuzz-bin",
       "package": "libharfbuzz-bin",
       "url": "https://repo.maxleiter.com/banners/libharfbuzz-bin.png"
@@ -2022,6 +2057,11 @@
       "title": "libportal-dev",
       "package": "libportal-dev",
       "url": "https://repo.maxleiter.com/banners/libportal-dev.png"
+    },
+    {
+      "title": "libportal-gtk3-1",
+      "package": "libportal-gtk3-1",
+      "url": "https://repo.maxleiter.com/banners/libportal-gtk3-1.png"
     },
     {
       "title": "libportal-gtk4-1",

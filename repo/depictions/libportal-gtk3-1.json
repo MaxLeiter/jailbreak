@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/libportal-dev.png",
+  "headerImage": "https://repo.maxleiter.com/banners/libportal-gtk3-1.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for libportal"
+          "markdown": "Flatpak portal library - runtime (GTK3 backend)"
         },
         {
           "class": "DepictionSeparatorView"
@@ -27,7 +27,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "14.4 KiB"
+          "text": "10.6 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Development"
+          "text": "Libraries"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "libportal-dev"
+          "text": "libportal-gtk3-1"
         }
       ]
     }

@@ -1,7 +1,7 @@
 {
   "minVersion": "0.1",
   "class": "DepictionTabView",
-  "headerImage": "https://repo.maxleiter.com/banners/libportal-dev.png",
+  "headerImage": "https://repo.maxleiter.com/banners/epiphany-native.png",
   "tintColor": "#55aaff",
   "tabs": [
     {
@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for libportal"
+          "markdown": "native iPadOS multi-window host app for GNOME Web"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.7.1+ios2"
+          "text": "43.1+ios4"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "14.4 KiB"
+          "text": "178.1 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -37,12 +37,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Section",
-          "text": "Development"
+          "text": "Applications"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Identifier",
-          "text": "libportal-dev"
+          "text": "epiphany-native"
         }
       ]
     }
