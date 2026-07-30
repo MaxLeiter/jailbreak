@@ -426,15 +426,42 @@ on_backlight_dir_event (GFileMonitor *monitor, GFile *file, GFile *other,
   apply_brightness ((int) g_ascii_strtoll (contents, NULL, 10));
 }
 
-/* Track brightness changed outside us (Control Center, auto-brightness) so the gsd slider
- * stays truthful. Writing `brightness` retriggers the monitor, but apply_brightness() is a
- * no-op on an unchanged value. */
+/* Reconcile the node and the hardware in both directions.
+ *
+ * Inbound (`brightness` written by a client) is supposed to arrive via the directory
+ * monitor, but GFileMonitor never fires on iOS -- GLib has no monitor backend for this
+ * platform, so g_file_monitor_directory() hands back a monitor that reports nothing and
+ * fails silently. Every write therefore landed in the file and stopped there: powerdevil,
+ * the Plasma Mobile quicksetting and a plain shell redirect all set `brightness` with no
+ * effect on the panel. This poll is what actually applies them, so it is load-bearing
+ * rather than a backstop for the monitor.
+ *
+ * Outbound (Control Center, auto-brightness) is tracked so the sliders stay truthful. */
 static gboolean
 brightness_sync_tick (gpointer user_data)
 {
   (void) user_data;
   if (!bks_get)
     return G_SOURCE_REMOVE;
+
+  /* A value that is not the one we last applied is a client request, and it wins over
+   * the hardware poll below. Skipped until we have applied something once, so the seeding
+   * call cannot mistake a `brightness` file left behind by an earlier session for a
+   * request and push last session's level onto the panel at startup. */
+  if (last_applied_brightness >= 0)
+    {
+      g_autofree char *path = g_build_filename (backlight_dir, "brightness", NULL);
+      g_autofree char *contents = NULL;
+      if (g_file_get_contents (path, &contents, NULL, NULL))
+        {
+          int requested = CLAMP ((int) g_ascii_strtoll (contents, NULL, 10), 0, MAX_BRIGHTNESS);
+          if (requested != last_applied_brightness)
+            {
+              apply_brightness (requested);
+              return G_SOURCE_CONTINUE;
+            }
+        }
+    }
 
   int hw = (int) lroundf (bks_get () * MAX_BRIGHTNESS);
   hw = CLAMP (hw, 0, MAX_BRIGHTNESS);
@@ -1132,13 +1159,20 @@ main (int argc, char **argv)
       g_autoptr (GFile) dir = g_file_new_for_path (backlight_dir);
       g_autoptr (GError) error = NULL;
       /* Watch the directory, not the file: g_file_set_contents() writers replace
-       * `brightness` by rename, which would orphan a file watch. */
+       * `brightness` by rename, which would orphan a file watch.
+       *
+       * Kept, but do not rely on it: on iOS this call succeeds and then delivers no
+       * events at all, so it warns about nothing while silently doing nothing. The
+       * poll below is what carries client writes through to the panel. */
       monitor = g_file_monitor_directory (dir, G_FILE_MONITOR_WATCH_MOVES, NULL, &error);
       if (monitor)
         g_signal_connect (monitor, "changed", G_CALLBACK (on_backlight_dir_event), NULL);
       else
         g_warning ("hwbridge: backlight monitor failed: %s", error->message);
-      g_timeout_add_seconds (10, brightness_sync_tick, NULL);
+      /* Sub-second, because this is the latency of a brightness slider, not of a
+       * background sync: at the old 10s the panel lagged a drag hopelessly. Two small
+       * reads at 2 Hz is not measurable next to a compositor. */
+      g_timeout_add (500, brightness_sync_tick, NULL);
     }
 
   GFileMonitor *leds_monitor = NULL;
