@@ -124,7 +124,7 @@ xios_profile_env_pairs() {
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair GDK_BACKEND wayland
             xios_profile_pair GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
-            xios_profile_pair QT_QPA_PLATFORM "${QT_QPA_PLATFORM:-wayland-egl}"
+            xios_profile_pair QT_QPA_PLATFORM "${IOSC_QT_QPA_PLATFORM:-wayland-egl}"
             xios_profile_pair QT_WAYLAND_DISABLE_WINDOWDECORATION "${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             xios_profile_pair GSETTINGS_BACKEND memory
@@ -176,7 +176,7 @@ xios_profile_env_pairs() {
             xios_profile_pair QML2_IMPORT_PATH "$prefix/lib/qt6/qml"
             xios_profile_pair QML_IMPORT_PATH "$prefix/lib/qt6/qml"
             xios_profile_pair QSG_RHI_BACKEND "${PLASMA_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
-            xios_profile_pair QT_QPA_PLATFORM "${PLASMA_QT_QPA_PLATFORM:-${QT_QPA_PLATFORM:-wayland-egl}}"
+            xios_profile_pair QT_QPA_PLATFORM "${PLASMA_QT_QPA_PLATFORM:-wayland-egl}"
             xios_profile_pair QT_WAYLAND_CLIENT_BUFFER_INTEGRATION "${PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}}"
             xios_profile_pair QT_QUICK_CONTROLS_STYLE "${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
             ;;

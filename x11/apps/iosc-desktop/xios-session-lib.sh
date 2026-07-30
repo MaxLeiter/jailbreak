@@ -1093,7 +1093,7 @@ xios_session_app() {
         client_env=(
             GDK_BACKEND=wayland
             GSK_RENDERER=ngl
-            QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland-egl}"
+            QT_QPA_PLATFORM="${IOSC_QT_QPA_PLATFORM:-wayland-egl}"
             QT_WAYLAND_DISABLE_WINDOWDECORATION="${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
             ANGLE_REAL_LIBEGL="$XS_ANGLE_LIBEGL"
             GSETTINGS_BACKEND=memory
@@ -1144,7 +1144,7 @@ xios_session_app() {
                         QML2_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
                         QML_IMPORT_PATH="$XS_PREFIX/lib/qt6/qml"
                         QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-opengl}"
-                        QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland-egl}"
+                        QT_QPA_PLATFORM="${PLASMA_QT_QPA_PLATFORM:-wayland-egl}"
                         QT_WAYLAND_CLIENT_BUFFER_INTEGRATION="${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}"
                         QT_QUICK_CONTROLS_STYLE="${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
                     )
