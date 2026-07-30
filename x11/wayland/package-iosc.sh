@@ -40,7 +40,7 @@ fi
 mkdir -p "$OUTDIR"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.38"
+VER="0.9.40"
 ARCH="$XIOS_DEB_ARCH"
 DEB="iosc_${VER}_${ARCH}.deb"
 

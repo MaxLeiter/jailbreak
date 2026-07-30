@@ -23,7 +23,7 @@ REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-launcher-tools-deb"
 STAGE="$STAGEROOT/xios-launcher-tools"
 SYSROOT="$STAGEROOT/sysroot"
-VER="0.1.6"
+VER="0.1.7"
 ARCH="iphoneos-arm64"
 DEB="xios-launcher-tools_${VER}_${ARCH}.deb"
 
@@ -229,9 +229,10 @@ echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
 echo "installed=${INSTKB}KB"
 
-mkdir -p "$OUTDIR" "$REPODEBS"
+mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
-cp "$built" "$REPODEBS/$DEB"
 
 echo "=== DEB BUILT ==="
-ls -la "$OUTDIR/$DEB" "$REPODEBS/$DEB"
+ls -la "$OUTDIR/$DEB"
+echo "Repo pool unchanged; stage explicitly with:"
+echo "  python3 $X11DIR/tools/sync-packages-to-repo.py --apply --only xios-launcher-tools"

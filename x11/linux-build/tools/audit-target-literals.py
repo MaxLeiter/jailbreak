@@ -86,6 +86,10 @@ def iter_files(root: Path):
                 "linux-build/stage",
                 "wayland/out",
                 "site/.next",
+                # Xcode writes DerivedData here. It is build output, and its
+                # PIFCache manifests quote every path the project references,
+                # so scanning it reports the same literals dozens of times over.
+                "apps/Xios/build",
             }
         ]
         for name in filenames:
