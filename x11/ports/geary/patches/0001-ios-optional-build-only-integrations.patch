@@ -11,13 +11,13 @@ cross-compiling the application.
 @@ -71,7 +71,7 @@ sqlite = dependency('sqlite3', version: '>= 3.24')
  
  # We need appdata.its from appstream-glib:
- # https://gitlab.gnome.org/GNOME/appstream-glib/-/blob/master/data/appdata.its
+ # https://gitlab.gnome.org/GNOME/geary/issues/439
 -appstream_glib = dependency('appstream-glib', version: '>=0.7.10')
 +appstream_glib = dependency('appstream-glib', version: '>=0.7.10', required: false)
  cairo = dependency('cairo')
  enchant = dependency('enchant-2', version: '>=2.1')
  folks = dependency('folks', version: '>=0.11')
-@@ -81,7 +81,7 @@ gee = dependency('gee-0.8', version: '>= 0.8.5')
+@@ -81,6 +81,6 @@ gee = dependency('gee-0.8', version: '>= 0.8.5')
  gio = dependency('gio-2.0', version: '>=' + target_glib)
  goa = dependency('goa-1.0')
 -gsound = dependency('gsound')
@@ -25,14 +25,14 @@ cross-compiling the application.
  gspell = dependency('gspell-1')
  gthread = dependency('gthread-2.0', version: '>=' + target_glib)
  icu_uc = dependency('icu-uc', version: '>=60')
-@@ -236,5 +236,4 @@ subdir('po')
+@@ -236,4 +236,3 @@ subdir('po')
  subdir('sql')
  subdir('ui')
  subdir('src')
 -subdir('test')
 --- a/src/client/plugin/meson.build
 +++ b/src/client/plugin/meson.build
-@@ -44,7 +44,9 @@ subdir('folder-highlight')
+@@ -44,5 +44,7 @@ subdir('folder-highlight')
  subdir('mail-merge')
  subdir('messaging-menu')
  subdir('notification-badge')
