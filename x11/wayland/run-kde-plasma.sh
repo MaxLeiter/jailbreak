@@ -230,8 +230,8 @@ kde_process_running() {
 }
 
 if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
-  echo "==> stop prior iosc/KDE session pieces"
-  ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
+  echo "==> stop prior iosc/KDE session pieces (keep the Xios display app)"
+  ps ax | grep -v grep | grep -E "(^|[ /])iosc( |$)|ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
     | awk '{print $1}' | while read -r pid; do
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
     done
