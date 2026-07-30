@@ -40,7 +40,7 @@ else
 fi
 
 echo "==> cc: ${CC[*]} (SDK $SDK, runtime $TARGET_RUNTIME_TMP)"
-"${CC[@]}" "${CFLAGS[@]}" -isysroot "$SDK" -I"$SRC" \
+"${CC[@]}" "${CFLAGS[@]}" -isysroot "$SDK" -I"$SRC" -I"$SRC/../apps/shared" \
     -o "$OUT/xios-sysintd" "$SRC/xios-sysintd.c" "$SRC/xios_input_socket.c"
 
 if command -v ldid >/dev/null 2>&1; then
