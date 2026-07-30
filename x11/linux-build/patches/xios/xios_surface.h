@@ -65,6 +65,32 @@ int xios_notify_dirty_with_fence(const void *shared_event_token,
 uint64_t xios_dirty_generation(void);
 uint64_t xios_presented_generation(void);
 
+/* ---- display pacing (fed by XIOS_MSG_PACING / XIOS_MSG_PRESENTED) ----------
+ *
+ * The app's display clock, translated into the compositor's own CLOCK_MONOTONIC on
+ * arrival. Returns 1 when a live clock is available and fills whichever out-params
+ * are non-NULL; returns 0 when no app has reported one recently (no app attached,
+ * an app from before display pacing, or a backgrounded app whose link is paused) —
+ * in which case the caller must keep its previous, event-loop-paced behaviour.
+ *
+ *   next_deadline_ms  absolute CLOCK_MONOTONIC ms of the app's next frame deadline.
+ *                     Already advanced past `now` in whole refresh intervals, so it
+ *                     always names a FUTURE vblank.
+ *   interval_us       refresh interval in microseconds (16667 on a 60 Hz panel).
+ *   min_mfps/max_mfps the frame-rate range the app asked CoreAnimation for, in
+ *                     fps*1000. 0 when the app did not say.
+ */
+int xios_display_clock(uint64_t *next_deadline_ms, uint32_t *interval_us,
+                       int *min_mfps, int *max_mfps);
+
+/* How long before the most recent PRESENTED ack the frame ACTUALLY reached the
+ * display, in microseconds, from MTLDrawable.addPresentedHandler — plus the
+ * absolute CLOCK_MONOTONIC ms at which that ack arrived, so the caller can
+ * reconstruct the present time on its own clock. Returns 1 when the app reported a
+ * real present time, 0 when it did not (in which case presentation feedback should
+ * fall back to timing the repaint, as it did before pacing). */
+int xios_last_present_time(uint32_t *age_us, uint64_t *ack_at_ms);
+
 /* ---- app-socket framing (present / cursor / native envelope) ----------------
  * xios_hello.reserved must be XIOS_HELLO_TYPED. After xios_reply, the server sends
  * one in-band HELLO record followed by a typed 32-byte record stream, so DIRTY,
@@ -77,9 +103,38 @@ enum {
     XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b=present seq; optional fence in c,d+payload */
     XIOS_MSG_CURSOR = 0x03,  /* compositor->app: a=x b=y c=shape_id d=flags(bit0 visible) */
     XIOS_MSG_CLIPBOARD = 0x04,  /* BOTH directions, on the CLIPBOARD socket only (see below) */
-    XIOS_MSG_PRESENTED = 0x05,  /* app->compositor: a,b = displayed DIRTY seq lo/hi */
-    /* 0x06-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
+    XIOS_MSG_PRESENTED = 0x05,  /* app->compositor: a,b = displayed DIRTY seq lo/hi;
+                                 * c = microseconds between the real presentedTime
+                                 *     (MTLDrawable.addPresentedHandler) and the moment
+                                 *     this ack was sent, i.e. "presented this long ago";
+                                 * d = flags, bit0 set means c is a real present time
+                                 *     rather than 0. An app built before display pacing
+                                 *     sends c=d=0 and the compositor times the ack
+                                 *     itself, exactly as it did before. */
+    XIOS_MSG_PACING = 0x06,  /* app->compositor: the app's DISPLAY clock (see below) */
+    /* 0x07-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
 };
+
+/* ---- XIOS_MSG_PACING (0x06): the app's display clock -----------------------
+ * The compositor coalesces repaints per event-loop turn but has no idea when the
+ * panel actually refreshes, so a burst of commits still paints at whatever rate
+ * the clients commit (P0.4's remaining half). The app owns a CADisplayLink and
+ * therefore owns that knowledge; it forwards it here once per tick.
+ *
+ *   window_id = 0
+ *   a = microseconds from the moment this record was SENT until the display
+ *       link's targetTimestamp — the deadline for the frame being built. May be
+ *       negative if the app is already late for it.
+ *   b = the display's refresh interval in microseconds (targetTimestamp - timestamp).
+ *   c = the minimum frame rate the app asked CoreAnimation for, in mHz (fps*1000).
+ *   d = the maximum, same units. Together they are the range CoreAnimation may
+ *       settle inside, which is what the thermal track clamps.
+ *
+ * Everything is RELATIVE to send time on purpose: CADisplayLink timestamps live in
+ * CACurrentMediaTime()'s domain and the compositor works in CLOCK_MONOTONIC. Those
+ * are different clocks (they diverge across sleep), and a delta needs no shared
+ * epoch — the receiver stamps its own clock on arrival. Same reasoning for
+ * PRESENTED's c field above. */
 enum {
     XIOS_DIRTY_FENCE_NONE = 0,
     XIOS_DIRTY_FENCE_BROKER_TOKEN = 1,

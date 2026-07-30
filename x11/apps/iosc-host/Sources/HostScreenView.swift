@@ -109,6 +109,19 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             self?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
         }
         let dl = CADisplayLink(target: self, selector: #selector(tick))
+        // Asked for nothing before, which means the panel's maximum. A range lets
+        // CoreAnimation throttle a thermally constrained A10 on its own instead of
+        // us insisting on 60 while it is already `serious` at idle. Same lever the
+        // classic Xios path uses (XScreen.liveFrameRate) and the same seam the
+        // thermal track clamps.
+        //
+        // The rest of the classic path's pacing work does NOT apply here: the native
+        // flavor draws per-window canvases via the NATIVE_FRAME record family rather
+        // than one shared output surface, so there is no single dirty/present channel
+        // to carry targetTimestamp back over, and presentation feedback for these
+        // windows is the compositor's business. Pacing the native path properly means
+        // per-window pacing state on the 0x40-0x5f records — a separate change.
+        dl.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         dl.add(to: .main, forMode: .common)
         displayLink = dl
         needsPresent = true

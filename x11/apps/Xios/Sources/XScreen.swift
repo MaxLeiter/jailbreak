@@ -179,6 +179,22 @@ final class XScreenView: UIView {
     private var iosurfaceCompositorID = ""
 
     private var displayLink: CADisplayLink?
+    // MARK: display pacing (P0.4's remaining half)
+    // The link's targetTimestamp is the deadline for the frame being built. Sent to
+    // the compositor each tick (xsurface_pacing), it turns iosc's already-coalesced
+    // repaint from event-loop paced into vblank paced. The frame rate is a RANGE, not
+    // a fixed number: preferredFramesPerSecond is deprecated in favour of
+    // preferredFrameRateRange, and a range is something CoreAnimation can settle
+    // inside on its own rather than a hard flip between two values. The thermal track
+    // clamps `pacingRange` — that is the seam it needs.
+    private var pacingRange = XScreenView.liveFrameRate
+    /// The idle/no-signal holding frame: nothing is animating, so ask for very little.
+    private static let holdingFrameRate = CAFrameRateRange(minimum: 10, maximum: 20, preferred: 20)
+    /// A live desktop. The floor is deliberately well below the ceiling so
+    /// CoreAnimation can throttle a thermally constrained A10 without stuttering.
+    private static let liveFrameRate = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+    /// Refresh interval the link last reported, for the status line.
+    private var lastLinkIntervalUs: UInt32 = 0
     private var testBuf: UnsafeMutablePointer<UInt8>?
     private var usingTestPattern = false
     // The animated test card is a LAST-RESORT no-signal diagnostic only. During
@@ -319,8 +335,9 @@ final class XScreenView: UIView {
         isAccessibilityElement = false
         XiosA11yClient.shared.startup(view: self)
 
-        let dl = CADisplayLink(target: self, selector: #selector(tick))
-        dl.preferredFramesPerSecond = usingTestPattern ? 20 : 60
+        let dl = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        pacingRange = usingTestPattern ? Self.holdingFrameRate : Self.liveFrameRate
+        dl.preferredFrameRateRange = pacingRange
         dl.add(to: .main, forMode: .common)
         displayLink = dl
 
@@ -393,7 +410,29 @@ final class XScreenView: UIView {
         testPatternStartTick = tickCount
         makeTexture(width: width, height: height)
         needsPresent = true         // upload + present the initial clean-black frame once
-        displayLink?.preferredFramesPerSecond = 20
+        setPacingRange(Self.holdingFrameRate)
+    }
+
+    /// Single place the display link's frame-rate range is applied, so the thermal
+    /// track has one lever to clamp and the status line one place to publish from.
+    private func setPacingRange(_ range: CAFrameRateRange) {
+        pacingRange = range
+        displayLink?.preferredFrameRateRange = range
+        publishPacingStatus()
+    }
+
+    private func publishPacingStatus() {
+        // "vblank" is the app's claim that it IS driving the compositor's clock; the
+        // compositor publishes its own `pacing` key saying whether it accepted one
+        // (an old iosc ignores the record). Both appear in `xios-status`, attributed.
+        let interval = lastLinkIntervalUs > 0
+            ? String(format: " interval=%.2fms", Double(lastLinkIntervalUs) / 1000.0)
+            : ""
+        // `preferred` is optional in the SDK: nil means "no preference, settle
+        // anywhere in the range", which is worth showing as such rather than as 0.
+        let preferred = pacingRange.preferred.map { String(format: "/%g", $0) } ?? ""
+        let fps = String(format: "%g-%g", pacingRange.minimum, pacingRange.maximum)
+        iosc_status_set_value("pacing", "vblank fps=\(fps)\(preferred)\(interval)")
     }
 
     // MARK: IOSurface (zero-copy) path
@@ -448,7 +487,7 @@ final class XScreenView: UIView {
         testBuf?.deallocate(); testBuf = nil
         texture = nil                             // drop the test-pattern texture (~14 MB)
         needsPresent = true                       // present the initial frame
-        displayLink?.preferredFramesPerSecond = 60
+        setPacingRange(Self.liveFrameRate)
         connectInput()
         if usingIosc {
             SystemIntegration.shared.syncOutputNow()
@@ -879,9 +918,10 @@ final class XScreenView: UIView {
         }
     }
 
-    @objc private func tick() {
+    @objc private func tick(_ link: CADisplayLink) {
         guard !appIsBackgrounded else { return }
         tickCount += 1
+        sendPacing(link)
         serviceIoscClipboard()
         serviceIoscInputTraits()
         if inputConnected && !(usingIosc ? iosc_input_is_open() : xinput_is_open()) {
@@ -994,6 +1034,36 @@ final class XScreenView: UIView {
         if render(texture) { needsPresent = false }
     }
 
+    /// Hand the compositor this tick's deadline so its coalesced repaint can be
+    /// vblank-paced instead of event-loop paced (P0.4). Sent first thing in the tick,
+    /// while `targetTimestamp` still describes the frame we are about to build.
+    ///
+    /// Everything on the wire is a delta from *now*: `targetTimestamp` lives in
+    /// CACurrentMediaTime()'s domain and the compositor works in CLOCK_MONOTONIC, so
+    /// a delta is the only thing both sides can read without a shared epoch.
+    private func sendPacing(_ link: CADisplayLink) {
+        guard let conn = xconn else { return }
+        // duration is the link's own idea of the interval; targetTimestamp - timestamp
+        // is what it actually got this tick. Prefer the latter and fall back.
+        var interval = link.targetTimestamp - link.timestamp
+        if !(interval > 0) { interval = link.duration }
+        guard interval > 0, interval < 1 else { return }   // no clock yet, or nonsense
+
+        let untilDeadline = link.targetTimestamp - CACurrentMediaTime()
+        let untilUs = (untilDeadline * 1_000_000).rounded()
+        let intervalUs = UInt32((interval * 1_000_000).rounded())
+        lastLinkIntervalUs = intervalUs
+
+        _ = xsurface_pacing(conn,
+                            Int32(clamping: Int(untilUs.isFinite ? untilUs : 0)),
+                            intervalUs,
+                            Int32((pacingRange.minimum * 1000).rounded()),
+                            Int32((pacingRange.maximum * 1000).rounded()))
+        // Republish once the real interval is known, so `pacing=` reports the rate
+        // CoreAnimation settled on rather than only the range we asked for.
+        if tickCount % 120 == 0 { publishPacingStatus() }
+    }
+
     /// Draw the texture using the current fit/zoom/pan transform.
     private func gpuFence(for conn: OpaquePointer) -> (MTLSharedEvent, UInt64)? {
         presentFenceDecodeFailed = false
@@ -1057,10 +1127,32 @@ final class XScreenView: UIView {
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         enc.endEncoding()
         if let conn, presentedSeq != 0 {
-            cmd.addCompletedHandler { [weak self] _ in
+            // Ack on the DRAWABLE's presented handler, not the command buffer's
+            // completed handler. Completion means "the GPU finished rendering"; the
+            // presentation-time protocol asks for the moment the content actually
+            // reached the display, which is what presentedTime reports — acking at
+            // completion is how the old feedback ran up to a frame early. Moving the
+            // ack here is also what makes wl_surface.frame callbacks retire on
+            // present rather than on repaint, which is the rest of P0.4.
+            //
+            // The handler fires even for a drawable that never made it to the panel
+            // (presentedTime == 0), which is the case worth acking without a
+            // measurement rather than not at all. If the process is suspended before
+            // it runs at all, iosc's existing 100ms present-ack valve retires the
+            // callbacks — that valve is exactly the safety net this needs, so there
+            // is no second ack path here to race with.
+            drawable.addPresentedHandler { [weak self] presented in
+                let at = presented.presentedTime
                 DispatchQueue.main.async {
                     guard let self, self.xconn == conn else { return }
-                    _ = xsurface_presented(conn, presentedSeq)
+                    guard at > 0 else {
+                        _ = xsurface_presented(conn, presentedSeq)
+                        return
+                    }
+                    let ageUs = (max(0, CACurrentMediaTime() - at) * 1_000_000).rounded()
+                    _ = xsurface_presented_at(
+                        conn, presentedSeq,
+                        UInt32(clamping: Int(ageUs.isFinite ? ageUs : 0)))
                 }
             }
         }
