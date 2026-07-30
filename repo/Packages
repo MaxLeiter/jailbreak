@@ -12461,3 +12461,444 @@ Icon: https://repo.maxleiter.com/icons/zlib-dev.png
 Depiction: https://repo.maxleiter.com/depictions/zlib-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/zlib-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/zlib-dev.json
+
+Package: basu
+Version: 0.2.1+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Libraries
+Priority: optional
+Homepage: https://sr.ht/~emersion/basu/
+Description: sd-bus implementation for iOS
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 692
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/basu_0.2.1+ios1_iphoneos-arm64.deb
+Size: 190008
+MD5sum: 5d835fb4429b4beccd350d0c3a584686
+SHA1: ce0d64fe883f445aa2d9a0c0e53525cabb435367
+SHA256: 0bd0432faf00d2e7697a5a32d2a658e077f1444a138fb709e463a14a1c4f5a77
+Icon: https://repo.maxleiter.com/icons/basu.png
+Depiction: https://repo.maxleiter.com/depictions/basu.html
+SileoDepiction: https://repo.maxleiter.com/depictions/basu.json
+Native Depiction: https://repo.maxleiter.com/depictions/basu.json
+
+Package: mako
+Version: 1.9.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/emersion/mako
+Depends: libiosexec1 (>= 1.3.1), libwayland0, libcairo2, libpango-1.0-0, libglib2.0-0, libgdk-pixbuf-2.0-0, libepoll-shim0, basu
+Description: Lightweight Wayland notification daemon
+Installed-Size: 236
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/mako_1.9.0+ios1_iphoneos-arm64.deb
+Size: 37502
+MD5sum: 1d20cfcb053b6bb01ec6771657ba2bc0
+SHA1: a01d5110ba65ed20a12100e555bd32a9fe174a62
+SHA256: 74a497e271b856a610f09225774b3e32f7716e4aa84c72f8eea92e3f0f41caf3
+Icon: https://repo.maxleiter.com/icons/mako.png
+Depiction: https://repo.maxleiter.com/depictions/mako.html
+SileoDepiction: https://repo.maxleiter.com/depictions/mako.json
+Native Depiction: https://repo.maxleiter.com/depictions/mako.json
+
+Package: nwg-look
+Version: 1.1.1+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://github.com/nwg-piotr/nwg-look
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, gsettings-desktop-schemas, dconf
+Description: GTK settings editor for Wayland desktops
+Installed-Size: 4736
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/nwg-look_1.1.1+ios1_iphoneos-arm64.deb
+Size: 1292176
+MD5sum: 621005dee22cc6ceb03c998ecc1f707b
+SHA1: 0085420947987c92a08b115ec5129ba846d27711
+SHA256: 14cfbf0bed9d4bf1889fdd52a04d16c5d90e168a4482fc0e9fa7ce6794ae05ef
+Icon: https://repo.maxleiter.com/icons/nwg-look.png
+Depiction: https://repo.maxleiter.com/depictions/nwg-look.html
+SileoDepiction: https://repo.maxleiter.com/depictions/nwg-look.json
+Native Depiction: https://repo.maxleiter.com/depictions/nwg-look.json
+
+Package: papers
+Version: 46.2+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/papers
+Depends: libiosexec1 (>= 1.3.1), libgtkintl (>= 1.1), libintl8, libglib2.0-0, libgtk-4-1, libadwaita-1-0, libpoppler-glib8, libexempi8, libgdk-pixbuf-2.0-0, libcairo2, gsettings-desktop-schemas, dbus
+Description: Papers, the GTK4 GNOME document (PDF) viewer
+Installed-Size: 7604
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/papers_46.2+ios1_iphoneos-arm64.deb
+Size: 1491200
+MD5sum: 0632ce14828387c2fc39a332017e8f2f
+SHA1: f96624d3055dca0822dfc4a3994711799c15c4de
+SHA256: 34e8548174ca5efa6da98575c185a632b369451abccdc48b5780562303236472
+Icon: https://repo.maxleiter.com/icons/papers.png
+Depiction: https://repo.maxleiter.com/depictions/papers.html
+SileoDepiction: https://repo.maxleiter.com/depictions/papers.json
+Native Depiction: https://repo.maxleiter.com/depictions/papers.json
+
+Package: libgspell-1-2
+Version: 1.12.2+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gspell
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libenchant-2-2, libicu78
+Description: Spell-checking library for GTK3
+Installed-Size: 228
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgspell-1-2_1.12.2+ios1_iphoneos-arm64.deb
+Size: 57362
+MD5sum: 4d49d8e7a5610def324d2838b4e1b659
+SHA1: a7aef84d25059a7a2bc1987e76c0fbb9ea11ab32
+SHA256: b6aea2e027898b4ca0ad2b928d28ce2941ea48a352b4c27f4a33f2bf588d844b
+Icon: https://repo.maxleiter.com/icons/libgspell-1-2.png
+Depiction: https://repo.maxleiter.com/depictions/libgspell-1-2.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgspell-1-2.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgspell-1-2.json
+
+Package: libgspell-1-dev
+Version: 1.12.2+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gspell
+Depends: libgspell-1-2 (= 1.12.2+ios1), libgtk-3-dev, libenchant-2-dev, libicu-dev
+Description: Development files for gspell
+Installed-Size: 148
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgspell-1-dev_1.12.2+ios1_iphoneos-arm64.deb
+Size: 20108
+MD5sum: 57eceb80528af090964a944971f379f5
+SHA1: 81cf00321a8c1f168b7298858a8290a89e844972
+SHA256: 49ca1d593d4719e6dac3eedd82fee79c65765316b6f5723d706b6824ecddb5f7
+Icon: https://repo.maxleiter.com/icons/libgspell-1-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgspell-1-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgspell-1-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgspell-1-dev.json
+
+Package: libpeas-1.0-0
+Version: 1.36.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/Libpeas
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgirepository-1.0-1
+Description: GObject plugin engine - runtime
+Installed-Size: 208
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libpeas-1.0-0_1.36.0+ios1_iphoneos-arm64.deb
+Size: 46806
+MD5sum: 03ef7417a776611454a3f1371bbb13c9
+SHA1: c498be979202938adfd53128269aef48eaa7c887
+SHA256: a4f4541a7d06162f976129b8fb0790ccae9e51a7b9ea761f6891b2fcb29f0302
+Icon: https://repo.maxleiter.com/icons/libpeas-1.0-0.png
+Depiction: https://repo.maxleiter.com/depictions/libpeas-1.0-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libpeas-1.0-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libpeas-1.0-0.json
+
+Package: libpeas-1.0-dev
+Version: 1.36.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://wiki.gnome.org/Projects/Libpeas
+Depends: libpeas-1.0-0 (= 1.36.0+ios1), libglib2.0-dev, libgirepository-1.0-dev
+Description: Development files for libpeas 1.0
+Installed-Size: 156
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libpeas-1.0-dev_1.36.0+ios1_iphoneos-arm64.deb
+Size: 25104
+MD5sum: 5f8d9a5f960f9afb83083681e3e192cb
+SHA1: 09991ee3ac30f58a2d5885dd24b9c00c7a70f293
+SHA256: 06ed7f1fd3c4c01649d7fbbcbe56c38845e735c01e554d7b3160499bf5dff257
+Icon: https://repo.maxleiter.com/icons/libpeas-1.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libpeas-1.0-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libpeas-1.0-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libpeas-1.0-dev.json
+
+Package: libfolks26
+Version: 0.15.9+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/folks
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgee-0.8-2, libgtkintl (>= 1.0)
+Description: Folks contact aggregation runtime
+Installed-Size: 2908
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libfolks26_0.15.9+ios1_iphoneos-arm64.deb
+Size: 459094
+MD5sum: a98a8db95250212ceda974bf8f0f41dd
+SHA1: f418393b9ead566473a08e46fa372f6d66d90d49
+SHA256: 95f5ae01afb40b48cb11646107e3a7fe049bd1d5e640398a2342aa6ec465b2cb
+Icon: https://repo.maxleiter.com/icons/libfolks26.png
+Depiction: https://repo.maxleiter.com/depictions/libfolks26.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libfolks26.json
+Native Depiction: https://repo.maxleiter.com/depictions/libfolks26.json
+
+Package: libfolks-dev
+Version: 0.15.9+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/folks
+Depends: libfolks26 (= 0.15.9+ios1), libglib2.0-dev, libgee-0.8-dev
+Description: Folks contact aggregation development files
+Installed-Size: 784
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libfolks-dev_0.15.9+ios1_iphoneos-arm64.deb
+Size: 84180
+MD5sum: 866968a6c6fbeb9acb7bf086345f98b2
+SHA1: a63984579d20ddd830da4da0067c11e0da0cd9ca
+SHA256: 76b97577396e9ab45d128b7679c7fecc2b73ee49f4ca79945b159ba19b4a8873
+Icon: https://repo.maxleiter.com/icons/libfolks-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libfolks-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libfolks-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libfolks-dev.json
+
+Package: libgck-1-0
+Version: 3.41.1+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgcrypt20, p11-kit
+Description: GCK PKCS11 client runtime
+Installed-Size: 300
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgck-1-0_3.41.1+ios1_iphoneos-arm64.deb
+Size: 84906
+MD5sum: 4e6a5634214a8e2cbe767e2f0f5eb2d6
+SHA1: 57a589994e127be4615edd5825a2afaaa90e6bac
+SHA256: b2d52967f84d6c9d949e58ab5c9e5a0f56cacb795b3fcfa6b151c40a5104bc80
+Icon: https://repo.maxleiter.com/icons/libgck-1-0.png
+Depiction: https://repo.maxleiter.com/depictions/libgck-1-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgck-1-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgck-1-0.json
+
+Package: libgcr-3-1
+Version: 3.41.1+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libiosexec1 (>= 1.3.1), libgck-1-0 (= 3.41.1+ios1), libglib2.0-0, libgtk-3-0, libgcrypt20, p11-kit, libgtkintl (>= 1.0)
+Description: GCR 3 certificate and credential runtime
+Installed-Size: 3568
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgcr-3-1_3.41.1+ios1_iphoneos-arm64.deb
+Size: 511910
+MD5sum: 7a38ca4c5847f689ce018821ef63f0e1
+SHA1: b7b0f1febdc74dd4a803cc946b06e4076d623adf
+SHA256: 0ba22dd910eb287d63167e37970b6df63e5f46f4301fc320c40605bdbafa5861
+Icon: https://repo.maxleiter.com/icons/libgcr-3-1.png
+Depiction: https://repo.maxleiter.com/depictions/libgcr-3-1.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgcr-3-1.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgcr-3-1.json
+
+Package: libgcr-3-dev
+Version: 3.41.1+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libgcr-3-1 (= 3.41.1+ios1), libgck-1-0 (= 3.41.1+ios1), libglib2.0-dev, libgtk-3-dev
+Description: GCR 3 and GCK 1 development files
+Installed-Size: 488
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgcr-3-dev_3.41.1+ios1_iphoneos-arm64.deb
+Size: 47582
+MD5sum: 248021618ddf0b920178c2f8c1b9168a
+SHA1: 300e18b9b80d26b6560c41943569aa0a8d3dbdb5
+SHA256: 6e41a455f9118a86b4d86a83c2e09eb060b5c598f80e1a3e8779537252b524ed
+Icon: https://repo.maxleiter.com/icons/libgcr-3-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgcr-3-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgcr-3-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgcr-3-dev.json
+
+Package: libgoa-1.0-0b
+Version: 3.46.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-online-accounts
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0
+Description: GNOME Online Accounts client runtime
+Installed-Size: 2244
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgoa-1.0-0b_3.46.0+ios1_iphoneos-arm64.deb
+Size: 318084
+MD5sum: 09a0a0fc7d4088f946cd34d21b081d92
+SHA1: 960434418978c0edc356bf1c4124fee1a297ee98
+SHA256: bee7b83f2a53c76d9db943146cef83697b494661b0b727eef4defc1a5cbe17d2
+Icon: https://repo.maxleiter.com/icons/libgoa-1.0-0b.png
+Depiction: https://repo.maxleiter.com/depictions/libgoa-1.0-0b.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgoa-1.0-0b.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgoa-1.0-0b.json
+
+Package: libgoa-1.0-dev
+Version: 3.46.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-online-accounts
+Depends: libgoa-1.0-0b (= 3.46.0+ios1), libglib2.0-dev
+Description: GNOME Online Accounts client development files
+Installed-Size: 360
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgoa-1.0-dev_3.46.0+ios1_iphoneos-arm64.deb
+Size: 46150
+MD5sum: 1f045f340ac1aa0ebc65a7ea7daf8fd2
+SHA1: db261b2e2a28d2e4485a71ffe6666d55560bd61d
+SHA256: a48130f1994ed0574165fb88077e60927a1407a096596f628b1ddfe5c3f91e4d
+Icon: https://repo.maxleiter.com/icons/libgoa-1.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgoa-1.0-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgoa-1.0-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgoa-1.0-dev.json
+
+Package: gnome-keyring
+Version: 46.2+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Utilities
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-keyring
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgck-1-0, libgcr-3-1, libgcrypt20, libgpg-error0, p11-kit, dbus, libgtkintl (>= 1.1)
+Description: GNOME Secret Service provider for Xios
+Installed-Size: 2976
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/gnome-keyring_46.2+ios1_iphoneos-arm64.deb
+Size: 549710
+MD5sum: b776d2b85df1a21761a0f7d9368426d3
+SHA1: aa43bd7f2c18e99dfd3040878edaa2599929fea5
+SHA256: 7c8163ee5b4a53fa55cc8df9205a4fcf0f0d1c987dd2bf628934ed758d0c5c6d
+Icon: https://repo.maxleiter.com/icons/gnome-keyring.png
+Depiction: https://repo.maxleiter.com/depictions/gnome-keyring.html
+SileoDepiction: https://repo.maxleiter.com/depictions/gnome-keyring.json
+Native Depiction: https://repo.maxleiter.com/depictions/gnome-keyring.json
+
+Package: geary
+Version: 46.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/geary
+Depends: libiosexec1 (>= 1.3.1), libgtkintl (>= 1.1), libglib2.0-0, libgtk-3-0, libgmime-3.0-0, libwebkit2gtk-4.1-0, libjavascriptcoregtk-4.1-0, libfolks26, libgcr-3-1, libgck-1-0, libgoa-1.0-0b, libgee-0.8-2, libpeas-1.0-0, libgspell-1-2, libsecret-1-0, gnome-keyring, libsoup-3.0-0, libjson-glib-1.0-0, libenchant-2-2, libsqlite3-1, libxml2, libicu78, iso-codes, dbus
+Description: Geary email client for the Xios GNOME desktop
+Installed-Size: 13136
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/geary_46.0+ios1_iphoneos-arm64.deb
+Size: 2438760
+MD5sum: 22aba2e9dff7acdec6deed13b802405e
+SHA1: 8ab58e4badbcd1debbc38b9963a2fde7413fb9c1
+SHA256: d529000426e89527da728d124f8aba7799c074fcad92784a7ceb6f893030a52e
+Icon: https://repo.maxleiter.com/icons/geary.png
+Depiction: https://repo.maxleiter.com/depictions/geary.html
+SileoDepiction: https://repo.maxleiter.com/depictions/geary.json
+Native Depiction: https://repo.maxleiter.com/depictions/geary.json
+
+Package: libjavascriptcoregtk-4.1-0
+Version: 2.44.4+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://webkitgtk.org/
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libicu78, libz1
+Description: JavaScriptCore GTK 4.1 runtime for rootless iOS
+Installed-Size: 15260
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libjavascriptcoregtk-4.1-0_2.44.4+ios1_iphoneos-arm64.deb
+Size: 4129470
+MD5sum: 1699437da1cbe776a91472083be55ed4
+SHA1: bae765bcfa11208de7fca7e22a0cedac726f15db
+SHA256: 543dafe3875bae3dd06602c338be7bc3b4eb5c380015f6040e55ecfd7b6d6849
+Icon: https://repo.maxleiter.com/icons/libjavascriptcoregtk-4.1-0.png
+Depiction: https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-0.json
+
+Package: libjavascriptcoregtk-4.1-dev
+Version: 2.44.4+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://webkitgtk.org/
+Depends: libjavascriptcoregtk-4.1-0 (= 2.44.4+ios1), libglib2.0-dev, libicu-dev
+Description: JavaScriptCore GTK 4.1 development files for rootless iOS
+Installed-Size: 260
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libjavascriptcoregtk-4.1-dev_2.44.4+ios1_iphoneos-arm64.deb
+Size: 57068
+MD5sum: f4cc092246199bb39e89225874a423c7
+SHA1: 8e83168dbb912ba9918473c9a5c3dec08f01cad6
+SHA256: 440d6ace2c7bf2072595296f193aee6f791d47dfbf1219c6b7fa77c4107f6f13
+Icon: https://repo.maxleiter.com/icons/libjavascriptcoregtk-4.1-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-dev.json
+
+Package: libwebkit2gtk-4.1-0
+Version: 2.44.4+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://webkitgtk.org/
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libjavascriptcoregtk-4.1-0 (= 2.44.4+ios1), libglib2.0-0, libgtk-3-0, libsoup-3.0-0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libharfbuzz0b, libfontconfig1, libfreetype6, libjpeg62-turbo, libpng16-16, libwebp7, libwebpdemux2, libwebpmux3, libxml2, libxslt1.1, libsecret-1-0, libgcrypt20, libtasn1-6, libepoxy0, libwayland0, libx11-6, libxcomposite1, libxdamage1, libxrender1, libatk-bridge2.0-0, libatk1.0-0
+Description: WebKitGTK 4.1 runtime for rootless iOS
+Installed-Size: 70600
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libwebkit2gtk-4.1-0_2.44.4+ios1_iphoneos-arm64.deb
+Size: 18355868
+MD5sum: 403586e8613a0eedcb05b6c2c7a4f673
+SHA1: 31d870e95a85a5fbc4dc7610ac325c1c80767876
+SHA256: 3185363eb1f516abe90ce8566906250b3c86b967ad87151fc23d2353566c9b29
+Icon: https://repo.maxleiter.com/icons/libwebkit2gtk-4.1-0.png
+Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-0.json
+
+Package: libwebkit2gtk-4.1-dev
+Version: 2.44.4+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://webkitgtk.org/
+Depends: libwebkit2gtk-4.1-0 (= 2.44.4+ios1), libjavascriptcoregtk-4.1-dev (= 2.44.4+ios1), libgtk-3-dev, libsoup-3.0-dev, libglib2.0-dev
+Description: WebKitGTK 4.1 development files for rootless iOS
+Installed-Size: 1464
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libwebkit2gtk-4.1-dev_2.44.4+ios1_iphoneos-arm64.deb
+Size: 136780
+MD5sum: 9261507c264c34497da991e3ff40de28
+SHA1: 9effbe01529b38439988bd1e09891555d28f2c9c
+SHA256: 5ccc680fcd15a80bc7674c88a810264d8663e6d39625d9b2da06f095085dfcf9
+Icon: https://repo.maxleiter.com/icons/libwebkit2gtk-4.1-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.json
