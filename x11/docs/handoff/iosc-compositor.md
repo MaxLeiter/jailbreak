@@ -14,6 +14,15 @@
 - Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
 
 ## Current state
+- 2026-07-29 native selective repaint: `iosc 0.9.39` marks the owning
+  native toplevel canvas dirty when that toplevel, one of its popups, or one of
+  its subsurfaces is damaged, and skips unchanged live canvases during a
+  recomposite cycle. `IOSC_NATIVE_STATS=1` provides opt-in counters. On-device,
+  with GIMP and GNOME Calculator mapped across three native toplevel canvases,
+  120 repaint cycles composited 60 changed canvases and avoided 243 unchanged
+  canvas composites. The packaged `0.9.39` was then relaunched through the
+  normal `ioscd` `LAUNCH_NATIVE` path with GIMP live. Benchmark and device-state
+  evidence: `artifacts/device-runs/native-repaint-0.9.39-20260729/`.
 - 2026-07-29 single-contract host closure: the private `iosc_iosurface`
   interface is version 1 everywhere (iosc, ANGLE EGL producer, Mutter, KWin,
   and Xwayland). Its one frame contract requires a 32-byte broker token and a

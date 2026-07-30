@@ -46,6 +46,7 @@ keep = {
     "libdbusmenuqt",
     "libkmpris",
     "libtaskmanager",
+    "klipper",
     "menu",
     "components",
     "plasma-windowed",
@@ -185,6 +186,7 @@ from pathlib import Path
 path = Path(sys.argv[1])
 text = path.read_text()
 keep = {
+    "batterycontrol",
     "calendar",
     "containmentlayoutmanager",
     "dbus",
@@ -199,6 +201,129 @@ text = re.sub(r"^add_subdirectory\(([^)]+)\)",
               lambda m: m.group(0) if m.group(1) in keep else f"# ios-firstlight-skip: {m.group(0)}",
               text, flags=re.M)
 path.write_text(text)
+PY
+
+python3 - "$src/klipper/CMakeLists.txt" "$src/klipper/klipper.cpp" \
+  "$src/klipper/klipper.h" "$src/klipper/clipboardjob.cpp" \
+  "$src/klipper/clipboardengine.cpp" \
+  "$src/applets/clipboard/contents/ui/ClipboardPage.qml" \
+  "$src/klipper/urlgrabber.cpp" "$src/klipper/klipperpopup.cpp" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+(
+    cmake,
+    klipper_cpp,
+    klipper_h,
+    job_cpp,
+    engine_cpp,
+    clipboard_page,
+    urlgrabber_cpp,
+    popup_cpp,
+) = map(Path, sys.argv[1:])
+
+text = cmake.read_text()
+text = text.replace("    KF6::Prison\n", "")
+cmake.write_text(text)
+
+text = klipper_cpp.read_text()
+text = text.replace("#include <Prison/Barcode>\n", "")
+text = re.sub(
+    r"\n    // add barcode for mobile phones\n"
+    r"    m_showBarcodeAction = .*?\n"
+    r"    \}\);\n",
+    "\n",
+    text,
+    count=1,
+    flags=re.S,
+)
+start = text.index("\nclass BarcodeLabel : public QLabel")
+end = text.index("\nvoid Klipper::slotAskClearHistory()", start)
+text = text[:start] + "\n" + text[end:]
+klipper_cpp.write_text(text)
+
+text = klipper_h.read_text()
+text = text.replace("    void showBarcode(std::shared_ptr<const HistoryItem> item);\n", "")
+text = text.replace("    QAction *m_showBarcodeAction;\n", "")
+klipper_h.write_text(text)
+
+text = job_cpp.read_text()
+text = text.replace("#include <Prison/Barcode>\n", "")
+text = re.sub(
+    r'    \} else if \(operation == QLatin1String\("barcode"\)\) \{.*?'
+    r'    \} else if \(operation == QLatin1String\("action"\)\) \{',
+    '    } else if (operation == QLatin1String("barcode")) {\n'
+    '        setResult(false);\n'
+    '        return;\n'
+    '    } else if (operation == QLatin1String("action")) {',
+    text,
+    count=1,
+    flags=re.S,
+)
+job_cpp.write_text(text)
+
+text = engine_cpp.read_text()
+text = text.replace(
+    "setData(s_clipboardSourceName, s_barcodeKey, true);",
+    "setData(s_clipboardSourceName, s_barcodeKey, false);",
+)
+engine_cpp.write_text(text)
+
+text = clipboard_page.read_text()
+text = re.sub(
+    r"^    supportsBarcodes: \{.*?^    \}\n"
+    r"    onItemSelected:",
+    "    supportsBarcodes: false\n"
+    "    onItemSelected:",
+    text,
+    count=1,
+    flags=re.M | re.S,
+)
+clipboard_page.write_text(text)
+
+# Klipper's clipboard data engine is useful on Wayland, but its legacy popup
+# helpers still include X11-only KWindowInfo/NETWM headers. Keep the portable
+# history, actions and data-engine path; only drop the active-X11-window
+# blacklist lookup and X11 popup-screen selection.
+text = urlgrabber_cpp.read_text()
+text = text.replace("#include <netwm.h>\n\n", "")
+text = text.replace("#include <KWindowInfo>\n", "")
+text = text.replace("#include <KX11Extras>\n", "")
+text = text.replace(
+    """bool URLGrabber::isAvoidedWindow() const
+{
+    const WId active = KX11Extras::activeWindow();
+    if (!active) {
+        return false;
+    }
+    KWindowInfo info(active, NET::Properties(), NET::WM2WindowClass);
+    return m_myAvoidWindows.contains(QString::fromLatin1(info.windowClassName()));
+}""",
+    """bool URLGrabber::isAvoidedWindow() const
+{
+    return false;
+}""",
+)
+urlgrabber_cpp.write_text(text)
+
+text = popup_cpp.read_text()
+text = text.replace("#include <KWindowInfo>\n", "")
+text = text.replace("#include <KWindowSystem>\n", "")
+text = text.replace(
+    """    QScreen *screen = nullptr;
+    if (KWindowSystem::isPlatformX11()) {
+        KWindowInfo windowInfo(winId(), NET::WMGeometry);
+        QRect geometry = windowInfo.geometry();
+        screen = QGuiApplication::screenAt(geometry.center());
+    }
+    if (screen == nullptr) {
+        screen = QGuiApplication::screens()[0];
+    }""",
+    """    QScreen *screen = QGuiApplication::primaryScreen();
+    Q_ASSERT(screen);""",
+)
+popup_cpp.write_text(text)
 PY
 
 python3 - "$src/kcms/CMakeLists.txt" <<'PY'
