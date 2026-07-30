@@ -25,6 +25,7 @@ a container, keep the Mac clean, and get reproducible artifacts.
 | `Xvfb` | Signed virtual-framebuffer X server for bring-up/debug; the app display path is IOSurface |
 | `x11-xvfb_*_iphoneos-arm64.deb` | Packaged Xvfb server for rootless installs, built from target artifacts |
 | `xios-audio-server` | CoreAudio/RemoteIO audio daemon plus `xios-audio-play` smoke-test client |
+| `openjdk-21-{jre,jdk}-headless_*_iphoneos-arm64.deb` | OpenJDK 21 HotSpot runtime and development tools for rootless iOS |
 | `libfribidi*`, `libpango*`, `gtk*`, … debs | The GTK3 desktop stack (from `build-gtk.sh`) |
 | `iosc*`, `xios-session*`, GNOME/KDE/Wayland app debs | Built by their specialized `build-*.sh` and package scripts; see `docs/handoff/` for the current active lanes |
 
@@ -72,7 +73,7 @@ recipes into the Procursus clone and builds them in the same container; run them
 | GNOME | `build-gnome.sh`, `build-mutter.sh`, `build-shell.sh`, `build-shell-libs.sh`, `build-session.sh`, `build-gjs.sh`, `build-eds.sh` |
 | KDE | `build-kwin.sh`, `build-plasma-desktop.sh`, `build-kde-apps.sh`, `build-settings.sh` |
 | Graphics / core deps | `build-icu.sh`, `build-skia.sh`, `build-librsvg.sh`, `build-harfbuzz-full.sh`, `build-libxml2-full.sh` |
-| Runtimes | `build-bun.sh`, `build-bun-ios.sh`, `build-opencode.sh`, `build-opentui-ios.sh`, `build-fff-ios.sh` |
+| Runtimes | `build-openjdk-ios.sh`, `build-bun.sh`, `build-bun-ios.sh`, `build-opencode.sh`, `build-opentui-ios.sh`, `build-fff-ios.sh` |
 | Ladybird | `build-ladybird-wave*.sh`, `build-ladybird-app-*.sh`, `build-ladybird-wayland.sh` |
 | Media / audio | `build-audio-server.sh`, `build-media-server.sh` |
 | Stubs | `build-stublibs.sh` and the per-stub `build-*-stub.sh` |
@@ -81,6 +82,29 @@ recipes into the Procursus clone and builds them in the same container; run them
 Anything not covered by a named lane goes through `build-procursus-target.sh <target-id>
 <make-target>…`, which builds arbitrary Procursus make targets under a target descriptor.
 `docs/handoff/INDEX.md` says which lanes are currently active.
+
+### OpenJDK 21
+
+`build-openjdk-ios.sh` builds a full headless OpenJDK 21 image directly with
+Xcode's iPhoneOS toolchain, signs every executable with the repo's narrow JIT
+entitlements, and splits it into runtime and development packages:
+
+```bash
+bash x11/linux-build/build-openjdk-ios.sh
+```
+
+The source, upstream iOS port, and auxiliary header archives are commit- or
+checksum-pinned. The build requires Xcode, a Java 21 boot JDK (Temurin at
+`/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home` by default),
+GNU make/autoconf, Docker for package extraction/assembly, and the existing
+iOS `libx11-dev` and `libfontconfig-dev` packages in `out/` or `repo/debs/`.
+Set `BOOT_JDK`, `JOBS`, `OUT`, or `WORK` to override those defaults.
+
+The initial lane is deliberately headless: CLI applications, `javac`, JDK
+tools, networking/crypto, fonts/ImageIO, JFR, JVMCI, and HotSpot C1/C2 are in
+scope. Native AWT windows require a later XAWT or Wayland peer port. The local
+HotSpot patch series is under `ports/openjdk21/patches/`; do not move those
+source changes into procedural build-script rewrites.
 
 ## Target descriptors
 

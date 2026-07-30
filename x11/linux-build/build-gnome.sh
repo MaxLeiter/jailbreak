@@ -420,6 +420,7 @@ for spec in \
   libwebkit2gtk:webkitgtk \
   libpsl:libpsl \
   libsoup:libsoup3 \
+  glib-networking:glib-networking \
   libgee:libgee \
   libgnome-autoar:gnome-autoar \
   libportal:libportal \

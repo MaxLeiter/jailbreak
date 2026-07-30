@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${IOS_CLANGXX:?IOS_CLANGXX is required}"
+: "${IOS_SDKROOT:?IOS_SDKROOT is required}"
+
+exec "$IOS_CLANGXX" \
+  -arch arm64 \
+  -isysroot "$IOS_SDKROOT" \
+  -miphoneos-version-min="${IOS_MIN:-16.0}" \
+  "$@"

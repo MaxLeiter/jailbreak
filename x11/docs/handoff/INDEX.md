@@ -30,8 +30,17 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 14. **xfce.md** — the previously stranded XFCE 4.16 recipe chain, its new reproducible build lane, and the gates before it can become a supported session flavor.
 15. **loose-ends-audit.md** — repository-wide 2026-07-18 closure ledger: completed host work, immutable package queue, intentional shims, real port blockers, and deferred device proof.
 16. **games.md** — SDL2/SDL3 strategy-game wave: OpenTTD, Warzone 2100, Battle for Wesnoth, and 0 A.D.; shared dependencies, packaging, and isolated device proof.
+17. **openjdk.md** — full OpenJDK 21 HotSpot JRE/JDK lane, rootless package split, iOS code-cache behavior, and A10 device proof.
 
 ## Current headline status
+- **OpenJDK 21.0.12 HotSpot is built, packaged, and running on the A10 iPad
+  (2026-07-30):** the rootless `openjdk-21-jre-headless` and
+  `openjdk-21-jdk-headless` packages provide the complete headless runtime,
+  compiler/tool suite, JFR/JVMCI, and C1/C2 rather than a Zero-only VM. Device
+  proof covers 30/30 cold starts, tier-4 compilation, ProcessBuilder, ImageIO,
+  HTTPS, JFR, `jlink`, interpreted mode, and the optional mirrored code cache.
+  Native AWT windows remain a separate XAWT/Wayland peer milestone; see
+  **openjdk.md**.
 - **Full desktop input is implemented locally (2026-07-19):** both the fullscreen Xios app and
   native per-window host now consume raw Game Controller HID keyboard transitions, preserve
   held keys/chords, map Command to Super, forward Caps/Num lock, support hover plus five mouse

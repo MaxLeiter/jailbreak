@@ -1,0 +1,15 @@
+Package: openjdk-21-jre-headless
+Name: OpenJDK 21 Headless Runtime
+Version: 21.0.12+ios1
+Architecture: iphoneos-arm64
+Depends: libiosexec1 (>= 1.3.1)
+Provides: java-runtime, java-runtime-headless
+Description: OpenJDK 21 headless runtime for rootless iOS.
+ Includes the arm64 HotSpot server VM with C1/C2 JIT support, the standard Java
+ runtime modules, bundled FreeType, networking, crypto, JFR, and serviceability
+ support. Native GUI windowing is intentionally excluded.
+Maintainer: max
+Author: OpenJDK contributors and Xios
+Section: Development
+Priority: optional
+MinimumOSVersion: 16.0

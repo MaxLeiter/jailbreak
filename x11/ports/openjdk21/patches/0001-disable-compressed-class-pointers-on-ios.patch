@@ -1,0 +1,25 @@
+diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/globals.hpp
+index e46b2c3390c..3dcb16cd790 100644
+--- a/src/hotspot/share/runtime/globals.hpp
++++ b/src/hotspot/share/runtime/globals.hpp
+@@ -116,4 +116,10 @@
+ #ifdef _LP64
++#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++#define IOS_USE_COMPRESSED_CLASS_POINTERS_DEFAULT false
++#else
++#define IOS_USE_COMPRESSED_CLASS_POINTERS_DEFAULT true
++#endif
++
+ #define LP64_RUNTIME_FLAGS(develop,                                         \
+                            develop_pd,                                      \
+                            product,                                         \
+@@ -126,7 +132,8 @@ const size_t minimumSymbolTableSize = 1024;
+           "Use 32-bit object references in 64-bit VM. "                     \
+           "lp64_product means flag is always constant in 32 bit VM")        \
+                                                                             \
+-  product(bool, UseCompressedClassPointers, true,                           \
++  product(bool, UseCompressedClassPointers,                                 \
++          IOS_USE_COMPRESSED_CLASS_POINTERS_DEFAULT,                         \
+           "Use 32-bit class pointers in 64-bit VM. "                        \
+           "lp64_product means flag is always constant in 32 bit VM")        \
+                                                                             \

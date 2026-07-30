@@ -1,0 +1,14 @@
+Package: openjdk-21-jdk-headless
+Name: OpenJDK 21 Headless Development Kit
+Version: 21.0.12+ios1
+Architecture: iphoneos-arm64
+Depends: openjdk-21-jre-headless (= 21.0.12+ios1)
+Provides: java-compiler, java-sdk, java-sdk-headless
+Description: OpenJDK 21 development tools for rootless iOS.
+ Adds javac, jar, javadoc, jlink, JShell, debugger and diagnostic tools,
+ headers, JMODs, manuals, and OpenJDK sources to the headless Java runtime.
+Maintainer: max
+Author: OpenJDK contributors and Xios
+Section: Development
+Priority: optional
+MinimumOSVersion: 16.0
