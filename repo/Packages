@@ -3814,7 +3814,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 
 Package: kwin
-Version: 6.1.5+ios31
+Version: 6.1.5+ios33
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -3824,11 +3824,11 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-too
 Description: KWin Wayland compositor with Xios ANGLE/IOSurface acceleration
 Installed-Size: 32296
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin_6.1.5+ios31_iphoneos-arm64.deb
-Size: 3356284
-MD5sum: 391723ed5c37896d1a22041c7dfef83c
-SHA1: 19dbb20f8e8ff4449c999bab61419f7bf4bfc10d
-SHA256: 13db039d850c71c798bb019ea3af24f6bbb4d92c56dc3243f9d186f2fa9a0aa6
+Filename: debs/kwin_6.1.5+ios33_iphoneos-arm64.deb
+Size: 3355610
+MD5sum: 6283dd3a3ed36103536e273b8cbaa365
+SHA1: 653aec5f2aad0aa85e3819ed391a83c8ed2564ae
+SHA256: 2d3895e2dcac1b2a2273da2ea328ffa9d3d173b7a88ad83587e57f90e3c40c92
 Icon: https://repo.maxleiter.com/icons/kwin.png
 Depiction: https://repo.maxleiter.com/depictions/kwin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
@@ -10694,7 +10694,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-activities-stats-de
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-activities-stats-dev.json
 
 Package: plasma-desktop
-Version: 6.1.5+ios9
+Version: 6.1.5+ios10
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -10704,11 +10704,11 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-wayland
 Description: Plasma Desktop containment layer for Xios
 Installed-Size: 8716
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-desktop_6.1.5+ios9_iphoneos-arm64.deb
-Size: 904786
-MD5sum: c3da5e04444fe4355ec12b45d51ad12c
-SHA1: ea968a88dc95d9badcc1d4734ff1cc4423dd33c0
-SHA256: 2dad5b08aee61c0be38766ab71686299256699dbadeb41e24ddc60822dca3819
+Filename: debs/plasma-desktop_6.1.5+ios10_iphoneos-arm64.deb
+Size: 904590
+MD5sum: 1aff4420f864e304cf368871cac1b78e
+SHA1: f836ae0f0a9748917cd41f8e1faa361c7bb5fcc7
+SHA256: 81bef833744a9ecf06d6fa1dadb0ebac83264f45db3a6f5c91288d3f4545259d
 Icon: https://repo.maxleiter.com/icons/plasma-desktop.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
