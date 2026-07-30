@@ -9,7 +9,7 @@ endif
 SUBPROJECTS       += epiphany
 EPIPHANY_MAJOR_V  := 43
 EPIPHANY_VERSION  := $(EPIPHANY_MAJOR_V).1
-DEB_EPIPHANY_V    ?= $(EPIPHANY_VERSION)+ios1
+DEB_EPIPHANY_V    ?= $(EPIPHANY_VERSION)+ios2
 
 epiphany-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/epiphany/$(EPIPHANY_MAJOR_V)/epiphany-$(EPIPHANY_VERSION).tar.xz)
@@ -27,6 +27,7 @@ epiphany-setup: setup
 	needs_exe_wrapper = true\n \
 	[built-in options]\n \
 	prefix ='$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)'\n \
+	c_link_args = ['-L$(BUILD_BASE)/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib', '-Wl,-rpath,$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/epiphany']\n \
 	[binaries]\n \
 	c = '$(CC)'\n \
 	cpp = '$(CXX)'\n \
