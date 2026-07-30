@@ -152,6 +152,15 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   classic `iosc` proof kept two WebContent helpers alive, logged
   `iosc_egl: bound iosc_iosurface`, and captured visible browser chrome at
   `.artifacts/ladybird-classic-wl3/compositor.png`.
+  The production signer then caught that the standalone app's shared helper
+  profile had leaked `platform-application` into the Wayland package. The
+  Wayland build now signs every browser/helper executable with the coherent
+  non-platform GPU-client profile. The corrected immutable `+wl3` bytes
+  (SHA256 `d6738347…55397`) were published to staging and production,
+  independently downloaded and hash-matched, reinstalled on the device, and
+  re-smoked: RequestServer, ImageDecoder, Compositor, and two WebContent
+  processes stayed live, with visible browser chrome captured at
+  `.artifacts/ladybird-final-wl3/compositor.png`.
   The Liberation staging now lives in `xstage_lagom_fonts` (`lib/xlib.sh`) rather
   than inline, so the `.app` packaging path can adopt it — `build-ladybird-app.sh`
   copies `$ENGINE_STAGE/share/Lagom` straight through and has the same gap, while
