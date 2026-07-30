@@ -2,9 +2,9 @@
 # Start an Xvfb debug/headless X server. Runs ON THE DEVICE:
 #   ssh root@ipad 'bash -s' < x11-server.sh        (or scp + run)
 #
-# This does not feed the public Xios app display path. Use xios-server.sh for the
-# IOSurface server that the app presents. This script is for bring-up/debug clients
-# that connect directly to Xvfb over the local X socket.
+# This does not feed the Xios app display path. Use iosc/Xwayland for an
+# interactive desktop. This script is only for debug clients that connect
+# directly to Xvfb over the local X socket.
 set -u
 
 detect_jbroot() {

@@ -22,9 +22,7 @@ a container, keep the Mac clean, and get reproducible artifacts.
 | `tigervnc-common_*.deb` | Xvnc companion (`vncconfig`, `vncpasswd`, config) |
 | `tigervnc-scraping-server`, `tigervnc-xorg-extension` debs | Built alongside; not needed on-device |
 | `Xvfb` | Signed virtual-framebuffer X server for bring-up/debug; the app display path is IOSurface |
-| `Xios` | The **same** binary carrying the IOSurface DDX, signed with a minimal IOKit/`task_for_pid` entitlement set (`-iosurface` activates the zero-copy backend) |
 | `x11-xvfb_*_iphoneos-arm64.deb` | Packaged Xvfb server for rootless installs, built from target artifacts |
-| `xios-server_*_iphoneos-arm64.deb` | Packaged IOSurface X server payload for the Xios app path |
 | `xios-audio-server` | CoreAudio/RemoteIO audio daemon plus `xios-audio-play` smoke-test client |
 | `libfribidi*`, `libpango*`, `gtk*`, … debs | The GTK3 desktop stack (from `build-gtk.sh`) |
 | `iosc*`, `xios-session*`, GNOME/KDE/Wayland app debs | Built by their specialized `build-*.sh` and package scripts; see `docs/handoff/` for the current active lanes |
@@ -53,11 +51,7 @@ What `run.sh` (Mac side) does:
    source — then cached).
 3. `docker run` the image with `build.sh`, the `patches/` dir, the **named volume**, and
    `out/` mounted; this is where the actual package build happens.
-4. **Re-signs `Xios` with the Mac's `ldid`** — the in-container `ldid` doesn't emit
-   DER-encoded entitlements, which iOS 15+/16 AMFI requires to honor
-   `iokit-user-client-class` (without DER, `IOSurfaceCreate()` returns NULL even though
-   `ldid -e` reads the XML fine).
-5. Builds the Xios audio package from `audio/`: `xios-audiod` mixes local PCM clients into
+4. Builds the Xios audio package from `audio/`: `xios-audiod` mixes local PCM clients into
    iOS RemoteIO output, and `xios-audio-play` is the on-device smoke test. Real PulseAudio
    clients use the PulseAudio package and its native socket.
 
@@ -93,19 +87,13 @@ for the rootful target before assembling `xios-desktop-stublibs`.
 
 ```bash
 bash x11/linux-build/build-xserver-target.sh rootless-1900 --package-xvfb
-bash x11/linux-build/build-xserver-target.sh rootful-1900 --package-xvfb --package-xios
+bash x11/linux-build/build-xserver-target.sh rootful-1900 --package-xvfb
 ```
 
 `packages/x11-xvfb/build.sh` packages `Xvfb` from that target artifact directory. It
 keeps the committed rootless `Xvfb` as a fallback for `rootless-1900`, but refuses
 rootful assembly until `linux-build/out/targets/rootful-1900/Xvfb` exists, so a
 rootless binary cannot be accidentally shipped in a rootful package.
-
-`packages/xios-server/build.sh` does the same for `Xios`. Rootless can fall back
-to the committed package binary; rootful refuses to package until
-`linux-build/out/targets/rootful-1900/Xios` exists. `build.sh` now renders
-`xios-ent.xml` from the selected target prefix so rootful entitlement output does
-not carry rootless `/var/jb` path exceptions.
 
 ## The named volume — why and how
 
@@ -122,9 +110,8 @@ bind-mount, for two reasons:
   across runs and are reused; only the package you're iterating on rebuilds. The first run
   populates the volume (long); subsequent runs are fast.
 
-`build.sh` force-rebuilds **just** tigervnc (`rm -rf build_work/.../tigervnc`) each run so
-IOSurface-DDX changes take effect while everything else stays cached. Override the volume
-name with `PROCURSUS_VOL=...`.
+`build.sh` force-rebuilds **just** tigervnc (`rm -rf build_work/.../tigervnc`) each run.
+Override the volume name with `PROCURSUS_VOL=...`.
 
 ## The build (`build.sh`, in-container)
 
@@ -132,7 +119,6 @@ name with `PROCURSUS_VOL=...`.
 2. **Apply our changes portably** (python3, no host paths) into the clone:
    - inject the `/bin/sh`→`/var/jb/bin/sh` patch into `makefiles/tigervnc.mk`, gated to the
      rootless `/var/jb` prefix, applied right after tigervnc's own `xserverNNN.patch`;
-   - drop our IOSurface DDX sources (`patches/xios/*`) into `xorg-server`'s `hw/vfb/`;
    - drop the bogus `tigervnc-xorg-extension` dependency from the standalone server's
      control file;
    - `--enable-xvfb` so the framebuffer server builds alongside Xvnc;
@@ -140,12 +126,7 @@ name with `PROCURSUS_VOL=...`.
      `-stdlib=libc++`, `MacOSX.sdk` header copies) — see comments in `build.sh`.
 3. Build `font-util` + `libxkbfile` (xserver build deps), then `tigervnc-package`, with
    `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
-4. Extract + sign `Xvfb` (Procursus `general.xml` entitlements) and produce `Xios` from the
-   same binary signed with a **minimal** set: `platform-application`,
-   `iokit-user-client-class` (`IOSurfaceRootUserClient`/`IOSurfaceSendRight`),
-   `task_for_pid-allow`, and a `/var/jb` path exception. `build.sh` asserts the signature
-   carries the IOKit + `task_for_pid` entitlements and **not** the container-manager set
-   (which would sandbox the process away from IOKit → `IOSurfaceCreate` NULL).
+4. Extract + sign `Xvfb` with the Procursus `general.xml` entitlements.
 5. Collect `tigervnc-*.deb` to `/out` and print a sanity check that `/var/jb/bin/sh` is
    actually baked into the shipped `Xvnc`.
 
@@ -174,15 +155,15 @@ subset. Resulting `lib{fribidi,pango,gdk-pixbuf,atk,gtk}*` debs are copied to `o
 ```
 linux-build/
   Dockerfile        # Debian + cctools-port (aarch64-apple-darwin) + ldid, native arm64
-  run.sh            # Mac: stage SDK, docker build, docker run build.sh, re-sign Xios
-  build.sh          # in-container: clone Procursus, patch, build tigervnc/Xvfb/Xios
+  run.sh            # Mac: stage SDK, docker build, docker run build.sh
+  build.sh          # in-container: clone Procursus, patch, build tigervnc/Xvfb
   build-gtk.sh      # in-container: install recipes/*.mk, build the GTK3 stack
   patches/
-    xios/{InitOutput.c,Makefile.am,xios_surface.c,xios_surface.h}  # IOSurface DDX
+    xios/{xios_surface.c,xios_surface.h}       # compositor/app IOSurface glue
   ../ports/tigervnc/patches/                   # Xserver source patch + series manifest
   recipes/*.mk      # new Procursus package makefiles (fribidi.mk, …)
   sdk/              # staged iPhoneOS.sdk + MacOSX.sdk        (gitignored)
-  out/              # built debs + signed Xvfb/Xios          (gitignored)
+  out/              # built debs + signed Xvfb               (gitignored)
   Procursus/, procursus-work/, *.log                          (gitignored)
 ```
 
