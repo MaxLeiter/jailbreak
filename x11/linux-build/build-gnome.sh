@@ -138,6 +138,33 @@ fi
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
+stage_gnome_keyring_deps() {
+  target_requests gnome-keyring || return 0
+
+  local build_base=$XIOS_BUILD_BASE
+  local pkg deb
+  echo "==> staging packaged gnome-keyring development dependencies"
+  for pkg in libgck-1-0 libgcr-3-1 libgcr-3-dev; do
+    deb="$(find /out /repo-debs -maxdepth 1 -type f \
+      -name "${pkg}_*_iphoneos-arm64.deb" -printf '%f\t%p\n' 2>/dev/null |
+      sort -V | tail -1 | cut -f2-)"
+    if [ -z "$deb" ]; then
+      echo "ERROR: gnome-keyring needs $pkg in /out or /repo-debs" >&2
+      exit 1
+    fi
+    echo "    staging $deb"
+    dpkg-deb -x "$deb" "$build_base"
+  done
+
+  local pc_root="$build_base$XIOS_PREFIX/usr/lib/pkgconfig"
+  for pc in gck-1 gcr-3; do
+    if [ ! -f "$pc_root/$pc.pc" ]; then
+      echo "ERROR: staged gnome-keyring dependency is missing $pc.pc" >&2
+      exit 1
+    fi
+  done
+}
+
 stage_geary_deps() {
   target_requests geary || return 0
 
@@ -175,6 +202,7 @@ stage_geary_deps() {
   done
 }
 
+stage_gnome_keyring_deps
 stage_geary_deps
 
 # Dependency order: foundation bus+settings -> app libraries -> the GTK4 apps. The GTK4 base
@@ -360,6 +388,7 @@ for spec in \
   libgck:gcr3 \
   libgcr:gcr3 \
   libgoa:gnome-online-accounts \
+  gnome-keyring:gnome-keyring \
   gnome-console:gnome-console \
   gnome-text-editor:gnome-text-editor \
   gnome-font-viewer:gnome-font-viewer \

@@ -1,0 +1,12 @@
+Package: gnome-keyring
+Version: @DEB_GNOME_KEYRING_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Utilities
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-keyring
+Depends: libglib2.0-0, libgck-1-0, libgcr-3-1, libgcrypt20, libgpg-error0, p11-kit, dbus, libgtkintl (>= 1.1)
+Description: GNOME Secret Service provider for Xios
+ Rootless iOS build of gnome-keyring's D-Bus secrets component. Provides
+ org.freedesktop.secrets for Geary and other desktop applications without
+ Linux PAM, systemd, SELinux, capabilities, or SSH-agent integration.
