@@ -4,6 +4,10 @@ endif
 
 # kf6-solid (KDE flavor, layer K; docs/kde-plasma-plan.md).
 # solid-ios-fixes.sh swaps the device backend to upower (see that script).
+# +ios2 is the first build that actually ships that backend: +ios1 was packaged
+# from a tree predating the swap, so it carried only fakehw and Solid enumerated
+# zero batteries -- powerdevil then summed an empty battery map to 0% and fired
+# a false "Battery Critical", whose configured action can shut the session down.
 # No hard Depends on xios-hwbridged: with no UPower bus owner the backend
 # just enumerates zero devices, the same graceful empty-list behavior
 # fakehw had.
@@ -13,7 +17,7 @@ endif
 
 SUBPROJECTS += solid
 SOLID_VERSION = $(KF6_VERSION)
-DEB_SOLID_V ?= $(SOLID_VERSION)+ios1
+DEB_SOLID_V ?= $(SOLID_VERSION)+ios2
 
 solid-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,solid))

@@ -3058,7 +3058,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-service-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-service-dev.json
 
 Package: kf6-solid
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
@@ -3066,34 +3066,34 @@ Priority: optional
 Homepage: https://kde.org/
 Depends: libiosexec1 (>= 1.3.1), qt6-base
 Description: Solid for the Xios desktop
-Installed-Size: 688
+Installed-Size: 760
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-solid_6.3.0+ios1_iphoneos-arm64.deb
-Size: 130634
-MD5sum: 5e6b389f1960eeec522be1be3911c329
-SHA1: 97ec725849cc4402d42c0d5334a9944358b01224
-SHA256: d0c354ac23543a4ddf27d495f4bff8748677c1037bff618f43c87cd15777e400
+Filename: debs/kf6-solid_6.3.0+ios2_iphoneos-arm64.deb
+Size: 151206
+MD5sum: 74c291178f8f5e860c1c5e398ba46546
+SHA1: a36014214fbfa1043783ccc723a1acff11b87527
+SHA256: e257fcc259475ea267d98eb2ad74e4f7fb0229e0335144c59d6a3ef001dbbb47
 Icon: https://repo.maxleiter.com/icons/kf6-solid.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-solid.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-solid.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-solid.json
 
 Package: kf6-solid-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-solid (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-solid (= 6.3.0+ios2), extra-cmake-modules, qt6-base-dev
 Description: Development files for Solid
 Installed-Size: 276
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-solid-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 24730
-MD5sum: e1ee3422013628f732b44a16c2df3888
-SHA1: cace2e296649960916b52aa74ee9fa71f1c8f468
-SHA256: 9c143a43afeac3d72ab1f716d8b9a10d3e4a3f6cee93ee2db7af4257ba27a433
+Filename: debs/kf6-solid-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 24718
+MD5sum: 406c6d47133484ed824d4d01797ce332
+SHA1: 294b8e5355089d170fb44c7f139d5441dafb1b9f
+SHA256: ebda9062fd21df9d49b2bf055910290fc6451022e42074cf27991fe2e5da89cd
 Icon: https://repo.maxleiter.com/icons/kf6-solid-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-solid-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-solid-dev.json
@@ -3753,7 +3753,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 
 Package: kwin
-Version: 6.1.5+ios27
+Version: 6.1.5+ios28
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -3763,11 +3763,11 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-too
 Description: KWin Wayland compositor with Xios ANGLE/IOSurface acceleration
 Installed-Size: 32296
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin_6.1.5+ios27_iphoneos-arm64.deb
-Size: 3355154
-MD5sum: 08f50bdc2198161124a7ecbb3d26c69c
-SHA1: b39c396b3b7f6dd3e6eb1fca9b806ca64ff99c58
-SHA256: 702fd6e8a0bf2090932efd9237e473ce4f875678e41788cb1e93652ba1b9bf60
+Filename: debs/kwin_6.1.5+ios28_iphoneos-arm64.deb
+Size: 3355600
+MD5sum: 65f9ed30ee18590f221dd5d811118c04
+SHA1: 18e3450c9c82cd7cb6fdeb7b1a8cc190f19197d2
+SHA256: 8ce2f1bb8dd4cfeb17b729d4b2bfda396e06dff75e0625233d3545f4c053d301
 Icon: https://repo.maxleiter.com/icons/kwin.png
 Depiction: https://repo.maxleiter.com/depictions/kwin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
