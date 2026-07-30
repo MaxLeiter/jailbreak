@@ -15,3 +15,4 @@
 0015-ios-exclude-macos-touch-workaround.patch
 0016-ios-multisample-token-alias.patch
 0017-ios-disable-print-dialog-include.patch
+0018-ios-disable-unused-print-support-in-view-manager.patch

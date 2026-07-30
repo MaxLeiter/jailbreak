@@ -1,0 +1,15 @@
+--- a/libs/ui/KisViewManager.cpp
++++ b/libs/ui/KisViewManager.cpp
+@@ -17,2 +17,4 @@
+ #include "KisViewManager.h"
++#ifndef Q_OS_IOS
+ #include <QPrinter>
++#endif
+@@ -33,5 +35,7 @@
+ #include <QObject>
+ #include <QPoint>
++#ifndef Q_OS_IOS
+ #include <QPrintDialog>
++#endif
+ #include <QPushButton>
+ #include <QScreen>
