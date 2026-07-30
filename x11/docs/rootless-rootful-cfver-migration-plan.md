@@ -299,13 +299,23 @@ Acceptance criteria:
 
 ## Phase 4: Rootful Smoke Target
 
-Start with the smallest useful rootful set:
+Start with the smallest useful rootful set.
 
-- `x11-fonts-sf`
-- corrected `tigervnc-standalone-server`
-- `x11-xvfb`
-- `xios-server`
-- `iosc` only after compositor runtime paths are target-aware
+This list originally led with the X server (`x11-xvfb`, `tigervnc`,
+`xios-server`), which is the wrong order now. The X track is legacy: the desktop
+people actually run is Wayland -- iosc composites to the GPU and the flavors sit
+on top of it -- so a rootful Xvfb would prove very little and block on the X
+server's own rootless-specific patches (the `/var/jb/bin/sh` popen fix exists
+only because rootless has no `/bin/sh`). Do the Wayland path first:
+
+- `x11-fonts-sf` (no compiled paths; already builds for both)
+- the Wayland base: `epoll-shim`, `wayland`, `wayland-protocols`, `libxkbcommon`
+- `iosc` -- its runtime paths, payload roots, generated maintainer scripts and
+  shipped launchers are all target-aware as of the 2026-07-29 pass
+- `xios-fhs`, once the bridge binaries are built per target
+
+X-track packages (`x11-xvfb`, `xios-server`, `tigervnc-standalone-server`) keep
+their rootless-only `targets` gates until someone actually wants rootful X.
 
 Rootful-specific fixes likely needed:
 
@@ -349,18 +359,37 @@ https://repo.maxleiter.com/rootful ./
 
 Required generator changes:
 
-- `bin/lib/make-repo.py --profile rootless`
-- `bin/lib/make-repo.py --profile rootful`
-- profile-specific depictions and package indexes
-- profile-specific install instructions
+- `bin/lib/make-repo.py --profile rootless` -- done, as the `XIOS_REPO_PROFILE`
+  environment variable rather than a flag (the script takes no argv today).
+  `rootless` is the default and keeps the historical flat layout at `repo/`
+  exactly where it was; anything else generates an independent tree under
+  `repo/profiles/<name>/` with its own `debs/`, `Packages` and `Release`.
+- `bin/lib/make-repo.py --profile rootful` -- done, same mechanism.
+- profile-specific depictions and package indexes -- done, they follow `REPO`.
+- profile-specific install instructions -- not done; the generated `index.html`
+  still describes the rootless source.
 - audit guard that refuses mixed rootless/rootful packages in one flat profile
+  -- done, and it reads the answer off the payload rather than the filename,
+  because a rootless and a rootful build of one package share name, version and
+  architecture. `deb_payload_profile()` classifies by whether files land under
+  `var/jb/`, and indexing aborts on a mismatch. Metapackages carry no payload
+  and are correctly profile-neutral.
 
 Acceptance criteria:
 
-- Existing rootless publish flow remains available.
+- Existing rootless publish flow remains available -- verified by generating
+  with both the old and new generator and diffing `Packages`: byte-identical.
 - Rootful publish flow can generate metadata locally but is blocked from
-  production until device validation passes.
-- Repo audit catches package/version/architecture collisions across profiles.
+  production until device validation passes -- `bin/publish-repo.sh` refuses any
+  non-rootless `XIOS_REPO_PROFILE` and points at the local generation command.
+- Repo audit catches package/version/architecture collisions across profiles --
+  covered by the payload guard above.
+
+Unrelated but found here: regenerating from a partial `repo/debs/` silently
+deleted 555 of 568 packages, because debs/ holds only recently-staged payloads
+and everything else exists solely as a stanza in the committed index. The
+generator now refuses to shrink the index before writing anything, overridable
+with `XIOS_REPO_ALLOW_SHRINK=1`.
 
 ## Phase 6: CFVER Matrix
 
@@ -507,18 +536,25 @@ Additional CFVER targets can publish when:
 
 ## Immediate Next Patch After This Plan
 
-Phase 1's skeleton, the container-side loader, the script conversion, and the
-local half of Phase 8 are done. The next patch is the first genuinely rootful
-artifact, which is what unblocks Phases 3-5:
+Phase 1's skeleton, the container-side loader, the script conversion, the local
+half of Phase 8, and the Phase 5 generator split are done. What is left needs a
+build to actually run:
 
-1. Teach `linux-build/build-xserver-target.sh` to produce
-   `linux-build/out/targets/rootful-1900/Xvfb`. Everything around it already
-   exists: the wrapper passes the target through, `packages/x11-xvfb/build.sh`
-   consumes it, and the `targets` gate drops away once the binary is there.
-   This needs no rootful hardware -- `dpkg-deb -c` plus
-   `tools/check-target-package.py` tell you whether the deb is right.
-2. Same for `Xios` -> `packages/xios-server/build.sh`.
-3. Then Phase 5 repo profiles, so the two never share an input directory.
+1. Bootstrap a rootful Procursus tree on its own volume
+   (`procursus-vol-rootful`, which the target wrappers now select automatically)
+   and build the Wayland base for it:
+
+   ```sh
+   bash x11/linux-build/build-procursus-target.sh rootful-1900 \
+     epoll-shim-package wayland-package wayland-protocols-package libxkbcommon-package
+   ```
+
+   This is a cold-volume build and will take hours. Nothing else can be judged
+   until it exists, because every rootful claim so far is static analysis.
+2. Build and package `iosc` for it, then run
+   `tools/check-target-package.py <deb> rootful-1900` on the result. That answers
+   "does a rootful package come out clean" without any rootful hardware.
+3. Only then does the device gate matter: a real rootful bootstrap to install on.
 
 Running the local gate:
 
