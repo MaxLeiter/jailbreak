@@ -1,0 +1,445 @@
+{
+  "ark": {
+    "name": "Ark",
+    "seoTitle": "Ark for iOS and iPad | xiOS",
+    "seoDescription": "Run the KDE Ark archive manager locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/ark",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/ark",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Archive manager"
+  },
+  "baobab": {
+    "name": "Disk Usage Analyzer",
+    "seoTitle": "GNOME Disk Usage Analyzer for iOS | xiOS",
+    "seoDescription": "Run GNOME Disk Usage Analyzer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/baobab",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/baobab",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Storage utility"
+  },
+  "d-spy": {
+    "name": "D-Spy",
+    "seoTitle": "D-Spy for iOS and iPad | xiOS",
+    "seoDescription": "Run the GTK4 D-Spy D-Bus explorer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/d-spy",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/d-spy",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Developer tool"
+  },
+  "dolphin": {
+    "name": "Dolphin",
+    "seoTitle": "KDE Dolphin for iOS and iPad | xiOS",
+    "seoDescription": "Run the KDE Dolphin desktop file manager locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/dolphin",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/dolphin",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "File manager"
+  },
+  "dunst": {
+    "name": "Dunst",
+    "seoTitle": "Dunst notifications for iOS | xiOS",
+    "seoDescription": "Use the Dunst Wayland notification daemon in xiOS desktop sessions on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/dunst",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/dunst",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Desktop utility"
+  },
+  "file-roller": {
+    "name": "File Roller",
+    "seoTitle": "GNOME File Roller for iOS | xiOS",
+    "seoDescription": "Run the GNOME File Roller archive manager locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/file-roller",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/file-roller",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Archive manager"
+  },
+  "foot": {
+    "name": "foot",
+    "seoTitle": "foot terminal for iOS and iPad | xiOS",
+    "seoDescription": "Run the foot Wayland terminal emulator locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/foot",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/foot",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Terminal emulator"
+  },
+  "fuzzel": {
+    "name": "Fuzzel",
+    "seoTitle": "Fuzzel launcher for iOS | xiOS",
+    "seoDescription": "Run the Fuzzel Wayland application launcher locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/fuzzel",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/fuzzel",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Application launcher",
+    "screenshots": [
+      {
+        "src": "screenshots/fuzzel/01-fuzzel.jpg",
+        "alt": "Fuzzel application launcher open in a xiOS desktop session on a jailbroken iPad."
+      }
+    ]
+  },
+  "geary": {
+    "name": "Geary",
+    "seoTitle": "Geary email for iOS and iPad | xiOS",
+    "seoDescription": "Run the GNOME Geary desktop email client locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/geary",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/geary",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Email client"
+  },
+  "gimp": {
+    "name": "GIMP 3.2 for iOS",
+    "seoTitle": "GIMP for iOS and iPad jailbreak | xiOS",
+    "seoDescription": "Run the full desktop GIMP 3.2 image editor locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/gimp",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gimp",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Image editor"
+  },
+  "gimp-native": {
+    "name": "GIMP Native Host",
+    "seoTitle": "GIMP native iPad window | xiOS",
+    "seoDescription": "Launch GIMP in an individual native iPadOS host window on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/gimp",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gimp",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Image editor"
+  },
+  "gnome-calculator": {
+    "name": "GNOME Calculator",
+    "seoTitle": "GNOME Calculator for iOS | xiOS",
+    "seoDescription": "Run GNOME Calculator locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/gnome-calculator",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gnome-calculator",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Calculator"
+  },
+  "gnome-console": {
+    "name": "GNOME Console",
+    "seoTitle": "GNOME Console terminal for iOS | xiOS",
+    "seoDescription": "Run the GNOME Console GTK4 terminal locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/gnome-console",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gnome-console",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Terminal emulator"
+  },
+  "gnome-font-viewer": {
+    "name": "GNOME Fonts",
+    "seoTitle": "GNOME Fonts for iOS and iPad | xiOS",
+    "seoDescription": "Browse and preview installed fonts with GNOME Fonts on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/gnome-font-viewer",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gnome-font-viewer",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Font viewer"
+  },
+  "gnome-text-editor": {
+    "name": "GNOME Text Editor",
+    "seoTitle": "GNOME Text Editor for iOS | xiOS",
+    "seoDescription": "Run GNOME Text Editor locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/gnome-text-editor",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gnome-text-editor",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Text editor"
+  },
+  "gnumeric": {
+    "name": "Gnumeric",
+    "seoTitle": "Gnumeric spreadsheet for iOS | xiOS",
+    "seoDescription": "Run the full Gnumeric desktop spreadsheet locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/gnumeric",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gnumeric",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Spreadsheet"
+  },
+  "grim": {
+    "name": "grim",
+    "seoTitle": "grim screenshots for iOS Wayland | xiOS",
+    "seoDescription": "Capture xiOS Wayland desktop screenshots on a jailbroken iPad with grim.",
+    "projectPage": "https://xios.maxleiter.com/apps/grim",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/grim",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Screenshot utility"
+  },
+  "gwenview": {
+    "name": "Gwenview",
+    "seoTitle": "KDE Gwenview for iOS and iPad | xiOS",
+    "seoDescription": "Run the KDE Gwenview image viewer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/gwenview",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/gwenview",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Image viewer"
+  },
+  "hitori": {
+    "name": "Hitori",
+    "seoTitle": "GNOME Hitori for iOS and iPad | xiOS",
+    "seoDescription": "Play the GNOME Hitori logic puzzle locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/hitori",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/hitori",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Game",
+    "screenshots": [
+      {
+        "src": "screenshots/hitori/01-hitori.jpg",
+        "alt": "The Hitori logic puzzle running in a xiOS desktop window on a jailbroken iPad."
+      }
+    ]
+  },
+  "imv": {
+    "name": "imv",
+    "seoTitle": "imv image viewer for iOS | xiOS",
+    "seoDescription": "Run the imv Wayland image viewer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/imv",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/imv",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Image viewer",
+    "screenshots": [
+      {
+        "src": "screenshots/imv/01-imv.jpg",
+        "alt": "imv displaying a test image in a xiOS Wayland desktop on a jailbroken iPad."
+      }
+    ]
+  },
+  "kate": {
+    "name": "Kate",
+    "seoTitle": "KDE Kate editor for iOS and iPad | xiOS",
+    "seoDescription": "Run the KDE Kate advanced text editor locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/kate",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/kate",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Text editor"
+  },
+  "kcalc": {
+    "name": "KCalc",
+    "seoTitle": "KDE KCalc for iOS and iPad | xiOS",
+    "seoDescription": "Run the KDE KCalc scientific calculator locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/kcalc",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/kcalc",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Calculator"
+  },
+  "konsole": {
+    "name": "Konsole",
+    "seoTitle": "KDE Konsole terminal for iOS | xiOS",
+    "seoDescription": "Run the KDE Konsole terminal emulator locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/konsole",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/konsole",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Terminal emulator"
+  },
+  "kwrite": {
+    "name": "KWrite",
+    "seoTitle": "KDE KWrite editor for iOS | xiOS",
+    "seoDescription": "Run the KDE KWrite text editor locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/kwrite",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/kwrite",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Text editor",
+    "screenshots": [
+      {
+        "src": "screenshots/kwrite/01-kwrite.jpg",
+        "alt": "KWrite open in a KDE xiOS desktop session on a jailbroken iPad."
+      }
+    ]
+  },
+  "ladybird-app": {
+    "name": "Ladybird",
+    "seoTitle": "Ladybird browser for iOS | xiOS",
+    "seoDescription": "Run the independent Ladybird browser engine locally on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/ladybird",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/ladybird",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Web browser"
+  },
+  "ladybird-wayland": {
+    "name": "Ladybird",
+    "seoTitle": "Ladybird Wayland browser for iOS | xiOS",
+    "seoDescription": "Run Ladybird locally in a xiOS Wayland desktop session on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/ladybird",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/ladybird",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Web browser"
+  },
+  "mako": {
+    "name": "mako",
+    "seoTitle": "mako notifications for iOS Wayland | xiOS",
+    "seoDescription": "Use the mako Wayland notification daemon in xiOS desktop sessions on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/mako",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/mako",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Desktop utility"
+  },
+  "mpv": {
+    "name": "mpv",
+    "seoTitle": "mpv media player for iOS Wayland | xiOS",
+    "seoDescription": "Run the mpv video and audio player locally on a jailbroken iPad through xiOS Wayland.",
+    "projectPage": "https://xios.maxleiter.com/apps/mpv",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/mpv",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Media player",
+    "screenshots": [
+      {
+        "src": "screenshots/mpv/01-mpv.jpg",
+        "alt": "mpv rendering a test frame in a xiOS Wayland desktop on a jailbroken iPad."
+      }
+    ]
+  },
+  "nautilus": {
+    "name": "GNOME Files",
+    "seoTitle": "GNOME Files for iOS and iPad | xiOS",
+    "seoDescription": "Run the GNOME Files desktop file manager locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/nautilus",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/nautilus",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "File manager"
+  },
+  "nwg-look": {
+    "name": "nwg-look",
+    "seoTitle": "nwg-look settings for iOS Wayland | xiOS",
+    "seoDescription": "Edit GTK themes, icons, fonts, and cursors in xiOS Wayland desktops on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/nwg-look",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/nwg-look",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Appearance settings"
+  },
+  "okular": {
+    "name": "Okular",
+    "seoTitle": "KDE Okular PDF viewer for iOS | xiOS",
+    "seoDescription": "Run the KDE Okular document and PDF viewer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/okular",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/okular",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Document viewer"
+  },
+  "papers": {
+    "name": "Papers",
+    "seoTitle": "GNOME Papers PDF viewer for iOS | xiOS",
+    "seoDescription": "Run the GNOME Papers GTK4 PDF viewer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/papers",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/papers",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Document viewer",
+    "screenshots": [
+      {
+        "src": "screenshots/papers/01-papers.jpg",
+        "alt": "Papers document viewer open in a xiOS GNOME desktop session on a jailbroken iPad."
+      }
+    ]
+  },
+  "slurp": {
+    "name": "slurp",
+    "seoTitle": "slurp Wayland selection for iOS | xiOS",
+    "seoDescription": "Select screen regions in xiOS Wayland sessions on a jailbroken iPad with slurp.",
+    "projectPage": "https://xios.maxleiter.com/apps/slurp",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/slurp",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Desktop utility"
+  },
+  "swaybg": {
+    "name": "swaybg",
+    "seoTitle": "swaybg wallpaper for iOS Wayland | xiOS",
+    "seoDescription": "Display desktop wallpapers in xiOS Wayland sessions on a jailbroken iPad with swaybg.",
+    "projectPage": "https://xios.maxleiter.com/apps/swaybg",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/swaybg",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Desktop utility"
+  },
+  "swayimg": {
+    "name": "swayimg",
+    "seoTitle": "swayimg image viewer for iOS | xiOS",
+    "seoDescription": "Run the swayimg Wayland image viewer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/swayimg",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/swayimg",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Image viewer",
+    "screenshots": [
+      {
+        "src": "screenshots/swayimg/01-swayimg.jpg",
+        "alt": "swayimg displaying a test image in a xiOS Wayland desktop on a jailbroken iPad."
+      }
+    ]
+  },
+  "thunar": {
+    "name": "Thunar",
+    "seoTitle": "Thunar file manager for iOS | xiOS",
+    "seoDescription": "Run the Thunar desktop file manager locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/thunar",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/thunar",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "File manager"
+  },
+  "tofi": {
+    "name": "tofi",
+    "seoTitle": "tofi launcher for iOS Wayland | xiOS",
+    "seoDescription": "Run the tofi Wayland application launcher locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/tofi",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/tofi",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Application launcher",
+    "screenshots": [
+      {
+        "src": "screenshots/tofi/01-tofi.jpg",
+        "alt": "tofi application launcher open in a xiOS desktop session on a jailbroken iPad."
+      }
+    ]
+  },
+  "waybar": {
+    "name": "Waybar",
+    "seoTitle": "Waybar desktop panel for iOS | xiOS",
+    "seoDescription": "Run the Waybar GTK status panel in xiOS Wayland desktops on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/waybar",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/waybar",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Desktop utility",
+    "screenshots": [
+      {
+        "src": "screenshots/waybar/01-waybar.jpg",
+        "alt": "Waybar visible along the top edge of a xiOS Wayland desktop on a jailbroken iPad."
+      }
+    ]
+  },
+  "wl-clipboard": {
+    "name": "wl-clipboard",
+    "seoTitle": "Wayland clipboard tools for iOS | xiOS",
+    "seoDescription": "Use wl-clipboard command-line copy and paste tools in xiOS Wayland sessions on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/wl-clipboard",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/wl-clipboard",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Desktop utility"
+  },
+  "yad": {
+    "name": "YAD",
+    "seoTitle": "YAD GTK dialogs for iOS | xiOS",
+    "seoDescription": "Build GTK dialogs and graphical script interfaces with YAD on a jailbroken iPad.",
+    "projectPage": "https://xios.maxleiter.com/apps/yad",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/yad",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Developer utility",
+    "screenshots": [
+      {
+        "src": "screenshots/yad/01-yad.jpg",
+        "alt": "A YAD GTK dialog running in a xiOS desktop session on a jailbroken iPad."
+      }
+    ]
+  },
+  "zathura": {
+    "name": "Zathura",
+    "seoTitle": "Zathura PDF viewer for iOS | xiOS",
+    "seoDescription": "Run the Zathura document and PDF viewer locally on a jailbroken iPad with xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/zathura",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/zathura",
+    "schemaType": "SoftwareApplication",
+    "applicationCategory": "Document viewer",
+    "screenshots": [
+      {
+        "src": "screenshots/zathura/01-zathura.jpg",
+        "alt": "Zathura displaying a PDF test document in a xiOS Wayland desktop on a jailbroken iPad."
+      }
+    ]
+  },
+  "zathura-pdf-poppler": {
+    "name": "Zathura PDF backend",
+    "seoTitle": "Zathura PDF support for iOS | xiOS",
+    "seoDescription": "The Poppler PDF backend used by Zathura on jailbroken iOS through xiOS.",
+    "projectPage": "https://xios.maxleiter.com/apps/zathura",
+    "canonicalUrl": "https://xios.maxleiter.com/apps/zathura",
+    "applicationCategory": "Document viewer"
+  }
+}

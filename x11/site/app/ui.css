@@ -348,6 +348,80 @@
   padding-top: 4px;
 }
 
+/* ---------- App catalog ---------- */
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+}
+.app-card {
+  color: inherit;
+  text-decoration: none;
+}
+.app-card-link {
+  margin-top: auto;
+  padding-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cyan);
+}
+.app-catalog-note,
+.app-back-link {
+  display: block;
+  margin-top: 24px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.app-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1px;
+  margin: 0 0 34px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--line);
+}
+.app-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 15px 17px;
+  background: var(--panel);
+}
+.app-facts span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.app-facts strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.app-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.app-actions a {
+  padding: 10px 13px;
+  border: 1px solid var(--cyan-dim);
+  border-radius: 7px;
+  background: var(--cyan-glow);
+  font-size: 13px;
+  text-decoration: none;
+}
+.app-actions code {
+  color: inherit;
+}
+.app-shot-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+
 /* ---------- Schematic / code panel ---------- */
 .schematic {
   overflow-x: auto;

@@ -45,6 +45,13 @@ export const NAV: NavItem[] = [
       "The same Linux apps, presented four ways: as native iOS Home Screen apps, on the iosc desktop, inside a full GNOME or KDE Plasma session, or through the X11 compatibility path.",
   },
   {
+    href: "/apps",
+    label: "App catalog",
+    idx: "04A",
+    description:
+      "Desktop apps running locally on jailbroken iOS through xiOS, including GIMP, Gnumeric, Thunar, and Ladybird, with real on-device screenshots.",
+  },
+  {
     href: "/build",
     label: "Build & packaging",
     idx: "05",

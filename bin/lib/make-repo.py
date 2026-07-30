@@ -4,6 +4,7 @@
 Outputs in repo/:
   Packages, Packages.gz, Release      package index (+ rich fields)
   index.html                          themed landing page
+  robots.txt, sitemap.xml             search-engine discovery
   CydiaIcon.png, favicon.ico          repo icon (from maxleiter.com favicon)
   icons/<pkg>.png                     per-package icon
   banners/<pkg>.png                   featured banner
@@ -532,16 +533,91 @@ def make_banner(path, title, tagline, icon_img):
 
 # ── per-package metadata ─────────────────────────────────────────────────────
 def load_meta(pkgid):
+    catalog_path = os.path.join(META, "app-catalog.json")
+    catalog_meta = {}
+    if os.path.exists(catalog_path):
+        with open(catalog_path) as f:
+            catalog_meta = json.load(f).get(pkgid, {})
     p = os.path.join(META, f"{pkgid}.json")
     if os.path.exists(p):
-        with open(p) as f: return json.load(f)
-    return {}
+        with open(p) as f:
+            package_meta = json.load(f)
+        return {**catalog_meta, **package_meta}
+    return catalog_meta
 
 def package_developer(meta, ctrl):
     developer = meta.get("developer")
     if not developer or developer == "Max":
         return ctrl.get("Author", ctrl.get("Maintainer", ""))
     return developer
+
+def package_name(ctrl, meta):
+    return meta.get("name") or ctrl.get("Name", ctrl["Package"])
+
+def plain_text(value):
+    """Collapse the small Markdown subset used in metadata into snippet text."""
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", value or "")
+    text = re.sub(r"[`*_#>|]", "", text)
+    return " ".join(text.split())
+
+def seo_description(ctrl, meta):
+    value = (meta.get("seoDescription") or meta.get("tagline")
+             or meta.get("description") or ctrl.get("Description", ""))
+    return plain_text(value)[:180]
+
+def seo_head(ctrl, meta):
+    """Canonical, snippet, social-card, and optional SoftwareApplication data."""
+    pid = ctrl["Package"]
+    name = package_name(ctrl, meta)
+    description = seo_description(ctrl, meta)
+    canonical = meta.get("canonicalUrl") or f"{BASE_URL}/depictions/{pid}.html"
+    screenshots = screenshot_assets(meta)
+    image = screenshots[0]["url"] if screenshots else f"{BASE_URL}/banners/{pid}.png"
+    title = meta.get("seoTitle") or f"{name} · {ORIGIN}"
+    tags = [
+        f"<title>{html.escape(title)}</title>",
+        f'<meta name="description" content="{html.escape(description)}">',
+        f'<link rel="canonical" href="{html.escape(canonical)}">',
+        '<meta name="robots" content="index,follow,max-image-preview:large">',
+        '<meta property="og:type" content="website">',
+        f'<meta property="og:site_name" content="{html.escape(ORIGIN)}">',
+        f'<meta property="og:title" content="{html.escape(title)}">',
+        f'<meta property="og:description" content="{html.escape(description)}">',
+        f'<meta property="og:url" content="{html.escape(canonical)}">',
+        f'<meta property="og:image" content="{html.escape(image)}">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        f'<meta name="twitter:title" content="{html.escape(title)}">',
+        f'<meta name="twitter:description" content="{html.escape(description)}">',
+        f'<meta name="twitter:image" content="{html.escape(image)}">',
+    ]
+    if meta.get("schemaType") == "SoftwareApplication":
+        data = {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": name,
+            "description": description,
+            "url": canonical,
+            "applicationCategory": meta.get("applicationCategory", ctrl.get("Section", "Application")),
+            "operatingSystem": meta.get("operatingSystem", "iOS on a jailbroken device"),
+            "softwareVersion": ctrl.get("Version", ""),
+            "image": image,
+            "screenshot": [s["url"] for s in screenshots],
+            "author": {
+                "@type": "Organization",
+                "name": package_developer(meta, ctrl),
+                "url": meta.get("homepage", ctrl.get("Homepage", BASE_URL)),
+            },
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD",
+                "availability": "https://schema.org/InStock",
+                "url": canonical,
+            },
+        }
+        payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        tags.append(f'<script type="application/ld+json">{payload}</script>')
+    return "".join(tags)
 
 def screenshot_assets(meta):
     assets = []
@@ -577,8 +653,10 @@ def native_depiction(ctrl, meta, size):
         ("Section", ctrl.get("Section", "Tweaks")),
         ("Identifier", pid),
     ]
-    details = [{"class": "DepictionMarkdownView",
-                "markdown": meta.get("description", ctrl.get("Description", ""))}]
+    markdown = meta.get("description", ctrl.get("Description", ""))
+    if meta.get("projectPage"):
+        markdown += f"\n\n[More screenshots and port details]({meta['projectPage']})"
+    details = [{"class": "DepictionMarkdownView", "markdown": markdown}]
     if screenshots:
         details += [
             {"class": "DepictionScreenshotsView",
@@ -628,19 +706,25 @@ def html_depiction(ctrl, meta, size):
             ("Developer", package_developer(meta, ctrl)),
             ("Section", ctrl.get("Section", "Tweaks")), ("Identifier", pid)])
     body = md_to_html(meta.get("description", ctrl.get("Description", "")))
+    project_link = ""
+    if meta.get("projectPage"):
+        project_link = (
+            f'<p class="project-link"><a href="{html.escape(meta["projectPage"])}">'
+            "More screenshots and port details on xiOS&nbsp;&rarr;</a></p>"
+        )
     gallery = html_screenshot_gallery(meta)
     gallery_block = f"\n  {gallery}" if gallery else ""
-    name = html.escape(ctrl.get("Name", pid))
+    name = html.escape(package_name(ctrl, meta))
     tagline = html.escape(meta.get("tagline", ctrl.get("Description", "")))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#000000">
-<title>{name} · {html.escape(ORIGIN)}</title><link rel="icon" href="../favicon.ico">{head_links("../")}{HEAD_JS}</head>
+{seo_head(ctrl, meta)}<link rel="icon" href="../favicon.ico">{head_links("../")}{HEAD_JS}</head>
 <body><div class="wrap">
   <a class="back" href="../index.html">{BACK_SVG}<span>{html.escape(ORIGIN)}</span></a>
   <header class="masthead"><img src="../icons/{pid}.png" alt="">
     <div><h1>{name}</h1><p class="sub">{tagline}</p></div>{THEME_PICKER}</header>
-  <div class="prose">{body}</div>{gallery_block}
+  <div class="prose">{body}{project_link}</div>{gallery_block}
   <h2 class="section">Information</h2><table class="info">{rows}</table>
   <footer><a href="../index.html">&larr; All packages</a></footer>
 </div>{THEME_JS}{ANALYTICS_JS}</body></html>"""
@@ -827,6 +911,9 @@ SITE_CSS = f"""
   .prose strong{{color:var(--fg);font-weight:600}} .prose em{{color:var(--fg)}}
   .prose ul{{margin:.5em 0;padding-left:1.15em}} .prose li{{margin:.25em 0;color:var(--fg-dim)}}
   .prose a{{border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}}
+  .project-link{{margin-top:20px}}
+  .project-link a{{display:inline-flex;padding:9px 12px;border:1px solid var(--line-hi);
+    border-radius:7px}}
   .prose code{{font-family:var(--mono);font-size:.9em;color:var(--fg);
     background:var(--bg-hover);border:1px solid var(--line);border-radius:4px;padding:1px 4px}}
   .shots{{display:flex;gap:14px;overflow-x:auto;margin-top:8px;padding:4px 2px 10px;
@@ -1102,7 +1189,7 @@ def write_index(pkgs):
         v = min(step[0], 16); step[0] += 1; return v
 
     def name(p):
-        return p["ctrl"].get("Name", p["ctrl"]["Package"])
+        return package_name(p["ctrl"], p["meta"])
 
     def tagline(p):
         # one-line tagline for the list: first line, first sentence
@@ -1161,10 +1248,23 @@ def write_index(pkgs):
     tweak_rows = "".join(row(p, min(3 + j, 16))
                          for j, p in enumerate(sorted(tweaks, key=lambda p: name(p).lower())))
 
+    index_description = ("Rootless jailbreak packages and xiOS desktop apps for iPad, "
+                         "including GIMP, GNOME, KDE Plasma, X11, and Wayland software.")
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a0a0b">
-<title>{html.escape(ORIGIN)}</title><link rel="icon" href="favicon.ico">{head_links("")}{HEAD_JS}</head>
+<title>{html.escape(ORIGIN)} · iOS jailbreak and xiOS packages</title>
+<meta name="description" content="{html.escape(index_description)}">
+<link rel="canonical" href="{BASE_URL}/">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{html.escape(ORIGIN)}">
+<meta property="og:title" content="{html.escape(ORIGIN)} · iOS jailbreak and xiOS packages">
+<meta property="og:description" content="{html.escape(index_description)}">
+<meta property="og:url" content="{BASE_URL}/">
+<meta property="og:image" content="{BASE_URL}/CydiaIcon.png">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="favicon.ico">{head_links("")}{HEAD_JS}</head>
 <body><div class="wrap">
   <header class="mast reveal" style="--i:0">
     <div class="mast-top"><a class="micro" href="https://maxleiter.com">maxleiter.com</a>{THEME_PICKER}</div>
@@ -1204,6 +1304,39 @@ def write_index(pkgs):
   <footer><a href="https://maxleiter.com">maxleiter.com</a><span>{ARCH}</span></footer>
 </div>{INDEX_JS}{THEME_JS}{ANALYTICS_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
+
+def write_seo_files(pkgs):
+    """Write deterministic crawler discovery files for the public rootless repo."""
+    if PROFILE != "rootless":
+        return
+    robots = f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n"
+    open(os.path.join(REPO, "robots.txt"), "w").write(robots)
+
+    latest = {}
+    for p in pkgs:
+        latest[p["ctrl"]["Package"]] = p
+    entries = [f"  <url><loc>{BASE_URL}/</loc></url>"]
+    for pid, p in sorted(latest.items()):
+        # A rich xiOS app page can be the declared canonical for a terse package
+        # depiction. Sitemaps should list canonical URLs only.
+        if p["meta"].get("canonicalUrl"):
+            continue
+        loc = f"{BASE_URL}/depictions/{pid}.html"
+        image_xml = []
+        for shot in screenshot_assets(p["meta"]):
+            image_xml.append(
+                f"<image:image><image:loc>{html.escape(shot['url'])}</image:loc>"
+                f"<image:caption>{html.escape(shot['alt'])}</image:caption></image:image>"
+            )
+        entries.append(f"  <url><loc>{html.escape(loc)}</loc>{''.join(image_xml)}</url>")
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+        'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
+        + "\n".join(entries)
+        + "\n</urlset>\n"
+    )
+    open(os.path.join(REPO, "sitemap.xml"), "w").write(sitemap)
 
 # ── main ─────────────────────────────────────────────────────────────────────
 def main():
@@ -1373,6 +1506,7 @@ def main():
     prune_orphan_assets({p["ctrl"]["Package"] for p in pkgs})
 
     write_index(pkgs)
+    write_seo_files(pkgs)
     src = "committed Packages" if from_index else "repo/debs"
     print(f"Generated {PROFILE} repo at {REPO} ({len(pkgs)} package(s)) "
           f"from {src}, PIL={HAVE_PIL}")

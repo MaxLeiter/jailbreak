@@ -55,6 +55,9 @@ export const metadata: Metadata = {
     "GTK",
     "Qt",
     "xiOS",
+    "GIMP on iOS",
+    "GIMP on iPad",
+    "desktop apps on iOS",
   ],
   alternates: { canonical: "/" },
   openGraph: {

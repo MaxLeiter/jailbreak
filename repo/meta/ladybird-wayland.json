@@ -1,6 +1,21 @@
 {
+  "name": "Ladybird (Wayland)",
   "tagline": "The Ladybird browser for Xios desktop sessions",
+  "seoTitle": "Ladybird browser for iOS and iPad (jailbreak) · xiOS",
+  "seoDescription": "Run the independent Ladybird browser engine locally on a jailbroken iPad as a native arm64 xiOS Wayland application.",
   "developer": "Ladybird Browser Initiative / Max",
   "homepage": "https://ladybird.org",
-  "description": "[Ladybird](https://ladybird.org) is a new web browser with its own engine, written from scratch rather than built on WebKit or Chromium. This is the desktop build, which runs as a window inside a Xios desktop session.\n\nIt adds a normal application entry and opens through whichever desktop you are running.\n\nIf you want a home-screen browser icon instead, install **Ladybird** (`ladybird-app`)."
+  "schemaType": "SoftwareApplication",
+  "applicationCategory": "BrowserApplication",
+  "operatingSystem": "iOS on a jailbroken iPad",
+  "projectPage": "https://xios.maxleiter.com/apps/ladybird",
+  "canonicalUrl": "https://xios.maxleiter.com/apps/ladybird",
+  "description": "[Ladybird](https://ladybird.org) is a new web browser with its own engine, written from scratch rather than built on WebKit or Chromium. This is the desktop build, which runs locally as a window inside a xiOS session.\n\nIt adds a normal application entry and opens through whichever desktop you are running. A compatible rootless jailbreak is required.\n\nIf you want a Home Screen browser icon instead, install **Ladybird** (`ladybird-app`).",
+  "screenshots": [
+    {
+      "src": "screenshots/ladybird-wayland/01-ladybird.jpg",
+      "alt": "The Ladybird browser running as a window in a xiOS desktop session on a jailbroken iPad.",
+      "caption": "Ladybird running in a xiOS desktop session"
+    }
+  ]
 }

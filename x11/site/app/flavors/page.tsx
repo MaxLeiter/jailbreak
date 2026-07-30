@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Clip, Shot } from "@/components/Figures";
 import { T } from "@/components/Term";
 import { Callout, Ext, NextLinks, PageHeader, Section } from "@/components/ui";
@@ -133,6 +134,10 @@ export default function Flavors() {
           <p>
             You do not need GNOME Shell or Plasma to run desktop apps. iosc can
             launch GTK, Qt/KF6, X11, and plain Wayland clients as windows.
+          </p>
+          <p>
+            <Link href="/apps">Browse app screenshots and individual app pages</Link>,
+            including GIMP, Gnumeric, Thunar, and Ladybird.
           </p>
         </div>
         <dl className="deflist" style={{ marginTop: 8 }}>
