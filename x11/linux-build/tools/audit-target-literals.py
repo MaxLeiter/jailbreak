@@ -108,6 +108,9 @@ def categorize(rel: str, text: str, literal: str) -> str:
         # contents would make every update look like a regression.
         "linux-build/tools/target-literal-baseline.json",
         "linux-build/tools/audit-target-literals.py",
+        # These two exist to detect a foreign prefix, so they must name one.
+        "linux-build/tools/check-target-package.py",
+        "linux-build/tools/lint-targets.sh",
     }:
         return "target-infra"
     if rel.startswith("docs/") or rel in {"README.md", "SCOPE.md", "AGENTS.md"}:

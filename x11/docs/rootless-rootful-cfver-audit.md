@@ -9,27 +9,27 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1742
+- Total hits: 1748
 - Files with hits: 327
 
 ### By Category
 
 - `app-runtime`: 25 hits across 14 files
 - `build-target`: 16 hits across 10 files
-- `docs`: 619 hits across 62 files
+- `docs`: 620 hits across 62 files
 - `entitlements`: 45 hits across 17 files
-- `linker-path`: 123 hits across 52 files
-- `other`: 71 hits across 15 files
+- `linker-path`: 121 hits across 51 files
+- `other`: 75 hits across 15 files
 - `package-payload`: 193 hits across 51 files
-- `recipe`: 80 hits across 25 files
+- `recipe`: 82 hits across 26 files
 - `runtime-path`: 319 hits across 81 files
-- `script-or-source`: 212 hits across 71 files
+- `script-or-source`: 209 hits across 69 files
 - `site-copy`: 10 hits across 6 files
-- `target-infra`: 29 hits across 4 files
+- `target-infra`: 33 hits across 6 files
 
 ### By Literal
 
-- `/var/jb`: 1699
+- `/var/jb`: 1705
 - `MEMO_CFVER=1900`: 7
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 7
 - `iphoneos-arm64-rootless`: 29
@@ -60,7 +60,7 @@ classified as rootless-only.
 - `apps/Xios/Sources/XSurface.c:20` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
 - `apps/Xios/Sources/XSurface.c:20` `/var/jb`: if (!tmp \|\| !*tmp) tmp = access("/var/jb/usr", X_OK) == 0 ? "/var/jb/tmp" : "/var/tmp";
 - `apps/Xios/Sources/XScreen.swift:40` `/var/jb`: ["/tmp/.X11-unix", XiosRuntimePaths.tmp(".X11-unix"), "/var/jb/tmp/.X11-unix", "/var/tmp/.X11-unix"]
-- `apps/Xios/Sources/XScreen.swift:1790` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
+- `apps/Xios/Sources/XScreen.swift:1892` `/var/jb`: /// /var/jb/tmp/xios-touch.log after a tap. Written only where a press commits;
 - `apps/Xios/Sources/XiosRuntimePaths.swift:20` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
 - `apps/Xios/Sources/XiosRuntimePaths.swift:21` `/var/jb`: return "/var/jb/tmp"
 - `apps/Xios/Sources/XiosRuntimePaths.swift:31` `/var/jb`: if FileManager.default.fileExists(atPath: "/var/jb/usr") {
@@ -76,7 +76,7 @@ classified as rootless-only.
 
 - `linux-build/README.md:142` `MEMO_TARGET=iphoneos-arm64-rootless`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
 - `linux-build/README.md:142` `MEMO_CFVER=1900`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
-- `linux-build/build.sh:175` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
+- `linux-build/build.sh:143` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:16` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:20` `iphoneos-arm64-rootless`: elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
 - `linux-build/build-pwquality-stub.sh:16` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
@@ -113,7 +113,7 @@ classified as rootless-only.
 - `AGENTS.md:25` `/var/jb`: - The target install prefix is rootless `/var/jb`; packages and scripts should not assume rootful `/`.
 - `AGENTS.md:27` `/var/jb`: - Geometry is not globally constant. Read compositor/app-reported dimensions such as `/var/jb/tmp/xios.json` instead of hardcoding framebuffer sizes.
 - `docs/native-ipados-plan.md:116` `/var/jb`: (`/var/jb/tmp/iosc-native.sock`) with a message protocol; the old socket and
-- ... 599 more
+- ... 600 more
 
 ### entitlements
 
@@ -149,8 +149,6 @@ classified as rootless-only.
 - `linux-build/build-qt.sh:95` `/var/jb`: # outside /var/jb/usr at /var/jb/lib/angle plus /var/jb/include, so stage it into the
 - `linux-build/build-qt.sh:95` `/var/jb`: # outside /var/jb/usr at /var/jb/lib/angle plus /var/jb/include, so stage it into the
 - `linux-build/build-qt.sh:95` `/var/jb`: # outside /var/jb/usr at /var/jb/lib/angle plus /var/jb/include, so stage it into the
-- `linux-build/build-xwayland.sh:133` `/var/jb`: libdir=/var/jb/lib/angle
-- `linux-build/build-xwayland.sh:139` `/var/jb`: Libs: -L/var/jb/usr/lib -lEGL
 - `linux-build/build-bun-ios.sh:167` `/var/jb`: exec /var/jb/usr/libexec/bun-ios/bun "$@"
 - `linux-build/build-opencode.sh:131` `/var/jb`: exec /var/jb/usr/bin/bun /var/jb/usr/libexec/opencode-js/src/index.js "$@"
 - `linux-build/build-opencode.sh:131` `/var/jb`: exec /var/jb/usr/bin/bun /var/jb/usr/libexec/opencode-js/src/index.js "$@"
@@ -161,7 +159,9 @@ classified as rootless-only.
 - `linux-build/gir-build-ondevice.sh:69` `/var/jb`: export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
 - `linux-build/gir-build-ondevice.sh:70` `/var/jb`: export GI_TYPELIB_PATH=/var/jb/usr/lib/girepository-1.0
 - `linux-build/gir-build-ondevice.sh:78` `/var/jb`: if [ ! -f /var/jb/usr/lib/pkgconfig/zlib.pc ]; then
-- ... 103 more
+- `linux-build/gir-build-ondevice.sh:79` `/var/jb`: cat > /var/jb/usr/lib/pkgconfig/zlib.pc <<PC
+- `linux-build/gir-build-ondevice.sh:116` `/var/jb`: for t in $TLS;   do cp -v "$t" /var/jb/usr/lib/girepository-1.0/; done
+- ... 101 more
 
 ### other
 
@@ -185,7 +185,7 @@ classified as rootless-only.
 - `bin/x11-up.sh:14` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 - `bin/x11-up.sh:17` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
 - `bin/x11-up.sh:17` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
-- ... 51 more
+- ... 55 more
 
 ### package-payload
 
@@ -233,7 +233,7 @@ classified as rootless-only.
 - `linux-build/recipes/plasma-mobile-ios-fixes.sh:953` `/var/jb`: helper = """    readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= \| tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= \| awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null \|\| true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null \|\| true; done"
 - `linux-build/recipes/plasma-mobile-ios-fixes.sh:1088` `/var/jb`: readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= \| tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= \| awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null \|\| true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null \|\| true; done"
 - `linux-build/recipes/plasma-mobile-ios-fixes.sh:1088` `/var/jb`: readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= \| tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= \| awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null \|\| true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null \|\| true; done"
-- ... 60 more
+- ... 62 more
 
 ### runtime-path
 
@@ -281,7 +281,7 @@ classified as rootless-only.
 - `linux-build/build-ladybird-wave4b.sh:323` `/var/jb`: #   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
 - `linux-build/build-ladybird-wave4b.sh:334` `/var/jb`: # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
 - `linux-build/build-ladybird-wave4b.sh:348` `/var/jb`: <string>/var/jb/</string>
-- ... 192 more
+- ... 189 more
 
 ### site-copy
 
@@ -301,22 +301,22 @@ classified as rootless-only.
 - `linux-build/target-env.sh:19` `iphoneos-arm64-rootless`: : "${XIOS_MEMO_TARGET:=iphoneos-arm64-rootless}"
 - `linux-build/target-env.sh:26` `/var/jb`: XIOS_PREFIX=/var/jb
 - `linux-build/target-env.sh:35` `/var/jb`: # build_base/<triple>/var/jb/usr/... for rootless, build_base/<triple>/usr/...
-- `linux-build/target-env.sh:72` `/var/jb`: # yet. Better a loud stop than a rootful deb full of /var/jb paths — which is
-- `linux-build/target-env.sh:82` `/var/jb`: # Rootless yields /var/jb/; rootful ships into /usr, which needs its own entry
-- `linux-build/tools/target-literal-baseline.json:185` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:186` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
-- `linux-build/tools/target-literal-baseline.json:189` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:199` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:203` `/var/jb`: "packages/xios-server/var/jb/usr/bin/xios-server.sh": 12,
-- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:208` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:209` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/target-env.sh:87` `/var/jb`: # yet. Better a loud stop than a rootful deb full of /var/jb paths — which is
+- `linux-build/target-env.sh:97` `/var/jb`: # Rootless yields /var/jb/; rootful ships into /usr, which needs its own entry
+- `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
+- `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
+- `linux-build/tools/check-target-package.py:122` `/var/jb`: /var/jb installs fine and then fails to load, which is exactly the class of
+- `linux-build/tools/check-target-package.py:175` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
+- `linux-build/tools/target-literal-baseline.json:183` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:184` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
+- `linux-build/tools/target-literal-baseline.json:187` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:201` `/var/jb`: "packages/xios-server/var/jb/usr/bin/xios-server.sh": 12,
+- `linux-build/tools/target-literal-baseline.json:205` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
-- `linux-build/tools/audit-target-literals.py:25` `MEMO_TARGET=iphoneos-arm64-rootless`: "MEMO_TARGET=iphoneos-arm64-rootless",
-- `linux-build/tools/audit-target-literals.py:26` `MEMO_CFVER=1900`: "MEMO_CFVER=1900",
-- `linux-build/tools/audit-target-literals.py:123` `/var/jb`: if "/tmp" in text or "/var/jb/tmp" in text or "/var/jb/var" in text:
-- `linux-build/tools/audit-target-literals.py:123` `/var/jb`: if "/tmp" in text or "/var/jb/tmp" in text or "/var/jb/var" in text:
-- ... 9 more
+- ... 13 more
 

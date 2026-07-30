@@ -1,5 +1,5 @@
 {
-  "total": 1084,
+  "total": 1085,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 2,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -148,8 +148,6 @@
     "linux-build/recipes/startup-notification.mk": 1,
     "linux-build/recipes/systemsettings-ios-fixes.sh": 6,
     "linux-build/repack-icon-themes.sh": 5,
-    "linux-build/tools/check-target-package.py": 2,
-    "linux-build/tools/lint-targets.sh": 1,
     "linux-build/tools/opencode-ios-bundle.ts": 3,
     "linux-build/tools/stamp-minos.py": 1,
     "packages/build-template-package.sh": 1,
@@ -208,7 +206,7 @@
     "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
     "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
     "ports/angle/build-angle.sh": 1,
-    "ports/angle/package-angle-es3.sh": 2,
+    "ports/angle/package-angle-es3.sh": 6,
     "ports/angle/patches/0002-dylib-dispatch-jb-path.patch": 2,
     "ports/fuzzel/patches/0002-ios-runtime-defaults.patch": 1,
     "ports/gnome-shell/patches-eds/0001-ios-source-port-with-eds.patch": 1,
