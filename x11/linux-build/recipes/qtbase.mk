@@ -261,7 +261,7 @@ qtbase: qtbase-setup
 		-DQT_QPA_DEFAULT_PLATFORM=offscreen
 	+ninja -j$(QTBASE_NINJA_JOBS) -C $(BUILD_WORK)/qtbase/build
 	+DESTDIR="$(BUILD_STAGE)/qtbase" ninja -j$(QTBASE_NINJA_JOBS) -C $(BUILD_WORK)/qtbase/build install
-	$(call AFTER_BUILD,copy,qtbase,/var/jb/lib/angle)
+	$(call AFTER_BUILD,copy,qtbase,$(MEMO_PREFIX)/lib/angle)
 endif
 
 qtbase-package: qtbase-stage

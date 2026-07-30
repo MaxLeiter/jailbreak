@@ -126,6 +126,14 @@ if [ -f "$TMPL/files.manifest" ]; then
       ""|\#*) continue ;;
     esac
     [ -n "$rel" ] || { echo "$TMPL/files.manifest: missing destination for $src" >&2; exit 2; }
+    # The source side takes the same tokens as the destination: a package whose
+    # payload is produced per target stages its binaries under that target's
+    # prefix, so the manifest cannot name one root.
+    src="$(printf '%s' "$src" | XIOS_PACKAGE_PATH_PREFIX="$XIOS_PACKAGE_PATH_PREFIX" \
+      XIOS_TARGET_ID="$XIOS_TARGET_ID" XIOS_PREFIX="$XIOS_PREFIX" \
+      perl -pe 's/\@PACKAGE_PATH_PREFIX\@/$ENV{XIOS_PACKAGE_PATH_PREFIX}/g;
+                s/\@TARGET_ID\@/$ENV{XIOS_TARGET_ID}/g;
+                s/\@PREFIX\@/$ENV{XIOS_PREFIX}/g;')"
     case "$src" in
       /*) src_path="$src" ;;
       *) src_path="$TMPL/$src" ;;
@@ -149,6 +157,12 @@ for maint in postinst preinst prerm postrm; do
 done
 
 echo "==> staged $PKG for $XIOS_TARGET_ID at $STAGE"
+
+# Gate every staged tree, not just rootful ones: on rootless it catches a
+# template that forgot to go through the payload root, and on rootful it is the
+# check that keeps /var/jb out of a package that must not contain it.
+python3 "$X11DIR/linux-build/tools/check-target-package.py" "$STAGE" "$XIOS_TARGET_ID"
+
 if [ "$STAGE_ONLY" = 1 ]; then
   find "$STAGE" -type f | sed "s#$STAGE/##" | sort
   exit 0

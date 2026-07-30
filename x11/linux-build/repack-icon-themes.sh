@@ -11,6 +11,10 @@
 #   docker run --rm -v "$PWD/out:/out" -v "$PWD/repack-icon-themes.sh:/r.sh:ro" \
 #     --entrypoint sh procursus-xbuild:bookworm-arm64 /r.sh
 set -e
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 OUT=/out
 WORK=/tmp/icons; rm -rf "$WORK"; mkdir -p "$WORK"; cd "$WORK"
 
@@ -29,7 +33,7 @@ repack() {  # $1=srcdeb $2=pkg $3=version $4=depends $5=iconsubdir $6=descriptio
   src="$1"; pkg="$2"; ver="$3"; deps="$4"; sub="$5"; desc="$6"
   echo "==> repack $pkg $ver"
   rm -rf t; dpkg-deb -R "$src" t
-  mkdir -p t/var/jb; mv t/usr t/var/jb/usr           # /usr -> /var/jb/usr
+  mkdir -p t$XIOS_PREFIX; mv t/usr t$XIOS_PREFIX/usr           # /usr -> $XIOS_PREFIX/usr
   cat > t/DEBIAN/control <<EOF
 Package: $pkg
 Version: $ver
@@ -55,7 +59,7 @@ EOF
   chmod 0755 t/DEBIAN/postinst
   rm -f t/DEBIAN/preinst t/DEBIAN/prerm t/DEBIAN/postrm t/DEBIAN/triggers t/DEBIAN/conffiles
   ( cd t && find var -type f -exec md5sum {} \; > DEBIAN/md5sums ) 2>/dev/null || true
-  deb="$OUT/${pkg}_${ver}_iphoneos-arm64.deb"
+  deb="$OUT/${pkg}_${ver}_$XIOS_DEB_ARCH.deb"
   dpkg-deb -b t "$deb" >/dev/null
   echo "   -> $(basename "$deb")"; dpkg-deb -f "$deb" Package Version Architecture Depends | sed 's/^/      /'
 }
@@ -66,6 +70,6 @@ repack adwaita.deb adwaita-icon-theme 46.0 "hicolor-icon-theme" Adwaita \
   "Adwaita icon theme - GNOME default symbolic + colour icons for GTK3/GTK4/libadwaita apps"
 
 echo "==> verify Adwaita ships the symbolic icons the header bars need"
-dpkg-deb -c "$OUT/adwaita-icon-theme_46.0_iphoneos-arm64.deb" \
+dpkg-deb -c "$OUT/adwaita-icon-theme_46.0_$XIOS_DEB_ARCH.deb" \
   | grep -E "open-menu-symbolic|view-more-symbolic|index.theme" | head
 echo "==> done"

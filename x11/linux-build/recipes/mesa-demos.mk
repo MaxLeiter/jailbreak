@@ -39,13 +39,13 @@ mesa-demos-package: mesa-demos-stage
 	# mesa-demos.mk Prep mesa-demos
 	cp -a $(BUILD_STAGE)/mesa-demos $(BUILD_DIST)
 	if [ -e "$(BUILD_DIST)/mesa-demos/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/es2gears_wayland" ]; then \
-		$(I_N_T) -change /var/jb/usr/lib/libEGL.dylib /var/jb/lib/angle/libEGL.dylib \
+		$(I_N_T) -change $(MEMO_PREFIX)/usr/lib/libEGL.dylib $(MEMO_PREFIX)/lib/angle/libEGL.dylib \
 			"$(BUILD_DIST)/mesa-demos/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/es2gears_wayland" 2>/dev/null || true; \
-		$(I_N_T) -change /var/jb/usr/lib/libGLESv2.dylib /var/jb/lib/angle/libGLESv2.dylib \
+		$(I_N_T) -change $(MEMO_PREFIX)/usr/lib/libGLESv2.dylib $(MEMO_PREFIX)/lib/angle/libGLESv2.dylib \
 			"$(BUILD_DIST)/mesa-demos/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/es2gears_wayland" 2>/dev/null || true; \
-		$(I_N_T) -change /var/jb/usr/lib/libGLESv2.2.dylib /var/jb/lib/angle/libGLESv2.dylib \
+		$(I_N_T) -change $(MEMO_PREFIX)/usr/lib/libGLESv2.2.dylib $(MEMO_PREFIX)/lib/angle/libGLESv2.dylib \
 			"$(BUILD_DIST)/mesa-demos/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/es2gears_wayland" 2>/dev/null || true; \
-		$(I_N_T) -add_rpath /var/jb/lib/angle \
+		$(I_N_T) -add_rpath $(MEMO_PREFIX)/lib/angle \
 			"$(BUILD_DIST)/mesa-demos/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/es2gears_wayland" 2>/dev/null || true; \
 	fi
 

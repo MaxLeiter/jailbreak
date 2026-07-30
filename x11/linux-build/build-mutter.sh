@@ -21,6 +21,8 @@
 # MUTTER_CLEAN=1 wipes the mutter work tree first: an incremental relink drops the meson-staged
 # ios objects and regresses the stage/present path, so the integrate must run from a pristine extract.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # --- host codegen tools (same set build-gnome.sh installs) ---
@@ -125,7 +127,7 @@ if grep -q "enable-x11=false" makefiles/libxkbcommon.mk; then
 fi
 # Force libxkbcommon to rebuild so the x11 sublib is produced. BUILD_WORK is
 # build_work/<target>/<cfver>/, so glob the marker (a bare build_work/ path misses it).
-if [ ! -e build_base/iphoneos-arm64-rootless/1900/var/jb/usr/lib/pkgconfig/xkbcommon-x11.pc ]; then
+if [ ! -e build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr/lib/pkgconfig/xkbcommon-x11.pc ]; then
   rm -f build_work/*/*/libxkbcommon/.build_complete 2>/dev/null || true
   # also wipe the meson build dir — a stale x11=false configure would otherwise stick
   # ("Directory already configured", new -D flags ignored). Force a clean reconfigure.
@@ -133,21 +135,21 @@ if [ ! -e build_base/iphoneos-arm64-rootless/1900/var/jb/usr/lib/pkgconfig/xkbco
 fi
 # Force pixman rebuild to 0.42.2 (mutter needs >= 0.42; mainline ships 0.40 autotools). The meson
 # recipe replaces it; wipe the old autotools build dir + marker so the new meson build takes.
-if ! pkg-config --atleast-version=0.42 build_base/iphoneos-arm64-rootless/1900/var/jb/usr/lib/pkgconfig/pixman-1.pc 2>/dev/null \
-   && ! grep -q "0.4[2-9]" build_base/iphoneos-arm64-rootless/1900/var/jb/usr/lib/pkgconfig/pixman-1.pc 2>/dev/null; then
+if ! pkg-config --atleast-version=0.42 build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr/lib/pkgconfig/pixman-1.pc 2>/dev/null \
+   && ! grep -q "0.4[2-9]" build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr/lib/pkgconfig/pixman-1.pc 2>/dev/null; then
   # wipe the WHOLE libpixman work dir — the old 0.40 autotools source is still there and
   # EXTRACT_TAR skips re-extraction when the dir exists, so 0.42.2 never unpacked.
   rm -rf build_work/*/*/libpixman 2>/dev/null || true
 fi
 # libxfixes >= 6 needed by mutter (mainline ships 5.0.3). Force a clean rebuild to 6.0.1.
-if ! grep -q "Version: 6" build_base/iphoneos-arm64-rootless/1900/var/jb/usr/lib/pkgconfig/xfixes.pc 2>/dev/null; then
+if ! grep -q "Version: 6" build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr/lib/pkgconfig/xfixes.pc 2>/dev/null; then
   rm -rf build_work/*/*/libxfixes 2>/dev/null || true
 fi
 
 # --- stage ANGLE libEGL + egl.pc into the cross sysroot (mesa here has no EGL; mutter's
 #     wayland/Cogl path links -lEGL). GLESv2 headers + mesa libGLESv2 already present. The
 #     angle deb is mounted via /out. install_name stays @rpath/libEGL.dylib -> ANGLE on-device.
-SYSROOT=build_base/iphoneos-arm64-rootless/1900/var/jb/usr
+SYSROOT=build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr
 # Cogl's cogl-egl.h includes <EGL/eglmesaext.h> (mesa EGL extension declarations); ANGLE's headers
 # lack it. It's a portable declarations-only header; Cogl resolves the actual MESA fns via
 # eglGetProcAddress at runtime (no link dep). Stage it from the Khronos EGL-Registry.
@@ -179,7 +181,7 @@ echo "==> staging stub <systemd/sd-login.h> (session tracking inert on iOS; logi
 mkdir -p "$SYSROOT/include/systemd"
 cp /work/recipes/build_info/systemd-sd-login.h "$SYSROOT/include/systemd/sd-login.h"
 if [ ! -e "$SYSROOT/lib/pkgconfig/egl.pc" ]; then
-  ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep -v "+es3" | head -1)
+  ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep -v "+es3" | head -1)
   if [ -n "$ANGLE_DEB" ]; then
     echo "==> staging ANGLE libEGL + egl.pc into cross sysroot from $(basename "$ANGLE_DEB")"
     rm -rf /tmp/angle-x && mkdir -p /tmp/angle-x && dpkg-deb -x "$ANGLE_DEB" /tmp/angle-x
@@ -190,7 +192,7 @@ if [ ! -e "$SYSROOT/lib/pkgconfig/egl.pc" ]; then
     # GLES at runtime — the native+fast path. Repoint glesv2.pc off mesa onto ANGLE.
     [ -n "$GLES" ] && cp -v "$GLES" "$SYSROOT/lib/libGLESv2.dylib"
     cat > "$SYSROOT/lib/pkgconfig/egl.pc" <<PC
-prefix=/var/jb/usr
+prefix=$XIOS_PREFIX/usr
 libdir=/var/jb/lib/angle
 includedir=\${prefix}/include
 
@@ -201,7 +203,7 @@ Libs: -L/var/jb/usr/lib -lEGL
 Cflags: -I\${includedir}
 PC
     cat > "$SYSROOT/lib/pkgconfig/glesv2.pc" <<PC
-prefix=/var/jb/usr
+prefix=$XIOS_PREFIX/usr
 libdir=\${prefix}/lib
 includedir=\${prefix}/include
 
@@ -216,11 +218,11 @@ PC
   fi
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-COLORD_W=build_work/iphoneos-arm64-rootless/1900/colord
-COLORD_S=build_stage/iphoneos-arm64-rootless/1900/colord
+COLORD_W=build_work/$XIOS_TRIPLE/colord
+COLORD_S=build_stage/$XIOS_TRIPLE/colord
 COLORD_F="$COLORD_W/.xios_patch_series.sha256"
 if target_requests colord || target_requests mutter; then
   COLORD_FP="$(sha256sum \
@@ -233,8 +235,8 @@ if target_requests colord || target_requests mutter; then
   fi
 fi
 
-MUTTER_W=build_work/iphoneos-arm64-rootless/1900/mutter
-MUTTER_S=build_stage/iphoneos-arm64-rootless/1900/mutter
+MUTTER_W=build_work/$XIOS_TRIPLE/mutter
+MUTTER_S=build_stage/$XIOS_TRIPLE/mutter
 MUTTER_F="$MUTTER_W/.xios_patch_series.sha256"
 if target_requests mutter; then
   MUTTER_FP="$(sha256sum \
@@ -261,6 +263,6 @@ fi
 # collect any debs produced (package targets only)
 mkdir -p /out
 for pat in liblcms2 libxcomposite libcolord libmutter mutter; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 echo "==> done"

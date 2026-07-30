@@ -82,14 +82,32 @@ static void init_paths(void)
      * because it already exists is the normal case. */
     if (mkdir(s_dir, 01777) == 0)
         chmod(s_dir, 01777);
+
+    /* Drop whatever a PREVIOUS instance of this producer left behind, exactly once
+     * per process. iosc_status_clear() covers a clean exit, but the display app is
+     * killed rather than exited (FrontBoard, a session restart, jetsam) and a
+     * compositor can be SIGKILLed, so a clean-exit hook alone is not enough: the
+     * stale table then reads as live state, which is the one failure this whole
+     * mechanism exists to prevent. Observed on device — a killed Xios.app left
+     * `upscale=1440x1080->...` claiming to be current while the replacement process
+     * had upscaling off and had not yet published anything.
+     *
+     * Safe because this runs before this process's first write and a sidecar is
+     * owned by exactly one producer. */
+    unlink(s_file);
 }
 
 void iosc_status_set_producer(const char *name)
 {
     if (!name || !*name) return;
     snprintf(s_producer, sizeof(s_producer), "%s", name);
-    s_file[0] = 0;          /* re-resolve on the next write */
+    s_file[0] = 0;
     s_file_broken = 0;
+    /* Resolve (and therefore reset) NOW rather than lazily on the first write. A
+     * process that declares itself and then publishes nothing — a display app that
+     * comes up with no compositor to show, say — must still clear its predecessor's
+     * table, or that stale claim is what a reader sees. */
+    init_paths();
 }
 
 static struct status_entry *entry_for(const char *key)

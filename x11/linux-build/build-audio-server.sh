@@ -20,6 +20,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-audio-server.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 export PATH="/root/cctools/bin:$PATH"
 
@@ -47,14 +49,14 @@ exec /root/cctools/bin/aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-lin
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 # The volume may hold a CLIENT-ONLY pulseaudio with .build_complete; the guard
 # in the recipe would skip the daemon reconfigure. Wipe only in that case, so
 # packaging-only reruns stay fast.
-PW=build_work/iphoneos-arm64-rootless/1900/pulseaudio
-PS=build_stage/iphoneos-arm64-rootless/1900/pulseaudio
+PW=build_work/$XIOS_TRIPLE/pulseaudio
+PS=build_stage/$XIOS_TRIPLE/pulseaudio
 PF="$PW/.xios_audio_sources.sha256"
 if [ -d "$PW" ] && [ ! -f "$PW/build/src/daemon/pulseaudio" ]; then
   echo "==> wiping the client-only pulseaudio build tree"
@@ -110,7 +112,7 @@ fi
 echo "==> collect debs -> /out"
 mkdir -p /out
 for pat in libltdl7 libpulse0 libpulse-dev pulseaudio pulseaudio-utils; do
-  find . -name "${pat}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Anything that linked GTK's bundled proxy-libintl gets relinked onto the

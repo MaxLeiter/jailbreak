@@ -10,9 +10,11 @@
 # /work/recipes, out at /out. Select targets via TARGETS env (default: full dependency order):
 #   docker run -e TARGETS="tllist-package fcft-package" ... /work/build-wayland-apps.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 BBINC="$BB/usr/include"
 
 # Host build tools missing from this image:
@@ -237,8 +239,8 @@ WP_PC="$BB/usr/share/pkgconfig/wayland-protocols.pc"
 WP_VER=$(sed -n 's/^Version: //p' "$WP_PC" 2>/dev/null || true)
 if [ "$WP_VER" != "1.44" ]; then
   echo "==> forcing wayland-protocols rebuild (installed='$WP_VER', want 1.44)"
-  rm -rf build_work/iphoneos-arm64-rootless/1900/wayland-protocols \
-         build_stage/iphoneos-arm64-rootless/1900/wayland-protocols 2>/dev/null || true
+  rm -rf build_work/$XIOS_TRIPLE/wayland-protocols \
+         build_stage/$XIOS_TRIPLE/wayland-protocols 2>/dev/null || true
 fi
 
 # libpulse (PulseAudio CLIENT lib) is built on procursus-vol-shell, not here. mpv's `pulse` AO
@@ -247,10 +249,10 @@ fi
 # (same dpkg-deb -x pattern build-gtk.sh uses for the Wayland libs). No PA DAEMON is rebuilt here.
 echo "==> staging libpulse client (libpulse0 + libpulse-dev) into build_base for mpv's pulse AO"
 for d in libpulse0 libpulse-dev; do
-  f=$(ls -1 /out/${d}_*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1) || true
+  f=$(ls -1 /out/${d}_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1) || true
   if [ -n "${f:-}" ]; then
     echo "    staging $f"
-    dpkg-deb -x "$f" /work/Procursus/build_base/iphoneos-arm64-rootless/1900 2>/dev/null || true
+    dpkg-deb -x "$f" $XIOS_BUILD_BASE 2>/dev/null || true
   else
     echo "    WARNING: no ${d} deb found in /out — mpv pulse AO will fail to configure"
   fi
@@ -260,15 +262,15 @@ done
 # reconfigure that now enables the pulse AO. Drop the marker (mpv-setup re-wipes build/ and
 # reconfigures) so the -Dpulse=enabled meson run actually happens. Source tree is left intact.
 if [ "${FORCE_MPV_REBUILD:-1}" = "1" ]; then
-  rm -f build_work/iphoneos-arm64-rootless/1900/mpv/.build_complete 2>/dev/null || true
+  rm -f build_work/$XIOS_TRIPLE/mpv/.build_complete 2>/dev/null || true
 fi
 if [ "${FORCE_FOOT_REBUILD:-0}" = "1" ]; then
-  rm -f build_work/iphoneos-arm64-rootless/1900/foot/.build_complete 2>/dev/null || true
+  rm -f build_work/$XIOS_TRIPLE/foot/.build_complete 2>/dev/null || true
 fi
 # ffmpeg was built with videotoolbox/audiotoolbox OFF; the recipe now enables them (unblocked by
 # the os/object.h backport above). Drop its marker so configure re-runs with the Apple frameworks.
 if [ "${FORCE_FFMPEG_REBUILD:-0}" = "1" ]; then
-  rm -f build_work/iphoneos-arm64-rootless/1900/ffmpeg/.build_complete 2>/dev/null || true
+  rm -f build_work/$XIOS_TRIPLE/ffmpeg/.build_complete 2>/dev/null || true
 fi
 
 # --- iOS SDK os/object.h fix (unblocks Apple ObjC framework probes) ---------------------------
@@ -300,7 +302,7 @@ if [ -f "$OSOBJ" ] && ! grep -q OS_OBJECT_DECL_SENDABLE_CLASS "$OSOBJ"; then
 EOF
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 if [[ " $TARGETS " == *" mesa-demos"* ]]; then
@@ -320,12 +322,12 @@ for pat in libtllist libfcft foot imv fuzzel grim libgrapheme wayland-protocols 
            libavdevice libswscale libswresample libpostproc ffmpeg libass libplacebo \
            libharfbuzz libutf8proc libfontconfig libfreetype libpixman \
            libcairo libpango libfribidi libglib2.0 libpng libjpeg libturbojpeg; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 for target in $TARGETS; do
   pkg="${target%-package}"
   [ "$pkg" != "$target" ] || continue
-  find ./build_dist/iphoneos-arm64-rootless/1900/"$pkg" \
+  find ./build_dist/$XIOS_TRIPLE/"$pkg" \
     -name '*_iphoneos-arm64.deb' -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 

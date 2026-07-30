@@ -25,7 +25,7 @@ for pkg in \
   libsecret-1-0 libsecret-dev \
   libsoup-3.0-0 libsoup-3.0-dev \
   libwayland0 libwayland-dev wayland-protocols; do
-  deb="$(find /out /repo-debs -maxdepth 1 -type f -name "${pkg}_*_iphoneos-arm64.deb" \
+  deb="$(find /out /repo-debs -maxdepth 1 -type f -name "${pkg}_*_$XIOS_DEB_ARCH.deb" \
     -printf '%f\t%p\n' 2>/dev/null | sort -V | tail -1 | cut -f2-)"
   if [ -z "$deb" ]; then
     echo "ERROR: no current $pkg deb in /out or /repo-debs" >&2

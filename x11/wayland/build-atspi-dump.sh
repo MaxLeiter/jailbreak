@@ -7,6 +7,10 @@
 # Output:
 #   x11/wayland/out/{atspi-dump,xios-a11yd}
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 umask 022
 
 if [ "${XIOS_XBUILD_INNER:-0}" != "1" ]; then
@@ -22,6 +26,7 @@ if [ "${XIOS_XBUILD_INNER:-0}" != "1" ]; then
   if [ -d "$REPO_ROOT/repo/debs" ]; then mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); fi
 
   docker run --rm --platform linux/arm64 -e XIOS_XBUILD_INNER=1 \
+    -e XIOS_TARGET="$XIOS_TARGET_ID" \
     "${mounts[@]}" "$IMAGE" -c "bash /work/x11/wayland/build-atspi-dump.sh"
   exit 0
 fi
@@ -43,10 +48,10 @@ xdeb_extract "$SYS" "$DEB_DIRS" \
   dbus \
   libatspi2.0-0 at-spi2-core-dev
 
-if [ ! -f "$SYS/var/jb/usr/lib/pkgconfig/dbus-1.pc" ]; then
-  mkdir -p "$SYS/var/jb/usr/lib/pkgconfig"
-  cat > "$SYS/var/jb/usr/lib/pkgconfig/dbus-1.pc" <<'PC'
-prefix=/var/jb/usr
+if [ ! -f "$SYS$XIOS_PREFIX/usr/lib/pkgconfig/dbus-1.pc" ]; then
+  mkdir -p "$SYS$XIOS_PREFIX/usr/lib/pkgconfig"
+  cat > "$SYS$XIOS_PREFIX/usr/lib/pkgconfig/dbus-1.pc" <<'PC'
+prefix=$XIOS_PREFIX/usr
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
@@ -58,8 +63,8 @@ Cflags: -I${includedir}/dbus-1.0 -I${libdir}/dbus-1.0/include
 PC
 fi
 
-mkdir -p "$SYS/var/jb/usr/lib/dbus-1.0/include/dbus"
-cat > "$SYS/var/jb/usr/lib/dbus-1.0/include/dbus/dbus-arch-deps.h" <<'EOF'
+mkdir -p "$SYS$XIOS_PREFIX/usr/lib/dbus-1.0/include/dbus"
+cat > "$SYS$XIOS_PREFIX/usr/lib/dbus-1.0/include/dbus/dbus-arch-deps.h" <<'EOF'
 #if !defined (DBUS_INSIDE_DBUS_H) && !defined (DBUS_COMPILATION)
 #error "Only <dbus/dbus.h> can be included directly, this file may disappear or change contents."
 #endif
@@ -93,7 +98,7 @@ done
 SDK="$(dirname "$(command -v "$CC")")/../SDK/iPhoneOS.sdk"
 
 SYSROOT_ROOT="$SYS"
-PREFIX="$SYS/var/jb/usr"
+PREFIX="$SYS$XIOS_PREFIX/usr"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT_ROOT"
 
@@ -102,7 +107,7 @@ DEPFLAGS="-I$PREFIX/include/at-spi-2.0 \
   -I$PREFIX/lib/dbus-1.0/include -I$PREFIX/include/dbus-1.0 -I$X11/linux-build/src-tarballs/dbus-headers \
   -I$PREFIX/include/glib-2.0 -I$PREFIX/lib/glib-2.0/include \
   -L$PREFIX/lib -latspi -ldbus-1 -lgio-2.0 -lgobject-2.0 -lglib-2.0"
-RPATH="-Wl,-rpath,/var/jb/usr/lib"
+RPATH="-Wl,-rpath,$XIOS_PREFIX/usr/lib"
 
 echo "==> build atspi-dump"
 # shellcheck disable=SC2086

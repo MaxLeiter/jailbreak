@@ -10,6 +10,8 @@
 # This packer deliberately stages only DEBIAN/ and var/ so src/, out/ and helper
 # scripts do not accidentally ship in the installed package.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
@@ -19,8 +21,8 @@ X11DIR="$(cd "$HERE/../.." && pwd)"
 OUT="$X11DIR/linux-build/out"
 
 for f in \
-  "$HERE/var/jb/usr/libexec/xios-hwbridged" \
-  "$HERE/var/jb/usr/libexec/xios-sensord"; do
+  "$HERE$XIOS_PREFIX/usr/libexec/xios-hwbridged" \
+  "$HERE$XIOS_PREFIX/usr/libexec/xios-sensord"; do
   [ -x "$f" ] || {
     echo "ERROR: missing executable payload: $f" >&2
     echo "       run packages/xios-fhs/build-hwbridge.sh in the Procursus container first" >&2
@@ -40,8 +42,8 @@ cp -a "$HERE/var" "$STAGE/"
 find "$STAGE" -type d -exec chmod 0755 {} +
 chmod 0755 "$STAGE/DEBIAN/postinst"
 find "$STAGE/var" -type f -exec chmod 0644 {} +
-chmod 0755 "$STAGE/var/jb/usr/libexec/xios-hwbridged" \
-           "$STAGE/var/jb/usr/libexec/xios-sensord"
+chmod 0755 "$STAGE$XIOS_PREFIX/usr/libexec/xios-hwbridged" \
+           "$STAGE$XIOS_PREFIX/usr/libexec/xios-sensord"
 
 built="$(xmkdeb "$STAGE" "$OUT")"
 echo "==> built $built"

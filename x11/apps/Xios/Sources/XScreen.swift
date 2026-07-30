@@ -317,6 +317,10 @@ final class XScreenView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
 
     func start() {
+        // Name this process in the shared status table explicitly rather than relying
+        // on getprogname(), and let iosc_status drop any table a previous (killed)
+        // instance left behind — see iosc_status.c's init_paths.
+        iosc_status_set_producer("Xios")
         loadConfig()
         installLifecycleObservers()
         SystemIntegration.shared.install(on: self)
@@ -328,6 +332,9 @@ final class XScreenView: UIView {
         // Retry once we become active/foreground, where the GPU is reachable.
         if !setupMetal() { return }
         metalReady = true
+        // loadConfig() above already decided the upscale mode, but there was no device
+        // to build the pass with. Now there is.
+        syncUpscaler()
 
         awaitingCompositor = true
         startTestPattern()
@@ -406,6 +413,7 @@ final class XScreenView: UIView {
         if ddxIsIOSurface { startIOSurfaceConnect() }
         connectInput()
         displayLink?.isPaused = false
+        syncUpscaler()      // rebuild the pass backgrounding released
         writeStatus()
     }
 
@@ -818,40 +826,87 @@ final class XScreenView: UIView {
         }
     }
 
-    /// Resolve the upscale mode. Our own environment wins when it says anything at
-    /// all, so a shell-launched debug run can override the compositor; otherwise the
-    /// compositor's xios.json hint decides; otherwise off.
-    private func resolveUpscaleMode(_ ddx: DDXFields) -> XiosUpscaleMode {
+    /// Last `upscale` hint the compositor advertised, kept so the mode can be
+    /// re-resolved when the in-app choice changes without re-reading xios.json.
+    private var compositorUpscaleHint: String?
+
+    private static let upscaleDefaultsKey = "XiosUpscale"
+
+    /// Resolve the upscale mode, most specific authority first:
+    ///   1. the in-app choice — the user is the most specific authority there is, and
+    ///      a settings toggle a compositor hint could override would be a lie;
+    ///   2. XIOS_UPSCALE in our own environment, for a shell-launched debug run;
+    ///   3. the compositor's xios.json hint (its IOSC_UPSCALE, forwarded);
+    ///   4. off.
+    private func resolveUpscaleMode() -> XiosUpscaleMode {
+        if let raw = UserDefaults.standard.string(forKey: Self.upscaleDefaultsKey),
+           !raw.isEmpty {
+            return XiosUpscaleMode.parse(raw)
+        }
         if let env = ProcessInfo.processInfo.environment["XIOS_UPSCALE"], !env.isEmpty {
             return XiosUpscaleMode.parse(env)
         }
-        return XiosUpscaleMode.parse(ddx.upscale)
+        return XiosUpscaleMode.parse(compositorUpscaleHint)
+    }
+
+    /// Whether the user has made an explicit in-app choice (vs inheriting a hint).
+    private var hasUpscalePreference: Bool {
+        (UserDefaults.standard.string(forKey: Self.upscaleDefaultsKey) ?? "").isEmpty == false
+    }
+
+    /// Apply and persist an in-app choice. Takes effect on the NEXT FRAME — no session
+    /// restart — because upscaling is present-side only: nothing about the compositor's
+    /// output or any client's view of it changes. Passing nil clears the choice and
+    /// falls back to the environment/compositor hint.
+    private func setUpscalePreference(_ mode: XiosUpscaleMode?) {
+        if let mode {
+            UserDefaults.standard.set(mode.spec, forKey: Self.upscaleDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.upscaleDefaultsKey)
+        }
+        applyUpscaleMode(resolveUpscaleMode())
+        lastToolMessage = upscaleMode.isOff
+            ? "Rendering at full panel resolution"
+            : "Rendering at \(upscaleMode.title) below panel, MetalFX scaling up"
     }
 
     private func applyUpscaleMode(_ mode: XiosUpscaleMode) {
         guard mode != upscaleMode else { return }
         upscaleMode = mode
-        if mode.isOff {
+        needsPresent = true
+        syncUpscaler()
+    }
+
+    /// Make the MetalFX pass match `upscaleMode`. Idempotent, and deliberately safe to
+    /// call before Metal exists: start() runs loadConfig() — and therefore
+    /// applyUpscaleMode — BEFORE setupMetal(), so the first call for a config that asks
+    /// for upscaling always arrives with no device yet. Attaching only from
+    /// applyUpscaleMode left the upscaler permanently nil in exactly that case, because
+    /// its `mode != upscaleMode` guard makes every later config poll a no-op; the mode
+    /// was right and nothing was ever built from it. Hence a separate idempotent step,
+    /// called again once Metal is up and on every foreground.
+    private func syncUpscaler() {
+        guard metalReady, let device else { return }
+        if upscaleMode.isOff {
+            guard upscaler != nil else { return }
             upscaler?.releaseResources()
             upscaler = nil
-            // Back to the cheaper drawable the direct path wants.
-            if metalReady { metalLayer.framebufferOnly = true }
+            metalLayer.framebufferOnly = true   // back to the cheaper direct-path drawable
             publishUpscaleStatus(nil)
             return
         }
-        if metalReady, let device {
-            // MetalFX writes the output texture, which framebufferOnly forbids. Only
-            // relaxed while upscaling is on, so the default path keeps the tighter
-            // drawable it has always had.
-            metalLayer.framebufferOnly = false
-            if upscaler == nil { upscaler = XiosUpscaler(device: device) }
-            if !XiosUpscaler.supported(device) {
-                // Probed YES on the A10 target, but never assume: a device whose
-                // spatial scaler says no degrades to the direct present, and says so.
-                publishUpscaleStatus(nil)
-            }
-        }
+        guard upscaler == nil else { return }
+        // MetalFX writes the output texture, which framebufferOnly forbids. Only
+        // relaxed while upscaling is on, so the default path keeps the tighter
+        // drawable it has always had.
+        metalLayer.framebufferOnly = false
+        upscaler = XiosUpscaler(device: device)
         needsPresent = true
+        if !XiosUpscaler.supported(device) {
+            // Probed YES on the A10 target, but never assume: a device whose spatial
+            // scaler says no degrades to the direct present, and says so.
+            publishUpscaleStatus(nil)
+        }
     }
 
     /// `upscale=` in the runtime status table. Upscaling changes what the user sees,
@@ -932,7 +987,8 @@ final class XScreenView: UIView {
         }
         // After the render/input decisions, because it deliberately does not
         // participate in them: flipping the upscale knob must not re-adopt the surface.
-        applyUpscaleMode(resolveUpscaleMode(ddx))
+        compositorUpscaleHint = ddx.upscale
+        applyUpscaleMode(resolveUpscaleMode())
         return true
     }
 
@@ -3449,6 +3505,57 @@ final class XScreenView: UIView {
                                             color: UIColor(white: 0.62, alpha: 1)))
     }
 
+    /// Present-side MetalFX upscaling, as a user-visible control rather than only an
+    /// env var. Unlike Screen Size this needs no session restart and no compositor
+    /// involvement — it changes how the display app scales its own drawable, so the
+    /// next frame already looks different.
+    private func addRenderScaleControls(to stack: UIStackView) {
+        let chips = XiosUpscaleMode.selectable.map { mode in
+            sizeButton(mode.title, selected: upscaleMode == mode) { [weak self] in
+                // Choosing Off explicitly still records a preference, so it pins the
+                // app against a compositor that starts advertising a hint later.
+                self?.setUpscalePreference(mode)
+                self?.presentDisplayControl()
+            }
+        }
+        stack.addArrangedSubview(buttonRow(chips))
+
+        // Report what actually happened, not what was asked for. Auto declines when
+        // the desktop is already at or above panel resolution, and a device whose GPU
+        // has no MetalFX spatial scaler falls back to a direct present — both are
+        // states the user would otherwise experience as "the setting does nothing".
+        stack.addArrangedSubview(panelLabel(renderScaleSummary(), size: 11,
+                                            color: UIColor(white: 0.62, alpha: 1)))
+        if hasUpscalePreference {
+            stack.addArrangedSubview(panelButton("Follow Session Setting") { [weak self] in
+                self?.setUpscalePreference(nil)
+                self?.presentDisplayControl()
+            })
+        }
+    }
+
+    /// One line describing the live upscale state and its trade-off.
+    private func renderScaleSummary() -> String {
+        if upscaleMode.isOff {
+            return "Off renders the desktop at the panel's full resolution. "
+                + "A lower scale draws fewer pixels and scales up on screen: "
+                + "easier on the GPU, slightly softer."
+        }
+        // lastUpscaleStatus is the value published to `xios-status`, i.e. ground truth.
+        switch lastUpscaleStatus {
+        case let s where s.hasPrefix("off (") :
+            return "Requested \(upscaleMode.title), but this GPU has no MetalFX spatial "
+                + "scaler — presenting directly instead."
+        case "off", "":
+            return upscaleMode == .auto
+                ? "Auto is on, but the desktop is already at or below the panel's "
+                  + "resolution, so nothing is being upscaled."
+                : "Requested \(upscaleMode.title); waiting for the next frame."
+        default:
+            return "Active: \(lastUpscaleStatus)"
+        }
+    }
+
     private func sizeButton(_ title: String, selected: Bool,
                             action: @escaping () -> Void) -> UIButton {
         let button = panelButton(title, action)
@@ -3492,6 +3599,9 @@ final class XScreenView: UIView {
 
         addSection("Screen Size", to: stack)
         addScreenSizeControls(to: stack)
+
+        addSection("Render Scale", to: stack)
+        addRenderScaleControls(to: stack)
 
         addSection("Apps", to: stack)
         stack.addArrangedSubview(detailPanelButton(

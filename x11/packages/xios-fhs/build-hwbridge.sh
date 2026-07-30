@@ -138,4 +138,4 @@ mkdir -p "$DEST"
 cp -a "$OUT/xios-hwbridged" "$DEST/xios-hwbridged"
 cp -a "$OUT/xios-sensord" "$DEST/xios-sensord"
 
-echo "==> done -> $OUT/xios-hwbridged $OUT/xios-sensord (+ staged into var/jb/usr/libexec)"
+echo "==> done -> $OUT/xios-hwbridged $OUT/xios-sensord (+ staged into ${DEST#"$SRC"})"

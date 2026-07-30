@@ -114,6 +114,7 @@ static void recomposite_all_at(const char *reason, int line);   /* coalesced rep
 #define recomposite_all() recomposite_all_at(__func__, __LINE__)
 static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
 static void surface_unmap(struct iosc_surface *s);
+static void native_mark_surface_dirty(struct iosc_surface *s);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 static void output_send_state(struct wl_resource *r);
@@ -243,6 +244,7 @@ struct iosc_surface {
     int                 dx, dy;          /* placement (top-left) on the output */
     int                 native_canvas_w, native_canvas_h, native_canvas_stride;
     int                 native_canvas_live;
+    int                 native_canvas_dirty;
     int                 pending_buffer_scale;
     int                 current_buffer_scale;
     int                 pending_scale_dirty;
@@ -1300,6 +1302,7 @@ static void output_damage_add_surface(struct iosc_surface *s)
 {
     int x0, y0, x1, y1;
     if (!surface_rect(s, &x0, &y0, &x1, &y1)) return;
+    native_mark_surface_dirty(s);
     if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
         fprintf(stderr, "iosc: damage-add-surface role=%d mapped=%d rect=%d,%d %dx%d\n",
                 s->role, s->mapped, x0, y0, x1 - x0, y1 - y0);
@@ -1313,6 +1316,7 @@ static int output_damage_add_surface_at(struct iosc_surface *s, int lx, int ly)
     int w = 0, h = 0;
     surface_display_size(s, &w, &h);
     if (w <= 0 || h <= 0) return 0;
+    native_mark_surface_dirty(s);
     int os = output_scale();
     output_damage_add_px(lx * os, ly * os, w * os, h * os);
     return 1;
@@ -1332,6 +1336,7 @@ static int output_damage_add_overlay_surface(struct iosc_surface *s)
 static void output_damage_add_surface_rect(struct iosc_surface *s, int x, int y, int w, int h)
 {
     if (!s || w <= 0 || h <= 0 || !s->mapped) return;
+    native_mark_surface_dirty(s);
     int os = output_scale();
     output_damage_add_px((s->dx + x) * os, (s->dy + y) * os, w * os, h * os);
 }
@@ -1493,6 +1498,13 @@ static struct iosc_surface *native_owner_toplevel(struct iosc_surface *s)
     return s;
 }
 
+static void native_mark_surface_dirty(struct iosc_surface *s)
+{
+    if (!g_native_mode) return;
+    struct iosc_surface *owner = native_owner_toplevel(s);
+    if (owner) owner->native_canvas_dirty = 1;
+}
+
 static uint32_t native_window_flags(struct iosc_surface *s)
 {
     uint32_t flags = 0;
@@ -1534,6 +1546,7 @@ static int native_ensure_canvas(struct iosc_surface *s, int w, int h, int send_g
     s->native_canvas_h = h;
     s->native_canvas_stride = stride;
     s->native_canvas_live = 1;
+    s->native_canvas_dirty = 1;
     if (send_geom) xios_canvas_geom(s->window_id);
     return 0;
 }
@@ -1564,19 +1577,19 @@ static int notify_native_gpu_frame(uint32_t window_id)
     return -1;
 }
 
-static void native_composite_toplevel(struct iosc_surface *s)
+static int native_composite_toplevel(struct iosc_surface *s)
 {
     if (!s || s->role != IOSC_ROLE_TOPLEVEL || !s->mapped || s->toplevel_minimized)
-        return;
+        return 0;
     int cw = 0, ch = 0;
     if (native_canvas_size_for_surface(s, &cw, &ch) != 0)
-        return;
+        return 0;
     if (native_ensure_canvas(s, cw, ch, s->native_canvas_live) != 0)
-        return;
+        return 0;
     void *canvas = xios_canvas_surface(s->window_id);
-    if (!canvas) return;
+    if (!canvas) return 0;
     if (iosc_gl_bind_target(canvas, s->native_canvas_w, s->native_canvas_h) != 0)
-        return;
+        return 0;
 
     iosc_gl_begin();
     composite_surface_at_blended(s, 0, 0);
@@ -1597,16 +1610,43 @@ static void native_composite_toplevel(struct iosc_surface *s)
         }
     }
     iosc_gl_end();
-    (void)notify_native_gpu_frame(s->window_id);
+    if (notify_native_gpu_frame(s->window_id) != 0)
+        return 0;
+    s->native_canvas_dirty = 0;
+    return 1;
 }
 
 static void native_recomposite_now(void)
 {
     if (!iosc_gl_ok()) return;
+    int painted = 0;
+    int skipped = 0;
     for (int i = 0; i < g_nmapped; i++) {
         struct iosc_surface *s = g_mapped[i];
-        if (s->role == IOSC_ROLE_TOPLEVEL)
-            native_composite_toplevel(s);
+        if (s->role != IOSC_ROLE_TOPLEVEL)
+            continue;
+        if (!s->native_canvas_dirty && s->native_canvas_live) {
+            skipped++;
+            continue;
+        }
+        painted += native_composite_toplevel(s);
+    }
+    if (iosc_env_truthy(getenv("IOSC_NATIVE_STATS"))) {
+        static uint64_t cycles;
+        static uint64_t canvases;
+        static uint64_t avoided;
+        cycles++;
+        canvases += (uint64_t)painted;
+        avoided += (uint64_t)skipped;
+        if (cycles % 120u == 0) {
+            fprintf(stderr,
+                    "iosc: native repaint stats cycles=%llu canvases=%llu "
+                    "avoided=%llu last=%d/%d\n",
+                    (unsigned long long)cycles,
+                    (unsigned long long)canvases,
+                    (unsigned long long)avoided,
+                    painted, skipped);
+        }
     }
     frame_callbacks_after_repaint();
 }

@@ -33,6 +33,27 @@ xsign() {
         echo "xsign: ERROR ldid not found (brew install ldid)" >&2; return 1; }
     [ -n "$bin" ] && [ -f "$bin" ] || {
         echo "xsign: ERROR missing binary: $bin" >&2; return 1; }
+    # Entitlement files are committed with rootless path exceptions. A binary
+    # signed for another target needs its OWN prefix excepted -- the exception is
+    # what lets it read its libraries and sockets at all, so a stale /var/jb here
+    # is a sandbox denial on device, not a cosmetic mismatch. Render a copy for
+    # the selected target rather than making every caller remember to.
+    # XIOS_PREFIX comes from linux-build/target-lib.sh; unset means rootless, so
+    # this is a no-op for every existing caller.
+    if [ -n "$ents" ] && [ "${XIOS_PREFIX-/var/jb}" != "/var/jb" ]; then
+        local rendered
+        rendered="$(mktemp -t xios-ents)" || return 1
+        # An empty prefix must NOT become "/": that grants the whole filesystem
+        # where rootless granted one directory. Rootful installs under the
+        # subprefix, so that is what gets excepted.
+        local ent_prefix="${XIOS_PREFIX:-${XIOS_SUBPREFIX:-/usr}}"
+        sed -e "s|/var/jb/tmp|${XIOS_RUNTIME_TMP:-/var/tmp}|g" \
+            -e "s|<string>/var/jb/</string>|<string>$ent_prefix/</string>|g" \
+            -e "s|<string>/private/var/jb/</string>|<string>$ent_prefix/</string>|g" \
+            -e "s|/var/jb/|$ent_prefix/|g" "$ents" > "$rendered"
+        echo "xsign: rendered $ents for prefix ${XIOS_PREFIX:-/}" >&2
+        ents="$rendered"
+    fi
     if [ -n "$ents" ]; then
         ldid -S"$ents" "$bin" || { echo "xsign: ERROR ldid failed on $bin" >&2; return 1; }
     else
@@ -117,7 +138,7 @@ xdeb_find() {
     local d f
     for d in "$@"; do
         [ -d "$d" ] || continue
-        f="$(ls -t "$d/${stem}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)"
+        f="$(ls -t "$d/${stem}_"*_$XIOS_DEB_ARCH.deb 2>/dev/null | head -1 || true)"
         [ -n "$f" ] && { echo "$f"; return 0; }
     done
     return 1

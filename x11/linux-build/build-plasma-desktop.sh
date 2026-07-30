@@ -7,9 +7,11 @@
 # layer that plasma-workspace, plasma-desktop, plasma-nano, and plasma-mobile
 # need before plasmashell/mobile shell testing.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 
 TARGETS="${TARGETS:-libplasma-package}"
@@ -112,7 +114,7 @@ stage_latest_deb_from_out() {
   done
   [ -n "$best" ] || return 0
   echo "==> staging $(basename "$best") into build_base"
-  dpkg-deb -x "$best" /work/Procursus/build_base/iphoneos-arm64-rootless/1900
+  dpkg-deb -x "$best" $XIOS_BUILD_BASE
 }
 
 # plasma-pa needs PulseAudioQt, which needs the PulseAudio client pc files from the
@@ -249,7 +251,7 @@ for deb in "${COLLECT_DEBS[@]}"; do
 done
 cp -v /work/build_info/iosc-gpu-client-ent.xml /work/build_info/iosc-gl-ent.xml build_misc/entitlements/ 2>/dev/null || true
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   PATH=/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
@@ -266,7 +268,7 @@ done
 
 # PACK output debs live outside the transient package tree that milou.mk clears. Remove any
 # obsolete empty dev deb left by an older warm-volume recipe so collection cannot resurrect it.
-find build_dist/iphoneos-arm64-rootless/1900/milou -maxdepth 1 -type f \
+find build_dist/$XIOS_TRIPLE/milou -maxdepth 1 -type f \
   -name 'milou-dev_*_iphoneos-arm64.deb' -delete 2>/dev/null || true
 
 echo "==> collect Plasma Desktop debs -> /out"
@@ -274,7 +276,7 @@ mkdir -p /out
 for pkg in "${COLLECT_DEBS[@]}"; do
   while IFS= read -r deb; do
     [ -e "$deb" ] && cp -v "$deb" /out/
-  done < <(find build_dist/iphoneos-arm64-rootless/1900 -maxdepth 2 -type f \( \
+  done < <(find build_dist/$XIOS_TRIPLE -maxdepth 2 -type f \( \
     -name "${pkg}_*.deb" -o \
     -name "${pkg}-dev_*.deb" \
   \) | sort)

@@ -25,6 +25,8 @@
 # (else the new build is shadowed at link/stage time — the ICU _icudt74_dat failure mode).
 # nghttp2 1.61.0 is the correct pin (curl's http2 dep) and is REUSED as-is — NOT wiped.
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 echo "==> installing wave-3 recipes into makefiles/ (bumps/new override upstream)"
@@ -67,12 +69,12 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
-BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BW=$XIOS_BUILD_WORK
+BS=$XIOS_BUILD_STAGE
+BB=$XIOS_SYSROOT
 mkdir -p /out
 declare -A RESULT
 
@@ -127,7 +129,7 @@ build_one ffmpeg
 echo ""
 echo "==> collect debs -> /out (EXACT name_pin_ so gtk-era old versions don't leak)"
 collect() { # name  pin
-  find . -name "${1}_${2}_iphoneos-arm64.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${1}_${2}_$XIOS_DEB_ARCH.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 }
 for n in libssl3 libssl-dev libssl-doc openssl;                     do collect "$n" '3.5.3+ios1'; done
 for n in libnghttp2-14 libnghttp2-dev;                              do collect "$n" '1.61.0+ios1'; done

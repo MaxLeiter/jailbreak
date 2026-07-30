@@ -73,5 +73,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends lsb-release wge
   && clang-19 --version \
   && rm -rf /var/lib/apt/lists/*
 
+# Target-matrix defaults for the container-side build scripts. Baking it in means
+# a bare `docker run ... /work/build-foo.sh` still resolves the build_base/work/
+# stage/dist paths without the caller having to mount anything; the host wrappers
+# bind-mount over it so edits here take effect without an image rebuild. Last
+# layer — it is 3 KB and changes far more often than the toolchain above it.
+COPY target-env.sh /work/target-env.sh
+
 WORKDIR /work
 ENTRYPOINT ["/bin/bash"]

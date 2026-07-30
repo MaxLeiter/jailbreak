@@ -48,7 +48,7 @@ libpixman: libpixman-setup
 	# meson already bakes LC_RPATH /var/jb/usr/lib into the dylib; AFTER_BUILD adds it again and
 	# install_name_tool errors on the duplicate. Strip it first so AFTER_BUILD re-adds cleanly.
 	for f in $$(find $(BUILD_STAGE)/libpixman -name '*.dylib' 2>/dev/null); do \
-		$(I_N_T) -delete_rpath /var/jb/usr/lib $$f 2>/dev/null || true; \
+		$(I_N_T) -delete_rpath $(MEMO_PREFIX)/usr/lib $$f 2>/dev/null || true; \
 	done
 	$(call AFTER_BUILD,copy)
 endif

@@ -1,0 +1,11 @@
+--- a/meson.build
++++ b/meson.build
+@@ -570,7 +570,7 @@ if not pango.found()
+   pangoft2     = dependency('pangoft2',    version: '>='+pango_minver)
+ endif
+ 
+-if cc.run('''
++if not meson.is_cross_build() and cc.run('''
+   #include <pango/pango.h>
+   #include <string.h>
+   #include <stdlib.h>

@@ -1,3 +1,6 @@
-# The bridge binaries embed the synthetic sysfs root.
-# Add rootful targets only after staging target-built bridge binaries.
+# The bridge binaries embed the synthetic sysfs root (-DDEFAULT_SYS_ROOT), so a
+# target is only supported once build-hwbridge.sh has staged binaries for it
+# under packages/xios-fhs<prefix>/usr/libexec. Both roots have been staged:
+# rootless /var/jb/sys, rootful /sys.
 rootless-1900
+rootful-1900

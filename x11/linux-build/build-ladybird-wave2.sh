@@ -20,6 +20,8 @@
 # staged shadow (lib+headers+.pc+bin+config) AND the build_work tree so the new version extracts,
 # builds, and stages without being shadowed at link time (the ICU _icudt74_dat failure mode).
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 echo "==> installing wave-2 recipes into makefiles/ (bumps override upstream)"
@@ -49,17 +51,17 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 # NOTE: Procursus keys build_work/build_stage/build_base by MEMO_TARGET/MEMO_CFVER, so the real
-# per-package trees live under .../iphoneos-arm64-rootless/1900/<pkg>. Wiping build_work/<pkg>
+# per-package trees live under .../$XIOS_TRIPLE/<pkg>. Wiping build_work/<pkg>
 # (bare) does NOTHING — the stale gtk-era tree + its .build_complete survive and the recipe
 # no-op's ("Using previously built"), repackaging stale binaries under the new version. Must wipe
 # the keyed paths.
-BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
-BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BW=$XIOS_BUILD_WORK
+BS=$XIOS_BUILD_STAGE
+BB=$XIOS_SYSROOT
 mkdir -p /out
 declare -A RESULT
 
@@ -137,7 +139,7 @@ for pat in libpng16 libjpeg62-turbo libturbojpeg0 libjpeg-turbo-progs \
            libfreetype6 libfreetype-dev \
            libharfbuzz0b libharfbuzz-icu0 libharfbuzz-subset0 libharfbuzz-dev \
            fontconfig libfontconfig1 libfontconfig-dev fontconfig-config; do
-  find . -name "${pat}_*_iphoneos-arm64.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}_*_$XIOS_DEB_ARCH.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo ""

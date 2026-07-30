@@ -6,6 +6,8 @@
 # and the upstream Bun binary failure mode. Current package builds live in
 # build-bun-ios.sh / run-bun-ios.sh; keep this script for preflight probes.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 umask 022
 
 OUT="${OUT:-/out}"
@@ -43,8 +45,8 @@ EOF
 
   echo "==> package bun-preflight deb"
   rm -rf "$WORK/pkg"
-  mkdir -p "$WORK/pkg/DEBIAN" "$WORK/pkg/var/jb/usr/bin"
-  cp "$OUT/bun-preflight" "$WORK/pkg/var/jb/usr/bin/bun-preflight"
+  mkdir -p "$WORK/pkg/DEBIAN" "$WORK/pkg$XIOS_PREFIX/usr/bin"
+  cp "$OUT/bun-preflight" "$WORK/pkg$XIOS_PREFIX/usr/bin/bun-preflight"
   cat > "$WORK/pkg/DEBIAN/control" <<'EOF'
 Package: bun-preflight
 Name: Bun Preflight
@@ -56,7 +58,7 @@ Author: max
 Section: Development
 Priority: optional
 EOF
-  dpkg-deb -Zxz -b "$WORK/pkg" "$OUT/bun-preflight_0.0.1_iphoneos-arm64.deb"
+  dpkg-deb -Zxz -b "$WORK/pkg" "$OUT/bun-preflight_0.0.1_$XIOS_DEB_ARCH.deb"
 }
 
 probe_official_bun() {

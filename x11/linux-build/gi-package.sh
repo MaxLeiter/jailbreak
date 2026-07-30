@@ -3,7 +3,11 @@
 # Runs ON the iPad. Produces: libgirepository-1.0-1, libgirepository-1.0-dev,
 # gobject-introspection, gir1.2-glib-2.0, gir1.2-freedesktop.
 set -e
-SPIKE=/var/jb/tmp/gi-spike
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
+SPIKE=$XIOS_PREFIX/tmp/gi-spike
 SRC=$SPIKE/gobject-introspection-1.78.0
 BUILD=$SRC/_build
 STAGE=$SPIKE/stage          # meson install tree (DESTDIR)
@@ -11,7 +15,7 @@ DEBROOT=$SPIKE/debs         # per-package trees + output .debs
 V=1.78.0
 ARCH=iphoneos-arm64
 MAINT="Max Leiter <maxwell.leiter@gmail.com>"
-P=/var/jb/usr
+P=$XIOS_PREFIX/usr
 
 rm -rf "$STAGE" "$DEBROOT"; mkdir -p "$STAGE" "$DEBROOT"
 
@@ -21,7 +25,7 @@ export DYLD_LIBRARY_PATH=$P/lib:$BUILD/girepository:$BUILD/girepository/cmph
 export DYLD_INSERT_LIBRARIES=$SPIKE/sljit_shim.dylib
 DESTDIR="$STAGE" meson install -C _build --no-rebuild
 
-echo "=== add /var/jb/usr/lib rpath to the loader + tools (Procursus parity), re-sign ==="
+echo "=== add $XIOS_PREFIX/usr/lib rpath to the loader + tools (Procursus parity), re-sign ==="
 for f in "$STAGE$P/lib/libgirepository-1.0.1.dylib" \
          "$STAGE$P/bin/g-ir-compiler" "$STAGE$P/bin/g-ir-generate" "$STAGE$P/bin/g-ir-inspect"; do
   [ -f "$f" ] || continue

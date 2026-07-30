@@ -44,7 +44,7 @@ else
 papers: papers-setup
 	# Put the unprefixed gettext ABI shim ahead of GLib's bundled proxy-libintl
 	# for the final Rust link. Its install name remains @rpath/libgtkintl.dylib.
-	ln -sf /work/Procursus/build_tools/papers-gettext/var/jb/usr/lib/libgtkintl.dylib \
+	ln -sf /work/Procursus/build_tools/papers-gettext$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgtkintl.dylib \
 		$(BUILD_BASE)/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libintl.dylib
 	cd $(BUILD_WORK)/papers/build && meson \
 		--cross-file cross.txt \

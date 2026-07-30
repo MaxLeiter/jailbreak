@@ -106,6 +106,19 @@ if [ -z "$SOURCE" ]; then
 fi
 echo "==> target=$TARGET index-source=$SOURCE${ONLY:+ only=$ONLY}"
 
+# This script publishes the flat rootless repo. Other profiles can be generated
+# locally (XIOS_REPO_PROFILE=rootful bin/lib/make-repo.py writes an independent
+# tree under repo/profiles/), but publishing one needs its own domain, project
+# and Blob prefix, and per the migration plan must not happen before a real
+# rootful device has passed install and launch smoke tests.
+if [ "${XIOS_REPO_PROFILE:-rootless}" != "rootless" ]; then
+  echo "ERROR: publishing the '$XIOS_REPO_PROFILE' profile is not wired up." >&2
+  echo "       Generate it locally for inspection instead:" >&2
+  echo "         XIOS_REPO_PROFILE=$XIOS_REPO_PROFILE .repo-venv/bin/python bin/lib/make-repo.py" >&2
+  echo "       See x11/docs/rootless-rootful-cfver-migration-plan.md, Phase 5." >&2
+  exit 2
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCKDIR="${TMPDIR:-/tmp}/maxleiter-repo-publish.lock"
 SCOPE="${VERCEL_SCOPE:-maxleiters-team}"

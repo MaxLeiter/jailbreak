@@ -19,32 +19,42 @@
 # -14 revision: collapses the private IOSurface wire to its sole supported,
 # mandatory broker-fence contract and removes legacy version negotiation.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target_arg "${1:-}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
 . "$_x/lib/xlib.sh"
 
-BUILD=/private/tmp/angle-ios-build/angle/out/ios-arm64
-INC=/private/tmp/angle-ios-build/angle/include
-OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
-SHIM=${IOSC_EGL_SHIM:-/Users/max/Documents/jailbreak/x11/wayland/out/libiosc_egl.dylib}
+BUILD="${ANGLE_BUILD_DIR:-/private/tmp/angle-ios-build/angle/out/ios-arm64}"
+INC="${ANGLE_INC_DIR:-/private/tmp/angle-ios-build/angle/include}"
+# Was an absolute path into a specific checkout, so running this from a worktree
+# wrote its output into a different tree entirely. Derive it, and split
+# non-rootless targets into their own directory like every other builder.
+OUTDIR="$XLIB_ROOT/linux-build/out"
+if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
+  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
+fi
+SHIM="${IOSC_EGL_SHIM:-$XLIB_ROOT/wayland/out/libiosc_egl.dylib}"
 BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
 VER="2.1.0+git20260630.a32d31d+es3-14"
-DEB="angle_${VER}_iphoneos-arm64.deb"
+DEB="angle_${VER}_$XIOS_DEB_ARCH.deb"
 
 rm -rf "$STAGEROOT"
-mkdir -p "$STAGE/var/jb/lib/angle" "$STAGE/var/jb/include" "$STAGE/DEBIAN"
+mkdir -p "$STAGE$XIOS_PREFIX/lib/angle" "$STAGE$XIOS_PREFIX/include" "$STAGE/DEBIAN"
 
 # 1. framework binary -> plain dylib. libEGL.dylib is the iosc Wayland-platform
 # shim when available; the real ANGLE libEGL stays beside it for forwarding.
 if [ -f "$BUILD/libEGL.framework/libEGL" ] &&
    [ -f "$BUILD/libGLESv2.framework/libGLESv2" ] &&
    [ -d "$INC/EGL" ]; then
-  cp "$BUILD/libEGL.framework/libEGL"       "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-  cp "$BUILD/libGLESv2.framework/libGLESv2" "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+  cp "$BUILD/libEGL.framework/libEGL"       "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+  cp "$BUILD/libGLESv2.framework/libGLESv2" "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
   ANGLE_INCLUDE_ROOT="$INC"
 elif [ -n "$BASE_DEB" ]; then
   [ -f "$BASE_DEB" ] || {
@@ -56,56 +66,135 @@ elif [ -n "$BASE_DEB" ]; then
     debian:bookworm-slim \
     bash -ceu 'test "$(dpkg-deb -f "/input/$1" Package)" = angle; dpkg-deb -x "/input/$1" /base' \
     _ "$(basename "$BASE_DEB")"
-  cp "$BASE_STAGE/var/jb/lib/angle/libEGL.angle.dylib" "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-  cp "$BASE_STAGE/var/jb/lib/angle/libGLESv2.dylib" "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
-  ANGLE_INCLUDE_ROOT="$BASE_STAGE/var/jb/include"
+  # The base deb carries whichever prefix IT was built for, which has nothing to
+  # do with the target being packaged now -- restaging a published rootless deb
+  # into a rootful package is the whole point of this path. Read the base at its
+  # own prefix and write at the target's.
+  if [ -d "$BASE_STAGE/var/jb/lib/angle" ]; then
+    BASE_PREFIX=/var/jb
+  else
+    BASE_PREFIX=
+  fi
+  echo "base deb prefix: ${BASE_PREFIX:-/} -> target prefix: ${XIOS_PREFIX:-/}"
+  cp "$BASE_STAGE$BASE_PREFIX/lib/angle/libEGL.angle.dylib" "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+  cp "$BASE_STAGE$BASE_PREFIX/lib/angle/libGLESv2.dylib" "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
+  ANGLE_INCLUDE_ROOT="$BASE_STAGE$BASE_PREFIX/include"
   echo "ANGLE binaries/headers: explicit immutable base $(basename "$BASE_DEB")"
 else
   echo "ERROR: ANGLE source-build artifacts are missing under $BUILD." >&2
   echo "       Rebuild with build-angle.sh, or explicitly set ANGLE_BASE_DEB for a shim-only repack." >&2
   exit 1
 fi
-chmod 0755 "$STAGE/var/jb/lib/angle/"*.dylib
-[ -f "$SHIM" ] || {
+chmod 0755 "$STAGE$XIOS_PREFIX/lib/angle/"*.dylib
+[ "${ANGLE_NO_SHIM:-0}" = 1 ] || [ -f "$SHIM" ] || {
   echo "ERROR: current fenced iosc EGL shim not found at $SHIM; run wayland/build-iosc.sh first" >&2
+  echo "       For a NEW target this is a bootstrap cycle: the shim links against ANGLE," >&2
+  echo "       and ANGLE ships the shim. Break it with ANGLE_NO_SHIM=1 to emit a" >&2
+  echo "       link-only package, build the shim against that, then re-run without it." >&2
   exit 1
 }
-cp "$SHIM" "$STAGE/var/jb/lib/angle/libEGL.dylib"
-chmod 0755 "$STAGE/var/jb/lib/angle/libEGL.dylib"
+if [ "${ANGLE_NO_SHIM:-0}" = 1 ]; then
+  echo "NOTE: ANGLE_NO_SHIM=1 -- emitting a bootstrap package with no iosc EGL shim."
+  echo "      Link-only, for building the shim for a new target. Do NOT publish it:"
+  echo "      libEGL.dylib is the shim, and GPU clients dlopen that name."
+else
+  cp "$SHIM" "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+  chmod 0755 "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+fi
 
 # 2. absolute install names
-install_name_tool -id /var/jb/lib/angle/libEGL.angle.dylib "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-install_name_tool -id /var/jb/lib/angle/libEGL.dylib       "$STAGE/var/jb/lib/angle/libEGL.dylib"
-install_name_tool -id /var/jb/lib/angle/libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+install_name_tool -id $XIOS_PREFIX/lib/angle/libEGL.angle.dylib "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+[ -f "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib" ] && install_name_tool -id $XIOS_PREFIX/lib/angle/libEGL.dylib       "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+install_name_tool -id $XIOS_PREFIX/lib/angle/libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
+
+# 2b. ...and the references BETWEEN them. -id only rewrites a library's own name;
+# the shim's LC_LOAD_DYLIB entries still carry whatever prefix they were built
+# or previously packaged with. That matters most on the ANGLE_BASE_DEB path,
+# which restages binaries from an already-published deb: without this a rootful
+# package installs cleanly and then fails to load, pointing at a /var/jb that is
+# not there. tools/check-target-package.py scans Mach-O load commands for
+# exactly this.
+for lib in libEGL.angle.dylib libEGL.dylib libGLESv2.dylib; do
+  target="$STAGE$XIOS_PREFIX/lib/angle/$lib"
+  [ -f "$target" ] || continue
+  while read -r ref; do
+    case "$ref" in
+      */lib/angle/*)
+        want="$XIOS_PREFIX/lib/angle/${ref##*/}"
+        [ "$ref" = "$want" ] || install_name_tool -change "$ref" "$want" "$target"
+        ;;
+    esac
+  done <<REFS
+$(otool -L "$target" | tail -n +2 | awk '{print $1}')
+REFS
+  # LC_RPATH too: -change only touches LC_ID_DYLIB/LC_LOAD_DYLIB.
+  while read -r rp; do
+    case "$rp" in
+      /var/jb/*|/usr/*)
+        want="$XIOS_PREFIX${rp#/var/jb}"
+        [ "$rp" = "$want" ] || install_name_tool -rpath "$rp" "$want" "$target" 2>/dev/null || true
+        ;;
+    esac
+  done <<RPATHS
+$(otool -l "$target" | awk '/LC_RPATH/{f=1} f&&/ path /{print $2; f=0}')
+RPATHS
+done
+
+# The iosc EGL shim is compiled for one prefix; its embedded paths are string
+# constants and rpaths, not just load commands, so it cannot be laundered from
+# one target to another by install_name_tool. Refuse rather than ship a package
+# that installs and then cannot resolve its own libraries.
+for lib in libEGL.dylib libEGL.angle.dylib libGLESv2.dylib; do
+  f="$STAGE$XIOS_PREFIX/lib/angle/$lib"
+  [ -f "$f" ] || continue
+  for other in /var/jb; do
+    [ "$other" = "$XIOS_PREFIX" ] && continue
+    # Load commands only. install_name_tool rewrites names in place and leaves
+    # the tail of a longer old string in the binary, so grepping raw bytes flags
+    # dylibs that were in fact retargeted correctly.
+    if otool -l "$f" 2>/dev/null |
+         awk '/LC_ID_DYLIB|LC_LOAD_DYLIB|LC_LOAD_WEAK_DYLIB|LC_REEXPORT_DYLIB|LC_RPATH/{c=1}
+              c && / (name|path) /{print $2; c=0}' |
+         grep -q "^$other/"; then
+      echo "ERROR: $lib still embeds $other on target $XIOS_TARGET_ID." >&2
+      echo "       Its shim/binaries were built for a different prefix. Rebuild them for" >&2
+      echo "       this target (wayland/build-iosc.sh, ports/angle/build-angle.sh) instead" >&2
+      echo "       of restaging a package built for another root." >&2
+      exit 1
+    fi
+  done
+done
 
 # 3. ad-hoc sign (the libs carry no entitlements; the GPU-using *process* is the
 #    one that must be ldid-signed with the AGX/IOSurface set, see control below)
-xsign "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-xsign "$STAGE/var/jb/lib/angle/libEGL.dylib"
-xsign "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+xsign "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+[ -f "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib" ] && xsign "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+xsign "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
 
 # 3b. compat symlinks (Debian soname + .so aliases consumers link/dlopen)
-ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.2.dylib"
-ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.so"
-ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.so.1"
-ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.2.dylib"
-ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.so"
-ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.so.2"
+if [ -f "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib" ]; then
+ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.2.dylib"
+ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.so"
+ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.so.1"
+fi
+ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.2.dylib"
+ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.so"
+ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.so.2"
 
 # 4. headers
 cp -R "$ANGLE_INCLUDE_ROOT/EGL" "$ANGLE_INCLUDE_ROOT/GLES" "$ANGLE_INCLUDE_ROOT/GLES2" \
   "$ANGLE_INCLUDE_ROOT/GLES3" "$ANGLE_INCLUDE_ROOT/KHR" "$ANGLE_INCLUDE_ROOT/platform" \
-  "$STAGE/var/jb/include/"
-cp "$ANGLE_INCLUDE_ROOT/angle_gl.h" "$ANGLE_INCLUDE_ROOT/export.h" "$STAGE/var/jb/include/"
+  "$STAGE$XIOS_PREFIX/include/"
+cp "$ANGLE_INCLUDE_ROOT/angle_gl.h" "$ANGLE_INCLUDE_ROOT/export.h" "$STAGE$XIOS_PREFIX/include/"
 
-INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
+INSTKB=$(du -sk "$STAGE${XIOS_PREFIX:-/lib}" | cut -f1)
 
 # 5. control
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: angle
 Name: ANGLE (GLES via Metal)
 Version: ${VER}
-Architecture: iphoneos-arm64
+Architecture: $XIOS_DEB_ARCH
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
@@ -113,7 +202,7 @@ Installed-Size: ${INSTKB}
 Depends: firmware (>= 15.0)
 Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/AGX).
  libEGL + libGLESv2 translating EGL 1.5 / OpenGL ES 2.0/3.0 to Metal on the Apple
- GPU, built from upstream google/angle for arm64 iOS. Installs under /var/jb/lib/angle
+ GPU, built from upstream google/angle for arm64 iOS. Installs under $XIOS_PREFIX/lib/angle
  (does not collide with Mesa's software libEGL/libGLESv2). Supports
  EGL_ANGLE_iosurface_client_buffer for zero-copy GLES-into-IOSurface rendering.
  libEGL.dylib is the iosc Wayland-platform shim when built; it forwards non-Wayland
@@ -130,7 +219,7 @@ Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/
 EOF
 
 echo "=== staged tree ==="
-find "$STAGE/var/jb" -maxdepth 3 -type f | sed "s#$STAGE##" | sort | head -40
+find "$STAGE$XIOS_PREFIX" -maxdepth 3 -type f | sed "s#$STAGE##" | sort | head -40
 echo "installed=${INSTKB}KB"
 
 # 6. build the deb via the container's dpkg-deb

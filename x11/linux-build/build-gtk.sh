@@ -8,6 +8,8 @@
 # /work/recipes, ports at /work/ports, and out at /out. Select targets via TARGETS env:
 #   docker run -e TARGETS="fribidi-package pango-package" ... /work/build-gtk.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host build tools missing from this image:
@@ -104,7 +106,7 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 # unconditionally) requires the Khronos EGL/KHR headers. mesa here was built without
 # EGL so they're absent — drop in the canonical header-only files. epoxy still dlopens
 # libEGL at runtime (graceful if absent; GTK4 then falls back to GLX/cairo).
-BBINC=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb/usr/include
+BBINC=$XIOS_SYSROOT/usr/include
 if [ ! -f "$BBINC/EGL/egl.h" ]; then
   echo "==> installing Khronos EGL/KHR headers into build_base"
   mkdir -p "$BBINC/EGL" "$BBINC/KHR"
@@ -136,14 +138,14 @@ echo "==> staging Wayland backend prerequisites for GTK4"
 apt-get install -y --no-install-recommends libwayland-bin linux-libc-dev libexpat1-dev libffi-dev >/dev/null 2>&1 || true
 for d in libwayland0 libwayland-dev wayland-protocols libxkbcommon0 libxkbcommon-dev libepoll-shim0 libepoll-shim-dev; do
   f=$(ls /out/${d}_*.deb 2>/dev/null | head -1) || true
-  [ -n "$f" ] && dpkg-deb -x "$f" /work/Procursus/build_base/iphoneos-arm64-rootless/1900 2>/dev/null || true
+  [ -n "$f" ] && dpkg-deb -x "$f" $XIOS_BUILD_BASE 2>/dev/null || true
 done
 mkdir -p "$BBINC/linux" "$BBINC/sys"
 cp /usr/include/linux/input-event-codes.h "$BBINC/linux/" 2>/dev/null || true
 echo '#include <linux/input-event-codes.h>' > "$BBINC/linux/input.h"
 echo '#include <sys/types.h>' > "$BBINC/sys/sysmacros.h"
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 for t in $TARGETS; do
@@ -157,7 +159,7 @@ for pat in libfribidi libpango libgdk-pixbuf gdk-pixbuf libatk libgtk gtk \
            libglib2.0 libcairo libharfbuzz libfontconfig libfreetype \
            libgraphite2 libicu libepoxy libpixman libpng libjpeg libtiff \
            libxcursor libxinerama libgraphene; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass — relink any deb importing g_libintl_* onto the shim + add the

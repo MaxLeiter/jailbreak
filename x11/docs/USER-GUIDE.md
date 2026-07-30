@@ -215,18 +215,36 @@ is the default. Both keys also appear in the logs as `[status]` lines, and
 which flavor is up rather than how it is behaving.
 
 **Making it faster on an older iPad.** The A10 iPads are thermally limited before the
-desktop does anything, and the 2160x1620 panel is a lot of pixels for them. Two knobs,
-both opt-in and both reversible by restarting the session:
+desktop does anything, and the 2160x1620 panel is a lot of pixels for them.
 
-| Knob | Effect |
+The easiest lever is **Render Scale**, in the Xios panel (three-finger tap, or the status
+bar button). It draws the desktop below the panel's resolution and scales it back up with
+MetalFX on the way to the screen: fewer pixels to draw, slightly softer edges. It applies
+on the next frame — no session restart — because it happens entirely inside the display
+app, after the desktop is composited. No Linux app can tell.
+
+| Option | What it does |
 |---|---|
-| `IOSC_UPSCALE=auto` | Composite below native and let MetalFX scale up on present. Pair with a lower `IOSC_LOGICAL` — `auto` does nothing on its own if the compositor is already at or above panel resolution. |
-| `IOSC_UPSCALE=1.5` | Same, but always: the present pass composites at panel/1.5 regardless of the compositor's resolution. |
+| **Off** (default) | Full panel resolution. |
+| **Auto** | Only kicks in when the desktop is *already* running below the panel's resolution. On the default session size it correctly does nothing. |
+| **1.25× / 1.5× / 2×** | Always draws at panel ÷ that factor. |
 
-Set them in the environment of whatever starts the session, e.g.
-`IOSC_LOGICAL=1440x1080 IOSC_UPSCALE=auto xios-session iosc`. Confirm it took effect with
-`xios-status upscale`; softer edges are the expected trade. No Wayland client can observe
-this — it happens entirely in the display app, after the desktop is composited.
+The line under the chips reports what is actually happening, not what you picked — so
+"Auto declined because the desktop is already at full resolution" and "this GPU has no
+MetalFX scaler" both show up there rather than looking like a dead setting.
+
+Off is the default deliberately. At the standard session size the desktop is drawn *above*
+panel resolution and scaled down, which is already sharper than the panel can show;
+sending that through a smaller intermediate first trades real detail for a saving in the
+display app only. It pays off best combined with a smaller desktop — try Screen Size
+**Compact** or a custom size alongside it.
+
+The same thing is settable per-session for scripted runs, and the panel setting overrides
+it:
+
+```bash
+IOSC_LOGICAL=1440x1080 IOSC_UPSCALE=auto xios-session iosc
+```
 
 **apt refuses to install a flavor.** Check the iOS floor in the table above. The packages
 carry both `MinimumOSVersion` and a `firmware (>= X)` dependency, so an older device is

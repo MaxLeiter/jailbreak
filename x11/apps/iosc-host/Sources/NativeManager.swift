@@ -21,6 +21,13 @@ final class NativeManager: NSObject {
     private var client: OpaquePointer?          // iosc_native_client*
     private var reader: Thread?
     private var running = false
+    private var launchAccepted = false
+
+    // BIND seeds the first xdg configure, so it must use the connected
+    // UIWindowScene's Split View/Stage Manager geometry rather than the full
+    // UIScreen bounds. The reader consumes this snapshot off the main thread.
+    private let sceneMetricsLock = NSLock()
+    private var sceneMetrics = (width: 1, height: 1, scale: 1)
 
     /// The activity key that carries a window id across scene activation.
     static let windowActivityType = "com.max.iosc.host.window"
@@ -62,6 +69,7 @@ final class NativeManager: NSObject {
         let info = Bundle.main.infoDictionary ?? [:]
         appID   = (info["IOSCAppID"] as? String) ?? ""
         appName = (info["IOSCName"]  as? String) ?? (info["CFBundleDisplayName"] as? String) ?? "app"
+        rememberSceneMetrics(bounds: UIScreen.main.bounds, scale: UIScreen.main.scale)
 
         // Ask ioscd to resolve and launch this installed desktop app outside our sandbox.
         DispatchQueue.global(qos: .userInitiated).async { [weak self, appID] in
@@ -72,11 +80,19 @@ final class NativeManager: NSObject {
                     NSLog("IOSCHost: ioscd rejected or failed LAUNCH_NATIVE for %@", appID)
                     return
                 }
-                self.startReader()
+                DispatchQueue.main.async {
+                    self.launchAccepted = true
+                    self.startReaderIfSceneConnected()
+                }
                 // VoiceOver bridge (inert until xios-a11yd ships; gated on VoiceOver).
                 HostA11yClient.shared.startup(appID: appID)
             }
         }
+    }
+
+    private func startReaderIfSceneConnected() {
+        guard launchAccepted, !waitingScenes.isEmpty || !scenes.isEmpty else { return }
+        startReader()
     }
 
     /// Connect (retrying) and pump events on a background thread.
@@ -91,9 +107,19 @@ final class NativeManager: NSObject {
     }
 
     private func sceneSizePx() -> (Int, Int, Int) {
-        let scale = Int(UIScreen.main.scale)
-        let b = UIScreen.main.bounds
-        return (Int(b.width) * scale, Int(b.height) * scale, scale)
+        sceneMetricsLock.lock()
+        let metrics = sceneMetrics
+        sceneMetricsLock.unlock()
+        return (metrics.width, metrics.height, metrics.scale)
+    }
+
+    private func rememberSceneMetrics(bounds: CGRect, scale rawScale: CGFloat) {
+        let scale = max(1, Int(rawScale.rounded()))
+        let width = max(1, Int((bounds.width * rawScale).rounded()))
+        let height = max(1, Int((bounds.height * rawScale).rounded()))
+        sceneMetricsLock.lock()
+        sceneMetrics = (width, height, scale)
+        sceneMetricsLock.unlock()
     }
 
     private func readerLoop() {
@@ -249,19 +275,23 @@ final class NativeManager: NSObject {
     /// park the scene with its wanted id until the window arrives. An id-less scene
     /// is the launch scene: give it any waiting window, else park it.
     func sceneConnected(_ scene: UIWindowScene, windowID: UInt32?) {
+        rememberSceneMetrics(bounds: scene.coordinateSpace.bounds, scale: scene.screen.scale)
         // A session reconnecting after the system reclaimed its scene knows its
         // window even without a restoration activity.
         let wanted = windowID ?? sessionWindows[scene.session.persistentIdentifier]
         if let id = wanted, pending[id] != nil {
             bind(scene: scene, to: id)
+            startReaderIfSceneConnected()
             return
         }
         if wanted == nil, let (id, _) = pending.first {   // window already waiting for a scene
             bind(scene: scene, to: id)
+            startReaderIfSceneConnected()
             return
         }
         waitingScenes.removeAll { $0.scene === scene }
         waitingScenes.append(WaitingScene(scene: scene, wantedID: wanted))
+        startReaderIfSceneConnected()
     }
 
     /// The window id bound to a scene. The scene delegate snapshots it as the

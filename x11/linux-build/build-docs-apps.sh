@@ -16,6 +16,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="poppler-package exempi-package" procursus-xbuild:bookworm-arm64 /work/build-docs-apps.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host build tools missing from the image (same set as build-gnome.sh — poppler-glib runs
@@ -75,7 +77,7 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 ensure_rust_ios_toolchain() {
@@ -119,10 +121,10 @@ ensure_rust_ios_toolchain() {
   rm -rf "$gettext_root"
   dpkg-deb -x "$gettext_deb" "$gettext_root"
   bash /xios-tools/stage-ios-gettext-sdk.sh \
-    "$gettext_root/var/jb/usr" \
+    "$gettext_root$XIOS_PREFIX/usr" \
     /work/Procursus/build_tools/cc-nounused \
     "$SDKROOT" 16.0
-  export GETTEXT_DIR="$gettext_root/var/jb/usr"
+  export GETTEXT_DIR="$gettext_root$XIOS_PREFIX/usr"
 }
 
 ensure_rust_ios_toolchain
@@ -151,8 +153,8 @@ record_papers_patch_fingerprint() {
 }
 trap record_papers_patch_fingerprint EXIT
 
-EW=build_work/iphoneos-arm64-rootless/1900/exempi
-ES=build_stage/iphoneos-arm64-rootless/1900/exempi
+EW=build_work/$XIOS_TRIPLE/exempi
+ES=build_stage/$XIOS_TRIPLE/exempi
 EF="$EW/.xios_patch_series.sha256"
 if target_requests exempi; then
   EXEMPI_FP="$(sha256sum \
@@ -165,8 +167,8 @@ if target_requests exempi; then
   fi
 fi
 
-ZW=build_work/iphoneos-arm64-rootless/1900/zathura
-ZS=build_stage/iphoneos-arm64-rootless/1900/zathura
+ZW=build_work/$XIOS_TRIPLE/zathura
+ZS=build_stage/$XIOS_TRIPLE/zathura
 ZF="$ZW/.xios_patch_series.sha256"
 if target_requests zathura; then
   NEW_FP="$(sha256sum \
@@ -205,8 +207,8 @@ for spec in \
   target="${spec%%:*}"
   pattern="${spec#*:}"
   target_requests "$target" || continue
-  find build_dist/iphoneos-arm64-rootless/1900 -type f \
-    -name "${pattern}*_*_iphoneos-arm64.deb" \
+  find build_dist/$XIOS_TRIPLE -type f \
+    -name "${pattern}*_*_$XIOS_DEB_ARCH.deb" \
     -exec cp -v {} "$collect_dir/" \; 2>/dev/null || true
 done
 

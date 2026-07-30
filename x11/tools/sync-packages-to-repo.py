@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
-"""Sync X11 packages from x11/linux-build/out/ to repo/debs/.
+"""Copy selected X11 packages from x11/linux-build/out/ to repo/debs/.
 
 Usage:
-    x11/tools/sync-packages-to-repo.py --dry-run   # just print what would be done
-    x11/tools/sync-packages-to-repo.py             # do it
+    x11/tools/sync-packages-to-repo.py
+    x11/tools/sync-packages-to-repo.py --only iosc,xios-session
+    x11/tools/sync-packages-to-repo.py --apply --only iosc,xios-session
+
+The command is deliberately additive:
+
+* dry-run is the default;
+* applying requires both --apply and an explicit --only package list;
+* existing repo/debs files are never removed or overwritten;
+* linux-build/out is never pruned.
+
+Published .deb URLs are immutable, and linux-build/out is shared build evidence.
+Pruning either tree does not belong in a package-copy helper.
 """
 
+import argparse
+import filecmp
 import functools
 import os
 import re
 import shutil
-import sys
 from collections import defaultdict
 
 try:
@@ -92,8 +104,12 @@ def version_compare(a, b):
     return _verrevcmp(ra, rb)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OUT_DIR = os.path.join(REPO_ROOT, "x11", "linux-build", "out")
-REPO_DIR = os.path.join(REPO_ROOT, "repo", "debs")
+OUT_DIR = os.environ.get(
+    "XIOS_SYNC_OUT_DIR", os.path.join(REPO_ROOT, "x11", "linux-build", "out")
+)
+REPO_DIR = os.environ.get(
+    "XIOS_SYNC_REPO_DIR", os.path.join(REPO_ROOT, "repo", "debs")
+)
 
 # Parse {name}_{version}_{arch}.deb
 DEB_RE = re.compile(r"^(.+?)_(.+?)\.deb$")
@@ -130,8 +146,43 @@ def collect_packages(directory):
     return result
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Add selected newest X11 package builds to repo/debs. "
+            "Dry-run is the default; no files are ever deleted."
+        )
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="perform copies (requires an explicit --only list)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="deprecated compatibility spelling; dry-run is already the default",
+    )
+    parser.add_argument(
+        "--only",
+        metavar="PKG[,PKG...]",
+        help="limit consideration to these exact package names",
+    )
+    args = parser.parse_args()
+    if args.apply and args.dry_run:
+        parser.error("--apply and --dry-run are mutually exclusive")
+    if args.apply and not args.only:
+        parser.error("--apply requires an explicit --only package list")
+    return args
+
+
 def main():
-    dry_run = "--dry-run" in sys.argv
+    args = parse_args()
+    selected = None
+    if args.only:
+        selected = {name.strip() for name in args.only.split(",") if name.strip()}
+        if not selected:
+            raise SystemExit("ERROR: --only did not name any packages")
 
     out_pkgs = collect_packages(OUT_DIR)
     repo_pkgs = collect_packages(REPO_DIR)
@@ -139,13 +190,28 @@ def main():
     # Build a unified set of package keys from both directories
     all_keys = set(out_pkgs.keys()) | set(repo_pkgs.keys())
 
-    # Filter out com.max.* packages
+    # com.max.* app packages use bin/package-app.sh and its signing/versioning
+    # path; this helper is only for the x11 build-output lane.
     all_keys = {k for k in all_keys if not k[0].startswith("com.max.")}
+    if selected is not None:
+        all_keys = {k for k in all_keys if k[0] in selected}
 
-    actions = []  # list of (type, src, dst_or_path)  type: "copy"|"remove-repo"|"remove-out"
+    copies = []  # (src, dst)
+    collisions = []  # (package, version, out_path, repo_path)
 
     for key in sorted(all_keys):
-        name, arch = key
+        name, _arch = key
+        out_by_version = {version: path for version, path in out_pkgs.get(key, [])}
+        repo_by_version = {version: path for version, path in repo_pkgs.get(key, [])}
+        for version in sorted(
+            out_by_version.keys() & repo_by_version.keys(),
+            key=functools.cmp_to_key(version_compare),
+        ):
+            out_path = out_by_version[version]
+            repo_path = repo_by_version[version]
+            if not filecmp.cmp(out_path, repo_path, shallow=False):
+                collisions.append((name, version, out_path, repo_path))
+
         entries = {}
         # Collect all (version, path, source) across both dirs
         for version, path in out_pkgs.get(key, []):
@@ -166,57 +232,49 @@ def main():
                 repo_path_for_latest = path
                 break
 
-        copy_needed = False
         if latest_src == "out" and repo_path_for_latest is None:
-            # Latest version is in out/ but not in repo/ — copy it
             dst = os.path.join(REPO_DIR, os.path.basename(latest_path))
-            actions.append(("copy", latest_path, dst))
-            copy_needed = True
+            copies.append((latest_path, dst))
 
-        # Remove stale versions from repo/
-        for version, path in repo_pkgs.get(key, []):
-            if version != latest_version:
-                actions.append(("remove-repo", path, None))
-
-        # Remove stale versions from out/
-        for version, path in out_pkgs.get(key, []):
-            if version != latest_version:
-                actions.append(("remove-out", path, None))
-
-    # Print summary
-    copies = [a for a in actions if a[0] == "copy"]
-    removes_repo = [a for a in actions if a[0] == "remove-repo"]
-    removes_out = [a for a in actions if a[0] == "remove-out"]
-
-    print(f"=== Dry Run ===\n" if dry_run else "=== Executing ===\n")
+    print("=== Executing additive copy ===\n" if args.apply else "=== Dry Run (default) ===\n")
     print(f"Packages to copy from out/ to repo/debs/ ({len(copies)}):")
-    for _, src, dst in copies:
+    for src, _dst in copies:
         fname = os.path.basename(src)
         print(f"  cp  {fname}")
 
-    print(f"\nPackages to remove from repo/debs/ ({len(removes_repo)}):")
-    for _, path, _ in removes_repo:
-        print(f"  rm  {os.path.basename(path)}")
+    print(f"\nImmutable version collisions ({len(collisions)}):")
+    for name, version, out_path, repo_path in collisions:
+        print(
+            f"  ERROR {name} {version}: "
+            f"{os.path.basename(out_path)} differs from {os.path.basename(repo_path)}"
+        )
 
-    print(f"\nPackages to remove from out/ ({len(removes_out)}):")
-    for _, path, _ in removes_out:
-        print(f"  rm  {os.path.basename(path)}")
-
-    if dry_run:
-        print("\nThis was a dry run. Re-run without --dry-run to execute.")
+    print("\nPackages to remove: 0 (this tool is additive)")
+    if collisions:
+        raise SystemExit(
+            "ERROR: package bytes differ at an existing name/version; "
+            "bump the package version before copying"
+        )
+    if not args.apply:
+        if selected:
+            selected_arg = ",".join(sorted(selected))
+            print(
+                "\nThis was a dry run. To copy this exact package selection, run:\n"
+                f"  {__file__} --apply --only {selected_arg}"
+            )
+        else:
+            print(
+                "\nThis was a dry run. Review the list, then rerun with "
+                "--apply --only pkg[,pkg...]."
+            )
         return
 
-    # Execute
-    for action_type, src, dst in actions:
-        if action_type == "copy":
-            shutil.copy2(src, dst)
-            print(f"cp  {os.path.basename(src)} -> repo/debs/")
-        elif action_type == "remove-repo":
-            os.remove(src)
-            print(f"rm  (repo) {os.path.basename(src)}")
-        elif action_type == "remove-out":
-            os.remove(src)
-            print(f"rm  (out)  {os.path.basename(src)}")
+    os.makedirs(REPO_DIR, exist_ok=True)
+    for src, dst in copies:
+        if os.path.exists(dst):
+            raise SystemExit(f"ERROR: refusing to overwrite existing package: {dst}")
+        shutil.copy2(src, dst)
+        print(f"cp  {os.path.basename(src)} -> repo/debs/")
 
     print("\nDone.")
 

@@ -47,7 +47,11 @@ docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_TARGET \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
+  -e XIOS_SUBPREFIX \
+  -e XIOS_DEB_ARCH \
   -v "$VOLUME:/work/Procursus" \
+  -v "$PWD/target-env.sh:/work/target-env.sh:ro" \
+  -v "$PWD/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$PWD/build.sh:/work/build.sh:ro" \
   -v "$PWD/patches:/work/patches:ro" \
   -v "$HERE/../ports:/work/ports:ro" \
@@ -56,6 +60,8 @@ docker run --rm --platform linux/arm64 \
 
 echo "==> building Xios audio support"
 docker run --rm --platform linux/arm64 \
+  -e XIOS_MEMO_TARGET -e XIOS_MEMO_CFVER -e XIOS_PREFIX -e XIOS_SUBPREFIX -e XIOS_DEB_ARCH \
+  -v "$PWD/target-env.sh:/work/target-env.sh:ro" \
   -v "$PWD/audio:/work/audio:ro" \
   -v "$PWD/out:/out" \
   "$IMAGE" /work/audio/build-audio.sh

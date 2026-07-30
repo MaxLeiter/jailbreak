@@ -2879,11 +2879,6 @@
       "url": "https://repo.maxleiter.com/banners/xios-runtime.png"
     },
     {
-      "title": "Xios (IOSurface X server)",
-      "package": "xios-server",
-      "url": "https://repo.maxleiter.com/banners/xios-server.png"
-    },
-    {
       "title": "Xios session launcher",
       "package": "xios-session",
       "url": "https://repo.maxleiter.com/banners/xios-session.png"

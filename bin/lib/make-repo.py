@@ -31,9 +31,12 @@ prune_orphan_assets.
 import argparse, functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
+REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
+PROFILE = os.environ.get("XIOS_REPO_PROFILE", "rootless")
+REPO = REPO_ROOT if PROFILE == "rootless" else os.path.join(
+    REPO_ROOT, "profiles", PROFILE)
 DEBS = os.path.join(REPO, "debs")
-META = os.path.join(REPO, "meta")
+META = os.path.join(REPO_ROOT, "meta")
 LOGO_SOURCES = os.path.join(HERE, "logo-sources")
 
 APP_SECTION = "X11/Wayland Apps"
@@ -110,6 +113,35 @@ def control_dict(deb_bytes):
             k, v = ln.split(": ", 1); d[k] = v; order.append(k)
     d["__order__"] = order
     return d
+
+def deb_payload_profile(deb_bytes):
+    """Infer the root layout from payload paths, or None for an empty meta deb."""
+    members = ar_members(deb_bytes)
+    data_name = next((name for name in members if name.startswith("data.tar")), None)
+    if data_name is None:
+        return None
+    data = members[data_name]
+    mode = {
+        "data.tar.gz": "r:gz",
+        "data.tar.xz": "r:xz",
+        "data.tar": "r:",
+    }.get(data_name, "r:*")
+    if data_name == "data.tar.zst":
+        zstd = shutil.which("zstd")
+        if not zstd:
+            raise RuntimeError(
+                "data.tar.zst requires zstd in PATH to verify the repo profile")
+        data = subprocess.check_output([zstd, "-qdc"], input=data)
+        mode = "r:"
+    with tarfile.open(fileobj=io.BytesIO(data), mode=mode) as archive:
+        names = [
+            item.name.lstrip(".").lstrip("/")
+            for item in archive.getmembers()
+            if item.isfile()
+        ]
+    if not names:
+        return None
+    return "rootless" if any(name.startswith("var/jb/") for name in names) else "rootful"
 
 def parse_packages_index(path):
     """Read a generated Packages file back into (raw_text, [ctrl, ...])."""
@@ -1219,6 +1251,13 @@ def main():
                 continue
             blob = open(os.path.join(DEBS, fn), "rb").read()
             ctrl = control_dict(blob); pid = ctrl["Package"]
+            payload_profile = deb_payload_profile(blob)
+            if payload_profile is not None and payload_profile != PROFILE:
+                raise SystemExit(
+                    f"ERROR: {fn} has {payload_profile} payload paths but this is "
+                    f"the {PROFILE} profile.\n"
+                    "       Rootful and rootless packages install at incompatible "
+                    "prefixes and must not share an index.")
             normalize_section(ctrl)
             normalize_publisher(ctrl)
             meta = load_meta(pid)
