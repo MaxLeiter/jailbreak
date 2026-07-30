@@ -1481,6 +1481,18 @@ static int native_toplevel_canvas_live(struct iosc_surface *s)
     return s && s->role == IOSC_ROLE_TOPLEVEL && s->mapped && s->native_canvas_live;
 }
 
+/* Popups and subsurfaces may be nested through other popup/subsurface nodes
+ * (GTK menus commonly are). Their native-scene owner is the first toplevel in
+ * the parent chain, not necessarily their direct parent. Stop at that first
+ * toplevel so a popup owned by a transient dialog is not also painted into the
+ * dialog's parent scene. */
+static struct iosc_surface *native_owner_toplevel(struct iosc_surface *s)
+{
+    while (s && s->role != IOSC_ROLE_TOPLEVEL)
+        s = s->parent;
+    return s;
+}
+
 static uint32_t native_window_flags(struct iosc_surface *s)
 {
     uint32_t flags = 0;
@@ -1570,9 +1582,19 @@ static void native_composite_toplevel(struct iosc_surface *s)
     composite_surface_at_blended(s, 0, 0);
     for (int i = 0; i < g_nmapped; i++) {
         struct iosc_surface *c = g_mapped[i];
-        if (c != s && c->parent == s &&
-            (c->role == IOSC_ROLE_POPUP || c->role == IOSC_ROLE_SUBSURFACE))
+        if (c != s && native_owner_toplevel(c) == s &&
+            (c->role == IOSC_ROLE_POPUP || c->role == IOSC_ROLE_SUBSURFACE)) {
+            if (c->role == IOSC_ROLE_POPUP && c->gl_dirty) {
+                int w = 0, h = 0;
+                surface_display_size(c, &w, &h);
+                fprintf(stderr,
+                        "iosc: native popup composite window=%u owner=%u "
+                        "at (%d,%d) size=%dx%d\n",
+                        c->window_id, s->window_id,
+                        c->dx - s->dx, c->dy - s->dy, w, h);
+            }
             composite_surface_at_blended(c, c->dx - s->dx, c->dy - s->dy);
+        }
     }
     iosc_gl_end();
     (void)notify_native_gpu_frame(s->window_id);
@@ -3842,8 +3864,14 @@ static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
 
 static void popup_send_configure(struct iosc_surface *s, int token)
 {
-    int w = 0, h = 0;
-    surface_display_size(s, &w, &h);
+    /* xdg_popup.configure is sent before the client attaches its first buffer,
+     * so its size comes from the xdg_positioner snapshot—not from the current
+     * buffer (which is necessarily absent on the initial configure). Falling
+     * back to 1x1 here made GTK render every menu as a tiny 13x13 shadow tile. */
+    int w = s->popup_positioner_set ? s->popup_positioner.size_w : 0;
+    int h = s->popup_positioner_set ? s->popup_positioner.size_h : 0;
+    if (w <= 0 || h <= 0)
+        surface_display_size(s, &w, &h);
     if (w <= 0) w = 1;
     if (h <= 0) h = 1;
     /* The wire x,y are relative to the parent's WINDOW GEOMETRY (spec), whereas
@@ -3931,6 +3959,10 @@ static void popup_reposition(struct wl_client *c, struct wl_resource *r,
     (void)c;
     struct iosc_surface *s = wl_resource_get_user_data(r);
     struct iosc_positioner *p = wl_resource_get_user_data(positioner);
+    if (s && p) {
+        s->popup_positioner = *p;
+        s->popup_positioner_set = 1;
+    }
     if (s && s->mapped) output_damage_add_surface(s);
     popup_place(s, p);
     popup_send_configure(s, (int)token);
@@ -5007,6 +5039,8 @@ static void reslist_remove(struct wl_resource **arr, int *n, struct wl_resource 
 }
 
 /* Surface-local pointer coords helper + top-most surface under an output point. */
+static struct iosc_surface *g_native_input_scope;
+
 static struct iosc_surface *surface_at(int x, int y)
 {
     /* Session locked: input may reach only the (fullscreen, at 0,0) lock surface. */
@@ -5014,6 +5048,9 @@ static struct iosc_surface *surface_at(int x, int y)
         return (g_slock.surface && g_slock.surface->current_buffer) ? g_slock.surface : NULL;
     for (int i = g_nmapped - 1; i >= 0; i--) {
         struct iosc_surface *s = g_mapped[i];
+        if (g_native_mode && g_native_input_scope &&
+            native_owner_toplevel(s) != g_native_input_scope)
+            continue;
         if (s->role == IOSC_ROLE_TOPLEVEL && s->toplevel_minimized)
             continue;   /* minimized: invisible, so it must not eat input either */
         int w = 0, h = 0;
@@ -7394,6 +7431,8 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
         x += bound->dx;
         y += bound->dy;
     }
+    struct iosc_surface *previous_scope = g_native_input_scope;
+    g_native_input_scope = g_native_mode ? bound : NULL;
     switch (m->type) {
         case XIOS_IN_MOTION: handle_motion(x, y); break;
         case XIOS_IN_BUTTON: handle_motion(x, y);
@@ -7421,6 +7460,7 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
             break;
         }
     }
+    g_native_input_scope = previous_scope;
 }
 
 /* Push the current on-screen-keyboard traits to every connected app client. The
