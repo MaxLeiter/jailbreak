@@ -1,0 +1,11 @@
+Package: libhandy-1-0
+Version: @DEB_LIBHANDY_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gnome.pages.gitlab.gnome.org/libhandy/
+Depends: libglib2.0-0, libgtk-3-0, libfribidi0
+Description: Adaptive GTK3 widgets for Xios
+ libhandy provides responsive GTK3 widgets used by GNOME applications. This
+ package contains the shared library.

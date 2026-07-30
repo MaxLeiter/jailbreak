@@ -1,0 +1,10 @@
+Package: libdazzle-1.0-dev
+Version: @DEB_LIBDAZZLE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libdazzle
+Depends: libdazzle-1.0-0 (= @DEB_LIBDAZZLE_V@), libgtk-3-dev
+Description: Development files for libdazzle
+ Headers, pkg-config metadata, and the linker symlink for libdazzle.

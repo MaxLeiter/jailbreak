@@ -1,0 +1,11 @@
+Package: libdazzle-1.0-0
+Version: @DEB_LIBDAZZLE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libdazzle
+Depends: libglib2.0-0, libgtk-3-0
+Description: GTK3 application utility library for Xios
+ libdazzle contains reusable widgets and helpers used by GNOME applications.
+ This package contains the shared library.

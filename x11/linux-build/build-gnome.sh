@@ -202,8 +202,48 @@ stage_geary_deps() {
   done
 }
 
+stage_epiphany_deps() {
+  target_requests epiphany || return 0
+
+  local build_base=$XIOS_BUILD_BASE
+  local pkg deb
+  echo "==> staging packaged GNOME Web engine dependencies"
+  for pkg in \
+    libgcr-3-1 libgcr-3-dev \
+    libjavascriptcoregtk-4.1-0 libjavascriptcoregtk-4.1-dev \
+    libwebkit2gtk-4.1-0 libwebkit2gtk-4.1-dev \
+    libarchive13 libarchive-dev; do
+    deb="$(find /out /repo-debs -maxdepth 1 -type f \
+      -name "${pkg}_*_iphoneos-arm64.deb" -printf '%f\t%p\n' 2>/dev/null |
+      sort -V | tail -1 | cut -f2-)"
+    if [ -z "$deb" ]; then
+      echo "ERROR: GNOME Web needs $pkg in /out or /repo-debs" >&2
+      exit 1
+    fi
+    echo "    staging $deb"
+    dpkg-deb -x "$deb" "$build_base"
+  done
+
+  local pc_root="$build_base$XIOS_PREFIX/usr/lib/pkgconfig"
+  for pc in gcr-3 libarchive javascriptcoregtk-4.1 webkit2gtk-4.1 \
+    webkit2gtk-web-extension-4.1; do
+    if [ ! -f "$pc_root/$pc.pc" ]; then
+      echo "ERROR: staged GNOME Web dependency is missing $pc.pc" >&2
+      exit 1
+    fi
+  done
+
+  # The previously shipped libportal build only emitted its GTK4 backend.
+  # Reconfigure once when the GTK3 pkg-config surface is absent.
+  if [ ! -f "$pc_root/libportal-gtk3.pc" ]; then
+    echo "==> enabling libportal's GTK3 backend for GNOME Web"
+    rm -f "$XIOS_BUILD_WORK/libportal/.build_complete"
+  fi
+}
+
 stage_gnome_keyring_deps
 stage_geary_deps
+stage_epiphany_deps
 
 # Dependency order: foundation bus+settings -> app libraries -> the GTK4 apps. The GTK4 base
 # (gtk4/graphene/gdk-pixbuf) and libxkbcommon are pulled in as make prerequisites (their
@@ -365,6 +405,8 @@ for spec in \
   libxmlb:libxmlb \
   libappstream:appstream \
   libadwaita:libadwaita \
+  libhandy:libhandy \
+  libdazzle:libdazzle \
   libarchive:libarchive \
   libvte:vte \
   libgtksourceview:gtksourceview5 \
@@ -397,6 +439,7 @@ for spec in \
   baobab:baobab \
   file-roller:file-roller \
   geary:geary \
+  epiphany:epiphany \
   hitori:hitori; do
   pat="${spec%%:*}"
   req="${spec#*:}"

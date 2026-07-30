@@ -1,0 +1,11 @@
+Package: libportal-gtk3-1
+Version: @DEB_LIBPORTAL_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/flatpak/libportal
+Depends: libportal1 (= @DEB_LIBPORTAL_V@), libglib2.0-0, libgtk-3-0
+Description: Flatpak portal library - runtime (GTK3 backend)
+ The GTK3 backend of libportal, providing parent-window integration for portal
+ dialogs. Required by GNOME Web 43.

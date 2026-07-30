@@ -3,17 +3,19 @@ $(error Use the main Makefile)
 endif
 
 # GIO-style wrappers around the XDG Desktop Portal D-Bus APIs. Required by nautilus
-# (libportal + libportal-gtk4); one build emits the core lib + the gtk4 backend.
+# (libportal + toolkit backends); one build emits the core lib plus GTK3 and
+# GTK4 backends. GTK3 is used by GNOME Web 43 and GTK4 by Nautilus.
 # There's no xdg-desktop-portal service on iOS, so portal calls are inert at runtime
 # (file chooser etc. fall back to GTK's own dialogs) -- nautilus only needs to link it.
 
 SUBPROJECTS        += libportal
 LIBPORTAL_VERSION  := 0.7.1
-DEB_LIBPORTAL_V    ?= $(LIBPORTAL_VERSION)+ios1
+DEB_LIBPORTAL_V    ?= $(LIBPORTAL_VERSION)+ios2
 
 libportal-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/flatpak/libportal/releases/download/$(LIBPORTAL_VERSION)/libportal-$(LIBPORTAL_VERSION).tar.xz)
 	$(call EXTRACT_TAR,libportal-$(LIBPORTAL_VERSION).tar.xz,libportal-$(LIBPORTAL_VERSION),libportal)
+	rm -rf $(BUILD_WORK)/libportal/build
 	mkdir -p $(BUILD_WORK)/libportal/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \
@@ -34,11 +36,11 @@ ifneq ($(wildcard $(BUILD_WORK)/libportal/.build_complete),)
 libportal:
 	@echo "Using previously built libportal."
 else
-libportal: libportal-setup glib2.0 gtk4
+libportal: libportal-setup glib2.0 gtk+3.0 gtk4
 	cd $(BUILD_WORK)/libportal/build && meson \
 		--cross-file cross.txt \
 		-Dbackend-gtk4=enabled \
-		-Dbackend-gtk3=disabled \
+		-Dbackend-gtk3=enabled \
 		-Dbackend-qt5=disabled \
 		-Dintrospection=false \
 		-Dvapi=false \
@@ -51,13 +53,18 @@ libportal: libportal-setup glib2.0 gtk4
 endif
 
 libportal-package: libportal-stage
-	rm -rf $(BUILD_DIST)/libportal1 $(BUILD_DIST)/libportal-gtk4-1 $(BUILD_DIST)/libportal-dev
+	rm -rf $(BUILD_DIST)/libportal1 $(BUILD_DIST)/libportal-gtk3-1 \
+		$(BUILD_DIST)/libportal-gtk4-1 $(BUILD_DIST)/libportal-dev
 	mkdir -p $(BUILD_DIST)/libportal1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/libportal-gtk3-1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libportal-gtk4-1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libportal-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# libportal1 (core runtime dylib)
 	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libportal.1.dylib $(BUILD_DIST)/libportal1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+
+	# libportal-gtk3-1 (gtk3 backend runtime dylib)
+	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libportal-gtk3.1.dylib $(BUILD_DIST)/libportal-gtk3-1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# libportal-gtk4-1 (gtk4 backend runtime dylib)
 	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libportal-gtk4.1.dylib $(BUILD_DIST)/libportal-gtk4-1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
@@ -67,10 +74,13 @@ libportal-package: libportal-stage
 	cp -a $(BUILD_STAGE)/libportal/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include $(BUILD_DIST)/libportal-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)
 
 	$(call SIGN,libportal1,general.xml)
+	$(call SIGN,libportal-gtk3-1,general.xml)
 	$(call SIGN,libportal-gtk4-1,general.xml)
 	$(call PACK,libportal1,DEB_LIBPORTAL_V)
+	$(call PACK,libportal-gtk3-1,DEB_LIBPORTAL_V)
 	$(call PACK,libportal-gtk4-1,DEB_LIBPORTAL_V)
 	$(call PACK,libportal-dev,DEB_LIBPORTAL_V)
-	rm -rf $(BUILD_DIST)/libportal1 $(BUILD_DIST)/libportal-gtk4-1 $(BUILD_DIST)/libportal-dev
+	rm -rf $(BUILD_DIST)/libportal1 $(BUILD_DIST)/libportal-gtk3-1 \
+		$(BUILD_DIST)/libportal-gtk4-1 $(BUILD_DIST)/libportal-dev
 
 .PHONY: libportal libportal-package

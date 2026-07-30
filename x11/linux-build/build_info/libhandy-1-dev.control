@@ -1,0 +1,10 @@
+Package: libhandy-1-dev
+Version: @DEB_LIBHANDY_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gnome.pages.gitlab.gnome.org/libhandy/
+Depends: libhandy-1-0 (= @DEB_LIBHANDY_V@), libgtk-3-dev
+Description: Development files for libhandy
+ Headers, pkg-config metadata, and the linker symlink for libhandy.
