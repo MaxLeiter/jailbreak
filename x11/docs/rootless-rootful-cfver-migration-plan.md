@@ -78,7 +78,7 @@ memo_target=iphoneos-arm64
 memo_cfver=1900
 prefix=
 subprefix=/usr
-deb_arch=iphoneos-arm64
+deb_arch=iphoneos-arm        # NOT iphoneos-arm64; see below
 repo_profile=rootful
 version_suffix=+rootful1
 package_path_prefix=
@@ -86,6 +86,12 @@ runtime_tmp=/var/tmp
 runtime_var=/var
 default_min_ios=16.0
 ```
+
+This file originally guessed `deb_arch=iphoneos-arm64` for rootful. The first
+real rootful build disproved it: Procursus maps `MEMO_TARGET=iphoneos-arm64` to
+`DEB_ARCH := iphoneos-arm`, reserving `iphoneos-arm64` for the `-rootless`
+target. It produced `libffi8_3.4.6_iphoneos-arm.deb`, and
+`tools/check-target-package.py` caught the mismatch against the descriptor.
 
 Open decision: rootful runtime temp may need `/tmp` rather than `/var/tmp`
 depending on the target bootstrap. Treat this as a validation item, not a
@@ -369,11 +375,16 @@ Required generator changes:
 - profile-specific install instructions -- not done; the generated `index.html`
   still describes the rootless source.
 - audit guard that refuses mixed rootless/rootful packages in one flat profile
-  -- done, and it reads the answer off the payload rather than the filename,
-  because a rootless and a rootful build of one package share name, version and
-  architecture. `deb_payload_profile()` classifies by whether files land under
-  `var/jb/`, and indexing aborts on a mismatch. Metapackages carry no payload
-  and are correctly profile-neutral.
+  -- done, and it reads the answer off the payload rather than the filename.
+  `deb_payload_profile()` classifies by whether files land under `var/jb/`, and
+  indexing aborts on a mismatch. Metapackages carry no payload and are correctly
+  profile-neutral.
+
+  Note, corrected after the first real rootful build: the two do *not* share a
+  Debian architecture. Procursus maps rootful `iphoneos-arm64` to `DEB_ARCH
+  iphoneos-arm` and only the rootless target to `iphoneos-arm64`. The profile
+  split is still right -- they are different dependency universes at
+  incompatible prefixes -- but it is not APT's arch filter that would fail.
 
 Acceptance criteria:
 

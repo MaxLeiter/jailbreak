@@ -16,7 +16,9 @@ Checks:
 from __future__ import annotations
 
 import argparse
+import io
 import re
+import tarfile
 import shutil
 import subprocess
 import sys
@@ -34,6 +36,53 @@ TEXT_SUFFIXES = {
     "", ".sh", ".conf", ".desktop", ".service", ".txt", ".md", ".xml", ".plist",
     ".json", ".ini", ".cfg", ".pc", ".rules", ".policy", ".gschema", ".control",
 }
+
+
+def ar_members(data: bytes) -> dict[str, bytes]:
+    if data[:8] != b"!<arch>\n":
+        sys.exit("not an ar archive (is this really a .deb?)")
+    out, off = {}, 8
+    while off + 60 <= len(data):
+        hdr = data[off:off + 60]
+        off += 60
+        name = hdr[0:16].decode("ascii", "replace").strip().rstrip("/")
+        size = int(hdr[48:58].decode().strip())
+        out[name] = data[off:off + size]
+        off += size + (size & 1)
+    return out
+
+
+def unpack_deb(path: Path, dest: Path) -> None:
+    """Unpack a .deb without dpkg-deb.
+
+    The build host here is macOS, which has no dpkg. Shelling out to dpkg-deb
+    would mean this check only ever runs in the container -- i.e. not where the
+    debs actually land.
+    """
+    blob = path.read_bytes()
+    members = ar_members(blob)
+    for prefix, sub in (("control.tar", "DEBIAN"), ("data.tar", "")):
+        name = next((n for n in members if n.startswith(prefix)), None)
+        if name is None:
+            sys.exit(f"{path.name}: no {prefix}* member")
+        raw = members[name]
+        mode = {".gz": "r:gz", ".xz": "r:xz", ".bz2": "r:bz2", "": "r:"}.get(
+            name[len(prefix):], "r:*")
+        if name.endswith(".zst"):
+            zstd = shutil.which("zstd")
+            if not zstd:
+                sys.exit("zstd not found in PATH; needed to read this .deb")
+            raw = subprocess.run([zstd, "-qdc"], input=raw, stdout=subprocess.PIPE,
+                                 check=True).stdout
+            mode = "r:"
+        target = dest / sub if sub else dest
+        target.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(fileobj=io.BytesIO(raw), mode=mode) as tf:
+            for m in tf.getmembers():
+                m.name = m.name.lstrip("./") or "."
+                if m.name.startswith("/") or ".." in Path(m.name).parts:
+                    continue  # never let a crafted archive escape the temp dir
+            tf.extractall(target, filter="data")
 
 
 def load_target(target_id: str) -> dict[str, str]:
@@ -115,7 +164,7 @@ def main() -> int:
     try:
         if src.is_file() and src.suffix == ".deb":
             tmp = Path(tempfile.mkdtemp(prefix="xios-pkgcheck-"))
-            subprocess.run(["dpkg-deb", "-R", str(src), str(tmp)], check=True)
+            unpack_deb(src, tmp)
             root = tmp
         elif src.is_dir():
             root = src

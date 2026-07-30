@@ -178,10 +178,15 @@ python3 /work/procursus-common-edits.py
 
 if [ "${BOOTSTRAP:-0}" = 1 ]; then
   echo "==> cold volume: make setup (stages the SDK headers into build_base)"
-  make setup MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1
+  make setup MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 \
+    CORE_COUNT="${JOBS:-$(nproc)}"
 fi
 
-make "$@" MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 -j"${JOBS:-$(nproc)}"
+# CORE_COUNT as well as -j: Procursus does `MAKEFLAGS += --jobs=$(CORE_COUNT)`
+# whenever it does not already see a jobserver, which silently overrides a plain
+# -j on the command line. CORE_COUNT is ?=, so a make-level assignment wins.
+make "$@" MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 \
+  CORE_COUNT="${JOBS:-$(nproc)}" -j"${JOBS:-$(nproc)}"
 dest="/out/targets/$XIOS_TARGET_ID"
 mkdir -p "$dest"
 for target in "$@"; do

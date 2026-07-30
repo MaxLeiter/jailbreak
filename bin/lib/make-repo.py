@@ -24,8 +24,14 @@ REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
 # "rootless" is the historical flat layout and stays exactly where it was, so the
 # existing publish flow is untouched. Any other profile generates a completely
 # separate tree under repo/profiles/<name>/ -- separate debs input, separate
-# Packages/Release -- because a rootless and a rootful build of the same package
-# share a name, version and architecture and would otherwise collide in one index.
+# Packages/Release.
+#
+# They are separated because the two builds are different dependency universes
+# with the same package names and versions, installed at incompatible prefixes.
+# Not because their Debian architectures collide: Procursus gives rootful
+# iphoneos-arm and rootless iphoneos-arm64, so APT would in fact filter them.
+# Relying on that would be relying on a Procursus naming detail to keep two
+# incompatible trees apart, which is not a guarantee worth taking.
 PROFILE = os.environ.get("XIOS_REPO_PROFILE", "rootless")
 if PROFILE == "rootless":
     REPO = REPO_ROOT
@@ -1131,8 +1137,8 @@ def main():
             raise SystemExit(
                 f"ERROR: {fn} has {payload_profile} payload paths but this is the "
                 f"{PROFILE} profile.\n"
-                f"       Rootless and rootful builds share a name, version and "
-                f"architecture, so they must never share an index.\n"
+                f"       The two builds share package names and versions but install at "
+                f"incompatible prefixes, so they must never share an index.\n"
                 f"       Put it in repo/profiles/{payload_profile}/debs/ and "
                 f"generate with XIOS_REPO_PROFILE={payload_profile}."
             )
