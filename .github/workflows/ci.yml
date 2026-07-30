@@ -43,6 +43,9 @@ jobs:
         run: |
           git ls-files '*.sh' -z | xargs -r -0 -n1 bash -n
 
+      - name: Repo-ops guard hook
+        run: python bin/lib/guard-repo-ops.test.py
+
   repo-index:
     name: APT index
     runs-on: ubuntu-latest

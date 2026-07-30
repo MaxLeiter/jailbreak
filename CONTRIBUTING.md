@@ -35,7 +35,7 @@ x11/wayland/build-iosc.sh
 One-time setup per clone, so `repo/Packages` merges instead of conflicting:
 
 ```bash
-bin/setup-git-merge-driver.sh
+bin/setup-repo-guards.sh
 ```
 
 ## Publishing Packages
@@ -43,11 +43,14 @@ bin/setup-git-merge-driver.sh
 Publishing is local. The steps that matter — uploading payloads to Blob, DER-signing the graphics packages, and the Procursus shadow gate — all need the real `.deb` files, which never leave the machine that built them.
 
 ```bash
-bin/publish-staging.sh              # payloads to Blob + deploy dev.repo.maxleiter.com
-bin/publish-repo.sh --from-index    # deploy production from the committed index
+bin/publish-staging.sh                 # payloads to Blob + deploy dev.repo.maxleiter.com
+git add repo/Packages && git commit    # review the diff: it is what goes public
+bin/publish-repo.sh                    # production
 ```
 
-Use `--from-index` for production. A bare `bin/publish-repo.sh` regenerates the index from `repo/debs`, which accumulates every package anyone has built locally, so it publishes the whole pending delta instead of your change. `--from-index` ships exactly what is committed. (`--only pkg[,pkg]` is the other way to scope a publish: it starts from the index the target already serves and swaps in just the named packages.)
+Committing `repo/Packages` is part of the procedure, not paperwork: production publishes the committed index, so the diff you commit is the change users receive. A prod publish refuses to run while `repo/Packages` differs from `HEAD`, and staging is what uploads the payloads — so never run the production step alone for something you just built.
+
+(`--only pkg[,pkg]` scopes a publish differently: it starts from the index the target already serves and swaps in just the named packages.)
 
 CI does not publish. It validates the index on every PR — regenerates it from the committed `repo/Packages`, checks solvability, audits, and fails on version drift.
 

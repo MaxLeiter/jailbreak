@@ -1,15 +1,32 @@
 #!/usr/bin/env bash
 # Regenerate the APT repo index and deploy it to Vercel.
 #
+# ---------------------------------------------------------------------------
+# THE WHOLE PROCEDURE, in order. Follow it top to bottom; each step is safe to
+# rerun. Do not improvise a different order -- the ordering is what keeps the
+# published index and the payloads it points at in agreement.
+#
+#   1. bin/build.sh tweaks/<Name>              # or the x11/ build for that package
+#   2. cp tweaks/<Name>/packages/*.deb repo/debs/
+#   3. bin/publish-staging.sh                  # payloads -> Blob, deploy dev.repo,
+#                                              # and regenerate repo/Packages
+#   4. test it on the device from dev.repo.maxleiter.com
+#   5. git add repo/Packages && git commit     # REVIEW THE DIFF: it is exactly
+#                                              # what step 6 will make public
+#   6. bin/publish-repo.sh                     # production
+#
+# Step 5 is not bookkeeping. Step 6 publishes the COMMITTED index, so the diff
+# you commit is the change users receive; anything you leave uncommitted stays
+# unpublished. Skipping step 3 means the payloads were never uploaded and step 6
+# publishes an index pointing at 404s -- so never run step 6 alone for a package
+# built on this machine.
+#
+# Targets:
 #   bin/publish-repo.sh              # production (repo.maxleiter.com)
 #   bin/publish-repo.sh --staging    # low-cache staging repo (dev.repo.maxleiter.com)
 #   bin/publish-staging.sh           # same as --staging
 #   bin/publish-repo.sh --preview    # throwaway Vercel preview URL (per-branch testing)
-#
-# To publish a tweak: build it, copy its .deb into repo/debs/, then run this.
-#   bin/build.sh tweaks/<Name>
-#   cp tweaks/<Name>/packages/*.deb repo/debs/
-#   bin/publish-repo.sh          # uploads payloads to Blob, signs metadata, deploys metadata
+# ---------------------------------------------------------------------------
 #
 # ONE PACKAGE AT A TIME:
 #   bin/publish-repo.sh --only iosc,xios-session
@@ -39,25 +56,33 @@
 # not installable, but it means a scoped prod publish still carries whatever site
 # assets the tree currently has.
 #
-# --from-index changes where the index comes from. Normally this script rebuilds
-# Packages from repo/debs, so it publishes whatever the tree happens to hold --
-# which is every package anyone on this box has built, not just yours. With
-# --from-index the committed repo/Packages is authoritative and only the derived
-# metadata is rebuilt, so what ships is exactly what is in git and reviewable in
-# the diff. It also needs no payloads on disk, which makes it the right way to
-# publish from a worktree.
+# WHERE THE INDEX COMES FROM -- the defaults are chosen so the safe thing happens
+# when nobody passes a flag, because "publish the repo" is the instruction people
+# and agents actually give.
 #
-# It necessarily SKIPS the payload-level gates (DER signing, Blob upload, and the
+#   staging/preview  default --from-debs:  rebuild Packages from repo/debs. That
+#     is what staging is FOR -- you just built something and want to see it.
+#
+#   prod             default --from-index: publish the COMMITTED repo/Packages and
+#     only rebuild the metadata derived from it. repo/debs accumulates every
+#     package anyone on this box has built, so rebuilding from it at prod ships
+#     the whole pending delta rather than your change (2026-07-28: that delta was
+#     33 packages). Publishing the committed index instead makes what ships equal
+#     to what is in the diff. To enforce that rather than just intend it, a prod
+#     --from-index publish REFUSES to run when repo/Packages differs from HEAD.
+#
+# --from-index skips the payload-level gates (DER signing, Blob upload, and the
 # Procursus shadow check, which needs Mach-O nm over the real debs), so the debs
-# must already be in Blob -- i.e. run a normal `bin/publish-staging.sh` from the
-# tree that built them first. --from-index is the whole-index counterpart to
-# --only: --only reconciles against what the target serves, --from-index
-# publishes what git says.
+# must ALREADY be in Blob -- run `bin/publish-staging.sh` from the tree that built
+# them first. It also needs no payloads on disk, which makes it the only way to
+# publish from a worktree. --from-index is the whole-index counterpart to --only:
+# --only reconciles against what the target serves, --from-index publishes what
+# git says.
 set -euo pipefail
 
 TARGET=prod
 ONLY=""
-FROM_INDEX=0
+SOURCE=""   # empty until the per-target default is applied below
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --staging|staging) TARGET=staging ;;
@@ -65,13 +90,21 @@ while [ "$#" -gt 0 ]; do
     --preview|preview) TARGET=preview ;;
     --only)            ONLY="${2:-}"; shift ;;
     --only=*)          ONLY="${1#--only=}" ;;
-    --from-index)      FROM_INDEX=1 ;;
+    --from-index)      SOURCE=index ;;
+    --from-debs)       SOURCE=debs ;;
     "") ;;
-    *) echo "usage: bin/publish-repo.sh [--staging|--prod|--preview] [--only pkg[,pkg...]] [--from-index]" >&2; exit 2 ;;
+    *) echo "usage: bin/publish-repo.sh [--staging|--prod|--preview] [--only pkg[,pkg...]] [--from-index|--from-debs]" >&2; exit 2 ;;
   esac
   shift
 done
-[ -z "$ONLY" ] || echo "==> scoped publish: only $ONLY"
+
+if [ -z "$SOURCE" ]; then
+  case "$TARGET" in
+    prod) SOURCE=index ;;
+    *)    SOURCE=debs ;;
+  esac
+fi
+echo "==> target=$TARGET index-source=$SOURCE${ONLY:+ only=$ONLY}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCKDIR="${TMPDIR:-/tmp}/maxleiter-repo-publish.lock"
@@ -87,6 +120,24 @@ PY="$REPO_ROOT/.repo-venv/bin/python"
 [ -x "$PY" ] || PY="python3"
 
 REPO_KEY="repo@maxleiter.com"
+
+# "Publish exactly what is committed" is only true if the file on disk IS what is
+# committed. repo/Packages is regenerated by every staging publish, so by the time
+# you reach prod the working copy usually holds the full repo/debs index again --
+# publishing that under --from-index would quietly ship the accumulated delta the
+# flag exists to avoid. Enforce it instead of documenting it.
+if [ "$TARGET" = prod ] && [ "$SOURCE" = index ]; then
+  repo_root_for_git="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  if ! git -C "$repo_root_for_git" diff --quiet HEAD -- repo/Packages 2>/dev/null; then
+    echo "ERROR: repo/Packages differs from HEAD, so --from-index would not publish what is committed." >&2
+    echo "       This is the normal state right after a staging publish (it regenerates the" >&2
+    echo "       index from every deb in repo/debs). Pick one:" >&2
+    echo "         git add repo/Packages && git commit    # ship it: review the diff first" >&2
+    echo "         git checkout HEAD -- repo/Packages     # ship what is already committed" >&2
+    echo "         bin/publish-repo.sh --from-debs        # deliberately ship the whole tree" >&2
+    exit 1
+  fi
+fi
 
 # A preview URL nobody's apt is pinned to may go out unsigned; the real repos may
 # not. An unsigned index is not a missing nicety, it makes apt reject the whole
@@ -205,7 +256,7 @@ case "$TARGET" in
   preview) DRIFT_REF="" ;;
 esac
 
-if [ "$FROM_INDEX" = 1 ]; then
+if [ "$SOURCE" = index ]; then
   echo "==> Metadata-only publish: committed repo/Packages is authoritative"
   echo "    (payload gates skipped: DER signing, Blob upload, Procursus shadow check)"
   "$PY" "$REPO_ROOT/bin/lib/make-repo.py" --from-index
@@ -249,7 +300,7 @@ fi
 echo "==> Signing the index (InRelease + Release.gpg)"
 sign_index "$REPO_ROOT/repo"
 
-if [ "$FROM_INDEX" = 0 ]; then
+if [ "$SOURCE" = debs ]; then
   AFTER_SIGN="$(snapshot_debs)"
   if [ "$BEFORE" != "$AFTER_SIGN" ]; then
     echo "ERROR: repo/debs changed after signing; refusing to deploy a stale index." >&2

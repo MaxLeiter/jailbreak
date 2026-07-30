@@ -138,6 +138,35 @@ def parse_packages_text(raw):
         out.append(d)
     return out
 
+def guard_shrink(deb_filenames):
+    """Refuse a from-debs regeneration that would silently retire packages.
+
+    Compares package names derivable from the on-disk deb filenames against the
+    existing index. Filename-based on purpose: this runs before any deb is
+    opened, so a refusal cannot leave half-written depictions behind.
+    """
+    index_path = os.path.join(REPO, "Packages")
+    if not os.path.exists(index_path) or os.environ.get("MAKE_REPO_ALLOW_SHRINK"):
+        return
+    with open(index_path, encoding="utf-8", errors="replace") as fh:
+        previous = parse_packages_text(fh.read())
+    have = {fn[:-4].split("_")[0] for fn in deb_filenames if fn.endswith(".deb")}
+    gone = sorted({c["Package"] for c in previous} - have)
+    if len(gone) <= max(5, len(previous) // 20):
+        return
+    sample = ", ".join(gone[:8]) + (" ..." if len(gone) > 8 else "")
+    raise SystemExit(
+        f"ERROR: regenerating from repo/debs would drop {len(gone)} of {len(previous)} "
+        f"packages from the index.\n"
+        f"       no payload on disk for: {sample}\n"
+        f"       repo/debs holds {len(have)} package name(s). A worktree looks exactly\n"
+        f"       like this, because repo/debs is gitignored and never checked out.\n"
+        f"\n"
+        f"       To regenerate the site/index without payloads:\n"
+        f"           python3 bin/lib/make-repo.py --from-index\n"
+        f"       If you really are retiring those packages, set MAKE_REPO_ALLOW_SHRINK=1."
+    )
+
 def normalize_section(ctrl):
     sec = (ctrl.get("Section") or "").strip()
     if sec.lower() == "x11":
@@ -1118,6 +1147,14 @@ def main():
             featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
                                     "url": f"{BASE_URL}/banners/{pid}.png"}
     else:
+        # A regeneration indexes only the payloads on disk. repo/debs is
+        # gitignored, so a fresh worktree (or a half-finished restore) holds a
+        # handful of debs while the committed index describes hundreds -- and
+        # writing that out silently retires every package whose deb is merely
+        # absent. Check before generating anything, so a refusal leaves the tree
+        # untouched. --from-index is what the caller almost always wanted.
+        guard_shrink(sorted(os.listdir(DEBS)))
+
         for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
             if not fn.endswith(".deb"):
                 continue

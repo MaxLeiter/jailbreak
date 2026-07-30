@@ -52,7 +52,7 @@ jailbreak/
 │   ├── sim.sh            # build for the iOS Simulator + load via simject (device-free)
 │   ├── logs.sh           # live device console over USB (idevicesyslog)
 │   ├── publish-repo.sh   # upload debs to Blob + deploy the APT repo (--staging for dev.repo)
-│   ├── setup-git-merge-driver.sh # once per clone: structural merges for repo/Packages
+│   ├── setup-repo-guards.sh # once per clone: index merge driver + agent guardrails
 │   └── lib/              # repo-pipeline internals (make-repo, solvability check, audit)
 ├── docs/                 # public-readiness and process notes
 ├── jarvis/               # on-device assistant prototype
@@ -95,14 +95,19 @@ check. CI validates the index on every PR but does not deploy.
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
 bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
-bin/publish-repo.sh --from-index             # deploy production from the committed index
+git add repo/Packages && git commit          # review the diff: it is what goes public
+bin/publish-repo.sh                          # production
 ```
 
-`--from-index` publishes exactly what is committed; a bare `publish-repo.sh`
-regenerates from `repo/debs` and ships everything built locally since the last
-publish. `--only pkg[,pkg]` scopes a publish to named packages instead. Run
-`bin/setup-git-merge-driver.sh` once per clone so `repo/Packages` merges
-structurally instead of conflicting between branches.
+Production publishes the *committed* index, so the diff you commit is the change
+users receive — and a prod publish refuses to run while `repo/Packages` differs
+from `HEAD`. Staging is the step that uploads payloads, so don't run the
+production step alone for something you just built. `--only pkg[,pkg]` scopes a
+publish to named packages instead.
+
+Run `bin/setup-repo-guards.sh` once per clone: it registers the structural merge
+driver for `repo/Packages` (so branches stop conflicting on the index) and a
+Claude Code hook that blocks the two operations that destroy work silently.
 
 Add it in Sileo: `sileo://source/https://repo.maxleiter.com/` (the landing page
 also has Sileo / Zebra / Cydia buttons and the copyable URL).
