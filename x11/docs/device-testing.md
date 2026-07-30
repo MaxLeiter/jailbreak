@@ -156,6 +156,18 @@ bin/xios-device collect
 bin/xios-device collect /tmp/xios-evidence
 ```
 
+### `push`
+
+Copies one local file to the device's temporary Xios area:
+
+```bash
+bin/xios-device push linux-build/out/webkitgtk-smoke /var/jb/tmp/webkitgtk-smoke
+```
+
+The destination defaults to `/var/jb/tmp/<local basename>` and is deliberately
+restricted to paths beneath `/var/jb/tmp`. Use `exec` for any follow-up
+permission change or invocation.
+
 ### Session profiling
 
 Use `bin/xios-profile-session` when comparing compositor performance before and
