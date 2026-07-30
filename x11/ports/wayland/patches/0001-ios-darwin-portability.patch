@@ -10,6 +10,9 @@ diff -ruN -U0 --exclude=*.bak a/meson.build b/meson.build
 @@ -19 +19 @@
 -if host_machine.system() not in ['freebsd', 'openbsd']
 +if host_machine.system() not in ['freebsd', 'openbsd', 'darwin']
+@@ -72 +72 @@
+-	if host_machine.system() in ['freebsd', 'openbsd']
++	if host_machine.system() in ['freebsd', 'openbsd', 'darwin']
 diff -ruN -U0 --exclude=*.bak a/src/event-loop.c b/src/event-loop.c
 --- a/src/event-loop.c	2024-08-24 08:43:55
 +++ b/src/event-loop.c	2026-07-05 00:33:14
