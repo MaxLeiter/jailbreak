@@ -81,7 +81,7 @@ if [ "${#angle_debs[@]}" -eq 0 ]; then
 fi
 angle_deb="$(printf '%s\n' "${angle_debs[@]}" | sort -V | tail -n 1)"
 stage_deb "$angle_deb"
-if ! aarch64-apple-darwin-nm -g "${BB}/usr/lib/libEGL.dylib" |
+if ! aarch64-apple-darwin-nm -g "${BB}/lib/angle/libEGL.dylib" |
     grep ' _xios_metal_sync_wait$' >/dev/null; then
   echo "ERROR: $(basename "$angle_deb") lacks the Xios Metal fence ABI." >&2
   exit 1
