@@ -321,9 +321,14 @@ in the KDE track.
   stubbed, geolocation off, appstream on (recipe exists). Deliverable is plasmashell
   starting under nested KWin.
 - P2 the mobile shell: plasma-nano + plasma-mobile on top of plasmashell. First-light packages exist; current work is Qt Quick crash/isolation and missing-plugin polish.
-- P3 polish: virtual keyboard (qtvirtualkeyboard or maliit, or lean on the Xios
-  tap+type injection path first), a settings-modules subset, session entry in the
+- P3 polish: virtual keyboard, a settings-modules subset, session entry in the
   chooser with the stamp-minos floor computed over the KDE closure.
+  Keyboard decision is made: NOT qtvirtualkeyboard/maliit. Use the iOS
+  keyboard through a `zwp_input_method_v1` bridge that KWin launches
+  (`--inputmethod`), plus an IM-proxy role on iosc's input socket. Verified
+  design, protocol facts and the v1-vs-v3 enum translation are in
+  osk-plan.md, section "KDE flavor". Today KDE has no OSK at all and typing
+  from the manual Xios toggle is ASCII-only.
 
 ## Runtime plumbing (shared with the GNOME track)
 
