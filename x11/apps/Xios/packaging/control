@@ -6,7 +6,7 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), libx11-6, libxtst6
+Depends: firmware (>= 16.0), iosc (>= 0.9.37), libx11-6, libxtst6
 MinimumOSVersion: 16.0.0
 Description: the display app for the Xios desktop
  The one app iOS sees. It shows on the Home Screen as "X11", owns a Metal layer
