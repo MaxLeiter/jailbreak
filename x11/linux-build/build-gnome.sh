@@ -129,6 +129,45 @@ fi
 COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
+stage_geary_deps() {
+  target_requests geary || return 0
+
+  local build_base=/work/Procursus/build_base/iphoneos-arm64-rootless/1900
+  local pkg deb
+  echo "==> staging packaged Geary/WebKitGTK development dependencies"
+  for pkg in \
+    libgmime-3.0-0 libgmime-3.0-dev \
+    libstemmer0d libstemmer-dev \
+    libgspell-1-2 libgspell-1-dev \
+    libpeas-1.0-0 libpeas-1.0-dev \
+    libfolks26 libfolks-dev \
+    libgck-1-0 libgcr-3-1 libgcr-3-dev \
+    libgoa-1.0-0b libgoa-1.0-dev \
+    libjavascriptcoregtk-4.1-0 libjavascriptcoregtk-4.1-dev \
+    libwebkit2gtk-4.1-0 libwebkit2gtk-4.1-dev; do
+    deb="$(find /out /repo-debs -maxdepth 1 -type f \
+      -name "${pkg}_*_iphoneos-arm64.deb" -printf '%f\t%p\n' 2>/dev/null |
+      sort -V | tail -1 | cut -f2-)"
+    if [ -z "$deb" ]; then
+      echo "ERROR: Geary needs $pkg in /out or /repo-debs" >&2
+      exit 1
+    fi
+    echo "    staging $deb"
+    dpkg-deb -x "$deb" "$build_base"
+  done
+
+  local pc_root="$build_base/var/jb/usr/lib/pkgconfig"
+  for pc in gmime-3.0 libstemmer gspell-1 libpeas-1.0 folks gck-1 gcr-3 \
+    goa-1.0 javascriptcoregtk-4.1 webkit2gtk-4.1; do
+    if [ ! -f "$pc_root/$pc.pc" ]; then
+      echo "ERROR: staged Geary dependency is missing $pc.pc" >&2
+      exit 1
+    fi
+  done
+}
+
+stage_geary_deps
+
 # Dependency order: foundation bus+settings -> app libraries -> the GTK4 apps. The GTK4 base
 # (gtk4/graphene/gdk-pixbuf) and libxkbcommon are pulled in as make prerequisites (their
 # .build_complete markers skip rebuilds). gnome-terminal is omitted (optional GTK3 pass).
