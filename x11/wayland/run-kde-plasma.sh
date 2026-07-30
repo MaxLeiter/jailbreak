@@ -681,7 +681,6 @@ fi
 echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
 nohup "$SETSID" env \
   XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-  IOSC_FRAME_PULSE="${IOSC_FRAME_PULSE:-1}" \
   IOSC_IGNORE_ACTIVE_SESSION=1 \
   IOSC_FULLSCREEN_TOPLEVELS="$IOSC_FULLSCREEN_TOPLEVELS" \
   IOSC_NO_OUTPUT_TRANSFORM="$IOSC_NO_OUTPUT_TRANSFORM" \
@@ -858,7 +857,13 @@ nohup "$SETSID" env \
     fi
     kamd_pid=
     if [ -x "$KAMD_BIN" ] && [ "${XIOS_KDE_START_KAMD:-1}" != 0 ]; then
-      "$KAMD_BIN" &
+      # The activity service has no windows. Keep it off the Wayland/EGL path
+      # instead of allocating a software QtQuick backend it never displays.
+      (
+        export QT_QPA_PLATFORM="${KAMD_QT_QPA_PLATFORM:-offscreen}"
+        unset WAYLAND_DISPLAY QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+        "$KAMD_BIN"
+      ) &
       kamd_pid=$!
       sleep 0.5
     fi
