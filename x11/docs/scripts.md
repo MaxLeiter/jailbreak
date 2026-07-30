@@ -116,13 +116,11 @@ end-to-end):
   `docker run -v` mounts, then the in-container scripts can source `xlib.sh` too.
 - `finalize_x11_graphics_debs` is one of the three publish steps that **need the
   real `.deb` payloads**, alongside the Blob upload and
-  `bin/lib/check-procursus-shadow.py` (Mach-O `nm`). That is why production
-  publishing splits: the payload half runs here, locally, and the index half runs
-  in CI on push to `main` via `bin/publish-repo.sh --from-index`, which rebuilds
-  and signs the index from the committed `repo/Packages` with no payloads present.
-  **Consequence:** a `repo/Packages` change must be preceded by a local
-  `bin/publish-staging.sh`, or the published index will point at payloads that
-  were never DER-re-signed or uploaded.
+  `bin/lib/check-procursus-shadow.py` (Mach-O `nm`). Those three are why
+  publishing cannot move to CI and stays a local step; CI only validates the
+  index. `bin/publish-repo.sh --from-index` skips all three and publishes the
+  committed index, so it is only safe once a normal `bin/publish-staging.sh` has
+  put the payloads in Blob from the tree that built them.
 
 ## Version marking (`+iosN`)
 

@@ -40,16 +40,19 @@
 # assets the tree currently has.
 #
 # --from-index changes where the index comes from. Normally this script rebuilds
-# Packages from repo/debs, which means it needs every payload on disk. With
+# Packages from repo/debs, so it publishes whatever the tree happens to hold --
+# which is every package anyone on this box has built, not just yours. With
 # --from-index the committed repo/Packages is authoritative and only the derived
-# metadata is rebuilt, so a plain checkout with no payloads can publish. That is
-# how .github/workflows/publish-repo.yml runs on a push to main: the payloads were
-# already pushed to Blob under immutable filenames by the authoring host, so a
-# metadata-only deploy is complete. It necessarily SKIPS the payload-level gates
-# (DER signing, Blob upload, and the Procursus shadow check, which needs Mach-O nm
-# over the real debs) -- those stay the authoring host's job, before the commit
-# lands. --from-index is the whole-index counterpart to --only: --only reconciles
-# against what the target serves, --from-index publishes what git says.
+# metadata is rebuilt, so what ships is exactly what is in git and reviewable in
+# the diff. It also needs no payloads on disk, which makes it the right way to
+# publish from a worktree.
+#
+# It necessarily SKIPS the payload-level gates (DER signing, Blob upload, and the
+# Procursus shadow check, which needs Mach-O nm over the real debs), so the debs
+# must already be in Blob -- i.e. run a normal `bin/publish-staging.sh` from the
+# tree that built them first. --from-index is the whole-index counterpart to
+# --only: --only reconciles against what the target serves, --from-index
+# publishes what git says.
 set -euo pipefail
 
 TARGET=prod
@@ -134,23 +137,13 @@ finalize_x11_graphics_debs() {
 # Sign whichever copy of the index we are about to serve. Called for the tree, and
 # again for the deploy copy when --only rewrote it (the hashes changed, so the
 # tree's signature would not verify against the scoped Release).
-#
-# Interactively the gpg-agent holds the passphrase. In CI there is no agent to
-# hold it, so REPO_GPG_PASSPHRASE_FILE feeds the loopback pinentry instead.
-gpg_sign() {
-  if [ -n "${REPO_GPG_PASSPHRASE_FILE:-}" ]; then
-    gpg --batch --yes --pinentry-mode loopback \
-        --passphrase-file "$REPO_GPG_PASSPHRASE_FILE" --default-key "$REPO_KEY" "$@"
-  else
-    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" "$@"
-  fi
-}
-
 sign_index() {
   local dir="$1"
   if gpg --list-secret-keys "$REPO_KEY" >/dev/null 2>&1; then
-    gpg_sign --clearsign -o "$dir/InRelease" "$dir/Release"
-    gpg_sign -abs -o "$dir/Release.gpg" "$dir/Release"
+    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
+        --clearsign -o "$dir/InRelease" "$dir/Release"
+    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
+        -abs -o "$dir/Release.gpg" "$dir/Release"
     gpg --export "$REPO_KEY" > "$dir/maxleiter-repo.gpg"
     echo "   signed with $REPO_KEY (public key at maxleiter-repo.gpg)"
   else
@@ -199,9 +192,6 @@ deploy_static_repo() {
     local url
     url="$(vercel "${args[@]}")"
     echo "==> Preview at $url"
-    if [ -n "${GITHUB_OUTPUT:-}" ]; then
-      echo "preview_url=$url" >> "$GITHUB_OUTPUT"
-    fi
   fi
 }
 

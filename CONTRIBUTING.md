@@ -40,12 +40,16 @@ bin/setup-git-merge-driver.sh
 
 ## Publishing Packages
 
-Publishing splits by what needs the `.deb` payloads:
+Publishing is local. The steps that matter — uploading payloads to Blob, DER-signing the graphics packages, and the Procursus shadow gate — all need the real `.deb` files, which never leave the machine that built them.
 
-- **Locally** — build the debs, then `bin/publish-staging.sh`. This is the step that uploads payloads to Blob, DER-signs the graphics packages, and runs the Procursus shadow gate. None of those can run in CI.
-- **On push to `main`** — `.github/workflows/publish-repo.yml` re-signs the committed `repo/Packages` and deploys it to staging and then production. It is metadata-only: the payloads are already in Blob under immutable filenames.
+```bash
+bin/publish-staging.sh              # payloads to Blob + deploy dev.repo.maxleiter.com
+bin/publish-repo.sh --from-index    # deploy production from the committed index
+```
 
-So the flow is: build, publish to staging locally, commit `repo/Packages`, merge. The merge is the promotion to production.
+Use `--from-index` for production. A bare `bin/publish-repo.sh` regenerates the index from `repo/debs`, which accumulates every package anyone has built locally, so it publishes the whole pending delta instead of your change. `--from-index` ships exactly what is committed. (`--only pkg[,pkg]` is the other way to scope a publish: it starts from the index the target already serves and swaps in just the named packages.)
+
+CI does not publish. It validates the index on every PR — regenerates it from the committed `repo/Packages`, checks solvability, audits, and fails on version drift.
 
 Working in a worktree while `main` releases no longer drifts silently. `repo/Packages` merges structurally (newer version per package wins), and `bin/lib/check-version-collisions.py` fails the build if you would either reuse a published version with different bytes (bump it — Blob filenames are immutable) or publish an index behind what is already live (rebase).
 

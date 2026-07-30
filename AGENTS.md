@@ -48,14 +48,14 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 - If a publish script fails because `repo/debs` changed during generation/signing, rerun after the active build finishes.
 - If a publish script fails during Blob upload because an existing remote `.deb` has a different size, do not overwrite it; bump the package version/revision so the filename changes.
 
-## Publishing on Push (CI)
+## Publishing Stays Local; CI Validates
 
-- `.github/workflows/publish-repo.yml` publishes on push to `main`: staging first, then production. `workflow_dispatch` can target one, both, or a preview.
-- CI publishes **metadata only** (`bin/publish-repo.sh --from-index`). It trusts the committed `repo/Packages` and never needs `.deb` payloads, because the authoring host already pushed them to Blob under immutable filenames.
-- That split is deliberate: **payload-level gates stay on the authoring host** and must pass before you commit. CI cannot run them. Specifically `bin/lib/check-procursus-shadow.py` (needs Mach-O `nm` over real debs), DER entitlement signing, and Blob upload. Running `bin/publish-staging.sh` locally is what exercises them.
-- So the rule is: **build and publish to staging locally, then commit `repo/Packages`.** The commit is what promotes to production, and it only re-signs and re-deploys an index whose payloads are already live. A `repo/Packages` change committed without a prior local staging publish can point at payloads that are not in Blob.
+- **Publishing is a local step and deliberately stays one.** The gates that matter most need the real `.deb` payloads, which are gitignored and exist only on the authoring host: `bin/lib/check-procursus-shadow.py` (Apple `nm` over Mach-O), DER entitlement re-signing, and the Blob upload. A CI runner cannot do any of it, so automating the remaining metadata deploy would buy one command in exchange for putting the repo signing key in GitHub — not a good trade. It was built and then removed on purpose; don't re-add it without a reason that survives that argument.
+- CI (`.github/workflows/ci.yml`, job `APT index`) validates the index instead: it regenerates from the committed `repo/Packages`, checks solvability, audits the index, and fails on version drift. No secrets, no deploy.
+- Publish with `bin/publish-staging.sh`, then `bin/publish-repo.sh --from-index` for production.
+- **Prefer `--from-index` for production.** A bare `publish-repo.sh` regenerates from `repo/debs`, which holds everything anyone has built on the box, so it ships the whole accumulated delta rather than your change. `--from-index` publishes exactly what is committed, which is reviewable in the diff. It skips the payload gates, so the debs must already be in Blob — run the normal staging publish from the tree that built them first.
 - `--from-index` and `--only` are the two answers to "don't ship the whole accumulated tree delta", and they compose: `--only` reconciles against **what the target serves**, `--from-index` publishes **what git says**. With `--only`, the drift gate runs `--warn-regressions`, since being behind the target is that mode's premise.
-- Secrets the workflow needs: `VERCEL_TOKEN`, `REPO_GPG_PRIVATE_KEY`, and `REPO_GPG_PASSPHRASE` if the key has one. Without the GPG key the workflow fails closed rather than publishing an unsigned repo, which would break `apt` on every installed device. `publish-repo.sh` checks for the key up front for the same reason (`ALLOW_UNSIGNED=1` overrides; `--preview` may go unsigned).
+- `publish-repo.sh` refuses to publish prod or staging with no signing key in the keyring, checked up front before it does any work (`ALLOW_UNSIGNED=1` overrides; `--preview` only warns). An unsigned index is not a missing nicety — apt rejects the whole repo.
 
 ## Parallel Branches and Version Drift
 

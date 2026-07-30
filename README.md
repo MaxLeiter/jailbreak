@@ -87,21 +87,21 @@ the static site and signed metadata; package payloads live locally in ignored
 publisher for low-cache iteration; production `.deb` filenames are immutable, so
 bump the package version/revision instead of replacing an already-published file.
 
-Payloads are uploaded locally, because only this machine has the cross toolchain.
-Production is then published by CI on push to `main`, since Blob filenames are
-immutable and the payloads already exist by then — so a merge only has to re-sign
-and re-deploy the index that points at them.
+Publishing runs locally, because the gates that matter need the actual `.deb`
+files: the Blob upload, DER entitlement re-signing, and the Procursus shadow
+check. CI validates the index on every PR but does not deploy.
 
 ```bash
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
 bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
-git add repo/Packages && git commit          # merging to main publishes production
+bin/publish-repo.sh --from-index             # deploy production from the committed index
 ```
 
-`bin/publish-repo.sh` still deploys production by hand when you need it, and
-`--only pkg[,pkg]` ships a single package without the accumulated tree delta.
-Run `bin/setup-git-merge-driver.sh` once per clone so `repo/Packages` merges
+`--from-index` publishes exactly what is committed; a bare `publish-repo.sh`
+regenerates from `repo/debs` and ships everything built locally since the last
+publish. `--only pkg[,pkg]` scopes a publish to named packages instead. Run
+`bin/setup-git-merge-driver.sh` once per clone so `repo/Packages` merges
 structurally instead of conflicting between branches.
 
 Add it in Sileo: `sileo://source/https://repo.maxleiter.com/` (the landing page
