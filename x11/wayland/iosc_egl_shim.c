@@ -886,6 +886,11 @@ EGLBoolean eglGetConfigAttrib(EGLDisplay d, EGLConfig c, EGLint a, EGLint *v)
     EGLBoolean r = REAL(eglGetConfigAttrib)(d, c, a, v);
     if (r && a == EGL_RENDERABLE_TYPE) *v |= EGL_ES3_BIT;    /* ANGLE supports ES3 here     */
     if (r && a == EGL_SURFACE_TYPE)    *v |= EGL_WINDOW_BIT; /* shim backs windows w/ pbuffer */
+    /* The shim's swap interval is always zero and its three-buffer IOSurface
+     * queue provides backpressure. Report that actual contract instead of
+     * ANGLE's headless-pbuffer minimum of one; QtWayland otherwise serializes
+     * its render loop and warns that subsurface rendering can freeze. */
+    if (r && a == EGL_MIN_SWAP_INTERVAL) *v = 0;
     return r;
 }
 EGLBoolean eglDestroyContext(EGLDisplay d, EGLContext c){ return REAL(eglDestroyContext)(d,c); }
