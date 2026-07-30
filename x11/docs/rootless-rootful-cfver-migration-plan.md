@@ -575,15 +575,40 @@ port patch was missing the `epoll_dep` hunk, and the rootless build only worked
 because that warm volume carries a hand edit nobody had captured. Any cold
 rebuild would have hit it. Fixed in `ports/wayland/patches/`.
 
+`iosc` builds for rootful too, along with its 14 test clients, `ios-inputd`,
+the Metal event broker and the EGL shim -- 17 binaries with no `/var/jb` in any
+load command. `iosc` resolves `/lib/angle` and `/usr/lib`; the shim installs as
+`/usr/local/lib/libiosc_egl.dylib`.
+
+Packaging ANGLE for a *new* target is a bootstrap cycle: the ANGLE package ships
+the iosc EGL shim as `libEGL.dylib`, and the shim links against ANGLE. The shim
+only needs `-lGLESv2` (it dlopens the real libEGL), so the order is:
+
+```sh
+# 1. link-only ANGLE, no shim
+ANGLE_NO_SHIM=1 ANGLE_BASE_DEB=<published angle deb> \
+  bash ports/angle/package-angle-es3.sh rootful-1900
+# 2. the shim alone, against it
+IOSC_SHIM_ONLY=1 XIOS_TARGET=rootful-1900 bash wayland/build-iosc.sh
+# 3. the real ANGLE package, with that shim
+IOSC_EGL_SHIM=x11/wayland/out/targets/rootful-1900/libiosc_egl.dylib \
+  ANGLE_BASE_DEB=<published angle deb> \
+  bash ports/angle/package-angle-es3.sh rootful-1900
+# 4. iosc itself
+XIOS_TARGET=rootful-1900 bash wayland/build-iosc.sh
+```
+
 What is left:
 
-1. `iosc` itself for rootful. It needs ANGLE staged into the rootful sysroot
-   first, and ANGLE is built Mac-side rather than in Procursus, so
-   `ports/angle/` has to learn the target before `build-iosc.sh` can run for
-   rootful. This is the real next blocker.
+1. Package `iosc` for rootful (`wayland/package-iosc.sh rootful-1900`), which is
+   already target-aware but has not been run against these binaries.
 2. The GTK/Qt/KDE/GNOME stacks, in the Phase 7 order. Expect more findings of
    the wayland kind -- warm volumes hiding edits that no patch file carries.
-3. Only then does the device gate matter: a real rootful bootstrap to install on.
+3. ANGLE for rootful is currently restaged from the published rootless deb. The
+   binaries are prefix-independent and their load commands are rewritten, so
+   this is sound, but a from-source `build-angle.sh` run per target would be
+   better than trusting a rewrite.
+4. Only then does the device gate matter: a real rootful bootstrap to install on.
 
 Running the local gate:
 

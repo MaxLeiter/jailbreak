@@ -9,27 +9,27 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1748
+- Total hits: 1749
 - Files with hits: 327
 
 ### By Category
 
 - `app-runtime`: 25 hits across 14 files
 - `build-target`: 16 hits across 10 files
-- `docs`: 620 hits across 62 files
+- `docs`: 621 hits across 62 files
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 121 hits across 51 files
 - `other`: 75 hits across 15 files
 - `package-payload`: 193 hits across 51 files
 - `recipe`: 82 hits across 26 files
 - `runtime-path`: 319 hits across 81 files
-- `script-or-source`: 209 hits across 69 files
+- `script-or-source`: 210 hits across 70 files
 - `site-copy`: 10 hits across 6 files
-- `target-infra`: 33 hits across 6 files
+- `target-infra`: 32 hits across 6 files
 
 ### By Literal
 
-- `/var/jb`: 1705
+- `/var/jb`: 1706
 - `MEMO_CFVER=1900`: 7
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 7
 - `iphoneos-arm64-rootless`: 29
@@ -113,7 +113,7 @@ classified as rootless-only.
 - `AGENTS.md:25` `/var/jb`: - The target install prefix is rootless `/var/jb`; packages and scripts should not assume rootful `/`.
 - `AGENTS.md:27` `/var/jb`: - Geometry is not globally constant. Read compositor/app-reported dimensions such as `/var/jb/tmp/xios.json` instead of hardcoding framebuffer sizes.
 - `docs/native-ipados-plan.md:116` `/var/jb`: (`/var/jb/tmp/iosc-native.sock`) with a message protocol; the old socket and
-- ... 600 more
+- ... 601 more
 
 ### entitlements
 
@@ -281,7 +281,7 @@ classified as rootless-only.
 - `linux-build/build-ladybird-wave4b.sh:323` `/var/jb`: #   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
 - `linux-build/build-ladybird-wave4b.sh:334` `/var/jb`: # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
 - `linux-build/build-ladybird-wave4b.sh:348` `/var/jb`: <string>/var/jb/</string>
-- ... 189 more
+- ... 190 more
 
 ### site-copy
 
@@ -305,8 +305,7 @@ classified as rootless-only.
 - `linux-build/target-env.sh:97` `/var/jb`: # Rootless yields /var/jb/; rootful ships into /usr, which needs its own entry
 - `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
-- `linux-build/tools/check-target-package.py:122` `/var/jb`: /var/jb installs fine and then fails to load, which is exactly the class of
-- `linux-build/tools/check-target-package.py:175` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
+- `linux-build/tools/check-target-package.py:211` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
 - `linux-build/tools/target-literal-baseline.json:183` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
 - `linux-build/tools/target-literal-baseline.json:184` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
 - `linux-build/tools/target-literal-baseline.json:187` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
@@ -318,5 +317,6 @@ classified as rootless-only.
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
-- ... 13 more
+- `linux-build/tools/audit-target-literals.py:25` `MEMO_TARGET=iphoneos-arm64-rootless`: "MEMO_TARGET=iphoneos-arm64-rootless",
+- ... 12 more
 

@@ -1,5 +1,5 @@
 {
-  "total": 1085,
+  "total": 1086,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 2,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -216,7 +216,7 @@
     "ports/procursus-overlay.patch": 1,
     "ports/tigervnc/patches/0001-xserver-popen-shell-rootless.patch": 2,
     "ports/xwayland/patches/0001-ios-rootless-iosurface-glamor.patch": 3,
-    "wayland/build-iosc.sh": 1,
+    "wayland/build-iosc.sh": 2,
     "wayland/build-session-stubs.sh": 3,
     "wayland/com.max.xios.metal-event-broker.plist": 3,
     "wayland/ios-inputd.c": 1,
