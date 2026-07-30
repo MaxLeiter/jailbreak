@@ -25,7 +25,7 @@ cross-compiling the application.
  gspell = dependency('gspell-1')
  gthread = dependency('gthread-2.0', version: '>=' + target_glib)
  icu_uc = dependency('icu-uc', version: '>=60')
-@@ -236,4 +236,3 @@ subdir('po')
+@@ -236,5 +236,4 @@ subdir('po')
  subdir('sql')
  subdir('ui')
  subdir('src')
