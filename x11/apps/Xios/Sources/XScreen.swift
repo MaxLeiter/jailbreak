@@ -328,6 +328,9 @@ final class XScreenView: UIView {
         // Retry once we become active/foreground, where the GPU is reachable.
         if !setupMetal() { return }
         metalReady = true
+        // loadConfig() above already decided the upscale mode, but there was no device
+        // to build the pass with. Now there is.
+        syncUpscaler()
 
         awaitingCompositor = true
         startTestPattern()
@@ -406,6 +409,7 @@ final class XScreenView: UIView {
         if ddxIsIOSurface { startIOSurfaceConnect() }
         connectInput()
         displayLink?.isPaused = false
+        syncUpscaler()      // rebuild the pass backgrounding released
         writeStatus()
     }
 
@@ -831,27 +835,40 @@ final class XScreenView: UIView {
     private func applyUpscaleMode(_ mode: XiosUpscaleMode) {
         guard mode != upscaleMode else { return }
         upscaleMode = mode
-        if mode.isOff {
+        needsPresent = true
+        syncUpscaler()
+    }
+
+    /// Make the MetalFX pass match `upscaleMode`. Idempotent, and deliberately safe to
+    /// call before Metal exists: start() runs loadConfig() — and therefore
+    /// applyUpscaleMode — BEFORE setupMetal(), so the first call for a config that asks
+    /// for upscaling always arrives with no device yet. Attaching only from
+    /// applyUpscaleMode left the upscaler permanently nil in exactly that case, because
+    /// its `mode != upscaleMode` guard makes every later config poll a no-op; the mode
+    /// was right and nothing was ever built from it. Hence a separate idempotent step,
+    /// called again once Metal is up and on every foreground.
+    private func syncUpscaler() {
+        guard metalReady, let device else { return }
+        if upscaleMode.isOff {
+            guard upscaler != nil else { return }
             upscaler?.releaseResources()
             upscaler = nil
-            // Back to the cheaper drawable the direct path wants.
-            if metalReady { metalLayer.framebufferOnly = true }
+            metalLayer.framebufferOnly = true   // back to the cheaper direct-path drawable
             publishUpscaleStatus(nil)
             return
         }
-        if metalReady, let device {
-            // MetalFX writes the output texture, which framebufferOnly forbids. Only
-            // relaxed while upscaling is on, so the default path keeps the tighter
-            // drawable it has always had.
-            metalLayer.framebufferOnly = false
-            if upscaler == nil { upscaler = XiosUpscaler(device: device) }
-            if !XiosUpscaler.supported(device) {
-                // Probed YES on the A10 target, but never assume: a device whose
-                // spatial scaler says no degrades to the direct present, and says so.
-                publishUpscaleStatus(nil)
-            }
-        }
+        guard upscaler == nil else { return }
+        // MetalFX writes the output texture, which framebufferOnly forbids. Only
+        // relaxed while upscaling is on, so the default path keeps the tighter
+        // drawable it has always had.
+        metalLayer.framebufferOnly = false
+        upscaler = XiosUpscaler(device: device)
         needsPresent = true
+        if !XiosUpscaler.supported(device) {
+            // Probed YES on the A10 target, but never assume: a device whose spatial
+            // scaler says no degrades to the direct present, and says so.
+            publishUpscaleStatus(nil)
+        }
     }
 
     /// `upscale=` in the runtime status table. Upscaling changes what the user sees,
