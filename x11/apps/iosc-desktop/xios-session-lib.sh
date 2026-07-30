@@ -2,7 +2,7 @@
 # The session-launcher core (sourced, never run directly).
 #
 # One place that knows how to (1) tear down whatever desktop session is currently
-# on the iPad and (2) bring up a chosen one, then relaunch the Xios display app.
+# on the iPad and (2) bring up a chosen one, keeping the Xios display app alive.
 # Both the on-device CLI (`xios-session`) and ioscd's SESSION handler use this
 # file, so there is ONE code path whether Max picks a preset from the Xios app or
 # a terminal.
@@ -22,7 +22,7 @@
 # launch-gnome-session.sh from xios-session-stubs so gnome-session owns the
 # Shell component.
 # The one thing this library guarantees on top of them is a *bulletproof* teardown
-# (gotcha a: kill ALL of iosc/mutter/gnome/KDE/Xios/panels/clients + rm every
+# (gotcha a: kill ALL of iosc/mutter/gnome/KDE/panels/clients + rm every
 # stale socket, or the next compositor collides on wayland-0 / the ddx sockets).
 #
 # Env overrides honoured (passed through to the run scripts):
@@ -46,11 +46,11 @@
 # JETSAM NOTE (why the settle exists): switching flavors kills the old compositor
 # (which holds a large GPU IOSurface + Metal/ANGLE context, ~30MB) and starts a new
 # one that allocates its own surface + context. Doing that back-to-back spikes GPU
-# memory and iOS jetsams the foreground Xios app mid-transition. So the presets:
-# tear down (kill old compositor + the app so it isn't holding stale GPU state),
-# SETTLE (let the kernel reclaim the old surface), THEN start the new compositor,
-# then relaunch the display once the new surface exists. Status is updated at every
-# step so the picker shows what's happening instead of going dark.
+# memory and can pressure the foreground Xios app mid-transition. Xios now drops
+# its stale IOSurface as soon as the old compositor closes the socket, so presets
+# keep the app alive: tear down the old compositor, SETTLE for kernel reclamation,
+# then start the new compositor and reconnect the existing display process. An
+# explicit `stop` still terminates Xios and returns to SpringBoard.
 #
 # Status "state" vocabulary (xios-session-status.json):
 #   stopping | starting | waiting | relaunching | up | error | stopped | compositor-only
@@ -603,21 +603,26 @@ xs_find_bringup() {
 }
 
 # ---------------------------------------------------------------------------
-# teardown (gotcha a) — kill every compositor/app/client + rm every stale socket
+# teardown (gotcha a) — kill every compositor/client + rm every stale socket
 # ---------------------------------------------------------------------------
 # Union of the teardown greps in the compositor/app bring-up scripts, anchored
 # to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/Applications/KDE/[^ ]+\.app/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
+xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/Applications/KDE/[^ ]+\.app/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
+xs_xios_kill_pattern='Xios :| Xios$|/Xios\.app/Xios'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
-    xs_log "teardown ($why): killing compositors + apps + clients"
+    local kill_xios="${2:-0}" kill_pattern="$xs_kill_pattern"
+    if [ "$kill_xios" = 1 ]; then
+        kill_pattern="$kill_pattern|$xs_xios_kill_pattern"
+    fi
+    xs_log "teardown ($why): killing compositors + clients$([ "$kill_xios" = 1 ] && printf ' + Xios')"
     xs_reap_recorded_session_pgroups
     local self=$$ parent=$PPID pid pids
     pids="$(
-        ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" \
+        ps ax 2>/dev/null | grep -v grep | grep -E "$kill_pattern" \
             | awk '{print $1}' \
             | while read -r pid; do
                 [ -z "$pid" ] && continue
@@ -632,7 +637,7 @@ xios_session_teardown() {
     pids="$(
         {
             printf '%s\n' $pids
-            ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" | awk '{print $1}'
+            ps ax 2>/dev/null | grep -v grep | grep -E "$kill_pattern" | awk '{print $1}'
         } | awk '!seen[$1]++'
     )"
     for pid in $pids; do
@@ -719,17 +724,17 @@ xs_wait_socket() {  # xs_wait_socket <path> <tries>
 }
 
 # Let the kernel reclaim the old compositor's GPU IOSurface + context before the
-# next compositor allocates, so the two don't co-reside and jetsam the app. Runs
-# AFTER teardown (which already killed the old compositor + the app). Tunable.
+# next compositor allocates, so the two don't co-reside and pressure the app.
+# Xios remains alive but releases the old IOSurface on compositor EOF. Tunable.
 xs_settle() {
     local s="${XIOS_SESSION_SETTLE:-2}"
     xs_log "settling ${s}s (freeing the old GPU surface before the next compositor allocates)"
     sleep "$s"
 }
 
-# Make sure the Xios display app is up after the new compositor exists. If it's
-# alive, just bring it forward; if teardown killed it (it did) or iOS jetsammed it
-# during bring-up, relaunch it and mark the status "relaunching display".
+# Make sure the Xios display app is up after the new compositor exists. Normally
+# it survived the switch and only needs foregrounding; if iOS terminated it,
+# relaunch it and mark the status "relaunching display".
 xs_ensure_xios() {  # xs_ensure_xios <preset>
     local preset="${1:-session}"
     if pgrep -f "Xios.app/Xios" >/dev/null 2>&1; then
@@ -1138,7 +1143,7 @@ xios_session_stop() {
         xs_log "slot $XS_SLOT stopped"
         xs_write_status stop stopped "slot stopped: $XS_SLOT"
     else
-        xios_session_teardown "-> stop"
+        xios_session_teardown "-> stop" 1
         xs_clear_active
         xs_log "session stopped; Xios app killed, back to SpringBoard."
         xs_write_status stop stopped "all sessions stopped"
