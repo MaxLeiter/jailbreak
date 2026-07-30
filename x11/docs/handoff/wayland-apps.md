@@ -133,9 +133,13 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   `ladybird-wayland 0.1.0+wl1` installs the upstream GTK/libadwaita Ladybird
   browser, helper processes, real Ladybird icon, D-Bus service, and
   `org.ladybird.Ladybird.desktop` with `Exec=ladybird-wayland --force-new-process %U`.
-  The old `ladybird-xios-launcher` package is now a transitional package that
-  depends on `ladybird-wayland`; it no longer ships the removed UIKit
-  foregrounding desktop entry. The package is in the public Apps section at
+  The old `ladybird-xios-launcher` package was briefly a transitional depending on
+  `ladybird-wayland`, and was **deleted from the repo on 2026-07-29**. Its real form
+  (`0.1.0`, a desktop shortcut for the standalone UIKit app) was the published version
+  for only 4h14m on 2026-07-06, and the transitional was absent from prod entirely
+  between the 07-09 rollback and 07-29, so its upgrade path had already lapsed. It was
+  `Section: Apps`, which put a third, confusing "Ladybird" entry in Sileo next to
+  `ladybird-app` and `ladybird-wayland`. The package is in the public Apps section at
   `repo.maxleiter.com` with tightened Depends pins for the newer Ladybird leaf
   libraries. Host packaging verifies the Compositor loads real ANGLE
   `/var/jb/lib/angle/libEGL.angle.dylib` and `/var/jb/lib/angle/libGLESv2.dylib`.
