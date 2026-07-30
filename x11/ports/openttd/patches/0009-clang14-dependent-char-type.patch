@@ -1,0 +1,11 @@
+--- a/src/gfx_layout.cpp
++++ b/src/gfx_layout.cpp
+@@ -66,7 +66,7 @@ static inline void GetLayouter(Layouter::LineCacheItem &line, std::string_view s
+ {
+ 	typename T::CharType *buff_begin = new typename T::CharType[str.size() + 1];
+ 	/* Move ownership of buff_begin into the Buffer/unique_ptr. */
+-	line.buffer = Layouter::LineCacheItem::Buffer(buff_begin, [](void *p) { delete[] reinterpret_cast<T::CharType *>(p); });
++	line.buffer = Layouter::LineCacheItem::Buffer(buff_begin, [](void *p) { delete[] reinterpret_cast<typename T::CharType *>(p); });
+ 
+ 	const typename T::CharType *buffer_last = buff_begin + str.size() + 1;
+ 	typename T::CharType *buff = buff_begin;

@@ -6,3 +6,4 @@
 0006-clang14-saveload-aggregate.patch
 0007-clang14-sstream-include.patch
 0008-clang14-more-aggregate-and-sstream.patch
+0009-clang14-dependent-char-type.patch

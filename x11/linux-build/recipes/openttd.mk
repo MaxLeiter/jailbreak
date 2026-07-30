@@ -8,7 +8,7 @@ endif
 SUBPROJECTS    += openttd
 OPENTTD_VERSION := 15.3
 DEB_OPENTTD_V  ?= $(OPENTTD_VERSION)+ios1
-OPENTTD_PATCH_REV := 9
+OPENTTD_PATCH_REV := 10
 
 openttd-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://cdn.openttd.org/openttd-releases/$(OPENTTD_VERSION)/openttd-$(OPENTTD_VERSION)-source.tar.xz)
