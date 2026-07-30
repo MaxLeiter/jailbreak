@@ -3,15 +3,14 @@
  *
  * A small root LaunchDaemon that bridges "tap a home-screen icon" to "run a Linux
  * app as an iosc Wayland client + show the Xios display". It exists because a
- * home-screen launcher .app runs as `mobile` inside the iOS app sandbox: any
- * process it forks inherits that sandbox. ioscd runs OUTSIDE the sandbox (root,
- * started by launchd), so it can spawn the GNOME/GTK client the way the manual
- * run-iosc.sh / run-kgx.sh scripts do today — this daemon just generalises them.
+ * home-screen launcher .app runs as `mobile` inside the iOS app sandbox. ioscd
+ * resolves its app id through a trusted, root-owned desktop entry and starts the
+ * client outside the app sandbox under the unprivileged mobile account.
  *
  * Protocol (one line per connection on /var/jb/tmp/ioscd.sock):
- *     LAUNCH\t<app_id>\t<exec>\n          -> LAUNCHED\n | RAISED\n | ERR <msg>\n
- *     LAUNCH_NATIVE\t<app_id>\t<exec>\n   -> same, on the native iPadOS path
- *     LAUNCH_CLASSIC\t<app_id>\t<exec>\n  -> same, on the classic Xios path
+ *     LAUNCH\t<app_id>\n          -> LAUNCHED\n | RAISED\n | ERR <msg>\n
+ *     LAUNCH_NATIVE\t<app_id>\n   -> same, on the native iPadOS path
+ *     LAUNCH_CLASSIC\t<app_id>\n  -> same, on the classic Xios path
  *     SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\t<slot>\n
  *                                         -> SESSION_STARTED\n | SESSION_ACTIVE\n | ERR <msg>\n
  *     SESSION_ENSURE\t...same payload...  -> same replies, ensure semantics for all peers
@@ -27,7 +26,8 @@
  *   2. foregrounds Xios.app via `uiopen -b com.max.xios` (the on-screen display);
  *   3. if a client we previously spawned for <app_id> is still alive, asks iosc
  *      to raise that window (iosc-wm.sock, see NOTE) instead of duplicating it;
- *      otherwise execs <exec> under the iosc client environment and remembers it.
+ *      otherwise resolves <app_id>, executes its trusted desktop entry without a
+ *      command shell, and remembers it.
  *
  * Existing-window raises are sent to iosc over /var/jb/tmp/iosc-wm.sock. If the
  * compositor is from an older build or the socket is gone, ioscd degrades to
@@ -65,6 +65,7 @@
 #include <time.h>
 #include <poll.h>
 #include <pwd.h>
+#include <grp.h>
 #include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -74,6 +75,8 @@
 #include <sys/types.h>
 
 #include <stdint.h>
+
+#include "xios-desktop-entry.h"
 
 #if defined(__has_include)
 #  if __has_include(<libproc.h>)
@@ -135,6 +138,7 @@ static char g_ioscd_client_log[PATH_MAX];
 static char g_ioscd_session_log[PATH_MAX];
 static char g_angle_real_libegl[PATH_MAX];
 static char g_home[PATH_MAX];
+static char g_mobile_home[PATH_MAX];
 static char g_xios_pulse_profile[PATH_MAX];
 static char g_xios_start_a11y[PATH_MAX];
 static char g_xios_hwbridged[PATH_MAX];
@@ -248,6 +252,9 @@ static void init_paths(void)
         copy_path(g_path, sizeof(g_path), "/usr/bin:/usr/sbin:/bin:/sbin");
         copy_path(g_local_path, sizeof(g_local_path), "/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin");
     }
+    struct passwd *mobile = getpwnam("mobile");
+    copy_path(g_mobile_home, sizeof(g_mobile_home),
+              (mobile && mobile->pw_dir && mobile->pw_dir[0]) ? mobile->pw_dir : "/var/mobile");
 
     static char wayland_classic[PATH_MAX], wayland_native[PATH_MAX];
     static char json_classic[PATH_MAX], json_native[PATH_MAX];
@@ -349,6 +356,19 @@ static void mobile_socket_perms(const char *path, const char *label)
         fprintf(stderr, "ioscd: keeping %s %s owner-only; chown mobile failed: %s\n",
                 label, path, strerror(errno));
     }
+}
+
+static int drop_to_mobile(void)
+{
+    struct passwd *pw = getpwnam("mobile");
+    uid_t uid = pw ? pw->pw_uid : 501;
+    gid_t gid = pw ? pw->pw_gid : 501;
+    const char *name = (pw && pw->pw_name) ? pw->pw_name : "mobile";
+
+    if (initgroups(name, gid) != 0) return -1;
+    if (setgid(gid) != 0) return -1;
+    if (setuid(uid) != 0) return -1;
+    return 0;
 }
 
 static void child_stdio(const char *logpath, int append)
@@ -635,10 +655,12 @@ static void remember_app(const char *app_id, pid_t pid, int native)
     e->pid = pid;
 }
 
-/* Let the mobile-owned Xios app connect to the root-created rendezvous socket. */
+/* Let mobile-owned display and application processes connect to root-created
+ * compositor sockets. */
 static void fix_ddx_perms(int native)
 {
     mobile_socket_perms(mode_cfg(native)->ddx_sock, "ddx socket");
+    mobile_socket_perms(mode_cfg(native)->wayland_sock, "wayland socket");
 }
 
 static int iosc_alive(int native)
@@ -1017,10 +1039,17 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     if (!addr || addr_len == 0) return 0;
     snprintf(sock, sizeof(sock), "%s/session-bus", busdir);
     snprintf(addr, addr_len, "unix:path=%s", sock);
-    if (socket_exists(sock)) return 1;
-
     mkdir(busdir, 0700);
+    struct passwd *mobile = getpwnam("mobile");
+    uid_t uid = mobile ? mobile->pw_uid : 501;
+    gid_t gid = mobile ? mobile->pw_gid : 501;
+    if (chown(busdir, uid, gid) != 0) return 0;
     chmod(busdir, 0700);
+    if (socket_exists(sock)) {
+        mobile_socket_perms(sock, "session bus socket");
+        return 1;
+    }
+
     unlink(sock);
     snprintf(address_arg, sizeof(address_arg), "--address=%s", addr);
 
@@ -1028,6 +1057,7 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     if (pid < 0) return 0;
     if (pid == 0) {
         child_stdio(NULL, 0);
+        if (drop_to_mobile() != 0) _exit(126);
         execl(g_dbus_daemon, "dbus-daemon", "--session", "--fork",
               address_arg, "--print-address", (char *)NULL);
         _exit(127);
@@ -1035,6 +1065,7 @@ static int ensure_session_bus(char *addr, size_t addr_len)
 
     int status = 0;
     waitpid(pid, &status, 0);
+    if (socket_exists(sock)) mobile_socket_perms(sock, "session bus socket");
     return socket_exists(sock);
 }
 
@@ -1128,39 +1159,86 @@ static void set_wayland_client_env(const struct mode_cfg *mode, const char *busd
                                    int have_bus, const char *bus_addr,
                                    int enable_a11y)
 {
+    char prefix[PATH_MAX], angle[PATH_MAX], data_dirs[PATH_MAX * 2];
+    char config_dirs[PATH_MAX], config_home[PATH_MAX], cache_home[PATH_MAX];
+    char schemas[PATH_MAX], compose[PATH_MAX], shell[PATH_MAX];
+    char dyld[PATH_MAX * 2], pulse[PATH_MAX], pulse_runtime[PATH_MAX];
+    char qt_plugins[PATH_MAX], qt_qml[PATH_MAX];
+    prefixed_path(prefix, sizeof(prefix), "/usr");
+    prefixed_path(angle, sizeof(angle), "/lib/angle");
+    prefixed_path(config_dirs, sizeof(config_dirs), "/etc/xdg");
+    prefixed_path(shell, sizeof(shell), "/bin/sh");
+    snprintf(data_dirs, sizeof(data_dirs), "%s/share:%s/local/share", prefix, prefix);
+    snprintf(config_home, sizeof(config_home), "%s/.config", g_mobile_home);
+    snprintf(cache_home, sizeof(cache_home), "%s/.cache", g_mobile_home);
+    snprintf(schemas, sizeof(schemas), "%s/share/glib-2.0/schemas", prefix);
+    snprintf(compose, sizeof(compose), "%s/share/X11/locale/en_US.UTF-8/Compose", prefix);
+    snprintf(dyld, sizeof(dyld), "%s/lib:%s", prefix, angle);
+    snprintf(pulse, sizeof(pulse), "unix:%s/pulse/native", g_tmp);
+    snprintf(pulse_runtime, sizeof(pulse_runtime), "%s/pulse", g_tmp);
+    snprintf(qt_plugins, sizeof(qt_plugins), "%s/lib/qt6/plugins", prefix);
+    snprintf(qt_qml, sizeof(qt_qml), "%s/lib/qt6/qml", prefix);
+
     setenv("XDG_RUNTIME_DIR", busdir, 1);                 /* private, dbus-friendly */
+    setenv("XDG_DATA_DIRS", data_dirs, 1);
+    setenv("XDG_CONFIG_DIRS", config_dirs, 1);
+    setenv("XDG_CONFIG_HOME", config_home, 1);
+    setenv("XDG_CACHE_HOME", cache_home, 1);
+    setenv("GSETTINGS_SCHEMA_DIR", schemas, 1);
     setenv("WAYLAND_DISPLAY", mode->wayland_sock, 1);     /* absolute path */
     setenv("XIOS_CAPABILITY_PROFILE",
            strcmp(mode->name, "native") == 0 ? "native-host" : "iosc-client-gpu",
            1);
     setenv("GDK_BACKEND", "wayland", 1);
     setenv("GSK_RENDERER", "ngl", 1);
+    setenv("QT_QPA_PLATFORM", "wayland", 1);
+    setenv("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1", 1);
+    setenv("QT_PLUGIN_PATH", qt_plugins, 1);
+    setenv("QML2_IMPORT_PATH", qt_qml, 1);
+    setenv("QML_IMPORT_PATH", qt_qml, 1);
     setenv("ANGLE_REAL_LIBEGL", g_angle_real_libegl, 1);
+    setenv("DYLD_LIBRARY_PATH", dyld, 1);
     setenv("GSETTINGS_BACKEND", "memory", 1);
+    setenv("PULSE_SERVER", pulse, 1);
+    setenv("PULSE_RUNTIME_PATH", pulse_runtime, 1);
     if (have_bus) {
         setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
         setenv("DBUS_SYSTEM_BUS_ADDRESS", bus_addr, 1);
     }
-    if (enable_a11y) unsetenv("GTK_A11Y");
-    else setenv("GTK_A11Y", "none", 1);
-    setenv("HOME", g_home, 1);
-    set_rootless_path(0);
+    if (enable_a11y) {
+        unsetenv("GTK_A11Y");
+        unsetenv("NO_AT_BRIDGE");
+    } else {
+        setenv("GTK_A11Y", "none", 1);
+        setenv("NO_AT_BRIDGE", "1", 1);
+    }
+    setenv("HOME", g_mobile_home, 1);
+    setenv("USER", "mobile", 1);
+    setenv("LOGNAME", "mobile", 1);
+    setenv("SHELL", shell, 1);
+    setenv("TERM", "xterm-256color", 1);
+    setenv("LANG", "C", 1);
+    setenv("LC_CTYPE", "UTF-8", 1);
+    setenv("FC_LANG", "en", 1);
+    setenv("XCOMPOSEFILE", compose, 1);
+    setenv("XDG_SESSION_TYPE", "wayland", 1);
+    setenv("XDG_CURRENT_DESKTOP", "Xios", 1);
+    setenv("TMPDIR", g_tmp, 1);
+    set_rootless_path(1);
 }
 
-/* Spawn <exec> as a Wayland client of iosc. Mirrors run-kgx.sh's environment:
- * a shared 0700 session bus dir, WAYLAND_DISPLAY by absolute path,
- * GDK wayland backend, GPU GTK rendering by default — iosc composites imported
- * IOSurfaces zero-copy — and a writable HOME. We exec through `bash -lc` so the
- * client also picks up
- * the /var/jb/etc/profile.d login scripts (PATH + ANGLE/lib paths the run
- * scripts rely on). */
-static pid_t launch_client(const char *app_id, const char *exec, int native)
+/* Spawn an already parsed desktop entry as mobile. The daemon never evaluates
+ * command text: argv came from a trusted root-owned .desktop file and is passed
+ * directly to execvp (or through dbus-run-session as an argv vector). */
+static pid_t launch_client(const char *app_id, char *const app_argv[], int native)
 {
     const struct mode_cfg *mode = mode_cfg(native);
     const char *busdir = g_ioscd_bus_dir;
     char bus_addr[256];
     int have_bus = ensure_session_bus(bus_addr, sizeof(bus_addr));
     ensure_native_helpers_for_bus(busdir, bus_addr, have_bus);
+    int enable_a11y = a11y_enabled_gate();
+    if (enable_a11y) (void)start_a11y_for_busdir(busdir);
 
     pid_t pid = fork();
     if (pid < 0) return -1;
@@ -1168,25 +1246,19 @@ static pid_t launch_client(const char *app_id, const char *exec, int native)
         setsid();
         child_stdio(g_ioscd_client_log, 1);
 
-        int enable_a11y = a11y_enabled_gate();
         set_wayland_client_env(mode, busdir, have_bus, bus_addr, enable_a11y);
-
-        const char *cmd = exec;
-        char a11y_cmd[4096];
-        if (enable_a11y) {
-            int n = snprintf(a11y_cmd, sizeof(a11y_cmd),
-                             "if [ -x %s ]; then "
-                             "%s; "
-                             "elif command -v xios-start-a11y >/dev/null 2>&1; then "
-                             "xios-start-a11y; fi; exec %s",
-                             g_xios_start_a11y, g_xios_start_a11y, exec);
-            if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
-        }
-
+        if (drop_to_mobile() != 0) _exit(126);
         if (!have_bus) {
-            execl(g_dbus_run, "dbus-run-session", "--", g_bash_bin, "-lc", cmd, (char *)NULL);
+            char *run_argv[XIOS_DESKTOP_ARG_MAX + 3];
+            size_t n = 0;
+            run_argv[n++] = "dbus-run-session";
+            run_argv[n++] = "--";
+            for (size_t i = 0; app_argv[i] && n + 1 < sizeof(run_argv) / sizeof(run_argv[0]); i++)
+                run_argv[n++] = app_argv[i];
+            run_argv[n] = NULL;
+            execv(g_dbus_run, run_argv);
         }
-        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
+        execvp(app_argv[0], app_argv);
         _exit(127);
     }
     remember_app(app_id, pid, native);
@@ -1507,24 +1579,52 @@ static int launch_mode_for_verb(const char *verb, int *native)
     return 0;
 }
 
-static void handle_launch_request(int fd, const char *verb, char *payload)
+static int peer_can_launch(const struct peer_info *peer)
+{
+    if (!peer || !peer->have_eid) return 0;
+    struct passwd *mobile = getpwnam("mobile");
+    uid_t mobile_uid = mobile ? mobile->pw_uid : 501;
+    return peer->uid == 0 || peer->uid == mobile_uid;
+}
+
+static void handle_launch_request(int fd, const char *verb, char *payload,
+                                  const struct peer_info *peer)
 {
     char *app_id = payload;
-    char *t2 = strchr(app_id, '\t');
-    if (!t2) {
+    app_id[strcspn(app_id, "\r\n")] = 0;
+    if (strchr(app_id, '\t')) {
         reply(fd, "ERR malformed\n");
         return;
     }
-    *t2 = 0;
-    char *exec = t2 + 1;
 
     int native = g_default_native;
     if (!launch_mode_for_verb(verb, &native)) {
         reply(fd, "ERR unknown verb\n");
         return;
     }
-    if (!*exec) {
-        reply(fd, "ERR empty exec\n");
+    if (!peer_can_launch(peer)) {
+        reply(fd, "ERR unauthorized peer\n");
+        return;
+    }
+
+    struct xios_desktop_entry desktop;
+    char parse_error[256];
+    char *app_argv[XIOS_DESKTOP_ARG_MAX];
+    char argv_storage[XIOS_DESKTOP_ARG_STORAGE];
+    if (!xios_desktop_entry_resolve(app_id, g_jbroot, 1, &desktop,
+                                    parse_error, sizeof(parse_error))) {
+        fprintf(stderr, "ioscd: reject app_id=%s: %s\n", app_id, parse_error);
+        reply(fd, "ERR app not installed\n");
+        return;
+    }
+    int argc = xios_desktop_entry_argv(&desktop, app_argv,
+                                       sizeof(app_argv) / sizeof(app_argv[0]),
+                                       argv_storage, sizeof(argv_storage),
+                                       parse_error, sizeof(parse_error));
+    if (argc <= 0) {
+        fprintf(stderr, "ioscd: reject desktop=%s: %s\n",
+                desktop.desktop_path, parse_error);
+        reply(fd, "ERR invalid desktop entry\n");
         return;
     }
 
@@ -1551,14 +1651,14 @@ static void handle_launch_request(int fd, const char *verb, char *payload)
         return;
     }
 
-    pid_t pid = launch_client(app_id, exec, native);
+    pid_t pid = launch_client(app_id, app_argv, native);
     if (pid <= 0) {
         reply(fd, "ERR fork failed\n");
         return;
     }
 
-    fprintf(stderr, "ioscd: launch mode=%s app_id=%s pid=%d exec=%s\n",
-            mode_name(native), app_id, (int)pid, exec);
+    fprintf(stderr, "ioscd: launch mode=%s app_id=%s pid=%d desktop=%s argv0=%s uid=mobile\n",
+            mode_name(native), app_id, (int)pid, desktop.desktop_path, app_argv[0]);
     reply(fd, "LAUNCHED\n");
 }
 
@@ -1652,7 +1752,7 @@ static void handle_conn(int fd)
         return;
     }
 
-    handle_launch_request(fd, verb, t1 + 1);
+    handle_launch_request(fd, verb, t1 + 1, &peer);
 }
 
 static int make_ctl_socket(void)
