@@ -1,0 +1,15 @@
+diff --git a/lib/ephy-sync-utils.c b/lib/ephy-sync-utils.c
+index 49c40a0..0d58737 100644
+--- a/lib/ephy-sync-utils.c
++++ b/lib/ephy-sync-utils.c
+@@ -183,7 +183,9 @@ ephy_sync_utils_generate_random_bytes (void   *random_ctx,
+   g_assert (num_bytes > 0);
+   g_assert (out);
+ 
+-#ifdef __OpenBSD__
++#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
++  arc4random_buf (out, num_bytes);
++#elif defined(__OpenBSD__)
+   if (getentropy (out, num_bytes) == -1) {
+     g_error ("Failed to get entropy: %s", g_strerror (errno));
+   }

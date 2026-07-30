@@ -14,6 +14,7 @@ DEB_EPIPHANY_V    ?= $(EPIPHANY_VERSION)+ios1
 epiphany-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/epiphany/$(EPIPHANY_MAJOR_V)/epiphany-$(EPIPHANY_VERSION).tar.xz)
 	$(call EXTRACT_TAR,epiphany-$(EPIPHANY_VERSION).tar.xz,epiphany-$(EPIPHANY_VERSION),epiphany)
+	$(call DO_PATCH,epiphany,epiphany,-p1)
 	rm -rf $(BUILD_WORK)/epiphany/build
 	mkdir -p $(BUILD_WORK)/epiphany/build
 	echo -e "[host_machine]\n \

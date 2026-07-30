@@ -110,6 +110,7 @@ if target_requests libdazzle || target_requests epiphany; then
   stage_required_patch_stack libdazzle
   bash /work/recipes/ensure-gtkintl-build-shim.sh
 fi
+target_requests epiphany && stage_required_patch_stack epiphany
 if [[ " $TARGETS " == *" webkitgtk"* ]]; then
   stage_required_patch_stack webkitgtk
 fi

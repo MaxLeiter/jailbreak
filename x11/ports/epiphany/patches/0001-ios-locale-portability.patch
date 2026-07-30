@@ -1,0 +1,126 @@
+diff --git a/lib/contrib/gnome-languages.c b/lib/contrib/gnome-languages.c
+index abf6f07..967425d 100644
+--- a/lib/contrib/gnome-languages.c
++++ b/lib/contrib/gnome-languages.c
+@@ -288,6 +288,10 @@ gnome_normalize_locale (const char *locale)
+ static gboolean
+ language_name_is_valid (const char *language_name)
+ {
++#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
++        /* Darwin's iOS libc has no newlocale(3) locale objects. */
++        return language_name != NULL && language_name[0] != '\0';
++#else
+         locale_t locale;
+ 
+         locale = newlocale (LC_MESSAGES_MASK, language_name, (locale_t) 0);
+@@ -297,6 +301,7 @@ language_name_is_valid (const char *language_name)
+         }
+ 
+         return FALSE;
++#endif
+ }
+ 
+ static void
+@@ -304,6 +309,33 @@ language_name_get_codeset_details (const char  *language_name,
+                                    char       **pcodeset,
+                                    gboolean    *is_utf8)
+ {
++#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
++        const char *codeset = "UTF-8";
++        g_autofree char *explicit_codeset = NULL;
++
++        /*
++         * iOS only exposes UTF-8 locales and omits newlocale(3), uselocale(3),
++         * and locale_t. Preserve an explicitly supplied codeset for display,
++         * otherwise use the platform's native UTF-8 encoding.
++         */
++        if (language_name != NULL) {
++                const char *dot = strchr (language_name, '.');
++                if (dot != NULL) {
++                        const char *end = strchr (dot + 1, '@');
++                        explicit_codeset = end != NULL
++                                ? g_strndup (dot + 1, end - (dot + 1))
++                                : g_strdup (dot + 1);
++                        if (explicit_codeset[0] != '\0')
++                                codeset = explicit_codeset;
++                }
++        }
++
++        if (pcodeset != NULL)
++                *pcodeset = g_strdup (codeset);
++        if (is_utf8 != NULL)
++                *is_utf8 = g_ascii_strcasecmp (codeset, "UTF-8") == 0 ||
++                           g_ascii_strcasecmp (codeset, "UTF8") == 0;
++#else
+         locale_t locale;
+         locale_t old_locale;
+         const char *codeset = NULL;
+@@ -328,6 +360,7 @@ language_name_get_codeset_details (const char  *language_name,
+ 
+         uselocale (old_locale);
+         freelocale (locale);
++#endif
+ }
+ 
+ /**
+@@ -705,14 +738,16 @@ get_translated_language (const char *code,
+         if (language != NULL) {
+                 const char *translated_name;
++#ifndef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
+                 locale_t loc;
+                 locale_t old_locale;
+ 
+                 if (locale != NULL) {
+                         loc = newlocale (LC_MESSAGES_MASK, locale, (locale_t) 0);
+                         if (loc == (locale_t) 0)
+                                 return NULL;
+                         old_locale = uselocale (loc);
+                 }
++#endif
+ 
+                 if (is_fallback_language (code)) {
+                         name = g_strdup (_("Unspecified"));
+@@ -723,10 +758,12 @@ get_translated_language (const char *code,
+                         name = capitalize_utf8_string (tmp);
+                 }
+ 
++#ifndef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
+                 if (locale != NULL) {
+                         uselocale (old_locale);
+                         freelocale (loc);
+                 }
++#endif
+         }
+ 
+        return name;
+@@ -763,24 +800,30 @@ get_translated_territory (const char *code,
+         if (territory != NULL) {
+                 const char *translated_territory;
++#ifndef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
+                 locale_t loc;
+                 locale_t old_locale = NULL;
++#endif
+                 g_autofree char *tmp = NULL;
+ 
++#ifndef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
+                 if (locale != NULL) {
+                         loc = newlocale (LC_MESSAGES_MASK, locale, (locale_t) 0);
+                         if (loc == (locale_t) 0)
+                                 return NULL;
+                         old_locale = uselocale (loc);
+                 }
++#endif
+ 
+                 translated_territory = dgettext ("iso_3166", territory);
+                 tmp = get_first_item_in_semicolon_list (translated_territory);
+                 name = capitalize_utf8_string (tmp);
+ 
++#ifndef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
+                 if (locale != NULL) {
+                         uselocale (old_locale);
+                         freelocale (loc);
+                 }
++#endif
+         }
+ 
+         return name;
