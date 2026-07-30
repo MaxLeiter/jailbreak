@@ -50,7 +50,13 @@ final class XScreenView: UIView {
     private var displayRegistryDir: String { XiosRuntimePaths.tmp("xios-displays.d") }
     private let wallpaperConfigPath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper"
     private let wallpaperImagePath = "/var/mobile/Library/Preferences/com.max.iosc-wallpaper.jpg"
+    // ioscd is deliberately single-threaded. KDE startup or launcher-sync work can
+    // briefly keep it busy, so requests run on this serial worker instead of UIKit.
+    private let ioscdRequestQueue = DispatchQueue(
+        label: "com.max.xios.ioscd-control", qos: .userInitiated)
+    private var sessionRequestInFlight = false
     private weak var sessionStatusLabel: UILabel?
+    private weak var toolMessageLabel: UILabel?
     // Session-switch resilience: when the compositor dies mid-session the ddx surface
     // is lost; the app releases GPU state and holds on the test pattern (awaitingCompositor)
     // rather than jetsamming, while a full-screen banner shows the launcher's live status
@@ -1130,8 +1136,10 @@ final class XScreenView: UIView {
         writeDebugSnapshot()
     }
 
-    private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20) -> String? {
-        let fd = xiosConnectUnixSocket(ioscdSocketPath)
+    /// Blocking worker primitive. UI actions dispatch this through requestIOSCD.
+    private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20,
+                                  timeout: TimeInterval = 2.0) -> String? {
+        let fd = xiosConnectUnixSocket(ioscdSocketPath, timeout: timeout)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         guard line.data(using: .utf8)?.withUnsafeBytes({ xiosWriteAll(fd, bytes: $0) }) == true
@@ -1148,11 +1156,26 @@ final class XScreenView: UIView {
                 data.append(buf, count: Int(n))
             } else if n < 0 && errno == EINTR {
                 continue
+            } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return nil
             } else {
                 break
             }
         }
         return String(data: data, encoding: .utf8)
+    }
+
+    private func requestIOSCD(_ line: String, maxBytes: Int = 1 << 20,
+                              timeout: TimeInterval = 2.0,
+                              completion: @escaping (String?) -> Void) {
+        ioscdRequestQueue.async { [weak self] in
+            guard let self else { return }
+            let response = self.sendIOSCDRequest(
+                line, maxBytes: maxBytes, timeout: timeout)
+            DispatchQueue.main.async {
+                completion(response)
+            }
+        }
     }
 
     private func ioscdResponseLines(_ line: String) -> [String]? {
@@ -1161,9 +1184,9 @@ final class XScreenView: UIView {
             .filter { !$0.isEmpty }
     }
 
-    private func sendSessionRequestToIOSCD(_ preset: String, app: String?,
-                                           display: DisplayProfile?,
-                                           slot: String? = nil) -> String? {
+    private func sessionRequestLine(_ preset: String, app: String?,
+                                    display: DisplayProfile?,
+                                    slot: String? = nil) -> String {
         var width = ""
         var height = ""
         var dpi = ""
@@ -1172,27 +1195,50 @@ final class XScreenView: UIView {
             height = String(display.height)
             if display.dpi > 0 { dpi = String(display.dpi) }
         }
-        let line = ["SESSION", preset, app ?? "", width, height, dpi, slot ?? ""]
+        return ["SESSION", preset, app ?? "", width, height, dpi, slot ?? ""]
             .joined(separator: "\t") + "\n"
-        return sendIOSCDRequest(line, maxBytes: 4096)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
                                      display: DisplayProfile? = nil,
                                      slot: String? = nil) {
-        let response = sendSessionRequestToIOSCD(preset, app: app, display: display, slot: slot)
-        if response?.hasPrefix("SESSION_STARTED") == true {
-            lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
-                + (slot.map { " slot=\($0)" } ?? "")
-                + (display.map { " \($0.detail)" } ?? "")
-            // Track the switch from here on (card line + full-screen banner once dismissed),
-            // so it survives the app staying up through a compositor swap.
-            startSessionIndicator()
-        } else {
-            let detail = response?.isEmpty == false ? response! : "ioscd socket unavailable"
-            lastToolMessage = "Session request failed: \(detail)"
+        guard !sessionRequestInFlight else {
+            lastToolMessage = "A desktop request is already being sent"
+            toolMessageLabel?.text = lastToolMessage
+            return
+        }
+        sessionRequestInFlight = true
+        let requestDescription: String
+        switch preset {
+        case "app": requestDescription = "Opening \(app ?? "app")…"
+        case "stop": requestDescription = "Stopping desktop…"
+        case "resize": requestDescription = "Resizing desktop…"
+        default: requestDescription = "Starting \(desktopLabel(preset))…"
+        }
+        lastToolMessage = requestDescription
+        toolMessageLabel?.text = requestDescription
+        startSessionIndicator()
+
+        let line = sessionRequestLine(preset, app: app, display: display, slot: slot)
+        requestIOSCD(line, maxBytes: 4096) { [weak self] rawResponse in
+            guard let self else { return }
+            self.sessionRequestInFlight = false
+            let response = rawResponse?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if response?.hasPrefix("SESSION_STARTED") == true ||
+                response?.hasPrefix("SESSION_ACTIVE") == true {
+                self.lastToolMessage = "Session: \(preset)"
+                    + (app.map { " \($0)" } ?? "")
+                    + (slot.map { " slot=\($0)" } ?? "")
+                    + (display.map { " \($0.detail)" } ?? "")
+                self.startSessionIndicator()
+            } else {
+                let detail = response?.isEmpty == false ? response! : "ioscd timed out"
+                self.lastToolMessage = "Session request failed: \(detail)"
+            }
+            self.toolMessageLabel?.text = self.lastToolMessage
+            self.refreshShellOverlay()
+            self.writeDebugSnapshot()
         }
         writeDebugSnapshot()
     }
@@ -1963,7 +2009,100 @@ final class XScreenView: UIView {
         updateHardwarePointerButtons(0)
     }
 
+    // MARK: trackpad gestures (pinch / rotate -> zwp_pointer_gestures_v1)
+
+    /// wl_pointer wants ONE gesture carrying both scale and rotation, but UIKit reports
+    /// them through two independent recognizers that can run simultaneously. They share
+    /// this state: whichever starts first opens the Wayland gesture, whichever ends last
+    /// closes it.
+    private var trackpadGestureActive = 0
+    private var trackpadPinchScale: CGFloat = 1
+    private var trackpadRotationDegrees: CGFloat = 0
+    private var trackpadGestureCenter: CGPoint?
+
+    /// A pinch or rotate with no touches on the glass came from the trackpad — the same
+    /// test the indirect scroll recognizers use. Finger pinches keep zooming our own
+    /// framebuffer; only indirect ones are the desktop's business, and only on the iosc
+    /// path, since XTEST has no gesture concept.
+    private func isTrackpadGesture(_ g: UIGestureRecognizer) -> Bool {
+        g.numberOfTouches == 0 && usingIosc && inputConnected
+    }
+
+    private func trackpadGestureBegan(at point: CGPoint) {
+        trackpadGestureActive += 1
+        guard trackpadGestureActive == 1 else { return }
+        trackpadPinchScale = 1
+        trackpadRotationDegrees = 0
+        trackpadGestureCenter = point
+        sendTrackpadGesture(phase: XiosGesturePhase.begin)
+    }
+
+    private func trackpadGestureEnded(cancelled: Bool) {
+        guard trackpadGestureActive > 0 else { return }
+        trackpadGestureActive -= 1
+        guard trackpadGestureActive == 0 else { return }
+        sendTrackpadGesture(phase: cancelled ? XiosGesturePhase.cancel : XiosGesturePhase.end)
+        trackpadGestureCenter = nil
+    }
+
+    private enum XiosGesturePhase {
+        static let begin: UInt32 = 0, update: UInt32 = 1, end: UInt32 = 2, cancel: UInt32 = 3
+    }
+
+    /// One gesture frame. Scale and rotation are absolute since begin — UIKit reports
+    /// them that way and so does wl_pointer, so neither needs accumulating. Translation
+    /// is the centre's movement since the previous frame, converted pt->fb px through the
+    /// same fit transform scroll uses.
+    private func sendTrackpadGesture(phase: UInt32, at point: CGPoint? = nil) {
+        guard inputConnected, usingIosc else { return }
+        var dx256: Int32 = 0, dy256: Int32 = 0
+        if let point, let last = trackpadGestureCenter, let fit = fitTransform(), fit.scale > 0 {
+            let ptToFb = 256 / fit.scale
+            dx256 = Int32(clamping: Int(((point.x - last.x) * ptToFb).rounded()))
+            dy256 = Int32(clamping: Int(((point.y - last.y) * ptToFb).rounded()))
+        }
+        if let point { trackpadGestureCenter = point }
+        let scale256 = UInt32(max(0, (trackpadPinchScale * 256).rounded()))
+        let rot256 = Int32(clamping: Int((trackpadRotationDegrees * 256).rounded()))
+        iosc_input_gesture(2 /* pinch */, phase, 2, dx256, dy256, scale256, rot256)
+    }
+
+    /// Rotation reaches us only if iPadOS forwards two-finger trackpad rotation to the
+    /// recognizer. If it does not this simply never fires and pinch still works alone,
+    /// since the scale and rotation fields are independent.
+    @objc private func handleRotation(_ g: UIRotationGestureRecognizer) {
+        guard isTrackpadGesture(g) || (trackpadGestureActive > 0 && g.numberOfTouches == 0) else { return }
+        switch g.state {
+        case .began:
+            trackpadGestureBegan(at: g.location(in: self))
+        case .changed:
+            trackpadRotationDegrees = g.rotation * 180 / .pi
+            sendTrackpadGesture(phase: XiosGesturePhase.update, at: g.location(in: self))
+        case .ended, .cancelled, .failed:
+            trackpadGestureEnded(cancelled: g.state != .ended)
+        default:
+            break
+        }
+    }
+
     @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
+        // Trackpad pinch belongs to the desktop (KDE/GTK zoom); finger pinch stays ours.
+        // The second test keeps a gesture that a rotation opened flowing through the same
+        // path even if this recognizer's touch count is read at an awkward moment.
+        if isTrackpadGesture(g) || (trackpadGestureActive > 0 && g.numberOfTouches == 0) {
+            switch g.state {
+            case .began:
+                trackpadGestureBegan(at: g.location(in: self))
+            case .changed:
+                trackpadPinchScale = g.scale
+                sendTrackpadGesture(phase: XiosGesturePhase.update, at: g.location(in: self))
+            case .ended, .cancelled, .failed:
+                trackpadGestureEnded(cancelled: g.state != .ended)
+            default:
+                break
+            }
+            return
+        }
         switch g.state {
         case .began:
             twoFingerBegan()
@@ -2652,6 +2791,12 @@ final class XScreenView: UIView {
         pinch.delegate = self
         addGestureRecognizer(pinch)
 
+        // Trackpad rotation, forwarded with pinch as one Wayland gesture. Harmless if
+        // iPadOS never delivers indirect rotation: handleRotation just never fires.
+        let rotation = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
+        rotation.delegate = self
+        addGestureRecognizer(rotation)
+
         let keyboardPan = UIPanGestureRecognizer(target: self, action: #selector(handleKeyboardRevealPan(_:)))
         keyboardPan.minimumNumberOfTouches = 1
         keyboardPan.maximumNumberOfTouches = 1
@@ -3109,6 +3254,7 @@ final class XScreenView: UIView {
 
         let message = panelLabel(lastToolMessage, size: 12,
                                  color: UIColor(white: 0.70, alpha: 1))
+        toolMessageLabel = message
         stack.addArrangedSubview(message)
         return message
     }
@@ -4352,6 +4498,10 @@ extension XScreenView: UIGestureRecognizerDelegate {
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Pinch and rotation must run together: one Wayland gesture carries both, so
+        // letting either win exclusively would drop half of it.
         gestureRecognizer is UIPinchGestureRecognizer || otherGestureRecognizer is UIPinchGestureRecognizer
+            || gestureRecognizer is UIRotationGestureRecognizer
+            || otherGestureRecognizer is UIRotationGestureRecognizer
     }
 }
