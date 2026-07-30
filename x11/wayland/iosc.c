@@ -9208,6 +9208,13 @@ int main(int argc, char **argv)
     xios_set_compositor_id("iosc");   /* app clients learn the flavor via the in-band HELLO */
     xios_set_input_socket(opts.input_sock);
     xios_set_clipboard_socket(opts.clipboard_sock);
+    /* IOSC_UPSCALE is forwarded to the display app verbatim as xios.json's
+     * "upscale" field and changes NOTHING here: the output IOSurface, wl_output
+     * state, and every client's view of the desktop stay exactly as they were. It
+     * exists on the compositor's command line only because the app is launched by
+     * FrontBoard and has no environment of its own to read. Runtime knob, not a
+     * build one — see docs/ios-platform-features.md §2. */
+    xios_set_upscale_hint(getenv("IOSC_UPSCALE"));
     if (xios_server_start(opts.ddx_sock, opts.json_path, g_width, g_height, g_stride) != 0) {
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;

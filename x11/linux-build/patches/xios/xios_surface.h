@@ -212,6 +212,13 @@ void xios_set_input_socket(const char *path);
  * not provide an iOS pasteboard bridge leave it unset. */
 void xios_set_clipboard_socket(const char *path);
 
+/* Present-side upscaling hint, emitted as xios.json's "upscale" field. Purely a
+ * message to the display app: the compositor's own output IOSurface, geometry, and
+ * wl_output state are unaffected, and no Wayland client can observe it. Accepted
+ * spellings are the app's business (see XScreen.UpscaleMode) — "off", "auto", or a
+ * factor like "1.5". Unset means off, which is the default. */
+void xios_set_upscale_hint(const char *spec);
+
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);
 

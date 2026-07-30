@@ -4,6 +4,7 @@ import Metal
 import QuartzCore
 import IOSurface
 import Darwin
+import OSLog
 
 /// Root VC: a full-screen view that displays the X server's framebuffer.
 final class XServerViewController: UIViewController {
@@ -195,6 +196,24 @@ final class XScreenView: UIView {
     private static let liveFrameRate = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
     /// Refresh interval the link last reported, for the status line.
     private var lastLinkIntervalUs: UInt32 = 0
+
+    // Instruments needs named intervals to show where a frame went; without them the
+    // present path is an anonymous slice of the main thread. Two intervals: `present`
+    // covers building and committing the frame, `upscale` the MetalFX stage inside it,
+    // so "did upscaling actually get cheaper" is a readable comparison rather than an
+    // inference from fps. A disabled signposter compiles down to nothing.
+    private let signposter = OSSignposter(
+        subsystem: "com.max.xios", category: "present")
+
+    // MARK: present-side MetalFX upscaling (see XiosUpscale.swift)
+    // OFF by default: this lands as an opt-in you can measure, not a silent change to
+    // what the desktop looks like. Switched at runtime from XIOS_UPSCALE in our own
+    // environment, or from xios.json's "upscale" field — which is the production knob,
+    // because FrontBoard launches us with no environment of our own (iosc forwards its
+    // IOSC_UPSCALE into the config it already writes).
+    private var upscaleMode = XiosUpscaleMode.off
+    private var upscaler: XiosUpscaler?
+    private var lastUpscaleStatus = ""
     private var testBuf: UnsafeMutablePointer<UInt8>?
     private var usingTestPattern = false
     // The animated test card is a LAST-RESORT no-signal diagnostic only. During
@@ -375,6 +394,10 @@ final class XScreenView: UIView {
         if metalReady {
             teardownConnections(resetTransform: false)
             texture = nil                    // release even a diagnostic holding frame
+            // The intermediate + staging targets are a few MB of private GPU storage;
+            // a backgrounded app has no business pinning them where jetsam can see it.
+            // The mode is kept, so becoming active rebuilds them on the first frame.
+            upscaler?.releaseResources()
             awaitingCompositor = true
             writeStatus()
         }
@@ -791,13 +814,69 @@ final class XScreenView: UIView {
         let socket: String?
         let width: Int?
         let height: Int?
+        /// Present-side upscaling, forwarded by the compositor from IOSC_UPSCALE.
+        /// Deliberately NOT part of renderStateChanged below: it changes only how the
+        /// app scales its own drawable, so picking up a new value must not tear down
+        /// and re-adopt the IOSurface.
+        let upscale: String?
         init(_ obj: [String: Any]) {
             // Presence of "ddx":"iosurface" selects the zero-copy IOSurface path.
             isIOSurface = (obj["ddx"] as? String) == "iosurface"
             socket = (obj["socket"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             width = (obj["width"] as? Int).flatMap { $0 > 0 ? $0 : nil }
             height = (obj["height"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+            upscale = (obj["upscale"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         }
+    }
+
+    /// Resolve the upscale mode. Our own environment wins when it says anything at
+    /// all, so a shell-launched debug run can override the compositor; otherwise the
+    /// compositor's xios.json hint decides; otherwise off.
+    private func resolveUpscaleMode(_ ddx: DDXFields) -> XiosUpscaleMode {
+        if let env = ProcessInfo.processInfo.environment["XIOS_UPSCALE"], !env.isEmpty {
+            return XiosUpscaleMode.parse(env)
+        }
+        return XiosUpscaleMode.parse(ddx.upscale)
+    }
+
+    private func applyUpscaleMode(_ mode: XiosUpscaleMode) {
+        guard mode != upscaleMode else { return }
+        upscaleMode = mode
+        if mode.isOff {
+            upscaler?.releaseResources()
+            upscaler = nil
+            // Back to the cheaper drawable the direct path wants.
+            if metalReady { metalLayer.framebufferOnly = true }
+            publishUpscaleStatus(nil)
+            return
+        }
+        if metalReady, let device {
+            // MetalFX writes the output texture, which framebufferOnly forbids. Only
+            // relaxed while upscaling is on, so the default path keeps the tighter
+            // drawable it has always had.
+            metalLayer.framebufferOnly = false
+            if upscaler == nil { upscaler = XiosUpscaler(device: device) }
+            if !XiosUpscaler.supported(device) {
+                // Probed YES on the A10 target, but never assume: a device whose
+                // spatial scaler says no degrades to the direct present, and says so.
+                publishUpscaleStatus(nil)
+            }
+        }
+        needsPresent = true
+    }
+
+    /// `upscale=` in the runtime status table. Upscaling changes what the user sees,
+    /// so it is never allowed to be undiscoverable (docs/ios-platform-features.md §0).
+    private func publishUpscaleStatus(_ plan: XiosUpscaler.Plan?) {
+        let value: String
+        if let upscaler, !upscaleMode.isOff {
+            value = upscaler.statusValue(for: plan)
+        } else {
+            value = "off"
+        }
+        guard value != lastUpscaleStatus else { return }
+        lastUpscaleStatus = value
+        iosc_status_set_value("upscale", value)
     }
 
     @discardableResult
@@ -866,6 +945,9 @@ final class XScreenView: UIView {
         if oldIoscSock != ioscInputSock {
             owningViewController()?.setNeedsUpdateOfSupportedInterfaceOrientations()
         }
+        // After the render/input decisions, because it deliberately does not
+        // participate in them: flipping the upscale knob must not re-adopt the surface.
+        applyUpscaleMode(resolveUpscaleMode(ddx))
         return true
     }
 
@@ -1107,6 +1189,8 @@ final class XScreenView: UIView {
                         conn: OpaquePointer? = nil,
                         waitEvent: MTLSharedEvent? = nil,
                         waitValue: UInt64 = 0) -> Bool {
+        let presentInterval = signposter.beginInterval("present")
+        defer { signposter.endInterval("present", presentInterval) }
         guard let drawable = metalLayer.nextDrawable(),
               let cmd = queue.makeCommandBuffer(),
               let fit = fitTransform(),
@@ -1114,9 +1198,25 @@ final class XScreenView: UIView {
         if let waitEvent, waitValue > 0 {
             cmd.encodeWaitForEvent(waitEvent, value: waitValue)
         }
+        // Optional MetalFX stage: composite into a smaller intermediate and let the
+        // spatial scaler blow it up to the drawable. The fit transform needs no
+        // adjustment — clipVertices() is in normalised device coordinates, and the
+        // intermediate is a uniform scale of the drawable, so the same vertices frame
+        // the desktop identically in both. A nil plan is the direct present, which is
+        // the default and what every failure path degrades to.
+        let plan = upscaler?.plan(
+            mode: upscaleMode,
+            drawableWidth: Int(metalLayer.drawableSize.width),
+            drawableHeight: Int(metalLayer.drawableSize.height),
+            sourceWidth: tex.width,
+            sourceHeight: tex.height,
+            drawableTexture: drawable.texture,
+            pixelFormat: metalLayer.pixelFormat)
+        publishUpscaleStatus(plan)
+
         // triangle strip: TL, BL, TR, BR  (pos.xy, uv.xy); uv origin top-left
         let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = drawable.texture
+        rpd.colorAttachments[0].texture = plan?.source ?? drawable.texture
         rpd.colorAttachments[0].loadAction = .clear
         rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         rpd.colorAttachments[0].storeAction = .store
@@ -1126,6 +1226,11 @@ final class XScreenView: UIView {
         enc.setFragmentTexture(tex, index: 0)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         enc.endEncoding()
+        if let plan, let upscaler {
+            let up = signposter.beginInterval("upscale")
+            upscaler.encode(plan, into: drawable.texture, commandBuffer: cmd)
+            signposter.endInterval("upscale", up)
+        }
         if let conn, presentedSeq != 0 {
             // Ack on the DRAWABLE's presented handler, not the command buffer's
             // completed handler. Completion means "the GPU finished rendering"; the

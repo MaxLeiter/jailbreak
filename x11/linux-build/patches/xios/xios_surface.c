@@ -79,6 +79,7 @@ static uint64_t s_presented_seq = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
 static char s_input_socket[108] = "";          /* app input socket; emitted in xios.json when set */
 static char s_clipboard_socket[108] = "";      /* app clipboard socket; emitted when set */
+static char s_upscale_hint[32] = "";           /* present-side upscale spec for the app */
 static unsigned s_generation = 0;              /* bumped by resize; stale handshakes close */
 static char s_sock_path_kept[256] = "";        /* for resize-time xios.json rewrite */
 static char s_json_path_kept[256] = "";
@@ -116,6 +117,20 @@ void xios_set_input_socket(const char *path)
 void xios_set_clipboard_socket(const char *path)
 {
     snprintf(s_clipboard_socket, sizeof(s_clipboard_socket), "%s", path ? path : "");
+}
+
+void xios_set_upscale_hint(const char *spec)
+{
+    snprintf(s_upscale_hint, sizeof(s_upscale_hint), "%s", spec ? spec : "");
+    /* Anything that could break the flat JSON we hand-write, or smuggle a second
+     * field in, becomes nothing at all. */
+    for (char *p = s_upscale_hint; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 32 || c == '"' || c == '\\' || c == ',' || c == '{' || c == '}') {
+            s_upscale_hint[0] = 0;
+            break;
+        }
+    }
 }
 
 /* ---- helpers -------------------------------------------------------------- */
@@ -195,6 +210,11 @@ static void write_json(const char *json_path, int width, int height, int stride,
         fprintf(jf, ",\"input_socket\":\"%s\"", s_input_socket);
     if (s_clipboard_socket[0])
         fprintf(jf, ",\"clipboard_socket\":\"%s\"", s_clipboard_socket);
+    /* Present-side only; the app upscales its own drawable and nothing here or in
+     * any Wayland client's view of the output changes. Omitted when unset so the
+     * app keeps its default (off). */
+    if (s_upscale_hint[0])
+        fprintf(jf, ",\"upscale\":\"%s\"", s_upscale_hint);
     fprintf(jf, "}\n");
     fclose(jf);
     /* The app runs as mobile; make the handshake file world-readable so it can
