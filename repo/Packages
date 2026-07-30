@@ -8208,49 +8208,49 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libpoppler140.json
 Native Depiction: https://repo.maxleiter.com/depictions/libpoppler140.json
 
 Package: libportal-dev
-Version: 0.7.1+ios1
+Version: 0.7.1+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://github.com/flatpak/libportal
-Depends: libportal1 (>= 0.7.1), libportal-gtk4-1 (>= 0.7.1), libglib2.0-dev, libgtk-4-dev
+Depends: libportal1 (= 0.7.1+ios2), libportal-gtk3-1 (= 0.7.1+ios2), libportal-gtk4-1 (= 0.7.1+ios2), libglib2.0-dev, libgtk-3-dev, libgtk-4-dev
 Description: Development files for libportal
-Installed-Size: 180
+Installed-Size: 192
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libportal-dev_0.7.1+ios1_iphoneos-arm64.deb
-Size: 12634
-MD5sum: 60047cf2d651a2d190944f9a8278975f
-SHA1: 10549508390ba1083de69bfa30a75c636d689ef0
-SHA256: 8351eff0f7f18dd09262edf68f82891129807a5e33640681115882860825f67e
+Filename: debs/libportal-dev_0.7.1+ios2_iphoneos-arm64.deb
+Size: 14752
+MD5sum: 078dd0439306bb3b2525a0c1c7773399
+SHA1: 1a5ca7b1797a3edeb3240a08be21c17947798547
+SHA256: 1dcaf3eae277b0929782aa20cce710682e188d05e39cdde14aa1aae5deceb697
 Icon: https://repo.maxleiter.com/icons/libportal-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libportal-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libportal-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libportal-dev.json
 
 Package: libportal-gtk4-1
-Version: 0.7.1+ios1
+Version: 0.7.1+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://github.com/flatpak/libportal
-Depends: libiosexec1 (>= 1.3.1), libportal1 (>= 0.7.1), libglib2.0-0, libgtk-4-1
+Depends: libiosexec1 (>= 1.3.1), libportal1 (= 0.7.1+ios2), libglib2.0-0, libgtk-4-1
 Description: Flatpak portal library - runtime (GTK4 backend)
 Installed-Size: 116
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libportal-gtk4-1_0.7.1+ios1_iphoneos-arm64.deb
-Size: 9816
-MD5sum: 6a29091aedfd62cb3e3995ec33ce674f
-SHA1: 8ac115f49d0467e7d4d944fe4fe29c34ceb7c984
-SHA256: b2edd732d4e2bae71e168a3fec2090225a5f3aa9148d8f41029b35bfceb7eda0
+Filename: debs/libportal-gtk4-1_0.7.1+ios2_iphoneos-arm64.deb
+Size: 10854
+MD5sum: fdb07da46c9b49b1ad4de152df9e71e8
+SHA1: 5cfea643cb8df0007e8ce7bd839484f8e3a64d5f
+SHA256: e32e6da27891e4741a5f5dd2aaf8b27285e76896c299956f964f0d6122818485
 Icon: https://repo.maxleiter.com/icons/libportal-gtk4-1.png
 Depiction: https://repo.maxleiter.com/depictions/libportal-gtk4-1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libportal-gtk4-1.json
 Native Depiction: https://repo.maxleiter.com/depictions/libportal-gtk4-1.json
 
 Package: libportal1
-Version: 0.7.1+ios1
+Version: 0.7.1+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
@@ -8260,11 +8260,11 @@ Depends: libiosexec1 (>= 1.3.1), libglib2.0-0
 Description: Flatpak portal library - runtime (core)
 Installed-Size: 192
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libportal1_0.7.1+ios1_iphoneos-arm64.deb
-Size: 42410
-MD5sum: 0b96f9ca739608e7268ed574c714ab27
-SHA1: ad1cef71019d3c5f2d7da599ef09851dadb49749
-SHA256: 19f586a4929076ffad9ffb28a5dd3474992bf25cd942ad8e0a7637106262b1de
+Filename: debs/libportal1_0.7.1+ios2_iphoneos-arm64.deb
+Size: 42398
+MD5sum: fe2ee6ced8c4d1569bc1dc4738475dff
+SHA1: 691f627a7beddc9343b4ccefc7429667f512d34c
+SHA256: 780030ec139f82d4e3c747c7a0fbb7b9fa52ae4d59788aab9dee23bdba94e39c
 Icon: https://repo.maxleiter.com/icons/libportal1.png
 Depiction: https://repo.maxleiter.com/depictions/libportal1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libportal1.json
@@ -13053,3 +13053,170 @@ Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jdk-headless.html
 SileoDepiction: https://repo.maxleiter.com/depictions/openjdk-21-jdk-headless.json
 Native Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jdk-headless.json
 Homepage: https://repo.maxleiter.com
+
+Package: glib-networking
+Version: 2.80.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/glib-networking
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgnutls30, ca-certificates
+Description: TLS support for GLib networking on Xios
+Installed-Size: 1528
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/glib-networking_2.80.0+ios1_iphoneos-arm64.deb
+Size: 178934
+MD5sum: 12048218444791bac0ba78bf9e9833da
+SHA1: a36b56efb1c72bfed8879df8027c86b2c0e6a6c7
+SHA256: 76ce80bd96857c0c377fbfa8b6150e38b3925c7814d8896971932adc4de2c7bb
+Icon: https://repo.maxleiter.com/icons/glib-networking.png
+Depiction: https://repo.maxleiter.com/depictions/glib-networking.html
+SileoDepiction: https://repo.maxleiter.com/depictions/glib-networking.json
+Native Depiction: https://repo.maxleiter.com/depictions/glib-networking.json
+
+Package: epiphany
+Version: 43.1+ios4
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://apps.gnome.org/Epiphany/
+Depends: libiosexec1 (>= 1.3.1), libgtkintl (>= 1.1), libglib2.0-0, libglib2.0-bin, glib-networking, libgtk-3-0, libwebkit2gtk-4.1-0, libjavascriptcoregtk-4.1-0, libsoup-3.0-0, libhandy-1-0, libdazzle-1.0-0, libportal1, libportal-gtk3-1, libgcr-3-1, libgdk-pixbuf-2.0-0, libjson-glib-1.0-0, libarchive13, libsecret-1-0, libxml2, libnettle8, libhogweed6, libsqlite3-1, gsettings-desktop-schemas, iso-codes, dbus
+Description: GNOME Web browser for Xios
+Installed-Size: 10336
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/epiphany_43.1+ios4_iphoneos-arm64.deb
+Size: 1808864
+MD5sum: 75ae94be4eaeb9b37a4341351c5ba709
+SHA1: a32535a5f9cc7599f137b8d6d8d43c0c5c2cf427
+SHA256: 85c2b552072be51d32eb4eb4e4fecccff96214a9dfca71eef7496dda5f89e19e
+Icon: https://repo.maxleiter.com/icons/epiphany.png
+Depiction: https://repo.maxleiter.com/depictions/epiphany.html
+SileoDepiction: https://repo.maxleiter.com/depictions/epiphany.json
+Native Depiction: https://repo.maxleiter.com/depictions/epiphany.json
+
+Package: epiphany-native
+Version: 43.1+ios4
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Applications
+Priority: optional
+Depends: epiphany (= 43.1+ios4), xios-launcher-tools (>= 0.1.3), iosc (>= 0.9.38)
+Description: native iPadOS multi-window host app for GNOME Web
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/epiphany-native_43.1+ios4_iphoneos-arm64.deb
+Size: 182346
+MD5sum: d9382367b0c75f491cbad3d239bb9729
+SHA1: fb448427eb34f36ecb6913232a086b5cec8633ba
+SHA256: e49cc5fd5df9f2522f98e0051ed20b1a80c7797758a65ca1318de6ae8f2ff56c
+Icon: https://repo.maxleiter.com/icons/epiphany-native.png
+Depiction: https://repo.maxleiter.com/depictions/epiphany-native.html
+SileoDepiction: https://repo.maxleiter.com/depictions/epiphany-native.json
+Native Depiction: https://repo.maxleiter.com/depictions/epiphany-native.json
+Homepage: https://repo.maxleiter.com
+
+Package: libhandy-1-0
+Version: 1.8.3+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gnome.pages.gitlab.gnome.org/libhandy/
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libfribidi0
+Description: Adaptive GTK3 widgets for Xios
+Installed-Size: 712
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libhandy-1-0_1.8.3+ios1_iphoneos-arm64.deb
+Size: 220164
+MD5sum: 36d823e542501ba94dea0b4710cd1c45
+SHA1: fbbd9aed664144ad6b29167e3bd9a5840126d608
+SHA256: db481d3ace36f9f2ab42fb2a09feced0fc62e43dbf9702ad1d37b1f7bfa56e0e
+Icon: https://repo.maxleiter.com/icons/libhandy-1-0.png
+Depiction: https://repo.maxleiter.com/depictions/libhandy-1-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libhandy-1-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libhandy-1-0.json
+
+Package: libhandy-1-dev
+Version: 1.8.3+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gnome.pages.gitlab.gnome.org/libhandy/
+Depends: libhandy-1-0 (= 1.8.3+ios1), libgtk-3-dev
+Description: Development files for libhandy
+Installed-Size: 288
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libhandy-1-dev_1.8.3+ios1_iphoneos-arm64.deb
+Size: 34180
+MD5sum: 369f5b3039a7db4b77a0c0c25f7b16a1
+SHA1: 86a570609df912aecb5189e74efd54769c1b13f9
+SHA256: 6940f7138217560438f47534447d6c0814335b05b2a818ecb1a4e491c8dde0ba
+Icon: https://repo.maxleiter.com/icons/libhandy-1-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libhandy-1-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libhandy-1-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libhandy-1-dev.json
+
+Package: libdazzle-1.0-0
+Version: 3.44.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libdazzle
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0
+Description: GTK3 application utility library for Xios
+Installed-Size: 980
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libdazzle-1.0-0_3.44.0+ios1_iphoneos-arm64.deb
+Size: 349832
+MD5sum: 5bafdcc4a3f12565600550c7c9949528
+SHA1: 0def4f9db0beb6f96663f253a8a277391181fb9b
+SHA256: eec8b9ea96558a79f09bc30aa550cfe632d067790465ede40ba07ac5d9bc2679
+Icon: https://repo.maxleiter.com/icons/libdazzle-1.0-0.png
+Depiction: https://repo.maxleiter.com/depictions/libdazzle-1.0-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libdazzle-1.0-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libdazzle-1.0-0.json
+
+Package: libdazzle-1.0-dev
+Version: 3.44.0+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/libdazzle
+Depends: libdazzle-1.0-0 (= 3.44.0+ios1), libgtk-3-dev
+Description: Development files for libdazzle
+Installed-Size: 872
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libdazzle-1.0-dev_3.44.0+ios1_iphoneos-arm64.deb
+Size: 66726
+MD5sum: 9162bafa234cb90dd8ab66d04bfceac8
+SHA1: e8c06402aa742f0a323ef1669e8ad05816028592
+SHA256: d0c5de350f822881228c6c113a5776e2d5272cd0c35d421cdc7c4a1b8663019a
+Icon: https://repo.maxleiter.com/icons/libdazzle-1.0-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libdazzle-1.0-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libdazzle-1.0-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libdazzle-1.0-dev.json
+
+Package: libportal-gtk3-1
+Version: 0.7.1+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/flatpak/libportal
+Depends: libiosexec1 (>= 1.3.1), libportal1 (= 0.7.1+ios2), libglib2.0-0, libgtk-3-0
+Description: Flatpak portal library - runtime (GTK3 backend)
+Installed-Size: 116
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libportal-gtk3-1_0.7.1+ios2_iphoneos-arm64.deb
+Size: 10852
+MD5sum: 752d2ccf48a18d755f14eba0528aabea
+SHA1: b89f91904411bcaab611e28823376a0217d3fc61
+SHA256: b9e456612905228aa381995c6bc96fba5646a49112fb20ab4236e65103a2050a
+Icon: https://repo.maxleiter.com/icons/libportal-gtk3-1.png
+Depiction: https://repo.maxleiter.com/depictions/libportal-gtk3-1.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libportal-gtk3-1.json
+Native Depiction: https://repo.maxleiter.com/depictions/libportal-gtk3-1.json
