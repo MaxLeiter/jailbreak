@@ -124,8 +124,43 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-keep_subdirs = {"digital-clock", "kicker", "notifications", "systemtray"}
-keep_packages = {"org.kde.plasma.digitalclock", "org.kde.plasma.notifications"}
+# Every applet whose plugin links only KF6/Qt/Plasma. The old four-applet list
+# was first-light triage and left visible holes: no battery readout, and a systray
+# configured for a clipboard applet that wasn't installed, which is what draws the
+# "?" badge on the tray clipboard icon.
+#
+# Excluded, each for a checked reason:
+#   systemmonitor    KSysGuard::Sensors     no KSysGuard port; fails at cmake generate
+#   devicenotifier   KSysGuard::ProcessCore ditto (and an iPad has no removable media)
+#   cameraindicator  gated on KPipeWire upstream already
+#   brightness       powerdevil DOES now export the
+#                    org.kde.Solid.PowerManagement.Actions.BrightnessControl object
+#                    this applet drives (XiosBacklightDetector, see
+#                    powerdevil-ios-fixes.sh), so the KDE side of the chain is in
+#                    place. What is still missing is the last hop to the panel:
+#                    BKSDisplayBrightnessSet is inert on iPadOS 17.6.1 from a
+#                    non-SpringBoard process -- symbols resolve, the brightness
+#                    transaction creates, the entitlement is present, and
+#                    BKSDisplayBrightnessGetCurrent never budges, with or without
+#                    auto-brightness. Until that is replaced (UIScreen.brightness
+#                    from Xios.app is the promising route), this applet would show a
+#                    slider that moves nothing. Enabling it would also collide with
+#                    plasma-mobile's qmldir for the same QML URI, so retire that
+#                    stand-in at the same time.
+keep_subdirs = {
+    "digital-clock", "kicker", "notifications", "systemtray",
+    "batterymonitor", "calendar",
+    "mediacontroller", "panelspacer", "keyboardindicator", "appmenu", "icon",
+}
+# Substring-matched against the whole plasma_install_package() argument list.
+# Applets pulled in via keep_subdirs install their own package from their own
+# CMakeLists, so they need no entry here.
+keep_packages = {
+    "org.kde.plasma.digitalclock", "org.kde.plasma.notifications",
+    "org.kde.plasma.activitybar", "org.kde.plasma.analogclock",
+    "org.kde.plasma.lock_logout", "org.kde.plasma.manage-inputmethod",
+    "org.kde.plasma.clipboard",
+}
 
 text = re.sub(
     r"^add_subdirectory\(([^)]+)\)",

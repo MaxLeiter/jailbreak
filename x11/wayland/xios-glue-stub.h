@@ -60,6 +60,16 @@ float xios_output_scale (void);
 #define XIOS_IN_VOLUME 12u  /* sysintd volume bridge; code = 0..65535          */
 #define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
 #define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style            */
+#define XIOS_IN_GESTURE 14u /* trackpad pinch/rotate/swipe; the authoritative
+                             * field layout lives in xios_input_socket.h, and
+                             * these two headers are twins that MUST agree     */
+#define XIOS_GESTURE_SWIPE  1u
+#define XIOS_GESTURE_PINCH  2u
+#define XIOS_GESTURE_HOLD   3u
+#define XIOS_GESTURE_BEGIN  0u
+#define XIOS_GESTURE_UPDATE 1u
+#define XIOS_GESTURE_END    2u
+#define XIOS_GESTURE_CANCEL 3u
 
 /* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */
 struct xios_in_msg

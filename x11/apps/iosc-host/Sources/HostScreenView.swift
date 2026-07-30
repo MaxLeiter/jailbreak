@@ -263,6 +263,16 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         twoFingerPan.delegate = self
         addGestureRecognizer(twoFingerPan)
 
+        // Trackpad pinch/rotate -> zwp_pointer_gestures_v1. Unlike the Xios app there is
+        // no framebuffer zoom competing for the gesture here (native mode gives each
+        // surface its own 1:1 window), so every indirect pinch goes to the desktop.
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinch.delegate = self
+        addGestureRecognizer(pinch)
+        let rotation = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
+        rotation.delegate = self
+        addGestureRecognizer(rotation)
+
         // Trackpad / Magic-Keyboard two-finger scrolling arrives as scroll events
         // (no touches), which the two-touch pan above never sees; a dedicated
         // recognizer feeds the same handler (mirrors XScreen.swift's wheelPan).
@@ -305,6 +315,90 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             _ = becomeFirstResponder()
         case .ended, .cancelled, .failed:
             keyboardSwipeTriggered = false
+        default:
+            break
+        }
+    }
+
+    // MARK: trackpad gestures (pinch / rotate -> zwp_pointer_gestures_v1)
+
+    /// One Wayland gesture carries both scale and rotation, but UIKit splits them across
+    /// two recognizers that run simultaneously, so they share this state: first to start
+    /// opens the gesture, last to end closes it. Mirrors XScreen.swift.
+    private var trackpadGestureActive = 0
+    private var trackpadPinchScale: CGFloat = 1
+    private var trackpadRotationDegrees: CGFloat = 0
+    private var trackpadGestureCenter: CGPoint?
+
+    private enum XiosGesturePhase {
+        static let begin: UInt32 = 0, update: UInt32 = 1, end: UInt32 = 2, cancel: UInt32 = 3
+    }
+
+    /// No touches on the glass means the trackpad drove it, the same test the indirect
+    /// scroll recognizers use.
+    private func isTrackpadGesture(_ g: UIGestureRecognizer) -> Bool {
+        g.numberOfTouches == 0 && input != nil
+    }
+
+    private func trackpadGestureBegan(at point: CGPoint) {
+        trackpadGestureActive += 1
+        guard trackpadGestureActive == 1 else { return }
+        trackpadPinchScale = 1
+        trackpadRotationDegrees = 0
+        trackpadGestureCenter = point
+        sendTrackpadGesture(phase: XiosGesturePhase.begin)
+    }
+
+    private func trackpadGestureEnded(cancelled: Bool) {
+        guard trackpadGestureActive > 0 else { return }
+        trackpadGestureActive -= 1
+        guard trackpadGestureActive == 0 else { return }
+        sendTrackpadGesture(phase: cancelled ? XiosGesturePhase.cancel : XiosGesturePhase.end)
+        trackpadGestureCenter = nil
+    }
+
+    /// Scale and rotation are absolute since begin (UIKit and wl_pointer agree on that);
+    /// translation is the centre's movement since the last frame in canvas px.
+    private func sendTrackpadGesture(phase: UInt32, at point: CGPoint? = nil) {
+        guard let h = input else { return }
+        var dx256: Int32 = 0, dy256: Int32 = 0
+        if let point, let last = trackpadGestureCenter,
+           let from = canvasPoint(from: last), let to = canvasPoint(from: point) {
+            dx256 = Int32(clamping: (to.0 - from.0) * 256)
+            dy256 = Int32(clamping: (to.1 - from.1) * 256)
+        }
+        if let point { trackpadGestureCenter = point }
+        let scale256 = UInt32(max(0, (trackpadPinchScale * 256).rounded()))
+        let rot256 = Int32(clamping: Int((trackpadRotationDegrees * 256).rounded()))
+        iosc_input_gesture(h, 2 /* pinch */, phase, 2, dx256, dy256, scale256, rot256)
+    }
+
+    @objc private func handlePinch(_ g: UIPinchGestureRecognizer) {
+        guard isTrackpadGesture(g) || (trackpadGestureActive > 0 && g.numberOfTouches == 0) else { return }
+        switch g.state {
+        case .began:
+            trackpadGestureBegan(at: g.location(in: self))
+        case .changed:
+            trackpadPinchScale = g.scale
+            sendTrackpadGesture(phase: XiosGesturePhase.update, at: g.location(in: self))
+        case .ended, .cancelled, .failed:
+            trackpadGestureEnded(cancelled: g.state != .ended)
+        default:
+            break
+        }
+    }
+
+    /// Fires only if iPadOS forwards indirect rotation; pinch works alone if it does not.
+    @objc private func handleRotation(_ g: UIRotationGestureRecognizer) {
+        guard isTrackpadGesture(g) || (trackpadGestureActive > 0 && g.numberOfTouches == 0) else { return }
+        switch g.state {
+        case .began:
+            trackpadGestureBegan(at: g.location(in: self))
+        case .changed:
+            trackpadRotationDegrees = g.rotation * 180 / .pi
+            sendTrackpadGesture(phase: XiosGesturePhase.update, at: g.location(in: self))
+        case .ended, .cancelled, .failed:
+            trackpadGestureEnded(cancelled: g.state != .ended)
         default:
             break
         }
@@ -870,6 +964,15 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             return p.y >= bounds.height * 0.72 && v.y < -40 && abs(v.y) > abs(v.x)
         }
         return true
+    }
+
+    /// Pinch and rotation must run together: one Wayland gesture carries both scale and
+    /// rotation, so letting either win exclusively would silently drop half of it.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        gestureRecognizer is UIPinchGestureRecognizer || other is UIPinchGestureRecognizer
+            || gestureRecognizer is UIRotationGestureRecognizer
+            || other is UIRotationGestureRecognizer
     }
 }
 

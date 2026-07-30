@@ -114,6 +114,7 @@ SCREENCOPY_XML="$X11/apps/iosc-shell/protocols/wlr-screencopy-unstable-v1.xml"
 DATA_CONTROL_XML="$X11/apps/iosc-shell/protocols/wlr-data-control-unstable-v1.xml"
 POINTER_CONSTRAINTS_XML="$PREFIX/share/wayland-protocols/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml"
 RELATIVE_POINTER_XML="$PREFIX/share/wayland-protocols/unstable/relative-pointer/relative-pointer-unstable-v1.xml"
+POINTER_GESTURES_XML="$PREFIX/share/wayland-protocols/unstable/pointer-gestures/pointer-gestures-unstable-v1.xml"
 PRIMARY_SELECTION_XML="$PREFIX/share/wayland-protocols/unstable/primary-selection/primary-selection-unstable-v1.xml"
 IDLE_INHIBIT_XML="$PREFIX/share/wayland-protocols/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml"
 IDLE_NOTIFY_XML="$PREFIX/share/wayland-protocols/staging/ext-idle-notify/ext-idle-notify-v1.xml"
@@ -142,6 +143,7 @@ KDE_OUTPUT_ORDER_XML="$X11/wayland/protocols/kde-output-order-v1.xml"
 [ -f "$DATA_CONTROL_XML" ] || { echo "!! wlr-data-control-unstable-v1.xml not found at $DATA_CONTROL_XML"; exit 1; }
 [ -f "$POINTER_CONSTRAINTS_XML" ] || { echo "!! pointer-constraints-unstable-v1.xml not found at $POINTER_CONSTRAINTS_XML"; exit 1; }
 [ -f "$RELATIVE_POINTER_XML" ] || { echo "!! relative-pointer-unstable-v1.xml not found at $RELATIVE_POINTER_XML"; exit 1; }
+[ -f "$POINTER_GESTURES_XML" ] || { echo "!! pointer-gestures-unstable-v1.xml not found at $POINTER_GESTURES_XML"; exit 1; }
 [ -f "$PRIMARY_SELECTION_XML" ] || { echo "!! primary-selection-unstable-v1.xml not found at $PRIMARY_SELECTION_XML"; exit 1; }
 [ -f "$IDLE_INHIBIT_XML" ] || { echo "!! idle-inhibit-unstable-v1.xml not found at $IDLE_INHIBIT_XML"; exit 1; }
 [ -f "$IDLE_NOTIFY_XML" ] || { echo "!! ext-idle-notify-v1.xml not found at $IDLE_NOTIFY_XML"; exit 1; }
@@ -205,6 +207,8 @@ wayland-scanner server-header "$POINTER_CONSTRAINTS_XML" "$GEN/pointer-constrain
 wayland-scanner private-code  "$POINTER_CONSTRAINTS_XML" "$GEN/pointer-constraints-unstable-v1-protocol.c"
 wayland-scanner server-header "$RELATIVE_POINTER_XML" "$GEN/relative-pointer-unstable-v1-server-protocol.h"
 wayland-scanner private-code  "$RELATIVE_POINTER_XML" "$GEN/relative-pointer-unstable-v1-protocol.c"
+wayland-scanner server-header "$POINTER_GESTURES_XML" "$GEN/pointer-gestures-unstable-v1-server-protocol.h"
+wayland-scanner private-code  "$POINTER_GESTURES_XML" "$GEN/pointer-gestures-unstable-v1-protocol.c"
 wayland-scanner server-header "$PRIMARY_SELECTION_XML" "$GEN/primary-selection-unstable-v1-server-protocol.h"
 wayland-scanner private-code  "$PRIMARY_SELECTION_XML" "$GEN/primary-selection-unstable-v1-protocol.c"
 wayland-scanner server-header "$IDLE_INHIBIT_XML" "$GEN/idle-inhibit-unstable-v1-server-protocol.h"
@@ -301,6 +305,7 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$GEN/wlr-foreign-toplevel-management-unstable-v1-protocol.c" \
     "$GEN/pointer-constraints-unstable-v1-protocol.c" \
     "$GEN/relative-pointer-unstable-v1-protocol.c" \
+    "$GEN/pointer-gestures-unstable-v1-protocol.c" \
     "$GEN/primary-selection-unstable-v1-protocol.c" \
     "$GEN/idle-inhibit-unstable-v1-protocol.c" \
     "$GEN/ext-idle-notify-v1-protocol.c" \

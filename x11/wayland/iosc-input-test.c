@@ -33,6 +33,8 @@
 #define IOSC_IN_TOUCH  6   /* code = touch id; state: 0 up, 1 down, 2 motion, 3 cancel */
 #define IOSC_IN_TABLET 7   /* code = pressure 0..65535; state as touch; mods = tilt+90 packed */
 #define IOSC_IN_AXIS   9   /* x,y = dx,dy 1/256 px; code = source; state bit0 = stop */
+#define IOSC_IN_GESTURE 14 /* code = kind|phase<<8|fingers<<16; state = scale 1/256;
+                            * mods = rotation 1/256 deg — see xios_input_socket.h */
 
 #define MUTTER_IN_SOCK        "/var/jb/tmp/mutter-input.sock"
 #define MUTTER_LEGACY_IN_SOCK "/var/jb/tmp/xios-input.sock"
@@ -101,6 +103,8 @@ static void usage(const char *argv0)
             "  -c x y             left click\n"
             "  -D x0 y0 x1 y1     slow press-drag-release (DnD test)\n"
             "  -s x y dx dy       smooth scroll dx,dy px at x,y (axis + stop)\n"
+            "  -g x y scale [deg] trackpad pinch at x,y to scale%% (200 = 2x, 50 = half),\n"
+            "                     optional rotation in degrees (pointer-gestures pinch)\n"
             "  -t x y             two-finger touch gesture (wl_touch)\n"
             "  -p x0 y0 x1 y1     pencil stroke w/ pressure ramp (tablet-v2)\n"
             "  -k keysym [mods]   one key tap; mods bits: shift,ctrl,alt,super,caps,num\n"
@@ -243,6 +247,36 @@ int main(int argc, char **argv)
         struct iosc_in_msg stop = { .type = IOSC_IN_AXIS, .state = 1 };
         send_msg(fd, &stop);
         fprintf(stderr, "scrolled (%d,%d) at %d,%d\n", dx, dy, x, y);
+        usleep(100000); close(fd); return 0;
+    }
+
+    /* -g x y scale [deg]: pinch — park the pointer at x,y, then ramp an absolute
+     * pinch scale (and optional rotation) from 1.0 over 24 frames and end the
+     * gesture. Exists because no trackpad is needed to exercise the compositor
+     * half: a physical Magic Trackpad is the only other source of a pinch. */
+    if (argc - argi >= 4 && !strcmp(argv[argi], "-g")) {
+        int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
+        int scale_pct = atoi(argv[argi + 3]);
+        int deg = (argc - argi >= 5) ? atoi(argv[argi + 4]) : 0;
+        struct iosc_in_msg mv = { .type = IOSC_IN_MOTION, .x = x, .y = y };
+        send_msg(fd, &mv); usleep(50000);
+        /* kind 2 = pinch, phase 0 = begin, 2 fingers. Scale starts at 1.0 (256). */
+        struct iosc_in_msg begin = { .type = IOSC_IN_GESTURE,
+            .code = 2u | (0u << 8) | (2u << 16), .state = 256 };
+        send_msg(fd, &begin); usleep(16000);
+        for (int i = 1; i <= 24; i++) {
+            double t = (double)i / 24.0;
+            double scale = 1.0 + ((double)scale_pct / 100.0 - 1.0) * t;
+            struct iosc_in_msg up = { .type = IOSC_IN_GESTURE,
+                .code = 2u | (1u << 8) | (2u << 16),
+                .state = (unsigned)(scale * 256.0),
+                .mods = (unsigned)(int)(deg * t * 256.0) };
+            send_msg(fd, &up); usleep(8000);
+        }
+        struct iosc_in_msg end = { .type = IOSC_IN_GESTURE,
+            .code = 2u | (2u << 8) | (2u << 16), .state = (unsigned)(scale_pct * 256 / 100) };
+        send_msg(fd, &end);
+        fprintf(stderr, "pinched to %d%% (rot %ddeg) at %d,%d\n", scale_pct, deg, x, y);
         usleep(100000); close(fd); return 0;
     }
 
