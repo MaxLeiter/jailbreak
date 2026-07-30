@@ -11,6 +11,18 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Wire: XIOS_IN_BIND=8 (scope a connection's input to one window id) — already reserved in xios_input_socket.h; IoscInput.c had 8 on-wire before the header did.
 
 ## Current state
+- 2026-07-30 native-wrapper cleanup is implemented and device-tested. A
+  generated `IOSCHost` now exits one second after its final UIKit scene is
+  explicitly discarded, exits after a 30-second grace period when its final
+  compositor window disappears, and has a separate 30-second watchdog for a
+  launch that never produces a native window; an outright `ioscd` rejection
+  retires the blank wrapper after one second. `WINDOW_NEW` cancels both pending
+  retirements, preserving jetsam/reconnect replay and GIMP's
+  splash-to-main-window transition. On-device, terminating a mapped Calculator
+  client removed both `gnome-calculator` and its wrapper while GIMP remained
+  isolated; all 12 installed native bundles and the shared launcher payload
+  were updated with the fixed host. `xios-launcher-tools 0.1.9` carries the
+  durable package payload.
 - 2026-07-29 launch-boundary and package-boundary closure:
   `xios-launcher-tools 0.1.5` is installed and device-tested. Launcher bundles
   contain only `IOSCAppID`/`IOSCName`; the daemon accepts only
