@@ -105,7 +105,6 @@ enum {
     ATOM_NET_WM_WINDOW_TYPE_COMBO,
     ATOM_NET_WM_WINDOW_TYPE_DND,
     ATOM_NET_CLIENT_LIST,
-    ATOM_WL_SURFACE_ID,        /* legacy; interned only so we can ignore it */
     ATOM_WL_SURFACE_SERIAL,
     ATOM_WM_S0,
     ATOM__COUNT
@@ -137,7 +136,6 @@ static const char *const k_atom_names[ATOM__COUNT] = {
     [ATOM_NET_WM_WINDOW_TYPE_COMBO]     = "_NET_WM_WINDOW_TYPE_COMBO",
     [ATOM_NET_WM_WINDOW_TYPE_DND]       = "_NET_WM_WINDOW_TYPE_DND",
     [ATOM_NET_CLIENT_LIST]              = "_NET_CLIENT_LIST",
-    [ATOM_WL_SURFACE_ID]                = "WL_SURFACE_ID",
     [ATOM_WL_SURFACE_SERIAL]            = "WL_SURFACE_SERIAL",
     [ATOM_WM_S0]                        = "WM_S0",
 };
@@ -631,10 +629,6 @@ static void handle_client_message(xcb_client_message_event_t *e)
         XWM_DBG("WL_SURFACE_SERIAL %llu on xwindow=0x%x\n",
                 (unsigned long long)serial, e->window);
         bind_serial_to_window(win, serial);
-    } else if (e->type == xwm.atoms[ATOM_WL_SURFACE_ID]) {
-        /* Legacy association path: intentionally ignored. Xwayland bound to
-         * xwayland_shell_v1 must not use WL_SURFACE_ID; we do not implement it. */
-        XWM_DBG("ignoring legacy WL_SURFACE_ID on xwindow=0x%x\n", e->window);
     }
     /* TODO(polish): _NET_WM_STATE, _NET_ACTIVE_WINDOW (client-requested activation),
      * WM_CHANGE_STATE (iconify), _NET_WM_MOVERESIZE. */
