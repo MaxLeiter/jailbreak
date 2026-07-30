@@ -13,7 +13,7 @@ OPENTTD_PATCH_REV := 12
 openttd-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://cdn.openttd.org/openttd-releases/$(OPENTTD_VERSION)/openttd-$(OPENTTD_VERSION)-source.tar.xz)
 	if [ ! -f "$(BUILD_WORK)/openttd/.xios_setup_$(DEB_OPENTTD_V)_p$(OPENTTD_PATCH_REV)" ]; then \
-		rm -rf $(BUILD_WORK)/openttd; \
+		rm -rf $(BUILD_WORK)/openttd $(BUILD_WORK)/openttd-$(OPENTTD_VERSION); \
 		cd $(BUILD_WORK) && \
 			tar -xf $(BUILD_SOURCE)/openttd-$(OPENTTD_VERSION)-source.tar.xz && \
 			mkdir -p openttd && \

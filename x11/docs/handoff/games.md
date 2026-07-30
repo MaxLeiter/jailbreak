@@ -35,9 +35,13 @@ Xios app, iosc, SDL, and audio layers.
 
 - Recipe, package metadata, Unix-SDL-on-Darwin target patch, native host tools,
   and Clang 14 compatibility patches exist.
-- A clean `15.3+ios1` cross-build is the active gate. The compatibility work
-  covers dependent template types, `source_location`, aggregate emplacement,
-  and explicit stream headers required by the target libc++.
+- The authoritative 11-patch series applies in order to a pristine official
+  15.3 source tree with no rejects. The compatibility work covers dependent
+  template types, `source_location`, aggregate emplacement, explicit stream
+  headers, graph filler deduction, and badge configuration construction.
+- A clean `15.3+ios1` cross-build remains the active gate. Earlier attempts
+  reached `newgrf_badge_config.cpp`; an overlapping-container extraction was
+  discarded and must not be treated as build evidence.
 - After packaging, host DER re-sign the package before device installation:
 
   ```bash
@@ -108,6 +112,10 @@ game-specific startup log or visible main menu.
 
 - Do not run two containers against `procursus-vol-wayland`. Dependency staging
   changes header mtimes and invalidates live precompiled headers.
+  `build-games.sh` now holds a non-blocking lock in the Procursus volume and
+  exits with status 75 if another game build owns it.
+- OpenTTD setup removes both its normalized source directory and any stale
+  partially extracted version directory before unpacking a new patch revision.
 - `SKIP_GAME_DEP_STAGING=1` is only for an already-populated sysroot during an
   incremental retry.
 - The in-container `ldid` does not emit the DER entitlement slot needed by GPU

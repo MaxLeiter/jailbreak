@@ -18,12 +18,24 @@ set -euo pipefail
 . "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
+# The Procursus tree and sysroot are mutable shared state. Two game-wave
+# containers can otherwise race while extracting sources or staging headers.
+exec 9>.xios-build-games.lock
+if ! flock -n 9; then
+  echo "ERROR: another build-games.sh process owns /work/Procursus" >&2
+  exit 75
+fi
+
 TARGETS="${TARGETS:-sdl2-package sdl3-package openttd-package}"
 
-echo "==> installing host tools"
-apt-get update >/dev/null 2>&1 || true
-apt-get install -y --no-install-recommends \
-  cmake libwayland-bin ninja-build pkg-config python3 wget zip >/dev/null 2>&1
+if [ "$TARGETS" = "openttd-package" ]; then
+  echo "==> using image host tools (OpenTTD needs no Wayland scanner or zip)"
+else
+  echo "==> installing supplemental host tools"
+  apt-get update >/dev/null 2>&1 || true
+  apt-get install -y --no-install-recommends \
+    libwayland-bin zip >/dev/null 2>&1
+fi
 
 # Debian's scanner writes --version to stdout while SDL 2/3's CMake check reads
 # stderr. Keep protocol generation on the native scanner and mirror only the
