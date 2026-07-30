@@ -34,5 +34,9 @@
         <string>/var/</string>
         <string>/private/var/</string>
     </array>
+    <key>com.apple.security.exception.mach-lookup.global-name</key>
+    <array>
+        <string>com.max.xios.metal-event-broker</string>
+    </array>
 </dict>
 </plist>
