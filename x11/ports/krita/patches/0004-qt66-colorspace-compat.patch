@@ -1,0 +1,6 @@
+diff --git a/libs/pigment/KoColorSpaceRegistry.cpp b/libs/pigment/KoColorSpaceRegistry.cpp
+--- a/libs/pigment/KoColorSpaceRegistry.cpp
++++ b/libs/pigment/KoColorSpaceRegistry.cpp
+@@ -797 +797 @@
+-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
++#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)

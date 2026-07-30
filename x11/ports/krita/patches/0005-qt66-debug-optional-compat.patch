@@ -1,0 +1,6 @@
+diff --git a/libs/surfacecolormanagementapi/surfacecolormanagement/KisSurfaceColorimetry.cpp b/libs/surfacecolormanagementapi/surfacecolormanagement/KisSurfaceColorimetry.cpp
+--- a/libs/surfacecolormanagementapi/surfacecolormanagement/KisSurfaceColorimetry.cpp
++++ b/libs/surfacecolormanagementapi/surfacecolormanagement/KisSurfaceColorimetry.cpp
+@@ -98 +98 @@
+-        debug.nospace() << ", luminance: " << value.luminance;
++        debug.nospace() << ", luminance: " << *value.luminance;
