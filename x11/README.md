@@ -41,10 +41,11 @@ app is unsigned), then install one flavor:
 apt install xios-gnome      # or xios-kde, xios-native, xios-x11
 ```
 
-Each flavor pulls in the shared `xios-core` base: the display app, the
-compositor, the GPU stack, and the session launcher. Open the app and pick a
-session, or run `xios-session gnome` from a shell. Troubleshooting lives in
-[`docs/USER-GUIDE.md`](docs/USER-GUIDE.md).
+A flavor pulls in the shared base packages it needs — the compositor, the GPU
+stack, the session launcher, and (for the fullscreen flavors) the display app.
+Open the app and pick a session, or run `xios-session gnome` from a shell. Which
+base packages each flavor gets, and how to troubleshoot a session that will not
+come up, are in [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md).
 
 ## Where things live
 
