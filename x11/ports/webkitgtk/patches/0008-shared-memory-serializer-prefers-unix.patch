@@ -1,0 +1,28 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Match shared-memory serializer to Unix handle selection
+
+Darwin GTK builds enable Unix domain sockets. SharedMemoryHandle therefore
+selects UnixFileDescriptor before considering MachSendRight, but the generated
+serializer emitted both Darwin and Unix fields. Mirror the type-selection
+precedence so the serialized layout and constructor stay consistent.
+
+--- a/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
++++ b/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
+@@ -2389,7 +2389,7 @@
+ #if USE(UNIX_DOMAIN_SOCKETS)
+ headers: <wtf/unix/UnixFileDescriptor.h> "ArgumentCodersUnix.h"
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+ header: <wtf/MachSendRight.h>
+ #endif
+ #if OS(WINDOWS)
+@@ -2400,7 +2400,7 @@
+ #if USE(UNIX_DOMAIN_SOCKETS)
+     [Validator='!!m_handle'] UnixFileDescriptor m_handle;
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     [Validator='!!m_handle'] MachSendRight m_handle;
+ #endif
+ #if OS(WINDOWS)
