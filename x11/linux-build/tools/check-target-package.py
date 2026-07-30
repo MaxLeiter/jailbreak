@@ -99,6 +99,51 @@ def load_target(target_id: str) -> dict[str, str]:
     return values
 
 
+MACHO_MAGIC = {
+    b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe",   # 64/32-bit little-endian
+    b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce",   # big-endian
+    b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",   # fat
+}
+
+
+def is_macho(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            return f.read(4) in MACHO_MAGIC
+    except OSError:
+        return False
+
+
+def macho_foreign_paths(path: Path, foreign: list[str]) -> list[str]:
+    """Find another target's prefix embedded in a Mach-O.
+
+    Load commands carry absolute paths: LC_ID_DYLIB, LC_LOAD_DYLIB and LC_RPATH
+    all hold install names. A rootful package whose dylib IDs still say
+    /var/jb installs fine and then fails to load, which is exactly the class of
+    breakage that only shows up on device. Scanning the raw bytes catches those
+    plus any other embedded path, and needs no otool -- this has to run on Linux
+    build hosts as well as macOS.
+    """
+    try:
+        blob = path.read_bytes()
+    except OSError:
+        return []
+    hits = []
+    for bad in foreign:
+        needle = bad.encode()
+        start = 0
+        while True:
+            i = blob.find(needle, start)
+            if i < 0:
+                break
+            end = i
+            while end < len(blob) and 0x20 <= blob[end] < 0x7F:
+                end += 1
+            hits.append(blob[i:end].decode("ascii", "replace"))
+            start = i + 1
+    return sorted(set(hits))
+
+
 def is_texty(path: Path) -> bool:
     if path.suffix in TEXT_SUFFIXES:
         try:
@@ -140,6 +185,16 @@ def check(root: Path, target: dict[str, str]) -> list[str]:
             for num, line in enumerate(text.splitlines(), 1):
                 if bad in line:
                     problems.append(f"{rel}:{num}: {bad} literal on target {target['target_id']}: {line.strip()[:90]}")
+
+    # Mach-O payload: install names and rpaths are absolute and invisible to the
+    # text scan above.
+    for path in payload:
+        if not is_macho(path):
+            continue
+        for embedded in macho_foreign_paths(path, foreign):
+            problems.append(
+                f"{path.relative_to(root)}: Mach-O embeds {embedded} on target {target['target_id']}"
+            )
 
     control = debian / "control"
     if control.exists():
