@@ -1,0 +1,8 @@
+--- a/src/newgrf_badge_config.h
++++ b/src/newgrf_badge_config.h
+@@ -17,0 +18,5 @@
++	BadgeClassConfigItem() = default;
++	BadgeClassConfigItem(std::string label, uint column, bool show_icon, bool show_filter) :
++			label(std::move(label)), column(column), show_icon(show_icon), show_filter(show_filter) {}
++
++

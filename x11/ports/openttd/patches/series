@@ -8,3 +8,4 @@
 0008-clang14-more-aggregate-and-sstream.patch
 0009-clang14-dependent-char-type.patch
 0010-clang14-graph-filler-constructor.patch
+0011-clang14-badge-config-constructor.patch
