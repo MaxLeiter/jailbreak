@@ -7,6 +7,24 @@ set -euo pipefail
 build_base="${1:?usage: stage-webkitgtk-deps.sh BUILD_BASE}"
 
 echo "==> staging current WebKitGTK dependency debs"
+select_current_deb() {
+  local pkg="$1"
+  local candidates marked
+
+  candidates="$(find /out /repo-debs -maxdepth 1 -type f \
+    -name "${pkg}_*_$XIOS_DEB_ARCH.deb" -printf '%f\t%p\n' 2>/dev/null || true)"
+  # An unmarked upstream build can coexist with our later iOS revision. A plain
+  # filename sort considers "1.0_" newer than "1.0+ios1_", so explicitly prefer
+  # any Xios version marker before comparing otherwise-equivalent candidates.
+  marked="$(printf '%s\n' "$candidates" \
+    | grep -E "^${pkg}_.+\\+(ios|wl|angle|rootless|xios)[0-9]+_${XIOS_DEB_ARCH}\\.deb" \
+    || true)"
+  if [ -n "$marked" ]; then
+    candidates="$marked"
+  fi
+  printf '%s\n' "$candidates" | sort -V | tail -1 | cut -f2-
+}
+
 for pkg in \
   libharfbuzz0b libharfbuzz-icu0 libharfbuzz-dev \
   libicu78 libicu-dev \
@@ -25,8 +43,7 @@ for pkg in \
   libsecret-1-0 libsecret-dev \
   libsoup-3.0-0 libsoup-3.0-dev \
   libwayland0 libwayland-dev wayland-protocols; do
-  deb="$(find /out /repo-debs -maxdepth 1 -type f -name "${pkg}_*_$XIOS_DEB_ARCH.deb" \
-    -printf '%f\t%p\n' 2>/dev/null | sort -V | tail -1 | cut -f2-)"
+  deb="$(select_current_deb "$pkg")"
   if [ -z "$deb" ]; then
     echo "ERROR: no current $pkg deb in /out or /repo-debs" >&2
     echo "       mount top-level repo/debs read-only at /repo-debs" >&2
