@@ -58,6 +58,16 @@ geary-package: geary-stage
 		$(BUILD_DIST)/geary/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/
 	rm -rf $(BUILD_DIST)/geary/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/doc \
 		$(BUILD_DIST)/geary/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/man
+	# Meson preserves build-tree rpaths for Geary's private client/plugin
+	# dylibs. Replace those with stable rootless lookup paths before signing so
+	# the installed launcher and WebKit extension can resolve the libraries
+	# shipped under /var/jb/usr/lib/geary.
+	for f in $$(find $(BUILD_DIST)/geary -type f); do \
+		if file "$$f" | grep -q "Mach-O"; then \
+			$(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib "$$f" 2>/dev/null || true; \
+			$(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/geary "$$f" 2>/dev/null || true; \
+		fi; \
+	done
 	$(call SIGN,geary,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,geary,DEB_GEARY_V)
 	rm -rf $(BUILD_DIST)/geary
