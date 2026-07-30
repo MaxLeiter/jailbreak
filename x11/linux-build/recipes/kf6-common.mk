@@ -30,10 +30,13 @@ KF6_HOST_TOOLING = $(BUILD_TOOLS)/kf6-host/lib/cmake
 
 # Flags shared by every framework build (Darwin bits live in QT6_MODULE_CMAKE_FLAGS, see qtbase.mk).
 # HOST-tool pins (WaylandScanner/GETTEXT) stop the cross find-root from grabbing staged iOS
-# binaries (Exec format error / wrong-arch .mo gen); KDE_INSTALL_* pins stop ECMQueryQt from
-# leaking host-prefix paths when cross-compiling.
+# binaries (Exec format error / wrong-arch .mo gen). ECM's Qt query also needs the host
+# qtpaths binary: the target CoreTools package intentionally contains no executable that
+# can run in the Linux builder. KDE_INSTALL_* pins keep its answers from becoming install
+# paths when cross-compiling.
 KF6_CMAKE_FLAGS = \
 	$(QT6_MODULE_CMAKE_FLAGS) \
+	-DQUERY_EXECUTABLE=$(QT6_HOST_PATH)/bin/qtpaths \
 	-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
 	-DGETTEXT_MSGFMT_EXECUTABLE=/usr/bin/msgfmt \
 	-DGETTEXT_MSGMERGE_EXECUTABLE=/usr/bin/msgmerge \

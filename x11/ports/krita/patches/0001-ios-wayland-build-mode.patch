@@ -1,0 +1,87 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -85,9 +85,10 @@
+ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+ 
+ if (APPLE)
+-    add_subdirectory(packaging/macos)
++    if (NOT XIOS_IOS)
++        add_subdirectory(packaging/macos)
+ 
+-    if(NOT CMAKE_GENERATOR MATCHES "Xcode")
++        if(NOT CMAKE_GENERATOR MATCHES "Xcode")
+       execute_process(COMMAND
+         xcodebuild -version -sdk macosx ProductVersion
+         OUTPUT_VARIABLE XCODE_VERSION)
+@@ -106,10 +107,18 @@
+         set(MACOS_MINIMUM_VERSION 10.15)
+     endif()
+     add_definitions(-mmacosx-version-min=${MACOS_MINIMUM_VERSION} -Wno-macro-redefined -Wno-deprecated-register)
++    endif()
+     if (CMAKE_OSX_ARCHITECTURES)
+         message(STATUS "CMake OSX architectures: ${CMAKE_OSX_ARCHITECTURES}")
+     endif()
+ 
++endif()
++
++# The Procursus target deliberately identifies as Darwin for Mach-O and dylib
++# conventions. Krita's APPLE branches are macOS/AppKit-specific; use its
++# generic Qt/Wayland code paths on iOS.
++if (XIOS_IOS)
++    set(APPLE FALSE)
+ endif()
+ 
+ function(macos_test_fixrpath)
+@@ -503,8 +512,22 @@
+ include(KDECompilerSettings)
+ 
++# APPLE is disabled above so Krita selects its portable Qt/Wayland sources.
++# KDECompilerSettings consequently adds this ELF-only option; remove it before
++# any compile/link probes run against Apple's ld64.
++if (XIOS_IOS)
++    foreach(_xios_bad_linker_flag
++        "-Wl,--enable-new-dtags"
++        "-Wl,--no-undefined"
++        "-Wl,--fatal-warnings")
++        foreach(_xios_linker_flags CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS)
++            string(REPLACE "${_xios_bad_linker_flag}" "" ${_xios_linker_flags} "${${_xios_linker_flags}}")
++        endforeach()
++    endforeach()
++endif()
++
+ include(KDEInstallDirs)
+ 
+ include(KDECMakeSettings)
+ 
+ if (WIN32)
+ 
+@@ -564,7 +578,6 @@
+         Network
+         PrintSupport
+         Svg
+-        Test
+         Concurrent
+         Sql
+ )
+@@ -902,7 +915,7 @@
+ endif()
+ 
+ 
+-if (NOT WIN32 AND NOT APPLE AND NOT ANDROID AND NOT HAIKU)
++if (NOT WIN32 AND NOT APPLE AND NOT ANDROID AND NOT HAIKU AND NOT XIOS_IOS)
+     if (QT_MAJOR_VERSION STREQUAL "5")
+         find_package(Qt${QT_MAJOR_VERSION} ${MIN_QT_VERSION} REQUIRED X11Extras)
+     endif()
+@@ -1675,7 +1697,10 @@
+                            ${CMAKE_CURRENT_BINARY_DIR}
+ )
+ 
+-add_subdirectory(sdk/tests)
++if (NOT BUILD_TESTING AND NOT TARGET Qt${QT_MAJOR_VERSION}::Test)
++    add_library(Qt${QT_MAJOR_VERSION}::Test INTERFACE IMPORTED)
++endif()
++add_subdirectory(sdk/tests)
+ 
+ add_subdirectory(libs)
+ add_subdirectory(qmlmodules)

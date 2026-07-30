@@ -1,0 +1,10 @@
+Package: libxsimd-dev
+Version: @DEB_XSIMD_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/xtensor-stack/xsimd
+Description: C++ SIMD wrapper development files
+ Header-only xsimd 14 development files used for Krita's NEON-accelerated
+ pixel operations on arm64.

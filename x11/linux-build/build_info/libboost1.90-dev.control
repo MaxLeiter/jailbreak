@@ -1,0 +1,10 @@
+Package: libboost1.90-dev
+Version: @DEB_BOOST_HEADERS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.boost.org/
+Description: Boost 1.90 C++ development headers
+ The complete Boost 1.90 header tree used by Krita. Krita uses only
+ header-only Boost facilities, so this intentionally omits compiled libraries.

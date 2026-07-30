@@ -1,0 +1,14 @@
+Package: krita
+Version: @DEB_KRITA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Apps
+Priority: optional
+Homepage: https://krita.org/
+Depends: libiosexec1 (>= 1.3.1), angle, qt6-base, qt6-svg, qt6-wayland, qt6-5compat, qt6-declarative, kf6-config, kf6-widgetsaddons, kf6-completion, kf6-coreaddons, kf6-guiaddons, kf6-i18n, kf6-itemviews, kf6-colorscheme, libexiv2-28, liblcms2-2, libquazip1-qt6, libunibreak7, libpng16-16, libtiff6, libwebp7, libwebpdemux2, libwebpmux3, libz1, libfreetype6, libharfbuzz0b, libfontconfig1, libfribidi0
+Description: Krita digital painting application (Qt 6 preview)
+ Krita's current Qt 6 development line, pinned and visibly branded as Krita
+ Next. Built for the Xios Wayland compositor with OpenGL canvas acceleration,
+ KRA/ORA support, color management, and arm64 NEON paths. Upstream still marks
+ its Qt 6 port as pre-alpha, so this package is intentionally not presented as
+ a stable Krita release.

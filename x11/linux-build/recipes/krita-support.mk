@@ -10,6 +10,9 @@ endif
 SUBPROJECTS += krita-support
 
 EIGEN3_VERSION := 5.0.1
+BOOST_HEADERS_VERSION := 1.90.0
+BOOST_HEADERS_UNDERSCORE := 1_90_0
+XSIMD_VERSION := 14.1.0
 IMMER_VERSION := 0.9.1
 ZUG_VERSION := 0.1.2
 LAGER_VERSION := 0.1.1+git20230423.0b6ab3e
@@ -17,6 +20,8 @@ LAGER_COMMIT := 0b6ab3e0e880bc36be5da4984d768fde03b7cf19
 LIBUNIBREAK_VERSION := 7.0
 
 DEB_EIGEN3_V ?= $(EIGEN3_VERSION)+ios1
+DEB_BOOST_HEADERS_V ?= $(BOOST_HEADERS_VERSION)+ios1
+DEB_XSIMD_V ?= $(XSIMD_VERSION)+ios1
 DEB_IMMER_V ?= $(IMMER_VERSION)+ios1
 DEB_ZUG_V ?= $(ZUG_VERSION)+ios1
 DEB_LAGER_V ?= $(LAGER_VERSION)+ios1
@@ -24,11 +29,15 @@ DEB_LIBUNIBREAK_V ?= $(LIBUNIBREAK_VERSION)+ios1
 
 krita-support-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.com/libeigen/eigen/-/archive/$(EIGEN3_VERSION)/eigen-$(EIGEN3_VERSION).tar.gz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archives.boost.io/release/$(BOOST_HEADERS_VERSION)/source/boost_$(BOOST_HEADERS_UNDERSCORE).tar.bz2)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/xtensor-stack/xsimd/archive/refs/tags/$(XSIMD_VERSION).tar.gz)
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/arximboldi/immer/archive/refs/tags/v$(IMMER_VERSION).tar.gz)
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/arximboldi/zug/archive/refs/tags/v$(ZUG_VERSION).tar.gz)
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/dimula73/lager/archive/$(LAGER_COMMIT).tar.gz)
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/adah1972/libunibreak/releases/download/libunibreak_7_0/libunibreak-$(LIBUNIBREAK_VERSION).tar.gz)
 	$(call EXTRACT_TAR,eigen-$(EIGEN3_VERSION).tar.gz,eigen-$(EIGEN3_VERSION),krita-eigen3)
+	$(call EXTRACT_TAR,boost_$(BOOST_HEADERS_UNDERSCORE).tar.bz2,boost_$(BOOST_HEADERS_UNDERSCORE),krita-boost-headers)
+	$(call EXTRACT_TAR,$(XSIMD_VERSION).tar.gz,xsimd-$(XSIMD_VERSION),krita-xsimd)
 	$(call EXTRACT_TAR,v$(IMMER_VERSION).tar.gz,immer-$(IMMER_VERSION),krita-immer)
 	$(call EXTRACT_TAR,v$(ZUG_VERSION).tar.gz,zug-$(ZUG_VERSION),krita-zug)
 	$(call EXTRACT_TAR,$(LAGER_COMMIT).tar.gz,lager-$(LAGER_COMMIT),krita-lager)
@@ -41,7 +50,7 @@ krita-support:
 else
 krita-support: krita-support-setup
 	rm -rf $(BUILD_STAGE)/krita-support
-	for project in krita-eigen3 krita-immer krita-zug krita-lager; do \
+	for project in krita-eigen3 krita-xsimd krita-immer krita-zug krita-lager; do \
 		rm -rf "$(BUILD_WORK)/$$project/build"; \
 		mkdir -p "$(BUILD_WORK)/$$project/build"; \
 	done
@@ -51,6 +60,14 @@ krita-support: krita-support-setup
 		-DEIGEN_BUILD_BLAS=OFF \
 		-DEIGEN_BUILD_LAPACK=OFF
 	+DESTDIR="$(BUILD_STAGE)/krita-support" ninja -C $(BUILD_WORK)/krita-eigen3/build install
+	mkdir -p $(BUILD_STAGE)/krita-support/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
+	cp -a $(BUILD_WORK)/krita-boost-headers/boost \
+		$(BUILD_STAGE)/krita-support/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
+	cd $(BUILD_WORK)/krita-xsimd/build && cmake .. -G Ninja \
+		$(DEFAULT_CMAKE_FLAGS) \
+		-DBUILD_TESTS=OFF \
+		-DBUILD_BENCHMARKS=OFF
+	+DESTDIR="$(BUILD_STAGE)/krita-support" ninja -C $(BUILD_WORK)/krita-xsimd/build install
 	cd $(BUILD_WORK)/krita-immer/build && cmake .. -G Ninja \
 		$(DEFAULT_CMAKE_FLAGS) \
 		-Dimmer_BUILD_TESTS=OFF \
@@ -80,11 +97,14 @@ krita-support: krita-support-setup
 endif
 
 krita-support-package: krita-support-stage
-	rm -rf $(BUILD_DIST)/eigen3-dev $(BUILD_DIST)/libimmer-dev \
+	rm -rf $(BUILD_DIST)/eigen3-dev $(BUILD_DIST)/libboost1.90-dev \
+		$(BUILD_DIST)/libxsimd-dev $(BUILD_DIST)/libimmer-dev \
 		$(BUILD_DIST)/libzug-dev $(BUILD_DIST)/liblager-dev \
 		$(BUILD_DIST)/libunibreak7 $(BUILD_DIST)/libunibreak-dev
 	mkdir -p \
 		$(BUILD_DIST)/eigen3-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
+		$(BUILD_DIST)/libboost1.90-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
+		$(BUILD_DIST)/libxsimd-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
 		$(BUILD_DIST)/libimmer-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
 		$(BUILD_DIST)/libzug-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
 		$(BUILD_DIST)/liblager-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
@@ -96,6 +116,18 @@ krita-support-package: krita-support-stage
 	mkdir -p $(BUILD_DIST)/eigen3-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share
 	cp -a $(BUILD_STAGE)/krita-support/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/eigen3 \
 		$(BUILD_DIST)/eigen3-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/
+	mkdir -p $(BUILD_DIST)/libboost1.90-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
+	cp -a $(BUILD_STAGE)/krita-support/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/boost \
+		$(BUILD_DIST)/libboost1.90-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
+	mkdir -p $(BUILD_DIST)/libxsimd-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
+		$(BUILD_DIST)/libxsimd-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/cmake \
+		$(BUILD_DIST)/libxsimd-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/pkgconfig
+	cp -a $(BUILD_STAGE)/krita-support/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/xsimd \
+		$(BUILD_DIST)/libxsimd-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/
+	cp -a $(BUILD_STAGE)/krita-support/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/cmake/xsimd \
+		$(BUILD_DIST)/libxsimd-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/cmake/
+	cp -a $(BUILD_STAGE)/krita-support/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/pkgconfig/xsimd.pc \
+		$(BUILD_DIST)/libxsimd-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/pkgconfig/
 	for mapping in "immer Immer" "zug Zug" "lager Lager"; do \
 		set -- $$mapping; package="$$1"; cmake_package="$$2"; \
 		mkdir -p "$(BUILD_DIST)/lib$$package-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include" \
@@ -118,12 +150,15 @@ krita-support-package: krita-support-stage
 		$(BUILD_DIST)/libunibreak-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
 	$(call SIGN,libunibreak7,general.xml)
 	$(call PACK,eigen3-dev,DEB_EIGEN3_V)
+	$(call PACK,libboost1.90-dev,DEB_BOOST_HEADERS_V)
+	$(call PACK,libxsimd-dev,DEB_XSIMD_V)
 	$(call PACK,libimmer-dev,DEB_IMMER_V)
 	$(call PACK,libzug-dev,DEB_ZUG_V)
 	$(call PACK,liblager-dev,DEB_LAGER_V)
 	$(call PACK,libunibreak7,DEB_LIBUNIBREAK_V)
 	$(call PACK,libunibreak-dev,DEB_LIBUNIBREAK_V)
-	rm -rf $(BUILD_DIST)/eigen3-dev $(BUILD_DIST)/libimmer-dev \
+	rm -rf $(BUILD_DIST)/eigen3-dev $(BUILD_DIST)/libboost1.90-dev \
+		$(BUILD_DIST)/libxsimd-dev $(BUILD_DIST)/libimmer-dev \
 		$(BUILD_DIST)/libzug-dev $(BUILD_DIST)/liblager-dev \
 		$(BUILD_DIST)/libunibreak7 $(BUILD_DIST)/libunibreak-dev
 
