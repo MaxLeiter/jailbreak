@@ -87,24 +87,44 @@ trap that cost a build cycle is this:
 > someone else will", and nobody ever does. WebContent hangs on startup with no output. The
 > catch-up must therefore ring unconditionally rather than consulting that helper.
 
-## What to do instead
+## What to do instead: entitlement minimisation
 
-The fallback named in `ios-platform-features.md`: uid separation, `setrlimit`, and
-entitlement minimisation. The last of those is the cheapest real win available, because the
-current helper entitlements are far broader than a renderer needs
-(`x11/packages/ladybird-app/entitlements/ladybird-helper.entitlements`):
+The fallback named in `ios-platform-features.md` is uid separation, `setrlimit`, and
+entitlement minimisation. Entitlements are the cheapest real win, and unlike the sandbox they
+are independent of it: writes were denied under confinement even as root with the read-write
+path exception present, so trimming entitlements is a real restriction rather than cosmetic.
 
-- `task_for_pid-allow` and `com.apple.system-task-ports` — cross-process inspection, which a
-  renderer has no business holding.
-- `com.apple.security.exception.files.absolute-path.read-write` over all of `/var/jb/` —
-  WebContent has no runtime write requirement at all. The Skia cache directory the macOS
-  profile grants read-write has no writer anywhere in the tree, and the HTTP disk cache and
-  alt-svc cache belong to RequestServer.
-- The AGX/IOGPU IOKit classes are needed by Compositor, not by WebContent or ImageDecoder.
+**Done (2026-07-29):** `task_for_pid-allow` and `com.apple.system-task-ports` are removed from
+`x11/packages/ladybird-app/entitlements/ladybird-helper.entitlements`. Those grant the ability
+to obtain another process's task port, i.e. read and write its memory, which is a
+privilege-escalation primitive and the worst thing to hand a process that parses untrusted web
+content. Nothing needed them: a helper sends its *own* task port during the Mach bootstrap
+handshake (no entitlement required), and the iOS path discards the received port
+(`(void)request.task_port`; `set_process_mach_port` is macOS-only).
 
-Note that entitlements and the sandbox are independent layers: writes were denied under
-confinement even as root with that read-write path exception present. So trimming
-entitlements is a real restriction, not a cosmetic one.
+Device-validated without a rebuild, because entitlements are a signing-time property: the
+shipped helpers were re-signed with the trimmed set, run from an isolated prefix, and loaded a
+page. Result was a byte-identical 52742-byte screenshot to the untrimmed control, with
+MessageChannel, MessagePort transfer, image decode via RequestServer and canvas all reporting
+OK on the rendered page. WebContent, RequestServer, ImageDecoder and Compositor all spawn and
+work without those two grants.
+
+**Still to do, blocked on splitting the file per helper.** One entitlement file is shared by
+both flavors' signing paths (`packages/ladybird-wayland/build.sh` and
+`packages/ladybird-app/resign-ladybird-app-deb.sh`), and the `.app` flavor signs **Compositor**
+with it too, so nothing GPU- or write-related can be narrowed until there are per-helper files:
+
+- `com.apple.security.exception.files.absolute-path.read-write` over all of `/var/jb/`.
+  WebContent has no runtime write requirement at all (the Skia cache directory the macOS
+  profile grants read-write has no writer anywhere in the tree). RequestServer is the only
+  helper that genuinely writes, for the HTTP disk cache and alt-svc cache.
+- The AGX/IOGPU IOKit classes, which only Compositor needs. Removing them from the shared file
+  today would break the `.app` flavor's WebGL, since that flavor signs Compositor with this
+  file.
+
+Caveats on the validation above: headless mode uses in-process raster (patch 0009), so
+Compositor was proven to *launch* without task ports but its paint path was not exercised, and
+the test page uses no Web Workers so WebWorker was not exercised.
 
 ## Other notes
 
