@@ -482,8 +482,15 @@ replace(
 replace(
     "src/plugins/qpa/integration.cpp",
     '#include "backingstore.h"\n',
-    '#include "backingstore.h"\n#include "eglplatformcontext.h" // ios-gpu-qpa-context\n#include "core/outputbackend.h"\n',
+    '#include "backingstore.h"\n#include "eglplatformcontext.h" // ios-gpu-qpa-context\n',
     "ios-gpu-qpa-context",
+)
+replace(
+    "src/plugins/qpa/integration.cpp",
+    '#include "eglplatformcontext.h" // ios-gpu-qpa-context\n',
+    '#include "eglplatformcontext.h" // ios-gpu-qpa-context\n'
+    '#include "core/outputbackend.h" // ios-gpu-qpa-outputbackend\n',
+    "ios-gpu-qpa-outputbackend",
 )
 
 # KWin's EGL wrappers use libepoxy.  Including the platform EGL header first
