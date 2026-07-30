@@ -114,6 +114,13 @@ end-to-end):
   earlier reference has been fixed.)
 - To extend unification into the container, add `x11/lib` to the relevant
   `docker run -v` mounts, then the in-container scripts can source `xlib.sh` too.
+- `finalize_x11_graphics_debs` is one of the three publish steps that **need the
+  real `.deb` payloads**, alongside the Blob upload and
+  `bin/lib/check-procursus-shadow.py` (Mach-O `nm`). Those three are why
+  publishing cannot move to CI and stays a local step; CI only validates the
+  index. `bin/publish-repo.sh --from-index` skips all three and publishes the
+  committed index, so it is only safe once a normal `bin/publish-staging.sh` has
+  put the payloads in Blob from the tree that built them.
 
 ## Version marking (`+iosN`)
 

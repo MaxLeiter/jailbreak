@@ -20,20 +20,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: angle
 Name: ANGLE (GLES via Metal)
-Version: 2.1.0+git20260630.a32d31d+es3-13
+Version: 2.1.0+git20260630.a32d31d+es3-14
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
-Installed-Size: 13512
+Installed-Size: 13508
 Depends: firmware (>= 15.0)
 Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/AGX).
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-13_iphoneos-arm64.deb
-Size: 3946894
-MD5sum: 7c563dbc6d5116822d878ebe23cd6a2c
-SHA1: 58eb6baf7cf6e69f5c8b2c6d4f60cb5cb5cc58c9
-SHA256: 65177328d2ac9af3d8a26eb669cbb97038022a4800018c0abb56cc37cdcd9575
+Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-14_iphoneos-arm64.deb
+Size: 3946412
+MD5sum: d10245dfa79385f144041548d0aadd15
+SHA1: 74ee57f8342f6ea7968f1bd37f07539ace784677
+SHA256: 086a9fe8ec980a9cf4222741f148864ae9631aa5c247d7eff03dcd14548401fc
 Icon: https://repo.maxleiter.com/icons/angle.png
 Depiction: https://repo.maxleiter.com/depictions/angle.html
 SileoDepiction: https://repo.maxleiter.com/depictions/angle.json
@@ -333,7 +333,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: com.max.xios
 Name: Xios
-Version: 0.1.2
+Version: 0.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -342,11 +342,11 @@ Priority: optional
 Depends: firmware (>= 16.0), libx11-6, libxtst6
 MinimumOSVersion: 16.0.0
 Description: the display app for the Xios desktop
-Filename: debs/com.max.xios_0.1.2_iphoneos-arm64.deb
-Size: 748962
-MD5sum: 8216139920f5a022c231e0dc7a68d5f2
-SHA1: b5d591477f7a98dc6d0b89a0d657c288ebfe8f5f
-SHA256: 786d7daa9f18385a91f4ae45566b5a971db2b2d45160738fb1106bf452ccd934
+Filename: debs/com.max.xios_0.1.4_iphoneos-arm64.deb
+Size: 758056
+MD5sum: 669554405e6e2e6b200391e714f4ae73
+SHA1: 19b240f04b7e674f48ec028f7dfda8591285815b
+SHA256: bd6b36b91052c9738b41719f9addb832c32ea8d7b68a865f4df26dc90b81ad7d
 Icon: https://repo.maxleiter.com/icons/com.max.xios.png
 Depiction: https://repo.maxleiter.com/depictions/com.max.xios.html
 SileoDepiction: https://repo.maxleiter.com/depictions/com.max.xios.json
@@ -742,6 +742,67 @@ Icon: https://repo.maxleiter.com/icons/gcr4-dev.png
 Depiction: https://repo.maxleiter.com/depictions/gcr4-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/gcr4-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/gcr4-dev.json
+
+Package: gegl
+Version: 0.4.70+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Graphics
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libgegl-0.4-0 (= 0.4.70+ios2)
+Description: GEGL command-line image processing tools
+Replaces: libgegl-0.4-0 (<< 0.4.70+ios2)
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/gegl_0.4.70+ios2_iphoneos-arm64.deb
+Size: 14698
+MD5sum: e3499c1e898544b62cb01ed6fd7baf1b
+SHA1: 6b8314fb45ec2a1feb19af7c0f5a4d658db2a244
+SHA256: 96cb61cc2e5aaf2463421b646b5a666bae658c4e41437daf976345dec452bc8d
+Icon: https://repo.maxleiter.com/icons/gegl.png
+Depiction: https://repo.maxleiter.com/depictions/gegl.html
+SileoDepiction: https://repo.maxleiter.com/depictions/gegl.json
+Native Depiction: https://repo.maxleiter.com/depictions/gegl.json
+
+Package: gimp
+Version: 3.2.4+ios3
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Graphics
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libbabl-0.1-0, libgegl-0.4-0, gegl, libgexiv2-2, libmypaint-1.5-1, mypaint-brushes, libbz2-1.0, libtiff6, libgtk-3-0, libgdk-pixbuf-2.0-0, libglib2.0-0, libpango-1.0-0, libcairo2, libfontconfig1, libfreetype6, libharfbuzz0b, libjson-glib-1.0-0, libjpeg62-turbo, libpng16-16, liblcms2-2, libexiv2-28, librsvg2-2, libwebp7, libappstream5, libarchive13, libgtkintl, libpoppler-glib8, libpoppler140, shared-mime-info
+Description: GIMP 3.2 image editor for Xios Wayland desktops
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/gimp_3.2.4+ios3_iphoneos-arm64.deb
+Size: 26350972
+MD5sum: 9184d8228e71fc9dc2be23a02785e8c3
+SHA1: 6a90f60de95bcc33245a2c39952c65aeaaa07850
+SHA256: fea3b9346692a3899364971de2c988067234c435fd4c17d9a2f1ca6ba218479c
+Icon: https://repo.maxleiter.com/icons/gimp.png
+Depiction: https://repo.maxleiter.com/depictions/gimp.html
+SileoDepiction: https://repo.maxleiter.com/depictions/gimp.json
+Native Depiction: https://repo.maxleiter.com/depictions/gimp.json
+
+Package: gimp-native
+Version: 3.2.4+ios3
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Applications
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: gimp (= 3.2.4+ios3), xios-launcher-tools (>= 0.1.3), iosc (>= 0.9.28)
+Description: native iPadOS multi-window host app for GIMP
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/gimp-native_3.2.4+ios3_iphoneos-arm64.deb
+Size: 185938
+MD5sum: 45a40a72a7f6d10e3fd21656025001ff
+SHA1: ce4a154b806950c368bb730025be1a4cb4ac0df5
+SHA256: 48cd635b9ea5ee11a6b43bffd07242f2551a993787c32106c436460110d45f5a
+Icon: https://repo.maxleiter.com/icons/gimp-native.png
+Depiction: https://repo.maxleiter.com/depictions/gimp-native.html
+SileoDepiction: https://repo.maxleiter.com/depictions/gimp-native.json
+Native Depiction: https://repo.maxleiter.com/depictions/gimp-native.json
 
 Package: gir1.2-freedesktop
 Version: 1.78.0+ios1
@@ -1270,21 +1331,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.31
+Version: 0.9.35
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-13), libwayland0, libxkbcommon0
+Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-14), libwayland0, libxkbcommon0
 Recommends: gnome-console
 Section: X11
 Priority: optional
-Installed-Size: 680
+Installed-Size: 704
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.31_iphoneos-arm64.deb
-Size: 149482
-MD5sum: a30a7aebafe0cea3c498638635cff01a
-SHA1: 726425bab0eccac5e32ead2c55e869fcb0cc291b
-SHA256: adb71c2cf2224f89c5342bd7bfc2adbecc59818a0b359a663189f4405e58e13f
+Filename: debs/iosc_0.9.35_iphoneos-arm64.deb
+Size: 154460
+MD5sum: ed41c5e3634c855eba51882dd7e9f635
+SHA1: fdc9a34e05e467a0f959fadd8e49d947498014cc
+SHA256: 59350f8e80f1f2820e78886e6d51f56da3817265707bfc904be0abf0f78440ef
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -3753,42 +3814,42 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 
 Package: kwin
-Version: 6.1.5+ios28
+Version: 6.1.5+ios30
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-tools, qt6-sensors, qt6-5compat, kf6-auth, kf6-colorscheme, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-idletime, kf6-package, kf6-service, kf6-svg, kf6-widgetsaddons, kf6-windowsystem, kdecoration, kwayland, kglobalacceld, libwayland0, libxkbcommon0, libdrm2, libgbm1, libdisplay-info1, libepoll-shim0, angle
+Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-tools, qt6-sensors, qt6-5compat, kf6-auth, kf6-colorscheme, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-guiaddons, kf6-i18n, kf6-idletime, kf6-package, kf6-service, kf6-svg, kf6-widgetsaddons, kf6-windowsystem, kdecoration, kwayland, kglobalacceld, libwayland0, libxkbcommon0, libdrm2, libgbm1, libdisplay-info1, libepoll-shim0, angle (>= 2.1.0+git20260630.a32d31d+es3-14)
 Description: KWin Wayland compositor with Xios ANGLE/IOSurface acceleration
 Installed-Size: 32296
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin_6.1.5+ios28_iphoneos-arm64.deb
-Size: 3355600
-MD5sum: 65f9ed30ee18590f221dd5d811118c04
-SHA1: 18e3450c9c82cd7cb6fdeb7b1a8cc190f19197d2
-SHA256: 8ce2f1bb8dd4cfeb17b729d4b2bfda396e06dff75e0625233d3545f4c053d301
+Filename: debs/kwin_6.1.5+ios30_iphoneos-arm64.deb
+Size: 4285802
+MD5sum: 1aedb72a652d624b96465bd573d32a96
+SHA1: 75bc08613e87ef67708a7a7ccbec39c36e465219
+SHA256: b58765c8c520e15d6de32398e04a4250c8809595543c405f80fab6da0aec901f
 Icon: https://repo.maxleiter.com/icons/kwin.png
 Depiction: https://repo.maxleiter.com/depictions/kwin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwin.json
 
 Package: kwin-dev
-Version: 6.1.5+ios27
+Version: 6.1.5+ios29
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: kwin (= 6.1.5+ios27), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
+Depends: kwin (= 6.1.5+ios29), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
 Description: Development files for KWin
 Installed-Size: 1912
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin-dev_6.1.5+ios27_iphoneos-arm64.deb
-Size: 268280
-MD5sum: d8269898cd695a793974c09b25dd8c15
-SHA1: 41ed674ce0c007289f6cdcd667c61c25d253b011
-SHA256: 175a5eb9e756466b793649f257b10d762bf22fcbfd66a5cebe38ebf364fa6101
+Filename: debs/kwin-dev_6.1.5+ios29_iphoneos-arm64.deb
+Size: 268254
+MD5sum: d26748d38223a3f5ccd5163f692676c8
+SHA1: 48d1f115647fd3a56678ce2a88eebde0126f71d1
+SHA256: 26fd23884566e1596dc9ee0b89cbf3b4090d7a85e275eb58e0f67a3e2bf799ee
 Icon: https://repo.maxleiter.com/icons/kwin-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kwin-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin-dev.json
@@ -4557,6 +4618,46 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libavutil59.json
 Native Depiction: https://repo.maxleiter.com/depictions/libavutil59.json
 Homepage: https://repo.maxleiter.com
 
+Package: libbabl-0.1-0
+Version: 0.1.126+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: liblcms2-2
+Description: babl pixel-format conversion runtime
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libbabl-0.1-0_0.1.126+ios1_iphoneos-arm64.deb
+Size: 322830
+MD5sum: 1c84de1a9192763b71a1a216f233bb8c
+SHA1: 204027f5ac09b276145a8211457d6129a8c41f35
+SHA256: e088b5c253072927b75ac5351d9ad846c2cf14068aa330195fac0bc459de2baf
+Icon: https://repo.maxleiter.com/icons/libbabl-0.1-0.png
+Depiction: https://repo.maxleiter.com/depictions/libbabl-0.1-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libbabl-0.1-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libbabl-0.1-0.json
+
+Package: libbabl-0.1-dev
+Version: 0.1.126+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libbabl-0.1-0 (= 0.1.126+ios1)
+Description: development files for babl pixel-format conversion runtime
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libbabl-0.1-dev_0.1.126+ios1_iphoneos-arm64.deb
+Size: 9392
+MD5sum: 1fb43cb965883f5a342bfeefd915c1da
+SHA1: 05f697f811b531529ee6fd71464f25a922992590
+SHA256: a06da3d7d40042556f35934efe7cbc7abfd1d466e5a372ddc00b7553a19cb910
+Icon: https://repo.maxleiter.com/icons/libbabl-0.1-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libbabl-0.1-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libbabl-0.1-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libbabl-0.1-dev.json
+
 Package: libbrotli-dev
 Version: 1.1.0+ios1
 Architecture: iphoneos-arm64
@@ -4600,6 +4701,45 @@ Icon: https://repo.maxleiter.com/icons/libbrotli1.png
 Depiction: https://repo.maxleiter.com/depictions/libbrotli1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libbrotli1.json
 Native Depiction: https://repo.maxleiter.com/depictions/libbrotli1.json
+
+Package: libbz2-1.0
+Version: 1.0.8+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gimp.org/
+Description: bzip2 compression runtime for GIMP
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libbz2-1.0_1.0.8+ios1_iphoneos-arm64.deb
+Size: 35218
+MD5sum: 0da4e394cdb49502e3ebf7a980b973d8
+SHA1: 060f989c79a626f3b46abf57cde2b3f2b0b1c915
+SHA256: 25a8514a6ff137fc86c838cb51c3e41aa5ab70ebed620999b1dc2baf10aab652
+Icon: https://repo.maxleiter.com/icons/libbz2-1.0.png
+Depiction: https://repo.maxleiter.com/depictions/libbz2-1.0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libbz2-1.0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libbz2-1.0.json
+
+Package: libbz2-dev
+Version: 1.0.8+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libbz2-1.0 (= 1.0.8+ios1)
+Description: development files for bzip2 compression runtime for GIMP
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libbz2-dev_1.0.8+ios1_iphoneos-arm64.deb
+Size: 2676
+MD5sum: e5d66ad6bdec1a9e7c0e15c12ae3e892
+SHA1: 54fd9fcb78106dc1a29de981132c7f42da4f901d
+SHA256: 486a6b38e80ecd9dbf26efec55735779844476f0c2f1fe02d62c4bc9d8ba0210
+Icon: https://repo.maxleiter.com/icons/libbz2-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libbz2-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libbz2-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libbz2-dev.json
 
 Package: libcairo-gobject2
 Version: 1.16.0-3+ios1
@@ -5562,6 +5702,46 @@ Depiction: https://repo.maxleiter.com/depictions/libgee-0.8-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgee-0.8-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgee-0.8-dev.json
 
+Package: libgegl-0.4-0
+Version: 0.4.70+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libbabl-0.1-0, libglib2.0-0, libjson-glib-1.0-0, libjpeg62-turbo, libpng16-16, libgexiv2-2, liblcms2-2, librsvg2-2, libwebp7
+Description: GEGL image-processing runtime and operations
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgegl-0.4-0_0.4.70+ios2_iphoneos-arm64.deb
+Size: 2908764
+MD5sum: deac6ee5cb77bf732aa0e9c8eee918c6
+SHA1: 12cc2b553f4aa18dd537fce34262eb966bfff0aa
+SHA256: 4e9d832c174adaa19da5bddedabe26586383a543fa799d125a89f19514f3c6ac
+Icon: https://repo.maxleiter.com/icons/libgegl-0.4-0.png
+Depiction: https://repo.maxleiter.com/depictions/libgegl-0.4-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgegl-0.4-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgegl-0.4-0.json
+
+Package: libgegl-dev
+Version: 0.4.70+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libgegl-0.4-0 (= 0.4.70+ios2)
+Description: development files for GEGL image processing
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgegl-dev_0.4.70+ios2_iphoneos-arm64.deb
+Size: 177942
+MD5sum: 99fe90049372c3c2dcf6a994806b413f
+SHA1: f3031c1b3e7de2b41f4def014c329d5f9830e032
+SHA256: ca1fad3063be191d3dab0881425e5bd624783aed51dad912335afd4a0188c0ab
+Icon: https://repo.maxleiter.com/icons/libgegl-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgegl-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgegl-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgegl-dev.json
+
 Package: libgeneral0
 Version: 56-1+ios1
 Architecture: iphoneos-arm64
@@ -5673,6 +5853,46 @@ Icon: https://repo.maxleiter.com/icons/libgeocode-glib-2-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgeocode-glib-2-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgeocode-glib-2-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgeocode-glib-2-dev.json
+
+Package: libgexiv2-2
+Version: 0.14.6+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libglib2.0-0, libexiv2-28
+Description: GObject metadata bindings for Exiv2
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgexiv2-2_0.14.6+ios1_iphoneos-arm64.deb
+Size: 72044
+MD5sum: d7768d70d77906855f282c4edcd01cdd
+SHA1: 523f848c850aedfd087ac3ef6c94202b2e8b36d3
+SHA256: 316ca87a7adadb34236fb04f09b6bb6fae2eb98b7616c93916c062f5bf53395c
+Icon: https://repo.maxleiter.com/icons/libgexiv2-2.png
+Depiction: https://repo.maxleiter.com/depictions/libgexiv2-2.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgexiv2-2.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgexiv2-2.json
+
+Package: libgexiv2-dev
+Version: 0.14.6+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libgexiv2-2 (= 0.14.6+ios1)
+Description: development files for GObject metadata bindings for Exiv2
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgexiv2-dev_0.14.6+ios1_iphoneos-arm64.deb
+Size: 16268
+MD5sum: 87523d831aff69cc93f1c864be1d31c4
+SHA1: c30787e36ae05554a5a688200e62f7f673261782
+SHA256: 872dbfc5fdc4eb3e733cb20cd47ac0bc15e1d2dad904bdd6f948304c16051b34
+Icon: https://repo.maxleiter.com/icons/libgexiv2-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgexiv2-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgexiv2-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgexiv2-dev.json
 
 Package: libgirara-gtk3-4
 Version: 0.4.5+ios1
@@ -7004,6 +7224,45 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libjpeg62-turbo-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libjpeg62-turbo-dev.json
 Homepage: https://repo.maxleiter.com
 
+Package: libjson-c-dev
+Version: 0.18+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libjson-c5 (= 0.18+ios1)
+Description: development files for JSON-C runtime for Xios desktop applications
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libjson-c-dev_0.18+ios1_iphoneos-arm64.deb
+Size: 30098
+MD5sum: 29e6003e1a20a1523a285f6a652de8d4
+SHA1: be584edfddedd1f17576811b838292e6843b6cdc
+SHA256: 9c5ad0f694a02c0a40a916065fcc0da5a378014b2190f1235b4c018826f8700f
+Icon: https://repo.maxleiter.com/icons/libjson-c-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libjson-c-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libjson-c-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libjson-c-dev.json
+
+Package: libjson-c5
+Version: 0.18+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gimp.org/
+Description: JSON-C runtime for Xios desktop applications
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libjson-c5_0.18+ios1_iphoneos-arm64.deb
+Size: 27550
+MD5sum: 74e60790258c898158c9fff046408112
+SHA1: b0ed10fe4c9af6ac60c54426524ec0854cf0d589
+SHA256: b881e4d1b2efed0ed49ef91940df2fe0daeefd9961fbc4c79f20eff85e60f176
+Icon: https://repo.maxleiter.com/icons/libjson-c5.png
+Depiction: https://repo.maxleiter.com/depictions/libjson-c5.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libjson-c5.json
+Native Depiction: https://repo.maxleiter.com/depictions/libjson-c5.json
+
 Package: libjson-glib-1.0-0
 Version: 1.8.0+ios1
 Architecture: iphoneos-arm64
@@ -7389,20 +7648,20 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libmpfr6.json
 Native Depiction: https://repo.maxleiter.com/depictions/libmpfr6.json
 
 Package: libmutter-14-0
-Version: 46.0+ios5
+Version: 46.0+ios6
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libgraphene-1.0-0, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0, libjson-glib-1.0-0, liblcms2-2, libcolord2, libxkbcommon0, libpixman-1-0, libwayland0, angle, libei1, libatk1.0-0
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libgraphene-1.0-0, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0, libjson-glib-1.0-0, liblcms2-2, libcolord2, libxkbcommon0, libpixman-1-0, libwayland0, angle (>= 2.1.0+git20260630.a32d31d+es3-14), libei1, libatk1.0-0
 Section: Libraries
 Priority: optional
 Description: window manager library from the Mutter window manager
-Installed-Size: 9032
+Installed-Size: 9068
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libmutter-14-0_46.0+ios5_iphoneos-arm64.deb
-Size: 2027784
-MD5sum: eecf79cee0c327183705f02ee3d4d042
-SHA1: 407a6112b27d831b96fd6d7e4a6c36778ed34841
-SHA256: a4f05159a803d38582bd5865e5962454b374338a5792debeaedac1aa4d9ca906
+Filename: debs/libmutter-14-0_46.0+ios6_iphoneos-arm64.deb
+Size: 2033932
+MD5sum: fc3da542052b961b6b8556af20640ab5
+SHA1: 43feaaa3677530a2fd2c849f6c653ed26bdbe6aa
+SHA256: 1535b3e46be922568005d71a30f0e33c3556e95015831d07ee0f3cfa1d9b0863
 Icon: https://repo.maxleiter.com/icons/libmutter-14-0.png
 Depiction: https://repo.maxleiter.com/depictions/libmutter-14-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libmutter-14-0.json
@@ -7410,25 +7669,65 @@ Native Depiction: https://repo.maxleiter.com/depictions/libmutter-14-0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libmutter-14-dev
-Version: 46.0+ios5
+Version: 46.0+ios6
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libmutter-14-0 (= 46.0+ios5), libgtk-4-dev, libglib2.0-dev, libgraphene-1.0-dev, libjson-glib-dev, liblcms2-dev, libcolord-dev, libxcomposite-dev, libxfixes-dev, libpixman-1-dev, libxkbcommon-dev
+Depends: libmutter-14-0 (= 46.0+ios6), libgtk-4-dev, libglib2.0-dev, libgraphene-1.0-dev, libjson-glib-dev, liblcms2-dev, libcolord-dev, libxcomposite-dev, libxfixes-dev, libpixman-1-dev, libxkbcommon-dev
 Section: Development
 Priority: optional
 Description: window manager library from the Mutter window manager (development files)
 Installed-Size: 1904
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libmutter-14-dev_46.0+ios5_iphoneos-arm64.deb
-Size: 309268
-MD5sum: ca21ea9645709dc72c58a0d8743378ac
-SHA1: c9c9e5350b5e9bd622d71cb782a27aacc15616aa
-SHA256: b68436197eeb319c61b149312f43890fb32117ad53d8d1e072814685c15f85c5
+Filename: debs/libmutter-14-dev_46.0+ios6_iphoneos-arm64.deb
+Size: 309276
+MD5sum: 92e6ba3ad3d9a5222fffb80deae8352a
+SHA1: e3323328f6e98db8819d9b4b60fa8b25833a2b36
+SHA256: 83ccc967aece42fec70cead568e7c8676b9c4cba4a94ce90b6789619ff0470b8
 Icon: https://repo.maxleiter.com/icons/libmutter-14-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libmutter-14-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libmutter-14-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libmutter-14-dev.json
 Homepage: https://repo.maxleiter.com
+
+Package: libmypaint-1.5-1
+Version: 1.6.1+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libjson-c5, libglib2.0-0
+Description: MyPaint brush engine used by GIMP
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libmypaint-1.5-1_1.6.1+ios1_iphoneos-arm64.deb
+Size: 222992
+MD5sum: 8e57c58c1d708be5c3119d037cd82cac
+SHA1: b9d34d19aa56a89bff6fef83b431ad4f56b5755f
+SHA256: 358c1f3da7bdf400452971c47b202146a4d15d1e5d3630a6cc15c97c6ba0e723
+Icon: https://repo.maxleiter.com/icons/libmypaint-1.5-1.png
+Depiction: https://repo.maxleiter.com/depictions/libmypaint-1.5-1.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libmypaint-1.5-1.json
+Native Depiction: https://repo.maxleiter.com/depictions/libmypaint-1.5-1.json
+
+Package: libmypaint-dev
+Version: 1.6.1+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libmypaint-1.5-1 (= 1.6.1+ios1)
+Description: development files for MyPaint brush engine used by GIMP
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libmypaint-dev_1.6.1+ios1_iphoneos-arm64.deb
+Size: 17442
+MD5sum: 85e502fceff6f5fd654f78889667b9d3
+SHA1: 692856945bbebecf96f1c767d8bab133aa04bed9
+SHA256: 5e5f638d72dbf8056908fe8b073c96f7544428cdba847dec64b35a1e8180bcc5
+Icon: https://repo.maxleiter.com/icons/libmypaint-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libmypaint-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libmypaint-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libmypaint-dev.json
 
 Package: libnghttp2-14
 Version: 1.61.0+ios1
@@ -8620,6 +8919,26 @@ Depiction: https://repo.maxleiter.com/depictions/libswscale6.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libswscale6.json
 Native Depiction: https://repo.maxleiter.com/depictions/libswscale6.json
 Homepage: https://repo.maxleiter.com
+
+Package: libtiff6
+Version: 4.7.0+ios2
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://www.gimp.org/
+Depends: libjpeg62-turbo, libwebp7, libz1
+Description: TIFF image codec runtime for GIMP with a private XZ runtime
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libtiff6_4.7.0+ios2_iphoneos-arm64.deb
+Size: 286626
+MD5sum: a9d722ac3ba3347aad093dc9685007fe
+SHA1: 2a00c3bec5aca3465b3c7e4d231fd0bb7c10c53d
+SHA256: 1a10cbe517a5f76251ecf17e23919054a442722c4a922d0db088c6dc0e151968
+Icon: https://repo.maxleiter.com/icons/libtiff6.png
+Depiction: https://repo.maxleiter.com/depictions/libtiff6.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libtiff6.json
+Native Depiction: https://repo.maxleiter.com/depictions/libtiff6.json
 
 Package: libtllist-dev
 Version: 1.1.0+ios1
@@ -10165,6 +10484,25 @@ Depiction: https://repo.maxleiter.com/depictions/mpv.html
 SileoDepiction: https://repo.maxleiter.com/depictions/mpv.json
 Native Depiction: https://repo.maxleiter.com/depictions/mpv.json
 
+Package: mypaint-brushes
+Version: 2.0.2+ios1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Graphics
+Priority: optional
+Homepage: https://www.gimp.org/
+Description: MyPaint 2 brush collection used by GIMP
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/mypaint-brushes_2.0.2+ios1_iphoneos-arm64.deb
+Size: 1507942
+MD5sum: 9b0f0a1b3b07409445a6b5b621d5ecda
+SHA1: 9b043bc1b1de665ebb0e9753c45406ea94eef517
+SHA256: 5462c0cc9bdd53c20f4b57884d633ddbcac297de98011acd96f93cd7452c8600
+Icon: https://repo.maxleiter.com/icons/mypaint-brushes.png
+Depiction: https://repo.maxleiter.com/depictions/mypaint-brushes.html
+SileoDepiction: https://repo.maxleiter.com/depictions/mypaint-brushes.json
+Native Depiction: https://repo.maxleiter.com/depictions/mypaint-brushes.json
+
 Package: nautilus
 Version: 46.4+ios1
 Architecture: iphoneos-arm64
@@ -10565,7 +10903,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-wayland-protocols.j
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-wayland-protocols.json
 
 Package: plasma-workspace
-Version: 6.1.5+ios12
+Version: 6.1.5+ios13
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
@@ -10574,13 +10912,13 @@ Homepage: https://kde.org/
 Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-wayland, qt6-5compat, qcoro6, breeze, plasma-integration, kf6-auth, kf6-parts, kf6-runner, kf6-notifications, kf6-notifyconfig, kf6-newstuff, kf6-wallet, kf6-idletime, kf6-svg, kf6-declarative, kf6-i18n, kf6-kcmutils, kf6-qqc2-desktop-style, kf6-kquickcharts, kf6-textwidgets, kf6-crash, kf6-globalaccel, kf6-dbusaddons, kf6-coreaddons, kf6-config, kf6-xmlgui, kf6-kio, kf6-kded (>= 6.3.0+ios2), kf6-package, kf6-solid, kf6-guiaddons, kf6-archive, kf6-itemmodels, kf6-iconthemes, kf6-unitconversion, kf6-statusnotifieritem, plasma-activities, plasma-activities-stats, kactivitymanagerd, libplasma, plasma5support, kwayland, layer-shell-qt, xios-desktop-theme, xios-session
 Replaces: plasma-mobile (<< 6.1.5+ios21)
 Description: First-light Plasma Workspace shell for Xios
-Installed-Size: 22368
+Installed-Size: 25292
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-workspace_6.1.5+ios12_iphoneos-arm64.deb
-Size: 2641382
-MD5sum: 50bd8abcf730f9778e6e69aca28a067e
-SHA1: 6aa0968d626815aa4872805efc41ad2dcf899e97
-SHA256: 2621190ee851842de2c593254e11bf5fb4207658f289c3f438821fdd51160ee2
+Filename: debs/plasma-workspace_6.1.5+ios13_iphoneos-arm64.deb
+Size: 2778382
+MD5sum: 72a7fe1706cf50c36915dadd6e707673
+SHA1: 54577230bd4cfb3a4daa73208ba258363c5aeee7
+SHA256: f39888032c5067c8923dccd2a9db3029c043b09f1e73fa8511b31b5f598c5f24
 Icon: https://repo.maxleiter.com/icons/plasma-workspace.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
@@ -10672,7 +11010,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/polkit-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/polkit-dev.json
 
 Package: powerdevil
-Version: 6.1.5+ios1
+Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -10680,13 +11018,13 @@ Priority: optional
 Homepage: https://invent.kde.org/plasma/powerdevil
 Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, plasma-activities, plasma-workspace, libkscreen, layer-shell-qt, kf6-auth, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-globalaccel, kf6-i18n, kf6-idletime, kf6-itemmodels, kf6-kcmutils, kf6-kio, kf6-kirigami, kf6-notifications, kf6-service, kf6-solid, kf6-windowsystem, kf6-xmlgui
 Description: KDE Plasma power management daemon for Xios
-Installed-Size: 4824
+Installed-Size: 4848
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/powerdevil_6.1.5+ios1_iphoneos-arm64.deb
-Size: 297620
-MD5sum: c0aba70a3a63b818248f7a6f7456712c
-SHA1: efa4c417e192caa585364d941ecb10f69ded2b8b
-SHA256: e5d9ae94d5041d0f04f53e09901dde111bd58c2c9d9524127015f600f8f5ae2f
+Filename: debs/powerdevil_6.1.5+ios2_iphoneos-arm64.deb
+Size: 299592
+MD5sum: cd989e77d6dafbb6447695a80582678b
+SHA1: b2ce66924e711fc15df5c7303d545800102a00ea
+SHA256: 9ead0b7cbc054444073042d873859f69de964ac10c2fad98a0724866dd6c7265
 Icon: https://repo.maxleiter.com/icons/powerdevil.png
 Depiction: https://repo.maxleiter.com/depictions/powerdevil.html
 SileoDepiction: https://repo.maxleiter.com/depictions/powerdevil.json
@@ -11625,21 +11963,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-core
 Name: Xios Desktop Core
-Version: 0.1.3
+Version: 0.1.5
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), com.max.xios (>= 0.1.2), iosc (>= 0.9.31), iosc-shell (>= 0.9.11), angle (>= 2.1.0+git20260630.a32d31d+es3-13), dbus, xios-desktop-defaults, xios-audio-server, xios-session (>= 1.0.60), xios-launcher-tools (>= 0.1.3)
-Recommends: pulseaudio, xios-desktop-theme
+Depends: firmware (>= 16.0), xios-runtime (>= 0.1.0), com.max.xios (>= 0.1.2), iosc-shell (>= 0.9.11), xios-session (>= 1.0.60)
 MinimumOSVersion: 16.0.0
-Description: shared base for every Xios desktop flavor
-Filename: debs/xios-core_0.1.3_iphoneos-arm64.deb
-Size: 1210
-MD5sum: e2011d1b2ad0293589fe037a4e475074
-SHA1: bdd10e88547465193a76b4db3466d6c4325c52f4
-SHA256: 328531fc91ab4e19535ece923e8a22588491c465927774c07021ede6f6458a23
+Description: shared base for Xios fullscreen desktop flavors
+Filename: debs/xios-core_0.1.5_iphoneos-arm64.deb
+Size: 1022
+MD5sum: 54f52dcd176f0155942cf576dd46ba08
+SHA1: d86af30775faf664b9cb1113d51b85fe0b0027ad
+SHA256: b856ff1ede3a9e4c51b8491e586ec7dd32fe94a396f8bd967f8768fe56438e1f
 Icon: https://repo.maxleiter.com/icons/xios-core.png
 Depiction: https://repo.maxleiter.com/depictions/xios-core.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-core.json
@@ -11711,9 +12048,8 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-fhs
 Name: Xios filesystem + hardware bridge
-Version: 1.0.2
+Version: 1.0.3
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libglib2.0-0
@@ -11721,11 +12057,11 @@ Provides: xios-hwbridge, xios-sensor-bridge
 Section: X11
 Priority: optional
 Description: Standard Linux paths + hardware bridges for the Xios desktop
-Filename: debs/xios-fhs_1.0.2_iphoneos-arm64.deb
-Size: 17028
-MD5sum: e008ab9c2d8b2d6605c92c626337f4a7
-SHA1: 93658b941ee6bb82d62b159cf66d1cd331d50ca3
-SHA256: 633c7a2fba92ee5f946e97f7c2bf2d7170f7fdd807b871c8ed67386f8e54b3a4
+Filename: debs/xios-fhs_1.0.3_iphoneos-arm64.deb
+Size: 20116
+MD5sum: 5b7546eae14799ce794d93e18dfc2649
+SHA1: 4ab51f495982fd42f68b51615266fbbf0da020d3
+SHA256: ef88ddfcea82f51971ccaf3a0056a1a46d1ce9e3bcaed25808d140df12824020
 Icon: https://repo.maxleiter.com/icons/xios-fhs.png
 Depiction: https://repo.maxleiter.com/depictions/xios-fhs.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-fhs.json
@@ -11755,21 +12091,21 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-gnome
 Name: Xios Desktop (GNOME)
-Version: 0.1.2
+Version: 0.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core (>= 0.1.2), gnome-shell, gnome-session, gnome-settings-daemon, libaccountsservice0, libgdm1 (>= 46.0+ios2), libgeoclue-2-0, libgeocode-glib-2-0, libgweather-4-0 (>= 4.4.2+ios2), libupower-glib3, xios-session-stubs, xios-gnome-typelibs, xios-desktop-theme
+Depends: firmware (>= 16.5), xios-core (>= 0.1.5), gnome-shell, libmutter-14-0 (>= 46.0+ios6), gnome-session, gnome-settings-daemon, libaccountsservice0, libgdm1 (>= 46.0+ios2), libgeoclue-2-0, libgeocode-glib-2-0, libgweather-4-0 (>= 4.4.2+ios2), libupower-glib3, xios-session-stubs (>= 0.2.7), xios-gnome-typelibs, xios-desktop-theme
 Recommends: gnome-console, nautilus, gnome-text-editor, gnome-calculator
 MinimumOSVersion: 16.5.0
 Description: the GNOME desktop flavor for Xios
-Filename: debs/xios-gnome_0.1.2_iphoneos-arm64.deb
-Size: 1142
-MD5sum: 2c3e4bdbe520a42625f2b43de938e2e2
-SHA1: eed97026822352f740ba3dbe090824c1de6c7ecc
-SHA256: e9e48ca10ebb8d6aa22f3318aad61adc5af0dff293a01c173ec31cda2be0bbd8
+Filename: debs/xios-gnome_0.1.4_iphoneos-arm64.deb
+Size: 1154
+MD5sum: 0a5b4a77e523037b45ed2f88b5a6b7ff
+SHA1: a70a6190064041315ec8e5dfe9c34a53e365d5c8
+SHA256: 571419c3e944e9e6e397635603e058cc9f463b1b22bb1fe61b3081b9273471dd
 Icon: https://repo.maxleiter.com/icons/xios-gnome.png
 Depiction: https://repo.maxleiter.com/depictions/xios-gnome.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-gnome.json
@@ -11800,20 +12136,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-kde
 Name: Xios Desktop (KDE Plasma)
-Version: 0.1.12
+Version: 0.1.14
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core (>= 0.1.3), iosc (>= 0.9.31), xios-session (>= 1.0.60), xios-desktop-theme, libjpeg62-turbo (>= 3.1.1+ios1), kwin (>= 6.1.5+ios28), breeze (>= 6.1.5+ios2), plasma-workspace (>= 6.1.5+ios12), plasma-desktop (>= 6.1.5+ios9), plasma-mobile (>= 6.1.5+ios23), plasma-nano (>= 6.1.5+ios3), systemsettings (>= 6.1.5+ios8), kscreen (>= 6.1.5+ios2), powerdevil (>= 6.1.5+ios1), kf6-kded (>= 6.3.0+ios2), qt6-wayland, kf6-breeze-icons, konsole (>= 24.08.0+ios1), dolphin (>= 24.08.0+ios1), kate (>= 24.08.0+ios4), kwrite (>= 24.08.0+ios3), kcalc (>= 24.08.0+ios1), okular (>= 24.08.0+ios3), ark (>= 24.08.0+ios1), gwenview (>= 24.08.0+ios1)
+Depends: firmware (>= 16.5), xios-core (>= 0.1.5), iosc (>= 0.9.33), xios-session (>= 1.0.60), xios-desktop-theme, libjpeg62-turbo (>= 3.1.1+ios1), kwin (>= 6.1.5+ios29), breeze (>= 6.1.5+ios2), plasma-workspace (>= 6.1.5+ios12), plasma-desktop (>= 6.1.5+ios9), plasma-mobile (>= 6.1.5+ios23), plasma-nano (>= 6.1.5+ios3), systemsettings (>= 6.1.5+ios8), kscreen (>= 6.1.5+ios2), powerdevil (>= 6.1.5+ios1), kf6-kded (>= 6.3.0+ios2), qt6-wayland, kf6-breeze-icons, konsole (>= 24.08.0+ios1), dolphin (>= 24.08.0+ios1), kate (>= 24.08.0+ios4), kwrite (>= 24.08.0+ios3), kcalc (>= 24.08.0+ios1), okular (>= 24.08.0+ios3), ark (>= 24.08.0+ios1), gwenview (>= 24.08.0+ios1)
 MinimumOSVersion: 16.5.0
 Description: KDE Plasma desktop and mobile flavors for Xios
-Filename: debs/xios-kde_0.1.12_iphoneos-arm64.deb
+Filename: debs/xios-kde_0.1.14_iphoneos-arm64.deb
 Size: 1326
-MD5sum: dc755540319eb0863c8e2d2bf1c0c334
-SHA1: 403c2aed0da74c222b8f2c50b5852f9dc1f371fc
-SHA256: 15291f616f64350b552b7ca1f4ab6bbc77573d34eaf2de8f8a5b335b73e627c7
+MD5sum: 8b162d5eabeca83bc664c9f575625dd3
+SHA1: 4a1860e1ce7a06e813c3414db36fba47db3a383c
+SHA256: bb3cbd21332c04192bce820ef9d2be5c3a9142e784917deec9877abd369f890a
 Icon: https://repo.maxleiter.com/icons/xios-kde.png
 Depiction: https://repo.maxleiter.com/depictions/xios-kde.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-kde.json
@@ -11822,21 +12158,21 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-launcher-tools
 Name: Xios Home Screen launcher tools
-Version: 0.1.3
+Version: 0.1.5
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.27), xios-session (>= 1.0.56), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
-Recommends: com.max.xios, iosc-shell
+Depends: iosc (>= 0.9.33), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
+Suggests: com.max.xios, iosc-shell, xios-session
 Section: X11
 Priority: optional
-Installed-Size: 812
+Installed-Size: 844
 Description: on-device iPad Home Screen app sync for Xios
-Filename: debs/xios-launcher-tools_0.1.3_iphoneos-arm64.deb
-Size: 191956
-MD5sum: 5dc5ec9d7c8202fade7e6b3c64a047ec
-SHA1: 58fba247d7e192d5f5d72be3fffa9c66e5b5a119
-SHA256: b5a47d3f64e51c92ef612d7576e34472476987390ba23e2996f63125e2d88666
+Filename: debs/xios-launcher-tools_0.1.5_iphoneos-arm64.deb
+Size: 197200
+MD5sum: d8841164180ca1e777c5c962e49fdbdc
+SHA1: b23500c4057aada3730966301b18c3e9b0f40a6d
+SHA256: aaeeab02eddb5ed9a212b8fdbf8af40aa4f2877ff18a86aa6730850d68ae76de
 Icon: https://repo.maxleiter.com/icons/xios-launcher-tools.png
 Depiction: https://repo.maxleiter.com/depictions/xios-launcher-tools.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-launcher-tools.json
@@ -11865,24 +12201,47 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-native
 Name: Xios Desktop (Native iPadOS)
-Version: 0.1.1
+Version: 0.1.3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), xios-core (>= 0.1.2), xios-launcher-tools (>= 0.1.3), com.max.xiosprefs
+Depends: firmware (>= 16.0), xios-runtime (>= 0.1.0), xios-launcher-tools (>= 0.1.5), com.max.xiosprefs
 MinimumOSVersion: 16.0.0
 Description: the native iPadOS flavor for Xios
-Filename: debs/xios-native_0.1.1_iphoneos-arm64.deb
-Size: 972
-MD5sum: f39bef06ce98e8603e9cff9cd0565b5d
-SHA1: 86dc454dba6508898c95f0bfcfa9fd09ebd396a9
-SHA256: 4adbc555154213948b52f5d71cf31b8801c37fc33ba88068570b3ac45c5a930b
+Filename: debs/xios-native_0.1.3_iphoneos-arm64.deb
+Size: 1000
+MD5sum: c336f0a4ffe92708887acba603d85e3f
+SHA1: 76cb1d3a09ff18100c35b518dcf6e93c0c3df362
+SHA256: d393c1b5f97755680cb38dab3296fce6ca7c1bf0c390e12e1471c71e35a050bd
 Icon: https://repo.maxleiter.com/icons/xios-native.png
 Depiction: https://repo.maxleiter.com/depictions/xios-native.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-native.json
 Native Depiction: https://repo.maxleiter.com/depictions/xios-native.json
+Homepage: https://repo.maxleiter.com
+
+Package: xios-runtime
+Name: Xios Application Runtime
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.0), iosc (>= 0.9.33), angle (>= 2.1.0+git20260630.a32d31d+es3-14), dbus, xios-desktop-defaults, xios-audio-server, xios-fhs (>= 1.0.3)
+Recommends: pulseaudio, xios-desktop-theme
+MinimumOSVersion: 16.0.0
+Description: shared Linux application runtime for Xios
+Filename: debs/xios-runtime_0.1.0_iphoneos-arm64.deb
+Size: 1040
+MD5sum: e14e8efe1fe10534d57bc3a51f0c8ff6
+SHA1: 754c43f9a09fb8249e3f904f8f514dcd17e78184
+SHA256: 443fb28ba98dbd361caef4c2d208fd9209fbcd99fd112370624f6eac6069c372
+Icon: https://repo.maxleiter.com/icons/xios-runtime.png
+Depiction: https://repo.maxleiter.com/depictions/xios-runtime.html
+SileoDepiction: https://repo.maxleiter.com/depictions/xios-runtime.json
+Native Depiction: https://repo.maxleiter.com/depictions/xios-runtime.json
 Homepage: https://repo.maxleiter.com
 
 Package: xios-server
@@ -11909,7 +12268,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-session
 Name: Xios session launcher
-Version: 1.0.60
+Version: 1.0.71
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -11919,13 +12278,13 @@ Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, 
 Replaces: iosc-shell (<= 0.9.9)
 Section: X11
 Priority: optional
-Installed-Size: 136
+Installed-Size: 140
 Description: pick-a-desktop session launcher for the Xios stack
-Filename: debs/xios-session_1.0.60_iphoneos-arm64.deb
-Size: 34278
-MD5sum: b53e08a50556a7619429c9fdaf97bd39
-SHA1: 94339aa76b0117e65066d0151eab71fc3c46f74b
-SHA256: 2d2a8dc3828ea255a3892d263f77bfdd54e6bfb502ee95323b147480afe239ec
+Filename: debs/xios-session_1.0.71_iphoneos-arm64.deb
+Size: 35374
+MD5sum: 5c93708e3e4df7f537fcf353e3e61517
+SHA1: 5e73c8a6030b56caba7e14799d2f91daec76a9c4
+SHA256: c840cd49e1fe9277c325c4617a350f71feaae18189bb12b0f963852ff3de242a
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-session.json
@@ -11956,20 +12315,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-x11
 Name: Xios Desktop (X11)
-Version: 0.1.2
+Version: 0.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core (>= 0.1.2), xwayland, xauth
+Depends: firmware (>= 16.5), xios-core (>= 0.1.5), xwayland (>= 23.2.7+ios3), xauth
 MinimumOSVersion: 16.5.0
 Description: the X11 flavor for Xios
-Filename: debs/xios-x11_0.1.2_iphoneos-arm64.deb
-Size: 908
-MD5sum: b13a9abb6b5ecf2983fdc4202f0d27e8
-SHA1: 2ee468947e0cf4b30ce2aeda0c564865f7f3bf25
-SHA256: 951f4fb48c9197b7914c0a42e1b28a3ab7b78c5f88fb9db209c7cbee33d2180f
+Filename: debs/xios-x11_0.1.4_iphoneos-arm64.deb
+Size: 920
+MD5sum: 0c9242497720a4de0cbb5c23b0c6df70
+SHA1: e10a08dfabcab33d20bbea50a553e583e50bf979
+SHA256: d9bf1b8d4780efdc39126d4aca0d5b90e4725ddaa59520a3c283d30693abc794
 Icon: https://repo.maxleiter.com/icons/xios-x11.png
 Depiction: https://repo.maxleiter.com/depictions/xios-x11.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-x11.json
@@ -12016,22 +12375,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/xkeyboard-config.json
 Homepage: https://repo.maxleiter.com
 
 Package: xwayland
-Version: 23.2.7+ios2
+Version: 23.2.7+ios4
 Architecture: iphoneos-arm64
-MinimumOSVersion: 16.5.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libwayland0, libxcvt0, libxshmfence1, libdrm2, libpixman-1-0, libxkbcommon0, libxfont2, libfontenc1, libxau6, libepoxy0 (>= 1.5.7+angle1), angle
+Depends: libiosexec1 (>= 1.3.1), libwayland0, libxcvt0, libxshmfence1, libdrm2, libpixman-1-0, libxkbcommon0, libxfont2, libfontenc1, libxau6, libepoxy0 (>= 1.5.7+angle1), angle (>= 2.1.0+git20260630.a32d31d+es3-14)
 Section: X11
 Priority: optional
 Homepage: https://wayland.freedesktop.org/xserver.html
 Description: X server for running X11 apps as Wayland clients (iOS/ANGLE)
-Installed-Size: 1696
+Installed-Size: 1728
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/xwayland_23.2.7+ios2_iphoneos-arm64.deb
-Size: 778414
-MD5sum: 5c11cd155149f6cfe8eef23b289cd90d
-SHA1: 068962bf69b1630974d97767e885178a60beee86
-SHA256: cd3350ff06e029abd453316622e02afbfc51d13457df67ba0d1db2bed5468d9a
+Filename: debs/xwayland_23.2.7+ios4_iphoneos-arm64.deb
+Size: 782050
+MD5sum: f46845b1e9518a9cc8339330896eec51
+SHA1: e08db4d2b8d6cf95b1cebd5dd47af5ea1c6b93c2
+SHA256: 5effd419c562cf7b5dac4107216931ab17cd4323569530be33d3ec979e0d946a
 Icon: https://repo.maxleiter.com/icons/xwayland.png
 Depiction: https://repo.maxleiter.com/depictions/xwayland.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xwayland.json

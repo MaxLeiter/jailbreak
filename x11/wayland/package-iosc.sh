@@ -63,17 +63,20 @@ cp "$WAYLAND/out/iosc-client" "$BIN/iosc-client"
 chmod 0755 "$BIN/iosc-client"
 xsign "$BIN/iosc-client"
 
-# 2b. Input diagnostics and the compatibility bridge for compositors that consume
-#     virtual-keyboard/input-method protocols instead of linking libxios_glue.
+# 2b. Input diagnostics and the external-compositor bridge for the unified input
+#     socket protocol.
 for helper in iosc-input-test ios-inputd; do
   cp "$WAYLAND/out/$helper" "$BIN/$helper"
   chmod 0755 "$BIN/$helper"
   xsign "$BIN/$helper"
 done
 
-# 2c. KWin launches its input method from the desktop entry named by kwinrc.
-# Keep that entry in the package that owns ios-inputd so the setting cannot
-# silently depend on a particular xios-session package revision.
+# 2c. KWin launches its input method from the .desktop named in kwinrc
+#     ([Wayland] InputMethod). Ship that entry HERE, next to the binary it points
+#     at, rather than having the session script write it at boot: then the bridge
+#     is enabled by one persistent setting and does not depend on which
+#     xios-session version happens to be installed. run-kde-plasma.sh still
+#     points kwinrc at this path (and passes --inputmethod) when it runs.
 cat > "$APPS/ios-inputd.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -143,8 +146,13 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  package builds on.
  .
  The package also ships iosc-input-test for direct input-path diagnostics and
- ios-inputd for external Wayland compositors that use standard virtual-keyboard
- and input-method protocols instead of the in-process Xios input backend.
+ ios-inputd, the input-method bridge for compositors that consume standard
+ input-method protocols instead of the in-process Xios input backend. Under KDE,
+ where kwin_wayland runs nested and owns the text-input state, KWin launches
+ ios-inputd as its zwp_input_method_v1 and it proxies both directions: tapping a
+ text field in a Plasma app raises the iOS keyboard, and what you type (including
+ emoji and dictation) is committed into the focused field rather than replayed as
+ ASCII keystrokes.
  .
  Needs the Xios app installed (the on-screen display front end) and at least one
  Wayland client to be useful. Install the gnome-console package and run run-kgx.sh

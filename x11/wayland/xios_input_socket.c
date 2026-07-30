@@ -28,6 +28,7 @@
 struct xios_in_client {
     int fd;
     uint32_t bound_window;
+    int improxy;              /* registered XIOS_IN_IMPROXY: input-method proxy */
     uint8_t hdr[sizeof(struct xios_in_msg)];
     int hdr_have;
     struct xios_in_msg msg;
@@ -139,6 +140,16 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
                 if (c->msg.type == XIOS_IN_BIND) {
                     c->bound_window = c->msg.code;
                     client_reset(c);
+                } else if (c->msg.type == XIOS_IN_IMPROXY) {
+                    c->improxy = c->msg.code ? 1 : 0;
+                    client_reset(c);
+                } else if (c->msg.type == XIOS_IN_TRAITS && !c->improxy) {
+                    /* TRAITS is a server->client record. Inbound it only means
+                     * something from the input-method proxy, which owns the
+                     * text-input state in the nested case; from anyone else it is
+                     * noise (or a display host echoing) and must not be able to
+                     * drive the OSK. */
+                    client_reset(c);
                 } else if (c->msg.type == XIOS_IN_TEXT) {
                     if (c->msg.code == 0 || c->msg.code > XIOS_IN_TEXT_MAX) goto drop;
                     c->payload = calloc(1, c->msg.code + 1u);
@@ -249,6 +260,7 @@ static int broadcast_to_clients(xios_input_socket *s, uint32_t bound_window,
     for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++) {
         struct xios_in_client *c = s->clients[i];
         if (!c || c->fd < 0) continue;
+        if (c->improxy) continue;           /* not a display host; see XIOS_IN_IMPROXY */
         if (!client_matches_bound(c, bound_window)) continue;
         if (write_all(c->fd, buf, len) == 0) { sent++; continue; }
         /* Dead/wedged peer. Do NOT free here: broadcast runs inside dispatch's
@@ -271,6 +283,31 @@ int xios_input_socket_broadcast_bound(xios_input_socket *s, uint32_t bound_windo
 {
     if (bound_window == 0) return -1;
     return broadcast_to_clients(s, bound_window, buf, len);
+}
+
+int xios_input_socket_send_improxy(xios_input_socket *s, const void *buf, size_t len)
+{
+    if (!s || !buf || len == 0) return 0;
+    int sent = 0;
+    for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++) {
+        struct xios_in_client *c = s->clients[i];
+        if (!c || c->fd < 0 || !c->improxy) continue;
+        if (write_all(c->fd, buf, len) == 0) { sent++; continue; }
+        /* Same lifetime rule as broadcast_to_clients(): shut down, let the read
+         * path do the single free. A wedged proxy must not look alive, or text
+         * would keep being routed into a dead socket instead of falling back. */
+        shutdown(c->fd, SHUT_RDWR);
+        c->improxy = 0;
+    }
+    return sent;
+}
+
+int xios_input_socket_has_improxy(xios_input_socket *s)
+{
+    if (!s) return 0;
+    for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++)
+        if (s->clients[i] && s->clients[i]->fd >= 0 && s->clients[i]->improxy) return 1;
+    return 0;
 }
 
 int xios_input_socket_client_count(xios_input_socket *s)

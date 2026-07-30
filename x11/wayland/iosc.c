@@ -7183,11 +7183,38 @@ static xios_input_socket *g_input_sock;
 static struct wl_event_source *g_input_src;
 static int g_input_wayland_dirty;
 
+/* Traits last pushed by a registered input-method proxy (KDE flavor: ios-inputd
+ * bound to KWin's zwp_input_method_v1). When a proxy is present it is the ONLY
+ * source of truth: iosc's own text_input_for_focus() is permanently NULL there,
+ * because its single client is the nested kwin_wayland, which never binds
+ * text-input. Latched rather than read live so the snapshot a host gets on
+ * connect matches what the proxy last said. See XIOS_IN_IMPROXY. */
+static int      g_improxy_traits_valid;
+static uint32_t g_improxy_hint, g_improxy_purpose, g_improxy_enabled;
+
 /* Commit a UTF-8 TEXT record: prefer the focused text-input; else synthesize
  * ASCII keystrokes so a plain terminal still receives typed text. */
 static void in_dispatch_text(const char *text, size_t len)
 {
     g_input_wayland_dirty = 1;
+    /* Nested-compositor flavors: the text-input state lives in the client (KWin),
+     * so committing here can only ever fall through to keysyms, which loses
+     * everything the iOS keyboard is good at (emoji, dictation, autocorrect
+     * replacements). Hand the payload to the input-method proxy instead; it
+     * commits through the nested compositor's IM protocol. Re-frame it as one
+     * contiguous record because that is what the reader on the other side parses. */
+    if (g_input_sock && len > 0 && len <= 4096u) {
+        struct xios_in_msg hdr = { .type = XIOS_IN_TEXT, .code = (uint32_t)len };
+        char buf[sizeof(hdr) + 4096u];
+        memcpy(buf, &hdr, sizeof(hdr));
+        memcpy(buf + sizeof(hdr), text, len);
+        int sent = xios_input_socket_send_improxy(g_input_sock, buf, sizeof(hdr) + len);
+        if (iosc_debug())
+            fprintf(stderr, "iosc: TEXT %zu bytes -> improxy=%d (0 = local fallback)\n",
+                    len, sent);
+        if (sent > 0)
+            return;
+    }
     int r = text_input_commit_text(text, len);
     if (r == 0) {
         for (size_t i = 0; i < len; i++) {
@@ -7211,6 +7238,20 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
     if (bound && (m->type == XIOS_IN_KEY || m->type == XIOS_IN_TEXT))
         keyboard_set_focus(bound);
     if (m->type == XIOS_IN_TEXT) { in_dispatch_text(text, text_len); return; }
+    /* Inbound TRAITS only reach us from a registered input-method proxy (the
+     * reader drops them from anyone else). Latch and rebroadcast verbatim: the
+     * hosts' frozen contract wants one record per proxy push, no dedupe. */
+    if (m->type == XIOS_IN_TRAITS) {
+        if (iosc_debug())
+            fprintf(stderr, "iosc: TRAITS from improxy hint=0x%x purpose=%u enabled=%u\n",
+                    m->code, m->state, m->mods);
+        g_improxy_traits_valid = 1;
+        g_improxy_hint = m->code;
+        g_improxy_purpose = m->state;
+        g_improxy_enabled = m->mods;
+        input_clients_send_traits();
+        return;
+    }
     g_input_wayland_dirty = 1;
     int x = physical_to_logical(m->x);
     int y = physical_to_logical(m->y);
@@ -7272,6 +7313,11 @@ static void input_clients_send_traits(void)
         .state = ti ? ti->content_purpose : 0,
         .mods = ti ? (uint32_t)ti->enabled : 0,
     };
+    if (g_improxy_traits_valid) {
+        msg.code = g_improxy_hint;
+        msg.state = g_improxy_purpose;
+        msg.mods = g_improxy_enabled;
+    }
     struct iosc_surface *native_focus = g_native_mode ? native_focus_toplevel() : NULL;
     if (native_focus)
         xios_input_socket_broadcast_bound(g_input_sock, native_focus->window_id,
@@ -7300,6 +7346,15 @@ static int input_sock_readable(int fd, uint32_t mask, void *data)
 {
     (void)fd; (void)mask; (void)data;
     xios_input_socket_dispatch(g_input_sock, iosc_input_record, NULL);
+    /* The proxy went away (nested compositor exited or crashed) while it had a
+     * field enabled. Nobody else will ever send a disable, so the host would sit
+     * with the keyboard up over a desktop that has no text field. Drop the latch
+     * and push one last disable. */
+    if (g_improxy_traits_valid && !xios_input_socket_has_improxy(g_input_sock)) {
+        g_improxy_traits_valid = 0;
+        g_improxy_hint = g_improxy_purpose = g_improxy_enabled = 0;
+        input_clients_send_traits();
+    }
     if (g_input_wayland_dirty) {
         g_input_wayland_dirty = 0;
         wl_display_flush_clients(g_display);
