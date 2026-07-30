@@ -1,0 +1,12 @@
+Package: libsdl2-2.0-0
+Version: @DEB_SDL2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.libsdl.org/
+Depends: libwayland0, libxkbcommon0, angle, libpulse0
+Description: SDL2 runtime for Xios Wayland games
+ SDL2 built as a native iOS/Darwin library with the Wayland video backend,
+ OpenGL ES through Xios ANGLE, touch and desktop input through iosc, and
+ PulseAudio output. Cocoa and UIKit window backends are intentionally disabled.

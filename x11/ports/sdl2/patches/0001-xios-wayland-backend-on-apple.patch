@@ -1,0 +1,32 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] cmake: allow the Unix Wayland backend on Apple targets
+
+The Procursus cross toolchain deliberately identifies the target as Darwin so
+that CMake emits Mach-O dylibs, while Xios applications are ordinary Wayland
+clients and must not use SDL's Cocoa/UIKit window backends.  Add an explicit
+port option that selects SDL's Unix implementation on this otherwise-Apple
+target.  All platform-specific drivers remain opt-in at configure time.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -164,6 +164,11 @@ if(UNIX AND NOT ANDROID AND NOT APPLE AND NOT RISCOS)
+ else()
+   set(UNIX_SYS OFF)
+ endif()
++
++option(SDL_XIOS_WAYLAND "Build the Unix Wayland backend for Xios on Apple targets" OFF)
++if(SDL_XIOS_WAYLAND)
++  set(UNIX_SYS ON)
++endif()
+
+ if(UNIX OR APPLE)
+   set(UNIX_OR_MAC_SYS ON)
+@@ -1468,7 +1474,7 @@ elseif(EMSCRIPTEN)
+   CheckPTHREAD()
+   CheckLibUnwind()
+
+-elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
++elseif((UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU) OR SDL_XIOS_WAYLAND)
+   if(SDL_AUDIO)
+     if(NETBSD)
+       set(SDL_AUDIO_DRIVER_NETBSD 1)

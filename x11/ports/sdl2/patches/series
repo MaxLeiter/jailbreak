@@ -1,0 +1,8 @@
+0001-xios-wayland-backend-on-apple.patch
+0002-xios-ios-platform-helpers.patch
+0003-darwin-emulate-pipe2.patch
+0004-xios-use-posix-file-io.patch
+0005-xios-wayland-egl-platform.patch
+0006-xios-force-core-platform-display.patch
+0006-xios-angle-library-paths.patch
+0007-xios-use-platform-display-ext.patch

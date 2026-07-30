@@ -1,0 +1,11 @@
+--- a/src/SDL_internal.h
++++ b/src/SDL_internal.h
+@@ -254,5 +254,8 @@
+ #include <SDL3/SDL.h>
+ #include <SDL3/SDL_intrin.h>
+
++#ifdef SDL_XIOS_WAYLAND
++#define SDL_MAIN_HANDLED
++#endif
+ #define SDL_MAIN_NOIMPL // don't drag in header-only implementation of SDL_main
+ #include <SDL3/SDL_main.h>

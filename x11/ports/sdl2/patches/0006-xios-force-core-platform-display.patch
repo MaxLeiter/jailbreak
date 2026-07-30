@@ -1,0 +1,10 @@
+--- a/src/video/SDL_egl.c
++++ b/src/video/SDL_egl.c
+@@ -521,3 +521,7 @@ int SDL_EGL_LoadLibrary(_THIS, const char *path, NativeDisplayType native_display
++#ifdef SDL_XIOS_WAYLAND
++        LOAD_FUNC(eglGetPlatformDisplay);
++#else
+         if (_this->egl_data->egl_version_major == 1 && _this->egl_data->egl_version_minor == 5) {
+             LOAD_FUNC(eglGetPlatformDisplay);
+         }
++#endif

@@ -1,0 +1,10 @@
+--- a/src/video/SDL_egl.c
++++ b/src/video/SDL_egl.c
+@@ -524,3 +524,7 @@ bool SDL_EGL_LoadLibrary(SDL_VideoDevice *_this, const char *path, NativeDisplayT
++#ifdef SDL_XIOS_WAYLAND
++        LOAD_FUNC(PFNEGLGETPLATFORMDISPLAYPROC, eglGetPlatformDisplay);
++#else
+         if (_this->egl_data->egl_version_major == 1 && _this->egl_data->egl_version_minor == 5) {
+             LOAD_FUNC(PFNEGLGETPLATFORMDISPLAYPROC, eglGetPlatformDisplay);
+         }
++#endif

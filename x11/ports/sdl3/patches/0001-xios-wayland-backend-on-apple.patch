@@ -1,0 +1,31 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] cmake: allow the Unix Wayland backend on Apple targets
+
+Xios executables are Mach-O/iOS binaries but their desktop windows are Wayland
+surfaces.  The Procursus toolchain therefore needs SDL's Unix Wayland/EGL
+implementation while retaining CMake's Darwin target and dylib conventions.
+Expose that combination as an explicit port-only option.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -130,6 +130,11 @@ if(UNIX AND NOT ANDROID AND NOT APPLE AND NOT RISCOS)
+ else()
+   set(UNIX_SYS OFF)
+ endif()
++
++option(SDL_XIOS_WAYLAND "Build the Unix Wayland backend for Xios on Apple targets" OFF)
++if(SDL_XIOS_WAYLAND)
++  set(UNIX_SYS ON)
++endif()
+
+ if(UNIX OR APPLE)
+   set(UNIX_OR_MAC_SYS ON)
+@@ -1580,7 +1586,7 @@ elseif(EMSCRIPTEN)
+   CheckPTHREAD()
+   CheckLibUnwind()
+
+-elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
++elseif((UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU) OR SDL_XIOS_WAYLAND)
+   if(SDL_AUDIO)
+     if(NETBSD)
+         set(SDL_AUDIO_DRIVER_NETBSD 1)

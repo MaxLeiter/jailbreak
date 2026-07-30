@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=SDL2 Xios Smoke
+Comment=Test SDL2 Wayland and GLES rendering
+Exec=xios-sdl2-smoke
+TryExec=xios-sdl2-smoke
+Terminal=false
+Categories=Development;

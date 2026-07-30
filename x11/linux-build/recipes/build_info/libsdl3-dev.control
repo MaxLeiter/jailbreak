@@ -1,0 +1,11 @@
+Package: libsdl3-dev
+Version: @DEB_SDL3_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.libsdl.org/
+Depends: libsdl3-0 (= @DEB_SDL3_V@), libwayland-dev, libxkbcommon-dev, angle
+Description: Development files for the Xios SDL3 runtime
+ Headers, pkg-config metadata, CMake metadata, and link-time dylib aliases for
+ building SDL3 Wayland applications for rootless iOS.

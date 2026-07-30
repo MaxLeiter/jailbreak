@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=SDL3 Xios Smoke
+Comment=Test SDL3 Wayland and GLES rendering
+Exec=xios-sdl3-smoke
+TryExec=xios-sdl3-smoke
+Terminal=false
+Categories=Development;

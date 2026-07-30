@@ -1,0 +1,23 @@
+--- a/src/video/SDL_egl.c
++++ b/src/video/SDL_egl.c
+@@ -511,6 +511,12 @@ bool SDL_EGL_LoadLibrary(SDL_VideoDevice *_this, const char *egl_path, NativeDisplayType native_display, EGLenum platform)
+
+ #ifndef SDL_VIDEO_DRIVER_VITA
+     if (platform) {
++#ifdef SDL_XIOS_WAYLAND
++        /* Querying EGL_VERSION with EGL_NO_DISPLAY poisons ANGLE-Metal display
++         * creation on iOS. The shim exposes the proven EXT entry point. */
++        _this->egl_data->egl_display = _this->egl_data->eglGetPlatformDisplayEXT(
++            platform, (void *)(uintptr_t)native_display, NULL);
++#else
+         /* EGL 1.5 allows querying for client version with EGL_NO_DISPLAY
+          * --
+          * Khronos doc: "EGL_BAD_DISPLAY is generated if display is not an EGL display connection, unless display is EGL_NO_DISPLAY and name is EGL_EXTENSIONS."
+@@ -548,6 +554,7 @@ bool SDL_EGL_LoadLibrary(SDL_VideoDevice *_this, const char *egl_path, NativeDisplayType native_display, EGLenum platform)
+                 }
+             }
+         }
++#endif
+     }
+ #endif
+     // Try the implementation-specific eglGetDisplay even if eglGetPlatformDisplay fails

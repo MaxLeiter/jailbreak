@@ -1,0 +1,16 @@
+--- a/src/video/SDL_egl.c
++++ b/src/video/SDL_egl.c
+@@ -81,6 +81,13 @@
+ #define DEFAULT_OGL_ES_PVR "libGLES_CM.dll"
+ #define DEFAULT_OGL_ES     "libGLESv1_CM.dll"
+
++#elif defined(SDL_XIOS_WAYLAND)
++/* Xios provides EGL/GLES through its rootless ANGLE shim. */
++#define DEFAULT_EGL        "/var/jb/lib/angle/libEGL.dylib"
++#define DEFAULT_OGL_ES2    "/var/jb/lib/angle/libGLESv2.dylib"
++#define DEFAULT_OGL_ES_PVR "/var/jb/lib/angle/libGLESv2.dylib"
++#define DEFAULT_OGL_ES     "/var/jb/lib/angle/libGLESv2.dylib"
++
+ #elif defined(SDL_VIDEO_DRIVER_COCOA)
+ // EGL AND OpenGL ES support via ANGLE
+ #define DEFAULT_EGL        "libEGL.dylib"

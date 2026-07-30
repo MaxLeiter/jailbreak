@@ -1,0 +1,29 @@
+--- a/src/video/khronos/EGL/eglplatform.h
++++ b/src/video/khronos/EGL/eglplatform.h
+@@ -125,6 +125,12 @@
+ typedef khronos_uintptr_t EGLNativePixmapType;
+ typedef khronos_uintptr_t EGLNativeWindowType;
+
++#elif defined(SDL_XIOS_WAYLAND)
++
++typedef void *EGLNativeDisplayType;
++typedef void *EGLNativePixmapType;
++typedef void *EGLNativeWindowType;
++
+ #elif defined(__APPLE__)
+
+ typedef int   EGLNativeDisplayType;
+--- a/src/video/wayland/SDL_waylandopengles.c
++++ b/src/video/wayland/SDL_waylandopengles.c
+@@ -40,7 +40,11 @@
+     int ret;
+     SDL_VideoData *data = (SDL_VideoData *)_this->driverdata;
+
++#ifdef SDL_XIOS_WAYLAND
++    ret = SDL_EGL_LoadLibrary(_this, path, (NativeDisplayType)data->display, EGL_PLATFORM_WAYLAND_EXT);
++#else
+     ret = SDL_EGL_LoadLibrary(_this, path, (NativeDisplayType) data->display, 0);
++#endif
+
+     Wayland_PumpEvents(_this);
+     WAYLAND_wl_display_flush(data->display);

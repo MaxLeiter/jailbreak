@@ -1,0 +1,45 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] xios: provide iOS platform helpers without UIKit video
+
+SDL's public platform detection correctly recognizes the target as iOS even
+though Xios selects the Wayland video backend.  The tablet/TV queries normally
+come from the omitted UIKit driver, so provide the truthful Xios answers in
+the platform-neutral implementation.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -135,5 +135,6 @@ option(SDL_XIOS_WAYLAND "Build the Unix Wayland backend for Xios on Apple targe
+ if(SDL_XIOS_WAYLAND)
+   set(UNIX_SYS ON)
++  add_compile_definitions(SDL_XIOS_WAYLAND=1)
+ endif()
+
+ if(UNIX OR APPLE)
+--- a/src/SDL.c
++++ b/src/SDL.c
+@@ -771,8 +771,12 @@ bool SDL_IsTablet(void)
+ #ifdef SDL_PLATFORM_ANDROID
+     return SDL_IsAndroidTablet();
+ #elif defined(SDL_PLATFORM_IOS)
++#ifdef SDL_XIOS_WAYLAND
++    return true;
++#else
+     extern bool SDL_IsIPad(void);
+     return SDL_IsIPad();
++#endif
+ #else
+     return false;
+ #endif
+@@ -783,8 +787,12 @@ bool SDL_IsTV(void)
+ #ifdef SDL_PLATFORM_ANDROID
+     return SDL_IsAndroidTV();
+ #elif defined(SDL_PLATFORM_IOS)
++#ifdef SDL_XIOS_WAYLAND
++    return false;
++#else
+     extern bool SDL_IsAppleTV(void);
+     return SDL_IsAppleTV();
++#endif
+ #else
+     return false;
+ #endif

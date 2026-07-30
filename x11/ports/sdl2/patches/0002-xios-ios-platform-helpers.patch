@@ -1,0 +1,33 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] xios: provide iOS platform helpers without UIKit video
+
+Public SDL headers still correctly identify these Mach-O binaries as iOS.
+SDL_IsTablet therefore expects one helper normally supplied by the UIKit video
+driver.  Mark the Xios build and answer that query directly when UIKit is not
+part of the library.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -169,5 +169,6 @@ option(SDL_XIOS_WAYLAND "Build the Unix Wayland backend for Xios on Apple targe
+ if(SDL_XIOS_WAYLAND)
+   set(UNIX_SYS ON)
++  add_compile_definitions(SDL_XIOS_WAYLAND=1)
+ endif()
+
+ if(UNIX OR APPLE)
+--- a/src/SDL.c
++++ b/src/SDL.c
+@@ -652,9 +652,13 @@ SDL_bool SDL_IsTablet(void)
+ #if defined(__ANDROID__)
+     extern SDL_bool SDL_IsAndroidTablet(void);
+     return SDL_IsAndroidTablet();
+ #elif defined(__IPHONEOS__)
++#ifdef SDL_XIOS_WAYLAND
++    return SDL_TRUE;
++#else
+     extern SDL_bool SDL_IsIPad(void);
+     return SDL_IsIPad();
++#endif
+ #else
+     return SDL_FALSE;
+ #endif

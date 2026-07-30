@@ -1,0 +1,49 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] wayland: emulate pipe2 on Darwin
+
+Darwin has pipe and fcntl but not Linux's pipe2.  The Wayland data manager
+needs only O_CLOEXEC and O_NONBLOCK, so preserve its atomic-call semantics as
+closely as possible and clean up both descriptors on any flagging failure.
+
+--- a/src/video/wayland/SDL_waylanddatamanager.c
++++ b/src/video/wayland/SDL_waylanddatamanager.c
+@@ -25,6 +25,39 @@
+ #include <unistd.h>
+ #include <limits.h>
+ #include <signal.h>
++#include <errno.h>
++
++#if defined(__APPLE__)
++static int SDL_XiosPipe2(int pipefd[2], int flags)
++{
++    int saved_errno;
++    int index;
++
++    if (pipe(pipefd) < 0) {
++        return -1;
++    }
++    for (index = 0; index < 2; ++index) {
++        if ((flags & O_CLOEXEC) &&
++            fcntl(pipefd[index], F_SETFD, FD_CLOEXEC) < 0) {
++            goto fail;
++        }
++        if ((flags & O_NONBLOCK) &&
++            fcntl(pipefd[index], F_SETFL,
++                  fcntl(pipefd[index], F_GETFL, 0) | O_NONBLOCK) < 0) {
++            goto fail;
++        }
++    }
++    return 0;
++
++fail:
++    saved_errno = errno;
++    close(pipefd[0]);
++    close(pipefd[1]);
++    errno = saved_errno;
++    return -1;
++}
++#define pipe2(pipefd, flags) SDL_XiosPipe2((pipefd), (flags))
++#endif
+
+ #include "../../core/unix/SDL_poll.h"
+ #include "../../events/SDL_events_c.h"
