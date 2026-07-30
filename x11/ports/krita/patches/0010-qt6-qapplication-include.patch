@@ -1,0 +1,9 @@
+--- a/libs/ui/canvas/kis_display_color_converter.cpp
++++ b/libs/ui/canvas/kis_display_color_converter.cpp
+@@ -7,6 +7,7 @@
+ #include "kis_display_color_converter.h"
+
++#include <QApplication>
+ #include <QGlobalStatic>
+ #include <QPointer>
+ #include <QPalette>
