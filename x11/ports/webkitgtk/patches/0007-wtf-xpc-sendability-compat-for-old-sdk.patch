@@ -1,0 +1,20 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Expose XPC sendability compatibility through WTF platform
+
+Objective-C++ WTF and WebKit sources can include Foundation after Platform.h.
+Define the newer XPC declaration spelling centrally when the target is Darwin
+but the older cctools SDK does not provide it.
+
+--- a/Source/WTF/wtf/Platform.h
++++ b/Source/WTF/wtf/Platform.h
+@@ -42,6 +42,10 @@
+    virtual memory, not to choose a GUI toolkit */
+ #include <wtf/PlatformOS.h>
+ 
++#if OS(DARWIN) && !defined(OS_OBJECT_DECL_SENDABLE_CLASS)
++#define OS_OBJECT_DECL_SENDABLE_CLASS(name) OS_OBJECT_DECL_CLASS(name)
++#endif
++
+ /* PLATFORM() - handles OS, operating environment, graphics API, and
+    CPU. This macro will be phased out in favor of platform adaptation
+    macros, policy decision macros, and top-level port definitions. */
