@@ -19,11 +19,12 @@ xfconf:
 	@echo "Using previously built xfconf."
 else
 xfconf: xfconf-setup glib2.0 libxfce4util dbus
-	cd $(BUILD_WORK)/xfconf && ./configure -C \
+	cd $(BUILD_WORK)/xfconf && ac_cv_func_fdatasync=no ./configure -C \
 		$(DEFAULT_CONFIGURE_FLAGS) \
 		--disable-static \
 		--disable-gtk-doc \
 		--disable-introspection \
+		--disable-visibility \
 		--disable-debug
 	+$(MAKE) -C $(BUILD_WORK)/xfconf
 	+$(MAKE) -C $(BUILD_WORK)/xfconf install DESTDIR=$(BUILD_STAGE)/xfconf
@@ -32,8 +33,8 @@ endif
 
 xfconf-package: xfconf-stage
 	rm -rf $(BUILD_DIST)/xfconf
-	mkdir -p $(BUILD_DIST)/xfconf
-	cp -a $(BUILD_STAGE)/xfconf/$(MEMO_PREFIX) $(BUILD_DIST)/xfconf/
+	mkdir -p $(BUILD_DIST)/xfconf$(MEMO_PREFIX)
+	cp -a $(BUILD_STAGE)/xfconf$(MEMO_PREFIX)/. $(BUILD_DIST)/xfconf$(MEMO_PREFIX)/
 
 	rm -rf $(BUILD_DIST)/xfconf/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/xfconf/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \

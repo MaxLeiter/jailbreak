@@ -23,6 +23,7 @@ libxfce4util: libxfce4util-setup glib2.0
 		--disable-static \
 		--disable-gtk-doc \
 		--disable-introspection \
+		--disable-visibility \
 		--disable-debug
 	+$(MAKE) -C $(BUILD_WORK)/libxfce4util
 	+$(MAKE) -C $(BUILD_WORK)/libxfce4util install DESTDIR=$(BUILD_STAGE)/libxfce4util
@@ -31,8 +32,9 @@ endif
 
 libxfce4util-package: libxfce4util-stage
 	rm -rf $(BUILD_DIST)/libxfce4util7
-	mkdir -p $(BUILD_DIST)/libxfce4util7
-	cp -a $(BUILD_STAGE)/libxfce4util/$(MEMO_PREFIX) $(BUILD_DIST)/libxfce4util7/
+	mkdir -p $(BUILD_DIST)/libxfce4util7$(MEMO_PREFIX)
+	cp -a $(BUILD_STAGE)/libxfce4util$(MEMO_PREFIX)/. \
+		$(BUILD_DIST)/libxfce4util7$(MEMO_PREFIX)/
 
 	rm -rf $(BUILD_DIST)/libxfce4util7/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libxfce4util7/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \

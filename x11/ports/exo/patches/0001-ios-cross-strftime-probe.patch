@@ -1,0 +1,32 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] configure: tolerate cross-compiling the strftime probe
+
+The strftime extension check is only an optional optimization, but the legacy
+AC_TRY_RUN invocation has no cross-compilation fallback and aborts configure.
+Leave HAVE_STRFTIME_EXTENSION undefined when the target probe cannot run.
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -151,7 +151,7 @@ AC_TRY_RUN([
+   }
+ ], [
+   AC_DEFINE([HAVE_STRFTIME_EXTENSION], 1, [Define if strftime supports %E and %O modifiers.])
+-])
++], [], [])
+ 
+ dnl ******************************
+ dnl *** Check for i18n support ***
+--- a/configure
++++ b/configure
+@@ -15358,10 +15358,7 @@ rm -f conftest.mmap conftest.txt
+ 
+ if test "$cross_compiling" = yes
+ then :
+-  { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+-printf "%s\n" "$as_me: error: in \`$ac_pwd':" >&2;}
+-as_fn_error $? "cannot run test program while cross compiling
+-See \`config.log' for more details" "$LINENO" 5; }
++  :
+ else $as_nop
+   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+ /* end confdefs.h.  */

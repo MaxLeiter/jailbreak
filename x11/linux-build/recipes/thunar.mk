@@ -14,6 +14,7 @@ DEB_THUNAR_V   ?= $(THUNAR_VERSION)+ios1
 thunar-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://archive.xfce.org/src/xfce/thunar/$(THUNAR_MAJOR_V)/thunar-$(THUNAR_VERSION).tar.bz2)
 	$(call EXTRACT_TAR,thunar-$(THUNAR_VERSION).tar.bz2,thunar-$(THUNAR_VERSION),thunar)
+	$(call DO_PATCH,thunar,thunar,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/thunar/.build_complete),)
 thunar:
@@ -27,7 +28,7 @@ thunar: thunar-setup gtk+3.0 gdk-pixbuf exo libxfce4util libxfce4ui
 		--disable-introspection \
 		--disable-debug \
 		--disable-gudev \
-		--disable-libnotify
+		--disable-notifications
 	+$(MAKE) -C $(BUILD_WORK)/thunar
 	+$(MAKE) -C $(BUILD_WORK)/thunar install DESTDIR=$(BUILD_STAGE)/thunar
 	$(call AFTER_BUILD,copy)
@@ -35,8 +36,8 @@ endif
 
 thunar-package: thunar-stage
 	rm -rf $(BUILD_DIST)/thunar
-	mkdir -p $(BUILD_DIST)/thunar
-	cp -a $(BUILD_STAGE)/thunar/$(MEMO_PREFIX) $(BUILD_DIST)/thunar/
+	mkdir -p $(BUILD_DIST)/thunar$(MEMO_PREFIX)
+	cp -a $(BUILD_STAGE)/thunar$(MEMO_PREFIX)/. $(BUILD_DIST)/thunar$(MEMO_PREFIX)/
 
 	rm -rf $(BUILD_DIST)/thunar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/thunar/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \

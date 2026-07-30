@@ -25,6 +25,8 @@ libxfce4ui: libxfce4ui-setup gtk+3.0 libxfce4util xfconf startup-notification li
 		--disable-introspection \
 		--disable-glade \
 		--disable-vala \
+		--disable-visibility \
+		--disable-glibtop \
 		--disable-debug
 	+$(MAKE) -C $(BUILD_WORK)/libxfce4ui
 	+$(MAKE) -C $(BUILD_WORK)/libxfce4ui install DESTDIR=$(BUILD_STAGE)/libxfce4ui
@@ -33,8 +35,9 @@ endif
 
 libxfce4ui-package: libxfce4ui-stage
 	rm -rf $(BUILD_DIST)/libxfce4ui-2-0
-	mkdir -p $(BUILD_DIST)/libxfce4ui-2-0
-	cp -a $(BUILD_STAGE)/libxfce4ui/$(MEMO_PREFIX) $(BUILD_DIST)/libxfce4ui-2-0/
+	mkdir -p $(BUILD_DIST)/libxfce4ui-2-0$(MEMO_PREFIX)
+	cp -a $(BUILD_STAGE)/libxfce4ui$(MEMO_PREFIX)/. \
+		$(BUILD_DIST)/libxfce4ui-2-0$(MEMO_PREFIX)/
 
 	rm -rf $(BUILD_DIST)/libxfce4ui-2-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include \
 		$(BUILD_DIST)/libxfce4ui-2-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \

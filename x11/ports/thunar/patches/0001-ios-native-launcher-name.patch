@@ -1,0 +1,16 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] desktop: use the concise Thunar launcher name
+
+The desktop entry name becomes CFBundleDisplayName for Xios native launchers.
+Keep SpringBoard and the desktop launcher consistent with the app's proper
+name instead of the generic "Thunar File Manager" label.
+
+--- a/thunar.desktop.in.in
++++ b/thunar.desktop.in.in
+@@ -1,5 +1,5 @@
+ [Desktop Entry]
+-_Name=Thunar File Manager
++_Name=Thunar
+ _Comment=Browse the filesystem with the file manager
+ _GenericName=File Manager
+ _Keywords=file manager;explorer;finder;browser;folders;directory;directories;partitions;drives;network;devices;rename;move;copy;delete;permissions;home;trash;
