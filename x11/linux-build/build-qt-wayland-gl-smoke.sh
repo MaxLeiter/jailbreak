@@ -118,14 +118,17 @@ sed \
   -e "s/@DEB_ARCH@/$ARCH/g" \
   /work/build_info/qt-wayland-gl-smoke.control > "$BUILD_DIST/DEBIAN/control"
 
-cat > "$BUILD_DIST/DEBIAN/postinst" <<'POSTINST'
+cat > "$BUILD_DIST/DEBIAN/postinst" <<POSTINST
 #!/bin/sh
 set -e
+PREFIX=$XIOS_PREFIX
+POSTINST
+cat >> "$BUILD_DIST/DEBIAN/postinst" <<'POSTINST'
 
-if [ "$1" = configure ] && [ -x /var/jb/usr/bin/ldid ]; then
-  /var/jb/usr/bin/ldid \
-    -S/var/jb/usr/share/qt-wayland-gl-smoke/qt-wayland-gl-smoke-ent.xml \
-    /var/jb/usr/bin/qt-wayland-gl-smoke
+if [ "$1" = configure ] && [ -x $PREFIX/usr/bin/ldid ]; then
+  $PREFIX/usr/bin/ldid \
+    -S$PREFIX/usr/share/qt-wayland-gl-smoke/qt-wayland-gl-smoke-ent.xml \
+    $PREFIX/usr/bin/qt-wayland-gl-smoke
 fi
 
 exit 0

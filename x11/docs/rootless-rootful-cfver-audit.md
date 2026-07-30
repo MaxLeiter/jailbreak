@@ -9,30 +9,30 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1778
-- Files with hits: 326
+- Total hits: 1757
+- Files with hits: 325
 
 ### By Category
 
 - `app-runtime`: 25 hits across 14 files
 - `build-target`: 16 hits across 10 files
-- `docs`: 615 hits across 62 files
+- `docs`: 619 hits across 62 files
 - `entitlements`: 45 hits across 17 files
-- `linker-path`: 128 hits across 54 files
+- `linker-path`: 124 hits across 53 files
 - `other`: 71 hits across 15 files
 - `package-payload`: 191 hits across 49 files
 - `recipe`: 80 hits across 25 files
 - `runtime-path`: 324 hits across 82 files
-- `script-or-source`: 245 hits across 72 files
+- `script-or-source`: 224 hits across 71 files
 - `site-copy`: 10 hits across 6 files
 - `target-infra`: 28 hits across 4 files
 
 ### By Literal
 
-- `/var/jb`: 1736
+- `/var/jb`: 1714
 - `MEMO_CFVER=1900`: 7
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 7
-- `iphoneos-arm64-rootless`: 28
+- `iphoneos-arm64-rootless`: 29
 
 ## Category Guidance
 
@@ -113,7 +113,7 @@ classified as rootless-only.
 - `AGENTS.md:25` `/var/jb`: - The target install prefix is rootless `/var/jb`; packages and scripts should not assume rootful `/`.
 - `AGENTS.md:27` `/var/jb`: - Geometry is not globally constant. Read compositor/app-reported dimensions such as `/var/jb/tmp/xios.json` instead of hardcoding framebuffer sizes.
 - `docs/native-ipados-plan.md:116` `/var/jb`: (`/var/jb/tmp/iosc-native.sock`) with a message protocol; the old socket and
-- ... 595 more
+- ... 599 more
 
 ### entitlements
 
@@ -161,7 +161,7 @@ classified as rootless-only.
 - `linux-build/gir-build-ondevice.sh:69` `/var/jb`: export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
 - `linux-build/gir-build-ondevice.sh:70` `/var/jb`: export GI_TYPELIB_PATH=/var/jb/usr/lib/girepository-1.0
 - `linux-build/gir-build-ondevice.sh:78` `/var/jb`: if [ ! -f /var/jb/usr/lib/pkgconfig/zlib.pc ]; then
-- ... 108 more
+- ... 104 more
 
 ### other
 
@@ -270,10 +270,6 @@ classified as rootless-only.
 - `linux-build/gir-build-accountsservice-ondevice.sh:84` `/var/jb`: [ -e /var/sh ] \|\| ln -sf /var/jb/bin/sh /var/sh
 - `linux-build/build-ladybird-wave4c.sh:75` `/var/jb`: step "STAGE prep: /var/jb symlink + shim + fake xcrun + re-apply M0 patches (idempotent)"
 - `linux-build/build-ladybird-wave4c.sh:79` `/var/jb`: # by making the container's own /var/jb the staged sysroot. A rootful target
-- `linux-build/build-qt-wayland-gl-smoke.sh:125` `/var/jb`: if [ "$1" = configure ] && [ -x /var/jb/usr/bin/ldid ]; then
-- `linux-build/build-qt-wayland-gl-smoke.sh:126` `/var/jb`: /var/jb/usr/bin/ldid \
-- `linux-build/build-qt-wayland-gl-smoke.sh:127` `/var/jb`: -S/var/jb/usr/share/qt-wayland-gl-smoke/qt-wayland-gl-smoke-ent.xml \
-- `linux-build/build-qt-wayland-gl-smoke.sh:128` `/var/jb`: /var/jb/usr/bin/qt-wayland-gl-smoke
 - `linux-build/build-fff-ios.sh:3` `/var/jb`: # (libfff_c.dylib) for jailbroken iOS (rootless / palera1n, Procursus at /var/jb).
 - `linux-build/gir-build-lib-ondevice.sh:8` `/var/jb`: PREFIX=/var/jb/usr
 - `linux-build/gir-build-lib-ondevice.sh:18` `/var/jb`: export PATH=$PREFIX/bin:/var/jb/bin:/usr/bin:/bin
@@ -281,7 +277,11 @@ classified as rootless-only.
 - `linux-build/gir-build-lib-ondevice.sh:29` `/var/jb`: # This rootless device has NO /bin/sh (only /var/jb/bin/sh). Build-time codegen scripts
 - `linux-build/gir-build-lib-ondevice.sh:33` `/var/jb`: sed -i '1s\|^#!/bin/sh\|#!/var/jb/bin/sh\|' "$f" 2>/dev/null && echo "   shebang-fixed: $f"
 - `linux-build/build-bun-ios.sh:165` `/var/jb`: #!/var/jb/usr/bin/sh
-- ... 225 more
+- `linux-build/build-opencode.sh:127` `/var/jb`: #!/var/jb/usr/bin/sh
+- `linux-build/build-ladybird-wave4b.sh:323` `/var/jb`: #   resources at $prefix/share/Lagom. $prefix = /var/jb/usr. libexec_path compiles to plain "libexec"
+- `linux-build/build-ladybird-wave4b.sh:334` `/var/jb`: # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
+- `linux-build/build-ladybird-wave4b.sh:348` `/var/jb`: <string>/var/jb/</string>
+- ... 204 more
 
 ### site-copy
 
@@ -291,7 +291,7 @@ classified as rootless-only.
 - `site/app/try/page.tsx:26` `/var/jb`: Rootless only: every binary bakes in <code>/var/jb</code>, so a
 - `site/app/try/page.tsx:28` `/var/jb`: <code>/var/jb</code> symlink and works as-is.
 - `site/app/try/page.tsx:77` `/var/jb`: /var/jb/etc/apt/sources.list.d/maxleiter.list
-- `site/app/try/page.tsx:222` `/var/jb`: All under <code>/var/jb/tmp/</code>: <code>xios-session.log</code>,{" "}
+- `site/app/try/page.tsx:223` `/var/jb`: All under <code>/var/jb/tmp/</code>: <code>xios-session.log</code>,{" "}
 - `site/app/build/page.tsx:180` `/var/jb`: <code>/var/jb</code>{" "}into paths, launchers and entitlements. A{" "}
 - `site/content/terms.ts:47` `/var/jb`: def: "a jailbreak layout where everything installs under /var/jb instead of /",
 - `site/components/Figures.tsx:365` `/var/jb`: A rootless <b>/var/jb</b> filesystem bridge with synthetic sysfs the
@@ -303,13 +303,13 @@ classified as rootless-only.
 - `linux-build/target-env.sh:35` `/var/jb`: # build_base/<triple>/var/jb/usr/... for rootless, build_base/<triple>/usr/...
 - `linux-build/target-env.sh:72` `/var/jb`: # yet. Better a loud stop than a rootful deb full of /var/jb paths — which is
 - `linux-build/target-env.sh:82` `/var/jb`: # Rootless yields /var/jb/; rootful ships into /usr, which needs its own entry
-- `linux-build/tools/target-literal-baseline.json:185` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:188` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:198` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:202` `/var/jb`: "packages/xios-server/var/jb/usr/bin/xios-server.sh": 12,
-- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:208` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:184` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:187` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:201` `/var/jb`: "packages/xios-server/var/jb/usr/bin/xios-server.sh": 12,
+- `linux-build/tools/target-literal-baseline.json:205` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",

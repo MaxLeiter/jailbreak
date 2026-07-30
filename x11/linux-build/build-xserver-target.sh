@@ -38,7 +38,14 @@ done
 xios_load_target "$TARGET"
 
 IMAGE="${XIOS_PROC_IMAGE:-procursus-xbuild:bookworm-arm64}"
-VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+# Keep the rootless volume exactly where it was; give any other profile its own,
+# so a rootful bootstrap does not double the disk on the volume that holds the
+# working rootless tree (and its ~50 .build_complete markers).
+if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
+  VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+else
+  VOLUME="${PROCURSUS_VOL:-procursus-vol-$XIOS_REPO_PROFILE}"
+fi
 SDK_SRC="${SDK_SRC:-$HOME/theos/sdks/iPhoneOS16.5.sdk}"
 MACOS_SDK_SRC="${MACOS_SDK_SRC:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
 TARGET_OUT="$HERE/out/targets/$XIOS_TARGET_ID"

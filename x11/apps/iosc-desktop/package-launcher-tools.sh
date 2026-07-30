@@ -185,24 +185,29 @@ Description: on-device iPad Home Screen app sync for Xios
  enable, disable, dry-run, and apply launcher sync.
 EOF
 
-cat > "$STAGE/DEBIAN/postinst" <<'EOF'
+# Expanding header bakes in the prefix; the body stays quoted so its own shell
+# variables and globs reach the device intact.
+cat > "$STAGE/DEBIAN/postinst" <<EOF
 #!/bin/sh
 set -e
-PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+PREFIX=$XIOS_PREFIX
+EOF
+cat >> "$STAGE/DEBIAN/postinst" <<'EOF'
+PATH=$PREFIX/usr/bin:$PREFIX/usr/sbin:$PREFIX/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-chmod 0755 /var/jb/usr/local/bin/ioscd \
-           /var/jb/usr/local/bin/xios-icon-render \
-           /var/jb/usr/local/bin/xios-launcher-sync 2>/dev/null || true
-chmod 0755 /var/jb/usr/libexec/xios-launchers/IOSCLaunch \
-           /var/jb/usr/libexec/xios-launchers/IOSCHost 2>/dev/null || true
-chmod 0644 /var/jb/usr/libexec/xios-launchers/default.metallib \
-           /var/jb/usr/libexec/xios-launchers/*entitlements.plist \
-           /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
-chown root:wheel /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+chmod 0755 $PREFIX/usr/local/bin/ioscd \
+           $PREFIX/usr/local/bin/xios-icon-render \
+           $PREFIX/usr/local/bin/xios-launcher-sync 2>/dev/null || true
+chmod 0755 $PREFIX/usr/libexec/xios-launchers/IOSCLaunch \
+           $PREFIX/usr/libexec/xios-launchers/IOSCHost 2>/dev/null || true
+chmod 0644 $PREFIX/usr/libexec/xios-launchers/default.metallib \
+           $PREFIX/usr/libexec/xios-launchers/*entitlements.plist \
+           $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+chown root:wheel $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
 
 if command -v launchctl >/dev/null 2>&1; then
-  launchctl bootout system /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
-  launchctl bootstrap system /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+  launchctl bootout system $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+  launchctl bootstrap system $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
 fi
 
 exit 0

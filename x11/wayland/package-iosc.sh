@@ -103,7 +103,7 @@ else
   echo "WARN: libiosc_egl.dylib not found at $WAYLAND/out — build-iosc.sh not run?"
 fi
 
-INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
+INSTKB=$(du -sk "$STAGE${XIOS_PREFIX:-/usr}" | cut -f1)
 
 # 5. control
 cat > "$STAGE/DEBIAN/control" <<EOF
@@ -141,15 +141,21 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  Wayland client to be useful. Install the gnome-console package and run run-kgx.sh
  for a GNOME terminal, or run run-iosc.sh for a dependency-free paint self-test.
  The compositor is signed with the GPU entitlement set (a copy is kept under
- /var/jb/usr/local/share/iosc). Built for iPadOS/iOS rootless (palera1n/Dopamine).
+ $XIOS_PREFIX/usr/local/share/iosc). Built for iPadOS/iOS rootless (palera1n/Dopamine).
 EOF
 
-cat > "$STAGE/DEBIAN/postinst" <<'EOF'
+# The prefix is baked in as a variable by an expanding header, then the body
+# stays single-quoted so its own runtime variables ($plist) survive to the
+# device. Unquoting the whole heredoc would expand those at build time.
+cat > "$STAGE/DEBIAN/postinst" <<EOF
 #!/bin/sh
 set -e
-PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/usr/bin:/bin:/usr/sbin:/sbin
-plist=/var/jb/Library/LaunchDaemons/com.max.xios.metal-event-broker.plist
-chmod 0755 /var/jb/usr/local/libexec/xios-metal-event-broker 2>/dev/null || true
+PREFIX=$XIOS_PREFIX
+EOF
+cat >> "$STAGE/DEBIAN/postinst" <<'EOF'
+PATH=$PREFIX/usr/bin:$PREFIX/usr/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+plist=$PREFIX/Library/LaunchDaemons/com.max.xios.metal-event-broker.plist
+chmod 0755 $PREFIX/usr/local/libexec/xios-metal-event-broker 2>/dev/null || true
 chmod 0644 "$plist" 2>/dev/null || true
 chown root:wheel "$plist" 2>/dev/null || true
 if command -v launchctl >/dev/null 2>&1; then
@@ -159,10 +165,13 @@ fi
 exit 0
 EOF
 
-cat > "$STAGE/DEBIAN/prerm" <<'EOF'
+cat > "$STAGE/DEBIAN/prerm" <<EOF
 #!/bin/sh
 set -e
-plist=/var/jb/Library/LaunchDaemons/com.max.xios.metal-event-broker.plist
+PREFIX=$XIOS_PREFIX
+EOF
+cat >> "$STAGE/DEBIAN/prerm" <<'EOF'
+plist=$PREFIX/Library/LaunchDaemons/com.max.xios.metal-event-broker.plist
 if command -v launchctl >/dev/null 2>&1; then
   launchctl bootout system "$plist" 2>/dev/null || true
 fi

@@ -1,5 +1,5 @@
 {
-  "total": 1125,
+  "total": 1100,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 2,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -18,7 +18,7 @@
     "apps/iosc-desktop/install-xios-session.sh": 4,
     "apps/iosc-desktop/ioscd-ent.xml": 3,
     "apps/iosc-desktop/launcher-ent.xml": 4,
-    "apps/iosc-desktop/package-launcher-tools.sh": 15,
+    "apps/iosc-desktop/package-launcher-tools.sh": 1,
     "apps/iosc-desktop/src/IOSCLaunch.m": 2,
     "apps/iosc-desktop/src/ioscd.c": 7,
     "apps/iosc-desktop/src/xios-launcher-sync.c": 4,
@@ -72,7 +72,6 @@
     "linux-build/build-opencode.sh": 4,
     "linux-build/build-opentui-ios.sh": 1,
     "linux-build/build-pwquality-stub.sh": 3,
-    "linux-build/build-qt-wayland-gl-smoke.sh": 4,
     "linux-build/build-qt.sh": 3,
     "linux-build/build-udev-stub.sh": 3,
     "linux-build/build-xwayland.sh": 2,
@@ -242,7 +241,7 @@
     "wayland/meta-backend-ios.c": 4,
     "wayland/mutter-pointer-test.c": 4,
     "wayland/package-a11y-tools.sh": 2,
-    "wayland/package-iosc.sh": 9,
+    "wayland/package-iosc.sh": 2,
     "wayland/restore-gnome.sh": 18,
     "wayland/run-iosc.sh": 10,
     "wayland/run-kde-plasma.sh": 4,
