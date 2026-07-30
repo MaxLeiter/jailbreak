@@ -1,0 +1,43 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Make desktop build-only integrations optional on iOS
+
+appstream-glib is only checked for translation metadata and is not linked.
+gsound is only used by the optional sent-sound plugin. Let the iOS build omit
+both integrations, and do not build the host-oriented test executables while
+cross-compiling the application.
+
+--- a/meson.build
++++ b/meson.build
+@@ -71,7 +71,7 @@ sqlite = dependency('sqlite3', version: '>= 3.24')
+ 
+ # We need appdata.its from appstream-glib:
+ # https://gitlab.gnome.org/GNOME/appstream-glib/-/blob/master/data/appdata.its
+-appstream_glib = dependency('appstream-glib', version: '>=0.7.10')
++appstream_glib = dependency('appstream-glib', version: '>=0.7.10', required: false)
+ cairo = dependency('cairo')
+ enchant = dependency('enchant-2', version: '>=2.1')
+ folks = dependency('folks', version: '>=0.11')
+@@ -81,7 +81,7 @@ gee = dependency('gee-0.8', version: '>= 0.8.5')
+ gio = dependency('gio-2.0', version: '>=' + target_glib)
+ goa = dependency('goa-1.0')
+-gsound = dependency('gsound')
++gsound = dependency('gsound', required: false)
+ gspell = dependency('gspell-1')
+ gthread = dependency('gthread-2.0', version: '>=' + target_glib)
+ icu_uc = dependency('icu-uc', version: '>=60')
+@@ -236,4 +236,3 @@ subdir('po')
+ subdir('sql')
+ subdir('ui')
+ subdir('src')
+-subdir('test')
+--- a/src/client/plugin/meson.build
++++ b/src/client/plugin/meson.build
+@@ -44,7 +44,9 @@ subdir('folder-highlight')
+ subdir('mail-merge')
+ subdir('messaging-menu')
+ subdir('notification-badge')
+-subdir('sent-sound')
++if gsound.found()
++  subdir('sent-sound')
++endif
+ subdir('special-folders')

@@ -1,0 +1,10 @@
+Package: libgcr-3-dev
+Version: @DEB_GCR3_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libgcr-3-1 (= @DEB_GCR3_V@), libgck-1-0 (= @DEB_GCR3_V@), libglib2.0-dev, libgtk-3-dev
+Description: GCR 3 and GCK 1 development files
+ Headers and pkg-config metadata for the gcr-3 and gck-1 API families.

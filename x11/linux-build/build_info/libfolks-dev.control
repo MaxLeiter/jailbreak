@@ -1,0 +1,10 @@
+Package: libfolks-dev
+Version: @DEB_FOLKS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/folks
+Depends: libfolks26 (= @DEB_FOLKS_V@), libglib2.0-dev, libgee-0.8-dev
+Description: Folks contact aggregation development files
+ Headers, pkg-config metadata, Vala APIs and GIR definitions for Folks.
