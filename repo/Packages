@@ -5391,48 +5391,6 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libfreetype6.json
 Native Depiction: https://repo.maxleiter.com/depictions/libfreetype6.json
 Homepage: https://repo.maxleiter.com
 
-Package: libfribidi-dev
-Version: 1.0.13+ios1
-Architecture: iphoneos-arm64
-Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libfribidi0 (>= 1.0.13)
-Section: Development
-Priority: optional
-Homepage: https://github.com/fribidi/fribidi/
-Description: Development files for FreeBidi library
-Installed-Size: 216
-Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libfribidi-dev_1.0.13+ios1_iphoneos-arm64.deb
-Size: 29100
-MD5sum: 83ee24c8084b9552e6a174aab73b1023
-SHA1: 6f297d1440c6ed5f049ab1c8ef2537f2eb741ff5
-SHA256: 3905cdd970de0e6f7025318b1ae39f3612ea64327369e61ccadfb76d41cb4604
-Icon: https://repo.maxleiter.com/icons/libfribidi-dev.png
-Depiction: https://repo.maxleiter.com/depictions/libfribidi-dev.html
-SileoDepiction: https://repo.maxleiter.com/depictions/libfribidi-dev.json
-Native Depiction: https://repo.maxleiter.com/depictions/libfribidi-dev.json
-
-Package: libfribidi0
-Version: 1.0.13+ios1
-Architecture: iphoneos-arm64
-Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Section: Libraries
-Priority: optional
-Homepage: https://github.com/fribidi/fribidi/
-Description: Free Implementation of the Unicode BiDi algorithm
-Depends: libiosexec1 (>= 1.3.1)
-Installed-Size: 248
-Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libfribidi0_1.0.13+ios1_iphoneos-arm64.deb
-Size: 41626
-MD5sum: 17f141545886877467f5da3e3f69effa
-SHA1: 0609d09391155269fe5c8e5bd63c9aa19c54b55b
-SHA256: 89e868a94830acac4fee7e8a76df37804005a20779831d1d904f94ad260a9ef3
-Icon: https://repo.maxleiter.com/icons/libfribidi0.png
-Depiction: https://repo.maxleiter.com/depictions/libfribidi0.html
-SileoDepiction: https://repo.maxleiter.com/depictions/libfribidi0.json
-Native Depiction: https://repo.maxleiter.com/depictions/libfribidi0.json
-
 Package: libgbm-dev
 Version: 21.0.0+ios2
 Architecture: iphoneos-arm64

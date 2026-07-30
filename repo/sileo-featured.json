@@ -1274,16 +1274,6 @@
       "url": "https://repo.maxleiter.com/banners/libfreetype6.png"
     },
     {
-      "title": "libfribidi-dev",
-      "package": "libfribidi-dev",
-      "url": "https://repo.maxleiter.com/banners/libfribidi-dev.png"
-    },
-    {
-      "title": "libfribidi0",
-      "package": "libfribidi0",
-      "url": "https://repo.maxleiter.com/banners/libfribidi0.png"
-    },
-    {
       "title": "libgbm-dev",
       "package": "libgbm-dev",
       "url": "https://repo.maxleiter.com/banners/libgbm-dev.png"
