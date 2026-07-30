@@ -133,6 +133,14 @@ GLES=$(find /tmp/angle-x -name libGLESv2.dylib | head -1)
 }
 cp -v "$EGL" "$SYSROOT/lib/libEGL.dylib"
 cp -v "$GLES" "$SYSROOT/lib/libGLESv2.dylib"
+ANGLE_HEADERS=/tmp/angle-x/var/jb/include
+[ -d "$ANGLE_HEADERS/EGL" ] && [ -d "$ANGLE_HEADERS/GLES2" ] || {
+  echo "ERROR: angle package is missing EGL/GLES headers" >&2
+  exit 1
+}
+mkdir -p "$SYSROOT/include"
+cp -a "$ANGLE_HEADERS/EGL" "$ANGLE_HEADERS/GLES" "$ANGLE_HEADERS/GLES2" \
+  "$ANGLE_HEADERS/GLES3" "$ANGLE_HEADERS/KHR" "$SYSROOT/include/"
 cat > "$SYSROOT/lib/pkgconfig/egl.pc" <<PC
 prefix=/var/jb/usr
 libdir=/var/jb/lib/angle
