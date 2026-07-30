@@ -121,11 +121,6 @@ struct iosc_wl_state {
 static pthread_mutex_t s_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct iosc_wl_state *s_states;
 static _Thread_local EGLint s_shim_error = EGL_SUCCESS;
-/* EGLDisplay is the process-wide ANGLE Metal display, so it cannot identify
- * which Wayland connection a later window belongs to. Preserve the connection
- * selected by eglGet*Display on the calling thread, matching EGL's thread-bound
- * initialization/current-context model. */
-static _Thread_local struct wl_display *s_thread_wl;
 
 static void reg_global(void *d, struct wl_registry *r, uint32_t name,
                        const char *iface, uint32_t ver)
@@ -469,7 +464,6 @@ static EGLDisplay angle_metal_display(void)
 EGLDisplay eglGetPlatformDisplay(EGLenum platform, void *native_display, const EGLAttrib *attrs)
 {
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
-        s_thread_wl = (struct wl_display *)native_display;
         if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplay(WAYLAND)\n");
         return angle_metal_display();
     }
@@ -478,7 +472,6 @@ EGLDisplay eglGetPlatformDisplay(EGLenum platform, void *native_display, const E
 EGLDisplay eglGetPlatformDisplayEXT(EGLenum platform, void *native_display, const EGLint *attrs)
 {
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
-        s_thread_wl = (struct wl_display *)native_display;
         if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplayEXT(WAYLAND)\n");
         return angle_metal_display();
     }
@@ -503,7 +496,13 @@ static EGLSurface make_window(EGLDisplay dpy, EGLConfig cfg, struct wl_egl_windo
         s_shim_error = EGL_BAD_NATIVE_WINDOW;
         return EGL_NO_SURFACE;
     }
-    struct iosc_wl_state *wl = ensure_factory(s_thread_wl);
+    /* Qt may initialize EGL on its GUI thread and create/swap the window surface
+     * on a render thread. The wl_surface itself is the authoritative connection;
+     * deriving its owner here avoids a thread-local display guess and also keeps
+     * multiple Wayland connections in one process correctly separated. */
+    struct wl_display *display =
+        wl_proxy_get_display((struct wl_proxy *)ewin->surface);
+    struct iosc_wl_state *wl = ensure_factory(display);
     if (!wl) {
         s_shim_error = EGL_BAD_DISPLAY;
         return EGL_NO_SURFACE;

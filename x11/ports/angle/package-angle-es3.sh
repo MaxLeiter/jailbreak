@@ -12,6 +12,8 @@
 # Metal handles or blocking the CPU at every swap.
 # -11 revision: accepts QtWayland's core eglCreateWindowSurface entry point and routes
 # it through the same IOSurface swapchain as the EGL platform entry points.
+# -12 revision: derives the Wayland connection from each wl_egl_window's wl_surface,
+# so Qt's split GUI/render threads cannot lose the connection at surface creation.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +28,7 @@ BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
-VER="2.1.0+git20260630.a32d31d+es3-11"
+VER="2.1.0+git20260630.a32d31d+es3-12"
 DEB="angle_${VER}_iphoneos-arm64.deb"
 
 rm -rf "$STAGEROOT"
