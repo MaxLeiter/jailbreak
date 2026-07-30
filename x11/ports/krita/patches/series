@@ -6,3 +6,4 @@
 0006-qt66-string-view-compat.patch
 0007-qt66-header-compat.patch
 0008-qt66-class-helper-macros.patch
+0009-lcms212-cicp-compat.patch

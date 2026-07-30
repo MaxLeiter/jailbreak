@@ -1,0 +1,53 @@
+--- a/plugins/color/lcms2engine/colorprofiles/LcmsColorProfileContainer.cpp
++++ b/plugins/color/lcms2engine/colorprofiles/LcmsColorProfileContainer.cpp
+@@ -106,7 +106,9 @@ public:
+     bool isSaturationCLUT;
+     bool isMatrixShaper;
+
++#if LCMS_VERSION >= 2170
+     cmsVideoSignalType *cicpValues {nullptr};
++#endif
+
+     QByteArray uniqueId;
+ };
+@@ -303,9 +305,11 @@ void LcmsColorProfileContainer::init()
+             d->hasTRC = Private::LazyBool(Private::LazyBool::init_value_tag{}, {});
+         }
+
++#if LCMS_VERSION >= 2170
+         if (cmsIsTag(d->profile, cmsSigcicpTag)) {
+             d->cicpValues = ((cmsVideoSignalType *) cmsReadTag (d->profile, cmsSigcicpTag));
+         }
++#endif
+
+         // Check if the profile can convert (something->this)
+         d->suitableForOutput = cmsIsIntentSupported(d->profile, INTENT_PERCEPTUAL, LCMS_USED_AS_OUTPUT);
+@@ -660,19 +664,31 @@ QByteArray LcmsColorProfileContainer::uniqueId() const
+
+ bool LcmsColorProfileContainer::hasCicpValues() const
+ {
++#if LCMS_VERSION >= 2170
+     return (d->cicpValues);
++#else
++    return false;
++#endif
+ }
+
+ ColorPrimaries LcmsColorProfileContainer::cicpPrimaries() const {
++#if LCMS_VERSION >= 2170
+     if (!d->cicpValues) return PRIMARIES_UNSPECIFIED;
+     return ColorPrimaries(d->cicpValues->ColourPrimaries);
++#else
++    return PRIMARIES_UNSPECIFIED;
++#endif
+ }
+
+ TransferCharacteristics LcmsColorProfileContainer::cicpTransfer() const
+ {
++#if LCMS_VERSION >= 2170
+     if (!d->cicpValues) return TRC_UNSPECIFIED;
+     return TransferCharacteristics(d->cicpValues->TransferCharacteristics);
++#else
++    return TRC_UNSPECIFIED;
++#endif
+ }
