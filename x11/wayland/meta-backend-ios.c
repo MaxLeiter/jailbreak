@@ -23,6 +23,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "backends/ios/meta-clutter-backend-ios.h"
+#include "backends/ios/meta-clipboard-ios.h"
 #include "backends/ios/meta-input-ios.h"
 #include "backends/ios/meta-monitor-manager-ios.h"
 #include "backends/ios/meta-renderer-ios.h"
@@ -40,6 +41,7 @@
 
 /* Where the Xios app streams its input protocol (overridable for testing). */
 #define XIOS_INPUT_SOCKET_DEFAULT "/var/jb/tmp/mutter-input.sock"
+#define XIOS_CLIPBOARD_SOCKET_DEFAULT "/var/jb/tmp/mutter-clipboard.sock"
 #define XIOS_DDX_SOCKET_DEFAULT "/var/jb/tmp/mutter-ddx.sock"
 #define XIOS_JSON_PATH_DEFAULT "/var/jb/tmp/xios.json"
 
@@ -60,6 +62,14 @@ ios_ddx_socket_path (void)
   const char *path = g_getenv ("XIOS_DDX_SOCKET");
 
   return path ? path : XIOS_DDX_SOCKET_DEFAULT;
+}
+
+static const char *
+ios_clipboard_socket_path (void)
+{
+  const char *path = g_getenv ("XIOS_CLIPBOARD_SOCKET");
+
+  return path ? path : XIOS_CLIPBOARD_SOCKET_DEFAULT;
 }
 
 static const char *
@@ -116,6 +126,7 @@ struct _MetaBackendIOS
   MetaBackend parent;
 
   MetaInputIOS       *input;
+  MetaClipboardIOS   *clipboard;
   MetaCursorRenderer *cursor_renderer;
 
   struct xkb_keymap  *xkb_keymap;      /* the compiled keyboard map get_keymap returns */
@@ -412,6 +423,7 @@ static void
 meta_backend_ios_constructed (GObject *object)
 {
   MetaBackend *backend = META_BACKEND (object);
+  MetaBackendIOS *self = META_BACKEND_IOS (object);
   MetaGpu *gpu;
 
   G_OBJECT_CLASS (meta_backend_ios_parent_class)->constructed (object);
@@ -437,9 +449,13 @@ meta_backend_ios_constructed (GObject *object)
          * == the pump's bind path in post_init. Must precede xios_server_start (the writer emits
          * "input_socket" at serve time). */
         const char *input_sock = ios_input_socket_path ();
+        const char *clipboard_sock = ios_clipboard_socket_path ();
 
         xios_set_compositor_id ("mutter-ios");
         xios_set_input_socket (input_sock);
+        xios_set_clipboard_socket (clipboard_sock);
+        self->clipboard =
+          meta_clipboard_ios_new (backend, clipboard_sock);
 
         if (xios_server_start (ios_ddx_socket_path (), ios_json_path (),
                                width, height, stride) != 0)
@@ -466,6 +482,7 @@ meta_backend_ios_finalize (GObject *object)
 {
   MetaBackendIOS *self = META_BACKEND_IOS (object);
 
+  g_clear_pointer (&self->clipboard, meta_clipboard_ios_free);
   g_clear_pointer (&self->input, meta_input_ios_free);
   g_clear_object (&self->cursor_renderer);
   g_clear_pointer (&self->xkb_keymap, xkb_keymap_unref);

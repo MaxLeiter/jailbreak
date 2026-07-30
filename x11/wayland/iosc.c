@@ -7456,7 +7456,7 @@ static int unix_listen_start(struct wl_event_loop *loop, const char *path,
  * The shared reader multiplexes the listen + client sockets onto a single kqueue
  * fd; iosc registers that fd on the wl_display event loop and drains complete
  * records through a callback into the same handle_* paths as before. The wire
- * types (XIOS_IN_*) + struct xios_in_msg live in xios_input_socket.h. */
+ * XIOS_IN_* types and canonical xios_msg framing live in XiosProtocol.h. */
 static xios_input_socket *g_input_sock;
 static struct wl_event_source *g_input_src;
 static int g_input_wayland_dirty;
@@ -7482,7 +7482,9 @@ static void in_dispatch_text(const char *text, size_t len)
      * commits through the nested compositor's IM protocol. Re-frame it as one
      * contiguous record because that is what the reader on the other side parses. */
     if (g_input_sock && len > 0 && len <= 4096u) {
-        struct xios_in_msg hdr = { .type = XIOS_IN_TEXT, .code = (uint32_t)len };
+        xios_msg hdr = xios_input_message(XIOS_IN_TEXT, 0, 0,
+                                          (uint32_t)len, 0, 0);
+        hdr.length = (uint32_t)len;
         char buf[sizeof(hdr) + 4096u];
         memcpy(buf, &hdr, sizeof(hdr));
         memcpy(buf + sizeof(hdr), text, len);
@@ -7508,7 +7510,7 @@ static void in_dispatch_text(const char *text, size_t len)
 /* One complete input record from the shared reader -> the compositor's handlers.
  * Runs on the compositor thread (the reader's kqueue fd is on the wl event loop),
  * so no locking. Same routing the inline reader did; unknown types are ignored. */
-static void iosc_input_record(const struct xios_in_msg *m, const char *text,
+static void iosc_input_record(const xios_msg *m, const char *text,
                               size_t text_len, uint32_t bound_window, void *user)
 {
     (void)user;
@@ -7522,17 +7524,17 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
     if (m->type == XIOS_IN_TRAITS) {
         if (iosc_debug())
             fprintf(stderr, "iosc: TRAITS from improxy hint=0x%x purpose=%u enabled=%u\n",
-                    m->code, m->state, m->mods);
+                    XIOS_INPUT_CODE(m), XIOS_INPUT_STATE(m), XIOS_INPUT_MODS(m));
         g_improxy_traits_valid = 1;
-        g_improxy_hint = m->code;
-        g_improxy_purpose = m->state;
-        g_improxy_enabled = m->mods;
+        g_improxy_hint = XIOS_INPUT_CODE(m);
+        g_improxy_purpose = XIOS_INPUT_STATE(m);
+        g_improxy_enabled = XIOS_INPUT_MODS(m);
         input_clients_send_traits();
         return;
     }
     g_input_wayland_dirty = 1;
-    int x = physical_to_logical(m->x);
-    int y = physical_to_logical(m->y);
+    int x = physical_to_logical(XIOS_INPUT_X(m));
+    int y = physical_to_logical(XIOS_INPUT_Y(m));
     if (bound) {
         x += bound->dx;
         y += bound->dy;
@@ -7542,26 +7544,36 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
     switch (m->type) {
         case XIOS_IN_MOTION: handle_motion(x, y); break;
         case XIOS_IN_BUTTON: handle_motion(x, y);
-                             handle_button((int)m->code, (int)m->state); break;
-        case XIOS_IN_KEY:    handle_key(m->code, m->state, m->mods); break;
-        case XIOS_IN_TOUCH:  handle_touch((int)m->code, (int)m->state, x, y); break;
-        case XIOS_IN_TABLET: handle_pencil((int)m->state, x, y, m->code,
-                                           (int)(m->mods & 0xffu) - 90,
-                                           (int)((m->mods >> 8) & 0xffu) - 90); break;
+                             handle_button((int)XIOS_INPUT_CODE(m),
+                                           (int)XIOS_INPUT_STATE(m)); break;
+        case XIOS_IN_KEY:    handle_key(XIOS_INPUT_CODE(m), XIOS_INPUT_STATE(m),
+                                       XIOS_INPUT_MODS(m)); break;
+        case XIOS_IN_TOUCH:  handle_touch((int)XIOS_INPUT_CODE(m),
+                                         (int)XIOS_INPUT_STATE(m), x, y); break;
+        case XIOS_IN_TABLET: handle_pencil((int)XIOS_INPUT_STATE(m), x, y,
+                                           XIOS_INPUT_CODE(m),
+                                           (int)(XIOS_INPUT_MODS(m) & 0xffu) - 90,
+                                           (int)((XIOS_INPUT_MODS(m) >> 8) & 0xffu) - 90); break;
         /* AXIS x,y are fixed-point scroll DELTAS, not positions — pass raw
          * (handle_axis does its own /output_scale), NOT the physical_to_logical'd
          * locals. */
         case XIOS_IN_AXIS:   if (bound) g_ptr_focus = bound;
-                             handle_axis(m->x, m->y, m->code,
-                                         (int)(m->state & 1u), m->mods); break;
+                             handle_axis(XIOS_INPUT_X(m), XIOS_INPUT_Y(m),
+                                         XIOS_INPUT_CODE(m),
+                                         (int)(XIOS_INPUT_STATE(m) & 1u),
+                                         XIOS_INPUT_MODS(m)); break;
         /* GESTURE x,y are fixed-point translation DELTAS like AXIS, so pass the
          * raw wire values, not the physical_to_logical'd locals. */
         case XIOS_IN_GESTURE: if (bound) g_ptr_focus = bound;
-                             handle_gesture(m->code, m->x, m->y, m->state, m->mods); break;
+                             handle_gesture(XIOS_INPUT_CODE(m), XIOS_INPUT_X(m),
+                                            XIOS_INPUT_Y(m), XIOS_INPUT_STATE(m),
+                                            XIOS_INPUT_MODS(m)); break;
         case XIOS_IN_OUTPUT: {
-            int tr = (int)(m->code & 3u);
-            int lw = m->x > 0 ? m->x : ((tr & 1) ? g_natural_lh : g_natural_lw);
-            int lh = m->y > 0 ? m->y : ((tr & 1) ? g_natural_lw : g_natural_lh);
+            int tr = (int)(XIOS_INPUT_CODE(m) & 3u);
+            int lw = XIOS_INPUT_X(m) > 0 ? XIOS_INPUT_X(m)
+                                         : ((tr & 1) ? g_natural_lh : g_natural_lw);
+            int lh = XIOS_INPUT_Y(m) > 0 ? XIOS_INPUT_Y(m)
+                                         : ((tr & 1) ? g_natural_lw : g_natural_lh);
             output_reconfigure(lw, lh, tr);
             break;
         }
@@ -7588,16 +7600,13 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
 static void input_clients_send_traits(void)
 {
     struct iosc_text_input *ti = text_input_for_focus();
-    struct xios_in_msg msg = {
-        .type = XIOS_IN_TRAITS,
-        .code = ti ? ti->content_hint : 0,
-        .state = ti ? ti->content_purpose : 0,
-        .mods = ti ? (uint32_t)ti->enabled : 0,
-    };
+    xios_msg msg = xios_input_message(
+        XIOS_IN_TRAITS, 0, 0, ti ? ti->content_hint : 0,
+        ti ? ti->content_purpose : 0, ti ? (uint32_t)ti->enabled : 0);
     if (g_improxy_traits_valid) {
-        msg.code = g_improxy_hint;
-        msg.state = g_improxy_purpose;
-        msg.mods = g_improxy_enabled;
+        msg.c = (int32_t)g_improxy_hint;
+        msg.window_id = g_improxy_purpose;
+        msg.d = (int32_t)g_improxy_enabled;
     }
     struct iosc_surface *native_focus = g_native_mode ? native_focus_toplevel() : NULL;
     if (native_focus)
@@ -7611,10 +7620,7 @@ static void input_clients_send_haptic(uint32_t style)
 {
     if (!g_input_sock)
         return;
-    struct xios_in_msg msg = {
-        .type = XIOS_IN_HAPTIC,
-        .code = style,
-    };
+    xios_msg msg = xios_input_message(XIOS_IN_HAPTIC, 0, 0, style, 0, 0);
     xios_input_socket_broadcast(g_input_sock, &msg, sizeof(msg));
 }
 

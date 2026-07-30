@@ -3,6 +3,7 @@
  * Same wire format; one connection per UIWindowScene, bound to a window id.
  */
 #include "IoscInput.h"
+#include "../../shared/XiosProtocol.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,31 +13,11 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#define XIOS_IN_MOTION 1u
-#define XIOS_IN_BUTTON 2u
-#define XIOS_IN_KEY    3u
-#define XIOS_IN_TEXT   4u
-#define XIOS_IN_TRAITS 5u
-#define XIOS_IN_TOUCH  6u
-#define XIOS_IN_TABLET 7u
-/* Scope this connection to one window (code = window id). */
-#define XIOS_IN_BIND   8u
-#define XIOS_IN_AXIS   9u   // x,y = dx,dy 1/256 px; code = source; state bit0 = stop; mods latched
-#define XIOS_IN_GESTURE 14u // code = kind|phase<<8|fingers<<16; x,y = dx,dy 1/256 px;
-                            // state = scale 1/256; mods = rotation 1/256 deg (signed)
-
-struct xios_in_msg {
-    uint32_t type;
-    int32_t  x, y;
-    uint32_t code;
-    uint32_t state;
-    uint32_t mods;
-};
-
 struct iosc_input {
     int      fd;
-    uint8_t  rx[sizeof(struct xios_in_msg)];
+    uint8_t  rx[sizeof(xios_msg)];
     int      rx_have;
+    int      hello_received;
 };
 
 static void send_bytes(iosc_input_t *h, const void *buf, size_t n)
@@ -52,7 +33,7 @@ static void send_bytes(iosc_input_t *h, const void *buf, size_t n)
     }
 }
 
-static void send_msg(iosc_input_t *h, const struct xios_in_msg *m)
+static void send_msg(iosc_input_t *h, const xios_msg *m)
 {
     send_bytes(h, m, sizeof(*m));
 }
@@ -72,10 +53,16 @@ iosc_input_t *iosc_input_open(const char *sock_path, unsigned window)
     if (!h) { close(fd); return NULL; }
     h->fd = fd;
 
+    /* HELLO and BIND go out before non-blocking mode so the compositor can
+     * authenticate and pin this connection before any event arrives. */
+    xios_msg hello = xios_protocol_hello();
+    send_msg(h, &hello);
+    if (h->fd < 0) { free(h); return NULL; }
     /* Bind BEFORE going non-blocking so the compositor pins the connection to
      * this window before any event arrives. */
-    struct xios_in_msg bind = { .type = XIOS_IN_BIND, .code = window };
+    xios_msg bind = xios_input_message(XIOS_IN_BIND, 0, 0, window, 0, 0);
     send_msg(h, &bind);
+    if (h->fd < 0) { free(h); return NULL; }
 
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     return h;
@@ -92,21 +79,21 @@ bool iosc_input_is_open(iosc_input_t *h) { return h && h->fd >= 0; }
 
 void iosc_input_motion(iosc_input_t *h, int x, int y)
 {
-    struct xios_in_msg m = { .type = XIOS_IN_MOTION, .x = x, .y = y };
+    xios_msg m = xios_input_message(XIOS_IN_MOTION, x, y, 0, 0, 0);
     send_msg(h, &m);
 }
 
 void iosc_input_button(iosc_input_t *h, int button, bool down, int x, int y)
 {
-    struct xios_in_msg m = { .type = XIOS_IN_BUTTON, .x = x, .y = y,
-                             .code = (uint32_t)button, .state = down ? 1u : 0u };
+    xios_msg m = xios_input_message(XIOS_IN_BUTTON, x, y, (uint32_t)button,
+                                    down ? 1u : 0u, 0);
     send_msg(h, &m);
 }
 
 void iosc_input_key(iosc_input_t *h, unsigned keysym, bool down, unsigned mods)
 {
-    struct xios_in_msg m = { .type = XIOS_IN_KEY, .code = keysym,
-                             .state = down ? 1u : 0u, .mods = mods };
+    xios_msg m = xios_input_message(XIOS_IN_KEY, 0, 0, keysym,
+                                    down ? 1u : 0u, mods);
     send_msg(h, &m);
 }
 
@@ -116,15 +103,16 @@ void iosc_input_text(iosc_input_t *h, const char *utf8)
     size_t len = strlen(utf8);
     if (len == 0) return;
     if (len > 4096) len = 4096;
-    struct xios_in_msg m = { .type = XIOS_IN_TEXT, .code = (uint32_t)len };
+    xios_msg m = xios_input_message(XIOS_IN_TEXT, 0, 0, (uint32_t)len, 0, 0);
+    m.length = (uint32_t)len;
     send_msg(h, &m);
     send_bytes(h, utf8, len);
 }
 
 void iosc_input_touch(iosc_input_t *h, int slot, int phase, int x, int y)
 {
-    struct xios_in_msg m = { .type = XIOS_IN_TOUCH, .x = x, .y = y,
-                             .code = (uint32_t)slot, .state = (uint32_t)phase };
+    xios_msg m = xios_input_message(XIOS_IN_TOUCH, x, y, (uint32_t)slot,
+                                    (uint32_t)phase, 0);
     send_msg(h, &m);
 }
 
@@ -133,31 +121,28 @@ void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressu
 {
     if (tilt_x_deg < -90) tilt_x_deg = -90; if (tilt_x_deg > 90) tilt_x_deg = 90;
     if (tilt_y_deg < -90) tilt_y_deg = -90; if (tilt_y_deg > 90) tilt_y_deg = 90;
-    struct xios_in_msg m = { .type = XIOS_IN_TABLET, .x = x, .y = y,
-                             .code = pressure16 > 65535u ? 65535u : pressure16,
-                             .state = (uint32_t)phase,
-                             .mods = (uint32_t)(tilt_x_deg + 90) |
-                                     ((uint32_t)(tilt_y_deg + 90) << 8) };
+    xios_msg m = xios_input_message(
+        XIOS_IN_TABLET, x, y,
+        pressure16 > 65535u ? 65535u : pressure16, (uint32_t)phase,
+        (uint32_t)(tilt_x_deg + 90) | ((uint32_t)(tilt_y_deg + 90) << 8));
     send_msg(h, &m);
 }
 
 void iosc_input_axis(iosc_input_t *h, int dx256, int dy256, unsigned source,
                      unsigned mods, bool stop)
 {
-    struct xios_in_msg m = { .type = XIOS_IN_AXIS, .x = dx256, .y = dy256,
-                             .code = source, .state = stop ? 1u : 0u, .mods = mods };
+    xios_msg m = xios_input_message(XIOS_IN_AXIS, dx256, dy256, source,
+                                    stop ? 1u : 0u, mods);
     send_msg(h, &m);
 }
 
 void iosc_input_gesture(iosc_input_t *h, unsigned kind, unsigned phase, unsigned fingers,
                         int dx256, int dy256, unsigned scale256, int rot256)
 {
-    struct xios_in_msg m = { .type = XIOS_IN_GESTURE, .x = dx256, .y = dy256,
-                             .code = (kind & 0xffu) | ((phase & 0xffu) << 8)
-                                     | ((fingers & 0xffu) << 16),
-                             .state = scale256,
-                             /* Rotation is signed and iosc casts it back to int32. */
-                             .mods = (unsigned)rot256 };
+    xios_msg m = xios_input_message(
+        XIOS_IN_GESTURE, dx256, dy256,
+        (kind & 0xffu) | ((phase & 0xffu) << 8) | ((fingers & 0xffu) << 16),
+        scale256, (unsigned)rot256);
     send_msg(h, &m);
 }
 
@@ -169,13 +154,22 @@ int iosc_input_poll_traits(iosc_input_t *h, unsigned *hint, unsigned *purpose, u
         if (r > 0) {
             h->rx_have += (int)r;
             if (h->rx_have == (int)sizeof(h->rx)) {
-                struct xios_in_msg m;
+                xios_msg m;
                 memcpy(&m, h->rx, sizeof(m));
                 h->rx_have = 0;
+                if (!h->hello_received) {
+                    if (!xios_protocol_is_exact_hello(&m)) goto malformed;
+                    h->hello_received = 1;
+                    continue;
+                }
+                if (m.magic != XIOS_MSG_MAGIC || m.type == XIOS_MSG_HELLO ||
+                    m.length != 0 ||
+                    (m.type != XIOS_IN_TRAITS && m.type != XIOS_IN_HAPTIC))
+                    goto malformed;
                 if (m.type == XIOS_IN_TRAITS) {
-                    if (hint) *hint = m.code;
-                    if (purpose) *purpose = m.state;
-                    if (enabled) *enabled = m.mods;
+                    if (hint) *hint = XIOS_INPUT_CODE(&m);
+                    if (purpose) *purpose = XIOS_INPUT_STATE(&m);
+                    if (enabled) *enabled = XIOS_INPUT_MODS(&m);
                     // One record per call: the auto-keyboard policy needs every
                     // enable/disable transition, so a disable+enable pair queued
                     // in the same tick must not coalesce into the newest values.
@@ -190,4 +184,7 @@ int iosc_input_poll_traits(iosc_input_t *h, unsigned *hint, unsigned *purpose, u
         close(h->fd); h->fd = -1;
         return -1;
     }
+malformed:
+    close(h->fd); h->fd = -1;
+    return -1;
 }

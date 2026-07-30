@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
-    MARKETING_VERSION: "0.1.6"
+    MARKETING_VERSION: "0.1.7"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -55,7 +55,7 @@ targets:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: X11
-        CFBundleShortVersionString: "0.1.6"
+        CFBundleShortVersionString: "0.1.7"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true

@@ -6,10 +6,26 @@
 # small inspection/self-test CLI.
 
 set -u
-_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
-. "$_xt/linux-build/target-lib.sh"
-xios_load_target "${XIOS_TARGET:-rootless-1900}"
+
+# The installed copy is sourced after xios-session-lib has already resolved
+# XS_JB/XS_PREFIX. Only load a build target when this file is run directly from
+# the source tree; target-lib.sh is intentionally not part of the runtime
+# package.
+if [ -z "${XS_PREFIX:-}" ]; then
+    _xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do
+        _xt="$(dirname "$_xt")"
+    done
+    if [ -f "$_xt/linux-build/target-lib.sh" ]; then
+        . "$_xt/linux-build/target-lib.sh"
+        xios_load_target "${XIOS_TARGET:-rootless-1900}"
+    else
+        case "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/" in
+            /var/jb/*) XIOS_PREFIX=/var/jb ;;
+            *) echo "xios-capability-profiles: cannot resolve install prefix" >&2; return 1 2>/dev/null || exit 1 ;;
+        esac
+    fi
+fi
 
 xios_profile_names() {
     printf '%s\n' \
@@ -74,7 +90,7 @@ xios_profile_smoke() {
             printf '%s\n' 'kwin_wayland creates nested socket; log imports client IOSurfaces without EGL errors'
             ;;
         plasma-egl)
-            printf '%s\n' 'plasmashell maps through KWin with QT_WAYLAND_CLIENT_BUFFER_INTEGRATION=wayland-egl'
+            printf '%s\n' 'QtQuick creates an OpenGL QRhi on ANGLE/Metal and maps fenced IOSurfaces through KWin'
             ;;
         gtk-wayland)
             printf '%s\n' 'GTK4 client uses GSK ngl and maps IOSurface buffers instead of wl_shm fallback'
@@ -111,10 +127,18 @@ xios_profile_pair() {
 
 xios_profile_env_pairs() {
     local profile="${1:-}"
-    local angle="${XS_ANGLE_LIBEGL:-$XIOS_PREFIX/lib/angle/libEGL.angle.dylib}"
-    local prefix="${XS_PREFIX:-$XIOS_PREFIX/usr}"
-    local jb="${XS_JB:-$XIOS_PREFIX}"
-    local root_home="${XS_VAR:-$XIOS_PREFIX/var}/root"
+    local angle prefix jb root_home
+    if [ -n "${XS_PREFIX:-}" ]; then
+        prefix="$XS_PREFIX"
+        jb="${XS_JB:-}"
+        root_home="${XS_VAR:-${XS_JB:-}/var}/root"
+        angle="${XS_ANGLE_LIBEGL:-${XS_JB:-}/lib/angle/libEGL.angle.dylib}"
+    else
+        prefix="$XIOS_PREFIX/usr"
+        jb="$XIOS_PREFIX"
+        root_home="$XIOS_PREFIX/var/root"
+        angle="${XS_ANGLE_LIBEGL:-$XIOS_PREFIX/lib/angle/libEGL.angle.dylib}"
+    fi
     local lang="${LANG:-C}" lc_ctype="${LC_CTYPE:-UTF-8}" xcomposefile
     case "$lang" in ""|UTF-8|*.UTF-8|*.utf8|C.UTF-8) lang=C ;; esac
     case "$lc_ctype" in ""|C|POSIX|*.UTF-8|*.utf8|C.UTF-8) lc_ctype=UTF-8 ;; esac
@@ -124,7 +148,7 @@ xios_profile_env_pairs() {
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
             xios_profile_pair GDK_BACKEND wayland
             xios_profile_pair GSK_RENDERER "${IOSC_GSK_RENDERER:-ngl}"
-            xios_profile_pair QT_QPA_PLATFORM "${QT_QPA_PLATFORM:-wayland}"
+            xios_profile_pair QT_QPA_PLATFORM "${IOSC_QT_QPA_PLATFORM:-wayland-egl}"
             xios_profile_pair QT_WAYLAND_DISABLE_WINDOWDECORATION "${QT_WAYLAND_DISABLE_WINDOWDECORATION:-1}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             xios_profile_pair GSETTINGS_BACKEND memory
@@ -176,6 +200,7 @@ xios_profile_env_pairs() {
             xios_profile_pair QML2_IMPORT_PATH "$prefix/lib/qt6/qml"
             xios_profile_pair QML_IMPORT_PATH "$prefix/lib/qt6/qml"
             xios_profile_pair QSG_RHI_BACKEND "${PLASMA_QSG_RHI_BACKEND:-${QSG_RHI_BACKEND:-opengl}}"
+            xios_profile_pair QT_QPA_PLATFORM "${PLASMA_QT_QPA_PLATFORM:-wayland-egl}"
             xios_profile_pair QT_WAYLAND_CLIENT_BUFFER_INTEGRATION "${PLASMA_QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-${QT_WAYLAND_CLIENT_BUFFER_INTEGRATION:-wayland-egl}}"
             xios_profile_pair QT_QUICK_CONTROLS_STYLE "${QT_QUICK_CONTROLS_STYLE:-org.kde.desktop}"
             ;;

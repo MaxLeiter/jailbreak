@@ -427,19 +427,13 @@ static EGLDisplay angle_metal_display(void)
 {
     /* An EGLDisplay is a singleton per (platform, native_display, attribs), so
      * caching the successful one is plain EGL semantics and stops every
-     * eglGetDisplay call from re-entering ANGLE's Metal bring-up. Failures are
-     * not cached, so a caller may retry.
-     *
-     * NOTE: this returns EGL_NO_DISPLAY (with err EGL_SUCCESS, so there is
-     * nothing to report) inside a process that ALREADY owns an ANGLE Metal
-     * display created outside this shim -- kwin_wayland is the case in practice:
-     * its compositing backend makes one directly, and the Qt Wayland QPA then
-     * asks us for a second. Qt treats that as "EGL not available" and drops its
-     * QtQuick scenegraph to software for that process. Harmless there (it is
-     * kwin's internal QtQuick, not compositing, and not plasmashell), but it is
-     * why that warning appears in a session log while the desktop still renders
-     * through ANGLE. Verified: plasmashell launched on its own gets a display
-     * and the threaded render loop. */
+     * eglGetDisplay call from re-entering ANGLE's Metal bring-up. The exported
+     * platform-display wrappers below route both the Wayland facade and the
+     * canonical ANGLE-Metal request through this cache. That matters to nested
+     * compositors: Qt's Wayland QPA may request the facade first, then KWin asks
+     * explicitly for the same underlying ANGLE display. ANGLE rejects a second
+     * construction with EGL_NO_DISPLAY while leaving EGL_SUCCESS set. Failures
+     * are not cached, so a caller may retry. */
     static EGLDisplay cached = EGL_NO_DISPLAY;
     if (cached != EGL_NO_DISPLAY) {
         return cached;
@@ -465,12 +459,30 @@ EGLDisplay eglGetPlatformDisplay(EGLenum platform, void *native_display, const E
         if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplay(WAYLAND)\n");
         return angle_metal_display();
     }
+    if (platform == EGL_PLATFORM_ANGLE_ANGLE
+        && native_display == EGL_DEFAULT_DISPLAY
+        && attrs
+        && attrs[0] == EGL_PLATFORM_ANGLE_TYPE_ANGLE
+        && attrs[1] == EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE
+        && attrs[2] == EGL_NONE) {
+        if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplay(ANGLE Metal)\n");
+        return angle_metal_display();
+    }
     return REAL(eglGetPlatformDisplay)(platform, native_display, attrs);
 }
 EGLDisplay eglGetPlatformDisplayEXT(EGLenum platform, void *native_display, const EGLint *attrs)
 {
     if (platform == EGL_PLATFORM_WAYLAND_KHR || platform == EGL_PLATFORM_WAYLAND_EXT) {
         if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplayEXT(WAYLAND)\n");
+        return angle_metal_display();
+    }
+    if (platform == EGL_PLATFORM_ANGLE_ANGLE
+        && native_display == EGL_DEFAULT_DISPLAY
+        && attrs
+        && attrs[0] == EGL_PLATFORM_ANGLE_TYPE_ANGLE
+        && attrs[1] == EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE
+        && attrs[2] == EGL_NONE) {
+        if (egl_debug()) fprintf(stderr, "iosc_egl: GetPlatformDisplayEXT(ANGLE Metal)\n");
         return angle_metal_display();
     }
     return REAL(eglGetPlatformDisplayEXT)(platform, native_display, attrs);

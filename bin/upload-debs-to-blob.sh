@@ -7,6 +7,7 @@
 #
 # Optional:
 #   BLOB_DEB_PREFIX=debs
+#   BLOB_ONLY=package-a,package-b
 #   BLOB_CACHE_CONTROL_MAX_AGE=31536000
 #   BLOB_DRY_RUN=1
 #   BLOB_SKIP_EXISTING=0
@@ -24,6 +25,7 @@ PUBLIC_BASE_URL="${BLOB_PUBLIC_BASE_URL:-https://j7lqamqsi8q1vmg4.public.blob.ve
 SKIP_EXISTING="${BLOB_SKIP_EXISTING:-1}"
 HEAD_TIMEOUT="${BLOB_HEAD_TIMEOUT:-20}"
 JOBS="${BLOB_JOBS:-8}"
+ONLY="$(printf '%s' "${BLOB_ONLY:-}" | tr -d '[:space:]')"
 
 case "$JOBS" in
   ""|*[!0-9]*) echo "ERROR: BLOB_JOBS must be a positive integer" >&2; exit 1 ;;
@@ -161,7 +163,39 @@ RESULTS="$(mktemp)"
 LIST="$(mktemp)"
 trap 'rm -f "$RESULTS" "$LIST"' EXIT
 
-find "$DEBS_DIR" -type f -name '*.deb' -print | sort > "$LIST"
+if [ -n "$ONLY" ]; then
+  INDEX="${BLOB_INDEX:-$VERCEL_CWD/Packages}"
+  [ -f "$INDEX" ] || {
+    echo "ERROR: scoped Blob upload needs the generated index at $INDEX" >&2
+    exit 1
+  }
+  awk -v only=",$ONLY," '
+    /^Package: /  { package = $2 }
+    /^Filename: / {
+      if (index(only, "," package ",") != 0)
+        print $2
+    }
+  ' "$INDEX" | while IFS= read -r filename; do
+    deb="$VERCEL_CWD/$filename"
+    [ -f "$deb" ] || {
+      echo "ERROR: indexed payload missing for scoped upload: $filename" >&2
+      exit 1
+    }
+    printf '%s\n' "$deb"
+  done > "$LIST"
+  expected="$(awk -F, '{ print NF }' <<EOF
+$ONLY
+EOF
+)"
+  selected="$(wc -l < "$LIST" | tr -d '[:space:]')"
+  [ "$selected" = "$expected" ] || {
+    echo "ERROR: scoped Blob upload selected $selected payload(s), expected $expected: $ONLY" >&2
+    exit 1
+  }
+  echo "==> scoped Blob upload: $ONLY"
+else
+  find "$DEBS_DIR" -type f -name '*.deb' -print | sort > "$LIST"
+fi
 count="$(wc -l < "$LIST" | tr -d '[:space:]')"
 
 export VERCEL_CWD PREFIX CACHE_CONTROL_MAX_AGE PUBLIC_BASE_URL SKIP_EXISTING

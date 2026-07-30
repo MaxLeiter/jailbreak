@@ -28,71 +28,14 @@ void  xios_output_geometry (int *width, int *height);
 float xios_output_scale (void);
 
 /* ---- input socket (for the ClutterVirtualInputDevice pump) -------------------------
- * The Xios app streams a tiny AF_UNIX protocol of fixed 24-byte records (+ a variable
- * text payload for XIOS_IN_TEXT). This is wire-identical to iosc's built-in input socket
- * and ios-inputd.c's `struct iosc_in_msg`; libxios_glue owns the listener + framing so
- * both iosc's wl_seat and MetaBackendIOS's virtual device consume the same stream. */
-
-#define XIOS_IN_MOTION 1u   /* x,y = absolute output-pixel position           */
-#define XIOS_IN_BUTTON 2u   /* code = evdev button (or 0/1/2 -> L/R/M), state */
-#define XIOS_IN_KEY    3u   /* code = X keysym, state = pressed/released, mods */
-#define XIOS_IN_TEXT   4u   /* code = payload byte length; text follows        */
-/* Additive fixed 24-byte records (no payload); readers that predate them pass
- * unknown types through untouched. Phases for both: state = 0 up, 1 down,
- * 2 motion, 3 cancel. */
-#define XIOS_IN_TOUCH  6u   /* real multitouch: code = touch id (slot 0..9)    */
-#define XIOS_IN_TABLET 7u   /* pen/stylus: code = pressure 0..65535,
-                             * mods = (tilt_x_deg+90) | (tilt_y_deg+90)<<8     */
-#define XIOS_IN_TRAITS 5u   /* server->CLIENT: on-screen-keyboard traits (code=hint,
-                             * state=purpose, mods=enabled); sent via _broadcast   */
-#define XIOS_IN_BIND   8u   /* scope this connection's input to one window
-                             * (code = window id); sent once after connect by
-                             * native-ipadOS per-window hosts (IoscInput.c had 8
-                             * on-wire before this header did — 8 is BIND forever) */
-#define XIOS_IN_AXIS   9u   /* two-finger / wheel scroll: x,y = dx,dy in 1/256
-                             * output-pixel fixed point, wl_pointer sign (positive
-                             * = content scrolls down/right); code = source
-                             * (0 finger, 1 wheel); state bit0 = axis_stop (end of
-                             * gesture, deltas 0 — lets clients fling kinetically);
-                             * mods = wire modifier mask held for the frame;
-                             * see XIOS_MOD_* below                                */
-#define XIOS_IN_OUTPUT 10u  /* app->server: output transform/size change       */
-#define XIOS_IN_HAPTIC 11u  /* server->CLIENT broadcast: haptic feedback       */
-#define XIOS_IN_VOLUME 12u  /* sysintd volume bridge; code = 0..65535          */
-#define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
-#define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style            */
-#define XIOS_IN_GESTURE 14u /* trackpad pinch/rotate/swipe; the authoritative
-                             * field layout lives in xios_input_socket.h, and
-                             * these two headers are twins that MUST agree     */
-#define XIOS_GESTURE_SWIPE  1u
-#define XIOS_GESTURE_PINCH  2u
-#define XIOS_GESTURE_HOLD   3u
-#define XIOS_GESTURE_BEGIN  0u
-#define XIOS_GESTURE_UPDATE 1u
-#define XIOS_GESTURE_END    2u
-#define XIOS_GESTURE_CANCEL 3u
-#define XIOS_IN_IMPROXY 15u /* client->server: this connection is the input-method
-                             * proxy for a nested compositor (KDE flavor), not a
-                             * display host. code = 1 register, 0 unregister.
-                             * Consumed by the reader like BIND. Unused by
-                             * MetaBackendIOS (mutter owns its own text-input);
-                             * listed so the type registry stays one namespace. */
-
-/* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */
-struct xios_in_msg
-{
-  uint32_t type;      /* one of XIOS_IN_*                                   */
-  int32_t  x, y;      /* pointer position (output pixels), MOTION only      */
-  uint32_t code;      /* button / keysym / text length by type             */
-  uint32_t state;     /* 0 released, 1 pressed (BUTTON/KEY)                 */
-    uint32_t mods;      /* 1 shift, 2 ctrl, 4 alt, 8 super, 16 caps, 32 num */
-};
+ * The Xios app streams canonical xios_msg records (+ a variable text payload
+ * for XIOS_IN_TEXT). libxios_glue owns the listener + strict-v1 framing. */
 
 typedef struct xios_input_socket xios_input_socket;
 
 /* Per-message callback. For XIOS_IN_TEXT, `text`/`text_len` point at the payload
  * (owned by the socket, valid only for the callback); NULL/0 otherwise. */
-typedef void (*xios_input_cb) (const struct xios_in_msg *m,
+typedef void (*xios_input_cb) (const xios_msg           *m,
                                const char               *text,
                                size_t                    text_len,
                                uint32_t                  bound_window,
@@ -195,11 +138,11 @@ int   xios_server_start (const char *sock_path, const char *json_path,
 void  xios_server_stop (void);
 
 /* Call BEFORE xios_server_start. xios_set_compositor_id names the flavor ("mutter-ios") in the
- * typed in-band HELLO so the app enables the cursor overlay. xios_set_input_socket makes the
- * json writer emit "input_socket":<path> in xios.json, so the app routes keyboard/pointer/scroll
- * to mutter's AF_UNIX input socket instead of falling through to a dead XTEST path. Real impls in
- * xios_surface.c (libxios_glue, commit 0027261); prototypes match xios_surface.h. */
+ * typed in-band HELLO so the app enables the cursor overlay. The two endpoint setters advertise
+ * the exact input and clipboard sockets in xios.json. Real implementations live in
+ * xios_surface.c; prototypes match xios_surface.h. */
 void  xios_set_compositor_id (const char *id);
 void  xios_set_input_socket (const char *path);
+void  xios_set_clipboard_socket (const char *path);
 
 #endif /* XIOS_GLUE_STUB_H */

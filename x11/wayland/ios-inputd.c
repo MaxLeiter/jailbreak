@@ -28,6 +28,7 @@
 #include "input-method-unstable-v2-client-protocol.h"
 #include "virtual-keyboard-unstable-v1-client-protocol.h"
 #include "iosc_input.h"
+#include "../apps/shared/XiosProtocol.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -43,16 +44,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define IOSC_IN_TEXT_MAX 4096u
-#define IOSC_IN_MOTION 1
-#define IOSC_IN_BUTTON 2
-#define IOSC_IN_KEY    3
-#define IOSC_IN_TEXT   4
-#define IOSC_IN_TRAITS 5    /* proxy->iosc here: OSK traits, rebroadcast to hosts */
-#define IOSC_IN_IMPROXY 15  /* proxy->iosc: claim the input-method-proxy role.
-                             * 14 is XIOS_IN_GESTURE, already on the wire in
-                             * shipped iosc/Xios builds; this role was never
-                             * published, so it renumbered rather than it.        */
+#define XIOS_IN_TEXT_MAX 4096u
 
 /* text-input-v1 -> text-input-v3 content_purpose. KWin converts down to v1 before
  * handing the IM a content_type (inputmethod_v1.cpp sendContentType), but the Xios
@@ -75,14 +67,6 @@ static uint32_t v1_purpose_to_v3(uint32_t purpose)
     }
 }
 
-struct iosc_in_msg {
-    uint32_t type;
-    int32_t x, y;
-    uint32_t code;
-    uint32_t state;
-    uint32_t mods;
-};
-
 struct app_state {
     struct wl_display *display;
     struct wl_registry *registry;
@@ -103,9 +87,10 @@ struct app_state {
     char sock_path[108];                          /* for reconnect after iosc restart */
     int listen_fd;
     int client_fd;
-    uint8_t hdr[sizeof(struct iosc_in_msg)];
+    int hello_received;
+    uint8_t hdr[sizeof(xios_msg)];
     int hdr_have;
-    struct iosc_in_msg msg;
+    xios_msg msg;
     char *payload;
     uint32_t payload_have;
     uint32_t key_mods_depressed;
@@ -153,6 +138,7 @@ static void app_client_drop(struct app_state *s)
 {
     if (s->client_fd >= 0) close(s->client_fd);
     s->client_fd = -1;
+    s->hello_received = 0;
     app_client_reset(s);
     fprintf(stderr, s->proxy ? "ios-inputd: iosc input socket closed; will reconnect\n"
                              : "ios-inputd: app input client disconnected\n");
@@ -260,12 +246,8 @@ static int proxy_write(struct app_state *s, const void *buf, size_t len)
 static void proxy_send_traits(struct app_state *s)
 {
     if (!s->proxy) return;
-    struct iosc_in_msg m;
-    memset(&m, 0, sizeof(m));
-    m.type = IOSC_IN_TRAITS;
-    m.code = s->tr_hint;
-    m.state = s->tr_purpose;
-    m.mods = s->tr_enabled;
+    xios_msg m = xios_input_message(XIOS_IN_TRAITS, 0, 0, s->tr_hint,
+                                    s->tr_purpose, s->tr_enabled);
     if (proxy_write(s, &m, sizeof(m)) != 0) {
         fprintf(stderr, "ios-inputd: traits push failed: %s\n", strerror(errno));
         app_client_drop(s);
@@ -306,10 +288,12 @@ static int proxy_connect(struct app_state *s)
     s->client_fd = fd;
     app_client_reset(s);
 
-    struct iosc_in_msg reg;
-    memset(&reg, 0, sizeof(reg));
-    reg.type = IOSC_IN_IMPROXY;
-    reg.code = 1;
+    xios_msg hello = xios_protocol_hello();
+    xios_msg reg = xios_input_message(XIOS_IN_IMPROXY, 0, 0, 1, 0, 0);
+    if (proxy_write(s, &hello, sizeof(hello)) != 0) {
+        app_client_drop(s);
+        return -1;
+    }
     if (proxy_write(s, &reg, sizeof(reg)) != 0) {
         fprintf(stderr, "ios-inputd: IMPROXY register failed: %s\n", strerror(errno));
         app_client_drop(s);
@@ -400,18 +384,18 @@ static const struct zwp_input_method_v1_listener im1_listener = {
     .deactivate = im1_deactivate,
 };
 
-static void dispatch_msg(struct app_state *s, const struct iosc_in_msg *m)
+static void dispatch_msg(struct app_state *s, const xios_msg *m)
 {
     /* Proxy mode gets TEXT and nothing else: iosc is still the root compositor,
      * so pointer/keyboard/touch already reach KWin through its wl_seat. Injecting
      * them a second time here would double every keystroke. */
     if (s->proxy) return;
     switch (m->type) {
-    case IOSC_IN_KEY:
+    case XIOS_IN_KEY:
         send_virtual_key(s, m->code, m->state, m->mods);
         break;
-    case IOSC_IN_MOTION:
-    case IOSC_IN_BUTTON:
+    case XIOS_IN_MOTION:
+    case XIOS_IN_BUTTON:
         break;
     }
     wl_display_flush(s->display);
@@ -433,11 +417,39 @@ static void service_app_client(struct app_state *s)
                 s->hdr_have += (int)r;
                 if (s->hdr_have < (int)sizeof(s->hdr)) continue;
                 memcpy(&s->msg, s->hdr, sizeof(s->msg));
-                if (s->msg.type == IOSC_IN_TEXT) {
-                    if (s->msg.code == 0 || s->msg.code > IOSC_IN_TEXT_MAX) { app_client_drop(s); return; }
-                    s->payload = calloc(1, s->msg.code + 1u);
+                if (!s->hello_received) {
+                    if (!xios_protocol_is_exact_hello(&s->msg)) {
+                        app_client_drop(s);
+                        return;
+                    }
+                    s->hello_received = 1;
+                    app_client_reset(s);
+                    continue;
+                }
+                if (s->msg.magic != XIOS_MSG_MAGIC ||
+                    s->msg.type == XIOS_MSG_HELLO) {
+                    app_client_drop(s);
+                    return;
+                }
+                if (s->proxy ? s->msg.type != XIOS_IN_TEXT
+                             : (s->msg.type != XIOS_IN_TEXT &&
+                                s->msg.type != XIOS_IN_KEY &&
+                                s->msg.type != XIOS_IN_MOTION &&
+                                s->msg.type != XIOS_IN_BUTTON)) {
+                    app_client_drop(s);
+                    return;
+                }
+                if (s->msg.type == XIOS_IN_TEXT) {
+                    if (s->msg.length == 0 ||
+                        s->msg.length > XIOS_IN_TEXT_MAX ||
+                        s->msg.code != s->msg.length) {
+                        app_client_drop(s);
+                        return;
+                    }
+                    s->payload = calloc(1, s->msg.length + 1u);
                     if (!s->payload) { app_client_drop(s); return; }
                 } else {
+                    if (s->msg.length != 0) { app_client_drop(s); return; }
                     dispatch_msg(s, &s->msg);
                     app_client_reset(s);
                 }
@@ -449,8 +461,9 @@ static void service_app_client(struct app_state *s)
             app_client_drop(s);
             return;
         }
-        while (s->msg.type == IOSC_IN_TEXT && s->payload_have < s->msg.code) {
-            ssize_t r = read(s->client_fd, s->payload + s->payload_have, s->msg.code - s->payload_have);
+        while (s->msg.type == XIOS_IN_TEXT && s->payload_have < s->msg.length) {
+            ssize_t r = read(s->client_fd, s->payload + s->payload_have,
+                             s->msg.length - s->payload_have);
             if (r > 0) { s->payload_have += (uint32_t)r; continue; }
             if (r == 0) { app_client_drop(s); return; }
             if (errno == EAGAIN || errno == EWOULDBLOCK) return;
@@ -458,8 +471,8 @@ static void service_app_client(struct app_state *s)
             app_client_drop(s);
             return;
         }
-        if (s->msg.type == IOSC_IN_TEXT) {
-            dispatch_text(s, s->payload, s->msg.code);
+        if (s->msg.type == XIOS_IN_TEXT) {
+            dispatch_text(s, s->payload, s->msg.length);
             app_client_reset(s);
             continue;
         }
@@ -518,9 +531,15 @@ static void accept_app_client(struct app_state *s)
 {
     int fd = accept(s->listen_fd, NULL, NULL);
     if (fd < 0) return;
-    set_nonblock(fd);
     if (s->client_fd >= 0) app_client_drop(s);
     s->client_fd = fd;
+    xios_msg hello = xios_protocol_hello();
+    if (proxy_write(s, &hello, sizeof(hello)) != 0) {
+        app_client_drop(s);
+        return;
+    }
+    set_nonblock(fd);
+    s->hello_received = 0;
     fprintf(stderr, "ios-inputd: app input client connected\n");
 }
 

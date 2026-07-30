@@ -70,18 +70,22 @@ echo "==> out:    $OUT"
 
 cmd=(docker run --rm --platform linux/arm64
   -e XIOS_TARGET_ID -e XIOS_MEMO_TARGET -e XIOS_MEMO_CFVER -e XIOS_PREFIX
-  -e XIOS_SUBPREFIX -e XIOS_DEB_ARCH -e JOBS -e TARGETS
+  -e XIOS_SUBPREFIX -e XIOS_DEB_ARCH -e JOBS -e TARGETS -e MUTTER_CLEAN
   -v "$VOLUME:/work/Procursus"
   -v "$HERE/target-env.sh:/work/target-env.sh:ro"
   -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro"
+  -v "$X11DIR:/work/x11:ro"
   -v "$HERE/recipes:/work/recipes:ro"
   -v "$HERE/build_info:/work/build_info:ro"
   -v "$HERE/patches:/work/patches:ro"
   -v "$X11DIR/ports:/work/ports:ro"
   -v "$SCRIPT_PATH:/work/$(basename "$SCRIPT_PATH"):ro"
   -v "$OUT:/out"
-  "${EXTRA[@]}"
-  "$IMAGE" "/work/$(basename "$SCRIPT_PATH")")
+)
+if [ "${#EXTRA[@]}" -gt 0 ]; then
+  cmd+=("${EXTRA[@]}")
+fi
+cmd+=("$IMAGE" "/work/$(basename "$SCRIPT_PATH")")
 
 if [ "$DRY_RUN" = 1 ]; then
   printf '+'; printf ' %q' "${cmd[@]}"; printf '\n'

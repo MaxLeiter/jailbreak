@@ -98,6 +98,7 @@ set -euo pipefail
 TARGET=prod
 ONLY=""
 SOURCE=""   # empty until the per-target default is applied below
+REPUBLISH_METADATA=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --staging|staging) TARGET=staging ;;
@@ -107,8 +108,9 @@ while [ "$#" -gt 0 ]; do
     --only=*)          ONLY="${1#--only=}" ;;
     --from-index)      SOURCE=index ;;
     --from-debs)       SOURCE=debs ;;
+    --republish-metadata) REPUBLISH_METADATA=1 ;;
     "") ;;
-    *) echo "usage: bin/publish-repo.sh [--staging|--prod|--preview] [--only pkg[,pkg...]] [--from-index|--from-debs]" >&2; exit 2 ;;
+    *) echo "usage: bin/publish-repo.sh [--staging|--prod|--preview] [--only pkg[,pkg...]] [--from-index|--from-debs] [--republish-metadata]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -119,7 +121,14 @@ if [ -z "$SOURCE" ]; then
     *)    SOURCE=debs ;;
   esac
 fi
-echo "==> target=$TARGET index-source=$SOURCE${ONLY:+ only=$ONLY}"
+if [ "$REPUBLISH_METADATA" = 1 ] \
+   && { [ "$TARGET" != prod ] || [ "$SOURCE" != index ] || [ -z "$ONLY" ]; }; then
+  echo "ERROR: --republish-metadata requires production --from-index with --only." >&2
+  exit 2
+fi
+republish_note=""
+[ "$REPUBLISH_METADATA" = 1 ] && republish_note=" republish-metadata"
+echo "==> target=$TARGET index-source=$SOURCE${ONLY:+ only=$ONLY}$republish_note"
 
 # This script publishes the flat rootless repo. Other profiles can be generated
 # locally (XIOS_REPO_PROFILE=rootful bin/lib/make-repo.py writes an independent
@@ -281,10 +290,14 @@ deploy_static_repo() {
   # in. Done here, on the throwaway copy, so repo/ keeps its full (staging) index.
   if [ -n "$ONLY" ]; then
     echo "==> Scoping the index to: $ONLY (against https://$domain/Packages)"
-    "$PY" "$REPO_ROOT/bin/lib/scope-index.py" \
-      --repo "$deploy_root/repo" \
-      --live "https://$domain/Packages" \
+    local scope_args=(
+      --repo "$deploy_root/repo"
+      --live "https://$domain/Packages"
       --only "$ONLY"
+    )
+    [ "$REPUBLISH_METADATA" = 1 ] && scope_args+=(--allow-noop)
+    "$PY" "$REPO_ROOT/bin/lib/scope-index.py" \
+      "${scope_args[@]}"
     # Re-check solvability on what we are ACTUALLY publishing. The full-tree check
     # earlier passed because the tree has everything; prod may not. This is the
     # gate that catches publishing one half of a package pair.
@@ -436,7 +449,7 @@ if [ "$SOURCE" = debs ]; then
   fi
 
   echo "==> Uploading package payloads to Vercel Blob"
-  "$REPO_ROOT/bin/upload-debs-to-blob.sh"
+  BLOB_ONLY="$ONLY" "$REPO_ROOT/bin/upload-debs-to-blob.sh"
 
   AFTER_UPLOAD="$(snapshot_debs)"
   if [ "$BEFORE" != "$AFTER_UPLOAD" ]; then

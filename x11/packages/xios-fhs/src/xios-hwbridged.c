@@ -22,6 +22,7 @@
  */
 
 #include <gio/gio.h>
+#include "XiosProtocol.h"
 #include <glib-unix.h>
 #include <glib/gstdio.h>
 
@@ -383,6 +384,22 @@ seed_sysfs_skeleton (void)
 
 static void emit_screen_brightness_changed (void);
 
+static gboolean
+sysint_transfer_full (int fd, void *buffer, size_t size, gboolean writing)
+{
+  char *p = buffer;
+  size_t done = 0;
+  while (done < size)
+    {
+      ssize_t n = writing ? send (fd, p + done, size - done, 0)
+                          : recv (fd, p + done, size - done, 0);
+      if (n > 0) { done += (size_t) n; continue; }
+      if (n < 0 && errno == EINTR) continue;
+      return FALSE;
+    }
+  return TRUE;
+}
+
 /* Hand a brightness level to the Xios app over xios-sysintd's socket.
  *
  * BKSDisplayBrightnessSet cannot do this job: on iPadOS 17.6.1 it is inert from a
@@ -419,16 +436,17 @@ send_brightness_to_app (int value)
       return;
     }
 
-  /* The 24-byte xios_input_socket record, laid out here rather than including
-   * xios_input_socket.h so this package keeps building standalone: type, x, y,
-   * code, state, mods -- all little-endian 32-bit. Type 15 = XIOS_IN_BRIGHTNESS,
-   * state bit0 = XIOS_BRIGHTNESS_STATE_TO_DEVICE. */
-  uint32_t rec[6] = { 15u, 0u, 0u,
-                      (uint32_t) ((value * 65535 + MAX_BRIGHTNESS / 2) / MAX_BRIGHTNESS),
-                      1u, 0u };
-  ssize_t w = send (fd, rec, sizeof rec, 0);
-  if (w != (ssize_t) sizeof rec)
-    g_warning ("hwbridge: short brightness send (%zd of %zu)", w, sizeof rec);
+  xios_msg hello = xios_protocol_hello ();
+  xios_msg peer;
+  xios_msg rec = xios_input_message (
+    XIOS_IN_BRIGHTNESS, 0, 0,
+    (uint32_t) ((value * 65535 + MAX_BRIGHTNESS / 2) / MAX_BRIGHTNESS),
+    XIOS_BRIGHTNESS_STATE_TO_DEVICE, 0);
+  if (!sysint_transfer_full (fd, &hello, sizeof hello, TRUE) ||
+      !sysint_transfer_full (fd, &peer, sizeof peer, FALSE) ||
+      !xios_protocol_is_exact_hello (&peer) ||
+      !sysint_transfer_full (fd, &rec, sizeof rec, TRUE))
+    g_warning ("hwbridge: strict-v1 brightness exchange failed");
   close (fd);
 }
 

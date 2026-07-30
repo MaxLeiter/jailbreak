@@ -15,7 +15,11 @@ set -euo pipefail
 umask 022
 
 PROC=/work/Procursus
-SRC=/work/xios-fhs
+if [ -d /work/x11/packages/xios-fhs ]; then
+  SRC=/work/x11/packages/xios-fhs
+else
+  SRC=/work/xios-fhs
+fi
 OUT=/out
 mkdir -p "$OUT"
 
@@ -37,6 +41,12 @@ if [ -z "$TARGET_SYS_ROOT" ]; then
   if [ -n "$TARGET_PREFIX" ]; then TARGET_SYS_ROOT="$TARGET_PREFIX/sys"; else TARGET_SYS_ROOT="/sys"; fi
 fi
 TARGET_PACKAGE_PATH_PREFIX="${XIOS_PACKAGE_PATH_PREFIX:-$TARGET_PREFIX}"
+XIOS_PROTOCOL_INCLUDE="${XIOS_PROTOCOL_INCLUDE:-$SRC/../../apps/shared}"
+[ -f "$XIOS_PROTOCOL_INCLUDE/XiosProtocol.h" ] || {
+  echo "!! canonical XiosProtocol.h not found at $XIOS_PROTOCOL_INCLUDE" >&2
+  echo "   mount x11 at /work/x11 and set SRC=/work/x11/packages/xios-fhs" >&2
+  exit 1
+}
 
 SYSROOT_ROOT="$PROC/build_base/$MEMO_TARGET/$MEMO_CFVER"
 SYSROOT="$SYSROOT_ROOT$TARGET_INSTALL_PREFIX"
@@ -62,6 +72,7 @@ CFLAGS=(
   -Wall
   -Wextra
   -Wno-unused-parameter
+  "-I$XIOS_PROTOCOL_INCLUDE"
   "-DDEFAULT_SYS_ROOT=\"$TARGET_SYS_ROOT\""
 )
 # glib/gio/gobject/libintl.8 are referenced as @rpath but the binaries carry no

@@ -61,6 +61,11 @@ def main():
     ap.add_argument("--live", required=True, help="URL of the index the target serves now")
     ap.add_argument("--only", required=True, help="comma-separated package names to publish")
     ap.add_argument("--origin", default="", help="Origin/Label/Name for Release (else reuse)")
+    ap.add_argument(
+        "--allow-noop",
+        action="store_true",
+        help="rewrite the live index even when every scoped package is byte-identical",
+    )
     args = ap.parse_args()
 
     names = [n.strip() for n in args.only.split(",") if n.strip()]
@@ -114,9 +119,11 @@ def main():
     for name, ver in identical:
         print(f"   {name}: {ver} is already live, byte-identical")
     if not replaced and not added:
-        sys.exit("scope-index: every named package is already live unchanged. Nothing "
-                 "would reach the target, so this publish is a no-op -- if you expected "
-                 "a new version, the deb in repo/debs is stale (rebuild and repackage).")
+        if not args.allow_noop:
+            sys.exit("scope-index: every named package is already live unchanged. Nothing "
+                     "would reach the target, so this publish is a no-op -- if you expected "
+                     "a new version, the deb in repo/debs is stale (rebuild and repackage).")
+        print("scope-index: metadata republish requested; preserving the live index")
 
     packages = "\n\n".join(s for _, s in kept) + "\n"
     open(local_path, "w", encoding="utf-8").write(packages)

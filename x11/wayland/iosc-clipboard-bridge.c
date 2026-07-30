@@ -54,6 +54,9 @@ struct clip_item {
 
 static struct clip_client *g_clients[CLIP_MAX_CLIENTS];
 static struct wl_event_loop *g_loop;
+static struct wl_event_source *g_listen_src;
+static int g_listen_fd = -1;
+static char *g_socket_path;
 static ioscclip_recv_fn g_recv_cb;
 static void *g_recv_ud;
 
@@ -117,7 +120,7 @@ static void client_drop(struct clip_client *c)
     free(c->rx_payload);
     free(c->tx);
     free(c);
-    fprintf(stderr, "iosc: clipboard host disconnected\n");
+    fprintf(stderr, "xios-clipboard: host disconnected\n");
 }
 
 static void client_update_mask(struct clip_client *c, uint32_t mask)
@@ -169,8 +172,12 @@ static int tx_flush(struct clip_client *c)
 static int tx_record(struct clip_client *c, uint32_t kind, uint32_t gen,
                      const void *data, size_t len)
 {
-    xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_CLIPBOARD, 0, (uint32_t)len,
-                   (int32_t)kind, (int32_t)gen, 0, 0 };
+    xios_msg h = {0};
+    h.magic = XIOS_MSG_MAGIC;
+    h.type = XIOS_MSG_CLIPBOARD;
+    h.length = (uint32_t)len;
+    h.a = (int32_t)kind;
+    h.b = (int32_t)gen;
     if (tx_queue(c, &h, sizeof(h)) != 0) return -1;
     if (len && tx_queue(c, data, len) != 0) return -1;
     return tx_flush(c);
@@ -178,10 +185,7 @@ static int tx_record(struct clip_client *c, uint32_t kind, uint32_t gen,
 
 static int tx_hello(struct clip_client *c)
 {
-    xios_msg hello = {
-        XIOS_MSG_MAGIC, XIOS_MSG_HELLO, XIOS_PROTOCOL_VERSION, 0,
-        0, 0, 0, 0
-    };
+    xios_msg hello = xios_protocol_hello();
     if (tx_queue(c, &hello, sizeof(hello)) != 0) return -1;
     return tx_flush(c);
 }
@@ -304,7 +308,7 @@ static int client_dispatch(int fd, uint32_t mask, void *data)
                     rx_reset(c);
                     if (tx_hello(c) != 0 || replay_snapshot(c) != 0)
                         goto drop;
-                    fprintf(stderr, "iosc: clipboard v%u host connected (fd=%d)\n",
+                    fprintf(stderr, "xios-clipboard: v%u host connected (fd=%d)\n",
                             XIOS_PROTOCOL_VERSION, fd);
                     continue;
                 }
@@ -371,6 +375,8 @@ static int listen_dispatch(int fd, uint32_t mask, void *data)
 int ioscclip_start(struct wl_event_loop *loop, const char *path,
                    ioscclip_recv_fn on_recv, void *user_data)
 {
+    if (!loop || !path || !*path) return -1;
+    ioscclip_stop();
     unlink(path);
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
@@ -381,6 +387,7 @@ int ioscclip_start(struct wl_event_loop *loop, const char *path,
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0 ||
         listen(fd, 4) < 0) {
         close(fd);
+        unlink(path);
         return -1;
     }
     /* iosc runs as root, the host app as mobile: restrict to mobile (0660)
@@ -392,17 +399,52 @@ int ioscclip_start(struct wl_event_loop *loop, const char *path,
         chmod(path, 0660);
     } else {
         chmod(path, 0600);
-        fprintf(stderr, "iosc: keeping clipboard socket %s owner-only; chown mobile failed: %s\n",
+        fprintf(stderr, "xios-clipboard: keeping socket %s owner-only; chown mobile failed: %s\n",
                 path, strerror(errno));
     }
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 
-    if (!wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, listen_dispatch, NULL)) {
+    g_listen_src =
+        wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, listen_dispatch, NULL);
+    if (!g_listen_src) {
         close(fd);
+        unlink(path);
+        return -1;
+    }
+    g_listen_fd = fd;
+    g_socket_path = strdup(path);
+    if (!g_socket_path) {
+        ioscclip_stop();
         return -1;
     }
     g_loop = loop;
     g_recv_cb = on_recv;
     g_recv_ud = user_data;
     return 0;
+}
+
+void ioscclip_stop(void)
+{
+    for (int i = 0; i < CLIP_MAX_CLIENTS; i++)
+        if (g_clients[i]) client_drop(g_clients[i]);
+
+    if (g_listen_src) {
+        wl_event_source_remove(g_listen_src);
+        g_listen_src = NULL;
+    }
+    if (g_listen_fd >= 0) {
+        close(g_listen_fd);
+        g_listen_fd = -1;
+    }
+    if (g_socket_path) {
+        unlink(g_socket_path);
+        free(g_socket_path);
+        g_socket_path = NULL;
+    }
+
+    items_clear();
+    g_gen = 0;
+    g_loop = NULL;
+    g_recv_cb = NULL;
+    g_recv_ud = NULL;
 }

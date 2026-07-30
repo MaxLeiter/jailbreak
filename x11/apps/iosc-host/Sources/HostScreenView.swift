@@ -75,8 +75,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var modCtrl = false, modAlt = false, modShift = false
 
     // Auto keyboard (x11/docs/osk-plan.md): TRAITS enable raises the iOS keyboard,
-    // disable lowers it. Classic/fallback paths can still broadcast broadly, so
-    // only the key window's view pops.
+    // disable lowers it. Only the key window's view pops.
     private var lastTraitEnabled: UInt32 = 0
     private var oskAutoShown = false          // the auto path raised the keyboard
     private var oskUserDismissed = false      // user hid it while the field was still enabled
