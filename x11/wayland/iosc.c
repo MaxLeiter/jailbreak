@@ -35,6 +35,7 @@
 #include "wlr-foreign-toplevel-management-unstable-v1-server-protocol.h"
 #include "pointer-constraints-unstable-v1-server-protocol.h"
 #include "relative-pointer-unstable-v1-server-protocol.h"
+#include "pointer-gestures-unstable-v1-server-protocol.h"
 #include "primary-selection-unstable-v1-server-protocol.h"
 #include "idle-inhibit-unstable-v1-server-protocol.h"
 #include "ext-idle-notify-v1-server-protocol.h"
@@ -431,6 +432,10 @@ static void ftl_broadcast_title(struct iosc_surface *s);
 static void ftl_broadcast_app_id(struct iosc_surface *s);
 /* pointer-constraints (zwp_pointer_constraints_v1) + relative-pointer */
 static void relptr_send(uint32_t time, double dx, double dy);
+/* pointer-gestures (zwp_pointer_gestures_v1) — trackpad pinch/rotate, fed by
+ * XIOS_IN_GESTURE from the wire dispatch above its definition. */
+static void handle_gesture(uint32_t code, int32_t dx256, int32_t dy256,
+                           uint32_t scale256, uint32_t rot256);
 static int  pointer_locked_for(struct iosc_surface *s);
 static void constraints_update_focus(struct iosc_surface *newfocus);
 static int  confine_point(struct iosc_surface *s, int *x, int *y);
@@ -7373,6 +7378,10 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
         case XIOS_IN_AXIS:   if (bound) g_ptr_focus = bound;
                              handle_axis(m->x, m->y, m->code,
                                          (int)(m->state & 1u), m->mods); break;
+        /* GESTURE x,y are fixed-point translation DELTAS like AXIS, so pass the
+         * raw wire values, not the physical_to_logical'd locals. */
+        case XIOS_IN_GESTURE: if (bound) g_ptr_focus = bound;
+                             handle_gesture(m->code, m->x, m->y, m->state, m->mods); break;
         case XIOS_IN_OUTPUT: {
             int tr = (int)(m->code & 3u);
             int lw = m->x > 0 ? m->x : ((tr & 1) ? g_natural_lh : g_natural_lw);
@@ -7972,6 +7981,132 @@ static void relptr_mgr_bind(struct wl_client *c, void *data, uint32_t version, u
     struct wl_resource *r = wl_resource_create(c, &zwp_relative_pointer_manager_v1_interface, version, id);
     if (!r) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(r, &relptr_mgr_impl, NULL, NULL);
+}
+
+/* ===========================================================================
+ * pointer-gestures (zwp_pointer_gestures_v1)
+ *
+ * A Magic Trackpad's pinch and rotate reach the Xios app as UIKit gesture
+ * recognizers rather than as touches, so they cross the wire as XIOS_IN_GESTURE
+ * and land here. Like axis and relative motion, gestures go to whichever client
+ * holds pointer focus.
+ *
+ * Only pinch has a source today: iPadOS hands an app two-finger pinch and
+ * rotation but keeps three- and four-finger swipes for the app switcher and
+ * Home, so nothing can drive the swipe interface, and there is no iOS gesture
+ * that means "hold". Both are still implemented, because a client that binds
+ * this global may create any of the three and an unimplemented resource is a
+ * protocol error on first use rather than a quiet no-op. KWin's Wayland backend
+ * links the client side of this protocol, which is what makes KDE pinch work
+ * without patching KWin.
+ * =========================================================================== */
+
+#define IOSC_MAX_PTRGEST 32
+static struct wl_resource *g_gswipe[IOSC_MAX_PTRGEST]; static int g_ngswipe;
+static struct wl_resource *g_gpinch[IOSC_MAX_PTRGEST]; static int g_ngpinch;
+static struct wl_resource *g_ghold[IOSC_MAX_PTRGEST];  static int g_nghold;
+
+static void gswipe_res_destroy(struct wl_resource *r){ reslist_remove(g_gswipe, &g_ngswipe, r); }
+static void gpinch_res_destroy(struct wl_resource *r){ reslist_remove(g_gpinch, &g_ngpinch, r); }
+static void ghold_res_destroy(struct wl_resource *r) { reslist_remove(g_ghold,  &g_nghold,  r); }
+static void gesture_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_pointer_gesture_swipe_v1_interface gswipe_impl = { .destroy = gesture_destroy };
+static const struct zwp_pointer_gesture_pinch_v1_interface gpinch_impl = { .destroy = gesture_destroy };
+static const struct zwp_pointer_gesture_hold_v1_interface  ghold_impl  = { .destroy = gesture_destroy };
+
+/* code/x/y/state/mods carry one gesture frame; see XIOS_IN_GESTURE in
+ * xios_input_socket.h for the packing. Translation arrives in the same 1/256
+ * physical-pixel fixed point AXIS uses, so dividing by output_scale() yields a
+ * logical-px wl_fixed directly. Scale and rotation are already wl_fixed by
+ * construction (1/256 units), and rotation is a signed value riding in an
+ * unsigned wire field. */
+static void handle_gesture(uint32_t code, int32_t dx256, int32_t dy256,
+                           uint32_t scale256, uint32_t rot256)
+{
+    idle_note_activity();
+    if (!g_ptr_focus) return;
+    uint32_t kind    = code & 0xffu;
+    uint32_t phase   = (code >> 8) & 0xffu;
+    uint32_t fingers = (code >> 16) & 0xffu;
+    if (!fingers) fingers = 2;
+
+    struct wl_client *fc = wl_resource_get_client(g_ptr_focus->resource);
+    struct wl_resource *focus = g_ptr_focus->resource;
+    uint32_t t = now_ms();
+    uint32_t serial = wl_display_next_serial(g_display);
+    wl_fixed_t dx = (wl_fixed_t)(dx256 / output_scale());
+    wl_fixed_t dy = (wl_fixed_t)(dy256 / output_scale());
+    wl_fixed_t scale = (wl_fixed_t)scale256;
+    wl_fixed_t rot = (wl_fixed_t)(int32_t)rot256;
+    int cancelled = phase == XIOS_GESTURE_CANCEL;
+
+    if (kind == XIOS_GESTURE_PINCH) {
+        for (int i = 0; i < g_ngpinch; i++) {
+            struct wl_resource *g = g_gpinch[i];
+            if (wl_resource_get_client(g) != fc) continue;
+            if (phase == XIOS_GESTURE_BEGIN)
+                zwp_pointer_gesture_pinch_v1_send_begin(g, serial, t, focus, fingers);
+            else if (phase == XIOS_GESTURE_UPDATE)
+                zwp_pointer_gesture_pinch_v1_send_update(g, t, dx, dy, scale, rot);
+            else
+                zwp_pointer_gesture_pinch_v1_send_end(g, serial, t, cancelled);
+        }
+    } else if (kind == XIOS_GESTURE_SWIPE) {
+        for (int i = 0; i < g_ngswipe; i++) {
+            struct wl_resource *g = g_gswipe[i];
+            if (wl_resource_get_client(g) != fc) continue;
+            if (phase == XIOS_GESTURE_BEGIN)
+                zwp_pointer_gesture_swipe_v1_send_begin(g, serial, t, focus, fingers);
+            else if (phase == XIOS_GESTURE_UPDATE)
+                zwp_pointer_gesture_swipe_v1_send_update(g, t, dx, dy);
+            else
+                zwp_pointer_gesture_swipe_v1_send_end(g, serial, t, cancelled);
+        }
+    } else if (kind == XIOS_GESTURE_HOLD) {
+        for (int i = 0; i < g_nghold; i++) {
+            struct wl_resource *g = g_ghold[i];
+            if (wl_resource_get_client(g) != fc) continue;
+            if (phase == XIOS_GESTURE_BEGIN)
+                zwp_pointer_gesture_hold_v1_send_begin(g, serial, t, focus, fingers);
+            else if (phase != XIOS_GESTURE_UPDATE)   /* hold has no update event */
+                zwp_pointer_gesture_hold_v1_send_end(g, serial, t, cancelled);
+        }
+    }
+}
+
+static void ptrgest_get(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                        struct wl_resource *pointer, const struct wl_interface *iface,
+                        const void *impl, wl_resource_destroy_func_t on_destroy,
+                        struct wl_resource **arr, int *n)
+{ (void)pointer;
+    struct wl_resource *g = wl_resource_create(c, iface, wl_resource_get_version(r), id);
+    if (!g) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(g, impl, NULL, on_destroy);
+    if (*n < IOSC_MAX_PTRGEST) arr[(*n)++] = g;
+}
+static void ptrgest_get_swipe(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                              struct wl_resource *p)
+{ ptrgest_get(c, r, id, p, &zwp_pointer_gesture_swipe_v1_interface, &gswipe_impl,
+              gswipe_res_destroy, g_gswipe, &g_ngswipe); }
+static void ptrgest_get_pinch(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                              struct wl_resource *p)
+{ ptrgest_get(c, r, id, p, &zwp_pointer_gesture_pinch_v1_interface, &gpinch_impl,
+              gpinch_res_destroy, g_gpinch, &g_ngpinch); }
+static void ptrgest_get_hold(struct wl_client *c, struct wl_resource *r, uint32_t id,
+                             struct wl_resource *p)
+{ ptrgest_get(c, r, id, p, &zwp_pointer_gesture_hold_v1_interface, &ghold_impl,
+              ghold_res_destroy, g_ghold, &g_nghold); }
+static void ptrgest_release(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+static const struct zwp_pointer_gestures_v1_interface ptrgest_mgr_impl = {
+    .get_swipe_gesture = ptrgest_get_swipe,
+    .get_pinch_gesture = ptrgest_get_pinch,
+    .release           = ptrgest_release,
+    .get_hold_gesture  = ptrgest_get_hold };
+static void ptrgest_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{ (void)data;
+    struct wl_resource *r = wl_resource_create(c, &zwp_pointer_gestures_v1_interface, version, id);
+    if (!r) { wl_client_post_no_memory(c); return; }
+    wl_resource_set_implementation(r, &ptrgest_mgr_impl, NULL, NULL);
 }
 
 /* ===========================================================================
@@ -8825,6 +8960,7 @@ static void register_wayland_globals(void)
     /* Pointer lock + relative motion: games, 3D viewports, gnome-shell mouse-look. */
     create_global(&zwp_pointer_constraints_v1_interface, 1, constraints_bind);
     create_global(&zwp_relative_pointer_manager_v1_interface, 1, relptr_mgr_bind);
+    create_global(&zwp_pointer_gestures_v1_interface, 3, ptrgest_mgr_bind);
     /* X11-style middle-click primary selection (separate from the clipboard). */
     create_global(&zwp_primary_selection_device_manager_v1_interface, 1, primary_mgr_bind);
     /* Idle detection + inhibition (screensavers/power; video players stay awake). */
