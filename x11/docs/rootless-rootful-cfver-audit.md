@@ -9,18 +9,18 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1712
-- Files with hits: 320
+- Total hits: 1717
+- Files with hits: 321
 
 ### By Category
 
 - `app-runtime`: 21 hits across 12 files
-- `build-target`: 16 hits across 10 files
+- `build-target`: 17 hits across 10 files
 - `docs`: 612 hits across 62 files
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 121 hits across 51 files
-- `other`: 75 hits across 15 files
-- `package-payload`: 177 hits across 47 files
+- `other`: 78 hits across 16 files
+- `package-payload`: 178 hits across 47 files
 - `recipe`: 82 hits across 26 files
 - `runtime-path`: 318 hits across 80 files
 - `script-or-source`: 205 hits across 70 files
@@ -29,10 +29,10 @@ classified as rootless-only.
 
 ### By Literal
 
-- `/var/jb`: 1671
+- `/var/jb`: 1675
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
-- `iphoneos-arm64-rootless`: 29
+- `iphoneos-arm64-rootless`: 30
 
 ## Category Guidance
 
@@ -76,6 +76,8 @@ classified as rootless-only.
 
 - `linux-build/README.md:161` `MEMO_TARGET=iphoneos-arm64-rootless`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
 - `linux-build/README.md:161` `MEMO_CFVER=1900`: `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
+- `linux-build/build-docs-apps.sh:136` `iphoneos-arm64-rootless`: PW=build_work/iphoneos-arm64-rootless/1900/papers
+- `linux-build/build-docs-apps.sh:137` `iphoneos-arm64-rootless`: PS=build_stage/iphoneos-arm64-rootless/1900/papers
 - `linux-build/build.sh:116` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:16` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-gsound-stub.sh:20` `iphoneos-arm64-rootless`: elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
@@ -85,7 +87,6 @@ classified as rootless-only.
 - `linux-build/build-gudev-stub.sh:20` `iphoneos-arm64-rootless`: elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
 - `linux-build/build-udev-stub.sh:15` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `linux-build/build-udev-stub.sh:19` `iphoneos-arm64-rootless`: elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
-- `linux-build/recipes/nwg-look.mk:27` `iphoneos-arm64-rootless`: @echo "ERROR: nwg-look is blocked for iphoneos-arm64-rootless." >&2
 - `wayland/build-session-stubs.sh:24` `iphoneos-arm64-rootless`: MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 - `wayland/build-session-stubs.sh:28` `iphoneos-arm64-rootless`: elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
 - `apps/iosc-shell/README.md:50` `iphoneos-arm64-rootless`: `build-panel.sh` maps `rootless` to Procursus target `iphoneos-arm64-rootless`
@@ -185,7 +186,7 @@ classified as rootless-only.
 - `bin/x11-up.sh:15` `/var/jb`: export PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/bin:/var/jb/sbin:$PATH
 - `bin/x11-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
 - `bin/x11-up.sh:18` `/var/jb`: [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
-- ... 55 more
+- ... 58 more
 
 ### package-payload
 
@@ -209,7 +210,7 @@ classified as rootless-only.
 - `packages/ladybird-app/Sources/IOSApplication.mm:143` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
 - `packages/ladybird-app/Sources/BrowserViewController.mm:19` `/var/jb`: candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
 - `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log.
-- ... 157 more
+- ... 158 more
 
 ### recipe
 

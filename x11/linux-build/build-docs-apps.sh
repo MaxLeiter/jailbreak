@@ -121,10 +121,10 @@ ensure_rust_ios_toolchain() {
   rm -rf "$gettext_root"
   dpkg-deb -x "$gettext_deb" "$gettext_root"
   bash /xios-tools/stage-ios-gettext-sdk.sh \
-    "$gettext_root/var/jb/usr" \
+    "$gettext_root$XIOS_PREFIX/usr" \
     /work/Procursus/build_tools/cc-nounused \
     "$SDKROOT" 16.0
-  export GETTEXT_DIR="$gettext_root/var/jb/usr"
+  export GETTEXT_DIR="$gettext_root$XIOS_PREFIX/usr"
 }
 
 ensure_rust_ios_toolchain
