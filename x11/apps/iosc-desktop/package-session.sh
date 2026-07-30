@@ -42,7 +42,7 @@ fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.67"
+VER="1.0.68"
 ARCH="$XIOS_DEB_ARCH"
 DEB="xios-session_${VER}_${ARCH}.deb"
 
@@ -64,7 +64,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.0)
+Depends: iosc (>= 0.9.34)
 Recommends: iosc-shell, xios
 Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
@@ -90,6 +90,11 @@ Description: pick-a-desktop session launcher for the Xios stack
  .
  In-app session picks use the ioscd control socket; this package does not ship
  a request-file watcher or legacy fallback path.
+ .
+ The kde presets also start the iOS keyboard bridge: KWin launches ios-inputd
+ (from the iosc package) as its input method, so tapping a text field in a
+ Plasma app raises the iPad keyboard and what you type is committed into the
+ field with full Unicode. Set KDE_AUTO_KEYBOARD=0 to leave it off.
 EOF
 
 echo "=== staged tree ==="
