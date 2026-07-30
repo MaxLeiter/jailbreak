@@ -210,7 +210,16 @@ deploy_static_repo() {
   trap cleanup_deploy_root RETURN
 
   mkdir -p "$deploy_root/repo"
-  rsync -a --delete --exclude 'debs/' --exclude '.vercel/' \
+  # Excluding .gitignore is load-bearing, not tidiness: the Vercel CLI honors a
+  # .gitignore found in the directory it uploads. repo/.gitignore lists the
+  # derived index files (Release, InRelease, Release.gpg, Packages.gz, .pv,
+  # .sha) because they must not be tracked -- and copying it here silently
+  # dropped every one of them from the upload. Prod then served Packages but
+  # 404'd Release/InRelease, which is precisely the "does not have a Release
+  # file" failure apt reports, on every device. The deploy copy is not a git
+  # repo and has no business carrying git's ignore rules; .vercelignore is the
+  # one that belongs here.
+  rsync -a --delete --exclude 'debs/' --exclude '.vercel/' --exclude '.gitignore' \
     "$REPO_ROOT/repo/" "$deploy_root/repo/"
 
   # --only: serve the target's current index with just the named packages swapped
@@ -229,21 +238,63 @@ deploy_static_repo() {
     sign_index "$deploy_root/repo"
   fi
 
+  # Everything apt reads must exist in the upload. Checked here, on the staged
+  # copy, because a deploy that drops these still "succeeds" -- Packages keeps
+  # serving and only apt notices, on every device at once.
+  local missing=""
+  for f in Packages Packages.gz Release InRelease Release.gpg; do
+    [ -s "$deploy_root/repo/$f" ] || missing="$missing $f"
+  done
+  if [ -n "$missing" ]; then
+    echo "ERROR: the deploy copy is missing apt metadata:$missing" >&2
+    echo "       Refusing to deploy an index apt cannot verify. Check the rsync" >&2
+    echo "       filters in deploy_static_repo and repo/.gitignore." >&2
+    exit 1
+  fi
+
   local args=(deploy "$deploy_root" --yes --scope "$SCOPE" --project "$project"
               --local-config "$deploy_root/repo/$config_name" --no-color)
   [ "$mode" = prod ] && args+=(--prod)
   [ -n "${VERCEL_TOKEN:-}" ] && args+=(--token "$VERCEL_TOKEN")
 
+  local base
   if [ "$mode" = prod ]; then
     vercel "${args[@]}"
-    echo "==> Live at https://$domain"
+    base="https://$domain"
+    echo "==> Live at $base"
   else
     # Preview: the deployment URL is the whole point, so capture it. Vercel prints
     # progress to stderr and the URL to stdout.
-    local url
-    url="$(vercel "${args[@]}")"
-    echo "==> Preview at $url"
+    base="$(vercel "${args[@]}")"
+    echo "==> Preview at $base"
   fi
+
+  verify_published "$base" "$mode"
+}
+
+# Fetch back what we just deployed. The staged-copy check above cannot see an
+# upload-time filter (the Vercel CLI honors a .gitignore in the uploaded
+# directory), which is exactly how prod once ended up serving Packages while
+# 404ing Release. Only the live URL proves it.
+verify_published() {
+  local base="$1" mode="${2:-prod}"
+  command -v curl >/dev/null 2>&1 || return 0
+  # Preview deployments sit behind Vercel SSO, so their URLs are not fetchable.
+  [ "$mode" = prod ] || { echo "   (preview URLs are SSO-protected; skipping fetch-back)"; return 0; }
+
+  echo "==> Verifying $base serves what apt needs"
+  local bad="" code
+  for f in Packages Packages.gz Release InRelease Release.gpg; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$base/$f" || echo 000)"
+    printf '    %-14s HTTP %s\n' "$f" "$code"
+    [ "$code" = 200 ] || bad="$bad $f"
+  done
+  if [ -n "$bad" ]; then
+    echo "ERROR: deployed, but these are not being served:$bad" >&2
+    echo "       apt will report 'does not have a Release file' until this is fixed." >&2
+    exit 1
+  fi
+  echo "   all present"
 }
 
 # Which already-published index does this deploy have to stay consistent with?
