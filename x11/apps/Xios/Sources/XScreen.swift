@@ -871,6 +871,13 @@ final class XScreenView: UIView {
             guard let tex = iosTexture else { return }
             if needsPresent {
                 let seq = xsurface_dirty_sequence(conn)
+                // The IOSurface arrives before the compositor's first DIRTY
+                // record. Never sample that asynchronously rendered surface
+                // until its matching brokered GPU fence has arrived; an empty
+                // sequence here is startup ordering, not a malformed frame.
+                if usingIosc && seq == 0 {
+                    return
+                }
                 let fence = gpuFence(for: conn)
                 if presentFenceDecodeFailed {
                     dbg("gpu-fence-decode-failed")
