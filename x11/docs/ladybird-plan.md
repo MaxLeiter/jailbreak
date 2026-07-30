@@ -303,10 +303,18 @@ the GN special-case are worth owning). Package the final Ladybird tree as **one 
   `host_platform.py` has no iOS host; `IOS`/`__IOS__` are honored in source but nothing *drives*
   an iOS configure. We supply the toolchain file, `-DIOS=ON`-equivalent (`CMAKE_SYSTEM_NAME iOS`),
   and a preset ourselves.
-- **Sandbox.** `Services/*/SandboxMacOS.cpp` and `UI/.../RendererSandboxMacOS.cpp` use the macOS
-  Seatbelt (`sandbox_init`) API, which is unavailable/blocked to fakesigned iOS processes. Route
-  iOS to the **`*Unimplemented.cpp`** variants (or run `--disable-sandbox`, an existing flag).
-  Losing the sandbox is acceptable for a jailbroken proof; note it as a security caveat.
+- **Sandbox.** `Services/*/SandboxMacOS.cpp` and `UI/.../RendererSandboxMacOS.cpp` build a Seatbelt
+  profile from SBPL, and **SBPL compilation is refused outright on iOS**, so these cannot be
+  ported. iOS routes to the **`*Unimplemented.cpp`** variants and the helpers run unconfined.
+  Precompiled *named* kernel profiles do exist and do apply, but they are **unusable, finally**:
+  `com.apple.WebKit.WebContent` denies `poll()`, `select()` AND `kevent()`, so a confined helper
+  cannot run `Core::EventLoop` at all — no call site or backend swap gets around it (Apple's own
+  WebContent waits on Mach messages, not fds). The `container` profile leaves the network open, so
+  it buys nothing for a renderer. Measured matrix, the two nearer-miss blockers found on the way,
+  and the recommended fallback (uid separation + `setrlimit` + trimming the very broad helper
+  entitlements) are in [`ladybird-sandbox-confinement.md`](ladybird-sandbox-confinement.md).
+  **Do not re-attempt named-profile confinement.** Unconfined helpers remain a real security
+  caveat, not a shrug.
 - **Entitlements per helper.** Each spawned binary must be ldid-signed with the `/var/jb`
   path-exception (like every app here). GPU/Metal entitlements are needed **only if** we build
   Skia-on-Metal or the ANGLE present path; the raster M0 needs none of that.
@@ -366,12 +374,18 @@ the GN special-case are worth owning). Package the final Ladybird tree as **one 
 2. **Skia iOS GN raster build.** Confirm `target_os="ios"` + raster-only links clean against our
    cctools ld64 and the 16.5 SDK; check Skia's own freetype/harfbuzz/icu wiring vs our staged
    copies (version skew inside Skia).
-3. **Multiprocess spawn under sandbox exception.** Confirm a WebContent helper posix_spawn'd from
-   `/var/jb/libexec` inherits the path-exception + runs; confirm many-WebContent site isolation
-   is stable on the A10 (memory).
-4. **IPC transport.** Ladybird LibIPC uses `AF_UNIX` socketpair fd-passing between UI and
-   helpers — confirm `SCM_RIGHTS` fd passing behaves under the JB sandbox (it does for our other
-   sockets, but the multiprocess handshake is new surface).
+3. **Multiprocess spawn under sandbox exception.** ~~Confirm a WebContent helper posix_spawn'd from
+   `/var/jb/libexec` inherits the path-exception + runs.~~ **RESOLVED (2026-07-29):** all five
+   helpers (WebContent, RequestServer, ImageDecoder, Compositor, WebWorker) spawn and run from
+   `/var/jb/usr/libexec` in the Wayland flavor and from inside the `.app` in the UIKit flavor; see
+   [`ladybird-sandbox-confinement.md`](ladybird-sandbox-confinement.md). Remaining: confirm
+   many-WebContent site isolation is stable on the A10 (memory).
+4. **IPC transport.** ~~Ladybird LibIPC uses `AF_UNIX` socketpair fd-passing between UI and
+   helpers.~~ **CORRECTED (2026-07-29):** that is the non-Mach branch. On iOS the helpers use the
+   **Mach** transport: the child does a `bootstrap_look_up` on `--mach-server-name`, and later
+   transports arrive as Mach rights in IPC attachments. No `SCM_RIGHTS` involved. Each transport
+   does still allocate a `pipe()` to bridge its Mach IO thread to the poll-based event loop, which
+   is what blocks kernel-profile confinement (same doc).
 5. **ICU 78.3 EXACT vs our 74.2.** The `EXACT` pin means nothing older links; confirm the
    `icu4c.mk` native-then-cross recipe bumps cleanly to 78.3 (data blob size, `--with-cross-build`).
 6. **`__IOS__` vs `TARGET_OS_IPHONE`.** Decide inject-define vs a one-line `AK/Platform.h` patch;

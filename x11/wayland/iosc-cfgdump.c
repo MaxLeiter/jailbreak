@@ -18,11 +18,16 @@
 
 int main(void)
 {
+    const char *client_extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+    printf("EGL client extensions: %s\n\n", client_extensions ? client_extensions : "(null)");
     EGLDisplay (*getPD)(EGLenum,void*,const EGLint*) = (void*)eglGetProcAddress("eglGetPlatformDisplayEXT");
     if (!getPD) { printf("FAIL eglGetPlatformDisplayEXT missing\n"); return 1; }
     const EGLint da[] = { EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE };
     EGLDisplay d = getPD(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, da);
     if (d == EGL_NO_DISPLAY || !eglInitialize(d, 0, 0)) { printf("FAIL eglInitialize 0x%x\n", eglGetError()); return 1; }
+    printf("EGL vendor: %s\n", eglQueryString(d, EGL_VENDOR));
+    printf("EGL version: %s\n", eglQueryString(d, EGL_VERSION));
+    printf("EGL extensions: %s\n\n", eglQueryString(d, EGL_EXTENSIONS));
 
     EGLint total = 0; eglGetConfigs(d, 0, 0, &total);
     EGLConfig cfgs[256]; if (total > 256) total = 256;

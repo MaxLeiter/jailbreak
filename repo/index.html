@@ -337,7 +337,7 @@
         <a class="row reveal" style="--i:16" href="depictions/iosc.html">
           <span class="n">iosc (Wayland compositor)</span>
           <span class="t">GPU Wayland compositor for the Xios desktop</span>
-          <span class="v">v0.9.38</span>
+          <span class="v">v0.9.42</span>
         </a>
         <a class="row reveal" style="--i:16" href="depictions/iosc-shell.html">
           <span class="n">iosc desktop shell</span>
@@ -3092,8 +3092,18 @@
   document.getElementById("sileo").href = "sileo://source/" + u;
   document.getElementById("zebra").href = "zbra://sources/add/" + u;
   document.getElementById("cydia").href = "cydia://url/https://cydia.saurik.com/api/share#?source=" + u;
+  // Which manager people actually add the repo with. The href is a custom URL
+  // scheme, so the navigation never reaches us as a page view -- the click is
+  // the only place to count it.
+  ["sileo", "zebra", "cydia"].forEach(function (id) {
+    document.getElementById(id).addEventListener("click", function () {
+      window.va("event", { name: "add-repo", data: { manager: id } });
+    });
+  });
+
   var b = document.getElementById("copyBtn");
   b.addEventListener("click", function () {
+    window.va("event", { name: "copy-repo-url" });
     navigator.clipboard.writeText(u).then(function () {
       var prev = b.textContent;
       b.textContent = "Copied";
@@ -3221,4 +3231,9 @@
     apply();
   })();
 </script>
+
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
 </body></html>

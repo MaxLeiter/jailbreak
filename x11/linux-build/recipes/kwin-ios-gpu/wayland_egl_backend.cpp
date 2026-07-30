@@ -485,16 +485,55 @@ bool WaylandEglBackend::initializeEgl()
     };
     auto getPlatformDisplay = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
     if (!getPlatformDisplay) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: eglGetPlatformDisplayEXT is unavailable";
         return false;
     }
-    auto display = EglDisplay::create(getPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, displayAttributes));
-    if (!display) {
+    const EGLDisplay handle = getPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, EGL_DEFAULT_DISPLAY, displayAttributes);
+    if (handle == EGL_NO_DISPLAY) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: ANGLE Metal display creation failed" << Qt::hex << eglGetError();
         return false;
     }
+
+    // This backend is unconditionally ANGLE/GLES. KWin's generic EglDisplay::create()
+    // asks Qt whether the process uses desktop GL and rejects an otherwise initialized
+    // display if a stale pre-initialize EGL error is pending. Both assumptions are
+    // wrong for KWin's private iOS QPA process, while this explicit sequence is the
+    // same one exercised by iosc-cfgdump and the GPU client smoke.
+    EGLint major = 0;
+    EGLint minor = 0;
+    if (!eglInitialize(handle, &major, &minor)) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: eglInitialize failed" << Qt::hex << eglGetError();
+        return false;
+    }
+    const EGLint initializeError = eglGetError();
+    if (initializeError != EGL_SUCCESS) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: ignoring stale EGL error after successful initialize"
+                                       << Qt::hex << initializeError;
+    }
+    if (!eglBindAPI(EGL_OPENGL_ES_API)) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: eglBindAPI(OpenGL ES) failed" << Qt::hex << eglGetError();
+        eglTerminate(handle);
+        return false;
+    }
+    const char *extensionString = eglQueryString(handle, EGL_EXTENSIONS);
+    const QList<QByteArray> extensions = extensionString
+        ? QByteArray(extensionString).split(' ')
+        : QList<QByteArray>{};
+    if (!extensions.contains(QByteArrayLiteral("EGL_KHR_no_config_context"))
+        || !extensions.contains(QByteArrayLiteral("EGL_KHR_surfaceless_context"))) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: ANGLE lacks required surfaceless/no-config EGL extensions";
+        eglTerminate(handle);
+        return false;
+    }
+    auto display = std::make_unique<EglDisplay>(handle, extensions);
+    qCInfo(KWIN_WAYLAND_BACKEND) << "ios-gpu: ANGLE Metal EGL initialized" << major << "." << minor;
     m_backend->setEglDisplay(std::move(display));
     setEglDisplay(m_backend->sceneEglDisplayObject());
 
     m_config = chooseIoscEglConfig(eglDisplayObject()->handle());
+    if (m_config == EGL_NO_CONFIG_KHR) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: no IOSurface-compatible EGL config" << Qt::hex << eglGetError();
+    }
     return m_config != EGL_NO_CONFIG_KHR;
 }
 

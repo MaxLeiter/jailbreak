@@ -84,9 +84,15 @@ no two-finger trackpad scroll, Pencil is just a mouse.
 
 **Do not wire ios-inputd into this flavor.** ios-inputd
 (x11/wayland/ios-inputd.c) binds `zwp_input_method_v2` +
-`zwp_virtual_keyboard_v1`, which mutter does not implement (wlroots/KWin
-protocols; keep ios-inputd for the iosc and future KDE flavors). The GNOME
-path is meta-input-ios feeding ClutterVirtualInputDevices, full stop.
+`zwp_virtual_keyboard_v1`, which mutter does not implement. The GNOME path
+is meta-input-ios feeding ClutterVirtualInputDevices, full stop.
+
+Correction (2026-07-29, verified against the kwin 6.1.5 sources): those two
+are **wlroots** protocols, not "wlroots/KWin". KWin 6.1.5 implements
+`input-method-unstable-v1` + `input-panel-v1` and neither of ios-inputd's
+globals, so ios-inputd is dead on KDE too until its Wayland half is
+rewritten for v1. Details and the bridge design are in osk-plan.md, section
+"KDE flavor".
 
 ## 3. Recommended plan, ranked by effort
 
@@ -190,6 +196,15 @@ Also decide whether mutter should broadcast TRAITS on text-input focus
 flavor too. Recommendation: no. Two OSKs fighting (shell OSK resizes the
 stage, iOS keyboard overlays the Metal layer and covers the focused field
 with no way to scroll it into view) is worse than one consistent shell OSK.
+
+SUPERSEDED (2026-07-29): the broadcast landed anyway.
+patches/mutter/meta-wayland-text-input-osk-ios.patch hooks
+meta-wayland-text-input.c and is applied unconditionally by
+integrate-ios-backend.sh, so a booted GNOME flavor has both the shell OSK
+(if the gsetting is on) and the iOS keyboard. If they do fight on device,
+turn off `screen-keyboard-enabled` rather than dropping the patch: mutter is
+the root compositor here and owns the input socket, which makes the TRAITS
+half the cheap one to keep. Flavor matrix lives in osk-plan.md.
 
 ### Phase 4: Apple Pencil as a real stylus (2-4 days, after 1-2)
 

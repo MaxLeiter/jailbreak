@@ -114,6 +114,7 @@ static void recomposite_all_at(const char *reason, int line);   /* coalesced rep
 #define recomposite_all() recomposite_all_at(__func__, __LINE__)
 static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
 static void surface_unmap(struct iosc_surface *s);
+static void native_mark_surface_dirty(struct iosc_surface *s);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 static void output_send_state(struct wl_resource *r);
@@ -243,6 +244,7 @@ struct iosc_surface {
     int                 dx, dy;          /* placement (top-left) on the output */
     int                 native_canvas_w, native_canvas_h, native_canvas_stride;
     int                 native_canvas_live;
+    int                 native_canvas_dirty;
     int                 pending_buffer_scale;
     int                 current_buffer_scale;
     int                 pending_scale_dirty;
@@ -1166,6 +1168,11 @@ static void output_damage_add_px(int x, int y, int w, int h)
     output_damage_set_coarse_union();
 }
 
+static void output_damage_add_full(void)
+{
+    output_damage_add_px(0, 0, g_width, g_height);
+}
+
 static int output_damage_consume(struct iosc_rect *rects, int max_rects,
                                  int *x0, int *y0, int *x1, int *y1)
 {
@@ -1300,6 +1307,7 @@ static void output_damage_add_surface(struct iosc_surface *s)
 {
     int x0, y0, x1, y1;
     if (!surface_rect(s, &x0, &y0, &x1, &y1)) return;
+    native_mark_surface_dirty(s);
     if (iosc_env_truthy(getenv("IOSC_DAMAGE_REASON")))
         fprintf(stderr, "iosc: damage-add-surface role=%d mapped=%d rect=%d,%d %dx%d\n",
                 s->role, s->mapped, x0, y0, x1 - x0, y1 - y0);
@@ -1313,6 +1321,7 @@ static int output_damage_add_surface_at(struct iosc_surface *s, int lx, int ly)
     int w = 0, h = 0;
     surface_display_size(s, &w, &h);
     if (w <= 0 || h <= 0) return 0;
+    native_mark_surface_dirty(s);
     int os = output_scale();
     output_damage_add_px(lx * os, ly * os, w * os, h * os);
     return 1;
@@ -1332,6 +1341,7 @@ static int output_damage_add_overlay_surface(struct iosc_surface *s)
 static void output_damage_add_surface_rect(struct iosc_surface *s, int x, int y, int w, int h)
 {
     if (!s || w <= 0 || h <= 0 || !s->mapped) return;
+    native_mark_surface_dirty(s);
     int os = output_scale();
     output_damage_add_px((s->dx + x) * os, (s->dy + y) * os, w * os, h * os);
 }
@@ -1493,6 +1503,13 @@ static struct iosc_surface *native_owner_toplevel(struct iosc_surface *s)
     return s;
 }
 
+static void native_mark_surface_dirty(struct iosc_surface *s)
+{
+    if (!g_native_mode) return;
+    struct iosc_surface *owner = native_owner_toplevel(s);
+    if (owner) owner->native_canvas_dirty = 1;
+}
+
 static uint32_t native_window_flags(struct iosc_surface *s)
 {
     uint32_t flags = 0;
@@ -1534,6 +1551,7 @@ static int native_ensure_canvas(struct iosc_surface *s, int w, int h, int send_g
     s->native_canvas_h = h;
     s->native_canvas_stride = stride;
     s->native_canvas_live = 1;
+    s->native_canvas_dirty = 1;
     if (send_geom) xios_canvas_geom(s->window_id);
     return 0;
 }
@@ -1564,19 +1582,19 @@ static int notify_native_gpu_frame(uint32_t window_id)
     return -1;
 }
 
-static void native_composite_toplevel(struct iosc_surface *s)
+static int native_composite_toplevel(struct iosc_surface *s)
 {
     if (!s || s->role != IOSC_ROLE_TOPLEVEL || !s->mapped || s->toplevel_minimized)
-        return;
+        return 0;
     int cw = 0, ch = 0;
     if (native_canvas_size_for_surface(s, &cw, &ch) != 0)
-        return;
+        return 0;
     if (native_ensure_canvas(s, cw, ch, s->native_canvas_live) != 0)
-        return;
+        return 0;
     void *canvas = xios_canvas_surface(s->window_id);
-    if (!canvas) return;
+    if (!canvas) return 0;
     if (iosc_gl_bind_target(canvas, s->native_canvas_w, s->native_canvas_h) != 0)
-        return;
+        return 0;
 
     iosc_gl_begin();
     composite_surface_at_blended(s, 0, 0);
@@ -1597,16 +1615,43 @@ static void native_composite_toplevel(struct iosc_surface *s)
         }
     }
     iosc_gl_end();
-    (void)notify_native_gpu_frame(s->window_id);
+    if (notify_native_gpu_frame(s->window_id) != 0)
+        return 0;
+    s->native_canvas_dirty = 0;
+    return 1;
 }
 
 static void native_recomposite_now(void)
 {
     if (!iosc_gl_ok()) return;
+    int painted = 0;
+    int skipped = 0;
     for (int i = 0; i < g_nmapped; i++) {
         struct iosc_surface *s = g_mapped[i];
-        if (s->role == IOSC_ROLE_TOPLEVEL)
-            native_composite_toplevel(s);
+        if (s->role != IOSC_ROLE_TOPLEVEL)
+            continue;
+        if (!s->native_canvas_dirty && s->native_canvas_live) {
+            skipped++;
+            continue;
+        }
+        painted += native_composite_toplevel(s);
+    }
+    if (iosc_env_truthy(getenv("IOSC_NATIVE_STATS"))) {
+        static uint64_t cycles;
+        static uint64_t canvases;
+        static uint64_t avoided;
+        cycles++;
+        canvases += (uint64_t)painted;
+        avoided += (uint64_t)skipped;
+        if (cycles % 120u == 0) {
+            fprintf(stderr,
+                    "iosc: native repaint stats cycles=%llu canvases=%llu "
+                    "avoided=%llu last=%d/%d\n",
+                    (unsigned long long)cycles,
+                    (unsigned long long)canvases,
+                    (unsigned long long)avoided,
+                    painted, skipped);
+        }
     }
     frame_callbacks_after_repaint();
 }
@@ -2146,6 +2191,10 @@ static void recomposite_now(void)
         iosc_render_plan_build(&plan, g_output_damage_valid, output_damage_consume);
         iosc_render_plan_log(&plan, g_recompose_reason, g_recompose_reason_line,
                              g_width, g_height);
+        if (plan.damage_count == 0) {
+            recomposite_reason_clear();
+            return;
+        }
         if (g_slock.locked) {
             /* Session locked: ONLY the lock surface may show (blank until it
              * maps); windows, layer shells and the drag icon must not leak. */
@@ -2363,6 +2412,12 @@ static int repaint_delay_ms(void)
 static void recomposite_all_at(const char *reason, int line)
 {
     if (g_recompose_scheduled) return;
+    if (!g_native_mode && !g_output_damage_valid) {
+        if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
+            fprintf(stderr, "iosc: repaint request skipped (no output damage) %s:%d\n",
+                    reason ? reason : "unknown", line);
+        return;
+    }
     g_recompose_reason = reason;
     g_recompose_reason_line = line;
     struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
@@ -2433,7 +2488,11 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
     }
 
     int restore_cursor = 0;
-    if (!f->with_cursor && g_cursor_visible) { g_cursor_visible = 0; restore_cursor = 1; }
+    if (!f->with_cursor && g_cursor_visible) {
+        output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+        g_cursor_visible = 0;
+        restore_cursor = 1;
+    }
     recomposite_now();          /* synchronous: the readback below needs THIS frame */
 
     wl_shm_buffer_begin_access(shm);
@@ -2441,7 +2500,11 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
                                      wl_shm_buffer_get_data(shm), f->stride);
     wl_shm_buffer_end_access(shm);
 
-    if (restore_cursor) { g_cursor_visible = 1; recomposite_now(); }
+    if (restore_cursor) {
+        g_cursor_visible = 1;
+        output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+        recomposite_now();
+    }
 
     if (rc != 0) { zwlr_screencopy_frame_v1_send_failed(f->resource); return; }
 
@@ -2826,6 +2889,7 @@ static void surface_unmap(struct iosc_surface *s)
         g_slock.lock_surface = NULL;
         g_slock.surface = NULL;
         if (g_kbd_focus == s) keyboard_set_focus(NULL);
+        output_damage_add_full();
         recomposite_all();
     }
     if (!s->mapped) return;
@@ -4148,6 +4212,7 @@ static int output_reconfigure_px(int pw, int ph, int transform, int scale)
             }
         }
     }
+    output_damage_add_full();
     recomposite_all();
     wl_display_flush_clients(g_display);
     fprintf(stderr, "iosc: output now %dx%d logical scale=%d transform=%d (%dx%d px)\n",
@@ -7396,11 +7461,38 @@ static xios_input_socket *g_input_sock;
 static struct wl_event_source *g_input_src;
 static int g_input_wayland_dirty;
 
+/* Traits last pushed by a registered input-method proxy (KDE flavor: ios-inputd
+ * bound to KWin's zwp_input_method_v1). When a proxy is present it is the ONLY
+ * source of truth: iosc's own text_input_for_focus() is permanently NULL there,
+ * because its single client is the nested kwin_wayland, which never binds
+ * text-input. Latched rather than read live so the snapshot a host gets on
+ * connect matches what the proxy last said. See XIOS_IN_IMPROXY. */
+static int      g_improxy_traits_valid;
+static uint32_t g_improxy_hint, g_improxy_purpose, g_improxy_enabled;
+
 /* Commit a UTF-8 TEXT record: prefer the focused text-input; else synthesize
  * ASCII keystrokes so a plain terminal still receives typed text. */
 static void in_dispatch_text(const char *text, size_t len)
 {
     g_input_wayland_dirty = 1;
+    /* Nested-compositor flavors: the text-input state lives in the client (KWin),
+     * so committing here can only ever fall through to keysyms, which loses
+     * everything the iOS keyboard is good at (emoji, dictation, autocorrect
+     * replacements). Hand the payload to the input-method proxy instead; it
+     * commits through the nested compositor's IM protocol. Re-frame it as one
+     * contiguous record because that is what the reader on the other side parses. */
+    if (g_input_sock && len > 0 && len <= 4096u) {
+        struct xios_in_msg hdr = { .type = XIOS_IN_TEXT, .code = (uint32_t)len };
+        char buf[sizeof(hdr) + 4096u];
+        memcpy(buf, &hdr, sizeof(hdr));
+        memcpy(buf + sizeof(hdr), text, len);
+        int sent = xios_input_socket_send_improxy(g_input_sock, buf, sizeof(hdr) + len);
+        if (iosc_debug())
+            fprintf(stderr, "iosc: TEXT %zu bytes -> improxy=%d (0 = local fallback)\n",
+                    len, sent);
+        if (sent > 0)
+            return;
+    }
     int r = text_input_commit_text(text, len);
     if (r == 0) {
         for (size_t i = 0; i < len; i++) {
@@ -7424,6 +7516,20 @@ static void iosc_input_record(const struct xios_in_msg *m, const char *text,
     if (bound && (m->type == XIOS_IN_KEY || m->type == XIOS_IN_TEXT))
         keyboard_set_focus(bound);
     if (m->type == XIOS_IN_TEXT) { in_dispatch_text(text, text_len); return; }
+    /* Inbound TRAITS only reach us from a registered input-method proxy (the
+     * reader drops them from anyone else). Latch and rebroadcast verbatim: the
+     * hosts' frozen contract wants one record per proxy push, no dedupe. */
+    if (m->type == XIOS_IN_TRAITS) {
+        if (iosc_debug())
+            fprintf(stderr, "iosc: TRAITS from improxy hint=0x%x purpose=%u enabled=%u\n",
+                    m->code, m->state, m->mods);
+        g_improxy_traits_valid = 1;
+        g_improxy_hint = m->code;
+        g_improxy_purpose = m->state;
+        g_improxy_enabled = m->mods;
+        input_clients_send_traits();
+        return;
+    }
     g_input_wayland_dirty = 1;
     int x = physical_to_logical(m->x);
     int y = physical_to_logical(m->y);
@@ -7488,6 +7594,11 @@ static void input_clients_send_traits(void)
         .state = ti ? ti->content_purpose : 0,
         .mods = ti ? (uint32_t)ti->enabled : 0,
     };
+    if (g_improxy_traits_valid) {
+        msg.code = g_improxy_hint;
+        msg.state = g_improxy_purpose;
+        msg.mods = g_improxy_enabled;
+    }
     struct iosc_surface *native_focus = g_native_mode ? native_focus_toplevel() : NULL;
     if (native_focus)
         xios_input_socket_broadcast_bound(g_input_sock, native_focus->window_id,
@@ -7516,6 +7627,15 @@ static int input_sock_readable(int fd, uint32_t mask, void *data)
 {
     (void)fd; (void)mask; (void)data;
     xios_input_socket_dispatch(g_input_sock, iosc_input_record, NULL);
+    /* The proxy went away (nested compositor exited or crashed) while it had a
+     * field enabled. Nobody else will ever send a disable, so the host would sit
+     * with the keyboard up over a desktop that has no text field. Drop the latch
+     * and push one last disable. */
+    if (g_improxy_traits_valid && !xios_input_socket_has_improxy(g_input_sock)) {
+        g_improxy_traits_valid = 0;
+        g_improxy_hint = g_improxy_purpose = g_improxy_enabled = 0;
+        input_clients_send_traits();
+    }
     if (g_input_wayland_dirty) {
         g_input_wayland_dirty = 0;
         wl_display_flush_clients(g_display);
@@ -8872,6 +8992,7 @@ static void slock_surface_resource_destroy(struct wl_resource *r)
         g_slock.surface = NULL;
         g_slock.lock_surface = NULL;
         if (g_kbd_focus == s) keyboard_set_focus(NULL);
+        output_damage_add_full();
         recomposite_all();              /* blank again while still locked */
     }
 }
@@ -8933,6 +9054,7 @@ static void slock_unlock_and_destroy(struct wl_client *c, struct wl_resource *r)
     fprintf(stderr, "iosc: session UNLOCKED\n");
     keyboard_set_focus(topmost_focusable());
     g_ptr_focus = NULL;                /* next motion re-enters normally */
+    output_damage_add_full();
     recomposite_all();                 /* windows come back */
     wl_resource_destroy(r);
 }
@@ -8980,6 +9102,7 @@ static void slock_mgr_lock(struct wl_client *c, struct wl_resource *r, uint32_t 
     }
     touch_cancel_all();                /* nor can in-flight touch sequences */
     pen_leave(now_ms());               /* nor a pen stroke */
+    output_damage_add_full();
     recomposite_all();                 /* blank the output right away */
 }
 

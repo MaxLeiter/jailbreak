@@ -5,3 +5,6 @@
 0005-gtk-use-unix-ipc-connection-metadata-on-darwin.patch
 0006-xpc-sendability-compat-for-old-sdk.patch
 0007-wtf-xpc-sendability-compat-for-old-sdk.patch
+0008-shared-memory-serializer-prefers-unix.patch
+0009-glib-process-launcher-darwin.patch
+0010-wkbundle-viewport-api-feature-guard.patch

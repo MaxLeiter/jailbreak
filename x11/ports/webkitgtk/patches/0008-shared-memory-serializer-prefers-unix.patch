@@ -1,0 +1,41 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Match IPC serializers to Unix handle selection
+
+Darwin GTK builds enable Unix domain sockets. SharedMemoryHandle and
+ConnectionHandle therefore select UnixFileDescriptor before considering
+MachSendRight, but their generated serializers emitted both Darwin and Unix
+fields. Mirror the type-selection precedence so serialized layouts and
+constructors stay consistent.
+
+--- a/Source/WebKit/Platform/IPC/ConnectionHandle.serialization.in
++++ b/Source/WebKit/Platform/IPC/ConnectionHandle.serialization.in
+@@ -28,7 +28,7 @@
+ #if OS(WINDOWS)
+     Win32Handle m_handle;
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     WTF::MachSendRight m_handle;
+ #endif
+ }
+
+--- a/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
++++ b/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
+@@ -2389,7 +2389,7 @@
+ #if USE(UNIX_DOMAIN_SOCKETS)
+ headers: <wtf/unix/UnixFileDescriptor.h> "ArgumentCodersUnix.h"
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+ header: <wtf/MachSendRight.h>
+ #endif
+ #if OS(WINDOWS)
+@@ -2400,7 +2400,7 @@
+ #if USE(UNIX_DOMAIN_SOCKETS)
+     [Validator='!!m_handle'] UnixFileDescriptor m_handle;
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     [Validator='!!m_handle'] MachSendRight m_handle;
+ #endif
+ #if OS(WINDOWS)

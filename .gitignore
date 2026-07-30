@@ -24,6 +24,23 @@ repo/debs/
 !x11/packages/**
 *.deb
 
+# Derived APT index artifacts, regenerated (and signed) at publish time from
+# repo/Packages. Tracking them is what made every parallel branch conflict:
+# Release embeds a `Date:` line so it changes on every regeneration, and
+# .gz / .gpg / InRelease are binary. repo/Packages itself stays tracked -- it is
+# the manifest, and it merges structurally via .gitattributes.
+#
+# These live HERE and not in repo/.gitignore on purpose. repo/.gitignore is
+# copied into the Vercel upload and applied by the CLI, so listing them there
+# deleted them from the deployed repo and broke apt everywhere (2026-07-29).
+# The root .gitignore is never inside the uploaded directory.
+repo/Packages.gz
+repo/Release
+repo/Release.gpg
+repo/InRelease
+repo/Packages.pv
+repo/Packages.sha
+
 # Generated Xios outputs
 x11/artifacts/
 x11/linux-build/stage/

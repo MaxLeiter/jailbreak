@@ -14,6 +14,29 @@
 - Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
 
 ## Current state
+- 2026-07-29 classic selective repaint: `iosc 0.9.42` no longer turns a
+  repaint request with no pending output damage into a full-output composite.
+  Explicit full-scene transitions (output reconfigure and session lock/unlock)
+  now mark full damage, while cursor-free screencopy marks only the cursor
+  footprint before and after capture. A host render-plan test runs as part of
+  `build-iosc.sh`. The package was installed and exercised in the isolated
+  `codexrepaint` device slot first as `0.9.41`: ANGLE/Metal rendered a mapped client, screencopy
+  captured 87.4% non-black pixels, `IOSC_DAMAGE_STATS=1` recorded two
+  `output-damage rects=0 skipped` events, and the compositor remained alive.
+  The final `0.9.42` release also includes the merged input-method-v1 support;
+  the version was bumped because public deb filenames are immutable. Evidence:
+  `.artifacts/iosc-classic-repaint-0941/`.
+- 2026-07-29 native selective repaint: `iosc 0.9.40` marks the owning
+  native toplevel canvas dirty when that toplevel, one of its popups, or one of
+  its subsurfaces is damaged, and skips unchanged live canvases during a
+  recomposite cycle. `IOSC_NATIVE_STATS=1` provides opt-in counters. On-device,
+  with GIMP and GNOME Calculator mapped across three native toplevel canvases,
+  120 repaint cycles composited 60 changed canvases and avoided 243 unchanged
+  canvas composites. The implementation was first device-tested as `0.9.39`;
+  that version collided with a different immutable public payload, so the final
+  package is `0.9.40`. It was relaunched through the
+  normal `ioscd` `LAUNCH_NATIVE` path with GIMP live. Benchmark and device-state
+  evidence: `artifacts/device-runs/native-repaint-0.9.39-20260729/`.
 - 2026-07-29 single-contract host closure: the private `iosc_iosurface`
   interface is version 1 everywhere (iosc, ANGLE EGL producer, Mutter, KWin,
   and Xwayland). Its one frame contract requires a 32-byte broker token and a

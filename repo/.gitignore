@@ -1,2 +1,18 @@
+# This file is COPIED INTO THE VERCEL UPLOAD, and the Vercel CLI applies it
+# there: deploy_static_repo rsyncs all of repo/ into the directory it deploys.
+# So every line here is also an upload filter for the public repo.
+#
+# That is load-bearing for these two -- .env.local holds BLOB_READ_WRITE_TOKEN,
+# and neither .vercelignore nor Vercel's defaults are relied on to catch it:
 .vercel
 .env*
+#
+# It is also why the derived index artifacts (Release, InRelease, Release.gpg,
+# Packages.gz, Packages.pv, Packages.sha) are NOT listed here even though they
+# are untracked. Listing them here dropped all six from the upload on
+# 2026-07-29: prod served Packages and 404'd Release, which apt reports as
+# "does not have a Release file", on every device. Their ignore rules live in
+# the ROOT .gitignore instead, which is outside the uploaded directory.
+#
+# Before adding anything here, ask whether it should also be missing from
+# https://repo.maxleiter.com/. If not, put it in the root .gitignore.

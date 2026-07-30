@@ -1,0 +1,328 @@
+Subject: [PATCH] ios-m0: share one read-notification pipe per thread in the Mach transport
+
+Mach ports are not pollable, so a transport's Mach IO thread cannot hand messages to the
+owning thread's poll-based Core::EventLoop directly. It writes a byte to a pipe the event
+loop watches. That pipe was allocated in the TransportMachPort constructor, which means
+every new IPC connection called pipe().
+
+That is a problem on iOS, because the only useful precompiled kernel sandbox profile
+(`com.apple.WebKit.WebContent`) denies pipe(), and the call is wrapped in MUST(), so a
+denial aborts. Measured on device: pipe() is EPERM under that profile while Mach port
+allocation, port sets, and threads all still work. Transports get created long after
+startup -- WebContent attaches to RequestServer/ImageDecoder/Compositor from inside the
+event loop, ImageDecoder builds one per new client, and MessagePort::entangle_with builds
+a pair for every `new MessageChannel()` in page JavaScript -- so there is no call site
+where confinement could be applied before the last pipe() call. Full matrix and reasoning
+in docs/ladybird-sandbox-confinement.md.
+
+The pipe is only a "come look" doorbell, though. It carries no per-transport data: the
+actual state is m_read_notification_pending, already coalesced under m_incoming_mutex. So
+one pipe per thread is enough. The first transport on a thread creates it, every later
+transport reuses it, and dispatch scans the thread's registered transports for pending
+flags instead of relying on which fd woke up.
+
+Ordering is what makes this safe, and it is easy to get wrong. The channel is joined in the
+transport constructor, before the IO thread starts, so a doorbell always has a pipe to land
+in even for a message that arrives before any read hook exists. An earlier revision of this
+patch created the channel in set_up_read_hook() instead, which lost the first message on
+every connection: the IO thread would set the pending flag with no channel to ring, and the
+catch-up path then asked schedule_read_notification_if_needed_locked() whether to ring, got
+"already pending, someone else will do it", and nobody ever did. WebContent hung on startup.
+The catch-up in set_up_read_hook() therefore rings unconditionally rather than consulting
+that helper.
+
+Beyond that: a transport sets its pending flag under the mutex and only then writes its byte,
+and dispatch drains the pipe before scanning, so a transport that becomes pending after the
+drain has already written a byte and earns another activation rather than being lost. Extra
+bytes are harmless because dispatch always scans every transport. Core::Notifier needs a
+running event loop while the pipe does not, so the notifier is created lazily by
+set_up_read_hook() and the pipe eagerly by the constructor.
+
+The registry is mutex-guarded. Transports are expected to be created and destroyed on their
+owning thread, but nothing enforces that, and a torn Vector would be a miserable bug to
+chase. The lock is never held while a read hook runs, because a hook can create or destroy
+transports and that would deadlock.
+
+This is worth doing on its own terms: it removes two file descriptors per IPC connection.
+It also means a process confined after its first transport exists never calls pipe() again,
+which is what makes the sandbox patch that follows possible.
+--- a/Libraries/LibIPC/TransportMachPort.h
++++ b/Libraries/LibIPC/TransportMachPort.h
+@@ -29,6 +29,10 @@
+ 
+ namespace IPC {
+ 
++// Owns the read-notification pipe shared by every transport on one thread. Defined in the
++// .cpp; see the comment there for why the pipe is per-thread rather than per-transport.
++class ReadNotifyChannel;
++
+ class TransportMachPort {
+     AK_MAKE_NONCOPYABLE(TransportMachPort);
+     AK_MAKE_NONMOVABLE(TransportMachPort);
+@@ -66,6 +70,9 @@
+     ErrorOr<TransportHandle> release_for_transfer();
+ 
+ private:
++    // Dispatch reads m_read_notification_pending and invokes m_on_read_hook.
++    friend class ReadNotifyChannel;
++
+     static constexpr unsigned int IPC_DATA_MESSAGE_ID = 0x4950C001;
+     static constexpr unsigned int IPC_INLINE_DATA_MESSAGE_ID = 0x4950C002;
+     static constexpr unsigned int IPC_WAKEUP_MESSAGE_ID = 0x4950C003;
+@@ -86,6 +93,7 @@
+     void wake_io_thread();
+     bool schedule_read_notification_if_needed_locked();
+     void write_read_notification_byte();
++    void detach_from_read_notify_channel();
+     void mark_peer_eof();
+     void send_mach_message(PendingMessage&);
+     void process_received_message(u8* buffer);
+@@ -114,9 +122,9 @@
+     Vector<NonnullOwnPtr<Message>> m_incoming_messages;
+     bool m_read_notification_pending { false };
+ 
+-    RefPtr<AutoCloseFileDescriptor> m_notify_hook_read_fd;
+-    RefPtr<AutoCloseFileDescriptor> m_notify_hook_write_fd;
+-    RefPtr<Core::Notifier> m_read_hook_notifier;
++    // The notification pipe lives on the channel, shared with every other transport on the
++    // thread that installed this transport's read hook. Null until set_up_read_hook().
++    RefPtr<ReadNotifyChannel> m_read_notify_channel;
+     Function<void()> m_on_read_hook;
+ };
+ 
+--- a/Libraries/LibIPC/TransportMachPort.cpp
++++ b/Libraries/LibIPC/TransportMachPort.cpp
+@@ -5,6 +5,8 @@
+  */
+ 
+ #include <AK/NonnullOwnPtr.h>
++#include <AK/NonnullRefPtr.h>
++#include <AK/RefCounted.h>
+ #include <LibCore/MachPort.h>
+ #include <LibCore/Notifier.h>
+ #include <LibCore/System.h>
+@@ -17,7 +19,129 @@
+ namespace IPC {
+ 
+ static constexpr size_t INLINE_MESSAGE_MAX_SIZE = 4096;
++
++// One read-notification pipe per thread, shared by every transport whose read hook was
++// installed on that thread, instead of one pipe per transport.
++//
++// Mach ports are not pollable, so a transport's Mach IO thread cannot hand messages to the
++// owning thread's poll-based Core::EventLoop directly. It writes a byte to a pipe that the
++// event loop watches. That worked, but allocating the pipe in the transport constructor made
++// every new IPC connection call pipe(), and iOS's precompiled `com.apple.WebKit.WebContent`
++// sandbox profile denies pipe(). Since the pipe is only a "come look" doorbell and carries no
++// per-transport data, one per thread is enough: the first transport on a thread creates it and
++// the rest reuse it, so a process that is confined after its first transport exists never calls
++// pipe() again. See docs/ladybird-sandbox-confinement.md.
++//
++// Ownership: the registry is only touched on the owning thread (transport construction,
++// destruction, and hook dispatch all happen there), so it needs no lock. IO threads only ever
++// write() a single byte to the shared write end, which is atomic.
++class ReadNotifyChannel : public RefCounted<ReadNotifyChannel> {
++public:
++    // Creates the pipe if this thread does not have one yet. Called from the transport
++    // constructor, so a doorbell rung by the IO thread always has somewhere to land, even
++    // before a read hook is installed.
++    static ErrorOr<NonnullRefPtr<ReadNotifyChannel>> for_current_thread();
++
++    // Split from the pipe because Core::Notifier needs a running event loop on this thread,
++    // while the pipe does not. Only a transport that installs a read hook needs the notifier.
++    void ensure_notifier();
++
++    void register_transport(TransportMachPort& transport)
++    {
++        Sync::MutexLocker locker(m_registry_mutex);
++        m_transports.append(&transport);
++    }
++
++    void unregister_transport(TransportMachPort& transport)
++    {
++        Sync::MutexLocker locker(m_registry_mutex);
++        m_transports.remove_all_matching([&](auto* t) { return t == &transport; });
++    }
++
++    // Called from an IO thread. One byte per pending transport; extra bytes are harmless
++    // because dispatch always scans every registered transport.
++    void ring_doorbell()
++    {
++        Array<u8, 1> bytes = { 0 };
++        (void)Core::System::write(m_write_fd->value(), bytes);
++    }
++
++private:
++    void dispatch();
++
++    RefPtr<AutoCloseFileDescriptor> m_read_fd;
++    RefPtr<AutoCloseFileDescriptor> m_write_fd;
++    RefPtr<Core::Notifier> m_notifier;
++
++    // Guards m_transports only. Transports are expected to be created and destroyed on the
++    // owning thread, but that is not enforced anywhere, and a torn Vector here would be a
++    // miserable bug to chase. Never held while a read hook runs: a hook can create or destroy
++    // transports, which would deadlock.
++    Sync::Mutex m_registry_mutex;
++    Vector<TransportMachPort*> m_transports;
++};
++
++// Deliberately not reset on thread exit: the threads that install read hooks are the process's
++// long-lived event-loop threads.
++static thread_local RefPtr<ReadNotifyChannel> s_read_notify_channel;
++
++ErrorOr<NonnullRefPtr<ReadNotifyChannel>> ReadNotifyChannel::for_current_thread()
++{
++    if (s_read_notify_channel)
++        return *s_read_notify_channel;
++
++    auto channel = adopt_ref(*new ReadNotifyChannel);
++    auto fds = TRY(Core::System::pipe2(O_CLOEXEC | O_NONBLOCK));
++    channel->m_read_fd = adopt_ref(*new AutoCloseFileDescriptor(fds[0]));
++    channel->m_write_fd = adopt_ref(*new AutoCloseFileDescriptor(fds[1]));
++
++    s_read_notify_channel = channel;
++    return channel;
++}
++
++void ReadNotifyChannel::ensure_notifier()
++{
++    if (m_notifier)
++        return;
++    m_notifier = Core::Notifier::construct(m_read_fd->value(), Core::NotificationType::Read);
++    // The channel owns the notifier and outlives it, and the notifier is only ever activated
++    // on this thread, so a raw capture cannot dangle.
++    m_notifier->on_activation = [this] { dispatch(); };
++}
+ 
++void ReadNotifyChannel::dispatch()
++{
++    // Drain first, then scan. A transport that becomes pending after the drain has already
++    // written its own byte, so it gets another activation rather than being lost.
++    char buf[64];
++    (void)Core::System::read(m_read_fd->value(), { buf, sizeof(buf) });
++
++    // Snapshot under the lock, then invoke hooks with it released: a read hook may create or
++    // destroy transports, and holding the registry lock across it would deadlock.
++    Vector<TransportMachPort*> transports;
++    {
++        Sync::MutexLocker locker(m_registry_mutex);
++        transports = m_transports;
++    }
++    for (auto* transport : transports) {
++        // An earlier hook in this same pass may have destroyed this transport; its destructor
++        // unregisters, so re-check before touching it.
++        {
++            Sync::MutexLocker locker(m_registry_mutex);
++            if (!m_transports.contains_slow(transport))
++                continue;
++        }
++        bool was_pending = false;
++        {
++            Sync::MutexLocker locker(transport->m_incoming_mutex);
++            was_pending = transport->m_read_notification_pending;
++            transport->m_read_notification_pending = false;
++        }
++        if (was_pending && transport->m_on_read_hook)
++            transport->m_on_read_hook();
++    }
++}
++
+ struct InlinePayloadHeader {
+     u32 payload_size { 0 };
+ };
+@@ -122,10 +246,6 @@
+     ret = mach_port_insert_member(mach_task_self(), m_wakeup_receive_port.port(), m_port_set.port());
+     VERIFY(ret == KERN_SUCCESS);
+ 
+-    auto fds = MUST(Core::System::pipe2(O_CLOEXEC | O_NONBLOCK));
+-    m_notify_hook_read_fd = adopt_ref(*new AutoCloseFileDescriptor(fds[0]));
+-    m_notify_hook_write_fd = adopt_ref(*new AutoCloseFileDescriptor(fds[1]));
+-
+     set_mach_port_queue_limit(m_receive_port.port());
+ 
+     mach_port_t prev = MACH_PORT_NULL;
+@@ -143,6 +263,13 @@
+         // Drop it here so we do not leak that stale send-once right.
+         mach_port_deallocate(mach_task_self(), prev);
+     }
++
++    // Join this thread's notification channel BEFORE the IO thread starts, so a doorbell rung
++    // for an early message is never dropped for want of a pipe. MUST because a transport whose
++    // notifications cannot be delivered would hang, which is far harder to diagnose than an
++    // abort at the point of failure.
++    m_read_notify_channel = MUST(ReadNotifyChannel::for_current_thread());
++    m_read_notify_channel->register_transport(*this);
+ 
+     m_io_thread = Threading::Thread::construct("IPC IO (Mach)"sv, [this] { return io_thread_loop(); });
+     m_io_thread->start();
+@@ -151,9 +278,17 @@
+ TransportMachPort::~TransportMachPort()
+ {
+     stop_io_thread(IOThreadState::Stopped);
+-    m_read_hook_notifier.clear();
++    detach_from_read_notify_channel();
+ }
+ 
++void TransportMachPort::detach_from_read_notify_channel()
++{
++    if (!m_read_notify_channel)
++        return;
++    m_read_notify_channel->unregister_transport(*this);
++    m_read_notify_channel.clear();
++}
++
+ void TransportMachPort::stop_io_thread(IOThreadState desired_state)
+ {
+     m_io_thread_state.store(desired_state, AK::MemoryOrder::memory_order_release);
+@@ -190,11 +325,11 @@
+ 
+ void TransportMachPort::write_read_notification_byte()
+ {
+-    if (!m_notify_hook_write_fd)
++    // No read hook installed yet: wait_until_readable()'s condition variable covers that case.
++    if (!m_read_notify_channel)
+         return;
+ 
+-    Array<u8, 1> bytes = { 0 };
+-    (void)Core::System::write(m_notify_hook_write_fd->value(), bytes);
++    m_read_notify_channel->ring_doorbell();
+ }
+ 
+ void TransportMachPort::mark_peer_eof()
+@@ -443,23 +578,22 @@
+ void TransportMachPort::set_up_read_hook(Function<void()> hook)
+ {
+     m_on_read_hook = move(hook);
+-    m_read_hook_notifier = Core::Notifier::construct(m_notify_hook_read_fd->value(), Core::NotificationType::Read);
+-    m_read_hook_notifier->on_activation = [this] {
+-        char buf[64];
+-        (void)Core::System::read(m_notify_hook_read_fd->value(), { buf, sizeof(buf) });
+-        {
+-            Sync::MutexLocker locker(m_incoming_mutex);
+-            m_read_notification_pending = false;
+-        }
+-        if (m_on_read_hook)
+-            m_on_read_hook();
+-    };
++    // The channel was joined in the constructor; this only adds the event-loop notifier, which
++    // binds hook dispatch to the thread installing the hook.
++    VERIFY(m_read_notify_channel);
++    m_read_notify_channel->ensure_notifier();
+ 
++    // Catch up on anything that arrived before the notifier existed. Ring unconditionally
++    // rather than going through schedule_read_notification_if_needed_locked(): the IO thread
++    // may already have set the pending flag, in which case that helper would report "someone
++    // else will ring it" and nobody ever would.
+     bool should_write_notification = false;
+     {
+         Sync::MutexLocker locker(m_incoming_mutex);
+-        if (!m_incoming_messages.is_empty() || m_peer_eof)
+-            should_write_notification = schedule_read_notification_if_needed_locked();
++        if (!m_incoming_messages.is_empty() || m_peer_eof) {
++            m_read_notification_pending = true;
++            should_write_notification = true;
++        }
+     }
+     if (should_write_notification)
+         write_read_notification_byte();

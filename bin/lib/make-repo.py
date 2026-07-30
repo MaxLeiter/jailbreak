@@ -14,30 +14,29 @@ Outputs in repo/:
 
 Run via the venv that has Pillow:  .repo-venv/bin/python bin/lib/make-repo.py
 Re-run after adding/removing .debs. No network needed.
+
+Two modes:
+  (default)      read repo/debs/*.deb and generate the whole tree, Packages
+                 included. This is the authoring mode: it needs the payloads.
+  --from-index   treat the committed repo/Packages as the source of truth and
+                 regenerate only what derives from it (Packages.gz, Release,
+                 depictions, sileo-featured, site). Needs no .deb payloads, so
+                 CI can rebuild and sign the index from a plain checkout while
+                 the payloads live immutably in Blob. Leaves repo/Packages and
+                 the tracked icons/banners byte-identical.
+
+Both modes prune per-package assets whose package left the index; see
+prune_orphan_assets.
 """
-import functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re, subprocess
+import argparse, functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
 
-# Repo profile (see x11/docs/rootless-rootful-cfver-migration-plan.md Phase 5).
-# "rootless" is the historical flat layout and stays exactly where it was, so the
-# existing publish flow is untouched. Any other profile generates a completely
-# separate tree under repo/profiles/<name>/ -- separate debs input, separate
-# Packages/Release.
-#
-# They are separated because the two builds are different dependency universes
-# with the same package names and versions, installed at incompatible prefixes.
-# Not because their Debian architectures collide: Procursus gives rootful
-# iphoneos-arm and rootless iphoneos-arm64, so APT would in fact filter them.
-# Relying on that would be relying on a Procursus naming detail to keep two
-# incompatible trees apart, which is not a guarantee worth taking.
+# Rootless and rootful builds share package names but install into incompatible
+# prefixes, so each profile owns an independent index and payload tree.
 PROFILE = os.environ.get("XIOS_REPO_PROFILE", "rootless")
-if PROFILE == "rootless":
-    REPO = REPO_ROOT
-else:
-    REPO = os.path.join(REPO_ROOT, "profiles", PROFILE)
-
+REPO = REPO_ROOT if PROFILE == "rootless" else os.path.join(REPO_ROOT, "profiles", PROFILE)
 DEBS = os.path.join(REPO, "debs")
 META = os.path.join(REPO_ROOT, "meta")
 LOGO_SOURCES = os.path.join(HERE, "logo-sources")
@@ -118,16 +117,7 @@ def control_dict(deb_bytes):
     return d
 
 def deb_payload_profile(deb_bytes):
-    """Infer which repo profile a .deb belongs to from its payload paths.
-
-    Rootless packages install under /var/jb; rootful ones own the filesystem
-    root. Reading it off the payload rather than trusting the filename is the
-    point -- the two builds share a name, version and architecture, so the
-    filename cannot tell them apart.
-
-    Returns "rootless", "rootful", or None when the payload says nothing either
-    way (a metapackage with no files).
-    """
+    """Infer rootless/rootful ownership from a package's payload paths."""
     m = ar_members(deb_bytes)
     dn = next((n for n in m if n.startswith("data.tar")), None)
     if dn is None:
@@ -137,11 +127,7 @@ def deb_payload_profile(deb_bytes):
     if dn == "data.tar.zst":
         zstd = shutil.which("zstd")
         if not zstd:
-            # Returning None here would silently disable the profile guard for
-            # every Procursus deb, since they are all -Zzstd. Fail instead.
-            raise RuntimeError(
-                "data.tar.zst requires zstd in PATH to verify the repo profile"
-            )
+            raise RuntimeError("data.tar.zst requires zstd in PATH to verify the repo profile")
         data = subprocess.check_output([zstd, "-qdc"], input=data)
         mode = "r:"
     with tarfile.open(fileobj=io.BytesIO(data), mode=mode) as tf:
@@ -150,6 +136,120 @@ def deb_payload_profile(deb_bytes):
         return None
     return "rootless" if any(n.startswith("var/jb/") for n in names) else "rootful"
 
+def parse_packages_index(path):
+    """Read a generated Packages file back into (raw_text, [ctrl, ...])."""
+    with open(path, encoding="utf-8") as fh:
+        raw = fh.read()
+    return raw, parse_packages_text(raw)
+
+def parse_packages_text(raw):
+    """Parse Packages text into [ctrl, ...].
+
+    The inverse of the stanza writer in main(). Lossless for our indexes:
+    control_dict() drops RFC822 continuation lines when it parses a .deb, so
+    the stanzas this file contains are always single-line fields (long-form
+    prose lives in repo/meta/<pkg>.json, not in the control blob).
+    """
+    out = []
+    for block in raw.split("\n\n"):
+        if not block.strip():
+            continue
+        d, order = {}, []
+        for ln in block.splitlines():
+            if ": " in ln and not ln.startswith((" ", "\t")):
+                k, v = ln.split(": ", 1)
+                d[k] = v
+                order.append(k)
+        if "Package" not in d:
+            raise SystemExit("ERROR: Packages index has a stanza without a Package field")
+        d["__order__"] = order
+        out.append(d)
+    return out
+
+def guard_shrink(deb_filenames):
+    """Refuse a from-debs regeneration that would silently retire packages.
+
+    Compares package names derivable from the on-disk deb filenames against the
+    existing index. Filename-based on purpose: this runs before any deb is
+    opened, so a refusal cannot leave half-written depictions behind.
+    """
+    index_path = os.path.join(REPO, "Packages")
+    if not os.path.exists(index_path) or os.environ.get("MAKE_REPO_ALLOW_SHRINK"):
+        return
+    with open(index_path, encoding="utf-8", errors="replace") as fh:
+        previous = parse_packages_text(fh.read())
+    have = {fn[:-4].split("_")[0] for fn in deb_filenames if fn.endswith(".deb")}
+    gone = sorted({c["Package"] for c in previous} - have)
+    if len(gone) <= max(5, len(previous) // 20):
+        return
+    sample = ", ".join(gone[:8]) + (" ..." if len(gone) > 8 else "")
+    raise SystemExit(
+        f"ERROR: regenerating from repo/debs would drop {len(gone)} of {len(previous)} "
+        f"packages from the index.\n"
+        f"       no payload on disk for: {sample}\n"
+        f"       repo/debs holds {len(have)} package name(s). A worktree looks exactly\n"
+        f"       like this, because repo/debs is gitignored and never checked out.\n"
+        f"\n"
+        f"       To regenerate the site/index without payloads:\n"
+        f"           python3 bin/lib/make-repo.py --from-index\n"
+        f"       If you really are retiring those packages, set MAKE_REPO_ALLOW_SHRINK=1."
+    )
+
+# Generated per-package assets, as {directory: extensions}. Only these names are
+# ever removed by a prune -- meta/ and screenshots/ are hand-authored inputs and
+# a retired package's metadata is worth keeping for when it comes back.
+ASSET_DIRS = {"depictions": (".html", ".json"), "icons": (".png",), "banners": (".png",)}
+
+def prune_orphan_assets(pids):
+    """Delete depictions/icons/banners for packages no longer in the index.
+
+    Both generation modes only ever *write* assets for packages they index, so
+    without this the three directories are append-only: retiring a package
+    (fribidi, ladybird-xios-launcher) leaves its depiction, icon and banner
+    served forever at URLs apt no longer references.
+
+    `pids` MUST be the full generated package set. It is passed in from main()'s
+    in-memory list rather than re-read from a file on purpose: bin/publish-repo.sh
+    --only serves a deliberately narrower index than the tree holds, and keying
+    the prune off that would delete assets for everything the scoped publish left
+    out. That scoping happens in deploy_static_repo(), on a throwaway rsync copy,
+    strictly after make-repo.py has run against the whole tree -- so the set this
+    function sees is the unscoped one, and the deploy copy keeps every asset the
+    live index it reconciles against might still point at.
+    """
+    # Plan every directory before unlinking anything, so tripping the backstop on
+    # the last directory cannot leave the first two already pruned.
+    plan = []
+    for sub, exts in ASSET_DIRS.items():
+        d = os.path.join(REPO, sub)
+        if not os.path.isdir(d):
+            continue
+        present = [fn for fn in sorted(os.listdir(d)) if fn.endswith(exts)]
+        gone = [fn for fn in present if os.path.splitext(fn)[0] not in pids]
+        # Same backstop as guard_shrink, for the same reason: an empty or
+        # truncated package set must not be able to empty the site in one run.
+        if gone and len(gone) > max(20, len(present) // 10) \
+                and not os.environ.get("MAKE_REPO_ALLOW_SHRINK"):
+            sample = ", ".join(gone[:8]) + (" ..." if len(gone) > 8 else "")
+            raise SystemExit(
+                f"ERROR: pruning would delete {len(gone)} of {len(present)} files in "
+                f"repo/{sub}.\n"
+                f"       orphaned: {sample}\n"
+                f"       That is too many to be a routine retirement -- check that the\n"
+                f"       index really holds every package it should before rerunning.\n"
+                f"       If the retirement is intended, set MAKE_REPO_ALLOW_SHRINK=1."
+            )
+        plan += [(d, sub, fn) for fn in gone]
+
+    removed = []
+    for d, sub, fn in plan:
+        os.remove(os.path.join(d, fn))
+        removed.append(f"{sub}/{fn}")
+    if removed:
+        pkgs_gone = sorted({os.path.splitext(os.path.basename(p))[0] for p in removed})
+        print(f"Pruned {len(removed)} orphaned asset(s) for {len(pkgs_gone)} retired "
+              f"package(s): {', '.join(pkgs_gone)}")
+    return removed
 
 def normalize_section(ctrl):
     sec = (ctrl.get("Section") or "").strip()
@@ -543,7 +643,7 @@ def html_depiction(ctrl, meta, size):
   <div class="prose">{body}</div>{gallery_block}
   <h2 class="section">Information</h2><table class="info">{rows}</table>
   <footer><a href="../index.html">&larr; All packages</a></footer>
-</div>{THEME_JS}</body></html>"""
+</div>{THEME_JS}{ANALYTICS_JS}</body></html>"""
 
 # ── shared CSS ───────────────────────────────────────────────────────────────
 def head_links(prefix=""):
@@ -780,8 +880,18 @@ INDEX_JS = """
   document.getElementById("sileo").href = "sileo://source/" + u;
   document.getElementById("zebra").href = "zbra://sources/add/" + u;
   document.getElementById("cydia").href = "cydia://url/https://cydia.saurik.com/api/share#?source=" + u;
+  // Which manager people actually add the repo with. The href is a custom URL
+  // scheme, so the navigation never reaches us as a page view -- the click is
+  // the only place to count it.
+  ["sileo", "zebra", "cydia"].forEach(function (id) {
+    document.getElementById(id).addEventListener("click", function () {
+      window.va("event", { name: "add-repo", data: { manager: id } });
+    });
+  });
+
   var b = document.getElementById("copyBtn");
   b.addEventListener("click", function () {
+    window.va("event", { name: "copy-repo-url" });
     navigator.clipboard.writeText(u).then(function () {
       var prev = b.textContent;
       b.textContent = "Copied";
@@ -903,6 +1013,20 @@ THEME_PICKER = (
     f'{_SVG}<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>'
     '</div>'
 )
+
+# Vercel Web Analytics. Cookieless and first-party (/_vercel/insights/* is served
+# by the platform, not a third party), so there is nothing to consent-banner.
+# Depictions carry it as well as the index: Sileo renders them in a WKWebView, so
+# per-package page views are the one install-interest signal we can read from the
+# client. Deb downloads are NOT tracked here -- see the ANALYTICS note at the top
+# of bin/publish-repo.sh for why. The va() shim queues events fired before
+# script.js finishes loading.
+ANALYTICS_JS = """
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+"""
 
 # applies the saved/system theme before paint to avoid a flash of the wrong theme
 HEAD_JS = """
@@ -1078,44 +1202,29 @@ def write_index(pkgs):
   </section>
   <p class="no-results" id="noResults">No matching packages.</p>
   <footer><a href="https://maxleiter.com">maxleiter.com</a><span>{ARCH}</span></footer>
-</div>{INDEX_JS}{THEME_JS}</body></html>"""
+</div>{INDEX_JS}{THEME_JS}{ANALYTICS_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
 
 # ── main ─────────────────────────────────────────────────────────────────────
-def check_not_shrinking():
-    """Refuse to regenerate from a partial repo/debs/.
-
-    debs/ holds only recently-staged payloads; everything else lives in Blob and
-    exists solely as a stanza in the committed Packages index. Regenerating from
-    a partial debs/ therefore deletes most of the repo, and it does it quietly --
-    the generator has no idea the other payloads ever existed. This runs before
-    anything is written, because the assets are rewritten well before Packages is.
-    """
-    existing = os.path.join(REPO, "Packages")
-    if not os.path.exists(existing) or os.environ.get("XIOS_REPO_ALLOW_SHRINK") == "1":
-        return
-    indexed = sum(1 for ln in open(existing) if ln.startswith("Package: "))
-    staged = len([f for f in os.listdir(DEBS) if f.endswith(".deb")]) if os.path.isdir(DEBS) else 0
-    if indexed > staged:
-        raise SystemExit(
-            f"ERROR: refusing to shrink {existing} from {indexed} to at most {staged} packages.\n"
-            f"       repo/debs/ has {staged} payload(s); the rest of this repo lives in Blob and\n"
-            f"       exists only in the committed index. Restore the missing debs (hash-match\n"
-            f"       against HEAD:repo/Packages) before regenerating, or set\n"
-            f"       XIOS_REPO_ALLOW_SHRINK=1 if you really do mean to drop them."
-        )
-
-
 def main():
-    check_not_shrinking()
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--from-index", action="store_true",
+                    help="regenerate only what derives from the committed "
+                         "repo/Packages; needs no .deb payloads")
+    args = ap.parse_args()
+    from_index = args.from_index
+
     for d in ("icons", "banners", "depictions"):
         os.makedirs(os.path.join(REPO, d), exist_ok=True)
 
     # one shared, cacheable stylesheet for index + all depictions (was inlined per page)
     open(os.path.join(REPO, "site.css"), "w").write(SITE_CSS)
 
-    # repo icon from the website favicon
-    if os.path.isdir(FAVICON_SRC):
+    # repo icon from the website favicon. Authoring-host only: FAVICON_SRC is a
+    # path in the maxleiter.com checkout, and CydiaIcon.png/favicon.ico are
+    # tracked, so a --from-index run just uses what the checkout already has.
+    if not from_index and os.path.isdir(FAVICON_SRC):
         shutil.copyfile(os.path.join(FAVICON_SRC, "apple-touch-icon.png"),
                         os.path.join(REPO, "CydiaIcon.png"))
         ico = os.path.join(FAVICON_SRC, "favicon.ico")
@@ -1123,84 +1232,120 @@ def main():
             shutil.copyfile(ico, os.path.join(REPO, "favicon.ico"))
 
     pkgs, stanzas, featured_by_pid = [], [], {}
-    for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
-        if not fn.endswith(".deb"):
-            continue
-        blob = open(os.path.join(DEBS, fn), "rb").read()
-        ctrl = control_dict(blob); pid = ctrl["Package"]
 
-        # Refuse to index a package built for a different root layout. Without
-        # this a rootful deb dropped into the flat (rootless) debs/ would be
-        # published to rootless devices, where none of its paths exist.
-        payload_profile = deb_payload_profile(blob)
-        if payload_profile is not None and payload_profile != PROFILE:
-            raise SystemExit(
-                f"ERROR: {fn} has {payload_profile} payload paths but this is the "
-                f"{PROFILE} profile.\n"
-                f"       The two builds share package names and versions but install at "
-                f"incompatible prefixes, so they must never share an index.\n"
-                f"       Put it in repo/profiles/{payload_profile}/debs/ and "
-                f"generate with XIOS_REPO_PROFILE={payload_profile}."
-            )
-        normalize_section(ctrl)
-        normalize_publisher(ctrl)
-        meta = load_meta(pid)
-        pkgs.append({"ctrl": ctrl, "meta": meta})
+    if from_index:
+        # The committed index is authoritative: reuse its bytes verbatim rather
+        # than recomputing stanzas, so a CI regeneration can never perturb the
+        # payload hashes it is signing.
+        index_path = os.path.join(REPO, "Packages")
+        if not os.path.exists(index_path):
+            raise SystemExit(f"ERROR: --from-index needs {index_path}")
+        packages, ctrls = parse_packages_index(index_path)
+        if not packages.endswith("\n"):
+            packages += "\n"
+        for ctrl in ctrls:
+            pid = ctrl["Package"]
+            meta = load_meta(pid)
+            pkgs.append({"ctrl": ctrl, "meta": meta})
+            size = int(ctrl.get("Size", "0") or 0)
+            with open(os.path.join(REPO, "depictions", f"{pid}.json"), "w") as f:
+                json.dump(native_depiction(ctrl, meta, size), f, indent=2)
+            open(os.path.join(REPO, "depictions", f"{pid}.html"), "w").write(
+                html_depiction(ctrl, meta, size))
+            featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
+                                    "url": f"{BASE_URL}/banners/{pid}.png"}
+    else:
+        # A regeneration indexes only the payloads on disk. repo/debs is
+        # gitignored, so a fresh worktree (or a half-finished restore) holds a
+        # handful of debs while the committed index describes hundreds -- and
+        # writing that out silently retires every package whose deb is merely
+        # absent. Check before generating anything, so a refusal leaves the tree
+        # untouched. --from-index is what the caller almost always wanted.
+        guard_shrink(sorted(os.listdir(DEBS)))
 
-        # assets
-        if HAVE_PIL:
-            icon = package_icon(pid, ctrl.get("Section", "Tweaks"), 256)
-            icon.save(os.path.join(REPO, "icons", f"{pid}.png"))
-            make_banner(os.path.join(REPO, "banners", f"{pid}.png"),
-                        ctrl.get("Name", pid),
-                        meta.get("tagline", ctrl.get("Description", "")), icon)
+        for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
+            if not fn.endswith(".deb"):
+                continue
+            blob = open(os.path.join(DEBS, fn), "rb").read()
+            ctrl = control_dict(blob); pid = ctrl["Package"]
+            payload_profile = deb_payload_profile(blob)
+            if payload_profile is not None and payload_profile != PROFILE:
+                raise SystemExit(
+                    f"ERROR: {fn} has {payload_profile} payload paths but this is the "
+                    f"{PROFILE} profile.\n"
+                    f"       Put it in repo/profiles/{payload_profile}/debs/ and generate "
+                    f"with XIOS_REPO_PROFILE={payload_profile}."
+                )
+            normalize_section(ctrl)
+            normalize_publisher(ctrl)
+            meta = load_meta(pid)
+            pkgs.append({"ctrl": ctrl, "meta": meta})
 
-        # depictions
-        with open(os.path.join(REPO, "depictions", f"{pid}.json"), "w") as f:
-            json.dump(native_depiction(ctrl, meta, len(blob)), f, indent=2)
-        open(os.path.join(REPO, "depictions", f"{pid}.html"), "w").write(
-            html_depiction(ctrl, meta, len(blob)))
+            # assets
+            if HAVE_PIL:
+                icon = package_icon(pid, ctrl.get("Section", "Tweaks"), 256)
+                icon.save(os.path.join(REPO, "icons", f"{pid}.png"))
+                make_banner(os.path.join(REPO, "banners", f"{pid}.png"),
+                            ctrl.get("Name", pid),
+                            meta.get("tagline", ctrl.get("Description", "")), icon)
 
-        # Packages stanza: base control fields + repo/rich fields
-        lines = [f"{k}: {ctrl[k]}" for k in ctrl["__order__"]]
-        lines += [
-            f"Filename: debs/{fn}",
-            f"Size: {len(blob)}",
-            f"MD5sum: {hashlib.md5(blob).hexdigest()}",
-            f"SHA1: {hashlib.sha1(blob).hexdigest()}",
-            f"SHA256: {hashlib.sha256(blob).hexdigest()}",
-            f"Icon: {BASE_URL}/icons/{pid}.png",
-            f"Depiction: {BASE_URL}/depictions/{pid}.html",
-            f"SileoDepiction: {BASE_URL}/depictions/{pid}.json",
-            f"Native Depiction: {BASE_URL}/depictions/{pid}.json",
-        ]
-        if "Homepage" not in ctrl:
-            lines.append(f"Homepage: {meta.get('homepage', BASE_URL)}")
-        stanzas.append("\n".join(lines))
-        featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
-                                "url": f"{BASE_URL}/banners/{pid}.png"}
+            # depictions
+            with open(os.path.join(REPO, "depictions", f"{pid}.json"), "w") as f:
+                json.dump(native_depiction(ctrl, meta, len(blob)), f, indent=2)
+            open(os.path.join(REPO, "depictions", f"{pid}.html"), "w").write(
+                html_depiction(ctrl, meta, len(blob)))
 
-    # The deb pool is additive and retains every superseded version file; index
-    # only the newest version of each package id, not every .deb present. Uses
-    # dpkg version-comparison semantics (compare_deb_versions), keyed on the
-    # control Package field (what apt resolves against), so stale duplicate
-    # stanzas never reach the generated Packages index.
-    latest_idx = {}
-    for i, p in enumerate(pkgs):
-        pid = p["ctrl"]["Package"]
-        if (pid not in latest_idx
-                or compare_deb_versions(p["ctrl"].get("Version", ""),
-                                        pkgs[latest_idx[pid]]["ctrl"].get("Version", "")) > 0):
-            latest_idx[pid] = i
-    keep = set(latest_idx.values())
-    pkgs = [p for i, p in enumerate(pkgs) if i in keep]
-    stanzas = [s for i, s in enumerate(stanzas) if i in keep]
+            # Packages stanza: base control fields + repo/rich fields
+            lines = [f"{k}: {ctrl[k]}" for k in ctrl["__order__"]]
+            lines += [
+                f"Filename: debs/{fn}",
+                f"Size: {len(blob)}",
+                f"MD5sum: {hashlib.md5(blob).hexdigest()}",
+                f"SHA1: {hashlib.sha1(blob).hexdigest()}",
+                f"SHA256: {hashlib.sha256(blob).hexdigest()}",
+                f"Icon: {BASE_URL}/icons/{pid}.png",
+                f"Depiction: {BASE_URL}/depictions/{pid}.html",
+                f"SileoDepiction: {BASE_URL}/depictions/{pid}.json",
+                f"Native Depiction: {BASE_URL}/depictions/{pid}.json",
+            ]
+            if "Homepage" not in ctrl:
+                lines.append(f"Homepage: {meta.get('homepage', BASE_URL)}")
+            stanzas.append("\n".join(lines))
+            featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
+                                    "url": f"{BASE_URL}/banners/{pid}.png"}
 
-    packages = "\n\n".join(stanzas) + "\n"
+        # The deb pool is additive and retains every superseded version file; index
+        # only the newest version of each package id, not every .deb present. Uses
+        # dpkg version-comparison semantics (compare_deb_versions), keyed on the
+        # control Package field (what apt resolves against), so stale duplicate
+        # stanzas never reach the generated Packages index.
+        latest_idx = {}
+        for i, p in enumerate(pkgs):
+            pid = p["ctrl"]["Package"]
+            if (pid not in latest_idx
+                    or compare_deb_versions(p["ctrl"].get("Version", ""),
+                                            pkgs[latest_idx[pid]]["ctrl"].get("Version", "")) > 0):
+                latest_idx[pid] = i
+        keep = set(latest_idx.values())
+        pkgs = [p for i, p in enumerate(pkgs) if i in keep]
+        stanzas = [s for i, s in enumerate(stanzas) if i in keep]
 
-    open(os.path.join(REPO, "Packages"), "w").write(packages)
+        packages = "\n\n".join(stanzas) + "\n"
+        open(os.path.join(REPO, "Packages"), "w").write(packages)
+
     with open(os.path.join(REPO, "Packages.gz"), "wb") as f:
         f.write(gzip.compress(packages.encode(), 9, mtime=0))
+
+    # Flat side indexes, not part of the apt contract. They exist because they
+    # are what you actually want during a recovery: .pv answers "what version is
+    # published?" and .sha answers "which payload bytes does this stanza point
+    # at?" without parsing stanzas. Derived, so regenerate them here rather than
+    # letting a hand-made copy go stale.
+    indexed = parse_packages_text(packages)
+    with open(os.path.join(REPO, "Packages.pv"), "w") as f:
+        f.write("".join(f"{c['Package']}={c.get('Version','')}\n" for c in indexed))
+    with open(os.path.join(REPO, "Packages.sha"), "w") as f:
+        f.write("".join(f"{c.get('Filename','')} {c.get('SHA256','')}\n" for c in indexed))
 
     # featured carousel
     with open(os.path.join(REPO, "sileo-featured.json"), "w") as f:
@@ -1222,8 +1367,15 @@ def main():
     rel += [f" {sh} {s} {n}" for n, s, _, sh in idx]
     open(os.path.join(REPO, "Release"), "w").write("\n".join(rel) + "\n")
 
+    # After every asset this run writes, so the survivors are already refreshed
+    # and whatever is left over really is orphaned. pkgs is the full generated
+    # set in both modes -- see prune_orphan_assets on why that matters for --only.
+    prune_orphan_assets({p["ctrl"]["Package"] for p in pkgs})
+
     write_index(pkgs)
-    print(f"Generated {PROFILE} repo at {REPO} ({len(pkgs)} package(s)), PIL={HAVE_PIL}")
+    src = "committed Packages" if from_index else "repo/debs"
+    print(f"Generated {PROFILE} repo at {REPO} ({len(pkgs)} package(s)) "
+          f"from {src}, PIL={HAVE_PIL}")
 
 if __name__ == "__main__":
     main()

@@ -17,6 +17,61 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
   `xios-runtime` and does not install this app.
 
 ## Recent commits / status notes
+- 2026-07-29 display pacing + present-side MetalFX (device-tested; closes perf P0.4).
+  `f09e4057` visibility channel, `56c9dc35` pacing, `7a5a61fc` MetalFX, `a46116e7` and
+  the follow-ups below the bugs the device found.
+  - Pacing is live and proven. `xios-status` on a healthy iosc session:
+    ```
+    Xios       pacing=vblank fps=30-60/60 interval=16.66ms
+    Xios       upscale=off
+    iosc       pacing=vblank fps=60 range=30-60 interval=16.66ms
+    ```
+    Both sides publish `pacing` under their own producer name, so "the app is
+    offering a display clock" and "the compositor accepted one" are separately
+    visible. The iosc log shows the transition
+    `pacing=event-loop (no display clock from the app)` → `pacing=vblank ...` as the
+    app attaches, which is the state machine working rather than a warning.
+  - `preferredFramesPerSecond` is gone; the frame rate is a `CAFrameRateRange`
+    applied through one `setPacingRange()` seam. **That seam is what the thermal
+    track clamps — do not turn it back into a fixed number.**
+  - The `presentedTime` ack moved from the command buffer's completed handler to
+    `drawable.addPresentedHandler`. There is deliberately no second ack path: iosc's
+    existing 100ms present-ack valve is the net for a drawable whose handler never
+    runs, and adding a fallback handler would race it and lose the measurement
+    (completion always fires first).
+
+### Render Scale (present-side MetalFX upscaling) — OFF by default, and it should stay off
+`MTLFXSpatialScalerDescriptor.supportsDevice` is **YES** on the A10 (temporal NO), so
+the capability is real; the gate is that runtime call, never a GPU-family check, and
+MetalFX is weak-linked behind an `NSClassFromString` probe.
+
+The reason it is not the default is geometry, not confidence:
+
+- iosc ships logical 1440x1080 at scale 2 → a **2880x2160** surface, which the app
+  aspect-fits onto the **2160x1620** panel. That 0.75 downscale is *supersampling*:
+  the present path already has more source detail than the panel can resolve.
+- Routing that through a 1440x1080 intermediate first discards information and then
+  reconstructs it. MetalFX cannot invent detail deleted a pass earlier, so at the
+  shipping geometry the trade is **softer for a saving in the app's present pass
+  only** — the compositor still draws all 6.2M pixels.
+- This is exactly why `auto` declines here (device-confirmed: hint reached
+  `xios.json` as `"upscale":"auto"`, app reported `upscale=off`). That refusal is the
+  design, not a gap.
+
+The win that actually pays needs the **compositor** to render fewer pixels — lower
+`IOSC_LOGICAL`, or scale 1 — and *that* changes `wl_output` scale, which HiDPI clients
+do observe. So it is a session-geometry decision, not a present-side toggle, and it
+wants measurement before it becomes a default. Sequence it after the thermal track,
+which will have real frame-time numbers to argue from.
+
+Exposed three ways, most specific first: the in-app **Xios → Render Scale** chips
+(persisted in `UserDefaults`, applies on the next frame — no session restart, because
+nothing about the compositor's output changes), `XIOS_UPSCALE` in the app's own
+environment, then `IOSC_UPSCALE` on the compositor (forwarded into `xios.json`, which
+is the production path since FrontBoard gives the app no environment). The settings
+summary reports the *live* `upscale=` value rather than what was requested, so "auto
+declined" and "this GPU has no spatial scaler" are both visible in the UI.
+
 - 2026-07-29 responsiveness release (`com.max.xios 0.1.4`, installed and device-tested):
   - `ff1ba0d9` moves every ioscd request off the UIKit thread, adds bounded socket
     read/write timeouts, and suppresses duplicate session requests.

@@ -38,6 +38,8 @@ webkitgtk-configure: webkitgtk-setup
 		-DCMAKE_BUILD_TYPE=Release \
 		-DPKG_CONFIG_EXECUTABLE=$(BUILD_TOOLS)/cross-pkg-config \
 		-DWAYLAND_SCANNER=$(BUILD_WORK)/wayland/native-root/bin/wayland-scanner \
+		-DGETTEXT_MSGFMT_EXECUTABLE=/usr/bin/msgfmt \
+		-DGETTEXT_MSGMERGE_EXECUTABLE=/usr/bin/msgmerge \
 		-DUSE_APPLE_ICU=OFF \
 		-DUSE_GTK4=OFF \
 		-DENABLE_QUARTZ_TARGET=OFF \
@@ -56,6 +58,7 @@ webkitgtk-configure: webkitgtk-setup
 		-DUSE_GBM=OFF \
 		-DUSE_LIBDRM=OFF \
 		-DENABLE_GPU_PROCESS=OFF \
+		-DENABLE_WEBGL=OFF \
 		-DENABLE_VIDEO=OFF \
 		-DENABLE_WEB_AUDIO=OFF \
 		-DENABLE_MEDIA_STREAM=OFF \

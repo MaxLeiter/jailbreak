@@ -62,6 +62,18 @@ if [ -f "$VERCEL_CWD/.env.local" ]; then
   set +a
 fi
 
+# `vercel env pull` writes VERCEL_OIDC_TOKEN into .env.local but not BLOB_STORE_ID,
+# and `vercel blob` rejects a HALF-SET OIDC pair outright ("must both be set, or
+# both be unset") instead of falling back to the BLOB_READ_WRITE_TOKEN sitting in
+# the same file. Sourcing the file therefore BREAKS uploads that would otherwise
+# work. Drop an incomplete pair; a complete one is left alone so real OIDC setups
+# keep working.
+if [ -n "${VERCEL_OIDC_TOKEN:-}${BLOB_STORE_ID:-}" ] &&
+   { [ -z "${VERCEL_OIDC_TOKEN:-}" ] || [ -z "${BLOB_STORE_ID:-}" ]; }; then
+  echo "==> ignoring a half-set OIDC pair from the environment (using the read-write token)"
+  unset VERCEL_OIDC_TOKEN BLOB_STORE_ID
+fi
+
 UPLOAD_ARGS=(
   --access public
   --cache-control-max-age "$CACHE_CONTROL_MAX_AGE"

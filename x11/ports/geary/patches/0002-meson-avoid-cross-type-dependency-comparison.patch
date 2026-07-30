@@ -1,0 +1,17 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Avoid cross-type dependency comparison with modern Meson
+
+Meson 0.60 and newer reject comparisons between pkg-config and internal
+dependency objects. Identify the bundled libhandy dependency by its dependency
+type instead.
+
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -152,7 +152,7 @@ valadoc_dep_args = []
+ foreach dep : valadoc_dependencies
+   valadoc_dep_args += '--pkg'
+-  if dep != libhandy
++  if dep.type_name() != 'internal'
+     valadoc_dep_args += dep.name()
+   else
+     valadoc_dep_args += 'libhandy-1'
