@@ -4,6 +4,7 @@ import Metal
 import QuartzCore
 import IOSurface
 import Darwin
+import OSLog
 
 /// Root VC: a full-screen view that displays the X server's framebuffer.
 final class XServerViewController: UIViewController {
@@ -170,6 +171,40 @@ final class XScreenView: UIView {
     private var iosurfaceCompositorID = ""
 
     private var displayLink: CADisplayLink?
+    // MARK: display pacing (P0.4's remaining half)
+    // The link's targetTimestamp is the deadline for the frame being built. Sent to
+    // the compositor each tick (xsurface_pacing), it turns iosc's already-coalesced
+    // repaint from event-loop paced into vblank paced. The frame rate is a RANGE, not
+    // a fixed number: preferredFramesPerSecond is deprecated in favour of
+    // preferredFrameRateRange, and a range is something CoreAnimation can settle
+    // inside on its own rather than a hard flip between two values. The thermal track
+    // clamps `pacingRange` — that is the seam it needs.
+    private var pacingRange = XScreenView.liveFrameRate
+    /// The idle/no-signal holding frame: nothing is animating, so ask for very little.
+    private static let holdingFrameRate = CAFrameRateRange(minimum: 10, maximum: 20, preferred: 20)
+    /// A live desktop. The floor is deliberately well below the ceiling so
+    /// CoreAnimation can throttle a thermally constrained A10 without stuttering.
+    private static let liveFrameRate = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+    /// Refresh interval the link last reported, for the status line.
+    private var lastLinkIntervalUs: UInt32 = 0
+
+    // Instruments needs named intervals to show where a frame went; without them the
+    // present path is an anonymous slice of the main thread. Two intervals: `present`
+    // covers building and committing the frame, `upscale` the MetalFX stage inside it,
+    // so "did upscaling actually get cheaper" is a readable comparison rather than an
+    // inference from fps. A disabled signposter compiles down to nothing.
+    private let signposter = OSSignposter(
+        subsystem: "com.max.xios", category: "present")
+
+    // MARK: present-side MetalFX upscaling (see XiosUpscale.swift)
+    // OFF by default: this lands as an opt-in you can measure, not a silent change to
+    // what the desktop looks like. Switched at runtime from XIOS_UPSCALE in our own
+    // environment, or from xios.json's "upscale" field — which is the production knob,
+    // because FrontBoard launches us with no environment of our own (iosc forwards its
+    // IOSC_UPSCALE into the config it already writes).
+    private var upscaleMode = XiosUpscaleMode.off
+    private var upscaler: XiosUpscaler?
+    private var lastUpscaleStatus = ""
     private var testBuf: UnsafeMutablePointer<UInt8>?
     private var usingTestPattern = false
     // The animated test card is a LAST-RESORT no-signal diagnostic only. During
@@ -308,8 +343,9 @@ final class XScreenView: UIView {
         isAccessibilityElement = false
         XiosA11yClient.shared.startup(view: self)
 
-        let dl = CADisplayLink(target: self, selector: #selector(tick))
-        dl.preferredFramesPerSecond = usingTestPattern ? 20 : 60
+        let dl = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        pacingRange = usingTestPattern ? Self.holdingFrameRate : Self.liveFrameRate
+        dl.preferredFrameRateRange = pacingRange
         dl.add(to: .main, forMode: .common)
         displayLink = dl
 
@@ -347,6 +383,10 @@ final class XScreenView: UIView {
         if metalReady {
             teardownConnections(resetTransform: false)
             texture = nil                    // release even a diagnostic holding frame
+            // The intermediate + staging targets are a few MB of private GPU storage;
+            // a backgrounded app has no business pinning them where jetsam can see it.
+            // The mode is kept, so becoming active rebuilds them on the first frame.
+            upscaler?.releaseResources()
             awaitingCompositor = true
             writeStatus()
         }
@@ -382,7 +422,29 @@ final class XScreenView: UIView {
         testPatternStartTick = tickCount
         makeTexture(width: width, height: height)
         needsPresent = true         // upload + present the initial clean-black frame once
-        displayLink?.preferredFramesPerSecond = 20
+        setPacingRange(Self.holdingFrameRate)
+    }
+
+    /// Single place the display link's frame-rate range is applied, so the thermal
+    /// track has one lever to clamp and the status line one place to publish from.
+    private func setPacingRange(_ range: CAFrameRateRange) {
+        pacingRange = range
+        displayLink?.preferredFrameRateRange = range
+        publishPacingStatus()
+    }
+
+    private func publishPacingStatus() {
+        // "vblank" is the app's claim that it IS driving the compositor's clock; the
+        // compositor publishes its own `pacing` key saying whether it accepted one
+        // (an old iosc ignores the record). Both appear in `xios-status`, attributed.
+        let interval = lastLinkIntervalUs > 0
+            ? String(format: " interval=%.2fms", Double(lastLinkIntervalUs) / 1000.0)
+            : ""
+        // `preferred` is optional in the SDK: nil means "no preference, settle
+        // anywhere in the range", which is worth showing as such rather than as 0.
+        let preferred = pacingRange.preferred.map { String(format: "/%g", $0) } ?? ""
+        let fps = String(format: "%g-%g", pacingRange.minimum, pacingRange.maximum)
+        iosc_status_set_value("pacing", "vblank fps=\(fps)\(preferred)\(interval)")
     }
 
     // MARK: IOSurface (zero-copy) path
@@ -437,7 +499,7 @@ final class XScreenView: UIView {
         testBuf?.deallocate(); testBuf = nil
         texture = nil                             // drop the test-pattern texture (~14 MB)
         needsPresent = true                       // present the initial frame
-        displayLink?.preferredFramesPerSecond = 60
+        setPacingRange(Self.liveFrameRate)
         connectInput()
         if usingIosc {
             SystemIntegration.shared.syncOutputNow()
@@ -741,13 +803,69 @@ final class XScreenView: UIView {
         let socket: String?
         let width: Int?
         let height: Int?
+        /// Present-side upscaling, forwarded by the compositor from IOSC_UPSCALE.
+        /// Deliberately NOT part of renderStateChanged below: it changes only how the
+        /// app scales its own drawable, so picking up a new value must not tear down
+        /// and re-adopt the IOSurface.
+        let upscale: String?
         init(_ obj: [String: Any]) {
             // Presence of "ddx":"iosurface" selects the zero-copy IOSurface path.
             isIOSurface = (obj["ddx"] as? String) == "iosurface"
             socket = (obj["socket"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             width = (obj["width"] as? Int).flatMap { $0 > 0 ? $0 : nil }
             height = (obj["height"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+            upscale = (obj["upscale"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         }
+    }
+
+    /// Resolve the upscale mode. Our own environment wins when it says anything at
+    /// all, so a shell-launched debug run can override the compositor; otherwise the
+    /// compositor's xios.json hint decides; otherwise off.
+    private func resolveUpscaleMode(_ ddx: DDXFields) -> XiosUpscaleMode {
+        if let env = ProcessInfo.processInfo.environment["XIOS_UPSCALE"], !env.isEmpty {
+            return XiosUpscaleMode.parse(env)
+        }
+        return XiosUpscaleMode.parse(ddx.upscale)
+    }
+
+    private func applyUpscaleMode(_ mode: XiosUpscaleMode) {
+        guard mode != upscaleMode else { return }
+        upscaleMode = mode
+        if mode.isOff {
+            upscaler?.releaseResources()
+            upscaler = nil
+            // Back to the cheaper drawable the direct path wants.
+            if metalReady { metalLayer.framebufferOnly = true }
+            publishUpscaleStatus(nil)
+            return
+        }
+        if metalReady, let device {
+            // MetalFX writes the output texture, which framebufferOnly forbids. Only
+            // relaxed while upscaling is on, so the default path keeps the tighter
+            // drawable it has always had.
+            metalLayer.framebufferOnly = false
+            if upscaler == nil { upscaler = XiosUpscaler(device: device) }
+            if !XiosUpscaler.supported(device) {
+                // Probed YES on the A10 target, but never assume: a device whose
+                // spatial scaler says no degrades to the direct present, and says so.
+                publishUpscaleStatus(nil)
+            }
+        }
+        needsPresent = true
+    }
+
+    /// `upscale=` in the runtime status table. Upscaling changes what the user sees,
+    /// so it is never allowed to be undiscoverable (docs/ios-platform-features.md §0).
+    private func publishUpscaleStatus(_ plan: XiosUpscaler.Plan?) {
+        let value: String
+        if let upscaler, !upscaleMode.isOff {
+            value = upscaler.statusValue(for: plan)
+        } else {
+            value = "off"
+        }
+        guard value != lastUpscaleStatus else { return }
+        lastUpscaleStatus = value
+        iosc_status_set_value("upscale", value)
     }
 
     @discardableResult
@@ -812,6 +930,9 @@ final class XScreenView: UIView {
         if oldIoscSock != ioscInputSock {
             owningViewController()?.setNeedsUpdateOfSupportedInterfaceOrientations()
         }
+        // After the render/input decisions, because it deliberately does not
+        // participate in them: flipping the upscale knob must not re-adopt the surface.
+        applyUpscaleMode(resolveUpscaleMode(ddx))
         return true
     }
 
@@ -864,9 +985,10 @@ final class XScreenView: UIView {
         }
     }
 
-    @objc private func tick() {
+    @objc private func tick(_ link: CADisplayLink) {
         guard !appIsBackgrounded else { return }
         tickCount += 1
+        sendPacing(link)
         serviceIoscClipboard()
         serviceIoscInputTraits()
         if inputConnected && !iosc_input_is_open() {
@@ -979,6 +1101,36 @@ final class XScreenView: UIView {
         if render(texture) { needsPresent = false }
     }
 
+    /// Hand the compositor this tick's deadline so its coalesced repaint can be
+    /// vblank-paced instead of event-loop paced (P0.4). Sent first thing in the tick,
+    /// while `targetTimestamp` still describes the frame we are about to build.
+    ///
+    /// Everything on the wire is a delta from *now*: `targetTimestamp` lives in
+    /// CACurrentMediaTime()'s domain and the compositor works in CLOCK_MONOTONIC, so
+    /// a delta is the only thing both sides can read without a shared epoch.
+    private func sendPacing(_ link: CADisplayLink) {
+        guard let conn = xconn else { return }
+        // duration is the link's own idea of the interval; targetTimestamp - timestamp
+        // is what it actually got this tick. Prefer the latter and fall back.
+        var interval = link.targetTimestamp - link.timestamp
+        if !(interval > 0) { interval = link.duration }
+        guard interval > 0, interval < 1 else { return }   // no clock yet, or nonsense
+
+        let untilDeadline = link.targetTimestamp - CACurrentMediaTime()
+        let untilUs = (untilDeadline * 1_000_000).rounded()
+        let intervalUs = UInt32((interval * 1_000_000).rounded())
+        lastLinkIntervalUs = intervalUs
+
+        _ = xsurface_pacing(conn,
+                            Int32(clamping: Int(untilUs.isFinite ? untilUs : 0)),
+                            intervalUs,
+                            Int32((pacingRange.minimum * 1000).rounded()),
+                            Int32((pacingRange.maximum * 1000).rounded()))
+        // Republish once the real interval is known, so `pacing=` reports the rate
+        // CoreAnimation settled on rather than only the range we asked for.
+        if tickCount % 120 == 0 { publishPacingStatus() }
+    }
+
     /// Draw the texture using the current fit/zoom/pan transform.
     private func gpuFence(for conn: OpaquePointer) -> (MTLSharedEvent, UInt64)? {
         presentFenceDecodeFailed = false
@@ -1020,6 +1172,8 @@ final class XScreenView: UIView {
                         conn: OpaquePointer? = nil,
                         waitEvent: MTLSharedEvent? = nil,
                         waitValue: UInt64 = 0) -> Bool {
+        let presentInterval = signposter.beginInterval("present")
+        defer { signposter.endInterval("present", presentInterval) }
         guard let drawable = metalLayer.nextDrawable(),
               let cmd = queue.makeCommandBuffer(),
               let fit = fitTransform(),
@@ -1027,9 +1181,25 @@ final class XScreenView: UIView {
         if let waitEvent, waitValue > 0 {
             cmd.encodeWaitForEvent(waitEvent, value: waitValue)
         }
+        // Optional MetalFX stage: composite into a smaller intermediate and let the
+        // spatial scaler blow it up to the drawable. The fit transform needs no
+        // adjustment — clipVertices() is in normalised device coordinates, and the
+        // intermediate is a uniform scale of the drawable, so the same vertices frame
+        // the desktop identically in both. A nil plan is the direct present, which is
+        // the default and what every failure path degrades to.
+        let plan = upscaler?.plan(
+            mode: upscaleMode,
+            drawableWidth: Int(metalLayer.drawableSize.width),
+            drawableHeight: Int(metalLayer.drawableSize.height),
+            sourceWidth: tex.width,
+            sourceHeight: tex.height,
+            drawableTexture: drawable.texture,
+            pixelFormat: metalLayer.pixelFormat)
+        publishUpscaleStatus(plan)
+
         // triangle strip: TL, BL, TR, BR  (pos.xy, uv.xy); uv origin top-left
         let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = drawable.texture
+        rpd.colorAttachments[0].texture = plan?.source ?? drawable.texture
         rpd.colorAttachments[0].loadAction = .clear
         rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         rpd.colorAttachments[0].storeAction = .store
@@ -1039,11 +1209,38 @@ final class XScreenView: UIView {
         enc.setFragmentTexture(tex, index: 0)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         enc.endEncoding()
+        if let plan, let upscaler {
+            let up = signposter.beginInterval("upscale")
+            upscaler.encode(plan, into: drawable.texture, commandBuffer: cmd)
+            signposter.endInterval("upscale", up)
+        }
         if let conn, presentedSeq != 0 {
-            cmd.addCompletedHandler { [weak self] _ in
+            // Ack on the DRAWABLE's presented handler, not the command buffer's
+            // completed handler. Completion means "the GPU finished rendering"; the
+            // presentation-time protocol asks for the moment the content actually
+            // reached the display, which is what presentedTime reports — acking at
+            // completion is how the old feedback ran up to a frame early. Moving the
+            // ack here is also what makes wl_surface.frame callbacks retire on
+            // present rather than on repaint, which is the rest of P0.4.
+            //
+            // The handler fires even for a drawable that never made it to the panel
+            // (presentedTime == 0), which is the case worth acking without a
+            // measurement rather than not at all. If the process is suspended before
+            // it runs at all, iosc's existing 100ms present-ack valve retires the
+            // callbacks — that valve is exactly the safety net this needs, so there
+            // is no second ack path here to race with.
+            drawable.addPresentedHandler { [weak self] presented in
+                let at = presented.presentedTime
                 DispatchQueue.main.async {
                     guard let self, self.xconn == conn else { return }
-                    _ = xsurface_presented(conn, presentedSeq)
+                    guard at > 0 else {
+                        _ = xsurface_presented(conn, presentedSeq)
+                        return
+                    }
+                    let ageUs = (max(0, CACurrentMediaTime() - at) * 1_000_000).rounded()
+                    _ = xsurface_presented_at(
+                        conn, presentedSeq,
+                        UInt32(clamping: Int(ageUs.isFinite ? ageUs : 0)))
                 }
             }
         }

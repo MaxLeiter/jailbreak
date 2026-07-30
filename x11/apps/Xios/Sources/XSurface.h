@@ -38,6 +38,28 @@ int xsurface_drain(XSurfaceConn *c);
 uint64_t xsurface_dirty_sequence(XSurfaceConn *c);
 int xsurface_presented(XSurfaceConn *c, uint64_t seq);
 
+/* Ack `seq` with the frame's REAL presentation time, from
+ * MTLDrawable.addPresentedHandler. `present_age_us` is how long before this call
+ * the frame actually reached the display — a delta, not a timestamp, because
+ * CACurrentMediaTime() and the compositor's CLOCK_MONOTONIC are different clocks
+ * (see XIOS_MSG_PRESENTED in xios_surface.h). The compositor forwards it to the
+ * Wayland presentation-time protocol instead of timing its own repaint.
+ * xsurface_presented() remains the no-measurement form. */
+int xsurface_presented_at(XSurfaceConn *c, uint64_t seq, uint32_t present_age_us);
+
+/* Report the app's display clock so the compositor can pace its coalesced repaint
+ * to the panel rather than to its event loop (P0.4). Call once per CADisplayLink
+ * tick, before doing the tick's work:
+ *   until_deadline_us  microseconds from now to the link's targetTimestamp (may be
+ *                      negative when the app is already late for it)
+ *   interval_us        the link's refresh interval (targetTimestamp - timestamp)
+ *   min_mfps/max_mfps  the CAFrameRateRange asked of CoreAnimation, in fps*1000,
+ *                      or 0 when unknown
+ * Non-blocking and dropped under backpressure, same posture as the DIRTY stream:
+ * a stalled pacing record must never hold up a frame. */
+int xsurface_pacing(XSurfaceConn *c, int32_t until_deadline_us,
+                    uint32_t interval_us, int32_t min_mfps, int32_t max_mfps);
+
 /* Cross-process GPU fence attached to the most recently drained DIRTY record.
  * Returns 1 and borrows the fixed 32-byte broker capability token when the
  * producer submitted the frame, or 0 for a malformed/incomplete frame. The

@@ -57,9 +57,37 @@ int xios_notify_dirty_with_fence(const void *shared_event_token,
 uint64_t xios_dirty_generation(void);
 uint64_t xios_presented_generation(void);
 
+/* ---- display pacing (fed by XIOS_MSG_PACING / XIOS_MSG_PRESENTED) ----------
+ *
+ * The app's display clock, translated into the compositor's own CLOCK_MONOTONIC on
+ * arrival. Returns 1 when a live clock is available and fills whichever out-params
+ * are non-NULL; returns 0 when no app has reported one recently (no app attached,
+ * an app from before display pacing, or a backgrounded app whose link is paused) —
+ * in which case the caller must keep its previous, event-loop-paced behaviour.
+ *
+ *   next_deadline_ms  absolute CLOCK_MONOTONIC ms of the app's next frame deadline.
+ *                     Already advanced past `now` in whole refresh intervals, so it
+ *                     always names a FUTURE vblank.
+ *   interval_us       refresh interval in microseconds (16667 on a 60 Hz panel).
+ *   min_mfps/max_mfps the frame-rate range the app asked CoreAnimation for, in
+ *                     fps*1000. 0 when the app did not say.
+ */
+int xios_display_clock(uint64_t *next_deadline_ms, uint32_t *interval_us,
+                       int *min_mfps, int *max_mfps);
+
+/* How long before the most recent PRESENTED ack the frame ACTUALLY reached the
+ * display, in microseconds, from MTLDrawable.addPresentedHandler — plus the
+ * absolute CLOCK_MONOTONIC ms at which that ack arrived, so the caller can
+ * reconstruct the present time on its own clock. Returns 1 when the app reported a
+ * real present time, 0 when it did not (in which case presentation feedback should
+ * fall back to timing the repaint, as it did before pacing). */
+int xios_last_present_time(uint32_t *age_us, uint64_t *ack_at_ms);
+
 /* ---- app-socket framing (present / cursor / native envelope) ----------------
  * Both directions begin with an exact-version XIOS_MSG_HELLO, followed by the
- * same typed 32-byte record stream used by every private iosc<->host channel. */
+ * same typed 32-byte record stream used by every private iosc<->host channel.
+ * The record grammar itself — including XIOS_MSG_PACING and the present-time
+ * fields PRESENTED carries — lives in apps/shared/XiosProtocol.h. */
 
 /* ---- XIOS_MSG_CLIPBOARD (0x04): clipboard sync record ----------------------
  * Rides the DEDICATED clipboard socket (iosc-clipboard.sock), NOT the app/ddx
@@ -112,6 +140,13 @@ void xios_set_input_socket(const char *path);
 /* Advertise the dedicated clipboard endpoint in xios.json. Compositors that do
  * not provide an iOS pasteboard bridge leave it unset. */
 void xios_set_clipboard_socket(const char *path);
+
+/* Present-side upscaling hint, emitted as xios.json's "upscale" field. Purely a
+ * message to the display app: the compositor's own output IOSurface, geometry, and
+ * wl_output state are unaffected, and no Wayland client can observe it. Accepted
+ * spellings are the app's business (see XScreen.UpscaleMode) — "off", "auto", or a
+ * factor like "1.5". Unset means off, which is the default. */
+void xios_set_upscale_hint(const char *spec);
 
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);

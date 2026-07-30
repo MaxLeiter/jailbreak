@@ -28,7 +28,9 @@ static void xlog(const char *fmt, ...)
 }
 
 /* Wire protocol is the canonical xios_msg stream from XiosProtocol.h. Both
- * directions start with an exact-version HELLO; there is no legacy preamble. */
+ * directions start with an exact-version HELLO; there is no legacy preamble.
+ * That header is also where XIOS_MSG_PACING and PRESENTED's present-time fields
+ * are defined — this file only sends them. */
 
 typedef struct {
     mach_msg_header_t header;
@@ -322,7 +324,20 @@ int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
     return 1;
 }
 
-int xsurface_presented(XSurfaceConn *c, uint64_t seq)
+/* One non-blocking 32-byte record on the app socket. MSG_DONTWAIT keeps the
+ * never-stall posture of this stream: a backed-up compositor drops our ack rather
+ * than parking the app's main thread mid-tick. */
+static int send_msg(XSurfaceConn *c, const xios_msg *m)
+{
+    ssize_t r;
+    do {
+        r = send(c->fd, m, sizeof(*m), MSG_DONTWAIT);
+    } while (r < 0 && errno == EINTR);
+    return r == (ssize_t)sizeof(*m) ? 0 : -1;
+}
+
+static int presented_common(XSurfaceConn *c, uint64_t seq,
+                            uint32_t present_age_us, int have_age)
 {
     if (!c || c->fd < 0 || seq == 0) return -1;
     xios_msg m;
@@ -331,11 +346,39 @@ int xsurface_presented(XSurfaceConn *c, uint64_t seq)
     m.type = XIOS_MSG_PRESENTED;
     m.a = (int32_t)(uint32_t)(seq & 0xffffffffu);
     m.b = (int32_t)(uint32_t)(seq >> 32);
-    ssize_t r;
-    do {
-        r = send(c->fd, &m, sizeof(m), MSG_DONTWAIT);
-    } while (r < 0 && errno == EINTR);
-    return r == (ssize_t)sizeof(m) ? 0 : -1;
+    if (have_age) {
+        /* c is int32; an age past ~35 minutes is nonsense anyway, and clamping
+         * keeps the compositor from reading a negative as a future present. */
+        m.c = present_age_us > (uint32_t)INT32_MAX
+            ? INT32_MAX : (int32_t)present_age_us;
+        m.d = 1;                 /* bit0: c carries a measured presentedTime */
+    }
+    return send_msg(c, &m);
+}
+
+int xsurface_presented(XSurfaceConn *c, uint64_t seq)
+{
+    return presented_common(c, seq, 0, 0);
+}
+
+int xsurface_presented_at(XSurfaceConn *c, uint64_t seq, uint32_t present_age_us)
+{
+    return presented_common(c, seq, present_age_us, 1);
+}
+
+int xsurface_pacing(XSurfaceConn *c, int32_t until_deadline_us,
+                    uint32_t interval_us, int32_t min_mfps, int32_t max_mfps)
+{
+    if (!c || c->fd < 0 || interval_us == 0) return -1;
+    xios_msg m;
+    memset(&m, 0, sizeof(m));
+    m.magic = XIOS_MSG_MAGIC;
+    m.type = XIOS_MSG_PACING;
+    m.a = until_deadline_us;
+    m.b = interval_us > (uint32_t)INT32_MAX ? INT32_MAX : (int32_t)interval_us;
+    m.c = min_mfps;
+    m.d = max_mfps;
+    return send_msg(c, &m);
 }
 
 uint32_t xsurface_cursor(XSurfaceConn *c, int *x, int *y, int *visible, int *shape_id)
