@@ -9,14 +9,14 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1743
+- Total hits: 1744
 - Files with hits: 330
 
 ### By Category
 
 - `app-runtime`: 19 hits across 11 files
 - `build-target`: 20 hits across 11 files
-- `docs`: 627 hits across 65 files
+- `docs`: 628 hits across 65 files
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 98 hits across 51 files
 - `other`: 84 hits across 17 files
@@ -29,7 +29,7 @@ classified as rootless-only.
 
 ### By Literal
 
-- `/var/jb`: 1698
+- `/var/jb`: 1699
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
 - `iphoneos-arm64-rootless`: 33
@@ -115,7 +115,7 @@ classified as rootless-only.
 - `docs/gjs-plan.md:277` `/var/jb`: `jstest_fix` (full eval); test dir on-device `/var/jb/tmp/mozjs-test`.
 - `docs/gjs-plan.md:358` `/var/jb`: `/var/jb/usr/lib/gjs/girepository-1.0`. Runtime smoke:
 - `docs/gjs-plan.md:428` `/var/jb`: split → `ldid` sign → `dpkg-deb`). Built + dpkg-installed cleanly into `/var/jb` and re-validated
-- ... 607 more
+- ... 608 more
 
 ### entitlements
 

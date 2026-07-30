@@ -1,6 +1,6 @@
 # Dependency closure: rootful-1900
 
-- packages built: 31 (34 names incl. Provides)
+- packages built: 34 (37 names incl. Provides)
 - dependencies outside the set: 50
 
 These must be satisfied by a Procursus base repo built for this same
@@ -25,7 +25,7 @@ target. The set is not installable on its own.
 | `libharfbuzz0b` | libgtk-3-0, libgtk-4-1, libpango-1.0-0 |
 | `libintl-dev` | libglib2.0-dev |
 | `libintl8` | libglib2.0-0, libgtkintl |
-| `libiosexec1` | gtk-3-bin, gtk-4-bin, libepoll-shim-dev, libepoll-shim0, libffi8, libfribidi0, libgdk-pixbuf-2.0-0, libgdk-pixbuf-2.0-dev, libglib2.0-0, libglib2.0-bin, libglib2.0-dev-bin, libgraphene-1.0-0, libgtk-3-0, libgtk-4-1, libgtkintl, libpango-1.0-0, libpango1.0-dev, libwayland-dev, libwayland0, libxkbcommon0 |
+| `libiosexec1` | gtk-3-bin, gtk-4-bin, icu-devtools, libepoll-shim-dev, libepoll-shim0, libffi8, libfribidi0, libgdk-pixbuf-2.0-0, libgdk-pixbuf-2.0-dev, libglib2.0-0, libglib2.0-bin, libglib2.0-dev-bin, libgraphene-1.0-0, libgtk-3-0, libgtk-4-1, libgtkintl, libicu78, libpango-1.0-0, libpango1.0-dev, libwayland-dev, libwayland0, libxkbcommon0 |
 | `libjpeg62-turbo` | libgdk-pixbuf-2.0-0, libgtk-4-1 |
 | `libjpeg62-turbo-dev` | libgdk-pixbuf-2.0-dev |
 | `libpcre2-8-0` | libglib2.0-0 |
