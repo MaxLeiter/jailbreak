@@ -1,2 +1,3 @@
 0001-ios-wayland-build-mode.patch
 0002-guard-gsl-callbacks.patch
+0003-qt66-ios-widget-compat.patch

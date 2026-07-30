@@ -1,0 +1,18 @@
+diff --git a/libs/widgetutils/xmlgui/KisShortcutsEditor_p.cpp b/libs/widgetutils/xmlgui/KisShortcutsEditor_p.cpp
+--- a/libs/widgetutils/xmlgui/KisShortcutsEditor_p.cpp
++++ b/libs/widgetutils/xmlgui/KisShortcutsEditor_p.cpp
+@@ -22 +22,3 @@
+-#include <QPrintDialog>
++#if QT_CONFIG(printdialog)
++# include <QPrintDialog>
++#endif
+@@ -233,0 +236 @@
++#if QT_CONFIG(printdialog)
+@@ -340,0 +344 @@
++#endif
+diff --git a/libs/widgetutils/xmlgui/kkeysequencewidget.cpp b/libs/widgetutils/xmlgui/kkeysequencewidget.cpp
+--- a/libs/widgetutils/xmlgui/kkeysequencewidget.cpp
++++ b/libs/widgetutils/xmlgui/kkeysequencewidget.cpp
+@@ -895 +895 @@
+-#if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))
++#if (QT_VERSION < QT_VERSION_CHECK(6, 7, 0))
