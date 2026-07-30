@@ -1,0 +1,5 @@
+diff --git a/vcl/inc/quartz/salgdi.h b/vcl/inc/quartz/salgdi.h
+--- a/vcl/inc/quartz/salgdi.h
++++ b/vcl/inc/quartz/salgdi.h
+@@ -59,0 +60 @@ class CoreTextFont;
++class SalVirtualDevice;
