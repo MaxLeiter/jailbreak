@@ -564,8 +564,9 @@ and the Wayland base built for `MEMO_TARGET=iphoneos-arm64`:
 | iosc | `iosc` `0.9.37` |
 | xios-fhs | `xios-fhs` `1.0.1` |
 | GTK 3 stack | fribidi, pango, gdk-pixbuf, atk, `libgtk-3-0`/`-dev`, `gtk-3-bin`, `libgtkintl` |
+| GTK 4 stack | graphene, `libgtk-4-1`/`-dev`, `gtk-4-bin` |
 
-Twenty-six debs, all passing `tools/check-target-package.py` against `rootful-1900`,
+Thirty-one debs, all passing `tools/check-target-package.py` against `rootful-1900`,
 and all correctly *rejected* against `rootless-1900` (wrong payload prefix,
 wrong architecture) -- so the check is discriminating, not just permissive.
 `libwayland0` ships all four dylibs at `./usr/lib/`. Run it with:
@@ -620,6 +621,14 @@ is about the target matrix at all:
 3. `build-gtk.sh` never called `procursus-common-edits.py`.
 4. `run-target-script.sh` did not mount `build_info/`, so our control templates
    were missing and pango emitted a `DEBIAN/control` with no `Package` field.
+
+GTK4 then needed a fifth: its link could not resolve `g_libintl_*`. GLib is
+built against its bundled proxy-libintl, and `gtk+3.0.mk` supplies those names
+by RELINKING finished binaries -- too late for GTK4, which needs them to produce
+`libgtk-4.1.dylib` at all. The warm rootless `build_base/libintl.8.dylib` has 9
+`g_libintl_*` exports where a stock gettext build has 0; nothing in the repo
+creates that file. `build-gtk.sh` now stages the libgtkintl shim and points
+`libintl.dylib` at it before gtk4 builds.
 
 1-3 are not rootful problems. They were hidden because the warm rootless GTK
 volume carries `.build_complete` for libx11 and mesa, and those recipes
