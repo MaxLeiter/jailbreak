@@ -40,7 +40,7 @@ fi
 mkdir -p "$OUTDIR"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.41"
+VER="0.9.42"
 ARCH="$XIOS_DEB_ARCH"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -151,7 +151,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-15), libwayland0, libxkbcommon0
+Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-16), libwayland0, libxkbcommon0
 Recommends: gnome-console
 Section: X11
 Priority: optional

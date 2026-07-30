@@ -497,7 +497,8 @@ EGLDisplay eglGetDisplay(EGLNativeDisplayType native)
                         "use eglGetPlatformDisplay*\n");
         return EGL_NO_DISPLAY;
     }
-    return REAL(eglGetDisplay)(native);
+    if (egl_debug()) fprintf(stderr, "iosc_egl: GetDisplay(DEFAULT)\n");
+    return angle_metal_display();
 }
 
 static EGLSurface make_window(EGLDisplay dpy, EGLConfig cfg, struct wl_egl_window *ewin)

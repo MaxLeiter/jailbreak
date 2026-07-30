@@ -44,7 +44,7 @@ BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
-VER="2.1.0+git20260630.a32d31d+es3-15"
+VER="2.1.0+git20260630.a32d31d+es3-16"
 DEB="angle_${VER}_$XIOS_DEB_ARCH.deb"
 
 rm -rf "$STAGEROOT"
