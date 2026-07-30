@@ -303,6 +303,7 @@ final class XScreenView: UIView {
         if !setupMetal() { observeForegroundRetry(); return }
         metalReady = true
 
+        awaitingCompositor = true
         startTestPattern()
         if ddxIsIOSurface {
             // Zero-copy path. Connect off the main thread (the handshake does a
@@ -355,11 +356,13 @@ final class XScreenView: UIView {
     /// no-signal diagnostic, never during normal startup).
     private func startTestPattern() {
         usingTestPattern = true
+        let width = awaitingCompositor ? 1 : fbWidth
+        let height = awaitingCompositor ? 1 : fbHeight
         testBuf?.deallocate()       // safe to call when switching displays
-        testBuf = .allocate(capacity: fbWidth * fbHeight * 4)
-        testBuf?.initialize(repeating: 0, count: fbWidth * fbHeight * 4)   // clean black
+        testBuf = .allocate(capacity: width * height * 4)
+        testBuf?.initialize(repeating: 0, count: width * height * 4)   // clean black
         testPatternStartTick = tickCount
-        makeTexture()
+        makeTexture(width: width, height: height)
         needsPresent = true         // upload + present the initial clean-black frame once
         displayLink?.preferredFramesPerSecond = 20
     }
@@ -662,9 +665,9 @@ final class XScreenView: UIView {
         catch { dbg("pipeline-error \(error)"); return false }
     }
 
-    private func makeTexture() {
+    private func makeTexture(width: Int, height: Int) {
         let td = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: fbWidth, height: fbHeight, mipmapped: false)
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
         td.usage = .shaderRead
         texture = device.makeTexture(descriptor: td)
     }
@@ -905,7 +908,10 @@ final class XScreenView: UIView {
         if tickCount % 30 == 0 {
             if !userPinned { _ = loadConfig() }   // auto mode picks up xios.json; a manual
                                               // pick keeps its own display/backend choice
-            if usingTestPattern, texture?.width != fbWidth || texture?.height != fbHeight {
+            let testWidth = awaitingCompositor ? 1 : fbWidth
+            let testHeight = awaitingCompositor ? 1 : fbHeight
+            if usingTestPattern,
+               texture?.width != testWidth || texture?.height != testHeight {
                 startTestPattern()
             }
             if ddxIsIOSurface {
@@ -914,13 +920,15 @@ final class XScreenView: UIView {
                 awaitingCompositor = true
             }
         }
-        // Keep the test-pattern buffer + texture sized to the CURRENT fb before writing.
-        // fbWidth/fbHeight can grow (compositor resize / re-adopt / session switch) after
-        // testBuf+texture were allocated, and both renderTestPattern (CPU write) and
-        // texture.replace (GPU) below write fbWidth*fbHeight*4 — a stale, smaller buffer
-        // overflows and SIGSEGVs (seen on session-switch teardown). The %30 poll's realloc
-        // isn't enough on its own: the write runs every tick, so re-check it here.
-        if usingTestPattern, texture?.width != fbWidth || texture?.height != fbHeight {
+        // Keep the test buffer aligned with what will actually be uploaded: a 1x1
+        // black texture while a compositor is absent, or a full-size animated
+        // diagnostic only outside that normal launch/switch state. This check still
+        // guards the historical resize overflow, without allocating ~50 MB of CPU+GPU
+        // holding storage beside a new KDE compositor.
+        let testWidth = awaitingCompositor ? 1 : fbWidth
+        let testHeight = awaitingCompositor ? 1 : fbHeight
+        if usingTestPattern,
+           texture?.width != testWidth || texture?.height != testHeight {
             startTestPattern()
         }
         guard let texture = texture else { return }
@@ -943,8 +951,8 @@ final class XScreenView: UIView {
             base = UnsafeRawPointer(b)
         } else { return }
 
-        texture.replace(region: MTLRegionMake2D(0, 0, fbWidth, fbHeight),
-                        mipmapLevel: 0, withBytes: base, bytesPerRow: fbWidth * 4)
+        texture.replace(region: MTLRegionMake2D(0, 0, texture.width, texture.height),
+                        mipmapLevel: 0, withBytes: base, bytesPerRow: texture.width * 4)
         if render(texture) { needsPresent = false }
     }
 
@@ -1260,7 +1268,10 @@ final class XScreenView: UIView {
 
     private func reloadRuntimeConfig() {
         _ = loadConfig()
-        if ddxIsIOSurface, !usingIOSurface { startIOSurfaceConnect() }
+        if ddxIsIOSurface, !usingIOSurface {
+            awaitingCompositor = true
+            startIOSurfaceConnect()
+        }
         if !ddxIsIOSurface { awaitingCompositor = true; startTestPattern() }
         connectInput()
         needsPresent = true
@@ -2721,6 +2732,7 @@ final class XScreenView: UIView {
         if disp.renderable {
             _ = loadConfig()             // re-read the configured display's json
             if disp.number >= 0 { xDisplay = disp.displayStr }   // keep picked X display if any
+            awaitingCompositor = true
             if ddxIsIOSurface {
                 startTestPattern()
                 startIOSurfaceConnect()
