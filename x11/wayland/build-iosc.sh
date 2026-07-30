@@ -35,15 +35,36 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
   command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not found on the host" >&2; exit 1; }
   mkdir -p "$HERE/out"
 
-  mounts=(-v "$X11_DIR:/work/x11:ro" -v "$HERE/out:/out")
-  # Both deb dirs are mounted read-only when present; the inner build searches
-  # /work/debs (linux-build/out) first, then /work/repo-debs (published repo).
+  # Output is per-target: a rootful iosc must not land on top of the rootless one.
+  OUT_DIR="$HERE/out"
+  [ "$XIOS_TARGET_ID" = "rootless-1900" ] || OUT_DIR="$OUT_DIR/targets/$XIOS_TARGET_ID"
+  mkdir -p "$OUT_DIR"
+  mounts=(-v "$X11_DIR:/work/x11:ro" -v "$OUT_DIR:/out")
+
+  # Deb inputs must match the target. linux-build/out and the published repo are
+  # both rootless trees; feeding them to a rootful build would stage /var/jb
+  # payloads into its sysroot and link against the wrong prefix.
   found_debs=0
-  if [ -d "$X11_DIR/linux-build/out" ]; then
-    mounts+=(-v "$X11_DIR/linux-build/out:/work/debs:ro"); found_debs=1
-  fi
-  if [ -d "$REPO_ROOT/repo/debs" ]; then
-    mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); found_debs=1
+  if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
+    if [ -d "$X11_DIR/linux-build/out" ]; then
+      mounts+=(-v "$X11_DIR/linux-build/out:/work/debs:ro"); found_debs=1
+    fi
+    if [ -d "$REPO_ROOT/repo/debs" ]; then
+      mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); found_debs=1
+    fi
+  else
+    TARGET_DEBS="$X11_DIR/linux-build/out/targets/$XIOS_TARGET_ID"
+    if [ -d "$TARGET_DEBS" ]; then
+      mounts+=(-v "$TARGET_DEBS:/work/debs:ro"); found_debs=1
+    fi
+    [ "$found_debs" = 1 ] || {
+      echo "ERROR: no debs for $XIOS_TARGET_ID at $TARGET_DEBS." >&2
+      echo "       Build the Wayland base and an ANGLE package for this target first:" >&2
+      echo "         JOBS=4 bash linux-build/run-target-script.sh $XIOS_TARGET_ID build-wayland.sh" >&2
+      echo "         ANGLE_NO_SHIM=1 ANGLE_BASE_DEB=<published angle deb> \\" >&2
+      echo "           bash ports/angle/package-angle-es3.sh $XIOS_TARGET_ID" >&2
+      exit 1
+    }
   fi
   [ "$found_debs" = 1 ] || {
     echo "ERROR: no deb dir found (looked for $X11_DIR/linux-build/out and $REPO_ROOT/repo/debs)" >&2
@@ -54,18 +75,21 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
   docker run --rm --platform linux/arm64 -e IOSC_XBUILD_INNER=1 \
     -e XIOS_TARGET="$XIOS_TARGET_ID" \
     -e IOSC_BUILD_XWM="${IOSC_BUILD_XWM:-0}" \
+    -e IOSC_SHIM_ONLY="${IOSC_SHIM_ONLY:-0}" \
     "${mounts[@]}" "$IMAGE" -c "bash /work/x11/wayland/build-iosc.sh"
 
   # Container output is unsigned; sign on the host so it is device-ready (the
   # single easiest thing to forget — the handoff calls it out explicitly).
-  if [ "${IOSC_NO_SIGN:-0}" = "1" ]; then
+  if [ "${IOSC_SHIM_ONLY:-0}" = "1" ]; then
+    echo "==> shim-only pass: no iosc binary to sign"
+  elif [ "${IOSC_NO_SIGN:-0}" = "1" ]; then
     echo "==> IOSC_NO_SIGN=1: skipping host signing (binary is UNSIGNED, not device-ready)"
   elif command -v ldid >/dev/null 2>&1; then
-    echo "==> signing $HERE/out/iosc for device"
-    "$HERE/sign-iosc.sh" "$HERE/out/iosc"
+    echo "==> signing $OUT_DIR/iosc for device"
+    "$HERE/sign-iosc.sh" "$OUT_DIR/iosc"
   else
     echo "!! ldid not found on the host: iosc is UNSIGNED. Before deploying, run:" >&2
-    echo "     $HERE/sign-iosc.sh $HERE/out/iosc" >&2
+    echo "     $HERE/sign-iosc.sh $OUT_DIR/iosc" >&2
   fi
   exit 0
 fi
@@ -91,10 +115,16 @@ DEB_DIRS=""
 
 echo "==> [1/5] extract W0 dev debs (+ angle for the GPU client) into a sysroot"
 echo "   (searching:$DEB_DIRS)"
+# libxcb is only linked by the rootless-Xwayland XWM module, which is off by
+# default -- requiring it unconditionally makes every build depend on a package
+# it will not use.
+XCB_DEBS=""
+[ "${IOSC_BUILD_XWM:-0}" = "1" ] && XCB_DEBS="libxcb1 libxcb1-dev"
+# shellcheck disable=SC2086
 xdeb_extract "$SYS" "$DEB_DIRS" \
   libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
   libxkbcommon-dev libxkbcommon0 \
-  libxcb1 libxcb1-dev
+  $XCB_DEBS
 PREFIX="$SYS$XIOS_PREFIX/usr"       # wayland headers/libs
 ANGLE_INC="$SYS$XIOS_PREFIX/include" # angle EGL/GLES headers
 ANGLE_LIB="$SYS$XIOS_PREFIX/lib/angle"
@@ -156,7 +186,16 @@ KDE_OUTPUT_ORDER_XML="$X11/wayland/protocols/kde-output-order-v1.xml"
 [ -f "$KDE_OUTPUT_MGMT_XML" ] || { echo "!! kde-output-management-v2.xml not found at $KDE_OUTPUT_MGMT_XML"; exit 1; }
 [ -f "$KDE_PRIMARY_OUTPUT_XML" ] || { echo "!! kde-primary-output-v1.xml not found at $KDE_PRIMARY_OUTPUT_XML"; exit 1; }
 [ -f "$KDE_OUTPUT_ORDER_XML" ] || { echo "!! kde-output-order-v1.xml not found at $KDE_OUTPUT_ORDER_XML"; exit 1; }
-[ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
+# libEGL.dylib in the ANGLE package IS the iosc shim, which this script builds.
+# Bootstrapping a new target is therefore circular: build the shim first against
+# a shim-less ANGLE (ports/angle/package-angle-es3.sh ANGLE_NO_SHIM=1), package
+# ANGLE with it, then build the rest.
+if [ "${IOSC_SHIM_ONLY:-0}" = "1" ]; then
+  [ -f "$ANGLE_LIB/libGLESv2.dylib" ] || { echo "!! angle libGLESv2.dylib not found"; exit 1; }
+  echo "   IOSC_SHIM_ONLY=1: building libiosc_egl.dylib only (bootstrap pass)"
+else
+  [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
+fi
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
 if ! command -v wayland-scanner >/dev/null 2>&1; then
@@ -273,6 +312,10 @@ else
 fi
 
 echo "==> [5/5] cross-compile"
+
+# Everything from here to the shim links -lEGL, which IS the shim. On a bootstrap
+# pass for a new target that library does not exist yet, so skip to building it.
+if [ "${IOSC_SHIM_ONLY:-0}" != "1" ]; then
 # Compositor: libwayland-server + xdg-shell + our iosc_iosurface + the Xios IOSurface
 # output path (which now also does the client->server IOSurface import) + the ANGLE GPU
 # compositor (iosc_gl.c: GLES->Metal composite onto the output IOSurface) + frameworks.
@@ -457,6 +500,8 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/iosc-gpu-client
 echo "   built /out/iosc-gpu-client"
 
+fi   # end of the -lEGL section skipped by IOSC_SHIM_ONLY
+
 # wayland-egl↔ANGLE shim (libiosc_egl.dylib): a libEGL that forwards to ANGLE and
 # routes window surfaces through IOSurface + iosc_iosurface. dlopens the real
 # ANGLE libEGL at runtime (not linked); links libwayland-client + GLESv2 + frameworks.
@@ -471,6 +516,11 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
     -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/libiosc_egl.dylib
 echo "   built /out/libiosc_egl.dylib"
+if [ "${IOSC_SHIM_ONLY:-0}" = "1" ]; then
+  echo "==> shim-only bootstrap done. Next: package ANGLE for this target with it,"
+  echo "    then re-run without IOSC_SHIM_ONLY to build iosc itself."
+  exit 0
+fi
 
 # EGL test client: standard wl_egl_window + EGL window-surface API against the shim
 # (NO direct ANGLE EGL link — EGL symbols resolve to the shim). Validates the shim.
