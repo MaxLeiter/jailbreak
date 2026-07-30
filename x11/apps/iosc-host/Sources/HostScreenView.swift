@@ -129,7 +129,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         td.storageMode = .shared
         canvasTexture = device.makeTexture(descriptor: td, iosurface: surface, plane: 0)
         // The port hand-off only identifies the storage. Do not sample it until
-        // the matching v3 NATIVE_FRAME arrives with a producer completion fence.
+        // the matching NATIVE_FRAME arrives with a producer completion fence.
         canvasFrameReady = false
         presentFenceValue = 0
         needsPresent = false
@@ -142,39 +142,30 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         if canvasTexture == nil { needsPresent = true }
     }
 
-    /// Adopt one protocol-v3 producer completion. A nil token is valid only for
-    /// the server's explicit diagnostic CPU-barrier record.
-    func markDirty(fenceToken token: Data?, value: UInt64) {
+    /// Adopt one producer completion. Every frame carries a broker token/value.
+    func markDirty(fenceToken token: Data, value: UInt64) {
         guard metalReady, canvasTexture != nil else { return }
-        if let token {
-            guard token.count == Int(IOSC_NATIVE_FENCE_TOKEN_SIZE), value > 0 else {
-                logFenceFailure("invalid broker token/value")
-                return
-            }
-            if token != presentFenceToken {
-                let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
-                    guard let base = raw.baseAddress else { return nil }
-                    return xios_metal_event_broker_copy_event(device, base, raw.count)
-                }
-                guard let event else {
-                    logFenceFailure("broker token import failed")
-                    return
-                }
-                presentFenceToken = token
-                presentFenceEvent = event
-            }
-            guard presentFenceEvent != nil else {
-                logFenceFailure("broker event unavailable")
-                return
-            }
-            presentFenceValue = value
-        } else {
-            guard value == 0 else {
-                logFenceFailure("unfenced frame carried a non-zero value")
-                return
-            }
-            presentFenceValue = 0
+        guard token.count == Int(IOSC_NATIVE_FENCE_TOKEN_SIZE), value > 0 else {
+            logFenceFailure("invalid broker token/value")
+            return
         }
+        if token != presentFenceToken {
+            let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return nil }
+                return xios_metal_event_broker_copy_event(device, base, raw.count)
+            }
+            guard let event else {
+                logFenceFailure("broker token import failed")
+                return
+            }
+            presentFenceToken = token
+            presentFenceEvent = event
+        }
+        guard presentFenceEvent != nil else {
+            logFenceFailure("broker event unavailable")
+            return
+        }
+        presentFenceValue = value
         fenceFailureLogged = false
         canvasFrameReady = true
         needsPresent = true

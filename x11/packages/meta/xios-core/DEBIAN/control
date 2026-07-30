@@ -1,12 +1,12 @@
 Package: xios-core
 Name: Xios Desktop Core
-Version: 0.1.3
+Version: 0.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), com.max.xios (>= 0.1.2), iosc (>= 0.9.31), iosc-shell (>= 0.9.11), angle (>= 2.1.0+git20260630.a32d31d+es3-13), dbus, xios-desktop-defaults, xios-audio-server, xios-session (>= 1.0.60), xios-launcher-tools (>= 0.1.3)
+Depends: firmware (>= 16.0), com.max.xios (>= 0.1.2), iosc (>= 0.9.33), iosc-shell (>= 0.9.11), angle (>= 2.1.0+git20260630.a32d31d+es3-14), dbus, xios-desktop-defaults, xios-audio-server, xios-session (>= 1.0.60), xios-launcher-tools (>= 0.1.4)
 Recommends: pulseaudio, xios-desktop-theme
 MinimumOSVersion: 16.0.0
 Description: shared base for every Xios desktop flavor

@@ -23,7 +23,7 @@ REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-launcher-tools-deb"
 STAGE="$STAGEROOT/xios-launcher-tools"
 SYSROOT="$STAGEROOT/sysroot"
-VER="0.1.3"
+VER="0.1.4"
 ARCH="iphoneos-arm64"
 DEB="xios-launcher-tools_${VER}_${ARCH}.deb"
 
@@ -169,7 +169,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.27), xios-session (>= 1.0.56), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
+Depends: iosc (>= 0.9.33), xios-session (>= 1.0.56), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
 Recommends: com.max.xios, iosc-shell
 Section: X11
 Priority: optional

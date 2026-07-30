@@ -258,7 +258,7 @@ SDK="$(dirname "$(command -v "$CC")")/../SDK/iPhoneOS.sdk"
 echo "   CC=$CC  SDK=$SDK"
 
 CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter -fblocks"
-INCS="-I$PREFIX/include -I$GEN -I$X11/linux-build/patches/xios"
+INCS="-I$PREFIX/include -I$GEN -I$X11/linux-build/patches/xios -I$X11/apps/shared"
 RPATH="-Wl,-rpath,$XIOS_PREFIX/usr/lib"
 XWM_CFLAGS=()
 XWM_SRCS=()

@@ -147,7 +147,19 @@ void        xios_egl_destroy_image (EGLImageKHR image);
 EGLDisplay xios_egl_display (void);          /* lazy getter; matches libxios_glue */
 void      *xios_get_output_iosurface (void);
 void       xios_notify_dirty (void);
+int        xios_notify_dirty_with_fence (const void *shared_event_token,
+                                         size_t token_size,
+                                         uint64_t event_value);
 void       xios_notify_cursor (int x, int y, int visible, int shape_id);
+
+#define XIOS_METAL_EVENT_TOKEN_SIZE 32u
+int xios_metal_sync_signal (EGLDisplay display,
+                            const void **token,
+                            size_t *token_size,
+                            uint64_t *value);
+void *xios_metal_sync_import_event (const void *token, size_t token_size);
+void xios_metal_sync_release_event (void *event);
+int xios_metal_sync_wait (EGLDisplay display, void *event, uint64_t value);
 
 /* The pbuffer + RGBA8 + BIND_TO_TEXTURE_RGBA EGLConfig xios_egl chose the IOSurface pbuffers
  * against (matches libxios_glue xios_egl.h). MetaRendererIOS points its Cogl winsys config at

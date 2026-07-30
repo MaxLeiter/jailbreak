@@ -16,8 +16,8 @@
  * the ANGLE iosurface pbuffer — route A: ANGLE-Metal has no working IOSurface->EGLImage render
  * target (eglCreateImageKHR(GL_TEXTURE_2D) fails 0x3000) and the cogl fork dropped the
  * foreign-GL-texture wrap, so we render straight into the pbuffer as FBO 0 (proven path)
- * instead of an offscreen. Present is the onscreen's swap (finish + xios_notify_dirty; see
- * meta-onscreen-ios.c). The Cogl winsys config is xios_egl_config() so the display, context,
+ * instead of an offscreen. Present is the onscreen's brokered shared-event signal plus fenced
+ * dirty notification (see meta-onscreen-ios.c). The Cogl winsys config is xios_egl_config() so the display, context,
  * and pbuffer share ONE EGLConfig (else eglMakeCurrent(pbuffer) => EGL_BAD_MATCH). GPL-2.0+,
  * modeled on meta-renderer-native.c.
  */

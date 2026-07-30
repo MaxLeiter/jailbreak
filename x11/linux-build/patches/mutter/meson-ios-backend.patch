@@ -50,7 +50,7 @@
 diff --git a/src/meson.build b/src/meson.build
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -12,6 +12,25 @@ mutter_lib_deps = [
+@@ -12,6 +12,29 @@ mutter_lib_deps = [
    m_dep,
  ]
  
@@ -66,10 +66,14 @@ diff --git a/src/meson.build b/src/meson.build
 +    required: true,
 +  ),
 +  include_directories: include_directories('backends/ios/xios-glue-include'),
-+  # libxios_glue.a (static) references the IOSurface + CoreFoundation frameworks (xios_surface.c:
-+  # IOSurfaceCreate/LookupFromMachPort, kIOSurface*, kCFTypeDictionary*). They resolve at THIS
-+  # final libmutter link (matching iosc's own -framework CoreFoundation -framework IOSurface).
-+  link_args: ['-framework', 'CoreFoundation', '-framework', 'IOSurface'],
++  # The static glue owns IOSurface plus the package-brokered MTLSharedEvent transport.
++  # Resolve those frameworks at the final libmutter link.
++  link_args: [
++    '-framework', 'CoreFoundation',
++    '-framework', 'IOSurface',
++    '-framework', 'Foundation',
++    '-framework', 'Metal',
++  ],
 +)
 +mutter_lib_deps += [ xios_glue_dep ]
 +

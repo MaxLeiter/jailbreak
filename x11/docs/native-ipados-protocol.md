@@ -16,10 +16,10 @@ Scope note: this protocol is now implemented by `wayland/xios_canvas.c`,
 device validation and polish. FRAMING IS AGREED (2026-07-01, iosc-protocols):
 the shared 32-byte `xios_msg` record ('XMS1'), core codes 0x01-0x0f owned by
 iosc-protocols (HELLO/DIRTY/CURSOR), range 0x40-0x5f reserved for native.
-Protocol v3 uses native `XIOS_MSG_NATIVE_FRAME` rather than core DIRTY because
-each production frame must carry a broker fence token/value. Legacy unfenced
-DIRTY is rejected. This spec and the reference client are written against the
-shared header.
+Protocol v1 uses native `XIOS_MSG_NATIVE_FRAME` rather than core DIRTY. Every
+frame carries exactly one 32-byte broker token and a non-zero shared-event
+value; there is no unfenced variant or older-version branch. This spec and the
+reference client are written against the shared header.
 
 ---
 
@@ -45,7 +45,7 @@ run it per-window:
 |---|---|
 | `xios_surface_create()` makes one output IOSurface | allocate one canvas IOSurface per toplevel |
 | `deliver_surface_port()` hands the output port to the Xios app | hand each canvas port to the owning host (§5) |
-| `xios_notify_dirty()` streams a DIRTY record | send v3 `XIOS_MSG_NATIVE_FRAME` with `window_id` and a broker fence (§6) |
+| `xios_notify_dirty()` streams a DIRTY record | send `XIOS_MSG_NATIVE_FRAME` with `window_id` and a broker fence (§6) |
 | `iosc_gl_init(output, w, h)` + `recomposite_all()` paint the whole stack into the output | paint ONE toplevel (+ its popups/subsurfaces) into ITS canvas (§4) |
 | input hit-tests a shared coordinate space | a bound connection is pre-scoped to one window (§7) |
 

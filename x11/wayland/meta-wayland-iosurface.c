@@ -18,6 +18,7 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <string.h>
 
 #include "backends/ios/xios-glue-stub.h"
 /* wayland-scanner emits the protocol header BARE into <builddir>/src/ (reached via -Isrc),
@@ -49,10 +50,6 @@ enum
 {
   IOSC_IOSURFACE_FORMAT_MASK = 0x0000ffffu,
   IOSC_IOSURFACE_KNOWN_FLAGS = IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT,
-  IOSC_IOSURFACE_SUPPORTED_CAPABILITIES =
-    IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
-    IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
-    IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT,
 };
 
 struct _MetaWaylandIosurfaceBuffer
@@ -65,6 +62,10 @@ struct _MetaWaylandIosurfaceBuffer
 
   MetaMultiTexture      *texture;     /* cached import, reused across attach */
   EGLSurface             pbuffer;     /* ANGLE IOSurface pbuffer aliased into `texture` */
+  void                  *acquire_event;
+  uint64_t               acquire_value;
+  unsigned char          acquire_token[XIOS_METAL_EVENT_TOKEN_SIZE];
+  size_t                 acquire_token_size;
 };
 
 G_DEFINE_TYPE (MetaWaylandIosurfaceBuffer, meta_wayland_iosurface_buffer, G_TYPE_OBJECT)
@@ -75,6 +76,11 @@ meta_wayland_iosurface_buffer_finalize (GObject *object)
   MetaWaylandIosurfaceBuffer *self = META_WAYLAND_IOSURFACE_BUFFER (object);
 
   g_clear_object (&self->texture);
+  if (self->acquire_event)
+    {
+      xios_metal_sync_release_event (self->acquire_event);
+      self->acquire_event = NULL;
+    }
   if (self->pbuffer != EGL_NO_SURFACE)
     {
       EGLDisplay dpy = xios_egl_display ();
@@ -166,6 +172,23 @@ meta_wayland_iosurface_buffer_attach (MetaWaylandBuffer  *buffer,
                    "Not an IOSurface buffer");
       return FALSE;
     }
+
+  if (!self->acquire_event || self->acquire_value == 0)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "IOSurface buffer has no brokered GPU acquire fence");
+      return FALSE;
+    }
+
+  if (!xios_metal_sync_wait (xios_egl_display (),
+                             self->acquire_event,
+                             self->acquire_value))
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "IOSurface brokered GPU acquire wait failed");
+      return FALSE;
+    }
+  self->acquire_value = 0;
 
   if (self->texture)
     {
@@ -323,9 +346,55 @@ iosurface_create_buffer (struct wl_client   *client,
                                   buffer_resource_destroy);
 }
 
+static void
+iosurface_set_acquire_fence (struct wl_client   *client,
+                             struct wl_resource *resource,
+                             struct wl_resource *buffer,
+                             struct wl_array    *token,
+                             uint32_t            value_lo,
+                             uint32_t            value_hi)
+{
+  MetaWaylandIosurfaceBuffer *self;
+  uint64_t value = ((uint64_t) value_hi << 32) | value_lo;
+
+  (void) client;
+  self = buffer && wl_resource_instance_of (buffer,
+                                             &wl_buffer_interface,
+                                             &buffer_impl)
+       ? wl_resource_get_user_data (buffer)
+       : NULL;
+  if (!self || !token || token->size != XIOS_METAL_EVENT_TOKEN_SIZE ||
+      value == 0)
+    {
+      wl_resource_post_error (resource, IOSC_IOSURFACE_ERROR_INVALID_FENCE,
+                              "invalid IOSurface acquire-fence token");
+      return;
+    }
+
+  if (self->acquire_token_size != token->size ||
+      memcmp (self->acquire_token, token->data, token->size) != 0)
+    {
+      void *event = xios_metal_sync_import_event (token->data, token->size);
+      if (!event)
+        {
+          wl_resource_post_error (resource, IOSC_IOSURFACE_ERROR_INVALID_FENCE,
+                                  "brokered MTLSharedEvent import failed");
+          return;
+        }
+      if (self->acquire_event)
+        xios_metal_sync_release_event (self->acquire_event);
+      self->acquire_event = event;
+      memcpy (self->acquire_token, token->data, token->size);
+      self->acquire_token_size = token->size;
+    }
+
+  self->acquire_value = value;
+}
+
 static const struct iosc_iosurface_interface iosurface_impl = {
-  iosurface_destroy,
-  iosurface_create_buffer,
+  .destroy = iosurface_destroy,
+  .create_buffer = iosurface_create_buffer,
+  .set_acquire_fence = iosurface_set_acquire_fence,
 };
 
 static void
@@ -337,8 +406,9 @@ iosurface_bind (struct wl_client *client,
   MetaWaylandCompositor *compositor = data;
   struct wl_resource *resource;
 
+  (void) version;
   resource = wl_resource_create (client, &iosc_iosurface_interface,
-                                 (int) version, id);
+                                 1, id);
   if (!resource)
     {
       wl_client_post_no_memory (client);
@@ -346,13 +416,11 @@ iosurface_bind (struct wl_client *client,
     }
 
   wl_resource_set_implementation (resource, &iosurface_impl, compositor, NULL);
-  if (wl_resource_get_version (resource) >= 2)
-    iosc_iosurface_send_capabilities (resource, IOSC_IOSURFACE_SUPPORTED_CAPABILITIES);
 }
 
 void
 meta_wayland_iosurface_init (MetaWaylandCompositor *compositor)
 {
   wl_global_create (compositor->wayland_display, &iosc_iosurface_interface,
-                    2, compositor, iosurface_bind);
+                    1, compositor, iosurface_bind);
 }

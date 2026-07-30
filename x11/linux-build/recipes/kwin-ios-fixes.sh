@@ -264,18 +264,11 @@ class IoscClientBufferIntegrationPrivate : public QtWaylandServer::iosc_iosurfac
 {
 public:
     explicit IoscClientBufferIntegrationPrivate(Display *display)
-        : QtWaylandServer::iosc_iosurface(*display, 4)
+        : QtWaylandServer::iosc_iosurface(*display, 1)
     {
     }
 
 protected:
-    void iosc_iosurface_bind_resource(Resource *resource) override
-    {
-        if (resource->version() >= 2) {
-            send_capabilities(resource->handle, 1u | 2u | 4u | 16u);
-        }
-    }
-
     void iosc_iosurface_destroy(Resource *resource) override
     {
         wl_resource_destroy(resource->handle);
@@ -307,17 +300,9 @@ protected:
         new IoscClientBuffer(surface, QSize(importedWidth, importedHeight), id, resource->client());
     }
 
-    void iosc_iosurface_set_acquire_fence(Resource *resource, wl_resource *, wl_array *,
-                                          uint32_t, uint32_t) override
-    {
-        wl_resource_post_error(resource->handle, error_invalid_fence,
-                               "legacy MTLSharedEvent archives are unsupported; "
-                               "use iosc_iosurface v4 broker tokens");
-    }
-
-    void iosc_iosurface_set_acquire_fence_token(Resource *resource, wl_resource *buffer,
-                                                wl_array *token,
-                                                uint32_t valueLo, uint32_t valueHi) override
+    void iosc_iosurface_set_acquire_fence(Resource *resource, wl_resource *buffer,
+                                          wl_array *token,
+                                          uint32_t valueLo, uint32_t valueHi) override
     {
         IoscClientBuffer *clientBuffer = IoscClientBuffer::get(buffer);
         const uint64_t value = (uint64_t(valueHi) << 32) | valueLo;

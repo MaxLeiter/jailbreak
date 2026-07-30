@@ -276,12 +276,7 @@ static int send_latest_frame_locked(struct canvas_entry *e,
     rec.length = (uint32_t)e->frame_token_size;
     rec.a = (int32_t)(uint32_t)(e->frame_event_value & 0xffffffffu);
     rec.b = (int32_t)(uint32_t)(e->frame_event_value >> 32);
-    rec.c = IOSC_NATIVE_PROTOCOL_VERSION;
-    rec.d = e->frame_token_size ? IOSC_NATIVE_FENCE_BROKER_TOKEN
-                                : IOSC_NATIVE_FENCE_NONE;
-    return send_msg_locked(c, &rec,
-                           e->frame_token_size ? e->frame_token : NULL,
-                           e->frame_token_size);
+    return send_msg_locked(c, &rec, e->frame_token, e->frame_token_size);
 }
 
 static void chmod_mobile_socket(const char *path, const char *warn_suffix)
@@ -476,12 +471,9 @@ int xios_canvas_notify_frame(uint32_t window_id,
                              size_t token_size,
                              uint64_t event_value)
 {
-    if ((token_size == 0 &&
-         (shared_event_token != NULL || event_value != 0)) ||
-        (token_size > 0 &&
-         (!shared_event_token ||
-          token_size != IOSC_NATIVE_FENCE_TOKEN_SIZE ||
-          event_value == 0)))
+    if (!shared_event_token ||
+        token_size != IOSC_NATIVE_FENCE_TOKEN_SIZE ||
+        event_value == 0)
         return -1;
 
     pthread_mutex_lock(&s_lock);
@@ -490,8 +482,7 @@ int xios_canvas_notify_frame(uint32_t window_id,
     e->frame_generation = e->canvas_generation;
     e->frame_event_value = event_value;
     e->frame_token_size = token_size;
-    if (token_size)
-        memcpy(e->frame_token, shared_event_token, token_size);
+    memcpy(e->frame_token, shared_event_token, token_size);
     e->frame_valid = 1;
 
     /* WINDOW_NEW/GEOM and its Mach port are delivered on the reader thread.
@@ -593,8 +584,7 @@ static int handle_bind(int fd)
         return -1;
     }
 
-    /* Confirm the exact wire version before any replayed WINDOW_* records. An
-     * old host/server pair cannot accidentally interpret unfenced DIRTY as v3. */
+    /* Confirm the exact wire version before any replayed WINDOW_* records. */
     xios_msg hello = make_msg(XIOS_MSG_HELLO, 0);
     hello.a = IOSC_NATIVE_PROTOCOL_VERSION;
     if (send_record(fd, &hello, sizeof(hello)) != 1) {

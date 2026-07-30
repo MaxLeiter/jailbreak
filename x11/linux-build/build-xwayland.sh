@@ -10,6 +10,7 @@
 #     -v "$PWD/build-xwayland.sh:/work/build-xwayland.sh:ro" \
 #     -v "$PWD/recipes:/work/recipes:ro" \
 #     -v "$PWD/../ports:/work/ports:ro" \
+#     -v "$PWD/..:/work/x11:ro" \
 #     -v "$PWD/out:/out" \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-xwayland.sh
 #
@@ -115,34 +116,38 @@ cp -v /work/recipes/build_info/linux-input-event-codes.h "$LINUX_INC/input-event
 cp -v /work/recipes/build_info/linux-input.h "$LINUX_INC/input.h"
 
 echo "==> [5/6] stage ANGLE egl.pc + libEGL into the cross sysroot (fresh-volume safety)"
-# libepoxy dlopens ANGLE at runtime, but glamor's meson also probes epoxy/egl at configure
-# time, so stage egl.pc here too (harmless if already staged by a warm mutter volume).
+# Xwayland's brokered GPU fence calls EGL/GL directly, so both the configure
+# metadata and the exact current ANGLE libraries must be present at link time.
 SYSROOT=build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr
-if [ ! -e "$SYSROOT/lib/pkgconfig/egl.pc" ]; then
-  ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep -v "+es3" | head -1)
-  if [ -n "$ANGLE_DEB" ]; then
-    echo "   staging ANGLE from $(basename "$ANGLE_DEB")"
-    rm -rf /tmp/angle-x && mkdir -p /tmp/angle-x && dpkg-deb -x "$ANGLE_DEB" /tmp/angle-x
-    mkdir -p "$SYSROOT/lib/pkgconfig"
-    EGL=$(find /tmp/angle-x -name libEGL.dylib | head -1)
-    GLES=$(find /tmp/angle-x -name libGLESv2.dylib | head -1)
-    [ -n "$EGL" ]  && cp -v "$EGL"  "$SYSROOT/lib/libEGL.dylib"
-    [ -n "$GLES" ] && cp -v "$GLES" "$SYSROOT/lib/libGLESv2.dylib"
-    cat > "$SYSROOT/lib/pkgconfig/egl.pc" <<PC
+ANGLE_DEB=$(find /out -maxdepth 1 -name 'angle_*_iphoneos-arm64.deb' -print |
+  sort -V | tail -1)
+[ -n "$ANGLE_DEB" ] || {
+  echo "ERROR: current angle package missing from /out" >&2
+  exit 1
+}
+echo "   staging ANGLE from $(basename "$ANGLE_DEB")"
+rm -rf /tmp/angle-x && mkdir -p /tmp/angle-x
+dpkg-deb -x "$ANGLE_DEB" /tmp/angle-x
+mkdir -p "$SYSROOT/lib/pkgconfig"
+EGL=$(find /tmp/angle-x -name libEGL.dylib | head -1)
+GLES=$(find /tmp/angle-x -name libGLESv2.dylib | head -1)
+[ -n "$EGL" ] && [ -n "$GLES" ] || {
+  echo "ERROR: angle package is missing EGL/GLES libraries" >&2
+  exit 1
+}
+cp -v "$EGL" "$SYSROOT/lib/libEGL.dylib"
+cp -v "$GLES" "$SYSROOT/lib/libGLESv2.dylib"
+cat > "$SYSROOT/lib/pkgconfig/egl.pc" <<PC
 prefix=$XIOS_PREFIX/usr
-libdir=/var/jb/lib/angle
+libdir=$XIOS_PREFIX/lib/angle
 includedir=\${prefix}/include
 
 Name: EGL
 Description: ANGLE EGL (Metal) for iOS
 Version: 1.5
-Libs: -L/var/jb/usr/lib -lEGL
+Libs: -L$XIOS_PREFIX/usr/lib -lEGL
 Cflags: -I\${includedir}
 PC
-  else
-    echo "   NOTE: no angle deb in /out — relying on libepoxy's runtime dlopen only"
-  fi
-fi
 
 echo "==> [6/6] build libxcvt + xwayland (glamor=${XWAYLAND_GLAMOR:-true})"
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \

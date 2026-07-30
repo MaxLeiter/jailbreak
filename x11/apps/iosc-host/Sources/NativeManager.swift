@@ -145,13 +145,8 @@ final class NativeManager: NSObject {
             }
             views[e.window]?.adoptCanvas(surf, width: Int(e.width), height: Int(e.height))
         case IOSC_NEV_DIRTY:
-            let token: Data?
-            if e.fence_token_size > 0 {
-                token = withUnsafeBytes(of: e.fence_token) { raw in
-                    Data(raw.prefix(Int(e.fence_token_size)))
-                }
-            } else {
-                token = nil
+            let token = withUnsafeBytes(of: e.fence_token) { raw in
+                Data(raw)
             }
             views[e.window]?.markDirty(fenceToken: token, value: e.fence_value)
         case IOSC_NEV_TITLE:

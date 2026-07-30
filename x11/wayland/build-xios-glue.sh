@@ -5,6 +5,7 @@
 #
 #   xios_surface.c        output IOSurface + app rendezvous + client IOSurface import
 #   xios_egl.c            ANGLE-Metal EGL/config/context + IOSurface<->GL + EGLImage
+#   xios_metal_sync.m     brokered MTLSharedEvent producer/consumer synchronization
 #   xios_input_socket.c   the Xios app input-socket reader (kqueue-multiplexed)
 #
 # (iosc_input.c — the xkb keymap — is NOT in the glue: it is iosc-only and outside
@@ -38,7 +39,8 @@ rm -rf "$WORK"; mkdir -p "$SYS" /out
 
 echo "==> [1/4] extract dev debs into a sysroot (angle EGL/GLES)"
 for pat in angle; do
-  f=$(ls "$DEBS/${pat}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)
+  f=$(find "$DEBS" -maxdepth 1 -type f -name "${pat}_*_iphoneos-arm64.deb" \
+        | sort -V | tail -1)
   [ -n "$f" ] || { echo "!! missing deb: $pat"; exit 1; }
   dpkg-deb -x "$f" "$SYS"
   echo "   + $(basename "$f")"
@@ -58,7 +60,7 @@ SDK="$(dirname "$(command -v "$CC")")/../SDK/iPhoneOS.sdk"
 echo "   CC=$CC  SDK=$SDK  install_name=$INSTALL_NAME"
 
 CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter"
-INCS="-I$PREFIX/include -I$ANGLE_INC -I$X11/linux-build/patches/xios -I$X11/wayland"
+INCS="-I$PREFIX/include -I$ANGLE_INC -I$X11/linux-build/patches/xios -I$X11/wayland -I$X11/apps/shared"
 
 OBJ="$WORK/obj"; mkdir -p "$OBJ"
 AR="$(dirname "$(command -v "$CC")")/aarch64-apple-darwin-ar"
@@ -68,6 +70,8 @@ echo "==> [3/4] compile the glue objects"
 compile() { echo "   cc $1"; $CC $CFLAGS $INCS -c "$2" -o "$OBJ/$1.o"; }
 compile xios_surface       "$X11/linux-build/patches/xios/xios_surface.c"
 compile xios_egl           "$X11/wayland/xios_egl.c"
+compile xios_metal_sync    "$X11/wayland/xios_metal_sync.m"
+compile xios_metal_broker  "$X11/apps/shared/XiosMetalEventBroker.m"
 compile xios_input_socket  "$X11/wayland/xios_input_socket.c"
 compile xios_glue_defaults "$X11/wayland/xios_glue_defaults.c"
 
@@ -81,14 +85,15 @@ rm -f /out/libxios_glue.a
 $CC $CFLAGS -dynamiclib -install_name "$INSTALL_NAME" \
     "$OBJ"/*.o \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
-    -framework IOSurface -framework CoreFoundation \
+    -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
     -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/libxios_glue.dylib
 rm -rf /out/xios-glue-include; mkdir -p /out/xios-glue-include
-# Ship ONLY the 3 canonical headers as the interface. The off-device compile
-# The backend's flat compile-contract xios-glue-stub.h is deliberately NOT bundled;
+# Ship only the canonical headers as the interface. The backend's flat
+# compile-contract xios-glue-stub.h is deliberately NOT bundled;
 # consumers link against these authoritative headers. build-backend-check.sh checks the
 # contract against this exported input/EGL/surface surface before compiling Mutter files.
 cp "$X11/linux-build/patches/xios/xios_surface.h" "$X11/wayland/xios_egl.h" \
+   "$X11/wayland/xios_metal_sync.h" \
    "$X11/wayland/xios_input_socket.h" \
    /out/xios-glue-include/
 

@@ -93,9 +93,9 @@ revisions stale and is superseded by this section.
   `contrast.json`, with `kwin_blur_config.so`, plus `kcm_kwin_effects.so` / `kcm_kwin_scripts.so`
   and the KWin decoration/rules/screenedges KCMs. `nightlight.so` +
   `org.kde.KWin.NightLight.xml` ship, which closes the old hidden-nightcolor-quicksetting gap.
-- **Device evidence (at `+ios11`, 2026-07-28):**
+- **Historical pre-collapse device evidence (at `+ios11`, 2026-07-28):**
   `artifacts/device-runs/kwin-ios11-resume/` — `iosc.log` shows `kwin_wayland` (pid 1283, matched
-  in `xios-ps.txt`) binding `iosc_iosurface v2` and presenting THREE 1440x1080 IOSurfaces (a
+  in `xios-ps.txt`) binding `iosc_iosurface` and presenting THREE 1440x1080 IOSurfaces (a
   triple-buffered output swapchain) plus three 64x64 (cursor layer). No QPainter, software
   fallback, `EGL not available`, or QRhi errors anywhere in the bundle. Companion bundles:
   `kwin-ios9-gl/`, `kwin-ios9-main/`, `kwin-ios11/`.
