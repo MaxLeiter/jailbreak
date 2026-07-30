@@ -33,6 +33,7 @@ xwayland-setup: setup
 	cp -v /work/x11/wayland/iosc-iosurface.xml $(BUILD_WORK)/xwayland/hw/xwayland/
 	cp -v /work/x11/wayland/xios_metal_sync.{m,h} $(BUILD_WORK)/xwayland/hw/xwayland/
 	cp -v /work/x11/apps/shared/XiosMetalEventBroker.{m,h} $(BUILD_WORK)/xwayland/hw/xwayland/
+	cp -v /work/x11/apps/shared/XiosProtocol.h $(BUILD_WORK)/xwayland/hw/xwayland/
 	mkdir -p $(BUILD_WORK)/xwayland/build
 	echo -e "[host_machine]\n \
 	system = 'darwin'\n \

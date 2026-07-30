@@ -99,6 +99,8 @@ cp -v /work/recipes/build_info/xwayland-ent.xml build_misc/entitlements/
 
 echo "==> staging xwayland patch series"
 bash /work/recipes/stage-port-patches.sh xwayland /work/ports build_patch
+echo "==> staging libepoxy patch series"
+bash /work/recipes/stage-port-patches.sh libepoxy /work/ports build_patch
 
 # xwayland-input.c includes <linux/input.h> for the evdev codes (BTN_*, KEY_*) the Wayland
 # input protocol uses; iOS has no linux/ uapi headers. The vendored input-event-codes.h is the
@@ -154,8 +156,11 @@ XF="$XW/.xios_patch_series.sha256"
 NEW_FP="$(sha256sum \
   /work/ports/xwayland/patches/series \
   /work/ports/xwayland/patches/*.patch \
+  /work/ports/libepoxy/patches/series \
+  /work/ports/libepoxy/patches/*.patch \
   /work/recipes/build_info/xwayland-glamor-iosurface.c \
-  /work/x11/wayland/iosc-iosurface.xml | sha256sum | awk '{print $1}')"
+  /work/x11/wayland/iosc-iosurface.xml \
+  /work/x11/apps/shared/XiosProtocol.h | sha256sum | awk '{print $1}')"
 OLD_FP="$(cat "$XF" 2>/dev/null || true)"
 if [ -d "$XW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
   echo "==> wiping stale xwayland build after patch/backend changes"

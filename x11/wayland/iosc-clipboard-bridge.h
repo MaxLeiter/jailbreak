@@ -2,7 +2,8 @@
  * iosc-clipboard-bridge.h — the compositor half of Linux<->iOS clipboard sync.
  *
  * Owns the dedicated clipboard AF_UNIX socket (iosc-clipboard.sock) and speaks
- * XIOS_MSG_CLIPBOARD records (the shared 32-byte xios_msg envelope, see
+ * an exact v1 HELLO followed by XIOS_MSG_CLIPBOARD records (the shared
+ * 32-byte xios_msg envelope, see
  * linux-build/patches/xios/xios_surface.h) to the host app both directions:
  *
  *   Linux app copied   -> iosc.c publishes each snapshotted mime here ->

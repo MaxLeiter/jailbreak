@@ -33,6 +33,7 @@ struct clip_client {
     int fd;
     struct wl_event_source *src;
     uint32_t src_mask;              /* mask currently registered on src */
+    int handshaken;
     /* rx: one record at a time (header, then payload accumulate) */
     uint8_t  rx_hdr[sizeof(xios_msg)];
     uint32_t rx_hdr_have;
@@ -175,12 +176,33 @@ static int tx_record(struct clip_client *c, uint32_t kind, uint32_t gen,
     return tx_flush(c);
 }
 
+static int tx_hello(struct clip_client *c)
+{
+    xios_msg hello = {
+        XIOS_MSG_MAGIC, XIOS_MSG_HELLO, XIOS_PROTOCOL_VERSION, 0,
+        0, 0, 0, 0
+    };
+    if (tx_queue(c, &hello, sizeof(hello)) != 0) return -1;
+    return tx_flush(c);
+}
+
+static int replay_snapshot(struct clip_client *c)
+{
+    for (int k = 1; k <= CLIP_MAX_KIND; k++) {
+        if (!g_items[k].set) continue;
+        if (tx_record(c, (uint32_t)k, g_gen,
+                      g_items[k].data, g_items[k].len) != 0)
+            return -1;
+    }
+    return 0;
+}
+
 static void broadcast(uint32_t kind, const void *data, size_t len,
                       struct clip_client *skip)
 {
     for (int i = 0; i < CLIP_MAX_CLIENTS; i++) {
         struct clip_client *c = g_clients[i];
-        if (!c || c == skip) continue;
+        if (!c || !c->handshaken || c == skip) continue;
         if (tx_record(c, kind, g_gen, data, len) != 0) client_drop(c);
     }
 }
@@ -226,9 +248,13 @@ static int rx_dispatch(struct clip_client *c)
     const xios_msg *m = &c->rx_msg;
     uint32_t kind = (uint32_t)m->a;
     uint32_t gen = (uint32_t)m->b;
-    /* Future kind: skip WITHOUT consuming the generation change, so the set's
-     * first processable record still arrives with first=1 below. */
-    if (kind > CLIP_MAX_KIND) return 0;
+    if (!c->handshaken ||
+        m->window_id != 0 ||
+        kind > CLIP_MAX_KIND ||
+        gen == 0 ||
+        m->c != 0 ||
+        m->d != 0)
+        return -1;
     int first = (gen != c->last_rx_gen);
     c->last_rx_gen = gen;
 
@@ -265,10 +291,27 @@ static int client_dispatch(int fd, uint32_t mask, void *data)
                 c->rx_hdr_have += (uint32_t)r;
                 if (c->rx_hdr_have < sizeof(c->rx_hdr)) continue;
                 memcpy(&c->rx_msg, c->rx_hdr, sizeof(c->rx_msg));
-                if (c->rx_msg.magic != XIOS_MSG_MAGIC ||
-                    c->rx_msg.type != XIOS_MSG_CLIPBOARD ||
-                    c->rx_msg.length > XIOS_CLIP_ITEM_MAX)
+                if (c->rx_msg.magic != XIOS_MSG_MAGIC)
                     goto drop;               /* desync or violation */
+                if (!c->handshaken) {
+                    if (c->rx_msg.type != XIOS_MSG_HELLO ||
+                        c->rx_msg.window_id != XIOS_PROTOCOL_VERSION ||
+                        c->rx_msg.length != 0 ||
+                        c->rx_msg.a != 0 || c->rx_msg.b != 0 ||
+                        c->rx_msg.c != 0 || c->rx_msg.d != 0)
+                        goto drop;
+                    c->handshaken = 1;
+                    rx_reset(c);
+                    if (tx_hello(c) != 0 || replay_snapshot(c) != 0)
+                        goto drop;
+                    fprintf(stderr, "iosc: clipboard v%u host connected (fd=%d)\n",
+                            XIOS_PROTOCOL_VERSION, fd);
+                    continue;
+                }
+                if (c->rx_msg.type != XIOS_MSG_CLIPBOARD ||
+                    c->rx_msg.window_id != 0 ||
+                    c->rx_msg.length > XIOS_CLIP_ITEM_MAX)
+                    goto drop;
                 c->rx_payload = calloc(1, (size_t)c->rx_msg.length + 1);
                 if (!c->rx_payload) goto drop;
             } else {
@@ -321,16 +364,7 @@ static int listen_dispatch(int fd, uint32_t mask, void *data)
     if (!c->src) { close(cfd); free(c); return 0; }
     g_clients[slot] = c;
 
-    /* Replay the session clipboard so a relaunched host catches up. An empty
-     * store sends nothing — never wipe the iOS pasteboard just for connecting. */
-    for (int k = 1; k <= CLIP_MAX_KIND; k++) {
-        if (!g_items[k].set) continue;
-        if (tx_record(c, (uint32_t)k, g_gen, g_items[k].data, g_items[k].len) != 0) {
-            client_drop(c);
-            return 0;
-        }
-    }
-    fprintf(stderr, "iosc: clipboard host connected (fd=%d)\n", cfd);
+    /* Snapshot replay waits for the exact-v1 HELLO in client_dispatch. */
     return 0;
 }
 
