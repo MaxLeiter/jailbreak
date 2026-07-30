@@ -14,6 +14,10 @@ usage: $0 [target-id] [--dry-run] [--skip-image-build] make-target...
   make-target          Procursus make target, e.g. glib2.0-package
   --dry-run            Print the docker commands without running them
   --skip-image-build   Use an existing XIOS_PROC_IMAGE instead of running docker build
+
+  JOBS=<n>             make -j value (default: all cores). Lower it when another
+                       build already owns the Docker VM -- this one is 8 GB, and an
+                       over-parallel build OOM-kills whatever else is running.
 EOF
 }
 
@@ -115,6 +119,7 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
   -e XIOS_SUBPREFIX \
+  -e JOBS \
   -e PATH="/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   -e LD_LIBRARY_PATH="/root/cctools/lib" \
   -v "$VOLUME:/work/Procursus" \
@@ -176,7 +181,7 @@ if [ "${BOOTSTRAP:-0}" = 1 ]; then
   make setup MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1
 fi
 
-make "$@" MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 -j"$(nproc)"
+make "$@" MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 -j"${JOBS:-$(nproc)}"
 dest="/out/targets/$XIOS_TARGET_ID"
 mkdir -p "$dest"
 for target in "$@"; do
