@@ -132,6 +132,8 @@ cat > "$src/src/wayland/ioscclientbuffer.h" <<'EOF'
 
 #include <QByteArray>
 #include <QObject>
+#include <epoxy/egl.h>
+#include <mutex>
 #include <wayland-server-protocol.h>
 
 struct wl_client;
@@ -169,6 +171,9 @@ public:
     static IoscClientBuffer *get(wl_resource *resource);
     static const struct wl_buffer_interface implementation;
 
+    bool setAcquireFenceToken(const void *token, size_t tokenSize, uint64_t value);
+    bool waitAcquireFence(EGLDisplay display);
+
 private:
     static void bufferDestroyResource(wl_resource *resource);
     static void bufferDestroy(wl_client *client, wl_resource *resource);
@@ -177,6 +182,11 @@ private:
     void *m_iosurface = nullptr;
     ShmAttributes m_attributes;
     QByteArray m_flippedData;
+    bool m_external = false;
+    void *m_acquireEvent = nullptr;
+    QByteArray m_acquireToken;
+    uint64_t m_acquireValue = 0;
+    std::mutex m_acquireMutex;
 };
 
 } // namespace KWin
@@ -205,6 +215,11 @@ namespace KWin
 {
 
 static constexpr uint32_t xiosLockReadOnly = 0x00000001u;
+static constexpr size_t xiosMetalEventTokenSize = 32u;
+
+extern "C" void *xios_metal_sync_import_event(const void *token, size_t tokenSize);
+extern "C" void xios_metal_sync_release_event(void *event);
+extern "C" int xios_metal_sync_wait(EGLDisplay display, void *event, uint64_t value);
 
 static void *importClientIOSurface(int pid, uint32_t portName, int *width, int *height)
 {
@@ -249,11 +264,18 @@ class IoscClientBufferIntegrationPrivate : public QtWaylandServer::iosc_iosurfac
 {
 public:
     explicit IoscClientBufferIntegrationPrivate(Display *display)
-        : QtWaylandServer::iosc_iosurface(*display, 1)
+        : QtWaylandServer::iosc_iosurface(*display, 4)
     {
     }
 
 protected:
+    void iosc_iosurface_bind_resource(Resource *resource) override
+    {
+        if (resource->version() >= 2) {
+            send_capabilities(resource->handle, 1u | 2u | 4u | 16u);
+        }
+    }
+
     void iosc_iosurface_destroy(Resource *resource) override
     {
         wl_resource_destroy(resource->handle);
@@ -284,6 +306,27 @@ protected:
 
         new IoscClientBuffer(surface, QSize(importedWidth, importedHeight), id, resource->client());
     }
+
+    void iosc_iosurface_set_acquire_fence(Resource *resource, wl_resource *, wl_array *,
+                                          uint32_t, uint32_t) override
+    {
+        wl_resource_post_error(resource->handle, error_invalid_fence,
+                               "legacy MTLSharedEvent archives are unsupported; "
+                               "use iosc_iosurface v4 broker tokens");
+    }
+
+    void iosc_iosurface_set_acquire_fence_token(Resource *resource, wl_resource *buffer,
+                                                wl_array *token,
+                                                uint32_t valueLo, uint32_t valueHi) override
+    {
+        IoscClientBuffer *clientBuffer = IoscClientBuffer::get(buffer);
+        const uint64_t value = (uint64_t(valueHi) << 32) | valueLo;
+        if (!clientBuffer || !token ||
+            !clientBuffer->setAcquireFenceToken(token->data, token->size, value)) {
+            wl_resource_post_error(resource->handle, error_invalid_fence,
+                                   "invalid or unavailable brokered MTLSharedEvent fence");
+        }
+    }
 };
 
 const struct wl_buffer_interface IoscClientBuffer::implementation = {
@@ -292,6 +335,7 @@ const struct wl_buffer_interface IoscClientBuffer::implementation = {
 
 IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client)
     : m_iosurface(iosurface)
+    , m_external(true)
 {
     const IOSurfaceRef surface = static_cast<IOSurfaceRef>(m_iosurface);
     m_attributes.stride = static_cast<int>(IOSurfaceGetBytesPerRow(surface));
@@ -316,6 +360,9 @@ IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t 
 
 IoscClientBuffer::~IoscClientBuffer()
 {
+    if (m_acquireEvent) {
+        xios_metal_sync_release_event(m_acquireEvent);
+    }
     if (m_iosurface) {
         CFRelease(static_cast<IOSurfaceRef>(m_iosurface));
     }
@@ -368,6 +415,44 @@ bool IoscClientBuffer::hasAlphaChannel() const
 const ShmAttributes *IoscClientBuffer::shmAttributes() const
 {
     return &m_attributes;
+}
+
+bool IoscClientBuffer::setAcquireFenceToken(const void *token, size_t tokenSize, uint64_t value)
+{
+    if (!m_external || !token || tokenSize != xiosMetalEventTokenSize || value == 0) {
+        return false;
+    }
+    const QByteArray incoming(static_cast<const char *>(token), static_cast<qsizetype>(tokenSize));
+    std::lock_guard<std::mutex> lock(m_acquireMutex);
+    if (incoming != m_acquireToken) {
+        void *event = xios_metal_sync_import_event(token, tokenSize);
+        if (!event) {
+            return false;
+        }
+        if (m_acquireEvent) {
+            xios_metal_sync_release_event(m_acquireEvent);
+        }
+        m_acquireEvent = event;
+        m_acquireToken = incoming;
+    }
+    m_acquireValue = value;
+    return true;
+}
+
+bool IoscClientBuffer::waitAcquireFence(EGLDisplay display)
+{
+    if (!m_external) {
+        return true;
+    }
+    std::lock_guard<std::mutex> lock(m_acquireMutex);
+    if (!m_acquireEvent || m_acquireValue == 0) {
+        return false;
+    }
+    if (!xios_metal_sync_wait(display, m_acquireEvent, m_acquireValue)) {
+        return false;
+    }
+    m_acquireValue = 0;
+    return true;
 }
 
 IoscClientBuffer *IoscClientBuffer::get(wl_resource *resource)

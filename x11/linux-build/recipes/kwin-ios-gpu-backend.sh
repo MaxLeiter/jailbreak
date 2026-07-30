@@ -284,6 +284,10 @@ if "ios-gpu-client-texture-load" not in text:
     implementation = r'''bool BasicEGLSurfaceTextureWayland::loadIoscTexture(IoscClientBuffer *buffer) // ios-gpu-client-texture-load
 {
     EGLDisplay display = backend()->eglDisplayObject()->handle();
+    if (!buffer->waitAcquireFence(display)) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex: refusing an unfenced client IOSurface";
+        return false;
+    }
     if (m_iosurfaceConfig == EGL_NO_CONFIG_KHR) {
         m_iosurfaceConfig = chooseIoscEglConfig(display);
     }
@@ -358,6 +362,11 @@ void BasicEGLSurfaceTextureWayland::updateIoscTexture(IoscClientBuffer *buffer)
     if (m_bufferType != BufferType::Iosc || m_iosurfaceBuffer != buffer) {
         destroy();
         loadIoscTexture(buffer);
+        return;
+    }
+    EGLDisplay display = backend()->eglDisplayObject()->handle();
+    if (!buffer->waitAcquireFence(display)) {
+        qCWarning(KWIN_OPENGL) << "ios-iosc-tex: refusing an unfenced client IOSurface update";
     }
 }
 

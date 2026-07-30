@@ -17,12 +17,15 @@
     zowl_iosurface_v1 shape, adapted to our existing IOSurface plumbing.
   </description>
 
-  <interface name="iosc_iosurface" version="2">
+  <interface name="iosc_iosurface" version="4">
     <description summary="factory for IOSurface-backed wl_buffers">
       Version 1 supports create_buffer with BGRA8 IOSurfaces and the
       flag_top_left presentation flag. Version 2 adds the capabilities event so
       clients can verify the compositor-side IOSurface contract before choosing
-      this path over wl_shm or another backend.
+      this path over wl_shm or another backend. Version 3's direct-handle archive
+      request is retained only for wire compatibility and is not supported on
+      iPadOS. Version 4 transfers the MTLSharedEventHandle once through the Xios
+      NSXPC broker and carries only an opaque capability token here.
     </description>
 
     <enum name="error">
@@ -30,6 +33,8 @@
              summary="the named mach port could not be imported as an IOSurface"/>
       <entry name="unsupported_format" value="1"
              summary="the requested IOSurface format or flags are unsupported"/>
+      <entry name="invalid_fence" value="2"
+             summary="the shared-event token or signal value is invalid"/>
     </enum>
 
     <enum name="format">
@@ -56,6 +61,10 @@
              summary="format presentation flags such as flag_top_left are honored"/>
       <entry name="mach_port_import" value="4"
              summary="mach_port_name is imported from the client's task"/>
+      <entry name="metal_shared_event" value="8"
+             summary="legacy version-3 shared-event archive request"/>
+      <entry name="metal_shared_event_broker" value="16"
+             summary="version-4 broker tokens import cross-process MTLSharedEvents"/>
     </enum>
 
     <request name="destroy" type="destructor">
@@ -89,5 +98,32 @@
       </description>
       <arg name="capabilities" type="uint" enum="capability"/>
     </event>
+
+    <request name="set_acquire_fence" since="3">
+      <description summary="legacy unsupported direct-handle archive request">
+        Ordinary keyed archives cannot carry MTLSharedEventHandle on iPadOS;
+        version-4 clients must use set_acquire_fence_token instead. A server
+        receiving this legacy request reports invalid_fence.
+      </description>
+      <arg name="buffer" type="object" interface="wl_buffer"/>
+      <arg name="shared_event_handle" type="array"/>
+      <arg name="value_lo" type="uint"/>
+      <arg name="value_hi" type="uint"/>
+    </request>
+
+    <request name="set_acquire_fence_token" since="4">
+      <description summary="set a brokered GPU acquire fence for the next commit">
+        token is the fixed 32-byte capability under which the producer published
+        its persistent MTLSharedEventHandle to the Xios NSXPC broker.
+        value_lo/value_hi form the unsigned 64-bit value the compositor's ANGLE
+        command queue waits for before sampling buffer. The request must precede
+        the wl_surface.commit that attaches or damages this buffer. The same
+        token is reused with increasing values.
+      </description>
+      <arg name="buffer" type="object" interface="wl_buffer"/>
+      <arg name="token" type="array"/>
+      <arg name="value_lo" type="uint"/>
+      <arg name="value_hi" type="uint"/>
+    </request>
   </interface>
 </protocol>
