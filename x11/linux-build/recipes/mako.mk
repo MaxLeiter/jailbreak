@@ -2,9 +2,8 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# STATUS: BLOCKED — mako hard-requires an sd-bus provider (libsystemd/libelogind/basu); basu's
-# sd-bus source is architecturally Linux-bound (see recipes/basu.mk for the blocker catalogue)
-# and won't cross-compile to Darwin. Everything else (epoll-shim timerfd/signalfd, no librt) is satisfied.
+# mako uses the Darwin-ported basu sd-bus provider plus epoll-shim's
+# timerfd/signalfd compatibility. iOS has no librt; clock_gettime is in libc.
 
 SUBPROJECTS  += mako
 MAKO_VERSION := 1.9.0

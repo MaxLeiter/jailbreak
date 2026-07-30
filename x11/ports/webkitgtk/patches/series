@@ -1,3 +1,10 @@
 0001-build-darwin-process-check-for-gtk.patch
 0002-build-export-abort-with-reason-header-on-darwin.patch
 0003-jsc-supply-muloti4-on-darwin.patch
+0004-gtk-use-unix-ipc-attachments-on-darwin.patch
+0005-gtk-use-unix-ipc-connection-metadata-on-darwin.patch
+0006-xpc-sendability-compat-for-old-sdk.patch
+0007-wtf-xpc-sendability-compat-for-old-sdk.patch
+0008-shared-memory-serializer-prefers-unix.patch
+0009-glib-process-launcher-darwin.patch
+0010-wkbundle-viewport-api-feature-guard.patch

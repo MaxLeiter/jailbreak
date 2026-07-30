@@ -16,12 +16,6 @@ fi
 cd Procursus
 
 echo "==> [2/4] apply our patches (idempotent, no absolute paths)"
-# IOSurface DDX ("Xios"): drop-in hw/vfb sources copied into the xserver tree by the
-# tigervnc recipe (see the tigervnc_xios edit below).
-mkdir -p build_patch/xios
-cp -f "$PATCHES"/xios/InitOutput.c "$PATCHES"/xios/Makefile.am \
-      "$PATCHES"/xios/xios_surface.c "$PATCHES"/xios/xios_surface.h build_patch/xios/
-
 stage_port_patch_stack() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
@@ -45,6 +39,12 @@ stage_port_patch_stack() {
 stage_port_patch_stack tigervnc
 stage_port_patch_stack mesa
 
+# Toolchain fixes every target needs (libc++, _DARWIN_C_SOURCE, SDK headers,
+# libpng mirror). Shared with the cold-volume bootstrap in
+# build-procursus-target.sh, so a non-X target need not come through here.
+echo "==> [2a/4] common Procursus toolchain edits"
+python3 /work/procursus-common-edits.py
+
 python3 - <<'PY'
 import io, re, pathlib
 
@@ -63,27 +63,6 @@ def tigervnc(s):
         return s
     return s.replace(anchor, anchor + inject, 1)
 edit("makefiles/tigervnc.mk", tigervnc)
-
-# 1b) IOSurface DDX: drop our modified hw/vfb sources into the xserver tree right
-#     after the rootless patch and before autoreconf, so the rebuilt Xvfb/Xios binary
-#     carries the zero-copy IOSurface backend. Idempotent on the marker path.
-def tigervnc_xios(s):
-    if "build_patch/xios/InitOutput.c" in s:
-        return s
-    anchor = ('\t{ [ "$(MEMO_PREFIX)" != "/var/jb" ] || patch -p1 < '
-              '$(BUILD_ROOT)/build_patch/tigervnc/0001-xserver-popen-shell-rootless.patch; } && \\\n')
-    # Fail loud rather than silently shipping a plain Xvfb if the Procursus recipe
-    # layout drifts (the anchor is the line the rootless edit above injects).
-    if anchor not in s:
-        raise SystemExit("ERROR: tigervnc.mk anchor for the xios injection not found "
-                         "— Procursus layout changed; update build.sh")
-    inject = (
-        '\tcp -f $(BUILD_ROOT)/build_patch/xios/InitOutput.c hw/vfb/InitOutput.c && \\\n'
-        '\tcp -f $(BUILD_ROOT)/build_patch/xios/Makefile.am hw/vfb/Makefile.am && \\\n'
-        '\tcp -f $(BUILD_ROOT)/build_patch/xios/xios_surface.c hw/vfb/xios_surface.c && \\\n'
-        '\tcp -f $(BUILD_ROOT)/build_patch/xios/xios_surface.h hw/vfb/xios_surface.h && \\\n')
-    return s.replace(anchor, anchor + inject, 1)
-edit("makefiles/tigervnc.mk", tigervnc_xios)
 
 # 2) Drop the bogus tigervnc-xorg-extension dependency from the standalone server.
 def control(s):
@@ -121,49 +100,11 @@ def libpng(s):
                      "\t# $(call DO_PATCH,libpng16,libpng16,-p1)")
 edit("makefiles/libpng16.mk", libpng)
 
-# 5) The `setup` target copies macOS-SDK framework headers (FSEvents, Kernel, IOKit,
-#    Security, sys/ttydev.h, ...). We provide a real MacOSX.sdk in the image, but keep
-#    these copies non-fatal as a safety net for any header a newer SDK might drop.
-edit("Makefile", lambda s: re.sub(r'(\n\t)@(cp -af\s+\$\(MACOSX_SYSROOT\))', r'\1-@\2', s))
-
-# 6) cctools-port's clang++ defaults to GNU libstdc++ (absent); force Apple libc++.
-def cxxflags(s):
-    if "-stdlib=libc++" in s: return s
-    s = s.replace("CXXFLAGS            := $(CFLAGS)",
-                  "CXXFLAGS            := $(CFLAGS) -stdlib=libc++", 1)
-    s = s.replace("-Wl,-not_for_dyld_shared_cache",
-                  "-Wl,-not_for_dyld_shared_cache -stdlib=libc++", 1)  # LDFLAGS line
-    return s
-edit("Makefile", cxxflags)
-
-# 7) libpng's sourceforge "files" URL 404s for curl; use the direct-download mirror.
-edit("makefiles/libpng16.mk", lambda s: s.replace(
-    "https://sourceforge.net/projects/libpng/files/libpng16/$(LIBPNG16_VERSION)/libpng-$(LIBPNG16_VERSION).tar.xz",
-    "https://downloads.sourceforge.net/libpng/libpng-$(LIBPNG16_VERSION).tar.xz"))
-
-# 8) Xcode-26 macOS headers (arpa/inet.h, ...) that setup copies into build_base
-#    #include <_bounds.h> (bounds-safety, 2024+). Also copy _bounds.h so they resolve
-#    (it only needs sys/cdefs.h, which is present).
-edit("Makefile", lambda s: s.replace(
-    "/usr/include/{arpa,bsm,hfs,net,xpc,protocols,netinet,netinet6,servers,timeconv.h,launch.h}",
-    "/usr/include/{_bounds.h,arpa,bsm,hfs,net,xpc,protocols,netinet,netinet6,servers,timeconv.h,launch.h}"))
-
 # 9) mesa's shader disk-cache (disk_cache.c) needs dladdr/Dl_info and trips -Werror; a
 #    swrast software build doesn't need it. Disable it in the meson config.
 edit("makefiles/mesa.mk", lambda s: s.replace(
     "-Dgles1=disabled \\\n",
     "-Dgles1=disabled \\\n\t\t-Dshader-cache=disabled \\\n", 1))
-
-# 10) dladdr/Dl_info are gated behind `!_POSIX_C_SOURCE || _DARWIN_C_SOURCE` (dlfcn.h:39);
-#     define _DARWIN_C_SOURCE globally so dlfcn.h (incl. mesa's added include) exposes
-#     them. (No global -include dlfcn.h — that regressed C deps like ncurses/libffi.)
-def darwinsrc(s):
-    s = s.replace("-D_DARWIN_C_SOURCE -include dlfcn.h", "-D_DARWIN_C_SOURCE")  # undo prior global force-include
-    if "-D_DARWIN_C_SOURCE" in s: return s
-    return s.replace("CXXFLAGS            := $(CFLAGS) -stdlib=libc++",
-                     "CFLAGS              += -D_DARWIN_C_SOURCE\n"
-                     "CXXFLAGS            := $(CFLAGS) -stdlib=libc++", 1)
-edit("Makefile", darwinsrc)
 
 # 11) Build Xvfb from the same patched xserver for headless/debug X11 sessions.
 edit("makefiles/tigervnc.mk", lambda s: s.replace("--disable-xvfb", "--enable-xvfb", 1))
@@ -202,77 +143,6 @@ if [ -n "$XVFB" ]; then
   echo "   Xvfb signed -> $OUT/Xvfb"
 else
   echo "!! Xvfb not found in build_stage (did --enable-xvfb apply?)"
-fi
-
-# Xios = the same Xvfb binary (carries the IOSurface DDX; -iosurface activates it),
-# signed with a MINIMAL entitlement set. NB: signing with Procursus general.xml does
-# NOT work — its container-manager entitlements sandbox the process away from IOKit, so
-# IOSurfaceCreate returns NULL (verified on-device). The set below is the minimum that
-# gives both X-server capability (no-container fs access, lib loading) AND the IOSurface
-# + mach hand-off (iokit-user-client-class IOSurfaceRootUserClient, task_for_pid-allow).
-echo "==> produce signed Xios (IOSurface DDX; minimal IOKit/task_for_pid entitlements)"
-if [ -n "$XVFB" ]; then
-  cp -v "$XVFB" "$OUT"/Xios
-  # Hard post-condition: the DDX sources must actually be compiled in. If a makefile
-  # anchor drifted, the recipe would silently build a plain Xvfb — catch that here.
-  grep -aq "IOSurfaceCreateMachPort" "$OUT"/Xios || {
-    echo "!! Xios is missing the IOSurface DDX code (source injection failed)"; exit 1; }
-  if [ -n "$TARGET_PREFIX" ]; then
-    XIOS_ENTITLEMENT_PATHS="        <string>$TARGET_PREFIX/</string>
-        <string>/tmp/</string>
-        <string>/var/</string>
-        <string>/private/var/</string>"
-    if [ "$TARGET_PREFIX" = "/var/jb" ]; then
-      XIOS_ENTITLEMENT_PATHS="$XIOS_ENTITLEMENT_PATHS
-        <string>/private/var/jb/</string>"
-    fi
-  else
-    XIOS_ENTITLEMENT_PATHS="        <string>/usr/</string>
-        <string>/tmp/</string>
-        <string>/var/</string>
-        <string>/private/var/</string>"
-  fi
-  cat > /out/xios-ent.xml <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>platform-application</key>
-    <true/>
-    <key>com.apple.private.security.no-container</key>
-    <true/>
-    <key>com.apple.private.amfi.can-allow-non-platform</key>
-    <true/>
-    <key>com.apple.private.skip-library-validation</key>
-    <true/>
-    <key>task_for_pid-allow</key>
-    <true/>
-    <key>com.apple.system-task-ports</key>
-    <true/>
-    <key>com.apple.security.iokit-user-client-class</key>
-    <array>
-        <string>IOSurfaceRootUserClient</string>
-        <string>IOSurfaceSendRight</string>
-    </array>
-    <key>com.apple.security.exception.files.absolute-path.read-write</key>
-    <array>
-$XIOS_ENTITLEMENT_PATHS
-    </array>
-</dict>
-</plist>
-PLIST
-  ldid -S/out/xios-ent.xml "$OUT"/Xios
-  echo "   Xios signed -> $OUT/Xios"
-  # Assert the signature carries exactly the entitlements we need and NOT the broad
-  # container set (which sandboxes the process away from IOKit -> IOSurfaceCreate NULL).
-  ents="$(ldid -e "$OUT"/Xios 2>/dev/null)"
-  for need in IOSurfaceRootUserClient task_for_pid-allow; do
-    echo "$ents" | grep -q "$need" || { echo "!! Xios missing entitlement: $need"; exit 1; }
-  done
-  if echo "$ents" | grep -q "container-manager"; then
-    echo "!! Xios has container-manager entitlement (breaks IOKit) — wrong plist"; exit 1
-  fi
-  echo "   Xios entitlements verified"
 fi
 
 echo "==> [4/4] collect debs -> $OUT"

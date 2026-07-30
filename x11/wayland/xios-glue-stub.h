@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "XiosProtocol.h"
 
 /* ---- output geometry / scale (for MetaMonitorManagerIOS) --------------------------
  * The Xios app presents one fullscreen output IOSurface at the iPad's native pixel size;
@@ -70,6 +71,12 @@ float xios_output_scale (void);
 #define XIOS_GESTURE_UPDATE 1u
 #define XIOS_GESTURE_END    2u
 #define XIOS_GESTURE_CANCEL 3u
+#define XIOS_IN_IMPROXY 15u /* client->server: this connection is the input-method
+                             * proxy for a nested compositor (KDE flavor), not a
+                             * display host. code = 1 register, 0 unregister.
+                             * Consumed by the reader like BIND. Unused by
+                             * MetaBackendIOS (mutter owns its own text-input);
+                             * listed so the type registry stays one namespace. */
 
 /* Fixed 24-byte record header. Layout matches ios-inputd.c struct iosc_in_msg exactly. */
 struct xios_in_msg
@@ -107,6 +114,12 @@ int xios_input_socket_broadcast (xios_input_socket *s, const void *buf, size_t l
 
 int xios_input_socket_broadcast_bound (xios_input_socket *s, uint32_t bound_window,
                                        const void *buf, size_t len);
+
+/* Send to clients that registered XIOS_IN_IMPROXY; 0 = no proxy, handle locally. */
+int xios_input_socket_send_improxy (xios_input_socket *s, const void *buf, size_t len);
+
+/* 1 while an input-method proxy is registered (poll after dispatch to notice it go). */
+int xios_input_socket_has_improxy (xios_input_socket *s);
 
 /* Number of currently-connected clients (detect a new connection across dispatch). */
 int xios_input_socket_client_count (xios_input_socket *s);
@@ -146,13 +159,11 @@ void        xios_egl_destroy_image (EGLImageKHR image);
  * All three are xios_surface / xios_egl in the real libxios_glue. */
 EGLDisplay xios_egl_display (void);          /* lazy getter; matches libxios_glue */
 void      *xios_get_output_iosurface (void);
-void       xios_notify_dirty (void);
 int        xios_notify_dirty_with_fence (const void *shared_event_token,
                                          size_t token_size,
                                          uint64_t event_value);
 void       xios_notify_cursor (int x, int y, int visible, int shape_id);
 
-#define XIOS_METAL_EVENT_TOKEN_SIZE 32u
 int xios_metal_sync_signal (EGLDisplay display,
                             const void **token,
                             size_t *token_size,

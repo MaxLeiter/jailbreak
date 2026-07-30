@@ -17,7 +17,7 @@
 #   1. The lib's runtime + -dev debs installed (headers + .pc), plus their -dev deps pulled
 #      via `apt-get install -f` (freetype/png/pixman/x11/uuid/jpeg/tiff/...).
 #   2. The FULL target pkg-config set merged onto the device (cp -n from the Docker build
-#      sysroot build_base/iphoneos-arm64-rootless/.../usr/{lib,share}/pkgconfig). The per-deb
+#      sysroot build_base/$XIOS_MEMO_TARGET/.../usr/{lib,share}/pkgconfig). The per-deb
 #      headers don't carry every transitive .pc (expat, xcb-render/shm, ...), and cairo/gtk4
 #      have long Requires.private chains. zlib.pc is auto-created below (iOS ships no zlib.pc).
 #
@@ -31,6 +31,8 @@
 # After build it copies every produced *.gir -> /var/jb/usr/share/gir-1.0 and
 # *.typelib -> /var/jb/usr/lib/girepository-1.0, then lists the new namespaces.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 DEVICE="${DEVICE:-root@MaxsiPad.local}"
 SSHKEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"

@@ -3,9 +3,11 @@
 # IOSurface backend on top of the completed Qt/KF6 volume. Linux DRM/libinput and
 # native backends remain deliberately trimmed on iOS.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 
 TARGETS="${TARGETS:-libdrm-package gbm-package libdisplay-info-package kwin-package}"
@@ -63,18 +65,18 @@ stage_deb() {
   local deb=$1
   if [ -f "$deb" ]; then
     echo "   $(basename "$deb")"
-    dpkg-deb -x "$deb" build_base/iphoneos-arm64-rootless/1900
+    dpkg-deb -x "$deb" build_base/$XIOS_TRIPLE
   fi
 }
-stage_deb /out/libepoll-shim0_0.0.20240608_iphoneos-arm64.deb
-stage_deb /out/libepoll-shim-dev_0.0.20240608_iphoneos-arm64.deb
-stage_deb /out/libxcvt0_0.1.2_iphoneos-arm64.deb
-stage_deb /out/libxcvt-dev_0.1.2_iphoneos-arm64.deb
+stage_deb /out/libepoll-shim0_0.0.20240608_$XIOS_DEB_ARCH.deb
+stage_deb /out/libepoll-shim-dev_0.0.20240608_$XIOS_DEB_ARCH.deb
+stage_deb /out/libxcvt0_0.1.2_$XIOS_DEB_ARCH.deb
+stage_deb /out/libxcvt-dev_0.1.2_$XIOS_DEB_ARCH.deb
 
 # KWin's nested IOSurface consumer uses the GPU-fence ABI exported by the
 # matched ANGLE libEGL. Do not silently link against whichever older ANGLE
 # happens to be cached in the long-lived KF6 sysroot.
-angle_debs=(/out/angle_*_iphoneos-arm64.deb)
+angle_debs=(/out/angle_*_$XIOS_DEB_ARCH.deb)
 if [ "${#angle_debs[@]}" -eq 0 ]; then
   echo "ERROR: no ANGLE package in /out; build ANGLE before KWin." >&2
   exit 1
@@ -107,7 +109,7 @@ if [ "${FORCE_KWIN_SHIM_REBUILD:-0}" = "1" ]; then
     2>/dev/null || true
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"
@@ -123,14 +125,14 @@ done
 echo "==> collect debs -> /out"
 mkdir -p /out
 for deb in \
-  build_dist/iphoneos-arm64-rootless/1900/kwin/kwin_*.deb \
-  build_dist/iphoneos-arm64-rootless/1900/kwin/kwin-dev_*.deb \
-  build_dist/iphoneos-arm64-rootless/1900/libdrm/libdrm2_*+ios*.deb \
-  build_dist/iphoneos-arm64-rootless/1900/libdrm/libdrm-dev_*+ios*.deb \
-  build_dist/iphoneos-arm64-rootless/1900/gbm/libgbm1_*+ios*.deb \
-  build_dist/iphoneos-arm64-rootless/1900/gbm/libgbm-dev_*+ios*.deb \
-  build_dist/iphoneos-arm64-rootless/1900/libdisplay-info/libdisplay-info1_*+ios*.deb \
-  build_dist/iphoneos-arm64-rootless/1900/libdisplay-info/libdisplay-info-dev_*+ios*.deb; do
+  build_dist/$XIOS_TRIPLE/kwin/kwin_*.deb \
+  build_dist/$XIOS_TRIPLE/kwin/kwin-dev_*.deb \
+  build_dist/$XIOS_TRIPLE/libdrm/libdrm2_*+ios*.deb \
+  build_dist/$XIOS_TRIPLE/libdrm/libdrm-dev_*+ios*.deb \
+  build_dist/$XIOS_TRIPLE/gbm/libgbm1_*+ios*.deb \
+  build_dist/$XIOS_TRIPLE/gbm/libgbm-dev_*+ios*.deb \
+  build_dist/$XIOS_TRIPLE/libdisplay-info/libdisplay-info1_*+ios*.deb \
+  build_dist/$XIOS_TRIPLE/libdisplay-info/libdisplay-info-dev_*+ios*.deb; do
   [ -e "$deb" ] && cp -v "$deb" /out/
 done
 echo "==> done"

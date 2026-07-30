@@ -1,6 +1,5 @@
 /*
- * xios_surface.c — IOSurface-backed shared framebuffer + mach-port rendezvous for
- * the native iOS X server ("Xios", an Xvfb-derived DDX). See xios_surface.h.
+ * xios_surface.c — IOSurface-backed compositor output + app rendezvous.
  *
  * Deliberately includes NO X server headers — only Apple frameworks + POSIX — so
  * CoreFoundation/IOSurface/mach declarations can't collide with dix macros.
@@ -20,35 +19,18 @@
 #include <sys/stat.h>
 #include <poll.h>
 #include <pwd.h>
+#include <time.h>
 #include <mach/mach.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOSurface/IOSurfaceRef.h>
 
-/* X server display-number string (e.g. "3" for `Xios :3`). Declared extern rather
- * than pulled from a dix header so this file stays free of X server includes. */
+/* Cosmetic display-number string written into xios.json. Compositors provide it
+ * without coupling this Apple-only translation unit to compositor headers. */
 extern char *display;
 
 /* ---- wire protocol (native LE; server + app are both arm64) ---------------- */
 
-#define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
 #define XIOS_FMT_BGRA   0x42475241u   /* 'BGRA' */
-/* app -> server, sent once on connect */
-typedef struct {
-    uint32_t magic;
-    uint32_t pid;
-    uint32_t portname;     /* mach receive-port name in the app's IPC space */
-    uint32_t reserved;
-} xios_hello;
-
-/* server -> app, sent once after the mach port is delivered */
-typedef struct {
-    uint32_t magic;
-    uint32_t width;
-    uint32_t height;
-    uint32_t stride;       /* bytes per row */
-    uint32_t format;       /* XIOS_FMT_BGRA */
-    uint32_t status;       /* 0 = ok */
-} xios_reply;
 
 /* mach message carrying the IOSurface send right */
 typedef struct {
@@ -78,9 +60,30 @@ static uint64_t s_presented_seq = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
 static char s_input_socket[108] = "";          /* app input socket; emitted in xios.json when set */
 static char s_clipboard_socket[108] = "";      /* app clipboard socket; emitted when set */
+static char s_upscale_hint[32] = "";           /* present-side upscale spec for the app */
 static unsigned s_generation = 0;              /* bumped by resize; stale handshakes close */
 static char s_sock_path_kept[256] = "";        /* for resize-time xios.json rewrite */
 static char s_json_path_kept[256] = "";
+
+/* ---- display pacing state (XIOS_MSG_PACING / XIOS_MSG_PRESENTED) ------------
+ * Written on the per-client read thread, read from the compositor's event loop,
+ * so everything here lives under s_lock like s_presented_seq. Timestamps are
+ * translated into OUR CLOCK_MONOTONIC at arrival, because the wire carries deltas
+ * relative to send time (see xios_surface.h). */
+static uint64_t s_vblank_deadline_ms;   /* absolute: app's next frame deadline */
+static uint32_t s_vblank_interval_us;   /* refresh interval */
+static int      s_vblank_min_mfps;
+static int      s_vblank_max_mfps;
+static uint64_t s_vblank_rx_ms;         /* when the last PACING record arrived */
+static uint32_t s_present_age_us;       /* real present time, as an age at ack */
+static uint64_t s_present_ack_ms;       /* when that ack arrived */
+static int      s_present_age_valid;
+
+/* A display clock older than this is treated as dead rather than extrapolated: the
+ * app backgrounded, was suspended by FrontBoard, or died. Several refresh intervals
+ * so an ordinary scheduling hiccup does not flip the compositor back to event-loop
+ * pacing and then forward again. */
+#define XIOS_VBLANK_STALE_MS 250
 
 void xios_set_compositor_id(const char *id)
 {
@@ -97,7 +100,30 @@ void xios_set_clipboard_socket(const char *path)
     snprintf(s_clipboard_socket, sizeof(s_clipboard_socket), "%s", path ? path : "");
 }
 
+void xios_set_upscale_hint(const char *spec)
+{
+    snprintf(s_upscale_hint, sizeof(s_upscale_hint), "%s", spec ? spec : "");
+    /* Anything that could break the flat JSON we hand-write, or smuggle a second
+     * field in, becomes nothing at all. */
+    for (char *p = s_upscale_hint; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 32 || c == '"' || c == '\\' || c == ',' || c == '{' || c == '}') {
+            s_upscale_hint[0] = 0;
+            break;
+        }
+    }
+}
+
 /* ---- helpers -------------------------------------------------------------- */
+
+/* Same clock iosc's now_ms() reads, in 64-bit ms so the pacing deadline maths
+ * cannot straddle the 32-bit wrap iosc tolerates for Wayland event timestamps. */
+static uint64_t mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
 
 static void set_cloexec(int fd)
 {
@@ -156,8 +182,9 @@ static void write_json(const char *json_path, int width, int height, int stride,
     fprintf(jf,
             "{\"width\":%d,\"height\":%d,\"stride\":%d,"
             "\"format\":\"BGRA\",\"ddx\":\"iosurface\",\"socket\":\"%s\","
-            "\"display\":\":%s\",\"protocol_version\":2",
-            width, height, stride, sock_path, display ? display : "0");
+            "\"display\":\":%s\",\"protocol_version\":%u",
+            width, height, stride, sock_path, display ? display : "0",
+            XIOS_PROTOCOL_VERSION);
     /* Where the app should send keyboard/pointer. The app auto-infers this only
      * for an "iosc"-named ddx socket; any other compositor (mutter) must set it
      * or it gets no input. Omitted when unset so iosc keeps the app's inference. */
@@ -165,6 +192,11 @@ static void write_json(const char *json_path, int width, int height, int stride,
         fprintf(jf, ",\"input_socket\":\"%s\"", s_input_socket);
     if (s_clipboard_socket[0])
         fprintf(jf, ",\"clipboard_socket\":\"%s\"", s_clipboard_socket);
+    /* Present-side only; the app upscales its own drawable and nothing here or in
+     * any Wayland client's view of the output changes. Omitted when unset so the
+     * app keeps its default (off). */
+    if (s_upscale_hint[0])
+        fprintf(jf, ",\"upscale\":\"%s\"", s_upscale_hint);
     fprintf(jf, "}\n");
     fclose(jf);
     /* The app runs as mobile; make the handshake file world-readable so it can
@@ -388,19 +420,109 @@ static void drop_client_fd_locked(int fd)
         close(s_clients[i].fd);
         s_clients[i] = s_clients[s_nclients - 1];
         s_nclients--;
+        if (s_nclients == 0) {
+            /* No app left to pace against. Drop the display clock now rather than
+             * letting it go stale on its own: the compositor must fall back to
+             * event-loop pacing immediately, not one stale-timeout later. */
+            s_vblank_interval_us = 0;
+            s_vblank_rx_ms = 0;
+            s_vblank_deadline_ms = 0;
+            s_present_age_valid = 0;
+        }
         return;
     }
 }
 
+/* XIOS_MSG_PACING: the app's display clock. `a` is microseconds from ITS send time
+ * to the deadline, so we add it to OUR now and store an absolute local deadline —
+ * the two processes never have to agree on a clock. */
+static void handle_pacing_msg(const xios_msg *m)
+{
+    uint64_t now = mono_ms();
+    uint32_t interval_us = (uint32_t)(m->b > 0 ? m->b : 0);
+    /* A wild interval means a garbled or hostile record; ignore it rather than
+     * pacing the whole compositor off it. 4 Hz..1 kHz covers every plausible panel
+     * plus the low end CoreAnimation can throttle a link to. */
+    if (interval_us < 1000 || interval_us > 250000)
+        return;
+
+    /* Round the sub-ms delta up: landing a hair after the deadline is a dropped
+     * frame, landing a hair before it is free. */
+    int64_t until_us = (int64_t)m->a;
+    int64_t until_ms = (until_us + 999) / 1000;
+
+    pthread_mutex_lock(&s_lock);
+    s_vblank_interval_us = interval_us;
+    s_vblank_deadline_ms = (until_ms > 0) ? now + (uint64_t)until_ms : now;
+    s_vblank_min_mfps = m->c > 0 ? m->c : 0;
+    s_vblank_max_mfps = m->d > 0 ? m->d : 0;
+    s_vblank_rx_ms = now;
+    pthread_mutex_unlock(&s_lock);
+}
+
 static void handle_client_msg(const xios_msg *m)
 {
+    if (m->type == XIOS_MSG_PACING) {
+        handle_pacing_msg(m);
+        return;
+    }
     if (m->type != XIOS_MSG_PRESENTED)
         return;
     uint64_t seq = ((uint64_t)(uint32_t)m->b << 32) | (uint32_t)m->a;
+    uint64_t now = mono_ms();
     pthread_mutex_lock(&s_lock);
     if (seq > s_presented_seq)
         s_presented_seq = seq;
+    /* bit0 of d distinguishes "the app measured a real presentedTime" from an app
+     * built before pacing, which sends c=d=0 and must keep the old behaviour. */
+    if ((m->d & 1) && m->c >= 0) {
+        s_present_age_us = (uint32_t)m->c;
+        s_present_ack_ms = now;
+        s_present_age_valid = 1;
+    }
     pthread_mutex_unlock(&s_lock);
+}
+
+int xios_display_clock(uint64_t *next_deadline_ms, uint32_t *interval_us,
+                       int *min_mfps, int *max_mfps)
+{
+    uint64_t now = mono_ms();
+    int live;
+
+    pthread_mutex_lock(&s_lock);
+    live = s_vblank_interval_us > 0 && s_vblank_rx_ms > 0 &&
+           now - s_vblank_rx_ms <= XIOS_VBLANK_STALE_MS;
+    if (live) {
+        /* Walk the stored deadline forward in whole intervals until it is in the
+         * future, so a caller that asks between ticks still gets the NEXT vblank
+         * instead of one that has already passed. */
+        uint64_t deadline = s_vblank_deadline_ms;
+        uint64_t interval_ms = (s_vblank_interval_us + 999) / 1000;
+        if (interval_ms == 0) interval_ms = 1;
+        if (deadline <= now) {
+            uint64_t behind = now - deadline;
+            deadline += ((behind / interval_ms) + 1) * interval_ms;
+        }
+        if (next_deadline_ms) *next_deadline_ms = deadline;
+        if (interval_us) *interval_us = s_vblank_interval_us;
+        if (min_mfps) *min_mfps = s_vblank_min_mfps;
+        if (max_mfps) *max_mfps = s_vblank_max_mfps;
+    }
+    pthread_mutex_unlock(&s_lock);
+    return live;
+}
+
+int xios_last_present_time(uint32_t *age_us, uint64_t *ack_at_ms)
+{
+    int have;
+    pthread_mutex_lock(&s_lock);
+    have = s_present_age_valid;
+    if (have) {
+        if (age_us) *age_us = s_present_age_us;
+        if (ack_at_ms) *ack_at_ms = s_present_ack_ms;
+    }
+    pthread_mutex_unlock(&s_lock);
+    return have;
 }
 
 static void *client_read_loop(void *arg)
@@ -470,31 +592,31 @@ static void handle_client(int fd)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-    xios_hello hello;
-    if (read_full(fd, &hello, sizeof(hello)) != 0 || hello.magic != XIOS_MAGIC) {
+    xios_msg hello;
+    if (read_full(fd, &hello, sizeof(hello)) != 0 ||
+        hello.magic != XIOS_MSG_MAGIC ||
+        hello.type != XIOS_MSG_HELLO ||
+        hello.window_id != XIOS_PROTOCOL_VERSION ||
+        hello.length != 0 ||
+        hello.a <= 0 ||
+        (uint32_t)hello.b == MACH_PORT_NULL ||
+        hello.c != 0 ||
+        hello.d != 0) {
         fprintf(stderr, "xios: bad handshake from fd=%d\n", fd);
         close(fd);
         return;
     }
-    if (hello.reserved != XIOS_HELLO_TYPED) {
-        fprintf(stderr, "xios: rejecting non-typed client fd=%d reserved=0x%x "
-                        "(typed app protocol is required)\n",
-                fd, hello.reserved);
-        close(fd);
-        return;
-    }
 
-    /* Don't trust the client-supplied pid for task_for_pid — a malicious client
-     * could name another process and have us hand it the surface port. Use the
-     * kernel-reported peer pid of the socket; fall back to the claim only if the
-     * lookup fails (it shouldn't for an AF_UNIX peer). */
+    /* Never trust or fall back to the client-supplied pid for task_for_pid. */
     pid_t peer_pid = 0;
     socklen_t plen = sizeof(peer_pid);
     if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer_pid, &plen) != 0 || peer_pid <= 0) {
-        peer_pid = (pid_t) hello.pid;
-    } else if ((uint32_t) peer_pid != hello.pid) {
+        fprintf(stderr, "xios: cannot identify socket peer on fd=%d\n", fd);
+        close(fd);
+        return;
+    } else if ((uint32_t) peer_pid != (uint32_t)hello.a) {
         fprintf(stderr, "xios: client claimed pid %u but socket peer is %d; "
-                        "using the real peer\n", hello.pid, (int) peer_pid);
+                        "using the real peer\n", (uint32_t)hello.a, (int) peer_pid);
     }
 
     pthread_mutex_lock(&s_lock);
@@ -503,25 +625,16 @@ static void handle_client(int fd)
     unsigned gen = s_generation;
     pthread_mutex_unlock(&s_lock);
 
-    int status = deliver_surface_port((int) peer_pid, hello.portname, surf);
-
-    xios_reply reply;
-    reply.magic = XIOS_MAGIC;
-    reply.width = (uint32_t) w;
-    reply.height = (uint32_t) hgt;
-    reply.stride = (uint32_t) st;
-    reply.format = XIOS_FMT_BGRA;
-    reply.status = (uint32_t) (status != 0);
-    if (write_full(fd, &reply, sizeof(reply)) != 0 || status != 0) {
+    int status = deliver_surface_port((int) peer_pid, (uint32_t)hello.b, surf);
+    if (status != 0) {
         if (surf) CFRelease(surf);
         close(fd);
         return;
     }
-    /* The app gets an in-band HELLO (geometry + compositor id) right after the
-     * reply. Sent while still blocking (pre-O_NONBLOCK) so the app reliably has
-     * it before the DIRTY/CURSOR stream begins. */
+    /* Reply with the same canonical exact-version HELLO before frames begin. */
     uint32_t idlen = (uint32_t) strlen(s_compositor_id);
-    xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO, 0, idlen,
+    xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO,
+                   XIOS_PROTOCOL_VERSION, idlen,
                    w, hgt, st, (int32_t) XIOS_FMT_BGRA };
     if (write_full(fd, &h, sizeof(h)) != 0 ||
         (idlen && write_full(fd, s_compositor_id, idlen) != 0)) {
@@ -662,46 +775,38 @@ static int send_record(int fd, const void *buf, size_t len)
     return -1;   /* error or partial (desync) */
 }
 
-#define XIOS_SHARED_EVENT_TOKEN_SIZE 32u
-
 static int notify_dirty_internal(const void *shared_event_token,
                                  size_t token_size,
                                  uint64_t event_value)
 {
-    if ((token_size > 0 && !shared_event_token) ||
-        (token_size > 0 && token_size != XIOS_SHARED_EVENT_TOKEN_SIZE) ||
-        (token_size > 0 && event_value == 0))
+    if (!shared_event_token ||
+        token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
+        event_value == 0)
         return -1;
 
     uint64_t seq;
-    unsigned char wire[sizeof(xios_msg) + XIOS_SHARED_EVENT_TOKEN_SIZE];
+    unsigned char wire[sizeof(xios_msg) + XIOS_GPU_FENCE_TOKEN_SIZE];
 
     pthread_mutex_lock(&s_lock);
     seq = ++s_dirty_seq;
     xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY,
-                     token_size ? XIOS_DIRTY_FENCE_BROKER_TOKEN
-                                : XIOS_DIRTY_FENCE_NONE,
-                     (uint32_t)token_size,
+                     XIOS_DIRTY_FENCE_BROKER_TOKEN,
+                     XIOS_GPU_FENCE_TOKEN_SIZE,
                      (int32_t)(uint32_t)(seq & 0xffffffffu),
                      (int32_t)(uint32_t)(seq >> 32),
                      (int32_t)(uint32_t)(event_value & 0xffffffffu),
                      (int32_t)(uint32_t)(event_value >> 32) };
     memcpy(wire, &rec, sizeof(rec));
-    if (token_size)
-        memcpy(wire + sizeof(rec), shared_event_token, token_size);
+    memcpy(wire + sizeof(rec), shared_event_token, XIOS_GPU_FENCE_TOKEN_SIZE);
     int i = 0;
     while (i < s_nclients) {
-        int ok = send_record(s_clients[i].fd, wire, sizeof(rec) + token_size);
+        int ok = send_record(s_clients[i].fd, wire,
+                             sizeof(rec) + XIOS_GPU_FENCE_TOKEN_SIZE);
         if (ok >= 0) { i++; continue; }
         drop_client_locked(i);
     }
     pthread_mutex_unlock(&s_lock);
     return 0;
-}
-
-void xios_notify_dirty(void)
-{
-    (void)notify_dirty_internal(NULL, 0, 0);
 }
 
 int xios_notify_dirty_with_fence(const void *shared_event_token,
@@ -796,38 +901,6 @@ void *xios_import_client_iosurface(int pid, unsigned port_name, int *w, int *h)
             (unsigned) IOSurfaceGetID(s), IOSurfaceGetWidth(s), IOSurfaceGetHeight(s),
             IOSurfaceGetBytesPerRow(s));
     return (void *) s;
-}
-
-void xios_blit_client_iosurface(void *client_surface)
-{
-    IOSurfaceRef src = (IOSurfaceRef) client_surface;
-    if (!src || !s_surface) return;
-
-    /* Lock the source read-only so the GPU's writes are made coherent to the CPU
-     * (the client glFinish()es before signalling, so the frame is complete). */
-    if (IOSurfaceLock(src, XIOS_LOCK_READONLY, NULL) != KERN_SUCCESS)
-        return;
-    const uint8_t *sbase = (const uint8_t *) IOSurfaceGetBaseAddress(src);
-    if (!sbase) {
-        IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
-        return;
-    }
-    size_t sstride = IOSurfaceGetBytesPerRow(src);
-    int sw = (int) IOSurfaceGetWidth(src);
-    int sh = (int) IOSurfaceGetHeight(src);
-
-    uint8_t *dbase = (uint8_t *) IOSurfaceGetBaseAddress(s_surface);
-    if (!dbase) {
-        IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
-        return;
-    }
-    int rows = sh < s_height ? sh : s_height;
-    int cols = sw < s_width  ? sw : s_width;
-    size_t row_bytes = (size_t) cols * 4;   /* BGRA8 both sides */
-    for (int y = 0; y < rows; y++)
-        memcpy(dbase + (size_t) y * s_stride, sbase + (size_t) y * sstride, row_bytes);
-
-    IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
 }
 
 void xios_release_client_iosurface(void *client_surface)

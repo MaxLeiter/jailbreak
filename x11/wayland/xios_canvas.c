@@ -71,7 +71,7 @@ struct canvas_entry {
     uint64_t     frame_generation;        /* canvas generation fenced below */
     uint64_t     frame_event_value;
     size_t       frame_token_size;
-    uint8_t      frame_token[IOSC_NATIVE_FENCE_TOKEN_SIZE];
+    uint8_t      frame_token[XIOS_GPU_FENCE_TOKEN_SIZE];
     int          frame_valid;
     char         app_id[256];
     char         title[256];
@@ -114,6 +114,47 @@ static void set_nosigpipe(int fd)
 {
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+}
+
+/* LOCAL_PEERPID has returned a successful zero value on some iOS socket
+ * configurations. LOCAL_PEERTOKEN is the same kernel-authenticated identity
+ * source and carries the pid in the stable Darwin audit-token slot 5. */
+static pid_t peer_pid_for_fd(int fd)
+{
+    pid_t pid = 0;
+    socklen_t len = sizeof(pid);
+    int peerpid_rc = getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len);
+    int peerpid_errno = peerpid_rc == 0 ? 0 : errno;
+    if (peerpid_rc == 0 && pid > 0)
+        return pid;
+#ifdef LOCAL_PEEREPID
+    pid = 0;
+    len = sizeof(pid);
+    int peerepid_rc = getsockopt(fd, SOL_LOCAL, LOCAL_PEEREPID, &pid, &len);
+    int peerepid_errno = peerepid_rc == 0 ? 0 : errno;
+    if (peerepid_rc == 0 && pid > 0)
+        return pid;
+#else
+    int peerepid_rc = -1, peerepid_errno = ENOPROTOOPT;
+#endif
+#ifdef LOCAL_PEERTOKEN
+    audit_token_t token = {0};
+    len = sizeof(token);
+    int peertoken_rc = getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &len);
+    int peertoken_errno = peertoken_rc == 0 ? 0 : errno;
+    if (peertoken_rc == 0 &&
+        len >= sizeof(token) && token.val[5] > 0)
+        return (pid_t)token.val[5];
+#else
+    int peertoken_rc = -1, peertoken_errno = ENOPROTOOPT;
+    audit_token_t token = {0};
+#endif
+    fprintf(stderr,
+            "xios-canvas: no peer pid fd=%d peerpid(rc=%d errno=%d) "
+            "peerepid(rc=%d errno=%d) peertoken(rc=%d errno=%d pid=%u len=%u)\n",
+            fd, peerpid_rc, peerpid_errno, peerepid_rc, peerepid_errno,
+            peertoken_rc, peertoken_errno, token.val[5], (unsigned)len);
+    return 0;
 }
 
 static int read_full(int fd, void *buf, size_t n)
@@ -472,7 +513,7 @@ int xios_canvas_notify_frame(uint32_t window_id,
                              uint64_t event_value)
 {
     if (!shared_event_token ||
-        token_size != IOSC_NATIVE_FENCE_TOKEN_SIZE ||
+        token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
         event_value == 0)
         return -1;
 
@@ -550,6 +591,11 @@ static int handle_bind(int fd)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
+    /* Capture this while the accepted socket is unquestionably connected.
+     * A version-mismatched host may close as soon as it reads HELLO, after
+     * which Darwin reports ENOTCONN for every LOCAL_PEER* query. */
+    pid_t peer_pid = peer_pid_for_fd(fd);
+
     xios_msg h;
     if (read_full(fd, &h, sizeof(h)) != 0 ||
         h.magic != XIOS_MSG_MAGIC || h.type != XIOS_MSG_BIND) {
@@ -557,46 +603,37 @@ static int handle_bind(int fd)
         close(fd);
         return -1;
     }
-    if (h.window_id != IOSC_NATIVE_PROTOCOL_VERSION) {
+    if (h.window_id != XIOS_PROTOCOL_VERSION) {
         fprintf(stderr,
                 "xios-canvas: native protocol mismatch host=%u server=%u; "
                 "rejecting fd=%d\n",
-                h.window_id, IOSC_NATIVE_PROTOCOL_VERSION, fd);
+                h.window_id, XIOS_PROTOCOL_VERSION, fd);
         close(fd);
         return -1;
     }
     char app_id[256];
+    if (h.length == 0 || h.length >= sizeof(app_id)) {
+        fprintf(stderr, "xios-canvas: invalid v%u BIND identity length on fd=%d\n",
+                XIOS_PROTOCOL_VERSION, fd);
+        close(fd);
+        return -1;
+    }
     uint32_t idlen = h.length;
-    if (idlen > sizeof(app_id) - 1) idlen = sizeof(app_id) - 1;
     if (idlen && read_full(fd, app_id, idlen) != 0) { close(fd); return -1; }
     app_id[idlen] = 0;
-    /* Drain any app_id overflow past 255. */
-    for (uint32_t left = h.length - idlen; left; ) {
-        char scratch[256];
-        uint32_t chunk = left > sizeof(scratch) ? (uint32_t)sizeof(scratch) : left;
-        if (read_full(fd, scratch, chunk) != 0) { close(fd); return -1; }
-        left -= chunk;
-    }
     if (!app_id[0] || (uint32_t)h.d == MACH_PORT_NULL) {
         fprintf(stderr, "xios-canvas: invalid v%u BIND identity/port on fd=%d\n",
-                IOSC_NATIVE_PROTOCOL_VERSION, fd);
+                XIOS_PROTOCOL_VERSION, fd);
         close(fd);
         return -1;
     }
 
     /* Confirm the exact wire version before any replayed WINDOW_* records. */
-    xios_msg hello = make_msg(XIOS_MSG_HELLO, 0);
-    hello.a = IOSC_NATIVE_PROTOCOL_VERSION;
+    xios_msg hello = make_msg(XIOS_MSG_HELLO, XIOS_PROTOCOL_VERSION);
     if (send_record(fd, &hello, sizeof(hello)) != 1) {
         close(fd);
         return -1;
     }
-
-    /* Trust the kernel peer pid, not the client claim (same as xios_surface.c). */
-    pid_t peer_pid = 0;
-    socklen_t plen = sizeof(peer_pid);
-    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer_pid, &plen) != 0 || peer_pid <= 0)
-        peer_pid = 0;
 
     pthread_mutex_lock(&s_lock);
     if (s_nclients >= XIOS_CANVAS_MAX_CLIENTS) {
@@ -837,7 +874,7 @@ void xios_canvas_set_handlers(const struct xios_canvas_handlers *h)
 int xios_canvas_server_start(const char *sock_path)
 {
     if (s_listen_fd >= 0) return 0;   /* already serving */
-    const char *path = (sock_path && *sock_path) ? sock_path : XIOS_CANVAS_SOCK;
+    const char *path = (sock_path && *sock_path) ? sock_path : IOSC_NATIVE_SOCK;
 
     if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
         fprintf(stderr, "xios-canvas: socket path too long: %s\n", path);

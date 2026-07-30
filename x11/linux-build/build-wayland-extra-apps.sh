@@ -5,7 +5,8 @@
 # the first app wave owns foot/imv/mpv and their runtime fixes, while this
 # script is for smaller shell utilities and user apps such as swaybg, tofi,
 # yad, gnumeric, and transmission. Built but heavier targets such as waybar and
-# swayimg remain opt-in; nwg-look and Geary/WebKitGTK are explicitly blocked.
+# swayimg remain opt-in; nwg-look uses the pinned Go+cgo lane below, while
+# Geary/WebKitGTK remain on the separate GNOME/WebKit build lane.
 #
 # Typical use:
 #   docker run --rm --platform linux/arm64 --cpus=4 \
@@ -18,9 +19,11 @@
 #     -e TARGETS="swaybg-package tofi-package" \
 #     procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 BBINC="$BB/usr/include"
 
 TARGETS="${TARGETS:-swaybg-package tofi-package yad-package libgsf-package libxslt-package goffice-package gnumeric-package transmission-package}"
@@ -30,7 +33,7 @@ target_requests() {
 }
 
 target_needs_gtk3_wayland() {
-  target_requests gtk+3.0 || target_requests gtk-layer-shell || target_requests waybar
+  target_requests gtk+3.0 || target_requests gtk-layer-shell || target_requests waybar || target_requests nwg-look
 }
 
 stage_port_patch_stack() {
@@ -158,15 +161,15 @@ static inline size_t c32rtomb(char *s, char32_t c32, mbstate_t *ps) {
 #endif
 EOF
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 refresh_patch_build_tree() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
   [ -d "$patch_dir" ] || return 0
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
-  local stage="build_stage/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
+  local stage="build_stage/$XIOS_TRIPLE/$pkg"
   local fp_file="$work/.xios_patch_series.sha256"
   local new_fp old_fp
   new_fp="$(find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
@@ -180,7 +183,7 @@ refresh_patch_build_tree() {
 record_patch_fingerprint() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
   [ -d "$patch_dir" ] && [ -d "$work" ] || return 0
   find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}' > "$work/.xios_patch_series.sha256"
 }
@@ -197,11 +200,11 @@ ensure_gtk3_wayland_build() {
   echo "==> stale gtk+3.0 cache lacks Wayland backend; rebuilding gtk+3.0"
   echo "    missing: $hdr or $pc"
   rm -rf \
-    build_work/iphoneos-arm64-rootless/1900/gtk+3.0 \
-    build_stage/iphoneos-arm64-rootless/1900/gtk+3.0 \
-    build_dist/iphoneos-arm64-rootless/1900/libgtk-3-0 \
-    build_dist/iphoneos-arm64-rootless/1900/libgtk-3-dev \
-    build_dist/iphoneos-arm64-rootless/1900/gtk-3-bin
+    build_work/$XIOS_TRIPLE/gtk+3.0 \
+    build_stage/$XIOS_TRIPLE/gtk+3.0 \
+    build_dist/$XIOS_TRIPLE/libgtk-3-0 \
+    build_dist/$XIOS_TRIPLE/libgtk-3-dev \
+    build_dist/$XIOS_TRIPLE/gtk-3-bin
 }
 
 scrub_waybar_fallback_deps() {
@@ -231,28 +234,57 @@ stage_libpeas_girepository() {
   echo "==> staging libgirepository for libpeas"
   local pkg deb
   for pkg in libgirepository-1.0-1 libgirepository-1.0-dev; do
-    deb="$(find /out -maxdepth 1 -type f -name "${pkg}_*_iphoneos-arm64.deb" -print 2>/dev/null | sort -V | tail -1)"
+    deb="$(find /out -maxdepth 1 -type f -name "${pkg}_*_$XIOS_DEB_ARCH.deb" -print 2>/dev/null | sort -V | tail -1)"
     if [ -z "$deb" ]; then
       echo "ERROR: no $pkg deb in /out; build or copy the published package first" >&2
       exit 1
     fi
     echo "    staging $deb"
-    dpkg-deb -x "$deb" /work/Procursus/build_base/iphoneos-arm64-rootless/1900
+    dpkg-deb -x "$deb" $XIOS_BUILD_BASE
   done
 }
 
-for pkg in swaybg tofi swayimg waybar transmission libsigcplusplus; do
+ensure_go_ios_toolchain() {
+  target_requests nwg-look || return 0
+
+  local go_version=1.25.0
+  local archive="build_source/go${go_version}.linux-arm64.tar.gz"
+  local goroot="build_tools/go-${go_version}"
+
+  if [ ! -x "$goroot/bin/go" ]; then
+    echo "==> installing pinned Go $go_version host toolchain for ios/arm64 cgo"
+    if [ ! -f "$archive" ]; then
+      wget -q "https://go.dev/dl/go${go_version}.linux-arm64.tar.gz" -O "$archive"
+    fi
+    rm -rf "$goroot"
+    mkdir -p "$goroot"
+    tar -xzf "$archive" -C "$goroot" --strip-components=1
+  fi
+
+  export PATH="/work/Procursus/$goroot/bin:$PATH"
+  export GOCACHE=/work/Procursus/build_tools/go-cache-ios
+  export GOMODCACHE=/work/Procursus/build_source/go-mod-cache
+  mkdir -p "$GOCACHE" "$GOMODCACHE"
+
+  if ! go tool dist list | grep -qx 'ios/arm64'; then
+    echo "ERROR: pinned Go toolchain does not support ios/arm64" >&2
+    exit 1
+  fi
+}
+
+for pkg in swaybg tofi swayimg waybar nwg-look transmission libsigcplusplus; do
   target_requests "$pkg" && refresh_patch_build_tree "$pkg"
 done
 ensure_gtk3_wayland_build
 scrub_waybar_fallback_deps
 stage_libpeas_girepository
+ensure_go_ios_toolchain
 
 for t in $TARGETS; do
   echo "==> make $t"
   make "$t" $COMMON -j"$(nproc)"
 done
-for pkg in swaybg tofi swayimg waybar transmission libsigcplusplus; do
+for pkg in swaybg tofi swayimg waybar nwg-look transmission libsigcplusplus; do
   target_requests "$pkg" && record_patch_fingerprint "$pkg"
 done
 
@@ -294,7 +326,7 @@ for spec in \
   pat="${spec%%:*}"
   req="${spec#*:}"
   target_requests "$req" || continue
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} "$OUT_STAGING"/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} "$OUT_STAGING"/ \; 2>/dev/null || true
 done
 
 if [ -f /work/recipes/relink-gtkintl.sh ]; then

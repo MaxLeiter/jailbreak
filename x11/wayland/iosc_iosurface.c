@@ -26,7 +26,7 @@ struct iosc_iosurface_buffer {
     int   flip_v;    /* 1 = GL-origin client IOSurface; 0 = already top-left */
     void *acquire_event;       /* retained id<MTLSharedEvent>, opaque to C */
     uint64_t acquire_value;    /* next producer value the compositor must wait for */
-    unsigned char acquire_token[XIOS_METAL_EVENT_TOKEN_SIZE];
+    unsigned char acquire_token[XIOS_GPU_FENCE_TOKEN_SIZE];
     size_t acquire_token_size;
 };
 
@@ -107,16 +107,6 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
     return 1;
 }
 
-int iosc_iosurface_buffer_blit_to_output(struct wl_resource *buf)
-{
-    struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buf);
-    if (!ib)
-        return 0;
-    if (ib->surface)
-        xios_blit_client_iosurface(ib->surface);
-    return 1;
-}
-
 int iosc_iosurface_buffer_get_size(struct wl_resource *buf, int *w, int *h)
 {
     struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buf);
@@ -183,7 +173,7 @@ static void iosurface_factory_set_acquire_fence(
     (void)client;
     struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buffer);
     uint64_t value = ((uint64_t)value_hi << 32) | value_lo;
-    if (!ib || !token || token->size != XIOS_METAL_EVENT_TOKEN_SIZE ||
+    if (!ib || !token || token->size != XIOS_GPU_FENCE_TOKEN_SIZE ||
         value == 0) {
         wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_INVALID_FENCE,
                                "invalid IOSurface acquire-fence token");

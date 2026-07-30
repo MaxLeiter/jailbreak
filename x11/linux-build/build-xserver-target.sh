@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the patched X server artifacts (Xvfb/Xios source tree) for a target descriptor.
+# Build the patched headless Xvfb artifact for a target descriptor.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,11 +8,10 @@ cd "$HERE"
 
 usage() {
   cat >&2 <<EOF
-usage: $0 [target-id] [--package-xvfb] [--package-xios] [--dry-run] [--skip-image-build]
+usage: $0 [target-id] [--package-xvfb] [--dry-run] [--skip-image-build]
 
   target-id            Target descriptor from linux-build/targets/ (default: rootless-1900)
   --package-xvfb       Assemble packages/x11-xvfb/build.sh after Xvfb is built
-  --package-xios       Assemble packages/xios-server/build.sh after Xios is built
   --dry-run            Print docker commands without running them
   --skip-image-build   Use an existing XIOS_PROC_IMAGE instead of running docker build
 EOF
@@ -20,13 +19,11 @@ EOF
 
 TARGET="${XIOS_TARGET:-rootless-1900}"
 PACKAGE_XVFB=0
-PACKAGE_XIOS=0
 DRY_RUN=0
 SKIP_IMAGE_BUILD="${XIOS_SKIP_IMAGE_BUILD:-0}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --package-xvfb) PACKAGE_XVFB=1 ;;
-    --package-xios) PACKAGE_XIOS=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --skip-image-build) SKIP_IMAGE_BUILD=1 ;;
     -h|--help) usage; exit 0 ;;
@@ -38,7 +35,14 @@ done
 xios_load_target "$TARGET"
 
 IMAGE="${XIOS_PROC_IMAGE:-procursus-xbuild:bookworm-arm64}"
-VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+# Keep the rootless volume exactly where it was; give any other profile its own,
+# so a rootful bootstrap does not double the disk on the volume that holds the
+# working rootless tree (and its ~50 .build_complete markers).
+if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
+  VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+else
+  VOLUME="${PROCURSUS_VOL:-procursus-vol-$XIOS_REPO_PROFILE}"
+fi
 SDK_SRC="${SDK_SRC:-$HOME/theos/sdks/iPhoneOS16.5.sdk}"
 MACOS_SDK_SRC="${MACOS_SDK_SRC:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
 TARGET_OUT="$HERE/out/targets/$XIOS_TARGET_ID"
@@ -91,7 +95,11 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_TARGET \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
+  -e XIOS_SUBPREFIX \
+  -e XIOS_DEB_ARCH \
   -v "$VOLUME:/work/Procursus" \
+  -v "$HERE/target-env.sh:/work/target-env.sh:ro" \
+  -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$HERE/build.sh:/work/build.sh:ro" \
   -v "$HERE/patches:/work/patches:ro" \
   -v "$TARGET_OUT:/out" \
@@ -109,11 +117,7 @@ fi
 if [ "$PACKAGE_XVFB" = 1 ]; then
   run_cmd bash "$HERE/../packages/x11-xvfb/build.sh" "$XIOS_TARGET_ID"
 fi
-if [ "$PACKAGE_XIOS" = 1 ]; then
-  run_cmd bash "$HERE/../packages/xios-server/build.sh" "$XIOS_TARGET_ID"
-fi
-if [ "$PACKAGE_XVFB" != 1 ] && [ "$PACKAGE_XIOS" != 1 ]; then
+if [ "$PACKAGE_XVFB" != 1 ]; then
   echo "==> package with:"
   echo "    bash packages/x11-xvfb/build.sh $XIOS_TARGET_ID"
-  echo "    bash packages/xios-server/build.sh $XIOS_TARGET_ID"
 fi

@@ -10,7 +10,7 @@ X11="$(cd "$HERE/../.." && pwd)"
 IN="${1:-}"
 OUT_DIR="${2:-}"
 [ -n "$IN" ] && [ -f "$IN" ] || {
-    echo "usage: $0 <ladybird-app_..._iphoneos-arm64.deb> [out-dir]" >&2
+    echo "usage: $0 <ladybird-app_..._$XIOS_DEB_ARCH.deb> [out-dir]" >&2
     exit 2
 }
 IN="$(cd "$(dirname "$IN")" && pwd)/$(basename "$IN")"

@@ -62,7 +62,10 @@ Session.run()            call model → dispatch tool_use blocks (parallel) → 
 | `src/server.ts` | `Bun.serve` web console: SSE stream, `/chat`, `/state`, `/attachment`, `/approve`, `/policy`, `/models`, `/model`, `/mcp`, `/mcp/client-config`, `/wake`. |
 | `src/main.ts` | Thin CLI over the same daemon (one-shot turn, non-interactive → gated tools auto-deny). |
 | `public/console.html` | Self-contained web console (no framework/build). Phosphor-instrument aesthetic. |
+| `src/wake.ts` | The "hey jarvis" loop: short-clip record → transcribe → match the wake phrase → route the rest of the utterance into the persistent session. |
+| `native/JarvisSpeechHelper` | ObjC helper for the on-device speech path; `deploy.sh` compiles it on the iPad and grants it mic/speech TCC entries. |
 | `deploy.sh` / `jarvisctl.sh` | Host-side one-command deploy / device-side daemon control. |
+| `jarvis-supervisor.sh` / `com.max.jarvis.plist` | launchd keeps the supervisor alive; it starts the daemon only when Jarvis is enabled and outside quiet hours (prefs written by `tweaks/JarvisPrefs`). |
 
 ## Conventions
 

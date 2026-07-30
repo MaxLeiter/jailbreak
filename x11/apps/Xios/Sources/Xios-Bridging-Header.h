@@ -1,6 +1,6 @@
-#import "XInput.h"
 #import "IoscInput.h"
 #import "IoscClipboard.h"
 #import "SysIntClient.h"
 #import "XSurface.h"
 #import "../../shared/XiosMetalEventBroker.h"
+#import "../../shared/iosc_status.h"

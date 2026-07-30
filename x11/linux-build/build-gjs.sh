@@ -19,6 +19,8 @@
 #     -v "$PWD/out:/out" -e TARGETS="mozjs-package" procursus-xbuild:bookworm-arm64 /work/build-gjs.sh
 # For the JIT variant: -e TARGETS="mozjs-jit-package".
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # --- host build tools mozjs115 needs that the base image lacks ---
@@ -70,7 +72,7 @@ else
   CCW=""; CXXW=""
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1"
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1"
 [ -n "$CCW" ] && COMMON="$COMMON CC=$CCW CXX=$CXXW"
 # DE-RISK FIRST: `make mozjs-configure-only` equivalent — get `mach configure` to complete for
 # the cross target before the multi-hour compile. (Set TARGETS=mozjs-setup then run mach
@@ -85,6 +87,6 @@ done
 echo "==> collect debs -> /out"
 mkdir -p /out
 for pat in libmozjs libgjs gjs; do
-  find . -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 echo "==> done. NOTE: generate gjs's runtime typelibs on-device with ../gir-ondevice.sh"

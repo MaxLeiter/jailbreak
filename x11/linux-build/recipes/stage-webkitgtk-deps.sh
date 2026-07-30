@@ -25,7 +25,7 @@ for pkg in \
   libsecret-1-0 libsecret-dev \
   libsoup-3.0-0 libsoup-3.0-dev \
   libwayland0 libwayland-dev wayland-protocols; do
-  deb="$(find /out /repo-debs -maxdepth 1 -type f -name "${pkg}_*_iphoneos-arm64.deb" \
+  deb="$(find /out /repo-debs -maxdepth 1 -type f -name "${pkg}_*_$XIOS_DEB_ARCH.deb" \
     -printf '%f\t%p\n' 2>/dev/null | sort -V | tail -1 | cut -f2-)"
   if [ -z "$deb" ]; then
     echo "ERROR: no current $pkg deb in /out or /repo-debs" >&2
@@ -45,18 +45,8 @@ if [ -f "$expat_pc" ]; then
   sed -i 's|^prefix=/usr$|prefix=/var/jb/usr|' "$expat_pc"
 fi
 
-# Procursus currently stages newer XPC session/listener headers than the cctools SDK's
-# <os/object.h>. Preserve their ordinary object declarations when the SDK predates the
-# sendability spelling; this is a source-compatibility attribute, not an ABI change.
-xpc_base="$prefix/include/xpc/base.h"
-if [ -f "$xpc_base" ] && ! grep -q 'XIOS_XPC_SENDABLE_COMPAT' "$xpc_base"; then
-  sed -i '/#define XPC_SWIFT_SENDABLE/a\
-/* XIOS_XPC_SENDABLE_COMPAT */\
-#ifndef OS_OBJECT_DECL_SENDABLE_CLASS\
-#define OS_OBJECT_DECL_SENDABLE_CLASS(name) OS_OBJECT_DECL_CLASS(name)\
-#endif' "$xpc_base"
-fi
-
+# XPC sendability compatibility belongs to WebKit's source patch stack. Do not
+# rewrite the shared SDK headers here: changing them invalidates the whole engine.
 for required in include/gcrypt.h include/libtasn1.h lib/libgcrypt.dylib lib/libtasn1.dylib; do
   if [ ! -e "$prefix/$required" ]; then
     echo "ERROR: warmed GNOME volume is missing $prefix/$required" >&2

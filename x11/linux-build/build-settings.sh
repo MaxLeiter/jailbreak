@@ -22,6 +22,8 @@
 #     -e GCC_WITH_BLUETOOTH=1 \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-settings.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host codegen tools (same set build-shell.sh installs).
@@ -50,8 +52,8 @@ fi
 # libgtop packaging gap: the libgtop build staged its glibtop/*.h headers but never copied them
 # into build_base's sysroot (only the .pc + lib), so gcc's privacy panel (cc-firmware-security-
 # dialog.c -> <glibtop/fsusage.h>) can't find them. Copy the staged include tree into the sysroot.
-SR=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb/usr
-GTOP_STAGE=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900/libgtop/var/jb/usr
+SR=$XIOS_SYSROOT/usr
+GTOP_STAGE=$XIOS_BUILD_STAGE/libgtop$XIOS_PREFIX/usr
 if [ ! -e "$SR/include/glibtop/fsusage.h" ] && [ -d "$GTOP_STAGE/include/glibtop" ]; then
   echo "==> staging libgtop headers into the sysroot (packaging gap)"
   cp -av "$GTOP_STAGE/include/glibtop" "$SR/include/" 2>/dev/null || true
@@ -96,7 +98,7 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused \
   GCC_WITH_BLUETOOTH=${GCC_WITH_BLUETOOTH:-0}"
 
@@ -105,8 +107,8 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # (re)building gnome-control-center, wipe its work/stage/marker to force a pristine re-extract +
 # re-patch + reconfigure (same reason gnome-shell's WITH_EDS path wipes). gnome-bluetooth is a
 # plain lib and doesn't need this.
-BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
-BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
+BW=$XIOS_BUILD_WORK
+BS=$XIOS_BUILD_STAGE
 case " ${TARGETS:-gnome-control-center-package} " in
   *gnome-control-center*)
     echo "==> wiping gnome-control-center tree for a pristine (re)configure"
@@ -122,7 +124,7 @@ done
 echo "==> collect debs -> /out"
 mkdir -p /out
 for stem in gnome-control-center gnome-bluetooth libgtop-2.0-11; do
-  find . -name "${stem}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${stem}_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo "==> shared libgtkintl relink pass"

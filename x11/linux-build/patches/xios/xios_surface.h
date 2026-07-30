@@ -1,14 +1,13 @@
 /*
- * xios_surface.h — IOSurface-backed shared framebuffer for the native iOS X server.
+ * xios_surface.h — IOSurface-backed output shared by Xios compositors and the app.
  *
- * Plain C, *no X server headers* (so CoreFoundation/IOSurface/mach headers don't
- * collide with dix's macros). The X DDX (hw/vfb/InitOutput.c, built as "Xios")
- * calls these; all the Apple-framework code lives here.
+ * Plain C, with no compositor headers, so all Apple-framework code stays behind
+ * this narrow interface.
  *
  * Sharing model (validated on iPadOS 17.6.1 — global IOSurfaceLookup(id) is dead,
  * so we hand the IOSurface's mach port to the app over a Unix socket rendezvous):
- *   1. Server creates a BGRA8 IOSurface; X draws straight into its base address.
- *   2. App connects to the Unix socket, sends {pid, mach receive-port name}.
+ *   1. The compositor creates a BGRA8 IOSurface and renders into it on the GPU.
+ *   2. App connects and sends a canonical v1 HELLO naming its Mach receive port.
  *   3. Server task_for_pid()s the app, mach_port_extract_right()s a send right to
  *      that port, and mach_msg()s IOSurfaceCreateMachPort() across as a port
  *      descriptor. App does IOSurfaceLookupFromMachPort() -> same backing memory.
@@ -21,6 +20,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "XiosProtocol.h"
 
 /* Create the shared BGRA8 IOSurface for a `width`x`height` screen.
  * Returns the framebuffer base address (the X server draws directly here), or
@@ -43,15 +43,7 @@ void *xios_surface_resize(int width, int height, int *stride, int *alloc_size);
 int xios_server_start(const char *sock_path, const char *json_path,
                       int width, int height, int stride);
 
-/* Notify every connected client that the framebuffer changed (the app then
- * re-presents the zero-copy texture). Called from the X server's block handler;
- * a no-op when no clients are attached. Non-blocking — a backed-up/suspended
- * client never stalls the X server. Each DIRTY carries a monotonic present
- * sequence in a/b that the app echoes with XIOS_MSG_PRESENTED after Metal
- * command-buffer completion. */
-void xios_notify_dirty(void);
-
-/* GPU-asynchronous variant of xios_notify_dirty. `shared_event_token` is the
+/* Notify every connected app that a GPU frame is ready. `shared_event_token` is the
  * fixed 32-byte capability under which the producer published its persistent
  * MTLSharedEventHandle to the package broker. `event_value` is the value the
  * Xios Metal command buffer must wait for before sampling the output IOSurface.
@@ -65,37 +57,37 @@ int xios_notify_dirty_with_fence(const void *shared_event_token,
 uint64_t xios_dirty_generation(void);
 uint64_t xios_presented_generation(void);
 
-/* ---- app-socket framing (present / cursor / native envelope) ----------------
- * xios_hello.reserved must be XIOS_HELLO_TYPED. After xios_reply, the server sends
- * one in-band HELLO record followed by a typed 32-byte record stream, so DIRTY,
- * CURSOR, clipboard-family constants, and native per-window records share one
- * grammar across every iosc<->host channel. */
-#define XIOS_HELLO_TYPED 0x54595031u   /* 'TYP1' in xios_hello.reserved, required */
-#define XIOS_MSG_MAGIC   0x584D5331u   /* 'XMS1' per-record frame sync */
-enum {
-    XIOS_MSG_HELLO  = 0x01,  /* compositor->app: a=w b=h c=stride d=format; payload=compositor-id */
-    XIOS_MSG_DIRTY  = 0x02,  /* compositor->app: a,b=present seq; optional fence in c,d+payload */
-    XIOS_MSG_CURSOR = 0x03,  /* compositor->app: a=x b=y c=shape_id d=flags(bit0 visible) */
-    XIOS_MSG_CLIPBOARD = 0x04,  /* BOTH directions, on the CLIPBOARD socket only (see below) */
-    XIOS_MSG_PRESENTED = 0x05,  /* app->compositor: a,b = displayed DIRTY seq lo/hi */
-    /* 0x06-0x0f reserved core; 0x40-0x5f reserved for native-iPadOS per-window. */
-};
-enum {
-    XIOS_DIRTY_FENCE_NONE = 0,
-    XIOS_DIRTY_FENCE_BROKER_TOKEN = 1,
-};
-typedef struct {
-    uint32_t magic;      /* XIOS_MSG_MAGIC */
-    uint32_t type;       /* XIOS_MSG_* */
-    uint32_t window_id;  /* per-window (native); 0 = the single/default surface */
-    uint32_t length;     /* payload bytes after the header (0 if none) */
-    int32_t  a, b, c, d;
-} xios_msg;              /* 32 bytes, little-endian; optional length-byte payload follows */
+/* ---- display pacing (fed by XIOS_MSG_PACING / XIOS_MSG_PRESENTED) ----------
+ *
+ * The app's display clock, translated into the compositor's own CLOCK_MONOTONIC on
+ * arrival. Returns 1 when a live clock is available and fills whichever out-params
+ * are non-NULL; returns 0 when no app has reported one recently (no app attached,
+ * an app from before display pacing, or a backgrounded app whose link is paused) —
+ * in which case the caller must keep its previous, event-loop-paced behaviour.
+ *
+ *   next_deadline_ms  absolute CLOCK_MONOTONIC ms of the app's next frame deadline.
+ *                     Already advanced past `now` in whole refresh intervals, so it
+ *                     always names a FUTURE vblank.
+ *   interval_us       refresh interval in microseconds (16667 on a 60 Hz panel).
+ *   min_mfps/max_mfps the frame-rate range the app asked CoreAnimation for, in
+ *                     fps*1000. 0 when the app did not say.
+ */
+int xios_display_clock(uint64_t *next_deadline_ms, uint32_t *interval_us,
+                       int *min_mfps, int *max_mfps);
 
-/* Optional CURSOR payload (when the compositor wants a SPECIFIC bitmap drawn, e.g.
- * a client-supplied cursor surface): this header then w*h*4 premultiplied BGRA.
- * When the CURSOR record has length==0 the app draws from shape_id instead. */
-typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
+/* How long before the most recent PRESENTED ack the frame ACTUALLY reached the
+ * display, in microseconds, from MTLDrawable.addPresentedHandler — plus the
+ * absolute CLOCK_MONOTONIC ms at which that ack arrived, so the caller can
+ * reconstruct the present time on its own clock. Returns 1 when the app reported a
+ * real present time, 0 when it did not (in which case presentation feedback should
+ * fall back to timing the repaint, as it did before pacing). */
+int xios_last_present_time(uint32_t *age_us, uint64_t *ack_at_ms);
+
+/* ---- app-socket framing (present / cursor / native envelope) ----------------
+ * Both directions begin with an exact-version XIOS_MSG_HELLO, followed by the
+ * same typed 32-byte record stream used by every private iosc<->host channel.
+ * The record grammar itself — including XIOS_MSG_PACING and the present-time
+ * fields PRESENTED carries — lives in apps/shared/XiosProtocol.h. */
 
 /* ---- XIOS_MSG_CLIPBOARD (0x04): clipboard sync record ----------------------
  * Rides the DEDICATED clipboard socket (iosc-clipboard.sock), NOT the app/ddx
@@ -119,19 +111,11 @@ typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
  * compositor on UIPasteboard change). KIND_NONE with length 0 clears. On
  * connect the compositor replays its current set if non-empty. Items above
  * XIOS_CLIP_ITEM_MAX are a protocol violation: receiver drops the connection. */
-enum {
-    XIOS_CLIP_KIND_NONE = 0,   /* selection cleared (length must be 0) */
-    XIOS_CLIP_KIND_TEXT = 1,   /* text/plain;charset=utf-8 (no NUL, no BOM) */
-    XIOS_CLIP_KIND_URI  = 2,   /* text/uri-list (CRLF-separated, RFC 2483) */
-    XIOS_CLIP_KIND_PNG  = 3,   /* image/png */
-    XIOS_CLIP_KIND_HTML = 4,   /* text/html (UTF-8) */
-};
-#define XIOS_CLIP_ITEM_MAX (16u * 1024u * 1024u)   /* per-item payload cap */
 
 /* Send a CURSOR record (pointer position + wp_cursor_shape id, shape_id 0 = hidden)
  * to every app client. No-op when none are attached. Lets
  * a present-side cursor overlay in the app move the pointer with ZERO compositor
- * recomposite. Non-blocking, same never-stall posture as xios_notify_dirty. */
+ * recomposite. Non-blocking, same never-stall posture as fenced frame delivery. */
 void xios_notify_cursor(int x, int y, int visible, int shape_id);
 
 /* True if at least one app client is attached (so the compositor knows the app
@@ -157,6 +141,13 @@ void xios_set_input_socket(const char *path);
  * not provide an iOS pasteboard bridge leave it unset. */
 void xios_set_clipboard_socket(const char *path);
 
+/* Present-side upscaling hint, emitted as xios.json's "upscale" field. Purely a
+ * message to the display app: the compositor's own output IOSurface, geometry, and
+ * wl_output state are unaffected, and no Wayland client can observe it. Accepted
+ * spellings are the app's business (see XScreen.UpscaleMode) — "off", "auto", or a
+ * factor like "1.5". Unset means off, which is the default. */
+void xios_set_upscale_hint(const char *spec);
+
 /* Tear down the socket, clients, and IOSurface (server exit). */
 void xios_server_stop(void);
 
@@ -176,12 +167,6 @@ void xios_server_stop(void);
  * IOSurfaceRef (retained; release with xios_release_client_iosurface), or NULL.
  * On success the w and h out-params receive the surface dimensions. */
 void *xios_import_client_iosurface(int pid, unsigned port_name, int *w, int *h);
-
-/* Copy a client IOSurface's pixels into the output IOSurface (the one the Xios
- * app displays). First-light compositing: a CPU blit, top-left aligned, clamped
- * to the output. Locks the source read-only so GPU writes are coherent. The
- * caller still calls xios_notify_dirty() to trigger re-present. */
-void xios_blit_client_iosurface(void *client_surface);
 
 /* Release a surface returned by xios_import_client_iosurface(). */
 void xios_release_client_iosurface(void *client_surface);

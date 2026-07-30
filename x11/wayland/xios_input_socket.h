@@ -67,6 +67,26 @@
 #define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
 #define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style,
                              * code = 1 dark, 0 light                           */
+#define XIOS_IN_BRIGHTNESS 15u /* desktop->sysintd->app, always with
+                             * XIOS_BRIGHTNESS_STATE_TO_DEVICE: set the panel
+                             * backlight. code = 0..65535.
+                             *
+                             * This exists because the obvious path does not work:
+                             * BKSDisplayBrightnessSet is inert on iPadOS 17.6.1
+                             * outside SpringBoard (symbols resolve, the brightness
+                             * transaction creates, the entitlement is there, and
+                             * BKSDisplayBrightnessGetCurrent never moves), so
+                             * xios-hwbridged cannot drive the panel from a daemon.
+                             * UIScreen.brightness works, but only inside a real app
+                             * process, which is why this has to make the trip out to
+                             * the Xios app the way desktop volume already does.
+                             *
+                             * One direction only. The reverse (iOS auto-brightness /
+                             * Control Center moving the panel) needs no wire:
+                             * BKSDisplayBrightnessGetCurrent READS fine from a
+                             * daemon, so hwbridged already polls it and writes the
+                             * value back into its synthetic sysfs node.          */
+#define XIOS_BRIGHTNESS_STATE_TO_DEVICE 1u /* desktop -> Xios app panel backlight */
 #define XIOS_IN_GESTURE 14u /* trackpad pinch/rotate/swipe -> pointer-gestures.
                              * code packs the gesture: bits 0-7 kind
                              * (XIOS_GESTURE_SWIPE/PINCH/HOLD), bits 8-15 phase
@@ -88,6 +108,19 @@
 #define XIOS_GESTURE_UPDATE 1u
 #define XIOS_GESTURE_END    2u
 #define XIOS_GESTURE_CANCEL 3u
+/* Input-method proxy role (KDE flavor). A NESTED compositor owns the text-input
+ * state, so the server cannot derive OSK traits itself: kwin_wayland is iosc's
+ * only client and never binds text-input. ios-inputd, launched by KWin as its
+ * zwp_input_method_v1, connects here and registers as the proxy; from then on it
+ * is the authority on traits and the destination for typed text. Consumed by the
+ * reader like BIND (never reaches the callback). */
+#define XIOS_IN_IMPROXY 15u /* client->server: this connection is the input-method
+                             * proxy, not a display host. code = 1 register,
+                             * 0 unregister. A registered proxy is excluded from
+                             * _broadcast()/_broadcast_bound(), is the only client
+                             * whose INBOUND XIOS_IN_TRAITS the reader forwards to
+                             * the callback, and is where _send_improxy() puts
+                             * XIOS_IN_TEXT instead of the local commit path.     */
 #endif
 
 /* Fixed 24-byte record header. Layout matches iosc.c/ios-inputd.c iosc_in_msg. */
@@ -124,8 +157,10 @@ int xios_input_socket_fd(xios_input_socket *s);
 int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user);
 
 /* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
- * client; a client whose write fails is dropped. Returns the number written to.
- * The reader owns the client fds, so this is the server->client path. */
+ * DISPLAY-HOST client; a client whose write fails is dropped. Returns the number
+ * written to. The reader owns the client fds, so this is the server->client path.
+ * Clients that registered XIOS_IN_IMPROXY are skipped: they are not hosts and
+ * would only hear their own traits echoed back. */
 int xios_input_socket_broadcast(xios_input_socket *s, const void *buf, size_t len);
 
 /* Same server->client path, but scoped to native per-window clients that have
@@ -134,6 +169,17 @@ int xios_input_socket_broadcast(xios_input_socket *s, const void *buf, size_t le
  * connect-before-bind race. */
 int xios_input_socket_broadcast_bound(xios_input_socket *s, uint32_t bound_window,
                                       const void *buf, size_t len);
+
+/* Send `len` bytes to every client that registered XIOS_IN_IMPROXY (header plus
+ * payload must be one contiguous buffer, as on the wire). Returns the number of
+ * proxies written to; 0 means no proxy is registered, so the caller must handle
+ * the record itself (iosc's own text-input commit / keysym fallback). */
+int xios_input_socket_send_improxy(xios_input_socket *s, const void *buf, size_t len);
+
+/* 1 while an input-method proxy is registered. Poll it after _dispatch(): the
+ * proxy going away (nested compositor exited) has to clear the caller's latched
+ * traits, or a keyboard raised for a field that no longer exists never lowers. */
+int xios_input_socket_has_improxy(xios_input_socket *s);
 
 /* Number of currently-connected clients (lets a caller detect a new connection
  * across dispatch calls, e.g. to send initial state). */

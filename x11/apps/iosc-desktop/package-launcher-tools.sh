@@ -6,6 +6,10 @@
 # starts ioscd. It deliberately does not sync all launchers during postinst; the
 # settings UI or an explicit xios-launcher-sync command should choose that.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
@@ -19,14 +23,14 @@ REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-launcher-tools-deb"
 STAGE="$STAGEROOT/xios-launcher-tools"
 SYSROOT="$STAGEROOT/sysroot"
-VER="0.1.4"
+VER="0.1.7"
 ARCH="iphoneos-arm64"
 DEB="xios-launcher-tools_${VER}_${ARCH}.deb"
 
 SDK="$(xcrun -sdk iphoneos --show-sdk-path)"
 CLANG="$(xcrun -sdk iphoneos -f clang)"
-TARGET="arm64-apple-ios16.0"
-MIN="-miphoneos-version-min=16.0"
+TARGET="arm64-apple-ios16.5"
+MIN="-miphoneos-version-min=16.5"
 COMMON=(-arch arm64 -target "$TARGET" -isysroot "$SDK" "$MIN" -O2 -Wall)
 
 abs_path() {
@@ -53,7 +57,7 @@ find_deb() {
   local stem="$1" d f
   for d in "$OUTDIR" "$REPODEBS"; do
     [ -d "$d" ] || continue
-    f="$(ls -t "$d/${stem}_"*_iphoneos-arm64.deb 2>/dev/null | head -1 || true)"
+    f="$(ls -t "$d/${stem}_"*_$XIOS_DEB_ARCH.deb 2>/dev/null | head -1 || true)"
     [ -n "$f" ] && { printf '%s\n' "$f"; return 0; }
   done
   return 1
@@ -82,7 +86,7 @@ pixbuf_flags() {
   local raw flag
   raw="$(
     PKG_CONFIG_SYSROOT_DIR="$SYSROOT" \
-    PKG_CONFIG_PATH="$SYSROOT/var/jb/usr/lib/pkgconfig:$SYSROOT/var/jb/usr/share/pkgconfig" \
+    PKG_CONFIG_PATH="$SYSROOT$XIOS_PREFIX/usr/lib/pkgconfig:$SYSROOT$XIOS_PREFIX/usr/share/pkgconfig" \
     pkg-config --cflags --libs gdk-pixbuf-2.0
   )"
   for flag in $raw; do
@@ -115,9 +119,9 @@ prepare_pixbuf_sysroot
 echo "==> compile launcher sync tools"
 mkdir -p "$HERE/out"
 "$CLANG" "${COMMON[@]}" \
-  "$HERE/src/xios-launcher-sync.c" \
+  "$HERE/src/xios-launcher-sync.c" "$HERE/src/xios-desktop-entry.c" \
   -o "$HERE/out/xios-launcher-sync" \
-  -Wl,-rpath,/var/jb/usr/lib
+  -Wl,-rpath,$XIOS_PREFIX/usr/lib
 
 PIXBUF_FLAGS=()
 while IFS= read -r flag; do
@@ -127,7 +131,7 @@ done < <(pixbuf_flags)
   "$HERE/src/xios-icon-render.c" \
   -o "$HERE/out/xios-icon-render" \
   "${PIXBUF_FLAGS[@]}" \
-  -Wl,-rpath,/var/jb/usr/lib \
+  -Wl,-rpath,$XIOS_PREFIX/usr/lib \
   -lm
 
 xsign "$HERE/out/xios-launcher-sync"
@@ -135,9 +139,9 @@ xsign "$HERE/out/xios-icon-render"
 
 echo "==> stage package"
 rm -rf "$STAGE"
-BIN="$STAGE/var/jb/usr/local/bin"
-PAYLOAD="$STAGE/var/jb/usr/libexec/xios-launchers"
-LAUNCHD="$STAGE/var/jb/Library/LaunchDaemons"
+BIN="$STAGE$XIOS_PREFIX/usr/local/bin"
+PAYLOAD="$STAGE$XIOS_PREFIX/usr/libexec/xios-launchers"
+LAUNCHD="$STAGE$XIOS_PREFIX/Library/LaunchDaemons"
 mkdir -p "$BIN" "$PAYLOAD" "$LAUNCHD" "$STAGE/DEBIAN"
 
 cp "$HERE/out/ioscd" "$BIN/ioscd"
@@ -165,10 +169,11 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.33), xios-session (>= 1.0.56), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
-Recommends: com.max.xios, iosc-shell
+Depends: firmware (>= 16.5), iosc (>= 0.9.37), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools
+Suggests: com.max.xios, iosc-shell, xios-session
 Section: X11
 Priority: optional
+MinimumOSVersion: 16.5.0
 Installed-Size: ${INSTKB}
 Description: on-device iPad Home Screen app sync for Xios
  xios-launcher-tools lets a jailbroken iPad turn installed freedesktop
@@ -181,24 +186,29 @@ Description: on-device iPad Home Screen app sync for Xios
  enable, disable, dry-run, and apply launcher sync.
 EOF
 
-cat > "$STAGE/DEBIAN/postinst" <<'EOF'
+# Expanding header bakes in the prefix; the body stays quoted so its own shell
+# variables and globs reach the device intact.
+cat > "$STAGE/DEBIAN/postinst" <<EOF
 #!/bin/sh
 set -e
-PATH=/var/jb/usr/bin:/var/jb/usr/sbin:/var/jb/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+PREFIX=$XIOS_PREFIX
+EOF
+cat >> "$STAGE/DEBIAN/postinst" <<'EOF'
+PATH=$PREFIX/usr/bin:$PREFIX/usr/sbin:$PREFIX/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-chmod 0755 /var/jb/usr/local/bin/ioscd \
-           /var/jb/usr/local/bin/xios-icon-render \
-           /var/jb/usr/local/bin/xios-launcher-sync 2>/dev/null || true
-chmod 0755 /var/jb/usr/libexec/xios-launchers/IOSCLaunch \
-           /var/jb/usr/libexec/xios-launchers/IOSCHost 2>/dev/null || true
-chmod 0644 /var/jb/usr/libexec/xios-launchers/default.metallib \
-           /var/jb/usr/libexec/xios-launchers/*entitlements.plist \
-           /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
-chown root:wheel /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+chmod 0755 $PREFIX/usr/local/bin/ioscd \
+           $PREFIX/usr/local/bin/xios-icon-render \
+           $PREFIX/usr/local/bin/xios-launcher-sync 2>/dev/null || true
+chmod 0755 $PREFIX/usr/libexec/xios-launchers/IOSCLaunch \
+           $PREFIX/usr/libexec/xios-launchers/IOSCHost 2>/dev/null || true
+chmod 0644 $PREFIX/usr/libexec/xios-launchers/default.metallib \
+           $PREFIX/usr/libexec/xios-launchers/*entitlements.plist \
+           $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+chown root:wheel $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
 
 if command -v launchctl >/dev/null 2>&1; then
-  launchctl bootout system /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
-  launchctl bootstrap system /var/jb/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+  launchctl bootout system $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
+  launchctl bootstrap system $PREFIX/Library/LaunchDaemons/com.max.ioscd.plist 2>/dev/null || true
 fi
 
 exit 0
@@ -219,9 +229,10 @@ echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
 echo "installed=${INSTKB}KB"
 
-mkdir -p "$OUTDIR" "$REPODEBS"
+mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
-cp "$built" "$REPODEBS/$DEB"
 
 echo "=== DEB BUILT ==="
-ls -la "$OUTDIR/$DEB" "$REPODEBS/$DEB"
+ls -la "$OUTDIR/$DEB"
+echo "Repo pool unchanged; stage explicitly with:"
+echo "  python3 $X11DIR/tools/sync-packages-to-repo.py --apply --only xios-launcher-tools"

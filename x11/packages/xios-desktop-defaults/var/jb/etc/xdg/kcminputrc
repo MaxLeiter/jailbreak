@@ -1,5 +1,5 @@
 # System-wide KDE input defaults for the Xios desktop. KConfig reads this through
-# XDG_CONFIG_DIRS (run-kde-plasma.sh puts /var/jb/etc/xdg on that path), so a user's
+# XDG_CONFIG_DIRS (run-kde-plasma.sh puts $XS_JB/etc/xdg on that path), so a user's
 # own ~/.config/kcminputrc still wins over everything here.
 #
 # cursorSize is in LOGICAL pixels and KWin multiplies it by the output scale. The KDE

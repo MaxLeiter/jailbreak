@@ -40,10 +40,43 @@ P0.3 ✅ DONE (b9cbdec; validated on-device 2026-07-01 — "frame barrier = EGL 
 - Fix: gate all validation reads/logs behind an IOSC_DEBUG env (IOSC_PROBE already is, iosc.c:968); replace glFinish with glFlush + a fence/EGL sync before xios_notify_dirty.
 - Effort: small. Owner: iosc compositor track. Cheapest P0 — do first.
 
-P0.4 ◐ PARTIAL 2026-07-02 — repaint is coalesced to one idle per event-loop turn, present-side cursor overlay support exists and now auto-enables when a typed Xios client is connected (`IOSC_APP_CURSOR=0/1` can force either path), wl_surface.frame callbacks retire after the coalesced repaint instead of immediately at commit, and presentation-time feedback is likewise sent after repaint instead of at commit. REMAINING: true output-refresh pacing from Xios/CADisplayLink present ack; callbacks are post-repaint but still event-loop paced, not display-vblank paced. Original finding: No frame pacing: every commit triggers an immediate synchronous full recomposite; frame callbacks fire instantly.
+P0.4 ✅ DONE 2026-07-29 — display-refresh pacing landed; the repaint is now vblank-paced
+and frame callbacks retire on actual present. The 2026-07-02 half (coalesce to one idle
+per event-loop turn, present-side cursor overlay auto-enabling for a typed Xios client
+via `IOSC_APP_CURSOR=0/1`, callbacks and presentation feedback after the coalesced
+repaint rather than at commit) is unchanged; what closes the item is the other half:
+- The app streams its display clock over the existing app socket as XIOS_MSG_PACING
+  (0x06): CADisplayLink.targetTimestamp, the refresh interval, and the
+  CAFrameRateRange. iosc schedules the coalesced repaint to FINISH a quarter-interval
+  before the app's next tick samples the output IOSurface, instead of on the next
+  event-loop turn (`repaint_delay_ms` / `g_repaint_timer` in iosc.c). No display clock
+  = the old idle behaviour, byte for byte.
+- XIOS_MSG_PRESENTED gained the real `presentedTime` from
+  MTLDrawable.addPresentedHandler, and the ack MOVED from the command buffer's
+  completed handler to the drawable's presented handler — which is what makes
+  wl_surface.frame retire post-present rather than post-repaint. Presentation-time
+  feedback reports the measured present and the real refresh interval instead of "now"
+  and a hardcoded 16666666.
+- Wire values are deltas from send time, never timestamps: CACurrentMediaTime() and
+  CLOCK_MONOTONIC are different clocks. See XIOS_MSG_PACING in xios_surface.h.
+- `preferredFramesPerSecond` (deprecated) is gone; the 20/60 flip is now two
+  CAFrameRateRanges behind one `setPacingRange()` seam.
+- Visibility: `pacing=vblank fps=... interval=...` in `xios-status`, published
+  separately by the app and the compositor so "the app is offering a clock" and "the
+  compositor accepted one" are distinguishable.
+Original finding: No frame pacing: every commit triggers an immediate synchronous full recomposite; frame callbacks fire instantly.
 - iosc.c:1408-1416 — commit → recomposite_all (with the P0.3 glFinish) → wl_callback_send_done immediately. An animating client re-renders as fast as it can; two busy clients = 2 full composites per their combined commit rate, unbounded by display refresh.
-- Fix: damage-accumulate + coalesce into one repaint per output refresh (a frame clock; the Xios app already runs a CADisplayLink, XScreen.swift:162 — the dirty/present channel could carry pacing back), send frame done on present. Also relevant to Mutter integration (mutter-on-iosc.md risk #7: reconcile CoglOnscreen swap with single-surface present; likely 2-3 output IOSurface rotation — which also removes the current tearing window of compositing into the same IOSurface the app is presenting from).
-- Effort: medium. Owner: iosc compositor track.
+- STILL OPEN, split out of P0.4: the multi-buffer half of the original fix. iosc still
+  composites into the SAME output IOSurface the app presents from, so the tearing
+  window named here remains, and Mutter integration still wants the 2-3 surface
+  rotation (mutter-on-iosc.md risk #7: reconcile CoglOnscreen swap with single-surface
+  present). Pacing narrows that window — the composite now lands in a known gap before
+  the app samples — but does not close it. Effort: medium. Owner: iosc compositor track.
+- ALSO OPEN: the native iPadOS flavor (iosc-host) is unpaced. It draws per-window
+  canvases over the NATIVE_FRAME record family, so there is no single dirty/present
+  channel to carry targetTimestamp and no shared output surface to report a present
+  for; it got the CAFrameRateRange only. Pacing it means per-window pacing state on the
+  0x40-0x5f records. Effort: medium. Owner: native-iPadOS track.
 
 P0.5 wlr-screencopy is a software row-memcpy readback (the known one — confirmed).
 - iosc.c:997-1004 explicitly "SOFTWARE readback; GPU-blit later", clean seam named: xios_read_output_region()'s body plus a fast-path. Implementation is IOSurfaceLock + per-row memcpy in x11/linux-build/patches/xios/xios_surface.c:497-514.
@@ -102,12 +135,10 @@ P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/j
   `libgtop-2.0-11 2.41.3+ios2` package is built; only device UI smoke remains.
 - libei/libeis links-only shim (recipes/libei.mk:5-12): input capture / remote-desktop input NON-FUNCTIONAL by design, inert feature. Same pattern as stubbed libdrm.
 - xios-login1-stub (wayland/xios-login1-stub.c): answers the logind calls gnome-session/gsd make; no real session/power management — intended.
-- The incomplete top-surface-only CPU compositor remains solely behind
-  `IOSC_ALLOW_CPU_DIAGNOSTIC=1`; production initialization and runtime GPU loss
-  fail closed.
-- The X11 flavor uses rootless Xwayland on GPU-accelerated iosc. The legacy
-  bare Xios server, Xvfb, and VNC remain separately installable diagnostics and
-  are no longer dependencies or recommendations of the flavor meta.
+- iosc has no CPU compositor or CPU-sync fallback; GPU initialization, shared-event
+  creation, and runtime GPU loss all fail closed.
+- The X11 flavor uses hardware-only rootless Xwayland on GPU-accelerated iosc.
+  Xvfb and VNC remain separate headless/remote tools.
 - split-shell cairo/pango CPU renderer — adequate for bar/dock chrome; renderer may be reused for native-mode window chrome.
   RE-CONFIRMED 2026-07-29: still the bar/dock path (iosc-shell/shell-draw.h:244-247 builds a
   `cairo_image_surface_create_for_data` + `cairo_t` and paints on the CPU). Note the `ngl`
@@ -121,3 +152,12 @@ P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/j
 - ios-inputd degrades gracefully when input-method-v2/virtual-keyboard-v1 absent (ios-inputd.c:293-305) — both protocols are advertised by iosc, so messages are belt-and-braces.
 
 Suggested dispatch order: P0.3 (hours, pure win) → P0.2 → P0.1 (the big one, needs on-device GSK-on-ANGLE validation) → P0.4 → P1.1 → P0.5/P0.6, with P1.3/P1.4 owned by the mutter track in parallel and P2.2 gated on ICU landing.
+
+2026-07-29: P0.4 is closed except for the output-surface rotation and the native flavor,
+both split out under it. Present-side MetalFX spatial upscaling landed alongside it
+(opt-in, default off — `IOSC_UPSCALE=auto|<factor>`, or `XIOS_UPSCALE` in the app's own
+environment; `upscale=` in `xios-status`). It is the cheapest remaining lever on this
+hardware and does not appear as a numbered item here because it is not a shortcut being
+paid down — see docs/ios-platform-features.md §2 on branch
+claude/ios-features-graphics-50ff62. The thermal/jetsam track (§3 there) is sequenced
+next and clamps the frame-rate range P0.4 introduced.

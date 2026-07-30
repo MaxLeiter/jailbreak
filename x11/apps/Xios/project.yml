@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
-    MARKETING_VERSION: "0.1.4"
+    MARKETING_VERSION: "0.1.6"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -22,17 +22,16 @@ settings:
     CODE_SIGN_ENTITLEMENTS: entitlements.plist
     ENABLE_BITCODE: "NO"
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-    # Link Xlib + XTEST only for device builds (for input injection). Headers/dylibs
-    # are staged under xlib/ (extracted from the Procursus build; regenerable).
-    # The simulator uses no-op XTEST stubs so it can still exercise UI/rendering.
     SWIFT_OBJC_BRIDGING_HEADER: Sources/Xios-Bridging-Header.h
-    HEADER_SEARCH_PATHS: $(SRCROOT)/xlib/include
-    LIBRARY_SEARCH_PATHS: $(SRCROOT)/xlib/lib
-    # Procursus dylibs use @rpath install names; add rootless and rootful library
-    # roots so dyld finds libX11/libXtst at runtime. IOSurface backs the zero-copy
-    # framebuffer (XSurface.c does the mach-port hand-off + IOSurfaceLookupFromMachPort).
-    OTHER_LDFLAGS: -framework IOSurface -framework Foundation -framework Metal
-    OTHER_LDFLAGS[sdk=iphoneos*]: -lX11 -lXtst -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/usr/lib -framework IOSurface -framework Foundation -framework Metal
+    # IOSurface backs the zero-copy framebuffer (XSurface.c does the mach-port
+    # hand-off + IOSurfaceLookupFromMachPort).
+    #
+    # MetalFX is WEAK-linked: present-side spatial upscaling (XiosUpscale.swift) is
+    # opt-in, and a device without the framework must degrade to the direct present
+    # rather than fail to launch. Every use is gated on NSClassFromString +
+    # MTLFXSpatialScalerDescriptor.supportsDevice, so a null class is never touched.
+    # Verify after a build with: otool -L Xios | grep MetalFX  (expect "weak").
+    OTHER_LDFLAGS: -weak_framework MetalFX -framework IOSurface -framework Foundation -framework Metal
 
 targets:
   Xios:
@@ -48,12 +47,15 @@ targets:
       - path: ../shared/XiosMetalEventBroker.m
         compilerFlags:
           - -fno-objc-arc
+      # Same runtime-visibility producer iosc links (docs/ios-platform-features.md §0),
+      # so the app's pacing/upscale state lands in the same `xios-status` table.
+      - path: ../shared/iosc_status.c
       - path: Resources/Assets.xcassets
     info:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: X11
-        CFBundleShortVersionString: "0.1.4"
+        CFBundleShortVersionString: "0.1.6"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
@@ -62,8 +64,8 @@ targets:
         NSCameraUsageDescription: Xios exposes the iPad camera to desktop media clients.
         NSMicrophoneUsageDescription: Xios exposes the iPad microphone to desktop media clients.
         NSPhotoLibraryUsageDescription: Xios lets you choose a photo as the iosc desktop background.
-        # Runtime-gated in XServerViewController: iosc/native sessions can rotate
-        # and resize their IOSurface; legacy fixed-aspect X paths stay landscape.
+        # Runtime-gated in XServerViewController: compositor sessions can rotate
+        # and resize their IOSurface.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown

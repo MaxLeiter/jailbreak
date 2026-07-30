@@ -85,8 +85,10 @@ export default function Try() {
       <Section num="08.3" title="Pick a flavor">
         <div className="prose">
           <p>
-            There is no single <code>xios</code> package. You install one flavor,
-            and each pulls in the shared <code>xios-core</code> base. See{" "}
+            There is no single <code>xios</code> package. You install one flavor.
+            All of them pull in the <code>xios-runtime</code> base; the three
+            fullscreen ones also pull in <code>xios-core</code>, which is what
+            adds the display app, the iosc shell and the session launcher. See{" "}
             <Link href="/flavors">Desktop flavors</Link> for what each one is.
           </p>
         </div>
@@ -125,8 +127,8 @@ export default function Try() {
               <code>xios-x11</code>
             </dt>
             <dd>
-              The Xios X server for classic X11 clients, plus Xwayland. Needs iOS
-              16.5.
+              Xwayland inside the compositor, so X11 clients render through glamor
+              and ANGLE. Needs iOS 16.5.
             </dd>
           </div>
         </dl>

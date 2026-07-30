@@ -15,10 +15,9 @@
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-xwayland.sh
 #
 # --entrypoint bash, not sh: the image's sh is dash, which rejects this script's `set -o pipefail`.
-#
-# X0 (software wl_shm, first-light/bisect) vs X1 (default, GPU glamor):
-#   docker run ... -e XWAYLAND_GLAMOR=false ...   # X0
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 umask 022
 cd /work
 
@@ -87,7 +86,7 @@ for r in xwayland.mk libxcvt.mk libxshmfence.mk xorgproto.mk libepoxy.mk libdrm.
 done
 # Force xorgproto rebuild at 2024.1 (base volume has 2021.5 with the .build_complete marker
 # short-circuiting a rebuild). Gate on installed presentproto.pc: 2021.5 = 1.2, 2024.1 = 1.4.
-PPC=build_base/iphoneos-arm64-rootless/1900/var/jb/usr/share/pkgconfig/presentproto.pc
+PPC=build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr/share/pkgconfig/presentproto.pc
 if ! grep -qE '^Version:\s*1\.[3-9]' "$PPC" 2>/dev/null; then
   echo "   presentproto < 1.3 installed -> forcing xorgproto rebuild at 2024.1"
   rm -rf build_work/*/*/xorgproto 2>/dev/null || true
@@ -97,18 +96,19 @@ fi
 mkdir -p build_info build_misc/entitlements
 cp -v /work/recipes/build_info/*.control build_info/ 2>/dev/null || true
 cp -v /work/recipes/build_info/xwayland-glamor-iosurface.c build_info/
-cp -v /work/recipes/build_info/iosc-iosurface.xml build_info/
 # The SIGN macro reads entitlements from build_misc/entitlements/ (NOT build_info/).
 cp -v /work/recipes/build_info/xwayland-ent.xml build_misc/entitlements/
 
 echo "==> staging xwayland patch series"
 bash /work/recipes/stage-port-patches.sh xwayland /work/ports build_patch
+echo "==> staging libepoxy patch series"
+bash /work/recipes/stage-port-patches.sh libepoxy /work/ports build_patch
 
 # xwayland-input.c includes <linux/input.h> for the evdev codes (BTN_*, KEY_*) the Wayland
 # input protocol uses; iOS has no linux/ uapi headers. The vendored input-event-codes.h is the
 # canonical kernel header — its evdev values must match what the compositor sends. Same pattern
 # as build-mutter.sh's linux/dma-buf.h stub.
-LINUX_INC=build_base/iphoneos-arm64-rootless/1900/var/jb/usr/include/linux
+LINUX_INC=build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr/include/linux
 mkdir -p "$LINUX_INC"
 cp -v /work/recipes/build_info/linux-input-event-codes.h "$LINUX_INC/input-event-codes.h"
 cp -v /work/recipes/build_info/linux-input.h "$LINUX_INC/input.h"
@@ -116,7 +116,7 @@ cp -v /work/recipes/build_info/linux-input.h "$LINUX_INC/input.h"
 echo "==> [5/6] stage ANGLE egl.pc + libEGL into the cross sysroot (fresh-volume safety)"
 # Xwayland's brokered GPU fence calls EGL/GL directly, so both the configure
 # metadata and the exact current ANGLE libraries must be present at link time.
-SYSROOT=build_base/iphoneos-arm64-rootless/1900/var/jb/usr
+SYSROOT=build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr
 ANGLE_DEB=$(find /out -maxdepth 1 -name 'angle_*_iphoneos-arm64.deb' -print |
   sort -V | tail -1)
 [ -n "$ANGLE_DEB" ] || {
@@ -135,32 +135,42 @@ GLES=$(find /tmp/angle-x -name libGLESv2.dylib | head -1)
 }
 cp -v "$EGL" "$SYSROOT/lib/libEGL.dylib"
 cp -v "$GLES" "$SYSROOT/lib/libGLESv2.dylib"
+ANGLE_HEADERS=/tmp/angle-x$XIOS_PREFIX/include
+[ -d "$ANGLE_HEADERS/EGL" ] && [ -d "$ANGLE_HEADERS/GLES2" ] || {
+  echo "ERROR: angle package is missing EGL/GLES headers" >&2
+  exit 1
+}
+mkdir -p "$SYSROOT/include"
+cp -a "$ANGLE_HEADERS/EGL" "$ANGLE_HEADERS/GLES" "$ANGLE_HEADERS/GLES2" \
+  "$ANGLE_HEADERS/GLES3" "$ANGLE_HEADERS/KHR" "$SYSROOT/include/"
 cat > "$SYSROOT/lib/pkgconfig/egl.pc" <<PC
-prefix=/var/jb/usr
-libdir=/var/jb/lib/angle
+prefix=$XIOS_PREFIX/usr
+libdir=$XIOS_PREFIX/lib/angle
 includedir=\${prefix}/include
 
 Name: EGL
 Description: ANGLE EGL (Metal) for iOS
 Version: 1.5
-Libs: -L/var/jb/usr/lib -lEGL
+Libs: -L$XIOS_PREFIX/usr/lib -lEGL
 Cflags: -I\${includedir}
 PC
 
-echo "==> [6/6] build libxcvt + xwayland (glamor=${XWAYLAND_GLAMOR:-true})"
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
-  XWAYLAND_GLAMOR=${XWAYLAND_GLAMOR:-true} \
+echo "==> [6/6] build libxcvt + hardware-only Xwayland"
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   DEB_LIBIOSEXEC_V=1.3.1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 # Package the runtime deps Xwayland links that aren't already Procursus debs, plus xwayland itself.
-XW=build_work/iphoneos-arm64-rootless/1900/xwayland
-XS=build_stage/iphoneos-arm64-rootless/1900/xwayland
+XW=build_work/$XIOS_TRIPLE/xwayland
+XS=build_stage/$XIOS_TRIPLE/xwayland
 XF="$XW/.xios_patch_series.sha256"
 NEW_FP="$(sha256sum \
   /work/ports/xwayland/patches/series \
   /work/ports/xwayland/patches/*.patch \
+  /work/ports/libepoxy/patches/series \
+  /work/ports/libepoxy/patches/*.patch \
   /work/recipes/build_info/xwayland-glamor-iosurface.c \
-  /work/recipes/build_info/iosc-iosurface.xml | sha256sum | awk '{print $1}')"
+  /work/x11/wayland/iosc-iosurface.xml \
+  /work/x11/apps/shared/XiosProtocol.h | sha256sum | awk '{print $1}')"
 OLD_FP="$(cat "$XF" 2>/dev/null || true)"
 if [ -d "$XW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
   echo "==> wiping stale xwayland build after patch/backend changes"
@@ -178,14 +188,14 @@ fi
 echo "==> collect debs -> /out"
 mkdir -p /out
 found=0
-DIST_ROOT=build_dist/iphoneos-arm64-rootless/1900
+DIST_ROOT=build_dist/$XIOS_TRIPLE
 for dir in libxcvt libxshmfence libdrm xwayland; do
   [ -d "$DIST_ROOT/$dir" ] || continue
-  for d in "$DIST_ROOT/$dir"/*_*_iphoneos-arm64.deb; do
+  for d in "$DIST_ROOT/$dir"/*_*_$XIOS_DEB_ARCH.deb; do
     [ -e "$d" ] || continue
     cp -v "$d" /out/; found=1
   done
 done
 [ "$found" = 1 ] || { echo "!! no xwayland debs produced"; exit 1; }
-echo "==> done. xwayland X0 bundle in /out:"
+echo "==> done. hardware Xwayland bundle in /out:"
 ls -1 /out/xwayland*.deb /out/libxcvt0*.deb /out/libxshmfence1*.deb /out/libdrm2*.deb 2>/dev/null || true

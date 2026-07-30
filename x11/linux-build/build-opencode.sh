@@ -8,6 +8,10 @@
 # pinned OpenCode source and packages it with a small wrapper that runs under
 # the repo's iPhoneOS Bun package.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 umask 022
 export LC_ALL=C
 export TZ=UTC
@@ -86,10 +90,10 @@ echo "==> local smoke"
 bun "$BUNDLE/src/index.js" --version | grep -Fx "$VERSION" >/dev/null
 
 rm -rf "$WORK/pkg"
-mkdir -p "$WORK/pkg/DEBIAN" "$WORK/pkg/var/jb/usr/bin" "$WORK/pkg/var/jb/usr/libexec/opencode-js"
-cp -R "$BUNDLE"/. "$WORK/pkg/var/jb/usr/libexec/opencode-js/"
-find "$WORK/pkg/var/jb/usr/libexec/opencode-js" -type d -exec chmod 0755 {} +
-find "$WORK/pkg/var/jb/usr/libexec/opencode-js" -type f -exec chmod 0644 {} +
+mkdir -p "$WORK/pkg/DEBIAN" "$WORK/pkg$XIOS_PREFIX/usr/bin" "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js"
+cp -R "$BUNDLE"/. "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js/"
+find "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js" -type d -exec chmod 0755 {} +
+find "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js" -type f -exec chmod 0644 {} +
 
 # @opentui/core dlopen()s this dylib at TUI startup (the bundle aliases the
 # platform package to this fixed path; see tools/opencode-ios-bundle.ts). The
@@ -102,8 +106,8 @@ OPENTUI_IOS_DYLIB="${OPENTUI_IOS_DYLIB:-$HERE/out/opentui-ios/libopentui.dylib}"
   echo "Build it first with $HERE/build-opentui-ios.sh (or set OPENTUI_IOS_DYLIB)." >&2
   exit 1
 }
-cp "$OPENTUI_IOS_DYLIB" "$WORK/pkg/var/jb/usr/libexec/opencode-js/libopentui.dylib"
-chmod 0644 "$WORK/pkg/var/jb/usr/libexec/opencode-js/libopentui.dylib"
+cp "$OPENTUI_IOS_DYLIB" "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js/libopentui.dylib"
+chmod 0644 "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js/libopentui.dylib"
 
 # @ff-labs/fff-bun dlopen()s this cdylib for opencode's preferred fuzzy file +
 # content search (falls back to ripgrep when absent). The bundle aliases fff-bun's
@@ -116,17 +120,17 @@ FFF_IOS_DYLIB="${FFF_IOS_DYLIB:-$HERE/out/fff-ios/libfff_c.dylib}"
   echo "Build it first with $HERE/build-fff-ios.sh (or set FFF_IOS_DYLIB)." >&2
   exit 1
 }
-cp "$FFF_IOS_DYLIB" "$WORK/pkg/var/jb/usr/libexec/opencode-js/libfff_c.dylib"
-chmod 0644 "$WORK/pkg/var/jb/usr/libexec/opencode-js/libfff_c.dylib"
+cp "$FFF_IOS_DYLIB" "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js/libfff_c.dylib"
+chmod 0644 "$WORK/pkg$XIOS_PREFIX/usr/libexec/opencode-js/libfff_c.dylib"
 
-cat > "$WORK/pkg/var/jb/usr/bin/opencode" <<'EOF'
+cat > "$WORK/pkg$XIOS_PREFIX/usr/bin/opencode" <<'EOF'
 #!/var/jb/usr/bin/sh
 export TMPDIR="${TMPDIR:-/var/jb/tmp}"
 export TMP="${TMP:-$TMPDIR}"
 export TEMP="${TEMP:-$TMPDIR}"
 exec /var/jb/usr/bin/bun /var/jb/usr/libexec/opencode-js/src/index.js "$@"
 EOF
-chmod 0755 "$WORK/pkg/var/jb/usr/bin/opencode"
+chmod 0755 "$WORK/pkg$XIOS_PREFIX/usr/bin/opencode"
 
 sed \
   -e "s/@DEB_VERSION@/$PKG_VERSION/g" \
@@ -147,10 +151,10 @@ if [ "${SMOKE_DEVICE:-0}" = 1 ]; then
   SSH_OPTS=(-o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519")
   DEVICE="${DEVICE:-root@MaxsiPad.local}"
   echo "==> on-device smoke"
-  scp "${SSH_OPTS[@]}" "$OUT/$PKG" "$DEVICE:/var/jb/tmp/"
+  scp "${SSH_OPTS[@]}" "$OUT/$PKG" "$DEVICE:$XIOS_PREFIX/tmp/"
   ssh "${SSH_OPTS[@]}" "$DEVICE" "
     set -e
-    dpkg -i /var/jb/tmp/$PKG
-    TMPDIR=/var/jb/tmp TMP=/var/jb/tmp TEMP=/var/jb/tmp /var/jb/usr/bin/opencode --version
+    dpkg -i $XIOS_PREFIX/tmp/$PKG
+    TMPDIR=$XIOS_PREFIX/tmp TMP=$XIOS_PREFIX/tmp TEMP=$XIOS_PREFIX/tmp $XIOS_PREFIX/usr/bin/opencode --version
   "
 fi

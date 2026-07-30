@@ -12,8 +12,17 @@ Lock the iPad to a single app. Two halves:
 
 ## Shared config
 
-`/var/mobile/Library/Preferences/com.max.kioskmode.plist` — both processes run as
-`mobile`, so the app writes it and the tweak reads it directly.
+`/var/mobile/Library/Preferences/com.max.kioskmode.shared.plist` — both processes
+run as `mobile`, so the app writes it and the tweak reads it with plain file I/O.
+
+The `.shared` suffix matters. The app's bundle id is `com.max.kioskmode`, so
+`com.max.kioskmode.plist` *is* its standard `NSUserDefaults` domain: `cfprefsd`
+slurps that file into its cache when UIKit first touches `UserDefaults.standard`,
+then flushes the stale cache back over our direct writes — which silently
+re-armed a lock the user had just toggled off. A non-domain filename keeps
+`cfprefsd` out of the picture entirely. The app migrates the old path once on
+launch, so an existing install isn't reset on upgrade; the two halves must stay in
+lockstep (`KioskConfig.path` and `kCfgPath` in `Tweak.x`). Fixed in 0.3.1.
 
 | Key | Type | Meaning |
 |---|---|---|
@@ -38,7 +47,12 @@ confirms. `off` means it stays locked until you flip the master switch in the ap
 ```bash
 bin/install.sh     tweaks/KioskMode    # tweak → SpringBoard (resprings)
 bin/install-app.sh apps/KioskMode      # companion app
+bin/package-app.sh apps/KioskMode      # ...or package the app as com.max.kioskmode-app
 ```
+
+Install both halves: the tweak enforces, the app configures. The tweak also
+file-logs to `/var/mobile/kioskmode.log`, which is how the volume-escape path gets
+debugged headlessly over SSH.
 
 The app links two private classes (`LSApplicationWorkspace`, `LSApplicationProxy`)
 for the app picker; they have no SDK link stub, so `project.yml` weak-links them

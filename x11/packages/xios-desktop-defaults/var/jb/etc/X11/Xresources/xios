@@ -1,5 +1,4 @@
-! Xios retina/Xft defaults. Loaded by xios-server.sh, x11-server.sh,
-! x11-up.sh and xfce-up.sh when xios-desktop-defaults is installed.
+! Xios retina/Xft defaults. Loaded by Xwayland/X11 session helpers.
 Xft.dpi: 264
 Xft.antialias: true
 Xft.hinting: true

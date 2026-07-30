@@ -32,7 +32,7 @@ libxshmfence: libxshmfence-setup xorgproto
 	cd $(BUILD_WORK)/libxshmfence && ./configure -C \
 		$(DEFAULT_CONFIGURE_FLAGS) \
 		--disable-futex \
-		--with-shared-memory-dir=/var/jb/tmp
+		--with-shared-memory-dir=$(MEMO_PREFIX)/tmp
 	+$(MAKE) -C $(BUILD_WORK)/libxshmfence
 	+$(MAKE) -C $(BUILD_WORK)/libxshmfence install \
 		DESTDIR=$(BUILD_STAGE)/libxshmfence

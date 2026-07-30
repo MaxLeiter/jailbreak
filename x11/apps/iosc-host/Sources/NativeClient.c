@@ -138,7 +138,7 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
      * app_id is the UTF-8 payload. */
     size_t idlen = app_id ? strlen(app_id) : 0;
     if (idlen > 200) idlen = 200;
-    if (send_hdr(fd, XIOS_MSG_BIND, IOSC_NATIVE_PROTOCOL_VERSION,
+    if (send_hdr(fd, XIOS_MSG_BIND, XIOS_PROTOCOL_VERSION,
                  (int32_t)scene_w, (int32_t)scene_h, (int32_t)scale,
                  (int32_t)rx, (uint32_t)idlen) != 0 ||
         (idlen && write_full(fd, app_id, idlen) != 0)) {
@@ -153,12 +153,12 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
         read_full(fd, &hello, sizeof(hello)) != 0 ||
         hello.magic != XIOS_MSG_MAGIC ||
         hello.type != XIOS_MSG_HELLO ||
-        hello.window_id != 0 ||
+        hello.window_id != XIOS_PROTOCOL_VERSION ||
         hello.length != 0 ||
-        (uint32_t)hello.a != IOSC_NATIVE_PROTOCOL_VERSION) {
+        hello.a != 0 || hello.b != 0 || hello.c != 0 || hello.d != 0) {
         fprintf(stderr,
                 "iosc-native: protocol v%u HELLO missing/mismatched\n",
-                IOSC_NATIVE_PROTOCOL_VERSION);
+                XIOS_PROTOCOL_VERSION);
         destroy_receive_port(rx);
         close(fd);
         return NULL;
@@ -234,13 +234,13 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
     case XIOS_MSG_NATIVE_FRAME: {
         uint64_t value =
             ((uint64_t)(uint32_t)h.b << 32) | (uint32_t)h.a;
-        if (h.length != IOSC_NATIVE_FENCE_TOKEN_SIZE ||
+        if (h.length != XIOS_GPU_FENCE_TOKEN_SIZE ||
             value == 0 || h.c != 0 || h.d != 0) {
             fprintf(stderr, "iosc-native: invalid fenced frame record\n");
             goto dead;
         }
         ev->fence_value = value;
-        memcpy(ev->fence_token, payload, IOSC_NATIVE_FENCE_TOKEN_SIZE);
+        memcpy(ev->fence_token, payload, XIOS_GPU_FENCE_TOKEN_SIZE);
         ev->type = IOSC_NEV_DIRTY;
         return 1;
     }

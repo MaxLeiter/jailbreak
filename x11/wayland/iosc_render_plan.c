@@ -11,6 +11,8 @@ void iosc_render_plan_build(struct iosc_render_plan *plan,
 {
     memset(plan, 0, sizeof(*plan));
     plan->had_damage = had_damage;
+    if (!had_damage)
+        return;
     plan->damage_count = consume_damage(plan->damage, IOSC_MAX_OUTPUT_DAMAGE_RECTS,
                                         &plan->damage_x0, &plan->damage_y0,
                                         &plan->damage_x1, &plan->damage_y1);
@@ -29,6 +31,10 @@ void iosc_render_plan_log(const struct iosc_render_plan *plan,
                 plan->had_damage ? "pending" : "none");
     if (!iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
         return;
+    if (!plan->had_damage) {
+        fprintf(stderr, "iosc: output-damage rects=0 skipped\n");
+        return;
+    }
     fprintf(stderr, "iosc: output-damage rects=%d union=%d,%d %dx%d%s\n",
             plan->damage_count,
             plan->damage_x0, plan->damage_y0,

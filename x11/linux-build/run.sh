@@ -47,7 +47,11 @@ docker run --rm --platform linux/arm64 \
   -e XIOS_MEMO_TARGET \
   -e XIOS_MEMO_CFVER \
   -e XIOS_PREFIX \
+  -e XIOS_SUBPREFIX \
+  -e XIOS_DEB_ARCH \
   -v "$VOLUME:/work/Procursus" \
+  -v "$PWD/target-env.sh:/work/target-env.sh:ro" \
+  -v "$PWD/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$PWD/build.sh:/work/build.sh:ro" \
   -v "$PWD/patches:/work/patches:ro" \
   -v "$HERE/../ports:/work/ports:ro" \
@@ -56,24 +60,11 @@ docker run --rm --platform linux/arm64 \
 
 echo "==> building Xios audio support"
 docker run --rm --platform linux/arm64 \
+  -e XIOS_MEMO_TARGET -e XIOS_MEMO_CFVER -e XIOS_PREFIX -e XIOS_SUBPREFIX -e XIOS_DEB_ARCH \
+  -v "$PWD/target-env.sh:/work/target-env.sh:ro" \
   -v "$PWD/audio:/work/audio:ro" \
   -v "$PWD/out:/out" \
   "$IMAGE" /work/audio/build-audio.sh
-
-# The in-container ldid does not emit DER-encoded entitlements, which iOS 15+/16 AMFI
-# requires to honor iokit-user-client-class — IOSurfaceCreate() returns NULL otherwise
-# (the XML entitlements still read fine via `ldid -e`, so this is silent). The Mac's
-# ldid does emit DER, so re-sign Xios here with the plist build.sh produced.
-if [ -f out/Xios ]; then
-  # This re-sign is correctness-critical (without DER entitlements IOSurfaceCreate
-  # returns NULL on-device), so fail loudly rather than shipping a broken binary.
-  command -v ldid >/dev/null || { echo "ERROR: ldid not found — cannot DER-sign Xios; 'brew install ldid'"; exit 1; }
-  [ -f out/xios-ent.xml ] || { echo "ERROR: out/xios-ent.xml missing (build.sh should have written it)"; exit 1; }
-  echo "==> re-signing Xios with the Mac ldid (DER entitlements, for IOKit/IOSurface)"
-  xsign out/Xios out/xios-ent.xml \
-    platform-application com.apple.private.skip-library-validation task_for_pid-allow \
-    IOSurfaceRootUserClient
-fi
 
 echo "==> artifacts:"
 ls -l out/

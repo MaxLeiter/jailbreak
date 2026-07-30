@@ -109,10 +109,10 @@ export default function Overview() {
         </Panel>
         <div className="prose" style={{ marginTop: 22 }}>
           <p>
-            For a full desktop, iOS only ever talks to one app: Xios.app. Whether
-            an X server, <T k="iosc" />, Mutter or KWin is producing frames
-            underneath is invisible to it, because they all hand the app the same
-            kind of output surface. Native mode is the exception, and the point of
+            For a full desktop, iOS only ever talks to one app: Xios.app. Whether{" "}
+            <T k="iosc" />, Mutter or KWin is producing frames underneath is
+            invisible to it, because they all hand the app the same kind of output
+            surface. Native mode is the exception, and the point of
             it: there each Linux app gets its own Home Screen icon and its own
             host bundle, so iOS sees several ordinary apps instead of one.
           </p>

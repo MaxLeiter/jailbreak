@@ -9,9 +9,7 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 
 ## Before Editing
 
-- Expect a dirty worktree. Do not revert unrelated local changes or generated repo output unless the user explicitly asks.
-- Use `rg` / `rg --files` for searches.
-- Use `apply_patch` for manual edits.
+- Expect a dirty worktree, and expect other sessions to be working in it. Do not revert unrelated local changes or generated repo output unless the user explicitly asks; check `git status` and file mtimes before trusting a device test or publishing anything.
 - Keep rootless iOS assumptions in mind, but check the current README/scripts instead of hardcoding device facts here.
 
 ## Top-Level Layout
@@ -42,17 +40,58 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 - The package repo is generated from `repo/debs/` by `bin/lib/make-repo.py` (repo-pipeline internals live in `bin/lib/`; `bin/` itself holds only entry points).
 - `bin/publish-staging.sh` (= `bin/publish-repo.sh --staging`) regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys the low-cache staging repo (served at dev.repo.maxleiter.com) for iteration.
 - `bin/publish-repo.sh` regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys production metadata/site assets.
+- `repo/debs/` is a shared staging tree, so a bare production publish ships every pending delta anyone has built. Use `bin/publish-repo.sh --only <pkg>[,<pkg>]` to swap just your packages into the index the target already serves; it scopes the index in the throwaway deploy copy and re-checks solvability against that scoped index.
 - Treat production `.deb` URLs as immutable. Never replace the bytes of a public `.deb` at the same filename; bump the package version or revision so the filename changes.
 - Keep APT metadata (`Packages`, `Packages.gz`, `Release`, `InRelease`, `Release.gpg`) revalidated instead of long-lived immutable.
 - Keep staging package directories out of Vercel deployments. Do not remove `repo/.vercelignore` entries for staging output unless the publish flow changes deliberately.
 - If a publish script fails because `repo/debs` changed during generation/signing, rerun after the active build finishes.
 - If a publish script fails during Blob upload because an existing remote `.deb` has a different size, do not overwrite it; bump the package version/revision so the filename changes.
 
+## Publishing: The Procedure
+
+Follow this in order. Every step is safe to rerun.
+
+```bash
+bin/build.sh tweaks/<Name>                  # 1. build (or the x11/ build for that package)
+cp tweaks/<Name>/packages/*.deb repo/debs/  # 2. stage the payload
+bin/publish-staging.sh                      # 3. payloads -> Blob, deploy dev.repo, regenerate repo/Packages
+                                            # 4. test on device against dev.repo.maxleiter.com
+git add repo/Packages && git commit         # 5. review the diff: it is what step 6 makes public
+bin/publish-repo.sh                         # 6. production
+```
+
+- **Step 5 is not bookkeeping.** Step 6 publishes the *committed* index, so the diff you commit is exactly the change users receive, and anything uncommitted stays unpublished. `publish-repo.sh` enforces this: a prod publish **refuses to run** while `repo/Packages` differs from `HEAD`.
+- **Never run step 6 alone** for a package built on this machine. Step 3 is what uploads the payloads; skipping it publishes an index pointing at 404s.
+- Defaults are chosen so the safe thing happens with no flags: **staging rebuilds the index from `repo/debs`** (that is what staging is for), **prod publishes the committed index**. Override with `--from-debs` / `--from-index` when you mean to.
+- `--from-index` and `--only` are the two ways to avoid shipping the accumulated tree delta, and they compose: `--only` reconciles against **what the target serves**, `--from-index` publishes **what git says**. With `--only` the drift gate runs `--warn-regressions`, since being behind the target is that mode's premise.
+- Publishing needs no network secrets beyond your Vercel login, but it does need the signing key: prod and staging refuse to publish unsigned, checked before any work (`ALLOW_UNSIGNED=1` overrides; `--preview` only warns). An unsigned index makes apt reject the whole repo.
+
+### Why this is not a GitHub Action
+
+The gates that matter need the real `.deb` payloads, which are gitignored and exist only on the authoring host: `check-procursus-shadow.py` (Apple `nm` over Mach-O), DER entitlement re-signing, and the Blob upload. A Linux runner can do none of it, so CI could only ever deploy the metadata half — saving one command in exchange for putting the repo signing key in GitHub secrets. That workflow was written, tested end to end, and deleted on purpose. Don't re-add it without an argument that survives this one.
+
+CI (`.github/workflows/ci.yml`, job `APT index`) validates instead: regenerate from the committed `repo/Packages`, check solvability, audit, and fail on version drift. No secrets, no deploy.
+
+### Guardrails that will stop you
+
+- `make-repo.py` with no `--from-index` **refuses** when `repo/debs` is missing payloads for more than 5% of the index. A worktree always looks like that, because `repo/debs` is gitignored. Use `--from-index`; it regenerates the whole site and index from the committed `Packages` with no payloads at all. (`MAKE_REPO_ALLOW_SHRINK=1` if you truly are retiring packages.)
+- A Claude Code PreToolUse hook (`bin/lib/guard-repo-ops.sh`, installed by `bin/setup-repo-guards.sh`) blocks a bare `sync-packages-to-repo.py` — it applies by default and deletes debs — and blocks hand-edits of generated output under `repo/`. Edit the generator or `repo/meta/<pkg>.json` instead.
+
+## Parallel Branches and Version Drift
+
+- `repo/Packages` is the tracked manifest and the single source of truth CI publishes from. Derived siblings (`Packages.gz`, `Release`, `InRelease`, `Release.gpg`, `Packages.pv`, `Packages.sha`) are **gitignored** — `Release` embeds a `Date:` line and the rest are binary, so tracking them made every parallel branch conflict.
+- `repo/Packages` merges structurally via the `aptindex` driver (`.gitattributes` -> `bin/lib/merge-packages.py`): newer version per package wins, so two branches publishing different packages never conflict. Register it once per clone with `bin/setup-repo-guards.sh` (shared git config, so worktrees inherit it).
+- `bin/lib/check-version-collisions.py` is the drift gate, run by CI and by `publish-repo.sh`. Two failure classes:
+  - **collision** — the same `Package`+`Version` is already published with different bytes. Unfixable by merging: the Blob filename is immutable. Bump the version and rebuild.
+  - **regression** — the reference index has a newer version than yours, so deploying would roll devices back. Rebase; the merge driver resolves it.
+- A worktree that has been open while `main` released will hit *regression*, not silent drift. Rebase before publishing.
+
 ## Generated Repo Files
 
 - `repo/Packages`, `repo/Release`, depictions, icons, banners, and signing outputs are generated by the repo tooling.
 - Do not hand-edit generated depiction/index files unless you are also updating the generator or intentionally patching an emergency artifact.
-- `bin/lib/audit-repo.py` verifies metadata checksums/sizes against deployed package bytes; keep it in the publish path.
+- `bin/lib/audit-repo.py` verifies metadata checksums/sizes against deployed package bytes; keep it in the publish path. `--no-payloads` drops exactly the checks that need the payloads, for CI checkouts.
+- `bin/lib/make-repo.py` has two modes: default reads `repo/debs/` and regenerates everything including `Packages`; `--from-index` treats the committed `Packages` as authoritative and rebuilds only what derives from it. **Never run the default mode in a worktree with an incomplete `repo/debs/`** — it will silently drop every package whose payload is missing.
 
 ## X11 / Xios
 

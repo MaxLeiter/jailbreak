@@ -20,13 +20,16 @@ src/harness.ts the engine (generic, tool-agnostic):
                  · maybeCompact()     fold old history into a summary; never split a
                                       tool_use/tool_result pair; pinned state survives
                  · makeSpawner()      subagents (parallel = call spawn N times)
+src/server.ts  Bun.serve control plane behind public/console.html (SSE + JSON)
 src/tools.ts   in-process tool surface: filesystem, shell, battery, memory,
                screenshot, speech/voice, listen, MCP config
+src/wake.ts    the "hey jarvis" listen loop: record → transcribe → match phrase
 src/ios/*      device primitives for power, screenshot, speech, and audio/listen
 src/memory.ts  markdown memory topics under the Jarvis data dir
 src/mcp.ts     MCP server config and client-config export
 src/settings.ts persisted model, policy, MCP, and iOS preferences
 src/store.ts   bun:sqlite durable sessions + append-only audit log
+native/JarvisSpeechHelper   small ObjC helper for the on-device speech path
 ```
 
 ## The seams that matter
@@ -107,6 +110,32 @@ Endpoints: `GET /events` (SSE), `POST /chat`, `GET /state`, `GET /attachment`,
 `POST /approve`, `POST /policy`, `GET /models`, `POST /model`, `GET /mcp`,
 `POST /mcp`, `GET /mcp/client-config`, `GET /wake`, `POST /wake`.
 A native chat surface can later be a thin client of these same endpoints.
+
+## Deploying to the iPad
+
+```sh
+./deploy.sh                       # from the Mac; reads ../device.env for host/port/key
+ssh root@<ipad> 'cd /var/jb/var/root/jarvis && sh jarvisctl.sh status'
+```
+
+`deploy.sh` bundles `src/server.ts` with `bun build`, syncs it plus `.env`, the
+console, `jarvisctl.sh`, the supervisor, and the launchd plist to
+`/var/jb/var/root/jarvis`, compiles `native/JarvisSpeechHelper` **on the device**
+with clang, grants that helper mic/speech TCC entries, and restarts the daemon.
+
+- **`com.max.jarvis.plist`** — launchd job; it keeps only the small
+  `jarvis-supervisor.sh` alive.
+- **`jarvis-supervisor.sh`** — starts the Bun daemon only when Jarvis is enabled
+  and outside quiet hours, reading `enabled` / `quietEnabled` / `quietStart` /
+  `quietEnd` from `/var/mobile/Library/Preferences/com.max.jarvis.plist`. That
+  file is what the [`tweaks/JarvisPrefs`](../tweaks/JarvisPrefs) Settings pane
+  writes, so scheduling is a stock-looking toggle rather than a config file.
+- **`jarvisctl.sh {start|stop|restart|status|launch}`** — device-side control.
+  iOS/rootless has no `pkill`/`pgrep`, so it finds PIDs with `ps`+`awk`; it
+  prefers `launchctl kickstart` when the job is loaded and falls back to `nohup`.
+- **[`tweaks/JarvisScreenshotBridge`](../tweaks/JarvisScreenshotBridge)** — the
+  SpringBoard-side screenshot, speech, and audio bridge the device tools call
+  into.
 
 ## On-device
 

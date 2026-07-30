@@ -6,6 +6,10 @@
 # small inspection/self-test CLI.
 
 set -u
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 xios_profile_names() {
     printf '%s\n' \
@@ -107,10 +111,10 @@ xios_profile_pair() {
 
 xios_profile_env_pairs() {
     local profile="${1:-}"
-    local angle="${XS_ANGLE_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"
-    local prefix="${XS_PREFIX:-/var/jb/usr}"
-    local jb="${XS_JB:-/var/jb}"
-    local root_home="${XS_VAR:-/var/jb/var}/root"
+    local angle="${XS_ANGLE_LIBEGL:-$XIOS_PREFIX/lib/angle/libEGL.angle.dylib}"
+    local prefix="${XS_PREFIX:-$XIOS_PREFIX/usr}"
+    local jb="${XS_JB:-$XIOS_PREFIX}"
+    local root_home="${XS_VAR:-$XIOS_PREFIX/var}/root"
     local lang="${LANG:-C}" lc_ctype="${LC_CTYPE:-UTF-8}" xcomposefile
     case "$lang" in ""|UTF-8|*.UTF-8|*.utf8|C.UTF-8) lang=C ;; esac
     case "$lc_ctype" in ""|C|POSIX|*.UTF-8|*.utf8|C.UTF-8) lc_ctype=UTF-8 ;; esac
@@ -131,7 +135,7 @@ xios_profile_env_pairs() {
             ;;
         iosc-platform-gl)
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
-            xios_profile_pair XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-/var/jb/tmp}"
+            xios_profile_pair XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-$XIOS_PREFIX/tmp}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             ;;
         kde-kwin)
@@ -184,7 +188,6 @@ xios_profile_env_pairs() {
             ;;
         xwayland-glamor)
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
-            xios_profile_pair XWAYLAND_GLAMOR "${XWAYLAND_GLAMOR:-1}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             xios_profile_pair XLIB_NO_SHM "${XLIB_NO_SHM:-1}"
             ;;

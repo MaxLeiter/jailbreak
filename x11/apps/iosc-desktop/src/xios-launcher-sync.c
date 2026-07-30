@@ -31,6 +31,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "xios-desktop-entry.h"
+
 extern char **environ;
 
 #define JBROOT        "/var/jb"
@@ -106,13 +108,6 @@ static void trim(char *s)
     while (n > 0 && isspace((unsigned char)s[n - 1])) s[--n] = 0;
 }
 
-static void strip_desktop_ext(char *s)
-{
-    size_t n = strlen(s);
-    if (n > 8 && strcmp(s + n - 8, ".desktop") == 0)
-        s[n - 8] = 0;
-}
-
 static void sanitize_id(const char *in, char *out, size_t outsz)
 {
     size_t j = 0;
@@ -144,40 +139,6 @@ static void xml_escape(FILE *f, const char *s)
         default: fputc((unsigned char)*s, f); break;
         }
     }
-}
-
-static void clean_exec(const char *in, char *out, size_t outsz)
-{
-    size_t j = 0;
-    for (size_t i = 0; in[i] && j + 1 < outsz; i++) {
-        if (in[i] == '%' && in[i + 1]) {
-            char c = in[++i];
-            if (c == '%') out[j++] = '%';
-            else if (strchr("fFuUickdDnNvm", c)) continue;
-            else {
-                if (j + 2 >= outsz) break;
-                out[j++] = '%';
-                out[j++] = c;
-            }
-        } else {
-            out[j++] = in[i];
-        }
-    }
-    out[j] = 0;
-    trim(out);
-    size_t n = strlen(out);
-    if (n >= 2 && strcmp(out + n - 2, "--") == 0 &&
-        (n == 2 || isspace((unsigned char)out[n - 3]))) {
-        out[n - 2] = 0;
-        trim(out);
-    }
-}
-
-static int denied_desktop(const char *base)
-{
-    return strcmp(base, "org.freedesktop.Xwayland.desktop") == 0 ||
-           strcmp(base, "org.gnome.Shell.desktop") == 0 ||
-           strcmp(base, "org.gnome.Shell.Extensions.desktop") == 0;
 }
 
 static int app_disabled(const char *app_id)
@@ -221,56 +182,18 @@ static int append_pref(const char *app_id, int enabled)
 
 static int parse_desktop(const char *path, struct app *a)
 {
-    FILE *f = fopen(path, "r");
-    if (!f) return 0;
+    struct xios_desktop_entry entry;
+    char error[256];
+    if (!xios_desktop_entry_parse(path, NULL, 0, &entry, error, sizeof(error)))
+        return 0;
+
     memset(a, 0, sizeof(*a));
-    snprintf(a->desktop_path, sizeof(a->desktop_path), "%s", path);
-    snprintf(a->desktop_base, sizeof(a->desktop_base), "%s", basename((char *)path));
-    if (denied_desktop(a->desktop_base)) { fclose(f); return 0; }
-
-    char type[64] = "";
-    char nodisplay[16] = "";
-    char hidden[16] = "";
-    char terminal[16] = "";
-    char startup[256] = "";
-    int in_entry = 0, saw_entry = 0;
-    char line[2048];
-    while (fgets(line, sizeof(line), f)) {
-        trim(line);
-        if (!line[0] || line[0] == '#') continue;
-        if (line[0] == '[') {
-            in_entry = strcmp(line, "[Desktop Entry]") == 0;
-            if (!in_entry && saw_entry) break;
-            if (in_entry) saw_entry = 1;
-            continue;
-        }
-        if (!in_entry) continue;
-        char *eq = strchr(line, '=');
-        if (!eq) continue;
-        *eq = 0;
-        char *key = line;
-        char *val = eq + 1;
-        if (strcmp(key, "Type") == 0) snprintf(type, sizeof(type), "%s", val);
-        else if (strcmp(key, "NoDisplay") == 0) snprintf(nodisplay, sizeof(nodisplay), "%s", val);
-        else if (strcmp(key, "Hidden") == 0) snprintf(hidden, sizeof(hidden), "%s", val);
-        else if (strcmp(key, "Terminal") == 0) snprintf(terminal, sizeof(terminal), "%s", val);
-        else if (strcmp(key, "Name") == 0 && !a->name[0]) snprintf(a->name, sizeof(a->name), "%s", val);
-        else if (strcmp(key, "Exec") == 0 && !a->exec[0]) clean_exec(val, a->exec, sizeof(a->exec));
-        else if (strcmp(key, "Icon") == 0 && !a->icon[0]) snprintf(a->icon, sizeof(a->icon), "%s", val);
-        else if (strcmp(key, "StartupWMClass") == 0 && !startup[0]) snprintf(startup, sizeof(startup), "%s", val);
-    }
-    fclose(f);
-
-    if (strcmp(type, "Application") != 0) return 0;
-    if (strcasecmp(nodisplay, "true") == 0 || strcasecmp(hidden, "true") == 0) return 0;
-    if (strcasecmp(terminal, "true") == 0) return 0;
-    if (!a->exec[0]) return 0;
-    if (!a->name[0]) snprintf(a->name, sizeof(a->name), "%s", a->desktop_base);
-    if (startup[0]) snprintf(a->app_id, sizeof(a->app_id), "%s", startup);
-    else {
-        snprintf(a->app_id, sizeof(a->app_id), "%s", a->desktop_base);
-        strip_desktop_ext(a->app_id);
-    }
+    snprintf(a->desktop_path, sizeof(a->desktop_path), "%s", entry.desktop_path);
+    snprintf(a->desktop_base, sizeof(a->desktop_base), "%s", entry.desktop_base);
+    snprintf(a->name, sizeof(a->name), "%s", entry.name);
+    snprintf(a->exec, sizeof(a->exec), "%s", entry.exec);
+    snprintf(a->icon, sizeof(a->icon), "%s", entry.icon);
+    snprintf(a->app_id, sizeof(a->app_id), "%s", entry.app_id);
     char san[256];
     sanitize_id(a->app_id, san, sizeof(san));
     snprintf(a->bundle_id, sizeof(a->bundle_id), "com.max.iosc.%s", san);
@@ -381,7 +304,6 @@ static void write_info_plist(const struct app *a, const char *path)
               "  <key>UISupportedInterfaceOrientations~ipad</key>\n"
               "  <array><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>\n", f);
     }
-    fputs("  <key>IOSCExec</key><string>", f); xml_escape(f, a->exec); fputs("</string>\n", f);
     fputs("  <key>IOSCAppID</key><string>", f); xml_escape(f, a->app_id); fputs("</string>\n", f);
     fputs("  <key>IOSCName</key><string>", f); xml_escape(f, a->name); fputs("</string>\n", f);
     fputs("  <key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key>"

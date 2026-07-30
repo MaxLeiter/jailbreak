@@ -20,6 +20,10 @@
 # Outputs: x11/wayland/out/{iosc, iosc-client, iosc-gpu-client}
 #   iosc is signed on the host after the build (needs ldid) so it is device-ready.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 umask 022
 
 # ---- host launcher: wire the mounts + re-exec in the image, then sign ---------
@@ -29,17 +33,48 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
   REPO_ROOT="$(cd "$X11_DIR/.." && pwd)"                   # repo root
   IMAGE="${IOSC_XBUILD_IMAGE:-procursus-xbuild:bookworm-arm64}"
   command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not found on the host" >&2; exit 1; }
+  command -v cc >/dev/null 2>&1 || { echo "ERROR: cc not found on the host" >&2; exit 1; }
+  IOSC_PLAN_TEST_DIR="$(mktemp -d)"
+  echo "==> testing iosc render-plan damage gate"
+  cc -std=c11 -Wall -Wextra -Werror -I"$HERE" \
+    "$HERE/iosc-render-plan-test.c" \
+    "$HERE/iosc_render_plan.c" \
+    "$HERE/iosc_util.c" \
+    -o "$IOSC_PLAN_TEST_DIR/iosc-render-plan-test"
+  "$IOSC_PLAN_TEST_DIR/iosc-render-plan-test"
+  rm -rf "$IOSC_PLAN_TEST_DIR"
   mkdir -p "$HERE/out"
 
-  mounts=(-v "$X11_DIR:/work/x11:ro" -v "$HERE/out:/out")
-  # Both deb dirs are mounted read-only when present; the inner build searches
-  # /work/debs (linux-build/out) first, then /work/repo-debs (published repo).
+  # Output is per-target: a rootful iosc must not land on top of the rootless one.
+  OUT_DIR="$HERE/out"
+  [ "$XIOS_TARGET_ID" = "rootless-1900" ] || OUT_DIR="$OUT_DIR/targets/$XIOS_TARGET_ID"
+  mkdir -p "$OUT_DIR"
+  mounts=(-v "$X11_DIR:/work/x11:ro" -v "$OUT_DIR:/out")
+
+  # Deb inputs must match the target. linux-build/out and the published repo are
+  # both rootless trees; feeding them to a rootful build would stage /var/jb
+  # payloads into its sysroot and link against the wrong prefix.
   found_debs=0
-  if [ -d "$X11_DIR/linux-build/out" ]; then
-    mounts+=(-v "$X11_DIR/linux-build/out:/work/debs:ro"); found_debs=1
-  fi
-  if [ -d "$REPO_ROOT/repo/debs" ]; then
-    mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); found_debs=1
+  if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
+    if [ -d "$X11_DIR/linux-build/out" ]; then
+      mounts+=(-v "$X11_DIR/linux-build/out:/work/debs:ro"); found_debs=1
+    fi
+    if [ -d "$REPO_ROOT/repo/debs" ]; then
+      mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); found_debs=1
+    fi
+  else
+    TARGET_DEBS="$X11_DIR/linux-build/out/targets/$XIOS_TARGET_ID"
+    if [ -d "$TARGET_DEBS" ]; then
+      mounts+=(-v "$TARGET_DEBS:/work/debs:ro"); found_debs=1
+    fi
+    [ "$found_debs" = 1 ] || {
+      echo "ERROR: no debs for $XIOS_TARGET_ID at $TARGET_DEBS." >&2
+      echo "       Build the Wayland base and an ANGLE package for this target first:" >&2
+      echo "         JOBS=4 bash linux-build/run-target-script.sh $XIOS_TARGET_ID build-wayland.sh" >&2
+      echo "         ANGLE_NO_SHIM=1 ANGLE_BASE_DEB=<published angle deb> \\" >&2
+      echo "           bash ports/angle/package-angle-es3.sh $XIOS_TARGET_ID" >&2
+      exit 1
+    }
   fi
   [ "$found_debs" = 1 ] || {
     echo "ERROR: no deb dir found (looked for $X11_DIR/linux-build/out and $REPO_ROOT/repo/debs)" >&2
@@ -48,19 +83,23 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
 
   echo "==> cross-building iosc in $IMAGE"
   docker run --rm --platform linux/arm64 -e IOSC_XBUILD_INNER=1 \
+    -e XIOS_TARGET="$XIOS_TARGET_ID" \
     -e IOSC_BUILD_XWM="${IOSC_BUILD_XWM:-0}" \
+    -e IOSC_SHIM_ONLY="${IOSC_SHIM_ONLY:-0}" \
     "${mounts[@]}" "$IMAGE" -c "bash /work/x11/wayland/build-iosc.sh"
 
   # Container output is unsigned; sign on the host so it is device-ready (the
   # single easiest thing to forget — the handoff calls it out explicitly).
-  if [ "${IOSC_NO_SIGN:-0}" = "1" ]; then
+  if [ "${IOSC_SHIM_ONLY:-0}" = "1" ]; then
+    echo "==> shim-only pass: no iosc binary to sign"
+  elif [ "${IOSC_NO_SIGN:-0}" = "1" ]; then
     echo "==> IOSC_NO_SIGN=1: skipping host signing (binary is UNSIGNED, not device-ready)"
   elif command -v ldid >/dev/null 2>&1; then
-    echo "==> signing $HERE/out/iosc for device"
-    "$HERE/sign-iosc.sh" "$HERE/out/iosc"
+    echo "==> signing $OUT_DIR/iosc for device"
+    "$HERE/sign-iosc.sh" "$OUT_DIR/iosc"
   else
     echo "!! ldid not found on the host: iosc is UNSIGNED. Before deploying, run:" >&2
-    echo "     $HERE/sign-iosc.sh $HERE/out/iosc" >&2
+    echo "     $HERE/sign-iosc.sh $OUT_DIR/iosc" >&2
   fi
   exit 0
 fi
@@ -86,13 +125,19 @@ DEB_DIRS=""
 
 echo "==> [1/5] extract W0 dev debs (+ angle for the GPU client) into a sysroot"
 echo "   (searching:$DEB_DIRS)"
+# libxcb is only linked by the rootless-Xwayland XWM module, which is off by
+# default -- requiring it unconditionally makes every build depend on a package
+# it will not use.
+XCB_DEBS=""
+[ "${IOSC_BUILD_XWM:-0}" = "1" ] && XCB_DEBS="libxcb1 libxcb1-dev"
+# shellcheck disable=SC2086
 xdeb_extract "$SYS" "$DEB_DIRS" \
   libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
   libxkbcommon-dev libxkbcommon0 \
-  libxcb1 libxcb1-dev
-PREFIX="$SYS/var/jb/usr"       # wayland headers/libs
-ANGLE_INC="$SYS/var/jb/include" # angle EGL/GLES headers
-ANGLE_LIB="$SYS/var/jb/lib/angle"
+  $XCB_DEBS
+PREFIX="$SYS$XIOS_PREFIX/usr"       # wayland headers/libs
+ANGLE_INC="$SYS$XIOS_PREFIX/include" # angle EGL/GLES headers
+ANGLE_LIB="$SYS$XIOS_PREFIX/lib/angle"
 XDG_XML="$PREFIX/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml"
 DECORATION_XML="$PREFIX/share/wayland-protocols/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml"
 ACTIVATION_XML="$PREFIX/share/wayland-protocols/staging/xdg-activation/xdg-activation-v1.xml"
@@ -102,6 +147,9 @@ PRESENTATION_XML="$PREFIX/share/wayland-protocols/stable/presentation-time/prese
 XDG_OUTPUT_XML="$PREFIX/share/wayland-protocols/unstable/xdg-output/xdg-output-unstable-v1.xml"
 TEXT_INPUT_XML="$PREFIX/share/wayland-protocols/unstable/text-input/text-input-unstable-v3.xml"
 INPUT_METHOD_XML="$X11/wayland/protocols/input-method-unstable-v2.xml"
+# v1 is what KWin implements; ios-inputd needs it for the KDE proxy mode (client only,
+# iosc itself stays on v2). See x11/docs/osk-plan.md "KDE flavor".
+INPUT_METHOD_V1_XML="$X11/wayland/protocols/input-method-unstable-v1.xml"
 VIRTUAL_KEYBOARD_XML="$X11/wayland/protocols/virtual-keyboard-unstable-v1.xml"
 LAYER_SHELL_XML="$X11/apps/iosc-shell/protocols/wlr-layer-shell-unstable-v1.xml"
 FOREIGN_TOPLEVEL_XML="$X11/apps/iosc-shell/protocols/wlr-foreign-toplevel-management-unstable-v1.xml"
@@ -131,6 +179,7 @@ KDE_OUTPUT_ORDER_XML="$X11/wayland/protocols/kde-output-order-v1.xml"
 [ -f "$XDG_OUTPUT_XML" ] || { echo "!! xdg-output-unstable-v1.xml not found at $XDG_OUTPUT_XML"; exit 1; }
 [ -f "$TEXT_INPUT_XML" ] || { echo "!! text-input-unstable-v3.xml not found at $TEXT_INPUT_XML"; exit 1; }
 [ -f "$INPUT_METHOD_XML" ] || { echo "!! input-method-unstable-v2.xml not found at $INPUT_METHOD_XML"; exit 1; }
+[ -f "$INPUT_METHOD_V1_XML" ] || { echo "!! input-method-unstable-v1.xml not found at $INPUT_METHOD_V1_XML"; exit 1; }
 [ -f "$VIRTUAL_KEYBOARD_XML" ] || { echo "!! virtual-keyboard-unstable-v1.xml not found at $VIRTUAL_KEYBOARD_XML"; exit 1; }
 [ -f "$LAYER_SHELL_XML" ] || { echo "!! wlr-layer-shell-unstable-v1.xml not found at $LAYER_SHELL_XML"; exit 1; }
 [ -f "$FOREIGN_TOPLEVEL_XML" ] || { echo "!! wlr-foreign-toplevel-management-unstable-v1.xml not found at $FOREIGN_TOPLEVEL_XML"; exit 1; }
@@ -151,7 +200,16 @@ KDE_OUTPUT_ORDER_XML="$X11/wayland/protocols/kde-output-order-v1.xml"
 [ -f "$KDE_OUTPUT_MGMT_XML" ] || { echo "!! kde-output-management-v2.xml not found at $KDE_OUTPUT_MGMT_XML"; exit 1; }
 [ -f "$KDE_PRIMARY_OUTPUT_XML" ] || { echo "!! kde-primary-output-v1.xml not found at $KDE_PRIMARY_OUTPUT_XML"; exit 1; }
 [ -f "$KDE_OUTPUT_ORDER_XML" ] || { echo "!! kde-output-order-v1.xml not found at $KDE_OUTPUT_ORDER_XML"; exit 1; }
-[ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
+# libEGL.dylib in the ANGLE package IS the iosc shim, which this script builds.
+# Bootstrapping a new target is therefore circular: build the shim first against
+# a shim-less ANGLE (ports/angle/package-angle-es3.sh ANGLE_NO_SHIM=1), package
+# ANGLE with it, then build the rest.
+if [ "${IOSC_SHIM_ONLY:-0}" = "1" ]; then
+  [ -f "$ANGLE_LIB/libGLESv2.dylib" ] || { echo "!! angle libGLESv2.dylib not found"; exit 1; }
+  echo "   IOSC_SHIM_ONLY=1: building libiosc_egl.dylib only (bootstrap pass)"
+else
+  [ -f "$ANGLE_LIB/libEGL.dylib" ] || { echo "!! angle libEGL.dylib not found"; exit 1; }
+fi
 
 echo "==> [2/5] host wayland-scanner (codegen only; any recent scanner is ABI-safe)"
 if ! command -v wayland-scanner >/dev/null 2>&1; then
@@ -183,6 +241,8 @@ wayland-scanner private-code  "$TEXT_INPUT_XML" "$GEN/text-input-unstable-v3-pro
 wayland-scanner server-header "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-server-protocol.h"
 wayland-scanner client-header "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-client-protocol.h"
 wayland-scanner private-code  "$INPUT_METHOD_XML" "$GEN/input-method-unstable-v2-protocol.c"
+wayland-scanner client-header "$INPUT_METHOD_V1_XML" "$GEN/input-method-unstable-v1-client-protocol.h"
+wayland-scanner private-code  "$INPUT_METHOD_V1_XML" "$GEN/input-method-unstable-v1-protocol.c"
 wayland-scanner server-header "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-server-protocol.h"
 wayland-scanner client-header "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-client-protocol.h"
 wayland-scanner private-code  "$VIRTUAL_KEYBOARD_XML" "$GEN/virtual-keyboard-unstable-v1-protocol.c"
@@ -254,7 +314,7 @@ echo "   CC=$CC  SDK=$SDK"
 
 CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter -fblocks"
 INCS="-I$PREFIX/include -I$GEN -I$X11/linux-build/patches/xios -I$X11/apps/shared"
-RPATH="-Wl,-rpath,/var/jb/usr/lib"
+RPATH="-Wl,-rpath,$XIOS_PREFIX/usr/lib"
 XWM_CFLAGS=()
 XWM_SRCS=()
 XWM_LIBS=()
@@ -268,6 +328,10 @@ else
 fi
 
 echo "==> [5/5] cross-compile"
+
+# Everything from here to the shim links -lEGL, which IS the shim. On a bootstrap
+# pass for a new target that library does not exist yet, so skip to building it.
+if [ "${IOSC_SHIM_ONLY:-0}" != "1" ]; then
 # Compositor: libwayland-server + xdg-shell + our iosc_iosurface + the Xios IOSurface
 # output path (which now also does the client->server IOSurface import) + the ANGLE GPU
 # compositor (iosc_gl.c: GLES->Metal composite onto the output IOSurface) + frameworks.
@@ -283,6 +347,7 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/wayland/xios_egl.c" \
     "$X11/wayland/xios_metal_sync.m" \
     "$X11/apps/shared/XiosMetalEventBroker.m" \
+    "$X11/apps/shared/iosc_status.c" \
     "$X11/wayland/xios_canvas.c" \
     "$X11/wayland/iosc_input.c" \
     "$X11/wayland/xios_input_socket.c" \
@@ -320,7 +385,7 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon "${XWM_LIBS[@]}" \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
-    $RPATH -Wl,-rpath,/var/jb/lib/angle -o /out/iosc
+    $RPATH -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/iosc
 echo "   built /out/iosc"
 
 # Package-owned Mach-service broker. MTLSharedEventHandle is transported by
@@ -338,11 +403,14 @@ $CC $CFLAGS \
     $RPATH -o /out/iosc-input-test
 echo "   built /out/iosc-input-test"
 
-# External-compositor input bridge: listens for the same Xios input socket as
-# iosc, then forwards text/keys through input-method-v2 + virtual-keyboard-v1.
+# External-compositor input bridge. Root mode (wlroots): listens for the same Xios
+# input socket as iosc and forwards text/keys through input-method-v2 +
+# virtual-keyboard-v1. Proxy mode (KDE): connects to iosc's socket as the
+# input-method proxy and drives KWin's input-method-v1.
 $CC $CFLAGS $INCS \
     "$X11/wayland/ios-inputd.c" \
     "$X11/wayland/iosc_input.c" \
+    "$GEN/input-method-unstable-v1-protocol.c" \
     "$GEN/input-method-unstable-v2-protocol.c" \
     "$GEN/virtual-keyboard-unstable-v1-protocol.c" \
     -L"$PREFIX/lib" -lwayland-client -lxkbcommon \
@@ -449,14 +517,16 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-client \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
-    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/iosc-gpu-client
+    -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/iosc-gpu-client
 echo "   built /out/iosc-gpu-client"
+
+fi   # end of the -lEGL section skipped by IOSC_SHIM_ONLY
 
 # wayland-egl↔ANGLE shim (libiosc_egl.dylib): a libEGL that forwards to ANGLE and
 # routes window surfaces through IOSurface + iosc_iosurface. dlopens the real
 # ANGLE libEGL at runtime (not linked); links libwayland-client + GLESv2 + frameworks.
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
-    -dynamiclib -install_name /var/jb/usr/local/lib/libiosc_egl.dylib \
+    -dynamiclib -install_name $XIOS_PREFIX/usr/local/lib/libiosc_egl.dylib \
     "$X11/wayland/iosc_egl_shim.c" \
     "$X11/wayland/xios_metal_sync.m" \
     "$X11/apps/shared/XiosMetalEventBroker.m" \
@@ -464,8 +534,13 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-client \
     -L"$ANGLE_LIB" -lGLESv2 \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
-    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/libiosc_egl.dylib
+    -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/libiosc_egl.dylib
 echo "   built /out/libiosc_egl.dylib"
+if [ "${IOSC_SHIM_ONLY:-0}" = "1" ]; then
+  echo "==> shim-only bootstrap done. Next: package ANGLE for this target with it,"
+  echo "    then re-run without IOSC_SHIM_ONLY to build iosc itself."
+  exit 0
+fi
 
 # EGL test client: standard wl_egl_window + EGL window-surface API against the shim
 # (NO direct ANGLE EGL link — EGL symbols resolve to the shim). Validates the shim.
@@ -475,7 +550,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-client -lwayland-egl \
     -L/out -liosc_egl \
     -L"$ANGLE_LIB" -lGLESv2 \
-    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -Wl,-rpath,/var/jb/usr/local/lib \
+    -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -Wl,-rpath,$XIOS_PREFIX/usr/local/lib \
     -o /out/iosc-egl-client
 echo "   built /out/iosc-egl-client"
 

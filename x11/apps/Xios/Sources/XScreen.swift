@@ -4,6 +4,7 @@ import Metal
 import QuartzCore
 import IOSurface
 import Darwin
+import OSLog
 
 /// Root VC: a full-screen view that displays the X server's framebuffer.
 final class XServerViewController: UIViewController {
@@ -21,30 +22,22 @@ final class XServerViewController: UIViewController {
     }
 }
 
-/// Displays an X11 framebuffer on a CAMetalLayer at native retina resolution and
-/// injects touch as X pointer events via XTEST/iosc input. The public display path
-/// is IOSurface: `xios.json` must advertise `"ddx":"iosurface"`, then the app maps
-/// that IOSurface into a Metal texture and re-presents only on damage.
+/// Displays a compositor IOSurface on a CAMetalLayer at native retina resolution
+/// and forwards UIKit input over the compositor's input socket. `xios.json` must
+/// advertise `"ddx":"iosurface"` and the exact runtime endpoints.
 final class XScreenView: UIView {
     private var fbWidth = 1024
     private var fbHeight = 768
     private var selectedConfigPath: String?
     private var configPath: String { selectedConfigPath ?? XiosRuntimePaths.firstExisting("xios.json") }
-    // Which X display to drive (XTEST input). The server advertises this in
-    // xios.json so the app and the launch scripts can't disagree; `:3` is only the
-    // holding default before config arrives. Not pinned: the
-    // picker can switch it to any open display (see discoverDisplays()/load()).
+    // Session display label advertised in xios.json. Xwayland may use the same
+    // number, but UIKit input always enters through the compositor.
     private var xDisplay = ":3"
-    private var xAuthPath: String?              // MIT-MAGIC-COOKIE-1 file from xios.json
-    private var xunixDirs: [String] {
-        ["/tmp/.X11-unix", XiosRuntimePaths.tmp(".X11-unix"), "/var/jb/tmp/.X11-unix", "/var/tmp/.X11-unix"]
-    }
     // Bumped on every load(); the async IOSurface connect captures it and bails if a
     // newer load() superseded it, so switching displays can't adopt a stale surface.
     private var loadGeneration = 0
     private var userPinned = false              // user picked a display → stop auto-reloading xios.json
     private weak var pickerOverlay: UIView?
-    private var requestPath: String { XiosRuntimePaths.tmp("xios-request.json") }
     private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
     private var sessionStatusPath: String { XiosRuntimePaths.firstExisting("xios-session-status.json") }
     private var displayRegistryDir: String { XiosRuntimePaths.tmp("xios-displays.d") }
@@ -111,7 +104,6 @@ final class XScreenView: UIView {
     private var pinchAnchorFramebuffer: CGPoint?
     private var panStartOffset = CGPoint.zero
     private var panLastTranslation = CGPoint.zero
-    private var scrollRemainder = CGPoint.zero
 
     // MARK: scroll + long-press gesture state
     /// Sub-1/256-px scroll remainder for the iosc AXIS path (wl_fixed units).
@@ -179,6 +171,40 @@ final class XScreenView: UIView {
     private var iosurfaceCompositorID = ""
 
     private var displayLink: CADisplayLink?
+    // MARK: display pacing (P0.4's remaining half)
+    // The link's targetTimestamp is the deadline for the frame being built. Sent to
+    // the compositor each tick (xsurface_pacing), it turns iosc's already-coalesced
+    // repaint from event-loop paced into vblank paced. The frame rate is a RANGE, not
+    // a fixed number: preferredFramesPerSecond is deprecated in favour of
+    // preferredFrameRateRange, and a range is something CoreAnimation can settle
+    // inside on its own rather than a hard flip between two values. The thermal track
+    // clamps `pacingRange` — that is the seam it needs.
+    private var pacingRange = XScreenView.liveFrameRate
+    /// The idle/no-signal holding frame: nothing is animating, so ask for very little.
+    private static let holdingFrameRate = CAFrameRateRange(minimum: 10, maximum: 20, preferred: 20)
+    /// A live desktop. The floor is deliberately well below the ceiling so
+    /// CoreAnimation can throttle a thermally constrained A10 without stuttering.
+    private static let liveFrameRate = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+    /// Refresh interval the link last reported, for the status line.
+    private var lastLinkIntervalUs: UInt32 = 0
+
+    // Instruments needs named intervals to show where a frame went; without them the
+    // present path is an anonymous slice of the main thread. Two intervals: `present`
+    // covers building and committing the frame, `upscale` the MetalFX stage inside it,
+    // so "did upscaling actually get cheaper" is a readable comparison rather than an
+    // inference from fps. A disabled signposter compiles down to nothing.
+    private let signposter = OSSignposter(
+        subsystem: "com.max.xios", category: "present")
+
+    // MARK: present-side MetalFX upscaling (see XiosUpscale.swift)
+    // OFF by default: this lands as an opt-in you can measure, not a silent change to
+    // what the desktop looks like. Switched at runtime from XIOS_UPSCALE in our own
+    // environment, or from xios.json's "upscale" field — which is the production knob,
+    // because FrontBoard launches us with no environment of our own (iosc forwards its
+    // IOSC_UPSCALE into the config it already writes).
+    private var upscaleMode = XiosUpscaleMode.off
+    private var upscaler: XiosUpscaler?
+    private var lastUpscaleStatus = ""
     private var testBuf: UnsafeMutablePointer<UInt8>?
     private var usingTestPattern = false
     // The animated test card is a LAST-RESORT no-signal diagnostic only. During
@@ -189,10 +215,8 @@ final class XScreenView: UIView {
     private var inputConnected = false
     private var tickCount = 0
 
-    // iosc (Wayland compositor) input path. When the app displays iosc's output rather
-    // than an X server, single-finger touch + the keyboard are forwarded over this Unix
-    // socket as Wayland pointer/keyboard events (see IoscInput.h) instead of via XTEST.
-    // nil = not iosc mode (use the XTEST path). Resolved in loadConfig() from xios.json.
+    // The compositor advertises its per-slot input and clipboard endpoints in
+    // xios.json. Missing endpoints are configuration errors.
     private var ioscInputSock: String?
     private var ioscClipboardSock: String?
     private var inputConfigurationError: String?
@@ -293,6 +317,10 @@ final class XScreenView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
 
     func start() {
+        // Name this process in the shared status table explicitly rather than relying
+        // on getprogname(), and let iosc_status drop any table a previous (killed)
+        // instance left behind — see iosc_status.c's init_paths.
+        iosc_status_set_producer("Xios")
         loadConfig()
         installLifecycleObservers()
         SystemIntegration.shared.install(on: self)
@@ -304,6 +332,9 @@ final class XScreenView: UIView {
         // Retry once we become active/foreground, where the GPU is reachable.
         if !setupMetal() { return }
         metalReady = true
+        // loadConfig() above already decided the upscale mode, but there was no device
+        // to build the pass with. Now there is.
+        syncUpscaler()
 
         awaitingCompositor = true
         startTestPattern()
@@ -319,8 +350,9 @@ final class XScreenView: UIView {
         isAccessibilityElement = false
         XiosA11yClient.shared.startup(view: self)
 
-        let dl = CADisplayLink(target: self, selector: #selector(tick))
-        dl.preferredFramesPerSecond = usingTestPattern ? 20 : 60
+        let dl = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        pacingRange = usingTestPattern ? Self.holdingFrameRate : Self.liveFrameRate
+        dl.preferredFrameRateRange = pacingRange
         dl.add(to: .main, forMode: .common)
         displayLink = dl
 
@@ -358,6 +390,10 @@ final class XScreenView: UIView {
         if metalReady {
             teardownConnections(resetTransform: false)
             texture = nil                    // release even a diagnostic holding frame
+            // The intermediate + staging targets are a few MB of private GPU storage;
+            // a backgrounded app has no business pinning them where jetsam can see it.
+            // The mode is kept, so becoming active rebuilds them on the first frame.
+            upscaler?.releaseResources()
             awaitingCompositor = true
             writeStatus()
         }
@@ -377,6 +413,7 @@ final class XScreenView: UIView {
         if ddxIsIOSurface { startIOSurfaceConnect() }
         connectInput()
         displayLink?.isPaused = false
+        syncUpscaler()      // rebuild the pass backgrounding released
         writeStatus()
     }
 
@@ -393,7 +430,29 @@ final class XScreenView: UIView {
         testPatternStartTick = tickCount
         makeTexture(width: width, height: height)
         needsPresent = true         // upload + present the initial clean-black frame once
-        displayLink?.preferredFramesPerSecond = 20
+        setPacingRange(Self.holdingFrameRate)
+    }
+
+    /// Single place the display link's frame-rate range is applied, so the thermal
+    /// track has one lever to clamp and the status line one place to publish from.
+    private func setPacingRange(_ range: CAFrameRateRange) {
+        pacingRange = range
+        displayLink?.preferredFrameRateRange = range
+        publishPacingStatus()
+    }
+
+    private func publishPacingStatus() {
+        // "vblank" is the app's claim that it IS driving the compositor's clock; the
+        // compositor publishes its own `pacing` key saying whether it accepted one
+        // (an old iosc ignores the record). Both appear in `xios-status`, attributed.
+        let interval = lastLinkIntervalUs > 0
+            ? String(format: " interval=%.2fms", Double(lastLinkIntervalUs) / 1000.0)
+            : ""
+        // `preferred` is optional in the SDK: nil means "no preference, settle
+        // anywhere in the range", which is worth showing as such rather than as 0.
+        let preferred = pacingRange.preferred.map { String(format: "/%g", $0) } ?? ""
+        let fps = String(format: "%g-%g", pacingRange.minimum, pacingRange.maximum)
+        iosc_status_set_value("pacing", "vblank fps=\(fps)\(preferred)\(interval)")
     }
 
     // MARK: IOSurface (zero-copy) path
@@ -448,7 +507,7 @@ final class XScreenView: UIView {
         testBuf?.deallocate(); testBuf = nil
         texture = nil                             // drop the test-pattern texture (~14 MB)
         needsPresent = true                       // present the initial frame
-        displayLink?.preferredFramesPerSecond = 60
+        setPacingRange(Self.liveFrameRate)
         connectInput()
         if usingIosc {
             SystemIntegration.shared.syncOutputNow()
@@ -752,13 +811,116 @@ final class XScreenView: UIView {
         let socket: String?
         let width: Int?
         let height: Int?
+        /// Present-side upscaling, forwarded by the compositor from IOSC_UPSCALE.
+        /// Deliberately NOT part of renderStateChanged below: it changes only how the
+        /// app scales its own drawable, so picking up a new value must not tear down
+        /// and re-adopt the IOSurface.
+        let upscale: String?
         init(_ obj: [String: Any]) {
             // Presence of "ddx":"iosurface" selects the zero-copy IOSurface path.
             isIOSurface = (obj["ddx"] as? String) == "iosurface"
             socket = (obj["socket"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             width = (obj["width"] as? Int).flatMap { $0 > 0 ? $0 : nil }
             height = (obj["height"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+            upscale = (obj["upscale"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         }
+    }
+
+    /// Last `upscale` hint the compositor advertised, kept so the mode can be
+    /// re-resolved when the in-app choice changes without re-reading xios.json.
+    private var compositorUpscaleHint: String?
+
+    private static let upscaleDefaultsKey = "XiosUpscale"
+
+    /// Resolve the upscale mode, most specific authority first:
+    ///   1. the in-app choice — the user is the most specific authority there is, and
+    ///      a settings toggle a compositor hint could override would be a lie;
+    ///   2. XIOS_UPSCALE in our own environment, for a shell-launched debug run;
+    ///   3. the compositor's xios.json hint (its IOSC_UPSCALE, forwarded);
+    ///   4. off.
+    private func resolveUpscaleMode() -> XiosUpscaleMode {
+        if let raw = UserDefaults.standard.string(forKey: Self.upscaleDefaultsKey),
+           !raw.isEmpty {
+            return XiosUpscaleMode.parse(raw)
+        }
+        if let env = ProcessInfo.processInfo.environment["XIOS_UPSCALE"], !env.isEmpty {
+            return XiosUpscaleMode.parse(env)
+        }
+        return XiosUpscaleMode.parse(compositorUpscaleHint)
+    }
+
+    /// Whether the user has made an explicit in-app choice (vs inheriting a hint).
+    private var hasUpscalePreference: Bool {
+        (UserDefaults.standard.string(forKey: Self.upscaleDefaultsKey) ?? "").isEmpty == false
+    }
+
+    /// Apply and persist an in-app choice. Takes effect on the NEXT FRAME — no session
+    /// restart — because upscaling is present-side only: nothing about the compositor's
+    /// output or any client's view of it changes. Passing nil clears the choice and
+    /// falls back to the environment/compositor hint.
+    private func setUpscalePreference(_ mode: XiosUpscaleMode?) {
+        if let mode {
+            UserDefaults.standard.set(mode.spec, forKey: Self.upscaleDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.upscaleDefaultsKey)
+        }
+        applyUpscaleMode(resolveUpscaleMode())
+        lastToolMessage = upscaleMode.isOff
+            ? "Rendering at full panel resolution"
+            : "Rendering at \(upscaleMode.title) below panel, MetalFX scaling up"
+    }
+
+    private func applyUpscaleMode(_ mode: XiosUpscaleMode) {
+        guard mode != upscaleMode else { return }
+        upscaleMode = mode
+        needsPresent = true
+        syncUpscaler()
+    }
+
+    /// Make the MetalFX pass match `upscaleMode`. Idempotent, and deliberately safe to
+    /// call before Metal exists: start() runs loadConfig() — and therefore
+    /// applyUpscaleMode — BEFORE setupMetal(), so the first call for a config that asks
+    /// for upscaling always arrives with no device yet. Attaching only from
+    /// applyUpscaleMode left the upscaler permanently nil in exactly that case, because
+    /// its `mode != upscaleMode` guard makes every later config poll a no-op; the mode
+    /// was right and nothing was ever built from it. Hence a separate idempotent step,
+    /// called again once Metal is up and on every foreground.
+    private func syncUpscaler() {
+        guard metalReady, let device else { return }
+        if upscaleMode.isOff {
+            guard upscaler != nil else { return }
+            upscaler?.releaseResources()
+            upscaler = nil
+            metalLayer.framebufferOnly = true   // back to the cheaper direct-path drawable
+            publishUpscaleStatus(nil)
+            return
+        }
+        guard upscaler == nil else { return }
+        // MetalFX writes the output texture, which framebufferOnly forbids. Only
+        // relaxed while upscaling is on, so the default path keeps the tighter
+        // drawable it has always had.
+        metalLayer.framebufferOnly = false
+        upscaler = XiosUpscaler(device: device)
+        needsPresent = true
+        if !XiosUpscaler.supported(device) {
+            // Probed YES on the A10 target, but never assume: a device whose spatial
+            // scaler says no degrades to the direct present, and says so.
+            publishUpscaleStatus(nil)
+        }
+    }
+
+    /// `upscale=` in the runtime status table. Upscaling changes what the user sees,
+    /// so it is never allowed to be undiscoverable (docs/ios-platform-features.md §0).
+    private func publishUpscaleStatus(_ plan: XiosUpscaler.Plan?) {
+        let value: String
+        if let upscaler, !upscaleMode.isOff {
+            value = upscaler.statusValue(for: plan)
+        } else {
+            value = "off"
+        }
+        guard value != lastUpscaleStatus else { return }
+        lastUpscaleStatus = value
+        iosc_status_set_value("upscale", value)
     }
 
     @discardableResult
@@ -769,7 +931,6 @@ final class XScreenView: UIView {
         let oldWidth = fbWidth
         let oldHeight = fbHeight
         let oldDisplay = xDisplay
-        let oldAuth = xAuthPath
         let oldIsIOSurface = ddxIsIOSurface
         let oldSocket = ddxSockPath
         let oldIoscSock = ioscInputSock
@@ -783,26 +944,23 @@ final class XScreenView: UIView {
         if let h = ddx.height { fbHeight = h }
         ddxIsIOSurface = ddx.isIOSurface
         if let s = ddx.socket { ddxSockPath = s }
-        // Honor the display the server actually started on (set via $DISP), instead
-        // of pinning XTEST input to :3.
+        // Keep the session's display label for diagnostics and display selection.
         if let d = obj["display"] as? String, !d.isEmpty { xDisplay = d }
-        // Cookie file locking the display (server uses xauth instead of -ac).
-        if let a = obj["xauth"] as? String, !a.isEmpty { xAuthPath = a }
         // Wayland compositors advertise their exact input endpoint. Never infer a
         // process-global socket from the DDX filename: slots can run concurrently,
         // and sending to the wrong compositor is worse than reporting a stale config.
         if ddxIsIOSurface {
             if let s = obj["input_socket"] as? String, !s.isEmpty {
                 ioscInputSock = s
-            } else if ddxSockPath.contains("iosc") {
+            } else {
                 inputConfigurationError =
-                    "iosc config is missing input_socket; restart/update the compositor"
+                    "config is missing input_socket; restart/update the compositor"
             }
             if let s = obj["clipboard_socket"] as? String, !s.isEmpty {
                 ioscClipboardSock = s
-            } else if ddxSockPath.contains("iosc") {
+            } else {
                 clipboardConfigurationError =
-                    "iosc config is missing clipboard_socket; restart/update the compositor"
+                    "config is missing clipboard_socket; restart/update the compositor"
             }
         }
         if let sock = ioscInputSock {
@@ -813,7 +971,7 @@ final class XScreenView: UIView {
 
         let renderStateChanged = oldWidth != fbWidth || oldHeight != fbHeight ||
             oldIsIOSurface != ddxIsIOSurface || oldSocket != ddxSockPath
-        let inputStateChanged = oldDisplay != xDisplay || oldAuth != xAuthPath ||
+        let inputStateChanged = oldDisplay != xDisplay ||
             oldIoscSock != ioscInputSock || oldIoscClipSock != ioscClipboardSock ||
             oldInputConfigurationError != inputConfigurationError ||
             oldClipboardConfigurationError != clipboardConfigurationError
@@ -827,6 +985,10 @@ final class XScreenView: UIView {
         if oldIoscSock != ioscInputSock {
             owningViewController()?.setNeedsUpdateOfSupportedInterfaceOrientations()
         }
+        // After the render/input decisions, because it deliberately does not
+        // participate in them: flipping the upscale knob must not re-adopt the surface.
+        compositorUpscaleHint = ddx.upscale
+        applyUpscaleMode(resolveUpscaleMode())
         return true
     }
 
@@ -879,12 +1041,13 @@ final class XScreenView: UIView {
         }
     }
 
-    @objc private func tick() {
+    @objc private func tick(_ link: CADisplayLink) {
         guard !appIsBackgrounded else { return }
         tickCount += 1
+        sendPacing(link)
         serviceIoscClipboard()
         serviceIoscInputTraits()
-        if inputConnected && !(usingIosc ? iosc_input_is_open() : xinput_is_open()) {
+        if inputConnected && !iosc_input_is_open() {
             inputConnected = false
             writeStatus()
         }
@@ -922,7 +1085,7 @@ final class XScreenView: UIView {
                 // record. Never sample that asynchronously rendered surface
                 // until its matching brokered GPU fence has arrived; an empty
                 // sequence here is startup ordering, not a malformed frame.
-                if usingIosc && seq == 0 {
+                if seq == 0 {
                     return
                 }
                 let fence = gpuFence(for: conn)
@@ -994,6 +1157,36 @@ final class XScreenView: UIView {
         if render(texture) { needsPresent = false }
     }
 
+    /// Hand the compositor this tick's deadline so its coalesced repaint can be
+    /// vblank-paced instead of event-loop paced (P0.4). Sent first thing in the tick,
+    /// while `targetTimestamp` still describes the frame we are about to build.
+    ///
+    /// Everything on the wire is a delta from *now*: `targetTimestamp` lives in
+    /// CACurrentMediaTime()'s domain and the compositor works in CLOCK_MONOTONIC, so
+    /// a delta is the only thing both sides can read without a shared epoch.
+    private func sendPacing(_ link: CADisplayLink) {
+        guard let conn = xconn else { return }
+        // duration is the link's own idea of the interval; targetTimestamp - timestamp
+        // is what it actually got this tick. Prefer the latter and fall back.
+        var interval = link.targetTimestamp - link.timestamp
+        if !(interval > 0) { interval = link.duration }
+        guard interval > 0, interval < 1 else { return }   // no clock yet, or nonsense
+
+        let untilDeadline = link.targetTimestamp - CACurrentMediaTime()
+        let untilUs = (untilDeadline * 1_000_000).rounded()
+        let intervalUs = UInt32((interval * 1_000_000).rounded())
+        lastLinkIntervalUs = intervalUs
+
+        _ = xsurface_pacing(conn,
+                            Int32(clamping: Int(untilUs.isFinite ? untilUs : 0)),
+                            intervalUs,
+                            Int32((pacingRange.minimum * 1000).rounded()),
+                            Int32((pacingRange.maximum * 1000).rounded()))
+        // Republish once the real interval is known, so `pacing=` reports the rate
+        // CoreAnimation settled on rather than only the range we asked for.
+        if tickCount % 120 == 0 { publishPacingStatus() }
+    }
+
     /// Draw the texture using the current fit/zoom/pan transform.
     private func gpuFence(for conn: OpaquePointer) -> (MTLSharedEvent, UInt64)? {
         presentFenceDecodeFailed = false
@@ -1001,10 +1194,8 @@ final class XScreenView: UIView {
         var length = 0
         var value: UInt64 = 0
         guard xsurface_gpu_fence_token(conn, &bytes, &length, &value) != 0 else {
-            if usingIosc {
-                dbg("gpu-fence-missing-for-iosc-frame")
-                presentFenceDecodeFailed = true
-            }
+            dbg("gpu-fence-missing-for-frame")
+            presentFenceDecodeFailed = true
             return nil
         }
         guard let bytes, length > 0, value > 0 else {
@@ -1037,6 +1228,8 @@ final class XScreenView: UIView {
                         conn: OpaquePointer? = nil,
                         waitEvent: MTLSharedEvent? = nil,
                         waitValue: UInt64 = 0) -> Bool {
+        let presentInterval = signposter.beginInterval("present")
+        defer { signposter.endInterval("present", presentInterval) }
         guard let drawable = metalLayer.nextDrawable(),
               let cmd = queue.makeCommandBuffer(),
               let fit = fitTransform(),
@@ -1044,9 +1237,25 @@ final class XScreenView: UIView {
         if let waitEvent, waitValue > 0 {
             cmd.encodeWaitForEvent(waitEvent, value: waitValue)
         }
+        // Optional MetalFX stage: composite into a smaller intermediate and let the
+        // spatial scaler blow it up to the drawable. The fit transform needs no
+        // adjustment — clipVertices() is in normalised device coordinates, and the
+        // intermediate is a uniform scale of the drawable, so the same vertices frame
+        // the desktop identically in both. A nil plan is the direct present, which is
+        // the default and what every failure path degrades to.
+        let plan = upscaler?.plan(
+            mode: upscaleMode,
+            drawableWidth: Int(metalLayer.drawableSize.width),
+            drawableHeight: Int(metalLayer.drawableSize.height),
+            sourceWidth: tex.width,
+            sourceHeight: tex.height,
+            drawableTexture: drawable.texture,
+            pixelFormat: metalLayer.pixelFormat)
+        publishUpscaleStatus(plan)
+
         // triangle strip: TL, BL, TR, BR  (pos.xy, uv.xy); uv origin top-left
         let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = drawable.texture
+        rpd.colorAttachments[0].texture = plan?.source ?? drawable.texture
         rpd.colorAttachments[0].loadAction = .clear
         rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         rpd.colorAttachments[0].storeAction = .store
@@ -1056,11 +1265,38 @@ final class XScreenView: UIView {
         enc.setFragmentTexture(tex, index: 0)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         enc.endEncoding()
+        if let plan, let upscaler {
+            let up = signposter.beginInterval("upscale")
+            upscaler.encode(plan, into: drawable.texture, commandBuffer: cmd)
+            signposter.endInterval("upscale", up)
+        }
         if let conn, presentedSeq != 0 {
-            cmd.addCompletedHandler { [weak self] _ in
+            // Ack on the DRAWABLE's presented handler, not the command buffer's
+            // completed handler. Completion means "the GPU finished rendering"; the
+            // presentation-time protocol asks for the moment the content actually
+            // reached the display, which is what presentedTime reports — acking at
+            // completion is how the old feedback ran up to a frame early. Moving the
+            // ack here is also what makes wl_surface.frame callbacks retire on
+            // present rather than on repaint, which is the rest of P0.4.
+            //
+            // The handler fires even for a drawable that never made it to the panel
+            // (presentedTime == 0), which is the case worth acking without a
+            // measurement rather than not at all. If the process is suspended before
+            // it runs at all, iosc's existing 100ms present-ack valve retires the
+            // callbacks — that valve is exactly the safety net this needs, so there
+            // is no second ack path here to race with.
+            drawable.addPresentedHandler { [weak self] presented in
+                let at = presented.presentedTime
                 DispatchQueue.main.async {
                     guard let self, self.xconn == conn else { return }
-                    _ = xsurface_presented(conn, presentedSeq)
+                    guard at > 0 else {
+                        _ = xsurface_presented(conn, presentedSeq)
+                        return
+                    }
+                    let ageUs = (max(0, CACurrentMediaTime() - at) * 1_000_000).rounded()
+                    _ = xsurface_presented_at(
+                        conn, presentedSeq,
+                        UInt32(clamping: Int(ageUs.isFinite ? ageUs : 0)))
                 }
             }
         }
@@ -1091,7 +1327,7 @@ final class XScreenView: UIView {
                 inp = "input-connected \(iosurfaceCompositorID)(wayland)"
             }
         } else {
-            inp = "input-connected \(xDisplay)"
+            inp = "input-configuration-missing"
         }
         var lines = [fb, inp]
         if let error = inputConfigurationError {
@@ -1105,24 +1341,6 @@ final class XScreenView: UIView {
             atomically: true,
             encoding: .utf8)
         refreshShellOverlay()
-    }
-
-    private var displayProfiles: [DisplayProfile] {
-        let nb = UIScreen.main.nativeBounds
-        let nativeW = max(Int(nb.width), Int(nb.height))
-        let nativeH = min(Int(nb.width), Int(nb.height))
-        return [
-            DisplayProfile(name: "Performance", width: 1024, height: 768, dpi: 96,
-                           detail: "1024x768 @ 96 DPI"),
-            DisplayProfile(name: "Balanced", width: 1366, height: 1024, dpi: 132,
-                           detail: "1366x1024 @ 132 DPI"),
-            DisplayProfile(name: "Native", width: nativeW, height: nativeH, dpi: 264,
-                           detail: "\(nativeW)x\(nativeH) @ 264 DPI"),
-            DisplayProfile(name: "Retina Text", width: nativeW, height: nativeH, dpi: 220,
-                           detail: "\(nativeW)x\(nativeH) @ 220 DPI"),
-            DisplayProfile(name: "Current", width: fbWidth, height: fbHeight, dpi: 0,
-                           detail: "\(fbWidth)x\(fbHeight), keep DPI"),
-        ]
     }
 
     private var sessionDisplayProfiles: [DisplayProfile] {
@@ -1158,28 +1376,6 @@ final class XScreenView: UIView {
             return "\(p.name): \(p.detail)" + (p.dpi > 0 ? " at \(p.dpi) DPI" : "")
         }
         return "Each desktop uses its own default size"
-    }
-
-    private func writeDisplayRequest(_ profile: DisplayProfile) {
-        var obj: [String: Any] = [
-            "action": "display-profile",
-            "profile": profile.name,
-            "width": profile.width,
-            "height": profile.height,
-            "display": xDisplay,
-            "backend": "iosurface",
-            "created_by": "Xios.app",
-            "created_at": ISO8601DateFormatter().string(from: Date()),
-        ]
-        if profile.dpi > 0 { obj["dpi"] = profile.dpi }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
-            try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
-            lastToolMessage = "Wrote \(profile.detail)"
-        } catch {
-            lastToolMessage = "Request failed: \(error.localizedDescription)"
-        }
-        writeDebugSnapshot()
     }
 
     /// Blocking worker primitive. UI actions dispatch this through requestIOSCD.
@@ -1316,11 +1512,10 @@ final class XScreenView: UIView {
         writeStatus()
     }
 
-    /// Tear down whichever input backend is connected (XTEST or iosc).
+    /// Tear down connections tied to the compositor input endpoint.
     private func closeInput() {
         hardwareKeyboard.releasePressedKeys()
         releaseHardwarePointerButtons()
-        xinput_close()
         iosc_input_close()
         iosc_clipboard_close()
         inputConnected = false
@@ -1334,7 +1529,7 @@ final class XScreenView: UIView {
 
     private func inputBackendName() -> String {
         if inputConfigurationError != nil { return "misconfigured" }
-        return usingIosc ? "iosc" : "XTEST"
+        return usingIosc ? "iosc" : "not-configured"
     }
 
     private static func parseTouchPointerPolicy(_ obj: [String: Any]) -> Bool? {
@@ -1485,8 +1680,6 @@ final class XScreenView: UIView {
         let nb = UIScreen.main.nativeBounds
         let cfg = (try? String(contentsOfFile: configPath, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "(missing)"
-        let req = (try? String(contentsOfFile: requestPath, encoding: .utf8))?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "(missing)"
         return [
             "Xios Debug",
             "display=\(xDisplay)",
@@ -1496,7 +1689,6 @@ final class XScreenView: UIView {
             "view=\(Int(bounds.width))x\(Int(bounds.height)) drawable=\(Int(ds.width))x\(Int(ds.height)) scale=\(metalLayer.contentsScale)",
             "native=\(Int(nb.width))x\(Int(nb.height)) zoom=\(Int((zoomScale * 100).rounded())) pan=\(Int(panOffset.x)),\(Int(panOffset.y))",
             "input=\(inputConnected ? "connected" : "not-connected") backend=\(inputBackendName())",
-            "xauth=\(xAuthPath ?? "(none)")",
             "ddx_socket=\(ddxSockPath)",
             "iosc_input=\(ioscInputSock ?? "(none)")",
             "iosc_clipboard=\(ioscClipboardSock ?? "(none)")",
@@ -1505,7 +1697,6 @@ final class XScreenView: UIView {
             "test_pattern=\(usingTestPattern)",
             "last_message=\(lastToolMessage)",
             "xios_json=\(cfg)",
-            "xios_request=\(req)",
         ].joined(separator: "\n") + "\n"
     }
 
@@ -1520,25 +1711,15 @@ final class XScreenView: UIView {
         lastToolMessage = "Copied debug"
     }
 
-    // MARK: input (XTEST)
+    // MARK: compositor input
 
     private func connectInput() {
-        guard inputConfigurationError == nil else {
+        guard inputConfigurationError == nil, let sock = ioscInputSock else {
             inputConnected = false
             return
         }
-        if let sock = ioscInputSock {
-            // Wayland (iosc): one persistent Unix socket, no display/auth handshake.
-            if inputConnected && iosc_input_is_open() { return }
-            inputConnected = iosc_input_open(sock)
-            return
-        }
-        if inputConnected && xinput_is_open() { return }
-        if inputConnected { inputConnected = false }
-        // Authenticate the XTEST connection with the per-display cookie the server
-        // wrote (it locks the display with xauth instead of -ac). Harmless if absent.
-        if let a = xAuthPath { setenv("XAUTHORITY", a, 1) }
-        inputConnected = xinput_open(xDisplay)
+        if inputConnected && iosc_input_is_open() { return }
+        inputConnected = iosc_input_open(sock)
     }
 
     private func serviceIoscInputTraits() {
@@ -1763,55 +1944,30 @@ final class XScreenView: UIView {
         clipSuppressText = text; clipSuppressPNG = png
     }
 
-    // Route one pointer/key event to the active backend: iosc (Wayland) or XTEST.
     private func sendMotion(_ x: Int32, _ y: Int32) {
-        if usingIosc { iosc_input_motion(x, y) } else { xinput_motion(x, y) }
+        iosc_input_motion(x, y)
     }
     private func sendButton(_ button: Int32, _ down: Bool, at p: (Int32, Int32)?) {
-        if usingIosc {
-            let q = p ?? lastTouchPt ?? (Int32(0), Int32(0))
-            iosc_input_button(button, down, q.0, q.1)
-        } else {
-            xinput_button(button, down)
-        }
+        let q = p ?? lastTouchPt ?? (Int32(0), Int32(0))
+        iosc_input_button(button, down, q.0, q.1)
     }
     private func sendKeysym(_ ks: UInt, ctrl: Bool, alt: Bool, shift: Bool) {
-        if usingIosc {
-            var mods: UInt32 = 0
-            if shift { mods |= 1 }; if ctrl { mods |= 2 }; if alt { mods |= 4 }
-            // Accessory/OSK keys are taps. Hardware uses sendHardwareKey() below
-            // and preserves independent down/up transitions.
-            iosc_input_key(UInt32(ks), true, mods)
-            iosc_input_key(UInt32(ks), false, 0)
-        } else {
-            _ = xinput_type_keysym_mods(ks, ctrl, alt, shift, false)
-        }
+        var mods: UInt32 = 0
+        if shift { mods |= 1 }; if ctrl { mods |= 2 }; if alt { mods |= 4 }
+        // Accessory/OSK keys are taps. Hardware uses sendHardwareKey() below
+        // and preserves independent down/up transitions.
+        iosc_input_key(UInt32(ks), true, mods)
+        iosc_input_key(UInt32(ks), false, 0)
     }
 
     private func sendHardwareKey(_ keysym: UInt32, down: Bool, modifiers: UInt32) {
         guard inputConnected else { return }
-        if usingIosc {
-            iosc_input_key(keysym, down, modifiers)
-        } else {
-            let keycode = xinput_keycode_for_keysym(UInt(keysym))
-            if keycode != 0 {
-                xinput_key(keycode, down)
-                xinput_flush()
-            }
-        }
+        iosc_input_key(keysym, down, modifiers)
     }
 
     private func sendText(_ text: String) {
         guard inputConnected else { return }
-        if usingIosc {
-            text.withCString { iosc_input_text($0) }
-            return
-        }
-        for ch in text {
-            if let ks = keysym(for: ch) {
-                sendKeysym(ks, ctrl: false, alt: false, shift: false)
-            }
-        }
+        text.withCString { iosc_input_text($0) }
     }
 
     private func sendClick(_ button: Int32) {
@@ -1852,9 +2008,16 @@ final class XScreenView: UIView {
     }
 
     private func sendWheel(_ button: Int32) {
-        guard inputConnected, !usingIosc else { return }
-        xinput_button(button, true)
-        xinput_button(button, false)
+        guard inputConnected else { return }
+        let step: Int32 = 36 * 256
+        switch button {
+        case 4: iosc_input_axis(0, -step, 1, 0, false)
+        case 5: iosc_input_axis(0, step, 1, 0, false)
+        case 6: iosc_input_axis(-step, 0, 1, 0, false)
+        case 7: iosc_input_axis(step, 0, 1, 0, false)
+        default: return
+        }
+        iosc_input_axis(0, 0, 1, 0, true)
     }
 
     private func fitTransform(zoom: CGFloat? = nil, pan: CGPoint? = nil) -> FitTransform? {
@@ -1926,50 +2089,25 @@ final class XScreenView: UIView {
     private func resetZoom() {
         zoomScale = minZoomScale
         panOffset = .zero
-        scrollRemainder = .zero
         needsPresent = true
     }
 
-    /// dx/dy are view-point finger deltas. iosc gets AXIS records in 1/256
-    /// framebuffer-pixel fixed point with wl_pointer's sign (natural scroll:
-    /// fingers up = content scrolls down the page = positive); XTEST keeps
-    /// wheel-click emulation for plain X11 input.
+    /// dx/dy are view-point finger deltas. AXIS records use 1/256 framebuffer
+    /// pixels with wl_pointer's sign (fingers up means content scrolls down).
     private func sendScroll(dx: CGFloat, dy: CGFloat, source: UInt32) {
         guard inputConnected else { return }
-        if usingIosc {
-            guard let fit = fitTransform(), fit.scale > 0 else { return }
-            let ptToFb = 256 / fit.scale
-            axisRemainder.x -= dx * ptToFb
-            axisRemainder.y -= dy * ptToFb
-            let sx = axisRemainder.x.rounded(.towardZero)
-            let sy = axisRemainder.y.rounded(.towardZero)
-            if sx != 0 || sy != 0 {
-                axisRemainder.x -= sx
-                axisRemainder.y -= sy
-                axisSource = source
-                iosc_input_axis(Int32(sx), Int32(sy), source, 0, false)
-                axisActive = true
-            }
-            return
-        }
-        scrollRemainder.x -= dx
-        scrollRemainder.y -= dy
-        let step: CGFloat = 36
-        while scrollRemainder.y <= -step {
-            xinput_button(4, true); xinput_button(4, false)
-            scrollRemainder.y += step
-        }
-        while scrollRemainder.y >= step {
-            xinput_button(5, true); xinput_button(5, false)
-            scrollRemainder.y -= step
-        }
-        while scrollRemainder.x <= -step {
-            xinput_button(6, true); xinput_button(6, false)
-            scrollRemainder.x += step
-        }
-        while scrollRemainder.x >= step {
-            xinput_button(7, true); xinput_button(7, false)
-            scrollRemainder.x -= step
+        guard let fit = fitTransform(), fit.scale > 0 else { return }
+        let ptToFb = 256 / fit.scale
+        axisRemainder.x -= dx * ptToFb
+        axisRemainder.y -= dy * ptToFb
+        let sx = axisRemainder.x.rounded(.towardZero)
+        let sy = axisRemainder.y.rounded(.towardZero)
+        if sx != 0 || sy != 0 {
+            axisRemainder.x -= sx
+            axisRemainder.y -= sy
+            axisSource = source
+            iosc_input_axis(Int32(sx), Int32(sy), source, 0, false)
+            axisActive = true
         }
     }
 
@@ -2051,10 +2189,9 @@ final class XScreenView: UIView {
         let changed = hardwareButtonMask ^ nextMask
         guard changed != 0 else { return }
         let ioscButtons: [Int32] = [1, 3, 2, 0x113, 0x114]
-        let xButtons: [Int32] = [1, 3, 2, 8, 9]
         for index in 0..<ioscButtons.count where changed & (1 << index) != 0 {
             let down = nextMask & (1 << index) != 0
-            sendButton(usingIosc ? ioscButtons[index] : xButtons[index], down, at: lastTouchPt)
+            sendButton(ioscButtons[index], down, at: lastTouchPt)
         }
         hardwareButtonMask = nextMask
     }
@@ -2078,8 +2215,7 @@ final class XScreenView: UIView {
 
     /// A pinch or rotate with no touches on the glass came from the trackpad — the same
     /// test the indirect scroll recognizers use. Finger pinches keep zooming our own
-    /// framebuffer; only indirect ones are the desktop's business, and only on the iosc
-    /// path, since XTEST has no gesture concept.
+    /// framebuffer; only indirect ones are the compositor's business.
     private func isTrackpadGesture(_ g: UIGestureRecognizer) -> Bool {
         g.numberOfTouches == 0 && usingIosc && inputConnected
     }
@@ -2190,7 +2326,6 @@ final class XScreenView: UIView {
             twoFingerBegan()
             panStartOffset = panOffset
             panLastTranslation = .zero
-            scrollRemainder = .zero
             axisRemainder = .zero
         case .changed:
             let t = g.translation(in: self)
@@ -2217,7 +2352,6 @@ final class XScreenView: UIView {
         default:
             sendScrollStop()
             panLastTranslation = .zero
-            scrollRemainder = .zero
             twoFingerEnded()
         }
     }
@@ -2502,8 +2636,7 @@ final class XScreenView: UIView {
 
     // MARK: display discovery + picker
 
-    /// One visible desktop target. Legacy X displays come from X<n> sockets; slot
-    /// displays come from xios-displays.d and carry their own xios-<slot>.json.
+    /// One visible compositor target from xios-displays.d or the active xios.json.
     private struct XDisplayInfo {
         let number: Int
         let config: [String: Any]?
@@ -2550,29 +2683,19 @@ final class XScreenView: UIView {
         }
     }
 
-    /// Every open display = an `X<n>` socket under either `.X11-unix` dir, unioned
-    /// with the display xios.json advertises (the one we can actually render).
+    /// Discover only compositor outputs with renderable xios.json state. Raw X
+    /// sockets belong to nested Xwayland and are never standalone display targets.
     private func discoverDisplays() -> [XDisplayInfo] {
-        var numbers = Set<Int>()
-        let fm = FileManager.default
-        for dir in xunixDirs {
-            guard let entries = try? fm.contentsOfDirectory(atPath: dir) else { continue }
-            for e in entries where e.hasPrefix("X") {
-                if let n = Int(e.dropFirst()) { numbers.insert(n) }
-            }
-        }
         let cfg = readConfig()
-        var cfgNumber: Int?
-        if let d = cfg?["display"] as? String, d.hasPrefix(":"), let n = Int(d.dropFirst()) {
-            cfgNumber = n
-            numbers.insert(n)   // include the configured display even if its socket dir wasn't scanned
-        }
-        var rows = numbers.sorted().map {
-            XDisplayInfo(number: $0, config: $0 == cfgNumber ? cfg : nil,
-                         configPath: $0 == cfgNumber ? configPath : nil,
-                         slot: nil, preset: nil, state: nil, wayland: nil,
-                         registryPath: nil)
-        }
+        let cfgDisplay = cfg?["display"] as? String
+        let cfgNumber = cfgDisplay.flatMap { value in
+            value.hasPrefix(":") ? Int(value.dropFirst()) : nil
+        } ?? -1
+        var rows: [XDisplayInfo] = cfg.map {
+            [XDisplayInfo(number: cfgNumber, config: $0, configPath: configPath,
+                          slot: nil, preset: nil, state: nil, wayland: nil,
+                          registryPath: nil)]
+        } ?? []
         let seenPaths = Set(rows.compactMap { $0.configPath })
         rows.append(contentsOf: discoverDisplaySlots().filter { row in
             guard let path = row.configPath else { return true }
@@ -2731,7 +2854,6 @@ final class XScreenView: UIView {
         fbWidth = 1024; fbHeight = 768
         ddxIsIOSurface = false
         ddxSockPath = XiosRuntimePaths.tmp("xios-ddx.sock")
-        xAuthPath = nil
         ioscInputSock = nil
         ioscClipboardSock = nil
         inputConfigurationError = nil
@@ -2757,8 +2879,7 @@ final class XScreenView: UIView {
         if resetTransform { resetZoom() }
     }
 
-    /// Switch to a display the user picked: tear down the old one, apply the new
-    /// config (or none, for input-only), and start its framebuffer + input path.
+    /// Switch to a compositor output the user picked.
     private func load(_ disp: XDisplayInfo) {
         userPinned = true
         selectedConfigPath = disp.configPath
@@ -2778,9 +2899,7 @@ final class XScreenView: UIView {
                 awaitingCompositor = true
                 startTestPattern()
             }
-        } else {
-            startTestPattern()           // input-only: no framebuffer for this display
-        }
+        } else { startTestPattern() }
         connectInput()
         writeStatus()
     }
@@ -3386,6 +3505,57 @@ final class XScreenView: UIView {
                                             color: UIColor(white: 0.62, alpha: 1)))
     }
 
+    /// Present-side MetalFX upscaling, as a user-visible control rather than only an
+    /// env var. Unlike Screen Size this needs no session restart and no compositor
+    /// involvement — it changes how the display app scales its own drawable, so the
+    /// next frame already looks different.
+    private func addRenderScaleControls(to stack: UIStackView) {
+        let chips = XiosUpscaleMode.selectable.map { mode in
+            sizeButton(mode.title, selected: upscaleMode == mode) { [weak self] in
+                // Choosing Off explicitly still records a preference, so it pins the
+                // app against a compositor that starts advertising a hint later.
+                self?.setUpscalePreference(mode)
+                self?.presentDisplayControl()
+            }
+        }
+        stack.addArrangedSubview(buttonRow(chips))
+
+        // Report what actually happened, not what was asked for. Auto declines when
+        // the desktop is already at or above panel resolution, and a device whose GPU
+        // has no MetalFX spatial scaler falls back to a direct present — both are
+        // states the user would otherwise experience as "the setting does nothing".
+        stack.addArrangedSubview(panelLabel(renderScaleSummary(), size: 11,
+                                            color: UIColor(white: 0.62, alpha: 1)))
+        if hasUpscalePreference {
+            stack.addArrangedSubview(panelButton("Follow Session Setting") { [weak self] in
+                self?.setUpscalePreference(nil)
+                self?.presentDisplayControl()
+            })
+        }
+    }
+
+    /// One line describing the live upscale state and its trade-off.
+    private func renderScaleSummary() -> String {
+        if upscaleMode.isOff {
+            return "Off renders the desktop at the panel's full resolution. "
+                + "A lower scale draws fewer pixels and scales up on screen: "
+                + "easier on the GPU, slightly softer."
+        }
+        // lastUpscaleStatus is the value published to `xios-status`, i.e. ground truth.
+        switch lastUpscaleStatus {
+        case let s where s.hasPrefix("off (") :
+            return "Requested \(upscaleMode.title), but this GPU has no MetalFX spatial "
+                + "scaler — presenting directly instead."
+        case "off", "":
+            return upscaleMode == .auto
+                ? "Auto is on, but the desktop is already at or below the panel's "
+                  + "resolution, so nothing is being upscaled."
+                : "Requested \(upscaleMode.title); waiting for the next frame."
+        default:
+            return "Active: \(lastUpscaleStatus)"
+        }
+    }
+
     private func sizeButton(_ title: String, selected: Bool,
                             action: @escaping () -> Void) -> UIButton {
         let button = panelButton(title, action)
@@ -3429,6 +3599,9 @@ final class XScreenView: UIView {
 
         addSection("Screen Size", to: stack)
         addScreenSizeControls(to: stack)
+
+        addSection("Render Scale", to: stack)
+        addRenderScaleControls(to: stack)
 
         addSection("Apps", to: stack)
         stack.addArrangedSubview(detailPanelButton(
@@ -3558,33 +3731,10 @@ final class XScreenView: UIView {
                 debugView?.text = self?.debugSnapshot()
                 message?.text = self?.lastToolMessage
             },
-            panelButton("X Server Size") { [weak self] in self?.presentLegacyDisplayProfiles() },
         ]))
 
         stack.addArrangedSubview(buttonRow([
             panelButton("Back") { [weak self] in self?.presentDisplayControl() },
-            panelButton("Close") { [weak self] in self?.dismissPicker() },
-        ]))
-    }
-
-    /// Legacy path: writes xios-request.json, which only the standalone X server
-    /// script reads at start-up. Kept out of the main panel because it does nothing
-    /// to a running Wayland desktop — use Screen Size for that.
-    private func presentLegacyDisplayProfiles() {
-        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 520)
-        addPanelHeader("X Server Size", to: stack)
-        let message = panelLabel("Applies the next time the standalone X server starts.",
-                                 size: 12, color: UIColor(white: 0.72, alpha: 1))
-        stack.addArrangedSubview(message)
-        for profile in displayProfiles {
-            stack.addArrangedSubview(panelButton("\(profile.name)  \(profile.detail)") {
-                [weak self, weak message] in
-                self?.writeDisplayRequest(profile)
-                message?.text = self?.lastToolMessage
-            })
-        }
-        stack.addArrangedSubview(buttonRow([
-            panelButton("Back") { [weak self] in self?.presentAdvanced() },
             panelButton("Close") { [weak self] in self?.dismissPicker() },
         ]))
     }
@@ -4355,7 +4505,7 @@ final class XScreenView: UIView {
         }
     }
 
-    // MARK: keyboard (iOS keyboard -> XTEST)
+    // MARK: keyboard (iOS keyboard -> compositor input)
 
     override var canBecomeFirstResponder: Bool { true }
 
@@ -4489,8 +4639,8 @@ final class XScreenView: UIView {
     }
 }
 
-// The X screen view itself is the keyboard responder: the iOS keyboard's text
-// becomes XTEST key events on the current display. Backspace stays live via hasText.
+// The screen view itself is the keyboard responder and forwards text/key events to
+// the active compositor. Backspace stays live via hasText.
 extension XScreenView: UIKeyInput {
     var hasText: Bool { true }
 

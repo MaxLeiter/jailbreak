@@ -1,0 +1,22 @@
+Package: xios-runtime
+Name: Xios Application Runtime
+Version: 0.1.1
+Architecture: iphoneos-arm64
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Desktop
+Priority: optional
+Depends: firmware (>= 16.0), iosc (>= 0.9.37), angle (>= 2.1.0+git20260630.a32d31d+es3-14), dbus, xios-desktop-defaults, xios-audio-server, xios-fhs (>= 1.0.3)
+Recommends: pulseaudio, xios-desktop-theme
+MinimumOSVersion: 16.0.0
+Description: shared Linux application runtime for Xios
+ The shell-independent runtime used by every Xios presentation model: the iosc
+ Wayland compositor, ANGLE GPU stack, D-Bus, desktop audio, filesystem and
+ hardware bridges, and ambient desktop defaults such as fonts, locale, XDG
+ paths, and retina display settings.
+ .
+ This package deliberately contains no Xios display app, desktop shell, session
+ launcher, privileged Home Screen launcher service, or flavor-specific desktop
+ environment. Install a Xios flavor package rather than this package directly.
+ .
+ Rootless jailbreaks only (/var/jb).

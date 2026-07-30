@@ -112,7 +112,7 @@ fi
 # iOS/ANGLE clients use the local iosc_iosurface protocol instead of dma-buf.
 # For KWin first-light, expose the global and wrap imported IOSurfaces as a
 # CPU-readable GraphicsBuffer so the existing QPainter compositor can copy them.
-cp /work/recipes/build_info/iosc-iosurface.xml "$src/src/wayland/protocols/iosc-iosurface.xml"
+cp /work/x11/wayland/iosc-iosurface.xml "$src/src/wayland/protocols/iosc-iosurface.xml"
 if ! grep -q 'ios-bringup-iosurface-protocol' "$src/src/wayland/CMakeLists.txt"; then
     perl -0pi -e 's/target_sources\(kwin PRIVATE/ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml\n    PROTOCOL \${PROJECT_SOURCE_DIR}\/src\/wayland\/protocols\/iosc-iosurface.xml\n    BASENAME iosc-iosurface\n) # ios-bringup-iosurface-protocol\n\ntarget_sources(kwin PRIVATE\n    ioscclientbuffer.cpp/g' "$src/src/wayland/CMakeLists.txt"
 fi
@@ -562,6 +562,12 @@ perl -0pi -e 's@    switch \(backendType\) {\n    case BackendType::Kms:@    swi
 perl -0pi -e 's@        a\.setOutputBackend\(std::make_unique<KWin::DrmBackend>\(a\.session\(\)\)\);\n        break;\n    case BackendType::Virtual:@        a.setOutputBackend(std::make_unique<KWin::DrmBackend>(a.session()));\n        break;\n    case BackendType::Virtual:@g' "$src/src/main_wayland.cpp"
 perl -0pi -e 's@        a\.setOutputBackend\(std::move\(outputBackend\)\);\n        break;\n    }\n#if KWIN_BUILD_X11@        a.setOutputBackend(std::move(outputBackend));\n        break;\n    }\n#endif // ios-bringup-main-wayland\n#if KWIN_BUILD_X11@g' "$src/src/main_wayland.cpp"
 
+# KWIN_IOS_QT_NO_OPENGL guards for the effects renderer. These are a CAPABILITY fallback,
+# not leftovers: kwin-ios-compat.h defines the macro itself when `QT_FEATURE_opengl < 0`,
+# so these hunks engage automatically if KWin is ever built against a Qt without OpenGL.
+# Against our Qt (qtbase.mk: FEATURE_opengl=ON, INPUT_opengl=es2) the macro is never
+# defined and every guard compiles as upstream, which is why the GL path is the live one.
+# Deleting them would turn "builds with a no-OpenGL Qt" into a silent compile break.
 if ! grep -q 'ios-bringup-no-opengl-quickview' "$src/src/effect/offscreenquickview.cpp"; then
     perl -0pi -e 's/#include "opengl\/glutils\.h"\n#include "opengl\/openglcontext\.h"/#include "opengl\/glutils.h"\n#if !defined(KWIN_IOS_QT_NO_OPENGL)\n#include "opengl\/openglcontext.h"\n#endif \/\/ ios-bringup-no-opengl-quickview/g' "$src/src/effect/offscreenquickview.cpp"
     perl -0pi -e 's/#include <QOpenGLContext>\n#include <QOpenGLFramebufferObject>\n#include <QQuickGraphicsDevice>\n#include <QQuickOpenGLUtils>\n#include <QQuickRenderTarget>/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n#include <QOpenGLContext>\n#include <QOpenGLFramebufferObject>\n#include <QQuickGraphicsDevice>\n#include <QQuickOpenGLUtils>\n#include <QQuickRenderTarget>\n#endif/g' "$src/src/effect/offscreenquickview.cpp"

@@ -21,7 +21,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 5. **gnome-session.md** — GNOME session layer + the shell boot. First light achieved; current work is packaging/persistence/polish.
 6. **gtk4-typelibs.md** — on-device GObject-Introspection typelibs. The boot-critical scan work is packaged as `xios-gnome-typelibs 0.2.0`; ATK/AT-SPI version alignment remains.
 7. **kde-kf6.md** — Qt6 modules + KF6 + KWin first-light package work.
-8. **native-ipados.md** — the native per-window iPad flavor. Runtime-coexists with classic Xios.
+8. **native-ipados.md** — the native per-window iPad flavor. Runtime-coexists with the fullscreen desktop.
 9. **session-launcher.md** — the flavor switcher (CLI + daemon + in-app picker).
 10. **svg-loader.md** — real `librsvg`/GdkPixbuf SVG loader audit for GTK/GNOME icon themes.
 11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
@@ -31,7 +31,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 15. **loose-ends-audit.md** — repository-wide 2026-07-18 closure ledger: completed host work, immutable package queue, intentional shims, real port blockers, and deferred device proof.
 
 ## Current headline status
-- **Full desktop input is implemented locally (2026-07-19):** both the classic Xios app and
+- **Full desktop input is implemented locally (2026-07-19):** both the fullscreen Xios app and
   native per-window host now consume raw Game Controller HID keyboard transitions, preserve
   held keys/chords, map Command to Super, forward Caps/Num lock, support hover plus five mouse
   buttons, and distinguish continuous trackpad scrolling from discrete wheel scrolling. iosc
@@ -42,7 +42,14 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 - **The prior stale-scale/tap-offset bug is fixed on the app path:** Xios now re-adopts/re-syncs IOSurface geometry, resets zoom on adopt, and maps input through the current fit transform. Keep checking `/var/jb/tmp/xios-touch.log` when changing present/input code.
 - **Portrait/rotation path exists now:** the in-app Desktop Session picker can still launch portrait-sized sessions, and the clean packaged compositor now includes the native-feel OUTPUT resize path. Verified default `1440x1080` logical iosc -> OUTPUT transform 1 -> `1080x1440` logical / `2160x2880` framebuffer on-device with `iosc 0.9.9` and the rebuilt Xios app. Latest Xios build removes visible debug chrome: three-finger tap opens the one Xios panel (desktop, size, apps; displays and diagnostics under Advanced), pinch app-zooms in/out to fit, lower-screen one-finger swipe opens the keyboard.
 - **Native iPadOS per-window mode is implemented and runtime-gated, not build-time-gated.** Classic and native can coexist: ioscd accepts explicit `LAUNCH_CLASSIC`/`LAUNCH_NATIVE`; native uses `wayland-native-0`, `iosc-native-input.sock`, and `xios-native.json`.
+- **App launching is app-ID-only and unprivileged.** ioscd resolves trusted,
+  root-owned desktop entries itself and starts clients/session D-Bus as
+  `mobile`; socket clients cannot supply executable text. The package split is
+  `xios-runtime` (shell-independent compositor/GPU/D-Bus/audio/FHS bridges),
+  `xios-core` (fullscreen Xios app/shell/session), and `xios-native` (runtime +
+  launcher tools + Settings, no fullscreen shell).
 - **Native-feel bridges are mostly live:** volume/dark-mode helpers, battery/backlight/sysfs, SensorProxy/CoreMotion, haptic broadcast plumbing, and PulseAudio sink+mic source are deployed/validated in pieces. Physical haptic feel, true UIKit pasteboard round trip, real VoiceOver gestures, and GNOME-facing camera portal/GStreamer remain follow-ups; see `polish.md`.
+  - Battery is genuinely live as of 2026-07-29 (`kf6-solid 6.3.0+ios2` — KDE reads batteries via Solid, not UPower, and ours shipped no real backend). **Backlight is only half live:** reads work, writes reach the sysfs node and go no further, because `BKSDisplayBrightnessSet` is inert outside SpringBoard. Details in `kde-kf6.md` and `polish.md` #15.
 - **GNOME Shell 46 is up on-device with `gnome-shell 46.0+ios3`**: `xios-session gnome` and
   `xios-session -d gnome` now route through the packaged full-session `launch-gnome-session.sh`
   and the latest daemon smoke reached `gnome/up` with `xios-session 1.0.46` +

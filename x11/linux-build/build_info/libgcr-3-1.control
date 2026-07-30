@@ -1,0 +1,10 @@
+Package: libgcr-3-1
+Version: @DEB_GCR3_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gcr
+Depends: libgck-1-0 (= @DEB_GCR3_V@), libglib2.0-0, libgtk-3-0, libgcrypt20, p11-kit, libgtkintl (>= 1.0)
+Description: GCR 3 certificate and credential runtime
+ GCR base and GTK3 UI libraries with credential prompt helpers.

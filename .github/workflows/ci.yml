@@ -43,9 +43,73 @@ jobs:
         run: |
           git ls-files '*.sh' -z | xargs -r -0 -n1 bash -n
 
-      - name: Package dependency metadata
+      - name: Repo-ops guard hook
+        run: python bin/lib/guard-repo-ops.test.py
+
+  repo-index:
+    name: APT index
+    runs-on: ubuntu-latest
+
+    # Index-level checks only. The payload-level gates -- DER re-signing, the Blob
+    # upload, and check-procursus-shadow.py (Apple `nm` over real Mach-O) -- need
+    # the .deb files, which are gitignored and only exist on the authoring host.
+    # Publishing stays a local step for the same reason; this job just refuses to
+    # let a broken or drifted index reach main.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check-version-collisions.py compares against git:origin/main on PRs
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate derived index from committed Packages
+        run: python bin/lib/make-repo.py --from-index
+
+      - name: Committed index must match what the generator produces
         run: |
-          python bin/lib/check-repo-solvable.py repo/Packages
+          set -euo pipefail
+          # --from-index never rewrites Packages, so a diff here means a tracked
+          # derived artifact (a depiction, the landing page) drifted from the index
+          # it is generated from -- someone edited output instead of input, or
+          # committed a stale regeneration. Deletions mean a retired package left
+          # its depiction/icon/banner behind and the prune collected them.
+          if ! git diff --quiet -- repo/; then
+            echo "Regenerating from repo/Packages changed tracked files:"
+            git diff --stat -- repo/
+            echo
+            echo "Run 'python3 bin/lib/make-repo.py --from-index' locally and commit the result."
+            exit 1
+          fi
+
+      - name: Package dependency metadata
+        run: python bin/lib/check-repo-solvable.py repo/Packages
+
+      - name: Index audit
+        run: python bin/lib/audit-repo.py --no-payloads
+
+      - name: Version drift vs published indexes
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            # actions/checkout leaves a detached merge ref; make origin/main a real
+            # remote-tracking ref so git:origin/main resolves.
+            git fetch --no-tags origin main:refs/remotes/origin/main || true
+            # A PR being behind main is normal until it rebases (the aptindex merge
+            # driver resolves it), so regressions warn here. Collisions still fail:
+            # two branches cannot publish the same version with different bytes.
+            python bin/lib/check-version-collisions.py \
+              --warn-regressions \
+              --against git:origin/main \
+              --against https://repo.maxleiter.com/Packages \
+              --against https://dev.repo.maxleiter.com/Packages
+          else
+            python bin/lib/check-version-collisions.py \
+              --against https://repo.maxleiter.com/Packages \
+              --against https://dev.repo.maxleiter.com/Packages
+          fi
 
   site:
     name: Xios site build
@@ -58,12 +122,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: "22"
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: bun install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: bun run build

@@ -21,18 +21,18 @@ other tweak (KitchenHub / carplayhost). Everything new lives in
  │  [Console]    │──────────► │ <appid>.app       │  one thin per-app bundle, but
  │  [Calculator] │            │  IOSCLaunch (stub)│  every bundle ships the SAME
  │  [Files]      │            │  + Info.plist     │  signed IOSCLaunch binary; the
- │   ...   [X11] │            │  + AppIcon*.png   │  launch target is in Info.plist
- └───────────────┘            └─────────┬─────────┘  (IOSCExec / IOSCAppID / IOSCName)
-                                        │ LAUNCH\t<app_id>\t<exec>  (AF_UNIX)
+ │   ...   [X11] │            │  + AppIcon*.png   │  app identity is in Info.plist
+ └───────────────┘            └─────────┬─────────┘  (IOSCAppID / IOSCName)
+                                        │ LAUNCH\t<app_id>  (AF_UNIX)
                                         ▼
                               ┌───────────────────┐  root LaunchDaemon, OUTSIDE the
                               │ ioscd  (daemon)   │  app sandbox. On each request:
                               │ /var/jb/tmp/      │   1. ensure iosc is running
                               │   ioscd.sock      │   2. uiopen com.max.xios (show)
-                              └───┬───────────┬───┘   3. raise existing OR exec new
-                  exec client     │           │ uiopen
-                  (dbus-run-session│           ▼
-                   + wayland env)  │   ┌───────────────┐  Xios.app draws iosc's output
+                              └───┬───────────┬───┘   3. resolve trusted desktop entry
+                mobile client     │           │ uiopen
+                  (direct argv +  │           ▼
+                   wayland env)   │   ┌───────────────┐  Xios.app draws iosc's output
                                    │   │  Xios.app     │  IOSurface as a Metal texture
                                    │   │ (the display) │  (the only thing iOS shows)
                                    │   └───────▲───────┘
@@ -49,7 +49,8 @@ New components (all in `x11/apps/iosc-desktop/`):
 | File | Role |
 |---|---|
 | `src/IOSCLaunch.m` | the per-app Home Screen launcher stub (UIKit, Obj-C). Reused verbatim in every bundle. |
-| `src/ioscd.c` | the root launch daemon. Bridges a sandboxed tap to a root-side app launch. |
+| `src/ioscd.c` | the root launch daemon. Resolves an app id from trusted installed metadata, performs compositor lifecycle work, then launches the client as `mobile`. |
+| `src/xios-desktop-entry.c` | shared desktop-entry parser and non-shell `Exec`-to-argv expansion used by launcher discovery and the daemon. |
 | `gen-launchers.sh` | host-side generator: `.desktop` → `.app` bundle(s). |
 | `gen-icons.py` | icon pipeline: resolve `Icon=` → the iOS Home Screen PNGs. |
 | `build-stub.sh` | compile + ldid-sign `IOSCLaunch` and `ioscd` on the Mac. |
@@ -72,16 +73,18 @@ this rootless jailbreak that is fragile:
   bring-up (`run-iosc.sh`, `run-kgx.sh`) runs as **root over SSH.** There is no
   proven in-app sandbox-escape path here to lean on.
 
-So the launcher does **not** exec anything. It sends a one-line request to
-**`ioscd`**, a tiny root `LaunchDaemon` that runs **outside** any app sandbox and
-spawns the client exactly the way the working run-scripts already do. This:
+So the launcher does **not** exec anything. It sends only an app id to
+**`ioscd`**, a root `LaunchDaemon` that runs **outside** any app sandbox. The
+daemon resolves that id against a root-owned desktop entry and starts the
+application as `mobile`. This:
 
-- sidesteps sandbox inheritance entirely (the proven-good path stays root-side);
+- sidesteps sandbox inheritance while keeping application processes unprivileged;
 - centralizes lifecycle (start iosc, foreground Xios) and the *raise-vs-launch*
   decision in one place, instead of duplicating it in every launcher;
 - keeps each launcher bundle trivial: connect, send, done.
 
-The cost is one resident daemon (a few KB, `KeepAlive`). Worth it for robustness.
+The root process retains compositor/session lifecycle work. It never accepts a
+command or path from a socket client.
 
 ---
 
@@ -94,7 +97,7 @@ target* and the *binary* are wired:
 
 **Option A — one generic launcher binary, target in each bundle's Info.plist.**
 Compile `IOSCLaunch` once. Copy that same signed Mach-O into every generated
-bundle. Each bundle's `Info.plist` carries `IOSCExec` / `IOSCAppID` / `IOSCName`;
+bundle. Each bundle's `Info.plist` carries `IOSCAppID` / `IOSCName`;
 the binary reads its own bundle at runtime (`NSBundle.mainBundle`). N bundles, 1
 binary, no per-app compile.
 
@@ -124,7 +127,7 @@ From the `[Desktop Entry]` group the generator reads:
 |---|---|
 | `Name` | `CFBundleDisplayName` (the Home Screen label). |
 | `Icon` | resolved to the app icon (see §4.3). |
-| `Exec` | the command to run; freedesktop field codes (`%f %F %u %U %i %c %k %d %v %m`) are stripped. |
+| `Exec` | parsed only by `ioscd` from the trusted installed file and expanded to argv without a command shell. File/URL field codes are omitted because a tap supplies no files. |
 | `StartupWMClass` | the Wayland `app_id` (for raise-on-retap). Falls back to the `.desktop` basename, which for GNOME apps *is* the app-id, e.g. `org.gnome.Console.desktop` → `org.gnome.Console`. |
 | `Type`, `NoDisplay` | filters: only `Type=Application`, skip `NoDisplay=true`. |
 
@@ -135,9 +138,9 @@ From the `[Desktop Entry]` group the generator reads:
 - `IOSCLaunch` — the shared signed binary (copied, then re-`ldid`-signed with
   `launcher-ent.xml` so the entitlements travel with the bundle copy).
 - `Info.plist` — built from a static template; the dynamic strings
-  (`CFBundleIdentifier`, `CFBundleDisplayName`, `IOSCExec`, `IOSCAppID`,
-  `IOSCName`) are set with `PlistBuddy` so `&`/quotes in a `Name` or `Exec` are
-  escaped correctly. Bundle id is `com.max.iosc.<sanitized-app_id>` (unique per
+  (`CFBundleIdentifier`, `CFBundleDisplayName`, `IOSCAppID`, `IOSCName`) are set
+  with `PlistBuddy` so special characters in a name are escaped correctly.
+  Bundle id is `com.max.iosc.<sanitized-app_id>` (unique per
   app). `UIDeviceFamily=[2]` (iPad), landscape-only to match Xios, `UILaunchScreen`
   set so the transient splash never looks like a crash.
 - The icon PNGs + `CFBundleIcons`/`CFBundleIcons~ipad` referencing them.
@@ -173,9 +176,9 @@ to the placeholder when an icon is missing, so generation never blocks.
 A minimal UIKit app. On **every foreground** (`applicationDidBecomeActive` — fires
 on first tap and on every re-tap):
 
-1. read `IOSCExec` / `IOSCAppID` from its own `Info.plist`;
+1. read `IOSCAppID` from its own `Info.plist`;
 2. `connect()` to `/var/jb/tmp/ioscd.sock` and write
-   `LAUNCH\t<app_id>\t<exec>\n`;
+   `LAUNCH\t<app_id>\n`;
 3. show "Opening <Name>…" (or the error if `ioscd` is unreachable).
 
 It never `exec`s the Linux app and never calls `exit()` (a clean resident process
@@ -192,8 +195,8 @@ sandbox permits the `connect()` to the daemon socket). That's all it needs.
 
 ## 6. The daemon (`ioscd`) and lifecycle
 
-`ioscd` listens on `/var/jb/tmp/ioscd.sock` (mode 0666 so `mobile` launchers can
-connect). It accepts app launches (`LAUNCH[_NATIVE|_CLASSIC]\t<app_id>\t<exec>`)
+`ioscd` listens on `/var/jb/tmp/ioscd.sock` as `mobile:mobile` mode `0660`. It
+accepts app launches (`LAUNCH[_NATIVE|_CLASSIC]\t<app_id>`)
 and session requests (`SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\t<slot>`, plus
 `SESSION_ENSURE` with the same payload).
 
@@ -212,25 +215,28 @@ sessions bypass the policy — they never tear the desktop down.
 
 For each launch:
 
-1. **Ensure iosc is up.** If the compositor pid is dead or `wayland-0` is gone,
+1. **Authorize and resolve.** The peer must be root or `mobile`. The app id must
+   resolve to a visible application beneath `/var/jb/usr/local/share/applications`
+   or `/var/jb/usr/share/applications`; the resolved file must stay beneath that
+   root, be root-owned, and not be group/other-writable. The shared parser
+   expands its `Exec` field into an argv vector and rejects malformed quotes or
+   unsupported field codes.
+2. **Ensure iosc is up.** If the compositor pid is dead or `wayland-0` is gone,
    it clears the stale socket and starts `iosc` exactly like `run-iosc.sh`
    (`XDG_RUNTIME_DIR=/var/jb/tmp`, wait for `wayland-0` + `xios.json`, then chown
    the `iosc-ddx.sock` rendezvous to `mobile` so the Xios app can connect). The
    installed `iosc` is already signed with the GPU entitlement set, so the daemon
    just `exec`s it.
-2. **Show the display.** `uiopen com.max.xios` foregrounds Xios.app (the same
+3. **Show the display.** `uiopen com.max.xios` foregrounds Xios.app (the same
    call the run-scripts use; `uiopen` is the entitled component, the daemon only
    `exec`s it).
-3. **Raise or launch.** If a client we previously spawned for this `app_id` is
+4. **Raise or launch.** If a client we previously spawned for this `app_id` is
    still alive → ask iosc to raise it (§7) and reply `RAISED`. Otherwise `fork`
-   and `exec` the client under the iosc environment — the same env `run-kgx.sh`
-   proved good:
-   `dbus-run-session -- bash -lc "<exec>"` with `WAYLAND_DISPLAY` = absolute
-   `/var/jb/tmp/wayland-0`, `GDK_BACKEND=wayland`, `GSK_RENDERER=${IOSC_GSK_RENDERER:-ngl}`
-   (GTK4 defaults to the ANGLE/Metal wl_egl_window shim; set `IOSC_GSK_RENDERER=cairo`
-   for the old wl_shm fallback), `GSETTINGS_BACKEND=memory`, `GTK_A11Y=none`,
-   `HOME=/var/jb/var/root`, and a private 0700 `XDG_RUNTIME_DIR` for the session
-   bus. Records `app_id → pid`; reply `LAUNCHED`. A `SIGCHLD` reaper clears the
+   and execute the parsed argv directly under the iosc environment as `mobile`.
+   `WAYLAND_DISPLAY` is the absolute compositor socket, GTK uses the Wayland
+   ANGLE/Metal path, `HOME=/var/mobile`, and the session bus directory and daemon
+   are mobile-owned mode `0700`. Records `app_id → pid`; reply `LAUNCHED`. A
+   `SIGCHLD` reaper clears the
    entry when the app exits, so a later tap relaunches.
 
 `ioscd` therefore subsumes the core of `run-iosc.sh`/`run-kgx.sh` for the Home

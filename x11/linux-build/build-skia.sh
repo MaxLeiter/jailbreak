@@ -25,6 +25,8 @@
 #   JOBS        ninja parallelism (default nproc)
 #   GATE_ONLY=1 stop after gn gen + first ~30 TUs (toolchain-mechanics gate)
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 umask 022
 export LC_ALL=C
 export TZ=UTC
@@ -308,7 +310,7 @@ grep -rlZ '#include "include/' "$OUT/include/skia" 2>/dev/null \
 # UIKit/Metal symbols (confirms zero GPU/Metal closure). All are REQUIRED — none trims
 # — so bake them into Libs so PkgConfig::skia hands Ladybird a complete link closure.
 cat > "$OUT/lib/pkgconfig-skia.pc" <<'PC'
-prefix=/var/jb
+prefix=$XIOS_PREFIX
 exec_prefix=${prefix}
 libdir=${prefix}/lib
 includedir=${prefix}/include/skia

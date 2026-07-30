@@ -6,7 +6,9 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
 ## Key files
 - `x11/wayland/meta-input-ios.c` — the input pump (kqueue drain of the app's input socket → ClutterVirtualInputDevice → notify_absolute_motion/notify_button/etc).
 - MetaBackendIOS backend pieces (winsys/monitor-mgr/IOSurface-buffer/login1-stub) — compile against Mutter 46 ABI off-device; build check `build-backend-check.sh`. Backend selected by `gnome-shell --wayland` (compositor-TYPE branch → create_ios_backend, no argv check).
-- `x11/linux-build/out/libmutter-14-0_46.0+ios*.deb`; `+ios3` is the next immutable build for the output-resize/input work below. `mutter` thin exe is separate; the fixes are in libmutter.
+- `x11/linux-build/out/libmutter-14-0_46.0+ios*.deb`; `+ios7` is the current
+  immutable build and includes the iPad touch-mode seat property. `mutter` thin
+  exe is separate; the fixes are in libmutter.
 - Run: `x11/wayland/run-mutter.sh` (smoke); GNOME boots through the packaged `launch-gnome-session.sh` via `xios-session gnome`.
 - Output IOSurface defaults to 2160×1620, honors session-picker `IOSC_LOGICAL=WxH` at startup, and is replaced on `XIOS_IN_OUTPUT` rotation/resize. Input always ratio-maps through live `xios_output_geometry()`.
 
@@ -24,6 +26,21 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
 - **Mutter-side click dispatch fix identified and patched**: the first xdg-shell buffer commit must call `meta_window_update_visibility(window)` before setting `first_buffer_attached`, or the window actor remains unmapped and unpickable.
 - App-side coord offset was also real and is fixed in xios-app (a7da822 + follow-up geometry sync). Keep using `/var/jb/tmp/xios.json` as the authority for fb size.
 - **2026-07-18 host closure:** touch/tablet/output input cases compile-checked against Mutter 46 before Docker failed. The output handler now calls `xios_surface_resize()` before monitor reload, so the rebuilt renderer view binds the replacement IOSurface instead of only changing logical monitor metadata. Initial `IOSC_LOGICAL` sizing and the canonical glue-contract check were added afterward; rebuild/package as `libmutter 46.0+ios3` once Docker recovers, then run the rotation smoke on-device.
+- **2026-07-29 touch-mode closure:** `MetaSeatIOS` now overrides ClutterSeat's
+  read-only `touch-mode` property to `TRUE`. This is separate from creating the
+  physical `CLUTTER_TOUCHSCREEN_DEVICE`: GNOME Shell uses the property to select
+  touch-first behavior even when a mouse or keyboard is also attached. A clean
+  build/package produced `libmutter-14-0 46.0+ios7`
+  (`7bbbe0b2f538c4ce842fa179a1e32673c575404669669ee1efd9e68856297ae4`);
+  direct install upgraded the iPad from `+ios6`. Raw Mutter and full GNOME both
+  created their IOSurfaces, stayed running, and connected Xios input. For the
+  exact in-process proof, GNOME Shell was launched once with Mutter's diagnostic
+  `--unsafe-mode`, and its guarded evaluator returned
+  `MetaClutterBackendIOS`, `MetaSeatIOS`, and `"touchMode":true` from
+  `Clutter.get_default_backend().get_default_seat()`. The package-owned launcher
+  was immediately restored byte-for-byte (SHA256
+  `4df2cf14f28141ebbc56d48d14e1548c3168551b9a6af897b81ab00f01915524`);
+  unsafe mode is not part of the shipped change.
 
 ## 2026-07-01 follow-up
 - Codex installed the staged `/var/jb/tmp/libmutter-b10.deb` on device; `/var/jb/usr/lib/libmutter-14.dylib` now contains the expected `MetaInputIOS: motion out(...) -> stage(...)` mapping diagnostic.
@@ -50,11 +67,12 @@ The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cog
 - Fixed `linux-build/recipes/libxshmfence.mk`: the runtime package must ship both `libxshmfence.1.dylib` and its real target `libxshmfence.1.0.0.dylib`; previously it installed a dangling symlink and Xwayland failed dyld load.
 - Started rootful Xwayland manually under Mutter:
   ```
-  XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0 XWAYLAND_NO_GLAMOR=1 \
+  XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0 \
     Xwayland :1 -geometry 1080x810 -retro -noreset
   ```
   `-rootful` is not a valid flag in this build; rootful is the default.
-- `/tmp/.X11-unix/X1` appeared, then `DISPLAY=:1 fluxbox` and `DISPLAY=:1 xterm ...` stayed alive. Mutter mapped the Xwayland root window through the same first-buffer visibility path (`W1 mapped=1 visible_to_compositor=1`).
+- That 2026-07-01 smoke predated the hardware-only Xwayland port. Current builds
+  require ANGLE/IOSurface glamor and brokered fences.
 
 ## 2026-07-01 late socket/cursor validation
 - Mutter now defaults its app-input socket to `/var/jb/tmp/mutter-input.sock` instead of the old generic `/var/jb/tmp/xios-input.sock`; the env override remains `XIOS_INPUT_SOCKET`.

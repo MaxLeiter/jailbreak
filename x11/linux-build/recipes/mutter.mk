@@ -13,7 +13,7 @@ MUTTER_MAJOR_V := 46
 # release number — the cogl/clutter/mtk dylibs + plugins install to lib/mutter-14/.
 MUTTER_API_V   := 14
 MUTTER_VERSION := $(MUTTER_MAJOR_V).0
-DEB_MUTTER_V   ?= $(MUTTER_VERSION)+ios6
+DEB_MUTTER_V   ?= $(MUTTER_VERSION)+ios8
 
 # The dead X11/xcb closure to weak-link in mutter-package (see the mutter-package weaken step).
 # EVERYTHING X11/xcb that libmutter/cogl/mtk pull in — EXCEPT libxkbcommon.0, which the Wayland
@@ -163,7 +163,7 @@ mutter-package: mutter-stage
 	# every mutter dylib. BEFORE the weaken (macho-weaken is byte-preserving and transparent to an
 	# extra LC_RPATH) and BEFORE SIGN (install_name_tool invalidates the signature; SIGN re-covers).
 	for f in $$(find $(BUILD_DIST)/libmutter-14-0/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -type f -name '*.dylib'); do \
-		$(I_N_T) -add_rpath /var/jb/lib/angle $$f 2>/dev/null || true; \
+		$(I_N_T) -add_rpath $(MEMO_PREFIX)/lib/angle $$f 2>/dev/null || true; \
 	done
 
 	# Weak-link the dead X11/xcb closure: mutter 46 hardcodes have_x11=true and links symbols

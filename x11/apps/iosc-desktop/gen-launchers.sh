@@ -2,8 +2,8 @@
 # Turns freedesktop .desktop entries into iOS Home Screen apps that launch
 # their Linux app inside the iosc Wayland desktop.
 #
-# Each bundle shares one prebuilt IOSCLaunch binary; the launch target lives
-# in the bundle's own Info.plist, so the same signed Mach-O drives every app.
+# Each bundle shares one prebuilt IOSCLaunch binary and identifies its installed
+# desktop entry by app id, so the same signed Mach-O drives every app.
 #
 # HOST-SIDE ONLY. No device contact unless you pass --deploy (off by default).
 # See x11/docs/iosc-desktop-env.md for the full design + the device test plan.
@@ -21,6 +21,10 @@
 #   --out         where bundles are written (default: out/bundles).
 #   --deploy      scp each bundle to the device + uicache (needs device.env; LEAD only).
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
@@ -98,9 +102,6 @@ for DESKTOP in "${DESKTOPS[@]}"; do
   [ -n "$EXEC_RAW" ] || { echo "skip (no Exec): $DESKTOP"; continue; }
   [ -n "$NAME" ] || NAME="$(basename "$DESKTOP" .desktop)"
 
-  # Strip freedesktop field codes (%f %F %u %U %i %c %k %d %v %m) from Exec.
-  EXEC="$(echo "$EXEC_RAW" | sed -E 's/ ?%[fFuUickdvm]//g; s/[[:space:]]+$//')"
-
   # app_id: prefer StartupWMClass (what GTK reports as the Wayland app_id), else
   # the .desktop basename (which for GNOME apps IS the app-id, e.g. org.gnome.Console).
   APPID="$WMCLASS"; [ -n "$APPID" ] || APPID="$(basename "$DESKTOP" .desktop)"
@@ -109,7 +110,7 @@ for DESKTOP in "${DESKTOPS[@]}"; do
   BUNDLE_ID="com.max.iosc.$SAN"
   BDIR="$OUT/$SAN.app"
 
-  echo "==> $NAME  (app_id=$APPID  exec=$EXEC)"
+  echo "==> $NAME  (app_id=$APPID)"
   rm -rf "$BDIR"; mkdir -p "$BDIR"
 
   if [ "$NATIVE" = "1" ]; then
@@ -125,7 +126,7 @@ for DESKTOP in "${DESKTOPS[@]}"; do
   fi
 
   # Placeholder values below get set via PlistBuddy so &, quotes, etc. in
-  # Name/Exec are escaped correctly. Classic bundle = one fullscreen landscape
+  # Names are escaped correctly. Classic bundle = one fullscreen landscape
   # Xios window; native bundle = multi-scene host that follows device rotation.
   if [ "$NATIVE" = "1" ]; then
     cat > "$BDIR/Info.plist" <<'PLIST'
@@ -168,7 +169,6 @@ for DESKTOP in "${DESKTOPS[@]}"; do
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
-  <key>IOSCExec</key><string></string>
   <key>IOSCAppID</key><string></string>
   <key>IOSCName</key><string></string>
   <key>CFBundleIcons</key>
@@ -205,7 +205,6 @@ PLIST
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
-  <key>IOSCExec</key><string></string>
   <key>IOSCAppID</key><string></string>
   <key>IOSCName</key><string></string>
   <key>CFBundleIcons</key>
@@ -222,7 +221,6 @@ PLIST
   "$PB" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BDIR/Info.plist"
   "$PB" -c "Set :CFBundleName $NAME"            "$BDIR/Info.plist"
   "$PB" -c "Set :CFBundleDisplayName $NAME"     "$BDIR/Info.plist"
-  "$PB" -c "Set :IOSCExec $EXEC"                "$BDIR/Info.plist"
   "$PB" -c "Set :IOSCAppID $APPID"              "$BDIR/Info.plist"
   "$PB" -c "Set :IOSCName $NAME"                "$BDIR/Info.plist"
 
@@ -260,15 +258,15 @@ if [ "$DEPLOY" = "1" ]; then
   # Signing host-side isn't enough: SpringBoard launches a tapped bundle through
   # AMFI, which rejects a bundle whose on-disk cdhash it doesn't trust. Re-sign
   # in place with ldid + register the cdhash to make the first tap work.
-  DEV_ENT="/var/jb/tmp/iosc-deploy-ent.plist"
+  DEV_ENT="$XIOS_PREFIX/tmp/iosc-deploy-ent.plist"
   scp_ "$ENT_SRC" "root@$IP:$DEV_ENT"
 
   for b in "${BUILT[@]}"; do
-    dest="/var/jb/Applications/$(basename "$b")"
+    dest="$XIOS_PREFIX/Applications/$(basename "$b")"
     exe="$dest/$EXE_NAME"
     echo "   -> $IP:$dest"
     ssh_ "rm -rf '$dest'"
-    scp_ -r "$b" "root@$IP:/var/jb/Applications/"
+    scp_ -r "$b" "root@$IP:$XIOS_PREFIX/Applications/"
     # Trust-cache add is best-effort: palera1n/ellekit accept the ldid ad-hoc
     # signature directly even without it.
     ssh_ "set -e
@@ -278,10 +276,10 @@ if [ "$DEPLOY" = "1" ]; then
       elif command -v trustcache >/dev/null 2>&1; then trustcache add '$exe' 2>/dev/null || true
       elif command -v ellekitc >/dev/null 2>&1; then ellekitc trustcache '$exe' 2>/dev/null || true
       else echo 'note: no trust-cache CLI found; relying on the ldid ad-hoc signature (fine on palera1n/ellekit)'; fi
-      /var/jb/usr/bin/uicache -p '$dest'"
+      $XIOS_PREFIX/usr/bin/uicache -p '$dest'"
   done
   ssh_ "rm -f '$DEV_ENT'"
   echo "==> deployed. Tap the new icons on the Home Screen."
   echo "    If a tap fails with launch error 3/9, the JB needs an explicit"
-  echo "    trust-cache add for /var/jb/Applications/*/$EXE_NAME (see above)."
+  echo "    trust-cache add for $XIOS_PREFIX/Applications/*/$EXE_NAME (see above)."
 fi

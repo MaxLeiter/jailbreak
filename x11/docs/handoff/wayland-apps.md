@@ -147,14 +147,14 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
   dependency fixes; the last observed runtime skew was old HarfBuzz, now covered
   by the package dependency. Final install/launch/screenshot is blocked until
   device SSH stops resetting at key exchange.
-- **dunst — WORKS.** Use dunst, not mako. `dunst 1.13.2+ios2` runs as a Wayland
+- **dunst — WORKS.** `dunst 1.13.2+ios2` runs as a Wayland
   layer-shell client under `dbus-run-session`, accepts
   `org.freedesktop.Notifications.Notify` through GDBus, and visibly renders the
   notification popup. Capture:
   `artifacts/device-runs/20260704-appwave-smoke/cap-dunst.png`.
 - **Xwayland glamor — WORKS in rootful smoke.** `xwayland 23.2.7+ios2` enables the
-  IOSurface glamor backend by default, depends on `angle`/`libepoxy0`, and no longer
-  forces `XWAYLAND_NO_GLAMOR=1` in the run wrapper unless `XWAYLAND_GLAMOR=0`.
+  IOSurface glamor backend, depends on `angle`/`libepoxy0`, and now has no
+  software-build or runtime escape hatch.
   On-device evidence shows Xwayland binding `iosc_iosurface`, iosc importing the
   Xwayland client IOSurfaces, and the compositor presenting via ANGLE/Metal. The
   Xwayland backend marks IOSurfaces as top-left through the documented
@@ -176,8 +176,12 @@ sets `WAYLAND_DISPLAY=/var/jb/tmp/wayland-0`, `XDG_RUNTIME_DIR=/var/jb/tmp`,
 - **iOS locale for terminal apps**: prefer `LC_CTYPE=UTF-8`. `LANG=en_US.UTF-8`
   and `C.UTF-8` are not available on-device; foot `+ios3`, shell launch, and the
   capture helper now use the working `LC_CTYPE` path.
-- **mako is a dead end** (sd-bus is Linux-bound: ELF section error-maps, SCM_CREDENTIALS,
-  kdbus, /proc machine-id). Use **dunst** (GDBus). Don't re-litigate.
+- **mako/basu — WORKS.** The basu patch stack replaces the Linux-only
+  credential, error-map, polling, endian, and memfd seams. `mako 1.9.0+ios1`
+  and `basu 0.2.1+ios1` package successfully, and a real GDBus
+  `org.freedesktop.Notifications.Notify` call returned id 1 and visibly
+  rendered through mako on-device. Capture:
+  `artifacts/device-runs/mako-basu-ios1-20260729/`.
 - **fuzzel pinned <1.13** — 1.13+ needs pixman ≥0.46; the volume ships 0.40 (shared with
   foot/imv, don't bump).
 - **repo/debs is gitignored** — debs deploy from the working tree at publish; only

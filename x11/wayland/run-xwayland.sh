@@ -4,10 +4,9 @@
 # x11-backend-only app that CANNOT run under iosc directly today) usable inside
 # the Wayland desktop.
 #
-# Chain (X0, software): X app -> X protocol -> Xwayland :1 (rootful, renders its
-# whole root window in software) -> wl_shm buffer -> iosc -> IOSurface -> Xios
-# app -> Metal. iosc sees ONE xdg_toplevel (the Xwayland root); an in-X window
-# manager (fluxbox, or twm) manages the X clients INSIDE that root window.
+# Chain: X app -> X protocol -> Xwayland :1 (ANGLE glamor) -> fenced IOSurface
+# buffer -> iosc -> fenced output IOSurface -> Xios app -> Metal. iosc sees one
+# xdg_toplevel (the Xwayland root); an in-X window manager manages its X clients.
 #
 #   ssh root@ipad 'bash -s' < run-xwayland.sh            # default: xterm
 #   ssh root@ipad 'APP=hitori bash -s' < run-xwayland.sh # the GTK3 marquee case
@@ -32,7 +31,7 @@ command -v "$XWL" >/dev/null 2>&1 || { echo "!! $XWL not installed (dpkg -i the 
 
 echo "==> stop any Xios X server, app, prior iosc, stray Xwayland/WM/clients"
 ps ax | grep -v grep \
-  | grep -E "Xios :| Xios$|/Xios\.app/Xios|iosc|Xwayland|fluxbox|twm| xterm|hitori" \
+  | grep -E "/Xios\.app/Xios|iosc|Xwayland|fluxbox|twm| xterm|hitori" \
   | awk '{print $1}' | while read -r pid; do kill -9 "$pid" 2>/dev/null; done
 sleep 1
 rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/xios.json" \
@@ -63,18 +62,13 @@ sleep 3
 echo "==> start Xwayland $XDISP ROOTFUL as an iosc client -> $TMP/xwl.log"
 # Rootful default: whole X screen = one xdg_toplevel. -retro: classic stipple root
 # (so a bare X screen is visibly non-black). -noreset: survive the last client exiting.
-# -geometry sizes the X screen to the output. XWAYLAND_GLAMOR=0 keeps the old
-# software fallback for bisects; the default lets the iOS/ANGLE IOSurface glamor
-# backend initialize when the installed Xwayland package supports it.
+# -geometry sizes the X screen to the output. The iOS build requires the
+# ANGLE/IOSurface glamor backend and fails closed if it cannot initialize.
 # -extension MIT-SHM: iOS blocks SysV shared memory (shmget raises SIGSYS), so mesa's
 # Xlib softpipe driver crashes on glXMakeContextCurrent when the server offers MIT-SHM.
 # Disabling the extension server-side makes mesa fall back to XPutImage, so GL clients
 # like glxgears run. (Client-side equivalent: XLIB_NO_SHM=1.)
-GLAMOR_ENV=""
-case "${XWAYLAND_GLAMOR:-1}" in
-  0|no|NO|false|FALSE|off|OFF) GLAMOR_ENV="XWAYLAND_NO_GLAMOR=1" ;;
-esac
-nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=wayland-0 $GLAMOR_ENV \
+nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=wayland-0 \
   "$XWL" "$XDISP" -geometry "$GEOM" -retro -noreset -extension MIT-SHM \
   >"$TMP/xwl.log" 2>&1 </dev/null &
 XWLPID=$!

@@ -4,6 +4,10 @@
 # engine itself. The UI binary must be cross-compiled with the same Docker toolchain
 # used for the engine build, or the helpers won't link/run against it.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 X11="$(cd "$HERE/../.." && pwd)"
@@ -32,7 +36,7 @@ EOF
 fi
 
 STAGE="$(mktemp -d)"
-APP="$STAGE/var/jb/Applications/Ladybird.app"
+APP="$STAGE$XIOS_PREFIX/Applications/Ladybird.app"
 mkdir -p "$APP/share"
 
 # --- Step 2: assemble bundle ---

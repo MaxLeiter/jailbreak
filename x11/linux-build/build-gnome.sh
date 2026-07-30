@@ -17,6 +17,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/vapi:/work/vapi:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="gnome-console-package" procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host build tools missing from the image. gtk-doc-tools + native glib/gdk-pixbuf codegen are
@@ -25,6 +27,9 @@ cd /work/Procursus
 if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>&1 \
    || ! command -v valac >/dev/null 2>&1 || ! command -v gdk-pixbuf-pixdata >/dev/null 2>&1 \
    || ! command -v appstreamcli >/dev/null 2>&1 || ! command -v unifdef >/dev/null 2>&1 \
+   || ! command -v g-ir-compiler >/dev/null 2>&1 \
+   || [ ! -f /usr/share/gir-1.0/GObject-2.0.gir ] \
+   || [ ! -f /usr/share/vala/vapi/gmime-3.0.vapi ] \
    || [ ! -f /usr/include/ruby-3.1.0/ruby.h ]; then
   echo "==> installing host build tools (glib/gdk-pixbuf codegen + sassc + valac + itstool + appstreamcli)"
   apt-get update >/dev/null 2>&1 || true
@@ -33,6 +38,9 @@ if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>
   apt-get install -y --no-install-recommends \
       gtk-doc-tools libglib2.0-dev-bin libglib2.0-bin libgdk-pixbuf2.0-bin \
       sassc valac itstool desktop-file-utils appstream gtk-update-icon-cache \
+      gettext \
+      gobject-introspection gir1.2-glib-2.0 libgirepository1.0-dev \
+      libgcr-3-dev libgoa-1.0-dev libgmime-3.0-dev \
       ruby ruby-dev tcl unifdef >/dev/null 2>&1 \
     || { echo "ERROR: could not install host build tools"; exit 1; }
 fi
@@ -90,7 +98,12 @@ if target_requests gnome-desktop || target_requests nautilus || target_requests 
 fi
 target_requests gnome-text-editor && stage_required_patch_stack gnome-text-editor
 target_requests nautilus && stage_required_patch_stack nautilus
-target_requests webkitgtk && stage_required_patch_stack webkitgtk
+target_requests folks && stage_required_patch_stack folks
+target_requests gcr3 && stage_required_patch_stack gcr3
+target_requests geary && stage_required_patch_stack geary
+if [[ " $TARGETS " == *" webkitgtk"* ]]; then
+  stage_required_patch_stack webkitgtk
+fi
 
 # Same clang wrapper build-gtk.sh uses: the Procursus wrapper injects -Wl,-adhoc_codesign, and
 # meson's compile-only probes add -Werror=unused-command-line-argument, so every cc.sizeof()
@@ -117,16 +130,55 @@ if compgen -G "/work/vapi/*.vapi" >/dev/null 2>&1; then
   cp -v /work/vapi/*.deps "$VAPIDIR"/ 2>/dev/null || true
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
+
+stage_geary_deps() {
+  target_requests geary || return 0
+
+  local build_base=$XIOS_BUILD_BASE
+  local pkg deb
+  echo "==> staging packaged Geary/WebKitGTK development dependencies"
+  for pkg in \
+    libgmime-3.0-0 libgmime-3.0-dev \
+    libstemmer0d libstemmer-dev \
+    libgspell-1-2 libgspell-1-dev \
+    libpeas-1.0-0 libpeas-1.0-dev \
+    libfolks26 libfolks-dev \
+    libgck-1-0 libgcr-3-1 libgcr-3-dev \
+    libgoa-1.0-0b libgoa-1.0-dev \
+    libjavascriptcoregtk-4.1-0 libjavascriptcoregtk-4.1-dev \
+    libwebkit2gtk-4.1-0 libwebkit2gtk-4.1-dev; do
+    deb="$(find /out /repo-debs -maxdepth 1 -type f \
+      -name "${pkg}_*_iphoneos-arm64.deb" -printf '%f\t%p\n' 2>/dev/null |
+      sort -V | tail -1 | cut -f2-)"
+    if [ -z "$deb" ]; then
+      echo "ERROR: Geary needs $pkg in /out or /repo-debs" >&2
+      exit 1
+    fi
+    echo "    staging $deb"
+    dpkg-deb -x "$deb" "$build_base"
+  done
+
+  local pc_root="$build_base$XIOS_PREFIX/usr/lib/pkgconfig"
+  for pc in gmime-3.0 libstemmer gspell-1 libpeas-1.0 folks gck-1 gcr-3 \
+    goa-1.0 javascriptcoregtk-4.1 webkit2gtk-4.1; do
+    if [ ! -f "$pc_root/$pc.pc" ]; then
+      echo "ERROR: staged Geary dependency is missing $pc.pc" >&2
+      exit 1
+    fi
+  done
+}
+
+stage_geary_deps
 
 # Dependency order: foundation bus+settings -> app libraries -> the GTK4 apps. The GTK4 base
 # (gtk4/graphene/gdk-pixbuf) and libxkbcommon are pulled in as make prerequisites (their
 # .build_complete markers skip rebuilds). gnome-terminal is omitted (optional GTK3 pass).
 # VALA targets (libgee, gnome-calculator) also need valac + the vendored .vapi staged above.
 
-APPSTREAM_W=build_work/iphoneos-arm64-rootless/1900/appstream
-APPSTREAM_S=build_stage/iphoneos-arm64-rootless/1900/appstream
+APPSTREAM_W=build_work/$XIOS_TRIPLE/appstream
+APPSTREAM_S=build_stage/$XIOS_TRIPLE/appstream
 APPSTREAM_F="$APPSTREAM_W/.xios_patch_series.sha256"
 if target_requests appstream; then
   APPSTREAM_FP="$(sha256sum \
@@ -139,8 +191,8 @@ if target_requests appstream; then
   fi
 fi
 
-TRACKER_W=build_work/iphoneos-arm64-rootless/1900/tracker
-TRACKER_S=build_stage/iphoneos-arm64-rootless/1900/tracker
+TRACKER_W=build_work/$XIOS_TRIPLE/tracker
+TRACKER_S=build_stage/$XIOS_TRIPLE/tracker
 TRACKER_F="$TRACKER_W/.xios_patch_series.sha256"
 if target_requests tracker || target_requests nautilus; then
   TRACKER_FP="$(sha256sum \
@@ -153,8 +205,8 @@ if target_requests tracker || target_requests nautilus; then
   fi
 fi
 
-CURL_W=build_work/iphoneos-arm64-rootless/1900/curl
-CURL_S=build_stage/iphoneos-arm64-rootless/1900/curl
+CURL_W=build_work/$XIOS_TRIPLE/curl
+CURL_S=build_stage/$XIOS_TRIPLE/curl
 CURL_F="$CURL_W/.xios_patch_series.sha256"
 if target_requests curl || target_requests appstream; then
   CURL_FP="$(sha256sum \
@@ -167,8 +219,8 @@ if target_requests curl || target_requests appstream; then
   fi
 fi
 
-NGHTTP2_W=build_work/iphoneos-arm64-rootless/1900/nghttp2
-NGHTTP2_S=build_stage/iphoneos-arm64-rootless/1900/nghttp2
+NGHTTP2_W=build_work/$XIOS_TRIPLE/nghttp2
+NGHTTP2_S=build_stage/$XIOS_TRIPLE/nghttp2
 NGHTTP2_F="$NGHTTP2_W/.xios_patch_series.sha256"
 if target_requests nghttp2 || target_requests curl || target_requests appstream || target_requests libsoup3; then
   NGHTTP2_FP="$(sha256sum \
@@ -181,8 +233,8 @@ if target_requests nghttp2 || target_requests curl || target_requests appstream 
   fi
 fi
 
-GTE_W=build_work/iphoneos-arm64-rootless/1900/gnome-text-editor
-GTE_S=build_stage/iphoneos-arm64-rootless/1900/gnome-text-editor
+GTE_W=build_work/$XIOS_TRIPLE/gnome-text-editor
+GTE_S=build_stage/$XIOS_TRIPLE/gnome-text-editor
 GTE_F="$GTE_W/.xios_patch_series.sha256"
 if target_requests gnome-text-editor; then
   GTE_FP="$(sha256sum \
@@ -195,8 +247,8 @@ if target_requests gnome-text-editor; then
   fi
 fi
 
-NAU_W=build_work/iphoneos-arm64-rootless/1900/nautilus
-NAU_S=build_stage/iphoneos-arm64-rootless/1900/nautilus
+NAU_W=build_work/$XIOS_TRIPLE/nautilus
+NAU_S=build_stage/$XIOS_TRIPLE/nautilus
 NAU_F="$NAU_W/.xios_patch_series.sha256"
 if target_requests nautilus; then
   NAU_FP="$(sha256sum \
@@ -209,8 +261,8 @@ if target_requests nautilus; then
   fi
 fi
 
-GNOME_DESKTOP_W=build_work/iphoneos-arm64-rootless/1900/gnome-desktop
-GNOME_DESKTOP_S=build_stage/iphoneos-arm64-rootless/1900/gnome-desktop
+GNOME_DESKTOP_W=build_work/$XIOS_TRIPLE/gnome-desktop
+GNOME_DESKTOP_S=build_stage/$XIOS_TRIPLE/gnome-desktop
 GNOME_DESKTOP_F="$GNOME_DESKTOP_W/.xios_patch_series.sha256"
 if target_requests gnome-desktop || target_requests nautilus || target_requests gnome-font-viewer; then
   GNOME_DESKTOP_FP="$(sha256sum \
@@ -267,24 +319,63 @@ fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-DIST_ROOT="build_dist/iphoneos-arm64-rootless/1900"
-for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
-           libjson-glib libxmlb libappstream libadwaita \
-           libarchive \
-           libvte libgtksourceview libenchant \
-           libpsl libsoup libgee \
-           libgnome-autoar libportal iso-codes libtracker libgnome-desktop \
-           libstemmer libytnef libgmime libgspell libpeas \
-           gnome-console gnome-text-editor gnome-font-viewer nautilus gnome-calculator \
-           baobab file-roller hitori; do
-  find "$DIST_ROOT" -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+DIST_ROOT="build_dist/$XIOS_TRIPLE"
+OUT_STAGING="$(mktemp -d /tmp/xios-gnome-out.XXXXXX)"
+trap 'rm -rf "$OUT_STAGING"' EXIT
+for spec in \
+  dbus:dbus \
+  dconf:dconf \
+  gsettings-desktop-schemas:gsettings-desktop-schemas \
+  curl:curl \
+  libcurl:curl \
+  libjson-glib:json-glib \
+  libxmlb:libxmlb \
+  libappstream:appstream \
+  libadwaita:libadwaita \
+  libarchive:libarchive \
+  libvte:vte \
+  libgtksourceview:gtksourceview5 \
+  libenchant:enchant \
+  libjavascriptcoregtk:webkitgtk \
+  libwebkit2gtk:webkitgtk \
+  libpsl:libpsl \
+  libsoup:libsoup3 \
+  libgee:libgee \
+  libgnome-autoar:gnome-autoar \
+  libportal:libportal \
+  iso-codes:iso-codes \
+  libtracker:tracker \
+  libgnome-desktop:gnome-desktop \
+  libstemmer:libstemmer \
+  libytnef:libytnef \
+  libgmime:gmime \
+  libgspell:gspell \
+  libpeas:libpeas \
+  libfolks:folks \
+  libgck:gcr3 \
+  libgcr:gcr3 \
+  libgoa:gnome-online-accounts \
+  gnome-console:gnome-console \
+  gnome-text-editor:gnome-text-editor \
+  gnome-font-viewer:gnome-font-viewer \
+  nautilus:nautilus \
+  gnome-calculator:gnome-calculator \
+  baobab:baobab \
+  file-roller:file-roller \
+  geary:geary \
+  hitori:hitori; do
+  pat="${spec%%:*}"
+  req="${spec#*:}"
+  target_requests "$req" || continue
+  find "$DIST_ROOT" -name "${pat}*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} "$OUT_STAGING"/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass: GNOME app libs/binaries link GTK's bundled proxy-libintl and
 # import the same g_libintl_* symbols, so they'd dyld-abort exactly like GTK did. Rather
-# than relink per-recipe, fix every collected deb in one idempotent pass — relink onto the
-# libgtkintl shim, re-sign, and add Depends: libgtkintl. See recipes/relink-gtkintl.sh.
-echo "==> shared libgtkintl relink pass (makes every GNOME deb libintl-immune)"
-bash /work/recipes/relink-gtkintl.sh /out
+# than relink per-recipe, fix the freshly collected debs in one idempotent pass,
+# then copy only those artifacts into /out. See recipes/relink-gtkintl.sh.
+echo "==> shared libgtkintl relink pass for collected debs"
+bash /work/recipes/relink-gtkintl.sh "$OUT_STAGING"
+cp -v "$OUT_STAGING"/*.deb /out/ 2>/dev/null || true
 
 echo "==> done"

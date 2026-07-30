@@ -18,11 +18,13 @@
 # already ships with host qtbase since 6.3. All codegen being host-side is why this track has
 # no separate introspection step. Stage 2 is the Procursus cross build via recipes/qt*.mk.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
 QTMINOR=6.6
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 TARGETS="${TARGETS:-qtshadertools qtdeclarative qt5compat qtwayland qtsvg qtimageformats}"
 
 cd /work/Procursus
@@ -127,21 +129,21 @@ if [ -f /work/build_info/iosc-gpu-client-ent.xml ]; then
 fi
 
 case " ${TARGETS} " in *" qtwayland "*)
-  if ls /out/angle_*_iphoneos-arm64.deb >/dev/null 2>&1; then
-    ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep -E '\+es3-[0-9]+' | sort -V | tail -1 || true)
-    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | grep '+es3' | sort -V | tail -1 || true)
-    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_iphoneos-arm64.deb 2>/dev/null | sort -V | tail -1)
+  if ls /out/angle_*_$XIOS_DEB_ARCH.deb >/dev/null 2>&1; then
+    ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep -E '\+es3-[0-9]+' | sort -V | tail -1 || true)
+    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep '+es3' | sort -V | tail -1 || true)
+    [ -n "$ANGLE_DEB" ] || ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1)
     echo "==> staging ANGLE for qtwayland EGL integration: ${ANGLE_DEB}"
     rm -rf /tmp/angle-qt && mkdir -p /tmp/angle-qt
     dpkg-deb -x "$ANGLE_DEB" /tmp/angle-qt
     mkdir -p "$BB"
-    cp -a /tmp/angle-qt/var/jb/* "$BB"/
+    cp -a /tmp/angle-qt$XIOS_PREFIX/* "$BB"/
   else
     echo "WARN: no angle deb in /out; qtwayland may skip/fail EGL integration"
   fi
 esac
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk"
@@ -156,5 +158,5 @@ done
 
 # collect any debs produced
 mkdir -p /out
-find . -name "qt6-*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+find . -name "qt6-*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 echo "==> done"

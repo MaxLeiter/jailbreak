@@ -65,16 +65,16 @@ static void xios_broker_retain_publisher(NSXPCConnection *connection)
 
 int xios_metal_event_broker_publish(
     MTLSharedEventHandle *handle,
-    unsigned char token[XIOS_METAL_EVENT_TOKEN_SIZE])
+    unsigned char token[XIOS_GPU_FENCE_TOKEN_SIZE])
 {
     if (!handle || !token)
         return 0;
 
     @autoreleasepool {
         for (int attempt = 0; attempt < 4; attempt++) {
-            arc4random_buf(token, XIOS_METAL_EVENT_TOKEN_SIZE);
+            arc4random_buf(token, XIOS_GPU_FENCE_TOKEN_SIZE);
             NSData *tokenData =
-                [NSData dataWithBytes:token length:XIOS_METAL_EVENT_TOKEN_SIZE];
+                [NSData dataWithBytes:token length:XIOS_GPU_FENCE_TOKEN_SIZE];
             NSXPCConnection *connection = xios_broker_connection();
             if (!connection)
                 return 0;
@@ -112,7 +112,7 @@ int xios_metal_event_broker_publish(
 id<MTLSharedEvent> xios_metal_event_broker_copy_event(
     id<MTLDevice> device, const void *token, size_t token_size)
 {
-    if (!device || !token || token_size != XIOS_METAL_EVENT_TOKEN_SIZE)
+    if (!device || !token || token_size != XIOS_GPU_FENCE_TOKEN_SIZE)
         return nil;
 
     @autoreleasepool {

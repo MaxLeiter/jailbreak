@@ -2,7 +2,7 @@ import Foundation
 import GameController
 import UIKit
 
-/// Process-wide physical-keyboard bridge shared by the classic Xios desktop and
+/// Process-wide physical-keyboard bridge shared by the fullscreen Xios desktop and
 /// native per-window host. GameController exposes raw HID transitions without
 /// requiring a text field or first responder, which is exactly what a desktop
 /// needs for held keys, simultaneous chords, and modifier-only shortcuts.

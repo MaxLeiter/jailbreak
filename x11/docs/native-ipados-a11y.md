@@ -47,7 +47,7 @@ event subscriptions, debounce, publication filters) is shared machinery.
    client and all native hosts, owned `mobile:mobile` and mode 0660, fixed path
    — never derive from `$XDG_RUNTIME_DIR`, which ioscd points at per-app private
    bus dirs, ioscd.c:255).
-2. Host sends `bind{appid,exec}` immediately after connect.
+2. Host sends `bind{appid}` immediately after connect.
    An unbound connection = desktop semantics (Xios app, unchanged). bind is a
    persistent filter: on cold launch the helper holds it and starts publishing
    when the app's Socket.Embed arrives; on app exit it sends `reset` and
@@ -69,8 +69,8 @@ event subscriptions, debounce, publication filters) is shared machinery.
 Binding `appid` to an AT-SPI application:
 
 - Shipped first pass: helper matches the bound connection against AT-SPI
-  application name/title using `appid`, `exec`, and their basenames. On-device
-  smoke verified `bind{appid:"org.gnome.Console",exec:"kgx"}` publishes kgx and a
+  application name/title using `appid` and its basename. On-device
+  smoke verified `bind{appid:"org.gnome.Console"}` publishes the matching app and a
   non-matching bind publishes no windows.
 - Intended hardening: ioscd spawned the Linux process for that appid
   (`ioscd_send_launch`), so it knows (appid, pid). ioscd streams spawn/exit
@@ -163,7 +163,7 @@ attach/detach.
 
 | addition | direction | why |
 |---|---|---|
-| `bind{appid,exec?}` | app->helper | scope a connection to one AT-SPI app; `exec` covers app-id/name mismatches |
+| `bind{appid}` | app->helper | scope a connection to one AT-SPI app id |
 | multi-connection + per-conn bind/enable/generation | helper | N hosts |
 | publish all toplevels of bound app (not focused-only) | helper | same-app Split View |
 | `attach{win}` / `detach{win}` | app->helper | mute unscened windows |

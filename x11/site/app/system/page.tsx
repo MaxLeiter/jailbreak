@@ -28,8 +28,8 @@ export default function System() {
             API. The iOS side is reached with <code>dlopen</code>{" "}and the
             Objective-C runtime, so nothing links a private framework at build
             time and every probe degrades cleanly when the API is missing. It is
-            the same shim trick behind the logind, polkit, and Accounts stubs that
-            let GNOME start.
+            the same shim trick behind the <T k="logind" />, polkit, and Accounts
+            stubs that let GNOME start.
           </p>
         </div>
       </Section>

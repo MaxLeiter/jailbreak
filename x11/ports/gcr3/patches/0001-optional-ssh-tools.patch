@@ -1,0 +1,21 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Do not query missing ssh tool paths when the agent is disabled
+
+Meson returns a not-found program object when ssh_agent=false, but calling
+.path() on that object is still an error. Keep the configured paths empty for
+the iOS client-library-only build.
+
+--- a/meson.build
++++ b/meson.build
+@@ -52,8 +52,10 @@ if p11_system_config_modules == ''
+   error('Couldn\'t find location for pkcs11 module config')
+ endif
+ libsecret_dep = dependency('libsecret-1', version: '>= 0.20', required: get_option('ssh_agent'))
+-ssh_add_path = find_program('ssh-add', required: get_option('ssh_agent')).path()
+-ssh_agent_path = find_program('ssh-agent', required: get_option('ssh_agent')).path()
++ssh_add = find_program('ssh-add', required: get_option('ssh_agent'))
++ssh_add_path = ssh_add.found() ? ssh_add.path() : ''
++ssh_agent = find_program('ssh-agent', required: get_option('ssh_agent'))
++ssh_agent_path = ssh_agent.found() ? ssh_agent.path() : ''
+ 
+ with_systemd = false

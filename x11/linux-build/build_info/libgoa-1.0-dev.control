@@ -1,0 +1,10 @@
+Package: libgoa-1.0-dev
+Version: @DEB_GNOME_ONLINE_ACCOUNTS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/gnome-online-accounts
+Depends: libgoa-1.0-0b (= @DEB_GNOME_ONLINE_ACCOUNTS_V@), libglib2.0-dev
+Description: GNOME Online Accounts client development files
+ Headers and pkg-config metadata for the goa-1.0 client API.

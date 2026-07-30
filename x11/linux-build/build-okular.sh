@@ -2,10 +2,12 @@
 # build-okular.sh — cross-build Okular and its missing support packages on the
 # Qt/KF6 volume.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 TARGETS="${TARGETS:-poppler-qt6-package threadweaver-package okular-package}"
 COLLECT_DEBS=(libpoppler-qt6 kf6-threadweaver okular)
 
@@ -39,7 +41,7 @@ done
 cp -v /work/build_info/* build_info/ 2>/dev/null || true
 cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"
@@ -57,7 +59,7 @@ mkdir -p /out
 for pkg in "${COLLECT_DEBS[@]}"; do
   while IFS= read -r deb; do
     [ -e "$deb" ] && cp -v "$deb" /out/
-  done < <(find build_dist/iphoneos-arm64-rootless/1900 -maxdepth 2 -type f \( \
+  done < <(find build_dist/$XIOS_TRIPLE -maxdepth 2 -type f \( \
     -name "${pkg}_*.deb" -o \
     -name "${pkg}-3_*.deb" -o \
     -name "${pkg}-dev_*.deb" \

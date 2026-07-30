@@ -1,0 +1,58 @@
+--- a/gegl/opencl/gegl-cl-init.c
++++ b/gegl/opencl/gegl-cl-init.c
+@@ -317,7 +317,12 @@
+ 
+ #else
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && \
++    !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++#define GEGL_APPLE_OPENCL 1
++#endif
+++#ifdef GEGL_APPLE_OPENCL
+ #define GL_LIBRARY_NAME "/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL"
+ #define CL_LIBRARY_NAME "/System/Library/Frameworks/OpenCL.framework/Versions/Current/OpenCL"
+ #else
+@@ -355,7 +360,7 @@
+   }
+ 
+ 
+-#if defined(__APPLE__)
++#ifdef GEGL_APPLE_OPENCL
+ typedef struct _CGLContextObject *CGLContextObj;
+ typedef struct CGLShareGroupRec  *CGLShareGroupObj;
+ 
+@@ -389,7 +394,7 @@
+ #endif
+ 
+ 
+-  #if defined(__APPLE__)
++  #ifdef GEGL_APPLE_OPENCL
+   CGLContextObj kCGLContext;
+   CGLShareGroupObj kCGLShareGroup;
+ 
+@@ -539,7 +544,7 @@
+   return TRUE;
+ }
+ 
+-#ifndef __APPLE__
++#ifndef GEGL_APPLE_OPENCL
+ static gboolean
+ gegl_cl_gl_init_load_functions (GError **error)
+ {
+@@ -724,6 +729,6 @@
+       if (gl_sharing)
+         {
+-#ifdef __APPLE__
++#ifdef GEGL_APPLE_OPENCL
+           cl_device_id sharing_device;
+ #endif
+           cl_context_properties gl_contex_props[64];
+@@ -732,6 +737,6 @@
+           if (!gegl_cl_init_get_gl_sharing_props (gl_contex_props, error))
+             return FALSE;
+ 
+-#ifdef __APPLE__
++#ifdef GEGL_APPLE_OPENCL
+           /* Create context */
+           ctx = gegl_clCreateContext (gl_contex_props, 0, 0, NULL, 0, &err);

@@ -1,4 +1,5 @@
 #include "XSurface.h"
+#include "../../shared/XiosProtocol.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,31 +27,10 @@ static void xlog(const char *fmt, ...)
     fputc('\n', f); fclose(f);
 }
 
-/* wire protocol — must match the server (linux-build/patches/xios/xios_surface.c).
- * After the IOSurface mach-port hand-off, every app connection receives a typed
- * 32-byte record stream: HELLO first, then DIRTY + CURSOR interleaved. */
-#define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
-
-typedef struct { uint32_t magic, pid, portname, reserved; } xios_hello;
-typedef struct { uint32_t magic, width, height, stride, format, status; } xios_reply;
-
-#define XIOS_HELLO_TYPED 0x54595031u  /* 'TYP1' in hello.reserved => typed stream */
-#define XIOS_MSG_MAGIC   0x584D5331u  /* 'XMS1' per-record frame sync */
-#define XIOS_SHARED_EVENT_TOKEN_SIZE 32u
-enum {
-    XIOS_MSG_HELLO = 0x01,
-    XIOS_MSG_DIRTY = 0x02,
-    XIOS_MSG_CURSOR = 0x03,
-    XIOS_MSG_PRESENTED = 0x05
-};
-enum {
-    XIOS_DIRTY_FENCE_NONE = 0,
-    XIOS_DIRTY_FENCE_BROKER_TOKEN = 1,
-};
-typedef struct {
-    uint32_t magic, type, window_id, length;
-    int32_t  a, b, c, d;
-} xios_msg;                            /* 32 bytes, LE; optional length-byte payload */
+/* Wire protocol is the canonical xios_msg stream from XiosProtocol.h. Both
+ * directions start with an exact-version HELLO; there is no legacy preamble.
+ * That header is also where XIOS_MSG_PACING and PRESENTED's present-time fields
+ * are defined — this file only sends them. */
 
 typedef struct {
     mach_msg_header_t header;
@@ -72,7 +52,7 @@ struct XSurfaceConn {
     uint32_t fence_rx_got;
     uint64_t fence_rx_dirty_seq;
     uint64_t fence_rx_value;
-    unsigned char fence_token[XIOS_SHARED_EVENT_TOKEN_SIZE];
+    unsigned char fence_token[XIOS_GPU_FENCE_TOKEN_SIZE];
     uint32_t fence_token_size;
     uint64_t fence_dirty_seq;
     uint64_t fence_value;
@@ -149,11 +129,13 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
         destroy_reply_port(self, r); close(fd); return NULL;
     }
 
-    xios_hello hello;
-    hello.magic = XIOS_MAGIC;
-    hello.pid = (uint32_t) getpid();
-    hello.portname = (uint32_t) r;
-    hello.reserved = XIOS_HELLO_TYPED;   /* required typed stream marker */
+    xios_msg hello;
+    memset(&hello, 0, sizeof(hello));
+    hello.magic = XIOS_MSG_MAGIC;
+    hello.type = XIOS_MSG_HELLO;
+    hello.window_id = XIOS_PROTOCOL_VERSION;
+    hello.a = (int32_t) getpid();       /* diagnostic only; server trusts peer pid */
+    hello.b = (int32_t) r;
     if (write_full(fd, &hello, sizeof(hello)) != 0) {
         destroy_reply_port(self, r); close(fd); return NULL;
     }
@@ -184,50 +166,34 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
         close(fd); return NULL;
     }
 
-    /* Drain the geometry reply so the socket stream is aligned for damage msgs. */
-    xios_reply reply;
-    if (read_full(fd, &reply, sizeof(reply)) != 0 || reply.magic != XIOS_MAGIC ||
-        reply.status != 0) {
-        xlog("reply read failed magic=0x%x status=%u", reply.magic, reply.status);
+    /* The server's HELLO is the first socket reply. The IOSurface itself remains
+     * the geometry source of truth; HELLO must describe that exact allocation. */
+    xios_msg h;
+    memset(&h, 0, sizeof(h));
+    if (read_full(fd, &h, sizeof(h)) != 0 || h.magic != XIOS_MSG_MAGIC ||
+        h.type != XIOS_MSG_HELLO ||
+        h.window_id != XIOS_PROTOCOL_VERSION ||
+        h.length >= sizeof(((XSurfaceConn *)0)->comp_id)) {
+        xlog("v%u HELLO missing/malformed (magic=0x%x type=%u version=%u)",
+             XIOS_PROTOCOL_VERSION, h.magic, h.type, h.window_id);
         CFRelease(surface); close(fd); return NULL;
     }
-
     XSurfaceConn *c = calloc(1, sizeof(*c));
     if (!c) { CFRelease(surface); close(fd); return NULL; }
     c->fd = fd;
     c->surface = surface;
-    /* Trust the surface itself for geometry (single source of truth). */
     c->width = (int) IOSurfaceGetWidth(surface);
     c->height = (int) IOSurfaceGetHeight(surface);
     c->stride = (int) IOSurfaceGetBytesPerRow(surface);
-
-    /* The server sends an in-band HELLO record (magic XMS1, type HELLO) as the
-     * first bytes after the reply, still blocking here (the server sends it before
-     * flipping the socket to non-blocking). If it is absent or malformed, app and
-     * server are out of sync; fail and reconnect instead of falling back to an old
-     * byte stream. */
-    xios_msg h;
-    memset(&h, 0, sizeof(h));
-    if (read_full(fd, &h, sizeof(h)) != 0 || h.magic != XIOS_MSG_MAGIC ||
-        h.type != XIOS_MSG_HELLO) {
-        xlog("typed HELLO missing/malformed (magic=0x%x type=%u)",
-             h.magic, h.type);
+    if (h.a != c->width || h.b != c->height || h.c != c->stride ||
+        (uint32_t)h.d != 0x42475241u) {
+        xlog("HELLO geometry mismatch surface=%dx%d/%d wire=%dx%d/%d",
+             c->width, c->height, c->stride, h.a, h.b, h.c);
         CFRelease(surface); free(c); close(fd); return NULL;
     }
-    uint32_t full_idlen = h.length;
-    uint32_t idlen = full_idlen;
-    if (idlen > sizeof(c->comp_id) - 1) idlen = sizeof(c->comp_id) - 1;
+    uint32_t idlen = h.length;
     if (idlen && read_full(fd, c->comp_id, idlen) != 0) {
         CFRelease(surface); free(c); close(fd); return NULL;
-    }
-    while (full_idlen > idlen) {
-        unsigned char discard[64];
-        uint32_t chunk = full_idlen - idlen;
-        if (chunk > sizeof(discard)) chunk = (uint32_t) sizeof(discard);
-        if (read_full(fd, discard, chunk) != 0) {
-            CFRelease(surface); free(c); close(fd); return NULL;
-        }
-        full_idlen -= chunk;
     }
     c->comp_id[idlen] = '\0';
     xlog("typed stream connected (compositor=%s)", c->comp_id);
@@ -297,32 +263,20 @@ int xsurface_drain(XSurfaceConn *c)
             case XIOS_MSG_DIRTY:
             {
                 uint64_t seq = ((uint64_t)(uint32_t)m.b << 32) | (uint32_t)m.a;
-                if (m.length > 0) {
-                    uint64_t event_value =
-                        ((uint64_t)(uint32_t)m.d << 32) | (uint32_t)m.c;
-                    if (m.window_id != XIOS_DIRTY_FENCE_BROKER_TOKEN ||
-                        m.length != XIOS_SHARED_EVENT_TOKEN_SIZE ||
-                        event_value == 0) {
-                        xlog("invalid broker fence kind=%u length=%u value=%llu",
-                             m.window_id, m.length,
-                             (unsigned long long)event_value);
-                        return -1;
-                    }
-                    c->fence_rx_expected = m.length;
-                    c->fence_rx_got = 0;
-                    c->fence_rx_dirty_seq = seq;
-                    c->fence_rx_value = event_value;
-                } else {
-                    if (m.window_id != XIOS_DIRTY_FENCE_NONE) {
-                        xlog("invalid unfenced DIRTY kind=%u", m.window_id);
-                        return -1;
-                    }
-                    c->dirty_seq = seq;
-                    c->fence_token_size = 0;
-                    c->fence_dirty_seq = seq;
-                    c->fence_value = 0;
-                    dirty = 1;
+                uint64_t event_value =
+                    ((uint64_t)(uint32_t)m.d << 32) | (uint32_t)m.c;
+                if (m.window_id != XIOS_DIRTY_FENCE_BROKER_TOKEN ||
+                    m.length != XIOS_GPU_FENCE_TOKEN_SIZE ||
+                    event_value == 0) {
+                    xlog("invalid broker fence kind=%u length=%u value=%llu",
+                         m.window_id, m.length,
+                         (unsigned long long)event_value);
+                    return -1;
                 }
+                c->fence_rx_expected = m.length;
+                c->fence_rx_got = 0;
+                c->fence_rx_dirty_seq = seq;
+                c->fence_rx_value = event_value;
                 break;
             }
             case XIOS_MSG_CURSOR:
@@ -330,19 +284,9 @@ int xsurface_drain(XSurfaceConn *c)
                 c->cur_shape = m.c; c->cur_vis = (m.d & 1);
                 c->cur_seq++;
                 break;
-            case XIOS_MSG_HELLO:               /* compositor identity / geometry reminder */
-                /* The IOSurface backing this connection is immutable. If a later
-                 * HELLO advertises different dimensions, the server has moved to a
-                 * new surface and this connection must be re-adopted from scratch
-                 * (new mach port + new Metal texture), not patched in place. */
-                if ((m.a > 0 && m.a != c->width) ||
-                    (m.b > 0 && m.b != c->height) ||
-                    (m.c > 0 && m.c != c->stride)) {
-                    xlog("typed HELLO geometry changed %dx%d/%d -> %dx%d/%d; reconnect",
-                         c->width, c->height, c->stride, m.a, m.b, m.c);
-                    return -1;
-                }
-                break;
+            case XIOS_MSG_HELLO:
+                xlog("duplicate HELLO; reconnect");
+                return -1;
             default:
                 xlog("typed unknown record type=0x%x; reconnect", m.type);
                 return -1;
@@ -370,7 +314,7 @@ int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
     if (token) *token = NULL;
     if (token_size) *token_size = 0;
     if (value) *value = 0;
-    if (!c || c->fence_token_size != XIOS_SHARED_EVENT_TOKEN_SIZE ||
+    if (!c || c->fence_token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
         c->fence_value == 0 ||
         c->fence_dirty_seq != c->dirty_seq)
         return 0;
@@ -380,7 +324,20 @@ int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
     return 1;
 }
 
-int xsurface_presented(XSurfaceConn *c, uint64_t seq)
+/* One non-blocking 32-byte record on the app socket. MSG_DONTWAIT keeps the
+ * never-stall posture of this stream: a backed-up compositor drops our ack rather
+ * than parking the app's main thread mid-tick. */
+static int send_msg(XSurfaceConn *c, const xios_msg *m)
+{
+    ssize_t r;
+    do {
+        r = send(c->fd, m, sizeof(*m), MSG_DONTWAIT);
+    } while (r < 0 && errno == EINTR);
+    return r == (ssize_t)sizeof(*m) ? 0 : -1;
+}
+
+static int presented_common(XSurfaceConn *c, uint64_t seq,
+                            uint32_t present_age_us, int have_age)
 {
     if (!c || c->fd < 0 || seq == 0) return -1;
     xios_msg m;
@@ -389,11 +346,39 @@ int xsurface_presented(XSurfaceConn *c, uint64_t seq)
     m.type = XIOS_MSG_PRESENTED;
     m.a = (int32_t)(uint32_t)(seq & 0xffffffffu);
     m.b = (int32_t)(uint32_t)(seq >> 32);
-    ssize_t r;
-    do {
-        r = send(c->fd, &m, sizeof(m), MSG_DONTWAIT);
-    } while (r < 0 && errno == EINTR);
-    return r == (ssize_t)sizeof(m) ? 0 : -1;
+    if (have_age) {
+        /* c is int32; an age past ~35 minutes is nonsense anyway, and clamping
+         * keeps the compositor from reading a negative as a future present. */
+        m.c = present_age_us > (uint32_t)INT32_MAX
+            ? INT32_MAX : (int32_t)present_age_us;
+        m.d = 1;                 /* bit0: c carries a measured presentedTime */
+    }
+    return send_msg(c, &m);
+}
+
+int xsurface_presented(XSurfaceConn *c, uint64_t seq)
+{
+    return presented_common(c, seq, 0, 0);
+}
+
+int xsurface_presented_at(XSurfaceConn *c, uint64_t seq, uint32_t present_age_us)
+{
+    return presented_common(c, seq, present_age_us, 1);
+}
+
+int xsurface_pacing(XSurfaceConn *c, int32_t until_deadline_us,
+                    uint32_t interval_us, int32_t min_mfps, int32_t max_mfps)
+{
+    if (!c || c->fd < 0 || interval_us == 0) return -1;
+    xios_msg m;
+    memset(&m, 0, sizeof(m));
+    m.magic = XIOS_MSG_MAGIC;
+    m.type = XIOS_MSG_PACING;
+    m.a = until_deadline_us;
+    m.b = interval_us > (uint32_t)INT32_MAX ? INT32_MAX : (int32_t)interval_us;
+    m.c = min_mfps;
+    m.d = max_mfps;
+    return send_msg(c, &m);
 }
 
 uint32_t xsurface_cursor(XSurfaceConn *c, int *x, int *y, int *visible, int *shape_id)

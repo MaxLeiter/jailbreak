@@ -14,6 +14,10 @@ usage: $0 [target-id] [--dry-run] [--skip-image-build] make-target...
   make-target          Procursus make target, e.g. glib2.0-package
   --dry-run            Print the docker commands without running them
   --skip-image-build   Use an existing XIOS_PROC_IMAGE instead of running docker build
+
+  JOBS=<n>             make -j value (default: all cores). Lower it when another
+                       build already owns the Docker VM -- this one is 8 GB, and an
+                       over-parallel build OOM-kills whatever else is running.
 EOF
 }
 
@@ -55,7 +59,14 @@ fi
 xios_load_target "$TARGET"
 
 IMAGE="${XIOS_PROC_IMAGE:-procursus-xbuild:bookworm-arm64}"
-VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+# Keep the rootless volume exactly where it was; give any other profile its own,
+# so a rootful bootstrap does not double the disk on the volume that holds the
+# working rootless tree (and its ~50 .build_complete markers).
+if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
+  VOLUME="${PROCURSUS_VOL:-procursus-vol}"
+else
+  VOLUME="${PROCURSUS_VOL:-procursus-vol-$XIOS_REPO_PROFILE}"
+fi
 SDK_SRC="${SDK_SRC:-$HOME/theos/sdks/iPhoneOS16.5.sdk}"
 MACOS_SDK_SRC="${MACOS_SDK_SRC:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
 
@@ -106,12 +117,27 @@ run_cmd docker run --rm --platform linux/arm64 \
   -e XIOS_TARGET_ID \
   -e XIOS_MEMO_TARGET \
   -e XIOS_MEMO_CFVER \
+  -e XIOS_PREFIX \
+  -e XIOS_SUBPREFIX \
+  -e XIOS_DEB_ARCH \
+  -e JOBS \
   -e PATH="/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   -e LD_LIBRARY_PATH="/root/cctools/lib" \
   -v "$VOLUME:/work/Procursus" \
+  -v "$HERE/target-env.sh:/work/target-env.sh:ro" \
+  -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$HERE/out:/out" \
   --entrypoint bash "$IMAGE" -lc '
 set -euo pipefail
+
+# A cold volume has no Procursus tree at all. Clone it, apply the toolchain fixes
+# every target needs, and run setup -- the steps build.sh does on the way to the X
+# server, which a Wayland-only target has no reason to go through.
+if [ ! -d /work/Procursus/.git ]; then
+  echo "==> cold volume: cloning Procursus"
+  git clone --depth 1 https://github.com/ProcursusTeam/Procursus.git /work/Procursus
+  BOOTSTRAP=1
+fi
 cd /work/Procursus
 rm -f /usr/local/bin/aarch64-apple-darwin-clang /usr/local/bin/aarch64-apple-darwin-clang++
 find /root/cctools/bin -maxdepth 1 -type f -name "aarch64-apple-darwin-*" \
@@ -148,7 +174,20 @@ for i, line in enumerate(lines):
         print("patched makefiles/pcre2.mk")
         break
 PY
-make "$@" MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 -j"$(nproc)"
+echo "==> common Procursus toolchain edits"
+python3 /work/procursus-common-edits.py
+
+if [ "${BOOTSTRAP:-0}" = 1 ]; then
+  echo "==> cold volume: make setup (stages the SDK headers into build_base)"
+  make setup MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 \
+    CORE_COUNT="${JOBS:-$(nproc)}"
+fi
+
+# CORE_COUNT as well as -j: Procursus does `MAKEFLAGS += --jobs=$(CORE_COUNT)`
+# whenever it does not already see a jobserver, which silently overrides a plain
+# -j on the command line. CORE_COUNT is ?=, so a make-level assignment wins.
+make "$@" MEMO_TARGET="$XIOS_MEMO_TARGET" MEMO_CFVER="$XIOS_MEMO_CFVER" NO_PGP=1 \
+  CORE_COUNT="${JOBS:-$(nproc)}" -j"${JOBS:-$(nproc)}"
 dest="/out/targets/$XIOS_TARGET_ID"
 mkdir -p "$dest"
 for target in "$@"; do

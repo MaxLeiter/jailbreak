@@ -2,10 +2,8 @@
 #define XIOS_IOSCINPUT_H
 #include <stdbool.h>
 
-// Thin C bridge to the iosc Wayland compositor's input socket. When the Xios app is
-// displaying iosc's output (a Wayland desktop) rather than an X server, UIKit touch +
-// keyboard are forwarded here instead of over XTEST (see XInput.h). iosc translates
-// these into wl_pointer / wl_keyboard events for the focused xdg_toplevel.
+// Thin C bridge to the active compositor's input socket. UIKit touch + keyboard
+// arrive here and are translated into wl_pointer / wl_keyboard events.
 //
 // Wire protocol (a fixed 24-byte message per event; app + iosc are both arm64 LE):
 //   type=1 MOTION  x,y in output pixels

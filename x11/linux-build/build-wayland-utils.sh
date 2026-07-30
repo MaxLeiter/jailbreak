@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Build small Wayland desktop utilities (slurp region selector, dunst notification daemon; and the
-# BLOCKED mako + its basu sd-bus provider) for rootless iOS via the Procursus/Docker pipeline. These
+# Build small Wayland desktop utilities (slurp region selector, dunst notification daemon,
+# mako, and its basu sd-bus provider) for rootless iOS via the Procursus/Docker pipeline. These
 # pair with the iosc compositor: slurp + grim = region screenshots, dunst = org.freedesktop.Notifications.
 #
-#   -e TARGETS="dunst-package"   builds the dunst deb (the tractable notification daemon: it speaks
-#   D-Bus via GDBus/gio, so it sidesteps the sd-bus/basu wall that blocks mako on Darwin).
+#   -e TARGETS="mako-package" builds mako and the Darwin-ported basu dependency.
 #
 # Runs on the GTK4-warmed volume (procursus-vol-gtk-calc) because mako needs cairo/pango/
 # pangocairo/glib/gobject/gdk-pixbuf, all already built+staged there (and slurp needs cairo).
@@ -19,9 +18,11 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="slurp-package" procursus-xbuild:bookworm-arm64 /work/build-wayland-utils.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 BBINC="$BB/usr/include"
 
 # Host build tools missing from the image:
@@ -93,13 +94,59 @@ mkdir -p "$BBINC/linux"
 cp /usr/include/linux/input-event-codes.h "$BBINC/linux/" 2>/dev/null || true
 echo '#include <linux/input-event-codes.h>' > "$BBINC/linux/input.h"
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
-  CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
-# Default: just slurp (the safe quick win). basu-package + mako-package are opt-in via TARGETS
-# because mako's sd-bus provider (basu) is a Linux-centric port with real Darwin walls.
+# basu uses the C11 char32_t conversion subset, which is absent from the iOS SDK.
+# Darwin wchar_t is 32-bit, so the conversions map directly to the wchar APIs.
+echo "==> installing uchar.h shim into build_base"
+cat > "$BBINC/uchar.h" <<'EOF'
+#ifndef _XIOS_UCHAR_H
+#define _XIOS_UCHAR_H
+#include <stdint.h>
+#include <wchar.h>
+typedef uint_least16_t char16_t;
+typedef uint_least32_t char32_t;
+static inline size_t mbrtoc32(char32_t *pc32, const char *s, size_t n, mbstate_t *ps) {
+  return mbrtowc((wchar_t *)pc32, s, n, ps);
+}
+static inline size_t c32rtomb(char *s, char32_t c32, mbstate_t *ps) {
+  return wcrtomb(s, (wchar_t)c32, ps);
+}
+#endif
+EOF
 
-DW=build_work/iphoneos-arm64-rootless/1900/dunst
-DS=build_stage/iphoneos-arm64-rootless/1900/dunst
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
+  CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
+# Default: just slurp. basu-package + mako-package remain opt-in via TARGETS.
+
+refresh_patch_build_tree() {
+  local pkg="$1"
+  local patch_dir="/work/ports/$pkg/patches"
+  [ -d "$patch_dir" ] || return 0
+  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
+  local stage="build_stage/iphoneos-arm64-rootless/1900/$pkg"
+  local fp_file="$work/.xios_patch_series.sha256"
+  local new_fp old_fp
+  new_fp="$(find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+  old_fp="$(cat "$fp_file" 2>/dev/null || true)"
+  if [ -d "$work" ] && [ "$new_fp" != "$old_fp" ]; then
+    echo "==> wiping stale $pkg build after patch changes or missing patch marker"
+    rm -rf "$work" "$stage"
+  fi
+}
+
+record_patch_fingerprint() {
+  local pkg="$1"
+  local patch_dir="/work/ports/$pkg/patches"
+  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
+  [ -d "$patch_dir" ] && [ -d "$work" ] || return 0
+  find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}' > "$work/.xios_patch_series.sha256"
+}
+
+for pkg in slurp dunst basu mako; do
+  target_requests "$pkg" && refresh_patch_build_tree "$pkg"
+done
+
+DW=build_work/$XIOS_TRIPLE/dunst
+DS=build_stage/$XIOS_TRIPLE/dunst
 DF="$DW/.xios_patch_series.sha256"
 if [[ " $TARGETS " == *" dunst"* ]]; then
   NEW_FP="$(sha256sum \
@@ -116,14 +163,14 @@ for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
 done
-if [ -d "$DW" ] && [ -n "${NEW_FP:-}" ]; then
-  printf '%s\n' "$NEW_FP" > "$DF"
-fi
+for pkg in slurp dunst basu mako; do
+  target_requests "$pkg" && record_patch_fingerprint "$pkg"
+done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
 for pat in slurp dunst mako basu; do
-  find . -name "${pat}_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+  find . -name "${pat}_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
 done
 
 echo "==> done"
