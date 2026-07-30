@@ -1,0 +1,4 @@
+0001-ios-use-wayland-platform.patch
+0002-ios-disable-macos-bundle-paths.patch
+0003-opencl-use-loaded-apple-entrypoints.patch
+0004-ios-disable-elf-defcheck.patch

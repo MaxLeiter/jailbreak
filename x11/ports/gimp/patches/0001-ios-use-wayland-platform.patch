@@ -1,0 +1,21 @@
+--- a/meson.build
++++ b/meson.build
+@@ -189,5 +189,3 @@
+-platform_osx = (
+-  host_os.contains('machten') or
+-  host_os.contains('rhapsody') or
+-  host_os.contains('darwin')
+-)
++# iPhoneOS is Darwin/Mach-O but has no AppKit or Quartz GDK backend. Xios
++# presents GTK through Wayland, so keep the generic Unix GDK path.
++platform_osx = false
+@@ -802,6 +800,8 @@
+ ################################################################################
+ # Check for x11 support
+ 
+-x11_target = gtk3.get_variable(pkgconfig: 'targets').contains('x11')
++# The shared GTK package also advertises X11, but the standalone iOS app uses
++# Wayland and should not pull Xmu/Shape into its runtime closure.
++x11_target = false
+ 
+ x11   = x11_target ? dependency('x11')    : no_dep

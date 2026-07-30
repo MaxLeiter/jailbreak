@@ -1,0 +1,33 @@
+--- a/meson.build
++++ b/meson.build
+@@ -2092,7 +2092,9 @@ else
+                                  native: true, required: false)
+ 
+   if not native_gimp_exe.found()
+-    error('When cross-compiling, the build requires either an exe_wrapper or a native GIMP installed (@0@ or @1@).'.format(gimpconsole_exe_name, gimpmain_exe_name))
++    # Xios generates the one required build-time image with the native SVG
++    # renderer below; target GIMP never needs to execute on the build host.
++    native_gimp_exe = find_program('true', native: true)
+   endif
+ 
+   gimp_run_env.set('GIMP_SELF_IN_BUILD', native_gimp_exe.full_path())
+--- a/gimp-data/images/meson.build
++++ b/gimp-data/images/meson.build
+@@ -6,13 +6,9 @@ crop_conf.set('VARS', fs.read('gimp-splash.crop'))
+ splash = custom_target('gimp-splash.png',
+-                       input : [ 'export-splash.py' ],
++                       input: 'logo/gimp-logo.svg',
+                        output: [ 'gimp-splash.png', ],
+-                       depends: [ gimp_exe_depends ],
+-                       command: [ gimp_exe, '-nidfs',
+-                                  files('gimp-splash.xcf.xz'),
+-                                  '--batch-interpreter', 'python-fu-eval',
+-                                  '-b', '-', '--quit'],
+-                       feed: true,
++                       # Native SVG rendering avoids running the iOS target
++                       # executable during the cross build.
++                       command: [ colorsvg2png, '@INPUT@', '@OUTPUT@', '512' ],
+                        build_by_default: true,
+-                       env: gimp_run_env,
+                        install_dir: gimpdatadir / 'images',
+                        install: true)
