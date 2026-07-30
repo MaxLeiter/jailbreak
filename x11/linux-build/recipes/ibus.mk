@@ -7,7 +7,7 @@ endif
 
 SUBPROJECTS  += ibus
 IBUS_VERSION := 1.5.29
-DEB_IBUS_V   ?= $(IBUS_VERSION)+ios1
+DEB_IBUS_V   ?= $(IBUS_VERSION)+ios2
 
 ibus-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/ibus/ibus/releases/download/$(IBUS_VERSION)/ibus-$(IBUS_VERSION).tar.gz)
@@ -60,6 +60,8 @@ ibus: ibus-setup glib2.0
 	+$(MAKE) -C $(BUILD_WORK)/ibus GLIB_COMPILE_RESOURCES=/usr/bin/glib-compile-resources
 	+$(MAKE) -C $(BUILD_WORK)/ibus install DESTDIR=$(BUILD_STAGE)/ibus \
 		GLIB_COMPILE_RESOURCES=/usr/bin/glib-compile-resources
+	grep -a -q '$(MEMO_PREFIX)/var/lib/dbus/machine-id' \
+		$(BUILD_STAGE)/ibus/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libibus-1.0.*.dylib
 	$(call AFTER_BUILD,copy)
 endif
 

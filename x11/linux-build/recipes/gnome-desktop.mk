@@ -8,7 +8,7 @@ endif
 SUBPROJECTS           += gnome-desktop
 GNOME-DESKTOP_MAJOR_V := 44
 GNOME-DESKTOP_VERSION := $(GNOME-DESKTOP_MAJOR_V).1
-DEB_GNOME-DESKTOP_V   ?= $(GNOME-DESKTOP_VERSION)+ios1
+DEB_GNOME-DESKTOP_V   ?= $(GNOME-DESKTOP_VERSION)+ios2
 
 gnome-desktop-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gnome-desktop/$(GNOME-DESKTOP_MAJOR_V)/gnome-desktop-$(GNOME-DESKTOP_VERSION).tar.xz)
@@ -47,6 +47,8 @@ gnome-desktop: gnome-desktop-setup gtk4 gsettings-desktop-schemas iso-codes libx
 		..
 	+ninja -C $(BUILD_WORK)/gnome-desktop/build
 	+DESTDIR="$(BUILD_STAGE)/gnome-desktop" ninja -C $(BUILD_WORK)/gnome-desktop/build install
+	! grep -R -a -q '/work/Procursus' \
+		$(BUILD_STAGE)/gnome-desktop/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	$(call AFTER_BUILD,copy)
 endif
 

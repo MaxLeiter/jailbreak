@@ -1,0 +1,26 @@
+Subject: [PATCH] ibus: read the rootless D-Bus machine id
+
+Xios installs its writable D-Bus state below /var/jb. Reading the rootful
+location produces a warning on every GNOME Shell start and prevents IBus from
+using the same stable machine identity as the session bus.
+
+--- a/src/ibusshare.c
++++ b/src/ibusshare.c
+@@ -46,7 +46,7 @@ ibus_get_local_machine_id (void)
+ 
+     if (machine_id == NULL) {
+         GError *error = NULL;
+-        if (!g_file_get_contents ("/var/lib/dbus/machine-id",
++        if (!g_file_get_contents ("/var/jb/var/lib/dbus/machine-id",
+                                   &machine_id,
+                                   NULL,
+                                   &error) &&
+@@ -54,7 +54,7 @@ ibus_get_local_machine_id (void)
+                                   &machine_id,
+                                   NULL,
+                                   NULL)) {
+-            g_warning ("Unable to load /var/lib/dbus/machine-id: %s", error->message);
++            g_warning ("Unable to load /var/jb/var/lib/dbus/machine-id: %s", error->message);
+             machine_id = "machine-id";
+         }
+         else {
