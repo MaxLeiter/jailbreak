@@ -55,15 +55,16 @@ HOST_TOOLS="$WORK/host-tools"
 
 mkdir -p "$WORK" "$OUT"
 mkdir -p "$HOST_TOOLS"
-cat > "$HOST_TOOLS/python3" <<EOF
+cat > "$HOST_TOOLS/python" <<EOF
 #!/bin/sh
 PYTHONPATH="$MESON_SITE\${PYTHONPATH:+:\$PYTHONPATH}" exec "$PYTHON" "\$@"
 EOF
+cp "$HOST_TOOLS/python" "$HOST_TOOLS/python3"
 cat > "$HOST_TOOLS/meson" <<EOF
 #!/bin/sh
 PYTHONPATH="$MESON_SITE\${PYTHONPATH:+:\$PYTHONPATH}" exec "$PYTHON" -m mesonbuild.mesonmain "\$@"
 EOF
-chmod +x "$HOST_TOOLS/python3" "$HOST_TOOLS/meson"
+chmod +x "$HOST_TOOLS/python" "$HOST_TOOLS/python3" "$HOST_TOOLS/meson"
 MESON="$HOST_TOOLS/meson"
 PYTHONPATH="$MESON_SITE${PYTHONPATH:+:$PYTHONPATH}"
 export MESON PYTHONPATH
