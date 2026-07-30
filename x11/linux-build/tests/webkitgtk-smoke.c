@@ -27,8 +27,20 @@ main(int argc, char **argv)
     webkit_web_view_load_html(
         WEBKIT_WEB_VIEW(view),
         "<!doctype html><meta charset=utf-8>"
-        "<title>loading</title><h1>WebKitGTK iOS smoke</h1>"
-        "<script>document.title = 'jsc-ok-' + (6 * 7)</script>",
+        "<title>loading</title><h1>WebKitGTK iOS WebGL smoke</h1>"
+        "<canvas id=c width=32 height=32></canvas>"
+        "<script>"
+        "const gl = c.getContext('webgl', { antialias: false });"
+        "if (!gl) {"
+        "  document.title = 'webgl-unavailable';"
+        "} else {"
+        "  gl.clearColor(1, 0, 0, 1);"
+        "  gl.clear(gl.COLOR_BUFFER_BIT);"
+        "  const pixel = new Uint8Array(4);"
+        "  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);"
+        "  document.title = 'webgl-ok-rgba-' + Array.from(pixel).join('-');"
+        "}"
+        "</script>",
         "https://xios.invalid/"
     );
     gtk_widget_show_all(window);

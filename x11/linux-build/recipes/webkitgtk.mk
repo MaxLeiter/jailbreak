@@ -17,7 +17,7 @@ SUBPROJECTS       += webkitgtk
 # C++20 release line and keep the compiler upgrade as a separate toolchain job.
 WEBKITGTK_VERSION := 2.44.4
 WEBKITGTK_COMMIT  := e4715b88387c15a3ff8b7cc7a2efbde89c484710
-DEB_WEBKITGTK_V   ?= $(WEBKITGTK_VERSION)+ios1
+DEB_WEBKITGTK_V   ?= $(WEBKITGTK_VERSION)+ios2
 
 webkitgtk-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://webkitgtk.org/releases/webkitgtk-$(WEBKITGTK_VERSION).tar.xz)
@@ -32,6 +32,9 @@ webkitgtk-configure: webkitgtk-setup
 	# WebKit's FindWayland selects the target scanner from BUILD_BASE when
 	# cross-compiling, then tries to execute that arm64 Mach-O on Linux. Use
 	# Wayland's version-matched build-machine scanner for protocol codegen.
+	# The first WebGL revision stays in WebKitWebProcess. GTK's 2.44 port maps
+	# ENABLE_WEBGL to its bundled ANGLE implementation; a separate GPU process
+	# is not required for initial context/rendering proof.
 	cd $(BUILD_WORK)/webkitgtk && cmake -S . -B build -GNinja \
 		$(DEFAULT_CMAKE_FLAGS) \
 		-DPORT=GTK \
@@ -58,7 +61,7 @@ webkitgtk-configure: webkitgtk-setup
 		-DUSE_GBM=OFF \
 		-DUSE_LIBDRM=OFF \
 		-DENABLE_GPU_PROCESS=OFF \
-		-DENABLE_WEBGL=OFF \
+		-DENABLE_WEBGL=ON \
 		-DENABLE_VIDEO=OFF \
 		-DENABLE_WEB_AUDIO=OFF \
 		-DENABLE_MEDIA_STREAM=OFF \
@@ -180,7 +183,10 @@ webkitgtk-package: webkitgtk-stage
 		$(BUILD_DIST)/libwebkit2gtk-4.1-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
 
 	$(call SIGN,libjavascriptcoregtk-4.1-0,general.xml)
-	$(call SIGN,libwebkit2gtk-4.1-0,general.xml)
+	# WebGL's bundled ANGLE backend opens AGX/IOGPU from WebKitWebProcess.
+	# The GPU-client profile deliberately excludes Procursus general.xml's
+	# no-container entitlement, which prevents graphics user-client access.
+	$(call SIGN,libwebkit2gtk-4.1-0,iosc-gpu-client-ent.xml,,,nogeneral)
 	$(call PACK,libjavascriptcoregtk-4.1-0,DEB_WEBKITGTK_V)
 	$(call PACK,libjavascriptcoregtk-4.1-dev,DEB_WEBKITGTK_V)
 	$(call PACK,libwebkit2gtk-4.1-0,DEB_WEBKITGTK_V)
