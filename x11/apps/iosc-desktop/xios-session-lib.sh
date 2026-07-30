@@ -444,15 +444,16 @@ xs_clear_active() {
 }
 
 xs_record_session_pgid() {
-    local preset="${1:-session}" pgid
+    local preset="${1:-session}" pgid slot="${XS_SLOT:--}"
     pgid="$(xs_current_pgid)"
     case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
-    printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "${XS_SLOT:-}" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
+    printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
 }
 
 xs_record_pgid_once() {
     local pgid="$1" preset="${2:-session}" slot="${3:-${XS_SLOT:-}}" at
     case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
+    [ -n "$slot" ] || slot="-"
     if [ -f "$XS_SESSION_PGIDS" ] && awk -v pgid="$pgid" -v slot="$slot" 'BEGIN{found=1} $1==pgid && $3==slot {found=0} END{exit found}' "$XS_SESSION_PGIDS" 2>/dev/null; then
         return 0
     fi
@@ -477,6 +478,14 @@ xs_reap_recorded_session_pgroups() {
     : >"$tmp" 2>/dev/null || true
     while IFS=$'\t' read -r pgid preset slot at; do
         case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
+        # New records use "-" for the global (non-slot) field. Older records
+        # wrote an empty tab field; Bash collapses adjacent whitespace delimiters,
+        # so their timestamp was read into `slot` and every global compositor was
+        # accidentally protected as slot-owned.
+        case "$slot" in
+            -) slot="" ;;
+            20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) at="$slot"; slot="" ;;
+        esac
         if [ -n "$slot" ]; then
             printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$tmp" 2>/dev/null || true
             continue
@@ -500,6 +509,10 @@ xs_reap_slot_session_pgroups() {
     : >"$tmp" 2>/dev/null || true
     while IFS=$'\t' read -r pgid preset slot at; do
         case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
+        case "$slot" in
+            -) slot="" ;;
+            20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) at="$slot"; slot="" ;;
+        esac
         if [ "$slot" = "$want" ]; then
             [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
             xs_reap_pgid "$pgid" "slot $want ${preset:-session}"
@@ -561,6 +574,9 @@ xs_pgid_has_slot() {
     case "$want" in ""|*[!0-9]*|0|1) return 1 ;; esac
     [ -f "$XS_SESSION_PGIDS" ] || return 1
     while IFS=$'\t' read -r pgid preset slot at; do
+        case "$slot" in
+            -|20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) slot="" ;;
+        esac
         [ "$pgid" = "$want" ] && [ -n "$slot" ] && return 0
     done <"$XS_SESSION_PGIDS"
     return 1
