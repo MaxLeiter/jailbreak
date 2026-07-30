@@ -1178,10 +1178,17 @@ final class XScreenView: UIView {
         }
     }
 
-    private func ioscdResponseLines(_ line: String) -> [String]? {
-        sendIOSCDRequest(line)?.split(separator: "\n", omittingEmptySubsequences: false)
+    private func parseIOSCDResponseLines(_ response: String?) -> [String]? {
+        response?.split(separator: "\n", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .newlines) }
             .filter { !$0.isEmpty }
+    }
+
+    private func requestIOSCDLines(_ line: String, timeout: TimeInterval = 2.0,
+                                   completion: @escaping ([String]?) -> Void) {
+        requestIOSCD(line, timeout: timeout) { [weak self] response in
+            completion(self?.parseIOSCDResponseLines(response))
+        }
     }
 
     private func sessionRequestLine(_ preset: String, app: String?,
@@ -2927,10 +2934,19 @@ final class XScreenView: UIView {
 
     @objc private func openPicker() { presentDisplayControl() }
 
-    private func fetchLauncherApps() -> (apps: [LauncherApp], error: String?) {
-        guard let lines = ioscdResponseLines("APPS_LIST\n") else {
-            return ([], "ioscd socket unavailable")
+    private typealias LauncherState = (apps: [LauncherApp], error: String?)
+
+    private func fetchLauncherApps(completion: @escaping (LauncherState) -> Void) {
+        requestIOSCDLines("APPS_LIST\n", timeout: 5.0) { lines in
+            guard let lines else {
+                completion(([], "ioscd timed out"))
+                return
+            }
+            completion(Self.launcherState(from: lines))
         }
+    }
+
+    private static func launcherState(from lines: [String]) -> LauncherState {
         var apps: [LauncherApp] = []
         for line in lines {
             if line.hasPrefix("ERR ") { return (apps, line) }
@@ -2944,31 +2960,60 @@ final class XScreenView: UIView {
         return (apps, nil)
     }
 
-    private func sendLauncherToggle(_ app: LauncherApp, enabled: Bool) -> Bool {
+    private func sendLauncherToggle(_ app: LauncherApp, enabled: Bool,
+                                    completion: @escaping (Bool) -> Void) {
         let verb = enabled ? "APP_ENABLE" : "APP_DISABLE"
-        guard let lines = ioscdResponseLines("\(verb)\t\(app.id)\n"),
-              let last = lines.last else {
-            lastToolMessage = "Launcher update failed: ioscd socket unavailable"
-            return false
+        requestIOSCDLines("\(verb)\t\(app.id)\n", timeout: 5.0) { [weak self] lines in
+            guard let self else { return }
+            guard let lines, let last = lines.last else {
+                self.lastToolMessage = "Launcher update failed: ioscd timed out"
+                completion(false)
+                return
+            }
+            if last == "APPS_END\t0" {
+                self.lastToolMessage = "\(enabled ? "Enabled" : "Disabled") \(app.name)"
+                completion(true)
+                return
+            }
+            self.lastToolMessage = "Launcher update failed: \(lines.first ?? last)"
+            completion(false)
         }
-        if last == "APPS_END\t0" {
-            lastToolMessage = "\(enabled ? "Enabled" : "Disabled") \(app.name)"
-            return true
-        }
-        lastToolMessage = "Launcher update failed: \(lines.first ?? last)"
-        return false
     }
 
-    private func sendLauncherSync(native: Bool, dryRun: Bool) -> [String]? {
+    private func sendLauncherSync(native: Bool, dryRun: Bool,
+                                  completion: @escaping ([String]?) -> Void) {
         let mode = native ? "native" : "classic"
         let dry = dryRun ? "dry" : "apply"
-        guard let lines = ioscdResponseLines("APPS_SYNC\t\(mode)\t\(dry)\n") else {
-            lastToolMessage = "Launcher sync failed: ioscd socket unavailable"
-            return nil
+        requestIOSCDLines("APPS_SYNC\t\(mode)\t\(dry)\n", timeout: 15.0) { [weak self] lines in
+            guard let self else { return }
+            guard let lines else {
+                self.lastToolMessage = "Launcher sync failed: ioscd timed out"
+                completion(nil)
+                return
+            }
+            let ok = lines.last == "APPS_END\t0"
+            self.lastToolMessage =
+                "\(dryRun ? "Dry run" : "Synced") \(mode) launchers\(ok ? "" : " with errors")"
+            completion(lines)
         }
-        let ok = lines.last == "APPS_END\t0"
-        lastToolMessage = "\(dryRun ? "Dry run" : "Synced") \(mode) launchers\(ok ? "" : " with errors")"
-        return lines
+    }
+
+    private func runLauncherSync(native: Bool, dryRun: Bool, title: String,
+                                 message: UILabel) {
+        let originOverlay = pickerOverlay
+        let mode = native ? "native" : "classic"
+        lastToolMessage = "\(dryRun ? "Checking" : "Syncing") \(mode) launchers…"
+        message.text = lastToolMessage
+        sendLauncherSync(native: native, dryRun: dryRun) {
+            [weak self, weak originOverlay, weak message] lines in
+            guard let self, let originOverlay,
+                  self.pickerOverlay === originOverlay else { return }
+            guard let lines else {
+                message?.text = self.lastToolMessage
+                return
+            }
+            self.presentLauncherSyncReport(title: title, lines: lines)
+        }
     }
 
     /// Parse the session launcher's status file (preset / state / human message). nil when the
@@ -3674,14 +3719,30 @@ final class XScreenView: UIView {
         return b
     }
 
-    private func presentHomeScreenApps(query initialQuery: String = "") {
-        let (_, _, _, stack) = presentScrollableModalCard(maxWidth: 720)
+    private func presentHomeScreenApps(query initialQuery: String = "",
+                                       state: LauncherState? = nil) {
+        let (overlay, _, _, stack) = presentScrollableModalCard(maxWidth: 720)
 
         stack.addArrangedSubview(panelLabel("Home Screen Apps", size: 18, weight: .bold))
         let message = panelLabel(lastToolMessage, size: 12, color: UIColor(white: 0.72, alpha: 1))
         stack.addArrangedSubview(message)
 
-        let state = fetchLauncherApps()
+        guard let state else {
+            message.text = "Loading launchers…"
+            stack.addArrangedSubview(panelLabel(
+                "Asking ioscd for the installed launcher set.",
+                size: 13, color: UIColor(white: 0.72, alpha: 1)))
+            stack.addArrangedSubview(buttonRow([
+                panelButton("Back") { [weak self] in self?.presentAdvanced() },
+                panelButton("Close") { [weak self] in self?.dismissPicker() },
+            ]))
+            fetchLauncherApps { [weak self, weak overlay] loaded in
+                guard let self, let overlay, self.pickerOverlay === overlay else { return }
+                self.presentHomeScreenApps(query: initialQuery, state: loaded)
+            }
+            return
+        }
+
         if let error = state.error {
             stack.addArrangedSubview(panelLabel(error, size: 13, color: UIColor.systemRed.withAlphaComponent(0.9)))
         }
@@ -3729,23 +3790,27 @@ final class XScreenView: UIView {
 
         addSection("Sync", to: stack)
         stack.addArrangedSubview(buttonRow([
-            panelButton("Dry Native") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: true) else { return }
-                self.presentLauncherSyncReport(title: "Native Dry Run", lines: lines)
+            panelButton("Dry Native") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: true, dryRun: true,
+                                     title: "Native Dry Run", message: message)
             },
-            panelButton("Dry Classic") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: false, dryRun: true) else { return }
-                self.presentLauncherSyncReport(title: "Classic Dry Run", lines: lines)
+            panelButton("Dry Classic") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: false, dryRun: true,
+                                     title: "Classic Dry Run", message: message)
             },
         ]))
         stack.addArrangedSubview(buttonRow([
-            panelButton("Apply Native") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: true, dryRun: false) else { return }
-                self.presentLauncherSyncReport(title: "Native Sync", lines: lines)
+            panelButton("Apply Native") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: true, dryRun: false,
+                                     title: "Native Sync", message: message)
             },
-            panelButton("Apply Classic") { [weak self] in
-                guard let self, let lines = self.sendLauncherSync(native: false, dryRun: false) else { return }
-                self.presentLauncherSyncReport(title: "Classic Sync", lines: lines)
+            panelButton("Apply Classic") { [weak self, weak message] in
+                guard let self, let message else { return }
+                self.runLauncherSync(native: false, dryRun: false,
+                                     title: "Classic Sync", message: message)
             },
         ]))
 
@@ -3784,11 +3849,21 @@ final class XScreenView: UIView {
         row.addSubview(toggle)
         toggle.addAction(UIAction { [weak self, weak toggle, weak message] _ in
             guard let self, let toggle else { return }
-            if self.sendLauncherToggle(app, enabled: toggle.isOn) {
-                self.presentHomeScreenApps(query: query)
-            } else {
-                toggle.isOn = app.enabled
-                message?.text = self.lastToolMessage
+            let originOverlay = self.pickerOverlay
+            let requestedState = toggle.isOn
+            toggle.isEnabled = false
+            message?.text = "\(requestedState ? "Enabling" : "Disabling") \(app.name)…"
+            self.sendLauncherToggle(app, enabled: requestedState) {
+                [weak self, weak toggle, weak message, weak originOverlay] succeeded in
+                guard let self, let originOverlay,
+                      self.pickerOverlay === originOverlay else { return }
+                if succeeded {
+                    self.presentHomeScreenApps(query: query)
+                } else {
+                    toggle?.isEnabled = true
+                    toggle?.isOn = app.enabled
+                    message?.text = self.lastToolMessage
+                }
             }
         }, for: .valueChanged)
 
