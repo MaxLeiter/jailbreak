@@ -1,12 +1,12 @@
 Package: xios-runtime
 Name: Xios Application Runtime
-Version: 0.1.3
+Version: 0.1.4
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), iosc (>= 0.9.41), angle (>= 2.1.0+git20260630.a32d31d+es3-15), dbus, xios-desktop-defaults, xios-audio-server, xios-fhs (>= 1.0.5), pulseaudio (>= 17.0-7+ios2), pulseaudio-utils (>= 17.0-7+ios2)
+Depends: firmware (>= 16.0), iosc (>= 0.9.43), angle (>= 2.1.0+git20260630.a32d31d+es3-15), dbus, xios-desktop-defaults, xios-audio-server, xios-fhs (>= 1.0.5), pulseaudio (>= 17.0-7+ios2), pulseaudio-utils (>= 17.0-7+ios2)
 Recommends: pulseaudio, xios-desktop-theme
 MinimumOSVersion: 16.0.0
 Description: shared Linux application runtime for Xios

@@ -1,12 +1,12 @@
 Package: xios-kde
 Name: Xios Desktop (KDE Plasma)
-Version: 0.1.18
+Version: 0.1.19
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core (>= 0.1.9), iosc (>= 0.9.41), xios-session (>= 1.0.72), xios-desktop-theme, libjpeg62-turbo (>= 3.1.1+ios1), kwin (>= 6.1.5+ios31), breeze (>= 6.1.5+ios2), plasma-workspace (>= 6.1.5+ios14), plasma-desktop (>= 6.1.5+ios9), plasma-mobile (>= 6.1.5+ios23), plasma-nano (>= 6.1.5+ios3), systemsettings (>= 6.1.5+ios8), kscreen (>= 6.1.5+ios2), powerdevil (>= 6.1.5+ios1), kf6-kded (>= 6.3.0+ios2), qt6-wayland, kf6-breeze-icons, konsole (>= 24.08.0+ios1), dolphin (>= 24.08.0+ios1), kate (>= 24.08.0+ios4), kwrite (>= 24.08.0+ios3), kcalc (>= 24.08.0+ios1), okular (>= 24.08.0+ios3), ark (>= 24.08.0+ios1), gwenview (>= 24.08.0+ios1)
+Depends: firmware (>= 16.5), xios-core (>= 0.1.10), iosc (>= 0.9.43), xios-session (>= 1.0.72), xios-desktop-theme, libjpeg62-turbo (>= 3.1.1+ios1), kwin (>= 6.1.5+ios31), breeze (>= 6.1.5+ios2), plasma-workspace (>= 6.1.5+ios14), plasma-desktop (>= 6.1.5+ios9), plasma-mobile (>= 6.1.5+ios23), plasma-nano (>= 6.1.5+ios3), systemsettings (>= 6.1.5+ios8), kscreen (>= 6.1.5+ios2), powerdevil (>= 6.1.5+ios1), kf6-kded (>= 6.3.0+ios2), qt6-wayland, kf6-breeze-icons, konsole (>= 24.08.0+ios1), dolphin (>= 24.08.0+ios1), kate (>= 24.08.0+ios4), kwrite (>= 24.08.0+ios3), kcalc (>= 24.08.0+ios1), okular (>= 24.08.0+ios3), ark (>= 24.08.0+ios1), gwenview (>= 24.08.0+ios1)
 MinimumOSVersion: 16.5.0
 Description: KDE Plasma desktop and mobile flavors for Xios
  KDE Plasma on KWin, rendered on the iPad GPU through the iosc compositor
