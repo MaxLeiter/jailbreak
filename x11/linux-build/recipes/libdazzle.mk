@@ -25,6 +25,7 @@ libdazzle-setup: setup
 	needs_exe_wrapper = true\n \
 	[built-in options]\n \
 	prefix ='$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)'\n \
+	c_link_args = ['-lobjc']\n \
 	[binaries]\n \
 	c = '$(CC)'\n \
 	cpp = '$(CXX)'\n \
