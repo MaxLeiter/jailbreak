@@ -10,6 +10,8 @@
 # -10 revision: ships the protocol-v4 shim with brokered MTLSharedEvent acquire fences,
 # so Wayland clients hand GPU completion directly to iosc without serializing opaque
 # Metal handles or blocking the CPU at every swap.
+# -11 revision: accepts QtWayland's core eglCreateWindowSurface entry point and routes
+# it through the same IOSurface swapchain as the EGL platform entry points.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +26,7 @@ BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
-VER="2.1.0+git20260630.a32d31d+es3-10"
+VER="2.1.0+git20260630.a32d31d+es3-11"
 DEB="angle_${VER}_iphoneos-arm64.deb"
 
 rm -rf "$STAGEROOT"
@@ -112,7 +114,7 @@ Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/
  EGL calls to the real ANGLE library at libEGL.angle.dylib and lets GTK4/GSK create
  wl_egl_window surfaces that render into IOSurfaces zero-copy. Protocol-v4 clients
  export ANGLE Metal shared-event acquire fences through the package-owned XPC broker
- for GPU-side synchronization; the frame path carries only an opaque one-shot token.
+ for GPU-side synchronization; the frame path carries only an opaque capability token.
  This build admits Apple GPU Family 3 (A10) to the ES3 tier so EGL configs advertise
  EGL_OPENGL_ES3_BIT and ES3 contexts validate (needed for GTK4/GSK GL renderer).
  Ships the Debian soname and .so alias symlinks (libEGL.2.dylib, libEGL.so, libEGL.so.1,
