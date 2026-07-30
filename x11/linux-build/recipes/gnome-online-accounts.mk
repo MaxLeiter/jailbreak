@@ -58,7 +58,7 @@ gnome-online-accounts-package: gnome-online-accounts-stage
 	mkdir -p \
 		$(BUILD_DIST)/libgoa-1.0-0b/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
 		$(BUILD_DIST)/libgoa-1.0-0b/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share \
-		$(BUILD_DIST)/libgoa-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+		$(BUILD_DIST)/libgoa-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
 	cp -a $(BUILD_STAGE)/gnome-online-accounts/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgoa-1.0.0.dylib \
 		$(BUILD_DIST)/libgoa-1.0-0b/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
 	cp -a $(BUILD_STAGE)/gnome-online-accounts/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/locale \
@@ -69,7 +69,8 @@ gnome-online-accounts-package: gnome-online-accounts-stage
 	cp -a $(BUILD_STAGE)/gnome-online-accounts/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/goa-1.0/include \
 		$(BUILD_DIST)/libgoa-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/goa-1.0/
 	cp -a $(BUILD_STAGE)/gnome-online-accounts/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/goa-1.0.pc \
-		$(BUILD_STAGE)/gnome-online-accounts/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgoa-1.0.dylib \
+		$(BUILD_DIST)/libgoa-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/
+	cp -a $(BUILD_STAGE)/gnome-online-accounts/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libgoa-1.0.dylib \
 		$(BUILD_DIST)/libgoa-1.0-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/
 	$(call SIGN,libgoa-1.0-0b)
 	$(call PACK,libgoa-1.0-0b,DEB_GNOME_ONLINE_ACCOUNTS_V)

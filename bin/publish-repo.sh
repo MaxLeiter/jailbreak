@@ -78,6 +78,21 @@
 # publish from a worktree. --from-index is the whole-index counterpart to --only:
 # --only reconciles against what the target serves, --from-index publishes what
 # git says.
+#
+# ANALYTICS -- two separate things, deliberately:
+#   Page views      Vercel Web Analytics. make-repo.py bakes the script into
+#                   index.html and every depiction, and it is enabled on the repo
+#                   and repo-dev projects (POST /web/insights/toggle, 2026-07-29).
+#                   If it is ever turned back off the script 404s harmlessly and
+#                   nothing is recorded.
+#   Deb downloads   Vercel Observability, by path. NOT instrumented in code, on
+#                   purpose: /debs/* is a static redirect to Blob, and apt/Sileo
+#                   are not browsers, so counting installs would mean putting a
+#                   function on the critical download path -- a function failure
+#                   would be a failed install. Observability already logs every
+#                   edge request with its path, so filter on /debs/ there instead.
+#                   Retention is short (~1 day, 30 days with Observability Plus);
+#                   that is the accepted tradeoff for keeping installs static.
 set -euo pipefail
 
 TARGET=prod

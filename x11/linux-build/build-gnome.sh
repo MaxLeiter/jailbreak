@@ -29,6 +29,11 @@ if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>
    || ! command -v appstreamcli >/dev/null 2>&1 || ! command -v unifdef >/dev/null 2>&1 \
    || ! command -v g-ir-compiler >/dev/null 2>&1 \
    || [ ! -f /usr/share/gir-1.0/GObject-2.0.gir ] \
+   || [ ! -f /usr/share/vala/vapi/gmime-3.0.vapi ] \
+   || [ ! -f /usr/share/vala/vapi/libhandy-1.vapi ] \
+   || [ ! -f /usr/share/vala/vapi/libsecret-1.vapi ] \
+   || [ ! -f /usr/share/vala/vapi/gspell-1.vapi ] \
+   || [ ! -f /usr/share/vala/vapi/folks.vapi ] \
    || [ ! -f /usr/include/ruby-3.1.0/ruby.h ]; then
   echo "==> installing host build tools (glib/gdk-pixbuf codegen + sassc + valac + itstool + appstreamcli)"
   apt-get update >/dev/null 2>&1 || true
@@ -37,8 +42,10 @@ if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>
   apt-get install -y --no-install-recommends \
       gtk-doc-tools libglib2.0-dev-bin libglib2.0-bin libgdk-pixbuf2.0-bin \
       sassc valac itstool desktop-file-utils appstream gtk-update-icon-cache \
+      gettext \
       gobject-introspection gir1.2-glib-2.0 libgirepository1.0-dev \
-      libgcr-3-dev libgoa-1.0-dev \
+      libgcr-3-dev libgoa-1.0-dev libgmime-3.0-dev libhandy-1-dev \
+      libsecret-1-dev libgspell-1-dev libfolks-dev \
       ruby ruby-dev tcl unifdef >/dev/null 2>&1 \
     || { echo "ERROR: could not install host build tools"; exit 1; }
 fi

@@ -1,0 +1,51 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Use host Vala metadata when cross-compiling
+
+GObject introspection cannot execute the target libhandy library during an iOS
+cross-build. Build the bundled target library without introspection and consume
+the matching host-side VAPI as compiler metadata instead.
+
+The GMime C stream ABI still passes a buffer and length on 3.2.7, while current
+Vala metadata exposes that pair as a uint8 array. Use that binding form so the
+host compiler metadata and target C ABI agree.
+
+--- a/meson.build
++++ b/meson.build
+@@ -144,16 +144,17 @@ if not libhandy.found()
+     default_options: [
+       'examples=false',
++      'introspection=disabled',
+       'package_subdir=geary',
+       'tests=false',
++      'vapi=false',
+     ]
+   )
+   libhandy = declare_dependency(
+     dependencies: [
+       libhandy_project.get_variable('libhandy_dep'),
+-      libhandy_project.get_variable('libhandy_vapi')
++      valac.find_library('libhandy-1')
+     ]
+   )
+-  libhandy_vapi = meson.project_build_root() / 'subprojects' / 'libhandy' / 'src'
+ endif
+ 
+ # Optional dependencies
+--- a/src/engine/util/util-stream.vala
++++ b/src/engine/util/util-stream.vala
+@@ -60,15 +60,9 @@ namespace Geary.Stream {
+             return this.written;
+         }
+ 
+-#if GMIME_STREAM_WRITE_STRING
+-        public override ssize_t write(string buf, size_t len) {
+-            try {
+-                var ret = this.dest.write(buf.data[0:len]);
+-#else
+         public override ssize_t write(uint8[] buf) {
+             try {
+                 var ret = this.dest.write(buf);
+-#endif
+                 if (ret > 0) {
+                     this.written += ret;
+                 }

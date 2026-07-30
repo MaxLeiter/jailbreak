@@ -15,17 +15,32 @@
     <key>com.apple.private.skip-library-validation</key>
     <true/>
 
-    <!-- Inherit-and-debug: lets the parent supervise, and keeps the child spawnable. -->
+    <!-- Keeps the child spawnable and debuggable by the parent. -->
     <key>get-task-allow</key>
     <true/>
-    <key>task_for_pid-allow</key>
-    <true/>
-    <key>com.apple.system-task-ports</key>
-    <true/>
+
+    <!-- Deliberately NOT granted: task_for_pid-allow and com.apple.system-task-ports.
+         Those let a process obtain other processes' task ports, i.e. read and write another
+         process's memory. That is a privilege-escalation primitive, and handing it to
+         processes whose whole job is parsing untrusted web content is the worst place for it.
+         Nothing needs them here: a helper sends its OWN task port during the Mach bootstrap
+         handshake, which requires no entitlement, and the iOS path discards the received port
+         anyway (`(void)request.task_port` in LibWebView/Application.cpp; set_process_mach_port
+         is macOS-only). Removal was device-validated by re-signing the shipped helpers with
+         this set and loading a page: WebContent, RequestServer, ImageDecoder and Compositor
+         all still work. See docs/ladybird-sandbox-confinement.md for why kernel-profile
+         confinement is not available and entitlement minimisation is the lever instead. -->
 
     <!-- The Compositor uses IOSurface for the shared front/back buffers. GPU-linked builds
-         also need AGX/IOGPU for ANGLE/Metal/WebGL. This is still internal, so keep one
-         helper entitlement set for all spawned helpers. -->
+         also need AGX/IOGPU for ANGLE/Metal/WebGL. Still one set for all spawned helpers,
+         because the .app flavor signs Compositor with this file too
+         (packages/ladybird-app/resign-ladybird-app-deb.sh), so narrowing the GPU classes to
+         Compositor alone needs per-helper entitlement files first. -->
+    <!-- FIXME: split per helper. WebContent and ImageDecoder need neither the GPU classes nor
+         write access; RequestServer is the only one that genuinely writes (HTTP disk cache and
+         alt-svc cache). Blocked on per-helper files because this one is shared by both
+         flavors' signing paths. -->
+
     <key>com.apple.security.iokit-user-client-class</key>
     <array>
         <string>AGXDeviceUserClient</string>
