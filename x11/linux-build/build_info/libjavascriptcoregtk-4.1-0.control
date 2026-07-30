@@ -1,0 +1,10 @@
+Package: libjavascriptcoregtk-4.1-0
+Version: @DEB_WEBKITGTK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://webkitgtk.org/
+Depends: libglib2.0-0, libicu78, libz1
+Description: JavaScriptCore GTK 4.1 runtime for rootless iOS
+ JavaScriptCore interpreter runtime used by WebKitGTK 4.1.

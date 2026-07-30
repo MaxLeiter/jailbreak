@@ -153,9 +153,9 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
         read_full(fd, &hello, sizeof(hello)) != 0 ||
         hello.magic != XIOS_MSG_MAGIC ||
         hello.type != XIOS_MSG_HELLO ||
-        hello.window_id != 0 ||
+        hello.window_id != XIOS_PROTOCOL_VERSION ||
         hello.length != 0 ||
-        (uint32_t)hello.a != XIOS_PROTOCOL_VERSION) {
+        hello.a != 0 || hello.b != 0 || hello.c != 0 || hello.d != 0) {
         fprintf(stderr,
                 "iosc-native: protocol v%u HELLO missing/mismatched\n",
                 XIOS_PROTOCOL_VERSION);

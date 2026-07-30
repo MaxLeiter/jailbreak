@@ -1,0 +1,103 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Use Unix IPC connection metadata for GTK on Darwin
+
+The GTK port selects USE(UNIX_DOMAIN_SOCKETS) even when the target OS is
+Darwin. Keep the XPC/Mach connection metadata and remote-process logging on
+the non-Unix Darwin path so GTK does not import private XPC SPI or reference
+the unbuilt Mach connection implementation.
+
+--- a/Source/WebKit/Platform/IPC/Connection.h
++++ b/Source/WebKit/Platform/IPC/Connection.h
+@@ -49,7 +49,7 @@
+ #include <wtf/WorkQueue.h>
+ #include <wtf/text/CString.h>
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+ #include <mach/mach_port.h>
+ #include <wtf/OSObjectPtr.h>
+ #include <wtf/spi/darwin/XPCSPI.h>
+@@ -259,7 +259,7 @@ public:
+         bool failedToDecodeReply { false };
+     };
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     xpc_connection_t xpcConnection() const { return m_xpcConnection.get(); }
+     std::optional<audit_token_t> getAuditToken();
+     pid_t remoteProcessID() const;
+--- a/Source/WebKit/Platform/IPC/Connection.cpp
++++ b/Source/WebKit/Platform/IPC/Connection.cpp
+@@ -628,7 +628,7 @@ Error Connection::sendMessage(UniqueRef<Encoder>&& encoder, OptionSet<SendOptio
+     }
+ 
+     if (shouldNotifyOfQueueGrowingLarge) {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+         RELEASE_LOG_ERROR(IPC, "Connection::sendMessage(): Too many messages (%zu) in the queue to remote PID: %d, notifying client", outgoingMessagesCount, remoteProcessID());
+ #else
+         RELEASE_LOG_ERROR(IPC, "Connection::sendMessage(): Too many messages (%zu) in the queue, notifying client", outgoingMessagesCount);
+@@ -896,7 +896,7 @@ Expected<UniqueRef<Decoder>, Error> Connection::waitForSyncReply(MessageName me
+         timedOut = !m_syncState->wait(timeout);
+     }
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     RELEASE_LOG_ERROR(IPC, "Connection::waitForSyncReply: Timed-out while waiting for reply for %" PUBLIC_LOG_STRING " from process %d, id=%" PRIu64, description(messageName), remoteProcessID(), syncRequestID.toUInt64());
+ #else
+     RELEASE_LOG_ERROR(IPC, "Connection::waitForSyncReply: Timed-out while waiting for reply for %s, id=%" PRIu64, description(messageName), syncRequestID.toUInt64());
+--- a/Source/WebKit/Platform/IPC/HandleMessage.h
++++ b/Source/WebKit/Platform/IPC/HandleMessage.h
+@@ -54,7 +54,7 @@ inline TextStream textStreamForLogging(const Connection& connection, MessageNa
+ {
+     TextStream stream(TextStream::LineMode::SingleLine, { }, loggingContainerSizeLimit);
+     stream << '[';
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     // The remote process ID is not available when the connection was not made
+     // for an XPC service, e.g. for the Web -> GPU process connection.
+     if (connection.remoteProcessID())
+--- a/Source/WebKit/WebProcess/WebProcess.cpp
++++ b/Source/WebKit/WebProcess/WebProcess.cpp
+@@ -1261,7 +1261,7 @@ void WebProcess::initializeConnection(IPC::Connection* connection)
+ 
+ void WebProcess::networkProcessConnectionClosed(NetworkProcessConnection* connection)
+ {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     WEBPROCESS_RELEASE_LOG(Loading, "networkProcessConnectionClosed: NetworkProcess (%d) closed its connection (Crashed)", connection ? connection->connection().remoteProcessID() : 0);
+ #else
+     WEBPROCESS_RELEASE_LOG(Loading, "networkProcessConnectionClosed: NetworkProcess closed its connection (Crashed)");
+--- a/Source/WebKit/UIProcess/Network/NetworkProcessProxy.cpp
++++ b/Source/WebKit/UIProcess/Network/NetworkProcessProxy.cpp
+@@ -467,7 +467,7 @@ void NetworkProcessProxy::getNetworkProcessConnection(WebProcessProxy& webProc
+ 
+ void NetworkProcessProxy::didClose(IPC::Connection& connection)
+ {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     RELEASE_LOG_ERROR(Process, "%p - NetworkProcessProxy::didClose (Network Process %d crash)", this, connection.remoteProcessID());
+ #else
+     RELEASE_LOG_ERROR(Process, "%p - NetworkProcessProxy::didClose (Network Process crash)", this);
+--- a/Source/WebKit/UIProcess/WebProcessProxy.cpp
++++ b/Source/WebKit/UIProcess/WebProcessProxy.cpp
+@@ -1131,7 +1131,7 @@ void WebProcessProxy::processDidTerminateOrFailedToLaunch()
+ 
+ void WebProcessProxy::didClose(IPC::Connection& connection)
+ {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     WEBPROCESSPROXY_RELEASE_LOG_ERROR(Process, "didClose: (web process %d crash)", connection.remoteProcessID());
+ #else
+     WEBPROCESSPROXY_RELEASE_LOG_ERROR(Process, "didClose (web process crash)");
+--- a/Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp
++++ b/Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp
+@@ -423,7 +423,7 @@ void NetworkConnectionToWebProcess::didClose(IPC::Connection& connection)
+     // Protect ourself as we might be otherwise be deleted during this function.
+     Ref<NetworkConnectionToWebProcess> protector(*this);
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     CONNECTION_RELEASE_LOG(Loading, "didClose: WebProcess (%d) closed its connection. Aborting related loaders.", connection.remoteProcessID());
+ #else
+     CONNECTION_RELEASE_LOG(Loading, "didClose: WebProcess closed its connection. Aborting related loaders.");

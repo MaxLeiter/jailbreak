@@ -17,6 +17,8 @@ static xios_msg s_msg;
 static uint8_t *s_payload = NULL;
 static uint32_t s_payload_have = 0;
 
+static bool write_all(const void *buf, size_t len);
+
 static void reset_rx(void) {
     free(s_payload);
     s_payload = NULL;
@@ -37,13 +39,39 @@ bool iosc_clipboard_open(const char *sock_path) {
     // MSG_DONTWAIT instead, so the display-link tick never blocks.
     struct timeval tv = { 2, 0 };
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     struct sockaddr_un a;
     memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
     strncpy(a.sun_path, sock_path, sizeof(a.sun_path) - 1);
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(fd); return false; }
-    reset_rx();
     s_fd = fd;
+    xios_msg hello = {
+        XIOS_MSG_MAGIC, XIOS_MSG_HELLO, XIOS_PROTOCOL_VERSION, 0,
+        0, 0, 0, 0
+    };
+    xios_msg reply;
+    if (!write_all(&hello, sizeof(hello))) {
+        iosc_clipboard_close();
+        return false;
+    }
+    size_t got = 0;
+    while (got < sizeof(reply)) {
+        ssize_t r = read(fd, (uint8_t *)&reply + got, sizeof(reply) - got);
+        if (r > 0) { got += (size_t)r; continue; }
+        if (r < 0 && errno == EINTR) continue;
+        iosc_clipboard_close();
+        return false;
+    }
+    if (reply.magic != XIOS_MSG_MAGIC ||
+        reply.type != XIOS_MSG_HELLO ||
+        reply.window_id != XIOS_PROTOCOL_VERSION ||
+        reply.length != 0 ||
+        reply.a != 0 || reply.b != 0 || reply.c != 0 || reply.d != 0) {
+        iosc_clipboard_close();
+        return false;
+    }
+    reset_rx();
     return true;
 }
 
@@ -110,7 +138,12 @@ int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
                 memcpy(&s_msg, s_hdr, sizeof(s_msg));
                 if (s_msg.magic != XIOS_MSG_MAGIC ||
                     s_msg.type != XIOS_MSG_CLIPBOARD ||
-                    s_msg.length > XIOS_CLIP_ITEM_MAX) {
+                    s_msg.window_id != 0 ||
+                    s_msg.length > XIOS_CLIP_ITEM_MAX ||
+                    (uint32_t)s_msg.a > XIOS_CLIP_KIND_HTML ||
+                    s_msg.b == 0 ||
+                    s_msg.c != 0 || s_msg.d != 0 ||
+                    (s_msg.a == XIOS_CLIP_KIND_NONE && s_msg.length != 0)) {
                     iosc_clipboard_close();   // desync: reconnect from scratch
                     return -1;
                 }

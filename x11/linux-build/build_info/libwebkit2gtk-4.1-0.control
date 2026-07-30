@@ -1,0 +1,10 @@
+Package: libwebkit2gtk-4.1-0
+Version: @DEB_WEBKITGTK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://webkitgtk.org/
+Depends: libjavascriptcoregtk-4.1-0 (= @DEB_WEBKITGTK_V@), libglib2.0-0, libgtk-3-0, libsoup-3.0-0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libharfbuzz0b, libfontconfig1, libfreetype6, libjpeg62-turbo, libpng16-16, libwebp7, libwebpdemux2, libwebpmux3, libxml2, libxslt1.1, libsecret-1-0, libgcrypt20, libtasn1-6, libepoxy0, libwayland0, libx11-6, libxcomposite1, libxdamage1, libxrender1, libatk-bridge2.0-0, libatk1.0-0
+Description: WebKitGTK 4.1 runtime for rootless iOS
+ GTK 3 web-content engine, helper processes and web-process injected bundle.

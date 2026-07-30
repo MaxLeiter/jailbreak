@@ -7,7 +7,7 @@
  * Sharing model (validated on iPadOS 17.6.1 — global IOSurfaceLookup(id) is dead,
  * so we hand the IOSurface's mach port to the app over a Unix socket rendezvous):
  *   1. The compositor creates a BGRA8 IOSurface and renders into it on the GPU.
- *   2. App connects to the Unix socket, sends {pid, mach receive-port name}.
+ *   2. App connects and sends a canonical v1 HELLO naming its Mach receive port.
  *   3. Server task_for_pid()s the app, mach_port_extract_right()s a send right to
  *      that port, and mach_msg()s IOSurfaceCreateMachPort() across as a port
  *      descriptor. App does IOSurfaceLookupFromMachPort() -> same backing memory.
@@ -58,10 +58,8 @@ uint64_t xios_dirty_generation(void);
 uint64_t xios_presented_generation(void);
 
 /* ---- app-socket framing (present / cursor / native envelope) ----------------
- * xios_hello.reserved must equal XIOS_PROTOCOL_VERSION. After xios_reply, the server sends
- * one in-band HELLO record followed by a typed 32-byte record stream, so DIRTY,
- * CURSOR, clipboard-family constants, and native per-window records share one
- * grammar across every iosc<->host channel. */
+ * Both directions begin with an exact-version XIOS_MSG_HELLO, followed by the
+ * same typed 32-byte record stream used by every private iosc<->host channel. */
 
 /* ---- XIOS_MSG_CLIPBOARD (0x04): clipboard sync record ----------------------
  * Rides the DEDICATED clipboard socket (iosc-clipboard.sock), NOT the app/ddx

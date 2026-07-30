@@ -67,6 +67,26 @@
 #define XIOS_VOLUME_STATE_TO_DEVICE 1u /* desktop/PA -> Xios app system volume */
 #define XIOS_IN_APPEARANCE 13u /* app->sysintd: iOS interface style,
                              * code = 1 dark, 0 light                           */
+#define XIOS_IN_BRIGHTNESS 15u /* desktop->sysintd->app, always with
+                             * XIOS_BRIGHTNESS_STATE_TO_DEVICE: set the panel
+                             * backlight. code = 0..65535.
+                             *
+                             * This exists because the obvious path does not work:
+                             * BKSDisplayBrightnessSet is inert on iPadOS 17.6.1
+                             * outside SpringBoard (symbols resolve, the brightness
+                             * transaction creates, the entitlement is there, and
+                             * BKSDisplayBrightnessGetCurrent never moves), so
+                             * xios-hwbridged cannot drive the panel from a daemon.
+                             * UIScreen.brightness works, but only inside a real app
+                             * process, which is why this has to make the trip out to
+                             * the Xios app the way desktop volume already does.
+                             *
+                             * One direction only. The reverse (iOS auto-brightness /
+                             * Control Center moving the panel) needs no wire:
+                             * BKSDisplayBrightnessGetCurrent READS fine from a
+                             * daemon, so hwbridged already polls it and writes the
+                             * value back into its synthetic sysfs node.          */
+#define XIOS_BRIGHTNESS_STATE_TO_DEVICE 1u /* desktop -> Xios app panel backlight */
 #define XIOS_IN_GESTURE 14u /* trackpad pinch/rotate/swipe -> pointer-gestures.
                              * code packs the gesture: bits 0-7 kind
                              * (XIOS_GESTURE_SWIPE/PINCH/HOLD), bits 8-15 phase

@@ -1,0 +1,10 @@
+Package: basu
+Version: @DEB_BASU_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Libraries
+Priority: optional
+Homepage: https://sr.ht/~emersion/basu/
+Description: sd-bus implementation for iOS
+ basu provides the systemd-compatible sd-bus client library used by native
+ Wayland applications such as mako, ported to Darwin local sockets and Mach-O.

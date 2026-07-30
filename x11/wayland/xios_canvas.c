@@ -116,6 +116,25 @@ static void set_nosigpipe(int fd)
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
 }
 
+/* LOCAL_PEERPID has returned a successful zero value on some iOS socket
+ * configurations. LOCAL_PEERTOKEN is the same kernel-authenticated identity
+ * source and carries the pid in the stable Darwin audit-token slot 5. */
+static pid_t peer_pid_for_fd(int fd)
+{
+    pid_t pid = 0;
+    socklen_t len = sizeof(pid);
+    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0 && pid > 0)
+        return pid;
+#ifdef LOCAL_PEERTOKEN
+    audit_token_t token = {0};
+    len = sizeof(token);
+    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &len) == 0 &&
+        len >= sizeof(token) && token.val[5] > 0)
+        return (pid_t)token.val[5];
+#endif
+    return 0;
+}
+
 static int read_full(int fd, void *buf, size_t n)
 {
     char *p = buf; size_t got = 0;
@@ -566,17 +585,15 @@ static int handle_bind(int fd)
         return -1;
     }
     char app_id[256];
+    if (h.length == 0 || h.length >= sizeof(app_id)) {
+        fprintf(stderr, "xios-canvas: invalid v%u BIND identity length on fd=%d\n",
+                XIOS_PROTOCOL_VERSION, fd);
+        close(fd);
+        return -1;
+    }
     uint32_t idlen = h.length;
-    if (idlen > sizeof(app_id) - 1) idlen = sizeof(app_id) - 1;
     if (idlen && read_full(fd, app_id, idlen) != 0) { close(fd); return -1; }
     app_id[idlen] = 0;
-    /* Drain any app_id overflow past 255. */
-    for (uint32_t left = h.length - idlen; left; ) {
-        char scratch[256];
-        uint32_t chunk = left > sizeof(scratch) ? (uint32_t)sizeof(scratch) : left;
-        if (read_full(fd, scratch, chunk) != 0) { close(fd); return -1; }
-        left -= chunk;
-    }
     if (!app_id[0] || (uint32_t)h.d == MACH_PORT_NULL) {
         fprintf(stderr, "xios-canvas: invalid v%u BIND identity/port on fd=%d\n",
                 XIOS_PROTOCOL_VERSION, fd);
@@ -585,18 +602,14 @@ static int handle_bind(int fd)
     }
 
     /* Confirm the exact wire version before any replayed WINDOW_* records. */
-    xios_msg hello = make_msg(XIOS_MSG_HELLO, 0);
-    hello.a = XIOS_PROTOCOL_VERSION;
+    xios_msg hello = make_msg(XIOS_MSG_HELLO, XIOS_PROTOCOL_VERSION);
     if (send_record(fd, &hello, sizeof(hello)) != 1) {
         close(fd);
         return -1;
     }
 
     /* Trust the kernel peer pid, not the client claim (same as xios_surface.c). */
-    pid_t peer_pid = 0;
-    socklen_t plen = sizeof(peer_pid);
-    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer_pid, &plen) != 0 || peer_pid <= 0)
-        peer_pid = 0;
+    pid_t peer_pid = peer_pid_for_fd(fd);
 
     pthread_mutex_lock(&s_lock);
     if (s_nclients >= XIOS_CANVAS_MAX_CLIENTS) {

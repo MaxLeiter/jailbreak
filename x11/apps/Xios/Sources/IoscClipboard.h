@@ -7,8 +7,9 @@
 
 // Bridge between UIPasteboard and iosc's wl_data_device selection, over the
 // dedicated clipboard socket (iosc-clipboard.sock). Wire format is the shared
-// 32-byte xios_msg record with type XIOS_MSG_CLIPBOARD (0x04): a=kind,
-// b=generation, payload=item data. Records sharing a generation are
+// 32-byte xios_msg records. Both sides require an exact v1 HELLO before any
+// XIOS_MSG_CLIPBOARD record: a=kind, b=generation, payload=item data.
+// Records sharing a generation are
 // representations of ONE copy event (e.g. text + png); a generation change
 // replaces the clipboard. Contract lives in
 // apps/shared/XiosProtocol.h.

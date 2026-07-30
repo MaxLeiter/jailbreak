@@ -165,6 +165,29 @@ final class SystemIntegration {
         slider.sendActions(for: .touchUpInside)
     }
 
+    // MARK: brightness
+
+    /// Apply a desktop brightness request to the panel.
+    ///
+    /// This lives in the app rather than in xios-hwbridged because
+    /// BKSDisplayBrightnessSet is inert on iPadOS 17.6.1 outside SpringBoard: the
+    /// symbols resolve, the brightness transaction creates, the entitlement is
+    /// present, and BKSDisplayBrightnessGetCurrent never moves. UIScreen.brightness
+    /// does work, but only from a real app process, so the daemon relays the value
+    /// here through xios-sysintd.
+    private func setDeviceBrightness(_ v16: UInt32) {
+        let clamped = min(v16, 65535)
+        let value = CGFloat(clamped) / 65535.0
+        // Reached via an already-installed subview so this follows the scene Xios is
+        // actually presenting on, rather than assuming the built-in panel.
+        let screen = (traitSpy ?? volumeView)?.window?.windowScene?.screen ?? UIScreen.main
+        // The daemon re-sends on every 2 Hz tick while a request is outstanding, and
+        // assigning brightness is not free (it animates and notifies observers), so
+        // ignore anything under one 0..255 step of what the panel already shows.
+        if abs(screen.brightness - value) < (1.0 / 255.0) { return }
+        screen.brightness = value
+    }
+
     // MARK: appearance
 
     private func sendAppearance() {
@@ -192,6 +215,10 @@ final class SystemIntegration {
     private func tick() {
         drainNativeEvents(poll: sysint_poll_haptic) { fire(style: $0) }
         drainNativeEvents(poll: sysint_poll_volume_set) { setDeviceVolume($0) }
+        // Must run every tick, not conditionally: this and the volume drain share one
+        // socket, and each stashes only ONE of the other's records. Skipping this
+        // would let a second brightness request overwrite the stashed first one.
+        drainNativeEvents(poll: sysint_poll_brightness_set) { setDeviceBrightness($0) }
         pumpTicks += 1
         if pumpTicks % 20 == 0 { syncOrientation() }   // 1 Hz safety net
     }

@@ -2,13 +2,6 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# BLOCKED on iOS/Darwin (mako's sd-bus provider). The meson-level GNU-isms (GNU-ld
-# version-script link args, librt) are patched around, but the sd-bus C source itself is
-# structurally Linux-bound: error-map registration walks an ELF section via __start_/__stop_
-# symbols Mach-O doesn't have, and the creds path needs Linux struct ucred/SO_PEERCRED
-# (Darwin's LOCAL_PEERCRED/struct xucred aren't equivalent). kdbus, socket, capability, and
-# /proc-based code are untouched. Architectural port, not a shim cascade — left here unbuilt.
-
 SUBPROJECTS  += basu
 BASU_VERSION := 0.2.1
 DEB_BASU_V   ?= $(BASU_VERSION)+ios1
@@ -29,7 +22,7 @@ basu-setup: setup
 	needs_exe_wrapper = true\n \
 	[built-in options]\n \
 	prefix ='$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)'\n \
-	c_args = ['-Wno-error']\n \
+	c_args = ['-Wno-error', '-Wno-undef', '-D__MAC_OS_X_VERSION_MIN_REQUIRED=0', '-I$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include']\n \
 	[binaries]\n \
 	c = '$(CC)'\n \
 	cpp = '$(CXX)'\n \

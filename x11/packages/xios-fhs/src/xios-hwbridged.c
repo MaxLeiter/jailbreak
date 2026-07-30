@@ -27,8 +27,12 @@
 
 #include <dlfcn.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 #include <objc/message.h>
 #include <objc/runtime.h>
@@ -81,17 +85,17 @@ typedef CFTypeRef       (*IOPSCopyPowerSourcesInfoFn) (void);
 typedef CFArrayRef      (*IOPSCopyPowerSourcesListFn) (CFTypeRef);
 typedef CFDictionaryRef (*IOPSGetPowerSourceDescriptionFn) (CFTypeRef, CFTypeRef);
 
-typedef float     (*BKSDisplayBrightnessGetCurrentFn) (void);
-typedef void      (*BKSDisplayBrightnessSetFn) (float, int);
-typedef CFTypeRef (*BKSDisplayBrightnessTransactionCreateFn) (CFAllocatorRef);
+/* Only the getter. BKSDisplayBrightnessSet and BKSDisplayBrightnessTransactionCreate
+ * are deliberately not resolved: both exist and both are inert from a daemon on
+ * iPadOS 17.6.1 (see send_brightness_to_app), so keeping them here would only
+ * suggest a working setter that isn't. Reads are genuinely fine. */
+typedef float (*BKSDisplayBrightnessGetCurrentFn) (void);
 
 static IOPSCopyPowerSourcesInfoFn        iops_copy_info;
 static IOPSCopyPowerSourcesListFn        iops_copy_list;
 static IOPSGetPowerSourceDescriptionFn   iops_get_desc;
 
 static BKSDisplayBrightnessGetCurrentFn        bks_get;
-static BKSDisplayBrightnessSetFn               bks_set;
-static BKSDisplayBrightnessTransactionCreateFn bks_txn_create;
 
 static gboolean
 load_iokit (void)
@@ -123,13 +127,10 @@ load_backboard (void)
       g_warning ("hwbridge: dlopen BackBoardServices failed: %s", dlerror ());
       return FALSE;
     }
-  bks_get        = (BKSDisplayBrightnessGetCurrentFn) dlsym (h, "BKSDisplayBrightnessGetCurrent");
-  bks_set        = (BKSDisplayBrightnessSetFn) dlsym (h, "BKSDisplayBrightnessSet");
-  bks_txn_create = (BKSDisplayBrightnessTransactionCreateFn)
-                     dlsym (h, "BKSDisplayBrightnessTransactionCreate");
-  if (!bks_get || !bks_set)
+  bks_get = (BKSDisplayBrightnessGetCurrentFn) dlsym (h, "BKSDisplayBrightnessGetCurrent");
+  if (!bks_get)
     {
-      g_warning ("hwbridge: BKSDisplayBrightness symbols missing");
+      g_warning ("hwbridge: BKSDisplayBrightnessGetCurrent missing");
       return FALSE;
     }
   return TRUE;
@@ -382,19 +383,63 @@ seed_sysfs_skeleton (void)
 
 static void emit_screen_brightness_changed (void);
 
+/* Hand a brightness level to the Xios app over xios-sysintd's socket.
+ *
+ * BKSDisplayBrightnessSet cannot do this job: on iPadOS 17.6.1 it is inert from a
+ * daemon -- the symbols resolve, BKSDisplayBrightnessTransactionCreate returns
+ * non-NULL, the com.apple.backboardd brightness entitlement is present, and
+ * BKSDisplayBrightnessGetCurrent never budges, with the transaction released
+ * immediately or held, and with auto-brightness on or explicitly off. Only an app
+ * process can move the panel, via UIScreen.brightness, so the value has to travel
+ * out to Xios.app. Reads are unaffected: GetCurrent works fine here, which is why
+ * only the setter needs this detour.
+ *
+ * Fire-and-forget with a per-call connect. This runs at most once per 2 Hz tick and
+ * only when the level actually changed, so a socket per applied change is cheaper
+ * than holding a link that has to be reconnected after every session restart. */
+static void
+send_brightness_to_app (int value)
+{
+  const char *sock = g_getenv ("XIOS_SYSINT_SOCK");
+  if (!sock || !*sock)
+    sock = "/var/jb/tmp/xios-sysint.sock";
+
+  int fd = socket (AF_UNIX, SOCK_STREAM, 0);
+  if (fd < 0)
+    return;
+
+  struct sockaddr_un addr = { 0 };
+  addr.sun_family = AF_UNIX;
+  g_strlcpy (addr.sun_path, sock, sizeof addr.sun_path);
+  if (connect (fd, (struct sockaddr *) &addr, sizeof addr) != 0)
+    {
+      /* No session daemon: a bare compositor run, or the desktop is not up yet.
+       * Not an error, and not worth logging every tick. */
+      close (fd);
+      return;
+    }
+
+  /* The 24-byte xios_input_socket record, laid out here rather than including
+   * xios_input_socket.h so this package keeps building standalone: type, x, y,
+   * code, state, mods -- all little-endian 32-bit. Type 15 = XIOS_IN_BRIGHTNESS,
+   * state bit0 = XIOS_BRIGHTNESS_STATE_TO_DEVICE. */
+  uint32_t rec[6] = { 15u, 0u, 0u,
+                      (uint32_t) ((value * 65535 + MAX_BRIGHTNESS / 2) / MAX_BRIGHTNESS),
+                      1u, 0u };
+  ssize_t w = send (fd, rec, sizeof rec, 0);
+  if (w != (ssize_t) sizeof rec)
+    g_warning ("hwbridge: short brightness send (%zd of %zu)", w, sizeof rec);
+  close (fd);
+}
+
 static void
 apply_brightness (int value)
 {
   value = CLAMP (value, 0, MAX_BRIGHTNESS);
-  if (!bks_set)
-    return;
   if (value == last_applied_brightness)
     return;
 
-  CFTypeRef txn = bks_txn_create ? bks_txn_create (kCFAllocatorDefault) : NULL;
-  bks_set ((float) value / (float) MAX_BRIGHTNESS, 1);
-  if (txn)
-    CFRelease (txn);
+  send_brightness_to_app (value);
 
   last_applied_brightness = value;
   char buf[32];

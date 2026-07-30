@@ -1,0 +1,28 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Keep WebKitGTK on Unix IPC attachments on Darwin
+
+The GTK port uses Unix-domain-socket IPC even when cross-built for Darwin.
+OS(DARWIN) alone selected MachSendRight, whose implementation is only available
+to Cocoa ports, leaving std::optional<Attachment> with an incomplete type.
+Limit Mach-port attachments to Cocoa and let GTK use UnixFileDescriptor.
+
+--- a/Source/WebKit/Platform/IPC/Attachment.h
++++ b/Source/WebKit/Platform/IPC/Attachment.h
+@@ -27,7 +27,7 @@
+ 
+ #pragma once
+ 
+-#if OS(DARWIN)
++#if PLATFORM(COCOA)
+ #include <wtf/MachSendRight.h>
+ #endif
+ 
+@@ -37,7 +37,7 @@ namespace IPC {
+ 
+ // IPC::Attachment is a type representing objects that cannot be transferred as data,
+ // rather they are transferred via operating system cross-process communication primitives.
+-#if OS(DARWIN)
++#if PLATFORM(COCOA)
+ using Attachment = MachSendRight;
+ #elif OS(WINDOWS)
+ struct Attachment { }; // Windows does not need attachments at the moment.

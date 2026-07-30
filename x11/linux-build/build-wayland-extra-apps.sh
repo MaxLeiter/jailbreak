@@ -5,7 +5,8 @@
 # the first app wave owns foot/imv/mpv and their runtime fixes, while this
 # script is for smaller shell utilities and user apps such as swaybg, tofi,
 # yad, gnumeric, and transmission. Built but heavier targets such as waybar and
-# swayimg remain opt-in; nwg-look and Geary/WebKitGTK are explicitly blocked.
+# swayimg remain opt-in; nwg-look uses the pinned Go+cgo lane below, while
+# Geary/WebKitGTK remain on the separate GNOME/WebKit build lane.
 #
 # Typical use:
 #   docker run --rm --platform linux/arm64 --cpus=4 \
@@ -32,7 +33,7 @@ target_requests() {
 }
 
 target_needs_gtk3_wayland() {
-  target_requests gtk+3.0 || target_requests gtk-layer-shell || target_requests waybar
+  target_requests gtk+3.0 || target_requests gtk-layer-shell || target_requests waybar || target_requests nwg-look
 }
 
 stage_port_patch_stack() {
@@ -243,18 +244,47 @@ stage_libpeas_girepository() {
   done
 }
 
-for pkg in swaybg tofi swayimg waybar transmission libsigcplusplus; do
+ensure_go_ios_toolchain() {
+  target_requests nwg-look || return 0
+
+  local go_version=1.25.0
+  local archive="build_source/go${go_version}.linux-arm64.tar.gz"
+  local goroot="build_tools/go-${go_version}"
+
+  if [ ! -x "$goroot/bin/go" ]; then
+    echo "==> installing pinned Go $go_version host toolchain for ios/arm64 cgo"
+    if [ ! -f "$archive" ]; then
+      wget -q "https://go.dev/dl/go${go_version}.linux-arm64.tar.gz" -O "$archive"
+    fi
+    rm -rf "$goroot"
+    mkdir -p "$goroot"
+    tar -xzf "$archive" -C "$goroot" --strip-components=1
+  fi
+
+  export PATH="/work/Procursus/$goroot/bin:$PATH"
+  export GOCACHE=/work/Procursus/build_tools/go-cache-ios
+  export GOMODCACHE=/work/Procursus/build_source/go-mod-cache
+  mkdir -p "$GOCACHE" "$GOMODCACHE"
+
+  if ! go tool dist list | grep -qx 'ios/arm64'; then
+    echo "ERROR: pinned Go toolchain does not support ios/arm64" >&2
+    exit 1
+  fi
+}
+
+for pkg in swaybg tofi swayimg waybar nwg-look transmission libsigcplusplus; do
   target_requests "$pkg" && refresh_patch_build_tree "$pkg"
 done
 ensure_gtk3_wayland_build
 scrub_waybar_fallback_deps
 stage_libpeas_girepository
+ensure_go_ios_toolchain
 
 for t in $TARGETS; do
   echo "==> make $t"
   make "$t" $COMMON -j"$(nproc)"
 done
-for pkg in swaybg tofi swayimg waybar transmission libsigcplusplus; do
+for pkg in swaybg tofi swayimg waybar nwg-look transmission libsigcplusplus; do
   target_requests "$pkg" && record_patch_fingerprint "$pkg"
 done
 

@@ -1,6 +1,6 @@
 Package: xios-native
 Name: Xios Desktop (Native iPadOS)
-Version: 0.1.3
+Version: 0.1.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>

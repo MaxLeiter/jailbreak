@@ -29,25 +29,7 @@ extern char *display;
 
 /* ---- wire protocol (native LE; server + app are both arm64) ---------------- */
 
-#define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
 #define XIOS_FMT_BGRA   0x42475241u   /* 'BGRA' */
-/* app -> server, sent once on connect */
-typedef struct {
-    uint32_t magic;
-    uint32_t pid;
-    uint32_t portname;     /* mach receive-port name in the app's IPC space */
-    uint32_t reserved;
-} xios_hello;
-
-/* server -> app, sent once after the mach port is delivered */
-typedef struct {
-    uint32_t magic;
-    uint32_t width;
-    uint32_t height;
-    uint32_t stride;       /* bytes per row */
-    uint32_t format;       /* XIOS_FMT_BGRA */
-    uint32_t status;       /* 0 = ok */
-} xios_reply;
 
 /* mach message carrying the IOSurface send right */
 typedef struct {
@@ -470,30 +452,31 @@ static void handle_client(int fd)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-    xios_hello hello;
-    if (read_full(fd, &hello, sizeof(hello)) != 0 || hello.magic != XIOS_MAGIC) {
+    xios_msg hello;
+    if (read_full(fd, &hello, sizeof(hello)) != 0 ||
+        hello.magic != XIOS_MSG_MAGIC ||
+        hello.type != XIOS_MSG_HELLO ||
+        hello.window_id != XIOS_PROTOCOL_VERSION ||
+        hello.length != 0 ||
+        hello.a <= 0 ||
+        (uint32_t)hello.b == MACH_PORT_NULL ||
+        hello.c != 0 ||
+        hello.d != 0) {
         fprintf(stderr, "xios: bad handshake from fd=%d\n", fd);
         close(fd);
         return;
     }
-    if (hello.reserved != XIOS_PROTOCOL_VERSION) {
-        fprintf(stderr, "xios: rejecting app protocol v%u on fd=%d; v%u required\n",
-                hello.reserved, fd, XIOS_PROTOCOL_VERSION);
-        close(fd);
-        return;
-    }
 
-    /* Don't trust the client-supplied pid for task_for_pid — a malicious client
-     * could name another process and have us hand it the surface port. Use the
-     * kernel-reported peer pid of the socket; fall back to the claim only if the
-     * lookup fails (it shouldn't for an AF_UNIX peer). */
+    /* Never trust or fall back to the client-supplied pid for task_for_pid. */
     pid_t peer_pid = 0;
     socklen_t plen = sizeof(peer_pid);
     if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer_pid, &plen) != 0 || peer_pid <= 0) {
-        peer_pid = (pid_t) hello.pid;
-    } else if ((uint32_t) peer_pid != hello.pid) {
+        fprintf(stderr, "xios: cannot identify socket peer on fd=%d\n", fd);
+        close(fd);
+        return;
+    } else if ((uint32_t) peer_pid != (uint32_t)hello.a) {
         fprintf(stderr, "xios: client claimed pid %u but socket peer is %d; "
-                        "using the real peer\n", hello.pid, (int) peer_pid);
+                        "using the real peer\n", (uint32_t)hello.a, (int) peer_pid);
     }
 
     pthread_mutex_lock(&s_lock);
@@ -502,23 +485,13 @@ static void handle_client(int fd)
     unsigned gen = s_generation;
     pthread_mutex_unlock(&s_lock);
 
-    int status = deliver_surface_port((int) peer_pid, hello.portname, surf);
-
-    xios_reply reply;
-    reply.magic = XIOS_MAGIC;
-    reply.width = (uint32_t) w;
-    reply.height = (uint32_t) hgt;
-    reply.stride = (uint32_t) st;
-    reply.format = XIOS_FMT_BGRA;
-    reply.status = (uint32_t) (status != 0);
-    if (write_full(fd, &reply, sizeof(reply)) != 0 || status != 0) {
+    int status = deliver_surface_port((int) peer_pid, (uint32_t)hello.b, surf);
+    if (status != 0) {
         if (surf) CFRelease(surf);
         close(fd);
         return;
     }
-    /* The app gets an in-band HELLO (geometry + compositor id) right after the
-     * reply. Sent while still blocking (pre-O_NONBLOCK) so the app reliably has
-     * it before the DIRTY/CURSOR stream begins. */
+    /* Reply with the same canonical exact-version HELLO before frames begin. */
     uint32_t idlen = (uint32_t) strlen(s_compositor_id);
     xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO,
                    XIOS_PROTOCOL_VERSION, idlen,

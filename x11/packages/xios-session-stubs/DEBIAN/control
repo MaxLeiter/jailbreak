@@ -1,6 +1,6 @@
 Package: xios-session-stubs
 Name: Xios GNOME session bridges
-Version: 0.2.7
+Version: 0.2.8
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>

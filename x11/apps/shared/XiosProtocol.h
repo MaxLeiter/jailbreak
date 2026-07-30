@@ -45,6 +45,13 @@ enum {
     XIOS_MSG_NATIVE_FRAME = 0x54,
 };
 
+/*
+ * Every private stream begins with one exact-version record:
+ *   magic=XIOS_MSG_MAGIC, type=XIOS_MSG_HELLO,
+ *   window_id=XIOS_PROTOCOL_VERSION.
+ * Each endpoint defines only the remaining fields needed by its one current
+ * contract. A second HELLO, another version, or an unknown message is fatal.
+ */
 #define XIOS_DIRTY_FENCE_BROKER_TOKEN 1u
 #define IOSC_NATIVE_SOCK "/var/jb/tmp/iosc-native.sock"
 
