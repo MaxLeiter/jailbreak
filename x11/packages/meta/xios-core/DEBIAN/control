@@ -6,7 +6,7 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-runtime (>= 0.1.4), com.max.xios (>= 0.1.7), iosc (>= 0.9.43), iosc-shell (>= 0.9.11), xios-session (>= 1.0.73)
+Depends: firmware (>= 16.5), xios-runtime (>= 0.1.4), com.max.xios (>= 0.1.7), iosc (>= 0.9.43), iosc-shell (>= 0.9.11), xios-session (>= 1.0.74)
 MinimumOSVersion: 16.5.0
 Description: shared base for Xios fullscreen desktop flavors
  The common presentation layer used by the fullscreen Xios desktop flavors:
