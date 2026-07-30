@@ -120,6 +120,8 @@ shell_exited (GObject      *source,
   else if (g_subprocess_get_if_exited (shell_process))
     {
       shell_status = g_subprocess_get_exit_status (shell_process);
+      if (!stopping && shell_status == EXIT_SUCCESS)
+        shell_status = EXIT_FAILURE;
     }
   else
     {
