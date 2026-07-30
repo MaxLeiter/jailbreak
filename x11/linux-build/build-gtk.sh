@@ -96,40 +96,52 @@ target_requests gtk+3.0 && stage_required_patch_stack gtk+3.0
 target_requests gtk4 && stage_required_patch_stack gtk4
 
 # GLib is built against its bundled proxy-libintl, so everything downstream
-# references g_libintl_* rather than libintl_*. gtk+3.0.mk builds libgtkintl to
-# supply those names (it re-exports libintl.8 and adds them), but that shim is
-# applied by RELINKING finished binaries -- which is too late for GTK4, whose
-# link step needs to resolve g_libintl_* against something to produce
-# libgtk-4.1.dylib at all.
+# references g_libintl_* rather than libintl_*. gtk+3.0.mk supplies those names
+# via libgtkintl, but it applies the shim by RELINKING finished binaries -- too
+# late for GTK4, whose link step must resolve g_libintl_* to produce
+# libgtk-4.1.dylib at all ("Undefined symbols: _g_libintl_bindtextdomain").
 #
-# The warm rootless volume papers over this: its build_base libintl.8.dylib was
-# replaced by hand with a copy carrying the g_libintl_* exports (9 of them, vs 0
-# in a stock gettext build), so -lintl happens to resolve. Nothing in the repo
-# reproduces that, so a cold volume -- of either root -- fails to link GTK4 with
-# "Undefined symbols: _g_libintl_bindtextdomain".
+# recipes/ensure-gtkintl-build-shim.sh builds that bridge into the sysroot, so
+# use it rather than a second copy of the same idea. It stops short of the last
+# step GTK4 needs: nothing points -lintl at the bridge, so meson still resolves
+# gettext's libintl, which has none of the g_ names. The bridge re-exports
+# libintl, so aiming libintl.dylib at it is a superset -- callers wanting the
+# real libintl_* still get them, and the post-build relink is unaffected. Same
+# approach papers.mk already uses for its Rust link.
 #
-# Point libintl.dylib at the shim instead. It re-exports libintl.8, so callers
-# wanting the real libintl_* names still get them, and the post-build relink
-# still runs. Same trick papers.mk already uses for its own Rust link.
+# Not a rootful issue: the warm rootless build_base has a libintl.8.dylib
+# carrying 9 g_libintl_* exports where a stock gettext build has 0, and nothing
+# in the repo produces that file.
 stage_gtkintl_for_link() {
   local libdir="$XIOS_SYSROOT$XIOS_SUBPREFIX/lib"
-  local shim="$libdir/libgtkintl.dylib"
-  if [ ! -f "$shim" ]; then
-    local deb
+
+  # Preferred: compile the bridge from source into the sysroot. Needs the gettext
+  # build STAGE, which is absent on a volume where gettext came in as a prebuilt
+  # dependency -- so fall back to the copy inside the libgtkintl deb gtk+3.0
+  # produced. Do not silently continue if both fail: gtk4 would then link against
+  # gettext's libintl and die on _g_libintl_* several minutes later, which is a
+  # much worse place to find out.
+  if bash /work/recipes/ensure-gtkintl-build-shim.sh; then
+    :
+  else
+    echo "   build-sysroot bridge unavailable; falling back to the libgtkintl deb"
+    local deb found
     deb=$(ls -t /out/libgtkintl_*.deb 2>/dev/null | head -1) || true
-    [ -n "$deb" ] || return 0
-    echo "==> staging libgtkintl into the sysroot so -lintl resolves g_libintl_*"
-    rm -rf /tmp/gtkintl-x && mkdir -p /tmp/gtkintl-x
-    dpkg-deb -x "$deb" /tmp/gtkintl-x
-    local found
-    found=$(find /tmp/gtkintl-x -name 'libgtkintl.dylib' | head -1)
-    [ -n "$found" ] || return 0
-    cp "$found" "$shim"
+    if [ -n "$deb" ]; then
+      rm -rf /tmp/gtkintl-x && mkdir -p /tmp/gtkintl-x
+      dpkg-deb -x "$deb" /tmp/gtkintl-x
+      found=$(find /tmp/gtkintl-x -name 'libgtkintl.dylib' | head -1)
+      [ -n "$found" ] && { mkdir -p "$libdir"; cp "$found" "$libdir/libgtkintl.dylib"; }
+    fi
   fi
-  if [ -f "$shim" ]; then
-    ln -sf libgtkintl.dylib "$libdir/libintl.dylib"
-    echo "   libintl.dylib -> libgtkintl.dylib"
-  fi
+
+  [ -f "$libdir/libgtkintl.dylib" ] || {
+    echo "ERROR: no libgtkintl bridge in the sysroot; gtk4 will fail to link on" >&2
+    echo "       _g_libintl_*. Build gtk+3.0-package first (it produces the deb)." >&2
+    return 1
+  }
+  ln -sf libgtkintl.dylib "$libdir/libintl.dylib"
+  echo "   libintl.dylib -> libgtkintl.dylib (so -lintl resolves g_libintl_*)"
 }
 target_requests gtk4 && stage_gtkintl_for_link
 target_requests libadwaita && stage_required_patch_stack libadwaita
