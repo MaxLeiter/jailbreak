@@ -25,7 +25,13 @@ settings:
     SWIFT_OBJC_BRIDGING_HEADER: Sources/Xios-Bridging-Header.h
     # IOSurface backs the zero-copy framebuffer (XSurface.c does the mach-port
     # hand-off + IOSurfaceLookupFromMachPort).
-    OTHER_LDFLAGS: -framework IOSurface -framework Foundation -framework Metal
+    #
+    # MetalFX is WEAK-linked: present-side spatial upscaling (XiosUpscale.swift) is
+    # opt-in, and a device without the framework must degrade to the direct present
+    # rather than fail to launch. Every use is gated on NSClassFromString +
+    # MTLFXSpatialScalerDescriptor.supportsDevice, so a null class is never touched.
+    # Verify after a build with: otool -L Xios | grep MetalFX  (expect "weak").
+    OTHER_LDFLAGS: -weak_framework MetalFX -framework IOSurface -framework Foundation -framework Metal
 
 targets:
   Xios:
@@ -41,6 +47,9 @@ targets:
       - path: ../shared/XiosMetalEventBroker.m
         compilerFlags:
           - -fno-objc-arc
+      # Same runtime-visibility producer iosc links (docs/ios-platform-features.md §0),
+      # so the app's pacing/upscale state lands in the same `xios-status` table.
+      - path: ../shared/iosc_status.c
       - path: Resources/Assets.xcassets
     info:
       path: Resources/Info.generated.plist

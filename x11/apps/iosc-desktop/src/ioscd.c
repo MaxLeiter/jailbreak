@@ -19,6 +19,8 @@
  *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
  *     APP_DISABLE\t<app_id>\n             -> status + APPS_END\t<status>\n
  *     A11Y_STATE\t<0|1>\n                 -> A11Y_OK\n | ERR <msg>\n
+ *     STATUS\n                            -> <producer>\t<key>\t<value> lines
+ *                                            + STATUS_END\t<count>\n
  *
  * For each launch ioscd:
  *   1. ensures iosc (the compositor) is running, restarting it if the wayland
@@ -58,6 +60,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -146,6 +149,7 @@ static char g_xios_sensord[PATH_MAX];
 static char g_xios_sysintd[PATH_MAX];
 static char g_native_flag[PATH_MAX];
 static char g_session_status[PATH_MAX];
+static char g_status_dir[PATH_MAX];
 static char g_a11y_enabled[PATH_MAX];
 static char g_a11y_force[PATH_MAX];
 static char g_path[PATH_MAX * 2];
@@ -223,6 +227,14 @@ static void init_paths(void)
     tmp_path(g_ioscd_session_log, sizeof(g_ioscd_session_log), "ioscd-session.log");
     tmp_path(g_native_flag, sizeof(g_native_flag), "iosc.native");
     tmp_path(g_session_status, sizeof(g_session_status), "xios-session-status.json");
+    /* Latched runtime state from every producer (iosc, Xios.app): one
+     * <producer>.status sidecar each, written by apps/shared/iosc_status.c. Must
+     * resolve identically there — same XIOS_STATUS_DIR override, same default. */
+    {
+        const char *d = getenv("XIOS_STATUS_DIR");
+        if (d && *d) copy_path(g_status_dir, sizeof(g_status_dir), d);
+        else tmp_path(g_status_dir, sizeof(g_status_dir), "xios-status.d");
+    }
     tmp_path(g_a11y_enabled, sizeof(g_a11y_enabled), "xios-a11y-enabled");
     tmp_path(g_a11y_force, sizeof(g_a11y_force), "xios-a11y-force");
 
@@ -1562,6 +1574,72 @@ static void handle_a11y_state(int fd, char *payload)
     reply(fd, "A11Y_OK\n");
 }
 
+/* --- STATUS: dump the latched runtime-state table ----------------------------
+ * Consumer #2 of the visibility contract (docs/ios-platform-features.md §0).
+ * Producers latch their state into <status dir>/<producer>.status via
+ * apps/shared/iosc_status.c; we just concatenate what is there, so a producer
+ * that is not running contributes nothing rather than a stale claim (each one
+ * unlinks its sidecar on clean exit).
+ *
+ * ioscd deliberately keeps NO status state of its own: it is a different process
+ * from every producer, restarts independently of them, and the question this
+ * verb answers ("did the compositor drop to 30fps, or is it stuttering?") is
+ * about the producer's state, not the daemon's. */
+static void emit_status_file(int fd, const char *producer, const char *path,
+                             int *count)
+{
+    char line[512];
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    while (fgets(line, sizeof(line), f)) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = 0;
+        if (!line[0]) continue;
+        /* Sidecar lines are already key<TAB>value; prefix the producer so a
+         * reader can tell iosc's pacing claim from the app's. */
+        char out[640];
+        int n = snprintf(out, sizeof(out), "%s\t%s\n", producer, line);
+        if (n > 0) {
+            (void)!write(fd, out, (size_t)(n < (int)sizeof(out) ? n : (int)sizeof(out) - 1));
+            (*count)++;
+        }
+    }
+    fclose(f);
+}
+
+static void handle_status(int fd)
+{
+    DIR *d = opendir(g_status_dir);
+    int count = 0;
+    char end[64];
+
+    if (d) {
+        struct dirent *de;
+        while ((de = readdir(d)) != NULL) {
+            const char *name = de->d_name;
+            size_t len = strlen(name);
+            static const char suffix[] = ".status";
+            size_t slen = sizeof(suffix) - 1;
+            if (len <= slen || strcmp(name + len - slen, suffix) != 0)
+                continue;
+
+            char producer[64];
+            size_t plen = len - slen;
+            if (plen >= sizeof(producer)) plen = sizeof(producer) - 1;
+            memcpy(producer, name, plen);
+            producer[plen] = 0;
+
+            char path[PATH_MAX];
+            snprintf(path, sizeof(path), "%s/%s", g_status_dir, name);
+            emit_status_file(fd, producer, path, &count);
+        }
+        closedir(d);
+    }
+
+    snprintf(end, sizeof(end), "STATUS_END\t%d\n", count);
+    reply(fd, end);
+}
+
 static int launch_mode_for_verb(const char *verb, int *native)
 {
     if (strcmp(verb, "LAUNCH") == 0) {
@@ -1722,6 +1800,13 @@ static void handle_conn(int fd)
     if (!t1) {
         if (strcmp(verb, "APPS_LIST") == 0) {
             handle_apps_list(fd);
+            return;
+        }
+        /* Payload-free verbs. `status` is also accepted lowercase because the
+         * contract in docs/ios-platform-features.md §0 spells the operator-facing
+         * form that way, and a diagnostic verb should not fail on case. */
+        if (strcmp(verb, "STATUS") == 0 || strcasecmp(verb, "status") == 0) {
+            handle_status(fd);
             return;
         }
         reply(fd, "ERR malformed\n");

@@ -3,3 +3,5 @@
 0003-jsc-supply-muloti4-on-darwin.patch
 0004-gtk-use-unix-ipc-attachments-on-darwin.patch
 0005-gtk-use-unix-ipc-connection-metadata-on-darwin.patch
+0006-xpc-sendability-compat-for-old-sdk.patch
+0007-wtf-xpc-sendability-compat-for-old-sdk.patch

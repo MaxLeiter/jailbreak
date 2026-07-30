@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <poll.h>
 #include <pwd.h>
+#include <time.h>
 #include <mach/mach.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOSurface/IOSurfaceRef.h>
@@ -59,9 +60,30 @@ static uint64_t s_presented_seq = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
 static char s_input_socket[108] = "";          /* app input socket; emitted in xios.json when set */
 static char s_clipboard_socket[108] = "";      /* app clipboard socket; emitted when set */
+static char s_upscale_hint[32] = "";           /* present-side upscale spec for the app */
 static unsigned s_generation = 0;              /* bumped by resize; stale handshakes close */
 static char s_sock_path_kept[256] = "";        /* for resize-time xios.json rewrite */
 static char s_json_path_kept[256] = "";
+
+/* ---- display pacing state (XIOS_MSG_PACING / XIOS_MSG_PRESENTED) ------------
+ * Written on the per-client read thread, read from the compositor's event loop,
+ * so everything here lives under s_lock like s_presented_seq. Timestamps are
+ * translated into OUR CLOCK_MONOTONIC at arrival, because the wire carries deltas
+ * relative to send time (see xios_surface.h). */
+static uint64_t s_vblank_deadline_ms;   /* absolute: app's next frame deadline */
+static uint32_t s_vblank_interval_us;   /* refresh interval */
+static int      s_vblank_min_mfps;
+static int      s_vblank_max_mfps;
+static uint64_t s_vblank_rx_ms;         /* when the last PACING record arrived */
+static uint32_t s_present_age_us;       /* real present time, as an age at ack */
+static uint64_t s_present_ack_ms;       /* when that ack arrived */
+static int      s_present_age_valid;
+
+/* A display clock older than this is treated as dead rather than extrapolated: the
+ * app backgrounded, was suspended by FrontBoard, or died. Several refresh intervals
+ * so an ordinary scheduling hiccup does not flip the compositor back to event-loop
+ * pacing and then forward again. */
+#define XIOS_VBLANK_STALE_MS 250
 
 void xios_set_compositor_id(const char *id)
 {
@@ -78,7 +100,30 @@ void xios_set_clipboard_socket(const char *path)
     snprintf(s_clipboard_socket, sizeof(s_clipboard_socket), "%s", path ? path : "");
 }
 
+void xios_set_upscale_hint(const char *spec)
+{
+    snprintf(s_upscale_hint, sizeof(s_upscale_hint), "%s", spec ? spec : "");
+    /* Anything that could break the flat JSON we hand-write, or smuggle a second
+     * field in, becomes nothing at all. */
+    for (char *p = s_upscale_hint; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 32 || c == '"' || c == '\\' || c == ',' || c == '{' || c == '}') {
+            s_upscale_hint[0] = 0;
+            break;
+        }
+    }
+}
+
 /* ---- helpers -------------------------------------------------------------- */
+
+/* Same clock iosc's now_ms() reads, in 64-bit ms so the pacing deadline maths
+ * cannot straddle the 32-bit wrap iosc tolerates for Wayland event timestamps. */
+static uint64_t mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
 
 static void set_cloexec(int fd)
 {
@@ -147,6 +192,11 @@ static void write_json(const char *json_path, int width, int height, int stride,
         fprintf(jf, ",\"input_socket\":\"%s\"", s_input_socket);
     if (s_clipboard_socket[0])
         fprintf(jf, ",\"clipboard_socket\":\"%s\"", s_clipboard_socket);
+    /* Present-side only; the app upscales its own drawable and nothing here or in
+     * any Wayland client's view of the output changes. Omitted when unset so the
+     * app keeps its default (off). */
+    if (s_upscale_hint[0])
+        fprintf(jf, ",\"upscale\":\"%s\"", s_upscale_hint);
     fprintf(jf, "}\n");
     fclose(jf);
     /* The app runs as mobile; make the handshake file world-readable so it can
@@ -370,19 +420,109 @@ static void drop_client_fd_locked(int fd)
         close(s_clients[i].fd);
         s_clients[i] = s_clients[s_nclients - 1];
         s_nclients--;
+        if (s_nclients == 0) {
+            /* No app left to pace against. Drop the display clock now rather than
+             * letting it go stale on its own: the compositor must fall back to
+             * event-loop pacing immediately, not one stale-timeout later. */
+            s_vblank_interval_us = 0;
+            s_vblank_rx_ms = 0;
+            s_vblank_deadline_ms = 0;
+            s_present_age_valid = 0;
+        }
         return;
     }
 }
 
+/* XIOS_MSG_PACING: the app's display clock. `a` is microseconds from ITS send time
+ * to the deadline, so we add it to OUR now and store an absolute local deadline —
+ * the two processes never have to agree on a clock. */
+static void handle_pacing_msg(const xios_msg *m)
+{
+    uint64_t now = mono_ms();
+    uint32_t interval_us = (uint32_t)(m->b > 0 ? m->b : 0);
+    /* A wild interval means a garbled or hostile record; ignore it rather than
+     * pacing the whole compositor off it. 4 Hz..1 kHz covers every plausible panel
+     * plus the low end CoreAnimation can throttle a link to. */
+    if (interval_us < 1000 || interval_us > 250000)
+        return;
+
+    /* Round the sub-ms delta up: landing a hair after the deadline is a dropped
+     * frame, landing a hair before it is free. */
+    int64_t until_us = (int64_t)m->a;
+    int64_t until_ms = (until_us + 999) / 1000;
+
+    pthread_mutex_lock(&s_lock);
+    s_vblank_interval_us = interval_us;
+    s_vblank_deadline_ms = (until_ms > 0) ? now + (uint64_t)until_ms : now;
+    s_vblank_min_mfps = m->c > 0 ? m->c : 0;
+    s_vblank_max_mfps = m->d > 0 ? m->d : 0;
+    s_vblank_rx_ms = now;
+    pthread_mutex_unlock(&s_lock);
+}
+
 static void handle_client_msg(const xios_msg *m)
 {
+    if (m->type == XIOS_MSG_PACING) {
+        handle_pacing_msg(m);
+        return;
+    }
     if (m->type != XIOS_MSG_PRESENTED)
         return;
     uint64_t seq = ((uint64_t)(uint32_t)m->b << 32) | (uint32_t)m->a;
+    uint64_t now = mono_ms();
     pthread_mutex_lock(&s_lock);
     if (seq > s_presented_seq)
         s_presented_seq = seq;
+    /* bit0 of d distinguishes "the app measured a real presentedTime" from an app
+     * built before pacing, which sends c=d=0 and must keep the old behaviour. */
+    if ((m->d & 1) && m->c >= 0) {
+        s_present_age_us = (uint32_t)m->c;
+        s_present_ack_ms = now;
+        s_present_age_valid = 1;
+    }
     pthread_mutex_unlock(&s_lock);
+}
+
+int xios_display_clock(uint64_t *next_deadline_ms, uint32_t *interval_us,
+                       int *min_mfps, int *max_mfps)
+{
+    uint64_t now = mono_ms();
+    int live;
+
+    pthread_mutex_lock(&s_lock);
+    live = s_vblank_interval_us > 0 && s_vblank_rx_ms > 0 &&
+           now - s_vblank_rx_ms <= XIOS_VBLANK_STALE_MS;
+    if (live) {
+        /* Walk the stored deadline forward in whole intervals until it is in the
+         * future, so a caller that asks between ticks still gets the NEXT vblank
+         * instead of one that has already passed. */
+        uint64_t deadline = s_vblank_deadline_ms;
+        uint64_t interval_ms = (s_vblank_interval_us + 999) / 1000;
+        if (interval_ms == 0) interval_ms = 1;
+        if (deadline <= now) {
+            uint64_t behind = now - deadline;
+            deadline += ((behind / interval_ms) + 1) * interval_ms;
+        }
+        if (next_deadline_ms) *next_deadline_ms = deadline;
+        if (interval_us) *interval_us = s_vblank_interval_us;
+        if (min_mfps) *min_mfps = s_vblank_min_mfps;
+        if (max_mfps) *max_mfps = s_vblank_max_mfps;
+    }
+    pthread_mutex_unlock(&s_lock);
+    return live;
+}
+
+int xios_last_present_time(uint32_t *age_us, uint64_t *ack_at_ms)
+{
+    int have;
+    pthread_mutex_lock(&s_lock);
+    have = s_present_age_valid;
+    if (have) {
+        if (age_us) *age_us = s_present_age_us;
+        if (ack_at_ms) *ack_at_ms = s_present_ack_ms;
+    }
+    pthread_mutex_unlock(&s_lock);
+    return have;
 }
 
 static void *client_read_loop(void *arg)

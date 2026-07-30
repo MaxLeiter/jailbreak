@@ -62,6 +62,7 @@
 #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
 #include "iosc-clipboard-bridge.h"   /* Linux<->iOS clipboard sync over the dedicated socket */
 #include "iosc_xwm.h"                /* rootless Xwayland X window manager (opt-in via IOSC_XWAYLAND) */
+#include "iosc_status.h"             /* shared runtime-visibility channel (docs/ios-platform-features.md §0) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -403,6 +404,13 @@ static uint64_t g_present_wait_seq;
 static uint32_t g_present_wait_started_ms;
 static struct wl_event_source *g_frame_clock_timer;
 static int g_frame_clock_armed;
+/* Display pacing (P0.4's remaining half). The repaint timer is the vblank-paced
+ * alternative to recomposite_all()'s idle; g_vblank_paced latches which regime we
+ * are in so the [status] line only changes when the behaviour does. */
+static struct wl_event_source *g_repaint_timer;
+static int g_repaint_timer_armed;
+static int g_recompose_scheduled;        /* a coalesced repaint is already pending */
+static uint32_t g_present_interval_us = 16667;   /* refresh, for presentation-time feedback */
 static int g_output_damage_valid;
 static int g_output_damage_coarse;
 static int g_output_damage_rect_count;
@@ -712,21 +720,65 @@ static void presentation_feedback_destroy(struct wl_resource *r)
     free(fb);
 }
 
+/* When the frame we are acking ACTUALLY reached the panel, on our CLOCK_MONOTONIC.
+ *
+ * Before display pacing this was simply "now", i.e. the moment the repaint
+ * finished — which is what wp_presentation explicitly says it must not be. The app
+ * now measures the real thing with MTLDrawable.addPresentedHandler and reports it
+ * as an age at ack time (see XIOS_MSG_PRESENTED in xios_surface.h); we subtract
+ * that from the ack's arrival to land back on our own clock. `flags` stays 0 unless
+ * the number is real, so a client can tell a measured present from the post-repaint
+ * approximation we still fall back to for an app built before pacing.
+ *
+ * Deliberately NOT claiming ZERO_COPY: the app samples our output IOSurface without
+ * a copy, but it still composites that through a render pass into its drawable, so
+ * the update as a whole is not zero-copy. */
+static void presentation_timestamp(struct timespec *ts, uint32_t *flags)
+{
+    uint32_t age_us = 0;
+    uint64_t ack_at_ms = 0;
+
+    clock_gettime(CLOCK_MONOTONIC, ts);
+    *flags = 0;
+
+    if (!xios_last_present_time(&age_us, &ack_at_ms) || ack_at_ms == 0)
+        return;
+
+    uint64_t now_ns = (uint64_t)ts->tv_sec * 1000000000ull + (uint64_t)ts->tv_nsec;
+    uint64_t ack_ns = ack_at_ms * 1000000ull;
+    uint64_t age_ns = (uint64_t)age_us * 1000ull;
+    if (ack_ns < age_ns || ack_ns - age_ns > now_ns)
+        return;                       /* nonsense pair; keep the safe "now" */
+
+    uint64_t present_ns = ack_ns - age_ns;
+    ts->tv_sec = (time_t)(present_ns / 1000000000ull);
+    ts->tv_nsec = (long)(present_ns % 1000000000ull);
+    /* CoreAnimation presents on the vertical retrace, and this timestamp came out
+     * of the display pipeline rather than off our own clock. */
+    *flags = WP_PRESENTATION_FEEDBACK_KIND_VSYNC |
+             WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION;
+}
+
 static void presentation_present_surface(struct iosc_surface *s)
 {
     if (wl_list_empty(&s->presentation_feedbacks)) return;
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint32_t flags = 0;
+    presentation_timestamp(&ts, &flags);
     uint64_t sec = (uint64_t)ts.tv_sec;
     uint64_t seq = ++g_presentation_seq;
+    /* Real refresh interval from the app's display clock rather than a hardcoded
+     * 60 Hz: CoreAnimation settles the link inside the range we ask for, so a
+     * thermally throttled 30 Hz session used to be reported to clients as 60. */
+    uint32_t refresh_ns = g_present_interval_us * 1000u;
     struct iosc_presentation_feedback *fb, *tmp;
     wl_list_for_each_safe(fb, tmp, &s->presentation_feedbacks, link) {
         wp_presentation_feedback_send_presented(
             fb->resource,
             (uint32_t)(sec >> 32), (uint32_t)sec, (uint32_t)ts.tv_nsec,
-            16666666u,
+            refresh_ns,
             (uint32_t)(seq >> 32), (uint32_t)seq,
-            0);
+            flags);
         wl_resource_destroy(fb->resource);
     }
 }
@@ -779,7 +831,12 @@ static void frame_clock_arm(void)
     if (!g_frame_clock_timer)
         return;
     g_frame_clock_armed = 1;
-    wl_event_source_timer_update(g_frame_clock_timer, 16);
+    /* Was a hardcoded 16ms. Track the rate CoreAnimation actually settled on, so a
+     * throttled session paces a nested compositor's next render correctly instead
+     * of promising it 60 Hz. */
+    int period_ms = (int)((g_present_interval_us + 999) / 1000);
+    if (period_ms < 1) period_ms = 1;
+    wl_event_source_timer_update(g_frame_clock_timer, period_ms);
 }
 
 static void frame_callbacks_after_repaint(void)
@@ -2071,6 +2128,15 @@ static void recomposite_reason_clear(void)
  * in the same call (screencopy). */
 static void recomposite_now(void)
 {
+    /* Callers that read the output back (screencopy) paint synchronously. Retire any
+     * vblank-paced repaint we had deferred: the frame it was going to draw is the
+     * one we are drawing now, and letting the timer fire afterwards would spend a
+     * whole extra composite on identical content. */
+    if (g_repaint_timer_armed && g_repaint_timer) {
+        wl_event_source_timer_update(g_repaint_timer, 0);
+        g_repaint_timer_armed = 0;
+        g_recompose_scheduled = 0;
+    }
     if (g_native_mode) {
         native_recomposite_now();
         return;
@@ -2196,13 +2262,104 @@ static void recomposite_now(void)
  * processed, before the loop blocks again. Without this, e.g. an input-socket
  * read that drains several motion messages, or several clients committing on the
  * same wakeup, each forced a full GPU recomposite. */
-static int g_recompose_scheduled;
 static void recompose_idle(void *data)
 {
     (void)data;
     g_recompose_scheduled = 0;
     recomposite_now();
 }
+
+/* ---- display pacing (P0.4's remaining half) ---------------------------------
+ *
+ * Coalescing above removed the "one composite per commit" cost, but the repaint
+ * still landed on the next event-loop turn — so two animating clients still drove
+ * the composite rate, unbounded by the panel. The Xios app owns the CADisplayLink
+ * and streams its targetTimestamp back over the existing dirty/present channel
+ * (XIOS_MSG_PACING); with that in hand the coalesced repaint can be scheduled to
+ * FINISH just before the app's next tick samples the output IOSurface, instead of
+ * as soon as possible.
+ *
+ * The lead is a quarter of a refresh interval: enough headroom for a composite to
+ * complete before the app wakes, small enough that input-to-photon latency does
+ * not grow by a whole frame. Painting earlier than that would just idle the GPU
+ * result in the IOSurface waiting for the app; painting later drops the frame to
+ * the tick after.
+ *
+ * No display clock (no app attached, an app from before pacing, a backgrounded
+ * app) means the previous idle behaviour, unchanged. */
+static void repaint_timer_fire(void)
+{
+    g_repaint_timer_armed = 0;
+    g_recompose_scheduled = 0;
+    recomposite_now();
+}
+
+static int repaint_timer_cb(void *data)
+{
+    (void)data;
+    if (g_repaint_timer)
+        wl_event_source_timer_update(g_repaint_timer, 0);
+    repaint_timer_fire();
+    return 0;
+}
+
+static uint64_t now_ms64(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
+
+/* Announce which pacing regime is live (docs/ios-platform-features.md §0).
+ * Called once per coalesced repaint; iosc_status_set drops an unchanged value, so
+ * the log and the sidecar only move when the behaviour actually does. */
+static void pacing_status_update(int paced, uint32_t interval_us,
+                                 int min_mfps, int max_mfps)
+{
+    if (!paced) {
+        iosc_status_set("pacing", "event-loop (no display clock from the app)");
+        return;
+    }
+    double fps = interval_us > 0 ? 1000000.0 / (double)interval_us : 0.0;
+    if (min_mfps > 0 && max_mfps > 0)
+        iosc_status_set("pacing", "vblank fps=%.3g range=%.3g-%.3g interval=%.2fms",
+                        fps, min_mfps / 1000.0, max_mfps / 1000.0,
+                        interval_us / 1000.0);
+    else
+        iosc_status_set("pacing", "vblank fps=%.3g interval=%.2fms",
+                        fps, interval_us / 1000.0);
+}
+
+/* Milliseconds to defer the coalesced repaint by, or -1 to paint on the next
+ * event-loop turn exactly as before. */
+static int repaint_delay_ms(void)
+{
+    uint64_t deadline = 0;
+    uint32_t interval_us = 0;
+    int min_mfps = 0, max_mfps = 0;
+
+    if (!xios_display_clock(&deadline, &interval_us, &min_mfps, &max_mfps)) {
+        pacing_status_update(0, 0, 0, 0);
+        return -1;
+    }
+    /* Keep presentation-time feedback honest about the rate CoreAnimation settled
+     * on; this is the only place that learns it. */
+    g_present_interval_us = interval_us;
+    pacing_status_update(1, interval_us, min_mfps, max_mfps);
+
+    uint64_t lead_ms = (interval_us / 4) / 1000;   /* quarter frame of headroom */
+    uint64_t now = now_ms64();
+    if (deadline <= now + lead_ms)
+        return -1;                     /* already inside the window: paint now */
+    uint64_t delay = deadline - lead_ms - now;
+    /* Never defer more than one interval: a bogus far-future deadline must not be
+     * able to stall the desktop. */
+    uint64_t cap = (interval_us + 999) / 1000;
+    if (cap == 0) cap = 1;
+    if (delay > cap) delay = cap;
+    return (int)delay;
+}
+
 static void recomposite_all_at(const char *reason, int line)
 {
     if (g_recompose_scheduled) return;
@@ -2210,7 +2367,26 @@ static void recomposite_all_at(const char *reason, int line)
     g_recompose_reason_line = line;
     struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
     /* Before the event loop is running (early bring-up), paint synchronously. */
-    if (!loop || !wl_event_loop_add_idle(loop, recompose_idle, NULL)) {
+    if (!loop) {
+        recomposite_now();
+        return;
+    }
+
+    int delay = repaint_delay_ms();
+    if (delay > 0) {
+        if (!g_repaint_timer)
+            g_repaint_timer = wl_event_loop_add_timer(loop, repaint_timer_cb, NULL);
+        /* wl_event_source_timer_update(t, 0) DISARMS rather than firing, which is
+         * why a zero/negative delay takes the idle path below instead. */
+        if (g_repaint_timer &&
+            wl_event_source_timer_update(g_repaint_timer, delay) == 0) {
+            g_repaint_timer_armed = 1;
+            g_recompose_scheduled = 1;
+            return;
+        }
+    }
+
+    if (!wl_event_loop_add_idle(loop, recompose_idle, NULL)) {
         recomposite_now();
         return;
     }
@@ -8895,6 +9071,12 @@ int main(int argc, char **argv)
     } else if (iosc_env_truthy(getenv("IOSC_NATIVE"))) {
         g_native_mode = 1;
     }
+    /* Runtime-behaviour announcements (docs/ios-platform-features.md §0) are
+     * attributed to a producer name. The classic and native compositors can be up
+     * at the same time, so they publish separate tables — otherwise whichever
+     * started last would silently overwrite the other's pacing/upscale claim. */
+    iosc_status_set_producer(g_native_mode ? "iosc-native" : "iosc");
+
     if (iosc_env_truthy(getenv("IOSC_FULLSCREEN_TOPLEVELS")))
         g_fullscreen_toplevels = 1;
     if (g_fullscreen_toplevels)
@@ -8923,6 +9105,13 @@ int main(int argc, char **argv)
     xios_set_compositor_id("iosc");   /* app clients learn the flavor via the in-band HELLO */
     xios_set_input_socket(opts.input_sock);
     xios_set_clipboard_socket(opts.clipboard_sock);
+    /* IOSC_UPSCALE is forwarded to the display app verbatim as xios.json's
+     * "upscale" field and changes NOTHING here: the output IOSurface, wl_output
+     * state, and every client's view of the desktop stay exactly as they were. It
+     * exists on the compositor's command line only because the app is launched by
+     * FrontBoard and has no environment of its own to read. Runtime knob, not a
+     * build one — see docs/ios-platform-features.md §2. */
+    xios_set_upscale_hint(getenv("IOSC_UPSCALE"));
     if (xios_server_start(opts.ddx_sock, opts.json_path, g_width, g_height, g_stride) != 0) {
         fprintf(stderr, "iosc: xios_server_start failed\n");
         return 1;
@@ -9022,5 +9211,7 @@ int main(int argc, char **argv)
     wl_display_destroy(g_display);
     if (g_native_mode) xios_canvas_server_stop();
     xios_server_stop();
+    /* A latched table that outlives its producer reads as live state. */
+    iosc_status_clear();
     return 0;
 }

@@ -32,7 +32,32 @@ enum {
     XIOS_MSG_DIRTY = 0x02,
     XIOS_MSG_CURSOR = 0x03,
     XIOS_MSG_CLIPBOARD = 0x04,
+    /* app->compositor: a,b = displayed DIRTY seq lo/hi.
+     * c = microseconds between the frame's REAL presentation time
+     *     (MTLDrawable.addPresentedHandler) and the moment this ack was sent,
+     *     i.e. "presented this long ago".
+     * d = flags; bit0 set means c is a measured present time rather than 0. The
+     *     compositor forwards a measured value to wp_presentation and otherwise
+     *     falls back to timing its own repaint. */
     XIOS_MSG_PRESENTED = 0x05,
+    /* app->compositor: the app's DISPLAY clock, so the compositor's coalesced
+     * repaint can be vblank-paced rather than event-loop-paced (P0.4).
+     *   window_id = 0
+     *   a = microseconds from the moment this record was SENT until the display
+     *       link's targetTimestamp — the deadline for the frame being built.
+     *       May be negative when the app is already late for it.
+     *   b = the display's refresh interval in microseconds
+     *       (targetTimestamp - timestamp).
+     *   c = the minimum frame rate the app asked CoreAnimation for, in fps*1000.
+     *   d = the maximum, same units. Together they are the CAFrameRateRange
+     *       CoreAnimation may settle inside, which the thermal track clamps.
+     *
+     * Both records carry DELTAS from send time, never timestamps: CADisplayLink
+     * works in CACurrentMediaTime()'s domain and the compositor in
+     * CLOCK_MONOTONIC. Those are different clocks that diverge across sleep, and
+     * a delta needs no shared epoch — the receiver stamps its own clock on
+     * arrival. */
+    XIOS_MSG_PACING = 0x06,
 
     XIOS_MSG_BIND = 0x40,
     XIOS_MSG_RESIZE = 0x41,

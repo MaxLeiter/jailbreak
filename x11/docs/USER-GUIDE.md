@@ -197,6 +197,37 @@ shell never painted. Check the log for the flavor you picked.
 **A session left something behind.** `xios-session stop` does a full teardown, including
 stale compositors and sockets. It is safe to run at any time.
 
+**"Is it running slowly, or did it deliberately slow down?"** `xios-status`. It prints the
+latched runtime behaviour of the compositor and the display app — the things that change
+by themselves and would otherwise look like a fault:
+
+```
+iosc       pacing=vblank fps=30-60/60 interval=16.67ms
+Xios       upscale=1440x1080->2160x1620 metalfx-spatial direct
+```
+
+`pacing` says whether the repaint is pinned to the display refresh (`vblank`) or falling
+back to the event loop, and the frame-rate range CoreAnimation is allowed to settle in —
+so a 30fps desktop reads as a decision rather than a stutter. `upscale` says whether the
+desktop is being composited below the panel's resolution and scaled up on present; `off`
+is the default. Both keys also appear in the logs as `[status]` lines, and
+`xios-status <key>` filters. This is distinct from `xios-session status`, which reports
+which flavor is up rather than how it is behaving.
+
+**Making it faster on an older iPad.** The A10 iPads are thermally limited before the
+desktop does anything, and the 2160x1620 panel is a lot of pixels for them. Two knobs,
+both opt-in and both reversible by restarting the session:
+
+| Knob | Effect |
+|---|---|
+| `IOSC_UPSCALE=auto` | Composite below native and let MetalFX scale up on present. Pair with a lower `IOSC_LOGICAL` — `auto` does nothing on its own if the compositor is already at or above panel resolution. |
+| `IOSC_UPSCALE=1.5` | Same, but always: the present pass composites at panel/1.5 regardless of the compositor's resolution. |
+
+Set them in the environment of whatever starts the session, e.g.
+`IOSC_LOGICAL=1440x1080 IOSC_UPSCALE=auto xios-session iosc`. Confirm it took effect with
+`xios-status upscale`; softer edges are the expected trade. No Wayland client can observe
+this — it happens entirely in the display app, after the desktop is composited.
+
 **apt refuses to install a flavor.** Check the iOS floor in the table above. The packages
 carry both `MinimumOSVersion` and a `firmware (>= X)` dependency, so an older device is
 refused on purpose rather than left to fail at runtime.

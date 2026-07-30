@@ -22,6 +22,7 @@ _SF_SHELLDIR="$_SF_REPO_ROOT/x11/apps/iosc-shell"
 session_manifest() {
   printf '%s\t%s\t%s\n' \
     "$_SF_HERE/xios-session"                usr/local/bin/xios-session                        0755 \
+    "$_SF_HERE/xios-status"                 usr/local/bin/xios-status                         0755 \
     "$_SF_HERE/xios-start-a11y"             usr/local/bin/xios-start-a11y                     0755 \
     "$_SF_HERE/xios-session-lib.sh"         libexec/xios-session/xios-session-lib.sh          0644 \
     "$_SF_HERE/xios-capability-profiles.sh" libexec/xios-session/xios-capability-profiles.sh 0755 \

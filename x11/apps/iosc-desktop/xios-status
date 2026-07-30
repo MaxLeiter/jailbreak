@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# xios-status — print the latched runtime-behaviour table (docs/ios-platform-features.md §0).
+#
+# Answers "did the compositor drop to 30fps, or is it actually stuttering?" and
+# "is the desktop being upscaled right now?" without a rebuild:
+#
+#   xios-status            # producer / key / value, one per line
+#   xios-status pacing     # only keys matching this prefix
+#
+# Distinct from `xios-session status`, which reports which desktop preset is up.
+# This reports how the running compositor and display app are BEHAVING: pacing,
+# upscale, thermal, memory, sandbox.
+#
+# Asks ioscd over its control socket first (the authoritative consumer, §0 #2) and
+# falls back to reading the producer sidecars directly, so it still works when
+# ioscd is not running.
+set -u
+
+XS_SELF_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+case "$XS_SELF_DIR/" in
+    /var/jb/*) XS_JB=/var/jb ;;
+    *)         XS_JB= ;;
+esac
+if [ -n "$XS_JB" ]; then
+    XS_TMP="$XS_JB/tmp"
+else
+    XS_TMP="${XIOS_RUNTIME_TMP:-/var/tmp}"
+fi
+
+IOSCD_SOCK="$XS_TMP/ioscd.sock"
+STATUS_DIR="${XIOS_STATUS_DIR:-$XS_TMP/xios-status.d}"
+FILTER="${1:-}"
+
+# Ask ioscd. Same transport ladder as xios-session's send_ioscd_session: nc, then
+# socat, then python3 — the device has had all three come and go.
+ask_ioscd() {
+    [ -S "$IOSCD_SOCK" ] || return 1
+    local out=""
+    if command -v nc >/dev/null 2>&1; then
+        out="$(printf 'STATUS\n' | nc -U "$IOSCD_SOCK" 2>/dev/null || true)"
+    fi
+    if [ -z "$out" ] && command -v socat >/dev/null 2>&1; then
+        out="$(printf 'STATUS\n' | socat -t 3 - "UNIX-CONNECT:$IOSCD_SOCK" 2>/dev/null || true)"
+    fi
+    if [ -z "$out" ] && command -v python3 >/dev/null 2>&1; then
+        out="$(IOSCD_SOCK="$IOSCD_SOCK" python3 - <<'PY' 2>/dev/null || true
+import os, socket
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(3)
+s.connect(os.environ["IOSCD_SOCK"])
+s.sendall(b"STATUS\n")
+buf = b""
+while True:
+    chunk = s.recv(4096)
+    if not chunk:
+        break
+    buf += chunk
+    if b"STATUS_END" in buf:
+        break
+print(buf.decode("utf-8", "replace"), end="")
+PY
+)"
+    fi
+    [ -n "$out" ] || return 1
+    printf '%s' "$out" | grep -v '^STATUS_END' || true
+    return 0
+}
+
+# Fallback: the sidecars themselves. <status dir>/<producer>.status holds
+# key<TAB>value lines; re-emit them in the same producer/key/value shape.
+read_sidecars() {
+    local f producer
+    [ -d "$STATUS_DIR" ] || return 1
+    local any=0
+    for f in "$STATUS_DIR"/*.status; do
+        [ -f "$f" ] || continue
+        producer="$(basename "$f" .status)"
+        while IFS=$'\t' read -r key value; do
+            [ -n "${key:-}" ] || continue
+            printf '%s\t%s\t%s\n' "$producer" "$key" "$value"
+            any=1
+        done < "$f"
+    done
+    [ "$any" = 1 ]
+}
+
+lines="$(ask_ioscd || true)"
+if [ -z "$lines" ]; then
+    lines="$(read_sidecars || true)"
+fi
+
+if [ -z "$lines" ]; then
+    echo "no runtime status published (no desktop session running?)" >&2
+    exit 1
+fi
+
+if [ -n "$FILTER" ]; then
+    lines="$(printf '%s\n' "$lines" | awk -F'\t' -v k="$FILTER" 'index($2, k) == 1')"
+    [ -n "$lines" ] || { echo "no status keys matching '$FILTER'" >&2; exit 1; }
+fi
+
+printf '%s\n' "$lines" | sort | awk -F'\t' '{ printf "%-10s %s=%s\n", $1, $2, $3 }'
