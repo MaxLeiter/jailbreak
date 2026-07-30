@@ -77,7 +77,7 @@ for marker in AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient;
 done
 
 rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
-      "$XIOS_INPUT_SOCKET" "$XS_TMP/xios-input.sock" "$GNOME_SHELL_LOG" \
+      "$XIOS_INPUT_SOCKET" "$GNOME_SHELL_LOG" \
       "$GNOME_SESSION_BUS_FILE" 2>/dev/null
 
 echo "==> verify package-owned ANGLE + Mutter compatibility links"

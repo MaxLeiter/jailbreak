@@ -37,9 +37,8 @@
 #define IOSC_IN_GESTURE 14 /* code = kind|phase<<8|fingers<<16; state = scale 1/256;
                             * mods = rotation 1/256 deg — see xios_input_socket.h */
 
-#define MUTTER_IN_SOCK        "/var/jb/tmp/mutter-input.sock"
-#define MUTTER_LEGACY_IN_SOCK "/var/jb/tmp/xios-input.sock"
-#define IOSC_IN_SOCK          "/var/jb/tmp/iosc-input.sock"
+#define MUTTER_IN_SOCK "/var/jb/tmp/mutter-input.sock"
+#define IOSC_IN_SOCK   "/var/jb/tmp/iosc-input.sock"
 
 struct iosc_in_msg {
     uint32_t type;
@@ -85,15 +84,12 @@ static int connect_sock(const char *path)
     int fd = connect_path(MUTTER_IN_SOCK, 1);
     if (fd >= 0)
         return fd;
-    fd = connect_path(MUTTER_LEGACY_IN_SOCK, 1);
-    if (fd >= 0)
-        return fd;
     fd = connect_path(IOSC_IN_SOCK, 1);
     if (fd >= 0)
         return fd;
 
-    fprintf(stderr, "connect: no input socket up (tried %s, %s, %s)\n",
-            MUTTER_IN_SOCK, MUTTER_LEGACY_IN_SOCK, IOSC_IN_SOCK);
+    fprintf(stderr, "connect: no input socket up (tried %s, %s)\n",
+            MUTTER_IN_SOCK, IOSC_IN_SOCK);
     return -1;
 }
 
