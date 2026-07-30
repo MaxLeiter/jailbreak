@@ -15,6 +15,18 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
   `project.yml`'s `MARKETING_VERSION`). `xios-core` depends on it, so every flavor pulls it in.
 
 ## Recent commits / status notes
+- 2026-07-29 responsiveness release (`com.max.xios 0.1.4`, installed and device-tested):
+  - `ff1ba0d9` moves every ioscd request off the UIKit thread, adds bounded socket
+    read/write timeouts, and suppresses duplicate session requests.
+  - `2ca048db` replaces the full-resolution CPU+Metal holding frame with a 1x1 black
+    texture while the compositor is absent (about 49.8 MB avoided at 2880x2160).
+  - `29f0b28b` pauses the display link and releases input, IOSurface, fence, and
+    texture state while backgrounded; foregrounding reloads config and reconnects.
+  The only 2026-07-29 Xios analytics report was bug type 509 (background termination
+  watchdog), not a JetsamEvent: `memoryPressure=false`, resident memory about 97.7 MB,
+  and the main stack pointed at the old synchronous ioscd response reader. After the
+  fixes, iosc/KDE switching retained one Xios PID, held roughly 18-27 MB RSS, and
+  produced no new Xios crash report.
 - `828435f` in-app Desktop Session picker (⧉ button; current builds send `SESSION` over `/var/jb/tmp/ioscd.sock`).
 - `74ecdfe` clip-fix: `resetZoom()` on fb-size change at adopt.
 - `9948705` re-adopt watchdog: ~1.5s re-read of `/var/jb/tmp/xios.json`, re-adopt on socket/size change.
@@ -24,6 +36,13 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 - Scroll/touch/tablet/clipboard app-side code has landed; clipboard is now compositor-wired too. Treat clipboard/scroll as app+iosc co-deploy work, not an app-only next wave.
 
 ## Current state
+- 2026-07-29 device proof: `com.max.xios 0.1.4` and `xios-session 1.0.67`
+  are installed. Xios PID `77756` survived repeated iosc → KDE → iosc → KDE
+  transitions and concurrent client-launch pressure. Final state was
+  `kde/up`, `iosurface-zerocopy 2880x2160 [metal]`, input connected, about
+  26 MB RSS, no session lock, and no new analytics report. A nonblank KDE
+  compositor capture and the status/log bundle are in
+  `artifacts/device-runs/xios-responsiveness-final-20260729-kde/`.
 - 2026-07-29 release-policy cleanup: Xios now requires explicit compositor-advertised
   input/clipboard sockets instead of inferring global paths, keeps the camera broker disabled
   unless a diagnostic Info.plist/environment opt-in is present, and imports iosc's output
@@ -67,7 +86,11 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 3. **DONE locally — bug-sweep Finding 1 (deeper root cause / robustness)**: the real staleness vector is `fbWidth`/`fbHeight` themselves (snapshotted only in `adoptIOSurface()` and `loadConfig()`, never refreshed while presenting). Implemented `syncSurfaceGeometry(conn)` in `XScreen.swift`; `adoptIOSurface()` and `tick()` now both use it, and texture-refresh failure tears down/reconnects.
 4. **DONE locally — bug-sweep Finding 2 (simplification)**: `render()` and input now share one `FitTransform` in `XScreen.swift`. The transform owns the fit rect, framebuffer inverse mapping, and Metal clip-space vertices; scroll/pixel-perfect zoom also consume it.
 5. **DONE locally — bug-sweep Finding 3 (verify/fix)**: `XSurface.c` no longer patches dimensions on post-connect typed HELLO. IOSurface geometry remains the single source of truth; a later HELLO with changed width/height/stride returns `-1` from drain, forcing teardown + full re-adopt/reconnect.
-6. **Session-switch jetsam resilience**: app-side teardown/re-adopt work exists; keep validating flavor switches under real memory pressure because two compositor surfaces can still produce transient peaks. The picker status line should show launcher progress (see session-launcher.md).
+6. **DONE on device — session-switch/watchdog resilience**: ioscd work is asynchronous
+   and time-bounded, Xios releases background/compositor state, the transition holding
+   frame is 1x1, and the launcher preserves the app while serializing compositor
+   switches. Repeated iosc/KDE transitions retained one app PID with no new crash or
+   jetsam report; see `session-launcher.md` for the companion teardown fixes.
 7. **DONE locally — Rotation/native-feel OUTPUT** (task #21): UIKit orientation/bounds changes update `drawableSize`, recompute fit, and force-send OUTPUT through `SystemIntegration`; adopt/layout also force-resend so compositor restarts in the same orientation do not letterbox. Co-deploy with `iosc 0.9.9` or newer.
 8. **LANDED (9470335 and later iosc wiring)**: scroll (`iosc_input_axis`/`sendScroll` + `sendScrollStop`), the deferred-press/long-press right-click state machine, pinch app-zoom, the wheelPan trackpad recognizer, and the touch/Pencil senders (`iosc_input_touch`/`iosc_input_tablet`). Clipboard app-side also landed here: `serviceIoscClipboard` was rewritten to the multi-item API on the 32-byte 'XMS1' typed envelope (`XIOS_MSG_CLIPBOARD` 0x04), and `lastSentPasteboard` plus the transitional text-only wrappers were dropped. The compositor hooks have since landed, so the remaining rule is co-deploy/verify the matching Xios.app + iosc pair.
 

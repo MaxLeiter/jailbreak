@@ -18,6 +18,8 @@
 #include <drm_fourcc.h>
 #include <mach/mach.h>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 
 #ifndef EGL_PLATFORM_ANGLE_ANGLE
 #define EGL_PLATFORM_ANGLE_ANGLE 0x3202
@@ -30,6 +32,31 @@
 #endif
 namespace KWin::Wayland
 {
+extern "C" int xios_metal_sync_signal(EGLDisplay display,
+                                        const void **token,
+                                        size_t *tokenSize,
+                                        uint64_t *value);
+
+static bool setAcquireFence(WaylandEglBackend *backend, IoscEglBuffer *buffer)
+{
+    const void *token = nullptr;
+    size_t tokenSize = 0;
+    uint64_t value = 0;
+    if (!xios_metal_sync_signal(buffer->display, &token, &tokenSize, &value)
+        || !token || tokenSize != 32 || value == 0) {
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: failed to export mandatory Metal acquire fence";
+        return false;
+    }
+
+    wl_array tokenArray = {};
+    tokenArray.size = tokenSize;
+    tokenArray.alloc = tokenSize;
+    tokenArray.data = const_cast<void *>(token);
+    iosc_iosurface_set_acquire_fence(backend->backend()->display()->iosurface(),
+        buffer->buffer, &tokenArray, uint32_t(value), uint32_t(value >> 32));
+    return true;
+}
+
 static void setNumber(CFMutableDictionaryRef dict, CFStringRef key, int32_t value)
 {
     CFNumberRef number = CFNumberCreate(nullptr, kCFNumberSInt32Type, &value);
@@ -297,7 +324,10 @@ std::optional<OutputLayerBeginFrameInfo> WaylandEglPrimaryLayer::doBeginFrame()
 
 bool WaylandEglPrimaryLayer::doEndFrame(const QRegion &, const QRegion &damagedRegion, OutputFrame *)
 {
-    glFinish(); // correctness first: iosc samples the IOSurface in another process
+    if (!setAcquireFence(m_backend, m_buffer)) {
+        m_buffer = nullptr;
+        return false;
+    }
     m_damage = damagedRegion;
     m_swapchain->rendered(m_buffer, damagedRegion);
     return true;
@@ -396,7 +426,10 @@ std::optional<OutputLayerBeginFrameInfo> WaylandEglCursorLayer::doBeginFrame()
 
 bool WaylandEglCursorLayer::doEndFrame(const QRegion &, const QRegion &, OutputFrame *)
 {
-    glFinish();
+    if (!setAcquireFence(m_backend, m_buffer)) {
+        m_buffer = nullptr;
+        return false;
+    }
     m_buffer->busy = true;
     static_cast<WaylandOutput *>(m_output)->cursor()->update(m_buffer->buffer, scale(), hotspot().toPoint());
     m_buffer = nullptr;

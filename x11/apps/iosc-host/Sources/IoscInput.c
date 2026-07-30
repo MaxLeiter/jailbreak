@@ -22,6 +22,8 @@
 /* Scope this connection to one window (code = window id). */
 #define XIOS_IN_BIND   8u
 #define XIOS_IN_AXIS   9u   // x,y = dx,dy 1/256 px; code = source; state bit0 = stop; mods latched
+#define XIOS_IN_GESTURE 14u // code = kind|phase<<8|fingers<<16; x,y = dx,dy 1/256 px;
+                            // state = scale 1/256; mods = rotation 1/256 deg (signed)
 
 struct xios_in_msg {
     uint32_t type;
@@ -144,6 +146,18 @@ void iosc_input_axis(iosc_input_t *h, int dx256, int dy256, unsigned source,
 {
     struct xios_in_msg m = { .type = XIOS_IN_AXIS, .x = dx256, .y = dy256,
                              .code = source, .state = stop ? 1u : 0u, .mods = mods };
+    send_msg(h, &m);
+}
+
+void iosc_input_gesture(iosc_input_t *h, unsigned kind, unsigned phase, unsigned fingers,
+                        int dx256, int dy256, unsigned scale256, int rot256)
+{
+    struct xios_in_msg m = { .type = XIOS_IN_GESTURE, .x = dx256, .y = dy256,
+                             .code = (kind & 0xffu) | ((phase & 0xffu) << 8)
+                                     | ((fingers & 0xffu) << 16),
+                             .state = scale256,
+                             /* Rotation is signed and iosc casts it back to int32. */
+                             .mods = (unsigned)rot256 };
     send_msg(h, &m);
 }
 

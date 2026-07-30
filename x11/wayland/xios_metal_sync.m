@@ -1,5 +1,5 @@
 #import "xios_metal_sync.h"
-#import "../apps/shared/XiosMetalEventBroker.h"
+#import "XiosMetalEventBroker.h"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>

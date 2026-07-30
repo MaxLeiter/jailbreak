@@ -8,8 +8,8 @@
  * makes FBO 0 the IOSurface and Cogl renders the stage straight into it. Present is the only
  * platform-specific step: there is no back buffer, so instead of the base
  * cogl_onscreen_egl_swap_buffers_with_damage (which calls eglSwapBuffers on the pbuffer — a
- * no-op / undefined), we finish (so ANGLE/Metal commits the GL writes into the IOSurface) and
- * signal the Xios app to re-present. GPL-2.0+.
+ * no-op / undefined), we enqueue a brokered Metal shared-event signal and tell the Xios app
+ * to wait for that value before sampling the IOSurface. GPL-2.0+.
  */
 
 #include "config.h"
@@ -51,11 +51,21 @@ meta_onscreen_ios_swap_buffers_with_damage (CoglOnscreen  *onscreen,
                                             CoglFrameInfo *info,
                                             gpointer       user_data)
 {
-  /* FBO 0 is the output IOSurface (the pbuffer); there is no back buffer to swap. Finish so
-   * ANGLE/Metal commits the GL writes into the IOSurface, then nudge the Xios app to
-   * re-present it. Do NOT call eglSwapBuffers on a pbuffer. */
-  cogl_framebuffer_finish (COGL_FRAMEBUFFER (onscreen));
-  xios_notify_dirty ();
+  const void *token = NULL;
+  size_t token_size = 0;
+  uint64_t event_value = 0;
+
+  /* FBO 0 is the output IOSurface; there is no back buffer to swap. Enqueue the shared-event
+   * signal after this frame and let Xios wait in its Metal command buffer. The producer CPU
+   * never waits for the GPU, and production never publishes an unfenced IOSurface. */
+  if (!xios_metal_sync_signal (xios_egl_display (),
+                               &token,
+                               &token_size,
+                               &event_value))
+    g_error ("MetaOnscreenIOS: brokered GPU presentation fence unavailable");
+
+  if (xios_notify_dirty_with_fence (token, token_size, event_value) != 0)
+    g_error ("MetaOnscreenIOS: refusing to publish an unfenced frame");
 
   /* A swap DID happen for this frame, so a presentation notification is coming: the public
    * cogl_onscreen_swap_buffers_with_damage() wrapper that invoked us auto-queues SYNC + COMPLETE

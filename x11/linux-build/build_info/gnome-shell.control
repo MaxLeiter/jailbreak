@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: System
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/gnome-shell
-Depends: gjs, libgjs0, libmutter-14-0, libgtk-4-1, libgtk-3-0, libgdk-pixbuf-2.0-0, libgnome-desktop-4-2, gsettings-desktop-schemas, dconf, dbus, libatk-bridge2.0-0, libatspi2.0-0, libgcr-4-4, libpolkit-agent-1-0, libpolkit-gobject-1-0, libibus-1.0-5, libstartup-notification0, libpulse0, libgtkintl
+Depends: gjs, libgjs0, libmutter-14-0 (>= 46.0+ios6), libgtk-4-1, libgtk-3-0, libgdk-pixbuf-2.0-0, libgnome-desktop-4-2, gsettings-desktop-schemas, dconf, dbus, libatk-bridge2.0-0, libatspi2.0-0, libgcr-4-4, libpolkit-agent-1-0, libpolkit-gobject-1-0, libibus-1.0-5, libstartup-notification0, libpulse0, libgtkintl
 Description: GNOME Shell for the Xios desktop
  GNOME Shell 46 built for rootless iOS against libmutter-14. Calendar
  integration (evolution-data-server) is disabled in this build; the St and

@@ -11,10 +11,10 @@ The flavor where each Linux app is its own native iPad window (per-window presen
 - Wire: XIOS_IN_BIND=8 (scope a connection's input to one window id) — already reserved in xios_input_socket.h; IoscInput.c had 8 on-wire before the header did.
 
 ## Current state
-- 2026-07-29 native presentation protocol v3 is host-build complete. BIND now
-  requires an exact HELLO/version negotiation; production frames use
-  `XIOS_MSG_NATIVE_FRAME` with a package-broker token and 64-bit
-  `MTLSharedEvent` value, while legacy unfenced DIRTY is rejected. The host
+- 2026-07-29 native presentation protocol v1 is host-build complete. BIND
+  requires an exact HELLO/version match; every `XIOS_MSG_NATIVE_FRAME` carries
+  one package-broker token and a non-zero 64-bit `MTLSharedEvent` value. There
+  is no unfenced or older-version record shape. The host
   imports the event and encodes the wait before sampling. Per-canvas generations
   and ordered last-fence replay prevent a resize or host reconnect from pairing
   a fence with the wrong IOSurface. `apps/iosc-host/build-host.sh` and

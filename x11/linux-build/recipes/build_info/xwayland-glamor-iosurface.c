@@ -32,6 +32,7 @@
 #include "xwayland-window.h"
 
 #include "iosc-iosurface-client-protocol.h"
+#include "xios_metal_sync.h"
 
 #include <IOSurface/IOSurfaceRef.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -61,19 +62,6 @@
 #ifndef EGL_NO_CONFIG_KHR
 #define EGL_NO_CONFIG_KHR                   ((EGLConfig)0)
 #endif
-#ifndef EGL_KHR_fence_sync
-typedef void *EGLSyncKHR;
-#endif
-#ifndef EGL_SYNC_FENCE_KHR
-#define EGL_SYNC_FENCE_KHR                  0x30F9
-#define EGL_SYNC_FLUSH_COMMANDS_BIT_KHR     0x0001
-#define EGL_FOREVER_KHR                     0xFFFFFFFFFFFFFFFFull
-#define EGL_NO_SYNC_KHR                     ((EGLSyncKHR)0)
-#endif
-typedef EGLSyncKHR (*xwl_egl_create_sync_khr_fn)(EGLDisplay, EGLenum, const EGLint *);
-typedef EGLint (*xwl_egl_client_wait_sync_khr_fn)(EGLDisplay, EGLSyncKHR, EGLint, uint64_t);
-typedef EGLBoolean (*xwl_egl_destroy_sync_khr_fn)(EGLDisplay, EGLSyncKHR);
-
 struct xwl_iosurface_private {
     struct iosc_iosurface *iosc_iosurface; /* the compositor's export global */
     EGLConfig pbuffer_config;              /* bind-to-texture RGBA pbuffer config */
@@ -89,10 +77,6 @@ struct xwl_pixmap {
 };
 
 static DevPrivateKeyRec xwl_iosurface_private_key;
-static xwl_egl_create_sync_khr_fn xwl_iosurface_create_sync;
-static xwl_egl_client_wait_sync_khr_fn xwl_iosurface_client_wait_sync;
-static xwl_egl_destroy_sync_khr_fn xwl_iosurface_destroy_sync;
-static int xwl_iosurface_sync_init_done;
 
 /* Consumed by the (patched) glamor_egl_make_current in xwayland-glamor.c:
  * stays EGL_NO_SURFACE unless surfaceless MakeCurrent turned out unsupported
@@ -104,57 +88,6 @@ xwl_iosurface_get(struct xwl_screen *xwl_screen)
 {
     return dixLookupPrivate(&xwl_screen->screen->devPrivates,
                             &xwl_iosurface_private_key);
-}
-
-static void
-xwl_iosurface_init_frame_barrier(EGLDisplay dpy)
-{
-    const char *exts;
-
-    if (xwl_iosurface_sync_init_done)
-        return;
-    xwl_iosurface_sync_init_done = 1;
-
-    exts = eglQueryString(dpy, EGL_EXTENSIONS);
-    if (exts && strstr(exts, "EGL_KHR_fence_sync")) {
-        xwl_iosurface_create_sync =
-            (xwl_egl_create_sync_khr_fn) eglGetProcAddress("eglCreateSyncKHR");
-        xwl_iosurface_client_wait_sync =
-            (xwl_egl_client_wait_sync_khr_fn) eglGetProcAddress("eglClientWaitSyncKHR");
-        xwl_iosurface_destroy_sync =
-            (xwl_egl_destroy_sync_khr_fn) eglGetProcAddress("eglDestroySyncKHR");
-
-        if (!xwl_iosurface_create_sync ||
-            !xwl_iosurface_client_wait_sync ||
-            !xwl_iosurface_destroy_sync)
-            xwl_iosurface_create_sync = NULL;
-    }
-
-    LogMessageVerb(X_INFO, 3, "glamor/iosurface: frame barrier = %s\n",
-                   xwl_iosurface_create_sync ? "EGL fence" : "glFinish");
-}
-
-static void
-xwl_iosurface_frame_barrier(struct xwl_screen *xwl_screen)
-{
-    EGLSyncKHR fence;
-
-    xwl_iosurface_init_frame_barrier(xwl_screen->egl_display);
-    glFlush();
-
-    if (xwl_iosurface_create_sync) {
-        fence = xwl_iosurface_create_sync(xwl_screen->egl_display,
-                                          EGL_SYNC_FENCE_KHR, NULL);
-        if (fence != EGL_NO_SYNC_KHR) {
-            xwl_iosurface_client_wait_sync(xwl_screen->egl_display, fence,
-                                           EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
-                                           EGL_FOREVER_KHR);
-            xwl_iosurface_destroy_sync(xwl_screen->egl_display, fence);
-            return;
-        }
-    }
-
-    glFinish();
 }
 
 /* ---- IOSurface creation (proven shape: iosc-gpu-client.c) ---------------- */
@@ -445,13 +378,32 @@ xwl_glamor_iosurface_post_damage(struct xwl_window *xwl_window,
                                  PixmapPtr pixmap, RegionPtr region)
 {
     struct xwl_screen *xwl_screen = xwl_window->xwl_screen;
+    struct xwl_pixmap *xwl_pixmap = xwl_pixmap_get(pixmap);
+    const void *token = NULL;
+    size_t token_size = 0;
+    uint64_t value = 0;
+    struct wl_array token_array;
 
-    /* The compositor samples the IOSurface from its own Metal device; GL
-     * commands must be COMPLETE (not just flushed) before the commit is
-     * visible, or it composites a half-rendered frame. Prefer a per-frame EGL
-     * fence over draining the whole GPU pipeline with glFinish. */
+    if (!xwl_pixmap)
+        return FALSE;
+    if (!xwl_pixmap->buffer &&
+        !xwl_glamor_iosurface_get_wl_buffer_for_pixmap(pixmap))
+        return FALSE;
+
     xwl_glamor_egl_make_current(xwl_screen);
-    xwl_iosurface_frame_barrier(xwl_screen);
+    if (!xios_metal_sync_signal(xwl_screen->egl_display,
+                                &token, &token_size, &value))
+        FatalError("glamor/iosurface: brokered GPU acquire fence unavailable\n");
+
+    token_array.size = token_size;
+    token_array.alloc = token_size;
+    token_array.data = (void *)token;
+    iosc_iosurface_set_acquire_fence(
+        xwl_iosurface_get(xwl_screen)->iosc_iosurface,
+        xwl_pixmap->buffer,
+        &token_array,
+        (uint32_t)(value & 0xffffffffu),
+        (uint32_t)(value >> 32));
 
     return TRUE;
 }

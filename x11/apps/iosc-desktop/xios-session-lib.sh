@@ -2,7 +2,7 @@
 # The session-launcher core (sourced, never run directly).
 #
 # One place that knows how to (1) tear down whatever desktop session is currently
-# on the iPad and (2) bring up a chosen one, then relaunch the Xios display app.
+# on the iPad and (2) bring up a chosen one, keeping the Xios display app alive.
 # Both the on-device CLI (`xios-session`) and ioscd's SESSION handler use this
 # file, so there is ONE code path whether Max picks a preset from the Xios app or
 # a terminal.
@@ -22,7 +22,7 @@
 # launch-gnome-session.sh from xios-session-stubs so gnome-session owns the
 # Shell component.
 # The one thing this library guarantees on top of them is a *bulletproof* teardown
-# (gotcha a: kill ALL of iosc/mutter/gnome/KDE/Xios/panels/clients + rm every
+# (gotcha a: kill ALL of iosc/mutter/gnome/KDE/panels/clients + rm every
 # stale socket, or the next compositor collides on wayland-0 / the ddx sockets).
 #
 # Env overrides honoured (passed through to the run scripts):
@@ -46,11 +46,11 @@
 # JETSAM NOTE (why the settle exists): switching flavors kills the old compositor
 # (which holds a large GPU IOSurface + Metal/ANGLE context, ~30MB) and starts a new
 # one that allocates its own surface + context. Doing that back-to-back spikes GPU
-# memory and iOS jetsams the foreground Xios app mid-transition. So the presets:
-# tear down (kill old compositor + the app so it isn't holding stale GPU state),
-# SETTLE (let the kernel reclaim the old surface), THEN start the new compositor,
-# then relaunch the display once the new surface exists. Status is updated at every
-# step so the picker shows what's happening instead of going dark.
+# memory and can pressure the foreground Xios app mid-transition. Xios now drops
+# its stale IOSurface as soon as the old compositor closes the socket, so presets
+# keep the app alive: tear down the old compositor, SETTLE for kernel reclamation,
+# then start the new compositor and reconnect the existing display process. An
+# explicit `stop` still terminates Xios and returns to SpringBoard.
 #
 # Status "state" vocabulary (xios-session-status.json):
 #   stopping | starting | waiting | relaunching | up | error | stopped | compositor-only
@@ -226,12 +226,31 @@ xs_switch_request_superseded() {
     [ -n "$current" ] && [ "$current" != "$XS_REQUEST_ID" ]
 }
 
+xs_pgid_has_live_session_process() {  # xs_pgid_has_live_session_process <pgid>
+    local want="$1"
+    case "$want" in ""|*[!0-9]*|0|1) return 1 ;; esac
+    ps axww -o pgid=,command= 2>/dev/null | awk -v want="$want" '
+        $1 == want {
+            $1 = ""
+            if ($0 ~ /\/bin\/iosc( |$)|\/bin\/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|\/usr\/bin\/mutter|\/usr\/bin\/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|\/Applications\/KDE\/[^ ]+\.app\/[^ ]+|\/bin\/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session/) {
+                found = 1
+            }
+        }
+        END { exit(found ? 0 : 1) }
+    '
+}
+
 xs_reap_pgid() {
     local pgid="$1" label="${2:-recorded session}"
     local current
     current="$(xs_current_pgid)"
     case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
     [ -n "$current" ] && [ "$pgid" = "$current" ] && return 0
+    # PGIDs are recycled. A stale registry entry must never be enough to signal
+    # an arbitrary process group; require a live, recognizable Xios session
+    # process in that group before sending TERM/KILL.
+    kill -0 "-$pgid" 2>/dev/null || return 0
+    xs_pgid_has_live_session_process "$pgid" || return 0
     xs_log "reaper: killing $label process group $pgid"
     kill -TERM "-$pgid" 2>/dev/null || true
     sleep 0.3
@@ -444,15 +463,16 @@ xs_clear_active() {
 }
 
 xs_record_session_pgid() {
-    local preset="${1:-session}" pgid
+    local preset="${1:-session}" pgid slot="${XS_SLOT:--}"
     pgid="$(xs_current_pgid)"
     case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
-    printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "${XS_SLOT:-}" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
+    printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$(date '+%Y-%m-%dT%H:%M:%S')" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
 }
 
 xs_record_pgid_once() {
     local pgid="$1" preset="${2:-session}" slot="${3:-${XS_SLOT:-}}" at
     case "$pgid" in ""|*[!0-9]*|0|1) return 0 ;; esac
+    [ -n "$slot" ] || slot="-"
     if [ -f "$XS_SESSION_PGIDS" ] && awk -v pgid="$pgid" -v slot="$slot" 'BEGIN{found=1} $1==pgid && $3==slot {found=0} END{exit found}' "$XS_SESSION_PGIDS" 2>/dev/null; then
         return 0
     fi
@@ -477,6 +497,14 @@ xs_reap_recorded_session_pgroups() {
     : >"$tmp" 2>/dev/null || true
     while IFS=$'\t' read -r pgid preset slot at; do
         case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
+        # New records use "-" for the global (non-slot) field. Older records
+        # wrote an empty tab field; Bash collapses adjacent whitespace delimiters,
+        # so their timestamp was read into `slot` and every global compositor was
+        # accidentally protected as slot-owned.
+        case "$slot" in
+            -) slot="" ;;
+            20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) at="$slot"; slot="" ;;
+        esac
         if [ -n "$slot" ]; then
             printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$tmp" 2>/dev/null || true
             continue
@@ -500,6 +528,10 @@ xs_reap_slot_session_pgroups() {
     : >"$tmp" 2>/dev/null || true
     while IFS=$'\t' read -r pgid preset slot at; do
         case "$pgid" in ""|*[!0-9]*|0|1) continue ;; esac
+        case "$slot" in
+            -) slot="" ;;
+            20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) at="$slot"; slot="" ;;
+        esac
         if [ "$slot" = "$want" ]; then
             [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
             xs_reap_pgid "$pgid" "slot $want ${preset:-session}"
@@ -561,6 +593,9 @@ xs_pgid_has_slot() {
     case "$want" in ""|*[!0-9]*|0|1) return 1 ;; esac
     [ -f "$XS_SESSION_PGIDS" ] || return 1
     while IFS=$'\t' read -r pgid preset slot at; do
+        case "$slot" in
+            -|20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) slot="" ;;
+        esac
         [ "$pgid" = "$want" ] && [ -n "$slot" ] && return 0
     done <"$XS_SESSION_PGIDS"
     return 1
@@ -603,21 +638,26 @@ xs_find_bringup() {
 }
 
 # ---------------------------------------------------------------------------
-# teardown (gotcha a) — kill every compositor/app/client + rm every stale socket
+# teardown (gotcha a) — kill every compositor/client + rm every stale socket
 # ---------------------------------------------------------------------------
 # Union of the teardown greps in the compositor/app bring-up scripts, anchored
 # to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='Xios :| Xios$|/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/Applications/KDE/[^ ]+\.app/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
+xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/Applications/KDE/[^ ]+\.app/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
+xs_xios_kill_pattern='Xios :| Xios$|/Xios\.app/Xios'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
-    xs_log "teardown ($why): killing compositors + apps + clients"
+    local kill_xios="${2:-0}" kill_pattern="$xs_kill_pattern"
+    if [ "$kill_xios" = 1 ]; then
+        kill_pattern="$kill_pattern|$xs_xios_kill_pattern"
+    fi
+    xs_log "teardown ($why): killing compositors + clients$([ "$kill_xios" = 1 ] && printf ' + Xios')"
     xs_reap_recorded_session_pgroups
     local self=$$ parent=$PPID pid pids
     pids="$(
-        ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" \
+        ps ax 2>/dev/null | grep -v grep | grep -E "$kill_pattern" \
             | awk '{print $1}' \
             | while read -r pid; do
                 [ -z "$pid" ] && continue
@@ -632,7 +672,7 @@ xios_session_teardown() {
     pids="$(
         {
             printf '%s\n' $pids
-            ps ax 2>/dev/null | grep -v grep | grep -E "$xs_kill_pattern" | awk '{print $1}'
+            ps ax 2>/dev/null | grep -v grep | grep -E "$kill_pattern" | awk '{print $1}'
         } | awk '!seen[$1]++'
     )"
     for pid in $pids; do
@@ -719,20 +759,23 @@ xs_wait_socket() {  # xs_wait_socket <path> <tries>
 }
 
 # Let the kernel reclaim the old compositor's GPU IOSurface + context before the
-# next compositor allocates, so the two don't co-reside and jetsam the app. Runs
-# AFTER teardown (which already killed the old compositor + the app). Tunable.
+# next compositor allocates, so the two don't co-reside and pressure the app.
+# Xios remains alive but releases the old IOSurface on compositor EOF. Tunable.
 xs_settle() {
     local s="${XIOS_SESSION_SETTLE:-2}"
     xs_log "settling ${s}s (freeing the old GPU surface before the next compositor allocates)"
     sleep "$s"
 }
 
-# Make sure the Xios display app is up after the new compositor exists. If it's
-# alive, just bring it forward; if teardown killed it (it did) or iOS jetsammed it
-# during bring-up, relaunch it and mark the status "relaunching display".
+# Make sure the Xios display app is up after the new compositor exists. Normally
+# it survived the switch and only needs foregrounding; if iOS terminated it,
+# relaunch it and mark the status "relaunching display".
 xs_ensure_xios() {  # xs_ensure_xios <preset>
     local preset="${1:-session}"
-    if pgrep -f "Xios.app/Xios" >/dev/null 2>&1; then
+    # procps/pgrep is not a base dependency on the iPad. Use the same portable
+    # process-table probe as the rest of this launcher so a live Xios process is
+    # not falsely reported as missing on every switch.
+    if ps axww 2>/dev/null | grep -v grep | grep -E '/Xios\.app/Xios( |$)' >/dev/null 2>&1; then
         xs_foreground_xios
         return 0
     fi
@@ -1138,7 +1181,7 @@ xios_session_stop() {
         xs_log "slot $XS_SLOT stopped"
         xs_write_status stop stopped "slot stopped: $XS_SLOT"
     else
-        xios_session_teardown "-> stop"
+        xios_session_teardown "-> stop" 1
         xs_clear_active
         xs_log "session stopped; Xios app killed, back to SpringBoard."
         xs_write_status stop stopped "all sessions stopped"
@@ -1208,6 +1251,14 @@ xios_session_run() {
     local preset="${1:-}" rc
     case "$preset" in
         ""|help|-h|--help)
+            xios_session_run_unlocked "$@"
+            return $? ;;
+        app)
+            # A client launch must never serialize compositor switches. Some GUI
+            # launchers keep their invoking shell alive even after nohup, which used
+            # to pin the global lock and make every in-app desktop request wait up to
+            # 45 seconds. A concurrent switch may make this one client fail to map;
+            # that is preferable to freezing the desktop control plane.
             xios_session_run_unlocked "$@"
             return $? ;;
     esac

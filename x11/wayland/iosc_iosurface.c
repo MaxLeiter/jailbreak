@@ -15,11 +15,6 @@
 enum {
     IOSC_IOSURFACE_FORMAT_MASK = 0x0000ffffu,
     IOSC_IOSURFACE_KNOWN_FLAGS = IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT,
-    IOSC_IOSURFACE_SUPPORTED_CAPABILITIES =
-        IOSC_IOSURFACE_CAPABILITY_BGRA8888 |
-        IOSC_IOSURFACE_CAPABILITY_ORIGIN_FLAGS |
-        IOSC_IOSURFACE_CAPABILITY_MACH_PORT_IMPORT |
-        IOSC_IOSURFACE_CAPABILITY_METAL_SHARED_EVENT_BROKER,
 };
 
 /* A wl_buffer backed by a client IOSurface imported over the iosc_iosurface
@@ -99,15 +94,13 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
         return 0;
     maybe_probe_client_buffer(ib);
     if (ib->surface) {
-        if (ib->acquire_value != 0) {
-            if (!ib->acquire_event ||
-                !iosc_gl_wait_shared_event(ib->acquire_event, ib->acquire_value)) {
-                fprintf(stderr,
-                        "iosc: refusing to sample IOSurface without a valid GPU acquire wait\n");
-                return 1;
-            }
-            ib->acquire_value = 0;
+        if (!ib->acquire_event || ib->acquire_value == 0 ||
+            !iosc_gl_wait_shared_event(ib->acquire_event, ib->acquire_value)) {
+            fprintf(stderr,
+                    "iosc: refusing to sample IOSurface without a valid GPU acquire wait\n");
+            return 1;
         }
+        ib->acquire_value = 0;
         iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
                                dx, dy, dw, dh, ib->flip_v);
     }
@@ -182,22 +175,7 @@ static void iosurface_factory_destroy(struct wl_client *c, struct wl_resource *r
     wl_resource_destroy(r);
 }
 
-static void iosurface_factory_set_acquire_fence(struct wl_client *client,
-        struct wl_resource *res, struct wl_resource *buffer,
-        struct wl_array *shared_event_handle,
-        uint32_t value_lo, uint32_t value_hi)
-{
-    (void)client;
-    (void)buffer;
-    (void)shared_event_handle;
-    (void)value_lo;
-    (void)value_hi;
-    wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_INVALID_FENCE,
-                           "legacy MTLSharedEvent archives are unsupported; "
-                           "use iosc_iosurface v4 broker tokens");
-}
-
-static void iosurface_factory_set_acquire_fence_token(
+static void iosurface_factory_set_acquire_fence(
         struct wl_client *client, struct wl_resource *res,
         struct wl_resource *buffer, struct wl_array *token,
         uint32_t value_lo, uint32_t value_hi)
@@ -233,18 +211,16 @@ static const struct iosc_iosurface_interface iosurface_factory_impl = {
     .destroy = iosurface_factory_destroy,
     .create_buffer = iosurface_factory_create_buffer,
     .set_acquire_fence = iosurface_factory_set_acquire_fence,
-    .set_acquire_fence_token = iosurface_factory_set_acquire_fence_token,
 };
 
 void iosc_iosurface_bind(struct wl_client *client, void *data,
                          uint32_t version, uint32_t id)
 {
     (void)data;
+    (void)version;
     struct wl_resource *r = wl_resource_create(client, &iosc_iosurface_interface,
-                                               version, id);
+                                               1, id);
     if (!r) { wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(r, &iosurface_factory_impl, NULL, NULL);
-    if (wl_resource_get_version(r) >= 2)
-        iosc_iosurface_send_capabilities(r, IOSC_IOSURFACE_SUPPORTED_CAPABILITIES);
-    fprintf(stderr, "iosc: client bound iosc_iosurface v%u\n", version);
+    fprintf(stderr, "iosc: client bound fenced iosc_iosurface\n");
 }
