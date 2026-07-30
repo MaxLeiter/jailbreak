@@ -269,8 +269,9 @@ per-app tweaking for well-behaved GNOME apps.
   `dbus-run-session`/`bash -lc <exec>`). `<exec>` comes from an installed
   `.desktop` the user chose to make a launcher for — same trust level as running
   it from a shell.
-- The launchers are unsigned and rely on AppSync (like every app this repo
-  installs via `bin/install-app.sh`).
+- The launchers are unsigned and rely on AppSync, like every app bundle this repo
+  installs (whether packaged as a deb, as `com.max.xios` is, or sideloaded with
+  `bin/install-app.sh`).
 
 ---
 

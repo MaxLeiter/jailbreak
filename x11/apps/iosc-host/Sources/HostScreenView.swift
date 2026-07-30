@@ -58,6 +58,8 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var axisSource: UInt32 = 0
     private weak var discreteScrollPan: UIPanGestureRecognizer?
     private var hardwareButtonMask = 0
+    // An `.indirectPointer` touch is live, i.e. at least one button is held.
+    private var hardwarePointerTouchDown = false
     private let hardwareKeyboard = XiosHardwareKeyboard()
 
     // UITextInputTraits — literal keyboard (one tap one char).
@@ -613,7 +615,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     // additive policy as the Xios app.
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         refreshAutoKeyboardFromTraits()
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .down) { return }
         for t in touches { forward(t, phase: 1, event: event) }
         if (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
            let (x, y) = canvasPoint(from: t.location(in: self)), let h = input {
@@ -622,7 +624,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .move) { return }
         for t in touches { forward(t, phase: 2, event: event) }
         if (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
            let (x, y) = canvasPoint(from: t.location(in: self)), let h = input {
@@ -630,13 +632,12 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         }
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .up) { return }
         for t in touches { forward(t, phase: 0, event: event) }
         releasePointerIfNeeded(touches)
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) {
-            releaseHardwarePointerButtons()
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .up) {
             return
         }
         for t in touches { forward(t, phase: 3, event: event) }
@@ -659,20 +660,43 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     @available(iOS 13.4, *)
     @objc private func handlePointerHover(_ g: UIHoverGestureRecognizer) {
+        // A button still marked down during hover outlived its touch, and every motion
+        // from here would be a drag. Mirrors XScreen's hover self-heal.
+        if hardwareButtonMask != 0 && !hardwarePointerTouchDown {
+            releaseHardwarePointerButtons()
+        }
         guard let point = canvasPoint(from: g.location(in: self)), let h = input else { return }
         lastPt = point
         iosc_input_motion(h, point.0, point.1)
     }
 
+    /// Whether an `.indirectPointer` touch is starting, continuing, or finished.
+    private enum HardwarePointerPhase { case down, move, up }
+
     @available(iOS 13.4, *)
-    private func handleHardwarePointer(_ touches: Set<UITouch>, event: UIEvent?) -> Bool {
+    private func handleHardwarePointer(_ touches: Set<UITouch>, event: UIEvent?,
+                                      phase: HardwarePointerPhase) -> Bool {
         guard let touch = touches.first(where: { $0.type == .indirectPointer }) else { return false }
         if let point = canvasPoint(from: touch.location(in: self)), let h = input {
             lastPt = point
             iosc_input_motion(h, point.0, point.1)
         }
-        updateHardwarePointerButtons(event?.buttonMask.rawValue ?? 0)
+        hardwarePointerTouchDown = phase != .up
+        updateHardwarePointerButtons(hardwarePointerMask(event, phase: phase))
         return true
+    }
+
+    /// Button state for a mouse/trackpad press. The touch phase is authoritative and
+    /// `buttonMask` only refines it: an `.indirectPointer` touch exists solely while a
+    /// button is held, so a press with an empty mask is still a press and an ended touch
+    /// is always all-up. Deriving the state from the mask alone latched the button down
+    /// on the first click, so every later hover dragged and no click ever activated
+    /// anything. Mirrors XScreen.hardwarePointerMask.
+    private func hardwarePointerMask(_ event: UIEvent?, phase: HardwarePointerPhase) -> Int {
+        if phase == .up { return 0 }
+        let mask = event?.buttonMask.rawValue ?? 0
+        if mask != 0 { return mask }
+        return hardwareButtonMask != 0 ? hardwareButtonMask : 1   // bit 0 = primary
     }
 
     private func updateHardwarePointerButtons(_ nextMask: Int) {
@@ -688,6 +712,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func releaseHardwarePointerButtons() {
+        hardwarePointerTouchDown = false
         guard hardwareButtonMask != 0 else { return }
         updateHardwarePointerButtons(0)
     }

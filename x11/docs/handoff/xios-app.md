@@ -10,6 +10,9 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 - `x11/apps/Xios/Sources/Shaders.metal`, `NativeClient.c` (native-flavor).
 - Wire contract: `x11/wayland/xios_input_socket.h` (24-byte record; MOTION/TOUCH x,y = absolute OUTPUT-pixel position 0..fbW × 0..fbH).
 - Build → `x11/apps/Xios/build/Build/Products/Release-iphoneos/Xios.app`.
+- Ships as a package, not a sideloaded app: `bin/package-app.sh x11/apps/Xios` wraps that
+  bundle as `com.max.xios` (control at `x11/apps/Xios/packaging/control`, version from
+  `project.yml`'s `MARKETING_VERSION`). `xios-core` depends on it, so every flavor pulls it in.
 
 ## Recent commits / status notes
 - `828435f` in-app Desktop Session picker (⧉ button; current builds send `SESSION` over `/var/jb/tmp/ioscd.sock`).
@@ -72,12 +75,18 @@ The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the 
 - App→wire→compositor coordinate space is correct: app sends fb (physical output) pixels; iosc divides by `output_scale` once (`iosc.c:4922-4923`). No double-divide, no raw view-points on the wire. AXIS scroll pt→fb-px is consistent (but also keyed on the stale fb, fixed by #2).
 
 ## How to deploy + verify (see INDEX.md gotchas)
+
+The app is a package now, so shipping it is a version bump plus a deb, not an scp:
 ```
-rm -rf on device: /var/jb/Applications/Xios.app  (avoid scp nesting)
-scp -r -O Xios.app root@ipad:/var/jb/Applications/
-ssh: chmod +x /var/jb/Applications/Xios.app/Xios
-     ldid -e .../Xios > /tmp/ents; ldid -S/tmp/ents .../Xios   # keep GPU ents
-     uicache -p /var/jb/Applications/Xios.app
+edit x11/apps/Xios/project.yml MARKETING_VERSION   # else apt/dpkg sees no upgrade
+bin/package-app.sh x11/apps/Xios                   # -> repo/debs/com.max.xios_<ver>_*.deb
+scp the deb, then on device: dpkg -i <deb>         # postinst runs uicache -p
 Max taps the Xios icon (screen awake).  # SSH uiopen is throttle-flaky
 Read /var/jb/tmp/xios-geom.txt, xios-status.txt, xios-touch.log to verify.
 ```
+`package-app.sh` ldid-signs with `entitlements.plist` before staging, so the deb carries the
+GPU/IOSurface entitlements and correct perms — none of the bare-scp landmines apply to it.
+
+For a fast local iteration loop `bin/install-app.sh x11/apps/Xios` still sideloads the same
+bundle straight to `/var/jb/Applications`, and there the scp gotchas in INDEX.md do apply.
+Anything Max is meant to install, or that a flavor depends on, goes out as the package.

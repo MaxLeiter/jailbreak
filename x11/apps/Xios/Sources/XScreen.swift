@@ -157,6 +157,18 @@ final class XScreenView: UIView {
     private var cursorIsText = false
     private var hardwarePointerActive = false
     private var hardwareButtonMask = 0
+    // An `.indirectPointer` touch is live, i.e. at least one button is held. The touch
+    // phase, not `buttonMask`, is what tells us the click ended (see hardwarePointerMask).
+    private var hardwarePointerTouchDown = false
+    // Lets iPadOS's own pointer wear the desktop's cursor shape. Non-nil only where the
+    // system draws a pointer at all, which on iPad means a mouse/trackpad is connected;
+    // with nothing connected there is no system cursor and we draw our own overlay.
+    private var systemPointerInteraction: UIPointerInteraction?
+    // Latest wp_cursor_shape id the compositor streamed. 0 = the desktop hid the pointer
+    // OR handed rendering back to the compositor (iosc sends visible=0/shape=0 when a
+    // client supplies its own cursor surface, e.g. nested KWin) — either way iPadOS must
+    // not add a second cursor on top.
+    private var desktopCursorShape: Int32 = 0
     private let hardwareKeyboard = XiosHardwareKeyboard()
     private var iosurfaceCompositorID = ""
 
@@ -445,7 +457,17 @@ final class XScreenView: UIView {
         guard seq != 0 else { return }        // overlay off server-side → compositor draws it
         if seq == lastCursorSeq { return }    // no new pointer state this tick
         lastCursorSeq = seq
+        noteDesktopCursorShape(vis == 0 ? 0 : shape)
 
+        // With a mouse or trackpad attached, iPadOS is already drawing a pointer and it
+        // wears the desktop's shape (see systemPointerStyle). A second cursor of our own
+        // would just trail it, so let the system own the pointer for as long as one is
+        // connected — the moment input goes back to a finger or the Pencil,
+        // suppressCursorOverlayForTouch clears the flag and we draw it again.
+        if hardwarePointerActive, systemPointerInteraction != nil {
+            cursorLayer?.isHidden = true
+            return
+        }
         if !hardwarePointerActive && iosurfaceCompositorID != "mutter-ios" {
             cursorLayer?.isHidden = true
             return
@@ -528,6 +550,84 @@ final class XScreenView: UIView {
         cursorLayer = nil
         lastCursorSeq = 0
         hardwarePointerActive = false
+        noteDesktopCursorShape(0)
+    }
+
+    // MARK: system pointer shape
+
+    /// Remember the desktop's cursor shape and re-ask UIKit for a pointer style when the
+    /// shape we would hand it changes. Invalidating on every CURSOR record would fight
+    /// the pointer's own morph animation, so only a category flip counts.
+    private func noteDesktopCursorShape(_ shape: Int32) {
+        guard let interaction = systemPointerInteraction else {
+            desktopCursorShape = shape
+            return
+        }
+        let before = Self.pointerShapeCategory(desktopCursorShape)
+        desktopCursorShape = shape
+        if Self.pointerShapeCategory(shape) != before { interaction.invalidate() }
+    }
+
+    /// The distinct pointer looks we can ask iPadOS for. Many wp_cursor_shape ids
+    /// collapse into one of these, and only a change between them is worth a morph.
+    private enum PointerShapeCategory { case hidden, arrow, text, resizeH, resizeV, system }
+
+    /// Map a wp_cursor_shape id onto what iPadOS can draw.
+    ///
+    /// `hidden` covers two cases that look the same from here: the desktop hid the
+    /// pointer, and the compositor took cursor rendering back (iosc sends
+    /// visible=0/shape=0 when a client supplies its own cursor surface, which is what
+    /// nested KWin does — its themed cursor is already in the framebuffer pixels, so
+    /// iPadOS must not add a second one on top).
+    ///
+    /// `system` keeps iPadOS's own pointer for shapes we have nothing better for
+    /// (wait/progress and friends): a wrong glyph reads worse than the default.
+    private static func pointerShapeCategory(_ shape: Int32) -> PointerShapeCategory {
+        switch shape {
+        case 0:                     return .hidden
+        case 9:                     return .text        // text
+        case 10:                    return .resizeH     // vertical-text: beam lies flat
+        case 18, 25, 26, 30:        return .resizeH     // e/w/ew/col-resize
+        case 19, 22, 27, 31:        return .resizeV     // n/s/ns/row-resize
+        case 5, 6:                  return .system      // progress, wait
+        default:                    return .arrow
+        }
+    }
+
+    /// The style iPadOS should draw for the current desktop cursor. Beams are UIKit's
+    /// own shapes, so text fields and window edges get the native morph; everything else
+    /// is the same arrow bitmap the overlay layer draws, as a filled path.
+    private func systemPointerStyle() -> UIPointerStyle? {
+        switch Self.pointerShapeCategory(desktopCursorShape) {
+        case .hidden:
+            return .hidden()
+        case .system:
+            return nil                  // nil = iPadOS's standard pointer
+        case .text:
+            return UIPointerStyle(shape: .verticalBeam(length: 22))
+        case .resizeH:
+            return UIPointerStyle(shape: .horizontalBeam(length: 22))
+        case .resizeV:
+            return UIPointerStyle(shape: .verticalBeam(length: 22))
+        case .arrow:
+            return UIPointerStyle(shape: .path(Self.arrowPointerPath()), constrainedAxes: [])
+        }
+    }
+
+    /// The classic left_ptr silhouette, authored tip-first at the origin so it lands on
+    /// the hotspot. Same outline as cursorImage(isText: false); a path shape is a single
+    /// flat fill, so the white keyline that bitmap carries is not reproducible here.
+    private static func arrowPointerPath() -> UIBezierPath {
+        let p = UIBezierPath()
+        p.move(to: CGPoint(x: 0, y: 0))
+        p.addLine(to: CGPoint(x: 0, y: 18))
+        p.addLine(to: CGPoint(x: 4.5, y: 13.5))
+        p.addLine(to: CGPoint(x: 7.5, y: 20))
+        p.addLine(to: CGPoint(x: 10, y: 19))
+        p.addLine(to: CGPoint(x: 7, y: 12.5))
+        p.addLine(to: CGPoint(x: 13, y: 12.5))
+        p.close()
+        return p
     }
 
     // MARK: Metal setup
@@ -1794,21 +1894,48 @@ final class XScreenView: UIView {
     @available(iOS 13.4, *)
     @objc private func handlePointerHover(_ g: UIHoverGestureRecognizer) {
         activateCursorOverlayForHardwarePointer()
+        // Hover means the pointer is moving with no touch of its own. If a button is
+        // still marked down here the press outlived its touch (a cancelled sequence, or
+        // a release UIKit never delivered), and every motion from now on would be a
+        // drag: let it go before moving.
+        if hardwareButtonMask != 0 && !hardwarePointerTouchDown {
+            releaseHardwarePointerButtons()
+        }
         guard inputConnected, let (x, y) = framebufferPoint(from: g.location(in: self)) else { return }
         lastTouchPt = (x, y)
         sendMotion(x, y)
     }
 
+    /// Whether an `.indirectPointer` touch is starting, continuing, or finished.
+    private enum HardwarePointerPhase { case down, move, up }
+
     @available(iOS 13.4, *)
-    private func handleHardwarePointer(_ touches: Set<UITouch>, event: UIEvent?) -> Bool {
+    private func handleHardwarePointer(_ touches: Set<UITouch>, event: UIEvent?,
+                                      phase: HardwarePointerPhase) -> Bool {
         guard let touch = touches.first(where: { $0.type == .indirectPointer }) else { return false }
         activateCursorOverlayForHardwarePointer()
         if inputConnected, let point = framebufferPoint(from: touch.location(in: self)) {
             lastTouchPt = point
             sendMotion(point.0, point.1)
         }
-        updateHardwarePointerButtons(event?.buttonMask.rawValue ?? 0)
+        hardwarePointerTouchDown = phase != .up
+        updateHardwarePointerButtons(hardwarePointerMask(event, phase: phase))
         return true
+    }
+
+    /// Button state for a mouse/trackpad press. The touch phase is authoritative and
+    /// `buttonMask` only refines it: an `.indirectPointer` touch exists solely while a
+    /// button is held, so a press with an empty mask is still a press and an ended touch
+    /// is always all-up. Deriving the state from the mask alone latched the button down
+    /// on the first click, which made every later hover a drag-select and meant no click
+    /// ever activated anything (the press landed, the release never did).
+    private func hardwarePointerMask(_ event: UIEvent?, phase: HardwarePointerPhase) -> Int {
+        if phase == .up { return 0 }
+        let mask = event?.buttonMask.rawValue ?? 0
+        if mask != 0 { return mask }
+        // Something is held but iPadOS did not say which: keep what we had, else assume
+        // the primary button (bit 0).
+        return hardwareButtonMask != 0 ? hardwareButtonMask : 1
     }
 
     private func updateHardwarePointerButtons(_ nextMask: Int) {
@@ -1824,6 +1951,7 @@ final class XScreenView: UIView {
     }
 
     private func releaseHardwarePointerButtons() {
+        hardwarePointerTouchDown = false
         guard hardwareButtonMask != 0 else { return }
         updateHardwarePointerButtons(0)
     }
@@ -2043,7 +2171,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .down) { return }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
         if (event?.allTouches?.count ?? touches.count) >= 3 {
@@ -2081,7 +2209,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .move) { return }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression { return }
         if forwardIoscAll(touches, phase: 2, event: event) && activeTouchReplacesPointer { return }
@@ -2100,7 +2228,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) { return }
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .up) { return }
         suppressCursorOverlayForTouchFirstInput(touches)
         if appGestureTouchSuppression {
             if allTouchesEndedOrCancelled(event) { appGestureTouchSuppression = false }
@@ -2118,8 +2246,7 @@ final class XScreenView: UIView {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event) {
-            releaseHardwarePointerButtons()
+        if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .up) {
             return
         }
         suppressCursorOverlayForTouchFirstInput(touches)
@@ -2571,6 +2698,16 @@ final class XScreenView: UIView {
             hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
             hover.delegate = self
             addGestureRecognizer(hover)
+
+            // Dress iPadOS's own pointer as the desktop's cursor while a mouse or
+            // trackpad is connected. Pointer styles are an iPad behavior; where the
+            // system draws no pointer this stays nil and updateCursorOverlay keeps
+            // drawing ours.
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                let pointer = UIPointerInteraction(delegate: self)
+                addInteraction(pointer)
+                systemPointerInteraction = pointer
+            }
         }
 
         addInteraction(UIContextMenuInteraction(delegate: self))
@@ -4120,6 +4257,21 @@ extension XScreenView: UIKeyInput {
             return p.y <= topBand && v.y > 40 && abs(v.y) > abs(v.x)
         }
         return true
+    }
+}
+
+extension XScreenView: UIPointerInteractionDelegate {
+    /// The whole screen is one region: the desktop decides the cursor, not UIKit hit
+    /// testing, so the style never varies by position.
+    func pointerInteraction(_ interaction: UIPointerInteraction,
+                            regionFor request: UIPointerRegionRequest,
+                            defaultRegion: UIPointerRegion) -> UIPointerRegion? {
+        defaultRegion
+    }
+
+    func pointerInteraction(_ interaction: UIPointerInteraction,
+                            styleFor region: UIPointerRegion) -> UIPointerStyle? {
+        systemPointerStyle()
     }
 }
 
