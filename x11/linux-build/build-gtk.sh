@@ -29,6 +29,17 @@ if ! command -v gtkdocize >/dev/null 2>&1 || ! command -v glib-mkenums >/dev/nul
     || { echo "ERROR: could not install host build tools"; exit 1; }
 fi
 
+# Toolchain and dead-upstream-URL fixes every target needs. Shared with the other
+# entry points; without it a cold volume downloads mesa from an archive URL that
+# 404s and dies in the extract with "tar: Child returned status 1". Runs BEFORE
+# our recipes land so a recipe of ours always wins over a generic edit.
+if [ -r /work/procursus-common-edits.py ]; then
+  echo "==> common Procursus toolchain edits"
+  python3 /work/procursus-common-edits.py
+else
+  echo "!! /work/procursus-common-edits.py not mounted; skipping common edits" >&2
+fi
+
 echo "==> installing our recipes into makefiles/"
 cp -v /work/recipes/*.mk makefiles/
 # gtk+3.0.mk compiles the libgtkintl proxy-libintl shim from this source ($(BUILD_TOOLS)).
@@ -92,13 +103,45 @@ target_requests libadwaita && stage_required_patch_stack libadwaita
 # -Wno-unused-command-line-argument (last flag wins) to neutralise it. Harmless for
 # the autotools deps (they don't pass that -Werror).
 echo "==> installing -Wno-unused-command-line-argument clang wrappers"
+# Shim the toolchain compilers via PATH, under their OWN names, rather than
+# handing make CC=<other name> on the command line. Two reasons it has to be this
+# shape:
+#
+#   * A command-line variable beats every assignment in every makefile it
+#     reaches. libx11's src/util/Makefile.am deliberately sets
+#     `CC = @CC_FOR_BUILD@` so the makekeys generator builds for the BUILD
+#     machine; the override clobbered it and makekeys came out arm64-iOS
+#     ("cannot execute binary file: Exec format error"). And libtool infers its
+#     language tag by matching $CC against what configure recorded, so a
+#     different CC at make time gives uuid "unable to infer tagged
+#     configuration". Procursus runs configure from the recipe but make with our
+#     override, so the two disagreed.
+#   * The shim must keep the NAME aarch64-apple-darwin-clang. cctools' driver
+#     derives its target triple from argv[0], so renaming the real binary aside
+#     and wrapping it makes it stop producing executables at all.
+#
+# Procursus assigns `CC := $(GNU_HOST_TRIPLE)-clang` -- a name, resolved through
+# PATH -- so a same-named shim ahead of /root/cctools/bin reaches every recipe
+# with no override anywhere, and configure and make finally agree.
+CCSHIM=/work/Procursus/build_tools/ccshim
+mkdir -p "$CCSHIM"
+for n in clang clang++; do
+  cat > "$CCSHIM/aarch64-apple-darwin-$n" <<EOF
+#!/usr/bin/env bash
+exec /root/cctools/bin/aarch64-apple-darwin-$n "\$@" -Wno-unused-command-line-argument
+EOF
+  chmod +x "$CCSHIM/aarch64-apple-darwin-$n"
+done
+export PATH="$CCSHIM:$PATH"
+
+# Kept for any recipe that names them explicitly; they now just forward.
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang "$@" -Wno-unused-command-line-argument
+exec aarch64-apple-darwin-clang "$@"
 EOF
 cat > build_tools/cxx-nounused <<'EOF'
 #!/usr/bin/env bash
-exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
+exec aarch64-apple-darwin-clang++ "$@"
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
@@ -145,12 +188,12 @@ cp /usr/include/linux/input-event-codes.h "$BBINC/linux/" 2>/dev/null || true
 echo '#include <linux/input-event-codes.h>' > "$BBINC/linux/input.h"
 echo '#include <sys/types.h>' > "$BBINC/sys/sysmacros.h"
 
-COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
-  CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
+# No CC=/CXX= here on purpose -- see the wrapper note above.
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1"
 
 for t in $TARGETS; do
   echo "==> make $t"
-  make $t $COMMON -j"$(nproc)"
+  make $t $COMMON -j"${JOBS:-$(nproc)}"
 done
 
 echo "==> collect debs -> /out"

@@ -73,8 +73,9 @@ edit("build_info/tigervnc-standalone-server.control", control)
 # 3) Fix the stale mesa download URL (freedesktop archive 404s for old versions)
 #    and move Procursus's source sed edits into the x11/ports patch stack.
 def mesa(s):
-    s = s.replace("https://mesa.freedesktop.org/archive/mesa-$(MESA_VERSION).tar.xz",
-                  "https://archive.mesa3d.org/older-versions/21.x/mesa-$(MESA_VERSION).tar.xz")
+    # The stale-download-URL half now lives in procursus-common-edits.py: it is a
+    # dead upstream URL that every target hits, not an X-server concern. What is
+    # left here needs ports/mesa staged, which only this script does.
     if "$(call DO_PATCH,mesa,mesa,-p1)" in s:
         return s
     extract = "\t$(call EXTRACT_TAR,mesa-$(MESA_VERSION).tar.xz,mesa-$(MESA_VERSION),mesa)\n"

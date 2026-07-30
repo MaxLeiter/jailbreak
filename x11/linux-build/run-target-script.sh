@@ -75,6 +75,7 @@ cmd=(docker run --rm --platform linux/arm64
   -v "$HERE/target-env.sh:/work/target-env.sh:ro"
   -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro"
   -v "$HERE/recipes:/work/recipes:ro"
+  -v "$HERE/build_info:/work/build_info:ro"
   -v "$HERE/patches:/work/patches:ro"
   -v "$X11DIR/ports:/work/ports:ro"
   -v "$SCRIPT_PATH:/work/$(basename "$SCRIPT_PATH"):ro"

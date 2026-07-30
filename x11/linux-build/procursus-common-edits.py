@@ -69,6 +69,14 @@ def apply_all():
                          "CXXFLAGS            := $(CFLAGS) -stdlib=libc++", 1)
     edit("Makefile", darwinsrc)
 
+    # mesa's freedesktop archive 404s for older versions. This is a dead upstream
+    # URL, not anything to do with the X server, so every build that reaches mesa
+    # needs it -- gtk+3.0 pulls mesa in, and without this the tarball downloads as
+    # an error page and the extract dies with "tar: Child returned status 1".
+    edit("makefiles/mesa.mk", lambda s: s.replace(
+        "https://mesa.freedesktop.org/archive/mesa-$(MESA_VERSION).tar.xz",
+        "https://archive.mesa3d.org/older-versions/21.x/mesa-$(MESA_VERSION).tar.xz"))
+
     # libpng's sourceforge "files" URL 404s for curl; use the direct-download mirror.
     edit("makefiles/libpng16.mk", lambda s: s.replace(
         "https://sourceforge.net/projects/libpng/files/libpng16/$(LIBPNG16_VERSION)/libpng-$(LIBPNG16_VERSION).tar.xz",
