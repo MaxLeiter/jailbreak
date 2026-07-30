@@ -4,7 +4,7 @@
  #include "pk11priv.h"
  #include "secmodi.h"
 
-+extern CK_RV NSSCKBI_C_GetFunctionList(void);
++extern CK_RV NSSCKBI_C_GetFunctionList(CK_FUNCTION_LIST_PTR_PTR);
 +
  /*
   * This is the raw internal function to load a PKCS #11 module.

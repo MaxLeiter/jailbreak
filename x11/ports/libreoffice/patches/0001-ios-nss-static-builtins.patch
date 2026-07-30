@@ -7,3 +7,8 @@
 +        external/nss/nss-ios-static-builtins.patch.0) \
      $(if $(filter ANDROID,$(OS)), \
          external/nss/nss-android.patch.1) \
+--- a/external/expat/StaticLibrary_expat.mk
++++ b/external/expat/StaticLibrary_expat.mk
+@@ -50 +50 @@
+-else ifeq ($(OS),MACOSX)
++else ifeq ($(OS),$(filter MACOSX iOS,$(OS)))
