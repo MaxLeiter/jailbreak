@@ -19,8 +19,8 @@ The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built L
   `29077e77a0956410c6c56fdd856f5352c43f9218475a65ff102c9e2b37a83a2a`.
   A current-tree `xios-session 1.0.72` package containing the launcher fix was
   built (`21ddda56af32540333039eca985709c7648b467651cd6cc9b947edd8eb6b3d4f`);
-  only the scoped launcher file was fast-deployed for device proof because that
-  package also contains concurrent, unrelated session work.
+  after its concurrent session changes landed together, the complete package
+  was installed and a normal GNOME restart remained green.
 - Offline package update 2026-07-18: real upstream `milou 6.1.5+ios1` now ships the
   `org.kde.milou` QML plugin/result model. Fully rebuilt `plasma-mobile 6.1.5+ios21` depends on
   it and contains no inert Milou fallback. The remaining generated Mobile providers expose
