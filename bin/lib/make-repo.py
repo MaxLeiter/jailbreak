@@ -32,9 +32,11 @@ import argparse, functools, os, io, gzip, json, hashlib, tarfile, html, shutil, 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
+
+# Rootless and rootful builds share package names but install into incompatible
+# prefixes, so each profile owns an independent index and payload tree.
 PROFILE = os.environ.get("XIOS_REPO_PROFILE", "rootless")
-REPO = REPO_ROOT if PROFILE == "rootless" else os.path.join(
-    REPO_ROOT, "profiles", PROFILE)
+REPO = REPO_ROOT if PROFILE == "rootless" else os.path.join(REPO_ROOT, "profiles", PROFILE)
 DEBS = os.path.join(REPO, "debs")
 META = os.path.join(REPO_ROOT, "meta")
 LOGO_SOURCES = os.path.join(HERE, "logo-sources")
@@ -115,33 +117,24 @@ def control_dict(deb_bytes):
     return d
 
 def deb_payload_profile(deb_bytes):
-    """Infer the root layout from payload paths, or None for an empty meta deb."""
-    members = ar_members(deb_bytes)
-    data_name = next((name for name in members if name.startswith("data.tar")), None)
-    if data_name is None:
+    """Infer rootless/rootful ownership from a package's payload paths."""
+    m = ar_members(deb_bytes)
+    dn = next((n for n in m if n.startswith("data.tar")), None)
+    if dn is None:
         return None
-    data = members[data_name]
-    mode = {
-        "data.tar.gz": "r:gz",
-        "data.tar.xz": "r:xz",
-        "data.tar": "r:",
-    }.get(data_name, "r:*")
-    if data_name == "data.tar.zst":
+    data = m[dn]
+    mode = {"data.tar.gz": "r:gz", "data.tar.xz": "r:xz", "data.tar": "r:"}.get(dn, "r:*")
+    if dn == "data.tar.zst":
         zstd = shutil.which("zstd")
         if not zstd:
-            raise RuntimeError(
-                "data.tar.zst requires zstd in PATH to verify the repo profile")
+            raise RuntimeError("data.tar.zst requires zstd in PATH to verify the repo profile")
         data = subprocess.check_output([zstd, "-qdc"], input=data)
         mode = "r:"
-    with tarfile.open(fileobj=io.BytesIO(data), mode=mode) as archive:
-        names = [
-            item.name.lstrip(".").lstrip("/")
-            for item in archive.getmembers()
-            if item.isfile()
-        ]
+    with tarfile.open(fileobj=io.BytesIO(data), mode=mode) as tf:
+        names = [x.name.lstrip(".").lstrip("/") for x in tf.getmembers() if x.isfile()]
     if not names:
         return None
-    return "rootless" if any(name.startswith("var/jb/") for name in names) else "rootful"
+    return "rootless" if any(n.startswith("var/jb/") for n in names) else "rootful"
 
 def parse_packages_index(path):
     """Read a generated Packages file back into (raw_text, [ctrl, ...])."""
@@ -1254,10 +1247,11 @@ def main():
             payload_profile = deb_payload_profile(blob)
             if payload_profile is not None and payload_profile != PROFILE:
                 raise SystemExit(
-                    f"ERROR: {fn} has {payload_profile} payload paths but this is "
-                    f"the {PROFILE} profile.\n"
-                    "       Rootful and rootless packages install at incompatible "
-                    "prefixes and must not share an index.")
+                    f"ERROR: {fn} has {payload_profile} payload paths but this is the "
+                    f"{PROFILE} profile.\n"
+                    f"       Put it in repo/profiles/{payload_profile}/debs/ and generate "
+                    f"with XIOS_REPO_PROFILE={payload_profile}."
+                )
             normalize_section(ctrl)
             normalize_publisher(ctrl)
             meta = load_meta(pid)
@@ -1356,7 +1350,8 @@ def main():
 
     write_index(pkgs)
     src = "committed Packages" if from_index else "repo/debs"
-    print(f"Generated repo ({len(pkgs)} package(s)) from {src}, PIL={HAVE_PIL}")
+    print(f"Generated {PROFILE} repo at {REPO} ({len(pkgs)} package(s)) "
+          f"from {src}, PIL={HAVE_PIL}")
 
 if __name__ == "__main__":
     main()

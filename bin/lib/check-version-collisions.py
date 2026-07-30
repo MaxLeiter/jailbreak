@@ -113,6 +113,16 @@ def main() -> int:
         help="reference index: a URL, git:<ref>, or a path. Repeatable.",
     )
     ap.add_argument(
+        "--only",
+        default="",
+        metavar="PKG[,PKG...]",
+        help="restrict the check to these packages, matching publish-repo.sh "
+             "--only. A scoped publish uploads no other package's bytes and "
+             "reuses every other stanza from the target verbatim, so drift in a "
+             "package it does not ship cannot affect it -- and must not block it. "
+             "Collisions stay fatal for the named packages.",
+    )
+    ap.add_argument(
         "--warn-regressions",
         action="store_true",
         help="report regressions without failing (use on PRs, where being "
@@ -123,8 +133,20 @@ def main() -> int:
     if not args.against:
         ap.error("at least one --against reference is required")
 
+    only = {n for n in (x.strip() for x in args.only.split(",")) if n}
+
     with open(args.index, encoding="utf-8", errors="replace") as fh:
         ours = parse_index(fh.read())
+    if only:
+        missing = only - set(ours)
+        if missing:
+            print(
+                "ERROR: --only names package(s) absent from "
+                f"{args.index}: {', '.join(sorted(missing))}",
+                file=sys.stderr,
+            )
+            return 1
+        ours = {pkg: st for pkg, st in ours.items() if pkg in only}
     make_repo = _load_make_repo()
 
     errors: list[str] = []
@@ -139,7 +161,9 @@ def main() -> int:
         label, text = ref
         theirs = parse_index(text)
         checked += 1
-        print(f"==> comparing {len(ours)} stanza(s) against {label} ({len(theirs)} stanza(s))")
+        scope = f" [scoped to {', '.join(sorted(only))}]" if only else ""
+        print(f"==> comparing {len(ours)} stanza(s) against {label} "
+              f"({len(theirs)} stanza(s)){scope}")
 
         for pkg, mine in sorted(ours.items()):
             other = theirs.get(pkg)

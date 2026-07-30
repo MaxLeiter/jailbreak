@@ -191,11 +191,29 @@ finalize_x11_graphics_debs() {
     exit 1
   fi
 
-  echo "==> DER-signing X11 graphics packages in repo/debs"
+  # Two limits, because this pass used to walk every .deb in the tree on every
+  # publish: ~770 packages / ~750MB unpacked, repacked and re-signed serially, to
+  # produce zero changes in the normal case. It dominated publish time and, with
+  # several sessions publishing at once behind one lock, it was most of the queue.
+  #
+  #   --only    a scoped publish deploys nothing but the named packages, so signing
+  #             the rest cannot affect what ships.
+  #   --cache   re-signing is deterministic and byte-stable (see the signer's own
+  #             docstring), so a .deb whose size+mtime is unchanged since it last
+  #             passed cannot need work. Correctness still comes from the signer:
+  #             the cache only decides what to look at, never what is valid.
+  local cache="${XDG_CACHE_HOME:-$HOME/.cache}/xios-der-resign.stamps"
+  mkdir -p "$(dirname "$cache")"
+  local scope=()
+  [ -n "${ONLY:-}" ] && scope=(--only "$ONLY")
+
+  echo "==> DER-signing X11 graphics packages in repo/debs${ONLY:+ (scoped: $ONLY)}"
   python3 "$signer" "$REPO_ROOT/repo/debs" \
     --ldid "$ldid_bin" \
     --gpu-ent "$gpu_ent" \
-    --gl-ent "$gl_ent"
+    --gl-ent "$gl_ent" \
+    --cache "$cache" \
+    "${scope[@]}"
 }
 
 # Sign whichever copy of the index we are about to serve. Called for the tree, and
@@ -376,11 +394,17 @@ if [ -n "$DRIFT_REF" ]; then
   echo "==> Checking the index against what $TARGET already publishes"
   # With --only, being behind the target is the normal case -- scope-index.py
   # reconciles against the live index on the deploy copy -- so regressions are
-  # informational there. Collisions stay fatal either way: a version already
-  # published with different bytes cannot be uploaded at all.
+  # informational there. Collisions stay fatal for the packages actually being
+  # shipped, since those bytes cannot be uploaded at all; for everything else a
+  # scoped publish neither uploads nor reindexes them, so they are out of scope.
   if [ -n "$ONLY" ]; then
+    # Also scope WHICH packages are checked, not just how regressions are treated.
+    # A scoped publish uploads nothing but these packages and reuses every other
+    # stanza from the target verbatim, so another package colliding cannot affect
+    # what ships here -- and used to fail the run anyway, which meant one session's
+    # un-bumped package blocked every other session's unrelated hotfix.
     "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" \
-      --against "$DRIFT_REF" --warn-regressions
+      --against "$DRIFT_REF" --only "$ONLY" --warn-regressions
   else
     "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" --against "$DRIFT_REF"
   fi

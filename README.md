@@ -56,10 +56,10 @@ jailbreak/
 │   ├── sim.sh            # build a tweak for the iOS Simulator + load via simject
 │   ├── sim-app.sh        # build + launch an app in the Simulator + screenshot it
 │   ├── logs.sh           # live device console over USB (idevicesyslog)
-│   ├── publish-repo.sh   # upload debs to Blob + deploy the APT repo (--staging for dev.repo)
+│   ├── publish-repo.sh   # deploy the APT repo (--staging for dev.repo, --only to scope)
 │   ├── publish-staging.sh # same as publish-repo.sh --staging
-│   ├── setup-repo-guards.sh # once per clone: index merge driver + agent guardrails
 │   ├── upload-debs-to-blob.sh # push package payloads to Vercel Blob
+│   ├── setup-repo-guards.sh # once per clone: index merge driver + agent guardrails
 │   └── lib/              # repo-pipeline internals (make-repo, index scoping, solvability, audit)
 ├── docs/                 # public-readiness and process notes
 ├── jarvis/               # on-device AI assistant harness
@@ -124,15 +124,16 @@ bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
 bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
 git add repo/Packages && git commit          # review the diff: it is what goes public
-bin/publish-repo.sh                          # production
-bin/publish-repo.sh --only <pkg>[,<pkg>]     # scope production to named packages
+bin/publish-repo.sh                          # production: publish the committed index
+bin/publish-repo.sh --only <pkg>[,<pkg>]     # ship just these against the live index
 ```
 
 Production publishes the *committed* index, so the diff you commit is the change
 users receive — and a prod publish refuses to run while `repo/Packages` differs
 from `HEAD`. Staging is the step that uploads payloads, so don't run the
 production step alone for something you just built. `--only pkg[,pkg]` scopes a
-publish to named packages, leaving unrelated pending package builds out.
+publish to named packages instead: it swaps only those stanzas into the live
+index in a throwaway deploy copy and re-checks dependency solvability there.
 
 Run `bin/setup-repo-guards.sh` once per clone: it registers the structural merge
 driver for `repo/Packages` (so branches stop conflicting on the index) and a

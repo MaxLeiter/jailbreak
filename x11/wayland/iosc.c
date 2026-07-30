@@ -1168,6 +1168,11 @@ static void output_damage_add_px(int x, int y, int w, int h)
     output_damage_set_coarse_union();
 }
 
+static void output_damage_add_full(void)
+{
+    output_damage_add_px(0, 0, g_width, g_height);
+}
+
 static int output_damage_consume(struct iosc_rect *rects, int max_rects,
                                  int *x0, int *y0, int *x1, int *y1)
 {
@@ -2186,6 +2191,10 @@ static void recomposite_now(void)
         iosc_render_plan_build(&plan, g_output_damage_valid, output_damage_consume);
         iosc_render_plan_log(&plan, g_recompose_reason, g_recompose_reason_line,
                              g_width, g_height);
+        if (plan.damage_count == 0) {
+            recomposite_reason_clear();
+            return;
+        }
         if (g_slock.locked) {
             /* Session locked: ONLY the lock surface may show (blank until it
              * maps); windows, layer shells and the drag icon must not leak. */
@@ -2403,6 +2412,12 @@ static int repaint_delay_ms(void)
 static void recomposite_all_at(const char *reason, int line)
 {
     if (g_recompose_scheduled) return;
+    if (!g_native_mode && !g_output_damage_valid) {
+        if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
+            fprintf(stderr, "iosc: repaint request skipped (no output damage) %s:%d\n",
+                    reason ? reason : "unknown", line);
+        return;
+    }
     g_recompose_reason = reason;
     g_recompose_reason_line = line;
     struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
@@ -2473,7 +2488,11 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
     }
 
     int restore_cursor = 0;
-    if (!f->with_cursor && g_cursor_visible) { g_cursor_visible = 0; restore_cursor = 1; }
+    if (!f->with_cursor && g_cursor_visible) {
+        output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+        g_cursor_visible = 0;
+        restore_cursor = 1;
+    }
     recomposite_now();          /* synchronous: the readback below needs THIS frame */
 
     wl_shm_buffer_begin_access(shm);
@@ -2481,7 +2500,11 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
                                      wl_shm_buffer_get_data(shm), f->stride);
     wl_shm_buffer_end_access(shm);
 
-    if (restore_cursor) { g_cursor_visible = 1; recomposite_now(); }
+    if (restore_cursor) {
+        g_cursor_visible = 1;
+        output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+        recomposite_now();
+    }
 
     if (rc != 0) { zwlr_screencopy_frame_v1_send_failed(f->resource); return; }
 
@@ -2866,6 +2889,7 @@ static void surface_unmap(struct iosc_surface *s)
         g_slock.lock_surface = NULL;
         g_slock.surface = NULL;
         if (g_kbd_focus == s) keyboard_set_focus(NULL);
+        output_damage_add_full();
         recomposite_all();
     }
     if (!s->mapped) return;
@@ -4188,6 +4212,7 @@ static int output_reconfigure_px(int pw, int ph, int transform, int scale)
             }
         }
     }
+    output_damage_add_full();
     recomposite_all();
     wl_display_flush_clients(g_display);
     fprintf(stderr, "iosc: output now %dx%d logical scale=%d transform=%d (%dx%d px)\n",
@@ -8973,6 +8998,7 @@ static void slock_surface_resource_destroy(struct wl_resource *r)
         g_slock.surface = NULL;
         g_slock.lock_surface = NULL;
         if (g_kbd_focus == s) keyboard_set_focus(NULL);
+        output_damage_add_full();
         recomposite_all();              /* blank again while still locked */
     }
 }
@@ -9034,6 +9060,7 @@ static void slock_unlock_and_destroy(struct wl_client *c, struct wl_resource *r)
     fprintf(stderr, "iosc: session UNLOCKED\n");
     keyboard_set_focus(topmost_focusable());
     g_ptr_focus = NULL;                /* next motion re-enters normally */
+    output_damage_add_full();
     recomposite_all();                 /* windows come back */
     wl_resource_destroy(r);
 }
@@ -9081,6 +9108,7 @@ static void slock_mgr_lock(struct wl_client *c, struct wl_resource *r, uint32_t 
     }
     touch_cancel_all();                /* nor can in-flight touch sequences */
     pen_leave(now_ms());               /* nor a pen stroke */
+    output_damage_add_full();
     recomposite_all();                 /* blank the output right away */
 }
 
