@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { Archivo, IBM_Plex_Sans, Space_Mono } from "next/font/google";
 import { Sidebar } from "@/components/Sidebar";
 import { NAV, SITE, SITE_TITLE } from "@/content/site";
@@ -142,6 +143,7 @@ export default function RootLayout({
             <div className="main-inner">{children}</div>
           </main>
         </div>
+        <Analytics />
       </body>
     </html>
   );
