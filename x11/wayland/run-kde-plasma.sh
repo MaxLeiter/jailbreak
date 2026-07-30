@@ -878,7 +878,13 @@ nohup "$SETSID" env \
     # NB: no apostrophes here -- this block is inside a single-quoted bash -lc.
     powerdevil_pid=
     if [ -x "$POWERDEVIL_BIN" ] && [ "${XIOS_KDE_START_POWERDEVIL:-1}" != 0 ]; then
-      "$POWERDEVIL_BIN" >>"$KDE_LOG" 2>&1 &
+      (
+        export QT_QPA_PLATFORM="${POWERDEVIL_QT_QPA_PLATFORM:-offscreen}"
+        export QT_QUICK_BACKEND=software
+        unset QSG_RHI_BACKEND QMLSCENE_DEVICE
+        unset WAYLAND_DISPLAY QT_WAYLAND_CLIENT_BUFFER_INTEGRATION
+        "$POWERDEVIL_BIN"
+      ) >>"$KDE_LOG" 2>&1 &
       powerdevil_pid=$!
       echo "launch powerdevil: $POWERDEVIL_BIN"
     fi
