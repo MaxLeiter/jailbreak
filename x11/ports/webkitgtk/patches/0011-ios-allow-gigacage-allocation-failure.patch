@@ -1,14 +1,15 @@
---- a/Source/bmalloc/bmalloc/Gigacage.h
-+++ b/Source/bmalloc/bmalloc/Gigacage.h
-@@ -76,6 +76,9 @@ constexpr size_t maximumCageSizeReductionForSlide = hasCapacityToUseLargeGigacag
- // In Linux, if `vm.overcommit_memory = 2` is specified, mmap with large size can fail if it exceeds the size of RAM.
--// So we specify GIGACAGE_ALLOCATION_CAN_FAIL = 1.
--#if BOS(LINUX)
-+// A rootless iOS process can likewise be denied WebKit's large virtual-address
-+// reservation even though stock app processes support it. Permit the normal
-+// uncaged fallback instead of aborting before JavaScript starts.
-+// So we specify GIGACAGE_ALLOCATION_CAN_FAIL = 1 on those platforms.
-+#if BOS(LINUX) || BPLATFORM(IOS)
- #define GIGACAGE_ALLOCATION_CAN_FAIL 1
- #else
- #define GIGACAGE_ALLOCATION_CAN_FAIL 0
+--- a/Source/bmalloc/bmalloc/Gigacage.cpp
++++ b/Source/bmalloc/bmalloc/Gigacage.cpp
+@@ -163,6 +163,12 @@ void ensureGigacage()
+             // https://bugs.webkit.org/show_bug.cgi?id=175245
+             void* base = tryVMAllocate(maxAlignment, totalSize, VMTag::JSGigacage);
+             if (!base) {
++#if defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++                // Rootless iOS can reject WebKit's very large virtual-address
++                // reservation. Continue through the supported uncaged path,
++                // as Linux does when overcommit policy rejects the mapping.
++                return;
++#endif
+                 if (GIGACAGE_ALLOCATION_CAN_FAIL)
+                     return;
+                 fprintf(stderr, "FATAL: Could not allocate gigacage memory with maxAlignment = %lu, totalSize = %lu.\n", maxAlignment, totalSize);
