@@ -602,6 +602,26 @@ IOSC_EGL_SHIM=x11/wayland/out/targets/rootful-1900/libiosc_egl.dylib \
 XIOS_TARGET=rootful-1900 bash wayland/build-iosc.sh
 ```
 
+### GTK for rootful: blocked, and probably not on the target matrix
+
+`run-target-script.sh rootful-1900 build-gtk.sh` gets through fribidi and pango
+and then fails twice, neither failure looking prefix-related:
+
+- `libx11`: `../src/util/makekeys: cannot execute binary file: Exec format
+  error`. makekeys is a build-time generator, so it has to be a host binary.
+  Procursus does handle this -- `makefiles/libx11.mk` passes
+  `CC_FOR_BUILD="$(CC_FOR_BUILD)"`, and the log shows it resolving correctly to
+  `/usr/bin/cc -O2 -pipe` -- and it still came out arm64-iOS. So libx11's own
+  build system is not honouring it, which is a version/upstream question rather
+  than a target one.
+- `uuid`: `libtool: compile: unable to infer tagged configuration`.
+
+Worth checking before assuming this is a rootful problem: the warm rootless GTK
+volume has `.build_complete` for libx11, so that step has not re-run there in a
+long time. Same shape as the wayland `epoll_dep` finding -- a cold rootless
+build may well hit both of these too. Confirming that needs a cold rootless
+run, which has not been done.
+
 What is left:
 
 1. Package `iosc` for rootful (`wayland/package-iosc.sh rootful-1900`), which is
