@@ -823,6 +823,25 @@ nohup "$SETSID" env \
 	    xios_start_session_helper "$LIBEXEC/xios-hwbridged" "$XDG_RUNTIME_DIR/xios-hwbridged.log"
 	    xios_start_session_helper "$LIBEXEC/xios-sensord" "$XDG_RUNTIME_DIR/xios-sensord.log"
 	    xios_start_session_helper "$LIBEXEC/xios-sysintd" "$XDG_RUNTIME_DIR/xios-sysintd.log"
+	    # KConfig on Darwin stores kwinrc under Library/Preferences and does not
+	    # merge the XDG_CONFIG_DIRS kwinrc on this platform. Seed the hardware
+	    # default into the resolved user config once, while preserving any
+	    # explicit user choice made later.
+	    tablet_mode_default="${XIOS_KDE_TABLET_MODE_DEFAULT:-on}"
+	    case "$tablet_mode_default" in
+	      on|off|auto)
+	        if command -v kreadconfig6 >/dev/null 2>&1 &&
+	           command -v kwriteconfig6 >/dev/null 2>&1; then
+	          current_tablet_mode="$(kreadconfig6 --file kwinrc --group Input \
+	            --key TabletMode --default __xios_unset__ 2>/dev/null)"
+	          if [ "$current_tablet_mode" = __xios_unset__ ]; then
+	            kwriteconfig6 --file kwinrc --group Input --key TabletMode \
+	              "$tablet_mode_default"
+	            echo "seed kwin tablet mode: $tablet_mode_default"
+	          fi
+	        fi
+	        ;;
+	    esac
     kded_pid=
     if [ -x "$KDED_BIN" ] && [ "${XIOS_KDE_START_KDED:-1}" != 0 ]; then
       echo "launch kded: $KDED_BIN --replace"

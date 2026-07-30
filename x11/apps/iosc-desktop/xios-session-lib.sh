@@ -645,15 +645,15 @@ xs_find_bringup() {
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
 xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/Applications/KDE/[^ ]+\.app/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
-xs_xios_kill_pattern='Xios :| Xios$|/Xios\.app/Xios'
+xs_xios_app_kill_pattern='/Xios\.app/Xios'
 
 xios_session_teardown() {
     local why="${1:-switching sessions}"
-    local kill_xios="${2:-0}" kill_pattern="$xs_kill_pattern"
-    if [ "$kill_xios" = 1 ]; then
-        kill_pattern="$kill_pattern|$xs_xios_kill_pattern"
+    local kill_display_app="${2:-0}" kill_pattern="$xs_kill_pattern"
+    if [ "$kill_display_app" = 1 ]; then
+        kill_pattern="$kill_pattern|$xs_xios_app_kill_pattern"
     fi
-    xs_log "teardown ($why): killing compositors + clients$([ "$kill_xios" = 1 ] && printf ' + Xios')"
+    xs_log "teardown ($why): killing compositors + clients$([ "$kill_display_app" = 1 ] && printf ' + Xios app')"
     xs_reap_recorded_session_pgroups
     local self=$$ parent=$PPID pid pids
     pids="$(
@@ -682,8 +682,7 @@ xios_session_teardown() {
         xs_pid_belongs_to_slot "$pid" && continue
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
     done
-    # rm every stale rendezvous/socket file (gotcha a). Globs cover iosc-ddx,
-    # mutter-ddx, xios-ddx and every *-input.sock; explicit names cover the rest.
+    # Remove every stale rendezvous/socket file for the current compositor paths.
     rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
           "$XS_CONFIG_JSON" \
           "$XS_TMP/xios-a11y.sock" \
@@ -892,7 +891,11 @@ xios_session_gnome() {
     # Shell started at" in gnome-shell.log, printed after the JS UI loads. Poll
     # for that, a hard failure, or process exit (~15s); report each distinctly.
     local log="$XS_TMP/gnome-shell${XS_SLOT:+-$XS_SLOT}.log" i=0 outcome=timeout
-    local fail_re='Failed to load module|couldn.t be found|JS ERROR|Execution of main\.js threw exception|MTLCreateSystemDefaultDevice'
+    # Optional out-of-process Shell services share this log and may emit their
+    # own JS errors without affecting the compositor or UI. Only treat errors
+    # that identify the main Shell entry point or GPU backend as fatal here;
+    # process exit remains the authoritative general failure signal.
+    local fail_re='Execution of main\.js threw exception|MTLCreateSystemDefaultDevice'
     while [ "$i" -lt 30 ]; do
         if grep -q "GNOME Shell started at" "$log" 2>/dev/null; then outcome=started; break; fi
         if grep -qE "$fail_re" "$log" 2>/dev/null; then outcome=failed; break; fi
@@ -1052,6 +1055,8 @@ xios_session_app() {
     owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
     local compositor_sock="$XS_WAYLAND_SOCK"
     case "$owner" in
+        gnome)
+            compositor_sock="$XS_TMP/xios-run${XS_SLOT:+-$XS_SLOT}/$XS_WAYLAND_NAME" ;;
         kde|kde-desktop|kde-nano|kde-mobile|plasma|plasma-desktop|plasma-nano|plasma-mobile)
             compositor_sock="$(xs_kde_runtime_dir)/$XS_KWIN_SOCKET" ;;
     esac
@@ -1074,11 +1079,16 @@ xios_session_app() {
 
     local busdir="$XS_TMP/xios-session-bus" addr
     local app_runtime="$busdir" app_wayland="$XS_WAYLAND_SOCK"
-    local app_env=() client_env=() kv
+    local app_env=() client_env=() kv profile_pairs
+    if [ "$owner" = gnome ]; then
+        app_runtime="$XS_TMP/xios-run${XS_SLOT:+-$XS_SLOT}"
+        app_wayland="$XS_WAYLAND_NAME"
+    fi
     if command -v xios_profile_env_pairs >/dev/null 2>&1; then
+        profile_pairs="$(xios_profile_env_pairs iosc-client-gpu)"
         while IFS= read -r kv; do
             [ -n "$kv" ] && client_env+=("$kv")
-        done < <(xios_profile_env_pairs iosc-client-gpu)
+        done <<<"$profile_pairs"
     else
         client_env=(
             GDK_BACKEND=wayland
@@ -1100,14 +1110,25 @@ xios_session_app() {
     xs_a11y_enabled || gtk_a11y_env=(GTK_A11Y=none)
     local dbus_addr=()
     case "$owner" in
+        gnome)
+            local gnome_bus_file="$XS_TMP/gnome-session-bus${XS_SLOT:+-$XS_SLOT}"
+            if [ -s "$gnome_bus_file" ]; then
+                addr="$(cat "$gnome_bus_file" 2>/dev/null || true)"
+                [ -n "$addr" ] && dbus_addr=(
+                    DBUS_SESSION_BUS_ADDRESS="$addr"
+                    DBUS_SYSTEM_BUS_ADDRESS="$addr"
+                )
+            fi
+            ;;
         kde|kde-desktop|kde-nano|kde-mobile|plasma|plasma-desktop|plasma-nano|plasma-mobile)
             if [ -S "$compositor_sock" ]; then
                 app_runtime="$(xs_kde_runtime_dir)"
                 app_wayland="$XS_KWIN_SOCKET"
                 if command -v xios_profile_env_pairs >/dev/null 2>&1; then
+                    profile_pairs="$(xios_profile_env_pairs plasma-egl)"
                     while IFS= read -r kv; do
                         [ -n "$kv" ] && app_env+=("$kv")
-                    done < <(xios_profile_env_pairs plasma-egl)
+                    done <<<"$profile_pairs"
                 else
                     app_env+=(
                         DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$XS_JB/lib/angle"

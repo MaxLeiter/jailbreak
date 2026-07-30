@@ -4,6 +4,23 @@
 The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built Linux→iOS in Docker/Procursus. Background priority (iosc + GNOME are the active demos), but a long-running build track.
 
 ## Current snapshot — 2026-07-06
+- Touch/tablet advertisement is now closed on-device (2026-07-29). The nested
+  Wayland backend already bound `wl_touch`, but KWin's automatic tablet heuristic
+  stayed false because iosc correctly advertises both touch and a synthetic
+  pointer. `xios-desktop-defaults 1.1.14` now ships `[Input] TabletMode=on` in
+  `/var/jb/etc/xdg/kwinrc`, and `run-kde-plasma.sh` seeds that value once through
+  `kwriteconfig6` when the resolved user `kwinrc` has no explicit choice.
+  The launcher step is required because Darwin KConfig stores `kwinrc` under
+  `Library/Preferences` and did not merge the XDG system file in the live
+  session. Explicit later user choices (`on`, `off`, or `auto`) remain untouched.
+  Live KWin D-Bus proof after restart returned `tabletMode=true` and
+  `tabletModeAvailable=true`; `/var/root/Library/Preferences/kwinrc` contained
+  `TabletMode=on`. The defaults deb SHA256 is
+  `29077e77a0956410c6c56fdd856f5352c43f9218475a65ff102c9e2b37a83a2a`.
+  A current-tree `xios-session 1.0.72` package containing the launcher fix was
+  built (`21ddda56af32540333039eca985709c7648b467651cd6cc9b947edd8eb6b3d4f`);
+  only the scoped launcher file was fast-deployed for device proof because that
+  package also contains concurrent, unrelated session work.
 - Offline package update 2026-07-18: real upstream `milou 6.1.5+ios1` now ships the
   `org.kde.milou` QML plugin/result model. Fully rebuilt `plasma-mobile 6.1.5+ios21` depends on
   it and contains no inert Milou fallback. The remaining generated Mobile providers expose
