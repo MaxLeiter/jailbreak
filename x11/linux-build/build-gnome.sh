@@ -106,6 +106,9 @@ target_requests nautilus && stage_required_patch_stack nautilus
 target_requests folks && stage_required_patch_stack folks
 target_requests gcr3 && stage_required_patch_stack gcr3
 target_requests geary && stage_required_patch_stack geary
+if target_requests libdazzle || target_requests epiphany; then
+  stage_required_patch_stack libdazzle
+fi
 if [[ " $TARGETS " == *" webkitgtk"* ]]; then
   stage_required_patch_stack webkitgtk
 fi
