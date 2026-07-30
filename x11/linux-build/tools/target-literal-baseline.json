@@ -1,5 +1,5 @@
 {
-  "total": 1082,
+  "total": 1084,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 2,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -170,6 +170,7 @@
     "packages/meta/xios-x11/DEBIAN/control": 1,
     "packages/templates/x11-fonts-sf/files.manifest": 1,
     "packages/templates/x11-xvfb/files.manifest": 1,
+    "packages/templates/xios-core/DEBIAN/control.in": 1,
     "packages/templates/xios-desktop-defaults/files.manifest": 11,
     "packages/templates/xios-desktop-theme/files.manifest": 3,
     "packages/templates/xios-fhs/files.manifest": 2,
@@ -182,6 +183,7 @@
     "packages/xfce4/DEBIAN/control": 1,
     "packages/xios-desktop-defaults/DEBIAN/postinst": 30,
     "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+    "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
     "packages/xios-desktop-theme/DEBIAN/postinst": 6,
     "packages/xios-desktop-theme/build.sh": 2,
     "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,

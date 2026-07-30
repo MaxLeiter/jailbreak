@@ -1,0 +1,5 @@
+# xios-core pulls in the Xios display app, which needs AppSync Unified and has
+# not been validated outside a rootless bootstrap -- the control Description
+# says so in as many words. Until that changes the gate, not the prose, is what
+# keeps a rootful xios-core from being generated.
+rootless-1900

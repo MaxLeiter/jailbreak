@@ -9,8 +9,8 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1739
-- Files with hits: 325
+- Total hits: 1742
+- Files with hits: 327
 
 ### By Category
 
@@ -20,16 +20,16 @@ classified as rootless-only.
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 123 hits across 52 files
 - `other`: 71 hits across 15 files
-- `package-payload`: 191 hits across 49 files
+- `package-payload`: 193 hits across 51 files
 - `recipe`: 80 hits across 25 files
 - `runtime-path`: 319 hits across 81 files
 - `script-or-source`: 212 hits across 71 files
 - `site-copy`: 10 hits across 6 files
-- `target-infra`: 28 hits across 4 files
+- `target-infra`: 29 hits across 4 files
 
 ### By Literal
 
-- `/var/jb`: 1696
+- `/var/jb`: 1699
 - `MEMO_CFVER=1900`: 7
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 7
 - `iphoneos-arm64-rootless`: 29
@@ -209,7 +209,7 @@ classified as rootless-only.
 - `packages/ladybird-app/Sources/IOSApplication.mm:143` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
 - `packages/ladybird-app/Sources/BrowserViewController.mm:19` `/var/jb`: candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
 - `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log.
-- ... 171 more
+- ... 173 more
 
 ### recipe
 
@@ -303,13 +303,14 @@ classified as rootless-only.
 - `linux-build/target-env.sh:35` `/var/jb`: # build_base/<triple>/var/jb/usr/... for rootless, build_base/<triple>/usr/...
 - `linux-build/target-env.sh:72` `/var/jb`: # yet. Better a loud stop than a rootful deb full of /var/jb paths — which is
 - `linux-build/target-env.sh:82` `/var/jb`: # Rootless yields /var/jb/; rootful ships into /usr, which needs its own entry
-- `linux-build/tools/target-literal-baseline.json:184` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:187` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:197` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:201` `/var/jb`: "packages/xios-server/var/jb/usr/bin/xios-server.sh": 12,
-- `linux-build/tools/target-literal-baseline.json:205` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:185` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:186` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/xdg/kcminputrc": 1,
+- `linux-build/tools/target-literal-baseline.json:189` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:199` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:203` `/var/jb`: "packages/xios-server/var/jb/usr/bin/xios-server.sh": 12,
+- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:208` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:209` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
@@ -317,6 +318,5 @@ classified as rootless-only.
 - `linux-build/tools/audit-target-literals.py:26` `MEMO_CFVER=1900`: "MEMO_CFVER=1900",
 - `linux-build/tools/audit-target-literals.py:123` `/var/jb`: if "/tmp" in text or "/var/jb/tmp" in text or "/var/jb/var" in text:
 - `linux-build/tools/audit-target-literals.py:123` `/var/jb`: if "/tmp" in text or "/var/jb/tmp" in text or "/var/jb/var" in text:
-- `linux-build/tools/audit-target-literals.py:125` `iphoneos-arm64-rootless`: if "MEMO_TARGET" in text or "MEMO_CFVER" in text or "iphoneos-arm64-rootless" in text:
-- ... 8 more
+- ... 9 more
 
