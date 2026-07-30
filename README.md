@@ -52,6 +52,7 @@ jailbreak/
 │   ├── sim.sh            # build for the iOS Simulator + load via simject (device-free)
 │   ├── logs.sh           # live device console over USB (idevicesyslog)
 │   ├── publish-repo.sh   # upload debs to Blob + deploy the APT repo (--staging for dev.repo)
+│   ├── setup-git-merge-driver.sh # once per clone: structural merges for repo/Packages
 │   └── lib/              # repo-pipeline internals (make-repo, solvability check, audit)
 ├── docs/                 # public-readiness and process notes
 ├── jarvis/               # on-device assistant prototype
@@ -86,12 +87,22 @@ the static site and signed metadata; package payloads live locally in ignored
 publisher for low-cache iteration; production `.deb` filenames are immutable, so
 bump the package version/revision instead of replacing an already-published file.
 
+Payloads are uploaded locally, because only this machine has the cross toolchain.
+Production is then published by CI on push to `main`, since Blob filenames are
+immutable and the payloads already exist by then — so a merge only has to re-sign
+and re-deploy the index that points at them.
+
 ```bash
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
 bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
-bin/publish-repo.sh                          # upload payloads + deploy prod metadata/site
+git add repo/Packages && git commit          # merging to main publishes production
 ```
+
+`bin/publish-repo.sh` still deploys production by hand when you need it, and
+`--only pkg[,pkg]` ships a single package without the accumulated tree delta.
+Run `bin/setup-git-merge-driver.sh` once per clone so `repo/Packages` merges
+structurally instead of conflicting between branches.
 
 Add it in Sileo: `sileo://source/https://repo.maxleiter.com/` (the landing page
 also has Sileo / Zebra / Cydia buttons and the copyable URL).

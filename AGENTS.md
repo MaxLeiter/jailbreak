@@ -53,8 +53,9 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 - `.github/workflows/publish-repo.yml` publishes on push to `main`: staging first, then production. `workflow_dispatch` can target one, both, or a preview.
 - CI publishes **metadata only** (`bin/publish-repo.sh --from-index`). It trusts the committed `repo/Packages` and never needs `.deb` payloads, because the authoring host already pushed them to Blob under immutable filenames.
 - That split is deliberate: **payload-level gates stay on the authoring host** and must pass before you commit. CI cannot run them. Specifically `bin/lib/check-procursus-shadow.py` (needs Mach-O `nm` over real debs), DER entitlement signing, and Blob upload. Running `bin/publish-staging.sh` locally is what exercises them.
-- So the rule is: **build and publish to staging locally, then commit `repo/Packages`.** The commit is what promotes to production, and it only re-signs and re-deploys an index whose payloads are already live.
-- Secrets the workflow needs: `VERCEL_TOKEN`, `REPO_GPG_PRIVATE_KEY`, and `REPO_GPG_PASSPHRASE` if the key has one. Without the GPG key the workflow fails closed rather than publishing an unsigned repo, which would break `apt` on every installed device.
+- So the rule is: **build and publish to staging locally, then commit `repo/Packages`.** The commit is what promotes to production, and it only re-signs and re-deploys an index whose payloads are already live. A `repo/Packages` change committed without a prior local staging publish can point at payloads that are not in Blob.
+- `--from-index` and `--only` are the two answers to "don't ship the whole accumulated tree delta", and they compose: `--only` reconciles against **what the target serves**, `--from-index` publishes **what git says**. With `--only`, the drift gate runs `--warn-regressions`, since being behind the target is that mode's premise.
+- Secrets the workflow needs: `VERCEL_TOKEN`, `REPO_GPG_PRIVATE_KEY`, and `REPO_GPG_PASSPHRASE` if the key has one. Without the GPG key the workflow fails closed rather than publishing an unsigned repo, which would break `apt` on every installed device. `publish-repo.sh` checks for the key up front for the same reason (`ALLOW_UNSIGNED=1` overrides; `--preview` may go unsigned).
 
 ## Parallel Branches and Version Drift
 
