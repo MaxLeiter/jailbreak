@@ -1,0 +1,215 @@
+name: Publish repo
+
+# Publishing is metadata-only, which is what lets it run here at all.
+#
+# The .deb payloads are cross-compiled on Max's Mac and pushed to Vercel Blob
+# under immutable filenames (debs/<pkg>_<ver>_<arch>.deb) as part of the build.
+# By the time a commit lands, the payloads a device would download already
+# exist; what remains is the index that points at them. So this workflow
+# regenerates the derived index from the committed repo/Packages
+# (make-repo.py --from-index), signs it, and deploys it. No payloads needed,
+# no cross toolchain needed.
+#
+# What that means for gates: the payload-level checks (DER entitlement signing,
+# Blob upload, and the Procursus drop-in-superset check, which needs Mach-O nm
+# over the real debs) run on the authoring host before the commit. This
+# workflow owns the index-level checks: solvability, publisher normalization,
+# and drift against what is already published.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'repo/**'
+      - 'bin/publish-repo.sh'
+      - 'bin/lib/make-repo.py'
+      - 'bin/lib/audit-repo.py'
+      - 'bin/lib/check-repo-solvable.py'
+      - 'bin/lib/check-version-collisions.py'
+      - '.github/workflows/publish-repo.yml'
+  pull_request:
+    paths:
+      - 'repo/**'
+      - 'bin/publish-repo.sh'
+      - 'bin/lib/make-repo.py'
+      - 'bin/lib/audit-repo.py'
+      - 'bin/lib/check-repo-solvable.py'
+      - 'bin/lib/check-version-collisions.py'
+      - '.github/workflows/publish-repo.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Where to deploy'
+        type: choice
+        default: staging
+        options: [staging, production, both, preview]
+
+permissions:
+  contents: read
+
+# One publish at a time, repo-wide. NOT keyed on github.ref: two branches
+# deploying concurrently is exactly the interleaving that produces a signed
+# Release describing a Packages file someone else already replaced.
+# cancel-in-progress stays false -- a half-finished publish is worse than a
+# queued one.
+concurrency:
+  group: publish-repo
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check-version-collisions.py compares against git:origin/main on PRs
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Regenerate derived index from committed Packages
+        run: python bin/lib/make-repo.py --from-index
+
+      - name: Committed Packages must be what the generator produces
+        run: |
+          set -euo pipefail
+          # --from-index never rewrites Packages, so a diff here means a tracked
+          # derived artifact (a depiction, the landing page) drifted from the
+          # index it is generated from -- i.e. someone edited output instead of
+          # input, or committed a stale regeneration.
+          if ! git diff --quiet -- repo/; then
+            echo "Regenerating from repo/Packages changed tracked files:"
+            git diff --stat -- repo/
+            echo
+            echo "Run 'python3 bin/lib/make-repo.py --from-index' locally and commit the result."
+            exit 1
+          fi
+
+      - name: Dependency solvability
+        run: python bin/lib/check-repo-solvable.py repo/Packages
+
+      - name: Index audit
+        run: python bin/lib/audit-repo.py --no-payloads
+
+      - name: Version drift vs published indexes
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            # actions/checkout leaves a detached merge ref; make origin/main a
+            # real remote-tracking ref so git:origin/main resolves.
+            git fetch --no-tags origin main:refs/remotes/origin/main || true
+            # A PR being behind main is normal until it rebases (the aptindex
+            # merge driver resolves it), so regressions warn here. Collisions
+            # still fail: two branches cannot publish the same version twice.
+            python bin/lib/check-version-collisions.py \
+              --warn-regressions \
+              --against git:origin/main \
+              --against https://repo.maxleiter.com/Packages \
+              --against https://dev.repo.maxleiter.com/Packages
+          else
+            python bin/lib/check-version-collisions.py \
+              --against https://repo.maxleiter.com/Packages \
+              --against https://dev.repo.maxleiter.com/Packages
+          fi
+
+  publish:
+    name: Publish
+    needs: validate
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Import the repo signing key
+        env:
+          REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+          REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REPO_GPG_PRIVATE_KEY:-}" ]; then
+            echo "::error::REPO_GPG_PRIVATE_KEY is not set. Device apt rejects an" \
+                 "unsigned repo, so publishing without it would break apt on every" \
+                 "installed device. Add the secret before enabling this workflow."
+            exit 1
+          fi
+          # Loopback pinentry so --pinentry-mode loopback works in publish-repo.sh.
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" > ~/.gnupg/gpg.conf
+          gpgconf --kill gpg-agent || true
+          printf '%s' "$REPO_GPG_PRIVATE_KEY" | gpg --batch --import
+          # Trust it ultimately so --clearsign does not stop to ask.
+          fpr="$(gpg --list-secret-keys --with-colons repo@maxleiter.com \
+                 | awk -F: '/^fpr:/ {print $10; exit}')"
+          echo "$fpr:6:" | gpg --batch --import-ownertrust
+          # publish-repo.sh reads REPO_GPG_PASSPHRASE_FILE and feeds it to the
+          # loopback pinentry; there is no agent here to hold the passphrase.
+          if [ -n "${REPO_GPG_PASSPHRASE:-}" ]; then
+            printf '%s' "$REPO_GPG_PASSPHRASE" > ~/.gnupg/repo.pass
+            chmod 600 ~/.gnupg/repo.pass
+            echo "REPO_GPG_PASSPHRASE_FILE=$HOME/.gnupg/repo.pass" >> "$GITHUB_ENV"
+          fi
+          gpg --list-secret-keys repo@maxleiter.com
+          # Prove the key can actually sign non-interactively before we start
+          # deploying, rather than discovering it half way through prod.
+          echo probe > /tmp/probe
+          gpg --batch --yes --pinentry-mode loopback \
+              ${REPO_GPG_PASSPHRASE:+--passphrase-file "$HOME/.gnupg/repo.pass"} \
+              --default-key repo@maxleiter.com --clearsign -o /tmp/probe.asc /tmp/probe
+          echo "signing probe OK"
+
+      - name: Resolve deploy targets
+        id: targets
+        run: |
+          set -euo pipefail
+          case "${{ github.event_name }}" in
+            push)
+              # Push to main publishes both, staging first so a broken index is
+              # visible on dev.repo before it reaches devices on prod.
+              echo "targets=staging prod" >> "$GITHUB_OUTPUT" ;;
+            workflow_dispatch)
+              case "${{ inputs.target }}" in
+                staging)    echo "targets=staging" >> "$GITHUB_OUTPUT" ;;
+                production) echo "targets=prod" >> "$GITHUB_OUTPUT" ;;
+                both)       echo "targets=staging prod" >> "$GITHUB_OUTPUT" ;;
+                preview)    echo "targets=preview" >> "$GITHUB_OUTPUT" ;;
+              esac ;;
+          esac
+
+      - name: Deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE || 'maxleiters-team' }}
+          GNUPGHOME: /home/runner/.gnupg
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::VERCEL_TOKEN is not set; cannot deploy."
+            exit 1
+          fi
+          for t in ${{ steps.targets.outputs.targets }}; do
+            echo "::group::publish $t"
+            bin/publish-repo.sh "--$t" --from-index
+            echo "::endgroup::"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Repo publish"
+            echo
+            echo "- targets: \`${{ steps.targets.outputs.targets }}\`"
+            echo "- packages indexed: \`$(grep -c '^Package: ' repo/Packages)\`"
+            echo "- commit: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

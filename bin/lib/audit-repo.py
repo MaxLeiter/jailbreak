@@ -4,6 +4,11 @@
 The publisher intentionally regenerates Packages from repo/debs. This audit is
 the belt after those suspenders: it verifies every indexed deb still exists and
 that Size/MD5/SHA1/SHA256 match the file bytes that will be deployed.
+
+--no-payloads drops every check that needs the .deb bytes and keeps the ones
+that read the index alone (Filename present, publisher fields normalized). CI
+runs it that way: repo/debs is gitignored, so a plain checkout has no payloads
+and the hash cross-check belongs to the authoring host that built them.
 """
 from __future__ import annotations
 
@@ -67,6 +72,11 @@ def main() -> int:
         default=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "repo")),
         help="repo root containing Packages and debs/",
     )
+    parser.add_argument(
+        "--no-payloads",
+        action="store_true",
+        help="skip checks that need repo/debs/*.deb (for CI checkouts)",
+    )
     args = parser.parse_args()
 
     packages = os.path.join(args.repo, "Packages")
@@ -90,6 +100,8 @@ def main() -> int:
                 )
 
         seen.add(filename)
+        if args.no_payloads:
+            continue
         deb = os.path.join(args.repo, filename)
         if not os.path.exists(deb):
             errors.append(f"{ident}: indexed file missing: {filename}")
@@ -116,7 +128,8 @@ def main() -> int:
             indexed_version[pkg] = ver
 
     deb_dir = os.path.join(args.repo, "debs")
-    for name in sorted(os.listdir(deb_dir)):
+    pool = [] if args.no_payloads or not os.path.isdir(deb_dir) else sorted(os.listdir(deb_dir))
+    for name in pool:
         if not name.endswith(".deb") or f"debs/{name}" in seen:
             continue
         parts = name[:-4].split("_")
@@ -138,7 +151,10 @@ def main() -> int:
             print(f"  - {error}", file=sys.stderr)
         return 1
 
-    print(f"Repo audit OK: {len(seen)} deb(s) indexed and hash-matched")
+    if args.no_payloads:
+        print(f"Repo audit OK (index only): {len(seen)} stanza(s) checked")
+    else:
+        print(f"Repo audit OK: {len(seen)} deb(s) indexed and hash-matched")
     return 0
 
 

@@ -1,2 +1,17 @@
 .vercel
 .env*
+
+# Derived index artifacts, regenerated (and signed) at publish time from
+# Packages. Tracking them is what made every parallel branch conflict:
+# Release embeds a `Date:` line so it changes on every single regeneration,
+# and .gz / .gpg / InRelease are binary or whole-file checksums, so git can
+# never merge two branches' copies. Packages itself stays tracked -- it is the
+# manifest CI publishes from, and it merges structurally via .gitattributes.
+Packages.gz
+Release
+Release.gpg
+InRelease
+
+# Never had a generator in this repo; leftovers from a manual recovery pass.
+Packages.pv
+Packages.sha

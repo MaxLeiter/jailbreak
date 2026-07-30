@@ -1,0 +1,5 @@
+# repo/Packages is a generated APT index: a set of stanzas keyed on Package,
+# not prose. Merge it structurally (newer version per package wins) instead of
+# by line, so two branches publishing different packages never conflict.
+# Register the driver once per clone: bin/setup-git-merge-driver.sh
+repo/Packages merge=aptindex

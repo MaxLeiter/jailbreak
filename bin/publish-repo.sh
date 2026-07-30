@@ -4,6 +4,7 @@
 #   bin/publish-repo.sh              # production (repo.maxleiter.com)
 #   bin/publish-repo.sh --staging    # low-cache staging repo (dev.repo.maxleiter.com)
 #   bin/publish-staging.sh           # same as --staging
+#   bin/publish-repo.sh --preview    # throwaway Vercel preview URL (per-branch testing)
 #
 # To publish a tweak: build it, copy its .deb into repo/debs/, then run this.
 #   bin/build.sh tweaks/<Name>
@@ -37,17 +38,33 @@
 # package that is not in the scoped index can still be reachable by URL. Cosmetic,
 # not installable, but it means a scoped prod publish still carries whatever site
 # assets the tree currently has.
+#
+# --from-index changes where the index comes from. Normally this script rebuilds
+# Packages from repo/debs, which means it needs every payload on disk. With
+# --from-index the committed repo/Packages is authoritative and only the derived
+# metadata is rebuilt, so a plain checkout with no payloads can publish. That is
+# how .github/workflows/publish-repo.yml runs on a push to main: the payloads were
+# already pushed to Blob under immutable filenames by the authoring host, so a
+# metadata-only deploy is complete. It necessarily SKIPS the payload-level gates
+# (DER signing, Blob upload, and the Procursus shadow check, which needs Mach-O nm
+# over the real debs) -- those stay the authoring host's job, before the commit
+# lands. --from-index is the whole-index counterpart to --only: --only reconciles
+# against what the target serves, --from-index publishes what git says.
 set -euo pipefail
 
 TARGET=prod
 ONLY=""
+FROM_INDEX=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --staging|staging) TARGET=staging ;;
-    --only) ONLY="${2:-}"; shift ;;
-    --only=*) ONLY="${1#--only=}" ;;
+    --prod|prod)       TARGET=prod ;;
+    --preview|preview) TARGET=preview ;;
+    --only)            ONLY="${2:-}"; shift ;;
+    --only=*)          ONLY="${1#--only=}" ;;
+    --from-index)      FROM_INDEX=1 ;;
     "") ;;
-    *) echo "usage: bin/publish-repo.sh [--staging] [--only pkg[,pkg...]]" >&2; exit 2 ;;
+    *) echo "usage: bin/publish-repo.sh [--staging|--prod|--preview] [--only pkg[,pkg...]] [--from-index]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -61,6 +78,23 @@ PROD_PROJECT="${PROD_REPO_PROJECT:-repo}"
 # Staging keeps the historical dev.repo.maxleiter.com domain and repo-dev project.
 STAGING_DOMAIN="${STAGING_REPO_DOMAIN:-dev.repo.maxleiter.com}"
 STAGING_PROJECT="${STAGING_REPO_PROJECT:-repo-dev}"
+
+# Use the Pillow venv if present (for icon/banner generation), else system python.
+PY="$REPO_ROOT/.repo-venv/bin/python"
+[ -x "$PY" ] || PY="python3"
+
+REPO_KEY="repo@maxleiter.com"
+
+# A preview URL nobody's apt is pinned to may go out unsigned; the real repos may
+# not. An unsigned index is not a missing nicety, it makes apt reject the whole
+# repo, so check for the key BEFORE spending minutes regenerating and uploading.
+if [ "$TARGET" != preview ] && [ "${ALLOW_UNSIGNED:-0}" != 1 ] \
+   && ! gpg --list-secret-keys "$REPO_KEY" >/dev/null 2>&1; then
+  echo "ERROR: no signing key ($REPO_KEY) in the keyring; refusing to publish $TARGET unsigned." >&2
+  echo "       Device apt rejects an unsigned repo, so this would break apt for every" >&2
+  echo "       installed device, not just skip a signature. Set ALLOW_UNSIGNED=1 to override." >&2
+  exit 1
+fi
 
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   echo "ERROR: another repo publish is already running ($LOCKDIR)" >&2
@@ -97,18 +131,26 @@ finalize_x11_graphics_debs() {
     --gl-ent "$gl_ent"
 }
 
-REPO_KEY="repo@maxleiter.com"
-
 # Sign whichever copy of the index we are about to serve. Called for the tree, and
 # again for the deploy copy when --only rewrote it (the hashes changed, so the
 # tree's signature would not verify against the scoped Release).
+#
+# Interactively the gpg-agent holds the passphrase. In CI there is no agent to
+# hold it, so REPO_GPG_PASSPHRASE_FILE feeds the loopback pinentry instead.
+gpg_sign() {
+  if [ -n "${REPO_GPG_PASSPHRASE_FILE:-}" ]; then
+    gpg --batch --yes --pinentry-mode loopback \
+        --passphrase-file "$REPO_GPG_PASSPHRASE_FILE" --default-key "$REPO_KEY" "$@"
+  else
+    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" "$@"
+  fi
+}
+
 sign_index() {
   local dir="$1"
   if gpg --list-secret-keys "$REPO_KEY" >/dev/null 2>&1; then
-    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
-        --clearsign -o "$dir/InRelease" "$dir/Release"
-    gpg --batch --yes --pinentry-mode loopback --default-key "$REPO_KEY" \
-        -abs -o "$dir/Release.gpg" "$dir/Release"
+    gpg_sign --clearsign -o "$dir/InRelease" "$dir/Release"
+    gpg_sign -abs -o "$dir/Release.gpg" "$dir/Release"
     gpg --export "$REPO_KEY" > "$dir/maxleiter-repo.gpg"
     echo "   signed with $REPO_KEY (public key at maxleiter-repo.gpg)"
   else
@@ -117,7 +159,7 @@ sign_index() {
 }
 
 deploy_static_repo() {
-  local project="$1" config_name="$2" domain="$3"
+  local project="$1" config_name="$2" domain="$3" mode="${4:-prod}"
   local deploy_root
   deploy_root="$(mktemp -d "${TMPDIR:-/tmp}/maxleiter-repo-deploy.XXXXXX")"
   cleanup_deploy_root() { rm -rf "$deploy_root"; }
@@ -143,55 +185,112 @@ deploy_static_repo() {
     sign_index "$deploy_root/repo"
   fi
 
-  vercel deploy "$deploy_root" --prod --yes --scope "$SCOPE" --project "$project" \
-    --local-config "$deploy_root/repo/$config_name" --no-color
-  echo "==> Live at https://$domain"
+  local args=(deploy "$deploy_root" --yes --scope "$SCOPE" --project "$project"
+              --local-config "$deploy_root/repo/$config_name" --no-color)
+  [ "$mode" = prod ] && args+=(--prod)
+  [ -n "${VERCEL_TOKEN:-}" ] && args+=(--token "$VERCEL_TOKEN")
+
+  if [ "$mode" = prod ]; then
+    vercel "${args[@]}"
+    echo "==> Live at https://$domain"
+  else
+    # Preview: the deployment URL is the whole point, so capture it. Vercel prints
+    # progress to stderr and the URL to stdout.
+    local url
+    url="$(vercel "${args[@]}")"
+    echo "==> Preview at $url"
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+      echo "preview_url=$url" >> "$GITHUB_OUTPUT"
+    fi
+  fi
 }
 
-finalize_x11_graphics_debs
-BEFORE="$(snapshot_debs)"
+# Which already-published index does this deploy have to stay consistent with?
+# Publishing an index that reuses a version with different bytes cannot work
+# (Blob filenames are immutable) and publishing one that is behind would roll
+# devices back, so check both before touching anything.
+case "$TARGET" in
+  prod)    DRIFT_REF="https://$PROD_DOMAIN/Packages" ;;
+  staging) DRIFT_REF="https://$STAGING_DOMAIN/Packages" ;;
+  preview) DRIFT_REF="" ;;
+esac
 
-echo "==> Regenerating index (Packages / Release / depictions / assets)"
-# Use the Pillow venv if present (for icon/banner generation), else system python.
-PY="$REPO_ROOT/.repo-venv/bin/python"
-[ -x "$PY" ] || PY="python3"
-"$PY" "$REPO_ROOT/bin/lib/make-repo.py"
-"$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
-"$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$REPO_ROOT/repo"
-# Drop-in-superset gate for debs shadowing Procursus package names (soname/file
-# parity + upstream-version pinning + -dev runtime-dylib lint). Waivers with
-# reasons in bin/lib/shadow-waivers.json. Born from the 2026-07-08 device brick.
-"$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
+if [ "$FROM_INDEX" = 1 ]; then
+  echo "==> Metadata-only publish: committed repo/Packages is authoritative"
+  echo "    (payload gates skipped: DER signing, Blob upload, Procursus shadow check)"
+  "$PY" "$REPO_ROOT/bin/lib/make-repo.py" --from-index
+  "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
+  "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$REPO_ROOT/repo" --no-payloads
+  BEFORE=""
+else
+  finalize_x11_graphics_debs
+  BEFORE="$(snapshot_debs)"
 
-AFTER_INDEX="$(snapshot_debs)"
-if [ "$BEFORE" != "$AFTER_INDEX" ]; then
-  echo "ERROR: repo/debs changed while Packages was being generated; rerun publish after the active build finishes." >&2
-  exit 1
+  echo "==> Regenerating index (Packages / Release / depictions / assets)"
+  "$PY" "$REPO_ROOT/bin/lib/make-repo.py"
+  "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
+  "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$REPO_ROOT/repo"
+  # Drop-in-superset gate for debs shadowing Procursus package names (soname/file
+  # parity + upstream-version pinning + -dev runtime-dylib lint). Waivers with
+  # reasons in bin/lib/shadow-waivers.json. Born from the 2026-07-08 device brick.
+  "$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
+
+  AFTER_INDEX="$(snapshot_debs)"
+  if [ "$BEFORE" != "$AFTER_INDEX" ]; then
+    echo "ERROR: repo/debs changed while Packages was being generated; rerun publish after the active build finishes." >&2
+    exit 1
+  fi
+fi
+
+if [ -n "$DRIFT_REF" ]; then
+  echo "==> Checking the index against what $TARGET already publishes"
+  # With --only, being behind the target is the normal case -- scope-index.py
+  # reconciles against the live index on the deploy copy -- so regressions are
+  # informational there. Collisions stay fatal either way: a version already
+  # published with different bytes cannot be uploaded at all.
+  if [ -n "$ONLY" ]; then
+    "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" \
+      --against "$DRIFT_REF" --warn-regressions
+  else
+    "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" --against "$DRIFT_REF"
+  fi
 fi
 
 echo "==> Signing the index (InRelease + Release.gpg)"
 sign_index "$REPO_ROOT/repo"
 
-AFTER_SIGN="$(snapshot_debs)"
-if [ "$BEFORE" != "$AFTER_SIGN" ]; then
-  echo "ERROR: repo/debs changed after signing; refusing to deploy a stale index." >&2
-  exit 1
-fi
+if [ "$FROM_INDEX" = 0 ]; then
+  AFTER_SIGN="$(snapshot_debs)"
+  if [ "$BEFORE" != "$AFTER_SIGN" ]; then
+    echo "ERROR: repo/debs changed after signing; refusing to deploy a stale index." >&2
+    exit 1
+  fi
 
-echo "==> Uploading package payloads to Vercel Blob"
-"$REPO_ROOT/bin/upload-debs-to-blob.sh"
+  echo "==> Uploading package payloads to Vercel Blob"
+  "$REPO_ROOT/bin/upload-debs-to-blob.sh"
 
-AFTER_UPLOAD="$(snapshot_debs)"
-if [ "$BEFORE" != "$AFTER_UPLOAD" ]; then
-  echo "ERROR: repo/debs changed during Blob upload; refusing to deploy a stale index." >&2
-  exit 1
+  AFTER_UPLOAD="$(snapshot_debs)"
+  if [ "$BEFORE" != "$AFTER_UPLOAD" ]; then
+    echo "ERROR: repo/debs changed during Blob upload; refusing to deploy a stale index." >&2
+    exit 1
+  fi
 fi
 
 cd "$REPO_ROOT/repo"
-if [ "$TARGET" = staging ]; then
-  echo "==> Deploying staging repo to Vercel ($SCOPE/$STAGING_PROJECT -> $STAGING_DOMAIN)"
-  deploy_static_repo "$STAGING_PROJECT" "vercel.staging.json" "$STAGING_DOMAIN"
-else
-  echo "==> Deploying to Vercel ($SCOPE/$PROD_PROJECT -> $PROD_DOMAIN)"
-  deploy_static_repo "$PROD_PROJECT" "vercel.prod.json" "$PROD_DOMAIN"
-fi
+case "$TARGET" in
+  staging)
+    echo "==> Deploying staging repo to Vercel ($SCOPE/$STAGING_PROJECT -> $STAGING_DOMAIN)"
+    deploy_static_repo "$STAGING_PROJECT" "vercel.staging.json" "$STAGING_DOMAIN" prod
+    ;;
+  preview)
+    # Preview deploys ride the staging project (same low-cache headers) but do not
+    # take its domain, so a branch can be installed on a device from its own URL
+    # without touching dev.repo or prod.
+    echo "==> Deploying preview to Vercel ($SCOPE/$STAGING_PROJECT, no domain alias)"
+    deploy_static_repo "$STAGING_PROJECT" "vercel.staging.json" "$STAGING_DOMAIN" preview
+    ;;
+  prod)
+    echo "==> Deploying to Vercel ($SCOPE/$PROD_PROJECT -> $PROD_DOMAIN)"
+    deploy_static_repo "$PROD_PROJECT" "vercel.prod.json" "$PROD_DOMAIN" prod
+    ;;
+esac

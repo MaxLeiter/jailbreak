@@ -32,6 +32,23 @@ x11/wayland/build-iosc.sh
 
 `device.env` at the repo root is intentionally ignored. Use it for local `THEOS_DEVICE_IP`, `THEOS_DEVICE_PORT`, and related deployment overrides.
 
+One-time setup per clone, so `repo/Packages` merges instead of conflicting:
+
+```bash
+bin/setup-git-merge-driver.sh
+```
+
+## Publishing Packages
+
+Publishing splits by what needs the `.deb` payloads:
+
+- **Locally** — build the debs, then `bin/publish-staging.sh`. This is the step that uploads payloads to Blob, DER-signs the graphics packages, and runs the Procursus shadow gate. None of those can run in CI.
+- **On push to `main`** — `.github/workflows/publish-repo.yml` re-signs the committed `repo/Packages` and deploys it to staging and then production. It is metadata-only: the payloads are already in Blob under immutable filenames.
+
+So the flow is: build, publish to staging locally, commit `repo/Packages`, merge. The merge is the promotion to production.
+
+Working in a worktree while `main` releases no longer drifts silently. `repo/Packages` merges structurally (newer version per package wins), and `bin/lib/check-version-collisions.py` fails the build if you would either reuse a published version with different bytes (bump it — Blob filenames are immutable) or publish an index behind what is already live (rebase).
+
 ## Validation
 
 Before sending a PR, run the narrowest checks that apply:
@@ -40,6 +57,8 @@ Before sending a PR, run the narrowest checks that apply:
 git ls-files '*.sh' | xargs -n1 bash -n
 python3 -m py_compile $(git ls-files '*.py')
 python3 bin/lib/check-repo-solvable.py repo/Packages
+python3 bin/lib/audit-repo.py --no-payloads
+python3 bin/lib/check-version-collisions.py --against https://repo.maxleiter.com/Packages
 ```
 
 For the Xios site:

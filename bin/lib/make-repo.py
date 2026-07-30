@@ -14,8 +14,18 @@ Outputs in repo/:
 
 Run via the venv that has Pillow:  .repo-venv/bin/python bin/lib/make-repo.py
 Re-run after adding/removing .debs. No network needed.
+
+Two modes:
+  (default)      read repo/debs/*.deb and generate the whole tree, Packages
+                 included. This is the authoring mode: it needs the payloads.
+  --from-index   treat the committed repo/Packages as the source of truth and
+                 regenerate only what derives from it (Packages.gz, Release,
+                 depictions, sileo-featured, site). Needs no .deb payloads, so
+                 CI can rebuild and sign the index from a plain checkout while
+                 the payloads live immutably in Blob. Leaves repo/Packages and
+                 the tracked icons/banners byte-identical.
 """
-import functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re, subprocess
+import argparse, functools, os, io, gzip, json, hashlib, tarfile, html, shutil, math, re, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
@@ -97,6 +107,36 @@ def control_dict(deb_bytes):
             k, v = ln.split(": ", 1); d[k] = v; order.append(k)
     d["__order__"] = order
     return d
+
+def parse_packages_index(path):
+    """Read a generated Packages file back into (raw_text, [ctrl, ...])."""
+    with open(path, encoding="utf-8") as fh:
+        raw = fh.read()
+    return raw, parse_packages_text(raw)
+
+def parse_packages_text(raw):
+    """Parse Packages text into [ctrl, ...].
+
+    The inverse of the stanza writer in main(). Lossless for our indexes:
+    control_dict() drops RFC822 continuation lines when it parses a .deb, so
+    the stanzas this file contains are always single-line fields (long-form
+    prose lives in repo/meta/<pkg>.json, not in the control blob).
+    """
+    out = []
+    for block in raw.split("\n\n"):
+        if not block.strip():
+            continue
+        d, order = {}, []
+        for ln in block.splitlines():
+            if ": " in ln and not ln.startswith((" ", "\t")):
+                k, v = ln.split(": ", 1)
+                d[k] = v
+                order.append(k)
+        if "Package" not in d:
+            raise SystemExit("ERROR: Packages index has a stanza without a Package field")
+        d["__order__"] = order
+        out.append(d)
+    return out
 
 def normalize_section(ctrl):
     sec = (ctrl.get("Section") or "").strip()
@@ -1030,14 +1070,24 @@ def write_index(pkgs):
 
 # ── main ─────────────────────────────────────────────────────────────────────
 def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--from-index", action="store_true",
+                    help="regenerate only what derives from the committed "
+                         "repo/Packages; needs no .deb payloads")
+    args = ap.parse_args()
+    from_index = args.from_index
+
     for d in ("icons", "banners", "depictions"):
         os.makedirs(os.path.join(REPO, d), exist_ok=True)
 
     # one shared, cacheable stylesheet for index + all depictions (was inlined per page)
     open(os.path.join(REPO, "site.css"), "w").write(SITE_CSS)
 
-    # repo icon from the website favicon
-    if os.path.isdir(FAVICON_SRC):
+    # repo icon from the website favicon. Authoring-host only: FAVICON_SRC is a
+    # path in the maxleiter.com checkout, and CydiaIcon.png/favicon.ico are
+    # tracked, so a --from-index run just uses what the checkout already has.
+    if not from_index and os.path.isdir(FAVICON_SRC):
         shutil.copyfile(os.path.join(FAVICON_SRC, "apple-touch-icon.png"),
                         os.path.join(REPO, "CydiaIcon.png"))
         ico = os.path.join(FAVICON_SRC, "favicon.ico")
@@ -1045,69 +1095,104 @@ def main():
             shutil.copyfile(ico, os.path.join(REPO, "favicon.ico"))
 
     pkgs, stanzas, featured_by_pid = [], [], {}
-    for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
-        if not fn.endswith(".deb"):
-            continue
-        blob = open(os.path.join(DEBS, fn), "rb").read()
-        ctrl = control_dict(blob); pid = ctrl["Package"]
-        normalize_section(ctrl)
-        normalize_publisher(ctrl)
-        meta = load_meta(pid)
-        pkgs.append({"ctrl": ctrl, "meta": meta})
 
-        # assets
-        if HAVE_PIL:
-            icon = package_icon(pid, ctrl.get("Section", "Tweaks"), 256)
-            icon.save(os.path.join(REPO, "icons", f"{pid}.png"))
-            make_banner(os.path.join(REPO, "banners", f"{pid}.png"),
-                        ctrl.get("Name", pid),
-                        meta.get("tagline", ctrl.get("Description", "")), icon)
+    if from_index:
+        # The committed index is authoritative: reuse its bytes verbatim rather
+        # than recomputing stanzas, so a CI regeneration can never perturb the
+        # payload hashes it is signing.
+        index_path = os.path.join(REPO, "Packages")
+        if not os.path.exists(index_path):
+            raise SystemExit(f"ERROR: --from-index needs {index_path}")
+        packages, ctrls = parse_packages_index(index_path)
+        if not packages.endswith("\n"):
+            packages += "\n"
+        for ctrl in ctrls:
+            pid = ctrl["Package"]
+            meta = load_meta(pid)
+            pkgs.append({"ctrl": ctrl, "meta": meta})
+            size = int(ctrl.get("Size", "0") or 0)
+            with open(os.path.join(REPO, "depictions", f"{pid}.json"), "w") as f:
+                json.dump(native_depiction(ctrl, meta, size), f, indent=2)
+            open(os.path.join(REPO, "depictions", f"{pid}.html"), "w").write(
+                html_depiction(ctrl, meta, size))
+            featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
+                                    "url": f"{BASE_URL}/banners/{pid}.png"}
+    else:
+        for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
+            if not fn.endswith(".deb"):
+                continue
+            blob = open(os.path.join(DEBS, fn), "rb").read()
+            ctrl = control_dict(blob); pid = ctrl["Package"]
+            normalize_section(ctrl)
+            normalize_publisher(ctrl)
+            meta = load_meta(pid)
+            pkgs.append({"ctrl": ctrl, "meta": meta})
 
-        # depictions
-        with open(os.path.join(REPO, "depictions", f"{pid}.json"), "w") as f:
-            json.dump(native_depiction(ctrl, meta, len(blob)), f, indent=2)
-        open(os.path.join(REPO, "depictions", f"{pid}.html"), "w").write(
-            html_depiction(ctrl, meta, len(blob)))
+            # assets
+            if HAVE_PIL:
+                icon = package_icon(pid, ctrl.get("Section", "Tweaks"), 256)
+                icon.save(os.path.join(REPO, "icons", f"{pid}.png"))
+                make_banner(os.path.join(REPO, "banners", f"{pid}.png"),
+                            ctrl.get("Name", pid),
+                            meta.get("tagline", ctrl.get("Description", "")), icon)
 
-        # Packages stanza: base control fields + repo/rich fields
-        lines = [f"{k}: {ctrl[k]}" for k in ctrl["__order__"]]
-        lines += [
-            f"Filename: debs/{fn}",
-            f"Size: {len(blob)}",
-            f"MD5sum: {hashlib.md5(blob).hexdigest()}",
-            f"SHA1: {hashlib.sha1(blob).hexdigest()}",
-            f"SHA256: {hashlib.sha256(blob).hexdigest()}",
-            f"Icon: {BASE_URL}/icons/{pid}.png",
-            f"Depiction: {BASE_URL}/depictions/{pid}.html",
-            f"SileoDepiction: {BASE_URL}/depictions/{pid}.json",
-            f"Native Depiction: {BASE_URL}/depictions/{pid}.json",
-        ]
-        if "Homepage" not in ctrl:
-            lines.append(f"Homepage: {meta.get('homepage', BASE_URL)}")
-        stanzas.append("\n".join(lines))
-        featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
-                                "url": f"{BASE_URL}/banners/{pid}.png"}
+            # depictions
+            with open(os.path.join(REPO, "depictions", f"{pid}.json"), "w") as f:
+                json.dump(native_depiction(ctrl, meta, len(blob)), f, indent=2)
+            open(os.path.join(REPO, "depictions", f"{pid}.html"), "w").write(
+                html_depiction(ctrl, meta, len(blob)))
 
-    # The deb pool is additive and retains every superseded version file; index
-    # only the newest version of each package id, not every .deb present. Uses
-    # dpkg version-comparison semantics (compare_deb_versions), keyed on the
-    # control Package field (what apt resolves against), so stale duplicate
-    # stanzas never reach the generated Packages index.
-    latest_idx = {}
-    for i, p in enumerate(pkgs):
-        pid = p["ctrl"]["Package"]
-        if (pid not in latest_idx
-                or compare_deb_versions(p["ctrl"].get("Version", ""),
-                                        pkgs[latest_idx[pid]]["ctrl"].get("Version", "")) > 0):
-            latest_idx[pid] = i
-    keep = set(latest_idx.values())
-    pkgs = [p for i, p in enumerate(pkgs) if i in keep]
-    stanzas = [s for i, s in enumerate(stanzas) if i in keep]
+            # Packages stanza: base control fields + repo/rich fields
+            lines = [f"{k}: {ctrl[k]}" for k in ctrl["__order__"]]
+            lines += [
+                f"Filename: debs/{fn}",
+                f"Size: {len(blob)}",
+                f"MD5sum: {hashlib.md5(blob).hexdigest()}",
+                f"SHA1: {hashlib.sha1(blob).hexdigest()}",
+                f"SHA256: {hashlib.sha256(blob).hexdigest()}",
+                f"Icon: {BASE_URL}/icons/{pid}.png",
+                f"Depiction: {BASE_URL}/depictions/{pid}.html",
+                f"SileoDepiction: {BASE_URL}/depictions/{pid}.json",
+                f"Native Depiction: {BASE_URL}/depictions/{pid}.json",
+            ]
+            if "Homepage" not in ctrl:
+                lines.append(f"Homepage: {meta.get('homepage', BASE_URL)}")
+            stanzas.append("\n".join(lines))
+            featured_by_pid[pid] = {"title": ctrl.get("Name", pid), "package": pid,
+                                    "url": f"{BASE_URL}/banners/{pid}.png"}
 
-    packages = "\n\n".join(stanzas) + "\n"
-    open(os.path.join(REPO, "Packages"), "w").write(packages)
+        # The deb pool is additive and retains every superseded version file; index
+        # only the newest version of each package id, not every .deb present. Uses
+        # dpkg version-comparison semantics (compare_deb_versions), keyed on the
+        # control Package field (what apt resolves against), so stale duplicate
+        # stanzas never reach the generated Packages index.
+        latest_idx = {}
+        for i, p in enumerate(pkgs):
+            pid = p["ctrl"]["Package"]
+            if (pid not in latest_idx
+                    or compare_deb_versions(p["ctrl"].get("Version", ""),
+                                            pkgs[latest_idx[pid]]["ctrl"].get("Version", "")) > 0):
+                latest_idx[pid] = i
+        keep = set(latest_idx.values())
+        pkgs = [p for i, p in enumerate(pkgs) if i in keep]
+        stanzas = [s for i, s in enumerate(stanzas) if i in keep]
+
+        packages = "\n\n".join(stanzas) + "\n"
+        open(os.path.join(REPO, "Packages"), "w").write(packages)
+
     with open(os.path.join(REPO, "Packages.gz"), "wb") as f:
         f.write(gzip.compress(packages.encode(), 9, mtime=0))
+
+    # Flat side indexes, not part of the apt contract. They exist because they
+    # are what you actually want during a recovery: .pv answers "what version is
+    # published?" and .sha answers "which payload bytes does this stanza point
+    # at?" without parsing stanzas. Derived, so regenerate them here rather than
+    # letting a hand-made copy go stale.
+    indexed = parse_packages_text(packages)
+    with open(os.path.join(REPO, "Packages.pv"), "w") as f:
+        f.write("".join(f"{c['Package']}={c.get('Version','')}\n" for c in indexed))
+    with open(os.path.join(REPO, "Packages.sha"), "w") as f:
+        f.write("".join(f"{c.get('Filename','')} {c.get('SHA256','')}\n" for c in indexed))
 
     # featured carousel
     with open(os.path.join(REPO, "sileo-featured.json"), "w") as f:
@@ -1130,7 +1215,8 @@ def main():
     open(os.path.join(REPO, "Release"), "w").write("\n".join(rel) + "\n")
 
     write_index(pkgs)
-    print(f"Generated repo ({len(pkgs)} package(s)), PIL={HAVE_PIL}")
+    src = "committed Packages" if from_index else "repo/debs"
+    print(f"Generated repo ({len(pkgs)} package(s)) from {src}, PIL={HAVE_PIL}")
 
 if __name__ == "__main__":
     main()
