@@ -1331,7 +1331,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.40
+Version: 0.9.41
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1341,11 +1341,11 @@ Section: X11
 Priority: optional
 Installed-Size: 692
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.40_iphoneos-arm64.deb
-Size: 151888
-MD5sum: 991c41683e42bf3cdd02fa4998d745a5
-SHA1: 1fe9337d9e6134762def373457caff33cf6a57ed
-SHA256: 8c1d699f2702f783c45b7fcc6854f461b973fc5e2909f105ebb95457665f5ba4
+Filename: debs/iosc_0.9.41_iphoneos-arm64.deb
+Size: 152138
+MD5sum: 0f55d367a3914b02f08ffdc4e3cd18e0
+SHA1: 843466a29babb67757b01a1402b94f67acaa6ae9
+SHA256: 4ffc7958995ca12b2eaaef47142c023310fd6018529f75ad5dc75a4851113745
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
