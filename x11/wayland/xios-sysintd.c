@@ -9,6 +9,11 @@
  *                      iOS hardware volume.
  *   XIOS_IN_APPEARANCE iOS light/dark -> org.gnome.desktop.interface color-scheme
  *                      (libadwaita/GTK4) plus a gtk-theme flip for GTK3 apps.
+ *   XIOS_IN_BRIGHTNESS one-way relay, desktop -> app. xios-hwbridged sends the
+ *                      backlight level it was asked for and the app applies it
+ *                      with UIScreen.brightness, because BKSDisplayBrightnessSet
+ *                      does nothing outside SpringBoard. Nothing to apply here,
+ *                      so this type is forwarded and never acted on.
  *
  * Deliberately NOT part of iosc: the compositor stays out of audio and theme
  * policy. This daemon is autostarted inside the desktop session, so it inherits
@@ -144,6 +149,22 @@ static void on_record(const struct xios_in_msg *m, const char *text,
         } else {
             s_pending_volume = v;   /* newest wins; flushed on the poll timeout */
         }
+        break;
+    }
+    case XIOS_IN_BRIGHTNESS: {
+        /* Pure relay: only the app can move the panel (UIScreen.brightness), so
+         * there is no daemon-side applier to coalesce against the way volume has
+         * pactl. hwbridged already rate-limits to its own 2 Hz tick. */
+        if (!(m->state & XIOS_BRIGHTNESS_STATE_TO_DEVICE))
+            break;
+        struct xios_in_msg out = {
+            .type = XIOS_IN_BRIGHTNESS,
+            .code = m->code > 65535u ? 65535u : m->code,
+            .state = XIOS_BRIGHTNESS_STATE_TO_DEVICE,
+        };
+        int n = xios_input_socket_broadcast((xios_input_socket *)user, &out, sizeof(out));
+        fprintf(stderr, "xios-sysintd: desktop brightness -> device %u/65535 (%d client%s)\n",
+                out.code, n, n == 1 ? "" : "s");
         break;
     }
     case XIOS_IN_APPEARANCE: {

@@ -43,4 +43,13 @@ int sysint_poll_haptic(unsigned *style);
 // with absolute volume 0..65535, 0 = none pending.
 int sysint_poll_volume_set(unsigned *v16);
 
+// Drain desktop-originated brightness requests from xios-sysintd. 1 = *v16 filled
+// with absolute panel brightness 0..65535, 0 = none pending. The caller applies it
+// with UIScreen.brightness: BKSDisplayBrightnessSet is inert outside SpringBoard,
+// so xios-hwbridged cannot set the panel itself and hands the value to us instead.
+//
+// Shares one link with sysint_poll_volume_set, so each drains the other's records
+// into a one-slot stash rather than discarding them. Call both every tick.
+int sysint_poll_brightness_set(unsigned *v16);
+
 #endif

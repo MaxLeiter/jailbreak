@@ -1,6 +1,6 @@
 Package: xios-fhs
 Name: Xios filesystem + hardware bridge
-Version: 1.0.2
+Version: 1.0.4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
