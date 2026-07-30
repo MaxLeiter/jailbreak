@@ -1686,6 +1686,16 @@ QtObject {
 panel = src / "shell/contents/views/Panel.qml"
 if panel.exists():
     text = panel.read_text()
+    text = text.replace(
+        "            if (containment.panel !== undefined) {",
+        "            if (containment && containment.panel !== undefined) {",
+        1,
+    )
+    text = text.replace(
+        "            if (containment.tabBar !== undefined) {",
+        "            if (containment && containment.tabBar !== undefined) {",
+        1,
+    )
     needle = "    Connections {\n        target: containment\n        function onActivated() {"
     if needle in text and "ignoreUnknownSignals: true" not in text:
         text = text.replace(
@@ -1693,7 +1703,7 @@ if panel.exists():
             "    Connections {\n        target: containment\n        ignoreUnknownSignals: true\n        function onActivated() {",
             1,
         )
-        panel.write_text(text)
+    panel.write_text(text)
 
 restore_upstream("containments/homescreens/folio/package/contents/ui/settings/AppletListViewer.qml")
 restore_upstream("containments/homescreens/folio/package/contents/ui/main.qml")

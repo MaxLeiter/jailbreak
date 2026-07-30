@@ -1385,6 +1385,16 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
+text = text.replace(
+    "            if (containment.panel !== undefined) {",
+    "            if (containment && containment.panel !== undefined) {",
+    1,
+)
+text = text.replace(
+    "            if (containment.tabBar !== undefined) {",
+    "            if (containment && containment.tabBar !== undefined) {",
+    1,
+)
 needle = "    Connections {\n        target: containment\n        function onActivated() {"
 if needle in text and "ignoreUnknownSignals: true" not in text:
     text = text.replace(
@@ -1392,7 +1402,7 @@ if needle in text and "ignoreUnknownSignals: true" not in text:
         "    Connections {\n        target: containment\n        ignoreUnknownSignals: true\n        function onActivated() {",
         1,
     )
-    path.write_text(text)
+path.write_text(text)
 PY
 fi
 
