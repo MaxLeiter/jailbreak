@@ -1,5 +1,5 @@
 {
-  "total": 1074,
+  "total": 1076,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 1,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -121,6 +121,7 @@
     "linux-build/recipes/build_info/xwayland-ent.xml": 2,
     "linux-build/recipes/dbus.mk": 1,
     "linux-build/recipes/dunst.mk": 1,
+    "linux-build/recipes/ensure-gtkintl-build-shim.sh": 1,
     "linux-build/recipes/evolution-data-server.mk": 2,
     "linux-build/recipes/ffmpeg.mk": 1,
     "linux-build/recipes/gnome-session.mk": 1,
@@ -163,7 +164,7 @@
     "packages/ladybird-app/entitlements/ladybird-helper.entitlements": 4,
     "packages/ladybird-app/resign-ladybird-app-deb.sh": 1,
     "packages/ladybird-wayland/DEBIAN/postinst": 11,
-    "packages/ladybird-wayland/build.sh": 14,
+    "packages/ladybird-wayland/build.sh": 15,
     "packages/meta/xios-core/DEBIAN/control": 1,
     "packages/meta/xios-gnome/DEBIAN/control": 1,
     "packages/meta/xios-kde/DEBIAN/control": 1,

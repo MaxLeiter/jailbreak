@@ -9,19 +9,19 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1739
-- Files with hits: 328
+- Total hits: 1743
+- Files with hits: 330
 
 ### By Category
 
 - `app-runtime`: 19 hits across 11 files
 - `build-target`: 20 hits across 11 files
-- `docs`: 625 hits across 64 files
+- `docs`: 627 hits across 65 files
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 98 hits across 51 files
 - `other`: 84 hits across 17 files
-- `package-payload`: 229 hits across 48 files
-- `recipe`: 82 hits across 26 files
+- `package-payload`: 230 hits across 48 files
+- `recipe`: 83 hits across 27 files
 - `runtime-path`: 314 hits across 81 files
 - `script-or-source`: 183 hits across 70 files
 - `site-copy`: 10 hits across 6 files
@@ -29,7 +29,7 @@ classified as rootless-only.
 
 ### By Literal
 
-- `/var/jb`: 1694
+- `/var/jb`: 1698
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
 - `iphoneos-arm64-rootless`: 33
@@ -115,7 +115,7 @@ classified as rootless-only.
 - `docs/gjs-plan.md:277` `/var/jb`: `jstest_fix` (full eval); test dir on-device `/var/jb/tmp/mozjs-test`.
 - `docs/gjs-plan.md:358` `/var/jb`: `/var/jb/usr/lib/gjs/girepository-1.0`. Runtime smoke:
 - `docs/gjs-plan.md:428` `/var/jb`: split → `ldid` sign → `dpkg-deb`). Built + dpkg-installed cleanly into `/var/jb` and re-validated
-- ... 605 more
+- ... 607 more
 
 ### entitlements
 
@@ -211,7 +211,7 @@ classified as rootless-only.
 - `packages/ladybird-app/Sources/IOSApplication.mm:143` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
 - `packages/ladybird-app/Sources/BrowserViewController.mm:19` `/var/jb`: candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
 - `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log.
-- ... 209 more
+- ... 210 more
 
 ### recipe
 
@@ -235,7 +235,7 @@ classified as rootless-only.
 - `linux-build/recipes/plasma-mobile-ios-fixes.sh:953` `/var/jb`: helper = """    readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= \| tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= \| awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null \|\| true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null \|\| true; done"
 - `linux-build/recipes/plasma-mobile-ios-fixes.sh:1088` `/var/jb`: readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= \| tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= \| awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null \|\| true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null \|\| true; done"
 - `linux-build/recipes/plasma-mobile-ios-fixes.sh:1088` `/var/jb`: readonly property string xiosCloseOpenAppsCommand: "pg=$(ps -p $$ -o pgid= \| tr -d '[:space:]'); list() { ps axww -o pid=,pgid=,command= \| awk -v pg=\\\"$pg\\\" '$2 == pg && index($0, \\\"/var/jb/Applications/KDE/\\\") && index($0, \\\"/var/jb/Applications/KDE/kwin_wayland.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmashell.app/\\\") == 0 && index($0, \\\"/var/jb/Applications/KDE/plasmawindowed.app/\\\") == 0 { print $1 }'; }; for pid in $(list); do kill -TERM \\\"$pid\\\" 2>/dev/null \|\| true; done; sleep 0.2; for pid in $(list); do kill -KILL \\\"$pid\\\" 2>/dev/null \|\| true; done"
-- ... 62 more
+- ... 63 more
 
 ### runtime-path
 
@@ -308,12 +308,12 @@ classified as rootless-only.
 - `linux-build/tools/lint-targets.sh:55` `/var/jb`: /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
 - `linux-build/tools/check-target-package.py:33` `/var/jb`: KNOWN_PREFIXES = ("/var/jb",)
 - `linux-build/tools/check-target-package.py:214` `/var/jb`: # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
-- `linux-build/tools/target-literal-baseline.json:187` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
-- `linux-build/tools/target-literal-baseline.json:190` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
-- `linux-build/tools/target-literal-baseline.json:200` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
-- `linux-build/tools/target-literal-baseline.json:204` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
-- `linux-build/tools/target-literal-baseline.json:205` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
-- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
+- `linux-build/tools/target-literal-baseline.json:188` `/var/jb`: "packages/xios-desktop-defaults/var/jb/etc/profile.d/xios.sh": 18,
+- `linux-build/tools/target-literal-baseline.json:191` `/var/jb`: "packages/xios-desktop-theme/var/jb/usr/share/glib-2.0/schemas/zz-xios-desktop-theme.gschema.override": 1,
+- `linux-build/tools/target-literal-baseline.json:201` `/var/jb`: "packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf": 1,
+- `linux-build/tools/target-literal-baseline.json:205` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/bin/launch-gnome-session.sh": 2,
+- `linux-build/tools/target-literal-baseline.json:206` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/libexec/xios-gnome-shell-session": 1,
+- `linux-build/tools/target-literal-baseline.json:207` `/var/jb`: "packages/xios-session-stubs/var/jb/usr/share/xios/applications/org.gnome.Shell.desktop": 1,
 - `linux-build/tools/audit-target-literals.py:4` `/var/jb`: The goal is not to remove every `/var/jb` immediately. It is to keep a
 - `linux-build/tools/audit-target-literals.py:23` `/var/jb`: "/var/jb",
 - `linux-build/tools/audit-target-literals.py:24` `iphoneos-arm64-rootless`: "iphoneos-arm64-rootless",
