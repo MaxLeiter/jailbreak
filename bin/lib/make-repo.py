@@ -643,7 +643,7 @@ def html_depiction(ctrl, meta, size):
   <div class="prose">{body}</div>{gallery_block}
   <h2 class="section">Information</h2><table class="info">{rows}</table>
   <footer><a href="../index.html">&larr; All packages</a></footer>
-</div>{THEME_JS}</body></html>"""
+</div>{THEME_JS}{ANALYTICS_JS}</body></html>"""
 
 # ── shared CSS ───────────────────────────────────────────────────────────────
 def head_links(prefix=""):
@@ -880,8 +880,18 @@ INDEX_JS = """
   document.getElementById("sileo").href = "sileo://source/" + u;
   document.getElementById("zebra").href = "zbra://sources/add/" + u;
   document.getElementById("cydia").href = "cydia://url/https://cydia.saurik.com/api/share#?source=" + u;
+  // Which manager people actually add the repo with. The href is a custom URL
+  // scheme, so the navigation never reaches us as a page view -- the click is
+  // the only place to count it.
+  ["sileo", "zebra", "cydia"].forEach(function (id) {
+    document.getElementById(id).addEventListener("click", function () {
+      window.va("event", { name: "add-repo", data: { manager: id } });
+    });
+  });
+
   var b = document.getElementById("copyBtn");
   b.addEventListener("click", function () {
+    window.va("event", { name: "copy-repo-url" });
     navigator.clipboard.writeText(u).then(function () {
       var prev = b.textContent;
       b.textContent = "Copied";
@@ -1003,6 +1013,20 @@ THEME_PICKER = (
     f'{_SVG}<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>'
     '</div>'
 )
+
+# Vercel Web Analytics. Cookieless and first-party (/_vercel/insights/* is served
+# by the platform, not a third party), so there is nothing to consent-banner.
+# Depictions carry it as well as the index: Sileo renders them in a WKWebView, so
+# per-package page views are the one install-interest signal we can read from the
+# client. Deb downloads are NOT tracked here -- see the ANALYTICS note at the top
+# of bin/publish-repo.sh for why. The va() shim queues events fired before
+# script.js finishes loading.
+ANALYTICS_JS = """
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+"""
 
 # applies the saved/system theme before paint to avoid a flash of the wrong theme
 HEAD_JS = """
@@ -1178,7 +1202,7 @@ def write_index(pkgs):
   </section>
   <p class="no-results" id="noResults">No matching packages.</p>
   <footer><a href="https://maxleiter.com">maxleiter.com</a><span>{ARCH}</span></footer>
-</div>{INDEX_JS}{THEME_JS}</body></html>"""
+</div>{INDEX_JS}{THEME_JS}{ANALYTICS_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
 
 # ── main ─────────────────────────────────────────────────────────────────────
