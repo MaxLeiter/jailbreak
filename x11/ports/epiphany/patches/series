@@ -1,3 +1,4 @@
 0001-ios-locale-portability.patch
 0002-ios-secure-randomness.patch
 0003-ios-wayland-accessibility-address.patch
+0004-ios-allow-no-desktop-portal.patch

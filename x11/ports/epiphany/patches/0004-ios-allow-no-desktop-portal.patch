@@ -1,0 +1,22 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Allow Epiphany to run without a desktop portal on iOS
+
+The native Xios launcher can run without an active D-Bus session. libportal's
+xdp_portal_new() aborts when it cannot connect to that bus, even though the
+portal is optional for normal browsing and GTK can provide the local fallback
+paths. Leave the global portal unset on iOS instead of aborting at startup.
+
+--- a/lib/ephy-file-helpers.c
++++ b/lib/ephy-file-helpers.c
+@@ -490,7 +490,11 @@ ephy_file_helpers_init (const char            *profile_dir,
+     }
+   }
+ 
++#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
++  global_portal = NULL;
++#else
+   global_portal = xdp_portal_new ();
++#endif
+ 
+   return ret;
+ }
