@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "XiosProtocol.h"
 
 /* ---- output geometry / scale (for MetaMonitorManagerIOS) --------------------------
  * The Xios app presents one fullscreen output IOSurface at the iPad's native pixel size;
@@ -146,13 +147,11 @@ void        xios_egl_destroy_image (EGLImageKHR image);
  * All three are xios_surface / xios_egl in the real libxios_glue. */
 EGLDisplay xios_egl_display (void);          /* lazy getter; matches libxios_glue */
 void      *xios_get_output_iosurface (void);
-void       xios_notify_dirty (void);
 int        xios_notify_dirty_with_fence (const void *shared_event_token,
                                          size_t token_size,
                                          uint64_t event_value);
 void       xios_notify_cursor (int x, int y, int visible, int shape_id);
 
-#define XIOS_METAL_EVENT_TOKEN_SIZE 32u
 int xios_metal_sync_signal (EGLDisplay display,
                             const void **token,
                             size_t *token_size,

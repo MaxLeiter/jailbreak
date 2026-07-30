@@ -67,24 +67,6 @@ struct shm_cache_ent { void *key; GLuint tex; int w, h; };
 static struct shm_cache_ent *s_shm_cache;
 static int s_shm_cache_cap;
 
-/* Per-frame completion fence (EGL_KHR_fence_sync). This is retained only for
- * explicit IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC bring-up; production presentation
- * requires the brokered Metal shared-event path. */
-#ifdef EGL_KHR_fence_sync
-static PFNEGLCREATESYNCKHRPROC     s_create_sync;
-static PFNEGLCLIENTWAITSYNCKHRPROC s_client_wait_sync;
-static PFNEGLDESTROYSYNCKHRPROC    s_destroy_sync;
-#endif
-
-static int allow_cpu_sync_diagnostic(void)
-{
-    const char *value = getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC");
-    return value && *value &&
-           strcmp(value, "0") != 0 &&
-           strcasecmp(value, "false") != 0 &&
-           strcasecmp(value, "no") != 0;
-}
-
 /* ---- helpers ------------------------------------------------------------- */
 
 static GLuint compile(GLenum type, const char *src)
@@ -282,22 +264,7 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
 
     glGenTextures(1, &s_shm_tex);
 
-    /* Resolve the diagnostic-only CPU completion barrier. Production uses the
-     * brokered Metal shared event initialized on the first completed frame. */
-#ifdef EGL_KHR_fence_sync
-    const char *egl_exts = eglQueryString(s_dpy, EGL_EXTENSIONS);
-    if (egl_exts && strstr(egl_exts, "EGL_KHR_fence_sync")) {
-        s_create_sync     = (PFNEGLCREATESYNCKHRPROC)eglGetProcAddress("eglCreateSyncKHR");
-        s_client_wait_sync = (PFNEGLCLIENTWAITSYNCKHRPROC)eglGetProcAddress("eglClientWaitSyncKHR");
-        s_destroy_sync    = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
-        if (!s_create_sync || !s_client_wait_sync || !s_destroy_sync)
-            s_create_sync = NULL;
-    }
-    fprintf(stderr,
-            "iosc_gl: production frame sync = brokered Metal shared event; "
-            "diagnostic CPU barrier = %s\n",
-            s_create_sync ? "EGL fence" : "glFinish");
-#endif
+    fprintf(stderr, "iosc_gl: frame sync = brokered Metal shared event\n");
 
     s_ok = 1;
     fprintf(stderr, "iosc_gl: GPU compositor ready (output %dx%d)\n", w, h);
@@ -622,31 +589,6 @@ void iosc_gl_end(void)
                                &s_present_fence_value))
         return;
 
-    if (!allow_cpu_sync_diagnostic())
-        return;
-
-    /* Explicit diagnostic-only compatibility barrier for investigating ANGLE
-     * builds without shared-event sync. Production must never silently
-     * serialize every frame through the CPU. */
-    static int warned;
-    if (!warned) {
-        warned = 1;
-        fprintf(stderr,
-                "iosc_gl: IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC=1; "
-                "using a CPU-side completion barrier\n");
-    }
-    glFlush();
-#ifdef EGL_KHR_fence_sync
-    if (s_create_sync) {
-        EGLSyncKHR fence = s_create_sync(s_dpy, EGL_SYNC_FENCE_KHR, NULL);
-        if (fence != EGL_NO_SYNC_KHR) {
-            s_client_wait_sync(s_dpy, fence, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
-            s_destroy_sync(s_dpy, fence);
-            return;
-        }
-    }
-#endif
-    glFinish();   /* fallback: no fence-sync extension */
 }
 
 int iosc_gl_present_fence(const void **token, size_t *token_size,

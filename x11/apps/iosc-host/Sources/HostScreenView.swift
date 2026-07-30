@@ -145,7 +145,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     /// Adopt one producer completion. Every frame carries a broker token/value.
     func markDirty(fenceToken token: Data, value: UInt64) {
         guard metalReady, canvasTexture != nil else { return }
-        guard token.count == Int(IOSC_NATIVE_FENCE_TOKEN_SIZE), value > 0 else {
+        guard token.count == Int(XIOS_GPU_FENCE_TOKEN_SIZE), value > 0 else {
             logFenceFailure("invalid broker token/value")
             return
         }

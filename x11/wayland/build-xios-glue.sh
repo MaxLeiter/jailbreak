@@ -92,7 +92,8 @@ rm -rf /out/xios-glue-include; mkdir -p /out/xios-glue-include
 # compile-contract xios-glue-stub.h is deliberately NOT bundled;
 # consumers link against these authoritative headers. build-backend-check.sh checks the
 # contract against this exported input/EGL/surface surface before compiling Mutter files.
-cp "$X11/linux-build/patches/xios/xios_surface.h" "$X11/wayland/xios_egl.h" \
+cp "$X11/apps/shared/XiosProtocol.h" \
+   "$X11/linux-build/patches/xios/xios_surface.h" "$X11/wayland/xios_egl.h" \
    "$X11/wayland/xios_metal_sync.h" \
    "$X11/wayland/xios_input_socket.h" \
    /out/xios-glue-include/

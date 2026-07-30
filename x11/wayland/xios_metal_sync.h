@@ -4,10 +4,7 @@
 #include <EGL/egl.h>
 #include <stddef.h>
 #include <stdint.h>
-
-#ifndef XIOS_METAL_EVENT_TOKEN_SIZE
-#define XIOS_METAL_EVENT_TOKEN_SIZE 32u
-#endif
+#include "XiosProtocol.h"
 
 /*
  * Export an ANGLE/Metal producer fence through the Xios Metal-event broker.
@@ -17,8 +14,7 @@
  * and is stable until process exit. `value` is the monotonically increasing
  * event value that the consumer GPU must wait for before sampling the IOSurface.
  * Returns 1 when EGL_ANGLE_metal_shared_event_sync is active. A 0 return must
- * fail production presentation; callers may use a CPU barrier only behind an
- * explicit diagnostic opt-in.
+ * fail presentation; there is no CPU synchronization fallback.
  */
 int xios_metal_sync_signal(EGLDisplay display,
                            const void **token,

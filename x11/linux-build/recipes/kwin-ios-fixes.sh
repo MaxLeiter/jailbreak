@@ -112,7 +112,7 @@ fi
 # iOS/ANGLE clients use the local iosc_iosurface protocol instead of dma-buf.
 # For KWin first-light, expose the global and wrap imported IOSurfaces as a
 # CPU-readable GraphicsBuffer so the existing QPainter compositor can copy them.
-cp /work/recipes/build_info/iosc-iosurface.xml "$src/src/wayland/protocols/iosc-iosurface.xml"
+cp /work/x11/wayland/iosc-iosurface.xml "$src/src/wayland/protocols/iosc-iosurface.xml"
 if ! grep -q 'ios-bringup-iosurface-protocol' "$src/src/wayland/CMakeLists.txt"; then
     perl -0pi -e 's/target_sources\(kwin PRIVATE/ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml\n    PROTOCOL \${PROJECT_SOURCE_DIR}\/src\/wayland\/protocols\/iosc-iosurface.xml\n    BASENAME iosc-iosurface\n) # ios-bringup-iosurface-protocol\n\ntarget_sources(kwin PRIVATE\n    ioscclientbuffer.cpp/g' "$src/src/wayland/CMakeLists.txt"
 fi

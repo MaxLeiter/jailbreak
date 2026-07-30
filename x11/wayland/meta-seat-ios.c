@@ -18,6 +18,14 @@
 #include "backends/ios/meta-virtual-input-device-ios.h"
 #include "clutter/clutter.h"
 
+enum
+{
+  PROP_0,
+
+  /* ClutterSeat property overridden by the always-touch-first iOS seat. */
+  PROP_TOUCH_MODE,
+};
+
 struct _MetaSeatIOS
 {
   ClutterSeat parent;
@@ -33,6 +41,25 @@ struct _MetaSeatIOS
 };
 
 G_DEFINE_TYPE (MetaSeatIOS, meta_seat_ios, CLUTTER_TYPE_SEAT)
+
+static void
+meta_seat_ios_get_property (GObject    *object,
+                            guint       prop_id,
+                            GValue     *value,
+                            GParamSpec *pspec)
+{
+  switch (prop_id)
+    {
+    case PROP_TOUCH_MODE:
+      /* The iPad's built-in touchscreen remains available when a hardware
+       * pointer or keyboard is attached, so pointer presence must not make
+       * GNOME treat this seat as a non-touch desktop. */
+      g_value_set_boolean (value, TRUE);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+    }
+}
 
 static ClutterInputDevice *
 create_core_device (MetaSeatIOS              *self,
@@ -214,6 +241,7 @@ meta_seat_ios_class_init (MetaSeatIOSClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
   ClutterSeatClass *seat_class = CLUTTER_SEAT_CLASS (klass);
 
+  object_class->get_property = meta_seat_ios_get_property;
   object_class->constructed = meta_seat_ios_constructed;
   object_class->finalize = meta_seat_ios_finalize;
 
@@ -231,6 +259,9 @@ meta_seat_ios_class_init (MetaSeatIOSClass *klass)
   seat_class->create_virtual_device = meta_seat_ios_create_virtual_device;
   seat_class->get_supported_virtual_device_types =
     meta_seat_ios_get_supported_virtual_device_types;
+
+  g_object_class_override_property (object_class, PROP_TOUCH_MODE,
+                                    "touch-mode");
 }
 
 ClutterSeat *

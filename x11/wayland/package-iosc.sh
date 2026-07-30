@@ -40,7 +40,7 @@ fi
 mkdir -p "$OUTDIR"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.33"
+VER="0.9.34"
 ARCH="$XIOS_DEB_ARCH"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -65,8 +65,7 @@ mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$STAGE/DEBIAN"
 
 # 1. compositor binary -> /var/jb/usr/local/bin, signed with the GPU entitlement
 #    set (AGX/IOGPU/IOSurface IOKit + task_for_pid, NO no-container). Without these
-#    iosc cannot reach the GPU and fails closed; see iosc-gl-ent.xml. The incomplete
-#    CPU compositor is available only with IOSC_ALLOW_CPU_DIAGNOSTIC=1.
+#    iosc cannot reach the GPU and fails closed; see iosc-gl-ent.xml.
 cp "$BINDIR/iosc" "$BIN/iosc"
 chmod 0755 "$BIN/iosc"
 ENT_RENDERED="$STAGEROOT/iosc-gl-ent.xml"

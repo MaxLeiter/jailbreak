@@ -37,39 +37,39 @@ the server.
         |   Xios.app  (the app iOS sees; "X11")     |
         +------^---------------------------+--------+
      IOSurface |                           | UIKit input
-        +------+----------+       +--------+------------------+
-        |  Xios (X11)     |       |  iosc (Wayland)           |
-        |  Xvfb-derived   |       |  libwayland-server        |
-        |  software       |       |  GPU compositor           |
-        +------^----------+       +--------^------------------+
-      X11 proto |                  Wayland | proto
-        +------+----------+       +--------+------------------+
-        |  X11 apps (CPU) |       |  GTK4 / GNOME apps        |
-        +-----------------+       +--------^------------------+
-                                           | GLES
-                                  +--------+------------------+
-                                  |  ANGLE -> Metal -> A10 GPU|
-                                  +---------------------------+
+        +---------------------+---------------------+
+        | iosc / Mutter / nested KWin (Wayland)    |
+        | hardware compositor + mandatory GPU sync |
+        +----------^-------------------^------------+
+           Wayland |                   | Xwayland
+        +----------+---------+  +------+--------------------+
+        | GTK / GNOME / Qt   |  | X11 apps, glamor + ANGLE |
+        +----------^---------+  +------+--------------------+
+                   | GLES              | GLES
+        +----------+-------------------+------------+
+        |             ANGLE -> Metal -> A10 GPU     |
+        +-------------------------------------------+
 ```
 
-Both servers produce the same output `IOSurface`, so they are interchangeable
-from the app's point of view. Xios is an Xvfb-derived X server that draws into an
-`IOSurface`; X11 clients render in software. iosc is a clean-room
-`libwayland-server` compositor that blends client surfaces on the GPU and routes
-input through `wl_seat`.
+The interactive stack has one rendering architecture: a Wayland compositor
+produces the output `IOSurface`, and X11 applications run through hardware-only
+Xwayland. The old software-rendered, Xvfb-derived `Xios` server has been retired;
+Xvfb remains only as a headless bring-up/debug utility.
 
-On the Wayland path a GTK4 app renders GLES through ANGLE into its own
+GTK4 and accelerated Xwayland clients render GLES through ANGLE into their own
 `IOSurface`, iosc adopts that as a Metal texture and composites it, and the app
-scans the result out. No CPU copy happens anywhere along that path.
+scans the result out after waiting on the producer's brokered GPU fence. No CPU
+copy or CPU synchronization fallback exists on that path.
 
 ## Three ways to run a desktop
 
-Install one flavor package; each pulls in the shared `xios-core` base.
+Install one flavor package. Every flavor pulls in the shell-independent
+`xios-runtime`; fullscreen desktop flavors additionally pull in `xios-core`.
 
 - **Native mode** (`xios-native`) - X11/Wayland apps can show up on the Home
   Screen and launch as per-window iPadOS apps. The core path exists; host-window
   validation and polish are still in progress.
-- **iosc desktop** (in every flavor, via `xios-core`) - the compositor's own
+- **iosc desktop** (fullscreen flavors, via `xios-core`) - the compositor's own
   tablet-first shell: a panel with launchers, a dock, an overview, and a
   wallpaper. Runs interactively on device today.
 - **Bring your own DE** - full upstream environments. GNOME Shell 46 works on
@@ -86,9 +86,10 @@ app is unsigned), then install one flavor:
 apt install xios-gnome      # or xios-kde, xios-native, xios-x11
 ```
 
-That pulls in the display app (Home Screen icon "X11"), the compositor, the GPU
-stack, and the session launcher. Open the app and pick a session, or run
-`xios-session gnome` from a shell. Full instructions, including troubleshooting:
+GNOME, KDE, and X11 pull in the display app (Home Screen icon "X11"), compositor,
+GPU stack, and session launcher. Native installs the compositor runtime and
+per-app iPadOS launcher service without the fullscreen display app or desktop
+shell. Full instructions, including troubleshooting:
 [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) and
 [xios.maxleiter.com/try](https://xios.maxleiter.com/try).
 

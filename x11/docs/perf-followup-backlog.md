@@ -102,12 +102,10 @@ P2.8 ✅ DONE before 2026-07-02 — kgx launchers use `kgx -T iosc-kgx -- /var/j
   `libgtop-2.0-11 2.41.3+ios2` package is built; only device UI smoke remains.
 - libei/libeis links-only shim (recipes/libei.mk:5-12): input capture / remote-desktop input NON-FUNCTIONAL by design, inert feature. Same pattern as stubbed libdrm.
 - xios-login1-stub (wayland/xios-login1-stub.c): answers the logind calls gnome-session/gsd make; no real session/power management — intended.
-- The incomplete top-surface-only CPU compositor remains solely behind
-  `IOSC_ALLOW_CPU_DIAGNOSTIC=1`; production initialization and runtime GPU loss
-  fail closed.
-- The X11 flavor uses rootless Xwayland on GPU-accelerated iosc. The legacy
-  bare Xios server, Xvfb, and VNC remain separately installable diagnostics and
-  are no longer dependencies or recommendations of the flavor meta.
+- iosc has no CPU compositor or CPU-sync fallback; GPU initialization, shared-event
+  creation, and runtime GPU loss all fail closed.
+- The X11 flavor uses hardware-only rootless Xwayland on GPU-accelerated iosc.
+  Xvfb and VNC remain separate headless/remote tools.
 - split-shell cairo/pango CPU renderer — adequate for bar/dock chrome; renderer may be reused for native-mode window chrome.
   RE-CONFIRMED 2026-07-29: still the bar/dock path (iosc-shell/shell-draw.h:244-247 builds a
   `cairo_image_surface_create_for_data` + `cairo_t` and paints on the CPU). Note the `ngl`

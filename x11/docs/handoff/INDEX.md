@@ -21,7 +21,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 5. **gnome-session.md** — GNOME session layer + the shell boot. First light achieved; current work is packaging/persistence/polish.
 6. **gtk4-typelibs.md** — on-device GObject-Introspection typelibs. The boot-critical scan work is packaged as `xios-gnome-typelibs 0.2.0`; ATK/AT-SPI version alignment remains.
 7. **kde-kf6.md** — Qt6 modules + KF6 + KWin first-light package work.
-8. **native-ipados.md** — the native per-window iPad flavor. Runtime-coexists with classic Xios.
+8. **native-ipados.md** — the native per-window iPad flavor. Runtime-coexists with the fullscreen desktop.
 9. **session-launcher.md** — the flavor switcher (CLI + daemon + in-app picker).
 10. **svg-loader.md** — real `librsvg`/GdkPixbuf SVG loader audit for GTK/GNOME icon themes.
 11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
@@ -31,7 +31,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 15. **loose-ends-audit.md** — repository-wide 2026-07-18 closure ledger: completed host work, immutable package queue, intentional shims, real port blockers, and deferred device proof.
 
 ## Current headline status
-- **Full desktop input is implemented locally (2026-07-19):** both the classic Xios app and
+- **Full desktop input is implemented locally (2026-07-19):** both the fullscreen Xios app and
   native per-window host now consume raw Game Controller HID keyboard transitions, preserve
   held keys/chords, map Command to Super, forward Caps/Num lock, support hover plus five mouse
   buttons, and distinguish continuous trackpad scrolling from discrete wheel scrolling. iosc

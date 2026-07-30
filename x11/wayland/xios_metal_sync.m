@@ -80,7 +80,7 @@ static int initialize_event_locked(EGLDisplay display)
         return 0;
 
     MTLSharedEventHandle *handle = [event newSharedEventHandle];
-    unsigned char token[XIOS_METAL_EVENT_TOKEN_SIZE];
+    unsigned char token[XIOS_GPU_FENCE_TOKEN_SIZE];
     int published = xios_metal_event_broker_publish(handle, token);
     [handle release];
     if (!published) {
@@ -94,12 +94,12 @@ static int initialize_event_locked(EGLDisplay display)
     s_state.display = display;
     s_state.event = event;
     s_state.token =
-        [[NSData alloc] initWithBytes:token length:XIOS_METAL_EVENT_TOKEN_SIZE];
+        [[NSData alloc] initWithBytes:token length:XIOS_GPU_FENCE_TOKEN_SIZE];
     s_state.value = 0;
     fprintf(stderr,
             "xios_metal_sync: cross-process GPU fence enabled "
             "(broker token, %u bytes)\n",
-            XIOS_METAL_EVENT_TOKEN_SIZE);
+            XIOS_GPU_FENCE_TOKEN_SIZE);
     return 1;
 }
 
@@ -169,7 +169,7 @@ int xios_metal_sync_signal(EGLDisplay display,
 
 void *xios_metal_sync_import_event(const void *token, size_t token_size)
 {
-    if (!token || token_size != XIOS_METAL_EVENT_TOKEN_SIZE)
+    if (!token || token_size != XIOS_GPU_FENCE_TOKEN_SIZE)
         return NULL;
 
     /* One producer token is reused by all of its swapchain buffers. Fetch the

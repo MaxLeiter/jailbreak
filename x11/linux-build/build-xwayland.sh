@@ -15,9 +15,6 @@
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-xwayland.sh
 #
 # --entrypoint bash, not sh: the image's sh is dash, which rejects this script's `set -o pipefail`.
-#
-# X0 (software wl_shm, first-light/bisect) vs X1 (default, GPU glamor):
-#   docker run ... -e XWAYLAND_GLAMOR=false ...   # X0
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
@@ -99,7 +96,6 @@ fi
 mkdir -p build_info build_misc/entitlements
 cp -v /work/recipes/build_info/*.control build_info/ 2>/dev/null || true
 cp -v /work/recipes/build_info/xwayland-glamor-iosurface.c build_info/
-cp -v /work/recipes/build_info/iosc-iosurface.xml build_info/
 # The SIGN macro reads entitlements from build_misc/entitlements/ (NOT build_info/).
 cp -v /work/recipes/build_info/xwayland-ent.xml build_misc/entitlements/
 
@@ -149,9 +145,8 @@ Libs: -L$XIOS_PREFIX/usr/lib -lEGL
 Cflags: -I\${includedir}
 PC
 
-echo "==> [6/6] build libxcvt + xwayland (glamor=${XWAYLAND_GLAMOR:-true})"
+echo "==> [6/6] build libxcvt + hardware-only Xwayland"
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
-  XWAYLAND_GLAMOR=${XWAYLAND_GLAMOR:-true} \
   DEB_LIBIOSEXEC_V=1.3.1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 # Package the runtime deps Xwayland links that aren't already Procursus debs, plus xwayland itself.
@@ -162,7 +157,7 @@ NEW_FP="$(sha256sum \
   /work/ports/xwayland/patches/series \
   /work/ports/xwayland/patches/*.patch \
   /work/recipes/build_info/xwayland-glamor-iosurface.c \
-  /work/recipes/build_info/iosc-iosurface.xml | sha256sum | awk '{print $1}')"
+  /work/x11/wayland/iosc-iosurface.xml | sha256sum | awk '{print $1}')"
 OLD_FP="$(cat "$XF" 2>/dev/null || true)"
 if [ -d "$XW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
   echo "==> wiping stale xwayland build after patch/backend changes"
@@ -189,5 +184,5 @@ for dir in libxcvt libxshmfence libdrm xwayland; do
   done
 done
 [ "$found" = 1 ] || { echo "!! no xwayland debs produced"; exit 1; }
-echo "==> done. xwayland X0 bundle in /out:"
+echo "==> done. hardware Xwayland bundle in /out:"
 ls -1 /out/xwayland*.deb /out/libxcvt0*.deb /out/libxshmfence1*.deb /out/libdrm2*.deb 2>/dev/null || true

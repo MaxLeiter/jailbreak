@@ -1,3 +1,0 @@
-# The Xios executable contains target-specific XKB, fontpath, socket, and shell paths.
-# Add rootful targets only after staging a target-built Xios binary.
-rootless-1900

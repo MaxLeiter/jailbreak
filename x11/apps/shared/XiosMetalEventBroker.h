@@ -2,11 +2,9 @@
 #define XIOS_METAL_EVENT_BROKER_H
 
 #include <stddef.h>
+#include "XiosProtocol.h"
 
 #define XIOS_METAL_EVENT_BROKER_SERVICE "com.max.xios.metal-event-broker"
-#ifndef XIOS_METAL_EVENT_TOKEN_SIZE
-#define XIOS_METAL_EVENT_TOKEN_SIZE 32u
-#endif
 
 #ifdef __OBJC__
 /*
@@ -36,7 +34,7 @@ typedef void *xpc_object_t;
  * the only place the Objective-C Metal handle crosses processes; token bytes
  * are safe to carry on the existing Wayland/app sockets. */
 int xios_metal_event_broker_publish(MTLSharedEventHandle *handle,
-                                    unsigned char token[XIOS_METAL_EVENT_TOKEN_SIZE]);
+                                    unsigned char token[XIOS_GPU_FENCE_TOKEN_SIZE]);
 
 /* Fetch the handle and recreate the event on device. The publisher keeps its
  * XPC connection alive, so the same token can be imported by reconnecting
