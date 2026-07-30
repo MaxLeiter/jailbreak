@@ -62,6 +62,7 @@
 #include "xios_input_socket.h"   /* shared AF_UNIX input reader (also used by MetaBackendIOS) */
 #include "iosc-clipboard-bridge.h"   /* Linux<->iOS clipboard sync over the dedicated socket */
 #include "iosc_xwm.h"                /* rootless Xwayland X window manager (opt-in via IOSC_XWAYLAND) */
+#include "iosc_status.h"             /* shared runtime-visibility channel (docs/ios-platform-features.md §0) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8997,6 +8998,12 @@ int main(int argc, char **argv)
     } else if (iosc_env_truthy(getenv("IOSC_NATIVE"))) {
         g_native_mode = 1;
     }
+    /* Runtime-behaviour announcements (docs/ios-platform-features.md §0) are
+     * attributed to a producer name. The classic and native compositors can be up
+     * at the same time, so they publish separate tables — otherwise whichever
+     * started last would silently overwrite the other's pacing/upscale claim. */
+    iosc_status_set_producer(g_native_mode ? "iosc-native" : "iosc");
+
     if (iosc_env_truthy(getenv("IOSC_FULLSCREEN_TOPLEVELS")))
         g_fullscreen_toplevels = 1;
     if (g_fullscreen_toplevels)
@@ -9138,5 +9145,7 @@ int main(int argc, char **argv)
     wl_display_destroy(g_display);
     if (g_native_mode) xios_canvas_server_stop();
     xios_server_stop();
+    /* A latched table that outlives its producer reads as live state. */
+    iosc_status_clear();
     return 0;
 }

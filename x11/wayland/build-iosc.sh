@@ -283,6 +283,7 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/wayland/xios_egl.c" \
     "$X11/wayland/xios_metal_sync.m" \
     "$X11/apps/shared/XiosMetalEventBroker.m" \
+    "$X11/apps/shared/iosc_status.c" \
     "$X11/wayland/xios_canvas.c" \
     "$X11/wayland/iosc_input.c" \
     "$X11/wayland/xios_input_socket.c" \

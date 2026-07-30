@@ -48,6 +48,9 @@ targets:
       - path: ../shared/XiosMetalEventBroker.m
         compilerFlags:
           - -fno-objc-arc
+      # Same runtime-visibility producer iosc links (docs/ios-platform-features.md §0),
+      # so the app's pacing/upscale state lands in the same `xios-status` table.
+      - path: ../shared/iosc_status.c
       - path: Resources/Assets.xcassets
     info:
       path: Resources/Info.generated.plist
