@@ -1,0 +1,132 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -8,6 +8,11 @@
+ project(warzone2100)
+ 
+ include(CMakeDependentOption)
++OPTION(WZ_XIOS "Build a Unix-style SDL/Wayland target for Xios" OFF)
++if(WZ_XIOS)
++	add_compile_definitions(WZ_XIOS=1 SDL_MAIN_HANDLED=1)
++endif()
++
+ 
+ OPTION(WZ_ENABLE_WARNINGS "Enable (additional) warnings" OFF)
+ OPTION(WZ_ENABLE_WARNINGS_AS_ERRORS "Enable compiler flags that treat (most) warnings as errors" ON)
+@@ -90,7 +91,7 @@
+ 	# Set default WZ_DATADIR based on target platform
+ 	if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+ 		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/data")
+-	elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++	elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/warzone2100${WZ_OUTPUT_NAME_SUFFIX}") # not used on macOS (macOS always creates an app bundle)
+ 	else()
+ 		set(WZ_DATADIR "${CMAKE_INSTALL_DATAROOTDIR}/warzone2100${WZ_OUTPUT_NAME_SUFFIX}")
+@@ -125,7 +126,7 @@
+ 	endif()
+ endif()
+ 
+-if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++if(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 	# Enable macOS-specific find scripts
+ 	list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/platforms/macos/cmake")
+ 
+--- a/lib/framework/wzglobal.h
++++ b/lib/framework/wzglobal.h
+@@ -73,7 +73,10 @@
+    UNIX               - Any UNIX BSD/SYSV system
+ */
+ 
+-#if defined(__APPLE__) && (defined(__GNUC__) || defined(__xlC__) || defined(__xlc__))
++#if defined(WZ_XIOS)
++#  define WZ_OS_UNIX
++#  define WZ_OS_BSD4
++#elif defined(__APPLE__) && (defined(__GNUC__) || defined(__xlC__) || defined(__xlc__))
+ #  define WZ_OS_DARWIN
+ #  define WZ_OS_BSD4
+ #  ifdef __LP64__
+--- a/lib/framework/CMakeLists.txt
++++ b/lib/framework/CMakeLists.txt
+@@ -8,7 +8,7 @@
+ file(GLOB HEADERS "*.h")
+ file(GLOB SRC "*.cpp")
+ 
+-if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++if(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 	list(APPEND SRC "cocoa_wrapper.mm")
+ endif()
+ 
+@@ -28,9 +28,9 @@
+ if(MSVC)
+ 	target_compile_definitions(framework PUBLIC "_CRT_SECURE_NO_WARNINGS")
+ endif()
+-if (APPLE)
++if (APPLE AND NOT WZ_XIOS)
+ 	target_link_libraries(framework PUBLIC "-framework ApplicationServices" "-framework AppKit")
+-endif (APPLE)
++endif()
+ 
+ # Detect endianness (for crc.cpp)
+ if (NOT DEFINED CMAKE_CXX_BYTE_ORDER AND CMAKE_VERSION VERSION_LESS 3.20)
+--- a/lib/sdl/CMakeLists.txt
++++ b/lib/sdl/CMakeLists.txt
+@@ -7,7 +7,7 @@
+ file(GLOB HEADERS "*.h")
+ file(GLOB SRC "*.cpp")
+ 
+-if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++if(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 	list(APPEND SRC "cocoa_sdl_helpers.mm" "cocoa_wz_menus.mm")
+ endif()
+ 
+--- a/lib/sdl/main_sdl.cpp
++++ b/lib/sdl/main_sdl.cpp
+@@ -87,6 +87,9 @@
+ int realmain(int argc, char *argv[]);
+ 
+ // the main stub which calls realmain() aka, WZ's main startup routines
++#if defined(WZ_XIOS)
++# define SDL_MAIN_HANDLED
++#endif
+ #include <SDL3/SDL_main.h>
+ int main(int argc, char *argv[])
+ {
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -41,7 +41,7 @@
+ endif()
+ 
+ # On macOS, generate the Info.plist file with updated version info at *build-time*
+-if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++if(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 	set(_info_plist_template_file "${PROJECT_SOURCE_DIR}/platforms/macos/Resources/Warzone-Info.plist.in")
+ 	set(_info_plist_output_file "${CMAKE_CURRENT_BINARY_DIR}/Warzone-Info.plist")
+ 	add_custom_command(
+@@ -446,7 +446,7 @@
+ 
+ endfunction()
+ 
+-if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++if(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 
+ 	SET_TARGET_PROPERTIES(warzone2100 PROPERTIES MACOSX_BUNDLE TRUE)
+ 	SET_TARGET_PROPERTIES(warzone2100 PROPERTIES OUTPUT_NAME "Warzone 2100")
+@@ -782,7 +782,7 @@
+ 	ADD_TARGET_LINK_FLAGS_IF_SUPPORTED(TARGET warzone2100 LINK_FLAGS "-Wl,-z,now" CACHED_RESULT_NAME LINK_FLAG_WL_Z_NOW_SUPPORTED)
+ endif()
+ 
+-if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++if(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 	if (NOT BUILD_SHARED_LIBS)
+ 		ADD_TARGET_LINK_FLAGS_IF_SUPPORTED(TARGET warzone2100 LINK_FLAGS "-Wl,-sectcreate,__RESTRICT,__restrict,/dev/null" CONFIG RELEASE CACHED_RESULT_NAME LINK_FLAG_WL_SECTCREATE_RESTRICT_SUPPORTED)
+ 	endif()
+--- a/pkg/CMakeLists.txt
++++ b/pkg/CMakeLists.txt
+@@ -286,7 +286,7 @@
+ 	set(CPACK_NSIS_HELP_LINK "https://wz2100.net")
+ 	set(CPACK_NSIS_URL_INFO_ABOUT "https://wz2100.net")
+ 
+-elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
++elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin" AND NOT WZ_XIOS)
+ 	# macOS builds
+ 
+ 	# Only install the "Core" component (the application), as the macOS app bundle contains all of the data & supporting files & languages

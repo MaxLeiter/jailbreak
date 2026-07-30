@@ -29,6 +29,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 13. **wayland-extra-apps.md** — the next requested standalone app wave: swaybg, tofi, waybar, swayimg, yad, nwg-look, Geary/WebKitGTK, Gnumeric, and Transmission.
 14. **xfce.md** — the previously stranded XFCE 4.16 recipe chain, its new reproducible build lane, and the gates before it can become a supported session flavor.
 15. **loose-ends-audit.md** — repository-wide 2026-07-18 closure ledger: completed host work, immutable package queue, intentional shims, real port blockers, and deferred device proof.
+16. **games.md** — SDL2/SDL3 strategy-game wave: OpenTTD, Warzone 2100, Battle for Wesnoth, and 0 A.D.; shared dependencies, packaging, and isolated device proof.
 
 ## Current headline status
 - **Full desktop input is implemented locally (2026-07-19):** both the fullscreen Xios app and

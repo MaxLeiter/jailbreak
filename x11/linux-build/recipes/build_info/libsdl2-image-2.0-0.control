@@ -1,0 +1,10 @@
+Package: libsdl2-image-2.0-0
+Version: @DEB_SDL2_IMAGE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/libsdl-org/SDL_image
+Depends: libsdl2-2.0-0, libpng16-16, libjpeg62-turbo
+Description: SDL2 image loading library for Xios games
+ SDL2_image with PNG, JPEG, BMP, TGA, and native Xios SDL2 support.

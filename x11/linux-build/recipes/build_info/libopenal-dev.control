@@ -1,0 +1,10 @@
+Package: libopenal-dev
+Version: @DEB_OPENAL_SOFT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://openal-soft.org/
+Depends: libopenal1 (= @DEB_OPENAL_SOFT_V@)
+Description: Development files for Xios OpenAL Soft
+ Headers, pkg-config metadata, CMake package metadata, and dylib aliases.

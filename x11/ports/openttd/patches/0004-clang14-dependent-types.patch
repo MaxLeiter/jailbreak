@@ -1,0 +1,108 @@
+diff --git a/src/core/convertible_through_base.hpp b/src/core/convertible_through_base.hpp
+--- a/src/core/convertible_through_base.hpp
++++ b/src/core/convertible_through_base.hpp
+@@ -37,14 +37,14 @@ template <typename Container, typename Index>
+ class TypedIndexContainer : public Container {
+ public:
+-	Container::reference at(size_t pos) { return this->Container::at(pos); }
+-	Container::reference at(const Index &pos) { return this->Container::at(pos.base()); }
++	typename Container::reference at(size_t pos) { return this->Container::at(pos); }
++	typename Container::reference at(const Index &pos) { return this->Container::at(pos.base()); }
+ 
+-	Container::const_reference at(size_t pos) const { return this->Container::at(pos); }
+-	Container::const_reference at(const Index &pos) const { return this->Container::at(pos.base()); }
++	typename Container::const_reference at(size_t pos) const { return this->Container::at(pos); }
++	typename Container::const_reference at(const Index &pos) const { return this->Container::at(pos.base()); }
+ 
+-	Container::reference operator[](size_t pos) { return this->Container::operator[](pos); }
+-	Container::reference operator[](const Index &pos) { return this->Container::operator[](pos.base()); }
++	typename Container::reference operator[](size_t pos) { return this->Container::operator[](pos); }
++	typename Container::reference operator[](const Index &pos) { return this->Container::operator[](pos.base()); }
+ 
+-	Container::const_reference operator[](size_t pos) const { return this->Container::operator[](pos); }
+-	Container::const_reference operator[](const Index &pos) const { return this->Container::operator[](pos.base()); }
++	typename Container::const_reference operator[](size_t pos) const { return this->Container::operator[](pos); }
++	typename Container::const_reference operator[](const Index &pos) const { return this->Container::operator[](pos.base()); }
+ };
+diff --git a/src/core/enum_type.hpp b/src/core/enum_type.hpp
+--- a/src/core/enum_type.hpp
++++ b/src/core/enum_type.hpp
+@@ -180 +180 @@
+-	using EnumType = BaseClass::ValueType;
++	using EnumType = typename BaseClass::ValueType;
+@@ -199 +199 @@
+-	static constexpr size_t DecayValueType(const BaseClass::ValueType &value) { return to_underlying(value); }
++	static constexpr size_t DecayValueType(const typename BaseClass::ValueType &value) { return to_underlying(value); }
+ };
+diff --git a/src/core/flatset_type.hpp b/src/core/flatset_type.hpp
+--- a/src/core/flatset_type.hpp
++++ b/src/core/flatset_type.hpp
+@@ -23 +23 @@
+-	using const_iterator = std::vector<Tkey>::const_iterator;
++	using const_iterator = typename std::vector<Tkey>::const_iterator;
+diff --git a/src/misc/lrucache.hpp b/src/misc/lrucache.hpp
+--- a/src/misc/lrucache.hpp
++++ b/src/misc/lrucache.hpp
+@@ -24,7 +24,7 @@ class LRUCache {
+ private:
+ 	using PairType = std::pair<Tkey, Tdata>;
+ 	using StorageType = std::list<PairType>;
+-	using IteratorType = StorageType::iterator;
++	using IteratorType = typename StorageType::iterator;
+ 	using LookupType = std::unordered_map<Tkey, IteratorType, Thash, Tequality>;
+ 
+ 	StorageType data; ///< Ordered list of all items.
+diff --git a/src/misc/dbg_helpers.h b/src/misc/dbg_helpers.h
+--- a/src/misc/dbg_helpers.h
++++ b/src/misc/dbg_helpers.h
+@@ -90 +90 @@ void DumpDebugValue(std::back_insert_iterator<std::string> &output, const T &val
+-			if (!value.Test(static_cast<E::EnumType>(i))) continue;
++			if (!value.Test(static_cast<typename E::EnumType>(i))) continue;
+@@ -93 +93 @@ void DumpDebugValue(std::back_insert_iterator<std::string> &output, const T &val
+-			value.Reset(static_cast<E::EnumType>(i));
++			value.Reset(static_cast<typename E::EnumType>(i));
+diff --git a/src/core/pool_func.hpp b/src/core/pool_func.hpp
+--- a/src/core/pool_func.hpp
++++ b/src/core/pool_func.hpp
+@@ -104 +104 @@ Titem *AllocateRaw()
+-	item->index = static_cast<Tindex>(static_cast<Tindex::BaseType>(index));
++	item->index = static_cast<Tindex>(static_cast<typename Tindex::BaseType>(index));
+diff --git a/src/script/squirrel_helper.hpp b/src/script/squirrel_helper.hpp
+--- a/src/script/squirrel_helper.hpp
++++ b/src/script/squirrel_helper.hpp
+@@ -103 +103 @@
+-			return T{static_cast<T::BaseType>(tmp)};
++			return T{static_cast<typename T::BaseType>(tmp)};
+diff --git a/src/strgen/strgen.h b/src/strgen/strgen.h
+--- a/src/strgen/strgen.h
++++ b/src/strgen/strgen.h
+@@ -138,5 +138,7 @@ struct CmdPair {
+ 	const CmdStruct *cmd;
+ 	std::string param;
+ 
++	CmdPair(const CmdStruct *cmd, std::string param) : cmd(cmd), param(std::move(param)) {}
++
+ 	auto operator<=>(const CmdPair &other) const = default;
+ };
+diff --git a/src/pathfinder/yapf/yapf_ship_regions.cpp b/src/pathfinder/yapf/yapf_ship_regions.cpp
+--- a/src/pathfinder/yapf/yapf_ship_regions.cpp
++++ b/src/pathfinder/yapf/yapf_ship_regions.cpp
+@@ -27,6 +27,9 @@ static constexpr int NODE_LIST_HASH_BITS_CLOSED = 12;
+ struct WaterRegionPatchKey {
+ 	WaterRegionPatchDesc water_region_patch;
+ 
++	WaterRegionPatchKey() = default;
++	explicit WaterRegionPatchKey(const WaterRegionPatchDesc &water_region_patch) : water_region_patch(water_region_patch) {}
++
+ 	inline void Set(const WaterRegionPatchDesc &water_region_patch)
+ 	{
+ 		this->water_region_patch = water_region_patch;
+diff --git a/src/saveload/saveload.cpp b/src/saveload/saveload.cpp
+--- a/src/saveload/saveload.cpp
++++ b/src/saveload/saveload.cpp
+@@ -1952 +1952 @@ static std::vector<SaveLoad> SlParseTableHeader(ChunkDataReadBuffer &buf, const S
+-					saveloads.emplace_back(std::move(key), saveload_type, ((VarType)type & SLE_FILE_TYPE_MASK) | SLE_VAR_NULL, 1, SL_MIN_VERSION, SL_MAX_VERSION, nullptr, 0, std::move(handler));
++					saveloads.push_back(SaveLoad{std::move(key), saveload_type, ((VarType)type & SLE_FILE_TYPE_MASK) | SLE_VAR_NULL, 1, SL_MIN_VERSION, SL_MAX_VERSION, nullptr, 0, std::move(handler)});
+@@ -2059 +2059 @@ static std::vector<SaveLoad> SlCompatTableHeader(const SaveLoadCompatTable &slct)
+-			saveloads.emplace_back("", SL_NULL, GetVarFileType(slc.null_type) | SLE_VAR_NULL, slc.null_length, slc.version_from, slc.version_to, nullptr, 0, nullptr);
++			saveloads.push_back(SaveLoad{"", SL_NULL, GetVarFileType(slc.null_type) | SLE_VAR_NULL, slc.null_length, slc.version_from, slc.version_to, nullptr, 0, nullptr});

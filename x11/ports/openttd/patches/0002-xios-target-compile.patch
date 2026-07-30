@@ -1,0 +1,43 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e19a494..bfcc6d7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -25,7 +25,11 @@ if (EMSCRIPTEN)
+ endif()
+ 
+ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
+-set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
++if(NOT OPENTTD_XIOS)
++    set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
++else()
++    add_definitions(-DOPENTTD_XIOS)
++endif()
+ 
+ # Use GNUInstallDirs to allow customisation
+ # but set our own default data and bin dir
+@@ -240,7 +244,11 @@ include(MSVCFilters)
+ 
+ add_library(openttd_lib OBJECT ${GENERATED_SOURCE_FILES})
+ add_executable(openttd WIN32)
+-add_executable(openttd_test)
++if(OPENTTD_XIOS)
++    add_executable(openttd_test EXCLUDE_FROM_ALL)
++else()
++    add_executable(openttd_test)
++endif()
+ set_target_properties(openttd PROPERTIES OUTPUT_NAME "${BINARY_NAME}")
+ # All other files are added via target_sources()
+ 
+diff --git a/src/stdafx.h b/src/stdafx.h
+index f264bf6..01c72e7 100644
+--- a/src/stdafx.h
++++ b/src/stdafx.h
+@@ -23,7 +23,7 @@
+ #	define _CRT_NONSTDC_NO_WARNINGS
+ #endif
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(OPENTTD_XIOS)
+ #	include "os/macosx/osx_stdafx.h"
+ #else
+ /* It seems that we need to include stdint.h before anything else

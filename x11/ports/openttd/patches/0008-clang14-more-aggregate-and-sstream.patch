@@ -1,0 +1,47 @@
+--- a/src/company_gui.cpp
++++ b/src/company_gui.cpp
+@@ -1571,6 +1571,12 @@
+ 		StringID label;
+ 		uint count;
+ 		Money cost;
++
++		InfrastructureItem(InfrastructureItemType item_type, StringID item_label = STR_NULL,
++				uint item_count = 0, Money item_cost = 0) :
++			type{item_type}, label{item_label}, count{item_count}, cost{item_cost}
++		{
++		}
+ 	};
+ 
+ 	uint count_width = 0;
+--- a/src/console_cmds.cpp
++++ b/src/console_cmds.cpp
+@@ -10,0 +11 @@
++#include <sstream>
+--- a/src/debug.cpp
++++ b/src/debug.cpp
+@@ -30,4 +30,9 @@
+ struct QueuedDebugItem {
+ 	std::string_view level;   ///< The used debug level.
+ 	std::string message; ///< The actual formatted message.
++
++	QueuedDebugItem(std::string_view level, std::string message) :
++		level(level), message(std::move(message))
++	{
++	}
+ };
+--- a/src/driver.cpp
++++ b/src/driver.cpp
+@@ -10,0 +11 @@
++#include <sstream>
+--- a/src/engine_gui.cpp
++++ b/src/engine_gui.cpp
+@@ -10,0 +11 @@
++#include <sstream>
+--- a/src/fileio.cpp
++++ b/src/fileio.cpp
+@@ -10,0 +11 @@
++#include <sstream>
+--- a/src/town_gui.cpp
++++ b/src/town_gui.cpp
+@@ -10,0 +11 @@
++#include <sstream>

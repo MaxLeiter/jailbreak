@@ -1,0 +1,10 @@
+Package: libenet7
+Version: @DEB_ENET_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: http://enet.bespin.org/
+Depends: libiosexec1 (>= 1.3.1)
+Description: Reliable UDP networking library for Xios
+ ENet provides the reliable UDP transport used by 0 A.D.

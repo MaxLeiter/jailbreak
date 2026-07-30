@@ -1,0 +1,4 @@
+--- a/src/cargotype.cpp
++++ b/src/cargotype.cpp
+@@ -10,0 +11 @@
++#include <sstream>

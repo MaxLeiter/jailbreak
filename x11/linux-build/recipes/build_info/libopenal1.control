@@ -1,0 +1,10 @@
+Package: libopenal1
+Version: @DEB_OPENAL_SOFT_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://openal-soft.org/
+Depends: libpulse0
+Description: OpenAL Soft runtime for Xios games
+ OpenAL Soft built for rootless iOS with PulseAudio as its device backend.

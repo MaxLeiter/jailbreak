@@ -1,0 +1,252 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2891bee..e19a494 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -9,6 +9,8 @@ project(${BINARY_NAME}
+     LANGUAGES CXX
+ )
+ 
++option(OPENTTD_XIOS "Use the Unix SDL desktop backend on Darwin/Xios" OFF)
++
+ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+     message(FATAL_ERROR "In-source builds not allowed. Please run \"cmake ..\" from the build directory. You may need to delete \"${CMAKE_SOURCE_DIR}/CMakeCache.txt\" first.")
+ endif()
+@@ -140,7 +142,7 @@ if(NOT OPTION_DEDICATED)
+         find_package(Xaudio2)
+     else()
+         find_package(Allegro)
+-        if(NOT APPLE)
++        if(NOT APPLE OR OPENTTD_XIOS)
+             find_package(Freetype)
+             find_package(SDL2)
+             find_package(Fluidsynth)
+@@ -153,7 +155,7 @@ if(NOT OPTION_DEDICATED)
+     endif()
+     find_package(OpusFile)
+ endif()
+-if(APPLE)
++if(APPLE AND NOT OPENTTD_XIOS)
+     enable_language(OBJCXX)
+ 
+     find_package(Iconv)
+@@ -181,7 +183,7 @@ check_ipo_supported(RESULT IPO_FOUND)
+ 
+ show_options()
+ 
+-if(UNIX AND NOT APPLE AND NOT OPTION_DEDICATED)
++if(((UNIX AND NOT APPLE) OR OPENTTD_XIOS) AND NOT OPTION_DEDICATED)
+     if(NOT SDL2_FOUND AND NOT ALLEGRO_FOUND)
+         message(FATAL_ERROR "SDL2 or Allegro is required for this platform")
+     endif()
+@@ -192,7 +194,7 @@ if(UNIX AND NOT APPLE AND NOT OPTION_DEDICATED)
+         message(WARNING "Without HarfBuzz and ICU i18n the game will not be able to render right-to-left languages correctly")
+     endif()
+ endif()
+-if(APPLE)
++if(APPLE AND NOT OPENTTD_XIOS)
+     if(NOT AUDIOTOOLBOX_LIBRARY)
+         message(FATAL_ERROR "AudioToolbox is required for this platform")
+     endif()
+@@ -340,7 +342,7 @@ endif()
+ 
+ include(3rdparty/llvm/CheckAtomic)
+ 
+-if(APPLE)
++if(APPLE AND NOT OPENTTD_XIOS)
+     link_package(Iconv TARGET Iconv::Iconv)
+ 
+     target_link_libraries(openttd_lib
+diff --git a/cmake/InstallAndPackage.cmake b/cmake/InstallAndPackage.cmake
+index 78c10a1..1c87737 100644
+--- a/cmake/InstallAndPackage.cmake
++++ b/cmake/InstallAndPackage.cmake
+@@ -7,7 +7,7 @@ if(OPTION_INSTALL_FHS)
+     set(DOCS_DESTINATION_DIR "${CMAKE_INSTALL_DOCDIR}")
+     set(MAN_DESTINATION_DIR "${CMAKE_INSTALL_MANDIR}")
+ else()
+-    if(APPLE)
++    if(APPLE AND NOT OPENTTD_XIOS)
+         set(BINARY_DESTINATION_DIR "../MacOS")
+     else()
+         set(BINARY_DESTINATION_DIR ".")
+@@ -92,7 +92,7 @@ if(OPTION_INSTALL_FHS)
+             COMPONENT manual)
+ endif()
+ 
+-if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
++if(((UNIX AND NOT APPLE) OR OPENTTD_XIOS) AND NOT EMSCRIPTEN)
+     install(DIRECTORY
+                     ${CMAKE_BINARY_DIR}/media/icons
+                     ${CMAKE_BINARY_DIR}/media/pixmaps
+@@ -153,7 +153,7 @@ set(CPACK_PACKAGE_EXECUTABLES "openttd;OpenTTD")
+ set(CPACK_STRIP_FILES YES)
+ set(CPACK_OUTPUT_FILE_PREFIX "bundles")
+ 
+-if(APPLE)
++if(APPLE AND NOT OPENTTD_XIOS)
+     # Stripping would produce unreadable stacktraces.
+     set(CPACK_STRIP_FILES NO)
+     set(CPACK_GENERATOR "Bundle")
+@@ -179,7 +179,7 @@ elseif(WIN32)
+         COMMAND "${CMAKE_SOURCE_DIR}/os/windows/sign.bat" "${BINARY_DESTINATION_DIR}"
+       )
+     endif()
+-elseif(UNIX)
++elseif(UNIX OR OPENTTD_XIOS)
+     # With FHS, we can create deb/rpm/... Without it, they would be horribly broken
+     # and not work. The other way around is also true; with FHS they are not
+     # usable, and only flat formats work.
+diff --git a/cmake/Options.cmake b/cmake/Options.cmake
+index da2d172..c18ed4d 100644
+--- a/cmake/Options.cmake
++++ b/cmake/Options.cmake
+@@ -5,7 +5,7 @@ include(GNUInstallDirs)
+ # set_directory_options()
+ #
+ function(set_directory_options)
+-    if(APPLE)
++    if(APPLE AND NOT OPENTTD_XIOS)
+         set(DEFAULT_PERSONAL_DIR "Documents/OpenTTD")
+         set(DEFAULT_SHARED_DIR "/Library/Application Support/OpenTTD")
+         set(DEFAULT_GLOBAL_DIR "(not set)")
+@@ -13,7 +13,7 @@ function(set_directory_options)
+         set(DEFAULT_PERSONAL_DIR "OpenTTD")
+         set(DEFAULT_SHARED_DIR "(not set)")
+         set(DEFAULT_GLOBAL_DIR "(not set)")
+-    elseif(UNIX)
++    elseif(UNIX OR OPENTTD_XIOS)
+         set(DEFAULT_PERSONAL_DIR ".${BINARY_NAME}")
+         set(DEFAULT_SHARED_DIR "(not set)")
+         set(DEFAULT_GLOBAL_DIR "${CMAKE_INSTALL_FULL_DATADIR}/${BINARY_NAME}")
+@@ -46,7 +46,7 @@ endfunction()
+ function(set_options)
+     option(OPTION_PACKAGE_DEPENDENCIES "Copy dependencies into lib/ for easy packaging (Linux only)" OFF)
+ 
+-    if(UNIX AND NOT APPLE AND NOT OPTION_PACKAGE_DEPENDENCIES)
++    if(((UNIX AND NOT APPLE) OR OPENTTD_XIOS) AND NOT OPTION_PACKAGE_DEPENDENCIES)
+         set(DEFAULT_OPTION_INSTALL_FHS ON)
+     else()
+         set(DEFAULT_OPTION_INSTALL_FHS OFF)
+diff --git a/src/music/CMakeLists.txt b/src/music/CMakeLists.txt
+index cf60e78..095ba1c 100644
+--- a/src/music/CMakeLists.txt
++++ b/src/music/CMakeLists.txt
+@@ -14,7 +14,7 @@ if(NOT OPTION_DEDICATED)
+     add_files(
+         cocoa_m.cpp
+         cocoa_m.h
+-        CONDITION APPLE
++        CONDITION APPLE AND NOT OPENTTD_XIOS
+     )
+ 
+     add_files(
+diff --git a/src/os/macosx/CMakeLists.txt b/src/os/macosx/CMakeLists.txt
+index a494825..f5caf03 100644
+--- a/src/os/macosx/CMakeLists.txt
++++ b/src/os/macosx/CMakeLists.txt
+@@ -8,9 +8,9 @@ add_files(
+     string_osx.cpp
+     string_osx.h
+     survey_osx.cpp
+-    CONDITION APPLE
++    CONDITION APPLE AND NOT OPENTTD_XIOS
+ )
+ 
+-if(APPLE)
++if(APPLE AND NOT OPENTTD_XIOS)
+     target_sources(openttd PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/osx_main.cpp)
+ endif()
+diff --git a/src/os/unix/CMakeLists.txt b/src/os/unix/CMakeLists.txt
+index d5cdcfd..ff46ba6 100644
+--- a/src/os/unix/CMakeLists.txt
++++ b/src/os/unix/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ add_files(
+     crashlog_unix.cpp
+     survey_unix.cpp
+-    CONDITION UNIX AND NOT APPLE
++    CONDITION (UNIX AND NOT APPLE) OR OPENTTD_XIOS
+ )
+ 
+ add_files(
+@@ -16,6 +16,6 @@ add_files(
+     CONDITION Fontconfig_FOUND
+ )
+ 
+-if(UNIX AND NOT APPLE)
++if((UNIX AND NOT APPLE) OR OPENTTD_XIOS)
+     target_sources(openttd PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/unix_main.cpp)
+ endif()
+diff --git a/src/os/unix/unix.cpp b/src/os/unix/unix.cpp
+--- a/src/os/unix/unix.cpp
++++ b/src/os/unix/unix.cpp
+@@ -51,7 +51,7 @@
+ #include <sys/sysctl.h>
+ #endif
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(OPENTTD_XIOS)
+ #	include "../macosx/macos.h"
+ #endif
+ 
+@@ -187,7 +187,7 @@ void ShowInfoI(std::string_view str)
+ 	fmt::print(stderr, "{}\n", str);
+ }
+ 
+-#if !defined(__APPLE__)
++#if !defined(__APPLE__) || defined(OPENTTD_XIOS)
+ void ShowOSErrorBox(std::string_view buf, bool)
+ {
+ 	/* All unix systems, except OSX. Only use escape codes on a TTY. */
+@@ -222,7 +222,7 @@ void OSOpenBrowser(const std::string &url)
+ 	/* Implementation in pre.js */
+ 	EM_ASM({ if (window["openttd_open_url"]) window["openttd_open_url"]($0, $1) }, url.data(), url.size());
+ }
+-#elif !defined( __APPLE__)
++#elif !defined(__APPLE__) || defined(OPENTTD_XIOS)
+ void OSOpenBrowser(const std::string &url)
+ {
+ 	pid_t child_pid = fork();
+@@ -247,7 +247,10 @@ void SetCurrentThreadName([[maybe_unused]] const std::string &thread_name)
+ #if defined(__GLIBC__)
+ 	pthread_setname_np(pthread_self(), thread_name.c_str());
+ #endif /* defined(__GLIBC__) */
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && defined(OPENTTD_XIOS)
++	pthread_setname_np(thread_name.c_str());
++#endif
++#if defined(__APPLE__) && !defined(OPENTTD_XIOS)
+ 	MacOSSetThreadName(thread_name);
+ #endif /* defined(__APPLE__) */
+ }
+diff --git a/src/sound/CMakeLists.txt b/src/sound/CMakeLists.txt
+index 0abd7c0..a3a2272 100644
+--- a/src/sound/CMakeLists.txt
++++ b/src/sound/CMakeLists.txt
+@@ -14,7 +14,7 @@ if(NOT OPTION_DEDICATED)
+     add_files(
+         cocoa_s.cpp
+         cocoa_s.h
+-        CONDITION APPLE
++        CONDITION APPLE AND NOT OPENTTD_XIOS
+     )
+ 
+     add_files(
+diff --git a/src/video/cocoa/CMakeLists.txt b/src/video/cocoa/CMakeLists.txt
+index 0922376..9d25337 100644
+--- a/src/video/cocoa/CMakeLists.txt
++++ b/src/video/cocoa/CMakeLists.txt
+@@ -4,11 +4,11 @@ add_files(
+     cocoa_v.mm
+     cocoa_wnd.h
+     cocoa_wnd.mm
+-    CONDITION APPLE
++    CONDITION APPLE AND NOT OPENTTD_XIOS
+ )
+ 
+ add_files(
+     cocoa_ogl.h
+     cocoa_ogl.mm
+-    CONDITION APPLE AND OPENGL_FOUND
++    CONDITION APPLE AND OPENGL_FOUND AND NOT OPENTTD_XIOS
+ )

@@ -1,0 +1,8 @@
+0001-xios-sdl-darwin-backend.patch
+0002-xios-target-compile.patch
+0003-xios-source-location-compat.patch
+0004-clang14-dependent-types.patch
+0005-clang14-water-region-construction.patch
+0006-clang14-saveload-aggregate.patch
+0007-clang14-sstream-include.patch
+0008-clang14-more-aggregate-and-sstream.patch

@@ -1,0 +1,91 @@
+diff --git a/build/premake/premake5.lua b/build/premake/premake5.lua
+index b681f63..3425de0 100644
+--- a/build/premake/premake5.lua
++++ b/build/premake/premake5.lua
+@@ -1,5 +1,6 @@
+ newoption { trigger = "android", description = "Use non-working Android cross-compiling mode" }
+ newoption { trigger = "coverage", description = "Enable code coverage data collection (GCC only)" }
++newoption { trigger = "xios", description = "Build the SDL Wayland client for rootless iOS" }
+ newoption { trigger = "gles", description = "Use non-working OpenGL ES 2.0 mode" }
+ newoption { trigger = "icc", description = "Use Intel C++ Compiler (Linux only; should use either \"--cc icc\" or --without-pch too, and then set CXX=icpc before calling make)" }
+ newoption { trigger = "jenkins-tests", description = "Configure CxxTest to use the XmlPrinter runner which produces Jenkins-compatible output" }
+@@ -231,6 +232,10 @@ function project_set_build_flags()
+ 		defines { "CONFIG2_GLES=1" }
+ 	end
+ 
++	if _OPTIONS["xios"] then
++		defines { "XIOS=1", "SDL_MAIN_HANDLED=1" }
++	end
++
+ 	if _OPTIONS["without-audio"] then
+ 		defines { "CONFIG2_AUDIO=0" }
+ 	end
+@@ -930,11 +935,13 @@ function setup_all_libs ()
+ 		macosx = { "lib/sysdep/os/osx", "lib/sysdep/os/unix" },
+ 		bsd = { "lib/sysdep/os/bsd", "lib/sysdep/os/unix", "lib/sysdep/os/unix/x" },
+ 	}
+-	for i,v in pairs(sysdep_dirs[os.target()]) do
++	local selected_sysdep_dirs = sysdep_dirs[os.target()]
++	if _OPTIONS["xios"] then selected_sysdep_dirs = { "lib/sysdep/os/unix" } end
++	for i,v in pairs(selected_sysdep_dirs) do
+ 		table.insert(source_dirs, v);
+ 	end
+ 
+-	if os.istarget("linux") then
++	if os.istarget("linux") and not _OPTIONS["xios"] then
+ 		if _OPTIONS["android"] then
+ 			table.insert(source_dirs, "lib/sysdep/os/android")
+ 		else
+@@ -961,7 +968,7 @@ function setup_all_libs ()
+ 
+ 
+ 	extern_libs = { "glad" }
+-	if not os.istarget("windows") and not _OPTIONS["android"] and not os.istarget("macosx") then
++	if not os.istarget("windows") and not _OPTIONS["android"] and not os.istarget("macosx") and not _OPTIONS["xios"] then
+ 		table.insert(extern_libs, "x11")
+ 	end
+	setup_static_lib_project("gladwrapper", {}, extern_libs, { no_pch = 1 })
+@@ -1039,7 +1046,7 @@ used_extern_libs = {
+ 	"valgrind",
+ }
+ 
+-if not os.istarget("windows") and not _OPTIONS["android"] and not os.istarget("macosx") then
++if not os.istarget("windows") and not _OPTIONS["android"] and not os.istarget("macosx") and not _OPTIONS["xios"] then
+ 	-- X11 should only be linked on *nix
+ 	table.insert(used_extern_libs, "x11")
+ end
+@@ -1109,7 +1116,7 @@ function setup_main_exe ()
+ 
+ 	elseif os.istarget("linux") or os.istarget("bsd") then
+ 
+-		if not _OPTIONS["android"] and not (os.getversion().description == "OpenBSD") then
++		if not _OPTIONS["android"] and not _OPTIONS["xios"] and not (os.getversion().description == "OpenBSD") then
+ 			links { "rt" }
+ 		end
+ 
+@@ -1126,7 +1133,7 @@ function setup_main_exe ()
+ 			}
+ 		end
+ 
+-		if os.istarget("linux") or os.getversion().description == "GNU/kFreeBSD" then
++		if not _OPTIONS["xios"] and (os.istarget("linux") or os.getversion().description == "GNU/kFreeBSD") then
+ 			links {
+ 				-- Dynamic libraries (needed for linking for gold)
+ 				"dl",
+@@ -1134,9 +1141,13 @@ function setup_main_exe ()
+ 		end
+ 
+ 		-- Threading support
+-		buildoptions { "-pthread" }
+-		if not _OPTIONS["android"] then
+-			linkoptions { "-pthread" }
++		if _OPTIONS["xios"] then
++			links { "pthread" }
++		else
++			buildoptions { "-pthread" }
++			if not _OPTIONS["android"] then
++				linkoptions { "-pthread" }
++			end
+ 		end
+ 
+ 		-- For debug_resolve_symbol

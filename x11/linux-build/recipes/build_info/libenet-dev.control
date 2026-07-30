@@ -1,0 +1,10 @@
+Package: libenet-dev
+Version: @DEB_ENET_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: http://enet.bespin.org/
+Depends: libenet7 (= @DEB_ENET_V@)
+Description: ENet development files for Xios
+ Headers, unversioned link, and pkg-config metadata for ENet.

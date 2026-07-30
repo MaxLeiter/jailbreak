@@ -1,0 +1,10 @@
+Package: libphysfs-dev
+Version: @DEB_PHYSFS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://icculus.org/physfs/
+Depends: libphysfs1 (= @DEB_PHYSFS_V@)
+Description: Development files for PhysicsFS on Xios
+ Headers, pkg-config metadata, CMake package metadata, and dylib aliases.

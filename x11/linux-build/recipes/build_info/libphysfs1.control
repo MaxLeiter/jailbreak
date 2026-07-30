@@ -1,0 +1,9 @@
+Package: libphysfs1
+Version: @DEB_PHYSFS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://icculus.org/physfs/
+Description: PhysicsFS runtime for Xios games
+ Archive and virtual-filesystem runtime used by Warzone 2100.

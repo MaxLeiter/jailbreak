@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=0 A.D.
+Comment=Real-time strategy game of ancient warfare
+Exec=/var/jb/usr/bin/0ad
+Icon=0ad
+Terminal=false
+Categories=Game;StrategyGame;
+StartupNotify=true

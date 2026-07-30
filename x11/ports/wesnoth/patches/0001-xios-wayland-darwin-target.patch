@@ -1,0 +1,74 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -51,6 +51,7 @@ option(ENABLE_SERVER "Enable compilation of MP server" ON)
+ option(ENABLE_MYSQL "Enable building MP/add-ons servers with mysql support" OFF)
+ option(ENABLE_TESTS "Build unit tests")
+ option(ENABLE_NLS "Enable building of translations" ${ENABLE_GAME})
++option(WESNOTH_XIOS "Build a normal SDL2 Wayland process for Xios" OFF)
+ 
+ set(BOOST_VERSION "1.67")
+ 
+@@ -86,7 +87,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
+ 
+ find_package(OpenSSL 1.0 REQUIRED)
+ 
+-if(APPLE)
++if(APPLE AND NOT WESNOTH_XIOS)
+ 	find_library(APPKIT_LIBRARY AppKit REQUIRED)
+ 	find_library(FOUNDATION_LIBRARY Foundation REQUIRED)
+ 	find_library(IOKIT_LIBRARY IOKit REQUIRED)
+@@ -94,6 +95,11 @@ if(APPLE)
+ 	find_library(SECURITY_LIBRARY Security REQUIRED)
+ endif()
+ 
++if(WESNOTH_XIOS)
++	add_compile_definitions(WESNOTH_XIOS=1 SDL_MAIN_HANDLED=1 __IPHONEOS__=1)
++	add_definitions(-D_X11=1)
++endif()
++
+ find_package(Boost ${BOOST_VERSION} REQUIRED COMPONENTS iostreams program_options regex system thread random coroutine locale filesystem graph)
+ find_package(ICU REQUIRED COMPONENTS data i18n uc)
+ 
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -40,7 +40,7 @@ if(MSVC)
+ 	set(common-external-libs ${common-external-libs} shlwapi.lib winmm.lib crypt32.lib)
+ elseif(MINGW)
+ 	set(common-external-libs ${common-external-libs} wsock32 ws2_32 shlwapi winmm crypt32)
+-elseif(APPLE)
++elseif(APPLE AND NOT WESNOTH_XIOS)
+ 	set(common-external-libs ${common-external-libs} ${APPKIT_LIBRARY} ${FOUNDATION_LIBRARY} ${IOKIT_LIBRARY} ${SECURITY_LIBRARY})
+ endif()
+ 
+@@ -112,7 +112,7 @@ if(WIN32)
+ endif()
+ 
+ # On apple only
+-if(APPLE)
++if(APPLE AND NOT WESNOTH_XIOS)
+ 	set(wesnoth_game_sources
+ 		${wesnoth_game_sources}
+ 		desktop/apple_battery_info.mm
+@@ -231,7 +231,7 @@ if(ENABLE_GAME)
+ 		if(MSVC)
+ 			target_link_options(wesnoth PRIVATE /WX /WHOLEARCHIVE:wesnoth-widgets)
+ 		endif()
+-	elseif(APPLE)
++	elseif(APPLE AND NOT WESNOTH_XIOS)
+ 		add_executable(wesnoth wesnoth.cpp macosx/SDLMain.mm)
+ 	else()
+ 		add_executable(wesnoth wesnoth.cpp)
+diff --git a/src/wesnoth.cpp b/src/wesnoth.cpp
+--- a/src/wesnoth.cpp
++++ b/src/wesnoth.cpp
+@@ -1025,7 +1025,7 @@ static std::string get_auto_dir(const std::string& exe_dir)
+ #define error_exit(res) return res
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ extern "C" int wesnoth_main(int argc, char** argv);
+ int wesnoth_main(int argc, char** argv)
+ #else

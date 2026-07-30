@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Battle for Wesnoth
+Comment=Fantasy turn-based strategy
+Exec=wesnoth
+Icon=wesnoth-icon
+Terminal=false
+Categories=Game;StrategyGame;
+StartupNotify=true

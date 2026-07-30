@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Warzone 2100
+Comment=3D real-time strategy
+Exec=warzone2100
+Icon=warzone2100
+Terminal=false
+Categories=Game;StrategyGame;
+StartupNotify=true

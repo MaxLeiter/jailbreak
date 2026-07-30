@@ -1,0 +1,11 @@
+Package: libboost-game-dev
+Version: @DEB_BOOST_GAMES_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.boost.org/
+Depends: libboost-game1.90 (= @DEB_BOOST_GAMES_V@)
+Description: Boost headers and link files for Xios strategy games
+ Development headers, unversioned dylib links, and CMake package metadata for
+ the compiled Boost components used by Battle for Wesnoth and 0 A.D.
