@@ -23,12 +23,14 @@
 # qmltyperegistrar, qsb) keeps flowing through QT_HOST_PATH exactly as in the module
 # builds; there is still no on-device-scan wall anywhere in the KDE track.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
 KFVER=6.3.0
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 KF6HOST=/work/Procursus/build_tools/kf6-host
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 
 # Audit wave order (regenerate with tools/gen-kf6-recipes.py; do not hand-shuffle).
 TARGETS="${TARGETS:-extra-cmake-modules plasma-wayland-protocols kcoreaddons karchive kcodecs kconfig kwidgetsaddons kitemviews kitemmodels kdbusaddons kglobalaccel kguiaddons kwindowsystem kidletime ki18n solid sonnet kirigami breeze-icons kwayland plasma-activities layer-shell-qt kauth kcrash kcolorscheme kservice kpackage knotifications kcompletion kdecoration kconfigwidgets kjobwidgets ksvg kiconthemes kbookmarks ktextwidgets kxmlgui kio kcmutils kglobalacceld}"
@@ -168,7 +170,7 @@ for c in extra-cmake-modules plasma-wayland-protocols plasma-activities kwayland
   cp -v /work/build_info/$c*.control build_info/ 2>/dev/null || true
 done
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   PATH=/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"

@@ -12,9 +12,11 @@
 #     -v "$PWD/out:/out" \
 #     procursus-xbuild:skia -c /work/build-ladybird-app-engine.sh
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 PROC=/work/Procursus
 SDK="/root/cctools/SDK/iPhoneOS16.5.sdk"
-BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim
 WORK=$PROC/ladybird-src
 BUILD=$PROC/ladybird-build            # reuse the headless build dir; app-mode deltas recompile incrementally
@@ -43,8 +45,13 @@ cd "$PROC"
 NM=/root/cctools/bin/aarch64-apple-darwin-nm
 
 # ---- shim + fake xcrun/sw_vers + /var/jb (idempotent, mirrors wave4c) ----------------------
-step "prep: shim + /var/jb symlink + fake xcrun"
-if [ ! -e /var/jb ]; then ln -s "$BB" /var/jb; fi
+step "prep: shim + $XIOS_PREFIX symlink + fake xcrun"
+# The staged Procursus tree is exposed at its device-absolute path so .pc files,
+# CMake configs and -I flags resolve the same way they will on device. Rootful
+# would have to stage /usr, which is the container's own Debian userland, so it
+# needs a --sysroot pass rather than this symlink.
+xios_require_rootless "the engine build stages the device prefix as a container symlink"
+if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
 mkdir -p "$SHIM"
 for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \
          segedit size nmedit ar; do
@@ -163,14 +170,14 @@ if [ "$APP_GPU_ENABLED" -eq 1 ]; then
     fi
     TMPANGLE=$(mktemp -d)
     dpkg-deb -x "$ANGLE_DEB" "$TMPANGLE" || exit $?
-    cp -a "$TMPANGLE/var/jb/lib/angle/." "$ANGLE_DIR/"
+    cp -a "$TMPANGLE$XIOS_PREFIX/lib/angle/." "$ANGLE_DIR/"
     rm -rf "$TMPANGLE"
     echo "  staged ANGLE runtime from $ANGLE_DEB"
   fi
 
   mkdir -p "$ANGLE_PC_DIR"
   cat > "$ANGLE_PC_DIR/egl.pc" <<'EOF'
-prefix=/var/jb
+prefix=$XIOS_PREFIX
 libdir=${prefix}/lib/angle
 includedir=${prefix}/usr/include
 
@@ -181,7 +188,7 @@ Libs: ${libdir}/libEGL.angle.dylib
 Cflags: -I${includedir}
 EOF
   cat > "$ANGLE_PC_DIR/glesv2.pc" <<'EOF'
-prefix=/var/jb
+prefix=$XIOS_PREFIX
 libdir=${prefix}/lib/angle
 includedir=${prefix}/usr/include
 
@@ -195,8 +202,8 @@ fi
 
 # ---- configure ------------------------------------------------------------------------------
 step "configure (separate app build dir)"
-export LB_STAGED_PREFIX=/var/jb
-PKG_CONFIG_DIRS=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
+export LB_STAGED_PREFIX=$XIOS_PREFIX
+PKG_CONFIG_DIRS=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 if [ "$APP_GPU_ENABLED" -eq 1 ]; then
   PKG_CONFIG_DIRS="$ANGLE_PC_DIR:$PKG_CONFIG_DIRS"
 fi
@@ -216,7 +223,7 @@ cmake "${CMAKE_UNSET_ARGS[@]}" -GNinja -B "$BUILD" -S "$WORK" \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DENABLE_GUI_TARGETS=ON \
   -DENABLE_INSTALL_HEADERS=OFF -DENABLE_NETWORK_DOWNLOADS=ON -DENABLE_CLANG_PLUGINS=OFF \
   -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
-  -DLADYBIRD_CACHE_DIR=/var/jb/lib/ladybird -DVCPKG_ROOT= 2>&1 | tail -6
+  -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tail -6
 cfg=${PIPESTATUS[0]}
 echo "configure exit: $cfg"
 [ "$cfg" -eq 0 ] || exit "$cfg"

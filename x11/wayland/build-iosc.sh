@@ -20,6 +20,10 @@
 # Outputs: x11/wayland/out/{iosc, iosc-client, iosc-gpu-client}
 #   iosc is signed on the host after the build (needs ldid) so it is device-ready.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 umask 022
 
 # ---- host launcher: wire the mounts + re-exec in the image, then sign ---------
@@ -48,6 +52,7 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
 
   echo "==> cross-building iosc in $IMAGE"
   docker run --rm --platform linux/arm64 -e IOSC_XBUILD_INNER=1 \
+    -e XIOS_TARGET="$XIOS_TARGET_ID" \
     -e IOSC_BUILD_XWM="${IOSC_BUILD_XWM:-0}" \
     "${mounts[@]}" "$IMAGE" -c "bash /work/x11/wayland/build-iosc.sh"
 
@@ -90,9 +95,9 @@ xdeb_extract "$SYS" "$DEB_DIRS" \
   libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
   libxkbcommon-dev libxkbcommon0 \
   libxcb1 libxcb1-dev
-PREFIX="$SYS/var/jb/usr"       # wayland headers/libs
-ANGLE_INC="$SYS/var/jb/include" # angle EGL/GLES headers
-ANGLE_LIB="$SYS/var/jb/lib/angle"
+PREFIX="$SYS$XIOS_PREFIX/usr"       # wayland headers/libs
+ANGLE_INC="$SYS$XIOS_PREFIX/include" # angle EGL/GLES headers
+ANGLE_LIB="$SYS$XIOS_PREFIX/lib/angle"
 XDG_XML="$PREFIX/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml"
 DECORATION_XML="$PREFIX/share/wayland-protocols/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml"
 ACTIVATION_XML="$PREFIX/share/wayland-protocols/staging/xdg-activation/xdg-activation-v1.xml"
@@ -250,7 +255,7 @@ echo "   CC=$CC  SDK=$SDK"
 
 CFLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=16.0 -O2 -Wall -Wextra -Wno-unused-parameter -fblocks"
 INCS="-I$PREFIX/include -I$GEN -I$X11/linux-build/patches/xios"
-RPATH="-Wl,-rpath,/var/jb/usr/lib"
+RPATH="-Wl,-rpath,$XIOS_PREFIX/usr/lib"
 XWM_CFLAGS=()
 XWM_SRCS=()
 XWM_LIBS=()
@@ -315,7 +320,7 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-server -lxkbcommon "${XWM_LIBS[@]}" \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
-    $RPATH -Wl,-rpath,/var/jb/lib/angle -o /out/iosc
+    $RPATH -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/iosc
 echo "   built /out/iosc"
 
 # Package-owned Mach-service broker. MTLSharedEventHandle is transported by
@@ -444,14 +449,14 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-client \
     -L"$ANGLE_LIB" -lEGL -lGLESv2 \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
-    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/iosc-gpu-client
+    -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/iosc-gpu-client
 echo "   built /out/iosc-gpu-client"
 
 # wayland-egl↔ANGLE shim (libiosc_egl.dylib): a libEGL that forwards to ANGLE and
 # routes window surfaces through IOSurface + iosc_iosurface. dlopens the real
 # ANGLE libEGL at runtime (not linked); links libwayland-client + GLESv2 + frameworks.
 $CC $CFLAGS $INCS -I"$ANGLE_INC" \
-    -dynamiclib -install_name /var/jb/usr/local/lib/libiosc_egl.dylib \
+    -dynamiclib -install_name $XIOS_PREFIX/usr/local/lib/libiosc_egl.dylib \
     "$X11/wayland/iosc_egl_shim.c" \
     "$X11/wayland/xios_metal_sync.m" \
     "$X11/apps/shared/XiosMetalEventBroker.m" \
@@ -459,7 +464,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-client \
     -L"$ANGLE_LIB" -lGLESv2 \
     -framework IOSurface -framework CoreFoundation -framework Foundation -framework Metal \
-    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -o /out/libiosc_egl.dylib
+    -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -o /out/libiosc_egl.dylib
 echo "   built /out/libiosc_egl.dylib"
 
 # EGL test client: standard wl_egl_window + EGL window-surface API against the shim
@@ -470,7 +475,7 @@ $CC $CFLAGS $INCS -I"$ANGLE_INC" \
     -L"$PREFIX/lib" -lwayland-client -lwayland-egl \
     -L/out -liosc_egl \
     -L"$ANGLE_LIB" -lGLESv2 \
-    -Wl,-rpath,/var/jb/usr/lib -Wl,-rpath,/var/jb/lib/angle -Wl,-rpath,/var/jb/usr/local/lib \
+    -Wl,-rpath,$XIOS_PREFIX/usr/lib -Wl,-rpath,$XIOS_PREFIX/lib/angle -Wl,-rpath,$XIOS_PREFIX/usr/local/lib \
     -o /out/iosc-egl-client
 echo "   built /out/iosc-egl-client"
 

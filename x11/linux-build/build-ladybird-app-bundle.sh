@@ -19,18 +19,20 @@
 # then depends on NOTHING under /var/jb/usr/lib and cannot collide with the GNOME desktop stack's
 # harfbuzz-10.2 / freetype / fontconfig.
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 PROC=/work/Procursus
-BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 LIBDIR=$BB/usr/lib
 ANGLE_LIBDIR=$BB/lib/angle
-GETTEXT_LIBDIR=$PROC/build_stage/iphoneos-arm64-rootless/1900/gettext/var/jb/usr/lib
+GETTEXT_LIBDIR=$PROC/build_stage/$XIOS_TRIPLE/gettext$XIOS_PREFIX/usr/lib
 OTOOL=/root/cctools/bin/aarch64-apple-darwin-otool
 INT=/root/cctools/bin/aarch64-apple-darwin-install_name_tool
 LDID=/root/cctools/bin/ldid
 STAGE=/out/app-stage
 VER="${LADYBIRD_APP_VERSION:-0.1.24+ios1}"
 APPROOT=/tmp/lbapp
-APP=$APPROOT/var/jb/Applications/Ladybird.app
+APP=$APPROOT$XIOS_PREFIX/Applications/Ladybird.app
 BINS="Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor"
 step() { echo; echo "########## $* ##########"; }
 
@@ -158,7 +160,7 @@ for b in $BINS; do
   # Fallback rpath: the base-jailbreak libs that ship only as .tbd link stubs in build_base and
   # therefore can't be bundled (libiosexec.1.dylib — the exec helper, a Depends: libiosexec1 lib
   # present on every jailbroken device). Added SECOND so it never shadows a bundled lib.
-  "$INT" -add_rpath "/var/jb/usr/lib" "$APP/$b" 2>/dev/null || true
+  "$INT" -add_rpath "$XIOS_PREFIX/usr/lib" "$APP/$b" 2>/dev/null || true
 done
 for d in "$APP"/lib/*.dylib; do
   base=$(basename "$d")
@@ -185,7 +187,7 @@ echo "preliminary signature markers on Ladybird:"; "$LDID" -e "$APP/Ladybird" 2>
 # ---- deb --------------------------------------------------------------------------------------
 step "package deb"
 mkdir -p "$APPROOT/DEBIAN"
-INSTALLED_KB=$(du -sk "$APPROOT/var/jb" | cut -f1)
+INSTALLED_KB=$(du -sk "$APPROOT${XIOS_PREFIX:-/usr}" | cut -f1)
 sed -e "s/@VER@/$VER/" /work/ladybird-app/DEBIAN/control > "$APPROOT/DEBIAN/control"
 # Self-contained: every leaf is bundled EXCEPT libiosexec (ships as .tbd link-stub only; resolved
 # at runtime from /var/jb/usr/lib via the fallback rpath). So the only real external dep is

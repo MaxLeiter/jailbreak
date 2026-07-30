@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Build a tiny Qt Wayland/OpenGL smoke-test package against the local Qt debs.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 ROOT=/work/Procursus
-TARGET=iphoneos-arm64-rootless
+TARGET=$XIOS_MEMO_TARGET
 CFVER=1900
 BUILD_BASE="$ROOT/build_base/$TARGET/$CFVER"
 BUILD_WORK="$ROOT/build_work/$TARGET/$CFVER/qt-wayland-gl-smoke"
@@ -11,7 +13,7 @@ BUILD_DIST="$ROOT/build_dist/$TARGET/$CFVER/work/qt-wayland-gl-smoke"
 OUT="${OUT:-/out}"
 VERSION="${DEB_QT_WAYLAND_GL_SMOKE_V:-0.1.0}"
 ARCH=iphoneos-arm64
-PREFIX=/var/jb
+PREFIX=$XIOS_PREFIX
 SYSROOT="$BUILD_BASE$PREFIX/usr"
 SDK=/root/cctools/SDK/iPhoneOS.sdk
 CXX=/root/cctools/bin/aarch64-apple-darwin-clang++
@@ -66,8 +68,8 @@ COMMON_FLAGS=(
 LINK_FLAGS=(
   -L"$BUILD_BASE$PREFIX/lib/angle"
   -L"$SYSROOT/lib"
-  -Wl,-rpath,/var/jb/usr/lib
-  -Wl,-rpath,/var/jb/lib/angle
+  -Wl,-rpath,$XIOS_PREFIX/usr/lib
+  -Wl,-rpath,$XIOS_PREFIX/lib/angle
   -Wl,-not_for_dyld_shared_cache
   -stdlib=libc++
   -liosexec
@@ -90,9 +92,9 @@ echo "==> compiling qt-wayland-gl-smoke"
 "$CXX" "${COMMON_FLAGS[@]}" "$BUILD_WORK/main.cpp" "${LINK_FLAGS[@]}" \
   -o "$BUILD_WORK/qt-wayland-gl-smoke"
 
-"$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.2.dylib /var/jb/lib/angle/libGLESv2.dylib \
+"$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.2.dylib $XIOS_PREFIX/lib/angle/libGLESv2.dylib \
   "$BUILD_WORK/qt-wayland-gl-smoke" 2>/dev/null || true
-"$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.dylib /var/jb/lib/angle/libGLESv2.dylib \
+"$INSTALL_NAME_TOOL" -change @rpath/libGLESv2.dylib $XIOS_PREFIX/lib/angle/libGLESv2.dylib \
   "$BUILD_WORK/qt-wayland-gl-smoke" 2>/dev/null || true
 
 "$STRIP" -x "$BUILD_WORK/qt-wayland-gl-smoke" || true

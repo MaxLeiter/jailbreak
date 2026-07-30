@@ -11,6 +11,8 @@
 # helper keeps that fast path, but invalidates the one package whose mounted
 # recipe/helper inputs changed.
 
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 xios_cache_target_name() {
   local target=$1
   target=${target%-package}
@@ -21,7 +23,7 @@ xios_cache_target_name() {
 xios_cache_work_dir() {
   local name=$1
   printf 'build_work/%s/%s/%s\n' \
-    "${MEMO_TARGET:-iphoneos-arm64-rootless}" \
+    "${MEMO_TARGET:-$XIOS_MEMO_TARGET}" \
     "${MEMO_CFVER:-1900}" \
     "$name"
 }
@@ -29,7 +31,7 @@ xios_cache_work_dir() {
 xios_cache_stage_dir() {
   local name=$1
   printf 'build_stage/%s/%s/%s\n' \
-    "${MEMO_TARGET:-iphoneos-arm64-rootless}" \
+    "${MEMO_TARGET:-$XIOS_MEMO_TARGET}" \
     "${MEMO_CFVER:-1900}" \
     "$name"
 }

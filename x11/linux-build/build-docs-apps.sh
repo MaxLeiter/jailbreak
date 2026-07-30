@@ -16,6 +16,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="poppler-package exempi-package" procursus-xbuild:bookworm-arm64 /work/build-docs-apps.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host build tools missing from the image (same set as build-gnome.sh — poppler-glib runs
@@ -74,7 +76,7 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 # exempi (libexempi8) is Papers' unconditional XMP dep; poppler (libpoppler140 +
@@ -82,8 +84,8 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # The zathura stack is the pragmatic PDF viewer (Papers is Rust-blocked): girara (GTK3 UI lib) ->
 # zathura (app) -> zathura-pdf-poppler (the poppler PDF backend plugin), built in that order.
 
-EW=build_work/iphoneos-arm64-rootless/1900/exempi
-ES=build_stage/iphoneos-arm64-rootless/1900/exempi
+EW=build_work/$XIOS_TRIPLE/exempi
+ES=build_stage/$XIOS_TRIPLE/exempi
 EF="$EW/.xios_patch_series.sha256"
 if target_requests exempi; then
   EXEMPI_FP="$(sha256sum \
@@ -96,8 +98,8 @@ if target_requests exempi; then
   fi
 fi
 
-ZW=build_work/iphoneos-arm64-rootless/1900/zathura
-ZS=build_stage/iphoneos-arm64-rootless/1900/zathura
+ZW=build_work/$XIOS_TRIPLE/zathura
+ZS=build_stage/$XIOS_TRIPLE/zathura
 ZF="$ZW/.xios_patch_series.sha256"
 if target_requests zathura; then
   NEW_FP="$(sha256sum \

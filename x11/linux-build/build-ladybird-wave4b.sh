@@ -24,11 +24,13 @@
 #
 # Stages (LB_STAGE, default all): prep | hosttools | build | headless | package | all
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 LB_STAGE="${LB_STAGE:-all}"
 SDK=/root/cctools/SDK/iPhoneOS16.5.sdk
 PROC=/work/Procursus
-BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim
 WORK=$PROC/ladybird-src
 BUILD=$PROC/ladybird-build
@@ -42,10 +44,15 @@ step() { echo; echo "########## $* ##########"; }
 run_stage() { case "$LB_STAGE" in all) return 0;; "$1") return 0;; *) return 1;; esac; }
 
 # ================================================================================================
-step "STAGE prep: /var/jb symlink + shim toolchain + fake xcrun (idempotent, mirrors wave4)"
+step "STAGE prep: $XIOS_PREFIX symlink + shim toolchain + fake xcrun (idempotent, mirrors wave4)"
 # ================================================================================================
-if [ ! -e /var/jb ]; then ln -s "$BB" /var/jb; fi
-ls -ld /var/jb
+# The staged Procursus tree is exposed at its device-absolute path so .pc files,
+# CMake configs and -I flags resolve the same way they will on device. Rootful
+# would have to stage /usr, which is the container's own Debian userland, so it
+# needs a --sysroot pass rather than this symlink.
+xios_require_rootless "the engine build stages the device prefix as a container symlink"
+if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
+ls -ld "$XIOS_PREFIX"
 mkdir -p "$SHIM"
 for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \
          segedit size nmedit; do
@@ -173,9 +180,9 @@ step "STAGE hosttools: build gen_asm_offsets (C++/AK) + asmintgen (Rust) NATIVEL
 # wave4's partial build; if absent, run a codegen ninja pass (it will fail at the asm step, which is
 # exactly the wall we are closing, but everything upstream — including the generated headers — gets
 # emitted first).
-export LB_STAGED_PREFIX=/var/jb
-export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
-export PKG_CONFIG_LIBDIR=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
+export LB_STAGED_PREFIX=$XIOS_PREFIX
+export PKG_CONFIG_PATH=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
+export PKG_CONFIG_LIBDIR=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 export LB_SHIM="$SHIM"
 
 ensure_generated_headers() {
@@ -191,7 +198,7 @@ ensure_generated_headers() {
       -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DENABLE_GUI_TARGETS=ON \
       -DENABLE_INSTALL_HEADERS=OFF -DENABLE_NETWORK_DOWNLOADS=ON -DENABLE_CLANG_PLUGINS=OFF \
       -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
-      -DLADYBIRD_CACHE_DIR=/var/jb/lib/ladybird -DVCPKG_ROOT= 2>&1 | tail -5
+      -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tail -5
   fi
   ( cd "$BUILD" && ninja -k 0 -j"$(nproc)" WebContent 2>&1 | tail -3 || true )
 }
@@ -261,7 +268,7 @@ export LB_HOST_ASMINTGEN="$HOST/asmintgen"
 # ================================================================================================
 step "STAGE build: reconfigure (pick up patch 12 + LB_HOST_*) then compile LibWeb + link helpers"
 # ================================================================================================
-export LB_STAGED_PREFIX=/var/jb
+export LB_STAGED_PREFIX=$XIOS_PREFIX
 if run_stage build; then
   cd "$WORK"
   # FRESH configure: drop CMakeCache.txt so pkg_check_modules re-parses the fixed skia.pc (its
@@ -274,7 +281,7 @@ if run_stage build; then
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DENABLE_GUI_TARGETS=ON \
     -DENABLE_INSTALL_HEADERS=OFF -DENABLE_NETWORK_DOWNLOADS=ON -DENABLE_CLANG_PLUGINS=OFF \
     -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
-    -DLADYBIRD_CACHE_DIR=/var/jb/lib/ladybird -DVCPKG_ROOT= 2>&1 | tail -6
+    -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tail -6
   echo "reconfigure exit: ${PIPESTATUS[0]}"
 
   cd "$BUILD"
@@ -322,7 +329,7 @@ if run_stage package; then
   HS=$(find "$BUILD" -maxdepth 4 -type f -name headless-shot 2>/dev/null | head -1)
   if [ -z "$HS" ]; then echo "!! headless-shot not built; skipping package"; else
     PKG=/tmp/lbpkg; rm -rf "$PKG"
-    mkdir -p "$PKG/DEBIAN" "$PKG/var/jb/usr/bin" "$PKG/var/jb/usr/libexec" "$PKG/var/jb/usr/share/Lagom"
+    mkdir -p "$PKG/DEBIAN" "$PKG$XIOS_PREFIX/usr/bin" "$PKG$XIOS_PREFIX/usr/libexec" "$PKG$XIOS_PREFIX/usr/share/Lagom"
 
     # entitlements: minimal fakesigned multiprocess set + /var/jb path-exception (no IOSurface/GPU
     # user-client at headless M0).
@@ -349,16 +356,16 @@ PLIST
 
     sign() { "$LDID" -S"$ENT" "$1" 2>/dev/null || "$LDID" -S "$1"; }
 
-    cp "$HS" "$PKG/var/jb/usr/bin/headless-shot"; sign "$PKG/var/jb/usr/bin/headless-shot"
+    cp "$HS" "$PKG$XIOS_PREFIX/usr/bin/headless-shot"; sign "$PKG$XIOS_PREFIX/usr/bin/headless-shot"
     for b in WebContent RequestServer ImageDecoder WebWorker; do
       p=$(find "$BUILD" -maxdepth 4 -type f -name "$b" 2>/dev/null | head -1)
-      if [ -n "$p" ]; then cp "$p" "$PKG/var/jb/usr/libexec/$b"; sign "$PKG/var/jb/usr/libexec/$b"; else echo "!! helper $b missing"; fi
+      if [ -n "$p" ]; then cp "$p" "$PKG$XIOS_PREFIX/usr/libexec/$b"; sign "$PKG$XIOS_PREFIX/usr/libexec/$b"; else echo "!! helper $b missing"; fi
     done
 
     # resources straight from Base/res (UI's copy target is skipped on iOS).
-    cp -a "$WORK"/Base/res/. "$PKG/var/jb/usr/share/Lagom/"
+    cp -a "$WORK"/Base/res/. "$PKG$XIOS_PREFIX/usr/share/Lagom/"
 
-    INSTALLED_KB=$(du -sk "$PKG/var/jb" | cut -f1)
+    INSTALLED_KB=$(du -sk "$PKG${XIOS_PREFIX:-/usr}" | cut -f1)
     cat > "$PKG/DEBIAN/control" <<EOF
 Package: ladybird-headless
 Name: Ladybird (headless renderer)

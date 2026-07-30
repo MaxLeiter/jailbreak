@@ -16,9 +16,11 @@
 #      reconfigure, ninja-relink headless-shot + 4 helpers.
 #   2) repackage ladybird-headless deb @ 0.1.1+ios1.
 set -uo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 PROC=/work/Procursus
 SDK="/root/cctools/SDK/iPhoneOS16.5.sdk"
-BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim   # MUST match wave4/wave4b (baked into build.ninja + the toolchain's LB_SHIM default)
 WORK=$PROC/ladybird-src
 BUILD=$PROC/ladybird-build
@@ -46,9 +48,9 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
   chmod +x build_tools/cc-nounused build_tools/cxx-nounused
   # force a clean rebuild: drop the keyed build tree (.build_complete guard) + stage + dist
-  rm -rf build_work/iphoneos-arm64-rootless/1900/mimalloc build_stage/mimalloc \
+  rm -rf build_work/$XIOS_TRIPLE/mimalloc build_stage/mimalloc \
          build_dist/libmimalloc build_dist/libmimalloc-dev
-  COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+  COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
     CC=$PROC/build_tools/cc-nounused CXX=$PROC/build_tools/cxx-nounused"
   if make mimalloc-package $COMMON -j"$(nproc)" 2>&1 | tail -15; then
     echo "== mimalloc-package OK =="
@@ -73,7 +75,12 @@ fi
 step "STAGE prep: /var/jb symlink + shim + fake xcrun + re-apply M0 patches (idempotent)"
 # ================================================================================================
 if run_stage engine || run_stage package; then
-  if [ ! -e /var/jb ]; then ln -s "$BB" /var/jb; fi
+  # The engine build compiles the device prefix into its binaries, and gets there
+  # by making the container's own /var/jb the staged sysroot. A rootful target
+  # would need /usr staged instead, which collides with the Debian userland the
+  # cross toolchain runs on — so it needs a --sysroot pass, not a symlink.
+  xios_require_rootless "the engine build stages the device prefix as a container symlink"
+  if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
   mkdir -p "$SHIM"
   for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \
            segedit size nmedit ar; do
@@ -133,9 +140,9 @@ fi
 # ================================================================================================
 step "STAGE engine: reconfigure + ninja-relink (recompiles LocalNavigable.cpp + Application.cpp)"
 # ================================================================================================
-export LB_STAGED_PREFIX=/var/jb
-export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
-export PKG_CONFIG_LIBDIR=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
+export LB_STAGED_PREFIX=$XIOS_PREFIX
+export PKG_CONFIG_PATH=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
+export PKG_CONFIG_LIBDIR=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 export LB_SHIM="$SHIM"
 export LB_HOST_GEN_ASM_OFFSETS="$HOST/gen_asm_offsets"
 export LB_HOST_ASMINTGEN="$HOST/asmintgen"
@@ -147,7 +154,7 @@ if run_stage engine; then
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DENABLE_GUI_TARGETS=ON \
     -DENABLE_INSTALL_HEADERS=OFF -DENABLE_NETWORK_DOWNLOADS=ON -DENABLE_CLANG_PLUGINS=OFF \
     -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
-    -DLADYBIRD_CACHE_DIR=/var/jb/lib/ladybird -DVCPKG_ROOT= 2>&1 | tail -4
+    -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tail -4
   echo "reconfigure exit: ${PIPESTATUS[0]}"
   cd "$BUILD"
   TARGETS="WebContent RequestServer ImageDecoder WebWorker headless-shot"
@@ -179,9 +186,9 @@ if run_stage package; then
   HS=$(find "$BUILD" -maxdepth 4 -type f -name headless-shot 2>/dev/null | head -1)
   if [ -z "$HS" ]; then echo "!! headless-shot not built; skipping package"; else
     PKG=/tmp/lbpkg; rm -rf "$PKG"
-    mkdir -p "$PKG/DEBIAN" "$PKG/var/jb/usr/bin" "$PKG/var/jb/usr/libexec" "$PKG/var/jb/usr/share/Lagom"
+    mkdir -p "$PKG/DEBIAN" "$PKG$XIOS_PREFIX/usr/bin" "$PKG$XIOS_PREFIX/usr/libexec" "$PKG$XIOS_PREFIX/usr/share/Lagom"
     ENT=/tmp/ladybird-headless-ent.xml
-    cat > "$ENT" <<'PLIST'
+    cat > "$ENT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -192,7 +199,7 @@ if run_stage package; then
     <key>com.apple.private.skip-library-validation</key><true/>
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
-        <string>/var/jb/</string>
+$(xios_ent_prefix_paths)
         <string>/tmp/</string>
         <string>/var/</string>
         <string>/private/var/</string>
@@ -201,13 +208,13 @@ if run_stage package; then
 </plist>
 PLIST
     sign() { "$LDID" -S"$ENT" "$1" 2>/dev/null || "$LDID" -S "$1"; }
-    cp "$HS" "$PKG/var/jb/usr/bin/headless-shot"; sign "$PKG/var/jb/usr/bin/headless-shot"
+    cp "$HS" "$PKG$XIOS_PREFIX/usr/bin/headless-shot"; sign "$PKG$XIOS_PREFIX/usr/bin/headless-shot"
     for b in WebContent RequestServer ImageDecoder WebWorker; do
       p=$(find "$BUILD" -maxdepth 4 -type f -name "$b" 2>/dev/null | head -1)
-      if [ -n "$p" ]; then cp "$p" "$PKG/var/jb/usr/libexec/$b"; sign "$PKG/var/jb/usr/libexec/$b"; else echo "!! helper $b missing"; fi
+      if [ -n "$p" ]; then cp "$p" "$PKG$XIOS_PREFIX/usr/libexec/$b"; sign "$PKG$XIOS_PREFIX/usr/libexec/$b"; else echo "!! helper $b missing"; fi
     done
-    cp -a "$WORK"/Base/res/. "$PKG/var/jb/usr/share/Lagom/"
-    INSTALLED_KB=$(du -sk "$PKG/var/jb" | cut -f1)
+    cp -a "$WORK"/Base/res/. "$PKG$XIOS_PREFIX/usr/share/Lagom/"
+    INSTALLED_KB=$(du -sk "$PKG${XIOS_PREFIX:-/usr}" | cut -f1)
     cat > "$PKG/DEBIAN/control" <<EOF
 Package: ladybird-headless
 Name: Ladybird (headless renderer)

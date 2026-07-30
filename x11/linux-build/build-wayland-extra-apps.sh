@@ -18,9 +18,11 @@
 #     -e TARGETS="swaybg-package tofi-package" \
 #     procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 BBINC="$BB/usr/include"
 
 TARGETS="${TARGETS:-swaybg-package tofi-package yad-package libgsf-package libxslt-package goffice-package gnumeric-package transmission-package}"
@@ -158,15 +160,15 @@ static inline size_t c32rtomb(char *s, char32_t c32, mbstate_t *ps) {
 #endif
 EOF
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 refresh_patch_build_tree() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
   [ -d "$patch_dir" ] || return 0
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
-  local stage="build_stage/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
+  local stage="build_stage/$XIOS_TRIPLE/$pkg"
   local fp_file="$work/.xios_patch_series.sha256"
   local new_fp old_fp
   new_fp="$(find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
@@ -180,7 +182,7 @@ refresh_patch_build_tree() {
 record_patch_fingerprint() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
   [ -d "$patch_dir" ] && [ -d "$work" ] || return 0
   find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}' > "$work/.xios_patch_series.sha256"
 }
@@ -197,11 +199,11 @@ ensure_gtk3_wayland_build() {
   echo "==> stale gtk+3.0 cache lacks Wayland backend; rebuilding gtk+3.0"
   echo "    missing: $hdr or $pc"
   rm -rf \
-    build_work/iphoneos-arm64-rootless/1900/gtk+3.0 \
-    build_stage/iphoneos-arm64-rootless/1900/gtk+3.0 \
-    build_dist/iphoneos-arm64-rootless/1900/libgtk-3-0 \
-    build_dist/iphoneos-arm64-rootless/1900/libgtk-3-dev \
-    build_dist/iphoneos-arm64-rootless/1900/gtk-3-bin
+    build_work/$XIOS_TRIPLE/gtk+3.0 \
+    build_stage/$XIOS_TRIPLE/gtk+3.0 \
+    build_dist/$XIOS_TRIPLE/libgtk-3-0 \
+    build_dist/$XIOS_TRIPLE/libgtk-3-dev \
+    build_dist/$XIOS_TRIPLE/gtk-3-bin
 }
 
 scrub_waybar_fallback_deps() {
@@ -237,7 +239,7 @@ stage_libpeas_girepository() {
       exit 1
     fi
     echo "    staging $deb"
-    dpkg-deb -x "$deb" /work/Procursus/build_base/iphoneos-arm64-rootless/1900
+    dpkg-deb -x "$deb" $XIOS_BUILD_BASE
   done
 }
 

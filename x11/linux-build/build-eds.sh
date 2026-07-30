@@ -20,10 +20,12 @@
 #     procursus-xbuild:bookworm-arm64 /work/build-eds.sh
 # (the image's ENTRYPOINT is /bin/bash, so the bare script path runs under bash)
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
-BW=/work/Procursus/build_work/iphoneos-arm64-rootless/1900
-BS=/work/Procursus/build_stage/iphoneos-arm64-rootless/1900
+BW=$XIOS_BUILD_WORK
+BS=$XIOS_BUILD_STAGE
 
 # Host build tools: the usual glib codegen set, plus gperf (EDS hard-requires it) and HOST
 # glib/libxml2 -dev + pkg-config for libical's NATIVE ical-glib-src-generator half.
@@ -81,7 +83,7 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 # Tracker: if the existing build tree is the unistring flavor, wipe it so the recipe
@@ -92,8 +94,8 @@ if [ -d "$BW/tracker" ] && grep -rqs 'unistring' "$BW/tracker/build/build.ninja"
   rm -rf "$BW/tracker" "$BS/tracker"
 fi
 
-EDS_W=build_work/iphoneos-arm64-rootless/1900/evolution-data-server
-EDS_S=build_stage/iphoneos-arm64-rootless/1900/evolution-data-server
+EDS_W=build_work/$XIOS_TRIPLE/evolution-data-server
+EDS_S=build_stage/$XIOS_TRIPLE/evolution-data-server
 EDS_F="$EDS_W/.xios_patch_series.sha256"
 if target_requests evolution-data-server; then
   EDS_FP="$(sha256sum \
@@ -106,8 +108,8 @@ if target_requests evolution-data-server; then
   fi
 fi
 
-TRACKER_W=build_work/iphoneos-arm64-rootless/1900/tracker
-TRACKER_S=build_stage/iphoneos-arm64-rootless/1900/tracker
+TRACKER_W=build_work/$XIOS_TRIPLE/tracker
+TRACKER_S=build_stage/$XIOS_TRIPLE/tracker
 TRACKER_F="$TRACKER_W/.xios_patch_series.sha256"
 if target_requests tracker; then
   TRACKER_FP="$(sha256sum \

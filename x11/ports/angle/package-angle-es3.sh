@@ -15,6 +15,10 @@
 # -12 revision: derives the Wayland connection from each wl_egl_window's wl_surface,
 # so Qt's split GUI/render threads cannot lose the connection at surface creation.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
@@ -32,15 +36,15 @@ VER="2.1.0+git20260630.a32d31d+es3-12"
 DEB="angle_${VER}_iphoneos-arm64.deb"
 
 rm -rf "$STAGEROOT"
-mkdir -p "$STAGE/var/jb/lib/angle" "$STAGE/var/jb/include" "$STAGE/DEBIAN"
+mkdir -p "$STAGE$XIOS_PREFIX/lib/angle" "$STAGE$XIOS_PREFIX/include" "$STAGE/DEBIAN"
 
 # 1. framework binary -> plain dylib. libEGL.dylib is the iosc Wayland-platform
 # shim when available; the real ANGLE libEGL stays beside it for forwarding.
 if [ -f "$BUILD/libEGL.framework/libEGL" ] &&
    [ -f "$BUILD/libGLESv2.framework/libGLESv2" ] &&
    [ -d "$INC/EGL" ]; then
-  cp "$BUILD/libEGL.framework/libEGL"       "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-  cp "$BUILD/libGLESv2.framework/libGLESv2" "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+  cp "$BUILD/libEGL.framework/libEGL"       "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+  cp "$BUILD/libGLESv2.framework/libGLESv2" "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
   ANGLE_INCLUDE_ROOT="$INC"
 elif [ -n "$BASE_DEB" ]; then
   [ -f "$BASE_DEB" ] || {
@@ -52,47 +56,47 @@ elif [ -n "$BASE_DEB" ]; then
     debian:bookworm-slim \
     bash -ceu 'test "$(dpkg-deb -f "/input/$1" Package)" = angle; dpkg-deb -x "/input/$1" /base' \
     _ "$(basename "$BASE_DEB")"
-  cp "$BASE_STAGE/var/jb/lib/angle/libEGL.angle.dylib" "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-  cp "$BASE_STAGE/var/jb/lib/angle/libGLESv2.dylib" "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
-  ANGLE_INCLUDE_ROOT="$BASE_STAGE/var/jb/include"
+  cp "$BASE_STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib" "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+  cp "$BASE_STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib" "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
+  ANGLE_INCLUDE_ROOT="$BASE_STAGE$XIOS_PREFIX/include"
   echo "ANGLE binaries/headers: explicit immutable base $(basename "$BASE_DEB")"
 else
   echo "ERROR: ANGLE source-build artifacts are missing under $BUILD." >&2
   echo "       Rebuild with build-angle.sh, or explicitly set ANGLE_BASE_DEB for a shim-only repack." >&2
   exit 1
 fi
-chmod 0755 "$STAGE/var/jb/lib/angle/"*.dylib
+chmod 0755 "$STAGE$XIOS_PREFIX/lib/angle/"*.dylib
 [ -f "$SHIM" ] || {
   echo "ERROR: protocol-v4 iosc EGL shim not found at $SHIM; run wayland/build-iosc.sh first" >&2
   exit 1
 }
-cp "$SHIM" "$STAGE/var/jb/lib/angle/libEGL.dylib"
-chmod 0755 "$STAGE/var/jb/lib/angle/libEGL.dylib"
+cp "$SHIM" "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+chmod 0755 "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
 
 # 2. absolute install names
-install_name_tool -id /var/jb/lib/angle/libEGL.angle.dylib "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-install_name_tool -id /var/jb/lib/angle/libEGL.dylib       "$STAGE/var/jb/lib/angle/libEGL.dylib"
-install_name_tool -id /var/jb/lib/angle/libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+install_name_tool -id $XIOS_PREFIX/lib/angle/libEGL.angle.dylib "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+install_name_tool -id $XIOS_PREFIX/lib/angle/libEGL.dylib       "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+install_name_tool -id $XIOS_PREFIX/lib/angle/libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
 
 # 3. ad-hoc sign (the libs carry no entitlements; the GPU-using *process* is the
 #    one that must be ldid-signed with the AGX/IOSurface set, see control below)
-xsign "$STAGE/var/jb/lib/angle/libEGL.angle.dylib"
-xsign "$STAGE/var/jb/lib/angle/libEGL.dylib"
-xsign "$STAGE/var/jb/lib/angle/libGLESv2.dylib"
+xsign "$STAGE$XIOS_PREFIX/lib/angle/libEGL.angle.dylib"
+xsign "$STAGE$XIOS_PREFIX/lib/angle/libEGL.dylib"
+xsign "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.dylib"
 
 # 3b. compat symlinks (Debian soname + .so aliases consumers link/dlopen)
-ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.2.dylib"
-ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.so"
-ln -s libEGL.dylib     "$STAGE/var/jb/lib/angle/libEGL.so.1"
-ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.2.dylib"
-ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.so"
-ln -s libGLESv2.dylib  "$STAGE/var/jb/lib/angle/libGLESv2.so.2"
+ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.2.dylib"
+ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.so"
+ln -s libEGL.dylib     "$STAGE$XIOS_PREFIX/lib/angle/libEGL.so.1"
+ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.2.dylib"
+ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.so"
+ln -s libGLESv2.dylib  "$STAGE$XIOS_PREFIX/lib/angle/libGLESv2.so.2"
 
 # 4. headers
 cp -R "$ANGLE_INCLUDE_ROOT/EGL" "$ANGLE_INCLUDE_ROOT/GLES" "$ANGLE_INCLUDE_ROOT/GLES2" \
   "$ANGLE_INCLUDE_ROOT/GLES3" "$ANGLE_INCLUDE_ROOT/KHR" "$ANGLE_INCLUDE_ROOT/platform" \
-  "$STAGE/var/jb/include/"
-cp "$ANGLE_INCLUDE_ROOT/angle_gl.h" "$ANGLE_INCLUDE_ROOT/export.h" "$STAGE/var/jb/include/"
+  "$STAGE$XIOS_PREFIX/include/"
+cp "$ANGLE_INCLUDE_ROOT/angle_gl.h" "$ANGLE_INCLUDE_ROOT/export.h" "$STAGE$XIOS_PREFIX/include/"
 
 INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
 
@@ -126,7 +130,7 @@ Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/
 EOF
 
 echo "=== staged tree ==="
-find "$STAGE/var/jb" -maxdepth 3 -type f | sed "s#$STAGE##" | sort | head -40
+find "$STAGE$XIOS_PREFIX" -maxdepth 3 -type f | sed "s#$STAGE##" | sort | head -40
 echo "installed=${INSTKB}KB"
 
 # 6. build the deb via the container's dpkg-deb

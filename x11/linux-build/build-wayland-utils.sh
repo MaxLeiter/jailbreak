@@ -19,9 +19,11 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="slurp-package" procursus-xbuild:bookworm-arm64 /work/build-wayland-utils.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 BBINC="$BB/usr/include"
 
 # Host build tools missing from the image:
@@ -93,13 +95,13 @@ mkdir -p "$BBINC/linux"
 cp /usr/include/linux/input-event-codes.h "$BBINC/linux/" 2>/dev/null || true
 echo '#include <linux/input-event-codes.h>' > "$BBINC/linux/input.h"
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 # Default: just slurp (the safe quick win). basu-package + mako-package are opt-in via TARGETS
 # because mako's sd-bus provider (basu) is a Linux-centric port with real Darwin walls.
 
-DW=build_work/iphoneos-arm64-rootless/1900/dunst
-DS=build_stage/iphoneos-arm64-rootless/1900/dunst
+DW=build_work/$XIOS_TRIPLE/dunst
+DS=build_stage/$XIOS_TRIPLE/dunst
 DF="$DW/.xios_patch_series.sha256"
 if [[ " $TARGETS " == *" dunst"* ]]; then
   NEW_FP="$(sha256sum \

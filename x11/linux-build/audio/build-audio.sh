@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Build Xios audio support inside the Procursus/cctools container.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 SRC=/work/audio
 OUT=/out
 BUILD=/tmp/xios-audio-build
-PREFIX=/var/jb/usr
+PREFIX=$XIOS_PREFIX/usr
 ARCH=iphoneos-arm64
 VERSION=0.1.0
 
@@ -56,11 +58,11 @@ EOF
 echo "==> package xios-audio-server"
 pkg_root server
 write_control server xios-audio-server "" "CoreAudio bridge daemon for Xios desktop audio"
-mkdir -p "$BUILD/server$PREFIX/bin" "$BUILD/server$PREFIX/share/xios" "$BUILD/server/var/jb/etc/profile.d"
+mkdir -p "$BUILD/server$PREFIX/bin" "$BUILD/server$PREFIX/share/xios" "$BUILD/server$XIOS_PREFIX/etc/profile.d"
 install -m0755 "$BUILD/xios-audiod" "$BUILD/server$PREFIX/bin/xios-audiod"
 install -m0755 "$BUILD/xios-audio-play" "$BUILD/server$PREFIX/bin/xios-audio-play"
 install -m0644 "$SRC/xios_audio_protocol.h" "$BUILD/server$PREFIX/share/xios/xios_audio_protocol.h"
-install -m0755 "$SRC/xios-audio-session.sh" "$BUILD/server/var/jb/etc/profile.d/xios-audio.sh"
+install -m0755 "$SRC/xios-audio-session.sh" "$BUILD/server$XIOS_PREFIX/etc/profile.d/xios-audio.sh"
 dpkg-deb --root-owner-group -b "$BUILD/server" "$OUT/xios-audio-server_${VERSION}_${ARCH}.deb"
 
 echo "==> audio artifacts:"

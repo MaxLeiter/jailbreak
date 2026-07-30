@@ -8,6 +8,10 @@
 # build-system patch, and asks Bun's own build graph to produce an iPhoneOS
 # runtime with local WebKit/JSC.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 umask 022
 export LC_ALL=C
 export TZ=UTC
@@ -151,18 +155,18 @@ fi
 if [ "${PACKAGE:-0}" = 1 ]; then
   echo "==> package Bun for rootless iOS"
   rm -rf "$WORK/pkg"
-  mkdir -p "$WORK/pkg/DEBIAN" "$WORK/pkg/var/jb/usr/bin" "$WORK/pkg/var/jb/usr/libexec/bun-ios"
-  cp "$OUT/bun-ios-a10" "$WORK/pkg/var/jb/usr/libexec/bun-ios/bun"
-  chmod 0755 "$WORK/pkg/var/jb/usr/libexec/bun-ios/bun"
+  mkdir -p "$WORK/pkg/DEBIAN" "$WORK/pkg$XIOS_PREFIX/usr/bin" "$WORK/pkg$XIOS_PREFIX/usr/libexec/bun-ios"
+  cp "$OUT/bun-ios-a10" "$WORK/pkg$XIOS_PREFIX/usr/libexec/bun-ios/bun"
+  chmod 0755 "$WORK/pkg$XIOS_PREFIX/usr/libexec/bun-ios/bun"
   if command -v ldid >/dev/null; then
-    ldid -S "$WORK/pkg/var/jb/usr/libexec/bun-ios/bun" || true
+    ldid -S "$WORK/pkg$XIOS_PREFIX/usr/libexec/bun-ios/bun" || true
   fi
-  cat > "$WORK/pkg/var/jb/usr/bin/bun" <<'EOF'
+  cat > "$WORK/pkg$XIOS_PREFIX/usr/bin/bun" <<'EOF'
 #!/var/jb/usr/bin/sh
 export GIGACAGE_ENABLED="${GIGACAGE_ENABLED:-0}"
 exec /var/jb/usr/libexec/bun-ios/bun "$@"
 EOF
-  chmod 0755 "$WORK/pkg/var/jb/usr/bin/bun"
+  chmod 0755 "$WORK/pkg$XIOS_PREFIX/usr/bin/bun"
   sed \
     -e "s/@DEB_VERSION@/$BUN_VERSION/g" \
     -e "s/@DEB_ARCH@/$ARCH/g" \

@@ -11,6 +11,10 @@
 #   docker run --rm -v "$PWD/out:/out" -v "$PWD/repack-icon-themes.sh:/r.sh:ro" \
 #     --entrypoint sh procursus-xbuild:bookworm-arm64 /r.sh
 set -e
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 OUT=/out
 WORK=/tmp/icons; rm -rf "$WORK"; mkdir -p "$WORK"; cd "$WORK"
 
@@ -29,7 +33,7 @@ repack() {  # $1=srcdeb $2=pkg $3=version $4=depends $5=iconsubdir $6=descriptio
   src="$1"; pkg="$2"; ver="$3"; deps="$4"; sub="$5"; desc="$6"
   echo "==> repack $pkg $ver"
   rm -rf t; dpkg-deb -R "$src" t
-  mkdir -p t/var/jb; mv t/usr t/var/jb/usr           # /usr -> /var/jb/usr
+  mkdir -p t$XIOS_PREFIX; mv t/usr t$XIOS_PREFIX/usr           # /usr -> $XIOS_PREFIX/usr
   cat > t/DEBIAN/control <<EOF
 Package: $pkg
 Version: $ver

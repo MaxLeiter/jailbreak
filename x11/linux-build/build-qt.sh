@@ -16,6 +16,8 @@
 # build_tools/host-qt-6.6.3 (one-time, ~25 min, persisted in the volume). Stage 2 is the
 # Procursus cross build via recipes/qtbase.mk.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 
 QTVER=6.6.3
 QTMINOR=6.6
@@ -23,7 +25,7 @@ TARBALL=qtbase-everywhere-src-${QTVER}.tar.xz
 SRCURL=https://download.qt.io/archive/qt/${QTMINOR}/${QTVER}/submodules/${TARBALL}
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 HOSTQT_BUILD=/work/Procursus/build_tools/host-qt-build   # in-volume so a failed run can resume
-BB=/work/Procursus/build_base/iphoneos-arm64-rootless/1900/var/jb
+BB=$XIOS_SYSROOT
 
 cd /work/Procursus
 
@@ -99,7 +101,7 @@ if ls /out/angle_*_iphoneos-arm64.deb >/dev/null 2>&1; then
   rm -rf /tmp/angle-qt && mkdir -p /tmp/angle-qt
   dpkg-deb -x "$ANGLE_DEB" /tmp/angle-qt
   mkdir -p "$BB"
-  cp -a /tmp/angle-qt/var/jb/* "$BB"/
+  cp -a /tmp/angle-qt$XIOS_PREFIX/* "$BB"/
 else
   echo "WARN: no angle deb in /out; qtbase GL/EGL configure will fail until angle is staged"
 fi
@@ -122,7 +124,7 @@ if [ -n "$ICU_RUNTIME_DEB" ] && [ -n "$ICU_DEV_DEB" ]; then
   dpkg-deb -x "$ICU_RUNTIME_DEB" /tmp/icu-qt
   dpkg-deb -x "$ICU_DEV_DEB" /tmp/icu-qt
   mkdir -p "$BB"
-  cp -a /tmp/icu-qt/var/jb/* "$BB"/
+  cp -a /tmp/icu-qt$XIOS_PREFIX/* "$BB"/
   if [ ! -f "$BB/usr/include/unicode/uvernum.h" ]; then
     echo "ERROR: ICU staged but unicode/uvernum.h missing — headerless -dev deb? qtbase configure will fail." >&2
     exit 1
@@ -133,7 +135,7 @@ else
   exit 1
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 TARGETS="${TARGETS:-qtbase}"

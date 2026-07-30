@@ -14,6 +14,8 @@
 # Set TARGETS to probe a smaller prefix, for example:
 #   TARGETS="dbus-package libxfce4util-package xfconf-package"
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 if ! command -v intltoolize >/dev/null 2>&1 || ! command -v glib-mkenums >/dev/null 2>&1; then
@@ -50,7 +52,7 @@ TARGETS="${TARGETS:-\
   thunar-package xfwm4-package xfdesktop-package xfce4-panel-package \
   xfce4-session-package xfce4-settings-package xfce4-appfinder-package}"
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused \
   CXX=/work/Procursus/build_tools/cxx-nounused"
 

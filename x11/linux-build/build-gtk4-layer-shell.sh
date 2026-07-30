@@ -9,6 +9,8 @@
 #     -v "$PWD/out:/out" procursus-xbuild:bookworm-arm64 /work/build-gtk4-layer-shell.sh
 # (build-gtk4-layer-shell.sh itself mounted read-only at /work/ — see run wrapper below.)
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 echo "==> installing host wayland-scanner (libwayland-bin) for protocol codegen"
@@ -38,7 +40,7 @@ cp -v /work/recipes/gtk4-layer-shell.mk makefiles/
 # Pre-flight: the build needs gtk4 + wayland-client + wayland-protocols (with the staged
 # xdg-shell.xml and staging/ext-session-lock-v1.xml) already in build_base. These came
 # from the GTK4 build that populated this volume; fail loudly if the volume is wrong.
-BB=build_base/iphoneos-arm64-rootless/1900/var/jb/usr
+BB=build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr
 for f in lib/pkgconfig/gtk4.pc lib/pkgconfig/wayland-client.pc share/pkgconfig/wayland-protocols.pc \
          share/wayland-protocols/stable/xdg-shell/xdg-shell.xml \
          share/wayland-protocols/staging/ext-session-lock/ext-session-lock-v1.xml; do
@@ -46,7 +48,7 @@ for f in lib/pkgconfig/gtk4.pc lib/pkgconfig/wayland-client.pc share/pkgconfig/w
 done
 echo "==> pre-flight ok: gtk4 + wayland deps staged"
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 echo "==> make gtk4-layer-shell-package"

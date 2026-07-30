@@ -18,6 +18,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     --entrypoint bash procursus-xbuild:bookworm-arm64 /work/build-session.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host build tools missing from the image (glib/gdk-pixbuf codegen + itstool + host glib).
@@ -79,11 +81,11 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
-GSESS_W=build_work/iphoneos-arm64-rootless/1900/gnome-session
-GSESS_S=build_stage/iphoneos-arm64-rootless/1900/gnome-session
+GSESS_W=build_work/$XIOS_TRIPLE/gnome-session
+GSESS_S=build_stage/$XIOS_TRIPLE/gnome-session
 GSESS_F="$GSESS_W/.xios_patch_series.sha256"
 if [[ " $TARGETS " == *" gnome-session"* ]]; then
   GSESS_FP="$(sha256sum \
@@ -96,8 +98,8 @@ if [[ " $TARGETS " == *" gnome-session"* ]]; then
   fi
 fi
 
-ACCTS_W=build_work/iphoneos-arm64-rootless/1900/accountsservice
-ACCTS_S=build_stage/iphoneos-arm64-rootless/1900/accountsservice
+ACCTS_W=build_work/$XIOS_TRIPLE/accountsservice
+ACCTS_S=build_stage/$XIOS_TRIPLE/accountsservice
 ACCTS_F="$ACCTS_W/.xios_patch_series.sha256"
 if [[ " $TARGETS " == *" accountsservice"* ]]; then
   ACCTS_FP="$(sha256sum \
@@ -110,8 +112,8 @@ if [[ " $TARGETS " == *" accountsservice"* ]]; then
   fi
 fi
 
-LIBGDM_W=build_work/iphoneos-arm64-rootless/1900/libgdm
-LIBGDM_S=build_stage/iphoneos-arm64-rootless/1900/libgdm
+LIBGDM_W=build_work/$XIOS_TRIPLE/libgdm
+LIBGDM_S=build_stage/$XIOS_TRIPLE/libgdm
 LIBGDM_F="$LIBGDM_W/.xios_patch_series.sha256"
 if [[ " $TARGETS " == *" libgdm"* ]]; then
   LIBGDM_FP="$(sha256sum \
@@ -124,8 +126,8 @@ if [[ " $TARGETS " == *" libgdm"* ]]; then
   fi
 fi
 
-GSD_W=build_work/iphoneos-arm64-rootless/1900/gnome-settings-daemon
-GSD_S=build_stage/iphoneos-arm64-rootless/1900/gnome-settings-daemon
+GSD_W=build_work/$XIOS_TRIPLE/gnome-settings-daemon
+GSD_S=build_stage/$XIOS_TRIPLE/gnome-settings-daemon
 GSD_F="$GSD_W/.xios_patch_series.sha256"
 if [[ " $TARGETS " == *" gnome-settings-daemon"* ]]; then
   GSD_FP="$(sha256sum \

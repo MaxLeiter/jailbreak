@@ -6,6 +6,10 @@
 # starts ioscd. It deliberately does not sync all launchers during postinst; the
 # settings UI or an explicit xios-launcher-sync command should choose that.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
@@ -82,7 +86,7 @@ pixbuf_flags() {
   local raw flag
   raw="$(
     PKG_CONFIG_SYSROOT_DIR="$SYSROOT" \
-    PKG_CONFIG_PATH="$SYSROOT/var/jb/usr/lib/pkgconfig:$SYSROOT/var/jb/usr/share/pkgconfig" \
+    PKG_CONFIG_PATH="$SYSROOT$XIOS_PREFIX/usr/lib/pkgconfig:$SYSROOT$XIOS_PREFIX/usr/share/pkgconfig" \
     pkg-config --cflags --libs gdk-pixbuf-2.0
   )"
   for flag in $raw; do
@@ -117,7 +121,7 @@ mkdir -p "$HERE/out"
 "$CLANG" "${COMMON[@]}" \
   "$HERE/src/xios-launcher-sync.c" \
   -o "$HERE/out/xios-launcher-sync" \
-  -Wl,-rpath,/var/jb/usr/lib
+  -Wl,-rpath,$XIOS_PREFIX/usr/lib
 
 PIXBUF_FLAGS=()
 while IFS= read -r flag; do
@@ -127,7 +131,7 @@ done < <(pixbuf_flags)
   "$HERE/src/xios-icon-render.c" \
   -o "$HERE/out/xios-icon-render" \
   "${PIXBUF_FLAGS[@]}" \
-  -Wl,-rpath,/var/jb/usr/lib \
+  -Wl,-rpath,$XIOS_PREFIX/usr/lib \
   -lm
 
 xsign "$HERE/out/xios-launcher-sync"
@@ -135,9 +139,9 @@ xsign "$HERE/out/xios-icon-render"
 
 echo "==> stage package"
 rm -rf "$STAGE"
-BIN="$STAGE/var/jb/usr/local/bin"
-PAYLOAD="$STAGE/var/jb/usr/libexec/xios-launchers"
-LAUNCHD="$STAGE/var/jb/Library/LaunchDaemons"
+BIN="$STAGE$XIOS_PREFIX/usr/local/bin"
+PAYLOAD="$STAGE$XIOS_PREFIX/usr/libexec/xios-launchers"
+LAUNCHD="$STAGE$XIOS_PREFIX/Library/LaunchDaemons"
 mkdir -p "$BIN" "$PAYLOAD" "$LAUNCHD" "$STAGE/DEBIAN"
 
 cp "$HERE/out/ioscd" "$BIN/ioscd"

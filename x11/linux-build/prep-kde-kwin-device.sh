@@ -5,11 +5,15 @@
 # a small "run later" note, and does not start iosc, kwin_wayland, Plasma, or any
 # session daemon.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 X11_ROOT="$(cd "$HERE/.." && pwd)"
 STAGE="${STAGE:-$HERE/kde-kwin-device-prep}"
-REMOTE="${REMOTE:-/var/jb/tmp/kde-kwin-prep}"
+REMOTE="${REMOTE:-$XIOS_PREFIX/tmp/kde-kwin-prep}"
 VOLUME="${VOLUME:-procursus-vol-kf6}"
 IMAGE="${IMAGE:-procursus-xbuild:bookworm-arm64}"
 REPO_DEBS="${REPO_DEBS:-$X11_ROOT/../repo/debs}"
@@ -93,7 +97,7 @@ docker_linux \
   "$IMAGE" \
   -c '
 set -eu
-SRC=/work/Procursus/build_dist/iphoneos-arm64-rootless/1900
+SRC=/work/Procursus/build_dist/$XIOS_TRIPLE
 TMP=/tmp/kde-kwin-runtime
 rm -rf "$TMP"
 mkdir -p "$TMP"
@@ -320,12 +324,12 @@ deb=$(find /debs -maxdepth 1 -type f -name "kwin_*_iphoneos-arm64.deb" -print -q
 work=$(mktemp -d)
 dpkg-deb -R "$deb" "$work/pkg"
 if [ -d "$work/pkg/Applications" ]; then
-  mkdir -p "$work/pkg/var/jb"
-  rm -rf "$work/pkg/var/jb/Applications"
-  mv "$work/pkg/Applications" "$work/pkg/var/jb/Applications"
+  mkdir -p "$work/pkg$XIOS_PREFIX"
+  rm -rf "$work/pkg$XIOS_PREFIX/Applications"
+  mv "$work/pkg/Applications" "$work/pkg$XIOS_PREFIX/Applications"
   dpkg-deb -Zzstd -b "$work/pkg" "$work/kwin-rootless.deb" >/dev/null
   mv "$work/kwin-rootless.deb" "$deb"
-  echo "   repacked $(basename "$deb") with /var/jb/Applications"
+  echo "   repacked $(basename "$deb") with $XIOS_PREFIX/Applications"
 else
   echo "   $(basename "$deb") already uses a rootless app path"
 fi

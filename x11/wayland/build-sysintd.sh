@@ -8,6 +8,10 @@
 #   - in the Procursus image: same entrypoint as build-session-stubs.sh
 # Output: out/xios-sysintd (arm64; ad-hoc signed when ldid is available).
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 umask 022
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -15,7 +19,7 @@ OUT="$SRC/out"
 mkdir -p "$OUT"
 
 TARGET_MIN_IOS="${XIOS_DEFAULT_MIN_IOS:-16.0}"
-TARGET_RUNTIME_TMP="${XIOS_RUNTIME_TMP:-/var/jb/tmp}"
+TARGET_RUNTIME_TMP="${XIOS_RUNTIME_TMP:-$XIOS_PREFIX/tmp}"
 CFLAGS=(
   -arch arm64
   -miphoneos-version-min="$TARGET_MIN_IOS"

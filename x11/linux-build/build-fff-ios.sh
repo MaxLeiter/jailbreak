@@ -23,6 +23,10 @@
 # libs (no Docker). Produces out/fff-ios/libfff_c.dylib, fakesigned, with its
 # install-name set to the on-device install path.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 umask 022
 export LC_ALL=C
 export TZ=UTC
@@ -45,7 +49,7 @@ IOS_MIN="${IOS_MIN:-16.0}"                        # device is 17.6.1; 16.0 floor
 # On-device install path; also stamped as the dylib install-name. fff-bun
 # dlopens by absolute path (the opencode bundle aliases the fff-bin resolver to
 # this string; see tools/opencode-ios-bundle.ts).
-INSTALL_PATH="${FFF_INSTALL_PATH:-/var/jb/usr/libexec/opencode-js/libfff_c.dylib}"
+INSTALL_PATH="${FFF_INSTALL_PATH:-$XIOS_PREFIX/usr/libexec/opencode-js/libfff_c.dylib}"
 
 need() { command -v "$1" >/dev/null || { echo "$1 not found" >&2; exit 1; }; }
 need git

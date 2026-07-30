@@ -3,6 +3,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 X11DIR="$(cd "$HERE/.." && pwd)"
+. "$X11DIR/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 OUT="${OUT:-$HERE/out}"
 PROC_VOL="${LADYBIRD_PROC_VOL:-procursus-vol-ladybird}"
 IMAGE="${LADYBIRD_XBUILD_IMAGE:-procursus-xbuild:bookworm-arm64}"
@@ -14,14 +16,17 @@ CPUS="${XIOS_BUILD_CPUS:-4}"
 mkdir -p "$OUT"
 
 docker run --rm --platform linux/arm64 --cpus="$CPUS" \
+  -e XIOS_MEMO_TARGET -e XIOS_MEMO_CFVER -e XIOS_PREFIX -e XIOS_SUBPREFIX \
   -v "$PROC_VOL:/work/Procursus" \
+  -v "$X11DIR/linux-build/target-env.sh:/work/target-env.sh:ro" \
   -v "$HERE/recipes-ladybird:/work/recipes-ladybird:ro" \
   -v "$OUT:/out" \
   "$IMAGE" -lc '
 set -euo pipefail
+. /work/target-env.sh
 
-PROC=/work/Procursus
-BB=$PROC/build_base/iphoneos-arm64-rootless/1900/var/jb
+PROC=$XIOS_PROC
+BB=$XIOS_SYSROOT
 SDK=/root/cctools/SDK/iPhoneOS16.5.sdk
 SHIM=/work/shim
 SRC="'"$SRC_DIR"'"
@@ -36,7 +41,9 @@ apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
   cmake ninja-build quilt pkg-config libglib2.0-bin libglib2.0-dev-bin >/dev/null
 
-if [ ! -e /var/jb ]; then ln -s "$BB" /var/jb; fi
+# See build-ladybird-wave4c.sh: the staged prefix is exposed at its device path.
+xios_require_rootless "the engine build stages the device prefix as a container symlink"
+if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
 mkdir -p "$SHIM"
 for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \
          segedit size nmedit; do
@@ -88,9 +95,9 @@ fi
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
 export PATH=$CARGO_HOME/bin:$SHIM:$PATH
-export LB_STAGED_PREFIX=/var/jb
-export PKG_CONFIG_PATH=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
-export PKG_CONFIG_LIBDIR=/var/jb/usr/lib/pkgconfig:/var/jb/usr/share/pkgconfig
+export LB_STAGED_PREFIX=$XIOS_PREFIX
+export PKG_CONFIG_PATH=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
+export PKG_CONFIG_LIBDIR=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 export LB_SHIM="$SHIM"
 export LB_HOST_GEN_ASM_OFFSETS="$HOST/gen_asm_offsets"
 export LB_HOST_ASMINTGEN="$HOST/asmintgen"
@@ -119,13 +126,13 @@ cmake -GNinja -B "$BUILD" -S "$SRC" \
   -DENABLE_CLANG_PLUGINS=OFF \
   -DENABLE_CRANELIFT_JIT=OFF \
   -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
-  -DLADYBIRD_CACHE_DIR=/var/jb/lib/ladybird \
+  -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" \
   -DGLIB_COMPILE_RESOURCES=/usr/bin/glib-compile-resources \
   -DVCPKG_ROOT=
 
 ninja -C "$BUILD" -j"$(nproc)" ladybird WebContent RequestServer ImageDecoder WebWorker Compositor
 rm -rf "$INSTALL"
-DESTDIR="$INSTALL" cmake --install "$BUILD" --component ladybird_Runtime --prefix /var/jb/usr
+DESTDIR="$INSTALL" cmake --install "$BUILD" --component ladybird_Runtime --prefix "$XIOS_PREFIX/usr"
 '
 
 LADYBIRD_WAYLAND_INSTALL_ROOT="$INSTALL_DIR" "$X11DIR/packages/ladybird-wayland/build.sh"

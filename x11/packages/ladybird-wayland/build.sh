@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 PKGDIR="$(cd "$(dirname "$0")" && pwd)"
 _x="$PKGDIR"
@@ -58,21 +62,21 @@ rewrite_angle_loads() {
   command -v install_name_tool >/dev/null 2>&1 || return 0
 
   if otool -L "$bin" 2>/dev/null | grep -q '@rpath/libGLESv2.2.dylib'; then
-    install_name_tool -change @rpath/libGLESv2.2.dylib /var/jb/lib/angle/libGLESv2.dylib "$bin"
+    install_name_tool -change @rpath/libGLESv2.2.dylib $XIOS_PREFIX/lib/angle/libGLESv2.dylib "$bin"
   fi
   if otool -L "$bin" 2>/dev/null | grep -q '@rpath/libGLESv2.dylib'; then
-    install_name_tool -change @rpath/libGLESv2.dylib /var/jb/lib/angle/libGLESv2.dylib "$bin"
+    install_name_tool -change @rpath/libGLESv2.dylib $XIOS_PREFIX/lib/angle/libGLESv2.dylib "$bin"
   fi
   if otool -L "$bin" 2>/dev/null | grep -q '@rpath/libEGL.dylib'; then
-    install_name_tool -change @rpath/libEGL.dylib /var/jb/lib/angle/libEGL.dylib "$bin"
+    install_name_tool -change @rpath/libEGL.dylib $XIOS_PREFIX/lib/angle/libEGL.dylib "$bin"
   fi
   if [ "$(basename "$bin")" = "Compositor" ] &&
      otool -L "$bin" 2>/dev/null | grep -q '/var/jb/lib/angle/libEGL.dylib'; then
-    install_name_tool -change /var/jb/lib/angle/libEGL.dylib /var/jb/lib/angle/libEGL.angle.dylib "$bin"
+    install_name_tool -change $XIOS_PREFIX/lib/angle/libEGL.dylib $XIOS_PREFIX/lib/angle/libEGL.angle.dylib "$bin"
   fi
 }
 
-[ -d "$INSTALL_ROOT/var/jb/usr" ] || die "missing install root: $INSTALL_ROOT/var/jb/usr"
+[ -d "$INSTALL_ROOT$XIOS_PREFIX/usr" ] || die "missing install root: $INSTALL_ROOT$XIOS_PREFIX/usr"
 [ -f "$APP_ENTS" ] || die "missing app entitlements: $APP_ENTS"
 [ -f "$HELPER_ENTS" ] || die "missing helper entitlements: $HELPER_ENTS"
 [ -f "$ICON_SRC" ] || die "missing Ladybird icon: $ICON_SRC"
@@ -83,10 +87,10 @@ STAGE="$STAGEROOT/ladybird-wayland"
 mkdir -p "$STAGE"
 cp -a "$INSTALL_ROOT/var" "$STAGE/"
 
-[ -x "$STAGE/var/jb/usr/bin/ladybird" ] || die "installed Ladybird binary missing"
+[ -x "$STAGE$XIOS_PREFIX/usr/bin/ladybird" ] || die "installed Ladybird binary missing"
 
-mkdir -p "$STAGE/var/jb/usr/bin"
-cat > "$STAGE/var/jb/usr/bin/ladybird-wayland" <<'EOF'
+mkdir -p "$STAGE$XIOS_PREFIX/usr/bin"
+cat > "$STAGE$XIOS_PREFIX/usr/bin/ladybird-wayland" <<'EOF'
 #!/bin/sh
 set -e
 
@@ -110,9 +114,9 @@ fi
 
 exec /var/jb/usr/bin/ladybird "$@"
 EOF
-chmod 0755 "$STAGE/var/jb/usr/bin/ladybird-wayland"
+chmod 0755 "$STAGE$XIOS_PREFIX/usr/bin/ladybird-wayland"
 
-desktop="$STAGE/var/jb/usr/share/applications/org.ladybird.Ladybird.desktop"
+desktop="$STAGE$XIOS_PREFIX/usr/share/applications/org.ladybird.Ladybird.desktop"
 if [ -f "$desktop" ]; then
   sed -i '' \
     -e 's|^Exec=.*|Exec=ladybird-wayland --force-new-process %U|' \
@@ -121,7 +125,7 @@ if [ -f "$desktop" ]; then
     "$desktop"
   perl -0pi -e 's|\[Desktop Action new-window\]\nName=([^\n]*\n)*?Exec=.*|\[Desktop Action new-window\]\nName=New Window\nExec=ladybird-wayland --new-window|s' "$desktop" 2>/dev/null || true
 else
-  mkdir -p "$STAGE/var/jb/usr/share/applications"
+  mkdir -p "$STAGE$XIOS_PREFIX/usr/share/applications"
   cat > "$desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -146,34 +150,34 @@ if [ -n "$(tail -c 1 "$desktop" 2>/dev/null || true)" ]; then
   printf '\n' >> "$desktop"
 fi
 
-service="$STAGE/var/jb/usr/share/dbus-1/services/org.ladybird.Ladybird.service"
+service="$STAGE$XIOS_PREFIX/usr/share/dbus-1/services/org.ladybird.Ladybird.service"
 if [ -f "$service" ]; then
   sed -i '' 's|^Exec=.*|Exec=ladybird-wayland --force-new-process|' "$service"
 fi
 
-icon_dir="$STAGE/var/jb/usr/share/icons/hicolor/256x256/apps"
+icon_dir="$STAGE$XIOS_PREFIX/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$icon_dir"
 install -m 0644 "$ICON_SRC" "$icon_dir/org.ladybird.Ladybird.png"
 install -m 0644 "$ICON_SRC" "$icon_dir/ladybird.png"
 
 while IFS= read -r f; do
   rewrite_angle_loads "$f"
-done < <(find "$STAGE/var/jb/usr/bin" "$STAGE/var/jb/usr/libexec" -type f -perm -111 2>/dev/null | sort)
+done < <(find "$STAGE$XIOS_PREFIX/usr/bin" "$STAGE$XIOS_PREFIX/usr/libexec" -type f -perm -111 2>/dev/null | sort)
 
 echo "==> signing Ladybird Wayland executables"
-sign_payload "$STAGE/var/jb/usr/bin/ladybird" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
+sign_payload "$STAGE$XIOS_PREFIX/usr/bin/ladybird" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
 for helper in WebContent RequestServer ImageDecoder WebWorker Compositor; do
-  if [ -f "$STAGE/var/jb/usr/libexec/$helper" ]; then
+  if [ -f "$STAGE$XIOS_PREFIX/usr/libexec/$helper" ]; then
     if [ "$helper" = "Compositor" ]; then
-      sign_payload "$STAGE/var/jb/usr/libexec/$helper" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
+      sign_payload "$STAGE$XIOS_PREFIX/usr/libexec/$helper" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
     else
-      sign_payload "$STAGE/var/jb/usr/libexec/$helper" "$HELPER_ENTS" com.apple.private.amfi.can-allow-non-platform
+      sign_payload "$STAGE$XIOS_PREFIX/usr/libexec/$helper" "$HELPER_ENTS" com.apple.private.amfi.can-allow-non-platform
     fi
   fi
 done
 while IFS= read -r f; do
   sign_payload "$f"
-done < <(find "$STAGE/var/jb/usr/lib" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -111 \) 2>/dev/null | sort)
+done < <(find "$STAGE$XIOS_PREFIX/usr/lib" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -111 \) 2>/dev/null | sort)
 
 mkdir -p "$STAGE/DEBIAN"
 sed "s/@VER@/$VER/g" "$PKGDIR/DEBIAN/control" > "$STAGE/DEBIAN/control"
@@ -184,8 +188,8 @@ chmod 0755 "$STAGE/DEBIAN/postinst"
 
 find "$STAGE" -type d -exec chmod 0755 {} +
 find "$STAGE" -type f ! -path '*/DEBIAN/postinst' ! -path '*/usr/bin/ladybird' ! -path '*/usr/bin/ladybird-wayland' ! -path '*/usr/libexec/*' -exec chmod 0644 {} +
-chmod 0755 "$STAGE/var/jb/usr/bin/ladybird" "$STAGE/var/jb/usr/bin/ladybird-wayland"
-find "$STAGE/var/jb/usr/libexec" -type f -exec chmod 0755 {} + 2>/dev/null || true
+chmod 0755 "$STAGE$XIOS_PREFIX/usr/bin/ladybird" "$STAGE$XIOS_PREFIX/usr/bin/ladybird-wayland"
+find "$STAGE$XIOS_PREFIX/usr/libexec" -type f -exec chmod 0755 {} + 2>/dev/null || true
 
 mkdir -p "$OUT"
 built="$(xmkdeb "$STAGE" "$OUT")"

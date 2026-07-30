@@ -14,6 +14,10 @@
 #   x11/wayland/{run-iosc.sh,run-kgx.sh,iosc-gl-ent.xml}
 # Output: iosc_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
@@ -28,11 +32,11 @@ VER="0.9.29"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
-BIN="$STAGE/var/jb/usr/local/bin"
-SHARE="$STAGE/var/jb/usr/local/share/iosc"
-LIB="$STAGE/var/jb/usr/local/lib"
-LIBEXEC="$STAGE/var/jb/usr/local/libexec"
-LAUNCHD="$STAGE/var/jb/Library/LaunchDaemons"
+BIN="$STAGE$XIOS_PREFIX/usr/local/bin"
+SHARE="$STAGE$XIOS_PREFIX/usr/local/share/iosc"
+LIB="$STAGE$XIOS_PREFIX/usr/local/lib"
+LIBEXEC="$STAGE$XIOS_PREFIX/usr/local/libexec"
+LAUNCHD="$STAGE$XIOS_PREFIX/Library/LaunchDaemons"
 
 rm -rf "$STAGEROOT"
 mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$STAGE/DEBIAN"

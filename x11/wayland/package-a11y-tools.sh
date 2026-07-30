@@ -7,6 +7,10 @@
 # Output:
 #   xios-a11y-tools_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
 set -euo pipefail
+_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
+. "$_xt/linux-build/target-lib.sh"
+xios_load_target "${XIOS_TARGET:-rootless-1900}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
@@ -27,15 +31,15 @@ DEB="xios-a11y-tools_${VER}_${ARCH}.deb"
 }
 
 rm -rf "$STAGEROOT"
-mkdir -p "$STAGE/var/jb/usr/local/bin" "$STAGE/DEBIAN"
-cp "$HERE/out/atspi-dump" "$STAGE/var/jb/usr/local/bin/atspi-dump"
-cp "$HERE/out/xios-a11yd" "$STAGE/var/jb/usr/local/bin/xios-a11yd"
-chmod 0755 "$STAGE/var/jb/usr/local/bin/atspi-dump"
-chmod 0755 "$STAGE/var/jb/usr/local/bin/xios-a11yd"
+mkdir -p "$STAGE$XIOS_PREFIX/usr/local/bin" "$STAGE/DEBIAN"
+cp "$HERE/out/atspi-dump" "$STAGE$XIOS_PREFIX/usr/local/bin/atspi-dump"
+cp "$HERE/out/xios-a11yd" "$STAGE$XIOS_PREFIX/usr/local/bin/xios-a11yd"
+chmod 0755 "$STAGE$XIOS_PREFIX/usr/local/bin/atspi-dump"
+chmod 0755 "$STAGE$XIOS_PREFIX/usr/local/bin/xios-a11yd"
 
 if command -v ldid >/dev/null 2>&1; then
-  xsign "$STAGE/var/jb/usr/local/bin/atspi-dump"
-  xsign "$STAGE/var/jb/usr/local/bin/xios-a11yd"
+  xsign "$STAGE$XIOS_PREFIX/usr/local/bin/atspi-dump"
+  xsign "$STAGE$XIOS_PREFIX/usr/local/bin/xios-a11yd"
 fi
 
 INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)

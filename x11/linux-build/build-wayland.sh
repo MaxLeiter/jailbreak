@@ -23,6 +23,8 @@
 # small cascade deps (libffi/expat) — one-time and unavoidable on a clean volume; seeding the
 # volume from the DDX clone snapshot would skip it. The W0 packages themselves are tiny.
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 umask 022
 cd /work
 
@@ -101,7 +103,7 @@ cp -v /work/recipes/*.mk makefiles/
 cp -v /work/recipes/build_info/*.control build_info/
 
 echo "==> [5/5] build the W0 stack (epoll-shim first; wayland depends on it)"
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 TARGETS="${TARGETS:-epoll-shim-package wayland-package wayland-protocols-package libxkbcommon-package}"
 
@@ -121,8 +123,8 @@ stage_required_patch_stack() {
 
 target_requests wayland && stage_required_patch_stack wayland
 
-WAYLAND_W=build_work/iphoneos-arm64-rootless/1900/wayland
-WAYLAND_S=build_stage/iphoneos-arm64-rootless/1900/wayland
+WAYLAND_W=build_work/$XIOS_TRIPLE/wayland
+WAYLAND_S=build_stage/$XIOS_TRIPLE/wayland
 WAYLAND_F="$WAYLAND_W/.xios_patch_series.sha256"
 if target_requests wayland; then
   WAYLAND_FP="$(sha256sum \

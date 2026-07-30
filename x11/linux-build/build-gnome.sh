@@ -17,6 +17,8 @@
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/vapi:/work/vapi:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="gnome-console-package" procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
 set -euo pipefail
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 cd /work/Procursus
 
 # Host build tools missing from the image. gtk-doc-tools + native glib/gdk-pixbuf codegen are
@@ -117,7 +119,7 @@ if compgen -G "/work/vapi/*.vapi" >/dev/null 2>&1; then
   cp -v /work/vapi/*.deps "$VAPIDIR"/ 2>/dev/null || true
 fi
 
-COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
+COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 # Dependency order: foundation bus+settings -> app libraries -> the GTK4 apps. The GTK4 base
@@ -125,8 +127,8 @@ COMMON="MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1 \
 # .build_complete markers skip rebuilds). gnome-terminal is omitted (optional GTK3 pass).
 # VALA targets (libgee, gnome-calculator) also need valac + the vendored .vapi staged above.
 
-APPSTREAM_W=build_work/iphoneos-arm64-rootless/1900/appstream
-APPSTREAM_S=build_stage/iphoneos-arm64-rootless/1900/appstream
+APPSTREAM_W=build_work/$XIOS_TRIPLE/appstream
+APPSTREAM_S=build_stage/$XIOS_TRIPLE/appstream
 APPSTREAM_F="$APPSTREAM_W/.xios_patch_series.sha256"
 if target_requests appstream; then
   APPSTREAM_FP="$(sha256sum \
@@ -139,8 +141,8 @@ if target_requests appstream; then
   fi
 fi
 
-TRACKER_W=build_work/iphoneos-arm64-rootless/1900/tracker
-TRACKER_S=build_stage/iphoneos-arm64-rootless/1900/tracker
+TRACKER_W=build_work/$XIOS_TRIPLE/tracker
+TRACKER_S=build_stage/$XIOS_TRIPLE/tracker
 TRACKER_F="$TRACKER_W/.xios_patch_series.sha256"
 if target_requests tracker || target_requests nautilus; then
   TRACKER_FP="$(sha256sum \
@@ -153,8 +155,8 @@ if target_requests tracker || target_requests nautilus; then
   fi
 fi
 
-CURL_W=build_work/iphoneos-arm64-rootless/1900/curl
-CURL_S=build_stage/iphoneos-arm64-rootless/1900/curl
+CURL_W=build_work/$XIOS_TRIPLE/curl
+CURL_S=build_stage/$XIOS_TRIPLE/curl
 CURL_F="$CURL_W/.xios_patch_series.sha256"
 if target_requests curl || target_requests appstream; then
   CURL_FP="$(sha256sum \
@@ -167,8 +169,8 @@ if target_requests curl || target_requests appstream; then
   fi
 fi
 
-NGHTTP2_W=build_work/iphoneos-arm64-rootless/1900/nghttp2
-NGHTTP2_S=build_stage/iphoneos-arm64-rootless/1900/nghttp2
+NGHTTP2_W=build_work/$XIOS_TRIPLE/nghttp2
+NGHTTP2_S=build_stage/$XIOS_TRIPLE/nghttp2
 NGHTTP2_F="$NGHTTP2_W/.xios_patch_series.sha256"
 if target_requests nghttp2 || target_requests curl || target_requests appstream || target_requests libsoup3; then
   NGHTTP2_FP="$(sha256sum \
@@ -181,8 +183,8 @@ if target_requests nghttp2 || target_requests curl || target_requests appstream 
   fi
 fi
 
-GTE_W=build_work/iphoneos-arm64-rootless/1900/gnome-text-editor
-GTE_S=build_stage/iphoneos-arm64-rootless/1900/gnome-text-editor
+GTE_W=build_work/$XIOS_TRIPLE/gnome-text-editor
+GTE_S=build_stage/$XIOS_TRIPLE/gnome-text-editor
 GTE_F="$GTE_W/.xios_patch_series.sha256"
 if target_requests gnome-text-editor; then
   GTE_FP="$(sha256sum \
@@ -195,8 +197,8 @@ if target_requests gnome-text-editor; then
   fi
 fi
 
-NAU_W=build_work/iphoneos-arm64-rootless/1900/nautilus
-NAU_S=build_stage/iphoneos-arm64-rootless/1900/nautilus
+NAU_W=build_work/$XIOS_TRIPLE/nautilus
+NAU_S=build_stage/$XIOS_TRIPLE/nautilus
 NAU_F="$NAU_W/.xios_patch_series.sha256"
 if target_requests nautilus; then
   NAU_FP="$(sha256sum \
@@ -209,8 +211,8 @@ if target_requests nautilus; then
   fi
 fi
 
-GNOME_DESKTOP_W=build_work/iphoneos-arm64-rootless/1900/gnome-desktop
-GNOME_DESKTOP_S=build_stage/iphoneos-arm64-rootless/1900/gnome-desktop
+GNOME_DESKTOP_W=build_work/$XIOS_TRIPLE/gnome-desktop
+GNOME_DESKTOP_S=build_stage/$XIOS_TRIPLE/gnome-desktop
 GNOME_DESKTOP_F="$GNOME_DESKTOP_W/.xios_patch_series.sha256"
 if target_requests gnome-desktop || target_requests nautilus || target_requests gnome-font-viewer; then
   GNOME_DESKTOP_FP="$(sha256sum \
@@ -267,7 +269,7 @@ fi
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-DIST_ROOT="build_dist/iphoneos-arm64-rootless/1900"
+DIST_ROOT="build_dist/$XIOS_TRIPLE"
 for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
            libjson-glib libxmlb libappstream libadwaita \
            libarchive \
