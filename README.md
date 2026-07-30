@@ -52,6 +52,7 @@ jailbreak/
 │   ├── sim.sh            # build for the iOS Simulator + load via simject (device-free)
 │   ├── logs.sh           # live device console over USB (idevicesyslog)
 │   ├── publish-repo.sh   # upload debs to Blob + deploy the APT repo (--staging for dev.repo)
+│   ├── setup-repo-guards.sh # once per clone: index merge driver + agent guardrails
 │   └── lib/              # repo-pipeline internals (make-repo, solvability check, audit)
 ├── docs/                 # public-readiness and process notes
 ├── jarvis/               # on-device assistant prototype
@@ -86,12 +87,27 @@ the static site and signed metadata; package payloads live locally in ignored
 publisher for low-cache iteration; production `.deb` filenames are immutable, so
 bump the package version/revision instead of replacing an already-published file.
 
+Publishing runs locally, because the gates that matter need the actual `.deb`
+files: the Blob upload, DER entitlement re-signing, and the Procursus shadow
+check. CI validates the index on every PR but does not deploy.
+
 ```bash
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
 bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
-bin/publish-repo.sh                          # upload payloads + deploy prod metadata/site
+git add repo/Packages && git commit          # review the diff: it is what goes public
+bin/publish-repo.sh                          # production
 ```
+
+Production publishes the *committed* index, so the diff you commit is the change
+users receive — and a prod publish refuses to run while `repo/Packages` differs
+from `HEAD`. Staging is the step that uploads payloads, so don't run the
+production step alone for something you just built. `--only pkg[,pkg]` scopes a
+publish to named packages instead.
+
+Run `bin/setup-repo-guards.sh` once per clone: it registers the structural merge
+driver for `repo/Packages` (so branches stop conflicting on the index) and a
+Claude Code hook that blocks the two operations that destroy work silently.
 
 Add it in Sileo: `sileo://source/https://repo.maxleiter.com/` (the landing page
 also has Sileo / Zebra / Cydia buttons and the copyable URL).
