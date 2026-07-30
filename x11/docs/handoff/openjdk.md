@@ -24,7 +24,24 @@ Final local and installed package bytes:
 | `openjdk-21-jre-headless_21.0.12+ios1_iphoneos-arm64.deb` | 54,290,592 | `4f8ec7930c35cd52567a7536f6fc8cce89e215a2853b8af70e6ba3e814c61894` |
 | `openjdk-21-jdk-headless_21.0.12+ios1_iphoneos-arm64.deb` | 126,170,144 | `65cc88210b184f27291e700413c6be09e70cc7e08f697d0a3ad9087e5143c9f0` |
 
-These packages have not been staged or published to the APT repo.
+Both packages are published in the signed production APT repo at
+`https://repo.maxleiter.com` and are represented by manifest commit
+`538d0f5c`.
+
+## Release proof
+
+- Scoped staging publication passed the 621-package dependency, payload/hash,
+  Procursus-shadow, signing, and version-drift gates.
+- The device reinstalled both packages from `https://dev.repo.maxleiter.com`
+  and then passed the full runtime matrix below. Evidence is in
+  `artifacts/device-runs/2026-07-30-openjdk21-staging/`.
+- Scoped production deployment `dpl_7wP4vbFjpjofGm4h3sTAdgMHBSZD` published
+  only the two OpenJDK packages. The live `Packages` file is byte-for-byte
+  identical to manifest commit `538d0f5c`.
+- A fresh isolated APT cache on the device selected both production versions
+  at priority 1002, downloaded all 180 MB from the production package URLs,
+  and reproduced both SHA-256 hashes above. The installed runtime then
+  reported `21.0.12+7-xios1` and `javac 21.0.12`.
 
 ## Reproducible build
 
@@ -91,7 +108,7 @@ All of the following passed on the iPad7,12 / A10:
 - `java.compiler`, `jdk.compiler`, `jdk.internal.vm.ci`, and `jdk.jfr` are
   present in the installed module graph.
 
-The test did not restart or disturb the running KDE/Xios session.
+The test did not restart or disturb the running Xios session.
 
 ## Remaining work
 
@@ -101,7 +118,8 @@ The test did not restart or disturb the running KDE/Xios session.
   Darwin/macOS platform family. Changing this can alter third-party library
   selection and needs compatibility testing first.
 - Run representative real applications and build systems (Gradle/Maven,
-  servers, and large desktop-independent Java workloads) before publishing.
+  servers, and large desktop-independent Java workloads) to extend coverage
+  beyond the release smoke matrix.
 - Exercise the mirrored code cache across newer devices/iOS releases before
   considering it as the default.
 - The full upstream jtreg suite was not run in this cross-build environment;
