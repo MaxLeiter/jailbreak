@@ -1,5 +1,5 @@
 /*
- * NativeClient.c — client half of iosc-native.sock v3 (see NativeClient.h +
+ * NativeClient.c — client half of iosc-native.sock v1 (see NativeClient.h +
  * iosc_native_proto.h). Modeled on apps/Xios/Sources/XSurface.c's mach-port
  * rendezvous, generalized from one surface to per-window canvases.
  *
@@ -146,9 +146,7 @@ iosc_native_client *iosc_native_connect(const char *sock_path, const char *app_i
         close(fd); return NULL;
     }
 
-    /* v3 is deliberately not wire-compatible with the old unfenced native
-     * DIRTY stream. Require the server's version confirmation before returning
-     * a live client so neither side can silently run the wrong contract. */
+    /* Require the server's exact version before returning a live client. */
     struct pollfd hello_poll = { .fd = fd, .events = POLLIN };
     xios_msg hello;
     if (poll(&hello_poll, 1, 3000) <= 0 ||
@@ -236,34 +234,16 @@ int iosc_native_next(iosc_native_client *c, int timeout_ms, iosc_native_event *e
     case XIOS_MSG_NATIVE_FRAME: {
         uint64_t value =
             ((uint64_t)(uint32_t)h.b << 32) | (uint32_t)h.a;
-        if ((uint32_t)h.c != IOSC_NATIVE_PROTOCOL_VERSION) {
-            fprintf(stderr,
-                    "iosc-native: frame protocol mismatch record=%u host=%u\n",
-                    (uint32_t)h.c, IOSC_NATIVE_PROTOCOL_VERSION);
+        if (h.length != IOSC_NATIVE_FENCE_TOKEN_SIZE ||
+            value == 0 || h.c != 0 || h.d != 0) {
+            fprintf(stderr, "iosc-native: invalid fenced frame record\n");
             goto dead;
         }
-        if ((uint32_t)h.d == IOSC_NATIVE_FENCE_BROKER_TOKEN) {
-            if (h.length != IOSC_NATIVE_FENCE_TOKEN_SIZE || value == 0)
-                goto dead;
-            ev->fence_kind = IOSC_NATIVE_FENCE_BROKER_TOKEN;
-            ev->fence_token_size = h.length;
-            ev->fence_value = value;
-            memcpy(ev->fence_token, payload, h.length);
-        } else if ((uint32_t)h.d == IOSC_NATIVE_FENCE_NONE) {
-            if (h.length != 0 || value != 0)
-                goto dead;
-            ev->fence_kind = IOSC_NATIVE_FENCE_NONE;
-        } else {
-            goto dead;
-        }
+        ev->fence_value = value;
+        memcpy(ev->fence_token, payload, IOSC_NATIVE_FENCE_TOKEN_SIZE);
         ev->type = IOSC_NEV_DIRTY;
         return 1;
     }
-    case XIOS_MSG_DIRTY:
-        fprintf(stderr,
-                "iosc-native: legacy unfenced DIRTY rejected by protocol v%u\n",
-                IOSC_NATIVE_PROTOCOL_VERSION);
-        goto dead;
     case XIOS_MSG_WINDOW_GONE: ev->type = IOSC_NEV_WINDOW_GONE; return 1;
     case XIOS_MSG_WINDOW_TITLE:
         ev->type = IOSC_NEV_TITLE;

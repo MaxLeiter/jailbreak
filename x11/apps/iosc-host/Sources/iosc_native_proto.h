@@ -14,7 +14,7 @@
  * the cursor-overlay work (agreed 2026-07-01). ONE 32-byte header both directions;
  * core type codes 0x01-0x0f are flavor-agnostic and owned by iosc (HELLO/DIRTY/
  * CURSOR); the native lifecycle codes live in 0x40-0x5f, the range reserved for
- * this flavor. Native protocol v3 uses NATIVE_FRAME rather than core DIRTY so
+ * this flavor. Native protocol v1 uses NATIVE_FRAME rather than core DIRTY so
  * every production frame carries a broker fence token/value; CURSOR remains
  * window_id-targeted. Both ends are arm64 little-endian; structs go on the wire
  * verbatim.
@@ -25,9 +25,7 @@
 #include <stdint.h>
 
 #define IOSC_NATIVE_SOCK "/var/jb/tmp/iosc-native.sock"
-#define IOSC_NATIVE_PROTOCOL_VERSION 3u
-#define IOSC_NATIVE_FENCE_NONE 0u
-#define IOSC_NATIVE_FENCE_BROKER_TOKEN 1u
+#define IOSC_NATIVE_PROTOCOL_VERSION 1u
 #define IOSC_NATIVE_FENCE_TOKEN_SIZE 32u
 
 /* ---- shared typed record (authoritative shape: the iosc maintainer) ------- */
@@ -72,7 +70,7 @@ typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
  *   a = scene width px, b = scene height px, c = backing scale (1/2),
  *   d = mach receive-port name in the host's IPC space (iosc task_for_pid's the
  *   host and mach_msg's each canvas IOSurface send-right to this port, exactly
- *   like the single-surface ddx in xios_surface.c). Protocol v3 requires
+ *   like the single-surface ddx in xios_surface.c). Protocol v1 requires
  *   window_id = IOSC_NATIVE_PROTOCOL_VERSION. The server
  *   replies with a HELLO whose a field carries the same version before any
  *   WINDOW_* records; either side closes on a mismatch.
@@ -102,16 +100,10 @@ typedef struct { uint32_t w, h; int32_t hot_x, hot_y; } xios_cursor_bitmap;
 #define XIOS_MSG_WINDOW_TITLE 0x52u
 /* WINDOW_GONE: toplevel unmapped / client exited. Tear the scene down. */
 #define XIOS_MSG_WINDOW_GONE  0x53u
-/* NATIVE_FRAME (v3): one complete per-window GPU frame. window_id selects the
- * canvas; c=IOSC_NATIVE_PROTOCOL_VERSION; d=IOSC_NATIVE_FENCE_*.
- *
- * BROKER_TOKEN: length=32 capability-token bytes; a/b are the low/high halves
- * of the MTLSharedEvent value the host must wait for before sampling.
- * NONE: length=0 and a=b=0; valid only after the compositor completed its
- * explicitly enabled diagnostic CPU barrier. Damage is whole-canvas.
- *
- * Legacy core DIRTY is not accepted on a v3 native connection: it cannot carry
- * both a per-window id and the broker fence contract without ambiguity. */
+/* NATIVE_FRAME: one complete per-window GPU frame. window_id selects the
+ * canvas; length=32 carries the broker capability token; a/b are the low/high
+ * halves of the non-zero MTLSharedEvent value the host must wait for before
+ * sampling. c/d are reserved and must be zero. Damage is whole-canvas. */
 #define XIOS_MSG_NATIVE_FRAME 0x54u
 
 /* WINDOW_NEW/GEOM flag bits (msg.d). */

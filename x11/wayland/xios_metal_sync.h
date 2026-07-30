@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef XIOS_METAL_EVENT_TOKEN_SIZE
+#define XIOS_METAL_EVENT_TOKEN_SIZE 32u
+#endif
+
 /*
  * Export an ANGLE/Metal producer fence through the Xios Metal-event broker.
  *

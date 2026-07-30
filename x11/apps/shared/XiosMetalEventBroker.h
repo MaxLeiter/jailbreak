@@ -4,9 +4,23 @@
 #include <stddef.h>
 
 #define XIOS_METAL_EVENT_BROKER_SERVICE "com.max.xios.metal-event-broker"
+#ifndef XIOS_METAL_EVENT_TOKEN_SIZE
 #define XIOS_METAL_EVENT_TOKEN_SIZE 32u
+#endif
 
 #ifdef __OBJC__
+/*
+ * The broker uses Foundation's NSXPC API, not the C xpc API. Some Procursus
+ * sysroots expose newer private xpc headers ahead of the target SDK; letting
+ * Foundation's optional __has_include import those mixes incompatible SDK
+ * generations. Suppress that optional include and provide only the two opaque
+ * declarations referenced by NSXPCConnection.h. No C XPC API is used here.
+ */
+#ifndef __XPC_H__
+#define __XPC_H__
+typedef const struct _xpc_type_s *xpc_type_t;
+typedef void *xpc_object_t;
+#endif
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 

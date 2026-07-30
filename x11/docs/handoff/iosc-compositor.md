@@ -14,10 +14,19 @@
 - Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
 
 ## Current state
-- 2026-07-29 matched release/device validation: `iosc 0.9.27` and
+- 2026-07-29 single-contract host closure: the private `iosc_iosurface`
+  interface is version 1 everywhere (iosc, ANGLE EGL producer, Mutter, KWin,
+  and Xwayland). Its one frame contract requires a 32-byte broker token and a
+  non-zero `MTLSharedEvent` value before a compositor samples an IOSurface.
+  Capability negotiation, archive transport, version branches, and unfenced
+  frame variants are gone. Native per-window presentation is independently
+  normalized to version 1 with the same mandatory-fence rule. Host builds passed
+  for `iosc 0.9.33`, `angle ...+es3-14`, `libmutter-14-0 46.0+ios6`,
+  `xwayland 23.2.7+ios3`, `kwin 6.1.5+ios29`, and the iOS native host.
+- 2026-07-29 historical matched device validation: `iosc 0.9.27` and
   `angle 2.1.0+git20260630.a32d31d+es3-10` are installed on the A10 iPad.
-  `iosc` reports `ANGLE Metal Renderer: Apple A10 GPU`, advertises
-  `iosc_iosurface v4`, and a mapped GTK client enabled the 32-byte broker-token
+  `iosc` reports `ANGLE Metal Renderer: Apple A10 GPU`, and a mapped GTK client
+  enabled the 32-byte broker-token
   cross-process GPU fence. The launchd broker was running and had never exited;
   no CPU-side completion diagnostic or fatal fence line appeared. The matched
   rebuilt Xios app is installed, but the screen/FrontBoard gate prevented
@@ -32,10 +41,10 @@
   publish a persistent handle once under an opaque 32-byte token, consumers
   recreate the event through XPC, and only monotonic values stay on the existing
   Wayland/app wires. Tokens remain available for Xios reconnects and are
-  revoked when the publishing XPC connection dies. Wayland protocol v4
-  advertises the broker capability and rejects the legacy v3 archive request.
-  Native protocol v3 rejects legacy unfenced DIRTY records, requires a broker
-  token/value on every production frame, and pairs each fence with a canvas
+  revoked when the publishing XPC connection dies. The current Wayland
+  interface has since been collapsed to the single version-1 broker-token
+  contract described above. Native presentation requires a broker token/value
+  on every frame and pairs each fence with a canvas
   generation so resize/reconnect delivery cannot authorize stale storage.
   `iosc_0.9.27_iphoneos-arm64.deb` SHA256:
   `4a986650be20e77b60c7b32e6e5162bd3bc2f7584d842cbd6d4db503253e609a`.
@@ -62,7 +71,7 @@
 - Local compositor upload path now tracks `damage_buffer` dirty rectangles for cached wl_shm textures, so repaint pulses and cursor movement do not force whole-window re-uploads. The nested-compositor frame pulse is deployed in the iosc launch paths with `IOSC_FRAME_PULSE=1` by default.
 - 2026-07-03: `iosc` now cleans up compositor surfaces on client disconnect, accumulates real output damage, and scissors redraws to the damaged output rects instead of recompositing the full output for small surface updates. Debug tracing is behind `IOSC_DAMAGE_STATS=1` and `IOSC_DAMAGE_REASON=1`. Packaged/deployed on-device as `iosc 0.9.4`; installed `/var/jb/usr/local/bin/iosc` sha256 is `82b08437245ff678af0cb9fee66458cb860cd14f1c147c8a0b771b1f2da371c4`.
 - 2026-07-03 on-device soak: clean `xios-session iosc` mapped the four shell layer surfaces; launching `kgx` mapped a fifth toplevel; killing `kgx` and remapping `ioscbar` returned the compositor to `4 window(s)`, confirming the dead client was not retained. Evidence: `artifacts/device-runs/20260703-124645/compositor.png`.
-- 2026-07-03 Xwayland glamor/IOSurface path is verified on-device with `xwayland 23.2.7+ios2`: Xwayland binds `iosc_iosurface`, iosc imports client IOSurfaces from the Xwayland task, and the compositor presents through ANGLE/Metal (`GL_RENDERER=ANGLE ... Apple A10 GPU`, frame barrier `EGL fence`). The iosc IOSurface protocol preserves compatibility with old clients passing `0` for BGRA8 GL-origin buffers, while the Xwayland glamor backend marks its IOSurfaces as top-left to avoid inverted X11 output. Evidence: `artifacts/device-runs/xwayland-glamor-ios2-flipfix-20260703-153036/compositor.png`.
+- 2026-07-03 Xwayland glamor/IOSurface path is verified on-device with `xwayland 23.2.7+ios2`: Xwayland binds `iosc_iosurface`, iosc imports client IOSurfaces from the Xwayland task, and the compositor presents through ANGLE/Metal (`GL_RENDERER=ANGLE ... Apple A10 GPU`, frame barrier `EGL fence`). The Xwayland glamor backend marks its IOSurfaces as top-left to avoid inverted X11 output. Evidence: `artifacts/device-runs/xwayland-glamor-ios2-flipfix-20260703-153036/compositor.png`.
 - 2026-07-04 refactor pass started: CLI/default parsing moved to `iosc_options.{c,h}`, truthy/size helpers moved to `iosc_util.{c,h}`, and the custom `iosc_iosurface` protocol/buffer implementation moved to `iosc_iosurface.{c,h}`. Cross-build passed and an on-device smoke mapped `iosc-client` against the refactored compositor. Evidence: `artifacts/device-runs/iosc-split-client-smoke-20260704-221927/compositor.png`.
 - 2026-07-04 protocol/stats follow-up: `iosc_iosurface.xml` now documents `format` as a named enum (`bgra8888_gl_origin` plus `flag_top_left`) and adds an `unsupported_format` protocol error for unknown layouts/flags. The compositor, ANGLE shim test client, GPU smoke client, and Xwayland glamor backend now use generated enum constants instead of raw flag words. `IOSC_DAMAGE_STATS=1` also records per-surface damage counters (`surface`, `buffer`, `full`, pixels) next to the existing output-damage/scissor trace. Host validation passed for `IOSC_BUILD_XWM=0 wayland/build-iosc.sh`; targeted `xwayland-package` rebuilt as `linux-build/out/xwayland_23.2.7+ios2_iphoneos-arm64.deb` (sha256 `6d98a1934c51b88dc9af1951f4dedac31e433adbfdb9d1bed7f131fb5a08b063`). On-device direct smoke deployed `/var/jb/usr/local/bin/iosc` sha256 `370b40b160542c4e1747444cbd20c5eba1ae6ff584ef8fc255690c2d66885b63`, showed wl_shm per-surface damage stats, then ran a DER-signed `iosc-gpu-client` that bound `iosc_iosurface`, rendered through ANGLE on the A10 GPU, and was imported by `iosc` as a client IOSurface. Evidence: `artifacts/device-runs/iosc-protocol-stats-20260704-223925/compositor.png`; KDE was restored afterward and `bin/xios-device status` reported `"preset":"kde","state":"up"`.
 - 2026-07-04 packaging follow-up: `wayland/package-iosc.sh` now builds `iosc 0.9.5` so the protocol enum/validation and per-surface damage stats ship without replacing the public `0.9.4` deb bytes. Built `linux-build/out/iosc_0.9.5_iphoneos-arm64.deb` and `repo/debs/iosc_0.9.5_iphoneos-arm64.deb` with sha256 `07ce2ed1ae6d328abc951a5dc0b38e6e2850c1dc480f7da28475b3e312128ab4`; installed on-device with `dpkg -i`, confirmed `dpkg-query` reports `iosc 0.9.5`, and relaunched KDE on the packaged compositor. Evidence: `artifacts/device-runs/iosc-095-kde-20260704-224352/compositor.png`.

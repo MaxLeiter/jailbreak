@@ -1570,9 +1570,6 @@ static int notify_native_gpu_frame(uint32_t window_id)
     size_t token_size = 0;
     uint64_t event_value = 0;
     if (!iosc_gl_present_fence(&token, &token_size, &event_value)) {
-        if (iosc_env_truthy(getenv("IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC")) &&
-            xios_canvas_notify_frame(window_id, NULL, 0, 0) == 0)
-            return 0;
         fprintf(stderr,
                 "iosc: FATAL: native window %u has no cross-process GPU "
                 "presentation fence; refusing the frame\n",
