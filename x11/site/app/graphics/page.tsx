@@ -168,16 +168,23 @@ export default function Graphics() {
         </div>
       </Section>
 
-      <Section num="03.7" title="Where X11 still uses the CPU">
+      <Section num="03.7" title="Where the CPU still gets used">
         <div className="prose">
           <p>
-            The classic Xios server has no hardware <T k="glx" />{" "}or{" "}
-            <T k="dri" />{" "}route on iOS, so clients that connect directly to it
-            render in software and draw into IOSurface-backed memory the app
-            presents with Metal. X11 compatibility can still join the GPU path
-            through Xwayland: <T k="glamor" />{" "}renders X pixmaps with ANGLE into
+            X11 compatibility is on the GPU path now. Xwayland is the only X route
+            that ships: <T k="glamor" />{" "}renders X pixmaps with ANGLE into
             IOSurfaces, then iosc composites them like any other Wayland surface.
-            Legacy desktop-GL apps stay on <T k="llvmpipe" />.
+            The software X server that used to sit beside it — no hardware{" "}
+            <T k="glx" />{" "}or <T k="dri" />{" "}route exists on iOS, so its clients
+            drew on the CPU — was retired on 2026-07-29.
+          </p>
+          <p>
+            What is left on the CPU is narrower than it used to be. iOS exposes no{" "}
+            <T k="drmKms" />{" "}device at all, so nothing here goes through the
+            Linux display stack; apps that insist on desktop OpenGL rather than
+            GLES still fall back to <T k="llvmpipe" />; and Xvfb and Xvnc remain
+            software servers, kept for headless bring-up and debugging rather than
+            for running a desktop.
           </p>
         </div>
       </Section>

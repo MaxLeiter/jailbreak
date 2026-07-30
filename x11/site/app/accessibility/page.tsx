@@ -11,7 +11,7 @@ export default function Accessibility() {
       <PageHeader
         tag="Accessibility"
         title="Teaching VoiceOver to read a Linux desktop"
-        lede="To iOS, the whole desktop is one opaque Metal view with nothing inside it. VoiceOver sees a rectangle. The bridge takes the accessibility tree the Linux apps already publish and re-publishes it as iOS accessibility elements, so the gestures a VoiceOver user already knows work on GTK and Qt windows."
+        lede="To iOS, the whole desktop is one opaque Metal view with nothing inside it. VoiceOver sees a rectangle. The bridge takes the accessibility tree the Linux apps already publish and re-publishes it as iOS accessibility elements, so that the gestures a VoiceOver user already knows can reach GTK and Qt windows. It is built and smoke-tested, but not yet validated with real VoiceOver gestures on a device — see 07.4."
       />
 
       <Section num="07.1" title="The problem">
@@ -91,10 +91,21 @@ export default function Accessibility() {
           <p>
             The pieces exist and talk to each other. On-device smoke tests have
             brought up the bus against a real GTK app, walked its tree, and seen
-            the daemon publish window and element records for it. The Xios app
+            the daemon publish window and element records for it. The AT-SPI
+            packages and <code>xios-a11y-tools</code>{" "}ship, the opt-in{" "}
+            <code>XIOS_ENABLE_A11Y=1</code>{" "}launch path works, the Xios app
             mirrors VoiceOver state, and the launchers honour the gate.
           </p>
         </div>
+        <Callout k="Built, not yet proven with a screen reader">
+          The part that matters most has not happened: nobody has driven a GTK or
+          Qt control with real VoiceOver gestures on a device and confirmed it
+          behaves. Until that validation exists, read this page as a description
+          of a bridge that is built, not of a desktop that is usable with a screen
+          reader. <code>xios-a11yd</code>{" "}is also not in any flavor&apos;s
+          package set yet, so it is something you run deliberately, not something
+          an install turns on.
+        </Callout>
       </Section>
 
       <Section num="07.5" title="Orca, and why it is not the plan">
