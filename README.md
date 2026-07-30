@@ -62,7 +62,6 @@ jailbreak/
 │   ├── setup-repo-guards.sh # once per clone: index merge driver + agent guardrails
 │   └── lib/              # repo-pipeline internals (make-repo, index scoping, solvability, audit)
 ├── docs/                 # public-readiness and process notes
-├── jarvis/               # on-device AI assistant harness
 ├── repo/                 # generated static APT repo site and metadata
 ├── tweaks/               # Theos tweak projects
 └── x11/                  # Xios: X11/Wayland desktop stack for iOS
@@ -80,8 +79,6 @@ agents); each subproject has its own README and, where it matters, its own
 | [`tweaks/KioskMode`](tweaks/KioskMode) | Keeps one chosen app frontmost; volume-button escape. Paired with `apps/KioskMode`. |
 | [`tweaks/AutoLockPicker`](tweaks/AutoLockPicker) | Replaces the Auto-Lock preset list with a real time picker. |
 | [`tweaks/XiosPrefs`](tweaks/XiosPrefs) | Settings pane for Xios Home Screen app sync. |
-| [`tweaks/JarvisPrefs`](tweaks/JarvisPrefs) | Settings pane for Jarvis scheduling and permissions. |
-| [`tweaks/JarvisScreenshotBridge`](tweaks/JarvisScreenshotBridge) | SpringBoard-side screenshot, speech, and audio bridge for Jarvis. |
 
 | App | What it is |
 |---|---|

@@ -848,6 +848,25 @@ nohup "$SETSID" env \
 	        ;;
 	    esac
     kded_pid=
+    kamd_pid=
+    powerdevil_pid=
+    stop_kde_helpers() {
+      for helper_pid in "$powerdevil_pid" "$kamd_pid" "$kded_pid"; do
+        [ -z "$helper_pid" ] || kill -TERM "$helper_pid" 2>/dev/null || true
+      done
+      sleep 0.2
+      for helper_pid in "$powerdevil_pid" "$kamd_pid" "$kded_pid"; do
+        [ -z "$helper_pid" ] || ! kill -0 "$helper_pid" 2>/dev/null ||
+          kill -KILL "$helper_pid" 2>/dev/null || true
+      done
+      for helper_pid in "$powerdevil_pid" "$kamd_pid" "$kded_pid"; do
+        [ -z "$helper_pid" ] || wait "$helper_pid" 2>/dev/null || true
+      done
+    }
+    trap stop_kde_helpers EXIT
+    trap "exit 129" HUP
+    trap "exit 130" INT
+    trap "exit 143" TERM
     if [ -x "$KDED_BIN" ] && [ "${XIOS_KDE_START_KDED:-1}" != 0 ]; then
       echo "launch kded: $KDED_BIN --replace"
       (
@@ -913,7 +932,6 @@ nohup "$SETSID" env \
       [ -z "$kded_pid" ] || kill "$kded_pid" 2>/dev/null || true
       exit 1
     fi
-    kamd_pid=
     if [ -x "$KAMD_BIN" ] && [ "${XIOS_KDE_START_KAMD:-1}" != 0 ]; then
       # The activity service has no windows. Keep it off the Wayland/EGL path
       # instead of allocating a software QtQuick backend it never displays.
@@ -932,7 +950,6 @@ nohup "$SETSID" env \
     # interface; brightness via the KWin DBus interface. No suspend/hibernate
     # (no logind). Set XIOS_KDE_START_POWERDEVIL=0 to skip.
     # NB: no apostrophes here -- this block is inside a single-quoted bash -lc.
-    powerdevil_pid=
     if [ -x "$POWERDEVIL_BIN" ] && [ "${XIOS_KDE_START_POWERDEVIL:-1}" != 0 ]; then
       (
         export QT_QPA_PLATFORM="${POWERDEVIL_QT_QPA_PLATFORM:-offscreen}"

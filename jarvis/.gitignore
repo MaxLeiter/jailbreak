@@ -1,5 +1,0 @@
-node_modules/
-*.sqlite
-*.sqlite-*
-.env
-dist/

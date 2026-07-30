@@ -19,7 +19,6 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 - `bin/`: host-side entry points — build, install, simulator, logging, and repo-publish scripts. Repo-pipeline internals (index generator, solvability check, audit) live in `bin/lib/`.
 - `repo/`: generated static APT/Sileo repo deployed by Vercel.
 - `x11/`: native X11/Wayland/iOS desktop stack. See `x11/AGENTS.md`.
-- `jarvis/`: on-device AI assistant (bun agent daemon + web console, runs on the iPad). See `jarvis/AGENTS.md` and `jarvis/docs/PLAN.md`.
 
 ## Tweak Workflow
 

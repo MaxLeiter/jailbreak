@@ -232,7 +232,7 @@ xs_pgid_has_live_session_process() {  # xs_pgid_has_live_session_process <pgid>
     ps axww -o pgid=,command= 2>/dev/null | awk -v want="$want" '
         $1 == want {
             $1 = ""
-            if ($0 ~ /\/bin\/iosc( |$)|\/bin\/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|\/usr\/bin\/mutter|\/usr\/bin\/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|\/Applications\/KDE\/[^ ]+\.app\/[^ ]+|\/bin\/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session/) {
+            if ($0 ~ /\/bin\/iosc( |$)|\/bin\/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|\/usr\/bin\/mutter|\/usr\/bin\/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|\/Applications\/KDE\/[^ ]+\.app\/[^ ]+|\/bin\/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session/) {
                 found = 1
             }
         }
@@ -644,7 +644,7 @@ xs_find_bringup() {
 # to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|/Applications/KDE/[^ ]+\.app/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
+xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|/Applications/KDE/[^ ]+\.app\/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
 xs_xios_app_kill_pattern='/Xios\.app/Xios'
 
 xios_session_teardown() {

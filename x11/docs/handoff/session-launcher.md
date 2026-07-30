@@ -45,6 +45,19 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
   `kde/up` with no lock and no new Xios analytics report, and captured a nonblank
   2880x2160 desktop in
   `artifacts/device-runs/xios-responsiveness-final-20260729-kde/`.
+- 2026-07-29 dangling-process closure: overlapping slot/KDE work left a dead
+  iosc slot's panel/dock/background spinning, 20 orphaned PowerDevil processes,
+  three orphaned `kded6` processes, disconnected Ladybird/native clients, and a
+  hung OpenCode version probe. Targeted cleanup lowered one-minute load from
+  about 134 to 2.27 while the live `codexthunar` slot remained up. The KDE
+  monitor now traps every exit/signal and TERM/KILL/waits PowerDevil,
+  `kactivitymanagerd`, and `kded6`; the shared session reaper recognizes
+  PowerDevil-only process groups; and `install-xios-session.sh` now preserves
+  the `/var/jb` prefix in generated mkdir/chmod commands. The scripts were
+  deployed live over installed `xios-session 1.0.72`; package script `1.0.73`
+  remains the next immutable artifact. Evidence:
+  `artifacts/device-runs/dangling-cleanup-before-20260729-2330/` and
+  `artifacts/device-runs/dangling-cleanup-after-20260729-2337/`.
 
 Host follow-up on 2026-07-18: the teardown path and KDE monitor now rewrite a
 previously-live session to `state=down` instead of leaving a stale `up` in the

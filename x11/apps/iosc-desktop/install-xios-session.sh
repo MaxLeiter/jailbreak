@@ -19,7 +19,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
                               # with package-session.sh so deb and scp can't diverge
 
 echo "==> mkdir on-device dirs"
-DEST_DIRS="$(session_manifest | awk -F'\t' '{ sub("/[^/]*$", "", $2); print "$XIOS_PREFIX/" $2 }' | sort -u | tr '\n' ' ')"
+DEST_DIRS="$(
+  session_manifest |
+    awk -F'\t' -v prefix="$XIOS_PREFIX" \
+      '{ sub("/[^/]*$", "", $2); print prefix "/" $2 }' |
+    sort -u | tr '\n' ' '
+)"
 ssh_ "mkdir -p $DEST_DIRS"
 
 echo "==> copy the ship manifest (CLI + lib + bring-up scripts)"
@@ -28,7 +33,11 @@ while IFS=$'\t' read -r src dst mode; do
 done < <(session_manifest)
 
 echo "==> perms"
-CHMODS="$(session_manifest | awk -F'\t' '{ printf "chmod %s $XIOS_PREFIX/%s; ", $3, $2 }')"
+CHMODS="$(
+  session_manifest |
+    awk -F'\t' -v prefix="$XIOS_PREFIX" \
+      '{ printf "chmod %s %s/%s; ", $3, prefix, $2 }'
+)"
 ssh_ "$CHMODS"
 
 echo "==> installed. From an SSH shell or the terminal on-device:"
