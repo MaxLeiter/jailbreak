@@ -1,23 +1,45 @@
 # KitchenHub
 
-A full-screen, tiling **dashboard app** for the wall-mounted kitchen iPad. The
-screen is a 12×8 grid; each panel (clock, timer, …) snaps to whole cells and can
-be moved/resized in edit mode. Layout persists to `Documents/layout.json`.
+A full-screen **dashboard app** for the wall-mounted kitchen iPad. It idles as a
+standby/lock screen (big clock, ambient album-art glow, weather chip, running
+timer), unlocks on tap into a card dashboard, and each card opens a full-screen
+detail view: timers, weather, recipes, music, and an Apple TV remote.
 
-This is the *front-end* half of the kitchen project. The kiosk behaviour
-(lock the iPad to one app, auto-relaunch) now lives in the generic **KioskMode**
-tweak + app (`tweaks/KioskMode`, `apps/KioskMode`), which can lock to KitchenHub
-or any other app. See the repo root README for device details.
+This is the *front-end* half of the kitchen project. The kiosk behaviour (lock the
+iPad to one app, auto-relaunch) lives in the generic **KioskMode** tweak + app
+([`tweaks/KioskMode`](../../tweaks/KioskMode), [`apps/KioskMode`](../KioskMode)),
+which can lock to KitchenHub or anything else. See the repo root README for device
+details.
 
-## Status
+## The screens
 
-| Phase | What | State |
+| Screen | What it does | Backend |
 |---|---|---|
-| 1 | Project scaffold + unsigned install pipeline | ✅ |
-| 2 | Grid engine (move/resize/snap, persistence) + Clock + Timer panels | ✅ |
-| 3 | Weather + Recipe panels | in progress |
-| 4 | Remotes (Sonos → LG webOS → Apple TV) | planned |
-| 5 | KioskMode tweak + app (generic, lock to any app) | ✅ |
+| Standby / lock | Clock, greeting, weather chip, now-playing bar, running-timer pill. Tap to unlock. | — |
+| Dashboard | Clock / Weather / Timer / Music / Recipe cards in one of three layouts (Grid, Hero, Mosaic). | — |
+| Timers | Multiple named timers with quick-add presets (Eggs 6, Pasta 10, Tea 3, Bread 30) and an alarm sound. | local |
+| Weather | Current conditions, feels-like, hi/lo. | Open-Meteo (no API key) + CoreLocation |
+| Recipes | Ingredients scaled by serving count, steps that can start a named timer, plus an editor and URL import. | schema.org Recipe JSON-LD scraped from the page |
+| Music | Album art, transport, room selection, volume, up-next. | Sonos over SSDP discovery + UPnP (`ZoneGroupTopology`) |
+| Apple TV | Glass trackpad (swipe to move focus, tap to select), menu / home / play-pause, volume rocker. | Companion protocol, implemented natively in Swift |
+
+Theme (light/dark) and dashboard layout persist to `Documents/kh-prefs.json`.
+
+## Apple TV setup (one-time, credentials are gitignored)
+
+The Companion client is hand-rolled (`Services/AppleTV/`: TLV8, OPACK, the
+crypto handshake, the connection, and a HID command surface). There's no in-app
+pairing yet, so pair once with pyatv and paste the credentials in:
+
+```bash
+cp Sources/Services/AppleTV/AppleTVConfig.swift.example \
+   Sources/Services/AppleTV/AppleTVConfig.swift
+# pip install atvremote; atvremote --id <ATV_ID> --protocol companion pair
+```
+
+Fill in the device name, LAN IP (static lease recommended until Bonjour discovery
+lands), port, and the `ltpk:ltsk:atv_id:client_id` credentials string.
+`AppleTVConfig.swift` is gitignored — never commit real credentials.
 
 ## Build & install
 
@@ -26,7 +48,10 @@ The app is built **unsigned** and run on the jailbroken iPad via AppSync Unified
 
 ```bash
 # from repo root — builds, pseudo-signs, pushes over SSH, registers with uicache
-bin/install-app.sh
+bin/install-app.sh apps/KitchenHub
+
+# or package it as a .deb for the apt repo instead
+bin/package-app.sh apps/KitchenHub
 ```
 
 Prereqs: `brew install xcodegen ldid`, Xcode, and **AppSync Unified** on the iPad
@@ -39,46 +64,42 @@ xcodegen generate
 open KitchenHub.xcodeproj      # pick an iPad simulator, run
 ```
 
-The grid + panels work fully in the Simulator; only the device install path needs
-the jailbreak.
+Everything but the device install path works in the Simulator. `DEBUG` builds also
+honour `KitchenScreenshotScenario`, which loads fixture data for the standby,
+dashboard, timers, and recipe screens so screenshots don't depend on live network
+state.
 
 ## Layout / architecture
 
 ```
 Sources/
-  KitchenHubApp.swift     @main App
-  Theme.swift             colors, corner radius, gutter
+  KitchenHubApp.swift        @main App
+  Design/KH.swift            design tokens: colors, type, gaps, background
+  Shell/
+    AppRoot.swift            owns the shared models, routes lock ↔ dashboard ↔ detail
+    LockView.swift           the standby screen
+    DashboardView.swift      top bar + the Grid / Hero / Mosaic layouts
+    Cards.swift              the five dashboard cards
   Models/
-    Board.swift           grid dimensions (12×8) + min sizes
-    PanelKind.swift       enum of panel types (add a case to add a type)
-    PanelLayout.swift     one panel's grid placement (Codable)
-  Store/
-    BoardStore.swift      panels + edit mode + JSON load/save + placement
-  Views/
-    BoardView.swift       grid host
-    PanelChrome.swift     per-panel positioning + drag/resize/delete in edit mode
-    PanelContent.swift    kind -> view switch
-    GridGuides.swift      faint grid overlay (edit mode)
-    EditHandle.swift      long-press corner control to enter edit mode
-    EditToolbar.swift     add-panel / done bar
-    ButtonStyles.swift    shared button styles
-    Panels/
-      ClockPanel.swift
-      TimerPanel.swift
-      PlaceholderPanel.swift
+    KHModel.swift            theme, lock, layout, route; persists kh-prefs.json
+    TimersModel.swift        multiple named timers + ticker
+    WeatherModel.swift       location + fetch + refresh loop
+    RecipeModel.swift        Recipe / Ingredient / RecipeStep, scaling, persistence
+    ScreenshotFixtures.swift DEBUG-only fixture data per screenshot scenario
+  Screens/                   full-screen detail views (Timers, Weather, Recipe,
+                             RecipeEditor, NewTimerSheet, Music, AppleTV)
+  Services/
+    WeatherService.swift     Open-Meteo current + daily hi/lo
+    LocationManager.swift    CoreLocation, for the weather query
+    RecipeImporter.swift     JSON-LD recipe scrape, Foundation only
+    SonosService.swift       SSDP discovery + UPnP control
+    AlarmPlayer.swift        timer-finished sound
+    AppleTV/                 Companion protocol client (TLV8, OPACK, crypto, HID)
 ```
 
-### Edit mode
+## Adding a screen
 
-Long-press the **slider icon** in the top-right corner to enter edit mode. Then
-drag panels to move, drag the amber bottom-right handle to resize, tap the red ✕
-to delete, and use **Add Panel** to add more. Tap **Done** to lock it again. It's
-long-press-gated so cooking never rearranges the board.
-
-## Adding a panel type
-
-1. Add a case to `PanelKind` (+ `title`, `symbol`, `defaultSize`, `isImplemented`).
-2. Add its view under `Views/Panels/`.
-3. Wire it into the `switch` in `PanelContent.swift`.
-
-It then appears in the Add Panel menu automatically.
+1. Add a case to `KHModel.Route`.
+2. Add the view under `Screens/` and route it in `AppRoot.routed`.
+3. If it belongs on the dashboard, add a card in `Shell/Cards.swift` and place it
+   in the three layouts in `DashboardView.swift`.

@@ -10,5 +10,5 @@ Description: proxy-libintl symbol shim for GTK on iOS
  Maps GTK's bundled proxy-libintl symbol names (g_libintl_*) onto the system
  GNU gettext libintl.8. GTK's dylibs and command-line tools are relinked against
  this shim in place of their unshippable bundled libintl.dylib. The shim reexports
- libintl.8 so real libintl_* symbols still resolve, and provides the full
- proxy-libintl wrapper surface (gettext/dgettext/ngettext/textdomain/...).
+ libintl.8, provides the proxy-libintl wrapper surface, and exposes the
+ unprefixed GNU API required by foreign bindings such as gettext-rs.

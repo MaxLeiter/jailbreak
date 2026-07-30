@@ -56,10 +56,10 @@ reader (Orca) is a complement for the X11-legacy flavor, not the primary path
   `org.a11y.Status.IsEnabled=true` and `ScreenReaderEnabled=true` through `gdbus`
   inside the same session bus before launching the app. `xios-a11yd` now also
   supports per-connection `bind` filters; a bound smoke with
-  `appid=org.gnome.Console, exec=kgx` published kgx, while a non-matching bind
+  `appid=org.gnome.Console` published the matching app, while a non-matching bind
   emitted no window/upsert records. Follow-up native smoke on 2026-07-03 fixed the
   helper socket to `mobile:mobile 0660`; a forced native `org.gnome.Console`
-  IOSCHost connected, bound `org.gnome.Console`/`kgx`, attached scene 3, and
+  IOSCHost connected, bound `org.gnome.Console`, attached scene 3, and
   published 12 accessibility elements from the snapshot stream.
   Follow-up smoke on 2026-07-03 moved `xios-session app` clients onto one shared
   `/var/jb/tmp/xios-session-bus/session-bus` instead of one `dbus-run-session`
@@ -501,10 +501,9 @@ helper -> app:
 
 app -> helper:
 
-- `{"t":"bind","appid":S,"exec":S?}` — first message after connect; scopes the
-  connection to one AT-SPI application. `exec` is optional but native hosts send
-  it because AT-SPI app names can be executable names (`kgx`) rather than
-  freedesktop app ids (`org.gnome.Console`). Unbound connection = desktop
+- `{"t":"bind","appid":S}` — first message after connect; scopes the
+  connection to one AT-SPI application. Matching uses the app id and its
+  basename. Unbound connection = desktop
   semantics, unchanged.
 - `{"t":"enable","on":B}`
 - `{"t":"activate","id":N}`, `{"t":"action","id":N,"idx":I}`

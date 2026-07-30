@@ -5,6 +5,8 @@
 files/etc/profile.d/xios.sh.in	etc/profile.d/xios.sh	0644
 ../../xios-desktop-defaults/var/jb/etc/xdg/gtk-3.0/settings.ini	etc/xdg/gtk-3.0/settings.ini	0644
 ../../xios-desktop-defaults/var/jb/etc/xdg/gtk-4.0/settings.ini	etc/xdg/gtk-4.0/settings.ini	0644
+../../xios-desktop-defaults/var/jb/etc/xdg/kcminputrc	etc/xdg/kcminputrc	0644
+../../xios-desktop-defaults/var/jb/etc/xdg/kwinrc	etc/xdg/kwinrc	0644
 ../../xios-desktop-defaults/var/jb/usr/share/fonts/truetype/source-code-pro/SourceCodePro-Bold.ttf	usr/share/fonts/truetype/source-code-pro/SourceCodePro-Bold.ttf	0644
 ../../xios-desktop-defaults/var/jb/usr/share/fonts/truetype/source-code-pro/SourceCodePro-BoldIt.ttf	usr/share/fonts/truetype/source-code-pro/SourceCodePro-BoldIt.ttf	0644
 ../../xios-desktop-defaults/var/jb/usr/share/fonts/truetype/source-code-pro/SourceCodePro-It.ttf	usr/share/fonts/truetype/source-code-pro/SourceCodePro-It.ttf	0644

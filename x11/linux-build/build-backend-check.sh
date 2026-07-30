@@ -26,6 +26,9 @@ cp "$SRCDIR"/*.h "$STAGE"/ 2>/dev/null || true
 if [ -f "$SRCDIR/out/xios-glue-include/xios_surface.h" ]; then
   cp "$SRCDIR/out/xios-glue-include/xios_surface.h" "$STAGE/"
 fi
+if [ -f "$SRCDIR/out/xios-glue-include/XiosProtocol.h" ]; then
+  cp "$SRCDIR/out/xios-glue-include/XiosProtocol.h" "$STAGE/"
+fi
 if [ -f "$SRCDIR/out/xios-glue-include/xios_metal_sync.h" ]; then
   cp "$SRCDIR/out/xios-glue-include/xios_metal_sync.h" "$STAGE/"
 fi

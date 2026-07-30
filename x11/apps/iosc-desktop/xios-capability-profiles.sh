@@ -184,7 +184,6 @@ xios_profile_env_pairs() {
             ;;
         xwayland-glamor)
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
-            xios_profile_pair XWAYLAND_GLAMOR "${XWAYLAND_GLAMOR:-1}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             xios_profile_pair XLIB_NO_SHM "${XLIB_NO_SHM:-1}"
             ;;

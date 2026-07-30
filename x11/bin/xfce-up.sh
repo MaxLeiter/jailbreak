@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Brings up an XFCE 4.16 *session* on an X server that is ALREADY running.
+# Brings up an XFCE 4.16 session on Xwayland that is already running under iosc.
 # Runs ON THE DEVICE:
 #   ssh root@ipad 'bash -s' < bin/xfce-up.sh        (or scp + run)
 #
-# Layering (deliberate — see docs/lightde-plan.md):
-#   * The X SERVER is started separately: apps/Xios/xios-server.sh (IOSurface, :3) or
-#     apps/Xios/x11-server.sh (Xvfb debug/headless). This script does NOT start an X server
-#     and will refuse to run if one isn't up on $DISP.
-#   * Those server scripts also launch a throwaway fluxbox + demo clients. We take the
+# Layering:
+#   * `wayland/run-xwayland.sh` starts the sole interactive X11 path: hardware
+#     Xwayland inside iosc. This script refuses to run if Xwayland is absent.
+#   * That smoke runner launches a throwaway fluxbox + demo client. We take the
 #     screen over cleanly with `xfwm4 --replace` rather than duplicating WM/X logic.
 #   * We start the per-session D-Bus bus (xfconfd is D-Bus-activated from it) and the
 #     core XFCE components. xfce4-session is intentionally skipped for first bring-up;
@@ -18,17 +17,16 @@ export HOME=/var/root
 [ -r /var/jb/etc/profile.d/xios.sh ] && . /var/jb/etc/profile.d/xios.sh
 [ -r /var/jb/etc/profile.d/xios-audio.sh ] && . /var/jb/etc/profile.d/xios-audio.sh
 
-DISP="${DISP:-:3}"
+DISP="${DISP:-:1}"
 DNUM="${DISP#:}"
 TMP=/var/jb/tmp
 alive(){ ps ax 2>/dev/null | grep -v grep | grep -q "$1"; }
 
 # --- require an X server on $DISP (do NOT start one) -------------------------
-if ! ps ax | grep -v grep | grep -qE "X(ios|vfb|vnc) ${DISP}( |\$)" \
+if ! ps ax | grep -v grep | grep -qE "Xwayland ${DISP}( |\$)" \
    && [ ! -S "/tmp/.X11-unix/X${DNUM}" ] && [ ! -S "$TMP/.X11-unix/X${DNUM}" ]; then
-  echo "!! No X server detected on $DISP."
-  echo "   Start one first, e.g.:  bash apps/Xios/xios-server.sh   (IOSurface, $DISP)"
-  echo "                      or:  bash apps/Xios/x11-server.sh     (Xvfb debug/headless)"
+  echo "!! No Xwayland server detected on $DISP."
+  echo "   Start the hardware path first: bash wayland/run-xwayland.sh"
   exit 1
 fi
 
@@ -92,4 +90,4 @@ echo "    logs: $TMP/xfce-*.log   |   stop: kill the PIDs in $PIDFILE"
 # One-time setup (after the XFCE debs are published to the repo):
 #   apt-get install -y xfce4            # the metapackage (packages/xfce4) -> the 15 debs
 #   apt-get install -y x11-fonts-sf     # San Francisco as the default X11 font
-# Then: start the X server (xios-server.sh), then run this script.
+# Then: start Xwayland with wayland/run-xwayland.sh, then run this script.

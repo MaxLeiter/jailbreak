@@ -17,6 +17,9 @@ SRC="$HERE/src"
 OUT="$HERE/out"
 mkdir -p "$OUT"
 
+echo "==> testing trusted desktop-entry parser"
+bash "$HERE/test-desktop-entry.sh"
+
 SDK="$(xcrun -sdk iphoneos --show-sdk-path)"
 CLANG="$(xcrun -sdk iphoneos -f clang)"
 MIN="-miphoneos-version-min=16.0"
@@ -30,7 +33,7 @@ echo "==> compiling IOSCLaunch (launcher stub, UIKit)"
 
 echo "==> compiling ioscd (root daemon, CLI)"
 "$CLANG" -arch arm64 -target "$TARGET" -isysroot "$SDK" $MIN -O2 -Wall \
-  "$SRC/ioscd.c" -o "$OUT/ioscd"
+  "$SRC/ioscd.c" "$SRC/xios-desktop-entry.c" -o "$OUT/ioscd"
 
 echo "==> pseudo-signing with ldid"
 xsign "$OUT/IOSCLaunch" "$HERE/launcher-ent.xml"

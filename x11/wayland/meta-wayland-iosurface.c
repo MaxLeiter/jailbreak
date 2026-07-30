@@ -64,7 +64,7 @@ struct _MetaWaylandIosurfaceBuffer
   EGLSurface             pbuffer;     /* ANGLE IOSurface pbuffer aliased into `texture` */
   void                  *acquire_event;
   uint64_t               acquire_value;
-  unsigned char          acquire_token[XIOS_METAL_EVENT_TOKEN_SIZE];
+  unsigned char          acquire_token[XIOS_GPU_FENCE_TOKEN_SIZE];
   size_t                 acquire_token_size;
 };
 
@@ -363,7 +363,7 @@ iosurface_set_acquire_fence (struct wl_client   *client,
                                              &buffer_impl)
        ? wl_resource_get_user_data (buffer)
        : NULL;
-  if (!self || !token || token->size != XIOS_METAL_EVENT_TOKEN_SIZE ||
+  if (!self || !token || token->size != XIOS_GPU_FENCE_TOKEN_SIZE ||
       value == 0)
     {
       wl_resource_post_error (resource, IOSC_IOSURFACE_ERROR_INVALID_FENCE,

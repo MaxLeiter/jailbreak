@@ -1,7 +1,8 @@
-# `linux-build/` — cross-compiling the X stack for rootless iOS
+# `linux-build/` — cross-compiling the Xios stack for rootless iOS
 
-This directory cross-compiles the patched X11 components for the jailbroken iPad
-(`iphoneos-arm64`, **rootless** `/var/jb`, Procursus CFVER **1900** / iOS 16) inside a
+This directory cross-compiles everything Xios ships — the Wayland compositor's deps,
+Xwayland, GTK, Qt/KF6, GNOME, KDE, the language runtimes, and the Xvnc/Xvfb servers that
+remain for headless bring-up — for the jailbroken iPad (`iphoneos-arm64`, **rootless** `/var/jb`, Procursus CFVER **1900** / iOS 16) inside a
 Debian container, then ad-hoc-signs them for the device. One command on the Mac produces
 installable `.deb`s and signed server binaries.
 
@@ -11,8 +12,8 @@ errors, `install_name_tool` rpath duplication, …). Procursus's **Linux** path 
 `cctools-port` + an older clang and builds the 2021-era X stack reliably — so we run that in
 a container, keep the Mac clean, and get reproducible artifacts.
 
-> Track-B1 rationale, the on-device gotchas, and where this sits in the roadmap are in
-> [`../SCOPE.md`](../SCOPE.md).
+> Why Procursus-in-a-container instead of a macOS host, and the entitlement gotchas the
+> signing steps below exist for, are in [`../SCOPE.md`](../SCOPE.md).
 
 ## What it produces (`out/`)
 
@@ -22,9 +23,7 @@ a container, keep the Mac clean, and get reproducible artifacts.
 | `tigervnc-common_*.deb` | Xvnc companion (`vncconfig`, `vncpasswd`, config) |
 | `tigervnc-scraping-server`, `tigervnc-xorg-extension` debs | Built alongside; not needed on-device |
 | `Xvfb` | Signed virtual-framebuffer X server for bring-up/debug; the app display path is IOSurface |
-| `Xios` | The **same** binary carrying the IOSurface DDX, signed with a minimal IOKit/`task_for_pid` entitlement set (`-iosurface` activates the zero-copy backend) |
 | `x11-xvfb_*_iphoneos-arm64.deb` | Packaged Xvfb server for rootless installs, built from target artifacts |
-| `xios-server_*_iphoneos-arm64.deb` | Packaged IOSurface X server payload for the Xios app path |
 | `xios-audio-server` | CoreAudio/RemoteIO audio daemon plus `xios-audio-play` smoke-test client |
 | `libfribidi*`, `libpango*`, `gtk*`, … debs | The GTK3 desktop stack (from `build-gtk.sh`) |
 | `iosc*`, `xios-session*`, GNOME/KDE/Wayland app debs | Built by their specialized `build-*.sh` and package scripts; see `docs/handoff/` for the current active lanes |
@@ -53,16 +52,44 @@ What `run.sh` (Mac side) does:
    source — then cached).
 3. `docker run` the image with `build.sh`, the `patches/` dir, the **named volume**, and
    `out/` mounted; this is where the actual package build happens.
-4. **Re-signs `Xios` with the Mac's `ldid`** — the in-container `ldid` doesn't emit
-   DER-encoded entitlements, which iOS 15+/16 AMFI requires to honor
-   `iokit-user-client-class` (without DER, `IOSurfaceCreate()` returns NULL even though
-   `ldid -e` reads the XML fine).
-5. Builds the Xios audio package from `audio/`: `xios-audiod` mixes local PCM clients into
+4. Builds the Xios audio package from `audio/`: `xios-audiod` mixes local PCM clients into
    iOS RemoteIO output, and `xios-audio-play` is the on-device smoke test. Real PulseAudio
    clients use the PulseAudio package and its native socket.
 
-The tigervnc/Xvnc build is what `run.sh` drives by default. The GTK3 stack is a separate
-container invocation (see below).
+The tigervnc/Xvnc build is what `run.sh` drives by default. Every other part of the stack
+has its own `build-*.sh` that reuses the same image and volume (see below); the GTK3 one is
+documented at the end as the worked example.
+
+## The other lanes
+
+`run.sh`/`build.sh` are only the X-server lane. Each subsystem has a script that drops its
+recipes into the Procursus clone and builds them in the same container; run them directly.
+
+| Lane | Scripts |
+|---|---|
+| Toolkits | `build-gtk.sh`, `build-gtk4-layer-shell.sh`, `build-qt.sh`, `build-qt-modules.sh`, `build-kf6.sh` |
+| Compositor / Wayland | `build-wayland.sh`, `build-wayland-apps.sh`, `build-wayland-extra-apps.sh`, `build-wayland-utils.sh`, `build-xwayland.sh` |
+| GNOME | `build-gnome.sh`, `build-mutter.sh`, `build-shell.sh`, `build-shell-libs.sh`, `build-session.sh`, `build-gjs.sh`, `build-eds.sh` |
+| KDE | `build-kwin.sh`, `build-plasma-desktop.sh`, `build-kde-apps.sh`, `build-settings.sh` |
+| Graphics / core deps | `build-icu.sh`, `build-skia.sh`, `build-librsvg.sh`, `build-harfbuzz-full.sh`, `build-libxml2-full.sh` |
+| Runtimes | `build-bun.sh`, `build-bun-ios.sh`, `build-opencode.sh`, `build-opentui-ios.sh`, `build-fff-ios.sh` |
+| Ladybird | `build-ladybird-wave*.sh`, `build-ladybird-app-*.sh`, `build-ladybird-wayland.sh` |
+| Media / audio | `build-audio-server.sh`, `build-media-server.sh` |
+| Stubs | `build-stublibs.sh` and the per-stub `build-*-stub.sh` |
+| Introspection (on device) | `gir-*-ondevice.sh` — typelibs are scanned on the iPad, not under qemu |
+
+Anything not covered by a named lane goes through `build-procursus-target.sh <target-id>
+<make-target>…`, which builds arbitrary Procursus make targets under a target descriptor.
+`docs/handoff/INDEX.md` says which lanes are currently active.
+
+## Target descriptors
+
+`targets/rootless-1900.env` and `targets/rootful-1900.env` hold the prefix, `MEMO_TARGET`,
+`MEMO_CFVER`, package payload root, and minimum iOS version for each layout;
+`target-lib.sh` loads them and the target-aware scripts below take a target id as their
+first argument. `bash print-target.sh rootless-1900` prints the resolved values. Rootless
+is the default and the shipped layout; the rootful descriptor exists so a rootless binary
+can't be silently packaged as a rootful one.
 
 ## Target-Aware Stub Libraries
 
@@ -93,19 +120,13 @@ for the rootful target before assembling `xios-desktop-stublibs`.
 
 ```bash
 bash x11/linux-build/build-xserver-target.sh rootless-1900 --package-xvfb
-bash x11/linux-build/build-xserver-target.sh rootful-1900 --package-xvfb --package-xios
+bash x11/linux-build/build-xserver-target.sh rootful-1900 --package-xvfb
 ```
 
 `packages/x11-xvfb/build.sh` packages `Xvfb` from that target artifact directory. It
 keeps the committed rootless `Xvfb` as a fallback for `rootless-1900`, but refuses
 rootful assembly until `linux-build/out/targets/rootful-1900/Xvfb` exists, so a
 rootless binary cannot be accidentally shipped in a rootful package.
-
-`packages/xios-server/build.sh` does the same for `Xios`. Rootless can fall back
-to the committed package binary; rootful refuses to package until
-`linux-build/out/targets/rootful-1900/Xios` exists. `build.sh` now renders
-`xios-ent.xml` from the selected target prefix so rootful entitlement output does
-not carry rootless `/var/jb` path exceptions.
 
 ## The named volume — why and how
 
@@ -122,9 +143,8 @@ bind-mount, for two reasons:
   across runs and are reused; only the package you're iterating on rebuilds. The first run
   populates the volume (long); subsequent runs are fast.
 
-`build.sh` force-rebuilds **just** tigervnc (`rm -rf build_work/.../tigervnc`) each run so
-IOSurface-DDX changes take effect while everything else stays cached. Override the volume
-name with `PROCURSUS_VOL=...`.
+`build.sh` force-rebuilds **just** tigervnc (`rm -rf build_work/.../tigervnc`) each run.
+Override the volume name with `PROCURSUS_VOL=...`.
 
 ## The build (`build.sh`, in-container)
 
@@ -132,7 +152,6 @@ name with `PROCURSUS_VOL=...`.
 2. **Apply our changes portably** (python3, no host paths) into the clone:
    - inject the `/bin/sh`→`/var/jb/bin/sh` patch into `makefiles/tigervnc.mk`, gated to the
      rootless `/var/jb` prefix, applied right after tigervnc's own `xserverNNN.patch`;
-   - drop our IOSurface DDX sources (`patches/xios/*`) into `xorg-server`'s `hw/vfb/`;
    - drop the bogus `tigervnc-xorg-extension` dependency from the standalone server's
      control file;
    - `--enable-xvfb` so the framebuffer server builds alongside Xvnc;
@@ -140,12 +159,7 @@ name with `PROCURSUS_VOL=...`.
      `-stdlib=libc++`, `MacOSX.sdk` header copies) — see comments in `build.sh`.
 3. Build `font-util` + `libxkbfile` (xserver build deps), then `tigervnc-package`, with
    `MEMO_TARGET=iphoneos-arm64-rootless MEMO_CFVER=1900 NO_PGP=1`.
-4. Extract + sign `Xvfb` (Procursus `general.xml` entitlements) and produce `Xios` from the
-   same binary signed with a **minimal** set: `platform-application`,
-   `iokit-user-client-class` (`IOSurfaceRootUserClient`/`IOSurfaceSendRight`),
-   `task_for_pid-allow`, and a `/var/jb` path exception. `build.sh` asserts the signature
-   carries the IOKit + `task_for_pid` entitlements and **not** the container-manager set
-   (which would sandbox the process away from IOKit → `IOSurfaceCreate` NULL).
+4. Extract + sign `Xvfb` with the Procursus `general.xml` entitlements.
 5. Collect `tigervnc-*.deb` to `/out` and print a sanity check that `/var/jb/bin/sh` is
    actually baked into the shipped `Xvnc`.
 
@@ -174,19 +188,31 @@ subset. Resulting `lib{fribidi,pango,gdk-pixbuf,atk,gtk}*` debs are copied to `o
 ```
 linux-build/
   Dockerfile        # Debian + cctools-port (aarch64-apple-darwin) + ldid, native arm64
-  run.sh            # Mac: stage SDK, docker build, docker run build.sh, re-sign Xios
-  build.sh          # in-container: clone Procursus, patch, build tigervnc/Xvfb/Xios
-  build-gtk.sh      # in-container: install recipes/*.mk, build the GTK3 stack
+  run.sh            # Mac: stage SDK, docker build, docker run build.sh
+  build.sh          # in-container: clone Procursus, patch, build tigervnc/Xvfb
+  build-*.sh        # one lane per subsystem (see "The other lanes" above)
+  gir-*-ondevice.sh # GObject-Introspection typelib scans, run on the iPad
+  build-deb.py      # assemble a .deb from a staged tree on macOS (no dpkg needed)
+  targets/*.env     # target descriptors (rootless-1900, rootful-1900)
+  target-lib.sh     # loads a descriptor; print-target.sh prints the resolved values
   patches/
-    xios/{InitOutput.c,Makefile.am,xios_surface.c,xios_surface.h}  # IOSurface DDX
-  ../ports/tigervnc/patches/                   # Xserver source patch + series manifest
+    xios/{xios_surface.c,xios_surface.h}       # compositor/app IOSurface glue
+  ../ports/<pkg>/patches/                      # quilt series per upstream source
   recipes/*.mk      # new Procursus package makefiles (fribidi.mk, …)
+  recipes-ladybird/ # the Ladybird lane's recipes, kept separate
+  audio/, media/    # sources for the CoreAudio and media daemons
+  tools/            # helpers: minos stamping, Mach-O weakening, KF6 recipe gen, audits
+  vapi/             # hand-written Vala bindings for libs Procursus doesn't ship vapi for
+  src-tarballs/     # curated header inputs tracked; upstream archive blobs gitignored
   sdk/              # staged iPhoneOS.sdk + MacOSX.sdk        (gitignored)
-  out/              # built debs + signed Xvfb/Xios          (gitignored)
+  out/              # built debs + signed Xvfb               (gitignored)
   Procursus/, procursus-work/, *.log                          (gitignored)
 ```
 
 ## Install on the iPad
+
+Normal installs come from the apt repo — `apt install xios-gnome` and friends, see
+[`../README.md`](../README.md). What follows is the by-hand path for a deb you just built.
 
 ```bash
 scp out/tigervnc-standalone-server_*_iphoneos-arm64.deb root@<ipad>:/var/jb/tmp/

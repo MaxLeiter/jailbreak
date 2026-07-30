@@ -16,7 +16,6 @@ final class NativeManager: NSObject {
     static let shared = NativeManager()
 
     private var appID = ""
-    private var exec = ""
     private var appName = "app"
 
     private var client: OpaquePointer?          // iosc_native_client*
@@ -62,14 +61,11 @@ final class NativeManager: NSObject {
     func startup() {
         let info = Bundle.main.infoDictionary ?? [:]
         appID   = (info["IOSCAppID"] as? String) ?? ""
-        exec    = (info["IOSCExec"]  as? String) ?? ""
         appName = (info["IOSCName"]  as? String) ?? (info["CFBundleDisplayName"] as? String) ?? "app"
 
-        // Ask ioscd to spawn the Linux client (root, outside our sandbox).
-        DispatchQueue.global(qos: .userInitiated).async { [weak self, exec, appID] in
-            let result = exec.withCString { e in
-                appID.withCString { a in ioscd_send_launch(a, e) }
-            }
+        // Ask ioscd to resolve and launch this installed desktop app outside our sandbox.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, appID] in
+            let result = appID.withCString { ioscd_send_launch($0) }
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard result == 0 else {
@@ -78,7 +74,7 @@ final class NativeManager: NSObject {
                 }
                 self.startReader()
                 // VoiceOver bridge (inert until xios-a11yd ships; gated on VoiceOver).
-                HostA11yClient.shared.startup(appID: appID, exec: exec)
+                HostA11yClient.shared.startup(appID: appID)
             }
         }
     }

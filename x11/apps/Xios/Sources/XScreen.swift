@@ -1044,7 +1044,7 @@ final class XScreenView: UIView {
                 // record. Never sample that asynchronously rendered surface
                 // until its matching brokered GPU fence has arrived; an empty
                 // sequence here is startup ordering, not a malformed frame.
-                if usingIosc && seq == 0 {
+                if seq == 0 {
                     return
                 }
                 let fence = gpuFence(for: conn)
@@ -1153,10 +1153,8 @@ final class XScreenView: UIView {
         var length = 0
         var value: UInt64 = 0
         guard xsurface_gpu_fence_token(conn, &bytes, &length, &value) != 0 else {
-            if usingIosc {
-                dbg("gpu-fence-missing-for-iosc-frame")
-                presentFenceDecodeFailed = true
-            }
+            dbg("gpu-fence-missing-for-frame")
+            presentFenceDecodeFailed = true
             return nil
         }
         guard let bytes, length > 0, value > 0 else {

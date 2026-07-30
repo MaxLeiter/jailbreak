@@ -25,6 +25,8 @@ cd /work/Procursus
 if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>&1 \
    || ! command -v valac >/dev/null 2>&1 || ! command -v gdk-pixbuf-pixdata >/dev/null 2>&1 \
    || ! command -v appstreamcli >/dev/null 2>&1 || ! command -v unifdef >/dev/null 2>&1 \
+   || ! command -v g-ir-compiler >/dev/null 2>&1 \
+   || [ ! -f /usr/share/gir-1.0/GObject-2.0.gir ] \
    || [ ! -f /usr/include/ruby-3.1.0/ruby.h ]; then
   echo "==> installing host build tools (glib/gdk-pixbuf codegen + sassc + valac + itstool + appstreamcli)"
   apt-get update >/dev/null 2>&1 || true
@@ -33,6 +35,8 @@ if ! command -v glib-mkenums >/dev/null 2>&1 || ! command -v sassc >/dev/null 2>
   apt-get install -y --no-install-recommends \
       gtk-doc-tools libglib2.0-dev-bin libglib2.0-bin libgdk-pixbuf2.0-bin \
       sassc valac itstool desktop-file-utils appstream gtk-update-icon-cache \
+      gobject-introspection gir1.2-glib-2.0 libgirepository1.0-dev \
+      libgcr-3-dev libgoa-1.0-dev \
       ruby ruby-dev tcl unifdef >/dev/null 2>&1 \
     || { echo "ERROR: could not install host build tools"; exit 1; }
 fi
@@ -90,7 +94,12 @@ if target_requests gnome-desktop || target_requests nautilus || target_requests 
 fi
 target_requests gnome-text-editor && stage_required_patch_stack gnome-text-editor
 target_requests nautilus && stage_required_patch_stack nautilus
-target_requests webkitgtk && stage_required_patch_stack webkitgtk
+target_requests folks && stage_required_patch_stack folks
+target_requests gcr3 && stage_required_patch_stack gcr3
+target_requests geary && stage_required_patch_stack geary
+if [[ " $TARGETS " == *" webkitgtk"* ]]; then
+  stage_required_patch_stack webkitgtk
+fi
 
 # Same clang wrapper build-gtk.sh uses: the Procursus wrapper injects -Wl,-adhoc_codesign, and
 # meson's compile-only probes add -Werror=unused-command-line-argument, so every cc.sizeof()
@@ -268,23 +277,62 @@ fi
 echo "==> collect debs -> /out"
 mkdir -p /out
 DIST_ROOT="build_dist/iphoneos-arm64-rootless/1900"
-for pat in dbus dconf gsettings-desktop-schemas curl libcurl \
-           libjson-glib libxmlb libappstream libadwaita \
-           libarchive \
-           libvte libgtksourceview libenchant \
-           libpsl libsoup libgee \
-           libgnome-autoar libportal iso-codes libtracker libgnome-desktop \
-           libstemmer libytnef libgmime libgspell libpeas \
-           gnome-console gnome-text-editor gnome-font-viewer nautilus gnome-calculator \
-           baobab file-roller hitori; do
-  find "$DIST_ROOT" -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+OUT_STAGING="$(mktemp -d /tmp/xios-gnome-out.XXXXXX)"
+trap 'rm -rf "$OUT_STAGING"' EXIT
+for spec in \
+  dbus:dbus \
+  dconf:dconf \
+  gsettings-desktop-schemas:gsettings-desktop-schemas \
+  curl:curl \
+  libcurl:curl \
+  libjson-glib:json-glib \
+  libxmlb:libxmlb \
+  libappstream:appstream \
+  libadwaita:libadwaita \
+  libarchive:libarchive \
+  libvte:vte \
+  libgtksourceview:gtksourceview5 \
+  libenchant:enchant \
+  libjavascriptcoregtk:webkitgtk \
+  libwebkit2gtk:webkitgtk \
+  libpsl:libpsl \
+  libsoup:libsoup3 \
+  libgee:libgee \
+  libgnome-autoar:gnome-autoar \
+  libportal:libportal \
+  iso-codes:iso-codes \
+  libtracker:tracker \
+  libgnome-desktop:gnome-desktop \
+  libstemmer:libstemmer \
+  libytnef:libytnef \
+  libgmime:gmime \
+  libgspell:gspell \
+  libpeas:libpeas \
+  libfolks:folks \
+  libgck:gcr3 \
+  libgcr:gcr3 \
+  libgoa:gnome-online-accounts \
+  gnome-console:gnome-console \
+  gnome-text-editor:gnome-text-editor \
+  gnome-font-viewer:gnome-font-viewer \
+  nautilus:nautilus \
+  gnome-calculator:gnome-calculator \
+  baobab:baobab \
+  file-roller:file-roller \
+  geary:geary \
+  hitori:hitori; do
+  pat="${spec%%:*}"
+  req="${spec#*:}"
+  target_requests "$req" || continue
+  find "$DIST_ROOT" -name "${pat}*_*_iphoneos-arm64.deb" -exec cp -v {} "$OUT_STAGING"/ \; 2>/dev/null || true
 done
 
 # Shared libgtkintl pass: GNOME app libs/binaries link GTK's bundled proxy-libintl and
 # import the same g_libintl_* symbols, so they'd dyld-abort exactly like GTK did. Rather
-# than relink per-recipe, fix every collected deb in one idempotent pass — relink onto the
-# libgtkintl shim, re-sign, and add Depends: libgtkintl. See recipes/relink-gtkintl.sh.
-echo "==> shared libgtkintl relink pass (makes every GNOME deb libintl-immune)"
-bash /work/recipes/relink-gtkintl.sh /out
+# than relink per-recipe, fix the freshly collected debs in one idempotent pass,
+# then copy only those artifacts into /out. See recipes/relink-gtkintl.sh.
+echo "==> shared libgtkintl relink pass for collected debs"
+bash /work/recipes/relink-gtkintl.sh "$OUT_STAGING"
+cp -v "$OUT_STAGING"/*.deb /out/ 2>/dev/null || true
 
 echo "==> done"

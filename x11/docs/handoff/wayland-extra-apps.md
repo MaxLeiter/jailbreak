@@ -6,7 +6,7 @@ Geary/WebKitGTK, Gnumeric, and Transmission. Keep this separate from
 `wayland-apps.md`, which owns the already-smoked foot/imv/mpv/fuzzel/dunst/grim
 batch and its runtime fixes.
 
-Last touched: 2026-07-19.
+Last touched: 2026-07-29.
 
 ## Build Driver
 
@@ -40,8 +40,8 @@ docker run --rm --platform linux/arm64 --cpus=4 \
 | waybar | layer-shell status bar | recipe/control/patch stack added; GTK3 Wayland `+ios2`, gtkmm3, and `gtk-layer-shell` built; `waybar_0.15.0+ios1_iphoneos-arm64.deb` installed and focused on-device `iosc` slot capture passed with the minimal clock/custom config |
 | swayimg | native Wayland image viewer | recipe/control/patch stack added; `swayimg_5.4+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed |
 | yad | GTK dialog utility | recipe/control added; `yad_15.0+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed (2026-07-08) after a clean re-run with no competing session switch — the earlier "Broken pipe" was a concurrent `xios-session` switch nuking `wayland-0`, not a yad bug |
-| nwg-look | GTK settings UI | explicit blocker target; needs shared Go+cgo iPhoneOS path for gotk3; `xcur2png` is optional/deferrable |
-| Geary | GNOME mail client | no recipe; blocked on WebKitGTK and the remaining mail-app dependency lane; `gmime`, `libstemmer`, `libytnef`, `gspell`, and `libpeas` leaf deps are now host-built; the last two still need device smoke before publication |
+| nwg-look | GTK settings UI | pinned Go 1.25 `ios/arm64` cgo path added; rootless data lookup fixed; `nwg-look_1.1.1+ios1_iphoneos-arm64.deb` host-built and its full settings UI mapped on-device |
+| Geary | GNOME mail client | recipe/control/patch stack added; Folks, GOA client, and gcr-3/gck-1 are packaged and device-loaded; the WebKitGTK package/runtime remains the final build gate |
 | WebKitGTK | browser/webview platform | separate research/build lane; see `geary-webkitgtk.md` |
 | Gnumeric | GTK spreadsheet | recipe/control added with `libgsf`, `libxslt`, and `goffice`; `gnumeric_1.12.61+ios1_iphoneos-arm64.deb` built and installed; on-device classic `iosc` capture passed (2026-07-08) — full spreadsheet UI renders with the CSV loaded; the earlier invalidation was a session switch losing `wayland-0`, now confirmed clean |
 | Transmission | CLI/daemon BitTorrent client | recipe/control/patch stack added; `transmission_4.1.3+ios1_iphoneos-arm64.deb` built; CLI tools passed on-device; GTK UI deferred until gtkmm |
@@ -137,6 +137,17 @@ to the current local package universe passed the repo solvability check across
 564 packages. Device smoke and publication remain pending because the iPad SSH
 endpoint timed out on 2026-07-19.
 
+The 2026-07-29 repair pass rebuilt those four packages from clean
+`procursus-vol-gtk-calc` artifacts, restoring the intended ICU 78 and
+GObject-Introspection dependencies. Their runtime packages were then installed
+and loaded on the iPad. It also produced the final rootless-data-fixed
+`nwg-look_1.1.1+ios1_iphoneos-arm64.deb` with SHA-256
+`fb9f1d479db8d8e1317b7cb5f52d0a07eebb6a426bb9c8886971656cb1c2e35d`.
+The nwg-look driver installs a pinned Go 1.25 toolchain in the persistent
+Procursus volume, enables cgo for `ios/arm64`, routes C compilation and
+pkg-config through the iPhoneOS wrappers, and signs the GTK3 binary with the
+GPU-client entitlement profile. `xcur2png` remains optional.
+
 ## Port Notes
 
 - Transmission 4.1.3 builds the daemon, CLI, utilities, and web UI with the GTK
@@ -169,12 +180,14 @@ endpoint timed out on 2026-07-19.
 - tofi maps under `iosc` after clamping its `wl_seat` bind to the compositor's
   advertised v5 support. The iOS keymap crash was a real double-cleanup path in
   `wl_keyboard_keymap`; the patch keeps a single shared `munmap`/`close`.
-- The Geary leaf-dependency lane has packaged `gmime`, `libstemmer`, `libytnef`,
-  `gspell`, and `libpeas`. For libpeas, the extra-app driver stages the already
-  published `libgirepository-1.0-1` and `-dev` debs instead of rebuilding the
-  full gobject-introspection/target-Python toolchain. The gspell runtime control
-  now tracks the current ICU 78 soname. The gspell/libpeas debs are host-validated
-  only until the next device smoke.
+- The Geary dependency lane has packaged `gmime`, `libstemmer`, `libytnef`,
+  `gspell`, `libpeas`, Folks 0.15.9, gcr-3/gck-1 3.41.1, and the GOA 3.46
+  client API. For libpeas, the extra-app driver stages the already published
+  `libgirepository-1.0-1` and `-dev` debs instead of rebuilding the full
+  gobject-introspection/target-Python toolchain. The gspell runtime tracks ICU
+  78, and all new runtime packages load on-device. GOA is intentionally
+  client-only: manual IMAP/SMTP setup is the credible iOS path; the Linux
+  provider daemon and browser-based OAuth UI are not claimed.
 - On-device classic `iosc` smoke installed the local extra-app debs and passed
   package state, Transmission CLI, `swaybg`, and `swayimg`. Focused follow-up
   slot smokes now also pass for `tofi` and `waybar`. `yad` and `gnumeric` were
@@ -196,24 +209,22 @@ endpoint timed out on 2026-07-19.
   minimal bar surface. Sway/River/DWL/Hyprland/Wayfire/taskbar, tray, audio,
   Bluetooth, and other Linux/session-manager integrations remain disabled until
   a target user workflow needs them.
-- `nwg-look-package`: intentionally exits with a blocker until the repo has a
-  Go+cgo iPhoneOS cross-build path for gotk3. Host Go can target `ios/arm64`,
-  but cgo is off by default and the repo has no packageable path that wires
-  Go, the iPhoneOS clang wrapper, `cross-pkg-config`, GTK3 `.pc` files, rootless
-  rpaths, signing, and package assembly together. `xcur2png` is only a cursor
-  preview helper upstream and can be skipped or packaged later; it is not the
-  main blocker.
-- `geary-package`: do not add until WebKitGTK 4.1 and the remaining mail
-  dependency lane are available. `gmime`, `libstemmer`, `libytnef`, `gspell`,
-  and `libpeas` are now packaged; the latter two still need device smoke.
-  `folks`, `gnome-online-accounts`, `gsound`, gcr-3/gck-1, and WebKitGTK remain.
+- `nwg-look-package`: RESOLVED on-device 2026-07-29. The Go+cgo iPhoneOS path,
+  GTK3/rootless linkage, signing, package assembly, rootless language-data
+  lookup, and full settings-window mapping all pass. Evidence:
+  `artifacts/device-runs/nwg-look-ios1-rootless2-20260729/`.
+- `geary-package`: active. The recipe and all non-WebKit dependencies now
+  configure/build/package, and their runtimes load on-device. WebKitGTK 4.1
+  build/install/split packages and a mapped Geary window remain the closure
+  gate.
 
 ## Policy
 
 - Keep app recipes additive and opt-in until each app has at least one on-device
   launch smoke.
 - Disable Linux/session-manager integrations before adding new stub packages.
-- Prefer `dunst` over `mako`; the sd-bus path is known to be a bad fit here.
+- Keep both notification-daemon options opt-in. `mako` now builds through the
+  Darwin basu port, while `dunst` remains the already-smoked default.
 - Publish only after copying the exact smoked debs into top-level `repo/debs/`
   and running the normal repo audit/publish flow.
 

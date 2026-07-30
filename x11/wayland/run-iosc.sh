@@ -15,7 +15,7 @@ BIN=/var/jb/usr/local/bin
 echo "==> stop any Xios X server, app, prior iosc, and test clients"
 # Anchor iosc to binary paths (plain "iosc" matches this script's own path when
 # run over SSH) and never kill our own shell or parent.
-ps ax | grep -v grep | grep -E "Xios :| Xios$|/Xios\.app/Xios|(^|[ /])iosc( |$)|(^|[ /])iosc-client( |$)" \
+ps ax | grep -v grep | grep -E "/Xios\.app/Xios|(^|[ /])iosc( |$)|(^|[ /])iosc-client( |$)" \
   | awk '{print $1}' | while read -r pid; do
       [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
   done

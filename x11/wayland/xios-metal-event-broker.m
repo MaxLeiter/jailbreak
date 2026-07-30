@@ -51,7 +51,7 @@ static const NSUInteger kMaximumPendingHandles = 256;
     @synchronized(self) {
         if ([handle isKindOfClass:[MTLSharedEventHandle class]] &&
             [token isKindOfClass:[NSData class]] &&
-            token.length == XIOS_METAL_EVENT_TOKEN_SIZE &&
+            token.length == XIOS_GPU_FENCE_TOKEN_SIZE &&
             ![_entries objectForKey:token] &&
             _entries.count < kMaximumPendingHandles) {
             XiosMetalEventEntry *entry = [[XiosMetalEventEntry alloc] init];
@@ -69,7 +69,7 @@ static const NSUInteger kMaximumPendingHandles = 256;
     MTLSharedEventHandle *handle = nil;
     @synchronized(self) {
         if ([token isKindOfClass:[NSData class]] &&
-            token.length == XIOS_METAL_EVENT_TOKEN_SIZE) {
+            token.length == XIOS_GPU_FENCE_TOKEN_SIZE) {
             XiosMetalEventEntry *entry = [_entries objectForKey:token];
             handle = [[entry.handle retain] autorelease];
         }

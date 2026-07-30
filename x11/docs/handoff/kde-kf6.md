@@ -4,6 +4,23 @@
 The KDE Plasma flavor: the Qt6 stack + the KDE Frameworks 6 layer, cross-built Linux→iOS in Docker/Procursus. Background priority (iosc + GNOME are the active demos), but a long-running build track.
 
 ## Current snapshot — 2026-07-06
+- Touch/tablet advertisement is now closed on-device (2026-07-29). The nested
+  Wayland backend already bound `wl_touch`, but KWin's automatic tablet heuristic
+  stayed false because iosc correctly advertises both touch and a synthetic
+  pointer. `xios-desktop-defaults 1.1.14` now ships `[Input] TabletMode=on` in
+  `/var/jb/etc/xdg/kwinrc`, and `run-kde-plasma.sh` seeds that value once through
+  `kwriteconfig6` when the resolved user `kwinrc` has no explicit choice.
+  The launcher step is required because Darwin KConfig stores `kwinrc` under
+  `Library/Preferences` and did not merge the XDG system file in the live
+  session. Explicit later user choices (`on`, `off`, or `auto`) remain untouched.
+  Live KWin D-Bus proof after restart returned `tabletMode=true` and
+  `tabletModeAvailable=true`; `/var/root/Library/Preferences/kwinrc` contained
+  `TabletMode=on`. The defaults deb SHA256 is
+  `29077e77a0956410c6c56fdd856f5352c43f9218475a65ff102c9e2b37a83a2a`.
+  A current-tree `xios-session 1.0.72` package containing the launcher fix was
+  built (`21ddda56af32540333039eca985709c7648b467651cd6cc9b947edd8eb6b3d4f`);
+  after its concurrent session changes landed together, the complete package
+  was installed and a normal GNOME restart remained green.
 - Offline package update 2026-07-18: real upstream `milou 6.1.5+ios1` now ships the
   `org.kde.milou` QML plugin/result model. Fully rebuilt `plasma-mobile 6.1.5+ios21` depends on
   it and contains no inert Milou fallback. The remaining generated Mobile providers expose
@@ -75,8 +92,11 @@ device-run bundles. The old "HOST COMPLETE / DEVICE PROOF PENDING at `+ios4`" te
 revisions stale and is superseded by this section.
 
 - **Published.** `repo/Packages` carries `kwin 6.1.5+ios27` with `Depends: … angle`. The recipe
-  (`kwin.mk`) keeps `KWIN_IOS_COMPAT_DEFS` empty, i.e. `KWIN_IOS_QT_NO_OPENGL` stays OFF — the
-  header-collision fix from `+ios3` held across 24 subsequent revisions.
+  (`kwin.mk`) keeps `KWIN_IOS_COMPAT_DEFS` empty, i.e. nothing sets `KWIN_IOS_QT_NO_OPENGL` by
+  hand — the header-collision fix from `+ios3` held across 24 subsequent revisions. The macro is
+  still live as a capability fallback: `kwin-ios-compat.h` defines it itself when
+  `QT_FEATURE_opengl < 0`, so the `offscreenquickview.cpp` guards in `kwin-ios-fixes.sh` engage
+  automatically against a no-OpenGL Qt and are inert (not dead) against ours.
 - **The GL/IOSurface path is real, not the CPU shim.** `BasicEGLSurfaceTextureWayland::create()`
   now branches on `IoscClientBuffer` BEFORE dmabuf/SHM and calls `loadIoscTexture()`, with a
   `BufferType::Iosc`, its own `EGLSurface m_iosurfacePbuffer`, and an
@@ -222,6 +242,13 @@ revisions stale and is superseded by this section.
 - Plasma Desktop next gate: if production-source UX matters, switch/add the production `repo.maxleiter.com` source and run a Sileo/package-manager install smoke for the already-published `xios-kde 0.1.4` baseline; otherwise keep moving from launcher proof to useful Desktop shell polish. Keep the host DER finalizer in the build/publish path for future KDE package waves; XML-visible but DER-less Qt/KDE GL clients still fail the Wayland EGL path. Note that the broad finalizer run can still trip over stale older artifacts in `linux-build/out/`; for publication, finalize a clean target directory or remove superseded bad local debs first.
 - Plasma Mobile/Nano next gate: orientation, sizing, wallpaper, Folio home tiles, the real Folio app drawer, the `plasma-mobile +ios14` Xios/iOS service-provider pass, the `+ios20` upstream MobileShell wrapper cleanup, QQC2 desktop-style private menu cycle, centered iPad drawer layout, landscape/portrait KWin sizing, and Mobile drawer app launch are green on device. `plasma-nano +ios3` is stable first-light on device after dropping the crashing Mycroft default layout, but it is not yet a useful shell; next Nano work is to add back a real safe panel/homescreen one applet at a time from shipped packages. Remaining Mobile debt is the repeated `QKqueueFileSystemWatcherEngine::addPaths` misses, physical/user polish across both iPad orientations, and the broader decision of which iPadOS-native affordances should remain outside Plasma. Treat new `Cannot assign to non-existent property` errors as scanner coverage gaps, and only move down to Qt Quick/qmlcache if the `QQuickFlickablePrivate` crash returns with no raw Mobile/Workspace/PA startup views left. Keep extending the entitlement rule from KWin: GL-initializing real Qt/QtQuick Wayland processes such as `plasmashell`, `qml`, and future shell helpers need the `iosc-gl-ent.xml` platform/task/IOSurface entitlement tier, then the macOS DER finalizer before install/publish.
 - Reusable KDE smoke helper is now `bin/xios-kde-smoke`; use it for future Desktop/Mobile/Nano launch, foreground, optional app/drawer/input probes, Desktop launcher search/activation, screenshot, and collect bundles instead of hand-written KWin/Plasma smoke blocks. Kickoff search needs the helper's focus-plus-`type` path; raw per-character key injection focused the field but did not reliably populate the Kickoff search model. It now accepts `--slot <name>` for parallel checks that should not foreground or replace the shared Xios display. Slot mode passes through to `bin/xios-device` slot-aware `status`, `session`, `app`, `shot`, and `collect`, uses `/var/jb/tmp/xios-<slot>.json` plus `/var/jb/tmp/iosc-<slot>-input.sock`, and leaves the main `xios-active-session` alone. First attempt at `desktop --slot codexkde` correctly avoided foregrounding but did not start because another live `xios-session kde-mobile` held the global session lock; evidence: `x11/artifacts/device-runs/kde-desktop-slot-codexkde-20260706-130602/`. Do not clear that lock unless the recorded owner process is stale.
+
+## Battery, power and the applet set (2026-07-29)
+- **Plasma read 0% battery and raised "Battery Critical (0% Remaining)", whose configured action can shut the session down.** The bridge was never at fault: `xios-hwbridged` served correct UPower values throughout (35%, discharging, `WarningLevel=None`). PowerDevil does not read UPower — it enumerates batteries through **Solid** (`Solid::DeviceInterface::Battery`) and sums `m_batteriesPercent`, and an empty map returns 0. Our `libKF6Solid` had **zero** `org.freedesktop.UPower` references: `kf6-solid 6.3.0+ios1` was packaged from a tree predating `solid-ios-fixes.sh`, so it shipped the **fakehw backend only** and `solid-hardware6 query "IS Battery"` returned nothing. Rebuilding as **`6.3.0+ios2`** picks up the `elseif(APPLE)` -> `add_device_backend(upower)` swap; Solid now reports `PrimaryBattery` / `Discharging` with a percentage that tracks the hardware (observed 35 -> 30 -> 25 across one session). Commit `cf45cbc3`.
+  - Diagnosing this needs `DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"` as well as the session address: Solid's UPower backend uses `QDBusConnection::systemBus()`, `run-kde-plasma.sh` aliases that to the session bus, and omitting it makes `gdbus --system` report a bogus "no system bus". Quick check for a bad build: `strings -a libKF6Solid.6.3.0.dylib | grep -c org.freedesktop.UPower` (0 = backend absent; the lib is ~130 KB instead of ~151 KB).
+- **Ten applets came back in `plasma-workspace 6.1.5+ios13`.** A first-light patch had commented out 15 of `applets/CMakeLists.txt` behind `ios-firstlight-skip` markers and the four-entry keep-list was never revisited, which is why there was no battery readout at all and why the tray drew a `?` badge over its clipboard icon (the systray was configured for an applet that was not installed). Now kept: `batterymonitor`, `clipboard`, `calendar`, `mediacontroller`, `panelspacer`, `keyboardindicator`, `appmenu`, `icon`, `activitybar`, `analogclock`, `lock_logout`, `manage-inputmethod`. Still excluded, each for a checked reason: `systemmonitor` (`KSysGuard::Sensors`) and `devicenotifier` (`KSysGuard::ProcessCore`) fail at cmake generate since this stack has no KSysGuard port; `cameraindicator` is gated on KPipeWire upstream; `brightness` is held back deliberately (below).
+- **powerdevil now exports `org.kde.Solid.PowerManagement.Actions.BrightnessControl`** (`6.1.5+ios2`). It previously answered `UnknownObject`, and the recipe comment claiming `KWinDisplayDetector` was "the real brightness path" is what made that look intentional — it is not: that detector enumerates through libkscreen and skips any output where `isHdrEnabled()` is false, which in 6.1 means every SDR panel, so with `BacklightDetector` cut for needing libudev **no detector could ever see this display**. `XiosBacklightDetector` (`recipes/powerdevil-xiosbacklight.{h,cpp}`, registered first in `m_detectors` since `onDisplaysChanged()` breaks at the first detector returning a display) reads and writes the synthetic sysfs backlight directly — no libudev, and no KAuth/polkit helper for a write that needs no privilege here.
+- **Brightness still does not reach the panel**, so the Plasma brightness applet stays out on purpose. The KDE half is complete and verified over DBus (`setBrightness 500` -> node 500 -> `brightness` reports 500); the failing hop is `BKSDisplayBrightnessSet`, inert on iPadOS 17.6.1 outside SpringBoard. See `polish.md` #15 for the full probe result and the `UIScreen.brightness` plan.
 
 ## Docker gotchas
 - Volume-prune KILLS active builds (transient containers look unmounted between packages) — use builder-prune. VM: 16 CPU / 7.7GiB → default ninja -j18 OOMs big TUs (qmldom) → full-speed pass then -j2 retry.

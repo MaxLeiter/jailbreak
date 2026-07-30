@@ -265,7 +265,8 @@ the volume). All baked into `ports/mozjs/patches/000{1,2,3}-*` + `recipes/mozjs.
 
 ### Packaged + on-device status
 
-- **Packaged** (`linux-build/build-mozjs-debs.sh`, in `linux-build/out/`):
+- **Packaged** (`linux-build/build-gjs.sh` with `TARGETS="mozjs-package"`, output in
+  `linux-build/out/`):
   `libmozjs-115-0` (7.1MB dylib) + `libmozjs-115-dev` (92MB; headers under `include/mozjs-115`
   + `libjs_static.a`). Ready to publish.
 - **On-device (root@MaxsiPad.local):** a cross-compiled JSAPI test loads libmozjs and runs.

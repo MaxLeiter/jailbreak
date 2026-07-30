@@ -24,7 +24,7 @@ OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.33"
+VER="0.9.37"
 ARCH="iphoneos-arm64"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -33,14 +33,14 @@ SHARE="$STAGE/var/jb/usr/local/share/iosc"
 LIB="$STAGE/var/jb/usr/local/lib"
 LIBEXEC="$STAGE/var/jb/usr/local/libexec"
 LAUNCHD="$STAGE/var/jb/Library/LaunchDaemons"
+APPS="$STAGE/var/jb/usr/share/applications"
 
 rm -rf "$STAGEROOT"
-mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$STAGE/DEBIAN"
+mkdir -p "$BIN" "$SHARE" "$LIB" "$LIBEXEC" "$LAUNCHD" "$APPS" "$STAGE/DEBIAN"
 
 # 1. compositor binary -> /var/jb/usr/local/bin, signed with the GPU entitlement
 #    set (AGX/IOGPU/IOSurface IOKit + task_for_pid, NO no-container). Without these
-#    iosc cannot reach the GPU and fails closed; see iosc-gl-ent.xml. The incomplete
-#    CPU compositor is available only with IOSC_ALLOW_CPU_DIAGNOSTIC=1.
+#    iosc cannot reach the GPU and fails closed; see iosc-gl-ent.xml.
 cp "$WAYLAND/out/iosc" "$BIN/iosc"
 chmod 0755 "$BIN/iosc"
 xsign "$BIN/iosc" "$WAYLAND/iosc-gl-ent.xml" \
@@ -70,6 +70,19 @@ for helper in iosc-input-test ios-inputd; do
   chmod 0755 "$BIN/$helper"
   xsign "$BIN/$helper"
 done
+
+# 2c. KWin launches its input method from the desktop entry named by kwinrc.
+# Keep that entry in the package that owns ios-inputd so the setting cannot
+# silently depend on a particular xios-session package revision.
+cat > "$APPS/ios-inputd.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Xios iOS keyboard bridge
+Exec=/var/jb/usr/local/bin/ios-inputd --proxy -s /var/jb/tmp/iosc-input.sock
+NoDisplay=true
+X-KDE-Wayland-VirtualKeyboard=true
+EOF
+chmod 0644 "$APPS/ios-inputd.desktop"
 
 # 3. orchestration scripts (run on-device as root; reference $BIN/iosc by abs path)
 cp "$WAYLAND/run-iosc.sh" "$BIN/run-iosc.sh"

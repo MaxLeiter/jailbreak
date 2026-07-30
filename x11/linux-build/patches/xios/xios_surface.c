@@ -1,6 +1,5 @@
 /*
- * xios_surface.c — IOSurface-backed shared framebuffer + mach-port rendezvous for
- * the native iOS X server ("Xios", an Xvfb-derived DDX). See xios_surface.h.
+ * xios_surface.c — IOSurface-backed compositor output + app rendezvous.
  *
  * Deliberately includes NO X server headers — only Apple frameworks + POSIX — so
  * CoreFoundation/IOSurface/mach declarations can't collide with dix macros.
@@ -25,31 +24,13 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOSurface/IOSurfaceRef.h>
 
-/* X server display-number string (e.g. "3" for `Xios :3`). Declared extern rather
- * than pulled from a dix header so this file stays free of X server includes. */
+/* Cosmetic display-number string written into xios.json. Compositors provide it
+ * without coupling this Apple-only translation unit to compositor headers. */
 extern char *display;
 
 /* ---- wire protocol (native LE; server + app are both arm64) ---------------- */
 
-#define XIOS_MAGIC      0x58494F31u   /* 'XIO1' */
 #define XIOS_FMT_BGRA   0x42475241u   /* 'BGRA' */
-/* app -> server, sent once on connect */
-typedef struct {
-    uint32_t magic;
-    uint32_t pid;
-    uint32_t portname;     /* mach receive-port name in the app's IPC space */
-    uint32_t reserved;
-} xios_hello;
-
-/* server -> app, sent once after the mach port is delivered */
-typedef struct {
-    uint32_t magic;
-    uint32_t width;
-    uint32_t height;
-    uint32_t stride;       /* bytes per row */
-    uint32_t format;       /* XIOS_FMT_BGRA */
-    uint32_t status;       /* 0 = ok */
-} xios_reply;
 
 /* mach message carrying the IOSurface send right */
 typedef struct {
@@ -201,8 +182,9 @@ static void write_json(const char *json_path, int width, int height, int stride,
     fprintf(jf,
             "{\"width\":%d,\"height\":%d,\"stride\":%d,"
             "\"format\":\"BGRA\",\"ddx\":\"iosurface\",\"socket\":\"%s\","
-            "\"display\":\":%s\",\"protocol_version\":2",
-            width, height, stride, sock_path, display ? display : "0");
+            "\"display\":\":%s\",\"protocol_version\":%u",
+            width, height, stride, sock_path, display ? display : "0",
+            XIOS_PROTOCOL_VERSION);
     /* Where the app should send keyboard/pointer. The app auto-infers this only
      * for an "iosc"-named ddx socket; any other compositor (mutter) must set it
      * or it gets no input. Omitted when unset so iosc keeps the app's inference. */
@@ -610,31 +592,31 @@ static void handle_client(int fd)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-    xios_hello hello;
-    if (read_full(fd, &hello, sizeof(hello)) != 0 || hello.magic != XIOS_MAGIC) {
+    xios_msg hello;
+    if (read_full(fd, &hello, sizeof(hello)) != 0 ||
+        hello.magic != XIOS_MSG_MAGIC ||
+        hello.type != XIOS_MSG_HELLO ||
+        hello.window_id != XIOS_PROTOCOL_VERSION ||
+        hello.length != 0 ||
+        hello.a <= 0 ||
+        (uint32_t)hello.b == MACH_PORT_NULL ||
+        hello.c != 0 ||
+        hello.d != 0) {
         fprintf(stderr, "xios: bad handshake from fd=%d\n", fd);
         close(fd);
         return;
     }
-    if (hello.reserved != XIOS_HELLO_TYPED) {
-        fprintf(stderr, "xios: rejecting non-typed client fd=%d reserved=0x%x "
-                        "(typed app protocol is required)\n",
-                fd, hello.reserved);
-        close(fd);
-        return;
-    }
 
-    /* Don't trust the client-supplied pid for task_for_pid — a malicious client
-     * could name another process and have us hand it the surface port. Use the
-     * kernel-reported peer pid of the socket; fall back to the claim only if the
-     * lookup fails (it shouldn't for an AF_UNIX peer). */
+    /* Never trust or fall back to the client-supplied pid for task_for_pid. */
     pid_t peer_pid = 0;
     socklen_t plen = sizeof(peer_pid);
     if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer_pid, &plen) != 0 || peer_pid <= 0) {
-        peer_pid = (pid_t) hello.pid;
-    } else if ((uint32_t) peer_pid != hello.pid) {
+        fprintf(stderr, "xios: cannot identify socket peer on fd=%d\n", fd);
+        close(fd);
+        return;
+    } else if ((uint32_t) peer_pid != (uint32_t)hello.a) {
         fprintf(stderr, "xios: client claimed pid %u but socket peer is %d; "
-                        "using the real peer\n", hello.pid, (int) peer_pid);
+                        "using the real peer\n", (uint32_t)hello.a, (int) peer_pid);
     }
 
     pthread_mutex_lock(&s_lock);
@@ -643,25 +625,16 @@ static void handle_client(int fd)
     unsigned gen = s_generation;
     pthread_mutex_unlock(&s_lock);
 
-    int status = deliver_surface_port((int) peer_pid, hello.portname, surf);
-
-    xios_reply reply;
-    reply.magic = XIOS_MAGIC;
-    reply.width = (uint32_t) w;
-    reply.height = (uint32_t) hgt;
-    reply.stride = (uint32_t) st;
-    reply.format = XIOS_FMT_BGRA;
-    reply.status = (uint32_t) (status != 0);
-    if (write_full(fd, &reply, sizeof(reply)) != 0 || status != 0) {
+    int status = deliver_surface_port((int) peer_pid, (uint32_t)hello.b, surf);
+    if (status != 0) {
         if (surf) CFRelease(surf);
         close(fd);
         return;
     }
-    /* The app gets an in-band HELLO (geometry + compositor id) right after the
-     * reply. Sent while still blocking (pre-O_NONBLOCK) so the app reliably has
-     * it before the DIRTY/CURSOR stream begins. */
+    /* Reply with the same canonical exact-version HELLO before frames begin. */
     uint32_t idlen = (uint32_t) strlen(s_compositor_id);
-    xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO, 0, idlen,
+    xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_HELLO,
+                   XIOS_PROTOCOL_VERSION, idlen,
                    w, hgt, st, (int32_t) XIOS_FMT_BGRA };
     if (write_full(fd, &h, sizeof(h)) != 0 ||
         (idlen && write_full(fd, s_compositor_id, idlen) != 0)) {
@@ -802,46 +775,38 @@ static int send_record(int fd, const void *buf, size_t len)
     return -1;   /* error or partial (desync) */
 }
 
-#define XIOS_SHARED_EVENT_TOKEN_SIZE 32u
-
 static int notify_dirty_internal(const void *shared_event_token,
                                  size_t token_size,
                                  uint64_t event_value)
 {
-    if ((token_size > 0 && !shared_event_token) ||
-        (token_size > 0 && token_size != XIOS_SHARED_EVENT_TOKEN_SIZE) ||
-        (token_size > 0 && event_value == 0))
+    if (!shared_event_token ||
+        token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
+        event_value == 0)
         return -1;
 
     uint64_t seq;
-    unsigned char wire[sizeof(xios_msg) + XIOS_SHARED_EVENT_TOKEN_SIZE];
+    unsigned char wire[sizeof(xios_msg) + XIOS_GPU_FENCE_TOKEN_SIZE];
 
     pthread_mutex_lock(&s_lock);
     seq = ++s_dirty_seq;
     xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY,
-                     token_size ? XIOS_DIRTY_FENCE_BROKER_TOKEN
-                                : XIOS_DIRTY_FENCE_NONE,
-                     (uint32_t)token_size,
+                     XIOS_DIRTY_FENCE_BROKER_TOKEN,
+                     XIOS_GPU_FENCE_TOKEN_SIZE,
                      (int32_t)(uint32_t)(seq & 0xffffffffu),
                      (int32_t)(uint32_t)(seq >> 32),
                      (int32_t)(uint32_t)(event_value & 0xffffffffu),
                      (int32_t)(uint32_t)(event_value >> 32) };
     memcpy(wire, &rec, sizeof(rec));
-    if (token_size)
-        memcpy(wire + sizeof(rec), shared_event_token, token_size);
+    memcpy(wire + sizeof(rec), shared_event_token, XIOS_GPU_FENCE_TOKEN_SIZE);
     int i = 0;
     while (i < s_nclients) {
-        int ok = send_record(s_clients[i].fd, wire, sizeof(rec) + token_size);
+        int ok = send_record(s_clients[i].fd, wire,
+                             sizeof(rec) + XIOS_GPU_FENCE_TOKEN_SIZE);
         if (ok >= 0) { i++; continue; }
         drop_client_locked(i);
     }
     pthread_mutex_unlock(&s_lock);
     return 0;
-}
-
-void xios_notify_dirty(void)
-{
-    (void)notify_dirty_internal(NULL, 0, 0);
 }
 
 int xios_notify_dirty_with_fence(const void *shared_event_token,
@@ -936,38 +901,6 @@ void *xios_import_client_iosurface(int pid, unsigned port_name, int *w, int *h)
             (unsigned) IOSurfaceGetID(s), IOSurfaceGetWidth(s), IOSurfaceGetHeight(s),
             IOSurfaceGetBytesPerRow(s));
     return (void *) s;
-}
-
-void xios_blit_client_iosurface(void *client_surface)
-{
-    IOSurfaceRef src = (IOSurfaceRef) client_surface;
-    if (!src || !s_surface) return;
-
-    /* Lock the source read-only so the GPU's writes are made coherent to the CPU
-     * (the client glFinish()es before signalling, so the frame is complete). */
-    if (IOSurfaceLock(src, XIOS_LOCK_READONLY, NULL) != KERN_SUCCESS)
-        return;
-    const uint8_t *sbase = (const uint8_t *) IOSurfaceGetBaseAddress(src);
-    if (!sbase) {
-        IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
-        return;
-    }
-    size_t sstride = IOSurfaceGetBytesPerRow(src);
-    int sw = (int) IOSurfaceGetWidth(src);
-    int sh = (int) IOSurfaceGetHeight(src);
-
-    uint8_t *dbase = (uint8_t *) IOSurfaceGetBaseAddress(s_surface);
-    if (!dbase) {
-        IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
-        return;
-    }
-    int rows = sh < s_height ? sh : s_height;
-    int cols = sw < s_width  ? sw : s_width;
-    size_t row_bytes = (size_t) cols * 4;   /* BGRA8 both sides */
-    for (int y = 0; y < rows; y++)
-        memcpy(dbase + (size_t) y * s_stride, sbase + (size_t) y * sstride, row_bytes);
-
-    IOSurfaceUnlock(src, XIOS_LOCK_READONLY, NULL);
 }
 
 void xios_release_client_iosurface(void *client_surface)

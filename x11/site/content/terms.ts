@@ -136,10 +136,6 @@ export const TERMS = {
     label: "compositor",
     def: "the program that owns the screen and blends every window into one image",
   },
-  xtest: {
-    label: "XTEST",
-    def: "an X11 extension for injecting synthetic keyboard and pointer events",
-  },
   textInput: {
     label: "text-input-v3",
     def: "the Wayland protocol an app uses to ask for an on-screen keyboard",

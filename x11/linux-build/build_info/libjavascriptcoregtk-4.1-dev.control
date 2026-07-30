@@ -1,0 +1,10 @@
+Package: libjavascriptcoregtk-4.1-dev
+Version: @DEB_WEBKITGTK_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://webkitgtk.org/
+Depends: libjavascriptcoregtk-4.1-0 (= @DEB_WEBKITGTK_V@), libglib2.0-dev, libicu-dev
+Description: JavaScriptCore GTK 4.1 development files for rootless iOS
+ Headers, pkg-config metadata and linker symlink for JavaScriptCoreGTK 4.1.

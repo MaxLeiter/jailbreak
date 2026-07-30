@@ -9,9 +9,7 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 
 ## Before Editing
 
-- Expect a dirty worktree. Do not revert unrelated local changes or generated repo output unless the user explicitly asks.
-- Use `rg` / `rg --files` for searches.
-- Use `apply_patch` for manual edits.
+- Expect a dirty worktree, and expect other sessions to be working in it. Do not revert unrelated local changes or generated repo output unless the user explicitly asks; check `git status` and file mtimes before trusting a device test or publishing anything.
 - Keep rootless iOS assumptions in mind, but check the current README/scripts instead of hardcoding device facts here.
 
 ## Top-Level Layout
@@ -42,6 +40,7 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 - The package repo is generated from `repo/debs/` by `bin/lib/make-repo.py` (repo-pipeline internals live in `bin/lib/`; `bin/` itself holds only entry points).
 - `bin/publish-staging.sh` (= `bin/publish-repo.sh --staging`) regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys the low-cache staging repo (served at dev.repo.maxleiter.com) for iteration.
 - `bin/publish-repo.sh` regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys production metadata/site assets.
+- `repo/debs/` is a shared staging tree, so a bare production publish ships every pending delta anyone has built. Use `bin/publish-repo.sh --only <pkg>[,<pkg>]` to swap just your packages into the index the target already serves; it scopes the index in the throwaway deploy copy and re-checks solvability against that scoped index.
 - Treat production `.deb` URLs as immutable. Never replace the bytes of a public `.deb` at the same filename; bump the package version or revision so the filename changes.
 - Keep APT metadata (`Packages`, `Packages.gz`, `Release`, `InRelease`, `Release.gpg`) revalidated instead of long-lived immutable.
 - Keep staging package directories out of Vercel deployments. Do not remove `repo/.vercelignore` entries for staging output unless the publish flow changes deliberately.

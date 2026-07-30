@@ -8,7 +8,7 @@
 
 #define IOSCD_SOCK "/var/jb/tmp/ioscd.sock"
 
-int ioscd_send_launch(const char *app_id, const char *exec)
+int ioscd_send_launch(const char *app_id)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
@@ -19,8 +19,8 @@ int ioscd_send_launch(const char *app_id, const char *exec)
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) { close(fd); return -1; }
 
     char line[8192];
-    int n = snprintf(line, sizeof(line), "LAUNCH_NATIVE\t%s\t%s\n",
-                     app_id ? app_id : "", exec ? exec : "");
+    int n = snprintf(line, sizeof(line), "LAUNCH_NATIVE\t%s\n",
+                     app_id ? app_id : "");
     if (n < 0 || (size_t)n >= sizeof(line)) { close(fd); return -1; }
     size_t left = (size_t)n; const char *p = line;
     while (left > 0) {

@@ -109,12 +109,12 @@ classic mode.
   output target).
 - On commit, mark that window's canvas dirty and notify its host.
 
-### 2.2 Rendezvous protocol v2
+### 2.2 Rendezvous protocol v1
 
-The existing ddx protocol is one-shot and single-surface (hello, one mach
-port, one geometry reply). Native mode adds a second socket
-(`/var/jb/tmp/iosc-native.sock`) with a message protocol; the old socket and
-protocol stay byte-identical for the other flavors.
+Native mode uses `/var/jb/tmp/iosc-native.sock` and the same canonical v1 record
+grammar as the fullscreen host channel. Both endpoints include
+`apps/shared/XiosProtocol.h`, reject any version mismatch, and accept only
+broker-fenced frame records. There is no older record shape.
 
 Host to iosc:
 
@@ -131,8 +131,8 @@ iosc to host:
 |---|---|---|
 | `WINDOW_NEW` | window id, w, h, stride, title | a toplevel matching your bind mapped; canvas port follows via mach_msg (reuses `deliver_surface_port`) |
 | `WINDOW_GEOM` | window id, w, h | canvas reallocated after a resize (new port follows) |
-| `DIRTY` | window id | canvas changed, re-present |
-| `TITLE` | window id, utf8 | title changed |
+| `NATIVE_FRAME` | window id, broker token, event value | canvas changed; wait on the GPU fence, then present |
+| `WINDOW_TITLE` | window id, utf8 | title changed |
 | `WINDOW_GONE` | window id | toplevel unmapped; tear down the scene |
 
 Matching windows to hosts: primary key is the Wayland `app_id` (same key
@@ -172,10 +172,11 @@ LaunchDaemon, install scripts).
    `com.max.iosc.org.gnome.Console`.
 2. The host app starts foreground, connects `iosc-native.sock`, sends
    `BIND org.gnome.Console` with its scene size, and sends
-   `LAUNCH_NATIVE\torg.gnome.Console\t<exec>` to `ioscd.sock`.
+   `LAUNCH_NATIVE\torg.gnome.Console` to `ioscd.sock`.
 3. ioscd ensures the native compositor namespace is running (`wayland-native-0`,
-   `iosc-native-input.sock`, `xios-native.json`) and spawns the
-   client exactly as today. The `uiopen com.max.xios` step is DROPPED in
+   `iosc-native-input.sock`, `xios-native.json`), resolves the app id from its
+   trusted installed desktop entry, and starts the client as `mobile` without a
+   command shell. The `uiopen com.max.xios` step is DROPPED in
    native mode: the tapped host is already the foreground display.
 4. Client maps its toplevel. iosc sizes the initial configure from the bind's
    scene size (so the first frame fits exactly), allocates the canvas, sends

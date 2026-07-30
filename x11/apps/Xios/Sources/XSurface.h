@@ -62,8 +62,8 @@ int xsurface_pacing(XSurfaceConn *c, int32_t until_deadline_us,
 
 /* Cross-process GPU fence attached to the most recently drained DIRTY record.
  * Returns 1 and borrows the fixed 32-byte broker capability token when the
- * producer submitted asynchronously, or 0 when it already used a CPU-side
- * completion barrier. The pointer remains valid until xsurface_close(). */
+ * producer submitted the frame, or 0 for a malformed/incomplete frame. The
+ * pointer remains valid until xsurface_close(). */
 int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
                              size_t *token_size, uint64_t *value);
 

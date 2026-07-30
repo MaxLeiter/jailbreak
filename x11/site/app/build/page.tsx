@@ -168,8 +168,10 @@ export default function Build() {
           There is no single <code>xios</code>{" "}package. You install one of{" "}
           <code>xios-gnome</code>, <code>xios-kde</code>,{" "}
           <code>xios-native</code>{" "}or <code>xios-x11</code>, and each pulls in
-          the shared <code>xios-core</code>{" "}base. <T k="sileo" />{" "}is the
-          flavor chooser; nothing custom ships to do that job.
+          the shared <code>xios-runtime</code>{" "}base — plus{" "}
+          <code>xios-core</code>{" "}for the three fullscreen flavors.{" "}
+          <T k="sileo" />{" "}is the flavor chooser; nothing custom ships to do that
+          job.
         </Callout>
       </Section>
 

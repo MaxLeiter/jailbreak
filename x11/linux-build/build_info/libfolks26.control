@@ -1,0 +1,10 @@
+Package: libfolks26
+Version: @DEB_FOLKS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.gnome.org/GNOME/folks
+Depends: libglib2.0-0, libgee-0.8-2, libgtkintl (>= 1.0)
+Description: Folks contact aggregation runtime
+ Core Folks library with key-file and dummy backends for rootless iOS.

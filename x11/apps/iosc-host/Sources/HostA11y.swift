@@ -19,7 +19,6 @@ final class HostA11yClient {
     private let logPath = "/var/jb/tmp/iosc-a11y-host.log"
 
     private var appID = ""
-    private var exec = ""
     private var fd: Int32 = -1
     private var reader: Thread?
     private var running = false
@@ -32,10 +31,9 @@ final class HostA11yClient {
 
     /// Called once from NativeManager.startup(). Arms the VoiceOver gate; the
     /// socket opens only while VoiceOver is on.
-    func startup(appID: String, exec: String) {
+    func startup(appID: String) {
         self.appID = appID
-        self.exec = exec
-        log("startup appid=\(appID) exec=\(exec)")
+        log("startup appid=\(appID)")
         NotificationCenter.default.addObserver(
             self, selector: #selector(syncVoiceOver),
             name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
@@ -88,8 +86,8 @@ final class HostA11yClient {
             }
             failures = 0
             fd = s
-            log("connected path=\(sockPath); bind appid=\(appID) exec=\(exec)")
-            send(["t": "bind", "appid": appID, "exec": exec])
+            log("connected path=\(sockPath); bind appid=\(appID)")
+            send(["t": "bind", "appid": appID])
             send(["t": "enable", "on": true])
             pump(s)
             log("socket closed")

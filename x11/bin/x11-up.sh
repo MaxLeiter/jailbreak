@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Brings up the Phase-0 X-over-VNC session on a rootless Procursus device.
-# See ../SCOPE.md for the working recipe this follows.
+# Brings up an X-over-VNC session on a rootless Procursus device. This is the
+# remote/debug route; the on-device desktop path is the Xios app plus iosc
+# (see ../docs/USER-GUIDE.md).
 #
 # Run ON THE DEVICE, e.g.:
 #   ssh root@ipad 'bash -s' < bin/x11-up.sh

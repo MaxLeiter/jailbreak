@@ -28,7 +28,7 @@ export const NAV: NavItem[] = [
     label: "Display servers",
     idx: "02",
     description:
-      "Xios speaks X11 and renders in software, iosc speaks Wayland and composites on the GPU, and Mutter and KWin drive the same output when a full desktop environment is running.",
+      "iosc is our own Wayland compositor and composites on the GPU, Mutter and KWin drive the same output when a full desktop environment is running, and Xwayland gives X11 clients a hardware route in.",
   },
   {
     href: "/graphics",

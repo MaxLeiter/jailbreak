@@ -119,7 +119,7 @@ First conversions:
 
 - `linux-build/build.sh`
 - `linux-build/build-gtk.sh`
-- `linux-build/build-iosc.sh` callers where applicable
+- `wayland/build-iosc.sh` callers where applicable
 - `apps/iosc-desktop/package-session.sh`
 - `wayland/package-iosc.sh`
 - `packages/meta/build-meta.sh`

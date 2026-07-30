@@ -15,7 +15,9 @@
 #define SI_HAPTIC     11u
 #define SI_VOLUME     12u
 #define SI_APPEARANCE 13u
+#define SI_BRIGHTNESS 15u
 #define SI_VOLUME_TO_DEVICE 1u
+#define SI_BRIGHTNESS_TO_DEVICE 1u
 
 struct si_msg {
     uint32_t type;
@@ -189,14 +191,53 @@ int sysint_poll_haptic(unsigned *style)
     return 0;
 }
 
+// Brightness requests ride the same link as volume, so one drain would starve the
+// other: whichever poll ran first would consume and discard the other's records.
+// Each poll therefore stashes a record it is not looking for instead of dropping it.
+static unsigned s_pending_brightness;
+static int      s_have_pending_brightness;
+static unsigned s_pending_volume_set;
+static int      s_have_pending_volume_set;
+
+int sysint_poll_brightness_set(unsigned *v16)
+{
+    if (s_have_pending_brightness) {
+        s_have_pending_brightness = 0;
+        if (v16) *v16 = s_pending_brightness;
+        return 1;
+    }
+    struct si_msg m;
+    if (link_ensure(&s_sysint) != 0) return 0;
+    while (link_poll_msg(&s_sysint, s_sysint_rx, &s_sysint_rx_have, &m) == 1) {
+        if (m.type == SI_BRIGHTNESS && (m.state & SI_BRIGHTNESS_TO_DEVICE)) {
+            if (v16) *v16 = m.code > 65535u ? 65535u : m.code;
+            return 1;
+        }
+        if (m.type == SI_VOLUME && (m.state & SI_VOLUME_TO_DEVICE)) {
+            s_pending_volume_set = m.code > 65535u ? 65535u : m.code;
+            s_have_pending_volume_set = 1;
+        }
+    }
+    return 0;
+}
+
 int sysint_poll_volume_set(unsigned *v16)
 {
+    if (s_have_pending_volume_set) {
+        s_have_pending_volume_set = 0;
+        if (v16) *v16 = s_pending_volume_set;
+        return 1;
+    }
     struct si_msg m;
     if (link_ensure(&s_sysint) != 0) return 0;
     while (link_poll_msg(&s_sysint, s_sysint_rx, &s_sysint_rx_have, &m) == 1) {
         if (m.type == SI_VOLUME && (m.state & SI_VOLUME_TO_DEVICE)) {
             if (v16) *v16 = m.code > 65535u ? 65535u : m.code;
             return 1;
+        }
+        if (m.type == SI_BRIGHTNESS && (m.state & SI_BRIGHTNESS_TO_DEVICE)) {
+            s_pending_brightness = m.code > 65535u ? 65535u : m.code;
+            s_have_pending_brightness = 1;
         }
     }
     return 0;

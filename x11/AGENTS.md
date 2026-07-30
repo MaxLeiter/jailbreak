@@ -63,7 +63,7 @@ This directory contains the native X11/Wayland-on-iOS stack. Keep this file stab
 ## Where to Look for Current Context
 
 - `README.md`: high-level architecture and stable path map.
-- `SCOPE.md`: roadmap and historical rationale. Some status may be older; verify against handoff docs and code.
+- `SCOPE.md`: the founding scope note — locked decisions, the rootless blockers, and the entitlement gotchas. Not a status doc; it carries no roadmap any more.
 - `docs/handoff/INDEX.md`: current domain map and cross-cutting gotchas.
 - `docs/handoff/*.md`: active handoff notes by subsystem.
 - `linux-build/README.md`: stable build-pipeline runbook.

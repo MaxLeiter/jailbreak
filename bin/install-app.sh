@@ -4,7 +4,7 @@
 #
 # Mac needs:    Xcode, xcodegen, ldid          (all via brew except Xcode)
 # iPad needs:   rootless jailbreak + AppSync Unified (to run the unsigned app)
-#               and uicache at /var/jb/usr/bin/uicache (standard on palera1n).
+#               and uicache at /var/jb/usr/bin/uicache (standard on rootless bootstraps).
 #
 # device.env (repo root, gitignored) provides THEOS_DEVICE_IP / THEOS_DEVICE_PORT.
 # Usage: bin/install-app.sh [app-dir]   (defaults to apps/KitchenHub)

@@ -17,6 +17,17 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 
 ## Current state — package-installed 2026-07-29, CLI/daemon works
 
+- `xios-session 1.0.72` removes a process-substitution deadlock from capability
+  profile collection and launches apps into the active GNOME compositor's
+  private runtime directory/session bus. The GNOME startup gate now treats
+  Shell process exit and main-entry/GPU errors as fatal without mistaking
+  unrelated helper-service JS warnings for a compositor failure.
+- `ioscd` app launches now use a separate strict contract from `SESSION`:
+  launchers send only an app id, the daemon resolves a trusted installed
+  desktop entry, and the client/session bus run as `mobile`. The daemon still
+  owns compositor and session lifecycle as root. `xios-launcher-tools 0.1.5`
+  carries this implementation and no longer hard-depends on `xios-session`, so
+  the native flavor can remain shell-free.
 - 2026-07-29 responsiveness/device closure (`xios-session 1.0.67`):
   normal switches no longer terminate Xios in either the shared teardown or the
   nested KDE/Mutter bring-up scripts; explicit `stop` retains the full-kill behavior.

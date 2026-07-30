@@ -8,14 +8,6 @@
 #include <sys/time.h>
 #include <sys/un.h>
 
-// Wire envelope — must match linux-build/patches/xios/xios_surface.h.
-#define XIOS_MSG_MAGIC     0x584D5331u  // 'XMS1'
-#define XIOS_MSG_CLIPBOARD 0x04u
-typedef struct {
-    uint32_t magic, type, window_id, length;
-    int32_t  a, b, c, d;
-} xios_msg;  // 32 bytes, LE; length payload bytes follow
-
 static int s_fd = -1;
 static uint32_t s_tx_gen = 0;   // bumped per iOS copy event (never 0 once used)
 // rx: one record at a time; partial reads span poll calls
@@ -24,6 +16,8 @@ static uint32_t s_hdr_have = 0;
 static xios_msg s_msg;
 static uint8_t *s_payload = NULL;
 static uint32_t s_payload_have = 0;
+
+static bool write_all(const void *buf, size_t len);
 
 static void reset_rx(void) {
     free(s_payload);
@@ -45,13 +39,39 @@ bool iosc_clipboard_open(const char *sock_path) {
     // MSG_DONTWAIT instead, so the display-link tick never blocks.
     struct timeval tv = { 2, 0 };
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     struct sockaddr_un a;
     memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
     strncpy(a.sun_path, sock_path, sizeof(a.sun_path) - 1);
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(fd); return false; }
-    reset_rx();
     s_fd = fd;
+    xios_msg hello = {
+        XIOS_MSG_MAGIC, XIOS_MSG_HELLO, XIOS_PROTOCOL_VERSION, 0,
+        0, 0, 0, 0
+    };
+    xios_msg reply;
+    if (!write_all(&hello, sizeof(hello))) {
+        iosc_clipboard_close();
+        return false;
+    }
+    size_t got = 0;
+    while (got < sizeof(reply)) {
+        ssize_t r = read(fd, (uint8_t *)&reply + got, sizeof(reply) - got);
+        if (r > 0) { got += (size_t)r; continue; }
+        if (r < 0 && errno == EINTR) continue;
+        iosc_clipboard_close();
+        return false;
+    }
+    if (reply.magic != XIOS_MSG_MAGIC ||
+        reply.type != XIOS_MSG_HELLO ||
+        reply.window_id != XIOS_PROTOCOL_VERSION ||
+        reply.length != 0 ||
+        reply.a != 0 || reply.b != 0 || reply.c != 0 || reply.d != 0) {
+        iosc_clipboard_close();
+        return false;
+    }
+    reset_rx();
     return true;
 }
 
@@ -75,7 +95,7 @@ static bool write_all(const void *buf, size_t len) {
 }
 
 static bool send_record(uint32_t kind, const void *data, size_t len) {
-    if (s_fd < 0 || len > IOSC_CLIP_ITEM_MAX) return false;
+    if (s_fd < 0 || len > XIOS_CLIP_ITEM_MAX) return false;
     xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_CLIPBOARD, 0, (uint32_t)len,
                    (int32_t)kind, (int32_t)s_tx_gen, 0, 0 };
     if (!write_all(&h, sizeof(h)) || (len > 0 && !write_all(data, len))) {
@@ -91,14 +111,14 @@ void iosc_clipboard_send_begin(void) {
 }
 
 bool iosc_clipboard_send_item(uint32_t kind, const void *data, size_t len) {
-    if (kind == IOSC_CLIP_KIND_NONE || kind > IOSC_CLIP_KIND_HTML) return false;
+    if (kind == XIOS_CLIP_KIND_NONE || kind > XIOS_CLIP_KIND_HTML) return false;
     if (s_tx_gen == 0) iosc_clipboard_send_begin();
     return send_record(kind, data, len);
 }
 
 bool iosc_clipboard_send_clear(void) {
     iosc_clipboard_send_begin();
-    return send_record(IOSC_CLIP_KIND_NONE, NULL, 0);
+    return send_record(XIOS_CLIP_KIND_NONE, NULL, 0);
 }
 
 int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
@@ -118,7 +138,12 @@ int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
                 memcpy(&s_msg, s_hdr, sizeof(s_msg));
                 if (s_msg.magic != XIOS_MSG_MAGIC ||
                     s_msg.type != XIOS_MSG_CLIPBOARD ||
-                    s_msg.length > IOSC_CLIP_ITEM_MAX) {
+                    s_msg.window_id != 0 ||
+                    s_msg.length > XIOS_CLIP_ITEM_MAX ||
+                    (uint32_t)s_msg.a > XIOS_CLIP_KIND_HTML ||
+                    s_msg.b == 0 ||
+                    s_msg.c != 0 || s_msg.d != 0 ||
+                    (s_msg.a == XIOS_CLIP_KIND_NONE && s_msg.length != 0)) {
                     iosc_clipboard_close();   // desync: reconnect from scratch
                     return -1;
                 }
