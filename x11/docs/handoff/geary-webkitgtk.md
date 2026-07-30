@@ -16,13 +16,19 @@ Secret Service owns `org.freedesktop.secrets`; Geary stays alive, owns
 manual IMAP/SMTP. The Linux GOA provider daemon and browser-backed OAuth setup
 are deliberately not claimed.
 
-The final gate before publication is the rebuilt Wayland-capable WebKit package
-and the small `linux-build/tests/webkitgtk-smoke.c` multiprocess load test.
+The exact 21-package Geary/app wave was published to
+`https://repo.maxleiter.com` on 2026-07-30. The production index, signatures,
+and every package payload were independently fetched after deployment. The
+remaining runtime gate is the small `linux-build/tests/webkitgtk-smoke.c`
+multiprocess load test against the rebuilt Wayland-capable WebKit package. That
+test could not be repeated before promotion because the iPad was offline; the
+production publish was explicitly requested with that limitation understood.
 
 ## Decision
 
-Finish the Wayland WebKit process smoke and publish this Geary-focused lane
-before widening account integrations or browser/media/GPU features.
+Keep the published manual-IMAP/SMTP lane as the baseline. Repeat the Wayland
+WebKit process smoke when the iPad is reachable before widening account
+integrations or browser/media/GPU features.
 
 Geary hard-requires WebKitGTK's GTK3/libsoup3 API (`webkit2gtk-4.1`,
 `javascriptcoregtk-4.1`, and `webkit2gtk-web-extension-4.1`) and builds a
@@ -197,10 +203,12 @@ Porting results and remaining blockers:
    JavaScriptCore on-device.
 3. Completed: build/package Geary 46.0 and gnome-keyring; verify the Secret
    Service and mapped Geary window in an isolated GNOME slot.
-4. Current: finish the Wayland-capable WebKit rebuild, repackage, and pass the
-   multiprocess HTML/JavaScript smoke under GNOME.
-5. Next: publish the exact tested debs. Treat OAuth/provider support and WebGL
-   as separate revisions with their own runtime proof.
+4. Completed host-side: rebuild and repackage WebKit with both Wayland and X11
+   enabled. Pending device proof: pass the multiprocess HTML/JavaScript smoke
+   under GNOME with these final bytes.
+5. Completed 2026-07-30: publish the exact 21-package wave to production and
+   independently fetch all package stanzas and payloads. Treat OAuth/provider
+   support and WebGL as separate revisions with their own runtime proof.
 
 ## Build commands
 

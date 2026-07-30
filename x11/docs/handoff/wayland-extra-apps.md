@@ -42,7 +42,7 @@ docker run --rm --platform linux/arm64 --cpus=4 \
 | yad | GTK dialog utility | recipe/control added; `yad_15.0+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed (2026-07-08) after a clean re-run with no competing session switch — the earlier "Broken pipe" was a concurrent `xios-session` switch nuking `wayland-0`, not a yad bug |
 | nwg-look | GTK settings UI | pinned Go 1.25 `ios/arm64` cgo path added; rootless data lookup fixed; `nwg-look_1.1.1+ios1_iphoneos-arm64.deb` host-built and its full settings UI mapped on-device |
 | Geary | GNOME mail client | Geary 46 and its dependency closure package; the iPad runtime owns `org.gnome.Geary` and exports a mapped GTK window with gnome-keyring providing Secret Service |
-| WebKitGTK | browser/webview platform | 2.44.4 API 4.1 builds/splits for rootless iOS; JavaScriptCore executes on-device; final Wayland multiprocess smoke is in progress; WebGL is deferred |
+| WebKitGTK | browser/webview platform | 2.44.4 API 4.1 builds/splits for rootless iOS with X11 and Wayland enabled; JavaScriptCore executes on-device; production published 2026-07-30; final rebuilt-package Wayland multiprocess device smoke remains; WebGL is deferred |
 | Gnumeric | GTK spreadsheet | recipe/control added with `libgsf`, `libxslt`, and `goffice`; `gnumeric_1.12.61+ios1_iphoneos-arm64.deb` built and installed; on-device classic `iosc` capture passed (2026-07-08) — full spreadsheet UI renders with the CSV loaded; the earlier invalidation was a session switch losing `wayland-0`, now confirmed clean |
 | Transmission | CLI/daemon BitTorrent client | recipe/control/patch stack added; `transmission_4.1.3+ios1_iphoneos-arm64.deb` built; CLI tools passed on-device; GTK UI deferred until gtkmm |
 
@@ -134,8 +134,8 @@ The runtime dylibs are signed arm64 Mach-O payloads. `libgspell-1.2.dylib`
 links ICU 78.3 and `libgtkintl`; `libpeas-1.0.0.dylib` links the published
 libgirepository 1.78 runtime and `libgtkintl`. Adding the four package stanzas
 to the current local package universe passed the repo solvability check across
-564 packages. Device smoke and publication remain pending because the iPad SSH
-endpoint timed out on 2026-07-19.
+564 packages. The repaired runtime packages subsequently loaded on-device and
+the four packages were published to production in the scoped 2026-07-30 wave.
 
 The 2026-07-29 repair pass rebuilt those four packages from clean
 `procursus-vol-gtk-calc` artifacts, restoring the intended ICU 78 and
@@ -215,8 +215,9 @@ GPU-client entitlement profile. `xcur2png` remains optional.
   `artifacts/device-runs/nwg-look-ios1-rootless2-20260729/`.
 - `geary-package`: built and device-launched. Geary remains alive, owns its
   application bus name, and exports a mapped window in an isolated GNOME slot.
-  gnome-keyring provides the real Secret Service. The final closure gate is the
-  rebuilt Wayland-capable WebKit multiprocess smoke and exact-deb publication.
+  gnome-keyring provides the real Secret Service. The exact debs are published
+  in production. The remaining closure gate is a multiprocess device smoke of
+  the final Wayland-capable WebKit bytes when the iPad is reachable.
 
 ## Policy
 
@@ -227,6 +228,10 @@ GPU-client entitlement profile. `xcur2png` remains optional.
   Darwin basu port, while `dunst` remains the already-smoked default.
 - Publish only after copying the exact smoked debs into top-level `repo/debs/`
   and running the normal repo audit/publish flow.
+- The 2026-07-30 Geary/WebKitGTK promotion was an explicit exception: the final
+  Wayland rebuild passed host build/package/audit checks, but its device smoke
+  was unavailable because the iPad was offline. Production publication was
+  explicitly requested with that gate still open.
 
 ## Verification
 

@@ -122,23 +122,28 @@ was no longer running at final validation; its outcome was not assessed as part 
 3. **mako/basu:** RESOLVED on-device 2026-07-29. The basu sd-bus sources have
    a Darwin patch stack; `basu 0.2.1+ios1` and `mako 1.9.0+ios1` package as
    arm64 Mach-O; and a real GDBus `Notify` call returned notification id 1 and
-   rendered through mako. Evidence:
+   rendered through mako. Both packages were published to production on
+   2026-07-30. Evidence:
    `artifacts/device-runs/mako-basu-ios1-20260729/`.
 4. **nwg-look:** RESOLVED on-device 2026-07-29 with a pinned Go 1.25
    `ios/arm64` cgo lane and rootless data lookup. The packaged settings UI maps
-   fully under iosc. Evidence:
+   fully under iosc. The package was published to production on 2026-07-30.
+   Evidence:
    `artifacts/device-runs/nwg-look-ios1-rootless2-20260729/`.
 5. **Papers:** RESOLVED on-device 2026-07-29 with pinned Rust 1.80.1,
    `aarch64-apple-ios`, the widened `libgtkintl 1.1` ABI bridge, and
    package-time schema compilation. Its Open a Document window maps under iosc
-   after the expected EGL-to-software fallback. Evidence:
+   after the expected EGL-to-software fallback. The package was published to
+   production on 2026-07-30. Evidence:
    `artifacts/device-runs/papers-ios1-schema-20260729/`.
 6. **Geary/WebKitGTK:** Geary 46, WebKitGTK 2.44.4, JavaScriptCoreGTK, the mail
    dependency closure, and gnome-keyring now build/package; JavaScriptCore
    executes on-device and Geary maps in an isolated GNOME slot with a live
-   Secret Service. The final gate is the rebuilt Wayland WebKit multiprocess
-   smoke followed by exact-package publication. WebGL/GPU acceleration is a
-   separate deferred revision.
+   Secret Service. The exact package wave was published to production on
+   2026-07-30 and every live payload was fetched successfully. The final
+   Wayland-capable WebKit bytes still need a multiprocess device smoke because
+   the iPad was offline during promotion. WebGL/GPU acceleration is a separate
+   deferred revision.
 7. **Xwayland WM polish:** `WM_NORMAL_HINTS`, client-requested `_NET_WM_STATE`/activation, and
    fuller resize semantics remain TODOs. Basic mapping/input works; these affect desktop polish.
 8. **Ladybird:** `0.1.24+ios1` is fully built, bundled, host DER-signed, and installed.
