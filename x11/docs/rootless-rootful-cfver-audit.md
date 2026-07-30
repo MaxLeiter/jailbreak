@@ -9,7 +9,7 @@ classified as rootless-only.
 
 ## Summary
 
-- Total hits: 1665
+- Total hits: 1664
 - Files with hits: 318
 
 ### By Category
@@ -20,7 +20,7 @@ classified as rootless-only.
 - `entitlements`: 45 hits across 17 files
 - `linker-path`: 110 hits across 50 files
 - `other`: 78 hits across 16 files
-- `package-payload`: 178 hits across 47 files
+- `package-payload`: 177 hits across 47 files
 - `recipe`: 82 hits across 26 files
 - `runtime-path`: 303 hits across 75 files
 - `script-or-source`: 179 hits across 67 files
@@ -29,7 +29,7 @@ classified as rootless-only.
 
 ### By Literal
 
-- `/var/jb`: 1623
+- `/var/jb`: 1622
 - `MEMO_CFVER=1900`: 6
 - `MEMO_TARGET=iphoneos-arm64-rootless`: 6
 - `iphoneos-arm64-rootless`: 30
@@ -190,7 +190,7 @@ classified as rootless-only.
 
 ### package-payload
 
-- `packages/build-template-package.sh:155` `/var/jb`: # check that keeps /var/jb out of a package that must not contain it.
+- `packages/build-template-package.sh:163` `/var/jb`: # check that keeps /var/jb out of a package that must not contain it.
 - `packages/xios-fonts-noto/DEBIAN/postinst:6` `/var/jb`: fc-cache -f /var/jb/usr/share/fonts/truetype/noto >/dev/null 2>&1 \|\| fc-cache -f >/dev/null 2>&1 \|\| true
 - `packages/xios-fonts-noto/DEBIAN/control:19` `/var/jb`: fonts (SIL Open Font License 1.1, see /var/jb/usr/share/doc/xios-fonts-noto).
 - `packages/xios-fonts-noto/var/jb/etc/fonts/conf.d/05-xios-font-dir.conf:9` `/var/jb`: <dir>/var/jb/usr/share/fonts</dir>
@@ -210,7 +210,7 @@ classified as rootless-only.
 - `packages/ladybird-app/Sources/IOSApplication.mm:143` `/var/jb`: NSString* root = @"/var/jb/tmp/ladybird";
 - `packages/ladybird-app/Sources/BrowserViewController.mm:19` `/var/jb`: candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
 - `packages/ladybird-app/Sources/LBTrace.h:3` `/var/jb`: // lines to /var/jb/tmp/ladybird-boot.log.
-- ... 158 more
+- ... 157 more
 
 ### recipe
 

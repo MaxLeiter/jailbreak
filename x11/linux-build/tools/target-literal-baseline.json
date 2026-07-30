@@ -1,5 +1,5 @@
 {
-  "total": 1013,
+  "total": 1012,
   "files": {
     "apps/Xios/Sources/XScreen.swift": 2,
     "apps/Xios/Sources/XSurface.c": 2,
@@ -167,7 +167,7 @@
     "packages/templates/xios-core/DEBIAN/control.in": 1,
     "packages/templates/xios-desktop-defaults/files.manifest": 13,
     "packages/templates/xios-desktop-theme/files.manifest": 3,
-    "packages/templates/xios-fhs/files.manifest": 2,
+    "packages/templates/xios-fhs/targets": 1,
     "packages/templates/xios-runtime/DEBIAN/control.in": 1,
     "packages/templates/xios-session-stubs/files.manifest": 6,
     "packages/x11-fonts-sf/DEBIAN/postinst": 4,

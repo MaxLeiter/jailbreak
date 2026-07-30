@@ -559,8 +559,12 @@ and the Wayland base built for `MEMO_TARGET=iphoneos-arm64`:
 | wayland | `libwayland0`, `libwayland-dev` `1.23.1+ios1` |
 | wayland-protocols | `wayland-protocols` `1.44+ios1` |
 | libxkbcommon | `libxkbcommon0`, `libxkbcommon-dev` `1.7.0+ios2` |
+| glib2.0 | `libglib2.0-0`/`-bin`/`-dev`/`-dev-bin` `2.78.0` |
+| ANGLE | `angle` `2.1.0+git20260630.a32d31d+es3-14` |
+| iosc | `iosc` `0.9.37` |
+| xios-fhs | `xios-fhs` `1.0.1` |
 
-Nine debs, all passing `tools/check-target-package.py` against `rootful-1900`,
+Sixteen debs, all passing `tools/check-target-package.py` against `rootful-1900`,
 and all correctly *rejected* against `rootless-1900` (wrong payload prefix,
 wrong architecture) -- so the check is discriminating, not just permissive.
 `libwayland0` ships all four dylibs at `./usr/lib/`. Run it with:
