@@ -1,0 +1,6 @@
+--- a/libs/ui/canvas/kis_mirror_axis.cpp
++++ b/libs/ui/canvas/kis_mirror_axis.cpp
+@@ -39,0 +40,3 @@
++#elif defined(Q_OS_IOS)
++    // OpenGL ES omits this desktop spelling; the guarded path is never selected.
++    #define GL_MULTISAMPLE_EXT 0x809D
